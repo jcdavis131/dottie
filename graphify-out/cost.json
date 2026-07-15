@@ -1,0 +1,46 @@
+{
+  "nodes": 727,
+  "edges": 1713,
+  "queries": [
+    {
+      "ts": "2026-07-15T19:26:53.550767+00:00",
+      "question": "how does bb tasks sync-bb work",
+      "naive": 36350,
+      "scoped": 1500,
+      "saved": 34850,
+      "reduction_x": 24.2,
+      "mode": "lexical"
+    },
+    {
+      "ts": "2026-07-15T19:26:54.027660+00:00",
+      "question": "what connects ava router to tasks",
+      "naive": 36350,
+      "scoped": 1500,
+      "saved": 34850,
+      "reduction_x": 24.2,
+      "mode": "lexical"
+    },
+    {
+      "ts": "2026-07-15T19:26:54.497989+00:00",
+      "question": "tasks export graphify",
+      "naive": 36350,
+      "scoped": 1500,
+      "saved": 34850,
+      "reduction_x": 24.2,
+      "mode": "lexical"
+    }
+  ],
+  "total_saved_tokens": 104550,
+  "total_naive": 109050,
+  "total_scoped": 4500,
+  "mode": "ollama-first local",
+  "last_query": {
+    "ts": "2026-07-15T19:26:54.497989+00:00",
+    "question": "tasks export graphify",
+    "naive": 36350,
+    "scoped": 1500,
+    "saved": 34850,
+    "reduction_x": 24.2,
+    "mode": "lexical"
+  }
+}
