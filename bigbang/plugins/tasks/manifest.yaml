@@ -1,0 +1,14 @@
+name: tasks
+version: 0.4.0
+description: Google Tasks — task lists + tasks CRUD wired into BigBang via hatch_gws_cli, agent-native
+capabilities:
+  network:
+    enabled: false
+    domains: []  # no direct network — hatch_gws_cli manages OAuth
+  filesystem:
+    enabled: true
+    write: true
+    paths: ["~/workspace/bigbang-cli/docs/llm-wiki/", "~/.local/share/bigbang/"]
+  secrets:
+    allow: []  # auth via Hatch managed wrapper, no vault secret needed
+tags: [productivity, google, tasks, gws]

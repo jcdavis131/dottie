@@ -205,6 +205,10 @@ def _heuristic_plan(task: str) -> Dict[str, Any]:
     plan: List[str] = []
 
     builtin_hints = {
+        "task": "bb tasks list",
+        "todo": "bb tasks list",
+        "lina": "bb tasks lists",
+        "morning": "bb tasks list",
         "github": "bb tools search github",
         "pr": "bb tools search github",
         "vector": "bb vector list",

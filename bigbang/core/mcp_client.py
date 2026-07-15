@@ -1,3 +1,4 @@
+# Solo personal project, no connection to employer, built with public/free-tier only
 """
 Reusable MCP client — real SDK implementation using mcp Python SDK 1.28.1
 Uses SSE transport first, falls back to streamable HTTP.

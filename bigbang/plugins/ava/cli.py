@@ -242,6 +242,16 @@ def _heuristic_route(task: str) -> Dict[str, Any]:
     q = task.lower()
     tools = list_tools()
     # Simple heuristic mapping
+    if "task" in q or "todo" in q or "lina" in q or "morning" in q or "afternoon" in q:
+        # tasks plugin wired — check if bb tasks exists in plugin list via discovery
+        return {
+            "router": "stub",
+            "picked_tool": "tasks",
+            "picked_command": "bb tasks list" if "list" in q else "bb tasks status" if "status" in q else "bb tasks add 'New task from Ava'",
+            "confidence": 0.92,
+            "reason": "task mentions tasks/todo/Lina lists — Google Tasks wired",
+            "available_tools": list(tools.keys())[:10],
+        }
     if "hoops" in q or "basketball" in q or "nba" in q:
         return {
             "router": "stub",

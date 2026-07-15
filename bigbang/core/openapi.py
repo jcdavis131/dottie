@@ -1,3 +1,4 @@
+# Solo personal project, no connection to employer, built with public/free-tier only
 """
 OpenAPI codegen + real call adapter
 Fetch spec, parse operations, generate Typer plugin, and perform real calls with policy enforcement.
