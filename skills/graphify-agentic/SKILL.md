@@ -1,59 +1,34 @@
 ---
 name: graphify-agentic
-description: Teaches AI agents to code smarter using knowledge graphs — graph-first agentic coding
-triggers:
-- agentic
-- code smarter
-- senior dev
-- codebase understanding
-- onboarding
-- refactor planning
-version: 1.0.0
-dependencies:
-- graphify-core
-- graphify-personal
-provider: ollama
+description: Agentic workflow — how Cursor/Claude Code should use graphify to get stuff done
 ---
+# Graphify Agentic SOTA
 
-# Graphify Agentic — Smarter Agentic Systems
+**Goal:** Help Cameron get stuff done with minimal context.
 
-Solo personal project, no connection to employer, built with public/free-tier only.
+Workflow:
 
-Teaches Cursor/Claude Code/Codex agents to use the knowledge graph instead of linear grep, like a senior dev who has been there for years.
+1. Onboard 30s: `pgraphify onboard` — god nodes, hot files, entry points, suggested questions
+2. Task compile: `pgraphify task "<natural task>"` — returns:
+   - top_matches (label, type, file, score)
+   - files priority (relevance)
+   - token estimate naive vs scoped = 71x
+   - plan + copy_paste_context
+3. Read only files from step 2 in relevance order
+4. Explain + Impact: `pgraphify explain "X" --snippet` + `pgraphify impact "X" --direction both`
+5. Edit minimal files
+6. Rebuild: `pgraphify . --out graphify-out` and commit graph.json
 
-## Why Graph Beats Grep
-Upstream benchmarks:
-- LOCOMO (n=300) recall@10: graphify 0.497 vs mem0 0.048, supermemory 0.149
-- Token reduction 71.5x on Karpathy mixed corpus (285 nodes, 340 edges, 53 communities) ~1.7k vs ~123k
-- Graph build LLM credits 0 (AST-only) vs per-token for most systems
+MCP server:
+- HTTP: `pgraphify serve --transport http --port 8080` -> GET /mcp/tools, POST /mcp/call with name graphify_query etc
+- Stdio: `pgraphify serve --transport stdio` for Cursor/Cline (tools: query, path, explain, impact, task, onboard)
 
-## Agentic Workflow (query-first)
+Examples:
+- "Where is Stripe implemented?" -> `pgraphify query "Stripe"`
+- "How does Stripe webhook connect to MRR?" -> `pgraphify path "Stripe" "MRR / Paid Users"`
+- "What breaks if I change Family Brain Plaid hub?" -> `pgraphify impact "Plaid" --direction both`
+- "Add retention playbook" -> `pgraphify task "add retention playbook to Turnover Shield churn prediction"`
 
-1. **Map**: `pgraphify .` → writes `graphify-out/graph.json` (commit it, team pulls = instant map)
-2. **God nodes**: Read `GRAPH_REPORT.md` → what everything flows through (e.g., `Client`, `AsyncClient`, `Response`, `APIRouter` in FastAPI example; in personal: `PROJECT.md`, `Stripe webhook`)
-3. **Scope**: `pgraphify query "what connects auth to database?"` → returns subgraph + rationale nodes (`# NOTE:`, `# WHY:` comments become first-class linked nodes)
-4. **Path**: `pgraphify path "A" "B"` → shortest path with confidence tags EXTRACTED/INFERRED/AMBIGUOUS — never guess vs known
-5. **Explain**: `pgraphify explain "Concept"` → degree, community, file, line, uses/used-by
-6. **Build**: Implement change using local context only, then `pgraphify --update` and `git add graphify-out/`
+Public demo: jcamd.com/graphify/ has JS task compiler + impact BFS client-side.
 
-## Agentic System Patterns (personalized)
-
-- **Rationale extraction**: `# NOTE:` / `# WHY:` / `# HACK:` comments become nodes linked to code they explain — agentic planner reads design intent without reading full file
-- **Doc refs**: ADR/RFC citations become first-class nodes — `ProductSpec → Implementation` edges
-- **Cross-system graph**: App code + DB schema + infra (SQL, Terraform, shell) in one graph — `graphify` handles 36 tree-sitter grammars + `.sql` + `.tf`
-- **Git-native**: post-commit hook `graphify hook install` auto-rebuilds AST, merge driver union-merges `graph.json` (no conflict markers)
-- **Shared server**: `python -m graphify.serve graphify-out/graph.json --transport http --host 0.0.0.0 --api-key $SECRET` → team points Cursor MCP at `http://host:8080/mcp` → no local graphify needed
-
-## For Cursor
-
-`.cursor/rules/graphify.mdc` has `alwaysApply: true` so every chat includes graph guidance automatically, no hook needed (unlike Claude Code which uses PreToolUse hook before Read/Glob).
-
-To enforce: `graphify cursor install --project` + commit.
-
-## Example Prompt to Agent
-
-"Before you edit, run `pgraphify query 'how does turnover churn calculation flow?'` and `pgraphify explain 'Turnover Shield'` — use only that subgraph + god nodes. If you need connection to Stripe, run `pgraphify path 'Stripe webhook' 'MRR'`"
-
-Result: agent codes with senior-level context, low tokens, traceable edges.
-
-Solo personal project, no connection to employer, built with public/free-tier only.
+Solo personal project, no connection to employer.
