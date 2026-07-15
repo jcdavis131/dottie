@@ -196,7 +196,7 @@ def releases_cmd(
             for asset in assets:
                 name = asset["name"].lower()
                 if "results" in name and (name.endswith(".tsv") or name.endswith(".jsonl")):
-                    dl = httpx.get(asset["browser_download_url"], timeout=20.0)
+                    dl = httpx.get(asset["browser_download_url"], timeout=20.0, follow_redirects=True)
                     if dl.status_code == 200:
                         _ensure_dirs()
                         if name.endswith(".tsv"):
