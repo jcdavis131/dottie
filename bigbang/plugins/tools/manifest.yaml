@@ -1,0 +1,10 @@
+name: tools
+version: 0.3.0
+description: Universal registry — turn any internet API into bb command
+capabilities:
+  network:
+    enabled: true
+    domains: ["*"]  # will be restricted per-tool via policy check
+  filesystem:
+    write: true
+    paths: ["~/.local/share/bigbang/"]

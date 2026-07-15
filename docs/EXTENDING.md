@@ -1,68 +1,77 @@
-# Extending BigBang CLI
+# Extending BigBang CLI v0.3
 
-## Add a new plugin in 30 seconds
+## 30-sec Plugin
 
 ```bash
-bb system scaffold mynewthing
-# edits bigbang/plugins/mynewthing/cli.py
-python3 -m bigbang.cli mynewthing hello
+bb system scaffold mytool --with-manifest
+# edits bigbang/plugins/mytool/manifest.yaml for caps + cli.py
+bb mytool hello --json
+# instantly in bb --help and bb mcp manifest as bb_mytool
 ```
 
-Structure:
-```
-bigbang/plugins/mynewthing/
-  cli.py        -> typer app named "mynewthing"
-  __init__.py
+## Universal Tool Registry — One CLI to Rule Internet
+
+Add any external tool:
+
+```bash
+bb tools add github --type openapi --url https://api.github.com/openapi.json --tags api,code
+bb tools add stripe --type openapi --url https://raw.githubusercontent.com/stripe/openapi/master/openapi/spec3.json
+bb mcp add notion https://mcp.notion.com/sse
+bb tools list
+bb tools search payments
 ```
 
-`cli.py` must expose:
+Import OpenAPI as tool:
+
+```bash
+bb tools import-openapi https://api.example.com/openapi.json --name example
+```
+
+## Security
+
+Declare caps in manifest.yaml — default deny. Access secrets via vault:
+
 ```python
-import typer
-app = typer.Typer(name="mynewthing")
-@app.command("foo")
-def foo(): ...
-
-def register(root):
-    root.add_typer(app, name="mynewthing")
+from bigbang.core.security import get_secret
+token = get_secret("GITHUB_TOKEN")  # from keyring/0600 file/env
 ```
 
-It auto-loads on next `bb --help`.
+Never log secrets — audit.py strips secret/key substrings.
 
-## Agent-friendly JSON
+## Agent Native
 
-Every command should support dual output:
+Every command must use `emit(data, command="...")` → valid JSON when --json, rich otherwise, audited.
+
+Agent planner:
 
 ```python
-from bigbang.core.output import emit
-emit({"ok": True, "data": ...})
-# user runs: bb mynewthing foo --json => valid JSON
+# bb agent run "do X"
+# -> list_tools() -> search_tools() -> build plan with policy checks
+# Future: call Ollama for real planning
 ```
 
 ## MCP
 
-`bigbang/plugins/mcp/cli.py` generates manifest:
+Serve BigBang as MCP:
+
 ```bash
-bb mcp manifest
+bb mcp manifest  # all bb_* tools
 bb mcp serve --port 8787
+# Claude Desktop: {"mcpServers": {"bigbang": {"url": "http://localhost:8787/sse"}}}
 ```
 
-Add to Claude/Cursor/Hatch as MCP server http://localhost:8787.
+Consume external MCP:
 
-## Skills
-
-Drop markdown files into `bigbang/skills/` - they become `bb skill run <name>`.
-
-Example `bigbang/skills/vector-daily.md`:
-```yaml
----
-name: vector-daily
-description: Rebuild vector hoops daily guess mode
----
-Run pipeline/rebuild_all.py --quick --leakfree
+```bash
+bb mcp add myserver http://localhost:3000/sse
+bb mcp list-tools myserver
+bb mcp call myserver some_tool --args '{"q":"test"}'
 ```
 
-## Continuous Growth Loop
+## Ava Integration
 
-1. Daily pattern? `bb system scaffold`
-2. Recurring Hatch IDEAS loop suggests new skills from workspace/projects/
-3. File them into Life Admin Brain / tools registry
+Ava is brain for routing + evaluation:
+
+- `bb ava route "task"` → returns tool + confidence (stub → Ollama in v0.6)
+- `bb ava eval --frontier` → Frontier rubric for tool promotion
+- Future: vector store over audit.jsonl for lifelong memory

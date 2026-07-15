@@ -1,0 +1,9 @@
+name: auth
+version: 0.3.0
+description: Unified auth for all internet services
+capabilities:
+  network:
+    enabled: true
+    domains: ["github.com", "api.github.com", "oauth2.googleapis.com"]
+  filesystem:
+    write: true

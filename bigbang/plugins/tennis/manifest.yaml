@@ -1,0 +1,10 @@
+name: tennis
+version: 0.3.0
+description: Tennis DINOv3 serve coach
+capabilities:
+  network:
+    enabled: true
+    domains: ["huggingface.co"]
+  filesystem:
+    write: true
+    paths: ["~/workspace/tennis-dinov3-serve-coach/"]

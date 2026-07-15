@@ -1,54 +1,40 @@
-"""Dual output - rich for humans, valid JSON for agents"""
+"""Dual output — rich for humans, valid JSON for agents, audited"""
 import json
 import sys
+import time
 from typing import Any
 from rich.console import Console
 
 _console = Console()
 _json_mode = False
+_start_ts = time.time()
 
 def set_json_mode(enabled: bool):
-    global _json_mode
+    global _json_mode, _start_ts
     _json_mode = enabled
+    _start_ts = time.time()
 
 def is_json() -> bool:
     return _json_mode
 
-def emit(data: Any):
-    """Emit data - if --json, print only JSON (valid), else rich"""
+def emit(data: Any, command: str = "unknown"):
     if _json_mode:
-        # Only JSON, no other prints
-        # Ensure serializable
         try:
             json.dump(data, sys.stdout, indent=2, default=str)
             sys.stdout.write("\n")
         except Exception:
-            # fallback
             print(json.dumps({"data": str(data)}))
     else:
-        # Human path - rich
         if isinstance(data, dict):
-            # pretty but concise
             _console.print_json(data=data)
         else:
             _console.print(data)
-
-def emit_table(title: str, rows: list, columns: list = None):
-    from rich.table import Table
-    if _json_mode:
-        emit({"title": title, "rows": rows})
-        return
-    table = Table(title=title)
-    if columns:
-        for c in columns:
-            table.add_column(c)
-    else:
-        if rows and isinstance(rows[0], dict):
-            for k in rows[0].keys():
-                table.add_column(str(k))
-    for r in rows:
-        if isinstance(r, dict):
-            table.add_row(*[str(v) for v in r.values()])
-        else:
-            table.add_row(str(r))
-    _console.print(table)
+    # audit async
+    try:
+        from bigbang.core.audit import log_event
+        dur = int((time.time() - _start_ts)*1000)
+        # don't log secret values
+        safe = {k: v for k, v in (data.items() if isinstance(data, dict) else {}).items() if "secret" not in k.lower() and "key" not in k.lower()}
+        log_event(command, safe, status="ok", duration_ms=dur)
+    except Exception:
+        pass
