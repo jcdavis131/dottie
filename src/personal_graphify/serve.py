@@ -1,7 +1,7 @@
 """
 serve.py — MCP server (SOTA: HTTP + stdio) exposing personal-graphify as tools
-Tools: query, path, explain, impact, task, onboard
-
+Tools: query, path, explain, impact, task, onboard, cost
+SOTA: semantic rerank (Ollama mxbai-embed-large), hooks, cost dashboard
 Solo personal project, no connection to employer, built with public/free-tier only
 """
 import json
@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any, Dict
 import argparse
 
-# Try to use existing query module
 from .query import (
     load_graph_json,
     search_nodes,
@@ -20,19 +19,18 @@ from .query import (
     impact_analysis,
     task_compiler,
     onboard_report,
-    format_onboard_answer
+    format_onboard_answer,
+    format_cost_dashboard,
+    _cost_path_for_graph
 )
 
 def load_graph(graph_path: str):
     p = Path(graph_path)
-    # search up if not found
     if not p.exists():
-        # try cwd graphify-out
         cand = Path("graphify-out/graph.json")
         if cand.exists():
             p = cand
         else:
-            # rglob
             found = list(Path(".").rglob("graph.json"))
             if found:
                 p = found[0]
@@ -40,16 +38,17 @@ def load_graph(graph_path: str):
         raise FileNotFoundError(f"graph.json not found at {graph_path}, tried {p}")
     return load_graph_json(p), p
 
-# MCP tool definitions
 MCP_TOOLS = [
     {
         "name": "graphify_query",
-        "description": "Query knowledge graph for scoped subgraph — returns ~1.5k tokens vs naive ~100k, 70x+ reduction. Always use before grepping. Personal ecosystem: Turnover Shield, Family Brain, Ava AGI, MTNN Vector Hoops.",
+        "description": "Query knowledge graph for scoped subgraph — ~1.5k vs ~100k 70x+ reduction. SOTA: lexical + optional semantic rerank via Ollama mxbai-embed-large local. Always use before grepping. Ecosystem: Turnover Shield $79-149/mo, Family Brain, Ava AGI, MTNN Vector Hoops.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "question": {"type": "string", "description": "Natural question: where is X, how does A connect to B, retention logic etc"},
                 "limit": {"type": "integer", "default": 12},
+                "semantic": {"type": "boolean", "default": False, "description": "Use Ollama mxbai-embed-large semantic rerank (free local, needs ollama pull mxbai-embed-large)"},
+                "embed_model": {"type": "string", "default": "mxbai-embed-large"},
                 "graph": {"type": "string", "default": "graphify-out/graph.json"}
             },
             "required": ["question"]
@@ -57,12 +56,13 @@ MCP_TOOLS = [
     },
     {
         "name": "graphify_path",
-        "description": "Shortest path between two concepts/files — traces hop-by-hop with EXTRACTED vs INFERRED. Use for 'how does Stripe webhook connect to MRR?'",
+        "description": "Shortest path between two concepts/files — hop-by-hop EXTRACTED vs INFERRED. Use for 'how does Stripe webhook connect to MRR?'",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "source": {"type": "string"},
                 "target": {"type": "string"},
+                "semantic": {"type": "boolean", "default": False},
                 "graph": {"type": "string", "default": "graphify-out/graph.json"}
             },
             "required": ["source","target"]
@@ -76,20 +76,22 @@ MCP_TOOLS = [
             "properties": {
                 "node": {"type": "string"},
                 "graph": {"type": "string", "default": "graphify-out/graph.json"},
-                "include_snippet": {"type": "boolean", "default": False}
+                "include_snippet": {"type": "boolean", "default": False},
+                "semantic": {"type": "boolean", "default": False}
             },
             "required": ["node"]
         }
     },
     {
         "name": "graphify_impact",
-        "description": "Impact analysis: what breaks if you change this node? Returns downstream (what it affects) + upstream (dependencies) + file hotspots. SOTA for safe edits.",
+        "description": "Impact analysis: what breaks if you change this node? Downstream + upstream + file hotspots. SOTA for safe edits.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "node": {"type": "string"},
                 "direction": {"type": "string", "enum": ["downstream","upstream","both"], "default": "both"},
                 "depth": {"type": "integer", "default": 3},
+                "semantic": {"type": "boolean", "default": False},
                 "graph": {"type": "string", "default": "graphify-out/graph.json"}
             },
             "required": ["node"]
@@ -97,11 +99,12 @@ MCP_TOOLS = [
     },
     {
         "name": "graphify_task",
-        "description": "Task compiler: given natural task description, returns minimal relevant files (priority order) + action plan + token savings + copy-paste context. Most useful for agents to get stuff done with minimal context.",
+        "description": "Task compiler: given natural task, returns minimal files (priority) + action plan + token savings + copy-paste context. Most useful for agents.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "task": {"type": "string", "description": "e.g. 'add retention playbook to Turnover Shield', 'fix churn calc', 'onboard new dev to Ava'"},
+                "task": {"type": "string", "description": "e.g. 'add retention playbook to Turnover Shield'"},
+                "semantic": {"type": "boolean", "default": False},
                 "graph": {"type": "string", "default": "graphify-out/graph.json"}
             },
             "required": ["task"]
@@ -110,6 +113,16 @@ MCP_TOOLS = [
     {
         "name": "graphify_onboard",
         "description": "Senior-dev onboarding: god nodes, hot files, entry points, communities, suggested questions. Use for new repo in 30s.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "graph": {"type": "string", "default": "graphify-out/graph.json"}
+            }
+        }
+    },
+    {
+        "name": "graphify_cost",
+        "description": "Cost dashboard: shows token savings from cost.json — total saved, $ avoided, recent queries. SOTA tracking.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -126,21 +139,23 @@ def handle_tool_call(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         return {"error": str(e), "graph": graph_path}
 
+    semantic = arguments.get("semantic", False)
+    embed_model = arguments.get("embed_model", "mxbai-embed-large")
+
     if name == "graphify_query":
         q = arguments.get("question","")
-        sub_answer = format_query_answer(G, q)
-        # also return structured top matches
-        matches = search_nodes(G, q, limit=arguments.get("limit",12))
-        return {"text": sub_answer, "matches": matches[:12], "graph": str(resolved)}
+        sub_answer = format_query_answer(G, q, graph_path=resolved, semantic=semantic, embed_model=embed_model)
+        matches = search_nodes(G, q, limit=arguments.get("limit",12), semantic=semantic, embed_model=embed_model)
+        return {"text": sub_answer, "matches": matches[:12], "graph": str(resolved), "semantic": semantic}
 
     elif name == "graphify_path":
         src = arguments.get("source",""); tgt = arguments.get("target","")
-        ans = format_path_answer(G, src, tgt)
+        ans = format_path_answer(G, src, tgt, semantic=semantic)
         return {"text": ans, "graph": str(resolved)}
 
     elif name == "graphify_explain":
         node = arguments.get("node","")
-        info = explain_node(G, node, include_code_snippet=arguments.get("include_snippet", False))
+        info = explain_node(G, node, include_code_snippet=arguments.get("include_snippet", False), semantic=semantic)
         if not info:
             return {"error": f"Node '{node}' not found"}
         return info
@@ -149,28 +164,33 @@ def handle_tool_call(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         node = arguments.get("node","")
         direction = arguments.get("direction","both")
         depth = arguments.get("depth",3)
-        impact = impact_analysis(G, node, direction=direction, depth=depth)
+        impact = impact_analysis(G, node, direction=direction, depth=depth, semantic=semantic)
         return impact
 
     elif name == "graphify_task":
         task = arguments.get("task","")
-        result = task_compiler(G, task)
+        result = task_compiler(G, task, semantic=semantic)
         return result
 
     elif name == "graphify_onboard":
         report = onboard_report(G)
         return report
 
+    elif name == "graphify_cost":
+        cost_path = _cost_path_for_graph(resolved)
+        try:
+            text = format_cost_dashboard(cost_path)
+            raw = {}
+            if cost_path.exists():
+                raw = json.loads(cost_path.read_text()) 
+            return {"text": text, "cost_path": str(cost_path), "raw": raw}
+        except Exception as e:
+            return {"error": str(e), "cost_path": str(cost_path)}
+
     else:
         return {"error": f"Unknown tool {name}"}
 
-# -- STDIO MCP transport --
 def run_stdio():
-    """
-    Minimal MCP stdio transport: reads JSON-RPC lines, responds.
-    Supports initialize, tools/list, tools/call
-    """
-    import sys
     for line in sys.stdin:
         line=line.strip()
         if not line:
@@ -190,7 +210,7 @@ def run_stdio():
                 "result": {
                     "protocolVersion":"2024-11-05",
                     "capabilities":{"tools":{"listChanged": False}},
-                    "serverInfo":{"name":"personal-graphify","version":"0.2.0-sota"}
+                    "serverInfo":{"name":"personal-graphify","version":"0.3.0-sota-semantic"}
                 }
             }
             print(json.dumps(resp), flush=True)
@@ -211,7 +231,7 @@ def run_stdio():
                 "jsonrpc":"2.0",
                 "id": rpc_id,
                 "result": {
-                    "content": [{"type":"text","text": json.dumps(result, indent=2)[:15000]}],
+                    "content": [{"type":"text","text": json.dumps(result, indent=2)[:18000]}],
                     "isError": "error" in result
                 }
             }
@@ -222,11 +242,9 @@ def run_stdio():
             print(json.dumps(resp), flush=True)
 
         else:
-            # unknown
             resp = {"jsonrpc":"2.0","id":rpc_id,"error":{"code":-32601,"message":f"Method {method} not found"}}
             print(json.dumps(resp), flush=True)
 
-# -- HTTP transport via FastAPI --
 def run_http(port: int, graph_path: str):
     try:
         from fastapi import FastAPI, Request
@@ -237,11 +255,11 @@ def run_http(port: int, graph_path: str):
         run_stdio()
         return
 
-    app = FastAPI(title="Personal Graphify MCP", version="0.2.0-sota")
+    app = FastAPI(title="Personal Graphify MCP SOTA", version="0.3.0")
 
     @app.get("/")
     def root():
-        return {"name":"personal-graphify","version":"0.2.0-sota","tools":[t["name"] for t in MCP_TOOLS], "graph": graph_path, "note":"Solo personal project, no connection to employer"}
+        return {"name":"personal-graphify","version":"0.3.0-sota-semantic","tools":[t["name"] for t in MCP_TOOLS], "graph": graph_path, "features": ["lexical+degree","semantic-mxbai-embed-large","impact","task-compiler","hooks","cost-dashboard"], "note":"Solo personal project, no connection to employer"}
 
     @app.get("/mcp/tools")
     def list_tools():
@@ -261,31 +279,39 @@ def run_http(port: int, graph_path: str):
     async def http_query(request: Request):
         body = await request.json()
         q = body.get("question") or body.get("q") or ""
+        semantic = body.get("semantic", False)
         G,_ = load_graph(body.get("graph", graph_path))
-        matches = search_nodes(G, q, limit=body.get("limit",12))
-        return {"question": q, "matches": matches, "subgraph": {"text": format_query_answer(G,q)}}
+        matches = search_nodes(G, q, limit=body.get("limit",12), semantic=semantic)
+        return {"question": q, "matches": matches, "subgraph": {"text": format_query_answer(G,q, graph_path=Path(graph_path), semantic=semantic)}}
 
     @app.post("/task")
     async def http_task(request: Request):
         body = await request.json()
         task = body.get("task","")
+        semantic = body.get("semantic", False)
         G,_ = load_graph(body.get("graph", graph_path))
-        result = task_compiler(G, task)
+        result = task_compiler(G, task, semantic=semantic)
         return result
 
     @app.post("/impact")
     async def http_impact(request: Request):
         body = await request.json()
+        semantic = body.get("semantic", False)
         G,_ = load_graph(body.get("graph", graph_path))
-        result = impact_analysis(G, body.get("node",""), direction=body.get("direction","both"), depth=body.get("depth",3))
+        result = impact_analysis(G, body.get("node",""), direction=body.get("direction","both"), depth=body.get("depth",3), semantic=semantic)
         return result
 
-    print(f"[personal-graphify] HTTP MCP serving on http://0.0.0.0:{port} — graph {graph_path}")
-    print(f"Endpoints: GET /mcp/tools, POST /mcp/call, POST /query, POST /task, POST /impact")
+    @app.get("/cost")
+    def http_cost():
+        G,_ = load_graph(graph_path)
+        cost_path = _cost_path_for_graph(Path(graph_path))
+        return {"text": format_cost_dashboard(cost_path)}
+
+    print(f"[personal-graphify] HTTP MCP serving on http://0.0.0.0:{port} — graph {graph_path} SOTA semantic+hooks+cost")
+    print(f"Endpoints: GET /mcp/tools, POST /mcp/call, POST /query, POST /task, POST /impact, GET /cost")
     uvicorn.run(app, host="0.0.0.0", port=port)
 
 def main(args=None):
-    # args may be argparse namespace from cli.py
     if args is None:
         parser = argparse.ArgumentParser()
         parser.add_argument("--transport", default="http", choices=["http","stdio"])

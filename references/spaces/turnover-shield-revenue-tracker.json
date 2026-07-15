@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "type": "space",
+  "slug": "turnover-shield-revenue-tracker",
+  "goal_id": "goal_76da7701a682",
+  "goal_link": "goal:first-1k",
+  "project": "first-1k-mo-passive",
+  "mrr_target": 1000,
+  "pricing": {"starter": 79, "pro": 149},
+  "tracking": {"frequency": "weekly Friday 9am", "fields": ["trials","paid_users","MRR","churn_pct","notes"]},
+  "target_customers": "7-13 @ $79-149 to hit $1k MRR",
+  "nodes": ["concept:turnover-shield","concept:mrr","concept:first-1k-mrr","concept:revenue-tracker","ecosystem:goal-first-1k"]
+}

@@ -312,6 +312,14 @@ PERSONAL_PATTERNS = {
     "chase": ("integration:chase", "Chase", "integration", "Chase Southwest + routing"),
     "schwab": ("integration:schwab", "Schwab", "integration", "Schwab 8889 META/VOO holdings"),
     "usaa": ("integration:usaa", "USAA", "integration", "USAA cash hub 0472 Classic + savings"),
+    # goal linking SOTA — First $1k/mo passive
+    "first $1k": ("concept:first-1k-mrr", "First $1k/mo passive goal", "business_metric", "$1k MRR sustained, 7-13 customers @ $79-149/mo"),
+    "1k/mo passive": ("concept:first-1k-mrr", "First $1k/mo passive goal", "business_metric", "$1k MRR sustained"),
+    "revenue tracker": ("concept:revenue-tracker", "Turnover Shield Revenue Tracker", "business_metric", "MRR tracker via crons weekly Friday trials/paid/MRR/churn%"),
+    "mrr tracker": ("concept:revenue-tracker", "Turnover Shield Revenue Tracker", "business_metric", "Weekly MRR check Friday 9am"),
+    "passive income": ("concept:passive-income", "Passive Income Web App", "product", "Self-sustaining web app for passive income — Turnover Shield Pick"),
+    "trade crew": ("concept:trade-crew", "Trade Crew (Plumbing/Electrical/HVAC)", "business_metric", "Boring B2B vertical for Turnover Shield"),
+    "goal_76da7701": ("concept:first-1k-mrr", "First $1k/mo passive goal", "business_metric", "Goal ID goal_76da7701a682 — pricing $79-149/mo"),
     # products
     "turnover shield": ("concept:turnover-shield", "Turnover Shield", "product", "Boring B2B SaaS $79-149/mo churn prediction for trade crews, aiming $1k MRR = 7-13 customers"),
     "turnover": ("concept:turnover-shield", "Turnover Shield", "product", "Churn prediction for trade crews"),
@@ -368,6 +376,28 @@ def extract_personal_patterns(file_path: Path) -> Tuple[List[Dict], List[Dict]]:
         nodes.append({"id": nid, "label": "04_Tennis_DINOv3 ExecuTorch", "type": "ecosystem_domain"})
         file_id = f"file:{file_path}"
         edges.append({"source": file_id, "target": nid, "type": "belongs_to", "confidence": INFERRED})
+    # SOTA goal linking: first-1k-mo-passive and self-sustaining app projects
+    fp_lower = fp_str.lower()
+    if "first-1k-mo-passive" in fp_lower or "first_1k" in fp_lower or "goal_76da7701" in fp_lower:
+        nid = "ecosystem:goal-first-1k"
+        if not any(n["id"]==nid for n in nodes):
+            nodes.append({"id": nid, "label": "Goal: First $1k/mo passive — Turnover Shield", "type": "ecosystem_domain", "desc": "Outcome $1k MRR sustained, 7-13 customers @ $79-149/mo, pricing vs competitors, weekly tracking trials/paid/MRR/churn"})
+        file_id = f"file:{file_path}"
+        if file_path.suffix == ".md":
+            file_id = f"doc:{file_path}"
+        edges.append({"source": file_id, "target": nid, "type": "belongs_to", "confidence": INFERRED})
+        # also link file directly to core product nodes
+        edges.append({"source": file_id, "target": "concept:turnover-shield", "type": "tracks", "confidence": INFERRED})
+        edges.append({"source": file_id, "target": "concept:first-1k-mrr", "type": "tracks", "confidence": INFERRED})
+        edges.append({"source": file_id, "target": "concept:revenue-tracker", "type": "implements", "confidence": INFERRED})
+    if "build-a-self-sustaining-web-app-for-passive-income" in fp_lower or "passive-income" in fp_lower:
+        nid2 = "ecosystem:goal-passive-app"
+        if not any(n["id"]==nid2 for n in nodes):
+            nodes.append({"id": nid2, "label": "Goal: Build self-sustaining web app for passive income", "type": "ecosystem_domain", "desc": "Start small grow long-term, deep market research niche, no ongoing input"})
+        file_id2 = f"file:{file_path}"
+        if file_path.suffix == ".md":
+            file_id2 = f"doc:{file_path}"
+        edges.append({"source": file_id2, "target": nid2, "type": "belongs_to", "confidence": INFERRED})
 
     # text pattern matching - lower + keep case for mtNN
     try:
@@ -403,6 +433,11 @@ def extract_personal_patterns(file_path: Path) -> Tuple[List[Dict], List[Dict]]:
             edges.append({"source": "concept:turnover-shield", "target": "concept:churn-prediction", "type": "contains", "confidence": INFERRED})
         if "churn" in low and "retention" in low:
             edges.append({"source": "concept:churn-prediction", "target": "concept:retention-playbook", "type": "triggers", "confidence": INFERRED})
+        if "first $1k" in low or "first 1k" in low or "1k/mo" in low or "revenue tracker" in low or "goal_76da7701" in low:
+            edges.append({"source": "concept:turnover-shield", "target": "concept:first-1k-mrr", "type": "enables", "confidence": INFERRED})
+            edges.append({"source": "concept:mrr", "target": "concept:first-1k-mrr", "type": "feeds", "confidence": INFERRED})
+            edges.append({"source": "concept:revenue-tracker", "target": "concept:first-1k-mrr", "type": "tracks", "confidence": INFERRED})
+            edges.append({"source": "concept:passive-income", "target": "concept:turnover-shield", "type": "contains", "confidence": INFERRED})
         if "48→64" in src or "48->64" in src or "hl=" in low or "mtNN" in src:
             nodes.append({"id": "concept:mtnn-head", "label": "MTNN head 48→64→k tower arch", "type": "ml_concept", "desc": "48→64→k from Vector Hoops truthful MTNN"})
             edges.append({"source": file_id, "target": "concept:mtnn-head", "type": "uses", "confidence": INFERRED})
