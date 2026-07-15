@@ -1,8 +1,7 @@
-"""Core context - loads MEMORY.md, config, env"""
+"""Core context - loads generic settings, local-first only"""
 from pathlib import Path
 from pydantic_settings import BaseSettings
 from pydantic import Field
-import os
 
 class BBSettings(BaseSettings):
     # Paths
@@ -10,15 +9,9 @@ class BBSettings(BaseSettings):
     workspace_root: Path = Field(default_factory=lambda: Path.home() / "workspace")
     memory_file: Path = Field(default_factory=lambda: Path.home() / "MEMORY.md")
     
-    # Feature flags - local-first only
-    plaid_enabled: bool = True
-    gmail_enabled: bool = True
+    # Generic features - local-first, tools/services/agents only
     ollama_url: str = "http://host.docker.internal:11434"
-    
-    # Finance defaults from user's canonical
-    emergency_target: int = 66000
-    monthly_burn: int = 11000
-    fed_tax_rate: float = 0.37
+    mcp_port: int = 8787
     
     # Solo disclaimer
     employer_isolation: bool = True

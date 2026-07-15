@@ -1,12 +1,11 @@
 import typer, shutil, platform
 from pathlib import Path
-from rich.console import Console
 from bigbang.core.output import emit
 
 app = typer.Typer(name="system", help="System health, updates, scaffolding", no_args_is_help=True)
-console = Console()
 
 def run_doctor():
+    from pathlib import Path
     checks = []
     checks.append({"check": "python", "status": platform.python_version(), "ok": True})
     checks.append({"check": "git", "status": shutil.which("git") or "missing", "ok": bool(shutil.which("git"))})
@@ -21,9 +20,6 @@ def run_doctor():
     checks.append({"check": "MEMORY.md", "status": f"{mem} {'exists' if mem.exists() else 'missing'}", "ok": mem.exists()})
     ws = Path.home() / "workspace" / "bigbang-cli"
     checks.append({"check": "repo", "status": str(ws), "ok": ws.exists()})
-    for c in checks:
-        icon = "✅" if c["ok"] else "⚠️"
-        console.print(f"{icon} {c['check']}: {c['status']}")
     emit({"message": "doctor complete", "checks": checks})
 
 @app.command("doctor")
@@ -38,7 +34,7 @@ def scaffold_plugin(name: str = typer.Argument(..., help="new plugin name")):
     cli_file = target / "cli.py"
     (target / "__init__.py").touch(exist_ok=True)
     if cli_file.exists():
-        console.print(f"[yellow]exists: {cli_file}[/yellow]")
+        emit({"warning": f"exists: {cli_file}"})
         return
     cli_file.write_text(f'''import typer
 from bigbang.core.output import emit
@@ -49,7 +45,7 @@ def hello():
 def register(root):
     root.add_typer(app, name="{name}")
 ''')
-    console.print(f"[green]created {cli_file}[/green]")
+    emit({"created": str(cli_file)})
 
 def register(root):
     root.add_typer(app, name="system")

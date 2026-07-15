@@ -1,22 +1,25 @@
-# BigBang CLI — Your Personal Control Plane
+# BigBang CLI — Agent & Tools Control Plane
 
-> One CLI to run your whole life. Local-first, agent-native, continuously expanding.
+> One CLI to orchestrate all your agents, tools, and services. Local-first, agent-native, continuously growing.
 
 Solo personal project, no connection to employer, built with public/free-tier only.
 
 ## Why this exists
 
-You have 5 finance sources, Family Brain, Life Admin Brain (10 tables), 3 Vector MTNNs (12,966 Hoops seasons), Ava AGI Factory v6.4, Tennis DINOv3, Passive Lab SaaS. No unified tool layer. Agents rewrite same glue.
+You have Family Brain, Life Admin Brain, 3 Vector MTNNs (12,966 Hoops), Ava AGI Factory v6.4, Tennis DINOv3, Passive Lab, plus growing tools. Agents kept rewriting glue. No unified surface for tools/services.
 
-BigBang fixes it:
+BigBang fixes it — strictly for agents/tools/services (no personal finance):
 
 ```bash
-bb finance snapshot --net
-bb family bills --due-this-week
-bb vector hoops --daily
+bb doctor
+bb family brain
+bb vector list
+bb vector hoops --daily --leakfree
 bb ava status
-bb agent run "cut tax drag on emergency fund"
-bb --json finance snapshot | jq .net_after_cc
+bb tennis serve --video serve.mp4
+bb agent run "rebuild vector hoops with leakfree split"
+bb mcp manifest
+bb --json vector list | jq .
 ```
 
 ## Install
@@ -25,21 +28,20 @@ bb --json finance snapshot | jq .net_after_cc
 git clone https://github.com/jcdavis131/bigbang-cli
 cd bigbang-cli
 pip install -e ".[all]" --break-system-packages
-# or uv pip install -e .
+# or: uv pip install -e .
 bb --help
 bb doctor
 ```
 
 ## Plugins (auto-discovered)
 
-- `finance` — Betterment $371k / USAA $66k / Schwab $536k / Fidelity $1.27M manual Mon 9am CT only / burn $11k / EF $136.5k
-- `family` — Davis Family Brain shareable + Life Admin Brain (10 tables: roth, bills, insurance, RSU 444 @ $615)
-- `vector` — Hoops/Pitch/Gridiron MTNN control, Guess The Player pivot, dumbmodel.com
+- `family` — Davis Family Brain shareable + Life Admin Brain (10 tables: tasks, docs, bills, etc)
+- `vector` — Hoops/Pitch/Gridiron MTNN control, dumbmodel.com — leakfree rebuilds, Guess The Player mode
 - `tennis` — DINOv3 serve coach, ExecuTorch ConvNeXt-Tiny 2MB ONNX WASM
-- `ava` — Ava Factory v6.4 Docker CUDA, Frontier rubric 11 cats, Ollama judges
-- `system` — doctor, scaffold, update
-- `agent` — natural language -> bb tool selection
-- `mcp` — expose every command as MCP tool
+- `ava` — Ava Factory v6.4 Docker CUDA, Frontier rubric 11 cats, Ollama judges qwen3:32b
+- `system` — doctor, scaffold, update — `bb system scaffold <name>` creates new tool instantly
+- `agent` — natural language -> bb tool selection + event bus for recurring workflows
+- `mcp` — expose every command as MCP tool for Claude/Cursor/Hatch agents
 
 Add a new one:
 ```bash
@@ -54,40 +56,37 @@ bb shopping hello
 Every command supports `--json`:
 
 ```bash
-bb --json finance snapshot
 bb --json vector list
 bb --json ava status
+bb --json family bills
 ```
 
 MCP server:
 
 ```bash
-bb mcp manifest  # list tools
+bb mcp manifest  # list tools as JSON
 bb mcp serve --port 8787
 # add to Claude Desktop / Cursor / Hatch as MCP server http://localhost:8787
 ```
-
-Agents call structured tools without parsing rich tables.
 
 ## Architecture
 
 ```
 bb (Typer)
  ├── core/
- │   ├── context.py      # MEMORY.md, settings (burn $11k, EF target $66k, fed 37%)
+ │   ├── context.py      # generic settings, MEMORY.md existence check
  │   ├── plugin_loader.py# auto-discovers bigbang/plugins/*/cli.py
- │   └── output.py       # dual rich + --json
+ │   └── output.py       # dual rich + --json contract (no ANSI in --json)
  ├── plugins/
- │   ├── finance/        # snapshot, emergency-tax-lift (your PDF)
- │   ├── family/
- │   ├── vector/
- │   ├── tennis/
- │   ├── ava/
- │   ├── system/
- │   ├── agent/
- │   └── mcp/
- ├── skills/             # markdown -> bb skill run <name>
- └── config/default.yaml # local-first paths
+ │   ├── family/         # family brain + life admin
+ │   ├── vector/         # MTNN control
+ │   ├── tennis/         # DINOv3 serve coach
+ │   ├── ava/            # AGI factory
+ │   ├── system/         # doctor + scaffold
+ │   ├── agent/          # NL -> tools
+ │   └── mcp/            # manifest + serve
+ ├── skills/             # markdown skills -> bb skill run <name>
+ └── config/default.yaml # local-first paths, no finance
 ```
 
 Growth loop:
@@ -96,28 +95,19 @@ Growth loop:
 3. Implement with public/free-tier only
 4. Nightly Hatch heartbeat proposes new skills from recurring patterns
 
-## Production-grade touches
+## Production touches
 
-- `pyproject.toml` setuptools, `bb` + `bigbang` entrypoints
+- `pyproject.toml` setuptools, `bb` + `bigbang` entrypoints, `tools` manifest auto-discovery
 - `.github/workflows/ci.yml` ruff + pytest
 - `.gitignore` venv/build/cache
 - `docs/ARCHITECTURE.md` + `docs/EXTENDING.md`
 - `examples/quickstart.sh`
 - Tests `tests/test_cli.py`
-- Dual output contract (rich for humans, JSON for agents)
-- Isolation: HOME only, never touches 03_Meta_Work_ISOLATED, every artifact footer disclaimer
-
-## Roadmap
-
-- v0.1 ✅ core + finance + family + vector + tennis + ava + system + agent + mcp
-- v0.2 Family Brain sync + bills duplicate detector (Rocket Money 550 alerts replacement)
-- v0.3 Vector verify_accuracy.py + league rebuild CLI
-- v0.4 Ava docker-compose wrapper + smoke->nano->base gate
-- v0.5 Tennis DINOv3 WASM export + on-device inference
-- v0.6 Tunnel MCP to iOS/Android via Tailscale
+- Dual output: rich for humans, valid JSON for agents (--json only JSON)
+- Isolation: HOME only, never touches 03_Meta_Work_ISOLATED, disclaimer footer
 
 ## Disclaimer
 
-Solo personal project, no connection to employer, built with public/free-tier only. Fidelity manual screenshot Mon 9am CT, never Plaid. Free to build/host/serve.
+Solo personal project, no connection to employer, built with public/free-tier only. Strictly agents/tools/services — no personal finance. Free to build/host/serve.
 
 MIT

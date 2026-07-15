@@ -40,30 +40,29 @@ emit({"ok": True, "data": ...})
 
 ## MCP
 
-`bigbang/mcp/server.py` generates manifest:
+`bigbang/plugins/mcp/cli.py` generates manifest:
 ```bash
-python3 -m bigbang.mcp.server
-bb mcp serve --port 8787  # (TODO: full MCP stdio impl)
+bb mcp manifest
+bb mcp serve --port 8787
 ```
 
-Add to Claude/Cursor Hatch as MCP server.
+Add to Claude/Cursor/Hatch as MCP server http://localhost:8787.
 
 ## Skills
 
 Drop markdown files into `bigbang/skills/` - they become `bb skill run <name>`.
 
-Example `bigbang/skills/emergency-tax-lift.md`:
+Example `bigbang/skills/vector-daily.md`:
 ```yaml
 ---
-name: emergency-tax-lift
-description: Cut tax drag on emergency fund
+name: vector-daily
+description: Rebuild vector hoops daily guess mode
 ---
-Pull Plaid 7333, fetch treasury yields, build ladder
+Run pipeline/rebuild_all.py --quick --leakfree
 ```
 
 ## Continuous Growth Loop
 
 1. Daily pattern? `bb system scaffold`
-2. Recurring Hatch IDEAs loop suggests new skills from workspace/projects/
-3. File them into Life Admin Brain / Davis Family Brain
-
+2. Recurring Hatch IDEAS loop suggests new skills from workspace/projects/
+3. File them into Life Admin Brain / tools registry

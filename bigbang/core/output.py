@@ -1,45 +1,54 @@
-"""Dual output - rich + json for agents"""
+"""Dual output - rich for humans, valid JSON for agents"""
 import json
 import sys
 from typing import Any
 from rich.console import Console
-from rich.table import Table
 
 _console = Console()
 _json_mode = False
 
-def set_json_mode(v: bool):
+def set_json_mode(enabled: bool):
     global _json_mode
-    _json_mode = v
+    _json_mode = enabled
 
-def is_json():
+def is_json() -> bool:
     return _json_mode
 
-def emit(data: Any, table: Table | None = None):
-    """Emit for both humans and agents"""
+def emit(data: Any):
+    """Emit data - if --json, print only JSON (valid), else rich"""
     if _json_mode:
-        # Always valid JSON
-        print(json.dumps(data, indent=2, default=str))
+        # Only JSON, no other prints
+        # Ensure serializable
+        try:
+            json.dump(data, sys.stdout, indent=2, default=str)
+            sys.stdout.write("\n")
+        except Exception:
+            # fallback
+            print(json.dumps({"data": str(data)}))
     else:
-        if table:
-            _console.print(table)
+        # Human path - rich
+        if isinstance(data, dict):
+            # pretty but concise
+            _console.print_json(data=data)
         else:
-            # pretty rich if not json
-            if isinstance(data, dict) and "message" in data:
-                _console.print(data["message"])
-            else:
-                _console.print(data)
+            _console.print(data)
 
-def emit_table(dicts: list[dict], title: str = ""):
+def emit_table(title: str, rows: list, columns: list = None):
+    from rich.table import Table
     if _json_mode:
-        print(json.dumps(dicts, indent=2, default=str))
+        emit({"title": title, "rows": rows})
         return
-    if not dicts:
-        _console.print(f"[dim]{title}: no data[/dim]")
-        return
-    t = Table(title=title)
-    for k in dicts[0].keys():
-        t.add_column(k)
-    for d in dicts:
-        t.add_row(*[str(v) for v in d.values()])
-    _console.print(t)
+    table = Table(title=title)
+    if columns:
+        for c in columns:
+            table.add_column(c)
+    else:
+        if rows and isinstance(rows[0], dict):
+            for k in rows[0].keys():
+                table.add_column(str(k))
+    for r in rows:
+        if isinstance(r, dict):
+            table.add_row(*[str(v) for v in r.values()])
+        else:
+            table.add_row(str(r))
+    _console.print(table)

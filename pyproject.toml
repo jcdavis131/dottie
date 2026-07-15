@@ -1,12 +1,12 @@
 [project]
 name = "bigbang-cli"
-version = "0.1.0"
-description = "The personal control plane for everything — your local-first, agent-native CLI that keeps growing."
+version = "0.2.0"
+description = "Agent & tools control plane — local-first, agent-native, continuously growing. No personal finance."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name = "Cameron Davis", email = "jcdavis131@gmail.com"}]
-keywords = ["cli", "agent", "personal", "automation", "mcp"]
+keywords = ["cli", "agent", "tools", "automation", "mcp"]
 dependencies = [
   "typer[all]>=0.12",
   "rich>=13.7",
@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-all = ["plaid-python", "gspread", "supabase", "onnxruntime"]
+all = ["gspread", "supabase", "onnxruntime"]
 dev = ["pytest>=8", "ruff>=0.3", "mypy>=1.8", "pytest-cov"]
 
 [project.urls]
