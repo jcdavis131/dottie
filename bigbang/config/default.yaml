@@ -1,0 +1,19 @@
+# BigBang CLI default config - local-first, free-tier only
+emergency_target: 66000
+monthly_burn: 11000
+fed_tax_rate: 0.37
+state_tax: 0.0
+
+paths:
+  memory: ~/MEMORY.md
+  davis_brain: ~/workspace/your_files/davis-family-brain/
+  life_admin: ~/workspace/your_files/life-admin-brain/
+  vector_hoops: ~/workspace/vector-hoops/
+  ava_factory: ~/workspace/ava-agi-factory-v6-4/
+
+features:
+  plaid_readonly: true
+  fidelity_manual_only: true
+  ollama_preferred: true
+
+disclaimer: "Solo personal project, no connection to employer, built with public/free-tier only"
