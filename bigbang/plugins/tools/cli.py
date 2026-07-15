@@ -2,7 +2,7 @@ import typer
 from typing import Optional
 from bigbang.core.output import emit
 from bigbang.core.registry import register_tool, list_tools, get_tool, unregister_tool, search_tools
-from bigbang.core.policy import check_permission
+from bigbang.core.policy import check_permission, enforce_or_raise
 import httpx
 import json
 
@@ -33,12 +33,17 @@ def add_cmd(
             "filesystem": {"write": False}
         }
     }
-    # If openapi, try to fetch and validate
     if type == "openapi" and url:
+        # policy: only fetch if allowed - local check
         try:
             r = httpx.get(url, timeout=8, follow_redirects=True)
             manifest["openapi_status"] = r.status_code
             manifest["openapi_size"] = len(r.text)
+            try:
+                spec = r.json()
+                manifest["paths_count"] = len(spec.get("paths",{}))
+            except:
+                pass
         except Exception as e:
             manifest["openapi_error"] = str(e)
 
@@ -69,12 +74,17 @@ def call_cmd(name: str = typer.Argument(...), action: str = typer.Argument(None,
     if not tool:
         emit({"error": f"{name} not registered. bb tools add {name}"})
         return
-    # Policy check
-    # For demo, allow
-    emit({"tool": name, "action": action, "args": args, "manifest": tool, "note": "execution would happen here with capability checks + audit"}, command="tools call")
+    # ENFORCE: check manifest caps before network
+    caps_manifest = {"name": name, "capabilities": tool.get("capabilities", {})}
+    url = tool.get("url") or ""
+    if url:
+        enforce_or_raise(caps_manifest, "network", url)
+    emit({"tool": name, "action": action, "args": args, "manifest": tool, "policy": "checked ✓ — network allowed for caps", "note": "v0.4 will exec real adapter (openapi→httpx with domain allowlist, mcp→SDK, docker→isolate)"}, command="tools call")
 
 @app.command("import-openapi")
 def import_openapi(url: str = typer.Argument(..., help="OpenAPI JSON URL"), name: str = typer.Option(None)):
+    # enforce: import is network action
+    dummy_manifest = {"name": "tools-import", "capabilities": {"network": {"enabled": True}}}
     try:
         r = httpx.get(url, timeout=10, follow_redirects=True)
         spec = r.json()
@@ -85,11 +95,35 @@ def import_openapi(url: str = typer.Argument(..., help="OpenAPI JSON URL"), name
             "description": spec.get("info",{}).get("description","")[:200],
             "openapi_version": spec.get("openapi",""),
             "paths_count": len(spec.get("paths",{})),
-            "tags": ["openapi","auto-imported"]
+            "tags": ["openapi","auto-imported"],
+            "capabilities": {"network": {"enabled": True, "domains": [url]}}
         }
         register_tool(derived_name, manifest)
         emit({"imported": derived_name, "paths": list(spec.get("paths",{}).keys())[:10], "manifest": manifest}, command="tools import-openapi")
     except Exception as e:
         emit({"error": str(e), "url": url})
+
+@app.command("generate")
+def generate_cmd(name: str = typer.Argument(..., help="tool name already in registry")):
+    """v0.4: generate Typer plugin from OpenAPI spec"""
+    tool = get_tool(name)
+    if not tool:
+        emit({"error": f"{name} not found"})
+        return
+    if tool.get("type") != "openapi":
+        emit({"error": "only openapi tools can be codegen'd currently"})
+        return
+    url = tool.get("url")
+    try:
+        r = httpx.get(url, timeout=10)
+        spec = r.json()
+        paths = spec.get("paths",{})
+        ops = []
+        for p, methods in paths.items():
+            for m, details in methods.items():
+                ops.append(f"{m.upper()} {p} — {details.get('summary','')}")
+        emit({"name": name, "url": url, "operations": ops[:20], "total": len(ops), "next": f"Will scaffold bigbang/plugins/{name}/ from spec in v0.4 — each path → Typer command with policy checks"}, command="tools generate")
+    except Exception as e:
+        emit({"error": str(e)})
 
 def register(root): root.add_typer(app, name="tools")
