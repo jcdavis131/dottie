@@ -1,4 +1,47 @@
-# BigBang CLI — One CLI to Rule All Tools
+# Scout CLI 🐾 — One CLI to Rule All Tools (ex-BigBang) v0.6.0
+
+> Agent-native, security-first, local-first control plane for *every* internet tool, API, and MCP server. Ava-brained + RTX offload. Now v0.6.0 with scout rename + GitHub Releases → Dashboard auto-read.
+
+**Solo personal project, no connection to employer, built with public/free-tier only.**
+
+Primary command: `scout` (aliases: `bb`, `bigbang`, `dv`, `kitty` for compat) — `scout --help` / `scout --json rtx status`
+
+## What's New in v0.6.0 — Scout rename 🐾 + RTX Releases Auto-Read
+
+- **Scout rename:** `name = "scout-cli" v0.6.0` — binary `scout` primary, `bb`/`bigbang`/`kitty`/`dv` kept as aliases. `pyproject.toml` scripts + `bigbang/cli.py` app name `scout` with invoked detection. `scout --help` shows Scout CLI personal control plane. 14 tests passing.
+- **RTX Offload v0.6.0 wired to GitHub Releases:** new plugin commands `scout rtx releases list` (fetches `https://api.github.com/repos/jcdavis131/scout-rtx/releases`) and `scout rtx releases sync --tag v0.6.0-demo-0715` (downloads `results.tsv/jsonl` assets to local `autoresearch-rtx-custom/`). 
+- **Dashboard auto-read:** `rtx-offload-dashboard` space now has `githubReleases` table + migration `0003_add_github_releases.sql`, server actions `listGithubReleases` (GH API), `syncReleaseResults` (TSV/JSONL parse + dedup by commit_sha), `getReleaseCache`, and client `releasesQuery` with `refetchInterval: 60_000`. UI section GITHUB RELEASES with SYNC GH + asset links + IMPORT → LOG button. Demo release `v0.6.0-demo-0715` published with best bpb 0.9935 (4 rows) → dashboard DB verified: 4 results, best 0.9935.
+- **Hourly server cron:** `rtx-releases-hourly-sync` interval@1h—auto-fetches latest release, runs `scout rtx releases sync`, inserts missing rows into dashboard `app.db` `experiment_results`, logs to `your_files/rtx-sync-log.jsonl`. So even when browser closed, local `scout rtx results --best` stays fresh.
+- **Alienware auto-publish:** `scripts/run-autonomous.ps1` now auto-publishes every 5 exps via `publish-release.ps1 -Program <prog> -Tag v0.6.0-<prog>-<MMdd-HHmm>` + final publish at loop end. Dashboard picks up in <60s. `scripts/publish-release.{ps1,sh}` creates GH release with `results.tsv` + `results.jsonl` assets.
+- **Repos:** `github.com/jcdavis131/scout-cli` (this) + `github.com/jcdavis131/scout-rtx` custom fork — cross-linked via `INTEGRATION.md`.
+- **Ava routing:** `ava route "offload to my RTX"` → rtx 0.95, `dashboard` command notes auto-read every 60s.
+
+### v0.6.0 Flow (end-to-end)
+
+```bash
+# Cloud → Local offload (Hatch)
+scout rtx status                          # queue_pending, best 0.9935, 4 programs
+scout rtx queue add --task "optimize Ava router entropy 0.7" --program programs/program-ava.md
+scout rtx queue list
+
+# On Alienware Windows
+.\scripts\setup-win.ps1 -Program programs\program-ava.md -Tag scout-ava
+.\scripts\run-autonomous.ps1 -Program programs\program-ava.md -Tag scout-ava -MaxExperiments 20
+# every 5 exps: auto gh release create v0.6.0-ava-MMdd-HHmm results.tsv + results.jsonl
+# final: publish-release.ps1
+
+# Back in Hatch / anywhere
+scout --json rtx releases list             # shows v0.6.0-demo-0715 with download URLs
+scout --json rtx releases sync --tag v0.6.0-demo-0715  # downloads to autoresearch-rtx-custom/
+scout --json rtx results --best           # best 0.9935
+
+# Dashboard
+scout rtx dashboard                       # opens rtx-offload-dashboard
+# In dashboard: GITHUB RELEASES section SYNC GH -> IMPORT → LOG -> bestOverall updates to 0.9935
+# Hourly cron rtx-releases-hourly-sync keeps DB fresh even when UI closed
+```
+
+
 
 > Agent-native, security-first, local-first control plane for *every* internet tool, API, and MCP server. Ava-brained. Now v0.5 with Authentic Generators + Passive Lab.
 
