@@ -177,6 +177,32 @@ def extract_markdown(file_path: Path) -> Tuple[List[Dict], List[Dict]]:
 
 # --- Personal ecosystem extractors ---
 
+PERSONAL_PATTERNS = {
+    "stripe": ("integration:stripe", "Stripe", "integration"),
+    "plaid": ("integration:plaid", "Plaid", "integration"),
+    "betterment": ("integration:betterment", "Betterment", "integration"),
+    "supabase": ("integration:supabase", "Supabase", "integration"),
+    "cloudflare": ("integration:cloudflare", "Cloudflare Workers", "integration"),
+    "workers": ("integration:cloudflare", "Cloudflare Workers", "integration"),
+    "turnover shield": ("concept:turnover-shield", "Turnover Shield", "product"),
+    "turnover": ("concept:turnover-shield", "Turnover Shield", "product"),
+    "family brain": ("concept:family-brain", "Davis Family Brain", "product"),
+    "mrr": ("concept:mrr", "MRR / Paid Users", "business_metric"),
+    "mtNN": ("concept:mtnn", "MTNN v5_concat_b2_h160_t32_d48_mlp128", "ml_concept"),
+    "mtnn": ("concept:mtnn", "MTNN v5_concat_b2_h160_t32_d48_mlp128", "ml_concept"),
+    "ava": ("concept:ava", "Ava AGI Factory v6.4", "ml_concept"),
+    "j-space": ("concept:jspace", "Ava J-Space Multi (S1 hl8 S2 hl300 Critic hl30 Planner hl150)", "ml_concept"),
+    "jspace": ("concept:jspace", "Ava J-Space Multi (S1 hl8 S2 hl300 Critic hl30 Planner hl150)", "ml_concept"),
+    "s1 fast": ("concept:s1-fast", "Ava S1 Fast hl8", "ml_concept"),
+    "s2 slow": ("concept:s2-slow", "Ava S2 Slow hl300", "ml_concept"),
+    "critic": ("concept:critic", "Ava Critic hl30", "ml_concept"),
+    "planner": ("concept:planner", "Ava Planner hl150", "ml_concept"),
+    "vector hoops": ("concept:vector-hoops", "Vector Hoops 12,966 seasons", "product"),
+    "dumbmodel": ("concept:dumbmodel", "dumbmodel.com ecosystem", "product"),
+    "dinov3": ("concept:tennis-dinov3", "Tennis DINOv3 ExecuTorch", "product"),
+    "graphify": ("concept:graphify", "Personal Graphify", "tool"),
+}
+
 def extract_personal_patterns(file_path: Path) -> Tuple[List[Dict], List[Dict]]:
     nodes, edges = [], []
     # Look for 01_Finance, 02_Passive_Lab patterns in path
@@ -187,18 +213,18 @@ def extract_personal_patterns(file_path: Path) -> Tuple[List[Dict], List[Dict]]:
         nodes.append({"id": nid, "label": cat, "type": "ecosystem_domain"})
         file_id = f"file:{file_path}"
         edges.append({"source": file_id, "target": nid, "type": "belongs_to", "confidence": INFERRED})
-    # Stripe, Plaid, Betterment patterns
     try:
         src = file_path.read_text(encoding="utf-8", errors="ignore")
-        if "stripe" in src.lower():
-            nodes.append({"id": "integration:stripe", "label": "Stripe", "type": "integration"})
-            edges.append({"source": f"file:{file_path}", "target": "integration:stripe", "type": "uses", "confidence": INFERRED})
-        if "plaid" in src.lower():
-            nodes.append({"id": "integration:plaid", "label": "Plaid", "type": "integration"})
-            edges.append({"source": f"file:{file_path}", "target": "integration:plaid", "type": "uses", "confidence": INFERRED})
-        if "mtNN" in src or "MTNN" in src or "48→64" in src:
-            nodes.append({"id": "concept:mtnn", "label": "MTNN v5_concat", "type": "ml_concept"})
-            edges.append({"source": f"file:{file_path}", "target": "concept:mtnn", "type": "uses", "confidence": INFERRED})
+        low = src.lower()
+        file_id = f"file:{file_path}"
+        for key, (nid, label, typ) in PERSONAL_PATTERNS.items():
+            if key.lower() in low:
+                nodes.append({"id": nid, "label": label, "type": typ})
+                edges.append({"source": file_id, "target": nid, "type": "uses", "confidence": INFERRED})
+        # special detect 48→64→k, hl=8 etc even case-sensitive
+        if "48→64" in src or "48->64" in src or "hl=" in low:
+            nodes.append({"id": "concept:mtnn-head", "label": "MTNN head 48→64→k", "type": "ml_concept"})
+            edges.append({"source": file_id, "target": "concept:mtnn-head", "type": "uses", "confidence": INFERRED})
     except:
         pass
     return nodes, edges

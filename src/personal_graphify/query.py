@@ -22,18 +22,34 @@ def load_graph_json(path: Path) -> nx.MultiDiGraph:
         G.add_edge(src, tgt, **attrs)
     return G
 
-def search_nodes(G: nx.MultiDiGraph, query: str, limit: int = 25) -> List[Dict]:
-    q = query.lower()
+def search_nodes(G: nx.MultiDiGraph, query: str, limit: int = 30) -> List[Dict]:
+    qlower = query.lower()
+    terms = [t for t in re.split(r"[\s,]+", qlower) if len(t) >= 2]
+    if not terms:
+        terms = [qlower]
     results = []
     for nid, data in G.nodes(data=True):
         label = str(data.get("label","")).lower()
         typ = str(data.get("type","")).lower()
         file_ = str(data.get("file","")).lower()
-        if q in label or q in typ or q in file_ or q in nid.lower():
-            score = 3 if q in label else 1
-            results.append((score, nid, data))
-    results.sort(key=lambda x: (x[0], G.degree(x[1])), reverse=True)
-    return [{"id": nid, **data, "score": score} for score, nid, data in results[:limit]]
+        nid_l = nid.lower()
+        blob = f"{label} {typ} {file_} {nid_l}"
+        # full phrase boost, else any-term match
+        score = 0
+        if qlower in blob:
+            score = 10
+        else:
+            matched_terms = sum(1 for t in terms if t in blob)
+            if matched_terms == 0:
+                continue
+            score = matched_terms
+            if any(t in label for t in terms):
+                score += 3
+        if score > 0:
+            results.append((score, G.degree(nid), nid, data))
+    # sort by score then degree
+    results.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    return [{"id": nid, **data, "score": score} for score, _, nid, data in results[:limit]]
 
 def subgraph_for_query(G: nx.MultiDiGraph, query: str, hops: int = 2, limit_nodes: int = 60) -> nx.MultiDiGraph:
     matches = search_nodes(G, query, limit=5)
