@@ -49,14 +49,6 @@
       "community": 8
     },
     {
-      "id": "concept:or",
-      "label": "or:",
-      "type": "concept",
-      "file": "personal-graphify/README.md",
-      "degree": 1,
-      "community": 8
-    },
-    {
       "id": "concept:Optional extras (Ollama local)",
       "label": "Optional extras (Ollama local)",
       "type": "concept",
@@ -311,14 +303,6 @@
       "community": 3
     },
     {
-      "id": "concept:or",
-      "label": "or",
-      "type": "concept",
-      "file": "personal-graphify/INSTALL_GUIDE.md",
-      "degree": 1,
-      "community": 3
-    },
-    {
       "id": "concept:dev mode",
       "label": "dev mode",
       "type": "concept",
@@ -327,7 +311,7 @@
       "community": 3
     },
     {
-      "id": "concept:optional",
+      "id": "concept:optional: also install upstream for full MCP server fallback",
       "label": "optional: also install upstream for full MCP server fallback",
       "type": "concept",
       "file": "personal-graphify/INSTALL_GUIDE.md",
@@ -359,7 +343,7 @@
       "community": 3
     },
     {
-      "id": "concept:writes .cursor/rules/graphify.mdc with alwaysApply",
+      "id": "concept:writes .cursor/rules/graphify.mdc with alwaysApply:true and .agents/skills/graph",
       "label": "writes .cursor/rules/graphify.mdc with alwaysApply:true and .agents/skills/graph",
       "type": "concept",
       "file": "personal-graphify/INSTALL_GUIDE.md",
@@ -423,7 +407,7 @@
       "community": 3
     },
     {
-      "id": "concept:alternatives",
+      "id": "concept:alternatives:",
       "label": "alternatives:",
       "type": "concept",
       "file": "personal-graphify/INSTALL_GUIDE.md",
@@ -431,7 +415,7 @@
       "community": 3
     },
     {
-      "id": "concept:set backend if you want cloud fallback",
+      "id": "concept:set backend if you want cloud fallback:",
       "label": "set backend if you want cloud fallback:",
       "type": "concept",
       "file": "personal-graphify/INSTALL_GUIDE.md",
@@ -455,7 +439,7 @@
       "community": 3
     },
     {
-      "id": "concept:Already created",
+      "id": "concept:Already created: ~/workspace/ava-skills/skills/personal-graphify/",
       "label": "Already created: ~/workspace/ava-skills/skills/personal-graphify/",
       "type": "concept",
       "file": "personal-graphify/INSTALL_GUIDE.md",
@@ -513,14 +497,6 @@
     {
       "id": "concept:8. Security & Isolation (Home-only)",
       "label": "8. Security & Isolation (Home-only)",
-      "type": "concept",
-      "file": "personal-graphify/INSTALL_GUIDE.md",
-      "degree": 1,
-      "community": 3
-    },
-    {
-      "id": "concept:Footer",
-      "label": "Footer",
       "type": "concept",
       "file": "personal-graphify/INSTALL_GUIDE.md",
       "degree": 1,
@@ -653,7 +629,7 @@
       "community": 7
     },
     {
-      "id": "concept:whole team Cursor MCP points at http",
+      "id": "concept:whole team Cursor MCP points at http://host:8080/mcp instead of local",
       "label": "whole team Cursor MCP points at http://host:8080/mcp instead of local",
       "type": "concept",
       "file": "personal-graphify/AGENTIC_GUIDE.md",
@@ -1795,7 +1771,7 @@
       "community": 11
     },
     {
-      "id": "concept:personal edition",
+      "id": "concept:personal edition:",
       "label": "personal edition:",
       "type": "concept",
       "file": "personal-graphify/skills/graphify-core/SKILL.md",
@@ -1811,7 +1787,7 @@
       "community": 11
     },
     {
-      "id": "concept:personal aliases",
+      "id": "concept:personal aliases:",
       "label": "personal aliases:",
       "type": "concept",
       "file": "personal-graphify/skills/graphify-core/SKILL.md",
@@ -1931,25 +1907,9 @@
       "community": 16
     },
     {
-      "id": "concept:\ud83d\udc3e Personal Graphify Rule \u2014 Query Graph First",
-      "label": "\ud83d\udc3e Personal Graphify Rule \u2014 Query Graph First",
-      "type": "concept",
-      "file": "personal-graphify/.cursor/rules/graphify.mdc",
-      "degree": 1,
-      "community": 16
-    },
-    {
       "id": "doc:personal-graphify/.agents/skills/graphify/SKILL.md",
       "label": "SKILL.md",
       "type": "doc",
-      "file": "personal-graphify/.agents/skills/graphify/SKILL.md",
-      "degree": 1,
-      "community": 17
-    },
-    {
-      "id": "concept:\ud83d\udc3e Personal Graphify Rule \u2014 Query Graph First",
-      "label": "\ud83d\udc3e Personal Graphify Rule \u2014 Query Graph First",
-      "type": "concept",
       "file": "personal-graphify/.agents/skills/graphify/SKILL.md",
       "degree": 1,
       "community": 17
@@ -3028,12 +2988,6 @@
     },
     {
       "source": "doc:personal-graphify/README.md",
-      "target": "concept:or",
-      "type": "contains",
-      "confidence": "EXTRACTED"
-    },
-    {
-      "source": "doc:personal-graphify/README.md",
       "target": "concept:Optional extras (Ollama local)",
       "type": "contains",
       "confidence": "EXTRACTED"
@@ -3133,19 +3087,13 @@
     },
     {
       "source": "doc:personal-graphify/INSTALL_GUIDE.md",
-      "target": "concept:or",
-      "type": "contains",
-      "confidence": "EXTRACTED"
-    },
-    {
-      "source": "doc:personal-graphify/INSTALL_GUIDE.md",
       "target": "concept:dev mode",
       "type": "contains",
       "confidence": "EXTRACTED"
     },
     {
       "source": "doc:personal-graphify/INSTALL_GUIDE.md",
-      "target": "concept:optional",
+      "target": "concept:optional: also install upstream for full MCP server fallback",
       "type": "contains",
       "confidence": "EXTRACTED"
     },
@@ -3169,7 +3117,7 @@
     },
     {
       "source": "doc:personal-graphify/INSTALL_GUIDE.md",
-      "target": "concept:writes .cursor/rules/graphify.mdc with alwaysApply",
+      "target": "concept:writes .cursor/rules/graphify.mdc with alwaysApply:true and .agents/skills/graph",
       "type": "contains",
       "confidence": "EXTRACTED"
     },
@@ -3217,13 +3165,13 @@
     },
     {
       "source": "doc:personal-graphify/INSTALL_GUIDE.md",
-      "target": "concept:alternatives",
+      "target": "concept:alternatives:",
       "type": "contains",
       "confidence": "EXTRACTED"
     },
     {
       "source": "doc:personal-graphify/INSTALL_GUIDE.md",
-      "target": "concept:set backend if you want cloud fallback",
+      "target": "concept:set backend if you want cloud fallback:",
       "type": "contains",
       "confidence": "EXTRACTED"
     },
@@ -3241,7 +3189,7 @@
     },
     {
       "source": "doc:personal-graphify/INSTALL_GUIDE.md",
-      "target": "concept:Already created",
+      "target": "concept:Already created: ~/workspace/ava-skills/skills/personal-graphify/",
       "type": "contains",
       "confidence": "EXTRACTED"
     },
@@ -3373,7 +3321,7 @@
     },
     {
       "source": "doc:personal-graphify/AGENTIC_GUIDE.md",
-      "target": "concept:whole team Cursor MCP points at http",
+      "target": "concept:whole team Cursor MCP points at http://host:8080/mcp instead of local",
       "type": "contains",
       "confidence": "EXTRACTED"
     },
@@ -6280,7 +6228,7 @@
     },
     {
       "source": "doc:personal-graphify/skills/graphify-core/SKILL.md",
-      "target": "concept:personal edition",
+      "target": "concept:personal edition:",
       "type": "contains",
       "confidence": "EXTRACTED"
     },
@@ -6292,7 +6240,7 @@
     },
     {
       "source": "doc:personal-graphify/skills/graphify-core/SKILL.md",
-      "target": "concept:personal aliases",
+      "target": "concept:personal aliases:",
       "type": "contains",
       "confidence": "EXTRACTED"
     },
@@ -7414,9 +7362,9 @@
     }
   ],
   "meta": {
-    "nodes": 390,
-    "edges": 735,
-    "source": "personal-graphify non-PII public",
-    "notes": "Solo personal project, no connection to employer, built with public/free-tier only - sanitized for jcamd.com"
+    "nodes": 385,
+    "edges": 733,
+    "source": "personal-graphify non-PII public v3 deduped",
+    "notes": "Solo personal project"
   }
 }
