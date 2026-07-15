@@ -14,7 +14,7 @@ from .cluster import assign_communities, community_summary
 from .analyze import god_nodes, surprise_edges, token_stats
 from .report import generate_report
 from .export import export_json, export_html
-from .query import load_graph_json, format_query_answer, format_path_answer, explain_node, shortest_path
+from .query import load_graph_json, format_query_answer, format_path_answer, explain_node, shortest_path, impact_analysis, format_impact_answer, task_compiler, format_task_answer, onboard_report, format_onboard_answer
 
 def cmd_build(args):
     root = Path(args.path or ".").resolve()
@@ -82,14 +82,49 @@ def cmd_path(args):
 def cmd_explain(args):
     gpath = Path(args.graph or "graphify-out/graph.json")
     G = load_graph_json(gpath)
-    info = explain_node(G, args.node)
+    info = explain_node(G, args.node, include_code_snippet=args.snippet)
     if not info:
         print(f"Node '{args.node}' not found")
         sys.exit(1)
-    print(f"Node: {info['node'].get('label')} | type {info['node'].get('type')} | file {info['node'].get('file')} | degree {info['degree']}")
-    for nb in info['neighbors'][:30]:
-        arrow = "-->" if nb['direction']=="out" else "<--"
-        print(f"  {arrow} {nb['label']} [{nb['type']}] [{nb['confidence']}]")
+    print(f"Node: {info['node'].get('label')} | type {info['node'].get('type')} | file {info['node'].get('file')} | degree {info['degree']} | community {info['community']}")
+    if info.get("snippet"):
+        print("\n--- Code snippet ---")
+        print(info["snippet"][:1200])
+        print("--- end snippet ---\n")
+    print("\nOutgoing (what this uses):")
+    for nb in info['neighbors_out'][:20]:
+        print(f"  --> {nb['label']} [{nb['edge_type']}] [{nb['confidence']}] in {nb['file']}")
+    print("\nIncoming (what uses this):")
+    for nb in info['neighbors_in'][:20]:
+        print(f"  <-- {nb['label']} [{nb['edge_type']}] [{nb['confidence']}] in {nb['file']}")
+
+def cmd_impact(args):
+    gpath = Path(args.graph or "graphify-out/graph.json")
+    G = load_graph_json(gpath)
+    result = impact_analysis(G, args.node, direction=args.direction, depth=args.depth)
+    print(format_impact_answer(result))
+    if args.json:
+        print("\n---JSON---")
+        print(json.dumps(result, indent=2)[:8000])
+
+def cmd_task(args):
+    gpath = Path(args.graph or "graphify-out/graph.json")
+    G = load_graph_json(gpath)
+    task_text = args.task or " ".join(args.task_words or [])
+    result = task_compiler(G, task_text)
+    print(format_task_answer(result))
+    if args.json:
+        print("\n---JSON---")
+        print(json.dumps(result, indent=2)[:8000])
+
+def cmd_onboard(args):
+    gpath = Path(args.graph or "graphify-out/graph.json")
+    G = load_graph_json(gpath)
+    report = onboard_report(G, top_n_god=args.top)
+    print(format_onboard_answer(report))
+    if args.json:
+        print("\n---JSON---")
+        print(json.dumps(report, indent=2)[:10000])
 
 def cmd_install(args):
     # install cursor + agents skills
@@ -172,7 +207,7 @@ Solo personal project, no connection to employer, built with public/free-tier on
 
 def main():
     # Pre-handle shorthand `pgraphify .` before argparse tries to parse subcommand
-    KNOWN_CMDS = {"build","query","path","explain","install","serve","help"}
+    KNOWN_CMDS = {"build","query","path","explain","impact","task","onboard","install","serve","help"}
     if len(sys.argv) >= 2:
         first = sys.argv[1]
         if first not in KNOWN_CMDS and not first.startswith("-"):
@@ -188,7 +223,7 @@ def main():
     build_parser.add_argument("--out", default=None, help="Output dir")
     build_parser.add_argument("--max-files", type=int, default=8000)
 
-    query_parser = subparsers.add_parser("query", help="Query graph")
+    query_parser = subparsers.add_parser("query", help="Query graph — scoped subgraph for agent context")
     query_parser.add_argument("question", nargs="?", help="Question")
     query_parser.add_argument("--graph", default="graphify-out/graph.json")
     query_parser.add_argument("--question", dest="question_flag", default=None)
@@ -198,16 +233,38 @@ def main():
     path_parser.add_argument("target", help="Target concept")
     path_parser.add_argument("--graph", default="graphify-out/graph.json")
 
-    explain_parser = subparsers.add_parser("explain", help="Explain concept")
+    explain_parser = subparsers.add_parser("explain", help="Explain concept — neighbors, rationale, code snippet")
     explain_parser.add_argument("node", help="Concept name")
     explain_parser.add_argument("--graph", default="graphify-out/graph.json")
+    explain_parser.add_argument("--snippet", action="store_true", help="Include code snippet if available")
+
+    impact_parser = subparsers.add_parser("impact", help="Impact analysis — what breaks if you change this?")
+    impact_parser.add_argument("node", help="Node / concept to analyze")
+    impact_parser.add_argument("--graph", default="graphify-out/graph.json")
+    impact_parser.add_argument("--direction", default="both", choices=["downstream","upstream","both"])
+    impact_parser.add_argument("--depth", type=int, default=3)
+    impact_parser.add_argument("--json", action="store_true")
+
+    task_parser = subparsers.add_parser("task", help="Task compiler — given task, return minimal files + plan (SOTA for agents)")
+    task_parser.add_argument("task", nargs="?", help="Task description")
+    task_parser.add_argument("task_words", nargs="*", help="Task description words")
+    task_parser.add_argument("--graph", default="graphify-out/graph.json")
+    task_parser.add_argument("--json", action="store_true")
+
+    onboard_parser = subparsers.add_parser("onboard", help="Onboard new repo — god nodes, hot files, entry points, suggested questions")
+    onboard_parser.add_argument("--graph", default="graphify-out/graph.json")
+    onboard_parser.add_argument("--top", type=int, default=12)
+    onboard_parser.add_argument("--json", action="store_true")
 
     install_parser = subparsers.add_parser("install", help="Install skills")
     install_parser.add_argument("--platform", default="all", help="cursor|agents|all")
     install_parser.add_argument("--project", action="store_true")
     install_parser.add_argument("path", nargs="?", default=".", help="Project path")
 
-    serve_parser = subparsers.add_parser("serve", help="MCP serve (delegates to upstream if installed)")
+    serve_parser = subparsers.add_parser("serve", help="MCP serve — exposes query/path/explain/impact/task as MCP tools")
+    serve_parser.add_argument("--transport", default="http", choices=["http","stdio"])
+    serve_parser.add_argument("--port", type=int, default=8080)
+    serve_parser.add_argument("--graph", default="graphify-out/graph.json")
 
     args, unknown = parser.parse_known_args()
 
@@ -237,11 +294,23 @@ def main():
         cmd_path(args)
     elif args.command == "explain":
         cmd_explain(args)
+    elif args.command == "impact":
+        cmd_impact(args)
+    elif args.command == "task":
+        # handle task words merging
+        if hasattr(args, 'task_words') and args.task_words:
+            if not args.task:
+                args.task = " ".join(args.task_words)
+            else:
+                args.task = args.task + " " + " ".join(args.task_words)
+        cmd_task(args)
+    elif args.command == "onboard":
+        cmd_onboard(args)
     elif args.command == "install":
         cmd_install(args)
     elif args.command == "serve":
         from .serve import main as serve_main
-        serve_main()
+        serve_main(args)
     else:
         parser.print_help()
 

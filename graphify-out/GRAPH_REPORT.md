@@ -2,60 +2,60 @@
 
 Solo personal project, no connection to employer, built with public/free-tier only.
 
-**Nodes:** 391 · **Edges:** 736 · **Communities:** 23
+**Nodes:** 474 · **Edges:** 1075 · **Communities:** 18
 
-Token estimate: ~1500 tokens per scoped query vs ~26350 naive → **17.6× reduction** (mirrors upstream 71.5×).
+Token estimate: ~1500 tokens per scoped query vs ~31100 naive → **20.7× reduction** (mirrors upstream 71.5×).
 
 ## God Nodes (highest-degree concepts)
 
-- **/home/hatch/workspace/your_files/personal-graphify/src/personal_graphify/cli.py** (file) — degree 46 — file `/home/hatch/workspace/your_files/personal-graphify/src/personal_graphify/cli.py` — community 1
-- **/home/hatch/workspace/your_files/personal-graphify/src/personal_graphify/extract.py** (file) — degree 38 — file `/home/hatch/workspace/your_files/personal-graphify/src/personal_graphify/extract.py` — community 4
-- **INSTALL_GUIDE.md** (doc) — degree 35 — file `/home/hatch/workspace/your_files/personal-graphify/INSTALL_GUIDE.md` — community 3
-- **Personal Graphify** (tool) — degree 27 — file `` — community 2
-- **/home/hatch/workspace/your_files/personal-graphify/src/personal_graphify/report.py** (file) — degree 24 — file `/home/hatch/workspace/your_files/personal-graphify/src/personal_graphify/report.py` — community 2
+- **extract.py** (file) — degree 58 — file `/home/hatch/workspace/your_files/personal-graphify/src/personal_graphify/extract.py` — community 2
+- **cli.py** (file) — degree 56 — file `/home/hatch/workspace/your_files/personal-graphify/src/personal_graphify/cli.py` — community 1
+- **INSTALL_GUIDE.md** (doc) — degree 51 — file `/home/hatch/workspace/your_files/personal-graphify/INSTALL_GUIDE.md` — community 3
+- **query.py** (file) — degree 42 — file `/home/hatch/workspace/your_files/personal-graphify/src/personal_graphify/query.py` — community 0
+- **serve.py** (file) — degree 40 — file `/home/hatch/workspace/your_files/personal-graphify/src/personal_graphify/serve.py` — community 1
+- **README.md** (doc) — degree 33 — file `/home/hatch/workspace/your_files/personal-graphify/README.md` — community 2
+- **AGENTIC_GUIDE.md** (doc) — degree 32 — file `/home/hatch/workspace/your_files/personal-graphify/AGENTIC_GUIDE.md` — community 7
+- **Personal Graphify** (tool) — degree 31 — file `` — community 2
+- **SKILL.md** (doc) — degree 31 — file `/home/hatch/workspace/your_files/personal-graphify/skills/graphify-personal/SKILL.md` — community 2
+- **SKILL.md** (doc) — degree 26 — file `/home/hatch/workspace/your_files/personal-graphify/.agents/skills/graphify/SKILL.md` — community 2
+- **report.py** (file) — degree 24 — file `/home/hatch/workspace/your_files/personal-graphify/src/personal_graphify/report.py` — community 2
+- **file:/home/hatch/workspace/your_files/personal-graphify/src/personal_graphify/templates/graphify.mdc** (inferred_ref) — degree 24 — file `` — community 2
+- **file:/home/hatch/workspace/your_files/personal-graphify/.cursor/rules/graphify.mdc** (inferred_ref) — degree 24 — file `` — community 2
 - **cmd_build** (function) — degree 23 — file `/home/hatch/workspace/your_files/personal-graphify/src/personal_graphify/cli.py` — community 1
-- **file:/home/hatch/workspace/your_files/personal-graphify/src/personal_graphify/templates/graphify.mdc** (inferred_ref) — degree 20 — file `` — community 5
-- **file:/home/hatch/workspace/your_files/personal-graphify/.cursor/rules/graphify.mdc** (inferred_ref) — degree 20 — file `` — community 5
-- **file:/home/hatch/workspace/your_files/personal-graphify/.agents/skills/graphify/SKILL.md** (inferred_ref) — degree 20 — file `` — community 5
-- **main** (function) — degree 19 — file `/home/hatch/workspace/your_files/personal-graphify/src/personal_graphify/cli.py` — community 6
-- **file:/home/hatch/workspace/your_files/personal-graphify/skills/graphify-personal/SKILL.md** (inferred_ref) — degree 19 — file `` — community 5
-- **Ava AGI Factory v6.4** (ml_concept) — degree 18 — file `` — community 2
-- **AGENTIC_GUIDE.md** (doc) — degree 17 — file `/home/hatch/workspace/your_files/personal-graphify/AGENTIC_GUIDE.md` — community 7
-- **extract_python** (function) — degree 17 — file `/home/hatch/workspace/your_files/personal-graphify/src/personal_graphify/extract.py` — community 4
-- **file:/home/hatch/workspace/your_files/personal-graphify/README.md** (inferred_ref) — degree 17 — file `` — community 5
+- **Ava AGI Factory v6.4** (ml_concept) — degree 22 — file `` — community 2
 
 ## Communities
 
-- **Community 0** — 65 nodes — types [('inferred_ref', 46), ('function', 17), ('file', 1), ('symbol', 1)] — sample: extract_personal_patterns, build_graph, enrich_graph, detect_communities, community_summary
-- **Community 1** — 63 nodes — types [('inferred_ref', 25), ('symbol', 19), ('module', 11), ('function', 7), ('file', 1)] — sample: ensure_containment, json, /home/hatch/workspace/your_fil, argparse, detect
-- **Community 2** — 53 nodes — types [('module', 15), ('inferred_ref', 14), ('file', 9), ('symbol', 9), ('function', 3)] — sample: Ava AGI Factory v6.4, Personal Graphify, /home/hatch/workspace/your_fil, /home/hatch/workspace/your_fil, os
-- **Community 3** — 36 nodes — types [('concept', 35), ('doc', 1)] — sample: INSTALL_GUIDE.md, Private GitHub Repo Setup + Cu, 1. Create Private GitHub Repo, Option A — with gh CLI (recomm, Creates private repo github.co
-- **Community 4** — 29 nodes — types [('inferred_ref', 17), ('function', 5), ('module', 3), ('symbol', 2), ('file', 1)] — sample: load_ignore_file, /home/hatch/workspace/your_fil, ast, re, Any
-- **Community 5** — 28 nodes — types [('inferred_ref', 10), ('ml_concept', 7), ('integration', 5), ('product', 5), ('business_metric', 1)] — sample: Stripe, Plaid, Betterment, Turnover Shield, Davis Family Brain
-- **Community 6** — 24 nodes — types [('inferred_ref', 21), ('function', 3)] — sample: is_ignored, is_safe_url, main, func:startswith, func:replace
+- **Community 0** — 100 nodes — types [('inferred_ref', 52), ('function', 29), ('module', 8), ('symbol', 7), ('file', 4)] — sample: typing, List, group_by_type, re, Dict
+- **Community 1** — 100 nodes — types [('inferred_ref', 40), ('symbol', 30), ('function', 14), ('module', 14), ('file', 2)] — sample: ensure_containment, Any, cli.py, argparse, sys
+- **Community 2** — 93 nodes — types [('concept', 25), ('file', 9), ('integration', 8), ('ml_concept', 8), ('product', 7)] — sample: README.md, Personal Graphify — Knowledge , Install (30 seconds), isolated install (recommended), or pip install -e .
+- **Community 3** — 35 nodes — types [('concept', 34), ('doc', 1)] — sample: INSTALL_GUIDE.md, Private GitHub Repo Setup + Cu, 1. Create Private GitHub Repo, Option A — with gh CLI (recomm, Creates private repo github.co
+- **Community 4** — 35 nodes — types [('inferred_ref', 25), ('function', 9), ('rationale', 1)] — sample: load_ignore_file, is_safe_url, hash_id, extract_python, _ts_extract_symbols
+- **Community 5** — 28 nodes — types [('inferred_ref', 9), ('module', 7), ('file', 4), ('symbol', 4), ('function', 3)] — sample: LICENSE, ARR, detect.py, os, fnmatch
+- **Community 6** — 22 nodes — types [('inferred_ref', 20), ('function', 2)] — sample: main, main, func:getattr, func:ArgumentParser, func:add_subparsers
 - **Community 7** — 18 nodes — types [('concept', 16), ('doc', 1), ('reference', 1)] — sample: AGENTIC_GUIDE.md, Agentic Guide — Coding Smarter, Why this beats plain Cursor, Architecture (from Graphify do, Personal Overlay — How we mapp
-- **Community 8** — 16 nodes — types [('concept', 14), ('doc', 1), ('reference', 1)] — sample: README.md, Personal Graphify — Knowledge , Install (30 seconds), isolated install (recommended), or pip install -e .
-- **Community 9** — 15 nodes — types [('inferred_ref', 11), ('function', 4)] — sample: collect_files, group_by_type, extract_file, extract_all, func:load_ignore_file
+- **Community 8** — 12 nodes — types [('concept', 7), ('metadata', 4), ('doc', 1)] — sample: SKILL.md, name: graphify-core, description: Core Graphify ski, version: 1.0.0, provider: ollama
+- **Community 9** — 11 nodes — types [('concept', 6), ('metadata', 4), ('doc', 1)] — sample: SKILL.md, name: graphify-agentic, description: Teaches AI agents, version: 1.0.0, provider: ollama
 - **Community 10** — 9 nodes — types [('concept', 8), ('doc', 1)] — sample: BUILD_SUMMARY.md, Build Summary — Personal Graph, What you asked, What I built, Also added to ava-skills (your
-- **Community 11** — 8 nodes — types [('concept', 7), ('doc', 1)] — sample: SKILL.md, Graphify Core — Knowledge Grap, What it does, Install, personal edition:
-- **Community 12** — 7 nodes — types [('concept', 6), ('doc', 1)] — sample: SKILL.md, Graphify Agentic — Smarter Age, Why Graph Beats Grep, Agentic Workflow (query-first), Agentic System Patterns (perso
-- **Community 13** — 5 nodes — types [('concept', 4), ('doc', 1)] — sample: SKILL.md, Graphify Personal — Home Ecosy, Home Patterns Detected, Query Examples, God Nodes in Personal Repo (ex
-- **Community 14** — 4 nodes — types [('concept', 3), ('doc', 1)] — sample: README.md, Personal Graphify Examples, FastAPI (mirrors upstream demo, Davis Family Brain + Turnover 
+- **Community 11** — 3 nodes — types [('doc', 1), ('metadata', 1), ('concept', 1)] — sample: graphify.mdc, description: Personal Graphify, 🐾 Personal Graphify Rule — Que
+- **Community 12** — 3 nodes — types [('doc', 1), ('metadata', 1), ('concept', 1)] — sample: graphify.mdc, description: Personal Graphify, 🐾 Personal Graphify Rule — Que
+- **Community 13** — 1 nodes — types [('doc', 1)] — sample: dependency_links.txt
+- **Community 14** — 1 nodes — types [('doc', 1)] — sample: entry_points.txt
 
 ## Surprising Connections (cross-community, cross-file)
 
-- `/home/hatch/workspace/your_files/personal-graphify/src/personal_graphify/query.py` [imports] → `json` — [EXTRACTED] — files differ? True — communities (0, 1)
-- `/home/hatch/workspace/your_files/personal-graphify/src/personal_graphify/query.py` [imports] → `networkx` — [EXTRACTED] — files differ? True — communities (0, 2)
-- `/home/hatch/workspace/your_files/personal-graphify/src/personal_graphify/query.py` [imports] → `re` — [EXTRACTED] — files differ? True — communities (0, 4)
-- `/home/hatch/workspace/your_files/personal-graphify/src/personal_graphify/detect.py` [defines] → `load_ignore_file` — [EXTRACTED] — files differ? False — communities (2, 4)
-- `/home/hatch/workspace/your_files/personal-graphify/src/personal_graphify/detect.py` [defines] → `is_ignored` — [EXTRACTED] — files differ? False — communities (2, 6)
-- `/home/hatch/workspace/your_files/personal-graphify/src/personal_graphify/detect.py` [defines] → `collect_files` — [EXTRACTED] — files differ? False — communities (2, 9)
-- `/home/hatch/workspace/your_files/personal-graphify/src/personal_graphify/detect.py` [defines] → `group_by_type` — [EXTRACTED] — files differ? False — communities (2, 9)
-- `load_ignore_file` [calls] → `func:append` — [AMBIGUOUS] — files differ? True — communities (4, 0)
-- `load_ignore_file` [calls] → `func:read_text` — [AMBIGUOUS] — files differ? True — communities (4, 0)
-- `load_ignore_file` [calls] → `func:startswith` — [AMBIGUOUS] — files differ? True — communities (4, 6)
-- `is_ignored` [calls] → `func:str` — [INFERRED] — files differ? True — communities (6, 4)
-- `collect_files` [calls] → `func:resolve` — [AMBIGUOUS] — files differ? True — communities (9, 1)
+- `extract.py` [imports] → `Path` — [EXTRACTED] — files differ? True — communities (2, 5)
+- `extract.py` [imports] → `List` — [EXTRACTED] — files differ? True — communities (2, 0)
+- `report.py` [imports] → `networkx` — [EXTRACTED] — files differ? True — communities (2, 0)
+- `report.py` [imports] → `Path` — [EXTRACTED] — files differ? True — communities (2, 5)
+- `report.py` [imports] → `List` — [EXTRACTED] — files differ? True — communities (2, 0)
+- `report.py` [imports] → `Dict` — [EXTRACTED] — files differ? True — communities (2, 0)
+- `export.py` [imports] → `networkx` — [EXTRACTED] — files differ? True — communities (5, 0)
+- `query.py` [imports] → `json` — [EXTRACTED] — files differ? True — communities (0, 5)
+- `query.py` [imports] → `Path` — [EXTRACTED] — files differ? True — communities (0, 5)
+- `cli.py` [imports] → `Path` — [EXTRACTED] — files differ? True — communities (1, 5)
+- `cli.py` [imports] → `json` — [EXTRACTED] — files differ? True — communities (1, 5)
+- `serve.py` [imports] → `json` — [EXTRACTED] — files differ? True — communities (1, 5)
 
 ## Suggested Questions (ask via `pgraphify query`)
 
@@ -67,7 +67,7 @@ Token estimate: ~1500 tokens per scoped query vs ~26350 naive → **17.6× reduc
 
 ## Rationale & Why
 
-- `NOTE: /WIY comments as rationale nodes` @ /home/hatch/workspace/your_files/personal-graphify/src/personal_graphify/extract.py:91 — explains nearby code
+- `NOTE: , # WHY, # HACK, # TODO, # FIXME, # BUG` @ /home/hatch/workspace/your_files/personal-graphify/src/personal_graphify/extract.py:109 — explains nearby code
 - `NOTE: / # WHY comments found. Consider adding them — they become first-class graph nodes linked to code.")` @ /home/hatch/workspace/your_files/personal-graphify/src/personal_graphify/report.py:51 — explains nearby code
 
 ## Personal Ecosystem Overlay
