@@ -1,0 +1,12 @@
+graphify-out/
+__pycache__/
+*.pyc
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+.env
+.DS_Store
+.env.local
+cost.json
