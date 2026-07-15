@@ -1,6 +1,6 @@
 [project]
 name = "bigbang-cli"
-version = "0.3.0"
+version = "0.4.0"
 description = "One CLI to rule all tools — agent-native, security-first, MCP + OpenAPI + Ava brain. No personal finance."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -16,10 +16,11 @@ dependencies = [
   "httpx>=0.27",
   "python-dotenv>=1.0",
   "click>=8.1",
+  "mcp>=1.28.1",
 ]
 
 [project.optional-dependencies]
-all = ["gspread", "supabase", "onnxruntime", "keyring", "cryptography", "mcp"]
+all = ["gspread", "supabase", "onnxruntime", "keyring", "cryptography", "mcp>=1.28.1"]
 dev = ["pytest>=8", "ruff>=0.3", "mypy>=1.8", "pytest-cov"]
 security = ["keyring", "cryptography"]
 

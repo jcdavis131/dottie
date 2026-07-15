@@ -1,5 +1,5 @@
 name: ava
-version: 0.3.0
+version: 0.4.0
 description: Ava AGI Factory — local CUDA brain for BigBang routing + eval
 capabilities:
   network:

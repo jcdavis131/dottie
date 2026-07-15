@@ -1,5 +1,5 @@
 name: vector
-version: 0.3.0
+version: 0.4.0
 description: Vector MTNNs — hoops/pitch/gridiron control
 capabilities:
   network:

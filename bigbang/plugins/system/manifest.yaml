@@ -1,5 +1,5 @@
 name: system
-version: 0.3.0
+version: 0.4.0
 description: System health, audit, policy, scaffold
 capabilities:
   network:

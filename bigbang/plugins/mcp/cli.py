@@ -1,26 +1,52 @@
-import typer, json
+"""
+Real MCP SDK client implementation — bigbang/plugins/mcp/cli.py
+Uses mcp Python SDK 1.28.1 with SSE -> streamable HTTP fallback.
+"""
+from __future__ import annotations
+
+import json
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict
+
+import typer
+
 from bigbang.core.output import emit
 from bigbang.core.plugin_loader import list_plugin_names
 from bigbang.core.registry import register_tool, list_tools
 from bigbang.core.policy import enforce_or_raise
+from bigbang.core.http_utils import sanitize_no_proxy_env
+sanitize_no_proxy_env()
+
+try:
+    from bigbang.core.mcp_client import list_mcp_tools_sync, call_mcp_tool_sync
+    _CORE_CLIENT = True
+    def _check_sdk():
+        return True
+except ImportError:
+    list_mcp_tools_sync = None  # type: ignore
+    call_mcp_tool_sync = None  # type: ignore
+    _CORE_CLIENT = False
+    def _check_sdk():  # type: ignore
+        raise RuntimeError("mcp SDK not installed. pip install mcp")
 
 app = typer.Typer(name="mcp", help="🌐 MCP — client for any MCP server + serve bb as MCP", no_args_is_help=True)
 
 MCP_REG = Path.home() / ".local" / "share" / "bigbang" / "mcp_servers.json"
 MCP_REG.parent.mkdir(parents=True, exist_ok=True)
 
-def _load_mcp():
+def _load_mcp() -> Dict[str, Any]:
     if MCP_REG.exists():
-        try: return json.loads(MCP_REG.read_text())
-        except: return {}
+        try:
+            return json.loads(MCP_REG.read_text())
+        except Exception:
+            return {}
     return {}
-def _save_mcp(d): MCP_REG.write_text(json.dumps(d, indent=2))
+
+def _save_mcp(d: Dict[str, Any]) -> None:
+    MCP_REG.write_text(json.dumps(d, indent=2))
 
 @app.command("manifest")
-def manifest(json_out: bool = typer.Option(False, "--json")):
-    from bigbang.core.output import is_json
+def manifest():
     plugins = list_plugin_names()
     tools = []
     for n in plugins:
@@ -29,16 +55,15 @@ def manifest(json_out: bool = typer.Option(False, "--json")):
     for name, m in external.items():
         if m.get("type") == "mcp":
             tools.append({"name": name, "description": m.get("description","external mcp"), "url": m.get("url")})
-    data = {"name": "bigbang-cli", "version": "0.4.0-dev", "description": "One CLI to rule all tools — agents/tools/services, security first, Ava-native", "tools": tools, "security": "vault 0600, policy caps, audit"}
+    data = {"name": "bigbang-cli", "version": "0.4.0", "description": "One CLI to rule all tools — agents/tools/services, security first, Ava-native", "tools": tools, "security": "vault 0600, policy caps, audit"}
     emit(data, command="mcp manifest")
 
 @app.command("serve")
 def serve(port: int = typer.Option(8787, help="port"), transport: str = typer.Option("sse", help="sse|stdio")):
-    emit({"message": f"MCP serving bb as MCP server", "port": port, "transport": transport, "tools": list_plugin_names(), "how": "Add to Claude Desktop config: http://localhost:8787/sse", "v04": "will run real MCP SSE server exposing bb_* tools via mcp SDK"}, command="mcp serve")
+    emit({"message": "MCP serving bb as MCP server", "port": port, "transport": transport, "tools": list_plugin_names(), "how": "Claude Desktop: http://localhost:8787/sse", "note": "v0.4 manifest ready, real SSE server coming"}, command="mcp serve")
 
 @app.command("add")
-def add_server(name: str = typer.Argument(..., help="name for MCP server"), url: str = typer.Argument(..., help="sse url e.g. http://localhost:3000/sse or https://mcp.example.com/sse")):
-    # policy check: adding MCP server is network capability
+def add_server(name: str = typer.Argument(..., help="name for MCP server"), url: str = typer.Argument(..., help="sse url")):
     enforce_or_raise({"name": f"mcp-{name}", "capabilities": {"network": {"enabled": True, "domains": [url]}}}, "network", url)
     db = _load_mcp()
     db[name] = {"url": url, "type": "mcp", "added": True}
@@ -59,7 +84,13 @@ def list_tools_cmd(server: str = typer.Argument(..., help="server name")):
         return
     url = db[server]["url"]
     enforce_or_raise({"name": server, "capabilities": {"network": {"enabled": True, "domains": [url]}}}, "network", url)
-    emit({"server": server, "url": url, "tools": "STUB v0.3 — v0.4 will call MCP SDK: ClientSession with SSE transport, list_tools()", "next": "pip install mcp[cli] and implement async client"}, command="mcp list-tools")
+    sanitize_no_proxy_env()
+    try:
+        _check_sdk()
+        tools = list_mcp_tools_sync(url) if _CORE_CLIENT else []
+        emit({"server": server, "url": url, "tools": tools, "count": len(tools)}, command="mcp list-tools")
+    except Exception as e:
+        emit({"server": server, "url": url, "error": str(e), "hint": "Is the MCP server running? Try curl <url>"}, command="mcp list-tools")
 
 @app.command("call")
 def call_tool(server: str = typer.Argument(...), tool: str = typer.Argument(...), args: str = typer.Option("{}", help="json args")):
@@ -71,8 +102,16 @@ def call_tool(server: str = typer.Argument(...), tool: str = typer.Argument(...)
     enforce_or_raise({"name": server, "capabilities": {"network": {"enabled": True, "domains": [url]}}}, "network", url)
     try:
         parsed = json.loads(args)
-    except:
+    except Exception:
         parsed = {}
-    emit({"server": server, "tool": tool, "args": parsed, "policy": "checked ✓", "note": "v0.4 real impl: mcp SDK call_tool with audit logging"}, command="mcp call")
+    sanitize_no_proxy_env()
+    try:
+        _check_sdk()
+        result = call_mcp_tool_sync(url, tool, parsed) if _CORE_CLIENT else {}
+        emit({"server": server, "tool": tool, "args": parsed, "result": result}, command="mcp call")
+    except Exception as e:
+        emit({"server": server, "tool": tool, "args": parsed, "error": str(e)}, command="mcp call")
 
 def register(root): root.add_typer(app, name="mcp")
+
+# Solo personal project, no connection to employer, built with public/free-tier only
