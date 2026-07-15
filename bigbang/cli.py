@@ -1,7 +1,9 @@
 """
-BigBang CLI - main entry
-`bb` and `bigbang` both point here via pyproject.toml scripts
+Scout CLI - main entry (formerly BigBang CLI)
+`scout`, `bb`, `bigbang`, `dv`, `kitty` all point here via pyproject.toml scripts
+Primary command is now `scout` — distinct from any work/meta tooling
 """
+import os
 import sys
 from pathlib import Path
 
@@ -11,10 +13,16 @@ from rich.console import Console
 from bigbang.core.plugin_loader import discover_plugins
 from bigbang.core.output import set_json_mode
 
-# Root app
+# Detect which invocation name was used for nicer help
+_invoked = Path(sys.argv[0]).name if sys.argv else "scout"
+_prog_name = os.path.splitext(_invoked)[0] if _invoked else "scout"
+if _prog_name in ("python", "python3", ""):
+    _prog_name = "scout"
+
+# Root app - primary name scout, not bb/meta
 app = typer.Typer(
-    name="bb",
-    help="BigBang CLI — personal control plane. Local-first, agent-native, continuously growing.",
+    name="scout",
+    help="Scout CLI 🐾 — personal control plane (ex-BigBang). Local-first, agent-native, HOME-only. Ava-brained + RTX offload.",
     add_completion=True,
     no_args_is_help=True,
     rich_markup_mode="rich",

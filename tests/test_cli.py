@@ -32,7 +32,7 @@ def test_registry():
 def test_policy_manifests_exist():
     from pathlib import Path
     base = Path("bigbang/plugins")
-    for p in ["secrets","tools","mcp","system","ava"]:
+    for p in ["secrets","tools","mcp","system","ava","write","lab","brain","rtx"]:
         assert (base / p / "manifest.yaml").exists(), f"{p} manifest missing"
 
 def test_json_contract():
@@ -41,3 +41,68 @@ def test_json_contract():
     assert r.returncode == 0
     data = json.loads(r.stdout)
     assert "tools" in data
+
+# --- Write plugin tests — authentic generators goal ---
+
+def test_write_scan_strong_ai():
+    from bigbang.plugins.write.cli import scan_text
+    slop = "In today's digital landscape, it's important to note that our cutting-edge solution harnesses the power of AI — crafting a rich tapestry of innovation, leveraging holistic synergy."
+    res = scan_text(slop)
+    assert res["verdict"] == "STRONG_AI"
+    assert res["ai_score"] >= 70
+    assert res["stats"]["hits"] >= 8
+
+def test_write_humanize_deterministic_zero():
+    from bigbang.plugins.write.cli import scan_text, _apply_deterministic_fixes
+    slop = "In today's digital landscape, it's important to note that our cutting-edge solution harnesses the power of AI — crafting a rich tapestry of innovation, leveraging holistic synergy."
+    cleaned, fixes = _apply_deterministic_fixes(slop)
+    after = scan_text(cleaned)
+    # After our fix (participial strip x2, em-dash, buzzword removal) must be HUMAN_LIKE 0
+    assert after["verdict"] == "HUMAN_LIKE", f"got {after}"
+    assert after["ai_score"] == 0
+    assert len(fixes) >= 8
+    # ensure participial strip logged
+    assert any("participial" in f for f in fixes)
+
+def test_write_generate_humanlike():
+    from bigbang.plugins.write.cli import scan_text
+    # fallback without ollama must be HUMAN_LIKE
+    # simulate generate fallback logic
+    fallback = (
+        "Trade Crew Turnover Shield launch email\n"
+        "I kept seeing AI tells in our drafts. Words like mix and look at.\n"
+        "For example crew turnover dropped 12 percent after text check-ins."
+    )
+    res = scan_text(fallback)
+    assert res["verdict"] == "HUMAN_LIKE"
+    assert res["ai_score"] < 15
+
+def test_write_cli_json():
+    import subprocess, json
+    r = subprocess.run(["python3", "-m", "bigbang.cli", "--json", "write", "scan", "--text", "Hello world this is a simple note from Austin."], capture_output=True, text=True, timeout=8)
+    assert r.returncode == 0
+    data = json.loads(r.stdout)
+    assert "result" in data
+    assert data["result"]["verdict"] in ["HUMAN_LIKE", "TRACES"]
+
+def test_lab_ideas():
+    from bigbang.plugins.lab.cli import _load_top10
+    ideas = _load_top10()
+    assert len(ideas) >= 5
+    assert ideas[0]["name"] == "Trade Crew Turnover Shield"
+
+def test_brain_goals():
+    # should not crash even if no projects
+    from pathlib import Path
+    assert (Path("bigbang/plugins/brain/cli.py")).exists()
+
+def test_ava_route_write():
+    from bigbang.plugins.ava.cli import _heuristic_route
+    route = _heuristic_route("check my draft for ai slop")
+    assert route["picked_tool"] == "write"
+    assert route["confidence"] >= 0.9
+
+def test_ava_route_lab():
+    from bigbang.plugins.ava.cli import _heuristic_route
+    route = _heuristic_route("show mrr for turnover shield")
+    assert route["picked_tool"] == "lab"

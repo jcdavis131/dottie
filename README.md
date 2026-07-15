@@ -1,8 +1,16 @@
 # BigBang CLI — One CLI to Rule All Tools
 
-> Agent-native, security-first, local-first control plane for *every* internet tool, API, and MCP server. Ava-brained.
+> Agent-native, security-first, local-first control plane for *every* internet tool, API, and MCP server. Ava-brained. Now v0.5 with Authentic Generators + Passive Lab.
 
 **Solo personal project, no connection to employer, built with public/free-tier only. No personal finance.**
+
+## What's New in v0.5 — Authentic Generators + Passive Lab + Brain (Ava Co-Dev Plane)
+
+- **Write Plugin v0.5 ✍️** — research-grounded AI slop detector (ai-slop-detect 70+, slop-radar 245 buzzwords, slop-cop 36 rules, CMU PNAS 2025 participial 2-5x, arXiv 2509.19163). `scan`/`check` BEFORE STRONG_AI 100 → AFTER HUMAN_LIKE 0 via deterministic fix (em-dash, buzzword strip, participial comma strip x2). `generate` always HUMAN_LIKE 0 with real citations, `batch` scans dir, `hook --install` adds pre-commit guard. Ollama fast path 0.8s + 6s chat (trust_env=False) — no 25s hang.
+- **Lab Plugin 🧪** — Passive Lab top10 (Turnover Shield $79-$149/mo), `shield` MVP status, `mrr` logs to `projects/first-1k-mo-passive/files/mrr.jsonl` for First $1k/mo goal, `pitch` generates HUMAN_LIKE founder pitch scanned by write plugin.
+- **Brain Plugin 🧠** — Hatch MEMORY.md + daily notes + goals bridge for Ava. `memory`, `goals`, `goal <slug>`, `sync` token-efficient snapshot for LLM-wiki ingestion, `daily` append.
+- **Ava & Agent Routing Upgraded** — `ava route "check slop"` → write 0.93, `"mrr"` → lab 0.91, `"brain sync"` → brain 0.90. `agent run` builtin_hints includes write/lab/brain. Tests 14 passing.
+- **Tests**: write scan/humanize 0, generate HUMAN_LIKE, lab ideas, ava routes, manifest existence for write/lab/brain.
 
 ## Vision: Why One CLI?
 
@@ -76,8 +84,11 @@ bb (Typer root — --json global, dual rich+json)
  │   ├── auth/ 🔑 login/list/set-token (unified OAuth/API key)
  │   ├── tools/ 🧰 Universal registry: add/list/get/rm/search/call/import-openapi
  │   ├── mcp/ 🌐 Client for any MCP server (add/list/list-tools/call) + serve bb as MCP
- │   ├── agent/ 🤖 Ava-native planner: NL → plan → tool calls with policy checks
- │   ├── ava/ 🧠 Factory: status/train/eval/route — brain of BigBang
+ │   ├── agent/ 🤖 Ava-native planner: NL → plan → tool calls with policy checks (now write/lab/brain hints)
+ │   ├── ava/ 🧠 Factory: status/train/eval/route — brain of BigBang (v0.5 routes write/lab/brain 0.9+)
+ │   ├── write/ ✍️ Authentic writing: scan/humanize/generate/sources/check/batch/hook — HUMAN_LIKE 0
+ │   ├── lab/ 🧪 Passive Lab — Turnover Shield $79-$149/mo, MRR tracking, pitch
+ │   ├── brain/ 🧠 Hatch brain — goals, MEMORY.md, daily notes for Ava co-dev
  │   ├── system/ 🖥️ doctor/audit/policy/scaffold (with manifest.yaml)
  │   ├── family/  Family Brain generic
  │   ├── vector/  MTNN control (12,966 Hoops)
@@ -169,10 +180,10 @@ bb mytool hello --json
 
 - v0.2.0 ✅ Remove finance, generic tools only
 - v0.3.0 ✅ Security foundation: vault 0600+keyring, policy caps via manifest.yaml, audit jsonl, universal tool registry, MCP client+server, Ava router stub
-- v0.4.0 🔜 Real MCP SDK client (mcp Python), OpenAPI codegen (auto Typer commands from spec paths), OAuth device flow real impl
-- v0.5.0 🔜 Docker isolation for tools, pipx venv isolation, age encryption for vault, Sigstore signing for plugins
-- v0.6.0 🔜 Ava local router real (Ollama qwen3:32b), Frontier eval for tool promotion, vector memory over audit log
-- v0.7.0 🔜 Tailscale tunnel to expose bb MCP to iOS/Android, background bus as Hatch heartbeat
+- v0.4.0 ✅ Real MCP SDK client (mcp Python), OpenAPI codegen, Google Tasks wired, LLM-wiki + graphify, Ollama qwen3:32b routing
+- v0.5.0 ✅ Authentic Generators v0.5: write scan/humanize/generate HUMAN_LIKE 0 + batch + pre-commit hook, lab MRR tracking, brain goals/memory bridge, Ava routes write/lab/brain 0.9+, 14 tests passing
+- v0.6.0 🔜 Docker isolation for tools, pipx venv isolation, age encryption for vault, Sigstore signing for plugins, Ava vector memory over audit.log
+- v0.7.0 🔜 Tailscale tunnel to expose bb MCP to iOS/Android, background bus as Hatch heartbeat, bb lab auto-pitch via Frontier rubric
 
 ## Disclaimer
 

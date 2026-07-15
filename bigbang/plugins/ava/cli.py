@@ -238,10 +238,46 @@ def _ollama_list_models_local(base: str) -> List[str]:
 
 
 def _heuristic_route(task: str) -> Dict[str, Any]:
-    """Fallback keyword router, no Ollama required"""
+    """Fallback keyword router, no Ollama required — v0.5 with write/lab/brain/rtx"""
     q = task.lower()
     tools = list_tools()
     # Simple heuristic mapping
+    if any(k in q for k in ["rtx", "offload", "alienware", "local gpu", "autoresearch"]):
+        return {
+            "router": "stub",
+            "picked_tool": "rtx",
+            "picked_command": "bb rtx status" if "status" in q else "bb rtx queue add --task \"...\" --program programs/program-ava.md" if "queue" in q or "offload" in q else "bb rtx results --best",
+            "confidence": 0.95,
+            "reason": "rtx/offload/alienware — bb rtx bridge to Alienware RTX 4080/4090",
+            "available_tools": list(tools.keys())[:12],
+        }
+    if any(k in q for k in ["slop", "ai slop", "humanize", "authentic", "write", "blog", "email draft", "cold email"]):
+        return {
+            "router": "stub",
+            "picked_tool": "write",
+            "picked_command": "bb write check --text \"...\"" if "check" in q or "scan" in q else "bb write generate \"...\" --no-ollama",
+            "confidence": 0.93,
+            "reason": "write/authentic/slop — bb write scan/humanize/generate with real sources",
+            "available_tools": list(tools.keys())[:12],
+        }
+    if any(k in q for k in ["mrr", "passive lab", "turnover shield", "turnover", "lab", "first 1k", "first 1000"]):
+        return {
+            "router": "stub",
+            "picked_tool": "lab",
+            "picked_command": "bb lab ideas" if "idea" in q else "bb lab mrr" if "mrr" in q else "bb lab shield",
+            "confidence": 0.91,
+            "reason": "Passive Lab / Turnover Shield / MRR — bb lab wired",
+            "available_tools": list(tools.keys())[:12],
+        }
+    if any(k in q for k in ["goal", "memory", "brain sync", "hatch brain"]):
+        return {
+            "router": "stub",
+            "picked_tool": "brain",
+            "picked_command": "bb brain goals" if "goal" in q else "bb brain memory",
+            "confidence": 0.90,
+            "reason": "goals/memory/brain — bb brain bridge for Ava co-dev",
+            "available_tools": list(tools.keys())[:12],
+        }
     if "task" in q or "todo" in q or "lina" in q or "morning" in q or "afternoon" in q:
         # tasks plugin wired — check if bb tasks exists in plugin list via discovery
         return {

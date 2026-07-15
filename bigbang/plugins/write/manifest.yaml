@@ -1,0 +1,15 @@
+name: write
+version: 0.5.0
+description: Authentic-feeling content generators that auto-scan for AI slop and fix it — HUMAN_LIKE 0, batch, pre-commit hook, real sources
+capabilities:
+  network:
+    enabled: true
+    domains: ["en.wikipedia.org", "api.duckduckgo.com", "localhost", "host.docker.internal"]
+  filesystem:
+    write: true
+    paths: ["~/workspace/your_files/write-outputs/", "~/workspace/", "./"]
+  secrets:
+    allow: []
+
+# Solo personal project, no connection to employer, built with public/free-tier only
+

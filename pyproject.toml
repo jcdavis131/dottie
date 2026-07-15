@@ -1,12 +1,12 @@
 [project]
-name = "bigbang-cli"
-version = "0.4.0"
-description = "One CLI to rule all tools — agent-native, security-first, MCP + OpenAPI + Ava brain. No personal finance."
+name = "scout-cli"
+version = "0.6.0"
+description = "Scout CLI - personal control plane (ex-BigBang). Agent-native, security-first, Ava brain + authentic writing + lab MRR + RTX offload. HOME-only."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name = "Cameron Davis", email = "jcdavis131@gmail.com"}]
-keywords = ["cli", "agent", "tools", "mcp", "openapi", "automation", "ai"]
+keywords = ["scout", "cli", "agent", "tools", "mcp", "personal", "automation", "kitty"]
 dependencies = [
   "typer[all]>=0.12",
   "rich>=13.7",
@@ -29,8 +29,11 @@ Homepage = "https://github.com/jcdavis131/bigbang-cli"
 Issues = "https://github.com/jcdavis131/bigbang-cli/issues"
 
 [project.scripts]
+scout = "bigbang.cli:app"
 bb = "bigbang.cli:app"
 bigbang = "bigbang.cli:app"
+dv = "bigbang.cli:app"
+kitty = "bigbang.cli:app"
 
 [build-system]
 requires = ["setuptools>=61", "wheel"]

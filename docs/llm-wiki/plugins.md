@@ -2,14 +2,16 @@
 
 **Solo personal project, no connection to employer, built with public/free-tier only**
 
-Total plugins: 11 (v0.4.1 includes tasks)
+Total plugins: 14 (v0.4.1 includes tasks)
 
 | Plugin | Version | Commands | Capabilities | Description |
 |--------|---------|----------|--------------|-------------|
 | agent | 0.4.0 | run, bus, teach | net:True localhost,127.0.0.1 | Ava-native planner that routes to any tool |
 | auth | 0.4.0 | login, set-token, list-auth, get-token-cmd, status-cmd +1 | net:True github.com,api.github.com | Unified auth for all internet services — OAuth device flow + |
 | ava | 0.4.0 | status, train, eval-cmd, route | net:True huggingface.co,localhost | Ava AGI Factory — local CUDA brain for BigBang routing + eva |
+| brain | 0.5.0 | memory-cmd, goals-cmd, goal-detail, sync-cmd, daily-cmd | net:False  | Hatch brain — goals, MEMORY.md, daily notes, projects. Bridg |
 | family | 0.4.0 | brain, bills | net:False  | Family Brain generic tools |
+| lab | 0.5.0 | ideas-cmd, shield-cmd, mrr-cmd, log-cmd, pitch-cmd | net:False  | Passive Lab — boring B2B SaaS ideas, Turnover Shield MVP, MR |
 | mcp | 0.4.0 | manifest, serve, add-server, list-servers, list +1 | net:True localhost,127.0.0.1 | MCP client + server — consume any MCP, serve bb as MCP |
 | secrets | 0.4.0 | set-cmd, get-cmd, list-cmd, list | net:False  | Vault for API keys, tokens — security first |
 | system | 0.4.0 | doctor, policy-cmd, scaffold-plugin, hello | net:True localhost | System health, audit, policy, scaffold |
@@ -17,6 +19,7 @@ Total plugins: 11 (v0.4.1 includes tasks)
 | tennis | 0.4.0 | serve | net:True huggingface.co | Tennis DINOv3 serve coach |
 | tools | 0.4.0 | list-cmd, add-cmd, get-cmd, get, rm +3 | net:True * | Universal registry — turn any internet API into bb command |
 | vector | 0.4.0 | list-sites, hoops, verify | net:True hoops.dumbmodel.com,pitch.dumbmodel.com | Vector MTNNs — hoops/pitch/gridiron control |
+| write | 0.5.0 | scan-cmd, humanize-cmd, generate-cmd, sources-cmd, check-cmd +2 | net:True en.wikipedia.org,api.duckduckgo.com | Authentic-feeling content generators that auto-scan for AI s |
 
 ## Per-Plugin Details
 
@@ -110,6 +113,31 @@ Total plugins: 11 (v0.4.1 includes tasks)
 ```
 - **Tags**: []
 
+### brain (0.5.0)
+- **Path**: `bigbang/plugins/brain/cli.py`
+- **Description**: Hatch brain — goals, MEMORY.md, daily notes, projects. Bridge for Ava co-dev. Token-efficient.
+- **Commands**: `memory-cmd`, `goals-cmd`, `goal-detail`, `sync-cmd`, `daily-cmd`
+- **Capabilities**: ```json
+{
+  "network": {
+    "enabled": false
+  },
+  "filesystem": {
+    "write": true,
+    "paths": [
+      "~/MEMORY.md",
+      "~/memory/",
+      "~/workspace/projects/",
+      "~/workspace/your_files/"
+    ]
+  },
+  "secrets": {
+    "allow": []
+  }
+}
+```
+- **Tags**: ['memory', 'goals', 'ava']
+
 ### family (0.4.0)
 - **Path**: `bigbang/plugins/family/cli.py`
 - **Description**: Family Brain generic tools
@@ -125,6 +153,30 @@ Total plugins: 11 (v0.4.1 includes tasks)
 }
 ```
 - **Tags**: []
+
+### lab (0.5.0)
+- **Path**: `bigbang/plugins/lab/cli.py`
+- **Description**: Passive Lab — boring B2B SaaS ideas, Turnover Shield MVP, MRR tracking for First $1k/mo goal. Ava co-dev ready.
+- **Commands**: `ideas-cmd`, `shield-cmd`, `mrr-cmd`, `log-cmd`, `pitch-cmd`
+- **Capabilities**: ```json
+{
+  "network": {
+    "enabled": false
+  },
+  "filesystem": {
+    "write": true,
+    "paths": [
+      "~/workspace/projects/first-1k-mo-passive/",
+      "~/workspace/projects/build-a-self-sustaining-web-app-for-passive-income/",
+      "~/workspace/your_files/"
+    ]
+  },
+  "secrets": {
+    "allow": []
+  }
+}
+```
+- **Tags**: ['passive', 'mrr', 'turnover-shield']
 
 ### mcp (0.4.0)
 - **Path**: `bigbang/plugins/mcp/cli.py`
@@ -283,6 +335,36 @@ Total plugins: 11 (v0.4.1 includes tasks)
       "~/workspace/vector-pitch/",
       "~/workspace/vector-gridiron/"
     ]
+  }
+}
+```
+- **Tags**: []
+
+### write (0.5.0)
+- **Path**: `bigbang/plugins/write/cli.py`
+- **Description**: Authentic-feeling content generators that auto-scan for AI slop and fix it — HUMAN_LIKE 0, batch, pre-commit hook, real sources
+- **Commands**: `scan-cmd`, `humanize-cmd`, `generate-cmd`, `sources-cmd`, `check-cmd`, `batch-cmd`, `hook-cmd`
+- **Capabilities**: ```json
+{
+  "network": {
+    "enabled": true,
+    "domains": [
+      "en.wikipedia.org",
+      "api.duckduckgo.com",
+      "localhost",
+      "host.docker.internal"
+    ]
+  },
+  "filesystem": {
+    "write": true,
+    "paths": [
+      "~/workspace/your_files/write-outputs/",
+      "~/workspace/",
+      "./"
+    ]
+  },
+  "secrets": {
+    "allow": []
   }
 }
 ```

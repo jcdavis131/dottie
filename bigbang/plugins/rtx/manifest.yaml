@@ -1,0 +1,13 @@
+name: rtx
+version: 0.5.0
+description: Alienware RTX 4080/4090 offload — queue tasks to local autoresearch-win-rtx custom, monitor results, sync to Hatch
+capabilities:
+  network:
+    enabled: false
+    domains: []
+  filesystem:
+    write: true
+    paths: ["~/workspace/autoresearch-rtx-custom/", "~/workspace/your_files/rtx-offload/", "~/workspace/projects/first-1k-mo-passive/files/"]
+  secrets:
+    allow: []
+# Solo personal project, no connection to employer, built with public/free-tier only
