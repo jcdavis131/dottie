@@ -65,17 +65,24 @@ pgraphify build . `
 
 Vector lab: keep thin docs under `references/vector-docs/` (do not full-scan 12k-file hoops dumps).
 
-## Publish to jcamd.com/graphify/ (public, non-PII)
+## Publish to jcamd.com/graphify/ (public, non-PII, light)
+
+Public graph must stay **light** (~250 ecosystem seeds, ~75KB minified). Private `graphify-out/` stays full for agents.
 
 ```powershell
 cd $env:USERPROFILE\personal-graphify
+# sanitize + lighten (default --light --max-nodes 250)
 python scripts/sanitize_for_public.py --src graphify-out/graph.json --dest docs/public/graphify-public-non-pii.json
-# PII gate must pass (no Users\<you>, no acct digits, no personal email)
-Copy-Item docs\public\graphify-public-non-pii.json $env:USERPROFILE\jcamd-site\assets\graphify\graph.json
-Copy-Item docs\public\GRAPH_REPORT_PUBLIC.md $env:USERPROFILE\jcamd-site\assets\graphify\GRAPH_REPORT.md
-# bump badges in jcamd-site/graphify/index.html + Lab card counts
+# verify signal before publish
+pgraphify path "Scout CLI" "Ava AGI Factory v6.4" --graph docs/public/graphify-public-non-pii.json
+pgraphify query "Turnover Shield MRR" --graph docs/public/graphify-public-non-pii.json
+Copy-Item docs\public\graphify-public-non-pii.json $env:USERPROFILE\jcamd-site\assets\graphify\graph.json -Force
+Copy-Item docs\public\GRAPH_REPORT_PUBLIC.md $env:USERPROFILE\jcamd-site\assets\graphify\GRAPH_REPORT.md -Force
+# bump badges in jcamd-site/graphify/index.html + Lab card (node/edge counts)
 # deploy: push jcdavis131/jcamd master (Vercel)
 ```
+
+Do **not** publish the full sanitized dump (`*-full.json`) to jcamd.
 
 ## Related skills
 

@@ -13,3 +13,5 @@ build/
 .env
 .DS_Store
 .env.local
+
+docs/public/graphify-public-full.json

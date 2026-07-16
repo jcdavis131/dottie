@@ -244,9 +244,36 @@ def main(src_path: Path, dest_path: Path):
 
 if __name__ == "__main__":
     import argparse
+    import subprocess
+    import sys
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", default="graphify-out/graph.json")
     ap.add_argument("--dest", default="docs/public/graphify-public-non-pii.json")
+    ap.add_argument(
+        "--light",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="After sanitize, lighten to ecosystem seeds (default on for public dest)",
+    )
+    ap.add_argument("--max-nodes", type=int, default=250, help="Cap for --light")
     args = ap.parse_args()
-    main(Path(args.src), Path(args.dest))
+    dest = Path(args.dest)
+    if args.light:
+        # Write full sanitized intermediate beside dest, then lighten into dest
+        full = dest.with_name(dest.stem + "-full" + dest.suffix)
+        main(Path(args.src), full)
+        lighten = Path(__file__).with_name("lighten_public_graph.py")
+        cmd = [
+            sys.executable,
+            str(lighten),
+            "--src",
+            str(full),
+            "--dest",
+            str(dest),
+            "--max-nodes",
+            str(args.max_nodes),
+            "--minify",
+        ]
+        raise SystemExit(subprocess.call(cmd))
+    main(Path(args.src), dest)
