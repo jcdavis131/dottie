@@ -32,14 +32,49 @@ from .query import (
     _cost_path_for_graph
 )
 
+def _resolve_build_roots(args) -> list[Path]:
+    """Primary path plus optional --roots (comma-separated or repeated)."""
+    roots: list[Path] = []
+    primary = Path(args.path or ".").resolve()
+    roots.append(primary)
+    extra = getattr(args, "roots", None) or []
+    if isinstance(extra, str):
+        extra = [extra]
+    for item in extra:
+        for part in str(item).split(","):
+            part = part.strip()
+            if not part:
+                continue
+            p = Path(part).expanduser().resolve()
+            if p.exists() and p not in roots:
+                roots.append(p)
+            elif not p.exists():
+                print(f"[personal-graphify] skip missing root: {p}")
+    return roots
+
+
 def cmd_build(args):
-    root = Path(args.path or ".").resolve()
-    out_dir = Path(args.out or root / "graphify-out")
+    roots = _resolve_build_roots(args)
+    primary = roots[0]
+    out_dir = Path(args.out or primary / "graphify-out")
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"[personal-graphify] scanning {root}")
-    files = collect_files(root, max_files=args.max_files)
-    print(f"[personal-graphify] {len(files)} files found")
+    # Budget files across roots so large labs (vector-hoops) don't starve Ava/Scout
+    max_files = args.max_files
+    per_root = max(200, max_files // max(1, len(roots)))
+    files: list[Path] = []
+    seen: set[Path] = set()
+    for root in roots:
+        print(f"[personal-graphify] scanning {root} (cap {per_root})")
+        batch = collect_files(root, max_files=per_root)
+        for f in batch:
+            if f not in seen:
+                seen.add(f)
+                files.append(f)
+        if len(files) >= max_files:
+            files = files[:max_files]
+            break
+    print(f"[personal-graphify] {len(files)} files found across {len(roots)} roots")
     groups = group_by_type(files)
     print(f"[personal-graphify] code {len(groups['code'])} docs {len(groups['docs'])} media {len(groups['media'])}")
 
@@ -72,14 +107,14 @@ def cmd_build(args):
     cost_path = out_dir / "cost.json"
     if cost_path.exists():
         try:
-            existing = json.loads(cost_path.read_text())
+            existing = json.loads(cost_path.read_text(encoding="utf-8"))
             existing["nodes"] = G.number_of_nodes()
             existing["edges"] = G.number_of_edges()
-            cost_path.write_text(json.dumps(existing, indent=2))
-        except:
-            cost_path.write_text(json.dumps({"nodes": G.number_of_nodes(), "edges": G.number_of_edges(), "queries": [], "total_saved_tokens": 0, "mode": "ollama-first local"}, indent=2))
+            cost_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+        except Exception:
+            cost_path.write_text(json.dumps({"nodes": G.number_of_nodes(), "edges": G.number_of_edges(), "queries": [], "total_saved_tokens": 0, "mode": "ollama-first local"}, indent=2), encoding="utf-8")
     else:
-        cost_path.write_text(json.dumps({"nodes": G.number_of_nodes(), "edges": G.number_of_edges(), "queries": [], "total_saved_tokens": 0, "total_naive": 0, "total_scoped": 0, "mode": "ollama-first local"}, indent=2))
+        cost_path.write_text(json.dumps({"nodes": G.number_of_nodes(), "edges": G.number_of_edges(), "queries": [], "total_saved_tokens": 0, "total_naive": 0, "total_scoped": 0, "mode": "ollama-first local"}, indent=2), encoding="utf-8")
 
 def cmd_query(args):
     gpath = Path(args.graph or "graphify-out/graph.json")
@@ -425,7 +460,8 @@ def main():
     subparsers = parser.add_subparsers(dest="command")
 
     build_parser = subparsers.add_parser("build", help="Build knowledge graph")
-    build_parser.add_argument("path", nargs="?", default=".", help="Project path")
+    build_parser.add_argument("path", nargs="?", default=".", help="Primary project path")
+    build_parser.add_argument("--roots", action="append", default=[], help="Extra roots (repeat or comma-separated) for multi-repo corpus")
     build_parser.add_argument("--out", default=None, help="Output dir")
     build_parser.add_argument("--max-files", type=int, default=8000)
 
@@ -498,6 +534,7 @@ def main():
             args.path = "."
             args.out = None
             args.max_files = 8000
+            args.roots = []
 
     if args.command == "query":
         q = getattr(args, "question", None) or getattr(args, "question_flag", None)

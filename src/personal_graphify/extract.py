@@ -310,8 +310,8 @@ PERSONAL_PATTERNS = {
     "workers": ("integration:cloudflare", "Cloudflare Workers", "integration", "Workers + R2 free hosting"),
     "r2": ("integration:cloudflare", "Cloudflare Workers", "integration", "R2 storage"),
     "chase": ("integration:chase", "Chase", "integration", "Chase Southwest + routing"),
-    "schwab": ("integration:schwab", "Schwab", "integration", "Schwab 8889 META/VOO holdings"),
-    "usaa": ("integration:usaa", "USAA", "integration", "USAA cash hub 0472 Classic + savings"),
+    "schwab": ("integration:schwab", "Schwab", "integration", "Schwab brokerage holdings (META/VOO)"),
+    "usaa": ("integration:usaa", "USAA", "integration", "USAA cash hub Classic + savings"),
     # goal linking SOTA — First $1k/mo passive
     "first $1k": ("concept:first-1k-mrr", "First $1k/mo passive goal", "business_metric", "$1k MRR sustained, 7-13 customers @ $79-149/mo"),
     "1k/mo passive": ("concept:first-1k-mrr", "First $1k/mo passive goal", "business_metric", "$1k MRR sustained"),
@@ -352,6 +352,13 @@ PERSONAL_PATTERNS = {
     "ollama": ("concept:ollama", "Ollama qwen3:32b local", "tool", "Local LLM judge for frontier rubric 11-cat"),
     "workforce embedding": ("concept:workforce-embedding", "Workforce Embedding 120d + 4 heads", "ml_feature", "120 days of turnover signals + 4 tower heads from Passive Lab research"),
     "120d + 4 heads": ("concept:workforce-embedding", "Workforce Embedding 120d + 4 heads", "ml_feature", "Trade crew embedding"),
+    # Scout control plane (ex-BigBang) — agent-native HOME-only
+    "scout cli": ("concept:scout", "Scout CLI", "tool", "Personal control plane (ex-BigBang): Ava brain + authentic writing + lab MRR + RTX offload"),
+    "scout-cli": ("concept:scout", "Scout CLI", "tool", "Personal control plane agent-native security-first"),
+    "scout": ("concept:scout", "Scout CLI", "tool", "HOME-only personal control plane wiring Ava + lab + RTX"),
+    "bigbang": ("concept:scout", "Scout CLI (ex-BigBang)", "tool", "Renamed personal control plane"),
+    "rtx offload": ("concept:rtx-offload", "RTX Offload", "tool", "Local GPU offload path used by Scout/Ava"),
+    "jcamd.com": ("concept:jcamd", "jcamd.com hub", "product", "Workforce intelligence consulting + Lab + public Personal Graphify"),
 }
 
 def extract_personal_patterns(file_path: Path) -> Tuple[List[Dict], List[Dict]]:
@@ -441,6 +448,17 @@ def extract_personal_patterns(file_path: Path) -> Tuple[List[Dict], List[Dict]]:
         if "48→64" in src or "48->64" in src or "hl=" in low or "mtNN" in src:
             nodes.append({"id": "concept:mtnn-head", "label": "MTNN head 48→64→k tower arch", "type": "ml_concept", "desc": "48→64→k from Vector Hoops truthful MTNN"})
             edges.append({"source": file_id, "target": "concept:mtnn-head", "type": "uses", "confidence": INFERRED})
+        # Scout ↔ Ava / lab / graphify bridges
+        if ("scout" in low or "bigbang" in low) and "ava" in low:
+            edges.append({"source": "concept:scout", "target": "concept:ava", "type": "orchestrates", "confidence": INFERRED})
+        if ("scout" in low or "bigbang" in low) and ("mrr" in low or "turnover" in low):
+            edges.append({"source": "concept:scout", "target": "concept:turnover-shield", "type": "tracks", "confidence": INFERRED})
+            edges.append({"source": "concept:scout", "target": "concept:mrr", "type": "tracks", "confidence": INFERRED})
+        if ("scout" in low or "bigbang" in low) and "graphify" in low:
+            edges.append({"source": "concept:scout", "target": "concept:graphify", "type": "uses", "confidence": INFERRED})
+        if "ava" in low and ("j-space" in low or "jspace" in low or "planner" in low) and "critic" in low:
+            edges.append({"source": "concept:planner", "target": "concept:critic", "type": "interacts_with", "confidence": INFERRED})
+            edges.append({"source": "concept:ava", "target": "concept:jspace", "type": "contains", "confidence": INFERRED})
 
     except Exception as e:
         # silent

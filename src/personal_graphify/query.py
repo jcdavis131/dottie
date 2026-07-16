@@ -227,9 +227,9 @@ def search_nodes(G: nx.MultiDiGraph, query: str, limit: int = 30, boost_file_typ
         score += type_boost.get(typ, 0)
         if boost_file_type and boost_file_type.lower() in file_.lower():
             score += 2
-        # boost Turnover Shield / Stripe / Plaid family brain core for agent relevance
-        if typ in ("product","business_metric") and score>5:
-            if "turnover" in blob or "mrr" in blob or "stripe" in blob:
+        # boost Turnover Shield / Stripe / Plaid / Scout / Ava core for agent relevance
+        if typ in ("product","business_metric","tool","ml_concept") and score>5:
+            if "turnover" in blob or "mrr" in blob or "stripe" in blob or "scout" in blob or "ava" in blob:
                 score += 1.5
         results_lex.append((score, deg, nid, data, matched))
 
@@ -486,6 +486,8 @@ def task_compiler(G: nx.MultiDiGraph, task_description: str, semantic: bool = Fa
         "churn": "Turnover Shield",
         "mtNN": "MTNN",
         "ava": "Ava AGI Factory v6.4",
+        "scout": "Scout CLI",
+        "bigbang": "Scout CLI",
         "vector": "Vector Hoops",
         "dino": "Tennis DINOv3 ExecuTorch"
     }
@@ -512,7 +514,7 @@ def task_compiler(G: nx.MultiDiGraph, task_description: str, semantic: bool = Fa
     ranked = sorted(by_id.values(), key=lambda x: x["score"], reverse=True)[:12]
 
     if not ranked:
-        return {"error": f"No relevant nodes for task '{task_description}'", "suggestion": "Try broader terms: Stripe, Turnover Shield, Family Brain, MTNN, Ava"}
+        return {"error": f"No relevant nodes for task '{task_description}'", "suggestion": "Try broader terms: Stripe, Turnover Shield, Family Brain, MTNN, Ava, Scout"}
 
     all_ids = set([m["id"] for m in ranked])
     sub_nodes = set()
@@ -635,7 +637,7 @@ def format_query_answer(G: nx.MultiDiGraph, query: str, graph_path: Path = None,
             pass
 
     if sub.number_of_nodes()==0:
-        return f"No nodes found for query '{query}'. Try broader terms: Stripe, Turnover Shield, MTNN, Ava, Family Brain, Vector Hoops"
+        return f"No nodes found for query '{query}'. Try broader terms: Stripe, Turnover Shield, MTNN, Ava, Scout, Family Brain, Vector Hoops"
 
     # extra hint for semantic availability
     semantic_hint = " [semantic rerank ON]" if semantic else " [lexical] — try --semantic for Ollama mxbai-embed-large rerank"

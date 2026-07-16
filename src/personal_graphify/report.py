@@ -39,6 +39,7 @@ def generate_report(G: nx.MultiDiGraph, output_path: Path, god_nodes_list, surpr
     lines.append('- `pgraphify query "what connects auth to database?"`')
     lines.append('- `pgraphify query "where is turnover retention logic?"`')
     lines.append('- `pgraphify query "how does Ava J-space Planner interact with Critic?"`')
+    lines.append('- `pgraphify query "how does Scout connect to Ava?"`')
     lines.append('- `pgraphify query "trace Stripe webhook to Paid Users MRR"`')
     lines.append('- `pgraphify query "show MTNN heads 48→64→k"`')
     lines.append("")
