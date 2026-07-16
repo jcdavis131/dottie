@@ -238,10 +238,44 @@ def _ollama_list_models_local(base: str) -> List[str]:
 
 
 def _heuristic_route(task: str) -> Dict[str, Any]:
-    """Fallback keyword router, no Ollama required — v0.5 with write/lab/brain/rtx"""
+    """Fallback keyword router, no Ollama required — v0.6 with write/lab/brain/rtx/graphify"""
     q = task.lower()
     tools = list_tools()
     # Simple heuristic mapping
+    if any(
+        k in q
+        for k in [
+            "graphify",
+            "pgraphify",
+            "knowledge graph",
+            "god node",
+            "task compiler",
+            "what connects",
+            "shortest path",
+            "impact analysis",
+            "onboard repo",
+        ]
+    ):
+        if "path" in q or "connect" in q:
+            cmd = 'scout graphify path "Scout CLI" "Ava AGI Factory v6.4"'
+        elif "task" in q or "wire" in q or "compile" in q:
+            cmd = 'scout graphify task "wire Scout to Ava J-space"'
+        elif "impact" in q or "breaks" in q:
+            cmd = 'scout graphify impact "Scout CLI" --direction both'
+        elif "onboard" in q:
+            cmd = "scout graphify onboard"
+        elif "build" in q or "ecosystem" in q:
+            cmd = "scout graphify ecosystem"
+        else:
+            cmd = 'scout graphify query "how does Scout connect to Ava?"'
+        return {
+            "router": "stub",
+            "picked_tool": "graphify",
+            "picked_command": cmd,
+            "confidence": 0.94,
+            "reason": "graphify/pgraphify — query-first Personal Graphify baked into scout",
+            "available_tools": list(tools.keys())[:12],
+        }
     if any(k in q for k in ["rtx", "offload", "alienware", "local gpu", "autoresearch"]):
         return {
             "router": "stub",

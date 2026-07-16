@@ -1,6 +1,6 @@
 [project]
 name = "scout-cli"
-version = "0.6.0"
+version = "0.6.1"
 description = "Scout CLI - personal control plane (ex-BigBang). Agent-native, security-first, Ava brain + authentic writing + lab MRR + RTX offload. HOME-only."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -23,6 +23,8 @@ dependencies = [
 all = ["gspread", "supabase", "onnxruntime", "keyring", "cryptography", "mcp>=1.28.1"]
 dev = ["pytest>=8", "ruff>=0.3", "mypy>=1.8", "pytest-cov"]
 security = ["keyring", "cryptography"]
+# Personal Graphify — install from local private clone: pip install -e ~/personal-graphify
+graphify = []
 
 [project.urls]
 Homepage = "https://github.com/jcdavis131/bigbang-cli"

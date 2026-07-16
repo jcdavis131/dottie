@@ -16,6 +16,19 @@ Primary command: `scout` (aliases: `bb`, `bigbang`, `dv`, `kitty` for compat) �
 - **Repos:** `github.com/jcdavis131/scout-cli` (this) + `github.com/jcdavis131/scout-rtx` custom fork — cross-linked via `INTEGRATION.md`.
 - **Ava routing:** `ava route "offload to my RTX"` → rtx 0.95, `dashboard` command notes auto-read every 60s.
 
+### Personal Graphify (baked in)
+
+```bash
+# Requires: uv tool install -e ~/personal-graphify
+scout graphify status
+scout graphify query "how does Scout connect to Ava?"
+scout graphify path "Scout CLI" "Ava AGI Factory v6.4"
+scout graphify task "wire Scout to Ava J-space"
+scout graphify ecosystem                  # multi-root personal brain rebuild
+```
+
+See `docs/llm-wiki/graphify-integration.md`.
+
 ### v0.6.0 Flow (end-to-end)
 
 ```bash

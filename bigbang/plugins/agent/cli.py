@@ -235,6 +235,11 @@ def _heuristic_plan(task: str) -> Dict[str, Any]:
         "offload": "bb rtx queue add --task '...' --program programs/program-ava.md",
         "alienware": "bb rtx status",
         "autoresearch": "bb rtx programs",
+        "graphify": "scout graphify query 'how does Scout connect to Ava?'",
+        "pgraphify": "scout graphify onboard",
+        "knowledge graph": "scout graphify onboard",
+        "god node": "scout graphify onboard",
+        "task compiler": "scout graphify task 'wire Scout to Ava'",
     }
 
     for k, v in builtin_hints.items():

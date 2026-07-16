@@ -24,3 +24,15 @@ git clone https://github.com/jcdavis131/scout-rtx.git
 
 ## Dashboard
 Web artifact `rtx-offload-dashboard` also available locally in ts-spaces/, integrated via `scout rtx dashboard`
+
+## Personal Graphify (baked in)
+Requires `pgraphify` from private `~/personal-graphify` (`uv tool install -e ~/personal-graphify`).
+
+```bash
+scout graphify status
+scout graphify query "how does Scout connect to Ava?"
+scout graphify ecosystem          # rebuild multi-root personal brain
+scout graphify sync               # copy scout graph → personal-graphify/references/spaces/
+```
+
+Docs: `docs/llm-wiki/graphify-integration.md`. Ava routes graphify keywords to this plugin.

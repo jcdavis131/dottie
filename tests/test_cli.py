@@ -32,7 +32,7 @@ def test_registry():
 def test_policy_manifests_exist():
     from pathlib import Path
     base = Path("bigbang/plugins")
-    for p in ["secrets","tools","mcp","system","ava","write","lab","brain","rtx"]:
+    for p in ["secrets","tools","mcp","system","ava","write","lab","brain","rtx","graphify"]:
         assert (base / p / "manifest.yaml").exists(), f"{p} manifest missing"
 
 def test_json_contract():
@@ -106,3 +106,27 @@ def test_ava_route_lab():
     from bigbang.plugins.ava.cli import _heuristic_route
     route = _heuristic_route("show mrr for turnover shield")
     assert route["picked_tool"] == "lab"
+
+def test_plugin_list_includes_graphify():
+    from bigbang.core.plugin_loader import list_plugin_names
+    assert "graphify" in list_plugin_names()
+
+def test_ava_route_graphify():
+    from bigbang.plugins.ava.cli import _heuristic_route
+    route = _heuristic_route("how does Scout connect via graphify knowledge graph")
+    assert route["picked_tool"] == "graphify"
+    assert route["confidence"] >= 0.9
+    assert "graphify" in route["picked_command"]
+
+def test_graphify_status_payload():
+    from bigbang.plugins.graphify.runner import status_payload, resolve_graph_path
+    st = status_payload()
+    assert "ok" in st
+    assert "graph" in st
+    assert "disclaimer" in st
+    g = resolve_graph_path()
+    assert str(g).endswith("graph.json")
+
+def test_graphify_cli_import():
+    from bigbang.plugins.graphify.cli import app
+    assert app.info.name == "graphify"
