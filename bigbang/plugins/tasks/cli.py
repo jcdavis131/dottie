@@ -209,16 +209,30 @@ def sync_bb(
 
     emit({"synced": len(created), "tasks": created, "tasklist": tasklist, "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only"}, command="tasks sync-bb")
 
+def _repo_root() -> Path:
+    """Find the repo root by searching upward from this file for pyproject.toml."""
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "pyproject.toml").exists():
+            return parent
+    # fallback: bigbang package parent (bigbang/plugins/tasks/cli.py -> repo root)
+    return here.parents[3]
+
+
 @app.command("export")
 def export_tasks(tasklist: str = typer.Option("@default", "--tasklist", help="tasklist id")):
     """Export all tasks as JSON for graphify / LLM-wiki ingestion."""
+    from bigbang.core.policy import enforce_or_raise, load_manifest
     res = _run_gws(["tasks", "list", "--params", json.dumps({"tasklist": tasklist, "maxResults": 100, "showCompleted": False})])
-    out_path = Path.home() / "workspace" / "bigbang-cli" / "docs" / "llm-wiki" / f"tasks-{tasklist}.json"
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path = _repo_root() / "docs" / "llm-wiki" / f"tasks-{tasklist}.json"
+    manifest = load_manifest(Path(__file__).resolve().parent)
+    enforce_or_raise(manifest, "fs_write", str(out_path))
     try:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(res, indent=2))
-    except Exception:
-        pass
+    except OSError as e:
+        emit({"error": f"failed to write {out_path}: {e}"}, command="tasks export")
+        raise typer.Exit(1)
     emit({"exported": str(out_path), "count": len(res.get("items", [])) if isinstance(res, dict) else 0, "raw": res}, command="tasks export")
 
 def register(root):

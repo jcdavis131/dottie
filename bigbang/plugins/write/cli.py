@@ -594,14 +594,17 @@ def generate_cmd(
         if out:
             draft = out.strip()
 
+    used_fallback = False
     if not draft:
-        # Fallback template that is already HUMAN_LIKE — no em dashes, no slop phrases
+        # Fallback template that is already HUMAN_LIKE — no em dashes, no slop phrases.
+        # All statistics are explicit placeholders — fill in YOUR real numbers.
+        used_fallback = True
         draft = (
             f"{prompt}\n\n"
             "I kept seeing AI tells in our drafts. Words like tapestry and delve into. Readers catch it fast.\n"
-            "Last month we rewrote our hiring email. Before we had 17 hits in 36 words and it was flagged. After we had 1 hit and score 12 HUMAN_LIKE.\n"
+            "Last month we rewrote our hiring email. Before we had [YOUR NUMBER] hits in [YOUR NUMBER] words and it was flagged. After we had [YOUR NUMBER] hits and a HUMAN_LIKE score.\n"
             "Fix was simple. Short sentences, real numbers, one story. We cut buzzwords and added specifics.\n"
-            f"For example crew turnover dropped 12 percent after text check-ins. One tech saved is about 5k dollars. That math comes from our own retention data in Austin.\n"
+            "For example crew turnover dropped [YOUR NUMBER] percent after text check-ins. One tech saved is about [YOUR NUMBER] dollars. That math should come from your own retention data in [YOUR CITY].\n"
             f"Real tools that catch this. ai-slop-detect with 70 plus patterns {REAL_SOURCES[0]['url']}, slop-cop with 36 rules {REAL_SOURCES[1]['url']}, and CMU study on participial overuse {REAL_SOURCES[3]['url']}.\n"
             "Next step run bb write scan on your draft then bb write humanize --save."
         )
@@ -637,6 +640,8 @@ def generate_cmd(
         "draft": final,
         "scan": scan_final,
         "fixes_applied": fix_list,
+        "fallback_template": used_fallback,
+        "numbers_are_examples": used_fallback,
         "saved_to": str(out_path) if out_path else None,
         "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only"
     }, command="write generate")
@@ -646,11 +651,18 @@ def sources_cmd(
     query: str = typer.Argument(..., help="Search query for real sources"),
     limit: int = typer.Option(5, "--limit", "-n"),
 ):
+    q = query.strip().lower()
+    matched = [
+        s for s in REAL_SOURCES
+        if q in s["title"].lower() or q in s["url"].lower() or q in s.get("type", "").lower()
+    ][:limit]
     emit({
         "command": "write sources",
         "query": query,
-        "results": REAL_SOURCES[:limit],
-        "note": "Curated real sources — verified GitHub + CMU + arXiv, use as citations",
+        "results": matched,
+        "matched": len(matched),
+        "note": "Curated real sources filtered by query — verified GitHub + CMU + arXiv, use as citations"
+        if matched else "No curated source matched the query — the list is small and curated, not a search engine",
         "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only"
     }, command="write sources")
 

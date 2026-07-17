@@ -31,6 +31,9 @@ def export(
     min_steps: int = typer.Option(2, help="Drop episodes shorter than this"),
 ):
     """Segment audit traces into episodes, redact secrets, annotate reward components, write JSONL."""
+    from bigbang.core.policy import enforce_or_raise, load_manifest
+    manifest = load_manifest(Path(__file__).resolve().parent)
+    enforce_or_raise(manifest, "fs_write", str(out))
     summary = export_dataset(audit_file, out, gap_seconds=gap_seconds, min_steps=min_steps)
     emit(summary, command="rft export")
 

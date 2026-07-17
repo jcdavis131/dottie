@@ -7,7 +7,7 @@
 git clone ~/workspace/bigbang-cli
 cd bigbang-cli
 pip3 install -e .
-bb --help  # 12 plugins: tasks, tools, mcp, ava, agent, system, secrets, auth, family, vector, tennis, doctor
+bb --help  # 17 plugins discovered automatically
 bb system doctor
 bb system policy
 ```
@@ -34,13 +34,13 @@ bb tools call petstore findPetsByStatus '{"status":"available"}' --json
 
 ## MCP
 ```bash
-bb mcp manifest --json  # 12 bb_* tools
+bb mcp manifest --json  # 17 bb_* tools
 bb mcp add myserver https://mcp.example.com/sse
 bb mcp list-tools myserver --json
 bb mcp call myserver some_tool --args '{"q":"test"}' --json
-# Serve bb as MCP for Claude Desktop:
-# bb mcp serve --port 8787
-# Claude Desktop config: {"mcpServers": {"bigbang": {"url": "http://localhost:8787/sse"}}}
+# Serve bb as a real MCP server (stdio default; --sse --port 8787 for SSE):
+# bb mcp serve
+# Claude Desktop config (stdio): {"mcpServers": {"scout": {"command": "scout", "args": ["mcp", "serve"]}}}
 ```
 
 ## Ava & Agent
@@ -72,7 +72,7 @@ Located in docs/llm-wiki/:
 - tasks-plugin.md (wiring details)
 - security-model.md (caps, vault, proxy fix)
 - graphify-integration.md (build/query/save to personal graphify)
-- plugins.md (auto-generated catalog of 12 plugins)
+- plugins.md (auto-generated catalog of 17 plugins)
 - quickstart.md (this file)
 - tasks-*.json (exported Google Tasks for ingestion)
 

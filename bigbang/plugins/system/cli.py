@@ -20,12 +20,25 @@ def run_doctor():
         checks.append({"check": "ollama", "status": "down (expected local)", "ok": False})
     mem = Path.home() / "MEMORY.md"
     checks.append({"check": "MEMORY.md", "status": f"{mem} {'exists' if mem.exists() else 'missing'}", "ok": mem.exists()})
-    vault = Path.home() / ".local" / "share" / "bigbang" / "secrets.json"
-    checks.append({"check": "vault", "status": f"{vault} {'exists' if vault.exists() else 'not yet'} 0600", "ok": True})
-    audit = Path.home() / ".local" / "share" / "bigbang" / "audit.jsonl"
-    checks.append({"check": "audit_log", "status": str(audit), "ok": True})
-    reg = Path.home() / ".local" / "share" / "bigbang" / "registry.json"
-    checks.append({"check": "tool_registry", "status": str(reg), "ok": True})
+    import os as _os
+
+    def _file_check(name: str, path: Path, require_mode_0600: bool = False):
+        """Real check: ok only when the file exists, is readable, and (for the vault) is 0600."""
+        if not path.exists():
+            return {"check": name, "status": f"{path} missing (not created yet)", "ok": False}
+        if not _os.access(path, _os.R_OK):
+            return {"check": name, "status": f"{path} exists but not readable", "ok": False}
+        if require_mode_0600:
+            mode = path.stat().st_mode & 0o777
+            if mode != 0o600:
+                return {"check": name, "status": f"{path} exists but mode is {oct(mode)} (want 0600)", "ok": False}
+            return {"check": name, "status": f"{path} exists, mode 0600", "ok": True}
+        return {"check": name, "status": f"{path} exists, readable", "ok": True}
+
+    share = Path.home() / ".local" / "share" / "bigbang"
+    checks.append(_file_check("vault", share / "secrets.json", require_mode_0600=True))
+    checks.append(_file_check("audit_log", share / "audit.jsonl"))
+    checks.append(_file_check("tool_registry", share / "registry.json"))
     emit({"message": "doctor complete", "checks": checks, "security": "vault 0600, policy caps, audit jsonl"}, command="system doctor")
 
 @app.command("doctor")

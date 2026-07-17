@@ -290,7 +290,7 @@ def generate_typer_plugin(tool_name: str, spec: dict, url: str) -> List[str]:
         lines.append('from urllib.parse import urlparse')
         lines.append('from bigbang.core.output import emit')
         lines.append('from bigbang.core.policy import enforce_or_raise')
-        lines.append('from bigbang.core.security import get_secret')
+        lines.append('from bigbang.core.openapi import _collect_secret_headers')
         lines.append('from bigbang.core.http_utils import sanitize_no_proxy_env')
         lines.append('sanitize_no_proxy_env()')
         lines.append(f'app = typer.Typer(name="{safe_tool_name}", help={repr(description_short)}, no_args_is_help=True)')
@@ -317,7 +317,8 @@ def generate_typer_plugin(tool_name: str, spec: dict, url: str) -> List[str]:
         lines.append('        from urllib.parse import urlparse as _up; _p=_up(FALLBACK_URL); scheme=_p.scheme or "https"; return f"{scheme}://{SPEC_HOST}".rstrip("/")')
         lines.append('    from urllib.parse import urlparse as _up; _p=_up(FALLBACK_URL); return f"{_p.scheme}://{_p.netloc}".rstrip("/")')
         lines.append('def _auth_headers():')
-        lines.append('    return {}')
+        lines.append('    # Real vault lookup — same logic as core call path (X-API-Key vs Bearer)')
+        lines.append('    return _collect_secret_headers(TOOL_MANIFEST["name"])')
         for op in ops_with_names[:25]:  # limit to 25 ops for v0.4
             method = op["method"]
             path = op["path"]
@@ -358,7 +359,7 @@ def generate_typer_plugin(tool_name: str, spec: dict, url: str) -> List[str]:
             lines.append(f'    url=base.rstrip("/") + "/" + path.lstrip("/")')
             lines.append('    enforce_or_raise(TOOL_MANIFEST, "network", url)')
             lines.append('    sanitize_no_proxy_env()')
-            lines.append(f'    resp=httpx.request("{method.upper()}", url, params=params or None, timeout=10, follow_redirects=True)')
+            lines.append(f'    resp=httpx.request("{method.upper()}", url, params=params or None, headers=_auth_headers() or None, timeout=10, follow_redirects=True)')
             lines.append('    try: data=resp.json()')
             lines.append('    except: data=resp.text[:4000]')
             lines.append(f'    emit({{"url": url, "data": data, "status": resp.status_code}}, command="{safe_tool_name} {cmd_name}")')

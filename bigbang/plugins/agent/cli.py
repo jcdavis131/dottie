@@ -1,8 +1,8 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
-import typer, json, time, re, socket, threading, os
+import typer, json, time, re, socket, threading, os, shlex, subprocess, sys
+from collections import Counter
 from bigbang.core.output import emit
-from bigbang.core.registry import list_tools, search_tools
-from bigbang.core.audit import log_event
+from bigbang.core.registry import list_tools
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from urllib.parse import urlparse
@@ -331,8 +331,62 @@ def _ollama_planner(task: str) -> Dict[str, Any]:
         "raw": raw[:500],
     }
 
+_SHELL_META_RE = re.compile(r"[|&;<>`$\n\\]")
+
+
+def _policy_check_step(step: str) -> tuple:
+    """Validate a plan step before execution. Returns (ok, reason, argv)."""
+    from bigbang.core.plugin_loader import list_plugin_names
+    if _SHELL_META_RE.search(step):
+        return False, "shell metacharacters not allowed in plan steps", None
+    try:
+        parts = shlex.split(step)
+    except ValueError as e:
+        return False, f"unparseable step: {e}", None
+    if len(parts) < 2 or parts[0] not in ("bb", "scout", "bigbang", "dv", "kitty"):
+        return False, "step must start with a scout-cli alias (bb/scout) + plugin", None
+    plugin = parts[1]
+    known = set(list_plugin_names()) | {"doctor"}
+    if plugin not in known:
+        return False, f"unknown plugin '{plugin}' — not in {sorted(known)}", None
+    argv = [sys.executable, "-m", "bigbang.cli", "--json"] + parts[1:]
+    return True, "ok", argv
+
+
+def _execute_plan(plan: List[str]) -> List[Dict[str, Any]]:
+    """Run each plan step as a subprocess of this CLI, policy-checked first."""
+    results: List[Dict[str, Any]] = []
+    for step in plan:
+        ok, reason, argv = _policy_check_step(step)
+        if not ok:
+            results.append({"step": step, "executed": False, "policy": f"denied: {reason}"})
+            continue
+        try:
+            proc = subprocess.run(argv, capture_output=True, text=True, timeout=120)
+            out = proc.stdout.strip()
+            try:
+                parsed = json.loads(out) if out else None
+            except json.JSONDecodeError:
+                parsed = None
+            results.append({
+                "step": step,
+                "executed": True,
+                "policy": "checked",
+                "exit_code": proc.returncode,
+                "output": parsed if parsed is not None else out[:2000],
+                "stderr": proc.stderr.strip()[:500] if proc.returncode != 0 else "",
+            })
+        except subprocess.TimeoutExpired:
+            results.append({"step": step, "executed": False, "policy": "checked",
+                            "error": "timed out after 120s"})
+    return results
+
+
 @app.command("run")
-def run(task: str = typer.Argument(..., help="natural language e.g. 'summarize my GitHub PRs and post to family brain'")):
+def run(
+    task: str = typer.Argument(..., help="natural language e.g. 'summarize my GitHub PRs and post to family brain'"),
+    execute: bool = typer.Option(False, "--execute", help="Actually run the plan steps (default: plan only)"),
+):
     tools = list_tools()
     base = get_ollama_base(timeout=2.0) if _HAS_LLM else None
     try:
@@ -353,10 +407,14 @@ def run(task: str = typer.Argument(..., help="natural language e.g. 'summarize m
                     "available_tools": list(tools.keys())[:20],
                     "plan": result.get("plan", []),
                     "reason": result.get("reason"),
-                    "execution": "Would run plan step-by-step with policy checks, audit log, --json between steps, and human confirmation for writes",
-                    "security": "Every step checked against manifest.yaml capabilities, secrets vaulted, audit.jsonl appended",
+                    "security": "Every step checked before execution, secrets vaulted, audit.jsonl appended",
                     "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
                 }
+                if execute:
+                    payload["execution"] = "executed"
+                    payload["results"] = _execute_plan(payload["plan"])
+                else:
+                    payload["execution"] = "plan only — pass --execute to run the steps (policy-checked, audited)"
                 emit(payload, command="agent run")
                 return
             except Exception as e:
@@ -380,10 +438,14 @@ def run(task: str = typer.Argument(..., help="natural language e.g. 'summarize m
             "candidate_tools": [p.split()[1] if len(p.split())>1 else p for p in heuristic.get("plan", [])],
             "plan": heuristic.get("plan", []),
             "reason": heuristic.get("reason"),
-            "execution": "Would run plan step-by-step with policy checks, audit log, --json between steps, and human confirmation for writes",
-            "security": "Every step checked against manifest.yaml capabilities, secrets vaulted, audit.jsonl appended",
+            "security": "Every step checked before execution, secrets vaulted, audit.jsonl appended",
             "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
         }
+        if execute:
+            payload["execution"] = "executed"
+            payload["results"] = _execute_plan(payload["plan"])
+        else:
+            payload["execution"] = "plan only — pass --execute to run the steps (policy-checked, audited)"
         emit(payload, command="agent run")
 
     except Exception as e:
@@ -398,18 +460,69 @@ def run(task: str = typer.Argument(..., help="natural language e.g. 'summarize m
         }, command="agent run")
 
 @app.command("bus")
-def bus():
+def bus(threshold: int = typer.Option(3, "--threshold", help="suggest commands repeated at least this many times")):
+    """Scan audit.jsonl for recurring commands and suggest automation candidates."""
+    from bigbang.core import audit as _audit
+    audit_file = _audit.AUDIT_FILE
+    if not audit_file.exists():
+        emit({
+            "audit_log": str(audit_file),
+            "suggestions": [],
+            "count": 0,
+            "note": "audit log not present yet — run some commands first",
+        }, command="agent bus")
+        return
+    counts: Counter = Counter()
+    for line in audit_file.read_text().splitlines():
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        cmd = entry.get("command")
+        if cmd and cmd != "unknown":
+            counts[cmd] += 1
+    suggestions = [
+        {"command": cmd, "times_run": n,
+         "suggest": f"recurring pattern — consider a skill or alias for '{cmd}'"}
+        for cmd, n in counts.most_common()
+        if n >= threshold
+    ]
     emit({
-        "message": "Event bus watcher — proposes new tool plugins from recurring patterns",
-        "watching": ["~/workspace/*/ (new projects)", "~/.local/share/bigbang/audit.jsonl (recurring commands)", "MCP servers"],
-        "proposes": "bb system scaffold <name> when pattern detected 3x, then PR to registry",
-        "ava_role": "Ava judges if automation is safe + useful via Frontier rubric",
-        "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
+        "audit_log": str(audit_file),
+        "threshold": threshold,
+        "commands_seen": len(counts),
+        "suggestions": suggestions,
+        "count": len(suggestions),
     }, command="agent bus")
+
+
+def _slugify(text: str, max_words: int = 6) -> str:
+    words = re.findall(r"[a-z0-9]+", text.lower())[:max_words]
+    return "-".join(words) or "skill"
+
+
+SKILLS_DIR = Path(__file__).resolve().parent.parent.parent / "skills"
+
 
 @app.command("teach")
 def teach(example: str = typer.Argument(..., help="show agent how to do something once, it learns")):
-    emit({"teaching": example, "learned": "Would store as skill in bigbang/skills/<name>.md + as vector for Ava retrieval", "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only"}, command="agent teach")
+    """Store the taught example as a real skill file in bigbang/skills/<slug>.md."""
+    SKILLS_DIR.mkdir(parents=True, exist_ok=True)
+    slug = _slugify(example)
+    path = SKILLS_DIR / f"{slug}.md"
+    content = (
+        f"# Skill: {slug}\n\n"
+        f"Taught: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+        f"## Example\n\n{example}\n"
+    )
+    path.write_text(content)
+    emit({
+        "teaching": example,
+        "skill_file": str(path),
+        "slug": slug,
+        "learned": True,
+        "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
+    }, command="agent teach")
 
 def register(root):
     root.add_typer(app, name="agent")

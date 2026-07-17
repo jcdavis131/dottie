@@ -15,7 +15,6 @@
   --seq-250: #86b6ef;
   --status-good: #0ca30c;
   --status-warning: #fab219;
-  --status-serious: #ec835a;
   --status-critical: #d03b3b;
   --good-text: #006300;
 }
@@ -59,7 +58,7 @@ body {
   color: var(--text-primary);
   font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
 }
-code, pre, .num, .mono { font-variant-numeric: tabular-nums; }
+code, pre, .num { font-variant-numeric: tabular-nums; }
 .hidden { display: none !important; }
 
 /* ---- chrome ---- */

@@ -10,9 +10,9 @@ capabilities:
   filesystem: {write: false, paths: []}
   secrets: {allow: [EXAMPLE_TOKEN]}
 ```
-3. **Vault** — layered: OS keyring (if available) → `~/.local/share/bigbang/secrets.json` 0600 → env `BB_SECRET_<KEY>`
+3. **Vault** — file store `~/.local/share/bigbang/secrets.json` (0600) is where `bb secrets set` writes. Reads are layered: OS keyring (read-fallback only, if installed) → env `BB_SECRET_<KEY>` → vault file. There is no keyring write path today.
 4. **Audit** — every bb invocation → `~/.local/share/bigbang/audit.jsonl` with ts, command, safe args (no secret values), duration
-5. **Policy enforcement** — `bigbang/core/policy.py:check_permission()` — **network** enforcement is wired (mcp/tools/openapi call paths); **fs/secret** enforcement is supported by the engine but not yet invoked by any caller — tracked in docs/llm-wiki/ecosystem-audit-2026-07-17.md
+5. **Policy enforcement** — `bigbang/core/policy.py:check_permission()` — **network** enforcement is wired (mcp/tools/openapi call paths, plus a persisted user-level allowlist at `~/.config/bigbang/policy.yaml`, default-deny); **fs_write** enforcement is wired on tasks export, rft export, and graphify sync write paths; **secret** allowlists are enforced by the engine when manifests declare them
 6. **Isolation** — tool types:
    - openapi: httpx with domain allowlist
    - mcp: MCP SDK client, server URL must be allowlisted

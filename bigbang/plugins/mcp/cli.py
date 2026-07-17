@@ -13,7 +13,7 @@ import typer
 from bigbang.core.output import emit
 from bigbang.core.plugin_loader import list_plugin_names
 from bigbang.core.registry import register_tool, list_tools
-from bigbang.core.policy import enforce_or_raise
+from bigbang.core.policy import enforce_user_url_or_raise
 from bigbang.core.http_utils import sanitize_no_proxy_env
 sanitize_no_proxy_env()
 
@@ -59,12 +59,25 @@ def manifest():
     emit(data, command="mcp manifest")
 
 @app.command("serve")
-def serve(port: int = typer.Option(8787, help="port"), transport: str = typer.Option("sse", help="sse|stdio")):
-    emit({"message": "MCP serving bb as MCP server", "port": port, "transport": transport, "tools": list_plugin_names(), "how": "Claude Desktop: http://localhost:8787/sse", "note": "v0.4 manifest ready, real SSE server coming"}, command="mcp serve")
+def serve(
+    sse: bool = typer.Option(False, "--sse", help="Serve over SSE/HTTP instead of stdio"),
+    port: int = typer.Option(8787, "--port", help="Port for --sse transport"),
+):
+    """Serve scout-cli plugins as a real MCP server (stdio by default)."""
+    try:
+        from bigbang.plugins.mcp.server import run_server
+    except ImportError as e:
+        emit({"error": f"mcp SDK not installed ({e}). Run: pip install 'mcp>=1.28.1'"},
+             command="mcp serve")
+        raise typer.Exit(1)
+    # Blocks until the client disconnects (stdio) or the process is stopped (sse).
+    run_server(transport="sse" if sse else "stdio", port=port)
 
 @app.command("add")
 def add_server(name: str = typer.Argument(..., help="name for MCP server"), url: str = typer.Argument(..., help="sse url")):
-    enforce_or_raise({"name": f"mcp-{name}", "capabilities": {"network": {"enabled": True, "domains": [url]}}}, "network", url)
+    # Real check against the persisted user allowlist (default-deny), not a
+    # manifest constructed to allow the exact URL being checked.
+    enforce_user_url_or_raise(url, context="mcp add")
     db = _load_mcp()
     db[name] = {"url": url, "type": "mcp", "added": True}
     _save_mcp(db)
@@ -83,7 +96,7 @@ def list_tools_cmd(server: str = typer.Argument(..., help="server name")):
         emit({"error": f"{server} not found. bb mcp add {server} <url>"})
         return
     url = db[server]["url"]
-    enforce_or_raise({"name": server, "capabilities": {"network": {"enabled": True, "domains": [url]}}}, "network", url)
+    enforce_user_url_or_raise(url, context="mcp list-tools")
     sanitize_no_proxy_env()
     try:
         _check_sdk()
@@ -99,7 +112,7 @@ def call_tool(server: str = typer.Argument(...), tool: str = typer.Argument(...)
         emit({"error": f"{server} not found"})
         return
     url = db[server]["url"]
-    enforce_or_raise({"name": server, "capabilities": {"network": {"enabled": True, "domains": [url]}}}, "network", url)
+    enforce_user_url_or_raise(url, context="mcp call")
     try:
         parsed = json.loads(args)
     except Exception:

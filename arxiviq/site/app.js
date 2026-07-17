@@ -20,7 +20,8 @@ const state = {
   snapshot: null,
   cards: null,
   ecosystem: null,
-  live: { status: null, experiments: null },
+  pilot: null,                       // baked runs/cpu_pilot/MANIFEST.json subset
+  live: { status: null, experiments: null, pilot: null },
   etags: {},          // url -> ETag, so unchanged responses return 304 (free, not rate-limited)
   branch: "base",
   source: "loading",
@@ -47,14 +48,16 @@ async function fetchJson(url, opts = {}) {
 }
 
 async function loadBaked() {
-  const [snapshot, cards, ecosystem] = await Promise.all([
+  const [snapshot, cards, ecosystem, pilot] = await Promise.all([
     fetchJson("data/snapshot.json"),
     fetchJson("data/model-cards.json"),
     fetchJson("data/ecosystem.json").catch(() => null),
+    fetchJson("data/pilot.json").catch(() => null),
   ]);
   state.snapshot = snapshot;
   state.cards = cards;
   state.ecosystem = ecosystem;
+  state.pilot = pilot;
 }
 
 // Conditional GET: send If-None-Match; a 304 (not rate-limited) means "unchanged".
@@ -75,6 +78,13 @@ async function tryLive() {
     state.live.status = await fetchJson(GH.factoryRaw("STATUS.json"));
     anyLive = true;
   } catch { /* private repo or offline — snapshot covers it */ }
+  try {
+    // The pilot manifest is committed evidence on the factory's master branch — live-fetch it
+    // (conditional GET keeps unchanged polls free) and prefer it over the baked copy.
+    const out = await condFetch(GH.factoryRaw("runs/cpu_pilot/MANIFEST.json"));
+    if (!out.unchanged) state.live.pilot = await out.res.json();
+    anyLive = anyLive || !!(state.live.pilot || state.pilot);
+  } catch { /* baked pilot.json covers it */ }
   try {
     const out = await condFetch(GH.rtxReleases);
     if (out.unchanged) {
@@ -222,6 +232,110 @@ function renderBpbChart(exps) {
   });
 }
 
+/* ---------------- cpu pilot ---------------- */
+
+const GRPO_MEANINGS = {
+  "grad_norm": "gradient actually flowed through the real weights (> 0)",
+  "param_delta_l2": "the checkpoint's parameters really moved (> 0, finite)",
+  "loss": "clipped-surrogate loss — finite (on-policy ratios ≈ 1 make it ≈ 0 by geometry)",
+  "rl.entropy": "importance-weighted policy entropy fed to the thermostat",
+  "rl.k": "entropy-thermostat integral state after the step",
+  "rl.outer_clip_hits": "circuit-breaker activations (healthy training: 0)",
+  "inner_clip_hits": "standard PPO clip activations",
+  "mean_ratio": "mean importance ratio (1.0 = on-policy by construction)",
+  "batch_size": "rollouts in the update batch",
+};
+
+function renderPilot() {
+  const p = state.live.pilot || state.pilot;   // prefer live factory-master manifest
+  const tiles = $("#pilot-tiles"), empty = $("#pilot-empty"), chart = $("#pilot-chart");
+  if (!p || !p.runs) {
+    tiles.innerHTML = "";
+    chart.innerHTML = "";
+    empty.classList.remove("hidden");
+    empty.textContent = "No pilot manifest available (live fetch failed and no baked pilot.json). "
+      + "The pilot evidence lives at ava-agi-factory-v6-4/runs/cpu_pilot/MANIFEST.json.";
+    $("#pilot-grpo-table tbody").innerHTML = "";
+    return;
+  }
+  empty.classList.add("hidden");
+  const pre = p.runs.pretrain || {}, br = p.runs.branch_agentic || {};
+  const preLm = pre.lm_loss_series || [], brLm = br.lm_loss_series || [];
+  const g = p.grpo_smoke || null;
+  const fork = br.branch_forked || {};
+
+  tiles.innerHTML = `
+    <div class="tile"><div class="k">Scale (honest)</div>
+      <div class="v" style="font-size:15px; margin-top:6px">${chip("warning", esc(p.scale || "?"))}</div>
+      <div class="d">capability claim: ${esc(p.capability_claim || "?")}</div></div>
+    <div class="tile"><div class="k">Pretrain</div>
+      <div class="v">${esc(pre.steps ?? "—")}<span class="unit">steps</span></div>
+      <div class="d">lm ${num(preLm[0], 2)} → ${num(preLm[preLm.length - 1], 2)} · ${esc(pre.wall_seconds ?? "—")}s</div></div>
+    <div class="tile"><div class="k">Branch fork (agentic)</div>
+      <div class="v">${esc(br.steps ?? "—")}<span class="unit">steps</span></div>
+      <div class="d">lm ${num(brLm[0], 2)} → ${num(brLm[brLm.length - 1], 2)} · frozen ${esc((fork.frozen || []).join("+") || "—")}</div></div>
+    <div class="tile"><div class="k">GRPO update</div>
+      <div class="v">${g ? num(g.grpo_step?.grad_norm, 3) : "—"}<span class="unit">grad norm</span></div>
+      <div class="d">${g ? `param Δ ${Number(g.grpo_step?.param_delta_l2).toExponential(2)} · ${esc(g.rollouts?.n ?? "?")} real rollouts` : "no grpo_smoke section"}</div></div>`;
+
+  renderPilotChart(preLm, brLm);
+  $("#pilot-note").textContent =
+    `real per-step lm loss from metrics jsonl · pretrain ${preLm.length} pts + branch ${brLm.length} pts`
+    + (state.live.pilot ? " · live from factory master" : " · baked snapshot");
+
+  const tb = $("#pilot-grpo-table tbody");
+  if (!g || !g.grpo_step) {
+    tb.innerHTML = "";
+    $("#pilot-grpo-note").textContent = "No GRPO smoke section in the manifest.";
+    return;
+  }
+  const rows = Object.entries(g.grpo_step)
+    .filter(([k]) => k !== "clip_lower" && k !== "clip_upper" && k !== "rl.k_before" && k !== "mean_objective");
+  tb.innerHTML = rows.map(([k, v]) => `
+    <tr><td><strong>${esc(k)}</strong></td>
+      <td class="num">${typeof v === "number" ? (Math.abs(v) < 1e-3 && v !== 0 ? v.toExponential(3) : num(v, 6)) : esc(v)}</td>
+      <td><span class="desc">${esc(GRPO_MEANINGS[k] || "")}</span></td></tr>`).join("");
+  $("#pilot-grpo-note").textContent =
+    `${g.note || ""} r_task=${num(g.rollouts?.mean_r_task, 1)} on all rollouts — the expected honest `
+    + `result: a smoke checkpoint emits noise. The chain (decode → sandbox → rewards → advantages → `
+    + `torch update) is what this proves, not capability.`;
+}
+
+function renderPilotChart(preLm, brLm) {
+  const host = $("#pilot-chart");
+  const all = [...preLm, ...brLm];
+  if (!all.length) { host.innerHTML = ""; return; }
+  const W = Math.max(640, host.clientWidth || 640), H = 260;
+  const m = { l: 56, r: 16, t: 12, b: 28 };
+  const yMin = Math.min(...all), yMax = Math.max(...all);
+  const yPad = (yMax - yMin || 0.01) * 0.08;
+  const y0 = yMin - yPad, y1 = yMax + yPad;
+  const n = all.length;
+  const X = (i) => m.l + (i / Math.max(1, n - 1)) * (W - m.l - m.r);
+  const Y = (v) => m.t + (1 - (v - y0) / (y1 - y0)) * (H - m.t - m.b);
+
+  let grid = "", labels = "";
+  for (let i = 0; i <= 4; i++) {
+    const v = y0 + (i / 4) * (y1 - y0);
+    grid += `<line class="gridline" x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}"/>`;
+    labels += `<text x="${m.l - 8}" y="${Y(v) + 4}" text-anchor="end">${v.toFixed(2)}</text>`;
+  }
+  const prePath = preLm.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(" ");
+  const brPath = brLm.map((v, i) =>
+    `${i ? "L" : "M"}${X(preLm.length + i).toFixed(1)},${Y(v).toFixed(1)}`).join(" ");
+  const forkX = X(preLm.length - 0.5);
+  host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+    ${grid}${labels}
+    <line class="baseline" x1="${m.l}" x2="${W - m.r}" y1="${H - m.b}" y2="${H - m.b}"/>
+    <line class="gridline" x1="${forkX}" x2="${forkX}" y1="${m.t}" y2="${H - m.b}" stroke-dasharray="4 4"/>
+    <text x="${forkX + 6}" y="${m.t + 14}">branch fork</text>
+    <text x="${m.l}" y="${H - 8}">step 1</text>
+    <text x="${W - m.r}" y="${H - 8}" text-anchor="end">step ${n} (pretrain ${preLm.length} + branch ${brLm.length})</text>
+    <path class="line" d="${prePath}"/>
+    <path class="line" d="${brPath}" style="opacity:.75"/>
+  </svg>`;
+}
+
 /* ---------------- checkpoint harness ---------------- */
 
 function renderHarness() {
@@ -349,7 +463,9 @@ function fmtTokens(n) {
 
 /* ---------------- ecosystem ---------------- */
 
-const STATE_KIND = { shipped: "good", "spec'd": "warning", planned: "critical", active: "good" };
+// "built" = code-complete + mechanically smoke-proven, capability-scale run still pending —
+// deliberately distinct from "shipped" so the roadmap never overstates model capability.
+const STATE_KIND = { shipped: "good", built: "good", "spec'd": "warning", planned: "critical", active: "good" };
 
 function renderEcosystem() {
   const eco = state.ecosystem;
@@ -395,6 +511,7 @@ function initTheme() {
 
 function renderAll() {
   renderTelemetry();
+  renderPilot();
   renderHarness();
   renderEvals();
   renderCards();
@@ -411,8 +528,11 @@ async function main() {
   renderAll();
   await tryLive();
   renderTelemetry();
-  setInterval(async () => { await tryLive(); renderTelemetry(); }, POLL_MS);
-  window.addEventListener("resize", () => { renderBpbChart(state.live.experiments || []); renderEvals(); });
+  renderPilot();
+  setInterval(async () => { await tryLive(); renderTelemetry(); renderPilot(); }, POLL_MS);
+  window.addEventListener("resize", () => {
+    renderBpbChart(state.live.experiments || []); renderEvals(); renderPilot();
+  });
 }
 
 main().catch((err) => {

@@ -9,7 +9,7 @@ from bigbang.core.output import emit
 app = typer.Typer(name="lab", help="🧪 Passive Lab — Turnover Shield, MRR, boring B2B SaaS ideas (Ava co-dev)", no_args_is_help=True)
 
 TOP10_DEFAULT = [
-    {"rank": 1, "name": "Trade Crew Turnover Shield", "pricing": "$79-$149/mo", "persona": "Plumbing/HVAC owners 20-100 techs", "pain": "30% annual churn, $5k hire cost", "status": "MVP live — paywalled"},
+    {"rank": 1, "name": "Trade Crew Turnover Shield", "target_pricing": "$79-$149/mo", "persona": "Plumbing/HVAC owners 20-100 techs", "pain_hypothesis": "high annual churn, expensive re-hiring", "status": "concept — not built, not live"},
     {"rank": 2, "name": "Crew Profit Assignment", "pricing": "$99-$199/mo", "persona": "Electrical/Plumbing dispatch", "pain": "Wrong tech = callback, low margin"},
     {"rank": 3, "name": "Fleet Fatigue & Fit", "pricing": "$79/mo", "persona": "Fleet managers tradies", "pain": "Exhaustion, injury, DOT risk"},
     {"rank": 4, "name": "Gym Coach Retention", "pricing": "$49-$99/mo", "persona": "Boutique gym owners", "pain": "Coach churn kills members"},
@@ -21,8 +21,13 @@ TOP10_DEFAULT = [
     {"rank": 10, "name": "Auto Repair Comeback", "pricing": "$79/mo", "persona": "Auto shop owners", "pain": "No-show, no comeback tracking"},
 ]
 
+import re as _re
+
+_TOP10_ITEM_RE = _re.compile(r"^\s*(?:[-*]|\d+[.)])\s+(.+\S)\s*$")
+
+
 def _load_top10():
-    # Try to load from your_files if exists
+    """Parse a real top-10 markdown list if one exists locally; else the labeled default."""
     for p in [
         Path.home() / "workspace" / "your_files" / "02_Passive_Lab" / "Market-Research" / "TOP10-HOME-ONLY-SOLO.md",
         Path.home() / "workspace" / "projects" / "first-1k-mo-passive" / "files" / "top10.md",
@@ -30,12 +35,18 @@ def _load_top10():
         if p.exists():
             try:
                 text = p.read_text()
-                # simplistic parse — keep default if parse fails
-                if "Turnover Shield" in text:
-                    return TOP10_DEFAULT
-            except Exception:
-                pass
-    return TOP10_DEFAULT
+            except OSError:
+                continue
+            items = []
+            for line in text.splitlines():
+                m = _TOP10_ITEM_RE.match(line)
+                if m:
+                    items.append({"rank": len(items) + 1, "name": m.group(1),
+                                  "source": str(p)})
+            if len(items) >= 5:
+                return items[:10]
+    # honestly-labeled builtin default — idea concepts, not live products
+    return [dict(item, source="builtin-default") for item in TOP10_DEFAULT]
 
 def _mrr_path():
     return Path.home() / "workspace" / "projects" / "first-1k-mo-passive" / "files" / "mrr.jsonl"
@@ -61,26 +72,21 @@ def ideas_cmd(
     emit({
         "top10": items,
         "count": len(items),
-        "pricing_note": "Position $79-$149/mo vs legacy Workday — undercut, ROI: 1 tech saved = $5k+",
+        "pricing_target": "Target position $79-$149/mo vs legacy tools — aspiration, not measured ROI",
         "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only"
     }, command="lab ideas")
 
 @app.command("shield")
 def shield_cmd():
-    """Turnover Shield MVP status — what bb writes can generate for it"""
-    # Check for existing spaces / bigbang artifacts
-    spaces = [
-        "family-spend-radar",
-        "turnover-shield-mvp?",
-        "passive-lab-voting-board"
-    ]
+    """Turnover Shield concept status — what bb write can generate for it"""
     mrr = _load_mrr()
     last = mrr[-1] if mrr else None
     payload = {
         "product": "Trade Crew Turnover Shield",
-        "pricing": {"starter": 79, "pro": 149, "target_customers_for_1k": "7-13"},
-        "roi_pitch": "Saving 1 tech = $5k hiring cost. 12% drop after text check-ins.",
-        "mvp_features": ["SMS check-in sequence", "Turnover risk score (tenure+OT+missed)", "Retention playbook", "Churn dashboard"],
+        "status": "concept — not built, not live",
+        "target_pricing": {"starter": 79, "pro": 149, "target_customers_for_1k": "7-13"},
+        "roi_claim_example": "Illustrative pitch only: saving 1 tech avoids a ~$[YOUR NUMBER] hiring cost — verify with your own data",
+        "planned_features": ["SMS check-in sequence", "Turnover risk score (tenure+OT+missed)", "Retention playbook", "Churn dashboard"],
         "stack": "Free-tier only: R2/Workers/Supabase/HF ZeroGPU, ONNX WASM — bb write generates authentic job posts & retention emails",
         "last_mrr_entry": last,
         "next_bb_commands": [
@@ -116,8 +122,7 @@ def mrr_cmd(
         with fp.open("a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
     history = _load_mrr()
-    total_mrr = sum((h.get("mrr") or 0) for h in history[-10:]) and (history[-1].get("mrr") if history else 0)
-    # Actually current MRR is last entry's mrr
+    # Current MRR is the last entry's mrr (MRR is a point-in-time figure, not a sum)
     current = history[-1].get("mrr") if history else 0
     target = 1000
     remaining = max(0, target - (current or 0))
@@ -148,13 +153,14 @@ def log_cmd(
 def pitch_cmd(
     persona: str = typer.Option("Plumbing owner Austin 20 techs", "--persona"),
 ):
-    # Generates authentic pitch using bb write internally via deterministic template
+    # Deterministic pitch TEMPLATE — every statistic is an explicit placeholder.
+    # Fill in your own measured numbers before sending this to anyone.
     pitch = (
-        f"For {persona}: last month we lost 2 techs in 3 weeks. Each hire cost $4.8k and 11 days.\n"
+        f"For {persona}: last month we lost [YOUR NUMBER] techs in [YOUR NUMBER] weeks. Each hire cost $[YOUR NUMBER] and [YOUR NUMBER] days.\n"
         "We started text check-ins day 7, 30, 90. Simple: How's truck? Any callbacks bugging you?\n"
-        "Turnover dropped 18% in 6 weeks. We kept 1 tech who was about to walk. Saved $5k.\n"
+        "Turnover dropped [YOUR NUMBER] percent in [YOUR NUMBER] weeks. We kept [YOUR NUMBER] tech who was about to walk. Saved $[YOUR NUMBER].\n"
         "Turnover Shield does this on autopilot. Risk score from tenure, OT, missed shifts. Plays retention plays.\n"
-        f"$79 starter. If it saves 1 tech, pays for 5 years. Built by Cam Davis in Austin — solo project, no employer tie, free-tier only.\n"
+        "$79 starter. If it saves 1 tech, pays for itself. Built in [YOUR CITY] — solo project, no employer tie, free-tier only.\n"
         "Next: 14-day trial, no card. I will set it up with your crew list."
     )
     # Scan it with write logic to prove HUMAN_LIKE
@@ -169,6 +175,8 @@ def pitch_cmd(
     emit({
         "persona": persona,
         "pitch": pitch,
+        "fallback_template": True,
+        "numbers_are_examples": True,
         "scan": s,
         "use_with": "bb write humanize or bb write generate for variants — all authentic, real sources",
         "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only"

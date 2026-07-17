@@ -19,8 +19,23 @@ _prog_name = os.path.splitext(_invoked)[0] if _invoked else "scout"
 if _prog_name in ("python", "python3", ""):
     _prog_name = "scout"
 
+class ScoutTyper(typer.Typer):
+    """Typer app that accepts --json in any position.
+
+    `scout --json tools list` and `scout tools list --json` both work: any
+    `--json` found after a subcommand is hoisted to the front so the shared
+    root callback (which owns the option) always sees it.
+    """
+
+    def __call__(self, *args, **kwargs):
+        argv = sys.argv[1:]
+        if "--json" in argv:
+            sys.argv = [sys.argv[0], "--json"] + [a for a in argv if a != "--json"]
+        return super().__call__(*args, **kwargs)
+
+
 # Root app - primary name scout, not bb/meta
-app = typer.Typer(
+app = ScoutTyper(
     name="scout",
     help="Scout CLI 🐾 — personal control plane (ex-BigBang). Local-first, agent-native, HOME-only. Ava-brained + RTX offload.",
     add_completion=True,
