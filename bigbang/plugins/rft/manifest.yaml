@@ -1,0 +1,13 @@
+name: rft
+version: 1.0.0
+description: RFT workflow-trace ETL — audit.jsonl episodes -> redacted, reward-annotated training datasets (MAI-Thinking-1 RFT-on-own-traces pattern)
+capabilities:
+  network:
+    enabled: false
+    domains: []
+  filesystem:
+    write: true
+    paths: ["~/.local/share/bigbang/rft/"]
+  secrets:
+    allow: []
+# Solo personal project, no connection to employer, built with public/free-tier only
