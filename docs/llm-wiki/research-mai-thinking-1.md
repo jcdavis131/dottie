@@ -36,6 +36,29 @@
 | `ava-skills` | none — loader's wRRF progressive disclosure (+79% token cut) is already the token-budget mechanism; no change from this review |
 | `personal-graphify` | none — graph-first querying is orthogonal; EG/ladder data stays in factory + rtx results |
 
+## Second-pass deltas (deeper companion analysis, same day)
+
+- **Recovery sampling** — random sampling of banked traces beat biased selection; prompt
+  diversity > traces-per-prompt. Factory spec 12 recovery rule updated (uniform random after
+  prompt-dedupe, no stratification).
+- **Zero-init attention output** — homogenized tokens at init break softmax routing (their MoE
+  gate ≈ Ava's J-Space Router). New factory hill-climb candidate **T11.8**: attention-output
+  norm gains = 0, falsify on nano via routing-KL health.
+- **Tool-use reward shaping** — graders reward *parallel* tool calls, penalize redundant ones.
+  ⬜ scout-cli idea: `agent bus` already judges proposed automations via the Frontier rubric —
+  add parallel-vs-redundant call efficiency as a rubric criterion when that surface next opens.
+- **Mem0-style memory layer** — stateless model + external retrieval pre-prompt + post-hoc
+  trace capture minting long-term memories; user sees only the sanitized answer. Ecosystem
+  analog: `ava-skills` memory-router (ShardMemo Tier A/B/C) is the retrieval half; the
+  trace-capture→memory-mint half doesn't exist anywhere yet. Idea only, no task filed.
+- **RFT framing** — Frontier Tuning rewards optimal *action sequences* (institutional muscle
+  memory → shorter paths → fewer tokens) instead of runtime context injection. Long-term
+  ecosystem analog: `audit.jsonl` execution traces are the workflow-trace substrate an
+  RFT-style pass would tune against.
+- **Benchmark humility** — headline numbers self-reported; same model trails on Terminal-Bench
+  2.0 (46.0 vs 59.1/75.1); SWE-Bench Pro has known FP/FN issues. Never adopt vendor numbers as
+  targets; measure locally (factory frozen snapshots + falsification gates).
+
 ## Cautions carried over
 
 - **"reward" naming collision** — in the factory, `reward` = data-quality filter score. RL
