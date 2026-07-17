@@ -20,6 +20,7 @@
     <button class="tab" role="tab" aria-selected="false" data-view="harness">Checkpoint Harness</button>
     <button class="tab" role="tab" aria-selected="false" data-view="evals">Evaluations</button>
     <button class="tab" role="tab" aria-selected="false" data-view="cards">Model Cards</button>
+    <button class="tab" role="tab" aria-selected="false" data-view="ecosystem">Ecosystem</button>
   </nav>
   <div class="topbar-right">
     <span id="source-badge" class="badge" title="Where the numbers on screen come from">loading…</span>
@@ -98,6 +99,22 @@ python skills/loader.py run eval-harness-runner</pre>
       eval artifacts by <code>arxiviq/generate_data.py</code> — regenerate and redeploy to refresh.</p>
     </div>
     <div id="cards-grid" class="cards-grid"></div>
+  </section>
+
+  <!-- Ecosystem -->
+  <section id="view-ecosystem" class="view hidden" aria-labelledby="eco-h">
+    <div class="view-head">
+      <h1 id="eco-h">Ecosystem &amp; roadmap</h1>
+      <p class="view-sub">The six Ava repos and the capability roadmap. States are reported honestly —
+      <strong>shipped</strong>, <strong>spec'd</strong> (contract exists, not built), or
+      <strong>planned</strong> (substrate only).</p>
+    </div>
+    <div id="ecosystem-repos" class="cards-grid"></div>
+    <div class="card">
+      <div class="card-head"><h2>Capability roadmap</h2>
+        <span class="card-note">what's real vs. what's next</span></div>
+      <div class="roadmap" id="roadmap-list"></div>
+    </div>
   </section>
 </main>
 

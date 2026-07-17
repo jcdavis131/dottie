@@ -22,7 +22,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, Iterator, List, Optional
@@ -36,22 +36,37 @@ RFT_SCHEMA_VERSION = "1.0.0"
 _SECRET_KEY_RE = re.compile(
     r"(secret|token|password|passwd|api[-_]?key|auth|credential|bearer|cookie)", re.IGNORECASE
 )
-_SECRET_VALUE_RE = re.compile(
-    r"^(sk-[A-Za-z0-9_\-]{8,}|ghp_[A-Za-z0-9]{8,}|gho_[A-Za-z0-9]{8,}|xox[a-z]-[A-Za-z0-9\-]{8,}"
-    r"|AKIA[0-9A-Z]{12,}|eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{5,}\..*)$"
+# UNANCHORED: secrets are redacted wherever they appear, including embedded inside a
+# longer string (a URL, a shell command, an "Authorization: Bearer <tok>" header). An
+# anchored ^...$ match only caught values that were EXCLUSIVELY a secret, so a secret
+# inside a command leaked while the record still claimed redacted=true.
+_SECRET_SUBSTR_RE = re.compile(
+    r"sk-[A-Za-z0-9_\-]{8,}"
+    r"|ghp_[A-Za-z0-9]{8,}|gho_[A-Za-z0-9]{8,}|ghs_[A-Za-z0-9]{8,}"
+    r"|xox[abposr]-[A-Za-z0-9\-]{8,}"
+    r"|AKIA[0-9A-Z]{12,}"
+    r"|eyJ[A-Za-z0-9_\-]{6,}\.[A-Za-z0-9_\-]{6,}\.[A-Za-z0-9_\-]{4,}"  # JWT
+    r"|(?i:bearer)\s+[A-Za-z0-9._\-]{6,}"
+    r"|(?i:basic)\s+[A-Za-z0-9+/=]{8,}"
+    r"|(?i:(?:authorization|api[-_]?key|x-api-key|password|token))\s*[:=]\s*\S+"
 )
 REDACTED = "[REDACTED]"
 
 
 def redact(value: Any, _key: str = "") -> Any:
-    """Recursively mask secret-shaped values by key name or value pattern."""
+    """Recursively mask secrets by key name (whole value) or by pattern (substring).
+
+    Applied to command/status/args alike at parse time — not only args — so nothing
+    labeled redacted=true can still carry a live credential.
+    """
     if isinstance(value, dict):
         return {k: redact(v, _key=str(k)) for k, v in value.items()}
     if isinstance(value, list):
         return [redact(v, _key=_key) for v in value]
     if isinstance(value, str):
-        if _SECRET_KEY_RE.search(_key) or _SECRET_VALUE_RE.match(value.strip()):
+        if _SECRET_KEY_RE.search(_key):
             return REDACTED
+        return _SECRET_SUBSTR_RE.sub(REDACTED, value)
     return value
 
 
@@ -109,9 +124,10 @@ def parse_audit_lines(lines: Iterable[str]) -> List[Dict[str, Any]]:
             continue
         events.append({
             "ts": ts,
-            "command": str(row["command"]),
+            # Redact command/status too, not just args — a secret can be interpolated
+            "command": redact(str(row["command"]), _key="command"),
             "args": redact(row.get("args") or {}),
-            "status": str(row.get("status", "ok")),
+            "status": redact(str(row.get("status", "ok")), _key="status"),
             "duration_ms": int(row.get("duration_ms") or 0),
         })
     events.sort(key=lambda e: e["ts"])
@@ -276,7 +292,7 @@ def _contains_secret(value: Any) -> bool:
         return any(_contains_secret(v) for v in value.values())
     if isinstance(value, list):
         return any(_contains_secret(v) for v in value)
-    return isinstance(value, str) and bool(_SECRET_VALUE_RE.match(value.strip()))
+    return isinstance(value, str) and bool(_SECRET_SUBSTR_RE.search(value))
 
 
 # ---------------------------------------------------------------------------

@@ -53,6 +53,27 @@ class TestRedaction:
         out = redact({"note": "sk-abcdefghijklmnop", "nested": [{"v": "ghp_ABCDEFGH1234"}]})
         assert out["note"] == REDACTED and out["nested"][0]["v"] == REDACTED
 
+    def test_embedded_secret_in_command_redacted(self):
+        # The bug: anchored ^...$ regex missed secrets inside a longer string.
+        cmd = "curl -H 'Authorization: Bearer sk-abc123def456ghij' https://api.x.com"
+        out = redact({"cmd": cmd})
+        assert "sk-abc123def456ghij" not in out["cmd"] and REDACTED in out["cmd"]
+        assert "https://api.x.com" in out["cmd"]  # non-secret parts preserved
+
+    def test_parse_redacts_command_and_status(self):
+        line = json.dumps({
+            "ts": T0.isoformat(), "command": "auth login token=ghp_ABCDEFGH1234",
+            "args": {}, "status": "ok", "duration_ms": 5,
+        })
+        ev = parse_audit_lines([line])[0]
+        assert "ghp_ABCDEFGH1234" not in ev["command"] and REDACTED in ev["command"]
+
+    def test_embedded_secret_flagged_by_validator(self):
+        ep = segment_episodes(parse_audit_lines([audit_line(0)]))[0]
+        record = to_rft_record(ep)
+        record["steps"][0]["args"]["blob"] = "log line with token sk-abc123def456ghij embedded"
+        assert any("secret" in p for p in validate_record(record))
+
     def test_parse_applies_redaction(self):
         events = parse_audit_lines([audit_line(0, args={"password": "hunter2"})])
         assert events[0]["args"]["password"] == REDACTED

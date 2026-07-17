@@ -48,20 +48,6 @@ def _read_json(path: Path) -> Optional[Any]:
         return None
 
 
-def _param_estimate(model: Dict[str, Any]) -> Optional[int]:
-    """Rough decoder-param estimate from config dims (embed + blocks); labeling only."""
-    try:
-        d = int(model["d_model"])
-        layers = int(model.get("n_text_layers", 0)) + int(model.get("n_fusion_layers", 0)) \
-            + int(model.get("n_reasoning_layers", 0))
-        vocab = int(model["vocab_size"])
-        mlp = int(model.get("mlp_mult", 4))
-        per_block = 4 * d * d + 2 * mlp * d * d   # attn (q,k,v,o) + gated MLP approx
-        return vocab * d + layers * per_block
-    except (KeyError, TypeError, ValueError):
-        return None
-
-
 def build_model_cards(factory: Path) -> List[Dict[str, Any]]:
     cards: List[Dict[str, Any]] = []
     branch_evals = _read_json(factory / "branch_eval_results.json") or {}
@@ -77,7 +63,6 @@ def build_model_cards(factory: Path) -> List[Dict[str, Any]]:
             "id": f"ava-{preset}",
             "name": f"Ava {preset}",
             "params_label": note["params_label"],
-            "params_estimate": _param_estimate(model),
             "status": note["status"],
             "ladder_rung": note["ladder_rung"],
             "architecture": {
@@ -170,6 +155,57 @@ def build_snapshot(factory: Path) -> Dict[str, Any]:
     }
 
 
+def build_ecosystem() -> Dict[str, Any]:
+    """Static-but-authored map of the six Ava repos and the capability roadmap.
+
+    Honesty note: the 'think in code / LLM-VM' capability is reported as PLANNED, not
+    shipped — the substrate (code-exec rewards, agentic SWE spec, workflow-trace ETL)
+    exists but a first-class CodeAct training objective is not yet wired. Do not let this
+    surface imply otherwise.
+    """
+    repos = [
+        {"name": "ava-agi-factory-v6-4", "role": "Model factory",
+         "detail": "From-scratch 1B Multi-J-Space model; gather→curate→train→serve pipeline; "
+                   "scale ladder nano→mini→base1b; RL spec 12 (GRPO discipline system).",
+         "status": "active"},
+        {"name": "ava-open-harness", "role": "Eval gate",
+         "detail": "5 canonical J-Space tests + 11-category frontier rubric; anti-mock guard "
+                   "(tests/test_no_mock.py) enforces live-forward-pass floats; honest real-mode failures.",
+         "status": "active"},
+        {"name": "ava-skills", "role": "Skill system",
+         "detail": "Tool-Graph-ordered, wRRF-reranked skills routed to J-Space subsystems; "
+                   "memory-router (retrieval) + memory-mint (async ingestion) form the memory layer.",
+         "status": "active"},
+        {"name": "scout-cli", "role": "Control plane",
+         "detail": "Security-first agent CLI; ava/rtx/graphify plugins; RFT ETL turns audit.jsonl "
+                   "workflow traces into training datasets; hosts this arxiviq site.",
+         "status": "active"},
+        {"name": "scout-rtx", "role": "Local hill-climb",
+         "detail": "Autonomous overnight RTX runner; TinyStories proxy experiments promoted into "
+                   "the factory model only after a 2-rung EG ladder gate (rank-invariance).",
+         "status": "active"},
+        {"name": "personal-graphify", "role": "Knowledge-graph RAG",
+         "detail": "Query-first code graph (measured token reduction) feeding agents graph-before-grep.",
+         "status": "active"},
+    ]
+    roadmap = [
+        {"capability": "Verifiable RL (GRPO discipline system)", "state": "spec'd",
+         "note": "specs/12_rl_training.md — entropy thermostat, outer ratio clip, trace-bank "
+                 "recovery, difficulty-scaled length penalty. Blocked on branch fine-tunes (T9.3/T9.5)."},
+        {"capability": "Memory layer (mint + route)", "state": "shipped",
+         "note": "memory-mint async ingestion + memory-router retrieval, scope-symmetric."},
+        {"capability": "RFT on workflow traces", "state": "shipped",
+         "note": "audit.jsonl → redacted, reward-component-annotated, versioned RFT dataset."},
+        {"capability": "Efficiency-Gain scaling gates", "state": "shipped",
+         "note": "efficiency_gain.py — EG_FLOPs/EG_Time vs baseline curve, 2-rung promote/hold verdict."},
+        {"capability": "Think-in-code / LLM-VM (CodeAct)", "state": "planned",
+         "note": "Substrate exists (code-bench exec-verify, agentic SWE climb, workflow-trace ETL) "
+                 "but a first-class code-as-reasoning objective + sandbox + datagen + RFT reward is "
+                 "NOT yet wired. Candidate: specs/13_codeact.md."},
+    ]
+    return {"repos": repos, "roadmap": roadmap}
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--roots", default=str(Path(__file__).resolve().parent.parent.parent),
@@ -188,10 +224,13 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     cards = {"generated_at": stamp, "source": FACTORY, "cards": build_model_cards(factory)}
     snapshot = {"generated_at": stamp, "source": FACTORY, **build_snapshot(factory)}
+    ecosystem = {"generated_at": stamp, **build_ecosystem()}
 
     (out / "model-cards.json").write_text(json.dumps(cards, indent=1), encoding="utf-8")
     (out / "snapshot.json").write_text(json.dumps(snapshot, indent=1), encoding="utf-8")
-    print(f"wrote {out / 'model-cards.json'} ({len(cards['cards'])} cards) and {out / 'snapshot.json'}")
+    (out / "ecosystem.json").write_text(json.dumps(ecosystem, indent=1), encoding="utf-8")
+    print(f"wrote model-cards.json ({len(cards['cards'])} cards), snapshot.json, "
+          f"ecosystem.json ({len(ecosystem['repos'])} repos)")
     return 0
 
 
