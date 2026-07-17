@@ -32,14 +32,15 @@ def surprise_edges(G: nx.MultiDiGraph, top_n: int = 15) -> List[Dict]:
     surprises_sorted = sorted(surprises, key=lambda x: x["score"], reverse=True)
     return surprises_sorted[:top_n]
 
-def token_stats(G: nx.MultiDiGraph, files_count: int) -> Dict:
-    """Measured token economics: naive = real bytes of the files in the graph / 4
-    (chars-per-token heuristic); query = measured size of a representative scoped
-    answer (top god-nodes + their neighborhoods serialized, the shape `pgraphify
-    query` actually emits). Falls back to a node-count estimate — labeled as such —
-    only when the indexed files are no longer on disk.
+def naive_token_estimate(G: nx.MultiDiGraph, files_count: int = 0):
+    """Naive (whole-corpus) token count for the graph's indexed files.
+
+    Measured: sum of real file bytes / 4 (chars-per-token heuristic). Falls back to a
+    node-count estimate — labeled as such — only when the indexed files are no longer
+    on disk. Shared by token_stats() and query.py so the two never drift.
+
+    Returns (tokens, basis).
     """
-    import json
     import os
 
     file_paths = {d.get("file") for _, d in G.nodes(data=True) if d.get("file")}
@@ -50,12 +51,21 @@ def token_stats(G: nx.MultiDiGraph, files_count: int) -> Dict:
         except OSError:
             continue
     if naive_bytes:
-        est_naive_tokens = naive_bytes // 4
-        basis = "measured: sum of indexed file bytes / 4"
-    else:
-        est_naive_tokens = G.number_of_nodes() * 50 + files_count * 200
-        basis = "estimated: indexed files not on disk; node-count heuristic"
+        return naive_bytes // 4, "measured: sum of indexed file bytes / 4"
+    return (G.number_of_nodes() * 50 + files_count * 200,
+            "estimated: indexed files not on disk; node-count heuristic")
 
+
+def payload_tokens(obj) -> int:
+    """Token count of a scoped payload = serialized chars / 4. Shared estimator."""
+    import json
+    return max(1, len(json.dumps(obj, default=str)) // 4)
+
+
+def token_stats(G: nx.MultiDiGraph, files_count: int) -> Dict:
+    """Measured token economics: naive = whole-corpus tokens; query = a representative
+    scoped answer (top god-nodes + neighborhoods), the shape `pgraphify query` emits."""
+    est_naive_tokens, basis = naive_token_estimate(G, files_count)
     top = sorted(G.degree, key=lambda kv: kv[1], reverse=True)[:10]
     scoped_payload = [
         {"label": n, "degree": deg,
@@ -63,7 +73,7 @@ def token_stats(G: nx.MultiDiGraph, files_count: int) -> Dict:
          "neighbors": [m for m in list(G.successors(n))[:8]]}
         for n, deg in top
     ]
-    est_query_tokens = max(1, len(json.dumps(scoped_payload)) // 4)
+    est_query_tokens = payload_tokens(scoped_payload)
     reduction = est_naive_tokens / max(est_query_tokens, 1)
     return {"naive": est_naive_tokens, "query": est_query_tokens,
             "reduction": round(reduction, 1), "basis": basis}
