@@ -57,7 +57,7 @@ Ava co-dev loop:
 
 ## Testing v0.5
 
-pytest tests/test_cli.py → 14 passed:
+pytest tests/ → full suite (run `pytest tests/ -q` for the current count). test_cli.py covers:
 - import, plugin_list_security_first (now 14 names inc write/lab/brain), security_vault, registry, policy_manifests_exist, json_contract
 - write_scan_strong_ai 100, write_humanize_deterministic_zero 0 with participial strip, write_generate_humanlike HUMAN_LIKE, write_cli_json
 - lab_ideas TOP10 rank1 Turnover Shield, brain_goals exists, ava_route_write 0.93, ava_route_lab 0.91

@@ -41,7 +41,7 @@ capabilities:
 - `tasks` uses no secret — relies on `hatch_gws_cli tasks status` which stores OAuth token in Hatch secure storage, not in repo or vault.
 
 ## Google Tasks Wiring Security
-- `hatch_gws_cli tasks status` returns `{"ok":true,"status":"connected","connect_url":...,"disconnect_url":...}` — we never log full URLs in audit? Actually we emit connection object which includes URLs, but audit strips token-like substrings? Should manually redact connect_url in future (todo: add redaction).
+- `hatch_gws_cli tasks status` returns `{"ok":true,"status":"connected","connect_url":...,"disconnect_url":...}` — the audit pipeline now recursively redacts secret-bearing keys (value/token/secret/password/credential/auth/key) and secret-shaped substrings (Bearer tokens, sk-/ghp_/JWT patterns) before anything reaches audit.jsonl (`bigbang/core/output.py:_redact_for_audit`), so token-carrying connect URLs are masked. Resolved — no longer a todo.
 - `tasks` commands use params `{"tasklist": "@default"}` — safe, no PII except task titles which user controls.
 - `sync-bb` reads audit.jsonl (local) and creates tasks — titles include command names, not secrets.
 

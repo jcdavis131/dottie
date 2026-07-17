@@ -41,11 +41,6 @@ def sanitize_no_proxy_env():
         if cleaned != val:
             os.environ[key] = cleaned
 
-def get_httpx_client_kwargs():
-    sanitize_no_proxy_env()
-    # return kwargs that ensure trust_env=True (default) works
-    return {}
-
 # Auto-sanitize on import
 sanitize_no_proxy_env()
 

@@ -503,28 +503,57 @@ def status():
     emit(payload, command="ava status")
 
 
-@app.command("train")
-def train(smoke: bool = typer.Option(False), offline: bool = typer.Option(True), steps: int = typer.Option(1000)):
+def _run_in_factory(argv: list, yes: bool, command: str, description: str):
+    """Run a command inside the factory repo, with an explicit confirm gate."""
+    import subprocess
+    if not FACTORY.exists():
+        emit({
+            "error": f"factory repo not present at {FACTORY}",
+            "hint": "clone ava-agi-factory-v6-4 into ~/workspace first",
+        }, command=command)
+        raise typer.Exit(1)
+    if not yes:
+        confirmed = typer.confirm(f"Run in {FACTORY}: {' '.join(argv)} ?")
+        if not confirmed:
+            emit({"cancelled": True, "cmd": " ".join(argv)}, command=command)
+            raise typer.Exit(1)
+    proc = subprocess.run(argv, cwd=str(FACTORY), capture_output=True, text=True)
     emit({
-        "action": "ava train",
-        "smoke": smoke,
-        "offline": offline,
-        "steps": steps,
-        "cmd": f"docker compose --profile cuda up -d && python train_1b_deepspeed.py --smoke={smoke}",
-        "audit": "Training logs -> ~/workspace/ava-agi-factory-v6-4/logs/, eval via Frontier rubric",
+        "action": description,
+        "cmd": " ".join(argv),
+        "cwd": str(FACTORY),
+        "exit_code": proc.returncode,
+        "stdout": proc.stdout[-4000:],
+        "stderr": proc.stderr[-2000:],
         "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
-    }, command="ava train")
+    }, command=command)
+    if proc.returncode != 0:
+        raise typer.Exit(proc.returncode)
+
+
+@app.command("train")
+def train(
+    smoke: bool = typer.Option(False),
+    offline: bool = typer.Option(True),
+    steps: int = typer.Option(1000),
+    yes: bool = typer.Option(False, "--yes", "-y", help="skip confirmation prompt"),
+):
+    """Run a real training job in the factory repo (requires it to be cloned locally)."""
+    argv = ["python", "train_1b_deepspeed.py", f"--smoke={smoke}", f"--steps={steps}"]
+    if offline:
+        argv.append("--offline")
+    _run_in_factory(argv, yes=yes, command="ava train", description="ava train")
 
 
 @app.command("eval")
-def eval_cmd(frontier: bool = typer.Option(False, help="run Frontier 11-cat rubric")):
-    emit({
-        "eval": "frontier" if frontier else "branch-harness",
-        "harness": "eval_branch_harness.py + eval_frontier_rubric.py",
-        "judge": "Ollama qwen3:32b",
-        "bigbang_use": "Ava scores if a new tool/skill is worth promoting to core",
-        "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
-    }, command="ava eval")
+def eval_cmd(
+    frontier: bool = typer.Option(False, help="run Frontier 11-cat rubric"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="skip confirmation prompt"),
+):
+    """Run a real eval harness in the factory repo (requires it to be cloned locally)."""
+    script = "eval_frontier_rubric.py" if frontier else "eval_branch_harness.py"
+    _run_in_factory(["python", script], yes=yes, command="ava eval",
+                    description=f"ava eval ({'frontier' if frontier else 'branch-harness'})")
 
 
 @app.command("route")

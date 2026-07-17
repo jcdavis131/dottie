@@ -5,13 +5,13 @@
 > Token-efficient brain dump for LLMs + humans. Built for `bb` v0.4.1 with Google Tasks wired as `bb tasks`.
 
 ## What BigBang CLI Is
-- **One CLI to rule all internet tools** — OpenAPI, MCP, CLI, Python, Google Tasks, via 12 plugins.
+- **One CLI to rule all internet tools** — OpenAPI, MCP, CLI, Python, Google Tasks, via 17 plugins (see plugins.md for the auto-generated catalog).
 - **Security-first**: vault 0600 `~/.local/share/bigbang/secrets.json`, keyring + `BB_SECRET_` env, `policy.py enforce_or_raise` before any network, default deny `network.domains`, `fs.write`, `secrets.allow`, audit `audit.jsonl`.
 - **Agent-native**: every command `emit(dict, command="...")` → valid JSON when `--json`, rich otherwise, audited.
 - **Ava-brained**: `core/llm.py` resilient Ollama router `localhost:11434` + `host.docker.internal:11434`, preferred `qwen3:32b`, heuristic fallback.
 - **Proxy-hardened**: `core/http_utils.py sanitize_no_proxy_env()` strips `[::1]` and `fd8b::` IPv6 brackets that break `httpx` `Invalid port: ':1]'` in Hatch egress proxy (`hatch-egress-proxy:3128`).
 
-## Plugin Map (12 plugins)
+## Plugin Map (17 plugins — auto-catalog in plugins.md)
 | Plugin | Purpose | Key Commands | Capabilities |
 |--------|---------|--------------|--------------|
 | `tasks` ✅ NEW | Google Tasks via `hatch_gws_cli` | `status`, `lists`, `list`, `get`, `add`, `update`, `complete`, `delete`, `create-list`, `sync-bb`, `export` | network false, fs write llm-wiki/, secrets none (Hatch-managed OAuth) |

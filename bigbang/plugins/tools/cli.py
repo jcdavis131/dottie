@@ -2,7 +2,7 @@ import typer
 from typing import Optional
 from bigbang.core.output import emit
 from bigbang.core.registry import register_tool, list_tools, get_tool, unregister_tool, search_tools
-from bigbang.core.policy import enforce_or_raise
+from bigbang.core.policy import enforce_or_raise, enforce_user_url_or_raise
 from bigbang.core.http_utils import sanitize_no_proxy_env
 sanitize_no_proxy_env()
 from bigbang.core.openapi import fetch_spec, generate_typer_plugin, call_openapi, parse_operations
@@ -108,8 +108,9 @@ def call_cmd(name: str = typer.Argument(...), action: Optional[str] = typer.Argu
 @app.command("import-openapi")
 def import_openapi(url: str = typer.Argument(..., help="OpenAPI JSON URL"), name: Optional[str] = typer.Option(None)):
     sanitize_no_proxy_env()
-    dummy_manifest = {"name": "tools-import", "capabilities": {"network": {"enabled": True}}}
-    enforce_or_raise(dummy_manifest, "network", url)
+    # Checked against the persisted user allowlist (~/.config/bigbang/policy.yaml),
+    # not a manifest constructed to allow the exact URL being checked.
+    enforce_user_url_or_raise(url, context="tools import-openapi")
     try:
         spec = fetch_spec(url)
         import re

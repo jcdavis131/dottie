@@ -232,8 +232,11 @@ def sync_to_personal(src_graph: Optional[str] = None, cwd: Optional[Path] = None
     if not src.exists():
         return {"ok": False, "error": f"missing {src}", "disclaimer": DISCLAIMER}
     dest_dir = personal_graphify_home() / "references" / "spaces"
-    dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / "scout-cli-graph.json"
+    from bigbang.core.policy import enforce_or_raise, load_manifest
+    manifest = load_manifest(Path(__file__).resolve().parent)
+    enforce_or_raise(manifest, "fs_write", str(dest))
+    dest_dir.mkdir(parents=True, exist_ok=True)
     dest.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
     return {
         "ok": True,

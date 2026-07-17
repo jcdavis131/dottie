@@ -163,8 +163,9 @@ Serve BigBang as MCP:
 
 ```bash
 bb mcp manifest  # all bb_* tools → bb_write, bb_lab, bb_brain, etc.
-bb mcp serve --port 8787
-# Claude Desktop: {"mcpServers": {"bigbang": {"url": "http://localhost:8787/sse"}}}
+bb mcp serve                     # real MCP server over stdio (default)
+bb mcp serve --sse --port 8787   # or SSE at http://localhost:8787/sse
+# Claude Desktop (stdio): {"mcpServers": {"scout": {"command": "scout", "args": ["mcp", "serve"]}}}
 ```
 
 ## Ava Ecosystem — Co-Development Loop
@@ -183,8 +184,8 @@ BigBang is the tool you use for everything AND the tool you give to Ava:
 ## Testing
 
 ```bash
-pytest tests/test_cli.py -v
-# 14 tests: import, security, registry, manifests (now includes write/lab/brain), json contract,
+pytest tests/ -v
+# Full suite (run for the current count): import, security, registry, manifests, json contract,
 # write scan STRONG_AI, humanize 0, generate HUMAN_LIKE, cli json, lab ideas, brain, ava routes
 ```
 

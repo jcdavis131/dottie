@@ -8,7 +8,7 @@ Primary command: `scout` (aliases: `bb`, `bigbang`, `dv`, `kitty` for compat) �
 
 ## What's New in v0.6.0 — Scout rename 🐾 + RTX Releases Auto-Read
 
-- **Scout rename:** `name = "scout-cli" v0.6.0` — binary `scout` primary, `bb`/`bigbang`/`kitty`/`dv` kept as aliases. `pyproject.toml` scripts + `bigbang/cli.py` app name `scout` with invoked detection. `scout --help` shows Scout CLI personal control plane. 35 tests passing (18 CLI + 17 RFT ETL).
+- **Scout rename:** `name = "scout-cli" v0.6.0` — binary `scout` primary, `bb`/`bigbang`/`kitty`/`dv` kept as aliases. `pyproject.toml` scripts + `bigbang/cli.py` app name `scout` with invoked detection. `scout --help` shows Scout CLI personal control plane. Full pytest suite green (`pytest tests/` for the current count).
 - **RTX Offload v0.6.0 wired to GitHub Releases:** new plugin commands `scout rtx releases list` (fetches `https://api.github.com/repos/jcdavis131/scout-rtx/releases`) and `scout rtx releases sync --tag v0.6.0-demo-0715` (downloads `results.tsv/jsonl` assets to local `autoresearch-rtx-custom/`). 
 - **Dashboard auto-read:** `rtx-offload-dashboard` space now has `githubReleases` table + migration `0003_add_github_releases.sql`, server actions `listGithubReleases` (GH API), `syncReleaseResults` (TSV/JSONL parse + dedup by commit_sha), `getReleaseCache`, and client `releasesQuery` with `refetchInterval: 60_000`. UI section GITHUB RELEASES with SYNC GH + asset links + IMPORT → LOG button. Demo release `v0.6.0-demo-0715` published with best bpb 0.9935 (4 rows) → dashboard DB verified: 4 results, best 0.9935.
 - **Hourly server cron:** `rtx-releases-hourly-sync` interval@1h—auto-fetches latest release, runs `scout rtx releases sync`, inserts missing rows into dashboard `app.db` `experiment_results`, logs to `your_files/rtx-sync-log.jsonl`. So even when browser closed, local `scout rtx results --best` stays fresh.
@@ -65,7 +65,7 @@ scout rtx dashboard                       # opens rtx-offload-dashboard
 - **Write Plugin v0.5 ✍️** — research-grounded AI slop detector (ai-slop-detect 70+, slop-radar 245 buzzwords, slop-cop 36 rules, CMU PNAS 2025 participial 2-5x, arXiv 2509.19163). `scan`/`check` BEFORE STRONG_AI 100 → AFTER HUMAN_LIKE 0 via deterministic fix (em-dash, buzzword strip, participial comma strip x2). `generate` always HUMAN_LIKE 0 with real citations, `batch` scans dir, `hook --install` adds pre-commit guard. Ollama fast path 0.8s + 6s chat (trust_env=False) — no 25s hang.
 - **Lab Plugin 🧪** — Passive Lab top10 (Turnover Shield $79-$149/mo), `shield` MVP status, `mrr` logs to `projects/first-1k-mo-passive/files/mrr.jsonl` for First $1k/mo goal, `pitch` generates HUMAN_LIKE founder pitch scanned by write plugin.
 - **Brain Plugin 🧠** — Hatch MEMORY.md + daily notes + goals bridge for Ava. `memory`, `goals`, `goal <slug>`, `sync` token-efficient snapshot for LLM-wiki ingestion, `daily` append.
-- **Ava & Agent Routing Upgraded** — `ava route "check slop"` → write 0.93, `"mrr"` → lab 0.91, `"brain sync"` → brain 0.90. `agent run` builtin_hints includes write/lab/brain. Tests 14 passing.
+- **Ava & Agent Routing Upgraded** — `ava route "check slop"` → write 0.93, `"mrr"` → lab 0.91, `"brain sync"` → brain 0.90. `agent run` builtin_hints includes write/lab/brain.
 - **Tests**: write scan/humanize 0, generate HUMAN_LIKE, lab ideas, ava routes, manifest existence for write/lab/brain.
 
 ## Vision: Why One CLI?
@@ -100,8 +100,10 @@ bb agent run "summarize my GitHub PRs and check Vector Hoops build"
 
 # MCP — expose BigBang itself as one MCP server to Claude/Cursor/Hatch
 bb mcp manifest
-bb mcp serve --port 8787 --transport sse
-# Add to Claude Desktop as http://localhost:8787/sse => instant access to bb_*
+bb mcp serve                 # real MCP server over stdio (default) — one bb_<plugin> tool per plugin
+bb mcp serve --sse --port 8787   # or SSE/HTTP at http://localhost:8787/sse
+# Claude Desktop (stdio config):
+# {"mcpServers": {"scout": {"command": "scout", "args": ["mcp", "serve"]}}}
 ```
 
 ## Security First — by Design
@@ -110,10 +112,10 @@ Every command audited. Every secret vaulted. Every plugin capability-declared.
 
 | Layer | How |
 |-------|-----|
-| **Vault** | `bb secrets set GITHUB_TOKEN xxx` → OS keyring + `~/.local/share/bigbang/secrets.json` (0600) + audit without value. Env fallback `BB_SECRET_GITHUB_TOKEN` |
+| **Vault** | `bb secrets set GITHUB_TOKEN xxx` → file store `~/.local/share/bigbang/secrets.json` (0600); reads also check OS keyring (read-fallback, no keyring writes) and env `BB_SECRET_GITHUB_TOKEN`. Audited without value |
 | **Policy** | Each plugin/tool has `manifest.yaml` with `capabilities.network.domains`, `filesystem.write`, `secrets.allow`. Default deny. Checked before exec |
 | **Audit** | Every invocation → `~/.local/share/bigbang/audit.jsonl` (ts, command, args hash, duration) |
-| **Isolation** | Tools run via registry with restricted env. Docker tools → container. Python tools → isolated venv. OpenAPI → httpx with domain allowlist |
+| **Isolation** | OpenAPI/MCP calls → httpx with domain allowlist + persisted user allowlist (`~/.config/bigbang/policy.yaml`, default-deny). Docker-container and isolated-venv execution are Roadmap (v0.6.0), not current |
 | **Supply** | pinned deps, egg-info scrubbed, no secrets in repo, `git secrets` ready |
 
 ```bash
@@ -191,9 +193,10 @@ bb agent run "check Vector Hoops build status and list open GitHub PRs"
 bb --json agent run "summarize Family Brain" | jq .plan
 
 # 5. Serve yourself as MCP to Claude/Cursor
-bb mcp serve --port 8787
-# In Claude Desktop config:
-# { "mcpServers": { "bigbang": {"url": "http://localhost:8787/sse"}}}
+bb mcp serve                       # stdio (default, Claude Desktop-ready)
+bb mcp serve --sse --port 8787     # or SSE at http://localhost:8787/sse
+# Claude Desktop config (stdio):
+# {"mcpServers": {"scout": {"command": "scout", "args": ["mcp", "serve"]}}}
 
 # 6. Audit & policy
 bb system audit --n 20
@@ -237,7 +240,7 @@ bb mytool hello --json
 - v0.2.0 ✅ Remove finance, generic tools only
 - v0.3.0 ✅ Security foundation: vault 0600+keyring, policy caps via manifest.yaml, audit jsonl, universal tool registry, MCP client+server, Ava router stub
 - v0.4.0 ✅ Real MCP SDK client (mcp Python), OpenAPI codegen, Google Tasks wired, LLM-wiki + graphify, Ollama qwen3:32b routing
-- v0.5.0 ✅ Authentic Generators v0.5: write scan/humanize/generate HUMAN_LIKE 0 + batch + pre-commit hook, lab MRR tracking, brain goals/memory bridge, Ava routes write/lab/brain 0.9+, 14 tests passing
+- v0.5.0 ✅ Authentic Generators v0.5: write scan/humanize/generate HUMAN_LIKE 0 + batch + pre-commit hook, lab MRR tracking, brain goals/memory bridge, Ava routes write/lab/brain 0.9+
 - v0.6.0 🔜 Docker isolation for tools, pipx venv isolation, age encryption for vault, Sigstore signing for plugins, Ava vector memory over audit.log
 - v0.7.0 🔜 Tailscale tunnel to expose bb MCP to iOS/Android, background bus as Hatch heartbeat, bb lab auto-pitch via Frontier rubric
 

@@ -16,10 +16,12 @@ def log_event(command: str, args: dict, status: str = "ok", duration_ms: int = 0
         "status": status,
         "duration_ms": duration_ms,
     }
+    # Tolerate only I/O failures (read-only FS, missing home). Anything else —
+    # e.g. unserializable args — is a programming error and must be loud.
     try:
         with AUDIT_FILE.open("a") as f:
-            f.write(json.dumps(entry) + "\n")
-    except Exception:
+            f.write(json.dumps(entry, default=str) + "\n")
+    except OSError:
         pass
 
 def tail_events(n: int = 20):
