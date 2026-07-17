@@ -17,6 +17,7 @@
   </div>
   <nav class="tabs" role="tablist" aria-label="Sections">
     <button class="tab active" role="tab" aria-selected="true" data-view="telemetry">Telemetry</button>
+    <button class="tab" role="tab" aria-selected="false" data-view="pilot">CPU Pilot</button>
     <button class="tab" role="tab" aria-selected="false" data-view="harness">Checkpoint Harness</button>
     <button class="tab" role="tab" aria-selected="false" data-view="evals">Evaluations</button>
     <button class="tab" role="tab" aria-selected="false" data-view="cards">Model Cards</button>
@@ -44,6 +45,34 @@
       </div>
       <div id="bpb-chart" class="chart" role="img" aria-label="Line chart of validation bits per byte across experiments"></div>
       <div id="bpb-empty" class="empty hidden"></div>
+    </div>
+  </section>
+
+  <!-- CPU Pilot -->
+  <section id="view-pilot" class="view hidden" aria-labelledby="p-h">
+    <div class="view-head">
+      <h1 id="p-h">CPU pilot — first real training evidence</h1>
+      <p class="view-sub">The nano CPU-pilot chain ran the REAL pipeline end-to-end (corpus → tokenizer →
+      pack → pretrain → agentic branch fork → one real GRPO update). Every number below is measured;
+      the manifest declares <code>scale=smoke_cpu_pilot</code>, <code>capability_claim=none</code> —
+      a ~14M model trained ~115 steps has no capability, and this page never implies otherwise.</p>
+    </div>
+    <div class="tiles" id="pilot-tiles"></div>
+    <div class="card">
+      <div class="card-head">
+        <h2>lm loss — pretrain → agentic branch fork</h2>
+        <span class="card-note" id="pilot-note"></span>
+      </div>
+      <div id="pilot-chart" class="chart" role="img" aria-label="Line chart of real per-step lm loss for the pretrain run and the agentic branch fine-tune"></div>
+      <div id="pilot-empty" class="empty hidden"></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>GRPO smoke update — mechanical health (no capability claims)</h2></div>
+      <div class="table-wrap"><table id="pilot-grpo-table">
+        <thead><tr><th>metric</th><th class="num">value</th><th>meaning</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <p class="card-note" id="pilot-grpo-note"></p>
     </div>
   </section>
 

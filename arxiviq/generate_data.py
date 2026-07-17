@@ -158,10 +158,13 @@ def build_snapshot(factory: Path) -> Dict[str, Any]:
 def build_ecosystem() -> Dict[str, Any]:
     """Static-but-authored map of the six Ava repos and the capability roadmap.
 
-    Honesty note: the 'think in code / LLM-VM' capability is reported as PLANNED, not
-    shipped — the substrate (code-exec rewards, agentic SWE spec, workflow-trace ETL)
-    exists but a first-class CodeAct training objective is not yet wired. Do not let this
-    surface imply otherwise.
+    Honesty note (updated 2026-07-17, CPU-pilot milestone): the CodeAct/RL CODE is complete
+    and mechanically proven at smoke scale — the nano CPU pilot ran the real chain end-to-end
+    (corpus -> tokenizer -> pack -> pretrain -> agentic branch fork -> one real GRPO update;
+    evidence runs/cpu_pilot/MANIFEST.json, scale=smoke_cpu_pilot, capability_claim=none).
+    The RL/CodeAct rows below say "built" — NOT "shipped" — because capability-scale
+    training (GPU wall-clock) has not happened; do not let this surface imply model capability.
+    The pilot-chain row is "shipped": the chain itself is the deliverable and it ran.
     """
     repos = [
         {"name": "ava-agi-factory-v6-4", "role": "Model factory",
@@ -189,22 +192,53 @@ def build_ecosystem() -> Dict[str, Any]:
          "status": "active"},
     ]
     roadmap = [
-        {"capability": "Verifiable RL (GRPO discipline system)", "state": "spec'd",
-         "note": "specs/12_rl_training.md — entropy thermostat, outer ratio clip, trace-bank "
-                 "recovery, difficulty-scaled length penalty. Blocked on branch fine-tunes (T9.3/T9.5)."},
+        {"capability": "Verifiable RL (GRPO discipline system)", "state": "built",
+         "note": "specs/12_rl_training.md — pure-math mechanics (ava/rl/grpo.py) + the REAL torch "
+                 "optimizer step (ava/rl/grpo_torch.py, exact-parity surrogate, spike/overflow "
+                 "NaN-survival). One real GRPO update executed on the real pilot branch checkpoint "
+                 "(smoke scale, zero capability — evidence in the CPU Pilot tab). Capability-scale "
+                 "climb awaits GPU wall-clock."},
         {"capability": "Memory layer (mint + route)", "state": "shipped",
          "note": "memory-mint async ingestion + memory-router retrieval, scope-symmetric."},
         {"capability": "RFT on workflow traces", "state": "shipped",
          "note": "audit.jsonl → redacted, reward-component-annotated, versioned RFT dataset."},
         {"capability": "Efficiency-Gain scaling gates", "state": "shipped",
          "note": "efficiency_gain.py — EG_FLOPs/EG_Time vs baseline curve, 2-rung promote/hold verdict."},
-        {"capability": "Think-in-code / LLM-VM (CodeAct)", "state": "spec'd",
-         "note": "specs/13_codeact.md (T13C.1-T13C.6) — executable code as the action substrate; "
-                 "persistent sandboxed LLM-VM with bound tools; R_exec/R_codeuse extend the spec-12 "
-                 "GRPO return. Sandbox+datagen+eval halves GPU-free (startable now); RL halves gated "
-                 "on branch fine-tunes (T9.3/T9.5)."},
+        {"capability": "Think-in-code / LLM-VM (CodeAct)", "state": "built",
+         "note": "specs/13_codeact.md T13C.1-T13C.6 code-complete: sandbox LLM-VM, executable "
+                 "datagen, exec-verified eval, reward terms, decode loop + real TorchModelPolicy, "
+                 "MOPD pool prep, EG gate. Whole chain proven mechanically on the real pilot "
+                 "checkpoint (r_task=0, honest — no capability at smoke scale). Capability awaits "
+                 "the GPU climb."},
+        {"capability": "WebGPU client-side serving (dottie-claw)", "state": "planned",
+         "note": "Serve Ava in-browser at $0: ONNX export -> ONNX Runtime Web (WebGPU EP) for the "
+                 "custom Multi-J-Space graph (nano fp16 ~28MB, mini q4 ~100MB — visitor's GPU does "
+                 "the compute); Pyodide-in-a-Worker as the browser CodeAct sandbox. Prepped as "
+                 "architecture; launches only after a capability checkpoint exists."},
+        {"capability": "CPU pilot training chain (T9.3/T9.5 mechanism)", "state": "shipped",
+         "note": "scripts/cpu_pilot_e2e.py — real corpus -> BPE 8192 -> packed shards -> 90-step "
+                 "pretrain (lm 9.08->3.09) -> real agentic branch fork (lm 2.88->2.30) on CPU; "
+                 "device/preset-parameterized so the SAME chain scales onto a GPU box (docker "
+                 "ava-train, --preset mini --device cuda)."},
     ]
     return {"repos": repos, "roadmap": roadmap}
+
+
+def build_pilot(factory: Path) -> Optional[Dict[str, Any]]:
+    """Pass through the CPU-pilot evidence manifest (runs/cpu_pilot/MANIFEST.json).
+
+    This is committed, measured training evidence — real per-step loss series, stage timings,
+    checkpoint sha256s, and the GRPO smoke-update stats — declared `scale=smoke_cpu_pilot`,
+    `capability_claim=none` by the manifest itself. Nothing is computed or invented here: the
+    baked copy is the manifest verbatim plus a source pointer, so the site's fallback can never
+    diverge from the evidence. Returns None (and the site shows its honest empty state) when the
+    manifest doesn't exist."""
+    manifest_path = factory / "runs" / "cpu_pilot" / "MANIFEST.json"
+    if not manifest_path.exists():
+        return None
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    data["source_path"] = f"{FACTORY}/runs/cpu_pilot/MANIFEST.json"
+    return data
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -230,8 +264,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     (out / "model-cards.json").write_text(json.dumps(cards, indent=1), encoding="utf-8")
     (out / "snapshot.json").write_text(json.dumps(snapshot, indent=1), encoding="utf-8")
     (out / "ecosystem.json").write_text(json.dumps(ecosystem, indent=1), encoding="utf-8")
+    pilot = build_pilot(factory)
+    pilot_msg = "no pilot manifest"
+    if pilot is not None:
+        (out / "pilot.json").write_text(json.dumps(pilot, indent=1), encoding="utf-8")
+        pre = pilot.get("runs", {}).get("pretrain", {}).get("steps")
+        pilot_msg = f"pilot.json ({pre} pretrain steps, scale={pilot.get('scale')})"
     print(f"wrote model-cards.json ({len(cards['cards'])} cards), snapshot.json, "
-          f"ecosystem.json ({len(ecosystem['repos'])} repos)")
+          f"ecosystem.json ({len(ecosystem['repos'])} repos), {pilot_msg}")
     return 0
 
 

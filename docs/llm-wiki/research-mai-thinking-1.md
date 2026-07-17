@@ -69,3 +69,20 @@
   keeps its no-network rule (factory spec 02) and judges only grade, never generate training text.
 - **No trillion-param cosplay** — LatentMoE/periodic-attention/512-expert routing rejected as
   out of scope; they solve inter-node bandwidth problems a single 4080 does not have.
+
+## Status update — 2026-07-17, CPU-pilot milestone
+
+The findings above are no longer just integrated as specs — the chain they prescribe has
+**executed at smoke scale**. The factory's nano CPU pilot (its config's declared purpose) ran
+the real pipeline end-to-end in-container: 17.8 MB corpus from six real generators → byte-level
+BPE tokenizer at the full 8192 vocab → 47 packed uint16 shards → 90-step nano pretrain
+(lm 9.08→3.09) → a real `--branch agentic --init` fork (lm 2.88→2.30, system1/system2 frozen) —
+the first actual execution of the branch-fine-tune mechanism. On that real checkpoint, one real
+GRPO update ran from real CodeAct rollouts through the real sandbox (grad_norm 2.484,
+param_delta_l2 3.1e-2, bit-identical rerun; r_task=0 — a 115-step 14M model emits noise, honestly
+recorded). The discipline system from this brief exists as tested code: pure-math mechanics
+(`ava/rl/grpo.py`), the torch step with exact-parity clipped surrogate + entropy thermostat +
+outer breaker (`ava/rl/grpo_torch.py`), the real decode policy (`ava/rl/codeact_policy.py`).
+Evidence: `ava-agi-factory-v6-4/runs/cpu_pilot/MANIFEST.json` (`scale=smoke_cpu_pilot`,
+`capability_claim=none`). Remaining gates are GPU wall-clock only — the capability-scale climb
+(mini+), MOPD merge, and the 2-rung EG verdict this brief's rank-invariance finding demands.
