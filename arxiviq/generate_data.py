@@ -198,10 +198,11 @@ def build_ecosystem() -> Dict[str, Any]:
          "note": "audit.jsonl → redacted, reward-component-annotated, versioned RFT dataset."},
         {"capability": "Efficiency-Gain scaling gates", "state": "shipped",
          "note": "efficiency_gain.py — EG_FLOPs/EG_Time vs baseline curve, 2-rung promote/hold verdict."},
-        {"capability": "Think-in-code / LLM-VM (CodeAct)", "state": "planned",
-         "note": "Substrate exists (code-bench exec-verify, agentic SWE climb, workflow-trace ETL) "
-                 "but a first-class code-as-reasoning objective + sandbox + datagen + RFT reward is "
-                 "NOT yet wired. Candidate: specs/13_codeact.md."},
+        {"capability": "Think-in-code / LLM-VM (CodeAct)", "state": "spec'd",
+         "note": "specs/13_codeact.md (T13C.1-T13C.6) — executable code as the action substrate; "
+                 "persistent sandboxed LLM-VM with bound tools; R_exec/R_codeuse extend the spec-12 "
+                 "GRPO return. Sandbox+datagen+eval halves GPU-free (startable now); RL halves gated "
+                 "on branch fine-tunes (T9.3/T9.5)."},
     ]
     return {"repos": repos, "roadmap": roadmap}
 
