@@ -144,13 +144,14 @@ def _ts_extract_symbols(code: bytes, language) -> List[Tuple[str,str,int]]:
         t = node.type
         # function
         if t in ("function_declaration","function","method_definition","lexical_declaration"):
-            # look for child identifier
+            # One name per declaration: a node carries EITHER a direct identifier child
+            # (function foo() {}) OR a variable_declarator (const foo = () => {}),
+            # never both — so these branches are mutually exclusive by construction.
             for child in node.children:
                 if child.type == "identifier":
                     name = code[child.start_byte:child.end_byte].decode(errors="ignore")
                     results.append(("function", name, node.start_point[0]+1))
-                # variable declarator with arrow function
-                if child.type == "variable_declarator":
+                elif child.type == "variable_declarator":
                     for sub in child.children:
                         if sub.type == "identifier":
                             name = code[sub.start_byte:sub.end_byte].decode(errors="ignore")
@@ -505,23 +506,99 @@ def extract_file(file_path: Path) -> Tuple[List[Dict], List[Dict]]:
 
     return dedup_nodes, edges
 
-def extract_all(files: List[Path]) -> Tuple[List[Dict], List[Dict]]:
+def _merge_pool(pool) -> Tuple[List[Dict], List[Dict]]:
+    """Merge per-file (nodes, edges) pairs: dedup nodes by id, edges by (source, target, type)."""
     all_nodes: List[Dict] = []
     all_edges: List[Dict] = []
-    id_seen = {}
-    for fp in files:
-        nodes, edges = extract_file(fp)
+    id_seen = set()
+    for nodes, edges in pool:
         for n in nodes:
             if n["id"] not in id_seen:
-                id_seen[n["id"]]=True
+                id_seen.add(n["id"])
                 all_nodes.append(n)
         all_edges.extend(edges)
-    # dedup edges by source/target/type
-    edge_seen = {}
+    edge_seen = set()
     dedup_edges = []
     for e in all_edges:
         key = (e["source"], e["target"], e["type"])
         if key not in edge_seen:
-            edge_seen[key]=True
+            edge_seen.add(key)
             dedup_edges.append(e)
     return all_nodes, dedup_edges
+
+
+def extract_all(files: List[Path]) -> Tuple[List[Dict], List[Dict]]:
+    return _merge_pool(extract_file(fp) for fp in files)
+
+
+def file_md5(path: Path) -> str:
+    h = hashlib.md5()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def extract_with_cache(files: List[Path], cache_path: Path, update: bool = False) -> Tuple[List[Dict], List[Dict], Dict]:
+    """Incremental extraction backed by a content-hash cache.
+
+    cache_path (graphify-out/cache/extract.json) maps path → {mtime, md5, nodes, edges}.
+    On update=True, unchanged files (same mtime, or same md5 when only mtime moved) reuse
+    their cached extraction; changed/new files are re-extracted. The graph is ALWAYS
+    rebuilt from the full merged pool, so the output never mixes stale topology.
+    Returns (nodes, edges, stats) with real reused/re-extracted counters.
+    """
+    import json as _json
+
+    cache: Dict[str, Dict] = {}
+    if update and cache_path.exists():
+        try:
+            cache = _json.loads(cache_path.read_text(encoding="utf-8"))
+        except Exception:
+            cache = {}
+
+    new_cache: Dict[str, Dict] = {}
+    pool: List[Tuple[List[Dict], List[Dict]]] = []
+    reused = 0
+    re_extracted = 0
+    for fp in files:
+        key = str(fp)
+        try:
+            mtime = fp.stat().st_mtime
+        except OSError:
+            continue
+        entry = cache.get(key)
+        md5 = None
+        if entry is not None:
+            if entry.get("mtime") == mtime:
+                pool.append((entry.get("nodes", []), entry.get("edges", [])))
+                new_cache[key] = entry
+                reused += 1
+                continue
+            md5 = file_md5(fp)
+            if entry.get("md5") == md5:
+                # touched but content-identical — refresh mtime, reuse extraction
+                entry = {**entry, "mtime": mtime}
+                pool.append((entry.get("nodes", []), entry.get("edges", [])))
+                new_cache[key] = entry
+                reused += 1
+                continue
+        nodes, edges = extract_file(fp)
+        if md5 is None:
+            try:
+                md5 = file_md5(fp)
+            except OSError:
+                md5 = ""
+        new_cache[key] = {"mtime": mtime, "md5": md5, "nodes": nodes, "edges": edges}
+        pool.append((nodes, edges))
+        re_extracted += 1
+
+    try:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text(_json.dumps(new_cache), encoding="utf-8")
+    except OSError:
+        pass  # cache is an optimization, never a build failure
+
+    all_nodes, all_edges = _merge_pool(pool)
+    stats = {"files": len(files), "reused": reused, "re_extracted": re_extracted}
+    return all_nodes, all_edges, stats

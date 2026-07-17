@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict
 import argparse
 
+from .security import ensure_containment
 from .query import (
     load_graph_json,
     search_nodes,
@@ -24,8 +25,12 @@ from .query import (
     _cost_path_for_graph
 )
 
-def load_graph(graph_path: str):
+def load_graph(graph_path: str, allowed_root: Path = None):
     p = Path(graph_path)
+    if allowed_root is not None:
+        # Caller-supplied graph paths (e.g. /mcp/call arguments) must stay inside the
+        # server's root — reject ../../etc traversal before touching the filesystem.
+        p = ensure_containment(p, allowed_root)
     if not p.exists():
         cand = Path("graphify-out/graph.json")
         if cand.exists():
@@ -132,10 +137,12 @@ MCP_TOOLS = [
     }
 ]
 
-def handle_tool_call(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+def handle_tool_call(name: str, arguments: Dict[str, Any], allowed_root: Path = None) -> Dict[str, Any]:
     graph_path = arguments.get("graph", "graphify-out/graph.json")
+    if allowed_root is None:
+        allowed_root = Path.cwd()
     try:
-        G, resolved = load_graph(graph_path)
+        G, resolved = load_graph(graph_path, allowed_root=allowed_root)
     except Exception as e:
         return {"error": str(e), "graph": graph_path}
 
@@ -155,7 +162,7 @@ def handle_tool_call(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
 
     elif name == "graphify_explain":
         node = arguments.get("node","")
-        info = explain_node(G, node, include_code_snippet=arguments.get("include_snippet", False), semantic=semantic)
+        info = explain_node(G, node, include_code_snippet=arguments.get("include_snippet", False), semantic=semantic, graph_path=resolved)
         if not info:
             return {"error": f"Node '{node}' not found"}
         return info
@@ -190,62 +197,68 @@ def handle_tool_call(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
     else:
         return {"error": f"Unknown tool {name}"}
 
+def handle_stdio_line(line: str):
+    """Handle one JSON-RPC line. Returns a response dict, or None when no response
+    must be sent (blank/garbage input, or a notification — a request without an id)."""
+    line = line.strip()
+    if not line:
+        return None
+    try:
+        req = json.loads(line)
+    except Exception:
+        return None
+    is_notification = "id" not in req  # JSON-RPC: notifications carry no id and get NO reply
+    rpc_id = req.get("id")
+    method = req.get("method")
+    params = req.get("params",{})
+
+    if is_notification:
+        # e.g. notifications/initialized — process nothing, reply nothing
+        return None
+
+    if method == "initialize":
+        return {
+            "jsonrpc":"2.0",
+            "id": rpc_id,
+            "result": {
+                "protocolVersion":"2024-11-05",
+                "capabilities":{"tools":{"listChanged": False}},
+                "serverInfo":{"name":"personal-graphify","version":"0.3.0-sota-semantic"}
+            }
+        }
+
+    elif method == "tools/list":
+        return {
+            "jsonrpc":"2.0",
+            "id": rpc_id,
+            "result": {"tools": MCP_TOOLS}
+        }
+
+    elif method == "tools/call":
+        tool_name = params.get("name")
+        arguments = params.get("arguments",{})
+        result = handle_tool_call(tool_name, arguments)
+        return {
+            "jsonrpc":"2.0",
+            "id": rpc_id,
+            "result": {
+                "content": [{"type":"text","text": json.dumps(result, indent=2)[:18000]}],
+                "isError": "error" in result
+            }
+        }
+
+    elif method == "ping":
+        return {"jsonrpc":"2.0","id":rpc_id,"result":{}}
+
+    return {"jsonrpc":"2.0","id":rpc_id,"error":{"code":-32601,"message":f"Method {method} not found"}}
+
 def run_stdio():
     for line in sys.stdin:
-        line=line.strip()
-        if not line:
-            continue
-        try:
-            req = json.loads(line)
-        except:
-            continue
-        rpc_id = req.get("id")
-        method = req.get("method")
-        params = req.get("params",{})
-
-        if method == "initialize":
-            resp = {
-                "jsonrpc":"2.0",
-                "id": rpc_id,
-                "result": {
-                    "protocolVersion":"2024-11-05",
-                    "capabilities":{"tools":{"listChanged": False}},
-                    "serverInfo":{"name":"personal-graphify","version":"0.3.0-sota-semantic"}
-                }
-            }
+        resp = handle_stdio_line(line)
+        if resp is not None:
             print(json.dumps(resp), flush=True)
 
-        elif method == "tools/list":
-            resp = {
-                "jsonrpc":"2.0",
-                "id": rpc_id,
-                "result": {"tools": MCP_TOOLS}
-            }
-            print(json.dumps(resp), flush=True)
-
-        elif method == "tools/call":
-            tool_name = params.get("name")
-            arguments = params.get("arguments",{})
-            result = handle_tool_call(tool_name, arguments)
-            resp = {
-                "jsonrpc":"2.0",
-                "id": rpc_id,
-                "result": {
-                    "content": [{"type":"text","text": json.dumps(result, indent=2)[:18000]}],
-                    "isError": "error" in result
-                }
-            }
-            print(json.dumps(resp), flush=True)
-
-        elif method == "ping":
-            resp = {"jsonrpc":"2.0","id":rpc_id,"result":{}}
-            print(json.dumps(resp), flush=True)
-
-        else:
-            resp = {"jsonrpc":"2.0","id":rpc_id,"error":{"code":-32601,"message":f"Method {method} not found"}}
-            print(json.dumps(resp), flush=True)
-
-def run_http(port: int, graph_path: str):
+def run_http(port: int, graph_path: str, host: str = "127.0.0.1"):
     try:
         from fastapi import FastAPI, Request
         from fastapi.responses import JSONResponse
@@ -256,6 +269,7 @@ def run_http(port: int, graph_path: str):
         return
 
     app = FastAPI(title="Personal Graphify MCP SOTA", version="0.3.0")
+    allowed_root = Path.cwd().resolve()
 
     @app.get("/")
     def root():
@@ -272,7 +286,7 @@ def run_http(port: int, graph_path: str):
         args = body.get("arguments") or body.get("args") or {}
         if "graph" not in args:
             args["graph"] = graph_path
-        result = handle_tool_call(name, args)
+        result = handle_tool_call(name, args, allowed_root=allowed_root)
         return JSONResponse(result)
 
     @app.post("/query")
@@ -280,7 +294,7 @@ def run_http(port: int, graph_path: str):
         body = await request.json()
         q = body.get("question") or body.get("q") or ""
         semantic = body.get("semantic", False)
-        G,_ = load_graph(body.get("graph", graph_path))
+        G,_ = load_graph(body.get("graph", graph_path), allowed_root=allowed_root)
         matches = search_nodes(G, q, limit=body.get("limit",12), semantic=semantic)
         return {"question": q, "matches": matches, "subgraph": {"text": format_query_answer(G,q, graph_path=Path(graph_path), semantic=semantic)}}
 
@@ -289,7 +303,7 @@ def run_http(port: int, graph_path: str):
         body = await request.json()
         task = body.get("task","")
         semantic = body.get("semantic", False)
-        G,_ = load_graph(body.get("graph", graph_path))
+        G,_ = load_graph(body.get("graph", graph_path), allowed_root=allowed_root)
         result = task_compiler(G, task, semantic=semantic)
         return result
 
@@ -297,7 +311,7 @@ def run_http(port: int, graph_path: str):
     async def http_impact(request: Request):
         body = await request.json()
         semantic = body.get("semantic", False)
-        G,_ = load_graph(body.get("graph", graph_path))
+        G,_ = load_graph(body.get("graph", graph_path), allowed_root=allowed_root)
         result = impact_analysis(G, body.get("node",""), direction=body.get("direction","both"), depth=body.get("depth",3), semantic=semantic)
         return result
 
@@ -307,26 +321,30 @@ def run_http(port: int, graph_path: str):
         cost_path = _cost_path_for_graph(Path(graph_path))
         return {"text": format_cost_dashboard(cost_path)}
 
-    print(f"[personal-graphify] HTTP MCP serving on http://0.0.0.0:{port} — graph {graph_path} SOTA semantic+hooks+cost")
+    print(f"[personal-graphify] HTTP MCP serving on http://{host}:{port} — graph {graph_path} SOTA semantic+hooks+cost")
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        print(f"[personal-graphify] WARNING: binding to {host} exposes the server beyond localhost")
     print(f"Endpoints: GET /mcp/tools, POST /mcp/call, POST /query, POST /task, POST /impact, GET /cost")
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host=host, port=port)
 
 def main(args=None):
     if args is None:
         parser = argparse.ArgumentParser()
         parser.add_argument("--transport", default="http", choices=["http","stdio"])
         parser.add_argument("--port", type=int, default=8080)
+        parser.add_argument("--host", default="127.0.0.1", help="Bind address (default localhost-only; override deliberately to expose)")
         parser.add_argument("--graph", default="graphify-out/graph.json")
         args = parser.parse_args()
 
     transport = getattr(args, "transport", "http")
     port = getattr(args, "port", 8080)
+    host = getattr(args, "host", "127.0.0.1")
     graph = getattr(args, "graph", "graphify-out/graph.json")
 
     if transport == "stdio":
         run_stdio()
     else:
-        run_http(port, graph)
+        run_http(port, graph, host=host)
 
 if __name__ == "__main__":
     main()

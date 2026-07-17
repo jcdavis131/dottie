@@ -8,13 +8,13 @@ Plain Cursor: reads files linearly, greps, reconstructs architecture every time 
 
 Graphify: builds once, query subgraph ~1.7k tokens, has god nodes + surprises + rationale nodes.
 
-Result: 71.5x token reduction pattern upstream, same in personal edition, senior-dev-level navigation.
+Result: large measured token reductions (each query answer reports its own measured estimate and basis; a self-build of this repo measured 122x on one example query), senior-dev-level navigation.
 
 ## Architecture (from Graphify doc you shared)
 
 ```
 detect — collect files respecting .gitignore + .graphifyignore
-extract — AST + LLM nodes/edges (Tree-sitter for code, Ollama for docs/diagrams)
+extract — AST + regex + pattern nodes/edges (Python ast module; tree-sitter for JS/TS when installed, regex fallback otherwise; Markdown headings/frontmatter/links). No LLM involved
 build — NetworkX graph merge all nodes/edges
 cluster — Leiden/greedy communities (no embeddings needed)
 analyze — god nodes (highest-degree) + surprise cross-file edges
@@ -24,9 +24,9 @@ serve — MCP stdio/http for team shared server
 query — query / path / explain commands
 ```
 
-Supports: Code 25+ languages (".py .js .go .java .rs …"), Docs PDFs Markdown, Images/diagrams via vision models, Videos/audio via local Whisper optional.
+Supports: Python/JS/TS symbol extraction, Markdown (headings, frontmatter, links, wiki-links), rationale comments (NOTE/WHY/HACK/TODO), personal ecosystem patterns. Other file types get a plain file node.
 
-Local-first: Code = AST locally 0 cost; docs/media = Ollama local qwen3:32b by default (you already have Ollama).
+Local-first: everything is parsed locally at 0 LLM cost. Ollama is used only for the optional `--semantic` query rerank (mxbai-embed-large embeddings) — never for extraction.
 
 ## Personal Overlay — How we mapped your stuff
 
@@ -96,8 +96,9 @@ God nodes show `S2 Slow hl300` high degree — if bug in S2, surprise edges show
 
 ### 5. Team shared graph
 ```
-python -m graphify.serve graphify-out/graph.json --transport http --host 0.0.0.0 --port 8080 --api-key $SECRET
-# whole team Cursor MCP points at http://host:8080/mcp instead of local
+pgraphify serve --transport http --port 8080   # binds 127.0.0.1 by default
+# pass --host 0.0.0.0 only if you deliberately want LAN exposure (no auth layer exists)
+# Cursor MCP points at http://127.0.0.1:8080/mcp/call
 ```
 
 ## Cursor Skills Integration — What you asked for

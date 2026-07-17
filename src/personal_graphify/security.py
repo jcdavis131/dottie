@@ -4,30 +4,10 @@ Solo personal project, no connection to employer, built with public/free-tier on
 """
 from pathlib import Path
 import html
-from urllib.parse import urlparse
 
-ALLOWED_SCHEMES = {"http", "https"}
-MAX_URL_SIZE = 10 * 1024 * 1024
-MAX_TIMEOUT = 30
-
-def is_safe_url(url: str) -> bool:
-    try:
-        parsed = urlparse(url)
-        if parsed.scheme not in ALLOWED_SCHEMES:
-            return False
-        # no private ip bypass attempt
-        if not parsed.netloc:
-            return False
-        # block obvious localhost/ssrf
-        host = parsed.hostname or ""
-        if host in ("localhost", "127.0.0.1", "::1"):
-            # allow for video transcribe? safer to block by default; personal edition allows localhost if env flag
-            return False
-        if host.startswith("10.") or host.startswith("192.168."):
-            return False
-        return True
-    except:
-        return False
+# NOTE: no URL-fetching code path exists in this tool, so there is deliberately no
+# is_safe_url/SSRF machinery here — vacuous security code would only misstate the
+# real surface (local files + local HTTP server).
 
 def sanitize_label(label: str) -> str:
     return html.escape(label, quote=True)

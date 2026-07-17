@@ -6,7 +6,6 @@ import json
 import networkx as nx
 from pathlib import Path
 from .security import sanitize_label
-import html
 
 def export_json(G: nx.MultiDiGraph, out_path: Path):
     # serializable
@@ -71,8 +70,8 @@ input {{ padding:6px 10px; border:2px solid black; border-radius:6px; width:260p
 </div>
 <div id="mynetwork"></div>
 <script>
-const nodes = new vis.DataSet({nodes_json});
-const edges = new vis.DataSet({edges_json});
+const nodes = new vis.DataSet({json.dumps(nodes_json)});
+const edges = new vis.DataSet({json.dumps(edges_json)});
 const container = document.getElementById('mynetwork');
 const data = {{nodes, edges}};
 const options = {{
@@ -94,7 +93,5 @@ document.getElementById('search').addEventListener('input', e=>{{
 </body>
 </html>
 """
-    # json dumps need proper escaping; we already built JSON via python repr? Let's insert via json dumps
-    html_content = html_content.replace("{nodes_json}", json.dumps(nodes_json)).replace("{edges_json}", json.dumps(edges_json))
     out_path.write_text(html_content, encoding="utf-8")
     return out_path

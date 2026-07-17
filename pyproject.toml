@@ -6,17 +6,28 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name="Cameron Davis", email="jcdavis131@gmail.com"}]
+# Core = what the code hard-imports: networkx (graph) + python-frontmatter (md metadata).
+# Everything else is imported behind try/except with graceful fallback → optional extras.
 dependencies = [
   "networkx>=3.0",
+  "python-frontmatter>=1.0",
+]
+
+[project.optional-dependencies]
+# `uv tool install "personal-graphify[ollama]"` — semantic rerank via local Ollama embeddings
+ollama = ["ollama>=0.3.0"]
+# HTTP MCP server (stdio transport needs nothing extra)
+serve = ["fastapi>=0.100", "uvicorn>=0.23"]
+# Tree-sitter JS/TS parsing (regex fallback used when absent)
+treesitter = [
   "tree-sitter>=0.20",
   "tree-sitter-python>=0.20",
   "tree-sitter-javascript>=0.20",
   "tree-sitter-typescript>=0.20",
-  "python-frontmatter>=1.0",
-  "ollama>=0.3.0",
-  "fastapi>=0.100",
-  "uvicorn>=0.23",
 ]
+# Spectral (Graph Laplacian) community backend
+spectral = ["numpy>=1.24"]
+all = ["personal-graphify[ollama,serve,treesitter,spectral]"]
 
 [project.scripts]
 personal-graphify = "personal_graphify.cli:main"

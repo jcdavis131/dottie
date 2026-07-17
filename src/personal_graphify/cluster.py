@@ -10,7 +10,6 @@ grows — so it stays meaningful as the code graph scales.
 """
 import networkx as nx
 from typing import Dict, List, Optional
-import itertools
 
 
 def _to_weighted_undirected(G: nx.MultiDiGraph) -> nx.Graph:
@@ -91,6 +90,7 @@ def detect_communities(G: nx.MultiDiGraph, method: str = "auto") -> Dict[str, in
 
     method="auto" (default, unchanged): Leiden if installed → greedy modularity → per-file.
     method="spectral": normalized-cut spectral (Graph Laplacian) → greedy modularity → per-file.
+    method="greedy": greedy modularity directly (skips Leiden) → per-file.
     Fallback chain is preserved so behavior degrades gracefully and never fabricates a partition.
     """
     UG = _to_weighted_undirected(G)
@@ -100,7 +100,7 @@ def detect_communities(G: nx.MultiDiGraph, method: str = "auto") -> Dict[str, in
             return _spectral_communities(UG)
         except Exception:
             pass  # fall through to greedy modularity
-    else:
+    elif method != "greedy":
         # Try leiden if installed
         try:
             import leidenalg, igraph
