@@ -562,17 +562,32 @@ def task_compiler(G: nx.MultiDiGraph, task_description: str, semantic: bool = Fa
         plan.append("3. Check impact")
         plan.append("4. Edit + rebuild graph")
 
-    naive_tokens = G.number_of_nodes()*50
-    scoped_tokens = sub.number_of_nodes()*25
+    top_matches_payload = [{"label": m.get("label"), "type": m.get("type"), "file": m.get("file",""), "score": m.get("score"), "semantic": m.get("semantic_score")} for m in ranked[:10]]
+
+    # Measured, not modeled: naive = real bytes of the indexed files / 4; scoped = the
+    # serialized size of what this call actually returns to the agent.
+    import json as _json
+    import os as _os
+    _files = {d.get("file") for _, d in G.nodes(data=True) if d.get("file")}
+    _naive_bytes = 0
+    for _p in _files:
+        try:
+            _naive_bytes += _os.path.getsize(_p)
+        except OSError:
+            continue
+    naive_tokens = (_naive_bytes // 4) if _naive_bytes else G.number_of_nodes()*50
+    scoped_tokens = max(1, len(_json.dumps({"top_matches": top_matches_payload,
+                                             "files": files_ranked, "plan": plan})) // 4)
     reduction = round(naive_tokens / max(scoped_tokens,1), 1)
 
     return {
         "task": task_description,
-        "top_matches": [{"label": m.get("label"), "type": m.get("type"), "file": m.get("file",""), "score": m.get("score"), "semantic": m.get("semantic_score")} for m in ranked[:10]],
+        "top_matches": top_matches_payload,
         "subgraph": {"nodes": sub.number_of_nodes(), "edges": sub.number_of_edges()},
         "files": files_ranked,
         "plan": plan,
-        "token_estimate": {"naive": naive_tokens, "scoped": scoped_tokens, "reduction_x": reduction},
+        "token_estimate": {"naive": naive_tokens, "scoped": scoped_tokens, "reduction_x": reduction,
+                            "basis": "measured file bytes vs serialized scoped payload" if _naive_bytes else "node-count estimate (indexed files not on disk)"},
         "copy_paste_context": f"Task: {task_description}\nTop files: {', '.join([f['file'] for f in files_ranked[:5]])}\nGod nodes to check: see graphify-out/GRAPH_REPORT.md\nRelevant query: pgraphify query \"{task_description}\""
     }
 

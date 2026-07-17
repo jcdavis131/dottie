@@ -14,7 +14,7 @@ def generate_report(G: nx.MultiDiGraph, output_path: Path, god_nodes_list, surpr
     lines.append("")
     lines.append(f"**Nodes:** {G.number_of_nodes()} · **Edges:** {G.number_of_edges()} · **Communities:** {len(comm_summaries)}")
     lines.append("")
-    lines.append(f"Token estimate: ~{token_stats_dict['query']} tokens per scoped query vs ~{token_stats_dict['naive']} naive → **{token_stats_dict['reduction']}× reduction** (mirrors upstream 71.5×).")
+    lines.append(f"Token estimate: ~{token_stats_dict['query']} tokens per scoped query vs ~{token_stats_dict['naive']} naive → **{token_stats_dict['reduction']}× reduction** ({token_stats_dict.get('basis','measured')}).")
     lines.append("")
     lines.append("## God Nodes (highest-degree concepts)")
     lines.append("")
