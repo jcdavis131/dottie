@@ -113,18 +113,18 @@ git add graphify-out/graph.json graphify-out/GRAPH_REPORT.md
 graphify hook install  # auto-rebuild AST on commit + merge driver for graph.json
 ```
 
-## 5. Ollama-First (100% free local, optional)
+## 5. Ollama (optional, query-time only)
 
-You have Ollama local per MEMORY. Personal-graphify uses it for docs/PDFs/diagrams semantic pass.
+Extraction never calls an LLM — it is AST + regex + Markdown parsing + ecosystem patterns.
+Ollama is used ONLY when you pass `--semantic` to `pgraphify query`/`task`, to rerank the
+top lexical matches with local embeddings. No cloud fallback exists; if Ollama isn't
+running, queries silently stay lexical.
 
 ```bash
-ollama pull qwen3:32b        # default, ~20GB Q4
-# alternatives:
-ollama pull llama3.3:70b     # ~40GB
+pip install "personal-graphify[ollama]"   # the ollama python client
+ollama pull mxbai-embed-large             # embedding model used by --semantic
 ollama serve
-# set backend if you want cloud fallback:
-export OPENAI_API_KEY=...
-# but default is local
+pgraphify query "Turnover Shield" --semantic
 ```
 
 ## 6. Integrate with Ava Skills (you already have ava-skills/)
@@ -167,7 +167,7 @@ pgraphify . ; pgraphify query "MTNN 120 feats 17 families cat([x·m,m])"
 - Solo personal project, no connection to employer, built with public/free-tier only
 - Free/public pip only, no work connectors, manual CSV/upload
 - Zero references to work internal systems — passes path check `01_Finance / 02_Passive_Lab / 04_Tennis_DINOv3` vs `03_Meta_Work_ISOLATED`
-- Security: http/https only, 10MB limit, 30s timeout, path containment, HTML-escaped labels (SSRF/Cypher/XSS hardened) — same as upstream
+- Security (as implemented): 5MB per-file scan cap, HTML-escaped labels in graph.html, MCP graph-path containment, HTTP server binds 127.0.0.1 by default, PII gate on public export
 
 ## Footer
 

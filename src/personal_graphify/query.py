@@ -5,8 +5,6 @@ Solo personal project, no connection to employer, built with public/free-tier on
 """
 import json
 import math
-import os
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
@@ -43,7 +41,6 @@ def _tokenize(s: str) -> List[str]:
 
 # -------- Ollama embeddings optional (SOTA semantic rerank) --------
 _EMBED_MODEL_DEFAULT = "mxbai-embed-large"
-_EMBED_CACHE = {}  # optional in-mem
 
 def _try_import_ollama():
     try:
@@ -118,7 +115,7 @@ def _cost_path_for_graph(graph_path: Path) -> Path:
         return g / "cost.json"
     return g.parent / "cost.json"
 
-def log_query_cost(graph_path: Path, question: str, naive: int, scoped: int, reduction_x: float, mode: str = "lexical"):
+def log_query_cost(graph_path: Path, question: str, naive: int, scoped: int, reduction_x: float, mode: str = "lexical", basis: str = ""):
     try:
         cpath = _cost_path_for_graph(Path(graph_path))
         if not cpath.exists():
@@ -145,7 +142,8 @@ def log_query_cost(graph_path: Path, question: str, naive: int, scoped: int, red
             "scoped": scoped,
             "saved": max(0, naive - scoped),
             "reduction_x": reduction_x,
-            "mode": mode
+            "mode": mode,
+            "basis": basis or "unknown"
         }
         if "queries" not in data:
             data["queries"] = []
@@ -174,12 +172,17 @@ def format_cost_dashboard(cost_path: Path) -> str:
         lines = [f"Cost dashboard — {len(qs)} queries logged (cost.json)", f"Total naive tokens: {total_naive} | scoped: {total_scoped} | saved: {total_saved} → {avg_reduction:.1f}x avg reduction", ""]
         lines.append("Recent queries:")
         for q in qs[-15:][::-1]:
-            lines.append(f"  - [{q.get('mode','lex')}] {q.get('ts','')[:16]} | {q.get('question','')[:60]} → {q.get('scoped')} vs {q.get('naive')} = {q.get('reduction_x')}x saved {q.get('saved')}")
-        # estimate $ saved if using GPT-4o $5/M in $15/M out ~ $0.01 per 1k? rough
-        # Use $0.005 per 1k tokens saved as proxy
-        est_dollars = total_saved * 0.005 / 1000
+            basis_tag = str(q.get("basis", "unknown")).split(":")[0]
+            lines.append(f"  - [{q.get('mode','lex')}] [{basis_tag}] {q.get('ts','')[:16]} | {q.get('question','')[:60]} → {q.get('scoped')} vs {q.get('naive')} = {q.get('reduction_x')}x saved {q.get('saved')}")
+        # Only monetize savings whose naive basis was actually measured (file bytes on disk).
+        # Entries with an estimated or unknown basis are modeled numbers — never priced.
+        measured_saved = sum(q.get("saved", 0) for q in qs if str(q.get("basis", "")).startswith("measured"))
+        unmeasured = len(qs) - sum(1 for q in qs if str(q.get("basis", "")).startswith("measured"))
+        est_dollars = measured_saved * 0.005 / 1000
         lines.append("")
-        lines.append(f"Est. API cost avoided (at $5/M): ~${est_dollars:.2f} based on {total_saved} tokens saved")
+        lines.append(f"Est. API cost avoided (at $5/M): ~${est_dollars:.2f} based on {measured_saved} measured-basis tokens saved")
+        if unmeasured:
+            lines.append(f"  ({unmeasured} queries had estimated/unknown token basis — excluded from $ figure)")
         lines.append(f"Storage: free local Ollama — mode: {data.get('mode','ollama-first local')}")
         return "\n".join(lines)
     except Exception as e:
@@ -345,7 +348,7 @@ def shortest_path(G: nx.MultiDiGraph, source_q: str, target_q: str, max_hops: in
                 continue
     return None
 
-def explain_node(G: nx.MultiDiGraph, query: str, include_code_snippet: bool = False, semantic: bool = False) -> Optional[Dict]:
+def explain_node(G: nx.MultiDiGraph, query: str, include_code_snippet: bool = False, semantic: bool = False, graph_path: Optional[Path] = None) -> Optional[Dict]:
     matches = search_nodes(G, query, limit=1, semantic=semantic)
     if not matches:
         return None
@@ -385,10 +388,15 @@ def explain_node(G: nx.MultiDiGraph, query: str, include_code_snippet: bool = Fa
         fpath = data.get("file")
         if fpath:
             p = Path(fpath)
-            if not p.exists():
-                cand = Path("personal-graphify") / p
-                if cand.exists():
-                    p = cand
+            if not p.exists() and graph_path is not None and not p.is_absolute():
+                # Resolve relative to the graph file's location: graph.json lives in
+                # <repo>/graphify-out/, so try both the out dir and the repo root.
+                base = Path(graph_path).resolve()
+                base = base.parent if base.is_file() or base.suffix else base
+                for cand in (base / p, base.parent / p):
+                    if cand.exists():
+                        p = cand
+                        break
             if p.exists() and p.is_file():
                 try:
                     lines = p.read_text(errors="ignore").splitlines()
@@ -633,15 +641,7 @@ def onboard_report(G: nx.MultiDiGraph, top_n_god: int = 10) -> Dict:
 
 def format_query_answer(G: nx.MultiDiGraph, query: str, graph_path: Path = None, semantic: bool = False, embed_model: str = _EMBED_MODEL_DEFAULT) -> str:
     sub = subgraph_for_query(G, query, semantic=semantic, embed_model=embed_model)
-    naive = G.number_of_nodes()*50
-    scoped = sub.number_of_nodes()*25 if sub.number_of_nodes()>0 else 0
-    red = round(naive / max(scoped,1),1) if scoped else 0
     mode_str = f"semantic:{embed_model}" if semantic else "lexical"
-    if graph_path:
-        try:
-            log_query_cost(graph_path, query, naive, scoped, red, mode=mode_str)
-        except Exception:
-            pass
 
     if sub.number_of_nodes()==0:
         return f"No nodes found for query '{query}'. Try broader terms: Stripe, Turnover Shield, MTNN, Ava, Scout, Family Brain, Vector Hoops"
@@ -649,8 +649,7 @@ def format_query_answer(G: nx.MultiDiGraph, query: str, graph_path: Path = None,
     # extra hint for semantic availability
     semantic_hint = " [semantic rerank ON]" if semantic else " [lexical] — try --semantic for Ollama mxbai-embed-large rerank"
 
-    lines = [f"Query: '{query}' — {sub.number_of_nodes()} nodes, {sub.number_of_edges()} edges in scoped subgraph (token-est ~{scoped} vs naive ~{naive} = {red}x reduction){semantic_hint}"]
-    lines.append("")
+    lines = []
     lines.append("Top matches:")
     for m in search_nodes(G, query, limit=12, semantic=semantic, embed_model=embed_model):
         extra = f" sem={m.get('semantic_score')}" if "semantic_score" in m else ""
@@ -668,7 +667,23 @@ def format_query_answer(G: nx.MultiDiGraph, query: str, graph_path: Path = None,
         lines.append("")
         lines.append(f"Rationale found: {len(rationale_nodes)} WHY/NOTE nodes — check explain")
 
-    return "\n".join(lines)
+    body = "\n".join(lines)
+
+    # Measured, not modeled — same estimators task_compiler uses (analyze.py) so the
+    # numbers in the answer, cost.json, and GRAPH_REPORT.md never drift.
+    from .analyze import naive_token_estimate, payload_tokens
+    naive, basis = naive_token_estimate(G)
+    scoped = payload_tokens(body)
+    red = round(naive / max(scoped,1), 1)
+    if graph_path:
+        try:
+            log_query_cost(graph_path, query, naive, scoped, red, mode=mode_str, basis=basis)
+        except Exception:
+            pass
+
+    header = (f"Query: '{query}' — {sub.number_of_nodes()} nodes, {sub.number_of_edges()} edges in scoped subgraph "
+              f"(token-est ~{scoped} vs naive ~{naive} = {red}x reduction; {basis}){semantic_hint}")
+    return header + "\n\n" + body
 
 def format_path_answer(G: nx.MultiDiGraph, src_q: str, tgt_q: str, semantic: bool = False) -> str:
     path = shortest_path(G, src_q, tgt_q, semantic=semantic)

@@ -10,7 +10,7 @@ from pathlib import Path
 import json
 
 from .detect import collect_files, group_by_type
-from .extract import extract_all
+from .extract import extract_with_cache
 from .build import build_graph, enrich_graph
 from .cluster import assign_communities, community_summary
 from .analyze import god_nodes, surprise_edges, token_stats
@@ -78,12 +78,17 @@ def cmd_build(args):
     groups = group_by_type(files)
     print(f"[personal-graphify] code {len(groups['code'])} docs {len(groups['docs'])} media {len(groups['media'])}")
 
-    nodes, edges = extract_all(files)
+    update = getattr(args, "update", False)
+    cache_path = out_dir / "cache" / "extract.json"
+    nodes, edges, cache_stats = extract_with_cache(files, cache_path, update=update)
+    if update:
+        print(f"[personal-graphify] incremental: {cache_stats['reused']} files reused from cache, "
+              f"{cache_stats['re_extracted']} re-extracted")
     print(f"[personal-graphify] extracted {len(nodes)} nodes, {len(edges)} edges")
 
     G = build_graph(nodes, edges)
     G = enrich_graph(G)
-    G = assign_communities(G)
+    G = assign_communities(G, method=getattr(args, "cluster", "auto"))
     comms = community_summary(G)
 
     gods = god_nodes(G, top_n=15)
@@ -115,6 +120,8 @@ def cmd_build(args):
             cost_path.write_text(json.dumps({"nodes": G.number_of_nodes(), "edges": G.number_of_edges(), "queries": [], "total_saved_tokens": 0, "mode": "ollama-first local"}, indent=2), encoding="utf-8")
     else:
         cost_path.write_text(json.dumps({"nodes": G.number_of_nodes(), "edges": G.number_of_edges(), "queries": [], "total_saved_tokens": 0, "total_naive": 0, "total_scoped": 0, "mode": "ollama-first local"}, indent=2), encoding="utf-8")
+
+    return {"nodes": G.number_of_nodes(), "edges": G.number_of_edges(), "cache": cache_stats}
 
 def cmd_query(args):
     gpath = Path(args.graph or "graphify-out/graph.json")
@@ -150,7 +157,7 @@ def cmd_explain(args):
     gpath = Path(args.graph or "graphify-out/graph.json")
     G = load_graph_json(gpath)
     semantic = getattr(args, 'semantic', False)
-    info = explain_node(G, args.node, include_code_snippet=args.snippet, semantic=semantic)
+    info = explain_node(G, args.node, include_code_snippet=args.snippet, semantic=semantic, graph_path=gpath)
     if not info:
         print(f"Node '{args.node}' not found")
         sys.exit(1)
@@ -330,34 +337,25 @@ fi
         return
 
     if action == "uninstall":
+        APPEND_MARKER = "# --- Personal Graphify (appended) ---"
         removed = 0
         for hook_path in [post_commit_path, post_merge_path]:
-            if hook_path.exists():
-                content = hook_path.read_text()
-                if "Personal Graphify" in content or "graphify" in content.lower():
-                    # if file is only our hook, delete; else try remove our section
-                    if content.strip().startswith("#!/bin/sh") and content.count("graphify") >=2 and len(content.splitlines())<25:
-                        hook_path.unlink()
-                        print(f"[graphify] removed {hook_path}")
-                        removed+=1
-                    else:
-                        # remove appended section naive
-                        new_lines = []
-                        skip = False
-                        for line in content.splitlines():
-                            if "Personal Graphify" in line and "appended" in line:
-                                skip = True
-                            if skip and line.startswith("# ---") is False and "graphify" not in line.lower():
-                                # heuristic end?
-                                pass
-                            if not skip:
-                                new_lines.append(line)
-                            if skip and line.strip()=="" and "graphify" not in "\n".join(new_lines[-3:]).lower():
-                                skip=False
-                        # Safer: if we didn't cleanly remove, just tell user
-                        print(f"[graphify] {hook_path} contains mixed hooks — please edit manually to remove graphify section")
-                else:
-                    print(f"[graphify] {hook_path} exists but no graphify marker — left untouched")
+            if not hook_path.exists():
+                continue
+            content = hook_path.read_text()
+            if APPEND_MARKER in content:
+                # We appended to a pre-existing hook: keep everything before our marker.
+                prefix = content.split(APPEND_MARKER, 1)[0].rstrip() + "\n"
+                hook_path.write_text(prefix)
+                print(f"[graphify] removed appended graphify section from {hook_path}")
+                removed += 1
+            elif "Personal Graphify" in content:
+                # File is entirely our hook script: delete it.
+                hook_path.unlink()
+                print(f"[graphify] removed {hook_path}")
+                removed += 1
+            else:
+                print(f"[graphify] {hook_path} exists but no graphify marker — left untouched")
 
         # Optionally clean .gitattributes
         if gitattributes_path.exists():
@@ -367,15 +365,24 @@ fi
         print(f"[graphify] uninstall done ({removed} hooks removed)")
         return
 
-def cmd_install(args):
-    root = Path(args.path or ".").resolve()
-    cursor_rules_dir = root / ".cursor" / "rules"
-    cursor_rules_dir.mkdir(parents=True, exist_ok=True)
-    src_rule = Path(__file__).parent / "templates" / "graphify.mdc"
-    if src_rule.exists():
-        content = src_rule.read_text()
-    else:
-        content = """---
+def _live_graph_stats(root: Path) -> str:
+    """Live node/edge counts from graphify-out/graph.json at install time.
+
+    Returns a phrase like ", 464 nodes 1074 edges (live at install)" or "" when no
+    graph exists — the rule text must never carry stale hardcoded numbers.
+    """
+    gpath = root / "graphify-out" / "graph.json"
+    try:
+        meta = json.loads(gpath.read_text(encoding="utf-8")).get("meta", {})
+        n, e = meta.get("nodes"), meta.get("edges")
+        if n and e:
+            return f", {n} nodes {e} edges (live at install)"
+    except Exception:
+        pass
+    return ""
+
+
+_FALLBACK_RULE = """---
 description: Personal Graphify — always query graph first
 globs: ["**/*"]
 alwaysApply: true
@@ -383,12 +390,12 @@ alwaysApply: true
 
 # Personal Graphify Rule (auto-installed)
 
-You have a queryable knowledge graph at `graphify-out/graph.json` built by personal-graphify (solo personal project, no connection to employer).
+You have a queryable knowledge graph at `graphify-out/graph.json` built by personal-graphify (solo personal project, no connection to employer{{GRAPH_STATS}}).
 
 **ALWAYS before answering architecture, cross-file, or "where is X" questions:**
 
 1. Run: `pgraphify query "<your question>"` or `personal-graphify query "<q>"`
-2. Use `graph.json` subgraph instead of grepping all files — 71.5x token reduction pattern
+2. Use `graph.json` subgraph instead of grepping all files — each answer reports its measured token estimate
 3. For connections: `pgraphify path "A" "B"`
 4. For concept deep-dive: `pgraphify explain "Concept"`
 5. For impact: `pgraphify impact "<node>" --direction both`
@@ -405,24 +412,19 @@ You have a queryable knowledge graph at `graphify-out/graph.json` built by perso
 
 Solo personal project, no connection to employer, built with public/free-tier only.
 """
-    dest = cursor_rules_dir / "graphify.mdc"
-    dest.write_text(content)
-    print(f"Wrote {dest}")
 
-    agents_dir = root / ".agents" / "skills" / "graphify"
-    agents_dir.mkdir(parents=True, exist_ok=True)
-    skill_content = f"""---
+_AGENTS_SKILL = """---
 name: graphify-personal
 description: Personal Graphify skill — query graph before grep (SOTA: semantic + hooks + cost)
 ---
 
 # Graphify Personal Skill — SOTA
 
-This project has Personal Graphify enabled (solo, Ollama-first, semantic rerank optional).
+This project has Personal Graphify enabled (solo, Ollama-first, semantic rerank optional{{GRAPH_STATS}}).
 
 Commands:
 - `pgraphify .` — build graph
-- `pgraphify query "<question>" --semantic` — scoped subgraph (~1.5k vs ~123k naive) + optional mxbai-embed-large rerank
+- `pgraphify query "<question>" --semantic` — scoped subgraph (measured token estimate in every answer) + optional mxbai-embed-large rerank
 - `pgraphify path "A" "B"` — shortest path
 - `pgraphify explain "Concept"` — explain node
 - `pgraphify impact "Node" --direction both|upstream|downstream`
@@ -445,9 +447,50 @@ Rules:
 
 Solo personal project, no connection to employer, built with public/free-tier only.
 """
-    (agents_dir / "SKILL.md").write_text(skill_content)
-    print(f"Wrote {agents_dir / 'SKILL.md'}")
-    print("Installed Cursor + Agents skills. Commit .cursor/rules/graphify.mdc and .agents/skills/graphify/ to git.")
+
+
+def cmd_install(args):
+    root = Path(args.path or ".").resolve()
+    if getattr(args, "project", False):
+        # --project: install at the enclosing git project root, not the literal path
+        cur = root
+        for _ in range(8):
+            if (cur / ".git").exists():
+                root = cur
+                break
+            if cur.parent == cur:
+                break
+            cur = cur.parent
+
+    platform = getattr(args, "platform", "all")
+    if platform not in ("cursor", "agents", "all"):
+        print(f"Unknown --platform '{platform}' (expected cursor|agents|all)")
+        sys.exit(1)
+
+    stats = _live_graph_stats(root)
+    written = []
+
+    if platform in ("cursor", "all"):
+        cursor_rules_dir = root / ".cursor" / "rules"
+        cursor_rules_dir.mkdir(parents=True, exist_ok=True)
+        src_rule = Path(__file__).parent / "templates" / "graphify.mdc"
+        content = src_rule.read_text() if src_rule.exists() else _FALLBACK_RULE
+        content = content.replace("{{GRAPH_STATS}}", stats)
+        dest = cursor_rules_dir / "graphify.mdc"
+        dest.write_text(content)
+        written.append(dest)
+        print(f"Wrote {dest}")
+
+    if platform in ("agents", "all"):
+        agents_dir = root / ".agents" / "skills" / "graphify"
+        agents_dir.mkdir(parents=True, exist_ok=True)
+        skill_dest = agents_dir / "SKILL.md"
+        skill_dest.write_text(_AGENTS_SKILL.replace("{{GRAPH_STATS}}", stats))
+        written.append(skill_dest)
+        print(f"Wrote {skill_dest}")
+
+    print(f"Installed {platform} skill(s) at {root}. Commit the written files to git: "
+          + ", ".join(str(p.relative_to(root)) for p in written))
 
 def main():
     KNOWN_CMDS = {"build","query","path","explain","impact","task","onboard","install","serve","hook","cost","help"}
@@ -464,6 +507,10 @@ def main():
     build_parser.add_argument("--roots", action="append", default=[], help="Extra roots (repeat or comma-separated) for multi-repo corpus")
     build_parser.add_argument("--out", default=None, help="Output dir")
     build_parser.add_argument("--max-files", type=int, default=8000)
+    build_parser.add_argument("--cluster", default="auto", choices=["auto", "spectral", "greedy"],
+                              help="Community detection backend (auto = Leiden→greedy fallback chain)")
+    build_parser.add_argument("--update", action="store_true",
+                              help="Incremental rebuild: reuse cached extractions for unchanged files (content-hash cache in graphify-out/cache/extract.json)")
 
     query_parser = subparsers.add_parser("query", help="Query graph — scoped subgraph for agent context (SOTA: lexical + semantic rerank)")
     query_parser.add_argument("question", nargs="?", help="Question")
@@ -513,6 +560,7 @@ def main():
     serve_parser = subparsers.add_parser("serve", help="MCP serve — exposes query/path/explain/impact/task as MCP tools")
     serve_parser.add_argument("--transport", default="http", choices=["http","stdio"])
     serve_parser.add_argument("--port", type=int, default=8080)
+    serve_parser.add_argument("--host", default="127.0.0.1", help="Bind address (default localhost-only; override deliberately to expose)")
     serve_parser.add_argument("--graph", default="graphify-out/graph.json")
 
     hook_parser = subparsers.add_parser("hook", help="Git hooks — auto-rebuild graph on commit + union merge driver for graph.json")

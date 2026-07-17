@@ -6,15 +6,15 @@ alwaysApply: true
 
 # 🐾 Personal Graphify SOTA Rule — Always Graph First (MCP + Task Compiler)
 
-You have `graphify-out/graph.json` built by **personal-graphify** SOTA (solo personal project, no connection to employer, free-tier only, Ollama-first, 464 nodes 1074 edges as of v0.2.0).
+You have `graphify-out/graph.json` built by **personal-graphify** SOTA (solo personal project, no connection to employer, free-tier only, Ollama-first{{GRAPH_STATS}}).
 
-**This is NOT vector RAG.** Real knowledge graph: Tree-sitter JS/TS/Python AST (local 0 LLM cost) + MD headings + frontmatter + rationale NOTE/WIY/HACK + personal patterns (Stripe MRR, Plaid Family Brain, retention playbook, workforce embedding 120d+4 heads, MTNN 48→64→k) + NetworkX + Leiden 18 communities. **71.1× token reduction**: task "retention playbook" 275 tokens vs naive 19,550.
+**This is NOT vector RAG.** Real knowledge graph: Tree-sitter JS/TS/Python AST (local 0 LLM cost) + MD headings + frontmatter + rationale NOTE/WHY/HACK + personal patterns (Stripe MRR, Plaid Family Brain, retention playbook, workforce embedding 120d+4 heads, MTNN 48→64→k) + NetworkX + Leiden/greedy communities. Token reduction is measured per query — run `pgraphify cost` for the real numbers from cost.json.
 
 **SOTA MCP server:** `pgraphify serve --transport http --port 8080` exposes `/mcp/tools` + `/mcp/call` with tools: graphify_query, graphify_path, graphify_explain, graphify_impact, graphify_task, graphify_onboard. Stdio for Cursor: `pgraphify serve --transport stdio`. Use MCP when available.
 
 **BEFORE any architecture / cross-file / where is X / how does A connect to B:**
 
-1. `pgraphify query "<question>"` → scoped subgraph ~1.5k tokens vs ~155k naive (71×). Example: `pgraphify query "Turnover Shield MRR"` 60 nodes 107 edges, top matches product + MRR metric, shows rationale WHY nodes
+1. `pgraphify query "<question>"` → scoped subgraph instead of the whole corpus; each answer reports its measured token estimate and basis. Example: `pgraphify query "Turnover Shield MRR"` returns top matches (product + MRR metric) plus rationale WHY nodes
 2. `pgraphify path "Stripe" "MRR"` or `pgraphify path "Turnover Shield" "Retention Playbook"` → shortest path hop-by-hop EXTRACTED vs INFERRED
 3. `pgraphify explain "Turnover Shield" --snippet` → incoming/outgoing edges, degree, community, file, plus code snippet
 4. **IMPACT** (SOTA for safe edits): `pgraphify impact "Turnover Shield" --direction both --depth 3` → downstream what it uses + upstream dependents + file hotspots — what breaks if you change this
@@ -24,7 +24,7 @@ You have `graphify-out/graph.json` built by **personal-graphify** SOTA (solo per
 **Check:**
 - `graphify-out/GRAPH_REPORT.md` → god nodes, surprise cross-file edges, suggested questions
 - `graphify-out/graph.html` → interactive vis-network, filter by community/type, click for details
-- `jcamd.com/graphify/` → public non-PII interactive SOTA: search + task compiler JS + impact BFS + god nodes, 464 nodes sanitized via `scripts/sanitize_for_public.py`
+- `jcamd.com/graphify/` → public non-PII interactive SOTA: search + task compiler JS + impact BFS + god nodes, sanitized via `scripts/sanitize_for_public.py`
 
 **Personal Ecosystem Overlay — Sanitize for public, keep generic for private:**
 - Turnover Shield: B2B SaaS $79-149/mo, goal $1k MRR = 7-13 customers, ROI 1 tech = $5k hiring cost, Stripe → Supabase → Workers free-tier, churn prediction (workforce embedding 120d + 4 heads + MTNN) → triggers retention playbook, weekly Fri tracking trials/paid/MRR/churn
@@ -52,7 +52,7 @@ pgraphify impact "Stripe webhook" --direction both
 pgraphify . --out graphify-out
 ```
 
-**Security:** Only http/https, size+timeout, path containment, HTML-escaped labels, no SSRF/XSS, PII stripped in public export.
+**Security:** 5MB per-file scan cap, HTML-escaped labels in graph.html, path containment on MCP graph loads, HTTP server binds 127.0.0.1 by default, PII stripped in public export.
 
 **Never brute-grep raw files before querying graph.** Graph is source of truth. If graph missing, run `pgraphify .` first.
 

@@ -5,7 +5,7 @@ Solo personal project, no connection to employer, built with public/free-tier on
 import os
 import fnmatch
 from pathlib import Path
-from typing import List, Set
+from typing import List
 
 DEFAULT_EXCLUDES = {
     ".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build",
@@ -24,6 +24,17 @@ DOC_EXTS = {".md", ".mdx", ".mdc", ".txt", ".rst", ".qmd", ".yaml", ".yml"}
 MEDIA_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".pdf", ".mp4", ".mov", ".mp3", ".wav"}
 
 ALL_VALID_EXTS = CODE_EXTS | DOC_EXTS | MEDIA_EXTS
+
+# Extensionless files worth indexing. Anything else without a known extension
+# (LICENSE, binaries, lockfile blobs, etc.) is skipped.
+KNOWN_EXTENSIONLESS_NAMES = {"dockerfile", "makefile", "justfile"}
+
+
+def is_collectible(path: Path) -> bool:
+    """Single allowlist for file collection: known extension OR known extensionless name."""
+    if path.suffix.lower() in ALL_VALID_EXTS:
+        return True
+    return path.suffix == "" and path.name.lower() in KNOWN_EXTENSIONLESS_NAMES
 
 def load_ignore_file(path: Path) -> List[str]:
     if not path.exists():
@@ -49,10 +60,6 @@ def is_ignored(file_path: Path, root: Path, ignore_patterns: List[str]) -> bool:
             continue
         if fnmatch.fnmatch(rel, pat) or fnmatch.fnmatch(name, pat):
             return True
-        if pat in rel:
-            # fallback contains for dirs
-            if file_path.is_dir() and pat in str(file_path):
-                pass
     # check default excludes
     for excl in DEFAULT_EXCLUDES:
         if excl in file_path.parts:
@@ -72,17 +79,8 @@ def collect_files(root: Path, max_files: int = 10000) -> List[Path]:
         dirnames[:] = [d for d in dirnames if d not in DEFAULT_EXCLUDES and not is_ignored(dirpath_p / d, root, all_patterns)]
         for fname in filenames:
             fpath = dirpath_p / fname
-            if fpath.suffix.lower() not in ALL_VALID_EXTS:
-                # still include PROJECT.md, README etc already covered by .md
-                if fname not in ("PROJECT.md", "CLAUDE.md", "AGENTS.md", "README.md"):
-                    # allow no-ext config files? skip
-                    if fpath.suffix == "":
-                        pass
-                    else:
-                        if fpath.suffix.lower() not in ALL_VALID_EXTS and fpath.suffix != "":
-                            # check if it's Dockerfile, Makefile etc - include
-                            if fname.lower() not in ("dockerfile", "makefile", "justfile"):
-                                continue
+            if not is_collectible(fpath):
+                continue
             if is_ignored(fpath, root, all_patterns):
                 continue
             # size limit 5MB per file

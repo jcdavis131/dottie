@@ -12,7 +12,7 @@ Local repo ready to push private: `~/workspace/your_files/personal-graphify/` �
 
 Structure:
 - src/personal_graphify/ — full pipeline detect→extract (Python AST fallback, JS regex, markdown, personal patterns) → build NetworkX → cluster greedy/Leiden → analyze god nodes & surprises → report GRAPH_REPORT.md → export graph.html + graph.json
-- Security: http/https only, path containment, HTML-escaped labels (SSRF/XSS/Cypher hardened) from upstream spec
+- Security (as implemented): 5MB per-file scan cap, HTML-escaped labels in graph.html, MCP graph-path containment, HTTP bind 127.0.0.1 by default, PII gate on public export
 - .cursor/rules/graphify.mdc — alwaysApply:true rule that forces agents to query graph first (mirrors upstream `graphify cursor install`)
 - .agents/skills/graphify/SKILL.md — cross-framework agent skill
 - skills/graphify-core, graphify-personal, graphify-agentic — 3 skills ready for your cursor skills repo
