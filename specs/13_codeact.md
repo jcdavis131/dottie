@@ -173,10 +173,19 @@ breaker `|r−1|≤r_outer` applied before/regardless of the standard clip's unc
 trace bank with prompt-deduped, per-prompt-capped, **uniform** recovery sampling (the source's
 ablation winner). A synthetic control-systems plant (`simulate_entropy_control`, clearly labeled
 NOT a training measurement) demonstrates accept-criterion (a): the disciplined run holds the entropy
-band ≥10× longer than the κ=0 ablation, which collapses to the floor. The **torch optimizer step
-itself** (`GRPOOptimizerStep.step`) *refuses* to run — it needs a branch fine-tune checkpoint
-(T9.3/T9.5, absent) and a GPU (BLOCKED_NO_GPU) — the honest boundary between built math and the
-gated climb.
+band ≥10× longer than the κ=0 ablation, which collapses to the floor.
+
+**Amended 2026-07-17 (later the same day): the torch optimizer step now EXISTS** —
+`ava/rl/grpo_torch.py` (`TorchGRPOStep`, `clipped_surrogate_torch`,
+`importance_weighted_entropy_torch`; 10 tests): exact parity vs the pure-math surrogate
+(16×7×3×3 grid, ≤1e-6, identical clip flags, all four clip zones), thermostat/outer-clip wiring,
+a measured synthetic-bandit learning demo (mean rl_return 0.28→1.0 over 300 real CPU steps), the
+spec-12 criterion-b spike test, a true-float32-exp-overflow NaN-survival regression (log-ratio
+capped before exp — adversarial-verifier HIGH finding, fixed), and checkpoint round-trip. A REAL
+GRPO update on the REAL smoke-scale agentic branch checkpoint ran end-to-end
+(`scripts/rl_smoke_update.py`; evidence in `runs/cpu_pilot/MANIFEST.json`). The legacy
+`GRPOOptimizerStep` stub now refers callers to `TorchGRPOStep` and still refuses. **Gated now:
+only the capability-scale climb** (mini+ checkpoints, GPU wall-clock).
 
 ## T13C.5 — Consolidation & serving
 
@@ -203,6 +212,16 @@ serving loop executes a multi-step task end-to-end in the sandbox and returns on
   `ModelPolicy` (the real path) refuses — needs a checkpoint (T9.3/T9.5) + GPU (BLOCKED_NO_GPU).
   **`evals/codeact_eval.py::run_codeact_eval` is now wired to this loop** and fails at that gate,
   not via a hand-written stub.
+  **Amended 2026-07-17 (later the same day): the real decode policy now EXISTS** —
+  `ava/rl/codeact_policy.py` (`TorchModelPolicy`; 17 tests): autoregressive greedy/temperature+
+  top-k decode over any torch LM (AvaModel `lm_logits`-dict or raw-tensor adapter) with a
+  duck-typed tokenizer, per-call seeded `torch.Generator` determinism, left-truncation to the
+  context window, id-level + text-level stop cutting. Machinery-verified against the REAL
+  random-init nano AvaModel and driven through `run_code_act` + the REAL sandbox (scripted-logits
+  stub emits a genuine ```python action; sanitized FINAL contains the sandbox's real output).
+  `scripts/rl_smoke_update.py` drove it over the real pilot branch checkpoint (12 seeded rollouts,
+  honest result: fence-free noise, r_task=0 — a smoke checkpoint has no capability). The legacy
+  `codeact_loop.ModelPolicy` stub now refers callers to `TorchModelPolicy` and still refuses.
 - **Consolidation:** `ava/rl/codeact_consolidation.py` (+ tests, 10/10) — MOPD trace-pool prep:
   **verified-only admission** (unverified code-as-action is never merged) + **stratified** balancing
   across families so rare grounding/`refuse` behaviors aren't washed out (distinct from spec-12's

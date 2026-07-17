@@ -12,10 +12,20 @@
   `efficiency_gain.py` (EG gates), T9.3/T9.5 (branch fine-tunes must exist first).
 - **Consumers:** T9.5 branch specialists (math first), `docs/DISTILLATION_INTEGRATION.md` MOPD
   unify (consumes the RL'd specialists + banked traces), T11.7.
-- **Status:** contract only — **blocked on T9.3/T9.5** like the rest of branch fine-tuning; no
-  RL code exists in this repo today and none should be written against this spec until a branch
-  checkpoint exists to train. Findings source: `docs/RL_INTEGRATION.md` (MAI-Thinking-1 review,
-  2026-07-17).
+- **Status (amended 2026-07-17):** the T12R.2 discipline system now EXISTS and is tested —
+  pure-math mechanics in `ava/rl/grpo.py` (29 tests) and the **real torch optimizer step** in
+  `ava/rl/grpo_torch.py` (10 tests: exact-parity clipped surrogate vs the pure-math spec, a
+  measured synthetic-bandit learning demo 0.28→1.0 mean rl_return, spike + true-float32-overflow
+  NaN-survival, thermostat wiring, checkpoint round-trip). The original "no RL code until a branch
+  checkpoint exists" rule was resolved honestly by *creating a real branch checkpoint at the
+  designed nano CPU-pilot scale*: `scripts/cpu_pilot_e2e.py` ran the full real chain in-container
+  (corpus → tokenizer 8192 → 47 packed shards → 90-step nano pretrain, lm 9.08→3.09 → 25-step
+  `--branch agentic` fork, lm 2.88→2.30) and `scripts/rl_smoke_update.py` executed a real GRPO
+  update on that checkpoint from real CodeAct rollouts (grad_norm 2.484, param_delta_l2 3.1e-2,
+  bit-identical rerun; evidence `runs/cpu_pilot/MANIFEST.json`, scale=smoke_cpu_pilot,
+  capability_claim=none). **Still gated: the capability-scale climb** — T9.3/T9.5 at mini+ needs
+  GPU wall-clock (BLOCKED_NO_GPU at that scale); smoke-scale proves mechanics, never capability.
+  Findings source: `docs/RL_INTEGRATION.md` (MAI-Thinking-1 review, 2026-07-17).
 
 ## Scope
 

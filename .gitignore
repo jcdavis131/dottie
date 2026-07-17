@@ -25,3 +25,16 @@ reports/*.html
 manifest.jsonl
 tasks/_status_snapshot.json
 tasks/_tick_status.json
+
+# cpu pilot: text EVIDENCE is committable (manifest, tokenizer json, per-step metrics jsonl);
+# checkpoints/shards are NOT (*.pt/*.bin above keep binaries out regardless). Rationale: a fresh
+# clone can then verify the manifest against its metrics/tokenizer without rerunning the 15-min
+# chain, while idx sidecars (regenerable with the shards) stay ignored — their tests skip-if-absent.
+!runs/
+runs/*
+!runs/cpu_pilot/
+runs/cpu_pilot/*
+!runs/cpu_pilot/MANIFEST.json
+!runs/cpu_pilot/tokenizer/
+!runs/cpu_pilot/reports/
+!runs/cpu_pilot/reports/**

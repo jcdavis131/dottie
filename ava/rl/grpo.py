@@ -340,9 +340,11 @@ class GRPOOptimizerStep:
 
     def step(self, *args, **kwargs):
         raise GRPOBlockedError(
-            "GRPO optimizer step is gated: it needs a real torch policy loaded from a branch "
-            "fine-tune checkpoint (T9.3/T9.5, which do not exist yet) and a GPU (BLOCKED_NO_GPU). "
-            "The GPU-free discipline mechanics (group_advantages, EntropyThermostat, "
-            "clipped_surrogate, TraceBank) are implemented and tested; wire this step once a "
-            "checkpoint exists — do not stub it with fabricated updates."
+            "This placeholder never runs — the REAL torch GRPO step now exists: use "
+            "ava.rl.grpo_torch.TorchGRPOStep (exact-parity clipped surrogate, thermostat/outer-"
+            "clip wiring, backward + optimizer step; CPU-verified incl. spike/overflow NaN "
+            "survival). The mechanical chain is proven end-to-end on the real smoke-scale pilot "
+            "checkpoint by scripts/rl_smoke_update.py. What remains gated is CAPABILITY-scale "
+            "training: mini+ branch checkpoints (T9.3/T9.5) need GPU wall-clock (BLOCKED_NO_GPU "
+            "at that scale). Do not use this class; do not fabricate capability results."
         )

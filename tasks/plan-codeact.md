@@ -4,9 +4,13 @@ Date: 2026-07-17
 Source: MAI-Thinking-1 agentic SWE + tool-use findings → `docs/RL_INTEGRATION.md`
 Contract: `specs/13_codeact.md` (T13C.1–T13C.6)
 Builds on: `specs/12_rl_training.md` (CodeAct is an agentic mode of the GRPO loop, not a parallel system)
-Status: **all GPU-free halves (T13C.1–T13C.6) landed 2026-07-17; the torch climb — optimizer step,
-real-model policy, MOPD run, EG verdict — stays hard-gated on branch fine-tunes (T9.3/T9.5) + GPU
-(BLOCKED_NO_GPU), each refusing rather than fabricating. Full spec-12/13 suite 133/133 (+1 skip).**
+Status: **ALL code halves landed 2026-07-17 — including the torch halves.** The nano CPU pilot ran
+the real chain end-to-end (`scripts/cpu_pilot_e2e.py`: corpus → tokenizer → pack → 90-step pretrain
+→ real agentic branch fork) and `scripts/rl_smoke_update.py` executed a real GRPO update on the real
+branch checkpoint via the real decode policy (`ava/rl/codeact_policy.py`) + real torch step
+(`ava/rl/grpo_torch.py`) + real sandbox rollouts. Evidence: `runs/cpu_pilot/MANIFEST.json`
+(scale=smoke_cpu_pilot, capability_claim=none). **Remaining gates are resources, not code:**
+capability-scale climbs (mini+ checkpoints, GPU wall-clock), the MOPD merge, the EG verdict.
 
 ## Objective
 

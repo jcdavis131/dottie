@@ -187,8 +187,12 @@ class ModelPolicy:
 
     def __call__(self, transcript: str) -> str:      # noqa: ARG002
         raise ModelPolicyBlockedError(
-            "ModelPolicy is gated: decoding a code-act turn needs a real trained policy (branch "
-            "fine-tune T9.3/T9.5, absent) and a GPU (BLOCKED_NO_GPU). The decode loop, sandbox, "
-            "FINAL sanitization, and trace capture are built and tested via TrajectoryReplayPolicy; "
-            "inject a real model here — do not stub it with fabricated turns."
+            "This placeholder never decodes — the REAL decode policy now exists: use "
+            "ava.rl.codeact_policy.TorchModelPolicy (autoregressive greedy/sampling decode over "
+            "any torch LM + tokenizer, seeded, stop-cut; machinery-verified on the real nano "
+            "AvaModel and driven through the real sandbox by scripts/rl_smoke_update.py on the "
+            "smoke-scale pilot checkpoint). What remains gated is CAPABILITY: a checkpoint whose "
+            "emissions actually solve tasks needs the capability-scale climb (T9.3/T9.5 at mini+, "
+            "GPU wall-clock — BLOCKED_NO_GPU at that scale). Do not use this class; do not "
+            "fabricate capable turns."
         )
