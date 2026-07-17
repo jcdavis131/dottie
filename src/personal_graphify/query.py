@@ -562,17 +562,24 @@ def task_compiler(G: nx.MultiDiGraph, task_description: str, semantic: bool = Fa
         plan.append("3. Check impact")
         plan.append("4. Edit + rebuild graph")
 
-    naive_tokens = G.number_of_nodes()*50
-    scoped_tokens = sub.number_of_nodes()*25
+    top_matches_payload = [{"label": m.get("label"), "type": m.get("type"), "file": m.get("file",""), "score": m.get("score"), "semantic": m.get("semantic_score")} for m in ranked[:10]]
+
+    # Measured, not modeled — shared estimator with analyze.token_stats() so the two
+    # never drift (was a line-for-line duplicate).
+    from .analyze import naive_token_estimate, payload_tokens
+    naive_tokens, basis = naive_token_estimate(G)
+    scoped_tokens = payload_tokens({"top_matches": top_matches_payload,
+                                    "files": files_ranked, "plan": plan})
     reduction = round(naive_tokens / max(scoped_tokens,1), 1)
 
     return {
         "task": task_description,
-        "top_matches": [{"label": m.get("label"), "type": m.get("type"), "file": m.get("file",""), "score": m.get("score"), "semantic": m.get("semantic_score")} for m in ranked[:10]],
+        "top_matches": top_matches_payload,
         "subgraph": {"nodes": sub.number_of_nodes(), "edges": sub.number_of_edges()},
         "files": files_ranked,
         "plan": plan,
-        "token_estimate": {"naive": naive_tokens, "scoped": scoped_tokens, "reduction_x": reduction},
+        "token_estimate": {"naive": naive_tokens, "scoped": scoped_tokens, "reduction_x": reduction,
+                            "basis": basis},
         "copy_paste_context": f"Task: {task_description}\nTop files: {', '.join([f['file'] for f in files_ranked[:5]])}\nGod nodes to check: see graphify-out/GRAPH_REPORT.md\nRelevant query: pgraphify query \"{task_description}\""
     }
 
