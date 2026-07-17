@@ -413,7 +413,7 @@ OLLAMA_HOST=http://host.docker.internal:11434 OLLAMA_MODEL=qwen3:32b python eval
 # ZAI_API_KEY=... python eval_frontier_rubric.py --domain all --judge glm --mode mock   # GLM-5.2 $1.40/$4.40 cached $0.26
 
 # safety blackmail 0/180 — early warning 4.5 tok base →5.2 tok chat AUC 0.91→0.94 per blueprint
-python eval_harness.py --suite safety --ckpt checkpoints/branch_chat_step800000.pt --device cuda
+python -m evals.run_harness  # real harness (root eval_harness.py stub was deleted; needle eval lives in evals/needle.py)
 
 # J-space viewer (read-only audit)
 uvicorn server:app --host 0.0.0.0 --port 8000 --reload &
@@ -450,7 +450,7 @@ tmux new -s ava
 # detach Ctrl+b d, attach tmux attach -t ava, list tmux ls
 
 # metrics.jsonl render
-python wandb_dashboard.py --runs runs --out reports/index.html || python specs/07_serving_deployment.md  # fallback
+python scripts/make_report.py --runs runs --out reports/index.html  # (wandb_dashboard.py moved to docs/blueprint/, unwired) || python specs/07_serving_deployment.md  # fallback
 cat checkpoints/base1b/metrics.jsonl | tail -n 20
 cat logs/base1b/train.log | tail -n 50
 

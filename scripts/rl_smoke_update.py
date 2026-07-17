@@ -167,6 +167,7 @@ def collect_rollouts(
     max_episode_steps: int,
     timeout_s: float,
     family_pass_rate: float,
+    device: str = "cpu",
 ) -> Tuple[List[Rollout], List[List[float]]]:
     """G real episodes per prompt through the REAL sandbox; returns (rollouts, per-group returns).
 
@@ -188,6 +189,7 @@ def collect_rollouts(
                 context_window=context_window,
                 eos_id=eos_id,
                 seed=decode_seed,
+                device=device,
             )
             t0 = time.time()
             result = run_code_act(
@@ -356,6 +358,9 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     ap.add_argument("--ckpt", default=None, help="explicit checkpoint path (default: agentic, else base)")
     ap.add_argument("--tokenizer", default=None, help="default: <run-dir>/tokenizer/ava_nano_bpe.json")
     ap.add_argument("--preset", default="nano")
+    ap.add_argument("--device", default="cpu", choices=["cpu", "cuda"],
+                    help="model device; cuda inside the ava-train compose service for GPU offload "
+                         "(seeded decodes stay bit-identical — sampling draws on CPU)")
     ap.add_argument("--prompts", type=int, default=3, help="distinct T13C.2 prompts")
     ap.add_argument("--group-size", type=int, default=4, help="G rollouts per prompt")
     ap.add_argument("--seed", type=int, default=0)
@@ -395,6 +400,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     model = build_model(cfg)
     blob = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     model.load_state_dict(blob["model"])
+    model.to(args.device)
     model.eval()  # dropout-free forwards: rollout scoring and update forward match exactly
     tok_path = args.tokenizer or os.path.join(args.run_dir, "tokenizer", "ava_nano_bpe.json")
     tokenizer = AvaTokenizer.load(tok_path)
@@ -414,6 +420,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         max_new_tokens=args.max_new_tokens, context_window=args.context_window,
         eos_id=EOS_ID, seed=args.seed, max_episode_steps=args.max_episode_steps,
         timeout_s=args.timeout_s, family_pass_rate=args.family_pass_rate,
+        device=args.device,
     )
     rollout_s = time.time() - t0
     for r in rollouts:
@@ -439,12 +446,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     params_before = [p.detach().clone() for p in model.parameters()]
     t0 = time.time()
+    dev = args.device   # the update forward must run where the policy's weights live
     stats: GRPOStepStats = stepper.step(
-        {"input_ids": batch["input_ids"]},
-        batch["actions"],
-        batch["old_logp"],
-        batch["advantages"],
-        mask=batch["mask"],
+        {"input_ids": batch["input_ids"].to(dev)},
+        batch["actions"].to(dev),
+        batch["old_logp"].to(dev),
+        batch["advantages"].to(dev),
+        mask=batch["mask"].to(dev),
     )
     step_s = time.time() - t0
     with torch.no_grad():

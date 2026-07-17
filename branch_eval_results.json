@@ -1,4 +1,5 @@
 {
+  "disclaimer": "MOCK BLUEPRINT OUTPUT \u2014 hardcoded illustrative values, not measurements; see reports/REPORT_REAL.md (python -m evals.run_harness) for real evals",
   "base": {
     "tests": [
       {

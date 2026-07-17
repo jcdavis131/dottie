@@ -12,7 +12,7 @@ For Ava, this maps directly to our J-Space architecture:
 
 | OpenWiki Concept | Ava Mapping | Implementation |
 |---|---|---|
-| Personal wiki `~/.openwiki/wiki` | S2 Slow Workspace (hl=300 deliberate long-term memory) | `ava/memory/openwiki_adapter.py` |
+| Personal wiki `~/.openwiki/wiki` | S2 Slow Workspace (hl=300 deliberate long-term memory) | `research/memory/openwiki_adapter.py` |
 | Code wiki `openwiki/` | S1 Fast + Planner (codebase awareness + temporal planning) | `openwiki/` + AGENTS.md block |
 | Connectors (git-repo, gmail, notion, web-search, hackernews) | Data ingestion connectors (git, gmail receipts, web edu) | `ava/connectors/openwiki_connectors.py` |
 | Deterministic connector tools write raw data and manifests under `~/.openwiki/connectors/<connector>/raw/`, then agent synthesizes wiki | Ava streaming_data.py dual-track (raw dolma + curated logic) | Same pattern |
@@ -62,7 +62,7 @@ Config and secrets saved to `~/.openwiki/.env` on local machine. Connector secre
 
 ### 1. OpenWiki → J-Space Bridge
 
-Create `ava/memory/openwiki_adapter.py`:
+Create `research/memory/openwiki_adapter.py`:
 
 - Watches `~/.openwiki/wiki/` markdown files
 - Embeds them into S2 Slow slots (hl=300) as verbalizable concepts
@@ -132,5 +132,5 @@ Supports OpenAI (API key or ChatGPT login), OpenRouter, Fireworks, Baseten, NVID
 - [] Install openwiki CLI
 - [] Run `openwiki code --init` in this repo -> creates openwiki/ + updates AGENTS.md block
 - [] Copy workflow `.github/workflows/openwiki-update.yml`
-- [] Implement `ava/memory/openwiki_adapter.py` bridge
+- [] Implement `research/memory/openwiki_adapter.py` bridge
 - [] Family Brain: ship WikiTab + wikiConnector

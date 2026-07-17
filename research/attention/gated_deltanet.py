@@ -1,7 +1,7 @@
 """
-Gated DeltaNet — Qwen 3.6 linear attention fixed-size state never grows【600725069786087129†L90-L92】
-3 DeltaNet to 1 full-attention as precision checkpoint【600725069786087129†L89-L92】
-Qwen3-Coder-Next 80B 3B active 36/48 layers DeltaNet 18MB at 170K tokens 12 full-attention GQA【600725069786087129†L93-L97】
+Gated DeltaNet — Qwen 3.6 linear attention fixed-size state never grows
+3 DeltaNet to 1 full-attention as precision checkpoint
+Qwen3-Coder-Next 80B 3B active 36/48 layers DeltaNet 18MB at 170K tokens 12 full-attention GQA
 """
 import torch, torch.nn as nn, torch.nn.functional as F
 class GatedDeltaNetLayer(nn.Module):
@@ -22,7 +22,7 @@ class GatedDeltaNetLayer(nn.Module):
             self.state.zero_()
         B,L,D = x.shape
         qs = self.q(x); ks=self.k(x); vs=self.v(x)
-        gates = torch.sigmoid(self.gate(x))  # decay for old info【600725069786087129†L92-L94】
+        gates = torch.sigmoid(self.gate(x))  # decay for old info
         out = []
         # naive loop for fixed state — S += gating * (k^T v - existing) simplified
         S = self.state
@@ -30,9 +30,9 @@ class GatedDeltaNetLayer(nn.Module):
             k = ks[:,l] # B,D
             v = vs[:,l]
             g = gates[:,l] # B,D
-            # delta rule: store delta against what state already holds【600725069786087129†L92-L93】
+            # delta rule: store delta against what state already holds
             # S update: S = g*S + (1-g)*(k^T v) — simplified outer
-            # keep state fixed-size never grows with context【600725069786087129†L90-L92】
+            # keep state fixed-size never grows with context
             # batched outer for demo: use mean over batch for buffer
             delta = torch.einsum('bd,be->de', k, v) / B
             S = S * g.mean(0).mean() + delta * (1-g.mean(0).mean())
@@ -45,5 +45,5 @@ class GatedDeltaNetLayer(nn.Module):
         return self.out(out)
 
     def mem_mb(self, tokens=170_000):
-        # fixed state ~18MB at 170K tokens per review【600725069786087129†L93-L97】
+        # fixed state ~18MB at 170K tokens per review
         return 18.0 # MB constant regardless of tokens

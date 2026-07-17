@@ -1,3 +1,8 @@
+> **MOCK BLUEPRINT OUTPUT — not measurements.** Every number in this report is a
+> hardcoded illustrative blueprint value (see docs/blueprint/README.md). For real,
+> checkpoint-derived measurements run `python -m evals.run_harness` and read
+> `reports/REPORT_REAL.md`.
+
 Solo personal project, no connection to employer, built with public/free-tier only
 
 # Frontier Eval Report — Ava v6.4

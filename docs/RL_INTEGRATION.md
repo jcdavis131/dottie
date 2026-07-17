@@ -137,7 +137,7 @@ A second, longer analysis of the same report adds detail that changes a few call
   (attention-output RMSNorm gains = 0, so the net starts as per-token dense layers and
   cross-token interaction fades in) is scale-free and directly relevant to Ava's J-Space Router
   (`routing_kl` health at init). Recorded as hill-climb candidate **T11.8** — nano-falsifiable;
-  `network_init_sota.py` currently fills all norm gains with 1.0.
+  `docs/blueprint/network_init_sota.py` (blueprint scaffolding) currently fills all norm gains with 1.0.
 - **SWE funnel had a hidden stage:** compile (2.08M) → *reference grading vs baseline solutions*
   (745,452; 15.3%) → F2P/P2P verified (265,617). Also: failed environments were recycled to
   *generate* synthetic problems/tests (BugPilot/SWE-Smith/SWE-Mirror-style) — the

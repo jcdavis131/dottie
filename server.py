@@ -36,6 +36,10 @@ _REPORT_HTML = _REPORTS / "index.html"
 _AGENT_EVAL_DIR = Path(os.environ.get("AGENT_EVAL_DIR", str(_REPO.parent / "agent-eval")))
 _AGENT_EVAL_SCOREBOARD = _AGENT_EVAL_DIR / "scoreboard.md"
 
+# All metric fields render as "—" until the page fetches real values from
+# /jspace/inspect (and /jspace/eval_branch). No fabricated defaults: if the
+# engine or eval report is unavailable, the UI says so instead of showing
+# invented numbers.
 VIEWER_HTML = """
 <!DOCTYPE html><html><head><title>Ava J-Space Viewer v6.4</title>
 <style>
@@ -54,6 +58,7 @@ body{background:#0a0a0f;color:#e0e0ff;font-family:Inter,monospace;margin:0;paddi
 .safety{background:#ff475733;border:1px solid #ff4757;animation:pulse 1s infinite}
 .bar{height:8px;background:#252540;border-radius:4px;overflow:hidden;margin:6px 0}
 .fill{height:100%;background:linear-gradient(90deg,#6c5ce7,#00cec9)}
+.muted{color:#888;font-size:12px}
 button{padding:8px 16px;border-radius:8px;border:1px solid #6c5ce7;background:#1a1a2e;color:#e0e0ff;cursor:pointer;margin:2px}
 button:disabled{opacity:0.3;cursor:not-allowed}
 .toggle{display:flex;gap:8px;margin:10px 0}
@@ -69,21 +74,59 @@ button:disabled{opacity:0.3;cursor:not-allowed}
 <button id="researchBtn" onclick="setMode('research')">🧪 Intervene (Research)</button>
 </div>
 <div class="grid">
-<div class="card"><h3>Top Concepts (verbalizable mass target 0.06)</h3><div id="concepts"><span class="chip high">spider 0.23</span><span class="chip high">eight 0.18</span><span class="chip med">thinking 0.12</span><span class="chip med">focused 0.09</span><span class="chip safety">leverage 0.04 ⚠️</span></div><div>Mass: <span id="mass">0.064</span></div><div class="bar"><div id="massBar" class="fill" style="width:64%"></div></div></div>
-<div class="card"><h3>Broadcast Strength (target 20%)</h3><div>Strength: <span id="bcast">0.22</span></div><div class="bar"><div id="bcastBar" class="fill" style="width:22%"></div></div><div>S1 hl=8 tok | S2 hl=300 | Critic hl=30 | Planner hl=150</div></div>
-<div class="card"><h3>Per-Space View</h3><div id="perSpace">S1 Fast 32 slots hl=8 associative broadcast 0.18<br>S2 Slow 64 hl=300 verifiable mass 0.065<br>Critic 16 hl=30 safety early 4.5 tok<br>Planner 32 hl=150 deadlines</div><div>Routing: S1 15% S2 55% Critic 10% Planner 20% veto 72%</div></div>
-<div class="card"><h3>Interventions (research only)</h3><button id="btnSpider" onclick="intervene('spider','ant')">Spider→Ant 8→6</button><button onclick="intervene('soccer','rugby')">Soccer→Rugby</button><button onclick="intervene('france','china')">France→China broadcast</button><button onclick="intervene('spanish','french')">Spanish→French</button><div id="interveneLog" style="font-size:11px;margin-top:8px;color:#aaa"></div></div>
+<div class="card"><h3>Top Concepts (verbalizable mass target 0.06)</h3><div id="concepts"><span class="muted">—</span></div><div>Mass: <span id="mass">—</span></div><div class="bar"><div id="massBar" class="fill" style="width:0%"></div></div></div>
+<div class="card"><h3>Broadcast Strength (target 20%)</h3><div>Strength: <span id="bcast">—</span></div><div class="bar"><div id="bcastBar" class="fill" style="width:0%"></div></div><div class="muted">Half-life targets: S1 hl=8 tok | S2 hl=300 | Critic hl=30 | Planner hl=150</div></div>
+<div class="card"><h3>Per-Space View</h3><div id="perSpace"><span class="muted">—</span></div><div>Routing: <span id="routing">—</span></div></div>
+<div class="card"><h3>Interventions (research only)</h3><button id="btnSpider" onclick="intervene('spider','ant')">Spider→Ant</button><button onclick="intervene('soccer','rugby')">Soccer→Rugby</button><button onclick="intervene('france','china')">France→China broadcast</button><button onclick="intervene('spanish','french')">Spanish→French</button><div id="interveneLog" style="font-size:11px;margin-top:8px;color:#aaa"></div></div>
 </div>
-<div class="card" style="margin-top:16px"><h3>Layer Stream</h3><div id="stream" style="height:120px;overflow-y:auto;background:#0a0a0a;padding:8px;border-radius:8px;font-size:12px">Layer 2 sensory → Layer 14 middle workspace (spider appears though never in I/O) → Layer 28 motor collapse<br>Layer 14: top concepts spider, eight, web, legs<br>Layer 20: broadcast France vector active<br>Layer 26: Critic scanning leverage/blackmail/threat</div><button onclick="toggleWS()">Toggle Live WebSocket</button></div>
-<div class="card" style="margin-top:16px"><h3>5 Properties + Safety</h3><div id="props">Verbal Report: PASS mass 0.064 | Directed Modulation: PASS citrus orange/lemon + thinking/focused | Internal Reasoning: PASS 8→6 | Broadcast: PASS France→China 4 tasks | Selectivity: PASS Spanish fluent vs Garcia Marquez→Victor Hugo | Safety: 0/180 blackmail AUC 0.91 early 4.5 tok</div><button onclick="runEval()">Run 5-Test Eval</button><div id="evalOut"></div></div>
+<div class="card" style="margin-top:16px"><h3>Layer Stream</h3><div id="stream" style="height:120px;overflow-y:auto;background:#0a0a0a;padding:8px;border-radius:8px;font-size:12px"><span class="muted">No stream yet — toggle the live WebSocket to see real per-block traces.</span></div><button onclick="toggleWS()">Toggle Live WebSocket</button></div>
+<div class="card" style="margin-top:16px"><h3>5 Properties + Safety</h3><div id="props"><span class="muted">—</span></div><button onclick="runEval()">Run 5-Test Eval</button><div id="evalOut"></div></div>
 <script>
+const DEFAULT_PROMPT='The number of legs on the animal that spins webs is';
+const SPACE_LABELS={system1:'S1 Fast',system2:'S2 Slow',critic:'Critic',planner:'Planner'};
 let mode = new URLSearchParams(window.location.search).get('mode')||'audit';
-function setMode(m){mode=m; if(m=='research'){if(!confirm('You will be able to EDIT internal workspace, causally changes outputs (Spider→Ant 8→6, France→China broadcast), all logged, requires ENABLE_JSPACE_WRITE=1. Confirm?')) return; window.location.search='?mode='+m;} else window.location.search='?mode='+m;}
-function updateModeUI(){document.getElementById('modeBadge').textContent = mode=='audit'?'🔍 Read-Only (Audit)':'🧪 Intervene (Research)'; document.getElementById('modeBadge').className='badge '+(mode=='audit'?'audit':'research'); document.getElementById('banner').textContent = mode=='audit'?'Read-only J-lens, no writes, safe for prod, surfaces leverage/blackmail/threat before output':'You are editing internal workspace, causally changes outputs (Spider→Ant 8→6, France→China broadcast), all logged, requires ENABLE_JSPACE_WRITE=1'; document.getElementById('banner').style.background=mode=='audit'?'#6c5ce733':'#ff475733'; document.getElementById('auditBtn').className=mode=='audit'?'active':''; document.getElementById('researchBtn').className=mode=='research'?'active':''; let dis = mode!='research'; document.querySelectorAll('#interveneLog').forEach(e=>e); document.querySelectorAll('button').forEach(b=>{if(b.textContent.includes('→')) b.disabled=dis; if(dis) b.title='(research only)';});}
-async function intervene(from,to){let branch=document.getElementById('branchSel').value||'base'; if(mode!='research'){alert('Intervene requires ?mode=research + ENABLE_JSPACE_WRITE=1. Research-only: editing internal workspace changes outputs causally. All interventions logged.'); return;} let res=await fetch('/jspace/intervene?mode=research',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({from,to,branch,text:'The number of legs on the animal that spins webs is'})}); let j=await res.json(); document.getElementById('interveneLog').innerText = JSON.stringify(j,null,2); console.log('[J-SPACE INTERVENE AUDIT LOG]',{ts:Date.now(),from,to,branch});}
-async function runEval(){let branch=document.getElementById('branchSel').value; let res=await fetch('/jspace/eval_branch?branch='+branch); let j=await res.json(); document.getElementById('evalOut').innerText=JSON.stringify(j,null,2);}
-let ws=null; function toggleWS(){if(ws){ws.close();ws=null;return;} ws=new WebSocket((location.protocol=='https:'?'wss://':'ws://')+location.host+'/jspace/stream'); ws.onmessage=(e)=>{document.getElementById('stream').innerText+= '\\n'+e.data;}; ws.onopen=()=>{ws.send('The number of legs on the animal that spins webs is');};}
+function setMode(m){mode=m; if(m=='research'){if(!confirm('You will be able to EDIT internal workspace, causally changes outputs, all logged, requires ENABLE_JSPACE_WRITE=1. Confirm?')) return; window.location.search='?mode='+m;} else window.location.search='?mode='+m;}
+function updateModeUI(){document.getElementById('modeBadge').textContent = mode=='audit'?'🔍 Read-Only (Audit)':'🧪 Intervene (Research)'; document.getElementById('modeBadge').className='badge '+(mode=='audit'?'audit':'research'); document.getElementById('banner').textContent = mode=='audit'?'Read-only J-lens, no writes, safe for prod, surfaces leverage/blackmail/threat before output':'You are editing internal workspace, causally changes outputs, all logged, requires ENABLE_JSPACE_WRITE=1'; document.getElementById('banner').style.background=mode=='audit'?'#6c5ce733':'#ff475733'; document.getElementById('auditBtn').className=mode=='audit'?'active':''; document.getElementById('researchBtn').className=mode=='research'?'active':''; let dis = mode!='research'; document.querySelectorAll('button').forEach(b=>{if(b.textContent.includes('→')) b.disabled=dis; if(dis) b.title='(research only)';});}
+function fmt(x,d){return (typeof x==='number' && isFinite(x)) ? x.toFixed(d===undefined?3:d) : '—';}
+function renderInspect(j){
+  const cdiv=document.getElementById('concepts'); cdiv.innerHTML='';
+  (j.top_concepts||[]).forEach(c=>{const s=document.createElement('span'); const p=c.p||0; s.className='chip '+(p>0.15?'high':p>0.05?'med':'low'); s.textContent=(c.concept||'').trim()+' '+fmt(p); cdiv.appendChild(s);});
+  if(!(j.top_concepts||[]).length) cdiv.innerHTML='<span class="muted">no concepts returned</span>';
+  document.getElementById('mass').textContent=fmt(j.verbalizable_mass);
+  document.getElementById('massBar').style.width=Math.min(100,(j.verbalizable_mass||0)*1000)+'%';
+  document.getElementById('bcast').textContent=fmt(j.broadcast_strength);
+  document.getElementById('bcastBar').style.width=Math.min(100,(j.broadcast_strength||0)*100)+'%';
+  const ps=j.per_space||{}; const lines=Object.keys(ps).map(k=>{const v=ps[k]; return (SPACE_LABELS[k]||k)+': broadcast '+fmt(v.broadcast)+' hl_est '+fmt(v.hl_est,1)+' mass '+fmt(v.mass);});
+  document.getElementById('perSpace').innerHTML=lines.length?lines.join('<br>'):'<span class="muted">no per-space data</span>';
+  const rp=j.route_probs||[]; document.getElementById('routing').textContent=rp.length? ['S1','S2','Critic','Planner'].map((n,i)=>n+' '+Math.round((rp[i]||0)*100)+'%').join(' ') : '—';
+}
+async function loadInspect(){
+  try{
+    const res=await fetch('/jspace/inspect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:DEFAULT_PROMPT})});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    renderInspect(await res.json());
+  }catch(e){
+    document.getElementById('concepts').innerHTML='<span class="muted">engine unavailable ('+e+') — boot the server with a real checkpoint (AVA_CKPT)</span>';
+  }
+}
+async function loadEvalSummary(){
+  const props=document.getElementById('props');
+  try{
+    const res=await fetch('/jspace/eval_branch?branch=all');
+    if(res.status===404){props.innerHTML='<span class="muted">no eval report yet — run `make eval` to produce real measurements</span>'; return;}
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const j=await res.json();
+    props.textContent=JSON.stringify(j).slice(0,400)+' …';
+  }catch(e){
+    props.innerHTML='<span class="muted">eval report unavailable ('+e+') — run `make eval`</span>';
+  }
+}
+async function intervene(from,to){let branch=document.getElementById('branchSel').value||'base'; if(mode!='research'){alert('Intervene requires ?mode=research + ENABLE_JSPACE_WRITE=1. Research-only: editing internal workspace changes outputs causally. All interventions logged.'); return;} let res=await fetch('/jspace/intervene?mode=research',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({from,to,branch,text:DEFAULT_PROMPT})}); let j=await res.json(); document.getElementById('interveneLog').innerText = JSON.stringify(j,null,2); console.log('[J-SPACE INTERVENE AUDIT LOG]',{ts:Date.now(),from,to,branch});}
+async function runEval(){let branch=document.getElementById('branchSel').value; let res=await fetch('/jspace/eval_branch?branch='+branch); if(res.status===404){document.getElementById('evalOut').innerText='no eval report yet — run `make eval` first'; return;} let j=await res.json(); document.getElementById('evalOut').innerText=JSON.stringify(j,null,2);}
+let ws=null; function toggleWS(){if(ws){ws.close();ws=null;return;} ws=new WebSocket((location.protocol=='https:'?'wss://':'ws://')+location.host+'/jspace/stream'); ws.onopen=()=>{document.getElementById('stream').innerText=''; ws.send(DEFAULT_PROMPT);}; ws.onmessage=(e)=>{document.getElementById('stream').innerText+= '\\n'+e.data;};}
 updateModeUI();
+loadInspect();
+loadEvalSummary();
 </script></body></html>
 """
 

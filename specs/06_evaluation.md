@@ -163,6 +163,9 @@ The mock harness's giveaway literals (verified in eval_branch_harness.py): `0.82
    → no output.
 5. `git status --porcelain` → new files only under evals/, tests/, reports/, specs/; eval_branch_harness.py,
    BRANCH_EVAL_REPORT.md, branch_eval_results.json (blueprint mocks) untouched.
+   (Post-audit note: the blueprint mocks were later labeled — BRANCH_EVAL_REPORT.md now lives in
+   docs/blueprint/ with a MOCK header, branch_eval_results.json stays at root with a top-level
+   "disclaimer" field, and eval_branch_harness.py `--mode real` now refuses to run.)
 
 ## Out of scope
 - Training or fine-tuning (spec 05). server.py (separate spec). code/math branches (chat only for now).

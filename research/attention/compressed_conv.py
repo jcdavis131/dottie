@@ -2,8 +2,8 @@
 Compressed Convolutional Attention — Zaya1-8B style 8x KV compression
 Solo personal project, no connection to employer, built with public/free-tier only
 
-From review: squeezes Q,K,V into shared latent space and sequence mixing with convolutions → eight-fold KV-cache compression【600725069786087129†L24-L28】
-MoE 8.4B 760M active【600725069786087129†L24-L27】
+From review: squeezes Q,K,V into shared latent space and sequence mixing with convolutions → eight-fold KV-cache compression
+MoE 8.4B 760M active
 """
 from typing import Optional
 import math, torch, torch.nn as nn, torch.nn.functional as F
@@ -49,7 +49,7 @@ class CompressedConvAttention(nn.Module):
 
 class MarkovianRecursiveAggregator(nn.Module):
     """
-    Test-time reasoning that combines tail end of multiple parallel traces into bounded aggregation context【600725069786087129†L28-L32】
+    Test-time reasoning that combines tail end of multiple parallel traces into bounded aggregation context
     """
     def __init__(self, d_model=2048, k_traces=4, tail=256, entropy_tau=0.7):
         super().__init__()

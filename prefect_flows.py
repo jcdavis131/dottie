@@ -1,15 +1,20 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
 """
-Ava AGI Factory v6.4 + Dumb Models — Prefect Flows PoC
+Ava AGI Factory v6.4 — Prefect Flows
 Free-tier self-hosted: pip install prefect, prefect server start --port 4200
 
+HONESTY CONTRACT (audit rework): every task either subprocess-runs the REAL
+implementation (logic_textbook_pipeline.py, python -m ava.tokenizer,
+python -m ava.train, python -m evals.run_harness, eval_frontier_rubric.py,
+scripts/hf_uploader.py) or raises BlockedError explaining what is missing —
+the same refusal pattern as ava/rl's *BlockedError gates. No task fabricates
+loss curves, checkpoints, tokenizers, scores, or deploy URLs.
+
 Runnable:
-  python prefect_flows.py --run data        # data gen only (mock if no GPU)
-  python prefect_flows.py --run train --preset mini
-  python prefect_flows.py --run eval
-  python prefect_flows.py --run distill
+  python prefect_flows.py --run data        # real small streaming generation run
+  python prefect_flows.py --run train --preset nano   # real smoke train (needs packed shards)
+  python prefect_flows.py --run eval        # real evals.run_harness + frontier rubric script
   python prefect_flows.py --run all --preset nano
-  python prefect_flows.py --run vector --league nfl
 
 Deploy:
   prefect deployment build prefect_flows.py:ava_data_gen_flow -n daily --cron "0 6 * * *" --apply
@@ -20,17 +25,15 @@ Docker integration:
   OLLAMA_HOST=http://host.docker.internal:11434 for free judging
 """
 import argparse
-import os
-import sys
 import json
-import time
+import os
+import subprocess
+import sys
 from pathlib import Path
-from datetime import datetime
 
 # Try import prefect, fallback to no-op decorators if not installed so file still imports
 try:
     from prefect import flow, task, get_run_logger
-    from prefect.tasks import task_input_hash
     PREFECT_AVAILABLE = True
 except ImportError:
     PREFECT_AVAILABLE = False
@@ -49,279 +52,271 @@ except ImportError:
 ROOT = Path(__file__).parent
 DATA_DIR = ROOT / "data"
 LOGS_DIR = ROOT / "logs"
-YOUR_FILES = Path.home() / "workspace" / "your_files" / "ava-agi" / "runs"
+# Report HTML destination: env-configurable, defaults inside this checkout
+# (was a hardcoded other-host absolute path under ~/workspace/your_files).
+LOG_HTML_DIR = Path(os.getenv("AVA_LOG_HTML_DIR", str(ROOT / "reports")))
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:32b")
+
+
+class BlockedError(RuntimeError):
+    """Raised instead of fabricating an output (mirrors ava/rl's honesty gates)."""
+
 
 # ---------- Helpers ----------
 def _log(msg):
     try:
         logger = get_run_logger()
         logger.info(msg)
-    except:
+    except Exception:
         print(msg)
 
-# ---------- HF PUSH TASK (NEW — 2-loop) ----------
+
+def _run(cmd, timeout=1800, cwd=None):
+    """subprocess.run wrapper: logs the command, raises with real stderr on failure."""
+    cmd = [str(c) for c in cmd]
+    _log(f"[run] {' '.join(cmd)}")
+    res = subprocess.run(cmd, cwd=str(cwd or ROOT), capture_output=True, text=True, timeout=timeout)
+    if res.stdout:
+        _log(res.stdout[-2000:])
+    if res.returncode != 0:
+        raise RuntimeError(
+            f"command failed rc={res.returncode}: {' '.join(cmd)}\nstderr tail: {res.stderr[-2000:]}"
+        )
+    return res
+
+
+# ---------- HF PUSH TASK (real subprocess to scripts/hf_uploader.py) ----------
 @task(retries=3, retry_delay_seconds=[30, 120, 300], log_prints=True)
 def push_to_hf_task(manifest_path: str = "data/daily_expanded/manifest_*.jsonl", repo: str = "jcdavis131/ava-textbook-v6", private: bool = True):
-    """Push curated train/val/test to HF Hub for streaming Loop2 — Solo personal project, no work Drive"""
+    """Push curated train/val/test to HF Hub — Solo personal project, no work Drive"""
     _log(f"[hf] push_to_hf repo={repo} manifest={manifest_path}")
     hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_HUB_TOKEN")
+    uploader = ROOT / "scripts" / "hf_uploader.py"
     if not hf_token:
-        _log("[hf] HF_TOKEN not set — saving manifest to data/for_upload/hf_ready_*.json for Alienware push (expected in Hatch VM)")
-        # call hf_uploader dry-run via subprocess or just log
-        import subprocess
-        cmd = f"python3 {ROOT}/scripts/hf_uploader.py --repo {repo} --manifest '{manifest_path}' --dry-run"
+        _log("[hf] HF_TOKEN not set — running hf_uploader dry-run (no upload)")
         try:
-            subprocess.run(cmd, shell=True, timeout=30)
+            _run([sys.executable, uploader, "--repo", repo, "--manifest", manifest_path, "--dry-run"], timeout=60)
         except Exception as e:
             _log(f"[hf] dry-run warning: {e}")
         return {"pushed": False, "reason": "no_token", "repo": repo}
-    # real push
-    import subprocess
-    cmd = f"HF_TOKEN={hf_token} python3 {ROOT}/scripts/hf_uploader.py --repo {repo} --manifest '{manifest_path}' --private --push"
-    _log(f"[hf] cmd: {cmd}")
-    try:
-        res = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=300)
-        _log(res.stdout[-2000:])
-        if res.returncode == 0:
-            return {"pushed": True, "repo": repo}
-        else:
-            _log(f"[hf] push failed rc={res.returncode} {res.stderr[-2000:]}")
-            return {"pushed": False, "rc": res.returncode}
-    except Exception as e:
-        _log(f"[hf] exception {e}")
-        return {"pushed": False, "error": str(e)}
+    res = _run([sys.executable, uploader, "--repo", repo, "--manifest", manifest_path, "--private", "--push"], timeout=300)
+    return {"pushed": res.returncode == 0, "repo": repo}
+
 
 # ---------- DATA GEN FLOW ----------
 @task(retries=3, retry_delay_seconds=[10, 60, 300], log_prints=True)
 def generate_phase(phase: str, tokens: int = 50_000_000):
-    """Wraps logic_textbook_pipeline.py --phase p0_logic etc"""
-    _log(f"[data] generate_phase {phase} tokens={tokens}")
+    """REAL run of logic_textbook_pipeline.py (deterministic heuristic filter),
+    bounded to a small streaming shard so the task stays quick."""
     out = DATA_DIR / "mini" / "raw" / phase
     out.mkdir(parents=True, exist_ok=True)
-    # Real run if script exists, else mock
     script = ROOT / "logic_textbook_pipeline.py"
-    if script.exists():
-        # mock small run to keep PoC fast; real uses subprocess
-        # We avoid heavy work in PoC — write placeholder JSONL
-        (out / f"{phase}.jsonl").write_text(json.dumps({"phase": phase, "tokens": tokens, "ts": datetime.utcnow().isoformat()}) + "\n")
-        time.sleep(0.5)
-    else:
-        (out / f"{phase}.jsonl").write_text('{"mock":true}\n')
+    if not script.exists():
+        raise BlockedError(f"logic_textbook_pipeline.py missing at {script}; nothing to generate")
+    existing = len(list(out.rglob("*.jsonl*")))
+    _run([sys.executable, script, "--out", out, "--shard_mb", "1",
+          "--max_shards", str(existing + 1), "--sleep", "0"], timeout=600)
+    n_shards = len(list(out.rglob("*.jsonl*")))
+    _log(f"[data] generate_phase {phase}: {n_shards} shard file(s) under {out}")
     return str(out)
 
+
 @task(retries=2, log_prints=True)
-def build_tokenizer(vocab_size: int = 8192):
-    _log(f"[data] build_tokenizer vocab={vocab_size}")
-    tok_path = DATA_DIR / "mini" / "tokenizer" / "ava_bpe_32k.json"
+def build_tokenizer(vocab_size: int = 8192, corpus_dir: str = None):
+    """REAL BPE training via python -m ava.tokenizer train."""
+    corpus = Path(corpus_dir) if corpus_dir else (DATA_DIR / "mini" / "raw")
+    if not corpus.exists() or not any(corpus.rglob("*.jsonl*")):
+        raise BlockedError(
+            f"no corpus under {corpus}; run the data-gen flow (or scripts/cpu_pilot_e2e.py) first"
+        )
+    tok_path = DATA_DIR / "mini" / "tokenizer" / "ava_bpe.json"
     tok_path.parent.mkdir(parents=True, exist_ok=True)
-    # Real: from streaming_data import build_tokenizer
-    # PoC: touch
-    if not tok_path.exists():
-        tok_path.write_text(json.dumps({"vocab_size": vocab_size, "mock": True}))
+    _run([sys.executable, "-m", "ava.tokenizer", "train", "--corpus", corpus,
+          "--out", tok_path, "--vocab", str(vocab_size)], timeout=1800)
     return str(tok_path)
+
 
 @task(retries=2, log_prints=True)
 def pack_shards(phase_dirs, seq_len: int = 1024):
-    _log(f"[data] pack_shards seq={seq_len} from {len(phase_dirs)} dirs")
-    packed = DATA_DIR / "mini" / "packed"
-    packed.mkdir(parents=True, exist_ok=True)
-    # PoC: write manifest
-    (packed / "manifest.json").write_text(json.dumps({"phases": phase_dirs, "seq_len": seq_len}))
-    return str(packed)
+    """Packing is implemented for real in scripts/cpu_pilot_e2e.py (stage_pack).
+    Refuse rather than write a placeholder manifest that pretends packing happened."""
+    raise BlockedError(
+        "pack_shards is not wired as a standalone Prefect task; run the real packer via "
+        "`python scripts/cpu_pilot_e2e.py` (stage_pack) which tokenizes + packs + registers "
+        f"shards. Inputs that would have been packed: {list(phase_dirs)} seq_len={seq_len}"
+    )
+
 
 @flow(name="ava-data-gen", log_prints=True)
 def ava_data_gen_flow(preset: str = "mini", tokens: int = 50_000_000):
     _log(f"Starting data_gen_flow preset={preset} tokens={tokens}")
     phases = ["p0_logic", "p1_math", "p2_foundation", "p3_code"] if preset != "nano" else ["p0_logic", "p1_math"]
-    # Parallel via .map() if prefect available
     if PREFECT_AVAILABLE:
         raw_dirs = generate_phase.map(phases, tokens)
     else:
         raw_dirs = [generate_phase(p, tokens) for p in phases]
     tok = build_tokenizer()
-    packed = pack_shards(raw_dirs, seq_len=1024 if preset=="mini" else 256)
-    # NEW: push to HF for 2-loop arch (Loop1 -> Loop2 streaming)
     hf_res = push_to_hf_task(manifest_path="data/daily_expanded/manifest_*.jsonl")
-    return {"tokenizer": tok, "packed": packed, "raw": raw_dirs, "hf": hf_res}
+    return {"tokenizer": tok, "raw": raw_dirs, "hf": hf_res}
+
 
 # ---------- TRAIN FLOW ----------
-@task(retries=2, retry_delay_seconds=[30,120], log_prints=True)
-def torchrun_train(preset: str, tokens_total: int, resume: bool = True):
-    _log(f"[train] torchrun preset={preset} tokens={tokens_total} resume={resume}")
-    ckpt_dir = ROOT / "checkpoints" / preset
-    ckpt_dir.mkdir(parents=True, exist_ok=True)
-    # Real command would be:
-    # torchrun --nproc_per_node=1 train_1b_deepspeed.py --preset base1b --deepspeed deepspeed_zero3_bf16.json --tokens_total 2B
-    # PoC: simulate metrics.jsonl write
-    metrics_path = ckpt_dir / "metrics.jsonl"
-    for i in range(3):
-        line = {"step": i*100, "lm_loss": 3.0/(i+1), "tokens": tokens_total//3 * (i+1), "ts": datetime.utcnow().isoformat()}
-        with open(metrics_path, "a") as f:
-            f.write(json.dumps(line)+"\n")
-        time.sleep(0.2)
-    # fake stable ckpt
-    stable = ckpt_dir / f"ava_stable_{preset}.pt"
-    stable.write_text(f"mock ckpt {preset} {tokens_total}")
-    return str(stable)
+@task(retries=2, retry_delay_seconds=[30, 120], log_prints=True)
+def torchrun_train(preset: str, tokens_total: int, resume: bool = True, max_steps: int = 20):
+    """REAL smoke training via python -m ava.train (CPU nano scale). Needs real
+    packed shards; refuses if none exist instead of writing a fake checkpoint."""
+    packed = Path(os.getenv("AVA_PACKED_DIR", str(ROOT / "runs" / "cpu_pilot" / "packed")))
+    if not packed.exists() or not any(packed.iterdir()):
+        raise BlockedError(
+            f"no packed shards at {packed}; run `python scripts/cpu_pilot_e2e.py` first "
+            "or point AVA_PACKED_DIR at a real packed dir"
+        )
+    run_dir = ROOT / "runs" / f"prefect_{preset}"
+    reports_dir = ROOT / "reports"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    cmd = [sys.executable, "-m", "ava.train", "--preset", preset, "--device", "cpu",
+           "--run", run_dir, "--reports", reports_dir, "--packed", packed,
+           "--max-steps", str(max_steps)]
+    if resume and any(run_dir.glob("*.pt")):
+        cmd.append("--resume")
+    _run(cmd, timeout=3600)
+    ckpts = sorted(run_dir.glob("*.pt"), key=lambda p: p.stat().st_mtime)
+    if not ckpts:
+        raise RuntimeError(f"ava.train exited 0 but produced no checkpoint under {run_dir}")
+    return str(ckpts[-1])
+
 
 @task(log_prints=True)
 def monitor_metrics(ckpt_path: str):
-    _log(f"[train] monitor {ckpt_path}")
-    return {"ckpt": ckpt_path, "health": "OK", "loss_trend": "down"}
+    """Read REAL metrics.jsonl next to the checkpoint; no invented health/trend."""
+    run_dir = Path(ckpt_path).parent
+    metrics = run_dir / "metrics.jsonl"
+    if not metrics.exists():
+        return {"ckpt": ckpt_path, "metrics_file": None,
+                "note": "no metrics.jsonl found — nothing to report (not fabricating)"}
+    lines = [ln for ln in metrics.read_text().splitlines() if ln.strip()]
+    last = json.loads(lines[-1]) if lines else {}
+    return {"ckpt": ckpt_path, "metrics_file": str(metrics), "n_lines": len(lines), "last": last}
+
 
 @flow(name="ava-train", log_prints=True)
-def ava_train_flow(preset: str = "mini", tokens_total: int = 2_500_000_000, resume: bool = True):
+def ava_train_flow(preset: str = "nano", tokens_total: int = 2_500_000_000, resume: bool = True):
     _log(f"Starting train_flow {preset} total={tokens_total}")
     ckpt = torchrun_train(preset, tokens_total, resume)
     health = monitor_metrics(ckpt)
     return {"ckpt": ckpt, "health": health}
 
-# ---------- DISTILL FLOW — MOPD from distillation-2026 article ----------
+
+# ---------- DISTILL FLOW ----------
 @task(retries=2, log_prints=True)
-def generate_teacher_rollouts(expert_name: str):
-    _log(f"[distill] teacher rollout {expert_name} (S1/S2/Critic/Planner)")
-    # In real: load expert ckpt, generate rollouts, capture logits
-    return {"expert": expert_name, "logits_path": f"/tmp/{expert_name}_logits.pt", "specialization": expert_name}
+def distill_mopd(base_ckpt: str):
+    """The real distillation loop lives in on_policy_distill.py (reverse-KL KD
+    with real tensors). It needs teacher checkpoints that do not exist yet at
+    this scale, so this task refuses instead of returning a fabricated loss."""
+    raise BlockedError(
+        "MOPD distillation requires real domain-expert teacher checkpoints. Run the real "
+        "implementation directly once teachers exist:\n"
+        f"  python on_policy_distill.py --mode mopd --student-ckpt {base_ckpt} "
+        "--teachers code:<ckpt>,math:<ckpt>,chat:<ckpt>\n"
+        "(reverse_kl_loss there computes a real KL; nothing here to simulate)"
+    )
 
-@task(log_prints=True)
-def student_rollout(ckpt_path: str):
-    _log(f"[distill] student rollout ckpt={ckpt_path}")
-    return {"student_ckpt": ckpt_path, "rollout": "student_gen.jsonl"}
-
-@task(log_prints=True)
-def reverse_kl_loss(student_rollout, teacher_rollouts):
-    _log(f"[distill] reverse KL student vs {len(teacher_rollouts)} teachers — MOPD")
-    # Real: from trl import ... loss = reverse_kl(student_logits, teacher_logits)
-    # Qwen3 reports 1/10 GPU hours vs RL
-    return {"loss": 0.42, "method": "MOPD reverse KL", "teachers": len(teacher_rollouts)}
 
 @flow(name="ava-distill-mopd", log_prints=True)
-def ava_distill_flow(base_ckpt: str = "checkpoints/mini/ava_stable_mini.pt"):
-    """
-    Implements Multi-Teacher On-Policy Distillation per https://huggingface.co/blog/sergiopaniego/distillation-2026
-    - Separate RL experts per domain (code/math/chat)
-    - Student generates own rollouts, teachers grade every token
-    - Self-distill privileged hint pattern for Planner
-    """
+def ava_distill_flow(base_ckpt: str = "runs/cpu_pilot/base/base_final.pt"):
     _log(f"Starting MOPD distill base={base_ckpt}")
-    expert_names = ["S1_Fast_code", "S2_Slow_math", "Critic_safety", "Planner_temporal"]
-    if PREFECT_AVAILABLE:
-        teacher_rollouts = generate_teacher_rollouts.map(expert_names)
-    else:
-        teacher_rollouts = [generate_teacher_rollouts(n) for n in expert_names]
-    s_rollout = student_rollout(base_ckpt)
-    loss = reverse_kl_loss(s_rollout, teacher_rollouts)
-    _log(f"[distill] merged loss {loss} — ready for continual learning via earlier-teacher trick")
-    return loss
+    return distill_mopd(base_ckpt)
+
 
 # ---------- EVAL FLOW ----------
 @task(retries=2, log_prints=True)
 def run_branch_eval(ckpt_path: str = None):
-    _log(f"[eval] branch_harness ckpt={ckpt_path}")
-    # Real: python eval_branch_harness.py --branch all --mode mock
-    result_path = ROOT / "branch_eval_results.json"
-    if result_path.exists():
-        data = json.loads(result_path.read_text())
-    else:
-        data = {"mock": True, "passes": 5, "cap_pres": 1.0}
-    return data
+    """REAL harness: python -m evals.run_harness → reports/branch_eval_results_real.json."""
+    cmd = [sys.executable, "-m", "evals.run_harness"]
+    if ckpt_path:
+        cmd += ["--base-ckpt", ckpt_path]
+    _run(cmd, timeout=3600)
+    result_path = ROOT / "reports" / "branch_eval_results_real.json"
+    if not result_path.exists():
+        raise RuntimeError(f"evals.run_harness exited 0 but {result_path} is missing")
+    return json.loads(result_path.read_text())
+
 
 @task(retries=3, retry_delay_seconds=30, log_prints=True)
 def run_frontier_eval_judge_ollama(domain: str = "all"):
-    _log(f"[eval] frontier rubric domain={domain} judge={OLLAMA_MODEL} host={OLLAMA_HOST}")
-    # Real: OLLAMA_HOST=... python eval_frontier_rubric.py --domain all --judge ollama
-    # Check Ollama reachable
-    try:
-        import urllib.request
-        urllib.request.urlopen(f"{OLLAMA_HOST}/api/tags", timeout=2)
-        reachable = True
-    except:
-        reachable = False
-    result = {"domain": domain, "judge": OLLAMA_MODEL, "reachable": reachable, "avg": 0.589}
-    return result
+    """REAL run of eval_frontier_rubric.py. The avg is computed from the actual
+    per-task results the script wrote; judge label reflects what actually scored
+    (mock fallback when no Ollama/keys — labeled as such, no bonus)."""
+    _run([sys.executable, ROOT / "eval_frontier_rubric.py", "--domain", domain,
+          "--judge", "ollama"], timeout=1800)
+    out = ROOT / "frontier_eval_results.json"
+    if not out.exists():
+        raise RuntimeError("eval_frontier_rubric.py exited 0 but frontier_eval_results.json missing")
+    data = json.loads(out.read_text())
+    results = data.get("results", [])
+    avg = round(sum(r.get("overall", 0.0) for r in results) / len(results), 4) if results else None
+    return {"domain": domain, "judge": data.get("judge"), "avg": avg, "n_tasks": len(results)}
+
 
 @task(log_prints=True)
 def render_html_log(branch_results, frontier_results):
-    _log("[eval] render latest-log.html")
-    out = YOUR_FILES
-    out.mkdir(parents=True, exist_ok=True)
-    html_path = out / "latest-log.html"
-    # Real builder would parse metrics.jsonl + evals + git HEAD f508569
-    html_path.write_text(f"""<html><body><h1>Ava Experiment Log — Prefect</h1>
-<p>Branch: {branch_results}</p><p>Frontier: {frontier_results}</p>
-<p>Ollama: {OLLAMA_HOST} model {OLLAMA_MODEL}</p>
-<footer>Solo personal project, no connection to employer, built with public/free-tier only</footer></body></html>""")
+    """Render an HTML log strictly from the real results passed in."""
+    LOG_HTML_DIR.mkdir(parents=True, exist_ok=True)
+    html_path = LOG_HTML_DIR / "latest-log.html"
+    html_path.write_text(
+        "<html><body><h1>Ava Experiment Log — Prefect</h1>"
+        f"<pre>Branch (evals.run_harness): {json.dumps(branch_results, indent=1)[:4000]}</pre>"
+        f"<pre>Frontier: {json.dumps(frontier_results, indent=1)[:4000]}</pre>"
+        f"<p>Ollama: {OLLAMA_HOST} model {OLLAMA_MODEL}</p>"
+        "<footer>Solo personal project, no connection to employer, built with public/free-tier only</footer>"
+        "</body></html>"
+    )
     return str(html_path)
+
 
 @flow(name="ava-eval", log_prints=True)
 def ava_eval_flow(ckpt_path: str = None):
     _log(f"Starting eval flow ckpt={ckpt_path}")
     branch = run_branch_eval(ckpt_path)
-    if PREFECT_AVAILABLE:
-        # Parallel domains
-        frontier_list = run_frontier_eval_judge_ollama.map(["finance","bio","code","law","macro"])
-    else:
-        frontier_list = [run_frontier_eval_judge_ollama(d) for d in ["finance","bio","code","law","macro"]]
-    log_path = render_html_log(branch, frontier_list)
-    return {"branch": branch, "frontier": frontier_list, "html": log_path}
+    frontier = run_frontier_eval_judge_ollama("all")
+    log_path = render_html_log(branch, frontier)
+    return {"branch": branch, "frontier": frontier, "html": log_path}
+
 
 # ---------- FULL PIPELINE ----------
 @flow(name="ava-full-pipeline", log_prints=True)
-def ava_full_pipeline(preset: str = "mini", tokens_total: int = 2_500_000_000):
+def ava_full_pipeline(preset: str = "nano", tokens_total: int = 2_500_000_000):
     _log(f"=== Ava Full Pipeline preset={preset} ===")
     data_out = ava_data_gen_flow(preset)
     train_out = ava_train_flow(preset, tokens_total)
-    distill_out = ava_distill_flow(train_out["ckpt"])
     eval_out = ava_eval_flow(train_out["ckpt"])
-    return {"data": data_out, "train": train_out, "distill": distill_out, "eval": eval_out}
+    return {"data": data_out, "train": train_out, "eval": eval_out}
 
-# ---------- DUMB MODELS FLOWS ----------
+
+# ---------- DUMB MODELS FLOWS (external sports APIs — not wired) ----------
 @task(retries=5, retry_delay_seconds=60, log_prints=True)
 def ingest_league(source: str, league: str = "nfl"):
-    _log(f"[vector] ingest {source} league={league}")
-    # Real: fetch nflverse, Sleeper, ESPN APIs
-    return {"source": source, "league": league, "records": 150}
+    raise BlockedError(
+        f"ingest_league({source}, {league}): no real fetcher wired for nflverse/Sleeper/ESPN "
+        "APIs in this checkout — refusing to return invented record counts"
+    )
 
-@task(retries=2, log_prints=True)
-def compute_zscores(raw_data):
-    _log(f"[vector] compute zscores per-100 from {len(raw_data)} sources")
-    return {"zscores": True, "input": raw_data}
-
-@task(log_prints=True)
-def build_embeddings(zscores):
-    _log("[vector] build embeddings PCA/UMAP")
-    # Real: sklearn PCA, embeddings -> public/data/*.json
-    out = Path("public/data/embeddings.json")
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps({"mock": True, "zscores": str(zscores)}))
-    return str(out)
-
-@task(retries=3, log_prints=True)
-def vercel_deploy(embeddings_path: str):
-    _log(f"[vector] vercel deploy hook {embeddings_path}")
-    # Real: POST to VERCEL_DEPLOY_HOOK_URL
-    return {"deployed": True, "url": "https://gridiron.dumbmodel.com"}
 
 @flow(name="daily-vector", log_prints=True)
 def daily_vector_flow(league: str = "nfl"):
     _log(f"=== Daily Vector Flow league={league} ===")
-    sources = ["nflverse", "pff", "sleeper", "espn"]
-    if PREFECT_AVAILABLE:
-        raw = ingest_league.map(sources, league)
-    else:
-        raw = [ingest_league(s, league) for s in sources]
-    zs = compute_zscores(raw)
-    emb = build_embeddings(zs)
-    dep = vercel_deploy(emb)
-    return {"league": league, "deploy": dep}
+    raise BlockedError(
+        "daily_vector_flow: ingestion/z-scores/embeddings/Vercel deploy are not implemented "
+        "against real data sources in this repo; nothing honest to run"
+    )
+
 
 # ---------- CLI ----------
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Ava AGI Factory Prefect PoC")
-    parser.add_argument("--run", choices=["data","train","distill","eval","all","vector"], default="all")
-    parser.add_argument("--preset", default="mini", choices=["nano","mini","base1b"])
+    parser = argparse.ArgumentParser(description="Ava AGI Factory Prefect flows (real subprocess tasks)")
+    parser.add_argument("--run", choices=["data", "train", "distill", "eval", "all", "vector"], default="all")
+    parser.add_argument("--preset", default="nano", choices=["nano", "mini", "base1b"])
     parser.add_argument("--tokens", type=int, default=2_500_000_000)
     parser.add_argument("--league", default="nfl")
     parser.add_argument("--ckpt", default=None)
@@ -334,7 +329,7 @@ if __name__ == "__main__":
     elif args.run == "train":
         ava_train_flow(args.preset, args.tokens)
     elif args.run == "distill":
-        ava_distill_flow(args.ckpt or f"checkpoints/{args.preset}/ava_stable_{args.preset}.pt")
+        ava_distill_flow(args.ckpt or "runs/cpu_pilot/base/base_final.pt")
     elif args.run == "eval":
         ava_eval_flow(args.ckpt)
     elif args.run == "vector":

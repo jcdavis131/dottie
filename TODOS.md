@@ -178,7 +178,7 @@ Full contract: `specs/11_arch_hillclimb.md`.
   uniform attention softmax at init ≈ average pooling → homogenized token representations → softmax *routing*
   (their MoE gate; our J-Space Router) can't differentiate tokens → persistent imbalance from step 0. Fix:
   init attention-output RMSNorm gains to **0** so the net starts as per-token dense layers and cross-token
-  interaction fades in. `network_init_sota.py` currently fills all norm gains with 1.0 — candidate change is
+  interaction fades in. `docs/blueprint/network_init_sota.py` (blueprint scaffolding) currently fills all norm gains with 1.0 — candidate change is
   ~3 lines gated behind a flag. Falsify on nano: routing-KL health + `spider_ant`/`france_china` measured
   early-step, zero-init vs ones-init, same seed; keep only if router imbalance at init measurably improves
   without hurting nano PPL at convergence. Do not disturb the live mini run. Context: `docs/RL_INTEGRATION.md`

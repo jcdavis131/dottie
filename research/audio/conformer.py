@@ -1,6 +1,6 @@
 """
-Audio Conformer encoder + vision projector — Gemma 4 E4B phone 10s encode +10-20s description【600725069786087129†L140-L144】
-Native conformer encoder transcribes audio, tool calling fragile but phone sees/hears/calls tools locally【600725069786087129†L143-L145】
+Audio Conformer encoder + vision projector — Gemma 4 E4B phone 10s encode +10-20s description
+Native conformer encoder transcribes audio, tool calling fragile but phone sees/hears/calls tools locally
 """
 import torch.nn as nn
 class AudioConformer(nn.Module):

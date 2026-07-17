@@ -51,8 +51,67 @@ class FrontierTask:
     human_baseline_hours: float
     ground_truth: str
 
+def _judge_prompt(rubric: "Rubric", output: str, ground_truth: str) -> str:
+    """Shared judge prompt for every API judge (Meta Muse / GLM / Ollama)."""
+    return (
+        f"Rubric Category: {rubric.category}\n"
+        f"Criterion: {rubric.criterion}\n"
+        f"Ground truth ref: {rubric.ground_truth_ref}\n"
+        f"Required: {rubric.required}\n"
+        f"Model Output: {output[:1000]}\n"
+        f"Ground Truth: {ground_truth[:500]}\n"
+        f"Task: Score 0-1 if output satisfies criterion. Return JSON {{\"score\":0.0-1.0, \"reason\":\"...\"}}"
+    )
+
+
+def _parse_score(content: str) -> Optional[float]:
+    """Extract a 0-1 score float from a judge response, or None."""
+    if not content:
+        return None
+    m = re.search(r"\"score\"\s*:\s*([0-9]*\.?[0-9]+)", content)
+    if not m:
+        m2 = re.findall(r"\b(0\.\d+|1\.0|0|1)\b", content)
+        if not m2:
+            return None
+        try:
+            return round(max(0.0, min(1.0, float(m2[0]))), 3)
+        except Exception:
+            return None
+    try:
+        return round(max(0.0, min(1.0, float(m.group(1)))), 3)
+    except Exception:
+        return None
+
+
+def _post_openai_chat(url: str, api_key: str, model: str, prompt: str, timeout: int = 30) -> Optional[str]:
+    """Real POST to an OpenAI-compatible /chat/completions endpoint via `requests`
+    (goes through the configured HTTPS proxy). Returns content string or None."""
+    import requests
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": "You are a strict rubric judge. Output ONLY a JSON with score 0-1. Be precise."},
+            {"role": "user", "content": prompt[:3000]},
+        ],
+        "temperature": 0.1,
+        "max_tokens": 128,
+    }
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
+    resp.raise_for_status()
+    body = resp.json()
+    try:
+        return body["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError):
+        return body.get("message", {}).get("content") if isinstance(body.get("message"), dict) else None
+
+
 class CriteriaJudge:
-    """Base mock judge — keyword overlap + length heuristic, free-tier no API"""
+    """Base mock judge — keyword overlap + length heuristic, free-tier no API.
+    `label` reports which judge ACTUALLY produced scores ("mock" here); API
+    judges keep label="mock" until a real endpoint call is possible."""
+    label = "mock"
+
     def score(self, rubric: Rubric, output: str, ground_truth: str) -> float:
         output_l = output.lower()
         # Heuristic: check ground_truth_ref keywords present
@@ -86,12 +145,10 @@ class LocalHFJudge(CriteriaJudge):
             self.available = False
 
     def score(self, rubric: Rubric, output: str, ground_truth: str) -> float:
-        if not self.available:
-            return super().score(rubric, output, ground_truth)
-        # Placeholder for real local judge: would run e.g., deberta-v3 judge
-        # For free-tier keep mock but with slightly higher calibration
-        base = super().score(rubric, output, ground_truth)
-        return min(1.0, base + 0.05)
+        # No real local HF judge is implemented yet — return the PLAIN mock
+        # score labeled "mock". (The old +0.05 "calibration" bonus was an
+        # invented value and has been deleted.)
+        return super().score(rubric, output, ground_truth)
 
 class MetaMuseJudge(CriteriaJudge):
     """
@@ -104,25 +161,31 @@ class MetaMuseJudge(CriteriaJudge):
     def __init__(self):
         self.key = os.getenv("META_API_KEY") or os.getenv("META_MUSE_API_KEY") or ""
         self.url = os.getenv("META_MUSE_API_URL", "https://api.meta.ai/v1")
+        self.model = os.getenv("META_MUSE_MODEL", "muse-spark-1.1")
         self.available = bool(self.key)
+        self.label = "meta" if self.available else "mock"
         if not self.available:
             print(f"[{DISCLAIMER}] MetaMuseJudge: no META_API_KEY found, fallback to mock (free-tier). Set env to use public Muse Spark 1.1 API.")
 
     def score(self, rubric: Rubric, output: str, ground_truth: str) -> float:
         if not self.available:
+            # No key: PLAIN mock score, labeled judge="mock" — no invented bonus.
+            self.label = "mock"
             return super().score(rubric, output, ground_truth)
-        # Real implementation would POST to f"{self.url}/chat/completions" with judge prompt
-        # For safety in this offline mock run, keep mock + add stub log
         try:
-            # import requests only if needed
-            import requests  # noqa
-            # Placeholder — do not actually call to keep deterministic / no network
-            # resp = requests.post(...)
-            print(f"[MetaMuseJudge] Would call {self.url} with rubric {rubric.id} — using mock for now")
+            content = _post_openai_chat(
+                f"{self.url.rstrip('/')}/chat/completions", self.key, self.model,
+                _judge_prompt(rubric, output, ground_truth),
+            )
+            v = _parse_score(content)
+            if v is not None:
+                self.label = "meta"
+                return v
+            print(f"[MetaMuseJudge] no score parsed for {rubric.id}, falling back to mock")
         except Exception as e:
-            print(f"[MetaMuseJudge] requests error {e}, fallback")
-        base = super().score(rubric, output, ground_truth)
-        return min(1.0, base + 0.08)  # simulate slightly better judge correlation
+            print(f"[MetaMuseJudge] API call failed ({e}), falling back to mock")
+        self.label = "mock"
+        return super().score(rubric, output, ground_truth)
 
 
 class Glm52Judge(CriteriaJudge):
@@ -150,20 +213,30 @@ class Glm52Judge(CriteriaJudge):
         # alternative openai-compatible url for reference: https://api.z.ai/api/paas/v4/chat/completions
         self.openai_url = os.getenv("ZAI_OPENAI_URL", "https://api.z.ai/api/paas/v4/chat/completions")
         self.available = bool(self.key)
+        self.label = "glm-5.2" if self.available else "mock"
         if not self.available:
             print(f"[{DISCLAIMER}] [GLM 5.2] no ZAI_API_KEY, fallback to mock (free-tier). Set ZAI_API_KEY personal key to use public GLM-5.2 API. Costs: $1.40/M in $4.40/M out, cached $0.26/M, or $18/mo Lite plan — cheaper than Muse Spark for heavy eval + MIT weights for self-host.")
 
     def score(self, rubric: Rubric, output: str, ground_truth: str) -> float:
         if not self.available:
+            # No key: PLAIN mock score, labeled judge="mock" — no invented bonus.
+            self.label = "mock"
             return super().score(rubric, output, ground_truth)
         try:
-            import requests  # noqa
-            print(f"[Glm52Judge] Would call {self.url} model={self.model} (alt {self.openai_url}) with rubric {rubric.id} — thinking toggle via GLM_THINKING=1, effort via GLM_EFFORT=high|max — using mock for now")
+            # OpenAI-compatible endpoint (documented above); Bearer personal key.
+            content = _post_openai_chat(
+                self.openai_url, self.key, self.model,
+                _judge_prompt(rubric, output, ground_truth),
+            )
+            v = _parse_score(content)
+            if v is not None:
+                self.label = "glm-5.2"
+                return v
+            print(f"[Glm52Judge] no score parsed for {rubric.id}, falling back to mock")
         except Exception as e:
-            print(f"[Glm52Judge] requests error {e}, fallback to mock")
-        base = super().score(rubric, output, ground_truth)
-        # Slight boost to simulate better judge vs mock (MIT 753B MoE 40B active, 1M context)
-        return min(1.0, base + 0.07)
+            print(f"[Glm52Judge] API call failed ({e}), falling back to mock")
+        self.label = "mock"
+        return super().score(rubric, output, ground_truth)
 
 def build_sample_tasks() -> List[FrontierTask]:
     """1 finance + 1 per new domain, arXiv abstract as ground truth mock"""
@@ -310,6 +383,7 @@ class OllamaJudge(CriteriaJudge):
         self.host = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
         self.model = os.getenv("OLLAMA_MODEL", "qwen3:32b")
         self.available = False
+        self.label = "mock"
         self.tags = []
         # Try urllib first (stdlib), then requests if present
         try:
@@ -375,42 +449,21 @@ class OllamaJudge(CriteriaJudge):
 
     def score(self, rubric: Rubric, output: str, ground_truth: str) -> float:
         if not self.available:
+            # Ollama unreachable: PLAIN mock score, labeled "mock" — the old
+            # +0.06 fallback bonus was an invented value and has been deleted.
+            self.label = "mock"
             return super().score(rubric, output, ground_truth)
-        # Build judge prompt
-        truncated_out = output[:1000]
-        prompt = (
-            f"Rubric Category: {rubric.category}\n"
-            f"Criterion: {rubric.criterion}\n"
-            f"Ground truth ref: {rubric.ground_truth_ref}\n"
-            f"Required: {rubric.required}\n"
-            f"Model Output: {truncated_out}\n"
-            f"Ground Truth: {ground_truth[:500]}\n"
-            f"Task: Score 0-1 if output satisfies criterion. Return JSON {{\"score\":0.0-1.0, \"reason\":\"...\"}}"
-        )
-        content = self._call_ollama(prompt)
+        content = self._call_ollama(_judge_prompt(rubric, output, ground_truth))
+        v = _parse_score(content)
+        if v is not None:
+            self.label = "ollama"
+            return v
         if content:
-            # Try extract float 0-1
-            m = re.search(r"\"score\"\s*:\s*([0-9]*\.?[0-9]+)", content)
-            if m:
-                try:
-                    v = float(m.group(1))
-                    v = max(0.0, min(1.0, v))
-                    return round(v,3)
-                except Exception:
-                    pass
-            # fallback extract any 0-1 float in content
-            m2 = re.findall(r"\b(0\.\d+|1\.0|0|1)\b", content)
-            if m2:
-                try:
-                    v = float(m2[0])
-                    return round(max(0.0, min(1.0, v)),3)
-                except Exception:
-                    pass
-            print(f"[OllamaJudge] Parsed content but no score, using mock+0.06. Raw: {content[:120]}")
+            print(f"[OllamaJudge] Parsed content but no score, plain mock fallback. Raw: {content[:120]}")
         else:
-            print(f"[OllamaJudge] Call failed for {rubric.id}, fallback mock")
-        base = super().score(rubric, output, ground_truth)
-        return min(1.0, base + 0.06)
+            print(f"[OllamaJudge] Call failed for {rubric.id}, plain mock fallback")
+        self.label = "mock"
+        return super().score(rubric, output, ground_truth)
 
 
 def get_judge(name: str) -> CriteriaJudge:
@@ -443,25 +496,31 @@ def main():
         tasks = [t for t in tasks if t.domain in wanted]
 
     judge = get_judge(args.judge)
-    print(f"[{DISCLAIMER}] Judge={args.judge} available={getattr(judge,'available',True)} url={getattr(judge,'url','n/a')} | Tasks={len(tasks)}")
+    print(f"[{DISCLAIMER}] Judge requested={args.judge} available={getattr(judge,'available',True)} url={getattr(judge,'url','n/a')} | Tasks={len(tasks)}")
 
     results = []
     for t in tasks:
         out = mock_model_output(t)
         ev = evaluate_task(t, out, judge)
+        ev["judge"] = getattr(judge, "label", "mock")  # what ACTUALLY scored this task
         results.append(ev)
-        print(f"  {t.id} {t.domain:8s} overall={ev['overall']} rubrics={len(ev['per_rubric'])}")
+        print(f"  {t.id} {t.domain:8s} overall={ev['overall']} judge={ev['judge']} rubrics={len(ev['per_rubric'])}")
 
-    # save JSON
+    # save JSON — "judge" is the label of what actually produced the scores
+    # ("mock" whenever keys/endpoints were absent), not merely what was requested.
+    effective = getattr(judge, "label", "mock")
     out_json = Path("frontier_eval_results.json")
     with open(out_json, "w") as f:
-        json.dump({"disclaimer": DISCLAIMER, "judge": args.judge, "mode": args.mode, "results": results}, f, indent=2)
+        json.dump({"disclaimer": DISCLAIMER,
+                   "model_output_source": "mock_model_output() demo text — NOT a real model generation",
+                   "judge": effective, "judge_requested": args.judge,
+                   "mode": args.mode, "results": results}, f, indent=2)
 
     # save MD report
     md = Path("FRONTIER_EVAL_REPORT.md")
     with open(md, "w") as f:
         f.write(f"{DISCLAIMER}\n\n# Frontier Eval Report — Ava v6.4\n\n")
-        f.write(f"Judge: {args.judge} Mode: {args.mode} | Total tasks: {len(results)}\n\n")
+        f.write(f"Judge (effective): {effective} (requested {args.judge}) Mode: {args.mode} | Total tasks: {len(results)}\n\n")
         f.write(f"Metrics: weighted clipped 0-1 per Samaya FrontierFinance Criteria Eval (11 cats), mock uses keyword overlap\n\n")
         f.write("| Task | Domain | Overall | Cats |\n|---|---|---|---|\n")
         for r in results:
@@ -471,7 +530,7 @@ def main():
             f.write(f"\n### {r['task_id']} ({r['domain']}) overall {r['overall']}\n")
             for pr in r["per_rubric"]:
                 f.write(f"- {pr['rubric_id']} {pr['category']}: {pr['score']} w={pr['weight']}\n")
-        f.write("\n## Integration\n- Phase 3-5 anneal reward>0.8 verifier = CriteriaJudge\n- shards: data/streaming_shards/frontier_rubric/\n- MetaMuseJudge: reads META_API_KEY, endpoint META_MUSE_API_URL default https://api.meta.ai/v1 placeholder public preview $1.25 in $4.25 out $20 free credits, US-only, personal account only, zero work resources.\n- Glm52Judge: reads ZAI_API_KEY (pref) / GLM_API_KEY, endpoint https://api.z.ai/api/anthropic (Anthropic-compatible) or https://api.z.ai/api/paas/v4/chat/completions (OpenAI), model GLM_MODEL default glm-5.2 / glm-5.2[1m] / glm-5.2-thinking, 753B MoE 40B active, 1M context, MIT open weights, 131k output, IndexShare 2.9x FLOPs. Pricing $1.40/M in $4.40/M out, cached $0.26/M, CometAPI $1.12/$3.528, or Lite $18/mo (400/wk) $12.60 annual, Pro $72/mo, Max $160/mo. Cheaper for heavy eval via cache+sub + future free self-host via MIT. Public endpoint only, free-tier mock fallback.\n- OllamaJudge: reads OLLAMA_HOST default http://localhost:11434, OLLAMA_MODEL default qwen3:32b (alternatives llama3.3:70b best general, deepseek-r1:32b best reasoning, qwen2.5-coder:32b best coding, glm4:9b small GLM). 100% offline free SOTA via Ollama MIT/Apache. 753B GLM-5.2 too big for Ollama (241GB 2-bit min), so use small distill locally. Detects /api/tags, calls /api/chat non-streaming, extracts JSON score, falls back to mock+0.06 if unreachable. Zero cost, local only.\n")
+        f.write("\n## Integration\n- Phase 3-5 anneal reward>0.8 verifier = CriteriaJudge\n- shards: data/streaming_shards/frontier_rubric/\n- MetaMuseJudge: reads META_API_KEY, endpoint META_MUSE_API_URL default https://api.meta.ai/v1 placeholder public preview $1.25 in $4.25 out $20 free credits, US-only, personal account only, zero work resources.\n- Glm52Judge: reads ZAI_API_KEY (pref) / GLM_API_KEY, endpoint https://api.z.ai/api/anthropic (Anthropic-compatible) or https://api.z.ai/api/paas/v4/chat/completions (OpenAI), model GLM_MODEL default glm-5.2 / glm-5.2[1m] / glm-5.2-thinking, 753B MoE 40B active, 1M context, MIT open weights, 131k output, IndexShare 2.9x FLOPs. Pricing $1.40/M in $4.40/M out, cached $0.26/M, CometAPI $1.12/$3.528, or Lite $18/mo (400/wk) $12.60 annual, Pro $72/mo, Max $160/mo. Cheaper for heavy eval via cache+sub + future free self-host via MIT. Public endpoint only, free-tier mock fallback.\n- OllamaJudge: reads OLLAMA_HOST default http://localhost:11434, OLLAMA_MODEL default qwen3:32b (alternatives llama3.3:70b best general, deepseek-r1:32b best reasoning, qwen2.5-coder:32b best coding, glm4:9b small GLM). 100% offline free SOTA via Ollama MIT/Apache. 753B GLM-5.2 too big for Ollama (241GB 2-bit min), so use small distill locally. Detects /api/tags, calls /api/chat non-streaming, extracts JSON score, falls back to the PLAIN mock score labeled judge=mock if unreachable (no additive bonus). Zero cost, local only.\n")
 
     print(f"Saved {out_json} + {md}")
 

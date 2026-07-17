@@ -597,7 +597,7 @@ class AvaModel1B(nn.Module):
         Residual output projections are additionally scaled by 1/sqrt(2*n_layers)
         so the residual stream variance does not grow with depth.
 
-        (The blueprint's network_init_sota.py multiplies lm_head by 1/sqrt(d);
+        (The blueprint's docs/blueprint/network_init_sota.py multiplies lm_head by 1/sqrt(d);
         with tied weights that silently rescales the embedding table too.)
         """
         n_layers = max(1, self.n_layers)

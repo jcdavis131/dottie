@@ -208,9 +208,14 @@ def stage_register(pack_info: dict, vocab: int, needed_tokens: int) -> dict:
 
 def run_train(*, out: Path, run_dir: Path, reports_dir: Path, packed_dir: Path,
               steps: int, seed: int, env: dict, branch: str | None = None,
-              init: Path | None = None, timeout_s: int = 1800) -> dict:
-    """Run ``python -m ava.train`` as a subprocess and parse its metrics."""
-    cmd = [sys.executable, "-m", "ava.train", "--preset", "nano", "--device", "cpu",
+              init: Path | None = None, timeout_s: int = 1800,
+              preset: str = "nano", device: str = "cpu") -> dict:
+    """Run ``python -m ava.train`` as a subprocess and parse its metrics.
+
+    `preset`/`device` default to the nano CPU pilot but are parameterized so the SAME chain
+    scales onto a GPU box: ``--preset mini --device cuda`` inside the `ava-train` compose
+    service is the capability-scale run (T9.3/T9.5 proper), not a different pipeline."""
+    cmd = [sys.executable, "-m", "ava.train", "--preset", preset, "--device", device,
            "--run", str(run_dir), "--reports", str(reports_dir),
            "--packed", str(packed_dir), "--max-steps", str(steps),
            "--seed", str(seed)]
@@ -237,7 +242,7 @@ def run_train(*, out: Path, run_dir: Path, reports_dir: Path, packed_dir: Path,
             f"ava.train exited {proc.returncode} for run {branch or 'base'}.\n"
             f"cmd: {' '.join(cmd)}\nlog tail:\n{tail}")
 
-    metrics = parse_metrics(reports_dir / "metrics_nano.jsonl")
+    metrics = parse_metrics(reports_dir / f"metrics_{preset}.jsonl")
     final_ckpt = run_dir / f"{branch or 'base'}_final.pt"
     if not final_ckpt.exists():
         raise StageError(f"training finished but final checkpoint missing: {final_ckpt}")
@@ -284,14 +289,14 @@ def parse_metrics(path: Path) -> dict:
 # dir — repo configs are never modified)
 
 
-def write_pilot_config(out: Path) -> Path:
+def write_pilot_config(out: Path, preset: str = "nano") -> Path:
     import yaml
 
     cfg_dir = out / "configs"
     cfg_dir.mkdir(parents=True, exist_ok=True)
     for f in (REPO / "configs").glob("*.yaml"):
         shutil.copy2(f, cfg_dir / f.name)
-    nano = cfg_dir / "nano.yaml"
+    nano = cfg_dir / f"{preset}.yaml"
     raw = yaml.safe_load(nano.read_text())
     # log every step so the manifest carries a full per-step loss series
     raw["training"]["metrics_every_steps"] = 1
@@ -322,6 +327,10 @@ def main(argv=None) -> int:
                     help="raw corpus size, MB (~17 MB reaches the full 8192 BPE vocab)")
     ap.add_argument("--out", default=str(REPO / "runs" / "cpu_pilot"))
     ap.add_argument("--seed", type=int, default=1234)
+    ap.add_argument("--preset", default="nano",
+                    help="config preset; 'mini' + --device cuda = the capability-scale run on a GPU box")
+    ap.add_argument("--device", default="cpu", choices=["cpu", "cuda"],
+                    help="training device; cuda inside the ava-train compose service for GPU offload")
     ap.add_argument("--vocab", type=int, default=8192)
     ap.add_argument("--train-timeout-s", type=int, default=1800,
                     help="watchdog per training subprocess")
@@ -391,7 +400,7 @@ def main(argv=None) -> int:
         print(f"[register] {reg['entries_packed']} PACKED entries, "
               f"{reg['tokens_ready_phase0']} tokens ready")
 
-        cfg_dir = write_pilot_config(out)
+        cfg_dir = write_pilot_config(out, preset=args.preset)
         env["AVA_CONFIG_DIR"] = str(cfg_dir)
         manifest["config_dir"] = str(cfg_dir)
 
@@ -399,7 +408,8 @@ def main(argv=None) -> int:
         base = run_train(out=out, run_dir=out / "base",
                          reports_dir=out / "reports" / "base",
                          packed_dir=packed_dir, steps=args.steps,
-                         seed=args.seed, env=env, timeout_s=args.train_timeout_s)
+                         seed=args.seed, env=env, timeout_s=args.train_timeout_s,
+                         preset=args.preset, device=args.device)
         manifest["runs"]["pretrain"] = base
         record("pretrain", t, {"wall_seconds": base["wall_seconds"]})
         print(f"[pretrain] {args.steps} steps in {base['wall_seconds']}s; "
@@ -411,7 +421,8 @@ def main(argv=None) -> int:
                            packed_dir=packed_dir, steps=args.branch_steps,
                            seed=args.seed + 1, env=env, branch="agentic",
                            init=Path(base["final_ckpt"]),
-                           timeout_s=args.train_timeout_s)
+                           timeout_s=args.train_timeout_s,
+                           preset=args.preset, device=args.device)
         branch["config_dir"] = str(cfg_dir)
         manifest["runs"]["branch_agentic"] = branch
         record("branch", t, {"wall_seconds": branch["wall_seconds"]})

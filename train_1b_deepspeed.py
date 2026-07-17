@@ -1,5 +1,10 @@
 """
-train_1b_deepspeed.py — WSD 736k branching, YaRN 10k→1M, Multi-J-Space S1/S2/Critic/Planner, per-space losses, real-mode Jacobian interventions
+train_1b_deepspeed.py — BLUEPRINT (aspirational 1B trainer, kept as reference).
+Mock runs write labeled .txt placeholders under runs/blueprint_mock/ — never
+*.pt files in the working directory. The trainer that runs for real today is
+`python -m ava.train` (see scripts/cpu_pilot_e2e.py for the end-to-end chain).
+
+WSD 736k branching, YaRN 10k→1M, Multi-J-Space S1/S2/Critic/Planner, per-space losses, real-mode Jacobian interventions
 Solo personal project, no connection to employer, built with public/free-tier only
 
 Implements:
@@ -19,6 +24,16 @@ Implements:
 """
 import argparse, math, os, json, pathlib, time
 from pathlib import Path
+
+# Blueprint-mock artifacts: labeled .txt placeholders, never *.pt in CWD so a
+# fake file can never be mistaken for (or collide with) a real checkpoint.
+BLUEPRINT_MOCK_DIR = Path("runs/blueprint_mock")
+
+def _write_mock_artifact(name: str, text: str) -> Path:
+    BLUEPRINT_MOCK_DIR.mkdir(parents=True, exist_ok=True)
+    p = BLUEPRINT_MOCK_DIR / (name[:-3] + ".txt" if name.endswith(".pt") else name + ".txt")
+    p.write_text(f"MOCK BLUEPRINT ARTIFACT — not a checkpoint. {text}\n")
+    return p
 
 WSD_CONFIG={"warmup":2000,"stable_steps":736000,"total_steps":800000,"lr_max":2e-4,"lr_min":2e-5}
 # WSM: Decay-Free via Checkpoint Merging (arXiv 2024) — infinite continuation
@@ -108,7 +123,7 @@ def _try_run_openwiki_and_harness(mode="mock", ckpt=None):
                 sys.path.insert(0, str(cand))
         # 1. openwiki-sync via skill loader + direct adapter
         try:
-            from ava.memory.openwiki_adapter import OpenWikiAdapter
+            from research.memory.openwiki_adapter import OpenWikiAdapter
             adapter = OpenWikiAdapter()
             stats = adapter.ingest(limit=100)
             print(f"[openwiki-sync] Ingested {stats['n_files']} wiki files avg mass {stats['avg_mass']:.3f} — maps to S2 hl300")
@@ -303,10 +318,10 @@ def main():
                         break
                 # save mock checkpoint
                 if branch=="base":
-                    Path("ava_stable_736k.pt").write_text("mock stable 736k 13.8T streaming")
-                    Path("ava_stable_736k_rope1000000_ctx131072.pt").write_text("mock stable rope 1M ctx131k streaming")
+                    _write_mock_artifact("ava_stable_736k", "mock stable 736k 13.8T streaming")
+                    _write_mock_artifact("ava_stable_736k_rope1000000_ctx131072", "mock stable rope 1M ctx131k streaming")
                     _try_run_openwiki_and_harness(mode="mock", ckpt="ava_stable_736k.pt")
-                Path(f"ava_{branch}_final_800k.pt").write_text(f"mock final {branch} 800k streaming")
+                _write_mock_artifact(f"ava_{branch}_final_800k", f"mock final {branch} 800k streaming")
                 print(f"[MOCK STREAM] Branch {branch} done tokens_seen={ds.tokens_seen} stats={ds.stats()}")
                 os.system(f"python3 eval_branch_harness.py --branch {branch} --mode mock")
                 continue
@@ -321,12 +336,12 @@ def main():
                 print(f"[MOCK W&B] capacity_curve ks={ks} combined knee 9 — S1 knee 6 exp(-0.12*max(0,k-6)) S2 knee 10 exp(-0.08*max(0,k-10))")
                 print(f"[MOCK W&B] half_life curves: S1 hl=8 decay exp(-ln2*t/hl) S2 hl=300 etc every 50 steps log S1_hl_est vs target")
                 if branch=="base":
-                    Path("ava_stable_736k.pt").write_text("mock stable 736k 13.8T")
-                    Path("ava_stable_736k_rope1000000_ctx131072.pt").write_text("mock stable rope 1M ctx131k")
+                    _write_mock_artifact("ava_stable_736k", "mock stable 736k 13.8T")
+                    _write_mock_artifact("ava_stable_736k_rope1000000_ctx131072", "mock stable rope 1M ctx131k")
                     # ── OpenWiki + Harness gating after stable ckpt 736k per HARNESS_SKILL_INTEGRATION.md
                     _try_run_openwiki_and_harness(mode="mock", ckpt="ava_stable_736k.pt")
                 else:
-                    Path(f"ava_{branch}_final_800k.pt").write_text(f"mock final {branch} 800k")
+                    _write_mock_artifact(f"ava_{branch}_final_800k", f"mock final {branch} 800k")
                 os.system(f"python3 eval_branch_harness.py --branch {branch} --mode mock")
                 continue
 
@@ -448,7 +463,7 @@ def main():
 
             if gen:
                 gen.stop()
-            Path(f"ava_{branch}_final_800k.pt").write_bytes(b"streaming ckpt")
+            _write_mock_artifact(f"ava_{branch}_final_800k", "placeholder final marker (real per-step ckpts saved via torch.save above)")
             print(f"Branch {branch} done streaming tokens_seen={ds.tokens_seen} schedule={args.schedule}")
             os.system(f"python3 eval_branch_harness.py --branch {branch} --mode mock")
         else:
@@ -480,7 +495,7 @@ def main():
                     print("Saved ava_stable_736k.pt at 736k equivalent")
                     _try_run_openwiki_and_harness(mode="real", ckpt="ava_stable_736k.pt")
 
-            Path(f"ava_{branch}_final_800k.pt").write_bytes(b"mock ckpt replace with torch.save")
+            _write_mock_artifact(f"ava_{branch}_final_800k", "placeholder final marker (real per-step ckpts saved via torch.save above)")
             print(f"Branch {branch} done — auto-running eval_branch_harness")
             os.system(f"python3 eval_branch_harness.py --branch {branch} --mode mock")
 

@@ -38,9 +38,8 @@ def quality_filter_fast(text, min_len=120, max_len=15000):
     if len(words) > 20:
         if len(set(words))/len(words) < 0.25:
             return False, "uniq"
-    # 5% low quality random drop
-    if random.random() < 0.04:
-        return False, "rand low quality"
+    # (removed: fake "random low quality" drop — the filter is deterministic;
+    # same input always passes or fails for a stated reason)
     return True, "ok"
 
 def gen_example_fast(topic, phase, nonce):

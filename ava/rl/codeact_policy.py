@@ -197,7 +197,11 @@ class TorchModelPolicy:
         if self.top_k > 0 and self.top_k < logits.shape[-1]:
             kth = torch.topk(logits, self.top_k).values[-1]
             logits = logits.masked_fill(logits < kth, float("-inf"))
-        probs = torch.softmax(logits.to(torch.float32), dim=-1)
+        # Sampling happens on CPU regardless of the model's device: the seeded generator is a CPU
+        # generator (torch.multinomial requires generator/input device match), and drawing from a
+        # CPU copy of the [V] prob vector keeps seeded decodes BIT-IDENTICAL across cpu/cuda runs
+        # (per-token copy of 8192 floats — negligible next to the forward pass).
+        probs = torch.softmax(logits.to(torch.float32), dim=-1).cpu()
         return int(torch.multinomial(probs, 1, generator=gen).item())
 
     def _match_stop_ids(self, new_ids: List[int]) -> Optional[int]:

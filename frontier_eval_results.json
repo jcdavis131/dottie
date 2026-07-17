@@ -1,5 +1,5 @@
 {
-  "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
+  "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only | MOCK BLUEPRINT OUTPUT \u2014 hardcoded illustrative values, not measurements; see reports/REPORT_REAL.md (python -m evals.run_harness) for real evals",
   "judge": "ollama",
   "mode": "mock",
   "results": [

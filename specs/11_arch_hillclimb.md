@@ -105,7 +105,7 @@ T11.2 correction above) — the same "bounded state over a stream" idea T11.2 po
 *accept:* implement as an opt-in `generate(..., k_traces=1)` path in `ServeEngine`; k=1 must be
 byte-identical to current output (negative control); at k=4, measure wall-clock and token cost against
 plain k=1 and against a naive concatenate-all-k baseline before claiming any quality win — nothing here is
-validated until `eval_harness.py` shows an accuracy delta on a reasoning probe, not assumed from the
+validated until the real harness (`python -m evals.run_harness`, needle eval in `evals/needle.py`) shows an accuracy delta on a reasoning probe, not assumed from the
 vendor's number.
 *priority:* below T11.1-T11.4 — needs a serve path at a scale where 4x sampling cost is affordable
 (mini+), and "7400 tokens correct... 91.9% AIME 2025" is Zaya1's own card, not measured here.

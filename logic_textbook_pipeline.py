@@ -21,6 +21,25 @@ TOPICS_MATH=["arithmetic","algebra","geometry","discrete","calculus","linear alg
 def gen_textbook(topic, method="Phi B"):
     return f"# {topic}\n\nDefinition: ...\nTheorem: If ... then ...\nProof: ...\nExample: ...\nExercise: ... (Method {method})"
 
+def heuristic_quality_score(text: str) -> float:
+    """Deterministic CPU heuristic (same family as scripts/dataset_expansion.py's
+    quality_filter): structure markers + length + unique-word ratio. Same input
+    always yields the same score — this is a labeled heuristic, NOT a model
+    reward and NOT a measurement."""
+    score = 0.75
+    if "Theorem" in text or "Definition" in text or "Proof" in text:
+        score += 0.15
+    if "Example" in text:
+        score += 0.05
+    words = text.split()
+    if len(words) < 25:
+        score -= 0.2
+    if len(words) > 10:
+        uniq_ratio = len(set(words)) / len(words)
+        if uniq_ratio < 0.3:
+            score -= 0.3
+    return round(max(0.0, min(1.0, score)), 4)
+
 def gen_jsonl_example(topic, prompt_template=None, source="synthetic_logic_textbooks_phi_B"):
     prompt = prompt_template or random.choice(PHI_PROMPTS)
     txt = gen_textbook(topic)
@@ -32,7 +51,9 @@ def gen_jsonl_example(topic, prompt_template=None, source="synthetic_logic_textb
         "task_type": "deliberate" if "logic" in topic or topic in TOPICS_LOGIC else "deliberate",
         "topic": topic,
         "prompt_type": prompt,
-        "reward_score": random.uniform(0.75, 0.98),  # Nemotron-70B mock filter >0.8
+        # Deterministic structural heuristic — was random.uniform masquerading
+        # as a Nemotron-70B reward. Renamed so no consumer mistakes it for one.
+        "reward_heuristic": heuristic_quality_score(text),
         "method": "Phi B",
     }
 
@@ -41,7 +62,7 @@ def run_streaming(out_root: Path, shard_mb: int = 100, max_shards: int = 0, filt
     Constant low-memory streaming writer:
     - 1 file handle open, 100MB per shard gzipped jsonl, rotates forever
     - never stores full 50B/300B textbook list
-    - reward filtering >0.8 on the fly
+    - deterministic heuristic filtering >0.8 on the fly (heuristic_quality_score)
     - backpressure via max_shards pause if too far ahead of trainer
     """
     out_root = Path(out_root)
@@ -71,8 +92,8 @@ def run_streaming(out_root: Path, shard_mb: int = 100, max_shards: int = 0, filt
                 print(f"[streaming] hit max_shards={max_shards}, stopping")
                 break
             ex = gen_jsonl_example(topic)
-            # Nemotron-70B reward filter >0.8 streaming — drops 15% without RAM buffer
-            if ex["reward_score"] < filter_threshold:
+            # Deterministic heuristic filter >0.8 streaming (labeled heuristic, not a model reward)
+            if ex["reward_heuristic"] < filter_threshold:
                 continue
             line = json.dumps(ex) + "\n"
             # route by topic type for correct phase mix
@@ -124,13 +145,13 @@ def main():
     parser.add_argument("--batch", action="store_true", help="old batch mode: write handful of md files")
     parser.add_argument("--shard_mb", type=int, default=100, help="MB per rotating shard")
     parser.add_argument("--max_shards", type=int, default=0, help="0 = infinite stream until Ctrl-C")
-    parser.add_argument("--reward_threshold", type=float, default=0.8, help="Nemotron-70B filter threshold")
+    parser.add_argument("--reward_threshold", type=float, default=0.8, help="heuristic_quality_score filter threshold")
     parser.add_argument("--sleep", type=float, default=0.01)
     args=parser.parse_args()
     if args.batch:
         run_batch(Path(args.out))
     else:
-        print(f"Streaming Phi Method B generation: {args.logic_tokens} logic + {args.math_tokens} math -> {args.out} rotating {args.shard_mb}MB shards, reward>{args.reward_threshold}")
+        print(f"Streaming Phi Method B generation: {args.logic_tokens} logic + {args.math_tokens} math -> {args.out} rotating {args.shard_mb}MB shards, heuristic score>{args.reward_threshold}")
         print("Constant memory: 1 file handle, ~100MB buffer, no full corpus in RAM. Ctrl-C to stop. Trainer can consume concurrently.")
         run_streaming(Path(args.out), shard_mb=args.shard_mb, max_shards=args.max_shards, filter_threshold=args.reward_threshold, sleep=args.sleep)
 

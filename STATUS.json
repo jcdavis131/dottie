@@ -17,7 +17,7 @@
       "manifest": "manifest_20260713_235532.jsonl",
       "dup_filtered": 9486,
       "qual_filtered": 8479,
-      "upload_manifest": "/home/hatch/workspace/ava-agi-factory-v6-4/data/for_upload/upload_manifest_20260713_235558.json",
+      "upload_manifest": "data/for_upload/upload_manifest_20260713_235558.json",
       "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
       "mode": "500K_HatchVM_4h_local_GDrive_uploaded"
     },
@@ -56,7 +56,7 @@
       },
       "disk_usage": "/dev/mapper/rv  100G  9.5G   90G  10% / safe, daily_expanded 39 shards 253M",
       "global_manifest_lines": 607108,
-      "efficiency_note": "simhash dedup threshold 3 + md5 + quality filter alpha>0.6 reward>0.8, ~26s Hatch VM, low RAM O(1) window 15k, 500K tokens 5054 docs, 9486 dup 8479 qual filtered"
+      "efficiency_note": "simhash dedup threshold 3 + md5 + quality filter alpha>0.6 heuristic score>0.8, ~26s Hatch VM, low RAM O(1) window 15k, 500K tokens 5054 docs, 9486 dup 8479 qual filtered"
     },
     "last_expansion_previous": {
       "timestamp": "2026-07-13T21:59:47.897231+00:00",
@@ -68,7 +68,7 @@
       "manifest": "manifest_20260713_215942.jsonl",
       "dup_filtered": 0,
       "qual_filtered": 1355,
-      "upload_manifest": "/home/hatch/workspace/ava-agi-factory-v6-4/data/for_upload/upload_manifest_20260713_215942.json",
+      "upload_manifest": "data/for_upload/upload_manifest_20260713_215942.json",
       "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
       "mode": "fast_md5_HatchVM"
     },
@@ -165,6 +165,7 @@
     "next_action_host": "./scripts/local_train.sh torchrun --nproc_per_node=1 train_1b_deepspeed.py --preset mini --deepspeed deepspeed_zero3_bf16.json --tokens_total 2500000000 --resume checkpoints/mini/latest.pt",
     "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only. Home-life only.",
     "prefect_available": true,
-    "prefect_cmd": "python prefect_flows.py --run train --preset mini --tokens 2500000000"
-  }
+    "prefect_cmd": "python prefect_flows.py --run train --preset nano  # real subprocess of python -m ava.train (smoke); refuses without real packed shards"
+  },
+  "staleness_note": "Builder/trainer timestamps in this file reflect the last sync of this checkout from the data-builder host, not live state; treat all 'last_expansion' blocks as historical records of that host's runs."
 }

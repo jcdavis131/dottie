@@ -1,9 +1,9 @@
 """
 Per-Layer Embeddings + MatFormer Matryoshka nesting — Gemma 4 E2B/E4B
-E2B ~2B E4B ~4.5B effective params phone enough【600725069786087129†L132-L135】
-MatFormer: smaller E2B co-trained inside larger E4B pull smaller without retraining one download multiple targets【600725069786087129†L135-L138】
-Per-Layer Embeddings: each decoder layer its own token embeddings cheap lookup tables【600725069786087129†L138-L140】
-Phone: Oppo Find N5 Snapdragon 8 Elite 16GB llama.cpp Termux Q8_0 4.3GB +900MB projector 6GB RAM 7-8 tok/s sub-sec TTFT【600725069786087129†L137-L142】
+E2B ~2B E4B ~4.5B effective params phone enough
+MatFormer: smaller E2B co-trained inside larger E4B pull smaller without retraining one download multiple targets
+Per-Layer Embeddings: each decoder layer its own token embeddings cheap lookup tables
+Phone: Oppo Find N5 Snapdragon 8 Elite 16GB llama.cpp Termux Q8_0 4.3GB +900MB projector 6GB RAM 7-8 tok/s sub-sec TTFT
 """
 import torch, torch.nn as nn
 class PerLayerEmbedding(nn.Module):

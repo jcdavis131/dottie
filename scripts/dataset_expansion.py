@@ -93,18 +93,17 @@ def quality_filter(text: str, min_len=100, max_len=10000):
         uniq_ratio = len(set(words))/len(words)
         if uniq_ratio < 0.3:
             return False, f"low uniq {uniq_ratio:.2f}"
-    # reward score mock (would be Nemotron-70B in prod)
-    # simulate: if contains textbook markers, high score
-    score = 0.75
+    # Deterministic structural heuristic_score (a labeled CPU heuristic, NOT a
+    # model reward): textbook markers raise it. Same input -> same score; the
+    # old random 5% rejection penalty was fake noise and has been removed.
+    heuristic_score = 0.75
     if "Theorem" in text or "Definition" in text or "Proof" in text:
-        score += 0.15
+        heuristic_score += 0.15
     if "Example" in text:
-        score += 0.05
-    if random.random() < 0.05:  # 5% low quality
-        score -= 0.3
-    if score < 0.8:
-        return False, f"reward {score:.2f} <0.8"
-    return True, f"ok {score:.2f}"
+        heuristic_score += 0.05
+    if heuristic_score < 0.8:
+        return False, f"heuristic_score {heuristic_score:.2f} <0.8"
+    return True, f"ok heuristic_score {heuristic_score:.2f}"
 
 # Topic pools per phase
 PHASE_TOPICS = {
@@ -191,7 +190,7 @@ def main():
         # write sample manifest
         with open(daily_manifest, "w") as mf:
             for ex in sample_docs:
-                # fake hash
+                # real content-addressable sha256 of the doc text
                 h = hashlib.sha256(ex["text"].encode()).hexdigest()
                 mf.write(json.dumps({"sha256": h[:12], "sha256_full": h, "tokens_est": len(ex["text"])//4, "source": ex["source"], "phase": ex["phase"], "timestamp": ex["timestamp"]})+"\n")
         print(f"[Dry-run] Wrote sample manifest {daily_manifest} ({len(sample_docs)} entries)")

@@ -163,7 +163,12 @@ def reverse_kl_loss(student_logits, teacher_logits, mask=None, temperature: floa
         temperature: softmax temp, 1.0 default, higher smooths (Gemma soft labels)
     Returns: loss scalar
     """
-    if not HAS_TORCH or isinstance(student_logits, type(torch) and hasattr(student_logits, '__class__') and student_logits.__class__.__name__ == '_Mock'):
+    # Guard the no-torch mock objects out; let real tensors through.
+    # (Previous form `isinstance(x, type(torch) and ...)` collapsed to
+    # `isinstance(x, bool)` when torch WAS installed and raised TypeError,
+    # breaking the real KD path.)
+    if not HAS_TORCH or student_logits.__class__.__name__ == "_Mock" \
+            or teacher_logits.__class__.__name__ == "_Mock":
         return 0.0
 
     # Scale by temperature

@@ -65,6 +65,11 @@ Ex Machina Ava blueprint - 1B model with explicit J-Space (Global Workspace) ins
 
 ## End-to-End Local Training
 
+> Historical blueprint block: the `torchrun train_1b_deepspeed.py` / dolma lines below
+> describe the aspirational 1B pipeline. The commands that run today against real
+> checkpoints are the eval/report/convert lines (see also `scripts/cpu_pilot_e2e.py`
+> and `python -m ava.train`).
+
 ```bash
 # Unzip (if from Meta AI bundle) and setup
 unzip ava_agi_factory_v6_4_real_mode_jacobian_multispace.zip -d ava_v6_4 && cd ava_v6_4
@@ -85,18 +90,20 @@ torchrun --nproc_per_node=8 train_1b_deepspeed.py --branch chat
 # or all
 torchrun --nproc_per_node=8 train_1b_deepspeed.py --branch all
 
-# Evaluation (mock instant, no GPU)
-python eval_branch_harness.py --branch all --mode mock --wandb
-# real with checkpoint
-python eval_branch_harness.py --branch chat --ckpt ava_branch_chat_step800000.pt --mode real --device cuda
+# Evaluation — REAL harness (loads checkpoints, writes reports/branch_eval_results_real.json)
+python -m evals.run_harness
+# HTML report from real metrics + evals
+python scripts/make_report.py --runs runs --out reports/index.html --eval reports/branch_eval_results_real.json
+# (historical blueprint sketch, mock values only — `--mode real` refuses to run:
+#  python eval_branch_harness.py --branch all --mode mock)
 
 # Live J-Lens Viewer
 uvicorn server:app --host 0.0.0.0 --port 8000
 # open http://localhost:8000/jspace/viewer?mode=audit (read-only)
 # research: ENABLE_JSPACE_WRITE=1 uvicorn server:app --port 8000 -> /jspace/viewer?mode=research
 
-# Convert
-python convert_to_hf.py --ckpt ava_chat_final_800k.pt --out hf_model
+# Convert a real checkpoint to safetensors export (verified logit round-trip)
+python convert_to_hf.py --ckpt runs/cpu_pilot/base/base_final.pt --out export/ava-nano-hf --verify
 ```
 
 ## Single GPU Fallback
