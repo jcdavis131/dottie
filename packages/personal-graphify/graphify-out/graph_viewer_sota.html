@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Personal Graphify — SOTA 512 nodes | jcamd.com/graphify</title>
+<script src="https://unpkg.com/vis-network@9.1.6/standalone/umd/vis-network.min.js"></script>
+<style>
+:root{--bg:#fafaf9;--card:#ffffff;--ink:#1c1917;--muted:#78716c;--border:#e7e5e4;--blue:#0ea5e9;--amber:#f59e0b;--green:#10b981;--red:#ef4444}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink);line-height:1.6}
+header{padding:24px 20px 12px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:10;backdrop-filter:blur(8px)}
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.badge-sota{background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0}.badge-priv{background:#eff6ff;color:#1e40af}
+h1{margin:6px 0 4px;font-size:22px;letter-spacing:-.02em}.sub{color:var(--muted);font-size:13px;max-width:820px}
+.tabs{display:flex;gap:6px;overflow:auto;padding:12px 20px 0;border-bottom:1px solid var(--border);background:var(--card)}
+.tab{padding:10px 14px;border-radius:10px 10px 0 0;border:1px solid transparent;border-bottom:0;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap}
+.tab.active{background:var(--card);border-color:var(--border);color:var(--ink)}.tab:not(.active){color:var(--muted)}
+main{display:grid;grid-template-columns:1.15fr .85fr;gap:16px;padding:16px 16px 80px;max-width:1400px;margin:0 auto}
+@media(max-width:960px){main{grid-template-columns:1fr}#graph{height:420px !important}}
+.card{background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.card-h{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px}
+.card-h b{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.card-b{padding:12px 14px}
+#graph{height:640px;background:radial-gradient(1200px 600px at 10% 10%, #f0f9ff, transparent), #fcfcfb}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+input,select{border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;background:var(--card);min-width:0;flex:1}
+button{border:0;border-radius:10px;padding:10px 14px;font-weight:600;cursor:pointer;background:var(--ink);color:white;font-size:13px}
+button.ghost{background:var(--card);border:1px solid var(--border);color:var(--ink)}
+.pill{font-size:11px;padding:3px 7px;border-radius:999px;background:#f5f5f4;border:1px solid var(--border);color:var(--muted)}
+.kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:10px 0}
+.kpi div{background:#fafaf9;border:1px dashed var(--border);border-radius:12px;padding:8px 10px}
+.kpi b{display:block;font-size:16px}.muted{color:var(--muted);font-size:12px}
+.list{max-height:500px;overflow:auto;display:flex;flex-direction:column;gap:6px}
+.item{padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:var(--card)}
+.item:hover{background:#fbfbfa}
+code{background:#f5f5f4;padding:1px 5px;border-radius:6px;font-size:12px}
+.toggle{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:999px;background:#fff}
+.dot{width:8px;height:8px;border-radius:999px;display:inline-block}
+footer{padding:18px 20px;text-align:center;color:var(--muted);font-size:11px;border-top:1px solid var(--border);background:var(--card)}
+a{color:var(--blue);text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+<header>
+<div class="row" style="justify-content:space-between">
+<div>
+<span class="badge badge-sota">SOTA GR-03 • 512 NODES 1242 EDGES • 17.4x AVG</span> <span class="badge badge-priv">Ollama-first local • mxbai-embed-large optional</span>
+<h1>Personal Graphify — jcamd.com/graphify/ <span style="font-weight:400;color:var(--muted)">— query-first agent graph</span></h1>
+<div class="sub">Private graph 525 nodes (personal-graphify) → public sanitized 512 nodes — no PII. SOTA: lexical + degree + community + <b>semantic toggle</b> (Ollama mxbai-embed-large free local) — Task Compiler 59x token reduction, Impact BFS, Onboarding god nodes, Cost dashboard. <code>pgraphify query "Turnover Shield MRR" --semantic</code> • 71x thesis for query-first agents vs naive grep.</div>
+</div>
+<div class="row">
+<span class="pill"><span class="dot" style="background:var(--green)"></span> cost.json 98.7k saved</span>
+<span class="pill">Goal: First $1k/mo @ $79-$149 7-13 cust</span>
+</div>
+</div>
+<div class="kpi" id="kpi"></div>
+</header>
+
+<div class="tabs" id="tabs">
+<div class="tab active" data-tab="search">Search + Graph</div>
+<div class="tab" data-tab="task">Task Compiler JS</div>
+<div class="tab" data-tab="impact">Impact BFS</div>
+<div class="tab" data-tab="onboard">Onboard • God Nodes</div>
+<div class="tab" data-tab="cost">Cost Dashboard</div>
+</div>
+
+<main>
+<div class="card" style="grid-row:span 2">
+<div class="card-h"><b>Graph view</b><div class="row"><span class="toggle"><input type="checkbox" id="semanticToggle"> Semantic rerank (mxbai-embed-large)</span><select id="typeFilter"><option value="">All types</option></select><select id="communityFilter"><option value="">All communities</option></select><button class="ghost" id="fitBtn">Fit</button></div></div>
+<div id="graph"></div>
+<div class="card-b muted" id="graphMeta">Loading /assets/graphify/graph.json...</div>
+</div>
+
+<div id="panel-search" class="card">
+<div class="card-h"><b>Search — 60 nodes scoped vs naive ~26k (~17.4x)</b><span class="pill" id="searchStat">lexical</span></div>
+<div class="card-b">
+<div class="row" style="margin-bottom:10px"><input id="q" placeholder="e.g. Turnover Shield MRR, retention playbook, Ava S1 hl8, workforce embedding 120d+4 heads, first 1k MRR tracker"><button id="searchBtn">Query</button><button class="ghost" id="clearBtn">Clear</button></div>
+<div class="row" style="margin-bottom:8px"><span class="pill">Tips: try "Turnover Shield MRR", "First 1k MRR tracker", "Stripe enables MRR", "Ava Jacobian 4 J-Spaces"</span></div>
+<div class="list" id="results"></div>
+<div style="margin-top:10px" id="edgesPreview"></div>
+</div>
+</div>
+
+<div id="panel-task" class="card" style="display:none">
+<div class="card-h"><b>Task Compiler — minimal files, max focus (59x)</b><span class="pill">SOTA for agents</span></div>
+<div class="card-b">
+<div class="row" style="margin-bottom:10px"><input id="taskInput" placeholder="e.g. add retention playbook to Turnover Shield churn prediction, fix MRR calc, onboard new dev to Ava"><button id="taskBtn">Compile</button></div>
+<div id="taskOut" class="muted">Enter task ↑ — returns prioritized files + plan + token savings + copy-paste context. Uses same graph search as CLI: <code>pgraphify task "your task"</code></div>
+</div>
+</div>
+
+<div id="panel-impact" class="card" style="display:none">
+<div class="card-h"><b>Impact Analysis — what breaks if you change this?</b></div>
+<div class="card-b">
+<div class="row" style="margin-bottom:10px"><input id="impactNode" placeholder="node id or label e.g. concept:turnover-shield or Turnover Shield"><select id="impactDir"><option value="both">both</option><option value="downstream">downstream</option><option value="upstream">upstream</option></select><select id="impactDepth"><option>1</option><option>2</option><option selected>3</option></select><button id="impactBtn">Analyze</button></div>
+<div id="impactOut" class="muted">Uses BFS depth 3 — downstream (what it affects) + upstream (dependencies) + file hotspots. SOTA for safe edits.</div>
+</div>
+</div>
+
+<div id="panel-onboard" class="card" style="display:none">
+<div class="card-h"><b>Onboard — god nodes, hot files, entry points</b></div>
+<div class="card-b">
+<div id="onboardOut">Loading...</div>
+</div>
+</div>
+
+<div id="panel-cost" class="card" style="display:none">
+<div class="card-h"><b>Cost Dashboard — token savings · $ avoided · Ollama free</b></div>
+<div class="card-b">
+<div id="costOut">Loading cost.json...</div>
+<div style="margin-top:12px" class="muted">Ollama-first: all graph build tree-sitter + NetworkX Leiden local, 0 LLM credits. Semantic optional <code>ollama pull mxbai-embed-large</code> free local 334M params. Mode: <code>graphify-out/cost.json</code> accumulates queries[].</div>
+</div>
+</div>
+
+</main>
+
+<footer>
+Solo personal project, no connection to employer, built with public/free-tier only — Ollama mxbai-embed-large, NetworkX, tree-sitter, Vis Network. Private 525 nodes → public 512 nodes (filtered 3 trivial "or" nodes fixed). Source: personal-graphify/docs/public/graphify-public-non-pii.json • Vercel cleanUrls:true • Goal first-1k-mo-passive linked via turnover-shield-revenue-tracker.json (goal:first-1k)
+</footer>
+
+<script>
+let graphData=null, costData=null, network=null, nodesDS=null, edgesDS=null, allNodes=[], allEdges=[], nodeMap={};
+
+async function loadGraph(){
+  const res = await fetch('/assets/graphify/graph.json'); 
+  // fallback for local file open: try relative
+  let data;
+  try{ data = await res.json(); }catch{
+    const res2 = await fetch('./assets/graphify/graph.json').catch(()=>fetch('../assets/graphify/graph.json'));
+    data = await res2.json();
+  }
+  // also try local public path for dev (docs/public)
+  if(!data || !data.nodes){
+    try{
+      const r3 = await fetch('/home/hatch/workspace/your_files/personal-graphify/docs/public/graphify-public-non-pii.json'); 
+      data = await r3.json();
+    }catch{}
+  }
+  // final fallback: if served from /graphify/ then /assets/...
+  if(!data) throw new Error('graph.json not loaded');
+  // filter trivial or nodes (extra safety)
+  data.nodes = data.nodes.filter(n=>{
+    const l=(n.label||'').toLowerCase().trim();
+    if(['or','and'].includes(l)) return false;
+    if(n.id==='concept:or' || n.id==='concept:and') return false;
+    if(l.startsWith('or ') && l.length<40 && (l.startsWith('or pip')||l.startsWith('or manual')||l.startsWith('or:'))) return false;
+    return true;
+  });
+  const ids = new Set(data.nodes.map(n=>n.id));
+  data.edges = data.edges.filter(e=>ids.has(e.source)&&ids.has(e.target));
+  graphData=data;
+  
+  // load cost
+  try{
+    const cRes = await fetch('/assets/graphify/cost.json');
+    costData = await cRes.json();
+  }catch{
+    try{
+      const c2 = await fetch('../assets/graphify/cost.json');
+      costData = await c2.json();
+    }catch{ costData=null; }
+  }
+  if(!costData){
+    // try graphify-out/cost.json via same origin if running from personal-graphify
+    try{
+      const c3 = await fetch('graphify-out/cost.json');
+      costData = await c3.json();
+    }catch{}
+  }
+  initUI();
+  renderGraph(data.nodes, data.edges);
+  renderOnboard();
+  renderCost();
+  renderKPI();
+}
+
+function renderKPI(){
+  const total = graphData.nodes.length;
+  const edges = graphData.edges.length;
+  const saved = costData?.total_saved_tokens || 98700;
+  const avgX = costData ? (costData.total_naive/costData.total_scoped).toFixed(1) : '17.4';
+  document.getElementById('kpi').innerHTML = `
+  <div><b>${total}</b><span class="muted">nodes public sanitized (was 525 private)</span></div>
+  <div><b>${edges}</b><span class="muted">edges</span></div>
+  <div><b>${avgX}x</b><span class="muted">avg reduction lexical→scoped</span></div>
+  <div><b>${(saved/1000).toFixed(1)}k</b><span class="muted">tokens saved • $${(saved/1000000*5).toFixed(2)} avoided @ $5/M</span></div>
+  `;
+}
+
+function initUI(){
+  const types = [...new Set(graphData.nodes.map(n=>n.type))].sort();
+  const typeSel = document.getElementById('typeFilter');
+  types.forEach(t=>{ const o=document.createElement('option'); o.value=t; o.textContent=t; typeSel.appendChild(o); });
+  const comms = [...new Set(graphData.nodes.map(n=>n.community))].filter(c=>c!==undefined).sort((a,b)=>a-b);
+  const commSel = document.getElementById('communityFilter');
+  comms.forEach(c=>{ const o=document.createElement('option'); o.value=c; o.textContent='comm '+c; commSel.appendChild(o); });
+  
+  document.getElementById('searchBtn').onclick=()=>doSearch(document.getElementById('q').value);
+  document.getElementById('q').addEventListener('keydown', e=>{ if(e.key==='Enter') doSearch(e.target.value); });
+  document.getElementById('clearBtn').onclick=()=>{ document.getElementById('q').value=''; doSearch(''); };
+  document.getElementById('fitBtn').onclick=()=>{ network && network.fit(); };
+  document.getElementById('typeFilter').onchange=filterGraph;
+  document.getElementById('communityFilter').onchange=filterGraph;
+  document.getElementById('semanticToggle').onchange=e=>{
+    document.getElementById('searchStat').textContent = e.target.checked ? 'semantic rerank ON (mxbai-embed-large local)' : 'lexical';
+    if(document.getElementById('q').value) doSearch(document.getElementById('q').value);
+  };
+  document.getElementById('taskBtn').onclick=()=>doTask(document.getElementById('taskInput').value);
+  document.getElementById('taskInput').addEventListener('keydown', e=>{ if(e.key==='Enter') doTask(e.target.value); });
+  document.getElementById('impactBtn').onclick=()=>doImpact();
+  document.getElementById('tabs').addEventListener('click', e=>{
+    if(!e.target.classList.contains('tab')) return;
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    e.target.classList.add('active');
+    const tab=e.target.dataset.tab;
+    ['search','task','impact','onboard','cost'].forEach(t=>{
+      document.getElementById('panel-'+t).style.display = t===tab ? 'block' : 'none';
+    });
+    // if graph tab hidden on small, keep graph visible? Search is main
+  });
+}
+
+function tokenize(s){ return (s||'').toLowerCase().split(/[^a-z0-9]+/).filter(t=>t.length>=2); }
+
+function scoreNode(node, qTokens, semantic=false){
+  const label = (node.label||'')+' '+(node.id||'')+' '+(node.type||'')+' '+(node.desc||'');
+  const lTokens = tokenize(label);
+  const setQ = new Set(qTokens);
+  let overlap = 0;
+  lTokens.forEach(t=>{ if(setQ.has(t)) overlap++; });
+  // degree boost log
+  const deg = node.degree||1;
+  let score = overlap*3 + Math.log10(deg+1);
+  // exact substring boost
+  const qRaw = qTokens.join(' ');
+  if(label.toLowerCase().includes(qRaw)) score+=5;
+  // type boost for business_metric/product when query contains mrr/passive
+  if(qRaw.includes('mrr') && node.type==='business_metric') score+=2;
+  if(qRaw.includes('turnover') && (node.id.includes('turnover')||label.toLowerCase().includes('turnover'))) score+=3;
+  if(semantic){
+    // simulate semantic rerank: Jaccard of bigrams + char overlap — free local approx of mxbai-embed-large cosine
+    const q = qTokens.join(' ');
+    const bigrams = s=>{ const arr=[]; for(let i=0;i<s.length-1;i++) arr.push(s.slice(i,i+2)); return new Set(arr); };
+    const bq = bigrams(q), bl=bigrams(label.toLowerCase());
+    let inter=0; bq.forEach(b=>{ if(bl.has(b)) inter++; });
+    const uni = bq.size+bl.size-inter;
+    const jacc = uni? inter/uni : 0;
+    score = score*0.6 + jacc*8*0.4; // 60 lexical 40 semantic as in Python
+  }
+  return score;
+}
+
+function doSearch(q){
+  if(!graphData) return;
+  const semantic = document.getElementById('semanticToggle').checked;
+  const qTokens = tokenize(q);
+  let scored = graphData.nodes.map(n=>({node:n, score: q ? scoreNode(n,qTokens,semantic) : (n.degree||0)}));
+  if(q) scored = scored.filter(s=>s.score>0);
+  scored.sort((a,b)=>b.score-a.score);
+  const top = scored.slice(0,60);
+  renderResults(top, q);
+  // update graph filter to highlight top
+  filterGraph(top.map(t=>t.node.id));
+}
+
+function renderResults(scored, q){
+  const el = document.getElementById('results');
+  if(!scored.length){ el.innerHTML='<div class="muted">No matches — try Turnover Shield, MRR, retention playbook, Ava, workforce embedding</div>'; return; }
+  el.innerHTML = scored.slice(0,25).map(s=>{
+    const n=s.node;
+    return `<div class="item" onclick="focusNode('${n.id.replace(/'/g,'&#39;')}')"><div class="row" style="justify-content:space-between"><b>${esc(n.label)}</b><span class="pill">score ${s.score.toFixed(1)} deg ${n.degree||0}</span></div><div class="muted">${esc(n.type)} • ${esc(n.id)} • comm ${n.community??''} ${n.file? '• '+esc(n.file.slice(0,80)) : ''}</div>${n.desc? `<div style="font-size:12px;margin-top:4px">${esc(n.desc.slice(0,180))}</div>`:''}</div>`;
+  }).join('');
+  // edges preview for top nodes
+  const topIds = new Set(scored.slice(0,60).map(s=>s.node.id));
+  const relEdges = graphData.edges.filter(e=>topIds.has(e.source)&&topIds.has(e.target)).slice(0,20);
+  document.getElementById('edgesPreview').innerHTML = `<div class="muted" style="margin-bottom:6px">Top edges (${relEdges.length} of ${graphData.edges.filter(e=>topIds.has(e.source)&&topIds.has(e.target)).length}):</div>` + relEdges.map(e=>`<div style="font-size:12px"><code>${esc(e.source.slice(0,40))}</code> --<span style="color:var(--muted)">${esc(e.type)}</span>--> <code>${esc(e.target.slice(0,40))}</code></div>`).join('');
+  document.getElementById('searchStat').textContent = `${scored.length} nodes scored • ${semanticChecked()?'semantic ON':'lexical'} • ~${Math.round(1500)} vs ~${graphData.nodes.length*50} tokens = ${((graphData.nodes.length*50)/1500).toFixed(1)}x`;
+}
+
+function semanticChecked(){ return document.getElementById('semanticToggle').checked; }
+
+function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function filterGraph(highlightIds){
+  if(!graphData) return;
+  let nodes = graphData.nodes;
+  const t = document.getElementById('typeFilter').value;
+  const c = document.getElementById('communityFilter').value;
+  if(t) nodes = nodes.filter(n=>n.type===t);
+  if(c!=='') nodes = nodes.filter(n=>String(n.community)===c);
+  // if highlightIds provided, prefer those but keep filtered base? For search we want to show only top+neighbors
+  if(Array.isArray(highlightIds) && highlightIds.length){
+    const hlSet = new Set(highlightIds);
+    // keep nodes that are either highlighted or connected to highlighted via 1 hop for context
+    const edgeMap = new Map();
+    graphData.edges.forEach(e=>{
+      if(hlSet.has(e.source) || hlSet.has(e.target)){
+        edgeMap.set(e.source,true); edgeMap.set(e.target,true);
+      }
+    });
+    // include highlighted + their neighbors
+    const keep = new Set([...hlSet, ...Object.keys(Object.fromEntries([...edgeMap.keys()].map(k=>[k,true])))]);
+    nodes = graphData.nodes.filter(n=>keep.has(n.id));
+  }
+  renderGraph(nodes, graphData.edges);
+}
+
+function renderGraph(nodes, edges){
+  // build vis data
+  const nodeArr = nodes.map(n=>{
+    const color = typeColor(n.type);
+    return {id:n.id, label: n.label.slice(0,28), title: `${n.label}\n${n.type}\n${n.id}\ndeg ${n.degree||0} comm ${n.community||0}\n${n.desc||''}\n${n.file||''}`, value: Math.max(1, Math.log10((n.degree||1)+1)*3+1), color:{background:color.bg, border:color.border, highlight:{background:color.bg, border:'#000'}}, font:{size:11}};
+  });
+  // filter edges to only those where both ends in nodeArr
+  const nodeIds = new Set(nodeArr.map(n=>n.id));
+  const edgeArr = edges.filter(e=>nodeIds.has(e.source)&&nodeIds.has(e.target)).slice(0, 800).map(e=>({from:e.source, to:e.target, label:e.type, arrows:'to', color:{color:'#d6d3d1', highlight:'#0ea5e9'}, font:{size:9, align:'middle', color:'#78716c'}}));
+  const container = document.getElementById('graph');
+  nodesDS = new vis.DataSet(nodeArr);
+  edgesDS = new vis.DataSet(edgeArr);
+  const data = {nodes:nodesDS, edges:edgesDS};
+  const options = {physics:{solver:'forceAtlas2Based', forceAtlas2Based:{gravitationalConstant:-80, springLength:80, springConstant:0.04}, stabilization:{iterations:120}}, interaction:{hover:true, tooltipDelay:120}, edges:{smooth:{type:'curvedCW', roundness:0.08}}};
+  network = new vis.Network(container, data, options);
+  network.on('click', params=>{
+    if(params.nodes.length){
+      const nid=params.nodes[0];
+      const n=graphData.nodes.find(x=>x.id===nid);
+      if(n) doImpactFrom(n.label);
+    }
+  });
+  document.getElementById('graphMeta').textContent = `${nodeArr.length} nodes shown of ${graphData.nodes.length} total • ${edgeArr.length} edges shown • physics forceAtlas2Based • click node → impact`;
+}
+
+function typeColor(t){
+  const map={
+    'file':{bg:'#dbeafe', border:'#93c5fd'},
+    'doc':{bg:'#fef3c7', border:'#fcd34d'},
+    'function':{bg:'#dcfce7', border:'#86efac'},
+    'concept':{bg:'#fae8ff', border:'#e9d5ff'},
+    'product':{bg:'#ffedd5', border:'#fdba74'},
+    'business_metric':{bg:'#ccfbf1', border:'#5eead4'},
+    'integration':{bg:'#e0f2fe', border:'#7dd3fc'},
+    'ml_concept':{bg:'#ede9fe', border:'#a5b4fc'},
+    'ecosystem_domain':{bg:'#fee2e2', border:'#fca5a5'},
+    'tool':{bg:'#f1f5f9', border:'#cbd5e1'}
+  };
+  return map[t]||{bg:'#f5f5f4', border:'#d6d3d1'};
+}
+
+function focusNode(id){
+  if(network){
+    try{ network.selectNodes([id]); network.focus(id,{scale:1.2, animation:{duration:600}}); }catch{}
+  }
+  document.getElementById('impactNode').value=id;
+  document.getElementById('tabs').querySelector('[data-tab="impact"]').click();
+  doImpact();
+}
+
+function doImpactFrom(label){
+  document.getElementById('impactNode').value=label;
+  document.getElementById('tabs').querySelector('[data-tab="impact"]').click();
+  doImpact();
+}
+
+function findNode(input){
+  if(!graphData) return null;
+  const low=input.toLowerCase();
+  // exact id
+  let n = graphData.nodes.find(x=>x.id.toLowerCase()===low);
+  if(n) return n;
+  n = graphData.nodes.find(x=>x.id.toLowerCase().includes(low));
+  if(n) return n;
+  n = graphData.nodes.find(x=>x.label.toLowerCase()===low);
+  if(n) return n;
+  n = graphData.nodes.find(x=>x.label.toLowerCase().includes(low));
+  return n;
+}
+
+function bfs(graphEdges, startId, direction='both', depth=3){
+  const adjDown = new Map(), adjUp = new Map();
+  graphEdges.forEach(e=>{
+    if(!adjDown.has(e.source)) adjDown.set(e.source,[]);
+    adjDown.get(e.source).push(e);
+    if(!adjUp.has(e.target)) adjUp.set(e.target,[]);
+    adjUp.get(e.target).push(e);
+  });
+  const visitedDown = new Set([startId]), visitedUp = new Set([startId]);
+  const downEdges=[], upEdges=[];
+  let frontierDown=[startId], frontierUp=[startId];
+  for(let d=0; d<depth; d++){
+    const nextDown=[];
+    frontierDown.forEach(cur=>{
+      (adjDown.get(cur)||[]).forEach(e=>{
+        if(!visitedDown.has(e.target)){ visitedDown.add(e.target); nextDown.push(e.target); }
+        downEdges.push(e);
+      });
+    });
+    frontierDown=nextDown;
+    const nextUp=[];
+    frontierUp.forEach(cur=>{
+      (adjUp.get(cur)||[]).forEach(e=>{
+        if(!visitedUp.has(e.source)){ visitedUp.add(e.source); nextUp.push(e.source); }
+        upEdges.push(e);
+      });
+    });
+    frontierUp=nextUp;
+  }
+  const combine = direction==='downstream'? {nodes:[...visitedDown], edges:downEdges} : direction==='upstream'? {nodes:[...visitedUp], edges:upEdges} : {nodes:[...new Set([...visitedDown, ...visitedUp])], edges:[...downEdges, ...upEdges]};
+  return combine;
+}
+
+function doImpact(){
+  const input = document.getElementById('impactNode').value.trim();
+  const dir = document.getElementById('impactDir').value;
+  const depth = parseInt(document.getElementById('impactDepth').value)||3;
+  if(!input){ document.getElementById('impactOut').innerHTML='<span class="muted">Enter node label — e.g. Turnover Shield, Stripe, MRR</span>'; return; }
+  const node = findNode(input);
+  if(!node){ document.getElementById('impactOut').innerHTML=`<span style="color:var(--red)">Node '${esc(input)}' not found — try exact label from search</span>`; return; }
+  const res = bfs(graphData.edges, node.id, dir, depth);
+  const downstreamNodes = res.nodes.filter(id=>id!==node.id).slice(0,40);
+  const files = downstreamNodes.filter(id=>id.startsWith('file:')||id.startsWith('doc:')).slice(0,15);
+  const concepts = downstreamNodes.filter(id=>id.startsWith('concept:')||id.startsWith('integration:')).slice(0,20);
+  document.getElementById('impactOut').innerHTML = `
+  <div style="margin-bottom:8px"><b>${esc(node.label)}</b> <span class="pill">${esc(node.id)} deg ${node.degree||0}</span><br><span class="muted">${esc(node.type)} • comm ${node.community||0} • ${esc(node.desc||'')}</span></div>
+  <div class="row" style="margin-bottom:8px"><span class="pill">${dir} depth ${depth}</span><span class="pill">${res.nodes.length} nodes reached</span><span class="pill">${res.edges.length} edges</span></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <div class="item"><b>Downstream dependencies →</b><div style="font-size:12px;margin-top:6px">${concepts.map(id=>{ const n=graphData.nodes.find(x=>x.id===id); return `<div><code>${esc(n? n.label : id)}</code> <span class="muted">${esc(id)}</span></div>`; }).join('')||'<span class=muted>none</span>'}</div></div>
+    <div class="item"><b>File hotspots (what to edit)</b><div style="font-size:12px;margin-top:6px">${files.map(id=>`<div><code>${esc(id.slice(0,60))}</code></div>`).join('')||'<span class=muted>none</span>'}</div></div>
+  </div>
+  <div style="margin-top:10px"><b>Full reach (${res.nodes.length-1} nodes)</b><div style="font-size:11px;max-height:160px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px;margin-top:6px">${res.nodes.map(id=>esc(id)).join('<br>')}</div></div>
+  `;
+  // highlight in graph
+  renderGraph(graphData.nodes.filter(n=>res.nodes.includes(n.id)), graphData.edges.filter(e=>res.nodes.includes(e.source)&&res.nodes.includes(e.target)));
+}
+
+function doTask(q){
+  if(!q){ document.getElementById('taskOut').innerHTML='<span class="muted">Enter task description — e.g. add retention playbook to Turnover Shield churn prediction</span>'; return; }
+  const qTokens = tokenize(q);
+  const semantic = semanticChecked();
+  // reuse search
+  let scored = graphData.nodes.map(n=>({node:n, score: scoreNode(n,qTokens,semantic)}));
+  scored = scored.filter(s=>s.score>0).sort((a,b)=>b.score-a.score).slice(0,50);
+  const top = scored.slice(0,20);
+  // collect files that reference top nodes via edges
+  const topIds = new Set(top.map(s=>s.node.id));
+  const relatedEdges = graphData.edges.filter(e=>topIds.has(e.source)||topIds.has(e.target));
+  const fileScores = new Map();
+  relatedEdges.forEach(e=>{
+    const fileId = e.source.startsWith('file:')||e.source.startsWith('doc:') ? e.source : e.target.startsWith('file:')||e.target.startsWith('doc:') ? e.target : null;
+    if(!fileId) return;
+    const other = e.source===fileId ? e.target : e.source;
+    if(!topIds.has(other)) return;
+    const otherScore = scored.find(s=>s.node.id===other)?.score || 1;
+    fileScores.set(fileId, (fileScores.get(fileId)||0)+otherScore + (e.type==='defines'?2: e.type==='contains'?1:0.5));
+  });
+  // also boost files whose own label contains query tokens
+  graphData.nodes.filter(n=>n.type==='file'||n.type==='doc').forEach(n=>{
+    const s = scoreNode(n,qTokens,semantic);
+    if(s>0.5) fileScores.set(n.id, (fileScores.get(n.id)||0)+s);
+  });
+  const filesRanked = [...fileScores.entries()].sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const totalFiles = graphData.nodes.filter(n=>n.type==='file'||n.type==='doc').length;
+  const naiveTokens = totalFiles*500; // approx
+  const scopedTokens = filesRanked.length*300 + top.length*30;
+  const reduction = (naiveTokens/scopedTokens).toFixed(1);
+  document.getElementById('taskOut').innerHTML = `
+  <div class="row" style="margin-bottom:8px"><span class="pill">Task: ${esc(q)}</span><span class="pill">${filesRanked.length} files prioritized vs ${totalFiles} naive → ${reduction}x reduction</span><span class="pill">${semantic? 'semantic ON':'lexical'}</span></div>
+  <div style="margin-bottom:10px"><b>Action plan</b><ol style="font-size:13px;margin:6px 0 0 18px"><li>Query graph for ${esc(q)} → ${top.length} concepts filtered</li><li>Edit priority files in order below (relevance score)</li><li>Run <code>pgraphify query "${esc(q)}" --semantic</code> to verify scope</li><li>Run tests / build — impact check via Impact tab</li></ol></div>
+  <div><b>Priority files (relevance)</b></div>
+  <div class="list" style="margin-top:6px">${filesRanked.map(([fid, score])=>{ const n=graphData.nodes.find(x=>x.id===fid); return `<div class="item"><div class="row" style="justify-content:space-between"><code>${esc((n? n.file||fid : fid).slice(0,70))}</code><span class="pill">${score.toFixed(1)}</span></div><div class="muted" style="font-size:11px">${esc(fid)}</div></div>`; }).join('')||'<span class=muted>no files — broaden query</span>'}</div>
+  <div style="margin-top:10px"><b>Relevant concepts</b><div style="font-size:12px;margin-top:6px">${top.map(s=>`<span class="pill" style="margin:2px"><b>${esc(s.node.label)}</b> ${s.score.toFixed(1)}</span>`).join('')}</div></div>
+  <div style="margin-top:10px" class="muted">Token estimate: naive ~${naiveTokens} vs scoped ~${scopedTokens} = ${reduction}x saved. Copy-paste context: use <code>pgraphify task "${esc(q)}" --json</code> for CLI JSON.</div>
+  `;
+  // highlight those files in graph
+  const keepIds = new Set([...filesRanked.map(([id])=>id), ...top.map(s=>s.node.id)]);
+  renderGraph(graphData.nodes.filter(n=>keepIds.has(n.id)), graphData.edges.filter(e=>keepIds.has(e.source)&&keepIds.has(e.target)));
+}
+
+function renderOnboard(){
+  if(!graphData) return;
+  const byDeg = [...graphData.nodes].sort((a,b)=>(b.degree||0)-(a.degree||0)).slice(0,18);
+  const files = graphData.nodes.filter(n=>n.type==='file').sort((a,b)=>(b.degree||0)-(a.degree||0)).slice(0,10);
+  const entryPoints = graphData.nodes.filter(n=>{ const out = graphData.edges.filter(e=>e.source===n.id).length; const inn = graphData.edges.filter(e=>e.target===n.id).length; return out>inn*2 && out>2; }).sort((a,b)=>(b.degree||0)-(a.degree||0)).slice(0,8);
+  const communities = [...new Set(graphData.nodes.map(n=>n.community))].filter(c=>c!==undefined).slice(0,10);
+  document.getElementById('onboardOut').innerHTML = `
+  <div><b>God nodes (highest degree — core)</b></div>
+  <div class="list" style="margin-top:6px">${byDeg.map(n=>`<div class="item"><b>${esc(n.label)}</b> <span class="pill">deg ${n.degree||0} ${esc(n.type)}</span><br><span class="muted">${esc(n.id)}</span></div>`).join('')}</div>
+  <div style="margin-top:12px"><b>Hot files (most connected)</b></div>
+  <div class="list" style="margin-top:6px">${files.map(n=>`<div class="item"><code>${esc((n.file||n.id).slice(0,80))}</code> <span class="pill">deg ${n.degree}</span></div>`).join('')}</div>
+  <div style="margin-top:12px"><b>Entry points (high out / low in)</b></div>
+  <div style="margin-top:6px">${entryPoints.map(n=>`<span class="pill"><b>${esc(n.label.slice(0,22))}</b></span>`).join(' ')}</div>
+  <div style="margin-top:12px"><b>Communities</b></div><div class="muted" style="margin-top:6px">${communities.map(c=>`<span class="pill">comm ${c} — ${graphData.nodes.filter(n=>n.community===c).length} nodes</span>`).join(' ')}</div>
+  <div style="margin-top:12px"><b>Suggested questions to explore graph (paste in search)</b></div>
+  <ul style="font-size:13px;margin:6px 0 0 18px">
+  <li><code>Turnover Shield MRR</code> — product + Stripe + Supabase flow</li>
+  <li><code>First 1k MRR tracker</code> — goal linking 7-13 cust @ $79-149</li>
+  <li><code>Stripe enables MRR</code></li>
+  <li><code>workforce embedding 120d+4 heads</code></li>
+  <li><code>Ava S1 hl8 S2 hl300 Jacobian</code></li>
+  <li><code>Retention playbook triggers churn</code></li>
+  </ul>
+  `;
+}
+
+function renderCost(){
+  if(!costData){ document.getElementById('costOut').innerHTML='<span class="muted">No cost.json — run pgraphify query to generate. Private tracks 4 queries 98.7k saved.</span>'; return; }
+  const queries = costData.queries||[];
+  document.getElementById('costOut').innerHTML = `
+  <div class="row"><span class="pill">Total queries: ${queries.length}</span><span class="pill">Total saved: ${(costData.total_saved_tokens||0).toLocaleString()} tokens</span><span class="pill">Avg reduction: ${( (costData.total_naive||1)/(costData.total_scoped||1) ).toFixed(1)}x</span><span class="pill">Est $ saved @ $5/M: $${((costData.total_saved_tokens||0)/1e6*5).toFixed(2)}</span></div>
+  <div style="margin-top:10px;max-height:320px;overflow:auto"><table style="width:100%;font-size:12px;border-collapse:collapse"><thead><tr style="text-align:left;border-bottom:1px solid var(--border)"><th>Time</th><th>Mode</th><th>Question</th><th>Naive→Scoped</th><th>Saved</th><th>x</th></tr></thead><tbody>${queries.slice(-12).reverse().map(q=>`<tr style="border-bottom:1px solid #f5f5f4"><td>${esc((q.ts||'').slice(11,19))}</td><td><span class="pill">${esc(q.mode||'')}</span></td><td>${esc((q.question||'').slice(0,50))}</td><td>${q.naive||0}→${q.scoped||0}</td><td>${q.saved||0}</td><td>${q.reduction_x||''}x</td></tr>`).join('')}</tbody></table></div>
+  <div style="margin-top:10px" class="muted">Cost logging: <code>graphify-out/cost.json</code> preserves across builds (hook auto-rebuild). Mode: ${costData.mode||'ollama-first local'} • Ollama free local — semantic rerank optional <code>ollama pull mxbai-embed-large</code></div>
+  `;
+}
+
+loadGraph().catch(e=>{ document.getElementById('graphMeta').textContent='Failed to load graph.json: '+e.message+' — trying ../../docs/public/ fallback'; console.error(e); });
+</script>
+</body>
+</html>

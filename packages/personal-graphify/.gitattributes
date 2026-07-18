@@ -1,0 +1,3 @@
+graphify-out/graph.json merge=union
+**/graph.json merge=union
+# Personal Graphify — keep graph.json merge friendly (Ollama-first local)

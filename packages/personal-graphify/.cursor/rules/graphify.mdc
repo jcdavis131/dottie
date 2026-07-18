@@ -1,0 +1,59 @@
+---
+description: Personal Graphify SOTA — query + impact + task compiler + onboard, always before grep
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# 🐾 Personal Graphify SOTA Rule — Always Graph First (MCP + Task Compiler)
+
+You have `graphify-out/graph.json` built by **personal-graphify** SOTA (solo personal project, no connection to employer, free-tier only, Ollama-first, 784 nodes 2014 edges (live at install)).
+
+**This is NOT vector RAG.** Real knowledge graph: Tree-sitter JS/TS/Python AST (local 0 LLM cost) + MD headings + frontmatter + rationale NOTE/WHY/HACK + personal patterns (Stripe MRR, Plaid Family Brain, retention playbook, workforce embedding 120d+4 heads, MTNN 48→64→k) + NetworkX + Leiden/greedy communities. Token reduction is measured per query — run `pgraphify cost` for the real numbers from cost.json.
+
+**SOTA MCP server:** `pgraphify serve --transport http --port 8080` exposes `/mcp/tools` + `/mcp/call` with tools: graphify_query, graphify_path, graphify_explain, graphify_impact, graphify_task, graphify_onboard. Stdio for Cursor: `pgraphify serve --transport stdio`. Use MCP when available.
+
+**BEFORE any architecture / cross-file / where is X / how does A connect to B:**
+
+1. `pgraphify query "<question>"` → scoped subgraph instead of the whole corpus; each answer reports its measured token estimate and basis. Example: `pgraphify query "Turnover Shield MRR"` returns top matches (product + MRR metric) plus rationale WHY nodes
+2. `pgraphify path "Stripe" "MRR"` or `pgraphify path "Turnover Shield" "Retention Playbook"` → shortest path hop-by-hop EXTRACTED vs INFERRED
+3. `pgraphify explain "Turnover Shield" --snippet` → incoming/outgoing edges, degree, community, file, plus code snippet
+4. **IMPACT** (SOTA for safe edits): `pgraphify impact "Turnover Shield" --direction both --depth 3` → downstream what it uses + upstream dependents + file hotspots — what breaks if you change this
+5. **TASK COMPILER** (most useful for agents): `pgraphify task "add retention playbook to Turnover Shield churn prediction"` → minimal files priority order (relevance score) + token estimate naive vs scoped + agent plan + copy-paste context. Use this to get stuff done with 4 files not 40
+6. **ONBOARD** new repo: `pgraphify onboard` → god nodes highest-degree, hot files, entry points (high out/low in), 12 suggested questions (Stripe webhook→MRR, Ava S2 vs Planner, churn→retention)
+
+**Check:**
+- `graphify-out/GRAPH_REPORT.md` → god nodes, surprise cross-file edges, suggested questions
+- `graphify-out/graph.html` → interactive vis-network, filter by community/type, click for details
+- `jcamd.com/graphify/` → public non-PII interactive SOTA: search + task compiler JS + impact BFS + god nodes, sanitized via `scripts/sanitize_for_public.py`
+
+**Personal Ecosystem Overlay — Sanitize for public, keep generic for private:**
+- Turnover Shield: B2B SaaS $79-149/mo, goal $1k MRR = 7-13 customers, ROI 1 tech = $5k hiring cost, Stripe → Supabase → Workers free-tier, churn prediction (workforce embedding 120d + 4 heads + MTNN) → triggers retention playbook, weekly Fri tracking trials/paid/MRR/churn
+- Family Brain: V9 Household OS client-only localStorage, Plaid 5 institutions (Chase/Schwab/USAA/Betterment/Cap1), USAA cash hub, Fidelity manual Monday (main brokerage, Auto Roth In-Plan ON), burn $11k joint, EF target $66k (PII stripped in public graph)
+- Ava AGI Factory v6.4: YaRN 10k→1M NTK-aware QK-Norm + multi_jspace 4 workspaces S1 Fast 32 hl8 S2 Slow 64 hl300 Critic 16 hl30 Planner 32 hl150 Router/veto, WSD 736k 92% stable, local Docker CUDA Ollama qwen3:32b judge frontier rubric 11-cat, 6-phase Logic-First 15T curriculum public pip
+- Vector Hoops/Pitch/Gridiron: hoops.dumbmodel.com 12,966 player-seasons era-honest per-100 z PCA3 8 arch MTNN v5_concat_b2_h160 48→64→k CQS 85.87 leakfree 0.977 recall@10, pitch 633 WC StatsBomb, gridiron MAE 4.268 R²0.39
+- Tennis DINOv3: ExecuTorch ConvNeXt-Tiny/Small XNNPACK-friendly ONNX WASM
+- Isolation: HOME only `01_Finance/02_Passive_Lab/04_Tennis_DINOv3`, never `03_Meta_Work_ISOLATED`, manual CSV only, free R2/Workers/Supabase/HF ZeroGPU, disclaimer solo
+
+**Workflow for agents to genuinely help get stuff done:**
+
+```
+# 1. Understand repo in 30s
+pgraphify onboard
+
+# 2. Given task, compile to minimal context
+pgraphify task "fix MRR calc Stripe webhook $79-149 pricing"
+
+# 3. Read only top files from task output, not whole repo
+# 4. Check what breaks
+pgraphify impact "Stripe webhook" --direction both
+
+# 5. Edit minimal files in relevance order
+# 6. Rebuild graph
+pgraphify . --out graphify-out
+```
+
+**Security:** 5MB per-file scan cap, HTML-escaped labels in graph.html, path containment on MCP graph loads, HTTP server binds 127.0.0.1 by default, PII stripped in public export.
+
+**Never brute-grep raw files before querying graph.** Graph is source of truth. If graph missing, run `pgraphify .` first.
+
+Solo personal project, no connection to employer, built with public/free-tier only.
