@@ -1,6 +1,7 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
 """eval-harness-runner: the mock-mode bar is now reachable (passed==total gate)."""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -9,7 +10,12 @@ from conftest import ROOT, load_skill_module
 
 ehr = load_skill_module("eval-harness-runner")
 
-HARNESS_AVAILABLE = (ROOT.parent / "ava-open-harness" / "harness" / "runner.py").exists()
+# ava-open-harness may live as a standalone sibling checkout (ROOT.parent) or
+# under DOTTIE_ROOT/packages in the dottie monorepo; skip (never fail) if absent.
+_harness_candidates = [ROOT.parent / "ava-open-harness"]
+if os.environ.get("DOTTIE_ROOT"):
+    _harness_candidates.insert(0, Path(os.environ["DOTTIE_ROOT"]) / "packages" / "ava-open-harness")
+HARNESS_AVAILABLE = any((c / "harness" / "runner.py").exists() for c in _harness_candidates)
 
 
 @pytest.mark.skipif(not HARNESS_AVAILABLE, reason="sibling ava-open-harness not present")

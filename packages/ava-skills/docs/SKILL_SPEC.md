@@ -78,7 +78,10 @@ python -m skills.loader test
 
 ## Harness gating
 
-Every skill run should emit metrics compatible with `ava-open-harness/harness/runner.py`:
+Every skill run should emit metrics compatible with `ava-open-harness/harness/runner.py`.
+The harness is resolved from `DOTTIE_ROOT/packages/ava-open-harness` when `DOTTIE_ROOT`
+is set (dottie monorepo layout), falling back to a sibling `ava-open-harness` checkout
+next to this repo (standalone layout). Emitted fields:
 - `measured` dict with floats from live forward
 - `pass` bool
 - `bar` string threshold

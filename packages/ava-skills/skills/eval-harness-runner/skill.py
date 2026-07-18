@@ -2,7 +2,7 @@
 """eval-harness-runner: Run ava-open-harness, gate stable checkpoint"""
 from __future__ import annotations
 from typing import Any, Dict
-import sys, pathlib
+import os, sys, pathlib
 
 def describe() -> Dict[str, Any]:
     """Routing metadata read from SKILL.md frontmatter — the single source of truth."""
@@ -21,9 +21,17 @@ def describe() -> Dict[str, Any]:
 def run(model: Any = None, tokenizer: Any = None, mode: str = "mock", **kw):
     # try to import harness
     try:
-        # add ava-open-harness to path
-        here = pathlib.Path(__file__).resolve().parents[2]
-        harness_path = here.parent / "ava-open-harness"
+        # add ava-open-harness to path: DOTTIE_ROOT/packages first (dottie
+        # monorepo), then the existing relative sibling probe (standalone layout)
+        harness_path = None
+        dottie_root = os.environ.get("DOTTIE_ROOT")
+        if dottie_root:
+            candidate = pathlib.Path(dottie_root) / "packages" / "ava-open-harness"
+            if candidate.exists():
+                harness_path = candidate
+        if harness_path is None:
+            here = pathlib.Path(__file__).resolve().parents[2]
+            harness_path = here.parent / "ava-open-harness"
         if harness_path.exists() and str(harness_path) not in sys.path:
             sys.path.insert(0, str(harness_path))
         from harness.runner import run_harness

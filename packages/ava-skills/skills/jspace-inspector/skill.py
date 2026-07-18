@@ -4,7 +4,7 @@ set (spider_ant, france_china, soccer_rugby, spanish_french, safety_blackmail) v
 sibling ava-open-harness `jspace_all` runner and aggregates its per-test records."""
 from __future__ import annotations
 from typing import Any, Dict, List
-import pathlib, random, sys
+import os, pathlib, random, sys
 
 def describe() -> Dict[str, Any]:
     """Routing metadata read from SKILL.md frontmatter — the single source of truth."""
@@ -59,7 +59,16 @@ def run(model: Any = None, tokenizer: Any = None, mode: str = "mock", eval_name:
     canonical = ["spider_ant", "france_china", "soccer_rugby", "spanish_french", "safety_blackmail"]
     bar = ">=3/5 canonical J-tests PASS"
     try:
-        harness_root = pathlib.Path(__file__).resolve().parents[2].parent / "ava-open-harness"
+        # Resolve ava-open-harness: DOTTIE_ROOT/packages first (dottie monorepo),
+        # then the existing relative sibling probe (standalone checkout layout).
+        harness_root = None
+        dottie_root = os.environ.get("DOTTIE_ROOT")
+        if dottie_root:
+            candidate = pathlib.Path(dottie_root) / "packages" / "ava-open-harness"
+            if candidate.exists():
+                harness_root = candidate
+        if harness_root is None:
+            harness_root = pathlib.Path(__file__).resolve().parents[2].parent / "ava-open-harness"
         if harness_root.exists() and str(harness_root) not in sys.path:
             sys.path.insert(0, str(harness_root))
         from harness.registry import get_eval

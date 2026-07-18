@@ -25,7 +25,9 @@ complementary:
 
 # Eval Harness Runner
 
-Imports the sibling `ava-open-harness` repo and runs its `run_harness()` over the requested
+Imports the `ava-open-harness` repo — resolved from `DOTTIE_ROOT/packages/ava-open-harness`
+when `DOTTIE_ROOT` is set (dottie monorepo), else as a standalone sibling checkout next to
+this repo — and runs its `run_harness()` over the requested
 eval set (default `jspace_all,frontier_rubric`), gating on every requested eval passing.
 If the harness cannot run it fails honestly with the error — it never fabricates a pass
 count. Run with `python -m skills.loader run eval-harness-runner --mode mock`.
