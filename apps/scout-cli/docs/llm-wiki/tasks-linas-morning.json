@@ -1,0 +1,45 @@
+{
+    "etag": "\"M2bSOQCrqas\"",
+    "items": [
+        {
+            "etag": "\"c07CbR3iu1Y\"",
+            "id": "MTRoa3RHc21od2lENUZyYQ",
+            "kind": "tasks#task",
+            "links": [],
+            "notes": "Run pgraphify build over bigbang-cli \u2192 graphify-out/{graph.json,graph.html,GRAPH_REPORT.md}. Also copy reference to ~/workspace/your_files/personal-graphify/references/spaces/",
+            "position": "00000000000000000000",
+            "selfLink": "https://www.googleapis.com/tasks/v1/lists/MDg4NTEzMTkzNjgwNzI5NDMyMDI6MDow/tasks/MTRoa3RHc21od2lENUZyYQ",
+            "status": "needsAction",
+            "title": "Build knowledge graph via personal-graphify",
+            "updated": "2026-07-15T19:26:25.692Z",
+            "webViewLink": "https://tasks.google.com/task/14hktGsmhwiD5Fra?sa=6"
+        },
+        {
+            "etag": "\"ETz8Nm6PcFA\"",
+            "id": "LUotUWxpV25razVtc2tjaw",
+            "kind": "tasks#task",
+            "links": [],
+            "notes": "Created docs/llm-wiki/{index,architecture,tasks-plugin,security-model,graphify-integration,plugins,quickstart}.md + tasks-*.json. Token-efficient for LLMs. To save to graphify: pgraphify build",
+            "position": "00000000000000000001",
+            "selfLink": "https://www.googleapis.com/tasks/v1/lists/MDg4NTEzMTkzNjgwNzI5NDMyMDI6MDow/tasks/LUotUWxpV25razVtc2tjaw",
+            "status": "needsAction",
+            "title": "Generate LLM-wikis for BigBang CLI v0.4.1",
+            "updated": "2026-07-15T19:26:24.738Z",
+            "webViewLink": "https://tasks.google.com/task/-J-QliWnkk5mskck?sa=6"
+        },
+        {
+            "etag": "\"cRc_KzaoE9w\"",
+            "id": "N19Lc0pMb0I0dTZXNXVLZQ",
+            "kind": "tasks#task",
+            "links": [],
+            "notes": "Done: tasks plugin status/lists/list/add/complete/sync-bb/export. 2 Lina lists detected. Ava routing 0.92 for task keywords. Next: MCP expose bb_tasks_*",
+            "position": "00000000000000000002",
+            "selfLink": "https://www.googleapis.com/tasks/v1/lists/MDg4NTEzMTkzNjgwNzI5NDMyMDI6MDow/tasks/N19Lc0pMb0I0dTZXNXVLZQ",
+            "status": "needsAction",
+            "title": "Wire Google Tasks into BigBang \u2014 bb tasks \u2194 Hatch \u2713",
+            "updated": "2026-07-15T19:26:23.748Z",
+            "webViewLink": "https://tasks.google.com/task/7_KsJLoB4u6W5uKe?sa=6"
+        }
+    ],
+    "kind": "tasks#tasks"
+}

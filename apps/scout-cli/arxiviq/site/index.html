@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>arxiviq — Ava MLOps</title>
+<meta name="description" content="MLOps console for the Ava ecosystem: training telemetry, checkpoint harness, evaluations, model cards.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⛰️</text></svg>">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">⛰️</span>
+    <span class="brand-name">arxiviq</span>
+    <span class="brand-sub">Ava MLOps console</span>
+  </div>
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <button class="tab active" role="tab" aria-selected="true" data-view="telemetry">Telemetry</button>
+    <button class="tab" role="tab" aria-selected="false" data-view="pilot">CPU Pilot</button>
+    <button class="tab" role="tab" aria-selected="false" data-view="harness">Checkpoint Harness</button>
+    <button class="tab" role="tab" aria-selected="false" data-view="evals">Evaluations</button>
+    <button class="tab" role="tab" aria-selected="false" data-view="cards">Model Cards</button>
+    <button class="tab" role="tab" aria-selected="false" data-view="ecosystem">Ecosystem</button>
+  </nav>
+  <div class="topbar-right">
+    <span id="source-badge" class="badge" title="Where the numbers on screen come from">loading…</span>
+    <button id="theme-toggle" class="icon-btn" aria-label="Toggle color theme">◐</button>
+  </div>
+</header>
+
+<main>
+  <!-- Telemetry -->
+  <section id="view-telemetry" class="view" aria-labelledby="t-h">
+    <div class="view-head">
+      <h1 id="t-h">Training telemetry</h1>
+      <p class="view-sub">scout-rtx hill-climb experiments (GitHub releases, polled every 5&nbsp;min) and the
+      factory pipeline state. Lower <code>val_bpb</code> is better.</p>
+    </div>
+    <div class="tiles" id="telemetry-tiles"></div>
+    <div class="card">
+      <div class="card-head">
+        <h2>val_bpb across experiments</h2>
+        <span class="card-note" id="telemetry-note"></span>
+      </div>
+      <div id="bpb-chart" class="chart" role="img" aria-label="Line chart of validation bits per byte across experiments"></div>
+      <div id="bpb-empty" class="empty hidden"></div>
+    </div>
+  </section>
+
+  <!-- CPU Pilot -->
+  <section id="view-pilot" class="view hidden" aria-labelledby="p-h">
+    <div class="view-head">
+      <h1 id="p-h">CPU pilot — first real training evidence</h1>
+      <p class="view-sub">The nano CPU-pilot chain ran the REAL pipeline end-to-end (corpus → tokenizer →
+      pack → pretrain → agentic branch fork → one real GRPO update). Every number below is measured;
+      the manifest declares <code>scale=smoke_cpu_pilot</code>, <code>capability_claim=none</code> —
+      a ~14M model trained ~115 steps has no capability, and this page never implies otherwise.</p>
+    </div>
+    <div class="tiles" id="pilot-tiles"></div>
+    <div class="card">
+      <div class="card-head">
+        <h2>lm loss — pretrain → agentic branch fork</h2>
+        <span class="card-note" id="pilot-note"></span>
+      </div>
+      <div id="pilot-chart" class="chart" role="img" aria-label="Line chart of real per-step lm loss for the pretrain run and the agentic branch fine-tune"></div>
+      <div id="pilot-empty" class="empty hidden"></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>GRPO smoke update — mechanical health (no capability claims)</h2></div>
+      <div class="table-wrap"><table id="pilot-grpo-table">
+        <thead><tr><th>metric</th><th class="num">value</th><th>meaning</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <p class="card-note" id="pilot-grpo-note"></p>
+    </div>
+  </section>
+
+  <!-- Checkpoint Harness -->
+  <section id="view-harness" class="view hidden" aria-labelledby="h-h">
+    <div class="view-head">
+      <h1 id="h-h">Checkpoint harness</h1>
+      <p class="view-sub">The 5 canonical J-Space tests per branch checkpoint, from
+      <code>ava-open-harness</code>. Evals run against a live forward pass on the training box;
+      this console renders the published results — it never invents them.</p>
+    </div>
+    <div class="filter-row" id="branch-filter" role="group" aria-label="Branch checkpoint"></div>
+    <div class="card">
+      <div class="card-head"><h2>Canonical J-tests</h2><span class="card-note" id="harness-note"></span></div>
+      <div class="table-wrap"><table id="jtest-table">
+        <thead><tr><th>Test</th><th>Description</th><th class="num">Metric</th><th>Result</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Run it yourself</h2></div>
+      <pre class="cmd">python -m harness run --mode real --backend auto --ckpt checkpoints/ava_stable_736k.pt
+# or gate a branch through the skills bridge:
+python skills/loader.py run eval-harness-runner</pre>
+    </div>
+  </section>
+
+  <!-- Evaluations -->
+  <section id="view-evals" class="view hidden" aria-labelledby="e-h">
+    <div class="view-head">
+      <h1 id="e-h">Evaluation dashboard</h1>
+      <p class="view-sub">Frontier rubric results by domain (judge-scored, weighted rubric categories).
+      Click a bar for the per-rubric breakdown.</p>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Frontier rubric — overall by domain</h2><span class="card-note" id="evals-note"></span></div>
+      <div id="frontier-chart" class="chart" role="img" aria-label="Bar chart of frontier rubric overall score per domain"></div>
+    </div>
+    <div class="card hidden" id="rubric-card">
+      <div class="card-head"><h2 id="rubric-title">Per-rubric breakdown</h2></div>
+      <div class="table-wrap"><table id="rubric-table">
+        <thead><tr><th>Category</th><th class="num">Weight</th><th class="num">Score</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+  </section>
+
+  <!-- Model Cards -->
+  <section id="view-cards" class="view hidden" aria-labelledby="c-h">
+    <div class="view-head">
+      <h1 id="c-h">Model cards</h1>
+      <p class="view-sub">Generated from the factory's <code>configs/*.yaml</code>, scale-ladder state, and
+      eval artifacts by <code>arxiviq/generate_data.py</code> — regenerate and redeploy to refresh.</p>
+    </div>
+    <div id="cards-grid" class="cards-grid"></div>
+  </section>
+
+  <!-- Ecosystem -->
+  <section id="view-ecosystem" class="view hidden" aria-labelledby="eco-h">
+    <div class="view-head">
+      <h1 id="eco-h">Ecosystem &amp; roadmap</h1>
+      <p class="view-sub">The six Ava repos and the capability roadmap. States are reported honestly —
+      <strong>shipped</strong>, <strong>built</strong> (code-complete + smoke-proven, capability-scale
+      run pending), <strong>spec'd</strong> (contract exists, not built), or
+      <strong>planned</strong> (substrate only).</p>
+    </div>
+    <div id="ecosystem-repos" class="cards-grid"></div>
+    <div class="card">
+      <div class="card-head"><h2>Capability roadmap</h2>
+        <span class="card-note">what's real vs. what's next</span></div>
+      <div class="roadmap" id="roadmap-list"></div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <span>Solo personal project, no connection to employer, built with public/free-tier only.</span>
+  <span id="generated-at"></span>
+</footer>
+
+<div id="tooltip" class="tooltip hidden" role="status"></div>
+<script src="app.js"></script>
+</body>
+</html>

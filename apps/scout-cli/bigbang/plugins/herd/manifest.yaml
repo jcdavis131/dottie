@@ -1,0 +1,16 @@
+name: herd
+version: 0.7.0
+description: >
+  Herdr-inspired agent session control surface — list/wait/read/report
+  semantic status (idle|working|blocked|done). Not a PTY multiplexer;
+  pairs with Herdr for real panes.
+capabilities:
+  network:
+    enabled: false
+    domains: []
+  filesystem:
+    write: true
+    paths:
+      - "~/.local/share/bigbang/herd/"
+  secrets:
+    allow: []

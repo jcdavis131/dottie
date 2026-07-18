@@ -1,0 +1,11 @@
+name: agent
+version: 0.4.0
+description: Ava-native planner that routes to any tool
+capabilities:
+  network:
+    enabled: true
+    domains: ["localhost", "127.0.0.1", "host.docker.internal"]
+  filesystem:
+    write: false
+  secrets:
+    allow: []

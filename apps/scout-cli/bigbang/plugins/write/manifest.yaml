@@ -1,0 +1,16 @@
+name: write
+version: 0.5.0
+description: Authentic-feeling content generators that auto-scan for AI slop and fix it — HUMAN_LIKE 0, batch, pre-commit hook, real sources
+capabilities:
+  network:
+    enabled: true
+    # Only local Ollama is ever contacted (host.docker.internal opt-in via OLLAMA_ALLOW_DOCKER_HOST)
+    domains: ["localhost", "127.0.0.1", "host.docker.internal"]
+  filesystem:
+    write: true
+    paths: ["~/workspace/your_files/write-outputs/", "~/workspace/", "./"]
+  secrets:
+    allow: []
+
+# Solo personal project, no connection to employer, built with public/free-tier only
+

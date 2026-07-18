@@ -1,0 +1,21 @@
+# Solo personal project, no connection to employer, built with public/free-tier only
+name: graphify
+version: 0.6.1
+description: >-
+  Personal Graphify (pgraphify) — query-first knowledge graph for Scout/Ava/Vector/Lab.
+  build/query/path/explain/impact/task/onboard/cost + ecosystem multi-root sync.
+capabilities:
+  network:
+    enabled: false
+  filesystem:
+    write: true
+    paths:
+      - "./graphify-out/"
+      - "~/personal-graphify/"
+      - "~/scout-cli/"
+      - "~/ava-agi-factory-v6-4/"
+  secrets:
+    allow: []
+tags: [graphify, pgraphify, ava, scout, knowledge-graph]
+
+# Solo personal project, no connection to employer, built with public/free-tier only

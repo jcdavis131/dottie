@@ -1,0 +1,10 @@
+name: mcp
+version: 0.4.0
+description: MCP client + server — consume any MCP, serve bb as MCP
+capabilities:
+  network:
+    enabled: true
+    domains: ["localhost", "127.0.0.1"]
+  filesystem:
+    write: true
+    paths: ["~/.local/share/bigbang/"]

@@ -1,0 +1,12 @@
+name: ava
+version: 0.4.0
+description: Ava AGI Factory — local CUDA brain for BigBang routing + eval
+capabilities:
+  network:
+    enabled: true
+    domains: ["huggingface.co", "localhost", "host.docker.internal"]
+  filesystem:
+    write: true
+    paths: ["~/workspace/ava-agi-factory-v6-4/", "~/.cache/huggingface/"]
+  secrets:
+    allow: ["HF_TOKEN"]

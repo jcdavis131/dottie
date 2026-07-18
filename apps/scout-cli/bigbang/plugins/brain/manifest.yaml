@@ -1,0 +1,15 @@
+# Solo personal project, no connection to employer, built with public/free-tier only
+name: brain
+version: 0.5.0
+description: Hatch brain — goals, MEMORY.md, daily notes, projects. Bridge for Ava co-dev. Token-efficient.
+capabilities:
+  network:
+    enabled: false
+  filesystem:
+    write: true
+    paths: ["~/MEMORY.md", "~/memory/", "~/workspace/projects/", "~/workspace/your_files/"]
+  secrets:
+    allow: []
+tags: [memory, goals, ava]
+
+# Solo personal project, no connection to employer, built with public/free-tier only

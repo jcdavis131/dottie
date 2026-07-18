@@ -1,0 +1,8 @@
+name: family
+version: 0.4.0
+description: Family Brain generic tools
+capabilities:
+  network:
+    enabled: false
+  filesystem:
+    write: false

@@ -1,0 +1,15 @@
+# Solo personal project, no connection to employer, built with public/free-tier only
+name: lab
+version: 0.5.0
+description: Passive Lab — boring B2B SaaS ideas, Turnover Shield MVP, MRR tracking for First $1k/mo goal. Ava co-dev ready.
+capabilities:
+  network:
+    enabled: false
+  filesystem:
+    write: true
+    paths: ["~/workspace/projects/first-1k-mo-passive/", "~/workspace/projects/build-a-self-sustaining-web-app-for-passive-income/", "~/workspace/your_files/"]
+  secrets:
+    allow: []
+tags: [passive, mrr, turnover-shield]
+
+# Solo personal project, no connection to employer, built with public/free-tier only

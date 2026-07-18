@@ -1,0 +1,55 @@
+{
+  "nodes": 234,
+  "edges": 619,
+  "queries": [
+    {
+      "ts": "2026-07-15T20:03:13.117754+00:00",
+      "question": "Muon optimizer training",
+      "naive": 11700,
+      "scoped": 950,
+      "saved": 10750,
+      "reduction_x": 12.3,
+      "mode": "lexical"
+    },
+    {
+      "ts": "2026-07-15T20:03:13.485649+00:00",
+      "question": "GraphRAG knowledge graph",
+      "naive": 11700,
+      "scoped": 1500,
+      "saved": 10200,
+      "reduction_x": 7.8,
+      "mode": "lexical"
+    },
+    {
+      "ts": "2026-07-15T20:03:13.814700+00:00",
+      "question": "MCP tool routing",
+      "naive": 11700,
+      "scoped": 1500,
+      "saved": 10200,
+      "reduction_x": 7.8,
+      "mode": "lexical"
+    },
+    {
+      "ts": "2026-07-15T20:03:14.308986+00:00",
+      "question": "Jacobian regularization",
+      "naive": 11700,
+      "scoped": 1500,
+      "saved": 10200,
+      "reduction_x": 7.8,
+      "mode": "lexical"
+    }
+  ],
+  "total_saved_tokens": 41350,
+  "total_naive": 46800,
+  "total_scoped": 5450,
+  "mode": "ollama-first local",
+  "last_query": {
+    "ts": "2026-07-15T20:03:14.308986+00:00",
+    "question": "Jacobian regularization",
+    "naive": 11700,
+    "scoped": 1500,
+    "saved": 10200,
+    "reduction_x": 7.8,
+    "mode": "lexical"
+  }
+}

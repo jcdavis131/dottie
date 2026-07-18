@@ -1,0 +1,326 @@
+from typing import Optional
+from urllib.parse import urlparse as _up
+import json
+import re
+
+import typer
+
+from bigbang.core.cli_ux import examples_epilog, fail_agent
+from bigbang.core.output import emit
+from bigbang.core.registry import register_tool, list_tools, get_tool, unregister_tool, search_tools
+from bigbang.core.policy import enforce_or_raise, enforce_user_url_or_raise
+from bigbang.core.http_utils import sanitize_no_proxy_env
+from bigbang.core.openapi import fetch_spec, generate_typer_plugin, call_openapi, parse_operations
+
+sanitize_no_proxy_env()
+
+app = typer.Typer(
+    name="tools",
+    help="🧰 Universal tool registry — one CLI to rule all internet tools",
+    no_args_is_help=True,
+    epilog=examples_epilog(
+        [
+            "scout tools list",
+            "scout tools add github --type openapi --url https://api.github.com/openapi.json",
+            "scout --json tools search github",
+            "scout tools rm old-tool --force",
+        ]
+    ),
+)
+
+
+@app.command("list", epilog=examples_epilog(["scout --json tools list", "scout tools list --tag api"]))
+def list_cmd(tag: Optional[str] = typer.Option(None, help="filter by tag")):
+    """List registered tools (keys + manifests)."""
+    tools = list_tools()
+    if tag:
+        tools = {k: v for k, v in tools.items() if tag in v.get("tags", [])}
+    emit(
+        {
+            "tools": tools,
+            "count": len(tools),
+            "example": "scout tools search <query>",
+            "discover": "scout mcp manifest",
+        },
+        command="tools list",
+    )
+
+
+@app.command(
+    "add",
+    epilog=examples_epilog(
+        [
+            "scout tools add github --type openapi --url https://api.github.com/openapi.json",
+            "scout tools add notion --type mcp --url https://mcp.notion.com/sse",
+        ]
+    ),
+)
+def add_cmd(
+    name: str = typer.Argument(..., help="tool name e.g. github, notion, stripe"),
+    type: str = typer.Option("openapi", help="openapi|mcp|cli|docker|python"),
+    url: Optional[str] = typer.Option(None, help="OpenAPI spec URL or MCP server URL"),
+    description: str = typer.Option("", help="what it does"),
+    tags: str = typer.Option("", help="comma-separated tags e.g. api,work,ai"),
+):
+    """Register a tool. Idempotent: re-add overwrites the same name."""
+    sanitize_no_proxy_env()
+    domain_guess = ""
+    if url:
+        try:
+            parsed = _up(url)
+            domain_guess = parsed.netloc or url
+        except Exception:
+            domain_guess = url
+    existed = get_tool(name) is not None
+    manifest = {
+        "type": type,
+        "url": url,
+        "description": description,
+        "tags": [t.strip() for t in tags.split(",") if t.strip()],
+        "capabilities": {
+            "network": {"enabled": True, "domains": [domain_guess] if domain_guess else []},
+            "filesystem": {"write": False},
+        },
+    }
+    if type == "openapi" and url:
+        try:
+            spec = fetch_spec(url)
+            manifest["openapi_status"] = 200
+            manifest["openapi_size"] = len(json.dumps(spec))
+            manifest["paths_count"] = len(spec.get("paths", {}))
+            if not description:
+                manifest["description"] = (
+                    spec.get("info", {}).get("description") or spec.get("info", {}).get("title", "")
+                )[:200]
+        except Exception as e:
+            manifest["openapi_error"] = str(e)
+
+    register_tool(name, manifest)
+    emit(
+        {
+            "message": f"tool {name} registered",
+            "overwrote": existed,
+            "manifest": manifest,
+            "example": f"scout tools call {name} <operation>",
+            "next": f"scout tools generate {name} or scout tools call {name} <operation>",
+        },
+        command="tools add",
+    )
+
+
+@app.command("get", epilog=examples_epilog(["scout --json tools get github"]))
+def get_cmd(name: str = typer.Argument(..., help="registered tool name")):
+    """Show one tool manifest."""
+    t = get_tool(name)
+    if not t:
+        fail_agent(
+            f"{name} not found",
+            command="tools get",
+            example=f"scout tools add {name} --type openapi --url <spec-url>",
+            discover="scout tools list",
+        )
+    emit({"name": name, **t}, command="tools get")
+
+
+@app.command(
+    "rm",
+    epilog=examples_epilog(
+        [
+            "scout tools rm old-tool --force",
+            "scout tools rm old-tool --dry-run",
+        ]
+    ),
+)
+def rm_cmd(
+    name: str = typer.Argument(..., help="tool name to remove"),
+    force: bool = typer.Option(False, "--force", "-f", help="required in non-interactive mode"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="show what would be removed"),
+):
+    """Unregister a tool. Idempotent with --force when missing."""
+    exists = get_tool(name) is not None
+    if dry_run:
+        emit({"would_remove": name, "exists": exists, "dry_run": True}, command="tools rm")
+        return
+    if exists and not force:
+        # No confirm prompt for registry entries (low blast radius), but require
+        # --force so agents never surprise-delete and retries stay intentional.
+        fail_agent(
+            "Pass --force to remove a registered tool",
+            command="tools rm",
+            example=f"scout tools rm {name} --force",
+            discover="scout tools list",
+        )
+    ok = unregister_tool(name) if exists else False
+    emit({"removed": name, "ok": ok, "existed": exists}, command="tools rm")
+
+
+@app.command("search", epilog=examples_epilog(["scout tools search translate"]))
+def search_cmd(query: str = typer.Argument(..., help="search e.g. 'translate', 'github'")):
+    """Search registered tools by name/description/tags."""
+    results = search_tools(query)
+    emit({"query": query, "results": results, "count": len(results)}, command="tools search")
+
+
+@app.command(
+    "call",
+    epilog=examples_epilog(
+        [
+            'scout tools call github list-repos \'{"org":"acme"}\'',
+            "scout --json tools call github list-repos",
+        ]
+    ),
+)
+def call_cmd(
+    name: str = typer.Argument(..., help="registered tool name"),
+    action: Optional[str] = typer.Argument(None, help="action / operationId"),
+    args: Optional[str] = typer.Argument(None, help="json args"),
+):
+    """Call a registered OpenAPI/MCP tool (policy-checked)."""
+    tool = get_tool(name)
+    if not tool:
+        fail_agent(
+            f"{name} not registered",
+            command="tools call",
+            example=f"scout tools add {name} --type openapi --url <spec-url>",
+            discover="scout tools list",
+        )
+    caps_manifest = {"name": name, "capabilities": tool.get("capabilities", {})}
+    url = tool.get("url") or ""
+    if url:
+        enforce_or_raise(caps_manifest, "network", url)
+    if tool.get("type") == "openapi" and action:
+        try:
+            parsed_args: dict = {}
+            if args:
+                try:
+                    parsed_args = json.loads(args)
+                    if not isinstance(parsed_args, dict):
+                        parsed_args = {"value": parsed_args}
+                except json.JSONDecodeError:
+                    emit(
+                        {
+                            "warning": "args not valid JSON",
+                            "example": 'scout tools call {name} {action} \'{{"param":"value"}}\''.format(
+                                name=name, action=action
+                            ),
+                        }
+                    )
+                    parsed_args = {}
+            result = call_openapi(tool, action, parsed_args)
+            emit(result, command="tools call")
+            return
+        except Exception as e:
+            emit(
+                {
+                    "tool": name,
+                    "action": action,
+                    "args": args,
+                    "manifest": tool,
+                    "policy": "checked ✓",
+                    "error": str(e),
+                    "note": "real call attempted and failed",
+                },
+                command="tools call",
+            )
+            return
+    emit(
+        {
+            "tool": name,
+            "action": action,
+            "args": args,
+            "manifest": tool,
+            "policy": "checked ✓ — network allowed",
+            "example": f"scout tools generate {name}",
+            "note": "use scout tools generate for per-operation commands",
+        },
+        command="tools call",
+    )
+
+
+@app.command("import-openapi")
+def import_openapi(
+    url: str = typer.Argument(..., help="OpenAPI JSON URL"),
+    name: Optional[str] = typer.Option(None),
+):
+    """Fetch an OpenAPI spec, register it, enforce user URL allowlist."""
+    sanitize_no_proxy_env()
+    # Checked against the persisted user allowlist (~/.config/bigbang/policy.yaml),
+    # not a manifest constructed to allow the exact URL being checked.
+    enforce_user_url_or_raise(url, context="tools import-openapi")
+    try:
+        spec = fetch_spec(url)
+        derived_name = name or spec.get("info", {}).get("title", "api").lower().replace(" ", "-")
+        derived_name = re.sub(r"[^0-9A-Za-z_-]+", "-", derived_name).strip("-") or "api"
+        domain = _up(url).netloc
+        manifest = {
+            "type": "openapi",
+            "url": url,
+            "description": (
+                spec.get("info", {}).get("description", "") or spec.get("info", {}).get("title", "")
+            )[:200],
+            "openapi_version": spec.get("openapi", ""),
+            "paths_count": len(spec.get("paths", {})),
+            "tags": ["openapi", "auto-imported"],
+            "capabilities": {"network": {"enabled": True, "domains": [domain or url]}},
+        }
+        register_tool(derived_name, manifest)
+        emit(
+            {
+                "imported": derived_name,
+                "paths": list(spec.get("paths", {}).keys())[:10],
+                "manifest": manifest,
+            },
+            command="tools import-openapi",
+        )
+    except Exception as e:
+        emit({"error": str(e), "url": url, "example": f"scout tools import-openapi {url}"})
+
+
+@app.command("generate")
+def generate_cmd(name: str = typer.Argument(..., help="tool name already in registry")):
+    """Codegen a Typer plugin from a registered OpenAPI tool."""
+    tool = get_tool(name)
+    if not tool:
+        fail_agent(
+            f"{name} not found",
+            command="tools generate",
+            example=f"scout tools add {name} --type openapi --url <spec-url>",
+            discover="scout tools list",
+        )
+    if tool.get("type") != "openapi":
+        fail_agent(
+            "only openapi tools can be codegen'd currently",
+            command="tools generate",
+            example=f"scout tools add {name} --type openapi --url <spec-url>",
+        )
+    url = tool.get("url")
+    if not url:
+        fail_agent(
+            f"tool {name} has no url",
+            command="tools generate",
+            example=f"scout tools add {name} --type openapi --url <spec-url>",
+        )
+    try:
+        sanitize_no_proxy_env()
+        spec = fetch_spec(url)
+        ops = parse_operations(spec)
+        files = generate_typer_plugin(name, spec, url)
+        emit(
+            {
+                "name": name,
+                "url": url,
+                "generated": files,
+                "operations": len(ops),
+                "next": f"scout {name} --help",
+            },
+            command="tools generate",
+        )
+    except Exception as e:
+        emit({"error": str(e), "url": url})
+
+
+def register(root):
+    root.add_typer(app, name="tools")
+
+
+# Solo personal project, no connection to employer, built with public/free-tier only

@@ -1,0 +1,59 @@
+[project]
+name = "scout-cli"
+version = "0.7.0"
+description = "Scout CLI - personal control plane (ex-BigBang). Agent-native herd sessions + Ava brain + tools/MCP + authentic writing + RTX offload. HOME-only."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Cameron Davis", email = "jcdavis131@gmail.com"}]
+keywords = ["scout", "cli", "agent", "tools", "mcp", "personal", "automation", "kitty"]
+dependencies = [
+  "typer[all]>=0.12",
+  "rich>=13.7",
+  "pydantic>=2.6",
+  "pydantic-settings>=2.1",
+  "pyyaml>=6.0",
+  "httpx>=0.27",
+  "python-dotenv>=1.0",
+  "click>=8.1",
+  "mcp>=1.28.1",
+]
+
+[project.optional-dependencies]
+all = ["gspread", "supabase", "onnxruntime", "keyring", "cryptography", "mcp>=1.28.1"]
+dev = ["pytest>=8", "ruff>=0.3", "mypy>=1.8", "pytest-cov"]
+security = ["keyring", "cryptography"]
+# Personal Graphify — install from local private clone: pip install -e ~/personal-graphify
+graphify = []
+
+[project.urls]
+Homepage = "https://github.com/jcdavis131/bigbang-cli"
+Issues = "https://github.com/jcdavis131/bigbang-cli/issues"
+
+[project.scripts]
+scout = "bigbang.cli:app"
+bb = "bigbang.cli:app"
+bigbang = "bigbang.cli:app"
+dv = "bigbang.cli:app"
+kitty = "bigbang.cli:app"
+
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["bigbang", "bigbang.*"]
+
+[tool.setuptools.package-data]
+bigbang = [
+  "skills/*.md",
+  "skills/*/SKILL.md",
+  "plugins/*/manifest.yaml",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

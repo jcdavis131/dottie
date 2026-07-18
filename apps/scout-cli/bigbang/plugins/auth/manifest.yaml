@@ -1,0 +1,29 @@
+name: auth
+version: 0.4.0
+description: Unified auth for all internet services — OAuth device flow + PAT + vault
+
+capabilities:
+  network:
+    enabled: true
+    domains:
+      - github.com
+      - api.github.com
+      - oauth.github.com
+      - oauth2.googleapis.com
+      - accounts.google.com
+      - www.googleapis.com
+      - api.notion.com
+      - www.notion.com
+      - notion.com
+      - api.linear.app
+      - linear.app
+      - api.openai.com
+      - login.microsoftonline.com
+      - graph.microsoft.com
+  filesystem:
+    write: true
+    paths:
+      - ~/.local/share/bigbang/auth.json
+      - ~/.local/share/bigbang/secrets.json
+
+# Solo personal project, no connection to employer, built with public/free-tier only

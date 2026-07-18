@@ -1,0 +1,32 @@
+{
+    "etag": "\"VO_tUbAVtak\"",
+    "items": [
+        {
+            "due": "2025-06-05T00:00:00.000Z",
+            "etag": "\"hrMvVqUdpTw\"",
+            "id": "SkpUaU1QYmluUURvQXc2TQ",
+            "kind": "tasks#task",
+            "links": [],
+            "position": "00000000000000000000",
+            "selfLink": "https://www.googleapis.com/tasks/v1/lists/SURwZDNOTXZRLXpUVkd1ZA/tasks/SkpUaU1QYmluUURvQXc2TQ",
+            "status": "needsAction",
+            "title": "Swimming \ud83d\udc2c",
+            "updated": "2025-06-05T05:42:47.519Z",
+            "webViewLink": "https://tasks.google.com/task/JJTiMPbinQDoAw6M?sa=6"
+        },
+        {
+            "etag": "\"m4HcSkr8bKU\"",
+            "id": "T2xwZUJidWxzSnNqYnRUaQ",
+            "kind": "tasks#task",
+            "links": [],
+            "notes": "Bad weather",
+            "position": "00000000000000000001",
+            "selfLink": "https://www.googleapis.com/tasks/v1/lists/SURwZDNOTXZRLXpUVkd1ZA/tasks/T2xwZUJidWxzSnNqYnRUaQ",
+            "status": "needsAction",
+            "title": "Climbing \ud83e\uddd7",
+            "updated": "2025-02-17T15:48:59.763Z",
+            "webViewLink": "https://tasks.google.com/task/OlpeBbulsJsjbtTi?sa=6"
+        }
+    ],
+    "kind": "tasks#tasks"
+}
