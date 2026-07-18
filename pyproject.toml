@@ -1,0 +1,16 @@
+# dottie — virtual uv workspace root (no [project]: the root itself is not a package).
+# Members: the four already-pyproject-based packages with no conflicting hard pins.
+# Excluded BY DESIGN (see README):
+#   apps/scout-rtx    — hard-pins torch==2.9.1 + cu128 wheel index; resolved independently
+#   apps/ava-factory  — requirements.txt/Docker-driven install, no pyproject; untouched
+[tool.uv.workspace]
+members = [
+  "packages/ava-skills",
+  "packages/ava-open-harness",
+  "packages/personal-graphify",
+  "apps/scout-cli",
+]
+exclude = ["apps/scout-rtx", "apps/ava-factory"]
+
+[dependency-groups]
+dev = ["pytest>=8"]
