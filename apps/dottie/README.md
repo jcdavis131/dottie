@@ -1,8 +1,13 @@
-# Hermes (codename "openclaw")
+# dottie — the assistant
 
-The agentic-assistant platform for the dottie monorepo: run tasks as a CodeAct agent,
-capture every trace, and close the continuous-improvement loop — **train, eval, iterate,
-evolve** — over the machinery that already exists and is tested in this repo.
+dottie is the personally built, from-scratch equivalent of assistants like NousResearch's
+Hermes Agent or OpenClaw (see `apps/ava-factory/OPEN_SOURCE_TOOLCHAIN.md` for the mapping):
+an agentic assistant that runs tasks as a CodeAct agent, captures every trace, and closes
+the continuous-improvement loop — **train, eval, iterate, evolve** — over the machinery
+that already exists and is tested in this monorepo. The monorepo and the assistant share
+the name deliberately: the repo is the body, this app is the identity. Its destination
+brain is the homegrown Ava model (today: smoke-scale trainee; Ollama serves as the interim
+brain until the flywheel trains Ava up).
 
 > Solo personal project, no connection to employer, built with public/free-tier only.
 
@@ -18,16 +23,16 @@ evolve** — over the machinery that already exists and is tested in this repo.
 - **Echo is plumbing.** The `echo` backend is a deterministic CI harness
   (`plumbing_only=True`), never a capability measurement.
 - **Anti-fabrication everywhere.** Unreachable Ollama, missing checkpoint, missing torch,
-  no traces yet: Hermes refuses with the true reason (HTTP 503 / `HermesPolicyUnavailable`).
+  no traces yet: Dottie refuses with the true reason (HTTP 503 / `DottiePolicyUnavailable`).
   Every metric in every response is computed from real inputs; `r_task` for open-ended tasks
   is `null` because no automatic verifier exists — it is never invented.
 
 ## Architecture
 
 ```
-                 ┌────────────────────────── Hermes (apps/hermes) ─────────────────────────┐
+                 ┌────────────────────────── Dottie (apps/dottie) ─────────────────────────┐
                  │                                                                         │
-  POST /tasks ──▶│  FastAPI api.py ──▶ thread pool ──▶ HermesEngine (engine.py)            │
+  POST /tasks ──▶│  FastAPI api.py ──▶ thread pool ──▶ DottieEngine (engine.py)            │
   GET  /tasks/id │      │ SQLite task state                 │                              │
   GET  /status ──▶ real probes (ollama ping, ckpt stat,     │ policy.py                    │
                  │  sibling resolution, trace counts)       ▼                              │
@@ -79,8 +84,8 @@ evolve** — over the machinery that already exists and is tested in this repo.
 ollama serve &            # if not already running
 ollama pull qwen3:32b     # once
 
-# 2. Bring up Hermes
-docker compose -f apps/hermes/docker-compose.hermes.yml up --build -d
+# 2. Bring up Dottie
+docker compose -f apps/dottie/docker-compose.dottie.yml up --build -d
 
 # 3. Honest status (backend availability is really probed)
 curl -s http://localhost:8100/status | python -m json.tool
@@ -102,29 +107,29 @@ No Docker? From the monorepo root:
 
 ```bash
 pip install fastapi uvicorn httpx pydantic   # torch optional (ava backend / train-step)
-cd apps/hermes
-python -m hermes status
-python -m hermes run "quick plumbing check" --backend echo
-python -m hermes serve --port 8100
+cd apps/dottie
+python -m dottie status
+python -m dottie run "quick plumbing check" --backend echo
+python -m dottie serve --port 8100
 ```
 
-Environment knobs: `HERMES_OLLAMA_URL` (default `http://host.docker.internal:11434`),
-`HERMES_OLLAMA_MODEL` (default `qwen3:32b`), `HERMES_DATA_DIR` (default `apps/hermes/data`,
-gitignored), `HERMES_AVA_CKPT` (default probes `runs/cpu_pilot/agentic/agentic_final.pt`
-across factory roots), `HERMES_WORKERS`, `HERMES_QUEUE_MAX`, `DOTTIE_ROOT`,
+Environment knobs: `DOTTIE_OLLAMA_URL` (default `http://host.docker.internal:11434`),
+`DOTTIE_OLLAMA_MODEL` (default `qwen3:32b`), `DOTTIE_DATA_DIR` (default `apps/dottie/data`,
+gitignored), `DOTTIE_AVA_CKPT` (default probes `runs/cpu_pilot/agentic/agentic_final.pt`
+across factory roots), `DOTTIE_WORKERS`, `DOTTIE_QUEUE_MAX`, `DOTTIE_ROOT`,
 `AVA_FACTORY_ROOT`.
 
 Notes for the Docker path: the image deliberately ships **without torch** (multi-GB). The
 ollama brain, engine, RFT export, memory mint, and mock-mode eval all work in-container;
 the ava backend and train-step refuse honestly until you `pip install torch` in the
-container and mount a checkpoint tree (see comments in `docker-compose.hermes.yml`).
+container and mount a checkpoint tree (see comments in `docker-compose.dottie.yml`).
 `extra_hosts: host.docker.internal:host-gateway` makes your host's Ollama reachable on
 Linux; on Docker Desktop (Windows/macOS) the name already resolves.
 
 ## Tests
 
 ```bash
-cd apps/hermes && python -m pytest tests -q
+cd apps/dottie && python -m pytest tests -q
 ```
 
 Honest CPU tests, no network fabrication: echo end-to-end through the **real** CodeAct
@@ -136,7 +141,7 @@ train-step honest gates.
 ## Relation to the WebGPU "dottie-claw" future (planned, not built)
 
 The long-term serving path is a browser-side WebGPU runtime ("dottie-claw") that loads an
-exported capable Ava checkpoint and runs the same CodeAct protocol client-side. Hermes is
+exported capable Ava checkpoint and runs the same CodeAct protocol client-side. Dottie is
 deliberately shaped for that future: the `Policy` contract (`transcript -> next turn`) is
 transport-agnostic, traces/status are stable JSON a web UI (arxiviq) can render, and the
 flywheel is the thing that must eventually produce a checkpoint worth exporting. Nothing

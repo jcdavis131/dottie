@@ -1,5 +1,5 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
-"""Hermes policy providers — the pluggable "brains" behind the CodeAct loop.
+"""Dottie policy providers — the pluggable "brains" behind the CodeAct loop.
 
 Each provider satisfies the factory's ``Policy`` contract from
 ``apps/ava-factory/ava/rl/codeact_loop.py``: ``transcript: str -> next assistant turn: str``.
@@ -13,7 +13,7 @@ Three backends:
     (``plumbing_only=True``). Never a capability measurement.
 
 Honesty rule: an unreachable server / missing checkpoint / missing torch raises
-:class:`HermesPolicyUnavailable` with the true cause. No backend ever emits a canned fake reply.
+:class:`DottiePolicyUnavailable` with the true cause. No backend ever emits a canned fake reply.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
-from hermes import resolve
+from dottie import resolve
 
 DEFAULT_OLLAMA_URL = "http://host.docker.internal:11434"
 DEFAULT_OLLAMA_MODEL = "qwen3:32b"
@@ -39,7 +39,7 @@ _THINK_BLOCK = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
 
 # The CodeAct protocol, explained to a chat model that was not trained on the transcript format.
 CODEACT_SYSTEM_PROMPT = (
-    "You are Hermes, a personal assistant agent that acts by writing Python.\n"
+    "You are Dottie, a personal assistant agent that acts by writing Python.\n"
     "Protocol (CodeAct):\n"
     "- To act, emit exactly ONE fenced code block per turn: ```python ... ```\n"
     "  The code runs in a persistent sandboxed interpreter; you will receive an Observation\n"
@@ -51,7 +51,7 @@ CODEACT_SYSTEM_PROMPT = (
 )
 
 
-class HermesPolicyUnavailable(RuntimeError):
+class DottiePolicyUnavailable(RuntimeError):
     """The selected policy backend cannot run (server down, checkpoint/torch missing).
 
     Raised instead of returning a fabricated turn — the repo's anti-fabrication rule."""
@@ -101,10 +101,10 @@ def strip_think(text: str) -> str:
 class OllamaPolicy(PolicyProvider):
     """Real next-turn generation over HTTP against an Ollama server (``/api/chat``).
 
-    Base URL from ``HERMES_OLLAMA_URL`` (default ``http://host.docker.internal:11434``), model
-    from ``HERMES_OLLAMA_MODEL`` (default ``qwen3:32b``). Non-streaming; sensible timeouts
+    Base URL from ``DOTTIE_OLLAMA_URL`` (default ``http://host.docker.internal:11434``), model
+    from ``DOTTIE_OLLAMA_MODEL`` (default ``qwen3:32b``). Non-streaming; sensible timeouts
     (connect fast-fails, generation may take minutes on a 32b local model). Unreachable server
-    or HTTP error => :class:`HermesPolicyUnavailable` with the true cause."""
+    or HTTP error => :class:`DottiePolicyUnavailable` with the true cause."""
 
     name = "ollama"
 
@@ -117,8 +117,8 @@ class OllamaPolicy(PolicyProvider):
         read_timeout_s: float = 300.0,
         temperature: float = 0.2,
     ) -> None:
-        self.base_url = (base_url or os.environ.get("HERMES_OLLAMA_URL") or DEFAULT_OLLAMA_URL).rstrip("/")
-        self.model = model or os.environ.get("HERMES_OLLAMA_MODEL") or DEFAULT_OLLAMA_MODEL
+        self.base_url = (base_url or os.environ.get("DOTTIE_OLLAMA_URL") or DEFAULT_OLLAMA_URL).rstrip("/")
+        self.model = model or os.environ.get("DOTTIE_OLLAMA_MODEL") or DEFAULT_OLLAMA_MODEL
         self.timeout = httpx.Timeout(
             connect=connect_timeout_s, read=read_timeout_s, write=30.0, pool=connect_timeout_s
         )
@@ -136,21 +136,21 @@ class OllamaPolicy(PolicyProvider):
         try:
             r = httpx.post(f"{self.base_url}/api/chat", json=payload, timeout=self.timeout)
         except httpx.HTTPError as e:
-            raise HermesPolicyUnavailable(
+            raise DottiePolicyUnavailable(
                 f"Ollama server unreachable at {self.base_url} ({type(e).__name__}: {e}). "
-                "Hermes will not fabricate a reply. Start Ollama (`ollama serve`) or point "
-                "HERMES_OLLAMA_URL at a running server."
+                "Dottie will not fabricate a reply. Start Ollama (`ollama serve`) or point "
+                "DOTTIE_OLLAMA_URL at a running server."
             ) from e
         if r.status_code != 200:
-            raise HermesPolicyUnavailable(
+            raise DottiePolicyUnavailable(
                 f"Ollama at {self.base_url} returned HTTP {r.status_code} for model "
                 f"{self.model!r}: {r.text[:300]}. If the model is missing, pull it "
-                f"(`ollama pull {self.model}`) or set HERMES_OLLAMA_MODEL."
+                f"(`ollama pull {self.model}`) or set DOTTIE_OLLAMA_MODEL."
             )
         try:
             content = r.json()["message"]["content"]
         except (ValueError, KeyError, TypeError) as e:
-            raise HermesPolicyUnavailable(
+            raise DottiePolicyUnavailable(
                 f"Ollama at {self.base_url} returned an unexpected /api/chat payload "
                 f"({e}): {r.text[:300]}"
             ) from e
@@ -183,10 +183,10 @@ class AvaPolicy(PolicyProvider):
     so the training flywheel (rollouts -> rewards -> GRPO -> re-eval) has a real model to train,
     NOT to provide useful assistance yet. Use the ollama backend for actual tasks.
 
-    Checkpoint from ``HERMES_AVA_CKPT`` or the dottie-aware probe of
+    Checkpoint from ``DOTTIE_AVA_CKPT`` or the dottie-aware probe of
     ``runs/cpu_pilot/agentic/agentic_final.pt`` (falling back to ``base/base_final.pt``) across
     the factory candidates. Torch + model are imported/loaded lazily on first call; a missing
-    checkpoint or missing torch raises :class:`HermesPolicyUnavailable` honestly."""
+    checkpoint or missing torch raises :class:`DottiePolicyUnavailable` honestly."""
 
     name = "ava"
 
@@ -201,7 +201,7 @@ class AvaPolicy(PolicyProvider):
         context_window: int = 768,
         seed: int = 0,
     ) -> None:
-        env_ckpt = os.environ.get("HERMES_AVA_CKPT")
+        env_ckpt = os.environ.get("DOTTIE_AVA_CKPT")
         self.ckpt: Optional[Path] = Path(ckpt or env_ckpt) if (ckpt or env_ckpt) else None
         self.device = device
         self.max_new_tokens = int(max_new_tokens)
@@ -214,18 +214,18 @@ class AvaPolicy(PolicyProvider):
     def _resolve_ckpt(self) -> Path:
         if self.ckpt is not None:
             if not self.ckpt.is_file():
-                raise HermesPolicyUnavailable(
-                    f"ava checkpoint not found at {self.ckpt} (from HERMES_AVA_CKPT or "
-                    "constructor). Hermes refuses to decode from a nonexistent checkpoint. "
+                raise DottiePolicyUnavailable(
+                    f"ava checkpoint not found at {self.ckpt} (from DOTTIE_AVA_CKPT or "
+                    "constructor). Dottie refuses to decode from a nonexistent checkpoint. "
                     "Produce one with the factory's scripts/cpu_pilot_e2e.py."
                 )
             return self.ckpt
         found = resolve.default_ava_ckpt()
         if found is None:
-            raise HermesPolicyUnavailable(
+            raise DottiePolicyUnavailable(
                 "no ava checkpoint found; probed: "
                 + ", ".join(str(p) for p in resolve.ava_ckpt_candidates())
-                + ". Set HERMES_AVA_CKPT or run the factory's scripts/cpu_pilot_e2e.py."
+                + ". Set DOTTIE_AVA_CKPT or run the factory's scripts/cpu_pilot_e2e.py."
             )
         return found
 
@@ -236,14 +236,14 @@ class AvaPolicy(PolicyProvider):
         try:
             import torch
         except ImportError as e:
-            raise HermesPolicyUnavailable(
+            raise DottiePolicyUnavailable(
                 "the ava backend needs torch, which is not installed in this environment "
                 f"({e}). Install torch or use the ollama/echo backends."
             ) from e
         try:
             root = resolve.ensure_factory_on_path()
-        except resolve.HermesResolutionError as e:
-            raise HermesPolicyUnavailable(str(e)) from e
+        except resolve.DottieResolutionError as e:
+            raise DottiePolicyUnavailable(str(e)) from e
         from ava.config import AvaConfig
         from ava.model import build_model
         from ava.rl.codeact_policy import TorchModelPolicy
@@ -255,7 +255,7 @@ class AvaPolicy(PolicyProvider):
         ]
         tok_path = next((p for p in tok_candidates if p.is_file()), None)
         if tok_path is None:
-            raise HermesPolicyUnavailable(
+            raise DottiePolicyUnavailable(
                 "ava tokenizer not found (a real model over a mock tokenizer would decode "
                 "garbage — refused). Probed: " + ", ".join(str(p) for p in tok_candidates)
             )
@@ -268,7 +268,7 @@ class AvaPolicy(PolicyProvider):
             model.eval()
             tokenizer = AvaTokenizer.load(str(tok_path))
         except Exception as e:
-            raise HermesPolicyUnavailable(
+            raise DottiePolicyUnavailable(
                 f"failed to load ava checkpoint {ckpt_path}: {type(e).__name__}: {e}"
             ) from e
         self._policy = TorchModelPolicy(
@@ -301,7 +301,7 @@ class AvaPolicy(PolicyProvider):
             torch_ok = False
         try:
             ckpt = self._resolve_ckpt()
-        except HermesPolicyUnavailable as e:
+        except DottiePolicyUnavailable as e:
             return {**base, "available": False, "torch_installed": torch_ok, "error": str(e)}
         if not torch_ok:
             return {**base, "available": False, "ckpt": str(ckpt), "torch_installed": False,
@@ -332,7 +332,7 @@ class EchoPolicy(PolicyProvider):
     def __call__(self, transcript: str) -> str:
         turns = [
             "Thought: plumbing check — execute real code in the real sandbox.\n"
-            "```python\nx = 21 * 2\nprint('hermes-echo', x)\nx\n```",
+            "```python\nx = 21 * 2\nprint('dottie-echo', x)\nx\n```",
             "Thought: exercise one bound tool call.\n"
             "```python\nnow = get_clock()\nnow\n```",
             "FINAL: EchoPolicy plumbing run complete (deterministic, plumbing_only=True; "

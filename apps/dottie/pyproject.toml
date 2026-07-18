@@ -1,8 +1,8 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
 [project]
-name = "hermes-openclaw"
+name = "dottie-openclaw"
 version = "0.1.0"
-description = "Hermes (codename openclaw) — agentic-assistant platform for the dottie monorepo: CodeAct tasks, trace capture, and the train/eval/iterate flywheel. Solo personal project, no connection to employer, built with public/free-tier only"
+description = "Dottie (codename openclaw) — agentic-assistant platform for the dottie monorepo: CodeAct tasks, trace capture, and the train/eval/iterate flywheel. Solo personal project, no connection to employer, built with public/free-tier only"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.11"
@@ -22,7 +22,7 @@ dev = ["pytest>=8"]
 ava = ["torch>=2.2", "numpy>=1.24"]
 
 [project.scripts]
-hermes = "hermes.__main__:main"
+dottie = "dottie.__main__:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -31,7 +31,7 @@ build-backend = "hatchling.build"
 # Explicit wheel packages — the repo learned this lesson (hatchling cannot infer the
 # package when the project name differs from the package dir).
 [tool.hatch.build.targets.wheel]
-packages = ["hermes"]
+packages = ["dottie"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

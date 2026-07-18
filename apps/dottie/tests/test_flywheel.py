@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from hermes import flywheel
+from dottie import flywheel
 
 
 # -- export_rft_dataset --------------------------------------------------------------
@@ -36,7 +36,7 @@ def test_export_rft_runs_the_real_etl(engine, echo_record, data_dir):
 def test_export_rft_refuses_without_traces(data_dir):
     with pytest.raises(flywheel.FlywheelUnavailable) as ei:
         flywheel.export_rft_dataset(data_dir)
-    assert "no hermes traces" in str(ei.value)
+    assert "no dottie traces" in str(ei.value)
 
 
 # -- mint_memories -------------------------------------------------------------------
@@ -50,7 +50,7 @@ def test_mint_memories_real_pipeline(engine, echo_record, data_dir):
     shard_files = list(store_dir.glob("*.jsonl"))
     assert shard_files, "minted shards must land on disk"
     shard = json.loads(shard_files[0].read_text().splitlines()[0])
-    assert shard["source"] == "hermes:echo"
+    assert shard["source"] == "dottie:echo"
     assert shard["ok"] is True
     assert "conftest echo task" in shard["instruction"]
     # Real measured metrics rode along (r_exec was 1.0 from the real sandbox run).
@@ -87,7 +87,7 @@ def test_evaluate_refuses_when_harness_missing(data_dir, monkeypatch, tmp_path):
 
 def test_evaluate_real_mode_without_ckpt_is_honest_failure_report(data_dir):
     """The harness's own anti-mock rule: real mode with no ckpt yields a structured
-    honest-failure report (pass=0), not fabricated measurements. Hermes passes it through."""
+    honest-failure report (pass=0), not fabricated measurements. Dottie passes it through."""
     res = flywheel.evaluate(data_dir, mode="real")
     payload = json.loads(Path(res["report_json"]).read_text())
     assert payload["meta"].get("real_load_failed") is True
@@ -104,7 +104,7 @@ def test_train_step_refuses_empty_run_dir(tmp_path):
 
 
 def test_train_step_refuses_when_nothing_probed(monkeypatch, tmp_path):
-    from hermes import resolve
+    from dottie import resolve
 
     monkeypatch.setenv("DOTTIE_ROOT", str(tmp_path))
     monkeypatch.setenv("AVA_FACTORY_ROOT", str(tmp_path))

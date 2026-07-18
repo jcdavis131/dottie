@@ -1,10 +1,10 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
-"""The Hermes flywheel — the continuous-improvement surface, honestly gated.
+"""The Dottie flywheel — the continuous-improvement surface, honestly gated.
 
 Four real operations over real artifacts, each returning structured results with real
 counts/paths (never invented metrics), each refusing honestly when its inputs are absent:
 
-  * :func:`export_rft_dataset` — hermes traces -> the scout-cli RFT ETL's audit.jsonl input
+  * :func:`export_rft_dataset` — dottie traces -> the scout-cli RFT ETL's audit.jsonl input
     shape -> the REAL ETL (``apps/scout-cli/bigbang/plugins/rft/etl.py``) -> versioned RFT
     dataset JSONL.
   * :func:`mint_memories` — completed task traces -> ava-skills memory-mint (real pipeline:
@@ -31,8 +31,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
-from hermes import resolve
-from hermes.engine import HermesEngine
+from dottie import resolve
+from dottie.engine import DottieEngine
 
 
 class FlywheelUnavailable(RuntimeError):
@@ -64,12 +64,12 @@ def _load_module_from_path(name: str, path: Path):
     return mod
 
 
-def _require_traces(engine: HermesEngine) -> List[Dict[str, Any]]:
+def _require_traces(engine: DottieEngine) -> List[Dict[str, Any]]:
     traces = list(engine.iter_traces())
     if not traces:
         raise FlywheelUnavailable(
-            f"no hermes traces at {engine.traces_path} — run tasks first "
-            "(POST /tasks or `python -m hermes run ...`); the flywheel never invents data."
+            f"no dottie traces at {engine.traces_path} — run tasks first "
+            "(POST /tasks or `python -m dottie run ...`); the flywheel never invents data."
         )
     return traces
 
@@ -83,7 +83,7 @@ def _iso(ts: float) -> str:
 
 
 def _trace_to_audit_events(record: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """One hermes trace -> audit.jsonl-shaped events (the ETL's canonical input).
+    """One dottie trace -> audit.jsonl-shaped events (the ETL's canonical input).
 
     Timestamps are the REAL task timestamp advanced by each step's REAL measured wall_ms;
     step status mirrors the real sandbox outcome; a terminal ``codeact.final`` event carries
@@ -118,18 +118,18 @@ def _trace_to_audit_events(record: Dict[str, Any]) -> List[Dict[str, Any]]:
 def export_rft_dataset(
     data_dir: Optional[str | Path] = None, *, gap_seconds: float = 300.0
 ) -> Dict[str, Any]:
-    """Convert hermes traces into the ETL's audit shape and run the REAL scout-cli ETL.
+    """Convert dottie traces into the ETL's audit shape and run the REAL scout-cli ETL.
 
     Returns the ETL's own summary (schema_version, episodes, records_written, drops, out path)
     plus the real input counts. Episode segmentation is the ETL's real behavior (idle-gap
     based), so tasks run close together can legitimately share an episode."""
-    engine = HermesEngine(data_dir)
+    engine = DottieEngine(data_dir)
     traces = _require_traces(engine)
     try:
         etl_path = resolve.rft_etl_path()
-    except resolve.HermesResolutionError as e:
+    except resolve.DottieResolutionError as e:
         raise FlywheelUnavailable(str(e)) from e
-    etl = _load_module_from_path("hermes_rft_etl", etl_path)
+    etl = _load_module_from_path("dottie_rft_etl", etl_path)
 
     fly_dir = engine.data_dir / "flywheel"
     fly_dir.mkdir(parents=True, exist_ok=True)
@@ -158,17 +158,17 @@ def export_rft_dataset(
 def mint_memories(data_dir: Optional[str | Path] = None) -> Dict[str, Any]:
     """Feed completed task traces through the REAL memory-mint pipeline.
 
-    Shards land in ``<data_dir>/memory_shards`` (hermes-local store; the global
+    Shards land in ``<data_dir>/memory_shards`` (dottie-local store; the global
     ``AVA_MEMORY_DIR`` store is deliberately not touched). Re-minting the same traces
     dedupes by content hash — the returned stats report minted vs deduped honestly."""
-    engine = HermesEngine(data_dir)
+    engine = DottieEngine(data_dir)
     traces = _require_traces(engine)
     try:
         skills = resolve.skills_root()
-    except resolve.HermesResolutionError as e:
+    except resolve.DottieResolutionError as e:
         raise FlywheelUnavailable(str(e)) from e
     mint = _load_module_from_path(
-        "hermes_memory_mint", skills / "skills" / "memory-mint" / "skill.py"
+        "dottie_memory_mint", skills / "skills" / "memory-mint" / "skill.py"
     )
 
     store_dir = engine.data_dir / "memory_shards"
@@ -188,14 +188,14 @@ def mint_memories(data_dir: Optional[str | Path] = None) -> Dict[str, Any]:
                 else f"no FINAL (terminated={record.get('terminated')})"
             )
             pipe.capture(mint.TraceEvent(
-                source=f"hermes:{record.get('backend', 'unknown')}",
+                source=f"dottie:{record.get('backend', 'unknown')}",
                 instruction=str(record.get("prompt", ""))[:500],
                 outcome=outcome,
                 ok=bool(record.get("reached_final")),
                 ts=float(record.get("ts", time.time())),
                 branch="base",
                 metrics=metrics,
-                tags=["hermes", str(record.get("backend", "unknown"))],
+                tags=["dottie", str(record.get("backend", "unknown"))],
             ))
             captured += 1
         flushed = pipe.flush(timeout=10.0)
@@ -228,10 +228,10 @@ def evaluate(
     Returns the real report paths and the report's own meta (passed/total/wall_s) — parsed
     from the file the harness wrote, never synthesized. ``mode='real'`` needs a --ckpt (the
     harness itself enforces its anti-mock rules and reports honest failures as data)."""
-    engine = HermesEngine(data_dir)
+    engine = DottieEngine(data_dir)
     try:
         hroot = resolve.harness_root()
-    except resolve.HermesResolutionError as e:
+    except resolve.DottieResolutionError as e:
         raise FlywheelUnavailable(str(e)) from e
     out_dir = engine.data_dir / "reports" / time.strftime("harness_%Y%m%dT%H%M%SZ", time.gmtime())
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -293,14 +293,14 @@ def train_step(
 
     The script does the whole proven chain itself: real checkpoint -> real decode policy ->
     real sandbox rollouts -> real rewards -> one real torch GRPO step -> mechanical-health
-    gate -> manifest append. Hermes only wires ``--run-dir``/``--device`` through and refuses
+    gate -> manifest append. Dottie only wires ``--run-dir``/``--device`` through and refuses
     honestly (before launching anything) when no checkpoint tree or no torch exists.
 
     NOTE: the smoke checkpoint has zero capability; r_task ~ 0 is the expected honest result.
     This is mechanical training-loop health, not a capability climb."""
     try:
         script = resolve.rl_smoke_update_script()
-    except resolve.HermesResolutionError as e:
+    except resolve.DottieResolutionError as e:
         raise FlywheelUnavailable(str(e)) from e
 
     if run_dir is not None:

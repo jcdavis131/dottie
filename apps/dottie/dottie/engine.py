@@ -1,8 +1,8 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
-"""HermesEngine — runs one task through the factory's REAL CodeAct loop and captures the trace.
+"""DottieEngine — runs one task through the factory's REAL CodeAct loop and captures the trace.
 
 The loop (``run_code_act``), sandbox, and reward components are imported from
-``apps/ava-factory`` via the dottie-aware resolution in :mod:`hermes.resolve` (the same style
+``apps/ava-factory`` via the dottie-aware resolution in :mod:`dottie.resolve` (the same style
 ava-open-harness uses for ``factory_root``); nothing is re-implemented here.
 
 Every completed task appends one JSONL trace record to ``<data_dir>/traces/traces.jsonl``:
@@ -12,9 +12,9 @@ observation), termination reason, wall time, and reward components computed by t
 
 Honesty notes:
   * ``r_task`` is recorded as ``null``: open-ended assistant tasks have no automatic verifier,
-    and Hermes never fabricates a task-success score. The components that ARE measurable from
+    and Dottie never fabricates a task-success score. The components that ARE measurable from
     real execution logs (R_exec, R_codeuse, redundant_calls) are computed and recorded.
-  * A policy that cannot run raises :class:`hermes.policy.HermesPolicyUnavailable` — the task
+  * A policy that cannot run raises :class:`dottie.policy.DottiePolicyUnavailable` — the task
     fails honestly; no trace is invented.
 """
 
@@ -27,8 +27,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from hermes import resolve
-from hermes.policy import get_policy
+from dottie import resolve
+from dottie.policy import get_policy
 
 TRACE_SCHEMA_VERSION = "1.0.0"
 
@@ -46,14 +46,14 @@ _ERROR_EXCERPT = 500
 
 
 def default_data_dir() -> Path:
-    """``HERMES_DATA_DIR`` env, else ``apps/hermes/data`` (gitignored)."""
-    env = os.environ.get("HERMES_DATA_DIR")
+    """``DOTTIE_DATA_DIR`` env, else ``apps/dottie/data`` (gitignored)."""
+    env = os.environ.get("DOTTIE_DATA_DIR")
     if env:
         return Path(env)
     return Path(__file__).resolve().parent.parent / "data"
 
 
-class HermesEngine:
+class DottieEngine:
     """Task runner + trace capture over the factory's real CodeAct machinery."""
 
     def __init__(self, data_dir: Optional[str | Path] = None) -> None:
@@ -85,7 +85,7 @@ class HermesEngine:
     ) -> Dict[str, Any]:
         """Run one task end-to-end; returns (and appends to the trace log) the trace record.
 
-        Raises ``HermesPolicyUnavailable`` if the backend cannot run and ``ValueError`` for an
+        Raises ``DottiePolicyUnavailable`` if the backend cannot run and ``ValueError`` for an
         unknown backend — both surfaced to the caller, never masked with a fake result."""
         if not prompt or not prompt.strip():
             raise ValueError("prompt must be a non-empty string")
@@ -133,7 +133,7 @@ class HermesEngine:
             ],
             # Real reward components from the REAL observations (factory codeact_rewards).
             # r_task is null: no automatic verifier exists for open-ended assistant tasks and
-            # Hermes never invents a success score (repo anti-fabrication rule).
+            # Dottie never invents a success score (repo anti-fabrication rule).
             "reward_components": {
                 "r_exec": r_exec(obs),
                 "r_codeuse": r_codeuse(obs),

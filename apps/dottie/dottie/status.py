@@ -1,5 +1,5 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
-"""Hermes status — REAL probes only, the JSON a dashboard (arxiviq, later) will render.
+"""Dottie status — REAL probes only, the JSON a dashboard (arxiviq, later) will render.
 
 Every field is measured live: the Ollama probe is a real HTTP ping, the ava probe checks the
 real checkpoint file + torch importability, the integration probes stat the real sibling
@@ -11,10 +11,10 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, Optional
 
-from hermes import __version__
-from hermes.engine import HermesEngine
-from hermes.policy import AvaPolicy, EchoPolicy, OllamaPolicy
-from hermes import resolve
+from dottie import __version__
+from dottie.engine import DottieEngine
+from dottie.policy import AvaPolicy, EchoPolicy, OllamaPolicy
+from dottie import resolve
 
 CAPABILITY_NOTE = (
     "Ollama (external local model, e.g. qwen3:32b) is the only backend with real task "
@@ -25,12 +25,12 @@ CAPABILITY_NOTE = (
 
 
 def build_status(
-    engine: HermesEngine, task_counts: Optional[Dict[str, Any]] = None
+    engine: DottieEngine, task_counts: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """Assemble the /status payload. Stable keys: service, version, ts, capability_note,
     backends{ollama,ava,echo}, integrations, data{...}."""
     return {
-        "service": "hermes",
+        "service": "dottie",
         "codename": "openclaw",
         "version": __version__,
         "ts": time.time(),

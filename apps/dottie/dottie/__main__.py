@@ -1,5 +1,5 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
-"""Hermes CLI: ``python -m hermes serve|run|status``.
+"""Dottie CLI: ``python -m dottie serve|run|status``.
 
   serve  — uvicorn on the FastAPI app (default port 8100)
   run    — one task through the engine, JSON record to stdout (honest error + exit 2 when
@@ -16,10 +16,10 @@ from typing import Optional, Sequence
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    ap = argparse.ArgumentParser(prog="hermes", description=__doc__)
+    ap = argparse.ArgumentParser(prog="dottie", description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    sp = sub.add_parser("serve", help="run the Hermes API server")
+    sp = sub.add_parser("serve", help="run the Dottie API server")
     sp.add_argument("--host", default="127.0.0.1")
     sp.add_argument("--port", type=int, default=8100)
 
@@ -36,30 +36,30 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     if args.cmd == "serve":
         import uvicorn
-        uvicorn.run("hermes.api:app", host=args.host, port=args.port)
+        uvicorn.run("dottie.api:app", host=args.host, port=args.port)
         return 0
 
     if args.cmd == "run":
-        from hermes.engine import HermesEngine
-        from hermes.policy import HermesPolicyUnavailable
+        from dottie.engine import DottieEngine
+        from dottie.policy import DottiePolicyUnavailable
 
-        engine = HermesEngine(args.data_dir)
+        engine = DottieEngine(args.data_dir)
         try:
             record = engine.run_task(
                 args.prompt, backend=args.backend, max_steps=args.max_steps
             )
-        except HermesPolicyUnavailable as e:
-            print(f"[hermes] backend unavailable (honest refusal, no fake reply): {e}",
+        except DottiePolicyUnavailable as e:
+            print(f"[dottie] backend unavailable (honest refusal, no fake reply): {e}",
                   file=sys.stderr)
             return 2
         print(json.dumps(record, indent=2))
         return 0
 
     if args.cmd == "status":
-        from hermes.engine import HermesEngine
-        from hermes.status import build_status
+        from dottie.engine import DottieEngine
+        from dottie.status import build_status
 
-        print(json.dumps(build_status(HermesEngine(args.data_dir)), indent=2))
+        print(json.dumps(build_status(DottieEngine(args.data_dir)), indent=2))
         return 0
 
     return 1  # pragma: no cover - argparse enforces choices

@@ -5,11 +5,11 @@ from __future__ import annotations
 
 import pytest
 
-from hermes import resolve
-from hermes.policy import (
+from dottie import resolve
+from dottie.policy import (
     AvaPolicy,
     EchoPolicy,
-    HermesPolicyUnavailable,
+    DottiePolicyUnavailable,
     OllamaPolicy,
     get_policy,
     strip_think,
@@ -62,7 +62,7 @@ def test_echo_policy_is_deterministic_and_labeled():
 
 def test_ollama_unreachable_raises_honest_unavailable():
     p = OllamaPolicy(base_url=UNROUTABLE_OLLAMA, connect_timeout_s=2.0, read_timeout_s=2.0)
-    with pytest.raises(HermesPolicyUnavailable) as ei:
+    with pytest.raises(DottiePolicyUnavailable) as ei:
         p("<|user|>\nhello")
     msg = str(ei.value)
     assert "unreachable" in msg and UNROUTABLE_OLLAMA in msg
@@ -76,8 +76,8 @@ def test_ollama_probe_reports_unavailable_honestly():
 
 
 def test_ollama_env_config(monkeypatch):
-    monkeypatch.setenv("HERMES_OLLAMA_URL", "http://example.invalid:1234/")
-    monkeypatch.setenv("HERMES_OLLAMA_MODEL", "some-model:7b")
+    monkeypatch.setenv("DOTTIE_OLLAMA_URL", "http://example.invalid:1234/")
+    monkeypatch.setenv("DOTTIE_OLLAMA_MODEL", "some-model:7b")
     p = OllamaPolicy()
     assert p.base_url == "http://example.invalid:1234"
     assert p.model == "some-model:7b"
@@ -94,7 +94,7 @@ def test_ava_policy_docstring_states_smoke_scale_honesty():
 
 def test_ava_missing_checkpoint_refuses_honestly(tmp_path):
     p = AvaPolicy(ckpt=str(tmp_path / "nope.pt"))
-    with pytest.raises(HermesPolicyUnavailable) as ei:
+    with pytest.raises(DottiePolicyUnavailable) as ei:
         p("<|user|>\nhello")
     assert "checkpoint" in str(ei.value)
     probe = p.probe()
@@ -107,7 +107,7 @@ def test_ava_no_candidates_refuses_honestly(monkeypatch, tmp_path):
     monkeypatch.setenv("AVA_FACTORY_ROOT", str(tmp_path))
     monkeypatch.setattr(resolve, "DEFAULT_FACTORY_ROOT", tmp_path)
     p = AvaPolicy()
-    with pytest.raises(HermesPolicyUnavailable) as ei:
+    with pytest.raises(DottiePolicyUnavailable) as ei:
         p("<|user|>\nhello")
     assert "no ava checkpoint found" in str(ei.value)
 

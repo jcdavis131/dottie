@@ -1,10 +1,10 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
-"""Dottie-aware sibling resolution — how Hermes finds the factory, harness, skills, and ETL.
+"""Dottie-aware sibling resolution — how Dottie finds the factory, harness, skills, and ETL.
 
 Mirrors the resolution style of ``packages/ava-open-harness/harness/common.py::factory_root``:
 explicit env vars win, then path-relative monorepo siblings (this file lives at
-``<dottie>/apps/hermes/hermes/``), then the documented default factory checkout. Every getter
-either returns a verified real path or raises :class:`HermesResolutionError` with an honest
+``<dottie>/apps/dottie/dottie/``), then the documented default factory checkout. Every getter
+either returns a verified real path or raises :class:`DottieResolutionError` with an honest
 message saying exactly what was probed — a missing dependency is reported, never papered over.
 """
 
@@ -18,10 +18,10 @@ from typing import Dict, List, Optional
 # The documented standalone factory checkout (same default the harness uses).
 DEFAULT_FACTORY_ROOT = Path("/home/user/ava-agi-factory-v6-4")
 
-_HERE = Path(__file__).resolve().parent  # <dottie>/apps/hermes/hermes
+_HERE = Path(__file__).resolve().parent  # <dottie>/apps/dottie/dottie
 
 
-class HermesResolutionError(RuntimeError):
+class DottieResolutionError(RuntimeError):
     """A required monorepo sibling could not be found. The message lists every probed path."""
 
 
@@ -30,7 +30,7 @@ def dottie_root() -> Path:
     env = os.environ.get("DOTTIE_ROOT")
     if env:
         return Path(env)
-    return _HERE.parent.parent.parent  # apps/hermes/hermes -> apps/hermes -> apps -> <dottie>
+    return _HERE.parent.parent.parent  # apps/dottie/dottie -> apps/dottie -> apps -> <dottie>
 
 
 def _factory_candidates() -> List[Path]:
@@ -50,7 +50,7 @@ def _factory_candidates() -> List[Path]:
 
 
 def _has_factory_code(root: Path) -> bool:
-    """Marker: the CodeAct substrate Hermes imports is present."""
+    """Marker: the CodeAct substrate Dottie imports is present."""
     return (root / "ava" / "rl" / "codeact_loop.py").is_file()
 
 
@@ -60,7 +60,7 @@ def factory_code_root() -> Path:
     for cand in cands:
         if _has_factory_code(cand):
             return cand
-    raise HermesResolutionError(
+    raise DottieResolutionError(
         "ava-factory code (ava/rl/codeact_loop.py) not found. Probed: "
         + ", ".join(str(c) for c in cands)
         + ". Set AVA_FACTORY_ROOT or DOTTIE_ROOT to a checkout that has it."
@@ -100,7 +100,7 @@ def harness_root() -> Path:
     """packages/ava-open-harness — the eval gate (``python -m harness run``)."""
     root = dottie_root() / "packages" / "ava-open-harness"
     if not (root / "harness" / "runner.py").is_file():
-        raise HermesResolutionError(
+        raise DottieResolutionError(
             f"ava-open-harness not found at {root} (looked for harness/runner.py); "
             "set DOTTIE_ROOT to the dottie monorepo root."
         )
@@ -111,7 +111,7 @@ def skills_root() -> Path:
     """packages/ava-skills — memory-mint / memory-router live here."""
     root = dottie_root() / "packages" / "ava-skills"
     if not (root / "skills" / "memory-mint" / "skill.py").is_file():
-        raise HermesResolutionError(
+        raise DottieResolutionError(
             f"ava-skills memory-mint not found under {root} "
             "(looked for skills/memory-mint/skill.py); set DOTTIE_ROOT."
         )
@@ -122,7 +122,7 @@ def rft_etl_path() -> Path:
     """apps/scout-cli's RFT ETL module file (audit.jsonl -> RFT dataset)."""
     p = dottie_root() / "apps" / "scout-cli" / "bigbang" / "plugins" / "rft" / "etl.py"
     if not p.is_file():
-        raise HermesResolutionError(
+        raise DottieResolutionError(
             f"scout-cli RFT ETL not found at {p}; set DOTTIE_ROOT to the dottie monorepo root."
         )
     return p
@@ -134,14 +134,14 @@ def rl_smoke_update_script() -> Path:
         p = cand / "scripts" / "rl_smoke_update.py"
         if p.is_file():
             return p
-    raise HermesResolutionError(
+    raise DottieResolutionError(
         "scripts/rl_smoke_update.py not found in any factory candidate: "
         + ", ".join(str(c) for c in _factory_candidates())
     )
 
 
 def probe() -> Dict[str, Dict[str, object]]:
-    """REAL filesystem probes of every sibling Hermes integrates with — no invented state.
+    """REAL filesystem probes of every sibling Dottie integrates with — no invented state.
     Each entry reports the resolved path (or the probe list) and whether it is actually there.
     """
     out: Dict[str, Dict[str, object]] = {}
@@ -149,7 +149,7 @@ def probe() -> Dict[str, Dict[str, object]]:
     def _entry(fn) -> Dict[str, object]:
         try:
             return {"available": True, "path": str(fn())}
-        except HermesResolutionError as e:
+        except DottieResolutionError as e:
             return {"available": False, "error": str(e)}
 
     out["factory_code"] = _entry(factory_code_root)

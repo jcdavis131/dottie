@@ -8,8 +8,8 @@ import json
 
 import pytest
 
-from hermes.engine import HermesEngine
-from hermes.policy import HermesPolicyUnavailable
+from dottie.engine import DottieEngine
+from dottie.policy import DottiePolicyUnavailable
 from tests.conftest import UNROUTABLE_OLLAMA
 
 
@@ -19,7 +19,7 @@ def test_echo_end_to_end_real_sandbox(engine):
     assert rec["backend"] == "echo" and rec["plumbing_only"] is True
     assert rec["n_steps"] == 2
     # Step 1 really executed in the sandbox subprocess: real stdout, real value.
-    assert "hermes-echo 42" in rec["steps"][0]["stdout"]
+    assert "dottie-echo 42" in rec["steps"][0]["stdout"]
     assert rec["steps"][0]["value"] == "42"
     assert rec["steps"][0]["ok"] is True
     # Step 2 made one REAL recorded tool call (the sandbox's wrapped get_clock).
@@ -54,8 +54,8 @@ def test_trace_record_appended_as_jsonl(engine):
 
 
 def test_ollama_backend_unavailable_propagates_no_trace(engine, monkeypatch):
-    monkeypatch.setenv("HERMES_OLLAMA_URL", UNROUTABLE_OLLAMA)
-    with pytest.raises(HermesPolicyUnavailable):
+    monkeypatch.setenv("DOTTIE_OLLAMA_URL", UNROUTABLE_OLLAMA)
+    with pytest.raises(DottiePolicyUnavailable):
         engine.run_task("this must not fabricate", backend="ollama")
     # No fake trace was written for the failed task.
     assert engine.trace_count() == 0
@@ -72,6 +72,6 @@ def test_unknown_backend_rejected(engine):
 
 
 def test_data_dir_env_default(monkeypatch, tmp_path):
-    monkeypatch.setenv("HERMES_DATA_DIR", str(tmp_path / "envd"))
-    e = HermesEngine()
+    monkeypatch.setenv("DOTTIE_DATA_DIR", str(tmp_path / "envd"))
+    e = DottieEngine()
     assert e.data_dir == tmp_path / "envd"

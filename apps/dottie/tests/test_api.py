@@ -9,13 +9,13 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from hermes.api import create_app
-from hermes.engine import HermesEngine
+from dottie.api import create_app
+from dottie.engine import DottieEngine
 
 
 @pytest.fixture()
 def client(data_dir):
-    app = create_app(engine=HermesEngine(data_dir))
+    app = create_app(engine=DottieEngine(data_dir))
     with TestClient(app) as c:
         yield c
 
@@ -71,7 +71,7 @@ def test_empty_prompt_rejected(client):
 def test_ollama_task_fails_honestly_via_api(client, monkeypatch):
     from tests.conftest import UNROUTABLE_OLLAMA
 
-    monkeypatch.setenv("HERMES_OLLAMA_URL", UNROUTABLE_OLLAMA)
+    monkeypatch.setenv("DOTTIE_OLLAMA_URL", UNROUTABLE_OLLAMA)
     task_id = client.post(
         "/tasks", json={"prompt": "no server", "backend": "ollama"}
     ).json()["task_id"]
@@ -83,7 +83,7 @@ def test_ollama_task_fails_honestly_via_api(client, monkeypatch):
 
 def test_status_shape_is_stable_and_honest(client):
     s = client.get("/status").json()
-    assert s["service"] == "hermes" and s["codename"] == "openclaw"
+    assert s["service"] == "dottie" and s["codename"] == "openclaw"
     # The honest capability statement is part of the stable contract.
     assert "capability_note" in s
     assert "smoke-scale" in s["capability_note"]
@@ -105,7 +105,7 @@ def test_status_shape_is_stable_and_honest(client):
 def test_flywheel_endpoints_gate_then_run(client):
     # Before any traces: honest 503 with the true reason.
     r = client.post("/flywheel/export-rft")
-    assert r.status_code == 503 and "no hermes traces" in r.json()["detail"]
+    assert r.status_code == 503 and "no dottie traces" in r.json()["detail"]
     r = client.post("/flywheel/mint")
     assert r.status_code == 503
 

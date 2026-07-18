@@ -1,5 +1,0 @@
-# Hermes runtime data (traces, sqlite task state, RFT exports, memory shards, harness reports)
-data/
-__pycache__/
-.pytest_cache/
-*.egg-info/

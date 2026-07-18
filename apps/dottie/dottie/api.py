@@ -1,11 +1,11 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
-"""Hermes FastAPI surface — submit tasks, inspect traces, drive the flywheel, honest status.
+"""Dottie FastAPI surface — submit tasks, inspect traces, drive the flywheel, honest status.
 
 Tasks run in a background thread pool with a bounded admission queue (429 when full); task
-state lives in SQLite (stdlib sqlite3) under the hermes data dir. Flywheel endpoints call the
-real operations in :mod:`hermes.flywheel` synchronously and map honest gates to HTTP:
+state lives in SQLite (stdlib sqlite3) under the dottie data dir. Flywheel endpoints call the
+real operations in :mod:`dottie.flywheel` synchronously and map honest gates to HTTP:
 prerequisite absent -> 503 with the true reason; a real run that failed -> 500 with the true
-cause. ``GET /status`` is the stable, honest JSON described in :mod:`hermes.status`."""
+cause. ``GET /status`` is the stable, honest JSON described in :mod:`dottie.status`."""
 
 from __future__ import annotations
 
@@ -21,10 +21,10 @@ from typing import Any, Dict, List, Literal, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from hermes import flywheel
-from hermes.engine import HermesEngine
-from hermes.policy import HermesPolicyUnavailable
-from hermes.status import build_status
+from dottie import flywheel
+from dottie.engine import DottieEngine
+from dottie.policy import DottiePolicyUnavailable
+from dottie.status import build_status
 
 import os
 
@@ -136,16 +136,16 @@ class FlywheelTrainStepBody(BaseModel):
     extra_args: List[str] = Field(default_factory=list)
 
 
-def create_app(engine: Optional[HermesEngine] = None) -> FastAPI:
-    engine = engine or HermesEngine()
-    store = TaskStore(engine.data_dir / "hermes.sqlite3")
-    workers = int(os.environ.get("HERMES_WORKERS", "2"))
-    queue_max = int(os.environ.get("HERMES_QUEUE_MAX", "32"))
-    pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="hermes-task")
+def create_app(engine: Optional[DottieEngine] = None) -> FastAPI:
+    engine = engine or DottieEngine()
+    store = TaskStore(engine.data_dir / "dottie.sqlite3")
+    workers = int(os.environ.get("DOTTIE_WORKERS", "2"))
+    queue_max = int(os.environ.get("DOTTIE_QUEUE_MAX", "32"))
+    pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="dottie-task")
     slots = threading.BoundedSemaphore(queue_max)  # bounds queued+running admissions
 
     app = FastAPI(
-        title="Hermes",
+        title="Dottie",
         description="Agentic-assistant platform (codename openclaw) — dottie monorepo.",
         version="0.1.0",
     )
@@ -157,7 +157,7 @@ def create_app(engine: Optional[HermesEngine] = None) -> FastAPI:
                 body.prompt, backend=body.backend, max_steps=body.max_steps, task_id=task_id
             )
             store.finish(task_id, record)
-        except HermesPolicyUnavailable as e:
+        except DottiePolicyUnavailable as e:
             store.fail(task_id, f"policy_unavailable: {e}")
         except Exception as e:  # real failure recorded honestly, never masked
             store.fail(task_id, f"{type(e).__name__}: {e}")
@@ -230,5 +230,5 @@ def create_app(engine: Optional[HermesEngine] = None) -> FastAPI:
     return app
 
 
-# Module-level app for `uvicorn hermes.api:app` (uses the default HERMES_DATA_DIR).
+# Module-level app for `uvicorn dottie.api:app` (uses the default DOTTIE_DATA_DIR).
 app = create_app()
