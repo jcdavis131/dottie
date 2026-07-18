@@ -9,9 +9,17 @@
 "use strict";
 
 const GH = {
-  // Factory default branch is `master` (not `main`).
-  factoryRaw: (path) =>
+  // Monorepo-first: the dottie monorepo (apps/ava-factory) is the source of truth. dottie is
+  // PRIVATE, so unauthenticated raw fetches to it 404 in browsers — each path therefore has an
+  // ordered candidate list falling back to the legacy standalone repo (public raw) and finally
+  // to the baked snapshot. If dottie is ever made public, the first candidate simply starts
+  // winning; nothing else changes.
+  factoryRawCandidates: (path) => [
+    `https://raw.githubusercontent.com/jcdavis131/dottie/main/apps/ava-factory/${path}`,
     `https://raw.githubusercontent.com/jcdavis131/ava-agi-factory-v6-4/master/${path}`,
+  ],
+  // GitHub Releases are a repo-level feature that did not move with the subtree merge — the
+  // scout-rtx standalone repo remains the canonical Releases publisher (see dottie README).
   rtxReleases: "https://api.github.com/repos/jcdavis131/scout-rtx/releases?per_page=5",
 };
 const POLL_MS = 300_000; // 5 min — unauthenticated GitHub API is 60 req/hr/IP
@@ -60,6 +68,22 @@ async function loadBaked() {
   state.pilot = pilot;
 }
 
+// Try an ordered candidate list; first success wins, failures (404/private/offline) fall through.
+async function fetchFirst(urls) {
+  let lastErr;
+  for (const url of urls) {
+    try { return await fetchJson(url); } catch (e) { lastErr = e; }
+  }
+  throw lastErr;
+}
+async function condFetchFirst(urls) {
+  let lastErr;
+  for (const url of urls) {
+    try { return await condFetch(url); } catch (e) { lastErr = e; }
+  }
+  throw lastErr;
+}
+
 // Conditional GET: send If-None-Match; a 304 (not rate-limited) means "unchanged".
 async function condFetch(url) {
   const headers = state.etags[url] ? { "If-None-Match": state.etags[url] } : {};
@@ -75,14 +99,14 @@ async function tryLive() {
   if (typeof document !== "undefined" && document.hidden) return; // don't burn quota on hidden tabs
   let anyLive = false;
   try {
-    state.live.status = await fetchJson(GH.factoryRaw("STATUS.json"));
+    state.live.status = await fetchFirst(GH.factoryRawCandidates("STATUS.json"));
     anyLive = true;
-  } catch { /* private repo or offline — snapshot covers it */ }
+  } catch { /* private repos or offline — snapshot covers it */ }
   try {
-    // The pilot manifest is committed evidence on the factory's master branch — live-fetch it
+    // The pilot manifest is committed evidence (dottie-first, legacy fallback) — live-fetch it
     // (conditional GET keeps unchanged polls free) and prefer it over the baked copy.
-    const out = await condFetch(GH.factoryRaw("runs/cpu_pilot/MANIFEST.json"));
-    if (!out.unchanged) state.live.pilot = await out.res.json();
+    const out = await condFetchFirst(GH.factoryRawCandidates("runs/cpu_pilot/MANIFEST.json"));
+    if (out && !out.unchanged) state.live.pilot = await out.res.json();
     anyLive = anyLive || !!(state.live.pilot || state.pilot);
   } catch { /* baked pilot.json covers it */ }
   try {
