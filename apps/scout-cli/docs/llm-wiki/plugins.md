@@ -2,6 +2,12 @@
 
 **Solo personal project, no connection to employer, built with public/free-tier only**
 
+> Layout note: manifest paths below reference the standalone checkouts (`~/workspace/bigbang-cli`,
+> `~/workspace/ava-agi-factory-v6-4`, `~/personal-graphify`). These repos also live in the
+> **dottie monorepo** (https://github.com/jcdavis131/dottie) at `apps/scout-cli`,
+> `apps/ava-factory`, and `packages/personal-graphify`; plugin code probes `DOTTIE_ROOT` /
+> `~/workspace/dottie` first and falls back to the standalone paths.
+
 Total plugins: 17
 
 | Plugin | Version | Commands | Capabilities | Description |

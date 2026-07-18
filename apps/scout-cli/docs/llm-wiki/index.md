@@ -37,7 +37,7 @@ All emit() -> audit.jsonl -> pgraphify build -> graph.json (2k tokens vs 123k na
 ## File Pointers (for graphify query)
 - Core: `bigbang/core/{http_utils.py, llm.py, mcp_client.py, openapi.py, policy.py, security.py, registry.py, output.py, audit.py, plugin_loader.py}`
 - Plugins: `bigbang/plugins/{tasks,tools,mcp,ava,agent,system,secrets,auth,family,vector,tennis}/cli.py + manifest.yaml`
-- Graphify: `~/workspace/your_files/personal-graphify/` CLI `pgraphify`, outputs `graphify-out/{graph.json, graph.html, GRAPH_REPORT.md, cost.json}`
+- Graphify: `~/workspace/your_files/personal-graphify/` (dottie monorepo: `<dottie>/packages/personal-graphify/`) CLI `pgraphify`, outputs `graphify-out/{graph.json, graph.html, GRAPH_REPORT.md, cost.json}`
 - LLM-wiki output: `docs/llm-wiki/{index.md, tasks-plugin.md, architecture.md, security-model.md, graphify-integration.md, plugins.md, quickstart.md, research-mai-thinking-1.md}`
 - Tasks source: 2 lists `MDg4NTEzMTkzNjgwNzI5NDMyMDI6MDow` = Lina's Morning, `SURwZDNOTXZRLXpUVkd1ZA` = Lina's Afternoon (connected via Hatch GWS wrapper)
 

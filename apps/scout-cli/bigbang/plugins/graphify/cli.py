@@ -6,8 +6,7 @@ Wraps pgraphify: build / query / path / explain / impact / task / onboard / cost
 """
 from __future__ import annotations
 
-from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 import typer
 
@@ -39,7 +38,8 @@ def build_cmd(
     ecosystem: bool = typer.Option(
         False,
         "--ecosystem",
-        help="Include ~/scout-cli, ~/ava-agi-factory-v6-4, ~/personal-graphify (+ references)",
+        help="Include ~/scout-cli, ~/ava-agi-factory-v6-4, ~/personal-graphify (+ references); "
+        "in the dottie monorepo also apps/scout-cli, apps/ava-factory, packages/personal-graphify",
     ),
     max_files: int = typer.Option(4000, "--max-files", help="Max files across roots"),
 ):
@@ -168,7 +168,11 @@ def cost_cmd(graph: Optional[str] = typer.Option(None, "--graph")):
 def sync_cmd(
     graph: Optional[str] = typer.Option(None, "--graph", help="Source graph.json (default: local or personal)"),
 ):
-    """Copy scout graph.json into ~/personal-graphify/references/spaces/scout-cli-graph.json."""
+    """Copy scout graph.json into <personal-graphify home>/references/spaces/scout-cli-graph.json.
+
+    Home resolves via PERSONAL_GRAPHIFY_HOME/PGRAPHIFY_HOME, then the dottie monorepo
+    (DOTTIE_ROOT or ~/workspace/dottie → packages/personal-graphify), then ~/personal-graphify.
+    """
     result = runner.sync_to_personal(src_graph=graph)
     emit(result, command="graphify sync")
     if not result.get("ok"):
@@ -180,14 +184,15 @@ def ecosystem_cmd(
     out: Optional[str] = typer.Option(
         None,
         "--out",
-        help="Default: ~/personal-graphify/graphify-out",
+        help="Default: <personal-graphify home>/graphify-out "
+        "(~/personal-graphify, or packages/personal-graphify in the dottie monorepo)",
     ),
     max_files: int = typer.Option(4000, "--max-files"),
 ):
     """Rebuild the multi-root personal ecosystem graph (Scout + Ava + personal-graphify)."""
-    home = Path.home()
-    primary = str((home / "personal-graphify").resolve())
-    out_dir = out or str((home / "personal-graphify" / "graphify-out").resolve())
+    pg_home = runner.personal_graphify_home()
+    primary = str(pg_home)
+    out_dir = out or str(pg_home / "graphify-out")
     result = runner.run_build(
         path=primary,
         out=out_dir,

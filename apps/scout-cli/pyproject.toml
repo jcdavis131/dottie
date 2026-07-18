@@ -24,11 +24,12 @@ all = ["gspread", "supabase", "onnxruntime", "keyring", "cryptography", "mcp>=1.
 dev = ["pytest>=8", "ruff>=0.3", "mypy>=1.8", "pytest-cov"]
 security = ["keyring", "cryptography"]
 # Personal Graphify — install from local private clone: pip install -e ~/personal-graphify
+# (dottie monorepo: pip install -e <dottie>/packages/personal-graphify)
 graphify = []
 
 [project.urls]
-Homepage = "https://github.com/jcdavis131/bigbang-cli"
-Issues = "https://github.com/jcdavis131/bigbang-cli/issues"
+Homepage = "https://github.com/jcdavis131/scout-cli"
+Issues = "https://github.com/jcdavis131/scout-cli/issues"
 
 [project.scripts]
 scout = "bigbang.cli:app"

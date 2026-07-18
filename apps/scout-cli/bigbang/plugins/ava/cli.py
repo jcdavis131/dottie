@@ -14,7 +14,28 @@ from typing import Optional, List, Dict, Any
 
 app = typer.Typer(name="ava", help="🧠 Ava AGI Factory — brain of BigBang, local CUDA + Frontier eval", no_args_is_help=True)
 
-FACTORY = Path.home() / "workspace" / "ava-agi-factory-v6-4"
+def _resolve_factory_root() -> Path:
+    """Resolve the Ava factory repo.
+
+    Probes the dottie monorepo layout first (DOTTIE_ROOT/apps/ava-factory,
+    ~/workspace/dottie/apps/ava-factory), then falls back to the standalone
+    default ~/workspace/ava-agi-factory-v6-4 even when it doesn't exist yet.
+    """
+    candidates = []
+    dottie = os.environ.get("DOTTIE_ROOT")
+    if dottie:
+        candidates.append(Path(dottie).expanduser() / "apps" / "ava-factory")
+    candidates.append(Path.home() / "workspace" / "dottie" / "apps" / "ava-factory")
+    for cand in candidates:
+        try:
+            if cand.exists():
+                return cand
+        except OSError:
+            continue
+    return Path.home() / "workspace" / "ava-agi-factory-v6-4"
+
+
+FACTORY = _resolve_factory_root()
 
 def _is_resolvable_fast(host: str, timeout: float = 0.8) -> bool:
     if not host:
@@ -582,7 +603,8 @@ def _run_in_factory(argv: list, yes: bool, command: str, description: str):
     if not FACTORY.exists():
         emit({
             "error": f"factory repo not present at {FACTORY}",
-            "hint": "clone ava-agi-factory-v6-4 into ~/workspace first",
+            "hint": "clone ava-agi-factory-v6-4 into ~/workspace first, "
+                    "or use the dottie monorepo (apps/ava-factory; set DOTTIE_ROOT)",
         }, command=command)
         raise typer.Exit(1)
     if not yes:

@@ -6,6 +6,7 @@
 ```bash
 git clone ~/workspace/bigbang-cli
 cd bigbang-cli
+# dottie monorepo location: <dottie>/apps/scout-cli (e.g. ~/workspace/dottie/apps/scout-cli)
 pip3 install -e .
 bb --help  # 17 plugins discovered automatically
 bb system doctor
@@ -55,7 +56,8 @@ bb agent run "ship Turnover Shield fix" --json
 ## Graphify (Knowledge Graph for LLMs)
 ```bash
 pip install -e ~/workspace/your_files/personal-graphify  # provides pgraphify
-cd ~/workspace/bigbang-cli
+# dottie monorepo: pip install -e <dottie>/packages/personal-graphify
+cd ~/workspace/bigbang-cli   # dottie monorepo: cd <dottie>/apps/scout-cli
 pgraphify build . --out graphify-out
 ls graphify-out/  # graph.json, graph.html, GRAPH_REPORT.md, cost.json
 pgraphify query "how does bb tasks sync-bb work?"

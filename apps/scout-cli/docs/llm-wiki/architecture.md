@@ -93,6 +93,9 @@ capabilities:
 tags: [productivity, google, tasks, gws]
 ```
 
+> Layout note: `~/workspace/bigbang-cli` is the standalone checkout; in the dottie monorepo
+> (https://github.com/jcdavis131/dottie) this repo lives at `apps/scout-cli`.
+
 ## Growth: Tool Registry + Tasks
 - `bb tools add api --type openapi --url ...` -> `bb tools generate api` -> per-op commands with policy netloc
 - `bb mcp add server https://.../sse` -> `bb mcp list-tools server` -> real SDK

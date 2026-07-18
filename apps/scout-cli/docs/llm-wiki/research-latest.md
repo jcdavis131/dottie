@@ -114,7 +114,7 @@ Token estimate: ~1500 tokens per scoped query vs ~18900 naive → **12.6× reduc
 
 ## How to Query
 ```bash
-cd ~/workspace/bigbang-cli
+cd ~/workspace/bigbang-cli   # dottie monorepo: cd <dottie>/apps/scout-cli
 pgraphify query "Muon optimizer for S1 Fast" --graph graphify-out-research/graph.json
 pgraphify query "GraphRAG for code knowledge graph" --graph graphify-out-research/graph.json
 pgraphify path "model_1b.py" "YaRN" --graph graphify-out-research/graph.json

@@ -17,7 +17,7 @@ scout graphify impact "Scout CLI" --direction both
 scout graphify task "wire Scout control plane to Ava J-space router"
 scout graphify onboard
 scout graphify cost
-scout graphify sync                    # → ~/personal-graphify/references/spaces/scout-cli-graph.json
+scout graphify sync                    # → <personal-graphify home>/references/spaces/scout-cli-graph.json
 ```
 
 Aliases `bb` / `bigbang` / `kitty` / `dv` also work: `bb graphify query "..."`.
@@ -27,16 +27,21 @@ Aliases `bb` / `bigbang` / `kitty` / `dv` also work: `bb graphify query "..."`.
 ```powershell
 uv tool install -e $env:USERPROFILE\personal-graphify   # provides pgraphify on PATH
 # or: pip install -e ~/personal-graphify
+# dottie monorepo: uv tool install -e <dottie>\packages\personal-graphify
+#             or: pip install -e <dottie>/packages/personal-graphify
 ```
 
 Optional env:
 
 | Env | Role |
 |-----|------|
-| `PERSONAL_GRAPHIFY_HOME` | Override `~/personal-graphify` |
+| `PERSONAL_GRAPHIFY_HOME` | Override the personal-graphify home |
+| `DOTTIE_ROOT` | dottie monorepo root — `packages/personal-graphify` probed before `~/personal-graphify` |
 | `SCOUT_GRAPHIFY_GRAPH` / `PGRAPHIFY_GRAPH` | Force graph.json path |
 
-Graph resolution order: `--graph` → env → `./graphify-out/graph.json` → `~/personal-graphify/graphify-out/graph.json`.
+Home resolution order: `PERSONAL_GRAPHIFY_HOME`/`PGRAPHIFY_HOME` → `DOTTIE_ROOT/packages/personal-graphify` → `~/workspace/dottie/packages/personal-graphify` → `~/personal-graphify`.
+
+Graph resolution order: `--graph` → env → `./graphify-out/graph.json` → `<personal-graphify home>/graphify-out/graph.json`.
 
 ## Ava + agent routing
 
@@ -49,7 +54,7 @@ Query-first agents should run `scout graphify task "..."` before grepping. Typic
 
 ## Public vs private
 
-- **Private / agent**: full multi-root graph in `~/personal-graphify/graphify-out/`
+- **Private / agent**: full multi-root graph in `~/personal-graphify/graphify-out/` (dottie monorepo: `<dottie>/packages/personal-graphify/graphify-out/`)
 - **Public demo**: light sanitized graph on [jcamd.com/graphify/](https://jcamd.com/graphify/) (~250 seeds)
 
 Publish light graph via personal-graphify `scripts/sanitize_for_public.py` (see `graphify-workflow` skill).

@@ -31,6 +31,10 @@ capabilities:
     allow: []
 ```
 
+> Layout note: `~/workspace/bigbang-cli` is the standalone checkout; in the dottie monorepo the
+> repo lives at `<dottie>/apps/scout-cli` (probe order: `DOTTIE_ROOT` → `~/workspace/dottie` →
+> standalone paths).
+
 ## Enforcement Points
 - `tools add` → domain extraction `urlparse(netloc)` not full URL → prevents `petstore.swagger.io/v2/swagger.json` vs `petstore.swagger.io` mismatch (bug fixed in v0.4)
 - `tools call`, `generate`, `mcp call/list-tools`, generated plugin per-op command, `openapi.call_openapi()` → all call `enforce_or_raise(manifest, "network", url)` before `httpx.request()`

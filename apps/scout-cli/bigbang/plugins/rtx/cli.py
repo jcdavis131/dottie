@@ -15,7 +15,34 @@ from bigbang.core.output import emit
 
 app = typer.Typer(name="rtx", help="🚀 RTX — offload to Alienware RTX 4080/4090 + scout-rtx releases", no_args_is_help=True)
 
-CUSTOM_ROOT = Path.home() / "workspace" / "autoresearch-rtx-custom"
+def _resolve_custom_root() -> Path:
+    """Resolve the scout-rtx working copy.
+
+    Precedence: SCOUT_RTX_ROOT env override, then the dottie monorepo layout
+    (DOTTIE_ROOT/apps/scout-rtx, ~/workspace/dottie/apps/scout-rtx), then the
+    standalone checkouts (~/workspace/autoresearch-rtx-custom, ~/workspace/scout-rtx).
+    Falls back to the legacy default path when nothing exists yet.
+    """
+    env = os.environ.get("SCOUT_RTX_ROOT")
+    if env:
+        return Path(env).expanduser()
+    candidates = []
+    dottie = os.environ.get("DOTTIE_ROOT")
+    if dottie:
+        candidates.append(Path(dottie).expanduser() / "apps" / "scout-rtx")
+    candidates.append(Path.home() / "workspace" / "dottie" / "apps" / "scout-rtx")
+    candidates.append(Path.home() / "workspace" / "autoresearch-rtx-custom")
+    candidates.append(Path.home() / "workspace" / "scout-rtx")
+    for cand in candidates:
+        try:
+            if cand.exists():
+                return cand
+        except OSError:
+            continue
+    return Path.home() / "workspace" / "autoresearch-rtx-custom"
+
+
+CUSTOM_ROOT = _resolve_custom_root()
 BB_OFFLOAD = CUSTOM_ROOT / "bb-offload"
 QUEUE_FILE = BB_OFFLOAD / "queue.json"
 RESULTS_FILE = BB_OFFLOAD / "results" / "results.jsonl"

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,7 +32,43 @@ except ImportError:  # pragma: no cover
     print("pyyaml required: pip install pyyaml", file=sys.stderr)
     raise
 
-FACTORY = "ava-agi-factory-v6-4"
+FACTORY = "ava-agi-factory-v6-4"  # standalone sibling-checkout name
+DOTTIE_FACTORY = "ava-factory"  # dottie monorepo name (apps/ava-factory)
+
+
+def _dottie_root() -> Optional[Path]:
+    """Return the dottie monorepo root, or None for standalone checkouts.
+
+    Prefers the DOTTIE_ROOT env var; otherwise detects whether this script's
+    own location is inside a dottie checkout (…/apps/scout-cli/arxiviq/…).
+    """
+    env = os.environ.get("DOTTIE_ROOT")
+    if env:
+        p = Path(env).expanduser()
+        if p.exists():
+            return p.resolve()
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if parent.name == "scout-cli" and parent.parent.name == "apps":
+            return parent.parent.parent
+    return None
+
+
+def _default_roots() -> Path:
+    """Default --roots: dottie apps/ dir when inside a dottie checkout, else sibling layout."""
+    droot = _dottie_root()
+    if droot is not None:
+        return droot / "apps"
+    return Path(__file__).resolve().parent.parent.parent
+
+
+def _resolve_factory(roots: Path) -> Path:
+    """Find the factory repo under roots — standalone name first, then dottie name."""
+    for name in (FACTORY, DOTTIE_FACTORY):
+        cand = roots / name
+        if cand.exists():
+            return cand
+    return roots / FACTORY
 
 SCALE_NOTES: Dict[str, Dict[str, Any]] = {
     # Status text mirrors TODOS.md Stage 9 (scale ladder); update when the ladder moves.
@@ -237,18 +274,19 @@ def build_pilot(factory: Path) -> Optional[Dict[str, Any]]:
     if not manifest_path.exists():
         return None
     data = json.loads(manifest_path.read_text(encoding="utf-8"))
-    data["source_path"] = f"{FACTORY}/runs/cpu_pilot/MANIFEST.json"
+    data["source_path"] = f"{factory.name}/runs/cpu_pilot/MANIFEST.json"
     return data
 
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--roots", default=str(Path(__file__).resolve().parent.parent.parent),
-                        help="Directory containing the ecosystem repos (default: sibling layout)")
+    parser.add_argument("--roots", default=str(_default_roots()),
+                        help="Directory containing the ecosystem repos "
+                             "(default: dottie apps/ when inside a dottie checkout, else sibling layout)")
     parser.add_argument("--out", default=str(Path(__file__).resolve().parent / "site" / "data"))
     args = parser.parse_args(argv)
 
-    factory = Path(args.roots) / FACTORY
+    factory = _resolve_factory(Path(args.roots))
     if not factory.exists():
         print(f"factory repo not found at {factory}; aborting", file=sys.stderr)
         return 1
@@ -257,8 +295,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
-    cards = {"generated_at": stamp, "source": FACTORY, "cards": build_model_cards(factory)}
-    snapshot = {"generated_at": stamp, "source": FACTORY, **build_snapshot(factory)}
+    cards = {"generated_at": stamp, "source": factory.name, "cards": build_model_cards(factory)}
+    snapshot = {"generated_at": stamp, "source": factory.name, **build_snapshot(factory)}
     ecosystem = {"generated_at": stamp, **build_ecosystem()}
 
     (out / "model-cards.json").write_text(json.dumps(cards, indent=1), encoding="utf-8")
