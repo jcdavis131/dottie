@@ -1,0 +1,27 @@
+[project]
+name = "ava-skills"
+version = "0.1.0"
+description = "Skill system for Ava AGI Factory v6.4 - J-Space routed, half-life aware, openwiki-synced. Solo personal project, no connection to employer, built with public/free-tier only"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [{name="Cam Davis"}]
+dependencies = ["pyyaml>=6", "numpy>=1.24"]
+keywords = ["agi", "skills", "j-space", "openwiki"]
+
+[project.optional-dependencies]
+torch = ["torch>=2.2"]
+dev = ["pytest>=8"]
+
+[project.urls]
+Repository = "https://github.com/jcdavis131/ava-skills"
+
+[project.scripts]
+ava-skills = "skills.loader:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["skills", "tests"]
