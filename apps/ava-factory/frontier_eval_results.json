@@ -1,0 +1,315 @@
+{
+  "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only | MOCK BLUEPRINT OUTPUT \u2014 hardcoded illustrative values, not measurements; see reports/REPORT_REAL.md (python -m evals.run_harness) for real evals",
+  "judge": "ollama",
+  "mode": "mock",
+  "results": [
+    {
+      "task_id": "FF-2026-SD-001",
+      "domain": "finance",
+      "overall": 0.625,
+      "per_rubric": [
+        {
+          "rubric_id": "R-FF-2026-SD-001-01",
+          "category": "Financial Accuracy",
+          "score": 0.683,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-FF-2026-SD-001-02",
+          "category": "Process Transparency & Auditability",
+          "score": 0.767,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-FF-2026-SD-001-03",
+          "category": "Risk & Ethical Disclosure",
+          "score": 0.65,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-FF-2026-SD-001-04",
+          "category": "Coverage Comprehensiveness",
+          "score": 0.5,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-FF-2026-SD-001-05",
+          "category": "Attribution Correctness",
+          "score": 0.6,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-FF-2026-SD-001-06",
+          "category": "Numerical Accuracy",
+          "score": 0.55,
+          "weight": 0.1667
+        }
+      ],
+      "output_len": 421
+    },
+    {
+      "task_id": "BIO-001",
+      "domain": "bio",
+      "overall": 0.621,
+      "per_rubric": [
+        {
+          "rubric_id": "R-BIO-001-01",
+          "category": "Financial Accuracy",
+          "score": 0.683,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-BIO-001-02",
+          "category": "Process Transparency & Auditability",
+          "score": 0.72,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-BIO-001-03",
+          "category": "Risk & Ethical Disclosure",
+          "score": 0.7,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-BIO-001-04",
+          "category": "Coverage Comprehensiveness",
+          "score": 0.44,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-BIO-001-05",
+          "category": "Attribution Correctness",
+          "score": 0.5,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-BIO-001-06",
+          "category": "Numerical Accuracy",
+          "score": 0.683,
+          "weight": 0.1667
+        }
+      ],
+      "output_len": 394
+    },
+    {
+      "task_id": "CLI-001",
+      "domain": "climate",
+      "overall": 0.549,
+      "per_rubric": [
+        {
+          "rubric_id": "R-CLI-001-01",
+          "category": "Financial Accuracy",
+          "score": 0.295,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-CLI-001-02",
+          "category": "Process Transparency & Auditability",
+          "score": 0.65,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-CLI-001-03",
+          "category": "Risk & Ethical Disclosure",
+          "score": 0.58,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-CLI-001-04",
+          "category": "Coverage Comprehensiveness",
+          "score": 0.6,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-CLI-001-05",
+          "category": "Attribution Correctness",
+          "score": 0.58,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-CLI-001-06",
+          "category": "Numerical Accuracy",
+          "score": 0.59,
+          "weight": 0.1667
+        }
+      ],
+      "output_len": 376
+    },
+    {
+      "task_id": "MAT-001",
+      "domain": "materials",
+      "overall": 0.502,
+      "per_rubric": [
+        {
+          "rubric_id": "R-MAT-001-01",
+          "category": "Financial Accuracy",
+          "score": 0.225,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-MAT-001-02",
+          "category": "Process Transparency & Auditability",
+          "score": 0.72,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-MAT-001-03",
+          "category": "Risk & Ethical Disclosure",
+          "score": 0.58,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-MAT-001-04",
+          "category": "Coverage Comprehensiveness",
+          "score": 0.3,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-MAT-001-05",
+          "category": "Attribution Correctness",
+          "score": 0.738,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-MAT-001-06",
+          "category": "Numerical Accuracy",
+          "score": 0.45,
+          "weight": 0.1667
+        }
+      ],
+      "output_len": 371
+    },
+    {
+      "task_id": "CODE-001",
+      "domain": "code",
+      "overall": 0.634,
+      "per_rubric": [
+        {
+          "rubric_id": "R-CODE-001-01",
+          "category": "Financial Accuracy",
+          "score": 0.683,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-CODE-001-02",
+          "category": "Process Transparency & Auditability",
+          "score": 0.767,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-CODE-001-03",
+          "category": "Risk & Ethical Disclosure",
+          "score": 0.58,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-CODE-001-04",
+          "category": "Coverage Comprehensiveness",
+          "score": 0.44,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-CODE-001-05",
+          "category": "Attribution Correctness",
+          "score": 0.65,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-CODE-001-06",
+          "category": "Numerical Accuracy",
+          "score": 0.683,
+          "weight": 0.1667
+        }
+      ],
+      "output_len": 357
+    },
+    {
+      "task_id": "LAW-001",
+      "domain": "law",
+      "overall": 0.692,
+      "per_rubric": [
+        {
+          "rubric_id": "R-LAW-001-01",
+          "category": "Financial Accuracy",
+          "score": 0.683,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-LAW-001-02",
+          "category": "Process Transparency & Auditability",
+          "score": 0.8,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-LAW-001-03",
+          "category": "Risk & Ethical Disclosure",
+          "score": 0.738,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-LAW-001-04",
+          "category": "Coverage Comprehensiveness",
+          "score": 0.533,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-LAW-001-05",
+          "category": "Attribution Correctness",
+          "score": 0.65,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-LAW-001-06",
+          "category": "Numerical Accuracy",
+          "score": 0.75,
+          "weight": 0.1667
+        }
+      ],
+      "output_len": 413
+    },
+    {
+      "task_id": "MAC-001",
+      "domain": "macro",
+      "overall": 0.499,
+      "per_rubric": [
+        {
+          "rubric_id": "R-MAC-001-01",
+          "category": "Financial Accuracy",
+          "score": 0.295,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-MAC-001-02",
+          "category": "Process Transparency & Auditability",
+          "score": 0.65,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-MAC-001-03",
+          "category": "Risk & Ethical Disclosure",
+          "score": 0.58,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-MAC-001-04",
+          "category": "Coverage Comprehensiveness",
+          "score": 0.3,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-MAC-001-05",
+          "category": "Attribution Correctness",
+          "score": 0.58,
+          "weight": 0.1667
+        },
+        {
+          "rubric_id": "R-MAC-001-06",
+          "category": "Numerical Accuracy",
+          "score": 0.59,
+          "weight": 0.1667
+        }
+      ],
+      "output_len": 369
+    }
+  ]
+}

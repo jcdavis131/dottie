@@ -1,0 +1,71 @@
+# Flow control for the continuous gather -> clean -> train pipeline.
+#
+# The goal is a TRAINING-BOUND steady state: the GPU never waits for data, and
+# the collectors never fill the disk. Every threshold below exists to keep the
+# system in that band.
+#
+# Disk reality on this host: single drive, ~27GB free, Docker's ext4 VHDX has
+# ~25GB of internal slack. uint16 tokens = 2 bytes each, so 1B tokens = 2GB.
+
+disk:
+  # Collector stops fetching below this. Chosen so a full curator backlog
+  # (raw_max) plus one checkpoint rotation can still land.
+  low_water_gb: 12
+  # Janitor starts deleting CONSUMED shards below this.
+  janitor_trigger_gb: 18
+  # Hard stop: trainer pauses and shouts rather than dying on ENOSPC.
+  critical_gb: 6
+
+backpressure:
+  # Un-curated raw sitting on disk. 4GB ~= 16 shards of 256MB.
+  raw_max_bytes: 4_000_000_000
+  # Packed runway per phase. 3B tokens = 6GB. Above this the collector idles.
+  packed_ahead_max_tokens: 3_000_000_000
+  # Below this the trainer emits DATA_STARVED and collectors re-prioritize.
+  packed_min_tokens: 200_000_000
+  # How long a starved trainer waits between polls before complaining again.
+  starved_poll_seconds: 5
+  starved_warn_seconds: 60
+
+leases:
+  curate_seconds: 900      # a 256MB shard: clean+dedup+pack, generous
+  train_seconds: 3600      # a packed shard can take a while at base1b
+  max_attempts: 3          # then FAILED; poison shards must not spin forever
+
+shards:
+  raw_target_bytes: 268_435_456        # 256MiB pre-compression
+  packed_target_tokens: 50_000_000     # 100MB uint16; small enough to delete often
+
+retention:
+  # Single-pass training => a consumed train shard is dead weight. val/test are
+  # never deleted (enforced in manifest.mark_deleted).
+  delete_consumed: true
+  keep_last_checkpoints: 1
+  keep_stable_checkpoints: true        # one per phase boundary; these are the
+                                       # branch-fork points and stop-anytime saves
+
+# T10.9 — curriculum-aware high-water eviction (janitor). When free disk falls
+# below evict_high_water_gb, shed oversupplied / behind-phase RAW+PACKED train
+# shards. Lead floor = backpressure.packed_min_tokens. Never val/test.
+storage:
+  evict_high_water_gb: 15
+  evict_batch_limit: 20
+
+collector:
+  prefetch_phases: 2       # current + next, so phase transitions don't stall the GPU
+  http_retries: 8
+  backoff_initial_seconds: 1.0
+  backoff_max_seconds: 120.0
+  backoff_jitter: 0.3      # HF resets connections; jitter avoids thundering herd
+
+curator:
+  batch_docs: 1000
+  minhash_perm: 128
+  minhash_threshold: 0.8
+  ngram_decontam: 13       # standard n-gram size for eval decontamination
+
+splits:
+  # Doc-level, hash-stable. Rerunning the pipeline reproduces identical splits.
+  train: 0.98
+  val: 0.01
+  test: 0.01

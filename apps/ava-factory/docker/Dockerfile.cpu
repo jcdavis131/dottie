@@ -1,0 +1,28 @@
+# CPU image: collector, curator, janitor.
+# Pins verified on this host — unpinned `datasets` crashes streaming with
+# "AttributeError: 'NoneType' object has no attribute 'ArrowInvalid'".
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    HF_HUB_ENABLE_HF_TRANSFER=0
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY docker/requirements.cpu.txt /tmp/requirements.cpu.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.cpu.txt
+
+COPY ava/ /app/ava/
+COPY evals/ /app/evals/
+COPY configs/ /app/configs/
+
+# Unprivileged: volumes are chowned by compose init or created world-writable.
+RUN useradd -m -u 1000 ava && chown -R ava:ava /app
+USER ava
+
+CMD ["python", "-c", "print('ava cpu image ok')"]

@@ -1,0 +1,24 @@
+.git/
+.github/
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# large / generated — these live in named volumes, never in the image
+data/
+runs/
+ckpt/
+export/
+reports/
+*.pt
+*.bin
+*.safetensors
+wandb/
+
+# docs & blueprint noise not needed at build time
+*.md
+!README.md
+.claude/
+specs/

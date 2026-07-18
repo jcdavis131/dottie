@@ -1,0 +1,72 @@
+# ava-mini — ~162M-param GPU validation rung (RTX 4080 Laptop 12GB, WSL2)
+# Purpose: validate curriculum + J-losses + the SwiGLU path at GPU scale; GO/NO-GO gate before base1b.
+# Arithmetic (specs/08): embed 24.6M tied + 12 layers x (4d^2 attn + 12d^2 SwiGLU-4x) 113M
+# + untied verbalizer 24.6M + slots ~0.1M => ~162M. Est 6-10k tok/s bf16 -> 2.5B tokens in ~3-5 days.
+# VRAM ~5-7GB at ctx 512; no grad checkpointing needed below ctx 2048.
+preset: mini
+
+model:
+  vocab_size: 32000
+  d_model: 768
+  n_heads: 12
+  head_dim: 64
+  mlp: swiglu                  # validates base1b's SwiGLU path (spec 04 config-gated)
+  mlp_ratio: 4.0
+  n_text_layers: 3
+  n_fusion_layers: 6
+  n_reasoning_layers: 3
+  tie_lm_head: true
+  # MUST stay true: each of the 4 workspaces owns a [vocab, d_model] verbalizer,
+  # so untying costs 4 x 32000 x 768 = 98M params (mini would be 270M, not ~171M).
+  # The original spec's "+24.6M" counted one matrix, not four.
+  tie_verbalizer: true
+  multimodal: false
+  qk_norm: true
+  rope_base_init: 10000
+
+jspace:
+  slots:      {system1: 32, system2: 64, critic: 16, planner: 32}
+  half_life:  {system1: 8, system2: 300, critic: 30, planner: 150}   # blueprint values (seq reaches 4096)
+  hl_weight:  {system1: 0.6, system2: 0.8, critic: 1.0, planner: 0.7}
+  broadcast_target: {system1: 0.18, system2: 0.22, critic: 0.20, planner: 0.20}
+  s2_verbalizable_mass: 0.065
+  critic_vm: 0.08
+  inter_mi_cos_target: 0.45
+  inter_mi_weight: 0.3
+  routing_weight: 0.4
+  routing_targets:
+    automatic:  [0.60, 0.15, 0.10, 0.15]
+    deliberate: [0.15, 0.55, 0.10, 0.20]
+    safety:     [0.10, 0.20, 0.60, 0.10]
+    temporal:   [0.10, 0.30, 0.10, 0.50]
+  base_loss_weights: {report: 1.0, broadcast: 0.5, selectivity: 0.3, modulation: 0.5}
+  j_weight: {early: 0.08, late: 0.15}
+
+training:
+  device: cuda
+  precision: bf16
+  compile: true                    # torch.compile; --no-compile fallback flag if graph breaks
+  tokens_total: 2_500_000_000
+  tokens_per_step: 262_144         # e.g. micro 16 x seq 1024 x accum 16
+  optimizer: {name: adamw, betas: [0.9, 0.95], weight_decay: 0.1, grad_clip: 1.0}
+  wsd: {warmup_steps: 300, stable_frac: 0.92, lr_max: 6.0e-4, lr_min: 6.0e-5}
+  checkpoint_every_steps: 50    # was 100; CUDA blips at ~190/470 kept wiping uncheckpointed progress
+  metrics_every_steps: 10
+
+phases:                            # same 6-phase shape, 2.5B budget
+  - {name: p0_logic,      tokens: 400_000_000, seq: 512,  rope_base: 10000,  ntk: 1.0, mix: {logic: 1.0}}
+  - {name: p1_math,       tokens: 500_000_000, seq: 512,  rope_base: 10000,  ntk: 1.0, mix: {math: 0.85, logic: 0.15}}
+  # tool_use = agentic workflows / harness skills (react_tools generator):
+  # foundation vocabulary in P2, multi-step tool workflows in P3, and
+  # grounding-heavy (notfound/cite) anneal in P5.
+  - {name: p2_foundation, tokens: 850_000_000, seq: 1024, rope_base: 10000,  ntk: 1.0, mix: {encyclopedia: 0.30, code: 0.20, tool_use: 0.15, math: 0.15, logic: 0.10, chat: 0.10}}
+  - {name: p3_reasoning,  tokens: 400_000_000, seq: 2048, rope_base: 50000,  ntk: 1.0, mix: {math_reasoning: 0.30, tool_use: 0.30, logic: 0.15, temporal: 0.15, code: 0.10}}
+  - {name: p4_long,       tokens: 150_000_000, seq: 4096, rope_base: 100000, ntk: 1.2, mix: {long_docs: 0.70, needle: 0.30}}
+  - {name: p5_anneal,     tokens: 200_000_000, seq: 4096, rope_base: 100000, ntk: 1.2, mix: {tool_use: 0.25, proofs_verified: 0.20, chat: 0.20, safety: 0.20, math_reasoning: 0.15}}
+
+data:
+  seed: 1234
+  raw_dir: data/mini/raw           # regenerate generators with --mb scaled up; see specs/08
+  packed_dir: data/mini/packed
+  heldout_tokens_per_phase: 2_000_000
+  tokenizer_path: data/mini/tokenizer/ava_bpe_32k.json

@@ -1,0 +1,200 @@
+{"prompt": "Collapsing the string 'DCCCCBBBBB' into count-byte run pairs yields", "answer": "1D4C5B"}
+{"prompt": "Packed as a LEB128 varint, the delta 84855 becomes the bytes", "answer": "0xF7 0x96 0x05"}
+{"prompt": "Given the frequency table a:7, c:6, d:6, e:5, f:2, symbol 'c' receives a Huffman code of length", "answer": "2"}
+{"prompt": "Quantizing 3.55 to int8 symmetrically with scale 0.07 gives", "answer": "51"}
+{"prompt": "With window 16 and minimum match 2, the string 'bbabbbabbab' tokenizes into this many LZ77 triples:", "answer": "6"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'ACBA' carries this many bits of information:", "answer": "6"}
+{"prompt": "Collapsing the string 'BBDDCCCAAAAABBBBB' into count-byte run pairs yields", "answer": "2B2D3C5A5B"}
+{"prompt": "Packed as a LEB128 varint, the delta 67094 becomes the bytes", "answer": "0x96 0x8C 0x04"}
+{"prompt": "Given the frequency table b:3, c:8, d:1, e:1, f:9, symbol 'd' receives a Huffman code of length", "answer": "4"}
+{"prompt": "Quantizing 3.36 to int8 symmetrically with scale 0.07 gives", "answer": "48"}
+{"prompt": "With window 16 and minimum match 2, the string 'bababababbab' tokenizes into this many LZ77 triples:", "answer": "5"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'ACABB' carries this many bits of information:", "answer": "8"}
+{"prompt": "Collapsing the string 'BBBBAAAABB' into count-byte run pairs yields", "answer": "4B4A2B"}
+{"prompt": "Packed as a LEB128 varint, the delta 24531 becomes the bytes", "answer": "0xD3 0xBF 0x01"}
+{"prompt": "Given the frequency table a:6, c:1, f:4, g:4, symbol 'c' receives a Huffman code of length", "answer": "3"}
+{"prompt": "Quantizing 4.71 to int8 symmetrically with scale 0.07 gives", "answer": "67"}
+{"prompt": "With window 16 and minimum match 2, the string 'bbbabbabbabbabba' tokenizes into this many LZ77 triples:", "answer": "4"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'CAACB' carries this many bits of information:", "answer": "8"}
+{"prompt": "Collapsing the string 'DDAAAACCCCBBBBB' into count-byte run pairs yields", "answer": "2D4A4C5B"}
+{"prompt": "Packed as a LEB128 varint, the delta 20253 becomes the bytes", "answer": "0x9D 0x9E 0x01"}
+{"prompt": "Given the frequency table b:1, c:9, d:9, symbol 'd' receives a Huffman code of length", "answer": "1"}
+{"prompt": "Quantizing -0.67 to int8 symmetrically with scale 0.08 gives", "answer": "-8"}
+{"prompt": "With window 16 and minimum match 2, the string 'babababaab' tokenizes into this many LZ77 triples:", "answer": "4"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'BCBBBBCBA' carries this many bits of information:", "answer": "17"}
+{"prompt": "Collapsing the string 'DDDDDAAACCAAAA' into count-byte run pairs yields", "answer": "5D3A2C4A"}
+{"prompt": "Packed as a LEB128 varint, the delta 16065 becomes the bytes", "answer": "0xC1 0x7D"}
+{"prompt": "Given the frequency table d:7, e:9, f:5, symbol 'e' receives a Huffman code of length", "answer": "1"}
+{"prompt": "Quantizing 4.93 to int8 symmetrically with scale 0.09 gives", "answer": "55"}
+{"prompt": "With window 16 and minimum match 2, the string 'abbabbabba' tokenizes into this many LZ77 triples:", "answer": "4"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'AAAA' carries this many bits of information:", "answer": "4"}
+{"prompt": "Collapsing the string 'BBBBBCBBBAAA' into count-byte run pairs yields", "answer": "5B1C3B3A"}
+{"prompt": "Packed as a LEB128 varint, the delta 97797 becomes the bytes", "answer": "0x85 0xFC 0x05"}
+{"prompt": "Given the frequency table a:7, c:1, d:8, e:9, f:3, symbol 'a' receives a Huffman code of length", "answer": "2"}
+{"prompt": "Quantizing -1.73 to int8 symmetrically with scale 0.03 gives", "answer": "-58"}
+{"prompt": "With window 16 and minimum match 2, the string 'bbbbbbbbbbbb' tokenizes into this many LZ77 triples:", "answer": "4"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'AABBA' carries this many bits of information:", "answer": "7"}
+{"prompt": "Collapsing the string 'AAAADDBDDD' into count-byte run pairs yields", "answer": "4A2D1B3D"}
+{"prompt": "Packed as a LEB128 varint, the delta 41163 becomes the bytes", "answer": "0xCB 0xC1 0x02"}
+{"prompt": "Given the frequency table a:7, b:9, c:9, symbol 'b' receives a Huffman code of length", "answer": "2"}
+{"prompt": "Quantizing 2.25 to int8 symmetrically with scale 0.02 gives", "answer": "112"}
+{"prompt": "With window 16 and minimum match 2, the string 'abbbbbbbb' tokenizes into this many LZ77 triples:", "answer": "3"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'ABACBA' carries this many bits of information:", "answer": "9"}
+{"prompt": "Collapsing the string 'AACCDB' into count-byte run pairs yields", "answer": "2A2C1D1B"}
+{"prompt": "Packed as a LEB128 varint, the delta 68379 becomes the bytes", "answer": "0x9B 0x96 0x04"}
+{"prompt": "Given the frequency table b:2, d:8, g:7, symbol 'g' receives a Huffman code of length", "answer": "2"}
+{"prompt": "Quantizing 1.05 to int8 symmetrically with scale 0.09 gives", "answer": "12"}
+{"prompt": "With window 16 and minimum match 2, the string 'bbbbbbbbb' tokenizes into this many LZ77 triples:", "answer": "2"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'ACBBAA' carries this many bits of information:", "answer": "9"}
+{"prompt": "Collapsing the string 'BBBBDAABBBBDD' into count-byte run pairs yields", "answer": "4B1D2A4B2D"}
+{"prompt": "Packed as a LEB128 varint, the delta 55113 becomes the bytes", "answer": "0xC9 0xAE 0x03"}
+{"prompt": "Given the frequency table a:9, b:4, e:3, symbol 'e' receives a Huffman code of length", "answer": "2"}
+{"prompt": "Quantizing -0.33 to int8 symmetrically with scale 0.08 gives", "answer": "-4"}
+{"prompt": "With window 16 and minimum match 2, the string 'aabaabaabaabaabaab' tokenizes into this many LZ77 triples:", "answer": "5"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'AAAAABACC' carries this many bits of information:", "answer": "12"}
+{"prompt": "Collapsing the string 'AAAAADDDDA' into count-byte run pairs yields", "answer": "5A4D1A"}
+{"prompt": "Packed as a LEB128 varint, the delta 4115 becomes the bytes", "answer": "0x93 0x20"}
+{"prompt": "Given the frequency table a:7, f:2, g:9, symbol 'f' receives a Huffman code of length", "answer": "2"}
+{"prompt": "Quantizing -4.01 to int8 symmetrically with scale 0.02 gives", "answer": "-127"}
+{"prompt": "With window 16 and minimum match 2, the string 'bbbbabbbbbabb' tokenizes into this many LZ77 triples:", "answer": "4"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'BBAAAABABBAC' carries this many bits of information:", "answer": "18"}
+{"prompt": "Collapsing the string 'DAADD' into count-byte run pairs yields", "answer": "1D2A2D"}
+{"prompt": "Packed as a LEB128 varint, the delta 2142 becomes the bytes", "answer": "0xDE 0x10"}
+{"prompt": "Given the frequency table a:4, b:6, e:1, f:4, g:1, symbol 'g' receives a Huffman code of length", "answer": "3"}
+{"prompt": "Quantizing -3.62 to int8 symmetrically with scale 0.03 gives", "answer": "-121"}
+{"prompt": "With window 16 and minimum match 2, the string 'aabbaabaabaabbaab' tokenizes into this many LZ77 triples:", "answer": "7"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'BAAC' carries this many bits of information:", "answer": "6"}
+{"prompt": "Collapsing the string 'AAAABBBDDDDDCCC' into count-byte run pairs yields", "answer": "4A3B5D3C"}
+{"prompt": "Packed as a LEB128 varint, the delta 93183 becomes the bytes", "answer": "0xFF 0xD7 0x05"}
+{"prompt": "Given the frequency table a:1, b:8, c:7, e:8, f:8, symbol 'a' receives a Huffman code of length", "answer": "3"}
+{"prompt": "Quantizing -0.09 to int8 symmetrically with scale 0.05 gives", "answer": "-2"}
+{"prompt": "With window 16 and minimum match 2, the string 'aabaabaaabaab' tokenizes into this many LZ77 triples:", "answer": "5"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'BABABA' carries this many bits of information:", "answer": "9"}
+{"prompt": "Collapsing the string 'AAABBBBBDDDDCCCCDD' into count-byte run pairs yields", "answer": "3A5B4D4C2D"}
+{"prompt": "Packed as a LEB128 varint, the delta 1612 becomes the bytes", "answer": "0xCC 0x0C"}
+{"prompt": "Given the frequency table b:5, c:8, d:4, g:2, symbol 'b' receives a Huffman code of length", "answer": "2"}
+{"prompt": "Quantizing 1.42 to int8 symmetrically with scale 0.08 gives", "answer": "18"}
+{"prompt": "With window 16 and minimum match 2, the string 'aaaaaaaaaaaa' tokenizes into this many LZ77 triples:", "answer": "4"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'ABBCBA' carries this many bits of information:", "answer": "10"}
+{"prompt": "Collapsing the string 'BBBBBCCCCABBBB' into count-byte run pairs yields", "answer": "5B4C1A4B"}
+{"prompt": "Packed as a LEB128 varint, the delta 9460 becomes the bytes", "answer": "0xF4 0x49"}
+{"prompt": "Given the frequency table a:6, d:6, e:8, symbol 'e' receives a Huffman code of length", "answer": "1"}
+{"prompt": "Quantizing -3.96 to int8 symmetrically with scale 0.02 gives", "answer": "-127"}
+{"prompt": "With window 16 and minimum match 2, the string 'babababbabababa' tokenizes into this many LZ77 triples:", "answer": "4"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'BAAAABBA' carries this many bits of information:", "answer": "11"}
+{"prompt": "Collapsing the string 'ABBBBABBAAA' into count-byte run pairs yields", "answer": "1A4B1A2B3A"}
+{"prompt": "Packed as a LEB128 varint, the delta 1819 becomes the bytes", "answer": "0x9B 0x0E"}
+{"prompt": "Given the frequency table b:6, f:6, g:9, symbol 'g' receives a Huffman code of length", "answer": "1"}
+{"prompt": "Quantizing -3.01 to int8 symmetrically with scale 0.03 gives", "answer": "-100"}
+{"prompt": "With window 16 and minimum match 2, the string 'abaaabaaba' tokenizes into this many LZ77 triples:", "answer": "5"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'ACCAABAABAA' carries this many bits of information:", "answer": "15"}
+{"prompt": "Collapsing the string 'AAAACDBBBBAAAA' into count-byte run pairs yields", "answer": "4A1C1D4B4A"}
+{"prompt": "Packed as a LEB128 varint, the delta 58741 becomes the bytes", "answer": "0xF5 0xCA 0x03"}
+{"prompt": "Given the frequency table a:8, b:6, c:9, e:7, symbol 'b' receives a Huffman code of length", "answer": "2"}
+{"prompt": "Quantizing 1.93 to int8 symmetrically with scale 0.08 gives", "answer": "24"}
+{"prompt": "With window 16 and minimum match 2, the string 'aaabaaaabaaaa' tokenizes into this many LZ77 triples:", "answer": "4"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'ABBBBAAAAAA' carries this many bits of information:", "answer": "15"}
+{"prompt": "Collapsing the string 'CDDDDAAAAABBBB' into count-byte run pairs yields", "answer": "1C4D5A4B"}
+{"prompt": "Packed as a LEB128 varint, the delta 54869 becomes the bytes", "answer": "0xD5 0xAC 0x03"}
+{"prompt": "Given the frequency table a:4, d:5, g:8, symbol 'a' receives a Huffman code of length", "answer": "2"}
+{"prompt": "Quantizing 3.59 to int8 symmetrically with scale 0.04 gives", "answer": "90"}
+{"prompt": "With window 16 and minimum match 2, the string 'aaaabaaaaaaa' tokenizes into this many LZ77 triples:", "answer": "5"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'ABABAAAABAA' carries this many bits of information:", "answer": "14"}
+{"prompt": "Collapsing the string 'AAAAACCCCCDDAA' into count-byte run pairs yields", "answer": "5A5C2D2A"}
+{"prompt": "Packed as a LEB128 varint, the delta 10947 becomes the bytes", "answer": "0xC3 0x55"}
+{"prompt": "Given the frequency table a:9, b:5, c:5, f:3, symbol 'c' receives a Huffman code of length", "answer": "2"}
+{"prompt": "Quantizing -4.49 to int8 symmetrically with scale 0.05 gives", "answer": "-90"}
+{"prompt": "With window 16 and minimum match 2, the string 'babbbabbabbbaba' tokenizes into this many LZ77 triples:", "answer": "6"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'BBAABACAAA' carries this many bits of information:", "answer": "14"}
+{"prompt": "Collapsing the string 'AAAABBBBBCCCCCDB' into count-byte run pairs yields", "answer": "4A5B5C1D1B"}
+{"prompt": "Packed as a LEB128 varint, the delta 95726 becomes the bytes", "answer": "0xEE 0xEB 0x05"}
+{"prompt": "Given the frequency table c:4, d:4, e:2, g:6, symbol 'c' receives a Huffman code of length", "answer": "2"}
+{"prompt": "Quantizing 4.92 to int8 symmetrically with scale 0.06 gives", "answer": "82"}
+{"prompt": "With window 16 and minimum match 2, the string 'aabaabaabaabaaba' tokenizes into this many LZ77 triples:", "answer": "5"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'CBAAAACC' carries this many bits of information:", "answer": "12"}
+{"prompt": "Collapsing the string 'AABBBBBDDDDDBBBBDD' into count-byte run pairs yields", "answer": "2A5B5D4B2D"}
+{"prompt": "Packed as a LEB128 varint, the delta 31487 becomes the bytes", "answer": "0xFF 0xF5 0x01"}
+{"prompt": "Given the frequency table a:7, b:9, f:4, symbol 'a' receives a Huffman code of length", "answer": "2"}
+{"prompt": "Quantizing 4.81 to int8 symmetrically with scale 0.05 gives", "answer": "96"}
+{"prompt": "With window 16 and minimum match 2, the string 'bbabababaabba' tokenizes into this many LZ77 triples:", "answer": "5"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'CAABBBBB' carries this many bits of information:", "answer": "14"}
+{"prompt": "Collapsing the string 'BBBCCCCBA' into count-byte run pairs yields", "answer": "3B4C1B1A"}
+{"prompt": "Packed as a LEB128 varint, the delta 94035 becomes the bytes", "answer": "0xD3 0xDE 0x05"}
+{"prompt": "Given the frequency table a:1, c:8, e:5, symbol 'e' receives a Huffman code of length", "answer": "2"}
+{"prompt": "Quantizing -2.06 to int8 symmetrically with scale 0.04 gives", "answer": "-52"}
+{"prompt": "With window 16 and minimum match 2, the string 'babbbbbbaba' tokenizes into this many LZ77 triples:", "answer": "6"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'CACBCABBBBAB' carries this many bits of information:", "answer": "21"}
+{"prompt": "Collapsing the string 'CDDDDDBBBCCCCC' into count-byte run pairs yields", "answer": "1C5D3B5C"}
+{"prompt": "Packed as a LEB128 varint, the delta 22510 becomes the bytes", "answer": "0xEE 0xAF 0x01"}
+{"prompt": "Given the frequency table a:2, b:4, d:2, symbol 'd' receives a Huffman code of length", "answer": "2"}
+{"prompt": "Quantizing -4.62 to int8 symmetrically with scale 0.05 gives", "answer": "-92"}
+{"prompt": "With window 16 and minimum match 2, the string 'aababbababa' tokenizes into this many LZ77 triples:", "answer": "5"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'CAACAABBCA' carries this many bits of information:", "answer": "15"}
+{"prompt": "Collapsing the string 'DDDBDDDCCCBB' into count-byte run pairs yields", "answer": "3D1B3D3C2B"}
+{"prompt": "Packed as a LEB128 varint, the delta 29979 becomes the bytes", "answer": "0x9B 0xEA 0x01"}
+{"prompt": "Given the frequency table a:9, c:3, d:3, e:5, g:8, symbol 'c' receives a Huffman code of length", "answer": "3"}
+{"prompt": "Quantizing -3.93 to int8 symmetrically with scale 0.03 gives", "answer": "-127"}
+{"prompt": "With window 16 and minimum match 2, the string 'baaaaaaaabba' tokenizes into this many LZ77 triples:", "answer": "5"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'BBCAAAAA' carries this many bits of information:", "answer": "11"}
+{"prompt": "Collapsing the string 'BBBBBAADDDDA' into count-byte run pairs yields", "answer": "5B2A4D1A"}
+{"prompt": "Packed as a LEB128 varint, the delta 72681 becomes the bytes", "answer": "0xE9 0xB7 0x04"}
+{"prompt": "Given the frequency table a:7, b:6, c:2, symbol 'b' receives a Huffman code of length", "answer": "2"}
+{"prompt": "Quantizing -3.66 to int8 symmetrically with scale 0.03 gives", "answer": "-122"}
+{"prompt": "With window 16 and minimum match 2, the string 'abbbbbbbb' tokenizes into this many LZ77 triples:", "answer": "3"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'AAABACCB' carries this many bits of information:", "answer": "12"}
+{"prompt": "Collapsing the string 'DDDDCCCADD' into count-byte run pairs yields", "answer": "4D3C1A2D"}
+{"prompt": "Packed as a LEB128 varint, the delta 37311 becomes the bytes", "answer": "0xBF 0xA3 0x02"}
+{"prompt": "Given the frequency table a:7, b:2, d:5, f:4, symbol 'd' receives a Huffman code of length", "answer": "2"}
+{"prompt": "Quantizing 2.97 to int8 symmetrically with scale 0.04 gives", "answer": "74"}
+{"prompt": "With window 16 and minimum match 2, the string 'abaaabaabaa' tokenizes into this many LZ77 triples:", "answer": "5"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'BAACCCA' carries this many bits of information:", "answer": "11"}
+{"prompt": "Collapsing the string 'BBBCCAAAAA' into count-byte run pairs yields", "answer": "3B2C5A"}
+{"prompt": "Packed as a LEB128 varint, the delta 83881 becomes the bytes", "answer": "0xA9 0x8F 0x05"}
+{"prompt": "Given the frequency table a:6, e:5, f:8, symbol 'a' receives a Huffman code of length", "answer": "2"}
+{"prompt": "Quantizing -1.18 to int8 symmetrically with scale 0.08 gives", "answer": "-15"}
+{"prompt": "With window 16 and minimum match 2, the string 'abababaaab' tokenizes into this many LZ77 triples:", "answer": "5"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'ABAAABBCCAA' carries this many bits of information:", "answer": "16"}
+{"prompt": "Collapsing the string 'DDDDDBBBBBAAADDDDD' into count-byte run pairs yields", "answer": "5D5B3A5D"}
+{"prompt": "Packed as a LEB128 varint, the delta 63029 becomes the bytes", "answer": "0xB5 0xEC 0x03"}
+{"prompt": "Given the frequency table a:4, c:7, e:4, f:4, g:8, symbol 'a' receives a Huffman code of length", "answer": "3"}
+{"prompt": "Quantizing -3.75 to int8 symmetrically with scale 0.09 gives", "answer": "-42"}
+{"prompt": "With window 16 and minimum match 2, the string 'aaababaababaaba' tokenizes into this many LZ77 triples:", "answer": "4"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'ACBBCCB' carries this many bits of information:", "answer": "13"}
+{"prompt": "Collapsing the string 'BBBDBBBBBAA' into count-byte run pairs yields", "answer": "3B1D5B2A"}
+{"prompt": "Packed as a LEB128 varint, the delta 62520 becomes the bytes", "answer": "0xB8 0xE8 0x03"}
+{"prompt": "Given the frequency table a:4, b:5, e:7, f:2, g:9, symbol 'b' receives a Huffman code of length", "answer": "2"}
+{"prompt": "Quantizing -2.22 to int8 symmetrically with scale 0.09 gives", "answer": "-25"}
+{"prompt": "With window 16 and minimum match 2, the string 'abbababababab' tokenizes into this many LZ77 triples:", "answer": "5"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'BBACBAACCABA' carries this many bits of information:", "answer": "19"}
+{"prompt": "Collapsing the string 'DAAABAAAC' into count-byte run pairs yields", "answer": "1D3A1B3A1C"}
+{"prompt": "Packed as a LEB128 varint, the delta 11779 becomes the bytes", "answer": "0x83 0x5C"}
+{"prompt": "Given the frequency table b:7, c:1, d:4, symbol 'd' receives a Huffman code of length", "answer": "2"}
+{"prompt": "Quantizing 2.31 to int8 symmetrically with scale 0.05 gives", "answer": "46"}
+{"prompt": "With window 16 and minimum match 2, the string 'abbabbbaabba' tokenizes into this many LZ77 triples:", "answer": "6"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'AABCAACC' carries this many bits of information:", "answer": "12"}
+{"prompt": "Collapsing the string 'BBBBBDDDBBA' into count-byte run pairs yields", "answer": "5B3D2B1A"}
+{"prompt": "Packed as a LEB128 varint, the delta 89764 becomes the bytes", "answer": "0xA4 0xBD 0x05"}
+{"prompt": "Given the frequency table a:6, c:7, d:9, symbol 'c' receives a Huffman code of length", "answer": "2"}
+{"prompt": "Quantizing 2.50 to int8 symmetrically with scale 0.09 gives", "answer": "28"}
+{"prompt": "With window 16 and minimum match 2, the string 'bbbbbabbbbabbbbb' tokenizes into this many LZ77 triples:", "answer": "4"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'BACAACC' carries this many bits of information:", "answer": "11"}
+{"prompt": "Collapsing the string 'BBBBBCCCCBBBB' into count-byte run pairs yields", "answer": "5B4C4B"}
+{"prompt": "Packed as a LEB128 varint, the delta 70534 becomes the bytes", "answer": "0x86 0xA7 0x04"}
+{"prompt": "Given the frequency table a:2, b:1, c:1, d:7, f:3, symbol 'a' receives a Huffman code of length", "answer": "3"}
+{"prompt": "Quantizing -3.40 to int8 symmetrically with scale 0.06 gives", "answer": "-57"}
+{"prompt": "With window 16 and minimum match 2, the string 'aaaaaaaaaa' tokenizes into this many LZ77 triples:", "answer": "2"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'CCCCAB' carries this many bits of information:", "answer": "11"}
+{"prompt": "Collapsing the string 'CCCDDDDCCCBB' into count-byte run pairs yields", "answer": "3C4D3C2B"}
+{"prompt": "Packed as a LEB128 varint, the delta 60968 becomes the bytes", "answer": "0xA8 0xDC 0x03"}
+{"prompt": "Given the frequency table a:7, b:7, c:3, e:9, f:2, symbol 'e' receives a Huffman code of length", "answer": "2"}
+{"prompt": "Quantizing -2.96 to int8 symmetrically with scale 0.09 gives", "answer": "-33"}
+{"prompt": "With window 16 and minimum match 2, the string 'babbabababbbab' tokenizes into this many LZ77 triples:", "answer": "7"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'ABABBA' carries this many bits of information:", "answer": "9"}
+{"prompt": "Collapsing the string 'AACCCCCDDDAAAABBBBB' into count-byte run pairs yields", "answer": "2A5C3D4A5B"}
+{"prompt": "Packed as a LEB128 varint, the delta 98016 becomes the bytes", "answer": "0xE0 0xFD 0x05"}
+{"prompt": "Given the frequency table a:6, d:6, e:4, f:8, g:2, symbol 'd' receives a Huffman code of length", "answer": "2"}
+{"prompt": "Quantizing 2.22 to int8 symmetrically with scale 0.08 gives", "answer": "28"}
+{"prompt": "With window 16 and minimum match 2, the string 'baabaabaabaaabaabaa' tokenizes into this many LZ77 triples:", "answer": "5"}
+{"prompt": "Under the model P(A)=1/2, P(B)=P(C)=1/4, the string 'BBAAA' carries this many bits of information:", "answer": "7"}
+{"prompt": "Collapsing the string 'CCABAADDDDD' into count-byte run pairs yields", "answer": "2C1A1B2A5D"}
+{"prompt": "Packed as a LEB128 varint, the delta 41041 becomes the bytes", "answer": "0xD1 0xC0 0x02"}

@@ -1,0 +1,36 @@
+# GPU image: trainer, server.
+#
+# Based on python:3.11-slim rather than nvidia/cuda:*-runtime on purpose:
+# the cu124 torch wheels vendor their own CUDA/cuDNN/NCCL shared objects as
+# nvidia-* pip packages, so the CUDA base image is redundant. This saves ~5GB
+# of image (disk is the binding constraint on this host) and shares base layers
+# with Dockerfile.cpu. Only the host NVIDIA driver is needed, injected by
+# `--gpus all` / compose device reservations.
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# torch first, from the cu124 index (separate layer: big and rarely changes)
+COPY docker/requirements.gpu.txt /tmp/requirements.gpu.txt
+RUN pip install --no-cache-dir torch==2.4.0 --index-url https://download.pytorch.org/whl/cu124 \
+    && pip install --no-cache-dir -r /tmp/requirements.gpu.txt
+
+COPY ava/ /app/ava/
+COPY evals/ /app/evals/
+COPY configs/ /app/configs/
+COPY model_1b.py multi_jspace_module.py j_space_module.py server.py /app/
+
+RUN useradd -m -u 1000 ava && chown -R ava:ava /app
+USER ava
+
+CMD ["python", "-c", "import torch; print('cuda', torch.cuda.is_available())"]

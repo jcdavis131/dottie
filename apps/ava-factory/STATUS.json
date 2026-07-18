@@ -1,0 +1,171 @@
+{
+  "builder": {
+    "current_phase_idx": 0,
+    "current_phase": "phase0_logic",
+    "writes_this_phase": 389376,
+    "total_shards": 39,
+    "phase_progress": 1.0,
+    "ts": 1783986996,
+    "lake_gb": 1.8182e-05,
+    "last_expansion": {
+      "timestamp": "2026-07-13T23:56:36.052828+00:00",
+      "tokens": 500089,
+      "docs": 5054,
+      "shards": [
+        "packed_20260713_235532_00038_7879.jsonl.gz"
+      ],
+      "manifest": "manifest_20260713_235532.jsonl",
+      "dup_filtered": 9486,
+      "qual_filtered": 8479,
+      "upload_manifest": "data/for_upload/upload_manifest_20260713_235558.json",
+      "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
+      "mode": "500K_HatchVM_4h_local_GDrive_uploaded"
+    },
+    "last_expansion_detailed": {
+      "timestamp": "2026-07-13T23:56:36.052828+00:00",
+      "tokens": 500089,
+      "docs": 5054,
+      "shards": [
+        "packed_20260713_235532_00038_7879.jsonl.gz"
+      ],
+      "manifest": "manifest_20260713_235532.jsonl",
+      "dup_filtered": 9486,
+      "qual_filtered": 8479,
+      "upload_manifest": "data/for_upload/upload_manifest_20260713_235558.json",
+      "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
+      "mode": "500K_HatchVM_4h_local_GDrive_uploaded",
+      "phases": [
+        "p0_logic",
+        "p1_math",
+        "p2_foundation"
+      ],
+      "guard": "Personal Drive safe - no work indicators, uploaded to personal Drive Ava-Datasets-Expansion per AGENTS.md absolute separation",
+      "gdrive_upload": {
+        "folder_name": "Ava-Datasets-Expansion",
+        "folder_id": "1QY5H-JFYW-yiAuDt5s89Dkhe6pcnVC5k",
+        "uploaded_files": [
+          "packed_20260713_235532_00038_7879.jsonl.gz"
+        ],
+        "new_shard": {
+          "sha12": "95d1457c1456",
+          "name": "packed_20260713_235532_00038_7879.jsonl.gz",
+          "id": "1IzIywjrWSuFwA7SkLzxU7ScceGTKkuSx",
+          "size": "164K",
+          "full_sha": "95d1457c14561fbcef65290b0413995b6d313643cbca64741c25f749a8a3a52e"
+        }
+      },
+      "disk_usage": "/dev/mapper/rv  100G  9.5G   90G  10% / safe, daily_expanded 39 shards 253M",
+      "global_manifest_lines": 607108,
+      "efficiency_note": "simhash dedup threshold 3 + md5 + quality filter alpha>0.6 heuristic score>0.8, ~26s Hatch VM, low RAM O(1) window 15k, 500K tokens 5054 docs, 9486 dup 8479 qual filtered"
+    },
+    "last_expansion_previous": {
+      "timestamp": "2026-07-13T21:59:47.897231+00:00",
+      "tokens": 10000398,
+      "docs": 32025,
+      "shards": [
+        "packed_20260713_215942_00037_6270.jsonl.gz"
+      ],
+      "manifest": "manifest_20260713_215942.jsonl",
+      "dup_filtered": 0,
+      "qual_filtered": 1355,
+      "upload_manifest": "data/for_upload/upload_manifest_20260713_215942.json",
+      "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
+      "mode": "fast_md5_HatchVM"
+    },
+    "last_expansion_previous_detailed": {
+      "timestamp": "2026-07-13T10:00:03.068568+00:00",
+      "tokens": 10000250,
+      "docs": 31989,
+      "shards": [
+        "packed_20260713_095937_00030_6678.jsonl.gz"
+      ],
+      "manifest": "manifest_20260713_095937.jsonl",
+      "dup_filtered": 0,
+      "qual_filtered": 1599,
+      "upload_manifest": "upload_manifest_20260713_100003.json",
+      "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
+      "mode": "10M_HatchVM_4h_fast_local",
+      "phases": [
+        "p0_logic",
+        "p1_math",
+        "p2_foundation",
+        "p3_code"
+      ],
+      "guard": "Personal Drive safe - no work indicators, per AGENTS.md absolute separation, HF upload skipped (no token)",
+      "disk_usage": "checked df -h 90G free"
+    }
+  },
+  "curriculum": {
+    "current": "phase0_logic",
+    "note": "Collect phase0 first, start training immediately, build phase1 while training phase0, etc.",
+    "order": [
+      "phase0_logic",
+      "phase1_math",
+      "phase2_foundation",
+      "phase3_reasoning",
+      "phase4_long",
+      "phase5_anneal"
+    ]
+  },
+  "lake": {
+    "last_manifest_lines": 607108,
+    "sources": [],
+    "total_gb": 0.0146
+  },
+  "open_source_tools": {
+    "chunking": "chonkie - TokenChunker, RecursiveChunker, SentenceChunker, CodeChunker, 505KB wheel, 32+ integrations",
+    "dedup": "dolma",
+    "filtering": "nemo-curator phase-aware dclm 0.0->0.85 edu 2.0->4.5",
+    "source_list": "https://github.com/alvinreal/awesome-opensource-ai",
+    "streaming": "datasets streaming=True + webdataset",
+    "training": "transformers + deepspeed zero3 bf16"
+  },
+  "trainer": {
+    "branch": "base",
+    "chonkie_enabled": true,
+    "loss": 0.0,
+    "lr": 0.0002,
+    "phase": "phase0_logic",
+    "rope_base": 10000,
+    "steps": 0,
+    "tokens_seen": 0,
+    "ts": 1783825244.961354,
+    "last_weekly_check": "2026-07-12T03:00:44.961272Z"
+  },
+  "weekly_training": {
+    "job_id": "ava-training-weekly",
+    "timestamp_utc": "2026-07-12T03:00:44.961272Z",
+    "scheduled_for_local": "Sat 2026-07-11 22:00:00 CDT",
+    "status": "BLOCKED_NO_GPU",
+    "blocker": "no GPU in Hatch VM - nvidia-smi not found, docker not found. Expected behavior per task notes. Skip gracefully.",
+    "prereqs": {
+      "nvidia_smi": false,
+      "docker": false,
+      "ollama_reachable": false,
+      "disk_free_gb": 92,
+      "disk_target_gb": 100,
+      "disk_ok": false,
+      "checkpoints_exists": true
+    },
+    "phase": "phase0_logic",
+    "shards": {
+      "total_shards": 2001,
+      "writes_this_phase": 33991,
+      "last_expansion_tokens": 10000049
+    },
+    "metrics": {
+      "loss": 0.0,
+      "lr": 0.0002,
+      "tokens_seen": 0,
+      "steps": 0,
+      "note": "No real training metrics - no GPU. Not faking loss numbers per failure handling policy."
+    },
+    "wsd_target": "warmup 2k, stable 736k tokens 92%, decay 2e-5",
+    "log_file": "logs/weekly-train-2026-07-12T03:00:38+00:00.log",
+    "next_action_host": "./scripts/local_train.sh torchrun --nproc_per_node=1 train_1b_deepspeed.py --preset mini --deepspeed deepspeed_zero3_bf16.json --tokens_total 2500000000 --resume checkpoints/mini/latest.pt",
+    "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only. Home-life only.",
+    "prefect_available": true,
+    "prefect_cmd": "python prefect_flows.py --run train --preset nano  # real subprocess of python -m ava.train (smoke); refuses without real packed shards"
+  },
+  "staleness_note": "Builder/trainer timestamps in this file reflect the last sync of this checkout from the data-builder host, not live state; treat all 'last_expansion' blocks as historical records of that host's runs."
+}

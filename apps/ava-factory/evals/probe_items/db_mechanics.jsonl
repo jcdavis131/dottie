@@ -1,0 +1,200 @@
+{"prompt": "Route the key 'user60' through FNV-1a onto a table of 8 slots; it lands in slot", "answer": "4"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 74, 48, 11, 15, 25, 72, 57, 36, 33, 50, 94, 29, 17, 71, 22, 79, 39, 45, 47, 31 ends at height", "answer": "3"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N0-N2, N1-N3, N0-N4, N1-N5, node N5 sits at distance", "answer": "2"}
+{"prompt": "Bucketing the stamp 1700030042 into 60-second windows anchored at base 1700029940 puts it in window number", "answer": "1"}
+{"prompt": "The squared Euclidean gap between vectors [6, 5, 4] and [1, -3, 9] equals", "answer": "114"}
+{"prompt": "In a column-major layout of 192 rows with columns id:int32, region:char8, sales:int32, units:int32, the sales block starts at byte", "answer": "2304"}
+{"prompt": "Counting the documents whose age reaches at least 29 among ages [30, 60, 38, 55, 59, 23] gives", "answer": "5"}
+{"prompt": "Route the key 'geo61' through FNV-1a onto a table of 16 slots; it lands in slot", "answer": "7"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 76, 48, 47, 60, 20, 29, 82, 46, 92, 84, 62, 34, 95, 41, 63, 37, 44 ends at height", "answer": "3"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N0-N2, N0-N3, N2-N4, N2-N5, N1-N5, node N5 sits at distance", "answer": "2"}
+{"prompt": "Bucketing the stamp 1700019801 into 60-second windows anchored at base 1700017460 puts it in window number", "answer": "39"}
+{"prompt": "The squared Euclidean gap between vectors [-7, 9, 6] and [-9, -7, -2] equals", "answer": "324"}
+{"prompt": "In a column-major layout of 114 rows with columns id:int32, region:char8, sales:int32, units:int32, the sales block starts at byte", "answer": "1368"}
+{"prompt": "Counting the documents whose age reaches at least 53 among ages [69, 56, 38, 40, 26] gives", "answer": "2"}
+{"prompt": "Route the key 'cart87' through FNV-1a onto a table of 16 slots; it lands in slot", "answer": "6"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 20, 56, 16, 29, 83, 49, 51, 26, 37, 98, 41, 57, 68 ends at height", "answer": "3"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N1-N2, N0-N3, N0-N4, N3-N5, N4-N5, node N5 sits at distance", "answer": "2"}
+{"prompt": "Bucketing the stamp 1700010350 into 60-second windows anchored at base 1700007500 puts it in window number", "answer": "47"}
+{"prompt": "The squared Euclidean gap between vectors [5, -5, -9] and [7, 5, 7] equals", "answer": "360"}
+{"prompt": "In a column-major layout of 185 rows with columns id:int32, region:char8, sales:int32, units:int32, the sales block starts at byte", "answer": "2220"}
+{"prompt": "Counting the documents whose age reaches at least 48 among ages [35, 46, 35, 50, 58, 36] gives", "answer": "2"}
+{"prompt": "Route the key 'page47' through FNV-1a onto a table of 8 slots; it lands in slot", "answer": "3"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 23, 78, 98, 81, 60, 58, 16, 41, 66, 74, 10, 11, 35, 85, 59 ends at height", "answer": "3"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N0-N2, N0-N3, N0-N4, node N4 sits at distance", "answer": "1"}
+{"prompt": "Bucketing the stamp 1700054981 into 300-second windows anchored at base 1700052680 puts it in window number", "answer": "7"}
+{"prompt": "The squared Euclidean gap between vectors [-8, -3, 7] and [5, 8, 4] equals", "answer": "299"}
+{"prompt": "In a column-major layout of 184 rows with columns id:int32, region:char8, sales:int32, units:int32, the sales block starts at byte", "answer": "2208"}
+{"prompt": "Counting the documents whose age reaches at least 28 among ages [26, 24, 41, 33, 39, 27] gives", "answer": "3"}
+{"prompt": "Route the key 'item20' through FNV-1a onto a table of 32 slots; it lands in slot", "answer": "4"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 94, 58, 82, 12, 40, 23, 38, 91, 10, 70, 31 ends at height", "answer": "3"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N1-N2, N2-N3, N1-N4, N2-N5, N2-N6, N4-N6, node N6 sits at distance", "answer": "3"}
+{"prompt": "Bucketing the stamp 1700006881 into 60-second windows anchored at base 1700005160 puts it in window number", "answer": "28"}
+{"prompt": "The squared Euclidean gap between vectors [-1, 4, 0] and [-7, -1, 6] equals", "answer": "97"}
+{"prompt": "In a column-major layout of 184 rows with columns id:int32, region:char8, sales:int32, units:int32, the sales block starts at byte", "answer": "2208"}
+{"prompt": "Counting the documents whose age reaches at least 51 among ages [52, 46, 26, 51, 70, 68] gives", "answer": "4"}
+{"prompt": "Route the key 'geo43' through FNV-1a onto a table of 16 slots; it lands in slot", "answer": "3"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 98, 51, 28, 35, 47, 36, 66, 78, 17, 10, 72, 58, 96 ends at height", "answer": "3"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N1-N2, N1-N3, N1-N4, N3-N5, N1-N5, node N5 sits at distance", "answer": "2"}
+{"prompt": "Bucketing the stamp 1700031951 into 300-second windows anchored at base 1700031140 puts it in window number", "answer": "2"}
+{"prompt": "The squared Euclidean gap between vectors [-9, -5, 2] and [5, -7, 4] equals", "answer": "204"}
+{"prompt": "In a column-major layout of 169 rows with columns id:int32, region:char8, sales:int32, units:int32, the sales block starts at byte", "answer": "2028"}
+{"prompt": "Counting the documents whose age reaches at least 50 among ages [26, 42, 51, 23, 28, 30, 44, 61, 29] gives", "answer": "2"}
+{"prompt": "Route the key 'geo89' through FNV-1a onto a table of 8 slots; it lands in slot", "answer": "5"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 66, 65, 49, 98, 31 ends at height", "answer": "2"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N0-N2, N0-N3, N2-N4, N1-N5, N5-N6, N4-N6, node N6 sits at distance", "answer": "3"}
+{"prompt": "Bucketing the stamp 1700009265 into 300-second windows anchored at base 1700007980 puts it in window number", "answer": "4"}
+{"prompt": "The squared Euclidean gap between vectors [-6, 6, -3] and [0, 8, 2] equals", "answer": "65"}
+{"prompt": "In a column-major layout of 165 rows with columns id:int32, region:char8, sales:int32, units:int32, the sales block starts at byte", "answer": "1980"}
+{"prompt": "Counting the documents whose age reaches at least 28 among ages [55, 20, 56, 59, 20, 67] gives", "answer": "4"}
+{"prompt": "Route the key 'sess48' through FNV-1a onto a table of 8 slots; it lands in slot", "answer": "7"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 93, 56, 32, 81, 53, 19, 77, 80, 27, 52, 74 ends at height", "answer": "3"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N0-N2, N1-N3, N2-N4, node N4 sits at distance", "answer": "2"}
+{"prompt": "Bucketing the stamp 1700055672 into 60-second windows anchored at base 1700054600 puts it in window number", "answer": "17"}
+{"prompt": "The squared Euclidean gap between vectors [4, -8, -1] and [9, 0, 8] equals", "answer": "170"}
+{"prompt": "In a column-major layout of 37 rows with columns id:int32, region:char8, sales:int32, units:int32, the sales block starts at byte", "answer": "444"}
+{"prompt": "Counting the documents whose age reaches at least 45 among ages [60, 48, 26, 19, 24, 55, 64, 25, 66] gives", "answer": "5"}
+{"prompt": "Route the key 'page54' through FNV-1a onto a table of 16 slots; it lands in slot", "answer": "7"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 81, 91, 22, 36, 12, 26, 13, 65, 37, 93, 49, 15 ends at height", "answer": "3"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N0-N2, N0-N3, N0-N4, N1-N4, node N4 sits at distance", "answer": "1"}
+{"prompt": "Bucketing the stamp 1700025173 into 60-second windows anchored at base 1700023520 puts it in window number", "answer": "27"}
+{"prompt": "The squared Euclidean gap between vectors [4, 4, -2] and [4, 8, 5] equals", "answer": "65"}
+{"prompt": "In a column-major layout of 149 rows with columns id:int32, region:char8, sales:int32, units:int32, the sales block starts at byte", "answer": "1788"}
+{"prompt": "Counting the documents whose age reaches at least 28 among ages [27, 31, 69, 34, 36, 58] gives", "answer": "5"}
+{"prompt": "Route the key 'user98' through FNV-1a onto a table of 32 slots; it lands in slot", "answer": "11"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 16, 83, 29, 60, 43 ends at height", "answer": "2"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N1-N2, N1-N3, N0-N3, node N3 sits at distance", "answer": "1"}
+{"prompt": "Bucketing the stamp 1700047127 into 60-second windows anchored at base 1700045000 puts it in window number", "answer": "35"}
+{"prompt": "The squared Euclidean gap between vectors [-6, -2, -7] and [-8, 5, 3] equals", "answer": "153"}
+{"prompt": "In a column-major layout of 175 rows with columns id:int32, region:char8, sales:int32, units:int32, the sales block starts at byte", "answer": "2100"}
+{"prompt": "Counting the documents whose age reaches at least 44 among ages [20, 39, 56, 22, 28] gives", "answer": "1"}
+{"prompt": "Route the key 'cart51' through FNV-1a onto a table of 16 slots; it lands in slot", "answer": "13"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 87, 32, 35, 50, 37, 88, 12, 23, 62, 96, 52, 15, 11, 31, 26, 73, 72, 58, 16, 40, 74, 57, 56, 42 ends at height", "answer": "3"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N1-N2, N2-N3, node N3 sits at distance", "answer": "3"}
+{"prompt": "Bucketing the stamp 1700054496 into 60-second windows anchored at base 1700052740 puts it in window number", "answer": "29"}
+{"prompt": "The squared Euclidean gap between vectors [-2, 4, -4] and [0, 2, 8] equals", "answer": "152"}
+{"prompt": "In a column-major layout of 126 rows with columns id:int32, region:char8, sales:int32, units:int32, the sales block starts at byte", "answer": "1512"}
+{"prompt": "Counting the documents whose age reaches at least 41 among ages [65, 56, 33, 25, 44, 60, 41, 38] gives", "answer": "5"}
+{"prompt": "Route the key 'rate9' through FNV-1a onto a table of 16 slots; it lands in slot", "answer": "10"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 46, 15, 92, 52, 31, 45, 79, 89, 44, 38, 19, 22, 82, 67, 96, 40 ends at height", "answer": "3"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N0-N2, N1-N3, N2-N3, node N3 sits at distance", "answer": "2"}
+{"prompt": "Bucketing the stamp 1700055415 into 60-second windows anchored at base 1700054960 puts it in window number", "answer": "7"}
+{"prompt": "The squared Euclidean gap between vectors [5, 9, 3] and [7, 9, -2] equals", "answer": "29"}
+{"prompt": "In a column-major layout of 17 rows with columns id:int32, region:char8, sales:int32, units:int32, the sales block starts at byte", "answer": "204"}
+{"prompt": "Counting the documents whose age reaches at least 33 among ages [27, 49, 24, 37, 51, 67] gives", "answer": "4"}
+{"prompt": "Route the key 'rate46' through FNV-1a onto a table of 8 slots; it lands in slot", "answer": "5"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 91, 97, 78, 45, 70, 85, 66, 77, 58, 27, 65, 74, 92, 19, 10, 69, 96, 14, 50, 29, 24, 31, 49, 63 ends at height", "answer": "3"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N0-N2, N0-N3, N3-N4, N4-N5, N4-N6, N3-N6, node N6 sits at distance", "answer": "2"}
+{"prompt": "Bucketing the stamp 1700046483 into 300-second windows anchored at base 1700045180 puts it in window number", "answer": "4"}
+{"prompt": "The squared Euclidean gap between vectors [5, 9, -8] and [-2, 2, 6] equals", "answer": "294"}
+{"prompt": "In a column-major layout of 18 rows with columns id:int32, region:char8, sales:int32, units:int32, the sales block starts at byte", "answer": "216"}
+{"prompt": "Counting the documents whose age reaches at least 50 among ages [28, 21, 59, 27, 26, 67, 51] gives", "answer": "3"}
+{"prompt": "Route the key 'sess29' through FNV-1a onto a table of 32 slots; it lands in slot", "answer": "14"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 93, 60, 82, 66, 70 ends at height", "answer": "2"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N0-N2, N0-N3, N1-N4, N2-N5, N5-N6, node N6 sits at distance", "answer": "3"}
+{"prompt": "Bucketing the stamp 1700034750 into 60-second windows anchored at base 1700034140 puts it in window number", "answer": "10"}
+{"prompt": "The squared Euclidean gap between vectors [-7, 6, 2] and [4, -4, -6] equals", "answer": "285"}
+{"prompt": "In a column-major layout of 113 rows with columns id:int32, region:char8, sales:int32, units:int32, the sales block starts at byte", "answer": "1356"}
+{"prompt": "Counting the documents whose age reaches at least 34 among ages [57, 31, 24, 31, 20, 37, 44, 29, 69] gives", "answer": "4"}
+{"prompt": "Route the key 'sess6' through FNV-1a onto a table of 16 slots; it lands in slot", "answer": "15"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 42, 93, 37, 34, 92, 56, 83, 58, 57, 26, 43, 79, 81, 18, 31, 39 ends at height", "answer": "3"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N0-N2, N2-N3, N2-N4, N1-N5, N4-N5, node N5 sits at distance", "answer": "2"}
+{"prompt": "Bucketing the stamp 1700039162 into 300-second windows anchored at base 1700037740 puts it in window number", "answer": "4"}
+{"prompt": "The squared Euclidean gap between vectors [-3, 9, -1] and [6, -4, 4] equals", "answer": "275"}
+{"prompt": "In a column-major layout of 53 rows with columns id:int32, region:char8, sales:int32, units:int32, the sales block starts at byte", "answer": "636"}
+{"prompt": "Counting the documents whose age reaches at least 27 among ages [47, 25, 56, 38, 29, 40] gives", "answer": "5"}
+{"prompt": "Route the key 'rate90' through FNV-1a onto a table of 32 slots; it lands in slot", "answer": "30"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 33, 49, 16, 78 ends at height", "answer": "2"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N0-N2, N2-N3, N0-N4, N4-N5, N1-N6, N0-N6, node N6 sits at distance", "answer": "1"}
+{"prompt": "Bucketing the stamp 1700040388 into 300-second windows anchored at base 1700038100 puts it in window number", "answer": "7"}
+{"prompt": "The squared Euclidean gap between vectors [-5, -9, 5] and [6, 9, 6] equals", "answer": "446"}
+{"prompt": "In a column-major layout of 29 rows with columns id:int32, region:char8, sales:int32, units:int32, the sales block starts at byte", "answer": "348"}
+{"prompt": "Counting the documents whose age reaches at least 46 among ages [43, 55, 38, 52, 56] gives", "answer": "3"}
+{"prompt": "Route the key 'job39' through FNV-1a onto a table of 32 slots; it lands in slot", "answer": "12"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 73, 13, 71, 14, 20, 92, 85, 56, 24, 58, 79, 61, 65, 52, 55 ends at height", "answer": "3"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N1-N2, N2-N3, N3-N4, N1-N5, N3-N6, N0-N6, node N6 sits at distance", "answer": "1"}
+{"prompt": "Bucketing the stamp 1700007371 into 60-second windows anchored at base 1700007200 puts it in window number", "answer": "2"}
+{"prompt": "The squared Euclidean gap between vectors [0, 7, -3] and [9, 1, -4] equals", "answer": "118"}
+{"prompt": "In a column-major layout of 127 rows with columns id:int32, region:char8, sales:int32, units:int32, the sales block starts at byte", "answer": "1524"}
+{"prompt": "Counting the documents whose age reaches at least 55 among ages [55, 35, 28, 41, 33, 65, 70] gives", "answer": "3"}
+{"prompt": "Route the key 'job93' through FNV-1a onto a table of 8 slots; it lands in slot", "answer": "4"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 21, 48, 29, 86, 88, 76, 41, 59, 46, 98, 84, 90, 78, 93, 81, 53, 92, 73, 79, 58, 17, 39, 14, 24 ends at height", "answer": "3"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N0-N2, N2-N3, N3-N4, node N4 sits at distance", "answer": "3"}
+{"prompt": "Bucketing the stamp 1700007392 into 300-second windows anchored at base 1700006240 puts it in window number", "answer": "3"}
+{"prompt": "The squared Euclidean gap between vectors [8, -1, 2] and [-1, 1, 1] equals", "answer": "86"}
+{"prompt": "In a column-major layout of 73 rows with columns id:int32, region:char8, sales:int32, units:int32, the sales block starts at byte", "answer": "876"}
+{"prompt": "Counting the documents whose age reaches at least 42 among ages [43, 36, 67, 51, 60, 44, 59, 26] gives", "answer": "6"}
+{"prompt": "Route the key 'item75' through FNV-1a onto a table of 16 slots; it lands in slot", "answer": "2"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 70, 88, 76, 58, 27, 35, 64, 36, 78, 77, 50, 11, 13, 56, 83, 43, 87, 94, 46, 57, 68 ends at height", "answer": "3"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N0-N2, N0-N3, N1-N4, N3-N5, N1-N6, node N6 sits at distance", "answer": "2"}
+{"prompt": "Bucketing the stamp 1700041374 into 60-second windows anchored at base 1700039720 puts it in window number", "answer": "27"}
+{"prompt": "The squared Euclidean gap between vectors [9, -1, 4] and [-1, -7, 8] equals", "answer": "152"}
+{"prompt": "In a column-major layout of 76 rows with columns id:int32, region:char8, sales:int32, units:int32, the sales block starts at byte", "answer": "912"}
+{"prompt": "Counting the documents whose age reaches at least 52 among ages [24, 19, 64, 68, 30, 31] gives", "answer": "2"}
+{"prompt": "Route the key 'sess55' through FNV-1a onto a table of 8 slots; it lands in slot", "answer": "5"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 37, 57, 83, 85, 79, 92, 84, 54, 62, 95, 67, 16, 93, 64, 10, 31, 96 ends at height", "answer": "3"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N0-N2, N1-N3, N0-N4, N1-N5, N4-N5, node N5 sits at distance", "answer": "2"}
+{"prompt": "Bucketing the stamp 1700004943 into 60-second windows anchored at base 1700003120 puts it in window number", "answer": "30"}
+{"prompt": "The squared Euclidean gap between vectors [9, -1, 1] and [-7, 5, -7] equals", "answer": "356"}
+{"prompt": "In a column-major layout of 74 rows with columns id:int32, region:char8, sales:int32, units:int32, the sales block starts at byte", "answer": "888"}
+{"prompt": "Counting the documents whose age reaches at least 47 among ages [28, 27, 44, 25, 22, 69] gives", "answer": "1"}
+{"prompt": "Route the key 'sess91' through FNV-1a onto a table of 32 slots; it lands in slot", "answer": "13"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 21, 16, 73, 70, 67, 27, 53, 85, 18, 10, 48, 26 ends at height", "answer": "3"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N1-N2, N1-N3, N1-N4, N4-N5, N0-N6, N1-N6, node N6 sits at distance", "answer": "1"}
+{"prompt": "Bucketing the stamp 1700055768 into 60-second windows anchored at base 1700055680 puts it in window number", "answer": "1"}
+{"prompt": "The squared Euclidean gap between vectors [9, -4, 8] and [8, -2, -2] equals", "answer": "105"}
+{"prompt": "In a column-major layout of 139 rows with columns id:int32, region:char8, sales:int32, units:int32, the sales block starts at byte", "answer": "1668"}
+{"prompt": "Counting the documents whose age reaches at least 43 among ages [23, 27, 30, 51, 49, 36, 30] gives", "answer": "2"}
+{"prompt": "Route the key 'cart8' through FNV-1a onto a table of 32 slots; it lands in slot", "answer": "21"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 87, 80, 58, 82, 15, 85, 28, 56, 93, 89, 18, 45, 31, 48 ends at height", "answer": "3"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N1-N2, N1-N3, N2-N4, N2-N5, N3-N6, N2-N6, node N6 sits at distance", "answer": "3"}
+{"prompt": "Bucketing the stamp 1700040343 into 60-second windows anchored at base 1700039120 puts it in window number", "answer": "20"}
+{"prompt": "The squared Euclidean gap between vectors [-6, 8, -3] and [5, 9, -3] equals", "answer": "122"}
+{"prompt": "In a column-major layout of 126 rows with columns id:int32, region:char8, sales:int32, units:int32, the sales block starts at byte", "answer": "1512"}
+{"prompt": "Counting the documents whose age reaches at least 48 among ages [23, 40, 34, 21, 37, 30] gives", "answer": "0"}
+{"prompt": "Route the key 'geo87' through FNV-1a onto a table of 32 slots; it lands in slot", "answer": "27"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 92, 15, 80, 73, 90, 82, 27, 60, 69, 47 ends at height", "answer": "2"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N1-N2, N2-N3, N3-N4, N0-N4, node N4 sits at distance", "answer": "1"}
+{"prompt": "Bucketing the stamp 1700026126 into 300-second windows anchored at base 1700025680 puts it in window number", "answer": "1"}
+{"prompt": "The squared Euclidean gap between vectors [8, -1, 9] and [-8, -4, -6] equals", "answer": "490"}
+{"prompt": "In a column-major layout of 112 rows with columns id:int32, region:char8, sales:int32, units:int32, the sales block starts at byte", "answer": "1344"}
+{"prompt": "Counting the documents whose age reaches at least 44 among ages [39, 51, 56, 45, 60, 18, 65] gives", "answer": "5"}
+{"prompt": "Route the key 'page71' through FNV-1a onto a table of 16 slots; it lands in slot", "answer": "6"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 64, 82, 15, 77, 62, 29, 81, 53, 45, 41, 48, 65, 12, 61, 89, 71, 11, 32, 68, 95, 34, 96 ends at height", "answer": "3"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N1-N2, N2-N3, N3-N4, N2-N4, node N4 sits at distance", "answer": "3"}
+{"prompt": "Bucketing the stamp 1700026659 into 60-second windows anchored at base 1700026460 puts it in window number", "answer": "3"}
+{"prompt": "The squared Euclidean gap between vectors [-2, -5, 3] and [1, -2, 1] equals", "answer": "22"}
+{"prompt": "In a column-major layout of 154 rows with columns id:int32, region:char8, sales:int32, units:int32, the sales block starts at byte", "answer": "1848"}
+{"prompt": "Counting the documents whose age reaches at least 47 among ages [42, 69, 43, 67, 29, 61, 26] gives", "answer": "3"}
+{"prompt": "Route the key 'cart59' through FNV-1a onto a table of 16 slots; it lands in slot", "answer": "5"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 64, 80, 19, 43, 67, 39, 12, 50, 46, 70, 75, 62, 20, 83, 58, 16, 78, 28, 57, 61, 52 ends at height", "answer": "3"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N0-N2, N0-N3, N0-N4, N3-N5, N1-N6, N2-N6, node N6 sits at distance", "answer": "2"}
+{"prompt": "Bucketing the stamp 1700026791 into 300-second windows anchored at base 1700025740 puts it in window number", "answer": "3"}
+{"prompt": "The squared Euclidean gap between vectors [8, -2, -6] and [8, 1, 2] equals", "answer": "73"}
+{"prompt": "In a column-major layout of 56 rows with columns id:int32, region:char8, sales:int32, units:int32, the sales block starts at byte", "answer": "672"}
+{"prompt": "Counting the documents whose age reaches at least 26 among ages [54, 66, 43, 37, 48, 48, 18, 29] gives", "answer": "7"}
+{"prompt": "Route the key 'item50' through FNV-1a onto a table of 8 slots; it lands in slot", "answer": "3"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 96, 21, 38, 72, 24, 18, 37, 10, 63, 84, 85, 15, 67, 75, 73, 48, 46, 94, 14, 23, 16, 27 ends at height", "answer": "3"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N1-N2, N0-N3, N1-N4, N4-N5, N3-N5, node N5 sits at distance", "answer": "2"}
+{"prompt": "Bucketing the stamp 1700022400 into 300-second windows anchored at base 1700020340 puts it in window number", "answer": "6"}
+{"prompt": "The squared Euclidean gap between vectors [8, -4, -5] and [-5, -9, 9] equals", "answer": "390"}
+{"prompt": "In a column-major layout of 187 rows with columns id:int32, region:char8, sales:int32, units:int32, the sales block starts at byte", "answer": "2244"}
+{"prompt": "Counting the documents whose age reaches at least 31 among ages [70, 48, 51, 51, 40, 18] gives", "answer": "5"}
+{"prompt": "Route the key 'sess74' through FNV-1a onto a table of 32 slots; it lands in slot", "answer": "24"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 16, 64, 41, 49, 69, 57, 55, 18, 93, 76, 97, 94, 63, 77 ends at height", "answer": "3"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N0-N2, N1-N3, N3-N4, N2-N5, N0-N6, N3-N6, node N6 sits at distance", "answer": "1"}
+{"prompt": "Bucketing the stamp 1700033289 into 60-second windows anchored at base 1700030600 puts it in window number", "answer": "44"}
+{"prompt": "The squared Euclidean gap between vectors [-7, -7, 0] and [3, -5, 0] equals", "answer": "104"}
+{"prompt": "In a column-major layout of 37 rows with columns id:int32, region:char8, sales:int32, units:int32, the sales block starts at byte", "answer": "444"}
+{"prompt": "Counting the documents whose age reaches at least 45 among ages [64, 32, 20, 28, 27, 58, 62, 26, 52] gives", "answer": "4"}
+{"prompt": "Route the key 'sess55' through FNV-1a onto a table of 16 slots; it lands in slot", "answer": "5"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 70, 31, 91, 84, 79, 14, 21, 53, 46, 45, 97, 73, 19, 67, 76, 10, 37, 92, 94, 64, 95, 34, 81, 11 ends at height", "answer": "3"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N1-N2, N0-N3, N0-N4, node N4 sits at distance", "answer": "1"}
+{"prompt": "Bucketing the stamp 1700027393 into 300-second windows anchored at base 1700025320 puts it in window number", "answer": "6"}
+{"prompt": "The squared Euclidean gap between vectors [4, 0, 3] and [-4, 3, 0] equals", "answer": "82"}
+{"prompt": "In a column-major layout of 153 rows with columns id:int32, region:char8, sales:int32, units:int32, the sales block starts at byte", "answer": "1836"}
+{"prompt": "Counting the documents whose age reaches at least 30 among ages [43, 48, 65, 42, 18, 35, 34, 45] gives", "answer": "7"}
+{"prompt": "Route the key 'item50' through FNV-1a onto a table of 16 slots; it lands in slot", "answer": "11"}
+{"prompt": "An order-4 B-tree grown from inserting the key sequence 86, 52, 41, 96, 26, 42, 81, 77, 84, 35, 31, 24, 40, 32, 61, 10, 16, 27, 71, 21, 50, 19, 38 ends at height", "answer": "3"}
+{"prompt": "Following breadth-first hops across the edge list N0-N1, N0-N2, N1-N3, N1-N4, N4-N5, node N5 sits at distance", "answer": "3"}
+{"prompt": "Bucketing the stamp 1700037123 into 300-second windows anchored at base 1700034260 puts it in window number", "answer": "9"}

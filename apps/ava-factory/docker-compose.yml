@@ -1,0 +1,218 @@
+# Solo personal project, no connection to employer, built with public/free-tier only
+#
+# Ava continuous pipeline: gather -> clean -> train -> serve, all concurrent.
+#
+# Coordination is via a SQLite WAL manifest on the shared `ava_state` volume.
+# Named volumes (not bind mounts to C:) on purpose: bind mounts cross the
+# Windows/WSL 9p boundary and are ~10x slower for the many-small-file I/O the
+# curator does.
+#
+#   docker compose up -d                 # whole pipeline
+#   docker compose up -d collector curator   # data plane only
+#   docker compose logs -f trainer
+#   docker compose up -d ava-train       # ad hoc interactive GPU dev shell (not part of the pipeline)
+
+x-cpu-image: &cpu-image
+  build:
+    context: .
+    dockerfile: docker/Dockerfile.cpu
+  image: ava/cpu:latest
+
+x-gpu-image: &gpu-image
+  build:
+    context: .
+    dockerfile: docker/Dockerfile.gpu
+  image: ava/gpu:latest
+
+x-common-env: &common-env
+  AVA_PRESET: ${AVA_PRESET:-nano}
+  AVA_STATE_DB: /state/manifest.db
+  AVA_RAW_DIR: /raw
+  AVA_PACKED_DIR: /packed
+  AVA_CKPT_DIR: /ckpt
+  AVA_REPORTS_DIR: /reports
+  AVA_PIPELINE_CONFIG: /app/configs/pipeline.yaml
+  AVA_TOKENIZER: /state/tokenizer.json
+  # Docker Desktop VHDX free ≠ host free; probe the Windows drive via bind mount.
+  AVA_DISK_PROBE: /host_disk
+  HF_TOKEN: ${HF_TOKEN:-}
+
+# Read-only host-drive probe for free_gb() (stat only; not for data I/O).
+x-host-disk: &host-disk
+  type: bind
+  source: C:/
+  target: /host_disk
+  read_only: true
+
+x-gpu-reservation: &gpu-reservation
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
+
+services:
+  # ---- data plane -----------------------------------------------------------
+  collector:
+    <<: *cpu-image
+    command: ["python", "-m", "ava.pipeline.collector"]
+    environment: *common-env
+    volumes:
+      - ava_raw:/raw
+      - ava_state:/state
+      - ava_reports:/reports
+      - *host-disk
+    deploy:
+      replicas: 4
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-m", "ava.pipeline.healthcheck", "--role", "collector"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  curator:
+    <<: *cpu-image
+    command: ["python", "-m", "ava.pipeline.curator"]
+    environment: *common-env
+    volumes:
+      - ava_raw:/raw
+      - ava_packed:/packed
+      - ava_state:/state
+      - ava_reports:/reports
+      - *host-disk
+    deploy:
+      replicas: 6
+    depends_on:
+      - collector
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-m", "ava.pipeline.healthcheck", "--role", "curator"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # Enforces disk watermarks; deletes CONSUMED shards (never val/test); rotates ckpts.
+  janitor:
+    <<: *cpu-image
+    command: ["python", "-m", "ava.pipeline.janitor"]
+    environment: *common-env
+    volumes:
+      - ava_raw:/raw
+      - ava_packed:/packed
+      - ava_ckpt:/ckpt
+      - ava_state:/state
+      - *host-disk
+    restart: unless-stopped
+
+  # ---- compute plane --------------------------------------------------------
+  trainer:
+    <<: [*gpu-image, *gpu-reservation]
+    command: ["python", "-m", "ava.train", "--preset", "${AVA_PRESET:-nano}", "--resume"]
+    environment:
+      <<: *common-env
+      # Keep the trainer off the cores the curator needs to stay ahead of it.
+      OMP_NUM_THREADS: "4"
+    volumes:
+      - ava_packed:/packed
+      - ava_ckpt:/ckpt
+      - ava_state:/state
+      - ava_reports:/reports
+      - *host-disk
+    depends_on:
+      - curator
+    # on-failure: a finished run exits 0 (see ava.train already_done) and must
+    # not restart-loop; real crashes (non-zero) still come back.
+    restart: on-failure
+    shm_size: "2gb"
+
+  # Pipeline monitor (/dashboard). Use AVA_SKIP_ENGINE_BOOT=1 during training so
+  # this service does not load a second model. No GPU reservation in that mode —
+  # sharing the 4080 with the trainer caused CUBLAS / silent shutdowns.
+  # For J-Space viewer: set AVA_SKIP_ENGINE_BOOT=0, point AVA_CKPT at a .pt, and
+  # add the gpu-reservation anchor back (stop trainer first on this host).
+  server:
+    <<: *gpu-image
+    command: ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      <<: *common-env
+      AVA_CKPT: ${AVA_CKPT:-/ckpt/latest}
+      AVA_TOKENIZER: /state/tokenizer.json
+      AVA_SKIP_ENGINE_BOOT: ${AVA_SKIP_ENGINE_BOOT:-0}
+      ENABLE_JSPACE_WRITE: ${ENABLE_JSPACE_WRITE:-0}
+      AGENT_EVAL_DIR: /agent-eval
+    ports:
+      - "8000:8000"
+    volumes:
+      - ava_ckpt:/ckpt
+      - ava_state:/state
+      - ava_reports:/reports
+      - *host-disk
+      # Read-only: lets /evals show agent-eval's scoreboard (the Ava-claw /
+      # AgenticOS agentic hill-climb, a different axis than the pretraining
+      # evals above) alongside it. ava_claw_run.py writes here from the host;
+      # the dashboard only ever reads. User-confirmed 2026-07-13.
+      - type: bind
+        source: ${AGENT_EVAL_HOST_PATH:-C:/Users/jcdav/agent-eval}
+        target: /agent-eval
+        read_only: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/pipeline/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ---- ad hoc dev shell (not part of the pipeline; start explicitly) --------
+  # Interactive GPU box for manual experiments — separate image/volumes from
+  # the pipeline services above so it never fights them for ava_state/ava_ckpt.
+  # Port remapped to 8001 so it can coexist with the pipeline `server` service.
+  ava-train:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: ava-agi-factory:2.4.0-cuda12.4
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - WANDB_MODE=offline
+      - PYTHONUNBUFFERED=1
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      - OLLAMA_MODEL=qwen3:32b
+      - GLM_MODEL=glm-5.2[1m]
+      - HF_HUB_OFFLINE=0
+      - TOKENIZERS_PARALLELISM=false
+      - ZAI_API_KEY=${ZAI_API_KEY:-}
+      - META_API_KEY=${META_API_KEY:-}
+    volumes:
+      - .:/workspace
+      - ./checkpoints:/workspace/checkpoints
+      - ./data:/workspace/data
+      - ./logs:/workspace/logs
+      - ./wandb:/workspace/wandb
+    ports:
+      - "8001:8000"
+    stdin_open: true
+    tty: true
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    command: bash -c "sleep infinity"
+
+volumes:
+  ava_raw:     { external: true }
+  ava_packed:  { external: true }
+  ava_ckpt:    { external: true }
+  ava_state:   { external: true }
+  ava_reports: { external: true }

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ava v6.4 Manim Lab — J-Space 4 workspaces visualized with 3Blue1Brown engine</title>
+<style>
+*{box-sizing:border-box}body{font-family:system-ui,Segoe UI,sans-serif;margin:0;background:#0a0a0a;color:#f5f5f0;line-height:1.6}
+header{padding:24px;border-bottom:2px solid #222;background:linear-gradient(90deg,#0a0a0a,#1a2a1a)}
+h1{margin:0;font-size:28px} .eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#9cd321;font-weight:800}
+main{max-width:1100px;margin:0 auto;padding:20px}
+.card{border:2px solid #222;border-radius:12px;padding:16px;margin:16px 0;background:#111}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+video{width:100%;aspect-ratio:16/9;background:#000;border-radius:8px;border:1px solid #333}
+code{background:#222;padding:2px 6px;border-radius:4px;font-size:12px;color:#9cd321}
+.meta{font-size:11px;color:#888}
+</style>
+</head>
+<body>
+<header>
+<div class="eyebrow">Ava AGI Factory v6.4 • Solo personal project, no connection to employer • public/free-tier only</div>
+<h1>Ava v6.4 Manim Lab — J-Space visualized</h1>
+<p class="meta">Manim community 0.20.1 + manimgl 1.7.2 • pip install manimgl • LaTeX + OpenGL + Cairo + moderngl • ffmpeg 6.1.1 • 480p15 low-q fast (1080p60 ready)</p>
+</header>
+<main>
+<div class="card">
+<h2>Why Manim for Ava?</h2>
+<p>Previous Ava dashboards used static SVG flow W1380 H780 COLS 110/230/... with 1:1 input→tower cat box. Now we use <b>Manim — Python code → precise vector graphics</b>, same engine as 3Blue1Brown. Programmatic, time-accurate, LaTeX-ready (though we use Text for speed since texlive optional in VM). Each animation is code: <code>class MTNNFlow(Scene):</code> → <code>Write()</code>, <code>Create(Rectangle)</code>, <code>Arrow(..., stroke_width=4)</code>, <code>Dot.animate.move_to()</code> showing data flow. OpenGL via moderngl 5.12.0 + moderngl_window + PyOpenGL, Cairo via manimpango.</p>
+<p>Maps to 6 local LLMs review: <b>Zaya1 8.4B MoE 760M active</b> compressed conv 8× KV 64GB→8GB, <b>Qwen 3.6 Gated DeltaNet</b> fixed 18MB @170K never grows 3:1 precision checkpoint 25-40 tok/s, <b>DeepSeek V4 Flash 284B 13B active 1M ctx 10% KV disk</b> ds4 C, <b>VibeThinker-3B $7,800</b> verifiable reasoning packs smaller, <b>DiffusionGemma 26B/4B-active 256 canvas 123 steps bidirectional</b>, <b>Gemma4 E2B/E4B MatFormer + per-layer embeddings</b> 6GB RAM 7-8 tok/s.</p>
+</div>
+
+<div class="card">
+<h2>Videos — rendered via <code>manim -ql</code> + <code>manimgl -l -w</code></h2>
+<div class="grid">
+<div><video autoplay loop muted playsinline controls src="./MTNNFlow.mp4"></video><div style="padding:8px"><b>MTNNFlow.mp4</b> 352KB — 17 families 120 feats cat([x·m,m]) → 160→32 res×2 =544 +12=556 →128 GELU LN →48 L2 cosine similarity → heads 8/5/14/18 skills. Dot flows input→tower→fusion→heads. SOTA overlay: KV 8×, DeltaNet 18MB, sparse 10%. Powers Chimera 68% top-3, Era Twin Procrustes RᵀR=I drift ↓18%.</div></div>
+<div><video autoplay loop muted playsinline controls src="./AvaJSpace.mp4"></video><div style="padding:8px"><b>AvaJSpace.mp4</b> 279KB — 4 workspaces S1 Fast 32 hl=8 automatic, S2 Slow 64 hl=300 deliberate verbalizable mass 0.06 reportability, Critic 16 hl=30 AUC 0.91 early 4.5tok, Planner 32 hl=150 temporal planning + GWTB v2 d_gw=256 k=8 φ 4.55x Router/veto. YaRN 10k→1M LongRoPE2 31→25 QK-Norm Peri-LN 4 sinks WSD 736k 92% stable→WSM EMA. 6 innovations map to SOTA.</div></div>
+<div><video autoplay loop muted playsinline controls src="./KVCompression.mp4"></video><div style="padding:8px"><b>KVCompression.mp4</b> 131KB — Before Llama2-7B 128K 64GB FP16 → After Zaya1 compressed conv latent 64 conv7 groups=H → 8GB 8× + After Qwen fixed 18MB @170K never grows vs linear. arrow label QKV→shared latent. Enables phone deploy Oppo Find N5 Snapdragon 8 Elite 16GB Q8_0 4.3GB+900MB projector 6GB RAM 7-8 tok/s sub-sec TTFT.</div></div>
+<div><video autoplay loop muted playsinline controls src="./ChimeraEquation.mp4"></video><div style="padding:8px"><b>ChimeraEquation.mp4</b> 153KB — Donor A per-100 σ + Donor B → Chimera closest real. Shows blue/orange feats fused 3+3 → 48-d L2 cosine nearest. Core game logic: Wilt volume + Curry efficiency → Jokic? MTNN 48-d powers guess. LaTeX-free Text for speed, OpenGL via moderngl.</div></div>
+<div><video autoplay loop muted playsinline controls src="./ProcrustesAlign.mp4"></video><div style="padding:8px"><b>ProcrustesAlign.mp4</b> 129KB — Era-honest: two point clouds 1999 pace 91 vs 2025 pace 100 3PT 41% → min_R ||X1999 R - X2025||_F s.t. R^T R = I. Dot clouds rotate, drift down 18%. Makes Era Twin fair cross-decade. RealMLP robust after.</div></div>
+<div><video autoplay loop muted playsinline controls src="./MatFormerNesting.mp4"></video><div style="padding:8px"><b>MatFormerNesting.mp4</b> 111KB — MatFormer Matryoshka: E2B 2B phone 4.3GB Q8_0 inside E4B 4.5B 900MB projector inside Base 1B 48L d2048 32k vocab. One download → smoke 2M → nano 14M → mini 162M → base 1B ladder. Phone 6GB RAM 7-8 tok/s.</div></div>
+<div><video autoplay loop muted playsinline controls src="./DiffusionDecoding.mp4"></video><div style="padding:8px"><b>DiffusionDecoding.mp4</b> 183KB — DiffusionGemma: 256 random tokens canvas 16×8 grid → bidirectional denoise 123 steps whole block refines like image. Final: Flask Flappy Bird 138s 9 blocks → 1000+ tok/s H100 4× vs Apple Silicon bandwidth-bound. Non-autoregressive planning for S2 Slow mass 0.06.</div></div>
+</div>
+<p class="meta">Source: workspace/manim_dumbmodels/mtnn_flow.py + chimera_procrustes.py + manim_gl_scenes.py (manimgl edition MTNNFlowGL with Tex equation Chimera = argmin ||f(A)⊕f(B)-f(real)||_2) • Render: <code>manim -ql mtnn_flow.py MTNNFlow AvaJSpace KVCompression --media_dir ./media</code> + <code>manim -ql chimera_procrustes.py ChimeraEquation ProcrustesAlign MatFormerNesting DiffusionDecoding</code> + <code>manimgl manim_gl_scenes.py MTNNFlowGL -l -w -o</code> • High quality: <code>manim -qh</code> (1920×1080 60fps) + ffmpeg 6.1.1. Uploaded to assets/manim/ in hoops/pitch/gridiron + docs/manim/. Free-tier static hosting Vercel cleanUrls true.</p>
+</div>
+
+<div class="card">
+<h2>How Manim updates dumbmodel.com ecosystem</h2>
+<ul>
+<li><b>hoops.dumbmodel.com/model</b> — truthful flow W1380 H780 COLS 110/230/320/400/480/560/720/800/900/1120 1:1 input→tower cat box B1h/B1o/B2h/B2o season node fusion 18r L2 badge → replaced with Manim programmatic flow + SOTA overlays 6 cards 8× 18MB 10% MatFormer per-layer diffusion.</li>
+<li><b>hoops/dashboard + pitch/dashboard + gridiron/dashboard</b> — Pipelines already had 01 Gather 02 Clean 03 Train 04 Eval 05 Deploy. Now manim card at top: <code>pip install manimgl</code> + 3 videos autoplay loop muted playsinline controls, AAA Okabe-Ito triple encoding kept, 18px/1.65, 44px touch, 56px tabs safe-area.</li>
+<li><b>Reproducibility</b> — every mp4 generated from python code in repo, not hand-drawn. Enables versioning: commit hash → video hash content-addressable sha12 like Ava dataset shards.</li>
+<li><b>Next hill-climbs</b> — render Procrustes R animation: X_1999 and X_2025 point clouds rotate minimizing Frobenius ||X_1999 R - X_2025||_F with RᵀR=I, show drift ↓18%; DiffusionGemma 256 random tokens canvas denoised 123 steps ×9 blocks bidirectional Flask Flappy Bird 138s → 1000+ tok/s H100; MatFormer nesting animation E2B inside E4B inside 1B one checkpoint multiple targets smoke 2M→nano 14M→mini 162M→base 1B ladder.</li>
+</ul>
+<p>All solo, no work data, public pip only. <b>disclaimer:</b> Solo personal project, no connection to employer, built with public/free-tier only — appended per AGENTS.md.</p>
+</div>
+
+<div class="card">
+<h2>Run locally</h2>
+<pre style="background:#000;padding:12px;border-radius:8px;overflow:auto"><code>pip install manim manimgl --break-system-packages
+# community edition (Cairo)
+manim -ql workspace/manim_dumbmodels/mtnn_flow.py MTNNFlow --media_dir ./media
+# OpenGL 3b1b edition (needs display, fallback to glx)
+manimgl workspace/manim_dumbmodels/manim_gl_scenes.py MTNNFlow3B -o --low_quality
+# high quality 1080p60
+manim -qh workspace/manim_dumbmodels/mtnn_flow.py MTNNFlow
+# copy to sites
+cp media/videos/mtnn_flow/1080p60/MTNNFlow.mp4 workspace/vector-hoops/assets/manim/
+</code></pre>
+</div>
+</main>
+</body>
+</html>

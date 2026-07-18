@@ -1,0 +1,16 @@
+# These are executed inside Linux containers. CRLF breaks make recipes,
+# shebangs, and Dockerfile RUN lines. Force LF regardless of core.autocrlf.
+* text=auto eol=lf
+
+Makefile        text eol=lf
+*.sh            text eol=lf
+*.py            text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+Dockerfile*     text eol=lf
+docker/*        text eol=lf
+
+*.bin           binary
+*.pt            binary
+*.safetensors   binary
+*.json          text eol=lf

@@ -1,0 +1,125 @@
+# dolma_config.yaml - 6-Phase Logic-First + Workflow + J-Space losses + YaRN 10k->1M
+# Solo personal project, no connection to employer
+version: v6.4
+tokenizer: "ava-tokenizer"
+workflows: true
+j_space:
+  enabled: true
+  slots: 32
+  broadcast_weight: 0.2
+  reportability_weight: 1.0
+  multi_jspace:
+    S1: {slots: 32, hl: 8, broadcast: 0.18, weight: 0.6, task: automatic, data: "DCLM top15% copying sentiment fast tool formatting Spanish continuation"}
+    S2: {slots: 64, hl: 300, broadcast: 0.22, verbalizable_mass: 0.065, weight: 0.8, task: deliberate, data: "logic math reasoning JobBench messy Karpathy AutoResearch"}
+    Critic: {slots: 16, hl: 30, safety_concepts: 1.0, weight: 1.0, task: safety, data: "leverage/blackmail/scandal threat/survival/shutdown fake/fictional eval-awareness reward hacking"}
+    Planner: {slots: 32, hl: 150, broadcast: 0.20, weight: 0.7, task: temporal, data: "GAIA2 dynamic async ARE 800x10 universes JobBench delegation priority Karpathy exposure"}
+
+rope:
+  base_schedule: [10000,10000,10000,50000,100000,500000,1000000]
+  scale_schedule: [1.0,1.0,1.0,1.0,1.2,1.5,4.0]
+  yarn_enabled_at: 660000
+  yarn_mscale: [1.1, 1.414]
+  attn_factor_formula: "0.1*ln(scale)+1"
+
+wsd:
+  warmup: 2000
+  stable_steps: 736000
+  total_steps: 800000
+  stable_ratio: 0.92
+  lr: 2e-4
+  min_lr: 2e-5
+  scheduler: "warmup -> stable 92% -> cosine decay 8%"
+  save_stable: "ava_stable_736k.pt"
+
+phases:
+  phase0_logic:
+    tokens: "0-50B"
+    seq_len: 2048
+    rope_base: 10000
+    mix:
+      synthetic_logic_textbooks_phi_B: 60%
+      metamath: 20%
+      lean: 15%
+      fol: 5%
+    curriculum: "Reasoning first elicits reasoning in math/logic where rewards verifiable"
+  phase1_math:
+    tokens: "50B-350B"
+    seq_len: 4096
+    rope_base: 10000
+    mix:
+      ordered_curriculum: "arithmetic->algebra->geometry->discrete->calculus->linear->probability"
+      math_textbooks: 100%
+    note: "When applied as warmup, curriculum yields up to 3.5% sustained improvement"
+  phase2_foundation:
+    tokens: "350B-6T"
+    seq_len: 4096
+    rope_base: 10000
+    mix:
+      web_edu>=2: 35%
+      code_early: 20%
+      math: 12%
+      dclm: 23%
+      etcot_db_compression_micro: 10%
+    note: "ET-CoT (execution-trace CoT) db/compression micro-traces sized to seq 4096; see specs/02 B6"
+  phase3_reasoning:
+    tokens: "6T-11.25T"
+    seq_len: [8192,16384,32768]
+    rope_base: [10000,50000,100000,500000]
+    rope_scale: [1.0,1.0,1.2,1.5]
+    mix:
+      long_docs_upsampled_3x: true
+      domain_specific_small_proportions: impactful
+      workflow_jobbench: 10%
+      workflow_gaia2_simple: 5%
+      workflow_karpathy: 0%
+      etcot_db_compression: 12%
+    note: "Gradual context + NTK-aware scaling, long-form natural outperforms concatenated"
+  phase4_long:
+    tokens: "11.25T-13.8T"
+    seq_len: [32768,65536,131072]
+    rope_base: [500000,1000000]
+    rope_scale: [2.0,4.0]
+    mix:
+      batches_gt_16k: 50%
+      qk_norm: true
+      workflow_jobbench_messy: 10%
+      workflow_gaia2_dynamic: 15%
+      etcot_db_compression_long: 10%
+    phase_aware_filtering:
+      dclm_score: 0.85
+      edu_score: 4.5
+  phase5_anneal:
+    tokens: "13.8T-15T"
+    seq_len: 131072
+    rope_base: 1000000
+    rope_scale: 4.0
+    lr_decay: "2e-4->2e-5 cosine"
+    mix:
+      edu>=4.5: 40%
+      verified_proofs: 20%
+      synthetic_reward>0.8: 20%
+      workflow_karpathy_autoresearch: 10%
+      workflow_gaia2_hard: 10%
+    branching_enabled: true
+
+branch_configs:
+  code: {freeze: [system1], finetune: [system2,planner,router,arbitration], router_bias: [0.25,0.45,0.05,0.25], router_frozen: [system1], hl: {S1:8,S2:350,Critic:30,Planner:200}, data: "code_repo 50%+code_long_32k 20%+jobbench_code 15%+general 15%", lr: 1e-4, steps: 64000}
+  math: {freeze: [system1,planner], finetune: [system2,critic,router], router_bias: [0.10,0.65,0.20,0.05], hl: {S1:8,S2:400,Critic:40,Planner:150}, data: "math_formal_lean 35%+lean_mathlib 20%+proofpile2 20%+synthetic_math_r1 15%+general 10%", lr: 8e-5, steps: 64000}
+  chat: {freeze: [system1,system2], finetune: [critic,planner,router,arbitration], router_bias: [0.15,0.25,0.35,0.25], hl: {S1:8,S2:300,Critic:35,Planner:180}, data: "chat_alignment 30%+safety 20%+jobbench_delegation 25%+gaia2_temporal 15%+counterfactual 10%", lr: 5e-5, steps: 64000}
+
+losses:
+  lm: 1.0
+  j_weight_schedule: "0.08 early, 0.15 reasoning/long"
+  reportability: 1.0
+  broadcast: 0.5
+  selectivity: 0.3
+  modulation: 0.5
+  per_space:
+    s1: {broadcast_mse: 0.18, hl: 8, weight: 0.6}
+    s2: {broadcast: 0.22, verbalizable: 0.065, hl: 300, weight: 0.8}
+    critic: {verbalizable: 0.08, safety_present: 1.0, hl: 30, weight: 1.0}
+    planner: {broadcast: 0.20, hl: 150, weight: 0.7}
+  inter_mi: {target_cos: 0.45, weight: 0.3}
+  routing: {weight: 0.4, ideal: {automatic: [0.6,0.15,0.1,0.15], deliberate: [0.15,0.55,0.1,0.2], safety: [0.1,0.2,0.6,0.1], temporal: [0.1,0.3,0.1,0.5]}}
+
+eval: {every: 5000, needle_in_haystack_128k: true, branch_harness: "5 tests Spider->Ant France->China Soccer->Rugby Spanish->French Safety 0/180"}

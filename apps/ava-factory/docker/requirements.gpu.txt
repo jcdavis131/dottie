@@ -1,0 +1,28 @@
+# torch==2.4.0+cu124 is installed separately from the pytorch index (see Dockerfile.gpu),
+# for the fused F.rms_norm/scale-kwarg SDPA kernels. model_1b.py itself only needs
+# torch>=2.0 (RMSNorm and the attention scale both fall back to plain-tensor-op paths
+# on older torch -- see model_1b.py -- so CPU dev hosts without this pin still work).
+
+# 8-bit AdamW for base1b — without it the optimizer states alone blow the 12GB budget
+bitsandbytes==0.43.1
+
+# tokenizer (same pin as CPU image so packed shards stay hash-compatible)
+tokenizers==0.19.1
+
+# serving
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+pydantic==2.7.4
+websockets==12.0
+
+# export
+safetensors==0.4.3
+
+numpy==1.26.4
+PyYAML==6.0.1
+tqdm==4.66.4
+pytest==8.2.2
+
+# Needed by scripts/bench_pipeline.py curator path (same pin as CPU image).
+datasketch==1.6.5
+zstandard==0.22.0

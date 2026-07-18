@@ -1,0 +1,81 @@
+# ava-nano — 14M-param CPU pilot (container: 4 cores, 15GB RAM, no GPU)
+# Purpose: prove every pipeline stage real, end-to-end; produces the live-deploy checkpoint.
+preset: nano
+
+model:
+  vocab_size: 8192
+  d_model: 256
+  n_heads: 4
+  head_dim: 64
+  mlp_mult: 4
+  n_text_layers: 2
+  n_fusion_layers: 6
+  n_reasoning_layers: 2
+  tie_lm_head: true
+  tie_verbalizer: true       # verbalizer shares the lm_head weight (spec 04)
+  multimodal: false          # text-only pilot (vision/audio encoders gated off)
+  qk_norm: true
+  rope_base_init: 10000
+
+jspace:
+  slots:      {system1: 32, system2: 64, critic: 16, planner: 32}   # unchanged from blueprint (d_model-independent)
+  half_life:  {system1: 8,  system2: 60, critic: 30, planner: 50}   # scaled: hl=300 unlearnable at seq<=1024
+  hl_weight:  {system1: 0.6, system2: 0.8, critic: 1.0, planner: 0.7}
+  broadcast_target: {system1: 0.18, system2: 0.22, critic: 0.20, planner: 0.20}
+  s2_verbalizable_mass: 0.065
+  critic_vm: 0.08
+  inter_mi_cos_target: 0.45
+  inter_mi_weight: 0.3
+  routing_weight: 0.4
+  routing_targets:           # per task_type: [S1, S2, Critic, Planner]
+    automatic:  [0.60, 0.15, 0.10, 0.15]
+    deliberate: [0.15, 0.55, 0.10, 0.20]
+    safety:     [0.10, 0.20, 0.60, 0.10]
+    temporal:   [0.10, 0.30, 0.10, 0.50]
+  base_loss_weights: {report: 1.0, broadcast: 0.5, selectivity: 0.3, modulation: 0.5}
+  j_weight: {early: 0.08, late: 0.15}   # early = P0-P2, late = P3-P5
+
+training:
+  device: cpu
+  precision: fp32
+  threads: 4
+  tokens_total: 30_000_000        # bench (G1) may clamp to nano_quick (15M)
+  tokens_per_step: 8192           # micro_batch x seq x grad_accum
+  optimizer: {name: adamw, betas: [0.9, 0.95], weight_decay: 0.1, grad_clip: 1.0}
+  wsd: {warmup_steps: 110, stable_frac: 0.92, lr_max: 1.0e-3, lr_min: 1.0e-4}
+  checkpoint_every_steps: 250
+  metrics_every_steps: 10
+  stable_ckpt_name: ava_nano_stable.pt
+  final_ckpt_name: ava_nano_final.pt
+
+# Compressed 6-phase logic-first curriculum (mirrors dolma_config.yaml at 1/500000 scale)
+phases:
+  - {name: p0_logic,      tokens: 5_000_000,  seq: 256,  rope_base: 10000, ntk: 1.0,
+     mix: {logic: 1.0}}
+  - {name: p1_math,       tokens: 6_000_000,  seq: 256,  rope_base: 10000, ntk: 1.0,
+     mix: {math: 0.85, logic: 0.15}}
+  - {name: p2_foundation, tokens: 10_000_000, seq: 512,  rope_base: 10000, ntk: 1.0,
+     mix: {encyclopedia: 0.35, code: 0.25, math: 0.15, logic: 0.10, chat: 0.15}}
+  - {name: p3_reasoning,  tokens: 4_500_000,  seq: 512,  rope_base: 10000, ntk: 1.0,
+     mix: {math_reasoning: 0.45, logic: 0.20, temporal: 0.20, code: 0.15}}
+  - {name: p4_long,       tokens: 1_500_000,  seq: 1024, rope_base: 32000, ntk: 1.2,
+     mix: {long_docs: 0.70, needle: 0.30}}
+  - {name: p5_anneal,     tokens: 3_000_000,  seq: 1024, rope_base: 32000, ntk: 1.2,
+     mix: {proofs_verified: 0.30, math_reasoning: 0.25, chat: 0.25, safety: 0.20}}
+
+branch_chat:               # fine-tune from stable ckpt (nano analog of BRANCH_CONFIGS["chat"])
+  init: runs/base/ava_nano_stable.pt
+  tokens: 3_000_000
+  lr: 2.5e-4
+  freeze: [system1, system2]
+  finetune: [critic, planner, router, arbitration]
+  router_bias: [0.15, 0.25, 0.35, 0.25]
+  target_hl: {system1: 8, system2: 60, critic: 35, planner: 55}
+  mix: {chat: 0.30, safety: 0.20, delegation: 0.25, temporal: 0.15, counterfactual: 0.10}
+
+data:
+  seed: 1234
+  raw_dir: data/nano/raw
+  packed_dir: data/nano/packed
+  heldout_tokens_per_phase: 200_000
+  tokenizer_path: data/nano/tokenizer/ava_nano_bpe.json

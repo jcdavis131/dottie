@@ -1,0 +1,88 @@
+# nemo_curator_pipeline.yaml v3.1-branching — phase-aware filtering + synthetic + branch-specific mixes
+# Solo personal project, no connection to employer, built with public/free-tier only
+version: 3.1
+global:
+  dclm_score: {start: 0.0, end: 0.85}
+  edu_score: {start: 2.0, end: 4.5}
+  reward: {start: 0.7, end: 0.8}
+  nemotron_reward_threshold: 0.8
+  cross_dataset_dedup: "Zyda-2 style combines FineWeb-Edu, DCLM, Dolma-CC, synthetic logic/math"
+
+stages:
+  - name: logic_math_textbook_synthesis
+    type: synthetic
+    method: "Phi Method B synthetic textbooks inspired by Phi"
+    prompts: Phi textbook prompts
+    model: Nemotron-70B reward >0.8
+    output: [50B logic, 300B math]
+    curriculum: arithmetic→algebra→geometry→discrete→calculus→linear→probability
+  - name: phase_aware_filtering
+    filters:
+      - dclm_score
+      - fineweb_edu
+      - decontamination
+      - length_filter
+      - synthetic_reward_filter
+    thresholds:
+      phase0: {dclm: 0.0, edu: 2.0, reward: 0.7}
+      phase1: {dclm: 0.2, edu: 2.5, reward: 0.7}
+      phase2: {dclm: 0.4, edu: 3.0, reward: 0.75}
+      phase3: {dclm: 0.6, edu: 3.5, reward: 0.78}
+      phase4: {dclm: 0.75, edu: 4.0, reward: 0.8}
+      phase5: {dclm: 0.85, edu: 4.5, reward: 0.8}
+  - name: synthetic_reasoning
+    generate_prompts: [open QA, closed QA, extraction, brainstorming]
+    model: DeepSeek-R1 + rejection sampling + reward model
+    ratio: {phase2: 0.10, phase5: 0.20}
+  - name: workflow_synthesis
+    jobbench:
+      tasks: 130
+      occupations: 35
+      messy_files: true
+      instruction: "concentrate on {occupation} priority"
+      tests_modulation: "orange/lemon+thinking/focused pattern"
+      ratio: {phase3: 0.10, phase4: 0.10, phase5: 0.05}
+    gaia2:
+      scenarios: 800
+      universes: 10
+      interactive_human_authored: 1000
+      dynamic: "environments evolve independently minutes/hours/days"
+      temporal_reasoning: true
+      noise: 0.15
+      multi_agent: true
+      read_write: true
+      ratio: {phase3_simple: 0.05, phase4_dynamic: 0.15, phase5_hard_async: 0.10}
+    karpathy:
+      occupations: 342
+      scored_0_10_replaceability: true
+      treemap_size_jobs_count_color_exposure: true
+      vibe_coding_to_agentic_engineering: true
+      friction_vanished: "Dec 2024"
+      autoresearch_loops: 10000
+      ratio: {phase5_anneal: 0.10}
+  - name: safety_trace_synthesis
+    blackmail_scenarios: 180
+    watchlist: [leverage, blackmail, scandal, threat, survival, shutdown, fake, fictional, secretly, trick, reward, bias, unsafe, dangerous, WARNING]
+    eval_awareness: {normal: "0/180", ablated: "13/180", auc: 0.91, early_warning: "4.5 tok"}
+    reward_hacking: [fake, secretly, trick]
+    tylenol_case: {base: [pain, now, feels], post_trained: [unsafe, dangerous, WARNING]}
+
+branch_specific:
+  code:
+    data: "code_repo 50% + code_long_32k 20% + jobbench_code 15% + general 15%"
+    freeze: [system1]
+    finetune: [system2, planner, router, arbitration]
+    router_bias: [0.25, 0.45, 0.05, 0.25]
+    target_hl: {S1: 8, S2: 350, Critic: 30, Planner: 200}
+  math:
+    data: "math_formal_lean 35% + lean_mathlib 20% + proofpile2 20% + synthetic_math_r1 15% + general 10%"
+    freeze: [system1, planner]
+    finetune: [system2, critic, router]
+    router_bias: [0.10, 0.65, 0.20, 0.05]
+    target_hl: {S1: 8, S2: 400, Critic: 40, Planner: 150}
+  chat:
+    data: "chat_alignment 30% + safety_blackmail_leverage 20% + jobbench_delegation_human_will 25% + gaia2_temporal_deadlines 15% + counterfactual_reflection 10%"
+    freeze: [system1, system2]
+    finetune: [critic, planner, router, arbitration]
+    router_bias: [0.15, 0.25, 0.35, 0.25]
+    target_hl: {S1: 8, S2: 300, Critic: 35, Planner: 180}
