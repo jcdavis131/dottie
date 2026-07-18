@@ -1,0 +1,14 @@
+name: planes
+version: 0.7.0
+description: >
+  Judgment-plane cockpit — Trust/World/Herd/Judgment/Memory status,
+  compare matrix vs Herdr, learning flywheel. Differentiator surface.
+capabilities:
+  network:
+    enabled: false
+    domains: []
+  filesystem:
+    write: false
+    paths: []
+  secrets:
+    allow: []

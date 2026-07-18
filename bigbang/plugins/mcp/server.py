@@ -1,9 +1,8 @@
 """Real MCP server exposing scout-cli plugins as MCP tools.
 
-One tool per plugin (bb_<plugin>). Each tool dispatches
-`python -m bigbang.cli --json <plugin> <args...>` in a subprocess and returns
-its output, so the MCP surface stays exactly as capable (and as policy/audit
-constrained) as the CLI itself.
+Primary names: scout_<plugin>. Legacy aliases: bb_<plugin>.
+Each tool dispatches `python -m bigbang.cli --json <plugin> <args...>` so the
+MCP surface stays as capable (and as policy/audit constrained) as the CLI.
 """
 from __future__ import annotations
 
@@ -27,12 +26,18 @@ def _dispatch(plugin: str, args: str) -> str:
             argv, capture_output=True, text=True, timeout=_SUBPROCESS_TIMEOUT
         )
     except subprocess.TimeoutExpired:
-        return f'{{"error": "timed out after {_SUBPROCESS_TIMEOUT}s", "argv": "{plugin} {args}"}}'
+        return (
+            f'{{"ok": false, "error": "timed out after {_SUBPROCESS_TIMEOUT}s", '
+            f'"example": "scout --json {plugin} {args}"}}'
+        )
     out = proc.stdout.strip()
     if proc.returncode != 0:
         err = proc.stderr.strip()
-        return out or f'{{"error": "exit {proc.returncode}", "stderr": {err!r}}}'
-    return out or '{"result": "(no output)"}'
+        return out or (
+            f'{{"ok": false, "error": "exit {proc.returncode}", "stderr": {err!r}, '
+            f'"example": "scout --json {plugin} --help"}}'
+        )
+    return out or '{"ok": true, "result": "(no output)"}'
 
 
 def _make_tool(plugin: str):
@@ -40,7 +45,11 @@ def _make_tool(plugin: str):
         """Dispatch to the plugin CLI. `args` is the subcommand + flags, e.g. "list"."""
         return _dispatch(plugin, args)
 
-    tool_fn.__name__ = f"bb_{plugin}"
+    tool_fn.__name__ = f"scout_{plugin}"
+    tool_fn.__doc__ = (
+        f"Run the scout-cli '{plugin}' plugin. Pass subcommand and flags in "
+        f"`args` (e.g. args='list'). Returns JSON. Prefer scout_* over bb_*."
+    )
     return tool_fn
 
 
@@ -48,19 +57,25 @@ def build_server(port: int = 8787) -> FastMCP:
     server = FastMCP(
         "scout-cli",
         instructions=(
-            "Scout CLI plugins exposed as MCP tools. Each bb_<plugin> tool takes a "
-            "single `args` string: the plugin subcommand plus flags "
-            "(e.g. bb_tools with args='list'). Output is the CLI's JSON."
+            "Scout CLI — local-first orchestration control plane for Dottie-claw and "
+            "other agents. Use scout_<plugin> tools with an `args` string "
+            "(subcommand + flags). Example: scout_herd args='status'. "
+            "bb_<plugin> aliases remain for compatibility. Prefer --json semantics; "
+            "read error.example fields. See skill 'scout' via scout_skill args='show scout'."
         ),
         port=port,
     )
     for name in sorted(list_plugin_names()):
+        fn = _make_tool(name)
+        desc = (
+            f"Run scout '{name}' plugin. Pass subcommand/flags in args "
+            f"(e.g. args='list'). Returns JSON."
+        )
+        server.tool(name=f"scout_{name}", description=desc)(fn)
+        # Legacy alias — same callable
         server.tool(
             name=f"bb_{name}",
-            description=(
-                f"Run the scout-cli '{name}' plugin. Pass subcommand and flags in "
-                f"`args` (e.g. args='list'). Returns the command's JSON output."
-            ),
+            description=f"[legacy alias] {desc} Prefer scout_{name}.",
         )(_make_tool(name))
     return server
 

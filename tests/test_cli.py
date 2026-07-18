@@ -32,7 +32,7 @@ def test_registry():
 def test_policy_manifests_exist():
     from pathlib import Path
     base = Path("bigbang/plugins")
-    for p in ["secrets","tools","mcp","system","ava","write","lab","brain","rtx","graphify"]:
+    for p in ["secrets","tools","mcp","system","ava","write","lab","brain","rtx","graphify","herd","skill","planes"]:
         assert (base / p / "manifest.yaml").exists(), f"{p} manifest missing"
 
 def test_json_contract():

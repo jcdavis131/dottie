@@ -1,7 +1,12 @@
-import typer, shutil, platform, json
+import platform
+import re
+import shutil
 from pathlib import Path
-from bigbang.core.output import emit
+
+import typer
+
 from bigbang.core.audit import tail_events
+from bigbang.core.output import emit
 from bigbang.core.plugin_loader import get_all_manifests
 
 app = typer.Typer(name="system", help="🖥️ System — doctor, audit, policy, scaffold", no_args_is_help=True)
@@ -56,36 +61,82 @@ def policy_cmd():
     emit({"policies": manifests, "note": "each plugin/tool declares capabilities.network, filesystem, secrets — default deny"}, command="system policy")
 
 @app.command("scaffold")
-def scaffold_plugin(name: str = typer.Argument(..., help="new plugin name"), with_manifest: bool = typer.Option(True, help="create manifest.yaml with caps")):
+def scaffold_plugin(
+    name: str = typer.Argument(..., help="new plugin name"),
+    with_manifest: bool = typer.Option(True, help="create manifest.yaml with caps"),
+):
+    """Scaffold a foundation-shaped plugin (Examples + contract emit + manifest)."""
+    if not re.fullmatch(r"[a-z][a-z0-9_]{0,31}", name):
+        emit(
+            {
+                "ok": False,
+                "error": "plugin name must be snake_case starting with a letter",
+                "example": "scout system scaffold mytool",
+            },
+            command="system scaffold",
+        )
+        raise typer.Exit(1)
     base = Path(__file__).parent
     target = base.parent / name
     target.mkdir(parents=True, exist_ok=True)
     cli_file = target / "cli.py"
     (target / "__init__.py").touch(exist_ok=True)
     if cli_file.exists():
-        emit({"warning": f"exists: {cli_file}"})
+        emit(
+            {
+                "ok": False,
+                "warning": f"exists: {cli_file}",
+                "example": f"scout --json {name} hello",
+            },
+            command="system scaffold",
+        )
         return
-    cli_file.write_text(f'''import typer
-from bigbang.core.output import emit
+    cli_file.write_text(
+        f'''"""{name} plugin — foundation-shaped, capability-declared."""
 from pathlib import Path
-import yaml
 
-app = typer.Typer(name="{name}", help="{name} plugin — security-first, capability-declared", no_args_is_help=True)
+from bigbang.core.cli_ux import examples_epilog
+from bigbang.core.contract import make_plugin_app, ok
+from bigbang.core.output import emit
 
-@app.command("hello")
+app = make_plugin_app(
+    "{name}",
+    "{name} plugin — security-first, capability-declared",
+    examples=[
+        "scout --json {name} hello",
+        "scout {name} --help",
+    ],
+)
+
+
+@app.command(
+    "hello",
+    epilog=examples_epilog(["scout --json {name} hello"]),
+)
 def hello():
-    # Example: check policy manifest
+    """Smoke command — prove the plugin loads and respects the foundation contract."""
     mf_path = Path(__file__).parent / "manifest.yaml"
-    emit({{"message": "Hello from {name}!", "manifest_exists": mf_path.exists()}})
+    emit(
+        ok(
+            {{"message": "Hello from {name}!", "manifest_exists": mf_path.exists()}},
+            command="{name} hello",
+            example="scout --json {name} hello",
+            discover="scout skill show scout",
+        ),
+        command="{name} hello",
+    )
+
 
 def register(root):
     root.add_typer(app, name="{name}")
-''')
+'''
+    )
     if with_manifest:
         mf = target / "manifest.yaml"
-        mf.write_text(f'''name: {name}
-version: 0.3.0
-description: {name} — your tool description
+        mf.write_text(
+            f"""name: {name}
+version: 0.7.0
+description: {name} — foundation-shaped Scout plugin
 capabilities:
   network:
     enabled: false
@@ -95,8 +146,19 @@ capabilities:
     paths: []
   secrets:
     allow: []
-''')
-    emit({"created": str(cli_file), "manifest": str(target / "manifest.yaml") if with_manifest else "skipped", "next": f"bb {name} hello --json"}, command="system scaffold")
+"""
+        )
+    emit(
+        {
+            "ok": True,
+            "created": str(cli_file),
+            "manifest": str(target / "manifest.yaml") if with_manifest else "skipped",
+            "example": f"scout --json {name} hello",
+            "next": f"scout --json {name} hello",
+            "teach": "scout skill show scout",
+        },
+        command="system scaffold",
+    )
 
 def register(root):
     root.add_typer(app, name="system")

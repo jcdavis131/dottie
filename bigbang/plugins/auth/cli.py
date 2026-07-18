@@ -8,7 +8,6 @@ Solo personal project, no connection to employer, built with public/free-tier on
 import json
 import os
 import time
-import getpass
 import webbrowser
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -17,6 +16,7 @@ from datetime import datetime, timezone
 import typer
 from rich.console import Console
 
+from bigbang.core.cli_ux import examples_epilog, prompt_secret_or_fail, require_secret_value
 from bigbang.core.output import emit
 from bigbang.core.security import set_secret, get_secret
 from bigbang.core.http_utils import sanitize_no_proxy_env
@@ -28,6 +28,15 @@ app = typer.Typer(
     name="auth",
     help="🔑 Auth — OAuth device flow + API keys for any service",
     no_args_is_help=True,
+    epilog=examples_epilog(
+        [
+            "scout auth set-token github --token ghp_xxx",
+            "printf '%s' \"$TOKEN\" | scout auth set-token github --stdin",
+            "scout auth login github --method pat --token ghp_xxx",
+            "scout --json auth list",
+            "scout auth status github",
+        ]
+    ),
 )
 
 _console = Console()
@@ -216,23 +225,30 @@ def _resolve_client_id(service: str, cfg: Dict[str, Any], explicit: Optional[str
 # Device flow helpers
 # ---------------------------------------------------------------------------
 
-def _prompt_for_pat(service: str) -> Optional[str]:
-    """Securely prompt user for PAT/API key."""
+def _prompt_for_pat(service: str, flag_value: Optional[str] = None) -> Optional[str]:
+    """Resolve PAT/API key from --token, else prompt on TTY, else fail (never hang)."""
     svc_display = SERVICE_CONFIGS.get(service.lower(), {}).get("display_name", service)
+    cfg = SERVICE_CONFIGS.get(service.lower(), {})
+    example = (
+        f"scout auth login {service} --method pat --token <token>  "
+        f"# or: scout auth set-token {service} --token <token>"
+    )
+    if flag_value and str(flag_value).strip():
+        return str(flag_value).strip()
     try:
-        _console.print(f"[yellow]No OAuth client configured for {svc_display}. Falling back to personal access token.[/yellow]")
-        cfg = SERVICE_CONFIGS.get(service.lower(), {})
+        _console.print(
+            f"[yellow]No OAuth client configured for {svc_display}. "
+            f"Falling back to personal access token.[/yellow]"
+        )
         if cfg.get("token_url_docs"):
             _console.print(f"Create token at: {cfg['token_url_docs']}")
-        # Use typer prompt hidden for better UX
-        try:
-            token = typer.prompt(f"Enter {svc_display} token (input hidden)", hide_input=True, confirmation_prompt=False)
-        except Exception:
-            token = getpass.getpass(f"Enter {svc_display} token: ")
-        token = token.strip()
-        if not token:
-            return None
-        return token
+        return prompt_secret_or_fail(
+            f"Enter {svc_display} token (input hidden)",
+            command="auth login",
+            example=example,
+        )
+    except typer.Exit:
+        raise
     except (KeyboardInterrupt, EOFError):
         _console.print("\n[cancelled] cancelled")
         return None
@@ -333,7 +349,7 @@ def _do_github_device_flow(
 
             while True:
                 if time.time() - start > expires_in:
-                    _console.print("[red]Device code expired, please run `bb auth login github` again.[/red]")
+                    _console.print("[red]Device code expired, please run `scout auth login github` again.[/red]")
                     return None
 
                 time.sleep(poll_interval)
@@ -513,17 +529,30 @@ def _do_generic_device_flow(
 # CLI Commands
 # ---------------------------------------------------------------------------
 
-@app.command("login")
+@app.command(
+    "login",
+    epilog=examples_epilog(
+        [
+            "scout auth login github --method pat --token ghp_xxx",
+            "scout auth login github --no-browser   # device flow, print URL only",
+            "scout auth set-token notion --token ntn_xxx",
+        ]
+    ),
+)
 def login(
     service: str = typer.Argument(..., help="service name e.g. github, google, notion, linear, openai"),
     method: str = typer.Option("auto", "--method", "-m", help="auto|device|pat|api_key|oauth_device|token"),
     client_id: Optional[str] = typer.Option(None, "--client-id", help="OAuth client_id, or set BB_SECRET_GITHUB_CLIENT_ID"),
     open_browser: bool = typer.Option(True, "--browser/--no-browser", help="Open browser automatically for device flow"),
     scope: Optional[str] = typer.Option(None, "--scope", help="OAuth scopes (e.g. 'repo read:user')"),
+    token: Optional[str] = typer.Option(
+        None, "--token", "-t", help="PAT/API key for non-interactive login (skip prompt)"
+    ),
 ):
     """
-    Authenticate a service. Uses OAuth device flow if client_id available, else PAT prompt.
-    For GitHub: fully implements device flow — POST /login/device/code then poll /login/oauth/access_token
+    Authenticate a service. Uses OAuth device flow if client_id available, else PAT.
+
+    Agents: pass --token (or use set-token --token/--stdin). Never hangs waiting for a prompt.
     """
     svc = service.lower().strip()
     cfg = SERVICE_CONFIGS.get(svc)
@@ -535,15 +564,15 @@ def login(
             {
                 "error": f"Unknown method {method}",
                 "allowed": ["auto", "device", "pat", "api_key", "token"],
-                "hint": "use auto to let CLI choose",
+                "example": f"scout auth login {svc} --method pat --token <token>",
             },
             command="auth login",
         )
         raise typer.Exit(code=1)
 
-    # If explicitly pat/api_key/token -> prompt
+    # If explicitly pat/api_key/token -> prompt (or --token)
     if method_norm in ("pat", "api_key", "token"):
-        token_val = _prompt_for_pat(svc)
+        token_val = _prompt_for_pat(svc, flag_value=token)
         if not token_val:
             emit({"service": svc, "status": "cancelled"}, command="auth login")
             raise typer.Exit(code=1)
@@ -579,7 +608,7 @@ def login(
             if svc == "github":
                 _console.print(
                     f"[yellow]GitHub client_id not found. Set via --client-id, "
-                    f"or env BB_SECRET_GITHUB_CLIENT_ID, or via: bb secrets set GITHUB_CLIENT_ID <id>[/yellow]"
+                    f"or env BB_SECRET_GITHUB_CLIENT_ID, or via: scout secrets set GITHUB_CLIENT_ID --value <id>[/yellow]"
                 )
                 _console.print(
                     "[dim]Falling back to PAT flow. Create PAT at https://github.com/settings/tokens "
@@ -598,12 +627,12 @@ def login(
                         "service": svc,
                         "status": "client_id_missing",
                         "hint": f"Set {cfg.get('client_id_env_vars', ['BB_SECRET_'+svc.upper()+'_CLIENT_ID'])[0]} or pass --client-id, or use PAT fallback",
-                        "fallback": f"bb auth set-token {svc} <token>",
+                        "fallback": f"scout auth set-token {svc} <token>",
                     },
                     command="auth login",
                 )
                 # Still offer PAT for UX
-                token_val = _prompt_for_pat(svc)
+                token_val = _prompt_for_pat(svc, flag_value=token)
                 if token_val:
                     vault_key = cfg.get("vault_key") or f"{svc.upper()}_TOKEN"
                     set_secret(vault_key, token_val)
@@ -631,7 +660,7 @@ def login(
                     raise typer.Exit(code=1)
             else:
                 # auto mode -> PAT fallback
-                token_val = _prompt_for_pat(svc)
+                token_val = _prompt_for_pat(svc, flag_value=token)
                 if not token_val:
                     emit({"service": svc, "status": "cancelled"}, command="auth login")
                     raise typer.Exit(code=1)
@@ -670,7 +699,7 @@ def login(
                         "service": svc,
                         "status": "failed",
                         "method": "oauth_device",
-                        "hint": f"Try PAT fallback: bb auth set-token {svc} <token>",
+                        "hint": f"Try PAT fallback: scout auth set-token {svc} <token>",
                     },
                     command="auth login",
                 )
@@ -713,18 +742,18 @@ def login(
             _console.print(f"[bold]Auth for {svc}[/bold]")
             _console.print(f"  No device flow configured for {svc}.")
             _console.print(f"  Options:")
-            _console.print(f"    1. bb auth set-token {svc} <token>  (stores via vault)")
+            _console.print(f"    1. scout auth set-token {svc} <token>  (stores via vault)")
             _console.print(f"    2. Set env {svc.upper()}_TOKEN or BB_SECRET_{svc.upper()}_TOKEN")
             # Still prompt
-            token_val = _prompt_for_pat(svc)
+            token_val = _prompt_for_pat(svc, flag_value=token)
         else:
-            token_val = _prompt_for_pat(svc)
+            token_val = _prompt_for_pat(svc, flag_value=token)
 
         if not token_val:
             # Emit instruction JSON
             flow_desc = {
-                "api_key": f"bb secrets set {svc.upper()}_TOKEN <value> or bb auth set-token {svc} <token>",
-                "oauth": f"open browser for {svc} oauth, then bb auth set-token {svc} <token>",
+                "api_key": f"scout secrets set {svc.upper()}_TOKEN <value> or scout auth set-token {svc} <token>",
+                "oauth": f"open browser for {svc} oauth, then scout auth set-token {svc} <token>",
                 "oauth_device": "device flow code -> poll (if service supports RFC8628)",
             }
             emit(
@@ -732,7 +761,7 @@ def login(
                     "service": svc,
                     "method": method_norm,
                     "flow": flow_desc.get(method_norm, flow_desc["api_key"]),
-                    "next": f"bb auth set-token {svc} <token>",
+                    "next": f"scout auth set-token {svc} <token>",
                     "storage": "vault 0600 + keyring + audit log",
                     "known_services": list(SERVICE_CONFIGS.keys()),
                 },
@@ -764,38 +793,43 @@ def login(
         return
 
 
-@app.command("set-token")
+@app.command(
+    "set-token",
+    epilog=examples_epilog(
+        [
+            "scout auth set-token github --token ghp_xxx",
+            "printf '%s' \"$TOKEN\" | scout auth set-token github --stdin",
+            "scout auth set-token github ghp_xxx   # positional still works",
+        ]
+    ),
+)
 def set_token(
     service: str = typer.Argument(..., help="service name e.g. github, notion, openai"),
-    token: Optional[str] = typer.Argument(None, help="Token value (will be vaulted securely; if omitted you will be prompted hidden)"),
-    token_opt: Optional[str] = typer.Option(None, "--token", "-t", help="Token value (alternative to positional, for scripting)"),
+    token: Optional[str] = typer.Argument(
+        None,
+        help="Token value (prefer --token or --stdin so it stays out of shell history)",
+    ),
+    token_opt: Optional[str] = typer.Option(
+        None, "--token", "-t", help="Token value (preferred for scripting)"
+    ),
+    use_stdin: bool = typer.Option(
+        False, "--stdin", help="read token from stdin (pipeline-friendly)"
+    ),
 ):
     """
     Store token in vault (0600 + keyring + audit) and link in auth.json.
-    Never reveals token in output.
+    Never reveals token in output. Agents: always pass --token or --stdin.
     """
-    actual_token = token_opt or token
-    if not actual_token:
-        try:
-            # Secure prompt
-            actual_token = typer.prompt(f"Enter token for {service} (hidden)", hide_input=True)
-        except Exception:
-            try:
-                actual_token = getpass.getpass(f"Enter token for {service}: ")
-            except Exception:
-                actual_token = None
-
-    if not actual_token or not actual_token.strip():
-        emit(
-            {
-                "error": "No token provided",
-                "hint": f"bb auth set-token {service} <token> or run interactively",
-            },
-            command="auth set-token",
-        )
-        raise typer.Exit(code=1)
-
-    actual_token = actual_token.strip()
+    actual_token = require_secret_value(
+        positional=token,
+        flag_value=token_opt,
+        use_stdin=use_stdin,
+        command="auth set-token",
+        example=(
+            f"scout auth set-token {service} --token <token>  "
+            f"# or: printf '%s' \"$TOKEN\" | scout auth set-token {service} --stdin"
+        ),
+    )
     svc = service.lower().strip()
     cfg = SERVICE_CONFIGS.get(svc)
     vault_key = (cfg.get("vault_key") if cfg else None) or f"{svc.upper()}_TOKEN"
@@ -846,7 +880,7 @@ def list_auth():
             "authenticated_services": services,
             "count": len(services),
             "auth_file": str(REG),
-            "vault_hint": "bb secrets list (values never listed)",
+            "vault_hint": "scout secrets list (values never listed)",
         },
         command="auth list",
     )
@@ -870,7 +904,7 @@ def get_token_cmd(
                 "service": svc,
                 "found": False,
                 "vault_key": f"{svc.upper()}_TOKEN",
-                "hint": f"bb auth login {svc} or bb auth set-token {svc} <token> or set env {svc.upper()}_TOKEN",
+                "hint": f"scout auth login {svc} or scout auth set-token {svc} <token> or set env {svc.upper()}_TOKEN",
                 "auth_file": str(REG),
             },
             command="auth get-token",

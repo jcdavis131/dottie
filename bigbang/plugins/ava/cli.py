@@ -276,6 +276,79 @@ def _heuristic_route(task: str) -> Dict[str, Any]:
             "reason": "graphify/pgraphify — query-first Personal Graphify baked into scout",
             "available_tools": list(tools.keys())[:12],
         }
+    if any(
+        k in q
+        for k in [
+            "judgment plane",
+            "planes status",
+            "planes compare",
+            "compare herdr",
+            "vs herdr",
+            "differentiat",
+            "flywheel",
+            "five planes",
+        ]
+    ):
+        cmd = "scout --json planes compare" if "compare" in q or "herdr" in q or "vs" in q else (
+            "scout --json planes loop" if "flywheel" in q or "loop" in q else "scout --json planes status"
+        )
+        return {
+            "router": "stub",
+            "picked_tool": "planes",
+            "picked_command": cmd,
+            "confidence": 0.97,
+            "reason": "judgment plane — Scout differentiator vs Herdr multiplexer",
+            "available_tools": list(tools.keys())[:12],
+        }
+    if any(
+        k in q
+        for k in [
+            "dottie",
+            "dottie-claw",
+            "teach scout",
+            "skill install",
+            "install skill",
+            "openclaw skill",
+        ]
+    ):
+        return {
+            "router": "stub",
+            "picked_tool": "skill",
+            "picked_command": "scout skill teach --target dottie",
+            "confidence": 0.96,
+            "reason": "dottie-claw / teach — install Scout skills for the agent curriculum",
+            "available_tools": list(tools.keys())[:12],
+        }
+    if any(
+        k in q
+        for k in [
+            "herd",
+            "herdr",
+            "multiplexer",
+            "agent status",
+            "blocked agent",
+            "wait for agent",
+            "session ledger",
+        ]
+    ):
+        if "wait" in q:
+            cmd = "scout --json herd wait api --status done --timeout 120"
+        elif "read" in q or "log" in q:
+            cmd = "scout herd read api --lines 40"
+        elif "start" in q or "run" in q:
+            cmd = 'scout herd start --label api --cmd "pytest -q"'
+        elif "herdr" in q:
+            cmd = "scout --json herd herdr"
+        else:
+            cmd = "scout --json herd status"
+        return {
+            "router": "stub",
+            "picked_tool": "herd",
+            "picked_command": cmd,
+            "confidence": 0.94,
+            "reason": "herd/herdr — Scout session control surface (pairs with Herdr PTY multiplexer)",
+            "available_tools": list(tools.keys())[:12],
+        }
     if any(k in q for k in ["rtx", "offload", "alienware", "local gpu", "autoresearch"]):
         return {
             "router": "stub",

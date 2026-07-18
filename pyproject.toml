@@ -1,7 +1,7 @@
 [project]
 name = "scout-cli"
-version = "0.6.1"
-description = "Scout CLI - personal control plane (ex-BigBang). Agent-native, security-first, Ava brain + authentic writing + lab MRR + RTX offload. HOME-only."
+version = "0.7.0"
+description = "Scout CLI - personal control plane (ex-BigBang). Agent-native herd sessions + Ava brain + tools/MCP + authentic writing + RTX offload. HOME-only."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
@@ -43,6 +43,13 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["bigbang", "bigbang.*"]
+
+[tool.setuptools.package-data]
+bigbang = [
+  "skills/*.md",
+  "skills/*/SKILL.md",
+  "plugins/*/manifest.yaml",
+]
 
 [tool.ruff]
 line-length = 100

@@ -1,0 +1,18 @@
+name: skill
+version: 0.7.0
+description: >
+  Install and show Scout agent skills for Dottie-claw, Claude, Cursor, OpenClaw.
+  Teaching surface for the foundation control plane.
+capabilities:
+  network:
+    enabled: false
+    domains: []
+  filesystem:
+    write: true
+    paths:
+      - "~/.dottie-claw/skills/"
+      - "~/.openclaw/skills/"
+      - "~/.claude/skills/"
+      - "~/.cursor/skills/"
+  secrets:
+    allow: []

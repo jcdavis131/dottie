@@ -31,12 +31,16 @@ def test_mcp_server_initialize_list_and_call():
                 assert init.serverInfo.name == "scout-cli"
                 tools = await session.list_tools()
                 names = {t.name for t in tools.tools}
-                # one tool per plugin
-                assert "bb_tools" in names
-                assert "bb_system" in names
-                assert all(n.startswith("bb_") for n in names)
+                # primary scout_* + legacy bb_* aliases
+                assert "scout_tools" in names
+                assert "scout_system" in names
+                assert "scout_herd" in names
+                assert "scout_skill" in names
+                assert "scout_planes" in names
+                assert "bb_tools" in names  # compat
+                assert any(n.startswith("scout_") for n in names)
                 # call a trivial tool: tools list
-                result = await session.call_tool("bb_tools", {"args": "list"})
+                result = await session.call_tool("scout_tools", {"args": "list"})
                 assert not result.isError
                 text = "".join(
                     c.text for c in result.content if getattr(c, "text", None)

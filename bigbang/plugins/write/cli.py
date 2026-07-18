@@ -526,11 +526,20 @@ def _read_input(text: Optional[str], file: Optional[Path]) -> str:
 
 # ── Commands ──
 
-@app.command("scan")
+@app.command(
+    "scan",
+    epilog=(
+        "\nExamples:\n"
+        "  scout write scan --text \"In today's digital landscape…\"\n"
+        "  scout write scan --file draft.md\n"
+        "  cat draft.md | scout --json write scan\n"
+    ),
+)
 def scan_cmd(
-    text: Optional[str] = typer.Option(None, "--text", "-t"),
-    file: Optional[Path] = typer.Option(None, "--file", "-f"),
+    text: Optional[str] = typer.Option(None, "--text", "-t", help="text to scan"),
+    file: Optional[Path] = typer.Option(None, "--file", "-f", help="file to scan"),
 ):
+    """Scan text for AI-slop signals. Accepts --text, --file, or stdin."""
     content = _read_input(text, file)
     result = scan_text(content)
     emit({"command": "write scan", "input_chars": len(content), "result": result, "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only"}, command="write scan")

@@ -1,10 +1,37 @@
-# Scout CLI 🐾 — One CLI to Rule All Tools (ex-BigBang) v0.6.0
+# Scout CLI 🐾 — One CLI to Rule All Tools (ex-BigBang) v0.7.0
 
-> Agent-native, security-first, local-first control plane for *every* internet tool, API, and MCP server. Ava-brained + RTX offload. Now v0.6.0 with scout rename + GitHub Releases → Dashboard auto-read.
+> Agent-native, security-first, local-first control plane for *every* internet tool, API, and MCP server. Ava-brained + RTX offload. Now v0.7 with **herd** — a [Herdr](https://herdr.dev/)-inspired session control surface (wait/read/report) that pairs with real PTY multiplexers.
 
 **Solo personal project, no connection to employer, built with public/free-tier only.**
 
 Primary command: `scout` (aliases: `bb`, `bigbang`, `dv`, `kitty` for compat) — `scout --help` / `scout --json rtx status`
+
+## What's New in v0.7.0 — Judgment plane (above Herdr, not beside it)
+
+**Thesis:** Most agent managers are multiplexers. **Scout is a judgment plane.**
+
+[Herdr](https://herdr.dev/) owns panes / SSH attach / responsive TUI. Scout refuses that trap and owns what multiplexers cannot: **trust · world tools · judgment · memory · learning**.
+
+```bash
+# Differentiator cockpit
+scout --json planes thesis
+scout --json planes compare      # honest matrix vs herdr/tmux/apps
+scout --json planes status       # Trust · World · Herd · Judgment · Memory
+scout --json planes loop         # act → audit → rft → ava flywheel
+
+# Teach Dottie-claw
+scout skill teach --target dottie
+scout skill show scout
+
+# Herd ledger (not a PTY multiplexer)
+scout herd start api --cmd "pytest -q"
+scout --json herd wait api --status done --timeout 120
+
+# MCP — scout_<plugin> tools
+scout mcp serve
+```
+
+Read: `docs/DIFFERENTIATION.md` · `docs/FOUNDATION.md` · `bigbang/skills/scout/SKILL.md`
 
 ## What's New in v0.6.0 — Scout rename 🐾 + RTX Releases Auto-Read
 
