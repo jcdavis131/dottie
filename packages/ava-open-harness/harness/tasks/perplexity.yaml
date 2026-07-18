@@ -1,0 +1,8 @@
+# Versioned task definition for the ava-open-harness eval 'perplexity'.
+# Bars mirror the registered eval's honest bar — no invented thresholds.
+name: perplexity
+version: "1.0"
+group: core
+bar: "avg<30"
+description: >-
+  Per-phase perplexity on heldout bins (falls back to labeled training-distribution PPL over cpu_pilot packed shards)

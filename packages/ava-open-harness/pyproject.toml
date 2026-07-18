@@ -1,0 +1,40 @@
+[project]
+name = "ava-open-harness"
+version = "0.1.0"
+description = "Open evaluation harness for Ava AGI Factory v6.4 - J-Space canonical tests + Frontier rubric, openwiki aware. Solo personal project, no connection to employer, built with public/free-tier only"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [{name="Cam Davis"}]
+dependencies = [
+  "numpy>=1.24",
+]
+keywords = ["agi", "evaluation", "j-space", "global-workspace", "openwiki"]
+classifiers = [
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+]
+
+[project.optional-dependencies]
+torch = ["torch>=2.2", "transformers>=4.40", "safetensors"]
+dev = ["pytest>=8", "mypy"]
+
+[project.urls]
+Repository = "https://github.com/jcdavis131/ava-open-harness"
+Homepage = "https://github.com/langchain-ai/openwiki"
+
+[project.scripts]
+ava-harness = "harness.runner:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

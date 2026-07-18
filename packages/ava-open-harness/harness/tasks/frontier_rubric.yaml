@@ -1,0 +1,8 @@
+# Versioned task definition for the ava-open-harness eval 'frontier_rubric'.
+# Bars mirror the registered eval's honest bar — no invented thresholds.
+name: frontier_rubric
+version: "1.0"
+group: rubric
+bar: "weighted>=0.70"
+description: >-
+  Frontier 11-category weighted rubric (real path unwired: no honest jloss→score mapping exists yet)

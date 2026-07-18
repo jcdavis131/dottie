@@ -1,0 +1,8 @@
+# Versioned task definition for the ava-open-harness eval 'openwiki_knowledge'.
+# Bars mirror the registered eval's honest bar — no invented thresholds.
+name: openwiki_knowledge
+version: "1.0"
+group: knowledge
+bar: "mass>=0.06"
+description: >-
+  Wiki recall: live S2 verbalizable mass over openwiki page forwards

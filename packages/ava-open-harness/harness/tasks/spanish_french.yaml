@@ -1,0 +1,8 @@
+# Versioned task definition for the ava-open-harness eval 'spanish_french'.
+# Bars mirror the registered eval's honest bar — no invented thresholds.
+name: spanish_french
+version: "1.0"
+group: jspace
+bar: "auto_cos - deliberate_cos >0.05"
+description: >-
+  Spanish→French selectivity: S1 hl8 automatic vs S2 hl300 deliberate workspace cosines under swap

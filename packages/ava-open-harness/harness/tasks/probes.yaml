@@ -1,0 +1,8 @@
+# Versioned task definition for the ava-open-harness eval 'probes'.
+# Bars mirror the registered eval's honest bar — no invented thresholds.
+name: probes
+version: "1.0"
+group: core
+bar: "arith≥60% and facts≥70%"
+description: >-
+  Arithmetic, modus_ponens, facts, code_out exact-match probes, ≥200 items each

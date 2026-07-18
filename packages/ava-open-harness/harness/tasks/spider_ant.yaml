@@ -1,0 +1,8 @@
+# Versioned task definition for the ava-open-harness eval 'spider_ant'.
+# Bars mirror the registered eval's honest bar — no invented thresholds.
+name: spider_ant
+version: "1.0"
+group: jspace
+bar: "delta>0.1 and S2 top contains spider"
+description: >-
+  Spider→Ant: S2 hl=300-400 reasoning plasticity, WorkspaceSwap spider→ant, expect logP('6') gain

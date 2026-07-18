@@ -1,0 +1,8 @@
+# Versioned task definition for the ava-open-harness eval 'soccer_rugby'.
+# Bars mirror the registered eval's honest bar — no invented thresholds.
+name: soccer_rugby
+version: "1.0"
+group: jspace
+bar: "mass in [0.02,0.20] and acc>=0.30"
+description: >-
+  Soccer→Rugby verbal reportability mass + top-1 concept accuracy over heldout concept docs

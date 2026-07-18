@@ -1,0 +1,8 @@
+# Versioned task definition for the ava-open-harness eval 'needle'.
+# Bars mirror the registered eval's honest bar — no invented thresholds.
+name: needle
+version: "1.0"
+group: core
+bar: "avg>=0.70"
+description: >-
+  Pass-key retrieval at depths 0.1..0.9, native + YaRN-scaled contexts

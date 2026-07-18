@@ -1,0 +1,8 @@
+# Versioned task definition for the ava-open-harness eval 'france_china'.
+# Bars mirror the registered eval's honest bar — no invented thresholds.
+name: france_china
+version: "1.0"
+group: jspace
+bar: ">=2/4 flip"
+description: >-
+  France→China: Planner BroadcastSwap, single vector generalizes capital/language/continent/currency

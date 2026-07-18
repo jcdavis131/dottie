@@ -1,0 +1,40 @@
+name: OpenWiki Update
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+jobs:
+  openwiki-update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install OpenWiki
+        run: npm install -g openwiki
+      - name: Update docs
+        env:
+          OPENWIKI_PROVIDER: ${{ secrets.OPENWIKI_PROVIDER}}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY}}
+        run: openwiki code --update --print || echo "openwiki update failed"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install harness
+        run: pip install -e . pytest pyyaml
+      - name: Anti-mock guard (pytest)
+        run: python -m pytest tests/ -q
+      - name: Run harness mock
+        run: python -m harness run --eval all --mode mock --out-dir reports
+      - name: Create PR
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "docs: openwiki auto-update + harness report"
+          title: "OpenWiki auto-update"
+          branch: openwiki-auto-update
