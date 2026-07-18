@@ -25,3 +25,6 @@ build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
 testpaths = ["skills", "tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["skills"]
