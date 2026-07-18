@@ -1,0 +1,39 @@
+# Solo personal project, no connection to employer, built with public/free-tier only
+#
+# Hermes — agentic-assistant platform service.
+#
+#   docker compose -f apps/hermes/docker-compose.hermes.yml up --build
+#   curl http://localhost:8100/status
+#
+# extra_hosts maps host.docker.internal to the host gateway so the Ollama server running on
+# the user's box (qwen3:32b at :11434) is reachable from inside the container — the same
+# convention apps/ava-factory/docker-compose.yml uses for its ava-train service.
+
+services:
+  hermes:
+    build:
+      context: ../..                       # dottie monorepo root
+      dockerfile: apps/hermes/Dockerfile
+    image: dottie/hermes:latest
+    ports:
+      - "8100:8100"
+    environment:
+      HERMES_OLLAMA_URL: ${HERMES_OLLAMA_URL:-http://host.docker.internal:11434}
+      HERMES_OLLAMA_MODEL: ${HERMES_OLLAMA_MODEL:-qwen3:32b}
+      HERMES_DATA_DIR: /data
+      HERMES_WORKERS: ${HERMES_WORKERS:-2}
+      HERMES_QUEUE_MAX: ${HERMES_QUEUE_MAX:-32}
+      # Optional: point at a mounted ava checkpoint to enable the trainee backend
+      # (also requires torch in the image — see Dockerfile note).
+      HERMES_AVA_CKPT: ${HERMES_AVA_CKPT:-}
+      DOTTIE_ROOT: /dottie
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - hermes_data:/data
+      # Uncomment to expose a host checkpoint tree to the ava backend / train-step:
+      # - /path/to/ava-agi-factory-v6-4/runs:/dottie/apps/ava-factory/runs
+    restart: unless-stopped
+
+volumes:
+  hermes_data:
