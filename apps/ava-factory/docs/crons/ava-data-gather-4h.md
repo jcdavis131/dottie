@@ -28,7 +28,7 @@ Recommended sizing:
 - Alienware RTX 4090: 10M per run = 60M/day = 1.8B/month (crontab: 0 */4 * * *)
 
 Steps:
-1. cd ~/workspace/ava-agi-factory-v6-4
+1. cd ~/workspace/ava-agi-factory-v6-4 (dottie monorepo layout: cd <dottie>/apps/ava-factory — both layouts valid while both exist)
 2. Check disk: df -h, ensure <80% usage, else rotate old shards to data/for_upload/ and clean data/daily_expanded/ keeping last 2 days.
 3. Run expansion (Hatch VM size):
    python3 scripts/dataset_expansion.py --tokens 500K --phases p0_logic p1_math p2_foundation --out data/daily_expanded --upload-mode local

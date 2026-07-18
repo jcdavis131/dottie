@@ -37,6 +37,7 @@ curl http://localhost:11434/api/tags
 
 # 5. Run Frontier eval
 cd ~/workspace/ava-agi-factory-v6-4
+# dottie monorepo layout equivalent: cd <dottie>/apps/ava-factory
 
 # finance only — fast smoke test
 OLLAMA_HOST=http://localhost:11434 OLLAMA_MODEL=qwen3:32b \

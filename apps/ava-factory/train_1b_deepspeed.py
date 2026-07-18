@@ -117,7 +117,15 @@ def _try_run_openwiki_and_harness(mode="mock", ckpt=None):
         import os, sys
         here = Path(__file__).resolve().parent
         # add potential skill repo neighbors
-        for cand in [here.parent / "ava-skills", here / ".." / "ava-skills", Path.home() / "workspace" / "ava-skills"]:
+        # (each hit is sys.path.insert(0), so later list entries win priority —
+        #  dottie-relative and DOTTIE_ROOT candidates go last so the monorepo
+        #  layout is preferred when present; sibling checkouts still work)
+        _skill_cands = [here.parent / "ava-skills", here / ".." / "ava-skills", Path.home() / "workspace" / "ava-skills",
+                        here.parent.parent / "packages" / "ava-skills"]  # dottie: apps/ava-factory -> <dottie>/packages/ava-skills
+        _dottie_root = os.environ.get("DOTTIE_ROOT")
+        if _dottie_root:
+            _skill_cands.append(Path(_dottie_root) / "packages" / "ava-skills")
+        for cand in _skill_cands:
             cand = cand.resolve() if isinstance(cand, Path) else Path(cand)
             if cand.exists() and str(cand) not in sys.path:
                 sys.path.insert(0, str(cand))
@@ -142,8 +150,12 @@ def _try_run_openwiki_and_harness(mode="mock", ckpt=None):
 
         # 2. harness gate via harness.runner
         try:
-            # add harness path
-            for cand in [here.parent / "ava-open-harness", here / ".." / "ava-open-harness", Path.home() / "workspace" / "ava-open-harness"]:
+            # add harness path (same priority rule as skills above: dottie candidates last = preferred)
+            _harness_cands = [here.parent / "ava-open-harness", here / ".." / "ava-open-harness", Path.home() / "workspace" / "ava-open-harness",
+                              here.parent.parent / "packages" / "ava-open-harness"]  # dottie: apps/ava-factory -> <dottie>/packages/ava-open-harness
+            if os.environ.get("DOTTIE_ROOT"):
+                _harness_cands.append(Path(os.environ["DOTTIE_ROOT"]) / "packages" / "ava-open-harness")
+            for cand in _harness_cands:
                 cand = Path(cand).resolve() if isinstance(cand, Path) else Path(cand)
                 if cand.exists() and str(cand) not in sys.path:
                     sys.path.insert(0, str(cand))

@@ -6,15 +6,15 @@ This doc ties three pieces together for Ava v6.4.
 
 ## Repos
 
-- **ava-agi-factory-v6-4** — main model factory (this repo)
-- **ava-open-harness** — open eval harness (standalone, pip installable) at `../ava-open-harness`
+- **ava-agi-factory-v6-4** — main model factory (this repo; in the dottie monorepo: `<dottie>/apps/ava-factory`)
+- **ava-open-harness** — open eval harness (standalone, pip installable) at `../ava-open-harness` as a sibling checkout, or `<dottie>/packages/ava-open-harness` in the dottie monorepo; on GitHub as `jcdavis131/ava-open-harness`
 - `harness/registry.py` — @register_eval
 - `harness/runner.py` — CLI `python -m harness run --eval all --mode mock`
 - `harness/evals/jspace_tests.py` — 5 canonical tests real measurements: Spider→Ant S2 hl300-400, France→China Planner hl150-200 generalization over capital/language/continent/currency, Soccer→Rugby verbal reportability mass 0.06, Spanish→French selectivity S1 hl8 vs S2 hl300, Safety 0/180 Blackmail Critic hl30-35 early warning 4-5 tok
 - `harness/evals/frontier_rubric.py` — 11-category weighted rubric (reportability, broadcast 20% norm, selectivity, modulation, routing KL, inter-MI cos 0.45, temporal planning, safety critic AUC, knowledge recall wiki->S2, reasoning depth, process transparency)
 - `harness/evals/openwiki_knowledge.py` — does S2 recall facts from `~/.openwiki/wiki`?
 - Mock mode no torch needed, real mode loads `ava_stable_736k.pt`
-- **ava-skills** — skill system at `../ava-skills`
+- **ava-skills** — skill system at `../ava-skills` as a sibling checkout, or `<dottie>/packages/ava-skills` in the dottie monorepo; on GitHub as `jcdavis131/ava-skills`
 - 8 starter skills mapping to workspaces: jspace-inspector (Planner hl150), openwiki-sync (S2 hl300), logic-prover (S2 hl300), code-bench (S2 hl350), safety-scanner (Critic hl30), memory-router (Router), eval-harness-runner (Planner), family-brain-wiki (S2)
 
 ## OpenWiki CLI
@@ -111,6 +111,5 @@ raise RuntimeError("Harness gate failed")
 
 ## Next
 
-- [] Push `ava-open-harness` and `ava-skills` to GitHub as `jcdavis131/ava-open-harness` and `jcdavis131/ava-skills` (repos scaffolded, need `gh repo create` + push)
 - [] Run `openwiki code --init` in all three repos
 - [] Add Family Brain WikiTab build to production bundle

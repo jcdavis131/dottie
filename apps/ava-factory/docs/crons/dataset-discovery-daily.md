@@ -16,7 +16,7 @@ metadata:
 Purpose: Discover additional datasets to fill gaps identified by evals (currently only one data source synthetic Phi B). Reads frontier_eval_results.json, branch_eval_results.json, latest-log.html to find weak domains (e.g., finance weak -> need financial datasets).
 
 Steps:
-1. cd ~/workspace/ava-agi-factory-v6-4
+1. cd ~/workspace/ava-agi-factory-v6-4 (dottie monorepo layout: cd <dottie>/apps/ava-factory — both layouts valid while both exist)
 2. Run discovery:
    python scripts/dataset_discovery.py --dry-run --eval-file branch_eval_results.json --out your_files/ava-agi/dataset_discovery/
    - Parses eval results: if cap_score <0.9 or test pass=False, marks domain weak
