@@ -17,11 +17,27 @@ def test_custom_root_env_override(cli_mod, tmp_path):
 
 def test_custom_root_fallback_order(cli_mod, monkeypatch, tmp_path):
     monkeypatch.delenv("SCOUT_RTX_ROOT", raising=False)
+    monkeypatch.delenv("DOTTIE_ROOT", raising=False)
     fake_home = tmp_path / "home"
     monkeypatch.setattr(cli_mod.Path, "home", classmethod(lambda cls: fake_home))
+    # first non-env probe: the checkout containing cli.py itself (we run the
+    # tests from a real checkout, so this always resolves)
+    from pathlib import Path as _P
+
+    repo_root = _P(cli_mod.__file__).resolve().parent.parent
+    assert cli_mod._dottie_self_root() == repo_root
+    assert cli_mod._resolve_custom_root() == repo_root
+    # disable the self probe to exercise the env/home-based fallbacks
+    monkeypatch.setattr(cli_mod, "_dottie_self_root", lambda: None)
     # neither checkout exists -> scout-rtx fallback
     assert cli_mod._resolve_custom_root() == fake_home / "workspace" / "scout-rtx"
-    # legacy checkout exists -> preferred
+    # DOTTIE_ROOT with an existing apps/scout-rtx -> preferred over home probes
+    dottie = tmp_path / "dottie"
+    (dottie / "apps" / "scout-rtx").mkdir(parents=True)
+    monkeypatch.setenv("DOTTIE_ROOT", str(dottie))
+    assert cli_mod._resolve_custom_root() == dottie / "apps" / "scout-rtx"
+    monkeypatch.delenv("DOTTIE_ROOT")
+    # legacy checkout exists -> preferred over the scout-rtx default
     legacy = fake_home / "workspace" / "autoresearch-rtx-custom"
     legacy.mkdir(parents=True)
     assert cli_mod._resolve_custom_root() == legacy

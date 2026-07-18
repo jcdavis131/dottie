@@ -2,7 +2,7 @@
 
 > Goal: Test Inkling arch flags (relative rope, short_conv, MoE, effort) + compression B6 10% on 5-min loops, mapped to Ava base1b 1.17B YaRN 10k→1M.
 
-Repo: C:\Users\jcdav\workspace\ava-agi-factory-v6-4\ — presets nano/base1b, CompressionGenerator sha 3e606c, 6 families Shannon/Huffman/LZ/Arithmetic/BWT/ANS+z_token long 6000+ P4, entropy/Kraft verified.
+Repo: C:\Users\jcdav\workspace\ava-agi-factory-v6-4\ (dottie monorepo layout: C:\Users\jcdav\workspace\dottie\apps\ava-factory\ or ~/workspace/dottie/apps/ava-factory/) — presets nano/base1b, CompressionGenerator sha 3e606c, 6 families Shannon/Huffman/LZ/Arithmetic/BWT/ANS+z_token long 6000+ P4, entropy/Kraft verified.
 
 ## Flags under test
 - use_relative=True (relative rope) vs RoPE
@@ -17,6 +17,7 @@ Repo: C:\Users\jcdav\workspace\ava-agi-factory-v6-4\ — presets nano/base1b, Co
 Instead of editing train.py only proxy, you can directly run:
 ```
 cd C:\Users\jcdav\ava-agi-factory-v6-4
+# dottie monorepo layout: cd C:\Users\jcdav\workspace\dottie\apps\ava-factory
 python scripts/smoke_train_compression.py --preset nano --steps 1000 --device cuda --use-relative --use-short-conv --use-effort --compression 0.1
 python -m ava.train --preset base1b --use-relative --use-short-conv --use-moe --use-effort --compression-b6 0.1 --steps 10000 --device cuda --precision bf16
 ```

@@ -44,7 +44,7 @@ scout rtx results
 # → shows best val_bpb, maps to Ava Router/veto etc
 ```
 
-Promote win: take best commit diff, copy idea into `~/workspace/ava-agi-factory-v6-4/model_1b.py`
+Promote win: take best commit diff, copy idea into `~/workspace/ava-agi-factory-v6-4/model_1b.py` (dottie monorepo layout: `~/workspace/dottie/apps/ava-factory/model_1b.py`)
 
 ### 2. Offload Turnover Shield model search
 
@@ -138,7 +138,7 @@ In `~/workspace/bigbang-cli/bigbang/plugins/rtx/` (we will create next), you get
 1. Review `results.tsv` — best val_bpb commits are `keep`
 2. `git log --oneline --graph` shows experiment lineage
 3. Promote win to appropriate repo:
-   - Ava win → `~/workspace/ava-agi-factory-v6-4/`
+   - Ava win → `~/workspace/ava-agi-factory-v6-4/` (dottie layout: `~/workspace/dottie/apps/ava-factory/`)
    - Turnover win → `~/workspace/projects/first-1k-mo-passive/`
    - Write win → `~/workspace/bigbang-cli/bigbang/plugins/write/`
 4. `bb brain daily "RTX results: ..."`

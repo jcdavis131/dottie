@@ -7,7 +7,7 @@ capabilities:
     domains: ["api.github.com"]
   filesystem:
     write: true
-    paths: ["~/workspace/autoresearch-rtx-custom/", "~/workspace/your_files/rtx-offload/", "~/workspace/projects/first-1k-mo-passive/files/"]
+    paths: ["~/workspace/autoresearch-rtx-custom/", "~/workspace/dottie/apps/scout-rtx/", "~/workspace/your_files/rtx-offload/", "~/workspace/projects/first-1k-mo-passive/files/"]
   secrets:
     allow: []
 # Solo personal project, no connection to employer, built with public/free-tier only

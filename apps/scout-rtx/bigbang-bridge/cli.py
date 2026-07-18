@@ -18,12 +18,34 @@ GITHUB_REPO = "jcdavis131/scout-rtx"
 GITHUB_RELEASES_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases"
 
 
+def _dottie_self_root():
+    """The scout-rtx checkout containing this file, if it looks like a real
+    checkout. The bridge lives at <root>/bigbang-bridge/cli.py inside the dottie
+    monorepo (apps/scout-rtx) and in standalone clones alike, so resolving
+    relative to __file__ works regardless of clone location. Returns None when
+    this file was copied elsewhere (e.g. into a host CLI's plugins dir)."""
+    candidate = Path(__file__).resolve().parent.parent
+    if (candidate / "train.py").exists() or (candidate / "programs").exists():
+        return candidate
+    return None
+
+
 def _resolve_custom_root():
-    """Resolve the custom fork root: SCOUT_RTX_ROOT env override, then the legacy
+    """Resolve the custom fork root: SCOUT_RTX_ROOT env override, then the
+    checkout containing this file (works for dottie's apps/scout-rtx and any
+    standalone clone), then DOTTIE_ROOT/apps/scout-rtx, then the legacy
     autoresearch-rtx-custom checkout if present, else the scout-rtx checkout."""
     env_root = os.environ.get("SCOUT_RTX_ROOT")
     if env_root:
         return Path(env_root).expanduser()
+    self_root = _dottie_self_root()
+    if self_root is not None:
+        return self_root
+    dottie_root = os.environ.get("DOTTIE_ROOT")
+    if dottie_root:
+        candidate = Path(dottie_root).expanduser() / "apps" / "scout-rtx"
+        if candidate.exists():
+            return candidate
     legacy = Path.home() / "workspace" / "autoresearch-rtx-custom"
     if legacy.exists():
         return legacy

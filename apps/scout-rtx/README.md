@@ -4,6 +4,8 @@
 
 **Integrated with [jcdavis131/scout-cli](https://github.com/jcdavis131/scout-cli) — primary command `scout` (aliases `bb`, `bigbang`, `kitty`, `dv`) v0.6.0**
 
+**Monorepo home: dottie** — this app lives at `apps/scout-rtx` in the dottie monorepo, alongside `apps/scout-cli` (the `scout`/`bb` host CLI providing the `bigbang` package; inside dottie install it via `pip install -e ../scout-cli`) and `apps/ava-factory`. Standalone clones of `jcdavis131/scout-rtx` keep working; the `scout rtx` plugin resolves its root via `SCOUT_RTX_ROOT`, then the checkout containing `bigbang-bridge/cli.py`, then `DOTTIE_ROOT/apps/scout-rtx`, then the legacy `~/workspace` fallbacks.
+
 ## Why this custom?
 | Feature | Upstream win-rtx | This custom |
 |---------|------------------|-------------|

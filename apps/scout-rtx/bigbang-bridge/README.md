@@ -12,6 +12,18 @@ pip install -e . --break-system-packages -q
 bb --help | grep rtx
 ```
 
+### Inside the dottie monorepo
+
+When this app lives at `apps/scout-rtx` inside the dottie monorepo, the host CLI
+providing the `bigbang` package that `bigbang-bridge/cli.py` imports is the
+sibling app `apps/scout-cli`. Install it dottie-relative:
+
+```bash
+cd <dottie-root>/apps/scout-rtx
+pip install -e ../scout-cli --break-system-packages -q
+bb --help | grep rtx
+```
+
 ## Quick offload flow
 
 ### 1. On Hatch Cloud (here) — queue tasks:

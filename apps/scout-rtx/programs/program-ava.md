@@ -1,10 +1,10 @@
 # autoresearch — Ava v6.4 track for RTX 4090
 
-> Goal: offload Ava AGI Factory v6.4 research to autonomous 5-min loops. You have repo `~/workspace/ava-agi-factory-v6-4/` with YaRN 10k→1M, 4 workspaces S1 Fast 32 hl=8 S2 Slow 64 hl=300 Critic 16 hl=30 Planner 32 hl=150 + Router/veto, Frontier 11 cats, Ollama qwen3:32b judge.
+> Goal: offload Ava AGI Factory v6.4 research to autonomous 5-min loops. You have repo `~/workspace/ava-agi-factory-v6-4/` (dottie monorepo layout: `~/workspace/dottie/apps/ava-factory/`) with YaRN 10k→1M, 4 workspaces S1 Fast 32 hl=8 S2 Slow 64 hl=300 Critic 16 hl=30 Planner 32 hl=150 + Router/veto, Frontier 11 cats, Ollama qwen3:32b judge.
 
 ## Context for agent (read these if you can access via C:\Users\jcdav\...)
 
-- Ava repo path: `C:\Users\jcdav\workspace\ava-agi-factory-v6-4\` or `~/workspace/ava-agi-factory-v6-4/`
+- Ava repo path: `C:\Users\jcdav\workspace\ava-agi-factory-v6-4\` or `~/workspace/ava-agi-factory-v6-4/` — in the dottie monorepo layout: `C:\Users\jcdav\workspace\dottie\apps\ava-factory\` or `~/workspace/dottie/apps/ava-factory/`
 - Files: `model_1b.py` YaRN, `multi_jspace_module.py` 4 workspaces, `train_1b_deepspeed.py` WSD 736k 92% stable, `server.py`, `eval_branch_harness.py` RealInterventionEngine, `specs/frontier_benchmark_spec.md`, `eval_frontier_rubric.py` 479 lines Mock/CriteriaJudge + LocalHFJudge + MetaMuseJudge + Glm52Judge + OllamaJudge, `OLLAMA_GUIDE.md`
 - Current best: Mock eval PASS 2026-07-09 09:14 all branches 100% cap preservation BASE 0.983 Align 0.91
 - Docker: pytorch:2.4.0-cuda12.4-cudnn9, compose gpus all, host.docker.internal:host-gateway, WANDB offline
@@ -71,6 +71,7 @@ not a promotion. Before flagging a commit as cherry-pick-worthy for `model_1b.py
 2. **Log EG, not just val_bpb.** Use the factory's `efficiency_gain.py` against your own
    baseline runs (`--x-key seconds --y-key val_bpb` for EG_Time on this box):
    `python ~/workspace/ava-agi-factory-v6-4/efficiency_gain.py --baseline base.jsonl --candidate cand.jsonl --x-key seconds --y-key val_bpb`
+   (dottie layout: `python ~/workspace/dottie/apps/ava-factory/efficiency_gain.py ...` — same flags)
    Its `trend.verdict` (`promote`/`hold`) is the gate — both rungs > 1 and the bigger rung
    not the worst.
 3. **Extend `ava-mapping.jsonl`** with the ladder evidence:
@@ -96,6 +97,7 @@ mounted at `/workspace`) runs the *same scripts* the pilot proved, just bigger:
 
 ```bash
 cd ~/workspace/ava-agi-factory-v6-4 && git pull
+# dottie monorepo layout: cd ~/workspace/dottie/apps/ava-factory && git pull
 docker compose up -d ava-train
 
 # 1. Capability-scale chain (T9.3/T9.5 proper): same pipeline, mini preset, CUDA.
@@ -120,5 +122,5 @@ construction, so cloud-side plumbing tests remain valid for GPU runs.
 
 ## Never stop — autonomous overnight researcher for Ava.
 
-Your human wakes up to log + promising commits to cherry-pick into `~/workspace/ava-agi-factory-v6-4/`.
+Your human wakes up to log + promising commits to cherry-pick into `~/workspace/ava-agi-factory-v6-4/` (dottie layout: `~/workspace/dottie/apps/ava-factory/`).
 Only `eg_verdict: promote` entries are cherry-pick candidates.
