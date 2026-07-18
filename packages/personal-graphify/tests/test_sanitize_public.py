@@ -13,6 +13,12 @@ sanitize = importlib.util.module_from_spec(spec)
 sys.modules["sanitize_for_public"] = sanitize
 spec.loader.exec_module(sanitize)
 
+_LIGHTEN = Path(__file__).resolve().parent.parent / "scripts" / "lighten_public_graph.py"
+_lspec = importlib.util.spec_from_file_location("lighten_public_graph", _LIGHTEN)
+lighten = importlib.util.module_from_spec(_lspec)
+sys.modules["lighten_public_graph"] = lighten
+_lspec.loader.exec_module(lighten)
+
 
 def _write_graph(tmp_path, nodes, edges=None):
     src = tmp_path / "graph.json"
@@ -53,6 +59,33 @@ class TestPiiGate:
         blob = dest.read_text(encoding="utf-8")
         assert "/home/hatch" not in blob
 
+    def test_dottie_layout_paths_redacted(self, tmp_path):
+        # Exports built from a dottie checkout must redact apps/* + packages/*
+        # fragments to the same project aliases as the standalone layout.
+        src = _write_graph(tmp_path, [
+            {"id": "file:/home/user/dottie/packages/personal-graphify/src/cli.py",
+             "label": "cli.py", "type": "file",
+             "file": "/home/user/dottie/packages/personal-graphify/src/cli.py", "degree": 1},
+            {"id": "file:C:/Users/jcdav/dottie/apps/scout-cli/scout/main.py",
+             "label": "main.py", "type": "file",
+             "file": "C:/Users/jcdav/dottie/apps/scout-cli/scout/main.py", "degree": 1},
+            {"id": "file:/srv/ci/dottie/packages/ava-skills/skills/mint.md",
+             "label": "mint.md", "type": "file",
+             "file": "/srv/ci/dottie/packages/ava-skills/skills/mint.md", "degree": 1},
+        ])
+        dest = tmp_path / "out.json"
+        sanitize.main(src, dest)
+        blob = dest.read_text(encoding="utf-8")
+        assert "dottie" not in blob
+        assert "/home/user" not in blob and "/srv/ci" not in blob
+        assert "apps/" not in blob and "packages/" not in blob
+        files = {n["file"] for n in json.loads(blob)["nodes"]}
+        assert files == {
+            "personal-graphify/src/cli.py",
+            "scout-cli/scout/main.py",
+            "ava-skills/skills/mint.md",
+        }
+
     def test_junk_nodes_filtered(self, tmp_path):
         src = _write_graph(tmp_path, [
             {"id": "file:pkg.egg-info/PKG-INFO", "label": "PKG-INFO", "type": "file", "degree": 0},
@@ -62,3 +95,19 @@ class TestPiiGate:
         sanitize.main(src, dest)
         out = json.loads(dest.read_text(encoding="utf-8"))
         assert {n["label"] for n in out["nodes"]} == {"Keep Me"}
+
+
+class TestLightenDottieFragments:
+    def test_strip_paths_removes_dottie_layout_fragments(self):
+        # dottie apps/* + packages/* ids must not leak project names into seed blobs
+        for frag in (
+            "apps/scout-cli/scout/main.py",
+            "apps/scout-rtx/rtx/offload.py",
+            "apps/ava-factory/factory/run.py",
+            "packages/personal-graphify/src/cli.py",
+            "packages/ava-skills/skills/mint.md",
+            "packages/ava-open-harness/harness/loop.py",
+        ):
+            stripped = lighten._strip_paths(f"see {frag} for details")
+            assert frag.split("/")[1] not in stripped, frag
+            assert "apps/" not in stripped and "packages/" not in stripped

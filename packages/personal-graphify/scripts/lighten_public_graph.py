@@ -97,6 +97,13 @@ def _strip_paths(text: str) -> str:
     text = text.replace("\\", "/")
     text = re.sub(r"(?i)[A-Z]:/[^:\s]+", " ", text)
     text = re.sub(r"(?i)/(?:users|home|ava-agi[^/\s]*|scout-cli|personal-graphify|vector-[^/\s]*)/[^:\s]*", " ", text)
+    # dottie monorepo layout: apps/* + packages/* fragments (relative ids have no leading /)
+    text = re.sub(
+        r"(?i)\b(?:apps/(?:scout-cli|scout-rtx|ava-factory)|"
+        r"packages/(?:personal-graphify|ava-skills|ava-open-harness))/[^:\s]*",
+        " ",
+        text,
+    )
     return text
 
 
@@ -230,7 +237,11 @@ def lighten(data: dict, max_nodes: int = 480, max_hops: int = 1) -> dict:
             # prefer hot project files
             score = int(n.get("degree") or 0)
             path = _path_blob(n)
-            if any(k in path for k in ("scout-cli", "personal-graphify", "vector-", "turnover")):
+            # bare names match both standalone (scout-cli/) and dottie (apps/scout-cli/) layouts
+            if any(k in path for k in (
+                "scout-cli", "scout-rtx", "personal-graphify", "vector-", "turnover",
+                "ava-factory", "ava-skills", "ava-open-harness",
+            )):
                 score += 40
             # multi_jspace / graphify core files
             if any(k in path for k in ("multi_jspace", "graphify", "/ava/", "bigbang")):

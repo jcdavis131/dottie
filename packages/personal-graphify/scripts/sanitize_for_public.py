@@ -8,9 +8,15 @@ sanitize_for_public.py — v4 non-PII public graph
 Solo personal project, no connection to employer, built with public/free-tier only
 """
 import json
+import os
 import re
 from pathlib import Path
 from collections import Counter
+
+# Dottie monorepo checkout root (set when exports are built inside a dottie checkout).
+# Prefer DOTTIE_ROOT when present; the layout-fragment regexes below still redact
+# dottie paths when it is unset, and standalone-layout paths keep working unchanged.
+_DOTTIE_ROOT = os.environ.get("DOTTIE_ROOT", "").replace("\\", "/").rstrip("/")
 
 ACCT_RE = re.compile(r"\b(0472|5594|8889)\b")
 EMAIL_RE = re.compile(r"[\w.+-]+@[\w.-]+\.\w+")
@@ -26,6 +32,8 @@ def sanitize_path(p: str) -> str:
     if not p:
         return p
     p = p.replace("\\", "/")
+    if _DOTTIE_ROOT:
+        p = p.replace(_DOTTIE_ROOT + "/", "")
     p = re.sub(r"/home/hatch/workspace/your_files/personal-graphify/", "personal-graphify/", p)
     p = re.sub(r"/home/hatch/workspace/", "", p)
     p = HOME_HATCH_RE.sub("", p)
@@ -40,6 +48,14 @@ def sanitize_path(p: str) -> str:
         (r"(?i)[A-Z]:/Users/[^/]+/vector-gridiron/", "vector-gridiron/"),
         (r"(?i)[A-Z]:/Users/[^/]+/vector-tennis/", "vector-tennis/"),
         (r"(?i)[A-Z]:/Users/[^/]+/jcamd-site/", "jcamd-site/"),
+        # dottie monorepo layout: apps/* + packages/* fragments → project aliases,
+        # regardless of the checkout prefix (home dir, DOTTIE_ROOT, drive letter)
+        (r"(?i)^(?:.*/)?apps/scout-cli/", "scout-cli/"),
+        (r"(?i)^(?:.*/)?apps/scout-rtx/", "scout-rtx/"),
+        (r"(?i)^(?:.*/)?apps/ava-factory/", "ava-factory/"),
+        (r"(?i)^(?:.*/)?packages/personal-graphify/", "personal-graphify/"),
+        (r"(?i)^(?:.*/)?packages/ava-skills/", "ava-skills/"),
+        (r"(?i)^(?:.*/)?packages/ava-open-harness/", "ava-open-harness/"),
         (r"(?i)[A-Z]:/Users/[^/]+/", ""),
     ]
     for pat, repl in replacements:
