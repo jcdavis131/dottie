@@ -1,0 +1,58 @@
+{
+  "tasks": [
+    {
+      "id": "2026-07-15T21:23:49.599506+00:00",
+      "task": "Optimize Ava router entropy threshold 0.7 for S1/S2 gating",
+      "program": "programs/program-ava.md",
+      "status": "pending",
+      "created_at": "2026-07-15T21:23:49.599537+00:00"
+    },
+    {
+      "id": "2026-07-15-nano-inkling-comp-2026-07-15T23:21:34.357492+00:00",
+      "task": "Smoke Train Ava nano with Inkling flags (relative+short_conv+moe+effort) + compression B6 10%",
+      "program": "programs/program-inkling-small.md",
+      "preset": "nano",
+      "flags": [
+        "use_relative=True",
+        "use_short_conv=True",
+        "use_moe=False",
+        "use_effort=True",
+        "rope_type=relative"
+      ],
+      "steps": 1000,
+      "device": "cuda",
+      "status": "pending",
+      "created_at": "2026-07-15T23:21:34.357492+00:00",
+      "hardware": "Alienware RTX 4080/4090 C:/Users/jcdav/",
+      "compression": "B6 synth_compression 10% p0-p5 sha 3e606c entropy/Kraft/LZ/BWT verified, long 6000+ p4",
+      "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only"
+    },
+    {
+      "id": "2026-07-15-base1b-inkling-comp-ablation-2026-07-15T23:21:34.357492+00:00",
+      "task": "Train Ava base1b with Inkling arch flags ablation + compression B6",
+      "program": "programs/program-inkling-small.md",
+      "preset": "base1b",
+      "flags": [
+        "use_relative=True",
+        "use_short_conv=True",
+        "use_moe=True",
+        "use_effort=True"
+      ],
+      "steps": 10000,
+      "device": "cuda",
+      "status": "pending",
+      "created_at": "2026-07-15T23:21:34.357492+00:00",
+      "hardware": "Alienware RTX 4080/4090 Q4 12B active, fits 24GB VRAM batch64 BF16 SDPA",
+      "curriculum": "6-phase 15T scaled: p0 logic 10% compression shannon, p1 15% huffman/arithmetic, p2 10% lz77, p3 10% BWT/ANS+z_token, p4 10% long 16k+, p5 10% anneal proofs",
+      "eval": "eval_frontier_rubric.py --judge inkling --effort_sweep 0.2-0.99 dual grader",
+      "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only"
+    },
+    {
+      "id": "2026-07-15T23:27:16.389209+00:00",
+      "task": "Train Ava base1b Inkling+compression: use_moe True use_relative True use_short_conv True use_effort True Muon wd~lr2 + compression B6 10% strategic P0-P5",
+      "program": "programs/program-inkling-small.md",
+      "status": "pending",
+      "created_at": "2026-07-15T23:27:16.389233+00:00"
+    }
+  ]
+}
