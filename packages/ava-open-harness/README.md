@@ -41,9 +41,36 @@ python -m harness run --eval spider_ant,france_china --mode mock --verbose
 genuine live-forward numbers but imply **no model capability**; every real
 result is labeled `"scale": "smoke", "capability_claim": "none"`. Regenerate
 the checkpoint + tokenizer with the factory's `scripts/cpu_pilot_e2e.py`.
-The factory repo location defaults to `/home/user/ava-agi-factory-v6-4`;
-override with env `AVA_FACTORY_ROOT`. When the factory is not importable,
+The factory repo location is resolved in this order:
+
+1. env `AVA_FACTORY_ROOT` (always wins, used verbatim);
+2. the **dottie monorepo sibling** `apps/ava-factory` — probed via
+   `DOTTIE_ROOT` (if set) or path-relative from this package
+   (`<dottie>/packages/ava-open-harness` → `<dottie>/apps/ava-factory`) —
+   but only preferred over the default when it actually holds the smoke
+   checkpoint (`runs/cpu_pilot/base/base_final.pt`); a code-only sibling
+   (evals present, `.pt` binaries gitignored) is used only when no candidate
+   has a checkpoint, so explicit `--ckpt` still works;
+3. the standalone default `/home/user/ava-agi-factory-v6-4`.
+
+This makes a dottie clone self-contained without env vars, while standalone
+checkouts keep the old default. When the factory is not importable anywhere,
 real paths fail honestly (structured error records) — they never mock.
+
+### Dottie monorepo layout
+
+Inside the dottie monorepo this package lives at `packages/ava-open-harness`
+and the factory at `apps/ava-factory`, so the real-mode example above becomes:
+
+```bash
+python -m harness run --eval jspace --mode real \
+  --ckpt ../../apps/ava-factory/runs/cpu_pilot/base/base_final.pt \
+  --tokenizer ../../apps/ava-factory/runs/cpu_pilot/tokenizer/ava_nano_bpe.json \
+  --preset nano
+```
+
+(Checkpoint `.pt` binaries are gitignored — regenerate them in
+`apps/ava-factory` with `scripts/cpu_pilot_e2e.py` first.)
 
 ## Architecture
 

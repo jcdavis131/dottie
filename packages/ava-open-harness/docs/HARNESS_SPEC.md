@@ -74,9 +74,35 @@ Each sub-score 0..1 from probes or jlosses.
    (`meta.real_load_failed=True`, all evals failed with errors) — data, not an
    exception a broad `except` could swallow and fabricate around.
 
+## Factory root resolution (dottie-aware)
+
+`harness.common.factory_root()` resolves the factory checkout in this
+precedence order:
+
+1. env `AVA_FACTORY_ROOT` — always wins, returned verbatim (the anti-mock
+   tests point it at a nonexistent dir to force honest real-mode failures);
+2. first candidate with factory code (`evals/jspace_tests.py`) **and** the
+   cpu_pilot smoke checkpoint (`runs/cpu_pilot/base/base_final.pt`), probing
+   the dottie sibling `apps/ava-factory` first (`$DOTTIE_ROOT/apps/ava-factory`
+   when `DOTTIE_ROOT` is set, else path-relative
+   `../../../apps/ava-factory` from `harness/common.py`), then the default
+   `/home/user/ava-agi-factory-v6-4`;
+3. first candidate with factory code only (checkpoint `.pt` binaries are
+   gitignored in the monorepo, so a fresh dottie clone matches here — evals
+   stay importable and callers pass `--ckpt` explicitly);
+4. the default `/home/user/ava-agi-factory-v6-4` as the honest fallback —
+   `factory_available()` reports `False` and real paths fail with structured
+   error records pointing at the documented default.
+
+The checkpoint marker in step 2 matters: a dottie checkout carries
+`runs/cpu_pilot/MANIFEST.json` and the tokenizer (text files) but not the
+`.pt` binaries, so a checkpoint-bearing standalone factory must win over a
+code-only monorepo sibling.
+
 ## Real-path delegation & scale honesty
 
-When `AVA_FACTORY_ROOT` (default `/home/user/ava-agi-factory-v6-4`) is
+When the resolved factory root (see above; default
+`/home/user/ava-agi-factory-v6-4`, dottie layout `apps/ava-factory`) is
 importable, real mode delegates to the factory's live implementations:
 `evals/jspace_tests.py` (WorkspaceSwap/BroadcastSwap interventions),
 `evals/probes.score_probes`, `evals/perplexity.compute_ppl`,

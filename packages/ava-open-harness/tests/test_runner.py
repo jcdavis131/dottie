@@ -27,7 +27,9 @@ from harness.evals.perplexity import perplexity  # noqa: E402
 from harness.evals.probes import probes  # noqa: E402
 from harness.evals.openwiki_knowledge import openwiki_knowledge  # noqa: E402
 
-FACTORY = Path(os.environ.get("AVA_FACTORY_ROOT", "/home/user/ava-agi-factory-v6-4"))
+# factory_root() resolves: env AVA_FACTORY_ROOT -> dottie sibling apps/ava-factory
+# (only if it holds the smoke checkpoint; code-only otherwise) -> default path.
+FACTORY = Path(os.environ.get("AVA_FACTORY_ROOT") or factory_root())
 CKPT = FACTORY / "runs" / "cpu_pilot" / "base" / "base_final.pt"
 TOKENIZER = FACTORY / "runs" / "cpu_pilot" / "tokenizer" / "ava_nano_bpe.json"
 

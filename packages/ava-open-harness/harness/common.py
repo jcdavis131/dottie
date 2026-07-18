@@ -19,14 +19,78 @@ import os, sys, json, math, random
 DEFAULT_FACTORY_ROOT = "/home/user/ava-agi-factory-v6-4"
 
 
+def _has_factory_code(root: str) -> bool:
+    """Marker: the factory's eval code is present (evals/jspace_tests.py)."""
+    return os.path.isdir(root) and os.path.isfile(os.path.join(root, "evals", "jspace_tests.py"))
+
+
+def _has_smoke_checkpoint(root: str) -> bool:
+    """Marker: the cpu_pilot smoke checkpoint binary is present.
+
+    NOTE: runs/cpu_pilot/MANIFEST.json and the tokenizer are small text files
+    that ship with a factory checkout, but the .pt binaries are gitignored —
+    so the checkpoint itself is the only honest 'this root can actually load
+    a real model' marker.
+    """
+    return os.path.isfile(os.path.join(root, "runs", "cpu_pilot", "base", "base_final.pt"))
+
+
+def _dottie_factory_candidates() -> List[str]:
+    """Dottie-monorepo sibling candidates for the factory (apps/ava-factory).
+
+    Preference: explicit DOTTIE_ROOT env var first, then the path-relative
+    probe (this file lives at <dottie>/packages/ava-open-harness/harness/,
+    so the sibling is ../../../apps/ava-factory). Both are best-effort — in a
+    standalone (non-monorepo) checkout they simply don't exist and resolution
+    falls through to DEFAULT_FACTORY_ROOT unchanged.
+    """
+    cands: List[str] = []
+    dottie = os.environ.get("DOTTIE_ROOT")
+    if dottie:
+        cands.append(os.path.join(dottie, "apps", "ava-factory"))
+    try:
+        here = os.path.dirname(os.path.abspath(__file__))
+        cands.append(os.path.abspath(os.path.join(here, "..", "..", "..", "apps", "ava-factory")))
+    except Exception:
+        pass  # never let probing break import
+    # dedupe, preserve order
+    out: List[str] = []
+    for c in cands:
+        if c not in out:
+            out.append(c)
+    return out
+
+
 def factory_root() -> str:
-    """Factory repo root; override with env AVA_FACTORY_ROOT."""
-    return os.environ.get("AVA_FACTORY_ROOT", DEFAULT_FACTORY_ROOT)
+    """Factory repo root.
+
+    Resolution precedence (documented in README/HARNESS_SPEC):
+    1. env AVA_FACTORY_ROOT — always wins, returned verbatim (even if the dir
+       is missing: the anti-mock tests rely on pointing it at a nonexistent
+       path to force honest real-mode failures).
+    2. First candidate (dottie sibling apps/ava-factory via DOTTIE_ROOT or
+       path-relative, then the default path) that has BOTH factory code and
+       the cpu_pilot smoke checkpoint — a fully usable factory.
+    3. First candidate with factory code only (evals importable; caller must
+       supply --ckpt explicitly).
+    4. DEFAULT_FACTORY_ROOT — honest fallback; factory_available() reports
+       False and error messages keep pointing at the documented default.
+    """
+    env = os.environ.get("AVA_FACTORY_ROOT")
+    if env:
+        return env
+    candidates = _dottie_factory_candidates() + [DEFAULT_FACTORY_ROOT]
+    for cand in candidates:
+        if _has_factory_code(cand) and _has_smoke_checkpoint(cand):
+            return cand
+    for cand in candidates:
+        if _has_factory_code(cand):
+            return cand
+    return DEFAULT_FACTORY_ROOT
 
 
 def factory_available() -> bool:
-    root = factory_root()
-    return os.path.isdir(root) and os.path.isfile(os.path.join(root, "evals", "jspace_tests.py"))
+    return _has_factory_code(factory_root())
 
 
 _FACTORY_CACHE: Dict[str, Any] = {}
