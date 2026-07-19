@@ -1,0 +1,17 @@
+name: reviewgraph
+version: 0.7.0
+description: >
+  Local-first code review graph — parses Python (ast) + JS/TS (regex) into a
+  SQLite symbol graph at <root>/.scout/reviewgraph.db, then computes diff
+  blast radius and a token-budgeted review context for AI reviewers.
+  Filesystem only; git is invoked read-only for diffs/log.
+capabilities:
+  network:
+    enabled: false
+    domains: []
+  filesystem:
+    write: true
+    paths:
+      - "<root>/.scout/"
+  secrets:
+    allow: []
