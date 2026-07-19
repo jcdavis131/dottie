@@ -24,8 +24,22 @@ brain until the flywheel trains Ava up).
   (`plumbing_only=True`), never a capability measurement.
 - **Anti-fabrication everywhere.** Unreachable Ollama, missing checkpoint, missing torch,
   no traces yet: Dottie refuses with the true reason (HTTP 503 / `DottiePolicyUnavailable`).
-  Every metric in every response is computed from real inputs; `r_task` for open-ended tasks
-  is `null` because no automatic verifier exists — it is never invented.
+  Every metric in every response is computed from real inputs; `r_task` for free-form
+  open-ended tasks is `null` because no automatic verifier exists — it is never invented.
+  **Verified tasks** (`dottie/tasks.py`) are the exception: five task families
+  (`compute`, `extract`, `tool_chain`, `file_ops`, `constraint`) whose deterministic
+  verifier is computed from the same values rendered into the prompt (never templated as
+  literal answer text — an automated no-leakage self-check enforces it), so `r_task` and the
+  blended `rl_return` are REAL scores from the real final/observations. Submit with
+  `POST /tasks {"family": "...", "seed": N}` or a climb batch via `POST /tasks/batch`
+  (`family` or `"mixed"`). The `constraint` family only verifies its mechanical constraints,
+  never prose quality — its verifier note says so.
+- **Skills bridge, the honest way** (`dottie/skill_tools.py`, opt-in `use_skills`): memory
+  recall is a REAL parent-side memory-router run over the minted shard store, injected as a
+  labeled context block; sandbox tools (`route_query`, `safety_scan`, `logic_truth_table`)
+  are source-EXTRACTED from the live light pure-python skills and parity-checked at build
+  time; `recalled_memories()` is a labeled literal snapshot of the real recall. Heavy skills
+  are not bridged into the sandbox — that would require faking, which is refused.
 
 ## Architecture
 

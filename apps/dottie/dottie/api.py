@@ -19,12 +19,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from dottie import flywheel
 from dottie.engine import DottieEngine
 from dottie.policy import DottiePolicyUnavailable
 from dottie.status import build_status
+from dottie.tasks import FAMILIES, VerifiedTaskProvider
 
 import os
 
@@ -41,9 +42,21 @@ CREATE TABLE IF NOT EXISTS tasks (
     n_steps     INTEGER,
     wall_s      REAL,
     reward_components TEXT,              -- JSON
-    error       TEXT
+    error       TEXT,
+    family      TEXT,                    -- verified-task family (null for free-form)
+    seed        INTEGER,                 -- verified-task seed (null for free-form)
+    use_skills  INTEGER NOT NULL DEFAULT 0,
+    verifier    TEXT                     -- JSON verifier detail (null until done / free-form)
 );
 """
+
+# Columns added after the first release; applied idempotently to pre-existing DBs.
+_DB_MIGRATIONS = (
+    "ALTER TABLE tasks ADD COLUMN family TEXT",
+    "ALTER TABLE tasks ADD COLUMN seed INTEGER",
+    "ALTER TABLE tasks ADD COLUMN use_skills INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE tasks ADD COLUMN verifier TEXT",
+)
 
 
 class TaskStore:
@@ -54,18 +67,26 @@ class TaskStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._conn() as c:
             c.executescript(_DB_SCHEMA)
+            for stmt in _DB_MIGRATIONS:
+                try:
+                    c.execute(stmt)
+                except sqlite3.OperationalError:
+                    pass  # column already present (fresh schema or already migrated)
 
     def _conn(self) -> sqlite3.Connection:
         c = sqlite3.connect(self.path, timeout=10.0)
         c.row_factory = sqlite3.Row
         return c
 
-    def insert(self, task_id: str, prompt: str, backend: str, max_steps: int) -> None:
+    def insert(self, task_id: str, prompt: str, backend: str, max_steps: int,
+               family: Optional[str] = None, seed: Optional[int] = None,
+               use_skills: bool = False) -> None:
         with self._conn() as c:
             c.execute(
-                "INSERT INTO tasks (task_id, created_ts, prompt, backend, max_steps, status) "
-                "VALUES (?, ?, ?, ?, ?, 'queued')",
-                (task_id, time.time(), prompt, backend, max_steps),
+                "INSERT INTO tasks (task_id, created_ts, prompt, backend, max_steps, status, "
+                "family, seed, use_skills) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?)",
+                (task_id, time.time(), prompt, backend, max_steps,
+                 family, seed, int(use_skills)),
             )
 
     def set_running(self, task_id: str) -> None:
@@ -73,12 +94,14 @@ class TaskStore:
             c.execute("UPDATE tasks SET status='running' WHERE task_id=?", (task_id,))
 
     def finish(self, task_id: str, record: Dict[str, Any]) -> None:
+        verifier = record.get("verified_task")
         with self._conn() as c:
             c.execute(
                 "UPDATE tasks SET status='done', final=?, terminated=?, n_steps=?, wall_s=?, "
-                "reward_components=? WHERE task_id=?",
+                "reward_components=?, verifier=? WHERE task_id=?",
                 (record.get("final"), record.get("terminated"), record.get("n_steps"),
                  record.get("wall_s"), json.dumps(record.get("reward_components", {})),
+                 json.dumps(verifier) if verifier is not None else None,
                  task_id),
             )
 
@@ -109,18 +132,56 @@ class TaskStore:
     @staticmethod
     def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
         d = dict(row)
-        if d.get("reward_components"):
-            try:
-                d["reward_components"] = json.loads(d["reward_components"])
-            except json.JSONDecodeError:  # pragma: no cover - corrupt row surfaced as-is
-                pass
+        for key in ("reward_components", "verifier"):
+            if d.get(key):
+                try:
+                    d[key] = json.loads(d[key])
+                except json.JSONDecodeError:  # pragma: no cover - corrupt row surfaced as-is
+                    pass
+        d["use_skills"] = bool(d.get("use_skills"))
+        # r_task surfaced at the top level for climb tooling (None until done / for free-form).
+        comps = d.get("reward_components")
+        d["r_task"] = comps.get("r_task") if isinstance(comps, dict) else None
         return d
 
 
+_FAMILY_LITERAL = Literal["compute", "extract", "tool_chain", "file_ops", "constraint"]
+assert set(_FAMILY_LITERAL.__args__) == set(FAMILIES)  # keep the API in lockstep with tasks.py
+
+
 class TaskSubmit(BaseModel):
-    prompt: str = Field(min_length=1, max_length=20_000)
+    """Free-form ({prompt}) or verified ({family, seed}) task — exactly one form."""
+
+    prompt: Optional[str] = Field(default=None, min_length=1, max_length=20_000)
+    family: Optional[_FAMILY_LITERAL] = None
+    seed: int = Field(default=0, ge=0)
     backend: Literal["ollama", "ava", "echo"] = "ollama"
     max_steps: int = Field(default=8, ge=1, le=32)
+    use_skills: bool = False
+
+    @model_validator(mode="after")
+    def _exactly_one_form(self) -> "TaskSubmit":
+        if (self.prompt is None) == (self.family is None):
+            raise ValueError("provide exactly one of 'prompt' (free-form) or "
+                             "'family' (+ optional 'seed', a verified task)")
+        return self
+
+
+class TaskBatch(BaseModel):
+    """A climb batch of verified tasks: one family or 'mixed' (cycles all families)."""
+
+    family: Literal["compute", "extract", "tool_chain", "file_ops", "constraint", "mixed"]
+    n: int = Field(default=5, ge=1, le=64)
+    seeds: Optional[List[int]] = None
+    backend: Literal["ollama", "ava", "echo"] = "ollama"
+    max_steps: int = Field(default=8, ge=1, le=32)
+    use_skills: bool = False
+
+    @model_validator(mode="after")
+    def _seeds_match_n(self) -> "TaskBatch":
+        if self.seeds is not None and len(self.seeds) != self.n:
+            raise ValueError(f"seeds length {len(self.seeds)} != n {self.n}")
+        return self
 
 
 class FlywheelEvaluateBody(BaseModel):
@@ -150,11 +211,14 @@ def create_app(engine: Optional[DottieEngine] = None) -> FastAPI:
         version="0.1.0",
     )
 
+    provider = VerifiedTaskProvider()
+
     def _run_task(task_id: str, body: TaskSubmit) -> None:
         try:
             store.set_running(task_id)
             record = engine.run_task(
-                body.prompt, backend=body.backend, max_steps=body.max_steps, task_id=task_id
+                body.prompt, backend=body.backend, max_steps=body.max_steps, task_id=task_id,
+                family=body.family, seed=body.seed, use_skills=body.use_skills,
             )
             store.finish(task_id, record)
         except DottiePolicyUnavailable as e:
@@ -164,6 +228,29 @@ def create_app(engine: Optional[DottieEngine] = None) -> FastAPI:
         finally:
             slots.release()
 
+    def _admit_one(body: TaskSubmit) -> Dict[str, Any]:
+        """Insert + schedule one admitted submission (its slot is already acquired)."""
+        # Verified form: build now (deterministic) so validation fails fast and the DB stores
+        # the REAL prompt the policy will see (minus engine-side context/tool footers).
+        prompt = body.prompt
+        if body.family is not None:
+            prompt = provider.build(body.family, body.seed).prompt
+        task_id = uuid.uuid4().hex[:12]
+        try:
+            store.insert(task_id, prompt, body.backend, body.max_steps,
+                         family=body.family,
+                         seed=body.seed if body.family is not None else None,
+                         use_skills=body.use_skills)
+            pool.submit(_run_task, task_id, body)
+        except BaseException:
+            slots.release()
+            raise
+        out = {"task_id": task_id, "status": "queued", "backend": body.backend}
+        if body.family is not None:
+            out["family"] = body.family
+            out["seed"] = body.seed
+        return out
+
     @app.post("/tasks", status_code=202)
     def submit_task(body: TaskSubmit) -> Dict[str, Any]:
         if not slots.acquire(blocking=False):
@@ -171,14 +258,33 @@ def create_app(engine: Optional[DottieEngine] = None) -> FastAPI:
                 status_code=429,
                 detail=f"task queue full ({queue_max} queued+running); retry later",
             )
-        task_id = uuid.uuid4().hex[:12]
+        return _admit_one(body)
+
+    @app.post("/tasks/batch", status_code=202)
+    def submit_batch(body: TaskBatch) -> Dict[str, Any]:
         try:
-            store.insert(task_id, body.prompt, body.backend, body.max_steps)
-            pool.submit(_run_task, task_id, body)
-        except BaseException:
-            slots.release()
-            raise
-        return {"task_id": task_id, "status": "queued", "backend": body.backend}
+            pairs = provider.batch_seeds(body.family, body.n, body.seeds)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e)) from e
+        # All-or-nothing admission: either the whole batch fits in the queue or none of it does.
+        acquired = 0
+        for _ in pairs:
+            if not slots.acquire(blocking=False):
+                for _ in range(acquired):
+                    slots.release()
+                raise HTTPException(
+                    status_code=429,
+                    detail=(f"queue cannot admit batch of {body.n} "
+                            f"({queue_max} queued+running cap); retry later"),
+                )
+            acquired += 1
+        submitted = []
+        for fam, seed in pairs:
+            submitted.append(_admit_one(TaskSubmit(
+                family=fam, seed=seed, backend=body.backend,
+                max_steps=body.max_steps, use_skills=body.use_skills,
+            )))
+        return {"batch_size": len(submitted), "family": body.family, "tasks": submitted}
 
     @app.get("/tasks/{task_id}")
     def get_task(task_id: str) -> Dict[str, Any]:

@@ -11,9 +11,19 @@ observation), termination reason, wall time, and reward components computed by t
 ``codeact_rewards`` from the REAL observations.
 
 Honesty notes:
-  * ``r_task`` is recorded as ``null``: open-ended assistant tasks have no automatic verifier,
-    and Dottie never fabricates a task-success score. The components that ARE measurable from
-    real execution logs (R_exec, R_codeuse, redundant_calls) are computed and recorded.
+  * Free-form prompts: ``r_task`` is recorded as ``null`` — open-ended assistant tasks have no
+    automatic verifier, and Dottie never fabricates a task-success score. The components that
+    ARE measurable from real execution logs (R_exec, R_codeuse, redundant_calls) are computed
+    and recorded.
+  * Verified tasks (``family``/``seed`` via :mod:`dottie.tasks`): ``r_task`` is computed by the
+    task's deterministic verifier from the REAL final text and REAL observations, and the
+    blended ``rl_return`` scalar is computed with the factory's ``codeact_return``. The length
+    term is omitted (weight 0) because no historical family pass-rate stats exist yet — noted
+    in the record rather than invented.
+  * Skills (``use_skills=True``): memory recall is a REAL parent-side memory-router run whose
+    output is injected as a labeled context block; bridged sandbox tools are extracted from
+    the live skills and parity-checked (:mod:`dottie.skill_tools`). Unavailable skills raise —
+    never a silent fake.
   * A policy that cannot run raises :class:`dottie.policy.DottiePolicyUnavailable` — the task
     fails honestly; no trace is invented.
 """
@@ -25,10 +35,11 @@ import os
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from dottie import resolve
 from dottie.policy import get_policy
+from dottie.tasks import VerifiedTask, VerifiedTaskProvider
 
 TRACE_SCHEMA_VERSION = "1.0.0"
 
@@ -64,34 +75,100 @@ class DottieEngine:
 
     # -- prompt composition -------------------------------------------------------
     @staticmethod
-    def compose_prompt(prompt: str) -> str:
-        """The task prompt plus an honest statement of the sandbox contract and bound tools."""
+    def compose_prompt(prompt: str, extra_tool_names: Optional[List[str]] = None,
+                       context: Optional[str] = None) -> str:
+        """The task prompt plus an honest statement of the sandbox contract and bound tools.
+
+        ``extra_tool_names`` are display signatures for task/skill tools bound beyond the
+        defaults; ``context`` is a clearly labeled pre-task block (e.g. real memory recall)."""
         tool_names = ["get_clock()"] + [f"{n}(text)" for n in DEFAULT_TOOL_SOURCES]
-        return (
-            f"{prompt}\n\n"
+        tool_names += list(extra_tool_names or [])
+        parts = []
+        if context:
+            parts.append(context)
+        parts.append(prompt)
+        parts.append(
             f"(Sandbox tools available: {', '.join(tool_names)}. Emit one ```python block per "
             "turn to act; a turn with no code block is your FINAL answer.)"
         )
+        return "\n\n".join(parts)
 
     # -- core ---------------------------------------------------------------------
     def run_task(
         self,
-        prompt: str,
+        prompt: Optional[str] = None,
         *,
         backend: str = "ollama",
         max_steps: int = 8,
         timeout_s: float = 5.0,
         task_id: Optional[str] = None,
+        family: Optional[str] = None,
+        seed: int = 0,
+        use_skills: bool = False,
     ) -> Dict[str, Any]:
         """Run one task end-to-end; returns (and appends to the trace log) the trace record.
 
-        Raises ``DottiePolicyUnavailable`` if the backend cannot run and ``ValueError`` for an
-        unknown backend — both surfaced to the caller, never masked with a fake result."""
-        if not prompt or not prompt.strip():
-            raise ValueError("prompt must be a non-empty string")
+        Exactly one of ``prompt`` (free-form; ``r_task`` stays null with an honest note) or
+        ``family`` (+ ``seed``: a :mod:`dottie.tasks` verified task; ``r_task`` computed by its
+        deterministic verifier from the real final/observations) must be given.
+
+        Raises ``DottiePolicyUnavailable`` if the backend cannot run, ``ValueError`` for an
+        unknown backend/family or bad arguments, and ``DottieSkillsUnavailable`` if
+        ``use_skills=True`` but ava-skills cannot really run — all surfaced to the caller,
+        never masked with a fake result."""
+        task: Optional[VerifiedTask] = None
+        if family is not None:
+            if prompt is not None:
+                raise ValueError("pass either prompt or family, not both")
+            task = VerifiedTaskProvider().build(family, seed)
+            base_prompt = task.prompt
+        else:
+            if not prompt or not prompt.strip():
+                raise ValueError("prompt must be a non-empty string")
+            base_prompt = prompt
         resolve.ensure_factory_on_path()
         from ava.rl.codeact_loop import run_code_act
-        from ava.rl.codeact_rewards import r_codeuse, r_exec, redundant_calls
+        from ava.rl.codeact_rewards import (
+            ReturnWeights, codeact_return, r_codeuse, r_exec, redundant_calls,
+        )
+
+        tool_sources: Dict[str, str] = dict(DEFAULT_TOOL_SOURCES)
+        extra_tool_names: List[str] = []
+        if task is not None:
+            for name in task.tool_sources:
+                if name in tool_sources:
+                    raise ValueError(f"task tool {name!r} collides with a default tool")
+            tool_sources.update(task.tool_sources)
+            extra_tool_names += list(task.tool_names)
+
+        skills_info: Optional[Dict[str, Any]] = None
+        context: Optional[str] = None
+        if use_skills:
+            from dottie import skill_tools
+
+            recall = skill_tools.memory_recall(
+                base_prompt, store_dir=self.data_dir / "memory_shards"
+            )
+            context = skill_tools.render_recall_context(recall)
+            bridged = skill_tools.sandbox_skill_tool_sources()
+            bridged["recalled_memories"] = skill_tools.recall_snapshot_source(
+                recall["recalled"]
+            )
+            for name in bridged:
+                if name in tool_sources:
+                    raise ValueError(f"bridged skill tool {name!r} collides with a bound tool")
+            tool_sources.update(bridged)
+            extra_tool_names += [
+                skill_tools.BRIDGED_TOOL_SIGNATURES[n]
+                for n in skill_tools.BRIDGED_TOOL_SIGNATURES
+            ] + ["recalled_memories()"]
+            skills_info = {
+                "memory_recall": recall,
+                "bridged_tools": sorted(bridged),
+                "note": ("memory recall ran parent-side (real memory-router); bridged tools "
+                         "are source-extracted from live skills and parity-checked; "
+                         "recalled_memories() is a labeled snapshot of the real recall"),
+            }
 
         policy = get_policy(backend)
         task_id = task_id or uuid.uuid4().hex[:12]
@@ -99,21 +176,52 @@ class DottieEngine:
         t0 = time.monotonic()
         result = run_code_act(
             policy,
-            self.compose_prompt(prompt),
-            tool_sources=dict(DEFAULT_TOOL_SOURCES),
+            self.compose_prompt(base_prompt, extra_tool_names, context),
+            tool_sources=tool_sources,
             max_steps=max_steps,
             timeout_s=timeout_s,
         )
         wall_s = time.monotonic() - t0
 
         obs = result.observations
+
+        # Reward components: measurable-from-execution values always; r_task only when a real
+        # verifier exists (verified tasks), else null with the honest note (never invented).
+        components: Dict[str, Any] = {
+            "r_exec": r_exec(obs),
+            "r_codeuse": r_codeuse(obs),
+            "redundant_calls": redundant_calls(obs),
+        }
+        if task is not None:
+            if result.reached_final:
+                r_task = task.verify(result.final, obs)
+                r_task_note = (f"verified: family={task.family_id} seed={task.seed} "
+                               f"deterministic verifier ({task.grading})")
+            else:
+                r_task = 0.0
+                r_task_note = (f"verified failure: no FINAL emitted "
+                               f"(terminated={result.terminated})")
+            components["r_task"] = r_task
+            components["r_task_note"] = r_task_note
+            # Blended scalar via the factory's real codeact_return. w_len=0: no historical
+            # family pass-rate stats exist yet, so the length term is omitted, not invented.
+            components["rl_return"] = codeact_return(
+                r_task, obs, token_count=0, family_pass_rate=1.0,
+                weights=ReturnWeights(w_task=1.0, w_exec=0.2, w_codeuse=0.2, w_len=0.0),
+            )
+            components["rl_return_note"] = "w_task=1.0 w_exec=0.2 w_codeuse=0.2; " \
+                                           "r_len omitted (no family pass-rate history)"
+        else:
+            components["r_task"] = None
+            components["r_task_note"] = "unscored: no automatic verifier for open-ended tasks"
+
         record: Dict[str, Any] = {
             "schema_version": TRACE_SCHEMA_VERSION,
             "task_id": task_id,
             "ts": ts,
             "backend": policy.name,
             "plumbing_only": bool(policy.plumbing_only),
-            "prompt": prompt,
+            "prompt": base_prompt,
             "final": result.final,
             "terminated": result.terminated,
             "reached_final": result.reached_final,
@@ -131,17 +239,14 @@ class DottieEngine:
                 }
                 for s in result.steps
             ],
-            # Real reward components from the REAL observations (factory codeact_rewards).
-            # r_task is null: no automatic verifier exists for open-ended assistant tasks and
-            # Dottie never invents a success score (repo anti-fabrication rule).
-            "reward_components": {
-                "r_exec": r_exec(obs),
-                "r_codeuse": r_codeuse(obs),
-                "redundant_calls": redundant_calls(obs),
-                "r_task": None,
-                "r_task_note": "unscored: no automatic verifier for open-ended tasks",
-            },
+            # Real reward components from the REAL observations (factory codeact_rewards);
+            # r_task per the verified/free-form contract documented above.
+            "reward_components": components,
         }
+        if task is not None:
+            record["verified_task"] = task.verifier_detail()
+        if skills_info is not None:
+            record["skills"] = skills_info
         self._append_trace(record)
         return record
 
