@@ -98,7 +98,7 @@ class DottieEngine:
         self,
         prompt: Optional[str] = None,
         *,
-        backend: str = "ollama",
+        backend: Optional[str] = None,   # None -> DOTTIE_POLICY env, else "ollama"
         max_steps: int = 8,
         timeout_s: float = 5.0,
         task_id: Optional[str] = None,
@@ -126,6 +126,8 @@ class DottieEngine:
             if not prompt or not prompt.strip():
                 raise ValueError("prompt must be a non-empty string")
             base_prompt = prompt
+        if backend is None:
+            backend = os.environ.get("DOTTIE_POLICY", "ollama")
         resolve.ensure_factory_on_path()
         from ava.rl.codeact_loop import run_code_act
         from ava.rl.codeact_rewards import (

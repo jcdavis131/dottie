@@ -383,7 +383,80 @@ class EchoPolicy(PolicyProvider):
                 "note": "deterministic CI plumbing policy; not a capability measurement"}
 
 
-BACKENDS = ("ollama", "ava", "echo")
+class FactoryPolicy(PolicyProvider):
+    """The SERVED Dottie brain: the factory server's ``POST /chat`` (hot-reloaded
+    checkpoint on the GPU box, ``DOTTIE_FACTORY_URL``, default ``:8000``) — the same
+    endpoint the arxiviq assistant surface talks to, so promoting a gated checkpoint
+    to "Dottie's brain" is exactly: eval gate passes -> this backend serves it.
+
+    HONEST CAPABILITY STATEMENT: capability is whatever the currently-served
+    checkpoint earned at the eval gate — no more. The server truncates at turn
+    boundaries; an unreachable server raises :class:`DottiePolicyUnavailable` with
+    the true reason, never a fabricated turn."""
+
+    name = "factory"
+
+    def __init__(self, base_url: Optional[str] = None, *,
+                 max_tokens: int = 256, temperature: float = 0.8,
+                 read_timeout_s: Optional[float] = None) -> None:
+        self.base_url = (base_url or os.environ.get("DOTTIE_FACTORY_URL")
+                         or "http://localhost:8000").rstrip("/")
+        self.max_tokens = int(max_tokens)
+        self.temperature = float(temperature)
+        if read_timeout_s is None:
+            read_timeout_s = float(os.environ.get("DOTTIE_FACTORY_READ_TIMEOUT_S") or 120.0)
+        self.timeout = httpx.Timeout(connect=5.0, read=read_timeout_s, write=30.0, pool=5.0)
+
+    def _chat(self, messages: List[Dict[str, str]], *, temperature: Optional[float] = None) -> str:
+        payload = {"messages": messages, "max_tokens": self.max_tokens,
+                   "temperature": self.temperature if temperature is None else float(temperature)}
+        try:
+            r = httpx.post(f"{self.base_url}/chat", json=payload, timeout=self.timeout)
+        except httpx.HTTPError as e:
+            raise DottiePolicyUnavailable(
+                f"factory server unreachable at {self.base_url} ({type(e).__name__}: {e}). "
+                "Dottie will not fabricate a reply. Serve it with the dottie-factory compose "
+                "(server service) or point DOTTIE_FACTORY_URL at a running server."
+            ) from e
+        if r.status_code != 200:
+            raise DottiePolicyUnavailable(
+                f"factory server at {self.base_url} returned HTTP {r.status_code}: "
+                f"{r.text[:300]}")
+        try:
+            return r.json()["content"]
+        except (ValueError, KeyError, TypeError) as e:
+            raise DottiePolicyUnavailable(
+                f"factory server returned an unparseable /chat body: {e}") from e
+
+    def __call__(self, transcript: str) -> str:
+        # /chat knows only the frozen user/assistant convention (tokenizer SPECIALS) —
+        # the CodeAct system contract rides in the first user turn.
+        messages = transcript_to_messages(transcript)
+        if messages and messages[0]["role"] == "user":
+            messages[0] = {"role": "user",
+                           "content": CODEACT_SYSTEM_PROMPT + "\n\n" + messages[0]["content"]}
+        else:
+            messages.insert(0, {"role": "user", "content": CODEACT_SYSTEM_PROMPT})
+        return self._chat(messages)
+
+    def complete(self, prompt: str, *, system: Optional[str] = None,
+                 temperature: Optional[float] = None) -> str:
+        text = f"{system}\n\n{prompt}" if system else prompt
+        return self._chat([{"role": "user", "content": text}], temperature=temperature)
+
+    def probe(self) -> Dict[str, Any]:
+        try:
+            r = httpx.get(f"{self.base_url}/pipeline/status", timeout=self.timeout)
+            ok = r.status_code == 200
+            mode = (r.json().get("mode", {}) or {}).get("id") if ok else None
+            return {"backend": self.name, "available": ok, "base_url": self.base_url,
+                    "server_mode": mode}
+        except httpx.HTTPError as e:
+            return {"backend": self.name, "available": False, "base_url": self.base_url,
+                    "error": f"{type(e).__name__}: {e}"}
+
+
+BACKENDS = ("ollama", "ava", "echo", "factory")
 
 
 def get_policy(backend: str, **kwargs: Any) -> PolicyProvider:
@@ -394,4 +467,6 @@ def get_policy(backend: str, **kwargs: Any) -> PolicyProvider:
         return AvaPolicy(**kwargs)
     if backend == "echo":
         return EchoPolicy(**kwargs)
+    if backend == "factory":
+        return FactoryPolicy(**kwargs)
     raise ValueError(f"unknown backend {backend!r}; choices: {', '.join(BACKENDS)}")
