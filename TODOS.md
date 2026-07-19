@@ -5,6 +5,13 @@
 > its acceptance criterion.** Work top to bottom; parallelize only where marked ∥.
 > Solo personal project, no connection to employer, built with public/free-tier only.
 
+## Goal state (2026-07-19 ~22:00 local)
+
+Every unblocked item is DONE. The critical path is purely time-gated: tool_final.pt
+(~13h) -> eval gate 1.2 -> chat branch -> fleet rebuild 2.1 -> DOTTIE_POLICY=factory
+flip 3.x -> arxiviq chat on Dottie's brain. The full pipeline for that path is wired
+and tested end-to-end tonight.
+
 ## Standing state (context for every step below)
 
 - `dottie-factory` fleet (13 containers) runs ONLY from `apps/ava-factory`; trainer is
@@ -63,7 +70,7 @@
 
 3.1 **Serve the gated checkpoint**: point `server` service `AVA_CKPT` at the winning
     branch ckpt; `AVA_SKIP_ENGINE_BOOT=0` window (stop trainer first — 12 GB card).
-3.2 **Wire dottie engine → local model**: `apps/dottie` policy currently defaults to
+3.2 [x] **Wire dottie engine -> served model** (FactoryPolicy over :8000/chat; DOTTIE_POLICY=factory; live probe green — flip after the gate): `apps/dottie` policy currently defaults to
     Ollama; add a `DOTTIE_POLICY=factory` path that hits `:8000/generate` with the same
     honest-refusal semantics. Acceptance: `apps/dottie` test suite passes with the
     factory policy env set + one real conversation transcript saved to task_logs.
@@ -105,7 +112,7 @@
       22:00–06:00) — 14b stalls only under GPU contention.
     - 5.2.c [ ] (re-scoped) Feed richer context into corrections — research candidates are single modules, so reviewgraph adds little; instead feed the CANDIDATE's own prior-attempt diff. Original idea: output into the correction prompt (the compact
       dependent-signature block) — the corrector currently sees only the traceback.
-5.3 **Close the loop into the factory**: when an experiment reaches `sota`, generate a
+5.3 [x] **Close the loop into the factory** (sota -> promotion bundle: candidate.py + evidence + ab_nano.py, runner-automatic, human-gated): when an experiment reaches `sota`, generate a
     `deltanet_layers`-style patch PR against `model_1b.py` + a nano A/B run script;
     human-review gate before it touches mini/base1b presets.
 5.4 **Report**: the arxiviq Research tab already renders `/research/status`; add the
@@ -113,7 +120,7 @@
 
 ## 6 — Agent OS hardening (∥ with 1–5)
 
-6.1 **Hermes auto-forge**: today `after_run` registers a routine sketch into
+6.1 [x] **Hermes auto-forge** (successful routines register parseable plugin drafts + human-gated forge_proposal commands): today `after_run` registers a routine sketch into
     skills_library; next: template that sketch into a real `forge new/edit` invocation
     behind `--refine` (human-confirmed), reusing the loop test's contract template.
 6.2 **OpenClaw channels**: give `session_context` channels real meaning — `cli`,
@@ -132,7 +139,7 @@
 
 ## 7 — arxiviq.com platform polish
 
-7.1 Control Plane fetches `dottie/main/apps/ava-factory/` — verify all dashboards
+7.1 [x] LIVE-STATUS FIXED: site was on the frozen legacy fallback (hygiene keeps repo telemetry uncommitted) — hourly gist feed published from the box, app.js reads gist-first (df6796c). Original item: Control Plane fetches `dottie/main/apps/ava-factory/` — verify all dashboards
     render post-reconciliation (dashboard_html/ecosystem_html/evals_html were merged).
 7.2 Assistant tab: 3.4's chat + a visible "which brain" indicator (factory ckpt vs
     Ollama fallback) — honesty in the UI too.
