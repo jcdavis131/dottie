@@ -9,6 +9,7 @@ cause. ``GET /status`` is the stable, honest JSON described in :mod:`dottie.stat
 
 from __future__ import annotations
 
+import inspect
 import json
 import sqlite3
 import threading
@@ -19,6 +20,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, model_validator
 
 from dottie import climb as climb_mod
@@ -223,9 +225,47 @@ def create_app(engine: Optional[DottieEngine] = None) -> FastAPI:
 
     app = FastAPI(
         title="Dottie",
-        description="Agentic-assistant platform (codename openclaw) — dottie monorepo.",
+        description="Dottie — agentic-assistant platform of the dottie monorepo.",
         version="0.1.0",
     )
+
+    # CORS: the arxiviq console (a public static page) talks to THIS server on the user's own
+    # box (localhost). Explicit origin allow-list — never "*": the API can run tasks.
+    cors_origins = [
+        o.strip()
+        for o in os.environ.get(
+            "DOTTIE_CORS_ORIGINS",
+            "https://arxiviq.com,https://www.arxiviq.com,"
+            "http://localhost:8100,http://127.0.0.1:8100",
+        ).split(",")
+        if o.strip()
+    ]
+    # Chrome Private Network Access: a public HTTPS page fetching a localhost server sends
+    # an extra preflight header that must be granted or Chrome blocks the request. Newer
+    # Starlette handles it natively (and 400s ungranted PNA preflights); on older versions
+    # a fallback middleware adds the grant to CORS-approved preflights.
+    cors_kwargs: Dict[str, Any] = dict(
+        allow_origins=cors_origins,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["content-type"],
+        max_age=600,
+    )
+    native_pna = "allow_private_network" in inspect.signature(
+        CORSMiddleware.__init__).parameters
+    if native_pna:
+        cors_kwargs["allow_private_network"] = True
+    app.add_middleware(CORSMiddleware, **cors_kwargs)
+    if not native_pna:  # pragma: no cover - depends on installed starlette version
+        @app.middleware("http")
+        async def _private_network_preflight(request, call_next):
+            response = await call_next(request)
+            if (
+                request.method == "OPTIONS"
+                and request.headers.get("access-control-request-private-network") == "true"
+                and "access-control-allow-origin" in response.headers
+            ):
+                response.headers["Access-Control-Allow-Private-Network"] = "true"
+            return response
 
     provider = VerifiedTaskProvider()
 

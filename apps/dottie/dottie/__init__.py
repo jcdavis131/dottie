@@ -1,5 +1,9 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
-"""Dottie (codename "openclaw") — the agentic-assistant platform for the dottie monorepo.
+"""Dottie — the agentic-assistant platform for the dottie monorepo.
+
+(Category, not codename: dottie is the personally built equivalent of assistants like
+NousResearch's Hermes Agent or OpenClaw — those names refer to EXTERNAL products and are
+never used as names for this app.)
 
 Dottie closes the loop: run tasks through the real CodeAct sandbox -> capture real traces ->
 export RFT datasets (scout-cli ETL) + mint memories (ava-skills) -> gate with the eval harness

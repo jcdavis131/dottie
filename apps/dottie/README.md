@@ -116,6 +116,9 @@ it holds. Missing/unpaired data yields an honest `insufficient`, never a verdict
 API: `POST /climb` runs one iteration inline (409 while one is running);
 `GET /climb/log` returns the recorded iterations.
 
+The full walkthrough for the 4080 box (fresh mini checkpoint + Ollama brain + arxiviq
+Dottie tab) is [`RUNBOOK_4080.md`](RUNBOOK_4080.md).
+
 ## Quickstart (your box)
 
 ```bash
@@ -156,7 +159,8 @@ Environment knobs: `DOTTIE_OLLAMA_URL` (default `http://host.docker.internal:114
 `DOTTIE_OLLAMA_MODEL` (default `qwen3:32b`), `DOTTIE_DATA_DIR` (default `apps/dottie/data`,
 gitignored), `DOTTIE_AVA_CKPT` (default probes `runs/cpu_pilot/agentic/agentic_final.pt`
 across factory roots), `DOTTIE_WORKERS`, `DOTTIE_QUEUE_MAX`, `DOTTIE_ROOT`,
-`AVA_FACTORY_ROOT`.
+`AVA_FACTORY_ROOT`, `DOTTIE_CORS_ORIGINS` (browser origins allowed to call the API —
+defaults include `arxiviq.com`, whose Dottie tab connects to this server on your box).
 
 Notes for the Docker path: the image deliberately ships **without torch** (multi-GB). The
 ollama brain, engine, RFT export, memory mint, and mock-mode eval all work in-container;

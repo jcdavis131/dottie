@@ -33,6 +33,8 @@ const state = {
   etags: {},          // url -> ETag, so unchanged responses return 304 (free, not rate-limited)
   branch: "base",
   source: "loading",
+  // Dottie runs on the VIEWER'S box — this state holds only what their local server reported.
+  dottie: { endpoint: "", status: null, climb: null, error: null, connectedOnce: false },
 };
 
 /* ---------------- security ---------------- */
@@ -485,6 +487,165 @@ function fmtTokens(n) {
   return (n / 1e3).toFixed(0) + "K tokens";
 }
 
+/* ---------------- dottie (the viewer's LOCAL assistant server) ---------------- */
+
+const DOTTIE_DEFAULT_ENDPOINT = "http://localhost:8100";
+const DOTTIE_POLL_MS = 60_000; // localhost polling is free; keep it gentle anyway
+
+function dottieNormalizeEndpoint(raw) {
+  const v = String(raw || "").trim().replace(/\/+$/, "");
+  if (!v) return DOTTIE_DEFAULT_ENDPOINT;
+  if (!/^https?:\/\//i.test(v)) return null; // only http(s) — no other schemes
+  return v;
+}
+
+async function dottieRefresh() {
+  const ep = state.dottie.endpoint;
+  try {
+    state.dottie.status = await fetchJson(`${ep}/status`);
+    state.dottie.error = null;
+    state.dottie.connectedOnce = true;
+    try {
+      state.dottie.climb = await fetchJson(`${ep}/climb/log?limit=100`);
+    } catch { state.dottie.climb = null; /* server predates /climb, or no log yet */ }
+  } catch (e) {
+    state.dottie.status = null;
+    state.dottie.climb = null;
+    state.dottie.error = String((e && e.message) || e);
+  }
+  renderDottie();
+}
+
+function renderDottie() {
+  const d = state.dottie;
+  const note = $("#dottie-conn-note"), tiles = $("#dottie-tiles"),
+    empty = $("#dottie-empty"), cap = $("#dottie-capability"),
+    climbCard = $("#dottie-climb-card");
+
+  if (!d.status) {
+    tiles.innerHTML = "";
+    cap.textContent = "";
+    climbCard.classList.add("hidden");
+    note.textContent = d.error ? "unreachable" : "not connected";
+    empty.classList.toggle("hidden", !d.error);
+    if (d.error) {
+      // Honest failure surface: say exactly what was tried and the plausible causes.
+      empty.innerHTML =
+        `No Dottie server reachable at <code>${esc(d.endpoint)}</code> `
+        + `(<code>${esc(d.error)}</code>). Dottie runs on your machine, not on the web. `
+        + `Likely causes: the server isn't running (see “Run it on your box” below); `
+        + `your browser blocks localhost calls from an HTTPS page (Chrome, Edge and Firefox `
+        + `allow <code>http://localhost</code>, Safari may not); or the server's CORS `
+        + `allow-list doesn't include this origin (set <code>DOTTIE_CORS_ORIGINS</code> — `
+        + `the default already includes arxiviq.com).`;
+    }
+    return;
+  }
+
+  const s = d.status;
+  const b = s.backends || {};
+  const ollama = b.ollama || {}, ava = b.ava || {};
+  const tasks = (s.data && s.data.tasks) || {};
+  note.textContent =
+    `connected · ${s.service || "?"} v${s.version || "?"} · as of ${new Date((s.ts || 0) * 1000).toLocaleTimeString()}`;
+  empty.classList.add("hidden");
+
+  tiles.innerHTML = `
+    <div class="tile"><div class="k">Brain — ollama</div>
+      <div class="v" style="font-size:15px; margin-top:6px">${
+        ollama.available
+          ? chip("good", `up · ${ollama.model || "?"}${ollama.model_present === false ? " (model missing!)" : ""}`)
+          : chip("critical", "unreachable")}</div>
+      <div class="d">${esc(ollama.url || "")}</div></div>
+    <div class="tile"><div class="k">Trainee — ava</div>
+      <div class="v" style="font-size:15px; margin-top:6px">${
+        ava.available ? chip("warning", "ckpt loaded · zero capability")
+                      : chip("critical", "no checkpoint / no torch")}</div>
+      <div class="d">${esc(ava.error || ava.ckpt || "")}</div></div>
+    <div class="tile"><div class="k">Traces captured</div>
+      <div class="v">${esc(s.data?.traces ?? "—")}</div>
+      <div class="d">${esc(s.data?.data_dir || "")}</div></div>
+    <div class="tile"><div class="k">Tasks</div>
+      <div class="v">${esc(tasks.total ?? "—")}</div>
+      <div class="d">done ${esc(tasks.done ?? "—")} · error ${esc(tasks.error ?? "—")} · queued ${esc(tasks.queued ?? "—")}</div></div>`;
+
+  cap.textContent = s.capability_note || "";
+
+  const iters = (d.climb && d.climb.iterations) || [];
+  if (!iters.length) {
+    climbCard.classList.add("hidden");
+    return;
+  }
+  climbCard.classList.remove("hidden");
+  $("#dottie-climb-note").textContent =
+    `${d.climb.count} iteration(s) recorded · success = verified r_task == 1.0 · every number measured by your server`;
+  renderDottieClimbChart(iters);
+  $("#dottie-climb-table tbody").innerHTML = iters.map((r, i) => {
+    const cfg = r.config || {}, ov = (r.scoreboard || {}).overall || {};
+    return `<tr>
+      <td><strong>${esc(r.iteration_id || i + 1)}</strong></td>
+      <td>${esc(cfg.backend ?? "—")}</td>
+      <td>${esc(cfg.families ?? "—")}</td>
+      <td class="num">${esc(ov.n ?? "—")}</td>
+      <td class="num">${num(ov.success_rate, 3)}</td>
+      <td class="num">${num(ov.mean_r_task, 3)}</td>
+      <td class="num">${num(ov.mean_rl_return, 3)}</td>
+      <td class="num">${num(r.iteration_wall_s, 1)}</td>
+    </tr>`;
+  }).join("");
+}
+
+function renderDottieClimbChart(iters) {
+  const host = $("#dottie-climb-chart");
+  const ys = iters.map((r) => r.scoreboard?.overall?.success_rate)
+    .filter((v) => typeof v === "number");
+  if (ys.length < 2) { host.innerHTML = ""; return; } // a 1-point "line" would just mislead
+  const W = Math.max(640, host.clientWidth || 640), H = 200;
+  const m = { l: 48, r: 16, t: 12, b: 26 };
+  const X = (i) => m.l + (i / Math.max(1, ys.length - 1)) * (W - m.l - m.r);
+  const Y = (v) => m.t + (1 - v) * (H - m.t - m.b); // fixed 0..1 — success rate is a rate
+  let grid = "", labels = "";
+  for (const v of [0, 0.25, 0.5, 0.75, 1]) {
+    grid += `<line class="gridline" x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}"/>`;
+    labels += `<text x="${m.l - 8}" y="${Y(v) + 4}" text-anchor="end">${v}</text>`;
+  }
+  const path = ys.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(" ");
+  const dots = ys.map((v, i) => `<circle class="dot-marker" r="3.5" cx="${X(i)}" cy="${Y(v)}"/>`).join("");
+  host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+    ${grid}${labels}
+    <line class="baseline" x1="${m.l}" x2="${W - m.r}" y1="${H - m.b}" y2="${H - m.b}"/>
+    <text x="${m.l}" y="${H - 6}">iter 1</text>
+    <text x="${W - m.r}" y="${H - 6}" text-anchor="end">iter ${ys.length}</text>
+    <path class="line" d="${path}"/>${dots}
+  </svg>`;
+}
+
+function initDottie() {
+  const input = $("#dottie-endpoint");
+  const saved = localStorage.getItem("arxiviq_dottie_endpoint");
+  state.dottie.endpoint = dottieNormalizeEndpoint(saved) || DOTTIE_DEFAULT_ENDPOINT;
+  input.value = state.dottie.endpoint;
+  const connect = () => {
+    const ep = dottieNormalizeEndpoint(input.value);
+    if (!ep) {
+      $("#dottie-conn-note").textContent = "endpoint must be an http(s) URL";
+      return;
+    }
+    input.value = ep;
+    state.dottie.endpoint = ep;
+    localStorage.setItem("arxiviq_dottie_endpoint", ep);
+    $("#dottie-conn-note").textContent = "connecting…";
+    dottieRefresh();
+  };
+  $("#dottie-connect").addEventListener("click", connect);
+  input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") connect(); });
+  // Reconnect silently if this browser talked to a Dottie server before.
+  if (saved) dottieRefresh();
+  setInterval(() => {
+    if (state.dottie.connectedOnce && !document.hidden) dottieRefresh();
+  }, DOTTIE_POLL_MS);
+}
+
 /* ---------------- ecosystem ---------------- */
 
 // "built" = code-complete + mechanically smoke-proven, capability-scale run still pending —
@@ -545,6 +706,7 @@ function renderAll() {
 async function main() {
   tooltip.el = $("#tooltip");
   initTheme();
+  initDottie();
   document.querySelectorAll(".tab").forEach((t) =>
     t.addEventListener("click", () => switchView(t.dataset.view)));
   await loadBaked();
@@ -555,7 +717,7 @@ async function main() {
   renderPilot();
   setInterval(async () => { await tryLive(); renderTelemetry(); renderPilot(); }, POLL_MS);
   window.addEventListener("resize", () => {
-    renderBpbChart(state.live.experiments || []); renderEvals(); renderPilot();
+    renderBpbChart(state.live.experiments || []); renderEvals(); renderPilot(); renderDottie();
   });
 }
 

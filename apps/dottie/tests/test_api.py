@@ -30,6 +30,47 @@ def _wait_done(client: TestClient, task_id: str, timeout_s: float = 30.0) -> dic
     raise AssertionError(f"task {task_id} did not finish within {timeout_s}s: {row}")
 
 
+def test_cors_allows_arxiviq_and_blocks_unknown_origins(client):
+    # Simple request from the arxiviq console origin gets the CORS grant.
+    r = client.get("/status", headers={"Origin": "https://arxiviq.com"})
+    assert r.status_code == 200
+    assert r.headers.get("access-control-allow-origin") == "https://arxiviq.com"
+    # Unknown origins get no grant (the response itself still succeeds server-side;
+    # the browser is the enforcement point — absence of the header is the block).
+    r = client.get("/status", headers={"Origin": "https://evil.example"})
+    assert "access-control-allow-origin" not in r.headers
+
+
+def test_cors_preflight_with_private_network_access(client):
+    headers = {
+        "Origin": "https://arxiviq.com",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type",
+        "Access-Control-Request-Private-Network": "true",
+    }
+    r = client.options("/tasks", headers=headers)
+    assert r.status_code == 200
+    assert r.headers.get("access-control-allow-origin") == "https://arxiviq.com"
+    assert "POST" in r.headers.get("access-control-allow-methods", "")
+    # Chrome PNA: public HTTPS page -> localhost server needs this explicit grant.
+    assert r.headers.get("access-control-allow-private-network") == "true"
+    # An origin outside the allow-list is refused: no origin grant (the header the browser
+    # actually enforces on) and a non-2xx preflight.
+    r = client.options("/tasks", headers={**headers, "Origin": "https://evil.example"})
+    assert "access-control-allow-origin" not in r.headers
+    assert r.status_code == 400
+
+
+def test_cors_origins_env_override(data_dir, monkeypatch):
+    monkeypatch.setenv("DOTTIE_CORS_ORIGINS", "https://my.example")
+    app = create_app(engine=DottieEngine(data_dir))
+    with TestClient(app) as c:
+        r = c.get("/status", headers={"Origin": "https://my.example"})
+        assert r.headers.get("access-control-allow-origin") == "https://my.example"
+        r = c.get("/status", headers={"Origin": "https://arxiviq.com"})
+        assert "access-control-allow-origin" not in r.headers
+
+
 def test_submit_echo_task_and_poll_to_completion(client):
     r = client.post("/tasks", json={"prompt": "api echo task", "backend": "echo"})
     assert r.status_code == 202
@@ -83,7 +124,9 @@ def test_ollama_task_fails_honestly_via_api(client, monkeypatch):
 
 def test_status_shape_is_stable_and_honest(client):
     s = client.get("/status").json()
-    assert s["service"] == "dottie" and s["codename"] == "openclaw"
+    # No "codename": OpenClaw/Hermes are external products dottie is the equivalent OF —
+    # they are categories, never names for this app.
+    assert s["service"] == "dottie" and "codename" not in s
     # The honest capability statement is part of the stable contract.
     assert "capability_note" in s
     assert "smoke-scale" in s["capability_note"]

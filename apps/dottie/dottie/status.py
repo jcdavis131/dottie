@@ -31,7 +31,6 @@ def build_status(
     backends{ollama,ava,echo}, integrations, data{...}."""
     return {
         "service": "dottie",
-        "codename": "openclaw",
         "version": __version__,
         "ts": time.time(),
         "capability_note": CAPABILITY_NOTE,

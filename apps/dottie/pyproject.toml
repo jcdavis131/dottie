@@ -1,8 +1,8 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
 [project]
-name = "dottie-openclaw"
+name = "dottie-assistant"
 version = "0.1.0"
-description = "Dottie (codename openclaw) — agentic-assistant platform for the dottie monorepo: CodeAct tasks, trace capture, and the train/eval/iterate flywheel. Solo personal project, no connection to employer, built with public/free-tier only"
+description = "Dottie — agentic-assistant platform for the dottie monorepo: CodeAct tasks, trace capture, and the train/eval/iterate flywheel. Solo personal project, no connection to employer, built with public/free-tier only"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.11"

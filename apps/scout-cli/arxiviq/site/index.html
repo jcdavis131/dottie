@@ -21,6 +21,7 @@
     <button class="tab" role="tab" aria-selected="false" data-view="harness">Checkpoint Harness</button>
     <button class="tab" role="tab" aria-selected="false" data-view="evals">Evaluations</button>
     <button class="tab" role="tab" aria-selected="false" data-view="cards">Model Cards</button>
+    <button class="tab" role="tab" aria-selected="false" data-view="dottie">Dottie</button>
     <button class="tab" role="tab" aria-selected="false" data-view="ecosystem">Ecosystem</button>
   </nav>
   <div class="topbar-right">
@@ -128,6 +129,51 @@ python skills/loader.py run eval-harness-runner</pre>
       eval artifacts by <code>arxiviq/generate_data.py</code> — regenerate and redeploy to refresh.</p>
     </div>
     <div id="cards-grid" class="cards-grid"></div>
+  </section>
+
+  <!-- Dottie (local assistant server) -->
+  <section id="view-dottie" class="view hidden" aria-labelledby="d-h">
+    <div class="view-head">
+      <h1 id="d-h">Dottie — the assistant</h1>
+      <p class="view-sub">Dottie is the personally built, from-scratch agentic assistant of the
+      <code>dottie</code> monorepo. It runs on <strong>your box</strong>, not on the web — this tab
+      connects your browser to your local Dottie server and renders only what that server reports:
+      real backend probes, real traces, real climb iterations. Nothing on this tab is fetched from
+      the public internet and nothing is invented.</p>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Local endpoint</h2>
+        <span class="card-note" id="dottie-conn-note">not connected</span></div>
+      <div class="endpoint-row">
+        <input id="dottie-endpoint" class="endpoint-input" type="url" spellcheck="false"
+               placeholder="http://localhost:8100" aria-label="Dottie server URL">
+        <button id="dottie-connect" class="action-btn">Connect</button>
+      </div>
+    </div>
+    <div class="tiles" id="dottie-tiles"></div>
+    <p class="card-note" id="dottie-capability"></p>
+    <div id="dottie-empty" class="empty hidden"></div>
+    <div class="card hidden" id="dottie-climb-card">
+      <div class="card-head"><h2>Climb log — measured iterations</h2>
+        <span class="card-note" id="dottie-climb-note"></span></div>
+      <div id="dottie-climb-chart" class="chart" role="img"
+           aria-label="Line chart of overall verified-task success rate per climb iteration"></div>
+      <div class="table-wrap"><table id="dottie-climb-table">
+        <thead><tr><th>iter</th><th>backend</th><th>families</th><th class="num">n</th>
+          <th class="num">success</th><th class="num">mean r_task</th>
+          <th class="num">mean rl_return</th><th class="num">wall s</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Run it on your box</h2></div>
+      <pre class="cmd">cd ~/workspace/dottie && git pull
+docker compose -f apps/dottie/docker-compose.dottie.yml up --build -d   # serves :8100
+python -m dottie climb --families mixed --n 20 --backend ollama         # one measured iteration
+python -m dottie climb-report                                           # table + paired verdicts</pre>
+      <p class="card-note">Full 4080 walkthrough (fresh mini checkpoint + Ollama brain):
+      <code>apps/dottie/RUNBOOK_4080.md</code> in the monorepo.</p>
+    </div>
   </section>
 
   <!-- Ecosystem -->
