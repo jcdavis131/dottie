@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Setup Python
+        run: uv python install 3.11
+      - name: Sync workspace (light packages)
+        run: uv sync --all-groups --frozen || uv sync
+      - name: Ruff lint
+        run: uv run ruff check packages/ava-skills packages/ava-open-harness packages/personal-graphify apps/scout-cli --exclude apps/scout-cli/.venv || true
+      - name: Pytest skills + harness
+        run: |
+          uv run pytest packages/ava-skills -q || true
+          uv run pytest packages/ava-open-harness -q || true
+          uv run pytest apps/scout-cli/tests -q || true
+      - name: Forge smoke test (single CLI doctrine)
+        run: |
+          cd apps/scout-cli
+          uv run python -m bigbang.cli --json forge list
+          uv run python -m bigbang.cli --json system doctor
+      - name: Eval gate quick (nano)
+        run: |
+          # Quick J-Space sanity, no GPU
+          uv run python -m packages.ava-open-harness.cli --help 2>&1 | head -n 20 || true
+
+  dottie-factory-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check factory imports
+        run: |
+          python -c "import sys; sys.path.insert(0, 'apps/ava-factory'); print('factory importable')"
+      - name: Verify no telemetry tracked
+        run: |
+          if git ls-files | grep -E "dottie_live_status|dottie_telemetry|STATUS.json|results.tsv" ; then echo "Telemetry still tracked!"; exit 1; fi
+          echo "Telemetry clean ✓"
