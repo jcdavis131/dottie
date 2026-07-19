@@ -7,21 +7,42 @@ eval_branch_harness.py, ...), which is mock scaffolding kept for reference.
 Everything under `dottie/` is the real, tested implementation that supersedes it.
 
 Renamed from Ava (placeholder) → Dottie on 2026-07-16.
+
+Exports are PEP 562 lazy on purpose: the model/config/tokenizer pull in torch,
+and the CPU pipeline images (collector/curator/janitor) ship without torch by
+design. An eager `from .model import ...` here took the whole CPU fleet down at
+import time (cutover 2026-07-19). Anything that truly needs the model still gets
+it — `from dottie import DottieModel1B` resolves lazily on first access.
 """
+
+from importlib import import_module
 
 __version__ = "6.5.0-dottie"
 
-# Re-export main classes with new names + legacy aliases
-try:
-    from .config import DottieConfig
-    from .model import DottieModel1B
-    from .tokenizer import DottieTokenizer
-    # Legacy aliases for backward compat
-    AvaConfig = DottieConfig
-    AvaModel1B = DottieModel1B
-    AvaTokenizer = DottieTokenizer
-except Exception:
-    # During partial renames, ignore
-    pass
+# name -> (submodule, attribute); Ava names are legacy aliases of the Dottie ones.
+_LAZY_EXPORTS = {
+    "DottieConfig": ("dottie.config", "DottieConfig"),
+    "DottieModel1B": ("dottie.model", "DottieModel1B"),
+    "DottieTokenizer": ("dottie.tokenizer", "DottieTokenizer"),
+    "AvaConfig": ("dottie.config", "DottieConfig"),
+    "AvaModel1B": ("dottie.model", "DottieModel1B"),
+    "AvaTokenizer": ("dottie.tokenizer", "DottieTokenizer"),
+}
 
-__all__ = ["DottieConfig", "DottieModel1B", "DottieTokenizer"]
+# Deliberately empty: `from dottie import *` (the ava compat shim does this) must
+# not force the lazy names — that would re-import torch into torch-less images.
+__all__: list = []
+
+
+def __getattr__(name: str):
+    try:
+        module_name, attr = _LAZY_EXPORTS[name]
+    except KeyError:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from None
+    value = getattr(import_module(module_name), attr)
+    globals()[name] = value  # cache: subsequent access skips __getattr__
+    return value
+
+
+def __dir__():
+    return sorted(set(globals()) | set(_LAZY_EXPORTS))

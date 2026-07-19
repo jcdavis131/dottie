@@ -20,7 +20,9 @@ from typing import Any, Mapping, Sequence
 import yaml
 
 SPACES = ("system1", "system2", "critic", "planner")
-TASK_TYPES = ("automatic", "deliberate", "safety", "temporal")
+# tool_selection ported from the live checkout (2026-07-19): the mini tool-branch
+# configs route 5 task types; without it the strict jspace check rejects them.
+TASK_TYPES = ("automatic", "deliberate", "safety", "temporal", "tool_selection")
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _CONFIG_DIR = Path(os.environ.get("DOTTIE_CONFIG_DIR", os.environ.get("AVA_CONFIG_DIR", _REPO_ROOT / "configs")))
@@ -182,6 +184,9 @@ class TrainingConfig:
     metrics_every_steps: int = 10
     stable_ckpt_name: str = "stable.pt"
     final_ckpt_name: str = "final.pt"
+    # Train-to-Test overtraining target (tokens per parameter). None = report-only.
+    # Ported from the live checkout (2026-07-19) with the live mini.yaml that sets it.
+    tokens_per_param_target: float | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -340,3 +345,6 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+# Legacy alias (Ava was the placeholder name; submodule-level import compat)
+AvaConfig = DottieConfig

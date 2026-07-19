@@ -82,3 +82,7 @@ def count_params(model: torch.nn.Module, *, trainable_only: bool = False) -> int
 
 
 __all__ = ["build_model", "set_router_bias", "count_params", "SPACES"]
+
+# Legacy alias (Ava was the placeholder name; submodule-level import compat)
+AvaModel1B = DottieModel1B
+__all__ += ["AvaModel1B", "DottieModel1B"]

@@ -59,9 +59,12 @@ x-gpu-reservation: &gpu-reservation
 
 services:
   # ---- data plane -----------------------------------------------------------
+  # Commands run `dottie.*` explicitly: `python -m ava.train` resolved to the ava/train.py
+  # redirect STUB and exited 0 having trained nothing (observed at cutover 2026-07-19) —
+  # -m executes the stub file itself, never dottie.train's __main__ block.
   collector:
     <<: *cpu-image
-    command: ["python", "-m", "ava.pipeline.collector"]
+    command: ["python", "-m", "dottie.pipeline.collector"]
     environment: *common-env
     volumes:
       - ava_raw:/raw
@@ -72,7 +75,7 @@ services:
       replicas: 4
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-m", "ava.pipeline.healthcheck", "--role", "collector"]
+      test: ["CMD", "python", "-m", "dottie.pipeline.healthcheck", "--role", "collector"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -80,7 +83,7 @@ services:
 
   curator:
     <<: *cpu-image
-    command: ["python", "-m", "ava.pipeline.curator"]
+    command: ["python", "-m", "dottie.pipeline.curator"]
     environment: *common-env
     volumes:
       - ava_raw:/raw
@@ -94,7 +97,7 @@ services:
       - collector
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-m", "ava.pipeline.healthcheck", "--role", "curator"]
+      test: ["CMD", "python", "-m", "dottie.pipeline.healthcheck", "--role", "curator"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -103,7 +106,7 @@ services:
   # Enforces disk watermarks; deletes CONSUMED shards (never val/test); rotates ckpts.
   janitor:
     <<: *cpu-image
-    command: ["python", "-m", "ava.pipeline.janitor"]
+    command: ["python", "-m", "dottie.pipeline.janitor"]
     environment: *common-env
     volumes:
       - ava_raw:/raw
@@ -116,7 +119,7 @@ services:
   # ---- compute plane --------------------------------------------------------
   trainer:
     <<: [*gpu-image, *gpu-reservation]
-    command: ["python", "-m", "ava.train", "--preset", "${AVA_PRESET:-nano}", "--resume"]
+    command: ["python", "-m", "dottie.train", "--preset", "${AVA_PRESET:-nano}", "--resume"]
     environment:
       <<: *common-env
       # Keep the trainer off the cores the curator needs to stay ahead of it.
@@ -171,6 +174,11 @@ services:
         target: /host_reports
         read_only: true
       # Live code for /evals + dashboard without a full image rebuild.
+      # dottie/ is the real package; ava/ is the compat shim tree.
+      - type: bind
+        source: ./dottie
+        target: /app/dottie
+        read_only: true
       - type: bind
         source: ./ava
         target: /app/ava

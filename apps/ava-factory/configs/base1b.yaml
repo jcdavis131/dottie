@@ -49,10 +49,11 @@ jspace:                        # blueprint values verbatim
   inter_mi_weight: 0.3
   routing_weight: 0.4
   routing_targets:
-    automatic:  [0.60, 0.15, 0.10, 0.15]
-    deliberate: [0.15, 0.55, 0.10, 0.20]
-    safety:     [0.10, 0.20, 0.60, 0.10]
-    temporal:   [0.10, 0.30, 0.10, 0.50]
+    automatic:      [0.60, 0.15, 0.10, 0.15]
+    deliberate:     [0.15, 0.55, 0.10, 0.20]
+    safety:         [0.10, 0.20, 0.60, 0.10]
+    temporal:       [0.10, 0.30, 0.10, 0.50]
+    tool_selection: [0.10, 0.35, 0.10, 0.45]
   base_loss_weights: {report: 1.0, broadcast: 0.5, selectivity: 0.3, modulation: 0.5}
   j_weight: {early: 0.08, late: 0.15}
 

@@ -17,6 +17,9 @@ WORKDIR /app
 COPY docker/requirements.cpu.txt /tmp/requirements.cpu.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.cpu.txt
 
+# dottie/ is the real package since the Ava->Dottie rename; ava/ is the compat
+# shim (`from dottie import *`) — without dottie/ every service dies at import.
+COPY dottie/ /app/dottie/
 COPY ava/ /app/ava/
 COPY evals/ /app/evals/
 COPY configs/ /app/configs/

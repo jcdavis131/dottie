@@ -962,3 +962,6 @@ def get_model(vocab_size=128000, d_model=2048, multi_jspace_enabled=True,
 # Home-only, no work Drive, no work data
 DISCLAIMER = "Solo personal project, no connection to employer, built with public/free-tier only"
 
+
+# Legacy alias (Ava was the placeholder name; evals/ still imports the old name)
+AvaModel1B = DottieModel1B
