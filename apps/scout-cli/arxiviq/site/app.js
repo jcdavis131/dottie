@@ -11,10 +11,15 @@
 const GH = {
   // Monorepo-first: the dottie monorepo (apps/ava-factory) is the source of truth. dottie is
   // PRIVATE, so unauthenticated raw fetches to it 404 in browsers — each path therefore has an
-  // ordered candidate list falling back to the legacy standalone repo (public raw) and finally
-  // to the baked snapshot. If dottie is ever made public, the first candidate simply starts
-  // winning; nothing else changes.
+  // ordered candidate list: the live-status GIST first (the monorepo gitignores telemetry
+  // by design, so the box publishes hourly via scripts/publish_live_status.py — cutover
+  // 2026-07-19), then repo raws, then the legacy standalone repo, finally the baked
+  // snapshot. If dottie is ever made public, the repo candidate simply starts winning
+  // for non-status paths; nothing else changes.
   factoryRawCandidates: (path) => [
+    ...(path.endsWith("dottie_live_status.json") || path.endsWith("STATUS.json")
+      ? [`https://gist.githubusercontent.com/jcdavis131/929c3c0b8ad38457f0a19f4f6605085c/raw/dottie_live_status.json`]
+      : []),
     `https://raw.githubusercontent.com/jcdavis131/dottie/main/apps/ava-factory/${path}`,
     `https://raw.githubusercontent.com/jcdavis131/ava-agi-factory-v6-4/master/${path}`,
   ],
