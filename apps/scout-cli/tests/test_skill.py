@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 
-CLI = ["python3", "-m", "bigbang.cli"]
+CLI = [sys.executable, "-m", "bigbang.cli"]
 ROOT = Path(__file__).resolve().parents[1]
 
 

@@ -20,7 +20,9 @@ $Defs = @(
     @{ Name = "Dottie Research ideate";
        Args = "ideate --n 3 --bottleneck `"held-out LM loss plateaus while train loss keeps dropping (memorization gap) on the nano pilot corpus`"";
        Trigger = New-ScheduledTaskTrigger -Daily -At "00:00" },
-    @{ Name = "Dottie Research implement"; Args = "implement";
+    # 5 retries: transport failures are auto-repaired now, so the budget goes to real
+    # content-level correction passes (conversion rate was 0/7 at 3 retries, 2026-07-19).
+    @{ Name = "Dottie Research implement"; Args = "implement --max-retries 5";
        Trigger = New-ScheduledTaskTrigger -Once -At "00:15" `
                  -RepetitionInterval (New-TimeSpan -Hours 1) }   # no duration = repeat indefinitely,
     @{ Name = "Dottie Research train"; Args = "train --steps 150 --trainer factory";

@@ -3,13 +3,14 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 import time
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-CLI = ["python3", "-m", "bigbang.cli"]
+CLI = [sys.executable, "-m", "bigbang.cli"]
 
 
 def _run(args, *, input_text=None, timeout=8, env=None):

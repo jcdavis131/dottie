@@ -61,17 +61,6 @@ def register(root):
     root.add_typer(app, name="csvstat_loop_test")
 '''
 
-SKILL_MD = """---
-name: csvstat_loop_test
-description: per-column numeric stats for CSV files
-j_space_target: system1
-half_life: 30
-triggers: [csv, statistics, columns]
----
-Forged by the self-evolution loop test. `scout --json csvstat_loop_test run --path f.csv`.
-"""
-
-
 def _cli(*args: str, timeout: int = 120) -> dict:
     """Run the real CLI, parse the JSON envelope."""
     p = subprocess.run([sys.executable, "-m", "bigbang.cli", "--json", *args],
@@ -100,9 +89,13 @@ def test_self_evolution_loop_forges_tests_installs_and_reexecutes(tmp_path):
         assert TOOL not in _tool_names(_cli("forge", "list")), \
             f"{TOOL} already exists — stale cleanup?"
 
-        # 1. forge the scaffold
+        # 1. forge the scaffold — SKILL.md is scaffolded alongside (TODOS 6.4), so
+        # `skill install` works with no manual authoring step
         new = _cli("forge", "new", TOOL, "--description", "CSV column statistics")
         assert (new.get("data", new)).get("status") == "scaffolded"
+        assert packaged_skill.joinpath("SKILL.md").exists(), "forge new must scaffold SKILL.md"
+        fm = packaged_skill.joinpath("SKILL.md").read_text(encoding="utf-8")
+        assert f"name: {TOOL}" in fm and "triggers:" in fm
 
         # 2. implement for real (the LLM's `forge edit` step)
         edit = _cli("forge", "edit", TOOL, "--code", TOOL_CODE)
@@ -112,9 +105,7 @@ def test_self_evolution_loop_forges_tests_installs_and_reexecutes(tmp_path):
         tested = _cli("forge", "test", TOOL)
         assert (tested.get("data", tested)).get("passes") is True, tested
 
-        # 4. teach Dottie: SKILL.md + real install into ~/.dottie-claw
-        packaged_skill.mkdir(parents=True, exist_ok=True)
-        (packaged_skill / "SKILL.md").write_text(SKILL_MD, encoding="utf-8")
+        # 4. teach Dottie: real install into ~/.dottie-claw straight from the scaffold
         inst = _cli("skill", "install", TOOL, "--target", "dottie", "--force")
         assert installed_skill.joinpath("SKILL.md").exists(), inst
 

@@ -38,12 +38,32 @@ app = make_plugin_app(
 )
 
 PLUGIN_ROOT = Path(__file__).parent.parent  # bigbang/plugins
+SKILLS_ROOT = Path(__file__).parents[2] / "skills"  # bigbang/skills — `skill install` source
 
 def _valid_name(name: str):
     return bool(re.fullmatch(r"[a-z][a-z0-9_]{1,31}", name))
 
 def _plugin_dir(name: str) -> Path:
     return PLUGIN_ROOT / name
+
+
+def _scaffold_skill_md(name: str, description: str) -> Path:
+    """Write bigbang/skills/<name>/SKILL.md so `scout skill install <name>` works the
+    moment a tool is forged — teaching Dottie was a manual step the self-evolution
+    loop always had to remember (TODOS 6.4)."""
+    sdir = SKILLS_ROOT / name
+    sdir.mkdir(parents=True, exist_ok=True)
+    md = sdir / "SKILL.md"
+    if not md.exists():
+        triggers = ", ".join(sorted({w.lower() for w in re.findall(r"[a-zA-Z]{4,}", description)}
+                                    | {name})[:6]) or name
+        md.write_text(
+            f"---\nname: {name}\ndescription: {description}\n"
+            f"j_space_target: system1\nhalf_life: 30\ntriggers: [{triggers}]\n---\n"
+            f"Auto-forged tool. Discover with `scout --json {name} --help`; typical call\n"
+            f"`scout --json {name} run ...`. Edit this file to refine routing metadata.\n",
+            encoding="utf-8")
+    return md
 
 def _ensure_scaffold(name: str, description: str):
     pdir = _plugin_dir(name)
@@ -153,17 +173,20 @@ def new_plugin(
             mf["capabilities"]["network"]["domains"] = doms
         (pdir / "manifest.yaml").write_text(yaml.safe_dump(mf), encoding="utf-8")
 
+    skill_md = _scaffold_skill_md(name, desc)
+
     emit(ok({
         "plugin": name,
         "dir": str(pdir),
         "cli_file": str(pdir / "cli.py"),
         "manifest": str(pdir / "manifest.yaml"),
+        "skill_md": str(skill_md),
         "status": "scaffolded",
         "next_steps": [
             f"scout --json {name} hello  # verify it loads",
             f"scout forge edit {name} --instructions  # how to implement real logic",
             f"scout --json forge test {name}",
-            f"scout skill show {name} (after you add SKILL.md)",
+            f"scout skill install {name} --target dottie  # SKILL.md scaffolded for you",
         ],
         "llm_editable": True,
         "self_evolution": f"You can now edit {pdir / 'cli.py'} to implement any tool you need. Use scout forge edit {name}"
@@ -353,7 +376,14 @@ def rm_cmd(name: str = typer.Argument(...), force: bool = typer.Option(False, "-
     if not force:
         fail_agent(f"Pass --force to remove {name}", command="forge rm", example=f"scout forge rm {name} --force")
     shutil.rmtree(pdir)
-    emit(ok({"removed": name, "dir": str(pdir)}, command="forge rm"), command="forge rm")
+    # the scaffolded SKILL.md dies with its tool — no orphaned skills teaching a
+    # capability that no longer exists
+    skill_dir = SKILLS_ROOT / name
+    removed_skill = skill_dir.exists()
+    if removed_skill:
+        shutil.rmtree(skill_dir, ignore_errors=True)
+    emit(ok({"removed": name, "dir": str(pdir), "skill_md_removed": removed_skill},
+            command="forge rm"), command="forge rm")
 
 def register(root):
     root.add_typer(app, name="forge")

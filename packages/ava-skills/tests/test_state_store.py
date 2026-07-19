@@ -81,3 +81,18 @@ def test_default_db_path_is_outside_the_repo(tmp_path, monkeypatch):
     assert ".dottie-claw" in str(p)              # home-dir state, never committable
     monkeypatch.setenv("DOTTIE_STATE_DB", str(tmp_path / "override.sqlite3"))
     assert default_db_path() == tmp_path / "override.sqlite3"
+
+
+def test_incremental_export_is_idempotent(tmp_path):
+    out = tmp_path / "t.jsonl"
+    db = tmp_path / "s.sqlite3"
+    with JSpaceStateStore(db) as st:
+        st.log_task("s", "one", "ok")
+        st.log_task("s", "two", "ok")
+        assert st.export_telemetry_incremental(out) == 2
+        assert st.export_telemetry_incremental(out) == 0     # watermark holds
+    with JSpaceStateStore(db) as st2:                        # survives reconnection
+        assert st2.export_telemetry_incremental(out) == 0
+        st2.log_task("s", "three", "ok")
+        assert st2.export_telemetry_incremental(out) == 1
+    assert len(out.read_text(encoding="utf-8").splitlines()) == 3

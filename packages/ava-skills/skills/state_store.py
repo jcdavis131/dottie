@@ -212,6 +212,24 @@ class JSpaceStateStore:
 
     # -- telemetry feed ------------------------------------------------------
 
+    def export_telemetry_incremental(self, path: str | os.PathLike) -> int:
+        """Watermarked export for cron use: appends only task_logs newer than the last
+        exported timestamp (kept in the meta table), so an hourly tick never writes a
+        record twice. Returns records written."""
+        row = self._conn.execute(
+            "SELECT value FROM meta WHERE key='telemetry_watermark'").fetchone()
+        watermark = float(row["value"]) if row else 0.0
+        newest = self._conn.execute(
+            "SELECT MAX(ts) AS m FROM task_logs WHERE ts > ?", (watermark,)).fetchone()
+        n = self.export_telemetry(path, since_ts=watermark)
+        if n and newest["m"] is not None:
+            self._conn.execute(
+                "INSERT INTO meta (key, value) VALUES ('telemetry_watermark', ?)"
+                " ON CONFLICT (key) DO UPDATE SET value=excluded.value",
+                (repr(float(newest["m"])),))
+            self._conn.commit()
+        return n
+
     def export_telemetry(self, path: str | os.PathLike, *,
                          since_ts: float = 0.0) -> int:
         """Append task_logs newer than since_ts as JSONL records (the format

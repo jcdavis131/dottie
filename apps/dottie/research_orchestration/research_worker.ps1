@@ -29,6 +29,18 @@ New-Item -ItemType Directory -Force $LogDir | Out-Null
 $LocalEnv = Join-Path $PSScriptRoot "research_env.local.ps1"
 if (Test-Path $LocalEnv) { . $LocalEnv }
 
+# Night window: a bigger model can hold the GPU when nothing else needs it.
+# Set DOTTIE_OLLAMA_MODEL_NIGHT (and optionally DOTTIE_NIGHT_START/END, 24h ints,
+# default 22-6) in the local env; outside the window the day model applies untouched.
+if ($env:DOTTIE_OLLAMA_MODEL_NIGHT) {
+    $nightStart = if ($env:DOTTIE_NIGHT_START) { [int]$env:DOTTIE_NIGHT_START } else { 22 }
+    $nightEnd   = if ($env:DOTTIE_NIGHT_END)   { [int]$env:DOTTIE_NIGHT_END }   else { 6 }
+    $h = (Get-Date).Hour
+    $inWindow = if ($nightStart -le $nightEnd) { ($h -ge $nightStart) -and ($h -lt $nightEnd) }
+                else { ($h -ge $nightStart) -or ($h -lt $nightEnd) }
+    if ($inWindow) { $env:DOTTIE_OLLAMA_MODEL = $env:DOTTIE_OLLAMA_MODEL_NIGHT }
+}
+
 # Prefer the app's own venv; fall back to python on PATH.
 $Python = Join-Path $App ".venv\Scripts\python.exe"
 if (-not (Test-Path $Python)) { $Python = "python" }

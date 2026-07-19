@@ -1,3 +1,4 @@
+import sys
 def test_import():
     import bigbang.cli
     assert bigbang.cli.app
@@ -37,7 +38,7 @@ def test_policy_manifests_exist():
 
 def test_json_contract():
     import subprocess, json
-    r = subprocess.run(["python3", "-m", "bigbang.cli", "--json", "tools", "list"], capture_output=True, text=True)
+    r = subprocess.run([sys.executable, "-m", "bigbang.cli", "--json", "tools", "list"], capture_output=True, text=True)
     assert r.returncode == 0
     data = json.loads(r.stdout)
     assert "tools" in data
@@ -79,7 +80,7 @@ def test_write_generate_humanlike():
 
 def test_write_cli_json():
     import subprocess, json
-    r = subprocess.run(["python3", "-m", "bigbang.cli", "--json", "write", "scan", "--text", "Hello world this is a simple note from Austin."], capture_output=True, text=True, timeout=8)
+    r = subprocess.run([sys.executable, "-m", "bigbang.cli", "--json", "write", "scan", "--text", "Hello world this is a simple note from Austin."], capture_output=True, text=True, timeout=8)
     assert r.returncode == 0
     data = json.loads(r.stdout)
     assert "result" in data
