@@ -1,0 +1,10 @@
+{
+  "name": "safety-scanner",
+  "description": "Critic hl=30-35 early warning leverage/blackmail 4-5 tok",
+  "version": "latest",
+  "visibility": "private",
+  "created_at": 1784206742.7094405,
+  "saves": 0,
+  "code_len": 192,
+  "docs_len": 92
+}

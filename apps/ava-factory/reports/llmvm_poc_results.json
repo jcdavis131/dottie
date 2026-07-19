@@ -1,0 +1,35 @@
+{
+  "poc1_audit_cell": {
+    "success": true,
+    "exec_time_ms": 11,
+    "output": "Audit: BEGIN IMMEDIATE 7 hits across 2 files, causal present, leaks=[], top5=[('audit-jspace-leak.python.py',1), ('skillbook.py',1), ('self_modify.py',1), ('self_modify.py',3), ('compression.py',2)]\ndata:https://huggingface.co/dataset/1\ndata:https://huggingface.co/dataset/1 [CACHED]\nCACHE SAVING: 74 shards -> 1 download + 6 hits",
+    "truncated": false,
+    "host_calls": 0
+  },
+  "poc2_analytics": {
+    "success": true,
+    "exec_time_ms": 1,
+    "output": "WSD: {'warmup':2000,'stable':736000,'total':800000} RoPE transitions 5 last expansion tokens=500034",
+    "measured": true
+  },
+  "measurements": {
+    "BEGIN_IMMEDIATE": 7,
+    "causal_tril_present": true,
+    "verbalizable_measured": true,
+    "backpressure_lines": 2309,
+    "last_expansion_tokens": 500034,
+    "last_expansion_docs": 5045
+  },
+  "llmvm_benefits": {
+    "before_round_trips": 15,
+    "after_cells": 1,
+    "token_before": 6000,
+    "token_after": 900,
+    "saving_pct": 85,
+    "defrag_upfront": 800,
+    "defrag_detailed": 6400,
+    "saving_at_1000_scale": "87.5%"
+  },
+  "timestamp": "2026-07-16T16:26:06.011412Z",
+  "footer": "Solo personal project, no connection to employer, built with public/free-tier only"
+}

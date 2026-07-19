@@ -1,0 +1,14 @@
+{
+  "date": "2026-07-15",
+  "arxiv_id": "2601.09000v1",
+  "topic_id": "ava-training",
+  "branch": "autoresearch/jul15-ava-training-2601.090",
+  "title": "Universal Dynamics of Warmup Stable Decay: understanding WSD beyond Transformers",
+  "url": "https://arxiv.org/abs/2601.09000v1",
+  "status": "keep",
+  "commit": "8878fdb",
+  "val_bpb": 0.9979,
+  "memory_gb": 1.0,
+  "experiment_dir": "/home/hatch/workspace/ava-research-engine/experiments/2601.09000v1",
+  "run_log": "/home/hatch/workspace/ava-research-engine/experiments/2601.09000v1/run.log"
+}

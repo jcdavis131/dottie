@@ -1,0 +1,50 @@
+{
+  "date": "2026-07-15",
+  "topics": [
+    {
+      "id": "ava-jspace",
+      "title": "Ava J-Space Multi-Workspace",
+      "count": 0,
+      "queries": 4
+    },
+    {
+      "id": "ava-training",
+      "title": "Efficient Single-GPU LLM Training",
+      "count": 0,
+      "queries": 5
+    },
+    {
+      "id": "ava-eval",
+      "title": "Frontier Rubric + Eval Harness",
+      "count": 0,
+      "queries": 3
+    },
+    {
+      "id": "graphify-rag",
+      "title": "Graphify + GraphRAG + Knowledge Graphs for LLMs",
+      "count": 0,
+      "queries": 5
+    },
+    {
+      "id": "bigbang-mcp",
+      "title": "MCP + OpenAPI Tool Use + Agentic Routing",
+      "count": 0,
+      "queries": 4
+    },
+    {
+      "id": "vector-mtnn",
+      "title": "MTNN Multi-Task + Embedding Eval + Sports Analytics",
+      "count": 0,
+      "queries": 3
+    },
+    {
+      "id": "workforce-ai",
+      "title": "Workforce Turnover + Retention Prediction",
+      "count": 15,
+      "queries": 2
+    }
+  ],
+  "total_queries": 26,
+  "total_papers_raw": 15,
+  "total_papers_deduped": 15
+}

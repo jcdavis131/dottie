@@ -1,0 +1,10 @@
+{
+  "name": "code-bench",
+  "description": "Code repo 50% + long 32k eval, S2 hl=350 bias",
+  "version": "latest",
+  "visibility": "private",
+  "created_at": 1784206742.7089775,
+  "saves": 0,
+  "code_len": 169,
+  "docs_len": 77
+}

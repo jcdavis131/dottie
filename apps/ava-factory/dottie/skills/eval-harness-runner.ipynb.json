@@ -1,0 +1,5 @@
+{
+  "cells": [
+    "\n# Bootstrap notebook for eval-harness-runner\n# Edit and use immediately (no code push)\n\n# Branch harness mock/real, frontier rubric 11-cat\n\n# eval-harness-runner \u2014 skillbook placeholder\nasync def run_eval_harness_runner_workflow():\n    print('Running eval-harness-runner: Branch harness mock/real, frontier rubric 11-cat')\n    return True\n\n\n# Test:\n# await run_eval-harness-runner_workflow()\n"
+  ]
+}

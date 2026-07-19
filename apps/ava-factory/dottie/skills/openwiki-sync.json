@@ -1,0 +1,10 @@
+{
+  "name": "openwiki-sync",
+  "description": "Sync ~/.openwiki/wiki -> S2 Slow hl=300 verbalizable memory",
+  "version": "latest",
+  "visibility": "private",
+  "created_at": 1784206742.7077577,
+  "saves": 0,
+  "code_len": 192,
+  "docs_len": 94
+}

@@ -1,0 +1,91 @@
+{
+  "coding": {
+    "fit": {
+      "A": 45255.47270890623,
+      "A_norm": 1.1488414750954858,
+      "alpha": 0.24703774752979196,
+      "E": 1.1831925485707633,
+      "c_scale": 4e+18
+    },
+    "baseline_cost_needed": 1.5912085829904484e+19,
+    "candidate_cost": 1.0738255033557047e+19,
+    "candidate_loss": 2.0,
+    "eg_flops": 1.4818129929098551,
+    "eg_time": 1.717421258782522
+  },
+  "stem": {
+    "fit": {
+      "A": 559976.4530015166,
+      "A_norm": 0.6319940647162603,
+      "alpha": 0.3197203303506648,
+      "E": 1.6145325474628633,
+      "c_scale": 4e+18
+    },
+    "baseline_cost_needed": 1.603070154508098e+19,
+    "candidate_cost": 1.1851851851851852e+19,
+    "candidate_loss": 2.02,
+    "eg_flops": 1.3525904428662077,
+    "eg_time": 1.5676523232819346
+  },
+  "math": {
+    "fit": {
+      "A": 127789.27481898748,
+      "A_norm": 0.8977971012100472,
+      "alpha": 0.2770293295032654,
+      "E": 1.3847514135137537,
+      "c_scale": 4e+18
+    },
+    "baseline_cost_needed": 1.565004458205354e+19,
+    "candidate_cost": 1.1267605633802818e+19,
+    "candidate_loss": 2.0,
+    "eg_flops": 1.3889414566572515,
+    "eg_time": 1.6097831482657545
+  },
+  "general": {
+    "fit": {
+      "A": 20885.775659121402,
+      "A_norm": 0.7094464038502774,
+      "alpha": 0.24023850150186007,
+      "E": 1.51072616457106,
+      "c_scale": 4e+18
+    },
+    "baseline_cost_needed": 1.5897618639207635e+19,
+    "candidate_cost": 1.3333333333333334e+19,
+    "candidate_loss": 2.02,
+    "eg_flops": 1.1923213979405725,
+    "eg_time": 1.3819005002131235
+  },
+  "multilingual": {
+    "fit": {
+      "A": 927.5616857463286,
+      "A_norm": 1.7771122596937603,
+      "alpha": 0.14609284883058582,
+      "E": 0.7266115649280321,
+      "c_scale": 4e+18
+    },
+    "baseline_cost_needed": 1.5843538118559848e+19,
+    "candidate_cost": 1.3913043478260871e+19,
+    "candidate_loss": 2.18,
+    "eg_flops": 1.138754302271489,
+    "eg_time": 1.3198162363326558
+  },
+  "weighted": {
+    "eg_flops": 1.3968444337791643,
+    "eg_time": 1.6189426987500517,
+    "weights": {
+      "coding": 0.5,
+      "stem": 0.175,
+      "math": 0.175,
+      "general": 0.1,
+      "multilingual": 0.05
+    }
+  },
+  "meta": {
+    "source": "synthetic ladder + real metrics parser skeleton (T12.1)",
+    "baseline_points": 5,
+    "method": "L=A*C^-alpha+E, fitted per eval, EG = C_baseline(L')/C_candidate",
+    "periods": "MAI Eq1-2",
+    "real_metrics_found": 0,
+    "note": "When real metrics_{preset}.jsonl appear, parse them for fit; currently synthetic shows pipeline working"
+  }
+}

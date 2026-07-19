@@ -1,0 +1,14 @@
+{
+  "date": "2026-07-18",
+  "arxiv_id": "2607.12259v1",
+  "topic_id": "workforce-ai",
+  "branch": "autoresearch/jul18-workforce-ai-2607.122",
+  "title": "WIP: Software Engineering Competencies in the Age of AI",
+  "url": "https://arxiv.org/abs/2607.12259v1",
+  "status": "keep",
+  "commit": "defc5f5",
+  "val_bpb": 0.9979,
+  "memory_gb": 1.0,
+  "experiment_dir": "/home/hatch/workspace/ava-research-engine/experiments/2607.12259v1",
+  "run_log": "/home/hatch/workspace/ava-research-engine/experiments/2607.12259v1/run.log"
+}

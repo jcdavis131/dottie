@@ -1,0 +1,10 @@
+{
+  "name": "diagnose-wsd-spike",
+  "description": "Diagnose WSD phase transition loss spikes >3x median, RoPE 10k->1M",
+  "version": "latest",
+  "visibility": "private",
+  "created_at": 1784206742.7117846,
+  "saves": 0,
+  "code_len": 214,
+  "docs_len": 106
+}

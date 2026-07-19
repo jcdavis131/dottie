@@ -1,0 +1,81 @@
+commit	val_bpb	memory_gb	status	description
+617bcbf	0.997900	1.0	keep	autoresearch ava-training 2509.23106v1 smoke — Effective Quantization of Muon Optimizer for Low-Bit LLM Tra
+617bcbf	0.997900	1.0	keep	autoresearch ava-training 2507.11005v1 smoke — AdaMuon: Adaptive Learning Rate Extension for Muon Optimizer
+617bcbf	0.997900	1.0	keep	autoresearch ava-training 2506.15054v1 smoke — Muon Under Spectral Norm: Analysis of Convergence
+617bcbf	0.997900	1.0	keep	autoresearch ava-training 2407.19929v1 smoke — The Optimization Landscape of Muon: Why Orthogonalization He
+617bcbf	0.997900	1.0	keep	autoresearch ava-training 2406.20092v2 smoke — YaRN: Efficient Context Window Extension of Large Language M
+617bcbf	0.997900	1.0	keep	autoresearch ava-training 2408.06081v2 smoke — LongRoPE2: Near-Lossless LLM Context Window Scaling
+617bcbf	0.997900	1.0	keep	autoresearch ava-training 2410.05192v3 smoke — Understanding Warmup-Stable-Decay Learning Rates: A River Va
+8878fdb	0.997900	1.0	keep	autoresearch ava-training 2601.09000v1 smoke — Universal Dynamics of Warmup Stable Decay: understanding WSD
+6018542	0.997900	1.0	keep	autoresearch ava-jspace 2312.03386v2 smoke — An Infinite-Width Analysis on the Jacobian-Regularised Train
+6018542	0.997900	1.0	keep	autoresearch ava-jspace 2606.23942v1 smoke — DREG: A Layer-Wise Jacobian Regularization as a General-Purp
+6018542	0.997900	1.0	keep	autoresearch ava-jspace 2410.13859v1 smoke — Gamma-MoD: Exploring Mixture-of-Depth Adaptation for Multimo
+1cd251a	0.997900	1.0	keep	autoresearch ava-jspace 2406.20875v1 smoke — Attention Is All You Need For Mixture-of-Depths Routing
+1cd251a	0.997900	1.0	keep	autoresearch graphify-rag 2507.03226v2 smoke — Efficient Knowledge Graph Construction and Retrieval from Un
+1cd251a	0.997900	1.0	keep	autoresearch graphify-rag 2601.05254v2 smoke — TagRAG: Tag-guided Hierarchical Knowledge Graph Retrieval-Au
+1cd251a	0.997900	1.0	keep	autoresearch graphify-rag 2404.14507v2 smoke — GraphRAG: Unlocking Query-Focused Summarization via Graph-Ba
+1cd251a	0.997900	1.0	keep	autoresearch bigbang-mcp 2505.02279v1 smoke — A survey of agent interoperability protocols: MCP, ACP, A2A,
+1cd251a	0.997900	1.0	keep	autoresearch bigbang-mcp 2504.21018v1 smoke — Advancing Multi-Agent Systems Through Model Context Protocol
+1cd251a	0.997900	1.0	keep	autoresearch bigbang-mcp 2601.11595v2 smoke — Enhancing Model Context Protocol (MCP) with Context-Aware Se
+1cd251a	0.997900	1.0	keep	autoresearch ava-training 2512.20645v2 smoke — Machine learning methods for subpixel trajectory reconstruct
+1cd251a	0.997900	1.0	keep	autoresearch ava-training 2607.14035v1 smoke — Optimizing Visibility in Generative Engines: A Critical Surv
+1cd251a	0.997900	1.0	keep	autoresearch ava-training 2607.14040v1 smoke — Can an Old Dog Be Taught New Tricks? Taking LLMs Beyond Sent
+ee78c38	0.997900	1.0	keep	autoresearch ava-training 2607.12993v2 smoke — X-Lens: Real-Time Metric Depth Estimation with Heterogeneous
+ee78c38	0.997900	1.0	keep	autoresearch ava-training 2607.14049v1 smoke — Deep Interaction: An Efficient Human-AI Interaction Method f
+ee78c38	0.997900	1.0	keep	autoresearch ava-training 2606.13061v2 smoke — LaME: Learning to Think in Latent Space for Multimodal Embed
+c4c2266	0.997900	1.0	keep	autoresearch ava-training 2603.16752v3 smoke — Constructing Deployment Scenarios for Reserve Deliverability
+b89ac70	0.997900	1.0	keep	autoresearch ava-training 2607.14051v1 smoke — Hindcast: Replaying Prediction Markets to Evaluate LLM Forec
+be7c869	0.997900	1.0	keep	autoresearch graphify-rag 2607.14054v1 smoke — Fast Cascaded Recursive Filtering via a Block-Matrix Reformu
+be7c869	0.997900	1.0	keep	autoresearch ava-training 2607.10936v2 smoke — Bandit PCA with Minimax Optimal Regret
+be7c869	0.997900	1.0	keep	autoresearch graphify-rag 2607.14056v1 smoke — Acoustic Firewalls: Analogue Gravity Perspective on the AMPS
+be7c869	0.997900	1.0	keep	autoresearch graphify-rag 2605.05308v2 smoke — The diverse outcomes of binary white dwarf mergers and conne
+be7c869	0.997900	1.0	keep	autoresearch graphify-rag 2607.07513v2 smoke — Fast Rates for Semi-Supervised Learning via Data-Augmentatio
+be7c869	0.997900	1.0	keep	autoresearch graphify-rag 2607.14062v1 smoke — Gilbert's disc model conditioned on the square lattice
+be7c869	0.997900	1.0	keep	autoresearch ava-training 2607.14063v1 smoke — Reshaping quantum annealing landscapes with diagonal catalys
+be7c869	0.997900	1.0	keep	autoresearch graphify-rag 2607.14068v1 smoke — The even-uniform hypergraph Moore bound
+be7c869	0.997900	1.0	keep	autoresearch bigbang-mcp 2607.14072v1 smoke — MetaPerch: Learning from metadata for bioacoustics foundatio
+be7c869	0.997900	1.0	keep	autoresearch bigbang-mcp 2607.14073v1 smoke — An exactly solvable macroscopic fluctuation theory of single
+be7c869	0.997900	1.0	keep	autoresearch graphify-rag 2510.11686v2 smoke — Representation-Based Exploration for Language Models: From T
+be7c869	0.997900	1.0	keep	autoresearch bigbang-mcp 2607.14074v1 smoke — Quantum Transport and Apparent Work Function Distributions o
+be7c869	0.997900	1.0	keep	autoresearch bigbang-mcp 2607.14076v1 smoke — From Pixels to States: Rethinking Interactive World Models a
+be7c869	0.997900	1.0	keep	autoresearch bigbang-mcp 2607.14077v1 smoke — Renormalizing a three-flavor lattice calculation of the two-
+be7c869	0.997900	1.0	keep	autoresearch bigbang-mcp 2607.10889v2 smoke — Post-Newtonian N-Body Dynamics in Extended Theories of Gravi
+be7c869	0.997900	1.0	keep	autoresearch bigbang-mcp 2512.05653v2 smoke — Executing Discrete/Continuous Declarative Process Specificat
+be7c869	0.997900	1.0	keep	autoresearch bigbang-mcp 2607.14078v1 smoke — A modular state-space model of human perception, cognition, 
+be7c869	0.997900	1.0	keep	autoresearch bigbang-mcp 2607.14079v1 smoke — Entropy release from Minkowski breaking in regular Schwarzsc
+be7c869	0.997900	1.0	keep	autoresearch ava-training 2607.14081v1 smoke — Linear Independent Component Analysis via Optimal Transport
+be7c869	0.997900	1.0	keep	autoresearch bigbang-mcp 2603.03444v2 smoke — New Thermal-Relic Targets for sub-GeV Dark Matter Direct Det
+be7c869	0.997900	1.0	keep	autoresearch graphify-rag 2607.14082v1 smoke — Building Shor's Algorithm in Lean: An Agentic Formalization 
+be7c869	0.997900	1.0	keep	autoresearch ava-training 2607.14083v1 smoke — Cluster-configurational study of G-center in Silicon
+be7c869	0.997900	1.0	keep	autoresearch bigbang-mcp 2607.14084v1 smoke — Investigating anomalous microwave emission near G107.2+5.20 
+be7c869	0.997900	1.0	keep	autoresearch bigbang-mcp 2607.14085v1 smoke — Benchmarking trigonometric continuous-variable gate primitiv
+be7c869	0.997900	1.0	keep	autoresearch ava-training 2607.14086v1 smoke — Leveraging unlabelled data for generalizable neural populati
+be7c869	0.997900	1.0	keep	autoresearch graphify-rag 2607.14087v1 smoke — Stochastic Domination of Gaussian Maxima: A Resolution to th
+be7c869	0.997900	1.0	keep	autoresearch ava-training 2607.14088v1 smoke — VideoRAE: Taming Video Foundation Models for Generative Mode
+be7c869	0.997900	1.0	keep	autoresearch ava-training 2607.14089v1 smoke — Sail membranes for optomechanical accelerometry
+defc5f5	0.997900	1.0	keep	autoresearch bigbang-mcp 2607.03231v2 smoke — Odd-parity ringdown gravitational waves of a spherically sym
+defc5f5	0.997900	1.0	keep	autoresearch bigbang-mcp 2607.14090v1 smoke — Cold Stream Penetration of Virial Shocks: Fragmentation, Coa
+defc5f5	0.997900	1.0	keep	autoresearch graphify-rag 2607.14091v1 smoke — Pair-Partition Constructions for CPM-Based Quantum LDPC Code
+defc5f5	0.997900	1.0	keep	autoresearch ava-eval 2407.03173v2 smoke — From Rubrics to Real Evaluation: A 11-Category Frontier Rubr
+defc5f5	0.997900	1.0	keep	autoresearch ava-eval 2409.13743v1 smoke — Capability Preservation in Model Branching: Mitigating Forge
+defc5f5	0.997900	1.0	keep	autoresearch ava-eval 2606.12681v3 smoke — Analytic calculator for determination of $γ$-ray angular dis
+defc5f5	0.997900	1.0	keep	autoresearch ava-eval 2506.06709v3 smoke — A Thermodynamic Positivity Bound on Higher-Derivative 3-Form
+defc5f5	0.997900	1.0	keep	autoresearch ava-eval 2607.14041v1 smoke — Multi-Expert Routing for Multi-Domain Low-Resource OCR: A Ma
+defc5f5	0.997900	1.0	keep	autoresearch ava-eval 2607.14045v1 smoke — LLMs for Qualitative and Mixed-Methods Social Network Analys
+defc5f5	0.997900	1.0	keep	autoresearch ava-eval 2607.14046v1 smoke — Earthquaker-AI: A Retrieval-Augmented Generation Framework w
+defc5f5	0.997900	1.0	keep	autoresearch ava-eval 2607.14047v1 smoke — PhysClaw-0: A Symbiotic Agentic System for Robot Autonomy vi
+defc5f5	0.997900	1.0	keep	autoresearch ava-eval 2607.05364v2 smoke — REDDIT: Correcting Model-Generated Timestamp Drift in ASR wi
+defc5f5	0.997900	1.0	keep	autoresearch ava-eval 2603.03183v2 smoke — The multiloop sunset to all orders
+defc5f5	0.997900	1.0	keep	autoresearch ava-eval 2607.14070v1 smoke — Screening of Biosecurity Features in Metagenomic Data with E
+defc5f5	0.997900	1.0	keep	autoresearch ava-eval 2607.14075v1 smoke — VisualRepair: Dynamic Tool Calling and Region Focusing for V
+defc5f5	0.997900	1.0	keep	autoresearch workforce-ai 2607.11269v1 smoke — Trustworthy synthetic data for campaign decision support: st
+defc5f5	0.997900	1.0	keep	autoresearch workforce-ai 2607.11715v1 smoke — JobHop v2: A Large-Scale Career Trajectory Dataset from Unst
+defc5f5	0.997900	1.0	keep	autoresearch workforce-ai 2607.11722v1 smoke — STEP: Career-Path Recommendation via Temporal and Educationa
+defc5f5	0.997900	1.0	keep	autoresearch workforce-ai 2607.12042v1 smoke — SymbOmni: Evolving Agentic Omni Models via Symbolic Concept 
+defc5f5	0.997900	1.0	keep	autoresearch workforce-ai 2607.12048v1 smoke — An Empirical Analysis of Continual Learning for Heterogeneou
+defc5f5	0.997900	1.0	keep	autoresearch workforce-ai 2607.12075v1 smoke — Calibrated Selective Prediction Using Deep Ensembles for ROI
+defc5f5	0.997900	1.0	keep	autoresearch workforce-ai 2607.12088v1 smoke — TESS Photometry and Radial Velocity Analysis of the sub-Nept
+defc5f5	0.997900	1.0	keep	autoresearch workforce-ai 2607.12112v1 smoke — Continual Learning with Elastic Regularization and Synthetic
+defc5f5	0.997900	1.0	keep	autoresearch workforce-ai 2606.20751v2 smoke — From Sentiment to Actionable Insights: Public Sentiment Anal
+defc5f5	0.997900	1.0	keep	autoresearch workforce-ai 2607.12221v1 smoke — From Chaos to Clarity: A Framework for Program-Level AI Lear
+defc5f5	0.997900	1.0	keep	autoresearch workforce-ai 2607.12259v1 smoke — WIP: Software Engineering Competencies in the Age of AI

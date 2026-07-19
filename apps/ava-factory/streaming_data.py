@@ -1,5 +1,5 @@
 """
-streaming_data.py — Constant low-memory streaming dataflow for Ava AGI Factory v6.4
+streaming_data.py — Constant low-memory streaming dataflow for Dottie AGI Factory v6.4
 Solo personal project, no connection to employer, built with public/free-tier only
 
 Problem: naive Dolma/Nemotron pipeline loads entire 50B logic + 300B math + 6T web into RAM.
@@ -13,8 +13,8 @@ Memory guarantees:
 - synthetic textbooks generated in background thread into rotating 100MB shards with backpressure
 
 Usage:
-    from streaming_data import AvaStreamingDataset
-    ds = AvaStreamingDataset(data_root="data/streaming_shards", branch="base", shuffle_buffer=10000)
+    from streaming_data import DottieStreamingDataset
+    ds = DottieStreamingDataset(data_root="data/streaming_shards", branch="base", shuffle_buffer=10000)
     for batch in ds.batched(seq_len=2048, batch_size=4):
         train(batch)  # batch["input_ids"] [B, L], batch["task_type"], batch["source"]
 
@@ -149,7 +149,7 @@ class SimpleTokenizer:
         self.vocab_size = vocab_size
     def encode(self, text: str) -> List[int]:
         # deterministic hash byte-level -> ids, preserves ability to stream
-        # real tokenizer: replace with AutoTokenizer.from_pretrained("ava-tokenizer")
+        # real tokenizer: replace with AutoTokenizer.from_pretrained("dottie-tokenizer")
         b = text.encode("utf-8", errors="ignore")
         # simple: byte + offset, fast, no memory
         return [ (x % (self.vocab_size-256)) + 256 for x in b[:8192] ]  # cap per example pre-chunk
@@ -158,10 +158,10 @@ class SimpleTokenizer:
 
 def get_tokenizer():
     # Always use SimpleTokenizer for constant-memory streaming demo — no HF download spike
-    # Replace with real ava-tokenizer for production: AutoTokenizer.from_pretrained("ava-tokenizer")
+    # Replace with real dottie-tokenizer for production: AutoTokenizer.from_pretrained("dottie-tokenizer")
     try:
         from transformers import AutoTokenizer
-        for p in ["ava-tokenizer", "data/ava-tokenizer", "data/streaming_shards/ava-tokenizer"]:
+        for p in ["dottie-tokenizer", "data/dottie-tokenizer", "data/streaming_shards/dottie-tokenizer"]:
             if Path(p).exists():
                 print(f"[Tokenizer] Using local {p}")
                 return AutoTokenizer.from_pretrained(p, use_fast=True)
@@ -500,7 +500,7 @@ def get_phase_for_step(step: int, tokens_per_step: int = 2_097_152) -> str:  # 2
 # Main iterable dataset — torch compatible if torch present
 # ─────────────────────────────────────────────────────────────────────────────
 
-class AvaStreamingDataset:
+class DottieStreamingDataset:
     """
     Low-memory infinite streamer:
     - constant RAM: shuffle_buffer + 1 batch
@@ -854,7 +854,7 @@ if __name__ == "__main__":
         gen = SyntheticShardGenerator(args.data_root)
         gen.start()
 
-    ds = AvaStreamingDataset(data_root=args.data_root, branch=args.branch, phase=args.phase, shuffle_buffer=args.shuffle_buffer, max_seq_len=args.seq_len)
+    ds = DottieStreamingDataset(data_root=args.data_root, branch=args.branch, phase=args.phase, shuffle_buffer=args.shuffle_buffer, max_seq_len=args.seq_len)
     print(f"Starting stream stats={ds.stats()}")
     try:
         for idx, batch in enumerate(ds.batched(seq_len=args.seq_len, batch_size=args.batch_size)):

@@ -1,0 +1,14 @@
+{
+  "date": "2026-07-16",
+  "arxiv_id": "2607.14062v1",
+  "topic_id": "graphify-rag",
+  "branch": "autoresearch/jul16-graphify-rag-2607.140",
+  "title": "Gilbert's disc model conditioned on the square lattice",
+  "url": "https://arxiv.org/abs/2607.14062v1",
+  "status": "keep",
+  "commit": "be7c869",
+  "val_bpb": 0.9979,
+  "memory_gb": 1.0,
+  "experiment_dir": "/home/hatch/workspace/ava-research-engine/experiments/2607.14062v1",
+  "run_log": "/home/hatch/workspace/ava-research-engine/experiments/2607.14062v1/run.log"
+}

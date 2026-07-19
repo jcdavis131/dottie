@@ -1,0 +1,10 @@
+{
+  "name": "eval-harness-runner",
+  "description": "Branch harness mock/real, frontier rubric 11-cat",
+  "version": "latest",
+  "visibility": "private",
+  "created_at": 1784206742.710802,
+  "saves": 0,
+  "code_len": 199,
+  "docs_len": 89
+}

@@ -1,0 +1,5 @@
+{
+  "cells": [
+    "\n# Bootstrap notebook for diagnose-wsd-spike\n# Edit and use immediately (no code push)\n\n# Diagnose WSD phase transition loss spikes >3x median, RoPE 10k->1M\n\n# diagnose-wsd-spike \u2014 skillbook placeholder\nasync def run_diagnose_wsd_spike_workflow():\n    print('Running diagnose-wsd-spike: Diagnose WSD phase transition loss spikes >3x median, RoPE 10k->1M')\n    return True\n\n\n# Test:\n# await run_diagnose-wsd-spike_workflow()\n"
+  ]
+}

@@ -32,10 +32,7 @@ the original standalone-sibling-checkout probes — both layouts work everywhere
 
 ## Things worth knowing
 
-- **The six source repos remain live and canonical for deployments.** arxiviq.vercel.app fetches
-  from `jcdavis131/ava-agi-factory-v6-4` (raw) and `jcdavis131/scout-rtx` (Releases); the local
-  training stack builds from the standalone factory checkout. Do NOT archive/rename those repos
-  or delete local checkouts until the deliberate cutover documented in the migration plan.
+- **Monorepo is now canonical (cutover 2026-07-18).** `jcdavis131/dottie/main` is source of truth. arxiviq Control Plane now fetches from `.../dottie/main/apps/ava-factory/` with legacy fallback. Standalone checkouts `ava-agi-factory-v6-4` and `ava-research-engine` archived to `~/workspace/_archive/` on 2026-07-18. All crons migrated to `~/workspace/dottie/apps/ava-factory`. DOTTIE_ROOT env preferred.
 - `apps/ava-factory/runs/cpu_pilot/` in a fresh clone contains only the committed text evidence
   (MANIFEST.json, tokenizer, reports) — checkpoint binaries are gitignored by design; regenerate
   with `apps/ava-factory/scripts/cpu_pilot_e2e.py`.

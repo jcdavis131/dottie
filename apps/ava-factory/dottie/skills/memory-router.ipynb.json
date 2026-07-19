@@ -1,0 +1,5 @@
+{
+  "cells": [
+    "\n# Bootstrap notebook for memory-router\n# Edit and use immediately (no code push)\n\n# Router + arbitration veto routing KL\n\n# memory-router \u2014 skillbook placeholder\nasync def run_memory_router_workflow():\n    print('Running memory-router: Router + arbitration veto routing KL')\n    return True\n\n\n# Test:\n# await run_memory-router_workflow()\n"
+  ]
+}
