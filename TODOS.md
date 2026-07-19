@@ -21,7 +21,7 @@
 
 ## 1 — Close the T9.3 gate (tonight, blocking everything downstream)
 
-1.1 **Wait for `tool_final.pt`** (monitor fires; ETA ~8h from 15:20 start).
+1.1 [~] **Wait for `tool_final.pt`** (in flight — step ~370/1,144 at 19:30) (monitor fires; ETA ~8h from 15:20 start).
     - 1.1.a If the monitor reports crash/NaN instead: `docker logs dottie-factory-trainer-1`,
       diagnose, restart run — do NOT advance to 1.2 without a finished checkpoint.
 1.2 **Run the eval gate against the checkpoint** (real harness, no shortcuts):
@@ -98,12 +98,12 @@
 5.1 **Tonight's cycle**: ideation refills at 00:00 with qwen3:8b; hourly ticks chew it.
     Morning check: `python -m dottie.research status` — expect ≥3 new experiments tried.
 5.2 **Raise the conversion rate** (currently 0 of 7 candidates pass validation):
-    - 5.2.a Add `--max-retries 5` for the implement worker on the scheduler (cheap now
+    - 5.2.a [x] Add `--max-retries 5` (scheduler re-registered 2026-07-19 evening) for the implement worker on the scheduler (cheap now
       that transport bugs are gone — failures are content-level).
-    - 5.2.b Nightly window: when the trainer is idle (post-tool_final, pre-next-run),
+    - 5.2.b [~] Nightly window: MECHANISM shipped in research_worker.ps1 (DOTTIE_OLLAMA_MODEL_NIGHT); do NOT enable until the tool run frees the GPU — when the trainer is idle (post-tool_final, pre-next-run),
       let the scheduler use qwen3:14b (`DOTTIE_OLLAMA_MODEL_NIGHT` env in the wrapper,
       22:00–06:00) — 14b stalls only under GPU contention.
-    - 5.2.c Feed `reviewgraph context` output into the correction prompt (the compact
+    - 5.2.c [ ] (re-scoped) Feed richer context into corrections — research candidates are single modules, so reviewgraph adds little; instead feed the CANDIDATE's own prior-attempt diff. Original idea: output into the correction prompt (the compact
       dependent-signature block) — the corrector currently sees only the traceback.
 5.3 **Close the loop into the factory**: when an experiment reaches `sota`, generate a
     `deltanet_layers`-style patch PR against `model_1b.py` + a nano A/B run script;
@@ -123,10 +123,10 @@
 6.3 **reviewgraph into the workflow**: pre-commit hook (or `scout system audit` step)
     that runs `reviewgraph blast --diff HEAD` and blocks on new high-fan-in touches
     without tests. Wire `context` into /code-review usage docs.
-6.4 **Skill auto-docs**: `forge new` should scaffold SKILL.md (frontmatter:
+6.4 [x] **Skill auto-docs** (forge new scaffolds SKILL.md; forge rm cleans it; loop test asserts it): `forge new` should scaffold SKILL.md (frontmatter:
     j_space_target, triggers) so `skill install` works without the manual step the
     loop test had to do.
-6.5 **State-store telemetry cron**: hourly `export_telemetry` append into
+6.5 [x] **State-store telemetry cron** (watermarked export, hourly hidden task live on this box): hourly `export_telemetry` append into
     `reports/dottie_telemetry.jsonl` (gitignored) so agent activity reaches the
     Control Plane dashboards alongside factory telemetry.
 
@@ -142,9 +142,9 @@
 
 ## 8 — Known issues backlog (honest ledger, none import-breaking)
 
-- 6 × `test_audit_fixes` blueprint-judge failures (MetaMuseJudge.label, judge source
+- [~] 5 × `test_audit_fixes` (was 6; eval_branch_harness port fixed one) blueprint-judge failures (MetaMuseJudge.label, judge source
   literals) — the judge layer needs its own reconciliation pass vs workspace.
-- 3 × `test_cpu_pilot_manifest` — environmental: expect `runs/cpu_pilot` artifacts;
+- [x] `test_cpu_pilot_manifest`: fixed — runs/-suffix resolution + honest skip (10 passed/1 skip). Was: 3 × — environmental: expect `runs/cpu_pilot` artifacts;
   regenerate via `scripts/cpu_pilot_e2e.py` or mark skip-if-absent.
 - 1 × `test_janitor` reclaim count (2 vs 1) — merged manifest lease/rescue additions
   changed delete accounting; decide intended semantics, fix code OR test.
@@ -152,9 +152,23 @@
   report_html; align test with intended behavior.
 - 966 ruff findings in ported legacy code (CI excludes ava-factory; burn down
   opportunistically, never in bulk-reformat commits).
-- 1 × `test_logic_prover` jsonl (ava-skills, pre-existing), 25 × scout-cli
-  python3-stub subprocess tests (switch them to `sys.executable`).
+- [x] scout-cli python3-stub tests: swept to sys.executable (25 failures -> 10; survivors below).
+- [ ] scout-cli Windows portability: herd/planes/mcp_serve/core_extra (10 tests) use
+  POSIX-only os.WNOHANG/WEXITSTATUS — needs a Windows process-wait path or honest skips.
+- [ ] 1 × `test_logic_prover` jsonl (ava-skills, pre-existing).
 - `test_flow` 3 disk-threshold failures — env-dependent thresholds; parametrize.
+
+### New items (added 2026-07-19 evening)
+
+- [ ] §5: enable `DOTTIE_OLLAMA_MODEL_NIGHT=qwen3:14b` in research_env.local.ps1 the
+  morning after tool_final.pt lands (GPU contention gone at night thereafter).
+- [ ] §5: ideation raw-dumps now land in logs/ideation_raw_*.txt on parse failure —
+  review the first one that appears and extend parse_hypotheses if a new shape shows.
+- [~] Curriculum (landed a3abac0/f7d3a68 by parallel forks): megawika staged at
+  weight 0 — needs on-box schema check + adapter before enabling; Mind2Web staged —
+  needs an action-trace adapter; per-event cross-attestation filter is future curator work.
+- [ ] §7: after fleet rebuild, verify the Control Plane source tables show the 30-source
+  registry and the new telemetry stream renders.
 
 ## 9 — Ops discipline (standing)
 
