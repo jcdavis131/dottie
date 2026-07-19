@@ -1,0 +1,31 @@
+# One-shot override: mini tool fork from base_final (T9.3 gate).
+#   docker compose -f docker-compose.yml -f docker-compose.tool-fork.yml up -d trainer
+#
+# Do NOT use --resume. Writes under /ckpt/tool/ (tool_final.pt).
+# Host bind-mounts pick up local ava/ + configs/ without a full image rebuild.
+services:
+  trainer:
+    command:
+      - python
+      - -m
+      - ava.train
+      - --preset
+      - mini
+      - --branch
+      - tool
+      - --init
+      - /ckpt/base_final.pt
+      - --run
+      - /ckpt/tool
+    volumes:
+      - ava_packed:/packed
+      - ava_ckpt:/ckpt
+      - ava_state:/state
+      - ava_reports:/reports
+      - type: bind
+        source: .
+        target: /app
+      - type: bind
+        source: C:/
+        target: /host_disk
+        read_only: true

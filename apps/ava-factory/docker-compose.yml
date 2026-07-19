@@ -10,7 +10,11 @@
 #   docker compose up -d                 # whole pipeline
 #   docker compose up -d collector curator   # data plane only
 #   docker compose logs -f trainer
-#   docker compose up -d ava-train       # ad hoc interactive GPU dev shell (not part of the pipeline)
+#   docker compose --profile devshell up -d ava-train   # ad hoc interactive GPU dev shell (not part of the pipeline)
+
+# Stable project name: the dottie monorepo is the ONLY place this pipeline launches from
+# (replaces the retired ava-agi checkout's project on this box, cutover 2026-07-19).
+name: dottie-factory
 
 x-cpu-image: &cpu-image
   build:
@@ -117,6 +121,12 @@ services:
       <<: *common-env
       # Keep the trainer off the cores the curator needs to stay ahead of it.
       OMP_NUM_THREADS: "4"
+      # Do NOT set PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True here: on
+      # this WSL2 driver stack it passes trivial smoke tests but the trainer's
+      # real allocation pattern dies at the first step with 'CUDA driver
+      # error: device not ready' (verified 2026-07-13, 3/3 boots failed with
+      # it, clean without). VRAM headroom comes from the chunked CE and the
+      # freed logits retention in ava/train.py instead.
     volumes:
       - ava_packed:/packed
       - ava_ckpt:/ckpt
@@ -145,6 +155,8 @@ services:
       AVA_SKIP_ENGINE_BOOT: ${AVA_SKIP_ENGINE_BOOT:-0}
       ENABLE_JSPACE_WRITE: ${ENABLE_JSPACE_WRITE:-0}
       AGENT_EVAL_DIR: /agent-eval
+      # Host ./reports bind (below) — Spec-06 mini/nano harness outs for /evals.
+      AVA_HOST_REPORTS_DIR: /host_reports
     ports:
       - "8000:8000"
     volumes:
@@ -152,6 +164,21 @@ services:
       - ava_state:/state
       - ava_reports:/reports
       - *host-disk
+      # Host Spec-06 harness outs (eval_mini_base.json, nano-vs-mini compare).
+      # Volume alone still has the Jul-10 nano smoke; /evals prefers this mount.
+      - type: bind
+        source: ./reports
+        target: /host_reports
+        read_only: true
+      # Live code for /evals + dashboard without a full image rebuild.
+      - type: bind
+        source: ./ava
+        target: /app/ava
+        read_only: true
+      - type: bind
+        source: ./server.py
+        target: /app/server.py
+        read_only: true
       # Read-only: lets /evals show agent-eval's scoreboard (the Ava-claw /
       # AgenticOS agentic hill-climb, a different axis than the pretraining
       # evals above) alongside it. ava_claw_run.py writes here from the host;
@@ -172,7 +199,11 @@ services:
   # Interactive GPU box for manual experiments — separate image/volumes from
   # the pipeline services above so it never fights them for ava_state/ava_ckpt.
   # Port remapped to 8001 so it can coexist with the pipeline `server` service.
+  # Profile `devshell` keeps `docker compose up -d` from starting a second GPU
+  # consumer that CUDA-crashes the live trainer (see hillclimb Jul 15–16).
+  # Start with: docker compose --profile devshell up -d ava-train
   ava-train:
+    profiles: ["devshell"]
     build:
       context: .
       dockerfile: docker/Dockerfile
