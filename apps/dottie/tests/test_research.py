@@ -370,3 +370,27 @@ def test_policy_num_gpu_knob(monkeypatch):
     captured.clear()
     OllamaPolicy(base_url="http://x", model="m").complete("hi")
     assert "num_gpu" not in captured["options"]
+
+
+def test_promotion_bundle_from_sota_and_refusals(led, tmp_path):
+    # TODOS 5.3: sota -> reviewable bundle; everything else refuses honestly.
+    from dottie.research import promote
+    e = led.create(HYP)
+    led.transition(e.id, READY_FOR_TRAINING,
+                   implementation={"code": GOOD_CODE, "module_name": "SeqMeanMix"},
+                   workspace="/w")
+    led.transition(e.id, EVALUATION_PENDING,
+                   train_metrics={"proxy_loss": 2.0, "config": {"steps": 30}})
+    with pytest.raises(ValueError, match="not sota"):
+        promote.build_promotion(led, e.id, out_root=tmp_path)
+    led.transition(e.id, SOTA, eval_verdict={"promote": True, "delta": -2.5})
+    promote.build_promotion(led, e.id, out_root=tmp_path)
+    bundle = tmp_path / e.id
+    assert (bundle / "candidate.py").read_text(encoding="utf-8") == GOOD_CODE
+    md = (bundle / "PROMOTION.md").read_text(encoding="utf-8")
+    assert "HUMAN-GATED" in md and "SeqMeanMix" in md and "2.0" in md
+    ab = (bundle / "ab_nano.py").read_text(encoding="utf-8")
+    assert "STEPS = 30" in ab and "candidate.py" in ab
+    # idempotent sweep: already-bundled skipped, nothing rebuilt
+    summary = promote.build_pending_promotions(led, out_root=tmp_path)
+    assert summary["built"] == [] and e.id in summary["already_bundled"]

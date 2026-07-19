@@ -175,6 +175,15 @@ def cmd_loop(args) -> int:
     return 0
 
 
+def cmd_promote(args) -> int:
+    from dottie.research import promote
+    led = _ledger(args)
+    out = promote.build_pending_promotions(
+        led, out_root=paths.workspace_root(args.data_dir).parent / "promotions")
+    _emit(out)
+    return 0
+
+
 def cmd_status(args) -> int:
     led = _ledger(args)
     _emit(logger.build_status(led))
@@ -222,6 +231,11 @@ def cmd_run(args) -> int:
                 continue
             if action == "evaluate":
                 rec["result"] = evaluate.run_evaluation(led)
+                if rec["result"] and rec["result"].get("state") == "sota":
+                    from dottie.research import promote
+                    rec["promotion"] = promote.build_promotion(
+                        led, rec["result"]["experiment"],
+                        out_root=paths.workspace_root(args.data_dir).parent / "promotions")
             elif action == "train":
                 tcfg: Dict[str, Any] = {"steps": args.steps}
                 if getattr(args, "device", None):
@@ -323,6 +337,9 @@ def build_parser() -> argparse.ArgumentParser:
                          "regenerates mostly dupes faster than this")
     rn.add_argument("--max-actions", type=int, default=0, help="0 = run forever")
     rn.set_defaults(func=cmd_run)
+
+    pr = sub.add_parser("promote", help="build review bundles for sota experiments")
+    pr.set_defaults(func=cmd_promote)
 
     st = sub.add_parser("status", help="print the research status snapshot")
     st.set_defaults(func=cmd_status)
