@@ -5,12 +5,21 @@
 > its acceptance criterion.** Work top to bottom; parallelize only where marked ∥.
 > Solo personal project, no connection to employer, built with public/free-tier only.
 
-## Goal state (2026-07-19 ~22:00 local)
+## Goal state (updated by the 3-min loop, late night 2026-07-19)
 
-Every unblocked item is DONE. The critical path is purely time-gated: tool_final.pt
-(~13h) -> eval gate 1.2 -> chat branch -> fleet rebuild 2.1 -> DOTTIE_POLICY=factory
-flip 3.x -> arxiviq chat on Dottie's brain. The full pipeline for that path is wired
-and tested end-to-end tonight.
+Every unblocked item is DONE (loop tasks #8-#16 cleared overnight). Critical path
+remains time-gated: tool_final.pt (trainer ~step 250+, ETA morning) -> eval gate 1.2
+(loop-armed: task #17 fires when the monitor does) -> chat branch -> fleet rebuild 2.1
+-> DOTTIE_POLICY=factory flip -> arxiviq chat on Dottie's brain.
+
+Overnight loop outcomes: ideation self-correction retry + collision-proof dumps;
+implementation prompt no longer invites phantom imports; MegaWika ON-BOX verified
+(split was wrong in the staged config — caught by doctrine) with adapter ready for the
+2.1 rebuild; FactoryPolicy live-probed; SOTA promotion bundles wired into the runner;
+arxiviq live-status gist feed replacing the frozen legacy fallback; assistant brain
+badge live. MEASURED: research loop completed its first THREE full hill-climb chains
+(train->measure->honest reject at 6.264/5.747/+1 vs baseline 5.620) — conversion went
+0/7 pre-fix to 2/5+ post-fix; the machinery is proven, now it's a search problem.
 
 ## Standing state (context for every step below)
 
