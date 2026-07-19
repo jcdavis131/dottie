@@ -1,0 +1,26 @@
+# Dottie research loop — continuous, hill-climbing automated research.
+# Install on your box with:  crontab apps/dottie/research_orchestration/crontab
+# Edit DOTTIE_ROOT to your checkout, and set Ollama env if not on defaults.
+#
+# flock (inside research_worker.sh) guarantees single-instance per worker: if a 14-hour training
+# run is still going, the next hourly training tick is silently skipped instead of stacking.
+#
+# Cadence mirrors the closed-loop architecture: ideation daily (establishes the frontier),
+# implement/train/evaluate hourly and staggered so each stage feeds the next.
+
+DOTTIE_ROOT=/home/user/workspace/dottie
+DOTTIE_OLLAMA_URL=http://localhost:11434
+DOTTIE_OLLAMA_MODEL=qwen3:32b
+SHELL=/bin/bash
+
+# 1. Ideation — daily at midnight. Grounds N hypotheses in the current real baseline + dead ends.
+0  0 * * *  $DOTTIE_ROOT/apps/dottie/research_orchestration/research_worker.sh ideate --n 3 --bottleneck "early pre-training loss spikes and MoE routing collapse"
+
+# 2. Implementation — minute 15 hourly. Drafts + 4-level-validates the next pending hypothesis.
+15 * * * *  $DOTTIE_ROOT/apps/dottie/research_orchestration/research_worker.sh implement
+
+# 3. Training — minute 30 hourly. Real measurement; flock skips the tick if a run is in flight.
+30 * * * *  $DOTTIE_ROOT/apps/dottie/research_orchestration/research_worker.sh train --steps 200
+
+# 4. Evaluation & hill-climb — minute 45 hourly. Promotes only on a real, paired improvement.
+45 * * * *  $DOTTIE_ROOT/apps/dottie/research_orchestration/research_worker.sh evaluate

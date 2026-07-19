@@ -1,0 +1,267 @@
+# Solo personal project, no connection to employer, built with public/free-tier only
+"""Constrained prompts for the ideation and implementation workers.
+
+Both prompts are deliberately rigid: an unconstrained "propose novel ML ideas" prompt regresses
+to the mean of already-popular concepts, and an unconstrained "write the code" prompt produces
+shape-mismatched, NaN-prone snippets. The ideation prompt fences the search space and forces a
+math-first chain of thought; the implementation prompt enforces defensive, drop-in PyTorch. Both
+demand a strict JSON object so the workers can parse the result deterministically.
+
+The baseline block is injected from the REAL ledger baseline — the model solves *this* system's
+current bottleneck, not a generic one.
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any, Dict, List, Optional, Tuple
+
+from dottie.research.ledger import Baseline
+
+# The three research sub-domains the ideation search space is fenced to. Kept compatible with the
+# Ava architecture so the resulting diff can actually run in the automated loop.
+DEFAULT_SEARCH_SPACE = [
+    "Novel routing mechanisms for Sparse Mixture-of-Experts (MoE) that improve load balancing "
+    "without an auxiliary-loss penalty.",
+    "Alternative loss functions or regularizers that improve pre-training stability "
+    "(fewer loss spikes, no NaN gradients).",
+    "Modifications to the attention mechanism that reduce memory complexity while preserving "
+    "exact representations.",
+]
+
+IDEATION_SCHEMA = {
+    "hypothesis_name": "concise academic name",
+    "theoretical_intuition": "2-3 sentences: the mechanism and why it solves the bottleneck",
+    "mathematical_formulation": "exact LaTeX formulation of the change",
+    "pytorch_implementation_strategy": "which nn.Module / autograd pieces to modify or create",
+    "expected_outcome": "the specific metric that should improve",
+    "search_domain": "which of the fenced sub-domains this belongs to",
+}
+
+IMPLEMENTATION_SCHEMA = {
+    "module_name": "the PyTorch class name (must subclass nn.Module and define forward)",
+    "target_file": "repo-relative path, e.g. ava/models/experimental_routing.py",
+    "code": "complete syntax-valid Python, with imports; a drop-in module",
+    "init_kwargs": "JSON object of constructor kwargs to instantiate the module for the dry-run "
+                   "(use small dims; {} if none)",
+    "input_shape": "list[int] input shape for the CPU dry-run forward pass, e.g. [4, 16, 64]",
+    "shape_assertions": "how the output shape was kept compatible with the baseline",
+}
+
+
+def _baseline_block(baseline: Optional[Baseline], bottleneck: str) -> str:
+    if baseline is None:
+        arch, metric = "(unset — no baseline seeded)", "(unset)"
+    else:
+        direction = "higher is better" if baseline.higher_is_better else "lower is better"
+        arch = baseline.architecture
+        metric = f"{baseline.metric_name} = {baseline.metric_value:.6g} ({direction})"
+    return (f"- Architecture: {arch}\n"
+            f"- Current baseline metric: {metric}\n"
+            f"- Key bottleneck: {bottleneck}")
+
+
+def _failed_block(failed_names: List[str]) -> str:
+    if not failed_names:
+        return "(none yet)"
+    # Feed dead ends back so the search does not repeat them.
+    return "\n".join(f"- {n}" for n in failed_names[:20])
+
+
+def ideation_prompt(baseline: Optional[Baseline], *, bottleneck: str,
+                    search_space: Optional[List[str]] = None,
+                    failed_hypotheses: Optional[List[str]] = None,
+                    n_ideas: int = 1) -> str:
+    """The rigidly-structured ideation system prompt, grounded in the real baseline."""
+    space = search_space or DEFAULT_SEARCH_SPACE
+    fenced = "\n".join(f"{i+1}. {s}" for i, s in enumerate(space))
+    schema = json.dumps(IDEATION_SCHEMA, indent=2)
+    plural = "s" if n_ideas != 1 else ""
+    return f"""# ROLE AND OBJECTIVE
+You are a Staff Research Scientist specializing in deep-learning architecture and LLM
+pre-training. Generate {n_ideas} novel, mathematically sound, empirically testable hypothesis{plural}
+to improve our current model architecture. Ideas must be publication-grade (ICLR/NeurIPS/ICML).
+Do NOT suggest generic hyperparameter tuning, standard augmentations, or well-known methods
+(standard AdamW, basic LoRA, standard Top-K routing).
+
+# CURRENT SYSTEM STATE
+Your hypothesis MUST attempt to improve these specific metrics / address this bottleneck:
+{_baseline_block(baseline, bottleneck)}
+
+# SEARCH SPACE CONSTRAINTS
+Limit hypotheses strictly to these domains — nothing outside them:
+{fenced}
+
+# DEAD ENDS (already tried and failed — do not repeat)
+{_failed_block(failed_hypotheses or [])}
+
+# MATHEMATICAL AND THEORETICAL RIGOR
+- Define the forward-pass modification in standard mathematical notation.
+- Explain the theoretical intuition for improved gradient flow, representational capacity, or
+  compute efficiency vs. the baseline.
+- If proposing a new loss term, give its derivative w.r.t. the network outputs; it must be
+  differentiable and bounded.
+
+# OUTPUT FORMAT
+Respond with ONE JSON object (an array of objects if more than one idea) strictly matching this
+schema. No markdown, no prose outside the JSON:
+{schema}
+"""
+
+
+def implementation_prompt(hypothesis: Dict[str, Any], *,
+                          codebase_note: str = "") -> str:
+    """The senior-engineer implementation prompt that turns a hypothesis into drop-in PyTorch."""
+    schema = json.dumps(IMPLEMENTATION_SCHEMA, indent=2)
+    hjson = json.dumps({k: hypothesis.get(k) for k in IDEATION_SCHEMA}, indent=2)
+    extra = f"\n{codebase_note}\n" if codebase_note else ""
+    return f"""# ROLE AND OBJECTIVE
+You are a Principal ML Engineer. Translate the theoretical hypothesis below into robust,
+production-grade PyTorch for the Ava training pipeline. Prioritize tensor-shape integrity,
+numerical stability, and modularity. Your code must compile on the first attempt.
+
+# CODEBASE CONTEXT
+- All custom layers/routers subclass `torch.nn.Module`.
+- Custom losses are `nn.Module` classes or functions taking `(predictions, targets)` and
+  returning a scalar tensor.
+- Metrics route through `arxiviq_logger.log_metric(key, value)`.{extra}
+
+# ENGINEERING CONSTRAINTS
+1. Shape integrity: document expected input/output shapes in every `forward` docstring
+   (e.g. [batch, seq, hidden]); add `assert` statements around einsum / novel ops.
+2. Numerical stability: add small `eps` to denominators, use `torch.logaddexp` where apt, and
+   clamp probabilities to prevent NaN gradients.
+3. Hardware efficiency: prefer vectorized ops; avoid Python for-loops over tensor dims.
+4. Do NOT import os / subprocess / shutil / sys, and do not call eval / exec.
+5. The module must be instantiable with the `init_kwargs` you declare and runnable on a CPU
+   forward pass of the `input_shape` you declare.
+
+# INPUT HYPOTHESIS
+{hjson}
+
+# OUTPUT FORMAT
+Output ONE valid JSON object strictly matching this schema. No markdown outside the JSON. Provide
+the COMPLETE replacement class/function, not a snippet:
+{schema}
+"""
+
+
+def correction_prompt(previous_code: str, failure_feedback: str) -> str:
+    """The self-correction message when generated code fails a validation level."""
+    return f"""The previous implementation failed automated validation.
+
+{failure_feedback}
+
+Rewrite the COMPLETE module to resolve this specific issue while preserving the original
+mathematical intent. Output ONE JSON object matching the implementation schema (module_name,
+target_file, code, init_kwargs, input_shape, shape_assertions). No markdown outside the JSON.
+
+# PREVIOUS CODE
+{previous_code}
+"""
+
+
+# ---------------------------------------------------------------------------
+# Robust JSON extraction (LLMs wrap JSON in prose / code fences despite instructions)
+# ---------------------------------------------------------------------------
+
+def extract_json(text: str) -> Any:
+    """Pull the first JSON object/array out of a model response. Raises ValueError if none."""
+    s = text.strip()
+    # strip a ```json ... ``` fence if present
+    if s.startswith("```"):
+        first_nl = s.find("\n")
+        if first_nl != -1:
+            s = s[first_nl + 1:]
+        if s.rstrip().endswith("```"):
+            s = s.rstrip()[:-3]
+    s = s.strip()
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        pass
+    # scan for the first balanced {...} or [...] region
+    for opener, closer in (("{", "}"), ("[", "]")):
+        start = s.find(opener)
+        if start == -1:
+            continue
+        depth = 0
+        in_str = False
+        esc = False
+        for i in range(start, len(s)):
+            ch = s[i]
+            if in_str:
+                if esc:
+                    esc = False
+                elif ch == "\\":
+                    esc = True
+                elif ch == '"':
+                    in_str = False
+                continue
+            if ch == '"':
+                in_str = True
+            elif ch == opener:
+                depth += 1
+            elif ch == closer:
+                depth -= 1
+                if depth == 0:
+                    try:
+                        return json.loads(s[start:i + 1])
+                    except json.JSONDecodeError:
+                        break
+    raise ValueError("no parseable JSON object found in model response")
+
+
+def parse_hypotheses(text: str) -> List[Dict[str, Any]]:
+    """Parse ideation output into a list of hypothesis dicts (validating required keys)."""
+    obj = extract_json(text)
+    items = obj if isinstance(obj, list) else [obj]
+    required = {"hypothesis_name", "theoretical_intuition", "mathematical_formulation",
+                "pytorch_implementation_strategy", "expected_outcome"}
+    out: List[Dict[str, Any]] = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        missing = required - set(it)
+        if missing:
+            raise ValueError(f"hypothesis missing required keys: {sorted(missing)}")
+        out.append(it)
+    if not out:
+        raise ValueError("no valid hypotheses parsed")
+    return out
+
+
+def parse_implementation(text: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Parse implementation output. Returns (implementation_record, dry_run_spec).
+
+    dry_run_spec = {class_name, init_kwargs, input_shape} for the validator."""
+    obj = extract_json(text)
+    if isinstance(obj, list):
+        obj = obj[0] if obj else {}
+    if not isinstance(obj, dict) or "code" not in obj or not str(obj.get("code", "")).strip():
+        raise ValueError("implementation missing non-empty 'code'")
+    module_name = obj.get("module_name")
+    init_kwargs = obj.get("init_kwargs") or {}
+    if isinstance(init_kwargs, str):
+        try:
+            init_kwargs = json.loads(init_kwargs) if init_kwargs.strip() else {}
+        except json.JSONDecodeError:
+            init_kwargs = {}
+    input_shape = obj.get("input_shape")
+    if isinstance(input_shape, str):
+        try:
+            input_shape = json.loads(input_shape)
+        except json.JSONDecodeError:
+            input_shape = None
+    impl = {
+        "module_name": module_name,
+        "target_file": obj.get("target_file"),
+        "code": obj["code"],
+        "shape_assertions": obj.get("shape_assertions"),
+    }
+    dry_run = {
+        "class_name": module_name if isinstance(module_name, str) else None,
+        "init_kwargs": init_kwargs if isinstance(init_kwargs, dict) else {},
+        "input_shape": input_shape if isinstance(input_shape, list) else None,
+    }
+    return impl, dry_run

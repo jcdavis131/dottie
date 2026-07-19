@@ -425,6 +425,28 @@ def create_app(engine: Optional[DottieEngine] = None) -> FastAPI:
         return {"count": len(records), "iterations": records[-limit:],
                 "log_path": str(climb_mod.climb_log_path(engine.data_dir))}
 
+    # -- research loop (read-only views the arxiviq Research tab renders) -----------------
+    def _research_ledger():
+        from dottie.research.ledger import Ledger as _Ledger
+        from dottie.research import paths as _rpaths
+        return _Ledger(_rpaths.ledger_path(engine.data_dir))
+
+    @app.get("/research/status")
+    def research_status() -> Dict[str, Any]:
+        from dottie.research import logger as _rlog
+        return _rlog.build_status(_research_ledger())
+
+    @app.get("/research/experiments")
+    def research_experiments(limit: int = 50, state: Optional[str] = None) -> Dict[str, Any]:
+        led = _research_ledger()
+        exps = led.list(state=state, limit=max(1, min(limit, 200)))
+        return {"count": len(exps), "experiments": [
+            {"id": e.id, "name": e.name, "state": e.state, "created_ts": e.created_ts,
+             "updated_ts": e.updated_ts, "attempts": e.attempts,
+             "hypothesis": e.hypothesis, "train_metrics": e.train_metrics,
+             "eval_verdict": e.eval_verdict, "writeup": e.writeup, "failure": e.failure}
+            for e in exps]}
+
     @app.get("/status")
     def status() -> Dict[str, Any]:
         return build_status(engine, task_counts=store.counts())
