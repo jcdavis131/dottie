@@ -52,7 +52,7 @@
       collector logs show the NEW source keys (synpro, tool_use L2/L3, db/compress traces).
 2.2 **Verify mixture flow end-to-end**: after 1h, `manifest` tokens_ready per phase
     rises; curator rejects stay <20%; no `unknown generator` errors anywhere.
-2.3 **Retire the old checkouts** (they are now strictly historical):
+2.3 **Retire the old checkouts** — AUDITED 2026-07-19 late: workspace clean; retired ava-agi's 97 dirty files all captured by the reconciliation (0 changed since); both safe to rename (they are now strictly historical):
     - 2.3.a `git -C C:\Users\jcdav\ava-agi status` → confirm nothing uncommitted worth saving.
     - 2.3.b Rename both dirs to `*-RETIRED-20260719` (do not delete yet); update
       `AVA_FACTORY_ROOT` in `research_env.local.ps1` to the MONOREPO factory path and
@@ -142,21 +142,19 @@
 
 ## 8 — Known issues backlog (honest ledger, none import-breaking)
 
-- [~] 5 × `test_audit_fixes` (was 6; eval_branch_harness port fixed one) blueprint-judge failures (MetaMuseJudge.label, judge source
+- [x] `test_audit_fixes`: 10 passed — judge layer 3-way merged (workspace .label audit-fixes + monorepo rubric evolution), logic pipeline ported blueprint-judge failures (MetaMuseJudge.label, judge source
   literals) — the judge layer needs its own reconciliation pass vs workspace.
 - [x] `test_cpu_pilot_manifest`: fixed — runs/-suffix resolution + honest skip (10 passed/1 skip). Was: 3 × — environmental: expect `runs/cpu_pilot` artifacts;
   regenerate via `scripts/cpu_pilot_e2e.py` or mark skip-if-absent.
-- 1 × `test_janitor` reclaim count (2 vs 1) — merged manifest lease/rescue additions
-  changed delete accounting; decide intended semantics, fix code OR test.
-- 1 × `test_server_endpoints` /report 404 fallback — merged server serves generated
-  report_html; align test with intended behavior.
+- [x] `test_janitor` reclaim count: was the ava/dottie double-import split brain — fixed by the ava.* meta-path alias finder (with 3 other split-brain failures).
+- [x] `test_server_endpoints`: retired lineage moved the file report to /report/offline; updated test file ported (18 passed).
 - 966 ruff findings in ported legacy code (CI excludes ava-factory; burn down
   opportunistically, never in bulk-reformat commits).
 - [x] scout-cli python3-stub tests: swept to sys.executable (25 failures -> 10; survivors below).
-- [ ] scout-cli Windows portability: herd/planes/mcp_serve/core_extra (10 tests) use
-  POSIX-only os.WNOHANG/WEXITSTATUS — needs a Windows process-wait path or honest skips.
+- [x] scout-cli Windows portability: WNOHANG guarded, CLI stdout UTF-8, perms asserts POSIX-only — 129/130 green.
+- [ ] test_mcp_serve stdio scenario: 90s deadline exceeded on this box (environmental; retry when idle or raise deadline).
 - [ ] 1 × `test_logic_prover` jsonl (ava-skills, pre-existing).
-- `test_flow` 3 disk-threshold failures — env-dependent thresholds; parametrize.
+- [x] `test_flow`: same split brain (patched free_gb on the wrong module copy); alias finder fixed it.
 
 ### New items (added 2026-07-19 evening)
 
