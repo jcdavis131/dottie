@@ -64,6 +64,25 @@ sources:
     license: cc-by-sa-3.0+gfdl        # multi-editor, citation-required by policy
     gated: false
 
+  # Third independent authorship pool for the history doctrine: public-domain
+  # period books — thousands of DISTINCT single authors writing from inside
+  # their eras (primary + near-primary sources), structurally uncorrelated
+  # with wikipedia's community process and peS2o's peer review. Long books
+  # feed the P4 long-context slice. Verified ungated via HF API + splits
+  # endpoint 2026-07-19 (config default/train; upper-case field names).
+  - name: gutenberg_hist
+    kind: hf
+    dataset: sedthh/gutenberg_english
+    config: default
+    split: train
+    text_field: TEXT
+    phases: [4]
+    weight: {4: 0.06}                 # shaved from fineweb_edu P4 0.27 -> 0.21
+    task_type: automatic
+    filters: {min_chars: {4: 4000}}
+    license: mit                      # dataset packaging; texts are public domain
+    gated: false
+
   - name: pes2o
     kind: hf
     dataset: allenai/peS2o
@@ -113,7 +132,12 @@ sources:
     dataset: glaiveai/glaive-function-calling-v2
     config: default
     split: train
-    text_field: chat                  # full dialogue incl. function specs + calls
+    text_field: chat                  # raw field the adapter parses
+    # glaive_react rewrites glaive's USER:/<functioncall>/<|endoftext|> markup
+    # into the frozen Thought:/Action:/Observation: grammar every other tool
+    # source emits (one action grammar across sources — xlam_adapt doctrine).
+    # Unlike xlam, glaive carries REAL function responses -> real Observations.
+    adapter: glaive_react
     phases: [3, 5]
     weight: {3: 0.04, 5: 0.02}
     task_type: tool_selection
@@ -205,7 +229,7 @@ sources:
     task_type: automatic
     filters: {min_chars: 1}
     license: synthetic
-    gated: true
+    gated: false
 
   # Think-in-code (reason→exec→answer). Boosted while proof_pile_2 is quarantined.
   - name: synth_think_code
@@ -369,7 +393,7 @@ sources:
     text_field: text
     score_field: score
     phases: [2, 4, 5]
-    weight: {2: 0.20, 4: 0.27, 5: 0.17}   # 2026-07-19: freed mass for wikipedia/peS2o/tool sets (science+history+workflow expansion)
+    weight: {2: 0.20, 4: 0.21, 5: 0.17}   # 2026-07-19: freed mass for wikipedia/peS2o/tool sets; 4: 0.27->0.21 for gutenberg_hist
     task_type: automatic
     filters:
       min_chars: {2: 200, 4: 4000, 5: 200}   # P4 = long documents only
@@ -419,7 +443,7 @@ sources:
     task_type: deliberate
     filters: {min_chars: 200}
     license: various
-    gated: true
+    gated: false   # re-verified ungated 2026-07-19; quarantine = weight 0, not this flag
 
   # xLAM / APIGen 60k → ReAct (adapter). Weight 0 until post-mini / overtrain
   # operator flip; suggested start once activated: {3: 0.05, 5: 0.05}.

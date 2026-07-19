@@ -258,7 +258,7 @@ def test_sources_yaml_parses_and_has_required_keys():
         assert s.name and s.kind in {"hf", "synthetic"}
         assert s.text_field
         assert s.phases, f"{s.name} lists no phases"
-        assert s.task_type in {"automatic", "deliberate", "safety", "temporal"}
+        assert s.task_type in {"automatic", "deliberate", "safety", "temporal", "tool_selection"}
         assert set(s.weight) <= set(s.phases), f"{s.name} weights a phase it doesn't serve"
         if s.kind == "hf":
             assert s.dataset and s.split
