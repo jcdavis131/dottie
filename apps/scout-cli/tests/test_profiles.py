@@ -55,9 +55,16 @@ def test_hermes_after_run_registers_routine_and_logs(tmp_path, monkeypatch):
                     outcome="ok", plan=["bb reviewgraph index", "bb reviewgraph risks"])
     assert out["persistence"] == "on"
     assert out["skill_registered_version"] == 1
+    # the registered artifact is a contract-compliant, COMPILABLE plugin draft, and the
+    # proposal is explicit human-gated commands (TODOS 6.1)
+    assert any("forge new" in c for c in out["forge_proposal"])
+    import ast
     with skills_store.JSpaceStateStore() as st:          # fresh instance, same file
         skills = st.list_skills(source="hermes")
-        assert len(skills) == 1 and skills[0]["name"].startswith("routine-")
+        assert len(skills) == 1 and skills[0]["name"].startswith("routine_")
+        draft = st.get_skill(skills[0]["name"])["code"]
+        ast.parse(draft)                                  # must be real, parseable code
+        assert "make_plugin_app" in draft and "bb reviewgraph index" in draft
         logged = st.recent_tasks(5, session_id="sess-h")
         assert logged[0]["task"] == "index the repo" and logged[0]["outcome"] == "ok"
         assert logged[0]["eval_score"] is None           # no eval ran — stays NULL

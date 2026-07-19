@@ -120,10 +120,61 @@ def after_run(profile: Profile, *, session_id: str, task: str, outcome: str,
             store.set_context(session_id, "last_outcome", outcome)
             result["context_updated"] = ["last_task", "last_outcome"]
         if profile.refine_after_success and outcome == "ok" and plan:
-            code = "\n".join(f"# step {i+1}: {s}" for i, s in enumerate(plan))
+            name = f"routine_{abs(hash(task)) % 10**8:08d}"
             version = store.register_skill(
-                f"routine-{abs(hash(task)) % 10**8:08d}",
-                f'"""Hermes-isolated routine for: {task}"""\n{code}\n',
+                name, _forge_tool_code(name, task, plan),
                 capabilities="", source="hermes")
             result["skill_registered_version"] = version
+            # Hermes PROPOSES the refinement; a human confirms by running the commands
+            # (same gate philosophy as research promotion bundles — nothing self-installs).
+            result["forge_proposal"] = [
+                f'scout --json forge new {name} --description "{task[:60]}"',
+                f"scout --json forge edit {name} --code-file <skills_library:{name}>",
+                f"scout --json forge test {name}",
+            ]
     return result
+
+
+def _forge_tool_code(name: str, task: str, plan: list) -> str:
+    """A contract-compliant plugin draft wrapping the routine's steps: ``run`` replays
+    the plan via subprocess scout calls and reports each step's REAL exit code. Stored
+    in skills_library as the ready-to-forge artifact behind the human-gated proposal."""
+    steps = ",\n    ".join(repr(str(s)) for s in plan)
+    header = "# Solo personal project, no connection to employer, built with public/free-tier only"
+    return f'''{header}
+"""{name} — Hermes-refined routine for: {task}"""
+import shlex
+import subprocess
+import sys
+from bigbang.core.contract import make_plugin_app, ok
+from bigbang.core.output import emit
+from bigbang.core.cli_ux import examples_epilog
+
+app = make_plugin_app("{name}", "Hermes routine: {task[:70]}")
+
+STEPS = [
+    {steps},
+]
+
+
+@app.command("hello", epilog=examples_epilog(["scout --json {name} hello"]))
+def hello():
+    emit(ok({{"plugin": "{name}", "steps": len(STEPS)}}, command="{name} hello",
+            example="scout --json {name} run"), command="{name} hello")
+
+
+@app.command("run", epilog=examples_epilog(["scout --json {name} run"]))
+def run():
+    results = []
+    for step in STEPS:
+        argv = [sys.executable, "-m", "bigbang.cli", "--json"] + shlex.split(step)[1:]
+        p = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=120)
+        results.append({{"step": step, "exit": p.returncode}})
+    emit(ok({{"results": results}}, command="{name} run",
+            example="scout --json {name} run"), command="{name} run")
+
+
+def register(root):
+    root.add_typer(app, name="{name}")
+'''
