@@ -118,7 +118,12 @@ class SingleWorkspace(nn.Module):
         )
 
     def decay_factor(self):
-        return torch.sigmoid(self.decay_logit).clamp(0.01, 0.99)
+        # Ceiling 0.9999 (hl ~6931), not 0.99: -ln2/ln(0.99) caps the half-life
+        # at 68.97 tokens, below system2's target 300 (needs d=0.99769) and
+        # planner's 150 (0.99539). Both initialized above the old ceiling and
+        # sat pinned there with ZERO gradient (clamp kills grad past the
+        # boundary), freezing half_life_loss at exactly 6.767e-05 from step 1.
+        return torch.sigmoid(self.decay_logit).clamp(0.01, 0.9999)
 
     def hl_est(self):
         d = self.decay_factor().item()
@@ -352,15 +357,22 @@ class MultiJSpaceLosses(nn.Module):
         cos = F.cosine_similarity(c1, c2, dim=-1).mean()
         return F.mse_loss(cos, torch.tensor(target_cos, device=cos.device))
 
-    def routing_loss(self, route_probs, task_type="deliberate"):
-        target_map = {
-            "automatic": torch.tensor([0.6, 0.15, 0.1, 0.15]),
-            "deliberate": torch.tensor([0.15, 0.55, 0.1, 0.2]),
-            "safety": torch.tensor([0.1, 0.2, 0.6, 0.1]),
-            "temporal": torch.tensor([0.1, 0.3, 0.1, 0.5]),
-            "tool_selection": torch.tensor([0.10, 0.35, 0.10, 0.45]),
-        }
-        tgt = target_map.get(task_type, target_map["deliberate"]).to(route_probs.device)
+    # Defaults kept in sync with configs/*/yaml jspace.routing_targets.
+    # Prefer passing ``targets`` from DottieConfig so YAML is authoritative.
+    _DEFAULT_ROUTING_TARGETS = {
+        "automatic": [0.6, 0.15, 0.1, 0.15],
+        "deliberate": [0.15, 0.55, 0.1, 0.2],
+        "safety": [0.1, 0.2, 0.6, 0.1],
+        "temporal": [0.1, 0.3, 0.1, 0.5],
+        "tool_selection": [0.10, 0.35, 0.10, 0.45],
+    }
+
+    def routing_loss(self, route_probs, task_type="deliberate", targets=None):
+        target_map = targets if targets is not None else self._DEFAULT_ROUTING_TARGETS
+        probs = target_map.get(task_type) or target_map.get(
+            "deliberate", self._DEFAULT_ROUTING_TARGETS["deliberate"]
+        )
+        tgt = torch.tensor(list(probs), device=route_probs.device, dtype=route_probs.dtype)
         tgt = tgt.unsqueeze(0).expand_as(route_probs)
         return F.kl_div(route_probs.clamp(1e-6, 1).log(), tgt, reduction="batchmean")
 
@@ -435,7 +447,7 @@ class MultiJSpaceLosses(nn.Module):
 
     def orojar_comprehensive_loss(self, ws_input, fused, route_probs=None, target_cos=0.45, n_proj=1):
         """
-        Comprehensive OroJaR for Dottie J-Space:
+        Comprehensive OroJaR for Ava J-Space:
         - ws_input can be dict {name: tensor [B,slots,D]} or MultiJSpace module
         - fused [B,L,D]
         Returns: (loss, metrics dict)

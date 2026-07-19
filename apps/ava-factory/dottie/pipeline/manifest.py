@@ -269,11 +269,16 @@ class Manifest:
         by: str,
         phases: Sequence[int] | None = None,
         splits: Sequence[str] | None = None,
+        lease_seconds: int | None = None,
     ) -> Shard | None:
         """Atomically claim one shard for `stage`, or return None if none ready.
 
         The SELECT and UPDATE run inside one BEGIN IMMEDIATE, so two concurrent
         claimers cannot both see the same row as unclaimed.
+
+        `lease_seconds` overrides the manifest default for this claim: a packed
+        shard takes the trainer hours to consume, while a curate pass finishes
+        in minutes -- one default lease cannot serve both.
         """
         if stage not in STAGES:
             raise ValueError(f"unknown stage {stage!r}; expected {sorted(STAGES)}")
@@ -310,18 +315,20 @@ class Manifest:
                       SET state=?, claimed_by=?, lease_expires_at=?,
                           attempts=attempts+1, updated_at=?
                     WHERE id=?""",
-                (claimed_state, by, now + self.lease_seconds, now, row["id"]),
+                (claimed_state, by, now + (lease_seconds or self.lease_seconds),
+                 now, row["id"]),
             )
             updated = db.execute("SELECT * FROM shards WHERE id=?", (row["id"],)).fetchone()
             return Shard._from_row(updated)
 
-    def renew(self, shard_id: str, *, by: str) -> bool:
+    def renew(self, shard_id: str, *, by: str, lease_seconds: int | None = None) -> bool:
         """Extend a lease on a long-running shard. False if we no longer own it."""
         with self._immediate() as db:
             cur = db.execute(
                 "UPDATE shards SET lease_expires_at=?, updated_at=? "
                 "WHERE id=? AND claimed_by=?",
-                (time.time() + self.lease_seconds, time.time(), shard_id, by),
+                (time.time() + (lease_seconds or self.lease_seconds), time.time(),
+                 shard_id, by),
             )
             return cur.rowcount > 0
 
@@ -421,6 +428,31 @@ class Manifest:
             )
             return origin
 
+    def rescue_stranded(self) -> list[str]:
+        """Reset `attempts` on PACKED shards that hit the claim cap. Returns ids.
+
+        A crash-restart loop claims (attempts+1), dies before the context
+        manager can release (which would decrement), and repeats -- after
+        max_attempts ordinary crashes a perfectly good shard becomes invisible
+        to claim() forever while still counting as runway. Poison shards are
+        NOT resurrected by this: fail() parks those in FAILED, a different
+        state. Called by the sampler on startup, alongside requeue_expired().
+        """
+        with self._immediate() as db:
+            rows = db.execute(
+                "SELECT id FROM shards WHERE state=? AND attempts >= ?",
+                (PACKED, self.max_attempts),
+            ).fetchall()
+            ids = [r["id"] for r in rows]
+            if ids:
+                placeholders = ",".join("?" * len(ids))
+                db.execute(
+                    f"UPDATE shards SET attempts=0, updated_at=? "
+                    f"WHERE id IN ({placeholders})",
+                    [time.time(), *ids],
+                )
+            return ids
+
     def requeue_expired(self) -> list[str]:
         """Return shards whose lease lapsed to their origin state. Returns ids."""
         now = time.time()
@@ -470,11 +502,30 @@ class Manifest:
         return {r["state"]: r["c"] for r in rows}
 
     def tokens_ready(self, phase: int, *, split: str = "train") -> int:
-        """Packed-but-unconsumed tokens for a phase: the trainer's runway."""
+        """Packed-but-unconsumed tokens for a phase: the trainer's runway.
+
+        Counts only shards the trainer can actually claim: a PACKED row whose
+        `attempts` hit the cap is invisible to claim(), so counting it here
+        reported a healthy runway while the trainer starved next to it.
+        """
         r = self.db.execute(
             "SELECT COALESCE(SUM(tokens),0) t FROM shards "
-            "WHERE state=? AND phase=? AND split=?",
-            (PACKED, phase, split),
+            "WHERE state=? AND phase=? AND split=? AND attempts < ?",
+            (PACKED, phase, split, self.max_attempts),
+        ).fetchone()
+        return int(r["t"])
+
+    def tokens_consumed(self, phase: int, *, split: str = "train") -> int:
+        """Tokens of a phase already trained or being trained right now.
+
+        Feeds the collector's phase-budget check: `budget - consumed` is what
+        the phase can still absorb. CLAIMED_TRAIN counts as consumed-enough --
+        the trainer is holding it, so it is not future demand.
+        """
+        r = self.db.execute(
+            "SELECT COALESCE(SUM(tokens),0) t FROM shards "
+            "WHERE state IN (?,?) AND phase=? AND split=?",
+            (CONSUMED, CLAIMED_TRAIN, phase, split),
         ).fetchone()
         return int(r["t"])
 
@@ -484,6 +535,14 @@ class Manifest:
             (RAW, CLAIMED_CURATE),
         ).fetchone()
         return int(r["b"])
+
+    def raw_phases(self) -> list[int]:
+        """Distinct phases holding RAW or CLAIMED_CURATE bytes, ascending."""
+        rows = self.db.execute(
+            "SELECT DISTINCT phase FROM shards WHERE state IN (?,?) ORDER BY phase ASC",
+            (RAW, CLAIMED_CURATE),
+        ).fetchall()
+        return [int(r["phase"]) for r in rows]
 
     def consumed_shards(self, limit: int = 100) -> list[Shard]:
         rows = self.db.execute(
@@ -585,7 +644,7 @@ class Manifest:
     def _assert_tokenizer(db: sqlite3.Connection, sha: str) -> None:
         r = db.execute("SELECT sha256 FROM tokenizer WHERE id=1").fetchone()
         if r is None:
-            raise TokenizerMismatch("no tokenizer frozen; run `python -m dottie.tokenizer train` first")
+            raise TokenizerMismatch("no tokenizer frozen; run `python -m ava.tokenizer train` first")
         if r["sha256"] != sha:
             raise TokenizerMismatch(
                 f"shard packed with tokenizer {sha[:12]} but frozen tokenizer is "
@@ -636,7 +695,7 @@ def _summary(db_path: str | None) -> int:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Dottie shard manifest")
+    ap = argparse.ArgumentParser(description="Ava shard manifest")
     ap.add_argument("--db", default=None)
     ap.add_argument("--summary", action="store_true")
     ap.add_argument("--requeue-expired", action="store_true")

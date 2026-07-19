@@ -55,28 +55,20 @@ class ModelConfig:
     multimodal: bool = False
     qk_norm: bool = True
     rope_base_init: int = 10000
+    # Grouped-query attention. Default n_kv_heads == n_heads => plain MHA,
+    # which is what nano/mini use and what the blueprint assumed.
     n_kv_heads: int | None = None
+    # `gelu` (blueprint, 4x) or `swiglu` (base1b, ratio-scaled 3-matrix gate)
     mlp: str = "gelu"
     mlp_mult: int = 4
     mlp_ratio: float | None = None
     jspace_num_heads: int = 4
+    # LongRoPE2/Peri-LN/attention-sinks (model_1b.py, config-gated -- see
+    # tasks/plan-longrope2-port.md). Defaults reproduce the pre-port model
+    # exactly: "yarn" RoPE, no sinks, no Peri-LN output-norm.
     rope_type: str = "yarn"
     n_sinks: int = 0
     use_peri_ln: bool = False
-    use_short_conv: bool = False
-    use_relative: bool = False
-    relative_max_distance: int = 128
-    # MoE config (Inkling/DeepSeek-V3)
-    use_moe: bool = False
-    moe_n_routed_experts: int = 32
-    moe_n_shared_experts: int = 2
-    moe_top_k: int = 2
-    moe_every_n: int = 2
-    moe_hidden_ratio: float | None = None
-    moe_norm_type: str = "softmax"
-    moe_routing_lr: float = 1e-3
-    # Effort conditioning
-    use_effort: bool = False
 
     def __post_init__(self) -> None:
         if self.n_heads * self.head_dim != self.d_model:
@@ -89,25 +81,13 @@ class ModelConfig:
             raise ConfigError(f"n_heads ({self.n_heads}) must be divisible by n_kv_heads ({kv})")
         if self.mlp not in ("gelu", "swiglu"):
             raise ConfigError(f"mlp must be 'gelu' or 'swiglu', got {self.mlp!r}")
-        if self.rope_type not in ("yarn", "longrope2", "relative"):
-            raise ConfigError(f"rope_type must be 'yarn' or 'longrope2' or 'relative', got {self.rope_type!r}")
+        if self.rope_type not in ("yarn", "longrope2"):
+            raise ConfigError(f"rope_type must be 'yarn' or 'longrope2', got {self.rope_type!r}")
         if self.n_sinks < 0:
             raise ConfigError(f"n_sinks must be >= 0, got {self.n_sinks}")
-        if self.relative_max_distance <= 0:
-            raise ConfigError(f"relative_max_distance must be >0, got {self.relative_max_distance}")
-        if self.moe_n_routed_experts < 1:
-            raise ConfigError(f"moe_n_routed_experts must be >=1")
-        if self.moe_top_k < 1 or self.moe_top_k > self.moe_n_routed_experts:
-            raise ConfigError(f"moe_top_k must be in [1, n_routed]")
         # Packed token shards are uint16; a larger vocab would silently wrap.
         if self.vocab_size > 65535:
             raise ConfigError(f"vocab_size {self.vocab_size} > 65535 breaks uint16 token packing")
-        # Alias handling: use_relative True implies relative rope
-        if self.use_relative and self.rope_type != "relative":
-            # dataclass frozen, cannot mutate, but allow both: treat use_relative as alias
-            # Validation will accept relative anyway; if user set use_relative True but yarn, we treat as relative intent
-            # Can't override frozen field, but downstream build_model will normalize
-            pass
 
     @property
     def kv_heads(self) -> int:
@@ -166,7 +146,15 @@ class OptimizerConfig:
     name: str = "adamw"
     betas: tuple[float, float] = (0.9, 0.95)
     weight_decay: float = 0.1
+    # When set, used instead of ``weight_decay`` (data-constrained / multi-epoch
+    # regimes; research brief ~0.5–1.0 can cut overfitting penalty ~70%).
+    weight_decay_data_constrained: float | None = None
     grad_clip: float = 1.0
+
+    def effective_weight_decay(self) -> float:
+        if self.weight_decay_data_constrained is not None:
+            return float(self.weight_decay_data_constrained)
+        return float(self.weight_decay)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -310,7 +298,7 @@ def load(preset: str, config_dir: str | Path | None = None) -> DottieConfig:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Dottie config")
+    ap = argparse.ArgumentParser(description="Ava config")
     ap.add_argument("--preset", required=True)
     ap.add_argument("--count-params", action="store_true")
     ap.add_argument("--analytic", action="store_true", help="skip building the model")

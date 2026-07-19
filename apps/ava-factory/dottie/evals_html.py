@@ -5,7 +5,7 @@ EVALS_HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Dottie Evals</title>
+<title>Ava Evals</title>
 <style>
 :root {
   --bg: #f4f2ec;
@@ -116,7 +116,7 @@ a { color: var(--accent); }
 </head>
 <body>
 <header>
-  <h1>Dottie evals</h1>
+  <h1>Ava evals</h1>
   <div class="meta">
     <a href="/dashboard">dashboard</a>
     · <a href="/chat">chat</a>
@@ -127,7 +127,20 @@ a { color: var(--accent); }
 <main>
   <section class="card" id="metaCard">
     <h2>Run meta</h2>
+    <p class="muted" style="margin:0 0 0.6rem">
+      Source
+      <select id="sourceSel" style="margin-left:0.4rem;font:inherit;padding:0.2rem 0.4rem;border:1px solid var(--line);background:var(--bg)">
+        <option value="">(auto — prefer AVA_PRESET / mini)</option>
+      </select>
+    </p>
     <div class="row" id="metaStats"><p class="muted">Loading…</p></div>
+  </section>
+
+  <section class="card" id="probeCard" style="display:none">
+    <h2>Probes — base branch</h2>
+    <div class="row" id="probeStats"></div>
+    <h2 style="margin-top:1rem">Tool probes</h2>
+    <div class="row" id="toolProbeStats"></div>
   </section>
 
   <section class="card" id="branchCard" style="display:none">
@@ -135,15 +148,20 @@ a { color: var(--accent); }
     <div class="branch-grid" id="branchGrid"></div>
   </section>
 
+  <section class="card" id="compareCard" style="display:none">
+    <h2>Nano vs mini</h2>
+    <div id="compareBody" class="md-body"></div>
+  </section>
+
   <section class="card" id="reportCard">
     <h2>Report — pretraining quality</h2>
-    <p class="muted" style="margin:0 0 0.5rem">Perplexity, probes, J-Space routing — raw model quality, no tool use.</p>
+    <p class="muted" style="margin:0 0 0.5rem">Perplexity, probes, J-Space routing — raw model quality from the Spec-06 harness.</p>
     <div id="reportBody" class="md-body"><p class="muted">Loading…</p></div>
   </section>
 
   <section class="card" id="agentEvalCard">
-    <h2>Agentic hill-climb — Dottie-claw / AgenticOS</h2>
-    <p class="muted" style="margin:0 0 0.5rem">A different axis: can this checkpoint act as the brain behind a real ReAct tool-calling agent? See <code>agent-eval/scripts/dottie_claw_run.py</code>.</p>
+    <h2>Agentic hill-climb — Ava-claw / AgenticOS</h2>
+    <p class="muted" style="margin:0 0 0.5rem">A different axis: can this checkpoint act as the brain behind a real ReAct tool-calling agent? See <code>agent-eval/scripts/ava_claw_run.py</code>.</p>
     <div id="agentEvalBody" class="md-body"><p class="muted">Loading…</p></div>
   </section>
 </main>
@@ -214,17 +232,86 @@ const META_TIPS = {
   "Probe n": "How many probe examples were used per test category (arithmetic, facts, etc).",
   "Git sha": "Which commit of the code produced this eval — for reproducing or comparing results across changes.",
   Torch: "PyTorch version used — relevant since numerics can shift slightly between versions.",
+  Artifact: "Which harness JSON file is being shown (eval_mini_base.json is the mini base_final battery).",
+  Ckpt: "Checkpoint path evaluated for the base branch.",
 };
+
+function pct(acc) {
+  if (acc == null || Number.isNaN(acc)) return "—";
+  return (100 * Number(acc)).toFixed(1) + "%";
+}
+
+function pillForAcc(acc) {
+  if (acc == null || Number.isNaN(acc)) return "warn";
+  if (acc >= 0.6) return "ok";
+  if (acc > 0) return "warn";
+  return "bad";
+}
 
 function renderMeta(meta) {
   if (!meta) { document.getElementById("metaStats").innerHTML = `<p class="muted">No meta.</p>`; return; }
   const rows = [
-    ["Preset", meta.preset], ["Device", meta.device], ["Wall", meta.wall_s != null ? meta.wall_s.toFixed(1) + "s" : "—"],
-    ["Probe n", meta.probe_n], ["Git sha", meta.git_sha], ["Torch", meta.torch],
+    ["Preset", meta.preset],
+    ["Artifact", meta._artifact],
+    ["Ckpt", meta.base_ckpt || "—"],
+    ["Device", meta.device],
+    ["Wall", meta.wall_s != null ? Number(meta.wall_s).toFixed(1) + "s" : "—"],
+    ["Probe n", meta.probe_n],
+    ["Git sha", meta.git_sha],
+    ["Torch", meta.torch],
   ];
   document.getElementById("metaStats").innerHTML = rows.map(([k, v]) =>
-    `<div class="stat"><div class="k">${escapeHtml(k)}${META_TIPS[k] ? `<span class="tip" tabindex="0" data-tip="${META_TIPS[k].replace(/"/g,"&quot;")}"></span>` : ""}</div><div class="v" style="font-size:0.95rem">${v != null ? escapeHtml(String(v)) : "—"}</div></div>`
+    `<div class="stat"><div class="k">${escapeHtml(k)}${META_TIPS[k] ? `<span class="tip" tabindex="0" data-tip="${META_TIPS[k].replace(/"/g,"&quot;")}"></span>` : ""}</div><div class="v" style="font-size:0.95rem;word-break:break-all">${v != null ? escapeHtml(String(v)) : "—"}</div></div>`
   ).join("");
+}
+
+function renderProbeBlock(el, block) {
+  if (!block || typeof block !== "object") {
+    el.innerHTML = `<p class="muted">No scores.</p>`;
+    return;
+  }
+  const keys = Object.keys(block).filter(k => block[k] && typeof block[k] === "object" && "accuracy" in block[k]);
+  if (!keys.length) {
+    el.innerHTML = `<p class="muted">No scores.</p>`;
+    return;
+  }
+  el.innerHTML = keys.map(name => {
+    const rec = block[name];
+    const acc = rec.accuracy;
+    return `<div class="stat">
+      <div class="k">${escapeHtml(name)}</div>
+      <div class="v"><span class="pill ${pillForAcc(acc)}">${escapeHtml(pct(acc))}</span></div>
+      <div class="muted" style="margin-top:0.25rem;font-size:0.72rem">${rec.correct != null ? escapeHtml(String(rec.correct)) + "/" + escapeHtml(String(rec.total)) : ""}</div>
+    </div>`;
+  }).join("");
+}
+
+function meanPpl(ppl) {
+  if (!ppl || typeof ppl !== "object") return null;
+  const vals = Object.values(ppl).map(r => r && r.ppl).filter(v => typeof v === "number" && !Number.isNaN(v));
+  if (!vals.length) return null;
+  return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
+
+function renderProbes(data) {
+  const card = document.getElementById("probeCard");
+  const base = data.base || {};
+  const probes = base.probes;
+  const tools = base.tool_probes;
+  if (!probes && !tools) { card.style.display = "none"; return; }
+  card.style.display = "";
+  const mp = meanPpl(base.perplexity);
+  const probeEl = document.getElementById("probeStats");
+  renderProbeBlock(probeEl, probes);
+  if (mp != null) {
+    probeEl.insertAdjacentHTML("afterbegin", `<div class="stat"><div class="k">mean PPL</div><div class="v">${mp.toFixed(1)}</div></div>`);
+  }
+  const toolEl = document.getElementById("toolProbeStats");
+  if (tools && !tools.error) {
+    renderProbeBlock(toolEl, tools);
+  } else {
+    toolEl.innerHTML = `<p class="muted">${tools && tools.error ? escapeHtml(String(tools.error)) : "No tool probes in this artifact."}</p>`;
+  }
 }
 
 function renderBranches(data) {
@@ -234,40 +321,80 @@ function renderBranches(data) {
   card.style.display = "";
   document.getElementById("branchGrid").innerHTML = branches.map(name => {
     const b = data[name] || {};
+    if (b.skipped) {
+      return `<div class="branch-cell"><div class="name">${escapeHtml(name)}</div><div class="muted">skipped — ${escapeHtml(String(b.reason || ""))}</div></div>`;
+    }
     const ckpt = b.ckpt || "—";
     const probeKeys = b.probes ? Object.keys(b.probes) : [];
     return `<div class="branch-cell">
       <div class="name">${escapeHtml(name)}</div>
       <div class="ckpt">ckpt: ${escapeHtml(String(ckpt))}</div>
-      <div class="muted" style="margin-top:0.3rem">${probeKeys.length} probe set${probeKeys.length === 1 ? "" : "s"}${b.jspace ? " · jspace tests present" : ""}</div>
+      <div class="muted" style="margin-top:0.3rem">${probeKeys.length} probe set${probeKeys.length === 1 ? "" : "s"}${b.jspace ? " · jspace tests present" : ""}${b.tool_probes ? " · tool_probes" : ""}</div>
     </div>`;
   }).join("");
 }
 
-async function load() {
+function sourceQuery() {
+  const sel = document.getElementById("sourceSel");
+  const v = sel && sel.value;
+  return v ? ("?source=" + encodeURIComponent(v)) : "";
+}
+
+async function loadCatalog() {
   try {
-    const r = await fetch("/jspace/eval_branch");
+    const r = await fetch("/jspace/eval_catalog");
+    if (!r.ok) return;
+    const j = await r.json();
+    const sel = document.getElementById("sourceSel");
+    const cur = sel.value;
+    (j.artifacts || []).forEach(a => {
+      const opt = document.createElement("option");
+      opt.value = a.stem;
+      opt.textContent = `${a.name}${a.preset ? " (" + a.preset + ")" : ""}`;
+      sel.appendChild(opt);
+    });
+    if (cur) sel.value = cur;
+    else if (j.active_name) {
+      const stem = j.active_name.replace(/\\.json$/, "");
+      if ([...sel.options].some(o => o.value === stem)) sel.value = stem;
+    }
+  } catch (_) { /* ignore */ }
+}
+
+async function load() {
+  const q = sourceQuery();
+  try {
+    const r = await fetch("/jspace/eval_branch" + q);
     if (r.ok) {
       const data = await r.json();
       renderMeta(data.meta);
+      renderProbes(data);
       renderBranches(data);
     } else {
       document.getElementById("metaStats").innerHTML =
-        `<p class="muted">No eval JSON yet (HTTP ${r.status}). Run <code>make eval</code>.</p>`;
+        `<p class="muted">No eval JSON yet (HTTP ${r.status}). Run the Spec-06 harness with <code>--out-json reports/eval_mini_base.json</code>.</p>`;
       document.getElementById("branchCard").style.display = "none";
+      document.getElementById("probeCard").style.display = "none";
     }
   } catch (e) {
     document.getElementById("metaStats").innerHTML = `<p class="muted">Fetch failed: ${escapeHtml(String(e))}</p>`;
   }
 
   try {
-    const r = await fetch("/jspace/eval_report");
+    const r = await fetch("/jspace/eval_report" + q);
     if (r.ok) {
       const j = await r.json();
       document.getElementById("reportBody").innerHTML = renderMarkdown(j.report_markdown || "");
+      const cmp = document.getElementById("compareCard");
+      if (j.compare_markdown) {
+        cmp.style.display = "";
+        document.getElementById("compareBody").innerHTML = renderMarkdown(j.compare_markdown);
+      } else {
+        cmp.style.display = "none";
+      }
     } else {
       document.getElementById("reportBody").innerHTML =
-        `<div class="alert">No eval report yet — run <code>make eval</code> (or <code>python scripts/make_report.py</code>) to generate one.</div>`;
+        `<div class="alert">No eval report yet — run the harness with <code>--out-md reports/eval_mini_base.md</code>.</div>`;
     }
   } catch (e) {
     document.getElementById("reportBody").innerHTML = `<div class="alert">Fetch failed: ${escapeHtml(String(e))}</div>`;
@@ -280,14 +407,15 @@ async function load() {
       document.getElementById("agentEvalBody").innerHTML = renderMarkdown(j.scoreboard_markdown || "");
     } else {
       document.getElementById("agentEvalBody").innerHTML =
-        `<div class="alert">No agent-eval scoreboard yet — run <code>python scripts/dottie_claw_run.py --tag &lt;name&gt;</code> from the agent-eval repo once there's RAM headroom (HTTP ${r.status}).</div>`;
+        `<div class="alert">No agent-eval scoreboard yet — run <code>python scripts/ava_claw_run.py --tag &lt;name&gt;</code> from the agent-eval repo once there's RAM headroom (HTTP ${r.status}).</div>`;
     }
   } catch (e) {
     document.getElementById("agentEvalBody").innerHTML = `<div class="alert">Fetch failed: ${escapeHtml(String(e))}</div>`;
   }
 }
 
-load();
+document.getElementById("sourceSel").addEventListener("change", () => load());
+loadCatalog().then(load);
 </script>
 </body>
 </html>

@@ -65,12 +65,18 @@ class FlowConfig:
     starved_warn_seconds: float
     prefetch_phases: int
     delete_consumed: bool
+    # leases: was in pipeline.yaml from the start but never parsed -- every
+    # worker silently used the manifest's 900s default, so the trainer's
+    # multi-hour consumption of a packed shard always outlived its own lease.
+    curate_lease_seconds: int = 900
+    train_lease_seconds: int = 3600
 
     @classmethod
     def load(cls, path: str | Path | None = None) -> "FlowConfig":
         p = Path(path or os.environ.get("AVA_PIPELINE_CONFIG", _DEFAULT_CONFIG))
         cfg = yaml.safe_load(p.read_text())
         disk, bp = cfg["disk"], cfg["backpressure"]
+        leases = cfg.get("leases", {})
         return cls(
             low_water_gb=float(disk["low_water_gb"]),
             janitor_trigger_gb=float(disk["janitor_trigger_gb"]),
@@ -82,6 +88,8 @@ class FlowConfig:
             starved_warn_seconds=float(bp["starved_warn_seconds"]),
             prefetch_phases=int(cfg["collector"]["prefetch_phases"]),
             delete_consumed=bool(cfg["retention"]["delete_consumed"]),
+            curate_lease_seconds=int(leases.get("curate_seconds", 900)),
+            train_lease_seconds=int(leases.get("train_seconds", 3600)),
         )
 
 
@@ -241,28 +249,105 @@ def current_training_phase(
     return int(os.environ.get("AVA_PHASE", "0"))
 
 
+def _phase_budget_tokens(phase: int, preset: str | None = None) -> int | None:
+    """Training-token budget for `phase` from the preset YAML, None if unknown."""
+    try:
+        from dottie.config import DottieConfig
+
+        acfg = DottieConfig.load(preset or os.environ.get("AVA_PRESET", "nano"))
+        return int(acfg.phases[phase].tokens or 0)
+    except Exception:  # noqa: BLE001 -- collectors must run without preset yaml
+        return None
+
+
+def phase_runway_full(
+    manifest: Manifest,
+    cfg: FlowConfig,
+    phase: int,
+    *,
+    preset: str | None = None,
+) -> bool:
+    """True when collecting more for `phase` cannot help the run.
+
+    A phase is full when its PACKED runway already covers what the phase can
+    still consume (budget - consumed, plus the min-runway buffer). Without
+    this, collectors kept topping up the *current* phase to the global 3B cap:
+    P1 ended with 3.0B packed against a 500M budget (~2.5B tokens of dead
+    collection), and P2 sat 2.1x oversupplied -- with 1.55B of pre-fix shards
+    FIFO-queued ahead of any new mixed-diet data, so the configured mixture
+    could never reach the trainer within the phase. Budget unknown -> fall
+    back to the global cap.
+    """
+    ready = manifest.tokens_ready(phase)
+    budget = _phase_budget_tokens(phase, preset)
+    if budget is None or budget <= 0:
+        return ready >= cfg.packed_ahead_max_tokens
+    remaining = max(0, budget - manifest.tokens_consumed(phase))
+    return ready >= min(cfg.packed_ahead_max_tokens, remaining + cfg.packed_min_tokens)
+
+
 def pick_target_phase(manifest: Manifest, cfg: FlowConfig) -> int:
-    """A starved phase (below min runway) beats the trainer's current phase."""
+    """Starved phase wins; else the first non-full phase in the window.
+
+    Curriculum-aware: a phase whose runway already covers its remaining
+    budget is skipped so collection advances to the next phase (with the
+    correct mixture) instead of piling more onto a finished appetite. The
+    starved check runs first and unconditionally, so any estimation error in
+    the budget math degrades to the old behavior, never to starvation.
+    """
     cur = current_training_phase(manifest)
     phases = prefetch_phases(cur, cfg, N_PHASES)
     starved = starved_phase(manifest, cfg, phases)
-    return starved if starved is not None else cur
+    if starved is not None:
+        return starved
+    for p in phases:
+        if not phase_runway_full(manifest, cfg, p):
+            return p
+    # Whole window stocked: advance to the first FUTURE phase still short of
+    # its budget rather than falling back to `cur` -- observed live, that
+    # fallback resumed piling fineweb onto a 2.2x-oversupplied P2 while P4
+    # sat at zero. Raw for far phases just waits for the curator window to
+    # reach it, bounded by raw_max_bytes backpressure; idle-when-ahead is
+    # acceptable, collecting surplus is not.
+    start = (phases[-1] + 1) if phases else cur
+    for p in range(start, N_PHASES):
+        if not phase_runway_full(manifest, cfg, p):
+            return p
+    return cur
 
 
 def curator_claim_phases(manifest: Manifest, cfg: FlowConfig) -> list[int]:
     """Phases a curator should try to claim, in priority order.
 
     Starved runway first, then the rest of the prefetch window. Older phases
-    outside the window are intentionally omitted so curators do not keep packing
+    outside the window are normally omitted so curators do not keep packing
     phase-0 while the trainer is starved on phase-3.
+
+    Extra claim phases (appended after the window):
+
+    - **Future RAW** (``phase > cur``): collectors may already be filling
+      ``target_phase`` ahead of the window (P4 while training P2); without this,
+      those shards idle once raw drops under the cap (observed live: 9× P4 RAW
+      with claim window stuck at [2,3] and curating=0).
+    - **Raw-cap drain**: when RAW+CLAIMED_CURATE bytes sit at ``raw_max_bytes``,
+      also append past/out-of-window phases so collectors are not paused forever
+      behind surplus P0/P1 RAW.
     """
     cur = current_training_phase(manifest)
     window = prefetch_phases(cur, cfg, N_PHASES)
     starved = starved_phase(manifest, cfg, window)
     if starved is None:
-        return list(window)
-    return [starved] + [p for p in window if p != starved]
+        ordered = list(window)
+    else:
+        ordered = [starved] + [p for p in window if p != starved]
 
+    at_cap = manifest.raw_bytes() >= cfg.raw_max_bytes
+    for p in manifest.raw_phases():
+        if p in ordered:
+            continue
+        if p > cur or at_cap:
+            ordered.append(p)
+    return ordered
 
 # ---------------------------------------------------------------------------
 # Trainer

@@ -32,7 +32,7 @@ DEFAULT_TOKENIZER_PATH = "/state/tokenizer.json"
 _UINT16_MAX = 0xFFFF
 
 #: Sentinel concept_token_id for docs with no concept tag (all HF sources).
-#: The J-Space reportability loss masks these out; see dottie/jlosses.py.
+#: The J-Space reportability loss masks these out; see ava/jlosses.py.
 UNTAGGED_CONCEPT = -1
 
 
@@ -68,7 +68,7 @@ def load_tokenizer(path: str | Path | None = None) -> LoadedTokenizer:
     if not p.exists():
         raise TokenizerNotFrozen(
             f"no frozen tokenizer at {p}. Run the Stage 5 tokenizer bootstrap "
-            f"(`python -m dottie.tokenizer train`) and freeze it before packing."
+            f"(`python -m ava.tokenizer train`) and freeze it before packing."
         )
     from tokenizers import Tokenizer
 
@@ -111,7 +111,7 @@ def pack_docs(docs: list[dict], lt: LoadedTokenizer) -> tuple[np.ndarray, dict]:
         #
         # UNTAGGED (-1) rather than eod_id: HF is most of the corpus, so mapping
         # every untagged doc onto a real token would teach the reportability loss
-        # that the answer is almost always <|endofdoc|>. dottie/jlosses.py masks -1.
+        # that the answer is almost always <|endofdoc|>. ava/jlosses.py masks -1.
         concept = d.get("concept") or ""
         concept_ids = tok.encode(concept).ids if concept else []
         concept_token_id = concept_ids[0] if concept_ids else UNTAGGED_CONCEPT

@@ -1,6 +1,6 @@
 """Read-only snapshot of the surrounding agent ecosystem for /ecosystem.
 
-dottie-agi's own dashboard (dottie/dashboard_html.py) already covers the training
+ava-agi's own dashboard (ava/dashboard_html.py) already covers the training
 run in depth. This module answers a different question -- "what is the
 state of everything *around* the model": the coding-agent harness
 (AgenticOS), the merged skills libraries, the agent-eval scoreboard, and
@@ -9,7 +9,7 @@ curriculum-stage progress (TODOS.md).
 Everything here reads through the /host_disk read-only bind mount (see
 docker-compose.yml's x-host-disk anchor) -- the same mechanism
 pipeline_status.py's disk-free probe already uses -- since AgenticOS and
-agent-eval are sibling repos outside the dottie-agi image, not baked into it.
+agent-eval are sibling repos outside the ava-agi image, not baked into it.
 Every probe is independently guarded: a missing/unreadable checkout
 degrades that one card to "not found," it never breaks the rest of the
 page or the live dashboard alongside it.
@@ -23,11 +23,11 @@ from pathlib import Path
 from typing import Any, Callable
 
 _HOST_DISK = Path(os.environ.get("AVA_HOST_DISK", "/host_disk"))
-# This host's user profile dir -- dottie-agi, AgenticOS, and agent-eval are all
+# This host's user profile dir -- ava-agi, AgenticOS, and agent-eval are all
 # sibling checkouts under it. Override via env if this ever runs elsewhere.
 _ECO_HOME = Path(os.environ.get("AVA_ECOSYSTEM_HOME", str(_HOST_DISK / "Users" / "jcdav")))
 
-_AVA_AGI = _ECO_HOME / "dottie-agi"
+_AVA_AGI = _ECO_HOME / "ava-agi"
 _AGENTICOS = _ECO_HOME / "AgenticOS"
 _AGENT_EVAL = _ECO_HOME / "agent-eval"
 _DOT_AGENTS_SKILLS = _ECO_HOME / ".agents" / "skills"
@@ -71,7 +71,7 @@ def _skills_summary() -> dict[str, Any]:
 
 _HARNESS_FILES = [
     "harness.py", "agentos.py", "guard.py", "autonomy.py",
-    "code_tools.py", "web_tools.py", "infra_tools.py", "dottie_bridge.py",
+    "code_tools.py", "web_tools.py", "infra_tools.py", "ava_bridge.py",
 ]
 
 

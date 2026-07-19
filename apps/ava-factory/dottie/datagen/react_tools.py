@@ -1,5 +1,5 @@
 """ReAct tool-use training corpus (phases 2, 3 & 5) — teaches the plain-text
-Thought:/Action:/Observation: convention AgenticOS/dottie_bridge.py parses
+Thought:/Action:/Observation: convention AgenticOS/ava_bridge.py parses
 (see ~/.claude/plans/tender-tinkering-sketch.md Phase 6).
 
 Deliberately weighted toward *grounding* over raw tool syntax: a large

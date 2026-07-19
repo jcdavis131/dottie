@@ -1,5 +1,15 @@
 """
-eval_branch_harness.py - 5 canonical J-Space tests per branch, real-mode Jacobian interventions
+eval_branch_harness.py — BLUEPRINT / MOCK ONLY.
+
+5 canonical J-Space tests per branch, sketched with hardcoded illustrative
+values. Every number this script emits is a MOCK BLUEPRINT VALUE, not a
+measurement. The real, checkpoint-loading evaluation harness lives in
+`evals/` — run it with:
+
+    python -m evals.run_harness
+
+`--mode real` here refuses to run (see main) rather than fabricate PASS
+results; that mirrors the honesty gates in ava/rl (*BlockedError classes).
 Solo personal project, no connection to employer
 """
 import argparse, math, hashlib, json, os
@@ -95,6 +105,17 @@ def main():
     parser.add_argument('--v_scale_alpha', type=float, default=0.1, help='V-scale alpha')
     args = parser.parse_args()
 
+    if args.mode == "real":
+        # Honesty gate (same pattern as ava/rl's *BlockedError refusals):
+        # this blueprint script only knows hardcoded illustrative values and
+        # never loads --ckpt. Refuse instead of returning fabricated PASSes.
+        raise SystemExit(
+            "eval_branch_harness.py --mode real is BLOCKED: this file is a mock "
+            "blueprint and does not load checkpoints. For real measurements run:\n"
+            "    python -m evals.run_harness\n"
+            "(writes reports/branch_eval_results_real.json + reports/REPORT_REAL.md)"
+        )
+
     branches = BRANCHES if args.branch=='all' else [args.branch]
     total_results = {}
     print(f"[Eval Harness] v6.4 Real-Mode Jacobian Multi-Space + SpikeSink Solo project")
@@ -141,12 +162,17 @@ def main():
         total_results[br] = {"tests": br_results, "cap_pres": 100, "cap_score": 0.983 if br!="chat" else 0.967, "align_auc": br_results[-1].get("auc",0.91), "spike_sink": spike_sink_eval}
         print(f"  CapPres 100% CapScore {total_results[br]['cap_score']} AlignAUC {total_results[br]['align_auc']} SpikeSink PASS={spike_sink_eval.get('pass', True) if args.spike_sink else 'N/A'} Overall PASS")
 
-    # save json
+    # save json — always labeled as mock blueprint output
+    total_results["disclaimer"] = (
+        "MOCK BLUEPRINT OUTPUT — hardcoded illustrative values, not measurements; "
+        "see reports/REPORT_REAL.md (python -m evals.run_harness) for real evals"
+    )
     with open("branch_eval_results.json","w") as f:
         json.dump(total_results,f,indent=2)
     # save md report
     with open("BRANCH_EVAL_REPORT.md","w") as f:
-        f.write("# Branch Eval Report - Dottie v6.4 + SpikeSparseSink\n\nSolo personal project, no connection to employer, built with public/free-tier only\n\n")
+        f.write("> **MOCK BLUEPRINT OUTPUT — not measurements.** Every number below is a hardcoded\n> illustrative blueprint value. Real measurements: `python -m evals.run_harness` →\n> `reports/REPORT_REAL.md`.\n\n")
+        f.write("# Branch Eval Report - Ava v6.4 + SpikeSparseSink\n\nSolo personal project, no connection to employer, built with public/free-tier only\n\n")
         f.write(f"SpikeSink: enabled={args.spike_sink} norm={args.norm_placement} Vα={args.v_scale_alpha} — from https://github.com/savinasun/SpikeSparseSink Sec4/5\n\n")
         f.write("Branch | Freeze | CapPres | CapScore | AlignAUC | Sink_BOS | Massive_max_z | Cos_BOS_other | Overall\n")
         f.write("---|---|---|---|---|---|---|---|---\n")
@@ -166,7 +192,7 @@ def main():
         f.write("\nAll 5 tests PASS per branch, frozen capability preservation 100% while chat alignment improves — proves frozen!= broken, fine-tuned = alignment improves.\n")
         f.write("\nReal-mode implementation uses verbalizer.weight as Jacobian: tok_id=sha256(concept)%vocab, vec=verbalizer.weight[tok_id] normalized, edit_ws via dot product + max-proj swap + global bias 0.05*alpha*to_vec, broadcast recomputed via norm ratio, delta_logits (new_verbalizer-orig)*0.5*0.3\n")
         f.write("\n## SpikeSink Ablation (Sec4/5)\n")
-        f.write("- pre-norm (baseline Dottie): RMSNorm before q/k/v + before MLP → massive activations + attention sinks co-occur (architectural artifact), hidden reps near-constant → implicit params compete with explicit J-Space slots\n")
+        f.write("- pre-norm (baseline Ava): RMSNorm before q/k/v + before MLP → massive activations + attention sinks co-occur (architectural artifact), hidden reps near-constant → implicit params compete with explicit J-Space slots\n")
         f.write("- post-norm (ablation): RMSNorm after residual → decouples: massive acts reduced, sinks persist differently, J-Space verbalizable_mass 0.06 cleaner\n")
         f.write("- V-scale (value-path gradient valve): forward identity, backward scale grad at BOS sink tokens by α=0.1 → attenuates sink-induced gradient pressure → massive acts suppressed while forward sinks preserved → forces explicit workspace to carry persistent info, improves long-context 64k/128k YaRN + quantization robustness\n")
         f.write("- Decorrelation loss: MSE(cos_sim(BOS_hidden, other_hidden),0) → mitigates intermediate sinks, reduces cos_BOS_other from 0.45→0.15\n")

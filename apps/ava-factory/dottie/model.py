@@ -15,10 +15,6 @@ from model_1b import DottieModel1B, apply_rope_scaling
 
 def build_model(cfg: DottieConfig, *, use_memory: bool = False) -> DottieModel1B:
     m = cfg.model
-    # Normalize alias: use_relative True forces relative rope
-    rope_type = m.rope_type
-    if m.use_relative:
-        rope_type = "relative"
     model = DottieModel1B(
         vocab_size=m.vocab_size,
         d_model=m.d_model,
@@ -44,19 +40,9 @@ def build_model(cfg: DottieConfig, *, use_memory: bool = False) -> DottieModel1B
         rope_base=m.rope_base_init,
         gradient_checkpointing=cfg.training.gradient_checkpointing,
         multi_jspace_enabled=True,
-        rope_type=rope_type,
+        rope_type=m.rope_type,
         n_sinks=m.n_sinks,
         use_peri_ln=m.use_peri_ln,
-        use_short_conv=m.use_short_conv,
-        use_relative=m.use_relative,
-        relative_max_distance=m.relative_max_distance,
-        use_moe=m.use_moe,
-        moe_n_routed_experts=m.moe_n_routed_experts,
-        moe_top_k=m.moe_top_k,
-        moe_n_shared=m.moe_n_shared_experts,
-        moe_every_n=m.moe_every_n,
-        moe_hidden_ratio=m.moe_hidden_ratio,
-        use_effort=m.use_effort,
     )
     phase0 = cfg.phases[0]
     apply_rope_scaling(model, phase0.rope_base, phase0.ntk)

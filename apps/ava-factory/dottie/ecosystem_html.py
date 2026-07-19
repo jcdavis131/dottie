@@ -1,6 +1,6 @@
 """Self-contained ecosystem-status page HTML (no CDN).
 
-Sibling to dottie/dashboard_html.py: that page is training-focused (loss,
+Sibling to ava/dashboard_html.py: that page is training-focused (loss,
 curriculum, checkpoints); this one answers "what's the state of everything
 *around* the model" -- the coding-agent harness, the merged skills
 libraries, the agent-eval scoreboard, and curriculum-stage (TODOS.md)
@@ -13,7 +13,7 @@ ECOSYSTEM_HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Dottie ecosystem</title>
+<title>Ava ecosystem</title>
 <style>
 :root {
   --bg: #f4f2ec;
@@ -110,7 +110,7 @@ a { color: var(--accent); }
 </head>
 <body>
 <header>
-  <h1>Dottie ecosystem</h1>
+  <h1>Ava ecosystem</h1>
   <div class="meta">
     <span id="clock">—</span>
     · poll 15s

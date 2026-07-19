@@ -302,7 +302,7 @@ class Janitor:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Dottie janitor service")
+    ap = argparse.ArgumentParser(description="Ava janitor service")
     ap.add_argument("--once", action="store_true", help="one reclaim+rotate pass then exit")
     ap.add_argument("--config", default=None)
     ap.add_argument("--db", default=None)

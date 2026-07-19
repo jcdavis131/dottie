@@ -50,15 +50,26 @@ _STALE_MAX_S = 3600.0
 _STALE_CADENCE_MULT = 2.5
 
 
-def _stale_threshold_s(run_rows: list[dict[str, Any]]) -> float:
+def _stale_threshold_s(
+    run_rows: list[dict[str, Any]],
+    all_rows: list[dict[str, Any]] | None = None,
+) -> float:
     """Staleness cutoff adapted to the trainer's current step cadence.
 
     Expected gap between step events = tokens covered per logging interval
     divided by the most recent tok/s. The latest tok/s already reflects a new
     phase's speed right after a transition, when the wall-clock gap between
     the last two rows does not (it straddles the boundary).
+
+    Right after a restart the current run has fewer than two step rows and
+    this used to collapse to the 180s floor while a P2 recovery legitimately
+    takes ~15 min to its first step event -- a guaranteed false 'Trainer
+    stale' banner after every one of the run's dozens of restarts. The
+    pre-restart rows are the best available cadence estimate; fall back.
     """
     steps = [r for r in run_rows if r.get("event") == "step"]
+    if len(steps) < 2 and all_rows:
+        steps = [r for r in all_rows if r.get("event") == "step"]
     expected = None
     if len(steps) >= 2:
         try:
@@ -73,6 +84,37 @@ def _stale_threshold_s(run_rows: list[dict[str, Any]]) -> float:
     if expected is None or expected <= 0:
         return _STALE_STEP_S
     return min(_STALE_MAX_S, max(_STALE_STEP_S, _STALE_CADENCE_MULT * expected))
+
+def _throttle_state(metrics: list[dict[str, Any]]) -> tuple[bool, str]:
+    """Detect a power-throttled GPU from throughput collapse.
+
+    On battery the driver caps this laptop's GPU at ~17-22W and tok/s drops
+    ~6x; for three days that state was indistinguishable from a hang (14.5h of
+    'silent gaps'). A recent step whose tok/s is far below the phase median is
+    throttling, not staleness -- steps ARE landing, just slowly.
+    """
+    try:
+        srows = [r for r in metrics if r.get("event") == "step" and r.get("tok_s")]
+        if not srows:
+            return False, ""
+        phase = srows[-1].get("phase")
+        rows = [r for r in srows if r.get("phase") == phase]
+        latest = float(rows[-1].get("tok_s") or 0)
+        hist = sorted(float(r["tok_s"]) for r in rows[:-1][-20:])
+        if latest <= 0 or len(hist) < 3:
+            return False, ""
+        med = hist[len(hist) // 2]
+        if med <= 0 or latest >= 0.4 * med:
+            return False, ""
+        watts = rows[-1].get("gpu_power_w")
+        detail = (f"tok/s {latest:.0f} is {latest / med:.0%} of the phase median "
+                  f"{med:.0f}" + (f"; GPU drawing {watts:.0f}W" if watts else "")
+                  + " — host likely on battery or power-saving. Plug in / set "
+                  "High Performance to restore ~6x throughput.")
+        return True, detail
+    except (TypeError, ValueError, KeyError):
+        return False, ""
+
 
 _ROUTE_NAMES = ("automatic", "deliberate", "critic", "planner")
 
@@ -103,7 +145,7 @@ def _curriculum(preset: str) -> dict[str, Any] | None:
             "token_end": cum + tok,
         })
         cum += tok
-    return {
+    out: dict[str, Any] = {
         "tokens_total": int(cfg.training.tokens_total),
         "tokens_per_step": int(cfg.training.tokens_per_step),
         "checkpoint_every_steps": int(cfg.training.checkpoint_every_steps),
@@ -113,12 +155,16 @@ def _curriculum(preset: str) -> dict[str, Any] | None:
         "warmup_steps": int(cfg.training.wsd.warmup_steps),
         "phases": phases,
     }
+    tpp_tgt = cfg.training.tokens_per_param_target
+    if tpp_tgt is not None:
+        out["tokens_per_param_target"] = float(tpp_tgt)
+    return out
 
 
 def _objective(preset: str) -> dict[str, Any] | None:
     """Static loss-formula weights/targets for the dashboard's equation card.
 
-    Mirrors dottie/jlosses.py's ``loss = lm + (...)*j_weight + half_life*hl_weight
+    Mirrors ava/jlosses.py's ``loss = lm + (...)*j_weight + half_life*hl_weight
     + inter_mi*w + routing_KL*w`` — read once from the preset YAML so the
     dashboard can label the aux-loss small multiples with the same numbers
     the trainer is actually optimizing against.
@@ -254,6 +300,161 @@ def _watch(
     return out
 
 
+def _median(xs: list[float]) -> float | None:
+    if not xs:
+        return None
+    ys = sorted(xs)
+    mid = len(ys) // 2
+    if len(ys) % 2:
+        return ys[mid]
+    return 0.5 * (ys[mid - 1] + ys[mid])
+
+
+def _timing_estimate(
+    last_step: dict[str, Any] | None,
+    *,
+    curriculum: dict[str, Any] | None,
+    series: dict[str, list[Any]],
+    run_rows: list[dict[str, Any]] | None = None,
+) -> dict[str, Any] | None:
+    """Wall/effective elapsed + ETA from curriculum tokens and recent tok/s.
+
+    ``eta_total_s`` is the estimated wall-clock for the full planned run at the
+    current throughput (tokens_total / tok_s). ``eta_remaining_s`` is what's
+    left. ``elapsed_effective_s`` is tokens_done / tok_s (downtime-agnostic);
+    ``elapsed_wall_s`` is last−first step timestamps in the current run window
+    when available (includes idle/crash gaps inside that window).
+    """
+    if not last_step or not curriculum:
+        return None
+    tokens_done = last_step.get("tokens")
+    tokens_total = int(curriculum.get("tokens_total") or 0)
+    tps = int(curriculum.get("tokens_per_step") or 0)
+    if tokens_done is None or tokens_total <= 0:
+        return None
+
+    tok_samples: list[float] = []
+    for v in (series.get("tok_s") or [])[-20:]:
+        if v is None:
+            continue
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            continue
+        if f > 0:
+            tok_samples.append(f)
+    last_tok = last_step.get("tok_s")
+    if last_tok is not None:
+        try:
+            lf = float(last_tok)
+            if lf > 0 and not tok_samples:
+                tok_samples.append(lf)
+        except (TypeError, ValueError):
+            pass
+    tok_s = _median(tok_samples)
+    if tok_s is None or tok_s <= 0:
+        return None
+
+    done = max(0, int(tokens_done))
+    remaining = max(0, tokens_total - done)
+    elapsed_eff = done / tok_s
+    eta_rem = remaining / tok_s
+    eta_tot = tokens_total / tok_s
+
+    elapsed_wall: float | None = None
+    rows = run_rows or []
+    ts_vals = []
+    for row in rows:
+        ts = row.get("ts")
+        if ts is None:
+            continue
+        try:
+            ts_vals.append(float(ts))
+        except (TypeError, ValueError):
+            continue
+    if len(ts_vals) >= 2:
+        elapsed_wall = max(0.0, ts_vals[-1] - ts_vals[0])
+
+    step = last_step.get("step")
+    steps_total = max(1, tokens_total // tps) if tps > 0 else None
+    steps_done = int(step) if step is not None else None
+    steps_remaining = None
+    if steps_total is not None and steps_done is not None:
+        steps_remaining = max(0, steps_total - steps_done)
+
+    return {
+        "tok_s": round(tok_s, 1),
+        "tokens_done": done,
+        "tokens_total": tokens_total,
+        "tokens_remaining": remaining,
+        "elapsed_effective_s": round(elapsed_eff, 1),
+        "elapsed_wall_s": None if elapsed_wall is None else round(elapsed_wall, 1),
+        "eta_remaining_s": round(eta_rem, 1),
+        "eta_total_s": round(eta_tot, 1),
+        "steps_done": steps_done,
+        "steps_total": steps_total,
+        "steps_remaining": steps_remaining,
+        "basis": "median_tok_s_last_20" if len(tok_samples) > 1 else "last_tok_s",
+    }
+
+
+def _tokens_per_param(
+    last_step: dict[str, Any] | None,
+    *,
+    preset: str,
+    curriculum: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Train-to-Test / Chinchilla gauge: tokens seen ÷ analytic param count."""
+    if not last_step:
+        return None
+    tokens = last_step.get("tokens")
+    if tokens is None:
+        return None
+    try:
+        from dottie.config import DottieConfig
+
+        n_params = int(DottieConfig.load(preset).analytic_param_count())
+    except Exception:
+        return None
+    if n_params <= 0:
+        return None
+    tpp = float(tokens) / float(n_params)
+    target = None
+    if curriculum and curriculum.get("tokens_per_param_target") is not None:
+        target = float(curriculum["tokens_per_param_target"])
+    else:
+        try:
+            from dottie.config import DottieConfig
+
+            tgt = DottieConfig.load(preset).training.tokens_per_param_target
+            if tgt is not None:
+                target = float(tgt)
+        except Exception:
+            target = None
+    chinchilla = 20.0
+    if tpp < 15.0:
+        regime = "undertrain"
+    elif tpp < 40.0:
+        regime = "chinchilla-band"
+    else:
+        regime = "overtrain"
+    out: dict[str, Any] = {
+        "tokens": int(tokens),
+        "params": n_params,
+        "tpp": round(tpp, 3),
+        "chinchilla_ref": chinchilla,
+        "regime": regime,
+    }
+    if target is not None:
+        out["t2t_target"] = target
+        out["t2t_frac"] = round(tpp / target, 4) if target > 0 else None
+    if regime == "undertrain":
+        out["hint"] = "TPP below ~15 — Chinchilla/T2T prefer more unique tokens per param."
+    elif regime == "overtrain":
+        out["hint"] = "Overtrain regime — good for test-time sampling footprint."
+    return out
+
+
 def _current_run_rows(metrics: list[dict[str, Any]]) -> list[dict[str, Any]]:
     rows = _step_rows(metrics)
     if not rows:
@@ -326,8 +527,8 @@ def _step_rows(metrics: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 # Scalar fields lifted straight from each metrics-jsonl "step" row into the
-# per-run series the dashboard charts. dottie/train.py:340-349 is the writer:
-# lm/total plus the LossBreakdown aux terms (dottie/jlosses.py's loss formula),
+# per-run series the dashboard charts. ava/train.py:340-349 is the writer:
+# lm/total plus the LossBreakdown aux terms (ava/jlosses.py's loss formula),
 # the optimizer/throughput readouts, and the J-space workspace scalars.
 _SERIES_FIELDS = (
     "tok_s", "grad_norm", "lr",
@@ -525,6 +726,9 @@ def _mode(
     age_s: float | None,
     stale_after_s: float,
     gates: list[dict[str, Any]],
+    recovering: bool = False,
+    throttled: bool = False,
+    throttle_detail: str = "",
 ) -> dict[str, Any]:
     """Operator-facing mode: data_prep vs training vs blocked."""
     d1 = next((g for g in gates if g["id"] == "D1"), None)
@@ -546,8 +750,24 @@ def _mode(
             "id": "stale",
             "label": "Trainer stale",
             "detail": (
-                f"No step for {age_s:.0f}s (> {stale_after_s:.0f}s expected at the "
-                f"current phase's cadence) — check GPU / CUDA / trainer logs."
+                f"No trainer activity for {age_s:.0f}s (> {stale_after_s:.0f}s "
+                f"expected at the current phase's cadence) — check GPU / CUDA / "
+                f"trainer logs, and whether the host is on battery or asleep."
+            ),
+        }
+    if throttled:
+        return {
+            "id": "throttled",
+            "label": "GPU throttled",
+            "detail": throttle_detail or "Throughput far below phase median.",
+        }
+    if recovering:
+        return {
+            "id": "recovering",
+            "label": "Trainer recovering",
+            "detail": (
+                "Restarted and resuming from the latest checkpoint; the first "
+                "post-resume step event is pending (~10-15 min at P2 cadence)."
             ),
         }
     return {
@@ -672,14 +892,35 @@ def collect_status(preset: str | None = None) -> dict[str, Any]:
     if data_state == "DATA_STARVED":
         starved = True
 
+    # Liveness age: seconds since the trainer emitted ANY event, not just a
+    # step. A trainer that logged `resumed` 90s ago is alive and recovering;
+    # measuring staleness from the last *step* branded every restart window
+    # (model build + resume + first 10 steps, ~15 min at P2) as a hang.
     age_s = None
-    if last_step and last_step.get("ts") is not None:
+    for row in reversed(metrics):
+        ts = row.get("ts")
+        if ts is None:
+            continue
         try:
-            age_s = max(0.0, time.time() - float(last_step["ts"]))
+            age_s = max(0.0, time.time() - float(ts))
         except (TypeError, ValueError):
-            age_s = None
-    stale_after_s = _stale_threshold_s(run_rows)
+            continue
+        break
+    # Recovering = restarted and no step yet: the newest step/model_built-ish
+    # marker decides. (demand_published/checkpoint rows are skipped -- both
+    # follow steps and resumes alike, so they identify neither state.)
+    recovering = False
+    for row in reversed(metrics):
+        ev = row.get("event")
+        if ev == "step":
+            break
+        if ev in ("model_built", "resumed", "phase_enter", "branch_forked",
+                  "trainer_crash"):
+            recovering = True
+            break
+    stale_after_s = _stale_threshold_s(run_rows, all_rows=metrics)
     stale = bool(age_s is not None and age_s > stale_after_s and not starved)
+    throttled, throttle_detail = _throttle_state(metrics)
 
     low_water = float(cfg.low_water_gb) if cfg else 12.0
     packed_min = int(cfg.packed_min_tokens) if cfg else 200_000_000
@@ -698,7 +939,8 @@ def collect_status(preset: str | None = None) -> dict[str, Any]:
         by_state=by_state,
     )
     mode = _mode(last_step=last_step, starved=starved, age_s=age_s,
-                 stale_after_s=stale_after_s, gates=gates)
+                 stale_after_s=stale_after_s, gates=gates, recovering=recovering,
+                 throttled=throttled, throttle_detail=throttle_detail)
     runway = _phase_runway(
         tokens_by_phase,
         packed_min=packed_min,
@@ -747,6 +989,19 @@ def collect_status(preset: str | None = None) -> dict[str, Any]:
         trainer_phase=trainer_phase,
         series=series,
     )
+    timing = _timing_estimate(
+        last_step,
+        curriculum=curriculum,
+        series=series,
+        run_rows=run_rows,
+    )
+    if timing is not None:
+        watch["timing"] = timing
+    tpp = _tokens_per_param(last_step, preset=preset, curriculum=curriculum)
+    if tpp is not None:
+        watch["tokens_per_param"] = tpp
+        if tpp.get("hint"):
+            watch["hints"].append(tpp["hint"])
 
     return {
         "ts": time.time(),
@@ -810,13 +1065,35 @@ def collect_status(preset: str | None = None) -> dict[str, Any]:
             "restarts": full_series["restarts"],
             "data_starved": starved,
             "age_s": None if age_s is None else round(age_s, 1),
+            "age_basis": "any_trainer_event",
+            "recovering": recovering,
+            "throttled": throttled,
             "stale": stale,
             "stale_after_s": round(stale_after_s, 1),
+            # Every model_built in the metrics window is one trainer process
+            # start; the chart-anchored `restarts` (step-counter decreases)
+            # undercounts because back-to-back crashes resume from the same
+            # checkpoint without a step in between.
+            "restarts_window": sum(1 for r in metrics if r.get("event") == "model_built"),
         },
         "eval": {
-            "json_exists": (reports / "branch_eval_results_real.json").is_file()
-            or Path("/app/reports/branch_eval_results_real.json").is_file(),
+            "json_exists": (
+                (reports / "eval_mini_base.json").is_file()
+                or (reports / "branch_eval_results_real.json").is_file()
+                or Path("/host_reports/eval_mini_base.json").is_file()
+                or Path("/app/reports/branch_eval_results_real.json").is_file()
+            ),
             "report_html": (reports / "index.html").is_file()
             or Path("/app/reports/index.html").is_file(),
+            "active": (
+                "eval_mini_base.json"
+                if (reports / "eval_mini_base.json").is_file()
+                or Path("/host_reports/eval_mini_base.json").is_file()
+                else (
+                    "branch_eval_results_real.json"
+                    if (reports / "branch_eval_results_real.json").is_file()
+                    else None
+                )
+            ),
         },
     }

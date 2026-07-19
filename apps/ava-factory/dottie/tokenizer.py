@@ -1,7 +1,7 @@
 """Byte-level BPE tokenizer, trained locally on our own corpus.
 
 Trained here, not downloaded: huggingface.co is unreachable from the Windows
-host, and the blueprint's "dottie-tokenizer" never existed in the first place.
+host, and the blueprint's "ava-tokenizer" never existed in the first place.
 
 The artifact is FROZEN once trained. Its sha256 is recorded in the manifest and
 stamped into every packed shard; `Manifest.complete(tokenizer_sha=...)` rejects
@@ -57,7 +57,7 @@ class DottieTokenizer:
         if not p.exists():
             raise FileNotFoundError(
                 f"no tokenizer at {p}. Train one first:\n"
-                f"  python -m dottie.tokenizer train --preset nano --corpus <dir>"
+                f"  python -m ava.tokenizer train --preset nano --corpus <dir>"
             )
         return cls(Tokenizer.from_file(str(p)))
 

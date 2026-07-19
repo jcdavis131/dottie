@@ -41,6 +41,11 @@ from dottie.pipeline.manifest import Manifest
 from model_1b import apply_rope_scaling
 
 MAX_MICRO_BATCH = 8
+# Activation ceiling per micro-batch. Without it mb stayed at 8 regardless of
+# seq, so the P2->P3 seq doubling (1024->2048) would double activation memory
+# on a GPU already at 97% -- a deterministic OOM at the phase boundary. 8192
+# == 8 x 1024, i.e. the P2 working point; later phases trade mb for accum.
+MAX_MICRO_TOKENS = 8192
 
 
 # ---------------------------------------------------------------------------
@@ -71,9 +76,43 @@ def phase_for_step(cfg: DottieConfig, tokens_done: int) -> int:
 
 
 def micro_batch_for(seq: int, tokens_per_step: int) -> tuple[int, int]:
-    mb = max(1, min(MAX_MICRO_BATCH, tokens_per_step // seq))
+    mb = max(1, min(MAX_MICRO_BATCH, tokens_per_step // seq, MAX_MICRO_TOKENS // seq))
     accum = max(1, tokens_per_step // (mb * seq))
     return mb, accum
+
+
+def gpu_stats() -> dict:
+    """Power/VRAM/clock readout for the step log, {} if unavailable.
+
+    Exists because the host is a laptop: on battery the driver caps the GPU
+    at ~17-22W and throughput collapses ~6x. That state was indistinguishable
+    from a hang for three days -- 14.5h of 'silent gaps' were battery
+    throttling. One nvidia-smi call per metrics interval (~860s) is noise.
+    """
+    try:
+        import subprocess
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=power.draw,memory.used,memory.total,"
+             "clocks.sm,temperature.gpu,utilization.gpu",
+             "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if out.returncode != 0:
+            return {}
+        p, mu, mt, clk, tc, util = (v.strip() for v in out.stdout.split(","))
+        stats = {"gpu_power_w": float(p), "gpu_mem_mb": int(float(mu)),
+                 "gpu_mem_total_mb": int(float(mt)), "gpu_sm_mhz": int(float(clk)),
+                 "gpu_temp_c": int(float(tc)), "gpu_util_pct": int(float(util))}
+        # nvidia-smi shows reserved cache, which sits near the historical peak
+        # forever; the allocator's own peak-since-last-reset is the number that
+        # says how close a step actually came to OOM.
+        if torch.cuda.is_available():
+            stats["torch_peak_alloc_mb"] = int(torch.cuda.max_memory_allocated() / 2**20)
+            stats["torch_reserved_mb"] = int(torch.cuda.memory_reserved() / 2**20)
+            torch.cuda.reset_peak_memory_stats()
+        return stats
+    except Exception:
+        return {}
 
 
 # ---------------------------------------------------------------------------
@@ -110,7 +149,12 @@ def _point_latest_at(ckpt_dir: Path, target: Path) -> None:
 
 
 def load_ckpt(path: Path, *, model, opt, sampler, device: str) -> tuple[int, int]:
-    blob = torch.load(path, map_location=device, weights_only=False)
+    # map_location='cpu', NOT device: loading the blob straight to CUDA
+    # briefly double-residents the model+optimizer (telemetry showed a
+    # 12.5GB resume peak on the 12.3GB card -- sysmem spill from the first
+    # breath). load_state_dict copies tensor-by-tensor onto the live params,
+    # and Optimizer.load_state_dict casts state to each param's device.
+    blob = torch.load(path, map_location="cpu", weights_only=False)
     model.load_state_dict(blob["model"])        # the blueprint printed "Loading..." and never did this
     opt.load_state_dict(blob["optimizer"])
     sampler.load_state_dict(blob["sampler"])
@@ -128,38 +172,28 @@ def load_ckpt(path: Path, *, model, opt, sampler, device: str) -> tuple[int, int
 
 def build_optimizer(model, cfg: DottieConfig):
     o = cfg.training.optimizer
-    # Muon hybrid: large mats with Newton-Schulz, rest AdamW
-    if o.name in ("muon", "muon_hybrid"):
-        try:
-            from dottie.muon import MuonAdamHybrid, get_coupled_weight_decay
-            decay, no_decay = [], []
-            for n, p in model.named_parameters():
-                if not p.requires_grad:
-                    continue
-                (no_decay if p.ndim < 2 or "decay_logit" in n or "bias" in n or "sink" in n else decay).append((n, p))
-            # Muon sees decay params as large mats; Adam sees rest
-            decay_params = [p for _, p in decay]
-            no_decay_params = [p for _, p in no_decay]
-            muon_groups = []
-            if decay_params:
-                muon_groups.append({"params": decay_params, "weight_decay": o.weight_decay, "use_muon": True})
-            if no_decay_params:
-                muon_groups.append({"params": no_decay_params, "weight_decay": 0.0, "use_muon": False})
-            # coupled wd: base * (lr/lr_max)^2 – handled via caller set_lr hook if needed
-            hybrid = MuonAdamHybrid(muon_groups, lr=cfg.training.wsd.lr_max, betas=o.betas,
-                                    base_wd=o.weight_decay, lr_max=cfg.training.wsd.lr_max)
-            # expose getter for training loop
-            hybrid.get_coupled_wd = lambda lr: get_coupled_weight_decay(lr, o.weight_decay, cfg.training.wsd.lr_max)
-            return hybrid
-        except Exception as exc:
-            print(f"[warn] muon import failed {exc}, falling back AdamW")
+    if o.name in ("muon", "muon_vs", "muon-nsr", "muon_nsr", "muonh"):
+        # DeepSeek-lineage Muon (+ optional VS / Hyperball wrappers).
+        from dottie.optim import build_hybrid
+        variant = "muon_vs" if o.name in ("muon_vs", "muon-nsr", "muon_nsr") else "muon"
+        radius = 1.0 if o.name == "muonh" else None
+        return build_hybrid(
+            model,
+            adamw_lr=cfg.training.wsd.lr_max,
+            betas=o.betas,
+            weight_decay=o.effective_weight_decay(),
+            variant=variant,
+            hyperball_radius=radius,
+        )
+
     decay, no_decay = [], []
     for n, p in model.named_parameters():
         if not p.requires_grad:
             continue
         # no weight decay on norms, biases, or the learned decay logits
         (no_decay if p.ndim < 2 or "decay_logit" in n else decay).append(p)
-    groups = [{"params": decay, "weight_decay": o.weight_decay},
+    wd = o.effective_weight_decay()
+    groups = [{"params": decay, "weight_decay": wd},
               {"params": no_decay, "weight_decay": 0.0}]
 
     if o.name == "adamw8bit":
@@ -206,6 +240,18 @@ def main(argv=None) -> int:
         print(line, flush=True)
         mfile.write(line + "\n")
 
+    # docker stop / compose recreate delivers SIGTERM, which Python's default
+    # handler turns into an immediate death -- no exception, no context-manager
+    # unwind, so the sampler's `with` block never ran release_held() and every
+    # deploy leaked a CLAIMED_TRAIN row until its lease expired. Convert to
+    # SystemExit so the normal exit path (release + close) runs.
+    import signal
+
+    def _graceful_term(signum, frame):
+        raise SystemExit(128 + signum)
+
+    signal.signal(signal.SIGTERM, _graceful_term)
+
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -217,17 +263,30 @@ def main(argv=None) -> int:
         d_model=cfg.model.d_model, vocab=cfg.model.vocab_size)
 
     # ---- branch fork: a REAL state_dict load, then freeze + router prior
+    branch_spec: dict | None = None
     if args.branch:
-        spec = (cfg.branch_chat if args.branch == "chat" else (cfg.branches or {}).get(args.branch))
-        if spec is None:
+        branch_spec = (cfg.branch_chat if args.branch == "chat"
+                       else (cfg.branches or {}).get(args.branch))
+        if branch_spec is None:
             raise SystemExit(f"preset {cfg.preset} defines no branch {args.branch!r}")
-        src = Path(args.init or spec["init"])
+        src = Path(args.init or branch_spec["init"])
         blob = torch.load(src, map_location=device, weights_only=False)
         model.load_state_dict(blob["model"])
-        model.freeze_spaces(list(spec["freeze"]))
-        set_router_bias(model, list(spec["router_bias"]))
+        model.freeze_spaces(list(branch_spec["freeze"]))
+        set_router_bias(model, list(branch_spec["router_bias"]))
         log("branch_forked", branch=args.branch, init=str(src), step=blob.get("step"),
-            frozen=spec["freeze"], trainable=count_params(model, trainable_only=True))
+            frozen=branch_spec["freeze"],
+            trainable=count_params(model, trainable_only=True))
+
+    if cfg.training.compile and device.startswith("cuda"):
+        # Opt-in only (yaml `training.compile`). Keep off for live mini; enable
+        # on mini_overtrain after a short smoke. Dynamic shapes from variable
+        # seq phases can force recompiles — log once and continue.
+        try:
+            model = torch.compile(model)  # type: ignore[assignment]
+            log("model_compiled", backend="torch.compile")
+        except Exception as exc:  # noqa: BLE001
+            log("model_compile_skipped", level="warn", error=str(exc)[:300])
 
     # ---- plain init (no branch semantics): model weights only, fresh optimizer/step.
     # The dottie.grow warm-start path: `--preset base1b --init /ckpt/base1b/grown_init.pt`.
@@ -294,13 +353,25 @@ def main(argv=None) -> int:
 
         step, tokens_done = 0, 0
         latest = ckpt_dir / "latest"
-        if args.resume and latest.exists():
+        # Branch forks own a fresh run dir and must not resume over the init
+        # load (that would clobber freeze/router_bias and jump to base step).
+        if args.branch and branch_spec is not None:
+            tokens_done = int(branch_spec.get("start_tokens", 0))
+            if tokens_done:
+                log("branch_start_tokens", tokens_done=tokens_done,
+                    phase=phase_for_step(cfg, tokens_done))
+        elif args.resume and latest.exists():
             target = ckpt_dir / latest.read_text().strip()
             step, tokens_done = load_ckpt(target, model=model, opt=opt,
                                           sampler=sampler, device=device)
             log("resumed", ckpt=str(target), step=step, tokens_done=tokens_done)
 
-        total_steps = args.max_steps or cfg.total_steps()
+        if args.max_steps is not None:
+            total_steps = args.max_steps
+        elif args.branch and branch_spec is not None and branch_spec.get("tokens"):
+            total_steps = max(1, int(branch_spec["tokens"]) // cfg.training.tokens_per_step)
+        else:
+            total_steps = cfg.total_steps()
         # Finished run + compose `restart: unless-stopped` used to spin forever
         # (load base_final → done → exit 0 → restart). Exit cleanly instead.
         if step >= total_steps:
@@ -328,6 +399,11 @@ def main(argv=None) -> int:
                 save_ckpt(stable, model=model, opt=opt, step=step, phase=phase,
                           tokens_done=tokens_done, cfg=cfg, sampler=sampler)
                 log("stable_ckpt", path=str(stable), phase=phase, step=step)
+                # Hand the old phase's partially-consumed shard back. The new
+                # stream claims only the new phase; without this the abandoned
+                # generator's shard leaked into it via sampler._held and the
+                # old phase's docs were re-trained under the new phase's config.
+                sampler.release_held(f"phase transition p{phase}->p{new_phase}")
                 phase = new_phase
                 pc = apply_phase(model, cfg, phase, log)
                 heartbeat(step, phase)
@@ -337,71 +413,59 @@ def main(argv=None) -> int:
 
             lr = wsd_lr(step, total_steps, cfg)
             for g in opt.param_groups:
-                g["lr"] = lr
-                # Inkling/Muon weight decay coupling: base_wd * (lr/lr_max)^2
-                if hasattr(opt, "get_coupled_wd"):
-                    g["weight_decay"] = opt.get_coupled_wd(lr)
-                elif g.get("weight_decay", 0) > 0:
-                    # fallback: apply coupling directly
-                    try:
-                        from dottie.muon import get_coupled_weight_decay
-                        g["weight_decay"] = get_coupled_weight_decay(lr, cfg.training.optimizer.weight_decay, cfg.training.wsd.lr_max)
-                    except:
-                        pass
+                # lr_scale: Muon groups ride the same WSD shape at their own
+                # magnitude (ava/optim.py). Plain AdamW groups have no scale.
+                g["lr"] = lr * g.get("lr_scale", 1.0)
 
             agg: dict[str, float] = {}
             step_tokens = 0
-            # effort sampling 0.2-0.99 if model supports it
-            effort_val = None
-            if getattr(model, "use_effort", False):
-                try:
-                    from dottie.muon import EffortConditioning
-                    effort_val = EffortConditioning.sample_effort(batch_size=mb)
-                except:
-                    effort_val = 0.6
-            for _ in range(accum):
-                b = next(stream)
-                ids = torch.from_numpy(b.input_ids).to(device, non_blocking=True)
-                cids = torch.from_numpy(b.concept_ids).to(device, non_blocking=True)
+            try:
+                for _ in range(accum):
+                    b = next(stream)
+                    ids = torch.from_numpy(b.input_ids).to(device, non_blocking=True)
+                    cids = torch.from_numpy(b.concept_ids).to(device, non_blocking=True)
 
-                ctx = (torch.autocast("cuda", dtype=torch.bfloat16) if use_bf16
-                       else torch.autocast("cpu", enabled=False))
-                with ctx:
-                    if effort_val is not None:
-                        out = model(input_ids=ids, task_type=b.task_type, effort=effort_val)
-                    else:
+                    ctx = (torch.autocast("cuda", dtype=torch.bfloat16) if use_bf16
+                           else torch.autocast("cpu", enabled=False))
+                    with ctx:
                         out = model(input_ids=ids, task_type=b.task_type)
-                    parts = obj(model, out, ids, phase=phase, task_type=b.task_type,
-                                concept_ids=cids)
-                    # effort-conditioned loss scaling if using effort
-                    if effort_val is not None:
-                        try:
-                            from dottie.muon import compute_effort_scaled_loss
-                            # scale lm loss by effort multiplier + small token penalty
-                            lm_t = parts.total  # placeholder, real scaling below
-                            # We trust obj returns total including lm; apply multiplier for logging only
-                            pass
-                        except:
-                            pass
+                        parts = obj(model, out, ids, phase=phase, task_type=b.task_type,
+                                    concept_ids=cids)
 
-                (parts.total / accum).backward()
-                step_tokens += b.tokens
-                for k, v in parts.as_floats().items():
-                    agg[k] = agg.get(k, 0.0) + v / accum
-                agg["route_" + b.task_type] = float(out["jspace"]["route_probs"].mean(0).max())
+                    (parts.total / accum).backward()
+                    step_tokens += b.tokens
+                    for k, v in parts.as_floats().items():
+                        agg[k] = agg.get(k, 0.0) + v / accum
+                    mj = out["jspace"]
+                    last_j = {
+                        "verbalizable_mass": float(mj["system2"]["verbalizable_mass"]),
+                        "broadcast_strength": float(mj["broadcast_strength"]),
+                        "route_probs": [round(x, 4) for x in mj["route_probs"].mean(0).tolist()],
+                    }
+                    agg["route_" + b.task_type] = max(last_j["route_probs"])
+                    # Drop the graph outputs NOW. Holding `out` across the loop
+                    # pinned ~0.5GB of logits (plus workspace tensors) through
+                    # the optimizer step on a GPU already at 97% VRAM.
+                    del out, parts, mj
 
-            gnorm = torch.nn.utils.clip_grad_norm_(model.parameters(),
-                                                   cfg.training.optimizer.grad_clip)
-            if not torch.isfinite(torch.tensor(agg["total"])):
-                raise RuntimeError(f"non-finite loss at step {step}: {agg}")
-            opt.step()
-            opt.zero_grad(set_to_none=True)
+                gnorm = torch.nn.utils.clip_grad_norm_(model.parameters(),
+                                                       cfg.training.optimizer.grad_clip)
+                if not torch.isfinite(torch.tensor(agg["total"])):
+                    raise RuntimeError(f"non-finite loss at step {step}: {agg}")
+                opt.step()
+                opt.zero_grad(set_to_none=True)
+            except RuntimeError as exc:
+                # CUDA 'unknown error' / CUBLAS_INTERNAL_ERROR land here. The
+                # process must die (the CUDA context is poisoned) but the crash
+                # signature must survive in metrics: docker logs rotate away on
+                # restart, which is why 42 crashes left one visible traceback.
+                log("trainer_crash", step=step, phase=phase, error=str(exc)[:500])
+                raise
 
             step += 1
             tokens_done += step_tokens
 
             if step % cfg.training.metrics_every_steps == 0 or step == 1:
-                mj = out["jspace"]
                 dt = time.time() - t0
                 log("step", step=step, phase=phase, lr=lr, tokens=tokens_done,
                     grad_norm=float(gnorm), tok_s=round(step_tokens * cfg.training.metrics_every_steps / max(dt, 1e-6)) if step > 1 else None,
@@ -410,9 +474,10 @@ def main(argv=None) -> int:
                     **{k: float(f"{v:.4g}") for k, v in agg.items()},
                     hl_est={s: round(getattr(model.multi_jspace, s).hl_est(), 2)
                             for s in ("system1", "system2", "critic", "planner")},
-                    verbalizable_mass=round(float(mj["system2"]["verbalizable_mass"]), 5),
-                    broadcast_strength=round(float(mj["broadcast_strength"]), 5),
-                    route_probs=[round(x, 4) for x in mj["route_probs"].mean(0).tolist()])
+                    verbalizable_mass=round(last_j["verbalizable_mass"], 5),
+                    broadcast_strength=round(last_j["broadcast_strength"], 5),
+                    route_probs=last_j["route_probs"],
+                    **gpu_stats())
                 lm_val = float(agg.get("lm", agg.get("total", 0.0)))
                 lm_hist.append(lm_val)
                 if len(lm_hist) > 5:

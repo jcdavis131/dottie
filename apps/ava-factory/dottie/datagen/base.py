@@ -1,4 +1,4 @@
-"""Shared contract for all Dottie synthetic data generators.
+"""Shared contract for all Ava synthetic data generators.
 
 Hard rules enforced here (see specs/02_data_generation.md for the long
 version):
@@ -22,7 +22,9 @@ from typing import Iterable, Iterator
 import zstandard as zstd
 
 DOC_KEYS = frozenset({"doc_id", "text", "task_type", "concept", "phase", "source"})
-VALID_TASK_TYPES = frozenset({"automatic", "deliberate", "safety", "temporal"})
+VALID_TASK_TYPES = frozenset({
+    "automatic", "deliberate", "safety", "temporal", "tool_selection",
+})
 VALID_PHASES = frozenset({"p0", "p1", "p2", "p3", "p4", "p5"})
 
 
@@ -187,7 +189,7 @@ def read_shards(out_dir: str, files: Iterable[str] | None = None) -> Iterator[di
 
 
 def run_cli(generator_cls: type[Generator]) -> None:
-    """Shared CLI entrypoint for `python -m dottie.datagen.<mod> --seed S --out DIR --mb N`."""
+    """Shared CLI entrypoint for `python -m ava.datagen.<mod> --seed S --out DIR --mb N`."""
     parser = argparse.ArgumentParser(description=f"Run the {generator_cls.__name__} data generator.")
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--out", type=str, required=True)

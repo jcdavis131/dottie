@@ -5,7 +5,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Dottie Pipeline</title>
+<title>Ava Pipeline</title>
 <style>
 :root {
   --bg: #f4f2ec;
@@ -327,7 +327,7 @@ svg.spark { width: 100%; height: 26px; display: block; }
 </head>
 <body>
 <header>
-  <h1>Dottie pipeline</h1>
+  <h1>Ava pipeline</h1>
   <div class="meta">
     <span id="preset">—</span>
     · <span id="clock">—</span>
@@ -338,6 +338,7 @@ svg.spark { width: 100%; height: 26px; display: block; }
     · <a href="/pipeline/status">json</a>
     · <a href="/health">/health</a>
     · <a href="/jspace/viewer">viewer</a>
+    · <a href="/network">network</a>
     · <a href="/report">report</a>
   </div>
 </header>
@@ -464,11 +465,15 @@ const TIP = {
   collectors_status: "Whether the pipeline is currently pausing data collection (usually a disk-space precaution) or letting it run.",
   trainer_phase: "Which stage of the curriculum the model is currently being trained on (see the Curriculum panel below) — the topic mix and context length change per phase.",
   step: "One optimizer update = one step. The model's weights change a tiny bit after every step, based on a batch of training data.",
+  tpp: "Tokens-per-parameter so far (tokens seen ÷ model size). Under ~15 is undertrain; ~20 is Chinchilla-optimal; much higher is intentional overtrain (T2T) for better test-time compute on small models.",
   lm_loss: "How surprised the model is by the actual next word, on average — lower is better. This is the main number that should trend down as training works.",
   raw_backlog: "Unprocessed text collected from the internet but not yet cleaned/tokenized, waiting for a curator worker to get to it.",
   ckpt: "The most recent saved snapshot of the model's weights — what you'd load to actually use or resume training from.",
   phase_progress: "How far through the CURRENT curriculum phase training has gotten, measured in tokens (words/sub-words) processed vs. that phase's budget.",
   run_progress: "How far through the ENTIRE planned training run this is, across all curriculum phases combined.",
+  elapsed_time: "Estimated training time spent so far at the recent tokens/sec pace (tokens_done ÷ tok/s). Ignores Docker downtime; wall-clock span of the current run window is in the subtitle when available.",
+  eta_remaining: "Estimated wall-clock time left to finish the planned token budget at the recent tokens/sec pace.",
+  eta_total: "Estimated total wall-clock for the full planned run at the recent tokens/sec pace (tokens_total ÷ tok/s).",
   next_ckpt: "How many more optimizer steps until the next checkpoint (saved snapshot) gets written to disk.",
   demand_step: "The training step number as of the last time the trainer told the data-collection side what it needs more/less of.",
   curate_stricter: "Whether the trainer is asking curators to be pickier about data quality right now (e.g. because loss is rising and it suspects noisy data).",
@@ -546,8 +551,11 @@ function fmtDuration(s) {
   if (s == null || !isFinite(s) || s < 0) return "—";
   if (s < 90) return Math.round(s) + "s";
   if (s < 3600) return Math.round(s / 60) + "m";
-  if (s < 86400) return (s / 3600).toFixed(1) + "h";
-  return (s / 86400).toFixed(1) + "d";
+  const h = s / 3600;
+  if (s < 86400) return (h < 10 ? h.toFixed(1) : Math.round(h)) + "h";
+  const d = Math.floor(s / 86400);
+  const rh = Math.round((s % 86400) / 3600);
+  return rh > 0 ? `${d}d ${rh}h` : `${d}d`;
 }
 
 // One paragraph, plain language, regenerated from the live payload every
@@ -592,6 +600,22 @@ function composeNarrative(d) {
       else if (delta > 0.02) trend = "<span class=\"warn-inline\">rising</span>";
     }
     parts.push(`Loss is ${trend} (lm <b>${Number(last.lm_loss).toFixed(3)}</b>) at step <b>${fmt(last.step)}</b>, ~${last.tok_s != null ? fmt(Math.round(last.tok_s)) : "—"} tok/s.`);
+  }
+
+  // 3b. Tokens-per-param / overtrain regime (Chinchilla vs T2T).
+  const tpp = watch.tokens_per_param;
+  if (tpp && tpp.tpp != null) {
+    const tgt = tpp.t2t_target != null ? ` vs T2T target ${tpp.t2t_target}` : "";
+    parts.push(`Data scale is <b>${Number(tpp.tpp).toFixed(1)} TPP</b> (${tpp.regime || "—"}${tgt}; Chinchilla ~${tpp.chinchilla_ref ?? 20}).`);
+  }
+
+  // 3c. Pace-based elapsed / remaining / total estimates.
+  const timing = watch.timing;
+  if (timing && timing.eta_remaining_s != null) {
+    const left = fmtDuration(timing.eta_remaining_s);
+    const tot = fmtDuration(timing.eta_total_s);
+    const done = fmtDuration(timing.elapsed_effective_s);
+    parts.push(`At ~${fmt(Math.round(timing.tok_s || 0))} tok/s: <b>${done}</b> effective elapsed, <b>${left}</b> remaining, ~<b>${tot}</b> total for the planned run.`);
   }
 
   // 4. Restart/stability history — the thing that's easy to miss by only
@@ -682,6 +706,12 @@ function renderTop(d) {
       <div class="sub">age ${fmtAge(tr.age_s)}</div></div>
     <div class="stat"><div class="k">lm loss${tipEl('lm_loss')}</div><div class="v sm">${loss}</div>
       <div class="sub">${toks} tok/s</div></div>
+    <div class="stat"><div class="k">Elapsed${tipEl('elapsed_time')}</div><div class="v sm">${(d.watch && d.watch.timing && d.watch.timing.elapsed_effective_s != null) ? fmtDuration(d.watch.timing.elapsed_effective_s) : "—"}</div>
+      <div class="sub">${(d.watch && d.watch.timing && d.watch.timing.elapsed_wall_s != null) ? ("wall " + fmtDuration(d.watch.timing.elapsed_wall_s)) : "at recent tok/s"}</div></div>
+    <div class="stat"><div class="k">ETA left${tipEl('eta_remaining')}</div><div class="v sm">${(d.watch && d.watch.timing && d.watch.timing.eta_remaining_s != null) ? fmtDuration(d.watch.timing.eta_remaining_s) : "—"}</div>
+      <div class="sub">total ~${(d.watch && d.watch.timing && d.watch.timing.eta_total_s != null) ? fmtDuration(d.watch.timing.eta_total_s) : "—"}${tipEl('eta_total')}</div></div>
+    <div class="stat"><div class="k">TPP${tipEl('tpp')}</div><div class="v sm">${(d.watch && d.watch.tokens_per_param && d.watch.tokens_per_param.tpp != null) ? Number(d.watch.tokens_per_param.tpp).toFixed(1) : "—"}</div>
+      <div class="sub">${(d.watch && d.watch.tokens_per_param && d.watch.tokens_per_param.regime) || "tokens/param"}${(d.watch && d.watch.tokens_per_param && d.watch.tokens_per_param.t2t_target != null) ? " · tgt " + d.watch.tokens_per_param.t2t_target : ""}</div></div>
     <div class="stat"><div class="k">Raw backlog${tipEl('raw_backlog')}</div><div class="v sm">${m.raw_gb != null ? m.raw_gb + " GB" : "—"}</div>
       <div class="sub">${Math.round((m.raw_fill || 0)*100)}% of max ${m.raw_max_gb ?? "—"} GB</div></div>
     <div class="stat"><div class="k">Ckpt${tipEl('ckpt')}</div><div class="v sm">${(d.ckpt && d.ckpt.latest_pointer) || "—"}</div>
@@ -723,6 +753,8 @@ function renderCurriculum(d) {
           · phase progress${tipEl('phase_progress')} ${pctPhase}% (${fmt(pp.tokens_in_phase)} / ${fmt(pp.phase_tokens)})
           · run${tipEl('run_progress')} ${pctRun}% of ${fmt(cur.tokens_total)} tokens
           · next ckpt${tipEl('next_ckpt')} in ${watch.steps_to_ckpt != null ? watch.steps_to_ckpt : "—"} steps
+          · ETA left${tipEl('eta_remaining')} ${(watch.timing && watch.timing.eta_remaining_s != null) ? fmtDuration(watch.timing.eta_remaining_s) : "—"}
+          · est. total${tipEl('eta_total')} ${(watch.timing && watch.timing.eta_total_s != null) ? fmtDuration(watch.timing.eta_total_s) : "—"}
         </div>
       </div>
     </div>`;
@@ -827,6 +859,8 @@ function renderWatch(d) {
       <div class="sub">of total loss</div></div>
     <div class="stat"><div class="k">Δ lm (log)${tipEl('lm_delta')}</div><div class="v sm">${w.lm_delta_10 != null ? (w.lm_delta_10 > 0 ? "+" : "")+w.lm_delta_10 : "—"}</div>
       <div class="sub">vs prior step log</div></div>
+    <div class="stat"><div class="k">TPP regime${tipEl('tpp')}</div><div class="v sm">${w.tokens_per_param && w.tokens_per_param.regime ? w.tokens_per_param.regime : "—"}</div>
+      <div class="sub">${w.tokens_per_param && w.tokens_per_param.tpp != null ? Number(w.tokens_per_param.tpp).toFixed(2) + " tok/param" : "overtrain gauge"}</div></div>
     <div class="stat"><div class="k">grad${tipEl('grad_vs_clip')}</div><div class="v sm">${w.grad_vs_clip != null ? w.grad_vs_clip : "—"}</div>
       <div class="sub">clip target ~1.0</div></div>
     <div class="stat"><div class="k">mass</div><div class="v sm">${last.verbalizable_mass != null ? Number(last.verbalizable_mass).toFixed(3) : "—"}</div>

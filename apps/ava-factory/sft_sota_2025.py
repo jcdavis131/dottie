@@ -1,15 +1,15 @@
-"""sft_sota_2025.py — chat/tool-use branch SFT data prep for Dottie.
+"""sft_sota_2025.py — chat/tool-use branch SFT data prep for Ava.
 
 Was a 2-line stub (`print("SFT 2025: iw-SFT importance weighted, instruction
 tuning for code/math/chat branches")`). This is Phase 6 of
 ~/.claude/plans/tender-tinkering-sketch.md: the model-side lever for the
 coding-agent stack — generates and packs the training data a future chat/
-tool-use branch fine-tune needs, so `dottie/train.py --branch chat` has real
+tool-use branch fine-tune needs, so `ava/train.py --branch chat` has real
 data to consume instead of nothing.
 
 Data sources, combined:
-  * dottie/datagen/chat_safety.py — existing chat/safety/delegation corpus.
-  * dottie/datagen/react_tools.py — new (Phase 6) synthetic ReAct tool-use
+  * ava/datagen/chat_safety.py — existing chat/safety/delegation corpus.
+  * ava/datagen/react_tools.py — new (Phase 6) synthetic ReAct tool-use
     corpus, weighted toward grounding/anti-hallucination per the project's
     north star.
   * agent-eval/results/*.json via agent-eval/scripts/export_sft_corpus.py's
@@ -61,6 +61,32 @@ def _load_distilled_docs(distilled_jsonl: str | Path) -> list[dict]:
     return docs
 
 
+def _etcot_chat_docs(seed: int, target_mb: float) -> list[dict]:
+    """ET-CoT systems curriculum (spec 02 B6) re-rendered as R1-style chat SFT
+    samples: the task statement becomes the user turn, the <think> trace +
+    <answer> block the assistant turn (trace_common.to_chat -- bytes of the
+    verified trace are untouched). Same phase="p5" convention as
+    _load_distilled_docs: chat-branch SFT data, not curriculum-phased."""
+    from dottie.datagen.compress_trace import CompressTraceGenerator
+    from dottie.datagen.db_trace import DBTraceGenerator
+    from dottie.datagen.trace_common import to_chat
+
+    docs = []
+    # derived seeds keep this stream independent of the chat/react generators
+    for offset, gen_cls in ((7, DBTraceGenerator), (8, CompressTraceGenerator)):
+        gen = gen_cls(seed=seed + offset)
+        for d in gen.generate(int(target_mb * (1024 ** 2))):
+            docs.append({
+                "doc_id": f"etcot_chat:{d['doc_id']}",
+                "text": to_chat(d["text"]),
+                "task_type": d["task_type"],
+                "concept": d["concept"],
+                "phase": "p5",
+                "source": d["source"],
+            })
+    return docs
+
+
 def prepare_branch_data(
     out_dir: str,
     db_path: str,
@@ -68,6 +94,7 @@ def prepare_branch_data(
     target_mb_per_generator: float = 2.0,
     seed: int = 1234,
     distilled_jsonl: str | Path | None = None,
+    etcot_mb: float = 2.0,
 ) -> dict:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -85,6 +112,11 @@ def prepare_branch_data(
         all_docs.extend(distilled)
         print(f"  distilled: {len(distilled)} docs")
 
+    if etcot_mb > 0:
+        etcot = _etcot_chat_docs(seed, etcot_mb)
+        all_docs.extend(etcot)
+        print(f"  etcot_chat: {len(etcot)} docs")
+
     arr, idx = pack_docs(all_docs, lt)
     bin_path = out / "chat_branch_0000.bin"
     write_shard(arr, idx, bin_path)
@@ -98,7 +130,7 @@ def prepare_branch_data(
     # consumable.
     # Manifest shard-phase vs. doc-phase: the docs themselves keep their
     # honest phase="p3"/"p5" metadata from react_tools.py/chat_safety.py
-    # (unchanged in idx.json). But dottie/train.py's --branch path never reads
+    # (unchanged in idx.json). But ava/train.py's --branch path never reads
     # nano.yaml's branch_chat.mix -- confirmed by grep, it's dead config --
     # so a branch run's phase_for_step() always starts at phase 0 of the
     # BASE curriculum and would need ~200M+ tokens before ever reaching
@@ -139,12 +171,17 @@ def main() -> int:
         "--distilled", default=None,
         help="path to agent-eval's exported distilled_react.jsonl, if any real successes exist yet",
     )
+    ap.add_argument(
+        "--etcot-mb", type=float, default=2.0,
+        help="MB per ET-CoT generator (db_trace + compress_trace) re-rendered as "
+             "<|user|>/<|assistant|> chat samples with <think>/<answer> turns; 0 disables",
+    )
     args = ap.parse_args()
 
     stats = prepare_branch_data(
         args.out, args.db, tokenizer_path=args.tokenizer,
         target_mb_per_generator=args.target_mb, seed=args.seed,
-        distilled_jsonl=args.distilled,
+        distilled_jsonl=args.distilled, etcot_mb=args.etcot_mb,
     )
     print()
     print(f"Data prep done: {stats['tokens']} tokens, {stats['docs']} docs.")

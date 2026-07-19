@@ -42,6 +42,7 @@ from typing import Callable, Iterator
 
 import yaml
 
+from dottie.datagen.adapters import apply_adapter
 from dottie.pipeline.demand import apply_demand_weights, read_demand
 from dottie.pipeline.flow import (
     N_PHASES,
@@ -126,6 +127,8 @@ class SourceSpec:
     split: str = "train"
     score_field: str | None = None
     generator: str | None = None
+    # Optional HF→text transform (see ava.datagen.adapters.ADAPTERS).
+    adapter: str | None = None
     trust_remote_code: bool = False
     phases: tuple[int, ...] = ()
     weight: dict[int, float] = dataclasses.field(default_factory=dict)
@@ -146,6 +149,7 @@ class SourceSpec:
             name=d["name"], kind=d["kind"], text_field=d.get("text_field", "text"),
             dataset=d.get("dataset"), config=d.get("config"), split=d.get("split", "train"),
             score_field=d.get("score_field"), generator=d.get("generator"),
+            adapter=d.get("adapter"),
             trust_remote_code=bool(d.get("trust_remote_code", False)),
             phases=phases, weight=weight, task_type=d.get("task_type", "automatic"),
             filters=d.get("filters") or {}, license=d.get("license"),
@@ -202,21 +206,28 @@ def passes_filters(spec: SourceSpec, phase: int, rec: dict, text: str) -> bool:
 
 def build_doc(spec: SourceSpec, phase: int, rec: dict) -> dict | None:
     """Turn a raw source record into a shard line, or None if it is rejected."""
-    text = rec.get(spec.text_field)
+    adapted = apply_adapter(spec.adapter, rec)
+    if adapted is None:
+        return None
+    text = adapted.get(spec.text_field)
     if not isinstance(text, str) or not text:
         return None
-    if not passes_filters(spec, phase, rec, text):
+    if not passes_filters(spec, phase, adapted, text):
         return None
     meta: dict = {}
     for k in ("language", "license", "repo_name", "path", "url"):
-        if k in rec and rec[k] is not None:
+        if k in adapted and adapted[k] is not None:
+            meta[k] = adapted[k]
+        elif k in rec and rec[k] is not None:
             meta[k] = rec[k]
-    if spec.score_field and spec.score_field in rec:
+    if spec.score_field and spec.score_field in adapted:
+        meta[spec.score_field] = adapted[spec.score_field]
+    elif spec.score_field and spec.score_field in rec:
         meta[spec.score_field] = rec[spec.score_field]
-    # Synthetic generators tag each doc individually; the registry's task_type is
-    # only a fallback for HF records, which carry no such annotation.
-    concept = rec.get("_concept")
-    task_type = rec.get("_task_type") or spec.task_type
+    # Synthetic generators / adapters tag each doc individually; the registry's
+    # task_type is only a fallback for plain HF records.
+    concept = adapted.get("_concept")
+    task_type = adapted.get("_task_type") or spec.task_type
     return {
         "doc_id": doc_id_for(spec.name, text),
         "text": text,
@@ -231,7 +242,7 @@ def build_doc(spec: SourceSpec, phase: int, rec: dict) -> dict | None:
 # ---------------------------------------------------------------------------
 # Synthetic generators.
 #
-# These are NOT defined here. `dottie/datagen/` is the single source of truth: its
+# These are NOT defined here. `ava/datagen/` is the single source of truth: its
 # generators build natural-deduction proofs that are valid by construction,
 # compute every math answer in Python, and exec() code snippets to obtain their
 # doctest outputs. Re-stating simplified versions here would silently ship a
@@ -584,6 +595,14 @@ def serve(
     rng = random.Random(seed)
     last_pause_reason: str | None = None
     last_phase: int | None = None
+    # Smooth-RR state must persist across iterations: rebuilding it fresh each
+    # tick reset `current` to zeros, so next() always returned the max-weight
+    # source and the phase mixture collapsed to a single source (P2 shipped as
+    # 100% encyclopedia instead of the configured 30/20/15/15/10/10 diet).
+    # Rebuild only when the (phase, weights) actually change, which is what
+    # keeps demand-driven reweighting live.
+    rr: WeightedRR | None = None
+    rr_key: tuple | None = None
     it = 0
     log("collector_boot", raw_dir=str(raw_dir), sources=len(sources))
 
@@ -605,14 +624,18 @@ def serve(
             log("collector_resume", phase=phase)
             last_pause_reason = None
 
-        # Rebuild RR each tick from demand so expand/examples reweight live.
+        # Re-derive weights each tick from demand so expand/examples reweight
+        # live; keep the RR's rotation state unless the weights changed.
         demand = read_demand()
         base = sources_for_phase(sources, phase)
         task_types = {s.name: s.task_type for s in sources}
         weighted = apply_demand_weights(
             base, source_task_types=task_types, demand=demand, phase=phase,
         )
-        rr = WeightedRR(weighted)
+        key = (phase, tuple(weighted))
+        if rr is None or key != rr_key:
+            rr = WeightedRR(weighted)
+            rr_key = key
         name = rr.next()
         if name is None:
             log("no_source_for_phase", level="warn", phase=phase)
@@ -693,7 +716,7 @@ def bootstrap_sample(
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Dottie collector")
+    ap = argparse.ArgumentParser(description="Ava collector")
     ap.add_argument("--once", action="store_true", help="collect one shard then exit")
     ap.add_argument("--source", default=None, help="restrict to a single source by name")
     ap.add_argument("--phase", type=int, default=None, help="override target phase")

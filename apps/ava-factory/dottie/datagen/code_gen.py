@@ -80,7 +80,7 @@ def run_sandboxed(code: str, steps: list[tuple[str, bool]]):
         # __name__ is required by the interpreter's class-creation machinery
         # (it becomes the class's __module__); it is plumbing, not a
         # capability, so it is safe to seed here.
-        ns = {"__builtins__": SAFE_BUILTINS, "__name__": "dottie_datagen_sandbox"}
+        ns = {"__builtins__": SAFE_BUILTINS, "__name__": "ava_datagen_sandbox"}
         exec(code, ns)
         rendered = []
         for src, is_expr in steps:

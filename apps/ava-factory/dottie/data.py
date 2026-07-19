@@ -80,7 +80,7 @@ class _LoadedShard:
         Only documents of the SAME task_type are concatenated, so the routing
         loss still has a well-defined target for the whole window. The
         concept_id is taken from the first tagged document a window covers
-        (UNTAGGED_CONCEPT if it covers none); dottie/jlosses.py masks untagged rows
+        (UNTAGGED_CONCEPT if it covers none); ava/jlosses.py masks untagged rows
         out of the reportability loss, so a window of untagged text contributes
         nothing to it rather than contributing noise.
         """
@@ -124,6 +124,7 @@ class StreamingShardSampler:
         self.starve = StarvationTracker(flow)
         self._task_cursor = 0
         self._held: _LoadedShard | None = None
+        self._last_renew = 0.0
 
     # -- resumable state ----------------------------------------------------
 
@@ -139,18 +140,55 @@ class StreamingShardSampler:
     # -- shard acquisition --------------------------------------------------
 
     def _claim(self, phase: int) -> _LoadedShard | None:
-        s = self.m.claim("train", by=self.worker, phases=[phase])
+        s = self.m.claim("train", by=self.worker, phases=[phase],
+                         lease_seconds=self.flow.train_lease_seconds)
         if s is None:
             return None
-        loaded = _LoadedShard(s)
+        try:
+            loaded = _LoadedShard(s)
+        except Exception as exc:  # missing/corrupt .bin or .idx.json
+            # fail(), not crash: a poison row (e.g. a PACKED row whose file the
+            # curator never wrote) would otherwise kill the trainer on every
+            # restart until a human deleted it. fail() retries then parks it.
+            self.m.fail(s.id, by=self.worker, error=f"load failed: {exc}")
+            return None
         expected = self.m.tokenizer_sha()
         if expected and loaded.tokenizer_sha and loaded.tokenizer_sha != expected:
             self.m.fail(s.id, by=self.worker, error="tokenizer sha mismatch")
             return None
+        self._last_renew = time.monotonic()
         return loaded
 
     def _release(self, loaded: _LoadedShard) -> None:
-        self.m.complete(loaded.shard.id, by=self.worker)
+        try:
+            self.m.complete(loaded.shard.id, by=self.worker)
+        except Exception as exc:
+            # Lease expired mid-consumption and the shard was requeued: another
+            # (or a future) claim now owns it. Losing the CONSUMED mark means
+            # some repetition; killing the GPU loop over bookkeeping is worse.
+            print(f"[sampler] complete({loaded.shard.id}) lost the lease: {exc}")
+
+    def _renew_maybe(self) -> None:
+        """Keep the train lease alive while consuming a large shard.
+
+        A packed shard takes the trainer hours; without renewal the lease
+        lapses, requeue_expired() hands the shard back to PACKED, and every
+        re-claim ratchets `attempts` toward the cap (see rescue_stranded).
+        """
+        if self._held is None:
+            return
+        now = time.monotonic()
+        if now - self._last_renew < 300:
+            return
+        self._last_renew = now
+        try:
+            ok = self.m.renew(self._held.shard.id, by=self.worker,
+                              lease_seconds=self.flow.train_lease_seconds)
+            if not ok:
+                print(f"[sampler] lost lease on {self._held.shard.id}; "
+                      "it was requeued and may be re-served")
+        except Exception as exc:
+            print(f"[sampler] lease renew failed: {exc}")
 
     def release_held(self, reason: str = "trainer exited") -> None:
         """Hand a partially-consumed shard back to PACKED.
@@ -171,6 +209,12 @@ class StreamingShardSampler:
     def __enter__(self) -> "StreamingShardSampler":
         # Any shard whose owner died is fair game again.
         self.m.requeue_expired()
+        # And any PACKED shard whose attempts hit the cap through ordinary
+        # crash-restarts (not poison -- those live in FAILED) is claimable again.
+        rescued = self.m.rescue_stranded()
+        if rescued:
+            print(f"[sampler] rescued {len(rescued)} stranded PACKED shards "
+                  "(attempts reset)")
         return self
 
     def __exit__(self, *exc) -> None:
@@ -196,14 +240,21 @@ class StreamingShardSampler:
 
     # -- batching -----------------------------------------------------------
 
-    def _next_task_type(self, loaded: _LoadedShard) -> str | None:
-        """Round-robin over task_types actually present in this shard."""
+    def _present_task_types(self, loaded: _LoadedShard) -> list[str]:
+        """Task types in this shard, each EXACTLY ONCE, rotated for fairness.
+
+        The old round-robin drew len(TASK_TYPES) times regardless of how many
+        types were present, so a single-type shard (the P2 norm: 100%
+        `automatic`) had its every window yielded 4x per claim -- a silent 4x
+        data repetition that inflated tokens_done while unique tokens crawled.
+        The cursor now only rotates which type leads from shard to shard.
+        """
         present = [t for t in TASK_TYPES if loaded.by_task.get(t)]
         if not present:
-            return None
-        t = present[self._task_cursor % len(present)]
+            return []
+        k = self._task_cursor % len(present)
         self._task_cursor += 1
-        return t
+        return present[k:] + present[:k]
 
     def batches(self, phase: int, seq_len: int, micro_batch: int, log=print) -> Iterator[Batch]:
         """Endless stream of task_type-pure batches for `phase`."""
@@ -212,10 +263,7 @@ class StreamingShardSampler:
             self._held = loaded
             produced = False
 
-            for _ in range(len(TASK_TYPES)):
-                tt = self._next_task_type(loaded)
-                if tt is None:
-                    break
+            for tt in self._present_task_types(loaded):
                 buf_x: list[np.ndarray] = []
                 buf_c: list[int] = []
                 for win, cid in loaded.windows(tt, seq_len, self.rng):
@@ -223,6 +271,7 @@ class StreamingShardSampler:
                     buf_c.append(cid)
                     if len(buf_x) == micro_batch:
                         produced = True
+                        self._renew_maybe()
                         yield Batch(
                             input_ids=np.stack(buf_x),
                             concept_ids=np.asarray(buf_c, dtype=np.int64),

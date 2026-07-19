@@ -5,7 +5,7 @@ Thread-safety
 * ``get_engine()`` is a process-wide singleton guarded by ``_ENGINE_LOCK``.
 * Every public ``ServeEngine`` method that touches the model acquires
   ``self._lock`` (same lock the hot-reload watcher uses).
-* Hot-reload (when ``DOTTIE_CKPT`` points at a ``latest`` pointer file) polls
+* Hot-reload (when ``AVA_CKPT`` points at a ``latest`` pointer file) polls
   mtime + content every ~5s on a daemon thread. On change it resolves the
   target ``.pt``, loads weights under ``self._lock``, then swaps them in.
   Concurrent generate/inspect/intervene wait for the swap to finish.
@@ -42,10 +42,10 @@ from evals.interventions import (
 from multi_jspace_module import SPACE_NAMES
 
 _REPO = Path(__file__).resolve().parent.parent
-_DEFAULT_CKPT = "runs/chat/dottie_nano_chat.pt"
+_DEFAULT_CKPT = "runs/chat/ava_nano_chat.pt"
 _DEFAULT_TOKENIZER_CANDIDATES = (
     "/state/tokenizer.json",
-    "data/nano/tokenizer/dottie_nano_bpe.json",
+    "data/nano/tokenizer/ava_nano_bpe.json",
 )
 
 
@@ -81,7 +81,7 @@ def _repo_path(p: str | Path) -> Path:
 
 
 def resolve_ckpt_path(ckpt: str | Path) -> Path:
-    """Resolve ``DOTTIE_CKPT`` to a real ``.pt`` file.
+    """Resolve ``AVA_CKPT`` to a real ``.pt`` file.
 
     ``ckpt/latest`` is a text pointer (not a symlink). Never follow ``*.tmp``.
     """
@@ -122,7 +122,7 @@ class ServeEngine:
         preset: str = "nano",
         enable_hot_reload: bool | None = None,
     ) -> None:
-        raw = ckpt_path if ckpt_path is not None else os.environ.get("DOTTIE_CKPT", _DEFAULT_CKPT)
+        raw = ckpt_path if ckpt_path is not None else os.environ.get("AVA_CKPT", _DEFAULT_CKPT)
         self._ckpt_env = str(raw)
         self._ckpt_pointer = _repo_path(raw)
         self._tokenizer_path = _resolve_tokenizer_path(tokenizer_path)
@@ -162,13 +162,13 @@ class ServeEngine:
         except FileNotFoundError:
             raise FileNotFoundError(
                 f"checkpoint missing at {pointer} "
-                f"(set DOTTIE_CKPT to a .pt path or a ckpt/latest pointer; "
-                f"current DOTTIE_CKPT={self._ckpt_env!r})"
+                f"(set AVA_CKPT to a .pt path or a ckpt/latest pointer; "
+                f"current AVA_CKPT={self._ckpt_env!r})"
             ) from None
         if not resolved.is_file():
             raise FileNotFoundError(
                 f"checkpoint missing at {resolved} "
-                f"(set DOTTIE_CKPT; current DOTTIE_CKPT={self._ckpt_env!r})"
+                f"(set AVA_CKPT; current AVA_CKPT={self._ckpt_env!r})"
             )
         return resolved
 
@@ -516,11 +516,17 @@ class ServeEngine:
 
 
 def get_engine() -> ServeEngine:
-    """Lazy, thread-safe process singleton."""
+    """Lazy, thread-safe process singleton.
+
+    Preset follows ``AVA_PRESET`` (compose/.env) so mini training is not
+    silently served behind a nano architecture graph. Tokenizer still
+    resolves via ``AVA_TOKENIZER`` / ``/state/tokenizer.json`` first.
+    """
     global _ENGINE
     with _ENGINE_LOCK:
         if _ENGINE is None:
-            _ENGINE = ServeEngine()
+            preset = os.environ.get("AVA_PRESET", "nano").strip() or "nano"
+            _ENGINE = ServeEngine(preset=preset)
         return _ENGINE
 
 

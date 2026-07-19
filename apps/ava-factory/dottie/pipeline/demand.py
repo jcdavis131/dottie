@@ -15,6 +15,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from dottie.pipeline.evolve_lite import bliss_lite_effort_nudge
 from dottie.pipeline.flow import FlowConfig, N_PHASES, prefetch_phases
 
 _DEFAULT_DEMAND = "/state/demand.json"
@@ -170,6 +171,24 @@ def compute_demand(
 
     if not reasons:
         reasons.append("runway healthy — maintain mixture")
+
+    # BLISS-lite: when lm is rising, re-tilt effort toward the largest deficits.
+    efforts = [p.effort for p in phase_rows]
+    defs = [p.deficit for p in phase_rows]
+    nudged = bliss_lite_effort_nudge(efforts, defs, lm_trend=lm_trend)
+    if nudged != efforts:
+        reasons.append("bliss_lite → deficit-tilted effort")
+        phase_rows = [
+            PhaseDemand(
+                phase=p.phase,
+                tokens_ready=p.tokens_ready,
+                packed_min=p.packed_min,
+                deficit=p.deficit,
+                effort=nudged[i],
+                actions=p.actions,
+            )
+            for i, p in enumerate(phase_rows)
+        ]
 
     return DemandSnapshot(
         ts=float(now if now is not None else time.time()),

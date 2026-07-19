@@ -6,7 +6,7 @@ CHAT_HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Dottie Chat</title>
+<title>Ava Chat</title>
 <style>
 :root {
   --bg: #f4f2ec;
@@ -87,7 +87,7 @@ main {
 </head>
 <body>
 <header>
-  <h1>Dottie chat</h1>
+  <h1>Ava chat</h1>
   <div class="meta">
     <span id="engineStatus"><span class="dot warn"></span>checking…</span>
     · <a href="/dashboard">dashboard</a>

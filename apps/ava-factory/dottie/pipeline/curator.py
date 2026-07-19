@@ -67,6 +67,8 @@ from dottie.pipeline.split import assign_split
 DEFAULT_CONFIG = "/app/configs/pipeline.yaml"
 RENEW_INTERVAL_SECONDS = 60.0
 IDLE_POLL_SECONDS = 5.0
+# Reclaim orphan CLAIMED_* rows after curator/redeploy (leases expire, workers gone).
+REQUEUE_EXPIRED_EVERY_IDLE = 12  # ~60s at IDLE_POLL_SECONDS=5
 
 
 def _log(event: str, **fields) -> None:
@@ -168,6 +170,12 @@ class Curator:
         last_renew = time.time()
         try:
             for doc in _read_raw_docs(raw_path):
+                # Renew on wall-clock even when dedup is slow / docs are rejected —
+                # otherwise leases expire mid-shard (seen live: ~15–25 min packs).
+                if time.time() - last_renew >= RENEW_INTERVAL_SECONDS:
+                    m.renew(shard.id, by=self.worker)
+                    last_renew = time.time()
+
                 counts["read"] += 1
                 doc_id = doc.get("doc_id") or f"{doc.get('source','?')}:{counts['read']}"
 
@@ -204,10 +212,6 @@ class Curator:
                     "phase": doc.get("phase", f"p{phase_num}"),
                 })
                 counts["kept"] += 1
-
-                if time.time() - last_renew >= RENEW_INTERVAL_SECONDS:
-                    m.renew(shard.id, by=self.worker)
-                    last_renew = time.time()
         finally:
             deduper.close()
 
@@ -268,6 +272,12 @@ class Curator:
             tokenizer_sha=self.lt.sha256,
             bytes_=(tw["bytes"] if tw else 0),
         )
+        if tw is None:
+            # Every doc went to val/test (or was filtered): the completed row
+            # kept its ORIGINAL path -- the raw .zst that step 4 is about to
+            # delete. Left PACKED, the trainer claims it, fails to load it,
+            # and burns attempts on a row with nothing to train. Retire it.
+            m.mark_deleted([shard.id])
 
         # 4. Delete the raw file LAST — after the row is safely PACKED. A crash
         #    before this only leaks an inert raw file, never loses data.
@@ -309,23 +319,36 @@ class Curator:
         self._install_signal_handlers()
         _log("start", worker=self.worker, once=once, raw_dir=self.raw_dir, packed_dir=self.packed_dir)
         with Manifest(self.db_path) as m:
+            # Startup reclaim — redeploys leave orphan CLAIMED_CURATE with dead workers.
+            requeued = m.requeue_expired()
+            if requeued:
+                _log("requeue_expired", count=len(requeued), ids=requeued[:8])
             if once:
                 did = self.run_once(m)
                 _log("stop", reason="once", processed=did)
                 return 0
+            idle_ticks = 0
             while not self._stop:
                 did = self.run_once(m)
                 if not did:
+                    idle_ticks += 1
+                    if idle_ticks >= REQUEUE_EXPIRED_EVERY_IDLE:
+                        requeued = m.requeue_expired()
+                        if requeued:
+                            _log("requeue_expired", count=len(requeued), ids=requeued[:8])
+                        idle_ticks = 0
                     for _ in range(int(IDLE_POLL_SECONDS * 10)):
                         if self._stop:
                             break
                         time.sleep(0.1)
+                else:
+                    idle_ticks = 0
         _log("stop", reason="sigterm" if self._stop else "loop_end")
         return 0
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Dottie curator service")
+    ap = argparse.ArgumentParser(description="Ava curator service")
     ap.add_argument("--once", action="store_true", help="process a single shard and exit")
     ap.add_argument("--config", default=None)
     ap.add_argument("--db", default=None)

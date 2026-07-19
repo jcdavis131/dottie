@@ -21,9 +21,20 @@ from typing import Mapping
 
 import torch
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint as _ckpt
 
 from dottie.config import SPACES, DottieConfig
 from multi_jspace_module import MultiJSpaceLosses
+
+# Rows per cross-entropy chunk. The CE upcast used to materialize the FULL
+# [B*T, V] logits in fp32 twice (the .float() copy + log_softmax's buffer):
+# at mb=8 x seq=1024 x vocab=32k that is ~2.1GB of transients per micro-batch
+# on a 12GB GPU running at 97% -- the head of the CUDA 'unknown error' /
+# CUBLAS_INTERNAL_ERROR crash loop. Chunking bounds the transient; wrapping
+# each chunk in activation checkpointing keeps the fp32 copies out of the
+# autograd graph (recomputed on backward). Numerics are exact: sum-reduced
+# chunks divided by N == the original mean CE.
+_CE_CHUNK_ROWS = 2048
 
 
 @dataclasses.dataclass
@@ -51,12 +62,24 @@ class JSpaceObjective(torch.nn.Module):
 
     # -- pieces --------------------------------------------------------------
 
+    @staticmethod
+    def _ce_sum(lg: torch.Tensor, tgt: torch.Tensor) -> torch.Tensor:
+        # float() so bf16 autocast doesn't degrade the CE
+        return F.cross_entropy(lg.float(), tgt, reduction="sum")
+
     def _lm_loss(self, logits: torch.Tensor, input_ids: torch.Tensor) -> torch.Tensor:
-        # next-token prediction; float() so bf16 autocast doesn't degrade the CE
-        return F.cross_entropy(
-            logits[:, :-1].reshape(-1, logits.shape[-1]).float(),
-            input_ids[:, 1:].reshape(-1),
-        )
+        """Next-token prediction, chunked to bound fp32 transients (see top)."""
+        lg = logits[:, :-1].reshape(-1, logits.shape[-1])
+        tgt = input_ids[:, 1:].reshape(-1)
+        n = lg.shape[0]
+        if n <= _CE_CHUNK_ROWS or not lg.requires_grad:
+            return F.cross_entropy(lg.float(), tgt)
+        total: torch.Tensor | None = None
+        for i in range(0, n, _CE_CHUNK_ROWS):
+            piece = _ckpt(self._ce_sum, lg[i:i + _CE_CHUNK_ROWS],
+                          tgt[i:i + _CE_CHUNK_ROWS], use_reentrant=False)
+            total = piece if total is None else total + piece
+        return total / n
 
     def _report_loss(self, model, jm: Mapping, concept_ids: torch.Tensor | None) -> torch.Tensor:
         """CE(verbalizer(S2 workspace mean) -> concept token), over TAGGED docs only.
@@ -134,7 +157,9 @@ class JSpaceObjective(torch.nn.Module):
         )
 
     def _routing(self, jm: Mapping, task_type: str) -> torch.Tensor:
-        return self.losses.routing_loss(jm["route_probs"], task_type)
+        return self.losses.routing_loss(
+            jm["route_probs"], task_type, targets=self.j.routing_targets,
+        )
 
     # -- entry point ---------------------------------------------------------
 
