@@ -1,3 +1,8 @@
+# =============================================================================
+# POST-MINI mixture — apply AFTER mini base_final (Spec 15).
+# Live collectors must keep using sources.yaml until then.
+# Apply: python scripts/apply_post_mini_sources.py
+# =============================================================================
 # Source registry for the Ava collector.
 #
 # Maps HuggingFace datasets and local synthetic generators onto the 6-phase
@@ -10,9 +15,9 @@
 # curriculum material from the foundation phase onward, not an SFT bolt-on:
 #   P0 logic       : synthetic only
 #   P1 math        : open-web-math (light) + synthetic math
-#   P2 foundation  : fineweb-edu (edu>=2) + github-code + cosmopedia + synthetic facts + react skills + ET-CoT db/compression micro-traces
-#   P3 reasoning   : proof-pile-2 + open-web-math + synthetic CoT/temporal + react tool-use + synthetic workflows + ET-CoT db/compression traces
-#   P4 long        : fineweb-edu (long docs) + synthetic needle-in-haystack + synthetic workflows + long ET-CoT db/compression traces
+#   P2 foundation  : fineweb-edu (edu>=2) + github-code + cosmopedia + synthetic facts + react skills
+#   P3 reasoning   : proof-pile-2 + open-web-math + synthetic CoT/temporal + react tool-use + synthetic workflows
+#   P4 long        : fineweb-edu (long docs) + synthetic needle-in-haystack + synthetic workflows
 #   P5 anneal      : fineweb-edu (edu>=4.5) + proof-pile-2 (verified) + synthetic safety + react grounding + workflows
 #
 # Every `dataset` + `config` pair below was verified against the HF API to exist
@@ -31,7 +36,8 @@
 #   trust_remote_code  true for script-based HF datasets (proof-pile-2, github-code)
 #   phases      curriculum phases this source feeds
 #   weight      {phase: mixture_weight} -- per phase, weights across sources sum ~1.0
-#   task_type   automatic | deliberate | safety | temporal
+#   task_type   automatic | deliberate | safety | temporal | tool_selection
+#   adapter     optional HF→ReAct transform key (ava.datagen.adapters.ADAPTERS)
 #   filters     min_chars (int or {phase:int}), min_edu_score ({phase:float} on score_field)
 #   license / gated  provenance
 
@@ -82,6 +88,42 @@ sources:
     license: synthetic
     gated: false
 
+  # SynPro-lite (faithful organic rephrase). Weight 0 until enabled.
+  - name: synth_synpro
+    kind: synthetic
+    generator: synpro
+    text_field: text
+    phases: [2, 3]
+    weight: {2: 0.0, 3: 0.0}
+    task_type: automatic
+    filters: {min_chars: 1}
+    license: synthetic
+    gated: true
+
+  # Think-in-code (reason→exec→answer). Boosted while proof_pile_2 is quarantined.
+  - name: synth_think_code
+    kind: synthetic
+    generator: think_code
+    text_field: text
+    phases: [3, 5]
+    weight: {3: 0.15, 5: 0.15}
+    task_type: deliberate
+    filters: {min_chars: 1}
+    license: synthetic
+    gated: false
+
+  # LLM-VM tool schedules (weight 0 here too until operator flip with L5).
+  - name: synth_think_tools
+    kind: synthetic
+    generator: think_tools
+    text_field: text
+    phases: [3, 4, 5]
+    weight: {3: 0.0, 4: 0.0, 5: 0.0}
+    task_type: tool_selection
+    filters: {min_chars: 1}
+    license: synthetic
+    gated: false
+
   - name: synth_cot
     kind: synthetic
     generator: math
@@ -125,8 +167,45 @@ sources:
     generator: react_tools
     text_field: text
     phases: [2, 3, 5]
-    weight: {2: 0.15, 3: 0.24, 5: 0.25}
+    weight: {2: 0.07, 3: 0.15, 5: 0.18}
     task_type: deliberate
+    filters: {min_chars: 1}
+    license: synthetic
+    gated: false
+
+  # Tool-use curriculum (spec 15 §4) — the deliberate successor to synth_react:
+  # a 5-level ladder (grounded single -> multi-step chain -> error recovery ->
+  # tool selection among many -> negative/refuse) + P4 search/cite, same
+  # frozen-tokenizer-safe plain-text ReAct format.
+  #
+  # ACTIVE here (post-mini). Live mini still uses sources.yaml at weight 0.
+  - name: synth_tool_use
+    kind: synthetic
+    generator: tool_use
+    text_field: text
+    phases: [2, 3, 4, 5]
+    weight: {2: 0.08, 3: 0.15, 4: 0.10, 5: 0.12}
+    task_type: tool_selection
+    filters: {min_chars: 1}
+    license: synthetic
+    gated: false
+
+  # Interlinked LLM-wiki corpora (Karpathy wiki pattern: entity/concept pages,
+  # index.md, log.md, [[cross-links]]; every number computed -- Kepler periods,
+  # equilibrium temperatures, aggregates). Text-first today; the same pages
+  # render deterministically into 512x512 page images via
+  # ava/pipeline/pxpipe.py for the optical-compression training arm
+  # (specs/12_pxpipe_optical_wiki.md), so (screenshot, text) pairs are derived
+  # at train time and never stored. Weights below were shaved off the largest
+  # same-phase sibling (fineweb_edu p2 0.35->0.30, open_web_math p3
+  # 0.20->0.15, fineweb_edu p4 0.55->0.45) so each phase still sums to 1.0.
+  - name: synth_wiki_px
+    kind: synthetic
+    generator: wiki
+    text_field: text
+    phases: [2, 3, 4]
+    weight: {2: 0.05, 3: 0.05, 4: 0.10}
+    task_type: automatic
     filters: {min_chars: 1}
     license: synthetic
     gated: false
@@ -144,7 +223,7 @@ sources:
     generator: jobbench
     text_field: text
     phases: [3, 4, 5]
-    weight: {3: 0.10, 4: 0.10, 5: 0.05}
+    weight: {3: 0.07, 4: 0.10, 5: 0.05}
     task_type: deliberate
     filters: {min_chars: 1}
     license: synthetic
@@ -155,39 +234,8 @@ sources:
     generator: gaia2
     text_field: text
     phases: [3, 4, 5]
-    weight: {3: 0.05, 4: 0.15, 5: 0.10}
+    weight: {3: 0.03, 4: 0.15, 5: 0.10}
     task_type: temporal
-    filters: {min_chars: 1}
-    license: synthetic
-    gated: false
-
-  # Execution-Trace CoT systems curriculum (databases + compression) -- see
-  # ava/datagen/db_trace.py / compress_trace.py and specs/02 B6. Traces of
-  # engine execution (B-tree page loads, hash probing, HNSW hops, LZ77
-  # windows, Huffman merges, equal-info-window arithmetic coding) wrapped in
-  # <think>/<answer>. P2 = micro-traces as foundation vocabulary; P3 =
-  # medium traces incl. checkpoint elision; P4 = long full traces. Weights
-  # for both were carved out by rescaling fineweb_edu/cosmopedia (P2),
-  # synth_react/open_web_math/proof_pile_2 (P3), and fineweb_edu (P4) so
-  # each phase still sums to ~1.0.
-  - name: synth_db_trace
-    kind: synthetic
-    generator: db_trace
-    text_field: text
-    phases: [2, 3, 4]
-    weight: {2: 0.05, 3: 0.06, 4: 0.05}
-    task_type: deliberate
-    filters: {min_chars: 1}
-    license: synthetic
-    gated: false
-
-  - name: synth_compress_trace
-    kind: synthetic
-    generator: compress_trace
-    text_field: text
-    phases: [2, 3, 4]
-    weight: {2: 0.05, 3: 0.06, 4: 0.05}
-    task_type: deliberate
     filters: {min_chars: 1}
     license: synthetic
     gated: false
@@ -200,7 +248,7 @@ sources:
     split: train
     text_field: text
     phases: [1, 3]
-    weight: {1: 0.5, 3: 0.17}
+    weight: {1: 0.5, 3: 0.25}   # +0.10 from quarantined proof_pile_2
     task_type: deliberate
     filters: {min_chars: 200}
     license: odc-by
@@ -214,7 +262,7 @@ sources:
     text_field: text
     score_field: score
     phases: [2, 4, 5]
-    weight: {2: 0.30, 4: 0.45, 5: 0.20}
+    weight: {2: 0.30, 4: 0.35, 5: 0.25}   # post-mini: freed mass for synth_tool_use P4/P5
     task_type: automatic
     filters:
       min_chars: {2: 200, 4: 4000, 5: 200}   # P4 = long documents only
@@ -243,12 +291,15 @@ sources:
     split: train
     text_field: text
     phases: [2]
-    weight: {2: 0.05}
+    weight: {2: 0.10}
     task_type: automatic
     filters: {min_chars: 200}
     license: apache-2.0
     gated: false
 
+  # QUARANTINED 2026-07-15: HF zstd stream throws "Unknown frame descriptor"
+  # (burns collector retries). Weights parked at 0; mass moved to think_code /
+  # open_web_math / fineweb_edu / react until a working mirror or decode path.
   - name: proof_pile_2
     kind: hf
     dataset: EleutherAI/proof-pile-2
@@ -257,10 +308,43 @@ sources:
     text_field: text
     trust_remote_code: true
     phases: [3, 5]
-    weight: {3: 0.17, 5: 0.25}
+    weight: {3: 0.0, 5: 0.0}
     task_type: deliberate
     filters: {min_chars: 200}
     license: various
+    gated: true
+
+  # xLAM / APIGen 60k → ReAct (adapter). Weight 0 until post-mini / overtrain
+  # operator flip; suggested start once activated: {3: 0.05, 5: 0.05}.
+  - name: xlam_react
+    kind: hf
+    dataset: Salesforce/xlam-function-calling-60k
+    config: dataset
+    split: train
+    text_field: text
+    adapter: xlam_react
+    phases: [3, 5]
+    weight: {3: 0.0, 5: 0.0}
+    task_type: tool_selection
+    filters: {min_chars: 1}
+    license: cc-by-4.0
+    gated: false
+
+  # Pass-only SWE-smith trajectories → fixed catalog ReAct. Weight 0 until
+  # activated; filter resolved=true is enforced inside adapter: swe_react.
+  # Suggested start: {3: 0.05, 4: 0.05, 5: 0.05} (cap ≤10% phase).
+  - name: swe_traj_react
+    kind: hf
+    dataset: SWE-bench/SWE-smith-trajectories
+    config: default
+    split: tool
+    text_field: text
+    adapter: swe_react
+    phases: [3, 4, 5]
+    weight: {3: 0.0, 4: 0.0, 5: 0.0}
+    task_type: tool_selection
+    filters: {min_chars: 1}
+    license: mit
     gated: false
 
   # ---- smoke-test source (small, fast, ungated) ------------------------------
