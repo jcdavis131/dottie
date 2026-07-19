@@ -40,7 +40,29 @@ def run_implementation(ledger: Ledger, policy: Policy, *, workspace_root: str | 
         return None
 
     text = policy(prompts.implementation_prompt(exp.hypothesis))  # unavailability propagates
-    impl, dry = prompts.parse_implementation(text)
+    impl = dry = None
+    parse_attempts = 0
+    while True:
+        try:
+            impl, dry = prompts.parse_implementation(text)
+            break
+        except ValueError as e:
+            # Unparseable draft: feed the exact parse failure back through the same correction
+            # path validation failures use, consuming the same retry budget. All-unparseable is
+            # recorded as an honest failed_validation dead end, never an unhandled crash.
+            parse_attempts += 1
+            if parse_attempts > max_retries:
+                ledger.transition(
+                    exp.id, FAILED_VALIDATION, attempts=parse_attempts,
+                    failure=f"implementation output unparseable after {parse_attempts} "
+                            f"attempt(s): {e}", ts=ts)
+                return {"experiment": exp.id, "state": FAILED_VALIDATION,
+                        "level": "parse", "attempts": parse_attempts}
+            feedback = (f"Validation failed at level 'parse' (fail). Detail:\n{e}\n"
+                        "Your entire response must be ONE JSON object matching the "
+                        "implementation schema — no markdown fences, no prose, and every "
+                        "string field valid JSON (escape backslashes and newlines).")
+            text = policy(prompts.correction_prompt(text, feedback))
 
     # Holder tracks the latest parsed impl/dry as the corrector re-calls the model, so the final
     # written module matches outcome.code.

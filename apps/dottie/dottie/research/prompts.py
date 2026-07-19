@@ -29,6 +29,14 @@ DEFAULT_SEARCH_SPACE = [
     "exact representations.",
 ]
 
+# System prompt for the research workers' plain completions (OllamaPolicy.complete). The CodeAct
+# agent protocol must NOT apply here — these prompts demand a bare JSON object, not agent turns.
+RESEARCH_SYSTEM_PROMPT = (
+    "You are an automated research worker in an ML experiment pipeline. Follow the user's "
+    "instructions exactly. Respond with ONLY the JSON requested: no markdown fences, no prose "
+    "before or after, and every string field must be valid JSON (escape backslashes in LaTeX)."
+)
+
 IDEATION_SCHEMA = {
     "hypothesis_name": "concise academic name",
     "theoretical_intuition": "2-3 sentences: the mechanism and why it solves the bottleneck",

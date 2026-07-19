@@ -16,7 +16,7 @@ import sys
 from typing import Any, Dict, Optional
 
 from dottie.policy import OllamaPolicy, DottiePolicyUnavailable
-from dottie.research import evaluate, ideation, implementation, logger, paths, train
+from dottie.research import evaluate, ideation, implementation, logger, paths, prompts, train
 from dottie.research.ledger import Baseline, Ledger
 
 
@@ -48,8 +48,10 @@ def cmd_seed_baseline(args) -> int:
     return 0
 
 
-def _policy(args) -> OllamaPolicy:
-    return OllamaPolicy()  # reads DOTTIE_OLLAMA_URL / DOTTIE_OLLAMA_MODEL from the env
+def _policy(args):
+    """Research workers get a plain JSON-completion callable, not the CodeAct agent protocol."""
+    pol = OllamaPolicy()  # reads DOTTIE_OLLAMA_URL / DOTTIE_OLLAMA_MODEL from the env
+    return lambda prompt: pol.complete(prompt, system=prompts.RESEARCH_SYSTEM_PROMPT)
 
 
 def cmd_ideate(args) -> int:

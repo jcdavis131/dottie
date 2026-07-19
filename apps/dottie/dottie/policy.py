@@ -114,11 +114,15 @@ class OllamaPolicy(PolicyProvider):
         model: Optional[str] = None,
         *,
         connect_timeout_s: float = 5.0,
-        read_timeout_s: float = 300.0,
+        read_timeout_s: Optional[float] = None,
         temperature: float = 0.2,
     ) -> None:
         self.base_url = (base_url or os.environ.get("DOTTIE_OLLAMA_URL") or DEFAULT_OLLAMA_URL).rstrip("/")
         self.model = model or os.environ.get("DOTTIE_OLLAMA_MODEL") or DEFAULT_OLLAMA_MODEL
+        if read_timeout_s is None:
+            # Env knob for slow local models (partial VRAM offload, thinking modes). A timeout
+            # still refuses honestly — this only sets how long we wait for a REAL reply.
+            read_timeout_s = float(os.environ.get("DOTTIE_OLLAMA_READ_TIMEOUT_S") or 300.0)
         self.timeout = httpx.Timeout(
             connect=connect_timeout_s, read=read_timeout_s, write=30.0, pool=connect_timeout_s
         )
@@ -127,6 +131,19 @@ class OllamaPolicy(PolicyProvider):
     def __call__(self, transcript: str) -> str:
         messages = [{"role": "system", "content": CODEACT_SYSTEM_PROMPT}]
         messages += transcript_to_messages(transcript)
+        return self._chat(messages)
+
+    def complete(self, prompt: str, *, system: Optional[str] = None) -> str:
+        """Plain single-turn completion WITHOUT the CodeAct agent protocol.
+
+        The research workers use this: under the CodeAct system prompt the model answers with
+        fenced Python + FINAL prose (its agent protocol), not the strict JSON the research
+        prompts demand. Same honest transport/refusal semantics as ``__call__``."""
+        messages = ([{"role": "system", "content": system}] if system else [])
+        messages.append({"role": "user", "content": prompt})
+        return self._chat(messages)
+
+    def _chat(self, messages: list) -> str:
         payload = {
             "model": self.model,
             "messages": messages,

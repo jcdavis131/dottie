@@ -187,6 +187,19 @@ def test_failed_validation_path(led, tmp_path):
     assert exp.failure and "validation failed" in exp.failure
 
 
+def test_unparseable_implementation_is_honest_failed_validation(led, tmp_path):
+    # policy answers the implementation prompt with prose (no JSON at all) every time ->
+    # recorded as failed_validation at the 'parse' level, never an unhandled crash.
+    def prose_policy(prompt):
+        if "Principal ML Engineer" in prompt or "failed automated validation" in prompt:
+            return "Sure! Here is my plan: first I will define a module..."
+        return json.dumps(HYP)
+    r = _implement(led, tmp_path, prose_policy)
+    assert r["state"] == FAILED_VALIDATION and r["level"] == "parse"
+    exp = led.get(r["experiment"])
+    assert exp.failure and "unparseable" in exp.failure
+
+
 def test_nan_module_dies_at_validation(led, tmp_path):
     # A module that produces NaN is caught at the dry-run (validation), never reaching training.
     r = _implement(led, tmp_path, make_policy(code=NAN_CODE, name="Diverge"))
