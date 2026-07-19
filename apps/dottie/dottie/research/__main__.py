@@ -176,6 +176,84 @@ def cmd_status(args) -> int:
     return 0
 
 
+# --------------------------------------------------------------------------- continuous runner
+
+def _choose_action(counts: Dict[str, int], *, now: float, last_ideate_ts: float,
+                   ideate_cooldown_s: float) -> str:
+    """Pure stage-selection policy for the continuous runner (testable without
+    Ollama/GPU). Drain order: evaluate (instant, finalizes verdicts) -> train
+    (~seconds on GPU) -> implement (Ollama minutes) -> ideate (only on an empty
+    pipeline, rate-limited) -> idle."""
+    if counts.get("evaluation_pending", 0):
+        return "evaluate"
+    if counts.get("ready_for_training", 0):
+        return "train"
+    if counts.get("pending", 0):
+        return "implement"
+    if now - last_ideate_ts >= ideate_cooldown_s:
+        return "ideate"
+    return "idle"
+
+
+def cmd_run(args) -> int:
+    """Continuous chained runner: the moment one stage finishes, the next eligible
+    stage starts — no hourly cadence. Honest refusals (Ollama down, unparseable
+    ideation) back off exponentially instead of spinning; five CONSECUTIVE
+    unexpected errors exit non-zero so the scheduler heartbeat can restart clean."""
+    import time
+    led = _ledger(args)
+    last_ideate = 0.0
+    backoff = float(args.idle_seconds)
+    consecutive_errors = 0
+    actions = 0
+    while args.max_actions == 0 or actions < args.max_actions:
+        actions += 1
+        action = _choose_action(led.counts(), now=time.time(), last_ideate_ts=last_ideate,
+                                ideate_cooldown_s=args.ideate_cooldown)
+        rec: Dict[str, Any] = {"ts": time.time(), "action": action}
+        try:
+            if action == "idle":
+                time.sleep(float(args.idle_seconds))
+                continue
+            if action == "evaluate":
+                rec["result"] = evaluate.run_evaluation(led)
+            elif action == "train":
+                rec["result"] = train.run_training(led, trainer=_trainer(args),
+                                                   config={"steps": args.steps})
+            elif action == "implement":
+                rec["result"] = implementation.run_implementation(
+                    led, _policy(args), workspace_root=paths.workspace_root(args.data_dir),
+                    max_retries=args.max_retries)
+            else:  # ideate
+                last_ideate = time.time()
+                rec["result"] = ideation.run_ideation(
+                    led, _policy(args, temperature=prompts.IDEATION_TEMPERATURE),
+                    bottleneck=args.bottleneck, n_ideas=args.n)
+            consecutive_errors = 0
+            backoff = float(args.idle_seconds)
+            _refresh_status(led, args)
+            print(json.dumps(rec, default=str), flush=True)
+        except (DottiePolicyUnavailable, ValueError) as e:
+            # Honest refusal path: state the reason, back off, try again later.
+            rec["refusal"] = str(e)[:300]
+            print(json.dumps(rec, default=str), flush=True)
+            time.sleep(backoff)
+            backoff = min(backoff * 2, 900.0)
+        except KeyboardInterrupt:
+            return 0
+        except Exception as e:
+            consecutive_errors += 1
+            rec["error"] = f"{type(e).__name__}: {e}"[:300]
+            print(json.dumps(rec, default=str), flush=True)
+            if consecutive_errors >= 5:
+                print(json.dumps({"fatal": "5 consecutive unexpected errors — exiting "
+                                           "for a clean scheduler restart"}), flush=True)
+                return 5
+            time.sleep(backoff)
+            backoff = min(backoff * 2, 900.0)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="python -m dottie.research", description=__doc__)
     p.add_argument("--data-dir", default=None, help="Dottie data dir (default: DOTTIE_DATA_DIR)")
@@ -220,6 +298,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     ev = sub.add_parser("evaluate", help="evaluator & hill-climber")
     ev.set_defaults(func=cmd_evaluate)
+
+    rn = sub.add_parser("run", help="continuous chained runner (replaces hourly cadence)")
+    rn.add_argument("--bottleneck", default="loss spikes during early pre-training")
+    rn.add_argument("--n", type=int, default=3, help="ideas per refill when the queue empties")
+    rn.add_argument("--steps", type=int, default=60)
+    rn.add_argument("--max-retries", type=int, default=3)
+    rn.add_argument("--trainer", choices=["proxy", "factory"], default="proxy")
+    rn.add_argument("--idle-seconds", type=float, default=30.0)
+    rn.add_argument("--ideate-cooldown", type=float, default=600.0,
+                    help="min seconds between ideations on an empty pipeline — dedup "
+                         "regenerates mostly dupes faster than this")
+    rn.add_argument("--max-actions", type=int, default=0, help="0 = run forever")
+    rn.set_defaults(func=cmd_run)
 
     st = sub.add_parser("status", help="print the research status snapshot")
     st.set_defaults(func=cmd_status)

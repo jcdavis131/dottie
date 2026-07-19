@@ -11,7 +11,7 @@
 
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet("ideate", "implement", "train", "evaluate", "loop")]
+    [ValidateSet("ideate", "implement", "train", "evaluate", "loop", "run")]
     [string]$Worker,
 
     [Parameter(ValueFromRemainingArguments = $true)]

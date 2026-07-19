@@ -5,10 +5,10 @@
 # worker (or, for training, the GPU) is still busy from the previous tick — so an hourly cron
 # never stacks a second 14-hour training run on top of a running one.
 #
-# Usage: research_worker.sh <ideate|implement|train|evaluate|loop> [extra args...]
+# Usage: research_worker.sh <ideate|implement|train|evaluate|loop|run> [extra args...]
 set -euo pipefail
 
-WORKER="${1:?usage: research_worker.sh <ideate|implement|train|evaluate|loop> [args...]}"
+WORKER="${1:?usage: research_worker.sh <ideate|implement|train|evaluate|loop|run> [args...]}"
 shift || true
 
 REPO="${DOTTIE_ROOT:-$HOME/workspace/dottie}"

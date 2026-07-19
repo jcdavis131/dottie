@@ -14,13 +14,18 @@ DOTTIE_OLLAMA_MODEL=qwen3:32b
 SHELL=/bin/bash
 
 # 1. Ideation — daily at midnight. Grounds N hypotheses in the current real baseline + dead ends.
-0  0 * * *  $DOTTIE_ROOT/apps/dottie/research_orchestration/research_worker.sh ideate --n 3 --bottleneck "early pre-training loss spikes and MoE routing collapse"
+# 0  0 * * *  $DOTTIE_ROOT/apps/dottie/research_orchestration/research_worker.sh ideate --n 3 --bottleneck "early pre-training loss spikes and MoE routing collapse"
 
 # 2. Implementation — minute 15 hourly. Drafts + 4-level-validates the next pending hypothesis.
-15 * * * *  $DOTTIE_ROOT/apps/dottie/research_orchestration/research_worker.sh implement
+# 15 * * * *  $DOTTIE_ROOT/apps/dottie/research_orchestration/research_worker.sh implement
 
 # 3. Training — minute 30 hourly. Real measurement; flock skips the tick if a run is in flight.
-30 * * * *  $DOTTIE_ROOT/apps/dottie/research_orchestration/research_worker.sh train --steps 200
+# 30 * * * *  $DOTTIE_ROOT/apps/dottie/research_orchestration/research_worker.sh train --steps 200
 
 # 4. Evaluation & hill-climb — minute 45 hourly. Promotes only on a real, paired improvement.
-45 * * * *  $DOTTIE_ROOT/apps/dottie/research_orchestration/research_worker.sh evaluate
+# 45 * * * *  $DOTTIE_ROOT/apps/dottie/research_orchestration/research_worker.sh evaluate
+
+# Continuous runner (replaces the per-stage cadence above, kept commented for
+# reference): chains evaluate->train->implement->ideate immediately; the hourly
+# flock line is a self-heal heartbeat — a live runner makes it a no-op.
+5 * * * *  $DOTTIE_ROOT/apps/dottie/research_orchestration/research_worker.sh run --trainer factory --steps 150 --max-retries 5 --n 3

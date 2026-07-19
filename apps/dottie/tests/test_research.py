@@ -329,3 +329,22 @@ def test_logger_and_status(led, tmp_path, monkeypatch):
     s = logger.build_status(led)
     assert s["service"] == "dottie-research" and s["baseline"]["metric_value"] == 4.5
     assert set(s["counts"]) >= {"total", "sota", "pending"}
+
+
+def test_runner_stage_selection_policy():
+    # The continuous runner drains the pipeline end-to-end: evaluate first (instant),
+    # then train, then implement; ideate only on an empty pipeline and rate-limited.
+    from dottie.research.__main__ import _choose_action
+    now = 1000.0
+    assert _choose_action({"evaluation_pending": 1, "ready_for_training": 2, "pending": 3},
+                          now=now, last_ideate_ts=0, ideate_cooldown_s=600) == "evaluate"
+    assert _choose_action({"ready_for_training": 1, "pending": 3},
+                          now=now, last_ideate_ts=0, ideate_cooldown_s=600) == "train"
+    assert _choose_action({"pending": 1}, now=now, last_ideate_ts=0,
+                          ideate_cooldown_s=600) == "implement"
+    assert _choose_action({}, now=now, last_ideate_ts=0, ideate_cooldown_s=600) == "ideate"
+    assert _choose_action({}, now=now, last_ideate_ts=now - 10,
+                          ideate_cooldown_s=600) == "idle"     # cooldown holds
+    # terminal states never trigger work
+    assert _choose_action({"failed_validation": 9, "sota": 1, "rejected": 2},
+                          now=now, last_ideate_ts=now, ideate_cooldown_s=600) == "idle"
