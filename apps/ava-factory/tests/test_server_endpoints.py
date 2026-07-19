@@ -235,10 +235,18 @@ def test_eval_report_markdown(client):
     assert len(r.json()["report_markdown"]) > 10
 
 
-def test_report_404_when_missing(client, tmp_path, monkeypatch):
-    import server as srv
-    monkeypatch.setattr(srv, "_REPORT_HTML", tmp_path / "missing.html")
+def test_report_live_html(client):
     r = client.get("/report")
+    assert r.status_code == 200
+    assert "Ava training report" in r.text
+    assert "/pipeline/status" in r.text
+
+
+def test_report_offline_404_when_missing(client, tmp_path, monkeypatch):
+    import server as srv
+
+    monkeypatch.setattr(srv, "_REPORT_HTML", tmp_path / "missing.html")
+    r = client.get("/report/offline")
     assert r.status_code == 404
     assert "make_report" in r.json()["detail"]
 
