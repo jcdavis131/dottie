@@ -165,3 +165,8 @@
 9.3 Every session: `git pull` before committing (parallel Claude sessions are active);
     factory suite before any factory push; never leave conflict markers on disk in
     bind-mounted trees (the trainer restart-imports them).
+9.4 Lane splits for parallel sessions: two agents racing on the same file
+    (`adapters.py`/`sources.yaml`, observed 2026-07-19) resolved cleanly only by
+    luck of additive edits — when spawning parallel work, assign disjoint file
+    lanes explicitly (curriculum registry vs adapters vs tests), and the second
+    lane pulls before touching anything shared.
