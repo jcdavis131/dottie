@@ -1,0 +1,5 @@
+{
+  "cells": [
+    "\n# Bootstrap notebook for logic-prover\n# Edit and use immediately (no code push)\n\n# Phi Method B logic textbook prover for phase0\n\n# logic-prover \u2014 skillbook placeholder\nasync def run_logic_prover_workflow():\n    print('Running logic-prover: Phi Method B logic textbook prover for phase0')\n    return True\n\n\n# Test:\n# await run_logic-prover_workflow()\n"
+  ]
+}

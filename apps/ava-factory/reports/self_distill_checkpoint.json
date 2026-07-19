@@ -1,0 +1,42 @@
+{
+  "timestamp": 1784249649.086886,
+  "n_collected": 10000,
+  "n_filtered": 5000,
+  "n_mixed": 5882,
+  "config": {
+    "global_batch": 2048,
+    "seq_len": 131072,
+    "optimizer": "adamw",
+    "weight_decay": 0.001,
+    "lr_schedule": "cosine",
+    "lr_max": 1.7e-05,
+    "lr_min": 5.2e-06,
+    "warmup_frac": 0.02,
+    "dropout": 0.15,
+    "moe_load_balance_coef": 0.01,
+    "note": "Self-distillation before length extensions mix mid data"
+  },
+  "sample": [
+    {
+      "prompt": "Math problem 5949: solve x^2+5949x+...=?",
+      "response": "Reasoning trace 5949 ... final answer 49",
+      "task_reward": 1.0,
+      "checkpoint_step": 6900,
+      "length": 3992,
+      "success": true
+    },
+    {
+      "prompt": "Math problem 7342: solve x^2+7342x+...=?",
+      "response": "Reasoning trace 7342 ... final answer 42",
+      "task_reward": 0.5,
+      "checkpoint_step": 8300,
+      "length": 7989,
+      "success": false
+    }
+  ],
+  "markers": [
+    "self_distill_start",
+    "self_distill_sft",
+    "self_distill_end"
+  ]
+}

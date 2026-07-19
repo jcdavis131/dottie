@@ -18,7 +18,7 @@ Fixed per specs/04_model_and_configs.md:
      parameters per workspace. Now one matrix, optionally tied to lm_head.
   3. `prev_ws` from a previous step with a different batch size raised on
      broadcast. Guarded (and the caller now detaches).
-  4. slots/half_life/num_heads were hardcoded; they come from AvaConfig now.
+  4. slots/half_life/num_heads were hardcoded; they come from DottieConfig now.
 
   5. THE WORKSPACE WAS NOT CAUSAL, and this is the important one.
      `attn(slots, fused, fused)` read the ENTIRE sequence, and
@@ -431,7 +431,7 @@ class MultiJSpaceLosses(nn.Module):
 
     def orojar_comprehensive_loss(self, ws_input, fused, route_probs=None, target_cos=0.45, n_proj=1):
         """
-        Comprehensive OroJaR for Ava J-Space:
+        Comprehensive OroJaR for Dottie J-Space:
         - ws_input can be dict {name: tensor [B,slots,D]} or MultiJSpace module
         - fused [B,L,D]
         Returns: (loss, metrics dict)

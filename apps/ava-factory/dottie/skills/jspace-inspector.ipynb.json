@@ -1,0 +1,5 @@
+{
+  "cells": [
+    "\n# Bootstrap notebook for jspace-inspector\n# Edit and use immediately (no code push)\n\n# Inspect J-Space S1 Fast hl=8 S2 hl=300 Critic hl=30 Planner hl=150, hl_est, route_probs\n\n# jspace-inspector \u2014 skillbook placeholder\nasync def run_jspace_inspector_workflow():\n    print('Running jspace-inspector: Inspect J-Space S1 Fast hl=8 S2 hl=300 Critic hl=30 Planner hl=150, hl_est, route_probs')\n    return True\n\n\n# Test:\n# await run_jspace-inspector_workflow()\n"
+  ]
+}

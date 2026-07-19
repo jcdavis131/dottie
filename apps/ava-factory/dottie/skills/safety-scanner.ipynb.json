@@ -1,0 +1,5 @@
+{
+  "cells": [
+    "\n# Bootstrap notebook for safety-scanner\n# Edit and use immediately (no code push)\n\n# Critic hl=30-35 early warning leverage/blackmail 4-5 tok\n\n# safety-scanner \u2014 skillbook placeholder\nasync def run_safety_scanner_workflow():\n    print('Running safety-scanner: Critic hl=30-35 early warning leverage/blackmail 4-5 tok')\n    return True\n\n\n# Test:\n# await run_safety-scanner_workflow()\n"
+  ]
+}

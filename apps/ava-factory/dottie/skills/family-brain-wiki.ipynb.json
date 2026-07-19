@@ -1,0 +1,5 @@
+{
+  "cells": [
+    "\n# Bootstrap notebook for family-brain-wiki\n# Edit and use immediately (no code push)\n\n# Family Brain local personal brain wiki client-only\n\n# family-brain-wiki \u2014 skillbook placeholder\nasync def run_family_brain_wiki_workflow():\n    print('Running family-brain-wiki: Family Brain local personal brain wiki client-only')\n    return True\n\n\n# Test:\n# await run_family-brain-wiki_workflow()\n"
+  ]
+}

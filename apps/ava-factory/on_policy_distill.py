@@ -1,5 +1,5 @@
 """
-Ava AGI Factory v6.4 — On-Policy Distillation (MOPD + Privileged + Earlier + Off-Policy)
+Dottie AGI Factory v6.4 — On-Policy Distillation (MOPD + Privileged + Earlier + Off-Policy)
 Solo personal project, no connection to employer, built with public/free-tier only
 
 Implements 2026 distillation SOTA from https://huggingface.co/blog/sergiopaniego/distillation-2026 :
@@ -24,7 +24,7 @@ Implements 2026 distillation SOTA from https://huggingface.co/blog/sergiopaniego
   Pitch: continual learning without forgetting. GLM-5 uses final distillation pass to recover capability degraded
   during sequential RL phases, teacher is earlier checkpoint of same lineage. One step away from model teaching itself.
 
-Integration with Ava v6.4:
+Integration with Dottie v6.4:
 - YaRN 10k->1M RoPE + QK-Norm (base 10000, NTK-aware base' = base * scale^(dim/(dim-2)) for 1<scale<=2,
   YaRN ramp blending for scale>2, attn_factor=0.1*ln(scale)+1, mscale 1.0->1.414)
 - 4 workspaces S1 Fast 32 hl=8 broadcast 0.18 automatic [0.6,0.15,0.1,0.15]
@@ -52,24 +52,24 @@ Privacy: local-only, public pip, checkpoints stay on machine, Ollama host via ho
 
 Usage:
   # MOPD merge code/math/chat experts into single student from stable checkpoint
-  python on_policy_distill.py --mode mopd --student-ckpt checkpoints/base1b/ava_stable_736k.pt \
+  python on_policy_distill.py --mode mopd --student-ckpt checkpoints/base1b/dottie_stable_736k.pt \
     --teachers code:checkpoints/code/exp.pt,math:checkpoints/math/exp.pt,chat:checkpoints/chat/exp.pt \
     --data_root data/streaming_shards --batch 1 --seq_len 2048 --tokens_total 500M --lr 8e-5 --preserve-router
 
   # Privileged hint self-distill
-  python on_policy_distill.py --mode privileged --student-ckpt checkpoints/base1b/ava_stable_736k.pt \
+  python on_policy_distill.py --mode privileged --student-ckpt checkpoints/base1b/dottie_stable_736k.pt \
     --hint "think with 4 workspaces S1 Fast S2 Slow Critic Planner, broadcast 0.18 0.22 0.20 0.20, verify stepwise"
 
   # Earlier teacher continual learning (GLM-5 cap restoration)
   python on_policy_distill.py --mode earlier --student-ckpt checkpoints/chat/finetuned.pt \
-    --teachers earlier:checkpoints/base1b/ava_stable_736k.pt --data_root data/streaming_shards/synthetic_reward_gt0.8
+    --teachers earlier:checkpoints/base1b/dottie_stable_736k.pt --data_root data/streaming_shards/synthetic_reward_gt0.8
 
   # Off-policy large teacher -> mini student (e.g., qwen3:32b traces via Ollama or hf checkpoint converted)
   python on_policy_distill.py --mode offpolicy --student-ckpt None --teachers teacher:checkpoints/qwen3_32b_converted.pt \
     --student-config configs/mini.yaml --teacher-config configs/base1b.yaml
 
 Logs: logs/distill.log + metrics.jsonl
-CKPT: checkpoints/distill/ava_distill_<mode>_<step>.pt + hf_model/distill/ via convert_to_hf.py hook
+CKPT: checkpoints/distill/dottie_distill_<mode>_<step>.pt + hf_model/distill/ via convert_to_hf.py hook
 Eval: eval_branch_harness.py 5 J-tests + eval_frontier_rubric.py --judge ollama (OLLAMA_HOST)
 """
 import argparse
@@ -85,7 +85,7 @@ from typing import Dict, List, Tuple, Optional, Any
 
 # Solo disclaimer for import-time
 print("Solo personal project, no connection to employer, built with public/free-tier only")
-print("[Distill] Loading Ava distillation module — off-policy + MOPD + privileged + earlier")
+print("[Distill] Loading Dottie distillation module — off-policy + MOPD + privileged + earlier")
 
 # Try torch
 try:
@@ -163,12 +163,7 @@ def reverse_kl_loss(student_logits, teacher_logits, mask=None, temperature: floa
         temperature: softmax temp, 1.0 default, higher smooths (Gemma soft labels)
     Returns: loss scalar
     """
-    # Guard the no-torch mock objects out; let real tensors through.
-    # (Previous form `isinstance(x, type(torch) and ...)` collapsed to
-    # `isinstance(x, bool)` when torch WAS installed and raised TypeError,
-    # breaking the real KD path.)
-    if not HAS_TORCH or student_logits.__class__.__name__ == "_Mock" \
-            or teacher_logits.__class__.__name__ == "_Mock":
+    if not HAS_TORCH or isinstance(student_logits, type(torch) and hasattr(student_logits, '__class__') and student_logits.__class__.__name__ == '_Mock'):
         return 0.0
 
     # Scale by temperature
@@ -244,7 +239,7 @@ def load_yaml_config(path: str) -> Dict:
         return {}
 
 def get_model_from_config(config_path: str = "configs/base1b.yaml", device="cpu"):
-    """Load AvaModel1B from config, tolerant to missing deps (mock fallback)"""
+    """Load DottieModel1B from config, tolerant to missing deps (mock fallback)"""
     cfg = load_yaml_config(config_path)
     model_cfg = cfg.get("model", {})
     vocab_size = model_cfg.get("vocab_size", 32000)
@@ -258,8 +253,8 @@ def get_model_from_config(config_path: str = "configs/base1b.yaml", device="cpu"
         return None
 
     try:
-        from model_1b import AvaModel1B
-        model = AvaModel1B(
+        from model_1b import DottieModel1B
+        model = DottieModel1B(
             vocab_size=vocab_size,
             d_model=d_model,
             n_text=n_text,
@@ -268,10 +263,10 @@ def get_model_from_config(config_path: str = "configs/base1b.yaml", device="cpu"
             multi_jspace_enabled=True,
             spike_sink_enabled=False,
         )
-        print(f"[Distill] AvaModel1B loaded config={config_path} vocab={vocab_size} d={d_model} layers={n_text}/{n_fusion}/{n_reason}")
+        print(f"[Distill] DottieModel1B loaded config={config_path} vocab={vocab_size} d={d_model} layers={n_text}/{n_fusion}/{n_reason}")
         return model
     except Exception as e:
-        print(f"[Distill] AvaModel1B load failed: {e}, falling back to random Linear mock")
+        print(f"[Distill] DottieModel1B load failed: {e}, falling back to random Linear mock")
         # Minimal mock for compile verification
         class MockLM(torch.nn.Module):
             def __init__(self, vocab=32000, d=2048):
@@ -319,8 +314,8 @@ def load_checkpoint(model, ckpt_path: str, device="cpu"):
 def get_streaming_dataloader(data_root: str, batch_size: int, seq_len: int, shuffle_buffer: int = 10000):
     """Constant-memory streaming loader via streaming_data.py, fallback to dummy"""
     try:
-        from streaming_data import AvaStreamingDataset
-        ds = AvaStreamingDataset(
+        from streaming_data import DottieStreamingDataset
+        ds = DottieStreamingDataset(
             data_root=data_root,
             seq_len=seq_len,
             shuffle_buffer=shuffle_buffer,
@@ -375,7 +370,7 @@ def compute_router_preservation_loss(route_probs, target_weights, reduction="mea
 
 def save_checkpoint(model, optimizer, step, ckpt_dir: Path, mode: str):
     ckpt_dir.mkdir(parents=True, exist_ok=True)
-    path = ckpt_dir / f"ava_distill_{mode}_{step}.pt"
+    path = ckpt_dir / f"dottie_distill_{mode}_{step}.pt"
     try:
         if HAS_TORCH:
             state = {
@@ -753,7 +748,7 @@ def train_loop(args):
                 save_checkpoint(student_model, optimizer, step, ckpt_dir, args.mode)
                 # Eval hooks
                 if args.eval_every and step % args.eval_every == 0:
-                    run_eval_hooks(step, ckpt_path=str(ckpt_dir / f"ava_distill_{args.mode}_{step}.pt"))
+                    run_eval_hooks(step, ckpt_path=str(ckpt_dir / f"dottie_distill_{args.mode}_{step}.pt"))
 
             # LR scheduling WSD
             if args.use_wsd:
@@ -770,22 +765,22 @@ def train_loop(args):
     save_checkpoint(student_model, optimizer, step, ckpt_dir, args.mode)
     print(f"[Distill] training done mode={args.mode} steps={step} tokens={tokens_seen}")
     # Final eval
-    run_eval_hooks(step, ckpt_path=str(ckpt_dir / f"ava_distill_{args.mode}_{step}.pt"))
+    run_eval_hooks(step, ckpt_path=str(ckpt_dir / f"dottie_distill_{args.mode}_{step}.pt"))
     # Convert to HF via existing script if available
     try:
         import subprocess
         hf_out = f"hf_model/distill_{args.mode}"
-        cmd = [sys.executable, "convert_to_hf.py", "--ckpt", str(ckpt_dir / f"ava_distill_{args.mode}_{step}.pt"), "--out", hf_out]
+        cmd = [sys.executable, "convert_to_hf.py", "--ckpt", str(ckpt_dir / f"dottie_distill_{args.mode}_{step}.pt"), "--out", hf_out]
         subprocess.run(cmd, cwd=".", timeout=60)
         print(f"[Distill] HF conversion attempted out={hf_out}")
     except Exception as e:
         print(f"[Distill] HF conversion skipped: {e}")
 
 def main():
-    parser = argparse.ArgumentParser(description="Ava AGI Factory v6.4 — On-Policy Distillation (MOPD/privileged/earlier/offpolicy) — Solo personal project")
+    parser = argparse.ArgumentParser(description="Dottie AGI Factory v6.4 — On-Policy Distillation (MOPD/privileged/earlier/offpolicy) — Solo personal project")
     parser.add_argument("--mode", default="mopd", choices=["mopd", "privileged", "earlier", "offpolicy"],
                         help="mopd=Multi-Teacher On-Policy merging RL experts, privileged=hint self-distill (Cursor), earlier=pre-finetune cap restoration (GLM-5/Thinking Machines), offpolicy=large teacher->small student")
-    parser.add_argument("--student-ckpt", default="checkpoints/base1b/ava_stable_736k.pt", help="Student checkpoint path, or None for random init")
+    parser.add_argument("--student-ckpt", default="checkpoints/base1b/dottie_stable_736k.pt", help="Student checkpoint path, or None for random init")
     parser.add_argument("--student-config", default="configs/base1b.yaml", help="Student model config yaml")
     parser.add_argument("--teacher-config", default=None, help="Teacher model config yaml (defaults to student-config)")
     parser.add_argument("--teachers", default="code:checkpoints/code/exp.pt,math:checkpoints/math/exp.pt,chat:checkpoints/chat/exp.pt",

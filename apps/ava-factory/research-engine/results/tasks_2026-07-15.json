@@ -1,0 +1,144 @@
+{
+  "date": "2026-07-15",
+  "selected": 5,
+  "created": 5,
+  "papers": [
+    {
+      "arxiv_id": "2408.06081v2",
+      "id": "2408.06081v2",
+      "title": "LongRoPE2: Near-Lossless LLM Context Window Scaling",
+      "abstract": "Analysis of RoPE dimensions undertraining in higher dims, critical dims shift earlier. Shows larger scaling factors than L/L_train improve long context but degrade short. Proposes dual scaling factors. For Ava: apply to model's RoPE to preserve short MMLU while extending to 1M.",
+      "summary": "Analysis of RoPE dimensions undertraining in higher dims, critical dims shift earlier. Shows larger scaling factors than L/L_train improve long context but degrade short. Proposes dual scaling factors. For Ava: apply to model's RoPE to preserve short MMLU while extending to 1M.",
+      "authors": [
+        "LongRoPE2"
+      ],
+      "published": "2026-07-15T00:00:00Z",
+      "updated": "2026-07-15T00:00:00Z",
+      "categories": [
+        "cs.CL"
+      ],
+      "pdf_url": "https://arxiv.org/pdf/2408.06081v2",
+      "arxiv_url": "https://arxiv.org/abs/2408.06081v2",
+      "query": "YaRN long context",
+      "topics": [
+        "ava-training"
+      ],
+      "ecosystem": "ava-agi-factory-v6-4/model_1b.py"
+    },
+    {
+      "arxiv_id": "2410.05192v3",
+      "id": "2410.05192v3",
+      "title": "Understanding Warmup-Stable-Decay Learning Rates: A River Valley Loss Landscape Perspective",
+      "abstract": "WSD schedule: warmup 2k, stable 92%, decay 8%. River valley landscape: stable phase oscillates along sharp hillsides, decay quenches to river. Ava uses WSD 736k stable. Paper validates WSD outperforms cosine and allows resumption from any stable checkpoint.",
+      "summary": "WSD schedule: warmup 2k, stable 92%, decay 8%. River valley landscape: stable phase oscillates along sharp hillsides, decay quenches to river. Ava uses WSD 736k stable. Paper validates WSD outperforms cosine and allows resumption from any stable checkpoint.",
+      "authors": [
+        "WSD Team"
+      ],
+      "published": "2026-07-15T00:00:00Z",
+      "updated": "2026-07-15T00:00:00Z",
+      "categories": [
+        "cs.LG"
+      ],
+      "pdf_url": "https://arxiv.org/pdf/2410.05192v3",
+      "arxiv_url": "https://arxiv.org/abs/2410.05192v3",
+      "query": "WSD learning rate schedule",
+      "topics": [
+        "ava-training"
+      ],
+      "ecosystem": "ava-agi-factory-v6-4/train_1b_deepspeed.py"
+    },
+    {
+      "arxiv_id": "2601.09000v1",
+      "id": "2601.09000v1",
+      "title": "Universal Dynamics of Warmup Stable Decay: understanding WSD beyond Transformers",
+      "abstract": "Compares WSD on Pythia LM 160M and CNN 334K CIFAR10 \u2014 same dynamics: modest decreases during stable, sharp gain during cooldown. Points to shared geometric characteristics. Validates Ava's approach of stable 736k tokens.",
+      "summary": "Compares WSD on Pythia LM 160M and CNN 334K CIFAR10 \u2014 same dynamics: modest decreases during stable, sharp gain during cooldown. Points to shared geometric characteristics. Validates Ava's approach of stable 736k tokens.",
+      "authors": [
+        "WSD Universal"
+      ],
+      "published": "2026-07-15T00:00:00Z",
+      "updated": "2026-07-15T00:00:00Z",
+      "categories": [
+        "cs.LG"
+      ],
+      "pdf_url": "https://arxiv.org/pdf/2601.09000v1",
+      "arxiv_url": "https://arxiv.org/abs/2601.09000v1",
+      "query": "WSD schedule",
+      "topics": [
+        "ava-training"
+      ],
+      "ecosystem": "ava-agi-factory-v6-4/train_1b_deepspeed.py"
+    },
+    {
+      "arxiv_id": "2312.03386v2",
+      "id": "2312.03386v2",
+      "title": "An Infinite-Width Analysis on the Jacobian-Regularised Training of a Neural Network",
+      "abstract": "Extends infinite-width NTK analysis to Jacobian of MLP. MLP and its Jacobian converge to GP as width->inf. Evolution under Jacobian regularization = linear ODE determined by variant of NTK. Directly relevant to Ava's Jacobian regularization in multi_jspace_module.py \u2014 S1 Fast hl=8, S2 Slow hl=300, Router/veto, 4 workspaces.",
+      "summary": "Extends infinite-width NTK analysis to Jacobian of MLP. MLP and its Jacobian converge to GP as width->inf. Evolution under Jacobian regularization = linear ODE determined by variant of NTK. Directly relevant to Ava's Jacobian regularization in multi_jspace_module.py \u2014 S1 Fast hl=8, S2 Slow hl=300, Router/veto, 4 workspaces.",
+      "authors": [
+        "Jacobian Infinite-Width"
+      ],
+      "published": "2026-07-15T00:00:00Z",
+      "updated": "2026-07-15T00:00:00Z",
+      "categories": [
+        "cs.LG"
+      ],
+      "pdf_url": "https://arxiv.org/pdf/2312.03386v2",
+      "arxiv_url": "https://arxiv.org/abs/2312.03386v2",
+      "query": "Jacobian regularization",
+      "topics": [
+        "ava-jspace"
+      ],
+      "ecosystem": "ava-agi-factory-v6-4/multi_jspace_module.py"
+    },
+    {
+      "arxiv_id": "2606.23942v1",
+      "id": "2606.23942v1",
+      "title": "DREG: A Layer-Wise Jacobian Regularization as a General-Purpose Penalty",
+      "abstract": "960 experiments across 4 activations, 6 regularizers, 8 datasets, 5 seeds. DREG achieves highest overall clean accuracy, best under GELU (default in transformers), strongest under data scarcity. Single hyperparam lambda=1e-2.5 no tuning. Plug-and-play for Ava's 4 workspaces.",
+      "summary": "960 experiments across 4 activations, 6 regularizers, 8 datasets, 5 seeds. DREG achieves highest overall clean accuracy, best under GELU (default in transformers), strongest under data scarcity. Single hyperparam lambda=1e-2.5 no tuning. Plug-and-play for Ava's 4 workspaces.",
+      "authors": [
+        "Rowan Martnishn"
+      ],
+      "published": "2026-07-15T00:00:00Z",
+      "updated": "2026-07-15T00:00:00Z",
+      "categories": [
+        "cs.LG"
+      ],
+      "pdf_url": "https://arxiv.org/pdf/2606.23942v1",
+      "arxiv_url": "https://arxiv.org/abs/2606.23942v1",
+      "query": "Jacobian regularization",
+      "topics": [
+        "ava-jspace"
+      ],
+      "ecosystem": "ava-agi-factory-v6-4/multi_jspace_module.py"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "NTFfLVRnWmx5amtSdXZfaw",
+      "title": "[AVA-RESEARCH][ava-training][critical] LongRoPE2: Near-Lossless LLM Context Window Scaling \u2014 2408.06081v2",
+      "arxiv_id": "2408.06081v2"
+    },
+    {
+      "id": "ZWFDYUE4RG12N09VVmZSMw",
+      "title": "[AVA-RESEARCH][ava-training][critical] Understanding Warmup-Stable-Decay Learning Rates: A River Valley Loss Landscape  \u2014 2410.05192v3",
+      "arxiv_id": "2410.05192v3"
+    },
+    {
+      "id": "bklFbGJybzZCMkJLR0hNLQ",
+      "title": "[AVA-RESEARCH][ava-training][critical] Universal Dynamics of Warmup Stable Decay: understanding WSD beyond Transformers \u2014 2601.09000v1",
+      "arxiv_id": "2601.09000v1"
+    },
+    {
+      "id": "SXY3QmNlT1NhcFFqWWVzYQ",
+      "title": "[AVA-RESEARCH][ava-jspace][critical] An Infinite-Width Analysis on the Jacobian-Regularised Training of a Neural Netw \u2014 2312.03386v2",
+      "arxiv_id": "2312.03386v2"
+    },
+    {
+      "id": "dVdDOW5ISERkNmJSRVBvRQ",
+      "title": "[AVA-RESEARCH][ava-jspace][critical] DREG: A Layer-Wise Jacobian Regularization as a General-Purpose Penalty \u2014 2606.23942v1",
+      "arxiv_id": "2606.23942v1"
+    }
+  ]
+}

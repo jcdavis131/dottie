@@ -1,0 +1,168 @@
+{
+  "date": "2026-07-18",
+  "selected": 5,
+  "created": 5,
+  "papers": [
+    {
+      "arxiv_id": "2607.11269v1",
+      "id": "2607.11269v1",
+      "title": "Trustworthy synthetic data for campaign decision support: strategy simulation fidelity and the PolicySynth framework",
+      "summary": "Decision support systems (DSS) increasingly run retention what-if analysis on synthetic customer populations, because privacy constraints preclude unrestricted use of real data. Such a system is trustworthy only if the synthetic data lead managers to the same decisions as the real data would; yet prevailing criteria certify distributional similarity, not decision alignment, so a synthetic population can match every marginal distribution while still steering a marketing team toward the wrong campaigns. We close this decision-alignment gap with three contributions: strategy simulation fidelity (SSF), a criterion measuring how often the synthetic population yields the same go/no-go campaign decision as the real population; PolicySynth, a DSS framework whose generator is conditioned on the production churn scorer to align decision-relevant structure; and a three-axis reporting standard of decision alignment, membership-inference resistance, and novel-record rate as the minimum deployment quality gate. On a telecommunications churn corpus and a banking acquisition corpus, PolicySynth attains a mean SSF of 0.923 and 0.960, with seed-to-seed variance roughly ten times tighter than CTGAN on telecommunications and 2.5 times on banking. This stability is the deployable property: go/no-go recommendations shift by at most 1.2 percentage points between monthly retraining cycles, against 11.5 for CTGAN, a reversed recommendation on one campaign in nine. A bootstrap baseline matches PolicySynth on SSF yet copies real records verbatim and fails membership inference, evidence that no single axis suffices. PolicySynth reliably supports directional go/no-go screening; its ROI estimates diverge from real outcomes by 70 to 78% and require the volume correction we document.",
+      "abstract": "Decision support systems (DSS) increasingly run retention what-if analysis on synthetic customer populations, because privacy constraints preclude unrestricted use of real data. Such a system is trustworthy only if the synthetic data lead managers to the same decisions as the real data would; yet prevailing criteria certify distributional similarity, not decision alignment, so a synthetic population can match every marginal distribution while still steering a marketing team toward the wrong campaigns. We close this decision-alignment gap with three contributions: strategy simulation fidelity (SSF), a criterion measuring how often the synthetic population yields the same go/no-go campaign decision as the real population; PolicySynth, a DSS framework whose generator is conditioned on the production churn scorer to align decision-relevant structure; and a three-axis reporting standard of decision alignment, membership-inference resistance, and novel-record rate as the minimum deployment quality gate. On a telecommunications churn corpus and a banking acquisition corpus, PolicySynth attains a mean SSF of 0.923 and 0.960, with seed-to-seed variance roughly ten times tighter than CTGAN on telecommunications and 2.5 times on banking. This stability is the deployable property: go/no-go recommendations shift by at most 1.2 percentage points between monthly retraining cycles, against 11.5 for CTGAN, a reversed recommendation on one campaign in nine. A bootstrap baseline matches PolicySynth on SSF yet copies real records verbatim and fails membership inference, evidence that no single axis suffices. PolicySynth reliably supports directional go/no-go screening; its ROI estimates diverge from real outcomes by 70 to 78% and require the volume correction we document.",
+      "authors": [
+        "Tung Dang",
+        "The Hung Phung",
+        "Son Lam Nguyen",
+        "Tu Nguyen"
+      ],
+      "published": "2026-07-13T08:51:39Z",
+      "updated": "2026-07-13T08:51:39Z",
+      "categories": [
+        "cs.LG",
+        "stat.ML"
+      ],
+      "pdf_url": "https://arxiv.org/pdf/2607.11269v1",
+      "arxiv_url": "https://arxiv.org/abs/2607.11269v1",
+      "query": "workforce retention churn",
+      "topics": [
+        "workforce-ai"
+      ],
+      "ecosystem": "02_Passive_Lab/ + Turnover Shield MVP"
+    },
+    {
+      "arxiv_id": "2607.11715v1",
+      "id": "2607.11715v1",
+      "title": "JobHop v2: A Large-Scale Career Trajectory Dataset from Unstructured Resumes",
+      "summary": "Large-scale, richly annotated career trajectory data underpins workforce planning, job recommendation, and labour market analysis, yet publicly available datasets are either small, closed to independent use, or built from pre-standardized occupational codes with LLM-synthesized rather than authentic free text. We present JobHop~v2, an improved version of the publicly available JobHop dataset, constructed through end-to-end large language model (LLM) extraction from a corpus of ${\\sim}440{,}000$ pseudonymized, multilingual resumes provided by VDAB, the Flemish Public Employment Service. The released dataset comprises $355{,}315$ career trajectories annotated with ESCO occupational codes, quarter-level temporal information, and normalized five-level education attainment, broadening both the coverage and the annotation richness of the original release. Relative to v1, JobHop~v2 introduces a redesigned extraction pipeline based on reasoning-controlled LLM inference with a retry mechanism (achieving a 100% JSON parse rate), a richer extraction schema, and a revised evaluation protocol scored against three complementary annotation baselines. Evaluated against these baselines, our best extractor comes closest to the inter-annotator agreement ceiling among all compared models, trailing it by only 1.1-2.7 percentage points. The dataset and code are publicly released to support reproducible career-trajectory research.",
+      "abstract": "Large-scale, richly annotated career trajectory data underpins workforce planning, job recommendation, and labour market analysis, yet publicly available datasets are either small, closed to independent use, or built from pre-standardized occupational codes with LLM-synthesized rather than authentic free text. We present JobHop~v2, an improved version of the publicly available JobHop dataset, constructed through end-to-end large language model (LLM) extraction from a corpus of ${\\sim}440{,}000$ pseudonymized, multilingual resumes provided by VDAB, the Flemish Public Employment Service. The released dataset comprises $355{,}315$ career trajectories annotated with ESCO occupational codes, quarter-level temporal information, and normalized five-level education attainment, broadening both the coverage and the annotation richness of the original release. Relative to v1, JobHop~v2 introduces a redesigned extraction pipeline based on reasoning-controlled LLM inference with a retry mechanism (achieving a 100% JSON parse rate), a richer extraction schema, and a revised evaluation protocol scored against three complementary annotation baselines. Evaluated against these baselines, our best extractor comes closest to the inter-annotator agreement ceiling among all compared models, trailing it by only 1.1-2.7 percentage points. The dataset and code are publicly released to support reproducible career-trajectory research.",
+      "authors": [
+        "Iman Johary",
+        "Guillaume Bied",
+        "Alexandru C. Mara",
+        "Tijl De Bie"
+      ],
+      "published": "2026-07-13T15:42:06Z",
+      "updated": "2026-07-13T15:42:06Z",
+      "categories": [
+        "cs.CL"
+      ],
+      "pdf_url": "https://arxiv.org/pdf/2607.11715v1",
+      "arxiv_url": "https://arxiv.org/abs/2607.11715v1",
+      "query": "workforce retention churn",
+      "topics": [
+        "workforce-ai"
+      ],
+      "ecosystem": "02_Passive_Lab/ + Turnover Shield MVP"
+    },
+    {
+      "arxiv_id": "2607.11722v1",
+      "id": "2607.11722v1",
+      "title": "STEP: Career-Path Recommendation via Temporal and Educational Trajectory Modeling",
+      "summary": "Career paths encode decades of skill acquisition, role transitions, and educational investment, and understanding them at scale underpins workforce planning, labor market policy, and job recommendation. Resumes are a rich source of information about career paths: they contain detailed descriptions of work experience, education, and skills. Yet their unstructured, heterogeneous, and multilingual nature has long prevented large-scale systematic analysis. With the advent of large language models (LLMs), it is now possible to source rich career trajectory data containing temporal and educational signals from unstructured resumes, enabling new opportunities for career-path recommendation. Exploiting this opportunity, we present STEP (Sequential Trajectory of Employment Prediction), a novel career-path recommendation system that leverages temporal and educational signals to predict the next job in a career trajectory. STEP integrates a time-decay Gated Recurrent Unit (GRU) cell to model temporal dynamics, Feature-wise Linear Modulation (FiLM) conditioned on educational attainment, and attention-based sequence pooling to select relevant features for next job prediction. To improve internal occupation representation for STEP, we introduce ROUTE, a two-stage contrastive procedure that first adapts a multilingual encoder to the career domain via unsupervised denoising autoencoding, then performs supervised contrastive fine-tuning with guided negative selection. We evaluate STEP on four datasets of career trajectories, including an improved version of our publicly available JobHop dataset, and show that it outperforms state-of-the-art baselines in next job prediction. The dataset and code are publicly released to support reproducible career-trajectory research.",
+      "abstract": "Career paths encode decades of skill acquisition, role transitions, and educational investment, and understanding them at scale underpins workforce planning, labor market policy, and job recommendation. Resumes are a rich source of information about career paths: they contain detailed descriptions of work experience, education, and skills. Yet their unstructured, heterogeneous, and multilingual nature has long prevented large-scale systematic analysis. With the advent of large language models (LLMs), it is now possible to source rich career trajectory data containing temporal and educational signals from unstructured resumes, enabling new opportunities for career-path recommendation. Exploiting this opportunity, we present STEP (Sequential Trajectory of Employment Prediction), a novel career-path recommendation system that leverages temporal and educational signals to predict the next job in a career trajectory. STEP integrates a time-decay Gated Recurrent Unit (GRU) cell to model temporal dynamics, Feature-wise Linear Modulation (FiLM) conditioned on educational attainment, and attention-based sequence pooling to select relevant features for next job prediction. To improve internal occupation representation for STEP, we introduce ROUTE, a two-stage contrastive procedure that first adapts a multilingual encoder to the career domain via unsupervised denoising autoencoding, then performs supervised contrastive fine-tuning with guided negative selection. We evaluate STEP on four datasets of career trajectories, including an improved version of our publicly available JobHop dataset, and show that it outperforms state-of-the-art baselines in next job prediction. The dataset and code are publicly released to support reproducible career-trajectory research.",
+      "authors": [
+        "Iman Johary",
+        "Guillaume Bied",
+        "Alexandru C. Mara",
+        "Tijl De Bie"
+      ],
+      "published": "2026-07-13T15:48:01Z",
+      "updated": "2026-07-13T15:48:01Z",
+      "categories": [
+        "cs.CL"
+      ],
+      "pdf_url": "https://arxiv.org/pdf/2607.11722v1",
+      "arxiv_url": "https://arxiv.org/abs/2607.11722v1",
+      "query": "workforce retention churn",
+      "topics": [
+        "workforce-ai"
+      ],
+      "ecosystem": "02_Passive_Lab/ + Turnover Shield MVP"
+    },
+    {
+      "arxiv_id": "2607.12042v1",
+      "id": "2607.12042v1",
+      "title": "SymbOmni: Evolving Agentic Omni Models via Symbolic Concept Learning",
+      "summary": "Visual generation is increasingly ubiquitous in diverse domains, from text-to-image/video synthesis to multimodal interactive creation. Yet prevailing monolithic models remain fundamentally constrained by their inability to learn cumulatively and evolve autonomously, which is a limitation we term the \"perpetual novice\" problem. They lack mechanisms for structuring experience into reusable knowledge and therefore rely on brittle, \"from-scratch\" reasoning for each task, resulting in poor compositional generalization and inefficient knowledge retention. Motivated by these limitations, we propose SymbOmni, an agentic omni-model designed for cumulative evolution through Symbolic Concept Learning. At its core is the Symbolic Concept Box, an optimizable memory module that abstracts low-level operations into reusable Symbolic Workflow Instructions. SymbOmni operates through an induction-transduction cycle: experiences are abstracted into symbolic concepts (induction), which are then adaptively composed to solve novel tasks (transduction). The training is done by verbalized backpropagation with language-based feedback to enable continuous self-improvement without gradient-based model fine-tuning. Comprehensive experiments validate that (I) SymbOmni significantly outperforms existing agent-based systems for iterative creation and also surpasses closed-source models (e.g., Nano Banana, GPT-Image-1) in both image quality and task success rates; (II) SymbOmni effectively reduces token consumption by over 40% while maintaining competitive generation quality; and (III) SymbOmni enables effective continual learning by achieving cumulative gains across multiple online-learning benchmarks and setting a new state of the art.",
+      "abstract": "Visual generation is increasingly ubiquitous in diverse domains, from text-to-image/video synthesis to multimodal interactive creation. Yet prevailing monolithic models remain fundamentally constrained by their inability to learn cumulatively and evolve autonomously, which is a limitation we term the \"perpetual novice\" problem. They lack mechanisms for structuring experience into reusable knowledge and therefore rely on brittle, \"from-scratch\" reasoning for each task, resulting in poor compositional generalization and inefficient knowledge retention. Motivated by these limitations, we propose SymbOmni, an agentic omni-model designed for cumulative evolution through Symbolic Concept Learning. At its core is the Symbolic Concept Box, an optimizable memory module that abstracts low-level operations into reusable Symbolic Workflow Instructions. SymbOmni operates through an induction-transduction cycle: experiences are abstracted into symbolic concepts (induction), which are then adaptively composed to solve novel tasks (transduction). The training is done by verbalized backpropagation with language-based feedback to enable continuous self-improvement without gradient-based model fine-tuning. Comprehensive experiments validate that (I) SymbOmni significantly outperforms existing agent-based systems for iterative creation and also surpasses closed-source models (e.g., Nano Banana, GPT-Image-1) in both image quality and task success rates; (II) SymbOmni effectively reduces token consumption by over 40% while maintaining competitive generation quality; and (III) SymbOmni enables effective continual learning by achieving cumulative gains across multiple online-learning benchmarks and setting a new state of the art.",
+      "authors": [
+        "Jinxiu Liu",
+        "Jianru Li",
+        "Tanqing Kuang",
+        "Xuanming Liu",
+        "Kangfu Mei",
+        "Yandong Wen",
+        "Weiyang Liu"
+      ],
+      "published": "2026-07-13T18:00:34Z",
+      "updated": "2026-07-13T18:00:34Z",
+      "categories": [
+        "cs.CV",
+        "cs.LG"
+      ],
+      "pdf_url": "https://arxiv.org/pdf/2607.12042v1",
+      "arxiv_url": "https://arxiv.org/abs/2607.12042v1",
+      "query": "workforce retention churn",
+      "topics": [
+        "workforce-ai"
+      ],
+      "ecosystem": "02_Passive_Lab/ + Turnover Shield MVP"
+    },
+    {
+      "arxiv_id": "2607.12048v1",
+      "id": "2607.12048v1",
+      "title": "An Empirical Analysis of Continual Learning for Heterogeneous Medical Visual Question Answering",
+      "summary": "Deploying medical visual question answering (MedVQA) systems in real-world clinical settings requires models that adapt to new clinical tasks without forgetting previously acquired knowledge. Continual learning (CL) provides a practical framework for this setting. Despite rapid progress in medical vision-language models, the behavior of CL methods when training these models across heterogeneous MedVQA tasks remains underexplored. This work presents a systematic evaluation of CL for MedVQA across diverse clinical objectives, including classification, multi-label classification, detection, cell counting, and report generation. Specifically, we explore (1) the ability of existing CL methods to mitigate catastrophic forgetting; (2) their sensitivity to task ordering, analyzing how different task sequences influence performance retention and forgetting; and (3) the evolution of low-rank adaptation parameters as new tasks are learned, revealing patterns of weight drift under different CL methods. Our findings suggest that existing CL methods struggle to maintain stability-plasticity balance when tasks with different objectives and supervision formats are interleaved. Code and full experimental setup will be publicly available.",
+      "abstract": "Deploying medical visual question answering (MedVQA) systems in real-world clinical settings requires models that adapt to new clinical tasks without forgetting previously acquired knowledge. Continual learning (CL) provides a practical framework for this setting. Despite rapid progress in medical vision-language models, the behavior of CL methods when training these models across heterogeneous MedVQA tasks remains underexplored. This work presents a systematic evaluation of CL for MedVQA across diverse clinical objectives, including classification, multi-label classification, detection, cell counting, and report generation. Specifically, we explore (1) the ability of existing CL methods to mitigate catastrophic forgetting; (2) their sensitivity to task ordering, analyzing how different task sequences influence performance retention and forgetting; and (3) the evolution of low-rank adaptation parameters as new tasks are learned, revealing patterns of weight drift under different CL methods. Our findings suggest that existing CL methods struggle to maintain stability-plasticity balance when tasks with different objectives and supervision formats are interleaved. Code and full experimental setup will be publicly available.",
+      "authors": [
+        "Mai A. Shaaban",
+        "Tausifa Jan Saleem",
+        "Alaa Mohamed",
+        "Dilnaz Utemissova",
+        "Ufaq Khan",
+        "Mohammad Yaqub"
+      ],
+      "published": "2026-07-13T18:08:26Z",
+      "updated": "2026-07-13T18:08:26Z",
+      "categories": [
+        "cs.CV",
+        "cs.AI",
+        "cs.CL"
+      ],
+      "pdf_url": "https://arxiv.org/pdf/2607.12048v1",
+      "arxiv_url": "https://arxiv.org/abs/2607.12048v1",
+      "query": "workforce retention churn",
+      "topics": [
+        "workforce-ai"
+      ],
+      "ecosystem": "02_Passive_Lab/ + Turnover Shield MVP"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "TlFNUFl3ZHQ5RUMyNzZjdA",
+      "title": "[AVA-RESEARCH][workforce-ai][medium] Trustworthy synthetic data for campaign decision support: strategy simulation fi \u2014 2607.11269v1",
+      "arxiv_id": "2607.11269v1"
+    },
+    {
+      "id": "T0JlUnd4N1I0YUIybjlhdA",
+      "title": "[AVA-RESEARCH][workforce-ai][medium] JobHop v2: A Large-Scale Career Trajectory Dataset from Unstructured Resumes \u2014 2607.11715v1",
+      "arxiv_id": "2607.11715v1"
+    },
+    {
+      "id": "eHlhMTlFR1hJN0RwM19DZQ",
+      "title": "[AVA-RESEARCH][workforce-ai][medium] STEP: Career-Path Recommendation via Temporal and Educational Trajectory Modelin \u2014 2607.11722v1",
+      "arxiv_id": "2607.11722v1"
+    },
+    {
+      "id": "ZVk0eGhSb2JnX0ZvcU5kbQ",
+      "title": "[AVA-RESEARCH][workforce-ai][medium] SymbOmni: Evolving Agentic Omni Models via Symbolic Concept Learning \u2014 2607.12042v1",
+      "arxiv_id": "2607.12042v1"
+    },
+    {
+      "id": "cTdDZTdRWEZsZ0xRQ3E4Qg",
+      "title": "[AVA-RESEARCH][workforce-ai][medium] An Empirical Analysis of Continual Learning for Heterogeneous Medical Visual Que \u2014 2607.12048v1",
+      "arxiv_id": "2607.12048v1"
+    }
+  ]
+}

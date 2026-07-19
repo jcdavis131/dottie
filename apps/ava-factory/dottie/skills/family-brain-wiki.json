@@ -1,0 +1,10 @@
+{
+  "name": "family-brain-wiki",
+  "description": "Family Brain local personal brain wiki client-only",
+  "version": "latest",
+  "visibility": "private",
+  "created_at": 1784206742.7112498,
+  "saves": 0,
+  "code_len": 195,
+  "docs_len": 89
+}

@@ -1,0 +1,5 @@
+{
+  "cells": [
+    "\n# Bootstrap notebook for code-bench\n# Edit and use immediately (no code push)\n\n# Code repo 50% + long 32k eval, S2 hl=350 bias\n\n# code-bench \u2014 skillbook placeholder\nasync def run_code_bench_workflow():\n    print('Running code-bench: Code repo 50% + long 32k eval, S2 hl=350 bias')\n    return True\n\n\n# Test:\n# await run_code-bench_workflow()\n"
+  ]
+}

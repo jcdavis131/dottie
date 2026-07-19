@@ -1,0 +1,14 @@
+{
+  "date": "2026-07-17",
+  "arxiv_id": "2607.14090v1",
+  "topic_id": "bigbang-mcp",
+  "branch": "autoresearch/jul17-bigbang-mcp-2607.140",
+  "title": "Cold Stream Penetration of Virial Shocks: Fragmentation, Coagulation, and Disruption in the Hot Circumgalactic Medium",
+  "url": "https://arxiv.org/abs/2607.14090v1",
+  "status": "keep",
+  "commit": "defc5f5",
+  "val_bpb": 0.9979,
+  "memory_gb": 1.0,
+  "experiment_dir": "/home/hatch/workspace/ava-research-engine/experiments/2607.14090v1",
+  "run_log": "/home/hatch/workspace/ava-research-engine/experiments/2607.14090v1/run.log"
+}

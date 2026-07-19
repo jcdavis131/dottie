@@ -1,0 +1,5 @@
+{
+  "cells": [
+    "\n# Bootstrap notebook for audit-jspace-leak\n# Edit and use immediately (no code push)\n\n# Audit codebase for causal mask missing, future->past broadcast, constant verbalizable_mass\n\n# audit-jspace-leak \u2014 skillbook placeholder\nasync def run_audit_jspace_leak_workflow():\n    print('Running audit-jspace-leak: Audit codebase for causal mask missing, future->past broadcast, constant verbalizable_mass')\n    return True\n\n\n# Test:\n# await run_audit-jspace-leak_workflow()\n"
+  ]
+}

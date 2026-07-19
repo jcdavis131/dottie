@@ -1,0 +1,51 @@
+{
+  "date": "2026-07-16",
+  "topics": [
+    {
+      "id": "ava-jspace",
+      "title": "Ava J-Space Multi-Workspace",
+      "count": 0,
+      "queries": 4
+    },
+    {
+      "id": "ava-training",
+      "title": "Efficient Single-GPU LLM Training",
+      "count": 15,
+      "queries": 4
+    },
+    {
+      "id": "ava-eval",
+      "title": "Frontier Rubric + Eval Harness",
+      "count": 15,
+      "queries": 4
+    },
+    {
+      "id": "graphify-rag",
+      "title": "Graphify + GraphRAG + Knowledge Graphs for LLMs",
+      "count": 15,
+      "queries": 4
+    },
+    {
+      "id": "bigbang-mcp",
+      "title": "MCP + OpenAPI Tool Use + Agentic Routing",
+      "count": 21,
+      "queries": 4
+    },
+    {
+      "id": "vector-mtnn",
+      "title": "MTNN Multi-Task + Embedding Eval + Sports Analytics",
+      "count": 29,
+      "queries": 4
+    },
+    {
+      "id": "workforce-ai",
+      "title": "Workforce Turnover + Retention Prediction",
+      "count": 0,
+      "queries": 4
+    }
+  ],
+  "total_queries": 28,
+  "total_papers_raw": 95,
+  "total_papers_deduped": 74,
+  "note": "egress IncompleteRead for 6/7 topics, fallback seeded v2 applied, partial harvest 95 papers"
+}

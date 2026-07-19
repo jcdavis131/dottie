@@ -1,0 +1,145 @@
+{
+  "date": "2026-07-16",
+  "selected": 5,
+  "created": 5,
+  "papers": [
+    {
+      "arxiv_id": "2504.21018v1",
+      "id": "2504.21018v1",
+      "title": "Advancing Multi-Agent Systems Through Model Context Protocol: Architecture, Implementation, and Applications",
+      "abstract": "Unified theoretical foundation for MCP, advanced context management, scalable coordination patterns. Case studies enterprise knowledge management, collaborative research, distributed problem-solving showing significant performance improvements. For BigBang: SCS Shared Context Store between servers.",
+      "summary": "Unified theoretical foundation for MCP, advanced context management, scalable coordination patterns. Case studies enterprise knowledge management, collaborative research, distributed problem-solving showing significant performance improvements. For BigBang: SCS Shared Context Store between servers.",
+      "authors": [
+        "Naveen Krishnan"
+      ],
+      "published": "2026-07-15T00:00:00Z",
+      "updated": "2026-07-15T00:00:00Z",
+      "categories": [
+        "cs.AI"
+      ],
+      "pdf_url": "https://arxiv.org/pdf/2504.21018v1",
+      "arxiv_url": "https://arxiv.org/abs/2504.21018v1",
+      "query": "Model Context Protocol MCP agents",
+      "topics": [
+        "bigbang-mcp"
+      ],
+      "ecosystem": "bigbang-cli/bigbang/core/mcp_client.py"
+    },
+    {
+      "arxiv_id": "2601.11595v2",
+      "id": "2601.11595v2",
+      "title": "Enhancing Model Context Protocol (MCP) with Context-Aware Server Collaboration",
+      "abstract": "CA-MCP offloads execution logic to specialized MCP servers that read/write shared context memory, reducing redundancy and enabling knowledge transfer. Outperforms traditional MCP by reducing LLM calls and failure frequency. Tested on TravelPlanner and REALM-Bench with statistically significant gains. For BigBang: implement Shared Context Store SCS.",
+      "summary": "CA-MCP offloads execution logic to specialized MCP servers that read/write shared context memory, reducing redundancy and enabling knowledge transfer. Outperforms traditional MCP by reducing LLM calls and failure frequency. Tested on TravelPlanner and REALM-Bench with statistically significant gains. For BigBang: implement Shared Context Store SCS.",
+      "authors": [
+        "Meenakshi Jayanti"
+      ],
+      "published": "2026-07-15T00:00:00Z",
+      "updated": "2026-07-15T00:00:00Z",
+      "categories": [
+        "cs.AI"
+      ],
+      "pdf_url": "https://arxiv.org/pdf/2601.11595v2",
+      "arxiv_url": "https://arxiv.org/abs/2601.11595v2",
+      "query": "Model Context Protocol MCP",
+      "topics": [
+        "bigbang-mcp"
+      ],
+      "ecosystem": "bigbang-cli/bigbang/core/mcp_client.py"
+    },
+    {
+      "arxiv_id": "2512.20645v2",
+      "id": "2512.20645v2",
+      "title": "Machine learning methods for subpixel trajectory reconstruction in discretized position detectors",
+      "summary": "In this study, we demonstrate that compared with traditional centroid-based methods, machine learning methods (particularly transformer-based architectures) achieve superior subpixel position and therefore angular resolution in discretized particle detectors. Using Geant4 Monte Carlo simulated cosmic ray muon data from an 8x8 segmented scintillator detector array, we compare four reconstruction approaches: transformer neural networks, convolutional neural networks, linear regression, and energy-weighted centroids. The transformer architecture achieves the best angular reconstruction with a root mean square error of 1.14\u00b0 and a position mean absolute error of 0.24 cm, representing improvements of 2.22x and 6.33x, respectively, over the centroid method. These results enable precise particle trajectory reconstruction for applications in muon tomography and cosmic ray detection.",
+      "abstract": "In this study, we demonstrate that compared with traditional centroid-based methods, machine learning methods (particularly transformer-based architectures) achieve superior subpixel position and therefore angular resolution in discretized particle detectors. Using Geant4 Monte Carlo simulated cosmic ray muon data from an 8x8 segmented scintillator detector array, we compare four reconstruction approaches: transformer neural networks, convolutional neural networks, linear regression, and energy-weighted centroids. The transformer architecture achieves the best angular reconstruction with a root mean square error of 1.14\u00b0 and a position mean absolute error of 0.24 cm, representing improvements of 2.22x and 6.33x, respectively, over the centroid method. These results enable precise particle trajectory reconstruction for applications in muon tomography and cosmic ray detection.",
+      "authors": [
+        "Matthew Mark Romano",
+        "Zhengzhi Liu",
+        "JungHyun Bae"
+      ],
+      "published": "2025-12-12T20:18:27Z",
+      "updated": "2026-07-15T17:01:37Z",
+      "categories": [
+        "physics.ins-det"
+      ],
+      "pdf_url": "https://arxiv.org/pdf/2512.20645v2",
+      "arxiv_url": "https://arxiv.org/abs/2512.20645v2",
+      "query": "Muon optimizer LLMs",
+      "topics": [
+        "ava-training"
+      ]
+    },
+    {
+      "arxiv_id": "2607.14035v1",
+      "id": "2607.14035v1",
+      "title": "Optimizing Visibility in Generative Engines: A Critical Survey of Generative Engine Optimization (2023-2026)",
+      "summary": "Generative Engine Optimization (GEO) seeks to increase content's presence, likelihood of citation, or influence in answers produced by generative engines. Since the foundational GEO paper, the field has expanded rapidly, but terminology, metrics, and evidence standards remain heterogeneous. This critical survey reviews 45 studies selected under a November 2023-July 2026 publication window, including one earlier preprint published at EMNLP after the window opened, plus relevant RAG and evaluation work. We argue that GEO is not a single ranking task but a stochastic, partially observable pipeline spanning search activation, crawling and indexing, retrieval, reranking and context allocation, citation, prominence, factual absorption, fidelity, and user behavior. The foundational paper's widely cited gains are valid within its experimental setting but conditional on a source already being present in a fixed context; they establish neither organic discoverability nor durable traffic effects. Reviewed work indicates that topical relevance and context position are the most reproducible levers, generic heuristics transfer poorly, competition can erode individual gains, and citation-oriented rewrites can impair retrieval. Commercial audits further reveal low source overlap, substantial run-to-run variability, and persistent fidelity gaps. We contribute a multistage formal model, a visibility vector separating discoverability, citation, absorption, and economic outcomes, an evidence hierarchy, and a reproducible protocol based on repeated measurements, paraphrases, controls, human validation, and multi-actor interference. Within this corpus, the evidence is narrow: already-retrieved content can causally alter its citation or use, but no reviewed technique shows a stable, longitudinal, cross-platform causal effect on organic discoverability or downstream behavior.",
+      "abstract": "Generative Engine Optimization (GEO) seeks to increase content's presence, likelihood of citation, or influence in answers produced by generative engines. Since the foundational GEO paper, the field has expanded rapidly, but terminology, metrics, and evidence standards remain heterogeneous. This critical survey reviews 45 studies selected under a November 2023-July 2026 publication window, including one earlier preprint published at EMNLP after the window opened, plus relevant RAG and evaluation work. We argue that GEO is not a single ranking task but a stochastic, partially observable pipeline spanning search activation, crawling and indexing, retrieval, reranking and context allocation, citation, prominence, factual absorption, fidelity, and user behavior. The foundational paper's widely cited gains are valid within its experimental setting but conditional on a source already being present in a fixed context; they establish neither organic discoverability nor durable traffic effects. Reviewed work indicates that topical relevance and context position are the most reproducible levers, generic heuristics transfer poorly, competition can erode individual gains, and citation-oriented rewrites can impair retrieval. Commercial audits further reveal low source overlap, substantial run-to-run variability, and persistent fidelity gaps. We contribute a multistage formal model, a visibility vector separating discoverability, citation, absorption, and economic outcomes, an evidence hierarchy, and a reproducible protocol based on repeated measurements, paraphrases, controls, human validation, and multi-actor interference. Within this corpus, the evidence is narrow: already-retrieved content can causally alter its citation or use, but no reviewed technique shows a stable, longitudinal, cross-platform causal effect on organic discoverability or downstream behavior.",
+      "authors": [
+        "Olivier Martinez"
+      ],
+      "published": "2026-07-15T17:03:08Z",
+      "updated": "2026-07-15T17:03:08Z",
+      "categories": [
+        "cs.IR",
+        "cs.DL"
+      ],
+      "pdf_url": "https://arxiv.org/pdf/2607.14035v1",
+      "arxiv_url": "https://arxiv.org/abs/2607.14035v1",
+      "query": "Muon optimizer LLMs",
+      "topics": [
+        "ava-training"
+      ]
+    },
+    {
+      "arxiv_id": "2607.14040v1",
+      "id": "2607.14040v1",
+      "title": "Can an Old Dog Be Taught New Tricks? Taking LLMs Beyond Sentence Level Translation",
+      "summary": "Automatic translation systems, from CAT tools to MT, overwhelmingly treat translation as a sentence-by-sentence act. This paper asks whether LLMs can be moved beyond that paradigm through whole-document, corpus-informed translation. We present PAT (Pragmatic Auto-Translator), a RAG-based system that pairs user-configured specifications with context from a comparable corpus of authentic longform texts in U.S. English and Latin American Spanish, passing retrieved paragraph-, section-, and document-level examples to an LLM for whole-document generation. The goal is draft translation for professional verification: target texts reformulated to fit their Spanish-language context, where discourse organization, rhetorical style, and pragmatic norms differ meaningfully from English. We evaluated six automatic translations of essays on generative AI across three projects using a customized MQM typology, assessed by two trained evaluators working from U.S. English into LATAM and Mexican Spanish. Results show that a limited prompt produced no meaningful reformulation, and specifications and corpus-informed translations at times showed substantial reformulation, though not always to effect. We find that LLMs can be moved toward reformulation and away from the sentence-by-sentence paradigm, though more work is needed to improve the effectiveness of those reformulations. In this paper, we discuss considerations related to automatic translation system design, corpus construction, and translation quality evaluation methodology and results.",
+      "abstract": "Automatic translation systems, from CAT tools to MT, overwhelmingly treat translation as a sentence-by-sentence act. This paper asks whether LLMs can be moved beyond that paradigm through whole-document, corpus-informed translation. We present PAT (Pragmatic Auto-Translator), a RAG-based system that pairs user-configured specifications with context from a comparable corpus of authentic longform texts in U.S. English and Latin American Spanish, passing retrieved paragraph-, section-, and document-level examples to an LLM for whole-document generation. The goal is draft translation for professional verification: target texts reformulated to fit their Spanish-language context, where discourse organization, rhetorical style, and pragmatic norms differ meaningfully from English. We evaluated six automatic translations of essays on generative AI across three projects using a customized MQM typology, assessed by two trained evaluators working from U.S. English into LATAM and Mexican Spanish. Results show that a limited prompt produced no meaningful reformulation, and specifications and corpus-informed translations at times showed substantial reformulation, though not always to effect. We find that LLMs can be moved toward reformulation and away from the sentence-by-sentence paradigm, though more work is needed to improve the effectiveness of those reformulations. In this paper, we discuss considerations related to automatic translation system design, corpus construction, and translation quality evaluation methodology and results.",
+      "authors": [
+        "Alaina Brandt"
+      ],
+      "published": "2026-07-15T17:10:24Z",
+      "updated": "2026-07-15T17:10:24Z",
+      "categories": [
+        "cs.CL"
+      ],
+      "pdf_url": "https://arxiv.org/pdf/2607.14040v1",
+      "arxiv_url": "https://arxiv.org/abs/2607.14040v1",
+      "query": "Muon optimizer LLMs",
+      "topics": [
+        "ava-training",
+        "ava-eval"
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "TklrV1NWdnE4UjlkQ1hCbw",
+      "title": "[AVA-RESEARCH][bigbang-mcp][critical] Advancing Multi-Agent Systems Through Model Context Protocol: Architecture, Impl \u2014 2504.21018v1",
+      "arxiv_id": "2504.21018v1"
+    },
+    {
+      "id": "RVltNUpZdWFMVUZ5TU1Maw",
+      "title": "[AVA-RESEARCH][bigbang-mcp][critical] Enhancing Model Context Protocol (MCP) with Context-Aware Server Collaboration \u2014 2601.11595v2",
+      "arxiv_id": "2601.11595v2"
+    },
+    {
+      "id": "MTZOZWdSdnQ3TThkUmt4WA",
+      "title": "[AVA-RESEARCH][ava-training][critical] Machine learning methods for subpixel trajectory reconstruction in discretized p \u2014 2512.20645v2",
+      "arxiv_id": "2512.20645v2"
+    },
+    {
+      "id": "dlI2YjBvWmR1WlREcFRLbQ",
+      "title": "[AVA-RESEARCH][ava-training][critical] Optimizing Visibility in Generative Engines: A Critical Survey of Generative Eng \u2014 2607.14035v1",
+      "arxiv_id": "2607.14035v1"
+    },
+    {
+      "id": "UUZyemljb0w0TTVqZi1WRQ",
+      "title": "[AVA-RESEARCH][ava-training][critical] Can an Old Dog Be Taught New Tricks? Taking LLMs Beyond Sentence Level Translati \u2014 2607.14040v1",
+      "arxiv_id": "2607.14040v1"
+    }
+  ]
+}

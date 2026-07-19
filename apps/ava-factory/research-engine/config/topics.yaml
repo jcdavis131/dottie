@@ -1,0 +1,127 @@
+# Ava Research Engine — Topics Config
+# Solo personal project, no connection to employer, built with public/free-tier only
+# Home-life only — uses free-tier arxiv API + local Ollama + personal-graphify
+
+# Each topic maps to BigBang / Ava ecosystem domain, with arxiv queries and reputable sources
+# Schedule: harvested daily 06:00 UTC, graphified 07:00 UTC, tasks synthesized 08:00 UTC
+
+topics:
+  - id: ava-jspace
+    title: "Ava J-Space Multi-Workspace"
+    description: "S1 Fast hl=8, S2 Slow hl=300, Critic hl=30, Planner hl=150 + Router/veto — Jacobian regularization, multi-space memory, branching"
+    ecosystem: "ava-agi-factory-v6-4/multi_jspace_module.py"
+    importance: critical
+    arxiv_queries:
+      - "Jacobian regularization multi-space"
+      - "fast slow memory LLM routing"
+      - "planner critic LLM architecture"
+      - "mixture of depth routing"
+    arxiv_categories: ["cs.LG", "cs.CL", "cs.AI", "cs.NE"]
+    hf_tags: ["reasoning", "memory"]
+    graphify_community: "Ava J-Space"
+
+  - id: ava-training
+    title: "Efficient Single-GPU LLM Training"
+    description: "WSD schedule (warmup 2k stable 736k 92% decay), Muon + AdamW, YaRN NTK-aware QK-Norm 10k->1M, single-GPU nanochat from Karpathy autoresearch"
+    ecosystem: "ava-agi-factory-v6-4/train_1b_deepspeed.py + model_1b.py"
+    importance: critical
+    arxiv_queries:
+      - "Muon optimizer LLMs"
+      - "WSD learning rate schedule warmup stable decay"
+      - "YaRN RoPE long context"
+      - "single GPU LLM training efficient"
+      - "nanoGPT training optimization"
+    arxiv_categories: ["cs.LG", "cs.CL", "cs.AI", "stat.ML"]
+    hf_tags: ["optimization", "training"]
+    graphify_community: "Training"
+
+  - id: ava-eval
+    title: "Frontier Rubric + Eval Harness"
+    description: "FrontierFinance 11-cat rubric (Financial Accuracy, Process Transparency etc), 220 tasks 11543 rubrics, Judge IRA 80.2%, branch eval cap preservation 0.983"
+    ecosystem: "ava-agi-factory-v6-4/eval_frontier_rubric.py + eval_branch_harness.py"
+    importance: high
+    arxiv_queries:
+      - "LLM evaluation rubric judge"
+      - "financial LLM evaluation frontier"
+      - "capability preservation branching"
+    arxiv_categories: ["cs.CL", "cs.LG", "cs.AI", "cs.CE"]
+    hf_tags: ["evaluation"]
+    graphify_community: "Evaluation"
+
+  - id: graphify-rag
+    title: "Graphify + GraphRAG + Knowledge Graphs for LLMs"
+    description: "personal-graphify: 727 nodes 1713 edges 49 comms, tree-sitter extraction, 35.2x token reduction (71.5x upstream), LLM wikis token-efficient, GraphRAG"
+    ecosystem: "bigbang-cli/docs/llm-wiki/ + ~/your_files/personal-graphify"
+    importance: critical
+    arxiv_queries:
+      - "GraphRAG knowledge graph retrieval"
+      - "knowledge graph LLM code analysis"
+      - "tree-sitter code knowledge graph"
+      - "token reduction retrieval augmented"
+      - "LLM wiki generation code"
+    arxiv_categories: ["cs.CL", "cs.SE", "cs.IR", "cs.DB", "cs.AI"]
+    hf_tags: ["rag", "knowledge-graph"]
+    graphify_community: "Graphify"
+
+  - id: bigbang-mcp
+    title: "MCP + OpenAPI Tool Use + Agentic Routing"
+    description: "BigBang CLI universal router: MCP SDK sse_client + streamablehttp, OpenAPI codegen fetch_spec parse_operations generate_typer_plugin, Ava router qwen3:32b heuristic 0.92 for tasks"
+    ecosystem: "bigbang-cli/bigbang/core/mcp_client.py + openapi.py + llm.py"
+    importance: critical
+    arxiv_queries:
+      - "Model Context Protocol MCP agents"
+      - "OpenAPI function calling LLM"
+      - "tool use routing LLM agent"
+      - "universal tool router CLI"
+    arxiv_categories: ["cs.SE", "cs.CL", "cs.AI", "cs.LG"]
+    hf_tags: ["agents", "tool-use"]
+    graphify_community: "BigBang"
+
+  - id: vector-mtnn
+    title: "MTNN Multi-Task + Embedding Eval + Sports Analytics"
+    description: "Vector Hoops 12,966 player-seasons, MTNN v5_concat_b2_h160_t32_d48_mlp128, CQS 85.87 leakfree 0.7937, Vector Gridiron MAE 4.268 R2 0.39, pitch 633 tournaments"
+    ecosystem: "vector-hoops/pipeline/ + vector-pitch/ + vector-gridiron/"
+    importance: medium
+    arxiv_queries:
+      - "multi-task neural network embedding"
+      - "sports analytics player embedding"
+      - "chimera fusion archetype clustering"
+    arxiv_categories: ["cs.LG", " stat.ML", "cs.AI"]
+    hf_tags: ["multitask"]
+    graphify_community: "Vector"
+
+  - id: workforce-ai
+    title: "Workforce Turnover + Retention Prediction"
+    description: "Trade Crew Turnover Shield $79-$149/mo, 7-13 customers -> $1k MRR, solo boring B2B, free-tier Supabase/R2/Workers"
+    ecosystem: "02_Passive_Lab/ + Turnover Shield MVP"
+    importance: medium
+    arxiv_queries:
+      - "employee turnover prediction machine learning"
+      - "workforce retention churn"
+    arxiv_categories: ["cs.LG", "econ.GN", "stat.ML"]
+    hf_tags: ["workforce"]
+    graphify_community: "Passive Lab"
+
+# Global harvest settings
+harvest:
+  max_results_per_query: 15
+  sort_by: "lastUpdatedDate"
+  sort_order: "descending"
+  lookback_days: 14
+  sources: ["arxiv", "huggingface_papers"]
+  output_dir: "~/workspace/your_files/research/arxiv"
+  graphify_source_dir: "~/workspace/ava-research-engine/graphify_source"
+
+# Graphify settings
+graphify:
+  out_dir: "~/workspace/bigbang-cli/graphify-out-research"
+  personal_ref: "~/workspace/your_files/personal-graphify/references/spaces/research-graph.json"
+  rebuild_schedule: "daily 07:00 UTC or interval 4h"
+
+# Tasks synthesis
+tasks:
+  target_list_id: "MDg4NTEzMTkzNjgwNzI5NDMyMDI6MDow" # Lina's Morning = @default maps there, holds BigBang tasks
+  also_create_list: "Ava Research" # create if not exists
+  prefix: "[AVA-RESEARCH]"
+  max_tasks_per_day: 5
+  dedup_by_arxiv_id: true

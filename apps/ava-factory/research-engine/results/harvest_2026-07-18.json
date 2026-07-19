@@ -1,0 +1,18 @@
+{
+  "date": "2026-07-18",
+  "topics": [
+    {"id": "ava-jspace", "title": "Ava J-Space Multi-Workspace", "count": 0, "queries": 4},
+    {"id": "ava-training", "title": "Efficient Single-GPU LLM Training", "count": 0, "queries": 4},
+    {"id": "ava-eval", "title": "Frontier Rubric + Eval Harness", "count": 0, "queries": 3},
+    {"id": "graphify-rag", "title": "Graphify + GraphRAG", "count": 0, "queries": 4},
+    {"id": "bigbang-mcp", "title": "MCP + OpenAPI Tool Use", "count": 0, "queries": 4},
+    {"id": "vector-mtnn", "title": "MTNN Multi-Task", "count": 0, "queries": 3},
+    {"id": "workforce-ai", "title": "Workforce Turnover", "count": 0, "queries": 3}
+  ],
+  "total_queries": 25,
+  "total_papers_raw": 0,
+  "total_papers_deduped": 0,
+  "egress_error": "IncompleteRead/Timeout observed 2026-07-15 for 6/7 topics, consistent on 2026-07-18",
+  "fallback": "seed_from_websearch.py seeded 21 real papers (Muon 2509.23106v1 etc) + existing 149 = 170 total graphify_source",
+  "graphify_source_count": 170
+}

@@ -1,0 +1,9 @@
+{
+  "nodes": 1120,
+  "edges": 2295,
+  "queries": [],
+  "total_saved_tokens": 0,
+  "total_naive": 0,
+  "total_scoped": 0,
+  "mode": "ollama-first local"
+}

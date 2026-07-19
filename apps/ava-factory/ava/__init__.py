@@ -1,14 +1,22 @@
-"""Ava — real implementation package.
+"""Backward-compat shim: ava -> dottie. Ava was placeholder, now Dottie."""
 
-Solo personal project, no connection to employer, built with public/free-tier
-only.
+from dottie import *  # noqa: F401,F403
+import importlib
+import sys
+# Lazy redirect any submodule import ava.X -> dottie.X
+try:
+    import dottie as _dottie_pkg
+    sys.modules.setdefault(__name__, _dottie_pkg)
+    # For submodules, Python will try ava.<sub> ; we proxy via dottie
+    # Create wrapper module for common submodules on demand via __getattr__
+except Exception:
+    pass
 
-The repo root holds the original v6.4 blueprint (train_1b_deepspeed.py,
-eval_branch_harness.py, ...), which is mock scaffolding kept for reference.
-Everything under `ava/` is the real, tested implementation that supersedes it.
-
-Exceptions — these root modules are real and are imported from here after the
-spec-04 bug fixes: model_1b.py, multi_jspace_module.py, server.py.
-"""
-
-__version__ = "0.1.0"
+# Keep old names as aliases
+try:
+    from dottie.config import DottieConfig as AvaConfig, DottieConfig
+    from dottie.model import DottieModel1B as AvaModel1B
+    from dottie.tokenizer import DottieTokenizer as AvaTokenizer
+    DottieModel1B_alias = AvaModel1B
+except Exception:
+    pass

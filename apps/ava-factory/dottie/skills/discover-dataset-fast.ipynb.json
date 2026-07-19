@@ -1,0 +1,5 @@
+{
+  "cells": [
+    "\n# Bootstrap notebook for discover-dataset-fast\n# Edit and use immediately (no code push)\n\n# Fast dataset discovery: 58 HF candidates filtered in one cell with md5 13.5s\n\n# discover-dataset-fast \u2014 skillbook placeholder\nasync def run_discover_dataset_fast_workflow():\n    print('Running discover-dataset-fast: Fast dataset discovery: 58 HF candidates filtered in one cell with md5 13.5s')\n    return True\n\n\n# Test:\n# await run_discover-dataset-fast_workflow()\n"
+  ]
+}

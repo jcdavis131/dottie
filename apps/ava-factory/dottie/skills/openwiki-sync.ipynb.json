@@ -1,0 +1,5 @@
+{
+  "cells": [
+    "\n# Bootstrap notebook for openwiki-sync\n# Edit and use immediately (no code push)\n\n# Sync ~/.openwiki/wiki -> S2 Slow hl=300 verbalizable memory\n\n# openwiki-sync \u2014 skillbook placeholder\nasync def run_openwiki_sync_workflow():\n    print('Running openwiki-sync: Sync ~/.openwiki/wiki -> S2 Slow hl=300 verbalizable memory')\n    return True\n\n\n# Test:\n# await run_openwiki-sync_workflow()\n"
+  ]
+}
