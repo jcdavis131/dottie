@@ -13,6 +13,7 @@ current bottleneck, not a generic one.
 
 from __future__ import annotations
 
+import ast
 import json
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -239,9 +240,17 @@ def extract_json(text: str) -> Any:
 def parse_hypotheses(text: str) -> List[Dict[str, Any]]:
     """Parse ideation output into a list of hypothesis dicts (validating required keys)."""
     obj = extract_json(text)
-    items = obj if isinstance(obj, list) else [obj]
     required = {"hypothesis_name", "theoretical_intuition", "mathematical_formulation",
                 "pytorch_implementation_strategy", "expected_outcome"}
+    if isinstance(obj, dict) and not (required & set(obj)):
+        # Models sometimes wrap the list ({"hypotheses": [...]}) — observed live on qwen3:14b.
+        # Unwrap the first list-of-dicts value; anything else still fails honestly below.
+        wrapped = next((v for v in obj.values()
+                        if isinstance(v, list) and v and all(isinstance(x, dict) for x in v)),
+                       None)
+        if wrapped is not None:
+            obj = wrapped
+    items = obj if isinstance(obj, list) else [obj]
     out: List[Dict[str, Any]] = []
     for it in items:
         if not isinstance(it, dict):
@@ -255,20 +264,39 @@ def parse_hypotheses(text: str) -> List[Dict[str, Any]]:
     return out
 
 
-def _unescape_flat_code(code: str) -> str:
-    """Deterministic transport repair for double-escaped JSON code.
-
-    Some models emit the whole module as ONE line whose newlines survived as literal ``\\n``
-    two-character sequences (double escaping). Such code is guaranteed broken as-is, so when
-    there are no real newlines but escape sequences are present, decode them with JSON string
-    semantics. Applied only in that unambiguous state — code with real newlines is untouched
-    (e.g. a ``\\nabla`` inside a comment stays intact)."""
-    if "\n" in code or "\\n" not in code:
-        return code
+def _parses(code: str) -> bool:
     try:
-        return json.loads('"' + code.replace('"', '\\"') + '"')
-    except json.JSONDecodeError:
+        ast.parse(code)
+    except SyntaxError:
+        return False
+    return True
+
+
+def _unescape_flat_code(code: str) -> str:
+    """Deterministic, parse-gated transport repair for JSON-mangled code.
+
+    Some models emit modules whose newlines survived as literal ``\\n`` two-character sequences
+    (double escaping) — sometimes the whole module on one line, sometimes a mix of real and
+    literal newlines from a partially escaped correction pass (both observed live, aea41c349279).
+    Such code is guaranteed broken, so the repair is gated on exactly that: code that already
+    parses is returned untouched (a ``\\nabla`` inside a comment stays intact), and a repaired
+    candidate replaces it only when the candidate parses. The repair can never damage working
+    code; unrepairable code passes through unchanged and fails at ``syntax`` honestly."""
+    if "\\n" not in code or _parses(code):
         return code
+    candidates: List[str] = []
+    # JSON string semantics first (also fixes \" and \\). Raises harmlessly when the code has
+    # real newlines (raw control chars in a JSON string) or JSON-invalid escapes like \d.
+    try:
+        candidates.append(json.loads('"' + code.replace('"', '\\"') + '"'))
+    except json.JSONDecodeError:
+        pass
+    # Plain unescape — covers the mixed real+literal case and escapes JSON cannot decode.
+    candidates.append(code.replace("\\n", "\n").replace("\\t", "\t"))
+    for candidate in candidates:
+        if _parses(candidate):
+            return candidate
+    return code
 
 
 def parse_implementation(text: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:

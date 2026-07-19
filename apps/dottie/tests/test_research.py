@@ -117,6 +117,54 @@ def test_validator_levels():
     assert r.level == "dry_run" and "NaN" in r.detail
 
 
+def test_dry_run_enforces_output_shape_contract():
+    # A module that reduces away the hidden dim violates the drop-in block contract
+    # ([b,s,h] -> [b,s,h]) — observed live (ba9b35cd8077). The failure names the contract so
+    # the correction pass gets an actionable message, not an integration traceback.
+    squeeze = ("import torch\nimport torch.nn as nn\nclass Squeeze(nn.Module):\n"
+               "    def forward(self, x):\n        return x.mean(dim=-1)\n")
+    r = validate.validate(squeeze, class_name="Squeeze", input_shape=[2, 4, 8])
+    assert not r.ok and r.level == "dry_run" and "SAME [batch, seq, hidden]" in r.detail
+
+
+def test_contract_rejects_forward_with_extra_required_args():
+    # A regularizer-style forward(x, gradients) can never be a drop-in block (observed live,
+    # 6483a5daea94) — it dies at contract in milliseconds, not after burning correction cycles.
+    reg = ("import torch\nimport torch.nn as nn\nclass Reg(nn.Module):\n"
+           "    def forward(self, x, gradients):\n        return (gradients ** 2).sum()\n")
+    r = validate.validate(reg, class_name="Reg")
+    assert not r.ok and r.level == "contract" and "gradients" in r.detail
+    # extra args WITH defaults are fine, and helper classes with extra args don't poison the
+    # declared block class
+    ok_code = ("import torch\nimport torch.nn as nn\n"
+               "class Helper(nn.Module):\n"
+               "    def forward(self, x, gate):\n        return x * gate\n"
+               "class Block(nn.Module):\n"
+               "    def forward(self, x, scale=1.0):\n        return x * scale\n")
+    r2 = validate.validate(ok_code, class_name="Block", input_shape=[2, 4, 8])
+    assert r2.ok, r2.detail
+
+
+def test_dry_run_sanitizes_untrusted_input_shape():
+    # A model-declared junk shape ([-1, -1, 8] observed live) must not fail torch.randn —
+    # non-positive dims fall back per-dimension and good code still validates.
+    r = validate.validate(GOOD_CODE, class_name="SeqMeanMix", input_shape=[-1, -1, 64])
+    assert r.ok, r.detail
+
+
+def test_repeated_identical_failure_escalates_feedback():
+    # A corrector stuck in a loop (identical failure twice running) gets an explicit
+    # do-something-different note appended to the feedback from the second retry on.
+    seen = []
+    def stuck(code, feedback):
+        seen.append(feedback)
+        return code  # resubmits the same broken code every time
+    out = validate.validate_with_correction("def bad(:", stuck, max_retries=3)
+    assert not out.ok and len(seen) == 3
+    assert "same failure" not in seen[0]
+    assert all("same failure" in f for f in seen[1:])
+
+
 def test_self_correction_fix_and_giveup():
     out = validate.validate_with_correction("def bad(:", lambda c, f: GOOD_CODE,
                                              class_name="SeqMeanMix", input_shape=[4, 16, 64])
@@ -139,8 +187,13 @@ def test_prompts_and_parsing():
     assert "val_loss = 3.09" in p and "DeadIdea" in p and "SEARCH SPACE" in p
     hs = prompts.parse_hypotheses("noise\n```json\n" + json.dumps([HYP]) + "\n```")
     assert len(hs) == 1 and hs[0]["hypothesis_name"] == "SeqMeanMix"
+    # a wrapper object around the list ({"hypotheses": [...]}) is unwrapped — observed live
+    hs2 = prompts.parse_hypotheses(json.dumps({"hypotheses": [HYP, HYP]}))
+    assert len(hs2) == 2 and hs2[0]["hypothesis_name"] == "SeqMeanMix"
     with pytest.raises(ValueError):
         prompts.parse_hypotheses('{"hypothesis_name": "incomplete"}')
+    with pytest.raises(ValueError):
+        prompts.parse_hypotheses('{"hypotheses": "not a list"}')
     impl, dry = prompts.parse_implementation(impl_json())
     assert impl["module_name"] == "SeqMeanMix" and dry["input_shape"] == [8, 16, 64]
     with pytest.raises(ValueError):
@@ -196,6 +249,33 @@ def test_parse_implementation_repairs_double_escaped_code():
     multiline = "# grad: \\nabla f\n" + GOOD_CODE
     impl2, _ = prompts.parse_implementation(impl_json(code=multiline))
     assert impl2["code"] == multiline
+
+
+def test_parse_implementation_repairs_mixed_escaped_code():
+    # Observed live (aea41c349279 attempt 3): a correction pass came back with SOME real
+    # newlines and SOME literal \n sequences — broken as-is, outside the old flat-only repair.
+    lines = GOOD_CODE.rstrip("\n").split("\n")
+    mixed = lines[0] + "\\n" + "\n".join(lines[1:])
+    impl, _ = prompts.parse_implementation(impl_json(code=mixed))
+    assert impl["code"] == "\n".join(lines)
+
+
+def test_parse_implementation_repairs_flat_code_with_json_invalid_escape():
+    # A flat one-liner containing a JSON-invalid escape (a \d in a comment): the JSON-decode
+    # path raises, the plain-unescape path repairs it.
+    src = ('import torch.nn as nn\nclass DigitGate(nn.Module):  # gates \\d-digit ids\n'
+           '    def forward(self, x):\n        return x\n')
+    flat = src.replace("\n", "\\n")
+    impl, _ = prompts.parse_implementation(impl_json(code=flat))
+    assert impl["code"] == src
+
+
+def test_parse_implementation_leaves_unrepairable_code_unchanged():
+    # Broken code no unescape can save passes through untouched — it then fails at the syntax
+    # validator honestly instead of being silently rewritten.
+    hopeless = "def broken(:\\n    pass"
+    impl, _ = prompts.parse_implementation(impl_json(code=hopeless))
+    assert impl["code"] == hopeless
 
 
 def test_unparseable_implementation_is_honest_failed_validation(led, tmp_path):

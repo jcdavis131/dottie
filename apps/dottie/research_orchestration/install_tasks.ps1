@@ -39,8 +39,11 @@ foreach ($d in $Defs) {
     }
     if ($Uninstall) { continue }
 
+    # Hidden + NonInteractive: a visible console invites an accidental close mid-run — a tick
+    # died exactly that way (LastTaskResult 0xC000013A, STATUS_CONTROL_C_EXIT, observed live).
     $action = New-ScheduledTaskAction -Execute "powershell.exe" `
-        -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$Wrapper`" $($d.Args)"
+        -Argument ("-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass " +
+                   "-File `"$Wrapper`" $($d.Args)")
     $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable `
         -DontStopOnIdleEnd -ExecutionTimeLimit ([TimeSpan]::Zero) `
         -MultipleInstances IgnoreNew

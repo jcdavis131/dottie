@@ -68,10 +68,21 @@ def check_syntax(code: str) -> ValidationResult:
 # L2 — AST contract
 # ---------------------------------------------------------------------------
 
+def _extra_required_forward_args(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> List[str]:
+    """Required arguments of a ``forward`` def beyond ``self`` and the single input tensor."""
+    a = fn.args
+    positional = list(a.posonlyargs) + list(a.args)
+    required = positional[:len(positional) - len(a.defaults)] if a.defaults else positional
+    extra = [arg.arg for arg in required[2:]]  # beyond (self, hidden_states)
+    extra += [k.arg for k, d in zip(a.kwonlyargs, a.kw_defaults) if d is None]
+    return extra
+
+
 class _ContractChecker(ast.NodeVisitor):
     def __init__(self) -> None:
         self.has_class = False
         self.has_forward = False
+        self.forward_extra: Dict[str, List[str]] = {}   # class name -> extra required args
         self.illegal_imports: List[str] = []
         self.illegal_calls: List[str] = []
 
@@ -93,6 +104,7 @@ class _ContractChecker(ast.NodeVisitor):
         for item in node.body:
             if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name == "forward":
                 self.has_forward = True
+                self.forward_extra[node.name] = _extra_required_forward_args(item)
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
@@ -102,7 +114,7 @@ class _ContractChecker(ast.NodeVisitor):
         self.generic_visit(node)
 
 
-def check_contract(code: str) -> ValidationResult:
+def check_contract(code: str, *, class_name: Optional[str] = None) -> ValidationResult:
     try:
         tree = ast.parse(code)
     except SyntaxError as e:  # pragma: no cover - L1 should have caught it
@@ -114,6 +126,17 @@ def check_contract(code: str) -> ValidationResult:
         problems.append("no class defined (expected an nn.Module subclass)")
     if not ck.has_forward:
         problems.append("no 'forward' method found on any class")
+    # A drop-in sequence block's forward takes exactly one input tensor. A regularizer-style
+    # forward(x, gradients) can NEVER pass dry-run or integrate into the factory model, so an
+    # extra required arg fails here in milliseconds — before any model correction round-trips
+    # burn on an unfixable signature (observed live, 6483a5daea94). Scoped to the declared
+    # class: helper submodules may legitimately take extra arguments.
+    extra = ck.forward_extra.get(class_name or "")
+    if extra:
+        problems.append(
+            f"forward() of {class_name} requires extra argument(s) {extra} beyond the single "
+            "hidden-states tensor — a drop-in block's forward must accept exactly one "
+            "[batch, seq, hidden] input; give them defaults or restructure the idea as a block")
     if ck.illegal_imports:
         problems.append(f"illegal imports (untrusted-code policy): {sorted(set(ck.illegal_imports))}")
     if ck.illegal_calls:
@@ -187,7 +210,11 @@ def dry_run_module(file_path: str | Path, *, class_name: Optional[str] = None,
                                 "torch not installed — CPU dry-run skipped (not a pass)")
     import importlib.util
     init_kwargs = dict(init_kwargs or {})
-    shape = list(input_shape or [4, 16, 64])
+    # The declared shape is untrusted model output ([-1, -1, 8] observed live): a junk dim
+    # would fail torch.randn no matter how good the code is, so fall back per-dimension.
+    raw = list(input_shape) if input_shape and len(list(input_shape)) == 3 else [4, 16, 64]
+    shape = [d if isinstance(d, int) and not isinstance(d, bool) and d > 0 else dflt
+             for d, dflt in zip(raw, (4, 16, 64))]
     mod_name = f"dottie_research_candidate_{uuid.uuid4().hex[:8]}"
     try:
         spec = importlib.util.spec_from_file_location(mod_name, str(file_path))
@@ -204,6 +231,15 @@ def dry_run_module(file_path: str | Path, *, class_name: Optional[str] = None,
         if not torch.is_tensor(out_t):
             return ValidationResult(False, "dry_run", "fail",
                                     f"forward returned {type(out_t).__name__}, not a tensor")
+        if tuple(out_t.shape) != tuple(dummy.shape):
+            # The integration contract (see the ideation prompt): a drop-in sequence block maps
+            # [batch, seq, hidden] -> [batch, seq, hidden]. Catching it here gives the
+            # correction pass a crisp message instead of a downstream integration traceback.
+            return ValidationResult(
+                False, "dry_run", "fail",
+                f"forward returned shape {tuple(out_t.shape)} for input {tuple(dummy.shape)} — "
+                "the integration contract requires a drop-in sequence block whose output has "
+                "the SAME [batch, seq, hidden] shape as its input")
         if torch.isnan(out_t).any() or torch.isinf(out_t).any():
             return ValidationResult(False, "dry_run", "fail",
                                     "forward produced NaN/Inf — add clamping or an eps term")
@@ -232,7 +268,7 @@ def validate(code: str, *, class_name: Optional[str] = None,
     r = record(check_syntax(code))
     if not r.ok:
         return r
-    r = record(check_contract(code))
+    r = record(check_contract(code, class_name=class_name))
     if not r.ok:
         return r
 
@@ -277,10 +313,20 @@ def validate_with_correction(code: str, corrector: Corrector, *, max_retries: in
                       input_shape=input_shape, workdir=workdir)
     history.append({"attempt": attempts, "ok": result.ok, "level": result.level,
                     "status": result.status, "detail": result.detail[:2000]})
+    prev_failure: Optional[tuple] = None
     while not result.ok and attempts < max_retries:
         attempts += 1
+        feedback = result.as_feedback()
+        # Near-greedy sampling can regenerate the same broken fix forever (observed live,
+        # f9256ee7c029: identical wrong output shape four times). When a correction lands on
+        # EXACTLY the same failure, say so — a materially different prompt breaks the loop.
+        if prev_failure == (result.level, result.detail):
+            feedback += ("\n\nNOTE: your previous rewrite produced EXACTLY this same failure — "
+                         "that approach does not fix it. Restructure the forward pass "
+                         "differently this time; do not resubmit the same code.")
+        prev_failure = (result.level, result.detail)
         try:
-            current = corrector(current, result.as_feedback())
+            current = corrector(current, feedback)
         except Exception as e:  # corrector itself failed (e.g. LLM unreachable) — stop honestly
             history.append({"attempt": attempts, "corrector_error": repr(e)})
             break
