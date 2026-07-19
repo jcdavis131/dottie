@@ -152,11 +152,18 @@ class OllamaPolicy(PolicyProvider):
         return self._chat(messages, temperature=temperature)
 
     def _chat(self, messages: list, *, temperature: Optional[float] = None) -> str:
+        options: dict = {"temperature": self.temperature if temperature is None else float(temperature)}
+        # DOTTIE_OLLAMA_NUM_GPU=0 pins inference to CPU (doctrine: the GPU belongs to
+        # model TRAINING; LLM inference and everything else run on CPU). Any integer is
+        # passed through as the number of offloaded layers.
+        num_gpu = os.environ.get("DOTTIE_OLLAMA_NUM_GPU")
+        if num_gpu is not None and num_gpu.strip() != "":
+            options["num_gpu"] = int(num_gpu)
         payload = {
             "model": self.model,
             "messages": messages,
             "stream": False,
-            "options": {"temperature": self.temperature if temperature is None else float(temperature)},
+            "options": options,
         }
         if self.think is not None:
             payload["think"] = self.think

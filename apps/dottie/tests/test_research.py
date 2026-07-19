@@ -348,3 +348,25 @@ def test_runner_stage_selection_policy():
     # terminal states never trigger work
     assert _choose_action({"failed_validation": 9, "sota": 1, "rejected": 2},
                           now=now, last_ideate_ts=now, ideate_cooldown_s=600) == "idle"
+
+
+def test_policy_num_gpu_knob(monkeypatch):
+    # DOTTIE_OLLAMA_NUM_GPU pins inference layers (0 = CPU; GPU belongs to training).
+    from dottie.policy import OllamaPolicy
+    captured = {}
+    class _R:
+        status_code = 200
+        def json(self):
+            return {"message": {"content": "ok"}}
+    def fake_post(url, json=None, timeout=None):
+        captured.update(json)
+        return _R()
+    import dottie.policy as pol
+    monkeypatch.setattr(pol.httpx, "post", fake_post)
+    monkeypatch.setenv("DOTTIE_OLLAMA_NUM_GPU", "0")
+    OllamaPolicy(base_url="http://x", model="m").complete("hi")
+    assert captured["options"]["num_gpu"] == 0
+    monkeypatch.delenv("DOTTIE_OLLAMA_NUM_GPU")
+    captured.clear()
+    OllamaPolicy(base_url="http://x", model="m").complete("hi")
+    assert "num_gpu" not in captured["options"]
