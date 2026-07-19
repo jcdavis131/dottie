@@ -48,17 +48,18 @@ def cmd_seed_baseline(args) -> int:
     return 0
 
 
-def _policy(args):
+def _policy(args, *, temperature: float = prompts.IMPLEMENTATION_TEMPERATURE):
     """Research workers get a plain JSON-completion callable, not the CodeAct agent protocol."""
     pol = OllamaPolicy()  # reads DOTTIE_OLLAMA_URL / DOTTIE_OLLAMA_MODEL from the env
-    return lambda prompt: pol.complete(prompt, system=prompts.RESEARCH_SYSTEM_PROMPT)
+    return lambda prompt: pol.complete(prompt, system=prompts.RESEARCH_SYSTEM_PROMPT,
+                                       temperature=temperature)
 
 
 def cmd_ideate(args) -> int:
     led = _ledger(args)
     try:
-        out = ideation.run_ideation(led, _policy(args), bottleneck=args.bottleneck,
-                                    n_ideas=args.n)
+        out = ideation.run_ideation(led, _policy(args, temperature=prompts.IDEATION_TEMPERATURE),
+                                    bottleneck=args.bottleneck, n_ideas=args.n)
     except DottiePolicyUnavailable as e:
         _emit({"error": "ollama_unavailable", "detail": str(e)})
         return 3
@@ -87,17 +88,51 @@ def cmd_implement(args) -> int:
     return 0
 
 
+def _trainer(args):
+    """None -> the default proxy micro-benchmark; 'factory' -> the real-Ava factory trainer."""
+    if getattr(args, "trainer", "proxy") == "factory":
+        from dottie.research.factory_trainer import factory_nano_trainer
+        return factory_nano_trainer
+    return None
+
+
 def cmd_train(args) -> int:
     led = _ledger(args)
     cfg: Dict[str, Any] = {"steps": args.steps}
     if args.seeds:
         cfg["seeds"] = [int(s) for s in args.seeds.split(",")]
-    out = train.run_training(led, config=cfg)
+    out = train.run_training(led, trainer=_trainer(args), config=cfg)
     if out is None:
         _emit({"note": "no experiments ready for training"})
         return 0
     _refresh_status(led, args)
     _emit(out)
+    return 0
+
+
+def cmd_calibrate_baseline(args) -> int:
+    """Measure the UNMODIFIED factory model and seed the baseline from that real number."""
+    from dottie.research.factory_trainer import FACTORY_METRIC, run_baseline_calibration
+    led = _ledger(args)
+    try:
+        measured = run_baseline_calibration({"steps": args.steps})
+    except Exception as e:
+        _emit({"error": "calibration_failed", "detail": str(e)})
+        return 3
+    b = Baseline(metric_name=FACTORY_METRIC, metric_value=measured[FACTORY_METRIC],
+                 higher_is_better=False, architecture=measured["preset"],
+                 experiment_id=None, updated_ts=__import__("time").time(),
+                 notes=f"measured baseline calibration: steps={measured['steps']} "
+                       f"seq={measured['seq_len']} batch={measured['batch']} "
+                       f"lr={measured['lr']} seed={measured['seed']} device={measured['device']}")
+    eff = led.seed_baseline(b, overwrite=args.overwrite)
+    _refresh_status(led, args)
+    _emit({"measured": measured,
+           "baseline": {"metric_name": eff.metric_name, "metric_value": eff.metric_value,
+                        "architecture": eff.architecture, "notes": eff.notes},
+           "note": ("baseline updated from this real measurement" if args.overwrite or
+                    eff.metric_value == measured[FACTORY_METRIC]
+                    else "existing baseline kept (pass --overwrite to replace)")})
     return 0
 
 
@@ -117,8 +152,9 @@ def cmd_loop(args) -> int:
     led = _ledger(args)
     steps: Dict[str, Any] = {}
     try:
-        steps["ideate"] = ideation.run_ideation(led, _policy(args), bottleneck=args.bottleneck,
-                                                 n_ideas=args.n)
+        steps["ideate"] = ideation.run_ideation(
+            led, _policy(args, temperature=prompts.IDEATION_TEMPERATURE),
+            bottleneck=args.bottleneck, n_ideas=args.n)
     except (DottiePolicyUnavailable, ValueError) as e:
         steps["ideate"] = {"skipped": str(e)}
     try:
@@ -127,7 +163,7 @@ def cmd_loop(args) -> int:
             max_retries=args.max_retries)
     except DottiePolicyUnavailable as e:
         steps["implement"] = {"skipped": str(e)}
-    steps["train"] = train.run_training(led, config={"steps": args.steps})
+    steps["train"] = train.run_training(led, trainer=_trainer(args), config={"steps": args.steps})
     steps["evaluate"] = evaluate.run_evaluation(led)
     _refresh_status(led, args)
     _emit(steps)
@@ -160,16 +196,27 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--n", type=int, default=1)
         sp.add_argument("--steps", type=int, default=60)
         sp.add_argument("--max-retries", type=int, default=3)
+        sp.add_argument("--trainer", choices=["proxy", "factory"], default="proxy",
+                        help="proxy micro-benchmark, or the real factory nano model")
         sp.set_defaults(func=fn)
 
     im = sub.add_parser("implement", help="implementation worker")
     im.add_argument("--max-retries", type=int, default=3)
     im.set_defaults(func=cmd_implement)
 
-    tr = sub.add_parser("train", help="training worker (proxy micro-benchmark)")
+    tr = sub.add_parser("train", help="training worker")
     tr.add_argument("--steps", type=int, default=60)
     tr.add_argument("--seeds", default="")
+    tr.add_argument("--trainer", choices=["proxy", "factory"], default="proxy",
+                    help="proxy micro-benchmark, or the real factory nano model")
     tr.set_defaults(func=cmd_train)
+
+    cb = sub.add_parser("calibrate-baseline",
+                        help="measure the UNMODIFIED factory model and seed the baseline "
+                             "from that real number")
+    cb.add_argument("--steps", type=int, default=150)
+    cb.add_argument("--overwrite", action="store_true")
+    cb.set_defaults(func=cmd_calibrate_baseline)
 
     ev = sub.add_parser("evaluate", help="evaluator & hill-climber")
     ev.set_defaults(func=cmd_evaluate)

@@ -187,6 +187,17 @@ def test_failed_validation_path(led, tmp_path):
     assert exp.failure and "validation failed" in exp.failure
 
 
+def test_parse_implementation_repairs_double_escaped_code():
+    # A one-line code field with literal \n sequences (double-escaped JSON) is decoded; code
+    # with real newlines is untouched even when it contains LaTeX-ish backslashes.
+    flat = GOOD_CODE.replace("\n", "\\n")
+    impl, _ = prompts.parse_implementation(impl_json(code=flat))
+    assert impl["code"] == GOOD_CODE
+    multiline = "# grad: \\nabla f\n" + GOOD_CODE
+    impl2, _ = prompts.parse_implementation(impl_json(code=multiline))
+    assert impl2["code"] == multiline
+
+
 def test_unparseable_implementation_is_honest_failed_validation(led, tmp_path):
     # policy answers the implementation prompt with prose (no JSON at all) every time ->
     # recorded as failed_validation at the 'parse' level, never an unhandled crash.

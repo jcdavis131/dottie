@@ -66,7 +66,10 @@ def run_evaluation(ledger: Ledger, *, require_stable: bool = True,
 
     metrics = exp.train_metrics or {}
     value = metrics.get(baseline.metric_name)
-    stable = metrics.get("integration") is not None and "proxy_loss" in metrics if require_stable else True
+    # Metric-agnostic: a run is comparable when a real trainer integration recorded the
+    # baseline's metric (run_training already diverts unstable runs to failed_training).
+    stable = (metrics.get("integration") is not None
+              and baseline.metric_name in metrics) if require_stable else True
 
     if value is None:
         verdict = {"promote": False, "metric": baseline.metric_name,

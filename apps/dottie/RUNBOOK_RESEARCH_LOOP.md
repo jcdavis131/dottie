@@ -87,6 +87,31 @@ python -m dottie.research status                    # the snapshot the arxiviq R
 `python -m dottie.research loop --n 3 --steps 200` runs one full ideate→implement→train→evaluate
 pass in order (Ollama gaps degrade honestly to `skipped`) — handy for a single local cycle.
 
+## 2.5 The REAL factory trainer (`--trainer factory`)
+
+The proxy micro-benchmark is the default. The **factory trainer** is the real swap-in: it drops
+the validated candidate module into the REAL nano `AvaModel1B` (replacing one fusion-layer
+block — the same slot the factory's `deltanet_layers` mechanism swaps), trains the whole model
+from scratch on the REAL packed pilot corpus, and measures **held-out LM cross-entropy**
+(`factory_lm_loss`, lower is better). Still nano-smoke scale — `capability_claim: none` — but a
+real, comparable, capability-relevant metric on real data.
+
+```bash
+# One-time per config: measure the UNMODIFIED model under the identical training recipe and
+# seed the baseline from that real number (never hand-type a factory baseline):
+python -m dottie.research calibrate-baseline --steps 150 --overwrite
+
+# Then train experiments against it:
+python -m dottie.research train --steps 150 --trainer factory
+python -m dottie.research loop --n 3 --steps 150 --trainer factory
+```
+
+Prerequisites: torch (CUDA build for the GPU), the factory checkout on `AVA_FACTORY_ROOT`, and
+a packed pilot corpus (run `scripts/cpu_pilot_e2e.py --device cuda` in the factory once — it
+probes `runs/cpu_pilot_4080/packed` then `runs/cpu_pilot/packed`). Missing pieces are honest
+`ok=False` refusals; a candidate that cannot integrate at the model width or goes NaN is a real
+`failed_training` outcome.
+
 ## 3. Install the continuous cron loop
 
 For a self-running flywheel, install the four workers on cron:
@@ -100,6 +125,20 @@ crontab apps/dottie/research_orchestration/crontab
 
 Cadence (mirrors the closed loop): **ideation daily at midnight** (establishes the frontier),
 **implement / train / evaluate hourly** at minutes 15 / 30 / 45 so each stage feeds the next.
+
+**Windows box (no cron):** the same cadence via Task Scheduler —
+
+```powershell
+# machine-local env first (Ollama model actually pulled, factory root):
+Copy-Item research_orchestration\research_env.local.ps1.example `
+          research_orchestration\research_env.local.ps1   # then edit it
+powershell -ExecutionPolicy Bypass -File research_orchestration\install_tasks.ps1
+```
+
+`research_worker.ps1` holds an exclusive per-worker lock file — a tick that finds the previous
+run still going is a silent no-op, exactly the flock -n behaviour. `install_tasks.ps1
+-Uninstall` removes all four tasks. Slow local models: set `DOTTIE_OLLAMA_READ_TIMEOUT_S`
+(default 300) in the local env file — a timeout still refuses honestly.
 
 **Single-instance via flock.** Each tick runs through `research_worker.sh`, which takes
 `flock -n` on a per-worker lock. If a long (e.g. 14-hour) training run is still going, the next

@@ -29,6 +29,12 @@ DEFAULT_SEARCH_SPACE = [
     "exact representations.",
 ]
 
+# Sampling temperatures for the two research completions: ideation is a SEARCH (a near-greedy
+# temperature regenerates the same few ideas forever — observed live), implementation is code
+# precision.
+IDEATION_TEMPERATURE = 0.9
+IMPLEMENTATION_TEMPERATURE = 0.2
+
 # System prompt for the research workers' plain completions (OllamaPolicy.complete). The CodeAct
 # agent protocol must NOT apply here — these prompts demand a bare JSON object, not agent turns.
 RESEARCH_SYSTEM_PROMPT = (
@@ -143,6 +149,10 @@ numerical stability, and modularity. Your code must compile on the first attempt
 4. Do NOT import os / subprocess / shutil / sys, and do not call eval / exec.
 5. The module must be instantiable with the `init_kwargs` you declare and runnable on a CPU
    forward pass of the `input_shape` you declare.
+6. Every `__init__` parameter after `self` MUST have a default value consistent with your
+   declared `input_shape` (a required positional argument that `init_kwargs` omits is an
+   automatic validation failure).
+7. `forward` MUST accept exactly one tensor `[batch, seq, hidden]` and return the same shape.
 
 # INPUT HYPOTHESIS
 {hjson}
@@ -239,6 +249,22 @@ def parse_hypotheses(text: str) -> List[Dict[str, Any]]:
     return out
 
 
+def _unescape_flat_code(code: str) -> str:
+    """Deterministic transport repair for double-escaped JSON code.
+
+    Some models emit the whole module as ONE line whose newlines survived as literal ``\\n``
+    two-character sequences (double escaping). Such code is guaranteed broken as-is, so when
+    there are no real newlines but escape sequences are present, decode them with JSON string
+    semantics. Applied only in that unambiguous state — code with real newlines is untouched
+    (e.g. a ``\\nabla`` inside a comment stays intact)."""
+    if "\n" in code or "\\n" not in code:
+        return code
+    try:
+        return json.loads('"' + code.replace('"', '\\"') + '"')
+    except json.JSONDecodeError:
+        return code
+
+
 def parse_implementation(text: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Parse implementation output. Returns (implementation_record, dry_run_spec).
 
@@ -248,6 +274,7 @@ def parse_implementation(text: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         obj = obj[0] if obj else {}
     if not isinstance(obj, dict) or "code" not in obj or not str(obj.get("code", "")).strip():
         raise ValueError("implementation missing non-empty 'code'")
+    obj["code"] = _unescape_flat_code(str(obj["code"]))
     module_name = obj.get("module_name")
     init_kwargs = obj.get("init_kwargs") or {}
     if isinstance(init_kwargs, str):
