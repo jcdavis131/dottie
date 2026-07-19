@@ -187,7 +187,9 @@ def main(argv=None) -> int:
     ap.add_argument("--max-steps", type=int, default=None, help="smoke tests")
     ap.add_argument("--seed", type=int, default=1234)
     ap.add_argument("--branch", default=None, help="e.g. chat")
-    ap.add_argument("--init", default=None, help="checkpoint to fork a branch from")
+    ap.add_argument("--init", default=None,
+                    help="checkpoint to init weights from: branch fork with --branch, "
+                         "plain warm start (e.g. dottie.grow output) without")
     args = ap.parse_args(argv)
 
     cfg = DottieConfig.load(args.preset)
@@ -226,6 +228,14 @@ def main(argv=None) -> int:
         set_router_bias(model, list(spec["router_bias"]))
         log("branch_forked", branch=args.branch, init=str(src), step=blob.get("step"),
             frozen=spec["freeze"], trainable=count_params(model, trainable_only=True))
+
+    # ---- plain init (no branch semantics): model weights only, fresh optimizer/step.
+    # The dottie.grow warm-start path: `--preset base1b --init /ckpt/base1b/grown_init.pt`.
+    elif args.init:
+        blob = torch.load(Path(args.init), map_location=device, weights_only=False)
+        model.load_state_dict(blob["model"])
+        log("init_loaded", init=str(args.init), src_step=blob.get("step"),
+            grown=bool(blob.get("grow")), init_preset=blob.get("preset"))
 
     opt = build_optimizer(model, cfg)
     obj = JSpaceObjective(cfg).to(device)

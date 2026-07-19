@@ -17,6 +17,7 @@ import importlib.util
 
 _MODULE_REQUIREMENTS = {
     "test_model.py": ["torch"],
+    "test_grow.py": ["torch"],
     "test_jlosses.py": ["torch"],
     "test_train_smoke.py": ["torch"],
     "test_eval_harness.py": ["torch"],

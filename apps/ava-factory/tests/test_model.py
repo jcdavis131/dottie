@@ -41,6 +41,7 @@ def _tiny(jspace_causal: bool = True, jspace_chunk: int = 4, **overrides) -> Ava
             "routing_targets": {
                 "automatic": [0.6, 0.15, 0.1, 0.15], "deliberate": [0.15, 0.55, 0.1, 0.2],
                 "safety": [0.1, 0.2, 0.6, 0.1], "temporal": [0.1, 0.3, 0.1, 0.5],
+                "tool_selection": [0.10, 0.35, 0.10, 0.45],
             },
             "base_loss_weights": {"report": 1.0, "broadcast": 0.5, "selectivity": 0.3, "modulation": 0.5},
             "j_weight": {"early": 0.08, "late": 0.15},
@@ -545,9 +546,10 @@ def test_routing_responds_to_task_type(tiny_model):
     ids = torch.randint(0, 64, (1, 8))
     with torch.no_grad():
         probs = {tt: tiny_model(input_ids=ids, task_type=tt)["jspace"]["route_probs"][0]
-                 for tt in ("automatic", "deliberate", "safety", "temporal")}
+                 for tt in ("automatic", "deliberate", "safety", "temporal", "tool_selection")}
     assert probs["automatic"].argmax().item() == 0
     assert probs["safety"].argmax().item() == 2
+    assert probs["tool_selection"].argmax().item() == 3
 
 
 def test_freeze_spaces_and_unknown_space_raises(tiny_model):

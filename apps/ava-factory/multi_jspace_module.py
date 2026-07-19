@@ -171,6 +171,9 @@ class Router(nn.Module):
         "deliberate": (-0.3, 0.6, -0.2, 0.0),
         "safety": (-0.4, -0.2, 0.8, -0.2),
         "temporal": (-0.4, 0.0, -0.2, 0.6),
+        # Tool selection / agentic call planning → Planner + S2 (ported from the live
+        # checkout with the 5-type router, 2026-07-19).
+        "tool_selection": (-0.3, 0.3, -0.3, 0.6),
     }
 
     def __init__(self, d_model):
@@ -355,6 +358,7 @@ class MultiJSpaceLosses(nn.Module):
             "deliberate": torch.tensor([0.15, 0.55, 0.1, 0.2]),
             "safety": torch.tensor([0.1, 0.2, 0.6, 0.1]),
             "temporal": torch.tensor([0.1, 0.3, 0.1, 0.5]),
+            "tool_selection": torch.tensor([0.10, 0.35, 0.10, 0.45]),
         }
         tgt = target_map.get(task_type, target_map["deliberate"]).to(route_probs.device)
         tgt = tgt.unsqueeze(0).expand_as(route_probs)
