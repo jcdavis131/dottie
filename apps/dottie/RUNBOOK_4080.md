@@ -67,9 +67,12 @@ The Docker image ships without torch; for the ava backend / train-step inside th
 container, `pip install torch` in the container and mount your checkpoint tree — or just
 run the climb from the host CLI (below), which uses your host Python and env vars.
 
-With the server up, open **arxiviq.com → Dottie tab → Connect** (default
+With the server up, open **https://arxiviq.vercel.app → Dottie tab → Connect** (default
 `http://localhost:8100`). The tab talks to YOUR server from your browser; the API's CORS
-allow-list already includes `arxiviq.com` (override with `DOTTIE_CORS_ORIGINS`).
+allow-list already includes `arxiviq.vercel.app` and `arxiviq.com` (override with
+`DOTTIE_CORS_ORIGINS`). Note: `arxiviq.com` itself currently serves your separate
+Next.js Dottie control-plane site — the MLOps console with this tab lives on the
+`arxiviq.vercel.app` alias until you decide where the domain should point.
 
 ## 3. The climb — measured, gated iterations
 

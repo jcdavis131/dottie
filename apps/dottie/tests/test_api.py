@@ -12,6 +12,10 @@ from fastapi.testclient import TestClient
 from dottie.api import create_app
 from dottie.engine import DottieEngine
 
+# Import at module top (collection time): engine tests later append the factory root to
+# sys.path, whose own tests/ package would shadow this one for a runtime import.
+from tests.conftest import UNROUTABLE_OLLAMA
+
 
 @pytest.fixture()
 def client(data_dir):
@@ -31,10 +35,11 @@ def _wait_done(client: TestClient, task_id: str, timeout_s: float = 30.0) -> dic
 
 
 def test_cors_allows_arxiviq_and_blocks_unknown_origins(client):
-    # Simple request from the arxiviq console origin gets the CORS grant.
-    r = client.get("/status", headers={"Origin": "https://arxiviq.com"})
-    assert r.status_code == 200
-    assert r.headers.get("access-control-allow-origin") == "https://arxiviq.com"
+    # Simple request from the arxiviq console origins gets the CORS grant.
+    for origin in ("https://arxiviq.vercel.app", "https://arxiviq.com"):
+        r = client.get("/status", headers={"Origin": origin})
+        assert r.status_code == 200
+        assert r.headers.get("access-control-allow-origin") == origin
     # Unknown origins get no grant (the response itself still succeeds server-side;
     # the browser is the enforcement point — absence of the header is the block).
     r = client.get("/status", headers={"Origin": "https://evil.example"})
@@ -110,8 +115,6 @@ def test_empty_prompt_rejected(client):
 
 
 def test_ollama_task_fails_honestly_via_api(client, monkeypatch):
-    from tests.conftest import UNROUTABLE_OLLAMA
-
     monkeypatch.setenv("DOTTIE_OLLAMA_URL", UNROUTABLE_OLLAMA)
     task_id = client.post(
         "/tasks", json={"prompt": "no server", "backend": "ollama"}

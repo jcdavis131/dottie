@@ -231,11 +231,13 @@ def create_app(engine: Optional[DottieEngine] = None) -> FastAPI:
 
     # CORS: the arxiviq console (a public static page) talks to THIS server on the user's own
     # box (localhost). Explicit origin allow-list — never "*": the API can run tasks.
+    # arxiviq.vercel.app is where the console is deployed today; arxiviq.com stays listed for
+    # the day the domain points back at it (it currently serves a separate control-plane site).
     cors_origins = [
         o.strip()
         for o in os.environ.get(
             "DOTTIE_CORS_ORIGINS",
-            "https://arxiviq.com,https://www.arxiviq.com,"
+            "https://arxiviq.vercel.app,https://arxiviq.com,https://www.arxiviq.com,"
             "http://localhost:8100,http://127.0.0.1:8100",
         ).split(",")
         if o.strip()

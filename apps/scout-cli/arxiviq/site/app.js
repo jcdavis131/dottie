@@ -537,7 +537,7 @@ function renderDottie() {
         + `your browser blocks localhost calls from an HTTPS page (Chrome, Edge and Firefox `
         + `allow <code>http://localhost</code>, Safari may not); or the server's CORS `
         + `allow-list doesn't include this origin (set <code>DOTTIE_CORS_ORIGINS</code> — `
-        + `the default already includes arxiviq.com).`;
+        + `the default already includes this console's hosted origins).`;
     }
     return;
   }

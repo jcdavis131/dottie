@@ -160,7 +160,8 @@ Environment knobs: `DOTTIE_OLLAMA_URL` (default `http://host.docker.internal:114
 gitignored), `DOTTIE_AVA_CKPT` (default probes `runs/cpu_pilot/agentic/agentic_final.pt`
 across factory roots), `DOTTIE_WORKERS`, `DOTTIE_QUEUE_MAX`, `DOTTIE_ROOT`,
 `AVA_FACTORY_ROOT`, `DOTTIE_CORS_ORIGINS` (browser origins allowed to call the API —
-defaults include `arxiviq.com`, whose Dottie tab connects to this server on your box).
+defaults include `arxiviq.vercel.app` and `arxiviq.com`; the console's Dottie tab connects
+to this server on your box).
 
 Notes for the Docker path: the image deliberately ships **without torch** (multi-GB). The
 ollama brain, engine, RFT export, memory mint, and mock-mode eval all work in-container;
