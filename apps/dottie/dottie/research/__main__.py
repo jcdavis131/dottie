@@ -58,9 +58,11 @@ def cmd_ideate(args) -> int:
         out = ideation.run_ideation(led, _policy(args), bottleneck=args.bottleneck,
                                     n_ideas=args.n)
     except DottiePolicyUnavailable as e:
-        _emit({"error": "ollama_unavailable", "detail": str(e)}); return 3
+        _emit({"error": "ollama_unavailable", "detail": str(e)})
+        return 3
     except ValueError as e:
-        _emit({"error": "unparseable_ideation", "detail": str(e)}); return 4
+        _emit({"error": "unparseable_ideation", "detail": str(e)})
+        return 4
     _refresh_status(led, args)
     _emit(out)
     return 0
@@ -73,9 +75,11 @@ def cmd_implement(args) -> int:
                                                 workspace_root=paths.workspace_root(args.data_dir),
                                                 max_retries=args.max_retries)
     except DottiePolicyUnavailable as e:
-        _emit({"error": "ollama_unavailable", "detail": str(e)}); return 3
+        _emit({"error": "ollama_unavailable", "detail": str(e)})
+        return 3
     if out is None:
-        _emit({"note": "no pending experiments to implement"}); return 0
+        _emit({"note": "no pending experiments to implement"})
+        return 0
     _refresh_status(led, args)
     _emit(out)
     return 0
@@ -88,7 +92,8 @@ def cmd_train(args) -> int:
         cfg["seeds"] = [int(s) for s in args.seeds.split(",")]
     out = train.run_training(led, config=cfg)
     if out is None:
-        _emit({"note": "no experiments ready for training"}); return 0
+        _emit({"note": "no experiments ready for training"})
+        return 0
     _refresh_status(led, args)
     _emit(out)
     return 0
@@ -98,7 +103,8 @@ def cmd_evaluate(args) -> int:
     led = _ledger(args)
     out = evaluate.run_evaluation(led)
     if out is None:
-        _emit({"note": "no experiments pending evaluation"}); return 0
+        _emit({"note": "no experiments pending evaluation"})
+        return 0
     _refresh_status(led, args)
     _emit(out)
     return 0
