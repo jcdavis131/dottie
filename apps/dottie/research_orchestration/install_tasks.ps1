@@ -18,12 +18,12 @@ $Wrapper = Join-Path $PSScriptRoot "research_worker.ps1"
 
 $Defs = @(
     @{ Name = "Dottie Research ideate";
-       Args = "ideate --n 3 --bottleneck `"early pre-training loss spikes and MoE routing collapse`"";
+       Args = "ideate --n 3 --bottleneck `"held-out LM loss plateaus while train loss keeps dropping (memorization gap) on the nano pilot corpus`"";
        Trigger = New-ScheduledTaskTrigger -Daily -At "00:00" },
     @{ Name = "Dottie Research implement"; Args = "implement";
        Trigger = New-ScheduledTaskTrigger -Once -At "00:15" `
                  -RepetitionInterval (New-TimeSpan -Hours 1) }   # no duration = repeat indefinitely,
-    @{ Name = "Dottie Research train"; Args = "train --steps 200";
+    @{ Name = "Dottie Research train"; Args = "train --steps 150 --trainer factory";
        Trigger = New-ScheduledTaskTrigger -Once -At "00:30" `
                  -RepetitionInterval (New-TimeSpan -Hours 1) }   # no duration = repeat indefinitely,
     @{ Name = "Dottie Research evaluate"; Args = "evaluate";

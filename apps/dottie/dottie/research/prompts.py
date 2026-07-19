@@ -106,6 +106,12 @@ Your hypothesis MUST attempt to improve these specific metrics / address this bo
 Limit hypotheses strictly to these domains — nothing outside them:
 {fenced}
 
+INTEGRATION CONTRACT (hard): whatever the domain, the hypothesis MUST be implementable as ONE
+drop-in PyTorch sequence-block module transforming [batch, seq, hidden] -> [batch, seq, hidden]
+with no extra inputs (no labels, no losses from previous steps, no optimizer state). It will be
+spliced into a transformer's residual stream and trained by the surrounding model's LM loss.
+Ideas that need a custom loss signature or router-probability outputs are OUT OF SCOPE.
+
 # DEAD ENDS (already tried and failed — do not repeat)
 {_failed_block(failed_hypotheses or [])}
 
