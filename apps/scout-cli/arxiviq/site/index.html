@@ -24,6 +24,7 @@
     <button class="tab" role="tab" aria-selected="false" data-view="evals">Evaluations</button>
     <button class="tab" role="tab" aria-selected="false" data-view="cards">Model Cards</button>
     <button class="tab" role="tab" aria-selected="false" data-view="dottie">Dottie</button>
+    <button class="tab" role="tab" aria-selected="false" data-view="research">Research</button>
     <button class="tab" role="tab" aria-selected="false" data-view="ecosystem">Ecosystem</button>
   </nav>
   <div class="topbar-right">
@@ -175,6 +176,54 @@ python -m dottie climb --families mixed --n 20 --backend ollama         # one me
 python -m dottie climb-report                                           # table + paired verdicts</pre>
       <p class="card-note">Full 4080 walkthrough (fresh mini checkpoint + Ollama brain):
       <code>apps/dottie/RUNBOOK_4080.md</code> in the monorepo.</p>
+    </div>
+  </section>
+
+  <!-- Research (the viewer's LOCAL automated research loop) -->
+  <section id="view-research" class="view hidden" aria-labelledby="r-h">
+    <div class="view-head">
+      <h1 id="r-h">Automated research loop</h1>
+      <p class="view-sub">This tab renders the real experiment ledger from your local Dottie server:
+      hypotheses ideated, code 4-level validated, a proxy micro-benchmark trained, and each result
+      hill-climbed against the baseline. Every metric here is a real measurement; a new
+      <strong>SOTA</strong> is declared only on a real, direction-aware improvement. Nothing on this
+      tab is fetched from the public internet and nothing is invented. It reuses the endpoint you set
+      on the <strong>Dottie</strong> tab.</p>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Research server</h2>
+        <span class="card-note" id="research-conn-note">not connected</span></div>
+      <p class="card-note">Reuses the Dottie tab's local endpoint
+      (<code>{endpoint}/research/status</code>). Set or change it on the Dottie tab.</p>
+    </div>
+    <div class="tiles" id="research-tiles"></div>
+    <p class="card-note" id="research-counts"></p>
+    <div id="research-empty" class="empty hidden"></div>
+    <div class="card hidden" id="research-sota-card">
+      <div class="card-head"><h2>Hill-climb — SOTA history</h2>
+        <span class="card-note">each row beat the prior baseline on a real measurement</span></div>
+      <div class="table-wrap"><table id="research-sota-table">
+        <thead><tr><th>experiment</th><th class="num">metric</th><th>when</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+    <div class="card hidden" id="research-ledger-card">
+      <div class="card-head"><h2>Experiment ledger</h2>
+        <span class="card-note" id="research-ledger-note"></span></div>
+      <div class="table-wrap"><table id="research-ledger-table">
+        <thead><tr><th>id</th><th>name</th><th>state</th><th class="num">metric</th>
+          <th class="num">delta</th><th class="num">attempts</th><th>search domain</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Run it on your box</h2></div>
+      <pre class="cmd">cd ~/workspace/dottie/apps/dottie
+python -m dottie.research seed-baseline --value 4.5 --metric proxy_loss --architecture ava-nano
+python -m dottie.research loop --n 3 --steps 200      # one full ideate→implement→train→evaluate pass
+python -m dottie.research status                       # the snapshot this tab renders</pre>
+      <p class="card-note">Continuous 4-worker walkthrough:
+      <code>apps/dottie/RUNBOOK_RESEARCH_LOOP.md</code> in the monorepo.</p>
     </div>
   </section>
 

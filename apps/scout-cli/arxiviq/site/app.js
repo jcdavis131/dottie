@@ -35,6 +35,8 @@ const state = {
   source: "loading",
   // Dottie runs on the VIEWER'S box — this state holds only what their local server reported.
   dottie: { endpoint: "", status: null, climb: null, error: null, connectedOnce: false },
+  // The research loop also runs on the VIEWER'S box; this tab reuses the Dottie endpoint above.
+  research: { status: null, error: null },
 };
 
 /* ---------------- security ---------------- */
@@ -642,8 +644,121 @@ function initDottie() {
   // Reconnect silently if this browser talked to a Dottie server before.
   if (saved) dottieRefresh();
   setInterval(() => {
-    if (state.dottie.connectedOnce && !document.hidden) dottieRefresh();
+    if (document.hidden) return;
+    if (state.dottie.connectedOnce) dottieRefresh();
+    // Piggyback the research poll on the same interval, but only while its tab is open.
+    if (!$("#view-research").classList.contains("hidden")) researchRefresh();
   }, DOTTIE_POLL_MS);
+}
+
+/* ---------------- research loop (the viewer's LOCAL research ledger) ---------------- */
+
+// Ledger states -> chip kind. sota = a real, direction-aware improvement; the failed_* / rejected
+// states are honest dead ends; everything mid-flight is amber.
+const RESEARCH_STATE_KIND = {
+  sota: "good",
+  rejected: "critical", failed_validation: "critical", failed_training: "critical",
+  pending: "warning", ready_for_training: "warning", evaluation_pending: "warning",
+};
+
+async function researchRefresh() {
+  const ep = state.dottie.endpoint; // reuse the Dottie tab's endpoint
+  try {
+    state.research.status = await fetchJson(`${ep}/research/status`);
+    state.research.error = null;
+  } catch (e) {
+    state.research.status = null;
+    state.research.error = String((e && e.message) || e);
+  }
+  renderResearch();
+}
+
+function renderResearch() {
+  const r = state.research;
+  const note = $("#research-conn-note"), tiles = $("#research-tiles"),
+    counts = $("#research-counts"), empty = $("#research-empty"),
+    sotaCard = $("#research-sota-card"), ledgerCard = $("#research-ledger-card");
+
+  if (!r.status) {
+    tiles.innerHTML = "";
+    counts.innerHTML = "";
+    sotaCard.classList.add("hidden");
+    ledgerCard.classList.add("hidden");
+    note.textContent = r.error ? "unreachable" : "not connected";
+    empty.classList.toggle("hidden", !r.error);
+    if (r.error) {
+      // Honest failure surface — same shape as the Dottie tab's.
+      empty.innerHTML =
+        `No research server reachable at <code>${esc(state.dottie.endpoint)}</code> `
+        + `(<code>${esc(r.error)}</code>). The research loop runs on your box, not on the web. `
+        + `Start it (<code>python -m dottie.research loop</code>, or the four cron workers) and serve `
+        + `Dottie on <code>:8100</code>; this tab reuses the endpoint you set on the Dottie tab.`;
+    }
+    return;
+  }
+  empty.classList.add("hidden");
+
+  const s = r.status;
+  const b = s.baseline;
+  const c = s.counts || {};
+  const exps = s.experiments || [];
+  const sota = s.sota_history || [];
+  note.textContent =
+    `connected · ${esc(s.service || "dottie-research")} · as of ${new Date((s.ts || 0) * 1000).toLocaleTimeString()}`;
+
+  const dir = b ? (b.higher_is_better ? "higher is better" : "lower is better") : "";
+  tiles.innerHTML = `
+    <div class="tile"><div class="k">Baseline metric</div>
+      <div class="v" style="font-size:18px; margin-top:4px">${
+        b ? `${esc(b.metric_name)} ${num(b.metric_value)}` : "—"}</div>
+      <div class="d">${b ? esc(dir) : "baseline not seeded yet (run seed-baseline)"}</div></div>
+    <div class="tile"><div class="k">Architecture</div>
+      <div class="v" style="font-size:18px; margin-top:4px">${esc(b ? (b.architecture || "—") : "—")}</div></div>
+    <div class="tile"><div class="k">Experiments</div>
+      <div class="v">${esc(c.total ?? exps.length)}</div>
+      <div class="d">pending ${esc(c.pending ?? 0)} · evaluating ${esc(c.evaluation_pending ?? 0)}</div></div>
+    <div class="tile"><div class="k">SOTA</div>
+      <div class="v">${esc(c.sota ?? sota.length)}</div>
+      <div class="d">real improvements over baseline</div></div>`;
+
+  // State-counts summary — a chip per non-empty state.
+  const order = ["pending", "ready_for_training", "evaluation_pending", "sota",
+    "rejected", "failed_validation", "failed_training"];
+  const chips = order.filter((k) => c[k]).map((k) =>
+    chip(RESEARCH_STATE_KIND[k] || "warning", `${k.replaceAll("_", " ")} ${c[k]}`)).join(" ");
+  counts.innerHTML = chips || `<span class="card-note">no experiments in the ledger yet</span>`;
+
+  // Hill-climb — SOTA history (hidden if empty).
+  if (!sota.length) {
+    sotaCard.classList.add("hidden");
+  } else {
+    sotaCard.classList.remove("hidden");
+    $("#research-sota-table tbody").innerHTML = sota.map((h) => `
+      <tr>
+        <td><strong>${esc(h.name || h.id || "—")}</strong></td>
+        <td class="num">${num(h.metric)}</td>
+        <td>${h.updated_ts ? esc(new Date(h.updated_ts * 1000).toLocaleString()) : "—"}</td>
+      </tr>`).join("");
+  }
+
+  // Experiment ledger (hidden if empty).
+  if (!exps.length) {
+    ledgerCard.classList.add("hidden");
+    return;
+  }
+  ledgerCard.classList.remove("hidden");
+  $("#research-ledger-note").textContent =
+    `${exps.length} recent experiment(s) · every metric measured by the proxy micro-benchmark`;
+  $("#research-ledger-table tbody").innerHTML = exps.map((e) => `
+    <tr>
+      <td><strong>${esc(String(e.id || "").slice(0, 8) || "—")}</strong></td>
+      <td>${esc(e.name || "—")}</td>
+      <td>${chip(RESEARCH_STATE_KIND[e.state] || "warning", e.state || "—")}</td>
+      <td class="num">${num(e.metric)}</td>
+      <td class="num">${e.delta != null ? num(e.delta) : "—"}</td>
+      <td class="num">${esc(e.attempts ?? "—")}</td>
+      <td>${esc(e.search_domain || "—")}</td>
+    </tr>`).join("");
 }
 
 /* ---------------- ecosystem ---------------- */
@@ -679,6 +794,8 @@ function switchView(name) {
     t.classList.toggle("active", active);
     t.setAttribute("aria-selected", String(active));
   });
+  // The Research tab reuses the Dottie endpoint; fetch fresh whenever it's opened.
+  if (name === "research") researchRefresh();
 }
 
 function initTheme() {
