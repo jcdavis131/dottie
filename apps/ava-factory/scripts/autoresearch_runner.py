@@ -34,6 +34,7 @@ Outputs:
 """
 import os, re, json, yaml, subprocess, shutil, time
 from pathlib import Path
+import os
 from datetime import datetime, timezone
 
 def sanitize():
@@ -59,7 +60,7 @@ def expand(p):
 
 # DOTTIE_ROOT-first with legacy fallback — monorepo canonical
 import os
-DOTTIE_ROOT = pathlib.Path(os.environ.get("DOTTIE_ROOT", str(pathlib.Path.home() / "workspace/dottie")))
+DOTTIE_ROOT = Path(os.environ.get("DOTTIE_ROOT", str(Path.home() / "workspace/dottie")))
 FACTORY_ROOT = DOTTIE_ROOT / "apps/ava-factory"
 # Legacy fallbacks for local checkouts still present
 def resolve_with_fallback(monorepo_path, *legacy_paths):
