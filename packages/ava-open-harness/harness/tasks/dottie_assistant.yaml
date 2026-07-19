@@ -1,0 +1,13 @@
+# Versioned task definition for the ava-open-harness eval 'dottie_assistant'.
+# Bar mirrors the registered eval's honest bar — the EVENTUAL capability bar:
+# a real assistant backend should solve >=60% of dottie's verified tasks
+# (deterministic verifiers, mean r_task over the batch). Today's real result
+# (ava smoke-scale checkpoint) FAILS this bar honestly, exactly like the other
+# real-mode evals at smoke scale (scale: smoke, capability_claim: none).
+name: dottie_assistant
+version: "1.0"
+group: assistant
+bar: "success_rate>=0.6"
+description: >-
+  Assistant verified-task success rate through the real dottie engine
+  (CodeAct sandbox + deterministic verifiers); backends ava (default) / ollama

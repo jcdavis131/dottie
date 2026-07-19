@@ -108,11 +108,11 @@ class TestMockSeedVariation:
 
 
 class TestYamlTasks:
-    def test_all_11_tasks_ship_and_are_versioned(self):
+    def test_all_12_tasks_ship_and_are_versioned(self):
         tasks = _try_load_yaml_tasks()
         expected = {"spider_ant", "france_china", "soccer_rugby", "spanish_french",
                     "safety_blackmail", "jspace_all", "frontier_rubric", "probes",
-                    "perplexity", "needle", "openwiki_knowledge"}
+                    "perplexity", "needle", "openwiki_knowledge", "dottie_assistant"}
         assert expected <= set(tasks)
         for name in expected:
             t = tasks[name]

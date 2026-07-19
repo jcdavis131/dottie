@@ -2,7 +2,7 @@
 from __future__ import annotations
 # trigger registration
 import importlib, pathlib
-for mod in ["jspace_tests","frontier_rubric","openwiki_knowledge","perplexity","probes","needle"]:
+for mod in ["jspace_tests","frontier_rubric","openwiki_knowledge","perplexity","probes","needle","dottie_assistant"]:
     try:
         importlib.import_module(f"harness.evals.{mod}")
     except Exception as e:
