@@ -410,3 +410,12 @@ def test_extract_json_repairs_latex_backslashes_and_truncation():
     assert len(hs2) >= 1                                        # complete items salvaged
     with pytest.raises(ValueError):
         prompts.parse_hypotheses("no json here at all")
+
+
+def test_implementation_prompt_does_not_invite_phantom_imports():
+    # 3 live experiments burned retries on F821 `arxiviq_logger` — an import OUR OWN
+    # prompt suggested while the sandbox has no such module. The prompt must demand a
+    # self-contained module instead.
+    p = prompts.implementation_prompt(HYP)
+    assert "arxiviq_logger" not in p
+    assert "SELF-CONTAINED" in p

@@ -146,7 +146,9 @@ numerical stability, and modularity. Your code must compile on the first attempt
 - All custom layers/routers subclass `torch.nn.Module`.
 - Custom losses are `nn.Module` classes or functions taking `(predictions, targets)` and
   returning a scalar tensor.
-- Metrics route through `arxiviq_logger.log_metric(key, value)`.{extra}
+- The module must be SELF-CONTAINED: import only torch (and math/typing). Do NOT import
+  or call any logging/telemetry helper — the training loop measures everything outside
+  the module.{extra}
 
 # ENGINEERING CONSTRAINTS
 1. Shape integrity: document expected input/output shapes in every `forward` docstring
