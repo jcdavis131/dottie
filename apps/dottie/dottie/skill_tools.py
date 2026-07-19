@@ -38,10 +38,9 @@ from __future__ import annotations
 
 import ast
 import inspect
-import re
 import sys
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional
 
 from dottie import resolve
 

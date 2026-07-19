@@ -11,7 +11,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 
 import dottie.engine as engine_mod
 from dottie import climb, resolve

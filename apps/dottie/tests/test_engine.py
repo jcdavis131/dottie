@@ -47,7 +47,7 @@ def test_trace_record_appended_as_jsonl(engine):
     engine.run_task("second", backend="echo")
     lines = engine.traces_path.read_text().splitlines()
     assert len(lines) == 2
-    rows = [json.loads(l) for l in lines]
+    rows = [json.loads(line) for line in lines]
     assert [r["prompt"] for r in rows] == ["first", "second"]
     assert all(r["schema_version"] == "1.0.0" for r in rows)
     assert engine.trace_count() == 2

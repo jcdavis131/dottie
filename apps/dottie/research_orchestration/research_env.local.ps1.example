@@ -1,0 +1,8 @@
+# Machine-local env for the research workers (copy to research_env.local.ps1 — gitignored).
+# Every value is honest configuration, not capability: a wrong URL/model still produces an
+# honest refusal from the workers, never a fabricated result.
+
+$env:DOTTIE_OLLAMA_URL = "http://localhost:11434"
+$env:DOTTIE_OLLAMA_MODEL = "qwen2.5:7b"          # a model actually pulled on this box
+$env:DOTTIE_OLLAMA_READ_TIMEOUT_S = "600"        # slow local models: wait longer, still honest
+$env:AVA_FACTORY_ROOT = "$env:USERPROFILE\workspace\ava-agi-factory-v6-4"

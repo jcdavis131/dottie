@@ -21,7 +21,7 @@ def test_export_rft_runs_the_real_etl(engine, echo_record, data_dir):
     assert res["records_written"] >= 1
     out = Path(res["out"])
     assert out.exists()
-    rows = [json.loads(l) for l in out.read_text().splitlines()]
+    rows = [json.loads(line) for line in out.read_text().splitlines()]
     assert rows, "real dataset file must contain the exported episode"
     rec = rows[0]
     # The REAL scout-cli ETL schema, produced by the real module (path in the result).

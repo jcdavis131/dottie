@@ -160,7 +160,12 @@ class Ledger:
     def _conn(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path, timeout=30.0)
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+        except sqlite3.OperationalError:
+            # Read-only media (e.g. the ledger bind-mounted :ro into the server container):
+            # switching journal modes writes the db header. Reads work fine without WAL.
+            pass
         conn.execute("PRAGMA foreign_keys=ON")
         return conn
 

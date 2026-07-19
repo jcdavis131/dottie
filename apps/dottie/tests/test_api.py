@@ -177,3 +177,25 @@ def test_flywheel_train_step_gates_honestly_over_http(client, tmp_path):
     r = client.post("/flywheel/train-step", json={"run_dir": str(tmp_path)})
     assert r.status_code == 503
     assert "no checkpoint tree" in r.json()["detail"]
+
+
+def test_research_status_live_build_when_no_mirror(client):
+    # No workers have run in this data dir: the endpoint builds live from an empty ledger.
+    body = client.get("/research/status").json()
+    assert body["service"] == "dottie-research"
+    assert body["baseline"] is None and body["counts"]["total"] == 0
+
+
+def test_research_status_serves_worker_mirror(data_dir):
+    # The workers' status.json snapshot is the documented source for this endpoint (it is the
+    # only readable source when the research dir is mounted read-only into the container).
+    import json as _json
+    research = data_dir / "research"
+    research.mkdir(parents=True)
+    snapshot = {"service": "dottie-research", "ts": 123.0,
+                "baseline": {"metric_name": "proxy_loss", "metric_value": 0.5},
+                "counts": {"total": 1}, "experiments": [], "sota_history": [], "note": "n"}
+    (research / "status.json").write_text(_json.dumps(snapshot), encoding="utf-8")
+    app = create_app(engine=DottieEngine(data_dir))
+    with TestClient(app) as c:
+        assert c.get("/research/status").json() == snapshot

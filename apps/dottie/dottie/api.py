@@ -433,7 +433,17 @@ def create_app(engine: Optional[DottieEngine] = None) -> FastAPI:
 
     @app.get("/research/status")
     def research_status() -> Dict[str, Any]:
-        from dottie.research import logger as _rlog
+        # Prefer the status.json mirror the workers atomically rewrite after every tick (the
+        # documented contract: the snapshot mirror is what this endpoint serves). It also works
+        # when the research dir is bind-mounted read-only into the server container. Fall back
+        # to a live ledger build when no mirror exists yet.
+        from dottie.research import logger as _rlog, paths as _rpaths
+        mirror = _rpaths.status_path(engine.data_dir)
+        if mirror.is_file():
+            try:
+                return json.loads(mirror.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                pass  # unreadable/corrupt mirror: fall through to the live build
         return _rlog.build_status(_research_ledger())
 
     @app.get("/research/experiments")

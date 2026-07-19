@@ -3,3 +3,6 @@ data/
 __pycache__/
 .pytest_cache/
 *.egg-info/
+.venv/
+# machine-local research orchestration env (Ollama model, factory root) — never committed
+research_orchestration/research_env.local.ps1
