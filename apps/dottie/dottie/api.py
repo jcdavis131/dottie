@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Literal, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, model_validator
 
+from dottie import climb as climb_mod
 from dottie import flywheel
 from dottie.engine import DottieEngine
 from dottie.policy import DottiePolicyUnavailable
@@ -197,6 +198,21 @@ class FlywheelTrainStepBody(BaseModel):
     extra_args: List[str] = Field(default_factory=list)
 
 
+class ClimbBody(BaseModel):
+    """One climb-iteration config (mirrors dottie.climb.ClimbConfig)."""
+
+    families: Literal["compute", "extract", "tool_chain", "file_ops", "constraint",
+                      "mixed"] = "mixed"
+    n: int = Field(default=5, ge=1, le=64)
+    seed_base: int = Field(default=0, ge=0)
+    backend: Literal["ollama", "ava", "echo"] = "ollama"
+    max_steps: int = Field(default=8, ge=1, le=32)
+    use_skills: bool = False
+    evaluate: Optional[Literal["mock", "real"]] = None
+    train_step: bool = False
+    compute: Optional[float] = Field(default=None, gt=0)
+
+
 def create_app(engine: Optional[DottieEngine] = None) -> FastAPI:
     engine = engine or DottieEngine()
     store = TaskStore(engine.data_dir / "dottie.sqlite3")
@@ -328,6 +344,44 @@ def create_app(engine: Optional[DottieEngine] = None) -> FastAPI:
             flywheel.train_step,
             run_dir=body.run_dir, device=body.device, extra_args=body.extra_args,
         )
+
+    # One climb at a time: an iteration is a batch of real runs + real flywheel stages, so
+    # concurrent climbs would interleave their traces; the lock keeps the record honest.
+    climb_lock = threading.Lock()
+    app.state.climb_lock = climb_lock
+
+    @app.post("/climb")
+    def run_climb(body: ClimbBody) -> Dict[str, Any]:
+        if not climb_lock.acquire(blocking=False):
+            raise HTTPException(
+                status_code=409,
+                detail="a climb iteration is already running; retry when it finishes",
+            )
+        try:
+            cfg = climb_mod.ClimbConfig(
+                families=body.families, n=body.n, seed_base=body.seed_base,
+                backend=body.backend, max_steps=body.max_steps, use_skills=body.use_skills,
+                evaluate=body.evaluate, train_step=body.train_step, compute=body.compute,
+            )
+            # Runs inline in the worker pool (same bounded workers as tasks); the request
+            # blocks until the iteration record — with all measured numbers — exists.
+            future = pool.submit(climb_mod.run_iteration, cfg, engine.data_dir)
+            try:
+                return future.result()
+            except DottiePolicyUnavailable as e:
+                raise HTTPException(status_code=503,
+                                    detail=f"policy_unavailable: {e}") from e
+            except (flywheel.FlywheelError, climb_mod.ClimbError) as e:
+                raise HTTPException(status_code=500, detail=str(e)) from e
+        finally:
+            climb_lock.release()
+
+    @app.get("/climb/log")
+    def climb_log(limit: int = 50) -> Dict[str, Any]:
+        limit = max(1, min(limit, 500))
+        records = climb_mod.read_log(engine.data_dir)
+        return {"count": len(records), "iterations": records[-limit:],
+                "log_path": str(climb_mod.climb_log_path(engine.data_dir))}
 
     @app.get("/status")
     def status() -> Dict[str, Any]:

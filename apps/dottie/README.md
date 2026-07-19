@@ -91,6 +91,31 @@ brain until the flywheel trains Ava up).
 6. **Better checkpoint → AvaPolicy** — and the loop repeats. Today each pass proves the
    mechanics (capability_claim=none); capability comes from scale, not from this code.
 
+## The climb (measured, gated improvement)
+
+`dottie/climb.py` orchestrates steps 1–5 into ONE measured iteration and gates comparisons
+the way the factory gates levers (spec-12 / MAI rank-invariance discipline):
+
+```bash
+python -m dottie climb --families mixed --n 20 --backend ollama --iterations 1 \
+    [--evaluate mock|real] [--train-step] [--use-skills] [--seed-base 0] [--compute N]
+python -m dottie climb-report     # climb_log.jsonl as a table + paired verdicts
+```
+
+Each iteration runs a verified-task batch through the real engine (real `r_task` /
+`rl_return` per task), computes the measured scoreboard (per-family + overall success rate,
+mean `rl_return`, wall/sandbox/char costs — chars are an honestly-labeled proxy, not
+tokens), spins the real flywheel stages, and appends one record to
+`data/climb/climb_log.jsonl` with the config, git SHA, and policy identity (ava: checkpoint
+sha256; ollama: model name). Between same-seed iterations the paired promotion gate says
+`promote` ONLY when the overall success rate improves AND no family regresses beyond
+tolerance — an overall win bought by sacrificing a family is the rank-invariance trap, so
+it holds. Missing/unpaired data yields an honest `insufficient`, never a verdict. With
+>= 2 iterations at distinct labeled compute points, `eg_trend_verdict` reuses the factory's
+`efficiency_gain.eg_trend` through `ava.rl.codeact_eg_gate` (same success→error transform).
+API: `POST /climb` runs one iteration inline (409 while one is running);
+`GET /climb/log` returns the recorded iterations.
+
 ## Quickstart (your box)
 
 ```bash
@@ -149,8 +174,10 @@ cd apps/dottie && python -m pytest tests -q
 Honest CPU tests, no network fabrication: echo end-to-end through the **real** CodeAct
 sandbox, unreachable-Ollama honest refusal, missing-checkpoint honest refusal (plus a real
 smoke decode when a checkpoint is present, expected to emit noise), API submit/poll/status,
-real ETL + real memory-mint runs over real traces, real harness subprocess, and the
-train-step honest gates.
+real ETL + real memory-mint runs over real traces, real harness subprocess, the
+train-step honest gates, and the climb: real echo/scripted iterations (verifiers bite;
+scripted solver promotes over echo in a paired comparison), the win-overall-lose-family
+hold, insufficient-data verdicts, climb-log schema, CLI smoke, and the `/climb` API + 409.
 
 ## Relation to the WebGPU "dottie-claw" future (planned, not built)
 
