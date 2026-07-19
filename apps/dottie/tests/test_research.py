@@ -419,3 +419,24 @@ def test_implementation_prompt_does_not_invite_phantom_imports():
     p = prompts.implementation_prompt(HYP)
     assert "arxiviq_logger" not in p
     assert "SELF-CONTAINED" in p
+
+
+def test_ideation_retries_once_on_content_failure(led, tmp_path, monkeypatch):
+    # Observed live: temp-0.9 ideation omits required keys. One corrective re-ask with
+    # the exact error; a second failure stays an honest ValueError with the dump path.
+    monkeypatch.setenv("DOTTIE_RESEARCH_LOG_DIR", str(tmp_path))
+    calls = []
+    def flaky(prompt):
+        calls.append(prompt)
+        if len(calls) == 1:
+            return json.dumps([{"hypothesis_name": "incomplete only"}])
+        return json.dumps([HYP])
+    out = ideation.run_ideation(led, flaky, bottleneck="b")
+    assert out["retried"] is True and len(out["created"]) == 1
+    assert "# CORRECTION" in calls[1] and "missing required keys" in calls[1]
+
+    def always_bad(prompt):
+        return "utter garbage, no json"
+    with pytest.raises(ValueError, match="raw completion saved"):
+        ideation.run_ideation(led, always_bad, bottleneck="b")
+    assert len(list(tmp_path.glob("ideation_raw_*.txt"))) >= 2   # both failures dumped

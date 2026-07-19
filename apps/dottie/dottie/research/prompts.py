@@ -126,7 +126,7 @@ Ideas that need a custom loss signature or router-probability outputs are OUT OF
 
 # OUTPUT FORMAT
 Respond with ONE JSON object (an array of objects if more than one idea) strictly matching this
-schema. No markdown, no prose outside the JSON:
+schema. EVERY key is REQUIRED and must be non-empty. No markdown, no prose outside the JSON:
 {schema}
 """
 

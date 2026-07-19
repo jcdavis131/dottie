@@ -49,18 +49,38 @@ def run_ideation(ledger: Ledger, policy: Policy, *, bottleneck: str, n_ideas: in
         failed_hypotheses=dead_ends(ledger), n_ideas=n_ideas,
     )
     text = policy(prompt)                       # DottiePolicyUnavailable propagates
-    try:
-        hyps = prompts.parse_hypotheses(text)   # ValueError on garbage propagates
-    except ValueError as e:
-        # Dump the raw completion so an unparseable shape is diagnosable tomorrow
-        # instead of vanishing (two live failures were opaque before this).
-        import os
-        import time as _t
-        log_dir = Path(os.environ.get("DOTTIE_RESEARCH_LOG_DIR", "data/research/logs"))
-        log_dir.mkdir(parents=True, exist_ok=True)
-        dump = log_dir / f"ideation_raw_{int(ts or _t.time())}.txt"
-        dump.write_text(text, encoding="utf-8")
-        raise ValueError(f"{e} (raw completion saved to {dump})") from e
+    retried = False
+    while True:
+        try:
+            hyps = prompts.parse_hypotheses(text)   # ValueError on garbage propagates
+            break
+        except ValueError as e:
+            dump = _dump_raw(text, ts)
+            if retried:
+                # One corrective re-ask is the budget; after that the failure is honest.
+                raise ValueError(f"{e} (raw completion saved to {dump})") from e
+            # Content-level failures dominate at temperature 0.9 (missing required
+            # keys, observed live) — hand the model its exact error once, the same
+            # discipline the implementation worker uses.
+            retried = True
+            text = policy(
+                f"{prompt}\n\n# CORRECTION\nYour previous response could not be used: "
+                f"{e}. Respond again with ONLY the JSON array of hypothesis objects — "
+                "EVERY schema key present and non-empty.")
     created = [ledger.create(h, ts=ts) for h in hyps]
     return {"created": [e.id for e in created], "names": [e.name for e in created],
-            "bottleneck": bottleneck}
+            "bottleneck": bottleneck, "retried": retried}
+
+
+def _dump_raw(text: str, ts: Optional[float]) -> Path:
+    """Save an unparseable completion so failures stay diagnosable (never vanish)."""
+    import os
+    import time as _t
+    import uuid
+    log_dir = Path(os.environ.get("DOTTIE_RESEARCH_LOG_DIR", "data/research/logs"))
+    log_dir.mkdir(parents=True, exist_ok=True)
+    # uuid suffix: two failures in the same second must not clobber each other
+    # (caught by the retry test — a real live-dump hazard too).
+    dump = log_dir / f"ideation_raw_{int(ts or _t.time())}_{uuid.uuid4().hex[:6]}.txt"
+    dump.write_text(text, encoding="utf-8")
+    return dump
