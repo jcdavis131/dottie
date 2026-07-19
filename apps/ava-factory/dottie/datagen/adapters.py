@@ -9,6 +9,7 @@ from collections.abc import Callable
 
 from dottie.datagen.conv_react import adapt_record as conversations_react
 from dottie.datagen.glaive_adapt import adapt_record as glaive_react
+from dottie.datagen.megawika_adapt import adapt_record as megawika
 from dottie.datagen.swe_traj_adapt import adapt_record as swe_react
 from dottie.datagen.xlam_adapt import adapt_record as xlam_react
 
@@ -19,6 +20,7 @@ ADAPTERS: dict[str, AdapterFn] = {
     "swe_react": swe_react,
     "conversations_react": conversations_react,
     "glaive_react": glaive_react,
+    "megawika": megawika,
 }
 
 

@@ -106,12 +106,18 @@ sources:
   # ungated. Script dataset with a nested schema the viewer cannot show; enable
   # only after an on-box schema check and a megawika adapter that emits
   # claim + supporting-sources text.
+  # ON-BOX VERIFIED 2026-07-19 (collector image, real streamed rows): split is 'en'
+  # (language-as-split — 'train' was wrong and would have failed at collection), and
+  # entries arrive columnar. Adapter emits passage + >=2 independently-authored source
+  # excerpts; enable at the 2.1 rebuild by moving P2 0.03 / P3 0.02 / P5 0.02 from the
+  # phase-dominant general sources.
   - name: megawika_en
     kind: hf
     dataset: hltcoe/megawika
     config: en
-    split: train
-    text_field: article_text
+    split: en
+    adapter: megawika
+    text_field: text
     trust_remote_code: true
     phases: [2, 3, 5]
     weight: {2: 0.0, 3: 0.0, 5: 0.0}
