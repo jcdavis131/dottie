@@ -42,6 +42,113 @@
 #   license / gated  provenance
 
 sources:
+  # ---- science & history expansion (2026-07-19) ------------------------------
+  # Doctrine for historical/factual sources: NO single source of truth. History
+  # coverage is split across independently-governed corpora (multi-editor
+  # Wikipedia, multi-author peer-reviewed peS2o, and — staged — MegaWika, whose
+  # rows pair a wiki passage with its independently-authored CITED sources), and
+  # no single history/knowledge source carries a majority of any phase's factual
+  # mass. Events attested only once are training text, not "truth".
+
+  - name: wikipedia_en
+    kind: hf
+    dataset: wikimedia/wikipedia
+    config: 20231101.en
+    split: train
+    text_field: text
+    phases: [2, 4, 5]
+    weight: {2: 0.06, 4: 0.04, 5: 0.03}
+    task_type: automatic
+    filters:
+      min_chars: {2: 300, 4: 4000, 5: 600}   # P4 = long-form articles
+    license: cc-by-sa-3.0+gfdl        # multi-editor, citation-required by policy
+    gated: false
+
+  - name: pes2o
+    kind: hf
+    dataset: allenai/peS2o
+    config: v2
+    split: train
+    text_field: text
+    trust_remote_code: true           # script dataset (like proof-pile-2); viewer
+                                      # cannot validate config — verified ungated via
+                                      # API; first collector run confirms schema
+    phases: [2, 4, 5]
+    weight: {2: 0.04, 4: 0.02, 5: 0.02}
+    task_type: automatic
+    filters:
+      min_chars: {2: 300, 4: 4000, 5: 600}
+    license: odc-by                   # peer-reviewed science, multi-author
+    gated: false
+
+  # STAGED weight 0 (synth_synpro precedent): multi-source validated events —
+  # each row joins a Wikipedia passage with its cited external source documents
+  # (distinct authors), the strongest per-event cross-validation available
+  # ungated. Script dataset with a nested schema the viewer cannot show; enable
+  # only after an on-box schema check and a megawika adapter that emits
+  # claim + supporting-sources text.
+  - name: megawika_en
+    kind: hf
+    dataset: hltcoe/megawika
+    config: en
+    split: train
+    text_field: article_text
+    trust_remote_code: true
+    phases: [2, 3, 5]
+    weight: {2: 0.0, 3: 0.0, 5: 0.0}
+    task_type: deliberate
+    filters: {min_chars: 300}
+    license: cc-by-sa-4.0
+    gated: false
+
+  # ---- tool-use (API + CLI) & multi-step workflows (2026-07-19) --------------
+  # Deep-research picks, each verified ungated + permissive-licensed via the HF
+  # API and (where parquet) field-verified via the datasets-server. nl2bash was
+  # REJECTED (no license on the hub mirror); CLI coverage rides code-act
+  # trajectories (bash/CLI actions) + synth_tool_use L2/L3 until a clean-licensed
+  # CLI corpus appears.
+
+  - name: glaive_fc2
+    kind: hf
+    dataset: glaiveai/glaive-function-calling-v2
+    config: default
+    split: train
+    text_field: chat                  # full dialogue incl. function specs + calls
+    phases: [3, 5]
+    weight: {3: 0.04, 5: 0.02}
+    task_type: tool_selection
+    filters: {min_chars: 200}
+    license: apache-2.0
+    gated: false
+
+  - name: toolace
+    kind: hf
+    dataset: Team-ACE/ToolACE
+    config: default
+    split: train
+    text_field: conversations
+    adapter: conversations_react      # {from,value} turns incl. tool observations
+    phases: [3]
+    weight: {3: 0.03}
+    task_type: tool_selection
+    filters: {min_chars: 200}
+    license: apache-2.0
+    gated: false
+
+  - name: codeact_traj
+    kind: hf
+    dataset: xingyaoww/code-act
+    config: default
+    split: codeact                    # NB: split is 'codeact', not 'train' (verified)
+    text_field: conversations
+    adapter: conversations_react      # multi-step act->observe->continue trajectories
+    phases: [3, 4, 5]
+    weight: {3: 0.03, 4: 0.02, 5: 0.01}
+    task_type: tool_selection
+    filters: {min_chars: 400}
+    license: apache-2.0
+    gated: false
+
   # ---- synthetic generators (no network; deterministic per doc index) --------
   - name: synth_logic
     kind: synthetic
@@ -248,7 +355,7 @@ sources:
     split: train
     text_field: text
     phases: [1, 3]
-    weight: {1: 0.5, 3: 0.25}   # +0.10 from quarantined proof_pile_2
+    weight: {1: 0.5, 3: 0.15}   # +0.10 from quarantined proof_pile_2
     task_type: deliberate
     filters: {min_chars: 200}
     license: odc-by
@@ -262,7 +369,7 @@ sources:
     text_field: text
     score_field: score
     phases: [2, 4, 5]
-    weight: {2: 0.30, 4: 0.35, 5: 0.25}   # post-mini: freed mass for synth_tool_use P4/P5
+    weight: {2: 0.20, 4: 0.27, 5: 0.17}   # 2026-07-19: freed mass for wikipedia/peS2o/tool sets (science+history+workflow expansion)
     task_type: automatic
     filters:
       min_chars: {2: 200, 4: 4000, 5: 200}   # P4 = long documents only

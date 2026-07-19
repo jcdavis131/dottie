@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from dottie.datagen.conv_react import adapt_record as conversations_react
 from dottie.datagen.swe_traj_adapt import adapt_record as swe_react
 from dottie.datagen.xlam_adapt import adapt_record as xlam_react
 
@@ -15,6 +16,7 @@ AdapterFn = Callable[[dict], dict | None]
 ADAPTERS: dict[str, AdapterFn] = {
     "xlam_react": xlam_react,
     "swe_react": swe_react,
+    "conversations_react": conversations_react,
 }
 
 
