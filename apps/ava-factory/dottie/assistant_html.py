@@ -58,7 +58,8 @@ button:disabled { opacity: .5; cursor: default; }
 <body>
 <header>
   <div><h1>Dottie</h1><div class="sub">grounded · trust-gated · telemetered — spec 15</div></div>
-  <div class="sub"><a href="/">index</a> · <a href="/assistant/status">status json</a></div>
+  <div class="sub"><span id="brain" class="pill" title="which model answers here — honesty in the UI">brain: checking…</span>
+    · <a href="/">index</a> · <a href="/assistant/status">status json</a></div>
 </header>
 <div id="alert"></div>
 <main>
@@ -85,6 +86,15 @@ async function loadStatus() {
   try {
     const r = await fetch("/assistant/status");
     const s = await r.json();
+    // The brain badge never lies: served factory checkpoint by name, or the honest
+    // reason there is no live model (e.g. the trainer owns the GPU right now).
+    const brainEl = document.getElementById("brain");
+    if (s.engine && s.engine.available) {
+      const ck = (s.engine.ckpt || "checkpoint").split(/[\\\\/]/).pop();
+      brainEl.textContent = `brain: ${ck} (factory, ${((s.engine.params||0)/1e6).toFixed(0)}M)`;
+    } else {
+      brainEl.textContent = `brain: none — ${(s.engine && s.engine.reason) || "engine unavailable"}`;
+    }
     document.getElementById("policy").innerHTML =
       `<span class="pill">${(s.trust && s.trust.enforcement) || "capability-gated"}</span> `
       + (s.trust ? `${s.trust.read_only_tools||0} read-only tools · ${s.trust.sandboxed_tools||0} sandboxed · auth ${s.trust.auth||"off"}` : "");
