@@ -285,7 +285,7 @@ def _heuristic_plan(task: str) -> Dict[str, Any]:
         "reason": "keyword matching + builtin hints",
     }
 
-def _ollama_planner(task: str) -> Dict[str, Any]:
+def _ollama_planner(task: str, system_prefix: str | None = None) -> Dict[str, Any]:
     base = get_ollama_base(timeout=2.0)
     if not base:
         raise RuntimeError("Ollama not available at localhost:11434 or host.docker.internal:11434")
@@ -295,8 +295,13 @@ def _ollama_planner(task: str) -> Dict[str, Any]:
     tools = list_tools()
     tool_desc = "\n".join([f"- bb {name}: {m.get('description','')[:80]}" for name, m in list(tools.items())[:25]])
 
+    # A dynamic profile (Hermes/OpenClaw, core.profiles) prepends its system role so the
+    # planner operates inside that loop's doctrine.
+    system = f"You are Ava planner for BigBang CLI. Available tools:\n{tool_desc}\nYou must output JSON only with a plan: {{\"plan\": [\"bb ...\", \"bb ...\"], \"reason\": \"...\"}}. Plan should be 2-4 bb commands to accomplish task. Use only bb commands."
+    if system_prefix:
+        system = system_prefix + "\n\n" + system
     messages = [
-        {"role": "system", "content": f"You are Ava planner for BigBang CLI. Available tools:\n{tool_desc}\nYou must output JSON only with a plan: {{\"plan\": [\"bb ...\", \"bb ...\"], \"reason\": \"...\"}}. Plan should be 2-4 bb commands to accomplish task. Use only bb commands."},
+        {"role": "system", "content": system},
         {"role": "user", "content": f"Task: {task}\nReturn JSON with plan array of bb commands."},
     ]
 
@@ -406,14 +411,36 @@ def _execute_plan(plan: List[str]) -> List[Dict[str, Any]]:
 def run(
     task: str = typer.Argument(..., help="natural language e.g. 'summarize my GitHub PRs and post to family brain'"),
     execute: bool = typer.Option(False, "--execute", help="Actually run the plan steps (default: plan only)"),
+    profile: str = typer.Option(None, "--profile", help="dynamic runtime profile: hermes | openclaw (or DOTTIE_PROFILE env)"),
+    session: str = typer.Option("scout", "--session", help="session id for persistent context / task logs"),
 ):
     """Plan (default) or execute a natural-language task via Ava routing."""
+    from bigbang.core.profiles import get_profile, build_system_prompt, after_run
+    try:
+        prof = get_profile(profile)
+    except KeyError as e:
+        emit({"error": str(e)}, command="agent run")
+        return
+    prof_prompt = build_system_prompt(prof, session_id=session) if prof else None
+
+    def _finish(payload: Dict[str, Any], executed: bool) -> None:
+        """Attach profile state + post-run persistence to the outgoing payload."""
+        if prof is None:
+            return
+        payload["profile"] = {"name": prof.name, "persistence": prof_prompt["persistence"]}
+        if prof_prompt["context"] is not None:
+            payload["profile"]["session_context"] = prof_prompt["context"]
+        outcome = "ok" if executed else "planned"
+        payload["profile"]["post_run"] = after_run(
+            prof, session_id=session, task=task, outcome=outcome,
+            plan=payload.get("plan"))
+
     tools = list_tools()
     base = get_ollama_base(timeout=2.0) if _HAS_LLM else None
     try:
         if base:
             try:
-                result = _ollama_planner(task)
+                result = _ollama_planner(task, system_prefix=prof_prompt["system"] if prof_prompt else None)
                 payload = {
                     "task": task,
                     "planner": f"Ava v6.4 local (ollama) — Ollama {result.get('planner_model')} + Frontier rubric + real router",
@@ -436,6 +463,7 @@ def run(
                     payload["results"] = _execute_plan(payload["plan"])
                 else:
                     payload["execution"] = "plan only — pass --execute to run the steps (policy-checked, audited)"
+                _finish(payload, executed=execute)
                 emit(payload, command="agent run")
                 return
             except Exception as e:
@@ -467,6 +495,7 @@ def run(
             payload["results"] = _execute_plan(payload["plan"])
         else:
             payload["execution"] = "plan only — pass --execute to run the steps (policy-checked, audited)"
+        _finish(payload, executed=execute)
         emit(payload, command="agent run")
 
     except Exception as e:

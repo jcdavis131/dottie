@@ -104,7 +104,7 @@ def _ensure_scaffold(name: str, description: str):
                     "contract": "Use make_plugin_app + ok() envelope + examples_epilog + emit(). Always return {{ok:True}} with example+discover.",
                     "capabilities": "Declare in manifest.yaml: network.domains, filesystem.write, secrets.allow"
                 }}, command="{name} edit-instructions"))
-        ''').lstrip())
+        ''').lstrip(), encoding="utf-8")
 
     if not manifest.exists():
         manifest.write_text(f"""name: {name}
@@ -124,7 +124,7 @@ capabilities:
 # network:
 #   enabled: true
 #   domains: ["api.github.com"]
-""")
+""", encoding="utf-8")
     return pdir
 
 @app.command("new", epilog=examples_epilog(["scout --json forge new weather --description 'Weather API'"]))
@@ -146,12 +146,12 @@ def new_plugin(
 
     # Update manifest with domains if provided
     if domains or with_network:
-        mf = yaml.safe_load((pdir / "manifest.yaml").read_text()) or {}
+        mf = yaml.safe_load((pdir / "manifest.yaml").read_text(encoding="utf-8")) or {}
         mf.setdefault("capabilities", {}).setdefault("network", {})["enabled"] = True
         doms = [d.strip() for d in domains.split(",") if d.strip()]
         if doms:
             mf["capabilities"]["network"]["domains"] = doms
-        (pdir / "manifest.yaml").write_text(yaml.safe_dump(mf))
+        (pdir / "manifest.yaml").write_text(yaml.safe_dump(mf), encoding="utf-8")
 
     emit(ok({
         "plugin": name,
@@ -185,7 +185,7 @@ def from_openapi(
         pdir = _plugin_dir(name)
         pdir.mkdir(parents=True, exist_ok=True)
         (pdir / "__init__.py").touch(exist_ok=True)
-        (pdir / "cli.py").write_text(code)
+        (pdir / "cli.py").write_text(code, encoding="utf-8")
         # manifest with domain from URL
         from urllib.parse import urlparse
         domain = urlparse(url).netloc
@@ -199,7 +199,7 @@ capabilities:
     domains: ["{domain}"]
   filesystem:
     write: false
-""")
+""", encoding="utf-8")
         emit(ok({"plugin": name, "from": url, "ops": len(spec.get("paths", {})), "dir": str(pdir)}, command="forge from-openapi", example=f"scout --json {name} --help"), command="forge from-openapi")
     except Exception as e:
         fail_agent(f"OpenAPI forge failed: {e}", command="forge from-openapi", example="scout tools add linear --type openapi --url <url> # fallback dynamic")
@@ -213,16 +213,16 @@ def from_mcp(
     pdir = _ensure_scaffold(name, f"{name} MCP wrapper for {url}")
     # Keep scaffold but update manifest to MCP
     mf_path = pdir / "manifest.yaml"
-    data = yaml.safe_load(mf_path.read_text()) or {}
+    data = yaml.safe_load(mf_path.read_text(encoding="utf-8")) or {}
     data["type"] = "mcp"
     data["url"] = url
     data["capabilities"] = data.get("capabilities", {})
     data["capabilities"]["network"] = {"enabled": True, "domains": [url.split("/")[2] if "://" in url else url]}
-    mf_path.write_text(yaml.safe_dump(data))
+    mf_path.write_text(yaml.safe_dump(data), encoding="utf-8")
     
     # Append MCP proxy to cli.py
     cli_file = pdir / "cli.py"
-    existing = cli_file.read_text()
+    existing = cli_file.read_text(encoding="utf-8")
     if "mcp_proxy" not in existing:
         cli_file.write_text(existing + f'\n\n# MCP proxy added by forge from-mcp\n@app.command("call-mcp")\ndef call_mcp(tool_name: str = typer.Argument(..., help="MCP tool name"), args_json: str = typer.Argument("{{}}")):\n    """Proxy to MCP server {url}""" \n    import json, httpx\n    emit(ok({{"proxy":"mcp", "server":"{url}", "tool": tool_name, "args": json.loads(args_json)}}, command="{name} call-mcp"))\n')
     
@@ -241,7 +241,7 @@ def list_cmd():
             "name": pdir.name,
             "has_cli": cli.exists(),
             "has_manifest": mf.exists(),
-            "forged_by": "forge" if "auto-forged" in (cli.read_text()[:1000] if cli.exists() else "") else "system",
+            "forged_by": "forge" if "auto-forged" in (cli.read_text(encoding="utf-8")[:1000] if cli.exists() else "") else "system",
         })
     emit(ok({"plugins": plugins, "count": len(plugins), "forge_root": str(PLUGIN_ROOT)}, command="forge list", discover="scout system policy"), command="forge list")
 
@@ -255,7 +255,7 @@ def cat_cmd(name: str = typer.Argument(..., help="plugin name")):
     mf = pdir / "manifest.yaml"
     out = {}
     if cli.exists():
-        out["cli.py"] = cli.read_text()[:20000]  # limit 20k
+        out["cli.py"] = cli.read_text(encoding="utf-8")[:20000]  # limit 20k
     if mf.exists():
         out["manifest.yaml"] = mf.read_text()
     emit(ok(out, command=f"forge cat {name}"), command="forge cat")
@@ -293,13 +293,13 @@ def edit_cmd(
     if append_command:
         if not cli_file.exists():
             fail_agent("cli.py missing", command="forge edit")
-        existing = cli_file.read_text()
+        existing = cli_file.read_text(encoding="utf-8")
         stub = f'''\n\n@app.command("{append_command}")
 def {append_command.replace("-", "_")}_cmd(arg: str = typer.Argument("", help="arg")):
     """{append_command} — TODO implemented by LLM"""
     emit(ok({{"command": "{append_command}", "arg": arg, "plugin": "{name}"}}, command="{name} {append_command}"))
 '''
-        cli_file.write_text(existing + stub)
+        cli_file.write_text(existing + stub, encoding="utf-8")
         emit(ok({"appended": append_command, "file": str(cli_file)}, command="forge edit"), command="forge edit")
         return
 
@@ -312,7 +312,7 @@ def {append_command.replace("-", "_")}_cmd(arg: str = typer.Argument("", help="a
     if not new_code:
         fail_agent("Need --code or --code-file or --append-command or --instructions", command="forge edit", example=f"scout forge cat {name}")
 
-    cli_file.write_text(new_code)
+    cli_file.write_text(new_code, encoding="utf-8")
     emit(ok({"edited": name, "file": str(cli_file), "bytes": len(new_code), "next": f"scout --json {name} hello"}, command="forge edit", discover=f"scout --json {name} --help"), command="forge edit")
 
 @app.command("test", epilog=examples_epilog(["scout --json forge test mytool"]))

@@ -15,7 +15,6 @@ measurements. Three checks, matching the spec:
    with no real model produces a structured honest-failure report, not fabricated passes.
 """
 import json
-import subprocess
 import sys
 from pathlib import Path
 
@@ -82,3 +81,24 @@ class TestRealModeHonesty:
         # could swallow and then fabricate around.
         res = run_harness(eval_names=["spider_ant"], mode="real")
         assert isinstance(res, dict) and "evals" in res
+
+
+class TestStateStoreHonestNulls:
+    """The J-Space state store (packages/ava-skills) feeds task_logs into the telemetry
+    pipeline; a defaulted score there would be a fabricated measurement one hop before
+    the dashboard. Unevaluated stays NULL — in the table, the aggregate, AND the export."""
+
+    def test_unevaluated_tasks_never_grow_scores(self, tmp_path):
+        store_mod = pytest.importorskip(
+            "skills.state_store", reason="ava-skills workspace member not installed")
+        with store_mod.JSpaceStateStore(tmp_path / "s.sqlite3") as st:
+            st.log_task("nm-sess", "unchecked task", "ok")
+            row = st.recent_tasks(1)[0]
+            assert row["eval_score"] is None and row["policy_ok"] is None
+            stats = st.task_stats()
+            # 0.0 here would be an invented aggregate over zero evaluations
+            assert stats["avg_eval_score"] is None and stats["evaluated"] == 0
+            out = tmp_path / "t.jsonl"
+            st.export_telemetry(out)
+        rec = json.loads(out.read_text(encoding="utf-8").splitlines()[0])
+        assert rec["eval_score"] is None, "export must carry null, not a defaulted number"
