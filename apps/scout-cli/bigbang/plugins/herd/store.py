@@ -129,6 +129,9 @@ def refresh_session(sess: Dict[str, Any]) -> Dict[str, Any]:
 
 def _reap_exit_code(pid: int) -> Optional[int]:
     """Best-effort exit code; usually None for unreaped foreign PIDs."""
+    if not hasattr(os, "WNOHANG"):
+        # Windows: no POSIX reaping — liveness probing is the status authority.
+        return None
     try:
         # Non-blocking wait only works for our children.
         finished_pid, status = os.waitpid(pid, os.WNOHANG)

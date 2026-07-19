@@ -18,7 +18,7 @@ def _run(args, *, input_text=None, timeout=8, env=None):
         CLI + args,
         input=input_text,
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8", errors="replace",
         timeout=timeout,
         cwd=str(ROOT),
         env=env,

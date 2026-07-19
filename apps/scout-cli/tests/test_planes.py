@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _run(args, timeout=20):
     return subprocess.run(
-        CLI + args, capture_output=True, text=True, timeout=timeout, cwd=str(ROOT)
+        CLI + args, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, cwd=str(ROOT)
     )
 
 

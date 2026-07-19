@@ -7,6 +7,16 @@ import os
 import sys
 from pathlib import Path
 
+# Windows consoles default to cp1252; any emoji in help/output then crashes the whole
+# command with UnicodeEncodeError (observed: herd --help). LLM-facing output must be
+# UTF-8 everywhere.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
+
 import typer
 from rich.console import Console
 

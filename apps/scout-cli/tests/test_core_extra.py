@@ -1,5 +1,6 @@
 """Extra coverage: security vault round-trip, auth pure helpers, tasks CRUD (stubbed)."""
 import json
+import os
 import subprocess
 
 import pytest
@@ -17,8 +18,9 @@ class TestSecurityVaultTmpHome:
     def test_set_get_roundtrip_and_perms(self):
         security.set_secret("RT_KEY", "round-trip-value")
         assert security.get_secret("RT_KEY") == "round-trip-value"
-        mode = security.VAULT_FILE.stat().st_mode & 0o777
-        assert mode == 0o600
+        if os.name == "posix":       # Windows chmod cannot express 0o600
+            mode = security.VAULT_FILE.stat().st_mode & 0o777
+            assert mode == 0o600
         assert "RT_KEY" in security.list_secrets()
         assert security.delete_secret("RT_KEY") is True
         assert security.get_secret("RT_KEY") is None
@@ -66,7 +68,8 @@ class TestAuthHelpers:
         monkeypatch.setattr(auth_cli, "REG", tmp_path / "auth.json")
         auth_cli._save_auth({"github": {"method": "token"}})
         assert auth_cli._load_auth() == {"github": {"method": "token"}}
-        assert (tmp_path / "auth.json").stat().st_mode & 0o777 == 0o600
+        if os.name == "posix":       # Windows chmod cannot express 0o600
+            assert (tmp_path / "auth.json").stat().st_mode & 0o777 == 0o600
 
 
 class TestTasksCrudStubbed:

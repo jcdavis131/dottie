@@ -15,7 +15,7 @@ def _run(args, *, timeout=30):
     return subprocess.run(
         CLI + args,
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8", errors="replace",
         timeout=timeout,
         cwd=str(ROOT),
     )
