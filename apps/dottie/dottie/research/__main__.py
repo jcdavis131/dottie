@@ -99,6 +99,8 @@ def _trainer(args):
 def cmd_train(args) -> int:
     led = _ledger(args)
     cfg: Dict[str, Any] = {"steps": args.steps}
+    if getattr(args, "device", None):
+        cfg["device"] = args.device
     if args.seeds:
         cfg["seeds"] = [int(s) for s in args.seeds.split(",")]
     out = train.run_training(led, trainer=_trainer(args), config=cfg)
@@ -163,7 +165,10 @@ def cmd_loop(args) -> int:
             max_retries=args.max_retries)
     except DottiePolicyUnavailable as e:
         steps["implement"] = {"skipped": str(e)}
-    steps["train"] = train.run_training(led, trainer=_trainer(args), config={"steps": args.steps})
+    tcfg: Dict[str, Any] = {"steps": args.steps}
+    if getattr(args, "device", None):
+        tcfg["device"] = args.device
+    steps["train"] = train.run_training(led, trainer=_trainer(args), config=tcfg)
     steps["evaluate"] = evaluate.run_evaluation(led)
     _refresh_status(led, args)
     _emit(steps)
@@ -218,8 +223,10 @@ def cmd_run(args) -> int:
             if action == "evaluate":
                 rec["result"] = evaluate.run_evaluation(led)
             elif action == "train":
-                rec["result"] = train.run_training(led, trainer=_trainer(args),
-                                                   config={"steps": args.steps})
+                tcfg: Dict[str, Any] = {"steps": args.steps}
+                if getattr(args, "device", None):
+                    tcfg["device"] = args.device
+                rec["result"] = train.run_training(led, trainer=_trainer(args), config=tcfg)
             elif action == "implement":
                 rec["result"] = implementation.run_implementation(
                     led, _policy(args), workspace_root=paths.workspace_root(args.data_dir),
@@ -276,6 +283,7 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--max-retries", type=int, default=3)
         sp.add_argument("--trainer", choices=["proxy", "factory"], default="proxy",
                         help="proxy micro-benchmark, or the real factory nano model")
+        sp.add_argument("--device", default=None, choices=[None, "cpu", "cuda"])
         sp.set_defaults(func=fn)
 
     im = sub.add_parser("implement", help="implementation worker")
@@ -285,6 +293,8 @@ def build_parser() -> argparse.ArgumentParser:
     tr = sub.add_parser("train", help="training worker")
     tr.add_argument("--steps", type=int, default=60)
     tr.add_argument("--seeds", default="")
+    tr.add_argument("--device", default=None, choices=[None, "cpu", "cuda"],
+                    help="cpu keeps the research trainer off a GPU another run owns")
     tr.add_argument("--trainer", choices=["proxy", "factory"], default="proxy",
                     help="proxy micro-benchmark, or the real factory nano model")
     tr.set_defaults(func=cmd_train)
@@ -305,6 +315,8 @@ def build_parser() -> argparse.ArgumentParser:
     rn.add_argument("--steps", type=int, default=60)
     rn.add_argument("--max-retries", type=int, default=3)
     rn.add_argument("--trainer", choices=["proxy", "factory"], default="proxy")
+    rn.add_argument("--device", default=None, choices=[None, "cpu", "cuda"],
+                    help="cpu keeps the research trainer off a GPU another run owns")
     rn.add_argument("--idle-seconds", type=float, default=30.0)
     rn.add_argument("--ideate-cooldown", type=float, default=600.0,
                     help="min seconds between ideations on an empty pipeline — dedup "

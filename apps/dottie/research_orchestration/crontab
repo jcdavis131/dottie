@@ -28,4 +28,4 @@ SHELL=/bin/bash
 # Continuous runner (replaces the per-stage cadence above, kept commented for
 # reference): chains evaluate->train->implement->ideate immediately; the hourly
 # flock line is a self-heal heartbeat — a live runner makes it a no-op.
-5 * * * *  $DOTTIE_ROOT/apps/dottie/research_orchestration/research_worker.sh run --trainer factory --steps 150 --max-retries 5 --n 3
+5 * * * *  $DOTTIE_ROOT/apps/dottie/research_orchestration/research_worker.sh run --trainer factory --steps 150 --max-retries 5 --n 3 --device cpu

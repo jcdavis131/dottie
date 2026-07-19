@@ -31,7 +31,7 @@ foreach ($l in $Legacy) {
 # content-level correction passes. ExecutionTimeLimit zero — runs forever by design.
 $Defs = @(
     @{ Name = "Dottie Research runner";
-       Args = ("run --trainer factory --steps 150 --max-retries 5 --n 3 " +
+       Args = ("run --trainer factory --steps 150 --max-retries 5 --n 3 --device cpu " +
                "--bottleneck `"held-out LM loss plateaus while train loss keeps " +
                "dropping (memorization gap) on the nano pilot corpus`"");
        # Hourly heartbeat only: -AtStartup needs admin elevation (0x80070005 observed).
