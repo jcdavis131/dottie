@@ -251,6 +251,13 @@ def parse_hypotheses(text: str) -> List[Dict[str, Any]]:
         if wrapped is not None:
             obj = wrapped
     items = obj if isinstance(obj, list) else [obj]
+    # Per-item wrappers ({"hypothesis": {...}}) — a single-key dict whose value is a dict
+    # is unwrapped (observed live on qwen3:8b after the list-level fix; models invent one
+    # nesting level at a time). Anything else still fails honestly below.
+    items = [next(iter(it.values()))
+             if isinstance(it, dict) and len(it) == 1 and not (required & set(it))
+             and isinstance(next(iter(it.values())), dict) else it
+             for it in items]
     out: List[Dict[str, Any]] = []
     for it in items:
         if not isinstance(it, dict):

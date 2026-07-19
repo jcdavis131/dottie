@@ -8,6 +8,7 @@ experiments) are fed back into the prompt so the search does not repeat them.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from dottie.research import prompts
@@ -48,7 +49,18 @@ def run_ideation(ledger: Ledger, policy: Policy, *, bottleneck: str, n_ideas: in
         failed_hypotheses=dead_ends(ledger), n_ideas=n_ideas,
     )
     text = policy(prompt)                       # DottiePolicyUnavailable propagates
-    hyps = prompts.parse_hypotheses(text)       # ValueError on garbage propagates
+    try:
+        hyps = prompts.parse_hypotheses(text)   # ValueError on garbage propagates
+    except ValueError as e:
+        # Dump the raw completion so an unparseable shape is diagnosable tomorrow
+        # instead of vanishing (two live failures were opaque before this).
+        import os
+        import time as _t
+        log_dir = Path(os.environ.get("DOTTIE_RESEARCH_LOG_DIR", "data/research/logs"))
+        log_dir.mkdir(parents=True, exist_ok=True)
+        dump = log_dir / f"ideation_raw_{int(ts or _t.time())}.txt"
+        dump.write_text(text, encoding="utf-8")
+        raise ValueError(f"{e} (raw completion saved to {dump})") from e
     created = [ledger.create(h, ts=ts) for h in hyps]
     return {"created": [e.id for e in created], "names": [e.name for e in created],
             "bottleneck": bottleneck}

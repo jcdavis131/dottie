@@ -190,6 +190,9 @@ def test_prompts_and_parsing():
     # a wrapper object around the list ({"hypotheses": [...]}) is unwrapped — observed live
     hs2 = prompts.parse_hypotheses(json.dumps({"hypotheses": [HYP, HYP]}))
     assert len(hs2) == 2 and hs2[0]["hypothesis_name"] == "SeqMeanMix"
+    # per-item wrappers ([{"hypothesis": {...}}]) are unwrapped too — observed live
+    hs3 = prompts.parse_hypotheses(json.dumps([{"hypothesis": HYP}, {"idea": HYP}]))
+    assert len(hs3) == 2 and hs3[1]["hypothesis_name"] == "SeqMeanMix"
     with pytest.raises(ValueError):
         prompts.parse_hypotheses('{"hypothesis_name": "incomplete"}')
     with pytest.raises(ValueError):
