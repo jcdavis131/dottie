@@ -247,6 +247,15 @@ class DottieEngine:
             record["verified_task"] = task.verifier_detail()
         if skills_info is not None:
             record["skills"] = skills_info
+        # Cross-surface persistence: the same J-Space store scout's profiles use
+        # (channel "engine"); unavailable => recorded honestly, never a dependency.
+        from dottie import jspace_state
+        import os as _os
+        outcome = "ok" if record.get("final") is not None else "failed"
+        record["jspace_state"] = jspace_state.record_task(
+            _os.environ.get("DOTTIE_SESSION", "engine"),
+            (base_prompt or "")[:200], outcome,
+            trace={"task_id": record.get("task_id"), "backend": backend})
         self._append_trace(record)
         return record
 

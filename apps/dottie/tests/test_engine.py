@@ -75,3 +75,33 @@ def test_data_dir_env_default(monkeypatch, tmp_path):
     monkeypatch.setenv("DOTTIE_DATA_DIR", str(tmp_path / "envd"))
     e = DottieEngine()
     assert e.data_dir == tmp_path / "envd"
+
+
+def test_run_task_records_to_shared_jspace_store(engine, tmp_path, monkeypatch):
+    # One brain across surfaces (TODOS 6.2): the engine logs into the SAME store the
+    # scout profiles use; a scout-side write is visible from the engine session too.
+    monkeypatch.setenv("DOTTIE_STATE_DB", str(tmp_path / "state.sqlite3"))
+    monkeypatch.setenv("DOTTIE_SESSION", "xsurface")
+    rec = engine.run_task("conftest echo task", backend="echo")
+    assert rec["jspace_state"]["persistence"] == "on"
+    assert rec["jspace_state"]["channel"] == "engine"
+
+    from dottie import jspace_state
+    store = jspace_state.shared_store()
+    with store:
+        logged = store.recent_tasks(5, session_id="xsurface")
+        assert logged and logged[0]["outcome"] in ("ok", "failed")
+        assert store.get_context("xsurface", "last_task", channel="engine")
+        # scout-side write (cli channel) — visible in the engine's snapshot
+        store.set_context("xsurface", "deploy_stage", "canary", channel="cli")
+    snap = jspace_state.session_context("xsurface")
+    assert snap["cli"] == {"deploy_stage": "canary"}
+    assert "engine" in snap
+
+
+def test_run_task_degrades_honestly_without_skills(engine, tmp_path, monkeypatch):
+    monkeypatch.setenv("DOTTIE_STATE_DB", str(tmp_path / "s2.sqlite3"))
+    from dottie import jspace_state as js
+    monkeypatch.setattr(js, "shared_store", lambda: None)
+    rec = engine.run_task("conftest echo task", backend="echo")
+    assert rec["jspace_state"] == {"persistence": "unavailable"}
