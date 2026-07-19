@@ -169,6 +169,17 @@ Everything is under `apps/dottie/data/research/`:
 
 - **`ollama_unavailable` from ideate/implement**: Ollama isn't serving or `DOTTIE_OLLAMA_URL` /
   `DOTTIE_OLLAMA_MODEL` are wrong — the refusal states which. This is the honest path, not a bug.
+  Ollama is not auto-started by the loop — on a fresh boot, start it yourself before blaming env.
+- **Ideation ran at midnight but every tick since says "no pending"**: all hypotheses already
+  reached a terminal state; the queue refills at the next daily ideation. Trigger one manually
+  (`Start-ScheduledTask "Dottie Research ideate"` / the `ideate` cron line) to refill sooner.
+- **A Windows task shows `LastTaskResult 3221225786` (0xC000013A)**: the worker's console window
+  was closed mid-run. `install_tasks.ps1` now registers tasks `-WindowStyle Hidden
+  -NonInteractive`; re-run it if your tasks predate that.
+- **Model choice matters more than retries**: a 7B coder at temperature 0.2 regenerates the same
+  broken fix verbatim (observed: identical wrong output shape four attempts running). Prefer a
+  qwen3-class model (`qwen3:14b` fits a 12 GB card); the policy strips `<think>` blocks, and
+  `DOTTIE_OLLAMA_THINK=false` is available when latency matters more than fix quality.
 - **Everything sits in `pending`**: `implement` hasn't run (or keeps hitting `failed_validation`);
   check `logs/implement.log` for the failing validator level.
 - **`train` says "no experiments ready for training"**: nothing has passed validation yet — run
