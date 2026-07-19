@@ -39,7 +39,7 @@ def test_post_climb_runs_one_iteration_inline(client):
     log = client.get("/climb/log").json()
     assert log["count"] == 1
     assert log["iterations"][0]["iteration_id"] == rec["iteration_id"]
-    assert log["log_path"].endswith("climb/climb_log.jsonl")
+    assert log["log_path"].replace("\\", "/").endswith("climb/climb_log.jsonl")
 
 
 def test_post_climb_409_when_a_climb_is_already_running(app, client):

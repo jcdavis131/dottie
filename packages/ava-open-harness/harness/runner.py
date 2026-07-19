@@ -221,7 +221,7 @@ def run_harness(
 def write_reports(results: Dict[str,Any], out_dir: str = "reports"):
     os.makedirs(out_dir, exist_ok=True)
     json_path = os.path.join(out_dir, "branch_eval_results_real.json")
-    with open(json_path, "w") as f:
+    with open(json_path, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2)
     # markdown
     md_path = os.path.join(out_dir, "REPORT_REAL.md")
@@ -264,7 +264,7 @@ def write_reports(results: Dict[str,Any], out_dir: str = "reports"):
     lines.append("")
     lines.append("## Frozen-capability comparison (base vs chat)")
     lines.append("When both base and chat ckpts supplied, Δ% column shows regression if chat >5% worse (system1+system2 frozen).")
-    with open(md_path,"w") as f:
+    with open(md_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
     print(f"[runner] wrote {json_path} and {md_path}")
     return json_path, md_path

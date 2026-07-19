@@ -112,8 +112,9 @@ class _FileOpsSolver(_ScriptedSolver):
         return (
             f"lines = {body.splitlines()!r}\n"
             "content = '\\n'.join(l.upper() for l in lines) + '\\n'\n"
-            "with open('report.txt', 'w') as f:\n"
-            "    f.write(content)\n"
+            # 'wb': text mode would rewrite \n as \r\n on Windows and change the digest
+            "with open('report.txt', 'wb') as f:\n"
+            "    f.write(content.encode('utf-8'))\n"
             "import hashlib\n"
             "with open('report.txt', 'rb') as f:\n"
             "    data = f.read()\n"
