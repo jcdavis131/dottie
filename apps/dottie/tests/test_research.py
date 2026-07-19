@@ -394,3 +394,19 @@ def test_promotion_bundle_from_sota_and_refusals(led, tmp_path):
     # idempotent sweep: already-bundled skipped, nothing rebuilt
     summary = promote.build_pending_promotions(led, out_root=tmp_path)
     assert summary["built"] == [] and e.id in summary["already_bundled"]
+
+
+def test_extract_json_repairs_latex_backslashes_and_truncation():
+    # Both defects from the REAL dump ideation_raw_1784494765: raw LaTeX escapes in
+    # math fields + a half-emitted trailing element from a token-limit cut.
+    import json as _json
+    good = dict(HYP)
+    good["mathematical_formulation"] = "\alpha + \beta over \mathcal{L}"
+    raw_two = _json.dumps([good, good]).replace("\\\\", "\\")   # un-escape -> invalid JSON
+    hs = prompts.parse_hypotheses(raw_two)
+    assert len(hs) == 2 and "\alpha" in hs[0]["mathematical_formulation"]
+    truncated = raw_two[:-1].rsplit("}", 1)[0] + ', {"hypo'    # cut mid-third-element
+    hs2 = prompts.parse_hypotheses("[" + truncated.lstrip("[") + "")
+    assert len(hs2) >= 1                                        # complete items salvaged
+    with pytest.raises(ValueError):
+        prompts.parse_hypotheses("no json here at all")

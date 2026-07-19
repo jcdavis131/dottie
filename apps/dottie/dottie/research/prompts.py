@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from dottie.research.ledger import Baseline
@@ -190,8 +191,42 @@ target_file, code, init_kwargs, input_shape, shape_assertions). No markdown outs
 # Robust JSON extraction (LLMs wrap JSON in prose / code fences despite instructions)
 # ---------------------------------------------------------------------------
 
+# Pairs (``\\``) must match atomically or the second backslash of a VALID escaped
+# pair is misread as an invalid escape (caught by the existing fence test).
+_ESCAPE_PAIR_OR_INVALID = re.compile(r'(\\\\)|(\\(?![\\"/bfnrtu]))')
+
+
+def _escape_invalid_backslashes(s: str) -> str:
+    """LaTeX in math fields arrives as raw ``\\alpha`` — an invalid JSON escape that
+    kills the whole batch (observed live, ideation_raw_1784494765). Escaping only the
+    INVALID sequences is deterministic and content-preserving."""
+    return _ESCAPE_PAIR_OR_INVALID.sub(lambda m: m.group(1) or "\\\\", s)
+
+
+def _salvage_truncated_array(s: str) -> Any:
+    """A generation cut at the token limit leaves a half-emitted trailing element
+    (observed live: ``{ \"hypo`` then EOF). Complete leading elements are real model
+    output — salvage them by re-closing the array at the last complete ``}``. Bounded,
+    parse-gated; returns None when nothing salvages."""
+    if not s.lstrip().startswith("["):
+        return None
+    end = len(s)
+    for _ in range(20):
+        end = s.rfind("}", 0, end)
+        if end <= 0:
+            return None
+        try:
+            return json.loads(s[:end + 1] + "]")
+        except json.JSONDecodeError:
+            continue
+    return None
+
+
 def extract_json(text: str) -> Any:
-    """Pull the first JSON object/array out of a model response. Raises ValueError if none."""
+    """Pull the first JSON object/array out of a model response. Raises ValueError if none.
+
+    Lenient passes (deterministic transport repairs, applied only after strict parsing
+    fails): invalid-backslash escaping, then truncated-array salvage."""
     s = text.strip()
     # strip a ```json ... ``` fence if present
     if s.startswith("```"):
@@ -205,7 +240,17 @@ def extract_json(text: str) -> Any:
         return json.loads(s)
     except json.JSONDecodeError:
         pass
-    # scan for the first balanced {...} or [...] region
+    repaired = _escape_invalid_backslashes(s)
+    if repaired != s:
+        try:
+            return json.loads(repaired)
+        except json.JSONDecodeError:
+            pass
+    salvaged = _salvage_truncated_array(repaired)
+    if salvaged is not None:
+        return salvaged
+    # scan for the first balanced {...} or [...] region (on the repaired text)
+    s = repaired
     for opener, closer in (("{", "}"), ("[", "]")):
         start = s.find(opener)
         if start == -1:
