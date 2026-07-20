@@ -443,40 +443,75 @@ THE NIGHT'S HEADLINES — read these before anything below:
    **"factory unreachable"**. NOTE: site code changes are committed but **NOT deployed**
    — the Vercel deploy needs your approval (§7.5).
 
-### YOUR DECISION QUEUE (in order)
+### YOUR DECISION QUEUE (in order) — rewritten 08:30 2026-07-20 (clock read, not composed)
+
+> Tonight's loop changed items 5 and 8 materially and added a new blocker at the top.
+> Items 2, 3, 4, 6, 7 are unchanged from the 05:19 version.
+
+0. **NEW — RESTART THE RESEARCH DAEMON. Everything below about the loop depends on it.**
+   **13 behaviour-affecting commits** are in and **not running**: the daemon has been on
+   pre-work code since 06:21:54 and never reloads. (Counted, not estimated:
+   `git log --since="2026-07-20 06:21:54" -- apps/dottie/dottie/` returns 14, of which one
+   is docs-only. I first wrote "nine" here from memory and corrected it on checking — the
+   same habit this file exists to stop.) **I tried and the permission classifier blocked process
+   control**, so this one is yours. It touches only the daemon — not WSL, Docker, or the
+   fleet — and costs one in-flight experiment, which stays `pending` and re-runs. Exact
+   commands and the verification (`run.log` should emit a `boot` line carrying `git_sha`) are
+   in **§5.3.R9**.
+   - **Waiting is not neutral.** One queued fix is a live bug: `_DIM_KWARGS` was missing
+     `hidden`, so candidates naming that constructor arg are built at their own default
+     width, handed d_model-wide input, and filed as `failed_training` — **blamed for a
+     mismatch the trainer creates.** Every cycle adds corrupted rows to the table the
+     analysis below draws on.
 1. **Recover the fleet** — `.\scripts\prepare_fleet_recovery.ps1` (prep + GO/NO-GO), then
-   `wsl --shutdown`. Nothing else moves until the engine is back.
-2. **Charger** — still worth checking (780 MHz / 45 W of 175 W were real measurements),
-   but **downgraded**: it is no longer the explanation for the outage (that was my 14b
-   change) and only a *possible* contributor to the CUBLAS crashes.
-3. **T9.3 path (§1.4)** — gate FAILED (+75.1% CE). My recommendation: no knob-rerun;
+   `wsl --shutdown`. Nothing else moves until the engine is back. (Memory was 719 MB at
+   07:10; the projection still says GO once the model unloads.)
+2. **Charger** — unchanged. Worth checking (780 MHz / 45 W of 175 W were real), but
+   **downgraded**: not the outage cause, only a possible contributor to the CUBLAS crashes.
+3. **T9.3 path (§1.4)** — unchanged. Gate FAILED (+75.1% CE). Recommendation: no knob-rerun;
    get real tool data via 2.1, then re-fork with a replay mix. Trainer stays parked.
-4. **T9.4 — DECIDE BEFORE OR RIGHT AFTER `wsl --shutdown`.** It was launched per your
-   directive, and the step-15 early warning showed **+2.04% general CE** (the same
-   forgetting mode as T9.3, at 8% of the run). Its container carries
-   `--restart on-failure` **and** `--resume`, so it **will restart itself and continue
-   from step_15.pt the moment the engine comes back** — doing nothing is a decision to
-   continue. To let it run: nothing to do. To stop it instead (checkpoints stay banked,
-   nothing is lost):
+4. **T9.4 — decide before or right after `wsl --shutdown`.** Unchanged: `--restart
+   on-failure` **and** `--resume` mean **doing nothing is a decision to continue** from
+   step_15.pt, whose early warning showed +2.04% general CE. To stop instead:
    ```powershell
-   docker update --restart no dottie-chat-branch   # run as soon as the engine is up
-   docker stop dottie-chat-branch                  # if it already restarted
+   docker update --restart no dottie-chat-branch
+   docker stop dottie-chat-branch
    ```
-   Re-launching later is the §1.3 command with `--resume`.
-5. **MLBR bundle (§5.3.R)** — I recommend REJECT, with the arithmetic; also decide
-   whether to re-seed the baseline back to 5.61982.
-6. **Ollama startup task (§8)** and **§2.3 checkout retirement** (daytime; 3 checkouts).
-7. **arxiviq deploy** (§7.5) — one command, or approve and I'll run it. The site is
-   currently showing "Factory mode: unknown" + em-dashes for a *down* fleet; the fix that
-   says "factory unreachable" is committed but not live (§7.7).
-8. **Research search quality — the highest-leverage open item, and purely yours.** The
-   loop is reliable and unproductive: 14 hypotheses overnight, 5 evaluated, **0 real
-   improvements**, 50% dying in validation. Two causes are identified with data:
-   **§5.2.g mode collapse** (30 names permuting seven words; the dead-ends list may be
-   priming it — four options filed) and **§5.3.R3 the block-swap confound** (three
-   candidates have now "won" by deleting a 787 K-parameter block; param-parity or
-   ADD-instead-of-REPLACE would end it). Gates and instrumentation are done — further
-   effort belongs here.
+5. **MLBR bundle — SHARPER NOW, and the loop is currently self-reporting the problem.**
+   I still recommend REJECT. New tonight: the live baseline (`factory_lm_loss 5.60506`) was
+   **ratcheted by MLBR itself**, and MLBR **fails the current validator outright** as a
+   zero-parameter no-op. Until you re-seed, every promotion verdict and the status snapshot
+   carry a `promoted_contaminated` warning (§5.3.R5, §5.3.R14) — honest, but noisy.
+   - Re-seeding to **5.61982** clears it automatically.
+   - **If you have a measured run, supply its `metric_sem` too.** A bare number keeps the
+     loop on the weaker one-sample significance test forever (§5.3.R6).
+6. **Ollama startup task (§8)** and **§2.3 checkout retirement** — unchanged (daytime).
+7. **arxiviq deploy (§7.5)** — unchanged. One command, or approve and I'll run it.
+8. **Research search quality — still the highest-leverage item, and now the fix is CONFIG,
+   not code.** Measured tonight over 84 proposals: **36% (30) are category errors** —
+   regularisers, penalties, losses — structurally unbuildable as residual-stream blocks.
+   That bucket has **zero real wins**, accounts for **4 of 5** training failures, and
+   contains MLBR.
+   - **Root cause is your `--bottleneck` string**, not a missing instruction. The contract
+     already forbids loss-shaped ideas and 36% ignore it, because the bottleneck —
+     *"held-out LM loss plateaus while train loss keeps dropping (memorization gap)"* — is a
+     **regularisation-shaped problem**, and the honest fix for overfitting *is* a regulariser.
+     The loop asks for a block-shaped answer to a loss-shaped question.
+   - **Suggested replacement**: *"the fusion block at the swap site underuses its capacity —
+     find a token-mixing or gating transform that extracts more from the same hidden
+     states."* That string lives in the scheduled-task definition, which I cannot edit.
+   - The prompt now translates rather than forbids (§5.3.R12), but that is a workaround for
+     the contradiction, not a fix to it.
+   - **Correction to the previous version of this item:** it said "50% dying in validation".
+     That was one overnight window. **Lifetime is 77.9%** (53 genuine failures of 68, after
+     separating 7 infrastructure deaths). Different samples; not interchangeable (§5.3.R4).
+
+**What tonight actually bought you** (all committed, tested, and waiting on item 0):
+six validation stages catching **5 of 5** stored integration failures in ~106 ms instead of
+after a full model build; a contamination detector on the baseline; a real two-sample
+significance test; and a mutation audit (8/8) that caught a hollow test in my own work.
+**Real wins remain ZERO** — both recorded SOTAs are artifacts. The gates stop false wins;
+item 8 is what would produce a true one.
 
 ## Standing state (context for every step below)
 
