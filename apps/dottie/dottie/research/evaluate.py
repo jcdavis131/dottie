@@ -20,6 +20,14 @@ from dottie.research.ledger import Ledger, Experiment, Baseline, EVALUATION_PEND
 #: Measured 2026-07-20: the first "SOTA" (MLBR) beat the baseline by 1.1 SEM — i.e. noise —
 #: because promotion used a bare `<`. Two SEM is the cheapest honest bar; it costs nothing
 #: when an effect is real and blocks the ratchet from wandering on variance.
+#:
+#: HONEST LIMIT of this bar: the stored baseline carries no spread of its own, so this
+#: tests the candidate's mean against a POINT baseline. A true two-sample test would use
+#: SE_diff = √(SE_cand² + SE_base²) ≈ √2·SE for equal variances, making this bar ≈1.4
+#: SE_diff (~84% confidence), not 95%. It is therefore a floor, not a proof — deliberately
+#: chosen over 2·√2 to keep statistical power while the loop's conversion rate is low.
+#: The real fix is paired-seed evaluation (same seeds both sides → test the per-seed
+#: DIFFERENCES, which cancels shared variance); queued in TODOS §5.3.R.
 SIGNIFICANCE_SEM = 2.0
 
 #: Per-batch metric series a trainer may record, in preference order. The first one present

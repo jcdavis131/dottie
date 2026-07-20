@@ -327,6 +327,12 @@ independent reasons, both from the bundle's own numbers/code:**
   baseline and candidate would kill most of this variance rather than just gating on
   it. Also: baselines record no param count, so the param comparison is informational
   only (recorded, not gated) until `Baseline` carries params.
+- VERIFIED after shipping (second-order check): BOTH trainer paths record a series —
+  `factory_trainer` writes `eval_ce_per_batch`, the proxy writes `per_seed` — so the
+  new gate does NOT freeze the ratchet. And stated honestly in code: because the stored
+  baseline has no spread, a 2×SEM bar against a POINT baseline is ≈1.4 SE_diff (~84%
+  confidence), not 95% — a floor, not a proof. Kept at 2.0 for statistical power;
+  paired seeds are the real fix.
 - [ ] YOUR CALL on the live ledger: MLBR (`23bb41375804`) was promoted under the old
   bare-`<` rule and MOVED the baseline 5.61982→5.60506. Options: (a) leave it — the
   bundle is human-gated anyway and §5.3.R documents the truth; (b) re-seed the
