@@ -57,8 +57,20 @@ try {
 $LogFile = Join-Path $LogDir "$Worker.log"
 try {
     Set-Location $App
+    # $ErrorActionPreference MUST be Continue across this call. In Windows PowerShell 5.1
+    # `*>>` redirects the native process's STDERR, and every stderr line is wrapped in an
+    # ErrorRecord (NativeCommandError) — which, under the script-level "Stop", is a
+    # TERMINATING error. torch prints FutureWarnings to stderr during the train stage and
+    # the dry-run validator, so the wrapper was being killed mid-run and the daemon died
+    # with it: exit 1, no python traceback, nothing in the event log.
+    # MEASURED 2026-07-20: three silent daemon deaths (~05:25, ~05:42 and the 03:05 stall
+    # family) all fit this signature. The python side was never at fault.
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     & $Python -m dottie.research $Worker @Rest *>> $LogFile
-    exit $LASTEXITCODE
+    $exitCode = $LASTEXITCODE
+    $ErrorActionPreference = $prevEAP
+    exit $exitCode
 } finally {
     $Lock.Close()
 }

@@ -183,7 +183,35 @@ python child holds nothing. Killed 5264; 8940 is now the only one.
   `Get-Process python3.11` and kill leftovers before starting. The recovery script's
   `Stop-ScheduledTask` step has the same gap.
 
-### ⚠ UNEXPLAINED DAEMON DEATH (05:25) — loop was down ~13 min, restarted; cause UNKNOWN
+### ⭐⭐ ROOT CAUSE FOUND AND FIXED (05:46) — the wrapper was killing the daemon
+
+**Every silent daemon death tonight was `research_worker.ps1`, not Python.** The wrapper
+sets `$ErrorActionPreference = "Stop"` at script scope and then runs
+`& $Python … *>> $LogFile`. In **Windows PowerShell 5.1, `*>>` redirects the native
+process's STDERR, and each stderr line becomes a `NativeCommandError` ErrorRecord — which
+under "Stop" is a TERMINATING error.** torch prints `FutureWarning`s to stderr during the
+train stage and the dry-run validator, so the wrapper was being killed mid-run and the
+daemon went down with it.
+
+**Reproduced in isolation, both directions:**
+```powershell
+$ErrorActionPreference='Stop';     python -c "import sys; sys.stderr.write('warn\n')" *>> log   # TERMINATING ERROR
+$ErrorActionPreference='Continue'; python -c "import sys; sys.stderr.write('warn\n')" *>> log   # OK, exit 0
+```
+That signature matches every observation: **exit code 1, no Python traceback, no
+Application crash event, no resource-exhaustion event**, and deaths clustered on
+torch-heavy stages. It also explains the `0xC000013A` and the earlier "stall" family.
+
+**FIXED**: the wrapper now sets `Continue` only around the python call and restores the
+previous preference afterwards. Verified that a real non-zero exit still propagates
+(tested `sys.exit(3)` → `$LASTEXITCODE` 3), so genuine failures are not masked. Daemon
+restarted 05:46 on the fixed wrapper: 2 workers, task `Running`, train in progress.
+- NOTE this also means my earlier `os._exit` change was treating a symptom that did not
+  exist — Python was exiting fine. It is harmless and still correct hygiene, but it was
+  not the fix. Same for the `RestartCount` attempt (which did not work) and the PT15M
+  trigger (which now guards a much rarer event).
+
+### ⚠ Earlier framing (superseded by the root cause above): "unexplained daemon death"
 
 The 05:04 daemon began an implement at 05:12:12 and then **vanished**: no python process
 matching `dottie.research`, task back to `Ready`, `LastTaskResult = 0x1`, and — the part
