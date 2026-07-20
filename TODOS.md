@@ -483,9 +483,13 @@ THE NIGHT'S HEADLINES — read these before anything below:
      `Dict`/`Optional` uses to builtins and converged its import to `from typing import Any` —
      origin's exact line — with zero non-typing changes. The mechanism holds; `ruff` 0.15.22
      is in `apps/dottie/.venv`.**
-     **After the ruff pass, run the suites** (`apps/dottie` needs `AVA_FACTORY_ROOT`, §5.3.R87)
-     before pushing — an import-time NameError fails collection immediately, so a green suite
-     is proof the reconciliation held.
+     **After the ruff pass, run the SUITES** (`apps/dottie` needs `AVA_FACTORY_ROOT`, §5.3.R87)
+     before pushing — an import-time NameError fails collection immediately, so a green **pytest**
+     suite is the proof the reconciliation held. **NOT the ruff CI (§5.3.R104): `ruff check .`
+     is already red on origin (491 errors) and stays red after B0 — that is pre-existing lint
+     debt, not a failed merge.** And use the CI's pinned **`ruff==0.8.6`** for the `ruff format`
+     step (`pip install ruff==0.8.6`), not local 0.15.22, or the CI's `ruff format --check` may
+     disagree on style.
    - **Why I did not do it:** reconciling 243 commits against a repo-wide reformat is a large,
      judgement-heavy operation that can silently mangle either side, and pushing is
      outward-facing. Both are your calls. I also **paused non-essential commits** once I saw
@@ -3215,6 +3219,29 @@ most valuable catch so far:
   this writing the test fixture, not in production, so **frequency is unmeasured**; check
   the stored histories for repeated identical dry_run failures before deciding whether to
   re-derive the class name per attempt or pin the name in the correction prompt.
+
+### 5.3.R104 — read the operator's new ruff CI; it changes the B0 proof step and recipe
+
+- [x] **Read `.github/workflows/lint.yml` on origin (the CI `9688ccf` added).** It runs, on
+  **Python 3.11 with `ruff==0.8.6`**: `ruff check . --statistics` then `ruff format --check .`.
+  `ruff check` **exits 1 on any error.**
+- [x] **The ruff CI is ALREADY RED, on origin too — and will stay red after B0.** `ruff check .`
+  reports **688 errors locally (491 on origin), exit 1** — pre-existing lint debt (F841, E741,
+  F811, bare-excepts…) that `--fix` cannot fully auto-resolve. **This is NOT a reconciliation
+  failure.** Consequence for B0: **the proof that the merge held is the PYTEST SUITE going
+  green, never the ruff CI.** A red ruff lint check after B0 is expected and pre-existing — do
+  not read it as a broken merge. (My HANDOFF said "green suite proves it held" = pytest;
+  making the distinction explicit here so a red lint badge is not misread.)
+- [x] **Recipe correction — use the CI's ruff version for the format step.** CI pins
+  **`ruff==0.8.6`**; local is `0.15.22`. `ruff format` output can differ across versions, so a
+  local-`0.15` format pass could still FAIL the CI's `ruff format --check` (`0.8.6`). The B0
+  ruff step should be **`pip install ruff==0.8.6` → `ruff format`** to match, or expect the
+  format-check to disagree. (`ruff check --fix` for the NameError resolution is version-robust;
+  it is the *format* step that is version-sensitive.)
+- [ ] **Net: B0 is now fully de-risked from my side.** Verified: the 21-conflict set, the
+  `--ours`+ruff resolution, a py311-clean diff (§5.3.R103), the pytest suite as the true proof
+  step, and the ruff-version + red-CI gotchas above. Nothing more I can verify about the
+  reconciliation without actually running it — which the classifier reserves for the operator.
 
 ### 5.3.R103 — read-only ruff check caught a target-breaking bug I introduced this session
 
