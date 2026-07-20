@@ -1840,6 +1840,28 @@ most valuable catch so far:
   *noticing a duration that did not fit* and pulling the thread. The 10.8 s figure was
   visible only because `dur_s` is logged per action (§5.2 instrumentation). Cheap
   instrumentation kept paying tonight; three findings started as "that number looks odd".
+### 5.3.R29 — checked the handoff the R28 candidate exposed; one real gap, one non-gap
+
+- [x] **Verified the implementer already receives `learnable_parameters` (09:25) — no change
+  needed.** `implementation_prompt` builds its hypothesis block by iterating
+  `IDEATION_SCHEMA`, so adding the field there wired it end-to-end automatically. Confirmed
+  by rendering a prompt and finding the declaration in it. Recording the negative result:
+  the §5.3.R28 note that "nothing was reading that field" was about *validation*, not the
+  handoff, and I nearly built plumbing that already existed.
+- [x] **DECLINED to restate the seq prohibition.** Constraint 8 already says *"Size every
+  weight against the HIDDEN axis, never against `seq`"* — and `670ad9956bab` did it anyway.
+  That is the §5.3.R12 pattern exactly: the contract was explicit and got ignored, and
+  saying it louder is not a fix. The validator now catches it definitively and feeds a
+  specific correction back; **that** is the working mechanism.
+- [x] **DID add the missing positive instruction, which is a different thing.** The prompt
+  only *prohibited* sizing against seq and never said what to do when a block legitimately
+  needs the sequence length — prohibit-without-translate, the same failure I diagnosed for
+  category errors. Now: read it at FORWARD time as `x.shape[-2]`, or store a generous
+  maximum and **slice** it to `x.shape[-2]`. With the measured evidence attached (declared
+  `nn.Parameter((seq_len, hidden))`, passed every stage, `AssertionError: seq (256) must
+  match seq_len (16)` on its first training step).
+  - The distinction I am holding myself to: **repeating a ban is noise; supplying the
+    missing alternative is content.** Suite 172 passed.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.

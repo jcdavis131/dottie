@@ -234,6 +234,14 @@ numerical stability, and modularity. Your code must compile on the first attempt
    - Size every weight against the HIDDEN axis (`x.shape[-1]`), never against `seq`. An error
      like "size of tensor a (512) must match tensor b (128) at dimension 2" means you built a
      weight for the wrong axis.
+   - If your idea genuinely NEEDS the sequence length (a positional table, an attention bias,
+     a decay mask), read it at FORWARD time as `x.shape[-2]` and build the tensor there — or
+     store a generous maximum and SLICE it to `x.shape[-2]`. A parameter whose shape is fixed
+     to the dry-run sequence length is dead on arrival: validation runs at a short sequence
+     and the model trains at 256, so it will be built at the wrong length. Measured
+     2026-07-20 — a candidate declared `nn.Parameter((seq_len, hidden))`, passed every
+     validation stage, and raised `AssertionError: seq (256) must match seq_len (16)` on its
+     first training step.
    - NEVER use `.T` or `torch.t()` on this tensor — they are 2-D only and raise
      "t() expects a tensor with <= 2 dimensions". Use `x.transpose(-2, -1)`.
    - EVERY `torch.einsum` subscript string must have ONE letter per dimension of each
