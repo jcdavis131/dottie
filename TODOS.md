@@ -923,6 +923,15 @@ most valuable catch so far:
   corrector's exception is surfaced in the failure text ("STOPPED EARLY, the corrector
   itself failed: …") and returned as `corrector_error`. Regression test verified red
   before / green after (`test_corrector_failure_is_distinguished_from_a_bad_candidate`).
+- [ ] **NOT YET LIVE.** The running daemon (pid 7092) started 06:21:54; the fix landed
+  06:45, so the in-flight process still has the old `implementation.py` imported. There is
+  no natural restart on this box — the runner is a forever-daemon, so nothing recycles it
+  on its own (the trap I walked into four times last night). A restart now is NOT free:
+  per the recovery script's step 1b, `Stop-ScheduledTask` kills the wrapper but not its
+  python child, and a naive Start then yields TWO concurrent daemons. Correct sequencing
+  is the orphan cleanup in `scripts/prepare_fleet_recovery.ps1`. Deliberately deferred to
+  the queued fleet recovery, which stops the daemon anyway — restarting mid-experiment,
+  with known orphan risk, for an observability-only fix is a bad trade.
 - [ ] FOLLOW-UP: re-classify the existing `failed_validation` records now that the two
   causes are distinguishable going forward. Old records cannot be recovered (the reason
   was never stored), so §5.2's conversion rate should be recomputed from records dated
