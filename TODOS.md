@@ -2385,6 +2385,35 @@ most valuable catch so far:
   has run together, and the first honest test of whether any of tonight's reasoning about
   the proposal pipeline was right. If the category-error rate does not move from 36%, the
   search-space diagnosis (§5.3.R35) was wrong — and that is a result worth having too.
+### 5.3.R49 — ⭐⭐ the trainer was loading the validator's scratch files, not the module
+
+- [x] **`_load_module` selected the module to train by ALPHABET (10:55).**
+  `sorted(ws.glob("*.py"))[0]`. But `validate()` writes a scratch `candidate_<uuid>.py` into
+  **the same experiment workspace on every attempt, including failures**, while
+  `implementation.py` writes the validated module under its own name. `"candidate_"` sorts
+  before most generated filenames, so the trainer systematically picked a validator artifact.
+- [x] **Measured over 25 trainable workspaces — 25 of 25 loaded a `candidate_` file.**
+  Severity, verified by content hash rather than assumed:
+  - **23 of 25**: the picked scratch file was byte-identical to the final module. Right code
+    trained, **by luck**, because only one attempt existed.
+  - **2 of 25 (8%)**: the picked file was an **earlier FAILED attempt with different
+    content**. The loop trained, measured and judged code it had already rejected — silently,
+    with a `failed_training` verdict attached to the wrong module. One of them is
+    **`694633b2d354`**, the §5.3.R11 rank-collapse case, so that verdict is now suspect.
+- [x] Fixed: prefer the real module, fall back to scratch only if nothing else exists, and
+  then take the **newest** (the passing attempt) rather than the alphabetically first — an
+  arbitrary uuid was ordering the choice. Verified red with `loaded 'failed attempt'`.
+  Suite 186 passed.
+- [x] **I nearly reported this wrong.** My first measurement compared the picked file against
+  `f"{module_name}.py"` and reported **95 of 95 broken** — but `_safe_basename` uses the
+  lowercase `target_file` basename, not the module name, so the expectation was wrong and
+  the number was meaningless. Recomputed against the actual files: 25 relevant, 2 genuinely
+  wrong. **The alarming number was mine, not the code's.**
+- [ ] Side observation worth its own look: nearly every workspace's final module is named
+  **`experimental_routing.py`** — the *example* value from the implementation schema
+  (`"repo-relative path, e.g. ava/models/experimental_routing.py"`). The model is copying the
+  example verbatim. Harmless now, but it is the same class as §5.3.R37: **example text in a
+  prompt gets treated as the answer.**
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.

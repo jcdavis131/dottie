@@ -47,10 +47,27 @@ Trainer = Callable[[Experiment, Dict[str, Any]], TrainResult]
 def _load_module(workspace: str | Path, module_name: Optional[str]):
     """Import the validated candidate module written into the experiment workspace."""
     ws = Path(workspace)
-    candidates = sorted(ws.glob("*.py"))
-    if not candidates:
+    pys = sorted(ws.glob("*.py"))
+    if not pys:
         raise FileNotFoundError(f"no .py module in workspace {ws}")
-    path = candidates[0]
+    # `validate()` writes a scratch `candidate_<uuid>.py` into this SAME workspace on every
+    # attempt, including failed ones, while implementation.py writes the final module under
+    # its own name. Picking `sorted(...)[0]` therefore selected by ALPHABET across a mixed
+    # pool: "candidate_" sorts before most generated filenames, so the trainer loaded a
+    # validator scratch file rather than the validated module.
+    #
+    # Measured 2026-07-20 (TODOS §5.3.R49) over 25 trainable workspaces: **25 of 25** loaded
+    # a candidate_ file. In 23 the newest scratch file happened to be byte-identical to the
+    # final module, so the right code trained by luck. In **2 it was an earlier FAILED
+    # attempt with different content** — the loop trained and judged code it had already
+    # rejected, silently. One of those is 694633b2d354, whose failed_training verdict may
+    # therefore be about the wrong module.
+    #
+    # Prefer the real module; fall back to scratch only if nothing else exists, and then take
+    # the NEWEST (the passing attempt) rather than the alphabetically first.
+    finals = [p for p in pys if not p.name.startswith("candidate_")]
+    pool = finals or pys
+    path = max(pool, key=lambda p: p.stat().st_mtime) if len(pool) > 1 else pool[0]
     name = f"dottie_research_train_{uuid.uuid4().hex[:8]}"
     spec = importlib.util.spec_from_file_location(name, str(path))
     if spec is None or spec.loader is None:

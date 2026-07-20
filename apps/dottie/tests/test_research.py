@@ -997,6 +997,58 @@ def test_corrector_parse_retries_are_a_bounded_shared_pool(led, tmp_path):
         "multiplying with the correction budget again")
 
 
+def test_trainer_loads_the_validated_module_not_a_validator_scratch_file(tmp_path):
+    """The trainer must load the FINAL module, not `validate()`'s scratch files.
+
+    TODOS §5.3.R49. `validate()` writes `candidate_<uuid>.py` into the experiment workspace
+    on every attempt, including failures; `implementation.py` writes the final module under
+    its own name. `_load_module` did `sorted(ws.glob("*.py"))[0]` — selection by ALPHABET
+    across a mixed pool, and "candidate_" sorts before most generated filenames.
+
+    Measured over 25 trainable workspaces: 25 of 25 loaded a candidate_ file. 23 were
+    byte-identical to the final module (right code by luck); 2 were EARLIER FAILED attempts
+    with different content, so the loop trained and judged code it had already rejected.
+    """
+    from dottie.research.train import _load_module
+
+    ws = tmp_path / "exp"
+    ws.mkdir()
+    # a failed attempt, then the passing attempt, then the final module
+    (ws / "candidate_000000.py").write_text("VALUE = 'failed attempt'\n", encoding="utf-8")
+    (ws / "candidate_zzzzzz.py").write_text("VALUE = 'passing attempt'\n", encoding="utf-8")
+    (ws / "experimental_routing.py").write_text("VALUE = 'final module'\n", encoding="utf-8")
+
+    mod = _load_module(ws, "Whatever")
+    assert mod.VALUE == "final module", (
+        f"loaded {mod.VALUE!r} — the trainer must prefer the written module over validator "
+        "scratch files")
+
+
+def test_trainer_falls_back_to_the_NEWEST_scratch_file(tmp_path):
+    """With only scratch files, take the newest — that is the attempt that passed.
+
+    The alphabetically-first candidate is an arbitrary uuid and is frequently an earlier,
+    failed attempt (2 of 25 measured). Recency is the only ordering that means anything here.
+    """
+    import os
+    import time
+
+    from dottie.research.train import _load_module
+
+    ws = tmp_path / "exp2"
+    ws.mkdir()
+    old = ws / "candidate_aaaaaa.py"
+    new = ws / "candidate_bbbbbb.py"
+    old.write_text("VALUE = 'earlier failed attempt'\n", encoding="utf-8")
+    new.write_text("VALUE = 'later passing attempt'\n", encoding="utf-8")
+    # make the alphabetically-FIRST file the older one, unambiguously
+    past = time.time() - 600
+    os.utime(old, (past, past))
+
+    mod = _load_module(ws, "Whatever")
+    assert mod.VALUE == "later passing attempt"
+
+
 def test_candidate_that_raises_mid_training_is_failed_not_stuck(led, tmp_path):
     """A candidate that RAISES during training must fail, not escape the trainer.
 
