@@ -2941,6 +2941,28 @@ most valuable catch so far:
 - [ ] Webapp coverage is now: every file I touched tonight read end to end, every class I
   fixed swept, and the two subtle invariants (poll overlap, history filter) held by tests
   rather than by comments.
+### 5.3.R71 — verified item 7's fix is sound, after nearly filing a false alarm
+
+- [x] **Checked decision item 7's "factory unreachable" fix against the real failure
+  condition (15:00)** — Docker is down right now, which is exactly what it handles.
+  **The fix is correct and end-to-end wired**: `publish_live_status.py` records
+  `{"unreachable": reason}` when a source fetch fails, and the site reads
+  `status.pipeline.unreachable`. Item 7 stands as written — it needs deploying, nothing more.
+- [x] **I nearly filed the opposite, and the process failure is the finding.** I grepped
+  `apps/scout-cli/` for the producer, found `unreachable` only in `ARCHITECTURE.md` and
+  `app.js`, and was one step from reporting *"the fix is inert — nothing writes the flag"*.
+  Two compounding scope errors:
+  1. **Wrong directory.** The publisher lives in `apps/ava-factory/scripts/`. A repo-wide
+     search found it immediately.
+  2. **Wrong artifact.** I inspected `site/data/snapshot.json` — the *baked fallback* — and
+     concluded from its missing key. The flag belongs to the **live Gist payload**
+     (`dottie_live_status/v2`), a different source the same renderer consumes.
+- [x] **Second scope error in the same session** (§5.3.R63: "exactly two FastAPI apps" from a
+  search of `apps/` only). Both times the tool answered exactly what I asked and I reported a
+  conclusion broader than the question. **The scope of a search is part of its result** — and
+  this time the false finding would have told the operator a working fix was worthless.
+- [ ] Standing correction to my own habit: before claiming *"nothing produces X"*, search the
+  repo, not the directory I happen to be in — and confirm which artifact actually carries X.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
