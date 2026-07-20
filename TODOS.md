@@ -2918,6 +2918,29 @@ most valuable catch so far:
   await rather than reporting anything. Fixed by collecting every releaser. **A test that
   hangs is worse than one that fails** — CI reports a timeout, not a cause, and the hang was
   in my test rather than the code under test.
+### 5.3.R70 — swept the views for the settings-page class; covered an untested invariant
+
+- [x] **Swept every view for "UI claims success without checking" (14:45)** — the class
+  behind §5.3.R68. **Clean.** The only match is `chat.js` reporting *failure* honestly, and
+  my settings fix removed the one unconditional claim. `ops.js` has **no async, fetch or
+  catch at all** — a pure rendering view, so the class is structurally absent rather than
+  merely unobserved (the §5.3.R63 distinction).
+- [x] **`chat.js` reads sound**, and one property it enforces was **covered by nothing**:
+  `apiMessages()` filters error turns out of the history. The backend is stateless — the
+  FULL history is re-sent every turn — so this function decides what the model sees, always.
+  - A failed turn is stored with `content: ""` and the error in `meta.error`. Replaying it
+    would inject a **blank assistant message on every subsequent turn**, degrading context in
+    a way that looks like the model getting worse rather than a client bug.
+  - It also maps to `{role, content}` only, so `meta` — endpoint, timings, raw error strings
+    — never reaches a prompt.
+- [x] `history.contract.test.mjs`: **10 assertions**, covering both properties plus the
+  scoping detail that a **user** turn carrying `meta.error` must be KEPT (widening the filter
+  would silently delete operator input). Asserts the source still contains the filter, so a
+  removal fails loudly; verified by deleting the line — `FAIL error turns are still filtered
+  out`. **api 8 / history 10 / poll 8 / store 9, all green.**
+- [ ] Webapp coverage is now: every file I touched tonight read end to end, every class I
+  fixed swept, and the two subtle invariants (poll overlap, history filter) held by tests
+  rather than by comments.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
