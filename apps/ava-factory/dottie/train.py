@@ -40,7 +40,9 @@ from dottie.pipeline.flow import FlowConfig
 from dottie.pipeline.manifest import Manifest
 from model_1b import apply_rope_scaling
 
-MAX_MICRO_BATCH = 8
+# Env-overridable: fp32-on-12GB needs mb 4 (same tokens/step via accum — identical
+# training math, half the activation memory; observed WDDM spill at mb 8 fp32).
+MAX_MICRO_BATCH = int(os.environ.get("AVA_MAX_MICRO_BATCH", "8"))
 # Activation ceiling per micro-batch. Without it mb stayed at 8 regardless of
 # seq, so the P2->P3 seq doubling (1024->2048) would double activation memory
 # on a GPU already at 97% -- a deterministic OOM at the phase boundary. 8192

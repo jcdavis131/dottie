@@ -5,6 +5,8 @@
 # Host bind-mounts pick up local ava/ + configs/ without a full image rebuild.
 services:
   trainer:
+    environment:
+      AVA_MAX_MICRO_BATCH: "4"   # fp32 fits in 12GB at mb 4; accum doubles, tokens/step unchanged
     command:
       - python
       - -m
