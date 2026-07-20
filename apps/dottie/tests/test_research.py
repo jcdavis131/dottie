@@ -198,6 +198,27 @@ def test_repeated_identical_failure_escalates_feedback():
     assert all("same failure" in f for f in seen[1:])
 
 
+def test_correction_feedback_shows_the_models_own_last_edit():
+    # TODOS §5.2.c: the corrector used to see only the traceback, so it could not tell WHICH
+    # of its edits had just failed. From the second retry on it now also gets a unified diff
+    # of its own previous edit — and an explicit callout when it changed nothing at all.
+    seen = []
+    # a real edit first, then the SAME code again — exercising both feedback branches
+    codes = ["def still_bad(:", "def still_bad(:"]
+
+    def edits(code, feedback):
+        seen.append(feedback)
+        return codes[min(len(seen) - 1, len(codes) - 1)]
+
+    out = validate.validate_with_correction("def bad(:", edits, max_retries=3)
+    assert not out.ok
+    assert "PREVIOUS EDIT" not in seen[0]             # nothing edited yet on the first pass
+    assert "YOUR PREVIOUS EDIT" in seen[1] and "--- previous_attempt" in seen[1]
+    assert "+def still_bad(:" in seen[1]              # the actual edit is visible
+    # third pass: the corrector resubmitted identical code -> called out explicitly
+    assert "BYTE-IDENTICAL" in seen[2]
+
+
 def test_self_correction_fix_and_giveup():
     out = validate.validate_with_correction("def bad(:", lambda c, f: GOOD_CODE,
                                              class_name="SeqMeanMix", input_shape=[4, 16, 64])

@@ -19,6 +19,7 @@ Nothing here is fabricated: a level that cannot run (e.g. ruff or torch absent) 
 from __future__ import annotations
 
 import ast
+import difflib
 import shutil as _shutil  # for which() only; generated code may not import shutil
 import subprocess
 import tempfile
@@ -225,7 +226,9 @@ def dry_run_module(file_path: str | Path, *, class_name: Optional[str] = None,
         cls = _select_class(module, class_name, torch)
         with torch.no_grad():
             layer = cls(**init_kwargs)
-            dummy = torch.randn(*shape)
+            # Seeded: validation must be reproducible. An unseeded probe made the
+            # degeneracy verdict depend on the draw (measured 2026-07-20).
+            dummy = torch.randn(*shape, generator=torch.Generator().manual_seed(1234))
             output = layer(dummy)
         out_t = output[0] if isinstance(output, (tuple, list)) else output
         if not torch.is_tensor(out_t):
@@ -252,8 +255,14 @@ def dry_run_module(file_path: str | Path, *, class_name: Optional[str] = None,
         # legitimate zero-init pattern (identity at init but parameterized, e.g. LayerScale)
         # still passes.
         n_params = sum(int(p.numel()) for p in layer.parameters() if p.requires_grad)
-        delta_std = float((out_t - dummy).std())
-        if n_params == 0 and delta_std < 1e-6:
+        delta = out_t - dummy
+        delta_std = float(delta.std())
+        # Scale-aware, NOT an absolute epsilon: `x + c` in float32 leaves rounding noise
+        # proportional to |c| (~5e-7 for c≈4.7), which an absolute 1e-6 bar mistook for a
+        # real transform — the gate was flaky on unseeded input until this was measured.
+        # "Constant shift" = the variation is negligible RELATIVE to the shift itself.
+        const_tol = max(1e-6, 1e-4 * abs(float(delta.mean())))
+        if n_params == 0 and delta_std <= const_tol:
             return ValidationResult(
                 False, "dry_run", "fail",
                 f"degenerate block: {n_params} learnable parameters and output differs from "
@@ -318,6 +327,24 @@ class CorrectionOutcome:
     history: List[Dict[str, Any]] = field(default_factory=list)
 
 
+def _attempt_diff(before: str, after: str, *, max_lines: int = 60) -> str:
+    """Unified diff of the model's OWN last edit (TODOS §5.2.c).
+
+    The corrector previously saw only the traceback plus the current code, so it could not
+    tell which of its edits had just failed — and near-greedy sampling then re-made the same
+    edit. Showing the edit itself is the cheapest way to break that. Bounded so a full
+    rewrite cannot flood the prompt; empty string when nothing changed (caller says so
+    explicitly, which is a stronger signal than a silent no-op diff)."""
+    lines = list(difflib.unified_diff(
+        before.splitlines(), after.splitlines(),
+        fromfile="previous_attempt", tofile="current_attempt", lineterm="", n=2))
+    if not lines:
+        return ""
+    if len(lines) > max_lines:
+        lines = lines[:max_lines] + [f"... ({len(lines) - max_lines} more diff lines omitted)"]
+    return "\n".join(lines)
+
+
 def validate_with_correction(code: str, corrector: Corrector, *, max_retries: int = 3,
                              class_name: Optional[str] = None,
                              init_kwargs: Optional[Dict[str, Any]] = None,
@@ -333,6 +360,7 @@ def validate_with_correction(code: str, corrector: Corrector, *, max_retries: in
     history.append({"attempt": attempts, "ok": result.ok, "level": result.level,
                     "status": result.status, "detail": result.detail[:2000]})
     prev_failure: Optional[tuple] = None
+    prev_attempt_code: Optional[str] = None
     while not result.ok and attempts < max_retries:
         attempts += 1
         feedback = result.as_feedback()
@@ -343,7 +371,17 @@ def validate_with_correction(code: str, corrector: Corrector, *, max_retries: in
             feedback += ("\n\nNOTE: your previous rewrite produced EXACTLY this same failure — "
                          "that approach does not fix it. Restructure the forward pass "
                          "differently this time; do not resubmit the same code.")
+        # Show the model its own last edit (§5.2.c): the traceback says what broke, the diff
+        # says what it just tried, and those are different questions.
+        if prev_attempt_code is not None:
+            d = _attempt_diff(prev_attempt_code, current)
+            feedback += (
+                f"\n\nYOUR PREVIOUS EDIT (unified diff) did NOT resolve the failure:\n{d}"
+                if d else
+                "\n\nNOTE: your previous rewrite was BYTE-IDENTICAL to the code before it — "
+                "you did not change anything. Make a real, different change this time.")
         prev_failure = (result.level, result.detail)
+        prev_attempt_code = current
         try:
             current = corrector(current, feedback)
         except Exception as e:  # corrector itself failed (e.g. LLM unreachable) — stop honestly

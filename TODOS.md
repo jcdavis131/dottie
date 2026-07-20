@@ -310,8 +310,12 @@ Then §1 fires automatically (#17 armed on the monitor).
     - 5.2.b [~] Nightly window: MECHANISM shipped in research_worker.ps1 (DOTTIE_OLLAMA_MODEL_NIGHT); do NOT enable until the tool run frees the GPU — when the trainer is idle (post-tool_final, pre-next-run),
       let the scheduler use qwen3:14b (`DOTTIE_OLLAMA_MODEL_NIGHT` env in the wrapper,
       22:00–06:00) — 14b stalls only under GPU contention.
-    - 5.2.c [ ] (re-scoped) Feed richer context into corrections — research candidates are single modules, so reviewgraph adds little; instead feed the CANDIDATE's own prior-attempt diff. Original idea: output into the correction prompt (the compact
-      dependent-signature block) — the corrector currently sees only the traceback.
+    - 5.2.c [x] **SHIPPED 02:45** — the corrector now sees its OWN last edit: from the
+      second retry on, the feedback carries a bounded unified diff (previous_attempt →
+      current_attempt), and a byte-identical resubmission is called out explicitly.
+      Rationale: the traceback says what broke, the diff says what the model just tried —
+      different questions, and near-greedy sampling kept re-making the same edit. 32/32
+      research tests green (new test asserts both branches).
 ### 5.3.R — REVIEWER BRIEF for the MLBR bundle (written by the loop 2026-07-20 03:30)
 
 **Recommendation: REJECT the promotion (or re-measure with paired seeds). Two
@@ -361,7 +365,13 @@ independent reasons, both from the bundle's own numbers/code:**
   LayerScale (4224 params) → pass; a real mixer (delta_std 0.465) → pass. Passing
   results now also record `learnable_params` and `delta_std` for the reviewer.
   Found en route: a test fixture (`x * scale`, scale=1.0) was itself a zero-param exact
-  identity — fixture fixed, gate kept. 31/31 research tests green.
+  identity — fixture fixed, gate kept.
+  **HARDENED 02:45 — the first version of this gate was FLAKY.** An absolute `1e-6`
+  bar competed with float32 rounding noise from `x + c`, which scales with |c| (~5e-7
+  for c≈4.7) and varied with the UNSEEDED probe input, so the same module could pass or
+  fail run to run. Two fixes: (1) the constant-shift test is now scale-aware
+  (`std ≤ max(1e-6, 1e-4·|mean|)`), and (2) the dry-run probe is seeded (1234) so
+  validation is reproducible at all. Re-verified on the real modules + 5 repeat runs.
 - [ ] **DEEPEST ISSUE FOUND TONIGHT — the block-swap integration has a structural
   confound (queued, needs your call).** `factory_nano_block_swap` measures a candidate
   by REPLACING a real parameterized fusion block with it. So every parameter-free
