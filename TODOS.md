@@ -183,6 +183,26 @@ python child holds nothing. Killed 5264; 8940 is now the only one.
   `Get-Process python3.11` and kill leftovers before starting. The recovery script's
   `Stop-ScheduledTask` step has the same gap.
 
+### ⚠ UNEXPLAINED DAEMON DEATH (05:25) — loop was down ~13 min, restarted; cause UNKNOWN
+
+The 05:04 daemon began an implement at 05:12:12 and then **vanished**: no python process
+matching `dottie.research`, task back to `Ready`, `LastTaskResult = 0x1`, and — the part
+that matters — **no traceback, no `fatal` line, no error output whatsoever** in `run.log`.
+A Python exception would have printed a traceback (stderr is redirected into that file);
+an exhausted-retries exit would have printed the `fatal` JSON. Neither is there, which
+points at abrupt termination rather than a handled failure. Memory was NOT tight at the
+time (4.6–5.4 GB available across four samples).
+Restarted manually at 05:27 (0 orphans beforehand, 2 processes after, implement started);
+without that it would have idled until the 06:05 trigger.
+- [ ] **I could not determine the cause and am not going to guess.** Worth checking when
+  you are back: Windows Event Viewer → Application/System around **05:25** for a process
+  termination, and the Task Scheduler operational log for that instance. If it recurs,
+  the `dur_s`/start-line instrumentation now pins the last action precisely.
+- Possible contributors, none established: my own `os._exit` change (it only runs after
+  `main()` returns, so it should not fire mid-stage), the earlier double-daemon cleanup,
+  or an external kill. **Note this is the second silent daemon loss tonight** (the first
+  was the 03:05 stall), so a watchdog — §5 fix (a) — is looking less optional.
+
 ### ⭐ KEEP_ALIVE CONFIRMED WORKING (05:15) — memory 345 MB → 5,437 MB
 
 With `DOTTIE_OLLAMA_KEEP_ALIVE=30s` live, `llama-server` **unloaded between Ollama calls**
