@@ -3533,12 +3533,12 @@ repeatedly; the measurement disagreed with me.
   that DELETES 786,816 parameters can win at fixed steps, be promoted, and move the bar for
   every candidate after it. **That is not a hypothetical: it is exactly how both prior
   contaminations happened**, and it just happened a third time this morning.
-- [ ] **NEXT, pending the control:** if `identity` ≈ 5.544, the fix is to make capacity part
-  of the verdict rather than a footnote — either refuse `sota` when `block_param_delta` is
-  large and negative until a capacity-matched control passes, or require the comparison be
-  made at matched parameter count. **Deliberately not doing this before the control returns:**
-  changing what the loop promotes on the strength of a suspicion would be the same
-  unmeasured-claim error as R88 and R89, in the one place it would do lasting damage.
+- [x] **RESOLVED by the control — its premise was refuted (§5.3.R91→R93).** This item asked:
+  *if* `identity` ≈ 5.544, gate `sota` on capacity. The control **measured `identity` = 5.720**
+  (capacity removal HURTS), so the premise is false and the capacity-gate change it proposed is
+  not the needed fix — the real problem was cross-seed variance, addressed in R93's significance
+  work (`a37dd58`) and surfaced as a flag (`2fd923b`, reworded `47809c3`). Waiting for the
+  measurement instead of acting on the suspicion is exactly why this did not become wasted work.
 
 ### 5.3.R89 — "one `uv pip install typer`" was wrong; scout-rtx needs a real env, so I stopped
 
