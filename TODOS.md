@@ -135,6 +135,26 @@ fallback relaunch are in §1.3. **The 45W power cap is the standing suspect for 
 family of failures tonight — 780MHz clocks, 2 CUBLAS crashes, and this VM death. Check
 the charger.**
 
+### ⚠⚠ CORRECTION (05:01) — "takes effect at the 05:05 restart" was WRONG, five times over
+
+I wrote that phrase about `keep_alive`, the axis-discipline prompt, `dur_s`, the
+direction-aware significance wording and tail-truncated failures. **There is no restart.**
+The runner is a forever-daemon (`run` with `--max-actions 0`) and `MultipleInstances` is
+`IgnoreNew`, so the 05:05 trigger is REFUSED while the 04:05 daemon lives. Verified:
+task `state=Running`, `next=05:05:00`, daemon PID 5264 up since 04:05:02.
+
+**So every research fix I shipped after 04:05 is currently INERT**, including the
+`keep_alive` memory-safety change I justified on outage-risk grounds. The daemon must be
+restarted explicitly for any of them to apply:
+```powershell
+Stop-ScheduledTask  -TaskName "Dottie Research runner"   # kills the daemon + its stages
+Start-ScheduledTask -TaskName "Dottie Research runner"   # fresh process, current code
+```
+This is the same daemon-vs-one-shot misunderstanding I corrected at 04:00 resurfacing in a
+new form — I fixed the "lost ticks" framing but kept assuming hourly restarts would pick up
+code. Worth remembering: **on this box, code changes to the research loop require an
+explicit daemon restart, not a wait.**
+
 ### Regression status (full sweep 04:38, after ~14 changed files)
 
 | suite | result |
