@@ -3156,6 +3156,31 @@ most valuable catch so far:
   the stored histories for repeated identical dry_run failures before deciding whether to
   re-derive the class name per attempt or pin the name in the correction prompt.
 
+### 5.3.R89 — "one `uv pip install typer`" was wrong; scout-rtx needs a real env, so I stopped
+
+- [x] **Went to close the last unmeasured suite and priced it properly first.** R78/R85 both
+  say `apps/scout-rtx` is unknown because `typer` is absent, and R78 adds *"one `uv pip
+  install typer` would move it from unknown to measured."* **That was wrong.**
+- [x] **Measured instead of assumed: 7 of its 10 declared dependencies are missing** —
+  `matplotlib`, `pandas`, `pyarrow`, `rich`, `rustbpe`, `tiktoken`, `typer`. The package has
+  never been installed on this box at all.
+- [x] **And the tests need more than `typer`.** `tests/test_*.py` import the local `prepare`
+  and `train` modules, which import **`pyarrow`, `rustbpe`, `tiktoken`** at module level. So
+  the minimum to COLLECT is four packages — **including `rustbpe`, a Rust native extension**
+  that may not even have a Windows wheel.
+- [x] **Declined to install, deliberately.** The only venv available is the one the research
+  daemon runs on (`apps/dottie/.venv`, which holds the working torch). Adding four to seven
+  packages — one native, several heavy — into the daemon's environment, while a training
+  control is mid-flight and the box is near its memory floor, is a real risk to a working
+  system in exchange for one number on a board. **The right move is a separate env for
+  scout-rtx, which is the operator's call, not a side effect of a status check.**
+- [x] **The pattern worth naming:** I wrote *"one install would settle it"* without ever
+  running the check, and it sat in two entries reading like a measurement. **It was an
+  estimate wearing a measurement's clothes** — the same shape as R88's timestamps, which were
+  plausible narrative wearing a clock's clothes. Cheap to verify, and I did not, twice.
+- [ ] `apps/scout-rtx` stays **NOT VERIFIABLE** on the board, now with the true cost attached
+  so the next reader is not misled into a five-second fix that is not one.
+
 ### 5.3.R88 — I FABRICATED EVERY TIMESTAMP IN R72–R87. Second time this session.
 
 - [x] **Caught at 14:32 while checking on the control run.** I read the workspace mtimes to
@@ -3303,9 +3328,11 @@ everywhere, which silently overrode `testpaths` where a project declared a broad
 - **The one ⛔ is queue item 9** and is structural, pre-existing, and NOT fixable by a patch:
   two packages are both named `dottie`, so only one is importable per process. It needs a
   rename decision from the operator.
-- `apps/scout-rtx` is stated as **unknown, not green** — one `uv pip install typer` in the
-  right env would settle it. Reporting it either way without measuring is what this whole
-  sequence of entries exists to stop.
+- `apps/scout-rtx` is stated as **unknown, not green**. ~~one `uv pip install typer` in the
+  right env would settle it.~~ **Corrected §5.3.R89: that estimate was never checked — 7 of
+  10 declared deps are missing and collection needs 4, including the native `rustbpe`.**
+  Reporting it either way without measuring is what this whole sequence of entries exists to
+  stop — and "one install would fix it" was itself an unmeasured report.
 - **Invocation matters and is now recorded per row**, because three of the seven packages
   declare no `testpaths` at all (`ava-factory`, `scout-rtx`, `personal-graphify`) and one
   declares a broader one than `tests` (`ava-skills`). There is no single command that is
@@ -3557,8 +3584,10 @@ everywhere, which silently overrode `testpaths` where a project declared a broad
   across platforms. Fixed (`dd60e4a`); regeneration is now byte-identical and a full run
   leaves the tree clean. **`encoding="utf-8"` was already right there — only the newline
   translation was missing**, which is why it survived a file that otherwise looked correct.
-- [ ] NOTE: `apps/scout-rtx` needs `typer` before it can be judged at all. One `uv pip
-  install typer` in the right env would move it from unknown to measured.
+- [ ] NOTE: `apps/scout-rtx` needs `typer` before it can be judged at all. ~~One `uv pip
+  install typer` in the right env would move it from unknown to measured.~~ **WRONG — see
+  §5.3.R89: 7 of 10 declared deps are missing and collection needs 4 of them, including the
+  native `rustbpe`. I wrote that estimate without checking it.**
 - [ ] The three bugs this tick share one shape with the docstring/comment class: **text I/O
   that is correct on the machine it was written on.** Worth a repo-wide sweep for bare
   `read_text()`/`write_text()`/`open(...,"w")` in the remaining packages — graphify was the
