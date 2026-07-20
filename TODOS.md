@@ -51,17 +51,31 @@ fleet **and** the T9.4 chat trainer. Nothing is lost (checkpoints on `ava_ckpt`,
 manifest on `ava_state`), and I could not fix it: `wsl --shutdown` was blocked by the
 permission classifier.
 
+**Run these IN ORDER.** The research daemon cycles continuously (implement → train →
+evaluate → ideate, ~4 min per stage) and holds 5–6 GB while doing it, so unloading the
+model alone is not enough — it reloads within seconds. Stop the daemon FIRST.
+
 ```powershell
-# 1. FREE MEMORY FIRST — the research daemon loads qwen3:8b (~5.4 GB) and available
-#    memory drops to ~576 MB, which is the same starvation that killed the VM at 02:05.
-#    Measured 04:07. This unloads it instantly; the daemon reloads it on its next call.
+# 1. Pause the research daemon (it restarts on the next hourly trigger, or re-enable below)
+Stop-ScheduledTask   -TaskName "Dottie Research runner"
+Disable-ScheduledTask -TaskName "Dottie Research runner"
+
+# 2. Release the model it left resident (~5.4 GB)
 Invoke-RestMethod -Uri http://localhost:11434/api/generate -Method Post -ContentType application/json `
   -Body (@{ model = "qwen3:8b"; keep_alive = 0 } | ConvertTo-Json)
-(Get-Counter '\Memory\Available MBytes').CounterSamples[0].CookedValue   # want >4000 before step 2
 
-# 2. THEN restart the VM (if the engine doesn't return in ~2 min, restart Docker Desktop)
+# 3. CONFIRM headroom — do not proceed under ~4000 MB, that is what killed the VM at 02:05
+(Get-Counter '\Memory\Available MBytes').CounterSamples[0].CookedValue
+
+# 4. Restart the VM (if the engine doesn't return in ~2 min, restart Docker Desktop)
 wsl --shutdown
+
+# 5. After the fleet is verified healthy (13-14 containers), bring research back:
+Enable-ScheduledTask -TaskName "Dottie Research runner"
+Start-ScheduledTask  -TaskName "Dottie Research runner"
 ```
+Losing at most one in-flight research stage (~4 min of work) is the correct trade for a
+recovery that actually succeeds.
 **ALSO check for a factory TRAIN in flight**: the train stage is a torch process that
 peaks around **~3.8 GB**, and unloading the Ollama model does NOT free it. **Duration
 corrected — a nano train is ~4.3 min, not the ~1 h I first wrote** (measured 04:07→04:11
