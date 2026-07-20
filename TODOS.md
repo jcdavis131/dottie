@@ -35,16 +35,24 @@ badge live. MEASURED: research loop completed its first THREE full hill-climb ch
 
 ---
 
-## 0 — MORNING FIRST ACTION (2026-07-20): reboot this box
+## 0 — POWER DELIVERY, not drivers (root-caused 2026-07-19 23:56 by the loop)
 
-The WSL2 GPU stack degraded overnight: CUBLAS_STATUS_INTERNAL_ERROR flakes
-(bf16 GEMM) every 10-30 min, SM clock stuck at 780 MHz (≈3-5x slow steps in every
-precision/batch config tried — all experiments measured, reverted, and committed).
-Docker-engine restart did NOT clear it; only a host reboot resets the driver state.
-After reboot: the fleet auto-heals (compose restart policies + `docker compose up -d`
-for unless-stopped stragglers), the trainer auto-resumes from /ckpt/tool/latest
-(crash-resume shipped tonight, 719464e lineage), and the remaining ~344 steps finish
-in ~3.5h clean bf16. Then §1 below fires automatically (#17 armed on the monitor).
+REBOOT DONE (23:36) — fleet auto-healed 14/14, trainer auto-resumed from
+/ckpt/tool/step_1035.pt (crash-resume verified in production). But the reboot did
+NOT fix the clocks: SM still pinned at 780 MHz. MEASURED root cause via
+`nvidia-smi -q -d PERFORMANCE,POWER`: **Current Power Limit 45 W** (hw max 175 W),
+SW Power Cap + SW Thermal Slowdown active since boot. Battery at **13% on AC** —
+the box ran down and the system is throttling the GPU while the battery recovers
+(or the charger is underpowered). The whole evening's "degraded WSL GPU stack"
+(780 MHz, 3-5x slow steps, likely the CUBLAS flakes too) was power delivery.
+
+**PHYSICAL ACTION (user)**: confirm the OEM high-wattage adapter is the one plugged
+in (not a USB-C/travel charger); let the battery charge. Verify recovery with
+`nvidia-smi --query-gpu=power.limit,clocks.sm --format=csv` → expect ~175 W / >2 GHz.
+
+Meanwhile training still advances at ~38 s/step under the cap: step 1050/1,144 at
+23:55, ~94 steps left → tool_final.pt ETA ~01:00–01:30 even without the fix.
+Then §1 fires automatically (#17 armed on the monitor).
 
 ## 1 — Close the T9.3 gate (blocking everything downstream)
 
