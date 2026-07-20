@@ -35,7 +35,18 @@ badge live. MEASURED: research loop completed its first THREE full hill-climb ch
 
 ---
 
-## 1 — Close the T9.3 gate (tonight, blocking everything downstream)
+## 0 — MORNING FIRST ACTION (2026-07-20): reboot this box
+
+The WSL2 GPU stack degraded overnight: CUBLAS_STATUS_INTERNAL_ERROR flakes
+(bf16 GEMM) every 10-30 min, SM clock stuck at 780 MHz (≈3-5x slow steps in every
+precision/batch config tried — all experiments measured, reverted, and committed).
+Docker-engine restart did NOT clear it; only a host reboot resets the driver state.
+After reboot: the fleet auto-heals (compose restart policies + `docker compose up -d`
+for unless-stopped stragglers), the trainer auto-resumes from /ckpt/tool/latest
+(crash-resume shipped tonight, 719464e lineage), and the remaining ~344 steps finish
+in ~3.5h clean bf16. Then §1 below fires automatically (#17 armed on the monitor).
+
+## 1 — Close the T9.3 gate (blocking everything downstream)
 
 1.1 [~] **Wait for `tool_final.pt`** (in flight — step ~370/1,144 at 19:30) (monitor fires; ETA ~8h from 15:20 start).
     - 1.1.a If the monitor reports crash/NaN instead: `docker logs dottie-factory-trainer-1`,
