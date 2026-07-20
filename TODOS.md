@@ -490,6 +490,24 @@ THE NIGHT'S HEADLINES — read these before anything below:
      debt, not a failed merge.** And use the CI's pinned **`ruff==0.8.6`** for the `ruff format`
      step (`pip install ruff==0.8.6`), not local 0.15.22, or the CI's `ruff format --check` may
      disagree on style.
+   - **✅ WHILE YOU'RE IN THERE — the 5 real bugs to fix during B0** (found by reviewing under
+     the gate; each breaks the 3.11 target and/or the CI, all hidden by the 3.13 dev venv;
+     §5.3.R103/R105/R106). This is the consolidated checklist so you are not hunting the R-log:
+     1. ✅ **DONE** (mine, `b2645a2`): `personal-graphify/…/cli.py:259` nested-quote f-string.
+     2. **`apps/ava-factory/scripts/dataset_expansion_fast.py:51`** — backslash in f-string
+        (3.12-only). MECHANICAL fix: lift `slug = re.sub(r"\W+","_",topic.lower())` out, use
+        `{slug}`. No design intent needed.
+     3. **`apps/ava-factory/model_1b.py:768-770` `get_model()`** — references undefined
+        `use_short_conv`/`use_relative`/`relative_max_distance`, AND `train_1b_deepspeed.py:342`
+        calls it with `critical_shift=` it does not accept. **Needs your intent:** add these to
+        the signature (with what defaults?) or drop them from the call. Definitely-broken 1B
+        training path.
+     4. **`apps/ava-factory/on_policy_distill.py:288`** — `torch.randn(B,44,d)` uses undefined
+        `d` in a stub `forward` (was an `__init__` param). Likely `self.d`/`d_model`.
+     5. (verify) `tool_gate.py:99` F821 is a **false positive** (valid closure) — add
+        `# noqa: F821` only if the lint CI noise bothers you; not a bug.
+     Acceptance: `python3.11 -c "import ast; ast.parse(open(F).read())"` for 2; a real import/
+     build for 3–4. Fix these during the merge and the CI parse + 3.11 runtime are clean.
    - **Why I did not do it:** reconciling 243 commits against a repo-wide reformat is a large,
      judgement-heavy operation that can silently mangle either side, and pushing is
      outward-facing. Both are your calls. I also **paused non-essential commits** once I saw
