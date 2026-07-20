@@ -194,13 +194,21 @@ points at abrupt termination rather than a handled failure. Memory was NOT tight
 time (4.6–5.4 GB available across four samples).
 Restarted manually at 05:27 (0 orphans beforehand, 2 processes after, implement started);
 without that it would have idled until the 06:05 trigger.
-- [~] **AUTO-RESTART UNDER TEST (killed the worker 05:31:13 to verify, not assume).**
-  I have been wrong about this scheduler's semantics twice tonight (`IgnoreNew`, and
-  "hourly restarts pick up code"), so the setting below is being checked empirically
-  rather than trusted. Kill confirmed: task went `Ready` with `0xFFFFFFFF`. **Expected
-  restart by ~05:36.** If it does not fire, `RestartCount` does not apply to this failure
-  shape and the fallback is shortening the trigger repetition (PT1H → PT15M) instead.
-  Cost of the test: one in-flight implement (~3 min).
+- [x] **AUTO-RESTART TESTED AND IT FAILED — good thing it was tested (05:31→05:36).**
+  Killed the worker at 05:31:13; task went `Ready` with `0xFFFFFFFF`. At **5 min 16 s**
+  later: still `Ready`, **0 workers**, `LastRunTime` unchanged. **`RestartCount`/
+  `RestartInterval` do NOT restart a task whose ACTION exits non-zero** — that setting
+  covers the scheduler failing to launch the task, not the program failing. It would have
+  sat in the config looking like protection while doing nothing, which is worse than no
+  mitigation at all. Third scheduler-semantics assumption of mine to be wrong tonight.
+- [x] **FALLBACK APPLIED AND VERIFIED (05:37): trigger repetition PT1H → PT15M.** This
+  uses a mechanism that demonstrably works — an ordinary trigger firing — so a dead daemon
+  is picked up within ≤15 min instead of ≤60. `MultipleInstances=IgnoreNew` means the
+  extra firings are harmless no-ops while a daemon is alive (verified: state still
+  `Running` after the change). `RestartCount=3` was left in place: useless here, harmless,
+  and it does cover the launch-failure case.
+  Revert with `$t = Get-ScheduledTask -TaskName 'Dottie Research runner';
+  $t.Triggers[0].Repetition.Interval = 'PT1H'; Set-ScheduledTask -TaskName 'Dottie Research runner' -Trigger $t.Triggers`.
 - [x] **MITIGATED 05:31 (recovery speed, not cause)** — the task had `RestartCount=0`, so
   Task Scheduler never retried a task that ended with an error, which is exactly what
   happened (`0x1`). Now **`RestartCount=3`, `RestartInterval=PT5M`**: a daemon that dies
