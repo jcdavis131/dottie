@@ -636,6 +636,42 @@ def test_learnable_parameters_is_asked_for_but_not_yet_enforced():
     assert parsed["learnable_parameters"] == "gate: nn.Linear(hidden, hidden)"
 
 
+def test_prompt_never_contemplates_a_new_loss_term_anywhere():
+    """No section of the ideation prompt may invite what the contract forbids.
+
+    TODOS §5.3.R36. Reading the prompt end-to-end (rather than patching one constraint at a
+    time) found a THIRD place it asked for the out-of-scope thing: the RIGOR section said
+    "If proposing a new loss term, give its derivative w.r.t. the network outputs" — three
+    paragraphs after the INTEGRATION CONTRACT declared loss-signature ideas OUT OF SCOPE.
+    §5.3.R35 fixed the same bug in the search space. Patching individual constraints is how
+    a contradiction survives in a document nobody reads whole.
+
+    Prohibitions are fine and necessary; what must not appear is the prompt planning for the
+    model to do it.
+    """
+    p = prompts.ideation_prompt(None, bottleneck="loss plateaus", n_ideas=3)
+    for invitation in ("If proposing a new loss term",
+                       "Alternative loss functions",
+                       "your new loss"):
+        assert invitation not in p, f"prompt still contemplates a new loss term: {invitation!r}"
+    # the ban itself must still be there
+    assert "OUT OF SCOPE" in p and "category error" in p
+
+
+def test_ideation_prompt_pluralises_hypothesis_correctly():
+    """"hypothesiss" appeared in the first instruction of every multi-idea call.
+
+    Built by appending "s" to "hypothesis" (§5.3.R36). Cosmetic, but it is the opening line
+    of a prompt that then demands rigour, and it went unnoticed because nobody read the
+    rendered output.
+    """
+    one = prompts.ideation_prompt(None, bottleneck="x", n_ideas=1)
+    many = prompts.ideation_prompt(None, bottleneck="x", n_ideas=3)
+    assert "hypothesiss" not in many and "hypothesiss" not in one
+    assert "testable hypothesis" in one
+    assert "testable hypotheses" in many
+
+
 def test_search_space_does_not_contradict_the_integration_contract():
     """No fenced domain may ask for something the same prompt declares out of scope.
 

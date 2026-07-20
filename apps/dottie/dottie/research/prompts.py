@@ -150,10 +150,12 @@ def ideation_prompt(baseline: Optional[Baseline], *, bottleneck: str,
     space = search_space or DEFAULT_SEARCH_SPACE
     fenced = "\n".join(f"{i+1}. {s}" for i, s in enumerate(space))
     schema = json.dumps(IDEATION_SCHEMA, indent=2)
-    plural = "s" if n_ideas != 1 else ""
+    # "hypothesis" + "s" produced "hypothesiss" in the very first instruction of every
+    # ideation call (TODOS 5.3.R36). English, not string concatenation.
+    noun = "hypotheses" if n_ideas != 1 else "hypothesis"
     return f"""# ROLE AND OBJECTIVE
 You are a Staff Research Scientist specializing in deep-learning architecture and LLM
-pre-training. Generate {n_ideas} novel, mathematically sound, empirically testable hypothesis{plural}
+pre-training. Generate {n_ideas} novel, mathematically sound, empirically testable {noun}
 to improve our current model architecture. Ideas must be publication-grade (ICLR/NeurIPS/ICML).
 Do NOT suggest generic hyperparameter tuning, standard augmentations, or well-known methods
 (standard AdamW, basic LoRA, standard Top-K routing).
@@ -204,8 +206,10 @@ train — not a fixed float in `__init__`. State them in `learnable_parameters`.
 - Define the forward-pass modification in standard mathematical notation.
 - Explain the theoretical intuition for improved gradient flow, representational capacity, or
   compute efficiency vs. the baseline.
-- If proposing a new loss term, give its derivative w.r.t. the network outputs; it must be
-  differentiable and bounded.
+- State the shape of every tensor your forward pass creates, and confirm the output is
+  [batch, seq, hidden] like the input. (This bullet used to read "if proposing a new loss
+  term, give its derivative" — a third place the prompt contemplated the very thing the
+  INTEGRATION CONTRACT above forbids. See TODOS 5.3.R36.)
 
 # OUTPUT FORMAT
 Respond with ONE JSON object (an array of objects if more than one idea) strictly matching this

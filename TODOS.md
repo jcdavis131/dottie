@@ -2034,6 +2034,33 @@ most valuable catch so far:
   restart. It also **supersedes part of decision-queue item 8**: the `--bottleneck` change
   is still worth making, but this was the larger and more mechanical cause, and it is fixed
   in code rather than needing operator config.
+### 5.3.R36 — read the prompt END TO END; found a THIRD contradiction and a typo
+
+- [x] **Acting on the §5.3.R35 lesson (10:00): I had been patching individual constraints
+  without ever reading the rendered prompt as a document.** So I rendered it in full and
+  read it. Two more findings, one of them the same bug in a third location.
+- [x] **The RIGOR section contemplated the forbidden thing.** It read:
+  > *"If proposing a new loss term, give its derivative w.r.t. the network outputs; it must
+  > be differentiable and bounded."*
+
+  **Three paragraphs after the INTEGRATION CONTRACT declares loss-signature ideas OUT OF
+  SCOPE.** §5.3.R35 fixed this in the search space; here it was again in the rigor
+  requirements, quietly planning for the model to do it. Replaced with a block-appropriate
+  requirement (state the shape of every tensor your forward creates, confirm the output
+  contract). **Three separate places in one prompt invited the category error I spent three
+  ticks blaming on the bottleneck string and the dead-ends list.**
+- [x] **`"Generate 3 … testable hypothesiss"`** — the plural was built by appending `"s"` to
+  `"hypothesis"`. It is the **opening line of every multi-idea call**, in a prompt that then
+  demands rigour. Cosmetic, but it survived because nobody had read the rendered output.
+- [x] Tests pin both: no section may *contemplate* a new loss term (while the prohibition
+  itself must remain), and the noun must pluralise correctly at n=1 and n=3. Suite 178 passed.
+- [ ] **The generalisable lesson, and it is not about prompts.** A constraint document
+  assembled from separately-authored sections drifts into self-contradiction, and every
+  individual section reads fine. **Reading the artifact whole found in two ticks what
+  three ticks of targeted patching had missed** — and the same shape of blindness produced
+  §5.3.R31/R32/R33 (artifacts written by code, read by a human, executed by nobody).
+  Render it and read it, at least once.
+- [ ] NOT live — daemon on `e8cc5b7`; joins R24/R28/R29/R35 for the next restart.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
