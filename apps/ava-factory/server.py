@@ -584,7 +584,7 @@ async def eval_branch(
 
 
 @app.get("/jspace/eval_report")
-async def eval_report(
+def eval_report(
     source: str | None = Query(default=None, description="eval_mini_base | legacy | …"),
 ):
     from dottie.eval_artifacts import resolve_compare_md, resolve_eval_md
@@ -607,7 +607,7 @@ async def eval_report(
 
 
 @app.get("/agent_eval/scoreboard")
-async def agent_eval_scoreboard():
+def agent_eval_scoreboard():
     """agent-eval's scoreboard.md (Ava-claw / AgenticOS hill-climb results) --
     see ava_claw_run.py in the agent-eval repo. 404 if that repo isn't
     mounted or hasn't produced a scoreboard yet (no run against Ava so far

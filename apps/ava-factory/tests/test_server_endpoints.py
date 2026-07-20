@@ -374,7 +374,12 @@ def test_status_endpoints_are_threadpooled_not_async(client):
 
     import server
 
-    for name in ("pipeline_status", "ecosystem_status", "assistant_status"):
+    # Enforced invariant, not a case-by-case judgement: NO app handler may be
+    # `async def` while doing blocking I/O. Report readers were added after an AST
+    # sweep found them doing `path.read_text()` on the loop (lower severity than the
+    # polled status endpoints, same class).
+    for name in ("pipeline_status", "ecosystem_status", "assistant_status",
+                 "eval_report", "agent_eval_scoreboard"):
         fn = getattr(server, name)
         assert not inspect.iscoroutinefunction(fn), (
             f"{name} is async def but calls a synchronous collector — it will block the "

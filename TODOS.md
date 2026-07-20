@@ -1380,6 +1380,13 @@ so what does the *server* do under a 5 s poll? Two problems, one significant.
   already does it correctly (`await asyncio.to_thread(collect_network_status, …)`) and its
   docstring even says *"Heavy I/O runs in a worker thread so live polls stay snappy."* The
   sibling endpoints were simply missed.
+- [x] **Swept for the same class (06:06)**: an AST scan for `async def` app handlers
+  doing blocking I/O without `to_thread` found two more — `eval_report` and
+  `agent_eval_scoreboard`, both `path.read_text()` on the loop. Much lower severity
+  (small markdown, on-demand rather than polled) but the same bug, so both are now
+  plain `def` and the regression guard covers **all five** handlers. That turns
+  "no async handler blocks the loop" into an enforced invariant instead of something
+  the next reviewer has to re-derive per endpoint. 24 passed.
 - [ ] **Not done: caching.** `collect_status()` still recomputes per request, so N clients
   cost N walks. A 2–3 s TTL would make it robust regardless of caller behaviour. Left for
   you because it changes freshness semantics on a dashboard whose whole point is honesty
