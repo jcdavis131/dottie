@@ -2779,6 +2779,29 @@ most valuable catch so far:
     background command noticing the third app kept the first from being quietly false.
 - [ ] **The class is now closed across all THREE apps**, with the server one guarded by an
   AST invariant that fails on regression (§5.3.R62) rather than a name list that drifted.
+### 5.3.R64 — closed the copy-bait CLASS; the fourth instance was one I introduced
+
+- [x] **Swept all three rendered prompts for pasteable `e.g.` values (13:30)** — the class
+  behind §5.3.R37, R49 and R50, which I had fixed three times one instance at a time. Found
+  a fourth, **in the `learnable_parameters` field I added hours ago to fix the zero-parameter
+  problem**: the schema offered `'gate: nn.Linear(hidden, hidden); scale: nn.Parameter(hidden)'`
+  and **2 of 11 proposals returned the first clause verbatim**.
+  - I wrote the rule — *"any `e.g.` inside a JSON schema the model fills is a default, not an
+    illustration"* — in this same file, and then left a violation of it three fields above.
+    Writing a rule down is not applying it.
+- [x] Replaced with **form, not value**: `'<your_name>: nn.Parameter(<shape>)'` — angle
+  brackets cannot be pasted through — plus an explicit *"use YOUR names and YOUR shapes,
+  derived from the mechanism you are proposing"*.
+- [x] **Closed as a CLASS this time, not an instance.**
+  `test_no_prompt_offers_a_pasteable_example_value` renders all three prompts and fails on any
+  `e.g.` that is neither a placeholder nor a symbolic axis list. Verified red on the old
+  schema, quoting the copied string back. **Pasteable examples remaining across all prompts:
+  0.** Suite 196 passed.
+- [ ] Fifth heredoc mangling of the night en route (`[^
+]` collapsing into a real newline and
+  breaking the test file). Caught by collection, fixed with an Edit and a regex that needs no
+  escape. **The lesson has not stuck because I keep reaching for the same tool** — for anything
+  containing backslashes, write the file or use Edit.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.

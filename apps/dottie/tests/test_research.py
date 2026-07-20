@@ -864,6 +864,47 @@ def test_correction_prompt_carries_the_same_constraints_as_the_first_attempt():
         assert key in cor
 
 
+def test_no_prompt_offers_a_pasteable_example_value():
+    """Class-level invariant: an `e.g.` a model can paste through is a DEFAULT, not an example.
+
+    TODOS §5.3.R64. Three instances were fixed one at a time — the CODEBASE CONTEXT loss
+    vocabulary (§5.3.R37, fingerprinted in 7 candidates naming their argument `predictions`),
+    the target_file path and the input_shape (§5.3.R50, where the copied [4, 16, 64] became
+    seq_len=16 and crashed a training run). A fourth then appeared in the
+    `learnable_parameters` field I added to fix the zero-parameter problem: 2 of 11 proposals
+    returned `gate: nn.Linear(hidden, hidden)` verbatim.
+
+    Fixing instances did not close the class, so this asserts it over every rendered prompt:
+    any `e.g.` must be a placeholder (angle brackets) or a symbolic shape, never a value that
+    works if pasted unchanged.
+    """
+    import re
+
+    b = Baseline("factory_lm_loss", 5.6, higher_is_better=False, architecture="nano",
+                 experiment_id="x", updated_ts=0.0)
+    h = {"hypothesis_name": "G", "theoretical_intuition": "t",
+         "mathematical_formulation": "m", "pytorch_implementation_strategy": "s",
+         "expected_outcome": "e", "search_domain": "a",
+         "learnable_parameters": "gate: nn.Linear(h, h)"}
+    rendered = {
+        "ideation": prompts.ideation_prompt(b, bottleneck="loss plateaus", n_ideas=3),
+        "implementation": prompts.implementation_prompt(h),
+        "correction": prompts.correction_prompt("prev", "failed at dry_run"),
+    }
+    offenders = []
+    for name, text in rendered.items():
+        for m in re.finditer(r"e\.g\.?\s+(.{3,80})", text, re.I):
+            value = m.group(1).strip()
+            # A placeholder (<...>) or a symbolic axis list is safe: pasting it is either
+            # impossible or exactly the intended answer.
+            if "<" in value or "[batch, seq, hidden]" in value:
+                continue
+            offenders.append((name, value[:60]))
+    assert not offenders, (
+        "prompt offers a pasteable example value, which the model will treat as a default: "
+        f"{offenders}")
+
+
 def test_schema_does_not_hand_the_model_fillable_example_values():
     """Concrete "e.g." values in the schema get copied verbatim, and it caused a crash.
 

@@ -74,11 +74,19 @@ IDEATION_SCHEMA = {
     # parameters — fixed functions that cannot learn, replacing a real ~787K-parameter
     # block. Naming the parameters up front is the cheapest point to catch that; the
     # validator catches it ~8 minutes later, after a full implement cycle.
-    "learnable_parameters": "the nn.Parameter / nn.Linear tensors this block will TRAIN, "
-                            "with shapes (e.g. 'gate: nn.Linear(hidden, hidden); scale: "
-                            "nn.Parameter(hidden)'). A block with none is a fixed function "
-                            "and will be rejected — it cannot learn, and replacing a "
-                            "parameterised block with it shrinks the model.",
+    # FORM, not a fillable value. The first version offered
+    # "gate: nn.Linear(hidden, hidden); scale: nn.Parameter(hidden)" and **2 of 11 proposals
+    # returned the first clause verbatim** (TODOS 5.3.R64) — a fresh instance of the copy-bait
+    # class this same file's 5.3.R50 rule was written against, introduced by the fix for the
+    # zero-parameter problem. Angle-bracket placeholders cannot be pasted through.
+    "learnable_parameters": "every nn.Parameter / nn.Linear tensor this block will TRAIN, "
+                            "named and shaped, in the form "
+                            "'<your_name>: nn.Parameter(<shape>)' or "
+                            "'<your_name>: nn.Linear(<in>, <out>)', semicolon-separated — "
+                            "use YOUR names and YOUR shapes, derived from the mechanism you "
+                            "are proposing. A block with none is a fixed function and will "
+                            "be rejected: it cannot learn, and replacing a parameterised "
+                            "block with it shrinks the model.",
 }
 
 IMPLEMENTATION_SCHEMA = {
