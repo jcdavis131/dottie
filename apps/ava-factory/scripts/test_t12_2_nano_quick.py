@@ -13,7 +13,11 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 from dottie.config import DottieConfig
 
-def test_nano_v66():
+# NOT named test_* on purpose: this is a manual T12.2 experiment that builds a model
+# and runs 50 training steps. Under a bare `pytest` in this directory it was collected
+# as a unit test (523 collected instead of 522) and would have launched a training job.
+# apps/ava-factory declares no testpaths, so bare pytest recurses into scripts/.
+def run_nano_v66():
     cfg = DottieConfig.load("nano_v66")
     from dottie.model import build_model
     model = build_model(cfg)
@@ -111,5 +115,5 @@ def test_nano_v66():
     return result
 
 if __name__ == "__main__":
-    r = test_nano_v66()
+    r = run_nano_v66()
     sys.exit(0 if r["pass"] else 1)
