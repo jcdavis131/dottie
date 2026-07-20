@@ -170,6 +170,13 @@ numerical stability, and modularity. Your code must compile on the first attempt
      weight for the wrong axis.
    - NEVER use `.T` or `torch.t()` on this tensor — they are 2-D only and raise
      "t() expects a tensor with <= 2 dimensions". Use `x.transpose(-2, -1)`.
+   - EVERY `torch.einsum` subscript string must have ONE letter per dimension of each
+     operand. The input is 3-D, so it is `"bsd,...->..."` — never a 2-letter subscript
+     like `"sd"` for it. "einsum(): the number of subscripts in the equation (2) does not
+     match the number of dimensions (3)" means you wrote a 2-D equation for a 3-D tensor.
+     If you reshape to 2-D first, say so explicitly and reshape back before returning.
+   - Assign EVERY attribute you later read (`self.hidden = hidden` in `__init__` if
+     `forward` uses `self.hidden`) — "object has no attribute 'hidden'" is a real reject.
    - Prefer inferring `hidden` from the input at forward time over trusting a constructor
      default, so the module is correct at ANY declared `input_shape`.
 

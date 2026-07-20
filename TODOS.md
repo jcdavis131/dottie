@@ -797,6 +797,15 @@ Then §1 fires automatically (#17 armed on the monitor).
       research-direction steering — the contract already required it (constraints 6–7), the
       prompt just never said *how* it was being violated. 37/37 tests green; effect visible
       from the 05:05 daemon restart, measurable as fewer `dry_run` rejects.
+      **REFINED 06:19 after 4 post-fix failures** — the original constraint was not
+      landing. Two of those failures were still rank confusion, just not through
+      `nn.Linear`: an `einsum()` with a 2-subscript equation on a 3-D tensor, and a module
+      reading `self.hidden` it never assigned. The model appears to have read "size weights
+      against x.shape[-1]" as advice about layers rather than about tensor rank generally.
+      Constraint 8 now names both explicitly (one subscript letter per dimension; assign
+      every attribute you later read). Renders at 1,335 chars; 37/37 tests green.
+      **Still unproven** — judge it on the next ~5 failures, not on hope. Requires a daemon
+      restart to take effect (standing rule).
       METHOD NOTE: my first pass used default kwargs/shape instead of each candidate's
       declared ones and produced a partly-wrong answer (a spurious "missing positional
       arguments" for c3af0b3ce501). Re-ran it faithfully before drawing conclusions.
