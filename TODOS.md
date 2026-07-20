@@ -132,6 +132,10 @@ Then §1 fires automatically (#17 armed on the monitor).
     rises; curator rejects stay <20%; no `unknown generator` errors anywhere.
 2.3 **Retire the old checkouts** — AUDITED 2026-07-19 late: workspace clean; retired ava-agi's 97 dirty files all captured by the reconciliation (0 changed since); both safe to rename (they are now strictly historical):
     - 2.3.a `git -C C:\Users\jcdav\ava-agi status` → confirm nothing uncommitted worth saving.
+    - 2.3.a' ADD to the retirement list (found 2026-07-20): `C:\Users\jcdav\scout-cli` —
+      a standalone scout-cli checkout pip-installed (develop) into the shared venv;
+      it shadows the monorepo copy everywhere except under apps/scout-cli. Audit for
+      unmerged work, then retire + `pip install -e` the monorepo copy instead.
     - 2.3.b Rename both dirs to `*-RETIRED-20260719` (do not delete yet); update
       `AVA_FACTORY_ROOT` in `research_env.local.ps1` to the MONOREPO factory path and
       re-register scheduler tasks; re-run `calibrate-baseline` if the packed corpus moves.
@@ -206,6 +210,14 @@ Then §1 fires automatically (#17 armed on the monitor).
 6.3 **reviewgraph into the workflow**: pre-commit hook (or `scout system audit` step)
     that runs `reviewgraph blast --diff HEAD` and blocks on new high-fan-in touches
     without tests. Wire `context` into /code-review usage docs.
+    RECON 2026-07-20 01:15 (dry-run done): blast works from apps/scout-cli — ~3s,
+    parseable JSON (counts.impacted_files etc). TWO constraints for the hook:
+    (a) it MUST pin cwd/interpreter to the monorepo copy — the shared venv's
+    installed bigbang resolves to `C:\Users\jcdav\scout-cli` (a THIRD standalone
+    checkout, no reviewgraph plugin) and silently wins outside apps/scout-cli;
+    (b) ship WARN-ONLY first, flip to blocking after observing false-positive
+    rate on real commits (a blocking gate armed untested would bite the loop
+    and parallel sessions).
 6.4 [x] **Skill auto-docs** (forge new scaffolds SKILL.md; forge rm cleans it; loop test asserts it): `forge new` should scaffold SKILL.md (frontmatter:
     j_space_target, triggers) so `skill install` works without the manual step the
     loop test had to do.
