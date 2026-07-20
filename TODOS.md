@@ -505,6 +505,10 @@ THE NIGHT'S HEADLINES — read these before anything below:
    - **Correction to the previous version of this item:** it said "50% dying in validation".
      That was one overnight window. **Lifetime is 77.9%** (53 genuine failures of 68, after
      separating 7 infrastructure deaths). Different samples; not interchangeable (§5.3.R4).
+   - **Sharper still (§5.3.R18): only 5 of 84 proposals (6%) were block-shaped AND had
+     learnable parameters.** The loop has made roughly five genuine attempts. "Zero real
+     wins" is therefore a verdict on the proposal pipeline, not on the search space — five
+     attempts, one of them an artifact, is not evidence that the idea does not work.
 
 **What tonight actually bought you** (all committed, tested, and waiting on item 0):
 six validation stages catching **5 of 5** stored integration failures in ~106 ms instead of
@@ -1523,6 +1527,37 @@ most valuable catch so far:
     with a comment saying why — a test about forward SIGNATURES should not be silently
     passing or failing on capacity.
   - Full suite 168 passed.
+### 5.3.R18 — the two failures are INDEPENDENT, and only ~5 real attempts have been made
+
+- [x] **Measured the overlap (08:45), because two big percentages could have been one
+  problem double-counted.** They are not. Of the 20 candidates that passed validation:
+  | | zero params | has capacity |
+  |---|---|---|
+  | **loss/regulariser-named** | 6 | 4 |
+  | **block-named** | 5 | **5** |
+  Each failure mode has members the other misses, so §5.3.R12 (ideation framing) and
+  §5.3.R17 (zero-parameter gate) are both load-bearing — neither is redundant.
+- [x] **The number that reframes "zero wins":**
+  ```
+  84 proposals ideated
+   -> 20 passed validation                      (24%)
+   -> 5 block-shaped WITH real capacity         (6% of proposals)
+  ```
+  **The search has made roughly FIVE genuine attempts in 84 proposals.** Of those five:
+  one `sota` (`bc3dbb74bead`, the known artifact), three rejected, one `failed_training` —
+  and one of the five carries `params=1`, a single scalar, so it is generous to count it.
+  - This changes what "the loop is reliable and unproductive" means. It is not that good
+    block ideas keep losing; it is that **the loop has barely proposed any.** 94% of the
+    budget went to candidates that were the wrong shape, had nothing to learn, or both.
+  - It also means the zero-wins result carries **almost no evidence** about whether the
+    search space is promising. Five attempts, one of which was an artifact, is not a
+    verdict on the idea — it is a verdict on the proposal pipeline.
+- [ ] **Reframed guidance for the operator (supersedes the framing in item 8):** the fix is
+  not better ranking of what the loop proposes, it is getting it to propose the right shape
+  at all. In priority order: (a) the `--bottleneck` string (§5.3.R12) — config, yours;
+  (b) the zero-parameter gate now returning a correctable message so ideas get rescued
+  rather than lost (§5.3.R17); (c) only then worry about search quality within the
+  block-shaped-with-capacity population, which currently has n=5.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
