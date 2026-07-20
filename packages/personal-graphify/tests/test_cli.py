@@ -131,7 +131,8 @@ class TestInstallPlatforms:
         root = tmp_path / "proj"
         (root / "graphify-out").mkdir(parents=True)
         (root / "graphify-out" / "graph.json").write_text(
-            json.dumps({"nodes": [], "edges": [], "meta": {"nodes": 42, "edges": 99}}))
+            json.dumps({"nodes": [], "edges": [], "meta": {"nodes": 42, "edges": 99}}),
+            encoding="utf-8")
         _run_cli(monkeypatch, ["install", str(root)])
         content = (root / self.CURSOR).read_text(encoding="utf-8")
         assert "42 nodes 99 edges (live at install)" in content

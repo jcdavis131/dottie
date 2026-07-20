@@ -319,7 +319,7 @@ fi
             existing = gitattributes_path.read_text(encoding="utf-8")
             if "graphify-out/graph.json" not in existing or "merge=union" not in existing:
                 # append if not present
-                with open(gitattributes_path, "a") as f:
+                with open(gitattributes_path, "a", encoding="utf-8") as f:
                     f.write("\n" + union_line)
                 print(f"[graphify] appended union merge to {gitattributes_path}")
             else:

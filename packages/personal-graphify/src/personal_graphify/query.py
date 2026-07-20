@@ -399,7 +399,10 @@ def explain_node(G: nx.MultiDiGraph, query: str, include_code_snippet: bool = Fa
                         break
             if p.exists() and p.is_file():
                 try:
-                    lines = p.read_text(errors="ignore").splitlines()
+                    # encoding= matters MORE here, not less, because errors="ignore" would
+                    # otherwise silently DROP every byte the locale codepage cannot decode --
+                    # returning a mangled snippet instead of failing loudly.
+                    lines = p.read_text(encoding="utf-8", errors="ignore").splitlines()
                     line = data.get("line", 0)
                     if line and line>0:
                         start = max(0, line-5)
