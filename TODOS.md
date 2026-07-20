@@ -256,9 +256,19 @@ Then §1 fires automatically (#17 armed on the monitor).
 
 ### New items (added 2026-07-19 evening)
 
-- [x] §5: `DOTTIE_OLLAMA_MODEL_NIGHT=qwen3:14b` enabled 2026-07-20 01:50 (tool run done,
+- [x] §5: `DOTTIE_OLLAMA_MODEL_NIGHT=qwen3:14b` enabled 2026-07-20 ~00:50 (tool run done,
   trainer parked → contention gone; NUM_GPU stays 0 per GPU doctrine). Next research
   tick in the 22-06 window picks it up; watch the first 14b ideation for stalls.
+- [x] §5 INCIDENT (2026-07-20 01:05): **Ollama was down since the 23:36 reboot** — it's a
+  user-level autostart and the box rebooted to the lock screen (no login → no Ollama).
+  The 00:05 research runner honestly refused all hour ("will not fabricate"), counts
+  froze; task result 0x8007042B. Fixed: `ollama serve` started 01:05:15; the 01:05
+  runner's retries pick it up (first 14b night run). Loop-verify next tick.
+- [ ] **PREVENTION (user action)**: register a machine-level Task Scheduler job — At
+  startup, run `ollama serve` as your user "whether logged on or not" (needs your
+  password at registration, so Claude can't do it) — or switch Ollama to a Windows
+  service. Without this, every unattended reboot silently kills the research loop
+  until someone logs in.
 - [x] §5: ideation raw-dumps reviewed 2026-07-20 — new shape found (mid-word-corrupted
   key `"hypo,thesis_name"` killed a whole 3-idea batch) and fixed with canonical-skeleton
   key repair in parse_hypotheses (fill-only, deterministic). Swept all 9 accumulated
