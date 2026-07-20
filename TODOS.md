@@ -791,6 +791,15 @@ Then §1 fires automatically (#17 armed on the monitor).
       (c) instruct explicitly not to recombine listed terms and to pick an unexplored
       sub-domain; (d) rotate `search_domain` per ideation call to force coverage.
       Cheap to test: apply one, then re-run this vocabulary count after ~10 new ideas.
+      **COST QUANTIFIED 05:54 — 13 of 72 experiments are re-proposals of a name already in
+      the ledger (~18%), ≈1h44m of compute.** Repeat offenders:
+      GASA **×5**, "Dynamic Routing with Adaptive Load Balancing (Advanced)" ×3, OSA ×3,
+      plus five names proposed twice. GASA was proposed again at 05:51 — its **third**
+      appearance tonight and fifth overall — while sitting in the dead-ends list the whole
+      time. This is now the loop's largest single waste and the best-evidenced open item.
+      Caveat kept from earlier: same name ≠ same code (GASA #1 vs #2 were 13.7% similar
+      and scored differently), so a name-only dedup guard would reject some genuinely new
+      implementations. Any fix should compare the hypothesis TEXT, not just the label.
       **COST NOW BEING PAID LIVE (04:57)**: the duplicate GASA (`7ae76c3a8b27`) validated
       on attempt 0 and is TRAINING — ~4 min of CPU re-testing a hypothesis rejected hours
       ago. Precise framing: the *implementation* is not a copy (13.7% string similarity,
