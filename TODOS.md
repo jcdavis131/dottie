@@ -1862,6 +1862,34 @@ most valuable catch so far:
   match seq_len (16)` on its first training step).
   - The distinction I am holding myself to: **repeating a ban is noise; supplying the
     missing alternative is content.** Suite 172 passed.
+### 5.3.R30 — the restart-lag is structural, and the report now says what it can attribute
+
+- [x] **Caught by the boot banner (09:29): the daemon is on `e8cc5b7`, HEAD is `3d8b5b7`.**
+  Three runtime-affecting commits have landed since it started and are **NOT running**:
+  §5.3.R24 (dead-ends anti-priming), §5.3.R28 (sequence probe), §5.3.R29 (forward-time seq
+  guidance). This is the same lag as before the restart — it is **structural**, and it will
+  recur every time I change code while the daemon is up. The difference is that it is now
+  *detectable in one command* instead of reconstructed from process tables.
+- [x] **This has a sharp consequence for the pre-registered report, and I wrote it down
+  while n was still 7.** The accumulating window measures `e8cc5b7`, which contains R12,
+  R17, R19 and the R8/R10/R11 stages — but **not** R24 or R28. So:
+  - a fall in the **category-error rate** would be attributable to R12 alone, *not* to the
+    dead-ends fix, however satisfying that would be to claim;
+  - the **seq-sized failure mode is still live** in this window; more `670ad9956bab`-shaped
+    training crashes are expected and are **not** evidence that R28 failed.
+- [x] **Encoded in the tool, not just here.** `post_restart_report.py` now prints a
+  `WHAT THIS WINDOW CAN ATTRIBUTE` header keyed to the boot `git_sha`, listing what is live
+  and what is not, and stating that a later restart opens a NEW window whose map must be
+  updated first. A caveat that lives only in a TODO gets skipped; one printed above the
+  numbers does not.
+  - Written deliberately **before** the data exists. Once numbers arrive the temptation is
+    to credit whichever fix looks best, and §5.3.R8 already lost an entire comparison to
+    exactly that.
+- [ ] Consequence for the operator: a second restart would pick up R24/R28/R29, but it also
+  **resets the measurement window to n=0**. Given the current window is 7 of the 20 needed,
+  the cheaper order is: let this window finish, read it, then restart. The seq probe not
+  being live costs a training crash or two in the meantime — real but small, and the crashes
+  are correctly classified as `failed_training` either way.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.

@@ -61,6 +61,24 @@ PRE = {
     # recomputed figure came back 78% and did not match the constant.
     "dry_run_share": (46, 59, "78%"),            # of genuine validation failures
 }
+#: What the daemon was ACTUALLY running during the measured window, keyed to the git_sha in
+#: its own `boot` record. The daemon does not live-reload, so commits made after it started
+#: are NOT in this data — and the honest attribution depends entirely on which is which.
+#: Written 2026-07-20 while n was still 4, deliberately: once numbers exist, the temptation
+#: is to credit whichever fix looks best. §5.3.R8 lost an entire comparison to this.
+BOOT_SHA = "e8cc5b7"
+LIVE_IN_WINDOW = [
+    "§5.3.R12 ideation reframing (block-shaped answers to loss-shaped bottlenecks)",
+    "§5.3.R17 zero-parameter gate (correctable failure)",
+    "§5.3.R19 learnable_parameters field in the ideation schema",
+    "§5.3.R8/R10/R11 integration-width, residual-stream and rank-collapse stages",
+]
+NOT_IN_WINDOW = [
+    "§5.3.R24 dead-ends anti-priming (round-robin + overused-terms tally)",
+    "§5.3.R28 integration SEQUENCE probe (seq=256, not just hidden)",
+    "§5.3.R29 forward-time sequence-length guidance in the implementation prompt",
+]
+
 CATEGORY = re.compile(r"regulari[sz]|loss|penalt|objective|schedul|curricul", re.I)
 DIM_KWARGS = ("d_model", "dim", "hidden", "hidden_dim", "hidden_size", "embed_dim",
               "input_dim", "n_embd", "channels", "width")
@@ -110,7 +128,15 @@ def main() -> int:
                           "implementation from experiments where updated_ts >= ?", (BOOT_TS,)))
     print(f"post-restart population: {len(rows)} experiments touched since "
           f"{datetime.datetime.fromtimestamp(BOOT_TS):%H:%M:%S}")
-    print(f"reporting threshold: n >= {MIN_N} (below that, rates are withheld)\n")
+    print(f"reporting threshold: n >= {MIN_N} (below that, rates are withheld)")
+    print(f"\nWHAT THIS WINDOW CAN ATTRIBUTE (daemon booted on {BOOT_SHA}):")
+    for item in LIVE_IN_WINDOW:
+        print(f"  live     {item}")
+    for item in NOT_IN_WINDOW:
+        print(f"  NOT live {item}")
+    print("  Anything in the second list cannot have caused a change seen here. The daemon\n"
+          "  does not live-reload; a later restart starts a NEW window and this map must be\n"
+          "  updated from the new boot record's git_sha before the next reading.\n")
 
     hyps = [json.loads(r["hypothesis"] or "{}") for r in rows]
     proposals = len(hyps)
