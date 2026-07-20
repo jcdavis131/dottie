@@ -124,14 +124,14 @@ def log_query_cost(graph_path: Path, question: str, naive: int, scoped: int, red
             try:
                 # try read existing graph for nodes/edges if available
                 if Path(graph_path).exists() and Path(graph_path).is_file():
-                    gj = json.loads(Path(graph_path).read_text()[:2000000])
+                    gj = json.loads(Path(graph_path).read_text(encoding="utf-8")[:2000000])
                     data["nodes"] = len(gj.get("nodes",[]))
                     data["edges"] = len(gj.get("edges",[]))
             except Exception:
                 pass
         else:
             try:
-                data = json.loads(cpath.read_text())
+                data = json.loads(cpath.read_text(encoding="utf-8"))
             except Exception:
                 data = {"nodes":0,"edges":0,"queries":[],"total_saved_tokens":0,"total_naive":0,"total_scoped":0}
 
@@ -156,14 +156,14 @@ def log_query_cost(graph_path: Path, question: str, naive: int, scoped: int, red
         data["total_saved_tokens"] = data["total_naive"] - data["total_scoped"]
         data["last_query"] = entry
         # preserve nodes/edges if missing
-        cpath.write_text(json.dumps(data, indent=2))
+        cpath.write_text(json.dumps(data, indent=2), encoding="utf-8")
     except Exception:
         # never break query on cost log failure
         pass
 
 def format_cost_dashboard(cost_path: Path) -> str:
     try:
-        data = json.loads(Path(cost_path).read_text())
+        data = json.loads(Path(cost_path).read_text(encoding="utf-8"))
         qs = data.get("queries", [])
         total_saved = data.get("total_saved_tokens", 0)
         total_naive = data.get("total_naive", 0)

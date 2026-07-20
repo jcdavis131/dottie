@@ -60,7 +60,7 @@ class TestHookRoundTrip:
         post_commit = repo / ".git" / "hooks" / "post-commit"
         post_merge = repo / ".git" / "hooks" / "post-merge"
         assert post_commit.exists() and post_merge.exists()
-        assert "Personal Graphify" in post_commit.read_text()
+        assert "Personal Graphify" in post_commit.read_text(encoding="utf-8")
 
         _run_cli(monkeypatch, ["hook", "uninstall", str(repo)])
         assert not post_commit.exists()
@@ -71,15 +71,15 @@ class TestHookRoundTrip:
         hooks = repo / ".git" / "hooks"
         hooks.mkdir(parents=True)
         original = "#!/bin/sh\necho my own hook\n"
-        (hooks / "post-commit").write_text(original)
+        (hooks / "post-commit").write_text(original, encoding="utf-8")
 
         _run_cli(monkeypatch, ["hook", "install", str(repo)])
-        combined = (hooks / "post-commit").read_text()
+        combined = (hooks / "post-commit").read_text(encoding="utf-8")
         assert "echo my own hook" in combined
         assert "# --- Personal Graphify (appended) ---" in combined
 
         _run_cli(monkeypatch, ["hook", "uninstall", str(repo)])
-        after = (hooks / "post-commit").read_text()
+        after = (hooks / "post-commit").read_text(encoding="utf-8")
         assert after == original
         assert "graphify" not in after.lower()
 
@@ -88,9 +88,9 @@ class TestHookRoundTrip:
         hooks = repo / ".git" / "hooks"
         hooks.mkdir(parents=True)
         foreign = "#!/bin/sh\nlint-staged\n"
-        (hooks / "post-commit").write_text(foreign)
+        (hooks / "post-commit").write_text(foreign, encoding="utf-8")
         _run_cli(monkeypatch, ["hook", "uninstall", str(repo)])
-        assert (hooks / "post-commit").read_text() == foreign
+        assert (hooks / "post-commit").read_text(encoding="utf-8") == foreign
 
 
 class TestInstallPlatforms:
@@ -133,7 +133,7 @@ class TestInstallPlatforms:
         (root / "graphify-out" / "graph.json").write_text(
             json.dumps({"nodes": [], "edges": [], "meta": {"nodes": 42, "edges": 99}}))
         _run_cli(monkeypatch, ["install", str(root)])
-        content = (root / self.CURSOR).read_text()
+        content = (root / self.CURSOR).read_text(encoding="utf-8")
         assert "42 nodes 99 edges (live at install)" in content
         assert "{{GRAPH_STATS}}" not in content
 
@@ -141,7 +141,7 @@ class TestInstallPlatforms:
         root = tmp_path / "proj"
         root.mkdir()
         _run_cli(monkeypatch, ["install", str(root)])
-        content = (root / self.CURSOR).read_text()
+        content = (root / self.CURSOR).read_text(encoding="utf-8")
         assert "{{GRAPH_STATS}}" not in content
         assert "464 nodes" not in content  # old stale hardcoded count
         assert "nodes" not in content.splitlines()[8]  # intro line carries no fabricated count

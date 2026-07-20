@@ -189,7 +189,7 @@ def handle_tool_call(name: str, arguments: Dict[str, Any], allowed_root: Path = 
             text = format_cost_dashboard(cost_path)
             raw = {}
             if cost_path.exists():
-                raw = json.loads(cost_path.read_text()) 
+                raw = json.loads(cost_path.read_text(encoding="utf-8")) 
             return {"text": text, "cost_path": str(cost_path), "raw": raw}
         except Exception as e:
             return {"error": str(e), "cost_path": str(cost_path)}

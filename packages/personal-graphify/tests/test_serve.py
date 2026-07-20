@@ -55,7 +55,7 @@ class TestGraphContainment:
         root = tmp_path / "root"
         root.mkdir()
         outside = tmp_path / "outside.json"
-        outside.write_text(json.dumps({"nodes": [], "edges": []}))
+        outside.write_text(json.dumps({"nodes": [], "edges": []}), encoding="utf-8")
         with pytest.raises(ValueError):
             load_graph(str(outside), allowed_root=root)
         with pytest.raises(ValueError):
@@ -65,7 +65,7 @@ class TestGraphContainment:
         root = tmp_path / "root"
         root.mkdir()
         gpath = root / "graph.json"
-        gpath.write_text(json.dumps({"nodes": [{"id": "n1", "label": "n1"}], "edges": []}))
+        gpath.write_text(json.dumps({"nodes": [{"id": "n1", "label": "n1"}], "edges": []}), encoding="utf-8")
         G, resolved = load_graph(str(gpath), allowed_root=root)
         assert G.number_of_nodes() == 1
 
@@ -73,7 +73,7 @@ class TestGraphContainment:
         root = tmp_path / "root"
         root.mkdir()
         outside = tmp_path / "secret.json"
-        outside.write_text(json.dumps({"nodes": [], "edges": []}))
+        outside.write_text(json.dumps({"nodes": [], "edges": []}), encoding="utf-8")
         result = handle_tool_call("graphify_query", {"question": "x", "graph": str(outside)},
                                   allowed_root=root)
         assert "error" in result

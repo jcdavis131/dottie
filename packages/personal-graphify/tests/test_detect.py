@@ -30,14 +30,14 @@ class TestCollectFiles:
         root = tmp_path / "repo"
         (root / "src").mkdir(parents=True)
         (root / "node_modules" / "pkg").mkdir(parents=True)
-        (root / "src" / "main.py").write_text("print(1)\n")
-        (root / "src" / "notes.md").write_text("# hi\n")
-        (root / "Dockerfile").write_text("FROM python\n")
-        (root / "LICENSE").write_text("MIT\n")
-        (root / "blob.bin").write_text("xx")
-        (root / "node_modules" / "pkg" / "index.js").write_text("x")
-        (root / ".gitignore").write_text("secret.py\n")
-        (root / "secret.py").write_text("token = 'x'\n")
+        (root / "src" / "main.py").write_text("print(1)\n", encoding="utf-8")
+        (root / "src" / "notes.md").write_text("# hi\n", encoding="utf-8")
+        (root / "Dockerfile").write_text("FROM python\n", encoding="utf-8")
+        (root / "LICENSE").write_text("MIT\n", encoding="utf-8")
+        (root / "blob.bin").write_text("xx", encoding="utf-8")
+        (root / "node_modules" / "pkg" / "index.js").write_text("x", encoding="utf-8")
+        (root / ".gitignore").write_text("secret.py\n", encoding="utf-8")
+        (root / "secret.py").write_text("token = 'x'\n", encoding="utf-8")
 
         names = {f.name for f in collect_files(root)}
         assert {"main.py", "notes.md", "Dockerfile"} <= names
@@ -54,7 +54,7 @@ class TestCollectFiles:
         with open(big, "wb") as f:
             f.seek(5 * 1024 * 1024)
             f.write(b"#")
-        (root / "small.py").write_text("x = 1\n")
+        (root / "small.py").write_text("x = 1\n", encoding="utf-8")
         names = {f.name for f in collect_files(root)}
         assert "small.py" in names
         assert "big.py" not in names
@@ -63,7 +63,7 @@ class TestCollectFiles:
         root = tmp_path / "repo"
         root.mkdir()
         for i in range(10):
-            (root / f"f{i}.py").write_text("pass\n")
+            (root / f"f{i}.py").write_text("pass\n", encoding="utf-8")
         assert len(collect_files(root, max_files=4)) == 4
 
 

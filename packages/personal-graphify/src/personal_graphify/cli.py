@@ -221,7 +221,7 @@ def cmd_cost(args):
     if args.json:
         print("\n---RAW JSON---")
         try:
-            print(Path(cost_path).read_text()[:12000])
+            print(Path(cost_path).read_text(encoding="utf-8")[:12000])
         except:
             pass
 
@@ -256,11 +256,11 @@ def cmd_hook(args):
         print(f"[graphify hook] repo: {root}")
         print(f"  post-commit exists: {post_commit_path.exists()}")
         if post_commit_path.exists():
-            print(f"    -> {post_commit_path.read_text()[:300]}...")
+            print(f"    -> {post_commit_path.read_text(encoding="utf-8")[:300]}...")
         print(f"  post-merge exists: {post_merge_path.exists()}")
         print(f"  .gitattributes graph.json union: ", end="")
         if gitattributes_path.exists():
-            content = gitattributes_path.read_text()
+            content = gitattributes_path.read_text(encoding="utf-8")
             has_graph = "graph.json" in content and "merge=union" in content
             print(f"{has_graph} — {content[:200]}")
         else:
@@ -296,18 +296,18 @@ fi
         for hook_path in [post_commit_path, post_merge_path]:
             # If file exists and doesn't contain graphify marker, append? Safer to check
             if hook_path.exists():
-                existing = hook_path.read_text()
+                existing = hook_path.read_text(encoding="utf-8")
                 if "Personal Graphify" in existing or "graphify" in existing.lower():
                     # overwrite with ours + keep marker
-                    hook_path.write_text(hook_script)
+                    hook_path.write_text(hook_script, encoding="utf-8")
                     print(f"[graphify] updated existing {hook_path}")
                 else:
                     # append our hook after existing (chain)
                     combined = existing.rstrip() + "\n\n# --- Personal Graphify (appended) ---\n" + hook_script + "\n"
-                    hook_path.write_text(combined)
+                    hook_path.write_text(combined, encoding="utf-8")
                     print(f"[graphify] appended to existing {hook_path} (preserved original)")
             else:
-                hook_path.write_text(hook_script)
+                hook_path.write_text(hook_script, encoding="utf-8")
                 print(f"[graphify] wrote {hook_path}")
 
             # make executable
@@ -316,7 +316,7 @@ fi
         # .gitattributes for union merge driver for graph.json
         union_line = "graphify-out/graph.json merge=union\n**/graph.json merge=union\n# Personal Graphify — keep graph.json merge friendly (Ollama-first local)\n"
         if gitattributes_path.exists():
-            existing = gitattributes_path.read_text()
+            existing = gitattributes_path.read_text(encoding="utf-8")
             if "graphify-out/graph.json" not in existing or "merge=union" not in existing:
                 # append if not present
                 with open(gitattributes_path, "a") as f:
@@ -325,7 +325,7 @@ fi
             else:
                 print(f"[graphify] .gitattributes already has union merge")
         else:
-            gitattributes_path.write_text(union_line)
+            gitattributes_path.write_text(union_line, encoding="utf-8")
             print(f"[graphify] wrote {gitattributes_path} with union merge for graph.json")
 
         print("\n[graphify] hook install complete:")
@@ -342,11 +342,11 @@ fi
         for hook_path in [post_commit_path, post_merge_path]:
             if not hook_path.exists():
                 continue
-            content = hook_path.read_text()
+            content = hook_path.read_text(encoding="utf-8")
             if APPEND_MARKER in content:
                 # We appended to a pre-existing hook: keep everything before our marker.
                 prefix = content.split(APPEND_MARKER, 1)[0].rstrip() + "\n"
-                hook_path.write_text(prefix)
+                hook_path.write_text(prefix, encoding="utf-8")
                 print(f"[graphify] removed appended graphify section from {hook_path}")
                 removed += 1
             elif "Personal Graphify" in content:
@@ -359,7 +359,7 @@ fi
 
         # Optionally clean .gitattributes
         if gitattributes_path.exists():
-            txt = gitattributes_path.read_text()
+            txt = gitattributes_path.read_text(encoding="utf-8")
             if "Personal Graphify" in txt or "graphify-out/graph.json" in txt:
                 print(f"[graphify] .gitattributes contains graphify lines — remove manually if desired: {gitattributes_path}")
         print(f"[graphify] uninstall done ({removed} hooks removed)")
@@ -474,10 +474,10 @@ def cmd_install(args):
         cursor_rules_dir = root / ".cursor" / "rules"
         cursor_rules_dir.mkdir(parents=True, exist_ok=True)
         src_rule = Path(__file__).parent / "templates" / "graphify.mdc"
-        content = src_rule.read_text() if src_rule.exists() else _FALLBACK_RULE
+        content = src_rule.read_text(encoding="utf-8") if src_rule.exists() else _FALLBACK_RULE
         content = content.replace("{{GRAPH_STATS}}", stats)
         dest = cursor_rules_dir / "graphify.mdc"
-        dest.write_text(content)
+        dest.write_text(content, encoding="utf-8")
         written.append(dest)
         print(f"Wrote {dest}")
 
@@ -485,7 +485,7 @@ def cmd_install(args):
         agents_dir = root / ".agents" / "skills" / "graphify"
         agents_dir.mkdir(parents=True, exist_ok=True)
         skill_dest = agents_dir / "SKILL.md"
-        skill_dest.write_text(_AGENTS_SKILL.replace("{{GRAPH_STATS}}", stats))
+        skill_dest.write_text(_AGENTS_SKILL.replace("{{GRAPH_STATS}}", stats), encoding="utf-8")
         written.append(skill_dest)
         print(f"Wrote {skill_dest}")
 
