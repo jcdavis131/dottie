@@ -3140,6 +3140,38 @@ most valuable catch so far:
   the stored histories for repeated identical dry_run failures before deciding whether to
   re-derive the class name per attempt or pin the name in the correction prompt.
 
+### 5.3.R83 — 15 tests had not been running, and the suite reported it as "470 passed"
+
+- [x] **Applied the class check to R82's flake (17:35):** one flake found means asking
+  whether it was isolated. Repeat-ran every suite — ava-skills 5x, graphify 5x, harness 5x,
+  webapp 5x each, dottie research 4x, scout-cli 3x, ava-factory 2x. **All stable.** The
+  lease flake was genuinely the only timing flake.
+- [x] **So I checked for the flakes repetition CANNOT find: order and collection.** No
+  shuffle plugin is installed, so instead I ran every ava-factory file in isolation and
+  compared totals. **Per-file 485 passed vs full-suite 470** — with identical skips.
+- [x] **15 tests existed and never ran.** All of `test_collector.py`. Collection diff:
+  **522 per-file vs 507 whole-suite.** Cause: `conftest.py` declared the module needs
+  `datasets`, but `collector.py` imports `datasets` **lazily**, inside the HF path — the
+  test module never imports it, and all 15 pass without it.
+- [x] **What makes it worse than a wrong dependency: `pytest_ignore_collect` is INVISIBLE.**
+  No skip line, no error, no summary mention — the collected count simply shrinks. **"470
+  passed" reads exactly as healthy as "485 passed."** Nothing in the suite's own output
+  could ever have surfaced this; it took diffing two collections against each other.
+- [x] **Fixed both the instance and the blindness (`20f4f75`):** the requirement now lists
+  only `zstandard` (genuinely a top-level import), and `pytest_report_header` names every
+  ignored module and missing dep, saying plainly that **those tests DO NOT RUN here**. It
+  prints on a complete image too — *"image deps: complete"* — so silence is never ambiguous.
+  Verified in both states. **507 → 522 collected, 470 → 485 passed.**
+- [x] Audited the full table: this was the **only** unjustified entry; every other declared
+  dep is present or genuinely imported at module level.
+- [x] **My own error, recorded:** I undid a simulated edit with `git checkout -- conftest.py`
+  and wiped both real fixes with it, because they were still uncommitted. Redid them and
+  switched to a file backup. **`git checkout` is not an undo for a file that has work in
+  it** — the simulation was mine, but the collateral was everything else in that file.
+- [ ] NEXT: the same collection-diff check on the other suites. ava-factory was the only one
+  with an ignore hook, but "only this suite has one" is an assumption I have not measured —
+  and this entry exists because an unmeasured assumption hid 15 tests.
+
 ### 5.3.R82 — read the three unread webapp modules; the bug was in the tests, not the code
 
 - [x] **Reviewed `chart.js`, `dom.js`, `state.js` (17:15)** — the last webapp files I had
