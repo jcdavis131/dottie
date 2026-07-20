@@ -1660,6 +1660,63 @@ def test_two_sample_significance_when_baseline_records_spread(led, tmp_path):
     assert two["state"] == REJECTED                          # correctly HELD
 
 
+def test_calibrate_baseline_records_cross_seed_spread(led, tmp_path, monkeypatch):
+    """calibrate-baseline must install a baseline that carries its cross-seed SEM.
+
+    TODOS §5.3.R96. A single-seed calibration installs a POINT baseline (metric_sem=None),
+    which forces every later comparison onto the weaker one-sample test — the weakness R90
+    noted and R93 proved decisive. The unmodified model's own loss swings ~0.34 across seeds,
+    so one seed is one draw, not the baseline. Multi-seed calibration records the spread so
+    the next candidate gets an honest two-sample test.
+
+    `run_baseline_calibration` needs torch + the corpus, so it is stubbed here with per-seed
+    values; the logic under test is the mean/SEM aggregation and what lands on the baseline.
+    """
+    from dottie.research import __main__ as m
+    from dottie.research import factory_trainer
+
+    per_seed = {0: 5.74331, 1: 5.56278, 2: 5.90589}   # the real R93 unmodified values
+
+    def fake_calib(config):
+        s = config["seed"]
+        return {"factory_lm_loss": per_seed[s], "preset": "nano", "steps": config["steps"],
+                "seq_len": 256, "batch": 16, "lr": 3e-4, "seed": s, "device": "cpu"}
+
+    monkeypatch.setattr(factory_trainer, "run_baseline_calibration", fake_calib)
+
+    import argparse
+    args = argparse.Namespace(data_dir=str(tmp_path), steps=150, seeds="0,1,2", overwrite=True)
+    # Point the command at THIS test's ledger.
+    monkeypatch.setattr(m, "_ledger", lambda a: led)
+    rc = m.cmd_calibrate_baseline(args)
+    assert rc == 0
+
+    b = led.get_baseline()
+    import statistics
+    vals = list(per_seed.values())
+    assert b.metric_value == round(statistics.fmean(vals), 5)
+    assert b.metric_sem_n == 3
+    # Cross-seed SEM, not None and not a within-run figure.
+    assert b.metric_sem == round(statistics.stdev(vals) / 3 ** 0.5, 6)
+    assert b.metric_sem > 0.09                         # the real spread is large; prove it survived
+    assert "per_seed" in b.notes and "seeds=[0, 1, 2]" in b.notes
+
+    # A single seed must degrade honestly to a point baseline, never a fabricated spread.
+    args1 = argparse.Namespace(data_dir=str(tmp_path), steps=150, seeds="1", overwrite=True)
+    assert m.cmd_calibrate_baseline(args1) == 0
+    b1 = led.get_baseline()
+    assert b1.metric_value == per_seed[1] and b1.metric_sem is None and b1.metric_sem_n == 1
+
+    # One failing seed is fatal, not a silently-smaller mean.
+    def boom(config):
+        if config["seed"] == 2:
+            raise RuntimeError("corpus missing")
+        return fake_calib(config)
+    monkeypatch.setattr(factory_trainer, "run_baseline_calibration", boom)
+    args_boom = argparse.Namespace(data_dir=str(tmp_path), steps=150, seeds="0,1,2", overwrite=True)
+    assert m.cmd_calibrate_baseline(args_boom) == 3
+
+
 def test_cross_seed_spread_is_preferred_over_within_run_batch_spread(led, tmp_path):
     """`per_seed` must win over `eval_ce_per_batch`, and a within-run basis must say so.
 

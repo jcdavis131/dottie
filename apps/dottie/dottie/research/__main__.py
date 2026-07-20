@@ -115,27 +115,60 @@ def cmd_train(args) -> int:
 
 
 def cmd_calibrate_baseline(args) -> int:
-    """Measure the UNMODIFIED factory model and seed the baseline from that real number."""
+    """Measure the UNMODIFIED factory model over SEVERAL seeds and seed the baseline from
+    the cross-seed mean AND its cross-seed spread.
+
+    Multi-seed on purpose (TODOS §5.3.R96). A single-seed calibration installs a POINT
+    baseline with no spread, which forces every later comparison onto the weaker one-sample
+    test — the exact weakness R90 celebrated being gone and R93 proved decides these calls.
+    The unmodified model's own held-out loss swings ~0.34 across seeds, so a one-seed number
+    is not the baseline; it is one draw from it. Recording the cross-seed SEM makes the very
+    next candidate get an honest two-sample test."""
+    import statistics
     from dottie.research.factory_trainer import FACTORY_METRIC, run_baseline_calibration
     led = _ledger(args)
     try:
-        measured = run_baseline_calibration({"steps": args.steps})
-    except Exception as e:
-        _emit({"error": "calibration_failed", "detail": str(e)})
-        return 3
-    b = Baseline(metric_name=FACTORY_METRIC, metric_value=measured[FACTORY_METRIC],
-                 higher_is_better=False, architecture=measured["preset"],
+        seeds = [int(s) for s in str(args.seeds).split(",") if s.strip() != ""]
+    except ValueError:
+        _emit({"error": "bad_seeds", "detail": f"could not parse --seeds {args.seeds!r}"})
+        return 2
+    if not seeds:
+        _emit({"error": "bad_seeds", "detail": "--seeds resolved to no seeds"})
+        return 2
+
+    runs = []
+    for seed in seeds:
+        try:
+            runs.append(run_baseline_calibration({"steps": args.steps, "seed": seed}))
+        except Exception as e:
+            # One seed failing is fatal to a calibration: a mean over a subset silently
+            # claims more seeds than it measured. Fail loudly with the seed that broke.
+            _emit({"error": "calibration_failed", "seed": seed, "detail": str(e)})
+            return 3
+
+    values = [r[FACTORY_METRIC] for r in runs]
+    mean = round(statistics.fmean(values), 5)
+    # Cross-seed SEM — spread of the RUNS, not batches within one run. None at n=1, which is
+    # honest: one seed genuinely has no spread, and inventing one would be the R93 mistake.
+    sem = round(statistics.stdev(values) / len(values) ** 0.5, 6) if len(values) > 1 else None
+    m0 = runs[0]
+    b = Baseline(metric_name=FACTORY_METRIC, metric_value=mean,
+                 higher_is_better=False, architecture=m0["preset"],
                  experiment_id=None, updated_ts=__import__("time").time(),
-                 notes=f"measured baseline calibration: steps={measured['steps']} "
-                       f"seq={measured['seq_len']} batch={measured['batch']} "
-                       f"lr={measured['lr']} seed={measured['seed']} device={measured['device']}")
+                 notes=(f"measured baseline calibration: steps={m0['steps']} seq={m0['seq_len']} "
+                        f"batch={m0['batch']} lr={m0['lr']} device={m0['device']} "
+                        f"seeds={seeds} per_seed={[round(v, 5) for v in values]}"),
+                 metric_sem=sem, metric_sem_n=len(values))
     eff = led.seed_baseline(b, overwrite=args.overwrite)
     _refresh_status(led, args)
-    _emit({"measured": measured,
+    _emit({"measured": {"seeds": seeds, "per_seed": [round(v, 5) for v in values],
+                        "mean": mean, "cross_seed_sem": sem, "n": len(values),
+                        "steps": m0["steps"]},
            "baseline": {"metric_name": eff.metric_name, "metric_value": eff.metric_value,
-                        "architecture": eff.architecture, "notes": eff.notes},
-           "note": ("baseline updated from this real measurement" if args.overwrite or
-                    eff.metric_value == measured[FACTORY_METRIC]
+                        "architecture": eff.architecture, "notes": eff.notes,
+                        "metric_sem": eff.metric_sem, "metric_sem_n": eff.metric_sem_n},
+           "note": ("baseline updated from this real cross-seed measurement" if args.overwrite
+                    or eff.metric_value == mean
                     else "existing baseline kept (pass --overwrite to replace)")})
     return 0
 
@@ -512,9 +545,13 @@ def build_parser() -> argparse.ArgumentParser:
     tr.set_defaults(func=cmd_train)
 
     cb = sub.add_parser("calibrate-baseline",
-                        help="measure the UNMODIFIED factory model and seed the baseline "
-                             "from that real number")
+                        help="measure the UNMODIFIED factory model over several seeds and "
+                             "seed the baseline from the cross-seed mean + spread")
     cb.add_argument("--steps", type=int, default=150)
+    cb.add_argument("--seeds", default="0,1,2",
+                    help="comma-separated seeds; multi-seed records the cross-seed SEM the "
+                         "significance gate needs (default 0,1,2). Use a single seed only to "
+                         "reproduce the old point-baseline behaviour.")
     cb.add_argument("--overwrite", action="store_true")
     cb.set_defaults(func=cmd_calibrate_baseline)
 
