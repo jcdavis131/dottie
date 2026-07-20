@@ -20,6 +20,25 @@ let timers = [];
 
 const INTERVALS = { pipeline: 5000, assistant: 15000, research: 20000 };
 
+// Skip a tick while the previous one is still in flight. The intervals are SHORTER than
+// the request timeouts (pipeline polls every 5s with an 8s timeout), so a slow backend
+// makes setInterval stack overlapping requests -- and the stacking is worst exactly when
+// the server is already struggling, which is a feedback loop rather than a retry. Measured
+// context: /pipeline/status ran ON the event loop until today (TODOS 5.3.R62), so slow
+// polls were the normal case, not an edge one.
+function skipWhileRunning(fn) {
+  let inFlight = false;
+  return async (...args) => {
+    if (inFlight) return;
+    inFlight = true;
+    try {
+      return await fn(...args);
+    } finally {
+      inFlight = false;
+    }
+  };
+}
+
 async function pollPipeline() {
   try {
     const data = await client.pipelineStatus();
@@ -47,11 +66,17 @@ async function pollResearch() {
 
 function startPolling() {
   stopPolling();
-  pollPipeline(); pollAssistant(); pollResearch();
+  // One guarded wrapper per poller, created HERE so each restart gets a fresh in-flight
+  // flag -- a module-level wrapper could latch `true` if a request were abandoned across
+  // a stop/start (settings change, tab hide) and silently stop that poller forever.
+  const pipeline = skipWhileRunning(pollPipeline);
+  const assistant = skipWhileRunning(pollAssistant);
+  const research = skipWhileRunning(pollResearch);
+  pipeline(); assistant(); research();
   timers = [
-    setInterval(pollPipeline, INTERVALS.pipeline),
-    setInterval(pollAssistant, INTERVALS.assistant),
-    setInterval(pollResearch, INTERVALS.research),
+    setInterval(pipeline, INTERVALS.pipeline),
+    setInterval(assistant, INTERVALS.assistant),
+    setInterval(research, INTERVALS.research),
   ];
 }
 function stopPolling() {

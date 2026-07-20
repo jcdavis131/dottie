@@ -2894,6 +2894,30 @@ most valuable catch so far:
   their failure loses a session list entry rather than credentials, and no UI currently
   claims success for them — so there is nothing lying yet. Recorded rather than fixed, so
   the next person sees it was a decision.
+### 5.3.R69 — the console stacked polls exactly when the server was slowest
+
+- [x] **Read `app.js` whole (14:30).** Its three pollers run on `setInterval` with intervals
+  **shorter than their own request timeouts** — `/pipeline/status` every **5 s** against an
+  **8 s** timeout — and no in-flight guard. A slow backend therefore stacks overlapping
+  requests, **and the stacking is worst precisely when the server is already struggling**.
+  That is a feedback loop, not a retry.
+  - Not hypothetical: `/pipeline/status` ran **on the event loop** until this session
+    (§5.3.R62), so slow polls were the normal case. The client amplified the server bug I
+    fixed a few ticks ago.
+- [x] `skipWhileRunning()` now wraps each poller — a tick during an in-flight request is
+  skipped, and the flag always clears in a `finally` so a **rejected** poll cannot latch it
+  shut. The wrappers are created inside `startPolling()` so every restart (settings change,
+  tab unhide) gets a fresh flag; a module-level wrapper could latch `true` on a request
+  abandoned across a stop/start and silently kill that poller forever.
+- [x] New `poll.contract.test.mjs` asserts both the **behaviour** (overlaps skipped, guard
+  released after success AND after rejection) and that the guard is still **wired** — a raw
+  `setInterval(pollPipeline` fails the file. Verified red on the unguarded version.
+  **api 8 / poll 8 / store 9, all green.**
+- [x] **My first version of that test deadlocked instead of failing.** It awaited a second
+  call whose promise was never resolved, so `node --test` hung on an unsettled top-level
+  await rather than reporting anything. Fixed by collecting every releaser. **A test that
+  hangs is worse than one that fails** — CI reports a timeout, not a cause, and the hang was
+  in my test rather than the code under test.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
