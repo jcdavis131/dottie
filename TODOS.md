@@ -3237,6 +3237,15 @@ most valuable catch so far:
 - [x] **BUG 2: `apps/ava-factory/on_policy_distill.py:288` — `torch.randn(B, 44, d)`** inside a
   stub model's `forward`; `d` was a param of the nested `__init__` (default 2048), never saved
   to `self`, so it is undefined in `forward` → `NameError` if that path runs.
+- [x] **Bug 1 is worse than "latent" — a caller's signature is ALSO wrong (no type checker
+  needed to see it).** `get_model`'s params are `(vocab_size, d_model, multi_jspace_enabled,
+  rope_type, n_sinks, use_peri_ln)` — no `critical_shift`. But `train_1b_deepspeed.py:342`
+  calls `get_model(..., critical_shift=getattr(args,'critical_shift',31))`. So that 1B-training
+  entry point raises **`TypeError: unexpected keyword argument 'critical_shift'`** *before* it
+  even hits the NameError. **The refactor of `get_model` was left half-done on both sides —
+  the body references names it never declared, and a caller passes an arg it never accepted.**
+  This is a definitely-broken training path, not a maybe. (mypy/pyright are not installed, so
+  this class isn't tool-checkable here; found by reading the signature against the call.)
 - [ ] **Recorded, NOT fixed by me — this needs the operator's intent.** Bug 1's fix is either
   "add `use_short_conv=False, use_relative=False, relative_max_distance=<N>` to `get_model`'s
   signature" OR "remove them from the call" — *which* depends on whether `DottieModel1B` is
