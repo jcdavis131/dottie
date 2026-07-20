@@ -155,6 +155,19 @@ new form — I fixed the "lost ticks" framing but kept assuming hourly restarts 
 code. Worth remembering: **on this box, code changes to the research loop require an
 explicit daemon restart, not a wait.**
 
+**RESTARTED 05:04 — fixes are now live, but the restart itself exposed a hazard.**
+`Stop-ScheduledTask` ended the task instance and its PowerShell wrapper, but the **python
+daemon survived** (PID 5264, 54 threads, 9,726 CPU-s, idle). `Start-ScheduledTask` then
+launched a second daemon (8940) — **two concurrent daemons**, which is exactly what
+`IgnoreNew` and the lock exist to prevent: the lock lives in the wrapper, so an orphaned
+python child holds nothing. Killed 5264; 8940 is now the only one.
+- [ ] **Real defect for you**: restarting this loop is not safe with `Stop/Start-ScheduledTask`
+  alone — it silently leaves an orphan and can double-run the drain loop (two workers
+  claiming experiments, concurrent ledger writes). Either make the wrapper kill its child
+  tree on exit (`$Lock` release is not enough), or always verify with
+  `Get-Process python3.11` and kill leftovers before starting. The recovery script's
+  `Stop-ScheduledTask` step has the same gap.
+
 ### Regression status (full sweep 04:38, after ~14 changed files)
 
 | suite | result |
@@ -605,6 +618,18 @@ Then §1 fires automatically (#17 armed on the monitor).
       re-test of a known-rejected IDEA rather than a byte-identical repeat. The check that
       settles it is its metric: the original GASA scored **5.7119 (delta +0.107)**; a
       similar landing confirms the loop is paying full price to re-learn a known answer.
+      **RESULT 05:03 — my prediction FAILED, and the strong claim is withdrawn.** The
+      duplicate scored **delta +0.3665 (≈5.972)** against the original's **+0.107
+      (5.7119)** — a 0.26 gap, not a re-run. So this was NOT "re-learning a known answer":
+      same hypothesis *name*, materially different implementation (13.7% similar), and a
+      materially different number. Both rejected, so the family-level conclusion is
+      unchanged, but "the loop wastes cycles re-running rejected experiments" is too
+      strong and I am dropping it.
+      **What survives on its own evidence**: the vocabulary collapse (gradient ×18,
+      attention ×13, consistent ×11, sparse ×11 across 30 names) — the search is confined
+      to a narrow region, which is worth fixing regardless of whether individual re-tests
+      reproduce. The four options above still stand; the justification is diversity, not
+      duplicated compute.
     - 5.2.e [ ] **SEARCH-QUALITY FIX, ready to apply — your call (it steers what the model
       proposes, which is a research decision, so I did not ship it).** Three candidates
       now (MLBR, AGN, and OSA's shape) have converged on the same artifact: a
