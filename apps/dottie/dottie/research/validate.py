@@ -426,6 +426,15 @@ class CorrectionOutcome:
 #: sizes to *that* width validates clean and then explodes at integration.
 INTEGRATION_WIDTH = 256
 
+#: Sequence length the block is actually trained at (`factory_trainer` config default).
+#: The declared dry-run shape uses a tiny seq (16 is typical), so a parameter sized to the
+#: SEQUENCE — a learned positional table, an attention bias, a fixed-length buffer — is
+#: built at the wrong length, passes every stage, and dies at training. Measured 2026-07-20
+#: (TODOS §5.3.R28) on 670ad9956bab: `AssertionError: seq (256) must match seq_len (16)`,
+#: from a candidate that had declared `positional_weights: nn.Parameter((seq_len, hidden))`.
+#: This is the sequence-axis twin of the width bug in §5.3.R8.
+INTEGRATION_SEQ = 256
+
 #: Constructor kwargs that mean "hidden width", kept in step with factory_trainer's
 #: ``_DIM_KWARGS``. Duplicated rather than imported: validate.py is deliberately free of
 #: factory imports so it stays runnable without the factory checkout present.
@@ -436,7 +445,8 @@ _DIM_KWARGS = ("d_model", "dim", "hidden", "hidden_dim", "hidden_size", "embed_d
 def dry_run_at_integration_width(file_path: str | Path, *, class_name: Optional[str] = None,
                                  init_kwargs: Optional[Dict[str, Any]] = None,
                                  input_shape: Optional[List[int]] = None,
-                                 width: int = INTEGRATION_WIDTH) -> ValidationResult:
+                                 width: int = INTEGRATION_WIDTH,
+                                 seq: int = INTEGRATION_SEQ) -> ValidationResult:
     """Re-run the dry run at the width the factory will actually use.
 
     Measured 2026-07-20 (TODOS §5.3.R8): validation ran at the model's self-declared
@@ -461,11 +471,16 @@ def dry_run_at_integration_width(file_path: str | Path, *, class_name: Optional[
                                 f"declared input_shape {shape} is not a numeric "
                                 "[batch, seq, hidden] — cannot re-probe at the integration width")
     shape = [int(d) for d in shape]
-    if int(shape[-1]) == int(width):
+    # Probe the real INTEGRATION SHAPE: the model's own seq is typically 16 while training
+    # runs at 256, so a seq-sized parameter (learned positional table, attention bias,
+    # fixed-length buffer) is built at the wrong length and only fails once training starts.
+    target = [shape[0], int(seq), int(width)]
+    if shape == target:
         return ValidationResult(True, "integration_width", "skipped",
-                                f"declared width already equals the integration width ({width})")
+                                f"declared shape already matches the integration shape "
+                                f"{target}")
     r = dry_run_module(file_path, class_name=class_name, init_kwargs=dict(init_kwargs or {}),
-                       input_shape=shape, width=int(width))
+                       input_shape=target, width=int(width))
     if r.status == "skipped":
         # Inherit "skipped", never launder it into "pass". The inner result's own detail
         # says "(not a pass)" — reporting status="pass" over the top of that was a direct
@@ -479,10 +494,13 @@ def dry_run_at_integration_width(file_path: str | Path, *, class_name: Optional[
                                 f"also runs at the integration width {width}: {r.detail}")
     return ValidationResult(
         False, "integration_width", "fail",
-        f"passes at the declared width {shape[-1]} but FAILS at the integration width "
-        f"{width}, which is the width it will actually be swapped in at (d_model). Do not "
-        f"hardcode sizes to the dry-run shape — derive every dimension from x.shape[-1] at "
-        f"forward time.\n{r.detail}")
+        f"passes at the declared shape {shape} but FAILS at the real integration shape "
+        f"{target}: [batch, seq={seq}, hidden={width}] is what this block is actually "
+        f"swapped in at. Do not size anything to the dry-run shape — derive the hidden dim "
+        f"from x.shape[-1] and the sequence length from x.shape[-2] at FORWARD time. In "
+        f"particular a parameter shaped to a fixed sequence length (a learned positional "
+        f"table, an attention bias, a preallocated buffer) cannot work here: make it "
+        f"length-agnostic, or slice/interpolate it to the input length.\n{r.detail}")
 
 
 def dry_run_in_residual_stream(file_path: str | Path, *, class_name: Optional[str] = None,

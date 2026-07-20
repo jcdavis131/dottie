@@ -1808,6 +1808,38 @@ most valuable catch so far:
 - [x] Note for §5.3.R18's tally: this is a **genuine attempt** — block-shaped, real
   `nn.Linear` capacity, trained to completion, lost honestly. The pre-restart count of ~5
   genuine attempts is now ~6, and the sixth is an honest loss rather than an artifact.
+### 5.3.R28 — the sequence-axis twin of R8, found live within minutes of the restart
+
+- [x] **`670ad9956bab` (Positional Feature Rebalancing) died at training in 10.8 s (09:16),
+  and the fast failure is what made me look.** Real training takes ~270 s, so a 10-second
+  `failed_training` was suspicious enough to check rather than file. Cause:
+  ```
+  AssertionError: seq (256) must match seq_len (16)
+  ```
+- [x] **This is §5.3.R8 on the other axis, and my own fix missed it.** The integration-width
+  probe overrode the **hidden** dim to 256 but kept the model's declared **sequence** length
+  (16, typical). `factory_trainer` trains at `seq_len=256`. So a parameter sized to the
+  sequence — a learned positional table, an attention bias, a preallocated buffer — is built
+  at the wrong length, **passes all six stages**, and dies once training starts.
+  - Pointed detail: the candidate had **correctly declared** `positional_weights:
+    nn.Parameter((seq_len, hidden))` in the new §5.3.R19 field. It was honest about exactly
+    the thing that killed it, and nothing was reading that field to check.
+- [x] **Fixed: the probe now uses the real integration SHAPE, not just the width.**
+  `INTEGRATION_SEQ = 256` alongside `INTEGRATION_WIDTH = 256`; the probe runs at
+  `[batch, 256, 256]`. The failure message names the sequence axis explicitly and the actual
+  pattern — *"a parameter shaped to a fixed sequence length (a learned positional table, an
+  attention bias, a preallocated buffer) cannot work here: make it length-agnostic, or
+  slice/interpolate it to the input length"* — and points at `x.shape[-2]` as well as
+  `x.shape[-1]`.
+  - Verified on the real failure: now caught at `integration_width` with
+    `passes at the declared shape [4, 16, 64] but FAILS at the real integration shape
+    [4, 256, 256]`.
+  - Verified no regression on the good candidate: `da2da0ffbb59` still passes.
+  - Full suite 172 passed; mutation audit still 9/9 GOOD.
+- [ ] **Worth noting how this was found.** Not by review, and not by the gates — by
+  *noticing a duration that did not fit* and pulling the thread. The 10.8 s figure was
+  visible only because `dur_s` is logged per action (§5.2 instrumentation). Cheap
+  instrumentation kept paying tonight; three findings started as "that number looks odd".
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.

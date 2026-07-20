@@ -405,6 +405,49 @@ class Clean(nn.Module):
     assert r_ok.per_level["residual_stream"]["status"] == "pass"
 
 
+def test_sequence_sized_parameter_is_caught_before_training():
+    """A parameter sized to the DRY-RUN sequence length must fail validation, not training.
+
+    TODOS §5.3.R28 — the sequence-axis twin of §5.3.R8. The declared dry-run shape uses a
+    tiny seq (16 is typical) while factory_trainer trains at seq_len=256, so a learned
+    positional table, attention bias or preallocated buffer is built at the wrong length,
+    passes ALL SIX stages, and dies once training starts. Observed live on 670ad9956bab,
+    which had dutifully declared `positional_weights: nn.Parameter((seq_len, hidden))` and
+    then raised `AssertionError: seq (256) must match seq_len (16)`.
+    """
+    seq_sized = """import torch
+import torch.nn as nn
+class PosTable(nn.Module):
+    def __init__(self, dim: int = 64, seq_len: int = 16):
+        super().__init__()
+        self.seq_len = seq_len
+        self.pos = nn.Parameter(torch.zeros(seq_len, dim))
+    def forward(self, x):
+        b, s, h = x.shape
+        assert s == self.seq_len, f"seq ({s}) must match seq_len ({self.seq_len})"
+        return x + self.pos.unsqueeze(0)
+"""
+    r = validate.validate(seq_sized, class_name="PosTable",
+                          init_kwargs={"dim": 64, "seq_len": 16}, input_shape=[2, 16, 64])
+    assert not r.ok, r.detail
+    assert r.level == "integration_width"
+    assert "seq=256" in r.detail
+    assert "positional" in r.detail                # names the actual pattern, not just shapes
+
+    # a length-agnostic block is untouched
+    agnostic = """import torch
+import torch.nn as nn
+class Agnostic(nn.Module):
+    def __init__(self, dim: int = 64):
+        super().__init__()
+        self.w = nn.Linear(dim, dim)
+    def forward(self, x):
+        return x + torch.tanh(self.w(x))
+"""
+    assert validate.validate(agnostic, class_name="Agnostic", init_kwargs={"dim": 64},
+                             input_shape=[2, 16, 64]).ok
+
+
 def test_candidate_that_hardcodes_the_dry_run_width_is_caught(tmp_path):
     """A block that only works at its declared width must fail validation, not training.
 
@@ -432,8 +475,10 @@ class Hardcoded(nn.Module):
                                    init_kwargs={"dim": 64}, input_shape=[2, 4, 64])
     assert not r_declared.ok
     assert r_declared.level == "integration_width", r_declared.detail
-    assert "integration width 256" in r_declared.detail
+    assert "integration shape" in r_declared.detail
+    assert "hidden=256" in r_declared.detail and "seq=256" in r_declared.detail
     assert "x.shape[-1]" in r_declared.detail          # actionable, not just a traceback
+    assert "x.shape[-2]" in r_declared.detail          # names the sequence axis too
 
     # a width-agnostic block passes both probes
     agnostic = """import torch
