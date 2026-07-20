@@ -3140,6 +3140,47 @@ most valuable catch so far:
   the stored histories for repeated identical dry_run failures before deciding whether to
   re-derive the class name per attempt or pin the name in the correction prompt.
 
+### 5.3.R86 — ⚠ THERE IS A THIRD SOTA ROW, AND "REAL WINS = ZERO" IS NO LONGER TRUE
+
+- [x] **Found by asking what the daemon would DO on restart, not by looking for it.** Read
+  the ledger to see what work is queued; the state counts showed **`sota: 3`**. Every note I
+  have — TODOS §5.3 and the `dottie-research-loop-live-state` memory — says **two**, both
+  artifacts. A third exists: **`5a7232ffea24`, promoted TODAY at 10:15.**
+- [x] **It is materially different from the other two.** MLBR is a zero-parameter no-op the
+  current validator rejects; HierarchicalAttention beat a hand-seeded placeholder. This one
+  **passes the CURRENT six-stage validator** (`ok=True`, `learnable_params=64`,
+  `delta_std=0.56` — not degenerate) and carries **real trainable weights**.
+- [x] **The numbers hold up, and the contamination cuts in its favour.** baseline 5.60506 →
+  **5.54404, delta −0.06102**, n=20, candidate std 0.076948. It clears its own one-sample
+  bar (2×SEM = 0.0344), and it **also clears a stricter paired bar** assuming equal baseline
+  variance (2·√2·SEM = 0.0487). And since the contaminated 5.60506 is a *harder* bar than
+  the true 5.61982, the honest delta is **larger** (−0.0758), not smaller.
+- [x] **But it is NOT what it says it is. Verified by running it, not by reading it:**
+  - **`position-dependent? False`** — the gate is identical at every sequence position,
+    despite being named *"Positional Gates"*.
+  - **`input-dependent? False`** — the gate never looks at `x`, despite *"Dynamic"*.
+  - What it actually is: **a learned per-channel gain** — a diagonal scaling, 256 params at
+    d_model=256. Real and trainable, but the hypothesis text describes a different mechanism
+    than the code implements. Both the name and the *"reduces the memorization gap"* claim
+    are unsupported by what runs.
+- [x] **The confound that must be controlled before calling this a capability win:** the gate
+  is `sigmoid(randn)`, so at init **it multiplies the residual stream by ~0.51** (measured:
+  mean 0.511). At a 150-step nano-smoke, halving the residual stream changes effective scale
+  and LR dynamics on its own. **A −0.061 CE move is very plausibly that, not architecture.**
+- [ ] **THE DECISIVE EXPERIMENT — cheap, and it settles it:** rerun with the gate replaced by
+  a **fixed non-learned 0.5** scaling. If a constant 0.5 captures the same gain, the learning
+  contributes nothing and this is an initialisation artifact. If the learned version keeps a
+  clear margin, it is the loop's **first genuine win**. Blocked only on training being off.
+- [x] **Also a latent integration hazard:** `hidden_dim` defaults to **64** while the real
+  integration width is **256**, and `forward` asserts on mismatch. `Cls()` fed a 256-wide
+  stream raises `AssertionError: Hidden dimension mismatch` — verified. It trained only
+  because the factory passes the width explicitly. A default that is wrong for the only
+  integration site is a trap for the next caller.
+- [x] **Corrected both records** — TODOS §5.3 and the memory file both asserted "REAL WINS:
+  ZERO / both sota rows are artifacts". **That was true when written and is now false.** The
+  claim survived several of my own sweeps because I kept re-reading my summary of the ledger
+  instead of the ledger. **Re-derived from the source this time.**
+
 ### 5.3.R85 — THE LIVE BOARD (18:10, re-measured — not carried forward)
 
 **Every row below was run fresh, using each project's OWN configured invocation.** That
