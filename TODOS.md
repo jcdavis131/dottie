@@ -448,7 +448,9 @@ THE NIGHT'S HEADLINES — read these before anything below:
 > Tonight's loop changed items 5 and 8 materially and added a new blocker at the top.
 > Items 2, 3, 4, 6, 7 are unchanged from the 05:19 version.
 
-0. **NEW — RESTART THE RESEARCH DAEMON. Everything below about the loop depends on it.**
+0. ~~**RESTART THE RESEARCH DAEMON**~~ — **DONE 08:50:02. All of tonight's work is LIVE.** See §5.3.R21 for the verification. (Original text kept below for the record.)
+
+0b. **NEW — RESTART THE RESEARCH DAEMON. Everything below about the loop depends on it.**
    **13 behaviour-affecting commits** are in and **not running**: the daemon has been on
    pre-work code since 06:21:54 and never reloads. (Counted, not estimated:
    `git log --since="2026-07-20 06:21:54" -- apps/dottie/dottie/` returns 14, of which one
@@ -1600,6 +1602,41 @@ most valuable catch so far:
 - [x] Audit now **9/9 GOOD**, no SKIPs, no HOLLOWs, tree verified clean after the run.
   Three separate defects tonight were found by this script rather than by review: a hollow
   test in §5.3.R11, a silent coverage loss here, and a bad mutant here.
+### 5.3.R21 — ⭐ THE DAEMON RESTARTED. Tonight's work is live (08:50:02)
+
+- [x] **Confirmed by the mechanism built for exactly this, four hours earlier.** A `boot`
+  line appeared in run.log at 08:50:02:
+  ```json
+  {"action":"boot","pid":6552,"trainer":"factory","max_retries":5,
+   "git_sha":"e8cc5b7","prompts_sha256":"95efbf8f2b79"}
+  ```
+  `prompts_sha256` matches the current file byte-for-byte. **The daemon is running as of
+  `e8cc5b7`** — every behaviour-affecting commit from tonight. HEAD is `073cd11`, which is
+  test/script-only and changes no runtime path. This is precisely the check §5.3.R9
+  specified, and §5.3.R8's "scope by boot lines, not commit timestamps" is now actually
+  possible.
+- [x] **What is live**: six validation stages (integration-width, residual-stream, rank
+  collapse, zero-parameter), `_DIM_KWARGS` including `hidden`, bounded corrector retries,
+  corrector-error surfacing, the training queue-blocker fix, baseline contamination
+  detection with UNVERIFIED honesty, two-sample significance, the ideation reframing, and
+  `learnable_parameters` in the schema.
+- [x] **I do NOT know who restarted it, and will not guess.** The old daemon (pid 7092) was
+  killed mid-implement — its 08:31:25 stage has no completion line — and pid 6552 took over.
+  That is consistent with either the operator running the §5.3.R9 commands or the scheduler
+  restarting a dead wrapper. The evidence does not distinguish them.
+- [x] **Effects are NOT yet observable and I am not claiming any.** Zero experiments have
+  completed since boot; the daemon is minutes into its first implement on the new code.
+  Every percentage in §5.3.R4-R20 describes the PRE-restart population.
+- [ ] **NEXT, and now finally measurable** — scope all of these by `updated_ts >= boot`:
+  - does the zero-parameter rate fall from **55%**?
+  - does the category-error rate fall from **36%**?
+  - do proposals fill `learnable_parameters`? (If compliance is high, promote it to
+    `required` in `parse_hypotheses` — §5.3.R19.)
+  - does the dry_run share of genuine failures move from **74%**? (§5.3.R8's confound is
+    now moot: the boot line gives a clean, unambiguous boundary.)
+  - **Wait for n ≥ 20 genuine outcomes before reporting any of them.** The constraint-8
+    attempt died at n=5 and the honest answer was "not measurable"; the same discipline
+    applies here, especially now that I have a stake in these numbers moving.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
