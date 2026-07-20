@@ -192,7 +192,12 @@ Then §1 fires automatically (#17 armed on the monitor).
   opportunistically, never in bulk-reformat commits).
 - [x] scout-cli python3-stub tests: swept to sys.executable (25 failures -> 10; survivors below).
 - [x] scout-cli Windows portability: WNOHANG guarded, CLI stdout UTF-8, perms asserts POSIX-only — 129/130 green.
-- [ ] test_mcp_serve stdio scenario: 90s deadline exceeded on this box (environmental; retry when idle or raise deadline).
+- [x] test_mcp_serve stdio scenario: was NOT environmental — real Windows bug, root-caused
+  2026-07-20 by elimination (stdin-pipe, minimal-env, no-console, held-lock all refuted;
+  live-server child-never-ran vs DEVNULL-0.11s was the discriminator): `_dispatch`'s
+  subprocess inherited the MCP stdio transport pipe (overlapped Proactor pipe) as stdin
+  and child Python hung in runtime init. Fix: `stdin=subprocess.DEVNULL`. 90s-timeout →
+  passes in 2.25s.
 - [ ] test_api.py 4 env failures on this box (pre-existing, verified vs HEAD 2026-07-20):
   echo task / task counts / ollama honest-fail / flywheel gate all hit
   `DottieResolutionError: ava-...` — AVA_FACTORY_ROOT resolution, not code. Fix the env

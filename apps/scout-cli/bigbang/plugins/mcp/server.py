@@ -22,8 +22,14 @@ def _dispatch(plugin: str, args: str) -> str:
     if args.strip():
         argv += shlex.split(args)
     try:
+        # stdin=DEVNULL is load-bearing: without it the child inherits the MCP stdio
+        # transport pipe (an overlapped Proactor pipe on Windows), and child Python
+        # never finishes runtime init — measured live 2026-07-20: piped-stdio child
+        # never ran; DEVNULL child completed in 0.11s. It also must never be possible
+        # for the child to read MCP protocol bytes.
         proc = subprocess.run(
-            argv, capture_output=True, text=True, timeout=_SUBPROCESS_TIMEOUT
+            argv, capture_output=True, text=True, timeout=_SUBPROCESS_TIMEOUT,
+            stdin=subprocess.DEVNULL,
         )
     except subprocess.TimeoutExpired:
         return (
