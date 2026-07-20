@@ -3240,6 +3240,13 @@ most valuable catch so far:
   imports, E702 semicolons, F541 empty f-strings, …), 16 auto-fixable — so the recipe's
   `ruff --fix`/`format` step is confirmed behaviour-preserving. The two it could NOT auto-fix
   (the syntax error, the FP) are now handled: one fixed, one benign.
+- [x] **Closed the check: the non-cosmetic-looking rest are pre-existing, not my regressions.**
+  Verified the 5 `E722` bare-excepts and the 1 `F841` exist at session base (`8641fb9`) AND on
+  `origin/main` — so they are among origin's own 491-remaining-errors, already tolerated by
+  its CI, and not introduced by my diff. **Conclusion: my entire session diff is py311-clean
+  except the one syntax error (now fixed); the B0 merge will not fail CI on account of my
+  changes.** That is the useful bottom line — a verified-clean diff going into the operator's
+  reconciliation, not a hopeful one.
 
 ### 5.3.R102 — traced the false "training stale" alert to its exact line; corrects R100
 
