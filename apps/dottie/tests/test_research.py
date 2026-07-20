@@ -1268,6 +1268,49 @@ class Raiser(nn.Module):
     assert led.next_in_state(READY_FOR_TRAINING) is None, "experiment left stuck in the queue"
 
 
+def test_only_genuine_infrastructure_may_return_ok_false():
+    """`ok=False` means RETRYABLE INFRASTRUCTURE. A candidate fault must never use it.
+
+    TODOS §5.3.R65. `run_training` leaves an `ok=False` experiment in `ready_for_training`,
+    so a candidate fault marked that way is re-picked forever and blocks the queue behind
+    it. Three paths had it wrong and were fixed one at a time: train.py's module load and
+    Proxy() construction (§f872bab), and factory_trainer's module load (§5.3.R45) — the
+    last of which I had explicitly asserted was already correct.
+
+    Fixing instances did not close the class, so this asserts it: every `TrainResult(False,
+    ...)` in the trainers must justify itself in its detail with infrastructure vocabulary.
+    A new candidate-fault path added with `ok=False` fails here rather than silently
+    stalling the loop months later.
+    """
+    import ast
+    import pathlib
+
+    INFRA_WORDS = ("infrastructure", "unavailable", "not installed", "missing")
+    root = pathlib.Path(__file__).resolve().parents[1] / "dottie" / "research"
+    offenders = []
+    checked = 0
+    for name in ("train.py", "factory_trainer.py"):
+        src = (root / name).read_text(encoding="utf-8")
+        tree = ast.parse(src)
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and getattr(node.func, "id", "") == "TrainResult"):
+                continue
+            if not node.args or not isinstance(node.args[0], ast.Constant):
+                continue
+            if node.args[0].value is not False:
+                continue
+            checked += 1
+            blob = (ast.get_source_segment(src, node) or "").lower()
+            if not any(w in blob for w in INFRA_WORDS):
+                offenders.append(f"{name}:{node.lineno}")
+
+    assert checked >= 2, "expected the two known infrastructure paths; did the trainers move?"
+    assert not offenders, (
+        "TrainResult(ok=False) means retryable infrastructure, but these do not say why — "
+        "if they are candidate faults they must be ok=True/stable=False or the experiment "
+        f"stalls in ready_for_training forever: {offenders}")
+
+
 def test_factory_trainer_load_failure_is_the_candidates_fault(led, tmp_path, monkeypatch):
     """An unloadable candidate must fail training, not sit retryable forever.
 

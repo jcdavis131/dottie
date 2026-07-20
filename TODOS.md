@@ -2802,6 +2802,28 @@ most valuable catch so far:
   breaking the test file). Caught by collection, fixed with an Edit and a regex that needs no
   escape. **The lesson has not stuck because I keep reaching for the same tool** — for anything
   containing backslashes, write the file or use Edit.
+### 5.3.R65 — closed the TrainResult-classification class; both survivors are legitimate
+
+- [x] **Enumerated every `TrainResult(...)` construction in both trainers (13:40)** rather
+  than fixing a fourth instance. `ok=False` means **retryable infrastructure**:
+  `run_training` leaves such an experiment in `ready_for_training`, so a *candidate* fault
+  marked that way is re-picked forever and blocks the queue behind it.
+  - Result: **12 constructions, only 2 with `ok=False`**, and both are genuine —
+    `train.py:102` *"torch unavailable"* and `factory_trainer.py:200* *"factory trainer
+    infrastructure missing"*. Every candidate-fault path correctly uses
+    `ok=True, stable=False`.
+- [x] **The class is closed, and now held by an invariant rather than by my having looked
+  once.** `test_only_genuine_infrastructure_may_return_ok_false` walks the AST of both
+  trainers and requires every `ok=False` to justify itself with infrastructure vocabulary.
+  Verified it catches a regression, reporting the exact site (`['train.py:126']`).
+  - This matters because the three fixed instances were found **one at a time over hours**
+    (§f872bab module load, §f872bab Proxy construction, §5.3.R45 factory load) — and for the
+    third I had explicitly asserted the file was already correct. An invariant costs one test
+    and ends the search.
+- [ ] **Four classes now closed by invariant rather than by inspection**: copy-bait examples
+  (§5.3.R64), event-loop blocking (§5.3.R62/R63), skipped-counted-as-pass (§5.3.R15), and
+  this. Each began as "I fixed the instance" and only stopped recurring when the *rule* was
+  encoded. Suite 197 passed.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
