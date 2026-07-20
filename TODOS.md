@@ -1433,6 +1433,32 @@ most valuable catch so far:
   that read a result object without reading its status. Every future consumer of a
   `ValidationResult` must branch on `status`, not on `ok`. `ok` means "did not fail"; it
   does not mean "ran".
+### 5.3.R16 — cross-app regression check; and a test runner that lies about failing
+
+- [x] **All three suites green after the night's changes (08:45).** I had been running only
+  the dottie suite while editing shared code. dottie **167 passed**, ava-factory server
+  **24 passed**, webapp contract tests **11 passed** (6 api + 5 store). No cross-app
+  regressions from the validator, ledger schema, or evaluate changes.
+- [x] **I nearly reported the webapp as broken because of my own command.**
+  `node --test dottie/webapp/js/` — the obvious invocation — cannot take a bare directory on
+  Node 24. It tries to load the directory as a module and prints `MODULE_NOT_FOUND` under a
+  heading that reads **`✖ failing tests: test at dottie\webapp\js:1:1`**. That looks
+  exactly like a suite failure; the suite never ran at all. The tests were green throughout.
+  - Third time tonight a *tool invocation* produced a false signal about the code: the ANSI
+    colour codes that hid a real assertion in §5.3.R7, the fabricated timestamps, and now
+    this. In each case the code was fine and my reading of it was not.
+  - Wrote `apps/ava-factory/dottie/webapp/js/README.md` with the two correct forms (explicit
+    files, or a **quoted** glob — verified both), the expected count, an explanation of why
+    the directory form's output is misleading, and why there is deliberately no
+    `package.json` (plain ES modules, no build step, no deps).
+- [x] **Audited ValidationResult consumers for the §5.3.R15 rule** (`ok` means "did not
+  fail", not "ran"). Measured across every stored validation: **zero skipped stages, zero
+  candidates advanced with an execution stage skipped.** `evaluate.py:97` was the one real
+  offender and is already fixed. `implementation.py:168` advances on `outcome.ok`, which
+  would let a candidate reach training unexecuted in a torch-less environment — but the
+  daemon always has torch, `per_level` already records the facts, and the observed
+  frequency is 0. **Not building speculative machinery for it**; same standard applied to
+  the `class_name` pin in §5.3.R5.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
