@@ -45,7 +45,7 @@ from typing import Any, Dict, List, Optional
 
 warnings.filterwarnings("ignore")
 
-BOOT_TS = datetime.datetime(2026, 7, 20, 8, 50, 2).timestamp()
+BOOT_TS = datetime.datetime(2026, 7, 20, 10, 35, 2).timestamp()
 MIN_N = 20
 LEDGER = Path(__file__).resolve().parents[1] / "data" / "research" / "ledger.sqlite3"
 
@@ -66,17 +66,24 @@ PRE = {
 #: are NOT in this data — and the honest attribution depends entirely on which is which.
 #: Written 2026-07-20 while n was still 4, deliberately: once numbers exist, the temptation
 #: is to credit whichever fix looks best. §5.3.R8 lost an entire comparison to this.
-BOOT_SHA = "e8cc5b7"
+BOOT_SHA = "c12a052"
 LIVE_IN_WINDOW = [
     "§5.3.R12 ideation reframing (block-shaped answers to loss-shaped bottlenecks)",
     "§5.3.R17 zero-parameter gate (correctable failure)",
     "§5.3.R19 learnable_parameters field in the ideation schema",
     "§5.3.R8/R10/R11 integration-width, residual-stream and rank-collapse stages",
-]
-NOT_IN_WINDOW = [
     "§5.3.R24 dead-ends anti-priming (round-robin + overused-terms tally)",
     "§5.3.R28 integration SEQUENCE probe (seq=256, not just hidden)",
     "§5.3.R29 forward-time sequence-length guidance in the implementation prompt",
+    "§5.3.R35 SEARCH SPACE no longer asks for losses/regularisers  <- the big one",
+    "§5.3.R36/R37 the other two prompt contradictions (rigor section, codebase context)",
+    "§5.3.R38 the corrector now carries the engineering constraints  <- the other big one",
+    "§5.3.R42 contract check no longer vanishes when unscoped",
+    "§5.3.R45 factory_trainer load failure -> failed_training, not retryable",
+]
+NOT_IN_WINDOW = [
+    "§5.3.R46 proxy-trainer training-loop guard (train.py; the daemon uses --trainer factory,"
+    " so this affects the proxy path only)",
 ]
 
 CATEGORY = re.compile(r"regulari[sz]|loss|penalt|objective|schedul|curricul", re.I)

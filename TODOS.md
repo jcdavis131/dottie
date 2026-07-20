@@ -2358,6 +2358,33 @@ most valuable catch so far:
   the paragraph describing it is part of the change. Four instances tonight, every one
   introduced by me, every one found by reading rather than by any test — because **no test
   asserts that a comment is true**.
+### 5.3.R48 — ⭐ SECOND RESTART (10:35:02). The two big fixes are now live.
+
+- [x] **Detected by the boot banner, not by being told: `pid=33132 git_sha=c12a052
+  prompts=dde2a11b0273`.** A new window opened at 10:35:02 and **12 runtime commits went
+  live**, including the two §5.3.R39 argued were worth resetting the measurement for:
+  - **`a09d5e9` — the search space no longer asks for losses/regularisers** (§5.3.R35, the
+    mechanical cause of the 36% category-error rate).
+  - **`8a7d309` — the corrector now carries the engineering constraints** (§5.3.R38, and the
+    corrector writes most of the code this loop produces).
+  Plus the sequence probe, dead-ends anti-priming, both other prompt contradictions, the
+  contract-scope fix and the factory load-failure reclassification.
+- [x] **Did the thing I pre-registered, before looking at any numbers.** §5.3.R30 and R39
+  both say the report's attribution map must be updated from the new `boot` record *first*.
+  `post_restart_report.py` now carries `BOOT_TS = 10:35:02`, `BOOT_SHA = c12a052`, and a
+  12-item live list with **only §5.3.R46 (proxy-trainer loop guard) marked NOT live** — and
+  that one affects the proxy path, while the daemon runs `--trainer factory`.
+  - Comparators deliberately remain the **original pre-restart** figures (36% / 55% / 6% /
+    78%). The 08:50–10:35 window reached only **n=13**, below the reporting threshold, so it
+    never produced a rate. **Comparing against a sub-threshold number is exactly the error
+    the threshold exists to prevent** — and it is the same mistake I caught in my own
+    comparator in §5.3.R23.
+- [x] Suite still green after the edit. **Current window n=3.** No rates, no claims; the
+  script withholds them and will keep withholding until n≥20.
+- [ ] **This is now the window that matters.** It is the first time the whole set of fixes
+  has run together, and the first honest test of whether any of tonight's reasoning about
+  the proposal pipeline was right. If the category-error rate does not move from 36%, the
+  search-space diagnosis (§5.3.R35) was wrong — and that is a result worth having too.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
