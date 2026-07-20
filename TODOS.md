@@ -114,11 +114,13 @@ Then §1 fires automatically (#17 armed on the monitor).
     **T9.4 LAUNCHED 2026-07-20 01:44 (user directive via fork; per this section's
     "defensible" verdict)**: container `dottie-chat-branch`, forked base_final →
     /ckpt/chat, p5_anneal seq 4096, 50M tokens ≈ 191 steps.
-    **ETA CORRECTED ~02:05**: seq-4096 + grad-checkpointing under the 45W power cap
-    runs ~105 s/step (step-10 log landed ~17 min after step 1), so honest ETA is
-    **~5.5h (~07:30)**, not the 2h modeled from seq-2048 pace. Full clocks (charger!)
-    would cut this ~3-4x. Step-1 lm 0.1509 is EXPECTED (base_final trained through
-    p5 already) — only the val-side gate can show forgetting.
+    **ETA RE-CORRECTED ~02:12 (measured, steps 1→10)**: 53.6 s/step, tok/s 5449 →
+    **~2.9h, chat_final ~04:40**. (The interim 5.5h number was modeled before the
+    first inter-step interval existed — wrong method, retracted.) Full clocks
+    (charger!) would still cut this substantially. Step-1 lm 0.1509 is EXPECTED
+    (base_final trained through p5 already) — only the val-side gate can show
+    forgetting; an early-warning CPU gate against step_30.pt (~02:20) is queued
+    in the loop.
     **WATCH RE-ARMED from the loop session ~02:05**: the fork's watch (by5bexxzs)
     did NOT survive the fork's termination (TaskList empty — watches die with their
     session, same lesson as the machine-move at 00:40). New watch: chat_final.pt /
