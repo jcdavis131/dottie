@@ -896,6 +896,27 @@ Then §1 fires automatically (#17 armed on the monitor).
       Rationale: the traceback says what broke, the diff says what the model just tried —
       different questions, and near-greedy sampling kept re-making the same edit. 32/32
       research tests green (new test asserts both branches).
+### 5.3.R4 — ⭐⭐⭐ DEGENERACY GATE'S FIRST PRODUCTION CATCH (06:30), cheapest yet
+
+`48e0f39d8225` was rejected at **L4 validation** with:
+> degenerate block: 0 learnable parameters and output differs from input by a CONSTANT
+> (std of (out-in) = 0). This is a bias, not an architecture …
+
+`std = 0` means the module was a **literal identity** — the exact class that produced
+MLBR, the false SOTA that prompted all of tonight's gate work. Two things make this the
+most valuable catch so far:
+- **It cost 255.7 s and never reached training.** The significance gate's catch (AGN,
+  §5.3.R3) came at *evaluation*, after a full implement + train cycle. This one died at
+  validation, so no training compute was spent at all.
+- **It fired on a module the search generated live**, not on replayed stored code as in
+  the unit tests. The gate is not just theoretically correct — the search still emits
+  this shape, and now it is stopped.
+- [ ] ODDITY worth a look: it stopped at `attempts: 2` though `--max-retries 5` is set.
+  `validate_with_correction` breaks early only when the corrector itself raises, and no
+  corrector error appears in the stored failure — so either that break path is not
+  recorded or the retry accounting is off. The outcome was right, but `attempts` feeds
+  the conversion analysis, so it should mean what it says.
+
 ### 5.3.R3 — ⭐⭐ THE GATE CAUGHT A REAL ONE (04:37) — a third false SOTA, blocked
 
 `bb40e0c18f0a` "Attention Gradient Normalization (AGN)" **beat the baseline** and, under
