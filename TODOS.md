@@ -175,6 +175,25 @@ python child holds nothing. Killed 5264; 8940 is now the only one.
   `Get-Process python3.11` and kill leftovers before starting. The recovery script's
   `Stop-ScheduledTask` step has the same gap.
 
+### Post-restart verification (05:12) — the fixes are live and already paying
+
+First completed action from the restarted daemon proves three of them at once:
+`{"action":"implement","result":{"experiment":"fae9859164a4","state":"failed_validation",
+"attempts":5},"dur_s":487.3}`
+- **`dur_s` works** — and gives the first real price tag for a failed implement:
+  **487 s (8.1 min)** burned across 5 correction attempts. That is the number to weigh
+  any conversion-rate fix against.
+- **Tail-truncation works** — the stored failure now ends with the actual exception
+  instead of traceback boilerplate: `RuntimeError: The size of tensor a (8) must match
+  the size of tensor b (4) at non-singleton dimension 3`. Diagnosis is now possible
+  without re-running the validator by hand.
+- **Axis-discipline prompt: no verdict yet (n=1), and the failure mode MOVED.** This one
+  is at **dimension 3** — a 4-D multi-head reshape — whereas all four I diagnosed were
+  3-D confusion at dimension 2. So the prompt addressed a mode that did not recur, and a
+  neighbouring one appeared. Could be the fix working and the model finding a new way to
+  err, or coincidence. Judge it after ~5 more implements, using the tail-truncated
+  errors that now make classification cheap.
+
 ### Regression status (full sweep 04:38, after ~14 changed files)
 
 | suite | result |
