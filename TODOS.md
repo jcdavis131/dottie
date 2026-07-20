@@ -2609,6 +2609,29 @@ most valuable catch so far:
 - [ ] **I cannot run it** — the classifier blocks task control, which is exactly why it is a
   script for you rather than something I attempted. Current preconditions: 2,292 MB free
   (would warn, not refuse), 0 orphans, task `Disabled`.
+### 5.3.R57 — read ideation.py; two worries measured at zero, one new comparator earned
+
+- [x] **Read `ideation.py` whole (12:05).** Two things looked risky and **both measure at
+  zero**: `run_ideation` creates every parsed hypothesis with no cap at `n_ideas` and no
+  distinctness check — but across 23 logged batches there are **0 within-batch duplicates**
+  and **0 oversize batches**. No fix warranted.
+- [x] **My first measurement was meaningless and I caught it.** I grouped experiments by
+  `created_ts`, assuming one ideate call shares a timestamp. It does not — `ledger.create`
+  calls `time.time()` per experiment — so all 100 "batches" came out size 1 and the answer
+  was structurally guaranteed to be zero. Re-measured using the `created` id lists in
+  run.log, which are the authoritative grouping.
+- [x] **The same query earned something the report was missing: a mode-collapse comparator.**
+  Cross-batch repetition is what §5.3.R24's dead-ends anti-priming targets, and there was no
+  baseline for it. Added `repeated ideas` to `post_restart_report.py`.
+- [x] **And validating it caught the §5.3.R23 error a second time.** My first comparator
+  (15/66 = 23%) came from run.log's ideate records; the report computes over **ledger**
+  hypothesis names. Different populations — shipping it would have manufactured a 4-point
+  "improvement" out of a population mismatch. Recomputed exactly as the report measures:
+  **27/97 = 28% pre-restart**, which now reads as a like-for-like 1-point difference instead
+  of a fake gain.
+  - Twice tonight, the same mistake, and twice caught by **running the metric over the
+    pre-restart data before trusting it**. The check costs one command; the alternative is a
+    fabricated win in a document I have been asking the operator to rely on.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.

@@ -69,6 +69,16 @@ PRE = {
     # mismatch — caught by running this report over the pre-restart data, where the
     # recomputed figure came back 78% and did not match the constant.
     "dry_run_share": (46, 59, "78%"),            # of genuine validation failures
+    # Cross-batch idea repetition: the mode collapse §5.2.g describes and §5.3.R24's
+    # dead-ends anti-priming targets. 97 pre-restart ideas, 70 distinct after normalising
+    # away acronyms and word order, so 27 repeats.
+    #
+    # Measured over the SAME population the report computes on (ledger hypothesis names
+    # before BOOT_TS). A first attempt used the ideate records in run.log -- 15/66 = 23% --
+    # which is a different and smaller population, and would have manufactured a 4-point
+    # "improvement" out of a population mismatch. That is the §5.3.R23 error exactly; caught
+    # this time by validating the metric against the pre-restart data before shipping it.
+    "idea_repeat_rate": (27, 97, "28%"),         # of all ideas proposed
 }
 #: What the daemon was ACTUALLY running during the measured window, keyed to the git_sha in
 #: its own `boot` record. The daemon does not live-reload, so commits made after it started
@@ -167,6 +177,17 @@ def main() -> int:
     else:
         print(f"  {'learnable_parameters filled':34s} {filled}/{proposals} = "
               f"{100.0*filled/proposals:.0f}%   [field is new; no pre-restart baseline]")
+
+    # Repetition is only meaningful ACROSS batches, so it is computed over the window's
+    # hypothesis names rather than per experiment. Normalising away acronyms and word order
+    # is what makes "Orthogonalized Sparse Attention (OSA)" and "Orthogonalized Sparse
+    # Attention" count once — the same key §5.3.R24 uses to de-duplicate the dead-ends list.
+    def _norm(name: str) -> tuple:
+        return tuple(sorted(re.findall(r"[a-z]+", re.sub(r"\(.*?\)", "", name.lower()))))
+
+    all_names = [h.get("hypothesis_name", "") for h in hyps if h.get("hypothesis_name")]
+    distinct = len({_norm(n) for n in all_names})
+    rate("repeated ideas", len(all_names) - distinct, len(all_names), "idea_repeat_rate")
 
     print("\nCANDIDATE CAPACITY (of those that passed validation)")
     validated: List[int] = []
