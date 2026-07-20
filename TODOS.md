@@ -3140,6 +3140,44 @@ most valuable catch so far:
   the stored histories for repeated identical dry_run failures before deciding whether to
   re-derive the class name per attempt or pin the name in the correction prompt.
 
+### 5.3.R82 — read the three unread webapp modules; the bug was in the tests, not the code
+
+- [x] **Reviewed `chart.js`, `dom.js`, `state.js` (17:15)** — the last webapp files I had
+  never opened. **The code is sound**, and several things I expected to be bugs were not:
+  `ago()` documents epoch-ms and `ops.js` correctly passes `updated_ts * 1000`; `setSlot`
+  keeps the last good `data` on failure but `ops.js` refuses to render it (`if (!slot.ok)`
+  → explicit unreachable block); `mountOps` returns a teardown and `route()` calls it;
+  `startPolling()` calls `stopPolling()` first, so settings changes cannot stack pollers.
+  **Recorded because "I checked and it was fine" and "I never checked" look identical later.**
+- [x] Only real code finding: **`autoChart` is dead** (nothing calls it; `ops.js` uses
+  `lineChart` directly) and it creates a `ResizeObserver` it never disconnects. Latent, in
+  unreachable code — noted, not "fixed", since deleting an exported helper is a judgement
+  call and the leak cannot currently occur.
+- [x] **The chart's correctness rests on an untested invariant.** `ops.js` slices
+  `series.step` and `series[key]` **independently** (`.slice(-120)` each) and `chart.js`
+  pairs them **by index**. If a sparse field were ever compacted instead of padded with
+  `None`, the two windows would start at different rows and **every point would plot against
+  the wrong step** — confidently mislabelled rather than visibly broken. Right by
+  construction today; now pinned (`593814e`). **Verified it earns its place: compacting only
+  `grad_norm` passes the ENTIRE existing suite and is caught solely by the new test.**
+- [x] **Found a genuine flake while running the suite — and it was a clock, not a fluke.**
+  `test_completing_after_lease_stolen_raises` failed 2 of 3 isolated runs. `lease_seconds=0`
+  sets expiry to exactly the claim instant, `requeue_expired()` tests `lease_expires_at <
+  now`, so the requeue only fires if the clock TICKS in between. **Measured: back-to-back
+  `time.time()` ties 2,000/2,000 on this box, ~1 ms tick.** When no requeue happened the
+  zombie still held the lease and `complete()` legitimately succeeded — so it failed at the
+  assertion while the real cause was three lines earlier.
+- [x] Fixed with `lease_seconds=-1` — **expired by construction rather than by racing a
+  timer.** The sibling test solves the same problem with `time.sleep(0.01)`, which works but
+  is still timing-shaped; the negative lease cannot regress under load. Added asserts so a
+  future non-requeue fails at the cause. 6/6 runs pass, mutation-checked as non-vacuous,
+  and **470 passed twice consecutively**.
+- [ ] **NOTED, not fixed — a latent falsy-zero bug at `manifest.py:318`:**
+  `now + (lease_seconds or self.lease_seconds)`. An explicit per-claim `lease_seconds=0`
+  (meaning "expire immediately") would silently fall back to the manifest default instead.
+  No current caller passes 0, so this is latent; the honest fix is `if lease_seconds is
+  None`. Left alone because it changes claim() semantics and nothing exercises it yet.
+
 ### 5.3.R81 — the live loop is already encoding-clean; the restart script was lying about 14b
 
 - [x] **Checked `apps/dottie` first, because the daemon restarts the moment memory frees.**
