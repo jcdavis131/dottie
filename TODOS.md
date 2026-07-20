@@ -204,8 +204,10 @@ Then §1 fires automatically (#17 armed on the monitor).
 
 - [ ] §5: enable `DOTTIE_OLLAMA_MODEL_NIGHT=qwen3:14b` in research_env.local.ps1 the
   morning after tool_final.pt lands (GPU contention gone at night thereafter).
-- [ ] §5: ideation raw-dumps now land in logs/ideation_raw_*.txt on parse failure —
-  review the first one that appears and extend parse_hypotheses if a new shape shows.
+- [x] §5: ideation raw-dumps reviewed 2026-07-20 — new shape found (mid-word-corrupted
+  key `"hypo,thesis_name"` killed a whole 3-idea batch) and fixed with canonical-skeleton
+  key repair in parse_hypotheses (fill-only, deterministic). Swept all 9 accumulated
+  dumps: 9/9 now parse (27/27 research tests green).
 - [~] Curriculum (landed a3abac0/f7d3a68 by parallel forks): megawika staged at
   weight 0 — needs on-box schema check + adapter before enabling; Mind2Web staged —
   needs an action-trace adapter; per-event cross-attestation filter is future curator work.

@@ -311,6 +311,16 @@ def parse_hypotheses(text: str) -> List[Dict[str, Any]]:
             continue
         missing = required - set(it)
         if missing:
+            # Canonical-key repair: models occasionally corrupt a key mid-word ("hypo,thesis_name",
+            # observed live 2026-07-20). A missing required key is claimed from an existing key with
+            # the same lowercase-alphanumeric skeleton — deterministic, fill-only, never overwrites.
+            canon = {re.sub(r"[^a-z0-9]", "", k.lower()): k for k in it}
+            for want in sorted(missing):
+                got = canon.get(re.sub(r"[^a-z0-9]", "", want.lower()))
+                if got is not None:
+                    it[want] = it.pop(got)
+            missing = required - set(it)
+        if missing:
             raise ValueError(f"hypothesis missing required keys: {sorted(missing)}")
         out.append(it)
     if not out:

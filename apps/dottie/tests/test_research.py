@@ -193,6 +193,12 @@ def test_prompts_and_parsing():
     # per-item wrappers ([{"hypothesis": {...}}]) are unwrapped too — observed live
     hs3 = prompts.parse_hypotheses(json.dumps([{"hypothesis": HYP}, {"idea": HYP}]))
     assert len(hs3) == 2 and hs3[1]["hypothesis_name"] == "SeqMeanMix"
+    # a mid-word-corrupted key ("hypo,thesis_name") is repaired by canonical-skeleton match —
+    # observed live 2026-07-20 (ideation_raw_1784519718_bf6793.txt killed a whole 3-idea batch)
+    mangled = dict(HYP)
+    mangled["hypo,thesis_name"] = mangled.pop("hypothesis_name")
+    hs4 = prompts.parse_hypotheses(json.dumps([mangled]))
+    assert hs4[0]["hypothesis_name"] == "SeqMeanMix" and "hypo,thesis_name" not in hs4[0]
     with pytest.raises(ValueError):
         prompts.parse_hypotheses('{"hypothesis_name": "incomplete"}')
     with pytest.raises(ValueError):
