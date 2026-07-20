@@ -180,6 +180,13 @@ THE NIGHT'S HEADLINES — read these before anything below:
    logic-prover CRLF fix. FOUND: a THIRD split-brain checkout (C:\Users\jcdav\
    scout-cli shadows the monorepo via the shared venv) — added to §2.3.
 
+4b. ⭐ **THE GATES ALREADY PAID FOR THEMSELVES (04:37, §5.3.R3).** Candidate AGN
+   (`bb40e0c18f0a`) beat the baseline by **0.00186** against a noise bar of **0.0361** —
+   a win ~19× smaller than the measurement error — and was a parameter-free block
+   replacing a real 787 K-parameter one. Under last night's rule it would have been
+   promoted as **SOTA #3** and ratcheted the baseline. Both new defenses fired: held on
+   significance, and the capacity caveat named the shrink. Baseline correctly unchanged.
+
 5. **The research loop got four defenses tonight, all born from the MLBR post-mortem**
    (§5.3.R has the details): a **significance gate** (a win inside the noise can no
    longer move the baseline — replayed on MLBR: 1.1 SEM → HELD), a **degeneracy gate**
@@ -542,6 +549,33 @@ Then §1 fires automatically (#17 armed on the monitor).
       Rationale: the traceback says what broke, the diff says what the model just tried —
       different questions, and near-greedy sampling kept re-making the same edit. 32/32
       research tests green (new test asserts both branches).
+### 5.3.R3 — ⭐⭐ THE GATE CAUGHT A REAL ONE (04:37) — a third false SOTA, blocked
+
+`bb40e0c18f0a` "Attention Gradient Normalization (AGN)" **beat the baseline** and, under
+last night's bare-`<` rule, **would have been promoted as a new SOTA and ratcheted the
+baseline**. It was held instead:
+
+```json
+"improved": true,          "significant": false,      "promote": false,
+"new_value": 5.6032,  "baseline_value": 5.60506,  "delta": -0.00186,
+"significance": "|delta| 0.00186 vs 2.0×SEM 0.0361 (n=20, std=0.080721)",
+"candidate_params": 13001481, "block_param_delta": -787072,
+"capacity_caveat": "the swapped block REMOVED 787,072 parameters vs the block it
+                    replaced (787,072 → 0) — a fixed-step comparison partly measures
+                    capacity, not just the idea"
+```
+The "win" is **0.00186 against a noise bar of 0.0361 — roughly 19× smaller than the
+measurement error.** And the capacity caveat fired independently: like MLBR, this is a
+parameter-free block replacing a real 787 K-parameter one (candidate_params 13,001,481 —
+the *identical* count to MLBR, i.e. the same structural trick).
+
+Both defenses built tonight fired on the same candidate, within an hour of shipping, on a
+case that would otherwise have become "SOTA #3". The baseline correctly did **not** move
+(still 5.60506). This is the strongest evidence available that the gates were necessary,
+and it also says something about the search: the loop keeps rediscovering "delete a block"
+as a way to win at fixed steps, which is why option (b)/(c) of the block-swap confound
+(param parity, or ADD instead of REPLACE) deserves your attention.
+
 ### 5.3.R2 — ⭐ the new gates RAN IN PRODUCTION (04:11, first live verdict)
 
 `f4d81d628b16` "GradientWeightedMemoryAttention" — implemented by qwen3:8b on
