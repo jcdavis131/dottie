@@ -1159,6 +1159,30 @@ most valuable catch so far:
     silently) and that re-running the migration is a no-op. Docstring says so now rather
     than implying more.
   - Full suite 157 passed.
+### 5.3.R7 — mutation audit: are tonight's gate tests actually guarding anything?
+
+- [x] **AUDITED ALL FIVE GATE TESTS BY MUTATION (07:45). Result: none hollow.** Three
+  times last night a "red" test turned out to prove less than I assumed — an
+  `AttributeError` on a new symbol, and one test that could not detect its own bug. So
+  rather than note the lesson again, I checked it: each mutation below leaves every symbol
+  in place and breaks **only behaviour**, so a surviving test is a hollow test.
+  | test | mutation | killed by |
+  |---|---|---|
+  | `two_sample_significance` | gate ignores `baseline.metric_sem` | `assert True is False` |
+  | `contaminated_baseline` | contamination check always reports clean | `assert (None)` |
+  | `corrector_failure_is_distinguished` | corrector error never found in history | `assert (1 == 1 and None)` |
+  | `records_the_baselines_spread` | promotion drops the winning run's spread | `assert (None is not None)` |
+  | `unloadable_candidate` | load failure retryable again | `assert 'ready_for_training' == 'failed_training'` |
+  Every one died on an assertion about behaviour, not a structural error. The gates are
+  genuinely guarded.
+- [x] Installed as `apps/dottie/scripts/mutation_audit.py` so it is repeatable rather than
+  a one-off, with a `MUTANTS` table to extend when a new gate lands. Mutations are applied
+  one at a time and reverted in a `finally`; verified the tree is clean after each run.
+  Verdicts are `GOOD` / `WEAK` (structural-only red) / `HOLLOW` (survived).
+- [x] Worth recording that I nearly mis-declared the first test hollow: my grep for `^E `
+  missed because of pytest's ANSI colour codes, so a real behavioural failure looked like
+  no failure at all. **The check on the check needed checking.** The script now strips ANSI
+  and passes `--color=no`.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
