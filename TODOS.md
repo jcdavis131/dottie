@@ -586,6 +586,11 @@ independent reasons, both from the bundle's own numbers/code:**
     30s cap. `api.js` attaches the bearer token only on `/assistant`, never to :8100.
     Two small gaps found, both against the code's OWN doctrine (filed, not fixed — the
     factory server is down so nothing here is runnable/testable right now):
+    - CHECKED CLEAN (03:28): `ops.js` does NOT have the v1/v2 schema bug that bit the
+      arxiviq site. Its chart keys (`series.step` / `series.lm_loss` / `series.tok_s`)
+      match `pipeline_status.py::current_run_series`, which normalizes server-side
+      (`row.get("lm_loss", row.get("lm", row.get("total")))`), and the tile code already
+      falls back `last.lm_loss ?? last.lm`. Recorded so nobody re-investigates.
     - [ ] `store.js::write()` swallows quota errors with "the app still works, it just
       won't persist". True, but the user is never told: on reload the session silently
       reverts to the last write that fit, so chat history vanishes with no indication.
