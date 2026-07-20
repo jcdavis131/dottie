@@ -51,6 +51,30 @@ if (-not $task) {
     Write-Host "  stopped + disabled (re-enable in step 5 after the fleet is healthy)"
 }
 
+# Stop-ScheduledTask kills the PowerShell wrapper but NOT its python child (measured
+# 2026-07-20 05:04: PID 5264 survived with 54 threads and kept ~3.8 GB of commit, and a
+# subsequent Start produced TWO concurrent daemons). The exclusive lock lives in the
+# wrapper, so an orphan holds nothing and nothing prevents a double-run. Match on the
+# command line so unrelated python work on this box is never touched.
+Step "1b" "Clean up orphaned research workers (the wrapper does not kill its child)"
+$orphans = @(Get-CimInstance Win32_Process -Filter "Name like '%python%'" -ErrorAction SilentlyContinue |
+             Where-Object { $_.CommandLine -and $_.CommandLine -match 'dottie\.research' })
+if (-not $orphans) {
+    Write-Host "  none found"
+} elseif ($DryRun) {
+    foreach ($o in $orphans) { Write-Host "  would kill pid $($o.ProcessId): $($o.CommandLine.Substring(0, [Math]::Min(90, $o.CommandLine.Length)))" }
+} else {
+    foreach ($o in $orphans) {
+        try {
+            Stop-Process -Id $o.ProcessId -Force -ErrorAction Stop
+            Write-Host "  killed orphaned worker pid $($o.ProcessId)"
+        } catch {
+            Write-Host "  could not kill pid $($o.ProcessId): $($_.Exception.Message)" -ForegroundColor DarkGray
+        }
+    }
+    Start-Sleep -Seconds 3
+}
+
 # --- 2. Release the resident model ------------------------------------------------
 Step 2 "Release the Ollama model ($Model) so its RAM comes back"
 if ($DryRun) {
