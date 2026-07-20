@@ -51,9 +51,17 @@ fleet **and** the T9.4 chat trainer. Nothing is lost (checkpoints on `ava_ckpt`,
 manifest on `ava_state`), and I could not fix it: `wsl --shutdown` was blocked by the
 permission classifier.
 
-**Run these IN ORDER.** The research daemon cycles continuously (implement → train →
-evaluate → ideate, ~4 min per stage) and holds 5–6 GB while doing it, so unloading the
-model alone is not enough — it reloads within seconds. Stop the daemon FIRST.
+**EASIEST PATH — one command does the prep and gives a go/no-go:**
+```powershell
+.\scripts\prepare_fleet_recovery.ps1          # add -DryRun to see it without changing anything
+```
+It pauses the daemon, releases the model, reports any train still holding RAM, and prints
+GO/NO-GO against a 4 GB threshold — then stops and hands you `wsl --shutdown` plus the
+T9.4 decision. It deliberately does NOT restart containers itself. Dry-run verified 04:33.
+
+**Or run these IN ORDER manually.** The research daemon cycles continuously (implement →
+train → evaluate → ideate, ~4 min per stage) and holds 5–6 GB while doing it, so unloading
+the model alone is not enough — it reloads within seconds. Stop the daemon FIRST.
 
 ```powershell
 # 1. Pause the research daemon (it restarts on the next hourly trigger, or re-enable below)
