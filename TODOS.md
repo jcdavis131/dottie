@@ -578,6 +578,13 @@ Then §1 fires automatically (#17 armed on the monitor).
       (c) instruct explicitly not to recombine listed terms and to pick an unexplored
       sub-domain; (d) rotate `search_domain` per ideation call to force coverage.
       Cheap to test: apply one, then re-run this vocabulary count after ~10 new ideas.
+      **COST NOW BEING PAID LIVE (04:57)**: the duplicate GASA (`7ae76c3a8b27`) validated
+      on attempt 0 and is TRAINING — ~4 min of CPU re-testing a hypothesis rejected hours
+      ago. Precise framing: the *implementation* is not a copy (13.7% string similarity,
+      8 of 37 lines shared, though both happen to be 1,806 chars), so this is a genuine
+      re-test of a known-rejected IDEA rather than a byte-identical repeat. The check that
+      settles it is its metric: the original GASA scored **5.7119 (delta +0.107)**; a
+      similar landing confirms the loop is paying full price to re-learn a known answer.
     - 5.2.e [ ] **SEARCH-QUALITY FIX, ready to apply — your call (it steers what the model
       proposes, which is a research decision, so I did not ship it).** Three candidates
       now (MLBR, AGN, and OSA's shape) have converged on the same artifact: a
