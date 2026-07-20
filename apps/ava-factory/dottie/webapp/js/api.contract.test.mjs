@@ -54,5 +54,33 @@ try {
   check("network -> ApiError(kind=network)", e instanceof ApiError && e.kind === "network", e.describe());
 }
 
+
+// 5) A proxy 200 with a drifted shape must NOT become an empty-but-successful read.
+//    Verified contract: server.py returns {ok, source, status} on 200 and 502 on failure,
+//    so `status` is present today. But `wrapped.status` on a drifted 200 would hand the UI
+//    `undefined` as data -- a research panel that renders empty while reporting success,
+//    which is exactly what the doctrine at the top of api.js forbids. Direct call fails
+//    first (research base http://y is stubbed unreachable), so this exercises the proxy branch.
+globalThis.fetch = async (url) => {
+  if (String(url).startsWith("http://y")) throw new TypeError("Failed to fetch"); // direct research base
+  return { ok: true, status: 200, json: async () => ({ ok: true, source: "x" }) }; // no `status`
+};
+try {
+  await client().researchStatus();
+  check("proxy 200 without `status` throws", false);
+} catch (e) {
+  check("proxy 200 without `status` -> ApiError naming the shape",
+    e instanceof ApiError && /unexpected shape|status/.test(e.describe()), e.describe());
+}
+
+// 6) And the well-formed proxy response still works.
+globalThis.fetch = async (url) => {
+  if (String(url).startsWith("http://y")) throw new TypeError("Failed to fetch"); // direct research base
+  return { ok: true, status: 200, json: async () => ({ ok: true, source: "u", status: { counts: { total: 3 } } }) };
+};
+const viaProxy = await client().researchStatus();
+check("well-formed proxy response returns its payload",
+  viaProxy.source === "proxy" && viaProxy.data.counts.total === 3);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

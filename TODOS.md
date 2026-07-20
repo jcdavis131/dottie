@@ -2844,6 +2844,31 @@ most valuable catch so far:
 - [ ] **HEAD is verified end to end and safe to restart into.** Remaining untested by a live
   run: `ideate`/`implement` (need Ollama, ~5 GB) and `calibrate-baseline` (needs the factory
   + corpus). Both wait on memory headroom; §5.3.R34 records the safe way to do the latter.
+### 5.3.R67 — the webapp's proxy path could report an empty read as a successful one
+
+- [x] **Read `api.js` whole (14:00). The class I fixed there IS closed by construction** —
+  every call routes through one `request()`, so the 2xx-with-non-JSON handling cannot be
+  bypassed by a new endpoint. Worth recording: a shared chokepoint closes a class for free,
+  which is why that file needed no sweep.
+- [x] **A different member of the same family was there:** `researchStatus` returned
+  `wrapped.status` from the proxy without checking the key exists. A 200 whose shape drifted
+  would hand the UI `undefined` as data — **a research panel rendering empty while reporting
+  success**, which is exactly what this module's own doctrine (*"nothing here fabricates a
+  value"*) forbids.
+- [x] **Verified the contract before deciding it was defensive**, rather than assuming either
+  way: `server.py /research/status` returns `{ok, source, status}` on 200 and **502** on
+  failure, so `status` is present today and `request()` already types the 502. So this is
+  **defensive, not a live bug** — recorded as such. It earns its place because the failure it
+  prevents is *silent*, and because the fork working on scout-cli hit this exact class today
+  and found a real wrong-shape immediately.
+- [x] Now throws a typed `ApiError` naming the actual keys —
+  `unexpected shape: keys=["ok","source"]`. Two contract tests added (drifted shape throws;
+  well-formed shape still works). **8 passed / 0 failed** in api, 5 in store, 24 server.
+- [x] Two self-inflicted errors en route, both caught before commit: a double-heredoc that
+  broke the command, and a fetch stub keyed on `":8100"` when the harness uses
+  `researchBase: "http://y"` — so the *direct* call answered and both new tests failed for
+  the wrong reason. **A test that fails because the stub is wrong looks identical to one that
+  fails because the code is wrong**; only reading the failure told them apart.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.

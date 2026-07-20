@@ -113,6 +113,19 @@ export function makeClient(settings) {
       }
       try {
         const wrapped = await request(`${base}/research/status`, { timeoutMs: 8000 });
+        // Verified contract (server.py /research/status): 200 -> {ok, source, status},
+        // failure -> 502, which `request` already converts to an ApiError. So `status` is
+        // present today. Checked anyway because a 200 whose shape drifts would make
+        // `wrapped.status` undefined and hand the UI an EMPTY research panel that looks
+        // like a successful read — the one thing the doctrine at the top of this file
+        // forbids. Defensive, not a live bug; the failure it prevents is silent.
+        if (wrapped == null || typeof wrapped !== "object" || !("status" in wrapped)) {
+          throw new ApiError("http", "proxy returned 200 without a `status` payload", {
+            status: 200,
+            detail: `unexpected shape: keys=${JSON.stringify(Object.keys(wrapped || {}))}`,
+            url: `${base}/research/status`,
+          });
+        }
         return { data: wrapped.status, source: "proxy", sourceUrl: wrapped.source || `${base}/research/status` };
       } catch (proxyErr) {
         throw new ApiError(
