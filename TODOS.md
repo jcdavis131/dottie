@@ -7,6 +7,24 @@
 
 ## Goal state (updated by the 3-min loop, 02:57 2026-07-20 — clock verified)
 
+### ⚠ WHY THE FLEET DIED — I caused it, and the blocker is now cleared (03:47)
+
+**Root cause: my own change.** At ~00:50 I enabled `DOTTIE_OLLAMA_MODEL_NIGHT=qwen3:14b`,
+reasoning that GPU contention was gone with the trainer parked. Wrong constraint: with
+`NUM_GPU=0` the model loads into **system RAM**. Measured at 03:45: `llama-server` holding
+**7.0 GB** of this 16 GB box, total working sets 11.4 GB, **available memory 281 MB**. The
+WSL2 VM could not get the memory it needs, died at ~02:05, and could not reboot — which is
+why every `docker` call has 500'd since. It was never a Docker fault.
+
+**Cleared**: unloading the model (`keep_alive: 0`) returned **7,493 MB** instantly, and the
+night-model line is now commented out in `research_env.local.ps1` with the measurement and
+a re-enable check (want >9 GB available). Also killed 4 orphaned worker processes en route
+(see the §5 root-cause entry) — though those held *commit*, not resident RAM, so they were
+not the cause; I corrected that claim rather than leave it standing.
+
+**The VM still needs its restart** — memory alone does not revive it. Run the command
+below; it should now actually succeed, where an hour ago it would have hit the same wall.
+
 ### ⛔ FIRST: the fleet is DOWN and needs ONE command from you
 
 The WSL2 VM died at ~02:05 and is crash-looping (vmmemWSL oscillates 8→123 MB;
