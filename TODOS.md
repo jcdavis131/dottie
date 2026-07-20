@@ -533,6 +533,23 @@ Then §1 fires automatically (#17 armed on the monitor).
     - 5.2.b [~] Nightly window: MECHANISM shipped in research_worker.ps1 (DOTTIE_OLLAMA_MODEL_NIGHT); do NOT enable until the tool run frees the GPU — when the trainer is idle (post-tool_final, pre-next-run),
       let the scheduler use qwen3:14b (`DOTTIE_OLLAMA_MODEL_NIGHT` env in the wrapper,
       22:00–06:00) — 14b stalls only under GPU contention.
+    - 5.2.e [ ] **SEARCH-QUALITY FIX, ready to apply — your call (it steers what the model
+      proposes, which is a research decision, so I did not ship it).** Three candidates
+      now (MLBR, AGN, and OSA's shape) have converged on the same artifact: a
+      **parameter-free module that REPLACES a real ~787 K-parameter block**, "winning" at
+      fixed steps by shrinking the model. The gates catch it after ~10 min of CPU each
+      time; the ideation prompt could stop proposing it. `prompts.py` line ~111's
+      INTEGRATION CONTRACT block already states the drop-in shape rule — append one
+      sentence there:
+
+      > Your module will REPLACE an existing parameterized block (~787 K parameters), so a
+      > module with no learnable parameters silently REDUCES model capacity and any
+      > apparent win at fixed steps is confounded with that shrink. Give the module
+      > learnable parameters unless the idea is fundamentally parameter-free (a mask, a
+      > fixed transform) — and if it is, say so explicitly in the intuition.
+
+      Costs nothing to try, reversible, and does not ban a legitimate class. Verify by
+      watching whether `block_param_delta` stops being large-negative on new candidates.
     - 5.2.d [x] **SHIPPED 04:36 — stored failures now keep the EXCEPTION, not the header.**
       Tried to classify why the loop keeps failing (3 of the last 5 implements died at
       `dry_run` after all 5 retries) and found the analysis is impossible: `failed_validation`
