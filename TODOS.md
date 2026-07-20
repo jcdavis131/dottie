@@ -2768,8 +2768,17 @@ most valuable catch so far:
 - [x] Worth the distinction: "my heuristic found nothing" and "the construct does not exist"
   are different claims, and only the second is worth recording as safe. The first is what I
   nearly wrote.
-- [ ] **The class is now closed across both apps**, with the server one guarded by an AST
-  invariant that fails on regression (§5.3.R62) rather than a name list that drifted.
+- [x] **CORRECTION (13:20): "exactly two" was wrong — there are THREE.** My Grep searched
+  `apps/` only; a background search covering `packages/` too returned
+  `packages/personal-graphify/src/personal_graphify/serve.py`. I asserted completeness from
+  an incomplete search, in the same entry where I was congratulating myself for
+  distinguishing "my heuristic found nothing" from "the construct does not exist".
+  - Swept it: **3 plain `def`, 4 async WITH `await`** (`call_tool`, `http_query`,
+    `http_task`, `http_impact` — all correctly yielding the loop), **0 offenders**.
+  - **The conclusion survives; the claim did not.** Those are separate things, and only the
+    background command noticing the third app kept the first from being quietly false.
+- [ ] **The class is now closed across all THREE apps**, with the server one guarded by an
+  AST invariant that fails on regression (§5.3.R62) rather than a name list that drifted.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
