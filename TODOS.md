@@ -3140,6 +3140,48 @@ most valuable catch so far:
   the stored histories for repeated identical dry_run failures before deciding whether to
   re-derive the class name per attempt or pin the name in the correction prompt.
 
+### 5.3.R84 — ran R83's follow-up; the second wrong number on my board was mine
+
+- [x] **Collection-diffed every remaining suite (17:55).** dottie 200/200, scout-cli 130/130,
+  ava-skills 66/66, graphify 64/64, harness 40/40 — **all clean.** ava-factory really was the
+  only suite hiding tests, and that is now measured instead of assumed.
+- [x] **Then checked the OTHER way tests disappear: files no runner looks at.** Two exist
+  outside the collected `tests/` dirs. One is a manual script (below). The other is a real
+  suite: `packages/ava-skills/skills/memory-mint/tests/test_memory_mint.py`.
+- [x] **That one exposed an error in my own board.** `ava-skills/pyproject.toml` declares
+  `testpaths = ["skills", "tests"]` — the intended invocation is a bare `pytest`, which
+  collects **80**. I have been running `pytest tests`, which **overrides testpaths** and
+  collects 66. **So "ava-skills: 66 passed" was wrong in R78, R79 and R83.** The real number
+  is **80 passed**, and the 14 I was missing all pass — the code was fine, my measurement
+  was not. **That is the second wrong number on a board I built to correct wrong numbers.**
+- [x] Audited `testpaths` across all 7 packages: only ava-skills declares a broader scope, so
+  this under-count affected exactly one suite. dottie / scout-cli / harness declare
+  `["tests"]`; ava-factory, scout-rtx and graphify declare none. Verified graphify collects
+  identically either way (64/64).
+- [x] **`apps/ava-factory` declares no testpaths, and it mattered.** Bare `pytest` there
+  collected **523 vs 522** — the extra being `scripts/test_t12_2_nano_quick.py`, a **manual
+  T12.2 experiment that builds nano_v66 and runs 50 training steps.** Its entry point was
+  named `test_nano_v66`, so a bare invocation would have started a training job as a unit
+  test (and it returns a dict, which pytest flags for a real test).
+- [x] Fixed by **renaming the function, not by adding a config file** (`2ea6259`). A
+  `pytest.ini` in `apps/ava-factory` would move pytest's **rootdir** from the monorepo root
+  into that directory — real blast radius (rootdir-relative paths, conftest resolution,
+  cache) for a marginal gain. The rename is contained: the script self-invokes under
+  `__main__`, nothing references it by name, and it now cannot be collected under ANY
+  invocation. Comment left so it does not get renamed back.
+- [x] **Corroborated after the fact, by accident.** A slow repo-wide grep I had backgrounded
+  came back with one hit the scoped search excluded: `scripts/__pycache__/
+  test_t12_2_nano_quick.cpython-311-**pytest-9.1.1**.pyc`. Not a code reference — a build
+  artifact — so the commit's "nothing references it" claim holds. But that `pytest-9.1.1`
+  suffix is written by pytest's **assertion rewriter**, which means **pytest really has
+  imported that training script at some point**, not just in my probe. The hazard was live,
+  not theoretical. (Artifact is gitignored; the claim was re-checked before relying on it.)
+- [x] **Method note:** every finding in R83/R84 came from comparing a measurement to a
+  DIFFERENT measurement of the same thing — per-file vs whole-suite, bare vs explicit path,
+  declared deps vs actual imports. **None of them were visible in any single run's output.**
+- [ ] NEXT: the corrected board should be re-stated in one place. R78's table now has a
+  known-wrong row (ava-skills 66 → 80) and a stale one (ava-factory 461 → 485).
+
 ### 5.3.R83 — 15 tests had not been running, and the suite reported it as "470 passed"
 
 - [x] **Applied the class check to R82's flake (17:35):** one flake found means asking
