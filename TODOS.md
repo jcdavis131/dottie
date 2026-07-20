@@ -522,6 +522,33 @@ estart_research.ps1                    # research back on, and PROVES it booted
      states."* That string lives in the scheduled-task definition, which I cannot edit.
    - The prompt now translates rather than forbids (§5.3.R12), but that is a workaround for
      the contradiction, not a fix to it.
+
+9. **⚠ `apps/dottie` is RED at HEAD: 36 failed / 159 passed — and it needs a layout decision,
+   not a patch.** Found 2026-07-20 (§5.3.R77) running the full suite. **Not caused by tonight's
+   work** — verified by stashing my changes and reproducing on a clean tree.
+   - **Root cause: two different packages are both named `dottie`.** `apps/dottie/dottie`
+     (has `research`) and `apps/ava-factory/dottie` (has `rl`). Python can only ever import
+     one of them per process — whichever lands on `sys.path` first wins, and the other's
+     submodules become invisible.
+   - The consolidation (`5cb75c4`) renamed ava-factory's `ava/` → `dottie/` and left
+     `ava/rl/__init__.py` as a `sys.modules` shim. **The shim works** — I verified
+     `ava.rl.codeact_loop` resolves to `dottie.rl.codeact_loop`. What broke is that
+     `resolve.py::_has_factory_code` still probes the pre-shim path `ava/rl/codeact_loop.py`,
+     which no longer exists, so Dottie reports its own monorepo has no factory code.
+   - **I tried the one-line marker fix and REVERTED it.** Accepting `dottie/rl/` makes
+     `resolve()` return a root that then fails deeper with `ModuleNotFoundError: dottie.rl`,
+     because by then `dottie` is already bound to the app package. Worse, `ensure_factory_on_path()`
+     inserts that root at `sys.path[0]` — so if it ever ran *before* `dottie.research` were
+     imported, it would shadow Dottie's OWN package. The stale marker is currently the only
+     thing preventing that. **Fixing the check without fixing the collision is a live hazard.**
+   - **The decision is yours** (each is a real rename, hence not mine to make): rename
+     ava-factory's package back to `ava` and drop the shim; or rename it to something unique
+     (`ava_factory`); or keep the split and point `AVA_FACTORY_ROOT` at a standalone checkout
+     that still uses the `ava/` layout. Only the last is zero-diff, and it leaves the monorepo
+     unable to test itself.
+   - Scope: the 36 are the engine / flywheel / verified-engine / skill-tools tests — every
+     test that reaches the CodeAct substrate. The research loop's own 87 tests pass, so
+     **tonight's daemon work is unaffected** and the loop runs fine.
    - **Correction to the previous version of this item:** it said "50% dying in validation".
      That was one overnight window. **Lifetime is 77.9%** (53 genuine failures of 68, after
      separating 7 infrastructure deaths). Different samples; not interchangeable (§5.3.R4).
@@ -544,8 +571,12 @@ item 8 is what would produce a true one.
 - The three-way fork (retired `ava-agi` / workspace `ava-agi-factory-v6-4` / monorepo)
   is **reconciled into the monorepo** (`4aabd3d`, `75ef9a6`): 431 factory tests pass.
   Containers still run pre-reconciliation IMAGE code until step 2.1 rebuilds them.
-- Research loop: 4 scheduled tasks, qwen3:8b think=false, baseline `factory_lm_loss
-  5.61982`; ideation refills 00:00 nightly.
+- Research loop: **ONE forever-daemon** ("Dottie Research runner", PT15M trigger,
+  `MultipleInstances=IgnoreNew`) — **not** the old 4 per-tick tasks; qwen3:8b think=false,
+  keep_alive 30s. Live baseline is `factory_lm_loss` **5.60506 and CONTAMINATED** (ratcheted
+  by a candidate the current validator rejects); pre-MLBR calibrated value 5.61982.
+  It does **not** live-reload — the `boot` line in `run.log` is the only ground truth for
+  what code is running. (Corrected §5.3.R77: this block still described the 4-task era.)
 - Agent OS: J-Space state store (`skills/state_store.py`), Hermes/OpenClaw profiles,
   forge self-evolution loop all live-verified; scout has `reviewgraph`.
 
@@ -3108,6 +3139,49 @@ most valuable catch so far:
   this writing the test fixture, not in production, so **frequency is unmeasured**; check
   the stored histories for repeated identical dry_run failures before deciding whether to
   re-derive the class name per attempt or pin the name in the correction prompt.
+
+### 5.3.R77 — the guard that cleared a stage it could not survive, and a RED suite at HEAD
+
+- [x] **Honoured a standing memory note instead of assuming (16:05).** `dottie-watches-die-
+  with-sessions` says re-verify `TaskList` after any machine-move or fork handoff; this
+  session was both, and I had not checked. Result: **no tasks** — nothing to re-arm. A clean
+  negative, recorded because "I checked and it was empty" and "I never checked" look
+  identical afterwards.
+- [x] **That check surfaced a real gap in my own §5.3.R52 guard.** It used ONE flat floor
+  (1200 MB) for every stage. But `ideate`/`implement` do not merely *use* memory — if the
+  model is not resident they **pull it in** before the first token, and at `NUM_GPU=0` that
+  lands in **system RAM**. Measured live with the daemon down: **3,051 MB free, `/api/ps`
+  empty, qwen3:8b = 4,983 MB.** Old guard verdict: **PASS**. Reality: the box goes to zero
+  inside the load the guard just authorised — R51's death, one layer earlier.
+- [x] `DOTTIE_OLLAMA_KEEP_ALIVE=30s` makes "not resident" the **common** case, so this was
+  never an edge case: it was the default path on every restart into a busy box.
+- [x] **Fixed (`51763ca`):** `_model_load_cost_mb()` asks Ollama what is resident (costs 0)
+  versus what must be pulled (its real size); requirement becomes floor + that, scoped to
+  the two LLM stages. Unknown reads as UNKNOWN and proceeds — same fail-open contract as
+  `_available_mb`, so a down Ollama still surfaces as the stage's own honest refusal.
+  Verified live: ideate/implement REFUSE at 6,183 MB required; train/evaluate proceed.
+- [x] **An existing test encoded the old assumption and now fails — correctly.** At floor 50
+  with 110 MB free it asserted "proceed"; with a 5 GB load pending, refusing is right. Made
+  the floor tests hermetic (stubbed the model term — unit tests must not need a live Ollama)
+  and added the model-load cases separately.
+- [x] **Then the full suite came back 36 failed / 159 passed.** I did **not** assume it was
+  mine: stashed both files, reproduced identically on a clean tree, restored. Pre-existing,
+  and **HEAD has been red** — see decision-queue item 9 for the operator decision.
+- [x] **Root cause is the same class as everything else tonight, at package scope.** The
+  consolidation renamed ava-factory's `ava/` → `dottie/` and left a `sys.modules` shim.
+  **The shim works** (verified: `ava.rl.codeact_loop` → `dottie.rl.codeact_loop`). What
+  broke is `resolve.py`'s *existence check*, still probing the pre-shim path. The code was
+  right; the description of where the code lives was not.
+- [x] **I wrote the one-line marker fix, tested it, and REVERTED it.** Accepting `dottie/rl/`
+  makes `resolve()` succeed and then fail deeper (`ModuleNotFoundError: dottie.rl`), because
+  **two packages are both named `dottie`** and only one can win per process. Worse,
+  `ensure_factory_on_path()` puts that root at `sys.path[0]`, so it could shadow Dottie's own
+  package. **The stale marker is currently the only thing preventing that** — a bug holding
+  a hazard shut. Reverting a fix I had already written and proven green is the right call
+  when the green is local and the blast radius is not.
+- [x] **Fixed the stale "Standing state" block** while here: it still described *"4 scheduled
+  tasks"* and baseline *5.61982*. Both wrong — one forever-daemon, and the live baseline is
+  the contaminated 5.60506. Same class, found by reading rather than searching for it.
 
 ### 5.3.R3 — ⭐⭐ THE GATE CAUGHT A REAL ONE (04:37) — a third false SOTA, blocked
 
