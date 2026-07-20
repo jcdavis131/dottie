@@ -2539,6 +2539,28 @@ most valuable catch so far:
 - [ ] Still untested end-to-end: `ideate` and `implement` (both need Ollama, ~5 GB) and
   `calibrate-baseline` (needs the factory + corpus). Those wait for headroom — §5.3.R34
   records the safe way to do the latter.
+### 5.3.R54 — two callers misread the ledger's contract; one of them was mine
+
+- [x] **Read `ledger.py` whole (11:35). The state machine itself is sound** — legal
+  transitions enforced, the `_write` field whitelist is closed (no SQL injection surface),
+  `next_in_state` is honest FIFO, `counts()` is correct. Recording that, since the method has
+  now found something in eight of ten artifacts and it should not read as inevitable.
+- [x] **What it did expose is a CONTRACT misread. `Ledger.get()` RAISES `LedgerError` for an
+  unknown id — it never returns `None`.** Two callers tested `if exp is None`:
+  - `promote.build_promotion` — pre-existing. Its intended honest refusal
+    (`unknown experiment 'x'`) was **dead code**; callers got a raw `LedgerError` instead.
+  - **The `ab_nano.py` template — mine, from the §5.3.R32 rewrite.** Worse consequence: a
+    human running the re-verification script on a stale id would get a traceback instead of
+    *"experiment X not found in <ledger>"*. I introduced that while fixing a different bug in
+    the same file, four hours ago.
+- [x] Both now catch the raise. Verified the refusal actually fires
+  (`ValueError: unknown experiment 'nope'`), and the generated script no longer contains a
+  `None` check that cannot be true. Suite 191 passed.
+- [ ] **The pattern worth extracting: I assumed an API's failure mode instead of reading it.**
+  Same shape as §5.3.R45 (assumed `factory_trainer` classified load failures correctly
+  because two of its three paths did). Both times the assumption was reasonable, both times it
+  was wrong, and both times **the cost was an error path that silently could not work** — the
+  kind nothing exercises until the bad day.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.

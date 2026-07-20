@@ -22,7 +22,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from dottie.research.ledger import SOTA, Ledger
+from dottie.research.ledger import SOTA, Ledger, LedgerError
 
 _AB_TEMPLATE = '''# Auto-generated A/B re-verification for research promotion {exp_id}.
 #
@@ -45,9 +45,10 @@ SEEDS = [0, 1, 2]
 LEDGER = r"{ledger_path}"
 EXP_ID = "{exp_id}"
 
-exp = Ledger(LEDGER).get(EXP_ID)          # the trainer needs the Experiment, not a path
-if exp is None:
-    raise SystemExit(f"experiment {{EXP_ID}} not found in {{LEDGER}}")
+try:                                      # the trainer needs the Experiment, not a path
+    exp = Ledger(LEDGER).get(EXP_ID)      # NB: get() RAISES for an unknown id, never None
+except Exception as _e:
+    raise SystemExit(f"experiment {{EXP_ID}} not found in {{LEDGER}}: {{_e}}")
 
 base, cand = [], []
 for seed in SEEDS:
@@ -116,9 +117,13 @@ def build_promotion(ledger: Ledger, exp_id: str, *, out_root: str | Path,
                     ts: Optional[float] = None) -> Dict[str, Any]:
     """Write the bundle for a sota experiment. Raises ValueError on a non-sota
     experiment or a missing workspace module (honest refusals, not empty bundles)."""
-    exp = ledger.get(exp_id)
-    if exp is None:
-        raise ValueError(f"unknown experiment {exp_id!r}")
+    # Ledger.get() RAISES LedgerError for an unknown id — it never returns None, so the
+    # old `if exp is None` was dead code and the caller got a LedgerError instead of this
+    # module's honest refusal (TODOS 5.3.R54).
+    try:
+        exp = ledger.get(exp_id)
+    except LedgerError as e:
+        raise ValueError(f"unknown experiment {exp_id!r}") from e
     if exp.state != SOTA:
         raise ValueError(f"experiment {exp_id} is {exp.state!r}, not sota — only proven "
                          "winners get promotion bundles")

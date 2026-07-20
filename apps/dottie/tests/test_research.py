@@ -1287,6 +1287,37 @@ def test_generated_ab_script_is_runnable_and_noise_aware(led, tmp_path):
     assert "Do not promote on it" in ab
 
 
+def test_unknown_experiment_gets_an_honest_refusal_not_a_ledger_error(led, tmp_path):
+    """`Ledger.get()` RAISES for an unknown id — it never returns None.
+
+    TODOS §5.3.R54, found by reading ledger.py whole. Two callers checked `if exp is None`,
+    which can never be true, so their intended honest refusals were dead code and the caller
+    received a raw LedgerError instead. One was pre-existing in `build_promotion`; the other
+    was mine, in the ab_nano template written for §5.3.R32 — where the consequence is worse,
+    because a human running the re-verification script would get a traceback instead of
+    "experiment X not found".
+    """
+    with pytest.raises(ValueError, match="unknown experiment"):
+        promote.build_promotion(led, "does-not-exist", out_root=tmp_path / "p")
+
+
+def test_generated_ab_script_handles_a_missing_experiment(led, tmp_path):
+    """The generated script must catch the raise, not test for None."""
+    e = led.create(HYP)
+    led.transition(e.id, READY_FOR_TRAINING, implementation={"code": GOOD_CODE},
+                   workspace=str(tmp_path))
+    led.transition(e.id, EVALUATION_PENDING, train_metrics={"proxy_loss": 1.0})
+    led.transition(e.id, SOTA, eval_verdict={"promote": True, "significant": True})
+    promote.build_promotion(led, e.id, out_root=tmp_path / "promotions")
+    ab = (tmp_path / "promotions" / e.id / "ab_nano.py").read_text(encoding="utf-8")
+
+    assert "if exp is None" not in ab, "checks for a None that get() never returns"
+    assert "except Exception" in ab and "not found in" in ab
+    # and it still parses
+    import ast
+    ast.parse(ab)
+
+
 def test_promotion_bundle_leads_with_the_caveats(led, tmp_path):
     """The reasons NOT to promote must be above the numbers, not inside a JSON dump.
 
