@@ -362,6 +362,22 @@ independent reasons, both from the bundle's own numbers/code:**
   results now also record `learnable_params` and `delta_std` for the reviewer.
   Found en route: a test fixture (`x * scale`, scale=1.0) was itself a zero-param exact
   identity — fixture fixed, gate kept. 31/31 research tests green.
+- [ ] **DEEPEST ISSUE FOUND TONIGHT — the block-swap integration has a structural
+  confound (queued, needs your call).** `factory_nano_block_swap` measures a candidate
+  by REPLACING a real parameterized fusion block with it. So every parameter-free
+  candidate silently also *removes capacity*, and its measured delta conflates "new
+  idea" with "smaller model at fixed steps". MLBR (0 params) exploited this; the queued
+  OSA candidate (`71a62346df0a`) has the SAME shape — pre-flighted 02:37: it passes the
+  new degeneracy gate legitimately (0 params but delta_std 1.224, a real input-dependent
+  whitening), yet it will still be measured with 0.79M fewer params than baseline.
+  Options: (a) record param-parity in the verdict and let the reviewer judge (cheapest,
+  partially done — `candidate_params` now lands in the verdict); (b) require the swapped
+  block to match the replaced block's param count within a tolerance; (c) ADD the
+  candidate alongside the block instead of replacing it, so capacity only goes up.
+  NOTE also, unrelated to the confound: OSA's math does not implement its own hypothesis
+  — `inverse(sqrt(AᵀA))` is an elementwise sqrt followed by a matrix inverse, not the
+  inverse matrix square root orthogonalization claims; and AᵀA is computed over the
+  BATCH, making inference batch-dependent. Worth a look when reviewing its result.
 - [ ] YOUR CALL on the live ledger: MLBR (`23bb41375804`) was promoted under the old
   bare-`<` rule and MOVED the baseline 5.61982→5.60506. Options: (a) leave it — the
   bundle is human-gated anyway and §5.3.R documents the truth; (b) re-seed the
