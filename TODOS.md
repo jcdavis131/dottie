@@ -539,6 +539,27 @@ Then §1 fires automatically (#17 armed on the monitor).
     - 5.2.b [~] Nightly window: MECHANISM shipped in research_worker.ps1 (DOTTIE_OLLAMA_MODEL_NIGHT); do NOT enable until the tool run frees the GPU — when the trainer is idle (post-tool_final, pre-next-run),
       let the scheduler use qwen3:14b (`DOTTIE_OLLAMA_MODEL_NIGHT` env in the wrapper,
       22:00–06:00) — 14b stalls only under GPU contention.
+    - 5.2.f [x] **SHIPPED 04:52 — the dominant validation failure is AXIS CONFUSION, and
+      the prompt now says so.** Diagnosed by re-running the validator on each failed
+      candidate's stored code **using its own declared `init_kwargs`/`input_shape`**:
+
+      | candidate | error | cause |
+      |---|---|---|
+      | f559109b12a1 | `tensor a (512) vs b (128) at dim 2` | hidden vs **seq** |
+      | 8c3c8ab09b39 | `tensor a (64) vs b (16) at dim 2` | hidden vs **seq** |
+      | 2c23939467d0 | `Hidden size must match expert weights` | weight on wrong axis |
+      | c3af0b3ce501 | `t() expects <= 2 dimensions, self is 3D` | 2-D transpose on 3-D |
+
+      **4 of 4** are the same underlying mistake: treating `[B, S, H]` as if the axes were
+      interchangeable. Added constraint 8 (AXIS DISCIPLINE) to the implementation prompt:
+      size weights against `x.shape[-1]`, never `.T`/`torch.t()` on a 3-D tensor (use
+      `transpose(-2, -1)`), prefer inferring hidden at forward time. This is NOT
+      research-direction steering — the contract already required it (constraints 6–7), the
+      prompt just never said *how* it was being violated. 37/37 tests green; effect visible
+      from the 05:05 daemon restart, measurable as fewer `dry_run` rejects.
+      METHOD NOTE: my first pass used default kwargs/shape instead of each candidate's
+      declared ones and produced a partly-wrong answer (a spurious "missing positional
+      arguments" for c3af0b3ce501). Re-ran it faithfully before drawing conclusions.
     - 5.2.e [ ] **SEARCH-QUALITY FIX, ready to apply — your call (it steers what the model
       proposes, which is a research decision, so I did not ship it).** Three candidates
       now (MLBR, AGN, and OSA's shape) have converged on the same artifact: a

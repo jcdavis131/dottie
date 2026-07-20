@@ -163,6 +163,15 @@ numerical stability, and modularity. Your code must compile on the first attempt
    declared `input_shape` (a required positional argument that `init_kwargs` omits is an
    automatic validation failure).
 7. `forward` MUST accept exactly one tensor `[batch, seq, hidden]` and return the same shape.
+8. AXIS DISCIPLINE (the single most common failure — 4 of the 4 most recent rejects died
+   here). The input is 3-D: `batch = x.shape[0]`, `seq = x.shape[1]`, `hidden = x.shape[-1]`.
+   - Size every weight against the HIDDEN axis (`x.shape[-1]`), never against `seq`. An error
+     like "size of tensor a (512) must match tensor b (128) at dimension 2" means you built a
+     weight for the wrong axis.
+   - NEVER use `.T` or `torch.t()` on this tensor — they are 2-D only and raise
+     "t() expects a tensor with <= 2 dimensions". Use `x.transpose(-2, -1)`.
+   - Prefer inferring `hidden` from the input at forward time over trusting a constructor
+     default, so the module is correct at ANY declared `input_shape`.
 
 # INPUT HYPOTHESIS
 {hjson}
