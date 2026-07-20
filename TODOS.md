@@ -3156,6 +3156,53 @@ most valuable catch so far:
   the stored histories for repeated identical dry_run failures before deciding whether to
   re-derive the class name per attempt or pin the name in the correction prompt.
 
+### 5.3.R93 — ❌ I RETRACT R91. The candidate is WORSE at every seed. Real wins: still ZERO.
+
+**`ab_nano.py` verdict: "candidate is WORSE beyond noise."** All three seeds agree.
+
+| seed | unmodified | candidate | paired delta |
+|---|---|---|---|
+| 0 | 5.74331 | 5.77978 | **+0.03647** |
+| 1 | 5.56278 | 5.59444 | **+0.03166** |
+| 2 | 5.90589 | 5.94356 | **+0.03767** |
+| | | **paired mean** | **+0.03527, SEM 0.00184** |
+
+- [x] **R91's headline — "the loop's first genuine result" — was WRONG, and I announced it.**
+  The candidate is not a win. It is a small, *remarkably consistent* **loss**: worse at every
+  seed, by nearly the same amount each time.
+- [x] **The error was not the controls. It was the comparison I did not run.** `identity`,
+  `fixed_half` and `learned` were all measured at seed 1234, so those comparisons are paired
+  and **still valid**: the gate genuinely beats a pass-through and a fixed 0.5 scale. But
+  **I never ran the unmodified model.** I compared the candidate against **5.61982, a stored
+  number from another session at an unknown seed** — an unpaired comparison of two single
+  runs.
+- [x] **And the variance I was comparing against dwarfs the effect.** The unmodified model
+  alone ranges **5.56278 → 5.90589 across seeds — a swing of 0.343, 4.5× the 0.076 "effect"
+  I reported.** My 4.4-SEM bar used within-run *batch* spread (0.0172), which cannot see
+  run-to-run variance at all. **A bar built from the wrong noise measures nothing.**
+- [x] **Pairing is what rescued the signal.** The paired differences are +0.036/+0.032/+0.038
+  — SEM **0.00184**, because same-seed pairing cancels the 0.343 baseline swing. The loop's
+  own template knew this; my hand-rolled sweep did not (§5.3.R92). **The tool I nearly
+  replaced is the one that caught my error.**
+- [x] **So the third `sota` row is the third ARTIFACT.** `REAL WINS: ZERO` was right all
+  along; my R86/R91 "correction" of it was the thing that was wrong. Memory and the
+  always-loaded index hook are corrected back — and this time with the retraction attached,
+  so the next reader sees that it was tested, not merely asserted.
+- [x] **What actually holds, stated narrowly:** at a fixed 150-step budget, replacing the
+  layer-3 block with a 256-parameter learned gain is **better than deleting the block** and
+  **worse than keeping it**. The block earns its 787,072 parameters. Nothing here is a
+  capability finding.
+- [x] **The honest sequence:** R86 suspected an artifact → R91 ran controls and announced a
+  win → R93 ran the *right* comparison and retracted it. **I was more confident at the
+  midpoint than at either end**, which is exactly what an unpaired single-seed comparison
+  buys. The pre-registered "what would retract this" note in the sweep entry is what made
+  retracting straightforward rather than negotiable.
+- [ ] Follow-up for `evaluate.py`: the promotion gate's `SIGNIFICANCE_SEM` bar is computed
+  from `eval_ce_per_batch` — **within-run** spread. This entry is the measured case for why
+  that is the wrong denominator: it passed a candidate that is worse at every seed.
+  **Paired-seed evaluation is already written and already generated per promotion; the gate
+  just does not use it.** That is the single highest-value change left in the loop.
+
 ### 5.3.R92 — I hand-rolled a seed sweep the loop had already generated for me
 
 - [x] **Killed my own `seed_sweep.py` 15 minutes in and ran the project's artifact instead.**
