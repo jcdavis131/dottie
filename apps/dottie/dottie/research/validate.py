@@ -243,10 +243,29 @@ def dry_run_module(file_path: str | Path, *, class_name: Optional[str] = None,
         if torch.isnan(out_t).any() or torch.isinf(out_t).any():
             return ValidationResult(False, "dry_run", "fail",
                                     "forward produced NaN/Inf — add clamping or an eps term")
+
+        # Degeneracy gate (added 2026-07-20 after the MLBR post-mortem, TODOS §5.3.R).
+        # MLBR passed all four levels while being a no-op: zero learnable parameters and a
+        # forward of `x + scalar`. Such a block cannot express anything a bias term can't,
+        # can never learn to, and at smoke scale "wins" merely by REPLACING a real block.
+        # The check is deliberately narrow — it fires only when BOTH are true, so the
+        # legitimate zero-init pattern (identity at init but parameterized, e.g. LayerScale)
+        # still passes.
+        n_params = sum(int(p.numel()) for p in layer.parameters() if p.requires_grad)
+        delta_std = float((out_t - dummy).std())
+        if n_params == 0 and delta_std < 1e-6:
+            return ValidationResult(
+                False, "dry_run", "fail",
+                f"degenerate block: {n_params} learnable parameters and output differs from "
+                f"input by a CONSTANT (std of (out-in) = {delta_std:.3g}). This is a bias, not "
+                "an architecture — it cannot express or learn anything, and swapping it in for "
+                "a real block only removes capacity. Give the module learnable parameters or "
+                "make its transform input-dependent.")
     except Exception:
         return ValidationResult(False, "dry_run", "fail", traceback.format_exc())
     return ValidationResult(True, "dry_run", "pass",
-                            f"forward ok on input {shape} -> {tuple(out_t.shape)}")
+                            f"forward ok on input {shape} -> {tuple(out_t.shape)}; "
+                            f"learnable_params={n_params}, delta_std={delta_std:.4g}")
 
 
 # ---------------------------------------------------------------------------

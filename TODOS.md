@@ -351,6 +351,17 @@ independent reasons, both from the bundle's own numbers/code:**
   baseline has no spread, a 2×SEM bar against a POINT baseline is ≈1.4 SE_diff (~84%
   confidence), not 95% — a floor, not a proof. Kept at 2.0 for statistical power;
   paired seeds are the real fix.
+- [x] **DEGENERACY GATE shipped in validate.py L4 (02:35)** — the other half of the
+  MLBR post-mortem: the 4-level validator checked import/instantiate/shape/finiteness
+  but nothing stopped a module that *does nothing*. Now a candidate FAILS L4 when it
+  has **0 learnable parameters AND** its output differs from its input by a **constant**
+  (`std(out-in) < 1e-6`). Both conditions required, so the legitimate zero-init pattern
+  (LayerScale: identity at init but parameterized) still passes. Verified on the REAL
+  bundle module: MLBR → FAIL ("0 learnable parameters … differs by a CONSTANT");
+  LayerScale (4224 params) → pass; a real mixer (delta_std 0.465) → pass. Passing
+  results now also record `learnable_params` and `delta_std` for the reviewer.
+  Found en route: a test fixture (`x * scale`, scale=1.0) was itself a zero-param exact
+  identity — fixture fixed, gate kept. 31/31 research tests green.
 - [ ] YOUR CALL on the live ledger: MLBR (`23bb41375804`) was promoted under the old
   bare-`<` rule and MOVED the baseline 5.61982→5.60506. Options: (a) leave it — the
   bundle is human-gated anyway and §5.3.R documents the truth; (b) re-seed the

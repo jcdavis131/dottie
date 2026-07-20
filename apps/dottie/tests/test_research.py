@@ -136,13 +136,46 @@ def test_contract_rejects_forward_with_extra_required_args():
     assert not r.ok and r.level == "contract" and "gradients" in r.detail
     # extra args WITH defaults are fine, and helper classes with extra args don't poison the
     # declared block class
+    # Block's body is a nonlinearity, not `x * scale`: with scale defaulting to 1.0 that
+    # would be a zero-parameter EXACT identity, which the degeneracy gate rightly fails.
+    # The signature is what this test is about; keep the body non-degenerate.
     ok_code = ("import torch\nimport torch.nn as nn\n"
                "class Helper(nn.Module):\n"
                "    def forward(self, x, gate):\n        return x * gate\n"
                "class Block(nn.Module):\n"
-               "    def forward(self, x, scale=1.0):\n        return x * scale\n")
+               "    def forward(self, x, scale=1.0):\n        return torch.tanh(x) * scale\n")
     r2 = validate.validate(ok_code, class_name="Block", input_shape=[2, 4, 8])
     assert r2.ok, r2.detail
+
+
+def test_dry_run_rejects_degenerate_no_op_block():
+    # TODOS §5.3.R: MLBR — the loop's first "SOTA" — passed all four levels while being a
+    # no-op (zero learnable params; forward = x + scalar). It then "won" at smoke scale by
+    # REPLACING a real block. Verbatim shape of that module:
+    noop = ("import torch\nimport torch.nn as nn\nclass NoOp(nn.Module):\n"
+            "    def __init__(self, lam: float = 1.0):\n        super().__init__()\n"
+            "        self.lam = lam\n"
+            "    def forward(self, x):\n"
+            "        s = torch.log(torch.sum(torch.exp(self.lam * x), dim=-1, keepdim=True))\n"
+            "        c = -torch.sum(s) / (x.shape[0] * x.shape[1])\n"
+            "        return x + c.unsqueeze(-1).unsqueeze(-1)\n")
+    r = validate.validate(noop, class_name="NoOp", input_shape=[4, 16, 64])
+    assert not r.ok and r.level == "dry_run"
+    assert "degenerate block" in r.detail and "0 learnable parameters" in r.detail
+
+
+def test_dry_run_allows_zero_init_parameterized_block():
+    # The gate must NOT reject the legitimate zero-init pattern (identity at init, but
+    # parameterized so it can learn) — that is a real design, not a degenerate one.
+    layerscale = ("import torch\nimport torch.nn as nn\nclass LayerScale(nn.Module):\n"
+                  "    def __init__(self, hidden: int = 64):\n        super().__init__()\n"
+                  "        self.gamma = nn.Parameter(torch.zeros(hidden))\n"
+                  "        self.proj = nn.Linear(hidden, hidden)\n"
+                  "    def forward(self, x):\n        return x + self.gamma * self.proj(x)\n")
+    r = validate.validate(layerscale, class_name="LayerScale",
+                          init_kwargs={"hidden": 64}, input_shape=[4, 16, 64])
+    assert r.ok, r.detail
+    assert "learnable_params=4224" in r.detail
 
 
 def test_dry_run_sanitizes_untrusted_input_shape():
