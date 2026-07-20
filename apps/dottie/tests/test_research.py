@@ -148,6 +148,59 @@ def test_contract_rejects_forward_with_extra_required_args():
     assert r2.ok, r2.detail
 
 
+def test_block_reading_input_grad_is_caught_before_training(tmp_path):
+    """A block that reads `x.grad` must fail validation, not training.
+
+    TODOS §5.3.R10: the standard dry run feeds a LEAF tensor with requires_grad=False. A
+    block in the residual stream never sees that — its input is a NON-LEAF activation that
+    requires grad, and `.grad` is only ever populated on leaves. So a candidate reading
+    `x.grad` gets a tensor in the probe and None in production. Two of the five stored
+    failed_training records died exactly this way ('NoneType' has no attribute 'abs' /
+    'layout') after passing every other level, including the integration-width probe.
+    Gradient-inspecting "regularizer" ideas are a large slice of what this loop proposes,
+    so this is the shape of the search space, not an exotic corner.
+    """
+    # The REAL shape of this bug (from 855144446a22): the block makes its own leaf when the
+    # input does not require grad, so it works on the probe's plain tensor -- and silently
+    # takes the other path in the residual stream, where x already requires grad, is
+    # NON-leaf, and .grad is therefore None.
+    reads_grad = """import torch
+import torch.nn as nn
+class GradReader(nn.Module):
+    def __init__(self, dim: int = 64):
+        super().__init__()
+        self.scale = nn.Parameter(torch.ones(1))
+    def forward(self, x):
+        with torch.enable_grad():
+            xg = x if x.requires_grad else x.detach().requires_grad_(True)
+            (xg * xg).sum().backward(retain_graph=True)
+            g = xg.grad.abs().mean()          # populated on a leaf, None mid-network
+        return x * (1.0 + self.scale * g.detach())
+"""
+    r = validate.validate(reads_grad, class_name="GradReader",
+                          init_kwargs={"dim": 64}, input_shape=[2, 4, 64])
+    assert not r.ok
+    assert r.level == "residual_stream", r.detail
+    assert "x.grad" in r.detail and "torch.autograd.grad" in r.detail   # actionable
+
+    # a block that does NOT touch .grad passes the same probe
+    clean = """import torch
+import torch.nn as nn
+class Clean(nn.Module):
+    def __init__(self, dim: int = 64):
+        super().__init__()
+        self.proj = nn.Linear(dim, dim)
+    def forward(self, x):
+        return x + torch.tanh(self.proj(x))
+"""
+    r_ok = validate.validate(clean, class_name="Clean",
+                             init_kwargs={"dim": 64}, input_shape=[2, 4, 64])
+    assert r_ok.ok, r_ok.detail
+    # the canonical dry-run detail survives a passing stream probe
+    assert "learnable_params=" in r_ok.detail
+    assert r_ok.per_level["residual_stream"]["status"] == "pass"
+
+
 def test_candidate_that_hardcodes_the_dry_run_width_is_caught(tmp_path):
     """A block that only works at its declared width must fail validation, not training.
 

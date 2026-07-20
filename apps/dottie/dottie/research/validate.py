@@ -335,7 +335,12 @@ def validate(code: str, *, class_name: Optional[str] = None,
     wide = record(dry_run_at_integration_width(candidate, class_name=class_name,
                                                init_kwargs=init_kwargs,
                                                input_shape=input_shape))
-    return r if wide.ok else wide
+    if not wide.ok:
+        return wide
+    stream = record(dry_run_in_residual_stream(candidate, class_name=class_name,
+                                               init_kwargs=init_kwargs,
+                                               input_shape=input_shape))
+    return r if stream.ok else stream
 
 
 # A corrector turns (previous code, failure feedback) into a new code attempt. The real one is
@@ -407,6 +412,84 @@ def dry_run_at_integration_width(file_path: str | Path, *, class_name: Optional[
         f"{width}, which is the width it will actually be swapped in at (d_model). Do not "
         f"hardcode sizes to the dry-run shape — derive every dimension from x.shape[-1] at "
         f"forward time.\n{r.detail}")
+
+
+def dry_run_in_residual_stream(file_path: str | Path, *, class_name: Optional[str] = None,
+                               init_kwargs: Optional[Dict[str, Any]] = None,
+                               input_shape: Optional[List[int]] = None,
+                               width: int = INTEGRATION_WIDTH) -> ValidationResult:
+    """Probe with an input shaped like a real mid-network activation, not a fresh tensor.
+
+    The standard dry run feeds a **leaf** tensor with ``requires_grad=False`` under
+    ``no_grad``. A block in the residual stream never sees that: its input is a **non-leaf**
+    activation that *does* require grad. The difference is not cosmetic — a candidate that
+    reads ``x.grad`` gets a populated tensor in the probe and ``None`` in production, because
+    ``.grad`` is only populated on leaves.
+
+    Measured 2026-07-20 (TODOS §5.3.R10): two of the five stored `failed_training` records
+    died exactly here — ``'NoneType' object has no attribute 'abs'`` and ``... 'layout'`` —
+    after passing every validation level, including the integration-width probe. Both are
+    caught in about a second by handing the module the kind of tensor it will actually get.
+
+    Gradient-inspecting "regularizer" ideas are a large slice of what this loop proposes, so
+    this is not an exotic corner: it is the shape of the search space."""
+    torch = _find_torch()
+    if torch is None:
+        return ValidationResult(True, "residual_stream", "skipped",
+                                "torch not installed — residual-stream probe skipped")
+    # Same sanitation as dry_run_module: the declared shape is untrusted model output, and
+    # junk dims ([-1, -1, 8] observed live) must fall back per-dimension rather than blow up
+    # torch.randn. Only the batch/seq dims are taken from it; the width is ours.
+    raw = list(input_shape) if input_shape and len(list(input_shape)) == 3 else [4, 16, 64]
+    shape = [d if isinstance(d, int) and not isinstance(d, bool) and d > 0 else dflt
+             for d, dflt in zip(raw, (4, 16, 64))]
+    shape = [int(shape[0]), int(shape[1]), int(width)]
+    import importlib.util
+    kwargs = dict(init_kwargs or {})
+    mod_name = f"dottie_research_stream_{uuid.uuid4().hex[:8]}"
+    try:
+        spec = importlib.util.spec_from_file_location(mod_name, str(file_path))
+        if spec is None or spec.loader is None:
+            return ValidationResult(False, "residual_stream", "fail",
+                                    f"cannot load module {file_path}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        cls = _select_class(module, class_name, torch)
+        try:
+            params = inspect.signature(cls.__init__).parameters
+        except (TypeError, ValueError):
+            params = {}
+        for name in _DIM_KWARGS:
+            if name in params:
+                kwargs[name] = int(width)
+        layer = cls(**kwargs)
+        # requires_grad=True makes it grad-carrying; the arithmetic makes it NON-leaf, which
+        # is what actually empties `.grad`. Both halves matter.
+        base = torch.randn(*shape, generator=torch.Generator().manual_seed(1234),
+                           requires_grad=True)
+        x = base * 1.0
+        out = layer(x)
+        out = out[0] if isinstance(out, (tuple, list)) else out
+        if tuple(out.shape) != tuple(x.shape):
+            return ValidationResult(
+                False, "residual_stream", "fail",
+                f"in the residual stream the block returned {tuple(out.shape)} for input "
+                f"{tuple(x.shape)} — a drop-in block must return the SAME "
+                "[batch, seq, hidden] shape")
+        if not bool(torch.isfinite(out).all()):
+            return ValidationResult(False, "residual_stream", "fail",
+                                    "non-finite (NaN/Inf) output on a grad-carrying input")
+    except Exception:
+        return ValidationResult(
+            False, "residual_stream", "fail",
+            "fails when handed a REAL residual-stream activation (a non-leaf tensor that "
+            "requires grad), though it passes on a plain leaf tensor. In the model your "
+            "input is mid-network: `x.grad` is None there, and any op assuming otherwise "
+            "breaks. Do not read `.grad` off the input — if you need gradient information, "
+            "compute it inside forward with torch.autograd.grad on a tensor you created.\n"
+            + traceback.format_exc()[-900:])
+    return ValidationResult(True, "residual_stream", "pass",
+                            f"runs on a grad-carrying non-leaf input at width {width}")
 
 
 def _attempt_diff(before: str, after: str, *, max_lines: int = 60) -> str:

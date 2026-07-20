@@ -1260,6 +1260,36 @@ most valuable catch so far:
     bug). The classifier settled it instead. The revision was still the right call to
     surface rather than to make silently — but a stated plan reversed by the same agent
     that stated it is worth flagging every time, not quietly re-derived.
+### 5.3.R10 — the probe fed the wrong KIND of tensor, not just the wrong width
+
+- [x] **RESIDUAL-STREAM PROBE ADDED (07:55). Stored `failed_training` catch rate is now
+  4 of 5, up from 2.** Chased the three §5.3.R8 left behind. **My hypothesis was wrong
+  again, and testing it first is what found the real cause.** I assumed train-mode +
+  backward was the missing ingredient; it makes no difference. The difference is the
+  *kind of tensor*:
+  - the dry run feeds a **leaf** tensor with `requires_grad=False`, under `no_grad`
+  - a block in the residual stream gets a **non-leaf activation that requires grad**
+  - `.grad` is only ever populated on leaves, so a candidate reading `x.grad` sees a real
+    tensor in the probe and `None` in production
+  Two records died precisely there — `'NoneType' object has no attribute 'abs'` and
+  `... 'layout'` — after passing every level *including* the integration-width probe. Both
+  are caught in about a second by handing the module the tensor it will actually receive.
+  - This is not a corner case: gradient-inspecting "regularizer" ideas are a large slice of
+    what this loop proposes, so it is the shape of the search space.
+  - Failure text is actionable, not a bare traceback: it names `x.grad`, explains that the
+    input is mid-network, and points at `torch.autograd.grad` on a self-created tensor.
+  - `694633b2d354` still slips through (a shape collapse that only appears on real data).
+    **4/5, and the remaining one is recorded rather than rounded away.**
+- [x] Two bugs in my own new code, both caught by the suite rather than by review:
+  - The stream probe did not sanitize a junk declared shape, so the live `[-1, -1, 64]`
+    case fed `torch.randn(-1, -1, 256)`. `dry_run_module` already handled this; my copy
+    did not. Now uses the same per-dimension fallback.
+  - **My first regression fixture was wrong in a way worth keeping.** It read `x.grad`
+    unconditionally, so it failed at the *earlier* dry_run level and proved nothing about
+    the new one. The real bug is subtler: the candidate builds its own leaf when the input
+    does not require grad, which is exactly why it passes the probe and fails in the
+    stream. The fixture now mirrors that, so it fails at `residual_stream` specifically.
+  - Full suite 160 passed; mutation audit 5/5 GOOD; replay re-verified at 4/5.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
