@@ -576,6 +576,27 @@ independent reasons, both from the bundle's own numbers/code:**
     render post-reconciliation (dashboard_html/ecosystem_html/evals_html were merged).
 7.2 Assistant tab: 3.4's chat + a visible "which brain" indicator (factory ckpt vs
     Ollama fallback) — honesty in the UI too.
+7.6 **Dottie console webapp review (03:20, `apps/ava-factory/dottie/webapp`, the
+    8641fb9 feature — reviewed because it was the newest unreviewed code).**
+    Verdict: genuinely good. XSS-safe by construction (`dom.js` builds every node via
+    `createTextNode`/`textContent`, no `innerHTML` anywhere), the pending state is an
+    honest elapsed ticker that says "no server streaming" instead of faking a typewriter,
+    the mode chip shows which endpoint a send will use BEFORE sending, error hints are
+    status-specific (401/403/503), and the engine-down short-circuit explains its own
+    30s cap. `api.js` attaches the bearer token only on `/assistant`, never to :8100.
+    Two small gaps found, both against the code's OWN doctrine (filed, not fixed — the
+    factory server is down so nothing here is runnable/testable right now):
+    - [ ] `store.js::write()` swallows quota errors with "the app still works, it just
+      won't persist". True, but the user is never told: on reload the session silently
+      reverts to the last write that fit, so chat history vanishes with no indication.
+      For a console whose principle is "fetched live or marked unreachable", silent
+      persistence failure is the one unmarked degradation. Fix: return a boolean from
+      `write()` and show a "not persisted (storage full)" chip in the composer.
+    - [ ] `api.js::request()` documents "every failure is surfaced as a typed ApiError",
+      but a 200 response with a non-JSON body escapes as a raw `SyntaxError` from the
+      final `res.json()` — chat.js then renders `String(e)` ("Unexpected token …")
+      instead of an operator-facing message. Fix: wrap that parse the same way the
+      error-body parse is already wrapped.
 7.5 [x] **Site render VERIFIED headlessly + factory-down honesty fix (02:55)**: the
     browser extension isn't connected, so instead the REAL `app.js` was run against the
     REAL gist payload in a DOM shim (harness: `$CLAUDE_JOB_DIR/tmp/site_render_check.js`,
