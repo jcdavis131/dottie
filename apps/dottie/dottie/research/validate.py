@@ -441,6 +441,14 @@ def dry_run_at_integration_width(file_path: str | Path, *, class_name: Optional[
                                 f"declared width already equals the integration width ({width})")
     r = dry_run_module(file_path, class_name=class_name, init_kwargs=dict(init_kwargs or {}),
                        input_shape=shape, width=int(width))
+    if r.status == "skipped":
+        # Inherit "skipped", never launder it into "pass". The inner result's own detail
+        # says "(not a pass)" — reporting status="pass" over the top of that was a direct
+        # self-contradiction, and the same false-clean bug as §5.3.R14 in a second place.
+        # A stage that could not run must say so, or the per_level record overstates
+        # coverage exactly where coverage is missing.
+        return ValidationResult(True, "integration_width", "skipped",
+                                f"integration-width probe could not run: {r.detail}")
     if r.ok:
         return ValidationResult(True, "integration_width", "pass",
                                 f"also runs at the integration width {width}: {r.detail}")

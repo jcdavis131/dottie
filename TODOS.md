@@ -1409,6 +1409,30 @@ most valuable catch so far:
   - Cost measured before worrying about it: full 6-stage `validate()` is **106 ms**, the
     contamination check **84 ms** — negligible against 4-18 min implement cycles.
   - Full suite 166 passed.
+### 5.3.R15 — same false-clean bug, second location; now an invariant instead of a patch
+
+- [x] **Audited my own new gates for the §5.3.R14 defect rather than waiting for it to
+  surface again (08:35). One of three had it.** With torch absent,
+  `dry_run_at_integration_width` reported **`status="pass"`** while its own detail read
+  *"torch not installed — CPU dry-run skipped (not a pass)"*. A stage announcing a pass and
+  a non-pass in the same breath. `residual_stream` handled it correctly, so this was not a
+  systematic misunderstanding — just one path where I wrapped an inner result without
+  checking what it said.
+  - Fixed to inherit `skipped` rather than launder it. Verified: with torch absent all
+    three torch-dependent stages now report `skipped`; with torch present all six still
+    `pass`.
+- [x] **Locked as a CROSS-STAGE invariant, not a third patch.**
+  `test_no_stage_launders_skipped_into_pass` walks **every** stage and fails any whose
+  status claims `pass` while its detail admits it did not run — so the next stage added
+  inherits the check instead of repeating the bug. Verified red on the old code with the
+  exact contradiction quoted:
+  `stage 'integration_width' reports status='pass' while its own detail says it did not run`.
+- [x] The lesson, stated once so it stops recurring: **the validator's founding rule has
+  always been right** — *"a level that cannot run is reported skipped with the true reason,
+  never counted as a pass"*. Both of tonight's breaches were in **callers and wrappers**
+  that read a result object without reading its status. Every future consumer of a
+  `ValidationResult` must branch on `status`, not on `ok`. `ok` means "did not fail"; it
+  does not mean "ran".
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.

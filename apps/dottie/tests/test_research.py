@@ -117,6 +117,42 @@ def test_validator_levels():
     assert r.level == "dry_run" and "NaN" in r.detail
 
 
+def test_no_stage_launders_skipped_into_pass(monkeypatch):
+    """A stage that could not run must report `skipped` — never `pass`.
+
+    TODOS §5.3.R15. The validator's founding rule is that an unrunnable level is reported
+    skipped with the true reason, never counted as a pass. Two checks written on 2026-07-20
+    broke it in the same way within hours: `_baseline_contamination` read ok=True as
+    verified-clean, and `dry_run_at_integration_width` wrapped a skipped inner result in
+    status="pass" while its own detail still read "(not a pass)".
+
+    This asserts the invariant across EVERY stage instead of per-gate, so the next stage
+    added inherits the check rather than repeating the bug.
+    """
+    code = """import torch
+import torch.nn as nn
+class Ok(nn.Module):
+    def __init__(self, dim: int = 64):
+        super().__init__()
+        self.w = nn.Linear(dim, dim)
+    def forward(self, x):
+        return x + torch.tanh(self.w(x))
+"""
+    monkeypatch.setattr(validate, "_find_torch", lambda: None)
+    r = validate.validate(code, class_name="Ok", init_kwargs={"dim": 64},
+                          input_shape=[4, 16, 64])
+    for level, info in (r.per_level or {}).items():
+        detail = (info.get("detail") or "").lower()
+        if "skip" in detail or "could not run" in detail or "not installed" in detail:
+            assert info["status"] == "skipped", (
+                f"stage {level!r} reports status={info['status']!r} while its own detail "
+                f"says it did not run: {info.get('detail')!r}")
+    # torch-dependent stages must ALL be skipped here, not quietly passing
+    for level in ("dry_run", "integration_width", "residual_stream"):
+        assert r.per_level[level]["status"] == "skipped", (
+            f"{level} claims {r.per_level[level]['status']} with torch unavailable")
+
+
 def test_LEVELS_matches_what_validate_actually_records():
     """The declared stage list must not drift from the stages that actually run.
 
