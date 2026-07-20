@@ -104,10 +104,30 @@ def run_implementation(ledger: Ledger, policy: Policy, *, workspace_root: str | 
     latest = {"impl": impl, "dry": dry}
 
     def corrector(prev_code: str, feedback: str) -> str:
-        new_text = policy(prompts.correction_prompt(prev_code, feedback))
-        new_impl, new_dry = prompts.parse_implementation(new_text)
-        latest["impl"], latest["dry"] = new_impl, new_dry
-        return new_impl["code"]
+        # A malformed CORRECTION reply used to abort the whole experiment: this raised
+        # straight out, which makes validate_with_correction break its retry loop. The
+        # INITIAL parse above re-prompts up to max_retries for the very same failure, so
+        # the model got several chances to emit valid JSON before its first attempt and
+        # none after. Measured 2026-07-20 over the 59 stored failed_validation records:
+        # 6 (10%) died this way, every one of them "no parseable JSON object found" —
+        # a recoverable formatting slip misfiled as a dead candidate.
+        current_feedback = feedback
+        for remaining in range(max_retries, -1, -1):
+            new_text = policy(prompts.correction_prompt(prev_code, current_feedback))
+            try:
+                new_impl, new_dry = prompts.parse_implementation(new_text)
+            except ValueError as e:
+                if remaining == 0:
+                    raise
+                current_feedback = (
+                    f"{feedback}\n\nYour previous reply could not be parsed: {e}\n"
+                    "Your entire response must be ONE JSON object matching the "
+                    "implementation schema — no markdown fences, no prose, and every "
+                    "string field valid JSON (escape backslashes and newlines).")
+                continue
+            latest["impl"], latest["dry"] = new_impl, new_dry
+            return new_impl["code"]
+        raise AssertionError("unreachable")  # pragma: no cover
 
     ws = Path(workspace_root) / exp.id
     ws.mkdir(parents=True, exist_ok=True)

@@ -932,10 +932,40 @@ most valuable catch so far:
   is the orphan cleanup in `scripts/prepare_fleet_recovery.ps1`. Deliberately deferred to
   the queued fleet recovery, which stops the daemon anyway — restarting mid-experiment,
   with known orphan risk, for an observability-only fix is a bad trade.
-- [ ] FOLLOW-UP: re-classify the existing `failed_validation` records now that the two
-  causes are distinguishable going forward. Old records cannot be recovered (the reason
-  was never stored), so §5.2's conversion rate should be recomputed from records dated
-  after this fix rather than trusted as-is.
+- [x] FOLLOW-UP, DONE (07:10) — **and I was wrong about the premise.** I claimed old
+  records "cannot be recovered (the reason was never stored)". The reason *was* stored:
+  `implementation.validation.history` has carried `corrector_error` all along. What my
+  earlier fix changed is only whether it is *surfaced* — the human-readable `failure`
+  field and the return dict. The data to reclassify the whole backlog was already sitting
+  in the ledger. **Ground truth over all 59 `failed_validation` records: 7 (11.9%) are
+  corrector deaths, i.e. infrastructure, not candidate failures.** Causes: 6 x
+  `ValueError('no parseable JSON object found in model response')`, 1 x
+  `DottiePolicyUnavailable` (Ollama ReadTimeout). So §5.2's "50% die in validation"
+  overstates candidate failure by roughly a tenth of the pile.
+  - Worth recording that my `attempts < max_retries` heuristic was **unsound** and the
+    stored data caught it: it predicted 6 of the 7. It missed `ed45b85c0fd1`, which has
+    `attempts == 5 == max` *and* a corrector error — the corrector can die on the final
+    attempt, which is indistinguishable from exhaustion by count alone. Two clean
+    `max_retries` eras exist (3 until 07-19 08:56, 5 from 07-19 13:37), so the heuristic
+    was at least separable by time — but it should not be used as a classifier now that
+    the exact reason is readable.
+- [x] **ASYMMETRY FIXED (07:15)** — the 6 unparseable-corrector deaths were not bad luck,
+  they were a structural gap. `run_implementation` re-prompts the INITIAL implementation
+  parse up to `max_retries` times when the model emits invalid JSON, but the `corrector`
+  closure parsed with no retry at all and let `ValueError` escape, which makes
+  `validate_with_correction` break its loop and abandon the experiment. The model got
+  several chances to format correctly before its first attempt and none after. The
+  corrector now re-prompts on the same budget, feeding the parse error back. That
+  reclaims ~10% of the failed-validation pile. Regression test verified red before
+  (gave up after 1 reply) / green after; full suite 151 passed.
+- [ ] NEW, found while testing the above: **`validate_with_correction` pins `class_name`
+  from the FIRST parse.** If a correction renames the class — plausible, since the
+  corrector sees only code plus a traceback — every subsequent dry run looks for a class
+  that no longer exists, so the candidate can never validate however good the code is,
+  and it burns the full retry budget failing for a reason unrelated to its merits. I hit
+  this writing the test fixture, not in production, so **frequency is unmeasured**; check
+  the stored histories for repeated identical dry_run failures before deciding whether to
+  re-derive the class name per attempt or pin the name in the correction prompt.
 
 ### 5.3.R3 — ⭐⭐ THE GATE CAUGHT A REAL ONE (04:37) — a third false SOTA, blocked
 

@@ -270,6 +270,35 @@ def _implement(led, tmp_path, policy):
     return implementation.run_implementation(led, policy, workspace_root=tmp_path / "ws")
 
 
+def test_unparseable_correction_is_retried_not_fatal(led, tmp_path):
+    """A malformed CORRECTION reply must not abort the experiment.
+
+    TODOS 5.3.R4: measured over the 59 stored failed_validation records, 6 (10%) died
+    because the corrector's own reply was unparseable JSON -- while the INITIAL parse
+    re-prompts up to max_retries for that exact failure. The model got several chances
+    before its first attempt and none after. One garbled reply must cost a retry, not
+    the whole candidate.
+    """
+    calls = {"corrections": 0}
+
+    def policy(prompt: str) -> str:
+        if "failed automated validation" in prompt:          # the corrector's call
+            calls["corrections"] += 1
+            if calls["corrections"] == 1:
+                return "Sure! Here is the fixed module: <not json>"   # garbled, recoverable
+            # NOTE: same class name as the initial parse. validate_with_correction pins
+            # class_name from the FIRST parse, so a correction that renames the class can
+            # never validate no matter how good the code is (see TODOS follow-up).
+            return impl_json(GOOD_CODE.replace("SeqMeanMix", "Broken"), "Broken")
+        if "Principal ML Engineer" in prompt:
+            return impl_json("def broken(:", "Broken")                # fails L1 syntax
+        return json.dumps(HYP)
+
+    r = _implement(led, tmp_path, policy)
+    assert calls["corrections"] == 2                  # retried instead of giving up
+    assert r["state"] == READY_FOR_TRAINING           # and the candidate was recovered
+
+
 def test_corrector_failure_is_distinguished_from_a_bad_candidate(led, tmp_path):
     """A run abandoned because the LLM died must not look like a validation failure.
 
