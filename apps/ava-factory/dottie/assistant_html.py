@@ -59,7 +59,7 @@ button:disabled { opacity: .5; cursor: default; }
 <header>
   <div><h1>Dottie</h1><div class="sub">grounded · trust-gated · telemetered — spec 15</div></div>
   <div class="sub"><span id="brain" class="pill" title="which model answers here — honesty in the UI">brain: checking…</span>
-    · <a href="/">index</a> · <a href="/assistant/status">status json</a></div>
+    · <a href="/app"><b>new console: /app</b></a> · <a href="/">index</a> · <a href="/assistant/status">status json</a></div>
 </header>
 <div id="alert"></div>
 <main>

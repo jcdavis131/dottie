@@ -259,6 +259,48 @@ def test_websocket_block_stream(client):
         assert "block" in data and "regime" in data and "top_concept" in data
 
 
+def test_webapp_shell_served(client):
+    """GET /app/ serves the Dottie console SPA shell plus every module asset."""
+    r = client.get("/app/")
+    assert r.status_code == 200
+    assert 'id="app"' in r.text
+    assert "Dottie" in r.text
+    assert "js/app.js" in r.text
+    for asset in (
+        "app.css", "js/app.js", "js/api.js", "js/store.js", "js/state.js",
+        "js/chart.js", "js/dom.js", "js/views/chat.js", "js/views/ops.js",
+        "js/views/settings.js",
+    ):
+        ar = client.get(f"/app/{asset}")
+        assert ar.status_code == 200, f"/app/{asset} -> {ar.status_code}"
+
+
+def test_webapp_bare_path_redirects(client):
+    r = client.get("/app", follow_redirects=False)
+    assert r.status_code in (301, 307)
+    assert r.headers["location"].rstrip("/").endswith("/app")
+
+
+def test_assistant_page_links_new_console(client):
+    """The old spec-15 page must point at the /app console that supersedes it."""
+    r = client.get("/assistant")
+    assert r.status_code == 200
+    assert "/app" in r.text
+
+
+def test_research_proxy_clean_502_when_unreachable(client, monkeypatch):
+    """/research/status must degrade to a structured 502 naming the failure —
+    never a fabricated body — when the :8100 service is down."""
+    import server as srv
+
+    monkeypatch.setattr(srv, "_RESEARCH_URLS", ["http://127.0.0.1:9"])
+    r = client.get("/research/status")
+    assert r.status_code == 502
+    body = r.json()
+    assert body["ok"] is False
+    assert "127.0.0.1:9" in body["error"]
+
+
 def test_resolve_ckpt_latest_pointer(tmp_path):
     """Trainer writes ckpt/latest as a text file with the target filename."""
     ckpt_dir = tmp_path / "ckpt"

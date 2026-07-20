@@ -232,6 +232,7 @@ def _require_assistant_token(authorization: Optional[str] = Header(None)) -> Non
 @app.get("/", response_class=HTMLResponse)
 async def root():
     return (
+        "<a href='/app'>/app</a> (Dottie console — chat + operations) · "
         "<a href='/dashboard'>/dashboard</a> (training run) · "
         "<a href='/network'>/network</a> (live architecture) · "
         "<a href='/ecosystem'>/ecosystem</a> (harness/skills/agent-eval) · "
@@ -392,6 +393,45 @@ async def assistant(req: AssistantReq):
         temperature=req.temperature,
     )
     return result.as_dict()
+
+
+# Research service (:8100, apps/dottie) proxy. The webapp fetches :8100
+# directly first; when the browser can't (CORS allow-list, tunnel), this
+# server-side hop keeps the Research panel honest instead of dark. 502 with the
+# real error when the service is down — never a fabricated body.
+_RESEARCH_URLS = [
+    u.strip().rstrip("/")
+    for u in os.environ.get(
+        "AVA_RESEARCH_URL",
+        # In-container (Docker Desktop) the host's :8100 is host.docker.internal;
+        # bare-metal boots reach it on localhost. Try both, first hit wins.
+        "http://host.docker.internal:8100,http://localhost:8100",
+    ).split(",")
+    if u.strip()
+]
+
+
+@app.get("/research/status")
+async def research_status_proxy():
+    import asyncio
+    import urllib.request
+
+    def _fetch(url: str) -> dict[str, Any]:
+        with urllib.request.urlopen(url, timeout=4) as resp:  # noqa: S310 — operator-configured URL
+            return json.loads(resp.read().decode("utf-8"))
+
+    errors: list[str] = []
+    for base in _RESEARCH_URLS:
+        url = f"{base}/research/status"
+        try:
+            data = await asyncio.to_thread(_fetch, url)
+            return {"ok": True, "source": url, "status": data}
+        except Exception as exc:  # noqa: BLE001 — report, don't fabricate
+            errors.append(f"{url}: {type(exc).__name__}: {exc}")
+    return JSONResponse(
+        status_code=502,
+        content={"ok": False, "error": "; ".join(errors), "tried": _RESEARCH_URLS},
+    )
 
 
 @app.get("/report", response_class=HTMLResponse)
@@ -566,6 +606,19 @@ async def agent_eval_scoreboard():
             detail="no agent-eval scoreboard found (not mounted, or no runs yet)",
         )
     return {"scoreboard_markdown": _AGENT_EVAL_SCOREBOARD.read_text(encoding="utf-8")}
+
+
+# The Dottie console SPA (dottie/webapp — plain ES modules, no build step, no
+# CDN). Mounted last so it can never shadow an API route; check_dir=False keeps
+# boot alive on a checkout without the webapp (requests then 404 honestly).
+# fastapi.staticfiles is starlette's — already a dependency, nothing new.
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+
+app.mount(
+    "/app",
+    StaticFiles(directory=str(_REPO / "dottie" / "webapp"), html=True, check_dir=False),
+    name="webapp",
+)
 
 
 @app.websocket("/jspace/stream")
