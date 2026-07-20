@@ -52,8 +52,21 @@ manifest on `ava_state`), and I could not fix it: `wsl --shutdown` was blocked b
 permission classifier.
 
 ```powershell
-wsl --shutdown          # then, if the engine doesn't return in ~2 min, restart Docker Desktop
+# 1. FREE MEMORY FIRST — the research daemon loads qwen3:8b (~5.4 GB) and available
+#    memory drops to ~576 MB, which is the same starvation that killed the VM at 02:05.
+#    Measured 04:07. This unloads it instantly; the daemon reloads it on its next call.
+Invoke-RestMethod -Uri http://localhost:11434/api/generate -Method Post -ContentType application/json `
+  -Body (@{ model = "qwen3:8b"; keep_alive = 0 } | ConvertTo-Json)
+(Get-Counter '\Memory\Available MBytes').CounterSamples[0].CookedValue   # want >4000 before step 2
+
+# 2. THEN restart the VM (if the engine doesn't return in ~2 min, restart Docker Desktop)
+wsl --shutdown
 ```
+**Longer term**: this box cannot comfortably host the fleet + a CPU-resident LLM + the
+current desktop load (non-Ollama processes now sum to ~7.5 GB, up from ~4.4 GB earlier
+tonight — Chrome/Cursor/editor sessions accumulate). Either pause the research daemon
+during fleet work (`Disable-ScheduledTask -TaskName "Dottie Research runner"`), or set a
+short `OLLAMA_KEEP_ALIVE` so the model releases between calls.
 Recovery is then automatic (restart policies + `--resume`); verification commands and a
 fallback relaunch are in §1.3. **The 45W power cap is the standing suspect for the whole
 family of failures tonight — 780MHz clocks, 2 CUBLAS crashes, and this VM death. Check
