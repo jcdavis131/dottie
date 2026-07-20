@@ -89,7 +89,17 @@ Then §1 fires automatically (#17 armed on the monitor).
     - 1.2.c Record verdict in `apps/ava-factory/reports/REPORT_REAL.md` (committed) with
       the raw numbers. Acceptance: tool branch beats base on tool metrics WITHOUT
       >2% LM regression on the general mix.
-1.3 **If gate passes → chat branch (T9.4)**: same overlay pattern,
+1.3 **CHAT-MIX LABEL CHECK DONE (2026-07-20 01:20 — the 1.2.a' decision item)**:
+    T9.4 is better positioned than T9.3 was. p5 train PACKED census: deliberate
+    1,065M + temporal 174M + automatic 29M + **safety 22M** — the chat mix's labels
+    exist in train (a 50M-token run at safety 0.20 needs ~10M; 22M covers it).
+    CAVEAT: val synth_safety shards are MISLABELED (all 1,139 docs `automatic`,
+    packed under an older config) → the chat gate can measure general CE + routing
+    but NOT safety-specific metrics until val safety is repacked (2.1+). Launching
+    T9.4 on this corpus is defensible; gate it like the tool branch (honest
+    nonregression + routing) and re-gate on capability post-2.1.
+
+    **If gate passes → chat branch (T9.4)**: same overlay pattern,
     `docker compose -f docker-compose.yml -f docker-compose.tool-fork.yml run --rm trainer \
      python -m dottie.train --preset mini --branch chat --init /ckpt/base_final.pt --run /ckpt/chat`
     (50M tokens ≈ 90 min). Same gate discipline (1.2) for chat metrics.
