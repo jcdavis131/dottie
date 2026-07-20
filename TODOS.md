@@ -5,7 +5,7 @@
 > its acceptance criterion.** Work top to bottom; parallelize only where marked ∥.
 > Solo personal project, no connection to employer, built with public/free-tier only.
 
-## Goal state (updated by the 3-min loop, 02:57 2026-07-20 — clock verified)
+## Goal state (updated by the 3-min loop, 05:19 2026-07-20 — clock verified)
 
 ### ⚠ WHY THE FLEET DIED — I caused it, and the blocker is now cleared (03:47)
 
@@ -26,10 +26,18 @@ not the cause; I corrected that claim rather than leave it standing.
 below; it should now actually succeed, where an hour ago it would have hit the same wall.
 
 **Memory budget for this box (16 GB) — the constraint that actually bit:** fleet + WSL VM
-≈ 3–4 GB · desktop apps ≈ 2–3 GB · Ollama `qwen3:8b` ≈ 5–6 GB (**proven** to co-exist,
-ran 23:36–00:50) · `qwen3:14b` ≈ **7 GB** (does NOT fit — tonight's outage). qwen3:8b is
-present locally (4.9 GB), so the 04:05 tick will run. Check headroom before changing
-models: `(Get-Counter '\Memory\Available MBytes').CounterSamples[0].CookedValue`.
+≈ 3–4 GB · desktop apps ≈ 2–3 GB **(now ~7.5 GB — Chrome/Cursor/Claude sessions have
+accumulated)** · Ollama `qwen3:8b` ≈ 5–6 GB · `qwen3:14b` ≈ **7 GB** (does NOT fit —
+tonight's outage). Check headroom before changing models:
+`(Get-Counter '\Memory\Available MBytes').CounterSamples[0].CookedValue`.
+
+⚠ **The "8b co-exists fine" claim has an expiry date on it.** It was true 23:36–00:50 when
+desktop load was ~4.4 GB; by 04:18 that had grown to ~7.5 GB and the pair no longer fit
+(measured: available fell to 345 MB with 8b resident). **Mitigated 04:45** by setting
+`DOTTIE_OLLAMA_KEEP_ALIVE=30s`, which makes the model unload between stages — available
+memory then measured **5,437 MB** at 05:15 versus 345–576 MB before. That restores the
+headroom, but only intermittently (it still collapses to ~500 MB while the model is
+resident), which is why the recovery script pauses the daemon rather than relying on it.
 
 Verified 03:48 after the unload: **no models loaded**, available **5.3 GB** (the dip from
 7.5 GB is Windows Memory Compression churn — 201 → 1,394 MB — reclaiming the freed pages,
