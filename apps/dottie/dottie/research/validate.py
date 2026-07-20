@@ -21,6 +21,7 @@ from __future__ import annotations
 import ast
 import difflib
 import shutil as _shutil  # for which() only; generated code may not import shutil
+import inspect
 import subprocess
 import tempfile
 import traceback
@@ -199,7 +200,8 @@ def _select_class(module: Any, class_name: Optional[str], torch) -> Any:
 
 def dry_run_module(file_path: str | Path, *, class_name: Optional[str] = None,
                    init_kwargs: Optional[Dict[str, Any]] = None,
-                   input_shape: Optional[List[int]] = None) -> ValidationResult:
+                   input_shape: Optional[List[int]] = None,
+                   width: Optional[int] = None) -> ValidationResult:
     """Import + instantiate + one CPU forward pass, asserting a finite output.
 
     ``init_kwargs`` and ``input_shape`` come from the experiment's declared dry-run spec; both
@@ -224,6 +226,20 @@ def dry_run_module(file_path: str | Path, *, class_name: Optional[str] = None,
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)  # import-time errors surface here
         cls = _select_class(module, class_name, torch)
+        if width is not None:
+            # Override by the CONSTRUCTOR SIGNATURE, not by what the model happened to
+            # declare — exactly what factory_trainer._make_candidate does at swap time. A
+            # candidate relying on its own default width declares no dim kwarg at all, so
+            # keying off init_kwargs would leave it narrow and then blame it for the shape
+            # mismatch we caused.
+            try:
+                _params = inspect.signature(cls.__init__).parameters
+            except (TypeError, ValueError):
+                _params = {}
+            for _name in _DIM_KWARGS:
+                if _name in _params:
+                    init_kwargs[_name] = width
+            shape = [shape[0], shape[1], int(width)]
         with torch.no_grad():
             layer = cls(**init_kwargs)
             # Seeded: validation must be reproducible. An unseeded probe made the
@@ -310,7 +326,16 @@ def validate(code: str, *, class_name: Optional[str] = None,
         return r
     r = record(dry_run_module(candidate, class_name=class_name, init_kwargs=init_kwargs,
                               input_shape=input_shape))
-    return r
+    if not r.ok:
+        return r
+    # The width probe only changes the verdict when it FAILS. On success keep the declared
+    # dry-run as the canonical result so its detail (learnable_params, delta_std — what the
+    # degeneracy gate and the write-ups read) survives; the probe is still recorded in
+    # per_level, so a reader can see it ran.
+    wide = record(dry_run_at_integration_width(candidate, class_name=class_name,
+                                               init_kwargs=init_kwargs,
+                                               input_shape=input_shape))
+    return r if wide.ok else wide
 
 
 # A corrector turns (previous code, failure feedback) into a new code attempt. The real one is
@@ -325,6 +350,63 @@ class CorrectionOutcome:
     attempts: int
     result: ValidationResult
     history: List[Dict[str, Any]] = field(default_factory=list)
+
+
+#: Hidden width the candidate is actually swapped in at (``model.d_model`` for the factory
+#: nano config). The declared dry-run shape is whatever the model wrote in its own JSON —
+#: almost always 64 — so a candidate that hardcodes head counts, reshapes, or projection
+#: sizes to *that* width validates clean and then explodes at integration.
+INTEGRATION_WIDTH = 256
+
+#: Constructor kwargs that mean "hidden width", kept in step with factory_trainer's
+#: ``_DIM_KWARGS``. Duplicated rather than imported: validate.py is deliberately free of
+#: factory imports so it stays runnable without the factory checkout present.
+_DIM_KWARGS = ("d_model", "dim", "hidden", "hidden_dim", "hidden_size", "embed_dim",
+                "input_dim", "n_embd", "channels", "width")
+
+
+def dry_run_at_integration_width(file_path: str | Path, *, class_name: Optional[str] = None,
+                                 init_kwargs: Optional[Dict[str, Any]] = None,
+                                 input_shape: Optional[List[int]] = None,
+                                 width: int = INTEGRATION_WIDTH) -> ValidationResult:
+    """Re-run the dry run at the width the factory will actually use.
+
+    Measured 2026-07-20 (TODOS §5.3.R8): validation ran at the model's self-declared
+    ``input_shape`` (hidden=64) while ``factory_trainer`` swaps the block into a model with
+    ``d_model=256``, overriding dim-like constructor kwargs on the way. Candidates that
+    hardcode a head count, a reshape, or a projection size to 64 therefore passed every
+    level and died at integration — **4 of the 5 stored `failed_training` records**, e.g.
+    ``shape '[2,16,8,64]' is invalid for input of size 8192`` and ``candidate changed shape
+    [2,16,256]->[2,16,1]``. Each of those cost a full model build plus an integration probe
+    to discover something a second dry run finds in about a second.
+
+    Skipped (as a pass, honestly reported) when the declared shape is already this width or
+    is not a 3-D ``[batch, seq, hidden]`` shape."""
+    shape = list(input_shape or [4, 16, 64])
+    # Entries are whatever the model emitted: symbolic placeholders like "hidden" and
+    # "batch" show up in real records, so this must never assume they are ints. (Caught by
+    # replaying stored candidates: `int('hidden')` raised straight out of validate() and
+    # would have broken the level for every candidate declaring a symbolic shape.)
+    if len(shape) != 3 or not all(isinstance(d, int) or (isinstance(d, str) and d.isdigit())
+                                  for d in shape):
+        return ValidationResult(True, "integration_width", "skipped",
+                                f"declared input_shape {shape} is not a numeric "
+                                "[batch, seq, hidden] — cannot re-probe at the integration width")
+    shape = [int(d) for d in shape]
+    if int(shape[-1]) == int(width):
+        return ValidationResult(True, "integration_width", "skipped",
+                                f"declared width already equals the integration width ({width})")
+    r = dry_run_module(file_path, class_name=class_name, init_kwargs=dict(init_kwargs or {}),
+                       input_shape=shape, width=int(width))
+    if r.ok:
+        return ValidationResult(True, "integration_width", "pass",
+                                f"also runs at the integration width {width}: {r.detail}")
+    return ValidationResult(
+        False, "integration_width", "fail",
+        f"passes at the declared width {shape[-1]} but FAILS at the integration width "
+        f"{width}, which is the width it will actually be swapped in at (d_model). Do not "
+        f"hardcode sizes to the dry-run shape — derive every dimension from x.shape[-1] at "
+        f"forward time.\n{r.detail}")
 
 
 def _attempt_diff(before: str, after: str, *, max_lines: int = 60) -> str:

@@ -148,6 +148,71 @@ def test_contract_rejects_forward_with_extra_required_args():
     assert r2.ok, r2.detail
 
 
+def test_candidate_that_hardcodes_the_dry_run_width_is_caught(tmp_path):
+    """A block that only works at its declared width must fail validation, not training.
+
+    TODOS §5.3.R8: validation ran at the model's self-declared `input_shape` (hidden=64)
+    while factory_trainer swaps the block into a model with d_model=256, overriding
+    dim-like constructor kwargs. A candidate that hardcodes a head count or reshape to 64
+    passed every level and died at integration — costing a full model build and probe to
+    learn what a second dry run finds in about a second. Replaying the stored
+    failed_training records, this catches 2 of 5 (the other 3 only misbehave on real
+    training data, which no forward probe reaches).
+    """
+    hardcoded = """import torch
+import torch.nn as nn
+class Hardcoded(nn.Module):
+    def __init__(self, dim: int = 64):
+        super().__init__()
+        self.proj = nn.Linear(dim, dim)
+    def forward(self, x):
+        b, s, _ = x.shape
+        # the bug: head split assumes hidden == 64, not x.shape[-1]
+        h = x.reshape(b, s, 8, 8)
+        return self.proj(h.reshape(b, s, 64))
+"""
+    r_declared = validate.validate(hardcoded, class_name="Hardcoded",
+                                   init_kwargs={"dim": 64}, input_shape=[2, 4, 64])
+    assert not r_declared.ok
+    assert r_declared.level == "integration_width", r_declared.detail
+    assert "integration width 256" in r_declared.detail
+    assert "x.shape[-1]" in r_declared.detail          # actionable, not just a traceback
+
+    # a width-agnostic block passes both probes
+    agnostic = """import torch
+import torch.nn as nn
+class Agnostic(nn.Module):
+    def __init__(self, dim: int = 64):
+        super().__init__()
+        self.scale = nn.Parameter(torch.ones(1))
+    def forward(self, x):
+        return x + self.scale * torch.tanh(x)
+"""
+    r_ok = validate.validate(agnostic, class_name="Agnostic",
+                             init_kwargs={"dim": 64}, input_shape=[2, 4, 64])
+    assert r_ok.ok, r_ok.detail
+
+
+def test_integration_width_probe_tolerates_symbolic_shapes(tmp_path):
+    """A declared input_shape may contain placeholders like "hidden" — never assume ints.
+
+    Found by replaying stored candidates: `int('hidden')` raised straight out of validate(),
+    which would have broken this level for every candidate declaring a symbolic shape.
+    """
+    code = """import torch
+import torch.nn as nn
+class Sym(nn.Module):
+    def forward(self, x):
+        return torch.tanh(x)
+"""
+    f = tmp_path / "sym.py"
+    f.write_text(code, encoding="utf-8")
+    for shape in (["batch", "seq", "hidden"], [2, 4], None, [2, 4, 256]):
+        r = validate.dry_run_at_integration_width(f, class_name="Sym",
+                                                  init_kwargs={}, input_shape=shape)
+        assert r.ok, f"{shape} -> {r.detail}"
+
+
 def test_dry_run_rejects_degenerate_no_op_block():
     # TODOS §5.3.R: MLBR — the loop's first "SOTA" — passed all four levels while being a
     # no-op (zero learnable params; forward = x + scalar). It then "won" at smoke scale by

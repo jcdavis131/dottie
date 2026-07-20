@@ -1183,6 +1183,51 @@ most valuable catch so far:
   missed because of pytest's ANSI colour codes, so a real behavioural failure looked like
   no failure at all. **The check on the check needed checking.** The script now strips ANSI
   and passes `--color=no`.
+### 5.3.R8 — validation ran at the WRONG WIDTH; candidates died at integration for it
+
+- [x] **Read the real exceptions behind every `failed_training` record (07:50).** The
+  stored failures all say *"candidate not integrable at d_model=256"* with a traceback
+  through `model_1b.py:667  x = blk(x, cos, sin, attn_factor)`.
+  - **My first hypothesis was WRONG and I checked before acting on it.** I read that call
+    site as a contract mismatch — the factory passing 4 args to a `forward(x)` the
+    validator demands. It is not: `CandidateBlockAdapter.forward(x, cos, sin,
+    attn_factor=1.0)` bridges it correctly. That frame is just the caller.
+  - The actual causes: `RuntimeError: shape '[2,16,8,64]' is invalid for input of size
+    8192`; `Expected size ... [32, 8] but got: [32, 32]`; `candidate changed shape
+    [2,16,256]->[2,16,1]`; and two `AttributeError: 'NoneType' has no attribute ...`.
+- [x] **Root cause: validation ran at hidden=64, integration runs at d_model=256.** The
+  dry run used the model's *self-declared* `input_shape` — almost always 64 — while
+  `factory_trainer` swaps the block into a 256-wide residual stream. A candidate that
+  hardcodes a head count, reshape, or projection size to 64 passed every level and then
+  died after a full model build. `validate()` now re-probes at `INTEGRATION_WIDTH = 256`.
+  - **Measured, not hoped: this catches 2 of the 5 stored failures**, not 4. The other
+    three (`'NoneType' has no attribute 'abs'/'layout'`, and one shape collapse) only
+    misbehave on real training data, which no forward probe reaches. 40%, and the honest
+    number is the one worth recording.
+  - On success the canonical dry-run result is preserved (its `learnable_params` /
+    `delta_std` detail is what the degeneracy gate and write-ups read); the probe only
+    changes the verdict when it fails, and is recorded in `per_level` either way.
+- [x] **Found a REAL bug in the live trainer while fixing the test fixtures.**
+  `_DIM_KWARGS` was missing **`hidden`** (and `channels`, `width`). A candidate naming its
+  constructor arg `hidden` was built at its OWN default width and then handed d_model-wide
+  input — so the swap failed and **the candidate was blamed for a mismatch we created**.
+  Fixed in `factory_trainer.py` and `validate.py`. The suite caught this: my new level
+  rejected the legitimate `LayerScale` fixture, which is exactly what would have happened
+  to a real candidate.
+  - The probe overrides by **constructor signature**, not by declared kwargs, matching
+    `_make_candidate`. Keying off declared kwargs leaves a candidate that relies on its own
+    default width narrow, then blames it for the resulting mismatch.
+  - Also hardened: a declared `input_shape` may contain symbolic entries like `"hidden"`.
+    `int('hidden')` raised straight out of `validate()` — found by replaying stored
+    candidates, and it would have broken this level for every such candidate.
+  - Full suite 159 passed; mutation audit still 5/5 GOOD.
+- [ ] **I OVERRODE MY OWN HOLD, deliberately — recording the trade.** §5.3.R4 said not to
+  ship a second dry_run intervention until constraint-8 was measurable, to keep the two
+  separable. This change alters validation pass rates, so **the constraint-8 comparison is
+  now confounded and should be abandoned rather than reported.** I judged that a
+  structural defect burning full training runs outranks a clean measurement of a prompt
+  tweak that sat at n=5 after 1.5 h (≈6 h to reach n=20). Stating it because silently
+  breaking my own methodology note would be worse than the confound.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.

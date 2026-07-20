@@ -37,7 +37,11 @@ FACTORY_METRIC = "factory_lm_loss"
 
 # Constructor kwarg names a candidate may use for its model width; whichever exist are forced
 # to the real model's d_model so the block drops into the residual stream.
-_DIM_KWARGS = ("d_model", "dim", "hidden_dim", "hidden_size", "embed_dim", "input_dim", "n_embd")
+#: "hidden"/"channels"/"width" were missing until 2026-07-20: a candidate naming its
+#: constructor arg `hidden` was built at its OWN default width and then handed d_model-wide
+#: input, so the swap failed and the candidate was blamed for a mismatch we created.
+_DIM_KWARGS = ("d_model", "dim", "hidden", "hidden_dim", "hidden_size", "embed_dim",
+               "input_dim", "n_embd", "channels", "width")
 
 
 def _default_packed_dirs(root: Path) -> List[Path]:
