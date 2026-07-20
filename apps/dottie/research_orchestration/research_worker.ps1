@@ -32,7 +32,25 @@ if (Test-Path $LocalEnv) { . $LocalEnv }
 # Night window: a bigger model can hold the GPU when nothing else needs it.
 # Set DOTTIE_OLLAMA_MODEL_NIGHT (and optionally DOTTIE_NIGHT_START/END, 24h ints,
 # default 22-6) in the local env; outside the window the day model applies untouched.
-if ($env:DOTTIE_OLLAMA_MODEL_NIGHT) {
+#
+# SCOPED TO PER-TICK WORKERS ON PURPOSE (TODOS 5.3.R41). The hour is read ONCE, here, before
+# python starts. That is correct for ideate/implement/train/evaluate, which the scheduler
+# invokes fresh each tick. It is meaningless for `run`, which is a FOREVER-DAEMON: a daemon
+# started at 21:59 would keep the day model all night, and one started at 22:01 would keep
+# the night model all day. The window it thinks it is honouring does not exist.
+#
+# This is also the exact feature that caused the 2026-07-20 outage: with NUM_GPU=0 the night
+# model loaded 7.0 GB into SYSTEM RAM, starved the WSL2 VM to 281 MB, and took down all 14
+# containers for 90+ minutes. Leaving it armed AND non-functional under the current
+# architecture is the worst of both. It now refuses loudly for `run` instead of silently
+# doing the wrong thing.
+if ($env:DOTTIE_OLLAMA_MODEL_NIGHT -and $Worker -eq "run") {
+    Write-Warning ("DOTTIE_OLLAMA_MODEL_NIGHT is set but IGNORED for the 'run' daemon: the " +
+                   "night window is evaluated once at start, so a long-lived daemon would " +
+                   "pin whichever model matched its start hour. Use a per-tick worker if " +
+                   "you want the night model, and check free RAM first (see TODOS 5.3).")
+}
+if ($env:DOTTIE_OLLAMA_MODEL_NIGHT -and $Worker -ne "run") {
     $nightStart = if ($env:DOTTIE_NIGHT_START) { [int]$env:DOTTIE_NIGHT_START } else { 22 }
     $nightEnd   = if ($env:DOTTIE_NIGHT_END)   { [int]$env:DOTTIE_NIGHT_END }   else { 6 }
     $h = (Get-Date).Hour

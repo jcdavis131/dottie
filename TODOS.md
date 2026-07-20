@@ -2185,6 +2185,30 @@ most valuable catch so far:
   not lost ticks); `ExecutionTimeLimit=PT0S` = unlimited, right for a daemon;
   `RestartCount=3/PT5M` (covers launch failures only — measured in §5.3). The `--bottleneck`
   string is verbatim what decision item 8 describes.
+### 5.3.R41 — the night-model feature cannot work under the daemon, and was still armed
+
+- [x] **Read `research_worker.ps1` end to end (10:20) — sixth artifact, sixth finding.** I
+  had fixed one bug in this file (the `*>>` / `ErrorActionPreference` interaction that was
+  killing the daemon) and never read the rest of it.
+- [x] **The night-model switch evaluates `(Get-Date).Hour` ONCE, at wrapper start, before
+  python launches.** That is correct for `ideate`/`implement`/`train`/`evaluate`, which the
+  scheduler invokes fresh each tick. **It is meaningless for `run`** — a forever-daemon
+  started at 21:59 keeps the DAY model all night; started at 22:01 it keeps the NIGHT model
+  all day. The window it believes it is honouring does not exist.
+- [x] **And this is the exact feature that caused the outage.** With `NUM_GPU=0` the night
+  model loaded **7.0 GB into system RAM**, starved the WSL2 VM to **281 MB**, and took down
+  all 14 containers for 90+ minutes. I disabled it at 03:47 by commenting the env var in
+  `research_env.local.ps1` — **but the mechanism stayed armed**: anyone re-setting that
+  variable re-arms an outage, in service of a feature that cannot function under the current
+  architecture. Armed *and* non-functional is the worst combination.
+- [x] Now scoped: it applies only to per-tick workers, and for `run` it emits an explicit
+  `Write-Warning` explaining why it is ignored and to check free RAM first. Verified the file
+  parses and that the branch selection is correct (`run` → warn, `implement` → apply).
+- [ ] **The recurring shape, now six for six:** I fixed a bug *in* an artifact and did not
+  read the artifact. Same as the prompts (§5.3.R35–R38, four contradictions across three
+  files I had been editing constantly) and the promotion bundle (§5.3.R31–R33). **Editing a
+  file is not reading it** — the edit view shows the lines around the change, which is
+  exactly where the surviving bugs are not.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
