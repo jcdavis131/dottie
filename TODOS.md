@@ -4305,6 +4305,12 @@ so what does the *server* do under a 5 s poll? Two problems, one significant.
     luck of additive edits — when spawning parallel work, assign disjoint file
     lanes explicitly (curriculum registry vs adapters vs tests), and the second
     lane pulls before touching anything shared.
+9.6 **Before writing a script, read `scripts/README.md`.** It indexes every operational tool
+    — the restart/recovery scripts, the run-log and pre-registered report readers, the
+    mutation audit, and the `ab_nano.py` / `PROMOTION.md` / `candidate.py` bundle that is
+    **generated automatically on every promotion**. Written after §5.3.R92, where I built a
+    seed sweep the loop had already generated a better version of, for that exact candidate,
+    hours earlier. Every count in it was verified against source, not recalled.
 9.5 **Any tick that writes to TODOS.md runs `python scripts/check_todos_timestamps.py`
     before committing.** Never write a clock time that did not come from `date` or
     `git log` in that same tick; if neither is to hand, write the commit sha or "this
