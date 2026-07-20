@@ -122,9 +122,12 @@ Then §1 fires automatically (#17 armed on the monitor).
     - 2.1.b [x] 01:38: collector×4, curator×6, janitor, server recreated on new images.
       **Trainer DELIBERATELY left down** — gate failed; no new run without human
       sign-off (also avoids an exit-0 restart loop on the finished branch command).
-    - 2.1.c [~] Acceptance now 13/13 healthy (12 factory + dottie; trainer excluded);
-      verify ~01:50: healthy states + collector logs show NEW source keys (synpro,
-      tool_use L2/L3, db/compress traces) + `/pipeline/status` sane.
+    - 2.1.c [x] VERIFIED 01:50: **13/13 healthy**; collector_boot logs **"sources": 30**
+      (new registry live — also closes §8's post-rebuild check); `/pipeline/status`
+      responds (mode reads stale "training" off the dead trainer's demand.json — decays).
+      CAVEAT: collectors correctly PAUSED ("packed runway 3.22B >= max 3.00B") so new
+      source keys won't EMIT until a trainer drains runway — 2.2 is blocked on the
+      human decision about the next run, not on the rebuild.
 2.2 **Verify mixture flow end-to-end**: after 1h, `manifest` tokens_ready per phase
     rises; curator rejects stay <20%; no `unknown generator` errors anywhere.
 2.3 **Retire the old checkouts** — AUDITED 2026-07-19 late: workspace clean; retired ava-agi's 97 dirty files all captured by the reconciliation (0 changed since); both safe to rename (they are now strictly historical):
@@ -247,8 +250,9 @@ Then §1 fires automatically (#17 armed on the monitor).
 
 ### New items (added 2026-07-19 evening)
 
-- [ ] §5: enable `DOTTIE_OLLAMA_MODEL_NIGHT=qwen3:14b` in research_env.local.ps1 the
-  morning after tool_final.pt lands (GPU contention gone at night thereafter).
+- [x] §5: `DOTTIE_OLLAMA_MODEL_NIGHT=qwen3:14b` enabled 2026-07-20 01:50 (tool run done,
+  trainer parked → contention gone; NUM_GPU stays 0 per GPU doctrine). Next research
+  tick in the 22-06 window picks it up; watch the first 14b ideation for stalls.
 - [x] §5: ideation raw-dumps reviewed 2026-07-20 — new shape found (mid-word-corrupted
   key `"hypo,thesis_name"` killed a whole 3-idea batch) and fixed with canonical-skeleton
   key repair in parse_hypotheses (fill-only, deterministic). Swept all 9 accumulated
