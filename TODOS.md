@@ -3156,6 +3156,29 @@ most valuable catch so far:
   the stored histories for repeated identical dry_run failures before deciding whether to
   re-derive the class name per attempt or pin the name in the correction prompt.
 
+### 5.3.R95 — my own capacity caveat had gone stale AND was too specific — fixed both
+
+- [x] **Checked the operator-facing baseline caveat, because R93 retracted the result it
+  cited.** In `af94aed` (this session) I had added a parenthetical to the capacity caveat:
+  *"the confound was REFUTED … the candidate won on merit."* **R93 then measured the candidate
+  WORSE at every seed** — so the status snapshot was asserting "won on merit" about a proven
+  regression. Stale within hours, in a caveat whose whole job is honesty.
+- [x] **The deeper bug: specific text inside a GENERIC function.** `_baseline_capacity_caveat`
+  fires for **any** baseline set by a large capacity deletion. Hardcoding one experiment's
+  control history means the next *different* baseline would be captioned with the wrong
+  experiment's result. A description baked into generic code that breaks when the data moves —
+  the session's theme, committed by me, in code written this same session.
+- [x] **Fixed (`47809c3`) by removing the parenthetical, not updating it.** Updating it would
+  just reintroduce the generic-vs-specific bug with fresher text. The generic check keeps its
+  generic statement (the risk + that a matched control is cheap); the specific R93 finding for
+  `5a7232ffea24` lives in TODOS and memory, tied to that experiment, where it belongs.
+- [x] **The rule this crystallises:** a per-record finding does not go in code that runs for
+  every record. Generic functions state generic risks; specific results live with the
+  specific data (ledger notes, that experiment's writeup). I violated it while fixing a
+  different instance of the same thing, which is exactly why it is worth stating as a rule.
+- [x] 201 passed; the existing capacity test still holds because it only asserts the generic
+  clauses, never the parenthetical I removed.
+
 ### 5.3.R94 — measured the per-seed cost I had guessed; it was 20× too high
 
 - [x] **Before leaving the per-seed follow-up as "operator's call, ~40 min", I measured it.**
