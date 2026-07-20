@@ -270,6 +270,36 @@ def _implement(led, tmp_path, policy):
     return implementation.run_implementation(led, policy, workspace_root=tmp_path / "ws")
 
 
+def test_corrector_failure_is_distinguished_from_a_bad_candidate(led, tmp_path):
+    """A run abandoned because the LLM died must not look like a validation failure.
+
+    TODOS 5.3.R4: 48e0f39d8225 stopped at attempts=2 of --max-retries 5 with no reason
+    recorded. `validate_with_correction` breaks early when the CORRECTOR raises and logs
+    it only to `history`, while the stored failure was built from the last validation
+    result alone. So "Ollama was down" and "the candidate is broken" were indistinguishable
+    in the ledger -- and the short `attempts` count feeds the conversion analysis.
+    """
+    calls = {"n": 0}
+
+    def policy(prompt: str) -> str:
+        if "failed automated validation" in prompt:      # the corrector's call
+            calls["n"] += 1
+            raise RuntimeError("ollama connection reset")
+        if "Principal ML Engineer" in prompt:
+            return impl_json("def broken(:", "Broken")
+        return json.dumps(HYP)
+
+    r = _implement(led, tmp_path, policy)
+    assert r["state"] == FAILED_VALIDATION
+    assert calls["n"] == 1                                # stopped at the FIRST corrector death
+    assert r["attempts"] == 1 and r["corrector_error"]    # the short count now has a reason
+    assert "ollama connection reset" in r["corrector_error"]
+    # and the human-readable failure says WHOSE fault it was, not just where it stopped
+    failure = led.get(r["experiment"]).failure or ""
+    assert "the corrector itself failed" in failure
+    assert "ollama connection reset" in failure
+
+
 def test_full_cycle_promote(led, tmp_path):
     r = _implement(led, tmp_path, make_policy())
     assert r["state"] == READY_FOR_TRAINING and r["attempts"] == 0

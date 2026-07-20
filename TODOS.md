@@ -911,11 +911,22 @@ most valuable catch so far:
 - **It fired on a module the search generated live**, not on replayed stored code as in
   the unit tests. The gate is not just theoretically correct — the search still emits
   this shape, and now it is stopped.
-- [ ] ODDITY worth a look: it stopped at `attempts: 2` though `--max-retries 5` is set.
-  `validate_with_correction` breaks early only when the corrector itself raises, and no
-  corrector error appears in the stored failure — so either that break path is not
-  recorded or the retry accounting is off. The outcome was right, but `attempts` feeds
-  the conversion analysis, so it should mean what it says.
+- [x] ODDITY, now RESOLVED (06:45): it stopped at `attempts: 2` though `--max-retries 5`
+  is set. The retry accounting was fine — the **corrector itself raised**, which makes
+  `validate_with_correction` break early and record the exception *only* in `history`.
+  The stored failure was built from the last validation result alone, so the reason was
+  invisible. **This was worse than a cosmetic count bug**: an experiment abandoned because
+  Ollama was down looked *identical in the ledger* to one that genuinely failed validation
+  on its merits. Given the Ollama outages this box has had, some share of the
+  `failed_validation` pile is likely infrastructure misfiled as candidate failure — which
+  inflates the "50% die in validation" figure in §5.2. Fixed in `implementation.py`: the
+  corrector's exception is surfaced in the failure text ("STOPPED EARLY, the corrector
+  itself failed: …") and returned as `corrector_error`. Regression test verified red
+  before / green after (`test_corrector_failure_is_distinguished_from_a_bad_candidate`).
+- [ ] FOLLOW-UP: re-classify the existing `failed_validation` records now that the two
+  causes are distinguishable going forward. Old records cannot be recovered (the reason
+  was never stored), so §5.2's conversion rate should be recomputed from records dated
+  after this fix rather than trusted as-is.
 
 ### 5.3.R3 — ⭐⭐ THE GATE CAUGHT A REAL ONE (04:37) — a third false SOTA, blocked
 

@@ -21,6 +21,27 @@ from dottie.research.ledger import (
 Policy = Callable[[str], str]
 
 
+def _corrector_error(outcome) -> Optional[str]:
+    """The corrector's own exception, if the retry loop stopped because of one.
+
+    `validate_with_correction` breaks out early when the CORRECTOR raises (Ollama
+    unreachable, read timeout, unparseable reply) and records it only in `history`. The
+    stored failure was built from the last validation result alone, so an experiment
+    abandoned because the LLM was down looked identical to one that genuinely failed
+    validation on its merits — and its `attempts` count silently stopped short of
+    `max_retries` with no explanation (observed 2026-07-20: 48e0f39d8225, attempts=2 of 5).
+    That distinction matters: one is the candidate's fault, the other is infrastructure."""
+    for entry in reversed(getattr(outcome, "history", []) or []):
+        if isinstance(entry, dict) and entry.get("corrector_error"):
+            return str(entry["corrector_error"])[:300]
+    return None
+
+
+def _corrector_note(outcome) -> str:
+    err = _corrector_error(outcome)
+    return f" — STOPPED EARLY, the corrector itself failed: {err}" if err else ""
+
+
 def _keep_tail(detail: str, limit: int = 800) -> str:
     """Keep the END of a failure detail, not the start.
 
@@ -118,7 +139,9 @@ def run_implementation(ledger: Ledger, policy: Policy, *, workspace_root: str | 
     ledger.transition(exp.id, FAILED_VALIDATION, implementation=final_impl, workspace=str(ws),
                       attempts=outcome.attempts,
                       failure=f"validation failed at '{outcome.result.level}' after "
-                              f"{outcome.attempts} self-correction attempt(s): "
+                              f"{outcome.attempts} self-correction attempt(s)"
+                              f"{_corrector_note(outcome)}: "
                               f"{_keep_tail(outcome.result.detail)}", ts=ts)
     return {"experiment": exp.id, "state": FAILED_VALIDATION,
-            "level": outcome.result.level, "attempts": outcome.attempts}
+            "level": outcome.result.level, "attempts": outcome.attempts,
+            "corrector_error": _corrector_error(outcome)}
