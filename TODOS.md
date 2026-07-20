@@ -1972,6 +1972,34 @@ most valuable catch so far:
   were all in the same dead zone — **written by code, read by a human, executed by nobody**.
   Anything with that shape needs either regeneration on read or an explicit rebuild path;
   correctness in the generator is not enough.
+### 5.3.R34 — verified the operator's fix path WITHOUT running it (09:50)
+
+- [x] **`calibrate-baseline` is decision #5's fix path and is exercised by nothing** — no
+  test invokes the research CLI, and the daemon only runs `run`. Given §5.3.R32 (a bundle
+  script broken for its entire existence by a signature mismatch), an unexercised command
+  the operator depends on deserved a check.
+- [x] **DID NOT run it. Available memory was 675 MB** — the same neighbourhood as the
+  281 MB that killed the WSL VM at 02:05, which was **my own doing** with the qwen3:14b
+  change. A factory model build plus packed-corpus load needs far more than the headroom
+  available. Causing a second memory incident to test a command would be a bad trade, and
+  the box's RAM is the binding constraint on everything here.
+- [x] **Verified statically instead — the `ab_nano` bug was a shape/signature mismatch, and
+  that class IS checkable without executing:**
+  - CLI wiring: `--data-dir … calibrate-baseline --steps 3 --overwrite` parses and
+    dispatches to `cmd_calibrate_baseline`.
+  - Shape contract: every key the command reads off `measured` — `batch, device, lr,
+    preset, seed, seq_len, steps` — plus `FACTORY_METRIC`, is produced by
+    `factory_trainer`. **No missing keys**, so the `ab_nano` failure mode is not present.
+  - Recorded as *statically sound, not executed*. That is weaker than a live run and is
+    labelled as such rather than written up as "verified".
+- [x] One self-inflicted false alarm en route: my first invocation put `--data-dir` after
+  the subcommand and argparse rejected it. My error, not the CLI's — noted because a
+  usage error that looks like a broken command is exactly how §5.3.R16 (`node --test <dir>`)
+  wasted time earlier.
+- [ ] **When memory allows, run it for real against a temp `--data-dir`** with small
+  `--steps`: `python -m dottie.research --data-dir <tmp> calibrate-baseline --steps 5
+  --overwrite`. That writes only to the temp ledger and leaves the live baseline untouched.
+  Want >4 GB free first.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
