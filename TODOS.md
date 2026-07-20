@@ -451,6 +451,18 @@ independent reasons, both from the bundle's own numbers/code:**
     render post-reconciliation (dashboard_html/ecosystem_html/evals_html were merged).
 7.2 Assistant tab: 3.4's chat + a visible "which brain" indicator (factory ckpt vs
     Ollama fallback) — honesty in the UI too.
+7.5 [x] **Site render VERIFIED headlessly + factory-down honesty fix (02:55)**: the
+    browser extension isn't connected, so instead the REAL `app.js` was run against the
+    REAL gist payload in a DOM shim (harness: `$CLAUDE_JOB_DIR/tmp/site_render_check.js`,
+    takes a payload path as argv). Healthy payload → 6/6 checks pass (tok/s 7541,
+    phase 75%, run 82%, 601 shards, no NaN, badge "live · box seen …") — tonight's
+    telemetry/badge/sparkline work confirmed working for the first time.
+    FOUND + FIXED en route: when the box is up but the FACTORY is unreachable (exactly
+    tonight's WSL crash — the publisher honestly wrote `pipeline: {unreachable}` at 02:20
+    and that IS what the live gist serves right now), the tiles rendered bare em-dashes
+    and "Factory mode: unknown", which reads like missing data rather than a down
+    service. Now: a critical "factory unreachable" chip plus a note naming the reason
+    and stating that no pipeline numbers are shown rather than stale ones.
 7.3 [x] Research tab: 5.4 (sparkline, shipped). Factory tab: SHIPPED 2026-07-20 —
     telemetry tiles now read the gist payload's v2 `.pipeline` block (tok/s from
     trainer.last, phase+run % from watch.*_progress, mode chip with honest ·stale

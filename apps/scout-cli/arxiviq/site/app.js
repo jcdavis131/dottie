@@ -227,10 +227,16 @@ function renderTelemetry() {
       : state.snapshot.pipeline;
   const exps = state.live.experiments || [];
   const best = exps.length ? Math.min(...exps.map((e) => e.val_bpb)) : null;
-  const mode = String(pipe.mode_label ?? pipe.weekly_training ?? "unknown")
-    + (pipe.mode_stale ? " · stale" : "");
-  const modeKind = pipe.mode_stale || mode.startsWith("BLOCKED") ? "warning"
-    : /training|run/i.test(mode) ? "good" : "warning";
+  // The box can be up while the FACTORY is down (observed 2026-07-20: the WSL VM died and
+  // took all 14 containers with it, while the host-side publisher kept publishing). The
+  // publisher records {unreachable} honestly; say so instead of rendering bare em-dashes.
+  const down = status?.pipeline?.unreachable;
+  const mode = down ? "factory unreachable"
+    : String(pipe.mode_label ?? pipe.weekly_training ?? "unknown")
+      + (pipe.mode_stale ? " · stale" : "");
+  const modeKind = down ? "critical"
+    : pipe.mode_stale || mode.startsWith("BLOCKED") ? "warning"
+      : /training|run/i.test(mode) ? "good" : "warning";
 
   $("#telemetry-tiles").innerHTML = `
     <div class="tile"><div class="k">Pipeline phase</div>
@@ -248,9 +254,13 @@ function renderTelemetry() {
       <div class="d">${best != null ? `best val_bpb ${num(best, 4)}` : "release feed unreachable"}</div></div>`;
 
   renderBpbChart(exps);
-  $("#telemetry-note").textContent = exps.length
+  const relnote = exps.length
     ? `${exps.length} experiments from scout-rtx releases · polling every ${POLL_MS / 60000} min`
     : "";
+  $("#telemetry-note").textContent = down
+    ? `factory pipeline unreachable from the box (${String(down).slice(0, 80)}) — tiles show `
+      + `no pipeline numbers rather than stale ones${relnote ? " · " + relnote : ""}`
+    : relnote;
 }
 
 function renderBpbChart(exps) {
