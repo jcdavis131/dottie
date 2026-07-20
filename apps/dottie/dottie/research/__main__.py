@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from typing import Any, Dict, Optional
 
@@ -352,4 +353,19 @@ def main(argv: Optional[list] = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # os._exit, not sys.exit: MEASURED 2026-07-20 — worker processes finished their work
+    # and committed it, then never terminated. sys.exit raises SystemExit and interpreter
+    # shutdown then JOINS non-daemon threads; the factory trainer's torch/OpenMP pool never
+    # releases (PID 8524: 10,747 CPU-s of real work done, then 53 threads parked in Wait
+    # forever). Task Scheduler therefore kept the task "Running", and MultipleInstances=
+    # IgnoreNew silently refused the next hourly trigger — two ticks were lost that way
+    # tonight (02:05 0x800710E0, and the 03:05 run had to be stopped by hand).
+    #
+    # Safe here because the process is DONE: every ledger write commits inside its own
+    # `with self._conn()` block, and this package registers no atexit/__del__ cleanup
+    # (both verified). The explicit flush also gets the JSON result line out of Python's
+    # block-buffered stdout, which is what made run.log useless as a liveness signal.
+    _code = main()
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(_code if isinstance(_code, int) else 0)

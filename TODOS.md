@@ -776,9 +776,18 @@ independent reasons, both from the bundle's own numbers/code:**
   `py-spy dump --pid 8524` or by enabling `faulthandler` and signalling the process;
   that names the blocking frame instead of assuming it.
   FIXES, in order of preference: (1) close/join whatever holds the interpreter open at
-  the end of `dottie.research.__main__` (real fix, once the diagnostic names it);
-  (2) `os._exit(code)` after an explicit flush of stdout + the ledger connection
-  (pragmatic stopgap that guarantees termination); (3) set `MultipleInstances` to
+  the end of `dottie.research.__main__` (real fix, once the diagnostic names it — STILL
+  WORTH DOING, the stopgap only hides it);
+  (2) [x] **APPLIED 03:57** — `os._exit(code)` after flushing stdout/stderr, so a finished
+  worker always terminates. Safe here and verified before shipping: every ledger write
+  commits inside its own `with self._conn()` block, and the package registers **no**
+  atexit/`__del__` cleanup (both checked). Tested: `status` exits in **0.5 s with code 0**
+  and still prints its JSON; a bad subcommand still exits **2** (the wrapper does
+  `exit $LASTEXITCODE`, so this mattered); 35/35 research tests green (they call `main()`
+  directly, so the new path doesn't affect them). Bonus: the explicit flush pushes the
+  result line out of Python's block-buffered stdout, which is what made `run.log`
+  useless as a liveness signal;
+  (3) set `MultipleInstances` to
   Queue/Parallel so orphans can no longer eat ticks (mitigation — the wrapper's
   exclusive lock is the real concurrency guard, and it IS released correctly:
   verified the lock file re-opens exclusively after the stop, so 04:05 will run).
