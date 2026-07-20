@@ -406,6 +406,55 @@ def test_full_cycle_promote(led, tmp_path):
     assert led.get_baseline().metric_value == rt["metrics"]["proxy_loss"]
 
 
+def test_baseline_migrations_stay_additive_and_nullable(tmp_path):
+    """Any column added to `baseline` must be writable-around by OLDER code.
+
+    TODOS §5.3.R6: the research daemon holds the ledger open for hours and does NOT
+    reload, so a migration always lands under a running process executing the previous
+    version of this file. That old code writes an explicit column list and reads rows by
+    name, which survives added columns — but only while every added column is nullable.
+    A future NOT NULL column (or one with no default) would start failing the live
+    daemon's writes silently, mid-run, with the ledger as the only record.
+
+    Scope, honestly: SQLite enforces most of this itself — `ADD COLUMN ... NOT NULL`
+    without a default is rejected outright once the table has a row, and `baseline` is a
+    singleton that always does (verified on sqlite 3.45.1). So the headline disaster is
+    mostly unreachable in production, and this test would trip over SQLite's own error
+    before reaching its assertion. What it actually guards is the part SQLite does NOT
+    check: that the pre-migration INSERT statement still succeeds verbatim, which a future
+    CHECK constraint, renamed column, or altered conflict clause would silently break —
+    and that re-running the migration is a no-op.
+    """
+    import sqlite3
+
+    L = Ledger(tmp_path / "m.sqlite3")
+    L.seed_baseline(Baseline("m", 1.0, higher_is_better=False, architecture="arch",
+                             experiment_id=None, updated_ts=0.0))
+
+    original = ("singleton", "metric_name", "metric_value", "higher_is_better",
+                "architecture", "experiment_id", "updated_ts", "notes")
+    c = sqlite3.connect(tmp_path / "m.sqlite3")
+    cols = {r[1]: r for r in c.execute("PRAGMA table_info(baseline)")}
+    added = [name for name in cols if name not in original]
+    for name in added:                       # notnull flag is index 3, default is index 4
+        assert not cols[name][3] or cols[name][4] is not None, (
+            f"migrated column {name!r} is NOT NULL without a default — a daemon running "
+            "the previous version of ledger.py would fail every baseline write")
+
+    # the pre-migration write, verbatim: must still succeed
+    c.execute(
+        "INSERT INTO baseline (singleton, metric_name, metric_value, higher_is_better, "
+        "architecture, experiment_id, updated_ts, notes) VALUES (1,?,?,?,?,?,?,?) "
+        "ON CONFLICT(singleton) DO UPDATE SET metric_value=excluded.metric_value",
+        ("m", 2.0, 0, "arch", "exp123", 123.0, "old-code write"))
+    c.commit()
+    assert L.get_baseline().metric_value == 2.0        # and new code reads it back
+
+    # running the migration twice must be a no-op, not an error
+    Ledger(tmp_path / "m.sqlite3")
+    assert L.get_baseline().metric_value == 2.0
+
+
 def test_two_sample_significance_when_baseline_records_spread(led, tmp_path):
     """A baseline with its own SEM must be compared two-sample, not as an exact point.
 

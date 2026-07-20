@@ -1142,6 +1142,23 @@ most valuable catch so far:
     writes an explicit column list, so it keeps working against the migrated DB. Verified
     by migrating the live ledger in place and reading the baseline back.
   - Full suite 156 passed.
+- [x] **MIGRATION SAFETY VERIFIED EMPIRICALLY, NOT ASSERTED (07:30).** Last tick I
+  migrated the **live** ledger while the daemon held it open running the previous
+  `ledger.py`, and claimed old code would tolerate it. Claiming is not checking. Replayed
+  the pre-migration 8-column INSERT verbatim against a migrated schema: it succeeds, and
+  the new reader returns the row with `metric_sem=None`. The daemon has since completed
+  two implements and started an ideate against the migrated DB, so it is demonstrably fine.
+  - Added `test_baseline_migrations_stay_additive_and_nullable`.
+  - **And a correction on that test's worth.** I first wrote it as though it guarded a
+    catastrophe. It mostly does not: sqlite (3.45.1) **rejects `ADD COLUMN ... NOT NULL`
+    without a default outright once the table has a row**, and `baseline` is a singleton
+    that always has one — so the headline failure is largely unreachable, and the test
+    would hit sqlite's own error before its assertion. What it genuinely guards is the
+    part sqlite does *not* check: that the pre-migration INSERT still succeeds verbatim
+    (a future CHECK constraint, renamed column or altered conflict clause would break it
+    silently) and that re-running the migration is a no-op. Docstring says so now rather
+    than implying more.
+  - Full suite 157 passed.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
