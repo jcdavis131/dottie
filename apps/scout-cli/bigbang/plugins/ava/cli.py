@@ -1,6 +1,6 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
 import typer
-from bigbang.core.output import emit
+from bigbang.core.output import emit, is_json
 from bigbang.core.registry import list_tools
 from pathlib import Path
 import json
@@ -624,6 +624,138 @@ def _run_in_factory(argv: list, yes: bool, command: str, description: str):
     }, command=command)
     if proc.returncode != 0:
         raise typer.Exit(proc.returncode)
+
+
+LOOP_SCRIPT_REL = ("scripts", "dottie_continuous_loop.py")
+LOOP_MODES = ("data", "train", "eval", "ecosystem", "all", "monitor", "aggregate")
+
+
+def _loop_script() -> Path:
+    """Path to the continuous-loop driver, resolved through the same FACTORY root.
+
+    FACTORY already probes DOTTIE_ROOT/apps/ava-factory first (see
+    _resolve_factory_root), so this inherits that lookup rather than re-deriving it.
+    """
+    return FACTORY.joinpath(*LOOP_SCRIPT_REL)
+
+
+def _stream_in_factory(argv: list, yes: bool, command: str, description: str):
+    """Run a long job in the factory and STREAM its output line-by-line.
+
+    `_run_in_factory` uses subprocess.run(capture_output=True), which is right for the
+    short scripts it drives but wrong here: the continuous loop runs for minutes to hours,
+    and capture_output shows nothing until it exits. This uses Popen with an unbuffered
+    child (PYTHONUNBUFFERED=1, bufsize=1) so progress is visible while it happens.
+
+    In --json mode each line that parses as a JSON object is collected as a structured
+    event and the rest are kept as text, so agents get one machine-readable payload while
+    humans get a live feed. Solo personal project, public/free-tier only.
+    """
+    import subprocess
+
+    script = _loop_script()
+    if not script.exists():
+        emit({
+            "error": f"continuous loop script not found at {script}",
+            "hint": "expected <factory>/scripts/dottie_continuous_loop.py; set DOTTIE_ROOT "
+                    "to the monorepo root, or clone the factory into ~/workspace",
+        }, command=command)
+        raise typer.Exit(1)
+    if not yes:
+        if not typer.confirm(f"Run in {FACTORY}: {' '.join(argv)} ?"):
+            emit({"cancelled": True, "cmd": " ".join(argv)}, command=command)
+            raise typer.Exit(1)
+
+    env = dict(os.environ)
+    env["PYTHONUNBUFFERED"] = "1"          # the child must not sit on its own stdout
+    json_mode = is_json()
+    events: List[Dict[str, Any]] = []
+    tail: List[str] = []
+    try:
+        proc = subprocess.Popen(
+            argv, cwd=str(FACTORY), env=env, text=True, bufsize=1,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        )
+    except FileNotFoundError as e:
+        emit({"error": f"cannot launch {argv[0]!r}: {e}",
+              "hint": "uv is required for the isolated run path; install it or use "
+                      "`scout ava train` for the direct script path"}, command=command)
+        raise typer.Exit(1)
+
+    assert proc.stdout is not None
+    for line in proc.stdout:                # iterate as it arrives, never .read()
+        line = line.rstrip("\n")
+        if not line:
+            continue
+        if json_mode:
+            stripped = line.lstrip()
+            if stripped.startswith("{"):
+                try:
+                    events.append(json.loads(stripped))
+                    continue
+                except json.JSONDecodeError:
+                    pass                     # not an event line; fall through to text
+            tail.append(line)
+            del tail[:-200]
+        else:
+            typer.echo(line)                 # immediate: no buffering between us and the user
+    code = proc.wait()
+
+    emit({
+        "action": description,
+        "cmd": " ".join(argv),
+        "cwd": str(FACTORY),
+        "script": str(script),
+        "exit_code": code,
+        "events": events,
+        "output_tail": tail[-50:],
+        "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
+    }, command=command)
+    if code != 0:
+        raise typer.Exit(code)
+
+
+@app.command("loop")
+def loop(
+    mode: str = typer.Option("all", "--mode", help=f"one of: {', '.join(LOOP_MODES)}"),
+    full: bool = typer.Option(False, "--full", help="heavy mode (10M tokens, real train/eval)"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="log commands without executing them"),
+    preset: str = typer.Option("nano", "--preset", help="train preset nano/mini/base1b"),
+    steps: int = typer.Option(0, "--steps", help="train max steps (0 = script default)"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="skip confirmation prompt"),
+):
+    """Drive the continuous data/train/eval/ecosystem loop, streaming its output.
+
+    Routes to <factory>/scripts/dottie_continuous_loop.py under `uv run` so the loop gets
+    its own resolved environment rather than inheriting this CLI's.
+    """
+    if mode not in LOOP_MODES:
+        emit({"error": f"unknown mode {mode!r}", "valid_modes": list(LOOP_MODES)},
+             command="ava loop")
+        raise typer.Exit(2)
+    argv = ["uv", "run", "python", str(_loop_script()), "--mode", mode, "--preset", preset]
+    if steps:
+        argv += ["--steps", str(steps)]
+    if full:
+        argv.append("--full")
+    if dry_run:
+        argv.append("--dry-run")
+    _stream_in_factory(argv, yes=yes, command="ava loop", description=f"ava loop --mode {mode}")
+
+
+@app.command("data")
+def data(
+    tokens: str = typer.Option(None, "--tokens", help="e.g. 500K, 10M (default: script default)"),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="skip confirmation prompt"),
+):
+    """Run the loop's data stage (harvest/pack) in the factory, streaming output."""
+    argv = ["uv", "run", "python", str(_loop_script()), "--mode", "data"]
+    if tokens:
+        argv += ["--tokens", tokens]
+    if dry_run:
+        argv.append("--dry-run")
+    _stream_in_factory(argv, yes=yes, command="ava data", description="ava data")
 
 
 @app.command("train")
