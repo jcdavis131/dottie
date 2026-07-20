@@ -129,12 +129,24 @@ def test_expired_lease_requeues(db_path):
 
 
 def test_completing_after_lease_stolen_raises(db_path):
-    """A zombie worker must not clobber a shard someone else now owns."""
+    """A zombie worker must not clobber a shard someone else now owns.
+
+    lease_seconds=-1, not 0. With 0 the lease expires at exactly the claim instant, and
+    requeue_expired() tests `lease_expires_at < now` -- so the requeue only happens if the
+    clock TICKS between the two calls. It usually does not: back-to-back time.time() calls
+    on this box tie 2000/2000, with a ~1 ms tick. That made this test flaky (measured
+    2026-07-20: 2 of 3 runs failed in isolation), and the failure was silent-looking --
+    no requeue, so the zombie still held the lease and complete() legitimately succeeded.
+
+    The sibling test above solves the same problem with time.sleep(0.01). A negative lease
+    is strictly better: it is expired by construction rather than by racing a clock, so it
+    cannot regress under load or on a coarser timer.
+    """
     _seed(db_path, n=1)
-    with Manifest(db_path, lease_seconds=0) as m:
+    with Manifest(db_path, lease_seconds=-1) as m:
         s = m.claim("curate", by="zombie")
-        m.requeue_expired()
-        m.claim("curate", by="new-owner")
+        assert m.requeue_expired() == [s.id], "lease must be expired by construction"
+        assert m.claim("curate", by="new-owner") is not None
 
         with pytest.raises(StateError, match="lease held by"):
             m.complete(s.id, by="zombie", tokens=1)
