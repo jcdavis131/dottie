@@ -181,10 +181,7 @@ def _baseline_capacity_caveat(ledger: Ledger, baseline: Baseline) -> Optional[st
             "this bar MAY partly measure capacity rather than the idea — only a capacity-"
             "matched control can tell, and it is cheap: rerun the swap with a zero-parameter "
             "pass-through and compare. Until then, treat deltas against this baseline as "
-            "provisional. (Worth knowing: the first time this was actually run — TODOS "
-            "§5.3.R91 — the confound was REFUTED. Removing the block made the loss WORSE, "
-            "and the parameter-light candidate won on merit. A flag is a question, not a "
-            "verdict.)")
+            "provisional.")
 
 
 def _spread(metrics: Dict[str, Any]) -> Optional[Dict[str, float]]:
