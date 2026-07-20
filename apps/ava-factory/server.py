@@ -269,7 +269,12 @@ async def chat_page():
 
 
 @app.get("/pipeline/status")
-async def pipeline_status():
+def pipeline_status():
+    # `def`, NOT `async def`: collect_status() is synchronous and I/O-heavy — it opens the
+    # manifest sqlite, walks metrics_*.jsonl and probes disk. Inside an `async def` handler
+    # that work runs ON the event loop and blocks EVERY other request (/chat, /assistant,
+    # /health) for its duration. FastAPI runs a plain `def` handler in a threadpool
+    # instead. The console polls this endpoint every 5 s, so the stall was periodic.
     from dottie.pipeline_status import collect_status
 
     return collect_status()
@@ -283,7 +288,9 @@ async def ecosystem():
 
 
 @app.get("/ecosystem/status")
-async def ecosystem_status():
+def ecosystem_status():
+    # `def` for the same reason as /pipeline/status: collect_ecosystem_status() is a
+    # synchronous filesystem walk and must not run on the event loop.
     from dottie.ecosystem_status import collect_ecosystem_status
 
     return collect_ecosystem_status()
@@ -358,9 +365,14 @@ async def assistant_page():
 
 
 @app.get("/assistant/status")
-async def assistant_status():
+def assistant_status():
     """Read-only capability/telemetry snapshot the arxiviq.com surface polls.
-    Never 500s (collector swallows its own errors)."""
+    Never 500s (collector swallows its own errors).
+
+    `def`, not `async def`: collect_assistant_status() is synchronous. /network/status
+    already handles this correctly via `asyncio.to_thread`; these sibling endpoints were
+    simply missed, so their blocking I/O ran on the event loop and stalled every
+    concurrent request."""
     from dottie.assistant_status import collect_assistant_status
 
     return collect_assistant_status()

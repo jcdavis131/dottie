@@ -1362,3 +1362,27 @@ independent reasons, both from the bundle's own numbers/code:**
     luck of additive edits — when spawning parallel work, assign disjoint file
     lanes explicitly (curriculum registry vs adapters vs tests), and the second
     lane pulls before touching anything shared.
+
+### 7.8 — factory server: three endpoints blocked the event loop (fixed 06:00)
+
+Followed the thread from the webapp polling fix (§7.6): `/pipeline/status` is expensive,
+so what does the *server* do under a 5 s poll? Two problems, one significant.
+
+- **`async def` handlers calling SYNCHRONOUS collectors.** `/pipeline/status`,
+  `/ecosystem/status` and `/assistant/status` were declared `async def` while calling
+  `collect_status()` / `collect_ecosystem_status()` / `collect_assistant_status()` — all
+  plain `def` doing sqlite reads, metrics-file walks and disk probes. In FastAPI that work
+  runs **on the event loop**, blocking every other request (`/chat`, `/assistant`,
+  `/health`) for its duration. With the console polling every 5 s, the server stalled
+  periodically. Fixed by declaring them plain `def`, which makes FastAPI run them in a
+  threadpool. Verified by AST scan: no `async` handler still calls a collector inline.
+- **This was an oversight, not a design choice** — `/network/status` in the same file
+  already does it correctly (`await asyncio.to_thread(collect_network_status, …)`) and its
+  docstring even says *"Heavy I/O runs in a worker thread so live polls stay snappy."* The
+  sibling endpoints were simply missed.
+- [ ] **Not done: caching.** `collect_status()` still recomputes per request, so N clients
+  cost N walks. A 2–3 s TTL would make it robust regardless of caller behaviour. Left for
+  you because it changes freshness semantics on a dashboard whose whole point is honesty
+  about staleness.
+- ⚠ Untested against a live server (the fleet is down). The change is type-level and
+  AST-verified, but exercise `/pipeline/status` once the fleet is back.
