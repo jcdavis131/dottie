@@ -1407,6 +1407,13 @@ so what does the *server* do under a 5 s poll? Two problems, one significant.
   plain `def` and the regression guard covers **all five** handlers. That turns
   "no async handler blocks the loop" into an enforced invariant instead of something
   the next reviewer has to re-derive per endpoint. 24 passed.
+- CHECKED CLEAN (06:10): **`apps/dottie/dottie/api.py` does NOT have this bug.** Every
+  route handler there is a plain `def` (submit_task, get_task, list_tasks, the flywheel
+  endpoints, run_climb, climb_log, research_status, research_experiments, status), so
+  FastAPI threadpools all of them; the only `async def` is
+  `_private_network_preflight`, which is middleware and correctly must be async. So the
+  two apps had opposite conventions and only `ava-factory/server.py` mixed them.
+  Recorded so nobody re-audits it.
 - [ ] **Not done: caching.** `collect_status()` still recomputes per request, so N clients
   cost N walks. A 2–3 s TTL would make it robust regardless of caller behaviour. Left for
   you because it changes freshness semantics on a dashboard whose whole point is honesty
