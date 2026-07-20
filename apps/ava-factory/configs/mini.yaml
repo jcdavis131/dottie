@@ -45,9 +45,11 @@ jspace:
 
 training:
   device: cuda
-  # TEMPORARY fp32 (was bf16): every tonight-crash is CUBLAS on a CUDA_R_16BF GEMM;
-  # fp32 GEMMs take a different cuBLAS path. ~2x slower; REVERT after tool_final.
-  precision: fp32
+  # fp32 experiment REVERTED (2026-07-20 ~05:30): it dodged the CUBLAS flake but
+  # measured ~35 min/optimizer-step (mb4 => accum 32, fp32-slow micros) = 8+ days.
+  # bf16 + crash-resume + 25-step banking converges in ~1 day worst case; a host
+  # reboot (fresh WSL GPU stack) is the real fix for the flake.
+  precision: bf16
   compile: false                   # wired in ava/train.py via torch.compile when true;
                                    # leave false on live mini; try on mini_overtrain smoke first.                   # NOT WIRED: ava/train.py never calls torch.compile, so
                                    # `true` here only misled perf estimates (6-10k tok/s assumed
