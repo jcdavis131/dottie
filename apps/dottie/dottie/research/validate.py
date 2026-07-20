@@ -284,7 +284,8 @@ def dry_run_module(file_path: str | Path, *, class_name: Optional[str] = None,
                                     "forward produced NaN/Inf — add clamping or an eps term")
 
         # Degeneracy gate (added 2026-07-20 after the MLBR post-mortem, TODOS §5.3.R).
-        # MLBR passed all four levels while being a no-op: zero learnable parameters and a
+        # MLBR passed all four levels that existed at the time (there are six stages now)
+        # while being a no-op: zero learnable parameters and a
         # forward of `x + scalar`. Such a block cannot express anything a bias term can't,
         # can never learn to, and at smoke scale "wins" merely by REPLACING a real block.
         # The check is deliberately narrow — it fires only when BOTH are true, so the

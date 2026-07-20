@@ -2334,6 +2334,30 @@ most valuable catch so far:
     behaviour and did not re-read the paragraph describing it.** That is now four instances,
     and it is the cheapest kind of dishonesty to introduce.
   - Suite 184 passed. Fixture written to a file, not a heredoc — worked first time again.
+### 5.3.R47 — swept for doc drift instead of finding it one file at a time
+
+- [x] **Two patterns had each recurred 3-4 times** — "the sibling does it right and this one
+  does not" (§5.3.R45, R46, and the prompts' missing capacity rule) and "I changed behaviour
+  without re-reading its description" (§5.3.R13 LEVELS, R41 night-model, R46 docstring). So
+  I swept the package for the second class rather than waiting to trip over it again.
+- [x] **Result: docs are in good shape, two real drifts, both mine and both from tonight.**
+  1. `factory_trainer`'s **"Honesty contract"** listed which failures are the candidate's
+     fault, and did not include *cannot be LOADED* — the exact path I reclassified in
+     §5.3.R45 an hour ago. The contract now names all four (load, instantiate, contract
+     break, raise-during-training) and states that `ok=False` is reserved for infrastructure
+     the candidate did not cause.
+  2. `validate.py` still said *"MLBR passed all four levels"*. Historically true, but there
+     are six stages now and a reader today would be misled. Reworded to *"all four levels
+     that existed at the time (there are six stages now)"* — the history is the point of the
+     comment, so it is preserved rather than deleted.
+- [x] **Bounding the result honestly: the sweep found only these two.** After the earlier
+  fixes (§5.3.R13 docstrings, R41, R46) the package's prose largely matches its behaviour.
+  Reporting a small yield matters — three ticks of large findings could imply the codebase is
+  riddled, and on this axis it is not. Suite 184 passed.
+- [ ] **Standing rule earned the hard way, worth keeping visible:** when a behaviour changes,
+  the paragraph describing it is part of the change. Four instances tonight, every one
+  introduced by me, every one found by reading rather than by any test — because **no test
+  asserts that a comment is true**.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.

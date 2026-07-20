@@ -14,8 +14,12 @@ is still nano-smoke scale, so it carries ``capability_claim: none`` like every p
 Honesty contract:
   * torch/factory/packed-data missing -> ``ok=False`` with the true reason (infrastructure;
     the experiment stays retryable). Nothing is simulated.
-  * A candidate that cannot be instantiated at the model's ``d_model`` or breaks the block
-    contract -> ``ok=True, stable=False`` (a real negative outcome: failed_training).
+  * A candidate that cannot be LOADED, cannot be instantiated at the model's ``d_model``,
+    breaks the block contract, or raises during training -> ``ok=True, stable=False`` (a real
+    negative outcome: failed_training). All four are the candidate's own artifact failing, so
+    none of them is retryable; ``ok=False`` is reserved for infrastructure the candidate did
+    not cause. ("cannot be LOADED" was added 2026-07-20 with the fix in TODOS 5.3.R45 — that
+    path used to return ok=False and would have blocked the queue forever.)
   * NaN/Inf mid-run -> killed immediately, ``stable=False``.
   * The baseline the loop compares against must be measured by ``run_baseline_calibration``
     (identical config, unmodified model) — never hand-typed.
