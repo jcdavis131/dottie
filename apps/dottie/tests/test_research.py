@@ -329,6 +329,15 @@ def test_logger_and_status(led, tmp_path, monkeypatch):
     s = logger.build_status(led)
     assert s["service"] == "dottie-research" and s["baseline"]["metric_value"] == 4.5
     assert set(s["counts"]) >= {"total", "sota", "pending"}
+    # sota_history carries the verdict's metric_name/baseline_value so the dashboard can anchor
+    # the hill-climb series at the seed each sota was measured against.
+    e = led.create(HYP)
+    led.transition(e.id, READY_FOR_TRAINING, implementation={"code": "x"}, workspace="/w")
+    led.transition(e.id, EVALUATION_PENDING, train_metrics={"proxy_loss": 2.0})
+    led.transition(e.id, SOTA, eval_verdict={"promote": True, "metric": "proxy_loss",
+                                             "baseline_value": 4.5, "delta": -2.5})
+    h = logger.build_status(led)["sota_history"][0]
+    assert h["metric"] == 2.0 and h["metric_name"] == "proxy_loss" and h["baseline_value"] == 4.5
 
 
 def test_runner_stage_selection_policy():

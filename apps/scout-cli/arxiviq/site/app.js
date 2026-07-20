@@ -738,6 +738,7 @@ function renderResearch() {
     sotaCard.classList.add("hidden");
   } else {
     sotaCard.classList.remove("hidden");
+    renderSotaSparkline(sota, b);
     $("#research-sota-table tbody").innerHTML = sota.map((h) => `
       <tr>
         <td><strong>${esc(h.name || h.id || "—")}</strong></td>
@@ -764,6 +765,46 @@ function renderResearch() {
       <td class="num">${esc(e.attempts ?? "—")}</td>
       <td>${esc(e.search_domain || "—")}</td>
     </tr>`).join("");
+}
+
+// The hill-climb series: seed baseline -> each sota, in order. Only points measured under the
+// CURRENT baseline metric are plotted (`metric` is regime-matched server-side; sota from a
+// retired metric regime arrives as null and is counted out loud instead of drawn dishonestly).
+function renderSotaSparkline(sota, baseline) {
+  const el = $("#research-sota-spark");
+  const pts = sota.filter((h) => typeof h.metric === "number")
+    .sort((p, q) => (p.updated_ts || 0) - (q.updated_ts || 0));
+  const seed = pts.length && typeof pts[0].baseline_value === "number"
+    ? pts[0].baseline_value : null;
+  const series = seed != null ? [seed, ...pts.map((p) => p.metric)] : pts.map((p) => p.metric);
+  if (series.length < 2) {
+    el.classList.add("hidden");
+    el.innerHTML = "";
+    return;
+  }
+  const first = series[0], last = series[series.length - 1];
+  const improved = baseline && baseline.higher_is_better ? last > first : last < first;
+  const skipped = sota.length - pts.length;
+  el.classList.remove("hidden");
+  el.innerHTML = sparklineSvg(series)
+    + `<div class="card-note">${esc(baseline ? baseline.metric_name : "metric")} `
+    + `${num(first)} → <span style="color:var(--status-${improved ? "good" : "critical"})">`
+    + `${num(last)}</span> (Δ ${num(last - first)})`
+    + `${seed != null ? " · anchored at the seed baseline" : ""}`
+    + `${skipped ? ` · ${skipped} sota point(s) from a retired metric regime not plotted` : ""}</div>`;
+}
+
+function sparklineSvg(series, w = 240, h = 44, pad = 4) {
+  const min = Math.min(...series), max = Math.max(...series);
+  const span = (max - min) || 1;
+  const x = (i) => pad + (i * (w - 2 * pad)) / (series.length - 1);
+  const y = (v) => pad + (1 - (v - min) / span) * (h - 2 * pad);
+  const line = series.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const dots = series.map((v, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" `
+    + `r="2.5" fill="${i ? "var(--accent)" : "var(--status-warning)"}"><title>${num(v)}</title></circle>`).join("");
+  return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img" `
+    + `aria-label="hill-climb sparkline"><polyline points="${line}" fill="none" `
+    + `stroke="var(--accent)" stroke-width="1.5"/>${dots}</svg>`;
 }
 
 /* ---------------- ecosystem ---------------- */

@@ -143,8 +143,13 @@ Then §1 fires automatically (#17 armed on the monitor).
 5.3 [x] **Close the loop into the factory** (sota -> promotion bundle: candidate.py + evidence + ab_nano.py, runner-automatic, human-gated): when an experiment reaches `sota`, generate a
     `deltanet_layers`-style patch PR against `model_1b.py` + a nano A/B run script;
     human-review gate before it touches mini/base1b presets.
-5.4 **Report**: the arxiviq Research tab already renders `/research/status`; add the
-    SOTA-vs-baseline sparkline once ≥2 sota points exist.
+5.4 [x] **Report** (sparkline shipped 2026-07-20 00:20 — sota_history now carries
+    metric_name/baseline_value from each verdict; site draws seed→sota series for the
+    CURRENT metric regime only, retired-regime points counted out loud, not plotted):
+    trigger was met tonight — **first real SOTA landed**: MLBR (`23bb41375804`)
+    factory_lm_loss 5.61982→5.60506, baseline ratcheted; 2 promotion bundles built
+    automatically under `data/research/promotions/` — **HUMAN REVIEW PENDING** (note:
+    `bc3dbb74bead` is from the retired proxy_loss regime; review MLBR first).
 
 ## 6 — Agent OS hardening (∥ with 1–5)
 
@@ -188,6 +193,10 @@ Then §1 fires automatically (#17 armed on the monitor).
 - [x] scout-cli python3-stub tests: swept to sys.executable (25 failures -> 10; survivors below).
 - [x] scout-cli Windows portability: WNOHANG guarded, CLI stdout UTF-8, perms asserts POSIX-only — 129/130 green.
 - [ ] test_mcp_serve stdio scenario: 90s deadline exceeded on this box (environmental; retry when idle or raise deadline).
+- [ ] test_api.py 4 env failures on this box (pre-existing, verified vs HEAD 2026-07-20):
+  echo task / task counts / ollama honest-fail / flywheel gate all hit
+  `DottieResolutionError: ava-...` — AVA_FACTORY_ROOT resolution, not code. Fix the env
+  (research_env.local.ps1 → monorepo factory path, §2.3.b) then re-run.
 - [ ] 1 × `test_logic_prover` jsonl (ava-skills, pre-existing).
 - [x] `test_flow`: same split brain (patched free_gb on the wrong module copy); alias finder fixed it.
 

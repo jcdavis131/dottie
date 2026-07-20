@@ -46,9 +46,18 @@ def build_status(ledger: Ledger, *, recent: int = 25) -> Dict[str, Any]:
             "search_domain": (exp.hypothesis or {}).get("search_domain"),
             "attempts": exp.attempts,
         })
-    sota = [{"id": e.id, "name": e.name, "metric": (e.train_metrics or {}).get(
-        baseline.metric_name if baseline else ""), "updated_ts": e.updated_ts}
-        for e in ledger.list(state=SOTA, limit=recent)]
+    # metric regime-matches the CURRENT baseline metric (null for sota from a retired metric);
+    # metric_name/baseline_value come from the verdict that promoted it, so the dashboard can
+    # anchor a hill-climb series at the seed value each sota was actually measured against.
+    sota = []
+    for e in ledger.list(state=SOTA, limit=recent):
+        v = e.eval_verdict or {}
+        sota.append({
+            "id": e.id, "name": e.name,
+            "metric": (e.train_metrics or {}).get(baseline.metric_name if baseline else ""),
+            "metric_name": v.get("metric"), "baseline_value": v.get("baseline_value"),
+            "updated_ts": e.updated_ts,
+        })
     return {
         "service": "dottie-research",
         "ts": time.time(),
