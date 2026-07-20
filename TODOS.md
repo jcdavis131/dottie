@@ -443,25 +443,31 @@ THE NIGHT'S HEADLINES — read these before anything below:
    **"factory unreachable"**. NOTE: site code changes are committed but **NOT deployed**
    — the Vercel deploy needs your approval (§7.5).
 
-### YOUR DECISION QUEUE (in order) — item 0 rewritten 12:30 2026-07-20 (clock read)
+### YOUR DECISION QUEUE (in order) — item 0 re-verified 15:40 2026-07-20 (state read live)
 
-> **Item 0 is new and blocking: training is OFF.** It replaces three stale restart entries
-> (0/0a/0b) that had accreted across three restart cycles and described a state that no
-> longer holds — a queue head telling the reader about restarts that already happened is
-> worse than no queue head. Items 5 and 8 were changed materially by tonight's work; items
-> 2, 3, 4, 6, 7 are unchanged from the 05:19 version.
+> **Item 0 is blocking: training is OFF, and it now carries a precondition.** Re-seeding the
+> baseline (was item 5) is pulled into item 0 because §5.3.R93 proved the live baseline is
+> unreachable — restarting the daemon without re-seeding just churns. Items 5 and 8 were
+> changed materially by this session's work; items 2, 3, 4, 6, 7 are unchanged from the
+> 05:19 version. The restart command in item 0 was also corrected — a `\r` had split
+> `.\scripts\restart_research.ps1` across two lines, so the copy-pasted command was broken.
 
-0. ⛔ **TRAINING IS OFF AND DOCKER IS DOWN. Two commands restore both.**
-   Verified directly at 12:30: scheduled task **`Disabled`**, **0** research processes,
-   `llama-server` not loaded, **~2.3 GB** free, on AC, and the Docker engine down
-   (`dockerd` never started inside the VM — the VM itself is up).
+0. ⛔ **TRAINING IS OFF AND DOCKER IS DOWN. Restore both — but RE-SEED FIRST (see below).**
+   Re-verified 15:40: scheduled task **`Disabled`**, **0** research processes, **~3.1 GB**
+   free, on AC, Docker engine down (`dockerd` never started inside the VM — the VM is up).
    ```powershell
-   wsl --shutdown                                    # engine back in ~2 min
-   docker ps --format "{{.Names}}`t{{.Status}}"       # expect 13-14 containers
-
-   .\scripts
-estart_research.ps1                    # research back on, and PROVES it booted
+   python -m dottie.research calibrate-baseline --overwrite   # FIRST — see the coupling note
+   wsl --shutdown                                             # docker engine back in ~2 min
+   docker ps --format "{{.Names}}"                            # expect 13-14 containers
+   .\scripts\restart_research.ps1                             # research back on, PROVES it booted
    ```
+   - **⚠ ORDER MATTERS — re-seed before restarting the research daemon (§5.3.R96).** The live
+     baseline `5.54404` is a **regression, below what the base model reaches at every seed**
+     (§5.3.R93), so a daemon restarted against it **rejects every candidate indefinitely** and
+     the loop churns for nothing. `calibrate-baseline --overwrite` installs the honest
+     ≈5.737 (SEM ≈0.099, n=3) in ~6 min; run it first, or restart and re-seed together, but do
+     not leave the loop running on the old bar. This is item 5, pulled up here because it is
+     now a precondition, not a separate decision.
    - **How it got here** (§5.3.R51): the daemon was **crash-looping on memory** — lifetimes
      105 min then ~9 min, each restart landing on the scheduler's 15-min trigger, dying
      silently mid-stage at **110 MB free**. A subtask then ran `prepare_fleet_recovery.ps1`,
@@ -473,10 +479,13 @@ estart_research.ps1                    # research back on, and PROVES it booted
      **and** `--resume`, so T9.4 auto-continues from `step_15.pt` the moment Docker is back.
      Its step-15 gate showed **+2.04% general CE** — the same forgetting mode that failed T9.3.
      To stop it: `docker update --restart no dottie-chat-branch; docker stop dottie-chat-branch`.
-   - **What restarting picks up:** ~20 runtime commits from tonight, including the trainer
-     loading validator scratch files (§5.3.R49), the memory guard (§5.3.R52), and the
-     sequence probe (§5.3.R28). The two big proposal-pipeline fixes (search space §5.3.R35,
-     corrector constraints §5.3.R38) went live at 10:35 and are already proven to run.
+   - **What restarting picks up** (behaviour changes, not a commit count — read `git log` for
+     the full set): the trainer loads validator scratch files (§5.3.R49); the memory guard now
+     counts the model an LLM stage will load (§5.3.R77); the significance gate prefers
+     cross-seed over within-run spread and flags a within-run basis (§5.3.R93); the proposal-
+     pipeline fixes (search space §5.3.R35, corrector constraints §5.3.R38) are proven live.
+     **None of these help until the baseline is re-seeded** — a better gate against an
+     unreachable bar still rejects everything.
 
 1. **Recover the fleet** — `.\scripts\prepare_fleet_recovery.ps1` (prep + GO/NO-GO), then
    `wsl --shutdown`. Nothing else moves until the engine is back. (Memory was 719 MB at
