@@ -982,8 +982,10 @@ most valuable catch so far:
   validation death rate from **80.0% (60/75) to 77.9% (53/68)** — 2.1 points. The
   qualitative story is unchanged, and I should not have implied otherwise.
   - Honest lifetime funnel over 75 experiments: **53 genuine validation deaths (77.9%)**,
-    3 failed_training, 12 reached evaluation, 2 recorded `sota` — and both of those are
-    the known artifacts (MLBR + AGN), so **real wins remain ZERO**.
+    3 failed_training, 12 reached evaluation, 2 recorded `sota` — `HierarchicalAttention`
+    and `MoERegularizer` (MLBR). **Correction: I earlier wrote these were "MLBR + AGN".
+    That was wrong — AGN was a REJECTED candidate, never a SOTA.** Real wins remain
+    ZERO, but for the reasons in §5.3.R5, not the ones I gave.
   - Genuine failures by level: **dry_run 41, contract 5, static 4, syntax 3.** dry_run is
     77% of all genuine failures — runtime shape/axis errors dominate everything else
     combined, which is exactly what the constraint-8 axis-discipline prompt guidance
@@ -1079,6 +1081,42 @@ most valuable catch so far:
   since I have been reporting on this box's RAM budget all night while being its
   second-largest consumer. The queued recovery's projection still holds: unloading the
   model reclaims ~5 GB, which clears the threshold comfortably.
+### 5.3.R5 — the baseline is CONTAMINATED, and no gate was looking
+
+- [x] **Replayed both historical SOTAs through today's gates (07:20) — my claim that the
+  gates catch both was WRONG.** Results:
+  | experiment | module | current validator |
+  |---|---|---|
+  | `23bb41375804` | MoERegularizer (MLBR) | **FAILS** — degenerate, 0 learnable params, delta std 1.31e-07 |
+  | `bc3dbb74bead` | HierarchicalAttention | **PASSES** — 20,800 real params, delta_std 1.077 |
+  `HierarchicalAttention` also sails through the significance gate at **261.5 SEM**. Both
+  gates clear it. It is still an artifact, but of a kind neither gate addresses: it scored
+  0.15478 against a **hand-seeded 4.5 placeholder** on a task whose own metrics record it
+  as `"synthetic next-token shift (proxy micro-benchmark, NOT downstream capability)"`.
+  Degeneracy and significance test the *candidate*; nothing tested the *baseline*.
+- [x] **THE LIVE BASELINE IS SET BY A MODULE THE LOOP WOULD NOW REJECT.** `get_baseline()`
+  returns `factory_lm_loss 5.60506`, `experiment_id 23bb41375804` — MLBR, the degenerate
+  no-op above. And because it carries an `experiment_id`, `_baseline_provenance` classifies
+  it **`"promoted"`: the highest-trust category, caveat `None`.** Every comparison since has
+  been measured against a number produced by a block that cannot learn anything, and the
+  verdict JSON has been reporting that baseline as fully trustworthy while doing it.
+  - The flaw is structural, not a one-off: **provenance trust is retrospective and never
+    re-checked.** A gate added *after* a promotion never re-examines the number that
+    promotion left behind. Any future gate has the same blind spot.
+  - `_baseline_contamination()` now re-validates the baseline's source experiment against
+    the current validator on every evaluation (one dry run, seconds) and attaches a loud
+    caveat, downgrading provenance to `promoted_contaminated`. **Verified against the real
+    ledger**, where it correctly fires on MLBR — that live run is the meaningful proof
+    here, not the test's red (for a brand-new function the red is only an `AttributeError`,
+    which proves nothing).
+  - **It records, it does NOT block.** Whether a contaminated baseline should halt the loop
+    or merely flag itself changes loop behavior and is the operator's call — it also bears
+    directly on queued decision #5 (re-seed to 5.61982). Flagging it is safe; halting is
+    not mine to choose.
+- [ ] NEXT (operator input): with contamination now detected automatically, decision #5 is
+  sharper — **re-seed the baseline to 5.61982** (the pre-MLBR value) and the caveat clears
+  itself. Until then every promotion verdict carries the contamination warning, which is
+  honest but noisy.
 - [ ] NEXT: **improve dry_run correction feedback — but NOT until constraint-8 is
   measurable.** dry_run is 77% of genuine failures, and the likely lever is handing the
   corrector the actual tensor shapes at the failure point instead of a raw traceback.

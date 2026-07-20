@@ -43,13 +43,64 @@ def _baseline_provenance(baseline: Baseline) -> tuple:
     synthetic task — a meaningless promotion that no gate caught, because nothing
     recorded how the baseline was obtained. Recording only; not a gate."""
     if baseline.experiment_id:
-        return "promoted", None          # ratcheted from a measured experiment
+        return "promoted", None          # ratcheted from a measured experiment — see
+                                         # _baseline_contamination for whether that
+                                         # experiment still passes today's gates
     if (baseline.notes or "").lower().startswith("measured baseline calibration"):
         return "calibrated", None
     return "hand_seeded", (
         "the baseline is a HAND-SEEDED placeholder (no calibration recorded) — this delta "
         "measures distance from an arbitrary number, not a real improvement. Run "
         "`python -m dottie.research calibrate-baseline` before trusting any promotion.")
+
+
+def _baseline_contamination(ledger: Ledger, baseline: Baseline) -> Optional[str]:
+    """Would the experiment that SET this baseline still survive today's validator?
+
+    `_baseline_provenance` treats any baseline with an ``experiment_id`` as "promoted",
+    the highest-trust category, with no caveat. That trust is retrospective and unchecked:
+    a gate added *after* a promotion never re-examines the number that promotion left
+    behind, so a candidate the loop would now reject can still be the standard every later
+    candidate is measured against — and it reads as fully trustworthy while doing it.
+
+    Measured 2026-07-20: the live baseline is ``factory_lm_loss 5.60506``, ratcheted by
+    ``23bb41375804`` (MLBR), which the degeneracy gate now fails outright as a zero-
+    parameter no-op. Every comparison since has been against a number set by a module
+    that cannot learn anything.
+
+    Re-validating the source experiment's stored code costs one dry run (seconds) and is
+    the only way to notice. Returns a caveat string when the source is contaminated or
+    cannot be checked, else None. This RECORDS; it deliberately does not block — whether a
+    contaminated baseline should halt the loop or merely flag itself is a call for the
+    operator, and is queued in TODOS."""
+    if not baseline.experiment_id:
+        return None
+    try:
+        src = ledger.get(baseline.experiment_id)
+    except Exception:
+        return (f"the experiment that set this baseline ({baseline.experiment_id}) is no "
+                "longer in the ledger — its validity cannot be checked")
+    impl = src.implementation or {}
+    code = impl.get("code")
+    if not code:
+        return (f"the experiment that set this baseline ({baseline.experiment_id}) stored "
+                "no code — its validity cannot be re-checked against current gates")
+    dry = impl.get("dry_run") or {}
+    try:
+        from dottie.research import validate as _validate
+        res = _validate.validate(code, class_name=dry.get("class_name"),
+                                 init_kwargs=dry.get("init_kwargs") or {},
+                                 input_shape=dry.get("input_shape") or [4, 16, 64])
+    except Exception as e:                       # never let a check break an evaluation
+        return (f"could not re-validate the baseline's source experiment "
+                f"({baseline.experiment_id}): {e!r}")
+    if res.ok:
+        return None
+    return (f"CONTAMINATED BASELINE — the experiment that set it ({baseline.experiment_id}, "
+            f"{src.name}) FAILS the current validator at '{res.level}': "
+            f"{(res.detail or '').strip()[:200]}. This delta is measured against a number "
+            "produced by a candidate the loop would now reject, so it is not evidence of "
+            "an improvement. Re-seed the baseline before trusting any promotion.")
 
 
 def _spread(metrics: Dict[str, Any]) -> Optional[Dict[str, float]]:
@@ -174,6 +225,10 @@ def run_evaluation(ledger: Ledger, *, require_stable: bool = True,
             f"{metrics.get('candidate_block_params'):,}) — a fixed-step comparison partly "
             f"measures capacity, not just the idea")
     base_kind, base_caveat = _baseline_provenance(baseline)
+    contamination = _baseline_contamination(ledger, baseline)
+    if contamination:
+        base_kind = "promoted_contaminated"
+        base_caveat = "\n".join(x for x in (base_caveat, contamination) if x)
     promote = improved and (stable if require_stable else True) and bool(significant)
     verdict = {
         "promote": promote, "improved": improved, "stable": bool(stable),

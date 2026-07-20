@@ -406,6 +406,46 @@ def test_full_cycle_promote(led, tmp_path):
     assert led.get_baseline().metric_value == rt["metrics"]["proxy_loss"]
 
 
+def test_contaminated_baseline_is_detected(led, tmp_path):
+    """A baseline set by a candidate the loop would NOW reject must not read as trusted.
+
+    TODOS §5.3.R5: `_baseline_provenance` treats any baseline with an `experiment_id` as
+    "promoted" — highest trust, no caveat. That trust is retrospective and unchecked: a
+    gate added AFTER a promotion never re-examines the number that promotion left behind.
+    Measured on the live ledger, the real baseline (factory_lm_loss 5.60506) was ratcheted
+    by MLBR, a zero-parameter no-op that the degeneracy gate now fails outright — so every
+    comparison since has been against a number set by a module that cannot learn.
+    """
+    noop = """import torch
+import torch.nn as nn
+class NoOp(nn.Module):
+    def __init__(self, lam: float = 1.0):
+        super().__init__()
+        self.lam = lam
+    def forward(self, x):
+        return x + 0.5
+"""
+    e = led.create(dict(HYP, hypothesis_name="NoOp"))
+    led.transition(e.id, READY_FOR_TRAINING, workspace="/w",
+                   implementation={"code": noop, "module_name": "NoOp",
+                                   "dry_run": {"class_name": "NoOp", "init_kwargs": {},
+                                               "input_shape": [2, 4, 8]}})
+    led.transition(e.id, EVALUATION_PENDING, train_metrics={"proxy_loss": 1.0})
+    led.transition(e.id, SOTA, eval_verdict={"promote": True})
+    led.promote_baseline(e.id, 1.0, notes="NoOp")
+
+    caveat = evaluate._baseline_contamination(led, led.get_baseline())
+    assert caveat and "CONTAMINATED BASELINE" in caveat
+    assert e.id in caveat and "degenerate block" in caveat
+
+    # A hand-seeded baseline has no source experiment: not this check's business
+    # (that is _baseline_provenance's), so it must stay silent rather than double-report.
+    led2 = Ledger(tmp_path / "l2.sqlite3")
+    led2.seed_baseline(Baseline("proxy_loss", 4.5, higher_is_better=False,
+                                architecture="ava-nano", experiment_id=None, updated_ts=0.0))
+    assert evaluate._baseline_contamination(led2, led2.get_baseline()) is None
+
+
 def test_promotion_requires_significance(led, tmp_path):
     # TODOS 5.3.R: the first live "SOTA" (MLBR) beat the baseline by 1.1 SEM — noise —
     # because promotion used a bare `<`. A direction-correct win inside the candidate's
