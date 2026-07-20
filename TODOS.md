@@ -3140,6 +3140,29 @@ most valuable catch so far:
   the stored histories for repeated identical dry_run failures before deciding whether to
   re-derive the class name per attempt or pin the name in the correction prompt.
 
+### 5.3.R81 — the live loop is already encoding-clean; the restart script was lying about 14b
+
+- [x] **Checked `apps/dottie` first, because the daemon restarts the moment memory frees.**
+  All 7 encoding-less sites are in **tests**; the SOURCE is clean. The live research loop
+  has zero encoding-less I/O — so R79's remaining 203 writes are **not** in the path that is
+  about to run. Recorded as a measured negative, which is why the grind was deprioritised.
+- [x] **Checked instead whether my own guard change left the restart path self-consistent.**
+  `restart_research.ps1` already had the two-threshold logic and the same reasoning — but it
+  **hardcoded `$modelMB = 5200`** while the daemon now measures. Two independent constants
+  describing one fact is the drift shape this session keeps finding.
+- [x] **The hardcode was most wrong about the exact model that caused the outage.** Measured
+  live: **qwen3:14b is 8,846 MB, not 5,200** — understated by 3,646 MB. So if the operator
+  ever switched to 14b, **the warning built to catch that model would have stayed silent**
+  and greenlit the restart. Fixed (`81d862d`): the script now asks Ollama, matching the
+  daemon since `51763ca`.
+- [x] Verified all three branches: measured (qwen3:8b → **4,983 MB, identical to the
+  daemon's Python reading**), alternate model (14b → 8,846), and Ollama unreachable (falls
+  back to 5,200 and **prints "assumed"** rather than presenting a guess as a measurement).
+  An already-resident model costs 0, so the warning cannot cry wolf on the healthy case.
+- [x] ASCII-verified (0 non-ASCII bytes) per the PowerShell 5.1 constraint.
+- [ ] Memory is recovering on its own: **3,051 MB at 16:05 → ~3,880 MB at 17:00**, still
+  short of the 6,183 MB an `ideate` now requires. `wsl --shutdown` is what closes that gap.
+
 ### 5.3.R80 — went looking for writes, found seven scripts living in two places at once
 
 - [x] **Started R79's priority list (the 203 writes) and the ranking itself was the finding.**
