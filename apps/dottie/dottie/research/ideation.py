@@ -8,6 +8,8 @@ experiments) are fed back into the prompt so the search does not repeat them.
 
 from __future__ import annotations
 
+import re
+
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -20,19 +22,40 @@ from dottie.research.ledger import (
 Policy = Callable[[str], str]
 
 
+def _name_key(name: str) -> tuple:
+    """Lexical identity of a hypothesis name, ignoring acronyms and word order.
+
+    Exact-match de-dup let "Orthogonalized Sparse Attention (OSA)" and "Orthogonalized
+    Sparse Attention" both occupy slots in the 20 shown to the model (measured 2026-07-20:
+    2 wasted slots of 20). Stripping the parenthetical and comparing word sets collapses
+    them."""
+    return tuple(sorted(re.findall(r"[a-z]+", re.sub(r"\(.*?\)", "", name.lower()))))
+
+
 def dead_ends(ledger: Ledger, *, limit: int = 40) -> List[str]:
-    """Names of hypotheses that were tried and failed — to steer ideation away from them."""
-    names: List[str] = []
-    for state in (REJECTED, FAILED_VALIDATION, FAILED_TRAINING):
-        for exp in ledger.list(state=state, limit=limit):
-            names.append(exp.name)
-    # de-dup, keep order
+    """Names of hypotheses that were tried and failed — to steer ideation away from them.
+
+    ``ledger.list`` orders by ``created_ts DESC``, so taking the head of this returns the
+    model's OWN most recent ideas — maximally similar to whatever mode it is currently in.
+    Interleaving across the three failure states and de-duplicating lexically keeps the
+    sample broader; ``prompts._failed_block`` additionally names the overused vocabulary
+    outright, because a list of near-identical names under a "do not repeat" heading reads
+    as a 20-shot demonstration of exactly that vocabulary (TODOS §5.3.R24)."""
+    per_state = [ledger.list(state=state, limit=limit)
+                 for state in (REJECTED, FAILED_VALIDATION, FAILED_TRAINING)]
     seen: set = set()
     out: List[str] = []
-    for n in names:
-        if n not in seen:
-            seen.add(n)
-            out.append(n)
+    # Round-robin so one state cannot fill every visible slot with its newest entries.
+    for i in range(max((len(x) for x in per_state), default=0)):
+        for bucket in per_state:
+            if i >= len(bucket):
+                continue
+            name = bucket[i].name
+            key = _name_key(name)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(name)
     return out
 
 

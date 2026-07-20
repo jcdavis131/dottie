@@ -87,11 +87,42 @@ def _baseline_block(baseline: Optional[Baseline], bottleneck: str) -> str:
             f"- Key bottleneck: {bottleneck}")
 
 
-def _failed_block(failed_names: List[str]) -> str:
+#: Words too generic to count as a search direction when tallying overused vocabulary.
+_STOPWORDS = frozenset({"with", "from", "this", "that", "using", "based", "time", "via",
+                        "and", "for", "the", "aware", "driven", "guided"})
+
+
+def _failed_block(failed_names: List[str], *, show: int = 20) -> str:
+    """Dead ends, plus an explicit tally of the vocabulary they keep reusing.
+
+    Measured 2026-07-20 (TODOS §5.3.R24) on the live list of 20: "attention" appeared in
+    13, "gradient" in 11, "sparse" in 9. Under a heading saying *do not repeat*, that is
+    still 20 densely similar examples — which reads as a demonstration of the collapsed
+    vocabulary rather than a prohibition on it, since models handle negation poorly and
+    handle in-context patterns very well.
+
+    Naming the overused terms converts an implicit anti-example into an explicit,
+    checkable constraint the model can actually satisfy."""
     if not failed_names:
         return "(none yet)"
-    # Feed dead ends back so the search does not repeat them.
-    return "\n".join(f"- {n}" for n in failed_names[:20])
+    shown = failed_names[:show]
+    listing = "\n".join(f"- {n}" for n in shown)
+    counts: Dict[str, int] = {}
+    for name in shown:
+        for word in set(re.findall(r"[a-z]+", name.lower())):
+            if len(word) > 3 and word not in _STOPWORDS:
+                counts[word] = counts.get(word, 0) + 1
+    hot = [(w, c) for w, c in sorted(counts.items(), key=lambda kv: -kv[1])
+           if c >= max(3, len(shown) // 4)][:6]
+    if not hot:
+        return listing
+    terms = ", ".join(f"`{w}` ({c}/{len(shown)})" for w, c in hot)
+    return (f"{listing}\n\n"
+            f"OVERUSED TERMS in the failures above: {terms}. That is the region this search "
+            f"has already exhausted — the names above are anti-examples, NOT a vocabulary to "
+            f"draw from. Your proposals must avoid those words *and the mechanisms they "
+            f"stand for*; a new name built from the same terms is the same dead end with a "
+            f"new label. Go somewhere the list above does not reach.")
 
 
 def ideation_prompt(baseline: Optional[Baseline], *, bottleneck: str,

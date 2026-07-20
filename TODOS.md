@@ -1687,6 +1687,36 @@ most valuable catch so far:
   improvement out of a boundary mismatch.** Corrected to 78% with the reasoning inline.
   - Testing only the "refuses to report" path would have shipped that. Same lesson as the
     hollow test in §5.3.R11: exercise the path that does the work, not just the guard.
+### 5.3.R24 — the "DEAD ENDS" list was teaching the mode collapse it was meant to prevent
+
+- [x] **§5.2.g said the dead-ends list "may be priming" the collapse. It is, and the
+  mechanism is mechanical (09:10).** `ledger.list` orders `created_ts DESC`, `dead_ends`
+  concatenated the three failure states head-first, and `_failed_block` showed the first 20.
+  Net effect: **the model was handed its own 20 most recent ideas** — maximally similar to
+  whatever mode it is currently in — under a heading reading *do not repeat*.
+  - Measured on the live list of 20: **`attention` in 13, `gradient` in 11, `sparse` in 9**,
+    plus `adaptive`/`orthogonalized`/`consistent` at 5 each. That is not a prohibition, it
+    is a **20-shot demonstration of the collapsed vocabulary**. Models follow in-context
+    patterns far more reliably than they follow negation.
+  - Two of the twenty slots were literal near-duplicates that exact-match de-dup missed
+    (`Orthogonalized Sparse Attention (OSA)` vs the same name without the acronym).
+- [x] **Two fixes, both deterministic.**
+  1. `dead_ends` now round-robins across REJECTED / FAILED_VALIDATION / FAILED_TRAINING and
+     de-dupes on a lexical key (parenthetical stripped, word order ignored), so one state's
+     newest entries cannot monopolise the visible slots. **This alone dropped `attention`
+     from 13/20 to 9/20 and `gradient` from 11/20 to 9/20** — a measurable reduction in the
+     prompt's lexical concentration, with no change to what is being communicated.
+  2. `_failed_block` now appends an explicit tally: *"OVERUSED TERMS: `gradient` (9/20),
+     `attention` (9/20) … the names above are anti-examples, NOT a vocabulary to draw from;
+     a new name built from the same terms is the same dead end with a new label."* This
+     converts an implicit anti-example into a checkable constraint. The tally only appears
+     when terms actually repeat.
+  - Tests cover both, plus the no-repetition case where no tally should appear. Verified red
+    on the old code (`lexical duplicates not collapsed: [...]`). Full suite 171 passed.
+- [ ] **Effect on actual proposal diversity is UNMEASURED** — this is a prompt change and
+  §5.3.R12 already showed prompt changes are hard to attribute. It is now measurable the
+  right way: the post-restart boundary is clean, and `scripts/post_restart_report.py` will
+  report the category-error rate once n ≥ 20. Do not credit this until then.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.

@@ -590,6 +590,55 @@ def test_learnable_parameters_is_asked_for_but_not_yet_enforced():
     assert parsed["learnable_parameters"] == "gate: nn.Linear(hidden, hidden)"
 
 
+def test_dead_ends_do_not_prime_the_collapsed_vocabulary(led):
+    """The "do not repeat" list must not read as a demonstration of what to repeat.
+
+    TODOS §5.3.R24. `ledger.list` orders created_ts DESC, so the head of dead_ends() is the
+    model's OWN most recent ideas — maximally similar to its current mode. Measured on the
+    live ledger, the 20 shown contained "attention" 13 times, "gradient" 11, "sparse" 9.
+    Under a heading saying *do not repeat*, that is still 20 dense examples of the collapsed
+    vocabulary, and models follow in-context patterns far better than they follow negation.
+    """
+    # two near-identical names differing only by an acronym must not occupy two slots
+    for nm in ("Orthogonalized Sparse Attention (OSA)", "Orthogonalized Sparse Attention"):
+        e = led.create(dict(HYP, hypothesis_name=nm))
+        led.transition(e.id, FAILED_VALIDATION, failure="x")
+    names = ideation.dead_ends(led)
+    assert len(names) == 1, f"lexical duplicates not collapsed: {names}"
+
+    # the rendered block names the overused terms outright
+    shown = [f"Gradient-Consistent Attention {i}" for i in range(8)]
+    block = prompts._failed_block(shown)
+    assert "OVERUSED TERMS" in block
+    assert "`gradient`" in block and "`attention`" in block
+    assert "anti-examples" in block          # says what the list IS, not just "do not repeat"
+
+    # with nothing repeated there is no tally to bolt on
+    varied = ["Alpha Mixing", "Beta Routing", "Gamma Pooling", "Delta Norm"]
+    assert "OVERUSED TERMS" not in prompts._failed_block(varied)
+
+
+def test_dead_ends_interleave_across_failure_states(led):
+    """One state's newest entries must not fill every visible slot.
+
+    Taking the head of a created_ts DESC list per state, concatenated, let the most recent
+    rejections crowd out everything else. Round-robin keeps the sample broader — measured
+    on the live ledger this alone dropped "attention" from 13/20 to 9/20.
+    """
+    for i in range(4):
+        e = led.create(dict(HYP, hypothesis_name=f"Rejected {i}"))
+        led.transition(e.id, READY_FOR_TRAINING, implementation={"code": "x"}, workspace="/w")
+        led.transition(e.id, EVALUATION_PENDING, train_metrics={"proxy_loss": 9.0})
+        led.transition(e.id, REJECTED, eval_verdict={"promote": False})
+    for i in range(4):
+        e = led.create(dict(HYP, hypothesis_name=f"Invalid {i}"))
+        led.transition(e.id, FAILED_VALIDATION, failure="x")
+    head = ideation.dead_ends(led)[:4]
+    assert any(n.startswith("Rejected") for n in head)
+    assert any(n.startswith("Invalid") for n in head), (
+        f"one state monopolised the visible slots: {head}")
+
+
 def test_prompts_and_parsing():
     b = Baseline("val_loss", 3.09, False, "ava-nano", None, 0.0)
     p = prompts.ideation_prompt(b, bottleneck="loss spikes", failed_hypotheses=["DeadIdea"], n_ideas=2)
