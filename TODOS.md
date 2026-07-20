@@ -3156,6 +3156,49 @@ most valuable catch so far:
   the stored histories for repeated identical dry_run failures before deciding whether to
   re-derive the class name per attempt or pin the name in the correction prompt.
 
+### 5.3.R91 — ✅ CONTROL RESULT: the capacity confound is REFUTED. This is a REAL WIN.
+
+**The loop has produced its first genuine result.** I expected the opposite and said so
+repeatedly; the measurement disagreed with me.
+
+| variant | block params | held-out CE | vs calibrated 5.61982 | in SEMs |
+|---|---|---|---|---|
+| `identity` — pure capacity removal | 0 | **5.72036** | **+0.10054 WORSE** | +5.8 |
+| `fixed_half` — `x * 0.5`, no learning | 0 | **5.79348** | **+0.17366 WORSE** | +10.1 |
+| `learned` — the promoted candidate | 256 | **5.54404** | **−0.07578 BETTER** | **−4.4** |
+
+- [x] **The harness is faithful:** `learned` reproduced the promoted **5.54404 exactly**, to
+  all five decimals, from an independent script. Same seed, same corpus, same swap layer.
+- [x] **Hypothesis B (capacity removal) is REFUTED, and backwards.** Deleting the 787,072-
+  parameter block *hurts* by 5.8 SEM. The model is not winning by being smaller — it is
+  winning **despite** being smaller. My R86/R90 suspicion was exactly wrong.
+- [x] **The init-rescaling explanation is refuted harder.** `fixed_half` reproduces the ~0.51
+  the gate applies at init and is the **worst** variant at +10.1 SEM. The ~0.5 scale is not
+  the mechanism; it is a handicap the learned version overcomes.
+- [x] **Margins are not marginal:** learned beats `identity` by **10.2 SEM** and `fixed_half`
+  by **14.5 SEM**. Nothing here is near the noise floor.
+- [x] **What actually happened:** 256 learned per-channel gains outperform the 787,072-
+  parameter block they replaced — a ~3,000× parameter reduction at the swap site with a
+  *better* held-out loss. At a 150-step budget that is a real, defensible result: the large
+  block is undertrained at this horizon, and a well-conditioned diagonal gain is not.
+- [x] **SCOPE, stated so nobody over-reads it:** one seed per variant (shared across variants,
+  which is what makes the comparison valid, but cross-seed variance is **unmeasured**); SEM is
+  within-run batch spread, not across seeds; 150 steps, `nano` preset, swap layer 3.
+  **This is a result at this budget, not a scaling claim.** The next step is seeds 0/1/2 and a
+  longer horizon before anyone calls it an architecture finding.
+- [x] **And it is still misnamed.** R86 verified the gate is neither positional nor dynamic.
+  **The idea works and its description is wrong** — the session's own theme, arriving as good
+  news for once.
+- [ ] **Consequence for `2fd923b`:** the `CAPACITY-CONFOUNDED BASELINE` caveat now shown in
+  `status.json` says this bar *"partly measures capacity rather than the idea."* **For THIS
+  baseline that is now measured to be false.** The generic check is still right — it flags a
+  real risk — but an operator reading the snapshot cannot see that the control was run and
+  cleared it. Options: record the control outcome in the baseline notes so it travels with
+  the number, or have the caveat name the resolving evidence. **Not mutating live ledger data
+  unilaterally; flagging it for decision.**
+- [ ] Re-run cost is now known and non-trivial: **~13 min/variant under memory pressure**
+  (~3× the recorded 249 s), 40 min total. Worth budgeting before the seed sweep.
+
 ### 5.3.R90 — the baseline moved this morning and every record of it was stale, mine included
 
 - [x] **Read the live baseline instead of quoting it.** It is **`factory_lm_loss = 5.54404`**,
