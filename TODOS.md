@@ -2632,6 +2632,27 @@ most valuable catch so far:
   - Twice tonight, the same mistake, and twice caught by **running the metric over the
     pre-restart data before trusting it**. The check costs one command; the alternative is a
     fabricated win in a document I have been asking the operator to rely on.
+### 5.3.R58 — the diagnostic-saver could destroy the diagnostic
+
+- [x] **`_dump_raw` was the ONLY place in the research package that bypassed `paths.py`
+  (12:15).** It defaulted to the relative string `"data/research/logs"`, so where a dump
+  landed depended on the process cwd. It worked only because the PowerShell wrapper does
+  `Set-Location $App` first — and a run with a custom `--data-dir` (my own §5.3.R53 smoke
+  test, for one) would have written its dumps somewhere else entirely.
+- [x] **The worse half: it runs INSIDE the `except ValueError` handler.** An mkdir or
+  permission failure there propagated **in place of** the parse error, so the caller would
+  see an `OSError` about a directory instead of *"unparseable ideation output"*. **The code
+  that exists to preserve a diagnostic could delete it.** That is the same shape as
+  §5.3.R14 (a contamination check that reported clean when it could not check) — a
+  safety mechanism whose failure mode is silently worse than not having it.
+- [x] Fixed both: the dump path is now derived from **the ledger's own directory**, so it
+  lands beside the experiments it documents and honours `--data-dir` automatically
+  (`DOTTIE_RESEARCH_LOG_DIR` still overrides for the wrapper's layout); and the call is
+  wrapped so a dump failure degrades to `<dump failed: ...>` inside the original error
+  rather than replacing it.
+  - Verified red for the right reason — `no dump beside the ledger at <tmp>/logs` — and a
+    second test proves a `PermissionError` from the dumper no longer escapes. Suite 193
+    passed.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.

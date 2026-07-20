@@ -78,7 +78,14 @@ def run_ideation(ledger: Ledger, policy: Policy, *, bottleneck: str, n_ideas: in
             hyps = prompts.parse_hypotheses(text)   # ValueError on garbage propagates
             break
         except ValueError as e:
-            dump = _dump_raw(text, ts)
+            # Saving the raw completion must never be able to REPLACE the failure it is
+            # documenting. _dump_raw runs inside this handler, so an mkdir/permission error
+            # there would propagate instead of the ValueError and destroy the diagnostic it
+            # exists to preserve (TODOS 5.3.R58).
+            try:
+                dump = _dump_raw(text, ts, ledger=ledger)
+            except Exception as dump_err:
+                dump = f"<dump failed: {dump_err!r}>"
             if retried:
                 # One corrective re-ask is the budget; after that the failure is honest.
                 raise ValueError(f"{e} (raw completion saved to {dump})") from e
@@ -95,12 +102,25 @@ def run_ideation(ledger: Ledger, policy: Policy, *, bottleneck: str, n_ideas: in
             "bottleneck": bottleneck, "retried": retried}
 
 
-def _dump_raw(text: str, ts: Optional[float]) -> Path:
-    """Save an unparseable completion so failures stay diagnosable (never vanish)."""
+def _dump_raw(text: str, ts: Optional[float], *, ledger: Optional[Ledger] = None) -> Path:
+    """Save an unparseable completion so failures stay diagnosable (never vanish).
+
+    The location is derived from the LEDGER's own directory, so a dump lands beside the
+    experiments it belongs to and `--data-dir` is honoured. The previous default was the
+    relative string "data/research/logs", which silently depended on the process cwd: it
+    worked only because the PowerShell wrapper does `Set-Location $App` first, and a run
+    with a custom --data-dir wrote its dumps somewhere else entirely (TODOS 5.3.R58).
+    DOTTIE_RESEARCH_LOG_DIR still overrides, for the wrapper's own logging layout."""
     import os
     import time as _t
     import uuid
-    log_dir = Path(os.environ.get("DOTTIE_RESEARCH_LOG_DIR", "data/research/logs"))
+    override = os.environ.get("DOTTIE_RESEARCH_LOG_DIR")
+    if override:
+        log_dir = Path(override)
+    elif ledger is not None:
+        log_dir = Path(ledger.path).parent / "logs"
+    else:
+        log_dir = Path("data/research/logs")
     log_dir.mkdir(parents=True, exist_ok=True)
     # uuid suffix: two failures in the same second must not clobber each other
     # (caught by the retry test — a real live-dump hazard too).

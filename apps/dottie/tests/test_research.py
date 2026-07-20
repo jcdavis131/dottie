@@ -6,6 +6,7 @@ promote/reject/fail paths), and honest Ollama refusal. CPU-only, no network."""
 from __future__ import annotations
 
 import json
+import pathlib
 
 import pytest
 
@@ -737,6 +738,51 @@ def test_search_space_does_not_contradict_the_integration_contract():
 
     # narrow fences are themselves a repetition pressure (§5.2.g); keep the space broad
     assert len(prompts.DEFAULT_SEARCH_SPACE) >= 5
+
+
+def test_unparseable_ideation_dump_lands_beside_its_ledger(led, tmp_path, monkeypatch):
+    """The raw-completion dump must honour --data-dir, not the process cwd.
+
+    TODOS §5.3.R58: `_dump_raw` defaulted to the relative string "data/research/logs", so
+    where a dump landed depended on the cwd. It worked only because the PowerShell wrapper
+    does `Set-Location $App` first; a run with a custom --data-dir wrote its dumps somewhere
+    else entirely. It is also the ONLY place in the package that bypassed `paths.py`.
+    """
+    monkeypatch.delenv("DOTTIE_RESEARCH_LOG_DIR", raising=False)
+
+    def garbage_policy(prompt: str) -> str:
+        return "this is not JSON at all"
+
+    with pytest.raises(ValueError):
+        ideation.run_ideation(led, garbage_policy, bottleneck="x", n_ideas=1)
+
+    beside_ledger = pathlib.Path(led.path).parent / "logs"
+    dumps = list(beside_ledger.glob("ideation_raw_*.txt"))
+    assert dumps, f"no dump beside the ledger at {beside_ledger}"
+    assert "not JSON" in dumps[0].read_text(encoding="utf-8")
+
+
+def test_a_failing_dump_never_replaces_the_parse_error(led, monkeypatch):
+    """Saving the diagnostic must not be able to destroy the diagnostic.
+
+    `_dump_raw` runs INSIDE the `except ValueError` handler, so an mkdir or permission
+    failure there propagated in place of the original error — the caller would see an
+    OSError about a directory instead of "unparseable ideation output".
+    """
+    monkeypatch.delenv("DOTTIE_RESEARCH_LOG_DIR", raising=False)
+
+    def boom(*a, **k):
+        raise PermissionError("read-only volume")
+
+    monkeypatch.setattr(ideation, "_dump_raw", boom)
+
+    def garbage_policy(prompt: str) -> str:
+        return "still not JSON"
+
+    # the ValueError survives; the PermissionError does not escape
+    with pytest.raises(ValueError) as ei:
+        ideation.run_ideation(led, garbage_policy, bottleneck="x", n_ideas=1)
+    assert "dump failed" in str(ei.value) or "hypothes" in str(ei.value).lower()
 
 
 def test_dead_ends_do_not_prime_the_collapsed_vocabulary(led):
