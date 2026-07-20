@@ -129,17 +129,40 @@ Then §1 fires automatically (#17 armed on the monitor).
     did NOT survive the fork's termination (TaskList empty — watches die with their
     session, same lesson as the machine-move at 00:40). New watch: chat_final.pt /
     container exit / crash signatures, 60s poll.
-    **WSL VM CRASH ~03:35 — WHOLE ENGINE DOWN (not just the trainer)**: docker API
-    500s on every call including `docker version`; `vmmemWSL` collapsed to **755 MB**
-    (from many GB) = the WSL2 VM hosting ALL 14 containers restarted. com.docker.backend
-    is alive and burning CPU (booting the VM). Evidence-first per doctrine: NOT
-    restarting Docker Desktop while it is actively recovering; polling for the engine
-    instead. Expected self-heal on recovery: fleet restart policies bring the 13 back;
-    the chat container (`on-failure` + `--resume`) re-resumes from /ckpt/chat/step_15.pt.
-    If the engine does NOT return in ~5 min, a Docker Desktop restart is the next step
-    (safe — every checkpoint is on a named volume, nothing lives in container layers).
-    This is the SAME degraded-WSL-GPU-stack family as the 780MHz/CUBLAS flakes: a
-    reboot cleared it last night, and the power cap is the standing suspect.
+    ## >>> BLOCKED ON USER: WSL VM DEAD, WHOLE FLEET DOWN (03:35 → now) <<<
+
+    **What happened**: docker API 500s on EVERY call including `docker version` —
+    not a container fault. `vmmemWSL` collapsed 755 MB → **34 MB** (dead, not
+    booting) and `com.docker.backend` burned only ~2 CPU-s in 7 min (idle, not
+    recovering). The WSL2 VM hosting all 14 containers is gone: factory fleet (13)
+    + the chat trainer. Same degraded-WSL-GPU family as the 780MHz/CUBLAS flakes;
+    the 45W power cap is the standing suspect (a reboot cleared it last night).
+
+    **Nothing is lost**: every checkpoint is on the named volume `ava_ckpt`
+    (`/ckpt/chat/step_15.pt` banked), the manifest is on `ava_state`, and the
+    research loop is host-side (unaffected — it kept running).
+
+    **RECOVERY — run ONE of these (Claude is blocked by the permission classifier
+    from doing it; both are safe and the fleet self-heals afterwards):**
+    ```powershell
+    wsl --shutdown                      # clears the wedged VM; Docker restarts it
+    # if the engine does not return within ~2 min, also:
+    #   quit Docker Desktop from the tray, then relaunch it
+    ```
+    **After the engine returns, expected automatic behavior**: the 13 factory
+    containers come back on their restart policies; `dottie-chat-branch`
+    (`--restart on-failure`, command carries `--resume`) re-resumes from
+    step_15.pt with the new cadence-8 config. Verify with
+    `docker ps --format "{{.Names}}\t{{.Status}}"` (expect 14) and
+    `docker logs dottie-chat-branch --tail 3` (expect a `resumed` event).
+    If the chat container does NOT come back, relaunch it with:
+    ```
+    cd apps/ava-factory
+    docker compose -f docker-compose.yml -f docker-compose.tool-fork.yml run -d \
+      --name dottie-chat-branch trainer python -m dottie.train --preset mini \
+      --branch chat --init /ckpt/base_final.pt --run /ckpt/chat --resume
+    docker update --restart on-failure dottie-chat-branch
+    ```
     **THROUGHPUT UNDER FLAKING — MEASURED ~03:20 (this is the real ETA)**: two
     CUBLAS/CUDA crashes 18.5 min apart (ts 1784529492 step 15, ts 1784530599 step 23),
     each costing ~3 min of boot + every step since the last checkpoint. Net rate:
