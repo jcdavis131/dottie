@@ -1,5 +1,14 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
-"""Pre-registered analysis of the loop's behaviour AFTER the 2026-07-20 08:50:02 restart.
+"""Pre-registered analysis of the loop's behaviour after a daemon restart.
+
+Current window: the 2026-07-20 **10:35:02** restart (`git_sha c12a052`). The 08:50:02
+window it replaced reached only n=13 — below the reporting threshold, so it never produced
+a rate. That is why the comparators below are still the ORIGINAL pre-restart measurements
+rather than the previous window's: comparing against a sub-threshold number is the error
+the threshold exists to prevent.
+
+When the daemon restarts again, update BOOT_TS, BOOT_SHA and the two window lists FIRST,
+before reading any number out of this script.
 
     apps/dottie> .venv/Scripts/python.exe scripts/post_restart_report.py
 
