@@ -2149,6 +2149,42 @@ most valuable catch so far:
   codebase context, R38 missing constraints on retry. **Four of four.** Not one was visible
   from reading the section being edited.
 - [ ] NOT live — daemon on `e8cc5b7`; joins R24/R28/R29/R35/R36/R37.
+### 5.3.R40 — the scheduler has a battery kill-switch nobody looked at
+
+- [x] **Read the scheduled-task definition end to end (10:15) — the fifth artifact this
+  method has found something in.** It is what actually launches the daemon and I had never
+  inspected it.
+  ```
+  StopIfGoingOnBatteries      : True
+  DisallowStartIfOnBatteries  : True
+  ```
+  **This is a laptop.** If the box drops to battery, **Task Scheduler stops the running
+  daemon**, and will not start it again while unplugged. That produces exactly the symptom I
+  spent hours on: *daemon dies, no traceback, nothing in the log*.
+- [x] **This is a SECOND, independent kill mechanism.** §5.3's wrapper bug (`*>>` +
+  `$ErrorActionPreference='Stop'` making torch's stderr terminating) was real and is fixed
+  and verified. **I then stopped looking.** A confirmed root cause is not proof of a unique
+  one, and this second path leaves no evidence at all — the scheduler simply stops the task.
+- [x] **It ties decision #2 to decision #0.** The charger finding (780 MHz / 45 W of 175 W)
+  has been sitting at "worth checking, downgraded". If the charger is weak or intermittent,
+  the box flips to battery, **the scheduler kills the research daemon**, and the loop dies
+  silently until someone notices. That upgrades the charger from a GPU-performance question
+  to a **loop-availability** one.
+- [x] Current state is fine and not masking anything: **On AC, 100%, PowerOnline True**. The
+  setting is latent, not active. Recorded because latent-and-unknown is how it bit before.
+- [ ] **Operator fix (one command, reversible; I did not run it — modifying your scheduled
+  task is your call, and the battery defaults exist to protect laptops):**
+  ```powershell
+  $s = (Get-ScheduledTask -TaskName "Dottie Research runner").Settings
+  $s.StopIfGoingOnBatteries = $false
+  $s.DisallowStartIfOnBatteries = $false
+  Set-ScheduledTask -TaskName "Dottie Research runner" -Settings $s
+  ```
+- [x] Rest of the definition is sound and worth recording as checked: trigger repeats
+  `PT15M` with `MultipleInstances=IgnoreNew` (the heartbeat design — refusals are correct,
+  not lost ticks); `ExecutionTimeLimit=PT0S` = unlimited, right for a daemon;
+  `RestartCount=3/PT5M` (covers launch failures only — measured in §5.3). The `--bottleneck`
+  string is verbatim what decision item 8 describes.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
