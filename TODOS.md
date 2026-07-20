@@ -1944,6 +1944,34 @@ most valuable catch so far:
   touches either, so no test, gate, or production run was ever going to catch them. The
   automated path has had six gates and a mutation audit pointed at it all night; the manual
   path had nothing until it was read.
+### 5.3.R33 — the decision-#5 artifact was stale, and `promote` would never have fixed it
+
+- [x] **Swept the code paths that neither the daemon nor any test exercises (09:45)** — the
+  blind spot that hid §5.3.R32. No test invokes the research CLI at all, and the daemon only
+  ever runs `run`, leaving `status`, `promote`, `calibrate-baseline` and `seed-baseline`
+  unexercised. **`calibrate-baseline` is the operator's fix path for decision #5**, so a
+  break there would be silent and expensive.
+  - `status` works, and now carries `provenance: promoted_contaminated` plus the full caveat
+    — §5.3.R14 visible from the CLI.
+- [x] **`promote` reported both bundles as `already_bundled` and did nothing.** The existing
+  MLBR bundle — **the artifact decision #5 turns on** — was generated at 03:05 and had:
+  no caveat block (§5.3.R31), and an `ab_nano.py` carrying the broken
+  `factory_nano_trainer(r"…candidate.py", …)` call (§5.3.R32). **`build_pending_promotions`
+  skips any bundle that exists, so both fixes would never have reached it.** A bundle
+  written once was frozen forever.
+- [x] **Added `--rebuild` and regenerated both.** The bundle is derived entirely from the
+  ledger, so regeneration loses nothing. The MLBR bundle now opens with:
+  > ### Read this before promoting
+  > **SIGNIFICANCE UNMEASURABLE** — no per-batch series was recorded, so this delta was
+  > never tested against noise.
+
+  and its `ab_nano.py` passes an Experiment, runs three seeds, and can print *"WITHIN NOISE
+  — do not promote on it."* Suite 175 passed.
+- [ ] **The generalisation, which is the actual lesson:** a fix to a generated artifact does
+  not reach artifacts already generated. Three of tonight's findings (§5.3.R31, R32, R33)
+  were all in the same dead zone — **written by code, read by a human, executed by nobody**.
+  Anything with that shape needs either regeneration on read or an explicit rebuild path;
+  correctness in the generator is not enough.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.

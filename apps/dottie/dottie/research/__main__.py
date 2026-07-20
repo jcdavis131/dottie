@@ -181,7 +181,8 @@ def cmd_promote(args) -> int:
     from dottie.research import promote
     led = _ledger(args)
     out = promote.build_pending_promotions(
-        led, out_root=paths.workspace_root(args.data_dir).parent / "promotions")
+        led, out_root=paths.workspace_root(args.data_dir).parent / "promotions",
+        rebuild=bool(getattr(args, "rebuild", False)))
     _emit(out)
     return 0
 
@@ -393,6 +394,9 @@ def build_parser() -> argparse.ArgumentParser:
     rn.set_defaults(func=cmd_run)
 
     pr = sub.add_parser("promote", help="build review bundles for sota experiments")
+    pr.add_argument("--rebuild", action="store_true",
+                    help="regenerate bundles that already exist (bundle-format fixes do "
+                         "NOT reach existing bundles otherwise)")
     pr.set_defaults(func=cmd_promote)
 
     st = sub.add_parser("status", help="print the research status snapshot")

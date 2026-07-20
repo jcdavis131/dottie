@@ -175,12 +175,20 @@ def build_promotion(ledger: Ledger, exp_id: str, *, out_root: str | Path,
             "files": ["candidate.py", "PROMOTION.md", "ab_nano.py"]}
 
 
-def build_pending_promotions(ledger: Ledger, *, out_root: str | Path) -> Dict[str, Any]:
-    """Bundle every sota experiment that has no bundle yet. Returns a summary."""
+def build_pending_promotions(ledger: Ledger, *, out_root: str | Path,
+                             rebuild: bool = False) -> Dict[str, Any]:
+    """Bundle every sota experiment that has no bundle yet. Returns a summary.
+
+    ``rebuild=True`` regenerates bundles that already exist. Without it, a bundle written
+    once is frozen forever — so every later fix to the bundle format silently fails to
+    reach the artifacts a human actually reads. Measured 2026-07-20 (§5.3.R33): both
+    existing bundles predated the caveat block AND carried the broken `ab_nano.py`, and
+    `promote` reported them as `already_bundled` rather than repairing them. The bundle is
+    derived entirely from the ledger, so regenerating it loses nothing."""
     out_root = Path(out_root)
     built, skipped = [], []
     for exp in ledger.list(state=SOTA):
-        if (out_root / exp.id / "PROMOTION.md").exists():
+        if not rebuild and (out_root / exp.id / "PROMOTION.md").exists():
             skipped.append(exp.id)
             continue
         try:
