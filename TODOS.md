@@ -352,8 +352,11 @@ THE NIGHT'S HEADLINES — read these before anything below:
    — the Vercel deploy needs your approval (§7.5).
 
 ### YOUR DECISION QUEUE (in order)
-1. **`wsl --shutdown`** — nothing else moves until the engine is back.
-2. **Charger** — the physical root cause candidate for tonight's whole failure family.
+1. **Recover the fleet** — `.\scripts\prepare_fleet_recovery.ps1` (prep + GO/NO-GO), then
+   `wsl --shutdown`. Nothing else moves until the engine is back.
+2. **Charger** — still worth checking (780 MHz / 45 W of 175 W were real measurements),
+   but **downgraded**: it is no longer the explanation for the outage (that was my 14b
+   change) and only a *possible* contributor to the CUBLAS crashes.
 3. **T9.3 path (§1.4)** — gate FAILED (+75.1% CE). My recommendation: no knob-rerun;
    get real tool data via 2.1, then re-fork with a replay mix. Trainer stays parked.
 4. **T9.4 — DECIDE BEFORE OR RIGHT AFTER `wsl --shutdown`.** It was launched per your
@@ -371,7 +374,17 @@ THE NIGHT'S HEADLINES — read these before anything below:
 5. **MLBR bundle (§5.3.R)** — I recommend REJECT, with the arithmetic; also decide
    whether to re-seed the baseline back to 5.61982.
 6. **Ollama startup task (§8)** and **§2.3 checkout retirement** (daytime; 3 checkouts).
-7. **arxiviq deploy** (§7.5) — one command, or approve and I'll run it.
+7. **arxiviq deploy** (§7.5) — one command, or approve and I'll run it. The site is
+   currently showing "Factory mode: unknown" + em-dashes for a *down* fleet; the fix that
+   says "factory unreachable" is committed but not live (§7.7).
+8. **Research search quality — the highest-leverage open item, and purely yours.** The
+   loop is reliable and unproductive: 14 hypotheses overnight, 5 evaluated, **0 real
+   improvements**, 50% dying in validation. Two causes are identified with data:
+   **§5.2.g mode collapse** (30 names permuting seven words; the dead-ends list may be
+   priming it — four options filed) and **§5.3.R3 the block-swap confound** (three
+   candidates have now "won" by deleting a 787 K-parameter block; param-parity or
+   ADD-instead-of-REPLACE would end it). Gates and instrumentation are done — further
+   effort belongs here.
 
 ## Standing state (context for every step below)
 
