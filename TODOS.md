@@ -117,8 +117,12 @@ Then §1 fires automatically (#17 armed on the monitor).
     Old July-10 nano-era /ckpt/chat ckpts preserved as *.nano-20260710.bak.
     Completion/failure watch armed (fires the session on chat_final.pt, clean exit,
     crash, or CUBLAS/NaN signatures). GATE NEXT: nonregression-only eval vs
-    base_final (adapt evals/tool_gate.py — same honest labeling; expect the
-    forgetting risk the tool branch showed, at 1/6 the token count).
+    base_final (expect the forgetting risk the tool branch showed, at 1/6 the
+    token count). HARNESS READY (adapted ~01:55): `evals/tool_gate.py` now takes
+    `--candidate-ckpt/--candidate-label`; wake-time command:
+    `docker compose -f docker-compose.yml -f docker-compose.tool-fork.yml run --rm trainer \
+     python -m evals.tool_gate --candidate-ckpt /ckpt/chat/chat_final.pt \
+     --candidate-label chat --out /reports/chat_gate.json`
 
     Original plan (**if gate passes → chat branch (T9.4)**): same overlay pattern,
     `docker compose -f docker-compose.yml -f docker-compose.tool-fork.yml run --rm trainer \

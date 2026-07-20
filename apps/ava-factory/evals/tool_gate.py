@@ -133,7 +133,12 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="evals.tool_gate", description=__doc__)
     ap.add_argument("--preset", default="mini")
     ap.add_argument("--base-ckpt", default="/ckpt/base_final.pt")
-    ap.add_argument("--tool-ckpt", default="/ckpt/tool/tool_final.pt")
+    ap.add_argument("--tool-ckpt", "--candidate-ckpt", dest="tool_ckpt",
+                    default="/ckpt/tool/tool_final.pt",
+                    help="the CANDIDATE branch checkpoint (any branch — e.g. "
+                         "/ckpt/chat/chat_final.pt for the T9.4 gate)")
+    ap.add_argument("--candidate-label", default="tool",
+                    help="report label for the candidate (e.g. 'chat')")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--db", default="/state/manifest.db")
     ap.add_argument("--seq", type=int, default=512)
@@ -181,7 +186,8 @@ def main(argv=None) -> int:
         "config": {"seq": args.seq, "windows_per_task": args.windows,
                    "seed": args.seed, "preset": args.preset},
     }
-    report = {"base": base, "tool": tool, "verdict": verdict}
+    report = {"base": base, "candidate": tool, "candidate_label": args.candidate_label,
+              "verdict": verdict}
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(json.dumps(report, indent=2))
