@@ -325,6 +325,11 @@ Then §1 fires automatically (#17 armed on the monitor).
   password at registration, so Claude can't do it) — or switch Ollama to a Windows
   service. Without this, every unattended reboot silently kills the research loop
   until someone logs in.
+- [ ] §5 runner incident 2 (02:15): the 01:05 runner instance died with 0xC000013A
+  (console-interrupt semantics; cause UNEXPLAINED — no ExecutionTimeLimit is set) and
+  its still-running corpse made `IgnoreNew` swallow the 02:05 trigger. Recovered by
+  manual Start-ScheduledTask 02:16 (GASA trains this run). If 0xC000013A recurs,
+  instrument the wrapper (trap + exit-code logging) before theorizing.
 - [x] §5: ideation raw-dumps reviewed 2026-07-20 — new shape found (mid-word-corrupted
   key `"hypo,thesis_name"` killed a whole 3-idea batch) and fixed with canonical-skeleton
   key repair in parse_hypotheses (fill-only, deterministic). Swept all 9 accumulated
