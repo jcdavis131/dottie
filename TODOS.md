@@ -3220,6 +3220,34 @@ most valuable catch so far:
   the stored histories for repeated identical dry_run failures before deciding whether to
   re-derive the class name per attempt or pin the name in the correction prompt.
 
+### 5.3.R106 — F821 sweep found 2 REAL undefined-name bugs in model/training code (not mine)
+
+- [x] **Checked all 5 `F821 undefined-name`** from the ruff CI (1 was the tool_gate closure FP,
+  §5.3.R103). The other 4 are **2 genuine bugs** — both pre-existing, both in core code, both
+  will `NameError` at runtime and are flagged by the operator's new CI.
+- [x] **⚠ BUG 1 (live): `apps/ava-factory/model_1b.py:768-770` — `get_model()` is broken.** Its
+  body passes `use_short_conv=use_short_conv, use_relative=use_relative,
+  relative_max_distance=relative_max_distance`, but **none are parameters of `get_model` nor
+  defined anywhere** (they appear ONLY at this call site — verified by grep over the whole
+  file). So **every call to `get_model()` raises `NameError`.** And it is CALLED in 6 places,
+  including **`train_1b_deepspeed.py:342/344` and `trainer_agent.py:168`** — the 1B training
+  entry points. Classic incomplete refactor: added to the `DottieModel1B(...)` call, never
+  added to `get_model`'s signature. (Latent if those entry points are not exercised — the
+  docstring says "new code should use `build_model(cfg)`" — but broken the moment they are.)
+- [x] **BUG 2: `apps/ava-factory/on_policy_distill.py:288` — `torch.randn(B, 44, d)`** inside a
+  stub model's `forward`; `d` was a param of the nested `__init__` (default 2048), never saved
+  to `self`, so it is undefined in `forward` → `NameError` if that path runs.
+- [ ] **Recorded, NOT fixed by me — this needs the operator's intent.** Bug 1's fix is either
+  "add `use_short_conv=False, use_relative=False, relative_max_distance=<N>` to `get_model`'s
+  signature" OR "remove them from the call" — *which* depends on whether `DottieModel1B` is
+  meant to take them, a model-design call that is yours. Bug 2 likely wants `self.d`/`d_model`.
+  Both are in ruff-reformatted files (fixing pre-B0 grows the merge) and can only be verified
+  with torch + the model build. **They join the B0/post-reconciliation fix list.**
+- [x] **This closes the ruff-bug review:** across the whole tree, the real bugs are — 2 py311
+  syntax errors (§5.3.R103 mine/fixed, §5.3.R105 pre-existing/recorded) and these 2 undefined
+  names. Everything else ruff flags (F811 duplicate imports, F841, E722, E741, F541) is benign
+  style, pre-existing, and handled by the ruff pass or the operator's lint cleanup.
+
 ### 5.3.R105 — swept the WHOLE tree for the R103 bug class; one more, pre-existing, in the data pipeline
 
 - [x] **Generalised R103's find:** 3.12-only f-string syntax is masked by the 3.13 dev venv but
