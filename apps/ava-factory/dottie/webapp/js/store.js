@@ -50,10 +50,16 @@ export function getSettings() {
   return { ...DEFAULTS, ...read(SETTINGS_KEY, {}) };
 }
 
+/** Persist a settings patch. Returns { settings, persisted } — the caller MUST NOT
+ *  report success without checking `persisted`. write() has reported refusal since the
+ *  quota fix, but four of its five callers ignored it, and settings.js announced
+ *  "saved — clients and pollers restarted" unconditionally. On a refused write the token
+ *  and base URLs silently revert on reload, which is precisely the loss the return value
+ *  exists to surface (TODOS 5.3.R68). */
 export function saveSettings(patch) {
   const next = { ...getSettings(), ...patch };
-  write(SETTINGS_KEY, next);
-  return next;
+  const persisted = write(SETTINGS_KEY, next);
+  return { settings: next, persisted };
 }
 
 // ---------------------------------------------------------------- sessions

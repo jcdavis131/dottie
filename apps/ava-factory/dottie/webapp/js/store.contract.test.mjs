@@ -47,5 +47,40 @@ check("a refused write never throws", threw === null, threw ? String(threw) : ""
 check("getMessages falls back to [] when nothing is stored",
   Array.isArray(store.getMessages("never-written")) && store.getMessages("never-written").length === 0);
 
+
+// 6) saveSettings must REPORT refusal, not swallow it.
+//    write() has reported refusal since the quota fix, but four of its five callers
+//    ignored the flag and settings.js announced "saved" unconditionally. On a refused
+//    write the token and base URLs silently revert on reload.
+{
+  const store = {};
+  globalThis.localStorage = {
+    getItem: (k) => (k in store ? store[k] : null),
+    setItem: () => { throw new DOMException("QuotaExceededError"); },
+    removeItem: (k) => { delete store[k]; },
+  };
+  const mod = await import(
+    `file:///C:/Users/jcdav/dottie/apps/ava-factory/dottie/webapp/js/store.js?refused=${Date.now()}`);
+  const res = mod.saveSettings({ token: "secret" });
+  check("saveSettings reports a refused write", res.persisted === false, JSON.stringify(res.persisted));
+  check("saveSettings still returns the merged settings so the session keeps working",
+    res.settings && res.settings.token === "secret");
+}
+
+// 7) And a working store reports success.
+{
+  const store = {};
+  globalThis.localStorage = {
+    getItem: (k) => (k in store ? store[k] : null),
+    setItem: (k, v) => { store[k] = String(v); },
+    removeItem: (k) => { delete store[k]; },
+  };
+  const mod = await import(
+    `file:///C:/Users/jcdav/dottie/apps/ava-factory/dottie/webapp/js/store.js?ok=${Date.now()}`);
+  const res = mod.saveSettings({ token: "t2" });
+  check("saveSettings reports a successful write", res.persisted === true);
+  check("and the value round-trips", mod.getSettings().token === "t2");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

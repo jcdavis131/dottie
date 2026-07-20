@@ -2869,6 +2869,31 @@ most valuable catch so far:
   `researchBase: "http://y"` — so the *direct* call answered and both new tests failed for
   the wrong reason. **A test that fails because the stub is wrong looks identical to one that
   fails because the code is wrong**; only reading the failure told them apart.
+### 5.3.R68 — my own fix reached one caller in five; the settings page lied about saving
+
+- [x] **Read `store.js` whole (14:15) and found the instance-not-class pattern in my own
+  work.** Early tonight I made `write()` return a success flag so a refused localStorage
+  write could be surfaced, and propagated it through `saveMessages`. **Four other callers
+  ignore it** — `saveSettings`, `createSession`, `touchSession`, `deleteSession` — while
+  `write()`'s docstring claims *"the caller is told, so the UI can say so"*. True of one
+  caller in five, which is the doc-drift class riding along with it.
+- [x] **The consequence was user-visible and specific.** `views/settings.js` set
+  `"saved — clients and pollers restarted"` **unconditionally**. On a refused write
+  (private mode, quota) the operator is told it saved and the **token and base URLs silently
+  revert on reload** — exactly the loss the return value was added to prevent, handled
+  correctly in `chat.js` and nowhere else.
+- [x] Fixed where it is user-facing: `saveSettings` now returns `{ settings, persisted }`
+  (verified no caller consumed the old return, so the shape change is safe), and the
+  settings page says *"applied for this session ONLY — the browser refused to store it
+  (private mode or quota), so it will be lost on reload"*.
+  - Two contract tests: a `setItem` that throws `QuotaExceededError` must report
+    `persisted: false` **and still return the merged settings** so the session keeps working;
+    a working store reports `true` and round-trips. Verified red without the fix.
+    **api 8 / store 9, both green.**
+- [ ] `createSession`/`touchSession`/`deleteSession` still discard the flag. Left deliberately:
+  their failure loses a session list entry rather than credentials, and no UI currently
+  claims success for them — so there is nothing lying yet. Recorded rather than fixed, so
+  the next person sees it was a decision.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
