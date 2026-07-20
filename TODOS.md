@@ -318,13 +318,20 @@ effort belongs; the gates and instrumentation are done.
 
 ### Measured trade-offs (06:06) — two numbers worth having
 
-**1. `keep_alive=30s` costs ~42% on implement wall-clock.** A failed 5-attempt implement
-went **487 s → 691 s** (`dur_s`, same stage type, before/after the setting). That is the
-price of the memory fix that took available RAM from 345 MB to 5.4 GB. On a box whose
-memory exhaustion caused a multi-hour outage the trade still looks right, but it is now a
-number rather than a guess — revisit it if throughput ever matters more than headroom.
+**1. `keep_alive=30s` costs *something*, but far less than I first claimed — CORRECTED.**
+I reported "~42% slower" from a single before/after pair (487 s → 691 s). The next
+comparable implement came in at **492.5 s — statistically indistinguishable from the
+487 s baseline.** Three same-shape samples (one pre-fix, two post): 487.3 / 691.5 / 492.5.
+So the honest statement is *high variance, mean penalty maybe ~20%, n far too small to
+quantify* — not a stable 42% tax. Original overclaim left visible here on purpose: it came
+from n=1 and should not have been stated as a rate. The memory benefit (345 MB → 5.4 GB)
+is measured repeatedly and is not in doubt.
 
-**2. The axis-discipline prompt is NOT the whole story (n=3).** GASA #3 died with
+**2. The axis-discipline prompt is NOT the whole story (n=4).** Latest failure:
+`RuntimeError: einsum(): the number of subscripts in the equation (2) does not match the
+number of dimensions (3) for operand 1` — a 2-subscript einsum applied to a 3-D tensor.
+That IS rank confusion, the family the prompt targets, so constraint 8 is not landing;
+consider naming einsum explicitly in it. Earlier detail: GASA #3 died with
 `AttributeError: 'GradientAdaptiveSparseAttention' object has no attribute 'hidden'` —
 not an axis mismatch at all, but a module referencing an attribute it never assigned in
 `__init__`. Earlier post-fix failures were a 4-D reshape mismatch and this. So the
