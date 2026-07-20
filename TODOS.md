@@ -118,11 +118,13 @@ Then §1 fires automatically (#17 armed on the monitor).
 ## 2 — Redeploy the fleet on reconciled code (after 1.1, before long collector runs)
 
 2.1 **Rebuild + restart with the reconciled tree** (new datagen union + post-mini sources):
-    - 2.1.a `docker compose -f docker-compose.yml -f docker-compose.tool-fork.yml build`
-    - 2.1.b `docker compose ... up -d` **only when the trainer is between runs** — never
-      yank a mid-run trainer.
-    - 2.1.c Acceptance: 14/14 healthy 10 min later; `/pipeline/status` mode sane;
-      collector logs show the NEW source keys (synpro, tool_use L2/L3, db/compress traces).
+    - 2.1.a [x] Images rebuilt 2026-07-20 01:35 (ava/cpu + ava/gpu, cache-fast).
+    - 2.1.b [x] 01:38: collector×4, curator×6, janitor, server recreated on new images.
+      **Trainer DELIBERATELY left down** — gate failed; no new run without human
+      sign-off (also avoids an exit-0 restart loop on the finished branch command).
+    - 2.1.c [~] Acceptance now 13/13 healthy (12 factory + dottie; trainer excluded);
+      verify ~01:50: healthy states + collector logs show NEW source keys (synpro,
+      tool_use L2/L3, db/compress traces) + `/pipeline/status` sane.
 2.2 **Verify mixture flow end-to-end**: after 1h, `manifest` tokens_ready per phase
     rises; curator rejects stay <20%; no `unknown generator` errors anywhere.
 2.3 **Retire the old checkouts** — AUDITED 2026-07-19 late: workspace clean; retired ava-agi's 97 dirty files all captured by the reconciliation (0 changed since); both safe to rename (they are now strictly historical):
