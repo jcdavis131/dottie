@@ -1560,6 +1560,36 @@ class NoOp(nn.Module):
     assert "NOT a clean bill of health" in caveat
 
 
+def test_status_note_describes_the_measurement_actually_taken(led, tmp_path):
+    """The dashboard's honesty line must not hardcode a description of its own metric.
+
+    TODOS §5.3.R59: the note asserted every metric came "from the proxy micro-benchmark".
+    That stopped being true when the daemon moved to `--trainer factory` — measured over the
+    live ledger, 27 of 28 recorded integrations are `factory_nano_block_swap` and 21 runs
+    describe themselves as "held-out LM cross-entropy on the real packed pilot corpus".
+
+    A hardcoded description of your own measurement drifts silently the moment the
+    measurement changes, and an inaccurate honesty statement is worse than none.
+    """
+    e = led.create(HYP)
+    led.transition(e.id, READY_FOR_TRAINING, implementation={"code": GOOD_CODE},
+                   workspace=str(tmp_path))
+    led.transition(e.id, EVALUATION_PENDING,
+                   train_metrics={"proxy_loss": 1.0,
+                                  "integration": "factory_nano_block_swap",
+                                  "task": "held-out LM cross-entropy on the real packed pilot corpus"})
+    note = logger.build_status(led)["note"]
+    assert "held-out LM cross-entropy on the real packed pilot corpus" in note
+    assert "proxy micro-benchmark" not in note, "note still hardcodes a stale description"
+
+
+def test_status_note_is_honest_when_nothing_has_been_measured(led):
+    """With no measured run, the note must not name a task it cannot know."""
+    note = logger.build_status(led)["note"]
+    assert "the recorded trainer integration" in note
+    assert "proxy micro-benchmark" not in note
+
+
 def test_status_snapshot_carries_baseline_provenance(led, tmp_path):
     """The dashboard must not present a contaminated baseline in a clean voice.
 

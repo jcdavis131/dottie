@@ -31,20 +31,41 @@ def log_metric(key: str, value: Any, *, data_dir: Optional[str | Path] = None,
         f.write(json.dumps(rec) + "\n")
 
 
-def _status_note(base_caveat: Optional[str]) -> str:
+def _status_note(base_caveat: Optional[str], task: Optional[str] = None) -> str:
     """The snapshot's own summary line, which must not overstate what the numbers mean.
 
     The standing note said a SOTA "is declared only on a real, direction-aware improvement
     over the baseline". True of the comparison, and actively misleading when the BASELINE is
     the problem — as it is right now (TODOS §5.3.R5: the live baseline was ratcheted by a
     module the validator would reject today). A snapshot that reports a contaminated
-    baseline in the same voice as a clean one is the exact failure this loop keeps having."""
-    note = ("Every metric is a real measurement from the proxy micro-benchmark; a new SOTA "
+    baseline in the same voice as a clean one is the exact failure this loop keeps having.
+
+    ``task`` is read from the LEDGER rather than hardcoded. The note used to assert every
+    metric came "from the proxy micro-benchmark", which stopped being true when the daemon
+    moved to ``--trainer factory``: measured 2026-07-20 (TODOS §5.3.R59), 27 of 28 recorded
+    integrations are ``factory_nano_block_swap`` and 21 runs describe themselves as
+    "held-out LM cross-entropy on the real packed pilot corpus". A hardcoded description of
+    your own measurement drifts silently the moment the measurement changes — and an
+    inaccurate honesty statement is worse than none."""
+    measured = task or "the recorded trainer integration"
+    note = (f"Every metric is a real measurement ({measured}); a new SOTA "
             "is declared only on a real, direction-aware improvement over the baseline.")
     if base_caveat:
         note += (" WARNING: the baseline itself carries a caveat (see baseline.caveat) — "
                  "improvements measured against it are NOT trustworthy until it is re-seeded.")
     return note
+
+
+def _recent_task(ledger: Ledger) -> Optional[str]:
+    """How the most recent measured run described its own task, or None if nothing has run.
+
+    Derived, not asserted: whatever the trainer wrote into `train_metrics["task"]` is what
+    the loop actually measured (TODOS §5.3.R59)."""
+    for exp in ledger.list(limit=25):
+        task = (exp.train_metrics or {}).get("task")
+        if task:
+            return str(task)
+    return None
 
 
 def build_status(ledger: Ledger, *, recent: int = 25) -> Dict[str, Any]:
@@ -97,7 +118,7 @@ def build_status(ledger: Ledger, *, recent: int = 25) -> Dict[str, Any]:
         "counts": ledger.counts(),
         "experiments": experiments,
         "sota_history": sota,
-        "note": _status_note(base_caveat),
+        "note": _status_note(base_caveat, _recent_task(ledger)),
     }
 
 

@@ -2653,6 +2653,31 @@ most valuable catch so far:
   - Verified red for the right reason — `no dump beside the ledger at <tmp>/logs` — and a
     second test proves a `PermissionError` from the dumper no longer escapes. Suite 193
     passed.
+### 5.3.R59 — the dashboard's honesty line described the wrong measurement
+
+- [x] **Read `logger.py` whole (12:25) — the last unread file I had edited.** Its status note,
+  the line the Research tab renders as its honesty statement, asserted:
+  > *"Every metric is a real measurement **from the proxy micro-benchmark**."*
+
+  **The daemon runs `--trainer factory`.** Measured over the live ledger: **27 of 28**
+  recorded integrations are `factory_nano_block_swap`, and 21 runs describe themselves as
+  *"held-out LM cross-entropy on the real packed pilot corpus"*. The note has been describing
+  a measurement the loop stopped taking.
+- [x] **Direction of the error is worth noting: it UNDERSTATED the work.** The factory
+  measurement (real corpus, real architecture, held-out CE) is considerably stronger than a
+  synthetic proxy micro-benchmark. So this was not inflation — but **an inaccurate honesty
+  statement is worse than none either way**, because its whole function is to be the sentence
+  a reader trusts without checking.
+- [x] Fixed by **deriving the description from the ledger** rather than asserting it: the note
+  now reports whatever the most recent measured run wrote into `train_metrics["task"]`, and
+  says *"the recorded trainer integration"* when nothing has been measured yet. A hardcoded
+  description of your own measurement drifts silently the moment the measurement changes —
+  which is exactly what happened here, and what §5.3.R13/R41/R46 each did in a different file.
+  - Verified red on the old code with the stale sentence quoted in full. Suite 195 passed.
+- [ ] **That completes the research package**: every module I touched tonight has now been
+  read end to end. Eleven artifacts, nine findings. The two that read clean (`evaluate.py`,
+  and `ledger.py`'s state machine) are recorded as clean, which is what keeps the other nine
+  meaningful.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
