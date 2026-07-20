@@ -129,6 +129,19 @@ fallback relaunch are in §1.3. **The 45W power cap is the standing suspect for 
 family of failures tonight — 780MHz clocks, 2 CUBLAS crashes, and this VM death. Check
 the charger.**
 
+### Regression status (full sweep 04:38, after ~14 changed files)
+
+| suite | result |
+|---|---|
+| `apps/dottie` (full) | **149 passed**, 1 skipped — needs `AVA_FACTORY_ROOT` set (see §2.3.0) |
+| webapp `api.contract.test.mjs` | 6 passed (node, no browser) |
+| webapp `store.contract.test.mjs` | 5 passed |
+| `apps/scout-cli` profiles | 6 passed |
+| `packages/ava-skills` logic-prover | 6 passed |
+| arxiviq `site/app.js` | syntax clean; render harness 6/6 earlier |
+
+Nothing regressed across the night's work.
+
 ### What ran while you were away (all committed, ~25 commits)
 
 Two lanes were alive: the **T9.4 chat branch** (trained steps 1→23 across two CUDA-flake
