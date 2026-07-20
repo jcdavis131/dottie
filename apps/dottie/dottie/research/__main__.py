@@ -243,7 +243,15 @@ def _boot_provenance() -> Dict[str, Any]:
 
 #: Refuse to start a heavy stage below this much free RAM. Overridable with
 #: DOTTIE_RESEARCH_MIN_FREE_MB; set 0 to disable the guard entirely.
+#:
+#: This is HEADROOM the stage needs *on top of* whatever it is about to allocate — see
+#: ``_model_load_cost_mb`` for the part that is not a constant.
 _MIN_FREE_MB_DEFAULT = 1200
+
+#: Stages that call the LLM. Unlike train/validate, these do not just *use* memory — if the
+#: configured model is not already resident they PULL IT IN first, and on this box
+#: (``NUM_GPU=0``) that lands in system RAM, not VRAM.
+_LLM_ACTIONS = frozenset({"ideate", "implement"})
 
 
 def _available_mb() -> Optional[int]:
@@ -280,6 +288,43 @@ def _available_mb() -> Optional[int]:
         return None
 
 
+def _model_load_cost_mb() -> tuple[Optional[int], Optional[str]]:
+    """``(MB an LLM stage will ADD, model name)`` — ``(None, …)`` when it cannot be known.
+
+    Returns ``0`` when the configured model is already resident, because Ollama reuses it and
+    the stage allocates nothing extra. Returns its footprint when it is NOT resident, because
+    the stage must load the whole thing before the first token.
+
+    That distinction is the whole point. With ``DOTTIE_OLLAMA_KEEP_ALIVE=30s`` the model
+    unloads between stages, so the common case on this box is "not resident" — and a flat
+    floor then says GO at 3,051 MB free and lets a 5.2 GB load run the box to zero. Measured
+    2026-07-20 (TODOS 5.3.R77) with the daemon down: 3,051 MB free, nothing resident.
+
+    Never raises and never blocks for long: unknown is returned as None and the caller
+    proceeds, matching ``_available_mb``. A down Ollama lands here as None, and the stage
+    then refuses honestly on its own (DottiePolicyUnavailable) — which is the correct error
+    to show, not a memory one."""
+    try:
+        import httpx
+
+        pol = OllamaPolicy()                        # constructor is pure: env only, no I/O
+        want = pol.model
+        timeout = httpx.Timeout(connect=2.0, read=3.0, write=3.0, pool=2.0)
+        with httpx.Client(timeout=timeout) as client:
+            resident = client.get(f"{pol.base_url}/api/ps").json()
+            for m in resident.get("models") or []:
+                if want in (m.get("name"), m.get("model")):
+                    return 0, want
+            catalog = client.get(f"{pol.base_url}/api/tags").json()
+            for m in catalog.get("models") or []:
+                if want in (m.get("name"), m.get("model")):
+                    size = int(m.get("size") or 0)
+                    return (int(size / 1024 / 1024) or None), want
+        return None, want                           # model not pulled; `ollama pull` will say so
+    except Exception:
+        return None, None
+
+
 def _memory_refusal(action: str) -> Optional[Dict[str, Any]]:
     """A refusal record when RAM is too low to start ``action``, else None.
 
@@ -298,14 +343,35 @@ def _memory_refusal(action: str) -> Optional[Dict[str, Any]]:
     if floor <= 0:
         return None
     avail = _available_mb()
-    if avail is None or avail >= floor:
+    if avail is None:
         return None
-    return {"error": "insufficient_memory", "action": action,
-            "available_mb": avail, "required_mb": floor,
-            "detail": (f"refusing to start '{action}': {avail} MB free, need {floor} MB. "
-                       "A torch stage here would be OOM-killed mid-run with no traceback "
-                       "(see TODOS 5.3.R51). Free memory or lower "
-                       "DOTTIE_RESEARCH_MIN_FREE_MB.")}
+    # An LLM stage has to load the model before it does any work, so the honest requirement
+    # is headroom PLUS that load. Without this the guard passes at 3 GB free and the loop
+    # dies inside the pull it just authorised (TODOS 5.3.R77).
+    required = floor
+    model_mb, model = (None, None)
+    if action in _LLM_ACTIONS:
+        model_mb, model = _model_load_cost_mb()
+        if model_mb:
+            required = floor + model_mb
+    if avail >= required:
+        return None
+    rec = {"error": "insufficient_memory", "action": action,
+           "available_mb": avail, "required_mb": required, "floor_mb": floor,
+           "detail": (f"refusing to start '{action}': {avail} MB free, need {required} MB. "
+                      "A torch stage here would be OOM-killed mid-run with no traceback "
+                      "(see TODOS 5.3.R51). Free memory or lower "
+                      "DOTTIE_RESEARCH_MIN_FREE_MB.")}
+    if model_mb:
+        rec["model_load_mb"] = model_mb
+        rec["model"] = model
+        rec["detail"] = (
+            f"refusing to start '{action}': {avail} MB free, need {required} MB "
+            f"({floor} MB headroom + {model_mb} MB to load '{model}', which is not resident "
+            "and goes to SYSTEM RAM at NUM_GPU=0). Loading it here would run the box to zero "
+            "and take the WSL fleet with it (TODOS 5.3.R77). Free memory, or pre-load the "
+            "model while the box is quiet.")
+    return rec
 
 
 def cmd_run(args) -> int:

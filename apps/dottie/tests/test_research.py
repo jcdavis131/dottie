@@ -1126,6 +1126,10 @@ def test_memory_guard_refuses_visibly_instead_of_dying_silently(monkeypatch):
     """
     from dottie.research import __main__ as m
 
+    # The model-load term is exercised separately below; pin it to "already resident" so
+    # this test covers the FLOOR logic alone and never touches the network.
+    monkeypatch.setattr(m, "_model_load_cost_mb", lambda: (0, "stub:8b"))
+
     # plenty of room -> no refusal
     monkeypatch.setattr(m, "_available_mb", lambda: 8000)
     monkeypatch.delenv("DOTTIE_RESEARCH_MIN_FREE_MB", raising=False)
@@ -1162,6 +1166,61 @@ def test_memory_guard_proceeds_when_the_reading_is_unavailable(monkeypatch):
     monkeypatch.delenv("DOTTIE_RESEARCH_MIN_FREE_MB", raising=False)
     monkeypatch.setattr(m, "_available_mb", lambda: None)
     assert m._memory_refusal("train") is None
+
+
+def test_memory_guard_accounts_for_the_model_an_llm_stage_must_load(monkeypatch):
+    """A flat floor is the wrong test for `ideate`/`implement`.
+
+    Those stages do not merely USE memory — if the model is not resident they pull it in
+    before the first token, and with `NUM_GPU=0` on this box that lands in system RAM. So
+    the guard would clear a stage at 3 GB free and the loop would then die inside the very
+    load it had just authorised.
+
+    Measured 2026-07-20 with the daemon down (TODOS 5.3.R77): 3,051 MB free, `/api/ps`
+    empty, configured model qwen3:8b at ~5.2 GB. Old guard: PASS. Reality: starvation.
+    """
+    from dottie.research import __main__ as m
+
+    monkeypatch.delenv("DOTTIE_RESEARCH_MIN_FREE_MB", raising=False)
+    monkeypatch.setattr(m, "_available_mb", lambda: 3051)          # the measured reading
+
+    # Not resident: the 5.2 GB load counts, and the stage is refused.
+    monkeypatch.setattr(m, "_model_load_cost_mb", lambda: (5200, "qwen3:8b"))
+    r = m._memory_refusal("ideate")
+    assert r is not None, "3051 MB free must not clear a 5200 MB load"
+    assert r["required_mb"] == m._MIN_FREE_MB_DEFAULT + 5200
+    assert r["model_load_mb"] == 5200 and r["model"] == "qwen3:8b"
+    # The record has to name the cause, or it is just another unexplained refusal.
+    assert "qwen3:8b" in r["detail"] and "SYSTEM RAM" in r["detail"]
+
+    # Already resident: Ollama reuses it, nothing is allocated, and the SAME reading clears.
+    monkeypatch.setattr(m, "_model_load_cost_mb", lambda: (0, "qwen3:8b"))
+    assert m._memory_refusal("ideate") is None, (
+        "a resident model costs nothing; refusing here would stall the loop forever")
+
+    # The surcharge is scoped to LLM stages. `train` allocates torch, not a model.
+    monkeypatch.setattr(m, "_model_load_cost_mb", lambda: (5200, "qwen3:8b"))
+    assert m._memory_refusal("train") is None
+    assert m._memory_refusal("evaluate") is None
+
+    # Unknown cost must not block -- same fail-open contract as `_available_mb`. A down
+    # Ollama surfaces as the stage's own honest refusal, not as a bogus memory error.
+    monkeypatch.setattr(m, "_model_load_cost_mb", lambda: (None, None))
+    assert m._memory_refusal("ideate") is None
+
+
+def test_model_load_cost_never_raises_when_ollama_is_unreachable(monkeypatch):
+    """The guard runs on every tick; it must not be able to kill the daemon.
+
+    `_model_load_cost_mb` does real HTTP. Anything it can throw -- connection refused, a
+    timeout, malformed JSON -- has to degrade to UNKNOWN, because a guard that raises turns
+    "Ollama is down" (an honest, recoverable refusal) into a crash-loop.
+    """
+    from dottie.research import __main__ as m
+
+    monkeypatch.setenv("DOTTIE_OLLAMA_URL", "http://127.0.0.1:9")   # discard port
+    cost, model = m._model_load_cost_mb()
+    assert cost is None, "unreachable server must read as UNKNOWN, not as 0"
 
 
 def test_trainer_loads_the_validated_module_not_a_validator_scratch_file(tmp_path):
