@@ -63,6 +63,21 @@ MUTANTS = [
      "        base = torch.randn(*shape, generator=torch.Generator().manual_seed(1234),\n"
      "                           requires_grad=False)",
      "reading_input_grad", "probe input no longer requires grad (the whole point)"),
+    # Gates added after the first audit. Each leaves every symbol in place and breaks only
+    # behaviour, per the rule at the top of this file.
+    ("validate.py", "    target = [shape[0], int(seq), int(width)]",
+     "    target = [shape[0], shape[1], int(width)]",
+     "sequence_sized_parameter", "integration probe stops using the real seq (R28)"),
+    ("train.py", "    finals = [p for p in pys if not p.name.startswith(\"candidate_\")]\n"
+                 "    pool = finals or pys",
+     "    finals = []\n    pool = finals or pys",
+     "loads_the_validated_module", "loader stops preferring the real module (R49)"),
+    ("__main__.py", "    if avail is None or avail >= floor:",
+     "    if True:",
+     "memory_guard_refuses", "memory guard never refuses (R52)"),
+    ("ideation.py", "            except Exception as dump_err:",
+     "            except ZeroDivisionError as dump_err:",
+     "failing_dump", "dump failure escapes and masks the parse error (R58)"),
     ("train.py", "        return TrainResult(True, False, metrics={\"integration\": \"proxy_micro_benchmark\",\n"
                  "                                                 \"detail\": \"candidate module not loadable\"},",
      "        return TrainResult(False, False, metrics={\"integration\": \"proxy_micro_benchmark\",\n"

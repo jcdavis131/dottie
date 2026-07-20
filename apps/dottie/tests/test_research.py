@@ -1143,6 +1143,17 @@ def test_trainer_loads_the_validated_module_not_a_validator_scratch_file(tmp_pat
     (ws / "candidate_000000.py").write_text("VALUE = 'failed attempt'\n", encoding="utf-8")
     (ws / "candidate_zzzzzz.py").write_text("VALUE = 'passing attempt'\n", encoding="utf-8")
     (ws / "experimental_routing.py").write_text("VALUE = 'final module'\n", encoding="utf-8")
+    # Stamp IDENTICAL mtimes, deliberately. Working this out is what the mutation audit
+    # forced (TODOS §5.3.R60): in production the final module is always written LAST, so
+    # recency alone would pick it and the `finals` preference would buy nothing. What the
+    # preference actually buys is the TIE — three files written in the same instant share an
+    # mtime at filesystem granularity, and `max()` then returns an arbitrary one. So the tie
+    # is the case worth pinning, and it is deterministic.
+    import os
+    import time
+    same = time.time() - 300
+    for name in ("candidate_000000.py", "candidate_zzzzzz.py", "experimental_routing.py"):
+        os.utime(ws / name, (same, same))
 
     mod = _load_module(ws, "Whatever")
     assert mod.VALUE == "final module", (

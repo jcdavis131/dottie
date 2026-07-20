@@ -2689,6 +2689,27 @@ most valuable catch so far:
   read end to end. Eleven artifacts, nine findings. The two that read clean (`evaluate.py`,
   and `ledger.py`'s state machine) are recorded as clean, which is what keeps the other nine
   meaningful.
+### 5.3.R60 — the audit caught a FLAKY test of mine, then taught me what my fix buys
+
+- [x] **Added mutants for the four gates that had shipped without one (12:40)** — the
+  sequence probe (§5.3.R28), the scratch-file loader (§5.3.R49), the memory guard
+  (§5.3.R52) and the dump-failure guard (§5.3.R58) — per this script's own rule.
+- [x] **The R49 mutant came back GOOD on one run and HOLLOW on the next.** Non-determinism
+  in **my own test**: it writes three files in the same instant, they share an mtime at
+  filesystem granularity, and the loader's fallback breaks ties by recency — so `max()`
+  returned an arbitrary file and the verdict was a coin flip. **A flaky test is worse than
+  no test, because it launders a coin flip as a verdict.**
+- [x] **My first fix made it deterministically WRONG, and that is the useful part.** I
+  stamped increasing mtimes, which made the final module newest — so the mutant's
+  recency fallback picked the right file anyway and the test survived every time. Chasing
+  that forced the real question: **in production the module is ALWAYS written last, so
+  recency alone would pick it. What the `finals` preference actually buys is the TIE.**
+  - Re-pinned to identical mtimes, which is the case the preference exists for and is
+    deterministic. The mutant now fails with `loaded 'failed attempt'` — the exact
+    production bug — on every run.
+  - I would not have understood what my own §5.3.R49 fix was worth without the audit
+    disagreeing with itself. That is a stronger argument for the harness than any bug it
+    has caught.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
