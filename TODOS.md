@@ -25,6 +25,12 @@ not the cause; I corrected that claim rather than leave it standing.
 **The VM still needs its restart** — memory alone does not revive it. Run the command
 below; it should now actually succeed, where an hour ago it would have hit the same wall.
 
+**Memory budget for this box (16 GB) — the constraint that actually bit:** fleet + WSL VM
+≈ 3–4 GB · desktop apps ≈ 2–3 GB · Ollama `qwen3:8b` ≈ 5–6 GB (**proven** to co-exist,
+ran 23:36–00:50) · `qwen3:14b` ≈ **7 GB** (does NOT fit — tonight's outage). qwen3:8b is
+present locally (4.9 GB), so the 04:05 tick will run. Check headroom before changing
+models: `(Get-Counter '\Memory\Available MBytes').CounterSamples[0].CookedValue`.
+
 Verified 03:48 after the unload: **no models loaded**, available **5.3 GB** (the dip from
 7.5 GB is Windows Memory Compression churn — 201 → 1,394 MB — reclaiming the freed pages,
 not a leak). Ample for the VM plus 14 containers.
