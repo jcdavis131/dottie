@@ -592,11 +592,15 @@ independent reasons, both from the bundle's own numbers/code:**
       For a console whose principle is "fetched live or marked unreachable", silent
       persistence failure is the one unmarked degradation. Fix: return a boolean from
       `write()` and show a "not persisted (storage full)" chip in the composer.
-    - [ ] `api.js::request()` documents "every failure is surfaced as a typed ApiError",
-      but a 200 response with a non-JSON body escapes as a raw `SyntaxError` from the
-      final `res.json()` — chat.js then renders `String(e)` ("Unexpected token …")
-      instead of an operator-facing message. Fix: wrap that parse the same way the
-      error-body parse is already wrapped.
+    - [x] **FIXED 03:25** — `api.js::request()` promised "every failure is surfaced as a
+      typed ApiError" but a 2xx with a non-JSON body (proxy error page, truncated
+      response, misrouted HTML 200) escaped as a raw `SyntaxError`, reaching the UI as
+      "Unexpected token <". Now typed: `HTTP 200 — body was not JSON (…)`. Correcting my
+      previous tick's claim that this was untestable — the module's own header says it is
+      importable/testable outside a browser, and it is: a 6-assertion contract test lives
+      beside it at `js/api.contract.test.mjs` (run `node js/api.contract.test.mjs`),
+      covering the new path plus the unchanged 4xx/5xx-with-detail, happy-path, and
+      network-error behaviours. 6/6 pass.
 7.5 [x] **Site render VERIFIED headlessly + factory-down honesty fix (02:55)**: the
     browser extension isn't connected, so instead the REAL `app.js` was run against the
     REAL gist payload in a DOM shim (harness: `$CLAUDE_JOB_DIR/tmp/site_render_check.js`,
