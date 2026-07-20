@@ -81,9 +81,18 @@ THE NIGHT'S HEADLINES — read these before anything below:
 2. **Charger** — the physical root cause candidate for tonight's whole failure family.
 3. **T9.3 path (§1.4)** — gate FAILED (+75.1% CE). My recommendation: no knob-rerun;
    get real tool data via 2.1, then re-fork with a replay mix. Trainer stays parked.
-4. **T9.4**: it was launched per your directive and the step-15 early warning showed
-   **+2.04% general CE** — the same forgetting mode, at 8% of the run. Decide whether to
-   resume it after recovery (it will auto-resume from step_15 unless you stop it).
+4. **T9.4 — DECIDE BEFORE OR RIGHT AFTER `wsl --shutdown`.** It was launched per your
+   directive, and the step-15 early warning showed **+2.04% general CE** (the same
+   forgetting mode as T9.3, at 8% of the run). Its container carries
+   `--restart on-failure` **and** `--resume`, so it **will restart itself and continue
+   from step_15.pt the moment the engine comes back** — doing nothing is a decision to
+   continue. To let it run: nothing to do. To stop it instead (checkpoints stay banked,
+   nothing is lost):
+   ```powershell
+   docker update --restart no dottie-chat-branch   # run as soon as the engine is up
+   docker stop dottie-chat-branch                  # if it already restarted
+   ```
+   Re-launching later is the §1.3 command with `--resume`.
 5. **MLBR bundle (§5.3.R)** — I recommend REJECT, with the arithmetic; also decide
    whether to re-seed the baseline back to 5.61982.
 6. **Ollama startup task (§8)** and **§2.3 checkout retirement** (daytime; 3 checkouts).
