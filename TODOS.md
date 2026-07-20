@@ -3216,6 +3216,38 @@ most valuable catch so far:
   the stored histories for repeated identical dry_run failures before deciding whether to
   re-derive the class name per attempt or pin the name in the correction prompt.
 
+### 5.3.R100 — the "training stale" monitor watches an agent-task log; false alarms guaranteed
+
+- [x] **A `/subtask` fork (8794) checked a flagged "Dottie training monitor ⚠ stale 15.4h /
+  data_starved" alert; I reconciled it against my state and independently verified the root
+  cause.** Training is genuinely OFF (0 containers, no loop process, no new `.pt`) — consistent
+  with item 0. But the alert is mislabelled at the source.
+- [x] **VERIFIED (mine, not just the fork's word):** `reports/dottie_telemetry.jsonl` — the
+  stream the training monitor reads — is **4,991 records, ALL `event=task`** (J-Space CodeAct
+  agent tasks). **Zero training-step events, ever.** `telemetry.py::aggregate_live_status`
+  keys training health off `latest_per_mode.get("train")`, which is therefore always `{}`, so
+  `health.last_loss` is `None` — exactly what the alert showed. The `steps=9 / mode=Data prep /
+  data_starved` fields come from a *different* file (`dottie_live_status.json`, whose top-level
+  keys are `jspace_state_smoke / pipeline / research`, not training). **The monitor stitches a
+  training verdict from two non-training sources.**
+- [x] **Consequence: this alert will keep firing even when training is HEALTHY**, because the
+  monitor never sees real training-step telemetry — it infers "training" from an agent-task log
+  plus a pipeline snapshot. The 15.4h staleness is also an artefact: the alert was generated
+  ~15h ago and never refreshed, while the file kept growing from agent tasks (4321→4991 lines).
+- [x] **The session's exact theme, one more surface:** a *monitor* that claims to measure
+  training health while actually measuring agent-task activity. Same shape as the dashboard
+  that named a measurement it no longer took, and the caveat that asserted a refuted result.
+- [x] **Did NOT run the proposed remediation** (`dottie_continuous_loop.py --mode diagnose` +
+  kick the data builder). The fork was right to decline it: with the daemon disabled and the
+  fleet down, `data_starved` reflects training being OFF, not a data-builder hiccup — kicking
+  it starts nothing. Both a side-effectful action and the fork's to own.
+- [ ] **OPERATOR (low urgency, real defect — after the git reconciliation, since the fix is in
+  the diverged `apps/ava-factory` tree):** point the training monitor at a real training-step
+  source (the factory trainer's own step events / checkpoints), OR make it distinguish
+  "training not running" from "training stalled." As-is it cries wolf, and a monitor that fires
+  when healthy trains the operator to ignore it — the worst failure mode for an alert. Not
+  fixed now: it is a code change that would widen the 248/2 divergence for a non-blocking issue.
+
 ### 5.3.R99 — "purely mechanical" was an unchecked claim; the ruff autofix can break imports
 
 - [x] **Verified R98's own claim instead of leaving it asserted.** I had called the ruff
