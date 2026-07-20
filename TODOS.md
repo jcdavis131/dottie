@@ -2264,6 +2264,26 @@ most valuable catch so far:
   - Until then the verdict text is at least not overclaiming: the one-sample fallback already
     states that it treats the baseline as an exact point and is weaker than 2 SE of a real
     difference (§5.3.R6).
+### 5.3.R44 — full cross-app sweep + one anomaly that measured clean (10:35)
+
+- [x] **Everything green.** dottie **182 passed** / 1 skipped · ava-factory server **24
+  passed** / 1 skipped · webapp contract tests **11 passed** (6 api + 5 store) · mutation
+  audit **9/9 GOOD**, no HOLLOW, no WEAK, no SKIP. Tree clean. 62 commits since 06:00.
+- [x] **An anomaly I chased and did NOT act on.** The 10:15 ideate batch created only **1**
+  experiment despite `--n 3`, which looked like a 66% loss of ideation output. Measured
+  across the whole log: **63 of 66 ideas delivered (95%)** over 22 batches — 20 batches
+  delivered 3, one delivered 2, one delivered 1. **The batch I happened to look at is the
+  exception, not a pattern**, and one corrective re-ask across 22 batches is the parse-retry
+  working as designed.
+  - Filing the negative result on purpose. Noticing an odd number and generalising from it
+    is how the "42% keep_alive slowdown" (n=1) and the "2,047 log lines" false alarm both
+    started tonight. The measurement took one command; the fix I would have built, had I
+    trusted the single observation, would have been aimed at nothing.
+- [ ] **State of the loop for the operator:** running healthy on `e8cc5b7`, cycling
+  ideate → implement → train → evaluate with candidates reaching training and being rejected
+  on merit. **12 runtime-affecting commits are queued behind a restart** (§5.3.R39 explains
+  why restarting now beats finishing the current measurement window). Nothing is broken;
+  the queued work is improvement, not repair.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
