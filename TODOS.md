@@ -2480,6 +2480,35 @@ most valuable catch so far:
   §5.3.R40 battery kill-switch and the charger question (decision #2) both bear on this.**
 - [ ] The restart also picks up `1470426` (the trainer was loading validator scratch files),
   which is **not** in the daemon's last `5b0fdd6` — see §5.3.R49.
+### 5.3.R52 — a memory guard, so the loop refuses visibly instead of dying silently
+
+- [x] **Built the preventive fix for §5.3.R51 (11:15).** The daemon had no idea how much RAM
+  it had. It started torch stages at **110 MB free**, got OOM-killed mid-run with no
+  traceback, no exit code and no log line, and the 15-minute trigger fed it back into the
+  same wall. Its own log looked merely *quiet* — which is why I read the boot records as
+  deliberate restarts.
+- [x] **`_memory_refusal()` now runs before every non-idle stage.** Below the floor it emits
+  a structured `insufficient_memory` record naming the action, the free MB, the required MB
+  and what to do, then takes the existing exponential backoff. **It does not free memory —
+  it makes running out of it legible**, which is the whole difference between a diagnosable
+  refusal and a silent death.
+  - Floor defaults to **1,200 MB**, overridable via `DOTTIE_RESEARCH_MIN_FREE_MB`; **0
+    disables the guard**. A garbage value falls back to the default rather than crashing the
+    daemon — tested.
+  - **UNKNOWN must not mean BLOCKED.** `_available_mb()` returns `None` when it cannot read
+    the counter, and the stage proceeds. A guard that halts the loop because it cannot read
+    a value would turn an unsupported platform into a permanent outage — tested explicitly.
+  - `psutil` is not installed here, so the Windows path calls `GlobalMemoryStatusEx` via
+    ctypes. Verified against `\Memory\Available MBytes` (2,873 vs 3,258 MB at different
+    sampling moments) — and deliberately **not** `FreePhysicalMemory`, which excludes standby
+    and misled me earlier tonight.
+  - Suite 189 passed.
+- [ ] **Honest scope: this makes the failure visible, not impossible.** The box has ~16 GB,
+  `llama-server` wants ~5 GB, the fleet plus VM ~3-4 GB, and desktop apps have been running
+  7+ GB. **The real fix is a memory budget, not a guard** — the guard just means the next
+  time it happens you get `insufficient_memory: 110 MB free, need 1200` in run.log instead
+  of an unexplained gap. That is also the thread joining tonight's outage, the crash-loop and
+  the GPU throttling: this box has been running a workload it does not have headroom for.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.

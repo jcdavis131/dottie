@@ -1026,6 +1026,57 @@ def test_corrector_parse_retries_are_a_bounded_shared_pool(led, tmp_path):
         "multiplying with the correction budget again")
 
 
+def test_memory_guard_refuses_visibly_instead_of_dying_silently(monkeypatch):
+    """Under memory pressure the loop must REFUSE a stage and say so, not be OOM-killed.
+
+    TODOS §5.3.R51: the daemon died mid-`implement` with 110 MB available — below the
+    281 MB that had already killed the WSL VM — leaving no traceback, no exit code and no
+    log line. The scheduler's 15-minute trigger restarted it into the same wall, so it
+    crash-looped while its own log merely looked quiet (lifetimes 105 min then ~9 min).
+
+    The guard does not free memory. It makes running out of it legible, which is the
+    difference between a diagnosable refusal and a silent death.
+    """
+    from dottie.research import __main__ as m
+
+    # plenty of room -> no refusal
+    monkeypatch.setattr(m, "_available_mb", lambda: 8000)
+    monkeypatch.delenv("DOTTIE_RESEARCH_MIN_FREE_MB", raising=False)
+    assert m._memory_refusal("train") is None
+
+    # the measured failure condition -> refuses, and the record is actionable
+    monkeypatch.setattr(m, "_available_mb", lambda: 110)
+    r = m._memory_refusal("implement")
+    assert r is not None
+    assert r["error"] == "insufficient_memory"
+    assert r["available_mb"] == 110 and r["required_mb"] > 110
+    assert "implement" in r["detail"] and "OOM-killed" in r["detail"]
+
+    # the floor is tunable, and 0 disables the guard entirely
+    monkeypatch.setenv("DOTTIE_RESEARCH_MIN_FREE_MB", "50")
+    assert m._memory_refusal("implement") is None, "floor of 50 should permit 110 MB"
+    monkeypatch.setenv("DOTTIE_RESEARCH_MIN_FREE_MB", "0")
+    assert m._memory_refusal("implement") is None, "0 must disable the guard"
+
+    # a garbage value must not crash the daemon -- it falls back to the default floor
+    monkeypatch.setenv("DOTTIE_RESEARCH_MIN_FREE_MB", "not-a-number")
+    assert m._memory_refusal("implement") is not None
+
+
+def test_memory_guard_proceeds_when_the_reading_is_unavailable(monkeypatch):
+    """UNKNOWN must not mean BLOCKED.
+
+    A guard that halts the loop because it cannot read a counter would be worse than no
+    guard — it would turn an unsupported platform into a permanent outage. `None` from
+    `_available_mb` means "cannot tell", and the stage proceeds.
+    """
+    from dottie.research import __main__ as m
+
+    monkeypatch.delenv("DOTTIE_RESEARCH_MIN_FREE_MB", raising=False)
+    monkeypatch.setattr(m, "_available_mb", lambda: None)
+    assert m._memory_refusal("train") is None
+
+
 def test_trainer_loads_the_validated_module_not_a_validator_scratch_file(tmp_path):
     """The trainer must load the FINAL module, not `validate()`'s scratch files.
 

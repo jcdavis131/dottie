@@ -241,6 +241,73 @@ def _boot_provenance() -> Dict[str, Any]:
     return info
 
 
+#: Refuse to start a heavy stage below this much free RAM. Overridable with
+#: DOTTIE_RESEARCH_MIN_FREE_MB; set 0 to disable the guard entirely.
+_MIN_FREE_MB_DEFAULT = 1200
+
+
+def _available_mb() -> Optional[int]:
+    """Physical RAM available right now, or None if it cannot be determined.
+
+    None means UNKNOWN, and the caller proceeds — a guard that blocks on an unreadable
+    reading would be worse than no guard. psutil is not installed on this box, so the
+    Windows path uses GlobalMemoryStatusEx directly (verified against
+    `\Memory\Available MBytes`, which is the counter that actually reflects what a new
+    allocation can get; `FreePhysicalMemory` excludes standby and misleads)."""
+    try:
+        import psutil                                  # optional, not a dependency
+        return int(psutil.virtual_memory().available / 1024 / 1024)
+    except Exception:
+        pass
+    try:
+        import ctypes
+
+        class _MS(ctypes.Structure):
+            _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
+                        ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
+                        ("ullTotalPageFile", ctypes.c_ulonglong),
+                        ("ullAvailPageFile", ctypes.c_ulonglong),
+                        ("ullTotalVirtual", ctypes.c_ulonglong),
+                        ("ullAvailVirtual", ctypes.c_ulonglong),
+                        ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+
+        m = _MS()
+        m.dwLength = ctypes.sizeof(_MS)
+        if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m)):
+            return None
+        return int(m.ullAvailPhys / 1024 / 1024)
+    except Exception:
+        return None
+
+
+def _memory_refusal(action: str) -> Optional[Dict[str, Any]]:
+    """A refusal record when RAM is too low to start ``action``, else None.
+
+    Measured 2026-07-20 (TODOS 5.3.R51): the daemon died mid-`implement` with **110 MB**
+    available — below the 281 MB that had already killed the WSL VM — leaving no traceback,
+    no exit code and no log line. The scheduler's 15-minute trigger then restarted it into
+    the same wall, so it crash-looped while its own log looked merely quiet.
+
+    torch allocations are what actually fail, so the honest behaviour is to REFUSE the
+    stage, say why in run.log, and let the backoff sleep — a visible refusal beats an
+    invisible death. This does not free memory; it makes running out of it legible."""
+    try:
+        floor = int(os.environ.get("DOTTIE_RESEARCH_MIN_FREE_MB", _MIN_FREE_MB_DEFAULT))
+    except ValueError:
+        floor = _MIN_FREE_MB_DEFAULT
+    if floor <= 0:
+        return None
+    avail = _available_mb()
+    if avail is None or avail >= floor:
+        return None
+    return {"error": "insufficient_memory", "action": action,
+            "available_mb": avail, "required_mb": floor,
+            "detail": (f"refusing to start '{action}': {avail} MB free, need {floor} MB. "
+                       "A torch stage here would be OOM-killed mid-run with no traceback "
+                       "(see TODOS 5.3.R51). Free memory or lower "
+                       "DOTTIE_RESEARCH_MIN_FREE_MB.")}
+
+
 def cmd_run(args) -> int:
     """Continuous chained runner: the moment one stage finishes, the next eligible
     stage starts — no hourly cadence. Honest refusals (Ollama down, unparseable
@@ -276,6 +343,16 @@ def cmd_run(args) -> int:
                 time.sleep(float(args.idle_seconds))
                 continue
             idle_passes = 0
+            # Refuse rather than die: a torch stage started under memory pressure is
+            # OOM-killed with no traceback and no exit code, and the scheduler restarts it
+            # into the same wall every 15 minutes (TODOS 5.3.R51 — measured at 110 MB free).
+            refusal = _memory_refusal(action)
+            if refusal is not None:
+                print(json.dumps({"ts": time.time(), **refusal}), flush=True)
+                time.sleep(backoff)
+                backoff = min(backoff * 2, 300.0)
+                continue
+            backoff = float(args.idle_seconds)
             # A start line makes a BLOCKED action visible: a "start" with no matching
             # completion is the signature of the stall this loop hit tonight (an Ollama
             # generate that never returned inside the 1800 s read timeout).
