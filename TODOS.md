@@ -194,6 +194,13 @@ points at abrupt termination rather than a handled failure. Memory was NOT tight
 time (4.6–5.4 GB available across four samples).
 Restarted manually at 05:27 (0 orphans beforehand, 2 processes after, implement started);
 without that it would have idled until the 06:05 trigger.
+- [~] **AUTO-RESTART UNDER TEST (killed the worker 05:31:13 to verify, not assume).**
+  I have been wrong about this scheduler's semantics twice tonight (`IgnoreNew`, and
+  "hourly restarts pick up code"), so the setting below is being checked empirically
+  rather than trusted. Kill confirmed: task went `Ready` with `0xFFFFFFFF`. **Expected
+  restart by ~05:36.** If it does not fire, `RestartCount` does not apply to this failure
+  shape and the fallback is shortening the trigger repetition (PT1H → PT15M) instead.
+  Cost of the test: one in-flight implement (~3 min).
 - [x] **MITIGATED 05:31 (recovery speed, not cause)** — the task had `RestartCount=0`, so
   Task Scheduler never retried a task that ended with an error, which is exactly what
   happened (`0x1`). Now **`RestartCount=3`, `RestartInterval=PT5M`**: a daemon that dies
