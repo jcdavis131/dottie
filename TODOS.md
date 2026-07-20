@@ -3140,6 +3140,34 @@ most valuable catch so far:
   the stored histories for repeated identical dry_run failures before deciding whether to
   re-derive the class name per attempt or pin the name in the correction prompt.
 
+### 5.3.R80 — went looking for writes, found seven scripts living in two places at once
+
+- [x] **Started R79's priority list (the 203 writes) and the ranking itself was the finding.**
+  Four filenames appeared TWICE with identical write counts —
+  `research-engine/scripts/X.py` and `scripts/X.py`. Not a coincidence: **7 scripts are
+  byte-identical copies** in both places (`arxiv_harvester`, `arxiv_harvester_v2`,
+  `autoresearch_runner`, `graphify_research`, `research_task_synth`, `seed_from_websearch`,
+  `weekly_summary`). `research-engine/scripts/` contains *nothing but* duplicates.
+- [x] **Both copies are live, so this is not deletable dead code.**
+  `research-engine/run_autoresearch.sh` does `cd "$RESEARCH_ROOT"` then runs
+  `python3 scripts/autoresearch_runner.py` → the research-engine copy. Meanwhile
+  `scripts/autoresearch_runner.py` resolves `FACTORY_ROOT / "research-engine"` as a DATA
+  root, i.e. it expects to run from the factory root. **Which file executes depends on the
+  entry point.**
+- [x] **Closed by invariant, not by deleting (`9a9356a`).** A test asserts the 7 pairs stay
+  byte-identical, and separately guards the SET SIZE — a drift check that silently covers
+  zero files would report green while enforcing nothing, which is worse than no check.
+  **Verified it can fail:** one appended comment fails exactly that parametrised case and
+  names both paths; restoring returns it to green. apps/ava-factory: **469 passed**.
+- [x] Deliberately did NOT pick a winner. Deduplicating (shim, symlink, or delete-one-and-
+  fix-the-caller) changes how the research jobs launch — operator's call. The invariant that
+  matters until then is only that the copies never drift.
+- [ ] **NEXT (unchanged priority):** the 203 encoding-less writes from R79 are still
+  unfixed; `PYTHONUTF8=1` remains the recommended one-line answer for the whole class, and
+  the per-site work is belt-and-braces after that. Note the duplication means **any per-site
+  encoding fix in these 7 scripts must be applied to BOTH copies** — the new test will now
+  say so out loud instead of letting one copy quietly lag.
+
 ### 5.3.R79 — the text-I/O class, measured properly: 360 sites, and ONE setting that fixes all
 
 - [x] **Executed R78's own follow-up (16:40).** Swept every package for encoding-less text I/O.
