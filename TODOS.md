@@ -485,6 +485,11 @@ THE NIGHT'S HEADLINES — read these before anything below:
    zero-parameter no-op. Until you re-seed, every promotion verdict and the status snapshot
    carry a `promoted_contaminated` warning (§5.3.R5, §5.3.R14) — honest, but noisy.
    - Re-seeding to **5.61982** clears it automatically.
+   - **Direction matters and I first stated it backwards (§5.3.R26):** 5.60506 is a
+     *harder* bar than 5.61982 because lower is better, so the contamination causes
+     **missed** promotions, not false ones. No false SOTA can come from it. The cost is
+     that a genuine win landing in the 0.01476 gap is discarded — expensive, given the loop
+     has made ~5 genuine attempts in total.
    - **If you have a measured run, supply its `metric_sem` too.** A bare number keeps the
      loop on the weaker one-sample significance test forever (§5.3.R6).
 6. **Ollama startup task (§8)** and **§2.3 checkout retirement** — unchanged (daytime).
@@ -1748,6 +1753,34 @@ most valuable catch so far:
   distinguish "the model always complies" from "the model complied three times". Leave it
   optional until n ≥ 20; the cost of being wrong is every ideation batch burning its full
   retry budget.
+### 5.3.R26 — the contamination bias runs the OPPOSITE way from how I described it
+
+- [x] **Checked the direction before a promotion could happen against it (09:15), and my
+  framing was wrong.** I wrote that "improvements measured against it are NOT trustworthy",
+  which reads as inflation risk — false SOTAs. The arithmetic says otherwise:
+  ```
+  contaminated baseline : 5.60506   (set by MLBR)
+  true pre-MLBR value   : 5.61982
+  lower is better  =>  5.60506 is a HARDER bar, by 0.01476
+  ```
+  A candidate scoring **5.61 would beat the true baseline and be REJECTED** against the
+  contaminated one. **Contamination is biasing the loop toward missed promotions, not
+  false ones.**
+- [x] **Why this matters for decision #5, in both directions:**
+  - **Correctness urgency drops.** No false SOTA can arise from this contamination; the bar
+    is too strict, not too loose. MLBR's own promotion was the false one, and that has
+    already happened.
+  - **Productivity urgency rises.** The loop is currently required to beat a number set by
+    a module that removes capacity. Any genuine improvement landing in the 0.015 gap is
+    thrown away, and given the loop has ~5 genuine attempts total (§5.3.R18), discarding
+    real wins is the expensive failure right now.
+  - The `promoted_contaminated` caveat and the status warning stay exactly as they are —
+    the delta *is* measured against a wrong reference, and a reader should know. What
+    changes is the **direction** a reader should infer, which I had stated backwards.
+- [x] Timing note: `da2da0ffbb59` is training now and will be evaluated against this
+  baseline shortly — the first live exercise of the contamination path (§5.3.R5). If it is
+  rejected with a delta inside 0.01476, that is a **concrete instance** of the missed-promotion
+  bias, not a verdict on the candidate.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
