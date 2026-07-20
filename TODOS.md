@@ -103,9 +103,17 @@ Then §1 fires automatically (#17 armed on the monitor).
     `docker compose -f docker-compose.yml -f docker-compose.tool-fork.yml run --rm trainer \
      python -m dottie.train --preset mini --branch chat --init /ckpt/base_final.pt --run /ckpt/chat`
     (50M tokens ≈ 90 min). Same gate discipline (1.2) for chat metrics.
-1.4 **If gate fails**: file the failure mode in `TODOS.md` §8, adjust the branch spec
-    (mix weights / router_bias in `configs/mini.yaml branches:`), rerun once. Two
-    failures = stop and rethink the curriculum, not the knobs.
+1.4 **GATE RAN 2026-07-20 01:29 — VERDICT: FAIL (REGRESSED)**. tool_final vs
+    base_final on held-out val (GPU, real): general CE **+75.1%** (bound ≤2%);
+    deliberate +142%, automatic +46%, temporal −28%; tool checks UNMEASURED (no
+    tool-labeled data exists). Full numbers: reports/REPORT_REAL.md + tool_gate.json.
+    Failure mode: catastrophic forgetting/overfit to the p3 slice (train lm ~0.15).
+    **RECOMMENDATION (needs human sign-off): do NOT knob-and-rerun** — the corpus
+    cannot support the branch's purpose (zero tool data); do NOT launch T9.4 on this
+    recipe either. Instead: §2.1 rebuild (window is OPEN, trainer exited clean) →
+    collect real tool_use data → re-fork with a gentler recipe (lower LR / shorter run
+    / replay mix of earlier phases to prevent forgetting). Original knob-rerun
+    guidance retired: two failures = rethink curriculum; this failure is structural.
 
 ## 2 — Redeploy the fleet on reconciled code (after 1.1, before long collector runs)
 
