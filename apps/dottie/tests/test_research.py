@@ -199,13 +199,19 @@ def test_contract_rejects_forward_with_extra_required_args():
     # declared block class
     # Block's body is a nonlinearity, not `x * scale`: with scale defaulting to 1.0 that
     # would be a zero-parameter EXACT identity, which the degeneracy gate rightly fails.
-    # The signature is what this test is about; keep the body non-degenerate.
+    # It also carries a real parameter, because the zero-parameter gate (§5.3.R17) would
+    # otherwise reject it for a reason that has nothing to do with what this test asserts.
+    # The signature is what this test is about; keep the body non-degenerate and learnable.
     ok_code = ("import torch\nimport torch.nn as nn\n"
                "class Helper(nn.Module):\n"
                "    def forward(self, x, gate):\n        return x * gate\n"
                "class Block(nn.Module):\n"
-               "    def forward(self, x, scale=1.0):\n        return torch.tanh(x) * scale\n")
-    r2 = validate.validate(ok_code, class_name="Block", input_shape=[2, 4, 8])
+               "    def __init__(self, dim: int = 8):\n        super().__init__()\n"
+               "        self.w = nn.Linear(dim, dim)\n"
+               "    def forward(self, x, scale=1.0):\n"
+               "        return torch.tanh(self.w(x)) * scale\n")
+    r2 = validate.validate(ok_code, class_name="Block", init_kwargs={"dim": 8},
+                           input_shape=[2, 4, 8])
     assert r2.ok, r2.detail
 
 
@@ -237,6 +243,51 @@ class GradShape(nn.Module):
     assert "residual stream" in r.detail and "SAME" in r.detail
 
 
+def test_zero_parameter_block_is_rejected_with_a_fixable_message():
+    """A block with no learnable parameters cannot learn, and confounds the comparison.
+
+    TODOS §5.3.R17: it is a FIXED function replacing a real ~787K-parameter block in the
+    residual stream, so an apparent win at fixed steps may just be the model getting
+    smaller -- the capacity confound that produced this loop's one false SOTA (MLBR).
+    Measured over candidates that PASSED validation: 11 of 20 (55%) had zero learnable
+    parameters, and their outcomes were 8 rejected, 2 failed_training, 1 artifact "sota".
+    Zero real wins, against real training compute.
+    """
+    fixed = """import torch
+import torch.nn as nn
+class Fixed(nn.Module):
+    def __init__(self, lam: float = 0.1, eps: float = 1e-8):
+        super().__init__()
+        self.lam = lam
+        self.eps = eps
+    def forward(self, x):
+        mag = torch.norm(x, p=2, dim=-1, keepdim=True) + self.eps
+        return x + self.lam * torch.logaddexp(mag, torch.tensor(0.0))
+"""
+    r = validate.validate(fixed, class_name="Fixed", input_shape=[4, 16, 64])
+    assert not r.ok and r.level == "dry_run", r.detail
+    assert "no learnable parameters" in r.detail
+    # The message must be CORRECTABLE -- it tells the model what to change, so the
+    # self-correction loop can rescue the idea instead of the experiment dying.
+    assert "nn.Parameter" in r.detail and "keep the idea" in r.detail.lower()
+
+    # the same idea WITH capacity passes
+    learnable = """import torch
+import torch.nn as nn
+class Learnable(nn.Module):
+    def __init__(self, dim: int = 64):
+        super().__init__()
+        self.lam = nn.Parameter(torch.zeros(dim))
+        self.proj = nn.Linear(dim, dim)
+    def forward(self, x):
+        mag = torch.norm(x, p=2, dim=-1, keepdim=True)
+        return x + self.lam * torch.tanh(self.proj(x)) * mag
+"""
+    ok = validate.validate(learnable, class_name="Learnable", init_kwargs={"dim": 64},
+                           input_shape=[4, 16, 64])
+    assert ok.ok, ok.detail
+
+
 def test_rank_collapsing_block_is_rejected():
     """Right shape, nothing left in it — a scalar broadcast is not a block.
 
@@ -250,14 +301,15 @@ def test_rank_collapsing_block_is_rejected():
     collapse = """import torch
 import torch.nn as nn
 class Collapse(nn.Module):
-    def __init__(self, beta: float = 1.0):
+    def __init__(self, dim: int = 64):
         super().__init__()
-        self.beta = beta
+        self.w = nn.Linear(dim, dim)                  # real parameters: not the zero-param case
     def forward(self, x):
-        s = (self.beta * x).sum(dim=-1)               # [batch, seq]
+        s = self.w(x).sum(dim=-1)                     # [batch, seq]
         return s.unsqueeze(-1).expand(-1, -1, x.size(-1))
 """
-    r = validate.validate(collapse, class_name="Collapse", input_shape=[4, 16, 64])
+    r = validate.validate(collapse, class_name="Collapse", init_kwargs={"dim": 64},
+                          input_shape=[4, 16, 64])
     assert not r.ok and r.level == "dry_run", r.detail
     assert "rank collapse" in r.detail
     assert "not a drop-in block" in r.detail          # names the real category error
@@ -407,8 +459,11 @@ def test_integration_width_probe_tolerates_symbolic_shapes(tmp_path):
     code = """import torch
 import torch.nn as nn
 class Sym(nn.Module):
+    def __init__(self, dim: int = 256):
+        super().__init__()
+        self.w = nn.Linear(dim, dim)
     def forward(self, x):
-        return torch.tanh(x)
+        return torch.tanh(self.w(x))
 """
     f = tmp_path / "sym.py"
     f.write_text(code, encoding="utf-8")

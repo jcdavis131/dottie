@@ -1494,6 +1494,35 @@ most valuable catch so far:
   daemon always has torch, `per_level` already records the facts, and the observed
   frequency is 0. **Not building speculative machinery for it**; same standard applied to
   the `class_name` pin in §5.3.R5.
+### 5.3.R17 — 55% of validated candidates cannot learn anything
+
+- [x] **Predicted the live candidate would be caught, tested it, and was WRONG (08:35).**
+  `a570628f90b8` "Dynamic Gradient Regularization (DGR)" reached training while I watched.
+  Being a gradient-regulariser, I expected tonight's `residual_stream` probe to reject it.
+  **It passed all six stages.** Testing the prediction instead of asserting it is the only
+  reason that claim is not in this file as fact.
+- [x] **What it actually is, and the real hole.** Despite the name it computes the **L2 norm
+  of `x`** (not a gradient), turns it into a per-position scalar, and adds it:
+  `x + λ·logaddexp(‖x‖, 0)`. **Zero learnable parameters** — a fixed function about to
+  replace a real ~787 K-parameter block. It cannot learn; it can only "win" by shrinking the
+  model. That is the §5.3.R capacity confound, and exactly how MLBR became a false SOTA.
+- [x] **Measured before gating, and the number is stark: 11 of 20 candidates that PASSED
+  validation have ZERO learnable parameters — 55%.** Outcomes: 8 rejected, 2
+  `failed_training`, 1 `sota` (MLBR, an artifact). **Zero real wins**, against real training
+  compute. The with-parameters group is barely better on wins but at least *can* learn (and
+  three of those carry a single scalar, `params=1`, which is nearly the same problem).
+- [x] Gate added at `dry_run`, **as a CORRECTABLE failure rather than a kill**: the message
+  names the confound and tells the model to turn its fixed floats (scales, gates,
+  thresholds, mixing weights) into `nn.Parameter`/`nn.Linear`, so the self-correction loop
+  can rescue the idea instead of losing it. Many of these are decent ideas expressed without
+  anything to train.
+  - **Ordered after the rank-collapse check**, so a module that both collapses rank *and*
+    has no parameters gets the more specific diagnosis. Verified both messages fire on their
+    own cases.
+  - Three existing fixtures were incidentally zero-parameter and now carry a real parameter,
+    with a comment saying why — a test about forward SIGNATURES should not be silently
+    passing or failing on capacity.
+  - Full suite 168 passed.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.

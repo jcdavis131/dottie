@@ -324,6 +324,31 @@ def dry_run_module(file_path: str | Path, *, class_name: Optional[str] = None,
                 "back to [batch, seq, hidden] is not a block. If the idea is a loss or a "
                 "regulariser, it is not a drop-in block; express it as a transform of the "
                 "hidden states that preserves per-feature information.")
+
+        # A block with NO learnable parameters is a fixed function. It replaces a real
+        # ~787 K-parameter block in the residual stream, so at fixed steps it can "win" by
+        # shrinking the model rather than by being a better idea — the capacity confound
+        # already documented in TODOS §5.3.R, and exactly how MLBR became a false SOTA.
+        #
+        # Measured 2026-07-20 (§5.3.R17): 11 of 20 candidates that passed validation had
+        # zero learnable parameters — 55%. Their outcomes: 8 rejected, 2 failed_training,
+        # and 1 "sota" (MLBR, an artifact). ZERO real wins, against real training compute.
+        #
+        # Deliberately a CORRECTABLE failure, not a silent kill: the message tells the
+        # model what to change, and the self-correction loop gets to fix the candidate
+        # rather than lose the idea. Many of these are decent ideas expressed without any
+        # parameters to learn.
+        if n_params == 0:
+            return ValidationResult(
+                False, "dry_run", "fail",
+                "no learnable parameters: this block is a FIXED function, so it cannot "
+                "learn anything from training. It also replaces a real parameterised block "
+                "in the residual stream, which means any apparent win at fixed steps may "
+                "just be the model getting smaller — that confound produced this loop's "
+                "one false SOTA. Keep the idea and give it capacity: make the quantities "
+                "you compute (scales, gates, thresholds, mixing weights) into "
+                "nn.Parameter/nn.Linear that the LM loss can train, instead of fixed "
+                "floats.")
     except Exception:
         return ValidationResult(False, "dry_run", "fail", traceback.format_exc())
     return ValidationResult(True, "dry_run", "pass",
