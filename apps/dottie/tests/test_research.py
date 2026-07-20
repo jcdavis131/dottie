@@ -315,7 +315,31 @@ def test_capacity_caveat_surfaces_a_shrinking_swap(led, tmp_path):
     v = r["verdict"]
     assert v["block_param_delta"] == -786432
     assert "REMOVED 786,432 parameters" in v["capacity_caveat"]
-    assert "Capacity caveat" in led.get(e.id).writeup
+    assert "Caveats" in led.get(e.id).writeup
+
+
+def test_hand_seeded_baseline_is_flagged_in_the_verdict(led, tmp_path):
+    # TODOS §5.3.R0: the loop's older "SOTA" beat 4.5 — the runbook's hand-seeded
+    # placeholder — on a synthetic task. Nothing recorded that the baseline was never
+    # measured. The `led` fixture seeds exactly such a placeholder.
+    _implement(led, tmp_path, make_policy())
+    e = led.next_in_state(READY_FOR_TRAINING)
+    led.transition(e.id, EVALUATION_PENDING,
+                   train_metrics={"proxy_loss": 9.0, "per_seed": [9.0, 9.1, 8.9],
+                                  "integration": "proxy_micro_benchmark"})
+    r = evaluate.run_evaluation(led)
+    v = r["verdict"]
+    assert v["baseline_provenance"] == "hand_seeded"
+    assert "HAND-SEEDED placeholder" in v["baseline_caveat"]
+    assert "calibrate-baseline" in led.get(e.id).writeup
+
+
+def test_calibrated_baseline_carries_no_caveat(tmp_path):
+    L = Ledger(tmp_path / "cal.sqlite3")
+    L.seed_baseline(Baseline("factory_lm_loss", 5.61982, False, "nano", None, 0.0,
+                             notes="measured baseline calibration: steps=150 seq=256"))
+    kind, caveat = evaluate._baseline_provenance(L.get_baseline())
+    assert kind == "calibrated" and caveat is None
 
 
 def test_promotion_without_a_series_is_held_not_assumed(led, tmp_path):

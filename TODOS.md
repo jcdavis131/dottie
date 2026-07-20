@@ -409,11 +409,14 @@ The ledger says `sota: 2`. Neither is a measured architectural improvement:
 **So the honest count of real, measured architectural wins so far is ZERO.** That is a
 statement about the RESULTS, not the machinery: ideate→implement→validate→train→evaluate
 demonstrably runs end-to-end unattended, and tonight's gates now block both failure modes.
-- [ ] GAP this exposes (cheap, queued): nothing distinguishes a CALIBRATED baseline
-  (`calibrate-baseline`, real recipe recorded) from a hand-SEEDED placeholder
-  (`seed-baseline --value 4.5`). `Baseline.experiment_id` is None for seeded ones — the
-  verdict should say "promoted against a hand-seeded baseline, not a measured one", and
-  a sota won on a placeholder should arguably never enter a promotion bundle.
+- [x] **GAP CLOSED 03:07 (recording only)**: every verdict now carries
+  `baseline_provenance` — `calibrated` (notes written by `calibrate-baseline`),
+  `promoted` (ratcheted from a measured experiment), or `hand_seeded` — and a
+  `baseline_caveat` that lands in the write-up/bundle for the last case: *"the baseline
+  is a HAND-SEEDED placeholder … this delta measures distance from an arbitrary number,
+  not a real improvement."* 35/35 tests green. **Still your call**: whether promotion
+  should REFUSE outright when the baseline was never calibrated (that would have blocked
+  `bc3dbb74bead` at the source rather than annotating it).
 
 ### 5.3.R — REVIEWER BRIEF for the MLBR bundle (written by the loop 2026-07-20 03:30)
 

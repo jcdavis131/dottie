@@ -35,6 +35,23 @@ SIGNIFICANCE_SEM = 2.0
 _SERIES_KEYS = ("eval_ce_per_batch", "per_seed", "eval_losses")
 
 
+def _baseline_provenance(baseline: Baseline) -> tuple:
+    """(kind, caveat) — where the number we are comparing against actually came from.
+
+    Measured 2026-07-20 (TODOS §5.3.R0): the loop's older "SOTA" beat **4.5**, the
+    hand-seeded placeholder from the runbook example, on an explicitly-not-capability
+    synthetic task — a meaningless promotion that no gate caught, because nothing
+    recorded how the baseline was obtained. Recording only; not a gate."""
+    if baseline.experiment_id:
+        return "promoted", None          # ratcheted from a measured experiment
+    if (baseline.notes or "").lower().startswith("measured baseline calibration"):
+        return "calibrated", None
+    return "hand_seeded", (
+        "the baseline is a HAND-SEEDED placeholder (no calibration recorded) — this delta "
+        "measures distance from an arbitrary number, not a real improvement. Run "
+        "`python -m dottie.research calibrate-baseline` before trusting any promotion.")
+
+
 def _spread(metrics: Dict[str, Any]) -> Optional[Dict[str, float]]:
     """Sample std + standard error of the mean from a recorded per-batch/per-seed series."""
     for key in _SERIES_KEYS:
@@ -74,7 +91,7 @@ def _writeup(exp: Experiment, baseline: Baseline, value: Optional[float], *,
     if significance:
         lines.append(f"**Significance:** {significance}")
     if capacity:
-        lines.append(f"**Capacity caveat:** {capacity}")
+        lines.append(f"**Caveats:** {capacity}")
     if reason:
         lines.append(f"**Reason:** {reason}")
     lines += [
@@ -148,10 +165,12 @@ def run_evaluation(ledger: Ledger, *, require_stable: bool = True,
             f"replaced ({metrics.get('replaced_block_params'):,} → "
             f"{metrics.get('candidate_block_params'):,}) — a fixed-step comparison partly "
             f"measures capacity, not just the idea")
+    base_kind, base_caveat = _baseline_provenance(baseline)
     promote = improved and (stable if require_stable else True) and bool(significant)
     verdict = {
         "promote": promote, "improved": improved, "stable": bool(stable),
         "significant": significant, "significance": sig_note,
+        "baseline_provenance": base_kind, "baseline_caveat": base_caveat,
         "sem": None if sp is None else round(sp["sem"], 6),
         "sem_series": None if sp is None else sp["series"],
         "sem_n": None if sp is None else sp["n"],
@@ -164,7 +183,7 @@ def run_evaluation(ledger: Ledger, *, require_stable: bool = True,
 
     if promote:
         writeup = _writeup(exp, baseline, value, promoted=True, significance=sig_note,
-                           capacity=capacity_note or "")
+                           capacity="\n".join(x for x in (capacity_note, base_caveat) if x))
         ledger.transition(exp.id, SOTA, eval_verdict=verdict, writeup=writeup, ts=ts)
         ledger.promote_baseline(exp.id, value, notes=exp.name, ts=ts)
         return {"experiment": exp.id, "state": SOTA, "verdict": verdict}
@@ -179,6 +198,7 @@ def run_evaluation(ledger: Ledger, *, require_stable: bool = True,
     else:
         reason = "held"
     writeup = _writeup(exp, baseline, value, promoted=False, reason=reason,
-                       significance=sig_note, capacity=capacity_note or "")
+                       significance=sig_note,
+                       capacity="\n".join(x for x in (capacity_note, base_caveat) if x))
     ledger.transition(exp.id, REJECTED, eval_verdict=verdict, writeup=writeup, ts=ts)
     return {"experiment": exp.id, "state": REJECTED, "verdict": verdict, "reason": reason}
