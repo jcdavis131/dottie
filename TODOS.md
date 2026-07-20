@@ -25,6 +25,18 @@ not the cause; I corrected that claim rather than leave it standing.
 **The VM still needs its restart** — memory alone does not revive it. Run the command
 below; it should now actually succeed, where an hour ago it would have hit the same wall.
 
+Verified 03:48 after the unload: **no models loaded**, available **5.3 GB** (the dip from
+7.5 GB is Windows Memory Compression churn — 201 → 1,394 MB — reclaiming the freed pages,
+not a leak). Ample for the VM plus 14 containers.
+
+Timeline supporting the diagnosis (and one honest caveat): fleet healthy 23:36 → 02:05
+with **8b** resident, which proves 8b + fleet co-exist fine; I enabled 14b at ~00:50, the
+01:05 runner loaded it, and the VM died at 02:05. CAVEAT — this also makes host-RAM
+pressure a **plausible contributor to the 01:38 and 01:56 CUBLAS crashes** I attributed
+solely to the 45 W power cap. I cannot separate the two causes from here; treat the power
+cap as unproven-but-still-suspected rather than established, and re-measure clocks after
+recovery (`nvidia-smi --query-gpu=power.limit,clocks.sm --format=csv`).
+
 ### ⛔ FIRST: the fleet is DOWN and needs ONE command from you
 
 The WSL2 VM died at ~02:05 and is crash-looping (vmmemWSL oscillates 8→123 MB;
