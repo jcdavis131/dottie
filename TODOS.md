@@ -2358,7 +2358,7 @@ most valuable catch so far:
   the paragraph describing it is part of the change. Four instances tonight, every one
   introduced by me, every one found by reading rather than by any test — because **no test
   asserts that a comment is true**.
-### 5.3.R48 — ⭐ SECOND RESTART (10:35:02). The two big fixes are now live.
+### 5.3.R48 — SECOND RESTART (10:35:02) — **CORRECTION: this was a CRASH, not a deliberate restart** (see §5.3.R51). The fixes did go live; the cause I implied was wrong.
 
 - [x] **Detected by the boot banner, not by being told: `pid=33132 git_sha=c12a052
   prompts=dde2a11b0273`.** A new window opened at 10:35:02 and **12 runtime commits went
@@ -2440,6 +2440,46 @@ most valuable catch so far:
   fills is a default, not an illustration. Where a concrete value is genuinely needed, make
   it obviously non-fillable (`<your_module_name_lowercased>`), or state the real constraint
   instead of a sample of it.
+### 5.3.R51 — ⛔ TRAINING IS OFF, and the daemon had been crash-looping on memory
+
+- [x] **The daemon was NOT restarting deliberately — it was dying and being restarted by the
+  scheduler (11:05).** Boot records show lifetimes of **105 min → ~9 min**, with each new
+  boot landing exactly on a `PT15M` trigger boundary (`10:35:02`, `10:50:02`). A daemon that
+  is alive holds the wrapper's exclusive lock and makes the tick a no-op; a new boot means
+  the previous one was gone.
+  - **The 10:44:16 implement has no completion line.** Silent death mid-stage — the same
+    signature as the wrapper bug fixed earlier, but that one is genuinely fixed.
+  - **I reported §5.3.R48 as "the daemon restarted, 12 fixes are live" as though the restart
+    request had been honoured. It had not.** The fixes did go live, so that half was right;
+    the cause was crash-recovery and I did not check before framing it as success.
+- [x] **Root cause, corroborated by the subtask's independent measurement: memory
+  starvation.** It recorded **110 MB available** before freeing anything — *below* the
+  281 MB that killed the WSL VM at 02:05. That fully explains why the 08:50 daemon lived
+  105 minutes and the 10:35 one lived nine: the box ran out of RAM underneath it.
+- [x] **CURRENT STATE — verified by me directly, not taken from the subtask report:**
+  | | |
+  |---|---|
+  | scheduled task | **Disabled** |
+  | research processes | **0** |
+  | llama-server | not loaded |
+  | available RAM | **3,695 MB** |
+  | power | On AC |
+  | docker engine | **down** — `dockerd` never started inside the VM |
+  **Training is stopped.** The recovery script disables the task by design (its step 1), and
+  the subtask was then classifier-blocked from both `wsl --shutdown` and re-enabling.
+- [ ] ⛔ **OPERATOR — two commands to restore, in this order:**
+  ```powershell
+  wsl --shutdown                                             # engine back in ~2 min
+  docker ps --format "{{.Names}}`t{{.Status}}"                # expect 13-14 containers
+
+  Enable-ScheduledTask -TaskName 'Dottie Research runner'     # training back on
+  Start-ScheduledTask  -TaskName 'Dottie Research runner'
+  ```
+  Memory is now **3,695 MB**, so the condition that was killing the daemon is cleared — but
+  it will return once `llama-server` reloads (~5 GB) unless the fleet stays down. **The
+  §5.3.R40 battery kill-switch and the charger question (decision #2) both bear on this.**
+- [ ] The restart also picks up `1470426` (the trainer was loading validator scratch files),
+  which is **not** in the daemon's last `5b0fdd6` — see §5.3.R49.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
