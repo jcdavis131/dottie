@@ -600,12 +600,17 @@ independent reasons, both from the bundle's own numbers/code:**
       match `pipeline_status.py::current_run_series`, which normalizes server-side
       (`row.get("lm_loss", row.get("lm", row.get("total")))`), and the tile code already
       falls back `last.lm_loss ?? last.lm`. Recorded so nobody re-investigates.
-    - [ ] `store.js::write()` swallows quota errors with "the app still works, it just
-      won't persist". True, but the user is never told: on reload the session silently
-      reverts to the last write that fit, so chat history vanishes with no indication.
-      For a console whose principle is "fetched live or marked unreachable", silent
-      persistence failure is the one unmarked degradation. Fix: return a boolean from
-      `write()` and show a "not persisted (storage full)" chip in the composer.
+    - [x] **FIXED 03:36** — `store.js::write()` used to swallow quota errors, so a full
+      localStorage meant the transcript silently reverted on reload: the one unmarked
+      degradation in a console whose principle is "fetched live or marked unreachable".
+      Now `write()`/`saveMessages()` return a boolean and the chat composer shows
+      *"not saved — browser storage full; this transcript is memory-only"*.
+      Tests: `js/store.contract.test.mjs` (5 assertions, localStorage shim, no browser) —
+      reports success, reports failure, never throws, reads still fall back. 5/5 pass.
+      Caught while wiring the UI: this codebase has **no `.hidden` CSS class** — the
+      idiom is the HTML `hidden` property (`chart.js` sets `el.hidden`), so a
+      `classList.toggle("hidden", …)` would have shipped a permanently visible empty
+      chip. Verified chat.js still loads and `pickEndpoint` still behaves.
     - [x] **FIXED 03:25** — `api.js::request()` promised "every failure is surfaced as a
       typed ApiError" but a 2xx with a non-JSON body (proxy error page, truncated
       response, misrouted HTML 200) escaped as a raw `SyntaxError`, reaching the UI as

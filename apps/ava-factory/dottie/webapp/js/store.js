@@ -33,11 +33,16 @@ function read(key, fallback) {
   }
 }
 
+/** Persist a value. Returns false when storage refused it (quota/private mode).
+ *  The app keeps working from memory either way — but the caller is told, so the
+ *  UI can say so. Silent loss is the one degradation this console never marks:
+ *  on reload the session would quietly revert to the last write that fit. */
 function write(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    return true;
   } catch {
-    /* storage full/blocked — the app still works, it just won't persist */
+    return false;
   }
 }
 
@@ -88,9 +93,11 @@ export function getMessages(id) {
   return read(MSGS_PREFIX + id, []);
 }
 
+/** Returns false when the transcript could not be persisted (see write()). */
 export function saveMessages(id, messages) {
-  write(MSGS_PREFIX + id, messages);
+  const ok = write(MSGS_PREFIX + id, messages);
   touchSession(id);
+  return ok;
 }
 
 export function clearAll() {

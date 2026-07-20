@@ -43,6 +43,19 @@ export function mountChat(root, ctx) {
 
   const modeChip = h("span", { class: "chip", role: "status" });
   const brainNote = h("span", { class: "chip" });
+  // Persistence is the one degradation this console used to hide: when localStorage
+  // refuses a write (quota/private mode) the chat keeps working from memory and then
+  // silently reverts on reload. saveMessages() now reports it; say so.
+  // `hidden` property, not a .hidden class — this codebase has no such class rule
+  // (chart.js sets el.hidden directly; dom.js's h() forwards the boolean prop).
+  const persistNote = h("span", { class: "chip stamp-warn", role: "status", hidden: true });
+
+  function notePersist(ok) {
+    persistNote.hidden = ok !== false;
+    if (ok === false) {
+      persistNote.textContent = "not saved — browser storage full; this transcript is memory-only";
+    }
+  }
 
   const input = h("textarea", {
     placeholder: "Ask Dottie — she checks with read-only tools and shows every step…",
@@ -53,7 +66,7 @@ export function mountChat(root, ctx) {
 
   const composer = h("div", { class: "composer" },
     h("div", { class: "composer-inner" },
-      h("div", { class: "mode-row" }, modeChip, brainNote),
+      h("div", { class: "mode-row" }, modeChip, brainNote, persistNote),
       h("div", { class: "compose-row" }, input, sendBtn),
     ),
   );
@@ -178,7 +191,7 @@ export function mountChat(root, ctx) {
       touchSession(sessionId, { title: text.slice(0, 60) });
       onFirstMessage?.(text);
     }
-    saveMessages(sessionId, messages);
+    notePersist(saveMessages(sessionId, messages));
     renderLog();
 
     // Honest pending state: no streaming server-side, so show what we know —
@@ -238,7 +251,7 @@ export function mountChat(root, ctx) {
     clearInterval(tick);
     pendingEl.remove();
     messages.push(turn);
-    saveMessages(sessionId, messages);
+    notePersist(saveMessages(sessionId, messages));
     renderLog();
     inflight = false;
     sendBtn.disabled = false;
