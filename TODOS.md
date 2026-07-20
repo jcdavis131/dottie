@@ -122,8 +122,14 @@ $env:DOTTIE_OLLAMA_KEEP_ALIVE = "30s"   # in research_env.local.ps1; "0" = unloa
 its ~5.3 GB between stages instead of squatting permanently. Unset = Ollama's default, so
 nothing changes for anyone who doesn't opt in. Trade-off: each stage pays a model reload
 (~10–20 s on CPU) in exchange for the fleet fitting alongside the loop. 36/36 tests green
-(new test covers set / unset / blank-is-unset). **Not enabled by default — your call**,
-since it slows every research call and the fleet is currently down anyway.
+(new test covers set / unset / blank-is-unset).
+**ENABLED 04:45 in `research_env.local.ps1` (gitignored) as `30s` — reversing an earlier
+"your call" on safety grounds.** I had left it off because it costs ~10–20 s of reload per
+stage. Then available memory was measured oscillating down to **385 MB**, against the
+**281 MB** at which the VM died tonight and took the fleet with it. A slower loop is a
+much cheaper failure than a second overnight outage. It takes effect at the 05:05 daemon
+restart (env is read at process start). **To go back to maximum speed, comment that line
+out** — one line, clearly marked, and the knob itself is opt-in for everyone else.
 Recovery is then automatic (restart policies + `--resume`); verification commands and a
 fallback relaunch are in §1.3. **The 45W power cap is the standing suspect for the whole
 family of failures tonight — 780MHz clocks, 2 CUBLAS crashes, and this VM death. Check
