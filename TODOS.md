@@ -2284,6 +2284,31 @@ most valuable catch so far:
   on merit. **12 runtime-affecting commits are queued behind a restart** (§5.3.R39 explains
   why restarting now beats finishing the current measurement window). Nothing is broken;
   the queued work is improvement, not repair.
+### 5.3.R45 — the same queue-blocker, in the file I cited as getting it right
+
+- [x] **Read `factory_trainer.py` whole (10:40) and found the bug I said was not there.**
+  `factory_nano_trainer` has three exception paths:
+  | path | returns | meaning |
+  |---|---|---|
+  | module load / class select | `TrainResult(False, False)` | **retryable INFRA — wrong** |
+  | integration probe | `TrainResult(True, False)` | failed_training — correct |
+  | training loop | `TrainResult(True, False)` | failed_training — correct |
+  The module being loaded is the **candidate's own artifact**, so a failure reproduces on
+  every retry: the experiment stays `ready_for_training` forever and blocks the queue.
+- [x] **This is the exact bug I fixed in `train.py` — and when I fixed it there I wrote that
+  `factory_trainer.py` "already draws this line correctly".** It does, in two of three
+  paths. I had read the two I was comparing against and inferred the third. **Two of three
+  correct is precisely how a file passes a spot check**, and it is why "I checked that file"
+  is a weaker claim than it sounds.
+- [x] Fixed to match its own siblings. Observed frequency **zero** (nothing is or has been
+  stuck in `ready_for_training`), so this is consistency-driven like the `train.py` fix — a
+  silent queue stall is a bad enough failure mode not to wait for, and the semantics were
+  already decided in this very file.
+  - Regression test is **hermetic**: it stubs `_setup` and `sys.modules["ava.model"]` so it
+    needs neither torch-heavy training nor the factory checkout. Verified red with the exact
+    old return (`TrainResult(ok=False, ...)`). Suite 183 passed.
+  - Wrote the fixture to a file and inserted it, rather than through a shell heredoc — the
+    process fix from §5.3.R42. It worked first time.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.

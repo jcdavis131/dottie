@@ -997,6 +997,68 @@ def test_corrector_parse_retries_are_a_bounded_shared_pool(led, tmp_path):
         "multiplying with the correction budget again")
 
 
+def test_factory_trainer_load_failure_is_the_candidates_fault(led, tmp_path, monkeypatch):
+    """An unloadable candidate must fail training, not sit retryable forever.
+
+    TODOS §5.3.R45. `factory_nano_trainer` has three exception paths. The integration probe
+    and the training loop both return ok=True/stable=False (candidate's fault → FAILED_
+    TRAINING). The module-load path returned ok=False — retryable infrastructure — so the
+    experiment would stay `ready_for_training` and block the queue behind it forever.
+
+    This is the same bug fixed in train.py, in the file I cited there as already getting it
+    right. Two of three paths correct is exactly how a file passes a spot check.
+    """
+    from dottie.research import factory_trainer
+
+    # Stub the infra so the test never needs torch/the factory checkout/the packed corpus:
+    # the point is the CLASSIFICATION of a load failure, not the training itself.
+    class _Cfg:
+        preset = "nano"
+
+    def fake_setup(config):
+        import types
+        torch = types.SimpleNamespace(manual_seed=lambda *_: None)
+        return torch, None, _Cfg(), [0] * 100, "/packed", "cpu", {
+            "steps": 1, "seq_len": 8, "batch": 2, "lr": 1e-3,
+            "holdout_frac": 0.05, "eval_batches": 2, "seed": 0}
+
+    monkeypatch.setattr(factory_trainer, "_setup", fake_setup)
+
+    # _setup normally puts the factory checkout on sys.path; stubbing it removes that, so
+    # `from ava.model import ...` (which runs BEFORE the load path under test) would fail
+    # for the wrong reason. Stub the module instead — this test is about classification,
+    # and it must not need the factory checkout to make its point.
+    import sys
+    import types as _t
+    ava = _t.ModuleType("ava"); ava_model = _t.ModuleType("ava.model")
+    ava_model.build_model = lambda *a, **k: None
+    ava_model.count_params = lambda *a, **k: 0
+    monkeypatch.setitem(sys.modules, "ava", ava)
+    monkeypatch.setitem(sys.modules, "ava.model", ava_model)
+
+    def boom(*a, **k):
+        raise ImportError("candidate module has a syntax error")
+
+    monkeypatch.setattr(factory_trainer, "_load_module", boom)
+
+    e = led.create(HYP)
+    led.transition(e.id, READY_FOR_TRAINING,
+                   implementation={"code": GOOD_CODE, "module_name": "SeqMeanMix"},
+                   workspace=str(tmp_path))
+    exp = led.get(e.id)
+
+    r = factory_trainer.factory_nano_trainer(exp, {"steps": 1})
+    assert r.ok is True, "a candidate's own unloadable module is not retryable infrastructure"
+    assert r.stable is False
+    assert "not loadable" in (r.metrics or {}).get("detail", "")
+
+    # and end-to-end: run_training must move it OUT of ready_for_training
+    out = train.run_training(led, trainer=factory_trainer.factory_nano_trainer,
+                             config={"steps": 1})
+    assert out["state"] == FAILED_TRAINING
+    assert led.next_in_state(READY_FOR_TRAINING) is None, "queue is blocked"
+
+
 def test_unloadable_candidate_fails_training_instead_of_retrying_forever(led, tmp_path):
     """A candidate whose own module will not load must not sit in ready_for_training.
 

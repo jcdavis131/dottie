@@ -204,7 +204,22 @@ def factory_nano_trainer(experiment: Experiment, config: Dict[str, Any]) -> Trai
         module = _load_module(experiment.workspace, impl.get("module_name"))
         Cls = _select_module_class(module, impl.get("module_name"), torch)
     except Exception:
-        return TrainResult(False, False, detail=traceback.format_exc())
+        # ok=True/stable=False -> FAILED_TRAINING (the candidate's fault), NOT ok=False
+        # (retryable infrastructure). The module being imported here is the CANDIDATE's own
+        # artifact, so a load or class-selection failure reproduces identically on every
+        # retry: as ok=False the experiment stays ready_for_training forever and blocks the
+        # queue behind it.
+        #
+        # TODOS 5.3.R45: this is the same bug fixed in train.py, in the file I cited as
+        # already getting it right. The integration probe and the training loop below both
+        # return ok=True correctly; only this path did not. Two of three correct is how a
+        # file passes a spot check. Observed frequency: zero, same as train.py -- fixed on
+        # consistency grounds, because a silent queue stall is a bad enough failure not to
+        # wait for.
+        return TrainResult(True, False,
+                           metrics={"integration": "factory_nano_block_swap",
+                                    "detail": "candidate module not loadable"},
+                           detail=traceback.format_exc()[-1500:])
 
     torch.manual_seed(knobs["seed"])
     model = build_model(cfg)
