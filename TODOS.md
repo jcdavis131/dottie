@@ -1194,6 +1194,51 @@ independent reasons, both from the bundle's own numbers/code:**
     behavior when the feed lacks the field. "Live" now means the BOX is live, not
     that a CDN fetch succeeded.
 
+### 7.8 — factory server: three endpoints blocked the event loop (fixed 06:00)
+
+Followed the thread from the webapp polling fix (§7.6): `/pipeline/status` is expensive,
+so what does the *server* do under a 5 s poll? Two problems, one significant.
+
+- **`async def` handlers calling SYNCHRONOUS collectors.** `/pipeline/status`,
+  `/ecosystem/status` and `/assistant/status` were declared `async def` while calling
+  `collect_status()` / `collect_ecosystem_status()` / `collect_assistant_status()` — all
+  plain `def` doing sqlite reads, metrics-file walks and disk probes. In FastAPI that work
+  runs **on the event loop**, blocking every other request (`/chat`, `/assistant`,
+  `/health`) for its duration. With the console polling every 5 s, the server stalled
+  periodically. Fixed by declaring them plain `def`, which makes FastAPI run them in a
+  threadpool. Verified by AST scan: no `async` handler still calls a collector inline.
+- **This was an oversight, not a design choice** — `/network/status` in the same file
+  already does it correctly (`await asyncio.to_thread(collect_network_status, …)`) and its
+  docstring even says *"Heavy I/O runs in a worker thread so live polls stay snappy."* The
+  sibling endpoints were simply missed.
+- [x] **Swept for the same class (06:06)**: an AST scan for `async def` app handlers
+  doing blocking I/O without `to_thread` found two more — `eval_report` and
+  `agent_eval_scoreboard`, both `path.read_text()` on the loop. Much lower severity
+  (small markdown, on-demand rather than polled) but the same bug, so both are now
+  plain `def` and the regression guard covers **all five** handlers. That turns
+  "no async handler blocks the loop" into an enforced invariant instead of something
+  the next reviewer has to re-derive per endpoint. 24 passed.
+- CHECKED CLEAN (06:10): **`apps/dottie/dottie/api.py` does NOT have this bug.** Every
+  route handler there is a plain `def` (submit_task, get_task, list_tasks, the flywheel
+  endpoints, run_climb, climb_log, research_status, research_experiments, status), so
+  FastAPI threadpools all of them; the only `async def` is
+  `_private_network_preflight`, which is middleware and correctly must be async. So the
+  two apps had opposite conventions and only `ava-factory/server.py` mixed them.
+  Recorded so nobody re-audits it.
+- [ ] **Not done: caching.** `collect_status()` still recomputes per request, so N clients
+  cost N walks. A 2–3 s TTL would make it robust regardless of caller behaviour. Left for
+  you because it changes freshness semantics on a dashboard whose whole point is honesty
+  about staleness.
+- [x] **Coverage gap found and closed (06:03).** The existing suite never *called* these
+  endpoints — `test_server_endpoints.py` only asserted that the string `/pipeline/status`
+  appeared in another response. Added two tests: one asserts the three handlers are not
+  coroutine functions (a regression guard, so nobody reintroduces `async def`), the other
+  actually GETs all three and requires `200` + a non-empty JSON object. **24 passed**
+  (was 22). So the fix is now exercised through the real handler path via TestClient, not
+  just AST-verified — the earlier "untested" caveat is largely retired. A live-server
+  check after the fleet returns is still worth one command, since TestClient does not
+  reproduce real concurrency.
+
 ## 8 — Known issues backlog (honest ledger, none import-breaking)
 
 - [x] `test_audit_fixes`: 10 passed — judge layer 3-way merged (workspace .label audit-fixes + monorepo rubric evolution), logic pipeline ported blueprint-judge failures (MetaMuseJudge.label, judge source
@@ -1382,48 +1427,3 @@ independent reasons, both from the bundle's own numbers/code:**
     luck of additive edits — when spawning parallel work, assign disjoint file
     lanes explicitly (curriculum registry vs adapters vs tests), and the second
     lane pulls before touching anything shared.
-
-### 7.8 — factory server: three endpoints blocked the event loop (fixed 06:00)
-
-Followed the thread from the webapp polling fix (§7.6): `/pipeline/status` is expensive,
-so what does the *server* do under a 5 s poll? Two problems, one significant.
-
-- **`async def` handlers calling SYNCHRONOUS collectors.** `/pipeline/status`,
-  `/ecosystem/status` and `/assistant/status` were declared `async def` while calling
-  `collect_status()` / `collect_ecosystem_status()` / `collect_assistant_status()` — all
-  plain `def` doing sqlite reads, metrics-file walks and disk probes. In FastAPI that work
-  runs **on the event loop**, blocking every other request (`/chat`, `/assistant`,
-  `/health`) for its duration. With the console polling every 5 s, the server stalled
-  periodically. Fixed by declaring them plain `def`, which makes FastAPI run them in a
-  threadpool. Verified by AST scan: no `async` handler still calls a collector inline.
-- **This was an oversight, not a design choice** — `/network/status` in the same file
-  already does it correctly (`await asyncio.to_thread(collect_network_status, …)`) and its
-  docstring even says *"Heavy I/O runs in a worker thread so live polls stay snappy."* The
-  sibling endpoints were simply missed.
-- [x] **Swept for the same class (06:06)**: an AST scan for `async def` app handlers
-  doing blocking I/O without `to_thread` found two more — `eval_report` and
-  `agent_eval_scoreboard`, both `path.read_text()` on the loop. Much lower severity
-  (small markdown, on-demand rather than polled) but the same bug, so both are now
-  plain `def` and the regression guard covers **all five** handlers. That turns
-  "no async handler blocks the loop" into an enforced invariant instead of something
-  the next reviewer has to re-derive per endpoint. 24 passed.
-- CHECKED CLEAN (06:10): **`apps/dottie/dottie/api.py` does NOT have this bug.** Every
-  route handler there is a plain `def` (submit_task, get_task, list_tasks, the flywheel
-  endpoints, run_climb, climb_log, research_status, research_experiments, status), so
-  FastAPI threadpools all of them; the only `async def` is
-  `_private_network_preflight`, which is middleware and correctly must be async. So the
-  two apps had opposite conventions and only `ava-factory/server.py` mixed them.
-  Recorded so nobody re-audits it.
-- [ ] **Not done: caching.** `collect_status()` still recomputes per request, so N clients
-  cost N walks. A 2–3 s TTL would make it robust regardless of caller behaviour. Left for
-  you because it changes freshness semantics on a dashboard whose whole point is honesty
-  about staleness.
-- [x] **Coverage gap found and closed (06:03).** The existing suite never *called* these
-  endpoints — `test_server_endpoints.py` only asserted that the string `/pipeline/status`
-  appeared in another response. Added two tests: one asserts the three handlers are not
-  coroutine functions (a regression guard, so nobody reintroduces `async def`), the other
-  actually GETs all three and requires `200` + a non-empty JSON object. **24 passed**
-  (was 22). So the fix is now exercised through the real handler path via TestClient, not
-  just AST-verified — the earlier "untested" caveat is largely retired. A live-server
-  check after the fleet returns is still worth one command, since TestClient does not
-  reproduce real concurrency.
