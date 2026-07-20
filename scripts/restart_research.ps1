@@ -39,9 +39,35 @@ Write-Host "  task state: $($task.State)"
 # ~5 GB RESIDENT (NUM_GPU=0 puts it in system RAM, which is what caused the 02:05 outage).
 # So "1500 MB free" passes a naive check and then hits the wall anyway. Warn on the number
 # that actually matters.
+#
+# The model figure is MEASURED, not asserted. It used to be hardcoded to 5200, which is
+# right for qwen3:8b and silently wrong the moment DOTTIE_OLLAMA_MODEL changes - the same
+# stale-constant trap this repo keeps hitting. Ask Ollama instead, and fall back to the
+# measured qwen3:8b number only when it cannot be reached.
 $free = Avail
-$modelMB = 5200            # qwen3:8b measured resident; qwen3:14b is ~7000 and does NOT fit
+$modelMB = 5200            # fallback: qwen3:8b measured resident (qwen3:14b ~7000, does NOT fit)
+$modelName = 'qwen3:8b'
+if ($env:DOTTIE_OLLAMA_MODEL) { $modelName = $env:DOTTIE_OLLAMA_MODEL }
+$ollamaUrl = 'http://localhost:11434'
+if ($env:DOTTIE_OLLAMA_URL) { $ollamaUrl = $env:DOTTIE_OLLAMA_URL.TrimEnd('/') }
+$modelSrc = "assumed"
+try {
+    # Already resident costs NOTHING to reuse, so the warning must not fire on a model that
+    # is already loaded - otherwise it cries wolf on exactly the healthy case.
+    $ps = Invoke-RestMethod -Uri "$ollamaUrl/api/ps" -TimeoutSec 3 -ErrorAction Stop
+    $live = @($ps.models | Where-Object { $_.name -eq $modelName -or $_.model -eq $modelName })
+    if ($live.Count -gt 0) {
+        $modelMB = 0; $modelSrc = "already resident"
+    } else {
+        $tags = Invoke-RestMethod -Uri "$ollamaUrl/api/tags" -TimeoutSec 3 -ErrorAction Stop
+        $m = @($tags.models | Where-Object { $_.name -eq $modelName -or $_.model -eq $modelName })
+        if ($m.Count -gt 0) { $modelMB = [math]::Round($m[0].size / 1MB); $modelSrc = "measured" }
+    }
+} catch {
+    $modelSrc = "assumed (Ollama unreachable)"
+}
 Write-Host "  available memory: $free MB"
+Write-Host "  model '$modelName' load cost: $modelMB MB ($modelSrc)"
 if ($free -lt $MinFreeMB) {
     Write-Host "  REFUSING to start: below the hard floor of $MinFreeMB MB. The daemon would" -ForegroundColor Red
     Write-Host "  be OOM-killed mid-stage with no traceback (TODOS 5.3.R51)." -ForegroundColor Red
