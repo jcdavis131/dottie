@@ -2733,6 +2733,28 @@ most valuable catch so far:
 - [ ] **Two process lessons, both mine:** never commit on a suite result I have not read; and
   a background/timed-out command is not a completed one. Both cost real time tonight
   (§5.3.R22's false alarm was the same shape — acting on output I had not actually checked).
+### 5.3.R62 — seven MORE handlers blocking the event loop, including /generate and /chat
+
+- [x] **Read `server.py`'s handlers whole (13:05) and found the fix I made tonight was
+  partial.** I converted five *status* endpoints from `async def` to `def` early in the
+  session. An AST sweep for "async route handler doing sync heavy work with **no await**"
+  found **seven more**: `/health`, `/generate`, `/chat`, `/assistant`, `/jspace/inspect`,
+  `/jspace/intervene`, `/jspace/safety`.
+- [x] **`/generate` and `/chat` are the serious ones — they run model inference on the event
+  loop.** `get_engine()` lazily **builds the model** under a lock and `generate()` is a
+  synchronous method, so a single generation blocks *every* other request for its whole
+  duration, and the first call blocks for the entire model build. The console polls
+  `/pipeline/status` every 5 s against that.
+- [x] **The existing regression guard should have caught this, and its docstring said it
+  did.** It claimed *"Enforced invariant, not a case-by-case judgement: NO app handler may be
+  `async def` while doing blocking I/O"* — while checking a **hardcoded list of five names**.
+  **A guard whose docstring outruns its implementation is exactly how seven handlers drifted
+  past it.** Replaced with a real AST invariant over every route; verified it fails when one
+  handler is reverted (`[('generate', ['generate', 'get_engine'])]`). 24 passed.
+- [ ] **Third instance of the same personal error**: §5.3.R45 (fixed `train.py`, asserted
+  `factory_trainer` was fine — it was not), §5.3.R46 (guarded two paths in a file, left the
+  third), and now this. **Fixing an instance is not fixing a class**, and the honest way to
+  tell the difference is a sweep, not an inference.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.

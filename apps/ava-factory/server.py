@@ -297,7 +297,7 @@ def ecosystem_status():
 
 
 @app.get("/health")
-async def health():
+def health():
     st = get_engine().stats()
     return {
         "status": "ok",
@@ -308,7 +308,7 @@ async def health():
 
 
 @app.post("/generate")
-async def generate(req: GenerateReq):
+def generate(req: GenerateReq):
     if not req.text or not req.text.strip():
         raise HTTPException(status_code=422, detail="text must be non-empty")
     return get_engine().generate(
@@ -328,7 +328,7 @@ _TURN_END_RE = re.compile(r"<\|eos\|>|<\|user\|>|<\|assistant\|>")
 
 
 @app.post("/chat")
-async def chat(req: ChatReq):
+def chat(req: ChatReq):
     """Thin wrapper over ServeEngine.generate() using the <|user|>/<|assistant|>
     convention already frozen in ava/tokenizer.py (SPECIALS ids 0-5) — the same
     convention ava/datagen/chat_safety.py already generates training data in.
@@ -379,7 +379,7 @@ def assistant_status():
 
 
 @app.post("/assistant", dependencies=[Depends(_require_assistant_token)])
-async def assistant(req: AssistantReq):
+def assistant(req: AssistantReq):
     """Dottie — the server-side ReAct tool loop (spec 15 §5). Grounded,
     trust-gated, telemetered. Degrades to a structured 503 when the engine is
     absent (AVA_SKIP_ENGINE_BOOT=1) rather than crashing."""
@@ -497,12 +497,12 @@ async def viewer(mode: str = Query("audit")):
 
 
 @app.post("/jspace/inspect")
-async def inspect(req: InspectReq):
+def inspect(req: InspectReq):
     return get_engine().inspect(req.text)
 
 
 @app.post("/jspace/intervene")
-async def intervene(req: InterveneReq, mode: str = Query("audit")):
+def intervene(req: InterveneReq, mode: str = Query("audit")):
     env_write = os.getenv("ENABLE_JSPACE_WRITE", "0") == "1"
     if mode != "research" or not env_write:
         raise HTTPException(
@@ -520,7 +520,7 @@ async def intervene(req: InterveneReq, mode: str = Query("audit")):
 
 
 @app.post("/jspace/safety")
-async def safety(req: InspectReq):
+def safety(req: InspectReq):
     scan = get_engine().inspect(req.text)["safety_scan"]
     hits = [w for w, p in scan.items() if w != "total" and float(p) > 0.01]
     # Also surface literal substring hits for operator visibility.
