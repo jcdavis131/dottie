@@ -2561,6 +2561,27 @@ most valuable catch so far:
   because two of its three paths did). Both times the assumption was reasonable, both times it
   was wrong, and both times **the cost was an error path that silently could not work** — the
   kind nothing exercises until the bad day.
+### 5.3.R55 — swept for more contract misreads; found none (bounded negative result)
+
+- [x] **Swept the research package for the §5.3.R54 class (11:45)** — a `None` guard placed
+  after a call whose failure mode is actually a *raise*. Walked the AST for every
+  `x = f(...)` immediately followed by a guard on `x`, and checked each callee's real
+  contract. **17 sites, 0 new bugs.**
+  - Correct by design: `dict.get`, `next_in_state`, `get_baseline`, `_spread`,
+    `_find_torch`, `shutil.which`, `getattr(..., None)` — all genuinely return `Optional`.
+  - **My matcher over-reported**: it treated `if not x` as a None-guard, so
+    `sorted(...)`/`list(...)` results appeared suspicious. Checked all four by hand;
+    every one is a correct list-emptiness check (`if not bins`, `if not pys`). **The tool
+    was wrong, not the code** — the fifth time tonight a query of mine produced a false
+    signal, and the reason I hand-verified rather than filed them.
+- [x] **So the R54 class was exactly two sites, both already fixed.** That is worth stating:
+  after finding a real bug, the instinct is to assume a swarm. Here the bound is genuine —
+  the ledger's is the only API in this package whose failure mode is a raise while looking
+  like it might return `None`, and both of its misreading callers are repaired.
+- [ ] **Sweeps that find nothing still earn their tick.** They convert "I fixed one, there
+  are probably others" into "there are two, both fixed" — and the second is actionable while
+  the first is just anxiety. Same value as §5.3.R44 (the ideation-delivery anomaly measured
+  at 95% and dropped) and §5.3.R43 (evaluate.py read clean).
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
