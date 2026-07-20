@@ -175,6 +175,20 @@ python child holds nothing. Killed 5264; 8940 is now the only one.
   `Get-Process python3.11` and kill leftovers before starting. The recovery script's
   `Stop-ScheduledTask` step has the same gap.
 
+### ⭐ KEEP_ALIVE CONFIRMED WORKING (05:15) — memory 345 MB → 5,437 MB
+
+With `DOTTIE_OLLAMA_KEEP_ALIVE=30s` live, `llama-server` **unloaded between Ollama calls**
+(during the local torch/ruff validation phase of an implement) and available memory rose
+to **5,437 MB**, against the 345–576 MB it had oscillated in all night. This is the fix
+for the condition that killed the WSL VM at 02:05 (281 MB).
+- The trade-off is real and expected: each correction attempt now pays a model reload, so
+  implements get slower. Watch `dur_s` — the last pre-fix failed implement was 487 s.
+- **It does NOT make the recovery safe on its own**: memory still collapses to ~500 MB
+  whenever the model is resident, so the window is intermittent. Keep step 1 (pause the
+  daemon) in `prepare_fleet_recovery.ps1` — a deterministic 5 GB beats an intermittent one.
+- If you decide the throughput cost is not worth it, one commented line in
+  `research_env.local.ps1` reverts it.
+
 ### Post-restart verification (05:12) — the fixes are live and already paying
 
 First completed action from the restarted daemon proves three of them at once:
