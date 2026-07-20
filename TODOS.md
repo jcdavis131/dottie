@@ -3140,6 +3140,40 @@ most valuable catch so far:
   the stored histories for repeated identical dry_run failures before deciding whether to
   re-derive the class name per attempt or pin the name in the correction prompt.
 
+### 5.3.R85 — THE LIVE BOARD (18:10, re-measured — not carried forward)
+
+**Every row below was run fresh, using each project's OWN configured invocation.** That
+distinction is the whole point of this entry: R78's table was assembled with `pytest tests`
+everywhere, which silently overrode `testpaths` where a project declared a broader one
+(§5.3.R84). Numbers copied forward are how a board rots; these were re-measured.
+
+| suite | invocation | result |
+|---|---|---|
+| `apps/dottie` | `pytest` (testpaths=tests) | **159 passed / 36 failed / 3 errors** ⛔ |
+| `apps/ava-factory` | `pytest tests` (no testpaths declared) | **485 passed / 37 skipped** ✅ |
+| `apps/scout-cli` | `pytest` | **130 passed** ✅ |
+| `packages/ava-skills` | `pytest` (testpaths=skills,tests) | **80 passed** ✅ |
+| `packages/personal-graphify` | `pytest` | **64 passed** ✅ |
+| `packages/ava-open-harness` | `pytest` | **30 passed / 10 skipped** ✅ |
+| webapp (Node) | `node *.test.mjs` | **35 passed** ✅ (8 api / 10 history / 8 poll / 9 store) |
+| `apps/scout-rtx` | — | **NOT VERIFIABLE** — `typer` absent from both venvs |
+
+- **824 passing in the GREEN suites** — 5 Python (ava-factory 485, scout-cli 130, ava-skills
+  80, graphify 64, harness 30) **+ 35 Node**. **983 passing overall**, counting the 159 that
+  pass inside the one red suite. *(Arithmetic checked rather than eyeballed: I first wrote
+  "824 across 6 Python suites", which double-counts the Node row into the Python count and
+  is wrong on both the label and the scope. In this entry of all entries.)*
+- **The one ⛔ is queue item 9** and is structural, pre-existing, and NOT fixable by a patch:
+  two packages are both named `dottie`, so only one is importable per process. It needs a
+  rename decision from the operator.
+- `apps/scout-rtx` is stated as **unknown, not green** — one `uv pip install typer` in the
+  right env would settle it. Reporting it either way without measuring is what this whole
+  sequence of entries exists to stop.
+- **Invocation matters and is now recorded per row**, because three of the seven packages
+  declare no `testpaths` at all (`ava-factory`, `scout-rtx`, `personal-graphify`) and one
+  declares a broader one than `tests` (`ava-skills`). There is no single command that is
+  correct everywhere — which is exactly why my one-size command produced a wrong number.
+
 ### 5.3.R84 — ran R83's follow-up; the second wrong number on my board was mine
 
 - [x] **Collection-diffed every remaining suite (17:55).** dottie 200/200, scout-cli 130/130,
@@ -3348,7 +3382,11 @@ most valuable catch so far:
   ava-factory (`No module named 'ava'`) and the `torch`/`zstandard` gaps in the root venv.
   **Recorded because reporting those as breakage would have been a false alarm** — the exact
   §5.3.R71 mistake, and I nearly made it again one tick after writing it down.
-- [x] **THE CORRECTED BOARD** (each run from its own root; torch suites need `apps/dottie/.venv`):
+- [x] **THE CORRECTED BOARD** — ⚠ **SUPERSEDED, see §5.3.R85 for the live one.** Two rows
+  below are now known wrong: `ava-skills` 66 was an under-count (my invocation overrode the
+  project's `testpaths`; real figure **80**), and `ava-factory` 461 predates the 15 tests
+  that were never running plus 9 added since (**485**). Kept unedited as the record of what
+  was measured at 16:20. (each run from its own root; torch suites need `apps/dottie/.venv`):
   - `apps/dottie` — **159 passed / 36 failed** ⛔ (queue item 9, structural, pre-existing)
   - `apps/ava-factory` — **461 passed / 37 skipped** ✅ (TODOS said "431"; stale)
   - `apps/scout-cli` — **130 passed** ✅
