@@ -83,11 +83,21 @@ IDEATION_SCHEMA = {
 
 IMPLEMENTATION_SCHEMA = {
     "module_name": "the PyTorch class name (must subclass nn.Module and define forward)",
-    "target_file": "repo-relative path, e.g. ava/models/experimental_routing.py",
+    # Concrete "e.g." values in this schema get copied VERBATIM. Measured 2026-07-20
+    # (TODOS 5.3.R50): 23 of 98 candidates returned this exact example path, and 27 of 86
+    # returned the input_shape example below. That is not harmless -- 670ad9956bab copied
+    # [4, 16, 64], derived seq_len=16 from it, sized a positional table to 16, and crashed
+    # at the real seq of 256. Describe the value; do not hand over a fillable one.
+    "target_file": "repo-relative path naming THIS module, derived from module_name "
+                   "(e.g. ava/models/<your_module_name_lowercased>.py)",
     "code": "complete syntax-valid Python, with imports; a drop-in module",
     "init_kwargs": "JSON object of constructor kwargs to instantiate the module for the dry-run "
                    "(use small dims; {} if none)",
-    "input_shape": "list[int] input shape for the CPU dry-run forward pass, e.g. [4, 16, 64]",
+    "input_shape": "list[int] [batch, seq, hidden] for the CPU dry-run, chosen for YOUR "
+                   "module and small enough to be fast. NOTE: this is only a probe shape. "
+                   "In training the block runs at seq=256, hidden=256, and it is re-validated "
+                   "at that shape — so nothing in your module may be sized to the numbers you "
+                   "put here. Derive every dimension from x.shape at forward time.",
     "shape_assertions": "how the output shape was kept compatible with the baseline",
 }
 

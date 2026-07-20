@@ -2414,6 +2414,32 @@ most valuable catch so far:
   (`"repo-relative path, e.g. ava/models/experimental_routing.py"`). The model is copying the
   example verbatim. Harmless now, but it is the same class as §5.3.R37: **example text in a
   prompt gets treated as the answer.**
+### 5.3.R50 — the schema's own examples were being copied, and one caused a crash
+
+- [x] **Chased the §5.3.R49 side observation and it is not cosmetic (11:00).** Measured:
+  **23 of 98** candidates returned the exact example `target_file`
+  (`ava/models/experimental_routing.py`), and **27 of 86** returned the exact example
+  `input_shape` (`[4, 16, 64]`).
+- [x] **The harm chain, traced end to end on a real failure:** `670ad9956bab` declared
+  `input_shape: [4, 16, 64]` — **the example, verbatim** — from which it derived
+  `init_kwargs: {seq_len: 16}`, sized `positional_weights` to 16, and raised
+  `AssertionError: seq (256) must match seq_len (16)` on its first training step. The
+  §5.3.R28 sequence probe fixed the **symptom** (validating at the wrong shape). This is the
+  **cause**: the prompt handed the model a fillable value and it filled it in.
+- [x] **Third instance of the same class.** §5.3.R37 (the CODEBASE CONTEXT loss vocabulary,
+  fingerprinted in 7 candidates naming their argument `predictions`), §5.3.R49 (the
+  filename), and now this. **Example text in a prompt is treated as the answer.** A schema
+  must *describe* its values, not supply ones that can be pasted through.
+- [x] Both fields now describe rather than demonstrate. `input_shape` additionally states
+  the truth the model needs: *"this is only a probe shape. In training the block runs at
+  seq=256, hidden=256, and it is re-validated at that shape — so nothing in your module may
+  be sized to the numbers you put here."* The test also asserts the **correction** prompt
+  does not reintroduce the example, since it renders the same schema (§5.3.R38).
+  Suite 187 passed.
+- [ ] **The generalisable rule for this codebase:** any `e.g.` inside a JSON schema the model
+  fills is a default, not an illustration. Where a concrete value is genuinely needed, make
+  it obviously non-fillable (`<your_module_name_lowercased>`), or state the real constraint
+  instead of a sample of it.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.

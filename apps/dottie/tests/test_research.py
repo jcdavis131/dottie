@@ -818,6 +818,35 @@ def test_correction_prompt_carries_the_same_constraints_as_the_first_attempt():
         assert key in cor
 
 
+def test_schema_does_not_hand_the_model_fillable_example_values():
+    """Concrete "e.g." values in the schema get copied verbatim, and it caused a crash.
+
+    TODOS §5.3.R50. Measured: 23 of 98 candidates returned the exact example target_file
+    (`ava/models/experimental_routing.py`), and 27 of 86 returned the exact example
+    input_shape (`[4, 16, 64]`). The second is not cosmetic — 670ad9956bab copied that
+    shape, derived `seq_len: 16` from it, sized a positional table to 16, and raised
+    `AssertionError: seq (256) must match seq_len (16)` on its first training step.
+
+    Third instance of the same class: §5.3.R37 (loss vocabulary in CODEBASE CONTEXT) and
+    §5.3.R49 (the filename) were the others. **Example text in a prompt is treated as the
+    answer**, so a schema must describe its values rather than supply fillable ones.
+    """
+    h = {"hypothesis_name": "G", "theoretical_intuition": "t", "mathematical_formulation": "m",
+         "pytorch_implementation_strategy": "s", "expected_outcome": "e",
+         "search_domain": "attention", "learnable_parameters": "gate: nn.Linear(h, h)"}
+    p = prompts.implementation_prompt(h)
+
+    assert "e.g. ava/models/experimental_routing.py" not in p
+    assert "e.g. [4, 16, 64]" not in p
+    # and the replacement tells the model the shape it will ACTUALLY run at
+    assert "seq=256, hidden=256" in p
+    assert "sized to the numbers you put here" in p
+
+    # the correction prompt renders the same schema keys, so it must not reintroduce them
+    cor = prompts.correction_prompt("code", "Validation failed at level 'dry_run'")
+    assert "experimental_routing" not in cor
+
+
 def test_implementation_prompt_does_not_teach_loss_shape():
     """The prompt that writes the CODE must not describe how to write a loss.
 
