@@ -329,6 +329,28 @@ def test_corrector_failure_is_distinguished_from_a_bad_candidate(led, tmp_path):
     assert "ollama connection reset" in failure
 
 
+def test_unloadable_candidate_fails_training_instead_of_retrying_forever(led, tmp_path):
+    """A candidate whose own module will not load must not sit in ready_for_training.
+
+    run_training treats ok=False as retryable infrastructure and leaves the experiment
+    in ready_for_training. But the module loaded here IS the candidate's artifact, so a
+    load/construct failure reproduces identically on every retry -- the experiment would
+    be picked up forever and block the queue behind it. factory_trainer.py already draws
+    this line (candidate fault -> ok=True/stable=False -> FAILED_TRAINING); this path was
+    left inconsistent with it. Observed frequency at the time of the fix: zero. Latent.
+    """
+    _implement(led, tmp_path, make_policy())
+    e = led.next_in_state(READY_FOR_TRAINING)
+    # corrupt the written module so importing it raises, exactly as a bad candidate would
+    for f in (tmp_path / "ws" / e.id).glob("*.py"):
+        f.write_text("this is not valid python (", encoding="utf-8")
+
+    r = train.run_training(led, config={"steps": 5, "seeds": [0]})
+    assert r["state"] == FAILED_TRAINING                       # not left retryable
+    assert led.get(e.id).state == FAILED_TRAINING
+    assert led.next_in_state(READY_FOR_TRAINING) is None       # queue is not blocked
+
+
 def test_full_cycle_promote(led, tmp_path):
     r = _implement(led, tmp_path, make_policy())
     assert r["state"] == READY_FOR_TRAINING and r["attempts"] == 0

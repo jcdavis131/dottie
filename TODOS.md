@@ -1021,6 +1021,31 @@ most valuable catch so far:
   mode (77% of genuine deaths) needs a different attack than prompt text — most likely
   giving the corrector the actual tensor shapes at the failure point instead of a raw
   traceback.
+- [x] **LATENT QUEUE-BLOCKER FIXED in `train.py` (06:59)** — found by auditing broad
+  `except Exception` handlers for more of the same misfiling the corrector bug showed.
+  `run_training` treats `ok=False` as *retryable infrastructure* and leaves the
+  experiment in `ready_for_training`. But `_load_module` / `_select_module_class` /
+  `Proxy()` all operate on **the candidate's own artifact**, so a failure there
+  reproduces identically on every retry: the experiment would be re-picked forever and
+  **block every experiment queued behind it**. `factory_trainer.py` already draws this
+  line correctly (candidate fault -> `ok=True, stable=False` -> FAILED_TRAINING); I made
+  that fix there earlier tonight and did not carry it across. `train.py` was the odd one
+  out.
+  - **Observed frequency: ZERO.** Nothing is in `ready_for_training` now and no record
+    shows it. This is latent, not active, and I am fixing it on consistency grounds — the
+    semantics were already decided, and the failure mode (silent queue stall) is bad
+    enough that waiting for it to happen is the wrong trade. That is a different judgement
+    from the `class_name` pin, which I declined: there the correct behavior was genuinely
+    unclear and the blast radius was one wasted attempt.
+  - Regression test verified red before (`assert 'ready_for_training' == 'failed_training'`)
+    / green after. Full suite 152 passed.
+- [ ] NEXT: **improve dry_run correction feedback — but NOT until constraint-8 is
+  measurable.** dry_run is 77% of genuine failures, and the likely lever is handing the
+  corrector the actual tensor shapes at the failure point instead of a raw traceback.
+  **Deliberately held**: constraint-8 targets the same metric and is still at n=2, so
+  shipping a second intervention now would make the two permanently inseparable. Order:
+  let the post-restart bucket reach ~20 genuine failures, read constraint-8's effect,
+  *then* build this. Noted so a later tick does not "helpfully" ship it early.
 - [ ] SUPERSEDED, kept for the record: did the constraint-8 refinement reduce dry_run?
   It was written to attack the dominant failure mode (77% of genuine deaths). Compare
   dry_run share of genuine failures for experiments created before vs after the prompt

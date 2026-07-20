@@ -100,7 +100,15 @@ def micro_benchmark_trainer(experiment: Experiment, config: Dict[str, Any]) -> T
         module = _load_module(experiment.workspace, impl.get("module_name"))
         Cls = _select_module_class(module, impl.get("module_name"), torch)
     except Exception:
-        return TrainResult(False, False, detail=traceback.format_exc())
+        # ok=True/stable=False -> FAILED_TRAINING (the candidate's fault), NOT ok=False
+        # (retryable infrastructure). The module being imported here IS the candidate's
+        # own artifact, so a load or class-selection failure reproduces identically on
+        # every retry: as ok=False the experiment stays ready_for_training forever and
+        # blocks the queue behind it. factory_trainer.py already draws the line this way;
+        # this path was left inconsistent with it.
+        return TrainResult(True, False, metrics={"integration": "proxy_micro_benchmark",
+                                                 "detail": "candidate module not loadable"},
+                           detail=traceback.format_exc()[-1500:])
 
     finals: List[float] = []
     n_params = None
@@ -126,7 +134,11 @@ def micro_benchmark_trainer(experiment: Experiment, config: Dict[str, Any]) -> T
         try:
             net = Proxy()
         except Exception:
-            return TrainResult(False, False, detail=traceback.format_exc())
+            # Same reasoning: Cls(**init_kwargs) raising is the candidate's __init__
+            # failing, which no retry can fix.
+            return TrainResult(True, False, metrics={"integration": "proxy_micro_benchmark",
+                                                     "detail": "candidate not constructible"},
+                               detail=traceback.format_exc()[-1500:])
         if n_params is None:
             n_params = sum(p.numel() for p in net.parameters())
         opt = torch.optim.Adam(net.parameters(), lr=lr)
