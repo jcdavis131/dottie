@@ -775,11 +775,20 @@ independent reasons, both from the bundle's own numbers/code:**
   measured at 03:37, ledger frozen 37 min, Ollama idle, process at ~0 CPU. A stall, not a
   failure to exit. Likely a blocking call that never returns (the 1800 s Ollama read
   timeout is the prime suspect) or a deadlock in the drain loop.
-  **Fixes worth doing** (none applied — these need your call): (a) a **watchdog**: if the
-  ledger shows no state change for N minutes, log it and exit non-zero so the hourly
-  trigger restarts a fresh daemon; (b) drop `DOTTIE_OLLAMA_READ_TIMEOUT_S` to ~600 s so a
-  hung generate self-heals in minutes; (c) emit a flushed heartbeat line each loop pass so
-  a stall is visible in `run.log` instead of requiring a ledger query.
+  **Fixes**: (a) [ ] a **watchdog**: if the ledger shows no state change for N minutes,
+  log it and exit non-zero so the hourly trigger restarts a fresh daemon (your call —
+  needs a threshold that won't kill a legitimately long factory train);
+  (b) [ ] drop `DOTTIE_OLLAMA_READ_TIMEOUT_S` to ~600 s so a hung generate self-heals in
+  minutes instead of 30 (your call — a slow CPU generate legitimately takes minutes);
+  (c) [x] **APPLIED 04:04 — heartbeat + start lines.** And a **4th correction to my own
+  analysis**: I claimed `run.log` was useless because Python block-buffers stdout. WRONG —
+  **every `print` in the loop already passes `flush=True`.** The real reason for 40 minutes
+  of silence is structural: the `idle` branch printed *nothing at all*, and a long action
+  prints only on COMPLETION, so "idle" and "stalled" looked identical. Now: an idle
+  heartbeat every ~5 min carrying `counts`, and a `{"phase": "start"}` line before every
+  real action — so a `start` with no matching completion is the visible signature of the
+  stall that cost an hour of diagnosis tonight. 35/35 tests green; the new daemon at 04:05
+  picks it up.
 
 - [ ] ~~§5 ROOT CAUSE (03:42) — worker processes finish their work but never EXIT~~
   **(SUPERSEDED by the correction above — the process-never-exits framing was wrong for

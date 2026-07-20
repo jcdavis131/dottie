@@ -221,6 +221,7 @@ def cmd_run(args) -> int:
     backoff = float(args.idle_seconds)
     consecutive_errors = 0
     actions = 0
+    idle_passes = 0
     while args.max_actions == 0 or actions < args.max_actions:
         actions += 1
         action = _choose_action(led.counts(), now=time.time(), last_ideate_ts=last_ideate,
@@ -228,8 +229,23 @@ def cmd_run(args) -> int:
         rec: Dict[str, Any] = {"ts": time.time(), "action": action}
         try:
             if action == "idle":
+                # Heartbeat every ~5 min of idling. Without this an idle daemon is
+                # indistinguishable from a STALLED one in run.log: both print nothing.
+                # (Measured 2026-07-20: 40 min of silence cost an hour of diagnosis —
+                # stdout was never the problem, every print already flushes.)
+                idle_passes += 1
+                if idle_passes % max(1, int(300 / max(args.idle_seconds, 1))) == 0:
+                    print(json.dumps({"ts": time.time(), "action": "idle",
+                                      "idle_s": round(idle_passes * args.idle_seconds),
+                                      "counts": led.counts()}), flush=True)
                 time.sleep(float(args.idle_seconds))
                 continue
+            idle_passes = 0
+            # A start line makes a BLOCKED action visible: a "start" with no matching
+            # completion is the signature of the stall this loop hit tonight (an Ollama
+            # generate that never returned inside the 1800 s read timeout).
+            print(json.dumps({"ts": time.time(), "action": action, "phase": "start"}),
+                  flush=True)
             if action == "evaluate":
                 rec["result"] = evaluate.run_evaluation(led)
                 if rec["result"] and rec["result"].get("state") == "sota":
