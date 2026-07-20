@@ -125,6 +125,17 @@ Then §1 fires automatically (#17 armed on the monitor).
     did NOT survive the fork's termination (TaskList empty — watches die with their
     session, same lesson as the machine-move at 00:40). New watch: chat_final.pt /
     container exit / crash signatures, 60s poll.
+    **THROUGHPUT UNDER FLAKING — MEASURED ~03:20 (this is the real ETA)**: two
+    CUBLAS/CUDA crashes 18.5 min apart (ts 1784529492 step 15, ts 1784530599 step 23),
+    each costing ~3 min of boot + every step since the last checkpoint. Net rate:
+    ~9 steps per 18.5-min cycle ≈ **29 steps/h** (cadence 8) vs ~18 steps/h had the
+    cadence stayed 15 — the ratchet is measurably net-positive but the honest ETA for
+    the remaining ~176 steps is **~6h (≈09:15)**, NOT 05:00. Both crash traces sit in
+    the gradient-checkpointing recompute path under bf16 GEMM at 45W/780MHz.
+    **THE FIX IS PHYSICAL**: full power would likely remove both the flakes and the
+    3-5x clock penalty → ~1-1.5h. No mid-run experiments (micro-batch, ckpt off) are
+    being attempted unattended: the directive was monitor-to-completion, and an
+    unmeasured recipe change mid-flight would poison the endpoint measurement.
     **MONITORING NOW TICK-DRIVEN (~03:05)**: three background watches were externally
     killed in a row — treating that as deliberate and not re-arming. The 3-min loop
     itself polls each tick: step_60.pt → run 48w confirmation gate; chat_final.pt →
