@@ -1,5 +1,6 @@
 ---
 name: jspace-context-engine
+version: 1.0.0
 description: Build the single-CLI context payload — empty tool registry, scout-only text manifest, forge as the sole expansion path
 triggers:
 - context
