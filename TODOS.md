@@ -68,12 +68,21 @@ Then §1 fires automatically (#17 armed on the monitor).
       MOCK/BLUEPRINT ONLY — its own docstring says every number is fabricated and
       `--mode real` refuses to run. Do NOT gate on it. `evals.run_harness` is real but
       covers base/chat probes only — no tool-routing metric exists yet anywhere.
-    - 1.2.a (new) **Write `evals/tool_gate.py` first** — the model API supports it
-      directly: `model(input_ids, task_type)` returns `out["jspace"]["route_probs"]`
-      (order system1/system2/critic/planner; tool_selection target [.10,.35,.10,.45] →
-      planner argmax). Measure per ckpt {base_final, tool_final}: (1) planner-argmax
-      rate on held-out tool_selection samples, (2) held-out CE on tool_use mix,
-      (3) held-out CE on general mix. Run inside the trainer image (GPU free post-run).
+    - 1.2.a [x] **`evals/tool_gate.py` SHIPPED + smoke-verified in-container** (CPU,
+      base-vs-base, exit-code semantics 0/1/3). Read-only manifest access, val-split
+      windows, planner-argmax + held-out CE per task_type, JSON verdict to /reports.
+    - 1.2.a' **MEASURED CORPUS FINDING (2026-07-20 01:10, reframes T9.3)**: the packed
+      corpus contains ZERO tool_selection-labeled docs — val census: 0 docs; full
+      metrics history: 0 tool batches ever trained (943 deliberate / 421 automatic /
+      81 temporal / 3 safety). The "tool branch" trained on the generic mix; only its
+      router_bias prior + freeze pattern differ from base. Tool_use L2/L3 sources
+      arrive with the 2.1 rebuild — AFTER this run. Therefore:
+      * When tool_final lands: run `python -m evals.tool_gate` (GPU, defaults) →
+        honest NONREGRESSION-ONLY verdict (general CE ≤2% + routing sanity).
+      * The FULL tool gate (capability) is gated on 2.1 + tool-labeled val data, then
+        continued branch training (or re-fork) on real tool batches.
+      * DECISION for human: T9.4 chat branch has the same question — check the chat
+        mix's task labels exist in the packed corpus BEFORE burning 90 min of GPU.
     - 1.2.b Compare tool-branch vs `base_final.pt` on: tool_selection routing accuracy
       (router argmax → planner on tool prompts), held-out LM loss on tool_use mix,
       frontier-rubric tool categories.
