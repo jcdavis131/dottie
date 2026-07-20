@@ -87,7 +87,7 @@ def build_status(ledger: Ledger, *, recent: int = 25) -> Dict[str, Any]:
         # of the block it replaced (TODOS §5.3.R90).
         capacity_confound = _baseline_capacity_caveat(ledger, baseline)
         if capacity_confound:
-            base_kind = ("promoted_capacity_confounded" if base_kind == "promoted"
+            base_kind = ("promoted_capacity_flagged" if base_kind == "promoted"
                          else base_kind)
             base_caveat = "\n".join(x for x in (base_caveat, capacity_confound) if x)
     experiments: List[Dict[str, Any]] = []

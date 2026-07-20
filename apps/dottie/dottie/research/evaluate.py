@@ -162,9 +162,14 @@ def _baseline_capacity_caveat(ledger: Ledger, baseline: Baseline) -> Optional[st
             # block was removed ENTIRELY. It was not -- 256 parameters remain. A caveat about
             # overstated claims must not overstate.
             f"{replaced:,} parameters ({fraction:.2%} of the block it replaced). At a fixed "
-            "step budget a smaller model can reach a lower loss for that reason alone, so "
-            "this bar partly measures capacity rather than the idea. Treat deltas against it "
-            "as provisional until a capacity-matched control is run.")
+            "step budget a smaller model CAN reach a lower loss for that reason alone, so "
+            "this bar MAY partly measure capacity rather than the idea — only a capacity-"
+            "matched control can tell, and it is cheap: rerun the swap with a zero-parameter "
+            "pass-through and compare. Until then, treat deltas against this baseline as "
+            "provisional. (Worth knowing: the first time this was actually run — TODOS "
+            "§5.3.R91 — the confound was REFUTED. Removing the block made the loss WORSE, "
+            "and the parameter-light candidate won on merit. A flag is a question, not a "
+            "verdict.)")
 
 
 def _spread(metrics: Dict[str, Any]) -> Optional[Dict[str, float]]:
@@ -315,7 +320,7 @@ def run_evaluation(ledger: Ledger, *, require_stable: bool = True,
     if capacity_confound:
         # Distinct from `promoted_contaminated`, which means the source no longer VALIDATES.
         # This source validates cleanly and still won partly by shrinking the model.
-        base_kind = "promoted_capacity_confounded" if base_kind == "promoted" else base_kind
+        base_kind = "promoted_capacity_flagged" if base_kind == "promoted" else base_kind
         base_caveat = "\n".join(x for x in (base_caveat, capacity_confound) if x)
     promote = improved and (stable if require_stable else True) and bool(significant)
     verdict = {
