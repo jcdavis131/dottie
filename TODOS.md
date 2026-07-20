@@ -2509,6 +2509,36 @@ most valuable catch so far:
   time it happens you get `insufficient_memory: 110 MB free, need 1200` in run.log instead
   of an unexplained gap. That is also the thread joining tonight's outage, the crash-loop and
   the GPU throttling: this box has been running a workload it does not have headroom for.
+### 5.3.R53 — END-TO-END smoke test through the real CLI: everything holds
+
+- [x] **Used the window while training is stopped to test what no unit test covers (11:25):
+  the CLI wiring itself.** §5.3.R33 established that no test invokes the research CLI, and
+  §5.3.R32 showed what hides there. Ran a full `seed-baseline → train → evaluate → promote`
+  on a temp `--data-dir`, then deleted it. Nothing touched the live ledger.
+- [x] **The §5.3.R49 trap, reproduced deliberately and defeated.** I planted a
+  `candidate_000000.py` that sorts FIRST and raises `RuntimeError('STALE SCRATCH FILE WAS
+  LOADED')`. Training **succeeded** — so the loader now picks the real module through the
+  real CLI, not just in the unit test.
+- [x] **The evaluation chain works, and each piece announced itself correctly:**
+  - promoted to `sota`, `significant: True`, `improved: True`;
+  - **hand-seeded caveat fired** (the baseline was seeded, not calibrated);
+  - **one-sample fallback declared its own weakness** — *"the baseline records NO spread"*
+    (§5.3.R6);
+  - **promotion carried the spread onto the baseline**: `metric_sem 0.0311, n=2`, which is
+    what enables the two-sample test for the NEXT candidate (§5.3.R6);
+  - **status then reported `provenance: promoted` with no warning** — correct, because the
+    new baseline came from an experiment that passes the current validator, so the
+    contamination check found it clean.
+- [x] **The promotion bundle leads with its caveats** (§5.3.R31), and the generated
+  `ab_nano.py` parses, passes an **Experiment**, runs three seeds and can print WITHIN NOISE
+  (§5.3.R32). Both verified on a real generated bundle rather than a fixture.
+- [x] **Memory discipline held throughout.** I aborted the LLM half: available RAM was
+  **2,364 MB** and falling, and loading even the 1.5B model would have pushed toward the
+  danger zone immediately before the operator's restart. Ran only the stages needing no
+  model. Memory after: **2,464 MB** — unchanged.
+- [ ] Still untested end-to-end: `ideate` and `implement` (both need Ollama, ~5 GB) and
+  `calibrate-baseline` (needs the factory + corpus). Those wait for headroom — §5.3.R34
+  records the safe way to do the latter.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
