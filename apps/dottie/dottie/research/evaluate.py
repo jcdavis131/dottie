@@ -150,7 +150,15 @@ def run_evaluation(ledger: Ledger, *, require_stable: bool = True,
         significant, sig_note = None, "no per-batch series recorded — significance unmeasurable"
     else:
         significant = abs(delta) >= SIGNIFICANCE_SEM * sp["sem"]
-        sig_note = (f"|delta| {abs(delta):.5g} vs {SIGNIFICANCE_SEM}×SEM "
+        # `significant` is direction-AGNOSTIC (it tests |delta| against noise), so a
+        # candidate that is significantly WORSE also sets it true. Spell the direction out
+        # here: this string is what lands in the write-up and the promotion bundle, where
+        # a skimmer could otherwise read "significant: true" as good news.
+        if significant:
+            verdict_word = "BETTER than baseline" if improved else "WORSE than baseline"
+        else:
+            verdict_word = "within noise of baseline"
+        sig_note = (f"{verdict_word}: |delta| {abs(delta):.5g} vs {SIGNIFICANCE_SEM}×SEM "
                     f"{SIGNIFICANCE_SEM * sp['sem']:.5g} (n={sp['n']}, std={sp['std']:.5g})")
 
     # Recorded, not gated on: a swap that DELETES parameters can "win" at fixed steps

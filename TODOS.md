@@ -514,12 +514,15 @@ field shipped tonight, correctly populated:
 ```
 Rejected correctly: delta **+0.45377** (worse than the 5.60506 baseline). Provenance
 resolved to `promoted` — right, since the current baseline came from MLBR's promotion.
-- [ ] SMALL CLARITY ISSUE this exposes: `significant: true` here means "the difference
-  exceeds noise", NOT "significantly better" — it is direction-agnostic (`|delta|`).
-  Paired with `improved: false` the meaning is unambiguous, and `promote` requires BOTH,
-  so behaviour is right. But in a promotion bundle a skimmer could misread it. Consider
-  renaming to `beyond_noise`, or making the significance string say "significantly WORSE"
-  when `improved` is false.
+- [x] **FIXED 04:23 (message only, schema untouched)**: `significant: true` is
+  direction-AGNOSTIC — it tests `|delta|` against noise, so a candidate that is
+  significantly *worse* also sets it true, which reads as good news to a skimmer of a
+  promotion bundle. The `significance` string now leads with the direction. Verified by
+  replaying the real numbers: the 04:11 live verdict → *"WORSE than baseline: |delta|
+  0.45377 vs 2.0×SEM …"*, MLBR's false SOTA → *"within noise of baseline: |delta|
+  0.01476 …"*, and a clear win → *"BETTER than baseline: …"*. 35/35 tests green.
+  Renaming the field itself to `beyond_noise` is still open — that IS a schema change,
+  so it stays your call.
 
 ### 5.3.R1 — the loop kept working through the outage (audited 03:03)
 
