@@ -108,6 +108,16 @@ def _caveat_block(verdict: Dict[str, Any]) -> List[str]:
     if "candidate-only SEM" in sig:
         lines.append("> **WEAK SIGNIFICANCE TEST** — the baseline records no spread, so it "
                      "was treated as an exact point; the real bar is higher than it looks.")
+    # The R93 miss surfaced here, not just in the significance prose. A verdict whose spread
+    # came from a SINGLE run's batches cannot see run-to-run variance — the variance that
+    # actually decides these calls. Keyed off the structured field, not the prose, so a
+    # reworded significance string can never silently drop this warning.
+    from dottie.research.evaluate import _WITHIN_RUN_SERIES
+    if verdict.get("sem_series") in _WITHIN_RUN_SERIES:
+        lines.append("> **WITHIN-RUN SPREAD ONLY** — significance rests on one run's "
+                     "batch-to-batch noise, which is BLIND to run-to-run variance (TODOS "
+                     "§5.3.R93: a candidate cleared this bar at 4.4 SEM and was then worse at "
+                     "every seed). Run `ab_nano.py` in this bundle before promoting.")
     if not lines:
         return []
     return ["> ### Read this before promoting", *lines, ""]

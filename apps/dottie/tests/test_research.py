@@ -1550,6 +1550,40 @@ def test_promotion_bundle_leads_with_the_caveats(led, tmp_path):
     assert head.index("CONTAMINATED BASELINE") < head.index("- metric:")
 
 
+def test_promotion_bundle_flags_within_run_only_significance(led, tmp_path):
+    """A promotion resting on within-run spread must say so in the 'read this' box.
+
+    TODOS §5.3.R93: within-run batch spread is blind to run-to-run variance, and a candidate
+    cleared that bar at 4.4 SEM then lost at every seed. The significance PROSE already
+    carries the warning, but the caveat box — the part a human actually reads before
+    promoting — did not surface it as its own line the way it does WITHIN NOISE and CAPACITY.
+    Keyed off the structured `sem_series`, so rewording the prose can never drop it.
+    """
+    def bundle_for(sem_series):
+        e = led.create(HYP)
+        led.transition(e.id, READY_FOR_TRAINING, implementation={"code": GOOD_CODE},
+                       workspace=str(tmp_path))
+        led.transition(e.id, EVALUATION_PENDING, train_metrics={"proxy_loss": 1.0})
+        led.transition(e.id, SOTA, eval_verdict={
+            "promote": True, "significant": True,
+            "significance": "BETTER than baseline: |delta| 0.5 vs 2.0x SE 0.02",
+            "baseline_provenance": "promoted", "baseline_caveat": None,
+            "sem_series": sem_series})
+        promote.build_promotion(led, e.id, out_root=tmp_path / f"p_{sem_series}")
+        return (tmp_path / f"p_{sem_series}" / e.id / "PROMOTION.md").read_text(encoding="utf-8")
+
+    # within-run series -> the caveat box appears and names the tool that settles it.
+    within = bundle_for("eval_ce_per_batch")
+    assert "Read this before promoting" in within
+    assert "WITHIN-RUN SPREAD ONLY" in within
+    assert "ab_nano.py" in within
+
+    # cross-seed series -> no such warning; an otherwise-clean verdict stays clean.
+    cross = bundle_for("per_seed")
+    assert "WITHIN-RUN SPREAD ONLY" not in cross
+    assert "Read this before promoting" not in cross
+
+
 def test_promotion_bundle_adds_no_caveats_to_a_clean_verdict(led, tmp_path):
     """An honest result must not be padded with reassurance it did not earn."""
     e = led.create(HYP)
