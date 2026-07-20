@@ -115,6 +115,58 @@ def _baseline_contamination(ledger: Ledger, baseline: Baseline) -> Optional[str]
             "an improvement. Re-seed the baseline before trusting any promotion.")
 
 
+#: A swap is treated as capacity-confounded when it removed at least this fraction of the
+#: block it replaced. Half is a deliberate, statable line: below it the swap is plausibly a
+#: redesign, above it the model is simply smaller and a fixed-step win partly measures that.
+_CAPACITY_REMOVAL_FRACTION = 0.5
+
+
+def _baseline_capacity_caveat(ledger: Ledger, baseline: Baseline) -> Optional[str]:
+    """Did the experiment that SET this baseline win by DELETING capacity?
+
+    ``_baseline_contamination`` asks whether the source experiment still passes the
+    validator. That catches degenerate no-ops (MLBR) and nothing else — a candidate can pass
+    every gate cleanly and still have won for a reason unrelated to its idea.
+
+    Measured 2026-07-20 (TODOS §5.3.R86/R90): the live baseline ``factory_lm_loss 5.54404``
+    was set by ``5a7232ffea24``, which replaced a 787,072-parameter block with 256 parameters
+    — it removed **99.97% of the block** — and passes the validator outright. So
+    ``_baseline_contamination`` returns clean and the status snapshot reported
+    ``caveat: null``: a bar set by deleting three quarters of a million parameters, presented
+    to the operator as an ordinary promoted baseline.
+
+    factory_trainer.py has recorded ``block_param_delta`` all along, and its own comment says
+    a parameter-light candidate "can 'win' at fixed steps for that reason alone (MLBR did)".
+    The number existed; nothing ever read it back at baseline level. This reads it.
+
+    RECORDS, never blocks — same contract as ``_baseline_contamination``. Whether a
+    capacity-confounded baseline should halt the loop is the operator's call. Stating the
+    fact is not: the delta is real provenance whether or not the win turns out to be."""
+    if not baseline.experiment_id:
+        return None
+    try:
+        src = ledger.get(baseline.experiment_id)
+        metrics = src.train_metrics or {}
+    except Exception:
+        return None                      # absence is reported by _baseline_contamination
+    delta = metrics.get("block_param_delta")
+    replaced = metrics.get("replaced_block_params")
+    if not isinstance(delta, int) or not isinstance(replaced, int) or delta >= 0 or replaced <= 0:
+        return None
+    fraction = abs(delta) / replaced
+    if fraction < _CAPACITY_REMOVAL_FRACTION:
+        return None
+    return (f"CAPACITY-CONFOUNDED BASELINE — the experiment that set it "
+            f"({baseline.experiment_id}, {src.name}) REMOVED {abs(delta):,} of "
+            # .2% not .1%: 786,816/787,072 rounds to "100.0%", which would state that the
+            # block was removed ENTIRELY. It was not -- 256 parameters remain. A caveat about
+            # overstated claims must not overstate.
+            f"{replaced:,} parameters ({fraction:.2%} of the block it replaced). At a fixed "
+            "step budget a smaller model can reach a lower loss for that reason alone, so "
+            "this bar partly measures capacity rather than the idea. Treat deltas against it "
+            "as provisional until a capacity-matched control is run.")
+
+
 def _spread(metrics: Dict[str, Any]) -> Optional[Dict[str, float]]:
     """Sample std + standard error of the mean from a recorded per-batch/per-seed series."""
     for key in _SERIES_KEYS:
@@ -259,6 +311,12 @@ def run_evaluation(ledger: Ledger, *, require_stable: bool = True,
     if contamination:
         base_kind = "promoted_contaminated"
         base_caveat = "\n".join(x for x in (base_caveat, contamination) if x)
+    capacity_confound = _baseline_capacity_caveat(ledger, baseline)
+    if capacity_confound:
+        # Distinct from `promoted_contaminated`, which means the source no longer VALIDATES.
+        # This source validates cleanly and still won partly by shrinking the model.
+        base_kind = "promoted_capacity_confounded" if base_kind == "promoted" else base_kind
+        base_caveat = "\n".join(x for x in (base_caveat, capacity_confound) if x)
     promote = improved and (stable if require_stable else True) and bool(significant)
     verdict = {
         "promote": promote, "improved": improved, "stable": bool(stable),

@@ -75,12 +75,21 @@ def build_status(ledger: Ledger, *, recent: int = 25) -> Dict[str, Any]:
     # rejected no-op set it is how the dashboard ends up more confident than the data.
     base_kind, base_caveat = (None, None)
     if baseline is not None:
-        from dottie.research.evaluate import _baseline_contamination, _baseline_provenance
+        from dottie.research.evaluate import (_baseline_capacity_caveat,
+                                              _baseline_contamination, _baseline_provenance)
         base_kind, base_caveat = _baseline_provenance(baseline)
         contamination = _baseline_contamination(ledger, baseline)
         if contamination:
             base_kind = "promoted_contaminated" if base_kind == "promoted" else base_kind
             base_caveat = "\n".join(x for x in (base_caveat, contamination) if x)
+        # A baseline can validate cleanly and still have been won by DELETING capacity.
+        # Without this the snapshot showed `caveat: null` for a bar set by removing 99.97%
+        # of the block it replaced (TODOS §5.3.R90).
+        capacity_confound = _baseline_capacity_caveat(ledger, baseline)
+        if capacity_confound:
+            base_kind = ("promoted_capacity_confounded" if base_kind == "promoted"
+                         else base_kind)
+            base_caveat = "\n".join(x for x in (base_caveat, capacity_confound) if x)
     experiments: List[Dict[str, Any]] = []
     for exp in ledger.list(limit=recent):
         m = exp.train_metrics or {}
