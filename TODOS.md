@@ -1384,5 +1384,12 @@ so what does the *server* do under a 5 s poll? Two problems, one significant.
   cost N walks. A 2–3 s TTL would make it robust regardless of caller behaviour. Left for
   you because it changes freshness semantics on a dashboard whose whole point is honesty
   about staleness.
-- ⚠ Untested against a live server (the fleet is down). The change is type-level and
-  AST-verified, but exercise `/pipeline/status` once the fleet is back.
+- [x] **Coverage gap found and closed (06:03).** The existing suite never *called* these
+  endpoints — `test_server_endpoints.py` only asserted that the string `/pipeline/status`
+  appeared in another response. Added two tests: one asserts the three handlers are not
+  coroutine functions (a regression guard, so nobody reintroduces `async def`), the other
+  actually GETs all three and requires `200` + a non-empty JSON object. **24 passed**
+  (was 22). So the fix is now exercised through the real handler path via TestClient, not
+  just AST-verified — the earlier "untested" caveat is largely retired. A live-server
+  check after the fleet returns is still worth one command, since TestClient does not
+  reproduce real concurrency.

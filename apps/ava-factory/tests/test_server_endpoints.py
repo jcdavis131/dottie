@@ -358,3 +358,34 @@ def test_hot_reload_skips_tmp_and_reloads_under_lock(tmp_path, monkeypatch):
     w1 = float(eng.model.embed.weight[0, 0].item())
     assert w1 != pytest.approx(w0, abs=1e-6)
     eng.stop_hot_reload()
+
+
+def test_status_endpoints_are_threadpooled_not_async(client):
+    """The three status endpoints the consoles poll must be plain `def`.
+
+    They call synchronous collectors (manifest sqlite reads, metrics-file walks, disk
+    probes). Declared `async def`, that work runs ON the event loop and blocks every
+    other request — /chat, /assistant, /health — for its duration, and the Dottie console
+    polls /pipeline/status every 5 s. FastAPI runs a plain `def` handler in a threadpool
+    instead. Regression guard for the 2026-07-20 fix; /network/status already did this
+    correctly via asyncio.to_thread, which is how the oversight was spotted.
+    """
+    import inspect
+
+    import server
+
+    for name in ("pipeline_status", "ecosystem_status", "assistant_status"):
+        fn = getattr(server, name)
+        assert not inspect.iscoroutinefunction(fn), (
+            f"{name} is async def but calls a synchronous collector — it will block the "
+            "event loop for every concurrent request"
+        )
+
+
+def test_status_endpoints_actually_respond(client):
+    """These were never called by the suite before — only asserted as a substring."""
+    for path in ("/pipeline/status", "/ecosystem/status", "/assistant/status"):
+        r = client.get(path)
+        assert r.status_code == 200, f"{path} -> {r.status_code}"
+        body = r.json()
+        assert isinstance(body, dict) and body, f"{path} returned {type(body).__name__}"
