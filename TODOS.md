@@ -1057,6 +1057,28 @@ most valuable catch so far:
     with `10 policy calls exceeds 8` — matching the predicted `5 attempts x 2` exactly.
   - Lesson worth keeping: a red test is not evidence until the *reason* for the red is
     checked. Two of tonight's verifications were nearly satisfied by the wrong exception.
+- [x] **STALL SCARE, RESOLVED AS "JUST SLOW" (07:10)** — an implement ran 17.9 min with
+  no completion line, past the 13.1 min observed max, which is exactly the signature the
+  start-line was added to expose. **It was not a stall.** Evidence before concluding:
+  `llama-server` burned **127 CPU-seconds in 8 wall-seconds** (~16 cores saturated), so it
+  was actively generating. It completed at **1100.8 s (18.3 min)**, 26 s after I looked —
+  a new maximum. The distinction is worth the two commands: a stall needs intervention, a
+  slow run needs to be left alone.
+  - **No slowdown trend, and I am not going to claim one.** n=9 implements, first-half
+    median 489.9 s vs second-half 492.5 s — flat. The spread is 250-1101 s (4.4x), so the
+    new max sits inside ordinary variance for this sample. Revisit at larger n.
+  - **Read-timeout headroom checked, not assumed.** The 1800 s timeout is per model call,
+    not per implement; a single observed call (ideate) is ~99 s and the 1101 s implement
+    spans several calls. Headroom is roughly an order of magnitude, so slow-but-working
+    generates are **not** at risk of being killed and misfiled as `DottiePolicyUnavailable`
+    — which was a live worry given that exact misfiling is 1 of the 7 infra deaths.
+- [x] **MEMORY IS TIGHT AGAIN (07:10): 719 MB available.** Not the 281 MB that killed the
+  WSL VM, but the same direction, and the fleet recovery's GO threshold is 4000 MB. Top
+  consumers: `llama-server` 4,976 MB (qwen3:8b, expected and co-existence-proven), then
+  **my own Claude Code session at ~1,820 MB across two processes** — worth stating plainly
+  since I have been reporting on this box's RAM budget all night while being its
+  second-largest consumer. The queued recovery's projection still holds: unloading the
+  model reclaims ~5 GB, which clears the threshold comfortably.
 - [ ] NEXT: **improve dry_run correction feedback — but NOT until constraint-8 is
   measurable.** dry_run is 77% of genuine failures, and the likely lever is handing the
   corrector the actual tensor shapes at the failure point instead of a raw traceback.
