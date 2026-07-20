@@ -3140,6 +3140,46 @@ most valuable catch so far:
   the stored histories for repeated identical dry_run failures before deciding whether to
   re-derive the class name per attempt or pin the name in the correction prompt.
 
+### 5.3.R78 — measured EVERY suite for the first time; my board had been covering 3 of 11
+
+- [x] **Applied §5.3.R77's lesson to my own reporting (16:20).** I had claimed "dottie 197
+  passed" and it was really 159/36. One wrong measurement means checking the rest, not
+  assuming it was isolated — so I ran **every** suite in the repo. My board covered **3 of
+  11** (dottie, server, webapp); the other 8 I had never once measured.
+- [x] **Half the initial "failures" were MY INVOCATION, not the code.** Running from the repo
+  root gave scout-cli 6 failed / 124 passed; from its own directory, **130 passed**. Same for
+  ava-factory (`No module named 'ava'`) and the `torch`/`zstandard` gaps in the root venv.
+  **Recorded because reporting those as breakage would have been a false alarm** — the exact
+  §5.3.R71 mistake, and I nearly made it again one tick after writing it down.
+- [x] **THE CORRECTED BOARD** (each run from its own root; torch suites need `apps/dottie/.venv`):
+  - `apps/dottie` — **159 passed / 36 failed** ⛔ (queue item 9, structural, pre-existing)
+  - `apps/ava-factory` — **461 passed / 37 skipped** ✅ (TODOS said "431"; stale)
+  - `apps/scout-cli` — **130 passed** ✅
+  - `packages/ava-open-harness` — **30 passed / 10 skipped** ✅
+  - `packages/ava-skills` — 1 failed / 65 → **66 passed** ✅ (fixed, `836504e`)
+  - `packages/personal-graphify` — 5 failed / 59 → **64 passed** ✅ (fixed, `e4e299b`)
+  - webapp Node — **35 passed** ✅ (8 api / 10 history / 8 poll / 9 store) — held exactly
+  - `apps/scout-rtx` — **NOT VERIFIABLE HERE** (`typer` absent from both venvs). Not green,
+    not red. Stated as unknown rather than guessed.
+- [x] **Real bug 1 — `packages/ava-skills`:** the `jspace-context-engine` manifest added by
+  `bc22788` omitted the required `version`, failing the package's own invariant test. Set to
+  **1.0.0**, not the siblings' 2.1.0: the loader already defaults missing versions to 1.0.0,
+  so the skill has been *reporting* 1.0.0 all along — declaring 2.1.0 would have silently
+  changed observable behaviour while appearing to be a docs fix.
+- [x] **Real bug 2 — `pgraphify install` CRASHES on Windows.** `cli.py:477` read the rule
+  template with a bare `read_text()`, which uses the locale codepage (cp1252), and the
+  template contains an em dash → `UnicodeDecodeError` before the command does anything.
+  **A class, not an instance: 21 encoding-less calls** across 4 modules. The reads crash on
+  any non-cp1252 byte; **the writes are worse — they silently EMIT cp1252**, so hooks and
+  `.gitattributes` written on Windows are mojibake everywhere else. `export.py`/`extract.py`/
+  `report.py` already did it correctly, so this was inconsistency, not a decision.
+- [x] The tests carried the *same* omission (31 calls) — which is why two kept failing for
+  the same reason the source had, once the source was fixed. Swept both. This also explains
+  an intermittent `test_incremental` failure: identical cause, surfacing only when tmp
+  content happened to include a non-cp1252 byte. **A flake that was never a flake.**
+- [ ] NOTE: `apps/scout-rtx` needs `typer` before it can be judged at all. One `uv pip
+  install typer` in the right env would move it from unknown to measured.
+
 ### 5.3.R77 — the guard that cleared a stage it could not survive, and a RED suite at HEAD
 
 - [x] **Honoured a standing memory note instead of assuming (16:05).** `dottie-watches-die-
