@@ -443,30 +443,41 @@ THE NIGHT'S HEADLINES — read these before anything below:
    **"factory unreachable"**. NOTE: site code changes are committed but **NOT deployed**
    — the Vercel deploy needs your approval (§7.5).
 
-### YOUR DECISION QUEUE (in order) — rewritten 08:30 2026-07-20 (clock read, not composed)
+### YOUR DECISION QUEUE (in order) — item 0 rewritten 12:30 2026-07-20 (clock read)
 
-> Tonight's loop changed items 5 and 8 materially and added a new blocker at the top.
-> Items 2, 3, 4, 6, 7 are unchanged from the 05:19 version.
+> **Item 0 is new and blocking: training is OFF.** It replaces three stale restart entries
+> (0/0a/0b) that had accreted across three restart cycles and described a state that no
+> longer holds — a queue head telling the reader about restarts that already happened is
+> worse than no queue head. Items 5 and 8 were changed materially by tonight's work; items
+> 2, 3, 4, 6, 7 are unchanged from the 05:19 version.
 
-0. **RESTART THE RESEARCH DAEMON AGAIN — 10 runtime fixes are queued, including the search-space and corrector-constraint fixes (§5.3.R39).** The 08:50:02 restart is done and its window is at n=10/20, but the queued work now outweighs finishing that measurement — see §5.3.R39 for why. Commands in §5.3.R9.
+0. ⛔ **TRAINING IS OFF AND DOCKER IS DOWN. Two commands restore both.**
+   Verified directly at 12:30: scheduled task **`Disabled`**, **0** research processes,
+   `llama-server` not loaded, **~2.3 GB** free, on AC, and the Docker engine down
+   (`dockerd` never started inside the VM — the VM itself is up).
+   ```powershell
+   wsl --shutdown                                    # engine back in ~2 min
+   docker ps --format "{{.Names}}`t{{.Status}}"       # expect 13-14 containers
 
-0a. ~~**RESTART THE RESEARCH DAEMON**~~ — **DONE 08:50:02.** See §5.3.R21 for the verification. (Original text kept below for the record.)
+   .\scripts
+estart_research.ps1                    # research back on, and PROVES it booted
+   ```
+   - **How it got here** (§5.3.R51): the daemon was **crash-looping on memory** — lifetimes
+     105 min then ~9 min, each restart landing on the scheduler's 15-min trigger, dying
+     silently mid-stage at **110 MB free**. A subtask then ran `prepare_fleet_recovery.ps1`,
+     whose step 1 **disables the task by design**, and was classifier-blocked before it could
+     finish. Memory is now clear; the task is simply switched off.
+   - `restart_research.ps1` (§5.3.R56) refuses on low memory or orphaned processes, and waits
+     for the daemon's own `boot` line so it cannot claim a success it did not observe.
+   - **Decide before the engine returns:** `dottie-chat-branch` carries `--restart on-failure`
+     **and** `--resume`, so T9.4 auto-continues from `step_15.pt` the moment Docker is back.
+     Its step-15 gate showed **+2.04% general CE** — the same forgetting mode that failed T9.3.
+     To stop it: `docker update --restart no dottie-chat-branch; docker stop dottie-chat-branch`.
+   - **What restarting picks up:** ~20 runtime commits from tonight, including the trainer
+     loading validator scratch files (§5.3.R49), the memory guard (§5.3.R52), and the
+     sequence probe (§5.3.R28). The two big proposal-pipeline fixes (search space §5.3.R35,
+     corrector constraints §5.3.R38) went live at 10:35 and are already proven to run.
 
-0b. **NEW — RESTART THE RESEARCH DAEMON. Everything below about the loop depends on it.**
-   **13 behaviour-affecting commits** are in and **not running**: the daemon has been on
-   pre-work code since 06:21:54 and never reloads. (Counted, not estimated:
-   `git log --since="2026-07-20 06:21:54" -- apps/dottie/dottie/` returns 14, of which one
-   is docs-only. I first wrote "nine" here from memory and corrected it on checking — the
-   same habit this file exists to stop.) **I tried and the permission classifier blocked process
-   control**, so this one is yours. It touches only the daemon — not WSL, Docker, or the
-   fleet — and costs one in-flight experiment, which stays `pending` and re-runs. Exact
-   commands and the verification (`run.log` should emit a `boot` line carrying `git_sha`) are
-   in **§5.3.R9**.
-   - **Waiting is not neutral.** One queued fix is a live bug: `_DIM_KWARGS` was missing
-     `hidden`, so candidates naming that constructor arg are built at their own default
-     width, handed d_model-wide input, and filed as `failed_training` — **blamed for a
-     mismatch the trainer creates.** Every cycle adds corrupted rows to the table the
-     analysis below draws on.
 1. **Recover the fleet** — `.\scripts\prepare_fleet_recovery.ps1` (prep + GO/NO-GO), then
    `wsl --shutdown`. Nothing else moves until the engine is back. (Memory was 719 MB at
    07:10; the projection still says GO once the model unloads.)
