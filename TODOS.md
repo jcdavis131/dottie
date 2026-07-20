@@ -223,6 +223,17 @@ Then §1 fires automatically (#17 armed on the monitor).
 - [ ] §7: after fleet rebuild, verify the Control Plane source tables show the 30-source
   registry and the new telemetry stream renders.
 
+### Weekly ops sweep (2026-07-20 00:45 — measured, safe actions taken)
+
+- Done: dangling-image prune reclaimed **6.4 GB**; `git gc` run. Disk: 139 GB free.
+- [ ] **Janitor does NOT rotate branch-run checkpoints**: /ckpt/tool = **51 GB** (~29 ×
+  1.76 GB, every step file 50→1110 present; the 15-step crash cadence multiplied this).
+  After tool_final lands + eval gate passes: keep tool_final + last 2 steps, delete the
+  rest (~45 GB back), then extend the janitor's rotation to /ckpt/<branch>/ dirs.
+- [ ] Deferred deliberately: build-cache prune (36.5 GB — it speeds the §2.1 rebuild;
+  prune AFTER 2.1) and `docker image prune -a` (23 GB more — old images are rollback
+  insurance until the rebuilt fleet proves out; prune after 2.2 verification).
+
 ## 9 — Ops discipline (standing)
 
 9.1 Monitors: keep the trainer monitor armed each run; add one for collector
