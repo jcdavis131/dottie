@@ -5,21 +5,33 @@
 > its acceptance criterion.** Work top to bottom; parallelize only where marked ∥.
 > Solo personal project, no connection to employer, built with public/free-tier only.
 
-## Goal state (updated by the 3-min loop, late night 2026-07-19)
+## Goal state (updated by the 3-min loop, ~01:20 2026-07-20)
 
-Every unblocked item is DONE (loop tasks #8-#16 cleared overnight). Critical path
-remains time-gated: tool_final.pt (trainer ~step 250+, ETA morning) -> eval gate 1.2
-(loop-armed: task #17 fires when the monitor does) -> chat branch -> fleet rebuild 2.1
--> DOTTIE_POLICY=factory flip -> arxiviq chat on Dottie's brain.
+THE NIGHT'S HEADLINES — read these before anything below:
 
-Overnight loop outcomes: ideation self-correction retry + collision-proof dumps;
-implementation prompt no longer invites phantom imports; MegaWika ON-BOX verified
-(split was wrong in the staged config — caught by doctrine) with adapter ready for the
-2.1 rebuild; FactoryPolicy live-probed; SOTA promotion bundles wired into the runner;
-arxiviq live-status gist feed replacing the frozen legacy fallback; assistant brain
-badge live. MEASURED: research loop completed its first THREE full hill-climb chains
-(train->measure->honest reject at 6.264/5.747/+1 vs baseline 5.620) — conversion went
-0/7 pre-fix to 2/5+ post-fix; the machinery is proven, now it's a search problem.
+1. **T9.3 DONE but gate FAIL**: tool_final.pt landed clean (step 1144, exit 0) and the
+   REAL eval (evals/tool_gate.py, shipped tonight) measured general CE **+75.1%** vs
+   base (bound ≤2%) — catastrophic forgetting. Root structural cause: the packed corpus
+   has ZERO tool_selection-labeled docs (measured; the old eval command in the TODO
+   pointed at a MOCK harness — also caught tonight). Trainer PARKED; §1.4 has the
+   recommendation awaiting your sign-off (no knob-rerun; 2.1 data → re-fork w/ replay).
+2. **§2.1 fleet rebuild DONE + verified**: 13/13 healthy on reconciled images,
+   30-source registry live; collectors correctly paused on full runway. §2.2 blocked
+   only on the next-run decision.
+3. **Research loop: first real SOTA** — MLBR ratcheted baseline 5.61982→5.60506;
+   2 promotion bundles await your review (data/research/promotions/; MLBR first).
+   Survived TWO outages tonight: 780MHz GPU = 45W power cap from 13% battery (not
+   drivers — check the charger), and Ollama dead-since-reboot (user autostart + no
+   login; PREVENTION item in §8 needs your password). Now converting on qwen3:14b
+   nights: GASA implemented ready_for_training at 01:06 — the same hypothesis the
+   parse_hypotheses key-repair fix rescued from a failed dump.
+4. Also shipped: SOTA sparkline (5.4), last-seen badge (7.4), Factory v2 telemetry
+   tiles (7.3), scout-cli MCP Windows stdin deadlock fix (real bug, was 'flaky'),
+   logic-prover CRLF fix. FOUND: a THIRD split-brain checkout (C:\Users\jcdav\
+   scout-cli shadows the monorepo via the shared venv) — added to §2.3.
+
+YOUR DECISION QUEUE (in order): T9.3 path (§1.4) · MLBR bundle review (§5.3) ·
+Ollama startup task (§8) · §2.3 checkout retirement (daytime, now 3 checkouts).
 
 ## Standing state (context for every step below)
 
