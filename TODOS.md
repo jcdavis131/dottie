@@ -1637,6 +1637,29 @@ most valuable catch so far:
   - **Wait for n ≥ 20 genuine outcomes before reporting any of them.** The constraint-8
     attempt died at n=5 and the honest answer was "not measurable"; the same discipline
     applies here, especially now that I have a stake in these numbers moving.
+### 5.3.R22 — post-restart health check, and a log reader that cannot lie
+
+- [x] **Operational health after the restart: CLEAN (09:00).** Distinct question from "do
+  the gates work", and answerable at n=1: does the newly-live code run at all? **2 records
+  since boot, 0 non-JSON lines, no errors, no warnings.** The daemon booted, began an
+  implement at 08:50:02, and is ~11 min in — normal against a median of 487 s. Nothing I
+  shipped tonight crashes on contact with production.
+- [x] **I raised a false alarm first, and the cause was my own query — for the fourth time
+  tonight.** My scratch filter kept lines with `ts >= boot`, but **non-JSON lines carry no
+  timestamp**, so the condition silently kept every warning in the entire file. 2 post-boot
+  lines rendered as **2,047**, and I briefly believed my own residual-stream probe was
+  flooding the log with `.grad` UserWarnings. It was not; those were historical.
+  - Tally for the night: ANSI codes hiding a real assertion (§5.3.R7), fabricated
+    timestamps, `node --test <dir>` reading as a suite failure (§5.3.R16), and now this.
+    **Every one was a bad read of good output.** The code has been in better shape than my
+    instruments for measuring it.
+- [x] Wrote `apps/dottie/scripts/run_log.py` so the same mistake is not available next time.
+  It handles the three things that break ad-hoc one-liners on this file — it is **UTF-16**,
+  **not every line is JSON**, and **scoping must be by POSITION relative to the last `boot`
+  record, never by timestamp** — with the reasoning in the module docstring.
+  `--since-boot`, `--durations ACTION`, and a boot banner showing `git_sha`/`prompts_sha256`.
+  Verified: reports the 2-record post-boot scope correctly, and `implement` durations across
+  the whole file as n=19, min 60 s, median 487 s, max 1101 s.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
