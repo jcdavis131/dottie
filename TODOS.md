@@ -3140,6 +3140,40 @@ most valuable catch so far:
   the stored histories for repeated identical dry_run failures before deciding whether to
   re-derive the class name per attempt or pin the name in the correction prompt.
 
+### 5.3.R79 — the text-I/O class, measured properly: 360 sites, and ONE setting that fixes all
+
+- [x] **Executed R78's own follow-up (16:40).** Swept every package for encoding-less text I/O.
+- [x] **My first survey was garbage and I caught it before acting.** It counted `.venv/
+  site-packages` — third-party code — reporting "apps/dottie open-w=202". Real number after
+  excluding vendored trees: **0**. A measurement that includes other people's code is not a
+  measurement of this repo.
+- [x] **Then grep itself proved to be the wrong instrument.** It both OVER-counts (multi-line
+  calls that already pass `encoding=` on a continuation line) and UNDER-counts (`read_text(
+  errors="ignore")` — non-empty parens, so `\.read_text\(\)` skips it). Redone as an **AST
+  pass**, which is exact.
+- [x] **THE MEASURED CLASS — 360 first-party sites**, `apps/ava-factory` 267, `scout-cli` 55,
+  `scout-rtx` 22, `dottie` 7, `ava-skills` 6, `harness` 2. Split by direction: **203 writes,
+  157 reads.** The writes are the dangerous half — a read crashes loudly, a write silently
+  EMITS cp1252 that every other platform then reads as mojibake.
+- [x] **`PYTHONUTF8=1` fixes all 360 at once, with no code change — verified.** Repro: a file
+  containing an emoji crashes `read_text()` under the default cp1252 locale
+  (`sys.flags.utf8_mode = 0`, `locale.getencoding() = cp1252` on this box) and reads
+  correctly with UTF-8 mode on. **Validated against four suites under `PYTHONUTF8=1`:**
+  graphify 64, ava-skills 66, scout-cli 130, dottie research 87 — all pass.
+- [ ] **RECOMMENDED, operator's call because it is environment config:** set `PYTHONUTF8=1`
+  for the venvs, the scheduled task, and the Docker images. That is one line per surface
+  versus 360 edits, and it also covers every site added tomorrow. Python 3.15 makes UTF-8
+  mode the default anyway (PEP 686), so this is adopting the future default early, not
+  inventing a local convention.
+- [ ] Keep fixing individual sites opportunistically as belt-and-braces — env config helps
+  only where the env is set, and a script run by hand outside it gets the old behaviour.
+  **Priority order: the 203 writes first**, and among those the ones writing files other
+  tools read (hooks, `.gitattributes`, JSONL data).
+- [x] **A cautionary note on my own sweep:** `e4e299b` claimed "swept both" and had missed
+  three shapes in the very package it was fixing (`a009f4c`). The regex was written for the
+  instance I had seen, not for the class I claimed. **Verifying a class claim needs a tool
+  that understands the syntax, not one that pattern-matches the example.**
+
 ### 5.3.R78 — measured EVERY suite for the first time; my board had been covering 3 of 11
 
 - [x] **Applied §5.3.R77's lesson to my own reporting (16:20).** I had claimed "dottie 197
