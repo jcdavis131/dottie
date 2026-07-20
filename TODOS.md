@@ -590,6 +590,18 @@ independent reasons, both from the bundle's own numbers/code:**
   password at registration, so Claude can't do it) — or switch Ollama to a Windows
   service. Without this, every unattended reboot silently kills the research loop
   until someone logs in.
+- [ ] **§5 runner incident 3 (03:00) — SAME zombie pattern, now understood.** The task
+  sat in state `Running` with NO worker process alive (checked: no python/powershell from
+  that instance), i.e. Task Scheduler still believed a run was in flight. With
+  `MultipleInstances=IgnoreNew` that would have silently refused the 03:05 trigger, just
+  like 02:05. Cleared with `Stop-ScheduledTask` → state Ready, next 03:05 armed.
+  **This is now 2 of 3 hourly ticks lost to the same cause**, so it is a real reliability
+  bug, not bad luck. Fix options for you: (a) set the task's `MultipleInstances` to
+  `Parallel` or `Queue` (the wrapper already holds an exclusive lock, so concurrent
+  workers cannot actually collide — the lock, not the scheduler, should be the guard);
+  (b) add `Stop-ScheduledTask` self-healing at wrapper start; (c) find why the instance
+  exits without Task Scheduler noticing (0xC000013A earlier suggests the process tree is
+  being killed abnormally). (a) is the cheapest and matches the existing lock design.
 - [ ] §5 runner incident 2 (02:15): the 01:05 runner instance died with 0xC000013A
   (console-interrupt semantics; cause UNEXPLAINED — no ExecutionTimeLimit is set) and
   its still-running corpse made `IgnoreNew` swallow the 02:05 trigger. Recovered by
