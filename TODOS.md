@@ -3156,6 +3156,37 @@ most valuable catch so far:
   the stored histories for repeated identical dry_run failures before deciding whether to
   re-derive the class name per attempt or pin the name in the correction prompt.
 
+### 5.3.R90 — the baseline moved this morning and every record of it was stale, mine included
+
+- [x] **Read the live baseline instead of quoting it.** It is **`factory_lm_loss = 5.54404`**,
+  ratcheted **2026-07-20 10:15 by `5a7232ffea24`** — the very candidate under investigation.
+  TODOS, the memory file and the always-loaded `MEMORY.md` hook **all still said 5.60506.**
+- [x] **I corrected that same memory file an hour ago and left this number wrong in it.** R86
+  fixed the "REAL WINS: ZERO" claim in that file and did not re-read the line directly above
+  it. **Fixing one stale fact in a file is not evidence the rest of the file is fresh** — the
+  identical error as R76, which found a stale index hook while fixing a stale body.
+- [x] **The value has moved twice in one day: 5.61982 → 5.60506 → 5.54404.** So the durable
+  instruction now recorded in memory is not a number but a method: **read it from
+  `get_baseline()`; any written copy is stale within hours.**
+- [x] **Genuine improvement worth naming:** the new baseline carries **`metric_sem = 0.017206,
+  n = 20`**, so the point-estimate weakness that made every prior verdict use the weaker
+  one-sample test is **gone** — the next candidate gets a real two-sample comparison. Queue
+  item 5's "supply `metric_sem` or the loop stays on the weaker test" is now satisfied
+  automatically by the promotion path.
+- [x] **⚠ THE STRUCTURAL DEFECT, now confirmed in code:** `evaluate.py:262` is
+  `promote = improved and (stable…) and significant`. **There is no capacity term.** The
+  parameter delta is computed, formatted into a caveat, and stored — the source comment says
+  *"Recorded, not gated on"* — and then line 283 **ratchets the baseline anyway**. So a swap
+  that DELETES 786,816 parameters can win at fixed steps, be promoted, and move the bar for
+  every candidate after it. **That is not a hypothetical: it is exactly how both prior
+  contaminations happened**, and it just happened a third time this morning.
+- [ ] **NEXT, pending the control:** if `identity` ≈ 5.544, the fix is to make capacity part
+  of the verdict rather than a footnote — either refuse `sota` when `block_param_delta` is
+  large and negative until a capacity-matched control passes, or require the comparison be
+  made at matched parameter count. **Deliberately not doing this before the control returns:**
+  changing what the loop promotes on the strength of a suspicion would be the same
+  unmeasured-claim error as R88 and R89, in the one place it would do lasting damage.
+
 ### 5.3.R89 — "one `uv pip install typer`" was wrong; scout-rtx needs a real env, so I stopped
 
 - [x] **Went to close the last unmeasured suite and priced it properly first.** R78/R85 both
