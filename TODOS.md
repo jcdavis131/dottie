@@ -670,6 +670,20 @@ independent reasons, both from the bundle's own numbers/code:**
   password at registration, so Claude can't do it) — or switch Ollama to a Windows
   service. Without this, every unattended reboot silently kills the research loop
   until someone logs in.
+- [ ] **§5 TIMEOUT×CADENCE INTERACTION (measured 03:29, file before it bites again).**
+  The 03:05 tick has been running 22+ min with no log line. Measured state: Ollama is
+  healthy and responsive (v0.31.1) but **idle** — 0 CPU over an 8s sample — and the 14b
+  model already expired (`expires_at 03:27:19`, now past, working set back to 5 MB); the
+  worker processes are alive but have used only 6.4 CPU-s total, i.e. sleeping, not
+  computing. Nothing is provably wedged, but the settings make a hang expensive:
+  `DOTTIE_OLLAMA_READ_TIMEOUT_S=1800` (30 min) against **hourly** ticks with
+  `MultipleInstances=IgnoreNew` means ONE hung request idles half the hour and then the
+  next tick is refused — two consecutive hours lost from a single stall. That is exactly
+  the shape of tonight's 02:05 and 03:00 losses.
+  Fix (your call, cheap): drop the read timeout to ~600s AND set MultipleInstances to
+  Queue/Parallel (the wrapper's exclusive lock is the real guard). Verify next tick: if a
+  refusal/retry appears around ~03:35, a hung request is confirmed; if a result appears,
+  it was simply a slow 14b CPU pass.
 - [ ] **§5 runner incident 3 (03:00) — SAME zombie pattern, now understood.** The task
   sat in state `Running` with NO worker process alive (checked: no python/powershell from
   that instance), i.e. Task Scheduler still believed a run was in flight. With
