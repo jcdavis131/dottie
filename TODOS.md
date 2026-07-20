@@ -64,9 +64,16 @@ Then §1 fires automatically (#17 armed on the monitor).
     - 1.1.a If the monitor reports crash/NaN instead: `docker logs dottie-factory-trainer-1`,
       diagnose, restart run — do NOT advance to 1.2 without a finished checkpoint.
 1.2 **Run the eval gate against the checkpoint** (real harness, no shortcuts):
-    - 1.2.a `cd apps/ava-factory && python eval_branch_harness.py --ckpt /ckpt/tool/tool_final.pt`
-      (inside the GPU image: `docker compose exec trainer python eval_branch_harness.py ...`,
-      or `server` service with `AVA_SKIP_ENGINE_BOOT=1` off-hours).
+    - **COMMAND CORRECTED 2026-07-20 00:55 (pre-fire)**: `eval_branch_harness.py` is
+      MOCK/BLUEPRINT ONLY — its own docstring says every number is fabricated and
+      `--mode real` refuses to run. Do NOT gate on it. `evals.run_harness` is real but
+      covers base/chat probes only — no tool-routing metric exists yet anywhere.
+    - 1.2.a (new) **Write `evals/tool_gate.py` first** — the model API supports it
+      directly: `model(input_ids, task_type)` returns `out["jspace"]["route_probs"]`
+      (order system1/system2/critic/planner; tool_selection target [.10,.35,.10,.45] →
+      planner argmax). Measure per ckpt {base_final, tool_final}: (1) planner-argmax
+      rate on held-out tool_selection samples, (2) held-out CE on tool_use mix,
+      (3) held-out CE on general mix. Run inside the trainer image (GPU free post-run).
     - 1.2.b Compare tool-branch vs `base_final.pt` on: tool_selection routing accuracy
       (router argmax → planner on tool prompts), held-out LM loss on tool_use mix,
       frontier-rubric tool categories.
