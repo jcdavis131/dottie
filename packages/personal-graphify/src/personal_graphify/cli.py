@@ -256,7 +256,7 @@ def cmd_hook(args):
         print(f"[graphify hook] repo: {root}")
         print(f"  post-commit exists: {post_commit_path.exists()}")
         if post_commit_path.exists():
-            print(f"    -> {post_commit_path.read_text(encoding="utf-8")[:300]}...")
+            print(f"    -> {post_commit_path.read_text(encoding='utf-8')[:300]}...")
         print(f"  post-merge exists: {post_merge_path.exists()}")
         print(f"  .gitattributes graph.json union: ", end="")
         if gitattributes_path.exists():

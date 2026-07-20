@@ -3216,6 +3216,31 @@ most valuable catch so far:
   the stored histories for repeated identical dry_run failures before deciding whether to
   re-derive the class name per attempt or pin the name in the correction prompt.
 
+### 5.3.R103 — read-only ruff check caught a target-breaking bug I introduced this session
+
+- [x] **Verified my own B0 recipe claim** ("the ruff pass is cosmetic on my code") by running
+  `ruff check` (READ-ONLY, no `--fix`, `--target py311`) across my 44 changed `.py` files. It
+  is *mostly* cosmetic — but surfaced **one real bug**, and it is MINE.
+- [x] **`packages/personal-graphify/src/personal_graphify/cli.py:259` — a Python 3.11 SYNTAX
+  ERROR I introduced.** My encoding sweep (`e4e299b`/`a009f4c`) rewrote a bare `read_text()`
+  to `read_text(encoding="utf-8")` **inside an f-string that already uses double quotes** —
+  nested same-quotes, which is **3.12+ syntax only**. It parsed fine here because the dev venv
+  is **Python 3.13.5**, but the project declares **3.11** (`requires-python`, ruff `target
+  py311`, README), so on the actual target the file **fails to import**, and the operator's
+  new **ruff CI (`9688ccf`) will fail on it.** The classic works-on-my-newer-interpreter trap.
+- [x] **Fixed** (single-quoted the inner `encoding='utf-8'`); ruff `invalid-syntax` now 0
+  across all 44 files, graphify still **64 passed**. `ruff --fix` could NOT have caught this —
+  f-string quote nesting is a syntax error ruff flags but cannot auto-rewrite — so finding it
+  by hand *before* the merge+CI is exactly what prevented a 3.11 failure.
+- [x] **`apps/ava-factory/evals/tool_gate.py:99` F821 `model` — verified FALSE POSITIVE.** Not
+  mine (subtask `d9613d2`); `model` is assigned in `eval_ckpt` and the nested `run_task`
+  legitimately closes over it. Valid code. Worth a `# noqa: F821` so the operator's ruff CI
+  does not trip on it, but not a defect.
+- [x] **Net for the B0 recipe:** the remaining 28 ruff findings are cosmetic (F401 unused
+  imports, E702 semicolons, F541 empty f-strings, …), 16 auto-fixable — so the recipe's
+  `ruff --fix`/`format` step is confirmed behaviour-preserving. The two it could NOT auto-fix
+  (the syntax error, the FP) are now handled: one fixed, one benign.
+
 ### 5.3.R102 — traced the false "training stale" alert to its exact line; corrects R100
 
 - [x] **Auto-mode tick with everything B0-gated → did the one safe, useful thing available:
