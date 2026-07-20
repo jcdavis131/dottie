@@ -1781,6 +1781,33 @@ most valuable catch so far:
   baseline shortly — the first live exercise of the contamination path (§5.3.R5). If it is
   rejected with a delta inside 0.01476, that is a **concrete instance** of the missed-promotion
   bias, not a verdict on the candidate.
+### 5.3.R27 — first post-restart verdict: every gate fired correctly, in production
+
+- [x] **`da2da0ffbb59` (Channel-Selective Attention Gating) — trained, evaluated, REJECTED
+  on merit (09:14).** `factory_lm_loss 5.76274` against a baseline of `5.60506`. Worse by
+  0.158, cleanly and correctly rejected.
+- [x] **The pre-registered check answered itself, and the answer was "no" (§5.3.R26).** I
+  wrote *before* seeing the number that a rejection with |delta| inside the 0.01476
+  contamination gap would be a missed-promotion instance rather than a bad candidate.
+  **delta = 0.15768 — an order of magnitude outside the gap.** This candidate simply lost.
+  Pre-registering the interpretation is what stops a plain rejection being narrated as
+  "contamination cost us a win"; the temptation to reach for that was real and the answer
+  was already fixed.
+- [x] **Four pieces of tonight's work fired live for the first time, all correct:**
+  1. **Contamination detection** — `baseline_provenance: promoted_contaminated`, caveat
+     naming MLBR and the exact validator failure. §5.3.R5/R14 working in production.
+  2. **Direction-aware significance** — the verdict carries `significant: True` **with**
+     `improved: False`. That is the direction-agnostic trap the message was written to
+     defuse, and it defused it: *"WORSE than baseline: |delta| 0.15768 vs 2.0× …"*. A
+     skimmer cannot read `significant: true` as good news here.
+  3. **One-sample fallback declaring its own weakness** — *"the baseline records NO spread,
+     so it is treated as an exact point and this test is weaker"* (§5.3.R6). Exactly the
+     case it was built for, since the contaminated baseline carries no `metric_sem`.
+  4. **`promote` correctly False** despite `significant: True`, because promotion requires
+     `improved AND stable AND significant`.
+- [x] Note for §5.3.R18's tally: this is a **genuine attempt** — block-shaped, real
+  `nn.Linear` capacity, trained to completion, lost honestly. The pre-restart count of ~5
+  genuine attempts is now ~6, and the sixth is an honest loss rather than an artifact.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
