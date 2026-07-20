@@ -560,6 +560,24 @@ Then §1 fires automatically (#17 armed on the monitor).
       METHOD NOTE: my first pass used default kwargs/shape instead of each candidate's
       declared ones and produced a partly-wrong answer (a spurious "missing positional
       arguments" for c3af0b3ce501). Re-ran it faithfully before drawing conclusions.
+    - 5.2.g [ ] ⭐ **IDEATION HAS MODE-COLLAPSED — and the dead-ends list may be CAUSING
+      it (measured 04:54, your call because it is search direction).** At 04:52 the loop
+      ideated *"Gradient-Adaptive Sparse Attention (GASA)"* — **the verbatim name of an
+      experiment already tried and rejected tonight** (`716ac622e50a`) — plus a near-twin
+      of two others. The machinery is not broken: `dead_ends()` returns 44 names, GASA is
+      in it, and the block renders into the prompt (944 chars). The model reads it and
+      proposes the same thing anyway.
+      Vocabulary of the 30 most recent hypothesis names: **gradient ×18, attention ×13,
+      consistent ×11, sparse ×11, adaptive ×10, moe ×8, load ×8, balancing ×8, dynamic ×7,
+      loss ×7** — nearly every "new" idea is a permutation of the same seven words.
+      **Hypothesis worth testing: the dead-ends list is PRIMING rather than steering.**
+      Showing 44 same-flavoured names is textbook anchoring — it hands the model the exact
+      vocabulary to recombine. Options: (a) feed the failure REASON alongside each name so
+      the pattern is learnable, not just the label; (b) replace the 44-name list with a
+      short thematic summary ("attention-sparsity variants: 12 tried, all rejected");
+      (c) instruct explicitly not to recombine listed terms and to pick an unexplored
+      sub-domain; (d) rotate `search_domain` per ideation call to force coverage.
+      Cheap to test: apply one, then re-run this vocabulary count after ~10 new ideas.
     - 5.2.e [ ] **SEARCH-QUALITY FIX, ready to apply — your call (it steers what the model
       proposes, which is a research decision, so I did not ship it).** Three candidates
       now (MLBR, AGN, and OSA's shape) have converged on the same artifact: a
