@@ -237,6 +237,20 @@ for the condition that killed the WSL VM at 02:05 (281 MB).
 - If you decide the throughput cost is not worth it, one commented line in
   `research_env.local.ps1` reverts it.
 
+### Overnight research throughput (measured 05:33, last 7 h)
+
+**14 hypotheses created → 5 reached evaluation → 0 promoted.** Breakdown: 7
+`failed_validation` (**50% die in validation**, each burning ~5 correction attempts and
+~8 min), 5 `rejected` on real measurements, 1 `failed_training` (unstable), 1 still
+pending. All-time: 54 failed_validation, 10 rejected, 2 failed_training, 2 sota (both
+now known to be artifacts — §5.3.R0).
+The honest read: **the machinery is reliable and the search is not productive.** Every
+stage works unattended and every rejection was correct; the yield is zero real
+improvements, and the two dominant causes are now identified with data — validation
+deaths from axis confusion (§5.2.f, prompt fixed at 04:52) and a search confined to one
+vocabulary (§5.2.g, mode collapse, filed for your call). Those two are where any further
+effort belongs; the gates and instrumentation are done.
+
 ### Post-restart verification (05:12) — the fixes are live and already paying
 
 First completed action from the restarted daemon proves three of them at once:
