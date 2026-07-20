@@ -3197,11 +3197,20 @@ most valuable catch so far:
   midpoint than at either end**, which is exactly what an unpaired single-seed comparison
   buys. The pre-registered "what would retract this" note in the sweep entry is what made
   retracting straightforward rather than negotiable.
-- [ ] Follow-up for `evaluate.py`: the promotion gate's `SIGNIFICANCE_SEM` bar is computed
-  from `eval_ce_per_batch` — **within-run** spread. This entry is the measured case for why
-  that is the wrong denominator: it passed a candidate that is worse at every seed.
-  **Paired-seed evaluation is already written and already generated per promotion; the gate
-  just does not use it.** That is the single highest-value change left in the loop.
+- [x] **Half-fixed in `a37dd58`:** the gate preferred `eval_ce_per_batch` over `per_seed`, so
+  a trainer recording both would have its stronger cross-seed estimate ignored. Reordered
+  `_SERIES_KEYS` so cross-seed wins, and made a within-run basis **announce** its own
+  blindness in the significance string (naming `ab_nano.py` as the fix). Test pins both,
+  mutation-checked against the old order.
+- [ ] **The other half — `factory_trainer.py` must record `per_seed`.** The reorder alone
+  changes nothing for the factory trainer's promotions because it records ONLY
+  `eval_ce_per_batch` (confirmed live: `5a7232ffea24`'s verdict would now carry the warning,
+  but there is still no cross-seed spread to prefer). The proxy trainer already trains over
+  `seeds = [0,1,2]` and records `per_seed`; the factory trainer trains a single seed. Making
+  it record a real per-seed series is the change that would have caught R93 **at promotion
+  time** instead of two ticks later. Non-trivial: 3× the train cost per candidate (~40 min at
+  the measured rate), so it wants a deliberate decision about budget, not a reflex — the loop
+  runs on a laptop. **This is the single highest-value change left in the loop.**
 
 ### 5.3.R92 — I hand-rolled a seed sweep the loop had already generated for me
 
