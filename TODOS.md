@@ -56,7 +56,11 @@ Then §1 fires automatically (#17 armed on the monitor).
 
 ## 1 — Close the T9.3 gate (blocking everything downstream)
 
-1.1 [~] **Wait for `tool_final.pt`** (in flight — step ~370/1,144 at 19:30) (monitor fires; ETA ~8h from 15:20 start).
+1.1 [~] **Wait for `tool_final.pt`** (step 1110/1,144 at 00:35 2026-07-20; ~20 min out).
+    NOTE: the ORIGINAL armed monitor + task #17 did NOT survive the session's machine
+    move (task list empty, verified 00:40) — a fresh watch was re-armed from the new
+    session (fires on tool_final.pt, container gone, or NaN/CUBLAS signatures). The
+    eval-gate harness was smoke-checked in-container (imports + argparse OK).
     - 1.1.a If the monitor reports crash/NaN instead: `docker logs dottie-factory-trainer-1`,
       diagnose, restart run — do NOT advance to 1.2 without a finished checkpoint.
 1.2 **Run the eval gate against the checkpoint** (real harness, no shortcuts):
