@@ -757,8 +757,33 @@ independent reasons, both from the bundle's own numbers/code:**
   Standing lesson for future debugging: `run.log` silence ≠ stall, and `run.log`
   activity ≠ liveness. Query `data/research/ledger.sqlite3` (`select state, updated_ts
   … order by updated_ts desc`) to judge whether the loop is actually moving.
-- [ ] ⭐ **§5 ROOT CAUSE (03:42) — worker processes finish their work but never EXIT.
-  This one bug explains every lost tick tonight.** Measured after stopping the stuck
+- [ ] ⚠⚠ **CORRECTION (04:00) — READ THIS BEFORE THE ENTRY BELOW. The runner is a
+  DAEMON, and that invalidates most of my "lost tick" analysis.** The scheduled action is
+  `research_worker.ps1 run …` with **no `--max-actions`**, which defaults to **0 = run
+  forever** (it loops with `--idle-seconds 30`). Consequences:
+  * Task state **`Running` is NORMAL**, not a zombie. I called it a zombie at 03:00 and
+    "cleared" it — that was probably a healthy daemon I killed.
+  * `IgnoreNew` refusing the hourly trigger (`0x800710E0`) is **BY DESIGN** — the hourly
+    trigger is a *restart-if-dead* mechanism, not an hourly work tick. **No ticks were
+    "lost."** My repeated "two hours lost" framing was wrong.
+  * ⛔ **RETRACTED: my recommendation to set `MultipleInstances` to Queue/Parallel.**
+    That would run MULTIPLE concurrent daemons — actively harmful. Leave it `IgnoreNew`.
+  * The `os._exit` fix I shipped at 03:57 is harmless but **does not address this**: in
+    daemon mode `main()` never returns, so that line never runs. It is still correct
+    hygiene for one-shot invocations (`status`, `ideate`, …) and for the stdout flush.
+  **THE REAL BUG, restated honestly**: the daemon stays alive but STOPS MAKING PROGRESS —
+  measured at 03:37, ledger frozen 37 min, Ollama idle, process at ~0 CPU. A stall, not a
+  failure to exit. Likely a blocking call that never returns (the 1800 s Ollama read
+  timeout is the prime suspect) or a deadlock in the drain loop.
+  **Fixes worth doing** (none applied — these need your call): (a) a **watchdog**: if the
+  ledger shows no state change for N minutes, log it and exit non-zero so the hourly
+  trigger restarts a fresh daemon; (b) drop `DOTTIE_OLLAMA_READ_TIMEOUT_S` to ~600 s so a
+  hung generate self-heals in minutes; (c) emit a flushed heartbeat line each loop pass so
+  a stall is visible in `run.log` instead of requiring a ledger query.
+
+- [ ] ~~§5 ROOT CAUSE (03:42) — worker processes finish their work but never EXIT~~
+  **(SUPERSEDED by the correction above — the process-never-exits framing was wrong for
+  the daemon; the orphan measurements below are still real and still useful.)** Measured after stopping the stuck
   03:05 run: four orphaned worker processes survive it — two from 03:05 and two from the
   **01:37** run. PID 8524 (the factory trainer) has burned **10,747 CPU-s (~3 h)** yet
   shows **0.00 s CPU over a 6 s sample** and a **0 MB** working set; its work is long
