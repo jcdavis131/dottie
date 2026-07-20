@@ -161,6 +161,13 @@ daemon survived** (PID 5264, 54 threads, 9,726 CPU-s, idle). `Start-ScheduledTas
 launched a second daemon (8940) — **two concurrent daemons**, which is exactly what
 `IgnoreNew` and the lock exist to prevent: the lock lives in the wrapper, so an orphaned
 python child holds nothing. Killed 5264; 8940 is now the only one.
+- SAFETY PROPERTY VERIFIED (05:09): killing a worker **mid-stage does not corrupt the
+  ledger**. The old daemon was killed during an `implement`; afterwards no experiment is
+  stranded in `ready_for_training`/`evaluation_pending` — the interrupted one simply
+  stayed `pending` with `attempts=0` and the new daemon picked it up. Stages only
+  transition on completion, and every write commits in its own `with self._conn()` block.
+  So `prepare_fleet_recovery.ps1` killing workers is safe for the data; the cost is the
+  in-flight stage's compute, nothing more.
 - [ ] **Real defect for you**: restarting this loop is not safe with `Stop/Start-ScheduledTask`
   alone — it silently leaves an orphan and can double-run the drain loop (two workers
   claiming experiments, concurrent ledger writes). Either make the wrapper kill its child
