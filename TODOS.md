@@ -2235,6 +2235,35 @@ most valuable catch so far:
   literals. **The lesson has not stuck because I keep reaching for the same shortcut** —
   writing multi-line Python fixtures through a shell heredoc is simply the wrong tool, and
   the file-then-insert approach used in §5.3.R5 worked first time every time.
+### 5.3.R43 — read `evaluate.py` whole: mostly clean, one limitation I cannot measure
+
+- [x] **Read it end to end (10:30). No bug found** — worth recording, because seven straight
+  "read it whole" findings could imply the method always yields one. It does not, and saying
+  so keeps the previous seven honest. The promotion path, the caveat plumbing into both the
+  SOTA and REJECTED write-ups, and the spread handling all read correctly.
+- [ ] **One genuine statistical limitation, stated as a limitation and NOT acted on.** The
+  significance gate takes its noise estimate from `eval_ce_per_batch` — the spread across
+  eval batches **within a single run**. But the comparison it feeds is **between runs**
+  (this candidate's run vs the baseline's run). Between-run variability includes seed and
+  init effects that within-run batch spread does not, and is usually the larger quantity.
+  If so, `SIGNIFICANCE_SEM * se_diff` is a **too-easy bar** and `significant: True` is
+  optimistic.
+  - **I tried to measure it and could not.** Only one stored experiment carries `per_seed`
+    (`bc3dbb74bead`, and that is the *proxy* trainer on a different metric), so its
+    across-seed SD is not comparable to the factory runs' within-run batch SD. **No
+    candidate has ever been run at multiple seeds under the factory trainer**, so between-run
+    variance is simply unobserved here.
+  - **Not changing the gate.** Tightening a threshold on a theoretical argument, with no
+    measurement, is exactly the move I have refused all night for prompt changes and
+    0-occurrence bugs. The reasoning is sound; the magnitude is unknown; the honest state is
+    "known limitation, unquantified".
+  - **The measurement path already exists**: `ab_nano.py` (§5.3.R32) now runs `SEEDS=[0,1,2]`
+    on both arms and reports **paired** differences. Running it once on any candidate yields
+    the across-seed spread for the factory recipe and answers this directly. It costs 6
+    training runs (~27 min) and >4 GB free RAM.
+  - Until then the verdict text is at least not overclaiming: the one-sample fallback already
+    states that it treats the baseline as an exact point and is weaker than 2 SE of a real
+    difference (§5.3.R6).
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
