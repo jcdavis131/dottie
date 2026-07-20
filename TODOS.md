@@ -125,6 +125,15 @@ Then §1 fires automatically (#17 armed on the monitor).
     did NOT survive the fork's termination (TaskList empty — watches die with their
     session, same lesson as the machine-move at 00:40). New watch: chat_final.pt /
     container exit / crash signatures, 60s poll.
+    **CRASH + RECOVERY ~02:25**: CUDA "unknown error" in grad-ckpt recompute at
+    step 15→16 (the overnight flake family) — step_15.pt had saved 18s earlier, so
+    zero loss. The fork's docker-run had NO restart policy (crash was terminal).
+    Relaunched via the documented compose command + `--resume` (git-bash MSYS
+    path-mangling ate the first attempt — MSYS_NO_PATHCONV required), then
+    `docker update --restart on-failure`: future flakes now auto-resume from the
+    latest ckpt (command carries --resume), exit-0 completion stays down. Watch
+    re-armed. NOTE the flake recurred at 45W/780MHz — the power-cap⇄CUBLAS-flake
+    correlation now has another data point (charger!).
     Old July-10 nano-era /ckpt/chat ckpts preserved as *.nano-20260710.bak.
     Completion/failure watch armed (fires the session on chat_final.pt, clean exit,
     crash, or CUBLAS/NaN signatures). GATE NEXT: nonregression-only eval vs
