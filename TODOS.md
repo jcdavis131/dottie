@@ -3289,10 +3289,23 @@ most valuable catch so far:
   ruff step should be **`pip install ruff==0.8.6` → `ruff format`** to match, or expect the
   format-check to disagree. (`ruff check --fix` for the NameError resolution is version-robust;
   it is the *format* step that is version-sensitive.)
+- [x] **Refined by reading the OTHER workflow, `ci.yml` (§5.3.R107 check):** there are TWO CI
+  workflows and they behave differently. **`ci.yml` is mostly `|| true` (non-blocking)** — its
+  ruff and pytest steps cannot fail it; only three checks are blocking, and **all three pass**:
+  "no telemetry tracked" (verified: `git ls-files` shows none of `dottie_telemetry`/
+  `dottie_live_status`/`STATUS.json`/`results.tsv` tracked), "factory importable" (a trivial
+  `sys.path` print), and the forge smoke (`bigbang.cli` exists, scout-cli is green). So
+  **`ci.yml` will be GREEN after B0.** `lint.yml` (ruff, NOT `|| true`) is the one that goes
+  RED on the pre-existing 491 — pre-existing, not the merge. Post-B0 the operator should expect
+  **ci.yml green, lint.yml red**, and neither indicates a broken reconciliation.
+  Also clean: no hardcoded Windows paths in any source/test file (only the 3 generated
+  `data/research/promotions/*/ab_nano.py` bake the box's ledger path — a generated-artifact
+  choice, not a portability bug in shipped code), so the Linux CI won't trip on Windows-isms.
 - [ ] **Net: B0 is now fully de-risked from my side.** Verified: the 21-conflict set, the
   `--ours`+ruff resolution, a py311-clean diff (§5.3.R103), the pytest suite as the true proof
-  step, and the ruff-version + red-CI gotchas above. Nothing more I can verify about the
-  reconciliation without actually running it — which the classifier reserves for the operator.
+  step, the ruff-version + red-CI gotchas, and (above) that `ci.yml` passes while `lint.yml`
+  is expected-red. Nothing more I can verify about the reconciliation without running it —
+  which the classifier reserves for the operator.
 
 ### 5.3.R103 — read-only ruff check caught a target-breaking bug I introduced this session
 
