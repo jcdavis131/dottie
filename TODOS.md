@@ -3170,6 +3170,26 @@ most valuable catch so far:
   the stored histories for repeated identical dry_run failures before deciding whether to
   re-derive the class name per attempt or pin the name in the correction prompt.
 
+### 5.3.R97 — verified my own R93 fix end-to-end; the warning wasn't in the box humans read
+
+- [x] **Chose to verify an integration I introduced rather than manufacture a new change.**
+  `a37dd58` (R93) added the within-run warning to the significance STRING. I traced where that
+  string is consumed — the promotion bundle's `_caveat_block`, the "Read this before
+  promoting" box — and found the warning **only appeared buried in the significance prose**,
+  while WITHIN NOISE, CAPACITY CHANGE and WEAK TEST each got a dedicated line. The R93 signal
+  was missing from the one place R93 exists to inform.
+- [x] **Added it (`01b3192`), keyed off the STRUCTURED `sem_series` field, not the prose.**
+  String-matching the significance text would rot the moment the wording changed — the exact
+  brittleness pattern this session keeps finding. Lazy import to avoid load-order coupling.
+- [x] **Honest consequence, stated:** every current **factory** promotion now carries this
+  caveat, because `factory_trainer.py` records only `eval_ce_per_batch`. That is not noise —
+  until the per-seed trainer change (R94) lands, every factory promotion genuinely rests on
+  within-run spread. The caveat **removes itself** once `sem_series` becomes `per_seed`.
+- [x] Test pins both directions, mutation-checked. 203 passed.
+- [x] **No new integration risk from the change:** the two pre-existing bundle tests use
+  verdicts without `sem_series`, so they were unaffected — confirmed by running them, not by
+  assuming.
+
 ### 5.3.R96 — the RE-SEED tool built the very weakness the re-seed exists to remove
 
 - [x] **Traced what actually happens on restart, and it is worse than "noisy warnings".**
