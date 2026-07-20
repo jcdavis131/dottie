@@ -60,7 +60,7 @@ training:
   gradient_checkpointing: true
   optimizer: {name: adamw, betas: [0.9, 0.95], weight_decay: 0.1, grad_clip: 1.0}
   wsd: {warmup_steps: 300, stable_frac: 0.92, lr_max: 6.0e-4, lr_min: 6.0e-5}
-  checkpoint_every_steps: 50    # was 100; CUDA blips at ~190/470 kept wiping uncheckpointed progress
+  checkpoint_every_steps: 25    # was 100->50->25; tonight's CUBLAS flakes crash every 10-30 min — ratchet with crash-resume. RESTORE 50 after tool_final.
   metrics_every_steps: 10
   # T2T / overtrain gauge target (Chinchilla ~20). Live mini was planned ~15 TPP;
   # status watch.tokens_per_param reports regime vs this when set. Does not
