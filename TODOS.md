@@ -2824,6 +2824,26 @@ most valuable catch so far:
   (§5.3.R64), event-loop blocking (§5.3.R62/R63), skipped-counted-as-pass (§5.3.R15), and
   this. Each began as "I fixed the instance" and only stopped recurring when the *rule* was
   encoded. Suite 197 passed.
+### 5.3.R66 — re-verified HEAD end to end before the operator's restart
+
+- [x] **Re-ran the full CLI path at HEAD (13:50)**, because §5.3.R53's smoke test predates
+  ~15 commits touching prompts, ideation, logger, the trainers and the server. Unit tests do
+  not cover the CLI wiring — that is the gap that hid the broken `ab_nano.py` for its entire
+  existence (§5.3.R32). Temp `--data-dir`, deleted afterwards; the live ledger untouched.
+  - `seed-baseline → train → evaluate → promote → status`, all clean.
+  - The §5.3.R49 trap re-planted (a `candidate_000000.py` that raises on import, sorting
+    first): **training succeeded**, so the loader still picks the real module.
+  - Promotion carried `metric_sem 0.0311` onto the baseline, and the bundle led with its
+    `hand_seeded` caveat.
+- [x] **One detail worth recording as a positive confirmation, not just a pass.** The status
+  note read *"synthetic next-token shift (proxy micro-benchmark, NOT downstream
+  capability)"* — because this run used the **proxy** trainer. In production
+  (`--trainer factory`) the same code reports the factory task. That is §5.3.R59 working as
+  designed: the note **describes the measurement actually taken** instead of asserting one,
+  which is precisely what the hardcoded version could not do and why it went stale.
+- [ ] **HEAD is verified end to end and safe to restart into.** Remaining untested by a live
+  run: `ideate`/`implement` (need Ollama, ~5 GB) and `calibrate-baseline` (needs the factory
+  + corpus). Both wait on memory headroom; §5.3.R34 records the safe way to do the latter.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
