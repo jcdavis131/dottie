@@ -636,6 +636,39 @@ def test_learnable_parameters_is_asked_for_but_not_yet_enforced():
     assert parsed["learnable_parameters"] == "gate: nn.Linear(hidden, hidden)"
 
 
+def test_search_space_does_not_contradict_the_integration_contract():
+    """No fenced domain may ask for something the same prompt declares out of scope.
+
+    TODOS §5.3.R35: domain 2 used to read "Alternative loss functions or regularizers that
+    improve pre-training stability" while the INTEGRATION CONTRACT in the same prompt said
+    ideas needing a custom loss signature are OUT OF SCOPE. A third of the search space
+    asked for exactly what the loop then rejected — 36% of 84 proposals came back as
+    regularisers/losses with zero real wins. The model was obediently sampling a domain we
+    defined; the mode collapse was substantially the search space working as specified.
+
+    The distinction this asserts is between a domain whose DELIVERABLE is a loss (a
+    contradiction) and one that merely forbids auxiliary losses as a constraint (correct,
+    e.g. "improve load balancing WITHOUT an auxiliary-loss penalty").
+    """
+    import re
+    deliverable_is_a_loss = re.compile(
+        r"(alternative|novel|new)\s+loss|loss functions or regulari|"
+        r"^\s*(loss|regulari[sz]er|penalty)", re.I)
+    for domain in prompts.DEFAULT_SEARCH_SPACE:
+        assert not deliverable_is_a_loss.search(domain), (
+            f"fenced domain asks for a loss/regulariser, which the integration contract "
+            f"forbids: {domain!r}")
+
+    # the contract itself must still be present and still forbid them
+    p = prompts.ideation_prompt(None, bottleneck="loss plateaus", n_ideas=1)
+    assert "OUT OF SCOPE" in p
+    # a constraint phrased as a prohibition is fine and must NOT be mistaken for an invite
+    assert any("without an auxiliary-loss penalty" in d for d in prompts.DEFAULT_SEARCH_SPACE)
+
+    # narrow fences are themselves a repetition pressure (§5.2.g); keep the space broad
+    assert len(prompts.DEFAULT_SEARCH_SPACE) >= 5
+
+
 def test_dead_ends_do_not_prime_the_collapsed_vocabulary(led):
     """The "do not repeat" list must not read as a demonstration of what to repeat.
 

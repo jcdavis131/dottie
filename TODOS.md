@@ -2000,6 +2000,40 @@ most valuable catch so far:
   `--steps`: `python -m dottie.research --data-dir <tmp> calibrate-baseline --steps 5
   --overwrite`. That writes only to the temp ledger and leaves the live baseline untouched.
   Want >4 GB free first.
+### 5.3.R35 — ⭐ the search space ASKED for the category errors. We caused the 36%.
+
+- [x] **Root cause of §5.3.R12, and it was ours (09:55).** The ideation prompt fences
+  proposals to a domain list. Domain 2 read:
+  > *"Alternative **loss functions or regularizers** that improve pre-training stability
+  > (fewer loss spikes, no NaN gradients)."*
+
+  The **INTEGRATION CONTRACT in the same prompt** says ideas needing a custom loss signature
+  are OUT OF SCOPE. **One third of the fenced search space explicitly asked for what the
+  loop then rejected.**
+- [x] **This explains the 36% completely, and reframes it.** The model was not ignoring the
+  contract out of stubbornness — it was **obediently sampling a domain we defined**, then
+  being punished for it. The collapse vocabulary maps one-to-one onto the old three fences:
+  MoE/load-balancing (1), loss/regulariser (2), sparse/attention (3). What I called "mode
+  collapse" in §5.2.g is substantially **the search space working as specified**.
+  - I spent §5.3.R12 blaming the operator's `--bottleneck` string and §5.3.R24 blaming the
+    dead-ends list. Both are real contributors. **Neither is as direct as a fence that names
+    the forbidden thing as a deliverable**, and I did not read the search space until now.
+- [x] **Fixed at the root.** Domain 2 now pursues the same GOAL — training stability —
+  expressed as something a block can do: *"Stabilising transforms applied to the hidden
+  states INSIDE the block — normalisation variants, bounded activations, residual scaling,
+  gradient-friendly reparameterisation — without touching the training objective."* Two
+  domains added (non-attention token/channel mixing; adaptive-computation blocks), because
+  three narrow fences are themselves a repetition pressure. **5 domains, none of which
+  contradicts the contract.**
+  - Test asserts the invariant and distinguishes the two cases that look alike: a domain
+    whose **deliverable** is a loss (contradiction) versus one that merely **forbids**
+    auxiliary losses as a constraint — *"improve load balancing WITHOUT an auxiliary-loss
+    penalty"* is correct and must not be flagged. Verified the old space fails the test on
+    both counts (the loss domain, and only 3 fences). Suite 175 passed.
+- [ ] **NOT live** — daemon is on `e8cc5b7`; this joins R24/R28/R29 awaiting the next
+  restart. It also **supersedes part of decision-queue item 8**: the `--bottleneck` change
+  is still worth making, but this was the larger and more mechanical cause, and it is fixed
+  in code rather than needing operator config.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.

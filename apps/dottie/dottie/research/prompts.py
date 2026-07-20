@@ -20,15 +20,32 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from dottie.research.ledger import Baseline
 
-# The three research sub-domains the ideation search space is fenced to. Kept compatible with the
-# Ava architecture so the resulting diff can actually run in the automated loop.
+# The research sub-domains the ideation search space is fenced to. Every one MUST be
+# expressible as a single [batch, seq, hidden] -> [batch, seq, hidden] block, because that is
+# the only thing this loop can build (see the INTEGRATION CONTRACT below).
+#
+# Measured 2026-07-20 (TODOS §5.3.R35): the previous domain 2 read "Alternative loss functions
+# or regularizers that improve pre-training stability" — a CATEGORY ERROR BY CONSTRUCTION, and
+# in direct contradiction with the integration contract in this same prompt, which declares
+# loss-signature ideas out of scope. One third of the fenced space asked for exactly what the
+# loop then rejected. 36% of 84 proposals came back as regularisers/losses with ZERO real
+# wins; the model was obediently sampling a domain we defined. The collapse vocabulary
+# (MoE / load-balancing / sparse / attention / regulariser) maps one-to-one onto the old list.
+#
+# Domain 2 is now the same GOAL — training stability — expressed as something a block can do.
+# Two domains were added because three narrow fences are themselves a cause of repetition.
 DEFAULT_SEARCH_SPACE = [
     "Novel routing mechanisms for Sparse Mixture-of-Experts (MoE) that improve load balancing "
-    "without an auxiliary-loss penalty.",
-    "Alternative loss functions or regularizers that improve pre-training stability "
-    "(fewer loss spikes, no NaN gradients).",
+    "through the block's own forward pass, without an auxiliary-loss penalty.",
+    "Stabilising transforms applied to the hidden states INSIDE the block — normalisation "
+    "variants, bounded activations, residual scaling, gradient-friendly reparameterisation — "
+    "that reduce loss spikes and NaN gradients without touching the training objective.",
     "Modifications to the attention mechanism that reduce memory complexity while preserving "
     "exact representations.",
+    "Token-mixing or channel-mixing operators that are NOT attention (convolutional, "
+    "state-space, gated-MLP, Fourier or pooling-based) used as a drop-in sequence block.",
+    "Adaptive-computation blocks whose transform is input-dependent — gating, dynamic depth "
+    "within the block, or learned per-token routing between internal branches.",
 ]
 
 # Sampling temperatures for the two research completions: ideation is a SEARCH (a near-greedy
