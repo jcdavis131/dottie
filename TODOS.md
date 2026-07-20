@@ -1912,6 +1912,38 @@ most valuable catch so far:
   did not earn. Tested in both directions. Verified red on the old code, which produced a
   header running straight from the title to `- metric:` with nothing in between. Suite 174
   passed.
+### 5.3.R32 — the bundle's re-verification script has never been able to run
+
+- [x] **`ab_nano.py` — the script a human runs to independently confirm a promotion — was
+  broken outright (09:40).** The template called
+  `factory_nano_trainer(r"<module_path>", ...)`, but that function takes an **Experiment**:
+  it reads `.implementation` and `.workspace` off the argument. A string has neither, so
+  **every generated `ab_nano.py` dies with `AttributeError` on its first candidate call.**
+  The independent-verification step in every promotion bundle has never executed.
+  - Found by reading the artifact rather than the loop. It is not exercised by any code
+    path the daemon runs, so nothing was ever going to surface it — the bundle generator
+    writes the file and never runs it.
+- [x] **It also compared two single numbers**, which cannot separate a real difference from
+  run-to-run noise. That is precisely the mistake that produced this loop's first false
+  SOTA. **A re-verification script that repeats the original error launders a coin flip as
+  confirmation** — worse than having no script, because it carries the authority of a
+  manual check.
+- [x] **Rewritten to work, and to hold the same standard as the automated gate:** loads the
+  Experiment from the ledger by id (stronger than a file path — it re-verifies the exact
+  recorded implementation, which cannot drift from `candidate.py`), runs `SEEDS = [0,1,2]`
+  on both arms, and reports **paired** differences so shared seed variance cancels. Prints
+  `WITHIN NOISE — this run does not distinguish the candidate from the unmodified model.
+  Do not promote on it.` unless |mean delta| ≥ 2·SEM.
+  - Generated output verified to `ast.parse`, to pass an Experiment, and to contain no
+    stale `module_path`. `candidate.py` is still written for human reading.
+  - Updated the legacy assertion that required `candidate.py` inside the script, with the
+    reason recorded rather than silently deleted.
+  - Suite 175 passed; mutation audit 9/9 GOOD.
+- [ ] **Pattern worth naming:** both of the last two findings were in **human-facing
+  artifacts** (`PROMOTION.md`, `ab_nano.py`), not in the loop. Nothing the daemon executes
+  touches either, so no test, gate, or production run was ever going to catch them. The
+  automated path has had six gates and a mutation audit pointed at it all night; the manual
+  path had nothing until it was read.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.

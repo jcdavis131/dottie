@@ -846,6 +846,39 @@ def test_unloadable_candidate_fails_training_instead_of_retrying_forever(led, tm
     assert led.next_in_state(READY_FOR_TRAINING) is None       # queue is not blocked
 
 
+def test_generated_ab_script_is_runnable_and_noise_aware(led, tmp_path):
+    """The bundle's re-verification script must actually run, and must not compare points.
+
+    TODOS §5.3.R32: the old template called `factory_nano_trainer(module_path, ...)`, but
+    that function takes an Experiment — it reads `.implementation` and `.workspace` off it.
+    Every generated ab_nano.py therefore died with AttributeError on its first candidate
+    call, so the human re-verification step in every promotion bundle has never run.
+
+    It also compared two single numbers, which cannot separate a real difference from
+    run-to-run noise — the exact mistake that produced this loop's first false SOTA. A
+    re-verification script that repeats it launders a coin flip as confirmation.
+    """
+    import ast
+
+    e = led.create(HYP)
+    led.transition(e.id, READY_FOR_TRAINING, implementation={"code": GOOD_CODE},
+                   workspace=str(tmp_path))
+    led.transition(e.id, EVALUATION_PENDING, train_metrics={"proxy_loss": 1.0})
+    led.transition(e.id, SOTA, eval_verdict={"promote": True, "significant": True})
+    promote.build_promotion(led, e.id, out_root=tmp_path / "promotions")
+    ab = (tmp_path / "promotions" / e.id / "ab_nano.py").read_text(encoding="utf-8")
+
+    ast.parse(ab)                                   # it is at least valid Python
+    assert "factory_nano_trainer(exp," in ab        # an Experiment, not a path
+    assert "Ledger(LEDGER).get(EXP_ID)" in ab       # fetched from the ledger it came from
+    assert "module_path" not in ab                  # the stale argument is gone
+    # noise-aware, using the same standard as the automated gate
+    assert "SEEDS" in ab and "sem_d" in ab
+    assert "2.0 * sem_d" in ab
+    assert "WITHIN NOISE" in ab
+    assert "Do not promote on it" in ab
+
+
 def test_promotion_bundle_leads_with_the_caveats(led, tmp_path):
     """The reasons NOT to promote must be above the numbers, not inside a JSON dump.
 
@@ -1433,7 +1466,12 @@ def test_promotion_bundle_from_sota_and_refusals(led, tmp_path):
     md = (bundle / "PROMOTION.md").read_text(encoding="utf-8")
     assert "HUMAN-GATED" in md and "SeqMeanMix" in md and "2.0" in md
     ab = (bundle / "ab_nano.py").read_text(encoding="utf-8")
-    assert "STEPS = 30" in ab and "candidate.py" in ab
+    # No longer references candidate.py: the script now loads the Experiment from the
+    # ledger (§5.3.R32), which is both what factory_nano_trainer requires and a stronger
+    # guarantee — it re-verifies the exact recorded implementation rather than a file that
+    # could drift from it. candidate.py is still written to the bundle for human reading.
+    assert "STEPS = 30" in ab and "EXP_ID" in ab
+    assert (bundle / "candidate.py").exists()
     # idempotent sweep: already-bundled skipped, nothing rebuilt
     summary = promote.build_pending_promotions(led, out_root=tmp_path)
     assert summary["built"] == [] and e.id in summary["already_bundled"]

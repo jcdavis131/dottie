@@ -25,17 +25,56 @@ from typing import Any, Dict, List, Optional
 from dottie.research.ledger import SOTA, Ledger
 
 _AB_TEMPLATE = '''# Auto-generated A/B re-verification for research promotion {exp_id}.
-# Runs the SAME factory nano recipe on the unmodified model and on the candidate,
-# printing both held-out losses. Requires torch + AVA_FACTORY_ROOT + packed corpus.
+#
+# Runs the SAME factory nano recipe on the unmodified model and on the candidate, over
+# several seeds, and applies the SAME noise standard the loop's own evaluation gate uses.
+# Requires torch + AVA_FACTORY_ROOT + the packed corpus.
+#
+# Why seeds and not one run each: comparing two single numbers cannot tell a real
+# difference from run-to-run noise. That is exactly the mistake that produced this loop's
+# first false SOTA, and a re-verification script that repeats it is worse than none --
+# it launders a coin flip as confirmation. Cost is len(SEEDS) x 2 training runs
+# (~{steps} steps each); lower SEEDS only if you accept a weaker answer.
+import statistics
+
 from dottie.research.factory_trainer import run_baseline_calibration, factory_nano_trainer
+from dottie.research.ledger import Ledger
 
 STEPS = {steps}
+SEEDS = [0, 1, 2]
+LEDGER = r"{ledger_path}"
+EXP_ID = "{exp_id}"
 
-baseline = run_baseline_calibration({{"steps": STEPS}})
-print("unmodified:", baseline)
-candidate = factory_nano_trainer(r"{module_path}", {{"steps": STEPS}})
-print("candidate: ", candidate)
+exp = Ledger(LEDGER).get(EXP_ID)          # the trainer needs the Experiment, not a path
+if exp is None:
+    raise SystemExit(f"experiment {{EXP_ID}} not found in {{LEDGER}}")
+
+base, cand = [], []
+for seed in SEEDS:
+    b = run_baseline_calibration({{"steps": STEPS, "seed": seed}})
+    r = factory_nano_trainer(exp, {{"steps": STEPS, "seed": seed}})
+    if not (r.ok and r.stable):
+        raise SystemExit(f"candidate failed to train at seed {{seed}}: {{r.detail}}")
+    bv, cv = b["factory_lm_loss"], r.metrics["factory_lm_loss"]
+    base.append(bv)
+    cand.append(cv)
+    print(f"seed {{seed}}: unmodified {{bv:.5f}}  candidate {{cv:.5f}}  delta {{cv - bv:+.5f}}")
+
+diffs = [c - b for c, b in zip(cand, base)]
+mean_d = statistics.fmean(diffs)
+# PAIRED differences: same seed both sides, so shared run-to-run variance cancels.
+sem_d = (statistics.stdev(diffs) / len(diffs) ** 0.5) if len(diffs) > 1 else float("nan")
+print()
+print(f"unmodified mean {{statistics.fmean(base):.5f}}   candidate mean {{statistics.fmean(cand):.5f}}")
+print(f"paired delta    {{mean_d:+.5f}}   SEM {{sem_d:.5f}}   (lower is better)")
+if len(diffs) > 1 and abs(mean_d) >= 2.0 * sem_d:
+    print("VERDICT:", "candidate is BETTER beyond noise" if mean_d < 0
+          else "candidate is WORSE beyond noise")
+else:
+    print("VERDICT: WITHIN NOISE - this run does not distinguish the candidate from the "
+          "unmodified model. Do not promote on it.")
 '''
+
 
 
 def _caveat_block(verdict: Dict[str, Any]) -> List[str]:
@@ -125,8 +164,12 @@ def build_promotion(ledger: Ledger, exp_id: str, *, out_root: str | Path,
     ]
     (out / "PROMOTION.md").write_text("\n".join(md), encoding="utf-8")
     (out / "ab_nano.py").write_text(
+        # ledger_path, not module_path: factory_nano_trainer takes an Experiment (it reads
+        # .implementation and .workspace off it). The old template passed the module path as
+        # that argument, so every generated ab_nano.py raised AttributeError on its first
+        # candidate call — the re-verification step has never actually run (§5.3.R32).
         _AB_TEMPLATE.format(exp_id=exp_id, steps=steps,
-                            module_path=str(module_path.resolve())),
+                            ledger_path=str(Path(ledger.path).resolve())),
         encoding="utf-8")
     return {"experiment": exp_id, "bundle": str(out),
             "files": ["candidate.py", "PROMOTION.md", "ab_nano.py"]}
