@@ -479,6 +479,10 @@ THE NIGHT'S HEADLINES — read these before anything below:
      looks clean but leaves the daemon unable to import. Resolve each textual conflict as "keep
      my logic, take their formatting", then let the ruff pass normalise. A 243-commit rebase
      across the reformat would mean resolving the same style conflict 243 times — avoid it.
+     **Verified (§5.3.R99): `ruff check --fix` on the worst-case file rewrote all 14 old-style
+     `Dict`/`Optional` uses to builtins and converged its import to `from typing import Any` —
+     origin's exact line — with zero non-typing changes. The mechanism holds; `ruff` 0.15.22
+     is in `apps/dottie/.venv`.**
      **After the ruff pass, run the suites** (`apps/dottie` needs `AVA_FACTORY_ROOT`, §5.3.R87)
      before pushing — an import-time NameError fails collection immediately, so a green suite
      is proof the reconciliation held.
@@ -3236,6 +3240,17 @@ most valuable catch so far:
   commit"; R99 is "and don't summarise what the remote changed from its commit message." Both
   are the session's one theme — a claim that costs nothing to check is the one that goes
   unchecked — and both were mine, made while cataloguing the same failure in others' code.
+- [x] **THEN verified the FIX I recommended, instead of asserting that too (§5.3.R99 cont.).**
+  Copied my `__main__.py` (the worst case: 14 old-style uses) to scratch and ran
+  `ruff check --fix --target-version py311 --select UP,F` on it. Result: **26 changed lines,
+  ALL typing — 0 non-typing — the file still parses, and the import line became exactly
+  `from typing import Any`, identical to origin's.** So the post-merge ruff pass *provably*
+  converges my divergent code to origin's style and cannot leave a dangling `Dict`. `ruff`
+  0.15.22 is available via `python -m ruff` in `apps/dottie/.venv`, so the procedure is
+  runnable. **Scope honesty: this verifies the RESOLUTION MECHANISM on the highest-risk file,
+  not a full 243-commit trial merge — the textual merge conflicts still have to be resolved,
+  but they are formatting and ruff normalises them.** The "required step" in item 00 is now a
+  checked claim, not a hopeful one.
 
 ### 5.3.R98 — git has diverged: 243 ahead / 2 behind, and the 2 are a repo-wide reformat
 
