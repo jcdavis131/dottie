@@ -194,6 +194,19 @@ points at abrupt termination rather than a handled failure. Memory was NOT tight
 time (4.6–5.4 GB available across four samples).
 Restarted manually at 05:27 (0 orphans beforehand, 2 processes after, implement started);
 without that it would have idled until the 06:05 trigger.
+- [x] **MITIGATED 05:31 (recovery speed, not cause)** — the task had `RestartCount=0`, so
+  Task Scheduler never retried a task that ended with an error, which is exactly what
+  happened (`0x1`). Now **`RestartCount=3`, `RestartInterval=PT5M`**: a daemon that dies
+  is restarted within 5 minutes instead of idling up to 60. Verified by read-back;
+  `MultipleInstances` deliberately left `IgnoreNew` (a running daemon still blocks
+  duplicates — changing it would create concurrent daemons, as retracted earlier) and
+  `ExecutionTimeLimit` left `PT0S` (no cap, so a long train is never killed).
+  Reverse with `$s = (Get-ScheduledTask -TaskName 'Dottie Research runner').Settings;
+  $s.RestartCount = 0; Set-ScheduledTask -TaskName 'Dottie Research runner' -Settings $s`.
+- [ ] Optional companion (not applied): shorten the trigger repetition from **PT1H** to
+  ~PT15M. With `IgnoreNew` the extra firings are no-ops while healthy, so it only shortens
+  the worst-case gap if the restart attempts are also exhausted. Your call — it is a
+  scheduling change rather than a failure response.
 - [ ] **I could not determine the cause and am not going to guess.** Worth checking when
   you are back: Windows Event Viewer → Application/System around **05:25** for a process
   termination, and the Task Scheduler operational log for that instance. If it recurs,
