@@ -309,6 +309,29 @@ Then §1 fires automatically (#17 armed on the monitor).
     rises; curator rejects stay <20%; no `unknown generator` errors anywhere.
 2.3 **Retire the old checkouts** — AUDITED 2026-07-19 late: workspace clean; retired ava-agi's 97 dirty files all captured by the reconciliation (0 changed since); both safe to rename (they are now strictly historical):
     - 2.3.a `git -C C:\Users\jcdav\ava-agi status` → confirm nothing uncommitted worth saving.
+    - 2.3.0 ⛔ **BLOCKER FOUND 03:15 — §2.3 CANNOT PROCEED AS WRITTEN. Retiring the
+      workspace checkout would break `apps/dottie` (36 test failures).** Measured:
+      * Full dottie suite with `AVA_FACTORY_ROOT=C:\Users\jcdav\workspace\ava-agi-factory-v6-4`
+        → **147 passed, 1 skipped, 0 failed** (this also proves tonight's 9 changed files
+        caused ZERO regressions).
+      * Same suite with the env var UNSET or pointed at the monorepo → **36 failed**.
+      * Cause: the reconciliation renamed the factory package `ava` → `dottie`, so the
+        monorepo has `apps/ava-factory/dottie/rl/codeact_loop.py` while only the retired
+        checkout still has `ava/rl/codeact_loop.py`. `resolve.py::_has_factory_code`
+        probes ONLY the legacy path, so this app silently depends on the retired checkout.
+      * I tried the one-line fix (accept either layout) and **reverted it** — it makes
+        things worse: resolution then picks the monorepo and the import dies with
+        `ModuleNotFoundError: No module named 'dottie.rl'`, because the factory's package
+        is now ALSO called `dottie` and collides with this app's own `dottie` package
+        (the app's wins in `sys.modules`). The `ava→dottie` alias shim cannot help: its
+        `from dottie import *` resolves to the APP's dottie from this context.
+      * **DECISION NEEDED (real design choice, not a config tweak)**: (a) rename the
+        factory package to something unambiguous (e.g. `avafactory`) and keep an `ava`
+        shim; (b) have `apps/dottie` import the factory under a distinct alias via an
+        importlib loader instead of `sys.path` insertion; (c) keep the workspace checkout
+        alive indefinitely and drop §2.3's delete step. Until one is chosen, DO NOT
+        delete `C:\Users\jcdav\workspace\ava-agi-factory-v6-4`, and keep AVA_FACTORY_ROOT
+        pointed at it (the §2.3.b instruction to repoint it at the monorepo is WRONG).
     - 2.3.a' ADD to the retirement list (found 2026-07-20): `C:\Users\jcdav\scout-cli` —
       a standalone scout-cli checkout pip-installed (develop) into the shared venv;
       it shadows the monorepo copy everywhere except under apps/scout-cli. Audit for
