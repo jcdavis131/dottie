@@ -48,7 +48,10 @@ SAFETY_WORDS = [
 
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
-    with open(path, "w", encoding="utf-8") as f:
+    # newline="\n" or text mode translates every \n to \r\n on Windows, so the same seed
+    # emits DIFFERENT BYTES per platform -- which contradicts generate_probe_items'
+    # "idempotent" docstring and silently dirties all 8 tracked probe files on every run.
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
         for row in rows:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
