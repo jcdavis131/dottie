@@ -45,7 +45,9 @@ jspace:
 
 training:
   device: cuda
-  precision: bf16
+  # TEMPORARY fp32 (was bf16): every tonight-crash is CUBLAS on a CUDA_R_16BF GEMM;
+  # fp32 GEMMs take a different cuBLAS path. ~2x slower; REVERT after tool_final.
+  precision: fp32
   compile: false                   # wired in ava/train.py via torch.compile when true;
                                    # leave false on live mini; try on mini_overtrain smoke first.                   # NOT WIRED: ava/train.py never calls torch.compile, so
                                    # `true` here only misled perf estimates (6-10k tok/s assumed
