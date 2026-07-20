@@ -62,6 +62,16 @@ Invoke-RestMethod -Uri http://localhost:11434/api/generate -Method Post -Content
 # 2. THEN restart the VM (if the engine doesn't return in ~2 min, restart Docker Desktop)
 wsl --shutdown
 ```
+**ALSO check for a factory TRAIN in flight** (measured 04:09 — it started one): the train
+stage is a torch process that grows to **~3.8 GB** over ~1 h, and unloading the Ollama
+model does NOT free it. Look at the last line of
+`apps/dottie/data/research/logs/run.log`: `{"action":"train","phase":"start"}` with no
+matching completion means a train is running. Either wait for it, or take the memory back
+(it restarts on the next hourly trigger, losing only that run):
+```powershell
+Stop-ScheduledTask -TaskName "Dottie Research runner"    # ends the daemon + its trainer
+```
+
 **Longer term**: this box cannot comfortably host the fleet + a CPU-resident LLM + the
 current desktop load (non-Ollama processes now sum to ~7.5 GB, up from ~4.4 GB earlier
 tonight — Chrome/Cursor/editor sessions accumulate). Either pause the research daemon
