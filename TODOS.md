@@ -2963,6 +2963,28 @@ most valuable catch so far:
   this time the false finding would have told the operator a working fix was worthless.
 - [ ] Standing correction to my own habit: before claiming *"nothing produces X"*, search the
   repo, not the directory I happen to be in — and confirm which artifact actually carries X.
+### 5.3.R72 — re-verified my own scoped claims repo-wide; both hold
+
+- [x] **Applied §5.3.R71's lesson to my own earlier claims (15:10)** rather than only
+  recording it. Two were scoped narrowly enough that a wider search could have overturned
+  them:
+  - **§5.3.R65 (TrainResult classification "closed").** Repo-wide: `TrainResult(` appears in
+    exactly four files — the two trainers, the test module, and the mutant strings in
+    `mutation_audit.py`. **No production construction outside the two trainers.** Claim holds.
+  - **§5.3.R64 (copy-bait "0 remaining").** I had checked the three *rendered prompts*, but
+    model-facing text also lives in `validate.py`'s failure details (fed back through
+    `as_feedback`) and `implementation.py`'s parse-retry feedback. Widened the check.
+- [x] **The widened check first gave a FALSE POSITIVE, and fixing it is the point.** A plain
+  regex over source found 4 `e.g.` hits in `validate.py` — all of them in **comments and
+  docstrings**, which no model ever sees. Conflating source text with model-facing text is
+  the same imprecision as conflating a directory with a repo. Re-ran against **only string
+  literals that actually reach the model** (`ValidationResult` detail arguments and
+  `feedback` assignments): **111 model-facing literals checked, 0 pasteable examples.**
+  Claim holds.
+- [ ] Both survived, which is the useful outcome: after two scope errors the honest move was
+  to re-test the claims rather than assume the pattern was confined to the two I noticed.
+  Re-verification that confirms is not wasted — it is the difference between "probably fine"
+  and "checked".
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
