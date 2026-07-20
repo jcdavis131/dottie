@@ -1106,6 +1106,16 @@ independent reasons, both from the bundle's own numbers/code:**
     30s cap. `api.js` attaches the bearer token only on `/assistant`, never to :8100.
     Two small gaps found, both against the code's OWN doctrine (filed, not fixed — the
     factory server is down so nothing here is runnable/testable right now):
+    - [x] **FIXED 05:57 — the console polled a hidden tab forever.** `js/app.js` started
+      three pollers at boot (`pipeline` every **5 s**, assistant 15 s, research 20 s) and
+      never paused them: no `visibilitychange` handler, no `document.hidden` check. A
+      console left open in a background tab hits `/pipeline/status` **~720×/hour**, and
+      that endpoint is not a cheap read — it opens the manifest DB, walks the metrics
+      jsonl and probes disk. The sibling arxiviq front-end already guards its polling
+      (`if (document.hidden) return; // don't burn quota`); this one did not, on a box
+      where resource pressure caused tonight's outage. Now pauses on hide and resumes on
+      show (`startPolling()` polls immediately, so returning shows fresh data at once).
+      Verified: syntax clean, listener registered, start guarded, single boot call.
     - CHECKED CLEAN (03:28): `ops.js` does NOT have the v1/v2 schema bug that bit the
       arxiviq site. Its chart keys (`series.step` / `series.lm_loss` / `series.tok_s`)
       match `pipeline_status.py::current_run_series`, which normalizes server-side

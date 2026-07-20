@@ -266,7 +266,17 @@ function boot() {
   );
   state.rerender = route;
   window.addEventListener("hashchange", route);
-  startPolling();
+  // Pause the pollers while the tab is hidden. /pipeline/status is not a cheap read —
+  // it opens the manifest DB, walks the metrics jsonl and probes disk — and this shell
+  // hits it every 5 s, so a console left open in a background tab quietly loads the
+  // factory server ~720 times an hour for nobody. The sibling arxiviq front-end already
+  // guards its polling with `document.hidden`; this one did not.
+  // startPolling() polls immediately, so returning to the tab shows fresh data at once.
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) stopPolling();
+    else startPolling();
+  });
+  if (!document.hidden) startPolling();
   route();
 }
 
