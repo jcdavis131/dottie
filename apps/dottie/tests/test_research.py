@@ -9,7 +9,8 @@ import json
 
 import pytest
 
-from dottie.research import evaluate, ideation, implementation, logger, prompts, train, validate
+from dottie.research import (evaluate, ideation, implementation, logger, promote,
+                             prompts, train, validate)
 from dottie.research.ledger import (
     Ledger, Baseline, IllegalTransition,
     PENDING, READY_FOR_TRAINING, EVALUATION_PENDING, SOTA, REJECTED,
@@ -843,6 +844,53 @@ def test_unloadable_candidate_fails_training_instead_of_retrying_forever(led, tm
     assert r["state"] == FAILED_TRAINING                       # not left retryable
     assert led.get(e.id).state == FAILED_TRAINING
     assert led.next_in_state(READY_FOR_TRAINING) is None       # queue is not blocked
+
+
+def test_promotion_bundle_leads_with_the_caveats(led, tmp_path):
+    """The reasons NOT to promote must be above the numbers, not inside a JSON dump.
+
+    TODOS §5.3.R31: PROMOTION.md is the artifact a human reads to decide. It already
+    embedded the whole eval_verdict, so the caveats were technically present — buried in a
+    blob under a header saying only "see eval_verdict below". Measured: none of
+    baseline_provenance, baseline_caveat, significance or capacity_caveat appeared anywhere
+    in the rendered prose. A contaminated baseline is not a footnote; it is the reason.
+    """
+    e = led.create(HYP)
+    led.transition(e.id, READY_FOR_TRAINING, implementation={"code": GOOD_CODE},
+                   workspace=str(tmp_path))
+    led.transition(e.id, EVALUATION_PENDING, train_metrics={"proxy_loss": 1.0})
+    led.transition(e.id, SOTA, eval_verdict={
+        "promote": True, "significant": False,
+        "significance": "improvement within noise: |delta| 0.004 vs 2.0x SEM 0.019",
+        "baseline_provenance": "promoted_contaminated",
+        "baseline_caveat": "CONTAMINATED BASELINE - set by a module that fails the validator",
+        "capacity_caveat": "the swapped block REMOVED 787,000 parameters"})
+
+    promote.build_promotion(led, e.id, out_root=tmp_path / "promotions")
+    md = (tmp_path / "promotions" / e.id / "PROMOTION.md").read_text(encoding="utf-8")
+
+    head = md.split("## Hypothesis")[0]          # everything before the body
+    assert "Read this before promoting" in head
+    assert "CONTAMINATED BASELINE" in head
+    assert "WITHIN NOISE" in head
+    assert "CAPACITY CHANGE" in head
+    # and it is genuinely ABOVE the metric line, not merely somewhere in the file
+    assert head.index("CONTAMINATED BASELINE") < head.index("- metric:")
+
+
+def test_promotion_bundle_adds_no_caveats_to_a_clean_verdict(led, tmp_path):
+    """An honest result must not be padded with reassurance it did not earn."""
+    e = led.create(HYP)
+    led.transition(e.id, READY_FOR_TRAINING, implementation={"code": GOOD_CODE},
+                   workspace=str(tmp_path))
+    led.transition(e.id, EVALUATION_PENDING, train_metrics={"proxy_loss": 1.0})
+    led.transition(e.id, SOTA, eval_verdict={
+        "promote": True, "significant": True,
+        "significance": "BETTER than baseline: |delta| 0.5 vs 2.0x two-sample SE_diff 0.02",
+        "baseline_provenance": "promoted", "baseline_caveat": None})
+    promote.build_promotion(led, e.id, out_root=tmp_path / "promotions")
+    md = (tmp_path / "promotions" / e.id / "PROMOTION.md").read_text(encoding="utf-8")
+    assert "Read this before promoting" not in md
 
 
 def test_full_cycle_promote(led, tmp_path):

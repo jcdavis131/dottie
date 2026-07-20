@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from dottie.research.ledger import SOTA, Ledger
 
@@ -36,6 +36,41 @@ print("unmodified:", baseline)
 candidate = factory_nano_trainer(r"{module_path}", {{"steps": STEPS}})
 print("candidate: ", candidate)
 '''
+
+
+def _caveat_block(verdict: Dict[str, Any]) -> List[str]:
+    """Everything qualifying this result, ABOVE the numbers rather than inside a JSON dump.
+
+    The bundle is the artifact a human reads to decide whether to promote. It already
+    contained the full `eval_verdict`, so the caveats were technically present — buried in a
+    JSON blob under a header that said only "see eval_verdict below". A warning that the
+    baseline is contaminated, or that the win is inside the noise, or that the block simply
+    removed capacity, is not a footnote: it is the reason not to promote. Measured
+    2026-07-20 (TODOS §5.3.R31): none of `baseline_provenance`, `baseline_caveat`,
+    `significance` or `capacity_caveat` appeared anywhere in the rendered prose.
+
+    Returns [] when a verdict is genuinely clean, so an honest result is not padded with
+    reassurance it did not earn."""
+    lines: List[str] = []
+    prov = verdict.get("baseline_provenance")
+    caveat = verdict.get("baseline_caveat")
+    if caveat or (prov and prov != "promoted"):
+        lines.append(f"> **BASELINE CAVEAT** (provenance: `{prov}`) — "
+                     f"{(caveat or 'no detail recorded').strip()}")
+    if verdict.get("significant") is None:
+        lines.append("> **SIGNIFICANCE UNMEASURABLE** — no per-batch series was recorded, so "
+                     "this delta was never tested against noise.")
+    elif verdict.get("significant") is False:
+        lines.append(f"> **WITHIN NOISE** — {verdict.get('significance', '')}")
+    if verdict.get("capacity_caveat"):
+        lines.append(f"> **CAPACITY CHANGE** — {verdict['capacity_caveat']}")
+    sig = verdict.get("significance") or ""
+    if "candidate-only SEM" in sig:
+        lines.append("> **WEAK SIGNIFICANCE TEST** — the baseline records no spread, so it "
+                     "was treated as an exact point; the real bar is higher than it looks.")
+    if not lines:
+        return []
+    return ["> ### Read this before promoting", *lines, ""]
 
 
 def build_promotion(ledger: Ledger, exp_id: str, *, out_root: str | Path,
@@ -67,6 +102,7 @@ def build_promotion(ledger: Ledger, exp_id: str, *, out_root: str | Path,
     md = [
         f"# Research promotion — {hyp.get('hypothesis_name', exp_id)}",
         "",
+        *_caveat_block(exp.eval_verdict or {}),
         f"- experiment: `{exp_id}`  |  state: **sota**  |  generated: "
         f"{time.strftime('%Y-%m-%d %H:%M:%SZ', time.gmtime(ts or time.time()))}",
         f"- metric: `{b.metric_name}` — candidate **{metrics.get(b.metric_name)}** vs "

@@ -1890,6 +1890,28 @@ most valuable catch so far:
   the cheaper order is: let this window finish, read it, then restart. The seq probe not
   being live costs a training crash or two in the meantime — real but small, and the crashes
   are correctly classified as `failed_training` either way.
+### 5.3.R31 — the promotion bundle buried its own reasons not to promote
+
+- [x] **`PROMOTION.md` is the artifact a human reads to approve a promotion, and it did not
+  render a single caveat (09:35).** Grepped it: none of `baseline_provenance`,
+  `baseline_caveat`, `significance`, or `capacity_caveat` appeared in the prose. They were
+  technically present — the bundle embeds the entire `eval_verdict` — **inside a JSON blob,
+  under a header whose only pointer was "see eval_verdict below"**. A contaminated baseline
+  is not a footnote; it is the reason not to promote.
+- [x] **Caveats now render ABOVE the numbers**, as a `> ### Read this before promoting`
+  block: contaminated/hand-seeded baseline with its detail, within-noise verdicts,
+  unmeasurable significance, capacity changes, and the weak one-sample test. The test
+  asserts position, not mere presence — the block must precede the `- metric:` line.
+- [x] **Both existing SOTAs now lead with a warning, and it is the right one.** Rendering
+  the real verdicts for `23bb41375804` (MLBR) and `bc3dbb74bead` (HierarchicalAttention)
+  produces **"SIGNIFICANCE UNMEASURABLE — no per-batch series was recorded, so this delta
+  was never tested against noise."** Both verdicts predate the significance gate. That is
+  precisely the fact decision #5 turns on, and until now it was invisible in the prose a
+  reader would actually read.
+- [x] **A clean verdict gets NO block** — an honest result is not padded with reassurance it
+  did not earn. Tested in both directions. Verified red on the old code, which produced a
+  header running straight from the title to `- metric:` with nothing in between. Suite 174
+  passed.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
