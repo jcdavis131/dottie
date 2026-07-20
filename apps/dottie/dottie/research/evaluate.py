@@ -200,7 +200,24 @@ def run_evaluation(ledger: Ledger, *, require_stable: bool = True,
     if sp is None:
         significant, sig_note = None, "no per-batch series recorded — significance unmeasurable"
     else:
-        significant = abs(delta) >= SIGNIFICANCE_SEM * sp["sem"]
+        # Two-sample when the baseline recorded its own spread, one-sample when it did not.
+        # Comparing a candidate's SEM against a POINT baseline silently assumes the
+        # baseline was measured without error: the effective threshold is ~1.4 SE_diff
+        # (~84%), not the 95% the word "significant" implies. When the baseline carries a
+        # SEM, SE_diff = sqrt(sem_c² + sem_b²) is the honest denominator. The fallback is
+        # kept — most baselines here predate this field — but it now says so out loud
+        # instead of leaving the reader to assume the stronger test was applied.
+        base_sem = baseline.metric_sem
+        if base_sem is not None and base_sem >= 0:
+            se_diff = (sp["sem"] ** 2 + float(base_sem) ** 2) ** 0.5
+            basis = (f"two-sample SE_diff {se_diff:.5g} "
+                     f"(candidate SEM {sp['sem']:.5g}, baseline SEM {float(base_sem):.5g})")
+        else:
+            se_diff = sp["sem"]
+            basis = (f"candidate-only SEM {sp['sem']:.5g} — the baseline records NO spread, "
+                     f"so it is treated as an exact point and this test is weaker than "
+                     f"{SIGNIFICANCE_SEM} SE of a real difference")
+        significant = abs(delta) >= SIGNIFICANCE_SEM * se_diff
         # `significant` is direction-AGNOSTIC (it tests |delta| against noise), so a
         # candidate that is significantly WORSE also sets it true. Spell the direction out
         # here: this string is what lands in the write-up and the promotion bundle, where
@@ -209,8 +226,9 @@ def run_evaluation(ledger: Ledger, *, require_stable: bool = True,
             verdict_word = "BETTER than baseline" if improved else "WORSE than baseline"
         else:
             verdict_word = "within noise of baseline"
-        sig_note = (f"{verdict_word}: |delta| {abs(delta):.5g} vs {SIGNIFICANCE_SEM}×SEM "
-                    f"{SIGNIFICANCE_SEM * sp['sem']:.5g} (n={sp['n']}, std={sp['std']:.5g})")
+        sig_note = (f"{verdict_word}: |delta| {abs(delta):.5g} vs {SIGNIFICANCE_SEM}× "
+                    f"{basis} = {SIGNIFICANCE_SEM * se_diff:.5g} "
+                    f"(n={sp['n']}, std={sp['std']:.5g})")
 
     # Recorded, not gated on: a swap that DELETES parameters can "win" at fixed steps
     # simply by being easier to fit (MLBR did exactly this). The reviewer needs to see it.
@@ -248,7 +266,11 @@ def run_evaluation(ledger: Ledger, *, require_stable: bool = True,
         writeup = _writeup(exp, baseline, value, promoted=True, significance=sig_note,
                            capacity="\n".join(x for x in (capacity_note, base_caveat) if x))
         ledger.transition(exp.id, SOTA, eval_verdict=verdict, writeup=writeup, ts=ts)
-        ledger.promote_baseline(exp.id, value, notes=exp.name, ts=ts)
+        # Carry this run's spread onto the baseline so the NEXT candidate gets a
+        # two-sample test instead of inheriting the point-estimate weakness.
+        ledger.promote_baseline(exp.id, value, notes=exp.name, ts=ts,
+                                metric_sem=None if sp is None else sp["sem"],
+                                metric_sem_n=None if sp is None else sp["n"])
         return {"experiment": exp.id, "state": SOTA, "verdict": verdict}
 
     if not improved:

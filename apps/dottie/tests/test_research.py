@@ -406,6 +406,61 @@ def test_full_cycle_promote(led, tmp_path):
     assert led.get_baseline().metric_value == rt["metrics"]["proxy_loss"]
 
 
+def test_two_sample_significance_when_baseline_records_spread(led, tmp_path):
+    """A baseline with its own SEM must be compared two-sample, not as an exact point.
+
+    TODOS §5.3.R6: comparing a candidate's SEM against a POINT baseline assumes the
+    baseline was measured without error. The effective threshold is ~1.4 SE_diff (~84%),
+    not the 95% "significant" implies. With both spreads known the honest denominator is
+    SE_diff = sqrt(sem_c² + sem_b²), which is strictly LARGER — so a delta that squeaked
+    past the one-sample test can and should fail the two-sample one.
+    """
+    noisy = [4.35, 4.60, 4.40, 4.62, 4.38, 4.58]        # mean 4.485, sem ~0.0455
+
+    def evaluate_against(baseline_sem):
+        L = Ledger(tmp_path / f"l_{baseline_sem}.sqlite3")
+        L.seed_baseline(Baseline("proxy_loss", 4.6, higher_is_better=False,
+                                 architecture="ava-nano", experiment_id=None,
+                                 updated_ts=0.0, metric_sem=baseline_sem))
+        e = L.create(HYP)
+        L.transition(e.id, READY_FOR_TRAINING, implementation={"code": GOOD_CODE}, workspace="/w")
+        L.transition(e.id, EVALUATION_PENDING,
+                     train_metrics={"proxy_loss": 4.485, "eval_ce_per_batch": noisy,
+                                    "integration": "proxy_micro_benchmark", "params": 1000})
+        return evaluate.run_evaluation(L)
+
+    # delta = 0.115; candidate sem ~0.0455 -> 2*sem ~0.0910, so it CLEARS a point baseline
+    one = evaluate_against(None)
+    assert one["verdict"]["significant"] is True
+    assert "candidate-only SEM" in one["verdict"]["significance"]
+    assert "NO spread" in one["verdict"]["significance"]     # weakness stated, not implied
+
+    # same delta, but a baseline SEM of 0.05 gives SE_diff ~0.0677 -> 2*SE_diff ~0.135 > 0.115
+    two = evaluate_against(0.05)
+    assert two["verdict"]["significant"] is False
+    assert "two-sample SE_diff" in two["verdict"]["significance"]
+    assert two["state"] == REJECTED                          # correctly HELD
+
+
+def test_promotion_records_the_baselines_spread(led, tmp_path):
+    """Promotion must carry the winning run's SEM onto the baseline.
+
+    Otherwise every future comparison silently falls back to the weaker point test, and
+    the two-sample path above can never engage.
+    """
+    _implement(led, tmp_path, make_policy())
+    e = led.next_in_state(READY_FOR_TRAINING)
+    led.transition(e.id, EVALUATION_PENDING,
+                   train_metrics={"proxy_loss": 1.0,
+                                  "eval_ce_per_batch": [1.0, 1.01, 0.99, 1.0, 1.0, 1.0],
+                                  "integration": "proxy_micro_benchmark"})
+    r = evaluate.run_evaluation(led)
+    assert r["state"] == SOTA
+    b = led.get_baseline()
+    assert b.metric_sem is not None and b.metric_sem > 0
+    assert b.metric_sem_n == 6
+
+
 def test_contaminated_baseline_is_detected(led, tmp_path):
     """A baseline set by a candidate the loop would NOW reject must not read as trusted.
 

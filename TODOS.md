@@ -1117,6 +1117,39 @@ most valuable catch so far:
   sharper — **re-seed the baseline to 5.61982** (the pre-MLBR value) and the caveat clears
   itself. Until then every promotion verdict carries the contamination warning, which is
   honest but noisy.
+### 5.3.R6 — the significance gate now does a real two-sample test
+
+- [x] **BASELINE SPREAD IS RECORDED, AND THE GATE USES IT (07:35).** The gate compared a
+  candidate's SEM against a **point** baseline, which silently assumes the baseline was
+  measured without error. The effective threshold is ~1.4 SE_diff (~84%), **not the 95%
+  the word "significant" implies** — a limit documented in a doc-comment but never fixed.
+  With both spreads known the honest denominator is `SE_diff = sqrt(sem_c² + sem_b²)`,
+  which is strictly larger, so deltas that squeaked past can now correctly fail.
+  - `Baseline` carries `metric_sem` / `metric_sem_n`; `promote_baseline` records the
+    winning run's spread so the NEXT candidate gets the stronger test. Nullable on
+    purpose: hand-seeded and legacy baselines genuinely have no spread, and inventing one
+    is worse than admitting it is missing.
+  - **The one-sample fallback now says so out loud** rather than letting a reader assume
+    the stronger test ran: *"candidate-only SEM … the baseline records NO spread, so it is
+    treated as an exact point and this test is weaker than 2 SE of a real difference"*.
+  - Test is behavioral, not cosmetic: **same delta (0.115), same candidate spread** →
+    `significant: True` against a point baseline, `significant: False` once the baseline
+    carries SEM 0.05 (2×SE_diff ≈ 0.135 > 0.115), and the experiment is correctly HELD.
+  - Added `Ledger._migrate()` — additive, nullable ALTER TABLE only. `CREATE TABLE IF NOT
+    EXISTS` is a no-op on an existing table, so new columns never reach a live ledger
+    without it. Additive-only matters here specifically because the research daemon holds
+    this file open for hours and **does not reload**: old code reads by column name and
+    writes an explicit column list, so it keeps working against the migrated DB. Verified
+    by migrating the live ledger in place and reading the baseline back.
+  - Full suite 156 passed.
+- [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
+  `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
+  number is honest but keeps the loop on the weaker one-sample test indefinitely.
+- [ ] CONSIDERED AND DECLINED: renaming the verdict key `significant` → `beyond_noise`.
+  Grepped every consumer: only `evaluate.py` and the tests read it — no webapp, API, or
+  package does. The misleading-name risk is real but internal, the direction is already
+  spelled out in `significance`, and the honest fix was the *arithmetic*, which is now
+  done. Renaming a persisted key across stored records for a cosmetic gain is not worth it.
 - [ ] NEXT: **improve dry_run correction feedback — but NOT until constraint-8 is
   measurable.** dry_run is 77% of genuine failures, and the likely lever is handing the
   corrector the actual tensor shapes at the failure point instead of a raw traceback.

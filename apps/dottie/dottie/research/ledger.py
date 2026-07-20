@@ -109,6 +109,14 @@ class Baseline:
     experiment_id: Optional[str]
     updated_ts: float
     notes: str = ""
+    #: Spread of the run that SET this baseline, when one was recorded. Without it the
+    #: significance gate can only compare a candidate's own SEM against a POINT estimate,
+    #: which is ~1.4 SE_diff (~84%) — not the 95% "significant" implies. Carrying the
+    #: baseline's own SEM lets the gate use a real two-sample SE_diff instead. Optional
+    #: because hand-seeded and legacy baselines genuinely have no spread to record, and
+    #: inventing one would be worse than admitting it is absent.
+    metric_sem: Optional[float] = None
+    metric_sem_n: Optional[int] = None
 
     def improves(self, value: float) -> bool:
         """Is ``value`` a real improvement over this baseline (strict, direction-aware)?"""
@@ -139,7 +147,9 @@ CREATE TABLE IF NOT EXISTS baseline (
     architecture TEXT NOT NULL,
     experiment_id TEXT,
     updated_ts   REAL NOT NULL,
-    notes        TEXT NOT NULL DEFAULT ''
+    notes        TEXT NOT NULL DEFAULT '',
+    metric_sem   REAL,
+    metric_sem_n INTEGER
 );
 """
 
@@ -156,6 +166,21 @@ class Ledger:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._conn() as c:
             c.executescript(_SCHEMA)
+            self._migrate(c)
+
+    @staticmethod
+    def _migrate(c: sqlite3.Connection) -> None:
+        """Additive column migrations for ledgers created before a field existed.
+
+        `CREATE TABLE IF NOT EXISTS` is a no-op on an existing table, so new columns never
+        appear on a live ledger without this. Every migration must be ADDITIVE and
+        nullable: a daemon running older code reads rows by name and writes an explicit
+        column list, so it keeps working against a migrated database — which matters here
+        because the research daemon holds this file open for hours and does not reload."""
+        have = {r["name"] for r in c.execute("PRAGMA table_info(baseline)")}
+        for col, decl in (("metric_sem", "REAL"), ("metric_sem_n", "INTEGER")):
+            if col not in have:
+                c.execute(f"ALTER TABLE baseline ADD COLUMN {col} {decl}")
 
     def _conn(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path, timeout=30.0)
@@ -179,14 +204,18 @@ class Ledger:
         with self._conn() as c:
             c.execute(
                 "INSERT INTO baseline (singleton, metric_name, metric_value, higher_is_better, "
-                "architecture, experiment_id, updated_ts, notes) VALUES (1,?,?,?,?,?,?,?) "
+                "architecture, experiment_id, updated_ts, notes, metric_sem, metric_sem_n) "
+                "VALUES (1,?,?,?,?,?,?,?,?,?) "
                 "ON CONFLICT(singleton) DO UPDATE SET metric_name=excluded.metric_name, "
                 "metric_value=excluded.metric_value, higher_is_better=excluded.higher_is_better, "
                 "architecture=excluded.architecture, experiment_id=excluded.experiment_id, "
-                "updated_ts=excluded.updated_ts, notes=excluded.notes",
+                "updated_ts=excluded.updated_ts, notes=excluded.notes, "
+                "metric_sem=excluded.metric_sem, metric_sem_n=excluded.metric_sem_n",
                 (baseline.metric_name, float(baseline.metric_value),
                  1 if baseline.higher_is_better else 0, baseline.architecture,
-                 baseline.experiment_id, baseline.updated_ts, baseline.notes),
+                 baseline.experiment_id, baseline.updated_ts, baseline.notes,
+                 None if baseline.metric_sem is None else float(baseline.metric_sem),
+                 None if baseline.metric_sem_n is None else int(baseline.metric_sem_n)),
             )
         return baseline
 
@@ -199,10 +228,13 @@ class Ledger:
             metric_name=row["metric_name"], metric_value=row["metric_value"],
             higher_is_better=bool(row["higher_is_better"]), architecture=row["architecture"],
             experiment_id=row["experiment_id"], updated_ts=row["updated_ts"], notes=row["notes"],
+            metric_sem=row["metric_sem"], metric_sem_n=row["metric_sem_n"],
         )
 
     def promote_baseline(self, experiment_id: str, metric_value: float, *,
                          architecture: Optional[str] = None, notes: str = "",
+                         metric_sem: Optional[float] = None,
+                         metric_sem_n: Optional[int] = None,
                          ts: Optional[float] = None) -> Baseline:
         """Move the baseline to a new SOTA. Caller must have already verified real improvement."""
         cur = self.get_baseline()
@@ -213,6 +245,7 @@ class Ledger:
             higher_is_better=cur.higher_is_better,
             architecture=architecture or cur.architecture, experiment_id=experiment_id,
             updated_ts=ts if ts is not None else time.time(), notes=notes,
+            metric_sem=metric_sem, metric_sem_n=metric_sem_n,
         )
         return self.seed_baseline(new, overwrite=True)
 
