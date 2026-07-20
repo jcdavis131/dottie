@@ -1320,6 +1320,45 @@ most valuable catch so far:
   - This is the first time a check I built caught a defect in work I had already reported
     as sound. Worth more than the gate it found.
   - Full suite 163 passed.
+### 5.3.R12 — a THIRD of the search budget is spent on ideas that cannot be built
+
+- [x] **MEASURED (08:15): 30 of 84 proposals (36%) are category errors** — regularisers,
+  penalties, losses, objectives, schedules — none of which can be a residual-stream block.
+  That bucket produced **zero real wins**, accounts for **4 of the 5** `failed_training`
+  records, and contains MLBR, the false SOTA that contaminated the live baseline. Each one
+  costs an ideation call plus a full implement cycle (~4-18 min) before any gate sees it.
+  - The block-shaped 64% is no better on wins (its one `sota` is the
+    `HierarchicalAttention` artifact), so this is not "the good ideas are elsewhere" — it
+    is a third of the budget spent on ideas that are *unbuildable by construction*.
+- [x] **ROOT CAUSE — and it is not that the prompt forgot to say so.** The contract already
+  states *"Ideas that need a custom loss signature or router-probability outputs are OUT OF
+  SCOPE"*, and 36% violate it anyway. The conflict is upstream: the configured bottleneck is
+  `"held-out LM loss plateaus while train loss keeps dropping (memorization gap)"` — a
+  **regularisation-shaped problem**. The canonical fix for overfitting *is* a regulariser.
+  The loop asks for a block-shaped answer to a loss-shaped question, and the model resolves
+  the contradiction by ignoring the contract. Restating the ban more loudly would not fix a
+  contradiction; it would just lose more often.
+- [x] Prompt now **translates instead of forbidding**: it names the measured 36%, explains
+  that a block sees hidden states and nothing else, lists the four ways a generalisation
+  goal *can* be expressed inside forward (mixing, gating, normalisation, stochastic paths),
+  and gives a worked conversion — *"penalise attention entropy"* is out of scope,
+  *"re-weight the block's own token mixing by an entropy-derived gate computed from x"* is
+  in scope and targets the same effect. Renders at 4,021 chars; suite 163 passed.
+- [x] **DELIBERATELY NOT a hard filter.** A name regex over the 30 would be trivial and
+  deterministic — and would also reject *"Orthogonalized Attention Regularizer"*, which is
+  perfectly implementable as a block that orthogonalises its own attention output. The
+  category error is in the **mechanism**, not the word "regulariser", and I am not willing
+  to bin a third of proposals on a string match whose false-positive rate I cannot measure
+  while the loop has zero wins to measure against.
+- [ ] **OPERATOR: the highest-leverage change here is CONFIG, not code.** The `--bottleneck`
+  string in the scheduled task is generating the mismatch. A block-shaped bottleneck (e.g.
+  *"the fusion block at the swap site underuses its capacity — find a token-mixing or gating
+  transform that extracts more from the same hidden states"*) would remove the contradiction
+  at the source rather than asking the model to work around it. That string lives in the task
+  definition, which I cannot edit.
+- [ ] Effect of the prompt change is **UNMEASURED**, and per §5.3.R8 the constraint-8
+  comparison is already confounded. Scope any future before/after by the `boot` lines, not
+  by commit timestamps.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.

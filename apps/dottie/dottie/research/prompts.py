@@ -114,6 +114,23 @@ with no extra inputs (no labels, no losses from previous steps, no optimizer sta
 spliced into a transformer's residual stream and trained by the surrounding model's LM loss.
 Ideas that need a custom loss signature or router-probability outputs are OUT OF SCOPE.
 
+IF THE BOTTLENECK ABOVE SOUNDS LIKE A TRAINING-DYNAMICS OR GENERALISATION PROBLEM (loss
+plateaus, a memorisation gap, overfitting), the honest answer to it is usually a loss term or
+a schedule — and neither can be expressed here. Measured 2026-07-20 over 84 proposals: 36%
+came back as a regulariser, penalty, or loss variant, every one of them unimplementable under
+the contract above, and NONE produced a real win. That is a third of the search budget spent
+on ideas that cannot be built. Do not spend yours there. Translate the goal into the block
+instead — the block sees hidden states and nothing else, so it can only help by changing what
+those states contain:
+  - mixing/routing information differently across positions or channels
+  - gating, sparsifying, or re-weighting features inside the transform
+  - normalisation or reparameterisation applied to the hidden states
+  - injecting structured noise or stochastic paths WITHIN forward
+Concretely: "penalise attention entropy" is out of scope; "re-weight the block's own token
+mixing by an entropy-derived gate computed from x" is in scope and targets the same effect.
+A proposal whose mechanism only makes sense as an added term in the training objective is a
+category error here, however good the idea is on its own.
+
 # DEAD ENDS (already tried and failed — do not repeat)
 {_failed_block(failed_hypotheses or [])}
 
