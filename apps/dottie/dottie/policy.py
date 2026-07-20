@@ -165,6 +165,15 @@ class OllamaPolicy(PolicyProvider):
             "stream": False,
             "options": options,
         }
+        # DOTTIE_OLLAMA_KEEP_ALIVE controls how long Ollama keeps the model RESIDENT after
+        # a call (e.g. "30s", "0" to unload immediately). Measured 2026-07-20: the research
+        # loop calls every ~4 min, inside Ollama's 5-minute default, so with NUM_GPU=0 the
+        # model never unloads and squats ~5.3 GB of system RAM permanently — which is what
+        # starved the WSL VM and took the whole container fleet down. Unset = Ollama's
+        # default (fast, memory-hungry); set it when the fleet must share this box.
+        keep_alive = os.environ.get("DOTTIE_OLLAMA_KEEP_ALIVE")
+        if keep_alive is not None and keep_alive.strip() != "":
+            payload["keep_alive"] = keep_alive.strip()
         if self.think is not None:
             payload["think"] = self.think
         try:

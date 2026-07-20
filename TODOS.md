@@ -104,8 +104,18 @@ Adding the fleet back (+3–4 GB) lands at ~15–16 GB of 16 GB — i.e. right a
 killed the VM. Earlier tonight the same pair fitted because the desktop load was ~4.4 GB,
 not ~7.5 GB. **Pick one lever before running both:** pause the research daemon (frees the
 whole 5.3 GB — decisive, and step 1 of the recovery already does it), close a few
-Claude/browser sessions (~3.3 GB available there), or set a short `OLLAMA_KEEP_ALIVE` so
-the model unloads between stages (costs reload time each call).
+Claude/browser sessions (~3.3 GB available there), or — **new, shipped 04:29** — set
+
+```powershell
+$env:DOTTIE_OLLAMA_KEEP_ALIVE = "30s"   # in research_env.local.ps1; "0" = unload at once
+```
+
+`OllamaPolicy` now forwards `keep_alive` on every `/api/chat` call, so the model releases
+its ~5.3 GB between stages instead of squatting permanently. Unset = Ollama's default, so
+nothing changes for anyone who doesn't opt in. Trade-off: each stage pays a model reload
+(~10–20 s on CPU) in exchange for the fleet fitting alongside the loop. 36/36 tests green
+(new test covers set / unset / blank-is-unset). **Not enabled by default — your call**,
+since it slows every research call and the fleet is currently down anyway.
 Recovery is then automatic (restart policies + `--resume`); verification commands and a
 fallback relaunch are in §1.3. **The 45W power cap is the standing suspect for the whole
 family of failures tonight — 780MHz clocks, 2 CUBLAS crashes, and this VM death. Check

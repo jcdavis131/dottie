@@ -515,6 +515,36 @@ def test_policy_num_gpu_knob(monkeypatch):
     assert "num_gpu" not in captured["options"]
 
 
+def test_policy_keep_alive_knob(monkeypatch):
+    # DOTTIE_OLLAMA_KEEP_ALIVE bounds how long Ollama keeps the model resident. Measured
+    # 2026-07-20: the loop calls every ~4 min, inside Ollama's 5-min default, so on CPU the
+    # model squatted ~5.3 GB permanently and starved the WSL VM until the fleet died.
+    from dottie.policy import OllamaPolicy
+    captured = {}
+    class _R:
+        status_code = 200
+        def json(self):
+            return {"message": {"content": "ok"}}
+    def fake_post(url, json=None, timeout=None):
+        captured.update(json)
+        return _R()
+    import dottie.policy as pol
+    monkeypatch.setattr(pol.httpx, "post", fake_post)
+    monkeypatch.setenv("DOTTIE_OLLAMA_KEEP_ALIVE", "30s")
+    OllamaPolicy(base_url="http://x", model="m").complete("hi")
+    assert captured["keep_alive"] == "30s"
+    # unset => absent, so Ollama's own default applies and nothing changes for other users
+    monkeypatch.delenv("DOTTIE_OLLAMA_KEEP_ALIVE")
+    captured.clear()
+    OllamaPolicy(base_url="http://x", model="m").complete("hi")
+    assert "keep_alive" not in captured
+    # blank is treated as unset, not as the string "" (which Ollama would reject)
+    monkeypatch.setenv("DOTTIE_OLLAMA_KEEP_ALIVE", "   ")
+    captured.clear()
+    OllamaPolicy(base_url="http://x", model="m").complete("hi")
+    assert "keep_alive" not in captured
+
+
 def test_promotion_bundle_from_sota_and_refusals(led, tmp_path):
     # TODOS 5.3: sota -> reviewable bundle; everything else refuses honestly.
     from dottie.research import promote
