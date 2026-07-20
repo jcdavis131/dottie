@@ -990,6 +990,17 @@ independent reasons, both from the bundle's own numbers/code:**
       beside it at `js/api.contract.test.mjs` (run `node js/api.contract.test.mjs`),
       covering the new path plus the unchanged 4xx/5xx-with-detail, happy-path, and
       network-error behaviours. 6/6 pass.
+7.7 **Live-data check (05:22) — the arxiviq feed is HEALTHY despite the fleet being down.**
+    The hourly publisher is host-side, so it kept working through the outage: gist
+    published 2 min before the check, carrying the current research ledger (baseline
+    5.60506, 69 experiments, 54 failed_validation) and an honest
+    `pipeline: {unreachable}`. Rendering the committed site code against that exact
+    payload gives: badge *"live · box seen 2 min ago"* (true — the box IS alive), Factory
+    mode *"factory unreachable"* (true), pipeline tiles em-dashed (correct — no such data
+    exists). Three components each telling the truth about a different thing.
+    ⚠ **But arxiviq.com is still serving the OLD code**, which renders that same payload as
+    "Factory mode: unknown" plus bare em-dashes — i.e. it looks like missing data rather
+    than a down service. That is the visible cost of the un-deployed fix (§7.5).
 7.5 [x] **Site render VERIFIED headlessly + factory-down honesty fix (02:55)**: the
     browser extension isn't connected, so instead the REAL `app.js` was run against the
     REAL gist payload in a DOM shim (harness: `$CLAUDE_JOB_DIR/tmp/site_render_check.js`,
