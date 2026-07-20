@@ -18,8 +18,12 @@ THE NIGHT'S HEADLINES — read these before anything below:
 2. **§2.1 fleet rebuild DONE + verified**: 13/13 healthy on reconciled images,
    30-source registry live; collectors correctly paused on full runway. §2.2 blocked
    only on the next-run decision.
-3. **Research loop: first real SOTA** — MLBR ratcheted baseline 5.61982→5.60506;
-   2 promotion bundles await your review (data/research/promotions/; MLBR first).
+3. **Research loop: first SOTA — but the loop's own review says REJECT it.** MLBR
+   ratcheted the baseline 5.61982→5.60506, and then §5.3.R (below) took the bundle
+   apart: the delta is **1.1 SEM** (inside noise) and the "MoE regularizer" is a
+   parameter-free scalar shift that REPLACED a real block. Read §5.3.R before the
+   bundle; it also lists the 3 cheap evaluate.py fixes this exposed (significance
+   margin, param-delta in the verdict, paired seeds).
    Survived TWO outages tonight: 780MHz GPU = 45W power cap from 13% battery (not
    drivers — check the charger), and Ollama dead-since-reboot (user autostart + no
    login; PREVENTION item in §8 needs your password). Now converting on qwen3:14b
@@ -256,6 +260,34 @@ Then §1 fires automatically (#17 armed on the monitor).
       22:00–06:00) — 14b stalls only under GPU contention.
     - 5.2.c [ ] (re-scoped) Feed richer context into corrections — research candidates are single modules, so reviewgraph adds little; instead feed the CANDIDATE's own prior-attempt diff. Original idea: output into the correction prompt (the compact
       dependent-signature block) — the corrector currently sees only the traceback.
+### 5.3.R — REVIEWER BRIEF for the MLBR bundle (written by the loop 2026-07-20 03:30)
+
+**Recommendation: REJECT the promotion (or re-measure with paired seeds). Two
+independent reasons, both from the bundle's own numbers/code:**
+
+1. **The "improvement" is inside the noise.** The bundle reports 20 held-out CE
+   batches; their std is **0.0600**, so SEM = 0.0600/√20 = **0.0134**. The claimed
+   delta is **−0.01476 = 1.1 SEM** — nowhere near the ~2 SEM needed to call it real,
+   and the baseline (5.61982) carries its own unreported error. The ledger's
+   `improved: true` is a raw `<` comparison with no significance test; that is the
+   machinery's real gap, not a lie.
+2. **The candidate module is not what its hypothesis claims.** `candidate.py`
+   defines no experts, no routing, and no load balancing: it computes a single
+   SCALAR (`-mean over B,S of logsumexp(λx) over hidden`) and broadcasts it onto
+   every activation. It has **zero learnable parameters** — and the run swapped it
+   in for a real fusion block (`swap_layer: 3`, params 13.00M vs the 13.79M
+   baseline). So the measured effect is mostly "delete a block from a 150-step
+   under-trained nano", a classic smoke-scale artifact. (`exp(λx)` is also
+   overflow-fragile once activations grow.)
+
+**Cheap fixes to the loop this exposes (queue, don't hand-apply tonight):**
+- evaluate.py should require a significance margin (e.g. |delta| ≥ 2×SEM of the
+  per-batch CE) before `improved: true`, and record SEM in the verdict.
+- The param-count delta vs baseline belongs in the verdict — a swap that REMOVES
+  parameters is not comparable at fixed steps.
+- Consider paired-seed evaluation (same seeds, baseline vs candidate) to kill most
+  of this variance outright.
+
 5.3 [x] **Close the loop into the factory** (sota -> promotion bundle: candidate.py + evidence + ab_nano.py, runner-automatic, human-gated): when an experiment reaches `sota`, generate a
     `deltanet_layers`-style patch PR against `model_1b.py` + a nano A/B run script;
     human-review gate before it touches mini/base1b presets.
