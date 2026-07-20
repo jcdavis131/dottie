@@ -1717,6 +1717,37 @@ most valuable catch so far:
   §5.3.R12 already showed prompt changes are hard to attribute. It is now measurable the
   right way: the post-restart boundary is clean, and `scripts/post_restart_report.py` will
   report the category-error rate once n ≥ 20. Do not credit this until then.
+### 5.3.R25 — first post-restart cycle: the machinery works. The RATES are not claimed.
+
+- [x] **OPERATIONAL confirmations (09:11) — binary facts about whether features function,
+  which is a different question from whether they help:**
+  - **All six stages ran** on the first candidate to reach validation (`da2da0ffbb59`):
+    `syntax, contract, static, dry_run, integration_width, residual_stream`. The stages
+    added tonight are live and executing in production, not just in tests.
+  - **`learnable_parameters` is being filled: 3 of 3.** Real values, not placeholders —
+    `gate: nn.Linear(hidden, hidden)`, `positional_weights: nn.Parameter((seq_len, hidden))`,
+    `mean: nn.Parameter(hidden); std: nn.Parameter(hidden)`. The schema change lands.
+  - The first candidate through passed the zero-parameter gate **on merit** (it has a real
+    `nn.Linear`), so the gate is not silently blocking everything.
+- [x] **What I am NOT claiming, and why it is tempting.** The three new names are
+  *Channel-Selective Attention Gating*, *Positional Feature Rebalancing*, *Dynamic Feature
+  Normalization* — one "attention", **zero** "gradient", "sparse", "consistent" or
+  "regularizer", and no category errors. Against a pre-restart vocabulary where `gradient`
+  appeared in 11 of 20 and 36% were category errors, that looks like the §5.3.R12 and
+  §5.3.R24 fixes working.
+  - **n = 3. That is one ideation batch.** Three names from one call is exactly the sample
+    size at which the constraint-8 comparison produced a confident-looking number that meant
+    nothing (§5.3.R8), and I have a stake in these particular fixes succeeding. The
+    threshold is n ≥ 20, enforced in `scripts/post_restart_report.py` rather than left to my
+    judgement while looking at an encouraging result.
+  - Recording the observation is honest; treating it as evidence would not be. If the next
+    six batches look like the old ones, this entry is the record that I saw a promising
+    n=3 and did not bank it.
+- [ ] **R19 follow-up status:** compliance is 3/3, which is *consistent with* promoting
+  `learnable_parameters` to `required` in `parse_hypotheses` — but 3 successes cannot
+  distinguish "the model always complies" from "the model complied three times". Leave it
+  optional until n ≥ 20; the cost of being wrong is every ideation batch burning its full
+  retry budget.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
