@@ -523,9 +523,25 @@ estart_research.ps1                    # research back on, and PROVES it booted
    - The prompt now translates rather than forbids (§5.3.R12), but that is a workaround for
      the contradiction, not a fix to it.
 
-9. **⚠ `apps/dottie` is RED at HEAD: 36 failed / 159 passed — and it needs a layout decision,
-   not a patch.** Found 2026-07-20 (§5.3.R77) running the full suite. **Not caused by tonight's
-   work** — verified by stashing my changes and reproducing on a clean tree.
+9. **✅ WITHDRAWN — I WAS WRONG. `apps/dottie` is GREEN: 199 passed, 1 skipped.**
+   Corrected 2026-07-20 18:45 (§5.3.R87). **There is no layout decision to make and nothing
+   for you to do here.** The suite needs `AVA_FACTORY_ROOT` pointed at the standalone
+   checkout — which the daemon has set all along, in the gitignored machine-local
+   `apps/dottie/research_orchestration/research_env.local.ps1`:
+   ```
+   $env:AVA_FACTORY_ROOT = "C:\Users\jcdav\workspace\ava-agi-factory-v6-4"
+   ```
+   That checkout **has** the `ava/rl/codeact_loop.py` layout `resolve.py` probes for. My
+   shell never had the var, so I diagnosed a missing dependency as a broken repo.
+   **What I got right and what I got wrong:** the two-packages-named-`dottie` observation is
+   real, and `ensure_factory_on_path()` inserting a colliding root at `sys.path[0]` is still
+   a genuine latent hazard worth knowing about. But the CONCLUSION — "red at HEAD, needs an
+   operator rename" — was wrong, and I asked you to make a decision that did not exist.
+   The original text is kept below for the record.
+
+   ~~**⚠ `apps/dottie` is RED at HEAD: 36 failed / 159 passed — and it needs a layout
+   decision, not a patch.** Found 2026-07-20 (§5.3.R77) running the full suite. **Not caused
+   by tonight's work** — verified by stashing my changes and reproducing on a clean tree.~~
    - **Root cause: two different packages are both named `dottie`.** `apps/dottie/dottie`
      (has `research`) and `apps/ava-factory/dottie` (has `rl`). Python can only ever import
      one of them per process — whichever lands on `sys.path` first wins, and the other's
@@ -3139,6 +3155,40 @@ most valuable catch so far:
   this writing the test fixture, not in production, so **frequency is unmeasured**; check
   the stored histories for repeated identical dry_run failures before deciding whether to
   re-derive the class name per attempt or pin the name in the correction prompt.
+
+### 5.3.R87 — ⚠ I WITHDRAW QUEUE ITEM 9. `apps/dottie` IS GREEN: 199 passed.
+
+- [x] **Went to run R86's decisive control and it failed on `ava/rl/codeact_loop.py` — the
+  same error I had filed as queue item 9.** That forced me to look harder at it than I had
+  when I merely *reported* it, and the answer was in data I had already read: the promoted
+  run's `train_metrics` record `packed_dir = C:\Users\jcdav\workspace\ava-agi-factory-v6-4\…`
+  — **a path that appears nowhere in the resolver's probe list.** So the daemon resolves to a
+  root I never had.
+- [x] **Found it:** `apps/dottie/research_orchestration/research_env.local.ps1` — gitignored,
+  machine-local, sourced by the worker — sets
+  `$env:AVA_FACTORY_ROOT = "C:\Users\jcdav\workspace\ava-agi-factory-v6-4"`. That checkout
+  **has** the `ava/` layout `resolve.py` probes for. **`apps/dottie` with that var set:
+  199 passed, 1 skipped.**
+- [x] **So queue item 9 was wrong and is withdrawn.** I diagnosed a *missing machine-local
+  dependency* as a *broken repository*, and asked the operator to make a rename decision
+  **that did not exist**. The suite was never red; my shell was never configured.
+- [x] **What survives:** the two-packages-named-`dottie` observation is real, and
+  `ensure_factory_on_path()` inserting a colliding root at `sys.path[0]` remains a genuine
+  latent hazard. **Being right about the mechanism did not make me right about the verdict** —
+  I built a confident conclusion on one un-checked assumption (that my environment matched
+  the daemon's) and it carried through R77, R78, R84 and R85 unchallenged.
+- [x] **The tell was there and I walked past it twice.** R77's error text names
+  `\home\user\ava-agi-factory-v6-4` — a *Linux* default on a Windows box. A resolver falling
+  through to a foreign-platform default is the signature of *"the real root was never
+  configured here"*, not of *"the code is broken"*. I read that string in R77 and again in
+  R84 and did not ask why it was there.
+- [x] **Board correction:** §5.3.R85's table lists `apps/dottie` as 159/36 ⛔. With the
+  daemon's own env it is **199 passed / 1 skipped ✅**. That makes the whole repo green,
+  and the real total **1,023 passing** (824 green + 199), with `scout-rtx` still unmeasured.
+- [ ] **Worth doing, small:** `resolve.py`'s error should say *"set AVA_FACTORY_ROOT — on this
+  box the working value lives in `research_orchestration/research_env.local.ps1`"*. The
+  message lists probed paths but never names the file that already holds the answer, which is
+  precisely why the fix sat two directories away for four hours.
 
 ### 5.3.R86 — ⚠ THERE IS A THIRD SOTA ROW, AND "REAL WINS = ZERO" IS NO LONGER TRUE
 
