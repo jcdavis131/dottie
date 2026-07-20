@@ -3156,6 +3156,31 @@ most valuable catch so far:
   the stored histories for repeated identical dry_run failures before deciding whether to
   re-derive the class name per attempt or pin the name in the correction prompt.
 
+### 5.3.R92 — I hand-rolled a seed sweep the loop had already generated for me
+
+- [x] **Killed my own `seed_sweep.py` 15 minutes in and ran the project's artifact instead.**
+  While it ran I went to check `promote.py`'s A/B template for staleness — and found it was
+  **exactly the experiment I was hand-rolling, done better.**
+- [x] **`data/research/promotions/5a7232ffea24/ab_nano.py` has existed since 10:15**, written
+  automatically when the candidate was promoted. It runs `SEEDS = [0, 1, 2]`, measures the
+  unmodified model and the candidate **at the same seed**, and computes **PAIRED differences**
+  so shared run-to-run variance cancels — then applies the loop's own 2×SEM standard.
+- [x] **Mine was strictly worse:** seeds 0 and 1 only, a *carried-forward* 1234 pair measured
+  in a different session under different conditions, and **no paired statistics** — I would
+  have compared arm means and called it n=3. The tool I needed was generated for me, by this
+  repo, for this exact candidate, hours before I started writing a replacement.
+- [x] **Killed it deliberately rather than sunk-costing.** 15 minutes of compute is cheaper
+  than an answer computed the wrong way, and a verdict from the loop's own verification tool
+  is reproducible by the operator — `python data/research/promotions/5a7232ffea24/ab_nano.py`
+  — in a way my scratch script never would be.
+- [x] **The pattern, again:** R88 fabricated a clock rather than reading one; R89 estimated an
+  install rather than checking it; this one **built a tool rather than looking for one.**
+  All three are the same move — producing something plausible instead of consulting the source
+  that already had the answer. **The repo keeps being better prepared than I assume it is.**
+- [ ] ⏳ `ab_nano.py` running (launched 15:14, 6 runs ≈ 80 min at ~13 min each). Its verdict is
+  the canonical one and **supersedes R91's single-seed result** either way. R91 settled the
+  mechanism with controls no seed sweep can replace; this settles reproducibility.
+
 ### 5.3.R91 — ✅ CONTROL RESULT: the capacity confound is REFUTED. This is a REAL WIN.
 
 **The loop has produced its first genuine result.** I expected the opposite and said so
