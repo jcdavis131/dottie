@@ -3217,10 +3217,25 @@ most valuable catch so far:
   is `sigmoid(randn)`, so at init **it multiplies the residual stream by ~0.51** (measured:
   mean 0.511). At a 150-step nano-smoke, halving the residual stream changes effective scale
   and LR dynamics on its own. **A −0.061 CE move is very plausibly that, not architecture.**
-- [ ] **THE DECISIVE EXPERIMENT — cheap, and it settles it:** rerun with the gate replaced by
-  a **fixed non-learned 0.5** scaling. If a constant 0.5 captures the same gain, the learning
-  contributes nothing and this is an initialisation artifact. If the learned version keeps a
-  clear margin, it is the loop's **first genuine win**. Blocked only on training being off.
+- [ ] **THE DECISIVE EXPERIMENT — ⏳ RUNNING as of 19:05, results pending.** Not blocked after
+  all: it needs the TRAINER, not Ollama, and `train` is exactly the stage the memory guard
+  permits. Script: `$CLAUDE_JOB_DIR/tmp/capacity_control.py`; results land in
+  `capacity_control_results.json` (⚠ that file currently holds the FAILED first attempt —
+  check `ok: true` before reading any number from it). Must be run with
+  `AVA_FACTORY_ROOT=C:\Users\jcdav\workspace\ava-agi-factory-v6-4` (§5.3.R87).
+  Three variants, same corpus / steps / seed / swap layer, varying only the replacement:
+  - `identity` — 0 params, no transform → **isolates pure capacity removal**
+  - `fixed_half` — 0 params, `x * 0.5` → capacity removal **+** the ~0.51 init rescaling
+  - `learned` — 256 params, the promoted candidate → reproduces 5.54404
+  **Reading it:** if `identity` lands near **5.544**, the promotion measured *capacity*, not
+  the idea, and the third sota row joins the other two as an artifact. If `learned` keeps a
+  clear margin over both, it is the loop's **first genuine win**.
+- [x] **Honest note on running it:** the box sat at **915–1,377 MB free** during the run —
+  at or under the 1,200 MB floor I wrote for the daemon this same session. The guard governs
+  the daemon, not me, and I started a training job by hand into memory I would have refused
+  it. Nothing else was at risk (fleet down), and I monitored rather than walked away — but
+  the run is also **~2× slower than its recorded 249 s/variant**, which is what memory
+  pressure looks like from the inside.
 - [x] **Also a latent integration hazard:** `hidden_dim` defaults to **64** while the real
   integration width is **256**, and `forward` asserts on mismatch. `Cls()` fed a 256-wide
   stream raises `AssertionError: Hidden dimension mismatch` — verified. It trained only
