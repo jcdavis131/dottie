@@ -196,31 +196,53 @@ const statusChip = (pass) => (pass ? chip("good", "PASS") : chip("critical", "FA
 
 function renderTelemetry() {
   const status = state.live.status || null;
-  const pipe = status
+  // Gist payload v2 (dottie_live_status/v2) carries the factory's full /pipeline/status
+  // under .pipeline — prefer it; fall back to the legacy v1 shape, then the baked snapshot.
+  const v2 = status?.pipeline && !status.pipeline.unreachable ? status.pipeline : null;
+  const pp = v2?.watch?.phase_progress;
+  const run = v2?.watch?.run_progress;
+  const last = v2?.trainer?.last;
+  const pipe = v2
     ? {
-        current_phase: status.builder?.current_phase,
-        phase_progress: status.builder?.phase_progress,
-        total_shards: status.builder?.total_shards,
-        trainer_steps: status.trainer?.steps,
-        trainer_loss: status.trainer?.loss,
-        weekly_training: status.weekly_training?.status ?? status.weekly_training,
+        current_phase: pp ? `p${pp.phase} ${pp.short || pp.name || ""}`.trim()
+                          : v2.flow?.trainer_phase,
+        phase_progress: pp?.frac,
+        total_shards: v2.manifest?.total_shards,
+        trainer_steps: last?.step ?? v2.demand?.step,
+        trainer_loss: last?.lm != null ? num(last.lm, 4) : null,
+        tok_s: last?.tok_s,
+        run_frac: run?.frac,
+        mode_label: v2.mode?.label,
+        mode_stale: !!v2.trainer?.stale,
       }
-    : state.snapshot.pipeline;
+    : status
+      ? {
+          current_phase: status.builder?.current_phase,
+          phase_progress: status.builder?.phase_progress,
+          total_shards: status.builder?.total_shards,
+          trainer_steps: status.trainer?.steps,
+          trainer_loss: status.trainer?.loss,
+          mode_label: status.weekly_training?.status ?? status.weekly_training,
+        }
+      : state.snapshot.pipeline;
   const exps = state.live.experiments || [];
   const best = exps.length ? Math.min(...exps.map((e) => e.val_bpb)) : null;
-  const weekly = String(pipe.weekly_training ?? "unknown");
-  const weeklyKind = weekly.startsWith("BLOCKED") ? "critical"
-    : weekly.toLowerCase().includes("run") ? "good" : "warning";
+  const mode = String(pipe.mode_label ?? pipe.weekly_training ?? "unknown")
+    + (pipe.mode_stale ? " · stale" : "");
+  const modeKind = pipe.mode_stale || mode.startsWith("BLOCKED") ? "warning"
+    : /training|run/i.test(mode) ? "good" : "warning";
 
   $("#telemetry-tiles").innerHTML = `
     <div class="tile"><div class="k">Pipeline phase</div>
-      <div class="v">${esc(pipe.current_phase ?? "—")}</div>
-      <div class="d">progress ${pipe.phase_progress != null ? Math.round(pipe.phase_progress * 100) + "%" : "—"} · ${esc(pipe.total_shards ?? "—")} shards</div></div>
+      <div class="v" style="font-size:18px; margin-top:4px">${esc(pipe.current_phase ?? "—")}</div>
+      <div class="d">phase ${pipe.phase_progress != null ? Math.round(pipe.phase_progress * 100) + "%" : "—"}${
+        pipe.run_frac != null ? ` · run ${Math.round(pipe.run_frac * 100)}%` : ""} · ${esc(pipe.total_shards ?? "—")} shards</div></div>
     <div class="tile"><div class="k">Trainer</div>
       <div class="v">${esc(pipe.trainer_steps ?? "—")}<span class="unit">steps</span></div>
-      <div class="d">loss ${esc(pipe.trainer_loss ?? "—")}</div></div>
-    <div class="tile"><div class="k">Weekly training</div>
-      <div class="v" style="font-size:15px; margin-top:6px">${chip(weeklyKind, weekly)}</div></div>
+      <div class="d">loss ${esc(pipe.trainer_loss ?? "—")}${
+        pipe.tok_s != null ? ` · ${esc(Math.round(pipe.tok_s))} tok/s` : ""}</div></div>
+    <div class="tile"><div class="k">Factory mode</div>
+      <div class="v" style="font-size:15px; margin-top:6px">${chip(modeKind, mode)}</div></div>
     <div class="tile"><div class="k">RTX experiments</div>
       <div class="v">${exps.length || "—"}</div>
       <div class="d">${best != null ? `best val_bpb ${num(best, 4)}` : "release feed unreachable"}</div></div>`;

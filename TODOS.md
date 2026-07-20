@@ -219,7 +219,10 @@ Then §1 fires automatically (#17 armed on the monitor).
     render post-reconciliation (dashboard_html/ecosystem_html/evals_html were merged).
 7.2 Assistant tab: 3.4's chat + a visible "which brain" indicator (factory ckpt vs
     Ollama fallback) — honesty in the UI too.
-7.3 Research tab: 5.4. Factory tab: live tok/s + phase progress from `/pipeline/status`.
+7.3 [x] Research tab: 5.4 (sparkline, shipped). Factory tab: SHIPPED 2026-07-20 —
+    telemetry tiles now read the gist payload's v2 `.pipeline` block (tok/s from
+    trainer.last, phase+run % from watch.*_progress, mode chip with honest ·stale
+    flag); legacy v1 and baked-snapshot fallbacks retained.
 7.4 [x] "Last seen" badge shipped 2026-07-20 (the preferred honest option): the source
     badge now reads the gist feed's published_utc — "live · box seen X ago" when <2h,
     "stale · box last seen X ago" beyond (2 missed hourly beats = asleep), old
