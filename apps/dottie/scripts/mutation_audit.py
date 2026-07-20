@@ -29,9 +29,16 @@ MUTANTS = [
     ("evaluate.py", "        base_sem = baseline.metric_sem",
      "        base_sem = None",
      "two_sample_significance", "gate ignores the baseline's recorded SEM"),
-    ("evaluate.py", "    if res.ok:\n        return None",
-     "    if True:\n        return None",
-     "contaminated_baseline", "contamination check always reports clean"),
+    # Anchor on the RETURN of the contaminated verdict, not on the `if res.ok:` guard the
+    # R14 fix rewrote around. That rewrite silently turned this row into a SKIP, leaving the
+    # contamination gate unaudited until the SKIP line was read — which is the whole reason
+    # this script prints SKIP loudly instead of just omitting the row.
+    # NB: `return None or (...)` would be a NO-OP mutation — `None or X` is `X`. Writing it
+    # that way produced a HOLLOW verdict that was true of the mutant, not of the test. An
+    # unconditional early return is the real suppression.
+    ("evaluate.py", '    return (f"CONTAMINATED BASELINE — the experiment that set it',
+     '    return None\n    return (f"CONTAMINATED BASELINE — the experiment that set it',
+     "contaminated_baseline", "contamination verdict suppressed"),
     ("implementation.py", "    for entry in reversed(getattr(outcome, \"history\", []) or []):",
      "    for entry in []:",
      "corrector_failure_is_distinguished", "corrector error never found in history"),
@@ -41,6 +48,13 @@ MUTANTS = [
     ("validate.py", "        if in_spread > 1e-6 and out_spread <= 1e-6:",
      "        if False:",
      "rank_collapsing_block", "rank-collapse gate disabled"),
+    ("validate.py", "        if n_params == 0:\n            return ValidationResult(\n"
+                    "                False, \"dry_run\", \"fail\",\n"
+                    "                \"no learnable parameters:",
+     "        if False:\n            return ValidationResult(\n"
+     "                False, \"dry_run\", \"fail\",\n"
+     "                \"no learnable parameters:",
+     "zero_parameter_block", "zero-parameter gate disabled"),
     ("validate.py", "        if tuple(out.shape) != tuple(x.shape):",
      "        if False:",
      "shape_change_that_only", "residual-stream shape check disabled"),

@@ -1580,6 +1580,26 @@ most valuable catch so far:
   actually fill `learnable_parameters`, and whether the zero-parameter rate falls from 55%.
   If compliance is high, promote the field to `required` in `parse_hypotheses`. Scope the
   before/after by the `boot` lines (§5.3.R9), not commit timestamps — the trap from §5.3.R8.
+### 5.3.R20 — the audit caught its own coverage loss, then caught my bad mutant
+
+- [x] **Followed the audit script's own instruction (08:50)**: *"Add a row to MUTANTS
+  whenever a new gate lands."* The §5.3.R17 zero-parameter gate had shipped without one, so
+  the newest and most aggressive gate was the only unaudited one. Added; verdict **GOOD**.
+- [x] **The run then reported a `SKIP`: `contaminated_baseline (anchor not in
+  evaluate.py)`.** My §5.3.R14 fix had rewritten the code that mutant anchored to, so the
+  contamination gate had **silently stopped being audited** two ticks ago. Nothing failed —
+  the row just quietly stopped running. That is exactly why the script prints SKIP loudly
+  instead of omitting a row it cannot apply; a mutation harness that goes quiet when it
+  loses its grip is worse than none. Re-anchored to the contaminated verdict's `return`,
+  which does not move when the guard above it is edited.
+- [x] **Then the corrected row came back HOLLOW — and the audit was right about my mutant,
+  not about the test.** I had written `return None or (f"CONTAMINATED …")`, and `None or X`
+  is `X`: a no-op mutation that changes nothing, so of course the test survived. Replaced
+  with an unconditional early `return None`; verdict **GOOD**. Noted in the file, because
+  the next person writing a mutant will reach for the same shortcut.
+- [x] Audit now **9/9 GOOD**, no SKIPs, no HOLLOWs, tree verified clean after the run.
+  Three separate defects tonight were found by this script rather than by review: a hollow
+  test in §5.3.R11, a silent coverage loss here, and a bad mutant here.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
