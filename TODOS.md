@@ -83,9 +83,9 @@ THE NIGHT'S HEADLINES — read these before anything below:
    margin, param-delta in the verdict, paired seeds).
    Survived TWO outages tonight: 780MHz GPU = 45W power cap from 13% battery (not
    drivers — check the charger), and Ollama dead-since-reboot (user autostart + no
-   login; PREVENTION item in §8 needs your password). Now converting on qwen3:14b
-   nights: GASA implemented ready_for_training at 01:06 — the same hypothesis the
-   parse_hypotheses key-repair fix rescued from a failed dump.
+   login; PREVENTION item in §8 needs your password). NOTE the 14b night model that
+   produced GASA at 01:06 is now DISABLED — it caused the fleet outage (top of file);
+   the loop is back on qwen3:8b, the configuration proven to co-exist with the fleet.
 4. Also shipped: SOTA sparkline (5.4), last-seen badge (7.4), Factory v2 telemetry
    tiles (7.3), scout-cli MCP Windows stdin deadlock fix (real bug, was 'flaky'),
    logic-prover CRLF fix. FOUND: a THIRD split-brain checkout (C:\Users\jcdav\
@@ -142,7 +142,20 @@ THE NIGHT'S HEADLINES — read these before anything below:
 
 ---
 
-## 0 — POWER DELIVERY, not drivers (root-caused 2026-07-19 23:56 by the loop)
+## 0 — GPU power cap: MEASURED, but its blast radius was OVERSTATED (see correction)
+
+> ⚠ **READ THIS FIRST — partial retraction (03:52).** The measurements in this section
+> are real and still stand: the SM clock was pinned at 780 MHz and the power limit read
+> 45 W of a 175 W maximum. What I got wrong is everything I hung off them. Through the
+> night I attributed the CUBLAS crashes, the slow steps, AND the fleet outage to this one
+> cause. The outage was actually **my own qwen3:14b night-model change eating 7 GB of
+> RAM** (see the top-of-file incident entry), and host-RAM pressure is an equally
+> plausible explanation for the 01:38/01:56 CUBLAS crashes. Treat the power cap as a
+> real measurement with an UNPROVEN blast radius: still worth checking the charger,
+> but do not assume it explains the crashes or the outage. Re-measure after recovery:
+> `nvidia-smi --query-gpu=power.limit,clocks.sm --format=csv`
+
+### Original entry (2026-07-19 23:56), kept for the record:
 
 REBOOT DONE (23:36) — fleet auto-healed 14/14, trainer auto-resumed from
 /ckpt/tool/step_1035.pt (crash-resume verified in production). But the reboot did
