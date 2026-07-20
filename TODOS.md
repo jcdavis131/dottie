@@ -368,6 +368,30 @@ Then §1 fires automatically (#17 armed on the monitor).
       Rationale: the traceback says what broke, the diff says what the model just tried —
       different questions, and near-greedy sampling kept re-making the same edit. 32/32
       research tests green (new test asserts both branches).
+### 5.3.R1 — the loop kept working through the outage (audited 03:03)
+
+While Docker was down, the host-side loop evaluated FOUR candidates and honestly
+rejected all four (deltas vs baseline 5.60506, lower is better):
+
+| candidate | new value | delta |
+|---|---:|---:|
+| Dynamic Sparse Attention Regularizer | 5.63998 | +0.035 |
+| Adaptive MoE Load Balancing (grad-consistent routing) | 5.72036 | +0.115 |
+| GASA (Gradient-Adaptive Sparse Attention) | 5.71190 | +0.107 |
+| **OSA (Orthogonalized Sparse Attention)** | **8.49635** | **+2.891** |
+
+- OSA's catastrophic result **confirms the code review in §5.3.R**: its math does not
+  implement its hypothesis (elementwise sqrt then matrix inverse ≠ inverse matrix square
+  root) and its transform is batch-dependent. Reading candidate math predicted the
+  outcome before an hour of CPU was spent — worth doing routinely.
+- A fifth candidate (DCAS-R, `c3af0b3ce501`) exhausted **all 5 self-correction attempts**
+  and failed at `dry_run` — the retry ceiling working as designed, honestly recorded.
+- NOTE: these four verdicts carry NO `significant`/`sem`/`capacity_caveat` fields — they
+  were evaluated by the pre-gate evaluator (the worker imports at process start). Tonight's
+  gates are shipped and unit-tested but have **not yet been exercised on a real promote
+  path**, because nothing has improved on the baseline since. Expect the new fields from
+  the next evaluation onward.
+
 ### 5.3.R0 — BOTH sota entries are artifacts, for DIFFERENT reasons (audited 02:58)
 
 The ledger says `sota: 2`. Neither is a measured architectural improvement:
