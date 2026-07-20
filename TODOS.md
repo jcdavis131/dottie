@@ -958,7 +958,39 @@ most valuable catch so far:
   corrector now re-prompts on the same budget, feeding the parse error back. That
   reclaims ~10% of the failed-validation pile. Regression test verified red before
   (gave up after 1 reply) / green after; full suite 151 passed.
-- [ ] NEW, found while testing the above: **`validate_with_correction` pins `class_name`
+- [x] **MEASURED, AND DECLINED (07:35).** I filed the `class_name` pin below as a
+  suspected bug. It is real as a design wart but the measured frequency does not justify
+  a behavior change: across all 75 experiments, `class not found in generated module`
+  appears **once**, in a single attempt of `2acedace4eaf` — whose final code *does*
+  define the pinned class (the rename was transient) and which died of a `SyntaxError`
+  anyway. It cost one attempt on a candidate already failing on its own merits. Leaving
+  the pin alone; noted here so the next person who suspects it can see it was checked
+  rather than re-litigating it.
+- [x] **§5.2 CONVERSION RATE RECOMPUTED (07:40) — and my last tick's framing was
+  misleading, in a way that matters.** I said the infra misclassification "overstates
+  candidate failure by roughly a tenth of the pile". That is true as a *share of the
+  pile* (7 of 60) but it implied the corrected picture would look meaningfully better.
+  It does not: removing the 7 infra records from numerator *and* denominator moves the
+  validation death rate from **80.0% (60/75) to 77.9% (53/68)** — 2.1 points. The
+  qualitative story is unchanged, and I should not have implied otherwise.
+  - Honest lifetime funnel over 75 experiments: **53 genuine validation deaths (77.9%)**,
+    3 failed_training, 12 reached evaluation, 2 recorded `sota` — and both of those are
+    the known artifacts (MLBR + AGN), so **real wins remain ZERO**.
+  - Genuine failures by level: **dry_run 41, contract 5, static 4, syntax 3.** dry_run is
+    77% of all genuine failures — runtime shape/axis errors dominate everything else
+    combined, which is exactly what the constraint-8 axis-discipline prompt guidance
+    targets.
+  - Note also that the "50% die in validation" figure I have quoted came from a single
+    overnight window (14 created / 5 evaluated), not lifetime. Lifetime is ~78%. Both
+    can be true; they are different samples and should not be quoted interchangeably.
+- [ ] NEXT: **did the constraint-8 prompt refinement actually reduce dry_run failures?**
+  It was written to attack the dominant failure mode (77% of genuine deaths). Compare
+  dry_run share of genuine failures for experiments created before vs after the prompt
+  change, using the ledger timestamps. Two cautions: the refinement landed in two stages,
+  so pick the boundary deliberately; and the post-change sample is currently small, so
+  report n and resist calling a difference real until it clears noise — the same
+  discipline the significance gate enforces on candidates.
+- [ ] SUPERSEDED, kept for the record: **`validate_with_correction` pins `class_name`
   from the FIRST parse.** If a correction renames the class — plausible, since the
   corrector sees only code plus a traceback — every subsequent dry run looks for a class
   that no longer exists, so the candidate can never validate however good the code is,
