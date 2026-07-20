@@ -3156,6 +3156,24 @@ most valuable catch so far:
   the stored histories for repeated identical dry_run failures before deciding whether to
   re-derive the class name per attempt or pin the name in the correction prompt.
 
+### 5.3.R94 — measured the per-seed cost I had guessed; it was 20× too high
+
+- [x] **Before leaving the per-seed follow-up as "operator's call, ~40 min", I measured it.**
+  The two runs this session bracket the cost exactly: the R91 control did ~811 s/run
+  **memory-starved** (915 MB free); `ab_nano.py` did **6 runs in ~6 min on an idle box —
+  ~60 s each.** A 13.5× range, entirely explained by memory pressure.
+- [x] **My "~40 min" was the starved figure presented as typical.** On an idle box, per-seed
+  factory training adds **~2 min per candidate**, not 40. I had turned a real but conditional
+  cost into a blanket objection — the same unchecked-number move as R89's "one `uv pip
+  install typer`", committed while explicitly warning against reflexes.
+- [x] **This changes the recommendation, not just the number.** ~2 min is nearly free; the
+  40-min cost is real only when the trainer runs *concurrently with the fleet*. So the honest
+  design is not "skip per-seed to save money" but "gate per-seed on free memory" — run it when
+  the box is quiet, fall back to single-seed under pressure, exactly as the memory guard
+  already gates the LLM stages. **A scheduling condition, not a budget veto.**
+- [ ] Still the operator's call to implement (it changes what the loop trains), but now on
+  accurate figures. Recorded here so the decision is not made against my inflated estimate.
+
 ### 5.3.R93 — ❌ I RETRACT R91. The candidate is WORSE at every seed. Real wins: still ZERO.
 
 **`ab_nano.py` verdict: "candidate is WORSE beyond noise."** All three seeds agree.
@@ -3208,9 +3226,17 @@ most valuable catch so far:
   but there is still no cross-seed spread to prefer). The proxy trainer already trains over
   `seeds = [0,1,2]` and records `per_seed`; the factory trainer trains a single seed. Making
   it record a real per-seed series is the change that would have caught R93 **at promotion
-  time** instead of two ticks later. Non-trivial: 3× the train cost per candidate (~40 min at
-  the measured rate), so it wants a deliberate decision about budget, not a reflex — the loop
-  runs on a laptop. **This is the single highest-value change left in the loop.**
+  time** instead of two ticks later. **This is the single highest-value change left in the
+  loop.**
+- [x] **COST NOW MEASURED, and it overturns my own objection (§5.3.R94).** I first flagged
+  this as "3× train cost, ~40 min" — pulled from the R91 control's 811 s/run. But that run
+  was **memory-starved** (915 MB free). The `ab_nano.py` run did **6 training runs in ~6
+  minutes on an idle box — ~60 s each.** So the true added cost of per-seed on an idle box is
+  **~2 minutes per candidate**, not 40. The ~40 min figure was the worst case dressed as
+  typical — an unchecked number, the R89 failure again. **The decision is much cheaper than I
+  made it look: on an idle box this is nearly free; the real cost only appears when it runs
+  concurrently with the fleet, which is a scheduling question (run per-seed only when free
+  memory > the guard's model-load threshold), not a reason to skip it.**
 
 ### 5.3.R92 — I hand-rolled a seed sweep the loop had already generated for me
 
