@@ -744,6 +744,93 @@ def test_promotion_records_the_baselines_spread(led, tmp_path):
     assert b.metric_sem_n == 6
 
 
+def test_contamination_check_reports_unverified_not_clean_without_torch(led, tmp_path, monkeypatch):
+    """"Could not check" must never be reported the same way as "checked and clean".
+
+    TODOS §5.3.R14: with torch missing — the normal state in the server container, where
+    this ledger is bind-mounted read-only — validate() reports dry_run as *skipped* and
+    still returns ok=True. The contamination check read that as clean and returned None,
+    so a contaminated baseline would be presented as verified by the very check written to
+    catch it. Found by stubbing _find_torch, not by review.
+    """
+    noop = """import torch
+import torch.nn as nn
+class NoOp(nn.Module):
+    def forward(self, x):
+        return x + 0.5
+"""
+    e = led.create(dict(HYP, hypothesis_name="NoOp"))
+    led.transition(e.id, READY_FOR_TRAINING, workspace="/w",
+                   implementation={"code": noop, "module_name": "NoOp",
+                                   "dry_run": {"class_name": "NoOp", "init_kwargs": {},
+                                               "input_shape": [2, 4, 8]}})
+    led.transition(e.id, EVALUATION_PENDING, train_metrics={"proxy_loss": 1.0})
+    led.transition(e.id, SOTA, eval_verdict={"promote": True})
+    led.promote_baseline(e.id, 1.0, notes="NoOp")
+
+    # with torch: caught outright
+    assert "CONTAMINATED" in (evaluate._baseline_contamination(led, led.get_baseline()) or "")
+
+    # without torch: must say UNVERIFIED, never None
+    monkeypatch.setattr(validate, "_find_torch", lambda: None)
+    caveat = evaluate._baseline_contamination(led, led.get_baseline())
+    assert caveat is not None, "silent None is a false clean"
+    assert "UNVERIFIED" in caveat
+    assert "NOT a clean bill of health" in caveat
+
+
+def test_status_snapshot_carries_baseline_provenance(led, tmp_path):
+    """The dashboard must not present a contaminated baseline in a clean voice.
+
+    build_status reported the baseline as a bare number, alongside a note asserting a SOTA
+    "is declared only on a real improvement over the baseline" — true of the comparison and
+    misleading when the baseline is the problem.
+    """
+    # A hand-seeded baseline is ALSO caveated (it is a placeholder), so the warning is
+    # correct there — that is the point of provenance, not a bug in the test.
+    seeded = logger.build_status(led)
+    assert seeded["baseline"]["provenance"] == "hand_seeded"
+    assert "WARNING" in seeded["note"]
+
+    # A baseline promoted from an experiment that still validates is the clean case.
+    good = Ledger(tmp_path / "clean.sqlite3")
+    good.seed_baseline(Baseline("proxy_loss", 4.5, higher_is_better=False,
+                                architecture="ava-nano", experiment_id=None, updated_ts=0.0))
+    ge = good.create(HYP)
+    good.transition(ge.id, READY_FOR_TRAINING, workspace="/w",
+                    implementation={"code": GOOD_CODE, "module_name": "SeqMeanMix",
+                                    "dry_run": {"class_name": "SeqMeanMix",
+                                                "init_kwargs": {"dim": 64},
+                                                "input_shape": [4, 16, 64]}})
+    good.transition(ge.id, EVALUATION_PENDING, train_metrics={"proxy_loss": 1.0})
+    good.transition(ge.id, SOTA, eval_verdict={"promote": True})
+    good.promote_baseline(ge.id, 1.0, notes="SeqMeanMix")
+    clean = logger.build_status(good)
+    assert clean["baseline"]["provenance"] == "promoted"
+    assert clean["baseline"]["caveat"] is None
+    assert "WARNING" not in clean["note"]
+
+    noop = """import torch
+import torch.nn as nn
+class NoOp(nn.Module):
+    def forward(self, x):
+        return x + 0.5
+"""
+    e = led.create(dict(HYP, hypothesis_name="NoOp"))
+    led.transition(e.id, READY_FOR_TRAINING, workspace="/w",
+                   implementation={"code": noop, "module_name": "NoOp",
+                                   "dry_run": {"class_name": "NoOp", "init_kwargs": {},
+                                               "input_shape": [2, 4, 8]}})
+    led.transition(e.id, EVALUATION_PENDING, train_metrics={"proxy_loss": 1.0})
+    led.transition(e.id, SOTA, eval_verdict={"promote": True})
+    led.promote_baseline(e.id, 1.0, notes="NoOp")
+
+    dirty = logger.build_status(led)
+    assert dirty["baseline"]["provenance"] == "promoted_contaminated"
+    assert "CONTAMINATED BASELINE" in dirty["baseline"]["caveat"]
+    assert "WARNING" in dirty["note"] and "NOT trustworthy" in dirty["note"]
+
+
 def test_contaminated_baseline_is_detected(led, tmp_path):
     """A baseline set by a candidate the loop would NOW reject must not read as trusted.
 

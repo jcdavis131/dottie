@@ -31,9 +31,35 @@ def log_metric(key: str, value: Any, *, data_dir: Optional[str | Path] = None,
         f.write(json.dumps(rec) + "\n")
 
 
+def _status_note(base_caveat: Optional[str]) -> str:
+    """The snapshot's own summary line, which must not overstate what the numbers mean.
+
+    The standing note said a SOTA "is declared only on a real, direction-aware improvement
+    over the baseline". True of the comparison, and actively misleading when the BASELINE is
+    the problem — as it is right now (TODOS §5.3.R5: the live baseline was ratcheted by a
+    module the validator would reject today). A snapshot that reports a contaminated
+    baseline in the same voice as a clean one is the exact failure this loop keeps having."""
+    note = ("Every metric is a real measurement from the proxy micro-benchmark; a new SOTA "
+            "is declared only on a real, direction-aware improvement over the baseline.")
+    if base_caveat:
+        note += (" WARNING: the baseline itself carries a caveat (see baseline.caveat) — "
+                 "improvements measured against it are NOT trustworthy until it is re-seeded.")
+    return note
+
+
 def build_status(ledger: Ledger, *, recent: int = 25) -> Dict[str, Any]:
     """The honest research snapshot: baseline, state counts, recent experiments, SOTA history."""
     baseline = ledger.get_baseline()
+    # Provenance travels WITH the number. Reporting 5.60506 with no indication that a
+    # rejected no-op set it is how the dashboard ends up more confident than the data.
+    base_kind, base_caveat = (None, None)
+    if baseline is not None:
+        from dottie.research.evaluate import _baseline_contamination, _baseline_provenance
+        base_kind, base_caveat = _baseline_provenance(baseline)
+        contamination = _baseline_contamination(ledger, baseline)
+        if contamination:
+            base_kind = "promoted_contaminated" if base_kind == "promoted" else base_kind
+            base_caveat = "\n".join(x for x in (base_caveat, contamination) if x)
     experiments: List[Dict[str, Any]] = []
     for exp in ledger.list(limit=recent):
         m = exp.train_metrics or {}
@@ -65,12 +91,13 @@ def build_status(ledger: Ledger, *, recent: int = 25) -> Dict[str, Any]:
             "metric_name": baseline.metric_name, "metric_value": baseline.metric_value,
             "higher_is_better": baseline.higher_is_better, "architecture": baseline.architecture,
             "experiment_id": baseline.experiment_id, "updated_ts": baseline.updated_ts,
-            "notes": baseline.notes}),
+            "notes": baseline.notes,
+            "metric_sem": baseline.metric_sem, "metric_sem_n": baseline.metric_sem_n,
+            "provenance": base_kind, "caveat": base_caveat}),
         "counts": ledger.counts(),
         "experiments": experiments,
         "sota_history": sota,
-        "note": ("Every metric is a real measurement from the proxy micro-benchmark; a new SOTA "
-                 "is declared only on a real, direction-aware improvement over the baseline."),
+        "note": _status_note(base_caveat),
     }
 
 

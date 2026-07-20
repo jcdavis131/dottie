@@ -1379,6 +1379,36 @@ most valuable catch so far:
   - The pattern is worth naming: **I added three gates and never re-read the file's own
     description of itself.** Documentation drift is the cheapest kind of dishonesty to
     introduce and the hardest to notice from inside the change.
+### 5.3.R14 — my own contamination check reported a FALSE CLEAN without torch
+
+- [x] **The check written to catch a contaminated baseline would have certified one as
+  fine (08:25).** `_baseline_contamination` treated `res.ok` as "verified clean". But with
+  torch missing — **the normal state in the server container, where this ledger is
+  bind-mounted read-only** — `validate()` reports `dry_run` as *skipped* and still returns
+  `ok=True`. So the check returned `None`, indistinguishable from a real all-clear.
+  - Found by stubbing `_find_torch` to `None`, not by reading the code. I wrote this
+    function three hours ago and reported it working; it was, but only where torch exists.
+  - It now returns an explicit **UNVERIFIED** caveat naming the skipped stage(s) and saying
+    in words that this is *"NOT a clean bill of health: it means the check did not happen."*
+  - This is the same bug the whole night has been about — `skipped` silently counted as
+    `pass` — reintroduced by me, in the gate built to prevent it. The validator has had the
+    right rule since it was written (*"a level that cannot run is reported skipped, never
+    counted as a pass"*); my caller ignored it.
+- [x] **The status snapshot was reporting a contaminated baseline in a clean voice.**
+  `build_status` emitted `factory_lm_loss 5.60506` as a bare number with no provenance,
+  under a note asserting a SOTA *"is declared only on a real, direction-aware improvement
+  over the baseline"* — true of the comparison, actively misleading when the baseline is
+  the problem. Anything reading that snapshot (dashboard, API) inherited the confidence.
+  - Baseline block now carries `provenance`, `caveat`, `metric_sem`, `metric_sem_n`, and
+    the note appends an explicit warning when a caveat exists. Live snapshot now reports
+    `provenance: promoted_contaminated`.
+  - Verified the three states distinctly: `hand_seeded` (caveated — correct, it is a
+    placeholder), `promoted` from a still-valid experiment (clean, no warning), and
+    `promoted_contaminated`. My first test asserted hand-seeded should be warning-free,
+    which was wrong about the design rather than about the code.
+  - Cost measured before worrying about it: full 6-stage `validate()` is **106 ms**, the
+    contamination check **84 ms** — negligible against 4-18 min implement cycles.
+  - Full suite 166 passed.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.

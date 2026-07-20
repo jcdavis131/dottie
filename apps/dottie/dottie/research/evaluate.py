@@ -95,6 +95,18 @@ def _baseline_contamination(ledger: Ledger, baseline: Baseline) -> Optional[str]
         return (f"could not re-validate the baseline's source experiment "
                 f"({baseline.experiment_id}): {e!r}")
     if res.ok:
+        # "ok" is NOT the same as "checked". With torch missing — which is the normal state
+        # in the server container, where this ledger is bind-mounted read-only — validate()
+        # reports dry_run as *skipped* and still returns ok=True. Returning None there would
+        # be a FALSE CLEAN: a contaminated baseline presented as verified, by the very check
+        # written to catch that. Measured 2026-07-20 by stubbing _find_torch to None.
+        skipped = [lvl for lvl, info in (res.per_level or {}).items()
+                   if info.get("status") == "skipped"]
+        if skipped:
+            return (f"baseline validity UNVERIFIED — re-checking the experiment that set it "
+                    f"({baseline.experiment_id}) needs stage(s) {sorted(skipped)}, which could "
+                    "not run here (usually torch or ruff absent). This is NOT a clean bill of "
+                    "health: it means the check did not happen.")
         return None
     return (f"CONTAMINATED BASELINE — the experiment that set it ({baseline.experiment_id}, "
             f"{src.name}) FAILS the current validator at '{res.level}': "
