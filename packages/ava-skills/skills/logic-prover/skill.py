@@ -92,8 +92,11 @@ def run(model: Any = None, tokenizer: Any = None, mode: str = "mock", **kw) -> D
     records = tables + sylls
     out_file = out_dir / "logic_corpus.jsonl"
     payload = "\n".join(json.dumps(r) for r in records) + "\n"
-    out_file.write_text(payload, encoding="utf-8")
-    bytes_written = len(payload.encode("utf-8"))
+    # write_bytes, not write_text: text mode turns \n into \r\n on Windows, making the
+    # real file bigger than the reported bytes_written. JSONL stays LF on every platform.
+    data = payload.encode("utf-8")
+    out_file.write_bytes(data)
+    bytes_written = len(data)
     measured = {
         "records_written": len(records),
         "truth_tables": len(tables),

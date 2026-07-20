@@ -251,7 +251,9 @@ Then §1 fires automatically (#17 armed on the monitor).
   echo task / task counts / ollama honest-fail / flywheel gate all hit
   `DottieResolutionError: ava-...` — AVA_FACTORY_ROOT resolution, not code. Fix the env
   (research_env.local.ps1 → monorepo factory path, §2.3.b) then re-run.
-- [ ] 1 × `test_logic_prover` jsonl (ava-skills, pre-existing).
+- [x] `test_logic_prover` jsonl: fixed 2026-07-20 — write_text CRLF'd the corpus on
+  Windows so the real file was 300 bytes bigger than the skill's reported
+  bytes_written (its own honesty claim). Now write_bytes, LF everywhere; 6/6 pass.
 - [x] `test_flow`: same split brain (patched free_gb on the wrong module copy); alias finder fixed it.
 
 ### New items (added 2026-07-19 evening)
