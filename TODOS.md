@@ -125,6 +125,11 @@ Then §1 fires automatically (#17 armed on the monitor).
     did NOT survive the fork's termination (TaskList empty — watches die with their
     session, same lesson as the machine-move at 00:40). New watch: chat_final.pt /
     container exit / crash signatures, 60s poll.
+    **MONITORING NOW TICK-DRIVEN (~03:05)**: three background watches were externally
+    killed in a row — treating that as deliberate and not re-arming. The 3-min loop
+    itself polls each tick: step_60.pt → run 48w confirmation gate; chat_final.pt →
+    final gate; container Exited → triage. Restart policy on the container is the
+    crash safety net (auto-resume).
     **EARLY WARNING ~02:50 (step-15 CPU gate, 12 windows, paired seed)**: general CE
     base 3.811 → chat_step15 3.889 = **+2.04%** — nominally past the 2% bound at 8%
     of the run, with LR still warming. The tool branch's forgetting mode appears to
