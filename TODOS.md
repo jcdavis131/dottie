@@ -129,7 +129,25 @@ Then §1 fires automatically (#17 armed on the monitor).
     did NOT survive the fork's termination (TaskList empty — watches die with their
     session, same lesson as the machine-move at 00:40). New watch: chat_final.pt /
     container exit / crash signatures, 60s poll.
-    ## >>> BLOCKED ON USER: WSL VM DEAD, WHOLE FLEET DOWN (03:35 → now) <<<
+    ### ⚠ TIMESTAMP CORRECTION (written 02:26, verified against `date`)
+    Every clock time I wrote in this section between the T9.4 launch and 02:26 was
+    ESTIMATED, not read — they run ~1–1.5 h fast (and the fork's "01:44 launch" is
+    also wrong). Trust ONLY these log-derived anchors:
+    | event | real local time |
+    |---|---|
+    | chat step 1 | **01:25:14** |
+    | crash 1 (step 15, CUDA unknown error) | **01:38:12** |
+    | resumed from step_15.pt | **01:45:39** |
+    | step 20 | **01:51:33** |
+    | crash 2 (step 23, CUBLAS_STATUS_INTERNAL_ERROR) | **01:56:39** |
+    | restart boot: model_built / branch_forked / init_loaded | **02:00:30 / 02:01:55 / 02:03:49** |
+    | WSL VM death (engine 500s first seen) | **~02:05** |
+    | OSA implemented by the loop (host-side, unaffected) | **02:16:43** |
+    So: two crashes **18.5 min apart** (01:38 → 01:57) still stands — that interval
+    came from epoch subtraction, not from the wrong wall-clock labels, and so does
+    the ~29 steps/h throughput figure.
+
+    ## >>> BLOCKED ON USER: WSL VM DEAD, WHOLE FLEET DOWN (~02:05 → now) <<<
 
     **What happened**: docker API 500s on EVERY call including `docker version` —
     not a container fault. `vmmemWSL` collapsed 755 MB → **34 MB** (dead, not
