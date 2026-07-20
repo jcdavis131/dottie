@@ -1714,6 +1714,75 @@ class NoOp(nn.Module):
     assert "NOT a clean bill of health" in caveat
 
 
+def test_capacity_confounded_baseline_is_reported_even_when_it_validates(led):
+    """A baseline can pass every gate and still have been won by DELETING capacity.
+
+    TODOS §5.3.R86/R90. The live baseline `factory_lm_loss 5.54404` was set by an experiment
+    that replaced a 787,072-parameter block with 256 — 99.97% removed — and which passes the
+    validator outright. `_baseline_contamination` therefore returned clean and the status
+    snapshot reported `caveat: null`: a bar set by deleting three quarters of a million
+    parameters, shown to the operator as an ordinary promotion.
+
+    `block_param_delta` had been recorded by factory_trainer.py all along, under a comment
+    saying a parameter-light candidate "can 'win' at fixed steps for that reason alone".
+    Nothing read it back at baseline level. This pins that it is read.
+    """
+    real = """import torch
+import torch.nn as nn
+class Gain(nn.Module):
+    def __init__(self, hidden_dim: int = 8):
+        super().__init__()
+        self.w = nn.Parameter(torch.randn(hidden_dim))
+    def forward(self, x):
+        return x * torch.sigmoid(self.w).unsqueeze(0).unsqueeze(0)
+"""
+
+    def _seed(delta, replaced, name):
+        e = led.create(dict(HYP, hypothesis_name=name))
+        led.transition(e.id, READY_FOR_TRAINING, workspace="/w",
+                       implementation={"code": real, "module_name": "Gain",
+                                       "dry_run": {"class_name": "Gain", "init_kwargs": {},
+                                                   "input_shape": [2, 4, 8]}})
+        led.transition(e.id, EVALUATION_PENDING,
+                       train_metrics={"proxy_loss": 1.0, "block_param_delta": delta,
+                                      "replaced_block_params": replaced,
+                                      "candidate_block_params": replaced + delta})
+        led.transition(e.id, SOTA, eval_verdict={"promote": True})
+        led.promote_baseline(e.id, 1.0, notes=name)
+        return e
+
+    # The measured case: 99.97% of the block removed.
+    _seed(-786816, 787072, "Gain")
+    base = led.get_baseline()
+    caveat = evaluate._baseline_capacity_caveat(led, base)
+    assert caveat is not None, "a 99.97% capacity removal must not report clean"
+    assert "CAPACITY-CONFOUNDED" in caveat
+    assert "786,816" in caveat and "787,072" in caveat
+    # Must not round to "100.00%" and claim the block was removed entirely — 256 remain.
+    assert "99.97%" in caveat, caveat
+    # And it is NOT the contamination path: this candidate validates fine.
+    assert evaluate._baseline_contamination(led, base) is None, (
+        "this experiment passes the validator; conflating the two hides which check fired")
+
+    # A modest shrink is a plausible redesign, not a capacity win — must stay silent.
+    _seed(-100, 787072, "SmallShrink")
+    assert evaluate._baseline_capacity_caveat(led, led.get_baseline()) is None
+
+    # Adding capacity is never this confound.
+    _seed(+50000, 787072, "Bigger")
+    assert evaluate._baseline_capacity_caveat(led, led.get_baseline()) is None
+
+    # Missing instrumentation must degrade to silence, not to a crash: older experiments
+    # predate block_param_delta entirely.
+    e = led.create(dict(HYP, hypothesis_name="Old"))
+    led.transition(e.id, READY_FOR_TRAINING, workspace="/w",
+                   implementation={"code": real, "module_name": "Gain"})
+    led.transition(e.id, EVALUATION_PENDING, train_metrics={"proxy_loss": 1.0})
+    led.transition(e.id, SOTA, eval_verdict={"promote": True})
+    led.promote_baseline(e.id, 1.0, notes="Old")
+    assert evaluate._baseline_capacity_caveat(led, led.get_baseline()) is None
+
+
 def test_status_note_describes_the_measurement_actually_taken(led, tmp_path):
     """The dashboard's honesty line must not hardcode a description of its own metric.
 
