@@ -218,6 +218,14 @@ schema. EVERY key is REQUIRED and must be non-empty. No markdown, no prose outsi
 """
 
 
+# TODOS 5.3.R37: the CODEBASE CONTEXT block below used to explain how to write custom
+# losses — "nn.Module classes or functions taking (predictions, targets) and returning a
+# scalar tensor" — which contradicted constraint 7 (one tensor in, same shape out) a few
+# lines further down. It left a measurable fingerprint: 7 of 92 stored candidates named
+# their forward argument after a loss input, including 694633b2d354, the rank-collapse
+# failure. The replacement text deliberately does NOT quote the old wording: this string is
+# rendered INTO the prompt, so an explanatory "we used to say X" would still show the model
+# X. Historical notes go here, in code, where the model never sees them.
 def implementation_prompt(hypothesis: Dict[str, Any], *,
                           codebase_note: str = "") -> str:
     """The senior-engineer implementation prompt that turns a hypothesis into drop-in PyTorch."""
@@ -231,8 +239,8 @@ numerical stability, and modularity. Your code must compile on the first attempt
 
 # CODEBASE CONTEXT
 - All custom layers/routers subclass `torch.nn.Module`.
-- Custom losses are `nn.Module` classes or functions taking `(predictions, targets)` and
-  returning a scalar tensor.
+- You are writing a RESIDUAL-STREAM BLOCK, not a loss. Its `forward` receives hidden
+  states and returns hidden states. There are no targets here and no scalar to return.
 - The module must be SELF-CONTAINED: import only torch (and math/typing). Do NOT import
   or call any logging/telemetry helper — the training loop measures everything outside
   the module.{extra}
@@ -250,6 +258,14 @@ numerical stability, and modularity. Your code must compile on the first attempt
    declared `input_shape` (a required positional argument that `init_kwargs` omits is an
    automatic validation failure).
 7. `forward` MUST accept exactly one tensor `[batch, seq, hidden]` and return the same shape.
+   Name that argument `x` (or `hidden_states`) — never `predictions`, `logits` or `targets`:
+   those name a loss's inputs and this is not a loss.
+7b. CAPACITY: the block MUST own learnable parameters, and they must be the ones the
+   hypothesis declared in `learnable_parameters` above. A scale, gate, threshold,
+   temperature or mixing weight that matters should be an `nn.Parameter` or an `nn.Linear`
+   output that the LM loss can train — not a fixed float in `__init__`. Measured 2026-07-20:
+   55% of candidates that reached validation had ZERO learnable parameters and were
+   rejected; a fixed function cannot learn, and it replaces a real ~787K-parameter block.
 8. AXIS DISCIPLINE (the single most common failure — 4 of the 4 most recent rejects died
    here). The input is 3-D: `batch = x.shape[0]`, `seq = x.shape[1]`, `hidden = x.shape[-1]`.
    - Size every weight against the HIDDEN axis (`x.shape[-1]`), never against `seq`. An error

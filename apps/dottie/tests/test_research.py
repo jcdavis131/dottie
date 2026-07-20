@@ -754,6 +754,46 @@ def test_dead_ends_interleave_across_failure_states(led):
         f"one state monopolised the visible slots: {head}")
 
 
+def test_implementation_prompt_does_not_teach_loss_shape():
+    """The prompt that writes the CODE must not describe how to write a loss.
+
+    TODOS §5.3.R37 — the FOURTH place one prompt invited what another section forbade. The
+    CODEBASE CONTEXT read "Custom losses are nn.Module classes or functions taking
+    (predictions, targets) and returning a scalar tensor", directly contradicting constraint
+    7 (one tensor in, same shape out) a few lines below.
+
+    This one left a measurable fingerprint: 7 of 92 stored candidates named their forward
+    argument `predictions` — including 694633b2d354, the rank-collapse failure. The prompt
+    was teaching loss shape and the generated code inherited its variable names.
+    """
+    h = {"hypothesis_name": "G", "theoretical_intuition": "t", "mathematical_formulation": "m",
+         "pytorch_implementation_strategy": "s", "expected_outcome": "e",
+         "search_domain": "attention", "learnable_parameters": "gate: nn.Linear(h, h)"}
+    p = prompts.implementation_prompt(h)
+    assert "Custom losses are" not in p
+    assert "(predictions, targets)" not in p
+    assert "RESIDUAL-STREAM BLOCK, not a loss" in p
+    assert "never `predictions`" in p          # names the trap explicitly
+
+
+def test_implementation_prompt_requires_capacity_and_uses_the_declaration():
+    """The implementer must be told to keep the parameters ideation promised.
+
+    §5.3.R17 measured 55% zero-parameter candidates AT VALIDATION — i.e. they materialise
+    during implementation, yet the implementation prompt had no capacity requirement at all
+    (only ideation did). §5.3.R28 separately noted the `learnable_parameters` declaration
+    was being carried end-to-end and read by nothing. Constraint 7b closes both.
+    """
+    h = {"hypothesis_name": "G", "theoretical_intuition": "t", "mathematical_formulation": "m",
+         "pytorch_implementation_strategy": "s", "expected_outcome": "e",
+         "search_domain": "attention",
+         "learnable_parameters": "gate: nn.Linear(hidden, hidden)"}
+    p = prompts.implementation_prompt(h)
+    assert "7b. CAPACITY" in p
+    assert "`learnable_parameters` above" in p     # points at the declaration, not generic advice
+    assert "nn.Parameter" in p and "55%" in p
+
+
 def test_prompts_and_parsing():
     b = Baseline("val_loss", 3.09, False, "ava-nano", None, 0.0)
     p = prompts.ideation_prompt(b, bottleneck="loss spikes", failed_hypotheses=["DeadIdea"], n_ideas=2)

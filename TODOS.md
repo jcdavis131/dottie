@@ -2061,6 +2061,39 @@ most valuable catch so far:
   §5.3.R31/R32/R33 (artifacts written by code, read by a human, executed by nobody).
   Render it and read it, at least once.
 - [ ] NOT live — daemon on `e8cc5b7`; joins R24/R28/R29/R35 for the next restart.
+### 5.3.R37 — a FOURTH contradiction, with a measurable fingerprint in the generated code
+
+- [x] **Read the IMPLEMENTATION prompt end to end (10:05), same method as §5.3.R36.** Its
+  `# CODEBASE CONTEXT` read:
+  > *"Custom losses are `nn.Module` classes or functions taking (predictions, targets) and
+  > returning a scalar tensor."*
+
+  Constraint 7, a few lines below, says `forward` MUST take exactly one tensor and return
+  the same shape. **The same document taught both.**
+- [x] **This one is not speculative — it left a fingerprint in the code.** Of 92 stored
+  candidates with a readable forward signature, **7 named their argument `predictions`** —
+  the exact vocabulary of that line — including `694633b2d354`, the rank-collapse failure
+  from §5.3.R11. The prompt was teaching loss shape and the generated code inherited its
+  variable names.
+- [x] **Fixed, plus the gap the reading exposed:**
+  - CODEBASE CONTEXT now states plainly that this is a residual-stream block, not a loss.
+  - Constraint 7 additionally bans naming the argument `predictions`/`logits`/`targets`.
+  - **New constraint 7b (CAPACITY).** §5.3.R17 measured 55% zero-parameter candidates *at
+    validation* — meaning they materialise during **implementation** — yet the
+    implementation prompt had **no capacity requirement at all**; only ideation did. 7b
+    requires the block to own the parameters the hypothesis declared, and points at
+    `learnable_parameters` explicitly. That also closes §5.3.R28's loose end: the field was
+    carried end-to-end and read by nothing.
+- [x] **The test caught a mistake in my own fix.** My first replacement *quoted the old
+  wording* to explain the change — inside the prompt string, where the model reads it. The
+  test asserting `"(predictions, targets)" not in p` failed, correctly: an explanatory "we
+  used to say X" still shows the model X. **Historical rationale now lives in a code comment
+  the model never sees.** Suite 180 passed.
+- [ ] **Four contradictions, one document, four separate ticks.** §5.3.R35 (search space),
+  R36 (rigor section), R37 (codebase context) — plus the bottleneck framing in R12. Every
+  section read fine alone. The count is the argument: **prompts are programs, and nobody was
+  reading this one whole.**
+- [ ] NOT live — daemon on `e8cc5b7`; joins R24/R28/R29/R35/R36.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
