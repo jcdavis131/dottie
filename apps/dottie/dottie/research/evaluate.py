@@ -11,13 +11,42 @@ Nothing is compared that was not really measured — a missing metric is an hone
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+import math
+from typing import Any, Dict, List, Optional
 
 from dottie.research.ledger import Ledger, Experiment, Baseline, EVALUATION_PENDING, REJECTED, SOTA
 
+#: A win must clear this many standard errors of the candidate's own per-batch spread.
+#: Measured 2026-07-20: the first "SOTA" (MLBR) beat the baseline by 1.1 SEM — i.e. noise —
+#: because promotion used a bare `<`. Two SEM is the cheapest honest bar; it costs nothing
+#: when an effect is real and blocks the ratchet from wandering on variance.
+SIGNIFICANCE_SEM = 2.0
+
+#: Per-batch metric series a trainer may record, in preference order. The first one present
+#: supplies the spread; without any, significance is reported UNAVAILABLE, never assumed.
+_SERIES_KEYS = ("eval_ce_per_batch", "per_seed", "eval_losses")
+
+
+def _spread(metrics: Dict[str, Any]) -> Optional[Dict[str, float]]:
+    """Sample std + standard error of the mean from a recorded per-batch/per-seed series."""
+    for key in _SERIES_KEYS:
+        raw = metrics.get(key)
+        if not isinstance(raw, (list, tuple)):
+            continue
+        xs: List[float] = [float(v) for v in raw
+                           if isinstance(v, (int, float)) and math.isfinite(float(v))]
+        if len(xs) < 2:
+            continue
+        n = len(xs)
+        mean = sum(xs) / n
+        var = sum((x - mean) ** 2 for x in xs) / (n - 1)
+        std = math.sqrt(var)
+        return {"series": key, "n": n, "mean": mean, "std": std, "sem": std / math.sqrt(n)}
+    return None
+
 
 def _writeup(exp: Experiment, baseline: Baseline, value: Optional[float], *,
-             promoted: bool, reason: str = "") -> str:
+             promoted: bool, reason: str = "", significance: str = "") -> str:
     h = exp.hypothesis or {}
     m = exp.train_metrics or {}
     lines = [
@@ -33,6 +62,8 @@ def _writeup(exp: Experiment, baseline: Baseline, value: Optional[float], *,
         delta = value - baseline.metric_value
         lines.append(f"**Delta:** {delta:+.6g}"
                      + (f"  ·  std {m.get('proxy_loss_std')}" if m.get("proxy_loss_std") is not None else ""))
+    if significance:
+        lines.append(f"**Significance:** {significance}")
     if reason:
         lines.append(f"**Reason:** {reason}")
     lines += [
@@ -81,22 +112,51 @@ def run_evaluation(ledger: Ledger, *, require_stable: bool = True,
 
     value = float(value)
     improved = baseline.improves(value)
-    promote = improved and (stable if require_stable else True)
+    delta = value - baseline.metric_value
+
+    # Significance: a direction-correct win must also clear SIGNIFICANCE_SEM standard
+    # errors of the candidate's own measurement spread. No series recorded => reported
+    # unavailable and NOT treated as passing (the ratchet only moves on evidence).
+    sp = _spread(metrics)
+    if sp is None:
+        significant, sig_note = None, "no per-batch series recorded — significance unmeasurable"
+    else:
+        significant = abs(delta) >= SIGNIFICANCE_SEM * sp["sem"]
+        sig_note = (f"|delta| {abs(delta):.5g} vs {SIGNIFICANCE_SEM}×SEM "
+                    f"{SIGNIFICANCE_SEM * sp['sem']:.5g} (n={sp['n']}, std={sp['std']:.5g})")
+
+    # Recorded, not gated on: a swap that DELETES parameters can "win" at fixed steps
+    # simply by being easier to fit (MLBR did exactly this). The reviewer needs to see it.
+    params = metrics.get("params")
+    promote = improved and (stable if require_stable else True) and bool(significant)
     verdict = {
         "promote": promote, "improved": improved, "stable": bool(stable),
+        "significant": significant, "significance": sig_note,
+        "sem": None if sp is None else round(sp["sem"], 6),
+        "sem_series": None if sp is None else sp["series"],
+        "sem_n": None if sp is None else sp["n"],
+        "candidate_params": params,
         "metric": baseline.metric_name, "baseline_value": baseline.metric_value,
-        "new_value": value, "delta": round(value - baseline.metric_value, 6),
+        "new_value": value, "delta": round(delta, 6),
         "higher_is_better": baseline.higher_is_better,
     }
 
     if promote:
-        writeup = _writeup(exp, baseline, value, promoted=True)
+        writeup = _writeup(exp, baseline, value, promoted=True, significance=sig_note)
         ledger.transition(exp.id, SOTA, eval_verdict=verdict, writeup=writeup, ts=ts)
         ledger.promote_baseline(exp.id, value, notes=exp.name, ts=ts)
         return {"experiment": exp.id, "state": SOTA, "verdict": verdict}
 
-    reason = ("did not beat baseline" if not improved
-              else "improved but unstable — held (rank-invariance)")
-    writeup = _writeup(exp, baseline, value, promoted=False, reason=reason)
+    if not improved:
+        reason = "did not beat baseline"
+    elif not stable:
+        reason = "improved but unstable — held (rank-invariance)"
+    elif not significant:
+        reason = (f"improvement within noise — held ({sig_note})" if significant is False
+                  else f"improvement unverifiable — held ({sig_note})")
+    else:
+        reason = "held"
+    writeup = _writeup(exp, baseline, value, promoted=False, reason=reason,
+                       significance=sig_note)
     ledger.transition(exp.id, REJECTED, eval_verdict=verdict, writeup=writeup, ts=ts)
     return {"experiment": exp.id, "state": REJECTED, "verdict": verdict, "reason": reason}

@@ -226,6 +226,38 @@ def test_full_cycle_promote(led, tmp_path):
     assert led.get_baseline().metric_value == rt["metrics"]["proxy_loss"]
 
 
+def test_promotion_requires_significance(led, tmp_path):
+    # TODOS 5.3.R: the first live "SOTA" (MLBR) beat the baseline by 1.1 SEM — noise —
+    # because promotion used a bare `<`. A direction-correct win inside the candidate's
+    # own spread must now be HELD, with the arithmetic recorded in the verdict.
+    _implement(led, tmp_path, make_policy())
+    e = led.next_in_state(READY_FOR_TRAINING)
+    noisy = [4.35, 4.60, 4.40, 4.62, 4.38, 4.58]      # mean 4.485, sem ~0.045
+    led.transition(e.id, EVALUATION_PENDING,
+                   train_metrics={"proxy_loss": 4.485, "eval_ce_per_batch": noisy,
+                                  "integration": "proxy_micro_benchmark", "params": 1000})
+    r = evaluate.run_evaluation(led)
+    v = r["verdict"]
+    assert r["state"] == REJECTED                      # beat 4.5, but only by ~0.3 SEM
+    assert v["improved"] is True and v["significant"] is False
+    assert v["sem"] > 0 and v["sem_n"] == 6 and v["sem_series"] == "eval_ce_per_batch"
+    assert v["candidate_params"] == 1000               # param delta visible to the reviewer
+    assert "within noise" in r["reason"]
+    assert led.get_baseline().metric_value == 4.5      # ratchet did NOT move
+
+
+def test_promotion_without_a_series_is_held_not_assumed(led, tmp_path):
+    # No per-batch series => significance unmeasurable => hold. Never promote on faith.
+    _implement(led, tmp_path, make_policy())
+    e = led.next_in_state(READY_FOR_TRAINING)
+    led.transition(e.id, EVALUATION_PENDING,
+                   train_metrics={"proxy_loss": 1.0, "integration": "proxy_micro_benchmark"})
+    r = evaluate.run_evaluation(led)
+    assert r["state"] == REJECTED and r["verdict"]["significant"] is None
+    assert "unmeasurable" in r["verdict"]["significance"]
+    assert led.get_baseline().metric_value == 4.5
+
+
 def test_full_cycle_reject(tmp_path):
     L = Ledger(tmp_path / "l.sqlite3")
     L.seed_baseline(Baseline("proxy_loss", 0.001, False, "ava-nano", None, 0.0))  # unbeatable

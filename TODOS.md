@@ -314,13 +314,25 @@ independent reasons, both from the bundle's own numbers/code:**
    under-trained nano", a classic smoke-scale artifact. (`exp(λx)` is also
    overflow-fragile once activations grow.)
 
-**Cheap fixes to the loop this exposes (queue, don't hand-apply tonight):**
-- evaluate.py should require a significance margin (e.g. |delta| ≥ 2×SEM of the
-  per-batch CE) before `improved: true`, and record SEM in the verdict.
-- The param-count delta vs baseline belongs in the verdict — a swap that REMOVES
-  parameters is not comparable at fixed steps.
-- Consider paired-seed evaluation (same seeds, baseline vs candidate) to kill most
-  of this variance outright.
+**Fixes SHIPPED 2026-07-20 ~03:55 (evaluate.py + 2 tests, 29/29 green):**
+- [x] Promotion now requires `|delta| ≥ 2×SEM` of the candidate's own per-batch
+  series (`eval_ce_per_batch` / `per_seed` / `eval_losses`, first present wins).
+  REPLAYED against the real MLBR numbers: n=20, std 0.06002, sem 0.01342,
+  |delta|/sem = **1.10** → **HELD (noise)**. The gate rejects what it promoted.
+- [x] No series recorded ⇒ `significant: null` ⇒ HELD, never assumed — the ratchet
+  only moves on evidence.
+- [x] Verdict now carries `sem`, `sem_n`, `sem_series`, `significance` (the
+  arithmetic in words) and `candidate_params`; the write-up shows Significance.
+- [ ] STILL OPEN (needs a design decision): paired-seed evaluation — same seeds for
+  baseline and candidate would kill most of this variance rather than just gating on
+  it. Also: baselines record no param count, so the param comparison is informational
+  only (recorded, not gated) until `Baseline` carries params.
+- [ ] YOUR CALL on the live ledger: MLBR (`23bb41375804`) was promoted under the old
+  bare-`<` rule and MOVED the baseline 5.61982→5.60506. Options: (a) leave it — the
+  bundle is human-gated anyway and §5.3.R documents the truth; (b) re-seed the
+  baseline back to 5.61982 (`python -m dottie.research seed-baseline --value 5.61982
+  --metric factory_lm_loss --architecture nano`) so the ratchet starts from the honest
+  number. I did NOT touch the live ledger unattended.
 
 5.3 [x] **Close the loop into the factory** (sota -> promotion bundle: candidate.py + evidence + ab_nano.py, runner-automatic, human-gated): when an experiment reaches `sota`, generate a
     `deltanet_layers`-style patch PR against `model_1b.py` + a nano A/B run script;
