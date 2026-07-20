@@ -21,6 +21,20 @@ from dottie.research.ledger import (
 Policy = Callable[[str], str]
 
 
+def _keep_tail(detail: str, limit: int = 800) -> str:
+    """Keep the END of a failure detail, not the start.
+
+    Python puts the exception type and message on the LAST line of a traceback, so the
+    previous `detail[:500]` stored the "Traceback (most recent call last):" header and the
+    outermost frames while discarding the only line that says what actually broke.
+    Measured 2026-07-20: 36 of the 40 most recent `failed_validation` records were
+    unclassifiable for exactly this reason, which makes conversion-rate analysis (TODOS
+    §5.2) impossible. Short details are returned untouched."""
+    if len(detail) <= limit:
+        return detail
+    return "...[head truncated]... " + detail[-limit:]
+
+
 def _safe_basename(target_file: Optional[str], fallback: str) -> str:
     name = Path(str(target_file or "")).name
     if not name.endswith(".py") or not name[:-3].isidentifier():
@@ -105,6 +119,6 @@ def run_implementation(ledger: Ledger, policy: Policy, *, workspace_root: str | 
                       attempts=outcome.attempts,
                       failure=f"validation failed at '{outcome.result.level}' after "
                               f"{outcome.attempts} self-correction attempt(s): "
-                              f"{outcome.result.detail[:500]}", ts=ts)
+                              f"{_keep_tail(outcome.result.detail)}", ts=ts)
     return {"experiment": exp.id, "state": FAILED_VALIDATION,
             "level": outcome.result.level, "attempts": outcome.attempts}

@@ -545,6 +545,22 @@ def test_policy_keep_alive_knob(monkeypatch):
     assert "keep_alive" not in captured
 
 
+def test_failure_detail_keeps_the_exception_not_the_header(led, tmp_path):
+    # TODOS §5.2: stored failures used to be detail[:500] — the HEAD of a traceback, which
+    # is boilerplate. Python puts the exception last, so 36 of 40 recent records were
+    # unclassifiable. The tail is what identifies the failure mode.
+    from dottie.research.implementation import _keep_tail
+    tb = ("Traceback (most recent call last):\n"
+          + "".join(f'  File "x.py", line {i}, in f\n    call_{i}()\n' for i in range(120))
+          + "RuntimeError: shapes cannot be multiplied (4x16 and 64x8)")
+    kept = _keep_tail(tb)
+    assert "RuntimeError: shapes cannot be multiplied" in kept   # the part that matters
+    assert kept.startswith("...[head truncated]...")             # honest about the cut
+    assert len(kept) < len(tb)
+    short = "degenerate block: 0 learnable parameters"
+    assert _keep_tail(short) == short                            # short details untouched
+
+
 def test_promotion_bundle_from_sota_and_refusals(led, tmp_path):
     # TODOS 5.3: sota -> reviewable bundle; everything else refuses honestly.
     from dottie.research import promote

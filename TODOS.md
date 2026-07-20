@@ -513,6 +513,16 @@ Then §1 fires automatically (#17 armed on the monitor).
     - 5.2.b [~] Nightly window: MECHANISM shipped in research_worker.ps1 (DOTTIE_OLLAMA_MODEL_NIGHT); do NOT enable until the tool run frees the GPU — when the trainer is idle (post-tool_final, pre-next-run),
       let the scheduler use qwen3:14b (`DOTTIE_OLLAMA_MODEL_NIGHT` env in the wrapper,
       22:00–06:00) — 14b stalls only under GPU contention.
+    - 5.2.d [x] **SHIPPED 04:36 — stored failures now keep the EXCEPTION, not the header.**
+      Tried to classify why the loop keeps failing (3 of the last 5 implements died at
+      `dry_run` after all 5 retries) and found the analysis is impossible: `failed_validation`
+      records stored `detail[:500]`, the HEAD of a traceback — pure boilerplate — while
+      Python puts the exception type and message on the LAST line. **36 of the 40 most
+      recent failures were unclassifiable** for that reason alone. Now tail-truncated
+      (last 800 chars, prefixed `...[head truncated]...`; short details untouched).
+      37/37 tests green. NOTE this only helps failures recorded from now on — the existing
+      49+ records stay unclassifiable, so re-run the classification after a few more cycles
+      before drawing conclusions about the dominant failure mode.
     - 5.2.c [x] **SHIPPED 02:45** — the corrector now sees its OWN last edit: from the
       second retry on, the feedback carries a bounded unified diff (previous_attempt →
       current_attempt), and a byte-identical resubmission is called out explicitly.
