@@ -560,6 +560,36 @@ def test_self_correction_fix_and_giveup():
 
 # --------------------------------------------------------------------------- prompts
 
+def test_learnable_parameters_is_asked_for_but_not_yet_enforced():
+    """The schema asks for `learnable_parameters`; the parser does NOT require it yet.
+
+    TODOS §5.3.R19. Asking is low-risk and makes capacity salient at ideation, ~8 minutes
+    before the validator would catch a zero-parameter block. ENFORCING it is a different
+    risk: if the live model reliably omits the field, every ideation batch burns its full
+    retry budget and the loop starves. That compliance rate cannot be measured while the
+    daemon runs pre-restart code, so enforcement waits for evidence.
+
+    This test pins the decision in both directions so a later change is deliberate: the
+    field must appear in the prompt, and a hypothesis WITHOUT it must still parse.
+    """
+    b = Baseline("proxy_loss", 4.5, higher_is_better=False, architecture="ava-nano",
+                 experiment_id=None, updated_ts=0.0)
+    p = prompts.ideation_prompt(b, bottleneck="loss plateaus", n_ideas=2)
+    assert "learnable_parameters" in p
+    assert "nn.Parameter" in p                      # tells the model HOW, not just what
+
+    legacy = {"hypothesis_name": "X", "theoretical_intuition": "t",
+              "mathematical_formulation": "m", "pytorch_implementation_strategy": "s",
+              "expected_outcome": "e", "search_domain": "attention"}
+    assert len(prompts.parse_hypotheses(json.dumps([legacy]))) == 1, (
+        "the field is not required yet — enforcing it here would starve the loop if the "
+        "live model omits it, and that compliance rate is unmeasured")
+
+    enriched = dict(legacy, learnable_parameters="gate: nn.Linear(hidden, hidden)")
+    parsed = prompts.parse_hypotheses(json.dumps([enriched]))[0]
+    assert parsed["learnable_parameters"] == "gate: nn.Linear(hidden, hidden)"
+
+
 def test_prompts_and_parsing():
     b = Baseline("val_loss", 3.09, False, "ava-nano", None, 0.0)
     p = prompts.ideation_prompt(b, bottleneck="loss spikes", failed_hypotheses=["DeadIdea"], n_ideas=2)

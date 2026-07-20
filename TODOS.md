@@ -1558,6 +1558,28 @@ most valuable catch so far:
   (b) the zero-parameter gate now returning a correctable message so ideas get rescued
   rather than lost (§5.3.R17); (c) only then worry about search quality within the
   block-shaped-with-capacity population, which currently has n=5.
+### 5.3.R19 — ask for capacity at IDEATION, ~8 minutes before the validator can catch it
+
+- [x] **`learnable_parameters` added to the ideation schema (08:50).** The zero-parameter
+  gate (§5.3.R17) fires at validation — after a full implement cycle, 4-18 min. Asking the
+  model to *name the tensors it will train*, with shapes, moves the decision to the cheapest
+  possible point and makes capacity an explicit design choice rather than an oversight. The
+  prompt now also states the measured 55% and tells the model **how** to fix it (turn fixed
+  floats for scales/gates/thresholds into `nn.Parameter` or `nn.Linear` outputs).
+- [x] **Deliberately NOT enforced in `parse_hypotheses`, and the reason is measurement, not
+  caution for its own sake.** Requiring the key is one line. But if the live model reliably
+  omits it, **every ideation batch burns its full retry budget and the loop starves** — and
+  that compliance rate cannot be measured while the daemon runs pre-restart code. Shipping
+  unmeasurable enforcement is the mistake §5.3.R8 already charged me for once tonight.
+  - Verified backward compatible in both directions: a legacy hypothesis without the field
+    still parses; one with it keeps the value.
+  - `test_learnable_parameters_is_asked_for_but_not_yet_enforced` pins **both** halves, so a
+    later tick that hardens it does so deliberately rather than by drift.
+  - Full suite 168 passed.
+- [ ] **FOLLOW-UP once the daemon runs current code:** measure what fraction of proposals
+  actually fill `learnable_parameters`, and whether the zero-parameter rate falls from 55%.
+  If compliance is high, promote the field to `required` in `parse_hypotheses`. Scope the
+  before/after by the `boot` lines (§5.3.R9), not commit timestamps — the trap from §5.3.R8.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.

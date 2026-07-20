@@ -52,6 +52,16 @@ IDEATION_SCHEMA = {
     "pytorch_implementation_strategy": "which nn.Module / autograd pieces to modify or create",
     "expected_outcome": "the specific metric that should improve",
     "search_domain": "which of the fenced sub-domains this belongs to",
+    # Asked at IDEATION so capacity is decided before any code exists. Measured 2026-07-20
+    # (TODOS §5.3.R17): 55% of candidates that passed validation had ZERO learnable
+    # parameters — fixed functions that cannot learn, replacing a real ~787K-parameter
+    # block. Naming the parameters up front is the cheapest point to catch that; the
+    # validator catches it ~8 minutes later, after a full implement cycle.
+    "learnable_parameters": "the nn.Parameter / nn.Linear tensors this block will TRAIN, "
+                            "with shapes (e.g. 'gate: nn.Linear(hidden, hidden); scale: "
+                            "nn.Parameter(hidden)'). A block with none is a fixed function "
+                            "and will be rejected — it cannot learn, and replacing a "
+                            "parameterised block with it shrinks the model.",
 }
 
 IMPLEMENTATION_SCHEMA = {
@@ -130,6 +140,14 @@ Concretely: "penalise attention entropy" is out of scope; "re-weight the block's
 mixing by an entropy-derived gate computed from x" is in scope and targets the same effect.
 A proposal whose mechanism only makes sense as an added term in the training objective is a
 category error here, however good the idea is on its own.
+
+EVERY BLOCK MUST HAVE SOMETHING TO LEARN. Measured 2026-07-20 over the candidates that
+reached validation: 55% had ZERO learnable parameters — fixed functions built from constant
+floats. They are rejected, because a block with no parameters cannot learn anything AND it
+replaces a real ~787K-parameter block, so any apparent win at fixed steps may just be the
+model getting smaller. If your mechanism computes a scale, gate, threshold, temperature or
+mixing weight, make it an `nn.Parameter` or the output of an `nn.Linear` the LM loss can
+train — not a fixed float in `__init__`. State them in `learnable_parameters`.
 
 # DEAD ENDS (already tried and failed — do not repeat)
 {_failed_block(failed_hypotheses or [])}
