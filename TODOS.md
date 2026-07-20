@@ -321,9 +321,11 @@ effort belongs; the gates and instrumentation are done.
 **1. `keep_alive=30s` costs *something*, but far less than I first claimed — CORRECTED.**
 I reported "~42% slower" from a single before/after pair (487 s → 691 s). The next
 comparable implement came in at **492.5 s — statistically indistinguishable from the
-487 s baseline.** Three same-shape samples (one pre-fix, two post): 487.3 / 691.5 / 492.5.
-So the honest statement is *high variance, mean penalty maybe ~20%, n far too small to
-quantify* — not a stable 42% tax. Original overclaim left visible here on purpose: it came
+487 s baseline.** **Four** same-shape samples (one pre-fix, three post): 487.3 / 691.5 / 492.5 / **429.4**
+— the newest is FASTER than the pre-fix baseline. Post-fix mean ≈ 538 s vs 487 s, i.e.
+roughly **10%** with a 429–691 s spread that swamps it.
+So the honest statement is *high variance, no measurable stable penalty at this n* —
+certainly not the 42% tax I reported. Original overclaim left visible here on purpose: it came
 from n=1 and should not have been stated as a rate. The memory benefit (345 MB → 5.4 GB)
 is measured repeatedly and is not in doubt.
 
