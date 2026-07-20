@@ -316,6 +316,26 @@ deaths from axis confusion (§5.2.f, prompt fixed at 04:52) and a search confine
 vocabulary (§5.2.g, mode collapse, filed for your call). Those two are where any further
 effort belongs; the gates and instrumentation are done.
 
+### Measured trade-offs (06:06) — two numbers worth having
+
+**1. `keep_alive=30s` costs ~42% on implement wall-clock.** A failed 5-attempt implement
+went **487 s → 691 s** (`dur_s`, same stage type, before/after the setting). That is the
+price of the memory fix that took available RAM from 345 MB to 5.4 GB. On a box whose
+memory exhaustion caused a multi-hour outage the trade still looks right, but it is now a
+number rather than a guess — revisit it if throughput ever matters more than headroom.
+
+**2. The axis-discipline prompt is NOT the whole story (n=3).** GASA #3 died with
+`AttributeError: 'GradientAdaptiveSparseAttention' object has no attribute 'hidden'` —
+not an axis mismatch at all, but a module referencing an attribute it never assigned in
+`__init__`. Earlier post-fix failures were a 4-D reshape mismatch and this. So the
+dimension-2 confusion I targeted has not recurred in three tries, but the model simply
+finds other ways to produce a broken module. **Do not read the prompt fix as solved.**
+Worth revisiting once ~5 more failures accumulate, now that tail-truncation makes the
+classification a one-line query.
+
+**3. That failure cost 11.5 min and was a duplicate.** GASA #3 was the third proposal of
+a name already in the ledger (fifth overall) — a concrete instance of the §5.2.g waste.
+
 ### Post-restart verification (05:12) — the fixes are live and already paying
 
 First completed action from the restarted daemon proves three of them at once:
