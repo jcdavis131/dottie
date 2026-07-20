@@ -4191,3 +4191,14 @@ so what does the *server* do under a 5 s poll? Two problems, one significant.
     luck of additive edits — when spawning parallel work, assign disjoint file
     lanes explicitly (curriculum registry vs adapters vs tests), and the second
     lane pulls before touching anything shared.
+9.5 **Any tick that writes to TODOS.md runs `python scripts/check_todos_timestamps.py`
+    before committing.** Never write a clock time that did not come from `date` or
+    `git log` in that same tick; if neither is to hand, write the commit sha or "this
+    tick" — a relative marker that is true beats a precise one that is invented.
+    Provenance: §5.3.R88, where 14 fabricated timestamps survived every review pass
+    because they were internally consistent. §5.3.R89 is the same failure in another
+    field ("one `uv pip install typer` would settle it" — an estimate never run).
+    **The generalisation both share: a claim that costs nothing to check is exactly the
+    kind that never gets checked.** The script only covers the clock; the discipline it
+    encodes is the point, and applies to every number written from memory rather than
+    from a tool.
