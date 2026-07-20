@@ -524,6 +524,15 @@ resolved to `promoted` — right, since the current baseline came from MLBR's pr
   Renaming the field itself to `beyond_noise` is still open — that IS a schema change,
   so it stays your call.
 
+- NOTE on reading the next few verdicts: the daemon imports its code at process start,
+  so the one running since 04:05 carries the gates as of 04:05 but NOT the two later
+  additions — `dur_s` on result lines (04:13) and the direction-aware significance
+  wording (04:23). Those appear after the next daemon restart (05:05 trigger). Their
+  absence is skew, not breakage.
+- Degeneracy gate status: shipped, **no production catch yet**. GAAS (`8c3c8ab09b39`)
+  failed `dry_run` at 04:24 through the ordinary path — a real torch exception in its
+  forward pass after all 5 correction attempts — not the no-op pattern the gate targets.
+
 ### 5.3.R1 — the loop kept working through the outage (audited 03:03)
 
 While Docker was down, the host-side loop evaluated FOUR candidates and honestly
