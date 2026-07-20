@@ -2985,6 +2985,34 @@ most valuable catch so far:
   to re-test the claims rather than assume the pattern was confined to the two I noticed.
   Re-verification that confirms is not wasted — it is the difference between "probably fine"
   and "checked".
+### 5.3.R73 — ⚠ UNCOMMITTED WORK FOUND IN A STASH FROM BEFORE THE MACHINE MOVE
+
+- [x] **Ran a tool-residue check (15:20) and found something that is not mine.**
+  `git stash list` holds **`stash@{0}: On main: pre-teleport`**, created **2026-07-19
+  23:55:03** — minutes before this session began "continued from another machine". It has
+  survived ~15 hours and 90+ of my commits, and would be lost silently if anyone ran
+  `git stash drop` or `clear`.
+- [x] **It is a COMPLETE, TESTED FEATURE, not a scratch edit:**
+  | file | lines | |
+  |---|---|---|
+  | `apps/dottie/dottie/jobs.py` | 155 | the module — `JobStore`, `run_due_jobs`, `create/get/list/due/mark_fired` |
+  | `apps/dottie/tests/test_jobs.py` | 161 | **7 real tests** incl. sub-minute-interval rejection, reschedule-on-dispatch-failure, pause/resume |
+  | `apps/dottie/dottie/api.py` | +85 | the API wiring — `JobCreate` model, `JobStore` construction, endpoints |
+  | `apps/dottie/.scout/reviewgraph.db` | 2 MB | a binary artifact that should **not** be committed |
+  A recurring-jobs feature: *"a recurring mission: the SAME shape as a one-off task, plus a
+  cadence."*
+- [x] **Verified non-destructively.** Extracted both Python files to a temp dir with
+  `git show`, confirmed they **parse** and contain what the diff claims (12 and 14 functions
+  respectively), then deleted the temp copies. **I did not pop, apply, or drop the stash** —
+  it is the operator's uncommitted work, and restoring it into a tree with 90+ new commits
+  could produce conflicts only they can adjudicate. `dottie/jobs.py` does not exist in HEAD,
+  so nothing here is a duplicate.
+- [ ] **OPERATOR — this is a decision, not a task.** To inspect: `git stash show -p
+  stash@{0}`. To restore: `git stash pop` (expect to resolve `api.py` against tonight's
+  changes; the two files it adds are new, so they cannot conflict). To keep deferring: do
+  nothing — but **it is now recorded, so it cannot be lost by accident.**
+- [x] Also cleaned my own residue from the same check: `/tmp/eval.bak` and `/tmp/ledger.bak`,
+  left by red-without-fix verifications. No pending stashes of mine; working tree clean.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
