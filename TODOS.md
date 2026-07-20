@@ -492,12 +492,17 @@ estart_research.ps1                    # research back on, and PROVES it booted
    docker update --restart no dottie-chat-branch
    docker stop dottie-chat-branch
    ```
-5. **MLBR bundle — SHARPER NOW, and the loop is currently self-reporting the problem.**
-   I still recommend REJECT. New tonight: the live baseline (`factory_lm_loss 5.60506`) was
-   **ratcheted by MLBR itself**, and MLBR **fails the current validator outright** as a
-   zero-parameter no-op. Until you re-seed, every promotion verdict and the status snapshot
-   carry a `promoted_contaminated` warning (§5.3.R5, §5.3.R14) — honest, but noisy.
-   - Re-seeding to **5.61982** clears it automatically.
+5. **RE-SEED THE BASELINE — now urgent and a one-liner (updated §5.3.R96).** The live
+   baseline has moved since this item was written: it is **`factory_lm_loss 5.54404`**, set
+   by `5a7232ffea24`, which **paired seed testing proved is WORSE than the unmodified model at
+   every seed** (§5.3.R93). So the bar is **BELOW what the base model reaches (5.56/5.74/5.91)
+   — unreachable.** On restart the loop **rejects every candidate indefinitely** against it.
+   This is no longer "noisy warnings"; it is "the loop cannot make progress until you re-seed."
+   - **THE FIX, one command:** `python -m dottie.research calibrate-baseline --overwrite`
+     (multi-seed as of §5.3.R96). Installs ≈**5.737, SEM ≈0.099, n=3** — measured, honest, and
+     two-sample-ready. Takes ~6 min on an idle box.
+   - Historical: the pre-contamination values were 5.60506 (MLBR) and 5.61982 (pre-MLBR
+     calibration). Both are superseded by the command above, which measures fresh.
    - **Direction matters and I first stated it backwards (§5.3.R26):** 5.60506 is a
      *harder* bar than 5.61982 because lower is better, so the contamination causes
      **missed** promotions, not false ones. No false SOTA can come from it. The cost is
@@ -3155,6 +3160,33 @@ most valuable catch so far:
   this writing the test fixture, not in production, so **frequency is unmeasured**; check
   the stored histories for repeated identical dry_run failures before deciding whether to
   re-derive the class name per attempt or pin the name in the correction prompt.
+
+### 5.3.R96 — the RE-SEED tool built the very weakness the re-seed exists to remove
+
+- [x] **Traced what actually happens on restart, and it is worse than "noisy warnings".**
+  The live baseline **5.54404 is BELOW the unmodified model at all three seeds** (5.56 / 5.74
+  / 5.91, mean 5.737). A candidate identical to the base model scores ~5.74 and is REJECTED
+  as +0.19 worse. **On restart the loop rejects EVERYTHING, indefinitely, against a bar the
+  base model itself cannot reach at 2 of 3 seeds** — and the only surfaced signal is a
+  capacity *flag*, not "this baseline is unreachable."
+- [x] **The fix for that is re-calibration — and the re-calibration tool was broken the same
+  way.** `calibrate-baseline` ran ONE seed and installed a **point baseline** (`metric_sem =
+  None`). So re-seeding to escape a contaminated baseline would have dropped the loop straight
+  back onto the one-sample test R90 flagged and R93 proved decisive. **The remedy reproduced
+  the disease.**
+- [x] **Fixed (`315d294`): `calibrate-baseline --seeds 0,1,2` (now the default)** measures the
+  unmodified model at each seed and records the cross-seed **mean + SEM + n**, so the next
+  candidate gets an honest two-sample test. Single seed still works and degrades honestly to
+  `metric_sem=None` — fabricating a spread from one draw would be R93 in reverse. One failing
+  seed is fatal, never a silently-smaller mean. Test stubs the trainer (no torch), pins the
+  aggregation, mutation-checked.
+- [x] **This connects the whole arc:** R90 (baselines should carry SEM) → R93 (cross-seed SEM
+  is the honest one) → R96 (the tool that installs baselines now produces one). The gate reads
+  it (§5.3.R93's `a37dd58`); the calibrator writes it; the storage was already there.
+- [ ] **Operator action, now a clean one-liner with a known result:** to clear the unreachable
+  baseline, `python -m dottie.research calibrate-baseline --overwrite` (uses seeds 0,1,2). It
+  will install ≈**5.737, SEM ≈0.099, n=3** — the measured honest baseline. Still your call
+  because it changes what the loop promotes, but it is no longer a vague "re-seed somehow."
 
 ### 5.3.R95 — my own capacity caveat had gone stale AND was too specific — fixed both
 
