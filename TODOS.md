@@ -364,7 +364,7 @@ First completed action from the restarted daemon proves three of them at once:
   err, or coincidence. Judge it after ~5 more implements, using the tail-truncated
   errors that now make classification cheap.
 
-### Regression status (full sweep 04:38, after ~14 changed files)
+### Regression status (full sweep re-run 06:26 — everything still green)
 
 | suite | result |
 |---|---|
@@ -375,7 +375,11 @@ First completed action from the restarted daemon proves three of them at once:
 | `packages/ava-skills` logic-prover | 6 passed |
 | arxiviq `site/app.js` | syntax clean; render harness 6/6 earlier |
 
-Nothing regressed across the night's work.
+Re-verified at 06:26 after six further files changed (server.py, prompts.py,
+factory_trainer.py, research_worker.ps1, webapp app.js, tests): **dottie 149 passed**,
+**factory server endpoints 24 passed**, **webapp contract tests 11 passed**, both
+front-end bundles syntax-clean, and the working tree is **completely clean — 0 modified,
+0 untracked** across **105 commits** this session. Nothing regressed across the night.
 
 ### What ran while you were away (all committed, ~25 commits)
 
