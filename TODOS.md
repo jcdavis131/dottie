@@ -3055,6 +3055,29 @@ most valuable catch so far:
   worse than a wrong TODO — nothing in the next session's context contradicts it. This is the
   same class as §5.3.R59 (a status line describing a measurement the loop no longer took),
   one layer further out.
+### 5.3.R76 — swept the rest of memory; two more stale entries, one in the always-loaded index
+
+- [x] **Applied the class sweep to memory itself (15:50)** — §5.3.R75 found one wrong file,
+  so assuming it was isolated would be the mistake this session keeps naming.
+- [x] **`dottie-ollama-models-on-4080.md` was wrong on the two facts most likely to be acted
+  on:** it named **`qwen2.5:7b`** as "the research-loop workhorse" when the live config is
+  **`qwen3:8b`**, and gave `READ_TIMEOUT_S` as **600** when it is **1800**. It also omitted
+  `DOTTIE_OLLAMA_KEEP_ALIVE=30s` — the knob that keeps this box off the memory floor — and,
+  most importantly, the **`NUM_GPU=0` fact that model size competes with the FLEET, not the
+  12 GB card.** That omission is what made a 14b model look affordable and caused the 02:05
+  outage. Rewritten with the outage warning attached to qwen3:14b directly.
+- [x] **`MEMORY.md` — the index loaded into EVERY session — carried the false baseline.** Its
+  hook read *"factory_lm_loss baseline 5.61982"*: neither the current value (5.60506) nor
+  flagged as contaminated. A one-line hook is the highest-leverage text in the whole memory
+  system, because it is read unconditionally and rarely re-examined. Now: *"baseline 5.60506
+  is CONTAMINATED (set by a rejected no-op); real wins = ZERO; one forever-daemon that never
+  live-reloads."*
+- [x] Checked `dottie-4080-box-setup.md` and `dottie-watches-die-with-sessions.md`: both still
+  accurate — the box-setup file already carries the RAM budget and the NUM_GPU=0 warning.
+  **2 of 4 files were stale, plus the index. Recorded rather than glossed.**
+- [ ] The through-line for the whole session, one layer out: **the code was usually right and
+  the descriptions of it usually were not** — comments, docstrings, guards, prompts,
+  dashboards, and finally the memory that outlives them all.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
