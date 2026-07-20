@@ -116,9 +116,13 @@ def after_run(profile: Profile, *, session_id: str, task: str, outcome: str,
         store.log_task(session_id, task, outcome,
                        trace={"plan": plan} if plan else None)
         if profile.persist_context:
-            store.set_context(session_id, "last_task", task)
-            store.set_context(session_id, "last_outcome", outcome)
+            # channel "cli": scout is the CLI surface of the shared store (the dottie
+            # engine writes "engine"/"arxiviq"); session_snapshot reads ALL channels,
+            # so cross-surface visibility is by session_id, not by channel.
+            store.set_context(session_id, "last_task", task, channel="cli")
+            store.set_context(session_id, "last_outcome", outcome, channel="cli")
             result["context_updated"] = ["last_task", "last_outcome"]
+            result["channel"] = "cli"
         if profile.refine_after_success and outcome == "ok" and plan:
             name = f"routine_{abs(hash(task)) % 10**8:08d}"
             version = store.register_skill(

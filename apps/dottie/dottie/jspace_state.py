@@ -13,12 +13,18 @@ and its absence is recorded in the trace (``jspace_state: unavailable``).
 
 from __future__ import annotations
 
+import os
 import sys
 from typing import Any, Dict, Optional
 
 from dottie import resolve
 
 CHANNEL = "engine"
+#: The surfaces that write session_context. scout's profiles write "cli"; the
+#: containerized server fronting the site sets DOTTIE_CHANNEL=arxiviq; the research
+#: loop is reserved "research". Unknown values pass through — the store is
+#: schema-free by design and a new surface should not need a code change here.
+KNOWN_CHANNELS = ("cli", "arxiviq", "research", "engine")
 
 
 def shared_store():
@@ -40,16 +46,22 @@ def shared_store():
 
 
 def record_task(session_id: str, task: str, outcome: str, *,
-                trace: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Log the run + update cross-channel re-entry state. Returns what happened."""
+                trace: Optional[Dict[str, Any]] = None,
+                channel: Optional[str] = None) -> Dict[str, Any]:
+    """Log the run + update cross-channel re-entry state. Returns what happened.
+
+    The channel names the SURFACE the task ran on (see KNOWN_CHANNELS): explicit
+    argument first, then DOTTIE_CHANNEL (how the arxiviq-facing server is tagged
+    without an API change), then this module's default."""
+    ch = (channel or os.environ.get("DOTTIE_CHANNEL") or CHANNEL).strip() or CHANNEL
     store = shared_store()
     if store is None:
         return {"persistence": "unavailable"}
     with store:
         store.log_task(session_id, task, outcome, trace=trace)
-        store.set_context(session_id, "last_task", task, channel=CHANNEL)
-        store.set_context(session_id, "last_outcome", outcome, channel=CHANNEL)
-    return {"persistence": "on", "channel": CHANNEL}
+        store.set_context(session_id, "last_task", task, channel=ch)
+        store.set_context(session_id, "last_outcome", outcome, channel=ch)
+    return {"persistence": "on", "channel": ch}
 
 
 def session_context(session_id: str) -> Optional[Dict[str, Any]]:

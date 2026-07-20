@@ -23,6 +23,9 @@ services:
       DOTTIE_DATA_DIR: /data
       DOTTIE_WORKERS: ${DOTTIE_WORKERS:-2}
       DOTTIE_QUEUE_MAX: ${DOTTIE_QUEUE_MAX:-32}
+      # This service's primary consumer is the arxiviq site tab — tag its
+      # session_context writes with the surface (jspace_state KNOWN_CHANNELS).
+      DOTTIE_CHANNEL: ${DOTTIE_CHANNEL:-arxiviq}
       # Optional: point at a mounted ava checkpoint to enable the trainee backend
       # (also requires torch in the image — see Dockerfile note).
       DOTTIE_AVA_CKPT: ${DOTTIE_AVA_CKPT:-}

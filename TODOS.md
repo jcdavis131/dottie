@@ -111,7 +111,16 @@ Then §1 fires automatically (#17 armed on the monitor).
     T9.4 on this corpus is defensible; gate it like the tool branch (honest
     nonregression + routing) and re-gate on capability post-2.1.
 
-    **If gate passes → chat branch (T9.4)**: same overlay pattern,
+    **T9.4 LAUNCHED 2026-07-20 01:44 (user directive via fork; per this section's
+    "defensible" verdict)**: container `dottie-chat-branch`, forked base_final →
+    /ckpt/chat, p5_anneal seq 4096, 50M tokens ≈ 191 steps, ETA ~2h at 38s/step.
+    Old July-10 nano-era /ckpt/chat ckpts preserved as *.nano-20260710.bak.
+    Completion/failure watch armed (fires the session on chat_final.pt, clean exit,
+    crash, or CUBLAS/NaN signatures). GATE NEXT: nonregression-only eval vs
+    base_final (adapt evals/tool_gate.py — same honest labeling; expect the
+    forgetting risk the tool branch showed, at 1/6 the token count).
+
+    Original plan (**if gate passes → chat branch (T9.4)**): same overlay pattern,
     `docker compose -f docker-compose.yml -f docker-compose.tool-fork.yml run --rm trainer \
      python -m dottie.train --preset mini --branch chat --init /ckpt/base_final.pt --run /ckpt/chat`
     (50M tokens ≈ 90 min). Same gate discipline (1.2) for chat metrics.
@@ -215,10 +224,16 @@ Then §1 fires automatically (#17 armed on the monitor).
 6.1 [x] **Hermes auto-forge** (successful routines register parseable plugin drafts + human-gated forge_proposal commands): today `after_run` registers a routine sketch into
     skills_library; next: template that sketch into a real `forge new/edit` invocation
     behind `--refine` (human-confirmed), reusing the loop test's contract template.
-6.2 **OpenClaw channels**: give `session_context` channels real meaning — `cli`,
-    `arxiviq`, `research` — and make the dottie engine read/write the same store
-    (`DOTTIE_STATE_DB` shared). Acceptance: a task started via scout is visible in the
-    arxiviq assistant's context and vice versa.
+6.2 [~] **OpenClaw channels** (cli + arxiviq SHIPPED 2026-07-20 ~01:40): scout's
+    profiles now write channel `cli` explicitly; the engine's record_task takes an
+    explicit channel or `DOTTIE_CHANNEL` env (compose tags the arxiviq-facing dottie
+    service `arxiviq`); KNOWN_CHANNELS documented in jspace_state. Cross-surface
+    visibility verified by tests on BOTH sides (engine 12/12, profiles 6/6 — real
+    store, tmp DB, no mocks). REMAINING: the `research` channel — the research loop
+    runs under its own session_id, and session_snapshot is per-session, so making
+    research state visible to scout/arxiviq sessions needs either a well-known shared
+    session_id convention or a store-level cross-session view. That's a design
+    choice — pick one before wiring it.
 6.3 **reviewgraph into the workflow**: pre-commit hook (or `scout system audit` step)
     that runs `reviewgraph blast --diff HEAD` and blocks on new high-fan-in touches
     without tests. Wire `context` into /code-review usage docs.
