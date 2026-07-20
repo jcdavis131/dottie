@@ -3013,6 +3013,26 @@ most valuable catch so far:
   nothing — but **it is now recorded, so it cannot be lost by accident.**
 - [x] Also cleaned my own residue from the same check: `/tmp/eval.bak` and `/tmp/ledger.bak`,
   left by red-without-fix verifications. No pending stashes of mine; working tree clean.
+### 5.3.R74 — ran the daemon itself, safely, and watched the new guard work
+
+- [x] **Verified the one runtime path still untested by a live run (15:30): `run` — the
+  daemon mode the operator's restart enters first.** The e2e in §5.3.R66 covered
+  train/evaluate/promote but never `run`, which now carries the §5.3.R52 memory guard. A bug
+  there would surface as a daemon that will not start.
+- [x] **Ran it safely**: `DOTTIE_RESEARCH_MIN_FREE_MB=99999999` on a temp `--data-dir`, so
+  the guard refuses **before** anything loads a 5 GB model into a box with ~3 GB free. Four
+  things confirmed in one run:
+  1. **Boot provenance works in the real daemon** — `{"action":"boot","git_sha":"c3566e7",
+     "prompts_sha256":"be4f88795de6"}`, which is the line `restart_research.ps1` waits for.
+  2. **The guard refuses with an actionable record**, naming the action, free MB, required
+     MB and the remedy — not a silent death.
+  3. **Exponential backoff is live**: refusals at +0.0 s, +2.0 s, +6.0 s — the 2→4 s doubling
+     from `backoff = min(backoff * 2, 300)`.
+  4. **Nothing loaded**: memory held ~3,100 MB throughout, 0 leftover processes afterwards,
+     tree clean, task still `Disabled`.
+- [ ] **Every runtime path is now verified except the two that need resources this box does
+  not currently have**: `ideate`/`implement` (Ollama, ~5 GB) and `calibrate-baseline` (factory
+  + corpus). Both are blocked on memory, not on code.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
