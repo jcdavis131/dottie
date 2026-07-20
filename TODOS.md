@@ -41,7 +41,11 @@ THE NIGHT'S HEADLINES — read these before anything below:
 2. **§2.1 fleet rebuild DONE + verified**: 13/13 healthy on reconciled images,
    30-source registry live; collectors correctly paused on full runway. §2.2 blocked
    only on the next-run decision.
-3. **Research loop: first SOTA — but the loop's own review says REJECT it.** MLBR
+3. **Research loop: BOTH "SOTA" entries are artifacts (§5.3.R0) — honest count of real
+   architectural wins is ZERO.** The older one beat a hand-seeded placeholder baseline
+   (4.5) on an explicitly-not-capability synthetic task; the newer one (MLBR) is the
+   noise+degenerate case below. The machinery works end-to-end; the results were
+   mislabeled, and tonight's gates now block both failure modes. Original note: MLBR
    ratcheted the baseline 5.61982→5.60506, and then §5.3.R (below) took the bundle
    apart: the delta is **1.1 SEM** (inside noise) and the "MoE regularizer" is a
    parameter-free scalar shift that REPLACED a real block. Read §5.3.R before the
@@ -364,6 +368,29 @@ Then §1 fires automatically (#17 armed on the monitor).
       Rationale: the traceback says what broke, the diff says what the model just tried —
       different questions, and near-greedy sampling kept re-making the same edit. 32/32
       research tests green (new test asserts both branches).
+### 5.3.R0 — BOTH sota entries are artifacts, for DIFFERENT reasons (audited 02:58)
+
+The ledger says `sota: 2`. Neither is a measured architectural improvement:
+
+- **`bc3dbb74bead` "Hierarchical Attention"** — the module is REAL (5 Linear projections,
+  genuine two-branch attention; it passes the new degeneracy gate correctly). The
+  *promotion* is what's hollow: it beat baseline **4.5** — the hand-seeded placeholder
+  from the runbook example (`seed-baseline --value 4.5`), not a calibrated number — on a
+  task its own metrics label *"synthetic next-token shift (proxy micro-benchmark, NOT
+  downstream capability)"*. Delta −4.345 (4.5 → 0.155) is a 97% "improvement", which is
+  the signature of comparing against a made-up number.
+- **`23bb41375804` MLBR** — real baseline, real corpus, but a degenerate module and a
+  within-noise delta (§5.3.R below).
+
+**So the honest count of real, measured architectural wins so far is ZERO.** That is a
+statement about the RESULTS, not the machinery: ideate→implement→validate→train→evaluate
+demonstrably runs end-to-end unattended, and tonight's gates now block both failure modes.
+- [ ] GAP this exposes (cheap, queued): nothing distinguishes a CALIBRATED baseline
+  (`calibrate-baseline`, real recipe recorded) from a hand-SEEDED placeholder
+  (`seed-baseline --value 4.5`). `Baseline.experiment_id` is None for seeded ones — the
+  verdict should say "promoted against a hand-seeded baseline, not a measured one", and
+  a sota won on a placeholder should arguably never enter a promotion bundle.
+
 ### 5.3.R — REVIEWER BRIEF for the MLBR bundle (written by the loop 2026-07-20 03:30)
 
 **Recommendation: REJECT the promotion (or re-measure with paired seeds). Two
