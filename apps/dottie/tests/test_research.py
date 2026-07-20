@@ -148,6 +148,97 @@ def test_contract_rejects_forward_with_extra_required_args():
     assert r2.ok, r2.detail
 
 
+def test_stream_probe_catches_shape_change_that_only_happens_mid_network():
+    """A block whose OUTPUT SHAPE depends on requires_grad is caught by the stream probe.
+
+    Added because the mutation audit flagged this branch as untested: disabling the
+    residual-stream shape check left every test passing. Contrived? The mechanism is not
+    -- grad-conditional code paths are precisely why this probe exists, and a candidate
+    that takes a different branch mid-network can return a different shape there while
+    looking perfect on the plain leaf tensor the earlier dry run feeds it.
+    """
+    grad_conditional = """import torch
+import torch.nn as nn
+class GradShape(nn.Module):
+    def __init__(self, dim: int = 64):
+        super().__init__()
+        self.w = nn.Linear(dim, dim)
+    def forward(self, x):
+        y = torch.tanh(self.w(x))
+        if x.requires_grad:            # only true in the residual stream
+            return y.mean(dim=-1, keepdim=True)
+        return y
+"""
+    r = validate.validate(grad_conditional, class_name="GradShape",
+                          init_kwargs={"dim": 64}, input_shape=[2, 4, 64])
+    assert not r.ok, r.detail
+    assert r.level == "residual_stream", f"caught at {r.level}, expected residual_stream"
+    assert "residual stream" in r.detail and "SAME" in r.detail
+
+
+def test_rank_collapsing_block_is_rejected():
+    """Right shape, nothing left in it — a scalar broadcast is not a block.
+
+    TODOS §5.3.R11: `x.sum(-1).unsqueeze(-1).expand_as(x)` returns a perfectly valid
+    [batch, seq, hidden] tensor in which every feature holds the same value, so the shape
+    contract passes, the constant-offset degeneracy check passes (the difference is not
+    constant), and it reaches training. 694633b2d354 was exactly this — a loss function
+    misfiled as a block. Measured mean std across hidden: 0.0 for that module, 0.34 for a
+    healthy block, 1.02 for MLBR — a well-separated signal, not a tuned threshold.
+    """
+    collapse = """import torch
+import torch.nn as nn
+class Collapse(nn.Module):
+    def __init__(self, beta: float = 1.0):
+        super().__init__()
+        self.beta = beta
+    def forward(self, x):
+        s = (self.beta * x).sum(dim=-1)               # [batch, seq]
+        return s.unsqueeze(-1).expand(-1, -1, x.size(-1))
+"""
+    r = validate.validate(collapse, class_name="Collapse", input_shape=[4, 16, 64])
+    assert not r.ok and r.level == "dry_run", r.detail
+    assert "rank collapse" in r.detail
+    assert "not a drop-in block" in r.detail          # names the real category error
+
+    # A block whose output legitimately varies across hidden is untouched, including the
+    # zero-init pattern (identity at init) which must never be mistaken for collapse.
+    healthy = """import torch
+import torch.nn as nn
+class Healthy(nn.Module):
+    def __init__(self, dim: int = 64):
+        super().__init__()
+        self.gamma = nn.Parameter(torch.zeros(dim))
+        self.proj = nn.Linear(dim, dim)
+    def forward(self, x):
+        return x + self.gamma * self.proj(x)
+"""
+    assert validate.validate(healthy, class_name="Healthy",
+                             init_kwargs={"dim": 64}, input_shape=[4, 16, 64]).ok
+
+
+def test_rank_collapse_gate_blames_the_block_not_a_flat_input():
+    """The gate fires on DESTRUCTION, not on a flat output per se.
+
+    A block handed input that is already constant along hidden has destroyed nothing, and
+    must not be blamed for its caller's tensor. Stating the rule this way is what keeps
+    the gate from punishing correct code in an odd context.
+    """
+    passthrough = """import torch
+import torch.nn as nn
+class Pass(nn.Module):
+    def __init__(self, dim: int = 64):
+        super().__init__()
+        self.w = nn.Linear(dim, dim)
+    def forward(self, x):
+        return x + 0.0 * self.w(x)
+"""
+    import torch
+    f_ok = validate.validate(passthrough, class_name="Pass",
+                             init_kwargs={"dim": 64}, input_shape=[4, 16, 64])
+    assert f_ok.ok, f_ok.detail          # varied input in, varied output out
+
+
 def test_block_reading_input_grad_is_caught_before_training(tmp_path):
     """A block that reads `x.grad` must fail validation, not training.
 

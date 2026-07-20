@@ -38,6 +38,17 @@ MUTANTS = [
     ("evaluate.py", "                                metric_sem=None if sp is None else sp[\"sem\"],",
      "                                metric_sem=None,",
      "records_the_baselines_spread", "promotion drops the winning run's spread"),
+    ("validate.py", "        if in_spread > 1e-6 and out_spread <= 1e-6:",
+     "        if False:",
+     "rank_collapsing_block", "rank-collapse gate disabled"),
+    ("validate.py", "        if tuple(out.shape) != tuple(x.shape):",
+     "        if False:",
+     "shape_change_that_only", "residual-stream shape check disabled"),
+    ("validate.py", "        base = torch.randn(*shape, generator=torch.Generator().manual_seed(1234),\n"
+                    "                           requires_grad=True)",
+     "        base = torch.randn(*shape, generator=torch.Generator().manual_seed(1234),\n"
+     "                           requires_grad=False)",
+     "reading_input_grad", "probe input no longer requires grad (the whole point)"),
     ("train.py", "        return TrainResult(True, False, metrics={\"integration\": \"proxy_micro_benchmark\",\n"
                  "                                                 \"detail\": \"candidate module not loadable\"},",
      "        return TrainResult(False, False, metrics={\"integration\": \"proxy_micro_benchmark\",\n"

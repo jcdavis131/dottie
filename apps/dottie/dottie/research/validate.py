@@ -286,6 +286,32 @@ def dry_run_module(file_path: str | Path, *, class_name: Optional[str] = None,
                 "an architecture — it cannot express or learn anything, and swapping it in for "
                 "a real block only removes capacity. Give the module learnable parameters or "
                 "make its transform input-dependent.")
+
+        # Rank collapse across the hidden dim. A block can return the CORRECT shape and
+        # still have destroyed everything in it: `x.sum(-1).unsqueeze(-1).expand_as(x)`
+        # broadcasts one scalar per position, so every feature is identical and the
+        # residual stream is gone. Shape checks pass, the degeneracy check above passes
+        # (the difference is not constant), and it reaches training.
+        #
+        # Measured 2026-07-20 (TODOS §5.3.R11) on 694633b2d354 — a loss function misfiled
+        # as a block: mean std across hidden = 0.0 exactly, against 0.34 for a healthy
+        # block and 1.02 for MLBR. The signal is well separated, not a threshold guess.
+        #
+        # Stated as DESTRUCTION, not as a property of the output alone: the gate fires
+        # only when the input had hidden-dim structure and the output does not, so a block
+        # legitimately handed flat input is never blamed for it.
+        in_spread = float(dummy.std(dim=-1).mean())
+        out_spread = float(out_t.std(dim=-1).mean())
+        if in_spread > 1e-6 and out_spread <= 1e-6:
+            return ValidationResult(
+                False, "dry_run", "fail",
+                f"rank collapse: the output has the right shape but is CONSTANT along the "
+                f"hidden dimension (mean std across hidden = {out_spread:.3g}, input was "
+                f"{in_spread:.3g}). Every feature position holds the same value, so the "
+                "block has erased the residual stream it was handed — a scalar broadcast "
+                "back to [batch, seq, hidden] is not a block. If the idea is a loss or a "
+                "regulariser, it is not a drop-in block; express it as a transform of the "
+                "hidden states that preserves per-feature information.")
     except Exception:
         return ValidationResult(False, "dry_run", "fail", traceback.format_exc())
     return ValidationResult(True, "dry_run", "pass",

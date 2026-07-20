@@ -1290,6 +1290,36 @@ most valuable catch so far:
     does not require grad, which is exactly why it passes the probe and fails in the
     stream. The fixture now mirrors that, so it fails at `residual_stream` specifically.
   - Full suite 160 passed; mutation audit 5/5 GOOD; replay re-verified at 4/5.
+### 5.3.R11 — rank collapse: the right shape with nothing left in it. Catch rate 5/5
+
+- [x] **RANK-COLLAPSE GATE (08:05). All five stored `failed_training` records are now
+  caught at validation.** The last holdout, `694633b2d354`, does
+  `x.sum(-1).unsqueeze(-1).expand_as(x)` — a **loss function misfiled as a block**. It
+  returns a perfectly valid `[batch, seq, hidden]` tensor in which every feature holds the
+  same value, so the shape contract passes, the constant-offset degeneracy check passes
+  (the difference is not constant), and it reaches training. The residual stream it was
+  handed is simply gone.
+  - Signal is well separated, not a tuned threshold — mean std across the hidden dim:
+    **0.0 exactly** for that module, **0.34** for a healthy 20,800-param block, **1.02**
+    for MLBR.
+  - Phrased as **destruction, not as a property of the output**: the gate fires only when
+    the input had hidden-dim structure and the output does not, so a block handed flat
+    input is never blamed for its caller's tensor. There is a test for that specifically.
+  - Verified the healthy SOTA block (`bc3dbb74bead`, 20,800 params) still passes, and the
+    zero-init LayerScale pattern is untouched.
+  - **5/5 caught at validation**, up from 2/5 two ticks ago, each in about a second
+    instead of a full model build.
+- [x] **The mutation audit earned its keep: it found a HOLLOW test in my own new work.**
+  Disabling the residual-stream *shape* check left every test passing — the
+  `reading_input_grad` test fails by exception, so it never exercised that branch. Wrote
+  `test_stream_probe_catches_shape_change_that_only_happens_mid_network` (a block whose
+  output shape depends on `requires_grad` — contrived-looking, but grad-conditional
+  branching is exactly why this probe exists). Audit is now **8/8 GOOD**, including a
+  mutant that flips the probe input back to `requires_grad=False`, i.e. the whole point of
+  §5.3.R10.
+  - This is the first time a check I built caught a defect in work I had already reported
+    as sound. Worth more than the gate it found.
+  - Full suite 163 passed.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
