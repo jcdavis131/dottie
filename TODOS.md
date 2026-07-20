@@ -2755,6 +2755,21 @@ most valuable catch so far:
   `factory_trainer` was fine — it was not), §5.3.R46 (guarded two paths in a file, left the
   third), and now this. **Fixing an instance is not fixing a class**, and the honest way to
   tell the difference is a sweep, not an inference.
+### 5.3.R63 — swept the OTHER web app for the same class; definitively clean
+
+- [x] **Acted on §5.3.R62's own lesson instead of restating it (13:15):** fixing an instance
+  is not fixing a class, so I swept the whole monorepo for other FastAPI apps. There are
+  exactly two — `apps/ava-factory/server.py` (fixed) and `apps/dottie/dottie/api.py`.
+- [x] **`api.py` is clean, and definitively so rather than by heuristic.** My first pass used
+  a keyword list for "heavy work", which could miss a call it did not recognise. So I
+  classified every route handler instead: **13 plain `def`, 0 async with await, 0 async
+  without.** With no `async def` handlers at all, the failure mode is structurally absent —
+  no judgement call and no list to keep current.
+- [x] Worth the distinction: "my heuristic found nothing" and "the construct does not exist"
+  are different claims, and only the second is worth recording as safe. The first is what I
+  nearly wrote.
+- [ ] **The class is now closed across both apps**, with the server one guarded by an AST
+  invariant that fails on regression (§5.3.R62) rather than a name list that drifted.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
