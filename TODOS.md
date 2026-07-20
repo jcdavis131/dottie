@@ -3177,8 +3177,20 @@ most valuable catch so far:
   the same reason the source had, once the source was fixed. Swept both. This also explains
   an intermittent `test_incremental` failure: identical cause, surfacing only when tmp
   content happened to include a non-cp1252 byte. **A flake that was never a flake.**
+- [x] **Real bug 3 — found in `git status`, not in a test.** After the factory run, 8 tracked
+  `evals/probe_items/*.jsonl` showed modified. `git diff --ignore-cr-at-eol` proved the
+  content identical: pure CRLF churn. `_write_jsonl` opened in text mode without `newline=`,
+  so Python translated `\n` → `\r\n` on Windows and **every suite run silently rewrote
+  tracked eval data.** `generate_probe_items`' docstring says *"idempotent"* — it was not,
+  across platforms. Fixed (`dd60e4a`); regeneration is now byte-identical and a full run
+  leaves the tree clean. **`encoding="utf-8"` was already right there — only the newline
+  translation was missing**, which is why it survived a file that otherwise looked correct.
 - [ ] NOTE: `apps/scout-rtx` needs `typer` before it can be judged at all. One `uv pip
   install typer` in the right env would move it from unknown to measured.
+- [ ] The three bugs this tick share one shape with the docstring/comment class: **text I/O
+  that is correct on the machine it was written on.** Worth a repo-wide sweep for bare
+  `read_text()`/`write_text()`/`open(...,"w")` in the remaining packages — graphify was the
+  only one measured, and it had 52 instances between source and tests.
 
 ### 5.3.R77 — the guard that cleared a stage it could not survive, and a RED suite at HEAD
 
