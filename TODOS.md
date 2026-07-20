@@ -455,20 +455,33 @@ THE NIGHT'S HEADLINES — read these before anything below:
 00. ⛔ **GIT HAS DIVERGED — reconcile before pushing/pulling anything (§5.3.R98).** Local
    `main` is **ahead 243, behind 2** of `origin/main`. Discovered 15:49 by a read-only
    `git fetch` (nothing was pushed, pulled, merged, or rebased — that reconciliation is
-   yours). The two remote commits are from a **parallel session** and are **purely
-   mechanical**: `ebeb299` adopts ruff across the monorepo (**407 files formatted, 3295
-   auto-fixes, no logic changes**) and `9688ccf` adds a ruff CI workflow. Neither contains
-   any of this session's R-work (verified: 0 overlap in content).
+   yours). The two remote commits are from a **parallel session**: `ebeb299` adopts ruff
+   across the monorepo (**407 files, 3295 auto-fixes**) and `9688ccf` adds a ruff CI workflow.
+   Neither contains any of this session's R-work (verified: 0 overlap in content).
+   - **⚠ CORRECTION (§5.3.R99): the ruff commit is NOT "purely formatting" — I checked, having
+     first asserted otherwise from its commit message.** `ruff --fix` made **coordinated
+     SEMANTIC autofixes**: `List[X]`→`list[X]`, `Dict`→`dict`, `Optional[X]`→`X | None`
+     (PEP 585/604), then **pruned the now-unused `typing` imports**. Concrete hazard: origin's
+     `research/__main__.py` now imports only `from typing import Any`, while **my 243 commits
+     added new code still using `Dict[...]`/`Optional[...]`** (14 uses in `__main__.py`, 6 in
+     `evaluate.py`). **A merge that takes origin's import line while keeping my code raises
+     `NameError: Dict is not defined` at import — the research module fails to load and the
+     daemon cannot start.** Silent until the first import.
    - **The conflict surface is real:** **32 of the 67 files I changed this session were also
      reformatted by `ebeb299`** — including every core research file (`evaluate.py`,
      `logger.py`, `__main__.py`, `promote.py`, `factory_trainer.py`, `resolve.py`,
      `conftest.py`, `test_research.py`). A naive `git pull` will conflict across all 32.
-   - **Suggested reconciliation (yours to run, not mine):** the remote side is *only*
-     formatting, so the low-pain path is **merge origin/main, then run `ruff format` +
-     `ruff check --fix` once over the tree** to normalise this session's 243 commits to the
-     same style, resolving each conflict as "keep my logic, take their formatting." A 243-
-     commit rebase across a reformat would mean resolving the same style conflict 243 times —
-     avoid it.
+   - **Reconciliation (yours to run, not mine) — the ruff pass is REQUIRED, not optional:**
+     **merge origin/main, then run `ruff check --fix` + `ruff format` once over the whole tree
+     BEFORE trusting the result.** That pass rewrites my new `Dict[...]`→`dict[...]` /
+     `Optional[...]`→`... | None` and reconciles imports across both sides, so nothing
+     references a pruned name. Skipping it risks exactly the `NameError` above — a merge that
+     looks clean but leaves the daemon unable to import. Resolve each textual conflict as "keep
+     my logic, take their formatting", then let the ruff pass normalise. A 243-commit rebase
+     across the reformat would mean resolving the same style conflict 243 times — avoid it.
+     **After the ruff pass, run the suites** (`apps/dottie` needs `AVA_FACTORY_ROOT`, §5.3.R87)
+     before pushing — an import-time NameError fails collection immediately, so a green suite
+     is proof the reconciliation held.
    - **Why I did not do it:** reconciling 243 commits against a repo-wide reformat is a large,
      judgement-heavy operation that can silently mangle either side, and pushing is
      outward-facing. Both are your calls. I also **paused non-essential commits** once I saw
@@ -3198,6 +3211,31 @@ most valuable catch so far:
   this writing the test fixture, not in production, so **frequency is unmeasured**; check
   the stored histories for repeated identical dry_run failures before deciding whether to
   re-derive the class name per attempt or pin the name in the correction prompt.
+
+### 5.3.R99 — "purely mechanical" was an unchecked claim; the ruff autofix can break imports
+
+- [x] **Verified R98's own claim instead of leaving it asserted.** I had called the ruff
+  commit "purely mechanical, no logic changes" — straight from its commit message, the R89
+  pattern. Inspected it against the clean merge base (`git diff 8641fb9 origin/main`). **It is
+  not purely formatting.**
+- [x] **`ruff --fix` made coordinated SEMANTIC autofixes:** PEP 585/604 rewrites
+  (`List`→`list`, `Dict`→`dict`, `Optional[X]`→`X | None`) followed by **pruning the typing
+  imports those uses had made redundant.** Cosmetic in isolation; dangerous against my
+  divergent branch.
+- [x] **Concrete, verified hazard:** origin's `research/__main__.py` now imports only
+  `from typing import Any`; my new code still writes `Dict[...]`/`Optional[...]` (14× in
+  `__main__.py`, 6× in `evaluate.py`). **A merge that takes origin's import line while keeping
+  my code is a `NameError: Dict is not defined` at import — the daemon won't start.** Silent
+  until first import; not caught by reading the diff, only by tracing which names each side
+  provides.
+- [x] **Upgraded item 00's guidance from "low-pain suggestion" to "required step":** the
+  post-merge `ruff check --fix` pass is what prevents the NameError, and running the suites
+  after is the proof (an import-time NameError fails collection immediately). This turns a
+  reconciliation that *looks* safe into one that *is* verified.
+- [x] **The lesson, twice in two ticks:** R98 recorded "check the remote before the first
+  commit"; R99 is "and don't summarise what the remote changed from its commit message." Both
+  are the session's one theme — a claim that costs nothing to check is the one that goes
+  unchecked — and both were mine, made while cataloguing the same failure in others' code.
 
 ### 5.3.R98 — git has diverged: 243 ahead / 2 behind, and the 2 are a repo-wide reformat
 
