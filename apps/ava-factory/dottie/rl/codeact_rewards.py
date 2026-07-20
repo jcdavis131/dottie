@@ -23,9 +23,12 @@ namespaced `rl.codeact.*`; `reward` remains the data-quality filter score elsewh
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Sequence, Tuple
+from typing import TYPE_CHECKING
 
-from dottie.rl.codeact_sandbox import Observation
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from dottie.rl.codeact_sandbox import Observation
 
 
 def r_exec(observations: Sequence[Observation]) -> float:
@@ -35,12 +38,12 @@ def r_exec(observations: Sequence[Observation]) -> float:
     return sum(1 for o in observations if o.ok) / len(observations)
 
 
-def _flatten_calls(observations: Sequence[Observation]) -> List[Tuple]:
+def _flatten_calls(observations: Sequence[Observation]) -> list[tuple]:
     """Tool calls flattened to hashable (tool, args, kwargs) tuples, in execution order.
 
     A call made on a step that ERRORED is skipped: re-issuing an identical call after a transient
     failure is a legitimate retry, not redundancy, so it should not be penalized."""
-    calls: List[Tuple] = []
+    calls: list[tuple] = []
     for o in observations:
         if not o.ok:
             continue
@@ -68,8 +71,8 @@ def r_codeuse(observations: Sequence[Observation]) -> float:
     if not calls:
         return 0.0
     if len(calls) == 1:
-        return 0.5   # one call: mildly positive, but not the full 'independent tool use' reward
-    dup = len(calls) - len(set(calls))           # duplicates beyond the first occurrence
+        return 0.5  # one call: mildly positive, but not the full 'independent tool use' reward
+    dup = len(calls) - len(set(calls))  # duplicates beyond the first occurrence
     # Normalize by the max possible duplicates (len-1) so all-distinct → 1.0 and fully-duplicated
     # → exactly -1.0 (the floor is reachable, and n=2 identical is a real -1.0, not a toothless 0).
     return max(-1.0, 1.0 - 2.0 * dup / (len(calls) - 1))

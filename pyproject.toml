@@ -14,3 +14,27 @@ exclude = ["apps/scout-rtx", "apps/ava-factory"]
 
 [dependency-groups]
 dev = ["pytest>=8"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+exclude = ["__pycache__", ".git", ".venv", "graphify_out*", "results/*", "graphify_out-combined", "graphify_out/*", "apps/ava-factory/graphify_out/*", ".mypy_cache", "__pycache__", "*.egg-info"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP", "N", "S", "PTH", "TCH", "RUF"]
+ignore = ["S101","S603","S607","E501","N806","N803","S110","S112","RUF001","RUF002","B007","PTH120","E402","N812","RUF003","S311"]
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = ["dottie","bigbang","skills","harness","personal_graphify"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+docstring-code-format = true
+

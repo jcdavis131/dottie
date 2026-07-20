@@ -14,14 +14,16 @@ from dottie.pipeline.manifest import Manifest
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--role", required=True, choices=["collector", "curator", "janitor"])
+    ap.add_argument(
+        "--role", required=True, choices=["collector", "curator", "janitor"]
+    )
     ap.add_argument("--db", default=None)
     args = ap.parse_args()
 
     try:
         with Manifest(args.db, timeout=5.0) as m:
             m.counts_by_state()
-    except Exception as exc:  # noqa: BLE001 - healthcheck reports, never raises
+    except Exception as exc:
         print(f"{args.role}: manifest unreachable: {exc}", file=sys.stderr)
         return 1
     print(f"{args.role}: ok")

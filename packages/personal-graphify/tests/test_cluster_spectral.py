@@ -8,7 +8,10 @@ import networkx as nx
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from personal_graphify.cluster import detect_communities, _spectral_communities  # noqa: E402
+from personal_graphify.cluster import (
+    _spectral_communities,
+    detect_communities,
+)
 
 pytest.importorskip("numpy")
 
@@ -37,7 +40,9 @@ class TestSpectral:
 
     def test_deterministic(self):
         G = _two_cliques()
-        assert detect_communities(G, method="spectral") == detect_communities(G, method="spectral")
+        assert detect_communities(G, method="spectral") == detect_communities(
+            G, method="spectral"
+        )
 
     def test_tiny_graph_falls_back_not_crash(self):
         G = nx.MultiDiGraph()

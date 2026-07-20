@@ -14,7 +14,7 @@ import hashlib
 import re
 
 from evals.eval_sets import SYSTEMS_PROMPTS
-from evals.probe_items_gen import generate_probe_items, load_items, _PROBE_DIR
+from evals.probe_items_gen import _PROBE_DIR, generate_probe_items, load_items
 
 _WORD = re.compile(r"\w+")
 
@@ -31,10 +31,11 @@ def _ints(s: str) -> list[int]:
 # independent re-implementations (mirrors test_datagen's _eval_prop pattern)
 # ---------------------------------------------------------------------------
 
+
 def _fnv1a_ref(s: str) -> int:
     h = 2166136261
     for ch in s:
-        h = ((h ^ ord(ch)) * 16777619) % 2 ** 32
+        h = ((h ^ ord(ch)) * 16777619) % 2**32
     return h
 
 
@@ -44,7 +45,7 @@ class _BTreeRef:
 
     def __init__(self):
         self.keys: list[int] = []
-        self.children: list["_BTreeRef"] = []
+        self.children: list[_BTreeRef] = []
         self.root = self
 
     def _split(self, parent, i):
@@ -89,7 +90,7 @@ def _huffman_ref(freqs: dict[str, int]) -> dict[str, str]:
     while len(nodes) > 1:
         nodes.sort(key=lambda t: (t[0], t[1]))
         a, b = nodes[0], nodes[1]
-        nodes = nodes[2:] + [(a[0] + b[0], nid, None, a, b)]
+        nodes = [*nodes[2:], (a[0] + b[0], nid, None, a, b)]
         nid += 1
     codes = {}
 
@@ -141,13 +142,18 @@ def _varint_ref(x: int) -> list[int]:
 # generation determinism + probe answer re-verification
 # ---------------------------------------------------------------------------
 
+
 def test_probe_generation_is_deterministic():
     generate_probe_items()
-    h1 = {f.name: hashlib.sha256(f.read_bytes()).hexdigest()
-          for f in sorted(_PROBE_DIR.glob("*.jsonl"))}
+    h1 = {
+        f.name: hashlib.sha256(f.read_bytes()).hexdigest()
+        for f in sorted(_PROBE_DIR.glob("*.jsonl"))
+    }
     generate_probe_items()
-    h2 = {f.name: hashlib.sha256(f.read_bytes()).hexdigest()
-          for f in sorted(_PROBE_DIR.glob("*.jsonl"))}
+    h2 = {
+        f.name: hashlib.sha256(f.read_bytes()).hexdigest()
+        for f in sorted(_PROBE_DIR.glob("*.jsonl"))
+    }
     assert h1 == h2
     assert {"db_mechanics.jsonl", "compression.jsonl"} <= set(h1)
 
@@ -196,7 +202,7 @@ def test_db_mechanics_probe_answers():
         elif "squared Euclidean gap between vectors" in p:
             a, b = re.findall(r"\[([-\d, ]+)\]", p)
             va, vb = _ints(a), _ints(b)
-            assert ans == str(sum((x - y) ** 2 for x, y in zip(va, vb)))
+            assert ans == str(sum((x - y) ** 2 for x, y in zip(va, vb, strict=False)))
             checked.add("d2")
         elif "the sales block starts at byte" in p:
             rows = int(re.search(r"layout of (\d+) rows", p).group(1))
@@ -234,8 +240,9 @@ def test_compression_probe_answers():
             assert ans == " ".join(f"0x{b:02X}" for b in _varint_ref(d))
             checked.add("varint")
         elif "receives a Huffman code of length" in p:
-            freqs = {m.group(1): int(m.group(2))
-                     for m in re.finditer(r"([a-g]):(\d+)", p)}
+            freqs = {
+                m.group(1): int(m.group(2)) for m in re.finditer(r"([a-g]):(\d+)", p)
+            }
             sym = re.search(r"symbol '([a-g])'", p).group(1)
             assert ans == str(len(_huffman_ref(freqs)[sym]))
             checked.add("huffman")
@@ -262,12 +269,14 @@ def test_compression_probe_answers():
 # and every stem is long enough for the decontaminator to index (>= 5 words).
 # ---------------------------------------------------------------------------
 
+
 def test_systems_stems_are_indexable():
     from ava.pipeline.decontaminate import MIN_PHRASE_WORDS
 
     for stem in SYSTEMS_PROMPTS:
         assert len(_WORD.findall(stem.lower())) >= MIN_PHRASE_WORDS, (
-            f"stem too short to index: {stem!r}")
+            f"stem too short to index: {stem!r}"
+        )
 
 
 def test_systems_stems_absent_from_training_corpora():
@@ -280,7 +289,8 @@ def test_systems_stems_absent_from_training_corpora():
             nd = _norm(d["text"])
             for stem in stems:
                 assert stem not in nd, (
-                    f"{gen_cls.__name__} {d['source']} leaks probe stem {stem!r}")
+                    f"{gen_cls.__name__} {d['source']} leaks probe stem {stem!r}"
+                )
 
 
 def test_systems_probes_survive_decontaminator_registration():
@@ -291,9 +301,11 @@ def test_systems_probes_survive_decontaminator_registration():
     deco = Decontaminator()
     hit, which = deco.is_contaminated(
         "Filler text so the run is realistic. The squared Euclidean gap "
-        "between vectors [1, 2] and [4, 6] equals 25. More filler follows.")
+        "between vectors [1, 2] and [4, 6] equals 25. More filler follows."
+    )
     assert hit and which == "systems"
     ok, _ = deco.is_contaminated(
         "### Task: simulate exact k-nearest-neighbour vector search with "
-        "metric squared Euclidean distance over the candidate vectors.")
+        "metric squared Euclidean distance over the candidate vectors."
+    )
     assert not ok

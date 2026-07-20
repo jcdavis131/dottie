@@ -5,7 +5,6 @@ import os
 from pathlib import Path
 
 import pytest
-
 from conftest import ROOT, load_skill_module
 
 ehr = load_skill_module("eval-harness-runner")
@@ -14,11 +13,17 @@ ehr = load_skill_module("eval-harness-runner")
 # under DOTTIE_ROOT/packages in the dottie monorepo; skip (never fail) if absent.
 _harness_candidates = [ROOT.parent / "ava-open-harness"]
 if os.environ.get("DOTTIE_ROOT"):
-    _harness_candidates.insert(0, Path(os.environ["DOTTIE_ROOT"]) / "packages" / "ava-open-harness")
-HARNESS_AVAILABLE = any((c / "harness" / "runner.py").exists() for c in _harness_candidates)
+    _harness_candidates.insert(
+        0, Path(os.environ["DOTTIE_ROOT"]) / "packages" / "ava-open-harness"
+    )
+HARNESS_AVAILABLE = any(
+    (c / "harness" / "runner.py").exists() for c in _harness_candidates
+)
 
 
-@pytest.mark.skipif(not HARNESS_AVAILABLE, reason="sibling ava-open-harness not present")
+@pytest.mark.skipif(
+    not HARNESS_AVAILABLE, reason="sibling ava-open-harness not present"
+)
 class TestMockModeBar:
     def test_mock_default_set_passes_its_bar(self):
         r = ehr.run(mode="mock")

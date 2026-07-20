@@ -37,15 +37,15 @@ import numpy as np
 
 from dottie.pipeline._font8x8 import FONT8X8_BASIC
 
-GLYPH = 8                      # font cell, px
-PAGE_SIDE = 512                # page, px
-COLS = PAGE_SIDE // GLYPH      # 64 chars per line
-ROWS = PAGE_SIDE // GLYPH      # 64 lines per page
-CHARS_PER_PAGE = COLS * ROWS   # 4096
-PATCH = 32                     # px; 32*32 = 1024 = VisionEncoder input dim
-GRID = PAGE_SIDE // PATCH      # 16
-PATCHES_PER_PAGE = GRID * GRID # 256 vision tokens per page
-PATCH_DIM = PATCH * PATCH      # 1024
+GLYPH = 8  # font cell, px
+PAGE_SIDE = 512  # page, px
+COLS = PAGE_SIDE // GLYPH  # 64 chars per line
+ROWS = PAGE_SIDE // GLYPH  # 64 lines per page
+CHARS_PER_PAGE = COLS * ROWS  # 4096
+PATCH = 32  # px; 32*32 = 1024 = VisionEncoder input dim
+GRID = PAGE_SIDE // PATCH  # 16
+PATCHES_PER_PAGE = GRID * GRID  # 256 vision tokens per page
+PATCH_DIM = PATCH * PATCH  # 1024
 
 _INK, _PAPER = 0, 255
 
@@ -54,15 +54,15 @@ _GLYPHS = np.zeros((128, GLYPH, GLYPH), dtype=np.uint8)
 for _c, _rows in enumerate(FONT8X8_BASIC):
     for _y, _b in enumerate(_rows):
         for _x in range(GLYPH):
-            if (_b >> _x) & 1:              # LSB = leftmost pixel
+            if (_b >> _x) & 1:  # LSB = leftmost pixel
                 _GLYPHS[_c, _y, _x] = 1
 
 
 @dataclasses.dataclass(frozen=True)
 class Page:
-    pixels: np.ndarray          # [PAGE_SIDE, PAGE_SIDE] uint8, ink=0 paper=255
-    n_chars: int                # characters actually rendered on this page
-    line_boxes: tuple           # ((row_px, col_px, w_px, text), ...) per line
+    pixels: np.ndarray  # [PAGE_SIDE, PAGE_SIDE] uint8, ink=0 paper=255
+    n_chars: int  # characters actually rendered on this page
+    line_boxes: tuple  # ((row_px, col_px, w_px, text), ...) per line
 
 
 def _wrap(text: str) -> list[str]:
@@ -89,7 +89,7 @@ def render_pages(text: str, max_pages: int | None = None) -> list[Page]:
     for start in range(0, len(lines), ROWS):
         if max_pages is not None and len(pages) >= max_pages:
             break
-        chunk = lines[start:start + ROWS]
+        chunk = lines[start : start + ROWS]
         px = np.full((PAGE_SIDE, PAGE_SIDE), _PAPER, dtype=np.uint8)
         boxes = []
         n_chars = 0
@@ -98,7 +98,7 @@ def render_pages(text: str, max_pages: int | None = None) -> list[Page]:
             for col, ch in enumerate(line):
                 g = _GLYPHS[ord(ch)]
                 x = col * GLYPH
-                px[y:y + GLYPH, x:x + GLYPH][g == 1] = _INK
+                px[y : y + GLYPH, x : x + GLYPH][g == 1] = _INK
             if line.strip():
                 boxes.append((y, 0, len(line) * GLYPH, line))
             n_chars += len(line)

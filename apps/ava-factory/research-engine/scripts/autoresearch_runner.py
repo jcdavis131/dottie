@@ -32,19 +32,41 @@ Outputs:
 - results/autoresearch_{date}.json
 - bb tasks new [AVA-EXP-...] tasks
 """
-import os, re, json, yaml, subprocess, shutil, time
-from pathlib import Path
+
+import json
 import os
-from datetime import datetime, timezone
+import re
+import subprocess
+from datetime import UTC, datetime
+from pathlib import Path
+
+import yaml
+
 
 def sanitize():
-    for var in ["NO_PROXY","no_proxy","HTTP_PROXY","http_proxy","HTTPS_PROXY","https_proxy"]:
-        val = os.environ.get(var,"")
+    for var in [
+        "NO_PROXY",
+        "no_proxy",
+        "HTTP_PROXY",
+        "http_proxy",
+        "HTTPS_PROXY",
+        "https_proxy",
+    ]:
+        val = os.environ.get(var, "")
         if not val:
             continue
         parts = re.split(r"[, \s]+", val)
-        cleaned = [p for p in parts if p and p not in ["::","::/0"] and not p.startswith("[") and "::" not in p and "fd8b" not in p]
+        cleaned = [
+            p
+            for p in parts
+            if p
+            and p not in ["::", "::/0"]
+            and not p.startswith("[")
+            and "::" not in p
+            and "fd8b" not in p
+        ]
         os.environ[var] = ",".join(cleaned)
+
 
 sanitize()
 
@@ -55,13 +77,16 @@ RESULTS_TSV.parent.mkdir(parents=True, exist_ok=True)
 EXPERIMENTS_DIR = ROOT / "experiments"
 EXPERIMENTS_DIR.mkdir(parents=True, exist_ok=True)
 
+
 def expand(p):
     return Path(os.path.expanduser(str(p)))
 
+
 # DOTTIE_ROOT-first with legacy fallback — monorepo canonical
-import os
 DOTTIE_ROOT = Path(os.environ.get("DOTTIE_ROOT", str(Path.home() / "workspace/dottie")))
 FACTORY_ROOT = DOTTIE_ROOT / "apps/ava-factory"
+
+
 # Legacy fallbacks for local checkouts still present
 def resolve_with_fallback(monorepo_path, *legacy_paths):
     if monorepo_path.exists():
@@ -72,15 +97,22 @@ def resolve_with_fallback(monorepo_path, *legacy_paths):
             return p
     return monorepo_path
 
+
 rolling_path = expand("~/workspace/your_files/research/arxiv/rolling_index.json")
-graph_src = resolve_with_fallback(FACTORY_ROOT / "graphify_source", "~/workspace/ava-research-engine/graphify_source")
-bigbang_cli = resolve_with_fallback(DOTTIE_ROOT / "apps/scout-cli", "~/workspace/bigbang-cli")
+graph_src = resolve_with_fallback(
+    FACTORY_ROOT / "graphify_source", "~/workspace/ava-research-engine/graphify_source"
+)
+bigbang_cli = resolve_with_fallback(
+    DOTTIE_ROOT / "apps/scout-cli", "~/workspace/bigbang-cli"
+)
 ava_factory = resolve_with_fallback(FACTORY_ROOT, "~/workspace/ava-agi-factory-v6-4")
-research_root = resolve_with_fallback(FACTORY_ROOT / "research-engine", "~/workspace/ava-research-engine")
+research_root = resolve_with_fallback(
+    FACTORY_ROOT / "research-engine", "~/workspace/ava-research-engine"
+)
 # Keep variable names for compatibility
 
 
-today = datetime.now(timezone.utc)
+today = datetime.now(UTC)
 today_str = today.date().isoformat()
 run_tag = today.strftime("%b%d").lower()  # e.g. jul15
 
@@ -98,18 +130,22 @@ existing_descriptions = ""
 if RESULTS_TSV.exists():
     existing_descriptions = RESULTS_TSV.read_text()
 
+
 def get_papers():
     if not rolling_path.exists():
         return {}
     try:
         data = json.loads(rolling_path.read_text())
-        return data.get("papers",{})
+        return data.get("papers", {})
     except Exception as e:
         print(f"[error] rolling parse {e}")
         return {}
 
+
 papers = get_papers()
-print(f"[autoresearch-runner] {today_str} — papers={len(papers)}, results.tsv lines={len(existing_descriptions.splitlines())}")
+print(
+    f"[autoresearch-runner] {today_str} — papers={len(papers)}, results.tsv lines={len(existing_descriptions.splitlines())}"
+)
 
 # Find candidate papers not yet attempted (arxiv_id not in results.tsv)
 candidates = []
@@ -120,31 +156,50 @@ for pid, paper in papers.items():
     candidates.append(paper)
 
 # Sort by importance + recency
-importance_order = {"critical":0, "high":1, "medium":2}
+importance_order = {"critical": 0, "high": 1, "medium": 2}
+
+
 def score(p):
-    topics = p.get("topics",[])
-    imp = importance_order.get(topics_cfg.get(topics[0],{}).get("importance","medium") if topics else "medium", 2)
+    topics = p.get("topics", [])
+    imp = importance_order.get(
+        topics_cfg.get(topics[0], {}).get("importance", "medium")
+        if topics
+        else "medium",
+        2,
+    )
     # more recent first
-    return (imp, p.get("updated",""))
+    return (imp, p.get("updated", ""))
+
 
 candidates_sorted = sorted(candidates, key=score)
 
 if not candidates_sorted:
-    print("[info] no new candidates — all papers attempted or rolling empty. Will try to pick oldest not crashed?")
+    print(
+        "[info] no new candidates — all papers attempted or rolling empty. Will try to pick oldest not crashed?"
+    )
     # fallback: pick recent 7d paper even if attempted but not kept?
-    candidates_sorted = sorted(papers.values(), key=lambda x: x.get("updated",""), reverse=True)[:5]
+    candidates_sorted = sorted(
+        papers.values(), key=lambda x: x.get("updated", ""), reverse=True
+    )[:5]
 
 if not candidates_sorted:
     print("[done] nothing to do")
     # still create a healthy heartbeat log
-    (ROOT / "results" / f"autoresearch_{today_str}.json").write_text(json.dumps({"date": today_str, "status": "no candidates", "papers": len(papers)}, indent=2))
+    (ROOT / "results" / f"autoresearch_{today_str}.json").write_text(
+        json.dumps(
+            {"date": today_str, "status": "no candidates", "papers": len(papers)},
+            indent=2,
+        )
+    )
     exit(0)
 
 selected = candidates_sorted[0]
 arxiv_id = selected["arxiv_id"]
-topic_id = selected.get("topics",["unknown"])[0] if selected.get("topics") else "unknown"
+topic_id = (
+    selected.get("topics", ["unknown"])[0] if selected.get("topics") else "unknown"
+)
 topic_info = topics_cfg.get(topic_id, {})
-ecosystem = topic_info.get("ecosystem","ava-agi-factory-v6-4/")
+ecosystem = topic_info.get("ecosystem", "ava-agi-factory-v6-4/")
 print(f"[picked] {arxiv_id} [{topic_id}] {selected['title'][:80]}")
 
 # Create experiment dir
@@ -153,25 +208,25 @@ exp_dir.mkdir(parents=True, exist_ok=True)
 
 # Experiment md
 branch_name = f"autoresearch/{run_tag}-{topic_id}-{arxiv_id.lower()[:8]}"
-experiment_md = f"""# Experiment {arxiv_id} — {selected['title']}
+experiment_md = f"""# Experiment {arxiv_id} — {selected["title"]}
 
 Solo personal project, no connection to employer, built with public/free-tier only
 
 **Branch:** {branch_name}
 **Date:** {today_str}
-**Paper:** {selected['arxiv_url']} / PDF {selected.get('pdf_url','')}
-**Topic:** {topic_id} — {topic_info.get('title','')} (importance {topic_info.get('importance','')})
+**Paper:** {selected["arxiv_url"]} / PDF {selected.get("pdf_url", "")}
+**Topic:** {topic_id} — {topic_info.get("title", "")} (importance {topic_info.get("importance", "")})
 **Ecosystem:** {ecosystem}
 **Graphify source:** {graph_src / f"{arxiv_id}.md"}
 
 ## Abstract
-{selected.get('abstract','')[:1500]}
+{selected.get("abstract", "")[:1500]}
 
 ## Why relevant
-{topic_info.get('description','')}
+{topic_info.get("description", "")}
 
 ## Hypothesis (per program.md)
-Based on "{selected['title']}", try applying idea to Ava {topic_id}.
+Based on "{selected["title"]}", try applying idea to Ava {topic_id}.
 
 **What to modify (ONE file only for clean diff):**
 - {ecosystem}
@@ -182,10 +237,10 @@ Based on "{selected['title']}", try applying idea to Ava {topic_id}.
 **Fixed time budget:** 5 minutes wall clock (Karpathy style) — metric val_bpb lower is better, or cap preservation 0.983
 
 **Steps:**
-1. git checkout -b {branch_name} from master in {ecosystem.split('/')[0]}
+1. git checkout -b {branch_name} from master in {ecosystem.split("/")[0]}
 2. Read paper PDF + graphify_source/{arxiv_id}.md
 3. Modify ONE file — cite paper in comment: "# From arxiv:{arxiv_id} — trying X"
-4. git commit -m "exp: {topic_id} {arxiv_id} — {selected['title'][:50]}"
+4. git commit -m "exp: {topic_id} {arxiv_id} — {selected["title"][:50]}"
 5. Run: `uv run train.py > run.log 2>&1` OR `python -m ava.train --preset nano_quick --max-steps 20 > run.log 2>&1`
 6. Extract: grep "^val_bpb:\\|^peak_vram_mb:\\|^cap_preservation:" run.log
 7. Log to results.tsv: commit val_bpb memory_gb status description
@@ -207,6 +262,7 @@ exp_md_path = exp_dir / "experiment.md"
 exp_md_path.write_text(experiment_md)
 print(f"  experiment.md -> {exp_md_path}")
 
+
 # Try to perform git branch creation in relevant repo (Ava or BigBang)
 # For safety in Hatch VM, we do it in ava-research-engine itself first (always safe), and if ava factory exists, also there
 def try_git_branch(repo_path, branch):
@@ -215,13 +271,27 @@ def try_git_branch(repo_path, branch):
         return None
     try:
         # Check if branch exists
-        result = subprocess.run(["git", "branch", "--list", branch], cwd=repo_path, capture_output=True, text=True, timeout=10)
+        result = subprocess.run(
+            ["git", "branch", "--list", branch],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
         if branch in result.stdout:
             print(f"  branch {branch} already exists in {repo_path}")
             return branch
         # Create branch
-        result = subprocess.run(["git", "checkout", "-b", branch], cwd=repo_path, capture_output=True, text=True, timeout=10)
-        print(f"  git checkout -b {branch} in {repo_path}: {result.stdout[:200]} err:{result.stderr[:200]}")
+        result = subprocess.run(
+            ["git", "checkout", "-b", branch],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        print(
+            f"  git checkout -b {branch} in {repo_path}: {result.stdout[:200]} err:{result.stderr[:200]}"
+        )
         # Immediately checkout back to master/main to avoid staying on branch? Keep branch for experiment
         # For cron safety, we go back to previous branch after?
         # For now leave on branch to allow next step to modify
@@ -229,6 +299,7 @@ def try_git_branch(repo_path, branch):
     except Exception as e:
         print(f"  git branch error {e}")
         return None
+
 
 # Try in Ava factory
 branch_created = try_git_branch(ava_factory, branch_name)
@@ -246,11 +317,17 @@ cap_pres = None
 # Smoke commands in order of preference, safe for Hatch VM (no GPU)
 smoke_commands = [
     # Ava config param count (fastest, always works)
-    (["python3", "-m", "ava.config", "--preset", "nano", "--count-params"], ava_factory),
+    (
+        ["python3", "-m", "ava.config", "--preset", "nano", "--count-params"],
+        ava_factory,
+    ),
     (["python3", "-m", "pytest", "-q"], bigbang_cli),
     (["python3", "scripts/arxiv_harvester.py", "--help"], ROOT),
     # nano_quick 20 steps (might take a bit)
-    (["python3", "-m", "ava.train", "--preset", "nano_quick", "--max-steps", "2"], ava_factory),
+    (
+        ["python3", "-m", "ava.train", "--preset", "nano_quick", "--max-steps", "2"],
+        ava_factory,
+    ),
 ]
 
 success = False
@@ -259,8 +336,12 @@ for cmd, cwd in smoke_commands:
         continue
     try:
         print(f"[smoke] trying {cmd} in {cwd}")
-        result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=90)
-        run_log_path.write_text(f"Command: {' '.join(cmd)}\nCWD: {cwd}\nReturncode: {result.returncode}\n\nSTDOUT:\n{result.stdout[:10000]}\n\nSTDERR:\n{result.stderr[:10000]}\n")
+        result = subprocess.run(
+            cmd, cwd=cwd, capture_output=True, text=True, timeout=90
+        )
+        run_log_path.write_text(
+            f"Command: {' '.join(cmd)}\nCWD: {cwd}\nReturncode: {result.returncode}\n\nSTDOUT:\n{result.stdout[:10000]}\n\nSTDERR:\n{result.stderr[:10000]}\n"
+        )
         if result.returncode == 0:
             success = True
             print(f"  smoke ok {cmd}")
@@ -271,7 +352,9 @@ for cmd, cwd in smoke_commands:
             cap_pres = 0.983
             break
         else:
-            print(f"  smoke failed {cmd} rc={result.returncode} out={result.stdout[-500:]}")
+            print(
+                f"  smoke failed {cmd} rc={result.returncode} out={result.stdout[-500:]}"
+            )
     except subprocess.TimeoutExpired:
         print(f"  smoke timeout {cmd}")
         run_log_path.write_text(f"Command timed out: {' '.join(cmd)}\n")
@@ -282,13 +365,19 @@ for cmd, cwd in smoke_commands:
 commit_hash = "0000000"
 try:
     # Try get current commit
-    result = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ava_factory, capture_output=True, text=True, timeout=5)
+    result = subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"],
+        cwd=ava_factory,
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
     if result.returncode == 0:
         commit_hash = result.stdout.strip()
 except:
     pass
 
-memory_gb = round((peak_vram_mb or 0)/1024,1) if peak_vram_mb else 0.0
+memory_gb = round((peak_vram_mb or 0) / 1024, 1) if peak_vram_mb else 0.0
 status = "keep" if success else "crash"
 desc = f"autoresearch {topic_id} {arxiv_id} smoke — {selected['title'][:60]}"
 
@@ -303,10 +392,12 @@ print(f"[logged] {line.strip()} to {RESULTS_TSV}")
 
 # Create follow-up BB task
 try:
-    title = f"[AVA-EXP-{status.upper()}][{topic_id}] {arxiv_id} — {selected['title'][:60]}"
+    title = (
+        f"[AVA-EXP-{status.upper()}][{topic_id}] {arxiv_id} — {selected['title'][:60]}"
+    )
     notes = f"""Autoresearch runner {today_str}
 Branch: {branch_name}
-Paper: {selected['arxiv_url']}
+Paper: {selected["arxiv_url"]}
 Experiment dir: {exp_dir}
 Run log: {run_log_path}
 Results.tsv: {RESULTS_TSV}
@@ -318,9 +409,18 @@ Status: {status} commit {commit_hash} val_bpb {val_bpb} memory {memory_gb}GB
 Next: If keep, review diff and merge or keep advancing branch per program.md LOOP. If crash, fix typo or discard.
 
 Graphify:
-pgraphify query "{selected['title'][:40]}" --graph {bigbang_cli}/graphify-out-research/graph.json
+pgraphify query "{selected["title"][:40]}" --graph {bigbang_cli}/graphify-out-research/graph.json
 """
-    cmd = ["hatch_gws_cli", "tasks", "tasks", "insert", "--params", json.dumps({"tasklist": "@default"}), "--json", json.dumps({"title": title, "notes": notes[:4000]})]
+    cmd = [
+        "hatch_gws_cli",
+        "tasks",
+        "tasks",
+        "insert",
+        "--params",
+        json.dumps({"tasklist": "@default"}),
+        "--json",
+        json.dumps({"title": title, "notes": notes[:4000]}),
+    ]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
     print(f"[task create] {result.returncode} {result.stdout[:500]}")
 except Exception as e:
@@ -328,19 +428,24 @@ except Exception as e:
 
 # Also log json summary
 summary_path = ROOT / "results" / f"autoresearch_{today_str}.json"
-summary_path.write_text(json.dumps({
-    "date": today_str,
-    "arxiv_id": arxiv_id,
-    "topic_id": topic_id,
-    "branch": branch_name,
-    "title": selected["title"],
-    "url": selected["arxiv_url"],
-    "status": status,
-    "commit": commit_hash,
-    "val_bpb": val_bpb,
-    "memory_gb": memory_gb,
-    "experiment_dir": str(exp_dir),
-    "run_log": str(run_log_path),
-}, indent=2))
+summary_path.write_text(
+    json.dumps(
+        {
+            "date": today_str,
+            "arxiv_id": arxiv_id,
+            "topic_id": topic_id,
+            "branch": branch_name,
+            "title": selected["title"],
+            "url": selected["arxiv_url"],
+            "status": status,
+            "commit": commit_hash,
+            "val_bpb": val_bpb,
+            "memory_gb": memory_gb,
+            "experiment_dir": str(exp_dir),
+            "run_log": str(run_log_path),
+        },
+        indent=2,
+    )
+)
 
 print(f"[done] autoresearch iteration {arxiv_id} -> {status}")

@@ -12,18 +12,18 @@ from ava.pipeline.flow import FlowConfig
 
 
 def _cfg(**over) -> FlowConfig:
-    base = dict(
-        low_water_gb=12,
-        janitor_trigger_gb=20,
-        critical_gb=5,
-        raw_max_bytes=4_000_000_000,
-        packed_ahead_max_tokens=3_000_000_000,
-        packed_min_tokens=200_000_000,
-        starved_poll_seconds=5,
-        starved_warn_seconds=60,
-        prefetch_phases=2,
-        delete_consumed=True,
-    )
+    base = {
+        "low_water_gb": 12,
+        "janitor_trigger_gb": 20,
+        "critical_gb": 5,
+        "raw_max_bytes": 4_000_000_000,
+        "packed_ahead_max_tokens": 3_000_000_000,
+        "packed_min_tokens": 200_000_000,
+        "starved_poll_seconds": 5,
+        "starved_warn_seconds": 60,
+        "prefetch_phases": 2,
+        "delete_consumed": True,
+    }
     base.update(over)
     return FlowConfig(**base)
 
@@ -98,12 +98,15 @@ def test_apply_demand_weights_boosts_examples():
     )
     base = [("synth_logic", 1.0), ("other", 1.0)]
     types = {"synth_logic": "deliberate", "other": "safety"}
-    out = dict(apply_demand_weights(base, source_task_types=types, demand=snap, phase=0))
+    out = dict(
+        apply_demand_weights(base, source_task_types=types, demand=snap, phase=0)
+    )
     assert out["synth_logic"] > out["other"]
 
 
 def test_apply_demand_weights_noop_without_demand():
     base = [("a", 0.5), ("b", 0.5)]
     assert apply_demand_weights(base, source_task_types={}, demand=None, phase=0) == [
-        ("a", 0.5), ("b", 0.5),
+        ("a", 0.5),
+        ("b", 0.5),
     ]

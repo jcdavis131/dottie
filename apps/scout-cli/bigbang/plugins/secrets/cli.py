@@ -1,5 +1,3 @@
-from typing import Optional
-
 import typer
 
 from bigbang.core.cli_ux import (
@@ -39,10 +37,10 @@ app = typer.Typer(
 )
 def set_cmd(
     key: str = typer.Argument(..., help="secret name e.g. GITHUB_TOKEN"),
-    value: Optional[str] = typer.Argument(
+    value: str | None = typer.Argument(
         None, help="value (prefer --value or --stdin so it stays out of shell history)"
     ),
-    value_opt: Optional[str] = typer.Option(
+    value_opt: str | None = typer.Option(
         None, "--value", help="secret value (preferred for scripting; not logged)"
     ),
     use_stdin: bool = typer.Option(

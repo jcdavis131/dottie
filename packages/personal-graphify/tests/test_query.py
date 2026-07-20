@@ -1,26 +1,64 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
 """query.py — search ranking sanity, subgraph scoping, impact BFS."""
-import networkx as nx
 
 from personal_graphify.build import build_graph, enrich_graph
-from personal_graphify.query import search_nodes, subgraph_for_query, impact_analysis, shortest_path
+from personal_graphify.query import (
+    impact_analysis,
+    search_nodes,
+    shortest_path,
+    subgraph_for_query,
+)
 
 
 def _graph():
     nodes = [
-        {"id": "concept:turnover-shield", "label": "Turnover Shield", "type": "product",
-         "desc": "Churn prediction"},
+        {
+            "id": "concept:turnover-shield",
+            "label": "Turnover Shield",
+            "type": "product",
+            "desc": "Churn prediction",
+        },
         {"id": "concept:mrr", "label": "MRR / Paid Users", "type": "business_metric"},
         {"id": "integration:stripe", "label": "Stripe", "type": "integration"},
-        {"id": "file:billing.py", "label": "billing.py", "type": "file", "file": "billing.py"},
-        {"id": "func:webhook", "label": "stripe_webhook", "type": "function", "file": "billing.py"},
+        {
+            "id": "file:billing.py",
+            "label": "billing.py",
+            "type": "file",
+            "file": "billing.py",
+        },
+        {
+            "id": "func:webhook",
+            "label": "stripe_webhook",
+            "type": "function",
+            "file": "billing.py",
+        },
         {"id": "concept:unrelated", "label": "Tennis DINOv3", "type": "product"},
     ]
     edges = [
-        {"source": "file:billing.py", "target": "func:webhook", "type": "defines", "confidence": "EXTRACTED"},
-        {"source": "func:webhook", "target": "integration:stripe", "type": "calls", "confidence": "INFERRED"},
-        {"source": "integration:stripe", "target": "concept:mrr", "type": "enables", "confidence": "INFERRED"},
-        {"source": "concept:turnover-shield", "target": "concept:mrr", "type": "tracks", "confidence": "INFERRED"},
+        {
+            "source": "file:billing.py",
+            "target": "func:webhook",
+            "type": "defines",
+            "confidence": "EXTRACTED",
+        },
+        {
+            "source": "func:webhook",
+            "target": "integration:stripe",
+            "type": "calls",
+            "confidence": "INFERRED",
+        },
+        {
+            "source": "integration:stripe",
+            "target": "concept:mrr",
+            "type": "enables",
+            "confidence": "INFERRED",
+        },
+        {
+            "source": "concept:turnover-shield",
+            "target": "concept:mrr",
+            "type": "tracks",
+            "confidence": "INFERRED",
+        },
     ]
     return enrich_graph(build_graph(nodes, edges))
 

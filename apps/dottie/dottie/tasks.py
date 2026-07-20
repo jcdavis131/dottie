@@ -42,9 +42,18 @@ import hashlib
 import random
 import re
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Sequence, Tuple
+from typing import TYPE_CHECKING, Any
 
-FAMILIES: Tuple[str, ...] = ("compute", "extract", "tool_chain", "file_ops", "constraint")
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
+FAMILIES: tuple[str, ...] = (
+    "compute",
+    "extract",
+    "tool_chain",
+    "file_ops",
+    "constraint",
+)
 
 _MAX_REDRAWS = 8  # deterministic bounded retry on the rare answer-leak coincidence
 
@@ -57,6 +66,7 @@ class TaskBuildError(RuntimeError):
 # Token matching — shared by the verifiers AND the no-leakage guard, so the
 # guarantee is exact: "the token that scores cannot be scored off the prompt".
 # ---------------------------------------------------------------------------
+
 
 def answer_token_present(token: str, text: str, *, ignore_case: bool = False) -> bool:
     """True iff ``token`` appears in ``text`` as a standalone token.
@@ -91,6 +101,7 @@ def _called_tools(observations: Sequence[Any]) -> set:
 # Task model
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class VerifiedTask:
     """One buildable, verifiable task instance. ``verify`` is deterministic Python whose
@@ -101,16 +112,16 @@ class VerifiedTask:
     seed: int
     prompt: str
     verify_fn: Callable[[str, Sequence[Any]], float]
-    tool_names: Tuple[str, ...] = ()               # display signatures, e.g. "part_lookup(part_id)"
-    tool_sources: Dict[str, str] = field(default_factory=dict)
-    expected: str = ""                             # canonical answer token (provider-side truth)
-    grading: str = "binary"                        # "binary" | "graded"
+    tool_names: tuple[str, ...] = ()  # display signatures, e.g. "part_lookup(part_id)"
+    tool_sources: dict[str, str] = field(default_factory=dict)
+    expected: str = ""  # canonical answer token (provider-side truth)
+    grading: str = "binary"  # "binary" | "graded"
     verifier_note: str = ""
 
     def verify(self, final_text: str, observations: Sequence[Any]) -> float:
         return self.verify_fn(final_text or "", observations or [])
 
-    def verifier_detail(self) -> Dict[str, Any]:
+    def verifier_detail(self) -> dict[str, Any]:
         """Server-side verifier description for traces/API (never shown to the policy)."""
         return {
             "family": self.family_id,
@@ -121,10 +132,16 @@ class VerifiedTask:
         }
 
 
-def _binary_token_verify(expected: str, *, ignore_case: bool = False
-                         ) -> Callable[[str, Sequence[Any]], float]:
-    def verify(final_text: str, observations: Sequence[Any]) -> float:  # noqa: ARG001
-        return 1.0 if answer_token_present(expected, final_text, ignore_case=ignore_case) else 0.0
+def _binary_token_verify(
+    expected: str, *, ignore_case: bool = False
+) -> Callable[[str, Sequence[Any]], float]:
+    def verify(final_text: str, observations: Sequence[Any]) -> float:
+        return (
+            1.0
+            if answer_token_present(expected, final_text, ignore_case=ignore_case)
+            else 0.0
+        )
+
     return verify
 
 
@@ -133,9 +150,30 @@ def _binary_token_verify(expected: str, *, ignore_case: bool = False
 # into the prompt; the prompt never carries the expectation as literal text.
 # ---------------------------------------------------------------------------
 
-_ITEM_WORDS = ("bolt", "washer", "gasket", "spring", "bearing", "clamp", "valve", "rotor",
-               "flange", "socket", "bracket", "pin")
-_LINE_WORDS = ("alpha", "bravo", "canyon", "delta", "ember", "falcon", "granite", "harbor")
+_ITEM_WORDS = (
+    "bolt",
+    "washer",
+    "gasket",
+    "spring",
+    "bearing",
+    "clamp",
+    "valve",
+    "rotor",
+    "flange",
+    "socket",
+    "bracket",
+    "pin",
+)
+_LINE_WORDS = (
+    "alpha",
+    "bravo",
+    "canyon",
+    "delta",
+    "ember",
+    "falcon",
+    "granite",
+    "harbor",
+)
 _FORBIDDEN_WORDS = ("obviously", "basically", "literally", "essentially")
 
 
@@ -143,7 +181,7 @@ def _build_compute(rng: random.Random, seed: int) -> VerifiedTask:
     nums = [rng.randint(3, 97) for _ in range(6)]
     evens = [x for x in nums if x % 2 == 0]
     odds = [x for x in nums if x % 2 == 1]
-    expected = sum(x * x for x in evens) - sum(odds)   # computed, never templated
+    expected = sum(x * x for x in evens) - sum(odds)  # computed, never templated
     prompt = (
         f"Data list: {nums}. Compute (the sum of the squares of the even numbers) minus "
         "(the sum of the odd numbers). Do the arithmetic in the sandbox, not in your head. "
@@ -151,8 +189,12 @@ def _build_compute(rng: random.Random, seed: int) -> VerifiedTask:
         "thousands separators)."
     )
     return VerifiedTask(
-        task_id=f"compute-{seed}", family_id="compute", seed=seed, prompt=prompt,
-        expected=str(expected), verify_fn=_binary_token_verify(str(expected)),
+        task_id=f"compute-{seed}",
+        family_id="compute",
+        seed=seed,
+        prompt=prompt,
+        expected=str(expected),
+        verify_fn=_binary_token_verify(str(expected)),
         verifier_note="binary: exact computed integer must appear as a standalone token in the FINAL",
     )
 
@@ -172,8 +214,12 @@ def _build_extract(rng: random.Random, seed: int) -> VerifiedTask:
         "total in your final answer as a plain integer."
     )
     return VerifiedTask(
-        task_id=f"extract-{seed}", family_id="extract", seed=seed, prompt=prompt,
-        expected=str(expected), verify_fn=_binary_token_verify(str(expected)),
+        task_id=f"extract-{seed}",
+        family_id="extract",
+        seed=seed,
+        prompt=prompt,
+        expected=str(expected),
+        verify_fn=_binary_token_verify(str(expected)),
         verifier_note="binary: computed filtered aggregate must appear as a standalone token in the FINAL",
     )
 
@@ -181,8 +227,10 @@ def _build_extract(rng: random.Random, seed: int) -> VerifiedTask:
 def _build_tool_chain(rng: random.Random, seed: int) -> VerifiedTask:
     part_ids = [f"P{rng.randint(10, 99)}{c}" for c in ("A", "B", "C", "D")]
     bins = ("north", "south", "east", "west")
-    table = {pid: {"weight_g": rng.randint(50, 900), "bin": rng.choice(bins)}
-             for pid in part_ids}
+    table = {
+        pid: {"weight_g": rng.randint(50, 900), "bin": rng.choice(bins)}
+        for pid in part_ids
+    }
     rates = {b: rng.randint(2, 9) for b in bins}
     queried = rng.sample(part_ids, 2)
     # Provider-side composition of the two tools' outputs — the verified expectation.
@@ -215,12 +263,18 @@ def _build_tool_chain(rng: random.Random, seed: int) -> VerifiedTask:
         return 1.0 if answer_token_present(expected_s, final_text) else 0.0
 
     return VerifiedTask(
-        task_id=f"tool_chain-{seed}", family_id="tool_chain", seed=seed, prompt=prompt,
-        expected=expected_s, verify_fn=verify,
+        task_id=f"tool_chain-{seed}",
+        family_id="tool_chain",
+        seed=seed,
+        prompt=prompt,
+        expected=expected_s,
+        verify_fn=verify,
         tool_names=("part_lookup(part_id)", "bin_rate(bin_name)"),
         tool_sources={"part_lookup": part_lookup_src, "bin_rate": bin_rate_src},
-        verifier_note=("binary: computed tool-output composition must appear in the FINAL AND both "
-                       "tools must show real recorded calls in the observations"),
+        verifier_note=(
+            "binary: computed tool-output composition must appear in the FINAL AND both "
+            "tools must show real recorded calls in the observations"
+        ),
     )
 
 
@@ -240,19 +294,25 @@ def _build_file_ops(rng: random.Random, seed: int) -> VerifiedTask:
         "answer the first 12 hex characters of that digest."
     )
     return VerifiedTask(
-        task_id=f"file_ops-{seed}", family_id="file_ops", seed=seed, prompt=prompt,
-        expected=digest12, verify_fn=_binary_token_verify(digest12, ignore_case=True),
-        verifier_note=("binary: sha256[:12] of the re-derived expected file bytes must appear in "
-                       "the FINAL. Limit (honest): proves the derived content, not the write "
-                       "syscall — the sandbox scratch dir is destroyed before the parent could "
-                       "inspect it."),
+        task_id=f"file_ops-{seed}",
+        family_id="file_ops",
+        seed=seed,
+        prompt=prompt,
+        expected=digest12,
+        verify_fn=_binary_token_verify(digest12, ignore_case=True),
+        verifier_note=(
+            "binary: sha256[:12] of the re-derived expected file bytes must appear in "
+            "the FINAL. Limit (honest): proves the derived content, not the write "
+            "syscall — the sandbox scratch dir is destroyed before the parent could "
+            "inspect it."
+        ),
     )
 
 
 def _build_constraint(rng: random.Random, seed: int) -> VerifiedTask:
     a, b, c = rng.randint(3, 30), rng.randint(3, 30), rng.randint(3, 30)
     k = (a * b + c) % 89
-    token = f"TAG-{k:02d}"                      # computed from prompt values; digits never rendered
+    token = f"TAG-{k:02d}"  # computed from prompt values; digits never rendered
     forbidden = rng.choice(_FORBIDDEN_WORDS)
     lo = rng.randint(30, 50)
     hi = lo + 40
@@ -264,7 +324,7 @@ def _build_constraint(rng: random.Random, seed: int) -> VerifiedTask:
         "mechanical constraints are checked; the quality of the prose is NOT scored."
     )
 
-    def verify(final_text: str, observations: Sequence[Any]) -> float:  # noqa: ARG001
+    def verify(final_text: str, observations: Sequence[Any]) -> float:
         text = final_text or ""
         if not answer_token_present(token, text):
             return 0.0  # credit is gated on the COMPUTED token — without it, no evidence of work
@@ -273,15 +333,22 @@ def _build_constraint(rng: random.Random, seed: int) -> VerifiedTask:
         return round((1 + int(wc_ok) + int(forb_ok)) / 3, 4)
 
     return VerifiedTask(
-        task_id=f"constraint-{seed}", family_id="constraint", seed=seed, prompt=prompt,
-        expected=token, verify_fn=verify, grading="graded",
-        verifier_note=("graded [0,1]: credit gated on the computed token (absent -> 0.0), then "
-                       "satisfied/3 over {token, word-count band, forbidden word}. HONEST LIMIT: "
-                       "only constraints are verified, never prose quality."),
+        task_id=f"constraint-{seed}",
+        family_id="constraint",
+        seed=seed,
+        prompt=prompt,
+        expected=token,
+        verify_fn=verify,
+        grading="graded",
+        verifier_note=(
+            "graded [0,1]: credit gated on the computed token (absent -> 0.0), then "
+            "satisfied/3 over {token, word-count band, forbidden word}. HONEST LIMIT: "
+            "only constraints are verified, never prose quality."
+        ),
     )
 
 
-_BUILDERS: Dict[str, Callable[[random.Random, int], VerifiedTask]] = {
+_BUILDERS: dict[str, Callable[[random.Random, int], VerifiedTask]] = {
     "compute": _build_compute,
     "extract": _build_extract,
     "tool_chain": _build_tool_chain,
@@ -294,14 +361,17 @@ _BUILDERS: Dict[str, Callable[[random.Random, int], VerifiedTask]] = {
 # Provider
 # ---------------------------------------------------------------------------
 
+
 class VerifiedTaskProvider:
     """Deterministic (family, seed) -> VerifiedTask with a built-in no-leakage guard."""
 
-    families: Tuple[str, ...] = FAMILIES
+    families: tuple[str, ...] = FAMILIES
 
     def build(self, family: str, seed: int) -> VerifiedTask:
         if family not in _BUILDERS:
-            raise ValueError(f"unknown task family {family!r}; choices: {', '.join(FAMILIES)}")
+            raise ValueError(
+                f"unknown task family {family!r}; choices: {', '.join(FAMILIES)}"
+            )
         builder = _BUILDERS[family]
         for attempt in range(_MAX_REDRAWS):
             # str seeds hash via sha512 in random.Random — stable across runs and processes.
@@ -309,13 +379,14 @@ class VerifiedTaskProvider:
             task = builder(rng, seed)
             if not answer_token_present(task.expected, task.prompt, ignore_case=True):
                 return task
-        raise TaskBuildError(   # pragma: no cover - needs 8 consecutive leak coincidences
+        raise TaskBuildError(  # pragma: no cover - needs 8 consecutive leak coincidences
             f"could not build a leak-free {family!r} task for seed {seed} in "
             f"{_MAX_REDRAWS} redraws; refusing to emit a leaking prompt"
         )
 
-    def batch_seeds(self, family: str, n: int, seeds: Sequence[int] | None = None
-                    ) -> List[Tuple[str, int]]:
+    def batch_seeds(
+        self, family: str, n: int, seeds: Sequence[int] | None = None
+    ) -> list[tuple[str, int]]:
         """(family, seed) pairs for a climb batch. ``family='mixed'`` cycles all families
         deterministically. Default seeds are 0..n-1."""
         use = list(seeds) if seeds is not None else list(range(n))
@@ -324,6 +395,8 @@ class VerifiedTaskProvider:
         if family == "mixed":
             return [(FAMILIES[i % len(FAMILIES)], s) for i, s in enumerate(use)]
         if family not in _BUILDERS:
-            raise ValueError(f"unknown task family {family!r}; choices: "
-                             f"{', '.join(FAMILIES)} or 'mixed'")
+            raise ValueError(
+                f"unknown task family {family!r}; choices: "
+                f"{', '.join(FAMILIES)} or 'mixed'"
+            )
         return [(family, s) for s in use]

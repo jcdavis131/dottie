@@ -21,9 +21,19 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import TYPE_CHECKING
 
-SPECIALS = ["<|pad|>", "<|bos|>", "<|eos|>", "<|endofdoc|>", "<|user|>", "<|assistant|>"]
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator
+
+SPECIALS = [
+    "<|pad|>",
+    "<|bos|>",
+    "<|eos|>",
+    "<|endofdoc|>",
+    "<|user|>",
+    "<|assistant|>",
+]
 PAD_ID, BOS_ID, EOS_ID, ENDOFDOC_ID, USER_ID, ASSISTANT_ID = range(6)
 
 DEFAULT_PATH = os.environ.get("AVA_TOKENIZER", "/state/tokenizer.json")
@@ -50,7 +60,7 @@ class DottieTokenizer:
     # -- io -----------------------------------------------------------------
 
     @classmethod
-    def load(cls, path: str | Path | None = None) -> "DottieTokenizer":
+    def load(cls, path: str | Path | None = None) -> DottieTokenizer:
         from tokenizers import Tokenizer
 
         p = Path(path or DEFAULT_PATH)
@@ -82,7 +92,7 @@ class DottieTokenizer:
 
     def encode_doc(self, text: str) -> list[int]:
         """Document tokens terminated by <|endofdoc|>, as packed into shards."""
-        return self.encode(text) + [ENDOFDOC_ID]
+        return [*self.encode(text), ENDOFDOC_ID]
 
     def concept_token(self, concept: str) -> int:
         """First token id of a concept string -- the reportability target.
@@ -126,8 +136,12 @@ def _iter_corpus(paths: Iterable[Path], max_bytes: int) -> Iterator[str]:
                     return
 
 
-def train(corpus_dir: str | Path, out_path: str | Path, vocab_size: int,
-          max_bytes: int = 2_000_000_000) -> str:
+def train(
+    corpus_dir: str | Path,
+    out_path: str | Path,
+    vocab_size: int,
+    max_bytes: int = 2_000_000_000,
+) -> str:
     """Train byte-level BPE. Returns the artifact's sha256."""
     from tokenizers import Tokenizer, decoders, models, pre_tokenizers, trainers
 
@@ -143,7 +157,7 @@ def train(corpus_dir: str | Path, out_path: str | Path, vocab_size: int,
     tok.decoder = decoders.ByteLevel()
     trainer = trainers.BpeTrainer(
         vocab_size=vocab_size,
-        special_tokens=SPECIALS,          # ids 0..5, in order
+        special_tokens=SPECIALS,  # ids 0..5, in order
         initial_alphabet=pre_tokenizers.ByteLevel.alphabet(),
         show_progress=False,
     )
@@ -176,13 +190,19 @@ def _cmd_train(args) -> int:
 
 def _cmd_check(args) -> int:
     t = DottieTokenizer.load(args.path)
-    samples = ["The capital of France is Paris.", "def f(x):\n    return x * 2\n",
-               "1 + 1 = 2", "<|user|>hi<|assistant|>hello"]
+    samples = [
+        "The capital of France is Paris.",
+        "def f(x):\n    return x * 2\n",
+        "1 + 1 = 2",
+        "<|user|>hi<|assistant|>hello",
+    ]
     ok = all(t.decode(t.encode(s), skip_special=False) == s for s in samples)
     total_chars = sum(len(s) for s in samples)
     total_toks = sum(len(t.encode(s)) for s in samples)
-    print(f"vocab={t.vocab_size} roundtrip={'ok' if ok else 'FAILED'} "
-          f"chars/token={total_chars/max(1,total_toks):.2f}")
+    print(
+        f"vocab={t.vocab_size} roundtrip={'ok' if ok else 'FAILED'} "
+        f"chars/token={total_chars / max(1, total_toks):.2f}"
+    )
     return 0 if ok else 1
 
 
@@ -196,7 +216,9 @@ def main(argv=None) -> int:
     tr.add_argument("--corpus", default=os.environ.get("AVA_RAW_DIR", "/raw"))
     tr.add_argument("--out", default=DEFAULT_PATH)
     tr.add_argument("--max-bytes", type=int, default=2_000_000_000)
-    tr.add_argument("--freeze", action="store_true", help="record sha256 in the manifest")
+    tr.add_argument(
+        "--freeze", action="store_true", help="record sha256 in the manifest"
+    )
     tr.add_argument("--db", default=None)
     tr.set_defaults(fn=_cmd_train)
 

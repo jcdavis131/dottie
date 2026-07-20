@@ -20,12 +20,17 @@ import importlib.util
 import time
 import traceback
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 from dottie.research.ledger import (
-    Ledger, Experiment, EVALUATION_PENDING, FAILED_TRAINING, READY_FOR_TRAINING,
+    EVALUATION_PENDING,
+    FAILED_TRAINING,
+    READY_FOR_TRAINING,
+    Experiment,
+    Ledger,
 )
 
 # The metric the loop hill-climbs on by default. Lower is better; labelled as a proxy.
@@ -36,15 +41,15 @@ PROXY_METRIC = "proxy_loss"
 class TrainResult:
     ok: bool
     stable: bool
-    metrics: Dict[str, Any] = field(default_factory=dict)
+    metrics: dict[str, Any] = field(default_factory=dict)
     detail: str = ""
 
 
 # A Trainer measures an experiment and returns real metrics. Default = micro_benchmark_trainer.
-Trainer = Callable[[Experiment, Dict[str, Any]], TrainResult]
+Trainer = Callable[[Experiment, dict[str, Any]], TrainResult]
 
 
-def _load_module(workspace: str | Path, module_name: Optional[str]):
+def _load_module(workspace: str | Path, module_name: str | None):
     """Import the validated candidate module written into the experiment workspace."""
     ws = Path(workspace)
     candidates = sorted(ws.glob("*.py"))
@@ -63,14 +68,21 @@ def _load_module(workspace: str | Path, module_name: Optional[str]):
 def _select_module_class(module, module_name, torch):
     if module_name and getattr(module, module_name, None) is not None:
         return getattr(module, module_name)
-    cands = [v for v in vars(module).values()
-             if isinstance(v, type) and issubclass(v, torch.nn.Module) and v is not torch.nn.Module]
+    cands = [
+        v
+        for v in vars(module).values()
+        if isinstance(v, type)
+        and issubclass(v, torch.nn.Module)
+        and v is not torch.nn.Module
+    ]
     if not cands:
         raise LookupError("no nn.Module subclass in generated module")
     return cands[0]
 
 
-def micro_benchmark_trainer(experiment: Experiment, config: Dict[str, Any]) -> TrainResult:
+def micro_benchmark_trainer(
+    experiment: Experiment, config: dict[str, Any]
+) -> TrainResult:
     """Train the experimental module on a synthetic shift task for real, on CPU.
 
     Proxy task: random token sequences embedded to ``dim``; the module transforms
@@ -102,7 +114,7 @@ def micro_benchmark_trainer(experiment: Experiment, config: Dict[str, Any]) -> T
     except Exception:
         return TrainResult(False, False, detail=traceback.format_exc())
 
-    finals: List[float] = []
+    finals: list[float] = []
     n_params = None
     t0 = time.monotonic()
     for seed in seeds:
@@ -117,11 +129,11 @@ def micro_benchmark_trainer(experiment: Experiment, config: Dict[str, Any]) -> T
                 self.head = nn.Linear(dim, vocab)
 
             def forward(self, toks):
-                h = self.embed(toks)                 # [B,S,dim]
+                h = self.embed(toks)  # [B,S,dim]
                 y = self.core(h)
                 y = y[0] if isinstance(y, (tuple, list)) else y
                 assert y.shape == h.shape, f"core changed shape {h.shape}->{y.shape}"
-                return self.head(y)                  # [B,S,vocab]
+                return self.head(y)  # [B,S,vocab]
 
         try:
             net = Proxy()
@@ -139,8 +151,12 @@ def micro_benchmark_trainer(experiment: Experiment, config: Dict[str, Any]) -> T
             logits = net(x)
             loss = F.cross_entropy(logits.reshape(-1, vocab), target.reshape(-1))
             if not torch.isfinite(loss):
-                return TrainResult(True, False, metrics={"seed": seed, "params": n_params},
-                                   detail="loss became NaN/Inf — unstable architecture, killed")
+                return TrainResult(
+                    True,
+                    False,
+                    metrics={"seed": seed, "params": n_params},
+                    detail="loss became NaN/Inf — unstable architecture, killed",
+                )
             loss.backward()
             opt.step()
             last = float(loss.detach())
@@ -151,7 +167,7 @@ def micro_benchmark_trainer(experiment: Experiment, config: Dict[str, Any]) -> T
     var = sum((f - mean) ** 2 for f in finals) / len(finals)
     metrics = {
         PROXY_METRIC: round(mean, 5),
-        "proxy_loss_std": round(var ** 0.5, 5),
+        "proxy_loss_std": round(var**0.5, 5),
         "per_seed": [round(f, 5) for f in finals],
         "seeds": seeds,
         "steps": steps,
@@ -163,9 +179,13 @@ def micro_benchmark_trainer(experiment: Experiment, config: Dict[str, Any]) -> T
     return TrainResult(True, True, metrics=metrics)
 
 
-def run_training(ledger: Ledger, *, trainer: Optional[Trainer] = None,
-                 config: Optional[Dict[str, Any]] = None,
-                 ts: Optional[float] = None) -> Optional[Dict[str, Any]]:
+def run_training(
+    ledger: Ledger,
+    *,
+    trainer: Trainer | None = None,
+    config: dict[str, Any] | None = None,
+    ts: float | None = None,
+) -> dict[str, Any] | None:
     """Pick the oldest ready_for_training experiment, measure it, and record the outcome.
 
     Returns a summary dict, or None if nothing is ready. A stable run -> evaluation_pending with
@@ -178,12 +198,22 @@ def run_training(ledger: Ledger, *, trainer: Optional[Trainer] = None,
         return None
     result = trainer(exp, cfg)
     if result.ok and result.stable:
-        ledger.transition(exp.id, EVALUATION_PENDING, train_metrics=result.metrics, ts=ts)
-        return {"experiment": exp.id, "state": EVALUATION_PENDING, "metrics": result.metrics}
+        ledger.transition(
+            exp.id, EVALUATION_PENDING, train_metrics=result.metrics, ts=ts
+        )
+        return {
+            "experiment": exp.id,
+            "state": EVALUATION_PENDING,
+            "metrics": result.metrics,
+        }
     if result.ok and not result.stable:  # trained but diverged — a real (bad) outcome
-        ledger.transition(exp.id, FAILED_TRAINING,
-                          train_metrics=result.metrics or {"stable": False},
-                          failure=result.detail or "unstable (NaN/Inf)", ts=ts)
+        ledger.transition(
+            exp.id,
+            FAILED_TRAINING,
+            train_metrics=result.metrics or {"stable": False},
+            failure=result.detail or "unstable (NaN/Inf)",
+            ts=ts,
+        )
         return {"experiment": exp.id, "state": FAILED_TRAINING, "reason": "unstable"}
     # infrastructure failure (module load / torch): leave retryable, report honestly
     return {"experiment": exp.id, "state": READY_FOR_TRAINING, "error": result.detail}

@@ -1,4 +1,5 @@
 """End-to-end test for `mcp serve`: real stdio handshake against the FastMCP server."""
+
 import sys
 
 import anyio

@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import torch
 import torch.nn.functional as F
-
 from ava.config import AvaConfig
 from ava.model import build_model, set_router_bias
 from ava.tokenizer import AvaTokenizer
-from model_1b import AvaModel1B, apply_rope_scaling
+
+if TYPE_CHECKING:
+    from model_1b import AvaModel1B
 
 _REPO = Path(__file__).resolve().parent.parent
 EVAL_SEED = 1234
@@ -142,7 +142,9 @@ def count_state_tensors(model: AvaModel1B, ckpt_path: str | None) -> int:
     if set(ck.keys()) != set(built.keys()):
         missing = set(built) - set(ck)
         extra = set(ck) - set(built)
-        raise ValueError(f"checkpoint key mismatch: missing={sorted(missing)[:5]} extra={sorted(extra)[:5]}")
+        raise ValueError(
+            f"checkpoint key mismatch: missing={sorted(missing)[:5]} extra={sorted(extra)[:5]}"
+        )
     return len(ck)
 
 

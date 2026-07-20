@@ -14,7 +14,7 @@ import importlib.abc
 import importlib.util
 import sys
 
-from dottie import *  # noqa: F401,F403
+from dottie import *  # noqa: F403
 
 
 class _AliasLoader(importlib.abc.Loader):
@@ -22,10 +22,10 @@ class _AliasLoader(importlib.abc.Loader):
         self._real = real
 
     def create_module(self, spec):
-        return self._real          # hand the import system the EXISTING module object
+        return self._real  # hand the import system the EXISTING module object
 
     def exec_module(self, module):
-        pass                       # already executed under its dottie name
+        pass  # already executed under its dottie name
 
 
 class _AvaAliasFinder(importlib.abc.MetaPathFinder):
@@ -35,7 +35,7 @@ class _AvaAliasFinder(importlib.abc.MetaPathFinder):
         try:
             real = importlib.import_module("dottie." + fullname[4:])
         except ImportError:
-            return None            # no dottie counterpart — let normal import (stubs) try
+            return None  # no dottie counterpart — let normal import (stubs) try
         return importlib.util.spec_from_loader(fullname, _AliasLoader(real))
 
 
@@ -44,8 +44,11 @@ if not any(isinstance(f, _AvaAliasFinder) for f in sys.meta_path):
 
 # Legacy aliases for direct `from ava import AvaConfig`-style imports.
 try:
-    from dottie.config import DottieConfig as AvaConfig, DottieConfig  # noqa: F401
+    from dottie.config import DottieConfig
+    from dottie.config import DottieConfig as AvaConfig  # noqa: F401
     from dottie.model import DottieModel1B as AvaModel1B  # noqa: F401
     from dottie.tokenizer import DottieTokenizer as AvaTokenizer  # noqa: F401
-except Exception:  # partial installs (torch-less images) — lazy dottie exports still work
+except (
+    Exception
+):  # partial installs (torch-less images) — lazy dottie exports still work
     pass

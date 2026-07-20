@@ -14,18 +14,24 @@ Every probe is independently guarded: a missing/unreadable checkout
 degrades that one card to "not found," it never breaks the rest of the
 page or the live dashboard alongside it.
 """
+
 from __future__ import annotations
 
 import json
 import os
 import re
 from pathlib import Path
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 _HOST_DISK = Path(os.environ.get("AVA_HOST_DISK", "/host_disk"))
 # This host's user profile dir -- ava-agi, AgenticOS, and agent-eval are all
 # sibling checkouts under it. Override via env if this ever runs elsewhere.
-_ECO_HOME = Path(os.environ.get("AVA_ECOSYSTEM_HOME", str(_HOST_DISK / "Users" / "jcdav")))
+_ECO_HOME = Path(
+    os.environ.get("AVA_ECOSYSTEM_HOME", str(_HOST_DISK / "Users" / "jcdav"))
+)
 
 _AVA_AGI = _ECO_HOME / "ava-agi"
 _AGENTICOS = _ECO_HOME / "AgenticOS"
@@ -58,7 +64,9 @@ def _tail_lines(path: Path, n: int) -> list[str]:
 
 def _skills_summary() -> dict[str, Any]:
     own = _count_glob(_AGENTICOS / "skills", "*.md")
-    cursor = _count_glob(_AGENTICOS / "skills-lib" / "cursor-agent-skills" / "skills", "*/SKILL.md")
+    cursor = _count_glob(
+        _AGENTICOS / "skills-lib" / "cursor-agent-skills" / "skills", "*/SKILL.md"
+    )
     addyosmani = _count_glob(_DOT_AGENTS_SKILLS, "*/SKILL.md")
     return {
         "found": _AGENTICOS.is_dir() or _DOT_AGENTS_SKILLS.is_dir(),
@@ -70,8 +78,14 @@ def _skills_summary() -> dict[str, Any]:
 
 
 _HARNESS_FILES = [
-    "harness.py", "agentos.py", "guard.py", "autonomy.py",
-    "code_tools.py", "web_tools.py", "infra_tools.py", "ava_bridge.py",
+    "harness.py",
+    "agentos.py",
+    "guard.py",
+    "autonomy.py",
+    "code_tools.py",
+    "web_tools.py",
+    "infra_tools.py",
+    "ava_bridge.py",
 ]
 
 
@@ -79,7 +93,12 @@ def _harness_summary() -> dict[str, Any]:
     if not _AGENTICOS.is_dir():
         return {"found": False}
     present = {f: (_AGENTICOS / f).is_file() for f in _HARNESS_FILES}
-    return {"found": True, "files": present, "built": sum(present.values()), "total": len(present)}
+    return {
+        "found": True,
+        "files": present,
+        "built": sum(present.values()),
+        "total": len(present),
+    }
 
 
 def _agent_eval_summary() -> dict[str, Any]:
@@ -143,5 +162,7 @@ def collect_ecosystem_status() -> dict[str, Any]:
         "skills": _safe(_skills_summary, {"found": False}),
         "agent_eval": _safe(_agent_eval_summary, {"found": False}),
         "todos": _safe(_todos_summary, {"found": False}),
-        "hillclimb_tail": _safe(lambda: _tail_lines(_AVA_AGI / "tasks" / "hillclimb-log.md", 6), []),
+        "hillclimb_tail": _safe(
+            lambda: _tail_lines(_AVA_AGI / "tasks" / "hillclimb-log.md", 6), []
+        ),
     }

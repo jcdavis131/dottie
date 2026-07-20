@@ -32,7 +32,12 @@ from pathlib import Path
 import yaml
 
 from dottie.pipeline.eviction import StorageConfig, evict_oversupplied, should_evict
-from dottie.pipeline.flow import FlowConfig, current_training_phase, free_gb, janitor_should_collect
+from dottie.pipeline.flow import (
+    FlowConfig,
+    current_training_phase,
+    free_gb,
+    janitor_should_collect,
+)
 from dottie.pipeline.manifest import PROTECTED_SPLITS, Manifest, worker_id
 from dottie.pipeline.pack import idx_path_for
 
@@ -58,7 +63,7 @@ class RetentionConfig:
     keep_stable_checkpoints: bool
 
     @classmethod
-    def load(cls, path: str | Path | None = None) -> "RetentionConfig":
+    def load(cls, path: str | Path | None = None) -> RetentionConfig:
         p = Path(path or os.environ.get("AVA_PIPELINE_CONFIG", DEFAULT_CONFIG))
         cfg = yaml.safe_load(p.read_text())
         r = cfg.get("retention", {})
@@ -77,7 +82,12 @@ def _unlink_quiet(path: Path) -> bool:
     except FileNotFoundError:
         return True
     except OSError as exc:
-        _log("unlink_failed", path=str(path), error=f"{type(exc).__name__}: {exc}", level="warn")
+        _log(
+            "unlink_failed",
+            path=str(path),
+            error=f"{type(exc).__name__}: {exc}",
+            level="warn",
+        )
         return False
 
 
@@ -158,7 +168,7 @@ def reclaim_consumed(
                 stats["skipped_error"] += 1
                 continue
             to_mark.append(shard.id)
-        except Exception as exc:  # noqa: BLE001 — never crash the container
+        except Exception as exc:
             stats["skipped_error"] += 1
             _log(
                 "shard_error",
@@ -172,7 +182,7 @@ def reclaim_consumed(
         try:
             n = m.mark_deleted(to_mark)
             stats["deleted"] = n
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             stats["skipped_error"] += len(to_mark)
             _log(
                 "mark_deleted_failed",
@@ -194,7 +204,9 @@ class Janitor:
         ckpt_dir: str | None = None,
         raw_dir: str | None = None,
     ) -> None:
-        self.config_path = config_path or os.environ.get("AVA_PIPELINE_CONFIG", DEFAULT_CONFIG)
+        self.config_path = config_path or os.environ.get(
+            "AVA_PIPELINE_CONFIG", DEFAULT_CONFIG
+        )
         self.flow = FlowConfig.load(self.config_path)
         self.retention = RetentionConfig.load(self.config_path)
         self.storage = StorageConfig.load(self.config_path)
@@ -232,7 +244,11 @@ class Janitor:
             result["reclaimed"] = reclaim_consumed(m)
             _log("reclaim", **result["reclaimed"], reason=pressure.reason)
         elif pressure and not self.retention.delete_consumed:
-            _log("reclaim_skipped", reason="delete_consumed=false", pressure=pressure.reason)
+            _log(
+                "reclaim_skipped",
+                reason="delete_consumed=false",
+                pressure=pressure.reason,
+            )
 
         if should_evict(free, self.storage):
             try:
@@ -246,7 +262,7 @@ class Janitor:
                     free_gb=result["disk_free_gb"],
                     high_water_gb=self.storage.evict_high_water_gb,
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 _log(
                     "evict_failed",
                     level="warn",
@@ -262,8 +278,12 @@ class Janitor:
             )
             result["ckpts_removed"] = removed
             if removed:
-                _log("ckpt_rotated", removed=removed, keep_last=self.retention.keep_last_checkpoints)
-        except Exception as exc:  # noqa: BLE001
+                _log(
+                    "ckpt_rotated",
+                    removed=removed,
+                    keep_last=self.retention.keep_last_checkpoints,
+                )
+        except Exception as exc:
             _log(
                 "ckpt_rotate_failed",
                 level="warn",
@@ -303,7 +323,9 @@ class Janitor:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Ava janitor service")
-    ap.add_argument("--once", action="store_true", help="one reclaim+rotate pass then exit")
+    ap.add_argument(
+        "--once", action="store_true", help="one reclaim+rotate pass then exit"
+    )
     ap.add_argument("--config", default=None)
     ap.add_argument("--db", default=None)
     ap.add_argument("--packed-dir", default=None)

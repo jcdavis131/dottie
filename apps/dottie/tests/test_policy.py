@@ -8,8 +8,8 @@ import pytest
 from dottie import resolve
 from dottie.policy import (
     AvaPolicy,
-    EchoPolicy,
     DottiePolicyUnavailable,
+    EchoPolicy,
     OllamaPolicy,
     get_policy,
     strip_think,
@@ -17,8 +17,8 @@ from dottie.policy import (
 )
 from tests.conftest import UNROUTABLE_OLLAMA
 
-
 # -- transcript parsing -------------------------------------------------------------
+
 
 def test_transcript_to_messages_roles_and_order():
     transcript = (
@@ -44,24 +44,28 @@ def test_strip_think_removes_closed_blocks_only():
 
 # -- EchoPolicy ---------------------------------------------------------------------
 
+
 def test_echo_policy_is_deterministic_and_labeled():
     a, b = EchoPolicy(), EchoPolicy()
     t = "<|user|>\nsome task"
     turns_a = [a(t), a(t), a(t), a(t)]
     turns_b = [b(t), b(t), b(t), b(t)]
-    assert turns_a == turns_b                      # deterministic
+    assert turns_a == turns_b  # deterministic
     assert "```python" in turns_a[0] and "```python" in turns_a[1]
-    assert "```python" not in turns_a[2]           # third turn is the FINAL (no fence)
+    assert "```python" not in turns_a[2]  # third turn is the FINAL (no fence)
     assert "plumbing" in turns_a[2]
-    assert turns_a[3] == ""                        # exhausted -> honest empty turn
+    assert turns_a[3] == ""  # exhausted -> honest empty turn
     assert EchoPolicy.plumbing_only is True
     assert EchoPolicy().probe()["plumbing_only"] is True
 
 
 # -- OllamaPolicy -------------------------------------------------------------------
 
+
 def test_ollama_unreachable_raises_honest_unavailable():
-    p = OllamaPolicy(base_url=UNROUTABLE_OLLAMA, connect_timeout_s=2.0, read_timeout_s=2.0)
+    p = OllamaPolicy(
+        base_url=UNROUTABLE_OLLAMA, connect_timeout_s=2.0, read_timeout_s=2.0
+    )
     with pytest.raises(DottiePolicyUnavailable) as ei:
         p("<|user|>\nhello")
     msg = str(ei.value)
@@ -84,6 +88,7 @@ def test_ollama_env_config(monkeypatch):
 
 
 # -- AvaPolicy ----------------------------------------------------------------------
+
 
 def test_ava_policy_docstring_states_smoke_scale_honesty():
     doc = AvaPolicy.__doc__ or ""
@@ -119,7 +124,9 @@ def test_ava_no_candidates_refuses_honestly(monkeypatch, tmp_path):
 def test_ava_real_smoke_decode_emits_a_turn():
     """REAL decode over the real smoke checkpoint. The output is expected to be noise —
     that is the honest emission of a zero-capability checkpoint, not a defect."""
-    p = AvaPolicy(max_new_tokens=4)  # tiny budget: this is a plumbing check, not capability
+    p = AvaPolicy(
+        max_new_tokens=4
+    )  # tiny budget: this is a plumbing check, not capability
     turn = p("<|user|>\nsay hello")
     assert isinstance(turn, str)
     # A second call reuses the loaded model and stays deterministic (seeded sampling).
@@ -127,6 +134,7 @@ def test_ava_real_smoke_decode_emits_a_turn():
 
 
 # -- factory ------------------------------------------------------------------------
+
 
 def test_get_policy_backends():
     assert get_policy("echo").name == "echo"

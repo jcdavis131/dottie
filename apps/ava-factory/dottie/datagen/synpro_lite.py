@@ -13,7 +13,10 @@ operator enables a dedicated synth_synpro source.
 from __future__ import annotations
 
 import re
-from typing import Iterable
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 _NUM_RE = re.compile(r"[-+]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:[eE][-+]?\d+)?")
 _WS_RE = re.compile(r"\s+")
@@ -47,7 +50,9 @@ def _light_paraphrase(text: str) -> str:
     for pat, repl in _SYNONYMS:
         s = re.sub(pat, repl, s, flags=re.IGNORECASE)
     # Prefer active short clauses: drop leading filler phrases.
-    s = re.sub(r"^(?:It is (?:important|worth noting) that\s+)", "", s, flags=re.IGNORECASE)
+    s = re.sub(
+        r"^(?:It is (?:important|worth noting) that\s+)", "", s, flags=re.IGNORECASE
+    )
     return s.strip()
 
 

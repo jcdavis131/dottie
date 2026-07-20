@@ -13,13 +13,18 @@ Weight: see ``synth_think_code`` in ``configs/sources.yaml``.
 
 from __future__ import annotations
 
-from typing import Any, Iterator
+from typing import TYPE_CHECKING, Any
 
 from dottie.datagen.base import Generator
-from dottie.datagen.code_gen import SAFE_BUILTINS, FORBIDDEN_TOKENS, _run_with_timeout
+from dottie.datagen.code_gen import FORBIDDEN_TOKENS, SAFE_BUILTINS, _run_with_timeout
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
-def _sandbox_eval(code: str, call: str, extras: dict[str, Any] | None = None) -> str | None:
+def _sandbox_eval(
+    code: str, call: str, extras: dict[str, Any] | None = None
+) -> str | None:
     """Exec ``code`` then eval ``call``; return repr(result) or None on failure."""
     if any(tok in code for tok in FORBIDDEN_TOKENS) or any(
         tok in call for tok in FORBIDDEN_TOKENS
@@ -65,12 +70,7 @@ class _ToolVM:
 def _problem_gcd(rng) -> tuple[str, str, str, str, str] | None:
     a = rng.randint(12, 220)
     b = rng.randint(8, 180)
-    code = (
-        "def gcd(x, y):\n"
-        "    while y:\n"
-        "        x, y = y, x % y\n"
-        "    return x\n"
-    )
+    code = "def gcd(x, y):\n    while y:\n        x, y = y, x % y\n    return x\n"
     call = f"gcd({a}, {b})"
     out = _sandbox_eval(code, call)
     if out is None:
@@ -143,11 +143,7 @@ def _problem_is_palindrome_int(rng) -> tuple[str, str, str, str, str] | None:
         n = left * 100 + int(str(left)[::-1])
     else:
         n = rng.randint(1000, 9999)
-    code = (
-        "def is_palindrome_int(n):\n"
-        "    s = str(n)\n"
-        "    return s == s[::-1]\n"
-    )
+    code = "def is_palindrome_int(n):\n    s = str(n)\n    return s == s[::-1]\n"
     call = f"is_palindrome_int({n})"
     out = _sandbox_eval(code, call)
     if out is None:
@@ -167,10 +163,12 @@ def _problem_parallel_tool_fanout(rng) -> tuple[str, str, str, str, str] | None:
         ["a.py", "b.py", "utils.py", "core.py", "notes.txt", "data.csv"], 2
     )
     w1, w2 = rng.randint(11, 90), rng.randint(11, 90)
-    tools = _ToolVM({
-        ("word_count", f1): w1,
-        ("word_count", f2): w2,
-    })
+    tools = _ToolVM(
+        {
+            ("word_count", f1): w1,
+            ("word_count", f2): w2,
+        }
+    )
     code = (
         "def combined_word_count(tools, f1, f2):\n"
         "    # Independent syscalls — safe to schedule in parallel.\n"

@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any, Generator
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -18,10 +18,12 @@ pytest.importorskip("fastapi")
 
 os.environ["AVA_SKIP_ENGINE_BOOT"] = "1"
 
-from fastapi.testclient import TestClient
-
-from server import InterveneReq, app
 from ava import serve_engine as se
+from fastapi.testclient import TestClient
+from server import InterveneReq, app
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 
 class _FakeEngine:
@@ -35,8 +37,14 @@ class _FakeEngine:
             "d_model": 256,
         }
 
-    def generate(self, text: str, max_tokens: int = 64, temperature: float = 0.8,
-                 task_type: str = "chat", **kwargs) -> dict[str, Any]:
+    def generate(
+        self,
+        text: str,
+        max_tokens: int = 64,
+        temperature: float = 0.8,
+        task_type: str = "chat",
+        **kwargs,
+    ) -> dict[str, Any]:
         return {
             "text": f"out:{text[:16]}",
             "tokens": 3,
@@ -57,15 +65,28 @@ class _FakeEngine:
             },
             "route_probs": [0.15, 0.55, 0.10, 0.20],
             "safety_scan": {
-                "leverage": 0.04, "blackmail": 0.01, "threat": 0.0,
-                "scandal": 0.0, "shutdown": 0.0, "fake": 0.0,
-                "secretly": 0.0, "trick": 0.0, "unsafe": 0.0, "dangerous": 0.0,
+                "leverage": 0.04,
+                "blackmail": 0.01,
+                "threat": 0.0,
+                "scandal": 0.0,
+                "shutdown": 0.0,
+                "fake": 0.0,
+                "secretly": 0.0,
+                "trick": 0.0,
+                "unsafe": 0.0,
+                "dangerous": 0.0,
                 "total": 0.05,
             },
         }
 
-    def intervene(self, text: str, from_concept: str, to_concept: str,
-                  space: str = "system2", **kwargs) -> dict[str, Any]:
+    def intervene(
+        self,
+        text: str,
+        from_concept: str,
+        to_concept: str,
+        space: str = "system2",
+        **kwargs,
+    ) -> dict[str, Any]:
         return {
             "baseline_text": "8",
             "intervened_text": "6",
@@ -104,6 +125,7 @@ def client(monkeypatch):
 def test_import_server_succeeds():
     """Regression: Optional was used without import → NameError at import time."""
     import server as srv
+
     assert hasattr(srv, "app")
     assert hasattr(srv, "InterveneReq")
 
@@ -170,7 +192,7 @@ def test_generate_ok(client):
     r = client.post("/generate", json={"text": "hello", "max_tokens": 8})
     assert r.status_code == 200
     body = r.json()
-    assert "text" in body and body["text"]
+    assert body.get("text")
     assert "tokens" in body and "route_probs" in body and "latency_ms" in body
 
 
@@ -186,7 +208,9 @@ def test_chat_ok(client):
     assert "content" in body and "tokens" in body and "latency_ms" in body
     # _FakeEngine.generate() echoes the formatted prompt back — confirms the
     # <|user|>/<|assistant|> convention actually reached ServeEngine.generate().
-    assert "<|user|>hi<|assistant|>" in body["content"] or body["content"].startswith("out:")
+    assert "<|user|>hi<|assistant|>" in body["content"] or body["content"].startswith(
+        "out:"
+    )
 
 
 def test_chat_truncates_at_next_turn(client, monkeypatch):
@@ -194,15 +218,21 @@ def test_chat_truncates_at_next_turn(client, monkeypatch):
     can ramble into a fabricated follow-up turn — /chat must cut that off."""
 
     class _RamblingEngine(_FakeEngine):
-        def generate(self, text, max_tokens=64, temperature=0.8, task_type="chat", **kwargs):
+        def generate(
+            self, text, max_tokens=64, temperature=0.8, task_type="chat", **kwargs
+        ):
             return {
                 "text": "the answer is 4<|user|>and another question<|assistant|>ignored",
-                "tokens": 12, "route_probs": [], "latency_ms": 1.0,
+                "tokens": 12,
+                "route_probs": [],
+                "latency_ms": 1.0,
             }
 
     fake = _RamblingEngine()
     monkeypatch.setattr("server.get_engine", lambda: fake)
-    r = client.post("/chat", json={"messages": [{"role": "user", "content": "what is 2+2"}]})
+    r = client.post(
+        "/chat", json={"messages": [{"role": "user", "content": "what is 2+2"}]}
+    )
     assert r.status_code == 200
     assert r.json()["content"] == "the answer is 4"
 
@@ -216,7 +246,11 @@ def test_inspect_ok(client):
 
 
 def test_eval_branch_serves_real_json(client):
-    path = Path(__file__).resolve().parent.parent / "reports" / "branch_eval_results_real.json"
+    path = (
+        Path(__file__).resolve().parent.parent
+        / "reports"
+        / "branch_eval_results_real.json"
+    )
     if not path.is_file():
         pytest.skip("reports/branch_eval_results_real.json missing")
     r = client.get("/jspace/eval_branch")
@@ -267,8 +301,15 @@ def test_webapp_shell_served(client):
     assert "Dottie" in r.text
     assert "js/app.js" in r.text
     for asset in (
-        "app.css", "js/app.js", "js/api.js", "js/store.js", "js/state.js",
-        "js/chart.js", "js/dom.js", "js/views/chat.js", "js/views/ops.js",
+        "app.css",
+        "js/app.js",
+        "js/api.js",
+        "js/store.js",
+        "js/state.js",
+        "js/chart.js",
+        "js/dom.js",
+        "js/views/chat.js",
+        "js/views/ops.js",
         "js/views/settings.js",
     ):
         ar = client.get(f"/app/{asset}")
@@ -334,7 +375,13 @@ def test_hot_reload_skips_tmp_and_reloads_under_lock(tmp_path, monkeypatch):
         m.embed.weight[0, 0] += 1.0
     torch.save({"model": m.state_dict()}, p2)
 
-    tok = Path(__file__).resolve().parent.parent / "data" / "nano" / "tokenizer" / "ava_nano_bpe.json"
+    tok = (
+        Path(__file__).resolve().parent.parent
+        / "data"
+        / "nano"
+        / "tokenizer"
+        / "ava_nano_bpe.json"
+    )
     if not tok.is_file():
         pytest.skip("tokenizer missing")
 

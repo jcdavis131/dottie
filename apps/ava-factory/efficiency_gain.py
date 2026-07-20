@@ -43,7 +43,9 @@ class PowerLawFit:
     b: float
     floor: float
     n_points: int
-    min_loss_seen: float  # smallest (floor-adjusted) baseline loss — extrapolation boundary
+    min_loss_seen: (
+        float  # smallest (floor-adjusted) baseline loss — extrapolation boundary
+    )
 
     def loss_at(self, x: float) -> float:
         return self.a * x ** (-self.b) + self.floor
@@ -70,8 +72,10 @@ def fit_power_law(points: list[tuple[float, float]], floor: float = 0.0) -> Powe
     mx, my = sum(lx) / n, sum(ly) / n
     sxx = sum((v - mx) ** 2 for v in lx)
     if sxx == 0.0:
-        raise ValueError("all baseline points share one compute value; cannot fit a curve")
-    sxy = sum((vx - mx) * (vy - my) for vx, vy in zip(lx, ly))
+        raise ValueError(
+            "all baseline points share one compute value; cannot fit a curve"
+        )
+    sxy = sum((vx - mx) * (vy - my) for vx, vy in zip(lx, ly, strict=False))
     slope = sxy / sxx  # = -b
     b = -slope
     if b <= 0.0:
@@ -80,8 +84,13 @@ def fit_power_law(points: list[tuple[float, float]], floor: float = 0.0) -> Powe
             "check the data before trusting any EG from it"
         )
     a = math.exp(my - slope * mx)
-    return PowerLawFit(a=a, b=b, floor=floor, n_points=len(usable),
-                       min_loss_seen=min(y for _, y in usable) + floor)
+    return PowerLawFit(
+        a=a,
+        b=b,
+        floor=floor,
+        n_points=len(usable),
+        min_loss_seen=min(y for _, y in usable) + floor,
+    )
 
 
 @dataclass(frozen=True)
@@ -94,8 +103,12 @@ class EGResult:
     extrapolated: bool  # candidate loss below any baseline point — trust with care
 
 
-def efficiency_gain(fit: PowerLawFit, candidate_compute: float, candidate_loss: float,
-                    label: str = "candidate") -> EGResult:
+def efficiency_gain(
+    fit: PowerLawFit,
+    candidate_compute: float,
+    candidate_loss: float,
+    label: str = "candidate",
+) -> EGResult:
     if candidate_compute <= 0.0:
         raise ValueError("candidate compute must be > 0")
     base_c = fit.compute_to_reach(candidate_loss)
@@ -116,7 +129,11 @@ def eg_trend(rung_results: list[tuple[str, EGResult]]) -> dict:
     the worst — a candidate that only wins small is exactly the trap the finding warns about.
     """
     if len(rung_results) < 2:
-        return {"verdict": "insufficient", "reason": "need >= 2 ladder rungs", "rungs": len(rung_results)}
+        return {
+            "verdict": "insufficient",
+            "reason": "need >= 2 ladder rungs",
+            "rungs": len(rung_results),
+        }
     egs = [r.eg for _, r in rung_results]
     all_positive = all(e > 1.0 for e in egs)
     largest_not_worst = egs[-1] >= min(egs[:-1])
@@ -132,7 +149,7 @@ def eg_trend(rung_results: list[tuple[str, EGResult]]) -> dict:
 
 def _read_jsonl(path: str, x_key: str, y_key: str) -> list[dict]:
     rows = []
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         for i, line in enumerate(f):
             line = line.strip()
             if not line:
@@ -146,18 +163,39 @@ def _read_jsonl(path: str, x_key: str, y_key: str) -> list[dict]:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--baseline", required=True, help="JSONL of baseline runs (the scaling curve)")
-    p.add_argument("--candidate", required=True, help="JSONL of candidate runs to score")
-    p.add_argument("--x-key", default="flops", help="compute field: flops for EG_FLOPs, seconds for EG_Time")
-    p.add_argument("--y-key", default="loss", help="quality field (lower is better), e.g. loss or val_bpb")
-    p.add_argument("--floor", type=float, default=0.0, help="irreducible loss floor, subtracted before fit")
+    p.add_argument(
+        "--baseline", required=True, help="JSONL of baseline runs (the scaling curve)"
+    )
+    p.add_argument(
+        "--candidate", required=True, help="JSONL of candidate runs to score"
+    )
+    p.add_argument(
+        "--x-key",
+        default="flops",
+        help="compute field: flops for EG_FLOPs, seconds for EG_Time",
+    )
+    p.add_argument(
+        "--y-key",
+        default="loss",
+        help="quality field (lower is better), e.g. loss or val_bpb",
+    )
+    p.add_argument(
+        "--floor",
+        type=float,
+        default=0.0,
+        help="irreducible loss floor, subtracted before fit",
+    )
     args = p.parse_args(argv)
 
     base = _read_jsonl(args.baseline, args.x_key, args.y_key)
     cand = _read_jsonl(args.candidate, args.x_key, args.y_key)
-    fit = fit_power_law([(r[args.x_key], r[args.y_key]) for r in base], floor=args.floor)
+    fit = fit_power_law(
+        [(r[args.x_key], r[args.y_key]) for r in base], floor=args.floor
+    )
     results = [
-        efficiency_gain(fit, r[args.x_key], r[args.y_key], label=str(r.get("label", f"row{i}")))
+        efficiency_gain(
+            fit, r[args.x_key], r[args.y_key], label=str(r.get("label", f"row{i}"))
+        )
         for i, r in enumerate(cand)
     ]
     out = {

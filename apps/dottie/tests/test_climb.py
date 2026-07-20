@@ -11,7 +11,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 import dottie.engine as engine_mod
 from dottie import climb, resolve
 from dottie.climb import ClimbConfig
@@ -26,15 +25,20 @@ APP_ROOT = Path(__file__).resolve().parent.parent  # apps/dottie
 #     honestly; flywheel export + mint actually run over the new traces.
 # ---------------------------------------------------------------------------
 
+
 def test_echo_mixed_iteration_measured_and_logged(data_dir):
-    rec = climb.run_iteration(ClimbConfig(families="mixed", n=5, backend="echo"), data_dir)
+    rec = climb.run_iteration(
+        ClimbConfig(families="mixed", n=5, backend="echo"), data_dir
+    )
     sb = rec["scoreboard"]
     assert sb["overall"]["n"] == 5
-    assert sb["overall"]["success_rate"] == 0.0        # every verifier honestly scored echo 0
-    assert set(sb["per_family"]) == set(FAMILIES)      # mixed n=5 covered all five families
+    assert sb["overall"]["success_rate"] == 0.0  # every verifier honestly scored echo 0
+    assert set(sb["per_family"]) == set(FAMILIES)  # mixed n=5 covered all five families
     for fam in FAMILIES:
         assert sb["per_family"][fam] == {
-            "n": 1, "success_rate": 0.0, "mean_r_task": 0.0,
+            "n": 1,
+            "success_rate": 0.0,
+            "mean_r_task": 0.0,
             "mean_rl_return": sb["per_family"][fam]["mean_rl_return"],
         }
     # Per-task rows are the real measured values, not summaries of nothing.
@@ -43,9 +47,9 @@ def test_echo_mixed_iteration_measured_and_logged(data_dir):
     assert all(isinstance(t["rl_return"], float) for t in rec["tasks"])
     assert all(t["reached_final"] for t in rec["tasks"])
     assert sb["cost"]["wall_s_total"] > 0.0
-    assert sb["cost"]["steps_total"] == 10             # echo: exactly 2 real code steps/task
+    assert sb["cost"]["steps_total"] == 10  # echo: exactly 2 real code steps/task
     assert sb["cost"]["chars_code_total"] > 0
-    assert "NOT token" in sb["cost"]["token_note"]     # cost proxy honestly labeled
+    assert "NOT token" in sb["cost"]["token_note"]  # cost proxy honestly labeled
 
     # Flywheel stages REALLY ran on the traces this iteration produced.
     exp = rec["flywheel"]["export_rft"]
@@ -56,14 +60,17 @@ def test_echo_mixed_iteration_measured_and_logged(data_dir):
     assert mint["status"] == "ok"
     assert mint["events_captured"] == 5
     assert mint["stats"]["minted"] >= 1
-    assert list(Path(mint["store_dir"]).glob("*.jsonl")), "minted shards must be on disk"
+    assert list(Path(mint["store_dir"]).glob("*.jsonl")), (
+        "minted shards must be on disk"
+    )
 
     # Not requested -> honestly recorded as skipped, never invented.
     assert rec["evaluate"] is None and rec["train_step"] is None
 
     # Identity: plumbing backend labeled; git SHA really resolved (this repo exists).
     assert rec["policy_identity"] == {
-        "backend": "echo", "plumbing_only": True,
+        "backend": "echo",
+        "plumbing_only": True,
         "note": "deterministic CI plumbing policy; never a capability claim",
     }
     assert re.fullmatch(r"[0-9a-f]{40}", rec["git"]["sha"])
@@ -81,20 +88,52 @@ def test_climb_log_jsonl_schema(data_dir):
     assert len(lines) == 1
     row = json.loads(lines[0])
     assert {
-        "schema_version", "iteration_id", "ts", "config", "git", "policy_identity",
-        "tasks", "scoreboard", "flywheel", "evaluate", "train_step", "iteration_wall_s",
+        "schema_version",
+        "iteration_id",
+        "ts",
+        "config",
+        "git",
+        "policy_identity",
+        "tasks",
+        "scoreboard",
+        "flywheel",
+        "evaluate",
+        "train_step",
+        "iteration_wall_s",
     } <= set(row)
     assert row["schema_version"] == climb.CLIMB_SCHEMA_VERSION
     assert row["config"] == {
-        "families": "compute", "n": 2, "seed_base": 0, "backend": "echo", "max_steps": 8,
-        "use_skills": False, "evaluate": None, "train_step": False, "compute": None,
+        "families": "compute",
+        "n": 2,
+        "seed_base": 0,
+        "backend": "echo",
+        "max_steps": 8,
+        "use_skills": False,
+        "evaluate": None,
+        "train_step": False,
+        "compute": None,
         "tolerance": 0.05,
     }
     for t in row["tasks"]:
-        assert {"task_id", "family", "seed", "r_task", "rl_return", "r_exec", "r_codeuse",
-                "terminated", "reached_final", "n_steps", "wall_s", "sandbox_ms",
-                "chars_code", "chars_final"} <= set(t)
-    assert {"overall", "per_family", "cost", "success_definition"} <= set(row["scoreboard"])
+        assert {
+            "task_id",
+            "family",
+            "seed",
+            "r_task",
+            "rl_return",
+            "r_exec",
+            "r_codeuse",
+            "terminated",
+            "reached_final",
+            "n_steps",
+            "wall_s",
+            "sandbox_ms",
+            "chars_code",
+            "chars_final",
+        } <= set(t)
+    assert {"overall", "per_family", "cost", "success_definition"} <= set(
+        row["scoreboard"]
+    )
     assert "sha" in row["git"]
 
 
@@ -102,6 +141,7 @@ def test_climb_log_jsonl_schema(data_dir):
 # (2) Scripted-solver iteration (labeled plumbing brain, REAL sandbox execution)
 #     -> nonzero success -> paired promote verdict against the echo iteration.
 # ---------------------------------------------------------------------------
+
 
 class _ComputeSolver:
     """Scripted compute-family solver (the tasks tests' pattern): one real code block built
@@ -118,10 +158,12 @@ class _ComputeSolver:
         self._step += 1
         if self._step == 1:
             nums = re.search(r"Data list: (\[[^\]]*\])", transcript).group(1)
-            return ("```python\n"
-                    f"nums = {nums}\n"
-                    "sum(x * x for x in nums if x % 2 == 0) - "
-                    "sum(x for x in nums if x % 2 == 1)\n```")
+            return (
+                "```python\n"
+                f"nums = {nums}\n"
+                "sum(x * x for x in nums if x % 2 == 0) - "
+                "sum(x for x in nums if x % 2 == 1)\n```"
+            )
         if self._step == 2:
             got = re.findall(r"=> (\S+)", transcript)[-1].strip("'\"")
             return f"FINAL: computed in the sandbox; the result is {got}."
@@ -130,10 +172,14 @@ class _ComputeSolver:
 
 def test_scripted_iteration_promotes_over_echo_paired(data_dir, monkeypatch):
     echo_rec = climb.run_iteration(
-        ClimbConfig(families="compute", n=3, backend="echo"), data_dir)
-    monkeypatch.setattr(engine_mod, "get_policy", lambda backend, **kw: _ComputeSolver())
+        ClimbConfig(families="compute", n=3, backend="echo"), data_dir
+    )
+    monkeypatch.setattr(
+        engine_mod, "get_policy", lambda backend, **kw: _ComputeSolver()
+    )
     scripted_rec = climb.run_iteration(
-        ClimbConfig(families="compute", n=3, backend="scripted"), data_dir)
+        ClimbConfig(families="compute", n=3, backend="scripted"), data_dir
+    )
 
     assert scripted_rec["scoreboard"]["overall"]["success_rate"] == 1.0  # real solves
     assert all(t["r_task"] == 1.0 for t in scripted_rec["tasks"])
@@ -163,12 +209,19 @@ def test_scripted_iteration_promotes_over_echo_paired(data_dir, monkeypatch):
 #     the inputs are labeled synthetic, the gate never sees them as capability claims).
 # ---------------------------------------------------------------------------
 
+
 def _rec(family_scores, *, seed_base=0, families="mixed", iteration_id="synth"):
     tasks = []
     for fam, scores in family_scores.items():
         for i, s in enumerate(scores):
-            tasks.append({"family": fam, "seed": seed_base + i,
-                          "r_task": float(s), "rl_return": float(s)})
+            tasks.append(
+                {
+                    "family": fam,
+                    "seed": seed_base + i,
+                    "r_task": float(s),
+                    "rl_return": float(s),
+                }
+            )
     return {
         "iteration_id": iteration_id,
         "config": {"families": families, "n": len(tasks), "seed_base": seed_base},
@@ -179,8 +232,8 @@ def _rec(family_scores, *, seed_base=0, families="mixed", iteration_id="synth"):
 
 def test_win_overall_lose_family_is_hold():
     """The rank-invariance trap: overall improves (+0.25) but one family collapses -> hold."""
-    prev = _rec({"compute": [1, 0, 0], "extract": [1]})       # overall 0.5
-    curr = _rec({"compute": [1, 1, 1], "extract": [0]})       # overall 0.75, extract -1.0
+    prev = _rec({"compute": [1, 0, 0], "extract": [1]})  # overall 0.5
+    curr = _rec({"compute": [1, 1, 1], "extract": [0]})  # overall 0.75, extract -1.0
     v = climb.compare_iterations(prev, curr, tolerance=0.05)
     assert v["overall"]["delta"] == 0.25
     assert v["verdict"] == "hold"
@@ -222,17 +275,22 @@ def test_insufficient_verdicts_never_promote_or_hold():
 # EG trend — reuses the factory's success->error transform + eg_trend ladder rule.
 # ---------------------------------------------------------------------------
 
+
 def _rec_at(compute, success_rate, iteration_id="synth"):
-    return {"iteration_id": iteration_id,
-            "config": {"families": "mixed", "n": 4, "seed_base": 0, "compute": compute},
-            "scoreboard": {"overall": {"success_rate": success_rate}}}
+    return {
+        "iteration_id": iteration_id,
+        "config": {"families": "mixed", "n": 4, "seed_base": 0, "compute": compute},
+        "scoreboard": {"overall": {"success_rate": success_rate}},
+    }
 
 
 BASELINE = [(1.0, 0.2), (2.0, 0.35), (4.0, 0.5)]  # synthetic baseline curve (math test)
 
 
 def test_eg_trend_insufficient_without_compute_labels(data_dir):
-    rec = climb.run_iteration(ClimbConfig(families="compute", n=1, backend="echo"), data_dir)
+    rec = climb.run_iteration(
+        ClimbConfig(families="compute", n=1, backend="echo"), data_dir
+    )
     v = climb.eg_trend_verdict([rec], BASELINE)
     assert v["verdict"] == "insufficient" and "compute points" in v["reason"]
     # Two iterations at the SAME compute point are still one point — insufficient.
@@ -270,12 +328,15 @@ def test_eg_trend_undefined_math_is_insufficient():
 # Honest degradation: missing siblings / checkpoints are recorded, not faked.
 # ---------------------------------------------------------------------------
 
-def test_missing_prereqs_recorded_as_unavailable_not_fabricated(data_dir, monkeypatch,
-                                                               tmp_path):
-    monkeypatch.setenv("DOTTIE_ROOT", str(tmp_path))          # no siblings, not a git repo
-    monkeypatch.setattr(resolve, "ava_ckpt_candidates", lambda: [])   # no trainee ckpt
+
+def test_missing_prereqs_recorded_as_unavailable_not_fabricated(
+    data_dir, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("DOTTIE_ROOT", str(tmp_path))  # no siblings, not a git repo
+    monkeypatch.setattr(resolve, "ava_ckpt_candidates", lambda: [])  # no trainee ckpt
     rec = climb.run_iteration(
-        ClimbConfig(families="compute", n=1, backend="echo", train_step=True), data_dir)
+        ClimbConfig(families="compute", n=1, backend="echo", train_step=True), data_dir
+    )
     # The tasks still ran for real (factory resolved via its default checkout)...
     assert rec["scoreboard"]["overall"]["n"] == 1
     # ...while every absent prerequisite is an honest recorded refusal with the true reason.
@@ -289,11 +350,12 @@ def test_missing_prereqs_recorded_as_unavailable_not_fabricated(data_dir, monkey
 
 def test_evaluate_mock_passthrough_runs_real_harness(data_dir):
     rec = climb.run_iteration(
-        ClimbConfig(families="compute", n=1, backend="echo", evaluate="mock"), data_dir)
+        ClimbConfig(families="compute", n=1, backend="echo", evaluate="mock"), data_dir
+    )
     ev = rec["evaluate"]
     assert ev["status"] == "ok"
     assert ev["meta"]["mode"] == "mock"
-    assert ev["meta"]["total"] > 0                    # the harness's own real report meta
+    assert ev["meta"]["total"] > 0  # the harness's own real report meta
     assert Path(ev["report_json"]).exists()
 
 
@@ -301,22 +363,45 @@ def test_evaluate_mock_passthrough_runs_real_harness(data_dir):
 # (5) CLI smoke — subprocess, echo backend, tiny n.
 # ---------------------------------------------------------------------------
 
+
 def test_cli_climb_smoke_and_report(tmp_path):
     dd = tmp_path / "dd"
     p = subprocess.run(
-        [sys.executable, "-m", "dottie", "climb", "--families", "compute", "--n", "2",
-         "--backend", "echo", "--iterations", "2", "--data-dir", str(dd)],
-        cwd=APP_ROOT, capture_output=True, text=True, timeout=300)
+        [
+            sys.executable,
+            "-m",
+            "dottie",
+            "climb",
+            "--families",
+            "compute",
+            "--n",
+            "2",
+            "--backend",
+            "echo",
+            "--iterations",
+            "2",
+            "--data-dir",
+            str(dd),
+        ],
+        cwd=APP_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
     assert p.returncode == 0, p.stderr
     assert "climb iteration" in p.stdout and "OVERALL" in p.stdout
-    assert "plumbing_only" in p.stdout                # echo labeled in the scoreboard header
+    assert "plumbing_only" in p.stdout  # echo labeled in the scoreboard header
     # Echo vs echo on the same seeds: no improvement -> honest HOLD, never a fake promote.
     assert "verdict vs previous: HOLD" in p.stdout
     assert len(climb.read_log(dd)) == 2
 
     r = subprocess.run(
         [sys.executable, "-m", "dottie", "climb-report", "--data-dir", str(dd)],
-        cwd=APP_ROOT, capture_output=True, text=True, timeout=60)
+        cwd=APP_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
     assert r.returncode == 0, r.stderr
     assert "echo" in r.stdout and "HOLD" in r.stdout
     assert "compute" in r.stdout
@@ -329,13 +414,25 @@ def test_cli_climb_report_empty_log_is_honest(tmp_path, capsys):
     assert "no climb iterations recorded" in capsys.readouterr().out
 
 
-def test_cli_climb_exits_2_on_backend_unavailable_not_on_low_scores(tmp_path, monkeypatch,
-                                                                    capsys):
+def test_cli_climb_exits_2_on_backend_unavailable_not_on_low_scores(
+    tmp_path, monkeypatch, capsys
+):
     from dottie.__main__ import main
 
     monkeypatch.setenv("DOTTIE_OLLAMA_URL", UNROUTABLE_OLLAMA)
-    rc = main(["climb", "--families", "compute", "--n", "1", "--backend", "ollama",
-               "--data-dir", str(tmp_path / "d")])
-    assert rc == 2                                    # infrastructure failure -> nonzero
+    rc = main(
+        [
+            "climb",
+            "--families",
+            "compute",
+            "--n",
+            "1",
+            "--backend",
+            "ollama",
+            "--data-dir",
+            str(tmp_path / "d"),
+        ]
+    )
+    assert rc == 2  # infrastructure failure -> nonzero
     assert "unavailable" in capsys.readouterr().err
-    assert climb.read_log(tmp_path / "d") == []       # no iteration record was invented
+    assert climb.read_log(tmp_path / "d") == []  # no iteration record was invented

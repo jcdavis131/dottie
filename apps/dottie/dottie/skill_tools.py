@@ -39,13 +39,16 @@ from __future__ import annotations
 import ast
 import inspect
 import sys
-from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any
 
 from dottie import resolve
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from pathlib import Path
+
 # Display signatures for prompt composition (what the policy is told it can call).
-BRIDGED_TOOL_SIGNATURES: Dict[str, str] = {
+BRIDGED_TOOL_SIGNATURES: dict[str, str] = {
     "route_query": "route_query(text)",
     "safety_scan": "safety_scan(text)",
     "logic_truth_table": "logic_truth_table(op)",
@@ -102,14 +105,16 @@ def _skill_module(name: str):
 # (1) Parent-side pre-task call: real memory-router recall
 # ---------------------------------------------------------------------------
 
-def memory_recall(instruction: str, *, store_dir: Optional[Path] = None,
-                  limit: int = 3) -> Dict[str, Any]:
+
+def memory_recall(
+    instruction: str, *, store_dir: Path | None = None, limit: int = 3
+) -> dict[str, Any]:
     """Run the REAL memory-router skill in the parent process and return a compact recall
     payload. Reads the real minted-shard store (``store_dir``, e.g. the engine's
     ``data_dir/memory_shards`` written by the flywheel's mint step). Any recall error the
     skill surfaces is passed through, never hidden."""
     loader = get_loader()
-    kwargs: Dict[str, Any] = {"instruction": instruction, "memory_limit": int(limit)}
+    kwargs: dict[str, Any] = {"instruction": instruction, "memory_limit": int(limit)}
     if store_dir is not None:
         kwargs["memory_store_dir"] = str(store_dir)
     try:
@@ -123,7 +128,9 @@ def memory_recall(instruction: str, *, store_dir: Optional[Path] = None,
         "skill": "memory-router",
         "recalled": list(measured.get("recalled_memories", [])),
         "routed_branch": measured.get("branch"),
-        "tier_b_scope": (measured.get("shardmemo", {}).get("tier_b", {}) or {}).get("scope"),
+        "tier_b_scope": (measured.get("shardmemo", {}).get("tier_b", {}) or {}).get(
+            "scope"
+        ),
         "store_dir": str(store_dir) if store_dir is not None else None,
         "note": "real parent-side memory-router run; recall reads the minted shard store",
     }
@@ -132,7 +139,7 @@ def memory_recall(instruction: str, *, store_dir: Optional[Path] = None,
     return out
 
 
-def render_recall_context(recall: Dict[str, Any]) -> str:
+def render_recall_context(recall: dict[str, Any]) -> str:
     """A clearly labeled prompt block carrying the recall result (real data or an honest
     'nothing matched')."""
     lines = ["[memory recall — real memory-router output, computed before this task]"]
@@ -153,17 +160,19 @@ def render_recall_context(recall: Dict[str, Any]) -> str:
 # (3) Snapshot data tool: real recall frozen as a sandbox tool
 # ---------------------------------------------------------------------------
 
-def recall_snapshot_source(recalled: List[Dict[str, Any]]) -> str:
+
+def recall_snapshot_source(recalled: list[dict[str, Any]]) -> str:
     """Sandbox tool source ``recalled_memories()`` returning the REAL parent-side recall,
     frozen as a literal. Guard: the literal must round-trip through ``ast.literal_eval`` so
     nothing non-literal (and nothing executable) can be smuggled into the sandbox."""
-    data = [
-        {str(k): str(v) for k, v in (m or {}).items()}
-        for m in (recalled or [])
-    ]
+    data = [{str(k): str(v) for k, v in (m or {}).items()} for m in (recalled or [])]
     literal = repr(data)
-    if ast.literal_eval(literal) != data:  # pragma: no cover - repr of str dicts round-trips
-        raise DottieSkillsUnavailable("recall snapshot does not round-trip as a literal")
+    if (
+        ast.literal_eval(literal) != data
+    ):  # pragma: no cover - repr of str dicts round-trips
+        raise DottieSkillsUnavailable(
+            "recall snapshot does not round-trip as a literal"
+        )
     return (
         "def recalled_memories():\n"
         "    # snapshot of a REAL parent-side memory-router recall, frozen at task start\n"
@@ -175,15 +184,19 @@ def recall_snapshot_source(recalled: List[Dict[str, Any]]) -> str:
 # (2) Self-contained sandbox tools extracted from the light pure-python skills
 # ---------------------------------------------------------------------------
 
-def _ast_assign_source(module) -> Dict[str, str]:
+
+def _ast_assign_source(module) -> dict[str, str]:
     """Map top-level ``NAME = ...`` assignments to their exact source segments (used for
     constants whose values don't repr round-trip, e.g. dicts of lambdas)."""
     src = inspect.getsource(module)
     tree = ast.parse(src)
-    out: Dict[str, str] = {}
+    out: dict[str, str] = {}
     for node in tree.body:
-        if isinstance(node, ast.Assign) and len(node.targets) == 1 \
-                and isinstance(node.targets[0], ast.Name):
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+        ):
             seg = ast.get_source_segment(src, node)
             if seg:
                 out[node.targets[0].id] = seg
@@ -193,68 +206,86 @@ def _ast_assign_source(module) -> Dict[str, str]:
 def _compose_route_query() -> str:
     mod = _skill_module("memory-router")
     fn_src = inspect.getsource(mod._shardmemo_scope_before_routing)
-    return "\n".join([
-        "from typing import Any, Dict",
-        f"TIER_A_SAFETY_KEYWORDS = {mod.TIER_A_SAFETY_KEYWORDS!r}",
-        f"TIER_B_MEMORY_SIGNALS = {mod.TIER_B_MEMORY_SIGNALS!r}",
-        f"TIER_C_DOMAIN_KEYWORDS = {mod.TIER_C_DOMAIN_KEYWORDS!r}",
-        fn_src,
-        "def route_query(text):",
-        "    return _shardmemo_scope_before_routing(text)",
-        "",
-    ])
+    return "\n".join(
+        [
+            "from typing import Any, Dict",
+            f"TIER_A_SAFETY_KEYWORDS = {mod.TIER_A_SAFETY_KEYWORDS!r}",
+            f"TIER_B_MEMORY_SIGNALS = {mod.TIER_B_MEMORY_SIGNALS!r}",
+            f"TIER_C_DOMAIN_KEYWORDS = {mod.TIER_C_DOMAIN_KEYWORDS!r}",
+            fn_src,
+            "def route_query(text):",
+            "    return _shardmemo_scope_before_routing(text)",
+            "",
+        ]
+    )
 
 
 def _compose_safety_scan() -> str:
     mod = _skill_module("safety-scanner")
     fn_src = inspect.getsource(mod._regex_safety_score)
-    return "\n".join([
-        "import re",
-        f"SAFETY_PATTERNS = {mod.SAFETY_PATTERNS!r}",
-        fn_src,
-        "def safety_scan(text):",
-        "    return _regex_safety_score(text)",
-        "",
-    ])
+    return "\n".join(
+        [
+            "import re",
+            f"SAFETY_PATTERNS = {mod.SAFETY_PATTERNS!r}",
+            fn_src,
+            "def safety_scan(text):",
+            "    return _regex_safety_score(text)",
+            "",
+        ]
+    )
 
 
 def _compose_logic_truth_table() -> str:
     mod = _skill_module("logic-prover")
     assigns = _ast_assign_source(mod)
     if "OPS" not in assigns:
-        raise DottieSkillsUnavailable("logic-prover OPS assignment not found for extraction")
+        raise DottieSkillsUnavailable(
+            "logic-prover OPS assignment not found for extraction"
+        )
     fn_src = inspect.getsource(mod.gen_truth_tables)
-    return "\n".join([
-        "from typing import Any, Dict, List",
-        assigns["OPS"],
-        fn_src,
-        "def logic_truth_table(op):",
-        "    for rec in gen_truth_tables(len(OPS)):",
-        "        if rec['expr'] == 'P %s Q' % op:",
-        "            return rec",
-        "    return None",
-        "",
-    ])
+    return "\n".join(
+        [
+            "from typing import Any, Dict, List",
+            assigns["OPS"],
+            fn_src,
+            "def logic_truth_table(op):",
+            "    for rec in gen_truth_tables(len(OPS)):",
+            "        if rec['expr'] == 'P %s Q' % op:",
+            "            return rec",
+            "    return None",
+            "",
+        ]
+    )
 
 
 def _exec_tool_source(name: str, src: str) -> Callable:
     """Exec a composed tool source exactly the way the sandbox worker does and return the
     named callable (used only for the parent-side parity check)."""
-    ns: Dict[str, Any] = {}
+    ns: dict[str, Any] = {}
     exec(src, ns)  # noqa: S102 - parity harness over code we just composed from real skills
     fn = ns.get(name)
     if not callable(fn):
-        raise DottieSkillsUnavailable(f"composed source did not define callable {name!r}")
+        raise DottieSkillsUnavailable(
+            f"composed source did not define callable {name!r}"
+        )
     return fn
 
 
-_ROUTE_PROBES = ("plan the deadline then schedule a review",
-                 "explain this python function", "hello there", "threat leverage expose")
-_SCAN_PROBES = ("hello please and thank you", "blackmail threat if you don't pay I will",
-                "expose your secret you'll regret it", "")
+_ROUTE_PROBES = (
+    "plan the deadline then schedule a review",
+    "explain this python function",
+    "hello there",
+    "threat leverage expose",
+)
+_SCAN_PROBES = (
+    "hello please and thank you",
+    "blackmail threat if you don't pay I will",
+    "expose your secret you'll regret it",
+    "",
+)
 
 
-def _parity_check(sources: Dict[str, str]) -> None:
+def _parity_check(sources: dict[str, str]) -> None:
     """Parent-side proof that each composed tool computes EXACTLY what the live skill
     computes. Raises on any mismatch — a drifted bridge never ships."""
     router = _skill_module("memory-router")
@@ -285,7 +316,7 @@ def _parity_check(sources: Dict[str, str]) -> None:
             )
 
 
-def sandbox_skill_tool_sources() -> Dict[str, str]:
+def sandbox_skill_tool_sources() -> dict[str, str]:
     """The bridged sandbox tools: name -> self-contained stdlib-only source string, extracted
     from the live skill modules and parity-checked (see module docstring, mode 2)."""
     sources = {
@@ -297,7 +328,7 @@ def sandbox_skill_tool_sources() -> Dict[str, str]:
     return sources
 
 
-def probe() -> Dict[str, Any]:
+def probe() -> dict[str, Any]:
     """Real availability probe for the bridge (no fabrication)."""
     try:
         loader = get_loader()
@@ -306,7 +337,14 @@ def probe() -> Dict[str, Any]:
     try:
         tools = sandbox_skill_tool_sources()
     except DottieSkillsUnavailable as e:
-        return {"available": False, "skills_found": sorted(loader.skills), "error": str(e)}
-    return {"available": True, "skills_found": sorted(loader.skills),
-            "bridged_tools": sorted(tools),
-            "note": "bridged tools are extracted from live skills and parity-checked"}
+        return {
+            "available": False,
+            "skills_found": sorted(loader.skills),
+            "error": str(e),
+        }
+    return {
+        "available": True,
+        "skills_found": sorted(loader.skills),
+        "bridged_tools": sorted(tools),
+        "note": "bridged tools are extracted from live skills and parity-checked",
+    }

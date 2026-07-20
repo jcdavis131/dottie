@@ -59,7 +59,7 @@ import os
 import sys
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING
 
 import torch
 
@@ -67,12 +67,14 @@ _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from ava.rl.codeact_loop import run_code_act  # noqa: E402
-from ava.rl.codeact_policy import TorchModelPolicy  # noqa: E402
-from ava.rl.codeact_rewards import codeact_return  # noqa: E402
-from ava.rl.grpo import EntropyThermostat, group_advantages  # noqa: E402
-from ava.rl.grpo_torch import GRPOStepStats, TorchGRPOStep  # noqa: E402
+from ava.rl.codeact_loop import run_code_act
+from ava.rl.codeact_policy import TorchModelPolicy
+from ava.rl.codeact_rewards import codeact_return
+from ava.rl.grpo import EntropyThermostat, group_advantages
+from ava.rl.grpo_torch import GRPOStepStats, TorchGRPOStep
 
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Recording policy: TorchModelPolicy + capture of (prompt_ids, sampled ids, old log-probs)
@@ -88,10 +90,10 @@ class RecordingTorchPolicy(TorchModelPolicy):
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.records: List[Dict[str, list]] = []
-        self._cur: Optional[Dict[str, list]] = None
+        self.records: list[dict[str, list]] = []
+        self._cur: dict[str, list] | None = None
 
-    def _decode_ids(self, prompt_ids: List[int], gen) -> List[int]:
+    def _decode_ids(self, prompt_ids: list[int], gen) -> list[int]:
         if not self.records:
             # Turn 1 is the GRPO action segment: its context must never be truncated
             # mid-decode, or the (context -> sampled token) alignment breaks.
@@ -131,21 +133,21 @@ class Rollout:
     prompt_index: int
     group_index: int
     decode_seed: int
-    prompt_ids: List[int]
-    gen_ids: List[int]                     # turn-1 sampled action tokens
-    old_logps: List[float]                 # plain log-softmax at sample time, one per gen_id
-    total_gen_tokens: int                  # across ALL turns (feeds R_len's token_count)
-    n_executed_actions: int                # sandbox steps actually run
+    prompt_ids: list[int]
+    gen_ids: list[int]  # turn-1 sampled action tokens
+    old_logps: list[float]  # plain log-softmax at sample time, one per gen_id
+    total_gen_tokens: int  # across ALL turns (feeds R_len's token_count)
+    n_executed_actions: int  # sandbox steps actually run
     terminated: str
     reached_final: bool
     r_task: float
     rl_return: float
     final_excerpt: str
     wall_s: float
-    extra: Dict[str, object] = field(default_factory=dict)
+    extra: dict[str, object] = field(default_factory=dict)
 
 
-def compute_r_task(answer: str, final: Optional[str], reached_final: bool) -> float:
+def compute_r_task(answer: str, final: str | None, reached_final: bool) -> float:
     """Binary task signal: the sanitized FINAL contains the trajectory's labeled answer."""
     if not reached_final or final is None or not answer:
         return 0.0
@@ -162,22 +164,22 @@ def collect_rollouts(
     top_k: int,
     max_new_tokens: int,
     context_window: int,
-    eos_id: Optional[int],
+    eos_id: int | None,
     seed: int,
     max_episode_steps: int,
     timeout_s: float,
     family_pass_rate: float,
     device: str = "cpu",
-) -> Tuple[List[Rollout], List[List[float]]]:
+) -> tuple[list[Rollout], list[list[float]]]:
     """G real episodes per prompt through the REAL sandbox; returns (rollouts, per-group returns).
 
     Rollout order is prompt-major (all of prompt 0's group, then prompt 1's, ...), which is the
     exact order `flatten_group_advantages` and `build_grpo_batch` assume.
     """
-    rollouts: List[Rollout] = []
-    groups: List[List[float]] = []
+    rollouts: list[Rollout] = []
+    groups: list[list[float]] = []
     for pi, traj in enumerate(trajectories):
-        group_returns: List[float] = []
+        group_returns: list[float] = []
         for g in range(group_size):
             decode_seed = seed * 1_000_000 + pi * 1_000 + g
             policy = RecordingTorchPolicy(
@@ -238,9 +240,9 @@ def collect_rollouts(
     return rollouts, groups
 
 
-def flatten_group_advantages(groups: Sequence[Sequence[float]]) -> List[float]:
+def flatten_group_advantages(groups: Sequence[Sequence[float]]) -> list[float]:
     """`grpo.group_advantages` per prompt group, flattened in the rollout (prompt-major) order."""
-    flat: List[float] = []
+    flat: list[float] = []
     for group_returns in groups:
         flat.extend(group_advantages(list(group_returns)))
     return flat
@@ -256,7 +258,7 @@ def build_grpo_batch(
     advantages: Sequence[float],
     *,
     pad_id: int = 0,
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
     """Right-padded causal-LM batch for `TorchGRPOStep.step`.
 
     Per rollout, `full = prompt_ids + gen_ids`; the model input is `full[:-1]` (position i's
@@ -275,10 +277,12 @@ def build_grpo_batch(
             raise ValueError("rollout needs at least 1 prompt and 1 generated token")
         p = len(r.prompt_ids)
         inp = full[:-1]
-        act = full[1:]                      # act[i] == full[i+1]
+        act = full[1:]  # act[i] == full[i+1]
         mask = [0.0] * len(inp)
         olp = [0.0] * len(inp)
-        for t in range(len(r.gen_ids)):     # generated token t sits at input position p-1+t
+        for t in range(
+            len(r.gen_ids)
+        ):  # generated token t sits at input position p-1+t
             mask[p - 1 + t] = 1.0
             olp[p - 1 + t] = r.old_logps[t]
         seqs.append(inp)
@@ -286,8 +290,12 @@ def build_grpo_batch(
         msks.append(mask)
         olps.append(olp)
     lmax = max(len(s) for s in seqs)
+
     def pad(rows, fill, dtype):
-        return torch.tensor([row + [fill] * (lmax - len(row)) for row in rows], dtype=dtype)
+        return torch.tensor(
+            [row + [fill] * (lmax - len(row)) for row in rows], dtype=dtype
+        )
+
     return {
         "input_ids": pad(seqs, pad_id, torch.long),
         "actions": pad(acts, pad_id, torch.long),
@@ -307,13 +315,15 @@ def append_manifest_section(section: dict, manifest_path: str) -> str:
     If the manifest is absent, write MANIFEST_GRPO.json next to the intended path instead.
     Returns the path actually written."""
     if os.path.exists(manifest_path):
-        with open(manifest_path, "r", encoding="utf-8") as fh:
+        with open(manifest_path, encoding="utf-8") as fh:
             manifest = json.load(fh)
         manifest["grpo_smoke"] = section
         out_path = manifest_path
     else:
         manifest = {"grpo_smoke": section}
-        out_path = os.path.join(os.path.dirname(manifest_path) or ".", "MANIFEST_GRPO.json")
+        out_path = os.path.join(
+            os.path.dirname(manifest_path) or ".", "MANIFEST_GRPO.json"
+        )
     tmp = out_path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(manifest, fh, indent=2)
@@ -334,7 +344,7 @@ def _sha256(path: str) -> str:
     return h.hexdigest()
 
 
-def _resolve_ckpt(run_dir: str, explicit: Optional[str]) -> Tuple[str, str]:
+def _resolve_ckpt(run_dir: str, explicit: str | None) -> tuple[str, str]:
     """(path, which) — prefers the agentic branch checkpoint, falls back to base pretrain."""
     if explicit:
         if not os.path.exists(explicit):
@@ -352,15 +362,27 @@ def _resolve_ckpt(run_dir: str, explicit: Optional[str]) -> Tuple[str, str]:
     )
 
 
-def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--run-dir", default=os.path.join(_REPO, "runs", "cpu_pilot"))
-    ap.add_argument("--ckpt", default=None, help="explicit checkpoint path (default: agentic, else base)")
-    ap.add_argument("--tokenizer", default=None, help="default: <run-dir>/tokenizer/ava_nano_bpe.json")
+    ap.add_argument(
+        "--ckpt",
+        default=None,
+        help="explicit checkpoint path (default: agentic, else base)",
+    )
+    ap.add_argument(
+        "--tokenizer",
+        default=None,
+        help="default: <run-dir>/tokenizer/ava_nano_bpe.json",
+    )
     ap.add_argument("--preset", default="nano")
-    ap.add_argument("--device", default="cpu", choices=["cpu", "cuda"],
-                    help="model device; cuda inside the ava-train compose service for GPU offload "
-                         "(seeded decodes stay bit-identical — sampling draws on CPU)")
+    ap.add_argument(
+        "--device",
+        default="cpu",
+        choices=["cpu", "cuda"],
+        help="model device; cuda inside the ava-train compose service for GPU offload "
+        "(seeded decodes stay bit-identical — sampling draws on CPU)",
+    )
     ap.add_argument("--prompts", type=int, default=3, help="distinct T13C.2 prompts")
     ap.add_argument("--group-size", type=int, default=4, help="G rollouts per prompt")
     ap.add_argument("--seed", type=int, default=0)
@@ -370,8 +392,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     ap.add_argument("--context-window", type=int, default=768)
     ap.add_argument("--max-episode-steps", type=int, default=2)
     ap.add_argument("--timeout-s", type=float, default=5.0)
-    ap.add_argument("--family-pass-rate", type=float, default=0.5,
-                    help="R_len difficulty prior (config knob, no pass-rate history exists yet)")
+    ap.add_argument(
+        "--family-pass-rate",
+        type=float,
+        default=0.5,
+        help="R_len difficulty prior (config knob, no pass-rate history exists yet)",
+    )
     ap.add_argument("--lr", type=float, default=1e-5)
     ap.add_argument("--r-outer", type=float, default=1.0)
     ap.add_argument("--kappa", type=float, default=0.5)
@@ -379,12 +405,15 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     ap.add_argument("--clip-eps", type=float, default=0.2)
     ap.add_argument("--k-max", type=float, default=4.0)
     ap.add_argument("--manifest", default=None, help="default: <run-dir>/MANIFEST.json")
-    ap.add_argument("--save-updated", default=None,
-                    help="optional path to save the post-update model state_dict")
+    ap.add_argument(
+        "--save-updated",
+        default=None,
+        help="optional path to save the post-update model state_dict",
+    )
     return ap.parse_args(argv)
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     t_start = time.time()
     torch.manual_seed(args.seed)
@@ -402,12 +431,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     model.load_state_dict(blob["model"])
     model.to(args.device)
     model.eval()  # dropout-free forwards: rollout scoring and update forward match exactly
-    tok_path = args.tokenizer or os.path.join(args.run_dir, "tokenizer", "ava_nano_bpe.json")
+    tok_path = args.tokenizer or os.path.join(
+        args.run_dir, "tokenizer", "ava_nano_bpe.json"
+    )
     tokenizer = AvaTokenizer.load(tok_path)
     load_s = time.time() - t0
-    print(f"[load] {ckpt_which}: {ckpt_path} (train step {blob.get('step')}) "
-          f"params={count_params(model)} tokenizer={tok_path} vocab={tokenizer.vocab_size} "
-          f"({load_s:.1f}s)")
+    print(
+        f"[load] {ckpt_which}: {ckpt_path} (train step {blob.get('step')}) "
+        f"params={count_params(model)} tokenizer={tok_path} vocab={tokenizer.vocab_size} "
+        f"({load_s:.1f}s)"
+    )
 
     # 2. Real CodeAct rollouts through the real sandbox ---------------------------
     from ava.datagen.codeact import iter_trajectories
@@ -415,23 +448,35 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     trajs = list(iter_trajectories(seed=args.seed, n=args.prompts))
     t0 = time.time()
     rollouts, groups = collect_rollouts(
-        model, tokenizer, trajs,
-        group_size=args.group_size, temperature=args.temperature, top_k=args.top_k,
-        max_new_tokens=args.max_new_tokens, context_window=args.context_window,
-        eos_id=EOS_ID, seed=args.seed, max_episode_steps=args.max_episode_steps,
-        timeout_s=args.timeout_s, family_pass_rate=args.family_pass_rate,
+        model,
+        tokenizer,
+        trajs,
+        group_size=args.group_size,
+        temperature=args.temperature,
+        top_k=args.top_k,
+        max_new_tokens=args.max_new_tokens,
+        context_window=args.context_window,
+        eos_id=EOS_ID,
+        seed=args.seed,
+        max_episode_steps=args.max_episode_steps,
+        timeout_s=args.timeout_s,
+        family_pass_rate=args.family_pass_rate,
         device=args.device,
     )
     rollout_s = time.time() - t0
     for r in rollouts:
-        print(f"[rollout] p{r.prompt_index} g{r.group_index} seed={r.decode_seed} "
-              f"turn1_tokens={len(r.gen_ids)} total_tokens={r.total_gen_tokens} "
-              f"exec_actions={r.n_executed_actions} terminated={r.terminated} "
-              f"r_task={r.r_task} rl_return={r.rl_return:.4f} ({r.wall_s:.1f}s)")
+        print(
+            f"[rollout] p{r.prompt_index} g{r.group_index} seed={r.decode_seed} "
+            f"turn1_tokens={len(r.gen_ids)} total_tokens={r.total_gen_tokens} "
+            f"exec_actions={r.n_executed_actions} terminated={r.terminated} "
+            f"r_task={r.r_task} rl_return={r.rl_return:.4f} ({r.wall_s:.1f}s)"
+        )
     mean_rl_return = sum(r.rl_return for r in rollouts) / len(rollouts)
     mean_r_task = sum(r.r_task for r in rollouts) / len(rollouts)
-    print(f"[rollouts] n={len(rollouts)} mean_r_task={mean_r_task:.3f} "
-          f"mean_rl_return={mean_rl_return:.4f} ({rollout_s:.1f}s)")
+    print(
+        f"[rollouts] n={len(rollouts)} mean_r_task={mean_r_task:.3f} "
+        f"mean_rl_return={mean_rl_return:.4f} ({rollout_s:.1f}s)"
+    )
 
     # 3. One real GRPO update -----------------------------------------------------
     advantages = flatten_group_advantages(groups)
@@ -446,7 +491,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     params_before = [p.detach().clone() for p in model.parameters()]
     t0 = time.time()
-    dev = args.device   # the update forward must run where the policy's weights live
+    dev = args.device  # the update forward must run where the policy's weights live
     stats: GRPOStepStats = stepper.step(
         {"input_ids": batch["input_ids"].to(dev)},
         batch["actions"].to(dev),
@@ -457,16 +502,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     step_s = time.time() - t0
     with torch.no_grad():
         deltas = [
-            (p - q).norm() for p, q in zip(model.parameters(), params_before)
+            (p - q).norm()
+            for p, q in zip(model.parameters(), params_before, strict=False)
         ]
         param_delta_l2 = float(torch.linalg.vector_norm(torch.stack(deltas)))
         params_finite = all(bool(torch.isfinite(p).all()) for p in model.parameters())
-    print(f"[grpo] loss={stats.loss:.6f} mean_objective={stats.mean_objective:.6f} "
-          f"rl.entropy={stats.rl_entropy:.4f} rl.k={k_before}->{stats.rl_k} "
-          f"clip=({stats.clip_lower:.4f},{stats.clip_upper:.4f}) "
-          f"rl.outer_clip_hits={stats.outer_clip_hits} inner_clip_hits={stats.inner_clip_hits} "
-          f"mean_ratio={stats.mean_ratio:.6f} grad_norm={stats.grad_norm:.6f} "
-          f"batch={stats.batch_size} param_delta_l2={param_delta_l2:.6e} ({step_s:.1f}s)")
+    print(
+        f"[grpo] loss={stats.loss:.6f} mean_objective={stats.mean_objective:.6f} "
+        f"rl.entropy={stats.rl_entropy:.4f} rl.k={k_before}->{stats.rl_k} "
+        f"clip=({stats.clip_lower:.4f},{stats.clip_upper:.4f}) "
+        f"rl.outer_clip_hits={stats.outer_clip_hits} inner_clip_hits={stats.inner_clip_hits} "
+        f"mean_ratio={stats.mean_ratio:.6f} grad_norm={stats.grad_norm:.6f} "
+        f"batch={stats.batch_size} param_delta_l2={param_delta_l2:.6e} ({step_s:.1f}s)"
+    )
 
     if args.save_updated:
         torch.save({"model": model.state_dict(), "grpo_smoke": True}, args.save_updated)
@@ -502,13 +550,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         },
         "tokenizer": os.path.relpath(tok_path, _REPO),
         "config": {
-            "preset": args.preset, "prompts": args.prompts, "group_size": args.group_size,
-            "seed": args.seed, "temperature": args.temperature, "top_k": args.top_k,
-            "max_new_tokens": args.max_new_tokens, "context_window": args.context_window,
-            "max_episode_steps": args.max_episode_steps, "timeout_s": args.timeout_s,
-            "family_pass_rate_prior": args.family_pass_rate, "lr": args.lr,
-            "r_outer": args.r_outer, "kappa": args.kappa, "h_target": args.h_target,
-            "clip_eps": args.clip_eps, "k_max": args.k_max,
+            "preset": args.preset,
+            "prompts": args.prompts,
+            "group_size": args.group_size,
+            "seed": args.seed,
+            "temperature": args.temperature,
+            "top_k": args.top_k,
+            "max_new_tokens": args.max_new_tokens,
+            "context_window": args.context_window,
+            "max_episode_steps": args.max_episode_steps,
+            "timeout_s": args.timeout_s,
+            "family_pass_rate_prior": args.family_pass_rate,
+            "lr": args.lr,
+            "r_outer": args.r_outer,
+            "kappa": args.kappa,
+            "h_target": args.h_target,
+            "clip_eps": args.clip_eps,
+            "k_max": args.k_max,
         },
         "rollouts": {
             "n": len(rollouts),
@@ -518,31 +576,47 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "advantages": advantages,
             "per_rollout": [
                 {
-                    "prompt": r.prompt_index, "g": r.group_index, "decode_seed": r.decode_seed,
+                    "prompt": r.prompt_index,
+                    "g": r.group_index,
+                    "decode_seed": r.decode_seed,
                     "turn1_action_tokens": len(r.gen_ids),
                     "total_gen_tokens": r.total_gen_tokens,
                     "executed_actions": r.n_executed_actions,
-                    "terminated": r.terminated, "reached_final": r.reached_final,
-                    "r_task": r.r_task, "rl_return": r.rl_return,
-                    "final_excerpt": r.final_excerpt, "wall_s": round(r.wall_s, 3),
+                    "terminated": r.terminated,
+                    "reached_final": r.reached_final,
+                    "r_task": r.r_task,
+                    "rl_return": r.rl_return,
+                    "final_excerpt": r.final_excerpt,
+                    "wall_s": round(r.wall_s, 3),
                 }
                 for r in rollouts
             ],
         },
         "grpo_step": {
-            "loss": stats.loss, "mean_objective": stats.mean_objective,
-            "rl.entropy": stats.rl_entropy, "rl.k_before": k_before, "rl.k": stats.rl_k,
-            "clip_lower": stats.clip_lower, "clip_upper": stats.clip_upper,
+            "loss": stats.loss,
+            "mean_objective": stats.mean_objective,
+            "rl.entropy": stats.rl_entropy,
+            "rl.k_before": k_before,
+            "rl.k": stats.rl_k,
+            "clip_lower": stats.clip_lower,
+            "clip_upper": stats.clip_upper,
             "rl.outer_clip_hits": stats.outer_clip_hits,
-            "inner_clip_hits": stats.inner_clip_hits, "mean_ratio": stats.mean_ratio,
-            "grad_norm": stats.grad_norm, "batch_size": stats.batch_size,
+            "inner_clip_hits": stats.inner_clip_hits,
+            "mean_ratio": stats.mean_ratio,
+            "grad_norm": stats.grad_norm,
+            "batch_size": stats.batch_size,
             "param_delta_l2": param_delta_l2,
         },
-        "health": {**health, "status": "success" if ok else "failed",
-                   "failures": failures},
+        "health": {
+            **health,
+            "status": "success" if ok else "failed",
+            "failures": failures,
+        },
         "timings_s": {
-            "load": round(load_s, 2), "rollouts": round(rollout_s, 2),
-            "grpo_step": round(step_s, 2), "total": round(time.time() - t_start, 2),
+            "load": round(load_s, 2),
+            "rollouts": round(rollout_s, 2),
+            "grpo_step": round(step_s, 2),
+            "total": round(time.time() - t_start, 2),
         },
     }
     manifest_path = args.manifest or os.path.join(args.run_dir, "MANIFEST.json")

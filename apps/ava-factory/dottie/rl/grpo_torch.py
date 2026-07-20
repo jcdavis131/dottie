@@ -52,19 +52,21 @@ data-quality filter score; step metrics use the `rl.*` names in `GRPOStepStats`.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Callable, Dict, Mapping, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Union
 
 import torch
 from torch import Tensor, nn
 
-from dottie.rl.grpo import EntropyThermostat
+if TYPE_CHECKING:
+    from dottie.rl.grpo import EntropyThermostat
 
 __all__ = [
-    "clipped_surrogate_torch",
-    "importance_weighted_entropy_torch",
     "GRPOStepStats",
     "TorchGRPOStep",
+    "clipped_surrogate_torch",
+    "importance_weighted_entropy_torch",
 ]
 
 
@@ -75,7 +77,7 @@ def clipped_surrogate_torch(
     lower: float,
     upper: float,
     r_outer: float,
-) -> Tuple[Tensor, Tensor, Tensor]:
+) -> tuple[Tensor, Tensor, Tensor]:
     """Tensorized two-layer clipped surrogate — the autograd twin of `grpo.clipped_surrogate`.
 
     Element-for-element this computes the *identical* scalar as the pure-math spec (parity
@@ -118,7 +120,7 @@ def clipped_surrogate_torch(
 def importance_weighted_entropy_torch(
     logp_new: Tensor,
     logp_old: Tensor,
-    mask: Optional[Tensor] = None,
+    mask: Tensor | None = None,
 ) -> float:
     """Torch mirror of `grpo.importance_weighted_entropy` (same semantics, mask-aware).
 
@@ -132,7 +134,9 @@ def importance_weighted_entropy_torch(
     the thermostat against exactly that (see module docstring).
     """
     if logp_new.shape != logp_old.shape:
-        raise ValueError("logp_new and logp_old must have the same shape (one per rollout token)")
+        raise ValueError(
+            "logp_new and logp_old must have the same shape (one per rollout token)"
+        )
     ln = logp_new.detach().double().reshape(-1)
     lo = logp_old.detach().double().reshape(-1)
     if mask is not None:
@@ -212,19 +216,19 @@ class TorchGRPOStep:
         *,
         r_outer: float,
         logits_key: str = "lm_logits",
-        logits_extractor: Optional[Callable[[object], Tensor]] = None,
-        max_grad_norm: Optional[float] = None,
+        logits_extractor: Callable[[object], Tensor] | None = None,
+        max_grad_norm: float | None = None,
     ) -> None:
         """Args:
-            policy:           any nn.Module producing per-token action logits (see class doc).
-            optimizer:        torch optimizer over `policy.parameters()` (AdamW8bit at scale;
-                              anything torch-compatible here).
-            thermostat:       the `grpo.EntropyThermostat` controller instance (its `k` is part
-                              of this stepper's checkpoint state).
-            r_outer:          outer circuit-breaker half-width (spec 12: conservative, ~5x eps).
-            logits_key:       key to read when the policy returns a Mapping (AvaModel: 'lm_logits').
-            logits_extractor: overrides the default Tensor/Mapping unwrapping entirely.
-            max_grad_norm:    if set, `clip_grad_norm_` to this before the optimizer step.
+        policy:           any nn.Module producing per-token action logits (see class doc).
+        optimizer:        torch optimizer over `policy.parameters()` (AdamW8bit at scale;
+                          anything torch-compatible here).
+        thermostat:       the `grpo.EntropyThermostat` controller instance (its `k` is part
+                          of this stepper's checkpoint state).
+        r_outer:          outer circuit-breaker half-width (spec 12: conservative, ~5x eps).
+        logits_key:       key to read when the policy returns a Mapping (AvaModel: 'lm_logits').
+        logits_extractor: overrides the default Tensor/Mapping unwrapping entirely.
+        max_grad_norm:    if set, `clip_grad_norm_` to this before the optimizer step.
         """
         self.policy = policy
         self.optimizer = optimizer
@@ -272,7 +276,9 @@ class TorchGRPOStep:
     @staticmethod
     def _grad_l2_norm(policy: nn.Module) -> float:
         """Global L2 norm over all present grads (measured, for `grad_norm` when not clipping)."""
-        norms = [p.grad.detach().norm() for p in policy.parameters() if p.grad is not None]
+        norms = [
+            p.grad.detach().norm() for p in policy.parameters() if p.grad is not None
+        ]
         if not norms:
             return 0.0
         return float(torch.linalg.vector_norm(torch.stack(norms)))
@@ -285,7 +291,7 @@ class TorchGRPOStep:
         actions: Tensor,
         old_logp: Tensor,
         advantages: Tensor,
-        mask: Optional[Tensor] = None,
+        mask: Tensor | None = None,
     ) -> GRPOStepStats:
         """Perform one GRPO update; returns measured `GRPOStepStats`.
 
@@ -302,10 +308,12 @@ class TorchGRPOStep:
                            1 (no div-by-zero); callers should not send empty rollouts.
         """
         logits = self._forward_logits(policy_inputs)
-        if logits.dim() == 2:            # [B,V] → single-action rollouts, T=1
+        if logits.dim() == 2:  # [B,V] → single-action rollouts, T=1
             logits = logits.unsqueeze(1)
         if logits.dim() != 3:
-            raise ValueError(f"logits must be [B,V] or [B,T,V]; got shape {tuple(logits.shape)}")
+            raise ValueError(
+                f"logits must be [B,V] or [B,T,V]; got shape {tuple(logits.shape)}"
+            )
         bsz, seq_len, _ = logits.shape
 
         actions2d = actions.reshape(bsz, seq_len)
@@ -313,7 +321,7 @@ class TorchGRPOStep:
         adv = advantages.detach().reshape(bsz).to(logits.dtype)
 
         logp_all = torch.log_softmax(logits, dim=-1)
-        new_logp = logp_all.gather(-1, actions2d.unsqueeze(-1)).squeeze(-1)   # [B,T]
+        new_logp = logp_all.gather(-1, actions2d.unsqueeze(-1)).squeeze(-1)  # [B,T]
 
         if mask is None:
             mask2d = torch.ones_like(new_logp)
@@ -340,22 +348,24 @@ class TorchGRPOStep:
         # and the hit is still counted since cap > log(1+r_outer)) while making the runaway
         # token's gradient exactly zero — the breaker's contract, now true in the backward too.
         # The min side needs no cap: exp underflows to 0.0, which is finite with a ~0 gradient.
-        log_ratio = (new_logp - old_logp2d) * mask2d                           # [B,T]
+        log_ratio = (new_logp - old_logp2d) * mask2d  # [B,T]
         log_ratio = log_ratio.clamp(max=self._log_ratio_cap)
-        per_token_ratio = torch.exp(log_ratio) * mask2d                        # [B,T]
-        token_counts = mask2d.sum(dim=1).clamp_min(1.0)                        # [B]
-        rollout_ratio = per_token_ratio.sum(dim=1) / token_counts              # [B]
+        per_token_ratio = torch.exp(log_ratio) * mask2d  # [B,T]
+        token_counts = mask2d.sum(dim=1).clamp_min(1.0)  # [B]
+        rollout_ratio = per_token_ratio.sum(dim=1) / token_counts  # [B]
 
         objective, inner_clipped, outer_clipped = clipped_surrogate_torch(
             rollout_ratio, adv, lower=lower, upper=upper, r_outer=self.r_outer
         )
-        loss = -objective.mean()   # surrogate is maximized; torch minimizes
+        loss = -objective.mean()  # surrogate is maximized; torch minimizes
 
         self.optimizer.zero_grad(set_to_none=True)
         loss.backward()
         if self.max_grad_norm is not None:
             grad_norm = float(
-                torch.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
+                torch.nn.utils.clip_grad_norm_(
+                    self.policy.parameters(), self.max_grad_norm
+                )
             )
         else:
             grad_norm = self._grad_l2_norm(self.policy)
@@ -377,7 +387,7 @@ class TorchGRPOStep:
 
     # ── checkpointing ────────────────────────────────────────────────────────
 
-    def state_dict(self) -> Dict[str, object]:
+    def state_dict(self) -> dict[str, object]:
         """Full resumable state: policy + optimizer tensors and the thermostat's integral k.
 
         (kappa/h_target/eps/k_max are construction-time hyperparameters, not learned state —
@@ -391,6 +401,6 @@ class TorchGRPOStep:
     def load_state_dict(self, state: Mapping[str, object]) -> None:
         """Restore a `state_dict()` checkpoint in place (exact resume: policy weights,
         optimizer moments, thermostat integral state)."""
-        self.policy.load_state_dict(state["policy"])          # type: ignore[arg-type]
-        self.optimizer.load_state_dict(state["optimizer"])    # type: ignore[arg-type]
-        self.thermostat.k = float(state["thermostat_k"])      # type: ignore[arg-type]
+        self.policy.load_state_dict(state["policy"])  # type: ignore[arg-type]
+        self.optimizer.load_state_dict(state["optimizer"])  # type: ignore[arg-type]
+        self.thermostat.k = float(state["thermostat_k"])  # type: ignore[arg-type]

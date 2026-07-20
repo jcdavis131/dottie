@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -15,8 +13,18 @@ EVALS_DIR = _REPO / "evals"
 
 # Mock literals verified in eval_branch_harness.py (spec 06).
 MOCK_LITERALS = [
-    "0.82", "0.22", "0.064", "0.88", "0.75",
-    "0.91", "0.94", "0.92", "5.2", "4.5", "0.983", "0.967",
+    "0.82",
+    "0.22",
+    "0.064",
+    "0.88",
+    "0.75",
+    "0.91",
+    "0.94",
+    "0.92",
+    "5.2",
+    "4.5",
+    "0.983",
+    "0.967",
 ]
 MOCK_PATTERN = re.compile("|".join(re.escape(x) for x in MOCK_LITERALS))
 
@@ -67,7 +75,9 @@ def test_random_init_models_produce_different_measurements():
 
     a = run_seed(1)
     b = run_seed(2)
-    assert a != b, "two random models returned identical spider_ant measurements (hardcoded?)"
+    assert a != b, (
+        "two random models returned identical spider_ant measurements (hardcoded?)"
+    )
     for v in list(a.values()) + list(b.values()):
         if isinstance(v, (int, float)):
             s = f"{v:.6g}"
@@ -92,4 +102,6 @@ def test_report_json_has_no_mock_literals_when_present():
 
     for v in walk(data):
         s = f"{v:.6g}"
-        assert s not in MOCK_LITERALS, f"mock literal {s!r} found as measured value in report"
+        assert s not in MOCK_LITERALS, (
+            f"mock literal {s!r} found as measured value in report"
+        )

@@ -57,12 +57,23 @@ def newton_schulz_orthogonalize(g: torch.Tensor, steps: int = 5) -> torch.Tensor
 
 
 class Muon(torch.optim.Optimizer):
-    def __init__(self, params, lr: float = 0.02, momentum: float = 0.95,
-                 nesterov: bool = True, ns_steps: int = 5,
-                 weight_decay: float = 0.0):
-        defaults = dict(lr=lr, momentum=momentum, nesterov=nesterov,
-                        ns_steps=ns_steps, weight_decay=weight_decay,
-                        lr_scale=1.0)
+    def __init__(
+        self,
+        params,
+        lr: float = 0.02,
+        momentum: float = 0.95,
+        nesterov: bool = True,
+        ns_steps: int = 5,
+        weight_decay: float = 0.0,
+    ):
+        defaults = {
+            "lr": lr,
+            "momentum": momentum,
+            "nesterov": nesterov,
+            "ns_steps": ns_steps,
+            "weight_decay": weight_decay,
+            "lr_scale": 1.0,
+        }
         super().__init__(params, defaults)
 
     @torch.no_grad()
@@ -179,8 +190,13 @@ class Hyperball:
     ``||W||_F == radius``. Prefer ``matrix_params`` (Muon matrices only).
     """
 
-    def __init__(self, inner, *, radius: float = 1.0,
-                 matrix_params: list[torch.nn.Parameter] | None = None):
+    def __init__(
+        self,
+        inner,
+        *,
+        radius: float = 1.0,
+        matrix_params: list[torch.nn.Parameter] | None = None,
+    ):
         self.inner = inner
         self.radius = float(radius)
         self.matrix_params = list(matrix_params) if matrix_params is not None else None
@@ -217,11 +233,17 @@ class Hyperball:
         return loss
 
 
-def build_hybrid(model: torch.nn.Module, *, adamw_lr: float,
-                 betas: tuple[float, float], weight_decay: float,
-                 momentum: float = 0.95, ns_steps: int = 5,
-                 variant: str = "muon",
-                 hyperball_radius: float | None = None) -> HybridOptimizer | Hyperball:
+def build_hybrid(
+    model: torch.nn.Module,
+    *,
+    adamw_lr: float,
+    betas: tuple[float, float],
+    weight_decay: float,
+    momentum: float = 0.95,
+    ns_steps: int = 5,
+    variant: str = "muon",
+    hyperball_radius: float | None = None,
+) -> HybridOptimizer | Hyperball:
     muon_params, decay, no_decay = [], [], []
     for n, p in model.named_parameters():
         if not p.requires_grad:
@@ -233,12 +255,21 @@ def build_hybrid(model: torch.nn.Module, *, adamw_lr: float,
         else:
             decay.append(p)
     muon_cls = MuonVS if variant in ("muon_vs", "muon-nsr", "muon_nsr") else Muon
-    muon = muon_cls(muon_params, lr=adamw_lr, momentum=momentum,
-                    ns_steps=ns_steps, weight_decay=weight_decay)
+    muon = muon_cls(
+        muon_params,
+        lr=adamw_lr,
+        momentum=momentum,
+        ns_steps=ns_steps,
+        weight_decay=weight_decay,
+    )
     adamw = torch.optim.AdamW(
-        [{"params": decay, "weight_decay": weight_decay},
-         {"params": no_decay, "weight_decay": 0.0}],
-        lr=adamw_lr, betas=betas)
+        [
+            {"params": decay, "weight_decay": weight_decay},
+            {"params": no_decay, "weight_decay": 0.0},
+        ],
+        lr=adamw_lr,
+        betas=betas,
+    )
     hybrid = HybridOptimizer(muon, adamw)
     if hyperball_radius is not None:
         return Hyperball(hybrid, radius=hyperball_radius, matrix_params=muon_params)

@@ -21,8 +21,8 @@ __version__ = "0.1.0"
 
 from dottie.policy import (  # noqa: F401
     AvaPolicy,
-    EchoPolicy,
     DottiePolicyUnavailable,
+    EchoPolicy,
     OllamaPolicy,
     get_policy,
 )

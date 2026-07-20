@@ -13,7 +13,6 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
 
 # The documented standalone factory checkout (same default the harness uses).
 DEFAULT_FACTORY_ROOT = Path("/home/user/ava-agi-factory-v6-4")
@@ -30,19 +29,21 @@ def dottie_root() -> Path:
     env = os.environ.get("DOTTIE_ROOT")
     if env:
         return Path(env)
-    return _HERE.parent.parent.parent  # apps/dottie/dottie -> apps/dottie -> apps -> <dottie>
+    return (
+        _HERE.parent.parent.parent
+    )  # apps/dottie/dottie -> apps/dottie -> apps -> <dottie>
 
 
-def _factory_candidates() -> List[Path]:
+def _factory_candidates() -> list[Path]:
     """Ordered factory-code candidates. Env AVA_FACTORY_ROOT is honored verbatim first
     (matching the harness contract: pointing it at a bogus path forces honest failures)."""
-    cands: List[Path] = []
+    cands: list[Path] = []
     env = os.environ.get("AVA_FACTORY_ROOT")
     if env:
         cands.append(Path(env))
     cands.append(dottie_root() / "apps" / "ava-factory")
     cands.append(DEFAULT_FACTORY_ROOT)
-    out: List[Path] = []
+    out: list[Path] = []
     for c in cands:
         if c not in out:
             out.append(c)
@@ -76,10 +77,10 @@ def ensure_factory_on_path() -> Path:
     return root
 
 
-def ava_ckpt_candidates() -> List[Path]:
+def ava_ckpt_candidates() -> list[Path]:
     """Ordered ava checkpoint candidates (agentic branch preferred over base pretrain),
     across every factory candidate root. Existence is checked by the caller."""
-    out: List[Path] = []
+    out: list[Path] = []
     for root in _factory_candidates():
         for rel in ("agentic/agentic_final.pt", "base/base_final.pt"):
             p = root / "runs" / "cpu_pilot" / rel
@@ -88,7 +89,7 @@ def ava_ckpt_candidates() -> List[Path]:
     return out
 
 
-def default_ava_ckpt() -> Optional[Path]:
+def default_ava_ckpt() -> Path | None:
     """First existing checkpoint candidate, or None (the caller must refuse honestly)."""
     for p in ava_ckpt_candidates():
         if p.is_file():
@@ -140,13 +141,13 @@ def rl_smoke_update_script() -> Path:
     )
 
 
-def probe() -> Dict[str, Dict[str, object]]:
+def probe() -> dict[str, dict[str, object]]:
     """REAL filesystem probes of every sibling Dottie integrates with — no invented state.
     Each entry reports the resolved path (or the probe list) and whether it is actually there.
     """
-    out: Dict[str, Dict[str, object]] = {}
+    out: dict[str, dict[str, object]] = {}
 
-    def _entry(fn) -> Dict[str, object]:
+    def _entry(fn) -> dict[str, object]:
         try:
             return {"available": True, "path": str(fn())}
         except DottieResolutionError as e:

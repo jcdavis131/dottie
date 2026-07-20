@@ -57,7 +57,9 @@ def _resolve_tokenizer(preset: str) -> Path:
     )
 
 
-def bench_collector(workdir: Path, *, target_bytes: int, max_docs: int, seed: int) -> dict:
+def bench_collector(
+    workdir: Path, *, target_bytes: int, max_docs: int, seed: int
+) -> dict:
     """Synthetic collect → RAW .jsonl.zst; report docs/s and approx tok/s."""
     from ava.datagen.logic import LogicGenerator
     from ava.pipeline.collector import ShardWriter, doc_id_for
@@ -118,13 +120,13 @@ def bench_collector(workdir: Path, *, target_bytes: int, max_docs: int, seed: in
 
 def bench_curator(workdir: Path, *, n_docs: int, seed: int, pipeline_cfg: Path) -> dict:
     """Clean + dedup + decontam + pack on synthetic docs; measure packed tok/s."""
+    import yaml
     from ava.datagen.logic import LogicGenerator
-    from ava.pipeline import clean, decontaminate
-    from ava.pipeline.dedup import MinHashDeduper
+    from ava.pipeline import clean
     from ava.pipeline.decontaminate import Decontaminator
+    from ava.pipeline.dedup import MinHashDeduper
     from ava.pipeline.pack import load_tokenizer, pack_docs, write_shard
     from ava.pipeline.split import assign_split
-    import yaml
 
     cfg = yaml.safe_load(pipeline_cfg.read_text(encoding="utf-8"))
     cur = cfg["curator"]
@@ -195,14 +197,15 @@ def bench_curator(workdir: Path, *, n_docs: int, seed: int, pipeline_cfg: Path) 
     }
 
 
-def bench_trainer(preset: str, *, device: str, warmup: int, steps: int, seq: int) -> dict:
+def bench_trainer(
+    preset: str, *, device: str, warmup: int, steps: int, seq: int
+) -> dict:
     """Steady-state trainer tok/s via timed optimizer steps (random ids).
 
     Mirrors specs/05 bench_throughput spirit but scoped to the pipeline gate:
     we need trainer tok/s as the denominator for the curation ≥ 3× check.
     """
     import torch
-
     from ava.config import AvaConfig
     from ava.jlosses import JSpaceObjective
     from ava.model import build_model
@@ -218,10 +221,9 @@ def bench_trainer(preset: str, *, device: str, warmup: int, steps: int, seq: int
     obj = JSpaceObjective(cfg).to(device)
     model.train()
 
-    mb, accum = micro_batch_for(seq, cfg.training.tokens_per_step)
+    mb, _accum = micro_batch_for(seq, cfg.training.tokens_per_step)
     # Keep the microbench short: one micro-batch per step (accum=1) so wall time
     # stays bounded; tok/s still reflects forward+backward+opt on real geometry.
-    accum = 1
     mb = max(1, min(mb, 4))
     V = cfg.model.vocab_size
     step_tokens = mb * seq
@@ -238,9 +240,13 @@ def bench_trainer(preset: str, *, device: str, warmup: int, steps: int, seq: int
         )
         with ctx:
             out = model(input_ids=ids, task_type="automatic")
-            parts = obj(model, out, ids, phase=0, task_type="automatic", concept_ids=cids)
+            parts = obj(
+                model, out, ids, phase=0, task_type="automatic", concept_ids=cids
+            )
         parts.total.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.training.optimizer.grad_clip)
+        torch.nn.utils.clip_grad_norm_(
+            model.parameters(), cfg.training.optimizer.grad_clip
+        )
         opt.step()
 
     # warmup
@@ -274,7 +280,9 @@ def bench_trainer(preset: str, *, device: str, warmup: int, steps: int, seq: int
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Ava pipeline throughput bench + 3× gate")
     ap.add_argument("--preset", default=os.environ.get("AVA_PRESET", "nano"))
-    ap.add_argument("--device", default=None, help="cpu|cuda (default: cuda if available)")
+    ap.add_argument(
+        "--device", default=None, help="cpu|cuda (default: cuda if available)"
+    )
     ap.add_argument("--collector-docs", type=int, default=400)
     ap.add_argument("--curator-docs", type=int, default=300)
     ap.add_argument("--trainer-steps", type=int, default=20)
@@ -291,7 +299,9 @@ def main(argv: list[str] | None = None) -> int:
     os.environ["AVA_TOKENIZER"] = str(tok_path)
     pipeline_cfg = _REPO / "configs" / "pipeline.yaml"
     if not pipeline_cfg.is_file():
-        pipeline_cfg = Path(os.environ.get("AVA_PIPELINE_CONFIG", "/app/configs/pipeline.yaml"))
+        pipeline_cfg = Path(
+            os.environ.get("AVA_PIPELINE_CONFIG", "/app/configs/pipeline.yaml")
+        )
 
     _log(f"bench_pipeline preset={args.preset} device={device} tokenizer={tok_path}")
 

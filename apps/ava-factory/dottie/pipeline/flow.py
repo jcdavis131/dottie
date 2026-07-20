@@ -28,11 +28,14 @@ import os
 import shutil
 import time
 from pathlib import Path
-from typing import Sequence
+from typing import TYPE_CHECKING
 
 import yaml
 
-from dottie.pipeline.manifest import Manifest
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from dottie.pipeline.manifest import Manifest
 
 _DEFAULT_CONFIG = "/app/configs/pipeline.yaml"
 N_PHASES = 6
@@ -72,7 +75,7 @@ class FlowConfig:
     train_lease_seconds: int = 3600
 
     @classmethod
-    def load(cls, path: str | Path | None = None) -> "FlowConfig":
+    def load(cls, path: str | Path | None = None) -> FlowConfig:
         p = Path(path or os.environ.get("AVA_PIPELINE_CONFIG", _DEFAULT_CONFIG))
         cfg = yaml.safe_load(p.read_text())
         disk, bp = cfg["disk"], cfg["backpressure"]
@@ -124,6 +127,7 @@ def free_gb(path: str | Path = "/") -> float:
 # ---------------------------------------------------------------------------
 # Collector
 
+
 def collector_should_pause(
     manifest: Manifest,
     cfg: FlowConfig,
@@ -159,28 +163,36 @@ def collector_should_pause(
         if raw >= cfg.raw_max_bytes:
             return PauseReason(
                 True,
-                f"raw backlog {raw/1e9:.1f}GB >= max {cfg.raw_max_bytes/1e9:.1f}GB",
+                f"raw backlog {raw / 1e9:.1f}GB >= max {cfg.raw_max_bytes / 1e9:.1f}GB",
             )
         if ahead >= cfg.packed_ahead_max_tokens:
             return PauseReason(
                 True,
-                f"packed runway {ahead/1e9:.2f}B tokens >= max "
-                f"{cfg.packed_ahead_max_tokens/1e9:.2f}B",
+                f"packed runway {ahead / 1e9:.2f}B tokens >= max "
+                f"{cfg.packed_ahead_max_tokens / 1e9:.2f}B",
             )
 
     return PauseReason(False)
 
 
-def prefetch_phases(current_phase: int, cfg: FlowConfig, n_phases: int = N_PHASES) -> list[int]:
+def prefetch_phases(
+    current_phase: int, cfg: FlowConfig, n_phases: int = N_PHASES
+) -> list[int]:
     """Phases the collector should work on: current, then lookahead.
 
     Prefetching the next phase is what prevents a GPU stall at a phase boundary,
     where the mixture changes and no packed data for the new phase exists yet.
     """
-    return [p for p in range(current_phase, current_phase + cfg.prefetch_phases) if p < n_phases]
+    return [
+        p
+        for p in range(current_phase, current_phase + cfg.prefetch_phases)
+        if p < n_phases
+    ]
 
 
-def starved_phase(manifest: Manifest, cfg: FlowConfig, phases: Sequence[int]) -> int | None:
+def starved_phase(
+    manifest: Manifest, cfg: FlowConfig, phases: Sequence[int]
+) -> int | None:
     """The earliest phase below the minimum runway, if any. Collector prioritizes it."""
     for p in phases:
         if manifest.tokens_ready(p) < cfg.packed_min_tokens:
@@ -256,7 +268,7 @@ def _phase_budget_tokens(phase: int, preset: str | None = None) -> int | None:
 
         acfg = DottieConfig.load(preset or os.environ.get("AVA_PRESET", "nano"))
         return int(acfg.phases[phase].tokens or 0)
-    except Exception:  # noqa: BLE001 -- collectors must run without preset yaml
+    except Exception:
         return None
 
 
@@ -349,8 +361,10 @@ def curator_claim_phases(manifest: Manifest, cfg: FlowConfig) -> list[int]:
             ordered.append(p)
     return ordered
 
+
 # ---------------------------------------------------------------------------
 # Trainer
+
 
 def trainer_data_state(
     manifest: Manifest,
@@ -361,14 +375,17 @@ def trainer_data_state(
 ) -> tuple[DataState, str]:
     fg = free_gb(disk_path)
     if fg < cfg.critical_gb:
-        return DataState.CRITICAL_DISK, f"free disk {fg:.1f}GB < critical {cfg.critical_gb}GB"
+        return (
+            DataState.CRITICAL_DISK,
+            f"free disk {fg:.1f}GB < critical {cfg.critical_gb}GB",
+        )
 
     ready = manifest.tokens_ready(phase)
     if ready <= 0:
         return DataState.STARVED, f"phase {phase}: no packed tokens ready"
     # Having *some* data is enough to keep stepping; packed_min_tokens is the
     # comfort threshold that tells collectors to hurry, not a hard stop.
-    return DataState.READY, f"phase {phase}: {ready/1e6:.0f}M tokens ready"
+    return DataState.READY, f"phase {phase}: {ready / 1e6:.0f}M tokens ready"
 
 
 class StarvationTracker:
@@ -392,10 +409,15 @@ class StarvationTracker:
         if self._since is None:
             self._since = now
         elapsed = now - self._since
-        if elapsed >= self._cfg.starved_warn_seconds and now - self._last_warn >= self._cfg.starved_warn_seconds:
+        if (
+            elapsed >= self._cfg.starved_warn_seconds
+            and now - self._last_warn >= self._cfg.starved_warn_seconds
+        ):
             self._last_warn = now
-            return (f"DATA_STARVED for {elapsed:.0f}s -- curators are not keeping up "
-                    f"with the trainer. Check `make ps` and curator replica count.")
+            return (
+                f"DATA_STARVED for {elapsed:.0f}s -- curators are not keeping up "
+                f"with the trainer. Check `make ps` and curator replica count."
+            )
         return None
 
     @property
@@ -406,8 +428,13 @@ class StarvationTracker:
 # ---------------------------------------------------------------------------
 # Janitor
 
-def janitor_should_collect(cfg: FlowConfig, *, disk_path: str | Path = "/packed") -> PauseReason:
+
+def janitor_should_collect(
+    cfg: FlowConfig, *, disk_path: str | Path = "/packed"
+) -> PauseReason:
     fg = free_gb(disk_path)
     if fg < cfg.janitor_trigger_gb:
-        return PauseReason(True, f"disk {fg:.1f}GB < trigger {cfg.janitor_trigger_gb}GB")
+        return PauseReason(
+            True, f"disk {fg:.1f}GB < trigger {cfg.janitor_trigger_gb}GB"
+        )
     return PauseReason(False, f"disk {fg:.1f}GB ok")

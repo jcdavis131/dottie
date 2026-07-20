@@ -22,19 +22,18 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from torch import nn  # noqa: E402
-
-from ava.rl.grpo import (  # noqa: E402
+from ava.rl.grpo import (
     EntropyThermostat,
     clipped_surrogate,
     group_advantages,
     importance_weighted_entropy,
 )
-from ava.rl.grpo_torch import (  # noqa: E402
+from ava.rl.grpo_torch import (
     TorchGRPOStep,
     clipped_surrogate_torch,
     importance_weighted_entropy_torch,
 )
+from torch import nn
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. EXACT PARITY: torch surrogate vs the pure-math spec
@@ -42,7 +41,24 @@ from ava.rl.grpo_torch import (  # noqa: E402
 
 # Ratios spanning: zero, deep-below-lower, exactly-at-bounds, in-band, above-upper,
 # breaker-tripping spikes (50, 1e6).
-_RATIOS = [0.0, 0.25, 0.5, 1.0 / 1.2, 0.9, 1.0, 1.1, 1.2, 1.5, 1.94, 2.0, 2.5, 5.0, 7.0, 50.0, 1e6]
+_RATIOS = [
+    0.0,
+    0.25,
+    0.5,
+    1.0 / 1.2,
+    0.9,
+    1.0,
+    1.1,
+    1.2,
+    1.5,
+    1.94,
+    2.0,
+    2.5,
+    5.0,
+    7.0,
+    50.0,
+    1e6,
+]
 _ADVS = [-3.0, -1.0, -0.4, 0.0, 0.4, 1.0, 3.0]
 # Bounds come from real thermostat states (k=0 symmetric; k>0 upper relaxed; k saturated).
 _THERMO_STATES = [
@@ -64,8 +80,12 @@ def test_parity_torch_vs_pure_math_grid():
                 for r in _RATIOS
                 for a in _ADVS
             ]
-            ratios_t = torch.tensor([r for r in _RATIOS for _ in _ADVS], dtype=torch.float64)
-            advs_t = torch.tensor([a for _ in _RATIOS for a in _ADVS], dtype=torch.float64)
+            ratios_t = torch.tensor(
+                [r for r in _RATIOS for _ in _ADVS], dtype=torch.float64
+            )
+            advs_t = torch.tensor(
+                [a for _ in _RATIOS for a in _ADVS], dtype=torch.float64
+            )
             obj_t, inner_t, outer_t = clipped_surrogate_torch(
                 ratios_t, advs_t, lower=lower, upper=upper, r_outer=r_outer
             )
@@ -87,29 +107,42 @@ def test_parity_grid_covers_all_four_zones():
 
     # Spike trips the outer breaker.
     _, _, outer = clipped_surrogate_torch(
-        torch.tensor([1e6]), torch.tensor([1.0]), lower=lower, upper=upper, r_outer=r_outer
+        torch.tensor([1e6]),
+        torch.tensor([1.0]),
+        lower=lower,
+        upper=upper,
+        r_outer=r_outer,
     )
     assert bool(outer[0])
 
     # Binding inner clip: A>0, r>upper (within outer band).
     obj, inner, outer = clipped_surrogate_torch(
-        torch.tensor([1.5], dtype=torch.float64), torch.tensor([1.0], dtype=torch.float64),
-        lower=lower, upper=upper, r_outer=r_outer,
+        torch.tensor([1.5], dtype=torch.float64),
+        torch.tensor([1.0], dtype=torch.float64),
+        lower=lower,
+        upper=upper,
+        r_outer=r_outer,
     )
     assert bool(inner[0]) and not bool(outer[0])
     assert abs(float(obj[0]) - upper * 1.0) <= 1e-12
 
     # Active correction (unclipped): A>0, r<lower → objective stays r·A.
     obj, inner, _ = clipped_surrogate_torch(
-        torch.tensor([0.5], dtype=torch.float64), torch.tensor([1.0], dtype=torch.float64),
-        lower=lower, upper=upper, r_outer=r_outer,
+        torch.tensor([0.5], dtype=torch.float64),
+        torch.tensor([1.0], dtype=torch.float64),
+        lower=lower,
+        upper=upper,
+        r_outer=r_outer,
     )
     assert not bool(inner[0]) and abs(float(obj[0]) - 0.5) <= 1e-12
 
     # Active abandonment (unclipped): A<0, r>upper → objective stays r·A.
     obj, inner, _ = clipped_surrogate_torch(
-        torch.tensor([1.5], dtype=torch.float64), torch.tensor([-1.0], dtype=torch.float64),
-        lower=lower, upper=upper, r_outer=r_outer,
+        torch.tensor([1.5], dtype=torch.float64),
+        torch.tensor([-1.0], dtype=torch.float64),
+        lower=lower,
+        upper=upper,
+        r_outer=r_outer,
     )
     assert not bool(inner[0]) and abs(float(obj[0]) - (-1.5)) <= 1e-12
 
@@ -126,7 +159,9 @@ def test_parity_importance_weighted_entropy():
     # Mask-aware path: masked-out tokens must be equivalent to deleting them.
     mask = torch.tensor([1.0, 0.0] * 32, dtype=torch.float64)
     keep = mask.bool()
-    h_pure_masked = importance_weighted_entropy(logp_new[keep].tolist(), logp_old[keep].tolist())
+    h_pure_masked = importance_weighted_entropy(
+        logp_new[keep].tolist(), logp_old[keep].tolist()
+    )
     h_torch_masked = importance_weighted_entropy_torch(logp_new, logp_old, mask)
     assert abs(h_pure_masked - h_torch_masked) <= 1e-9
 
@@ -153,9 +188,13 @@ class TinyBanditPolicy(nn.Module):
     measures nothing about Ava — but the learning it demonstrates is real (rl_return is computed
     from the sampled actions every step, never assumed)."""
 
-    def __init__(self, n_ctx: int = _N_CTX, n_act: int = _N_ACT, hidden: int = 32) -> None:
+    def __init__(
+        self, n_ctx: int = _N_CTX, n_act: int = _N_ACT, hidden: int = 32
+    ) -> None:
         super().__init__()
-        self.net = nn.Sequential(nn.Linear(n_ctx, hidden), nn.Tanh(), nn.Linear(hidden, n_act))
+        self.net = nn.Sequential(
+            nn.Linear(n_ctx, hidden), nn.Tanh(), nn.Linear(hidden, n_act)
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.net(x)
@@ -177,13 +216,23 @@ def _bandit_batch(policy: nn.Module, group_size: int):
     advs = torch.zeros(len(ctx))
     for c in range(_N_CTX):
         sl = slice(c * group_size, (c + 1) * group_size)
-        advs[sl] = torch.tensor(group_advantages(rl_returns[sl].tolist()), dtype=torch.float32)
+        advs[sl] = torch.tensor(
+            group_advantages(rl_returns[sl].tolist()), dtype=torch.float32
+        )
     return x, actions, old_logp, advs, rl_returns
 
 
-def _train_bandit(*, steps: int, seed: int, lr: float = 0.05, group_size: int = 8,
-                  r_outer: float = 1.0, h_target: float = 0.3, kappa: float = 0.05,
-                  optimizer_cls=torch.optim.Adam):
+def _train_bandit(
+    *,
+    steps: int,
+    seed: int,
+    lr: float = 0.05,
+    group_size: int = 8,
+    r_outer: float = 1.0,
+    h_target: float = 0.3,
+    kappa: float = 0.05,
+    optimizer_cls=torch.optim.Adam,
+):
     """Run the real GRPO loop on the synthetic bandit; returns (policy, stepper, history) where
     history[t] = (measured mean rl_return at step t, GRPOStepStats)."""
     torch.manual_seed(seed)
@@ -209,7 +258,9 @@ def test_learning_demo_rl_return_rises_from_chance():
     # ~10 steps, so a wider window would already contain learning (measured, not assumed).
     initial = statistics.fmean(returns[:3])
     final = statistics.fmean(returns[-20:])
-    assert final > initial + 0.3, f"no learning: initial(3-step mean)={initial} final={final}"
+    assert final > initial + 0.3, (
+        f"no learning: initial(3-step mean)={initial} final={final}"
+    )
     assert final > 0.8, f"did not approach solved: final(20-step mean)={final}"
     assert all(math.isfinite(s.loss) for _, s in history)
     assert all(math.isfinite(s.grad_norm) for _, s in history)
@@ -222,17 +273,23 @@ def test_spike_trips_outer_clip_and_training_survives():
     SGD (whose update magnitude scales with the gradient, unlike Adam) makes the injected spike
     actually move the policy; re-stepping on the same batch with the SAME frozen old_logp
     (inner epochs) then produces genuinely runaway importance ratios."""
-    policy, stepper, _ = _train_bandit(steps=2, seed=1, lr=0.5, optimizer_cls=torch.optim.SGD)
+    policy, stepper, _ = _train_bandit(
+        steps=2, seed=1, lr=0.5, optimizer_cls=torch.optim.SGD
+    )
 
     x, actions, old_logp, advs, _ = _bandit_batch(policy, group_size=8)
     spiked_advs = advs * 1e6  # the injected loss spike
     total_outer_hits = 0
-    for _ in range(3):  # inner epochs: ratios drift away from 1 after the first huge update
+    for _ in range(
+        3
+    ):  # inner epochs: ratios drift away from 1 after the first huge update
         stats = stepper.step(x, actions, old_logp, spiked_advs)
         total_outer_hits += stats.outer_clip_hits
         assert math.isfinite(stats.loss), f"loss went non-finite during spike: {stats}"
     assert total_outer_hits > 0, "1e6-advantage spike never tripped the outer clip"
-    assert all(torch.isfinite(p).all() for p in policy.parameters()), "NaN/inf in params"
+    assert all(torch.isfinite(p).all() for p in policy.parameters()), (
+        "NaN/inf in params"
+    )
 
     # Training continues after the spike episode: 20 more normal steps, all finite.
     for _ in range(20):
@@ -249,19 +306,27 @@ def test_true_float32_exp_overflow_ratio_survives_backward():
     NaN parameters after optimizer.step(). The cap (log(1+r_outer)+1, applied before exp) makes
     the runaway token's gradient a true zero. This drives the exact regime the standard spike
     test (1e6 advantages) never reaches."""
-    policy, stepper, _ = _train_bandit(steps=2, seed=3, lr=0.5, optimizer_cls=torch.optim.SGD)
+    policy, stepper, _ = _train_bandit(
+        steps=2, seed=3, lr=0.5, optimizer_cls=torch.optim.SGD
+    )
     x, actions, old_logp, advs, _ = _bandit_batch(policy, group_size=8)
     old_logp = old_logp.clone()
-    old_logp[0] = -200.0  # log-ratio ≈ new_logp + 200 → exp overflows float32 without the cap
+    old_logp[
+        0
+    ] = -200.0  # log-ratio ≈ new_logp + 200 → exp overflows float32 without the cap
 
     stats = stepper.step(x, actions, old_logp, advs)
     assert math.isfinite(stats.loss), f"loss non-finite on overflow ratio: {stats}"
     assert math.isfinite(stats.mean_ratio), "capped ratio must be finite, not inf"
-    assert stats.outer_clip_hits >= 1, "an overflow-scale ratio must still count as a breaker hit"
+    assert stats.outer_clip_hits >= 1, (
+        "an overflow-scale ratio must still count as a breaker hit"
+    )
     for p in policy.parameters():
         assert torch.isfinite(p).all(), "params NaN'd — the log-ratio cap failed"
         if p.grad is not None:
-            assert torch.isfinite(p.grad).all(), "grads NaN'd — 0·inf leaked through exp backward"
+            assert torch.isfinite(p.grad).all(), (
+                "grads NaN'd — 0·inf leaked through exp backward"
+            )
 
     # And training continues normally afterwards.
     for _ in range(5):
@@ -293,7 +358,9 @@ def test_checkpoint_roundtrip(tmp_path):
     """state_dict → torch.save → fresh stepper → load must restore policy weights, optimizer
     moments, and thermostat k exactly; an identical further step must then produce identical
     parameters on both instances (proves optimizer state really round-tripped)."""
-    policy, stepper, _ = _train_bandit(steps=20, seed=2, h_target=2.0)  # h_target>H ⇒ real k>0
+    policy, stepper, _ = _train_bandit(
+        steps=20, seed=2, h_target=2.0
+    )  # h_target>H ⇒ real k>0
     k_before = stepper.thermostat.k
     assert k_before > 0.0
     path = tmp_path / "grpo_step.pt"
@@ -311,7 +378,7 @@ def test_checkpoint_roundtrip(tmp_path):
 
     assert stepper2.thermostat.k == k_before
     for (n1, p1), (n2, p2) in zip(
-        policy.state_dict().items(), policy2.state_dict().items()
+        policy.state_dict().items(), policy2.state_dict().items(), strict=False
     ):
         assert n1 == n2 and torch.equal(p1, p2), f"param {n1} not restored"
 
@@ -320,8 +387,10 @@ def test_checkpoint_roundtrip(tmp_path):
     s1 = stepper.step(x, actions, old_logp, advs)
     s2 = stepper2.step(x, actions, old_logp, advs)
     assert s1.loss == s2.loss
-    for p1, p2 in zip(policy.parameters(), policy2.parameters()):
-        assert torch.equal(p1, p2), "post-load step diverged — optimizer state not round-tripped"
+    for p1, p2 in zip(policy.parameters(), policy2.parameters(), strict=False):
+        assert torch.equal(p1, p2), (
+            "post-load step diverged — optimizer state not round-tripped"
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -367,12 +436,18 @@ def test_step_accepts_avamodel_shaped_policy_with_mask():
     # the rollout ratio and trip the outer clip.
     old_logp[:, -2:] = -100.0
 
-    advs = torch.tensor(group_advantages([1.0, 0.0, 1.0, 0.0, 0.0, 1.0]), dtype=torch.float32)
+    advs = torch.tensor(
+        group_advantages([1.0, 0.0, 1.0, 0.0, 0.0, 1.0]), dtype=torch.float32
+    )
     stats = stepper.step({"input_ids": input_ids}, actions, old_logp, advs, mask=mask)
 
     assert stats.batch_size == bsz
-    assert stats.outer_clip_hits == 0, "mask ignored: poisoned pad tokens leaked into the ratio"
-    assert abs(stats.mean_ratio - 1.0) <= 1e-5  # on-policy: masked mean ratio is exactly 1
+    assert stats.outer_clip_hits == 0, (
+        "mask ignored: poisoned pad tokens leaked into the ratio"
+    )
+    assert (
+        abs(stats.mean_ratio - 1.0) <= 1e-5
+    )  # on-policy: masked mean ratio is exactly 1
     assert math.isfinite(stats.loss) and math.isfinite(stats.rl_entropy)
 
 
@@ -385,9 +460,15 @@ def test_step_rejects_unextractable_policy_output():
 
     m = Opaque()
     stepper = TorchGRPOStep(
-        m, torch.optim.SGD([torch.nn.Parameter(torch.zeros(1))], lr=0.1),
-        EntropyThermostat(kappa=0.0, h_target=0.3), r_outer=1.0,
+        m,
+        torch.optim.SGD([torch.nn.Parameter(torch.zeros(1))], lr=0.1),
+        EntropyThermostat(kappa=0.0, h_target=0.3),
+        r_outer=1.0,
     )
     with pytest.raises(KeyError):
-        stepper.step(torch.zeros(2, 3), torch.zeros(2, dtype=torch.long),
-                     torch.zeros(2), torch.zeros(2))
+        stepper.step(
+            torch.zeros(2, 3),
+            torch.zeros(2, dtype=torch.long),
+            torch.zeros(2),
+            torch.zeros(2),
+        )

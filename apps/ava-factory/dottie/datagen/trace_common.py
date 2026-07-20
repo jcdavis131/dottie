@@ -41,7 +41,7 @@ PHASE_CHAR_BUDGET = {2: 4000, 3: 16000, 4: 12000}
 #: checkpoint-elision technique is deliberately exercised (medium inputs, hard
 #: budget); phases 2 and 4 emit full traces (p2 inputs are small, p4 docs are
 #: long-context material and *want* the full trace).
-PHASE_ELIDE_OVER = {2: 10 ** 9, 3: 28, 4: 10 ** 9}
+PHASE_ELIDE_OVER = {2: 10**9, 3: 28, 4: 10**9}
 
 
 def render_etcot(task: str, think_lines: list[str], answer_lines: list[str]) -> str:
@@ -67,8 +67,13 @@ def to_chat(text: str) -> str:
     return f"{CHAT_USER}\n{task}\n{CHAT_ASSISTANT}\n{THINK_OPEN}\n{trace}"
 
 
-def elide(steps: list[str], states: list[str], elide_over: int,
-          keep_head: int = 10, keep_tail: int = 4) -> list[str]:
+def elide(
+    steps: list[str],
+    states: list[str],
+    elide_over: int,
+    keep_head: int = 10,
+    keep_tail: int = 4,
+) -> list[str]:
     """Compress the middle of a long step trace with a state checkpoint.
 
     Call ``step_lines()`` *before* this so the surviving lines keep their
@@ -87,7 +92,7 @@ def elide(steps: list[str], states: list[str], elide_over: int,
         f"[.. {omitted} steps elided to fit the trace budget; "
         f"state checkpoint before step {resume + 1}: {checkpoint} ..]"
     )
-    return steps[:keep_head] + [marker] + steps[-keep_tail:]
+    return [*steps[:keep_head], marker, *steps[-keep_tail:]]
 
 
 def step_lines(raw: list[str]) -> list[str]:

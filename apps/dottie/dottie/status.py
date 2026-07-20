@@ -9,12 +9,13 @@ the honest capability picture and is part of the stable shape — keep it."""
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any
 
-from dottie import __version__
-from dottie.engine import DottieEngine
+from dottie import __version__, resolve
 from dottie.policy import AvaPolicy, EchoPolicy, OllamaPolicy
-from dottie import resolve
+
+if TYPE_CHECKING:
+    from dottie.engine import DottieEngine
 
 CAPABILITY_NOTE = (
     "Ollama (external local model, e.g. qwen3:32b) is the only backend with real task "
@@ -25,8 +26,8 @@ CAPABILITY_NOTE = (
 
 
 def build_status(
-    engine: DottieEngine, task_counts: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
+    engine: DottieEngine, task_counts: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Assemble the /status payload. Stable keys: service, version, ts, capability_note,
     backends{ollama,ava,echo}, integrations, data{...}."""
     return {
@@ -35,11 +36,11 @@ def build_status(
         "ts": time.time(),
         "capability_note": CAPABILITY_NOTE,
         "backends": {
-            "ollama": OllamaPolicy().probe(),   # real HTTP ping (short timeout)
-            "ava": AvaPolicy().probe(),         # real ckpt stat + torch find_spec
+            "ollama": OllamaPolicy().probe(),  # real HTTP ping (short timeout)
+            "ava": AvaPolicy().probe(),  # real ckpt stat + torch find_spec
             "echo": EchoPolicy().probe(),
         },
-        "integrations": resolve.probe(),        # real filesystem probes of the siblings
+        "integrations": resolve.probe(),  # real filesystem probes of the siblings
         "data": {
             "data_dir": str(engine.data_dir),
             "traces": engine.trace_count(),

@@ -81,8 +81,7 @@ def build_architecture(preset: str | None = None) -> dict[str, Any]:
 
     add(
         "jspace",
-        "Multi-J-Space\n"
-        + " · ".join(f"{s}:{j.slots[s]}" for s in _SPACES),
+        "Multi-J-Space\n" + " · ".join(f"{s}:{j.slots[s]}" for s in _SPACES),
         "jspace",
         slots=dict(j.slots),
         half_life_target=dict(j.half_life),
@@ -115,7 +114,7 @@ def build_architecture(preset: str | None = None) -> dict[str, Any]:
             layer_index=i,
             regime="reasoning",
         )
-        edges.append({"from": prev if i == 0 else f"reason_{i-1}", "to": nid})
+        edges.append({"from": prev if i == 0 else f"reason_{i - 1}", "to": nid})
         if i == 0:
             prev = nid
         else:
@@ -151,9 +150,7 @@ def live_signals_from_trainer_last(last: dict[str, Any] | None) -> dict[str, Any
     routes = last.get("route_probs")
     route_map: dict[str, float] = {}
     if isinstance(routes, (list, tuple)) and len(routes) >= 4:
-        route_map = {
-            _ROUTE_NAMES[i]: float(routes[i]) for i in range(4)
-        }
+        route_map = {_ROUTE_NAMES[i]: float(routes[i]) for i in range(4)}
     hl = last.get("hl_est") if isinstance(last.get("hl_est"), dict) else {}
     return {
         "available": True,
@@ -182,7 +179,11 @@ def _is_num(v: Any) -> bool:
 
 def _group_for_key(key: str) -> str:
     for prefix, group in _GROUP_PREFIXES:
-        if key == prefix or key.startswith(prefix + ".") or key.startswith(prefix + "_"):
+        if (
+            key == prefix
+            or key.startswith(prefix + ".")
+            or key.startswith(prefix + "_")
+        ):
             return group
     return "other"
 
@@ -223,7 +224,7 @@ def peek_ckpt_group_norms(
     t0 = time.time()
     try:
         blob = torch.load(path, map_location="cpu", weights_only=False)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return {"path": str(path), "error": str(exc)[:240]}
 
     state = blob.get("model") if isinstance(blob, dict) else None
@@ -243,7 +244,7 @@ def peek_ckpt_group_norms(
         try:
             t = tensor.detach().float().reshape(-1)
             rms = float(torch.sqrt(torch.mean(t * t)).item())
-        except Exception:  # noqa: BLE001
+        except Exception:
             continue
         if not math.isfinite(rms):
             continue
@@ -314,11 +315,13 @@ def collect_network_status(
             from dottie.pipeline_status import collect_status
 
             pipeline = collect_status()
-        except Exception:  # noqa: BLE001
+        except Exception:
             pipeline = None
     if pipeline:
         trainer = pipeline.get("trainer") or {}
-        trainer_last = trainer.get("last") if isinstance(trainer.get("last"), dict) else None
+        trainer_last = (
+            trainer.get("last") if isinstance(trainer.get("last"), dict) else None
+        )
         watch = pipeline.get("watch") or {}
         ckpt_meta = pipeline.get("ckpt") or {}
 

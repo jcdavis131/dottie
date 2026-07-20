@@ -1,4 +1,5 @@
 """Skill plugin — teach Dottie-claw / agents to drive Scout."""
+
 from __future__ import annotations
 
 import json
@@ -41,7 +42,10 @@ def test_skill_list_and_show():
     assert show.returncode == 0
     body = json.loads(show.stdout)
     assert body["ok"] is True
-    assert "Dottie" in body["data"]["skill"]["preview"] or "dottie" in body["data"]["skill"]["preview"].lower()
+    assert (
+        "Dottie" in body["data"]["skill"]["preview"]
+        or "dottie" in body["data"]["skill"]["preview"].lower()
+    )
 
 
 def test_skill_install_dottie_dry_run_and_real(tmp_path, monkeypatch):
@@ -51,7 +55,9 @@ def test_skill_install_dottie_dry_run_and_real(tmp_path, monkeypatch):
     dottie_root = tmp_path / "dottie-skills"
     monkeypatch.setitem(skill_cli.TARGETS, "dottie", dottie_root)
 
-    dry = _run(["--json", "skill", "install", "scout", "--target", "dottie", "--dry-run"])
+    dry = _run(
+        ["--json", "skill", "install", "scout", "--target", "dottie", "--dry-run"]
+    )
     # dry-run uses TARGETS at runtime inside process — subprocess won't see monkeypatch.
     # Test install helpers in-process instead for the real write.
     assert dry.returncode == 0
@@ -75,7 +81,9 @@ def test_skill_teach_inprocess(tmp_path, monkeypatch):
     root = tmp_path / "skills"
     monkeypatch.setitem(skill_cli.TARGETS, "dottie", root)
     # Call install_cmd directly (same as teach)
-    skill_cli.install_cmd(name=None, target="dottie", all_skills=True, force=True, dry_run=False)
+    skill_cli.install_cmd(
+        name=None, target="dottie", all_skills=True, force=True, dry_run=False
+    )
     assert (root / "scout" / "SKILL.md").exists()
     assert (root / "scout-herd" / "SKILL.md").exists()
 

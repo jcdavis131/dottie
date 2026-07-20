@@ -57,8 +57,8 @@ import yaml
 import zstandard as zstd
 
 from dottie.pipeline import clean, decontaminate
-from dottie.pipeline.dedup import MinHashDeduper
 from dottie.pipeline.decontaminate import Decontaminator
+from dottie.pipeline.dedup import MinHashDeduper
 from dottie.pipeline.flow import FlowConfig, curator_claim_phases
 from dottie.pipeline.manifest import Manifest, worker_id
 from dottie.pipeline.pack import load_tokenizer, pack_docs, write_shard
@@ -110,7 +110,9 @@ class Curator:
         dedup_db: str | None = None,
         tokenizer_path: str | None = None,
     ) -> None:
-        self.config_path = config_path or os.environ.get("AVA_PIPELINE_CONFIG", DEFAULT_CONFIG)
+        self.config_path = config_path or os.environ.get(
+            "AVA_PIPELINE_CONFIG", DEFAULT_CONFIG
+        )
         cfg = yaml.safe_load(Path(self.config_path).read_text())
         cur = cfg["curator"]
         self.batch_docs = int(cur.get("batch_docs", 1000))
@@ -148,7 +150,9 @@ class Curator:
     def lt(self):
         if self._lt is None:
             self._lt = load_tokenizer(self.tokenizer_path)
-            _log("tokenizer_loaded", sha=self._lt.sha256[:12], vocab=self._lt.vocab_size)
+            _log(
+                "tokenizer_loaded", sha=self._lt.sha256[:12], vocab=self._lt.vocab_size
+            )
         return self._lt
 
     # -- core ---------------------------------------------------------------
@@ -158,9 +162,14 @@ class Curator:
         t0 = time.time()
         raw_path = shard.path
         counts = {
-            "read": 0, "kept": 0, "empty": 0, "non_english": 0,
-            "edu_reject": 0, "duplicate": 0,
-            "gopher_reject": {}, "contaminated": {},
+            "read": 0,
+            "kept": 0,
+            "empty": 0,
+            "non_english": 0,
+            "edu_reject": 0,
+            "duplicate": 0,
+            "gopher_reject": {},
+            "contaminated": {},
         }
         by_split: dict[str, list[dict]] = {"train": [], "val": [], "test": []}
 
@@ -177,7 +186,9 @@ class Curator:
                     last_renew = time.time()
 
                 counts["read"] += 1
-                doc_id = doc.get("doc_id") or f"{doc.get('source','?')}:{counts['read']}"
+                doc_id = (
+                    doc.get("doc_id") or f"{doc.get('source', '?')}:{counts['read']}"
+                )
 
                 norm = clean.normalize(doc.get("text", ""))
                 if not norm:
@@ -188,10 +199,14 @@ class Curator:
                     continue
                 ok, reason = clean.gopher_quality(norm)
                 if not ok:
-                    counts["gopher_reject"][reason] = counts["gopher_reject"].get(reason, 0) + 1
+                    counts["gopher_reject"][reason] = (
+                        counts["gopher_reject"].get(reason, 0) + 1
+                    )
                     continue
                 phase_num = _phase_num(doc, shard.phase)
-                if not clean.edu_score_ok(doc.get("meta"), phase_num, clean.DEFAULT_EDU_THRESHOLDS):
+                if not clean.edu_score_ok(
+                    doc.get("meta"), phase_num, clean.DEFAULT_EDU_THRESHOLDS
+                ):
                     counts["edu_reject"] += 1
                     continue
                 scrubbed = clean.scrub_pii(norm)
@@ -200,17 +215,21 @@ class Curator:
                     continue
                 contaminated, which = self._decon.is_contaminated(scrubbed)
                 if contaminated:
-                    counts["contaminated"][which] = counts["contaminated"].get(which, 0) + 1
+                    counts["contaminated"][which] = (
+                        counts["contaminated"].get(which, 0) + 1
+                    )
                     continue
 
                 split = assign_split(doc_id, self.split_ratios)
-                by_split[split].append({
-                    "doc_id": doc_id,
-                    "text": scrubbed,
-                    "task_type": doc.get("task_type", ""),
-                    "concept": doc.get("concept", ""),
-                    "phase": doc.get("phase", f"p{phase_num}"),
-                })
+                by_split[split].append(
+                    {
+                        "doc_id": doc_id,
+                        "text": scrubbed,
+                        "task_type": doc.get("task_type", ""),
+                        "concept": doc.get("concept", ""),
+                        "phase": doc.get("phase", f"p{phase_num}"),
+                    }
+                )
                 counts["kept"] += 1
         finally:
             deduper.close()
@@ -226,7 +245,9 @@ class Curator:
         counts["elapsed_s"] = round(time.time() - t0, 3)
         return counts
 
-    def _emit_packed(self, m: Manifest, shard, by_split: dict[str, list[dict]], counts: dict) -> None:
+    def _emit_packed(
+        self, m: Manifest, shard, by_split: dict[str, list[dict]], counts: dict
+    ) -> None:
         phase = shard.phase
         written: dict[str, dict] = {}
 
@@ -236,7 +257,9 @@ class Curator:
             if not docs:
                 continue
             arr, idx = pack_docs(docs, self.lt)
-            bin_path = os.path.join(self.packed_dir, f"p{phase}", split, f"{shard.id}.bin")
+            bin_path = os.path.join(
+                self.packed_dir, f"p{phase}", split, f"{shard.id}.bin"
+            )
             write_shard(arr, idx, bin_path)
             written[split] = {
                 "path": bin_path,
@@ -304,20 +327,37 @@ class Curator:
                 break
         if shard is None:
             return False
-        _log("claimed", shard=shard.id, source=shard.source, phase=shard.phase, bytes=shard.bytes)
+        _log(
+            "claimed",
+            shard=shard.id,
+            source=shard.source,
+            phase=shard.phase,
+            bytes=shard.bytes,
+        )
         try:
             counts = self.process_shard(m, shard)
             _log("packed_ok", shard=shard.id, **counts)
         except Exception as exc:  # never crash the container on one bad shard
             err = f"{type(exc).__name__}: {exc}"
-            _log("shard_failed", shard=shard.id, error=err, tb=traceback.format_exc()[-1500:])
+            _log(
+                "shard_failed",
+                shard=shard.id,
+                error=err,
+                tb=traceback.format_exc()[-1500:],
+            )
             state = m.fail(shard.id, by=self.worker, error=err)
             _log("shard_parked", shard=shard.id, state=state)
         return True
 
     def serve(self, *, once: bool = False) -> int:
         self._install_signal_handlers()
-        _log("start", worker=self.worker, once=once, raw_dir=self.raw_dir, packed_dir=self.packed_dir)
+        _log(
+            "start",
+            worker=self.worker,
+            once=once,
+            raw_dir=self.raw_dir,
+            packed_dir=self.packed_dir,
+        )
         with Manifest(self.db_path) as m:
             # Startup reclaim — redeploys leave orphan CLAIMED_CURATE with dead workers.
             requeued = m.requeue_expired()
@@ -335,7 +375,9 @@ class Curator:
                     if idle_ticks >= REQUEUE_EXPIRED_EVERY_IDLE:
                         requeued = m.requeue_expired()
                         if requeued:
-                            _log("requeue_expired", count=len(requeued), ids=requeued[:8])
+                            _log(
+                                "requeue_expired", count=len(requeued), ids=requeued[:8]
+                            )
                         idle_ticks = 0
                     for _ in range(int(IDLE_POLL_SECONDS * 10)):
                         if self._stop:
@@ -349,7 +391,9 @@ class Curator:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Ava curator service")
-    ap.add_argument("--once", action="store_true", help="process a single shard and exit")
+    ap.add_argument(
+        "--once", action="store_true", help="process a single shard and exit"
+    )
     ap.add_argument("--config", default=None)
     ap.add_argument("--db", default=None)
     args = ap.parse_args(argv)

@@ -22,8 +22,8 @@ Two honesty properties, both load-bearing:
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional
+from collections.abc import Callable
+from dataclasses import dataclass
 
 from dottie.rl.codeact_sandbox import Observation, Sandbox
 
@@ -38,7 +38,7 @@ Policy = Callable[[str], str]
 _PY_FENCE = re.compile(r"```python\s*\n(.*?)```", re.DOTALL)
 
 
-def extract_action(assistant_turn: str) -> Optional[str]:
+def extract_action(assistant_turn: str) -> str | None:
     """Return the code of the FIRST ```python fence in the turn, or None if the turn has none.
 
     No fence ⇒ this turn is the FINAL answer (matches datagen: action turns carry a fenced block,
@@ -66,9 +66,12 @@ def sanitize_final(assistant_turn: str) -> str:
 @dataclass(frozen=True)
 class CodeActStep:
     """One executed action + its observation — the unit captured for debugging / memory-mint."""
-    assistant_turn: str          # the raw turn the policy emitted (thought + code)
-    code: str                    # the extracted action
-    observation: Observation     # the real sandbox result (stdout / value / error / tool_calls)
+
+    assistant_turn: str  # the raw turn the policy emitted (thought + code)
+    code: str  # the extracted action
+    observation: (
+        Observation  # the real sandbox result (stdout / value / error / tool_calls)
+    )
 
 
 @dataclass(frozen=True)
@@ -79,12 +82,13 @@ class CodeActResult:
     — step cap hit). `steps` is the full code+observation trace, captured for debugging and for
     memory-mint ingestion; it must never be concatenated into the user-facing string. `terminated`
     ∈ {'final','step_cap','policy_empty'}."""
-    final: Optional[str]
-    steps: List[CodeActStep]
+
+    final: str | None
+    steps: list[CodeActStep]
     terminated: str
 
     @property
-    def observations(self) -> List[Observation]:
+    def observations(self) -> list[Observation]:
         """The Observation sequence — the exact input `codeact_rewards`/`r_exec` consume."""
         return [s.observation for s in self.steps]
 
@@ -99,7 +103,7 @@ def _render_observation(obs: Observation) -> str:
     if obs.error is not None:
         body = obs.error
     else:
-        parts: List[str] = []
+        parts: list[str] = []
         if obs.stdout.strip():
             parts.append(obs.stdout.rstrip("\n"))
         if obs.value is not None:
@@ -108,10 +112,15 @@ def _render_observation(obs: Observation) -> str:
     return f"{USER}\nObservation:\n{body}"
 
 
-def run_code_act(policy: Policy, user_prompt: str, *,
-                 tool_sources: Optional[Dict[str, str]] = None,
-                 max_steps: int = 8, sandbox_max_steps: int = 16,
-                 timeout_s: float = 5.0) -> CodeActResult:
+def run_code_act(
+    policy: Policy,
+    user_prompt: str,
+    *,
+    tool_sources: dict[str, str] | None = None,
+    max_steps: int = 8,
+    sandbox_max_steps: int = 16,
+    timeout_s: float = 5.0,
+) -> CodeActResult:
     """Drive `policy` through a code-act episode against the REAL T13C.1 sandbox.
 
     Loop: emit assistant turn → extract ```python action → `Sandbox.step` → feed Observation back →
@@ -123,16 +132,21 @@ def run_code_act(policy: Policy, user_prompt: str, *,
     internal cap. An empty policy turn terminates as 'policy_empty' (a degenerate policy, not a
     FINAL) so a broken policy can't masquerade as a finished answer."""
     transcript = f"{USER}\n{user_prompt}"
-    steps: List[CodeActStep] = []
-    with Sandbox(tool_sources=tool_sources or {}, max_steps=sandbox_max_steps,
-                 timeout_s=timeout_s) as vm:
+    steps: list[CodeActStep] = []
+    with Sandbox(
+        tool_sources=tool_sources or {},
+        max_steps=sandbox_max_steps,
+        timeout_s=timeout_s,
+    ) as vm:
         for _ in range(max_steps):
             turn = policy(transcript)
             if not turn or not turn.strip():
                 return CodeActResult(final=None, steps=steps, terminated="policy_empty")
             code = extract_action(turn)
-            if code is None:                       # no action → this is the FINAL answer
-                return CodeActResult(final=sanitize_final(turn), steps=steps, terminated="final")
+            if code is None:  # no action → this is the FINAL answer
+                return CodeActResult(
+                    final=sanitize_final(turn), steps=steps, terminated="final"
+                )
             obs = vm.step(code)
             steps.append(CodeActStep(assistant_turn=turn, code=code, observation=obs))
             transcript += f"\n{ASSISTANT}\n{turn}\n{_render_observation(obs)}"
@@ -155,16 +169,16 @@ class TrajectoryReplayPolicy:
     end-to-end and returns only the sanitized FINAL (the T13C.5 serving accept criterion)."""
 
     def __init__(self, trajectory) -> None:
-        turns: List[str] = []
+        turns: list[str] = []
         for turn in trajectory.turns:
             turns.append(f"Thought: {turn.thought}\n```python\n{turn.code}\n```")
-        turns.append(trajectory.final_sentence)      # the closing turn has no fence → FINAL
+        turns.append(trajectory.final_sentence)  # the closing turn has no fence → FINAL
         self._turns = turns
         self._i = 0
 
-    def __call__(self, transcript: str) -> str:      # noqa: ARG002 - replay ignores the transcript
+    def __call__(self, transcript: str) -> str:
         if self._i >= len(self._turns):
-            return ""                                 # exhausted → degenerate empty turn
+            return ""  # exhausted → degenerate empty turn
         turn = self._turns[self._i]
         self._i += 1
         return turn
@@ -185,7 +199,7 @@ class ModelPolicy:
     tokenizer: object = None
     max_new_tokens: int = 512
 
-    def __call__(self, transcript: str) -> str:      # noqa: ARG002
+    def __call__(self, transcript: str) -> str:
         raise ModelPolicyBlockedError(
             "This placeholder never decodes — the REAL decode policy now exists: use "
             "ava.rl.codeact_policy.TorchModelPolicy (autoregressive greedy/sampling decode over "

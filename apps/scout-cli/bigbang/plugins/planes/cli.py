@@ -1,12 +1,16 @@
 """Planes plugin — differentiated Scout cockpit (judgment plane, not multiplexer)."""
+
 from __future__ import annotations
 
-import typer
+from typing import TYPE_CHECKING
 
 from bigbang.core.cli_ux import examples_epilog
 from bigbang.core.contract import make_plugin_app, ok
 from bigbang.core.output import emit
 from bigbang.plugins.planes import cockpit
+
+if TYPE_CHECKING:
+    import typer
 
 app = make_plugin_app(
     "planes",

@@ -61,7 +61,9 @@ def render_markdown(md: str) -> str:
         line = lines[i]
         if line.startswith("```"):
             if in_code:
-                out.append("<pre><code>" + html.escape("\n".join(code_buf)) + "</code></pre>")
+                out.append(
+                    "<pre><code>" + html.escape("\n".join(code_buf)) + "</code></pre>"
+                )
                 code_buf = []
                 in_code = False
             else:
@@ -74,7 +76,7 @@ def render_markdown(md: str) -> str:
             i += 1
             continue
         if "|" in line and line.strip().startswith("|"):
-            cells = [c for c in line.strip().strip("|").split("|")]
+            cells = list(line.strip().strip("|").split("|"))
             if not in_table:
                 flush_table()
                 in_table = True
@@ -245,7 +247,9 @@ def extract_series(runs: dict[str, list[dict]]) -> dict:
                 lr[name].append([step, vlr])
             hl = rec.get("hl_est")
             if isinstance(hl, dict):
-                hl_last[name] = {k: float(v) for k, v in hl.items() if _finite(v) is not None}
+                hl_last[name] = {
+                    k: float(v) for k, v in hl.items() if _finite(v) is not None
+                }
             rp = rec.get("route_probs")
             if isinstance(rp, (list, tuple)) and len(rp) >= 4:
                 for i, k in enumerate(("s1", "s2", "critic", "planner")):
@@ -538,7 +542,9 @@ _JS_CHARTS = r"""
 def build_eval_table(eval_data: dict | None) -> str:
     if not eval_data:
         return '<div class="note">no data — reports/branch_eval_results_real.json missing</div>'
-    rows = ["<table><thead><tr><th>Branch</th><th>Test</th><th>Bar</th><th>Measured (summary)</th><th>Verdict</th></tr></thead><tbody>"]
+    rows = [
+        "<table><thead><tr><th>Branch</th><th>Test</th><th>Bar</th><th>Measured (summary)</th><th>Verdict</th></tr></thead><tbody>"
+    ]
     for branch in ("base", "chat"):
         block = eval_data.get(branch) or {}
         # perplexity summary
@@ -581,8 +587,8 @@ def build_eval_table(eval_data: dict | None) -> str:
             cls = "pass" if item.get("pass") else "fail"
             rows.append(
                 f"<tr><td>{html.escape(branch)}</td>"
-                f"<td>{html.escape(str(item.get('test','')))}</td>"
-                f"<td>{html.escape(str(item.get('bar','')))}</td>"
+                f"<td>{html.escape(str(item.get('test', '')))}</td>"
+                f"<td>{html.escape(str(item.get('bar', '')))}</td>"
                 f"<td><code>{html.escape(json.dumps(summary, allow_nan=False)[:320])}</code></td>"
                 f"<td class='{cls}'>{verdict}</td></tr>"
             )
@@ -670,7 +676,9 @@ window.AVA_REPORT = {data_json};
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Build self-contained Ava HTML reports")
-    ap.add_argument("--runs", default="runs", help="directory of run folders with metrics.jsonl")
+    ap.add_argument(
+        "--runs", default="runs", help="directory of run folders with metrics.jsonl"
+    )
     ap.add_argument("--out", default="reports/index.html")
     ap.add_argument("--eval", default="reports/branch_eval_results_real.json")
     ap.add_argument("--preset", default="nano", help="config preset for HL targets")
@@ -688,7 +696,9 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         out_md = _REPO / "reports" / "report_real.html"
         out_md.parent.mkdir(parents=True, exist_ok=True)
-        out_md.write_text(render_markdown(md_path.read_text(encoding="utf-8")), encoding="utf-8")
+        out_md.write_text(
+            render_markdown(md_path.read_text(encoding="utf-8")), encoding="utf-8"
+        )
         print(f"wrote {out_md} ({out_md.stat().st_size} bytes)")
         return 0
 
@@ -723,7 +733,9 @@ def main(argv: list[str] | None = None) -> int:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(html_doc, encoding="utf-8")
     size = out_path.stat().st_size
-    print(f"wrote {out_path} ({size} bytes) runs={list(runs.keys())} eval={eval_data is not None}")
+    print(
+        f"wrote {out_path} ({size} bytes) runs={list(runs.keys())} eval={eval_data is not None}"
+    )
 
     # Also render REPORT_REAL.md when present (Vercel bundle layout).
     md = _REPO / "reports" / "REPORT_REAL.md"

@@ -30,12 +30,15 @@ Tokenizer contract (duck-typed): `encode(str) -> list[int]` and `decode(list[int
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any
 
 import torch
 
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
 # Match ava/rl/codeact_loop.py / ava/datagen/codeact.py: the next-turn marker is the stop.
-DEFAULT_STOP_SEQUENCES: Tuple[str, ...] = ("<|user|>", "<|assistant|>", "<|endofdoc|>")
+DEFAULT_STOP_SEQUENCES: tuple[str, ...] = ("<|user|>", "<|assistant|>", "<|endofdoc|>")
 
 
 def _extract_logits(out: Any) -> torch.Tensor:
@@ -51,9 +54,9 @@ def _extract_logits(out: Any) -> torch.Tensor:
         raise TypeError(
             f"model output must be a dict with 'lm_logits' or a logits tensor, got {type(out)!r}"
         )
-    if out.dim() == 3:          # [B, L, V] — full-sequence logits
+    if out.dim() == 3:  # [B, L, V] — full-sequence logits
         return out[:, -1, :]
-    if out.dim() == 2:          # [B, V] — a last-step-only model
+    if out.dim() == 2:  # [B, V] — a last-step-only model
         return out
     raise TypeError(f"logits must be [B, L, V] or [B, V], got shape {tuple(out.shape)}")
 
@@ -100,9 +103,9 @@ class TorchModelPolicy:
         top_k: int = 0,
         stop_sequences: Sequence[str] = DEFAULT_STOP_SEQUENCES,
         context_window: int = 1024,
-        eos_id: Optional[int] = None,
-        seed: Optional[int] = None,
-        forward_kwargs: Optional[Dict[str, Any]] = None,
+        eos_id: int | None = None,
+        seed: int | None = None,
+        forward_kwargs: dict[str, Any] | None = None,
         device: str = "cpu",
     ) -> None:
         if model is None:
@@ -129,7 +132,7 @@ class TorchModelPolicy:
         self.max_new_tokens = int(max_new_tokens)
         self.temperature = float(temperature)
         self.top_k = int(top_k)
-        self.stop_sequences: Tuple[str, ...] = tuple(stop_sequences)
+        self.stop_sequences: tuple[str, ...] = tuple(stop_sequences)
         self.context_window = int(context_window)
         self.seed = seed
         self.forward_kwargs = dict(forward_kwargs or {})
@@ -142,7 +145,7 @@ class TorchModelPolicy:
 
         # Pre-encode each stop sequence once so decoding can match at the *id* level, which is
         # robust even when the tokenizer's decode() strips special tokens from the text.
-        self._stop_id_seqs: List[List[int]] = []
+        self._stop_id_seqs: list[list[int]] = []
         for s in self.stop_sequences:
             ids = list(self.tokenizer.encode(s))
             if ids:
@@ -154,7 +157,7 @@ class TorchModelPolicy:
         return self.generate(transcript)
 
     # -- decoding -----------------------------------------------------------------
-    def generate(self, prompt: str, *, seed: Optional[int] = None) -> str:
+    def generate(self, prompt: str, *, seed: int | None = None) -> str:
         """Decode one assistant turn from `prompt`. `seed` overrides the constructor seed for
         this call only (sampling mode; greedy ignores it)."""
         prompt_ids = list(self.tokenizer.encode(prompt))
@@ -172,27 +175,35 @@ class TorchModelPolicy:
         text = self._decode_text(new_ids)
         return self._cut_at_stops(text)
 
-    def _decode_ids(self, prompt_ids: List[int], gen: Optional[torch.Generator]) -> List[int]:
+    def _decode_ids(
+        self, prompt_ids: list[int], gen: torch.Generator | None
+    ) -> list[int]:
         ids = list(prompt_ids)
-        new_ids: List[int] = []
+        new_ids: list[int] = []
         with torch.no_grad():
             for _ in range(self.max_new_tokens):
-                window = ids[-self.context_window:]  # LEFT-truncate: keep most recent tokens
+                window = ids[
+                    -self.context_window :
+                ]  # LEFT-truncate: keep most recent tokens
                 x = torch.tensor([window], dtype=torch.long, device=self.device)
-                logits = _extract_logits(self.model(input_ids=x, **self.forward_kwargs))[0]
+                logits = _extract_logits(
+                    self.model(input_ids=x, **self.forward_kwargs)
+                )[0]
                 nxt = self._pick_token(logits, gen)
                 if self.eos_id is not None and nxt == self.eos_id:
-                    break                            # EOS is a stop, never part of the turn
+                    break  # EOS is a stop, never part of the turn
                 ids.append(nxt)
                 new_ids.append(nxt)
                 cut = self._match_stop_ids(new_ids)
                 if cut is not None:
-                    return new_ids[:cut]             # drop the matched stop marker itself
+                    return new_ids[:cut]  # drop the matched stop marker itself
         return new_ids
 
-    def _pick_token(self, logits: torch.Tensor, gen: Optional[torch.Generator]) -> int:
+    def _pick_token(self, logits: torch.Tensor, gen: torch.Generator | None) -> int:
         if self.temperature == 0.0:
-            return int(torch.argmax(logits).item())  # greedy: deterministic by construction
+            return int(
+                torch.argmax(logits).item()
+            )  # greedy: deterministic by construction
         logits = logits / self.temperature
         if self.top_k > 0 and self.top_k < logits.shape[-1]:
             kth = torch.topk(logits, self.top_k).values[-1]
@@ -204,7 +215,7 @@ class TorchModelPolicy:
         probs = torch.softmax(logits.to(torch.float32), dim=-1).cpu()
         return int(torch.multinomial(probs, 1, generator=gen).item())
 
-    def _match_stop_ids(self, new_ids: List[int]) -> Optional[int]:
+    def _match_stop_ids(self, new_ids: list[int]) -> int | None:
         """If `new_ids` ends with a stop-id sequence, return the cut index (len minus match)."""
         for seq in self._stop_id_seqs:
             n = len(seq)
@@ -213,7 +224,7 @@ class TorchModelPolicy:
         return None
 
     # -- text helpers -------------------------------------------------------------
-    def _decode_text(self, ids: List[int]) -> str:
+    def _decode_text(self, ids: list[int]) -> str:
         try:
             # DottieTokenizer: keep specials so a stop marker mid-stream is still text-cuttable.
             return self.tokenizer.decode(ids, skip_special=False)
@@ -231,7 +242,7 @@ class TorchModelPolicy:
         return text[:cut].strip()
 
     @staticmethod
-    def _make_generator(seed: Optional[int]) -> Optional[torch.Generator]:
+    def _make_generator(seed: int | None) -> torch.Generator | None:
         if seed is None:
             return None
         g = torch.Generator(device="cpu")

@@ -1,11 +1,23 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
-import typer, json, time, re, socket, threading, os, shlex, subprocess, sys
+import json
+import os
+import re
+import shlex
+import socket
+import subprocess
+import sys
+import threading
+import time
 from collections import Counter
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlparse
+
+import typer
+
 from bigbang.core.output import emit
 from bigbang.core.registry import list_tools
-from pathlib import Path
-from typing import List, Dict, Any, Optional
-from urllib.parse import urlparse
+
 
 def _is_resolvable_fast(host: str, timeout: float = 0.8) -> bool:
     if not host:
@@ -13,44 +25,59 @@ def _is_resolvable_fast(host: str, timeout: float = 0.8) -> bool:
     if host in ("localhost", "127.0.0.1", "::1"):
         return True
     if host == "host.docker.internal":
-        allow = os.environ.get("OLLAMA_ALLOW_DOCKER_HOST") or os.environ.get("BIGBANG_USE_DOCKER_HOST") or os.environ.get("OLLAMA_BASE", "")
+        allow = (
+            os.environ.get("OLLAMA_ALLOW_DOCKER_HOST")
+            or os.environ.get("BIGBANG_USE_DOCKER_HOST")
+            or os.environ.get("OLLAMA_BASE", "")
+        )
         if "host.docker.internal" not in allow:
             try:
-                with open("/etc/hosts", "r", encoding="utf-8", errors="ignore") as f:
+                with open("/etc/hosts", encoding="utf-8", errors="ignore") as f:
                     if "host.docker.internal" not in f.read():
                         return False
             except Exception:
                 return False
-    result: List[bool] = []
+    result: list[bool] = []
+
     def _do():
         try:
             socket.getaddrinfo(host, None)
             result.append(True)
         except Exception:
             result.append(False)
+
     t = threading.Thread(target=_do, daemon=True)
     t.start()
     t.join(timeout=timeout)
     return result[0] if result else False
 
+
 # Try to reuse core llm helpers
 try:
     from bigbang.core.llm import (
-        get_ollama_base,
-        ollama_chat,
-        list_ollama_models,
-        get_best_model,
-        extract_json_from_text,
         OLLAMA_URLS,
         PREFERRED_MODELS,
+        extract_json_from_text,
+        get_best_model,
+        get_ollama_base,
+        list_ollama_models,
+        ollama_chat,
     )
+
     _HAS_LLM = True
 except Exception:
     _HAS_LLM = False
     OLLAMA_URLS = ["http://localhost:11434", "http://host.docker.internal:11434"]
-    PREFERRED_MODELS = ["qwen3:32b", "qwen3", "llama3.1:8b", "llama3.1", "qwen2.5:32b", "qwen2.5"]
+    PREFERRED_MODELS = [
+        "qwen3:32b",
+        "qwen3",
+        "llama3.1:8b",
+        "llama3.1",
+        "qwen2.5:32b",
+        "qwen2.5",
+    ]
 
-    _FALLBACK_CACHE_BASE: Optional[str] = None
+    _FALLBACK_CACHE_BASE: str | None = None
     _FALLBACK_CACHE_AT: float = 0.0
 
     def _httpx_client_fallback(timeout: float = 2.0):
@@ -90,14 +117,14 @@ except Exception:
         e = t.rfind("]")
         if s != -1 and e != -1 and e > s:
             try:
-                return json.loads(t[s:e+1])
+                return json.loads(t[s : e + 1])
             except Exception:
                 pass
         s = t.find("{")
         e = t.rfind("}")
         if s != -1 and e != -1 and e > s:
             try:
-                return json.loads(t[s:e+1])
+                return json.loads(t[s : e + 1])
             except Exception:
                 pass
         return None
@@ -107,7 +134,11 @@ except Exception:
         now = time.time()
         if _FALLBACK_CACHE_BASE is not None and (now - _FALLBACK_CACHE_AT) < 30.0:
             return _FALLBACK_CACHE_BASE
-        if _FALLBACK_CACHE_AT and (now - _FALLBACK_CACHE_AT) < 5.0 and _FALLBACK_CACHE_BASE is None:
+        if (
+            _FALLBACK_CACHE_AT
+            and (now - _FALLBACK_CACHE_AT) < 5.0
+            and _FALLBACK_CACHE_BASE is None
+        ):
             return None
         try:
             import httpx
@@ -126,7 +157,7 @@ except Exception:
             try:
                 r = client.get(f"{base.rstrip('/')}/api/tags")
                 if r.status_code == 200:
-                    found = base.rstrip('/')
+                    found = base.rstrip("/")
                     break
             except Exception:
                 continue
@@ -178,7 +209,13 @@ except Exception:
     def get_best_model(base=None, timeout=2.0):
         return "qwen3:32b"
 
-app = typer.Typer(name="agent", help="🤖 Agent — Ava-native planner that routes to any tool", no_args_is_help=True)
+
+app = typer.Typer(
+    name="agent",
+    help="🤖 Agent — Ava-native planner that routes to any tool",
+    no_args_is_help=True,
+)
+
 
 def _httpx_client(timeout: float = 2.0):
     try:
@@ -199,10 +236,11 @@ def _httpx_client(timeout: float = 2.0):
     except Exception:
         return None
 
-def _heuristic_plan(task: str) -> Dict[str, Any]:
+
+def _heuristic_plan(task: str) -> dict[str, Any]:
     q = task.lower()
     tools = list_tools()
-    plan: List[str] = []
+    plan: list[str] = []
 
     builtin_hints = {
         "task": "bb tasks list",
@@ -212,7 +250,9 @@ def _heuristic_plan(task: str) -> Dict[str, Any]:
         "github": "bb tools search github",
         "pr": "bb tools search github",
         "vector": "bb vector list",
-        "hoops": "bb vector hoops --daily" if "daily" in q else "bb vector hoops --list",
+        "hoops": "bb vector hoops --daily"
+        if "daily" in q
+        else "bb vector hoops --list",
         "tennis": "bb tennis serve --help",
         "family": "bb family brain",
         "brain": "bb brain goals",
@@ -260,7 +300,7 @@ def _heuristic_plan(task: str) -> Dict[str, Any]:
                 plan.append(v)
 
     for name, m in tools.items():
-        desc = m.get("description","").lower()
+        desc = m.get("description", "").lower()
         if any(word in name.lower() or word in desc for word in q.split()[:6]):
             cmd = f"bb {name} --help"
             if len(plan) < 5 and cmd not in plan:
@@ -285,27 +325,40 @@ def _heuristic_plan(task: str) -> Dict[str, Any]:
         "reason": "keyword matching + builtin hints",
     }
 
-def _ollama_planner(task: str, system_prefix: str | None = None) -> Dict[str, Any]:
+
+def _ollama_planner(task: str, system_prefix: str | None = None) -> dict[str, Any]:
     base = get_ollama_base(timeout=2.0)
     if not base:
-        raise RuntimeError("Ollama not available at localhost:11434 or host.docker.internal:11434")
+        raise RuntimeError(
+            "Ollama not available at localhost:11434 or host.docker.internal:11434"
+        )
 
     best_model = get_best_model(base=base, timeout=2.0) if _HAS_LLM else "qwen3:32b"
 
     tools = list_tools()
-    tool_desc = "\n".join([f"- bb {name}: {m.get('description','')[:80]}" for name, m in list(tools.items())[:25]])
+    tool_desc = "\n".join(
+        [
+            f"- bb {name}: {m.get('description', '')[:80]}"
+            for name, m in list(tools.items())[:25]
+        ]
+    )
 
     # A dynamic profile (Hermes/OpenClaw, core.profiles) prepends its system role so the
     # planner operates inside that loop's doctrine.
-    system = f"You are Ava planner for BigBang CLI. Available tools:\n{tool_desc}\nYou must output JSON only with a plan: {{\"plan\": [\"bb ...\", \"bb ...\"], \"reason\": \"...\"}}. Plan should be 2-4 bb commands to accomplish task. Use only bb commands."
+    system = f'You are Ava planner for BigBang CLI. Available tools:\n{tool_desc}\nYou must output JSON only with a plan: {{"plan": ["bb ...", "bb ..."], "reason": "..."}}. Plan should be 2-4 bb commands to accomplish task. Use only bb commands.'
     if system_prefix:
         system = system_prefix + "\n\n" + system
     messages = [
         {"role": "system", "content": system},
-        {"role": "user", "content": f"Task: {task}\nReturn JSON with plan array of bb commands."},
+        {
+            "role": "user",
+            "content": f"Task: {task}\nReturn JSON with plan array of bb commands.",
+        },
     ]
 
-    raw = ollama_chat(model=best_model, messages=messages, json_mode=True, base=base, timeout=30.0)
+    raw = ollama_chat(
+        model=best_model, messages=messages, json_mode=True, base=base, timeout=30.0
+    )
     if not raw:
         raise RuntimeError("Ollama chat empty response")
 
@@ -344,9 +397,12 @@ def _ollama_planner(task: str, system_prefix: str | None = None) -> Dict[str, An
         "planner_model": best_model,
         "planner_base": base,
         "plan": normalized[:6],
-        "reason": parsed.get("reason", "ollama qwen3:32b + Frontier rubric") if isinstance(parsed, dict) else "ollama",
+        "reason": parsed.get("reason", "ollama qwen3:32b + Frontier rubric")
+        if isinstance(parsed, dict)
+        else "ollama",
         "raw": raw[:500],
     }
+
 
 _SHELL_META_RE = re.compile(r"[|&;<>`$\n\\]")
 
@@ -354,6 +410,7 @@ _SHELL_META_RE = re.compile(r"[|&;<>`$\n\\]")
 def _policy_check_step(step: str) -> tuple:
     """Validate a plan step before execution. Returns (ok, reason, argv)."""
     from bigbang.core.plugin_loader import list_plugin_names
+
     if _SHELL_META_RE.search(step):
         return False, "shell metacharacters not allowed in plan steps", None
     try:
@@ -370,13 +427,15 @@ def _policy_check_step(step: str) -> tuple:
     return True, "ok", argv
 
 
-def _execute_plan(plan: List[str]) -> List[Dict[str, Any]]:
+def _execute_plan(plan: list[str]) -> list[dict[str, Any]]:
     """Run each plan step as a subprocess of this CLI, policy-checked first."""
-    results: List[Dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
     for step in plan:
         ok, reason, argv = _policy_check_step(step)
         if not ok:
-            results.append({"step": step, "executed": False, "policy": f"denied: {reason}"})
+            results.append(
+                {"step": step, "executed": False, "policy": f"denied: {reason}"}
+            )
             continue
         try:
             proc = subprocess.run(argv, capture_output=True, text=True, timeout=120)
@@ -385,17 +444,25 @@ def _execute_plan(plan: List[str]) -> List[Dict[str, Any]]:
                 parsed = json.loads(out) if out else None
             except json.JSONDecodeError:
                 parsed = None
-            results.append({
-                "step": step,
-                "executed": True,
-                "policy": "checked",
-                "exit_code": proc.returncode,
-                "output": parsed if parsed is not None else out[:2000],
-                "stderr": proc.stderr.strip()[:500] if proc.returncode != 0 else "",
-            })
+            results.append(
+                {
+                    "step": step,
+                    "executed": True,
+                    "policy": "checked",
+                    "exit_code": proc.returncode,
+                    "output": parsed if parsed is not None else out[:2000],
+                    "stderr": proc.stderr.strip()[:500] if proc.returncode != 0 else "",
+                }
+            )
         except subprocess.TimeoutExpired:
-            results.append({"step": step, "executed": False, "policy": "checked",
-                            "error": "timed out after 120s"})
+            results.append(
+                {
+                    "step": step,
+                    "executed": False,
+                    "policy": "checked",
+                    "error": "timed out after 120s",
+                }
+            )
     return results
 
 
@@ -403,19 +470,31 @@ def _execute_plan(plan: List[str]) -> List[Dict[str, Any]]:
     "run",
     epilog=(
         "\nExamples:\n"
-        "  scout agent run \"list my tools\"                 # plan only (safe default)\n"
-        "  scout --json agent run \"system doctor\" --execute\n"
-        "  scout agent run \"check write slop on README\" --execute\n"
+        '  scout agent run "list my tools"                 # plan only (safe default)\n'
+        '  scout --json agent run "system doctor" --execute\n'
+        '  scout agent run "check write slop on README" --execute\n'
     ),
 )
 def run(
-    task: str = typer.Argument(..., help="natural language e.g. 'summarize my GitHub PRs and post to family brain'"),
-    execute: bool = typer.Option(False, "--execute", help="Actually run the plan steps (default: plan only)"),
-    profile: str = typer.Option(None, "--profile", help="dynamic runtime profile: hermes | openclaw (or DOTTIE_PROFILE env)"),
-    session: str = typer.Option("scout", "--session", help="session id for persistent context / task logs"),
+    task: str = typer.Argument(
+        ...,
+        help="natural language e.g. 'summarize my GitHub PRs and post to family brain'",
+    ),
+    execute: bool = typer.Option(
+        False, "--execute", help="Actually run the plan steps (default: plan only)"
+    ),
+    profile: str = typer.Option(
+        None,
+        "--profile",
+        help="dynamic runtime profile: hermes | openclaw (or DOTTIE_PROFILE env)",
+    ),
+    session: str = typer.Option(
+        "scout", "--session", help="session id for persistent context / task logs"
+    ),
 ):
     """Plan (default) or execute a natural-language task via Ava routing."""
-    from bigbang.core.profiles import get_profile, build_system_prompt, after_run
+    from bigbang.core.profiles import after_run, build_system_prompt, get_profile
+
     try:
         prof = get_profile(profile)
     except KeyError as e:
@@ -423,24 +502,33 @@ def run(
         return
     prof_prompt = build_system_prompt(prof, session_id=session) if prof else None
 
-    def _finish(payload: Dict[str, Any], executed: bool) -> None:
+    def _finish(payload: dict[str, Any], executed: bool) -> None:
         """Attach profile state + post-run persistence to the outgoing payload."""
         if prof is None:
             return
-        payload["profile"] = {"name": prof.name, "persistence": prof_prompt["persistence"]}
+        payload["profile"] = {
+            "name": prof.name,
+            "persistence": prof_prompt["persistence"],
+        }
         if prof_prompt["context"] is not None:
             payload["profile"]["session_context"] = prof_prompt["context"]
         outcome = "ok" if executed else "planned"
         payload["profile"]["post_run"] = after_run(
-            prof, session_id=session, task=task, outcome=outcome,
-            plan=payload.get("plan"))
+            prof,
+            session_id=session,
+            task=task,
+            outcome=outcome,
+            plan=payload.get("plan"),
+        )
 
     tools = list_tools()
     base = get_ollama_base(timeout=2.0) if _HAS_LLM else None
     try:
         if base:
             try:
-                result = _ollama_planner(task, system_prefix=prof_prompt["system"] if prof_prompt else None)
+                result = _ollama_planner(
+                    task, system_prefix=prof_prompt["system"] if prof_prompt else None
+                )
                 payload = {
                     "task": task,
                     "planner": f"Ava v6.4 local (ollama) — Ollama {result.get('planner_model')} + Frontier rubric + real router",
@@ -462,7 +550,9 @@ def run(
                     payload["execution"] = "executed"
                     payload["results"] = _execute_plan(payload["plan"])
                 else:
-                    payload["execution"] = "plan only — pass --execute to run the steps (policy-checked, audited)"
+                    payload["execution"] = (
+                        "plan only — pass --execute to run the steps (policy-checked, audited)"
+                    )
                 _finish(payload, executed=execute)
                 emit(payload, command="agent run")
                 return
@@ -476,15 +566,25 @@ def run(
 
         payload = {
             "task": task,
-            "planner": f"Ava v6.4 local ({heuristic.get('planner_type')}) — " + ("heuristic keyword matching + builtin hints" if heuristic.get("planner_type") == "heuristic" else "ollama"),
+            "planner": f"Ava v6.4 local ({heuristic.get('planner_type')}) — "
+            + (
+                "heuristic keyword matching + builtin hints"
+                if heuristic.get("planner_type") == "heuristic"
+                else "ollama"
+            ),
             "planner_type": heuristic.get("planner_type", "heuristic"),
             "ollama_base": heuristic.get("ollama_base"),
             "ollama": {
                 "available": base is not None,
                 "base": base,
             },
-            "available_tools": heuristic.get("available_tools", list(tools.keys())[:20]),
-            "candidate_tools": [p.split()[1] if len(p.split())>1 else p for p in heuristic.get("plan", [])],
+            "available_tools": heuristic.get(
+                "available_tools", list(tools.keys())[:20]
+            ),
+            "candidate_tools": [
+                p.split()[1] if len(p.split()) > 1 else p
+                for p in heuristic.get("plan", [])
+            ],
             "plan": heuristic.get("plan", []),
             "reason": heuristic.get("reason"),
             "security": "Every step checked before execution, secrets vaulted, audit.jsonl appended",
@@ -494,33 +594,47 @@ def run(
             payload["execution"] = "executed"
             payload["results"] = _execute_plan(payload["plan"])
         else:
-            payload["execution"] = "plan only — pass --execute to run the steps (policy-checked, audited)"
+            payload["execution"] = (
+                "plan only — pass --execute to run the steps (policy-checked, audited)"
+            )
         _finish(payload, executed=execute)
         emit(payload, command="agent run")
 
     except Exception as e:
         fallback = _heuristic_plan(task)
-        emit({
-            "task": task,
-            "planner": "Ava v6.4 local (heuristic) — fallback",
-            "planner_type": "heuristic",
-            "plan": fallback.get("plan", ["bb system doctor", "bb tools list"]),
-            "error": str(e)[:300],
-            "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
-        }, command="agent run")
+        emit(
+            {
+                "task": task,
+                "planner": "Ava v6.4 local (heuristic) — fallback",
+                "planner_type": "heuristic",
+                "plan": fallback.get("plan", ["bb system doctor", "bb tools list"]),
+                "error": str(e)[:300],
+                "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
+            },
+            command="agent run",
+        )
+
 
 @app.command("bus")
-def bus(threshold: int = typer.Option(3, "--threshold", help="suggest commands repeated at least this many times")):
+def bus(
+    threshold: int = typer.Option(
+        3, "--threshold", help="suggest commands repeated at least this many times"
+    ),
+):
     """Scan audit.jsonl for recurring commands and suggest automation candidates."""
     from bigbang.core import audit as _audit
+
     audit_file = _audit.AUDIT_FILE
     if not audit_file.exists():
-        emit({
-            "audit_log": str(audit_file),
-            "suggestions": [],
-            "count": 0,
-            "note": "audit log not present yet — run some commands first",
-        }, command="agent bus")
+        emit(
+            {
+                "audit_log": str(audit_file),
+                "suggestions": [],
+                "count": 0,
+                "note": "audit log not present yet — run some commands first",
+            },
+            command="agent bus",
+        )
         return
     counts: Counter = Counter()
     for line in audit_file.read_text().splitlines():
@@ -532,18 +646,24 @@ def bus(threshold: int = typer.Option(3, "--threshold", help="suggest commands r
         if cmd and cmd != "unknown":
             counts[cmd] += 1
     suggestions = [
-        {"command": cmd, "times_run": n,
-         "suggest": f"recurring pattern — consider a skill or alias for '{cmd}'"}
+        {
+            "command": cmd,
+            "times_run": n,
+            "suggest": f"recurring pattern — consider a skill or alias for '{cmd}'",
+        }
         for cmd, n in counts.most_common()
         if n >= threshold
     ]
-    emit({
-        "audit_log": str(audit_file),
-        "threshold": threshold,
-        "commands_seen": len(counts),
-        "suggestions": suggestions,
-        "count": len(suggestions),
-    }, command="agent bus")
+    emit(
+        {
+            "audit_log": str(audit_file),
+            "threshold": threshold,
+            "commands_seen": len(counts),
+            "suggestions": suggestions,
+            "count": len(suggestions),
+        },
+        command="agent bus",
+    )
 
 
 def _slugify(text: str, max_words: int = 6) -> str:
@@ -555,7 +675,11 @@ SKILLS_DIR = Path(__file__).resolve().parent.parent.parent / "skills"
 
 
 @app.command("teach")
-def teach(example: str = typer.Argument(..., help="show agent how to do something once, it learns")):
+def teach(
+    example: str = typer.Argument(
+        ..., help="show agent how to do something once, it learns"
+    ),
+):
     """Store the taught example as a real skill file in bigbang/skills/<slug>.md."""
     SKILLS_DIR.mkdir(parents=True, exist_ok=True)
     slug = _slugify(example)
@@ -566,15 +690,20 @@ def teach(example: str = typer.Argument(..., help="show agent how to do somethin
         f"## Example\n\n{example}\n"
     )
     path.write_text(content)
-    emit({
-        "teaching": example,
-        "skill_file": str(path),
-        "slug": slug,
-        "learned": True,
-        "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
-    }, command="agent teach")
+    emit(
+        {
+            "teaching": example,
+            "skill_file": str(path),
+            "slug": slug,
+            "learned": True,
+            "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
+        },
+        command="agent teach",
+    )
+
 
 def register(root):
     root.add_typer(app, name="agent")
+
 
 # Solo personal project, no connection to employer, built with public/free-tier only

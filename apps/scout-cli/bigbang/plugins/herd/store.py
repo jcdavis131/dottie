@@ -4,6 +4,7 @@ Scout is not a PTY multiplexer — Herdr owns that. This module tracks named
 agent/process sessions with semantic status so agents and humans can
 list / wait / read / report over a CLI + JSON API.
 """
+
 from __future__ import annotations
 
 import json
@@ -12,9 +13,12 @@ import signal
 import subprocess
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 HERD_DIR = Path.home() / ".local" / "share" / "bigbang" / "herd"
 HERD_FILE = HERD_DIR / "sessions.json"
@@ -24,7 +28,7 @@ STATUSES = ("idle", "working", "blocked", "done", "failed", "unknown")
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _ensure_dirs() -> None:
@@ -32,7 +36,7 @@ def _ensure_dirs() -> None:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def _load() -> Dict[str, Any]:
+def _load() -> dict[str, Any]:
     _ensure_dirs()
     if not HERD_FILE.exists():
         return {"version": "1", "sessions": {}}
@@ -47,14 +51,14 @@ def _load() -> Dict[str, Any]:
         return {"version": "1", "sessions": {}}
 
 
-def _save(data: Dict[str, Any]) -> None:
+def _save(data: dict[str, Any]) -> None:
     _ensure_dirs()
     tmp = HERD_FILE.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
     tmp.replace(HERD_FILE)
 
 
-def _pid_alive(pid: Optional[int]) -> bool:
+def _pid_alive(pid: int | None) -> bool:
     if not pid or pid <= 0:
         return False
     try:
@@ -83,7 +87,7 @@ def _new_id() -> str:
     return f"hs_{uuid.uuid4().hex[:10]}"
 
 
-def refresh_session(sess: Dict[str, Any]) -> Dict[str, Any]:
+def refresh_session(sess: dict[str, Any]) -> dict[str, Any]:
     """Update status from process reality unless manually authoritative."""
     authority = sess.get("status_authority")  # "process" | "manual"
     pid = sess.get("pid")
@@ -116,7 +120,9 @@ def refresh_session(sess: Dict[str, Any]) -> Dict[str, Any]:
             sess["exit_code"] = _reap_exit_code(pid)
         code = sess.get("exit_code")
         if sess.get("status") not in ("done", "failed"):
-            sess["status"] = "done" if code == 0 else ("failed" if code not in (None, 0) else "done")
+            sess["status"] = (
+                "done" if code == 0 else ("failed" if code not in (None, 0) else "done")
+            )
             sess["status_authority"] = "process"
             sess["updated_at"] = _now()
         return sess
@@ -127,7 +133,7 @@ def refresh_session(sess: Dict[str, Any]) -> Dict[str, Any]:
     return sess
 
 
-def _reap_exit_code(pid: int) -> Optional[int]:
+def _reap_exit_code(pid: int) -> int | None:
     """Best-effort exit code; usually None for unreaped foreign PIDs."""
     if not hasattr(os, "WNOHANG"):
         # Windows: no POSIX reaping — liveness probing is the status authority.
@@ -147,9 +153,9 @@ def _reap_exit_code(pid: int) -> Optional[int]:
     return None
 
 
-def list_sessions(*, refresh: bool = True) -> List[Dict[str, Any]]:
+def list_sessions(*, refresh: bool = True) -> list[dict[str, Any]]:
     data = _load()
-    out: List[Dict[str, Any]] = []
+    out: list[dict[str, Any]] = []
     dirty = False
     for sid, sess in list(data["sessions"].items()):
         if refresh:
@@ -161,23 +167,28 @@ def list_sessions(*, refresh: bool = True) -> List[Dict[str, Any]]:
         out.append(sess)
     if dirty:
         _save(data)
-    out.sort(key=lambda s: s.get("updated_at") or s.get("created_at") or "", reverse=True)
+    out.sort(
+        key=lambda s: s.get("updated_at") or s.get("created_at") or "", reverse=True
+    )
     return out
 
 
-def get_session(key: str, *, refresh: bool = True) -> Optional[Dict[str, Any]]:
+def get_session(key: str, *, refresh: bool = True) -> dict[str, Any] | None:
     data = _load()
     sess = data["sessions"].get(key)
     if not sess:
         # resolve by label (exact, then unique prefix)
         matches = [
-            s for s in data["sessions"].values() if s.get("label") == key or s.get("id") == key
+            s
+            for s in data["sessions"].values()
+            if s.get("label") == key or s.get("id") == key
         ]
         if not matches:
             matches = [
                 s
                 for s in data["sessions"].values()
-                if str(s.get("label", "")).startswith(key) or str(s.get("id", "")).startswith(key)
+                if str(s.get("label", "")).startswith(key)
+                or str(s.get("id", "")).startswith(key)
             ]
         if len(matches) == 1:
             sess = matches[0]
@@ -195,10 +206,10 @@ def get_session(key: str, *, refresh: bool = True) -> Optional[Dict[str, Any]]:
 def create_session(
     *,
     label: str,
-    cwd: Optional[str] = None,
+    cwd: str | None = None,
     note: str = "",
     kind: str = "process",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     data = _load()
     sid = _new_id()
     work = str(Path(cwd or os.getcwd()).expanduser().resolve())
@@ -228,9 +239,9 @@ def start_session(
     key: str,
     argv: Sequence[str],
     *,
-    cwd: Optional[str] = None,
-    env: Optional[Dict[str, str]] = None,
-) -> Dict[str, Any]:
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
+) -> dict[str, Any]:
     if not argv:
         raise ValueError("argv required")
     data = _load()
@@ -240,7 +251,9 @@ def start_session(
     if sess.get("error"):
         raise ValueError(f"ambiguous session: {sess.get('matches')}")
     if sess.get("alive"):
-        raise RuntimeError(f"session {sess['id']} already running (pid {sess.get('pid')})")
+        raise RuntimeError(
+            f"session {sess['id']} already running (pid {sess.get('pid')})"
+        )
 
     work = str(Path(cwd or sess.get("cwd") or os.getcwd()).expanduser().resolve())
     log_path = Path(sess["log_path"])
@@ -289,8 +302,8 @@ def report_status(
     key: str,
     status: str,
     *,
-    note: Optional[str] = None,
-) -> Dict[str, Any]:
+    note: str | None = None,
+) -> dict[str, Any]:
     if status not in STATUSES:
         raise ValueError(f"status must be one of {STATUSES}")
     data = _load()
@@ -308,7 +321,7 @@ def report_status(
     return sess
 
 
-def read_log(key: str, *, lines: int = 40) -> Dict[str, Any]:
+def read_log(key: str, *, lines: int = 40) -> dict[str, Any]:
     sess = get_session(key, refresh=True)
     if not sess or sess.get("error"):
         raise KeyError(f"session not found: {key}")
@@ -326,11 +339,11 @@ def wait_status(
     *,
     timeout_s: float = 60.0,
     poll_s: float = 0.4,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     if status not in STATUSES:
         raise ValueError(f"status must be one of {STATUSES}")
     deadline = time.time() + max(0.1, timeout_s)
-    last: Optional[Dict[str, Any]] = None
+    last: dict[str, Any] | None = None
     while time.time() < deadline:
         last = get_session(key, refresh=True)
         if not last or last.get("error"):
@@ -340,10 +353,17 @@ def wait_status(
         # Convenience: waiting for "done" also accepts "failed" as terminal? No —
         # Herdr keeps them distinct. Callers pick explicitly.
         time.sleep(poll_s)
-    return {"matched": False, "session": last, "waited_for": status, "timeout_s": timeout_s}
+    return {
+        "matched": False,
+        "session": last,
+        "waited_for": status,
+        "timeout_s": timeout_s,
+    }
 
 
-def close_session(key: str, *, force: bool = False, kill: bool = False) -> Dict[str, Any]:
+def close_session(
+    key: str, *, force: bool = False, kill: bool = False
+) -> dict[str, Any]:
     sess = get_session(key, refresh=True)
     if not sess or sess.get("error"):
         raise KeyError(f"session not found: {key}")
@@ -376,9 +396,9 @@ def close_session(key: str, *, force: bool = False, kill: bool = False) -> Dict[
     return {"removed": sess["id"], "ok": removed is not None, "session": sess}
 
 
-def summary() -> Dict[str, Any]:
+def summary() -> dict[str, Any]:
     sessions = list_sessions(refresh=True)
-    counts = {s: 0 for s in STATUSES}
+    counts = dict.fromkeys(STATUSES, 0)
     for sess in sessions:
         st = sess.get("status") or "unknown"
         counts[st] = counts.get(st, 0) + 1
@@ -399,7 +419,7 @@ def summary() -> Dict[str, Any]:
     }
 
 
-def herdr_available() -> Dict[str, Any]:
+def herdr_available() -> dict[str, Any]:
     from shutil import which
 
     path = which("herdr")

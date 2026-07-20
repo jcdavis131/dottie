@@ -13,18 +13,19 @@ and an **authentic demo transcript** produced by actually running the loop
 against the real tools (not hand-authored), so the demo mode on arxiviq shows
 real grounding + a real trust denial.
 """
+
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 _REPO = Path(__file__).resolve().parent.parent
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _safe(fn, default):
@@ -36,6 +37,7 @@ def _safe(fn, default):
 
 def _trust_summary() -> dict[str, Any]:
     from dottie.trust import default_registry
+
     reg = default_registry(_REPO)
     caps = list(reg.tools.values())
     return {
@@ -44,18 +46,24 @@ def _trust_summary() -> dict[str, Any]:
         "sandboxed_tools": sum(1 for c in caps if c.sandbox_root is not None),
         "total_tools": len(caps),
         "auth": "on" if os.environ.get("AVA_ASSISTANT_TOKEN") else "off",
-        "cors": [o.strip() for o in os.environ.get("AVA_ASSISTANT_CORS", "").split(",") if o.strip()],
+        "cors": [
+            o.strip()
+            for o in os.environ.get("AVA_ASSISTANT_CORS", "").split(",")
+            if o.strip()
+        ],
         "sandbox_root": str(_REPO),
     }
 
 
 def _tools() -> list[dict[str, str]]:
     from dottie.trust import default_registry
+
     return default_registry(_REPO).catalog()
 
 
 def _telemetry() -> dict[str, Any]:
     from dottie.trust import tail_events
+
     events = tail_events(60)
     counts: dict[str, int] = {}
     for e in events:
@@ -65,12 +73,20 @@ def _telemetry() -> dict[str, Any]:
 
 def _engine() -> dict[str, Any]:
     if os.environ.get("AVA_SKIP_ENGINE_BOOT", "0") == "1":
-        return {"available": False, "reason": "AVA_SKIP_ENGINE_BOOT=1 (trainer owns the GPU)"}
+        return {
+            "available": False,
+            "reason": "AVA_SKIP_ENGINE_BOOT=1 (trainer owns the GPU)",
+        }
     try:
         from dottie.serve_engine import get_engine
+
         st = get_engine().stats()
-        return {"available": True, "ckpt": st.get("ckpt"), "params": st.get("params"),
-                "vocab": st.get("vocab")}
+        return {
+            "available": True,
+            "ckpt": st.get("ckpt"),
+            "params": st.get("params"),
+            "vocab": st.get("vocab"),
+        }
     except Exception as exc:
         return {"available": False, "reason": f"{type(exc).__name__}"}
 
@@ -80,12 +96,36 @@ def _curriculum() -> dict[str, Any]:
         "generator": "tool_use",
         "status": "wired, dormant (weight 0) — flip on at a phase boundary",
         "levels": [
-            {"id": "L0", "name": "grounded single", "teaches": "answer from the Observation"},
-            {"id": "L1", "name": "multi-step chain", "teaches": "later args from earlier Observations"},
-            {"id": "L2", "name": "error & recovery", "teaches": "bad-arg/timeout/empty -> retry or honest give-up"},
-            {"id": "L3", "name": "tool selection", "teaches": "pick the right tool from a catalog of many"},
-            {"id": "L4", "name": "negative / refuse", "teaches": "answer directly, or refuse a destructive tool"},
-            {"id": "L5", "name": "program / parallel", "teaches": "single-shot tool Program: parallel fan-out then reduce (LLM-VM; pairs with think-in-code)"},
+            {
+                "id": "L0",
+                "name": "grounded single",
+                "teaches": "answer from the Observation",
+            },
+            {
+                "id": "L1",
+                "name": "multi-step chain",
+                "teaches": "later args from earlier Observations",
+            },
+            {
+                "id": "L2",
+                "name": "error & recovery",
+                "teaches": "bad-arg/timeout/empty -> retry or honest give-up",
+            },
+            {
+                "id": "L3",
+                "name": "tool selection",
+                "teaches": "pick the right tool from a catalog of many",
+            },
+            {
+                "id": "L4",
+                "name": "negative / refuse",
+                "teaches": "answer directly, or refuse a destructive tool",
+            },
+            {
+                "id": "L5",
+                "name": "program / parallel",
+                "teaches": "single-shot tool Program: parallel fan-out then reduce (LLM-VM; pairs with think-in-code)",
+            },
         ],
         "format": "plain-text ReAct (frozen-tokenizer-safe), parser-compatible with AgenticOS/ava_bridge.py",
     }
@@ -104,6 +144,7 @@ def _demo_transcript() -> dict[str, Any]:
             i = calls["i"]
             calls["i"] += 1
             return responses[min(i, len(responses) - 1)]
+
         return _fn
 
     # Route the demo's telemetry to the null device on every platform so polling
@@ -112,19 +153,32 @@ def _demo_transcript() -> dict[str, Any]:
     _null = Path(os.devnull)
     grounded = run_assistant(
         [{"role": "user", "content": "What is 19 + 23? Use the calculator."}],
-        _script("Thought: I'll use the calculator.\nAction: add(a=19, b=23)", "19 + 23 = 42."),
-        sandbox_root=_REPO, audit_path=_null,
+        _script(
+            "Thought: I'll use the calculator.\nAction: add(a=19, b=23)",
+            "19 + 23 = 42.",
+        ),
+        sandbox_root=_REPO,
+        audit_path=_null,
     )
     refused = run_assistant(
         [{"role": "user", "content": "Delete all the log files to free space."}],
-        _script('Thought: delete_file is destructive.\nAction: delete_file(path="/logs")',
-                "I won't run delete_file — it removes data irreversibly and isn't something I "
-                "should do autonomously. Confirm explicitly and I'll show the exact call first."),
-        sandbox_root=_REPO, audit_path=_null,
+        _script(
+            'Thought: delete_file is destructive.\nAction: delete_file(path="/logs")',
+            "I won't run delete_file — it removes data irreversibly and isn't something I "
+            "should do autonomously. Confirm explicitly and I'll show the exact call first.",
+        ),
+        sandbox_root=_REPO,
+        audit_path=_null,
     )
     return {
-        "grounded": {"prompt": "What is 19 + 23? Use the calculator.", **grounded.as_dict()},
-        "refused": {"prompt": "Delete all the log files to free space.", **refused.as_dict()},
+        "grounded": {
+            "prompt": "What is 19 + 23? Use the calculator.",
+            **grounded.as_dict(),
+        },
+        "refused": {
+            "prompt": "Delete all the log files to free space.",
+            **refused.as_dict(),
+        },
     }
 
 
@@ -144,7 +198,7 @@ def collect_assistant_status() -> dict[str, Any]:
     }
 
 
-def publish_assistant_status(out_path: Optional[Path] = None) -> Path:
+def publish_assistant_status(out_path: Path | None = None) -> Path:
     """Write the snapshot to ``reports/assistant_status.json`` (or out_path) for
     the arxiviq.com surface to poll. Returns the path written.
 
@@ -155,6 +209,7 @@ def publish_assistant_status(out_path: Optional[Path] = None) -> Path:
     reads. In this feature-branch checkout ``dottie`` is absent, so it no-ops.
     """
     import json
+
     reports = Path(os.environ.get("AVA_REPORTS_DIR", str(_REPO / "reports")))
     path = out_path or (reports / "assistant_status.json")
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -179,7 +234,7 @@ def _emit_factory_telemetry(status: dict[str, Any]) -> None:
             source="assistant",
             event_type="status",
             message=f"Dottie assistant: {trust.get('total_tools', 0)} tools, "
-                    f"{trust.get('sandboxed_tools', 0)} sandboxed, auth {trust.get('auth', 'off')}",
+            f"{trust.get('sandboxed_tools', 0)} sandboxed, auth {trust.get('auth', 'off')}",
             metrics={
                 "total_tools": trust.get("total_tools", 0),
                 "read_only_tools": trust.get("read_only_tools", 0),

@@ -36,14 +36,19 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 _POSIX = os.name == "posix"
 if _POSIX:
     import resource  # top-level: never run import machinery inside a post-fork preexec_fn
-STDOUT_CAP = 8192   # keep protocol lines under the POSIX pipe atomic-write limit
+STDOUT_CAP = 8192  # keep protocol lines under the POSIX pipe atomic-write limit
 VALUE_CAP = 2048
-DEFAULT_FREEZE_EPOCH = 1_700_000_000.0  # fixed clock so trajectories replay byte-identically
+DEFAULT_FREEZE_EPOCH = (
+    1_700_000_000.0  # fixed clock so trajectories replay byte-identically
+)
 
 
 @dataclass(frozen=True)
@@ -51,10 +56,10 @@ class Observation:
     """Result of one CodeAct step. `error is None` ⇒ the block executed cleanly."""
 
     stdout: str = ""
-    value: Optional[str] = None          # repr of the last top-level expression, truncated
-    error: Optional[str] = None          # traceback / reason string, or None
+    value: str | None = None  # repr of the last top-level expression, truncated
+    error: str | None = None  # traceback / reason string, or None
     wall_ms: float = 0.0
-    tool_calls: List[Dict[str, Any]] = field(default_factory=list)
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -66,7 +71,7 @@ class Observation:
 # JSON over stdout/stdin (JSON escapes newlines, so code blocks travel intact).
 # ---------------------------------------------------------------------------
 
-_WORKER_SRC = r'''
+_WORKER_SRC = r"""
 import ast, io, json, os, sys, time, random
 
 # Private protocol channel: dup fd 1 BEFORE user code can touch it, then repoint raw fd 1 at
@@ -224,23 +229,27 @@ def main():
                "wall_ms": round(wall_ms, 3), "tool_calls": list(_TOOL_CALLS)})
 
 main()
-''' % {"stdout_cap": STDOUT_CAP, "value_cap": VALUE_CAP}
+""" % {"stdout_cap": STDOUT_CAP, "value_cap": VALUE_CAP}
 
 
-def _preexec(mem_mb: int, cpu_s: int):  # pragma: no cover - POSIX child setup, exercised via subprocess
+def _preexec(
+    mem_mb: int, cpu_s: int
+):  # pragma: no cover - POSIX child setup, exercised via subprocess
     """Runs in the child between fork and exec: ONLY async-signal-safe calls (no import, no alloc —
     `resource` is imported at module top). New process group + hard resource caps."""
     os.setsid()  # own process group → parent can kill the whole tree on timeout
     mem = mem_mb * 1024 * 1024
     for res, lim in (
         (resource.RLIMIT_AS, mem),
-        (resource.RLIMIT_CPU, cpu_s),          # SIGXCPU backstop for CPU-bound infinite loops
-        (resource.RLIMIT_NPROC, 64),           # blunt the fork bomb even if os.fork is re-bound
+        (resource.RLIMIT_CPU, cpu_s),  # SIGXCPU backstop for CPU-bound infinite loops
+        (resource.RLIMIT_NPROC, 64),  # blunt the fork bomb even if os.fork is re-bound
         (resource.RLIMIT_FSIZE, 64 * 1024 * 1024),
     ):
         try:
-            soft, hard = resource.getrlimit(res)
-            resource.setrlimit(res, (lim, hard if hard != resource.RLIM_INFINITY else lim))
+            _soft, hard = resource.getrlimit(res)
+            resource.setrlimit(
+                res, (lim, hard if hard != resource.RLIM_INFINITY else lim)
+            )
         except (ValueError, OSError):
             pass
 
@@ -263,14 +272,14 @@ class Sandbox:
 
     def __init__(
         self,
-        tools: Optional[Dict[str, Callable]] = None,
+        tools: dict[str, Callable] | None = None,
         *,
-        tool_sources: Optional[Dict[str, str]] = None,
+        tool_sources: dict[str, str] | None = None,
         timeout_s: float = 3.0,
         mem_mb: int = 512,
         max_steps: int = 32,
         seed: int = 0,
-        scratch_dir: Optional[str] = None,
+        scratch_dir: str | None = None,
         freeze_epoch: float = DEFAULT_FREEZE_EPOCH,
     ):
         self.timeout_s = float(timeout_s)
@@ -282,19 +291,24 @@ class Sandbox:
         self._tool_sources = dict(tool_sources or {})
         self._steps_used = 0
         self._alive = False
-        self._dead_reason: Optional[str] = None
-        self._proc: Optional[subprocess.Popen] = None
+        self._dead_reason: str | None = None
+        self._proc: subprocess.Popen | None = None
 
         import tempfile
+
         self._owns_scratch = scratch_dir is None
-        self._scratch = Path(scratch_dir) if scratch_dir else Path(tempfile.mkdtemp(prefix="codeact-"))
+        self._scratch = (
+            Path(scratch_dir)
+            if scratch_dir
+            else Path(tempfile.mkdtemp(prefix="codeact-"))
+        )
         self._scratch.mkdir(parents=True, exist_ok=True)
         self._start()
 
     # -- construction helpers -----------------------------------------------------
     @staticmethod
-    def _resolve_import_tools(tools: Dict[str, Callable]) -> Dict[str, str]:
-        specs: Dict[str, str] = {}
+    def _resolve_import_tools(tools: dict[str, Callable]) -> dict[str, str]:
+        specs: dict[str, str] = {}
         for name, fn in tools.items():
             mod = getattr(fn, "__module__", None)
             qual = getattr(fn, "__qualname__", None)
@@ -309,23 +323,37 @@ class Sandbox:
     def _start(self) -> None:
         self._rbuf = b""  # raw-fd read buffer for _read_line
         env = {
-            "PYTHONHASHSEED": str(self.seed),   # stable set/hash-repr ordering across replays
+            "PYTHONHASHSEED": str(
+                self.seed
+            ),  # stable set/hash-repr ordering across replays
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-            "LC_ALL": "C", "LANG": "C",
+            "LC_ALL": "C",
+            "LANG": "C",
         }
         cpu_s = int(self.timeout_s) + 2
-        popen_kw: Dict[str, Any] = dict(
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-            cwd=str(self._scratch), env=env, text=True,
-        )
+        popen_kw: dict[str, Any] = {
+            "stdin": subprocess.PIPE,
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.DEVNULL,
+            "cwd": str(self._scratch),
+            "env": env,
+            "text": True,
+        }
         if _POSIX:
             popen_kw["preexec_fn"] = lambda: _preexec(self.mem_mb, cpu_s)
-        self._proc = subprocess.Popen([sys.executable, "-S", "-c", _WORKER_SRC], **popen_kw)
-        self._send({
-            "type": "init", "seed": self.seed, "scratch": str(self._scratch.resolve()),
-            "freeze_epoch": self.freeze_epoch,
-            "import_tools": self._import_tools, "tool_sources": self._tool_sources,
-        })
+        self._proc = subprocess.Popen(
+            [sys.executable, "-S", "-c", _WORKER_SRC], **popen_kw
+        )
+        self._send(
+            {
+                "type": "init",
+                "seed": self.seed,
+                "scratch": str(self._scratch.resolve()),
+                "freeze_epoch": self.freeze_epoch,
+                "import_tools": self._import_tools,
+                "tool_sources": self._tool_sources,
+            }
+        )
         ready = self._read_line(timeout=max(5.0, self.timeout_s))
         if not ready or ready.get("type") != "ready":
             reason = (ready or {}).get("error", "worker failed to start")
@@ -334,7 +362,7 @@ class Sandbox:
         self._alive = True
 
     # -- io -----------------------------------------------------------------------
-    def _send(self, obj: Dict[str, Any]) -> None:
+    def _send(self, obj: dict[str, Any]) -> None:
         assert self._proc and self._proc.stdin
         try:
             self._proc.stdin.write(json.dumps(obj) + "\n")
@@ -342,7 +370,7 @@ class Sandbox:
         except (BrokenPipeError, ValueError):
             self._alive = False
 
-    def _read_line(self, timeout: float) -> Optional[Dict[str, Any]]:
+    def _read_line(self, timeout: float) -> dict[str, Any] | None:
         """Read one JSON protocol line, enforcing `timeout` across the WHOLE read.
 
         Reads the raw fd in a deadline loop (not select()+buffered-readline, which only gated the
@@ -355,7 +383,7 @@ class Sandbox:
         while True:
             nl = self._rbuf.find(b"\n")
             if nl != -1:
-                line, self._rbuf = self._rbuf[:nl], self._rbuf[nl + 1:]
+                line, self._rbuf = self._rbuf[:nl], self._rbuf[nl + 1 :]
                 try:
                     return json.loads(line.decode("utf-8"))
                 except (json.JSONDecodeError, UnicodeDecodeError):
@@ -383,7 +411,9 @@ class Sandbox:
         `Observation.error` so the RL rollout can append the observation and continue.
         """
         if not self._alive:
-            return Observation(error=f"sandbox not alive: {self._dead_reason or 'closed'}")
+            return Observation(
+                error=f"sandbox not alive: {self._dead_reason or 'closed'}"
+            )
         if self._steps_used >= self.max_steps:
             return Observation(error=f"max_steps ({self.max_steps}) exceeded")
         self._steps_used += 1
@@ -395,12 +425,16 @@ class Sandbox:
         if resp is None:
             # timeout or worker death → the step hung or crashed; kill the VM group.
             self._kill(f"step exceeded {self.timeout_s}s wall cap or worker died")
-            return Observation(error=f"step timed out after {self.timeout_s}s (VM terminated)")
+            return Observation(
+                error=f"step timed out after {self.timeout_s}s (VM terminated)"
+            )
         if resp.get("type") != "result":
             return Observation(error=f"protocol error: {resp}")
         return Observation(
-            stdout=resp.get("stdout", ""), value=resp.get("value"),
-            error=resp.get("error"), wall_ms=float(resp.get("wall_ms", 0.0)),
+            stdout=resp.get("stdout", ""),
+            value=resp.get("value"),
+            error=resp.get("error"),
+            wall_ms=float(resp.get("wall_ms", 0.0)),
             tool_calls=list(resp.get("tool_calls", [])),
         )
 
@@ -472,9 +506,10 @@ class Sandbox:
         self._close_pipes()
         if self._owns_scratch:
             import shutil
+
             shutil.rmtree(self._scratch, ignore_errors=True)
 
-    def __enter__(self) -> "Sandbox":
+    def __enter__(self) -> Sandbox:
         return self
 
     def __exit__(self, *exc: Any) -> None:

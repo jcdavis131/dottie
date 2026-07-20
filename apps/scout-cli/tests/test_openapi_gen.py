@@ -1,4 +1,5 @@
 """Test the generated plugin code path — real auth header lookup (finding #12)."""
+
 import importlib
 import shutil
 import sys
@@ -6,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from bigbang.core.openapi import generate_typer_plugin, _collect_secret_headers
+from bigbang.core.openapi import _collect_secret_headers, generate_typer_plugin
 
 SPEC = {
     "openapi": "3.0.0",

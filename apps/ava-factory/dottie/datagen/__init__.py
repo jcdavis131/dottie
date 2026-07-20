@@ -12,7 +12,7 @@ trajectory adapters). GENERATORS is the union — configs/sources.yaml refers
 to generators by these keys and the collector resolves them here.
 """
 
-from dottie.datagen.base import Generator, write_shards, run_cli, validate_doc
+from dottie.datagen.base import Generator, run_cli, validate_doc, write_shards
 from dottie.datagen.chat_safety import ChatSafetyGenerator
 from dottie.datagen.code_gen import CodeGenGenerator
 from dottie.datagen.compress_trace import CompressTraceGenerator
@@ -52,11 +52,25 @@ GENERATORS: dict[str, type[Generator]] = {
 }
 
 __all__ = [
-    "Generator", "write_shards", "run_cli", "validate_doc", "GENERATORS",
-    "ChatSafetyGenerator", "CodeGenGenerator", "CompressTraceGenerator",
-    "CompressionGenerator", "DBTraceGenerator", "EncyclopediaGenerator",
-    "LogicGenerator", "MathGenerator", "ReactToolsGenerator",
-    "SynProLiteGenerator", "ThinkInCodeGenerator", "ThinkToolsGenerator",
-    "ToolUseGenerator", "WikiGenerator", "WorkflowGaia2Generator",
+    "GENERATORS",
+    "ChatSafetyGenerator",
+    "CodeGenGenerator",
+    "CompressTraceGenerator",
+    "CompressionGenerator",
+    "DBTraceGenerator",
+    "EncyclopediaGenerator",
+    "Generator",
+    "LogicGenerator",
+    "MathGenerator",
+    "ReactToolsGenerator",
+    "SynProLiteGenerator",
+    "ThinkInCodeGenerator",
+    "ThinkToolsGenerator",
+    "ToolUseGenerator",
+    "WikiGenerator",
+    "WorkflowGaia2Generator",
     "WorkflowJobBenchGenerator",
+    "run_cli",
+    "validate_doc",
+    "write_shards",
 ]

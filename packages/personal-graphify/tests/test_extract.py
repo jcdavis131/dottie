@@ -1,6 +1,12 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
 """extract.py — Python AST, JS regex fallback, Markdown structure, rationale linking."""
-from personal_graphify.extract import extract_python, extract_js_generic, extract_markdown, extract_file
+
+from personal_graphify.extract import (
+    extract_file,
+    extract_js_generic,
+    extract_markdown,
+    extract_python,
+)
 
 
 def _ids(nodes):
@@ -35,7 +41,9 @@ class TestPythonExtraction:
         call_edges = [e for e in edges if e["type"] == "calls"]
         assert any(e["target"] == "func:helper" for e in call_edges)
         # defines edges are EXTRACTED
-        assert all(e["confidence"] == "EXTRACTED" for e in edges if e["type"] == "defines")
+        assert all(
+            e["confidence"] == "EXTRACTED" for e in edges if e["type"] == "defines"
+        )
 
     def test_rationale_links_to_nearest_function_above(self, tmp_path):
         f = tmp_path / "r.py"
@@ -68,7 +76,7 @@ class TestJsExtraction:
             "// NOTE: store is a singleton\n",
             encoding="utf-8",
         )
-        nodes, edges = extract_js_generic(f)
+        nodes, _edges = extract_js_generic(f)
         labels = {n["label"] for n in nodes if n["type"] in ("function", "class")}
         assert {"doThing", "plain", "Store"} <= labels
         mods = {n["label"] for n in nodes if n["type"] == "module"}
@@ -81,9 +89,7 @@ class TestMarkdownExtraction:
     def test_headings_hierarchy_and_links(self, tmp_path):
         f = tmp_path / "doc.md"
         f.write_text(
-            "# Top\n\n"
-            "## Child\n\n"
-            "See [the code](src/main.py) and [[WikiPage]].\n",
+            "# Top\n\n## Child\n\nSee [the code](src/main.py) and [[WikiPage]].\n",
             encoding="utf-8",
         )
         nodes, edges = extract_markdown(f)
@@ -101,6 +107,6 @@ class TestExtractFileDedup:
     def test_duplicate_node_ids_deduped(self, tmp_path):
         f = tmp_path / "notes.md"
         f.write_text("# Stripe\n\nstripe mrr stripe again\n", encoding="utf-8")
-        nodes, edges = extract_file(f)
+        nodes, _edges = extract_file(f)
         ids = [n["id"] for n in nodes]
         assert len(ids) == len(set(ids))

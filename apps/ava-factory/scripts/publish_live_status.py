@@ -15,6 +15,7 @@ Cron:          python scripts/publish_live_status.py --gist <id>
 Every value is fetched or carried, never invented: unreachable sources are recorded
 as {"unreachable": reason} blocks so the site shows honest gaps, not stale numbers.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -64,19 +65,30 @@ def compose() -> dict:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--gist", default=os.environ.get("DOTTIE_STATUS_GIST"),
-                    help="gist id to update (omit to only write the local file)")
+    ap.add_argument(
+        "--gist",
+        default=os.environ.get("DOTTIE_STATUS_GIST"),
+        help="gist id to update (omit to only write the local file)",
+    )
     args = ap.parse_args(argv)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     snap = compose()
     OUT.write_text(json.dumps(snap, indent=2), encoding="utf-8")
-    result = {"ok": True, "wrote": str(OUT),
-              "pipeline_live": "unreachable" not in snap["pipeline"],
-              "research_live": "unreachable" not in snap["research"]}
+    result = {
+        "ok": True,
+        "wrote": str(OUT),
+        "pipeline_live": "unreachable" not in snap["pipeline"],
+        "research_live": "unreachable" not in snap["research"],
+    }
     if args.gist:
-        p = subprocess.run(["gh", "gist", "edit", args.gist, "--add", str(OUT)],
-                           capture_output=True, text=True, encoding="utf-8",
-                           errors="replace", timeout=60)
+        p = subprocess.run(
+            ["gh", "gist", "edit", args.gist, "--add", str(OUT)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+        )
         result["gist"] = args.gist
         result["published"] = p.returncode == 0
         if p.returncode != 0:

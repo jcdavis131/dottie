@@ -14,6 +14,7 @@ measurements. Three checks, matching the spec:
    pass=False, and an error (never an invented number); and run_harness(mode='real')
    with no real model produces a structured honest-failure report, not fabricated passes.
 """
+
 import json
 import sys
 from pathlib import Path
@@ -23,13 +24,31 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from harness.common import MockModel, MockTokenizer  # noqa: E402
-from harness.evals import jspace_tests as J  # noqa: E402
-from harness.runner import run_harness  # noqa: E402
+from harness.common import MockModel, MockTokenizer
+from harness.evals import jspace_tests as J
+from harness.runner import run_harness
 
-FORBIDDEN = ["0.82", "0.22", "0.064", "0.88", "0.75", "0.91", "0.94", "0.92",
-             "5.2", "4.5", "0.983", "0.967"]
-JSPACE = ["spider_ant", "france_china", "soccer_rugby", "spanish_french", "safety_blackmail"]
+FORBIDDEN = [
+    "0.82",
+    "0.22",
+    "0.064",
+    "0.88",
+    "0.75",
+    "0.91",
+    "0.94",
+    "0.92",
+    "5.2",
+    "4.5",
+    "0.983",
+    "0.967",
+]
+JSPACE = [
+    "spider_ant",
+    "france_china",
+    "soccer_rugby",
+    "spanish_french",
+    "safety_blackmail",
+]
 
 
 def _run_eval(name, seed):
@@ -43,7 +62,9 @@ class TestDynamicVariation:
         m1 = _run_eval(name, 1).get("measured")
         m2 = _run_eval(name, 2).get("measured")
         # A static fabricated measured dict would be identical across seeds.
-        assert m1 != m2, f"{name} measured did not vary with seed → looks static/fabricated"
+        assert m1 != m2, (
+            f"{name} measured did not vary with seed → looks static/fabricated"
+        )
 
 
 class TestReportGrep:
@@ -53,8 +74,9 @@ class TestReportGrep:
         # Exact-token check: a fabricated static value round-trips verbatim; seed-noise
         # values serialize with long float tails and won't match these short literals.
         for lit in FORBIDDEN:
-            assert f": {lit}," not in blob and f": {lit}}}" not in blob, \
+            assert f": {lit}," not in blob and f": {lit}}}" not in blob, (
                 f"forbidden literal {lit} appears verbatim in mock report"
+            )
 
 
 class TestRealModeHonesty:
@@ -64,17 +86,21 @@ class TestRealModeHonesty:
         # a machine WITHOUT the factory — the real path must fail honestly with
         # a structured record, never simulate a measurement.
         monkeypatch.setenv("AVA_FACTORY_ROOT", "/nonexistent-factory-root")
-        res = getattr(J, name)(object(), MockTokenizer(), "cpu")  # non-MockModel → real path
+        res = getattr(J, name)(
+            object(), MockTokenizer(), "cpu"
+        )  # non-MockModel → real path
         assert res["pass"] is False
         assert res.get("measured") is None
-        assert "error" in res and res["error"]
+        assert res.get("error")
 
     def test_run_harness_real_without_model_is_structured_failure(self):
         res = run_harness(eval_names=JSPACE, mode="real")
         assert res["meta"].get("real_load_failed") is True
         assert res["meta"]["passed"] == 0
-        assert all(e["pass"] is False and e.get("measured") is None
-                   for e in res["evals"].values())
+        assert all(
+            e["pass"] is False and e.get("measured") is None
+            for e in res["evals"].values()
+        )
 
     def test_run_harness_real_does_not_raise(self):
         # Regression: real-mode-with-mock must be a report, not an exception a caller
@@ -90,7 +116,8 @@ class TestStateStoreHonestNulls:
 
     def test_unevaluated_tasks_never_grow_scores(self, tmp_path):
         store_mod = pytest.importorskip(
-            "skills.state_store", reason="ava-skills workspace member not installed")
+            "skills.state_store", reason="ava-skills workspace member not installed"
+        )
         with store_mod.JSpaceStateStore(tmp_path / "s.sqlite3") as st:
             st.log_task("nm-sess", "unchecked task", "ok")
             row = st.recent_tasks(1)[0]
@@ -101,4 +128,6 @@ class TestStateStoreHonestNulls:
             out = tmp_path / "t.jsonl"
             st.export_telemetry(out)
         rec = json.loads(out.read_text(encoding="utf-8").splitlines()[0])
-        assert rec["eval_score"] is None, "export must carry null, not a defaulted number"
+        assert rec["eval_score"] is None, (
+            "export must carry null, not a defaulted number"
+        )

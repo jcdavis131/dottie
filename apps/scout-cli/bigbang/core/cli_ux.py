@@ -3,14 +3,18 @@
 Follows the cli-for-agents skill: flags over prompts, layered help with
 copy-pasteable Examples, fail-fast with example invocations, dry-run / force.
 """
+
 from __future__ import annotations
 
 import sys
-from typing import Optional, Sequence
+from typing import TYPE_CHECKING
 
 import typer
 
 from bigbang.core.output import emit, is_json
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 def is_interactive() -> bool:
@@ -32,7 +36,7 @@ def fail_agent(
     *,
     command: str,
     example: str,
-    discover: Optional[str] = None,
+    discover: str | None = None,
     code: int = 1,
 ) -> None:
     """Emit a structured error with a correct example invocation, then exit."""
@@ -58,8 +62,8 @@ def read_stdin_text(*, strip: bool = True) -> str:
 
 def require_secret_value(
     *,
-    positional: Optional[str],
-    flag_value: Optional[str],
+    positional: str | None,
+    flag_value: str | None,
     use_stdin: bool,
     command: str,
     example: str,
@@ -87,7 +91,9 @@ def require_secret_value(
             example=example,
         )
     try:
-        typed = typer.prompt("Enter value (hidden)", hide_input=True, confirmation_prompt=False)
+        typed = typer.prompt(
+            "Enter value (hidden)", hide_input=True, confirmation_prompt=False
+        )
     except Exception:
         fail_agent("Could not read hidden prompt", command=command, example=example)
     typed = (typed or "").strip()
@@ -101,7 +107,7 @@ def prompt_secret_or_fail(
     *,
     command: str,
     example: str,
-    flag_value: Optional[str] = None,
+    flag_value: str | None = None,
 ) -> str:
     """Use --flag when set; else prompt only on a TTY; else fail with example."""
     if flag_value is not None and str(flag_value).strip():

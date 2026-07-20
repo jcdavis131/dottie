@@ -37,7 +37,6 @@ from __future__ import annotations
 
 import hashlib
 import os
-import struct
 from pathlib import Path
 
 import numpy as np
@@ -59,7 +58,10 @@ def _shingles(text: str) -> list[bytes]:
     words = normalize(text).lower().split()
     if len(words) < SHINGLE_K:
         return [" ".join(words).encode("utf-8")] if words else [b""]
-    return [" ".join(words[i : i + SHINGLE_K]).encode("utf-8") for i in range(len(words) - SHINGLE_K + 1)]
+    return [
+        " ".join(words[i : i + SHINGLE_K]).encode("utf-8")
+        for i in range(len(words) - SHINGLE_K + 1)
+    ]
 
 
 def _minhash(text: str, num_perm: int) -> MinHash:
@@ -141,7 +143,7 @@ class MinHashDeduper:
     def close(self) -> None:
         self.db.close()
 
-    def __enter__(self) -> "MinHashDeduper":
+    def __enter__(self) -> MinHashDeduper:
         return self
 
     def __exit__(self, *exc) -> None:
@@ -181,13 +183,17 @@ class MinHashDeduper:
         self.db.execute("BEGIN IMMEDIATE")
         try:
             # (0) reprocess safety: same doc coming back around.
-            row = self.db.execute("SELECT 1 FROM sigs WHERE doc_id=?", (doc_id,)).fetchone()
+            row = self.db.execute(
+                "SELECT 1 FROM sigs WHERE doc_id=?", (doc_id,)
+            ).fetchone()
             if row is not None:
                 self.db.execute("COMMIT")
                 return True
 
             # (1) exact duplicate (cheap).
-            row = self.db.execute("SELECT 1 FROM exact WHERE hash=?", (ehash,)).fetchone()
+            row = self.db.execute(
+                "SELECT 1 FROM exact WHERE hash=?", (ehash,)
+            ).fetchone()
             if row is not None:
                 self.db.execute("COMMIT")
                 return False
@@ -202,17 +208,28 @@ class MinHashDeduper:
                     candidate_ids.add(r["doc_id"])
 
             for cid in candidate_ids:
-                r = self.db.execute("SELECT sig FROM sigs WHERE doc_id=?", (cid,)).fetchone()
+                r = self.db.execute(
+                    "SELECT sig FROM sigs WHERE doc_id=?", (cid,)
+                ).fetchone()
                 if r is None:
                     continue
                 other = np.frombuffer(r["sig"], dtype=np.uint64)
-                if len(other) == len(sig) and self._estimate_jaccard(sig, other) >= self.threshold:
+                if (
+                    len(other) == len(sig)
+                    and self._estimate_jaccard(sig, other) >= self.threshold
+                ):
                     self.db.execute("COMMIT")
                     return False
 
             # New doc: persist signature, exact hash, and band buckets.
-            self.db.execute("INSERT OR IGNORE INTO sigs (doc_id, sig) VALUES (?,?)", (doc_id, sig_blob))
-            self.db.execute("INSERT OR IGNORE INTO exact (hash, doc_id) VALUES (?,?)", (ehash, doc_id))
+            self.db.execute(
+                "INSERT OR IGNORE INTO sigs (doc_id, sig) VALUES (?,?)",
+                (doc_id, sig_blob),
+            )
+            self.db.execute(
+                "INSERT OR IGNORE INTO exact (hash, doc_id) VALUES (?,?)",
+                (ehash, doc_id),
+            )
             self.db.executemany(
                 "INSERT INTO lsh (band, bucket, doc_id) VALUES (?,?,?)",
                 [(band, bucket, doc_id) for band, bucket in enumerate(buckets)],

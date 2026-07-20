@@ -20,12 +20,16 @@ breaking renames bump major; consumers must check `schema_version` before traini
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import re
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from pathlib import Path
-from typing import Any, Dict, Iterable, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator
+    from pathlib import Path
 
 RFT_SCHEMA_VERSION = "1.0.0"
 
@@ -34,7 +38,8 @@ RFT_SCHEMA_VERSION = "1.0.0"
 # ---------------------------------------------------------------------------
 
 _SECRET_KEY_RE = re.compile(
-    r"(secret|token|password|passwd|api[-_]?key|auth|credential|bearer|cookie)", re.IGNORECASE
+    r"(secret|token|password|passwd|api[-_]?key|auth|credential|bearer|cookie)",
+    re.IGNORECASE,
 )
 # UNANCHORED: secrets are redacted wherever they appear, including embedded inside a
 # longer string (a URL, a shell command, an "Authorization: Bearer <tok>" header). An
@@ -74,16 +79,17 @@ def redact(value: Any, _key: str = "") -> Any:
 # Parsing + episode segmentation
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class RftStep:
     """One tool invocation inside an episode. Mirrors an audit.jsonl entry, redacted."""
 
-    t: int                      # 0-based index within the episode
+    t: int  # 0-based index within the episode
     command: str
-    args: Dict[str, Any]
-    status: str                 # "ok" | anything else = failure
+    args: dict[str, Any]
+    status: str  # "ok" | anything else = failure
     duration_ms: int
-    ts: float                   # epoch seconds (UTC)
+    ts: float  # epoch seconds (UTC)
 
     @property
     def ok(self) -> bool:
@@ -95,22 +101,22 @@ class RftEpisode:
     """A contiguous burst of tool activity treated as one workflow trajectory."""
 
     episode_id: str
-    steps: List[RftStep]
+    steps: list[RftStep]
     start_ts: float
     end_ts: float
 
 
-def _parse_ts(raw: str) -> Optional[float]:
+def _parse_ts(raw: str) -> float | None:
     try:
         return datetime.fromisoformat(raw.replace("Z", "+00:00")).timestamp()
     except (ValueError, AttributeError):
         return None
 
 
-def parse_audit_lines(lines: Iterable[str]) -> List[Dict[str, Any]]:
+def parse_audit_lines(lines: Iterable[str]) -> list[dict[str, Any]]:
     """Parse raw audit.jsonl lines into normalized dicts; malformed lines are skipped
     (the audit writer itself is best-effort append, so partial lines are expected)."""
-    events: List[Dict[str, Any]] = []
+    events: list[dict[str, Any]] = []
     for line in lines:
         line = line.strip()
         if not line:
@@ -122,26 +128,30 @@ def parse_audit_lines(lines: Iterable[str]) -> List[Dict[str, Any]]:
         ts = _parse_ts(row.get("ts", ""))
         if ts is None or "command" not in row:
             continue
-        events.append({
-            "ts": ts,
-            # Redact command/status too, not just args — a secret can be interpolated
-            "command": redact(str(row["command"]), _key="command"),
-            "args": redact(row.get("args") or {}),
-            "status": redact(str(row.get("status", "ok")), _key="status"),
-            "duration_ms": int(row.get("duration_ms") or 0),
-        })
+        events.append(
+            {
+                "ts": ts,
+                # Redact command/status too, not just args — a secret can be interpolated
+                "command": redact(str(row["command"]), _key="command"),
+                "args": redact(row.get("args") or {}),
+                "status": redact(str(row.get("status", "ok")), _key="status"),
+                "duration_ms": int(row.get("duration_ms") or 0),
+            }
+        )
     events.sort(key=lambda e: e["ts"])
     return events
 
 
-def segment_episodes(events: List[Dict[str, Any]], gap_seconds: float = 300.0) -> List[RftEpisode]:
+def segment_episodes(
+    events: list[dict[str, Any]], gap_seconds: float = 300.0
+) -> list[RftEpisode]:
     """Group time-ordered events into episodes split on idle gaps > gap_seconds.
 
     audit.jsonl has no session key, so temporal contiguity is the segmentation signal:
     a human-or-agent working session produces a dense burst; a gap means a new task.
     """
-    episodes: List[RftEpisode] = []
-    current: List[Dict[str, Any]] = []
+    episodes: list[RftEpisode] = []
+    current: list[dict[str, Any]] = []
     for event in events:
         if current and (event["ts"] - current[-1]["ts"]) > gap_seconds:
             episodes.append(_finalize(current))
@@ -152,10 +162,16 @@ def segment_episodes(events: List[Dict[str, Any]], gap_seconds: float = 300.0) -
     return episodes
 
 
-def _finalize(events: List[Dict[str, Any]]) -> RftEpisode:
+def _finalize(events: list[dict[str, Any]]) -> RftEpisode:
     steps = [
-        RftStep(t=i, command=e["command"], args=e["args"], status=e["status"],
-                duration_ms=e["duration_ms"], ts=e["ts"])
+        RftStep(
+            t=i,
+            command=e["command"],
+            args=e["args"],
+            status=e["status"],
+            duration_ms=e["duration_ms"],
+            ts=e["ts"],
+        )
         for i, e in enumerate(events)
     ]
     fingerprint = json.dumps(
@@ -173,7 +189,8 @@ def _finalize(events: List[Dict[str, Any]]) -> RftEpisode:
 # Reward components (measurements, not weighted scalars)
 # ---------------------------------------------------------------------------
 
-def reward_components(episode: RftEpisode) -> Dict[str, Any]:
+
+def reward_components(episode: RftEpisode) -> dict[str, Any]:
     """Annotate the trajectory with the measurements a trainer weights later.
 
     - r_task_terminal_ok: did the episode end in a successful call (binary task signal)
@@ -185,12 +202,15 @@ def reward_components(episode: RftEpisode) -> Dict[str, Any]:
     """
     steps = episode.steps
     redundant = sum(
-        1 for a, b in zip(steps, steps[1:])
+        1
+        for a, b in itertools.pairwise(steps)
         if a.command == b.command and a.args == b.args
     )
     return {
         "r_task_terminal_ok": 1.0 if (steps and steps[-1].ok) else 0.0,
-        "fraction_ok": round(sum(1 for s in steps if s.ok) / len(steps), 4) if steps else 0.0,
+        "fraction_ok": round(sum(1 for s in steps if s.ok) / len(steps), 4)
+        if steps
+        else 0.0,
         "redundant_steps": redundant,
         "num_steps": len(steps),
         "total_duration_ms": sum(s.duration_ms for s in steps),
@@ -201,18 +221,26 @@ def reward_components(episode: RftEpisode) -> Dict[str, Any]:
 # Record assembly + validation
 # ---------------------------------------------------------------------------
 
-RFT_RECORD_SCHEMA: Dict[str, Any] = {
+RFT_RECORD_SCHEMA: dict[str, Any] = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "title": "scout-cli RFT workflow-trace record",
     "type": "object",
-    "required": ["schema_version", "episode_id", "steps", "outcome", "reward_components", "meta"],
+    "required": [
+        "schema_version",
+        "episode_id",
+        "steps",
+        "outcome",
+        "reward_components",
+        "meta",
+    ],
     "properties": {
         "schema_version": {"type": "string"},
         "episode_id": {"type": "string", "minLength": 16, "maxLength": 16},
         "start_ts": {"type": "number"},
         "end_ts": {"type": "number"},
         "steps": {
-            "type": "array", "minItems": 1,
+            "type": "array",
+            "minItems": 1,
             "items": {
                 "type": "object",
                 "required": ["t", "command", "args", "status", "duration_ms", "ts"],
@@ -233,8 +261,13 @@ RFT_RECORD_SCHEMA: Dict[str, Any] = {
         },
         "reward_components": {
             "type": "object",
-            "required": ["r_task_terminal_ok", "fraction_ok", "redundant_steps",
-                          "num_steps", "total_duration_ms"],
+            "required": [
+                "r_task_terminal_ok",
+                "fraction_ok",
+                "redundant_steps",
+                "num_steps",
+                "total_duration_ms",
+            ],
         },
         "meta": {
             "type": "object",
@@ -244,7 +277,7 @@ RFT_RECORD_SCHEMA: Dict[str, Any] = {
 }
 
 
-def to_rft_record(episode: RftEpisode) -> Dict[str, Any]:
+def to_rft_record(episode: RftEpisode) -> dict[str, Any]:
     components = reward_components(episode)
     return {
         "schema_version": RFT_SCHEMA_VERSION,
@@ -258,19 +291,21 @@ def to_rft_record(episode: RftEpisode) -> Dict[str, Any]:
     }
 
 
-def validate_record(record: Dict[str, Any]) -> List[str]:
+def validate_record(record: dict[str, Any]) -> list[str]:
     """Dependency-free structural validation against RFT_RECORD_SCHEMA's required shape.
 
     Returns a list of problems (empty = valid). Deliberately not a full JSON-Schema
     engine — scout-cli stays stdlib-first; the factory's torch loader may re-validate
     with jsonschema if installed.
     """
-    problems: List[str] = []
+    problems: list[str] = []
     for key in RFT_RECORD_SCHEMA["required"]:
         if key not in record:
             problems.append(f"missing top-level key: {key}")
     if record.get("schema_version") != RFT_SCHEMA_VERSION:
-        problems.append(f"schema_version {record.get('schema_version')!r} != {RFT_SCHEMA_VERSION}")
+        problems.append(
+            f"schema_version {record.get('schema_version')!r} != {RFT_SCHEMA_VERSION}"
+        )
     steps = record.get("steps") or []
     if not steps:
         problems.append("steps is empty")
@@ -299,14 +334,19 @@ def _contains_secret(value: Any) -> bool:
 # End-to-end export
 # ---------------------------------------------------------------------------
 
+
 def export_dataset(
     audit_path: Path,
     out_path: Path,
     gap_seconds: float = 300.0,
     min_steps: int = 1,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """audit.jsonl -> rft_dataset.jsonl. Returns a summary dict (counts, drops, output path)."""
-    lines = audit_path.read_text(encoding="utf-8").splitlines() if audit_path.exists() else []
+    lines = (
+        audit_path.read_text(encoding="utf-8").splitlines()
+        if audit_path.exists()
+        else []
+    )
     events = parse_audit_lines(lines)
     episodes = segment_episodes(events, gap_seconds=gap_seconds)
     kept, dropped_short, dropped_invalid = [], 0, 0
@@ -335,7 +375,7 @@ def export_dataset(
     }
 
 
-def iter_records(dataset_path: Path) -> Iterator[Dict[str, Any]]:
+def iter_records(dataset_path: Path) -> Iterator[dict[str, Any]]:
     """Stream a written dataset; the factory's torch Dataset wraps exactly this."""
     with dataset_path.open(encoding="utf-8") as f:
         for line in f:

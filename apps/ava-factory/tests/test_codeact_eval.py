@@ -1,5 +1,6 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
 """CodeAct eval (spec 13 T13C.3) — real sandbox scoring; honest real-mode; seed-sensitive plumbing."""
+
 import os
 import sys
 from pathlib import Path
@@ -7,8 +8,11 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from evals.codeact_eval import (  # noqa: E402
-    CODEACT_BAR, held_out, run_codeact_eval, score_emission, simulate_policy_eval,
+from evals.codeact_eval import (
+    held_out,
+    run_codeact_eval,
+    score_emission,
+    simulate_policy_eval,
 )
 
 POSIX = os.name == "posix"
@@ -49,21 +53,33 @@ class TestSimulation:
     def test_corruption_never_scores_gold(self):
         # structural (not coincidental): the sentinel can't equal any family's gold answer
         from evals.codeact_eval import _corrupt
+
         for traj in held_out(20):
-            assert score_emission(_corrupt(traj.blocks), traj.answer, traj.tool_sources) is False
+            assert (
+                score_emission(_corrupt(traj.blocks), traj.answer, traj.tool_sources)
+                is False
+            )
 
     def test_success_rate_from_real_execution_varies_by_seed(self):
         a = simulate_policy_eval(n=30, accuracy=0.5, seed=1)["measured"]["success_rate"]
         b = simulate_policy_eval(n=30, accuracy=0.5, seed=2)["measured"]["success_rate"]
-        assert a != b   # computed from real execution under a seeded policy, not a constant
+        assert (
+            a != b
+        )  # computed from real execution under a seeded policy, not a constant
 
     def test_broken_tool_binding_drops_score(self):
         # With tool_binding_ok=False the lookup-family trajectories can't resolve their tool → fail,
         # so a perfect-accuracy policy no longer scores 1.0. Guard: the frozen draw must actually
         # contain tool-family trajectories, else the sensitivity check is vacuous.
-        assert any(t.tool_sources for t in held_out(40)), "draw has no tool-family trajectories"
-        full = simulate_policy_eval(n=40, accuracy=1.0, tool_binding_ok=True)["measured"]["success_rate"]
-        broken = simulate_policy_eval(n=40, accuracy=1.0, tool_binding_ok=False)["measured"]["success_rate"]
+        assert any(t.tool_sources for t in held_out(40)), (
+            "draw has no tool-family trajectories"
+        )
+        full = simulate_policy_eval(n=40, accuracy=1.0, tool_binding_ok=True)[
+            "measured"
+        ]["success_rate"]
+        broken = simulate_policy_eval(n=40, accuracy=1.0, tool_binding_ok=False)[
+            "measured"
+        ]["success_rate"]
         assert broken < full
 
 

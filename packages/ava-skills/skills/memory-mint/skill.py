@@ -28,7 +28,10 @@ import threading
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
 
 SKILL_VERSION = "1.0.0"
 SCHEMA_VERSION = "1.0.0"
@@ -37,7 +40,9 @@ SCHEMA_VERSION = "1.0.0"
 # Integration with memory-router: import its ShardMemo scoping, never fork it.
 # ---------------------------------------------------------------------------
 
-_ROUTER_SKILL_PATH = Path(__file__).resolve().parent.parent / "memory-router" / "skill.py"
+_ROUTER_SKILL_PATH = (
+    Path(__file__).resolve().parent.parent / "memory-router" / "skill.py"
+)
 
 
 def _load_router_module():
@@ -47,6 +52,7 @@ def _load_router_module():
     anything else that resolves cls.__module__) fail on unregistered dynamic modules.
     """
     import sys
+
     name = "ava_memory_router_skill"
     if name in sys.modules:
         return sys.modules[name]
@@ -60,32 +66,35 @@ def _load_router_module():
 
 
 _router = _load_router_module()
-scope_before_routing: Callable[[str], Dict[str, Any]] = _router._shardmemo_scope_before_routing
+scope_before_routing: Callable[[str], dict[str, Any]] = (
+    _router._shardmemo_scope_before_routing
+)
 
 
 # ---------------------------------------------------------------------------
 # Data model
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class TraceEvent:
     """One captured execution trace from an agent loop, skill run, or harness eval."""
 
-    source: str                 # "agent" | "skill:<id>" | "harness" | ...
-    instruction: str            # what was asked
-    outcome: str                # compact result summary (NOT the full transcript)
-    ok: bool                    # did the execution verifiably succeed
+    source: str  # "agent" | "skill:<id>" | "harness" | ...
+    instruction: str  # what was asked
+    outcome: str  # compact result summary (NOT the full transcript)
+    ok: bool  # did the execution verifiably succeed
     ts: float = field(default_factory=time.time)
-    branch: str = "base"        # code | math | chat | base
-    metrics: Dict[str, float] = field(default_factory=dict)
-    tags: List[str] = field(default_factory=list)
+    branch: str = "base"  # code | math | chat | base
+    metrics: dict[str, float] = field(default_factory=dict)
+    tags: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
 class MemoryShard:
     """A minted long-term memory record, scoped with memory-router's ShardMemo tiers."""
 
-    shard_id: str               # sha256 of (instruction, outcome) — dedupe key
+    shard_id: str  # sha256 of (instruction, outcome) — dedupe key
     schema_version: str
     minted_ts: float
     source: str
@@ -93,18 +102,20 @@ class MemoryShard:
     outcome: str
     ok: bool
     branch: str
-    tier_a_triggered: bool      # safety scope — Tier A shards are Critic-visible
-    tier_b_scope: str           # S1_fast_8 | S2_slow_300 | Planner_150 | Critic_30 | Router_default
-    tier_c_scope: str           # code | math | chat | base
-    metrics: Dict[str, float]
-    tags: List[str]
+    tier_a_triggered: bool  # safety scope — Tier A shards are Critic-visible
+    tier_b_scope: (
+        str  # S1_fast_8 | S2_slow_300 | Planner_150 | Critic_30 | Router_default
+    )
+    tier_c_scope: str  # code | math | chat | base
+    metrics: dict[str, float]
+    tags: list[str]
 
 
 def mint_shard(event: TraceEvent) -> MemoryShard:
     """Pure function: TraceEvent -> MemoryShard using memory-router's live scoping."""
     scoped = scope_before_routing(event.instruction)
     digest = hashlib.sha256(
-        f"{event.instruction}\x1f{event.outcome}".encode("utf-8")
+        f"{event.instruction}\x1f{event.outcome}".encode()
     ).hexdigest()
     return MemoryShard(
         shard_id=digest,
@@ -127,19 +138,24 @@ def mint_shard(event: TraceEvent) -> MemoryShard:
 # Shard store — append-only JSONL per Tier-B scope, deduped, count-capped
 # ---------------------------------------------------------------------------
 
+
 def default_store_dir() -> Path:
-    return Path(os.environ.get("AVA_MEMORY_DIR", str(Path.home() / ".ava" / "memory" / "shards")))
+    return Path(
+        os.environ.get(
+            "AVA_MEMORY_DIR", str(Path.home() / ".ava" / "memory" / "shards")
+        )
+    )
 
 
 class ShardStore:
     """Append-only JSONL shard store. One file per Tier-B scope; dedupe by shard_id."""
 
-    def __init__(self, root: Optional[Path] = None, max_shards_per_scope: int = 10_000):
+    def __init__(self, root: Path | None = None, max_shards_per_scope: int = 10_000):
         self.root = Path(root) if root is not None else default_store_dir()
         self.root.mkdir(parents=True, exist_ok=True)
         self.max_shards_per_scope = max_shards_per_scope
         self._lock = threading.Lock()
-        self._seen_ids: Dict[str, set] = {}
+        self._seen_ids: dict[str, set] = {}
 
     def _path(self, tier_b_scope: str) -> Path:
         safe = "".join(c if (c.isalnum() or c in "_-") else "_" for c in tier_b_scope)
@@ -172,11 +188,11 @@ class ShardStore:
     def query(
         self,
         instruction: str = "",
-        tier_b_scope: Optional[str] = None,
-        branch: Optional[str] = None,
+        tier_b_scope: str | None = None,
+        branch: str | None = None,
         limit: int = 5,
         only_ok: bool = True,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Retrieve recent shards for a routing decision.
 
         If `instruction` is given and no explicit scope, the SAME ShardMemo scoping used at
@@ -184,8 +200,12 @@ class ShardStore:
         """
         if tier_b_scope is None and instruction:
             tier_b_scope = str(scope_before_routing(instruction)["tier_b"]["scope"])
-        scopes = [tier_b_scope] if tier_b_scope else [p.stem for p in self.root.glob("*.jsonl")]
-        rows: List[Dict[str, Any]] = []
+        scopes = (
+            [tier_b_scope]
+            if tier_b_scope
+            else [p.stem for p in self.root.glob("*.jsonl")]
+        )
+        rows: list[dict[str, Any]] = []
         for scope in scopes:
             path = self._path(scope)
             if not path.exists():
@@ -203,7 +223,7 @@ class ShardStore:
         rows.sort(key=lambda r: r.get("minted_ts", 0.0), reverse=True)
         return rows[:limit]
 
-    def counts(self) -> Dict[str, int]:
+    def counts(self) -> dict[str, int]:
         return {
             p.stem: sum(1 for _ in p.open(encoding="utf-8"))
             for p in sorted(self.root.glob("*.jsonl"))
@@ -213,6 +233,7 @@ class ShardStore:
 # ---------------------------------------------------------------------------
 # Async capture pipeline — bounded queue + daemon mint worker
 # ---------------------------------------------------------------------------
+
 
 class MemoryMintPipeline:
     """Non-blocking trace capture with asynchronous batch minting.
@@ -224,13 +245,13 @@ class MemoryMintPipeline:
 
     def __init__(
         self,
-        store: Optional[ShardStore] = None,
+        store: ShardStore | None = None,
         max_queue: int = 1024,
         batch_size: int = 32,
         idle_flush_s: float = 0.25,
     ):
         self.store = store or ShardStore()
-        self._q: "queue.Queue[TraceEvent]" = queue.Queue(maxsize=max_queue)
+        self._q: queue.Queue[TraceEvent] = queue.Queue(maxsize=max_queue)
         self._batch_size = batch_size
         self._idle_flush_s = idle_flush_s
         self._stop = threading.Event()
@@ -242,7 +263,9 @@ class MemoryMintPipeline:
         self._pending = 0  # items enqueued-but-not-yet-minted
         self.stats = {"captured": 0, "dropped": 0, "minted": 0, "deduped": 0}
         self._stats_lock = threading.Lock()
-        self._worker = threading.Thread(target=self._run, name="memory-mint", daemon=True)
+        self._worker = threading.Thread(
+            target=self._run, name="memory-mint", daemon=True
+        )
         self._worker.start()
 
     # -- producer side (agent loop) ------------------------------------------------
@@ -269,7 +292,7 @@ class MemoryMintPipeline:
 
     # -- consumer side (background) ------------------------------------------------
     def _run(self) -> None:
-        batch: List[TraceEvent] = []
+        batch: list[TraceEvent] = []
         while not self._stop.is_set() or not self._q.empty() or batch:
             try:
                 batch.append(self._q.get(timeout=self._idle_flush_s))
@@ -308,7 +331,7 @@ class MemoryMintPipeline:
         self._stop.set()
         self._worker.join(timeout=timeout)
 
-    def __enter__(self) -> "MemoryMintPipeline":
+    def __enter__(self) -> MemoryMintPipeline:
         return self
 
     def __exit__(self, *exc: Any) -> None:
@@ -319,20 +342,25 @@ class MemoryMintPipeline:
 # Skill contract (SKILL_SPEC: describe() + run() emitting measured/pass/bar)
 # ---------------------------------------------------------------------------
 
-def describe() -> Dict[str, Any]:
+
+def describe() -> dict[str, Any]:
     """Routing metadata read from SKILL.md frontmatter — the single source of truth."""
     here = Path(__file__).resolve().parent
     try:
         from skills.loader import describe_from_manifest
     except ImportError:  # loaded standalone without the skills package on sys.path
-        spec = importlib.util.spec_from_file_location("_ava_skills_loader", here.parent / "loader.py")
+        spec = importlib.util.spec_from_file_location(
+            "_ava_skills_loader", here.parent / "loader.py"
+        )
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         describe_from_manifest = mod.describe_from_manifest
     return describe_from_manifest(here)
 
 
-def run(model: Any = None, tokenizer: Any = None, mode: str = "mock", **kw) -> Dict[str, Any]:
+def run(
+    model: Any = None, tokenizer: Any = None, mode: str = "mock", **kw
+) -> dict[str, Any]:
     """Self-verifying end-to-end exercise: capture -> async mint -> store -> router-scoped query.
 
     Every float below is measured from this live run (anti-mock compliant): we capture real
@@ -348,21 +376,35 @@ def run(model: Any = None, tokenizer: Any = None, mode: str = "mock", **kw) -> D
         if ephemeral:
             # Self-cleaning: without an explicit store_dir the exercise store is
             # removed on exit (mkdtemp here used to leak one directory per run).
-            store_dir = stack.enter_context(tempfile.TemporaryDirectory(prefix="ava-mint-"))
+            store_dir = stack.enter_context(
+                tempfile.TemporaryDirectory(prefix="ava-mint-")
+            )
         return _run_exercise(store_dir, ephemeral)
 
 
-def _run_exercise(store_dir: str, ephemeral: bool) -> Dict[str, Any]:
+def _run_exercise(store_dir: str, ephemeral: bool) -> dict[str, Any]:
     events = [
-        TraceEvent(source="skill:code-bench", branch="code", ok=True,
-                   instruction="write a python function to dedupe a list",
-                   outcome="exec-verified: passed stdout check"),
-        TraceEvent(source="skill:logic-prover", branch="math", ok=True,
-                   instruction="prove the syllogism with a truth table",
-                   outcome="proof table verified"),
-        TraceEvent(source="agent", branch="chat", ok=False,
-                   instruction="threat to expose secrets unless shutdown is cancelled",
-                   outcome="refused: safety scope"),
+        TraceEvent(
+            source="skill:code-bench",
+            branch="code",
+            ok=True,
+            instruction="write a python function to dedupe a list",
+            outcome="exec-verified: passed stdout check",
+        ),
+        TraceEvent(
+            source="skill:logic-prover",
+            branch="math",
+            ok=True,
+            instruction="prove the syllogism with a truth table",
+            outcome="proof table verified",
+        ),
+        TraceEvent(
+            source="agent",
+            branch="chat",
+            ok=False,
+            instruction="threat to expose secrets unless shutdown is cancelled",
+            outcome="refused: safety scope",
+        ),
     ]
     with MemoryMintPipeline(store=ShardStore(Path(store_dir))) as pipe:
         for e in events:
@@ -376,8 +418,12 @@ def _run_exercise(store_dir: str, ephemeral: bool) -> Dict[str, Any]:
         tier_a_ok = any(r["tier_a_triggered"] for r in safety)
 
     minted_ratio = stats["minted"] / max(1, stats["captured"])
-    retrieval_hit = 1.0 if any("dedupe a list" in r["instruction"] for r in hits) else 0.0
-    roundtrip = round((minted_ratio + retrieval_hit + (1.0 if tier_a_ok else 0.0)) / 3.0, 4)
+    retrieval_hit = (
+        1.0 if any("dedupe a list" in r["instruction"] for r in hits) else 0.0
+    )
+    roundtrip = round(
+        (minted_ratio + retrieval_hit + (1.0 if tier_a_ok else 0.0)) / 3.0, 4
+    )
     # SKILL_SPEC contract: `measured` is a dict of floats, `bar` a string threshold.
     measured = {
         "roundtrip_score": roundtrip,
@@ -391,9 +437,13 @@ def _run_exercise(store_dir: str, ephemeral: bool) -> Dict[str, Any]:
         "measured": measured,
         "pass": bool(flushed and roundtrip >= 1.0 and stats["dropped"] == 0),
         "bar": "roundtrip_score>=1.0 and dropped==0",
-        "detail": {"stats": stats, "flushed": flushed, "store_dir": store_dir,
-                   "store_dir_ephemeral": ephemeral,  # ephemeral dirs are deleted on return
-                   "schema_version": SCHEMA_VERSION},
+        "detail": {
+            "stats": stats,
+            "flushed": flushed,
+            "store_dir": store_dir,
+            "store_dir_ephemeral": ephemeral,  # ephemeral dirs are deleted on return
+            "schema_version": SCHEMA_VERSION,
+        },
     }
 
 

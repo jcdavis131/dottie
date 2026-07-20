@@ -1,7 +1,6 @@
 """Tests for agent run --execute, teach, and bus (findings #5/#6)."""
-import json
 
-import pytest
+import json
 
 from bigbang.core import audit
 from bigbang.plugins.agent import cli as agent_cli
@@ -19,7 +18,7 @@ class TestPolicyCheckStep:
         assert "metacharacters" in reason
 
     def test_unknown_plugin_denied(self):
-        ok, reason, _ = agent_cli._policy_check_step("bb notaplugin go")
+        ok, _reason, _ = agent_cli._policy_check_step("bb notaplugin go")
         assert not ok
 
     def test_non_bb_prefix_denied(self):
@@ -40,6 +39,7 @@ def test_execute_plan_harmless(tmp_path, monkeypatch):
 
 def test_teach_writes_skill_file(tmp_path, monkeypatch, capsys):
     from bigbang.core.output import set_json_mode
+
     monkeypatch.setattr(agent_cli, "SKILLS_DIR", tmp_path / "skills")
     monkeypatch.setattr(audit, "AUDIT_FILE", tmp_path / "audit.jsonl")
     set_json_mode(True)
@@ -54,6 +54,7 @@ def test_teach_writes_skill_file(tmp_path, monkeypatch, capsys):
 class TestBus:
     def test_bus_absent_audit_log_honest_empty(self, tmp_path, monkeypatch, capsys):
         from bigbang.core.output import set_json_mode
+
         missing = tmp_path / "nope" / "audit.jsonl"
         monkeypatch.setattr(audit, "AUDIT_FILE", missing)
         set_json_mode(True)
@@ -65,8 +66,11 @@ class TestBus:
 
     def test_bus_suggests_repeated_commands(self, tmp_path, monkeypatch, capsys):
         from bigbang.core.output import set_json_mode
+
         f = tmp_path / "audit.jsonl"
-        entries = [{"command": "tools list", "args": {}}] * 4 + [{"command": "rare", "args": {}}]
+        entries = [{"command": "tools list", "args": {}}] * 4 + [
+            {"command": "rare", "args": {}}
+        ]
         f.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
         monkeypatch.setattr(audit, "AUDIT_FILE", f)
         set_json_mode(True)

@@ -22,7 +22,9 @@ def load_skill_module(name: str):
     path = SKILLS_DIR / name / "skill.py"
     spec = importlib.util.spec_from_file_location(modname, path)
     mod = importlib.util.module_from_spec(spec)
-    sys.modules[modname] = mod  # register before exec: dataclasses resolve cls.__module__
+    sys.modules[modname] = (
+        mod  # register before exec: dataclasses resolve cls.__module__
+    )
     spec.loader.exec_module(mod)
     return mod
 

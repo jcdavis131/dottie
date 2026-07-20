@@ -15,7 +15,6 @@ from pathlib import Path
 
 import pytest
 import zstandard as zstd
-
 from ava.pipeline import collector
 from ava.pipeline.collector import (
     CollectorConfig,
@@ -37,8 +36,11 @@ PIPELINE_YAML = REPO / "configs" / "pipeline.yaml"
 
 def _cfg(target_bytes: int = 600) -> CollectorConfig:
     return CollectorConfig(
-        http_retries=8, backoff_initial=0.001, backoff_max=0.002,
-        backoff_jitter=0.0, raw_target_bytes=target_bytes,
+        http_retries=8,
+        backoff_initial=0.001,
+        backoff_max=0.002,
+        backoff_jitter=0.0,
+        raw_target_bytes=target_bytes,
     )
 
 
@@ -120,9 +122,9 @@ def test_shard_rolls_at_target_bytes_and_leaves_no_tmp(tmp_path):
     assert written == 40
     files = sorted((raw / "roller").glob("*.jsonl.zst"))
     assert len(files) >= 2, "small target should have rolled multiple shards"
-    assert counts.get(RAW) == len(files)          # every shard registered
+    assert counts.get(RAW) == len(files)  # every shard registered
     assert cursor_docs == 40 and cursor_pos == "docs:40"
-    assert _tmp_files(raw) == []                   # no .tmp left behind
+    assert _tmp_files(raw) == []  # no .tmp left behind
     docs = _read_shards(raw, "roller")
     assert len(docs) == 40
     assert len({d["doc_id"] for d in docs}) == 40
@@ -156,8 +158,8 @@ def test_resume_after_kill_has_no_duplicates_and_full_coverage(tmp_path):
             run_source(spec1, 1, m, _cfg(target_bytes=500), raw, log)
         _, cursor_after_crash = m.get_cursor(collector.cursor_key(spec1, 1))
 
-    assert _tmp_files(raw) == []          # crash left no partial tmp on disk
-    assert cursor_after_crash < 100       # we did not finish
+    assert _tmp_files(raw) == []  # crash left no partial tmp on disk
+    assert cursor_after_crash < 100  # we did not finish
 
     # Run 2: fresh process, resumes from the manifest cursor, no kill.
     factory2, _ = _counting_factory(100)
@@ -172,7 +174,7 @@ def test_resume_after_kill_has_no_duplicates_and_full_coverage(tmp_path):
     texts = {d["text"] for d in docs}
     assert len(ids) == len(set(ids)), "a killed shard must not duplicate doc_ids"
     expected = {f"document number {i:04d} " + "payload " * 6 for i in range(100)}
-    assert texts == expected               # every one of the 100 docs is present
+    assert texts == expected  # every one of the 100 docs is present
     assert _tmp_files(raw) == []
 
 
@@ -185,22 +187,41 @@ def test_backpressure_pauses_and_writes_nothing(tmp_path, monkeypatch):
     log, buf = _log()
     fcfg = FlowConfig.load(PIPELINE_YAML)
     factory, _ = _counting_factory(1000)
-    spec = SourceSpec(name="synth_logic", kind="synthetic", stream_factory=factory,
-                      phases=(0,), weight={0: 1.0})
+    spec = SourceSpec(
+        name="synth_logic",
+        kind="synthetic",
+        stream_factory=factory,
+        phases=(0,),
+        weight={0: 1.0},
+    )
 
-    monkeypatch.setattr(collector, "collector_should_pause",
-                        lambda *a, **k: PauseReason(True, "disk full (test)"))
+    monkeypatch.setattr(
+        collector,
+        "collector_should_pause",
+        lambda *a, **k: PauseReason(True, "disk full (test)"),
+    )
     sleeps = {"n": 0}
     with _manifest(tmp_path) as m:
-        serve(m, fcfg, _cfg(), [spec], raw, log,
-              max_iterations=4, sleep_fn=lambda s: sleeps.__setitem__("n", sleeps["n"] + 1))
-        assert m.counts_by_state() == {}          # nothing written while paused
+        serve(
+            m,
+            fcfg,
+            _cfg(),
+            [spec],
+            raw,
+            log,
+            max_iterations=4,
+            sleep_fn=lambda s: sleeps.__setitem__("n", sleeps["n"] + 1),
+        )
+        assert m.counts_by_state() == {}  # nothing written while paused
 
-    assert sleeps["n"] == 4                        # it slept each paused iteration
+    assert sleeps["n"] == 4  # it slept each paused iteration
     assert not raw.exists() or not any(raw.rglob("*.jsonl.zst"))
     # pause reason logged exactly once (no per-loop spam)
-    pause_events = [json.loads(l) for l in buf.getvalue().splitlines()
-                    if json.loads(l)["event"] == "collector_pause"]
+    pause_events = [
+        json.loads(l)
+        for l in buf.getvalue().splitlines()
+        if json.loads(l)["event"] == "collector_pause"
+    ]
     assert len(pause_events) == 1
 
 
@@ -210,10 +231,16 @@ def test_backpressure_pauses_and_writes_nothing(tmp_path, monkeypatch):
 
 def _fineweb_like() -> SourceSpec:
     return SourceSpec(
-        name="fineweb_edu", kind="hf", text_field="text", score_field="score",
-        phases=(2, 4, 5), task_type="automatic",
-        filters={"min_chars": {2: 200, 4: 4000, 5: 200},
-                 "min_edu_score": {2: 2.0, 5: 4.5}},
+        name="fineweb_edu",
+        kind="hf",
+        text_field="text",
+        score_field="score",
+        phases=(2, 4, 5),
+        task_type="automatic",
+        filters={
+            "min_chars": {2: 200, 4: 4000, 5: 200},
+            "min_edu_score": {2: 2.0, 5: 4.5},
+        },
     )
 
 
@@ -228,13 +255,13 @@ def test_filters_reject_short_docs():
 def test_filters_reject_low_edu_score_per_phase():
     spec = _fineweb_like()
     text = "x" * 300
-    assert build_doc(spec, 2, {"text": text, "score": 1.5}) is None   # < 2.0
+    assert build_doc(spec, 2, {"text": text, "score": 1.5}) is None  # < 2.0
     assert build_doc(spec, 2, {"text": text, "score": 2.5}) is not None
     # phase 5 is stricter
-    assert build_doc(spec, 5, {"text": text, "score": 4.0}) is None   # < 4.5
+    assert build_doc(spec, 5, {"text": text, "score": 4.0}) is None  # < 4.5
     assert build_doc(spec, 5, {"text": text, "score": 4.6}) is not None
     # phase 4 has no score filter but demands long docs
-    assert build_doc(spec, 4, {"text": "x" * 300}) is None            # < 4000 chars
+    assert build_doc(spec, 4, {"text": "x" * 300}) is None  # < 4000 chars
     assert build_doc(spec, 4, {"text": "x" * 5000}) is not None
 
 
@@ -258,24 +285,38 @@ def test_sources_yaml_parses_and_has_required_keys():
         assert s.name and s.kind in {"hf", "synthetic"}
         assert s.text_field
         assert s.phases, f"{s.name} lists no phases"
-        assert s.task_type in {"automatic", "deliberate", "safety", "temporal", "tool_selection"}
-        assert set(s.weight) <= set(s.phases), f"{s.name} weights a phase it doesn't serve"
+        assert s.task_type in {
+            "automatic",
+            "deliberate",
+            "safety",
+            "temporal",
+            "tool_selection",
+        }
+        assert set(s.weight) <= set(s.phases), (
+            f"{s.name} weights a phase it doesn't serve"
+        )
         if s.kind == "hf":
             assert s.dataset and s.split
         else:
             from ava.datagen import GENERATORS
-            assert s.generator in GENERATORS, f"{s.name}: unknown generator {s.generator}"
+
+            assert s.generator in GENERATORS, (
+                f"{s.name}: unknown generator {s.generator}"
+            )
             # the registry may not claim a phase the generator cannot emit
             gen_phases = set(GENERATORS[s.generator].phases)
             assert set(s.phases) <= gen_phases, (
-                f"{s.name} lists phases {s.phases} but {s.generator} emits {sorted(gen_phases)}")
+                f"{s.name} lists phases {s.phases} but {s.generator} emits {sorted(gen_phases)}"
+            )
 
 
 def test_every_phase_mixture_sums_to_one():
     sources = load_sources(SOURCES_YAML)
     for phase in range(6):
         total = sum(s.weight.get(phase, 0.0) for s in sources if phase in s.phases)
-        assert abs(total - 1.0) < 1e-6, f"phase {phase} mixture sums to {total}, not 1.0"
+        assert abs(total - 1.0) < 1e-6, (
+            f"phase {phase} mixture sums to {total}, not 1.0"
+        )
 
 
 def test_curriculum_covers_all_six_phases_with_synthetic_present():
@@ -290,7 +331,9 @@ def test_curriculum_covers_all_six_phases_with_synthetic_present():
 
 def test_no_gated_sources_in_registry():
     for s in load_sources(SOURCES_YAML):
-        assert s.gated is False, f"{s.name} is gated; collector has no HF_TOKEN guarantee"
+        assert s.gated is False, (
+            f"{s.name} is gated; collector has no HF_TOKEN guarantee"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -307,4 +350,4 @@ def test_weighted_round_robin_respects_weights():
 
 def test_weighted_round_robin_skips_zero_weight():
     rr = collector.WeightedRR([("a", 1.0), ("z", 0.0)])
-    assert set(rr.next() for _ in range(10)) == {"a"}
+    assert {rr.next() for _ in range(10)} == {"a"}

@@ -22,13 +22,19 @@ class TestGenerators:
             assert len(rec["rows"]) == 4  # all P/Q assignments
             assert rec["valid"] is True
             for row in rec["rows"]:
-                assert row["value"] == lp.OPS[rec["expr"].split()[1]](row["P"], row["Q"])
+                assert row["value"] == lp.OPS[rec["expr"].split()[1]](
+                    row["P"], row["Q"]
+                )
 
     def test_implies_semantics(self):
         implies = next(r for r in lp.gen_truth_tables(3) if r["expr"] == "P IMPLIES Q")
         table = {(row["P"], row["Q"]): row["value"] for row in implies["rows"]}
-        assert table == {(True, True): True, (True, False): False,
-                         (False, True): True, (False, False): True}
+        assert table == {
+            (True, True): True,
+            (True, False): False,
+            (False, True): True,
+            (False, False): True,
+        }
 
     def test_syllogisms_have_premises_conclusion_valid(self):
         for rec in lp.gen_syllogisms(10):

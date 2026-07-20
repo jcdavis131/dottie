@@ -5,31 +5,44 @@ v2.1.0 — adds PRECEDES/REQUIRES/COMPLEMENTARY graph resolution, wRRF reranking
 Solo personal project, no connection to employer, built with public/free-tier only
 Public pip only, free-tier
 """
+
 from __future__ import annotations
-from typing import Dict, Any, List, Tuple, Set
-import os, pathlib, re, sys, json, math, importlib.util
+
+import importlib.util
+import json
+import math
+import pathlib
+import re
+import sys
 from collections import defaultdict, deque
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import builtins
 
 FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
-def _parse_frontmatter(text: str) -> tuple[Dict[str,Any], str]:
+
+def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
     m = FRONTMATTER_RE.match(text)
     if not m:
         return {}, text
     fm_raw = m.group(1)
-    body = text[m.end():]
+    body = text[m.end() :]
     try:
         import yaml
+
         fm = yaml.safe_load(fm_raw) or {}
     except Exception:
         fm = {}
         for line in fm_raw.splitlines():
             if ":" in line:
-                k,v = line.split(":",1)
+                k, v = line.split(":", 1)
                 fm[k.strip()] = v.strip().strip('"').strip("'")
     return fm, body
 
-def describe_from_manifest(skill_dir: str | pathlib.Path) -> Dict[str, Any]:
+
+def describe_from_manifest(skill_dir: str | pathlib.Path) -> dict[str, Any]:
     """Build a skill's describe() payload from its SKILL.md frontmatter.
 
     The manifest is the single source of truth for routing metadata
@@ -51,8 +64,9 @@ def describe_from_manifest(skill_dir: str | pathlib.Path) -> Dict[str, Any]:
         "complementary": meta.get("complementary", []) or [],
     }
 
+
 class Skill:
-    def __init__(self, name: str, path: pathlib.Path, meta: Dict[str,Any], body: str):
+    def __init__(self, name: str, path: pathlib.Path, meta: dict[str, Any], body: str):
         self.name = name
         self.path = path
         self.meta = meta
@@ -63,9 +77,9 @@ class Skill:
         self.deps = meta.get("dependencies", [])
         self.version = meta.get("version", "1.0.0")
         # Tool Graph RAG fields
-        self.precedes: List[str] = meta.get("precedes", []) or []
-        self.requires: List[str] = meta.get("requires", []) or []
-        self.complementary: List[str] = meta.get("complementary", []) or []
+        self.precedes: list[str] = meta.get("precedes", []) or []
+        self.requires: list[str] = meta.get("requires", []) or []
+        self.complementary: list[str] = meta.get("complementary", []) or []
         self.broadcast_target = float(meta.get("broadcast_target", 0.22))
         self.reportability_target = float(meta.get("reportability_target", 0.065))
         self._module = None
@@ -74,7 +88,9 @@ class Skill:
         skill_py = self.path / "skill.py"
         if not skill_py.exists():
             return None
-        spec = importlib.util.spec_from_file_location(f"skills.{self.name}.skill", skill_py)
+        spec = importlib.util.spec_from_file_location(
+            f"skills.{self.name}.skill", skill_py
+        )
         if spec and spec.loader:
             mod = importlib.util.module_from_spec(spec)
             sys.modules[spec.name] = mod
@@ -83,7 +99,7 @@ class Skill:
             return mod
         return None
 
-    def run(self, **kwargs) -> Dict[str,Any]:
+    def run(self, **kwargs) -> dict[str, Any]:
         mod = self._module or self.load_module()
         if mod is None:
             return {"skill": self.name, "error": "no skill.py"}
@@ -98,13 +114,14 @@ class Skill:
     def decay(self, steps: int) -> float:
         return math.exp(-steps / max(1, self.hl))
 
+
 class SkillLoader:
     def __init__(self, skills_dir: str | pathlib.Path | None = None):
         if skills_dir is None:
             here = pathlib.Path(__file__).parent
             skills_dir = here
         self.skills_dir = pathlib.Path(skills_dir)
-        self.skills: Dict[str, Skill] = {}
+        self.skills: dict[str, Skill] = {}
         self.scan()
 
     def scan(self):
@@ -124,7 +141,7 @@ class SkillLoader:
             name = meta.get("name", sub.name)
             self.skills[name] = Skill(name=name, path=sub, meta=meta, body=body)
 
-    def build_tool_graph(self) -> Dict[str, Dict[str, List[str]]]:
+    def build_tool_graph(self) -> dict[str, dict[str, builtins.list[str]]]:
         """Build Tool Graph RAG with PRECEDES/REQUIRES/COMPLEMENTARY edges.
         Returns {skill: {precedes, requires, complementary}}
         """
@@ -138,13 +155,13 @@ class SkillLoader:
             }
         return graph
 
-    def topological_sort(self) -> List[str]:
+    def topological_sort(self) -> builtins.list[str]:
         """Topological sort respecting REQUIRES and PRECEDES, for deterministic execution order.
         Implements Kahn's algorithm.
         """
         # Build dependency graph: edge required -> dependent and precedes -> successor
-        in_degree: Dict[str, int] = {name: 0 for name in self.skills}
-        adj: Dict[str, List[str]] = defaultdict(list)
+        in_degree: dict[str, int] = dict.fromkeys(self.skills, 0)
+        adj: dict[str, list[str]] = defaultdict(list)
 
         for name, skill in self.skills.items():
             for req in skill.requires:
@@ -178,7 +195,9 @@ class SkillLoader:
 
         return order
 
-    def wrrf_rerank(self, query: str, k: int = 60, weights: Dict[str,float] | None = None) -> List[Tuple[str,float]]:
+    def wrrf_rerank(
+        self, query: str, k: int = 60, weights: dict[str, float] | None = None
+    ) -> builtins.list[tuple[str, float]]:
         """Weighted Reciprocal Rank Fusion for Tool Graph RAG.
         Combines three ranking signals:
         - trigger match score (BM25F-like overlap with triggers + description)
@@ -197,86 +216,92 @@ class SkillLoader:
 
         q_lower = query.lower()
         # Compute per-signal rankings
-        trigger_scores: Dict[str, float] = {}
-        hl_scores: Dict[str, float] = {}
+        trigger_scores: dict[str, float] = {}
+        hl_scores: dict[str, float] = {}
 
         for name, skill in self.skills.items():
             # trigger BM25F-like: count trigger overlaps
             trig = " ".join(skill.triggers).lower()
             overlap = sum(1 for tok in q_lower.split() if tok in trig)
             # also check description
-            desc = skill.meta.get("description","").lower()
+            desc = skill.meta.get("description", "").lower()
             overlap += sum(0.5 for tok in q_lower.split() if tok in desc)
             trigger_scores[name] = overlap + 0.1  # smoothing
 
             # half-life relevance: prefer hl close to query complexity (long query -> high hl)
             q_len = len(q_lower.split())
             ideal_hl = 30 if q_len <= 3 else 150 if q_len <= 8 else 300
-            hl_scores[name] = 1.0 / (1.0 + abs(skill.hl - ideal_hl)/100.0)
+            hl_scores[name] = 1.0 / (1.0 + abs(skill.hl - ideal_hl) / 100.0)
 
         # Rank per signal (descending)
-        def rank_dict(scores: Dict[str,float]) -> Dict[str,int]:
+        def rank_dict(scores: dict[str, float]) -> dict[str, int]:
             sorted_names = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-            return {name: rank+1 for rank, (name, _) in enumerate(sorted_names)}
+            return {name: rank + 1 for rank, (name, _) in enumerate(sorted_names)}
 
         r_trigger = rank_dict(trigger_scores)
         r_hl = rank_dict(hl_scores)
 
         # Graph centrality: complementary degree
-        graph_centrality: Dict[str,float] = {}
+        graph_centrality: dict[str, float] = {}
         for name, skill in self.skills.items():
-            graph_centrality[name] = len(skill.complementary) + len(skill.precedes)*0.5
+            graph_centrality[name] = (
+                len(skill.complementary) + len(skill.precedes) * 0.5
+            )
         r_graph = rank_dict(graph_centrality)
 
         # WRRF fusion: score = sum w_i / (k + rank_i)
-        fused: Dict[str,float] = {}
+        fused: dict[str, float] = {}
         for name in self.skills:
             fused[name] = (
-                weights["trigger"] / (k + r_trigger.get(name, 999)) +
-                weights["hl"] / (k + r_hl.get(name, 999)) +
-                weights["graph"] / (k + r_graph.get(name, 999))
+                weights["trigger"] / (k + r_trigger.get(name, 999))
+                + weights["hl"] / (k + r_hl.get(name, 999))
+                + weights["graph"] / (k + r_graph.get(name, 999))
             )
 
         # Sort descending fused score
         ranked = sorted(fused.items(), key=lambda x: x[1], reverse=True)
         return ranked
 
-    def list(self) -> List[Dict[str,Any]]:
+    def list(self) -> builtins.list[dict[str, Any]]:
         order = self.topological_sort()
         result = []
         for name in order:
             s = self.skills[name]
-            result.append({
-                "name": s.name,
-                "target": s.j_target,
-                "hl": s.hl,
-                "version": s.version,
-                "triggers": s.triggers,
-                "desc": s.meta.get("description",""),
-                "precedes": s.precedes,
-                "requires": s.requires,
-                "complementary": s.complementary,
-            })
+            result.append(
+                {
+                    "name": s.name,
+                    "target": s.j_target,
+                    "hl": s.hl,
+                    "version": s.version,
+                    "triggers": s.triggers,
+                    "desc": s.meta.get("description", ""),
+                    "precedes": s.precedes,
+                    "requires": s.requires,
+                    "complementary": s.complementary,
+                }
+            )
         return result
 
     def load_all(self):
         for s in self.skills.values():
             s.load_module()
 
-    def run(self, name: str, **kwargs) -> Dict[str,Any]:
+    def run(self, name: str, **kwargs) -> dict[str, Any]:
         if name not in self.skills:
-            raise KeyError(f"skill {name!r} not found, available {list(self.skills.keys())}")
+            raise KeyError(
+                f"skill {name!r} not found, available {list(self.skills.keys())}"
+            )
         return self.skills[name].run(**kwargs)
 
-    def run_with_graph(self, query: str, **kwargs) -> List[Dict[str,Any]]:
+    def run_with_graph(self, query: str, **kwargs) -> builtins.list[dict[str, Any]]:
         """Run skills in graph-resolved order with wRRF reranking for query.
         Implements progressive disclosure: top wRRF skills first, then dependencies.
         """
         ranked = self.wrrf_rerank(query)
         # progressive disclosure: top 3 + their requires + complementary
-        top_names = [n for n,_ in ranked[:3]]
+        top_names = [n for n, _ in ranked[:3]]
         # expand with required dependencies
-        expanded: Set[str] = set(top_names)
+        expanded: set[str] = set(top_names)
         for n in top_names:
             if n in self.skills:
                 expanded.update(self.skills[n].requires)
@@ -305,10 +330,16 @@ class SkillLoader:
                 results.append({"skill": name, "error": str(e), "pass": False})
         return results
 
+
 def main():
     import argparse
-    ap = argparse.ArgumentParser(description="ava-skills loader v2.1.0 with Tool Graph RAG + wRRF + ShardMemo")
-    ap.add_argument("cmd", nargs="?", default="list", help="list|graph|rerank|run|run-graph|test")
+
+    ap = argparse.ArgumentParser(
+        description="ava-skills loader v2.1.0 with Tool Graph RAG + wRRF + ShardMemo"
+    )
+    ap.add_argument(
+        "cmd", nargs="?", default="list", help="list|graph|rerank|run|run-graph|test"
+    )
     ap.add_argument("skill", nargs="?", help="skill name or query for rerank")
     ap.add_argument("--mode", default="mock")
     ap.add_argument("--wiki-path", default=None)
@@ -327,21 +358,31 @@ def main():
         q = args.query or args.skill or "inspect jspace safety"
         ranked = loader.wrrf_rerank(q)
         print(f"Query: {q}")
-        print(json.dumps([{"name": n, "score": round(s,5)} for n,s in ranked], indent=2))
+        print(
+            json.dumps([{"name": n, "score": round(s, 5)} for n, s in ranked], indent=2)
+        )
     elif args.cmd == "run":
         if not args.skill:
             print("Need skill name")
             sys.exit(1)
-        res = loader.run(args.skill, mode=args.mode, wiki_path=args.wiki_path, ckpt=args.ckpt, query=args.query)
+        res = loader.run(
+            args.skill,
+            mode=args.mode,
+            wiki_path=args.wiki_path,
+            ckpt=args.ckpt,
+            query=args.query,
+        )
         print(json.dumps(res, indent=2))
     elif args.cmd == "run-graph":
         q = args.query or args.skill or "safety check then inspect jspace"
-        results = loader.run_with_graph(q, mode=args.mode, wiki_path=args.wiki_path, ckpt=args.ckpt)
+        results = loader.run_with_graph(
+            q, mode=args.mode, wiki_path=args.wiki_path, ckpt=args.ckpt
+        )
         print(json.dumps(results, indent=2))
     elif args.cmd == "test":
         loader.load_all()
         for name, skill in loader.skills.items():
-            if args.skill and args.skill!=name:
+            if args.skill and args.skill != name:
                 continue
             try:
                 res = skill.run(mode="mock", query=args.query)
@@ -350,6 +391,7 @@ def main():
                 print(f"{name}: FAIL {e}")
     else:
         print("unknown cmd, use list|graph|rerank|run|run-graph|test")
+
 
 if __name__ == "__main__":
     main()

@@ -6,8 +6,6 @@ import sys
 import time
 from pathlib import Path
 
-import pytest
-
 SKILL_PATH = Path(__file__).resolve().parent.parent / "skill.py"
 spec = importlib.util.spec_from_file_location("memory_mint_skill", SKILL_PATH)
 mm = importlib.util.module_from_spec(spec)
@@ -34,7 +32,9 @@ class TestMintShard:
         assert not shard.tier_a_triggered
 
     def test_safety_event_is_tier_a(self):
-        shard = mm.mint_shard(make_event(instruction="blackmail threat to expose the operator"))
+        shard = mm.mint_shard(
+            make_event(instruction="blackmail threat to expose the operator")
+        )
         assert shard.tier_a_triggered
 
     def test_dedupe_key_is_content_stable(self):
@@ -97,8 +97,12 @@ class TestPipeline:
         assert sum(mm.ShardStore(tmp_path).counts().values()) == 200
 
     def test_overflow_sheds_oldest_and_counts(self, tmp_path):
-        pipe = mm.MemoryMintPipeline(store=mm.ShardStore(tmp_path), max_queue=8,
-                                     batch_size=1024, idle_flush_s=10.0)
+        pipe = mm.MemoryMintPipeline(
+            store=mm.ShardStore(tmp_path),
+            max_queue=8,
+            batch_size=1024,
+            idle_flush_s=10.0,
+        )
         # worker is idle-waiting; saturate the queue synchronously
         for i in range(50):
             pipe.capture(make_event(i))
@@ -108,7 +112,9 @@ class TestPipeline:
 
     def test_mixed_scopes_land_in_right_files(self, tmp_path):
         with mm.MemoryMintPipeline(store=mm.ShardStore(tmp_path)) as pipe:
-            pipe.capture(make_event(instruction="remember the fact and explain the wiki entry"))
+            pipe.capture(
+                make_event(instruction="remember the fact and explain the wiki entry")
+            )
             pipe.capture(make_event(instruction="plan the schedule then the deadline"))
             assert pipe.flush(timeout=10.0)
         counts = mm.ShardStore(tmp_path).counts()

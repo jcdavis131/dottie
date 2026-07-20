@@ -10,9 +10,12 @@ computed in Python before it is rendered.
 from __future__ import annotations
 
 import itertools
-from typing import Iterator
+from typing import TYPE_CHECKING
 
 from dottie.datagen.base import Generator
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 # ---------------------------------------------------------------------------
 # Propositional formulas: nested tuples, e.g. ('IMPLIES', ('ATOM','A'), ('ATOM','B'))
@@ -125,7 +128,7 @@ def _truth_table_doc(rng) -> tuple[str, str, str]:
     rows = []
     results = []
     for combo in combos:
-        assign = dict(zip(vars_pool, combo))
+        assign = dict(zip(vars_pool, combo, strict=False))
         val = eval_formula(f, assign)
         results.append(val)
         assign_str = ", ".join(f"{v}={'T' if assign[v] else 'F'}" for v in vars_pool)
@@ -195,7 +198,7 @@ def _find_candidates(context: list[tuple]) -> list[tuple]:
             if r not in context:
                 candidates.append(("ANDE_R", r, (f,)))
     for i, f1 in enumerate(context):
-        for f2 in context[i + 1:]:
+        for f2 in context[i + 1 :]:
             conj = AND(f1, f2)
             if conj not in context:
                 candidates.append(("ANDI", conj, (f1, f2)))
@@ -205,7 +208,9 @@ def _find_candidates(context: list[tuple]) -> list[tuple]:
 def _build_premises(rng, atom_names: list[str]) -> list[tuple]:
     n = len(atom_names)
     chain_len = rng.randint(2, min(3, n - 1))
-    premises = [IMPLIES(A(atom_names[i]), A(atom_names[i + 1])) for i in range(chain_len)]
+    premises = [
+        IMPLIES(A(atom_names[i]), A(atom_names[i + 1])) for i in range(chain_len)
+    ]
     if rng.random() < 0.5:
         premises.append(A(atom_names[0]))  # drives Modus Ponens forward
     else:
@@ -220,7 +225,9 @@ def _build_premises(rng, atom_names: list[str]) -> list[tuple]:
     return seen
 
 
-def _render_derivation(premises: list[tuple], steps: list[tuple], line_offset: int = 0) -> tuple[list[str], dict]:
+def _render_derivation(
+    premises: list[tuple], steps: list[tuple], line_offset: int = 0
+) -> tuple[list[str], dict]:
     """steps: list of (rule, formula, refs). Returns (rendered_lines, formula->line_no map)."""
     line_no_of: dict = {}
     lines = []
@@ -233,7 +240,9 @@ def _render_derivation(premises: list[tuple], steps: list[tuple], line_offset: i
         n += 1
         line_no_of[formula] = n
         ref_nums = ", ".join(str(line_no_of[r]) for r in refs)
-        lines.append(f"{n}. {render(formula)}   [{_RULE_LABEL[rule]}, from line(s) {ref_nums}]")
+        lines.append(
+            f"{n}. {render(formula)}   [{_RULE_LABEL[rule]}, from line(s) {ref_nums}]"
+        )
     return lines, line_no_of
 
 
@@ -266,19 +275,23 @@ def _natded_doc(rng) -> tuple[str, str, str]:
         assumption_atom = atom_names[-1]
         assumption = A(assumption_atom)
         outer_ctx = premises + [f for (_, f, _) in steps]
-        sub_ctx = outer_ctx + [assumption]
+        sub_ctx = [*outer_ctx, assumption]
         sub_steps = _forward_derive(rng, sub_ctx, rng.randint(1, 3))
         if sub_steps:
             derived = sub_steps[-1][1]
             lines, line_no_of = _render_derivation(premises, steps)
             n = len(lines)
-            lines.append(f"{n + 1}. | Assume: {render(assumption)}   [Assumption, for conditional proof]")
+            lines.append(
+                f"{n + 1}. | Assume: {render(assumption)}   [Assumption, for conditional proof]"
+            )
             line_no_of[assumption] = n + 1
             m = n + 1
             for rule, formula, refs in sub_steps:
                 m += 1
                 ref_nums = ", ".join(str(line_no_of[r]) for r in refs)
-                lines.append(f"{m}. | {render(formula)}   [{_RULE_LABEL[rule]}, from line(s) {ref_nums}]")
+                lines.append(
+                    f"{m}. | {render(formula)}   [{_RULE_LABEL[rule]}, from line(s) {ref_nums}]"
+                )
                 line_no_of[formula] = m
             conclusion = IMPLIES(assumption, derived)
             m += 1
@@ -339,14 +352,30 @@ _STMT_FN = {
 }
 
 _SYLLOGISM_NAMES = {
-    ("A", "A", "A", 1): "Barbara", ("A", "A", "I", 1): "Barbari", ("A", "I", "I", 1): "Darii",
-    ("E", "A", "E", 1): "Celarent", ("E", "A", "O", 1): "Celaront", ("E", "I", "O", 1): "Ferio",
-    ("A", "E", "E", 2): "Camestres", ("A", "E", "O", 2): "Camestros", ("A", "O", "O", 2): "Baroko",
-    ("E", "A", "E", 2): "Cesare", ("E", "A", "O", 2): "Cesaro", ("E", "I", "O", 2): "Festino",
-    ("A", "A", "I", 3): "Darapti", ("A", "I", "I", 3): "Datisi", ("E", "A", "O", 3): "Felapton",
-    ("E", "I", "O", 3): "Ferison", ("I", "A", "I", 3): "Disamis", ("O", "A", "O", 3): "Bocardo",
-    ("A", "A", "I", 4): "Bramantip", ("A", "E", "E", 4): "Camenes", ("A", "E", "O", 4): "Camenop",
-    ("E", "A", "O", 4): "Fesapo", ("E", "I", "O", 4): "Fresison", ("I", "A", "I", 4): "Dimaris",
+    ("A", "A", "A", 1): "Barbara",
+    ("A", "A", "I", 1): "Barbari",
+    ("A", "I", "I", 1): "Darii",
+    ("E", "A", "E", 1): "Celarent",
+    ("E", "A", "O", 1): "Celaront",
+    ("E", "I", "O", 1): "Ferio",
+    ("A", "E", "E", 2): "Camestres",
+    ("A", "E", "O", 2): "Camestros",
+    ("A", "O", "O", 2): "Baroko",
+    ("E", "A", "E", 2): "Cesare",
+    ("E", "A", "O", 2): "Cesaro",
+    ("E", "I", "O", 2): "Festino",
+    ("A", "A", "I", 3): "Darapti",
+    ("A", "I", "I", 3): "Datisi",
+    ("E", "A", "O", 3): "Felapton",
+    ("E", "I", "O", 3): "Ferison",
+    ("I", "A", "I", 3): "Disamis",
+    ("O", "A", "O", 3): "Bocardo",
+    ("A", "A", "I", 4): "Bramantip",
+    ("A", "E", "E", 4): "Camenes",
+    ("A", "E", "O", 4): "Camenop",
+    ("E", "A", "O", 4): "Fesapo",
+    ("E", "I", "O", 4): "Fresison",
+    ("I", "A", "I", 4): "Dimaris",
 }
 
 _DISTRIBUTES_SUBJECT = {"A": True, "E": True, "I": False, "O": False}
@@ -355,10 +384,16 @@ _DISTRIBUTES_PREDICATE = {"A": False, "E": True, "I": False, "O": True}
 
 def _all_nonempty_subsets(n: int) -> list[frozenset]:
     universe = list(range(n))
-    return [frozenset(c) for r in range(1, n + 1) for c in itertools.combinations(universe, r)]
+    return [
+        frozenset(c)
+        for r in range(1, n + 1)
+        for c in itertools.combinations(universe, r)
+    ]
 
 
-def _check_syllogism(major_type: str, minor_type: str, concl_type: str, figure: int, n: int = 3):
+def _check_syllogism(
+    major_type: str, minor_type: str, concl_type: str, figure: int, n: int = 3
+):
     """Exhaustive check over all (S, M, P) assignments of non-empty subsets of
     a size-n universe. Returns (is_valid, satisfiable, counterexample) where
     counterexample is a (S, M, P) frozenset triple violating the conclusion,
@@ -372,8 +407,9 @@ def _check_syllogism(major_type: str, minor_type: str, concl_type: str, figure: 
         for M in subs:
             for P in subs:
                 tm = {"S": S, "M": M, "P": P}
-                if _STMT_FN[major_type](tm[maj_pair[0]], tm[maj_pair[1]]) and \
-                        _STMT_FN[minor_type](tm[min_pair[0]], tm[min_pair[1]]):
+                if _STMT_FN[major_type](tm[maj_pair[0]], tm[maj_pair[1]]) and _STMT_FN[
+                    minor_type
+                ](tm[min_pair[0]], tm[min_pair[1]]):
                     satisfiable = True
                     if not _STMT_FN[concl_type](S, P):
                         valid_always = False
@@ -397,7 +433,9 @@ def get_syllogism_table():
         for maj in "AEIO":
             for minr in "AEIO":
                 for concl in "AEIO":
-                    is_valid, satisfiable, cex = _check_syllogism(maj, minr, concl, figure)
+                    is_valid, satisfiable, cex = _check_syllogism(
+                        maj, minr, concl, figure
+                    )
                     form = (maj, minr, concl, figure)
                     if is_valid:
                         valid_forms.append(form)
@@ -409,25 +447,43 @@ def get_syllogism_table():
     return _syllogism_table_cache
 
 
-def _classify_fallacy(major_type: str, minor_type: str, concl_type: str, figure: int) -> str:
+def _classify_fallacy(
+    major_type: str, minor_type: str, concl_type: str, figure: int
+) -> str:
     if major_type in ("E", "O") and minor_type in ("E", "O"):
         return "exclusive premises (both premises negative)"
     if major_type in ("I", "O") and minor_type in ("I", "O"):
         return "two particular premises"
     maj_pair, min_pair = _FIGURES[figure]
     # is M distributed in the major premise?
-    m_dist_major = (_DISTRIBUTES_SUBJECT[major_type] if maj_pair[0] == "M" else _DISTRIBUTES_PREDICATE[major_type])
-    m_dist_minor = (_DISTRIBUTES_SUBJECT[minor_type] if min_pair[0] == "M" else _DISTRIBUTES_PREDICATE[minor_type])
+    m_dist_major = (
+        _DISTRIBUTES_SUBJECT[major_type]
+        if maj_pair[0] == "M"
+        else _DISTRIBUTES_PREDICATE[major_type]
+    )
+    m_dist_minor = (
+        _DISTRIBUTES_SUBJECT[minor_type]
+        if min_pair[0] == "M"
+        else _DISTRIBUTES_PREDICATE[minor_type]
+    )
     if not m_dist_major and not m_dist_minor:
         return "undistributed middle"
     p_dist_concl = concl_type in ("E", "O")
     if p_dist_concl:
-        p_dist_major = (_DISTRIBUTES_SUBJECT[major_type] if maj_pair[0] == "P" else _DISTRIBUTES_PREDICATE[major_type])
+        p_dist_major = (
+            _DISTRIBUTES_SUBJECT[major_type]
+            if maj_pair[0] == "P"
+            else _DISTRIBUTES_PREDICATE[major_type]
+        )
         if not p_dist_major:
             return "illicit major"
     s_dist_concl = concl_type in ("A", "E")
     if s_dist_concl:
-        s_dist_minor = (_DISTRIBUTES_SUBJECT[minor_type] if min_pair[0] == "S" else _DISTRIBUTES_PREDICATE[minor_type])
+        s_dist_minor = (
+            _DISTRIBUTES_SUBJECT[minor_type]
+            if min_pair[0] == "S"
+            else _DISTRIBUTES_PREDICATE[minor_type]
+        )
         if not s_dist_minor:
             return "illicit minor"
     return "invalid form (see counterexample)"
@@ -443,12 +499,42 @@ def _stmt_text(t: str, x: str, y: str) -> str:
     return f"Some {x} are not {y}."
 
 
-_TERM_NOUNS = sorted([
-    "dogs", "cats", "mammals", "reptiles", "birds", "fish", "insects", "plants", "trees",
-    "flowers", "students", "teachers", "doctors", "lawyers", "musicians", "athletes",
-    "vehicles", "cars", "bicycles", "metals", "gases", "liquids", "planets", "stars",
-    "novels", "poems", "computers", "robots", "islands", "rivers", "mountains", "cities",
-])
+_TERM_NOUNS = sorted(
+    [
+        "dogs",
+        "cats",
+        "mammals",
+        "reptiles",
+        "birds",
+        "fish",
+        "insects",
+        "plants",
+        "trees",
+        "flowers",
+        "students",
+        "teachers",
+        "doctors",
+        "lawyers",
+        "musicians",
+        "athletes",
+        "vehicles",
+        "cars",
+        "bicycles",
+        "metals",
+        "gases",
+        "liquids",
+        "planets",
+        "stars",
+        "novels",
+        "poems",
+        "computers",
+        "robots",
+        "islands",
+        "rivers",
+        "mountains",
+        "cities",
+    ]
+)
 
 
 def _pick_terms(rng) -> tuple[str, str, str]:
@@ -465,7 +551,9 @@ def _syllogism_doc(rng) -> tuple[str, str, str]:
         major_stmt = _stmt_text(maj, term_map[maj_pair[0]], term_map[maj_pair[1]])
         minor_stmt = _stmt_text(minr, term_map[min_pair[0]], term_map[min_pair[1]])
         concl_stmt = _stmt_text(concl, s_noun, p_noun)
-        name = _SYLLOGISM_NAMES.get((maj, minr, concl, figure), f"{maj}{minr}{concl}-{figure}")
+        name = _SYLLOGISM_NAMES.get(
+            (maj, minr, concl, figure), f"{maj}{minr}{concl}-{figure}"
+        )
         text = (
             f"Syllogism ({name}, mood {maj}{minr}{concl}, figure {figure}):\n"
             f"Major premise: {major_stmt}\n"
@@ -486,7 +574,7 @@ def _syllogism_doc(rng) -> tuple[str, str, str]:
         fallacy = _classify_fallacy(maj, minr, concl, figure)
         elems = sorted(S | M | P)
         elem_names = [f"u{i + 1}" for i in range(len(elems))]
-        elem_map = dict(zip(elems, elem_names))
+        elem_map = dict(zip(elems, elem_names, strict=False))
         s_list = ", ".join(elem_map[e] for e in sorted(S)) or "(none)"
         m_list = ", ".join(elem_map[e] for e in sorted(M)) or "(none)"
         p_list = ", ".join(elem_map[e] for e in sorted(P)) or "(none)"
@@ -552,12 +640,14 @@ def _fol_doc(rng) -> tuple[str, str, str]:
         p, q = x in p_set, x in q_set
         val = instance(x)
         results.append((x, val))
-        lines.append(f"  x={x}: P({x})={'T' if p else 'F'}, Q({x})={'T' if q else 'F'} -> instance = {'T' if val else 'F'}")
+        lines.append(
+            f"  x={x}: P({x})={'T' if p else 'F'}, Q({x})={'T' if q else 'F'} -> instance = {'T' if val else 'F'}"
+        )
 
     if quant == "univ":
         holds = all(v for _, v in results)
         if holds:
-            verdict = f"The universal statement HOLDS: every instance above is true."
+            verdict = "The universal statement HOLDS: every instance above is true."
         else:
             ce = next(x for x, v in results if not v)
             verdict = f"The universal statement FAILS: x={ce} is a counterexample (instance is false)."
@@ -578,22 +668,31 @@ def _fol_doc(rng) -> tuple[str, str, str]:
 # Wrong-proof / critique pairs
 # ---------------------------------------------------------------------------
 
+
 def _countermodel_2var(premises_hold, conclusion_holds) -> dict | None:
     """Search the 4 assignments of A,B for one where all premises hold and
     the conclusion fails. Deterministic order: (T,T),(T,F),(F,T),(F,F)."""
     for a in (True, False):
         for b in (True, False):
             assign = {"A": a, "B": b}
-            if all(eval_formula(p, assign) for p in premises_hold) and not eval_formula(conclusion_holds, assign):
+            if all(eval_formula(p, assign) for p in premises_hold) and not eval_formula(
+                conclusion_holds, assign
+            ):
                 return assign
     return None
 
 
 def _wrong_proof_doc(rng) -> tuple[str, str, str]:
-    flavor = rng.choice(["affirming_consequent", "denying_antecedent", "undistributed_middle"])
+    flavor = rng.choice(
+        ["affirming_consequent", "denying_antecedent", "undistributed_middle"]
+    )
     if flavor == "undistributed_middle":
-        valid_forms, invalid_forms = get_syllogism_table()
-        pool = [t for t in invalid_forms if _classify_fallacy(*t[0]) == "undistributed middle"]
+        _valid_forms, invalid_forms = get_syllogism_table()
+        pool = [
+            t
+            for t in invalid_forms
+            if _classify_fallacy(*t[0]) == "undistributed middle"
+        ]
         if not pool:
             pool = invalid_forms
         (maj, minr, concl, figure), cex = rng.choice(pool)
@@ -606,7 +705,7 @@ def _wrong_proof_doc(rng) -> tuple[str, str, str]:
         S, M, P = cex
         elems = sorted(S | M | P)
         elem_names = [f"u{i + 1}" for i in range(len(elems))]
-        elem_map = dict(zip(elems, elem_names))
+        elem_map = dict(zip(elems, elem_names, strict=False))
         text = (
             "Wrong proof + critique.\n\n"
             f"Argument as given:\n1. {major_stmt}\n2. {minor_stmt}\n3. Therefore, {concl_stmt}\n\n"
@@ -643,7 +742,11 @@ def _wrong_proof_doc(rng) -> tuple[str, str, str]:
             f"{render(premise2)} we cannot validly infer {render(bad_conclusion)}."
         )
     cm = _countermodel_2var([premise1, premise2], bad_conclusion)
-    cm_str = ", ".join(f"{k}={'T' if v else 'F'}" for k, v in sorted(cm.items())) if cm else "none found"
+    cm_str = (
+        ", ".join(f"{k}={'T' if v else 'F'}" for k, v in sorted(cm.items()))
+        if cm
+        else "none found"
+    )
     text = (
         "Wrong proof + critique.\n\n"
         "Argument as given:\n"
@@ -660,6 +763,7 @@ def _wrong_proof_doc(rng) -> tuple[str, str, str]:
 # ---------------------------------------------------------------------------
 # Generator
 # ---------------------------------------------------------------------------
+
 
 class LogicGenerator(Generator):
     name = "logic"
@@ -688,7 +792,9 @@ class LogicGenerator(Generator):
                 idx += 1
             _, _, builder, source = self._FAMILIES[idx]
             text, task_type, concept = builder(self.rng)
-            d = self.doc(text=text, task_type=task_type, concept=concept, phase=0, source=source)
+            d = self.doc(
+                text=text, task_type=task_type, concept=concept, phase=0, source=source
+            )
             produced += len(d["text"].encode("utf-8"))
             yield d
 

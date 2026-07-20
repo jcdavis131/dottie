@@ -17,8 +17,8 @@ Combined with Python runtime, agent writes debugging strategy as code and execut
 
 import subprocess
 import time
-from dataclasses import dataclass, field
-from typing import List, Optional, Dict
+from dataclasses import dataclass
+
 
 @dataclass
 class TmuxPane:
@@ -27,39 +27,44 @@ class TmuxPane:
     buffer: str = ""
     last_capture: float = 0.0
 
+
 class TmuxManager:
     """
     Gives agent real interactive command-line experience.
     Uses tmux if available, falls back to subprocess for Hatch VM.
     """
-    
+
     def __init__(self):
-        self.sessions: Dict[str, List[TmuxPane]] = {}
+        self.sessions: dict[str, list[TmuxPane]] = {}
         self._use_tmux = self._check_tmux()
-    
+
     def _check_tmux(self) -> bool:
         try:
             subprocess.run(["tmux", "-V"], capture_output=True, check=True)
             return True
         except:
             return False
-    
+
     def create_session(self, name: str) -> TmuxPane:
         """Create persistent tmux session"""
         if name in self.sessions:
             return self.sessions[name][0]
-        
+
         pane = TmuxPane(session=name, pane_id=f"{name}:0.0")
         self.sessions[name] = [pane]
-        
+
         if self._use_tmux:
             try:
-                subprocess.run(["tmux", "new-session", "-d", "-s", name], check=False, capture_output=True)
+                subprocess.run(
+                    ["tmux", "new-session", "-d", "-s", name],
+                    check=False,
+                    capture_output=True,
+                )
             except:
                 pass
-        
+
         return pane
-    
+
     def send_keys(self, session: str, keys: str, literal: bool = False):
         """
         Send keystrokes including Ctrl sequences
@@ -68,42 +73,49 @@ class TmuxManager:
         pane = self.sessions.get(session, [None])[0]
         if pane is None:
             pane = self.create_session(session)
-        
+
         if self._use_tmux:
             try:
                 if keys == "C-c":
-                    subprocess.run(["tmux", "send-keys", "-t", session, "C-c"], capture_output=True)
+                    subprocess.run(
+                        ["tmux", "send-keys", "-t", session, "C-c"], capture_output=True
+                    )
                 elif keys == "C-d":
-                    subprocess.run(["tmux", "send-keys", "-t", session, "C-d"], capture_output=True)
+                    subprocess.run(
+                        ["tmux", "send-keys", "-t", session, "C-d"], capture_output=True
+                    )
                 else:
-                    subprocess.run(["tmux", "send-keys", "-t", session, keys], capture_output=True)
+                    subprocess.run(
+                        ["tmux", "send-keys", "-t", session, keys], capture_output=True
+                    )
             except:
                 pass
-        
+
         # also log for fallback
         pane.buffer += f"\n[send_keys:{keys}]\n"
         return pane
-    
+
     def capture_pane(self, session: str, lines: int = 100) -> str:
         """Capture pane output and react to it"""
         pane = self.sessions.get(session, [None])[0]
         if pane is None:
             return ""
-        
+
         if self._use_tmux:
             try:
                 result = subprocess.run(
                     ["tmux", "capture-pane", "-t", session, "-p", "-S", f"-{lines}"],
-                    capture_output=True, text=True
+                    capture_output=True,
+                    text=True,
                 )
                 pane.buffer = result.stdout
                 pane.last_capture = time.time()
                 return result.stdout
             except:
                 pass
-        
+
         return pane.buffer
-    
+
     def run_interactive_workflow(self, session: str, strategy_code: str) -> str:
         """
         Combined with Python runtime, agent writes debugging strategy as code:
@@ -117,7 +129,7 @@ class TmuxManager:
         steps.append("# 2. Decide next, maybe Ctrl+C and try something else")
         steps.append("# 3. Agent has conversation with terminal, not one-shot")
         return "\n".join(steps)
-    
+
     def debug_training_flow(self) -> str:
         """Pre-canned debug flow for Dottie training stalls"""
         return """
@@ -143,5 +155,6 @@ else:
 tmux.create_session("eval")
 tmux.send_keys("eval", "watch -n 5 'cat evals/run_harness.py output'\n")
 """
+
 
 AvaTmux = TmuxManager

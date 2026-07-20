@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import math
 from pathlib import Path
 
@@ -76,7 +75,11 @@ def test_harness_smoke(nano_random_model, monkeypatch, tmp_path):
         return model, tok, "random-init"
 
     monkeypatch.setattr(rh, "load_model", fake_load)
-    monkeypatch.setattr(ec, "heldout_path", lambda preset, phase: _REPO / "data" / "nano" / f"heldout_phase{phase}.bin")
+    monkeypatch.setattr(
+        ec,
+        "heldout_path",
+        lambda preset, phase: _REPO / "data" / "nano" / f"heldout_phase{phase}.bin",
+    )
 
     results = run_harness(
         preset="nano",
@@ -107,6 +110,12 @@ def test_harness_smoke(nano_random_model, monkeypatch, tmp_path):
                 assert math.isfinite(v)
 
     md = report_md.read_text(encoding="utf-8")
-    for name in ("spider_ant", "france_china", "soccer_rugby", "spanish_french", "safety_blackmail"):
+    for name in (
+        "spider_ant",
+        "france_china",
+        "soccer_rugby",
+        "spanish_french",
+        "safety_blackmail",
+    ):
         assert name in md
     assert any(w in md for w in ("PASS", "FAIL", "MEASURED"))

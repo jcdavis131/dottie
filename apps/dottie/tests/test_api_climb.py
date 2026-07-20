@@ -28,7 +28,8 @@ def test_post_climb_runs_one_iteration_inline(client):
     assert r.status_code == 200
     rec = r.json()
     assert rec["scoreboard"]["overall"] == {
-        "n": 2, "success_rate": 0.0,                     # echo honestly scores 0
+        "n": 2,
+        "success_rate": 0.0,  # echo honestly scores 0
         "mean_r_task": 0.0,
         "mean_rl_return": rec["scoreboard"]["overall"]["mean_rl_return"],
     }
@@ -46,7 +47,9 @@ def test_post_climb_409_when_a_climb_is_already_running(app, client):
     # Hold the app's climb lock exactly as a running iteration would.
     assert app.state.climb_lock.acquire(blocking=False)
     try:
-        r = client.post("/climb", json={"families": "compute", "n": 1, "backend": "echo"})
+        r = client.post(
+            "/climb", json={"families": "compute", "n": 1, "backend": "echo"}
+        )
         assert r.status_code == 409
         assert "already running" in r.json()["detail"]
     finally:
@@ -54,16 +57,31 @@ def test_post_climb_409_when_a_climb_is_already_running(app, client):
     # Once released, the endpoint runs again.
     ok = client.post("/climb", json={"families": "compute", "n": 1, "backend": "echo"})
     assert ok.status_code == 200
-    assert client.get("/climb/log").json()["count"] == 1   # the 409 attempt logged nothing
+    assert (
+        client.get("/climb/log").json()["count"] == 1
+    )  # the 409 attempt logged nothing
 
 
 def test_post_climb_validation(client):
-    assert client.post("/climb", json={"families": "compute", "n": 0,
-                                       "backend": "echo"}).status_code == 422
-    assert client.post("/climb", json={"families": "mind_reading",
-                                       "backend": "echo"}).status_code == 422
-    assert client.post("/climb", json={"families": "compute", "backend": "echo",
-                                       "evaluate": "vibes"}).status_code == 422
+    assert (
+        client.post(
+            "/climb", json={"families": "compute", "n": 0, "backend": "echo"}
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            "/climb", json={"families": "mind_reading", "backend": "echo"}
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            "/climb",
+            json={"families": "compute", "backend": "echo", "evaluate": "vibes"},
+        ).status_code
+        == 422
+    )
 
 
 def test_post_climb_policy_unavailable_is_503_and_lock_released(client, monkeypatch):

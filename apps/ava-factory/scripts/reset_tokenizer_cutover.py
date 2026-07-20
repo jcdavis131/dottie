@@ -9,6 +9,7 @@ Usage (cpu image)::
     python scripts/reset_tokenizer_cutover.py
     python -m ava.tokenizer train --preset mini --corpus /raw --out /state/tokenizer.json --freeze
 """
+
 from __future__ import annotations
 
 import json
@@ -38,7 +39,11 @@ def main() -> int:
                 removed += 1
         print(json.dumps({"packed_dir": str(packed), "removed_entries": removed}))
     else:
-        print(json.dumps({"packed_dir": str(packed), "removed_entries": 0, "note": "missing"}))
+        print(
+            json.dumps(
+                {"packed_dir": str(packed), "removed_entries": 0, "note": "missing"}
+            )
+        )
     return 0
 
 

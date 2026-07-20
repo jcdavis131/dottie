@@ -1,5 +1,8 @@
 """Shim: ava.config -> dottie.config (renamed to Dottie)"""
-from dottie.config import *  # noqa: F401,F403
-import dottie.config as _m
+
 import sys
+
+import dottie.config as _m
+from dottie.config import *  # noqa: F403
+
 sys.modules[__name__] = _m

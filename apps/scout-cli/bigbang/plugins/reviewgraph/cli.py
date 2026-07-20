@@ -15,8 +15,8 @@ Usage by LLM:
 
 Filesystem only — no network, no secrets. Graph lives at <root>/.scout/reviewgraph.db.
 """
+
 from pathlib import Path
-from typing import Optional
 
 import typer
 
@@ -45,13 +45,18 @@ _ROOT_OPT = typer.Option(
 
 
 def _fail(e: Exception, *, command: str, example: str) -> None:
-    fail_agent(str(e), command=command, example=example, discover="scout reviewgraph --help")
+    fail_agent(
+        str(e), command=command, example=example, discover="scout reviewgraph --help"
+    )
 
 
 @app.command(
     "index",
     epilog=examples_epilog(
-        ["scout --json reviewgraph index --root .", "scout reviewgraph index --root ~/proj"]
+        [
+            "scout --json reviewgraph index --root .",
+            "scout reviewgraph index --root ~/proj",
+        ]
     ),
 )
 def index_cmd(root: str = _ROOT_OPT):
@@ -63,7 +68,9 @@ def index_cmd(root: str = _ROOT_OPT):
     try:
         stats = graph.index_repo(root)
     except ReviewGraphError as e:
-        _fail(e, command="reviewgraph index", example="scout reviewgraph index --root .")
+        _fail(
+            e, command="reviewgraph index", example="scout reviewgraph index --root ."
+        )
         return
     emit(
         ok(
@@ -87,7 +94,9 @@ def status_cmd(root: str = _ROOT_OPT):
     try:
         stats = graph.graph_status(root)
     except ReviewGraphError as e:
-        _fail(e, command="reviewgraph status", example="scout reviewgraph index --root .")
+        _fail(
+            e, command="reviewgraph status", example="scout reviewgraph index --root ."
+        )
         return
     emit(
         ok(
@@ -111,10 +120,14 @@ def status_cmd(root: str = _ROOT_OPT):
 )
 def blast_cmd(
     root: str = _ROOT_OPT,
-    diff: Optional[str] = typer.Option(
-        None, "--diff", help="git ref to diff against (default: HEAD = working + staged)"
+    diff: str | None = typer.Option(
+        None,
+        "--diff",
+        help="git ref to diff against (default: HEAD = working + staged)",
     ),
-    hops: int = typer.Option(2, "--hops", min=0, max=6, help="reverse-dependency walk depth"),
+    hops: int = typer.Option(
+        2, "--hops", min=0, max=6, help="reverse-dependency walk depth"
+    ),
 ):
     """Blast radius of the diff: changed symbols → callers/importers/subclasses.
 
@@ -124,7 +137,11 @@ def blast_cmd(
     try:
         result = graph.compute_blast(root, diff_ref=diff, hops=hops)
     except ReviewGraphError as e:
-        _fail(e, command="reviewgraph blast", example="scout reviewgraph blast --diff main")
+        _fail(
+            e,
+            command="reviewgraph blast",
+            example="scout reviewgraph blast --diff main",
+        )
         return
     emit(
         ok(
@@ -148,8 +165,10 @@ def blast_cmd(
 )
 def context_cmd(
     root: str = _ROOT_OPT,
-    diff: Optional[str] = typer.Option(
-        None, "--diff", help="git ref to diff against (default: HEAD = working + staged)"
+    diff: str | None = typer.Option(
+        None,
+        "--diff",
+        help="git ref to diff against (default: HEAD = working + staged)",
     ),
     hops: int = typer.Option(2, "--hops", min=0, max=6, help="blast walk depth"),
     budget: int = typer.Option(
@@ -162,9 +181,15 @@ def context_cmd(
     bodies), impacted files, and risk notes — trimmed to the token budget.
     """
     try:
-        result = graph.build_context(root, diff_ref=diff, hops=hops, budget_tokens=budget)
+        result = graph.build_context(
+            root, diff_ref=diff, hops=hops, budget_tokens=budget
+        )
     except ReviewGraphError as e:
-        _fail(e, command="reviewgraph context", example="scout reviewgraph context --budget 4000")
+        _fail(
+            e,
+            command="reviewgraph context",
+            example="scout reviewgraph context --budget 4000",
+        )
         return
     emit(
         ok(
@@ -185,13 +210,17 @@ def context_cmd(
 )
 def risks_cmd(
     root: str = _ROOT_OPT,
-    top: int = typer.Option(10, "--top", min=1, max=100, help="how many entries per list"),
+    top: int = typer.Option(
+        10, "--top", min=1, max=100, help="how many entries per list"
+    ),
 ):
     """Repo-level hotspots: top fan-in symbols, import cycles, churn-coupled files."""
     try:
         result = graph.compute_risks(root, top=top)
     except ReviewGraphError as e:
-        _fail(e, command="reviewgraph risks", example="scout reviewgraph index --root .")
+        _fail(
+            e, command="reviewgraph risks", example="scout reviewgraph index --root ."
+        )
         return
     emit(
         ok(
@@ -204,15 +233,20 @@ def risks_cmd(
     )
 
 
-@app.command("db-path", epilog=examples_epilog(["scout --json reviewgraph db-path --root ."]))
+@app.command(
+    "db-path", epilog=examples_epilog(["scout --json reviewgraph db-path --root ."])
+)
 def db_path_cmd(root: str = _ROOT_OPT):
     """Where the graph DB lives for a root (exists or not)."""
     p = Path(root).expanduser()
     dbp = graph.db_path(p)
     emit(
         ok(
-            {"root": str(p.resolve() if p.exists() else p), "db": str(dbp),
-             "exists": dbp.exists()},
+            {
+                "root": str(p.resolve() if p.exists() else p),
+                "db": str(dbp),
+                "exists": dbp.exists(),
+            },
             command="reviewgraph db-path",
             example="scout --json reviewgraph index --root .",
         ),

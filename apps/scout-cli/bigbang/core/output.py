@@ -1,9 +1,11 @@
 """Dual output — rich for humans, valid JSON for agents, audited"""
+
 import json
 import re
 import sys
 import time
 from typing import Any
+
 from rich.console import Console
 
 _console = Console()
@@ -37,13 +39,16 @@ def _redact_for_audit(data: Any, _key: str = "") -> Any:
         return _REDACTED
     return data
 
+
 def set_json_mode(enabled: bool):
     global _json_mode, _start_ts
     _json_mode = enabled
     _start_ts = time.time()
 
+
 def is_json() -> bool:
     return _json_mode
+
 
 def emit(data: Any, command: str = "unknown"):
     if _json_mode:
@@ -59,6 +64,7 @@ def emit(data: Any, command: str = "unknown"):
             _console.print(data)
     # audit trail — redacted; only I/O failures are tolerated, anything else is a bug
     from bigbang.core.audit import log_event
+
     dur = int((time.time() - _start_ts) * 1000)
     safe = _redact_for_audit(data) if isinstance(data, dict) else {}
     try:

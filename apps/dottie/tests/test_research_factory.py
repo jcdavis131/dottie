@@ -12,7 +12,7 @@ import pytest
 
 from dottie import resolve
 from dottie.research import factory_trainer as ft
-from dottie.research.ledger import Baseline, Ledger, READY_FOR_TRAINING
+from dottie.research.ledger import READY_FOR_TRAINING, Baseline, Ledger
 from tests.test_research import make_policy  # reuse the scripted-policy stand-in
 
 
@@ -21,7 +21,9 @@ def _factory_available() -> bool:
         root = resolve.factory_code_root()
     except resolve.DottieResolutionError:
         return False
-    return any(d.is_dir() and any(d.glob("*.bin")) for d in ft._default_packed_dirs(root))
+    return any(
+        d.is_dir() and any(d.glob("*.bin")) for d in ft._default_packed_dirs(root)
+    )
 
 
 def test_factory_trainer_refuses_honestly_without_infrastructure(monkeypatch, tmp_path):
@@ -44,27 +46,39 @@ def test_make_candidate_forces_model_width():
             self.alpha = alpha
 
     c = ft._make_candidate(Cand, {"d_model": 64, "alpha": 0.25, "bogus_kwarg": 1}, 256)
-    assert c.d_model == 256          # dim-like kwarg overridden to the real model width
-    assert c.alpha == 0.25           # declared non-dim kwargs preserved
+    assert c.d_model == 256  # dim-like kwarg overridden to the real model width
+    assert c.alpha == 0.25  # declared non-dim kwargs preserved
     # bogus kwarg the constructor does not accept was dropped, not a crash
 
 
-@pytest.mark.skipif(not _factory_available(),
-                    reason="real factory checkout + packed pilot corpus not on this machine")
+@pytest.mark.skipif(
+    not _factory_available(),
+    reason="real factory checkout + packed pilot corpus not on this machine",
+)
 def test_factory_trainer_real_integration(tmp_path):
     """REAL end-to-end: candidate block into the real nano model, a few real steps on the
     real packed corpus, real held-out CE. Tiny config to stay test-fast."""
     led = Ledger(tmp_path / "ledger.sqlite3")
     led.seed_baseline(Baseline("factory_lm_loss", 9.9, False, "nano", None, 0.0))
     from dottie.research import ideation, implementation
+
     ideation.run_ideation(led, make_policy(), bottleneck="test", n_ideas=1)
-    r = implementation.run_implementation(led, make_policy(), workspace_root=tmp_path / "ws")
+    r = implementation.run_implementation(
+        led, make_policy(), workspace_root=tmp_path / "ws"
+    )
     assert r["state"] == READY_FOR_TRAINING
 
     exp = led.get(r["experiment"])
-    result = ft.factory_nano_trainer(exp, {
-        "steps": 3, "seq_len": 32, "batch": 2, "eval_batches": 2, "device": "cpu",
-    })
+    result = ft.factory_nano_trainer(
+        exp,
+        {
+            "steps": 3,
+            "seq_len": 32,
+            "batch": 2,
+            "eval_batches": 2,
+            "device": "cpu",
+        },
+    )
     assert result.ok, result.detail
     assert result.stable, result.detail
     m = result.metrics

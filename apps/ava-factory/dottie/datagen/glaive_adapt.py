@@ -13,6 +13,7 @@ are kept as short assistant dialogues at reduced value (they teach when NOT to
 call a tool — the negative case synth_tool_use's L5 ladder wants). Records
 that fail to parse return ``None`` — skipped honestly, never patched.
 """
+
 from __future__ import annotations
 
 import json
@@ -22,9 +23,12 @@ from dottie.datagen.xlam_adapt import ASSISTANT, USER, format_action, sanitize_t
 
 # Anchor on <|endoftext|>, not the closing brace — glaive nests JSON-in-string
 # arguments, so a brace-bounded non-greedy match truncates at the first '}'.
-_CALL_RE = re.compile(r"<functioncall>\s*(\{.+?\})\s*(?:<\|endoftext\|>|FUNCTION RESPONSE|$)",
-                      re.DOTALL)
-_RESP_RE = re.compile(r"FUNCTION RESPONSE:\s*(\{.*?\})\s*(?=ASSISTANT:|USER:|$)", re.DOTALL)
+_CALL_RE = re.compile(
+    r"<functioncall>\s*(\{.+?\})\s*(?:<\|endoftext\|>|FUNCTION RESPONSE|$)", re.DOTALL
+)
+_RESP_RE = re.compile(
+    r"FUNCTION RESPONSE:\s*(\{.*?\})\s*(?=ASSISTANT:|USER:|$)", re.DOTALL
+)
 _TURN_RE = re.compile(r"(USER|ASSISTANT):\s*", re.DOTALL)
 
 
@@ -63,15 +67,21 @@ def adapt_record(rec: dict) -> dict | None:
 
     if call_m is None:
         if "<functioncall>" in chat:
-            return None       # a call we couldn't parse is a skip, not a "no-call" example
+            return None  # a call we couldn't parse is a skip, not a "no-call" example
         # No tool call: keep as a short negative-case dialogue (answer directly).
         answer = _TURN_RE.split(chat.split("ASSISTANT:", 1)[-1])[0]
         answer = answer.replace("<|endoftext|>", "").strip()
         if len(answer) < 8:
             return None
-        text = (f"{USER} {query}\n{ASSISTANT} Thought: no tool is needed for this; "
-                f"I answer directly.\n{answer}\n")
-        return {"text": text, "_task_type": "tool_selection", "_concept": "glaive_no_call"}
+        text = (
+            f"{USER} {query}\n{ASSISTANT} Thought: no tool is needed for this; "
+            f"I answer directly.\n{answer}\n"
+        )
+        return {
+            "text": text,
+            "_task_type": "tool_selection",
+            "_concept": "glaive_no_call",
+        }
 
     parsed = _parse_call(call_m.group(1))
     if parsed is None:
@@ -79,18 +89,27 @@ def adapt_record(rec: dict) -> dict | None:
     name, args = parsed
     resp_m = _RESP_RE.search(chat, call_m.end())
     observation = resp_m.group(1).strip() if resp_m else None
-    tail = chat[(resp_m.end() if resp_m else call_m.end()):]
-    final = _TURN_RE.split(tail.split("ASSISTANT:", 1)[-1])[0] if "ASSISTANT:" in tail else ""
+    tail = chat[(resp_m.end() if resp_m else call_m.end()) :]
+    final = (
+        _TURN_RE.split(tail.split("ASSISTANT:", 1)[-1])[0]
+        if "ASSISTANT:" in tail
+        else ""
+    )
     final = final.replace("<|endoftext|>", "").strip()
 
-    lines = [f"{USER} {query}",
-             f"{ASSISTANT} Thought: this needs the {name} API.",
-             f"Action: {format_action(name, args)}"]
+    lines = [
+        f"{USER} {query}",
+        f"{ASSISTANT} Thought: this needs the {name} API.",
+        f"Action: {format_action(name, args)}",
+    ]
     if observation:
         lines.append(f"Observation: {observation}")
     if final:
         lines.append(final)
-    if len(lines) < 4:          # a call with neither observation nor answer teaches nothing
+    if len(lines) < 4:  # a call with neither observation nor answer teaches nothing
         return None
-    return {"text": "\n".join(lines) + "\n", "_task_type": "tool_selection",
-            "_concept": f"glaive_{name}"}
+    return {
+        "text": "\n".join(lines) + "\n",
+        "_task_type": "tool_selection",
+        "_concept": f"glaive_{name}",
+    }

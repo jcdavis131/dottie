@@ -1,4 +1,5 @@
 """Planes — judgment-plane differentiator surface."""
+
 from __future__ import annotations
 
 import json
@@ -12,7 +13,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _run(args, timeout=20):
     return subprocess.run(
-        CLI + args, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, cwd=str(ROOT)
+        CLI + args,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout,
+        cwd=str(ROOT),
     )
 
 
@@ -50,7 +57,9 @@ def test_planes_compare_refuses_pty_trap():
     r = _run(["--json", "planes", "compare"])
     assert r.returncode == 0
     data = json.loads(r.stdout)["data"]
-    assert any("PTY" in x or "multiplexer" in x.lower() or "TUI" in x for x in data["refuse"])
+    assert any(
+        "PTY" in x or "multiplexer" in x.lower() or "TUI" in x for x in data["refuse"]
+    )
     # Scout should not claim persistent PTY wins
     pty_row = next(r for r in data["rows"] if "PTY" in r["capability"])
     assert pty_row["scout"] is False

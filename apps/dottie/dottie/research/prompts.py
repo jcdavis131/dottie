@@ -16,9 +16,10 @@ from __future__ import annotations
 import ast
 import json
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
-from dottie.research.ledger import Baseline
+if TYPE_CHECKING:
+    from dottie.research.ledger import Baseline
 
 # The three research sub-domains the ideation search space is fenced to. Kept compatible with the
 # Ava architecture so the resulting diff can actually run in the automated loop.
@@ -59,38 +60,46 @@ IMPLEMENTATION_SCHEMA = {
     "target_file": "repo-relative path, e.g. ava/models/experimental_routing.py",
     "code": "complete syntax-valid Python, with imports; a drop-in module",
     "init_kwargs": "JSON object of constructor kwargs to instantiate the module for the dry-run "
-                   "(use small dims; {} if none)",
+    "(use small dims; {} if none)",
     "input_shape": "list[int] input shape for the CPU dry-run forward pass, e.g. [4, 16, 64]",
     "shape_assertions": "how the output shape was kept compatible with the baseline",
 }
 
 
-def _baseline_block(baseline: Optional[Baseline], bottleneck: str) -> str:
+def _baseline_block(baseline: Baseline | None, bottleneck: str) -> str:
     if baseline is None:
         arch, metric = "(unset — no baseline seeded)", "(unset)"
     else:
-        direction = "higher is better" if baseline.higher_is_better else "lower is better"
+        direction = (
+            "higher is better" if baseline.higher_is_better else "lower is better"
+        )
         arch = baseline.architecture
         metric = f"{baseline.metric_name} = {baseline.metric_value:.6g} ({direction})"
-    return (f"- Architecture: {arch}\n"
-            f"- Current baseline metric: {metric}\n"
-            f"- Key bottleneck: {bottleneck}")
+    return (
+        f"- Architecture: {arch}\n"
+        f"- Current baseline metric: {metric}\n"
+        f"- Key bottleneck: {bottleneck}"
+    )
 
 
-def _failed_block(failed_names: List[str]) -> str:
+def _failed_block(failed_names: list[str]) -> str:
     if not failed_names:
         return "(none yet)"
     # Feed dead ends back so the search does not repeat them.
     return "\n".join(f"- {n}" for n in failed_names[:20])
 
 
-def ideation_prompt(baseline: Optional[Baseline], *, bottleneck: str,
-                    search_space: Optional[List[str]] = None,
-                    failed_hypotheses: Optional[List[str]] = None,
-                    n_ideas: int = 1) -> str:
+def ideation_prompt(
+    baseline: Baseline | None,
+    *,
+    bottleneck: str,
+    search_space: list[str] | None = None,
+    failed_hypotheses: list[str] | None = None,
+    n_ideas: int = 1,
+) -> str:
     """The rigidly-structured ideation system prompt, grounded in the real baseline."""
     space = search_space or DEFAULT_SEARCH_SPACE
-    fenced = "\n".join(f"{i+1}. {s}" for i, s in enumerate(space))
+    fenced = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(space))
     schema = json.dumps(IDEATION_SCHEMA, indent=2)
     plural = "s" if n_ideas != 1 else ""
     return f"""# ROLE AND OBJECTIVE
@@ -131,8 +140,9 @@ schema. EVERY key is REQUIRED and must be non-empty. No markdown, no prose outsi
 """
 
 
-def implementation_prompt(hypothesis: Dict[str, Any], *,
-                          codebase_note: str = "") -> str:
+def implementation_prompt(
+    hypothesis: dict[str, Any], *, codebase_note: str = ""
+) -> str:
     """The senior-engineer implementation prompt that turns a hypothesis into drop-in PyTorch."""
     schema = json.dumps(IMPLEMENTATION_SCHEMA, indent=2)
     hjson = json.dumps({k: hypothesis.get(k) for k in IDEATION_SCHEMA}, indent=2)
@@ -218,7 +228,7 @@ def _salvage_truncated_array(s: str) -> Any:
         if end <= 0:
             return None
         try:
-            return json.loads(s[:end + 1] + "]")
+            return json.loads(s[: end + 1] + "]")
         except json.JSONDecodeError:
             continue
     return None
@@ -234,7 +244,7 @@ def extract_json(text: str) -> Any:
     if s.startswith("```"):
         first_nl = s.find("\n")
         if first_nl != -1:
-            s = s[first_nl + 1:]
+            s = s[first_nl + 1 :]
         if s.rstrip().endswith("```"):
             s = s.rstrip()[:-3]
     s = s.strip()
@@ -278,34 +288,49 @@ def extract_json(text: str) -> Any:
                 depth -= 1
                 if depth == 0:
                     try:
-                        return json.loads(s[start:i + 1])
+                        return json.loads(s[start : i + 1])
                     except json.JSONDecodeError:
                         break
     raise ValueError("no parseable JSON object found in model response")
 
 
-def parse_hypotheses(text: str) -> List[Dict[str, Any]]:
+def parse_hypotheses(text: str) -> list[dict[str, Any]]:
     """Parse ideation output into a list of hypothesis dicts (validating required keys)."""
     obj = extract_json(text)
-    required = {"hypothesis_name", "theoretical_intuition", "mathematical_formulation",
-                "pytorch_implementation_strategy", "expected_outcome"}
+    required = {
+        "hypothesis_name",
+        "theoretical_intuition",
+        "mathematical_formulation",
+        "pytorch_implementation_strategy",
+        "expected_outcome",
+    }
     if isinstance(obj, dict) and not (required & set(obj)):
         # Models sometimes wrap the list ({"hypotheses": [...]}) — observed live on qwen3:14b.
         # Unwrap the first list-of-dicts value; anything else still fails honestly below.
-        wrapped = next((v for v in obj.values()
-                        if isinstance(v, list) and v and all(isinstance(x, dict) for x in v)),
-                       None)
+        wrapped = next(
+            (
+                v
+                for v in obj.values()
+                if isinstance(v, list) and v and all(isinstance(x, dict) for x in v)
+            ),
+            None,
+        )
         if wrapped is not None:
             obj = wrapped
     items = obj if isinstance(obj, list) else [obj]
     # Per-item wrappers ({"hypothesis": {...}}) — a single-key dict whose value is a dict
     # is unwrapped (observed live on qwen3:8b after the list-level fix; models invent one
     # nesting level at a time). Anything else still fails honestly below.
-    items = [next(iter(it.values()))
-             if isinstance(it, dict) and len(it) == 1 and not (required & set(it))
-             and isinstance(next(iter(it.values())), dict) else it
-             for it in items]
-    out: List[Dict[str, Any]] = []
+    items = [
+        next(iter(it.values()))
+        if isinstance(it, dict)
+        and len(it) == 1
+        and not (required & set(it))
+        and isinstance(next(iter(it.values())), dict)
+        else it
+        for it in items
+    ]
+    out: list[dict[str, Any]] = []
     for it in items:
         if not isinstance(it, dict):
             continue
@@ -338,7 +363,7 @@ def _unescape_flat_code(code: str) -> str:
     code; unrepairable code passes through unchanged and fails at ``syntax`` honestly."""
     if "\\n" not in code or _parses(code):
         return code
-    candidates: List[str] = []
+    candidates: list[str] = []
     # JSON string semantics first (also fixes \" and \\). Raises harmlessly when the code has
     # real newlines (raw control chars in a JSON string) or JSON-invalid escapes like \d.
     try:
@@ -353,14 +378,18 @@ def _unescape_flat_code(code: str) -> str:
     return code
 
 
-def parse_implementation(text: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+def parse_implementation(text: str) -> tuple[dict[str, Any], dict[str, Any]]:
     """Parse implementation output. Returns (implementation_record, dry_run_spec).
 
     dry_run_spec = {class_name, init_kwargs, input_shape} for the validator."""
     obj = extract_json(text)
     if isinstance(obj, list):
         obj = obj[0] if obj else {}
-    if not isinstance(obj, dict) or "code" not in obj or not str(obj.get("code", "")).strip():
+    if (
+        not isinstance(obj, dict)
+        or "code" not in obj
+        or not str(obj.get("code", "")).strip()
+    ):
         raise ValueError("implementation missing non-empty 'code'")
     obj["code"] = _unescape_flat_code(str(obj["code"]))
     module_name = obj.get("module_name")

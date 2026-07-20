@@ -36,7 +36,7 @@ def _missing(mods: list[str]) -> list[str]:
     return [m for m in mods if importlib.util.find_spec(m) is None]
 
 
-def pytest_ignore_collect(collection_path, config):  # noqa: ARG001
+def pytest_ignore_collect(collection_path, config):
     reqs = _MODULE_REQUIREMENTS.get(collection_path.name)
     if not reqs:
         return False

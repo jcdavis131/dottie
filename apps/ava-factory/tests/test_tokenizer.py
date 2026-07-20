@@ -9,10 +9,9 @@ mixed across tokenizers.
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
-
 from ava.pipeline.manifest import Manifest, TokenizerMismatch
 from ava.tokenizer import (
     ASSISTANT_ID,
@@ -23,6 +22,9 @@ from ava.tokenizer import (
     sha256_file,
     train,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 _CORPUS = [
     "The capital of France is Paris, and its currency is the Euro.",
@@ -52,7 +54,7 @@ def trained(tmp_path_factory, corpus_dir) -> tuple[Path, str]:
 
 def test_special_token_ids_are_pinned(trained):
     path, _ = trained
-    t = AvaTokenizer.load(path)
+    AvaTokenizer.load(path)
     assert PAD_ID == 0 and ENDOFDOC_ID == 3 and ASSISTANT_ID == 5
     assert len(SPECIALS) == 6
 
@@ -89,7 +91,7 @@ def test_concept_token_is_a_real_id(trained):
     t = AvaTokenizer.load(path)
     tid = t.concept_token("spider")
     assert 0 <= tid < t.vocab_size
-    assert t.concept_token("spider") == tid          # deterministic
+    assert t.concept_token("spider") == tid  # deterministic
     assert t.concept_token("spider") != t.concept_token("france")
 
 
@@ -129,7 +131,9 @@ def test_sha_is_stable_and_binds_the_manifest(tmp_path, trained):
         with pytest.raises(TokenizerMismatch, match="not hash-compatible"):
             m.complete(s.id, by="w", tokens=10, tokenizer_sha="deadbeef")
 
-        m.complete(s.id, by="w", tokens=10, tokenizer_sha=sha)  # correct one is accepted
+        m.complete(
+            s.id, by="w", tokens=10, tokenizer_sha=sha
+        )  # correct one is accepted
 
 
 def test_compression_ratio_is_sane(trained):

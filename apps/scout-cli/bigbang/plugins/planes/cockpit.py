@@ -1,9 +1,10 @@
 """Gather five-plane cockpit data — Trust, World, Herd, Judgment, Memory."""
+
 from __future__ import annotations
 
 import shutil
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 from bigbang.core.audit import AUDIT_FILE, tail_events
 from bigbang.core.plugin_loader import get_all_manifests, list_plugin_names
@@ -20,22 +21,28 @@ TAGLINES = [
 ]
 
 
-def _file_ok(path: Path, *, mode_0600: bool = False) -> Dict[str, Any]:
+def _file_ok(path: Path, *, mode_0600: bool = False) -> dict[str, Any]:
     if not path.exists():
         return {"path": str(path), "ok": False, "status": "missing"}
     st = path.stat()
     mode = st.st_mode & 0o777
     if mode_0600 and mode != 0o600:
-        return {"path": str(path), "ok": False, "status": f"mode {oct(mode)} (want 0600)"}
+        return {
+            "path": str(path),
+            "ok": False,
+            "status": f"mode {oct(mode)} (want 0600)",
+        }
     return {"path": str(path), "ok": True, "status": "ready", "mode": oct(mode)}
 
 
-def trust_plane() -> Dict[str, Any]:
+def trust_plane() -> dict[str, Any]:
     vault = _file_ok(SHARE / "secrets.json", mode_0600=True)
     audit = _file_ok(AUDIT_FILE)
     keys = list_secrets()
     manifests = get_all_manifests()
-    capped = sum(1 for m in manifests.values() if isinstance(m, dict) and m.get("capabilities"))
+    capped = sum(
+        1 for m in manifests.values() if isinstance(m, dict) and m.get("capabilities")
+    )
     return {
         "id": "trust",
         "title": "Trust",
@@ -61,7 +68,7 @@ def trust_plane() -> Dict[str, Any]:
     }
 
 
-def world_plane() -> Dict[str, Any]:
+def world_plane() -> dict[str, Any]:
     tools = list_tools()
     return {
         "id": "world",
@@ -81,7 +88,7 @@ def world_plane() -> Dict[str, Any]:
     }
 
 
-def herd_plane() -> Dict[str, Any]:
+def herd_plane() -> dict[str, Any]:
     summary = herd_store.summary()
     herdr = herd_store.herdr_available()
     return {
@@ -103,7 +110,7 @@ def herd_plane() -> Dict[str, Any]:
     }
 
 
-def judgment_plane() -> Dict[str, Any]:
+def judgment_plane() -> dict[str, Any]:
     ollama = bool(shutil.which("ollama"))
     # lightweight: don't network-probe Ollama here (doctor does that)
     return {
@@ -118,14 +125,14 @@ def judgment_plane() -> Dict[str, Any]:
             "plan_default": "scout agent run …  # plan only; pass --execute to run",
         },
         "commands": [
-            "scout --json ava route \"check draft for ai slop\"",
-            "scout --json agent run \"list my tools\"",
+            'scout --json ava route "check draft for ai slop"',
+            'scout --json agent run "list my tools"',
             "scout --json agent bus",
         ],
     }
 
 
-def memory_plane() -> Dict[str, Any]:
+def memory_plane() -> dict[str, Any]:
     rft_default = Path.home() / ".local" / "share" / "bigbang" / "rft" / "dataset.jsonl"
     # rft plugin default may differ — signal audit richness instead
     events = tail_events(5)
@@ -151,11 +158,17 @@ def memory_plane() -> Dict[str, Any]:
     }
 
 
-def all_planes() -> List[Dict[str, Any]]:
-    return [trust_plane(), world_plane(), herd_plane(), judgment_plane(), memory_plane()]
+def all_planes() -> list[dict[str, Any]]:
+    return [
+        trust_plane(),
+        world_plane(),
+        herd_plane(),
+        judgment_plane(),
+        memory_plane(),
+    ]
 
 
-def cockpit_status() -> Dict[str, Any]:
+def cockpit_status() -> dict[str, Any]:
     planes = all_planes()
     return {
         "thesis": THESIS,
@@ -178,7 +191,7 @@ def cockpit_status() -> Dict[str, Any]:
     }
 
 
-def compare_matrix() -> Dict[str, Any]:
+def compare_matrix() -> dict[str, Any]:
     """Honest matrix — Scout wins on judgment/trust/memory, not on PTY attach."""
     rows = [
         {
@@ -307,7 +320,7 @@ def compare_matrix() -> Dict[str, Any]:
     }
 
 
-def loop_health() -> Dict[str, Any]:
+def loop_health() -> dict[str, Any]:
     """Flywheel: act → audit → rft → ava → better routes."""
     events = tail_events(50)
     commands = [e.get("command") for e in events if e.get("command")]
@@ -367,7 +380,7 @@ def loop_health() -> Dict[str, Any]:
     }
 
 
-def _top(items: List[str], n: int) -> List[Dict[str, Any]]:
+def _top(items: list[str], n: int) -> list[dict[str, Any]]:
     from collections import Counter
 
     c = Counter(items)

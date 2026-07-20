@@ -1,14 +1,18 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
-import typer
-import re
-import json
 import os
+import re
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Any
+
+import typer
 
 from bigbang.core.output import emit
 
-app = typer.Typer(name="write", help="✍️ Authentic writing — scan AI slop, humanize, generate with real sources", no_args_is_help=True)
+app = typer.Typer(
+    name="write",
+    help="✍️ Authentic writing — scan AI slop, humanize, generate with real sources",
+    no_args_is_help=True,
+)
 
 # ── Research-grounded patterns ──
 # Ground truth from live research:
@@ -71,10 +75,33 @@ SLOP_PHRASES = [
 ]
 
 INTENSIFIERS = [
-    "crucial", "robust", "pivotal", "unprecedented", "tapestry", "nuanced", "paradigm",
-    "intricate", "palpable", "camaraderie", "unease", "compelling", "vital", "holistic",
-    "transformative", "revolutionary", "groundbreaking", "seamless", "leverage", "delve",
-    "captivating", "elevate", "embark", "foster", "resonate", "nestled", "cutting-edge"
+    "crucial",
+    "robust",
+    "pivotal",
+    "unprecedented",
+    "tapestry",
+    "nuanced",
+    "paradigm",
+    "intricate",
+    "palpable",
+    "camaraderie",
+    "unease",
+    "compelling",
+    "vital",
+    "holistic",
+    "transformative",
+    "revolutionary",
+    "groundbreaking",
+    "seamless",
+    "leverage",
+    "delve",
+    "captivating",
+    "elevate",
+    "embark",
+    "foster",
+    "resonate",
+    "nestled",
+    "cutting-edge",
 ]
 
 ELEVATED_MAP = {
@@ -92,14 +119,35 @@ ELEVATED_MAP = {
 }
 
 WEAK_OPENERS = [
-    "Certainly,", "Of course,", "Absolutely,", "Great question,",
-    "I'd be happy to", "I'm happy to", "That's a fantastic",
-    "As an AI", "As a language model", "Let me",
+    "Certainly,",
+    "Of course,",
+    "Absolutely,",
+    "Great question,",
+    "I'd be happy to",
+    "I'm happy to",
+    "That's a fantastic",
+    "As an AI",
+    "As a language model",
+    "Let me",
 ]
 
 CONNECTORS = ["Furthermore", "Moreover", "Additionally", "However", "That said"]
 
-DECORATIVE_EMOJI = ["🚀", "✨", "💡", "💪", "🎉", "🔥", "🌟", "🎊", "🌈", "💫", "⭐", "🎯", "💯"]
+DECORATIVE_EMOJI = [
+    "🚀",
+    "✨",
+    "💡",
+    "💪",
+    "🎉",
+    "🔥",
+    "🌟",
+    "🎊",
+    "🌈",
+    "💫",
+    "⭐",
+    "🎯",
+    "💯",
+]
 
 RE_EM_DASH = re.compile(r"—")
 RE_EN_DASH = re.compile(r"–")
@@ -113,36 +161,72 @@ RE_ELLIPSIS = re.compile(r"…")
 RE_ARROW = re.compile(r"→")
 
 REAL_SOURCES = [
-    {"title": "ai-slop-detect — 70+ EN/PL patterns CLI", "url": "https://github.com/antydizajn/ai-slop-detect", "type": "tool"},
-    {"title": "slop-cop — 36 instant rules + semantic editor", "url": "https://github.com/awnist/slop-cop", "type": "tool"},
-    {"title": "slop-radar — 245 buzzwords + 14 structural patterns", "url": "https://github.com/renefichtmueller/slop-radar", "type": "tool"},
-    {"title": "CMU PNAS 2025: Is It Human, or Is It AI?", "url": "https://www.cmu.edu/dietrich/news/news-stories/2025/large-language-models-writing-text", "type": "study"},
-    {"title": "Measuring AI Slop in Text — arXiv 2509.19163", "url": "https://arxiv.org/abs/2509.19163", "type": "paper"},
+    {
+        "title": "ai-slop-detect — 70+ EN/PL patterns CLI",
+        "url": "https://github.com/antydizajn/ai-slop-detect",
+        "type": "tool",
+    },
+    {
+        "title": "slop-cop — 36 instant rules + semantic editor",
+        "url": "https://github.com/awnist/slop-cop",
+        "type": "tool",
+    },
+    {
+        "title": "slop-radar — 245 buzzwords + 14 structural patterns",
+        "url": "https://github.com/renefichtmueller/slop-radar",
+        "type": "tool",
+    },
+    {
+        "title": "CMU PNAS 2025: Is It Human, or Is It AI?",
+        "url": "https://www.cmu.edu/dietrich/news/news-stories/2025/large-language-models-writing-text",
+        "type": "study",
+    },
+    {
+        "title": "Measuring AI Slop in Text — arXiv 2509.19163",
+        "url": "https://arxiv.org/abs/2509.19163",
+        "type": "paper",
+    },
 ]
+
 
 def _count_words(text: str) -> int:
     return len(text.split())
 
-def _split_sentences(text: str) -> List[str]:
-    return [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
 
-def _get_line_col(text: str, pos: int) -> Tuple[int, int]:
+def _split_sentences(text: str) -> list[str]:
+    return [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
+
+
+def _get_line_col(text: str, pos: int) -> tuple[int, int]:
     before = text[:pos]
     line = before.count("\n") + 1
     last_nl = before.rfind("\n")
     col = pos - last_nl if last_nl != -1 else pos + 1
     return line, col
 
-def scan_text(text: str) -> Dict[str, Any]:
+
+def scan_text(text: str) -> dict[str, Any]:
     words = _count_words(text) or 1
-    hits: List[Dict[str, Any]] = []
-    by_kind: Dict[str, int] = {}
+    hits: list[dict[str, Any]] = []
+    by_kind: dict[str, int] = {}
 
     def add_hit(kind: str, pattern: str, start: int, end: int, snippet: str = ""):
         line, col = _get_line_col(text, start)
         if not snippet:
-            snippet = text[max(0, start-20):min(len(text), end+30)].strip().replace("\n"," ")
-        hits.append({"line": line, "col": col, "kind": kind, "pattern": pattern, "snippet": snippet[:120]})
+            snippet = (
+                text[max(0, start - 20) : min(len(text), end + 30)]
+                .strip()
+                .replace("\n", " ")
+            )
+        hits.append(
+            {
+                "line": line,
+                "col": col,
+                "kind": kind,
+                "pattern": pattern,
+                "snippet": snippet[:120],
+            }
+        )
         by_kind[kind] = by_kind.get(kind, 0) + 1
 
     lower = text.lower()
@@ -169,11 +253,13 @@ def scan_text(text: str) -> Dict[str, Any]:
     for para in paras:
         stripped = para.strip()
         for conn in CONNECTORS:
-            if stripped.lower().startswith(conn.lower() + " ") or stripped.lower().startswith(conn.lower()+","):
-                idx = text.lower().find(conn.lower(), pos, pos+len(para)+5)
+            if stripped.lower().startswith(
+                conn.lower() + " "
+            ) or stripped.lower().startswith(conn.lower() + ","):
+                idx = text.lower().find(conn.lower(), pos, pos + len(para) + 5)
                 if idx != -1:
-                    add_hit("connector", conn, idx, idx+len(conn))
-        pos += len(para)+1
+                    add_hit("connector", conn, idx, idx + len(conn))
+        pos += len(para) + 1
 
     for m in RE_EM_DASH.finditer(text):
         add_hit("char:em_dash", "—", m.start(), m.end())
@@ -193,8 +279,8 @@ def scan_text(text: str) -> Dict[str, Any]:
             j = text.find(emo, idx)
             if j == -1:
                 break
-            add_hit("emoji", emo, j, j+len(emo))
-            idx = j+len(emo)
+            add_hit("emoji", emo, j, j + len(emo))
+            idx = j + len(emo)
     for m in RE_CURLY_QUOTES.finditer(text):
         add_hit("char:curly_quote", m.group(0), m.start(), m.end())
     for m in RE_ELLIPSIS.finditer(text):
@@ -205,16 +291,17 @@ def scan_text(text: str) -> Dict[str, Any]:
         add_hit("participial", m.group(0).strip(), m.start(), m.end())
 
     sentences = _split_sentences(text)
-    for i in range(len(sentences)-1):
+    for i in range(len(sentences) - 1):
         if sentences[i].strip().endswith("?"):
             try:
                 idx = text.index(sentences[i])
-                add_hit("q_then_a", "Question→Answer", idx, idx+len(sentences[i]))
+                add_hit("q_then_a", "Question→Answer", idx, idx + len(sentences[i]))
             except ValueError:
                 pass
 
     total_hits = len(hits)
     density_per_100 = (total_hits / words) * 100
+
     # Weight tuning per research: participial is common in human prose — CMU shows 2-5x overuse but not always slop, so weight 0.5
     # char = 1 low, phrase = 3 high, everything else 1.5
     def _weight_for(k: str) -> float:
@@ -227,6 +314,7 @@ def scan_text(text: str) -> Dict[str, Any]:
         if k == "connector":
             return 1.2
         return 1.5
+
     total_weight = sum(_weight_for(h["kind"]) for h in hits)
     # Short texts should not be punished as hard — softer scaling under 50 words
     if words < 50:
@@ -247,18 +335,24 @@ def scan_text(text: str) -> Dict[str, Any]:
     return {
         "verdict": verdict,
         "ai_score": score,
-        "stats": {"words": words, "hits": total_hits, "density_per_100": round(density_per_100, 2), "by_kind": by_kind},
+        "stats": {
+            "words": words,
+            "hits": total_hits,
+            "density_per_100": round(density_per_100, 2),
+            "by_kind": by_kind,
+        },
         "hits": sorted(hits, key=lambda h: (h["line"], h["col"]))[:100],
         "sources": [
             "https://github.com/antydizajn/ai-slop-detect (70+ patterns, typographic tells)",
             "https://github.com/renefichtmueller/slop-radar (245 EN buzzwords + 14 structural)",
             "https://github.com/awnist/slop-cop (36 instant rules, browser editor)",
             "Reinhart et al. PNAS 2025 CMU: participial 2-5x, nominalizations 1.5-2x, tapestry/camaraderie 150x",
-            "Shaib et al. arXiv:2509.19163 Measuring AI Slop taxonomy"
-        ]
+            "Shaib et al. arXiv:2509.19163 Measuring AI Slop taxonomy",
+        ],
     }
 
-def _apply_deterministic_fixes(text: str) -> Tuple[str, List[str]]:
+
+def _apply_deterministic_fixes(text: str) -> tuple[str, list[str]]:
     fixes = []
     # fast replacements — typographic tells (em-dash abuse)
     if "—" in text:
@@ -268,20 +362,24 @@ def _apply_deterministic_fixes(text: str) -> Tuple[str, List[str]]:
         text = text.replace(" – ", ", ").replace("–", "-")
         fixes.append("en-dash – → ,/-")
     if any(c in text for c in "“”‘’"):
-        text = text.replace("“","\"").replace("”","\"").replace("‘","'").replace("’","'")
+        text = (
+            text.replace("“", '"').replace("”", '"').replace("‘", "'").replace("’", "'")
+        )
         fixes.append("curly quotes → straight")
     if "…" in text:
-        text = text.replace("…","...")
+        text = text.replace("…", "...")
         fixes.append("ellipsis … → ...")
     if "→" in text:
-        text = text.replace("→","->")
+        text = text.replace("→", "->")
         fixes.append("arrow → ->")
 
     # Strip leading connectors (Furthermore, Moreover, etc.) — keeps score low
     # Handles start of doc and start after period/newline
     for conn in CONNECTORS:
         # At doc start: "Furthermore, " → ""
-        pat_start = re.compile(rf"^\s*{re.escape(conn)}[,\s]+", re.IGNORECASE | re.MULTILINE)
+        pat_start = re.compile(
+            rf"^\s*{re.escape(conn)}[,\s]+", re.IGNORECASE | re.MULTILINE
+        )
         if pat_start.search(text):
             text = pat_start.sub("", text)
             fixes.append(f"removed leading connector '{conn}'")
@@ -366,13 +464,17 @@ def _apply_deterministic_fixes(text: str) -> Tuple[str, List[str]]:
     # Fix participial clauses: ", using" → " using" — removes comma that triggers RE_PARTICIPIAL
     # This is key to go from TRACES 20 → HUMAN_LIKE <15
     participial_fixed = False
+
     def _fix_participial(m):
         nonlocal participial_fixed
         participial_fixed = True
         verb = m.group(1)
         # Keep space + verb, drop comma
         return f" {verb}"
-    text, n_part = re.subn(r",\s+([a-z]+ing)\b", _fix_participial, text, flags=re.IGNORECASE)
+
+    text, n_part = re.subn(
+        r",\s+([a-z]+ing)\b", _fix_participial, text, flags=re.IGNORECASE
+    )
     if n_part:
         fixes.append(f"participial comma strip x{n_part}: ', verbing' → ' verbing'")
 
@@ -387,16 +489,20 @@ def _apply_deterministic_fixes(text: str) -> Tuple[str, List[str]]:
     # Remove weak openers at start
     for opener in WEAK_OPENERS:
         if text.lower().startswith(opener.lower()):
-            text = re.sub(re.escape(opener), "", text, count=1, flags=re.IGNORECASE).lstrip(" ,:")
+            text = re.sub(
+                re.escape(opener), "", text, count=1, flags=re.IGNORECASE
+            ).lstrip(" ,:")
             fixes.append(f"removed opener '{opener}'")
             break
 
     return text.strip(), fixes
 
+
 # ── Ollama helpers (fast, no DNS hang) ──
 def _httpx_client(timeout: float = 1.0):
     try:
         import httpx
+
         try:
             to = httpx.Timeout(timeout, connect=min(timeout, 0.8))
         except Exception:
@@ -408,9 +514,11 @@ def _httpx_client(timeout: float = 1.0):
     except ImportError:
         return None
 
-def _ollama_base_fast() -> Optional[str]:
+
+def _ollama_base_fast() -> str | None:
     try:
         from bigbang.core.llm import get_ollama_base as core_base
+
         b = core_base(timeout=0.8)
         if b:
             return b
@@ -423,7 +531,9 @@ def _ollama_base_fast() -> Optional[str]:
         bases.append(env_base.rstrip("/"))
     bases.append("http://localhost:11434")
     # only check docker host if explicitly allowed
-    if os.environ.get("OLLAMA_ALLOW_DOCKER_HOST") or "host.docker.internal" in (env_base or ""):
+    if os.environ.get("OLLAMA_ALLOW_DOCKER_HOST") or "host.docker.internal" in (
+        env_base or ""
+    ):
         bases.append("http://host.docker.internal:11434")
     for base in bases:
         client = _httpx_client(0.8)
@@ -442,12 +552,20 @@ def _ollama_base_fast() -> Optional[str]:
                 pass
     return None
 
-def _ollama_chat(model: str, system: str, user: str, base: str) -> Optional[str]:
+
+def _ollama_chat(model: str, system: str, user: str, base: str) -> str | None:
     client = _httpx_client(6.0)
     if not client:
         return None
     try:
-        payload = {"model": model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}], "stream": False}
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "stream": False,
+        }
         r = client.post(f"{base}/api/chat", json=payload)
         if r.status_code == 200:
             data = r.json()
@@ -462,9 +580,11 @@ def _ollama_chat(model: str, system: str, user: str, base: str) -> Optional[str]
             pass
     return None
 
+
 def _best_ollama_model(base: str) -> str:
     try:
         from bigbang.core.llm import get_best_model as core_best
+
         return core_best(base=base, timeout=0.8)
     except Exception:
         pass
@@ -473,12 +593,20 @@ def _best_ollama_model(base: str) -> str:
         return "qwen3:8b"
     try:
         r = client.get(f"{base}/api/tags")
-        if r.status_code==200:
+        if r.status_code == 200:
             data = r.json()
             models = data.get("models", [])
-            names = [m.get("name") for m in models if isinstance(m,dict) and m.get("name")]
+            names = [
+                m.get("name") for m in models if isinstance(m, dict) and m.get("name")
+            ]
             if names:
-                for pref in ["qwen3:32b","qwen3:8b","llama3.1:8b","qwen2.5:7b","llama3"]:
+                for pref in [
+                    "qwen3:32b",
+                    "qwen3:8b",
+                    "llama3.1:8b",
+                    "qwen2.5:7b",
+                    "llama3",
+                ]:
                     for n in names:
                         if pref in n:
                             return n
@@ -492,6 +620,7 @@ def _best_ollama_model(base: str) -> str:
             pass
     return "qwen3:8b"
 
+
 AUTHENTIC_SYSTEM = """You write like a real, specific human — direct, concrete, a bit uneven, not a corporate blog.
 MANDATORY:
 - Zero em dashes — use comma or period.
@@ -503,7 +632,8 @@ MANDATORY:
 - Cite real source when claiming fact.
 - End with specific next step, not generic summary."""
 
-def _humanize_with_ollama(text: str) -> Optional[str]:
+
+def _humanize_with_ollama(text: str) -> str | None:
     base = _ollama_base_fast()
     if not base:
         return None
@@ -511,7 +641,8 @@ def _humanize_with_ollama(text: str) -> Optional[str]:
     prompt = f"Rewrite to remove AI slop, make it human, specific, grounded. Keep meaning. Return only rewritten text.\n\nOriginal:\n{text}\n\nRewritten:"
     return _ollama_chat(model, AUTHENTIC_SYSTEM, prompt, base)
 
-def _read_input(text: Optional[str], file: Optional[Path]) -> str:
+
+def _read_input(text: str | None, file: Path | None) -> str:
     if file:
         p = Path(file).expanduser()
         if not p.exists():
@@ -520,34 +651,46 @@ def _read_input(text: Optional[str], file: Optional[Path]) -> str:
     if text:
         return text
     import sys
+
     if not sys.stdin.isatty():
         return sys.stdin.read()
     raise typer.BadParameter("Provide --text or --file or pipe stdin")
 
+
 # ── Commands ──
+
 
 @app.command(
     "scan",
     epilog=(
         "\nExamples:\n"
-        "  scout write scan --text \"In today's digital landscape…\"\n"
+        '  scout write scan --text "In today\'s digital landscape…"\n'
         "  scout write scan --file draft.md\n"
         "  cat draft.md | scout --json write scan\n"
     ),
 )
 def scan_cmd(
-    text: Optional[str] = typer.Option(None, "--text", "-t", help="text to scan"),
-    file: Optional[Path] = typer.Option(None, "--file", "-f", help="file to scan"),
+    text: str | None = typer.Option(None, "--text", "-t", help="text to scan"),
+    file: Path | None = typer.Option(None, "--file", "-f", help="file to scan"),
 ):
     """Scan text for AI-slop signals. Accepts --text, --file, or stdin."""
     content = _read_input(text, file)
     result = scan_text(content)
-    emit({"command": "write scan", "input_chars": len(content), "result": result, "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only"}, command="write scan")
+    emit(
+        {
+            "command": "write scan",
+            "input_chars": len(content),
+            "result": result,
+            "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
+        },
+        command="write scan",
+    )
+
 
 @app.command("humanize")
 def humanize_cmd(
-    text: Optional[str] = typer.Option(None, "--text", "-t"),
-    file: Optional[Path] = typer.Option(None, "--file", "-f"),
+    text: str | None = typer.Option(None, "--text", "-t"),
+    file: Path | None = typer.Option(None, "--file", "-f"),
     use_ollama: bool = typer.Option(True, "--ollama/--no-ollama"),
     save: bool = typer.Option(False, "--save"),
 ):
@@ -570,22 +713,40 @@ def humanize_cmd(
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path = out_dir / f"humanized-{int(__import__('time').time())}.md"
         out_path.write_text(final_text, encoding="utf-8")
-    emit({
-        "command": "write humanize",
-        "fixes_deterministic": fixes,
-        "scan_before": {"score": scan_before["ai_score"], "verdict": scan_before["verdict"], "density": scan_before["stats"]["density_per_100"]},
-        "scan_after_first": {"score": scan_after["ai_score"], "verdict": scan_after["verdict"]},
-        "scan_final": {"score": scan_final["ai_score"], "verdict": scan_final["verdict"], "hits": scan_final["stats"]["by_kind"]},
-        "ollama": {"used": bool(second_pass), "base": ollama_used},
-        "final_text": final_text,
-        "saved_to": str(out_path) if out_path else None,
-        "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only"
-    }, command="write humanize")
+    emit(
+        {
+            "command": "write humanize",
+            "fixes_deterministic": fixes,
+            "scan_before": {
+                "score": scan_before["ai_score"],
+                "verdict": scan_before["verdict"],
+                "density": scan_before["stats"]["density_per_100"],
+            },
+            "scan_after_first": {
+                "score": scan_after["ai_score"],
+                "verdict": scan_after["verdict"],
+            },
+            "scan_final": {
+                "score": scan_final["ai_score"],
+                "verdict": scan_final["verdict"],
+                "hits": scan_final["stats"]["by_kind"],
+            },
+            "ollama": {"used": bool(second_pass), "base": ollama_used},
+            "final_text": final_text,
+            "saved_to": str(out_path) if out_path else None,
+            "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
+        },
+        command="write humanize",
+    )
+
 
 @app.command("generate")
 def generate_cmd(
     prompt: str = typer.Argument(..., help="What to generate"),
-    tone: str = typer.Option("direct, specific, founder voice — short sentences, one anecdote, no fluff", "--tone"),
+    tone: str = typer.Option(
+        "direct, specific, founder voice — short sentences, one anecdote, no fluff",
+        "--tone",
+    ),
     save: bool = typer.Option(False, "--save"),
     use_ollama: bool = typer.Option(True, "--ollama/--no-ollama"),
 ):
@@ -594,7 +755,10 @@ def generate_cmd(
 
     sources = REAL_SOURCES[:3]
 
-    system = AUTHENTIC_SYSTEM + f"\nTone: {tone}\nGround with at least one source from: {sources}"
+    system = (
+        AUTHENTIC_SYSTEM
+        + f"\nTone: {tone}\nGround with at least one source from: {sources}"
+    )
 
     draft = None
     if base and use_ollama:
@@ -638,22 +802,30 @@ def generate_cmd(
         out_dir = Path.home() / "workspace" / "your_files" / "write-outputs"
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path = out_dir / f"generated-{int(__import__('time').time())}.md"
-        out_path.write_text(f"{final}\n\nSources:\n" + "\n".join([f"- {s['title']}: {s['url']}" for s in sources]), encoding="utf-8")
+        out_path.write_text(
+            f"{final}\n\nSources:\n"
+            + "\n".join([f"- {s['title']}: {s['url']}" for s in sources]),
+            encoding="utf-8",
+        )
 
-    emit({
-        "command": "write generate",
-        "prompt": prompt,
-        "model": model,
-        "ollama_base": base,
-        "sources_used": sources,
-        "draft": final,
-        "scan": scan_final,
-        "fixes_applied": fix_list,
-        "fallback_template": used_fallback,
-        "numbers_are_examples": used_fallback,
-        "saved_to": str(out_path) if out_path else None,
-        "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only"
-    }, command="write generate")
+    emit(
+        {
+            "command": "write generate",
+            "prompt": prompt,
+            "model": model,
+            "ollama_base": base,
+            "sources_used": sources,
+            "draft": final,
+            "scan": scan_final,
+            "fixes_applied": fix_list,
+            "fallback_template": used_fallback,
+            "numbers_are_examples": used_fallback,
+            "saved_to": str(out_path) if out_path else None,
+            "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
+        },
+        command="write generate",
+    )
+
 
 @app.command("sources")
 def sources_cmd(
@@ -662,24 +834,34 @@ def sources_cmd(
 ):
     q = query.strip().lower()
     matched = [
-        s for s in REAL_SOURCES
-        if q in s["title"].lower() or q in s["url"].lower() or q in s.get("type", "").lower()
+        s
+        for s in REAL_SOURCES
+        if q in s["title"].lower()
+        or q in s["url"].lower()
+        or q in s.get("type", "").lower()
     ][:limit]
-    emit({
-        "command": "write sources",
-        "query": query,
-        "results": matched,
-        "matched": len(matched),
-        "note": "Curated real sources filtered by query — verified GitHub + CMU + arXiv, use as citations"
-        if matched else "No curated source matched the query — the list is small and curated, not a search engine",
-        "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only"
-    }, command="write sources")
+    emit(
+        {
+            "command": "write sources",
+            "query": query,
+            "results": matched,
+            "matched": len(matched),
+            "note": "Curated real sources filtered by query — verified GitHub + CMU + arXiv, use as citations"
+            if matched
+            else "No curated source matched the query — the list is small and curated, not a search engine",
+            "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
+        },
+        command="write sources",
+    )
+
 
 @app.command("check")
 def check_cmd(
-    text: Optional[str] = typer.Option(None, "--text", "-t"),
-    file: Optional[Path] = typer.Option(None, "--file", "-f"),
-    use_ollama: bool = typer.Option(False, "--ollama/--no-ollama", help="Try Ollama second pass if score >=40"),
+    text: str | None = typer.Option(None, "--text", "-t"),
+    file: Path | None = typer.Option(None, "--file", "-f"),
+    use_ollama: bool = typer.Option(
+        False, "--ollama/--no-ollama", help="Try Ollama second pass if score >=40"
+    ),
 ):
     content = _read_input(text, file)
     before = scan_text(content)
@@ -695,20 +877,39 @@ def check_cmd(
             final, _ = _apply_deterministic_fixes(final)
     final_scan = scan_text(final)
 
-    emit({
-        "command": "write check",
-        "before": {"verdict": before["verdict"], "score": before["ai_score"], "by_kind": before["stats"]["by_kind"], "hits": before["hits"][:12]},
-        "after_first_pass": {"verdict": after["verdict"], "score": after["ai_score"], "fixes": fixes},
-        "after_final": {"verdict": final_scan["verdict"], "score": final_scan["ai_score"], "by_kind": final_scan["stats"]["by_kind"]},
-        "final_text": final,
-        "ollama_used": bool(ollama_text),
-        "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only"
-    }, command="write check")
+    emit(
+        {
+            "command": "write check",
+            "before": {
+                "verdict": before["verdict"],
+                "score": before["ai_score"],
+                "by_kind": before["stats"]["by_kind"],
+                "hits": before["hits"][:12],
+            },
+            "after_first_pass": {
+                "verdict": after["verdict"],
+                "score": after["ai_score"],
+                "fixes": fixes,
+            },
+            "after_final": {
+                "verdict": final_scan["verdict"],
+                "score": final_scan["ai_score"],
+                "by_kind": final_scan["stats"]["by_kind"],
+            },
+            "final_text": final,
+            "ollama_used": bool(ollama_text),
+            "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
+        },
+        command="write check",
+    )
+
 
 @app.command("batch")
 def batch_cmd(
     path: Path = typer.Argument(..., help="File or dir to scan (md/txt)"),
-    fix: bool = typer.Option(False, "--fix", help="Auto-fix and overwrite if HUMAN_LIKE after fix"),
+    fix: bool = typer.Option(
+        False, "--fix", help="Auto-fix and overwrite if HUMAN_LIKE after fix"
+    ),
     glob_pat: str = typer.Option("*.md", "--glob", help="Glob when path is dir"),
 ):
     p = Path(path).expanduser()
@@ -723,32 +924,44 @@ def batch_cmd(
     for fp in files[:50]:
         txt = fp.read_text(encoding="utf-8", errors="ignore")
         before = scan_text(txt)
-        cleaned, fixes = _apply_deterministic_fixes(txt)
+        cleaned, _fixes = _apply_deterministic_fixes(txt)
         after = scan_text(cleaned)
         if fix and after["verdict"] == "HUMAN_LIKE" and before["ai_score"] >= 15:
             fp.write_text(cleaned, encoding="utf-8")
-        results.append({
-            "file": str(fp),
-            "before_score": before["ai_score"],
-            "before_verdict": before["verdict"],
-            "after_score": after["ai_score"],
-            "after_verdict": after["verdict"],
-            "fixed": fix and after["verdict"] == "HUMAN_LIKE"
-        })
-    emit({
-        "command": "write batch",
-        "scanned": len(results),
-        "results": results,
-        "summary": {
-            "strong_ai": sum(1 for r in results if r["before_verdict"] == "STRONG_AI"),
-            "human_like_after": sum(1 for r in results if r["after_verdict"] == "HUMAN_LIKE")
+        results.append(
+            {
+                "file": str(fp),
+                "before_score": before["ai_score"],
+                "before_verdict": before["verdict"],
+                "after_score": after["ai_score"],
+                "after_verdict": after["verdict"],
+                "fixed": fix and after["verdict"] == "HUMAN_LIKE",
+            }
+        )
+    emit(
+        {
+            "command": "write batch",
+            "scanned": len(results),
+            "results": results,
+            "summary": {
+                "strong_ai": sum(
+                    1 for r in results if r["before_verdict"] == "STRONG_AI"
+                ),
+                "human_like_after": sum(
+                    1 for r in results if r["after_verdict"] == "HUMAN_LIKE"
+                ),
+            },
+            "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
         },
-        "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only"
-    }, command="write batch")
+        command="write batch",
+    )
+
 
 @app.command("hook")
 def hook_cmd(
-    install: bool = typer.Option(False, "--install", help="Write .pre-commit-config.yaml snippet and hook script"),
+    install: bool = typer.Option(
+        False, "--install", help="Write .pre-commit-config.yaml snippet and hook script"
+    ),
 ):
     hook_yaml = """
 repos:
@@ -789,18 +1002,28 @@ done
         hook_path.parent.mkdir(parents=True, exist_ok=True)
         hook_path.write_text(script_sh, encoding="utf-8")
         hook_path.chmod(0o755)
-        emit({"installed": [str(pc_path), str(hook_path)], "note": "Added local bb-write-check hook. Run bb write batch . --fix to auto-clean"}, command="write hook")
+        emit(
+            {
+                "installed": [str(pc_path), str(hook_path)],
+                "note": "Added local bb-write-check hook. Run bb write batch . --fix to auto-clean",
+            },
+            command="write hook",
+        )
     else:
-        emit({
-            "pre_commit_yaml": hook_yaml,
-            "pre_commit_sh": script_sh,
-            "install_cmd": "bb write hook --install",
-            "usage": "bb --json write batch docs/ --fix or bb --json write check --file README.md",
-            "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only"
-        }, command="write hook")
+        emit(
+            {
+                "pre_commit_yaml": hook_yaml,
+                "pre_commit_sh": script_sh,
+                "install_cmd": "bb write hook --install",
+                "usage": "bb --json write batch docs/ --fix or bb --json write check --file README.md",
+                "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
+            },
+            command="write hook",
+        )
+
 
 def register(root):
     root.add_typer(app, name="write")
 
-# Solo personal project, no connection to employer, built with public/free-tier only
 
+# Solo personal project, no connection to employer, built with public/free-tier only

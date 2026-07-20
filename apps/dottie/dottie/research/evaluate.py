@@ -11,13 +11,26 @@ Nothing is compared that was not really measured — a missing metric is an hone
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any
 
-from dottie.research.ledger import Ledger, Experiment, Baseline, EVALUATION_PENDING, REJECTED, SOTA
+from dottie.research.ledger import (
+    EVALUATION_PENDING,
+    REJECTED,
+    SOTA,
+    Baseline,
+    Experiment,
+    Ledger,
+)
 
 
-def _writeup(exp: Experiment, baseline: Baseline, value: Optional[float], *,
-             promoted: bool, reason: str = "") -> str:
+def _writeup(
+    exp: Experiment,
+    baseline: Baseline,
+    value: float | None,
+    *,
+    promoted: bool,
+    reason: str = "",
+) -> str:
     h = exp.hypothesis or {}
     m = exp.train_metrics or {}
     lines = [
@@ -31,8 +44,14 @@ def _writeup(exp: Experiment, baseline: Baseline, value: Optional[float], *,
     ]
     if value is not None:
         delta = value - baseline.metric_value
-        lines.append(f"**Delta:** {delta:+.6g}"
-                     + (f"  ·  std {m.get('proxy_loss_std')}" if m.get("proxy_loss_std") is not None else ""))
+        lines.append(
+            f"**Delta:** {delta:+.6g}"
+            + (
+                f"  ·  std {m.get('proxy_loss_std')}"
+                if m.get("proxy_loss_std") is not None
+                else ""
+            )
+        )
     if reason:
         lines.append(f"**Reason:** {reason}")
     lines += [
@@ -49,8 +68,9 @@ def _writeup(exp: Experiment, baseline: Baseline, value: Optional[float], *,
     return "\n".join(lines)
 
 
-def run_evaluation(ledger: Ledger, *, require_stable: bool = True,
-                   ts: Optional[float] = None) -> Optional[Dict[str, Any]]:
+def run_evaluation(
+    ledger: Ledger, *, require_stable: bool = True, ts: float | None = None
+) -> dict[str, Any] | None:
     """Evaluate the oldest evaluation_pending experiment against the baseline; hill-climb if it
     really improved. Returns a summary, or None if nothing is pending."""
     exp = ledger.next_in_state(EVALUATION_PENDING)
@@ -60,32 +80,57 @@ def run_evaluation(ledger: Ledger, *, require_stable: bool = True,
     if baseline is None:
         # Cannot hill-climb without a baseline — reject honestly rather than invent one.
         verdict = {"promote": False, "reason": "no baseline seeded"}
-        ledger.transition(exp.id, REJECTED, eval_verdict=verdict,
-                          writeup="rejected: no baseline to compare against", ts=ts)
+        ledger.transition(
+            exp.id,
+            REJECTED,
+            eval_verdict=verdict,
+            writeup="rejected: no baseline to compare against",
+            ts=ts,
+        )
         return {"experiment": exp.id, "state": REJECTED, "reason": "no baseline"}
 
     metrics = exp.train_metrics or {}
     value = metrics.get(baseline.metric_name)
     # Metric-agnostic: a run is comparable when a real trainer integration recorded the
     # baseline's metric (run_training already diverts unstable runs to failed_training).
-    stable = (metrics.get("integration") is not None
-              and baseline.metric_name in metrics) if require_stable else True
+    stable = (
+        (metrics.get("integration") is not None and baseline.metric_name in metrics)
+        if require_stable
+        else True
+    )
 
     if value is None:
-        verdict = {"promote": False, "metric": baseline.metric_name,
-                   "reason": f"no '{baseline.metric_name}' in train_metrics — not comparable"}
-        ledger.transition(exp.id, REJECTED, eval_verdict=verdict,
-                          writeup=_writeup(exp, baseline, None, promoted=False,
-                                           reason=verdict["reason"]), ts=ts)
-        return {"experiment": exp.id, "state": REJECTED, "reason": "no comparable metric"}
+        verdict = {
+            "promote": False,
+            "metric": baseline.metric_name,
+            "reason": f"no '{baseline.metric_name}' in train_metrics — not comparable",
+        }
+        ledger.transition(
+            exp.id,
+            REJECTED,
+            eval_verdict=verdict,
+            writeup=_writeup(
+                exp, baseline, None, promoted=False, reason=verdict["reason"]
+            ),
+            ts=ts,
+        )
+        return {
+            "experiment": exp.id,
+            "state": REJECTED,
+            "reason": "no comparable metric",
+        }
 
     value = float(value)
     improved = baseline.improves(value)
     promote = improved and (stable if require_stable else True)
     verdict = {
-        "promote": promote, "improved": improved, "stable": bool(stable),
-        "metric": baseline.metric_name, "baseline_value": baseline.metric_value,
-        "new_value": value, "delta": round(value - baseline.metric_value, 6),
+        "promote": promote,
+        "improved": improved,
+        "stable": bool(stable),
+        "metric": baseline.metric_name,
+        "baseline_value": baseline.metric_value,
+        "new_value": value,
+        "delta": round(value - baseline.metric_value, 6),
         "higher_is_better": baseline.higher_is_better,
     }
 
@@ -95,8 +140,16 @@ def run_evaluation(ledger: Ledger, *, require_stable: bool = True,
         ledger.promote_baseline(exp.id, value, notes=exp.name, ts=ts)
         return {"experiment": exp.id, "state": SOTA, "verdict": verdict}
 
-    reason = ("did not beat baseline" if not improved
-              else "improved but unstable — held (rank-invariance)")
+    reason = (
+        "did not beat baseline"
+        if not improved
+        else "improved but unstable — held (rank-invariance)"
+    )
     writeup = _writeup(exp, baseline, value, promoted=False, reason=reason)
     ledger.transition(exp.id, REJECTED, eval_verdict=verdict, writeup=writeup, ts=ts)
-    return {"experiment": exp.id, "state": REJECTED, "verdict": verdict, "reason": reason}
+    return {
+        "experiment": exp.id,
+        "state": REJECTED,
+        "verdict": verdict,
+        "reason": reason,
+    }

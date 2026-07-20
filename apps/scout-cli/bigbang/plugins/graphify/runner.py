@@ -4,6 +4,7 @@ runner.py — resolve Personal Graphify (pgraphify) and run core ops.
 
 Prefers in-process `personal_graphify` import; falls back to `pgraphify` CLI on PATH.
 """
+
 from __future__ import annotations
 
 import json
@@ -12,7 +13,10 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 DISCLAIMER = (
     "Solo personal project, no connection to employer, built with public/free-tier only"
@@ -35,7 +39,7 @@ DOTTIE_ECOSYSTEM_ROOTS = (
 )
 
 
-def dottie_root() -> Optional[Path]:
+def dottie_root() -> Path | None:
     """Return the dottie monorepo root (DOTTIE_ROOT env, then ~/workspace/dottie), or None."""
     env = os.environ.get("DOTTIE_ROOT")
     if env:
@@ -66,7 +70,7 @@ def personal_graphify_home() -> Path:
     return (Path.home() / "personal-graphify").resolve()
 
 
-def resolve_graph_path(explicit: Optional[str] = None, cwd: Optional[Path] = None) -> Path:
+def resolve_graph_path(explicit: str | None = None, cwd: Path | None = None) -> Path:
     if explicit:
         return Path(explicit).expanduser().resolve()
     env = os.environ.get("SCOUT_GRAPHIFY_GRAPH") or os.environ.get("PGRAPHIFY_GRAPH")
@@ -82,7 +86,7 @@ def resolve_graph_path(explicit: Optional[str] = None, cwd: Optional[Path] = Non
     return local.resolve()
 
 
-def find_pgraphify_exe() -> Optional[str]:
+def find_pgraphify_exe() -> str | None:
     for name in ("pgraphify", "personal-graphify", "graphify-personal"):
         hit = shutil.which(name)
         if hit:
@@ -96,7 +100,7 @@ def find_pgraphify_exe() -> Optional[str]:
     return None
 
 
-def import_personal_graphify() -> Tuple[bool, Optional[Any]]:
+def import_personal_graphify() -> tuple[bool, Any | None]:
     try:
         import personal_graphify  # type: ignore
 
@@ -117,7 +121,7 @@ def import_personal_graphify() -> Tuple[bool, Optional[Any]]:
     return False, None
 
 
-def status_payload(cwd: Optional[Path] = None) -> Dict[str, Any]:
+def status_payload(cwd: Path | None = None) -> dict[str, Any]:
     imported, mod = import_personal_graphify()
     exe = find_pgraphify_exe()
     graph = resolve_graph_path(cwd=cwd)
@@ -145,19 +149,19 @@ def status_payload(cwd: Optional[Path] = None) -> Dict[str, Any]:
             "uv tool install -e ~/personal-graphify "
             "(dottie monorepo: uv tool install -e <dottie>/packages/personal-graphify)"
             if not (imported or exe)
-            else "scout graphify query \"how does Scout connect to Ava?\""
+            else 'scout graphify query "how does Scout connect to Ava?"'
         ),
         "disclaimer": DISCLAIMER,
     }
 
 
-def _run_cli(args: Sequence[str], cwd: Optional[Path] = None) -> Dict[str, Any]:
+def _run_cli(args: Sequence[str], cwd: Path | None = None) -> dict[str, Any]:
     exe = find_pgraphify_exe()
     if not exe:
         return {
             "ok": False,
             "error": "pgraphify not found. Install: uv tool install -e ~/personal-graphify "
-                     "(dottie monorepo: <dottie>/packages/personal-graphify)",
+            "(dottie monorepo: <dottie>/packages/personal-graphify)",
             "disclaimer": DISCLAIMER,
         }
     proc = subprocess.run(
@@ -180,14 +184,14 @@ def _run_cli(args: Sequence[str], cwd: Optional[Path] = None) -> Dict[str, Any]:
 
 def run_build(
     path: str = ".",
-    out: Optional[str] = None,
-    roots: Optional[List[str]] = None,
+    out: str | None = None,
+    roots: list[str] | None = None,
     max_files: int = 4000,
     ecosystem: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     root = Path(path).expanduser().resolve()
     out_dir = Path(out).expanduser().resolve() if out else root / "graphify-out"
-    root_args: List[str] = []
+    root_args: list[str] = []
     if ecosystem:
         home = Path.home()
         resolved = []
@@ -212,7 +216,15 @@ def run_build(
 
     # Prefer CLI (has --roots). Fall back to import build without multi-root.
     if find_pgraphify_exe():
-        args = ["build", str(root), "--out", str(out_dir), "--max-files", str(max_files), *root_args]
+        args = [
+            "build",
+            str(root),
+            "--out",
+            str(out_dir),
+            "--max-files",
+            str(max_files),
+            *root_args,
+        ]
         result = _run_cli(args, cwd=root)
         result["out"] = str(out_dir)
         result["graph"] = str(out_dir / "graph.json")
@@ -227,12 +239,18 @@ def run_build(
 
     imported, _ = import_personal_graphify()
     if not imported:
-        return status_payload(cwd=root) | {"ok": False, "error": "personal-graphify not installed"}
+        return status_payload(cwd=root) | {
+            "ok": False,
+            "error": "personal-graphify not installed",
+        }
 
-    from personal_graphify.cli import cmd_build  # type: ignore
     import argparse
 
-    ns = argparse.Namespace(path=str(root), out=str(out_dir), max_files=max_files, roots=[])
+    from personal_graphify.cli import cmd_build  # type: ignore
+
+    ns = argparse.Namespace(
+        path=str(root), out=str(out_dir), max_files=max_files, roots=[]
+    )
     cmd_build(ns)
     return {
         "ok": True,
@@ -246,9 +264,9 @@ def run_build(
 def run_text_command(
     command: str,
     args: Sequence[str],
-    graph: Optional[str] = None,
-    cwd: Optional[Path] = None,
-) -> Dict[str, Any]:
+    graph: str | None = None,
+    cwd: Path | None = None,
+) -> dict[str, Any]:
     gpath = resolve_graph_path(graph, cwd=cwd)
     if not gpath.exists() and command != "build":
         return {
@@ -267,7 +285,9 @@ def run_text_command(
     return result
 
 
-def sync_to_personal(src_graph: Optional[str] = None, cwd: Optional[Path] = None) -> Dict[str, Any]:
+def sync_to_personal(
+    src_graph: str | None = None, cwd: Path | None = None
+) -> dict[str, Any]:
     """Copy local scout graph.json into personal-graphify references/spaces/."""
     src = resolve_graph_path(src_graph, cwd=cwd)
     if not src.exists():
@@ -275,6 +295,7 @@ def sync_to_personal(src_graph: Optional[str] = None, cwd: Optional[Path] = None
     dest_dir = personal_graphify_home() / "references" / "spaces"
     dest = dest_dir / "scout-cli-graph.json"
     from bigbang.core.policy import enforce_or_raise, load_manifest
+
     manifest = load_manifest(Path(__file__).resolve().parent)
     enforce_or_raise(manifest, "fs_write", str(dest))
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -285,6 +306,6 @@ def sync_to_personal(src_graph: Optional[str] = None, cwd: Optional[Path] = None
         "dest": str(dest),
         "bytes": dest.stat().st_size,
         "next": "Rebuild personal ecosystem: scout graphify ecosystem "
-                "(multi-root over standalone ~ checkouts and/or the dottie monorepo)",
+        "(multi-root over standalone ~ checkouts and/or the dottie monorepo)",
         "disclaimer": DISCLAIMER,
     }

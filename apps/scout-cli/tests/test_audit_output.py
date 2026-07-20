@@ -1,4 +1,5 @@
 """Tests for the emit() -> audit.jsonl pipeline (findings #1/#2)."""
+
 import json
 
 import pytest
@@ -61,8 +62,9 @@ def test_emit_redacts_secret_bearing_keys(audit_file, capsys):
 
 def test_emit_redacts_secret_substrings_in_plain_keys(audit_file, capsys):
     output.set_json_mode(True)
-    output.emit({"cmd": "curl -H 'Authorization: Bearer sk-abc123456789'"},
-                command="tools call")
+    output.emit(
+        {"cmd": "curl -H 'Authorization: Bearer sk-abc123456789'"}, command="tools call"
+    )
     capsys.readouterr()
     raw = audit_file.read_text()
     assert "sk-abc123456789" not in raw
@@ -70,7 +72,9 @@ def test_emit_redacts_secret_substrings_in_plain_keys(audit_file, capsys):
 
 def test_audit_io_errors_tolerated_but_others_loud(tmp_path, monkeypatch, capsys):
     # OSError path: unwritable audit target must not crash emit()
-    monkeypatch.setattr(audit, "AUDIT_FILE", tmp_path / "no" / "such" / "dir" / "a.jsonl")
+    monkeypatch.setattr(
+        audit, "AUDIT_FILE", tmp_path / "no" / "such" / "dir" / "a.jsonl"
+    )
     output.set_json_mode(True)
     output.emit({"ok": True}, command="x")  # should not raise
     capsys.readouterr()

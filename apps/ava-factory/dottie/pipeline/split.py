@@ -35,7 +35,9 @@ def assign_split(doc_id: str, ratios: dict[str, float]) -> str:
     cumulative ratio in :data:`SPLIT_ORDER`. The last split in order is the
     catch-all so floating-point drift can never leave a doc unassigned.
     """
-    present = [(s, float(ratios[s])) for s in SPLIT_ORDER if s in ratios and ratios[s] > 0]
+    present = [
+        (s, float(ratios[s])) for s in SPLIT_ORDER if s in ratios and ratios[s] > 0
+    ]
     if not present:
         raise ValueError(f"no positive split ratios in {ratios!r}")
     total = sum(w for _, w in present)

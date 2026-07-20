@@ -2,9 +2,10 @@
 bb rtx — Alienware RTX 4080/4090 offload bridge for autoresearch-win-rtx custom
 Solo personal project, no connection to employer, built with public/free-tier only
 """
+
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -12,7 +13,11 @@ import typer
 
 from bigbang.core.output import emit
 
-app = typer.Typer(name="rtx", help="🚀 RTX — offload to Alienware RTX 4080/4090 local box", no_args_is_help=True)
+app = typer.Typer(
+    name="rtx",
+    help="🚀 RTX — offload to Alienware RTX 4080/4090 local box",
+    no_args_is_help=True,
+)
 
 GITHUB_REPO = "jcdavis131/scout-rtx"
 GITHUB_RELEASES_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases"
@@ -57,10 +62,19 @@ BB_OFFLOAD = CUSTOM_ROOT / "bb-offload"
 QUEUE_FILE = BB_OFFLOAD / "queue.json"
 RESULTS_FILE = BB_OFFLOAD / "results" / "results.jsonl"
 RESULTS_TSV = CUSTOM_ROOT / "results.tsv"
-MRR_FILE = Path.home() / "workspace" / "projects" / "first-1k-mo-passive" / "files" / "mrr.jsonl"
+MRR_FILE = (
+    Path.home()
+    / "workspace"
+    / "projects"
+    / "first-1k-mo-passive"
+    / "files"
+    / "mrr.jsonl"
+)
+
 
 def _ensure_dirs():
     (BB_OFFLOAD / "results").mkdir(parents=True, exist_ok=True)
+
 
 def _load_queue():
     if not QUEUE_FILE.exists():
@@ -70,9 +84,11 @@ def _load_queue():
     except Exception:
         return {"tasks": []}
 
+
 def _save_queue(q):
     _ensure_dirs()
     QUEUE_FILE.write_text(json.dumps(q, indent=2))
+
 
 def _load_results_jsonl(n=50):
     if not RESULTS_FILE.exists():
@@ -85,6 +101,7 @@ def _load_results_jsonl(n=50):
         except Exception:
             continue
     return out
+
 
 @app.command("status")
 def status():
@@ -123,22 +140,32 @@ def status():
         "queue_file": str(QUEUE_FILE),
         "results_file": str(RESULTS_FILE),
         "results_tsv": str(RESULTS_TSV),
-        "queue_pending": len([t for t in queue.get("tasks", []) if t.get("status") == "pending"]),
+        "queue_pending": len(
+            [t for t in queue.get("tasks", []) if t.get("status") == "pending"]
+        ),
         "queue_total": len(queue.get("tasks", [])),
         "results_count": len(results),
         "best": hw_profile,
         "gpu_hint": "RTX 4080 16GB ada-16gb batch 32 or RTX 4090 24GB ada-24gb-plus batch 64, BF16 TF32 SDPA, torch 2.9.1 cu128, 5-min budget",
         "offload_guide": str(CUSTOM_ROOT / "docs" / "OFFLOAD_GUIDE.md"),
-        "programs": [str(p) for p in (CUSTOM_ROOT / "programs").glob("*.md")] if (CUSTOM_ROOT / "programs").exists() else [],
+        "programs": [str(p) for p in (CUSTOM_ROOT / "programs").glob("*.md")]
+        if (CUSTOM_ROOT / "programs").exists()
+        else [],
         "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
     }
     emit(payload)
+
 
 @app.command("queue")
 def queue_cmd(
     action: str = typer.Argument("list", help="add|list|clear"),
     task: str = typer.Option("", "--task", "-t", help="task description for add"),
-    program: str = typer.Option("program-base.md", "--program", "-p", help="program file e.g. programs/program-ava.md"),
+    program: str = typer.Option(
+        "program-base.md",
+        "--program",
+        "-p",
+        help="program file e.g. programs/program-ava.md",
+    ),
 ):
     """Manage offload queue — queue tasks to Alienware RTX box"""
     _ensure_dirs()
@@ -149,15 +176,21 @@ def queue_cmd(
             emit({"error": "need --task text"}, command="bb rtx queue add")
             raise typer.Exit(1)
         entry = {
-            "id": datetime.now(timezone.utc).isoformat(),
+            "id": datetime.now(UTC).isoformat(),
             "task": task,
             "program": program,
             "status": "pending",
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
         }
         q["tasks"].append(entry)
         _save_queue(q)
-        emit({"added": entry, "queue_file": str(QUEUE_FILE), "next_steps": f"Copy queue to Alienware or run sync script, then run program {program}"})
+        emit(
+            {
+                "added": entry,
+                "queue_file": str(QUEUE_FILE),
+                "next_steps": f"Copy queue to Alienware or run sync script, then run program {program}",
+            }
+        )
     elif action == "list":
         emit({"tasks": q.get("tasks", []), "file": str(QUEUE_FILE)})
     elif action == "clear":
@@ -165,7 +198,8 @@ def queue_cmd(
         _save_queue(q)
         emit({"cleared": True, "file": str(QUEUE_FILE)})
     else:
-        emit({"error": f"unknown action {action}", "valid": ["add","list","clear"]})
+        emit({"error": f"unknown action {action}", "valid": ["add", "list", "clear"]})
+
 
 @app.command("results")
 def results(
@@ -180,17 +214,37 @@ def results(
             lines = RESULTS_TSV.read_text().strip().splitlines()
             # header + last n data rows (docstring promises last N)
             tsv = lines[:1] + lines[1:][-n:] if lines else []
-            emit({"source": "results.tsv", "lines": tsv, "count": max(len(tsv) - 1, 0), "file": str(RESULTS_TSV)})
+            emit(
+                {
+                    "source": "results.tsv",
+                    "lines": tsv,
+                    "count": max(len(tsv) - 1, 0),
+                    "file": str(RESULTS_TSV),
+                }
+            )
             return
-        emit({"results": [], "message": "No results yet — run in Alienware: .\\scripts\\run-autonomous.ps1"})
+        emit(
+            {
+                "results": [],
+                "message": "No results yet — run in Alienware: .\\scripts\\run-autonomous.ps1",
+            }
+        )
         return
 
     if best:
-        sorted_data = sorted([d for d in data if isinstance(d.get("val_bpb"), (int,float)) and d["val_bpb"]>0], key=lambda x: x["val_bpb"])
+        sorted_data = sorted(
+            [
+                d
+                for d in data
+                if isinstance(d.get("val_bpb"), (int, float)) and d["val_bpb"] > 0
+            ],
+            key=lambda x: x["val_bpb"],
+        )
         top = sorted_data[:5] if sorted_data else []
         emit({"best": top, "total": len(data), "file": str(RESULTS_FILE)})
     else:
         emit({"results": data[-n:], "total": len(data), "file": str(RESULTS_FILE)})
+
 
 @app.command("programs")
 def programs():
@@ -206,7 +260,14 @@ def programs():
             out.append({"file": p.name, "path": str(p), "preview": head[:200]})
         except Exception:
             out.append({"file": p.name, "path": str(p)})
-    emit({"programs": out, "root": str(CUSTOM_ROOT), "hint": "Use: .\\scripts\\run-autonomous.ps1 -Program programs\\program-ava.md -Tag ava-jul15"})
+    emit(
+        {
+            "programs": out,
+            "root": str(CUSTOM_ROOT),
+            "hint": "Use: .\\scripts\\run-autonomous.ps1 -Program programs\\program-ava.md -Tag ava-jul15",
+        }
+    )
+
 
 @app.command("sync")
 def sync_cmd():
@@ -218,7 +279,7 @@ def sync_cmd():
         return
 
     # Find best
-    valid = [r for r in results if r.get("val_bpb") and r["val_bpb"]>0]
+    valid = [r for r in results if r.get("val_bpb") and r["val_bpb"] > 0]
     if not valid:
         emit({"synced": False, "reason": "no valid val_bpb"})
         return
@@ -227,7 +288,7 @@ def sync_cmd():
     # Append a record to the MRR log so the sync is real, not a stub
     note = f"RTX overnight best val_bpb {best['val_bpb']} from {best.get('program')} commit {best.get('commit')}"
     mrr_record = {
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "ts": datetime.now(UTC).isoformat(),
         "best": best["val_bpb"],
         "program": best.get("program"),
         "note": note,
@@ -249,17 +310,22 @@ def sync_cmd():
         "mrr_error": mrr_error,
         "best": best,
         "results_count": len(results),
-        "suggestion": f"Best val_bpb {best['val_bpb']} from {best.get('program')} commit {best.get('commit')} → promote to {'Ava v6.4' if 'ava' in str(best.get('program','')) else 'Turnover Shield' if 'turnover' in str(best.get('program','')) else 'write plugin'}",
+        "suggestion": f"Best val_bpb {best['val_bpb']} from {best.get('program')} commit {best.get('commit')} → promote to {'Ava v6.4' if 'ava' in str(best.get('program', '')) else 'Turnover Shield' if 'turnover' in str(best.get('program', '')) else 'write plugin'}",
         "next": [
-            f"Review CUSTOM_ROOT/docs/OFFLOAD_GUIDE.md",
-            f"Promote win: copy train.py diff to appropriate repo",
-            f"bb brain daily \"RTX results: best val_bpb {best['val_bpb']} from {best.get('program')}\"",
-            f"bb lab mrr --trials 1 --note \"RTX overnight best {best['val_bpb']}\"",
+            "Review CUSTOM_ROOT/docs/OFFLOAD_GUIDE.md",
+            "Promote win: copy train.py diff to appropriate repo",
+            f'bb brain daily "RTX results: best val_bpb {best["val_bpb"]} from {best.get("program")}"',
+            f'bb lab mrr --trials 1 --note "RTX overnight best {best["val_bpb"]}"',
         ],
     }
     emit(payload)
 
-releases_app = typer.Typer(name="releases", help="GitHub releases for scout-rtx — list + sync", no_args_is_help=True)
+
+releases_app = typer.Typer(
+    name="releases",
+    help="GitHub releases for scout-rtx — list + sync",
+    no_args_is_help=True,
+)
 app.add_typer(releases_app, name="releases")
 
 
@@ -268,7 +334,10 @@ def _fetch_releases(tag=None):
     url = f"{GITHUB_RELEASES_URL}/tags/{tag}" if tag else GITHUB_RELEASES_URL
     resp = httpx.get(
         url,
-        headers={"Accept": "application/vnd.github+json", "User-Agent": "scout-rtx-cli"},
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "scout-rtx-cli",
+        },
         timeout=15.0,
         follow_redirects=True,
     )
@@ -283,7 +352,11 @@ def _release_summary(rel):
         "published_at": rel.get("published_at"),
         "url": rel.get("html_url"),
         "assets": [
-            {"name": a.get("name"), "size": a.get("size"), "download_url": a.get("browser_download_url")}
+            {
+                "name": a.get("name"),
+                "size": a.get("size"),
+                "download_url": a.get("browser_download_url"),
+            }
             for a in rel.get("assets", [])
         ],
     }
@@ -295,14 +368,24 @@ def releases_list(n: int = typer.Option(10, "--n", help="max releases to show"))
     try:
         data = _fetch_releases()
     except (httpx.HTTPError, OSError) as exc:
-        emit({"error": f"could not reach api.github.com: {exc}", "offline": True, "repo": GITHUB_REPO})
+        emit(
+            {
+                "error": f"could not reach api.github.com: {exc}",
+                "offline": True,
+                "repo": GITHUB_REPO,
+            }
+        )
         raise typer.Exit(1)
     releases = [_release_summary(r) for r in data[:n]]
     emit({"releases": releases, "count": len(releases), "repo": GITHUB_REPO})
 
 
 @releases_app.command("sync")
-def releases_sync(tag: str = typer.Option(..., "--tag", help="release tag to sync, e.g. v0.6.0-ava-0716")):
+def releases_sync(
+    tag: str = typer.Option(
+        ..., "--tag", help="release tag to sync, e.g. v0.6.0-ava-0716"
+    ),
+):
     """Sync one release's metadata into bb-offload results for dashboard/Hatch pull"""
     try:
         rel = _fetch_releases(tag=tag)
@@ -313,10 +396,16 @@ def releases_sync(tag: str = typer.Option(..., "--tag", help="release tag to syn
             emit({"error": f"GitHub API error: {exc}", "tag": tag})
         raise typer.Exit(1)
     except (httpx.HTTPError, OSError) as exc:
-        emit({"error": f"could not reach api.github.com: {exc}", "offline": True, "tag": tag})
+        emit(
+            {
+                "error": f"could not reach api.github.com: {exc}",
+                "offline": True,
+                "tag": tag,
+            }
+        )
         raise typer.Exit(1)
     summary = _release_summary(rel)
-    record = {"ts": datetime.now(timezone.utc).isoformat(), "synced_release": summary}
+    record = {"ts": datetime.now(UTC).isoformat(), "synced_release": summary}
     sync_log = BB_OFFLOAD / "results" / "releases-sync.jsonl"
     _ensure_dirs()
     with sync_log.open("a", encoding="utf-8") as fh:
@@ -332,7 +421,9 @@ def dashboard():
         "custom_root": str(CUSTOM_ROOT),
         "offload_guide": str(CUSTOM_ROOT / "docs" / "OFFLOAD_GUIDE.md"),
         "hardware_profile": str(CUSTOM_ROOT / "docs" / "HARDWARE_PROFILE.md"),
-        "programs": [str(p) for p in (CUSTOM_ROOT / "programs").glob("*.md")] if (CUSTOM_ROOT / "programs").exists() else [],
+        "programs": [str(p) for p in (CUSTOM_ROOT / "programs").glob("*.md")]
+        if (CUSTOM_ROOT / "programs").exists()
+        else [],
         "queue_file": str(QUEUE_FILE),
         "results_file": str(RESULTS_FILE),
         "results_tsv": str(RESULTS_TSV),
@@ -347,6 +438,7 @@ def dashboard():
         "disclaimer": "Solo personal project, no connection to employer",
     }
     emit(payload)
+
 
 def register(root):
     root.add_typer(app, name="rtx")

@@ -1,8 +1,12 @@
-import typer
 from pathlib import Path
+
+import typer
+
 from bigbang.core.output import emit
 
-app = typer.Typer(name="vector", help="Vector Hoops/Pitch/Gridiron MTNN control", no_args_is_help=True)
+app = typer.Typer(
+    name="vector", help="Vector Hoops/Pitch/Gridiron MTNN control", no_args_is_help=True
+)
 
 WORKSPACE = Path.home() / "workspace"
 SITES = {
@@ -43,27 +47,52 @@ def list_sites():
 
 
 @app.command("hoops")
-def hoops(daily: bool = typer.Option(False), mode: str = typer.Option("guess"), leakfree: bool = typer.Option(True)):
+def hoops(
+    daily: bool = typer.Option(False),
+    mode: str = typer.Option("guess"),
+    leakfree: bool = typer.Option(True),
+):
     repo = WORKSPACE / "vector-hoops"
     if not repo.exists():
-        emit({"status": "bookmark — repo not present", "repo": str(repo),
-              "would_run": "pipeline/rebuild_all.py --quick --leakfree" if daily else "pipeline/rebuild_all.py --full"},
-             command="vector hoops")
+        emit(
+            {
+                "status": "bookmark — repo not present",
+                "repo": str(repo),
+                "would_run": "pipeline/rebuild_all.py --quick --leakfree"
+                if daily
+                else "pipeline/rebuild_all.py --full",
+            },
+            command="vector hoops",
+        )
         return
-    emit({"action": "rebuild hoops", "repo": str(repo), "daily": daily, "mode": mode,
-          "leakfree": leakfree,
-          "cmd": "pipeline/rebuild_all.py --quick --leakfree" if daily else "pipeline/rebuild_all.py --full"},
-         command="vector hoops")
+    emit(
+        {
+            "action": "rebuild hoops",
+            "repo": str(repo),
+            "daily": daily,
+            "mode": mode,
+            "leakfree": leakfree,
+            "cmd": "pipeline/rebuild_all.py --quick --leakfree"
+            if daily
+            else "pipeline/rebuild_all.py --full",
+        },
+        command="vector hoops",
+    )
 
 
 @app.command("verify")
 def verify():
     present = [n for n in SITES if (WORKSPACE / f"vector-{n}").exists()]
     missing = [n for n in SITES if n not in present]
-    emit({"action": "verify_accuracy.py", "repos_present": present,
-          "repos_missing": missing,
-          "note": "runs only against locally cloned vector-* repos — no invented metrics"},
-         command="vector verify")
+    emit(
+        {
+            "action": "verify_accuracy.py",
+            "repos_present": present,
+            "repos_missing": missing,
+            "note": "runs only against locally cloned vector-* repos — no invented metrics",
+        },
+        command="vector verify",
+    )
 
 
 def register(root):

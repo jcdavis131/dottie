@@ -8,6 +8,7 @@ Covers the spec's five accept criteria:
   (d) same (seed, tools, program) replays byte-identical Observations
   (e) no fabricated Observations — every field comes from real execution
 """
+
 import os
 import sys
 import time
@@ -16,7 +17,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from ava.rl.codeact_sandbox import Observation, Sandbox  # noqa: E402
+from ava.rl.codeact_sandbox import Sandbox
 
 POSIX = os.name == "posix"
 
@@ -26,7 +27,7 @@ class TestNamespacePersistence:
         with Sandbox() as vm:
             assert vm.step("x = 40").ok
             assert vm.step("y = 2").ok
-            obs = vm.step("x + y")            # last expression → value captured
+            obs = vm.step("x + y")  # last expression → value captured
             assert obs.ok and obs.value == "42"
 
     def test_stdout_captured(self):
@@ -39,7 +40,9 @@ class TestNamespacePersistence:
             obs = vm.step("1/0")
             assert not obs.ok and "ZeroDivisionError" in obs.error
             assert vm.alive
-            assert vm.step("7 * 6").value == "42"   # namespace intact after a caught error
+            assert (
+                vm.step("7 * 6").value == "42"
+            )  # namespace intact after a caught error
 
 
 class TestTools:
@@ -71,9 +74,9 @@ class TestIsolation:
             obs = vm.step("while True:\n    pass")
             elapsed = time.monotonic() - t0
             assert not obs.ok and "timed out" in obs.error
-            assert elapsed < 5.0            # actually killed, did not hang
+            assert elapsed < 5.0  # actually killed, did not hang
             assert not vm.alive
-            follow = vm.step("1 + 1")       # episode continues with an error obs, no hang
+            follow = vm.step("1 + 1")  # episode continues with an error obs, no hang
             assert not follow.ok and "not alive" in follow.error
         finally:
             vm.close()
@@ -91,17 +94,21 @@ class TestIsolation:
     def test_socket_open_blocked_and_reported(self):
         with Sandbox() as vm:
             obs = vm.step("import socket\nsocket.socket()")
-            assert not obs.ok and ("blocked" in obs.error or "PermissionError" in obs.error)
+            assert not obs.ok and (
+                "blocked" in obs.error or "PermissionError" in obs.error
+            )
 
     def test_write_outside_scratch_blocked(self):
         with Sandbox() as vm:
             obs = vm.step("open('/tmp/codeact_escape_probe.txt', 'w').write('x')")
-            assert not obs.ok and ("blocked" in obs.error or "PermissionError" in obs.error)
+            assert not obs.ok and (
+                "blocked" in obs.error or "PermissionError" in obs.error
+            )
             assert not os.path.exists("/tmp/codeact_escape_probe.txt")
 
     def test_write_inside_scratch_allowed(self):
         with Sandbox() as vm:
-            obs = vm.step("open('note.txt', 'w').write('ok')")   # cwd is the scratch dir
+            obs = vm.step("open('note.txt', 'w').write('ok')")  # cwd is the scratch dir
             assert obs.ok
             assert (Path(vm.scratch_dir) / "note.txt").read_text() == "ok"
 
@@ -116,8 +123,9 @@ class TestIsolation:
         with Sandbox() as vm:
             for name, code in probes.items():
                 obs = vm.step(code)
-                assert not obs.ok and ("blocked" in obs.error or "PermissionError" in obs.error), \
-                    f"{name} path not blocked: {obs.error}"
+                assert not obs.ok and (
+                    "blocked" in obs.error or "PermissionError" in obs.error
+                ), f"{name} path not blocked: {obs.error}"
         for suffix in ("b", "io", "os", "pl"):
             assert not os.path.exists(f"/tmp/codeact_escape_{suffix}.txt")
 
@@ -126,13 +134,16 @@ class TestIsolation:
         # hang the wall cap: fd 1 is repointed at /dev/null, so the VM stays usable.
         with Sandbox(timeout_s=2.0) as vm:
             obs = vm.step("import os\nos.write(1, b'x' * 200000)\n123")
-            assert obs.ok and obs.value == "123"   # protocol intact, value still returned
+            assert (
+                obs.ok and obs.value == "123"
+            )  # protocol intact, value still returned
             assert vm.step("7 * 6").value == "42"
 
     def test_wall_cap_enforced_on_slow_line(self):
         # Regression for the select()+readline() bug: a busy-loop after a big fd-1 write must still
         # be killed at the wall cap (previously readline() could block unbounded).
         import time as _t
+
         with Sandbox(timeout_s=1.0) as vm:
             t0 = _t.monotonic()
             obs = vm.step("import os\nos.write(1, b'y'*100000)\nwhile True:\n    pass")
@@ -144,13 +155,17 @@ class TestDeterminism:
     def _run(self):
         with Sandbox(seed=7) as vm:
             obs = []
-            obs.append(vm.step("import random\nrandom.seed(get_clock())\n[random.random() for _ in range(3)]"))
+            obs.append(
+                vm.step(
+                    "import random\nrandom.seed(get_clock())\n[random.random() for _ in range(3)]"
+                )
+            )
             obs.append(vm.step("sorted({'b','a','c','z','m'})"))
             obs.append(vm.step("d = {i: i*i for i in range(5)}\nrepr(d)"))
             return [(o.value, o.stdout, o.error) for o in obs]
 
     def test_byte_identical_replay(self):
-        assert self._run() == self._run()   # same seed+program → identical observations
+        assert self._run() == self._run()  # same seed+program → identical observations
 
 
 class TestStepCap:

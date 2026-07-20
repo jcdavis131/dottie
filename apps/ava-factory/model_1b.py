@@ -35,14 +35,13 @@ long-context scaling); use_peri_ln adds QK-L2-norm's counterpart output-LN
 after attention and after the FFN; n_sinks>0 adds that many learnable,
 always-attended KV pairs (Xiao et al. 2023) alongside the causal mask.
 """
+
 import math
-from typing import Optional, Dict, List, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.checkpoint import checkpoint as _ckpt
-
 
 #: F.rms_norm was added in torch 2.4 (pinned in docker/requirements.gpu.txt for the
 #: real training/serving image). Older torch (e.g. a local dev host running whatever
@@ -122,7 +121,7 @@ class YaRNScaledRoPE(nn.Module):
         dev = device or self.inv_freq.device
         t = torch.arange(seq_len, device=dev, dtype=self.inv_freq.dtype)
         freqs = torch.einsum("i,j->ij", t, self.inv_freq.to(dev))
-        emb = torch.cat((freqs, freqs), dim=-1)          # half-split layout
+        emb = torch.cat((freqs, freqs), dim=-1)  # half-split layout
         cos = emb.cos() * self.mscale
         sin = emb.sin() * self.mscale
         if dtype is not None:
@@ -131,8 +130,12 @@ class YaRNScaledRoPE(nn.Module):
 
 
 def longrope2_factors(
-    dim: int, base: int, scale: float, critical_dim_shift: int = 6, sharpness: float = 12.0,
-) -> Tuple[torch.Tensor, torch.Tensor, float, float]:
+    dim: int,
+    base: int,
+    scale: float,
+    critical_dim_shift: int = 6,
+    sharpness: float = 12.0,
+) -> tuple[torch.Tensor, torch.Tensor, float, float]:
     """LongRoPE2 non-uniform per-dim RoPE factors + resonance mitigation.
 
     dim: head_dim (e.g. 64 -> 32 pairs, 128 -> 64 pairs).
@@ -151,7 +154,7 @@ def longrope2_factors(
     n_pairs = dim // 2
     j = torch.arange(n_pairs).float()
     exponent = (2 * j) / dim
-    inv_base = 1.0 / (base ** exponent)
+    inv_base = 1.0 / (base**exponent)
 
     if scale <= 1.0:
         lam = torch.ones(n_pairs)
@@ -163,13 +166,15 @@ def longrope2_factors(
     log_ratio = math.log(scale) / math.log(100.0)
     log_ratio = min(1.0, max(0.0, log_ratio))
     critical = critical_start - (critical_start - critical_end) * log_ratio
-    critical_t = critical / 32.0  # ratio reference for 32 pairs; same proportion for other dims
+    critical_t = (
+        critical / 32.0
+    )  # ratio reference for 32 pairs; same proportion for other dims
 
     t = j / float(n_pairs)  # 0..~1
     # sigmoid sharpness k=12 gives a LongRoPE2-like steep-but-not-step ramp;
     # power 0.65 mimics evolutionary search pushing mid dims earlier than linear.
     sig = 1.0 / (1.0 + torch.exp(-sharpness * (t - critical_t)))
-    lam = 1.0 + (scale - 1.0) * (sig ** 0.65)
+    lam = 1.0 + (scale - 1.0) * (sig**0.65)
 
     # Resonance mitigation: dimensions whose wavelength ~ seq_len cause attention
     # spikes. A small sinusoidal jitter (phase tied to log(scale)) avoids landing
@@ -205,7 +210,9 @@ class LongRoPE2ScaledRoPE(nn.Module):
         self.scale = 1.0
         self.attn_factor = 1.0
         self.mscale = 1.0
-        inv_freq, lam, crit, crit_t = longrope2_factors(dim, base, 1.0, critical_dim_shift)
+        inv_freq, lam, crit, crit_t = longrope2_factors(
+            dim, base, 1.0, critical_dim_shift
+        )
         self.register_buffer("inv_freq", inv_freq, persistent=False)
         self.register_buffer("lambda_factors", lam, persistent=False)
         self.critical = crit
@@ -214,7 +221,9 @@ class LongRoPE2ScaledRoPE(nn.Module):
     def update(self, base: int, scale: float):
         self.base = base
         self.scale = scale
-        inv_freq, lam, crit, crit_t = longrope2_factors(self.dim, base, scale, self.critical_dim_shift)
+        inv_freq, lam, crit, crit_t = longrope2_factors(
+            self.dim, base, scale, self.critical_dim_shift
+        )
         self.inv_freq = inv_freq.to(self.inv_freq.device)
         self.lambda_factors = lam.to(self.lambda_factors.device)
         self.critical = crit
@@ -232,7 +241,7 @@ class LongRoPE2ScaledRoPE(nn.Module):
         dev = device or self.inv_freq.device
         t = torch.arange(seq_len, device=dev, dtype=self.inv_freq.dtype)
         freqs = torch.einsum("i,j->ij", t, self.inv_freq.to(dev))
-        emb = torch.cat((freqs, freqs), dim=-1)          # half-split layout
+        emb = torch.cat((freqs, freqs), dim=-1)  # half-split layout
         cos = emb.cos() * self.mscale
         sin = emb.sin() * self.mscale
         if dtype is not None:
@@ -266,7 +275,9 @@ def apply_rotary_emb(q, k, cos, sin):
     sin_q = sin[: q.shape[-2]].unsqueeze(0).unsqueeze(0).to(q.dtype)
     cos_k = cos[: k.shape[-2]].unsqueeze(0).unsqueeze(0).to(k.dtype)
     sin_k = sin[: k.shape[-2]].unsqueeze(0).unsqueeze(0).to(k.dtype)
-    return (q * cos_q) + (rotate_half(q) * sin_q), (k * cos_k) + (rotate_half(k) * sin_k)
+    return (q * cos_q) + (rotate_half(q) * sin_q), (k * cos_k) + (
+        rotate_half(k) * sin_k
+    )
 
 
 class SwiGLU(nn.Module):
@@ -285,10 +296,20 @@ class SwiGLU(nn.Module):
 
 
 class TransformerBlock1B(nn.Module):
-    def __init__(self, d_model=2048, n_heads=16, head_dim=128, use_qk_norm=True,
-                 n_kv_heads: Optional[int] = None, mlp: str = "gelu",
-                 mlp_mult: int = 4, mlp_ratio: Optional[float] = None,
-                 rope_type: str = "yarn", n_sinks: int = 0, use_peri_ln: bool = False):
+    def __init__(
+        self,
+        d_model=2048,
+        n_heads=16,
+        head_dim=128,
+        use_qk_norm=True,
+        n_kv_heads: int | None = None,
+        mlp: str = "gelu",
+        mlp_mult: int = 4,
+        mlp_ratio: float | None = None,
+        rope_type: str = "yarn",
+        n_sinks: int = 0,
+        use_peri_ln: bool = False,
+    ):
         super().__init__()
         self.d_model = d_model
         self.n_heads = n_heads
@@ -332,8 +353,12 @@ class TransformerBlock1B(nn.Module):
         # the same way regular K/V do: concatenate at the KV-head count, then
         # repeat_interleave up to n_heads.
         if n_sinks > 0:
-            self.sink_k = nn.Parameter(torch.randn(self.n_kv_heads, n_sinks, head_dim) * 0.02)
-            self.sink_v = nn.Parameter(torch.randn(self.n_kv_heads, n_sinks, head_dim) * 0.02)
+            self.sink_k = nn.Parameter(
+                torch.randn(self.n_kv_heads, n_sinks, head_dim) * 0.02
+            )
+            self.sink_v = nn.Parameter(
+                torch.randn(self.n_kv_heads, n_sinks, head_dim) * 0.02
+            )
         else:
             self.sink_k = None
             self.sink_v = None
@@ -373,11 +398,13 @@ class TransformerBlock1B(nn.Module):
             # sinks, causal otherwise" -- build that mask explicitly instead.
             # True = attend. Recomputed every call (cheap: L x (n_sinks+L)
             # bools) rather than cached, since L varies across curriculum phases.
-            q_idx = torch.arange(L, device=x.device).unsqueeze(1)       # [L, 1]
-            k_idx = torch.arange(L, device=x.device).unsqueeze(0)       # [1, L]
-            causal = k_idx <= q_idx                                     # [L, L]
-            sinks_always = torch.ones(L, self.n_sinks, device=x.device, dtype=torch.bool)
-            mask = torch.cat([sinks_always, causal], dim=1)             # [L, n_sinks+L]
+            q_idx = torch.arange(L, device=x.device).unsqueeze(1)  # [L, 1]
+            k_idx = torch.arange(L, device=x.device).unsqueeze(0)  # [1, L]
+            causal = k_idx <= q_idx  # [L, L]
+            sinks_always = torch.ones(
+                L, self.n_sinks, device=x.device, dtype=torch.bool
+            )
+            mask = torch.cat([sinks_always, causal], dim=1)  # [L, n_sinks+L]
             out = F.scaled_dot_product_attention(q * attn_factor, k, v, attn_mask=mask)
         else:
             out = F.scaled_dot_product_attention(q * attn_factor, k, v, is_causal=True)
@@ -412,8 +439,15 @@ class DeltaNetBlock(nn.Module):
     a hypothetical fully-parallel version.
     """
 
-    def __init__(self, d_model=2048, n_heads=16, head_dim=128, mlp: str = "gelu",
-                 mlp_mult: int = 4, mlp_ratio: Optional[float] = None):
+    def __init__(
+        self,
+        d_model=2048,
+        n_heads=16,
+        head_dim=128,
+        mlp: str = "gelu",
+        mlp_mult: int = 4,
+        mlp_ratio: float | None = None,
+    ):
         super().__init__()
         self.d_model = d_model
         self.n_heads = n_heads
@@ -457,12 +491,16 @@ class DeltaNetBlock(nn.Module):
         S = x.new_zeros(B, self.n_heads, self.head_dim, self.head_dim)
         outs = []
         for t in range(L):
-            k_t, v_t, q_t = k[:, t], v[:, t], q[:, t]           # [B, H, Dh]
-            beta_t = beta[:, t].unsqueeze(-1)                    # [B, H, 1]
-            pred = torch.einsum("bhij,bhj->bhi", S, k_t)         # what S already predicts at k_t
+            k_t, v_t, q_t = k[:, t], v[:, t], q[:, t]  # [B, H, Dh]
+            beta_t = beta[:, t].unsqueeze(-1)  # [B, H, 1]
+            pred = torch.einsum(
+                "bhij,bhj->bhi", S, k_t
+            )  # what S already predicts at k_t
             delta = beta_t * (v_t - pred)
-            S = S + torch.einsum("bhi,bhj->bhij", delta, k_t)    # write (erase old + insert new)
-            outs.append(torch.einsum("bhij,bhj->bhi", S, q_t))   # read with the query
+            S = S + torch.einsum(
+                "bhi,bhj->bhij", delta, k_t
+            )  # write (erase old + insert new)
+            outs.append(torch.einsum("bhij,bhj->bhi", S, q_t))  # read with the query
 
         out = torch.stack(outs, dim=1).reshape(B, L, -1)
         x = x + self.o_proj(out)
@@ -503,14 +541,37 @@ class DottieModel1B(nn.Module):
     + Text encoder for RoPE long context
     """
 
-    def __init__(self, vocab_size=128000, d_model=2048, n_text=12, n_fusion=28, n_reason=8,
-                 multi_jspace_enabled=True, n_heads=16, head_dim=128, use_qk_norm=True,
-                 n_kv_heads=None, mlp="gelu", mlp_mult=4, mlp_ratio=None,
-                 tie_lm_head=False, tie_verbalizer=False, multimodal=True,
-                 use_memory=False, jspace_slots=None, jspace_half_life=None,
-                 jspace_num_heads=4, rope_base=10000, gradient_checkpointing=False,
-                 jspace_causal=True, jspace_chunk_size=128, deltanet_layers=None,
-                 rope_type: str = "yarn", n_sinks: int = 0, use_peri_ln: bool = False):
+    def __init__(
+        self,
+        vocab_size=128000,
+        d_model=2048,
+        n_text=12,
+        n_fusion=28,
+        n_reason=8,
+        multi_jspace_enabled=True,
+        n_heads=16,
+        head_dim=128,
+        use_qk_norm=True,
+        n_kv_heads=None,
+        mlp="gelu",
+        mlp_mult=4,
+        mlp_ratio=None,
+        tie_lm_head=False,
+        tie_verbalizer=False,
+        multimodal=True,
+        use_memory=False,
+        jspace_slots=None,
+        jspace_half_life=None,
+        jspace_num_heads=4,
+        rope_base=10000,
+        gradient_checkpointing=False,
+        jspace_causal=True,
+        jspace_chunk_size=128,
+        deltanet_layers=None,
+        rope_type: str = "yarn",
+        n_sinks: int = 0,
+        use_peri_ln: bool = False,
+    ):
         super().__init__()
         self.d_model = d_model
         self.vocab_size = vocab_size
@@ -527,10 +588,19 @@ class DottieModel1B(nn.Module):
         self.embed = nn.Embedding(vocab_size, d_model)
 
         def _block():
-            return TransformerBlock1B(d_model, n_heads=n_heads, head_dim=head_dim,
-                                      use_qk_norm=use_qk_norm, n_kv_heads=n_kv_heads,
-                                      mlp=mlp, mlp_mult=mlp_mult, mlp_ratio=mlp_ratio,
-                                      rope_type=rope_type, n_sinks=n_sinks, use_peri_ln=use_peri_ln)
+            return TransformerBlock1B(
+                d_model,
+                n_heads=n_heads,
+                head_dim=head_dim,
+                use_qk_norm=use_qk_norm,
+                n_kv_heads=n_kv_heads,
+                mlp=mlp,
+                mlp_mult=mlp_mult,
+                mlp_ratio=mlp_ratio,
+                rope_type=rope_type,
+                n_sinks=n_sinks,
+                use_peri_ln=use_peri_ln,
+            )
 
         # T11.2: fusion-layer indices that run DeltaNetBlock instead of full
         # attention. Default None/empty = every layer is TransformerBlock1B,
@@ -539,8 +609,14 @@ class DottieModel1B(nn.Module):
 
         def _fusion_block(i):
             if i in self._deltanet_layers:
-                return DeltaNetBlock(d_model, n_heads=n_heads, head_dim=head_dim,
-                                     mlp=mlp, mlp_mult=mlp_mult, mlp_ratio=mlp_ratio)
+                return DeltaNetBlock(
+                    d_model,
+                    n_heads=n_heads,
+                    head_dim=head_dim,
+                    mlp=mlp,
+                    mlp_mult=mlp_mult,
+                    mlp_ratio=mlp_ratio,
+                )
             return _block()
 
         self.text_layers = nn.ModuleList([_block() for _ in range(n_text)])
@@ -563,17 +639,25 @@ class DottieModel1B(nn.Module):
         if multi_jspace_enabled:
             try:
                 from multi_jspace_module import MultiJSpace
+
                 self.multi_jspace = MultiJSpace(
-                    d_model=d_model, vocab_size=vocab_size, slots=jspace_slots,
-                    half_life=jspace_half_life, num_heads=jspace_num_heads,
-                    shared_verbalizer_weight=self.lm_head.weight if tie_verbalizer else None,
-                    causal=jspace_causal, chunk_size=jspace_chunk_size,
+                    d_model=d_model,
+                    vocab_size=vocab_size,
+                    slots=jspace_slots,
+                    half_life=jspace_half_life,
+                    num_heads=jspace_num_heads,
+                    shared_verbalizer_weight=self.lm_head.weight
+                    if tie_verbalizer
+                    else None,
+                    causal=jspace_causal,
+                    chunk_size=jspace_chunk_size,
                 )
             except ImportError:
                 self.multi_jspace = None
         else:
             try:
                 from j_space_module import JSpaceModule
+
                 self.jspace = JSpaceModule(d_model=d_model, vocab_size=vocab_size)
             except ImportError:
                 self.jspace = None
@@ -620,7 +704,11 @@ class DottieModel1B(nn.Module):
                 nn.init.ones_(mod.weight)
 
         # residual-path projections: shrink with depth
-        for blk in list(self.text_layers) + list(self.fusion_layers) + list(self.reasoning_layers):
+        for blk in (
+            list(self.text_layers)
+            + list(self.fusion_layers)
+            + list(self.reasoning_layers)
+        ):
             nn.init.normal_(blk.o_proj.weight, mean=0.0, std=resid_std)
             down = blk.mlp.down if isinstance(blk.mlp, SwiGLU) else blk.mlp[2]
             nn.init.normal_(down.weight, mean=0.0, std=resid_std)
@@ -637,7 +725,9 @@ class DottieModel1B(nn.Module):
 
     @property
     def n_layers(self) -> int:
-        return len(self.text_layers) + len(self.fusion_layers) + len(self.reasoning_layers)
+        return (
+            len(self.text_layers) + len(self.fusion_layers) + len(self.reasoning_layers)
+        )
 
     # -- workspace memory ----------------------------------------------------
 
@@ -719,14 +809,18 @@ class DottieModel1B(nn.Module):
                 fused, task_type=task_type, prev_workspaces=self._memory_for(B)
             )
             if self.use_memory:
-                self._prev_workspaces = {k: v.detach() for k, v in jspace_out["workspaces"].items()}
+                self._prev_workspaces = {
+                    k: v.detach() for k, v in jspace_out["workspaces"].items()
+                }
             enhanced = fused_seq
         elif self.jspace is not None:
             enhanced, jspace_out = self.jspace(fused, task_type=task_type)
         else:
             enhanced = fused
-            jspace_out = {"broadcast_strength": torch.norm(enhanced, dim=-1).mean(),
-                          "verbalizable_mass": torch.tensor(0.06, device=fused.device)}
+            jspace_out = {
+                "broadcast_strength": torch.norm(enhanced, dim=-1).mean(),
+                "verbalizable_mass": torch.tensor(0.06, device=fused.device),
+            }
 
         x = self._run_layers(self.reasoning_layers, enhanced, cos, sin, af)
         logits = self.lm_head(x)
@@ -734,7 +828,7 @@ class DottieModel1B(nn.Module):
 
     # -- branch surgery ------------------------------------------------------
 
-    def freeze_spaces(self, freeze_list: List[str]):
+    def freeze_spaces(self, freeze_list: list[str]):
         """freeze_spaces(["system1"]) sets requires_grad=False.
         Supports system1, system2, critic, planner, router, arbitration."""
         if self.multi_jspace is None:
@@ -756,22 +850,41 @@ def apply_rope_scaling(model: DottieModel1B, base: int, scale: float):
     model.rope_scale = scale
     model.rope.update(base, scale)
     # keep per-block ropes in sync for anything still reading them
-    for blk in list(model.text_layers) + list(model.fusion_layers) + list(model.reasoning_layers):
+    for blk in (
+        list(model.text_layers)
+        + list(model.fusion_layers)
+        + list(model.reasoning_layers)
+    ):
         blk.rope.update(base, scale)
 
 
-def get_model(vocab_size=128000, d_model=2048, multi_jspace_enabled=True,
-              rope_type: str = "yarn", n_sinks: int = 0, use_peri_ln: bool = False):
+def get_model(
+    vocab_size=128000,
+    d_model=2048,
+    multi_jspace_enabled=True,
+    rope_type: str = "yarn",
+    n_sinks: int = 0,
+    use_peri_ln: bool = False,
+):
     """Blueprint-compatible factory. New code should use ava.model.build_model(cfg)."""
-    return DottieModel1B(vocab_size=vocab_size, d_model=d_model,
-                      multi_jspace_enabled=multi_jspace_enabled,
-                      rope_type=rope_type, n_sinks=n_sinks, use_peri_ln=use_peri_ln,
-                      use_short_conv=use_short_conv, use_relative=use_relative,
-                      relative_max_distance=relative_max_distance)
+    return DottieModel1B(
+        vocab_size=vocab_size,
+        d_model=d_model,
+        multi_jspace_enabled=multi_jspace_enabled,
+        rope_type=rope_type,
+        n_sinks=n_sinks,
+        use_peri_ln=use_peri_ln,
+        use_short_conv=use_short_conv,
+        use_relative=use_relative,
+        relative_max_distance=relative_max_distance,
+    )
+
 
 # Solo personal project, no connection to employer, built with public/free-tier only
 # Home-only, no work Drive, no work data
-DISCLAIMER = "Solo personal project, no connection to employer, built with public/free-tier only"
+DISCLAIMER = (
+    "Solo personal project, no connection to employer, built with public/free-tier only"
+)
 
 
 # Legacy alias (Ava was the placeholder name; evals/ still imports the old name)

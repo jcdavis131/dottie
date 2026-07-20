@@ -12,11 +12,12 @@ substrate for both: Hermes registers refined tools into `skills_library`; OpenCl
 and writes `session_context`. It is imported lazily and its absence degrades honestly —
 profiles still shape prompts, and the caller is told persistence is off.
 """
+
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any
 
 HERMES_SYSTEM_ROLE = (
     "System Role: You are the Hermes runtime loop within Dottie. Execute tasks "
@@ -39,12 +40,12 @@ class Profile:
     name: str
     system_role: str
     # behavioural switches the agent runtime honours
-    persist_context: bool = False       # load/store session_context around each run
+    persist_context: bool = False  # load/store session_context around each run
     refine_after_success: bool = False  # Hermes: register the routine as a skill
     discover_first: tuple = field(default_factory=tuple)  # commands to surface pre-plan
 
 
-PROFILES: Dict[str, Profile] = {
+PROFILES: dict[str, Profile] = {
     "hermes": Profile(
         name="hermes",
         system_role=HERMES_SYSTEM_ROLE,
@@ -59,7 +60,7 @@ PROFILES: Dict[str, Profile] = {
 }
 
 
-def get_profile(name: Optional[str] = None) -> Optional[Profile]:
+def get_profile(name: str | None = None) -> Profile | None:
     """Resolve by explicit name, then DOTTIE_PROFILE env; None means plain runtime."""
     key = (name or os.environ.get("DOTTIE_PROFILE") or "").strip().lower()
     if not key:
@@ -74,12 +75,15 @@ def _state_store():
     absent in a standalone scout install. Honest None, never a stub."""
     try:
         from skills.state_store import JSpaceStateStore
+
         return JSpaceStateStore()
     except ImportError:
         return None
 
 
-def build_system_prompt(profile: Profile, *, session_id: str = "scout") -> Dict[str, Any]:
+def build_system_prompt(
+    profile: Profile, *, session_id: str = "scout"
+) -> dict[str, Any]:
     """The profile's system role plus (OpenClaw) the persisted session snapshot.
 
     Returns {"system": str, "context": dict|None, "persistence": "on"|"unavailable"}
@@ -98,23 +102,31 @@ def build_system_prompt(profile: Profile, *, session_id: str = "scout") -> Dict[
     if context:
         system += f"\n\nPersistent session context ({session_id}): {context}"
     if profile.discover_first:
-        system += "\n\nBefore planning, discover existing capabilities: " + \
-                  "; ".join(profile.discover_first)
+        system += "\n\nBefore planning, discover existing capabilities: " + "; ".join(
+            profile.discover_first
+        )
     return {"system": system, "context": context, "persistence": persistence}
 
 
-def after_run(profile: Profile, *, session_id: str, task: str, outcome: str,
-              plan: Optional[list] = None) -> Dict[str, Any]:
+def after_run(
+    profile: Profile,
+    *,
+    session_id: str,
+    task: str,
+    outcome: str,
+    plan: list | None = None,
+) -> dict[str, Any]:
     """Post-run hook: log the task; Hermes registers the successful routine into
     skills_library as a forge-refinement candidate; OpenClaw persists the last
     outcome as re-entry state. Every write is real or reported unavailable."""
     store = _state_store()
     if store is None:
         return {"persistence": "unavailable"}
-    result: Dict[str, Any] = {"persistence": "on"}
+    result: dict[str, Any] = {"persistence": "on"}
     with store:
-        store.log_task(session_id, task, outcome,
-                       trace={"plan": plan} if plan else None)
+        store.log_task(
+            session_id, task, outcome, trace={"plan": plan} if plan else None
+        )
         if profile.persist_context:
             store.set_context(session_id, "last_task", task)
             store.set_context(session_id, "last_outcome", outcome)
@@ -122,8 +134,11 @@ def after_run(profile: Profile, *, session_id: str, task: str, outcome: str,
         if profile.refine_after_success and outcome == "ok" and plan:
             name = f"routine_{abs(hash(task)) % 10**8:08d}"
             version = store.register_skill(
-                name, _forge_tool_code(name, task, plan),
-                capabilities="", source="hermes")
+                name,
+                _forge_tool_code(name, task, plan),
+                capabilities="",
+                source="hermes",
+            )
             result["skill_registered_version"] = version
             # Hermes PROPOSES the refinement; a human confirms by running the commands
             # (same gate philosophy as research promotion bundles — nothing self-installs).

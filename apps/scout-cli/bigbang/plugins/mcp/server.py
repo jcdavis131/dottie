@@ -4,6 +4,7 @@ Primary names: scout_<plugin>. Legacy aliases: bb_<plugin>.
 Each tool dispatches `python -m bigbang.cli --json <plugin> <args...>` so the
 MCP surface stays as capable (and as policy/audit constrained) as the CLI.
 """
+
 from __future__ import annotations
 
 import shlex

@@ -34,11 +34,24 @@ def test_current_run_series_empty():
 
 def test_current_run_series_carries_aux_loss_and_optimizer_fields():
     metrics = [
-        {"event": "step", "step": 1, "lm": 9.0, "total": 9.4, "phase": 0,
-         "grad_norm": 0.8, "lr": 1e-4, "report": 0.2, "broadcast": 0.1,
-         "selectivity": 0.05, "modulation": 0.03, "half_life": 0.02,
-         "inter_mi": 0.01, "routing": 0.09,
-         "verbalizable_mass": 0.06, "broadcast_strength": 0.2},
+        {
+            "event": "step",
+            "step": 1,
+            "lm": 9.0,
+            "total": 9.4,
+            "phase": 0,
+            "grad_norm": 0.8,
+            "lr": 1e-4,
+            "report": 0.2,
+            "broadcast": 0.1,
+            "selectivity": 0.05,
+            "modulation": 0.03,
+            "half_life": 0.02,
+            "inter_mi": 0.01,
+            "routing": 0.09,
+            "verbalizable_mass": 0.06,
+            "broadcast_strength": 0.2,
+        },
     ]
     series = current_run_series(metrics)
     assert series["grad_norm"] == [0.8]
@@ -75,7 +88,9 @@ def test_full_run_series_keeps_pre_restart_history_and_flags_restarts():
     assert result["series"]["step"] == [450, 460, 1, 10]
     assert result["series"]["ts"] == [100.0, 110.0, 200.0, 210.0]
     assert result["series"]["cum_step"] == [450, 460, 461, 470]
-    assert result["series"]["cum_step"] == sorted(result["series"]["cum_step"]), "cum_step must be non-decreasing"
+    assert result["series"]["cum_step"] == sorted(result["series"]["cum_step"]), (
+        "cum_step must be non-decreasing"
+    )
     assert result["restarts"] == [{"cum_step": 461, "ts": 200.0}]
 
 
@@ -89,10 +104,13 @@ def test_full_run_series_empty():
 
 def test_full_run_series_downsamples_but_keeps_latest_point():
     metrics = [
-        {"event": "step", "step": i, "lm": 1.0, "ts": float(i)}
-        for i in range(1, 2001)
+        {"event": "step", "step": i, "lm": 1.0, "ts": float(i)} for i in range(1, 2001)
     ]
     result = full_run_series(metrics)
     n = len(result["series"]["step"])
-    assert n <= 610, f"expected downsampling to roughly _FULL_SERIES_MAX_POINTS, got {n}"
-    assert result["series"]["step"][-1] == 2000, "must always keep the most recent point"
+    assert n <= 610, (
+        f"expected downsampling to roughly _FULL_SERIES_MAX_POINTS, got {n}"
+    )
+    assert result["series"]["step"][-1] == 2000, (
+        "must always keep the most recent point"
+    )

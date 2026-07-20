@@ -3,31 +3,33 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING
 
 from dottie.engine import DottieEngine
 
+if TYPE_CHECKING:
+    from pathlib import Path
 
-def research_dir(data_dir: Optional[str | Path] = None) -> Path:
+
+def research_dir(data_dir: str | Path | None = None) -> Path:
     d = DottieEngine(data_dir).data_dir / "research"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
-def ledger_path(data_dir: Optional[str | Path] = None) -> Path:
+def ledger_path(data_dir: str | Path | None = None) -> Path:
     return research_dir(data_dir) / "ledger.sqlite3"
 
 
-def workspace_root(data_dir: Optional[str | Path] = None) -> Path:
+def workspace_root(data_dir: str | Path | None = None) -> Path:
     p = research_dir(data_dir) / "workspaces"
     p.mkdir(parents=True, exist_ok=True)
     return p
 
 
-def metrics_path(data_dir: Optional[str | Path] = None) -> Path:
+def metrics_path(data_dir: str | Path | None = None) -> Path:
     return research_dir(data_dir) / "metrics.jsonl"
 
 
-def status_path(data_dir: Optional[str | Path] = None) -> Path:
+def status_path(data_dir: str | Path | None = None) -> Path:
     return research_dir(data_dir) / "status.json"

@@ -18,14 +18,15 @@ The telemetry line shape is deliberately identical to the Scout ⨯ Herdr ledger
 No heavy imports, no engine, no network — safe to import from ``server.py`` at
 boot even when ``AVA_SKIP_ENGINE_BOOT=1``.
 """
+
 from __future__ import annotations
 
 import json
 import os
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 _REPO = Path(__file__).resolve().parent.parent
 _AUDIT_PATH = _REPO / "runs" / "assistant_audit.jsonl"
@@ -36,13 +37,46 @@ _AUDIT_PATH = _REPO / "runs" / "assistant_audit.jsonl"
 # or matches one of the exact names. Deliberately broad: this is the only
 # scrubbing layer and the args are model-controlled, so under-redacting leaks a
 # real secret to disk (the failure the review caught).
-_SECRET_SUFFIXES = ("key", "keys", "token", "tokens", "secret", "secrets",
-                    "password", "passwd", "pwd", "credential", "credentials",
-                    "cred", "creds")
-_SECRET_SUBSTRINGS = ("secret", "token", "password", "passwd", "apikey",
-                      "api_key", "private_key", "credential", "auth", "bearer")
-_SECRET_EXACT = {"key", "keys", "auth", "authorization", "bearer", "cookie",
-                 "session", "credential", "credentials", "signature", "sig"}
+_SECRET_SUFFIXES = (
+    "key",
+    "keys",
+    "token",
+    "tokens",
+    "secret",
+    "secrets",
+    "password",
+    "passwd",
+    "pwd",
+    "credential",
+    "credentials",
+    "cred",
+    "creds",
+)
+_SECRET_SUBSTRINGS = (
+    "secret",
+    "token",
+    "password",
+    "passwd",
+    "apikey",
+    "api_key",
+    "private_key",
+    "credential",
+    "auth",
+    "bearer",
+)
+_SECRET_EXACT = {
+    "key",
+    "keys",
+    "auth",
+    "authorization",
+    "bearer",
+    "cookie",
+    "session",
+    "credential",
+    "credentials",
+    "signature",
+    "sig",
+}
 
 
 def _is_secret_key(k: Any) -> bool:
@@ -55,7 +89,7 @@ def _is_secret_key(k: Any) -> bool:
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
 def _scrub(obj: Any) -> Any:
@@ -76,11 +110,11 @@ def emit_event(
     *,
     surface: str = "ava.assistant",
     actor: str = "anon",
-    args: Optional[dict[str, Any]] = None,
+    args: dict[str, Any] | None = None,
     status: str = "ok",
     duration_ms: int = 0,
-    meta: Optional[dict[str, Any]] = None,
-    audit_path: Optional[Path] = None,
+    meta: dict[str, Any] | None = None,
+    audit_path: Path | None = None,
 ) -> dict[str, Any]:
     """Append one telemetry line and return the (scrubbed) record.
 
@@ -110,7 +144,7 @@ def emit_event(
     return rec
 
 
-def tail_events(n: int = 50, audit_path: Optional[Path] = None) -> list[dict[str, Any]]:
+def tail_events(n: int = 50, audit_path: Path | None = None) -> list[dict[str, Any]]:
     """Return the last ``n`` telemetry records (best-effort, never raises)."""
     path = audit_path or _AUDIT_PATH
     try:
@@ -152,7 +186,7 @@ class ToolCapability:
     signature: str
     read_only: bool = True
     side_effects: bool = False
-    sandbox_root: Optional[Path] = None
+    sandbox_root: Path | None = None
     path_args: tuple[str, ...] = ()
     max_output_bytes: int = 4096
 
@@ -174,8 +208,13 @@ class ToolRegistry:
 
     def catalog(self) -> list[dict[str, str]]:
         return [
-            {"name": c.name, "signature": c.signature, "description": c.description,
-             "read_only": str(c.read_only), "sandboxed": str(c.sandbox_root is not None)}
+            {
+                "name": c.name,
+                "signature": c.signature,
+                "description": c.description,
+                "read_only": str(c.read_only),
+                "sandboxed": str(c.sandbox_root is not None),
+            }
             for c in self.tools.values()
         ]
 
@@ -204,14 +243,18 @@ class ToolRegistry:
         return b[:limit].decode("utf-8", errors="ignore") + " …[truncated]"
 
 
-def _within_sandbox(root: Optional[Path], candidate: str) -> tuple[bool, str]:
+def _within_sandbox(root: Path | None, candidate: str) -> tuple[bool, str]:
     """Reject path traversal outside ``root``. If ``root`` is None the tool
     declared no sandbox and any path arg is refused (fail closed)."""
     if root is None:
         return False, "tool takes a path but declares no sandbox root"
     try:
         base = root.resolve()
-        target = (base / candidate).resolve() if not os.path.isabs(candidate) else Path(candidate).resolve()
+        target = (
+            (base / candidate).resolve()
+            if not os.path.isabs(candidate)
+            else Path(candidate).resolve()
+        )
     except Exception:
         return False, f"path '{candidate}' could not be resolved"
     try:
@@ -221,7 +264,7 @@ def _within_sandbox(root: Optional[Path], candidate: str) -> tuple[bool, str]:
     return True, "ok"
 
 
-def default_registry(sandbox_root: Optional[Path] = None) -> ToolRegistry:
+def default_registry(sandbox_root: Path | None = None) -> ToolRegistry:
     """The tool set the Ava assistant may call — names chosen to mirror the
     training distribution (``ava/datagen/react_tools.py`` +
     ``ava/datagen/tool_curriculum.py``) so inference matches what the model saw.
@@ -237,15 +280,37 @@ def default_registry(sandbox_root: Optional[Path] = None) -> ToolRegistry:
         ToolCapability("subtract", "subtract b from a", "subtract(a, b)"),
         ToolCapability("multiply", "multiply two numbers", "multiply(a, b)"),
         ToolCapability("sum", "sum a list of numbers", "sum(values=[...])"),
-        ToolCapability("repo_grep", "search files for a pattern", "repo_grep(pattern, path)",
-                       sandbox_root=root, path_args=("path",)),
-        ToolCapability("repo_read_file", "read a text file", "repo_read_file(path)",
-                       sandbox_root=root, path_args=("path",), max_output_bytes=6144),
-        ToolCapability("list_dir", "list a directory", "list_dir(path)",
-                       sandbox_root=root, path_args=("path",)),
-        ToolCapability("pipeline_status", "training pipeline status summary", "pipeline_status()"),
-        ToolCapability("ecosystem_status", "ecosystem/agents status summary", "ecosystem_status()"),
-        ToolCapability("skill_search", "search the harness skills", "skill_search(query)"),
+        ToolCapability(
+            "repo_grep",
+            "search files for a pattern",
+            "repo_grep(pattern, path)",
+            sandbox_root=root,
+            path_args=("path",),
+        ),
+        ToolCapability(
+            "repo_read_file",
+            "read a text file",
+            "repo_read_file(path)",
+            sandbox_root=root,
+            path_args=("path",),
+            max_output_bytes=6144,
+        ),
+        ToolCapability(
+            "list_dir",
+            "list a directory",
+            "list_dir(path)",
+            sandbox_root=root,
+            path_args=("path",),
+        ),
+        ToolCapability(
+            "pipeline_status", "training pipeline status summary", "pipeline_status()"
+        ),
+        ToolCapability(
+            "ecosystem_status", "ecosystem/agents status summary", "ecosystem_status()"
+        ),
+        ToolCapability(
+            "skill_search", "search the harness skills", "skill_search(query)"
+        ),
     ):
         reg.register(cap)
     return reg

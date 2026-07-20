@@ -1,8 +1,9 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
 """detect.py — collection allowlist, ignore patterns, size cap."""
-from personal_graphify.detect import collect_files, group_by_type, is_collectible
 
 from pathlib import Path
+
+from personal_graphify.detect import collect_files, group_by_type, is_collectible
 
 
 class TestIsCollectible:

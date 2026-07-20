@@ -1,9 +1,9 @@
 """Skill plugin — teach agents (Dottie-claw first) how to drive Scout."""
+
 from __future__ import annotations
 
 import shutil
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import typer
 import yaml
@@ -30,7 +30,7 @@ app = typer.Typer(
 # Packaged skills live next to plugins: bigbang/skills/
 SKILLS_ROOT = Path(__file__).resolve().parents[2] / "skills"
 
-TARGETS: Dict[str, Path] = {
+TARGETS: dict[str, Path] = {
     "dottie": Path.home() / ".dottie-claw" / "skills",
     "openclaw": Path.home() / ".openclaw" / "skills",
     "claude": Path.home() / ".claude" / "skills",
@@ -38,9 +38,9 @@ TARGETS: Dict[str, Path] = {
 }
 
 
-def _iter_skills() -> List[Dict[str, str]]:
+def _iter_skills() -> list[dict[str, str]]:
     """Discover packaged skills (dir/SKILL.md or flat name.md)."""
-    found: List[Dict[str, str]] = []
+    found: list[dict[str, str]] = []
     if not SKILLS_ROOT.exists():
         return found
     for path in sorted(SKILLS_ROOT.iterdir()):
@@ -71,7 +71,7 @@ def _iter_skills() -> List[Dict[str, str]]:
     return found
 
 
-def _frontmatter(path: Path) -> Dict[str, str]:
+def _frontmatter(path: Path) -> dict[str, str]:
     text = path.read_text(encoding="utf-8", errors="replace")
     if not text.startswith("---"):
         return {}
@@ -85,7 +85,7 @@ def _frontmatter(path: Path) -> Dict[str, str]:
     if not isinstance(data, dict):
         return {}
     # normalize description to single line for list view
-    out: Dict[str, str] = {}
+    out: dict[str, str] = {}
     for k, v in data.items():
         if v is None:
             continue
@@ -93,7 +93,7 @@ def _frontmatter(path: Path) -> Dict[str, str]:
     return out
 
 
-def _resolve_skill(name: str) -> Optional[Dict[str, str]]:
+def _resolve_skill(name: str) -> dict[str, str] | None:
     key = name.strip().lower().removesuffix(".md")
     for s in _iter_skills():
         if s["name"].lower() == key or Path(s["path"]).stem.lower() == key:
@@ -103,7 +103,7 @@ def _resolve_skill(name: str) -> Optional[Dict[str, str]]:
     return None
 
 
-def _target_dirs(target: str) -> List[Path]:
+def _target_dirs(target: str) -> list[Path]:
     t = target.lower().strip()
     if t == "all":
         return list(TARGETS.values())
@@ -117,7 +117,9 @@ def _target_dirs(target: str) -> List[Path]:
     return [TARGETS[t]]
 
 
-def _install_one(skill: Dict[str, str], dest_root: Path, *, force: bool) -> Dict[str, str]:
+def _install_one(
+    skill: dict[str, str], dest_root: Path, *, force: bool
+) -> dict[str, str]:
     name = skill["name"]
     src = Path(skill["path"])
     dest_dir = dest_root / name
@@ -162,7 +164,9 @@ def list_cmd():
 
 @app.command(
     "show",
-    epilog=examples_epilog(["scout skill show scout", "scout --json skill show scout-herd"]),
+    epilog=examples_epilog(
+        ["scout skill show scout", "scout --json skill show scout-herd"]
+    ),
 )
 def show_cmd(
     name: str = typer.Argument("scout", help="skill name e.g. scout, scout-herd"),
@@ -182,7 +186,9 @@ def show_cmd(
     emit(
         ok(
             {
-                "skill": skill if path_only else {**skill, "preview": preview, "chars": len(text)},
+                "skill": skill
+                if path_only
+                else {**skill, "preview": preview, "chars": len(text)},
             },
             command="skill show",
             example=f"scout skill install {skill['name']} --target dottie",
@@ -203,17 +209,19 @@ def show_cmd(
     ),
 )
 def install_cmd(
-    name: Optional[str] = typer.Argument(
-        None, help="skill name (omit with --all)"
-    ),
+    name: str | None = typer.Argument(None, help="skill name (omit with --all)"),
     target: str = typer.Option(
         "dottie",
         "--target",
         "-t",
         help="dottie|openclaw|claude|cursor|all",
     ),
-    all_skills: bool = typer.Option(False, "--all", help="install every packaged skill"),
-    force: bool = typer.Option(False, "--force", "-f", help="overwrite existing SKILL.md"),
+    all_skills: bool = typer.Option(
+        False, "--all", help="install every packaged skill"
+    ),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="overwrite existing SKILL.md"
+    ),
     dry_run: bool = typer.Option(False, "--dry-run", help="show destinations only"),
 ):
     """Install skill(s) into an agent skill directory (Dottie-claw default)."""

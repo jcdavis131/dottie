@@ -46,16 +46,22 @@ def test_submit_verified_task_exposes_r_task_and_verifier(client):
     assert "rl_return" in row["reward_components"]
     detail = row["verifier"]
     assert detail["family"] == "compute" and detail["seed"] == 4
-    assert detail["expected"] and detail["expected"] not in row["prompt"]  # no leakage, live
+    assert (
+        detail["expected"] and detail["expected"] not in row["prompt"]
+    )  # no leakage, live
     assert "note" in detail
 
 
 def test_submit_requires_exactly_one_form(client):
-    both = client.post("/tasks", json={"prompt": "x", "family": "compute", "backend": "echo"})
+    both = client.post(
+        "/tasks", json={"prompt": "x", "family": "compute", "backend": "echo"}
+    )
     assert both.status_code == 422
     neither = client.post("/tasks", json={"backend": "echo"})
     assert neither.status_code == 422
-    bad_family = client.post("/tasks", json={"family": "mind_reading", "backend": "echo"})
+    bad_family = client.post(
+        "/tasks", json={"family": "mind_reading", "backend": "echo"}
+    )
     assert bad_family.status_code == 422
 
 
@@ -78,20 +84,24 @@ def test_batch_mixed_runs_all_families(client):
     for t in body["tasks"]:
         row = _wait_done(client, t["task_id"])
         assert row["status"] == "done", row.get("error")
-        assert row["r_task"] == 0.0            # echo never beats a verifier
+        assert row["r_task"] == 0.0  # echo never beats a verifier
         assert row["verifier"]["family"] == t["family"]
     assert client.get("/tasks").json()["counts"]["done"] == n
 
 
 def test_batch_explicit_seeds_and_validation(client):
-    r = client.post("/tasks/batch",
-                    json={"family": "extract", "n": 2, "seeds": [7, 9], "backend": "echo"})
+    r = client.post(
+        "/tasks/batch",
+        json={"family": "extract", "n": 2, "seeds": [7, 9], "backend": "echo"},
+    )
     assert r.status_code == 202
     assert [t["seed"] for t in r.json()["tasks"]] == [7, 9]
     for t in r.json()["tasks"]:
         _wait_done(client, t["task_id"])
-    bad = client.post("/tasks/batch",
-                      json={"family": "extract", "n": 3, "seeds": [1], "backend": "echo"})
+    bad = client.post(
+        "/tasks/batch",
+        json={"family": "extract", "n": 3, "seeds": [1], "backend": "echo"},
+    )
     assert bad.status_code == 422
 
 
@@ -101,7 +111,9 @@ def test_batch_rejected_whole_when_queue_cannot_admit(data_dir, monkeypatch):
     monkeypatch.setenv("DOTTIE_QUEUE_MAX", "3")
     app = create_app(engine=DottieEngine(data_dir))
     with TestClient(app) as small:
-        r = small.post("/tasks/batch", json={"family": "compute", "n": 4, "backend": "echo"})
+        r = small.post(
+            "/tasks/batch", json={"family": "compute", "n": 4, "backend": "echo"}
+        )
         assert r.status_code == 429
         assert "batch" in r.json()["detail"]
         ok = small.post("/tasks", json={"family": "compute", "backend": "echo"})

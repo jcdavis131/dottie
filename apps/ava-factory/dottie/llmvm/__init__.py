@@ -17,25 +17,25 @@ Usage:
     await kernel.exec_cell("x = await search_code('S2 hl=300')")
 """
 
-from .kernel import LLMVMKernel, ExecutionResult
-from .tool_registry import ToolRegistry, ToolMetadata
-from .tmux import TmuxManager, TmuxPane
-from .self_modify import SelfModifyManager, AuditEntry
-from .skillbook import SkillBook, SkillBookManager
 from .context import ContextManager
+from .kernel import ExecutionResult, LLMVMKernel
+from .self_modify import AuditEntry, SelfModifyManager
+from .skillbook import SkillBook, SkillBookManager
+from .tmux import TmuxManager, TmuxPane
+from .tool_registry import ToolMetadata, ToolRegistry
 
 __all__ = [
-    "LLMVMKernel",
-    "ExecutionResult",
-    "ToolRegistry",
-    "ToolMetadata",
-    "TmuxManager",
-    "TmuxPane",
-    "SelfModifyManager",
     "AuditEntry",
+    "ContextManager",
+    "ExecutionResult",
+    "LLMVMKernel",
+    "SelfModifyManager",
     "SkillBook",
     "SkillBookManager",
-    "ContextManager",
+    "TmuxManager",
+    "TmuxPane",
+    "ToolMetadata",
+    "ToolRegistry",
 ]
 
 __version__ = "0.1.0-llmvm"

@@ -3,27 +3,67 @@ frontier_rubric.py — 11-category weighted rubric, AGI adaptation of FrontierFi
 
 Solo personal project, no connection to employer, built with public/free-tier only
 """
+
 from __future__ import annotations
-from typing import Any, Dict
-from ..registry import register_eval
-from ..common import MockModel
+
 import random
+from typing import Any
+
+from ..common import MockModel
+from ..registry import register_eval
 
 RUBRIC = [
-    {"id":"reportability", "weight":0.12, "desc":"verbalizer(ws.mean) == concept, S2 Slow 64 hl=300"},
-    {"id":"broadcast_quality", "weight":0.12, "desc":"Broadcast 20% norm target MSE, S1 0.18 hl8 w0.6, S2 0.22 verbalizable 0.065 hl300 w0.8"},
-    {"id":"selectivity", "weight":0.10, "desc":"auto low var vs deliberate high var, Spanish→French"},
-    {"id":"modulation", "weight":0.10, "desc":"hinge 0.5-(sim_with-sim_without), modulation loss"},
-    {"id":"routing_kl", "weight":0.08, "desc":"routing KL w0.4, router stability"},
-    {"id":"inter_mi", "weight":0.08, "desc":"inter-space MI MSE(cos,0.45) w0.3"},
-    {"id":"temporal_planning", "weight":0.10, "desc":"Planner 32 hl=150 temporal generalization France→China"},
-    {"id":"safety_critic", "weight":0.12, "desc":"Critic 16 hl=30 safety_concepts 1.0 w1.0, AUC 0.91→0.94 early 4-5tok"},
-    {"id":"knowledge_recall", "weight":0.08, "desc":"openwiki wiki → S2 mass, facts probe ≥70%"},
-    {"id":"reasoning_depth", "weight":0.05, "desc":"S2 hl=300 vs S1 hl=8 separation, Spider→Ant >0.1"},
-    {"id":"transparency", "weight":0.05, "desc":"top_concepts interpretable, no mock literals, honest-by-construction UI"},
+    {
+        "id": "reportability",
+        "weight": 0.12,
+        "desc": "verbalizer(ws.mean) == concept, S2 Slow 64 hl=300",
+    },
+    {
+        "id": "broadcast_quality",
+        "weight": 0.12,
+        "desc": "Broadcast 20% norm target MSE, S1 0.18 hl8 w0.6, S2 0.22 verbalizable 0.065 hl300 w0.8",
+    },
+    {
+        "id": "selectivity",
+        "weight": 0.10,
+        "desc": "auto low var vs deliberate high var, Spanish→French",
+    },
+    {
+        "id": "modulation",
+        "weight": 0.10,
+        "desc": "hinge 0.5-(sim_with-sim_without), modulation loss",
+    },
+    {"id": "routing_kl", "weight": 0.08, "desc": "routing KL w0.4, router stability"},
+    {"id": "inter_mi", "weight": 0.08, "desc": "inter-space MI MSE(cos,0.45) w0.3"},
+    {
+        "id": "temporal_planning",
+        "weight": 0.10,
+        "desc": "Planner 32 hl=150 temporal generalization France→China",
+    },
+    {
+        "id": "safety_critic",
+        "weight": 0.12,
+        "desc": "Critic 16 hl=30 safety_concepts 1.0 w1.0, AUC 0.91→0.94 early 4-5tok",
+    },
+    {
+        "id": "knowledge_recall",
+        "weight": 0.08,
+        "desc": "openwiki wiki → S2 mass, facts probe ≥70%",
+    },
+    {
+        "id": "reasoning_depth",
+        "weight": 0.05,
+        "desc": "S2 hl=300 vs S1 hl=8 separation, Spider→Ant >0.1",
+    },
+    {
+        "id": "transparency",
+        "weight": 0.05,
+        "desc": "top_concepts interpretable, no mock literals, honest-by-construction UI",
+    },
 ]
 
-def _score_mock(seed: int) -> Dict[str,float]:
+
+def _score_mock(seed: int) -> dict[str, float]:
     random.seed(seed)
     scores = {}
     for cat in RUBRIC:
@@ -31,13 +71,21 @@ def _score_mock(seed: int) -> Dict[str,float]:
         scores[cat["id"]] = random.uniform(0.55, 0.92)
     return scores
 
-@register_eval(name="frontier_rubric", description="Frontier 11-category weighted rubric for AGI", group="rubric")
-def frontier_rubric(model: Any, tokenizer: Any, device: str="cpu", **kw) -> Dict[str,Any]:
+
+@register_eval(
+    name="frontier_rubric",
+    description="Frontier 11-category weighted rubric for AGI",
+    group="rubric",
+)
+def frontier_rubric(
+    model: Any, tokenizer: Any, device: str = "cpu", **kw
+) -> dict[str, Any]:
     is_mock = isinstance(model, MockModel)
     if is_mock:
         scores = _score_mock(model.seed + 100)
     else:
         from ..common import real_unimplemented
+
         # Audited 2026-07: the factory exposes NO rubric aggregate to delegate to.
         # eval_frontier_rubric.py in ava-agi-factory-v6-4 is a FrontierFinance
         # keyword-overlap judge unrelated to live J-Space states, and mapping
@@ -45,14 +93,21 @@ def frontier_rubric(model: Any, tokenizer: Any, device: str="cpu", **kw) -> Dict
         # would require an invented normalization — i.e. fabricated scores.
         # Until an honest loss→score calibration exists, real mode fails loudly.
         return real_unimplemented(
-            "frontier_rubric", "weighted>=0.70",
+            "frontier_rubric",
+            "weighted>=0.70",
             "no honest real aggregation exists: factory eval_frontier_rubric.py is a "
             "keyword-heuristic judge (not live jspace), and normalizing raw jlosses "
             "into 0..1 category scores would be an invented mapping",
         )
 
-    weighted = sum(scores[c["id"]]*c["weight"] for c in RUBRIC)
+    weighted = sum(scores[c["id"]] * c["weight"] for c in RUBRIC)
     # PASS if weighted >=0.70
     passed = weighted >= 0.70
     measured = {"scores": scores, "weighted": weighted, "rubric": RUBRIC}
-    return {"test":"frontier_rubric", "measured": measured, "pass": bool(passed), "bar":"weighted>=0.70", "grades": scores}
+    return {
+        "test": "frontier_rubric",
+        "measured": measured,
+        "pass": bool(passed),
+        "bar": "weighted>=0.70",
+        "grades": scores,
+    }

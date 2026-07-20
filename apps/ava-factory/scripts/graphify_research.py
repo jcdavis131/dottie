@@ -18,63 +18,113 @@ Steps:
 
 Security: no secrets, FS write only to allowed paths, sanitizes NO_PROXY
 """
-import os, sys, re, json, shutil, subprocess
+
+import json
+import os
+import re
+import shutil
+import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, timezone
+
 
 def sanitize_no_proxy():
-    import os, re
-    for var in ["NO_PROXY","no_proxy","HTTP_PROXY","http_proxy","HTTPS_PROXY","https_proxy"]:
-        val = os.environ.get(var,"")
-        if not val: continue
+    import os
+
+    for var in [
+        "NO_PROXY",
+        "no_proxy",
+        "HTTP_PROXY",
+        "http_proxy",
+        "HTTPS_PROXY",
+        "https_proxy",
+    ]:
+        val = os.environ.get(var, "")
+        if not val:
+            continue
         parts = re.split(r"[, \s]+", val)
-        cleaned = [p for p in parts if p and p not in ["::","::/0"] and not p.startswith("[") and "::" not in p and "fd8b" not in p]
+        cleaned = [
+            p
+            for p in parts
+            if p
+            and p not in ["::", "::/0"]
+            and not p.startswith("[")
+            and "::" not in p
+            and "fd8b" not in p
+        ]
         os.environ[var] = ",".join(cleaned)
+
 
 sanitize_no_proxy()
 
 ROOT = Path(__file__).parent.parent
 CONFIG_PATH = ROOT / "config" / "topics.yaml"
 import yaml
+
 cfg = yaml.safe_load(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
-harvest_cfg = cfg.get("harvest",{})
-graphify_cfg = cfg.get("graphify",{})
+harvest_cfg = cfg.get("harvest", {})
+graphify_cfg = cfg.get("graphify", {})
+
 
 def expand(p):
     return Path(os.path.expanduser(str(p)))
 
-src_dir = expand(harvest_cfg.get("graphify_source_dir", "~/workspace/dottie/apps/ava-factory/graphify_source"))
+
+src_dir = expand(
+    harvest_cfg.get(
+        "graphify_source_dir", "~/workspace/dottie/apps/ava-factory/graphify_source"
+    )
+)
 # Also include additional source dirs for context
 ava_docs = expand("~/workspace/dottie/apps/ava-factory/docs")
 bigbang_wiki = expand("~/workspace/dottie/apps/scout-cli/docs/llm-wiki")
 
-out_dir = expand(graphify_cfg.get("out_dir", "~/workspace/dottie/apps/ava-factory/graphify_out"))
+out_dir = expand(
+    graphify_cfg.get("out_dir", "~/workspace/dottie/apps/ava-factory/graphify_out")
+)
 out_dir.mkdir(parents=True, exist_ok=True)
 
 # Secondary out for Ava engine itself
 local_out = ROOT / "graphify_out"
 local_out.mkdir(parents=True, exist_ok=True)
 
-personal_ref = expand(graphify_cfg.get("personal_ref", "~/workspace/your_files/personal-graphify/references/spaces/research-graph.json"))
+personal_ref = expand(
+    graphify_cfg.get(
+        "personal_ref",
+        "~/workspace/your_files/personal-graphify/references/spaces/research-graph.json",
+    )
+)
 personal_ref.parent.mkdir(parents=True, exist_ok=True)
 
-today = datetime.now(timezone.utc).date().isoformat()
+today = datetime.now(UTC).date().isoformat()
 
-print(f"[graphify-builder] src={src_dir} exists={src_dir.exists()} count={len(list(src_dir.glob('*.md'))) if src_dir.exists() else 0}")
+print(
+    f"[graphify-builder] src={src_dir} exists={src_dir.exists()} count={len(list(src_dir.glob('*.md'))) if src_dir.exists() else 0}"
+)
 print(f"  out={out_dir}")
 print(f"  personal_ref={personal_ref}")
 
 if not src_dir.exists() or len(list(src_dir.glob("*.md"))) == 0:
-    print("[warn] no graphify source md yet — run arxiv_harvester first, creating placeholder")
+    print(
+        "[warn] no graphify source md yet — run arxiv_harvester first, creating placeholder"
+    )
     src_dir.mkdir(parents=True, exist_ok=True)
-    (src_dir / "_placeholder.md").write_text("# Research corpus placeholder\nNo papers yet, run harvester.\n")
+    (src_dir / "_placeholder.md").write_text(
+        "# Research corpus placeholder\nNo papers yet, run harvester.\n"
+    )
+
 
 # Try pgraphify CLI
 def run_pgraphify(source, out):
     # Find pgraphify binary
     try:
         # try python -m personal_graphify fallback is pgraphify command
-        result = subprocess.run(["pgraphify", "build", str(source), "--out", str(out)], capture_output=True, text=True, timeout=120)
+        result = subprocess.run(
+            ["pgraphify", "build", str(source), "--out", str(out)],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
         print(result.stdout[-2000:])
         if result.stderr:
             print("stderr:", result.stderr[-2000:])
@@ -82,6 +132,7 @@ def run_pgraphify(source, out):
     except Exception as e:
         print(f"[error] pgraphify build failed: {e}")
         return False
+
 
 # Build over research source only
 success = run_pgraphify(src_dir, out_dir)
@@ -109,9 +160,19 @@ if graph_json.exists():
     # shutil.copy2(graph_json, ROOT / "graphify_source-graph.json")
 
     # Try some queries to validate
-    for q in ["Muon optimizer training", "GraphRAG knowledge graph", "MCP tool routing", "Jacobian regularization"]:
+    for q in [
+        "Muon optimizer training",
+        "GraphRAG knowledge graph",
+        "MCP tool routing",
+        "Jacobian regularization",
+    ]:
         try:
-            result = subprocess.run(["pgraphify", "query", q, "--graph", str(graph_json)], capture_output=True, text=True, timeout=30)
+            result = subprocess.run(
+                ["pgraphify", "query", q, "--graph", str(graph_json)],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
             print(f"\n[query] {q} -> {result.stdout[:500]}")
         except Exception as e:
             print(f"query {q} failed {e}")
@@ -149,7 +210,9 @@ wiki_path = expand("~/workspace/dottie/apps/scout-cli/docs/llm-wiki/research-lat
 wiki_path.parent.mkdir(parents=True, exist_ok=True)
 # Gather latest harvest report
 harvest_reports = sorted((ROOT / "docs").glob("harvest_report_*.md"))
-latest_harvest = harvest_reports[-1].read_text() if harvest_reports else "No harvest yet"
+latest_harvest = (
+    harvest_reports[-1].read_text() if harvest_reports else "No harvest yet"
+)
 
 # Read graph report
 graph_report_text = report_md.read_text()[:5000] if report_md.exists() else "No report"
@@ -161,9 +224,9 @@ latest_papers = []
 if rolling.exists():
     try:
         data = json.loads(rolling.read_text())
-        paper_count = len(data.get("papers",{}))
+        paper_count = len(data.get("papers", {}))
         # last 5
-        for pid, paper in list(data.get("papers",{}).items())[-5:]:
+        for pid, paper in list(data.get("papers", {}).items())[-5:]:
             latest_papers.append(paper)
     except Exception as e:
         print(f"rolling parse error {e}")
@@ -175,12 +238,12 @@ wiki_md = f"""# Research Latest — Graphify Knowledge Base (Auto-Updated {today
 This file is auto-generated by `ava-research-engine/scripts/graphify_research.py` (cron: daily 07:00 UTC, interval 4h).
 
 ## Overview
-- Source corpus: `{src_dir}` — {len(list(src_dir.glob('*.md')))} markdown papers
+- Source corpus: `{src_dir}` — {len(list(src_dir.glob("*.md")))} markdown papers
 - Rolling index: `{rolling}` — {paper_count} total deduped papers (14d lookback)
 - Graphify out: `{out_dir}`
 - Personal ref: `{personal_ref}`
 - Token reduction: 35.2× (1500 vs 52750 naive) per earlier build, upstream 71.5×
-- Graph files: graph.json ~{graph_json.stat().st_size/1024:.0f}KB if exists, graph.html, GRAPH_REPORT.md
+- Graph files: graph.json ~{graph_json.stat().st_size / 1024:.0f}KB if exists, graph.html, GRAPH_REPORT.md
 
 ## Latest Harvest Summary
 {latest_harvest}
@@ -191,7 +254,7 @@ This file is auto-generated by `ava-research-engine/scripts/graphify_research.py
 ## Latest 5 Papers (from rolling_index)
 """
 for p in latest_papers:
-    wiki_md += f"- **{p.get('title','')}** [{p.get('arxiv_id','')}] {p.get('arxiv_url','')} — topics {','.join(p.get('topics',[]))}\n  Abstract: {p.get('abstract','')[:200]}...\n"
+    wiki_md += f"- **{p.get('title', '')}** [{p.get('arxiv_id', '')}] {p.get('arxiv_url', '')} — topics {','.join(p.get('topics', []))}\n  Abstract: {p.get('abstract', '')[:200]}...\n"
 
 wiki_md += f"""
 ## How to Query
@@ -228,14 +291,21 @@ print(f"[done] wrote wiki {wiki_path}")
 # Log result
 result_path = ROOT / "results" / f"graphify_{today}.json"
 result_path.parent.mkdir(parents=True, exist_ok=True)
-result_path.write_text(json.dumps({
-    "date": today,
-    "src_count": len(list(src_dir.glob("*.md"))),
-    "out_dir": str(out_dir),
-    "graph_json_exists": graph_json.exists(),
-    "graph_json_kb": graph_json.stat().st_size/1024 if graph_json.exists() else 0,
-    "personal_ref": str(personal_ref),
-    "paper_count": paper_count,
-}, indent=2))
+result_path.write_text(
+    json.dumps(
+        {
+            "date": today,
+            "src_count": len(list(src_dir.glob("*.md"))),
+            "out_dir": str(out_dir),
+            "graph_json_exists": graph_json.exists(),
+            "graph_json_kb": graph_json.stat().st_size / 1024
+            if graph_json.exists()
+            else 0,
+            "personal_ref": str(personal_ref),
+            "paper_count": paper_count,
+        },
+        indent=2,
+    )
+)
 
 print(f"[done] graphify build complete — {today}")

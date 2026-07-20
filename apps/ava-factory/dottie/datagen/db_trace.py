@@ -19,14 +19,33 @@ from __future__ import annotations
 
 import json
 from bisect import bisect, insort
-from typing import Iterator
+from typing import TYPE_CHECKING
 
 from dottie.datagen.base import Generator
 from dottie.datagen.trace_common import elide, render_etcot, step_lines
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
 _ITEMS = ["bolt", "gear", "valve", "rotor", "flange", "gasket", "bearing", "piston"]
-_NAMES = ["ada", "ben", "cleo", "dana", "eli", "fay", "gus", "hana",
-          "ivan", "june", "kai", "lena", "mo", "nia", "omar", "pia"]
+_NAMES = [
+    "ada",
+    "ben",
+    "cleo",
+    "dana",
+    "eli",
+    "fay",
+    "gus",
+    "hana",
+    "ivan",
+    "june",
+    "kai",
+    "lena",
+    "mo",
+    "nia",
+    "omar",
+    "pia",
+]
 _TAGS = ["red", "blue", "green", "gold", "iron", "oak", "sky", "ash"]
 _REGIONS = ["north", "south", "east", "west", "central", "coastal"]
 
@@ -36,12 +55,12 @@ _REGIONS = ["north", "south", "east", "west", "central", "coastal"]
 
 
 class _Page:
-    __slots__ = ("pid", "keys", "children")
+    __slots__ = ("children", "keys", "pid")
 
     def __init__(self, pid: int):
         self.pid = pid
         self.keys: list[int] = []
-        self.children: list["_Page"] = []
+        self.children: list[_Page] = []
 
     @property
     def leaf(self) -> bool:
@@ -66,7 +85,9 @@ class _BTree:
             self.root = self._new_page()
             self.root.children = [old]
             if events is not None:
-                events.append(f"root p{old.pid} is full -> allocate new root p{self.root.pid}")
+                events.append(
+                    f"root p{old.pid} is full -> allocate new root p{self.root.pid}"
+                )
             self._split_child(self.root, 0, events)
         self._insert_nonfull(self.root, key, events)
 
@@ -97,11 +118,15 @@ class _BTree:
                 if key > page.keys[i]:
                     i += 1
             if events is not None:
-                events.append(f"descend from p{page.pid}: {key} vs keys {page.keys} -> child index {i} (p{page.children[i].pid})")
+                events.append(
+                    f"descend from p{page.pid}: {key} vs keys {page.keys} -> child index {i} (p{page.children[i].pid})"
+                )
             page = page.children[i]
         insort(page.keys, key)
         if events is not None:
-            events.append(f"insert {key} into leaf p{page.pid} at its sorted slot -> {page.keys}")
+            events.append(
+                f"insert {key} into leaf p{page.pid} at its sorted slot -> {page.keys}"
+            )
 
     def search_path(self, key: int) -> tuple[list[tuple[_Page, int, str]], bool]:
         """Returns ([(page, slot, action)], found) with action in
@@ -195,7 +220,9 @@ class _BTree:
                 lines.append(f"  p{page.pid} (leaf): keys={page.keys}")
             else:
                 kids = ", ".join(f"p{c.pid}" for c in page.children)
-                lines.append(f"  p{page.pid} (internal): keys={page.keys} children=[{kids}]")
+                lines.append(
+                    f"  p{page.pid} (internal): keys={page.keys} children=[{kids}]"
+                )
                 queue.extend(page.children)
         return lines
 
@@ -264,7 +291,9 @@ def _btree_point_doc(rng, n: int, elide_over: int):
         states.append(f"pages loaded={[p.pid for p, _, _ in path[: j + 2]]}")
     if found:
         item, qty = rows[target]
-        raw_steps.append(f"fetch heap row for id {target} -> (item='{item}', qty={qty})")
+        raw_steps.append(
+            f"fetch heap row for id {target} -> (item='{item}', qty={qty})"
+        )
         states.append("row fetched")
         answer = [
             f"result row: (id={target}, item='{item}', qty={qty})",
@@ -287,8 +316,13 @@ def _btree_point_doc(rng, n: int, elide_over: int):
         + f"\n\nSQL: SELECT item, qty FROM inventory WHERE id = {target};"
     )
     text = render_etcot(task, elide(step_lines(raw_steps), states, elide_over), answer)
-    meta = {"keys": keys, "target": target, "found": found,
-            "rows": rows, "path_pids": [p.pid for p, _, _ in path]}
+    meta = {
+        "keys": keys,
+        "target": target,
+        "found": found,
+        "rows": rows,
+        "path_pids": [p.pid for p, _, _ in path],
+    }
     return text, "deliberate", "btree_point_query", meta
 
 
@@ -319,9 +353,13 @@ def _btree_range_doc(rng, n: int, elide_over: int):
             if descended:
                 bits.append(f"descend into {['p%d' % p for p in descended]}")
             if pruned:
-                bits.append(f"prune subtrees {['p%d' % p for p in pruned]} (ranges cannot overlap [{lo},{hi}])")
+                bits.append(
+                    f"prune subtrees {['p%d' % p for p in pruned]} (ranges cannot overlap [{lo},{hi}])"
+                )
             raw_steps.append("; ".join(bits))
-        states.append(f"pages visited so far={[e[0].pid for e in events[: len(states) + 1]]}")
+        states.append(
+            f"pages visited so far={[e[0].pid for e in events[: len(states) + 1]]}"
+        )
     total = sum(rows[k][1] for k in got)
     task = (
         "### Task: simulate a SQL range scan through a B-tree index\n"
@@ -373,11 +411,13 @@ def _btree_insert_doc(rng, n: int, elide_over: int):
         old_h = tree.height()
         events = []
         tree.insert(chosen, events)
-    assert tree.inorder() == sorted(order + [chosen])
+    assert tree.inorder() == sorted([*order, chosen])
 
     before = build()
-    states = [f"pages allocated={len(before.pages) + sum('new page' in e or 'new root' in e for e in events[: i + 1])}"
-              for i in range(len(events))]
+    states = [
+        f"pages allocated={len(before.pages) + sum('new page' in e or 'new root' in e for e in events[: i + 1])}"
+        for i in range(len(events))
+    ]
     task = (
         "### Task: simulate a B-tree INSERT (order 4, preemptive splits)\n"
         f"Current index pages (root p{before.root.pid}):\n"
@@ -403,11 +443,13 @@ def _btree_insert_doc(rng, n: int, elide_over: int):
 def _doc_filter_doc(rng, n: int, elide_over: int):
     docs = []
     for i in range(n):
-        docs.append({
-            "_id": i,
-            "user": {"name": rng.choice(_NAMES), "age": rng.randint(18, 70)},
-            "tags": rng.sample(_TAGS, 2),
-        })
+        docs.append(
+            {
+                "_id": i,
+                "user": {"name": rng.choice(_NAMES), "age": rng.randint(18, 70)},
+                "tags": rng.sample(_TAGS, 2),
+            }
+        )
     min_age = rng.randint(25, 55)
     tag = rng.choice(_TAGS)
     matches = [d for d in docs if d["user"]["age"] >= min_age and tag in d["tags"]]
@@ -431,8 +473,10 @@ def _doc_filter_doc(rng, n: int, elide_over: int):
                 f"doc _id={d['_id']}: extract path user.age -> {age} (>= {min_age} ok); "
                 f"tags={d['tags']} contains '{tag}' -> MATCH, project user.name = '{d['user']['name']}'"
             )
-        states.append(f"scanned={d['_id'] + 1}/{n}, projected names so far="
-                      f"{[m['user']['name'] for m in matches if m['_id'] <= d['_id']]}")
+        states.append(
+            f"scanned={d['_id'] + 1}/{n}, projected names so far="
+            f"{[m['user']['name'] for m in matches if m['_id'] <= d['_id']]}"
+        )
     task = (
         "### Task: simulate a document-store query (collection scan)\n"
         "Collection (JSON documents):\n"
@@ -498,7 +542,10 @@ def _kv_hash_doc(rng, n: int, elide_over: int):
                 f"PUT '{k}'={values[k]}: fnv1a('{k}') = 0x{h:08X} -> slot {b}; COLLISION: "
                 f"{occupants} -> linear-probe to slot {probes[-1]} -> store"
             )
-        states.append("occupied slots=" + str({i: s for i, s in enumerate(slots) if s is not None}))
+        states.append(
+            "occupied slots="
+            + str({i: s for i, s in enumerate(slots) if s is not None})
+        )
 
     target = kv_keys[rng.randrange(len(kv_keys))]
     h = _FNV_OFFSET
@@ -540,8 +587,13 @@ def _kv_hash_doc(rng, n: int, elide_over: int):
         "final slot map: " + str({i: s for i, s in enumerate(slots) if s is not None}),
     ]
     text = render_etcot(task, elide(step_lines(raw_steps), states, elide_over), answer)
-    meta = {"keys": kv_keys, "values": values, "target": target,
-            "placed": placed, "buckets": _KV_BUCKETS}
+    meta = {
+        "keys": kv_keys,
+        "values": values,
+        "target": target,
+        "placed": placed,
+        "buckets": _KV_BUCKETS,
+    }
     return text, "deliberate", "kv_hash_probe", meta
 
 
@@ -551,8 +603,10 @@ def _kv_hash_doc(rng, n: int, elide_over: int):
 
 
 def _wide_column_doc(rng, n: int, elide_over: int):
-    rows = [(i + 1, rng.choice(_REGIONS), rng.randint(10, 999), rng.randint(1, 99))
-            for i in range(n)]
+    rows = [
+        (i + 1, rng.choice(_REGIONS), rng.randint(10, 999), rng.randint(1, 99))
+        for i in range(n)
+    ]
     sales = [r[2] for r in rows]
     total = sum(sales)
     # layout: id int32 | region char[8] | sales int32 | units int32 -> 20 B/row
@@ -638,13 +692,20 @@ def _graph_doc(rng, n: int, elide_over: int):
                     new.append(v)
             raw_steps.append(
                 f"dequeue {lbl(u)} (dist {dist[u]}); neighbors {[lbl(v) for v in adj[u]]}; "
-                + (f"newly discovered {[lbl(v) for v in new]} (dist {dist[u] + 1})" if new
-                   else "all neighbors already visited")
+                + (
+                    f"newly discovered {[lbl(v) for v in new]} (dist {dist[u] + 1})"
+                    if new
+                    else "all neighbors already visited"
+                )
                 + f"; queue = {[lbl(v) for v in queue]}"
             )
-            states.append(f"dist={{{', '.join(f'{lbl(k)}:{d}' for k, d in sorted(dist.items()))}}}")
+            states.append(
+                f"dist={{{', '.join(f'{lbl(k)}:{d}' for k, d in sorted(dist.items()))}}}"
+            )
             if u == target:
-                raw_steps.append(f"target {lbl(target)} dequeued -> stop (BFS guarantees minimal edge count)")
+                raw_steps.append(
+                    f"target {lbl(target)} dequeued -> stop (BFS guarantees minimal edge count)"
+                )
                 states.append("done")
                 break
         # independent check: plain BFS distances
@@ -667,7 +728,13 @@ def _graph_doc(rng, n: int, elide_over: int):
             f"BFS visit order: {[lbl(v) for v in order]}",
         ]
         query = f"shortest path from {lbl(0)} to {lbl(target)} (BFS, neighbors in ascending order)"
-        meta = {"adj": adj, "kind": kind, "dist": dist[target], "path": path, "order": order}
+        meta = {
+            "adj": adj,
+            "kind": kind,
+            "dist": dist[target],
+            "path": path,
+            "order": order,
+        }
     else:
         stack = [0]
         seen: set[int] = set()
@@ -675,7 +742,9 @@ def _graph_doc(rng, n: int, elide_over: int):
         while stack:
             u = stack.pop()
             if u in seen:
-                raw_steps.append(f"pop {lbl(u)}: already visited -> skip; stack = {[lbl(v) for v in stack]}")
+                raw_steps.append(
+                    f"pop {lbl(u)}: already visited -> skip; stack = {[lbl(v) for v in stack]}"
+                )
                 states.append(f"visited={[lbl(v) for v in order]}")
                 continue
             seen.add(u)
@@ -689,8 +758,10 @@ def _graph_doc(rng, n: int, elide_over: int):
             )
             states.append(f"visited={[lbl(v) for v in order]}")
         assert set(order) == set(range(n))  # connected by construction
-        answer = [f"DFS preorder: {[lbl(v) for v in order]}",
-                  f"visited {len(order)} of {n} nodes (graph is connected)"]
+        answer = [
+            f"DFS preorder: {[lbl(v) for v in order]}",
+            f"visited {len(order)} of {n} nodes (graph is connected)",
+        ]
         query = f"depth-first preorder from {lbl(0)} (explicit stack, neighbors pushed in reverse-sorted order)"
         meta = {"adj": adj, "kind": kind, "order": order}
 
@@ -731,12 +802,16 @@ def _ts_agg_doc(rng, n: int, elide_over: int):
             f"min {min(vals):.1f}, max {max(vals):.1f}"
         )
         states.append(
-            "buckets=" + "; ".join(
-                f"b{k}(count {len(vs)}, sum {sum(vs):.1f})" for k, vs in sorted(buckets.items())
+            "buckets="
+            + "; ".join(
+                f"b{k}(count {len(vs)}, sum {sum(vs):.1f})"
+                for k, vs in sorted(buckets.items())
             )
         )
-    table = {b: (len(vs), sum(vs), min(vs), max(vs), sum(vs) / len(vs))
-             for b, vs in sorted(buckets.items())}
+    table = {
+        b: (len(vs), sum(vs), min(vs), max(vs), sum(vs) / len(vs))
+        for b, vs in sorted(buckets.items())
+    }
 
     task = (
         "### Task: simulate time-series window aggregation (TSDB downsampling)\n"
@@ -767,12 +842,15 @@ def _rand_vec(rng) -> tuple[int, ...]:
 
 
 def _d2(a, b) -> int:
-    return sum((x - y) ** 2 for x, y in zip(a, b))
+    return sum((x - y) ** 2 for x, y in zip(a, b, strict=False))
 
 
 def _d2_expand(q, v) -> str:
-    terms = [f"({x}-({y}))^2" if y < 0 else f"({x}-{y})^2" for x, y in zip(q, v)]
-    parts = [str((x - y) ** 2) for x, y in zip(q, v)]
+    terms = [
+        f"({x}-({y}))^2" if y < 0 else f"({x}-{y})^2"
+        for x, y in zip(q, v, strict=False)
+    ]
+    parts = [str((x - y) ** 2) for x, y in zip(q, v, strict=False)]
     return f"{' + '.join(terms)} = {' + '.join(parts)} = {_d2(q, v)}"
 
 
@@ -787,12 +865,14 @@ def _vector_knn_doc(rng, n: int, elide_over: int):
     heap: list[tuple[int, int]] = []
     for i, v in enumerate(vecs):
         d = _d2(q, v)
-        heap = sorted(heap + [(d, i)])[:k]
+        heap = sorted([*heap, (d, i)])[:k]
         raw_steps.append(
             f"candidate v{i}={list(v)}: d2(q, v{i}) = {_d2_expand(q, v)}; "
             f"top-{k} -> {[(f'v{j}', dd) for dd, j in heap]}"
         )
-        states.append(f"scanned={i + 1}/{n}, top-{k}={[(f'v{j}', dd) for dd, j in heap]}")
+        states.append(
+            f"scanned={i + 1}/{n}, top-{k}={[(f'v{j}', dd) for dd, j in heap]}"
+        )
     assert [(j, dd) for dd, j in heap] == topk
 
     task = (
@@ -818,10 +898,14 @@ def _vector_knn_doc(rng, n: int, elide_over: int):
 _HNSW_M = 3
 
 
-def _hnsw_neighbors(ids: list[int], vecs: list[tuple[int, ...]]) -> dict[int, list[int]]:
+def _hnsw_neighbors(
+    ids: list[int], vecs: list[tuple[int, ...]]
+) -> dict[int, list[int]]:
     out = {}
     for i in ids:
-        others = sorted((j for j in ids if j != i), key=lambda j: (_d2(vecs[i], vecs[j]), j))
+        others = sorted(
+            (j for j in ids if j != i), key=lambda j: (_d2(vecs[i], vecs[j]), j)
+        )
         out[i] = others[:_HNSW_M]
     return out
 
@@ -832,15 +916,16 @@ def _greedy(q, vecs, nbrs, start, trace, layer_name):
         dc = _d2(q, vecs[cur])
         cand = [(nb, _d2(q, vecs[nb])) for nb in nbrs[cur]]
         best_nb, best_d = min(cand, key=lambda t: (t[1], t[0]))
-        line = (
-            f"{layer_name} @ v{cur}: d2(q,v{cur})={dc}; neighbors "
-            + ", ".join(f"v{nb}:d2={d}" for nb, d in cand)
+        line = f"{layer_name} @ v{cur}: d2(q,v{cur})={dc}; neighbors " + ", ".join(
+            f"v{nb}:d2={d}" for nb, d in cand
         )
         if best_d < dc:
             trace.append(line + f" -> move to v{best_nb} (d2 {best_d} < {dc})")
             cur = best_nb
         else:
-            trace.append(line + f" -> no neighbor improves on {dc}; local minimum reached")
+            trace.append(
+                line + f" -> no neighbor improves on {dc}; local minimum reached"
+            )
             return cur
 
 
@@ -866,7 +951,8 @@ def _hnsw_doc(rng, n: int, elide_over: int):
     task = (
         "### Task: simulate a greedy HNSW-style vector search (2 layers)\n"
         f"Query q = {list(q)}; metric = squared Euclidean distance.\n"
-        f"Vectors ({n}):\n" + "\n".join(f"  v{i} = {list(v)}" for i, v in enumerate(vecs))
+        f"Vectors ({n}):\n"
+        + "\n".join(f"  v{i} = {list(v)}" for i, v in enumerate(vecs))
         + f"\nLayer 1 nodes: {[f'v{i}' for i in layer1]}; layer-1 links (M={_HNSW_M}): "
         + "; ".join(f"v{i}->{[f'v{j}' for j in nbrs1[i]]}" for i in layer1)
         + f"\nLayer 0 links (M={_HNSW_M}): "
@@ -876,14 +962,25 @@ def _hnsw_doc(rng, n: int, elide_over: int):
     )
     answer = [
         f"greedy result: v{got} at d2 = {_d2(q, vecs[got])}",
-        (f"exact check: brute-force argmin is v{exact} -> greedy search found the true "
-         "nearest neighbour" if matched else
-         f"exact check: brute-force argmin is v{exact} (d2={_d2(q, vecs[exact])}) -> greedy "
-         "search stopped in a local minimum, a known HNSW trade-off"),
+        (
+            f"exact check: brute-force argmin is v{exact} -> greedy search found the true "
+            "nearest neighbour"
+            if matched
+            else f"exact check: brute-force argmin is v{exact} (d2={_d2(q, vecs[exact])}) -> greedy "
+            "search stopped in a local minimum, a known HNSW trade-off"
+        ),
     ]
     text = render_etcot(task, elide(step_lines(raw_steps), states, elide_over), answer)
-    meta = {"vecs": vecs, "q": q, "got": got, "exact": exact, "layer1": layer1,
-            "nbrs0": nbrs0, "nbrs1": nbrs1, "entry": entry}
+    meta = {
+        "vecs": vecs,
+        "q": q,
+        "got": got,
+        "exact": exact,
+        "layer1": layer1,
+        "nbrs0": nbrs0,
+        "nbrs1": nbrs1,
+        "entry": entry,
+    }
     return text, "deliberate", "vector_hnsw_greedy", meta
 
 
@@ -903,7 +1000,9 @@ class _LSM:
 
     def __init__(self):
         self.mem: dict[str, int | None] = {}
-        self.l0: list[tuple[int, list[tuple[str, int | None]]]] = []  # (run_id, sorted items), newest first
+        self.l0: list[
+            tuple[int, list[tuple[str, int | None]]]
+        ] = []  # (run_id, sorted items), newest first
         self.l1: list[tuple[str, int | None]] = []
         self.next_run = 1
 
@@ -940,12 +1039,16 @@ class _LSM:
 
     def put(self, key: str, val: int, events: list[str]) -> None:
         self.mem[key] = val
-        events.append(f"PUT {key}={val} -> memtable {_fmt_mem(self.mem)} ({len(self.mem)}/{_LSM_MEMTABLE_LIMIT})")
+        events.append(
+            f"PUT {key}={val} -> memtable {_fmt_mem(self.mem)} ({len(self.mem)}/{_LSM_MEMTABLE_LIMIT})"
+        )
         self._flush_if_full(events)
 
     def delete(self, key: str, events: list[str]) -> None:
         self.mem[key] = _LSM_TOMBSTONE
-        events.append(f"DEL {key} -> write tombstone; memtable {_fmt_mem(self.mem)} ({len(self.mem)}/{_LSM_MEMTABLE_LIMIT})")
+        events.append(
+            f"DEL {key} -> write tombstone; memtable {_fmt_mem(self.mem)} ({len(self.mem)}/{_LSM_MEMTABLE_LIMIT})"
+        )
         self._flush_if_full(events)
 
     def get(self, key: str, events: list[str]):
@@ -958,12 +1061,18 @@ class _LSM:
             d = dict(run)
             if key in d:
                 v = d[key]
-                found = "tombstone -> NOT FOUND" if v is _LSM_TOMBSTONE else f"value {v}"
-                events.append(f"GET {key}: memtable miss -> L0 run R{rid} hit -> {found}")
+                found = (
+                    "tombstone -> NOT FOUND" if v is _LSM_TOMBSTONE else f"value {v}"
+                )
+                events.append(
+                    f"GET {key}: memtable miss -> L0 run R{rid} hit -> {found}"
+                )
                 return v
         d = dict(self.l1)
         if key in d:
-            events.append(f"GET {key}: memtable and L0 miss -> L1 hit -> value {d[key]}")
+            events.append(
+                f"GET {key}: memtable and L0 miss -> L1 hit -> value {d[key]}"
+            )
             return d[key]
         events.append(f"GET {key}: memtable, L0 and L1 all miss -> NOT FOUND")
         return _LSM_TOMBSTONE
@@ -977,11 +1086,21 @@ class _LSM:
 
 
 def _fmt_run(run: list[tuple[str, int | None]]) -> str:
-    return "[" + ", ".join(f"{k}:{'DEL' if v is _LSM_TOMBSTONE else v}" for k, v in run) + "]"
+    return (
+        "["
+        + ", ".join(f"{k}:{'DEL' if v is _LSM_TOMBSTONE else v}" for k, v in run)
+        + "]"
+    )
 
 
 def _fmt_mem(mem: dict[str, int | None]) -> str:
-    return "{" + ", ".join(f"{k}:{'DEL' if v is _LSM_TOMBSTONE else v}" for k, v in sorted(mem.items())) + "}"
+    return (
+        "{"
+        + ", ".join(
+            f"{k}:{'DEL' if v is _LSM_TOMBSTONE else v}" for k, v in sorted(mem.items())
+        )
+        + "}"
+    )
 
 
 def _lsm_doc(rng, n: int, elide_over: int):
@@ -1042,19 +1161,27 @@ def _lsm_doc(rng, n: int, elide_over: int):
         "when L0 holds 2 runs they compact (merged with any L1 run) into a single L1 "
         "run -- newer values win, tombstones are dropped at L1.\n"
         "Operations, in order:\n"
-        + "\n".join(f"  {op} {k}" + (f" = {v}" if v is not None else "") for op, k, v in ops)
-        + "\n  then GET " + ", GET ".join(k for k, _ in gets)
+        + "\n".join(
+            f"  {op} {k}" + (f" = {v}" if v is not None else "") for op, k, v in ops
+        )
+        + "\n  then GET "
+        + ", GET ".join(k for k, _ in gets)
     )
     answer = [
         f"memtable: {_fmt_mem(lsm.mem)}",
         f"L0 runs (newest first): {[f'R{r} ' + _fmt_run(run) for r, run in lsm.l0] or 'none'}",
         f"L1 run: {_fmt_run(lsm.l1) if lsm.l1 else 'none'}",
-        "GET results: " + ", ".join(
-            f"{k} -> {'NOT FOUND' if got is _LSM_TOMBSTONE else got}" for k, got in gets),
+        "GET results: "
+        + ", ".join(
+            f"{k} -> {'NOT FOUND' if got is _LSM_TOMBSTONE else got}" for k, got in gets
+        ),
     ]
     text = render_etcot(task, elide(step_lines(raw_steps), states, elide_over), answer)
-    meta = {"ops": ops, "gets": [(k, None if g is _LSM_TOMBSTONE else g) for k, g in gets],
-            "visible": lsm.visible()}
+    meta = {
+        "ops": ops,
+        "gets": [(k, None if g is _LSM_TOMBSTONE else g) for k, g in gets],
+        "visible": lsm.visible(),
+    }
     return text, "deliberate", "lsm_engine", meta
 
 
@@ -1064,7 +1191,9 @@ def _lsm_doc(rng, n: int, elide_over: int):
 
 
 def _wal_doc(rng, n: int, elide_over: int):
-    accounts = sorted(rng.sample(["acct_a", "acct_b", "acct_c", "acct_d"], rng.randint(2, 4)))
+    accounts = sorted(
+        rng.sample(["acct_a", "acct_b", "acct_c", "acct_d"], rng.randint(2, 4))
+    )
     init = {a: rng.randint(100, 900) for a in accounts}
 
     # build the full log: per txn BEGIN, 1-2 SETs, COMMIT (75%) or ABORT
@@ -1095,17 +1224,24 @@ def _wal_doc(rng, n: int, elide_over: int):
             raw_steps.append(f"append log record {i}: BEGIN T{rec[1]}")
         elif kind == "SET":
             _, t, a, old, new = rec
-            raw_steps.append(f"append log record {i}: SET T{t} {a}: {old} -> {new} (redo value {new})")
+            raw_steps.append(
+                f"append log record {i}: SET T{t} {a}: {old} -> {new} (redo value {new})"
+            )
         else:
             raw_steps.append(f"append log record {i}: {kind} T{rec[1]}")
         states.append(f"log length={i + 1}")
-    raw_steps.append(f"CRASH -- records {crash_at}..{len(log) - 1} were never persisted" if crash_at < len(log)
-                     else "CRASH -- immediately after the final record was persisted")
+    raw_steps.append(
+        f"CRASH -- records {crash_at}..{len(log) - 1} were never persisted"
+        if crash_at < len(log)
+        else "CRASH -- immediately after the final record was persisted"
+    )
     states.append("crashed")
 
     committed = {rec[1] for rec in surviving if rec[0] == "COMMIT"}
     aborted = {rec[1] for rec in surviving if rec[0] == "ABORT"}
-    open_txns = sorted({rec[1] for rec in surviving if rec[0] == "BEGIN"} - committed - aborted)
+    open_txns = sorted(
+        {rec[1] for rec in surviving if rec[0] == "BEGIN"} - committed - aborted
+    )
     raw_steps.append(
         f"recovery scan: committed txns {sorted(committed) or 'none'}; aborted {sorted(aborted) or 'none'}; "
         f"in-flight (no COMMIT persisted) {open_txns or 'none'} -> only committed SETs are redone"
@@ -1133,8 +1269,14 @@ def _wal_doc(rng, n: int, elide_over: int):
         f"Initial table: {dict(sorted(init.items()))}\n"
         "Log records persisted in order (the crash may cut the tail):\n"
         + "\n".join(
-            f"  {i}: " + (f"SET T{r[1]} {r[2]} {r[3]}->{r[4]}" if r[0] == "SET" else f"{r[0]} T{r[1]}")
-            for i, r in enumerate(surviving))
+            f"  {i}: "
+            + (
+                f"SET T{r[1]} {r[2]} {r[3]}->{r[4]}"
+                if r[0] == "SET"
+                else f"{r[0]} T{r[1]}"
+            )
+            for i, r in enumerate(surviving)
+        )
         + f"\n\nA crash strikes after record {crash_at - 1}. Recover: scan the surviving log, "
         "redo every SET belonging to a transaction whose COMMIT record survived, and "
         "discard in-flight or aborted work."
@@ -1146,8 +1288,13 @@ def _wal_doc(rng, n: int, elide_over: int):
         "(aborted or COMMIT never persisted)",
     ]
     text = render_etcot(task, elide(step_lines(raw_steps), states, elide_over), answer)
-    meta = {"init": init, "log": log, "crash_at": crash_at, "recovered": recovered,
-            "committed": sorted(committed)}
+    meta = {
+        "init": init,
+        "log": log,
+        "crash_at": crash_at,
+        "recovered": recovered,
+        "committed": sorted(committed),
+    }
     return text, "temporal", "wal_recovery", meta
 
 
@@ -1159,7 +1306,7 @@ def _wal_doc(rng, n: int, elide_over: int):
 def _cos_parts(q, v) -> tuple[int, float, float, float]:
     import math
 
-    dot = sum(a * b for a, b in zip(q, v))
+    dot = sum(a * b for a, b in zip(q, v, strict=False))
     nq = math.sqrt(sum(a * a for a in q))
     nv = math.sqrt(sum(b * b for b in v))
     return dot, nq, nv, dot / (nq * nv)
@@ -1182,7 +1329,9 @@ def _vector_cosine_doc(rng, n: int, elide_over: int):
     for i, v in enumerate(vecs):
         dot, nq, nv, sim = _cos_parts(q, v)
         sims.append(sim)
-        terms = " + ".join(f"{a}*{'(%d)' % b if b < 0 else b}" for a, b in zip(q, v))
+        terms = " + ".join(
+            f"{a}*{'(%d)' % b if b < 0 else b}" for a, b in zip(q, v, strict=False)
+        )
         line = (
             f"candidate v{i}={list(v)}: dot = {terms} = {dot}; |q| = {nq:.4f}, "
             f"|v{i}| = {nv:.4f}; cos = {dot}/({nq:.4f}*{nv:.4f}) = {sim:.4f}"
@@ -1203,7 +1352,7 @@ def _vector_cosine_doc(rng, n: int, elide_over: int):
     )
     answer = [
         f"best match: v{best_i} with cosine similarity {best_sim:.4f}",
-        f"similarities: " + ", ".join(f"v{i}={s:.4f}" for i, s in enumerate(sims)),
+        "similarities: " + ", ".join(f"v{i}={s:.4f}" for i, s in enumerate(sims)),
     ]
     text = render_etcot(task, elide(step_lines(raw_steps), states, elide_over), answer)
     meta = {"vecs": vecs, "q": q, "best": best_i, "sims": sims}
@@ -1228,18 +1377,67 @@ class DBTraceGenerator(Generator):
     # (weight, builder, source, p2 n-range, p3 n-range,
     #  p4 growth (start_n, step, target_chars, max_n) or None)
     _FAMILIES = [
-        (0.10, _btree_point_doc, "dbtrace/btree_point", (12, 20), (30, 60), (70, 12, 6200, 300)),
-        (0.08, _btree_range_doc, "dbtrace/btree_range", (12, 20), (30, 60), (60, 12, 6200, 300)),
+        (
+            0.10,
+            _btree_point_doc,
+            "dbtrace/btree_point",
+            (12, 20),
+            (30, 60),
+            (70, 12, 6200, 300),
+        ),
+        (
+            0.08,
+            _btree_range_doc,
+            "dbtrace/btree_range",
+            (12, 20),
+            (30, 60),
+            (60, 12, 6200, 300),
+        ),
         (0.07, _btree_insert_doc, "dbtrace/btree_insert", (8, 14), (20, 40), None),
-        (0.09, _doc_filter_doc, "dbtrace/docstore", (5, 9), (14, 30), (28, 6, 6200, 120)),
+        (
+            0.09,
+            _doc_filter_doc,
+            "dbtrace/docstore",
+            (5, 9),
+            (14, 30),
+            (28, 6, 6200, 120),
+        ),
         (0.09, _kv_hash_doc, "dbtrace/kv_hash", (4, 7), (8, 12), None),
-        (0.08, _wide_column_doc, "dbtrace/wide_column", (5, 9), (20, 44), (40, 8, 6200, 160)),
+        (
+            0.08,
+            _wide_column_doc,
+            "dbtrace/wide_column",
+            (5, 9),
+            (20, 44),
+            (40, 8, 6200, 160),
+        ),
         (0.10, _graph_doc, "dbtrace/graph", (6, 9), (12, 24), (18, 3, 6200, 60)),
-        (0.08, _ts_agg_doc, "dbtrace/timeseries", (6, 10), (20, 40), (30, 6, 6200, 140)),
-        (0.09, _vector_knn_doc, "dbtrace/vector_knn", (5, 8), (14, 34), (22, 4, 6200, 110)),
+        (
+            0.08,
+            _ts_agg_doc,
+            "dbtrace/timeseries",
+            (6, 10),
+            (20, 40),
+            (30, 6, 6200, 140),
+        ),
+        (
+            0.09,
+            _vector_knn_doc,
+            "dbtrace/vector_knn",
+            (5, 8),
+            (14, 34),
+            (22, 4, 6200, 110),
+        ),
         (0.08, _lsm_doc, "dbtrace/lsm_engine", (6, 10), (14, 24), (30, 6, 6200, 140)),
         (0.08, _wal_doc, "dbtrace/wal_recovery", (3, 5), (7, 12), (16, 3, 6200, 80)),
-        (0.06, _vector_cosine_doc, "dbtrace/vector_cosine", (4, 7), (10, 20), (24, 4, 6200, 110)),
+        (
+            0.06,
+            _vector_cosine_doc,
+            "dbtrace/vector_cosine",
+            (4, 7),
+            (10, 20),
+            (24, 4, 6200, 110),
+        ),
         (0.00, _hnsw_doc, "dbtrace/vector_hnsw", (8, 12), (12, 21), None),
     ]
     # _hnsw_doc gets its share via an explicit floor instead of the wheel so
@@ -1251,7 +1449,9 @@ class DBTraceGenerator(Generator):
     def generate(self, target_bytes: int) -> Iterator[dict]:
         from dottie.datagen.trace_common import PHASE_ELIDE_OVER
 
-        weighted = [(w, b, s, p2, p3, p4) for w, b, s, p2, p3, p4 in self._FAMILIES if w > 0]
+        weighted = [
+            (w, b, s, p2, p3, p4) for w, b, s, p2, p3, p4 in self._FAMILIES if w > 0
+        ]
         fam_cum, fam_total = [], 0.0
         for w, *_ in weighted:
             fam_total += w
@@ -1303,9 +1503,17 @@ class DBTraceGenerator(Generator):
                     text, task_type, concept, _meta = builder(self.rng, n, elide_over)
             else:
                 lo, hi = p2_range if phase == 2 else p3_range
-                text, task_type, concept, _meta = builder(self.rng, self.rng.randint(lo, hi), elide_over)
+                text, task_type, concept, _meta = builder(
+                    self.rng, self.rng.randint(lo, hi), elide_over
+                )
 
-            d = self.doc(text=text, task_type=task_type, concept=concept, phase=phase, source=source)
+            d = self.doc(
+                text=text,
+                task_type=task_type,
+                concept=concept,
+                phase=phase,
+                source=source,
+            )
             produced += len(d["text"].encode("utf-8"))
             yield d
 

@@ -1,5 +1,6 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
 """Incremental build (--update): content-hash cache reuses unchanged files."""
+
 import argparse
 import json
 import os
@@ -13,13 +14,21 @@ def _repo(tmp_path):
     repo.mkdir()
     (repo / "alpha.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
     (repo / "beta.py").write_text("def beta():\n    return 2\n", encoding="utf-8")
-    (repo / "notes.md").write_text("# Notes\nSee [alpha](alpha.py).\n", encoding="utf-8")
+    (repo / "notes.md").write_text(
+        "# Notes\nSee [alpha](alpha.py).\n", encoding="utf-8"
+    )
     return repo
 
 
 def _build_args(repo, out, update=False):
-    return argparse.Namespace(path=str(repo), roots=[], out=str(out), max_files=100,
-                              cluster="auto", update=update)
+    return argparse.Namespace(
+        path=str(repo),
+        roots=[],
+        out=str(out),
+        max_files=100,
+        cluster="auto",
+        update=update,
+    )
 
 
 class TestExtractWithCache:
@@ -27,7 +36,7 @@ class TestExtractWithCache:
         repo = _repo(tmp_path)
         cache = tmp_path / "out" / "cache" / "extract.json"
         files = sorted(repo.iterdir())
-        nodes, edges, stats = extract_with_cache(files, cache, update=False)
+        _nodes, _edges, stats = extract_with_cache(files, cache, update=False)
         assert stats["re_extracted"] == 3 and stats["reused"] == 0
         assert cache.exists()
         meta = json.loads(cache.read_text())
@@ -39,12 +48,14 @@ class TestExtractWithCache:
         repo = _repo(tmp_path)
         cache = tmp_path / "out" / "cache" / "extract.json"
         files = sorted(repo.iterdir())
-        n1, e1, _ = extract_with_cache(files, cache, update=False)
+        _n1, _e1, _ = extract_with_cache(files, cache, update=False)
 
         # change one file's content
-        (repo / "beta.py").write_text("def beta():\n    return 3\n\ndef gamma():\n    return 4\n",
-                                      encoding="utf-8")
-        n2, e2, stats = extract_with_cache(files, cache, update=True)
+        (repo / "beta.py").write_text(
+            "def beta():\n    return 3\n\ndef gamma():\n    return 4\n",
+            encoding="utf-8",
+        )
+        n2, _e2, stats = extract_with_cache(files, cache, update=True)
         assert stats["re_extracted"] == 1
         assert stats["reused"] == 2
         # graph pool is rebuilt from the merge: new gamma symbol shows up
@@ -81,7 +92,9 @@ class TestCmdBuildUpdate:
         assert (out / "graph.json").exists()
 
         # modify exactly one file, then --update
-        (repo / "alpha.py").write_text("def alpha():\n    return 42\n", encoding="utf-8")
+        (repo / "alpha.py").write_text(
+            "def alpha():\n    return 42\n", encoding="utf-8"
+        )
         stats2 = cmd_build(_build_args(repo, out, update=True))
         assert stats2["cache"]["re_extracted"] == 1
         assert stats2["cache"]["reused"] == stats1["cache"]["files"] - 1

@@ -25,7 +25,9 @@ REPORT_MD = _REPO / "reports" / "REPORT_REAL.md"
 
 def _git_sha() -> str:
     try:
-        return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=_REPO, text=True).strip()
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=_REPO, text=True
+        ).strip()
     except Exception:
         return "unknown"
 
@@ -71,7 +73,9 @@ def run_harness(
             branch_out["perplexity"] = {"error": str(e)}
 
         try:
-            branch_out["probes"] = score_probes(model, tok, n_per_set=probe_n, device=device)
+            branch_out["probes"] = score_probes(
+                model, tok, n_per_set=probe_n, device=device
+            )
         except Exception as e:
             branch_out["probes"] = {"error": str(e)}
 
@@ -110,8 +114,17 @@ def write_reports(results: dict) -> None:
         jspace = results.get(branch, {}).get("jspace", [])
         if isinstance(jspace, list):
             for t in jspace:
-                measured = json.dumps(t.get("measured", t.get("error", "")), default=str)[:80]
-                rows.append((f"{branch}/{t.get('test', '?')}", t.get("bar", "-"), measured, _verdict(t)))
+                measured = json.dumps(
+                    t.get("measured", t.get("error", "")), default=str
+                )[:80]
+                rows.append(
+                    (
+                        f"{branch}/{t.get('test', '?')}",
+                        t.get("bar", "-"),
+                        measured,
+                        _verdict(t),
+                    )
+                )
 
     # frozen-capability comparison
     comp_rows = ["\n## Frozen-capability comparison (base vs chat)\n"]
@@ -126,7 +139,9 @@ def write_reports(results: dict) -> None:
             if b is not None and c is not None and b > 0:
                 delta = (c - b) / b * 100
                 note = "REGRESSION" if delta < -5 else ""
-                comp_rows.append(f"| probe {key} | {b:.3f} | {c:.3f} | {delta:+.1f}% | {note} |")
+                comp_rows.append(
+                    f"| probe {key} | {b:.3f} | {c:.3f} | {delta:+.1f}% | {note} |"
+                )
 
     md = [
         "# Ava Real Eval Report",

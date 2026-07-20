@@ -1,4 +1,5 @@
 """Herd plugin — Herdr-inspired session control surface."""
+
 from __future__ import annotations
 
 import json
@@ -15,7 +16,9 @@ def _run(args, *, timeout=30):
     return subprocess.run(
         CLI + args,
         capture_output=True,
-        text=True, encoding="utf-8", errors="replace",
+        text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=timeout,
         cwd=str(ROOT),
     )

@@ -13,15 +13,17 @@ Usage by LLM:
 
 All forge commands emit standard ok envelope with example + discover for next step.
 """
+
+import re
+import shutil
+import textwrap
 from pathlib import Path
-import re, json, shutil, textwrap
-from typing import Optional
 
 import typer
 import yaml
 
 from bigbang.core.cli_ux import examples_epilog, fail_agent
-from bigbang.core.contract import make_plugin_app, ok, err
+from bigbang.core.contract import make_plugin_app, ok
 from bigbang.core.output import emit
 
 app = make_plugin_app(
@@ -38,10 +40,14 @@ app = make_plugin_app(
 )
 
 PLUGIN_ROOT = Path(__file__).parent.parent  # bigbang/plugins
-SKILLS_ROOT = Path(__file__).parents[2] / "skills"  # bigbang/skills — `skill install` source
+SKILLS_ROOT = (
+    Path(__file__).parents[2] / "skills"
+)  # bigbang/skills — `skill install` source
+
 
 def _valid_name(name: str):
     return bool(re.fullmatch(r"[a-z][a-z0-9_]{1,31}", name))
+
 
 def _plugin_dir(name: str) -> Path:
     return PLUGIN_ROOT / name
@@ -55,15 +61,24 @@ def _scaffold_skill_md(name: str, description: str) -> Path:
     sdir.mkdir(parents=True, exist_ok=True)
     md = sdir / "SKILL.md"
     if not md.exists():
-        triggers = ", ".join(sorted({w.lower() for w in re.findall(r"[a-zA-Z]{4,}", description)}
-                                    | {name})[:6]) or name
+        triggers = (
+            ", ".join(
+                sorted(
+                    {w.lower() for w in re.findall(r"[a-zA-Z]{4,}", description)}
+                    | {name}
+                )[:6]
+            )
+            or name
+        )
         md.write_text(
             f"---\nname: {name}\ndescription: {description}\n"
             f"j_space_target: system1\nhalf_life: 30\ntriggers: [{triggers}]\n---\n"
             f"Auto-forged tool. Discover with `scout --json {name} --help`; typical call\n"
             f"`scout --json {name} run ...`. Edit this file to refine routing metadata.\n",
-            encoding="utf-8")
+            encoding="utf-8",
+        )
     return md
+
 
 def _ensure_scaffold(name: str, description: str):
     pdir = _plugin_dir(name)
@@ -71,9 +86,10 @@ def _ensure_scaffold(name: str, description: str):
     (pdir / "__init__.py").touch(exist_ok=True)
     cli_file = pdir / "cli.py"
     manifest = pdir / "manifest.yaml"
-    
+
     if not cli_file.exists():
-        cli_file.write_text(textwrap.dedent(f'''
+        cli_file.write_text(
+            textwrap.dedent(f'''
             # Solo personal project, no connection to employer, built with public/free-tier only
             """{name} plugin — auto-forged by scout forge, editable by Dottie LLM."""
             from pathlib import Path
@@ -124,10 +140,13 @@ def _ensure_scaffold(name: str, description: str):
                     "contract": "Use make_plugin_app + ok() envelope + examples_epilog + emit(). Always return {{ok:True}} with example+discover.",
                     "capabilities": "Declare in manifest.yaml: network.domains, filesystem.write, secrets.allow"
                 }}, command="{name} edit-instructions"))
-        ''').lstrip(), encoding="utf-8")
+        ''').lstrip(),
+            encoding="utf-8",
+        )
 
     if not manifest.exists():
-        manifest.write_text(f"""name: {name}
+        manifest.write_text(
+            f"""name: {name}
 version: 0.7.0
 description: {description}
 capabilities:
@@ -144,23 +163,47 @@ capabilities:
 # network:
 #   enabled: true
 #   domains: ["api.github.com"]
-""", encoding="utf-8")
+""",
+            encoding="utf-8",
+        )
     return pdir
 
-@app.command("new", epilog=examples_epilog(["scout --json forge new weather --description 'Weather API'"]))
+
+@app.command(
+    "new",
+    epilog=examples_epilog(
+        ["scout --json forge new weather --description 'Weather API'"]
+    ),
+)
 def new_plugin(
-    name: str = typer.Argument(..., help="new tool name snake_case, e.g. weather, github, linear"),
+    name: str = typer.Argument(
+        ..., help="new tool name snake_case, e.g. weather, github, linear"
+    ),
     description: str = typer.Option("", "--description", "-d", help="what it does"),
-    domains: str = typer.Option("", "--domains", help="comma-separated allowed network domains, e.g. api.github.com,api.linear.app"),
-    with_network: bool = typer.Option(False, "--network", help="enable network capability"),
+    domains: str = typer.Option(
+        "",
+        "--domains",
+        help="comma-separated allowed network domains, e.g. api.github.com,api.linear.app",
+    ),
+    with_network: bool = typer.Option(
+        False, "--network", help="enable network capability"
+    ),
 ):
     """Forge a brand new permanent CLI plugin — this is how LLM adds a tool."""
     if not _valid_name(name):
-        fail_agent(f"Invalid plugin name {name} — must be [a-z][a-z0-9_]{{1,31}}", command="forge new", example="scout forge new my_tool")
+        fail_agent(
+            f"Invalid plugin name {name} — must be [a-z][a-z0-9_]{{1,31}}",
+            command="forge new",
+            example="scout forge new my_tool",
+        )
     pdir = _plugin_dir(name)
     if pdir.exists() and (pdir / "cli.py").exists():
-        fail_agent(f"Plugin {name} already exists at {pdir}", command="forge new", example=f"scout --json forge edit {name}")
-    
+        fail_agent(
+            f"Plugin {name} already exists at {pdir}",
+            command="forge new",
+            example=f"scout --json forge edit {name}",
+        )
+
     desc = description or f"{name} — auto-forged by Dottie LLM via scout forge"
     pdir = _ensure_scaffold(name, desc)
 
@@ -175,24 +218,40 @@ def new_plugin(
 
     skill_md = _scaffold_skill_md(name, desc)
 
-    emit(ok({
-        "plugin": name,
-        "dir": str(pdir),
-        "cli_file": str(pdir / "cli.py"),
-        "manifest": str(pdir / "manifest.yaml"),
-        "skill_md": str(skill_md),
-        "status": "scaffolded",
-        "next_steps": [
-            f"scout --json {name} hello  # verify it loads",
-            f"scout forge edit {name} --instructions  # how to implement real logic",
-            f"scout --json forge test {name}",
-            f"scout skill install {name} --target dottie  # SKILL.md scaffolded for you",
-        ],
-        "llm_editable": True,
-        "self_evolution": f"You can now edit {pdir / 'cli.py'} to implement any tool you need. Use scout forge edit {name}"
-    }, command="forge new", example=f"scout --json {name} hello", discover="scout forge edit"), command="forge new")
+    emit(
+        ok(
+            {
+                "plugin": name,
+                "dir": str(pdir),
+                "cli_file": str(pdir / "cli.py"),
+                "manifest": str(pdir / "manifest.yaml"),
+                "skill_md": str(skill_md),
+                "status": "scaffolded",
+                "next_steps": [
+                    f"scout --json {name} hello  # verify it loads",
+                    f"scout forge edit {name} --instructions  # how to implement real logic",
+                    f"scout --json forge test {name}",
+                    f"scout skill install {name} --target dottie  # SKILL.md scaffolded for you",
+                ],
+                "llm_editable": True,
+                "self_evolution": f"You can now edit {pdir / 'cli.py'} to implement any tool you need. Use scout forge edit {name}",
+            },
+            command="forge new",
+            example=f"scout --json {name} hello",
+            discover="scout forge edit",
+        ),
+        command="forge new",
+    )
 
-@app.command("from-openapi", epilog=examples_epilog(["scout --json forge from-openapi --name linear --url https://api.linear.app/openapi.json"]))
+
+@app.command(
+    "from-openapi",
+    epilog=examples_epilog(
+        [
+            "scout --json forge from-openapi --name linear --url https://api.linear.app/openapi.json"
+        ]
+    ),
+)
 def from_openapi(
     name: str = typer.Option(..., "--name", "-n", help="plugin name"),
     url: str = typer.Option(..., "--url", "-u", help="OpenAPI spec URL"),
@@ -203,6 +262,7 @@ def from_openapi(
         fail_agent(f"Invalid name {name}", command="forge from-openapi")
     try:
         from bigbang.core.openapi import fetch_spec, generate_typer_plugin
+
         spec = fetch_spec(url)
         code = generate_typer_plugin(name, spec, url)
         pdir = _plugin_dir(name)
@@ -211,10 +271,12 @@ def from_openapi(
         (pdir / "cli.py").write_text(code, encoding="utf-8")
         # manifest with domain from URL
         from urllib.parse import urlparse
+
         domain = urlparse(url).netloc
-        (pdir / "manifest.yaml").write_text(f"""name: {name}
+        (pdir / "manifest.yaml").write_text(
+            f"""name: {name}
 version: 0.7.0
-description: {description or f'{name} — generated from OpenAPI {url}'}
+description: {description or f"{name} — generated from OpenAPI {url}"}
 source: {url}
 capabilities:
   network:
@@ -222,12 +284,36 @@ capabilities:
     domains: ["{domain}"]
   filesystem:
     write: false
-""", encoding="utf-8")
-        emit(ok({"plugin": name, "from": url, "ops": len(spec.get("paths", {})), "dir": str(pdir)}, command="forge from-openapi", example=f"scout --json {name} --help"), command="forge from-openapi")
+""",
+            encoding="utf-8",
+        )
+        emit(
+            ok(
+                {
+                    "plugin": name,
+                    "from": url,
+                    "ops": len(spec.get("paths", {})),
+                    "dir": str(pdir),
+                },
+                command="forge from-openapi",
+                example=f"scout --json {name} --help",
+            ),
+            command="forge from-openapi",
+        )
     except Exception as e:
-        fail_agent(f"OpenAPI forge failed: {e}", command="forge from-openapi", example="scout tools add linear --type openapi --url <url> # fallback dynamic")
+        fail_agent(
+            f"OpenAPI forge failed: {e}",
+            command="forge from-openapi",
+            example="scout tools add linear --type openapi --url <url> # fallback dynamic",
+        )
 
-@app.command("from-mcp", epilog=examples_epilog(["scout --json forge from-mcp --name notion --url https://mcp.notion.com/sse"]))
+
+@app.command(
+    "from-mcp",
+    epilog=examples_epilog(
+        ["scout --json forge from-mcp --name notion --url https://mcp.notion.com/sse"]
+    ),
+)
 def from_mcp(
     name: str = typer.Option(..., "--name"),
     url: str = typer.Option(..., "--url"),
@@ -240,16 +326,30 @@ def from_mcp(
     data["type"] = "mcp"
     data["url"] = url
     data["capabilities"] = data.get("capabilities", {})
-    data["capabilities"]["network"] = {"enabled": True, "domains": [url.split("/")[2] if "://" in url else url]}
+    data["capabilities"]["network"] = {
+        "enabled": True,
+        "domains": [url.split("/")[2] if "://" in url else url],
+    }
     mf_path.write_text(yaml.safe_dump(data), encoding="utf-8")
-    
+
     # Append MCP proxy to cli.py
     cli_file = pdir / "cli.py"
     existing = cli_file.read_text(encoding="utf-8")
     if "mcp_proxy" not in existing:
-        cli_file.write_text(existing + f'\n\n# MCP proxy added by forge from-mcp\n@app.command("call-mcp")\ndef call_mcp(tool_name: str = typer.Argument(..., help="MCP tool name"), args_json: str = typer.Argument("{{}}")):\n    """Proxy to MCP server {url}""" \n    import json, httpx\n    emit(ok({{"proxy":"mcp", "server":"{url}", "tool": tool_name, "args": json.loads(args_json)}}, command="{name} call-mcp"))\n')
-    
-    emit(ok({"plugin": name, "mcp_url": url, "dir": str(pdir)}, command="forge from-mcp", example=f"scout --json {name} call-mcp <tool>"), command="forge from-mcp")
+        cli_file.write_text(
+            existing
+            + f'\n\n# MCP proxy added by forge from-mcp\n@app.command("call-mcp")\ndef call_mcp(tool_name: str = typer.Argument(..., help="MCP tool name"), args_json: str = typer.Argument("{{}}")):\n    """Proxy to MCP server {url}""" \n    import json, httpx\n    emit(ok({{"proxy":"mcp", "server":"{url}", "tool": tool_name, "args": json.loads(args_json)}}, command="{name} call-mcp"))\n'
+        )
+
+    emit(
+        ok(
+            {"plugin": name, "mcp_url": url, "dir": str(pdir)},
+            command="forge from-mcp",
+            example=f"scout --json {name} call-mcp <tool>",
+        ),
+        command="forge from-mcp",
+    )
+
 
 @app.command("list", epilog=examples_epilog(["scout --json forge list"]))
 def list_cmd():
@@ -260,20 +360,35 @@ def list_cmd():
             continue
         mf = pdir / "manifest.yaml"
         cli = pdir / "cli.py"
-        plugins.append({
-            "name": pdir.name,
-            "has_cli": cli.exists(),
-            "has_manifest": mf.exists(),
-            "forged_by": "forge" if "auto-forged" in (cli.read_text(encoding="utf-8")[:1000] if cli.exists() else "") else "system",
-        })
-    emit(ok({"plugins": plugins, "count": len(plugins), "forge_root": str(PLUGIN_ROOT)}, command="forge list", discover="scout system policy"), command="forge list")
+        plugins.append(
+            {
+                "name": pdir.name,
+                "has_cli": cli.exists(),
+                "has_manifest": mf.exists(),
+                "forged_by": "forge"
+                if "auto-forged"
+                in (cli.read_text(encoding="utf-8")[:1000] if cli.exists() else "")
+                else "system",
+            }
+        )
+    emit(
+        ok(
+            {"plugins": plugins, "count": len(plugins), "forge_root": str(PLUGIN_ROOT)},
+            command="forge list",
+            discover="scout system policy",
+        ),
+        command="forge list",
+    )
+
 
 @app.command("cat", epilog=examples_epilog(["scout --json forge cat mytool"]))
 def cat_cmd(name: str = typer.Argument(..., help="plugin name")):
     """Cat cli.py + manifest.yaml — so LLM can read before editing."""
     pdir = _plugin_dir(name)
     if not pdir.exists():
-        fail_agent(f"Plugin {name} not found", command="forge cat", example="scout forge list")
+        fail_agent(
+            f"Plugin {name} not found", command="forge cat", example="scout forge list"
+        )
     cli = pdir / "cli.py"
     mf = pdir / "manifest.yaml"
     out = {}
@@ -283,33 +398,53 @@ def cat_cmd(name: str = typer.Argument(..., help="plugin name")):
         out["manifest.yaml"] = mf.read_text()
     emit(ok(out, command=f"forge cat {name}"), command="forge cat")
 
-@app.command("edit", epilog=examples_epilog(["scout --json forge edit mytool --code 'new content'"]))
+
+@app.command(
+    "edit",
+    epilog=examples_epilog(["scout --json forge edit mytool --code 'new content'"]),
+)
 def edit_cmd(
     name: str = typer.Argument(..., help="plugin name"),
-    code: Optional[str] = typer.Option(None, "--code", help="full new cli.py content (or use --code-file)"),
-    code_file: Optional[str] = typer.Option(None, "--code-file", help="path to file containing new cli.py"),
-    append_command: Optional[str] = typer.Option(None, "--append-command", help="quick append a new command stub named X"),
+    code: str | None = typer.Option(
+        None, "--code", help="full new cli.py content (or use --code-file)"
+    ),
+    code_file: str | None = typer.Option(
+        None, "--code-file", help="path to file containing new cli.py"
+    ),
+    append_command: str | None = typer.Option(
+        None, "--append-command", help="quick append a new command stub named X"
+    ),
     instructions: bool = typer.Option(False, "--instructions", help="show how to edit"),
 ):
     """Edit a forged plugin — LLM's way to implement real logic."""
     pdir = _plugin_dir(name)
     if not pdir.exists():
-        fail_agent(f"Plugin {name} not found — forge new first", command="forge edit", example=f"scout forge new {name}")
-    
+        fail_agent(
+            f"Plugin {name} not found — forge new first",
+            command="forge edit",
+            example=f"scout forge new {name}",
+        )
+
     if instructions:
-        emit(ok({
-            "how": [
-                f"Read current: scout --json forge cat {name}",
-                "Write new cli.py with your real implementation",
-                f"scout --json forge edit {name} --code '<full file>'",
-                f"Test: scout --json {name} hello",
-                "Repeat until tests pass. Use ok() envelope + emit().",
-                "Declare capabilities in manifest.yaml if you need network/filesystem"
-            ],
-            "contract_file": "bigbang/core/contract.py — make_plugin_app, ok(), err()",
-            "example_plugin": "bigbang/plugins/system/cli.py",
-            "llm_tip": "Keep commands JSON-friendly: use scout --json prefix. Always return ok() with example + discover fields so next LLM can find it."
-        }, command="forge edit"), command="forge edit")
+        emit(
+            ok(
+                {
+                    "how": [
+                        f"Read current: scout --json forge cat {name}",
+                        "Write new cli.py with your real implementation",
+                        f"scout --json forge edit {name} --code '<full file>'",
+                        f"Test: scout --json {name} hello",
+                        "Repeat until tests pass. Use ok() envelope + emit().",
+                        "Declare capabilities in manifest.yaml if you need network/filesystem",
+                    ],
+                    "contract_file": "bigbang/core/contract.py — make_plugin_app, ok(), err()",
+                    "example_plugin": "bigbang/plugins/system/cli.py",
+                    "llm_tip": "Keep commands JSON-friendly: use scout --json prefix. Always return ok() with example + discover fields so next LLM can find it.",
+                },
+                command="forge edit",
+            ),
+            command="forge edit",
+        )
         return
 
     cli_file = pdir / "cli.py"
@@ -323,7 +458,13 @@ def {append_command.replace("-", "_")}_cmd(arg: str = typer.Argument("", help="a
     emit(ok({{"command": "{append_command}", "arg": arg, "plugin": "{name}"}}, command="{name} {append_command}"))
 '''
         cli_file.write_text(existing + stub, encoding="utf-8")
-        emit(ok({"appended": append_command, "file": str(cli_file)}, command="forge edit"), command="forge edit")
+        emit(
+            ok(
+                {"appended": append_command, "file": str(cli_file)},
+                command="forge edit",
+            ),
+            command="forge edit",
+        )
         return
 
     new_code = None
@@ -333,15 +474,35 @@ def {append_command.replace("-", "_")}_cmd(arg: str = typer.Argument("", help="a
         new_code = code
 
     if not new_code:
-        fail_agent("Need --code or --code-file or --append-command or --instructions", command="forge edit", example=f"scout forge cat {name}")
+        fail_agent(
+            "Need --code or --code-file or --append-command or --instructions",
+            command="forge edit",
+            example=f"scout forge cat {name}",
+        )
 
     cli_file.write_text(new_code, encoding="utf-8")
-    emit(ok({"edited": name, "file": str(cli_file), "bytes": len(new_code), "next": f"scout --json {name} hello"}, command="forge edit", discover=f"scout --json {name} --help"), command="forge edit")
+    emit(
+        ok(
+            {
+                "edited": name,
+                "file": str(cli_file),
+                "bytes": len(new_code),
+                "next": f"scout --json {name} hello",
+            },
+            command="forge edit",
+            discover=f"scout --json {name} --help",
+        ),
+        command="forge edit",
+    )
+
 
 @app.command("test", epilog=examples_epilog(["scout --json forge test mytool"]))
 def test_cmd(name: str = typer.Argument(..., help="plugin name")):
     """Smoke test a forged plugin — hello + --help"""
-    import subprocess, sys, os
+    import os
+    import subprocess
+    import sys
+
     env = os.environ.copy()
     env["PYTHONPATH"] = env.get("PYTHONPATH", "") + f":{Path(__file__).parents[3]}"
     # Try hello
@@ -350,31 +511,57 @@ def test_cmd(name: str = typer.Argument(..., help="plugin name")):
         emit({"ok": False, "error": f"{name} not found"}, command="forge test")
         raise typer.Exit(1)
     try:
-        result = subprocess.run([sys.executable, "-m", "bigbang.cli", "--json", name, "hello"], capture_output=True, text=True, timeout=10, cwd=str(Path(__file__).parents[3]), env=env)
+        result = subprocess.run(
+            [sys.executable, "-m", "bigbang.cli", "--json", name, "hello"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=str(Path(__file__).parents[3]),
+            env=env,
+        )
         out = result.stdout[:5000]
         err = result.stderr[:2000]
         success = result.returncode == 0
-        emit(ok({
-            "plugin": name,
-            "hello_exit_code": result.returncode,
-            "hello_output": out,
-            "stderr": err,
-            "passes": success,
-            "next": f"scout --json {name} --help" if success else f"scout forge cat {name} and fix"
-        }, command="forge test", example=f"scout --json {name} hello"), command="forge test")
+        emit(
+            ok(
+                {
+                    "plugin": name,
+                    "hello_exit_code": result.returncode,
+                    "hello_output": out,
+                    "stderr": err,
+                    "passes": success,
+                    "next": f"scout --json {name} --help"
+                    if success
+                    else f"scout forge cat {name} and fix",
+                },
+                command="forge test",
+                example=f"scout --json {name} hello",
+            ),
+            command="forge test",
+        )
     except Exception as e:
         emit({"ok": False, "error": str(e)}, command="forge test")
         raise typer.Exit(1)
 
+
 @app.command("rm", epilog=examples_epilog(["scout forge rm mytool --force"]))
-def rm_cmd(name: str = typer.Argument(...), force: bool = typer.Option(False, "--force", "-f")):
+def rm_cmd(
+    name: str = typer.Argument(...), force: bool = typer.Option(False, "--force", "-f")
+):
     """Remove a forged plugin (requires --force)."""
     pdir = _plugin_dir(name)
     if not pdir.exists():
-        emit(ok({"removed": False, "reason": "not found"}, command="forge rm"), command="forge rm")
+        emit(
+            ok({"removed": False, "reason": "not found"}, command="forge rm"),
+            command="forge rm",
+        )
         return
     if not force:
-        fail_agent(f"Pass --force to remove {name}", command="forge rm", example=f"scout forge rm {name} --force")
+        fail_agent(
+            f"Pass --force to remove {name}",
+            command="forge rm",
+            example=f"scout forge rm {name} --force",
+        )
     shutil.rmtree(pdir)
     # the scaffolded SKILL.md dies with its tool — no orphaned skills teaching a
     # capability that no longer exists
@@ -382,8 +569,14 @@ def rm_cmd(name: str = typer.Argument(...), force: bool = typer.Option(False, "-
     removed_skill = skill_dir.exists()
     if removed_skill:
         shutil.rmtree(skill_dir, ignore_errors=True)
-    emit(ok({"removed": name, "dir": str(pdir), "skill_md_removed": removed_skill},
-            command="forge rm"), command="forge rm")
+    emit(
+        ok(
+            {"removed": name, "dir": str(pdir), "skill_md_removed": removed_skill},
+            command="forge rm",
+        ),
+        command="forge rm",
+    )
+
 
 def register(root):
     root.add_typer(app, name="forge")

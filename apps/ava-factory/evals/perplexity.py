@@ -9,8 +9,8 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn.functional as F
-
 from ava.config import AvaConfig
+
 from evals.common import EVAL_SEED, heldout_path, prep_eval
 
 
@@ -47,7 +47,11 @@ def compute_ppl(
         seq_len = cfg.phases[ph].seq
         n_tokens = int(arr.size)
         if n_tokens < seq_len + 1:
-            results[ph] = {"ppl": float("nan"), "tokens": n_tokens, "error": "too short"}
+            results[ph] = {
+                "ppl": float("nan"),
+                "tokens": n_tokens,
+                "error": "too short",
+            }
             continue
 
         nll_sum = 0.0

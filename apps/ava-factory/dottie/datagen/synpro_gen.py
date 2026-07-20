@@ -7,10 +7,13 @@ Weight 0 in sources.yaml until enabled — does not change live mini mixture.
 
 from __future__ import annotations
 
-from typing import Iterator
+from typing import TYPE_CHECKING
 
 from dottie.datagen.base import Generator
 from dottie.datagen.synpro_lite import faithful_rephrase
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 def _planet_period_doc(rng) -> str:
@@ -18,7 +21,7 @@ def _planet_period_doc(rng) -> str:
     a = rng.randint(2, 20)
     t2 = a * a * a
     # Integer sqrt when perfect cube chain — use float sqrt for render.
-    t = t2 ** 0.5
+    t = t2**0.5
     name = rng.choice(["Kepler-42 b", "HD-209458 b", "TOI-700 d", "TRAPPIST-1 e"])
     base = (
         f"It is worth noting that {name} orbits at semi-major axis {a} AU. "
@@ -37,7 +40,7 @@ def _econ_ratio_doc(rng) -> str:
     base = (
         f"However {city} produced {produce} units while consuming {consume}. "
         f"In order to compare surplus, the production-to-consumption ratio is "
-        f"{ratio:.4f}. Approximately {int(round(ratio * 100))} percent of "
+        f"{ratio:.4f}. Approximately {round(ratio * 100)} percent of "
         f"consumption could be covered if production were scaled to 100."
     )
     return base

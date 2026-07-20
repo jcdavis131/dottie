@@ -10,8 +10,8 @@ import pytest
 
 from dottie import flywheel
 
-
 # -- export_rft_dataset --------------------------------------------------------------
+
 
 def test_export_rft_runs_the_real_etl(engine, echo_record, data_dir):
     res = flywheel.export_rft_dataset(data_dir)
@@ -26,7 +26,9 @@ def test_export_rft_runs_the_real_etl(engine, echo_record, data_dir):
     rec = rows[0]
     # The REAL scout-cli ETL schema, produced by the real module (path in the result).
     assert rec["schema_version"] == "1.0.0"
-    assert "reward_components" in rec and "r_task_terminal_ok" in rec["reward_components"]
+    assert (
+        "reward_components" in rec and "r_task_terminal_ok" in rec["reward_components"]
+    )
     # The echo episode really reached FINAL -> terminal event ok -> real task signal 1.0.
     assert rec["reward_components"]["r_task_terminal_ok"] == 1.0
     assert rec["meta"]["redacted"] is True
@@ -40,6 +42,7 @@ def test_export_rft_refuses_without_traces(data_dir):
 
 
 # -- mint_memories -------------------------------------------------------------------
+
 
 def test_mint_memories_real_pipeline(engine, echo_record, data_dir):
     res = flywheel.mint_memories(data_dir)
@@ -66,6 +69,7 @@ def test_mint_refuses_without_traces(data_dir):
 
 
 # -- evaluate (real harness subprocess) ----------------------------------------------
+
 
 def test_evaluate_runs_real_harness_mock_mode(data_dir):
     res = flywheel.evaluate(data_dir, mode="mock")
@@ -96,6 +100,7 @@ def test_evaluate_real_mode_without_ckpt_is_honest_failure_report(data_dir):
 
 # -- train_step (honest gates; the real minutes-long GRPO run is not exercised in CI) --
 
+
 def test_train_step_refuses_empty_run_dir(tmp_path):
     with pytest.raises(flywheel.FlywheelUnavailable) as ei:
         flywheel.train_step(run_dir=tmp_path)
@@ -112,7 +117,9 @@ def test_train_step_refuses_when_nothing_probed(monkeypatch, tmp_path):
     with pytest.raises(flywheel.FlywheelUnavailable) as ei:
         flywheel.train_step()
     # Either the script or the checkpoint probe fails first — both are honest refusals.
-    assert "rl_smoke_update.py" in str(ei.value) or "no checkpoint tree" in str(ei.value)
+    assert "rl_smoke_update.py" in str(ei.value) or "no checkpoint tree" in str(
+        ei.value
+    )
 
 
 def test_train_step_wires_run_dir_and_device_documented():

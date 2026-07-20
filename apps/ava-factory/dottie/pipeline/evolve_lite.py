@@ -12,7 +12,10 @@ bilevel mixture optimizer. These lite helpers give Ava a closed-loop toehold:
 from __future__ import annotations
 
 import math
-from typing import Mapping, Sequence
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
 
 
 def evolve_shard_score(

@@ -18,9 +18,13 @@ Mypyc-ready: typed, lazy imports, mock fallback no torch needed.
 """
 
 from __future__ import annotations
-from typing import Any, Dict, List, Tuple, Optional
-import os, pathlib, re, json, math, random
+
+import json
+import os
+import pathlib
+import re
 from dataclasses import dataclass
+from typing import Any
 
 WIKI_SEARCH_PATHS = [
     "{home}/.openwiki/wiki",
@@ -29,29 +33,33 @@ WIKI_SEARCH_PATHS = [
     "{home}/.openwiki/connectors",
 ]
 
+
 @dataclass
 class WikiPageParsed:
     path: str
     title: str
     slug: str
     content: str
-    concepts: List[str]
-    tags: List[str]
+    concepts: list[str]
+    tags: list[str]
     source: str  # connector name inferred
     reportability_mass: float  # 0-1, for S2 hl300
+
 
 def _lazy_torch():
     try:
         import torch
+
         return torch
     except ImportError:
         return None
 
-def _resolve_paths(wiki_root: Optional[str] = None) -> List[pathlib.Path]:
+
+def _resolve_paths(wiki_root: str | None = None) -> list[pathlib.Path]:
     home = pathlib.Path.home()
     cwd = pathlib.Path.cwd()
     factory = pathlib.Path(__file__).resolve().parents[2]
-    candidates: List[pathlib.Path] = []
+    candidates: list[pathlib.Path] = []
     if wiki_root:
         candidates.append(pathlib.Path(wiki_root))
     for tmpl in WIKI_SEARCH_PATHS:
@@ -75,7 +83,8 @@ def _resolve_paths(wiki_root: Optional[str] = None) -> List[pathlib.Path]:
         uniq.append(fb_wiki)
     return uniq
 
-def _extract_concepts(text: str) -> List[str]:
+
+def _extract_concepts(text: str) -> list[str]:
     # headings, wiki-links, bold terms
     concepts = re.findall(r"^#+\s+(.+)$", text, re.MULTILINE)
     concepts += re.findall(r"\[\[([^\]]+)\]\]", text)
@@ -89,7 +98,8 @@ def _extract_concepts(text: str) -> List[str]:
             break
     return cleaned
 
-def _extract_tags(text: str) -> List[str]:
+
+def _extract_tags(text: str) -> list[str]:
     # tags like #finance, frontmatter tags:
     tags = re.findall(r"#([a-z0-9_-]{2,20})", text.lower())
     # frontmatter
@@ -97,6 +107,7 @@ def _extract_tags(text: str) -> List[str]:
     if m:
         tags += re.findall(r"tags:\s*\[([^\]]+)\]", m.group(1).lower())
     return list(dict.fromkeys(tags))[:12]
+
 
 def _infer_source(p: pathlib.Path) -> str:
     # try to infer from path structure ~/.openwiki/connectors/<name>/raw or wiki folder name
@@ -108,6 +119,7 @@ def _infer_source(p: pathlib.Path) -> str:
     if "openwiki" in parts:
         return "code"
     return "manual"
+
 
 def parse_wiki_file(path: pathlib.Path) -> WikiPageParsed:
     try:
@@ -137,9 +149,10 @@ def parse_wiki_file(path: pathlib.Path) -> WikiPageParsed:
         reportability_mass=mass,
     )
 
-def scan_wiki(wiki_root: Optional[str] = None, limit: int = 200) -> List[WikiPageParsed]:
+
+def scan_wiki(wiki_root: str | None = None, limit: int = 200) -> list[WikiPageParsed]:
     roots = _resolve_paths(wiki_root)
-    files: List[pathlib.Path] = []
+    files: list[pathlib.Path] = []
     for root in roots:
         if root.is_file() and root.suffix == ".md":
             files.append(root)
@@ -171,7 +184,8 @@ def scan_wiki(wiki_root: Optional[str] = None, limit: int = 200) -> List[WikiPag
     parsed.sort(key=lambda x: x.reportability_mass, reverse=True)
     return parsed
 
-def build_manifests_from_connectors() -> List[Dict[str, Any]]:
+
+def build_manifests_from_connectors() -> list[dict[str, Any]]:
     """
     Mirrors OpenWiki deterministic pattern:
     Deterministic connector tools write raw data and manifests under ~/.openwiki/connectors/<connector>/raw/, then agent synthesizes wiki
@@ -188,26 +202,37 @@ def build_manifests_from_connectors() -> List[Dict[str, Any]]:
         if not raw_dir.exists():
             continue
         # find manifest.json
-        manifest_files = list(raw_dir.glob("manifest.json")) + list(raw_dir.glob("*.json"))
+        manifest_files = list(raw_dir.glob("manifest.json")) + list(
+            raw_dir.glob("*.json")
+        )
         for mf in manifest_files[:3]:
             try:
                 data = json.loads(mf.read_text(errors="ignore")[:5000])
-                manifests.append({
-                    "connector": connector_dir.name,
-                    "manifestPath": str(mf),
-                    "rawCount": data.get("rawCount") or data.get("count") or len(list(raw_dir.iterdir())),
-                    "sampleKeys": data.get("sampleKeys", [])[:5] if isinstance(data.get("sampleKeys"), list) else [],
-                    "lastSync": data.get("lastSync") or "",
-                })
+                manifests.append(
+                    {
+                        "connector": connector_dir.name,
+                        "manifestPath": str(mf),
+                        "rawCount": data.get("rawCount")
+                        or data.get("count")
+                        or len(list(raw_dir.iterdir())),
+                        "sampleKeys": data.get("sampleKeys", [])[:5]
+                        if isinstance(data.get("sampleKeys"), list)
+                        else [],
+                        "lastSync": data.get("lastSync") or "",
+                    }
+                )
             except Exception:
-                manifests.append({
-                    "connector": connector_dir.name,
-                    "manifestPath": str(mf),
-                    "rawCount": len(list(raw_dir.iterdir())),
-                    "sampleKeys": [],
-                    "lastSync": "",
-                })
+                manifests.append(
+                    {
+                        "connector": connector_dir.name,
+                        "manifestPath": str(mf),
+                        "rawCount": len(list(raw_dir.iterdir())),
+                        "sampleKeys": [],
+                        "lastSync": "",
+                    }
+                )
     return manifests
+
 
 class OpenWikiAdapter:
     """
@@ -215,18 +240,22 @@ class OpenWikiAdapter:
     For real model: embed concepts into S2 workspace with hl=300 decay
     For mock: return reportability metrics
     """
-    def __init__(self, wiki_root: Optional[str] = None):
-        self.wiki_root = wiki_root
-        self.pages: List[WikiPageParsed] = []
 
-    def ingest(self, limit: int = 200) -> Dict[str, Any]:
+    def __init__(self, wiki_root: str | None = None):
+        self.wiki_root = wiki_root
+        self.pages: list[WikiPageParsed] = []
+
+    def ingest(self, limit: int = 200) -> dict[str, Any]:
         self.pages = scan_wiki(self.wiki_root, limit=limit)
         manifests = build_manifests_from_connectors()
         total_mass = sum(p.reportability_mass for p in self.pages)
         avg_mass = total_mass / len(self.pages) if self.pages else 0.0
         # France→China generalization test scaffolding:
         # if we have a page about France, we can test capital/language/continent/currency generalization
-        has_france = any("france" in p.title.lower() or "france" in " ".join(p.concepts).lower() for p in self.pages)
+        has_france = any(
+            "france" in p.title.lower() or "france" in " ".join(p.concepts).lower()
+            for p in self.pages
+        )
         return {
             "n_files": len(self.pages),
             "total_reportability_mass": total_mass,
@@ -238,7 +267,7 @@ class OpenWikiAdapter:
             "hl_target": 300,
         }
 
-    def to_s2_slots(self, model: Any = None) -> Dict[str, Any]:
+    def to_s2_slots(self, model: Any = None) -> dict[str, Any]:
         """
         Real mode: if torch model has S2 workspace, inject embeddings.
         Mock: return dict describing what would be injected.
@@ -283,29 +312,46 @@ class OpenWikiAdapter:
                 if hasattr(model, "_openwiki_memory"):
                     model._openwiki_memory = stack
                 else:
-                    setattr(model, "_openwiki_memory", stack)
-                    setattr(model, "_openwiki_pages", [p.title for p in self.pages])
+                    model._openwiki_memory = stack
+                    model._openwiki_pages = [p.title for p in self.pages]
 
-            return {"mode": "real", "injected": len(embeds), "hl": 300, "mass": float(sum(p.reportability_mass for p in self.pages[:32]))}
+            return {
+                "mode": "real",
+                "injected": len(embeds),
+                "hl": 300,
+                "mass": float(sum(p.reportability_mass for p in self.pages[:32])),
+            }
         except Exception as e:
             return {"mode": "real", "error": str(e), "count": len(self.pages)}
 
+
 def main():
     import argparse
+
     ap = argparse.ArgumentParser(description="OpenWiki → S2 bridge")
-    ap.add_argument("--wiki-root", default=None, help="override wiki path, default ~/.openwiki/wiki")
+    ap.add_argument(
+        "--wiki-root", default=None, help="override wiki path, default ~/.openwiki/wiki"
+    )
     ap.add_argument("--limit", type=int, default=50)
-    ap.add_argument("--real", action="store_true", help="attempt real torch injection if ckpt/model available")
+    ap.add_argument(
+        "--real",
+        action="store_true",
+        help="attempt real torch injection if ckpt/model available",
+    )
     ap.add_argument("--ckpt", default=None)
     args = ap.parse_args()
 
     adapter = OpenWikiAdapter(wiki_root=args.wiki_root)
     stats = adapter.ingest(limit=args.limit)
-    print(f"[OpenWikiAdapter] Ingested {stats['n_files']} files avg mass {stats['avg_mass']:.3f} total {stats['total_reportability_mass']:.3f}")
+    print(
+        f"[OpenWikiAdapter] Ingested {stats['n_files']} files avg mass {stats['avg_mass']:.3f} total {stats['total_reportability_mass']:.3f}"
+    )
     print(f"Sample titles: {stats['sample_titles']}")
     print(f"Manifests: {len(stats['manifests'])} from ~/.openwiki/connectors/*/raw/")
-    if stats['has_france_for_generalization_test']:
-        print("[OpenWikiAdapter] France→China generalization probe available (capital/language/continent/currency)")
+    if stats["has_france_for_generalization_test"]:
+        print(
+            "[OpenWikiAdapter] France→China generalization probe available (capital/language/continent/currency)"
+        )
 
     if args.real:
         torch = _lazy_torch()
@@ -314,9 +360,11 @@ def main():
             try:
                 factory_root = pathlib.Path(__file__).resolve().parents[1]
                 import sys
+
                 if str(factory_root) not in sys.path:
                     sys.path.insert(0, str(factory_root))
                 from model_1b import get_model
+
                 model = get_model()
                 sd = torch.load(args.ckpt, map_location="cpu")
                 model.load_state_dict(sd.get("model", sd), strict=False)
@@ -325,6 +373,7 @@ def main():
                 print(f"Failed to load ckpt {args.ckpt}: {e}")
         result = adapter.to_s2_slots(model=model)
         print(f"Injection: {result}")
+
 
 if __name__ == "__main__":
     main()

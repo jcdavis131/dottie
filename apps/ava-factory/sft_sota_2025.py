@@ -46,18 +46,22 @@ def _load_distilled_docs(distilled_jsonl: str | Path) -> list[dict]:
     so the usual phase-progression semantics don't apply; p5 is just where
     chat_safety.py's own data already lives."""
     docs = []
-    for i, line in enumerate(Path(distilled_jsonl).read_text(encoding="utf-8").splitlines()):
+    for i, line in enumerate(
+        Path(distilled_jsonl).read_text(encoding="utf-8").splitlines()
+    ):
         if not line.strip():
             continue
         d = json.loads(line)
-        docs.append({
-            "doc_id": f"distilled:{d['task_id']}:{i}",
-            "text": d["text"],
-            "task_type": "deliberate",
-            "concept": d.get("category", "distilled"),
-            "phase": "p5",
-            "source": d["source"],
-        })
+        docs.append(
+            {
+                "doc_id": f"distilled:{d['task_id']}:{i}",
+                "text": d["text"],
+                "task_type": "deliberate",
+                "concept": d.get("category", "distilled"),
+                "phase": "p5",
+                "source": d["source"],
+            }
+        )
     return docs
 
 
@@ -75,15 +79,17 @@ def _etcot_chat_docs(seed: int, target_mb: float) -> list[dict]:
     # derived seeds keep this stream independent of the chat/react generators
     for offset, gen_cls in ((7, DBTraceGenerator), (8, CompressTraceGenerator)):
         gen = gen_cls(seed=seed + offset)
-        for d in gen.generate(int(target_mb * (1024 ** 2))):
-            docs.append({
-                "doc_id": f"etcot_chat:{d['doc_id']}",
-                "text": to_chat(d["text"]),
-                "task_type": d["task_type"],
-                "concept": d["concept"],
-                "phase": "p5",
-                "source": d["source"],
-            })
+        for d in gen.generate(int(target_mb * (1024**2))):
+            docs.append(
+                {
+                    "doc_id": f"etcot_chat:{d['doc_id']}",
+                    "text": to_chat(d["text"]),
+                    "task_type": d["task_type"],
+                    "concept": d["concept"],
+                    "phase": "p5",
+                    "source": d["source"],
+                }
+            )
     return docs
 
 
@@ -103,7 +109,7 @@ def prepare_branch_data(
     generators = [ChatSafetyGenerator(seed=seed), ReactToolsGenerator(seed=seed)]
     all_docs: list[dict] = []
     for gen in generators:
-        docs = list(gen.generate(int(target_mb_per_generator * (1024 ** 2))))
+        docs = list(gen.generate(int(target_mb_per_generator * (1024**2))))
         all_docs.extend(docs)
         print(f"  {gen.name}: {len(docs)} docs")
 
@@ -142,56 +148,82 @@ def prepare_branch_data(
     with Manifest(db_path=db_path) as m:
         m.freeze_tokenizer(idx["tokenizer_sha"], lt.vocab_size)
         m.add_shard(
-            "sft_chat_branch_0000", source="sft_sota_2025", phase=shard_phase,
-            path=str(bin_path), split="train", bytes_=int(arr.nbytes),
-            docs=len(idx["docs"]), sha256=idx["tokenizer_sha"], state=RAW,
+            "sft_chat_branch_0000",
+            source="sft_sota_2025",
+            phase=shard_phase,
+            path=str(bin_path),
+            split="train",
+            bytes_=int(arr.nbytes),
+            docs=len(idx["docs"]),
+            sha256=idx["tokenizer_sha"],
+            state=RAW,
         )
         shard = m.claim("curate", by="sft_sota_2025", phases=[shard_phase])
         m.complete(
-            shard.id, by="sft_sota_2025", tokens=idx["tokens"], docs=len(idx["docs"]),
+            shard.id,
+            by="sft_sota_2025",
+            tokens=idx["tokens"],
+            docs=len(idx["docs"]),
             tokenizer_sha=idx["tokenizer_sha"],
         )
-    print(f"Registered (PACKED, tokens={idx['tokens']}) in isolated manifest at {db_path} "
-          f"(NOT the live pipeline's manifest.db)")
+    print(
+        f"Registered (PACKED, tokens={idx['tokens']}) in isolated manifest at {db_path} "
+        f"(NOT the live pipeline's manifest.db)"
+    )
 
     return {
-        "tokens": idx["tokens"], "docs": len(idx["docs"]),
-        "bin_path": str(bin_path), "db_path": db_path,
+        "tokens": idx["tokens"],
+        "docs": len(idx["docs"]),
+        "bin_path": str(bin_path),
+        "db_path": db_path,
     }
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--out", default="runs/sft_branch/packed")
     ap.add_argument("--db", default="runs/sft_branch/manifest.db")
     ap.add_argument("--tokenizer", default=None)
     ap.add_argument("--target-mb", type=float, default=2.0, help="per generator")
     ap.add_argument("--seed", type=int, default=1234)
     ap.add_argument(
-        "--distilled", default=None,
+        "--distilled",
+        default=None,
         help="path to agent-eval's exported distilled_react.jsonl, if any real successes exist yet",
     )
     ap.add_argument(
-        "--etcot-mb", type=float, default=2.0,
+        "--etcot-mb",
+        type=float,
+        default=2.0,
         help="MB per ET-CoT generator (db_trace + compress_trace) re-rendered as "
-             "<|user|>/<|assistant|> chat samples with <think>/<answer> turns; 0 disables",
+        "<|user|>/<|assistant|> chat samples with <think>/<answer> turns; 0 disables",
     )
     args = ap.parse_args()
 
     stats = prepare_branch_data(
-        args.out, args.db, tokenizer_path=args.tokenizer,
-        target_mb_per_generator=args.target_mb, seed=args.seed,
-        distilled_jsonl=args.distilled, etcot_mb=args.etcot_mb,
+        args.out,
+        args.db,
+        tokenizer_path=args.tokenizer,
+        target_mb_per_generator=args.target_mb,
+        seed=args.seed,
+        distilled_jsonl=args.distilled,
+        etcot_mb=args.etcot_mb,
     )
     print()
     print(f"Data prep done: {stats['tokens']} tokens, {stats['docs']} docs.")
     print()
     print("This script does NOT launch training. Launching loads a model onto GPU and")
-    print("should be a deliberate step with confirmed headroom, not a script side effect")
+    print(
+        "should be a deliberate step with confirmed headroom, not a script side effect"
+    )
     print("-- especially while another training run may already be using the GPU.")
     print()
     print("Also unresolved before that step can run: locate a valid --init checkpoint")
-    print("(the earlier nano chat fork was pruned by the janitor's retention policy per")
+    print(
+        "(the earlier nano chat fork was pruned by the janitor's retention policy per"
+    )
     print("TODOS.md T9.1; no runs/base/*.pt is present in this checkout -- checkpoints")
     print("live in the compose services' bind-mounted volumes, not the bare repo).")
     return 0

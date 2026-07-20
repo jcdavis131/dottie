@@ -87,6 +87,7 @@ def test_run_task_records_to_shared_jspace_store(engine, tmp_path, monkeypatch):
     assert rec["jspace_state"]["channel"] == "engine"
 
     from dottie import jspace_state
+
     store = jspace_state.shared_store()
     with store:
         logged = store.recent_tasks(5, session_id="xsurface")
@@ -102,6 +103,7 @@ def test_run_task_records_to_shared_jspace_store(engine, tmp_path, monkeypatch):
 def test_run_task_degrades_honestly_without_skills(engine, tmp_path, monkeypatch):
     monkeypatch.setenv("DOTTIE_STATE_DB", str(tmp_path / "s2.sqlite3"))
     from dottie import jspace_state as js
+
     monkeypatch.setattr(js, "shared_store", lambda: None)
     rec = engine.run_task("conftest echo task", backend="echo")
     assert rec["jspace_state"] == {"persistence": "unavailable"}
@@ -110,19 +112,24 @@ def test_run_task_degrades_honestly_without_skills(engine, tmp_path, monkeypatch
 def test_factory_policy_contract(monkeypatch):
     # Served-brain backend (TODOS 3.2): /chat contract, honest unavailability, env default.
     import httpx
+
     from dottie import policy as pol
-    from dottie.policy import get_policy, DottiePolicyUnavailable
+    from dottie.policy import DottiePolicyUnavailable, get_policy
 
     captured = {}
+
     class _R:
         status_code = 200
         text = ""
+
         def json(self):
             return {"content": "the served reply", "tokens": 5, "latency_ms": 12}
+
     def fake_post(url, json=None, timeout=None):
         captured["url"] = url
         captured.update(json)
         return _R()
+
     monkeypatch.setattr(pol.httpx, "post", fake_post)
 
     p = get_policy("factory")
@@ -138,6 +145,7 @@ def test_factory_policy_contract(monkeypatch):
 
     def dead_post(url, json=None, timeout=None):
         raise httpx.ConnectError("refused")
+
     monkeypatch.setattr(pol.httpx, "post", dead_post)
     with pytest.raises(DottiePolicyUnavailable, match="factory server unreachable"):
         p.complete("hi")
@@ -146,5 +154,5 @@ def test_factory_policy_contract(monkeypatch):
 def test_run_task_backend_resolves_dottie_policy_env(engine, monkeypatch, tmp_path):
     monkeypatch.setenv("DOTTIE_STATE_DB", str(tmp_path / "s.sqlite3"))
     monkeypatch.setenv("DOTTIE_POLICY", "echo")
-    rec = engine.run_task("env-resolved backend")   # no backend arg
+    rec = engine.run_task("env-resolved backend")  # no backend arg
     assert rec["backend"] == "echo"

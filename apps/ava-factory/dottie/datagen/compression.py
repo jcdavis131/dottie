@@ -29,16 +29,20 @@ J-Space routing mirrors multi_jspace_module.py:
 
 Byte-deterministic: private random.Random only, sorted lists, no set iteration, sort_keys json
 """
+
 from __future__ import annotations
 
 import heapq
 import math
-from typing import Iterator, List, Tuple, Dict
+from typing import TYPE_CHECKING
 
 from dottie.datagen.base import Generator, run_cli
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
-def entropy_bits(probs: List[float]) -> float:
+
+def entropy_bits(probs: list[float]) -> float:
     """Shannon entropy H = -sum p log2 p, verified."""
     h = 0.0
     for p in probs:
@@ -47,12 +51,12 @@ def entropy_bits(probs: List[float]) -> float:
     return h
 
 
-def kraft_sum(lengths: List[int]) -> float:
+def kraft_sum(lengths: list[int]) -> float:
     """Kraft inequality sum 2^-len, must be <=1 for prefix code."""
     return sum(2 ** (-l) for l in lengths)
 
 
-def build_huffman(freq: Dict[str, int]) -> Tuple[Dict[str, str], float, int]:
+def build_huffman(freq: dict[str, int]) -> tuple[dict[str, str], float, int]:
     """
     Build Huffman tree deterministically via heapq with tie-breaker.
     Returns codes dict symbol->binary string, avg_len, total_freq
@@ -60,7 +64,7 @@ def build_huffman(freq: Dict[str, int]) -> Tuple[Dict[str, str], float, int]:
     """
     # heap items: (freq, tie_breaker, node)
     # node = symbol str or dict {"left": node, "right": node}
-    heap: List[Tuple[int, int, object]] = []
+    heap: list[tuple[int, int, object]] = []
     tie = 0
     for sym, f in sorted(freq.items()):  # sorted for determinism
         heapq.heappush(heap, (f, tie, sym))
@@ -72,15 +76,15 @@ def build_huffman(freq: Dict[str, int]) -> Tuple[Dict[str, str], float, int]:
         return {sym: "0"}, 1.0, heap[0][0]
 
     while len(heap) > 1:
-        f1, t1, n1 = heapq.heappop(heap)
-        f2, t2, n2 = heapq.heappop(heap)
+        f1, _t1, n1 = heapq.heappop(heap)
+        f2, _t2, n2 = heapq.heappop(heap)
         merged = {"left": n1, "right": n2}
         heapq.heappush(heap, (f1 + f2, tie, merged))
         tie += 1
 
     # traverse to build codes
     _, _, root = heap[0]
-    codes: Dict[str, str] = {}
+    codes: dict[str, str] = {}
 
     def walk(node, prefix: str):
         if isinstance(node, str):
@@ -95,13 +99,15 @@ def build_huffman(freq: Dict[str, int]) -> Tuple[Dict[str, str], float, int]:
     return codes, avg_len, total
 
 
-def lz77_compress(text: str, window: int = 20, lookahead: int = 15) -> List[Tuple[int, int, str]]:
+def lz77_compress(
+    text: str, window: int = 20, lookahead: int = 15
+) -> list[tuple[int, int, str]]:
     """
     Naive LZ77 compress to tuples (offset, length, next_char)
     offset = distance back from current pos, length = match len, next_char = char after match (or "" at EOF)
     Verified via decompress == original
     """
-    res: List[Tuple[int, int, str]] = []
+    res: list[tuple[int, int, str]] = []
     i = 0
     n = len(text)
     while i < n:
@@ -117,7 +123,9 @@ def lz77_compress(text: str, window: int = 20, lookahead: int = 15) -> List[Tupl
         for j in range(start, i):
             # length of match starting at j vs i
             l = 0
-            while l <= max_len and i + l < n and j + l < i and text[j + l] == text[i + l]:
+            while (
+                l <= max_len and i + l < n and j + l < i and text[j + l] == text[i + l]
+            ):
                 l += 1
                 # j+l < i ensures not overlapping beyond window? Allow overlapping for simplicity but check
             # Actually last iteration overshoot, decrement if mismatch
@@ -136,9 +144,8 @@ def lz77_compress(text: str, window: int = 20, lookahead: int = 15) -> List[Tupl
     return res
 
 
-def lz77_decompress(tuples: List[Tuple[int, int, str]]) -> str:
+def lz77_decompress(tuples: list[tuple[int, int, str]]) -> str:
     """Verify LZ77"""
-    out = []
     s = ""
     for offset, length, nxt in tuples:
         if length > 0:
@@ -151,7 +158,7 @@ def lz77_decompress(tuples: List[Tuple[int, int, str]]) -> str:
     return s
 
 
-def bwt_transform(s: str) -> Tuple[str, int]:
+def bwt_transform(s: str) -> tuple[str, int]:
     """Burrows-Wheeler Transform: returns (last column L, primary index)
     Deterministic, verified invertibility via inverse BWT for small strings"""
     if not s:
@@ -180,7 +187,9 @@ def bwt_inverse(L: str, primary: int) -> str:
     return table[primary].rstrip("$")
 
 
-def arithmetic_encode_example(symbols: List[str], prob: Dict[str, float]) -> Tuple[float, float, List[Tuple[str, float, float]]]:
+def arithmetic_encode_example(
+    symbols: list[str], prob: dict[str, float]
+) -> tuple[float, float, list[tuple[str, float, float]]]:
     """
     Simple arithmetic coding interval narrowing example
     Returns final low, high, steps list (symbol, low, high)
@@ -279,8 +288,13 @@ class CompressionGenerator(Generator):
         concept = self.rng.choice(["entropy", "shannon", "kraft"])
 
         # Build textbook walkthrough
-        dist_str = ", ".join(f"{sym}:{p:.4f}" for sym, p in zip(symbols, prob_display))
-        calc_steps = "\n".join(f" -p log2 p for {sym}: -{p:.4f}*log2({p:.4f}) = {(-p*math.log2(p) if p>0 else 0):.4f}" for sym, p in zip(symbols, probs))
+        dist_str = ", ".join(
+            f"{sym}:{p:.4f}" for sym, p in zip(symbols, prob_display, strict=False)
+        )
+        calc_steps = "\n".join(
+            f" -p log2 p for {sym}: -{p:.4f}*log2({p:.4f}) = {(-p * math.log2(p) if p > 0 else 0):.4f}"
+            for sym, p in zip(symbols, probs, strict=False)
+        )
         text = f"""Textbook: Shannon Information Theory — Entropy and Kraft Inequality (Phase {phase})
 
 Concept: {concept} — foundation for language modeling as compression. DeepMind result: Chinchilla 70B compresses ImageNet 43.4% vs PNG 58.5%, LibriSpeech 16.4% vs FLAC 30.3% with no vision/audio training. Loss = cross-entropy = bits.
@@ -291,20 +305,23 @@ Step-by-step entropy H = -sum p log2 p:
 {calc_steps}
 Total H = {ent:.4f} bits per symbol.
 
-Prefix code lengths example (ceil -log2 p): {", ".join(f"{sym}:{l}" for sym, l in zip(symbols, lengths))} bits.
-Kraft inequality check: sum 2^-len = {' + '.join(f"2^-{l}" for l in lengths)} = {kraft:.4f} { '<= 1.0 valid prefix code' if kraft <= 1.0001 else '>1 invalid' }.
+Prefix code lengths example (ceil -log2 p): {", ".join(f"{sym}:{l}" for sym, l in zip(symbols, lengths, strict=False))} bits.
+Kraft inequality check: sum 2^-len = {" + ".join(f"2^-{l}" for l in lengths)} = {kraft:.4f} {"<= 1.0 valid prefix code" if kraft <= 1.0001 else ">1 invalid"}.
 
 Why it matters for LLMs: tokenization ~3.28 chars/token is compression. J-Space 144 slots compress 2048-131k context to 20% broadcast = 0.2 ratio length regularizer (K/|X| - 1/r)^2 with r=5. Better compressor => better world model.
 
 Exercise: recompute entropy for distribution above to verify {ent:.4f} bits. If change prob of '{symbols[0]}' to 0.5, what is new H?
 
-Answer verified: H={ent:.4f} bits, Kraft={kraft:.4f} {'valid' if kraft <=1.0001 else 'invalid'}. Computed by Python -sum(p log2 p) not templated.
+Answer verified: H={ent:.4f} bits, Kraft={kraft:.4f} {"valid" if kraft <= 1.0001 else "invalid"}. Computed by Python -sum(p log2 p) not templated.
 
 Source: compression/shannon doc {idx} — maps to S1 Fast hl=8 automatic (entropy drills) or S2 deliberate (Kraft proof).
 """
         # Ensure length 500-4000
         if len(text) < 500:
-            text += "\nExtra context: Shannon 1948 paper, redundancy, mutual information I(X;Y)=H(X)-H(X|Y), used in Dottie's OroJaR Jacobian regularizer for orthogonal workspaces.\n" * 2
+            text += (
+                "\nExtra context: Shannon 1948 paper, redundancy, mutual information I(X;Y)=H(X)-H(X|Y), used in Dottie's OroJaR Jacobian regularizer for orthogonal workspaces.\n"
+                * 2
+            )
 
         return self.doc(
             text=text,
@@ -345,14 +362,19 @@ Source: compression/shannon doc {idx} — maps to S1 Fast hl=8 automatic (entrop
             if buf in inv:
                 decoded += inv[buf]
                 buf = ""
-        assert decoded == sample_word, f"huffman decode failed {sample_word} != {decoded}"
+        assert decoded == sample_word, (
+            f"huffman decode failed {sample_word} != {decoded}"
+        )
 
         phase = 1
         concept = self.rng.choice(["huffman", "prefix code", "kraft inequality"])
         task_type = "deliberate"
 
         freq_str = ", ".join(f"{s}:{f}" for s, f in sorted(freqs.items()))
-        code_str = "\n".join(f"  {s}: {codes[s]} (len {len(codes[s])}, freq {freqs[s]})" for s in sorted(codes.keys()))
+        code_str = "\n".join(
+            f"  {s}: {codes[s]} (len {len(codes[s])}, freq {freqs[s]})"
+            for s in sorted(codes.keys())
+        )
         text = f"""Textbook: Huffman Coding — Optimal Prefix Codes (Phase {phase}, P1 Math)
 
 Frequency table: {{{freq_str}}} total {total}
@@ -367,11 +389,11 @@ Resulting codes:
 {code_str}
 
 Average length L = sum freq*len / total = {avg_len:.4f} bits/symbol
-Check: L >= H? {avg_len:.4f} >= {ent:.4f} ? {'YES valid, satisfies Shannon source coding theorem' if avg_len >= ent - 1e-6 else 'NO bug'}
-Kraft sum = sum 2^-len = {kraft:.4f} <=1 ? {'YES prefix code valid' if kraft <=1.0001 else 'NO'}
+Check: L >= H? {avg_len:.4f} >= {ent:.4f} ? {"YES valid, satisfies Shannon source coding theorem" if avg_len >= ent - 1e-6 else "NO bug"}
+Kraft sum = sum 2^-len = {kraft:.4f} <=1 ? {"YES prefix code valid" if kraft <= 1.0001 else "NO"}
 
-Encode example: word '{sample_word}' -> bits '{encoded}' length {len(encoded)} (original would be {sample_len*8} bits ASCII, compression ratio {len(encoded)/(sample_len*8):.2f})
-Decode verification: '{encoded}' -> '{decoded}' matches original ? {decoded==sample_word}
+Encode example: word '{sample_word}' -> bits '{encoded}' length {len(encoded)} (original would be {sample_len * 8} bits ASCII, compression ratio {len(encoded) / (sample_len * 8):.2f})
+Decode verification: '{encoded}' -> '{decoded}' matches original ? {decoded == sample_word}
 
 Why it matters: Dottie tokenizer 3.28 chars/token is Huffman-like learned compression. Code branch P2 uses similar greedy tokenization. For J-Space S2 hl=300 deliberate, Huffman is chunking analogy — expertise automatization drops articles, compresses CoT verbose grammatical -> telegraphic emergent without explicit reward (Inkling observation).
 
@@ -414,15 +436,20 @@ Source: compression/huffman doc {idx} — deliberate math reasoning.
         window = 20
         tuples = lz77_compress(text_raw, window=window, lookahead=15)
         dec = lz77_decompress(tuples)
-        assert dec == text_raw, f"LZ77 decompress mismatch {text_raw[:20]} != {dec[:20]}"
+        assert dec == text_raw, (
+            f"LZ77 decompress mismatch {text_raw[:20]} != {dec[:20]}"
+        )
 
         phase = 2
         task_type = "deliberate"
         concept = self.rng.choice(["lz77", "lzw", "dictionary coding"])
 
-        tuple_str = "\n".join(f"  {i}: (offset={off}, length={ln}, next='{nx}') " for i, (off, ln, nx) in enumerate(tuples[:12]))
+        tuple_str = "\n".join(
+            f"  {i}: (offset={off}, length={ln}, next='{nx}') "
+            for i, (off, ln, nx) in enumerate(tuples[:12])
+        )
         if len(tuples) > 12:
-            tuple_str += f"\n  ... and {len(tuples)-12} more tuples"
+            tuple_str += f"\n  ... and {len(tuples) - 12} more tuples"
 
         # compute compression ratio estimate
         orig_bits = len(text_raw) * 8
@@ -441,7 +468,7 @@ Tuples (offset, length, next_char):
 
 Total tuples {len(tuples)} -> estimated bits {comp_bits_est} vs original {orig_bits} bits -> ratio {ratio:.2f} ( <1 means compressed)
 
-Decompression verification: decompress(tuples) == original ? {dec==text_raw} (computed by Python loop, not templated). Logic:
+Decompression verification: decompress(tuples) == original ? {dec == text_raw} (computed by Python loop, not templated). Logic:
   s = ""
   for off,len,nxt in tuples:
     if len>0: copy s[-off : -off+len] with overlapping
@@ -490,7 +517,7 @@ Source: compression/lz77 doc {idx} — maps to S2 deliberate hl=300, code branch
         symbols = [chr(65 + i) for i in range(alphabet_size)]  # A,B,C
         raw = [self.rng.random() + 0.3 for _ in range(alphabet_size)]
         s = sum(raw)
-        probs = {sym: r / s for sym, r in zip(symbols, raw)}
+        probs = {sym: r / s for sym, r in zip(symbols, raw, strict=False)}
 
         seq_len = self.rng.randint(3, 6)
         seq = [self.rng.choice(symbols) for _ in range(seq_len)]
@@ -503,24 +530,27 @@ Source: compression/lz77 doc {idx} — maps to S2 deliberate hl=300, code branch
         task_type = "deliberate"
 
         prob_str = ", ".join(f"{k}:{v:.3f}" for k, v in sorted(probs.items()))
-        steps_str = "\n".join(f"  Step {i+1} symbol '{sym}' -> interval [{lo:.6f}, {hi:.6f}) width {hi-lo:.6f}" for i, (sym, lo, hi) in enumerate(steps))
+        steps_str = "\n".join(
+            f"  Step {i + 1} symbol '{sym}' -> interval [{lo:.6f}, {hi:.6f}) width {hi - lo:.6f}"
+            for i, (sym, lo, hi) in enumerate(steps)
+        )
 
         text = f"""Textbook: Arithmetic Coding — LLM as Optimal Compressor (Phase {phase}, P1/P2)
 
 Probabilities: {{{prob_str}}} sum 1.0, entropy H={ent:.4f} bits/symbol
 
-Sequence to encode: {''.join(seq)} (length {seq_len})
+Sequence to encode: {"".join(seq)} (length {seq_len})
 
 Interval narrowing (start [0.0,1.0)):
 {steps_str}
 
-Final interval [{low:.6f}, {high:.6f}) width {high-low:.6f} -> needs -log2(width) = {-math.log2(high-low):.2f} bits, close to {seq_len} * H = {seq_len*ent:.2f} bits (optimal).
+Final interval [{low:.6f}, {high:.6f}) width {high - low:.6f} -> needs -log2(width) = {-math.log2(high - low):.2f} bits, close to {seq_len} * H = {seq_len * ent:.2f} bits (optimal).
 
 Why it matters: Modern LLM is arithmetic decoder in reverse — model predicts p(next token | context) ~ prob distribution, then arithmetic coding turns those probs into bits. Chinchilla as compressor: cross-entropy loss = bits per token. Training on compression improves world model per DeepMind "Language Modeling is Compression" — ImageNet patches 43.4% vs PNG 58.5%, LibriSpeech 16.4% vs FLAC 30.3% with NO vision/audio training.
 
 LLM as compressor: encode text by using model probs to arithmetic encode; decode by using same model probs to arithmetic decode. Better model -> smaller bits.
 
-Exercise: Given probs {{{prob_str}}}, encode sequence {''.join(seq)} step-by-step, compute interval width and bits needed, verify -log2(width) ≈ { -math.log2(high-low):.2f}.
+Exercise: Given probs {{{prob_str}}}, encode sequence {"".join(seq)} step-by-step, compute interval width and bits needed, verify -log2(width) ≈ {-math.log2(high - low):.2f}.
 
 Calculated via cumulative intervals sorted deterministically, not templated. Verified sum probs = {sum(probs.values()):.6f}.
 
@@ -540,7 +570,11 @@ Source: compression/arithmetic doc {idx} — S2 deliberate hl=300, links to WSD 
         """
         # generate short string with repetition to show BWT effect
         alphabet = "abac"
-        length = self.rng.randint(12, 20) if self.rng.random() < 0.5 else self.rng.randint(40, 70)
+        length = (
+            self.rng.randint(12, 20)
+            if self.rng.random() < 0.5
+            else self.rng.randint(40, 70)
+        )
         raw = "".join(self.rng.choice(alphabet) for _ in range(length))
 
         L, primary = bwt_transform(raw)
@@ -571,9 +605,11 @@ Source: compression/arithmetic doc {idx} — S2 deliberate hl=300, links to WSD 
             t = raw + "$"
             rotations = [t[i:] + t[:i] for i in range(len(t))]
             sorted_rot = sorted(rotations)
-            rotations_str = "Rotations sorted:\n" + "\n".join(f"  {r}" for r in sorted_rot[:8])
+            rotations_str = "Rotations sorted:\n" + "\n".join(
+                f"  {r}" for r in sorted_rot[:8]
+            )
             if len(sorted_rot) > 8:
-                rotations_str += f"\n  ... {len(sorted_rot)-8} more"
+                rotations_str += f"\n  ... {len(sorted_rot) - 8} more"
 
         text = f"""Textbook: Burrows-Wheeler Transform + MTF + ANS — Phase {phase} Long Reasoning (6000+ chars if p4)
 
@@ -585,7 +621,7 @@ Add sentinel $ smaller than all: t = s + '$' = '{raw}$'
 BWT: L = last column of sorted rotations = '{L}' (length {len(L)})
 Primary index (row where original appears) = {primary}
 
-Inverse verification: inverse_BWT(L={L!r}, primary={primary}) == original ? {ok} -> '{inv[:30]}' matches? {inv==raw}
+Inverse verification: inverse_BWT(L={L!r}, primary={primary}) == original ? {ok} -> '{inv[:30]}' matches? {inv == raw}
 
 MTF (Move-to-Front) on L: alphabet sorted {sorted(set(L))} -> codes {mtf_codes[:10]}... first 10 shows many zeros for repetitive text -> good for next stage entropy coding.
 
@@ -602,7 +638,7 @@ Exercise for p3/p4:
 
 Full solution computed: L='{L}', primary={primary}, inverse ok={ok}, MTF first 10 {mtf_codes[:10]}.
 
-Why strategic for curriculum Phase {phase}: {'Phase3 reasoning 6T-11.25T teaches long chain BWT matrix reasoning 6000+ chars, builds on Phase2 LZ dictionary' if phase==3 else 'Phase4 long 11.25T-13.8T ctx 32k-131k needs KV-cache compression 7.52GB->1.90GB DeltaNet + BWT-like cold storage, trains Z-slot paraphrase cosine similarity across paraphrases.'}
+Why strategic for curriculum Phase {phase}: {"Phase3 reasoning 6T-11.25T teaches long chain BWT matrix reasoning 6000+ chars, builds on Phase2 LZ dictionary" if phase == 3 else "Phase4 long 11.25T-13.8T ctx 32k-131k needs KV-cache compression 7.52GB->1.90GB DeltaNet + BWT-like cold storage, trains Z-slot paraphrase cosine similarity across paraphrases."}
 
 Additional long context for p4: DeepMind language modeling is compression: 12x compression ImageNet patches. Training over neurally compressed text: M1 compresses raw bytes via arithmetic coding, M2 trains over compressed bitstream. Finding AC-compressed not readily learnable -> need learned Z-tokens not pure gzip. This maps to Dottie J-Space: 144 slots (S1 32 hl8 auto, S2 64 hl300 deliberate, Critic 16 hl30 safety, Planner 32 hl150) compressing 2k-131k at 20% broadcast target. Concept token France->Paris etc measures if same slot fires for paraphrases, see evals/probes.py Z-slot cosine.
 
@@ -612,13 +648,20 @@ Source: compression/bwt_ans doc {idx} — deliberate long reasoning, S2 hl=300 d
         if is_long and len(text) < 6000:
             # Add repetitive textbook filler but computed / deterministic
             extra = "\n\nExtended reasoning for long context Phase4: BWT is reversible permutation, invertible via LF-mapping property. LF-mapping: L[i] corresponds to F[LF[i]] where F = sorted L. To invert, start at primary row, follow LF links. "
-            extra += "This teaches model about permutation cycles, similar to YaRN 10k->1M LongRoPE 31->25 critical dim shift. " * 20
-            extra += f"\n\nCompression ratio chain: original {len(raw)} chars, BWT L {len(L)} chars, MTF zeros {mtf_codes.count(0)} out of {len(mtf_codes)} = {mtf_codes.count(0)/len(mtf_codes):.2%} zeros indicate clustering. "
+            extra += (
+                "This teaches model about permutation cycles, similar to YaRN 10k->1M LongRoPE 31->25 critical dim shift. "
+                * 20
+            )
+            extra += f"\n\nCompression ratio chain: original {len(raw)} chars, BWT L {len(L)} chars, MTF zeros {mtf_codes.count(0)} out of {len(mtf_codes)} = {mtf_codes.count(0) / len(mtf_codes):.2%} zeros indicate clustering. "
             extra += "\n\nFor Alienware 4080 12GB: base1b 1409M params bf16 2.8GB weights + 2.8GB grads + 1.4GB AdamW8bit = 8.4GB before activations. At 131k, KV 7.52GB -> DeltaNet 21+7 split 1.90GB + FP8 KV + W4A16 GPTQ for serving compression. This textbook is part of teaching Dottie to reason about its own serving constraints.\n"
             text += extra
             # Ensure at least 6000
             while len(text) < 6000:
-                text += "\nLong doc filler: BWT example repetition to reach 6k chars — " + raw + " "
+                text += (
+                    "\nLong doc filler: BWT example repetition to reach 6k chars — "
+                    + raw
+                    + " "
+                )
 
         return self.doc(
             text=text,
@@ -637,7 +680,13 @@ Source: compression/bwt_ans doc {idx} — deliberate long reasoning, S2 hl=300 d
         r = target compression ratio, e.g., 5 => 20% (Dottie broadcast 0.20)
         """
         # Generate a paragraph to compress
-        topics = ["photosynthesis", "entropy", "neural compression", "attention", "j-spaces"]
+        topics = [
+            "photosynthesis",
+            "entropy",
+            "neural compression",
+            "attention",
+            "j-spaces",
+        ]
         topic = self.rng.choice(topics)
 
         # Create paragraph of variable length
@@ -645,10 +694,21 @@ Source: compression/bwt_ans doc {idx} — deliberate long reasoning, S2 hl=300 d
         sentences = []
         for i in range(para_len):
             # simple templated but varied via rng for determinism
-            subj = self.rng.choice(["The model", "Dottie", "The system", "S2 workspace", "Planner"])
-            verb = self.rng.choice(["compresses", "encodes", "processes", "routes", "broadcasts"])
-            obj = self.rng.choice(["context into 144 slots", "long docs via DeltaNet", "information via entropy coding", "reasoning chains via Z-tokens"])
-            sentences.append(f"{subj} {verb} {obj} for {topic} step {i+1}.")
+            subj = self.rng.choice(
+                ["The model", "Dottie", "The system", "S2 workspace", "Planner"]
+            )
+            verb = self.rng.choice(
+                ["compresses", "encodes", "processes", "routes", "broadcasts"]
+            )
+            obj = self.rng.choice(
+                [
+                    "context into 144 slots",
+                    "long docs via DeltaNet",
+                    "information via entropy coding",
+                    "reasoning chains via Z-tokens",
+                ]
+            )
+            sentences.append(f"{subj} {verb} {obj} for {topic} step {i + 1}.")
 
         paragraph = " ".join(sentences)
         # Target compression: 20% = r=5
@@ -661,7 +721,9 @@ Source: compression/bwt_ans doc {idx} — deliberate long reasoning, S2 hl=300 d
 
         # Simulate Z-token sequence as first letters or hashed
         words = paragraph.split()
-        z_tokens = [w[0].upper() + str(i % 10) for i, w in enumerate(words) if i % r == 0][:target_k]
+        z_tokens = [
+            w[0].upper() + str(i % 10) for i, w in enumerate(words) if i % r == 0
+        ][:target_k]
 
         phase = self.rng.choice([3, 4, 5])
         is_long = phase == 4
@@ -687,7 +749,7 @@ Codebook regularizers:
 - Codebook usage: encourage diverse Z tokens, not collapse.
 - Commitment: ||z - sg[codebook]||^2.
 
-Simulated Z for this paragraph (first letter + index heuristic): Z = {z_tokens} (K={len(z_tokens)} tokens, ratio {len(z_tokens)/X_len:.2f})
+Simulated Z for this paragraph (first letter + index heuristic): Z = {z_tokens} (K={len(z_tokens)} tokens, ratio {len(z_tokens) / X_len:.2f})
 
 Tasks:
 1. Compress: X -> Z = {z_tokens}
@@ -695,7 +757,7 @@ Tasks:
 3. Infer: Z -> Z_next for continuation: given Z, predict next Z for next paragraph.
 
 Why strategic placement Phase {phase}:
-- {'Phase3 reasoning 6T-11.25T: teaches compress paragraph to 20% summary with 6000+ chars reasoning chain, verifies reportability loss verbalizable_mass 0.065 S2 vs S1 auto_cos' if phase==3 else 'Phase4 long 11.25T-13.8T: long docs 50% >16k, task_type compression where input 32k target is 144-slot summary (literal J-Space slots) + reconstruction metric, tests needle retrieval but compressed' if phase==4 else 'Phase5 anneal 13.8T-15T: verified compression proofs (Kraft inequality), high-quality 1% curriculum proofs + antidoom LoRA FT for doom loops'}
+- {"Phase3 reasoning 6T-11.25T: teaches compress paragraph to 20% summary with 6000+ chars reasoning chain, verifies reportability loss verbalizable_mass 0.065 S2 vs S1 auto_cos" if phase == 3 else "Phase4 long 11.25T-13.8T: long docs 50% >16k, task_type compression where input 32k target is 144-slot summary (literal J-Space slots) + reconstruction metric, tests needle retrieval but compressed" if phase == 4 else "Phase5 anneal 13.8T-15T: verified compression proofs (Kraft inequality), high-quality 1% curriculum proofs + antidoom LoRA FT for doom loops"}
 
 Mapping to Dottie J-Space (144 total slots):
 - S1 Fast 32 hl=8 automatic: fast compressor, entropy drills, length_reg low effort 0.2 telegraphic
@@ -707,7 +769,7 @@ Training over neurally compressed text: M1 compresses raw bytes via arithmetic c
 
 Eval metric: compression reconstruction BLEU/ROUGE + enwik9 bits per byte via CE: measure Dottie cross-entropy on enwik9 as compression rate. Also Z-slot cosine similarity across paraphrases "France capital Paris" vs "Paris is capital of France" should share slot.
 
-Budget-aware: length regularizer K/|X| - 1/r = {K/X_len - 1/r:.4f}, small means good ratio.
+Budget-aware: length regularizer K/|X| - 1/r = {K / X_len - 1 / r:.4f}, small means good ratio.
 
 Exercise: Given X length {X_len}, r={r}, compute target K, then compress to Z = {z_tokens}, then decompress reasoning and compute BLEU approximate (shared words {len(set(words) & set(z_tokens))} etc).
 
@@ -715,11 +777,18 @@ Source: compression/z_token doc {idx} — temporal semantic compression, core fo
 """
 
         if is_long and len(text) < 6000:
-            extra = "\n\nExtended long reasoning: Z-token contextual regularity — repeated Z in semantically related contexts. Example: Paris/France concepts fire same slot. Measurement via concept_token() in multi_jspace_module.py — Spider->Ant ant test verbalizable_mass target 0.065. " * 10
+            extra = (
+                "\n\nExtended long reasoning: Z-token contextual regularity — repeated Z in semantically related contexts. Example: Paris/France concepts fire same slot. Measurement via concept_token() in multi_jspace_module.py — Spider->Ant ant test verbalizable_mass target 0.065. "
+                * 10
+            )
             extra += "\nFor Dottie training at scale: WSD 736k 92% stable + WSM merging infinite continuation, no LR decay collapse, matches modular manifold schedule. After stable 736k checkpoint, branch code/math/chat with 2-stage SFT + MaxEnt RL + offline self-distill $7.8k budget analog local. Compression textbook adds 30MB verified synthetic fits existing pipeline, no GPU needed, unblocks Phase0-2 quality.\n"
             text += extra
             while len(text) < 6000:
-                text += " Long doc filler for Phase4 32k-131k context: " + paragraph[:50] + " "
+                text += (
+                    " Long doc filler for Phase4 32k-131k context: "
+                    + paragraph[:50]
+                    + " "
+                )
 
         return self.doc(
             text=text,

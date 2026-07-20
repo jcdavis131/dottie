@@ -4,9 +4,8 @@ scout graphify — Personal Graphify baked into Scout control plane.
 
 Wraps pgraphify: build / query / path / explain / impact / task / onboard / cost / sync.
 """
-from __future__ import annotations
 
-from typing import Optional
+from __future__ import annotations
 
 import typer
 
@@ -29,8 +28,10 @@ def status_cmd():
 @app.command("build")
 def build_cmd(
     path: str = typer.Argument(".", help="Primary project path to index"),
-    out: Optional[str] = typer.Option(None, "--out", help="Output dir (default: <path>/graphify-out)"),
-    roots: Optional[str] = typer.Option(
+    out: str | None = typer.Option(
+        None, "--out", help="Output dir (default: <path>/graphify-out)"
+    ),
+    roots: str | None = typer.Option(
         None,
         "--roots",
         help="Comma-separated extra roots for multi-repo corpus",
@@ -60,8 +61,10 @@ def build_cmd(
 @app.command("query")
 def query_cmd(
     question: str = typer.Argument(..., help='e.g. "how does Scout connect to Ava?"'),
-    graph: Optional[str] = typer.Option(None, "--graph", help="Path to graph.json"),
-    semantic: bool = typer.Option(False, "--semantic", help="Ollama mxbai-embed-large rerank"),
+    graph: str | None = typer.Option(None, "--graph", help="Path to graph.json"),
+    semantic: bool = typer.Option(
+        False, "--semantic", help="Ollama mxbai-embed-large rerank"
+    ),
 ):
     """Scoped subgraph query (~10-70x token reduction vs naive grep)."""
     args = [question]
@@ -77,7 +80,7 @@ def query_cmd(
 def path_cmd(
     source: str = typer.Argument(..., help="Source concept"),
     target: str = typer.Argument(..., help="Target concept"),
-    graph: Optional[str] = typer.Option(None, "--graph"),
+    graph: str | None = typer.Option(None, "--graph"),
     semantic: bool = typer.Option(False, "--semantic"),
 ):
     """Shortest path between two concepts."""
@@ -93,8 +96,10 @@ def path_cmd(
 @app.command("explain")
 def explain_cmd(
     node: str = typer.Argument(..., help="Concept / node label"),
-    graph: Optional[str] = typer.Option(None, "--graph"),
-    snippet: bool = typer.Option(False, "--snippet", help="Include code snippet if available"),
+    graph: str | None = typer.Option(None, "--graph"),
+    snippet: bool = typer.Option(
+        False, "--snippet", help="Include code snippet if available"
+    ),
     semantic: bool = typer.Option(False, "--semantic"),
 ):
     """Explain a node — neighbors, degree, community."""
@@ -112,8 +117,10 @@ def explain_cmd(
 @app.command("impact")
 def impact_cmd(
     node: str = typer.Argument(..., help="Node to analyze"),
-    graph: Optional[str] = typer.Option(None, "--graph"),
-    direction: str = typer.Option("both", "--direction", help="downstream|upstream|both"),
+    graph: str | None = typer.Option(None, "--graph"),
+    direction: str = typer.Option(
+        "both", "--direction", help="downstream|upstream|both"
+    ),
     depth: int = typer.Option(3, "--depth"),
     semantic: bool = typer.Option(False, "--semantic"),
 ):
@@ -129,8 +136,10 @@ def impact_cmd(
 
 @app.command("task")
 def task_cmd(
-    task: str = typer.Argument(..., help='Natural language task e.g. "wire Scout to Ava J-space"'),
-    graph: Optional[str] = typer.Option(None, "--graph"),
+    task: str = typer.Argument(
+        ..., help='Natural language task e.g. "wire Scout to Ava J-space"'
+    ),
+    graph: str | None = typer.Option(None, "--graph"),
     semantic: bool = typer.Option(False, "--semantic"),
 ):
     """Task compiler — minimal files + plan + copy-paste context."""
@@ -145,7 +154,7 @@ def task_cmd(
 
 @app.command("onboard")
 def onboard_cmd(
-    graph: Optional[str] = typer.Option(None, "--graph"),
+    graph: str | None = typer.Option(None, "--graph"),
     top: int = typer.Option(12, "--top"),
 ):
     """Onboard — god nodes, hot files, entry points, suggested questions."""
@@ -156,7 +165,7 @@ def onboard_cmd(
 
 
 @app.command("cost")
-def cost_cmd(graph: Optional[str] = typer.Option(None, "--graph")):
+def cost_cmd(graph: str | None = typer.Option(None, "--graph")):
     """Token savings dashboard from cost.json."""
     result = runner.run_text_command("cost", [], graph=graph)
     emit(result, command="graphify cost")
@@ -166,7 +175,9 @@ def cost_cmd(graph: Optional[str] = typer.Option(None, "--graph")):
 
 @app.command("sync")
 def sync_cmd(
-    graph: Optional[str] = typer.Option(None, "--graph", help="Source graph.json (default: local or personal)"),
+    graph: str | None = typer.Option(
+        None, "--graph", help="Source graph.json (default: local or personal)"
+    ),
 ):
     """Copy scout graph.json into <personal-graphify home>/references/spaces/scout-cli-graph.json.
 
@@ -181,7 +192,7 @@ def sync_cmd(
 
 @app.command("ecosystem")
 def ecosystem_cmd(
-    out: Optional[str] = typer.Option(
+    out: str | None = typer.Option(
         None,
         "--out",
         help="Default: <personal-graphify home>/graphify-out "

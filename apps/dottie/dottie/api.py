@@ -11,13 +11,14 @@ from __future__ import annotations
 
 import inspect
 import json
+import os
 import sqlite3
 import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional
+from typing import TYPE_CHECKING, Any, Literal
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,7 +31,8 @@ from dottie.policy import DottiePolicyUnavailable
 from dottie.status import build_status
 from dottie.tasks import FAMILIES, VerifiedTaskProvider
 
-import os
+if TYPE_CHECKING:
+    import builtins
 
 _DB_SCHEMA = """
 CREATE TABLE IF NOT EXISTS tasks (
@@ -81,65 +83,93 @@ class TaskStore:
         c.row_factory = sqlite3.Row
         return c
 
-    def insert(self, task_id: str, prompt: str, backend: str, max_steps: int,
-               family: Optional[str] = None, seed: Optional[int] = None,
-               use_skills: bool = False) -> None:
+    def insert(
+        self,
+        task_id: str,
+        prompt: str,
+        backend: str,
+        max_steps: int,
+        family: str | None = None,
+        seed: int | None = None,
+        use_skills: bool = False,
+    ) -> None:
         with self._conn() as c:
             c.execute(
                 "INSERT INTO tasks (task_id, created_ts, prompt, backend, max_steps, status, "
                 "family, seed, use_skills) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?)",
-                (task_id, time.time(), prompt, backend, max_steps,
-                 family, seed, int(use_skills)),
+                (
+                    task_id,
+                    time.time(),
+                    prompt,
+                    backend,
+                    max_steps,
+                    family,
+                    seed,
+                    int(use_skills),
+                ),
             )
 
     def set_running(self, task_id: str) -> None:
         with self._conn() as c:
             c.execute("UPDATE tasks SET status='running' WHERE task_id=?", (task_id,))
 
-    def finish(self, task_id: str, record: Dict[str, Any]) -> None:
+    def finish(self, task_id: str, record: dict[str, Any]) -> None:
         verifier = record.get("verified_task")
         with self._conn() as c:
             c.execute(
                 "UPDATE tasks SET status='done', final=?, terminated=?, n_steps=?, wall_s=?, "
                 "reward_components=?, verifier=? WHERE task_id=?",
-                (record.get("final"), record.get("terminated"), record.get("n_steps"),
-                 record.get("wall_s"), json.dumps(record.get("reward_components", {})),
-                 json.dumps(verifier) if verifier is not None else None,
-                 task_id),
+                (
+                    record.get("final"),
+                    record.get("terminated"),
+                    record.get("n_steps"),
+                    record.get("wall_s"),
+                    json.dumps(record.get("reward_components", {})),
+                    json.dumps(verifier) if verifier is not None else None,
+                    task_id,
+                ),
             )
 
     def fail(self, task_id: str, error: str) -> None:
         with self._conn() as c:
-            c.execute("UPDATE tasks SET status='error', error=? WHERE task_id=?",
-                      (error[:2000], task_id))
+            c.execute(
+                "UPDATE tasks SET status='error', error=? WHERE task_id=?",
+                (error[:2000], task_id),
+            )
 
-    def get(self, task_id: str) -> Optional[Dict[str, Any]]:
+    def get(self, task_id: str) -> dict[str, Any] | None:
         with self._conn() as c:
-            row = c.execute("SELECT * FROM tasks WHERE task_id=?", (task_id,)).fetchone()
+            row = c.execute(
+                "SELECT * FROM tasks WHERE task_id=?", (task_id,)
+            ).fetchone()
         return self._row_to_dict(row) if row else None
 
-    def list(self, limit: int = 50) -> List[Dict[str, Any]]:
+    def list(self, limit: int = 50) -> builtins.list[dict[str, Any]]:
         with self._conn() as c:
             rows = c.execute(
                 "SELECT * FROM tasks ORDER BY created_ts DESC LIMIT ?", (limit,)
             ).fetchall()
         return [self._row_to_dict(r) for r in rows]
 
-    def counts(self) -> Dict[str, int]:
+    def counts(self) -> dict[str, int]:
         with self._conn() as c:
-            rows = c.execute("SELECT status, COUNT(*) AS n FROM tasks GROUP BY status").fetchall()
+            rows = c.execute(
+                "SELECT status, COUNT(*) AS n FROM tasks GROUP BY status"
+            ).fetchall()
         out = {r["status"]: r["n"] for r in rows}
         out["total"] = sum(out.values())
         return out
 
     @staticmethod
-    def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
+    def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
         d = dict(row)
         for key in ("reward_components", "verifier"):
             if d.get(key):
                 try:
                     d[key] = json.loads(d[key])
-                except json.JSONDecodeError:  # pragma: no cover - corrupt row surfaced as-is
+                except (
+                    json.JSONDecodeError
+                ):  # pragma: no cover - corrupt row surfaced as-is
                     pass
         d["use_skills"] = bool(d.get("use_skills"))
         # r_task surfaced at the top level for climb tooling (None until done / for free-form).
@@ -149,39 +179,45 @@ class TaskStore:
 
 
 _FAMILY_LITERAL = Literal["compute", "extract", "tool_chain", "file_ops", "constraint"]
-assert set(_FAMILY_LITERAL.__args__) == set(FAMILIES)  # keep the API in lockstep with tasks.py
+assert set(_FAMILY_LITERAL.__args__) == set(
+    FAMILIES
+)  # keep the API in lockstep with tasks.py
 
 
 class TaskSubmit(BaseModel):
     """Free-form ({prompt}) or verified ({family, seed}) task — exactly one form."""
 
-    prompt: Optional[str] = Field(default=None, min_length=1, max_length=20_000)
-    family: Optional[_FAMILY_LITERAL] = None
+    prompt: str | None = Field(default=None, min_length=1, max_length=20_000)
+    family: _FAMILY_LITERAL | None = None
     seed: int = Field(default=0, ge=0)
     backend: Literal["ollama", "ava", "echo"] = "ollama"
     max_steps: int = Field(default=8, ge=1, le=32)
     use_skills: bool = False
 
     @model_validator(mode="after")
-    def _exactly_one_form(self) -> "TaskSubmit":
+    def _exactly_one_form(self) -> TaskSubmit:
         if (self.prompt is None) == (self.family is None):
-            raise ValueError("provide exactly one of 'prompt' (free-form) or "
-                             "'family' (+ optional 'seed', a verified task)")
+            raise ValueError(
+                "provide exactly one of 'prompt' (free-form) or "
+                "'family' (+ optional 'seed', a verified task)"
+            )
         return self
 
 
 class TaskBatch(BaseModel):
     """A climb batch of verified tasks: one family or 'mixed' (cycles all families)."""
 
-    family: Literal["compute", "extract", "tool_chain", "file_ops", "constraint", "mixed"]
+    family: Literal[
+        "compute", "extract", "tool_chain", "file_ops", "constraint", "mixed"
+    ]
     n: int = Field(default=5, ge=1, le=64)
-    seeds: Optional[List[int]] = None
+    seeds: list[int] | None = None
     backend: Literal["ollama", "ava", "echo"] = "ollama"
     max_steps: int = Field(default=8, ge=1, le=32)
     use_skills: bool = False
 
     @model_validator(mode="after")
-    def _seeds_match_n(self) -> "TaskBatch":
+    def _seeds_match_n(self) -> TaskBatch:
         if self.seeds is not None and len(self.seeds) != self.n:
             raise ValueError(f"seeds length {len(self.seeds)} != n {self.n}")
         return self
@@ -190,32 +226,33 @@ class TaskBatch(BaseModel):
 class FlywheelEvaluateBody(BaseModel):
     mode: Literal["mock", "real"] = "mock"
     evals: str = "all"
-    ckpt: Optional[str] = None
-    tokenizer: Optional[str] = None
+    ckpt: str | None = None
+    tokenizer: str | None = None
 
 
 class FlywheelTrainStepBody(BaseModel):
-    run_dir: Optional[str] = None
+    run_dir: str | None = None
     device: Literal["cpu", "cuda"] = "cpu"
-    extra_args: List[str] = Field(default_factory=list)
+    extra_args: list[str] = Field(default_factory=list)
 
 
 class ClimbBody(BaseModel):
     """One climb-iteration config (mirrors dottie.climb.ClimbConfig)."""
 
-    families: Literal["compute", "extract", "tool_chain", "file_ops", "constraint",
-                      "mixed"] = "mixed"
+    families: Literal[
+        "compute", "extract", "tool_chain", "file_ops", "constraint", "mixed"
+    ] = "mixed"
     n: int = Field(default=5, ge=1, le=64)
     seed_base: int = Field(default=0, ge=0)
     backend: Literal["ollama", "ava", "echo"] = "ollama"
     max_steps: int = Field(default=8, ge=1, le=32)
     use_skills: bool = False
-    evaluate: Optional[Literal["mock", "real"]] = None
+    evaluate: Literal["mock", "real"] | None = None
     train_step: bool = False
-    compute: Optional[float] = Field(default=None, gt=0)
+    compute: float | None = Field(default=None, gt=0)
 
 
-def create_app(engine: Optional[DottieEngine] = None) -> FastAPI:
+def create_app(engine: DottieEngine | None = None) -> FastAPI:
     engine = engine or DottieEngine()
     store = TaskStore(engine.data_dir / "dottie.sqlite3")
     workers = int(os.environ.get("DOTTIE_WORKERS", "2"))
@@ -246,24 +283,27 @@ def create_app(engine: Optional[DottieEngine] = None) -> FastAPI:
     # an extra preflight header that must be granted or Chrome blocks the request. Newer
     # Starlette handles it natively (and 400s ungranted PNA preflights); on older versions
     # a fallback middleware adds the grant to CORS-approved preflights.
-    cors_kwargs: Dict[str, Any] = dict(
-        allow_origins=cors_origins,
-        allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["content-type"],
-        max_age=600,
+    cors_kwargs: dict[str, Any] = {
+        "allow_origins": cors_origins,
+        "allow_methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["content-type"],
+        "max_age": 600,
+    }
+    native_pna = (
+        "allow_private_network" in inspect.signature(CORSMiddleware.__init__).parameters
     )
-    native_pna = "allow_private_network" in inspect.signature(
-        CORSMiddleware.__init__).parameters
     if native_pna:
         cors_kwargs["allow_private_network"] = True
     app.add_middleware(CORSMiddleware, **cors_kwargs)
     if not native_pna:  # pragma: no cover - depends on installed starlette version
+
         @app.middleware("http")
         async def _private_network_preflight(request, call_next):
             response = await call_next(request)
             if (
                 request.method == "OPTIONS"
-                and request.headers.get("access-control-request-private-network") == "true"
+                and request.headers.get("access-control-request-private-network")
+                == "true"
                 and "access-control-allow-origin" in response.headers
             ):
                 response.headers["Access-Control-Allow-Private-Network"] = "true"
@@ -275,8 +315,13 @@ def create_app(engine: Optional[DottieEngine] = None) -> FastAPI:
         try:
             store.set_running(task_id)
             record = engine.run_task(
-                body.prompt, backend=body.backend, max_steps=body.max_steps, task_id=task_id,
-                family=body.family, seed=body.seed, use_skills=body.use_skills,
+                body.prompt,
+                backend=body.backend,
+                max_steps=body.max_steps,
+                task_id=task_id,
+                family=body.family,
+                seed=body.seed,
+                use_skills=body.use_skills,
             )
             store.finish(task_id, record)
         except DottiePolicyUnavailable as e:
@@ -286,7 +331,7 @@ def create_app(engine: Optional[DottieEngine] = None) -> FastAPI:
         finally:
             slots.release()
 
-    def _admit_one(body: TaskSubmit) -> Dict[str, Any]:
+    def _admit_one(body: TaskSubmit) -> dict[str, Any]:
         """Insert + schedule one admitted submission (its slot is already acquired)."""
         # Verified form: build now (deterministic) so validation fails fast and the DB stores
         # the REAL prompt the policy will see (minus engine-side context/tool footers).
@@ -295,10 +340,15 @@ def create_app(engine: Optional[DottieEngine] = None) -> FastAPI:
             prompt = provider.build(body.family, body.seed).prompt
         task_id = uuid.uuid4().hex[:12]
         try:
-            store.insert(task_id, prompt, body.backend, body.max_steps,
-                         family=body.family,
-                         seed=body.seed if body.family is not None else None,
-                         use_skills=body.use_skills)
+            store.insert(
+                task_id,
+                prompt,
+                body.backend,
+                body.max_steps,
+                family=body.family,
+                seed=body.seed if body.family is not None else None,
+                use_skills=body.use_skills,
+            )
             pool.submit(_run_task, task_id, body)
         except BaseException:
             slots.release()
@@ -310,7 +360,7 @@ def create_app(engine: Optional[DottieEngine] = None) -> FastAPI:
         return out
 
     @app.post("/tasks", status_code=202)
-    def submit_task(body: TaskSubmit) -> Dict[str, Any]:
+    def submit_task(body: TaskSubmit) -> dict[str, Any]:
         if not slots.acquire(blocking=False):
             raise HTTPException(
                 status_code=429,
@@ -319,7 +369,7 @@ def create_app(engine: Optional[DottieEngine] = None) -> FastAPI:
         return _admit_one(body)
 
     @app.post("/tasks/batch", status_code=202)
-    def submit_batch(body: TaskBatch) -> Dict[str, Any]:
+    def submit_batch(body: TaskBatch) -> dict[str, Any]:
         try:
             pairs = provider.batch_seeds(body.family, body.n, body.seeds)
         except ValueError as e:
@@ -332,31 +382,40 @@ def create_app(engine: Optional[DottieEngine] = None) -> FastAPI:
                     slots.release()
                 raise HTTPException(
                     status_code=429,
-                    detail=(f"queue cannot admit batch of {body.n} "
-                            f"({queue_max} queued+running cap); retry later"),
+                    detail=(
+                        f"queue cannot admit batch of {body.n} "
+                        f"({queue_max} queued+running cap); retry later"
+                    ),
                 )
             acquired += 1
         submitted = []
         for fam, seed in pairs:
-            submitted.append(_admit_one(TaskSubmit(
-                family=fam, seed=seed, backend=body.backend,
-                max_steps=body.max_steps, use_skills=body.use_skills,
-            )))
+            submitted.append(
+                _admit_one(
+                    TaskSubmit(
+                        family=fam,
+                        seed=seed,
+                        backend=body.backend,
+                        max_steps=body.max_steps,
+                        use_skills=body.use_skills,
+                    )
+                )
+            )
         return {"batch_size": len(submitted), "family": body.family, "tasks": submitted}
 
     @app.get("/tasks/{task_id}")
-    def get_task(task_id: str) -> Dict[str, Any]:
+    def get_task(task_id: str) -> dict[str, Any]:
         row = store.get(task_id)
         if row is None:
             raise HTTPException(status_code=404, detail=f"unknown task_id {task_id!r}")
         return row
 
     @app.get("/tasks")
-    def list_tasks(limit: int = 50) -> Dict[str, Any]:
+    def list_tasks(limit: int = 50) -> dict[str, Any]:
         limit = max(1, min(limit, 500))
         return {"tasks": store.list(limit=limit), "counts": store.counts()}
 
-    def _flywheel_call(fn, *args, **kwargs) -> Dict[str, Any]:
+    def _flywheel_call(fn, *args, **kwargs) -> dict[str, Any]:
         try:
             return fn(*args, **kwargs)
         except flywheel.FlywheelUnavailable as e:
@@ -365,26 +424,32 @@ def create_app(engine: Optional[DottieEngine] = None) -> FastAPI:
             raise HTTPException(status_code=500, detail=str(e)) from e
 
     @app.post("/flywheel/export-rft")
-    def flywheel_export_rft() -> Dict[str, Any]:
+    def flywheel_export_rft() -> dict[str, Any]:
         return _flywheel_call(flywheel.export_rft_dataset, engine.data_dir)
 
     @app.post("/flywheel/mint")
-    def flywheel_mint() -> Dict[str, Any]:
+    def flywheel_mint() -> dict[str, Any]:
         return _flywheel_call(flywheel.mint_memories, engine.data_dir)
 
     @app.post("/flywheel/evaluate")
-    def flywheel_evaluate(body: FlywheelEvaluateBody) -> Dict[str, Any]:
+    def flywheel_evaluate(body: FlywheelEvaluateBody) -> dict[str, Any]:
         return _flywheel_call(
-            flywheel.evaluate, engine.data_dir,
-            mode=body.mode, evals=body.evals, ckpt=body.ckpt, tokenizer=body.tokenizer,
+            flywheel.evaluate,
+            engine.data_dir,
+            mode=body.mode,
+            evals=body.evals,
+            ckpt=body.ckpt,
+            tokenizer=body.tokenizer,
         )
 
     @app.post("/flywheel/train-step")
-    def flywheel_train_step(body: FlywheelTrainStepBody) -> Dict[str, Any]:
+    def flywheel_train_step(body: FlywheelTrainStepBody) -> dict[str, Any]:
         # Synchronous by design (personal platform); a real run takes minutes on CPU.
         return _flywheel_call(
             flywheel.train_step,
-            run_dir=body.run_dir, device=body.device, extra_args=body.extra_args,
+            run_dir=body.run_dir,
+            device=body.device,
+            extra_args=body.extra_args,
         )
 
     # One climb at a time: an iteration is a batch of real runs + real flywheel stages, so
@@ -393,7 +458,7 @@ def create_app(engine: Optional[DottieEngine] = None) -> FastAPI:
     app.state.climb_lock = climb_lock
 
     @app.post("/climb")
-    def run_climb(body: ClimbBody) -> Dict[str, Any]:
+    def run_climb(body: ClimbBody) -> dict[str, Any]:
         if not climb_lock.acquire(blocking=False):
             raise HTTPException(
                 status_code=409,
@@ -401,9 +466,15 @@ def create_app(engine: Optional[DottieEngine] = None) -> FastAPI:
             )
         try:
             cfg = climb_mod.ClimbConfig(
-                families=body.families, n=body.n, seed_base=body.seed_base,
-                backend=body.backend, max_steps=body.max_steps, use_skills=body.use_skills,
-                evaluate=body.evaluate, train_step=body.train_step, compute=body.compute,
+                families=body.families,
+                n=body.n,
+                seed_base=body.seed_base,
+                backend=body.backend,
+                max_steps=body.max_steps,
+                use_skills=body.use_skills,
+                evaluate=body.evaluate,
+                train_step=body.train_step,
+                compute=body.compute,
             )
             # Runs inline in the worker pool (same bounded workers as tasks); the request
             # blocks until the iteration record — with all measured numbers — exists.
@@ -411,33 +482,40 @@ def create_app(engine: Optional[DottieEngine] = None) -> FastAPI:
             try:
                 return future.result()
             except DottiePolicyUnavailable as e:
-                raise HTTPException(status_code=503,
-                                    detail=f"policy_unavailable: {e}") from e
+                raise HTTPException(
+                    status_code=503, detail=f"policy_unavailable: {e}"
+                ) from e
             except (flywheel.FlywheelError, climb_mod.ClimbError) as e:
                 raise HTTPException(status_code=500, detail=str(e)) from e
         finally:
             climb_lock.release()
 
     @app.get("/climb/log")
-    def climb_log(limit: int = 50) -> Dict[str, Any]:
+    def climb_log(limit: int = 50) -> dict[str, Any]:
         limit = max(1, min(limit, 500))
         records = climb_mod.read_log(engine.data_dir)
-        return {"count": len(records), "iterations": records[-limit:],
-                "log_path": str(climb_mod.climb_log_path(engine.data_dir))}
+        return {
+            "count": len(records),
+            "iterations": records[-limit:],
+            "log_path": str(climb_mod.climb_log_path(engine.data_dir)),
+        }
 
     # -- research loop (read-only views the arxiviq Research tab renders) -----------------
     def _research_ledger():
-        from dottie.research.ledger import Ledger as _Ledger
         from dottie.research import paths as _rpaths
+        from dottie.research.ledger import Ledger as _Ledger
+
         return _Ledger(_rpaths.ledger_path(engine.data_dir))
 
     @app.get("/research/status")
-    def research_status() -> Dict[str, Any]:
+    def research_status() -> dict[str, Any]:
         # Prefer the status.json mirror the workers atomically rewrite after every tick (the
         # documented contract: the snapshot mirror is what this endpoint serves). It also works
         # when the research dir is bind-mounted read-only into the server container. Fall back
         # to a live ledger build when no mirror exists yet.
-        from dottie.research import logger as _rlog, paths as _rpaths
+        from dottie.research import logger as _rlog
+        from dottie.research import paths as _rpaths
+
         mirror = _rpaths.status_path(engine.data_dir)
         if mirror.is_file():
             try:
@@ -447,18 +525,33 @@ def create_app(engine: Optional[DottieEngine] = None) -> FastAPI:
         return _rlog.build_status(_research_ledger())
 
     @app.get("/research/experiments")
-    def research_experiments(limit: int = 50, state: Optional[str] = None) -> Dict[str, Any]:
+    def research_experiments(
+        limit: int = 50, state: str | None = None
+    ) -> dict[str, Any]:
         led = _research_ledger()
         exps = led.list(state=state, limit=max(1, min(limit, 200)))
-        return {"count": len(exps), "experiments": [
-            {"id": e.id, "name": e.name, "state": e.state, "created_ts": e.created_ts,
-             "updated_ts": e.updated_ts, "attempts": e.attempts,
-             "hypothesis": e.hypothesis, "train_metrics": e.train_metrics,
-             "eval_verdict": e.eval_verdict, "writeup": e.writeup, "failure": e.failure}
-            for e in exps]}
+        return {
+            "count": len(exps),
+            "experiments": [
+                {
+                    "id": e.id,
+                    "name": e.name,
+                    "state": e.state,
+                    "created_ts": e.created_ts,
+                    "updated_ts": e.updated_ts,
+                    "attempts": e.attempts,
+                    "hypothesis": e.hypothesis,
+                    "train_metrics": e.train_metrics,
+                    "eval_verdict": e.eval_verdict,
+                    "writeup": e.writeup,
+                    "failure": e.failure,
+                }
+                for e in exps
+            ],
+        }
 
     @app.get("/status")
-    def status() -> Dict[str, Any]:
+    def status() -> dict[str, Any]:
         return build_status(engine, task_counts=store.counts())
 
     return app

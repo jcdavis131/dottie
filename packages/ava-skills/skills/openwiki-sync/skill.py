@@ -1,24 +1,34 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
 """openwiki-sync: Sync OpenWiki personal wiki (~/.openwiki/wiki) into S2 Slow hl300 verbalizable memory"""
-from __future__ import annotations
-from typing import Any, Dict, List
-import os, pathlib, re
 
-def describe() -> Dict[str, Any]:
+from __future__ import annotations
+
+import os
+import pathlib
+import re
+from typing import Any
+
+
+def describe() -> dict[str, Any]:
     """Routing metadata read from SKILL.md frontmatter — the single source of truth."""
     from pathlib import Path
+
     here = Path(__file__).resolve().parent
     try:
         from skills.loader import describe_from_manifest
     except ImportError:  # loaded standalone without the skills package on sys.path
         import importlib.util
-        spec = importlib.util.spec_from_file_location("_ava_skills_loader", here.parent / "loader.py")
+
+        spec = importlib.util.spec_from_file_location(
+            "_ava_skills_loader", here.parent / "loader.py"
+        )
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         describe_from_manifest = mod.describe_from_manifest
     return describe_from_manifest(here)
 
-def _scan_wiki(wiki_path: str | None) -> List[pathlib.Path]:
+
+def _scan_wiki(wiki_path: str | None) -> list[pathlib.Path]:
     candidates = []
     if wiki_path and os.path.isdir(wiki_path):
         candidates.append(pathlib.Path(wiki_path))
@@ -30,15 +40,24 @@ def _scan_wiki(wiki_path: str | None) -> List[pathlib.Path]:
             found.extend(list(p.rglob("*.md"))[:200])
     return found
 
-def _extract_concepts(text: str) -> List[str]:
+
+def _extract_concepts(text: str) -> list[str]:
     concepts = re.findall(r"^#+\s+(.+)$", text, re.MULTILINE)
     concepts += re.findall(r"\[\[([^\]]+)\]\]", text)
     return [c.strip()[:80] for c in concepts[:20] if c.strip()]
 
-def run(model: Any = None, tokenizer: Any = None, mode: str = "mock", wiki_path: str | None = None, **kw) -> Dict[str, Any]:
+
+def run(
+    model: Any = None,
+    tokenizer: Any = None,
+    mode: str = "mock",
+    wiki_path: str | None = None,
+    **kw,
+) -> dict[str, Any]:
     files = _scan_wiki(wiki_path)
     if mode == "mock":
         import random
+
         random.seed(len(files) + 7)
         concepts = []
         for f in files[:10]:
@@ -47,11 +66,34 @@ def run(model: Any = None, tokenizer: Any = None, mode: str = "mock", wiki_path:
             except Exception:
                 continue
         if not concepts:
-            concepts = ["Spider", "France", "Soccer", "Spanish", "Blackmail", "Ava", "J-Space"]
-        mass = min(0.18, len(concepts)*0.008 + random.uniform(0.02,0.06)) + 1e-5*(len(files)%10)
-        return {"skill":"openwiki-sync","mode":"mock","measured":{"n_files":len(files),"n_concepts":len(concepts),"reportability_mass":mass,"hl":300,"sample_concepts":concepts[:5]},"pass":mass>=0.06,"bar":"mass>=0.06","files":[str(p) for p in files[:5]]}
+            concepts = [
+                "Spider",
+                "France",
+                "Soccer",
+                "Spanish",
+                "Blackmail",
+                "Ava",
+                "J-Space",
+            ]
+        mass = min(0.18, len(concepts) * 0.008 + random.uniform(0.02, 0.06)) + 1e-5 * (
+            len(files) % 10
+        )
+        return {
+            "skill": "openwiki-sync",
+            "mode": "mock",
+            "measured": {
+                "n_files": len(files),
+                "n_concepts": len(concepts),
+                "reportability_mass": mass,
+                "hl": 300,
+                "sample_concepts": concepts[:5],
+            },
+            "pass": mass >= 0.06,
+            "bar": "mass>=0.06",
+            "files": [str(p) for p in files[:5]],
+        }
     try:
-        concepts=[]
+        concepts = []
         for f in files:
             try:
                 concepts.extend(_extract_concepts(f.read_text(errors="ignore")))
@@ -65,12 +107,27 @@ def run(model: Any = None, tokenizer: Any = None, mode: str = "mock", wiki_path:
         # an S2 forward-pass metric that is NOT wired. Report the diagnostic and FAIL
         # honestly rather than passing a bar on an unmeasured proxy — matching
         # code-bench / family-brain-wiki, so the honest-failure regime is uniform.
-        density = (len(concepts) / max(1, len(files)))
-        return {"skill":"openwiki-sync","mode":"real","measured":None,"pass":False,
-                "bar":"mass>=0.06",
-                "diagnostics":{"n_files":len(files),"n_concepts":len(concepts),
-                                "concept_density":density},
-                "error":"real mode not implemented: reportability mass needs a live S2 "
-                        "readout; concept_density is a filesystem diagnostic, not the metric"}
+        density = len(concepts) / max(1, len(files))
+        return {
+            "skill": "openwiki-sync",
+            "mode": "real",
+            "measured": None,
+            "pass": False,
+            "bar": "mass>=0.06",
+            "diagnostics": {
+                "n_files": len(files),
+                "n_concepts": len(concepts),
+                "concept_density": density,
+            },
+            "error": "real mode not implemented: reportability mass needs a live S2 "
+            "readout; concept_density is a filesystem diagnostic, not the metric",
+        }
     except Exception as e:
-        return {"skill":"openwiki-sync","mode":"real","measured":None,"error":str(e),"pass":False,"bar":"mass>=0.06"}
+        return {
+            "skill": "openwiki-sync",
+            "mode": "real",
+            "measured": None,
+            "error": str(e),
+            "pass": False,
+            "bar": "mass>=0.06",
+        }

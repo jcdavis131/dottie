@@ -8,6 +8,7 @@ Accept criteria:
   (d) deterministic byte-identical regeneration per seed
   (e) validate_doc passes for every emitted doc
 """
+
 import os
 import sys
 from pathlib import Path
@@ -15,11 +16,16 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from ava.datagen.base import validate_doc  # noqa: E402
-from ava.datagen.codeact import (  # noqa: E402
-    ASSISTANT, USER, CodeActGenerator, GROUNDING_FLOOR_DEFAULT, iter_trajectories, render,
+from ava.datagen.base import validate_doc
+from ava.datagen.codeact import (
+    ASSISTANT,
+    GROUNDING_FLOOR_DEFAULT,
+    USER,
+    CodeActGenerator,
+    iter_trajectories,
+    render,
 )
-from ava.rl.codeact_sandbox import Sandbox  # noqa: E402
+from ava.rl.codeact_sandbox import Sandbox
 
 POSIX = os.name == "posix"
 N = 30
@@ -49,7 +55,11 @@ class TestSandboxEquivalence:
 
     def test_recover_family_first_block_actually_errors(self):
         # The grounding must be real: the recover trajectory's first block genuinely raises.
-        recover = [t for t in iter_trajectories(seed=3, n=120) if t.concept == "codeact_recover"]
+        recover = [
+            t
+            for t in iter_trajectories(seed=3, n=120)
+            if t.concept == "codeact_recover"
+        ]
         assert recover, "no recover trajectories produced"
         with Sandbox(max_steps=8) as vm:
             first = recover[0]
@@ -62,7 +72,9 @@ class TestSandboxEquivalence:
 class TestNoLeakage:
     def test_prompt_never_contains_answer(self):
         for traj in iter_trajectories(seed=2, n=N):
-            assert traj.answer not in traj.user, f"{traj.concept} leaked {traj.answer!r} into prompt"
+            assert traj.answer not in traj.user, (
+                f"{traj.concept} leaked {traj.answer!r} into prompt"
+            )
 
     def test_user_prompt_isolated_from_answer_in_rendered_text(self):
         # The answer may appear in the Observation/final turn (that's the point), but the first
@@ -77,7 +89,9 @@ class TestGroundingFloor:
     def test_share_meets_floor(self):
         trajs = list(iter_trajectories(seed=4, n=200))
         share = sum(t.grounding for t in trajs) / len(trajs)
-        assert share >= GROUNDING_FLOOR_DEFAULT, f"grounding share {share:.3f} < {GROUNDING_FLOOR_DEFAULT}"
+        assert share >= GROUNDING_FLOOR_DEFAULT, (
+            f"grounding share {share:.3f} < {GROUNDING_FLOOR_DEFAULT}"
+        )
 
     def test_custom_floor_respected(self):
         trajs = list(iter_trajectories(seed=6, n=200, grounding_floor=0.6))
@@ -90,7 +104,9 @@ class TestGroundingFloor:
             for seed in (1, 2, 7, 42):
                 trajs = list(iter_trajectories(seed=seed, n=n))
                 share = sum(t.grounding for t in trajs) / n
-                assert share >= GROUNDING_FLOOR_DEFAULT, f"n={n} seed={seed} share={share:.3f}"
+                assert share >= GROUNDING_FLOOR_DEFAULT, (
+                    f"n={n} seed={seed} share={share:.3f}"
+                )
 
 
 class TestConstantSync:
@@ -98,6 +114,7 @@ class TestConstantSync:
         # equivalence relies on the frozen clock being identical in both executors
         from ava.datagen.codeact import FREEZE_EPOCH, STDOUT_CAP, VALUE_CAP
         from ava.rl import codeact_sandbox as sb
+
         assert FREEZE_EPOCH == sb.DEFAULT_FREEZE_EPOCH
         assert STDOUT_CAP == sb.STDOUT_CAP and VALUE_CAP == sb.VALUE_CAP
 
@@ -115,6 +132,7 @@ class TestDeterminism:
             for d in g.generate(target_bytes=20_000):
                 out.append(d)
             return out
+
         assert docs(11) == docs(11)
 
 
@@ -132,5 +150,7 @@ class TestDocSchema:
 
     def test_streams_and_stops_at_target(self):
         g = CodeActGenerator(seed=14)
-        total = sum(len(d["text"].encode("utf-8")) for d in g.generate(target_bytes=15_000))
+        total = sum(
+            len(d["text"].encode("utf-8")) for d in g.generate(target_bytes=15_000)
+        )
         assert total >= 15_000
