@@ -2209,6 +2209,32 @@ most valuable catch so far:
   files I had been editing constantly) and the promotion bundle (§5.3.R31–R33). **Editing a
   file is not reading it** — the edit view shows the lines around the change, which is
   exactly where the surviving bugs are not.
+### 5.3.R42 — a contract check that vanished when unscoped (defensive, 0 occurrences)
+
+- [x] **Read `validate.py` end to end (10:25) — the file I edited most tonight and had never
+  read whole.** `check_contract` did `forward_extra.get(class_name or "")`: with no declared
+  `class_name` it looked up the empty string, found nothing, and **passed**. A gate that did
+  not run, reading exactly like a gate that passed — the §5.3.R15 invariant, in code written
+  before that invariant existed.
+  - Related: `_select_class` falls back to `candidates[0]`, the first `nn.Module` subclass,
+    which in generated code is frequently a helper rather than the block.
+- [x] **Measured before fixing, and the honest answer is that it never fires: 0 of 96 stored
+  candidates omit `class_name`.** One record declares a class its (syntax-broken) code never
+  defines; exactly one module defines more than one class. So this is **defensive, not a
+  live bug**, and it is recorded that way rather than dressed up as a catch.
+  - I have declined 0- and 1-occurrence fixes twice tonight (§5.3.R5 class_name pin, §5.3.R16
+    ValidationResult consumers) and said consistency matters. **This one is different in
+    kind**: not a rare bug, but a *gate that silently does not check*. Making a check honest
+    is not the same as adding machinery against a hypothetical — and the fix is two lines
+    with no new surface. Unscoped now widens to every class instead of quietly vanishing.
+  - Verified red for the right reason: `contract check vanished when no class_name was
+    declared`. Suite 182 passed.
+- [x] Fourth heredoc mangling of the night: `
+` inside a quoted heredoc collapsed into real
+  newlines and broke the test file's syntax. Caught by collection, fixed with triple-quoted
+  literals. **The lesson has not stuck because I keep reaching for the same shortcut** —
+  writing multi-line Python fixtures through a shell heredoc is simply the wrong tool, and
+  the file-then-insert approach used in §5.3.R5 worked first time every time.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.

@@ -145,7 +145,15 @@ def check_contract(code: str, *, class_name: Optional[str] = None) -> Validation
     # extra required arg fails here in milliseconds — before any model correction round-trips
     # burn on an unfixable signature (observed live, 6483a5daea94). Scoped to the declared
     # class: helper submodules may legitimately take extra arguments.
-    extra = ck.forward_extra.get(class_name or "")
+    # With no declared class_name this used to look up forward_extra[""], find nothing, and
+    # silently skip the check — a gate that does not run reading exactly like a gate that
+    # passed (the §5.3.R15 invariant, in a place that predates it). Measured 2026-07-20:
+    # 0 of 96 stored candidates omit class_name, so this is defensive, not a live bug. But
+    # an unscoped check should widen to every class rather than quietly vanish.
+    if class_name:
+        extra = ck.forward_extra.get(class_name)
+    else:
+        extra = next((v for v in ck.forward_extra.values() if v), None)
     if extra:
         problems.append(
             f"forward() of {class_name} requires extra argument(s) {extra} beyond the single "

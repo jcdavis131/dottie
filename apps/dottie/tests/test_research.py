@@ -189,6 +189,40 @@ def test_dry_run_enforces_output_shape_contract():
     assert not r.ok and r.level == "dry_run" and "SAME [batch, seq, hidden]" in r.detail
 
 
+def test_contract_check_does_not_vanish_without_a_declared_class_name():
+    """An unscoped contract check must widen, not silently skip.
+
+    TODOS §5.3.R42: `check_contract` did `forward_extra.get(class_name or "")`, so with no
+    declared class_name it looked up the empty string, found nothing, and passed — a gate
+    that did not run reading exactly like a gate that passed. That is the §5.3.R15 invariant
+    ("ok means did not fail, not ran") in a place written before it.
+
+    Measured: 0 of 96 stored candidates omit class_name, so this is defensive rather than a
+    live bug — recorded as such instead of dressed up as a catch.
+    """
+    reg = """import torch
+import torch.nn as nn
+class Reg(nn.Module):
+    def forward(self, x, gradients):
+        return (gradients ** 2).sum()
+"""
+    # declared: caught (existing behaviour, unchanged)
+    assert not validate.check_contract(reg, class_name="Reg").ok
+    # NOT declared: must still be caught, not silently skipped
+    r = validate.check_contract(reg)
+    assert not r.ok, "contract check vanished when no class_name was declared"
+    assert "gradients" in r.detail
+
+    # a compliant module still passes with no class_name
+    ok = """import torch
+import torch.nn as nn
+class B(nn.Module):
+    def forward(self, x):
+        return torch.tanh(x)
+"""
+    assert validate.check_contract(ok).ok
+
+
 def test_contract_rejects_forward_with_extra_required_args():
     # A regularizer-style forward(x, gradients) can never be a drop-in block (observed live,
     # 6483a5daea94) — it dies at contract in milliseconds, not after burning correction cycles.
