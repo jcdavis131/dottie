@@ -54,7 +54,8 @@ def _spread(metrics: Dict[str, Any]) -> Optional[Dict[str, float]]:
 
 
 def _writeup(exp: Experiment, baseline: Baseline, value: Optional[float], *,
-             promoted: bool, reason: str = "", significance: str = "") -> str:
+             promoted: bool, reason: str = "", significance: str = "",
+             capacity: str = "") -> str:
     h = exp.hypothesis or {}
     m = exp.train_metrics or {}
     lines = [
@@ -72,6 +73,8 @@ def _writeup(exp: Experiment, baseline: Baseline, value: Optional[float], *,
                      + (f"  ·  std {m.get('proxy_loss_std')}" if m.get("proxy_loss_std") is not None else ""))
     if significance:
         lines.append(f"**Significance:** {significance}")
+    if capacity:
+        lines.append(f"**Capacity caveat:** {capacity}")
     if reason:
         lines.append(f"**Reason:** {reason}")
     lines += [
@@ -136,6 +139,15 @@ def run_evaluation(ledger: Ledger, *, require_stable: bool = True,
     # Recorded, not gated on: a swap that DELETES parameters can "win" at fixed steps
     # simply by being easier to fit (MLBR did exactly this). The reviewer needs to see it.
     params = metrics.get("params")
+    block_delta = metrics.get("block_param_delta")
+    capacity_note = None
+    if isinstance(block_delta, int) and block_delta != 0:
+        direction = "REMOVED" if block_delta < 0 else "added"
+        capacity_note = (
+            f"the swapped block {direction} {abs(block_delta):,} parameters vs the block it "
+            f"replaced ({metrics.get('replaced_block_params'):,} → "
+            f"{metrics.get('candidate_block_params'):,}) — a fixed-step comparison partly "
+            f"measures capacity, not just the idea")
     promote = improved and (stable if require_stable else True) and bool(significant)
     verdict = {
         "promote": promote, "improved": improved, "stable": bool(stable),
@@ -144,13 +156,15 @@ def run_evaluation(ledger: Ledger, *, require_stable: bool = True,
         "sem_series": None if sp is None else sp["series"],
         "sem_n": None if sp is None else sp["n"],
         "candidate_params": params,
+        "block_param_delta": block_delta, "capacity_caveat": capacity_note,
         "metric": baseline.metric_name, "baseline_value": baseline.metric_value,
         "new_value": value, "delta": round(delta, 6),
         "higher_is_better": baseline.higher_is_better,
     }
 
     if promote:
-        writeup = _writeup(exp, baseline, value, promoted=True, significance=sig_note)
+        writeup = _writeup(exp, baseline, value, promoted=True, significance=sig_note,
+                           capacity=capacity_note or "")
         ledger.transition(exp.id, SOTA, eval_verdict=verdict, writeup=writeup, ts=ts)
         ledger.promote_baseline(exp.id, value, notes=exp.name, ts=ts)
         return {"experiment": exp.id, "state": SOTA, "verdict": verdict}
@@ -165,6 +179,6 @@ def run_evaluation(ledger: Ledger, *, require_stable: bool = True,
     else:
         reason = "held"
     writeup = _writeup(exp, baseline, value, promoted=False, reason=reason,
-                       significance=sig_note)
+                       significance=sig_note, capacity=capacity_note or "")
     ledger.transition(exp.id, REJECTED, eval_verdict=verdict, writeup=writeup, ts=ts)
     return {"experiment": exp.id, "state": REJECTED, "verdict": verdict, "reason": reason}

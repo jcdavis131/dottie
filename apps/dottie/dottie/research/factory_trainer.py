@@ -223,6 +223,14 @@ def factory_nano_trainer(experiment: Experiment, config: Dict[str, Any]) -> Trai
                 return y
 
         swap_idx = int(config.get("swap_layer", len(model.fusion_layers) // 2))
+        # Capacity accounting (TODOS §5.3.R): the swap REPLACES a real parameterized block,
+        # so a parameter-light candidate also shrinks the model and can "win" at fixed steps
+        # for that reason alone (MLBR did). Measure both sides before the swap so the verdict
+        # can state the capacity change instead of hiding it. Recording only — not a gate.
+        replaced_params = sum(int(p.numel()) for p in model.fusion_layers[swap_idx].parameters()
+                              if p.requires_grad)
+        candidate_block_params = sum(int(p.numel()) for p in candidate.parameters()
+                                     if p.requires_grad)
         model.fusion_layers[swap_idx] = CandidateBlockAdapter()
         # Prove the integrated forward runs before burning training compute.
         with torch.no_grad():
@@ -243,7 +251,12 @@ def factory_nano_trainer(experiment: Experiment, config: Dict[str, Any]) -> Trai
         return TrainResult(False, False, detail=traceback.format_exc())
 
     metrics = {**_base_metrics(cfg, packed_dir, device, knobs, len(tokens), params), **extras,
-               "swap_layer": int(config.get("swap_layer", len(model.fusion_layers) // 2))}
+               "swap_layer": int(config.get("swap_layer", len(model.fusion_layers) // 2)),
+               # Capacity delta of the swap itself: negative means the candidate REMOVED
+               # capacity, which confounds a fixed-step comparison (see TODOS §5.3.R).
+               "replaced_block_params": replaced_params,
+               "candidate_block_params": candidate_block_params,
+               "block_param_delta": candidate_block_params - replaced_params}
     if heldout is None:
         return TrainResult(True, False, metrics=metrics,
                            detail="loss became NaN/Inf — unstable in the factory model, killed")

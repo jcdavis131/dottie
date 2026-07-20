@@ -380,10 +380,16 @@ independent reasons, both from the bundle's own numbers/code:**
   OSA candidate (`71a62346df0a`) has the SAME shape — pre-flighted 02:37: it passes the
   new degeneracy gate legitimately (0 params but delta_std 1.224, a real input-dependent
   whitening), yet it will still be measured with 0.79M fewer params than baseline.
-  Options: (a) record param-parity in the verdict and let the reviewer judge (cheapest,
-  partially done — `candidate_params` now lands in the verdict); (b) require the swapped
-  block to match the replaced block's param count within a tolerance; (c) ADD the
-  candidate alongside the block instead of replacing it, so capacity only goes up.
+  Options: (a) [x] **DONE 02:50 — recording only, no gating.** The factory trainer now
+  measures the replaced block and the candidate BEFORE the swap and records
+  `replaced_block_params` / `candidate_block_params` / `block_param_delta`; the evaluator
+  turns a non-zero delta into a plain-English `capacity_caveat` in the verdict AND a
+  "**Capacity caveat:**" line in the write-up (so promotion bundles carry it). For MLBR
+  that reads: "the swapped block REMOVED 786,432 parameters vs the block it replaced …
+  a fixed-step comparison partly measures capacity, not just the idea."
+  (b) require the swapped block to match the replaced block's param count within a
+  tolerance; (c) ADD the candidate alongside the block instead of replacing it, so
+  capacity only goes up. **(b)/(c) still need your call — they change what gets measured.**
   NOTE also, unrelated to the confound: OSA's math does not implement its own hypothesis
   — `inverse(sqrt(AᵀA))` is an elementwise sqrt followed by a matrix inverse, not the
   inverse matrix square root orthogonalization claims; and AᵀA is computed over the

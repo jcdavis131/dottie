@@ -300,6 +300,24 @@ def test_promotion_requires_significance(led, tmp_path):
     assert led.get_baseline().metric_value == 4.5      # ratchet did NOT move
 
 
+def test_capacity_caveat_surfaces_a_shrinking_swap(led, tmp_path):
+    # TODOS §5.3.R: the block swap REPLACES a real block, so a parameter-light candidate
+    # also removes capacity and can "win" at fixed steps for that reason. Recorded (not
+    # gated) so the verdict and write-up state it instead of hiding it.
+    _implement(led, tmp_path, make_policy())
+    e = led.next_in_state(READY_FOR_TRAINING)
+    led.transition(e.id, EVALUATION_PENDING,
+                   train_metrics={"proxy_loss": 1.0, "eval_ce_per_batch": [1.0, 1.02, 0.98, 1.01],
+                                  "integration": "factory_nano_block_swap",
+                                  "replaced_block_params": 786432, "candidate_block_params": 0,
+                                  "block_param_delta": -786432})
+    r = evaluate.run_evaluation(led)
+    v = r["verdict"]
+    assert v["block_param_delta"] == -786432
+    assert "REMOVED 786,432 parameters" in v["capacity_caveat"]
+    assert "Capacity caveat" in led.get(e.id).writeup
+
+
 def test_promotion_without_a_series_is_held_not_assumed(led, tmp_path):
     # No per-batch series => significance unmeasurable => hold. Never promote on faith.
     _implement(led, tmp_path, make_policy())
