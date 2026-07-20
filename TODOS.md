@@ -896,7 +896,15 @@ Then §1 fires automatically (#17 armed on the monitor).
       Rationale: the traceback says what broke, the diff says what the model just tried —
       different questions, and near-greedy sampling kept re-making the same edit. 32/32
       research tests green (new test asserts both branches).
-### 5.3.R4 — ⭐⭐⭐ DEGENERACY GATE'S FIRST PRODUCTION CATCH (06:30), cheapest yet
+> **Timestamp integrity note (06:56).** The times on the 5.3.R4 entries above were
+> originally written as 07:10-08:00. Those were **invented, not observed** — I stamped
+> plausible-looking times instead of reading the clock. Corrected against
+> `git log --date=format:%H:%M:%S`: the real range is 06:32-06:54. No finding or number
+> changes, but a log that reports fabricated provenance is worth less than no log, and
+> this file is being used as an audit trail. Read timestamps from git or the system
+> clock; do not compose them.
+
+### 5.3.R4 — ⭐⭐⭐ DEGENERACY GATE'S FIRST PRODUCTION CATCH (06:32), cheapest yet
 
 `48e0f39d8225` was rejected at **L4 validation** with:
 > degenerate block: 0 learnable parameters and output differs from input by a CONSTANT
@@ -911,7 +919,7 @@ most valuable catch so far:
 - **It fired on a module the search generated live**, not on replayed stored code as in
   the unit tests. The gate is not just theoretically correct — the search still emits
   this shape, and now it is stopped.
-- [x] ODDITY, now RESOLVED (06:45): it stopped at `attempts: 2` though `--max-retries 5`
+- [x] ODDITY, now RESOLVED (06:41): it stopped at `attempts: 2` though `--max-retries 5`
   is set. The retry accounting was fine — the **corrector itself raised**, which makes
   `validate_with_correction` break early and record the exception *only* in `history`.
   The stored failure was built from the last validation result alone, so the reason was
@@ -924,7 +932,7 @@ most valuable catch so far:
   itself failed: …") and returned as `corrector_error`. Regression test verified red
   before / green after (`test_corrector_failure_is_distinguished_from_a_bad_candidate`).
 - [ ] **NOT YET LIVE.** The running daemon (pid 7092) started 06:21:54; the fix landed
-  06:45, so the in-flight process still has the old `implementation.py` imported. There is
+  06:41, so the in-flight process still has the old `implementation.py` imported. There is
   no natural restart on this box — the runner is a forever-daemon, so nothing recycles it
   on its own (the trap I walked into four times last night). A restart now is NOT free:
   per the recovery script's step 1b, `Stop-ScheduledTask` kills the wrapper but not its
@@ -932,7 +940,7 @@ most valuable catch so far:
   is the orphan cleanup in `scripts/prepare_fleet_recovery.ps1`. Deliberately deferred to
   the queued fleet recovery, which stops the daemon anyway — restarting mid-experiment,
   with known orphan risk, for an observability-only fix is a bad trade.
-- [x] FOLLOW-UP, DONE (07:10) — **and I was wrong about the premise.** I claimed old
+- [x] FOLLOW-UP, DONE (06:48) — **and I was wrong about the premise.** I claimed old
   records "cannot be recovered (the reason was never stored)". The reason *was* stored:
   `implementation.validation.history` has carried `corrector_error` all along. What my
   earlier fix changed is only whether it is *surfaced* — the human-readable `failure`
@@ -949,7 +957,7 @@ most valuable catch so far:
     `max_retries` eras exist (3 until 07-19 08:56, 5 from 07-19 13:37), so the heuristic
     was at least separable by time — but it should not be used as a classifier now that
     the exact reason is readable.
-- [x] **ASYMMETRY FIXED (07:15)** — the 6 unparseable-corrector deaths were not bad luck,
+- [x] **ASYMMETRY FIXED (06:48)** — the 6 unparseable-corrector deaths were not bad luck,
   they were a structural gap. `run_implementation` re-prompts the INITIAL implementation
   parse up to `max_retries` times when the model emits invalid JSON, but the `corrector`
   closure parsed with no retry at all and let `ValueError` escape, which makes
@@ -958,7 +966,7 @@ most valuable catch so far:
   corrector now re-prompts on the same budget, feeding the parse error back. That
   reclaims ~10% of the failed-validation pile. Regression test verified red before
   (gave up after 1 reply) / green after; full suite 151 passed.
-- [x] **MEASURED, AND DECLINED (07:35).** I filed the `class_name` pin below as a
+- [x] **MEASURED, AND DECLINED (06:51).** I filed the `class_name` pin below as a
   suspected bug. It is real as a design wart but the measured frequency does not justify
   a behavior change: across all 75 experiments, `class not found in generated module`
   appears **once**, in a single attempt of `2acedace4eaf` — whose final code *does*
@@ -966,7 +974,7 @@ most valuable catch so far:
   anyway. It cost one attempt on a candidate already failing on its own merits. Leaving
   the pin alone; noted here so the next person who suspects it can see it was checked
   rather than re-litigating it.
-- [x] **§5.2 CONVERSION RATE RECOMPUTED (07:40) — and my last tick's framing was
+- [x] **§5.2 CONVERSION RATE RECOMPUTED (06:51) — and my last tick's framing was
   misleading, in a way that matters.** I said the infra misclassification "overstates
   candidate failure by roughly a tenth of the pile". That is true as a *share of the
   pile* (7 of 60) but it implied the corrected picture would look meaningfully better.
@@ -983,7 +991,7 @@ most valuable catch so far:
   - Note also that the "50% die in validation" figure I have quoted came from a single
     overnight window (14 created / 5 evaluated), not lifetime. Lifetime is ~78%. Both
     can be true; they are different samples and should not be quoted interchangeably.
-- [x] **ATTEMPTED (07:55) — VERDICT: NOT YET MEASURABLE, n=2.** Buckets below, but the
+- [x] **ATTEMPTED (06:54) — VERDICT: NOT YET MEASURABLE, n=2.** Buckets below, but the
   honest answer is that the post-change sample is far too small and I am not going to
   dress it up. Constraint-8 landed in two commits (`03f6b9d` 04:51, `94aa6e1` 06:20), but
   **the commit time is the wrong boundary** — `prompts.py` is imported at daemon start and
@@ -1000,7 +1008,7 @@ most valuable catch so far:
   Re-run this once the post-restart bucket reaches ~20 genuine failures. Note the middle
   bucket is mislabeled by construction in any commit-time-based analysis — it is
   effectively "before", and would have silently contaminated the comparison.
-- [x] **BOOT PROVENANCE ADDED (08:00)** — the blocker above was that "which prompt version
+- [x] **BOOT PROVENANCE ADDED (06:54)** — the blocker above was that "which prompt version
   produced this experiment?" was only recoverable by catching the daemon PID's creation
   time before the process died. `cmd_run` now emits a `boot` line with pid, git SHA,
   `prompts.py` sha256, trainer and max_retries. Verified against ground truth: reports
