@@ -88,11 +88,24 @@ matching completion means a train is running. Either wait for it, or take the me
 Stop-ScheduledTask -TaskName "Dottie Research runner"    # ends the daemon + its trainer
 ```
 
-**Longer term**: this box cannot comfortably host the fleet + a CPU-resident LLM + the
-current desktop load (non-Ollama processes now sum to ~7.5 GB, up from ~4.4 GB earlier
-tonight — Chrome/Cursor/editor sessions accumulate). Either pause the research daemon
-during fleet work (`Disable-ScheduledTask -TaskName "Dottie Research runner"`), or set a
-short `OLLAMA_KEEP_ALIVE` so the model releases between calls.
+**Longer term — the fleet and the research loop no longer both fit. Measured 04:18:**
+
+| group | MB | note |
+|---|---:|---|
+| ollama (`llama-server`) | **5,314** | 8b stays PERMANENTLY resident: the loop calls every ~4 min, inside Ollama's 5-min `keep_alive`, so it never unloads |
+| system / misc (324 procs) | 2,191 | |
+| **claude-code sessions (17 procs)** | **1,945** | my own footprint — worth knowing |
+| editors + browsers (52 procs) | 1,396 | Chrome / Cursor |
+| docker + wsl (20 procs) | 592 | **fleet is DOWN**; expect **+3–4 GB** when it returns |
+| research python | 64 | between stages; peaks ~3.8 GB during a train |
+| **total** | **11,502** of 16,073 | available now: **513 MB** |
+
+Adding the fleet back (+3–4 GB) lands at ~15–16 GB of 16 GB — i.e. right at the cliff that
+killed the VM. Earlier tonight the same pair fitted because the desktop load was ~4.4 GB,
+not ~7.5 GB. **Pick one lever before running both:** pause the research daemon (frees the
+whole 5.3 GB — decisive, and step 1 of the recovery already does it), close a few
+Claude/browser sessions (~3.3 GB available there), or set a short `OLLAMA_KEEP_ALIVE` so
+the model unloads between stages (costs reload time each call).
 Recovery is then automatic (restart policies + `--resume`); verification commands and a
 fallback relaunch are in §1.3. **The 45W power cap is the standing suspect for the whole
 family of failures tonight — 780MHz clocks, 2 CUBLAS crashes, and this VM death. Check
