@@ -146,16 +146,31 @@ def micro_benchmark_trainer(experiment: Experiment, config: Dict[str, Any]) -> T
         toks = torch.randint(0, vocab, (batch, seq + 1), generator=g)
         x, target = toks[:, :-1], toks[:, 1:]
         last = float("nan")
-        for _ in range(steps):
-            opt.zero_grad()
-            logits = net(x)
-            loss = F.cross_entropy(logits.reshape(-1, vocab), target.reshape(-1))
-            if not torch.isfinite(loss):
-                return TrainResult(True, False, metrics={"seed": seed, "params": n_params},
-                                   detail="loss became NaN/Inf — unstable architecture, killed")
-            loss.backward()
-            opt.step()
-            last = float(loss.detach())
+        try:
+            for _ in range(steps):
+                opt.zero_grad()
+                logits = net(x)
+                loss = F.cross_entropy(logits.reshape(-1, vocab), target.reshape(-1))
+                if not torch.isfinite(loss):
+                    return TrainResult(True, False,
+                                       metrics={"seed": seed, "params": n_params},
+                                       detail="loss became NaN/Inf — unstable architecture, "
+                                              "killed")
+                loss.backward()
+                opt.step()
+                last = float(loss.detach())
+        except Exception:
+            # A candidate that RAISES mid-training (as opposed to going NaN) used to escape
+            # this function entirely: the exception propagated out of run_training into the
+            # daemon's generic handler, which left the experiment in ready_for_training AND
+            # counted a consecutive error toward the five-error exit. factory_trainer already
+            # wraps its training loop this way; this one did not (TODOS 5.3.R46 — the same
+            # asymmetry as 5.3.R45, found by reading rather than by it happening).
+            return TrainResult(True, False,
+                               metrics={"seed": seed, "params": n_params,
+                                        "integration": "proxy_micro_benchmark",
+                                        "detail": "candidate raised during training"},
+                               detail=traceback.format_exc()[-1500:])
         finals.append(last)
 
     wall = round(time.monotonic() - t0, 3)
@@ -180,9 +195,12 @@ def run_training(ledger: Ledger, *, trainer: Optional[Trainer] = None,
                  ts: Optional[float] = None) -> Optional[Dict[str, Any]]:
     """Pick the oldest ready_for_training experiment, measure it, and record the outcome.
 
-    Returns a summary dict, or None if nothing is ready. A stable run -> evaluation_pending with
-    real train_metrics; a NaN/crash -> failed_training (honest). Loading/trainer infra errors
-    leave the experiment in ready_for_training (retryable) and are reported."""
+    Returns a summary dict, or None if nothing is ready. A stable run -> evaluation_pending
+    with real train_metrics; a NaN, a crash, or a module that will not load -> failed_training
+    (all the candidate's own fault, all non-retryable). ONLY genuine infrastructure gaps —
+    torch or the factory checkout missing — leave the experiment in ready_for_training.
+    (Was: "loading/trainer infra errors leave it retryable", which stopped being true when
+    load failures were reclassified as candidate faults; TODOS 5.3.R46.)"""
     trainer = trainer or micro_benchmark_trainer
     cfg = dict(config or {})
     exp = ledger.next_in_state(READY_FOR_TRAINING)
@@ -197,5 +215,6 @@ def run_training(ledger: Ledger, *, trainer: Optional[Trainer] = None,
                           train_metrics=result.metrics or {"stable": False},
                           failure=result.detail or "unstable (NaN/Inf)", ts=ts)
         return {"experiment": exp.id, "state": FAILED_TRAINING, "reason": "unstable"}
-    # infrastructure failure (module load / torch): leave retryable, report honestly
+    # Genuine infrastructure only (torch/factory missing): leave retryable, report honestly.
+    # Candidate-caused failures never reach here — they return ok=True above.
     return {"experiment": exp.id, "state": READY_FOR_TRAINING, "error": result.detail}

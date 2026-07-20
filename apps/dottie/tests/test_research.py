@@ -997,6 +997,47 @@ def test_corrector_parse_retries_are_a_bounded_shared_pool(led, tmp_path):
         "multiplying with the correction budget again")
 
 
+def test_candidate_that_raises_mid_training_is_failed_not_stuck(led, tmp_path):
+    """A candidate that RAISES during training must fail, not escape the trainer.
+
+    TODOS §5.3.R46. The proxy trainer checked for NaN but did not wrap the loop, so a
+    candidate whose forward raised propagated out of run_training into the daemon's generic
+    handler: the experiment stayed `ready_for_training` AND a consecutive error was counted
+    toward the five-error exit. factory_trainer already wrapped its loop; this one did not —
+    the same asymmetry as §5.3.R45, found by reading rather than by it happening.
+    """
+    raiser = """import torch
+import torch.nn as nn
+class Raiser(nn.Module):
+    def __init__(self, dim: int = 64):
+        super().__init__()
+        self.w = nn.Linear(dim, dim)
+        self.calls = 0
+    def forward(self, x):
+        self.calls += 1
+        if self.calls > 1:                 # construct + first probe fine, then blow up
+            raise RuntimeError("candidate exploded on step 2")
+        return x + torch.tanh(self.w(x))
+"""
+    e = led.create(HYP)
+    ws = tmp_path / "ws" / e.id
+    ws.mkdir(parents=True)
+    (ws / "raiser.py").write_text(raiser, encoding="utf-8")
+    led.transition(e.id, READY_FOR_TRAINING,
+                   implementation={"code": raiser, "module_name": "Raiser",
+                                   "dry_run": {"class_name": "Raiser",
+                                               "init_kwargs": {"dim": 8},
+                                               "input_shape": [2, 4, 8]}},
+                   workspace=str(ws))
+
+    out = train.run_training(led, config={"steps": 5, "seeds": [0], "dim": 8, "vocab": 16,
+                                          "batch": 2, "seq": 4})
+    assert out is not None
+    assert out["state"] == FAILED_TRAINING, f"got {out}"
+    assert led.get(e.id).state == FAILED_TRAINING
+    assert led.next_in_state(READY_FOR_TRAINING) is None, "experiment left stuck in the queue"
+
+
 def test_factory_trainer_load_failure_is_the_candidates_fault(led, tmp_path, monkeypatch):
     """An unloadable candidate must fail training, not sit retryable forever.
 

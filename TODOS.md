@@ -2309,6 +2309,31 @@ most valuable catch so far:
     old return (`TrainResult(ok=False, ...)`). Suite 183 passed.
   - Wrote the fixture to a file and inserted it, rather than through a shell heredoc — the
     process fix from §5.3.R42. It worked first time.
+### 5.3.R46 — the proxy trainer's loop was unguarded; and my own docstring had gone stale
+
+- [x] **Read `train.py` whole (10:45), because §5.3.R45 was caused by fixing two paths in a
+  file and inferring the third.** Same file, same shape: I had guarded the module load and
+  `Proxy()` construction — and **left the training loop unguarded**.
+  - A candidate that **raises** mid-training (as opposed to going NaN, which *was* handled)
+    propagated straight out of `run_training` into the daemon's generic handler. Result: the
+    experiment stayed `ready_for_training` **and** a consecutive error was counted toward the
+    five-error exit. So one bad candidate could both block the queue and, repeated, take the
+    daemon down.
+  - `factory_trainer` already wraps its training loop exactly this way. **Third instance
+    tonight of "the sibling does it right and this one does not"** (§5.3.R45 module load,
+    §5.3.R17→7b capacity in the prompts, now this).
+  - Verified red for precisely the right reason: the `RuntimeError` escaped the trainer and
+    surfaced in the test, which is what it would do to the daemon.
+- [x] **The docstring had also gone stale — by my own hand.** `run_training` still promised
+  *"Loading/trainer infra errors leave the experiment in ready_for_training (retryable)"*,
+  which stopped being true the moment I reclassified load failures as candidate faults
+  (§f872bab). The inline comment said the same. Both now state the real rule: **NaN, crash,
+  or unloadable module are all the candidate's fault and non-retryable; only genuine
+  infrastructure gaps stay retryable.**
+  - Same failure as §5.3.R13 (`LEVELS` drift) and §5.3.R41 (night-model doc): **I changed
+    behaviour and did not re-read the paragraph describing it.** That is now four instances,
+    and it is the cheapest kind of dishonesty to introduce.
+  - Suite 184 passed. Fixture written to a file, not a heredoc — worked first time again.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
