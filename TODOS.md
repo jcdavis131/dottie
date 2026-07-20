@@ -62,9 +62,11 @@ Invoke-RestMethod -Uri http://localhost:11434/api/generate -Method Post -Content
 # 2. THEN restart the VM (if the engine doesn't return in ~2 min, restart Docker Desktop)
 wsl --shutdown
 ```
-**ALSO check for a factory TRAIN in flight** (measured 04:09 — it started one): the train
-stage is a torch process that grows to **~3.8 GB** over ~1 h, and unloading the Ollama
-model does NOT free it. Look at the last line of
+**ALSO check for a factory TRAIN in flight**: the train stage is a torch process that
+peaks around **~3.8 GB**, and unloading the Ollama model does NOT free it. **Duration
+corrected — a nano train is ~4.3 min, not the ~1 h I first wrote** (measured 04:07→04:11
+on f4d81d628b16: 150 steps, 13.2 M params, CPU). So waiting it out is usually the right
+call; killing it is rarely necessary. Look at the last line of
 `apps/dottie/data/research/logs/run.log`: `{"action":"train","phase":"start"}` with no
 matching completion means a train is running. Either wait for it, or take the memory back
 (it restarts on the next hourly trigger, losing only that run):
@@ -472,6 +474,26 @@ Then §1 fires automatically (#17 armed on the monitor).
       Rationale: the traceback says what broke, the diff says what the model just tried —
       different questions, and near-greedy sampling kept re-making the same edit. 32/32
       research tests green (new test asserts both branches).
+### 5.3.R2 — ⭐ the new gates RAN IN PRODUCTION (04:11, first live verdict)
+
+`f4d81d628b16` "GradientWeightedMemoryAttention" — implemented by qwen3:8b on
+**attempt 0** (no correction passes), trained, and evaluated. The verdict carries every
+field shipped tonight, correctly populated:
+```json
+"improved": false, "significant": true, "stable": true, "promote": false,
+"significance": "|delta| 0.45377 vs 2.0×SEM 0.013172 (n=20, std=0.029453)",
+"baseline_provenance": "promoted", "baseline_caveat": null,
+"sem": 0.006586, "sem_series": "eval_ce_per_batch", "sem_n": 20
+```
+Rejected correctly: delta **+0.45377** (worse than the 5.60506 baseline). Provenance
+resolved to `promoted` — right, since the current baseline came from MLBR's promotion.
+- [ ] SMALL CLARITY ISSUE this exposes: `significant: true` here means "the difference
+  exceeds noise", NOT "significantly better" — it is direction-agnostic (`|delta|`).
+  Paired with `improved: false` the meaning is unambiguous, and `promote` requires BOTH,
+  so behaviour is right. But in a promotion bundle a skimmer could misread it. Consider
+  renaming to `beyond_noise`, or making the significance string say "significantly WORSE"
+  when `improved` is false.
+
 ### 5.3.R1 — the loop kept working through the outage (audited 03:03)
 
 While Docker was down, the host-side loop evaluated FOUR candidates and honestly

@@ -270,6 +270,9 @@ def cmd_run(args) -> int:
             consecutive_errors = 0
             backoff = float(args.idle_seconds)
             _refresh_status(led, args)
+            # rec["ts"] is when the action STARTED, so a reader cannot tell how long it
+            # took without diffing against the next line. Stamp the duration explicitly.
+            rec["dur_s"] = round(time.time() - rec["ts"], 1)
             print(json.dumps(rec, default=str), flush=True)
         except (DottiePolicyUnavailable, ValueError) as e:
             # Honest refusal path: state the reason, back off, try again later.
