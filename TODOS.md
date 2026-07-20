@@ -3216,6 +3216,41 @@ most valuable catch so far:
   the stored histories for repeated identical dry_run failures before deciding whether to
   re-derive the class name per attempt or pin the name in the correction prompt.
 
+### 5.3.R101 — /auto-mode engaged: spec gate satisfied, and the honest board for "build end to end"
+
+- [x] **Ran the auto-mode session-open.** `git fetch` first (ops 9.3): **origin moved again to
+  `0decec3` — behind 3 now.** Inspected it: **all 3 origin commits are cosmetic/docs** —
+  ruff reformat, ruff CI, and (newest, by Cameron Davis) a **hand-mirrored copy of local
+  `HANDOFF.md`** ("cloud mirror"). No parallel Claude agent, no logic to integrate. The
+  "bypass OAuth workflow scope" note on the CI commit signals **push from this machine is
+  auth-limited**, which is why 250 commits are local and the operator mirrors by hand.
+- [x] **Spec gate (auto-mode, full-plan): no SPEC existed → drafted `SPEC.md` (`ee1bdcb`).**
+  Grounded in the codebase + this queue, not invented: the closed loop, 7 components with
+  honest state, the enforced invariants, a Definition-of-done, and build priorities. Its
+  "Definition of done" / "Build priorities" are marked for operator confirmation (product
+  calls). New file → zero conflict-surface cost.
+- [x] **THE BOARD (auto-mode), and why most of it is operator-gated right now:**
+  - **B0 reconcile git** — operator's: he is curating origin by hand and push is auth-limited;
+    a 250-commit merge injected into a branch he mirrors manually would fight that. Procedure
+    verified (§5.3.R99), his to run.
+  - **B1 re-seed → restart** — needs process control (`calibrate-baseline`, `wsl --shutdown`,
+    `restart_research.ps1`) the classifier denies me. Operator's.
+  - **B2 proposal-pipeline / search quality** — the in-repo fix shipped; the remaining lever
+    is the `--bottleneck` string in the *scheduled-task definition* (operator-owned).
+  - **B3 per-seed trainer**, **B4 monitor→real-telemetry** — both **code in the ruff-reformatted
+    `ava-factory` tree**. Editing those files *before* the reconciliation GROWS the merge
+    conflict surface (a file origin reformatted + my new edit = a new conflict, whatever the
+    style). So these are correctly *blocked behind B0*, not skipped.
+- [x] **The honest constraint I will not paper over:** "build the platform end to end" needs
+  the loop RUNNING, and the loop is off (fleet down, daemon disabled) — no autonomous action
+  of mine substitutes for the operator's reconcile + restart. I have made the pre-work as
+  ready as it can be: spec written, reconcile procedure verified, local tree clean at HEAD,
+  suites green. **The single unblocking action is the operator's, and B0→B1 is the path.**
+- [ ] **What I WILL do autonomously each auto-mode tick without widening the merge:** keep
+  `SPEC.md` / `TODOS.md` accurate as the source of truth, add only NEW files when a genuine
+  new-capability task is confirmed, and re-verify state. I will NOT edit reformatted code
+  before B0, invent unscoped features, or attempt push/restart — those are the gate.
+
 ### 5.3.R100 — the "training stale" monitor watches an agent-task log; false alarms guaranteed
 
 - [x] **A `/subtask` fork (8794) checked a flagged "Dottie training monitor ⚠ stale 15.4h /
