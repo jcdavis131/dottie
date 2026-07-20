@@ -6,3 +6,6 @@ __pycache__/
 .venv/
 # machine-local research orchestration env (Ollama model, factory root) — never committed
 research_orchestration/research_env.local.ps1
+
+# mutation_audit.py crash-recovery journal (TODOS 5.3.R61) — never commit
+.mutation_audit_journal

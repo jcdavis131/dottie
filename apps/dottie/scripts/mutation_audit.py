@@ -18,6 +18,7 @@ that survives is hollow. Verdicts:
 Mutations are applied one at a time and always reverted in a `finally`. Add a row to
 MUTANTS whenever a new gate lands.
 """
+import json
 import pathlib
 import re
 import subprocess
@@ -87,6 +88,45 @@ MUTANTS = [
 
 STRUCTURAL = ("AttributeError", "KeyError", "ImportError", "ModuleNotFoundError", "NameError")
 
+#: Crash safety. Mutations are reverted in a `finally`, which does NOT survive a hard kill
+#: (a command timeout, Ctrl-C at the wrong moment, a lost terminal). Measured 2026-07-20
+#: (TODOS §5.3.R61): a 2-minute timeout killed this script mid-mutation and left
+#: `requires_grad=False` in validate.py -- the residual-stream probe silently disarmed, two
+#: tests failing, and the file staged for a commit. Explicit-path staging is what kept it
+#: out of history; that is too thin a margin for a tool that edits source by design.
+#:
+#: So every mutation is journalled to disk BEFORE it is applied and the entry removed after
+#: it is reverted. A later run restores anything the journal still holds. A mutation harness
+#: that can leave the tree mutated is a liability, not a check.
+_JOURNAL = APP / ".mutation_audit_journal"
+
+
+def _restore_from_journal() -> None:
+    if not _JOURNAL.exists():
+        return
+    try:
+        pending = json.loads(_JOURNAL.read_text(encoding="utf-8"))
+    except Exception:
+        _JOURNAL.unlink(missing_ok=True)
+        return
+    for path, original in pending.items():
+        target = pathlib.Path(path)
+        if target.exists() and target.read_text(encoding="utf-8") != original:
+            target.write_text(original, encoding="utf-8")
+            print(f"RESTORED {target.name} from a previous interrupted run")
+    _JOURNAL.unlink(missing_ok=True)
+
+
+def _journal(path: pathlib.Path, original: str) -> None:
+    _JOURNAL.write_text(json.dumps({str(path): original}), encoding="utf-8")
+
+
+def _unjournal() -> None:
+    _JOURNAL.unlink(missing_ok=True)
+
+
+_restore_from_journal()
+
 for fname, old, new, testk, desc in MUTANTS:
     target = APP / "dottie" / "research" / fname
     src = target.read_text(encoding="utf-8")
@@ -94,6 +134,7 @@ for fname, old, new, testk, desc in MUTANTS:
         print(f"SKIP  {testk:38s} (anchor not in {fname})")
         continue
     backup = src
+    _journal(target, backup)          # on disk BEFORE the edit, so a kill is recoverable
     target.write_text(src.replace(old, new, 1), encoding="utf-8")
     try:
         r = subprocess.run([str(PY), "-m", "pytest", "tests/test_research.py", "-k", testk,
@@ -112,4 +153,5 @@ for fname, old, new, testk, desc in MUTANTS:
         print(f"{verdict}\n      test={testk}  mutation={desc}\n")
     finally:
         target.write_text(backup, encoding="utf-8")
+        _unjournal()
 print("all mutations reverted")

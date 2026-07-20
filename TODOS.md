@@ -2710,6 +2710,29 @@ most valuable catch so far:
   - I would not have understood what my own §5.3.R49 fix was worth without the audit
     disagreeing with itself. That is a stronger argument for the harness than any bug it
     has caught.
+### 5.3.R61 — ⚠ the mutation harness left a mutation in my source, and I nearly shipped it
+
+- [x] **A 2-minute command timeout killed `mutation_audit.py` mid-mutation (12:50).** Its
+  revert lives in a `finally`, which **does not survive a hard kill**. Left behind:
+  `requires_grad=False` in `validate.py` — the residual-stream probe silently **disarmed**,
+  two tests failing, and the file sitting modified in the tree.
+- [x] **And I committed before reading the result.** I launched the suite, it went to the
+  background, I wrote the commit, and only then read `2 failed, 193 passed`. **What kept the
+  mutant out of history was staging explicit paths** — the discipline adopted three ticks
+  ago after `git add -A` swept up a subtask's work. That is a thin margin for a tool whose
+  job is to edit source.
+  - Restored, suite back to **195 passed**. Nothing broken reached a commit.
+- [x] **Made the harness crash-safe rather than just being more careful.** Every mutation is
+  now **journalled to disk before it is applied** and the entry cleared after revert; a later
+  run restores anything the journal still holds. Verified end to end: simulated a kill,
+  re-ran, got `RESTORED validate.py from a previous interrupted run`, and the file came back
+  correct. Journal is gitignored, and absent after a clean run.
+  - **A mutation harness that can leave the tree mutated is a liability, not a check.** It
+    edits source by design, so "be careful" is not a control — the recovery has to be
+    structural.
+- [ ] **Two process lessons, both mine:** never commit on a suite result I have not read; and
+  a background/timed-out command is not a completed one. Both cost real time tonight
+  (§5.3.R22's false alarm was the same shape — acting on output I had not actually checked).
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
