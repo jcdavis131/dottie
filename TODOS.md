@@ -695,9 +695,19 @@ independent reasons, both from the bundle's own numbers/code:**
   next tick is refused — two consecutive hours lost from a single stall. That is exactly
   the shape of tonight's 02:05 and 03:00 losses.
   Fix (your call, cheap): drop the read timeout to ~600s AND set MultipleInstances to
-  Queue/Parallel (the wrapper's exclusive lock is the real guard). Verify next tick: if a
-  refusal/retry appears around ~03:35, a hung request is confirmed; if a result appears,
-  it was simply a slow 14b CPU pass.
+  Queue/Parallel (the wrapper's exclusive lock is the real guard).
+  **RESOLVED 03:37 — the 03:05 run is STUCK, confirmed on the right instrument.** The
+  ~03:35 refusal I predicted never appeared, so I stopped trusting `run.log`: Python's
+  stdout is block-buffered when redirected to a file, so the log is NOT a real-time
+  liveness signal (lines can sit unflushed for a whole run). **Use the ledger instead —
+  it is written transactionally per state change.** Measured there: last state change
+  **37 min ago**, the two `pending` experiments untouched for **66 min**, i.e. the 03:05
+  worker has produced ZERO progress in 32 minutes while Ollama sits idle (0 CPU / 8s
+  sample, 31 CPU-s lifetime) and the worker itself has burned ~6 CPU-s. Nothing is
+  computing.
+  Standing lesson for future debugging: `run.log` silence ≠ stall, and `run.log`
+  activity ≠ liveness. Query `data/research/ledger.sqlite3` (`select state, updated_ts
+  … order by updated_ts desc`) to judge whether the loop is actually moving.
 - [ ] **§5 runner incident 3 (03:00) — SAME zombie pattern, now understood.** The task
   sat in state `Running` with NO worker process alive (checked: no python/powershell from
   that instance), i.e. Task Scheduler still believed a run was in flight. With
