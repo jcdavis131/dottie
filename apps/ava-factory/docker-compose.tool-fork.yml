@@ -17,6 +17,11 @@ services:
       - /ckpt/base_final.pt
       - --run
       - /ckpt/tool
+      # --resume: crash-safe continuation from /ckpt/tool/latest. Two live crashes
+      # tonight (GPU contention, then CUBLAS_STATUS_INTERNAL_ERROR on this WSL2
+      # stack) each restarted the fork from step 0 — an 11h run can never finish
+      # that way. On a FRESH fork /ckpt/tool has no latest and this is a no-op.
+      - --resume
     volumes:
       - ava_packed:/packed
       - ava_ckpt:/ckpt

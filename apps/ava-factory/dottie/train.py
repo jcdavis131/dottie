@@ -360,7 +360,11 @@ def main(argv=None) -> int:
             if tokens_done:
                 log("branch_start_tokens", tokens_done=tokens_done,
                     phase=phase_for_step(cfg, tokens_done))
-        elif args.resume and latest.exists():
+        # NOT elif: a --branch run that crashed must ALSO resume — the fork block
+        # above set freeze/router state, and the checkpoint restores the crashed
+        # run's weights/optimizer/step over it (observed live: three crash cycles
+        # each restarted the tool fork from step 0 because resume was unreachable).
+        if args.resume and latest.exists():
             target = ckpt_dir / latest.read_text().strip()
             step, tokens_done = load_ckpt(target, model=model, opt=opt,
                                           sampler=sampler, device=device)
