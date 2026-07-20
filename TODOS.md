@@ -3033,6 +3033,28 @@ most valuable catch so far:
 - [ ] **Every runtime path is now verified except the two that need resources this box does
   not currently have**: `ideate`/`implement` (Ollama, ~5 GB) and `calibrate-baseline` (factory
   + corpus). Both are blocked on memory, not on code.
+### 5.3.R75 — corrected a MEMORY that would have re-taught the false SOTA
+
+- [x] **Rewrote `memory/dottie-research-loop-live-state.md` (15:40).** It stated the live
+  baseline was set by *"FIRST REAL SOTA ratchet … MLBR beat the calibrated seed"*. Tonight
+  established MLBR is a **degenerate zero-parameter no-op the current validator rejects**, so
+  that memory would have re-taught the exact false-win claim this whole session exists to
+  undo — to a future session, with no conversation context to doubt it.
+- [x] Also corrected an **architecture** claim: it described *"four Task Scheduler jobs
+  {ideate,implement,train,evaluate}"*, the old per-tick design. It is now a **single
+  forever-daemon** ("Dottie Research runner"), which is a materially different operational
+  model — a future session acting on the old description would look for four tasks, find one,
+  and mis-diagnose.
+- [x] Added the durable, non-obvious facts a fresh session cannot re-derive cheaply: the
+  daemon **does not live-reload** and the `boot` line is the only ground truth for what is
+  running; the **battery kill-switch** on the task; the `--bottleneck` string being a defect
+  the operator owns; real wins = **ZERO** with both `sota` rows named as artifacts; and that
+  only ~5 of 84 proposals were ever the right shape, so zero-wins indicts the pipeline rather
+  than the search space.
+- [ ] **Memory is the one artifact that outlives the transcript**, so a wrong entry there is
+  worse than a wrong TODO — nothing in the next session's context contradicts it. This is the
+  same class as §5.3.R59 (a status line describing a measurement the loop no longer took),
+  one layer further out.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
