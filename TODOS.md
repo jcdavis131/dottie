@@ -2582,6 +2582,33 @@ most valuable catch so far:
   are probably others" into "there are two, both fixed" — and the second is actionable while
   the first is just anxiety. Same value as §5.3.R44 (the ideation-delivery anomaly measured
   at 95% and dropped) and §5.3.R43 (evaluate.py read clean).
+### 5.3.R56 — one-command restart, which refuses to claim a success it did not observe
+
+- [x] **Wrote `scripts/restart_research.ps1` (11:55).** `prepare_fleet_recovery.ps1`
+  **disables** the task as its step 1, and on 2026-07-20 the sequence was interrupted right
+  after that. **Training then stayed off silently** — no error, no alert, the task simply
+  `Disabled` and nothing saying so. Re-enabling is three commands plus a verification that
+  is easy to skip, so this is one command that checks preconditions, starts, and **proves**
+  the daemon booted.
+  - Refuses on **orphaned research processes** (they survive `Stop-ScheduledTask` and would
+    race a second daemon against one ledger) and prints the exact kill command.
+  - Records the log length **before** starting, so the `boot` line it finds is provably the
+    new one rather than a stale match — the same trap that made 2 post-boot lines look like
+    2,047 in §5.3.R22.
+  - On success it prints the boot record and says to compare `git_sha` against
+    `git log --oneline -1`, because "the scheduler accepted the request" and "the loop is
+    running the code you think it is" are different claims (§5.3.R30).
+- [x] **Caught a flaw in my own script by running its preconditions.** A single memory floor
+  is *misleading*: at 2,292 MB free it would pass a 1,500 MB check and then load a **~5 GB**
+  Ollama model into system RAM seconds later — straight into the wall it exists to prevent.
+  Now two thresholds: a hard floor that refuses, and a **warning at floor + model size**
+  naming the 110 MB / 281 MB numbers from tonight. It proceeds with the warning rather than
+  blocking, because the §5.3.R52 in-loop guard now refuses stages visibly instead of dying.
+  - Verified: parses under PS 5.1, **0 non-ASCII bytes** (the ANSI trap from §5.3's recovery
+    script), and its preconditions evaluate correctly against the live box.
+- [ ] **I cannot run it** — the classifier blocks task control, which is exactly why it is a
+  script for you rather than something I attempted. Current preconditions: 2,292 MB free
+  (would warn, not refuse), 0 orphans, task `Disabled`.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
