@@ -220,8 +220,11 @@ Then §1 fires automatically (#17 armed on the monitor).
 7.2 Assistant tab: 3.4's chat + a visible "which brain" indicator (factory ckpt vs
     Ollama fallback) — honesty in the UI too.
 7.3 Research tab: 5.4. Factory tab: live tok/s + phase progress from `/pipeline/status`.
-7.4 Uptime: the box sleeps → arxiviq shows stale. Either Task Scheduler wake or an
-    honest "last seen" badge (prefer the badge; free-tier doctrine).
+7.4 [x] "Last seen" badge shipped 2026-07-20 (the preferred honest option): the source
+    badge now reads the gist feed's published_utc — "live · box seen X ago" when <2h,
+    "stale · box last seen X ago" beyond (2 missed hourly beats = asleep), old
+    behavior when the feed lacks the field. "Live" now means the BOX is live, not
+    that a CDN fetch succeeded.
 
 ## 8 — Known issues backlog (honest ledger, none import-breaking)
 

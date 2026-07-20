@@ -144,12 +144,31 @@ async function tryLive() {
 
 const $ = (sel) => document.querySelector(sel);
 
+function relAge(iso) {
+  const t = Date.parse(iso);
+  if (!isFinite(t)) return null;
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 90) return "just now";
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  if (s < 172800) return `${(s / 3600).toFixed(1)} h ago`;
+  return `${Math.round(s / 86400)} d ago`;
+}
+
 function renderSourceBadge() {
   const el = $("#source-badge");
   el.classList.remove("live", "snapshot");
-  if (state.source === "live") {
+  // "Live" must mean the BOX is live, not just that a CDN fetch succeeded: the hourly
+  // gist feed carries published_utc, and a feed older than 2 missed beats is the box
+  // asleep — say so instead of implying freshness (7.4: honesty over uptime theater).
+  const pub = state.live.status?.published_utc;
+  const age = pub ? relAge(pub) : null;
+  const fresh = pub ? Date.now() - Date.parse(pub) < 2 * 3600 * 1000 : false;
+  if (state.source === "live" && age && !fresh) {
+    el.classList.add("snapshot");
+    el.textContent = `stale · box last seen ${age}`;
+  } else if (state.source === "live") {
     el.classList.add("live");
-    el.textContent = "live · GitHub";
+    el.textContent = age ? `live · box seen ${age}` : "live · GitHub";
   } else {
     el.classList.add("snapshot");
     const at = state.snapshot?.generated_at || "unknown";
