@@ -125,6 +125,14 @@ Then §1 fires automatically (#17 armed on the monitor).
     did NOT survive the fork's termination (TaskList empty — watches die with their
     session, same lesson as the machine-move at 00:40). New watch: chat_final.pt /
     container exit / crash signatures, 60s poll.
+    **EARLY WARNING ~02:50 (step-15 CPU gate, 12 windows, paired seed)**: general CE
+    base 3.811 → chat_step15 3.889 = **+2.04%** — nominally past the 2% bound at 8%
+    of the run, with LR still warming. The tool branch's forgetting mode appears to
+    be REPRODUCING at 1/6 tokens. Small sample (12w) → directional, not precise.
+    Per the standing run-to-completion directive the run continues; NEXT: full-size
+    (48w) confirmation gate at step ~60 (~03:15), and the final gate remains the
+    decision point. If you want to abort early and save ~2h GPU: `docker stop
+    dottie-chat-branch` (safe — checkpoints every 15 steps are already banked).
     **CRASH + RECOVERY ~02:25**: CUDA "unknown error" in grad-ckpt recompute at
     step 15→16 (the overnight flake family) — step_15.pt had saved 18s earlier, so
     zero loss. The fork's docker-run had NO restart policy (crash was terminal).
