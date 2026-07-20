@@ -5,7 +5,30 @@
 > its acceptance criterion.** Work top to bottom; parallelize only where marked ∥.
 > Solo personal project, no connection to employer, built with public/free-tier only.
 
-## Goal state (updated by the 3-min loop, ~01:20 2026-07-20)
+## Goal state (updated by the 3-min loop, 02:57 2026-07-20 — clock verified)
+
+### ⛔ FIRST: the fleet is DOWN and needs ONE command from you
+
+The WSL2 VM died at ~02:05 and is crash-looping (vmmemWSL oscillates 8→123 MB;
+`docker version` itself 500s). ALL 14 containers are gone — the 13-container factory
+fleet **and** the T9.4 chat trainer. Nothing is lost (checkpoints on `ava_ckpt`,
+manifest on `ava_state`), and I could not fix it: `wsl --shutdown` was blocked by the
+permission classifier.
+
+```powershell
+wsl --shutdown          # then, if the engine doesn't return in ~2 min, restart Docker Desktop
+```
+Recovery is then automatic (restart policies + `--resume`); verification commands and a
+fallback relaunch are in §1.3. **The 45W power cap is the standing suspect for the whole
+family of failures tonight — 780MHz clocks, 2 CUBLAS crashes, and this VM death. Check
+the charger.**
+
+### What ran while you were away (all committed, ~25 commits)
+
+Two lanes were alive: the **T9.4 chat branch** (trained steps 1→23 across two CUDA-flake
+crashes, self-healing each time from banked checkpoints, until the VM took it down) and
+the **host-side research loop** (unaffected by Docker — still ideating, implementing and
+training).
 
 THE NIGHT'S HEADLINES — read these before anything below:
 
@@ -34,8 +57,33 @@ THE NIGHT'S HEADLINES — read these before anything below:
    logic-prover CRLF fix. FOUND: a THIRD split-brain checkout (C:\Users\jcdav\
    scout-cli shadows the monorepo via the shared venv) — added to §2.3.
 
-YOUR DECISION QUEUE (in order): T9.3 path (§1.4) · MLBR bundle review (§5.3) ·
-Ollama startup task (§8) · §2.3 checkout retirement (daytime, now 3 checkouts).
+5. **The research loop got four defenses tonight, all born from the MLBR post-mortem**
+   (§5.3.R has the details): a **significance gate** (a win inside the noise can no
+   longer move the baseline — replayed on MLBR: 1.1 SEM → HELD), a **degeneracy gate**
+   (a module with no learnable parameters that only adds a constant can no longer reach
+   training — MLBR's real module now fails L4), a **capacity caveat** (a swap that
+   deletes parameters says so in the verdict and the bundle), and **§5.2.c**: the
+   corrector now sees a diff of its own last edit. 33/33 tests green. Two of my own
+   fixes had bugs caught by verification passes (a flaky threshold competing with float
+   rounding; an unseeded probe) — both fixed and noted.
+6. **arxiviq**: the live gist now serves fresh data, and the site code was verified
+   headlessly for the first time (6/6 checks on a healthy payload). One honesty fix
+   shipped: with the factory down the tiles said "unknown" + em-dashes; they now say
+   **"factory unreachable"**. NOTE: site code changes are committed but **NOT deployed**
+   — the Vercel deploy needs your approval (§7.5).
+
+### YOUR DECISION QUEUE (in order)
+1. **`wsl --shutdown`** — nothing else moves until the engine is back.
+2. **Charger** — the physical root cause candidate for tonight's whole failure family.
+3. **T9.3 path (§1.4)** — gate FAILED (+75.1% CE). My recommendation: no knob-rerun;
+   get real tool data via 2.1, then re-fork with a replay mix. Trainer stays parked.
+4. **T9.4**: it was launched per your directive and the step-15 early warning showed
+   **+2.04% general CE** — the same forgetting mode, at 8% of the run. Decide whether to
+   resume it after recovery (it will auto-resume from step_15 unless you stop it).
+5. **MLBR bundle (§5.3.R)** — I recommend REJECT, with the arithmetic; also decide
+   whether to re-seed the baseline back to 5.61982.
+6. **Ollama startup task (§8)** and **§2.3 checkout retirement** (daytime; 3 checkouts).
+7. **arxiviq deploy** (§7.5) — one command, or approve and I'll run it.
 
 ## Standing state (context for every step below)
 
