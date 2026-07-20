@@ -1660,6 +1660,33 @@ most valuable catch so far:
   `--since-boot`, `--durations ACTION`, and a boot banner showing `git_sha`/`prompts_sha256`.
   Verified: reports the 2-record post-boot scope correctly, and `implement` durations across
   the whole file as n=19, min 60 s, median 487 s, max 1101 s.
+### 5.3.R23 — pre-registered the post-restart analysis, before the data exists
+
+- [x] **Wrote `apps/dottie/scripts/post_restart_report.py` while n = 0 (09:05), on purpose.**
+  The gates it measures are ones I built hours ago, and §5.3.R21 already records the hazard:
+  **I have a stake in these numbers moving.** Fixing the questions, the population and the
+  reporting threshold in advance is the cheapest defence against picking a flattering cut
+  once the data arrives.
+  - **Population** is scoped by the daemon's own `boot` record, never commit timestamps —
+    the boundary error that cost §5.3.R8 an entire comparison.
+  - **Threshold is enforced in code**: no rate prints below n=20. It emits `INSUFFICIENT n`
+    and the current count. The constraint-8 attempt died at n=5 and the honest answer was
+    "not measurable"; this makes that the default rather than a judgement made while looking
+    at the numbers.
+  - **Pre-restart comparators are hardcoded** from measurements taken before any of this
+    shipped, so they cannot drift to flatter a result.
+  - It deliberately does **not** ask "did my gates help?" — not answerable from this data. A
+    flat rate with more rejections means the gates work and the proposals did not change,
+    which is a different result and still useful. The script says so in its own output.
+- [x] **Validating the arithmetic caught a rigged comparator — in my own pre-registration.**
+  Running it at n=0 only exercises the refusal path, so I re-ran it over the pre-restart
+  population where I know the answers. Zero-parameter reproduced exactly (11/20 = 55%) and
+  category-error at 36%. But `dry_run_share` came back **78%** against my hardcoded **74%**:
+  the 74% was the *pre-constraint-8 sub-bucket* (35/47), not the whole pre-restart population
+  (46/59). **Comparing post-restart against a sub-bucket would have manufactured a 4-point
+  improvement out of a boundary mismatch.** Corrected to 78% with the reasoning inline.
+  - Testing only the "refuses to report" path would have shipped that. Same lesson as the
+    hollow test in §5.3.R11: exercise the path that does the work, not just the guard.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
