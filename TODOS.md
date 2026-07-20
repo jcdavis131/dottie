@@ -536,18 +536,22 @@ THE NIGHT'S HEADLINES — read these before anything below:
      (multi-seed as of §5.3.R96). Installs ≈**5.737, SEM ≈0.099, n=3** — measured, honest, and
      two-sample-ready. Takes ~6 min on an idle box.
    - Historical: the pre-contamination values were 5.60506 (MLBR) and 5.61982 (pre-MLBR
-     calibration). Both are superseded by the command above, which measures fresh.
-   - **Direction matters and I first stated it backwards (§5.3.R26):** 5.60506 is a
-     *harder* bar than 5.61982 because lower is better, so the contamination causes
-     **missed** promotions, not false ones. No false SOTA can come from it. The cost is
-     that a genuine win landing in the 0.01476 gap is discarded — expensive, given the loop
-     has made ~5 genuine attempts in total.
-   - **If you have a measured run, supply its `metric_sem` too.** A bare number keeps the
-     loop on the weaker one-sample significance test forever (§5.3.R6).
+     calibration). Both are superseded by the command above, which measures fresh — and it
+     records `metric_sem` automatically (§5.3.R96), so no separate step is needed to get the
+     two-sample test the loop wants.
+   - **Note on urgency vs the old framing:** earlier versions of this item (MLBR-era, §5.3.R26)
+     said contamination only causes *missed* promotions, never false ones — true when the
+     baseline was merely a slightly-harder 5.60506. It no longer holds: the current 5.54404 is
+     **below what the model can reach**, so the effect is not "occasionally misses a win" but
+     "rejects everything." That is why this moved from a cleanup to a precondition (item 00→0).
 6. **Ollama startup task (§8)** and **§2.3 checkout retirement** — unchanged (daytime).
 7. **arxiviq deploy (§7.5)** — unchanged. One command, or approve and I'll run it.
-8. **Research search quality — still the highest-leverage item, and now the fix is CONFIG,
-   not code.** Measured tonight over 84 proposals: **36% (30) are category errors** —
+8. **Research search quality — the highest-leverage change to the PROPOSAL side, and the fix
+   is CONFIG, not code.** (Ranking, post-§5.3.R93: the re-seed in item 0/5 is the true
+   *blocker* — the loop cannot progress at all until it is done — and the per-seed trainer
+   change is the highest-value *correctness* fix; this item is what most improves *what gets
+   proposed* once those are handled.) Measured over 84 proposals: **36% (30) are category
+   errors** —
    regularisers, penalties, losses — structurally unbuildable as residual-stream blocks.
    That bucket has **zero real wins**, accounts for **4 of 5** training failures, and
    contains MLBR.
