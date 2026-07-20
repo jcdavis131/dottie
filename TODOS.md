@@ -1039,6 +1039,24 @@ most valuable catch so far:
     unclear and the blast radius was one wasted attempt.
   - Regression test verified red before (`assert 'ready_for_training' == 'failed_training'`)
     / green after. Full suite 152 passed.
+- [x] **SELF-INFLICTED LATENCY REGRESSION IN MY OWN FIX, caught and repaired (07:05).**
+  The unparseable-corrector retry I shipped two ticks ago and called a clean win gave
+  **every correction attempt its own `max_retries` parse retries**, nesting the loops:
+  5 attempts x 6 calls = **30 policy calls worst case, against 5 before the retry existed
+  at all.** At the ~90 s/call this box measures that is **45 min for a single implement
+  instead of 8** — a latency regression materially worse than the ~10% of experiments the
+  retry reclaims. Now a single `_PARSE_RETRY_BUDGET = 3` pool shared across the whole
+  experiment: worst case `max_retries + 3`.
+  - **The first regression test I wrote for this was worthless and nearly shipped.** It
+    used an always-garbling policy, which aborts on the first corrector invocation and
+    never exercises the nesting — it scores 6 calls on the *buggy* code and passes any
+    sane ceiling. Its "red" came from an `AttributeError` on the missing constant, which
+    I initially misread as the bound working. The real test garbles once per attempt then
+    succeeds, and the ceiling is hardcoded rather than read from the module so an
+    `AttributeError` can never masquerade as a bound failure. It now fails on the old code
+    with `10 policy calls exceeds 8` — matching the predicted `5 attempts x 2` exactly.
+  - Lesson worth keeping: a red test is not evidence until the *reason* for the red is
+    checked. Two of tonight's verifications were nearly satisfied by the wrong exception.
 - [ ] NEXT: **improve dry_run correction feedback — but NOT until constraint-8 is
   measurable.** dry_run is 77% of genuine failures, and the likely lever is handing the
   corrector the actual tensor shapes at the failure point instead of a raw traceback.

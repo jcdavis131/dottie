@@ -20,6 +20,12 @@ from dottie.research.ledger import (
 
 Policy = Callable[[str], str]
 
+#: Re-prompts allowed for an unparseable CORRECTION reply, pooled across the whole
+#: experiment. Small on purpose: every one costs a full model call (~90 s on the 4080
+#: box), and the failure it recovers from is a formatting slip that the model either
+#: fixes immediately or keeps repeating.
+_PARSE_RETRY_BUDGET = 3
+
 
 def _corrector_error(outcome) -> Optional[str]:
     """The corrector's own exception, if the retry loop stopped because of one.
@@ -102,6 +108,10 @@ def run_implementation(ledger: Ledger, policy: Policy, *, workspace_root: str | 
     # Holder tracks the latest parsed impl/dry as the corrector re-calls the model, so the final
     # written module matches outcome.code.
     latest = {"impl": impl, "dry": dry}
+    # One pool of re-prompts for unparseable CORRECTION replies, shared across every
+    # correction attempt in this experiment — see the corrector's note on why this is not
+    # per-attempt.
+    parse_budget = {"left": _PARSE_RETRY_BUDGET}
 
     def corrector(prev_code: str, feedback: str) -> str:
         # A malformed CORRECTION reply used to abort the whole experiment: this raised
@@ -111,14 +121,23 @@ def run_implementation(ledger: Ledger, policy: Policy, *, workspace_root: str | 
         # none after. Measured 2026-07-20 over the 59 stored failed_validation records:
         # 6 (10%) died this way, every one of them "no parseable JSON object found" —
         # a recoverable formatting slip misfiled as a dead candidate.
+        #
+        # The budget is a small SHARED pool, not max_retries per invocation. Giving each
+        # correction attempt its own max_retries parse retries nests the two loops:
+        # 5 attempts x 6 calls = 30 policy calls worst case, against 5 before the retry
+        # existed at all. At the ~90 s/call this box measures that is 45 min for a single
+        # implement instead of 8 — a latency regression far worse than the 10% of
+        # experiments the retry reclaims. One pool for the whole experiment keeps the
+        # worst case at max_retries + _PARSE_RETRY_BUDGET.
         current_feedback = feedback
-        for remaining in range(max_retries, -1, -1):
+        while True:
             new_text = policy(prompts.correction_prompt(prev_code, current_feedback))
             try:
                 new_impl, new_dry = prompts.parse_implementation(new_text)
             except ValueError as e:
-                if remaining == 0:
+                if parse_budget["left"] <= 0:
                     raise
+                parse_budget["left"] -= 1
                 current_feedback = (
                     f"{feedback}\n\nYour previous reply could not be parsed: {e}\n"
                     "Your entire response must be ONE JSON object matching the "
@@ -127,7 +146,6 @@ def run_implementation(ledger: Ledger, policy: Policy, *, workspace_root: str | 
                 continue
             latest["impl"], latest["dry"] = new_impl, new_dry
             return new_impl["code"]
-        raise AssertionError("unreachable")  # pragma: no cover
 
     ws = Path(workspace_root) / exp.id
     ws.mkdir(parents=True, exist_ok=True)

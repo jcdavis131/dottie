@@ -270,6 +270,12 @@ def _implement(led, tmp_path, policy):
     return implementation.run_implementation(led, policy, workspace_root=tmp_path / "ws")
 
 
+def _implement_with(led, tmp_path, policy, *, max_retries):
+    ideation.run_ideation(led, policy, bottleneck="spikes", n_ideas=1)
+    return implementation.run_implementation(led, policy, workspace_root=tmp_path / "ws",
+                                             max_retries=max_retries)
+
+
 def test_unparseable_correction_is_retried_not_fatal(led, tmp_path):
     """A malformed CORRECTION reply must not abort the experiment.
 
@@ -327,6 +333,45 @@ def test_corrector_failure_is_distinguished_from_a_bad_candidate(led, tmp_path):
     failure = led.get(r["experiment"]).failure or ""
     assert "the corrector itself failed" in failure
     assert "ollama connection reset" in failure
+
+
+def test_corrector_parse_retries_are_a_bounded_shared_pool(led, tmp_path):
+    """The parse-retry budget must not multiply with the correction budget.
+
+    The first version of this retry gave EVERY correction attempt its own max_retries
+    parse retries, nesting the two loops: 5 attempts x 6 calls = 30 policy calls worst
+    case against 5 before the retry existed. At ~90 s/call that is 45 min for one
+    implement instead of 8 -- a latency regression worse than the ~10% of experiments
+    the retry reclaims. The pool is shared across the whole experiment instead.
+    """
+    # The policy must garble ONCE PER ATTEMPT and then succeed. An always-garbling policy
+    # aborts on the first corrector invocation and never exercises the nesting at all --
+    # it scores 6 calls on the buggy code, under any sane ceiling, so it would pass while
+    # the regression sat there. This is the shape that actually multiplies.
+    calls = {"corrections": 0}
+    garbled_this_attempt = {"flag": False}
+
+    def policy(prompt: str) -> str:
+        if "failed automated validation" in prompt:
+            calls["corrections"] += 1
+            if not garbled_this_attempt["flag"]:
+                garbled_this_attempt["flag"] = True
+                return "here you go! <not json>"          # one slip per attempt...
+            garbled_this_attempt["flag"] = False
+            return impl_json("def still_broken(:", "Broken")   # ...then valid, still failing
+        if "Principal ML Engineer" in prompt:
+            return impl_json("def broken(:", "Broken")
+        return json.dumps(HYP)
+
+    max_retries = 5
+    r = _implement_with(led, tmp_path, policy, max_retries=max_retries)
+    assert r["state"] == FAILED_VALIDATION
+    # Hardcoded, not read from the module: the constant does not exist on the buggy
+    # version, and an AttributeError is not the failure this test is meant to report.
+    ceiling = max_retries + 3            # max_retries + _PARSE_RETRY_BUDGET
+    assert calls["corrections"] <= ceiling, (
+        f"{calls['corrections']} policy calls exceeds {ceiling} — the parse-retry pool is "
+        "multiplying with the correction budget again")
 
 
 def test_unloadable_candidate_fails_training_instead_of_retrying_forever(led, tmp_path):
