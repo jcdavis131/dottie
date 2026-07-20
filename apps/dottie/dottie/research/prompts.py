@@ -92,6 +92,58 @@ IMPLEMENTATION_SCHEMA = {
 }
 
 
+# The engineering constraints, shared by the implementation prompt AND the correction
+# prompt. TODOS 5.3.R38: the corrector previously received ONLY the failure message and
+# the previous code, so every rule the initial attempt was held to -- axis discipline,
+# the one-tensor contract, capacity, the ban on loss-shaped arguments -- vanished on
+# retry. A correction could reintroduce exactly what the constraints exist to prevent,
+# and the corrector is the path most candidates actually take.
+_ENGINEERING_CONSTRAINTS = """1. Shape integrity: document expected input/output shapes in every `forward` docstring
+   (e.g. [batch, seq, hidden]); add `assert` statements around einsum / novel ops.
+2. Numerical stability: add small `eps` to denominators, use `torch.logaddexp` where apt, and
+   clamp probabilities to prevent NaN gradients.
+3. Hardware efficiency: prefer vectorized ops; avoid Python for-loops over tensor dims.
+4. Do NOT import os / subprocess / shutil / sys, and do not call eval / exec.
+5. The module must be instantiable with the `init_kwargs` you declare and runnable on a CPU
+   forward pass of the `input_shape` you declare.
+6. Every `__init__` parameter after `self` MUST have a default value consistent with your
+   declared `input_shape` (a required positional argument that `init_kwargs` omits is an
+   automatic validation failure).
+7. `forward` MUST accept exactly one tensor `[batch, seq, hidden]` and return the same shape.
+   Name that argument `x` (or `hidden_states`) — never `predictions`, `logits` or `targets`:
+   those name a loss's inputs and this is not a loss.
+7b. CAPACITY: the block MUST own learnable parameters, and they must be the ones the
+   hypothesis declared in `learnable_parameters` above. A scale, gate, threshold,
+   temperature or mixing weight that matters should be an `nn.Parameter` or an `nn.Linear`
+   output that the LM loss can train — not a fixed float in `__init__`. Measured 2026-07-20:
+   55% of candidates that reached validation had ZERO learnable parameters and were
+   rejected; a fixed function cannot learn, and it replaces a real ~787K-parameter block.
+8. AXIS DISCIPLINE (the single most common failure — 4 of the 4 most recent rejects died
+   here). The input is 3-D: `batch = x.shape[0]`, `seq = x.shape[1]`, `hidden = x.shape[-1]`.
+   - Size every weight against the HIDDEN axis (`x.shape[-1]`), never against `seq`. An error
+     like "size of tensor a (512) must match tensor b (128) at dimension 2" means you built a
+     weight for the wrong axis.
+   - If your idea genuinely NEEDS the sequence length (a positional table, an attention bias,
+     a decay mask), read it at FORWARD time as `x.shape[-2]` and build the tensor there — or
+     store a generous maximum and SLICE it to `x.shape[-2]`. A parameter whose shape is fixed
+     to the dry-run sequence length is dead on arrival: validation runs at a short sequence
+     and the model trains at 256, so it will be built at the wrong length. Measured
+     2026-07-20 — a candidate declared `nn.Parameter((seq_len, hidden))`, passed every
+     validation stage, and raised `AssertionError: seq (256) must match seq_len (16)` on its
+     first training step.
+   - NEVER use `.T` or `torch.t()` on this tensor — they are 2-D only and raise
+     "t() expects a tensor with <= 2 dimensions". Use `x.transpose(-2, -1)`.
+   - EVERY `torch.einsum` subscript string must have ONE letter per dimension of each
+     operand. The input is 3-D, so it is `"bsd,...->..."` — never a 2-letter subscript
+     like `"sd"` for it. "einsum(): the number of subscripts in the equation (2) does not
+     match the number of dimensions (3)" means you wrote a 2-D equation for a 3-D tensor.
+     If you reshape to 2-D first, say so explicitly and reshape back before returning.
+   - Assign EVERY attribute you later read (`self.hidden = hidden` in `__init__` if
+     `forward` uses `self.hidden`) — "object has no attribute 'hidden'" is a real reject.
+   - Prefer inferring `hidden` from the input at forward time over trusting a constructor
+     default, so the module is correct at ANY declared `input_shape`."""
+
+
 def _baseline_block(baseline: Optional[Baseline], bottleneck: str) -> str:
     if baseline is None:
         arch, metric = "(unset — no baseline seeded)", "(unset)"
@@ -230,6 +282,7 @@ def implementation_prompt(hypothesis: Dict[str, Any], *,
                           codebase_note: str = "") -> str:
     """The senior-engineer implementation prompt that turns a hypothesis into drop-in PyTorch."""
     schema = json.dumps(IMPLEMENTATION_SCHEMA, indent=2)
+    constraints = _ENGINEERING_CONSTRAINTS
     hjson = json.dumps({k: hypothesis.get(k) for k in IDEATION_SCHEMA}, indent=2)
     extra = f"\n{codebase_note}\n" if codebase_note else ""
     return f"""# ROLE AND OBJECTIVE
@@ -246,50 +299,7 @@ numerical stability, and modularity. Your code must compile on the first attempt
   the module.{extra}
 
 # ENGINEERING CONSTRAINTS
-1. Shape integrity: document expected input/output shapes in every `forward` docstring
-   (e.g. [batch, seq, hidden]); add `assert` statements around einsum / novel ops.
-2. Numerical stability: add small `eps` to denominators, use `torch.logaddexp` where apt, and
-   clamp probabilities to prevent NaN gradients.
-3. Hardware efficiency: prefer vectorized ops; avoid Python for-loops over tensor dims.
-4. Do NOT import os / subprocess / shutil / sys, and do not call eval / exec.
-5. The module must be instantiable with the `init_kwargs` you declare and runnable on a CPU
-   forward pass of the `input_shape` you declare.
-6. Every `__init__` parameter after `self` MUST have a default value consistent with your
-   declared `input_shape` (a required positional argument that `init_kwargs` omits is an
-   automatic validation failure).
-7. `forward` MUST accept exactly one tensor `[batch, seq, hidden]` and return the same shape.
-   Name that argument `x` (or `hidden_states`) — never `predictions`, `logits` or `targets`:
-   those name a loss's inputs and this is not a loss.
-7b. CAPACITY: the block MUST own learnable parameters, and they must be the ones the
-   hypothesis declared in `learnable_parameters` above. A scale, gate, threshold,
-   temperature or mixing weight that matters should be an `nn.Parameter` or an `nn.Linear`
-   output that the LM loss can train — not a fixed float in `__init__`. Measured 2026-07-20:
-   55% of candidates that reached validation had ZERO learnable parameters and were
-   rejected; a fixed function cannot learn, and it replaces a real ~787K-parameter block.
-8. AXIS DISCIPLINE (the single most common failure — 4 of the 4 most recent rejects died
-   here). The input is 3-D: `batch = x.shape[0]`, `seq = x.shape[1]`, `hidden = x.shape[-1]`.
-   - Size every weight against the HIDDEN axis (`x.shape[-1]`), never against `seq`. An error
-     like "size of tensor a (512) must match tensor b (128) at dimension 2" means you built a
-     weight for the wrong axis.
-   - If your idea genuinely NEEDS the sequence length (a positional table, an attention bias,
-     a decay mask), read it at FORWARD time as `x.shape[-2]` and build the tensor there — or
-     store a generous maximum and SLICE it to `x.shape[-2]`. A parameter whose shape is fixed
-     to the dry-run sequence length is dead on arrival: validation runs at a short sequence
-     and the model trains at 256, so it will be built at the wrong length. Measured
-     2026-07-20 — a candidate declared `nn.Parameter((seq_len, hidden))`, passed every
-     validation stage, and raised `AssertionError: seq (256) must match seq_len (16)` on its
-     first training step.
-   - NEVER use `.T` or `torch.t()` on this tensor — they are 2-D only and raise
-     "t() expects a tensor with <= 2 dimensions". Use `x.transpose(-2, -1)`.
-   - EVERY `torch.einsum` subscript string must have ONE letter per dimension of each
-     operand. The input is 3-D, so it is `"bsd,...->..."` — never a 2-letter subscript
-     like `"sd"` for it. "einsum(): the number of subscripts in the equation (2) does not
-     match the number of dimensions (3)" means you wrote a 2-D equation for a 3-D tensor.
-     If you reshape to 2-D first, say so explicitly and reshape back before returning.
-   - Assign EVERY attribute you later read (`self.hidden = hidden` in `__init__` if
-     `forward` uses `self.hidden`) — "object has no attribute 'hidden'" is a real reject.
-   - Prefer inferring `hidden` from the input at forward time over trusting a constructor
-     default, so the module is correct at ANY declared `input_shape`.
+{constraints}
 
 # INPUT HYPOTHESIS
 {hjson}
@@ -303,13 +313,21 @@ the COMPLETE replacement class/function, not a snippet:
 
 def correction_prompt(previous_code: str, failure_feedback: str) -> str:
     """The self-correction message when generated code fails a validation level."""
+    constraints = _ENGINEERING_CONSTRAINTS
+    schema_keys = ", ".join(IMPLEMENTATION_SCHEMA)
     return f"""The previous implementation failed automated validation.
 
 {failure_feedback}
 
 Rewrite the COMPLETE module to resolve this specific issue while preserving the original
-mathematical intent. Output ONE JSON object matching the implementation schema (module_name,
-target_file, code, init_kwargs, input_shape, shape_assertions). No markdown outside the JSON.
+mathematical intent. Output ONE JSON object matching the implementation schema ({schema_keys}).
+No markdown outside the JSON.
+
+EVERY constraint below still applies to the rewrite. Fixing the reported failure by breaking
+one of these is not a fix.
+
+# ENGINEERING CONSTRAINTS
+{constraints}
 
 # PREVIOUS CODE
 {previous_code}

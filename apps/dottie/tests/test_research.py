@@ -754,6 +754,36 @@ def test_dead_ends_interleave_across_failure_states(led):
         f"one state monopolised the visible slots: {head}")
 
 
+def test_correction_prompt_carries_the_same_constraints_as_the_first_attempt():
+    """The corrector must be held to every rule the initial implementation was.
+
+    TODOS §5.3.R38: correction_prompt previously sent ONLY the failure message and the
+    previous code. Every rule the first attempt was held to — axis discipline, the
+    one-tensor contract, capacity (7b), the ban on loss-shaped arguments — vanished on
+    retry. A correction could therefore "fix" the reported failure by reintroducing exactly
+    what those constraints exist to prevent, and the corrector is the path most candidates
+    actually take (measured: attempts up to max_retries on most failures).
+
+    Asserts the SHARED block, so the two prompts cannot drift apart the way LEVELS drifted
+    from validate() in §5.3.R13.
+    """
+    h = {"hypothesis_name": "G", "theoretical_intuition": "t", "mathematical_formulation": "m",
+         "pytorch_implementation_strategy": "s", "expected_outcome": "e",
+         "search_domain": "attention", "learnable_parameters": "gate: nn.Linear(h, h)"}
+    imp = prompts.implementation_prompt(h)
+    cor = prompts.correction_prompt("prev code", "Validation failed at level 'dry_run'")
+
+    shared = prompts._ENGINEERING_CONSTRAINTS
+    assert shared in imp and shared in cor, "the two prompts have drifted apart"
+    for rule in ("AXIS DISCIPLINE", "7b. CAPACITY", "x.shape[-2]"):
+        assert rule in cor, f"correction prompt lost {rule!r}"
+    assert "still applies to the rewrite" in cor      # says so explicitly
+
+    # schema keys are derived, not retyped -- a hardcoded list drifts when the schema changes
+    for key in prompts.IMPLEMENTATION_SCHEMA:
+        assert key in cor
+
+
 def test_implementation_prompt_does_not_teach_loss_shape():
     """The prompt that writes the CODE must not describe how to write a loss.
 

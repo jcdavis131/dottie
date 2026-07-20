@@ -2094,6 +2094,36 @@ most valuable catch so far:
   section read fine alone. The count is the argument: **prompts are programs, and nobody was
   reading this one whole.**
 - [ ] NOT live — daemon on `e8cc5b7`; joins R24/R28/R29/R35/R36.
+### 5.3.R38 — the corrector was running with none of the constraints
+
+- [x] **Read the CORRECTION prompt end to end (10:10) — the third and last prompt.** It sent
+  the model **only the failure message and the previous code**. Every rule the first attempt
+  was held to — AXIS DISCIPLINE, the one-tensor contract, the ban on loss-shaped arguments,
+  the new capacity rule 7b — **vanished on retry**.
+  - This matters more than it sounds, because **the corrector is the path most candidates
+    actually take**: most failures run several attempts, so the majority of code this loop
+    produces is written under the *weaker* prompt. A correction could satisfy the reported
+    error by reintroducing precisely what the constraints exist to prevent, and nothing
+    would flag it until a later stage caught a different symptom.
+  - I have been calling the corrector "the working mechanism" for several ticks (§5.3.R29
+    explicitly). It was working with a fraction of the guidance I assumed it had.
+- [x] **Fixed by sharing one block, not by duplicating text.** `_ENGINEERING_CONSTRAINTS` is
+  now a module-level constant rendered into **both** the implementation and correction
+  prompts, so they cannot drift — the failure mode that let `LEVELS` fall out of step with
+  `validate()` in §5.3.R13. The correction prompt also states outright: *"EVERY constraint
+  below still applies to the rewrite. Fixing the reported failure by breaking one of these
+  is not a fix."*
+- [x] **Also removed a hardcoded schema list.** The correction prompt retyped
+  `(module_name, target_file, code, init_kwargs, input_shape, shape_assertions)` by hand;
+  it now derives the keys from `IMPLEMENTATION_SCHEMA`. Same drift class as above — correct
+  today, wrong the moment the schema changes.
+  - The test asserts the **shared constant** appears in both prompts, so drift fails loudly.
+  - Suite 181 passed.
+- [ ] **All three prompts have now been read whole**, and each one contained something that
+  contradicted or undercut the others: §5.3.R35 search space, R36 rigor section, R37
+  codebase context, R38 missing constraints on retry. **Four of four.** Not one was visible
+  from reading the section being edited.
+- [ ] NOT live — daemon on `e8cc5b7`; joins R24/R28/R29/R35/R36/R37.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.
