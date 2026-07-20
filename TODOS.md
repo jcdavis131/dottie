@@ -448,7 +448,9 @@ THE NIGHT'S HEADLINES — read these before anything below:
 > Tonight's loop changed items 5 and 8 materially and added a new blocker at the top.
 > Items 2, 3, 4, 6, 7 are unchanged from the 05:19 version.
 
-0. ~~**RESTART THE RESEARCH DAEMON**~~ — **DONE 08:50:02. All of tonight's work is LIVE.** See §5.3.R21 for the verification. (Original text kept below for the record.)
+0. **RESTART THE RESEARCH DAEMON AGAIN — 10 runtime fixes are queued, including the search-space and corrector-constraint fixes (§5.3.R39).** The 08:50:02 restart is done and its window is at n=10/20, but the queued work now outweighs finishing that measurement — see §5.3.R39 for why. Commands in §5.3.R9.
+
+0a. ~~**RESTART THE RESEARCH DAEMON**~~ — **DONE 08:50:02.** See §5.3.R21 for the verification. (Original text kept below for the record.)
 
 0b. **NEW — RESTART THE RESEARCH DAEMON. Everything below about the loop depends on it.**
    **13 behaviour-affecting commits** are in and **not running**: the daemon has been on
@@ -1607,6 +1609,29 @@ most valuable catch so far:
 - [x] Audit now **9/9 GOOD**, no SKIPs, no HOLLOWs, tree verified clean after the run.
   Three separate defects tonight were found by this script rather than by review: a hollow
   test in §5.3.R11, a silent coverage loss here, and a bad mutant here.
+### 5.3.R39 — REVISED RECOMMENDATION: restart NOW, do not wait for the measurement
+
+- [x] **The trade I described in §5.3.R30 has flipped (10:12).** Then, 3 fixes were queued
+  and the window was 7/20, so "let it finish, read it, then restart" was right. **Now 10
+  runtime-affecting commits are not live**, including the two most consequential of the
+  night:
+  - `a09d5e9` — the **search space** that explicitly asked for the category errors the loop
+    then rejected (§5.3.R35). Every ideation call until restart still samples it.
+  - `8a7d309` — the **corrector runs with no engineering constraints** (§5.3.R38), and the
+    corrector writes most of the code this loop produces.
+  Plus the sequence probe, the dead-ends anti-priming, and three prompt contradictions.
+- [x] **The measurement is worth less than it was, for a specific reason.** The window
+  isolates R12 (the bottleneck-framing reframe) — but **§5.3.R35 showed the search space was
+  the larger and more mechanical cause of the same 36%**. Finishing the window would
+  precisely measure a partial fix to a problem whose main driver was elsewhere and is now
+  fixed but not running. At ~10 experiments per 80 min it is another ~80 min to reach n=20.
+- [x] **Recommendation: restart now.** Accept the window reset to n=0. The next window
+  measures the whole set, which is the comparison actually worth having. `scripts/
+  post_restart_report.py` must have `BOOT_SHA` and its live/not-live lists updated from the
+  new `boot` record before the next reading — the script says so in its own header.
+- [ ] I cannot do it: the permission classifier blocks process control (§5.3.R9). Commands
+  are there; `run.log` will show a `boot` line with the new `git_sha` when it takes.
+
 ### 5.3.R21 — ⭐ THE DAEMON RESTARTED. Tonight's work is live (08:50:02)
 
 - [x] **Confirmed by the mechanism built for exactly this, four hours earlier.** A `boot`
