@@ -248,7 +248,18 @@ def factory_nano_trainer(experiment: Experiment, config: Dict[str, Any]) -> Trai
         heldout, extras = _train_and_measure(model, tokens, torch=torch, np=np, device=device,
                                              **knobs)
     except Exception:
-        return TrainResult(False, False, detail=traceback.format_exc())
+        # ok=True/stable=False -> FAILED_TRAINING (the candidate's fault), NOT ok=False
+        # (retryable infrastructure). By this point `_setup`, the model build and the
+        # integration probe have all SUCCEEDED, so an exception here is the candidate
+        # misbehaving on real data — retrying it just reproduces the same crash.
+        # Measured 2026-07-20: 87b8635f50f8 raised `AttributeError: 'NoneType' object has
+        # no attribute 'layout'` from its own forward, stayed `ready_for_training`, and was
+        # re-picked immediately in an unbounded loop. Genuine infra failures (missing
+        # torch/corpus, unloadable module) return earlier and remain retryable.
+        return TrainResult(True, False,
+                           metrics={"integration": "factory_nano_block_swap",
+                                    "detail": "candidate raised during training"},
+                           detail=traceback.format_exc()[-1500:])
 
     metrics = {**_base_metrics(cfg, packed_dir, device, knobs, len(tokens), params), **extras,
                "swap_layer": int(config.get("swap_layer", len(model.fusion_layers) // 2)),

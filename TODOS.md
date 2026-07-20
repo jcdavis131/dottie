@@ -183,6 +183,25 @@ python child holds nothing. Killed 5264; 8940 is now the only one.
   `Get-Process python3.11` and kill leftovers before starting. The recovery script's
   `Stop-ScheduledTask` step has the same gap.
 
+### ⭐ SECOND BUG, found because the first fix made it visible (05:50)
+
+With the wrapper no longer dying, the daemon ran long enough to expose an **unbounded
+retry loop**. Candidate `87b8635f50f8` raised `AttributeError: 'NoneType' object has no
+attribute 'layout'` **from its own forward** during training. `run_training` classifies
+any trainer exception as an *infrastructure* failure and leaves the experiment
+`ready_for_training` (retryable) — so the loop re-picked the same broken candidate
+immediately, forever, and `consecutive_errors` never incremented because the stage
+returned a result rather than raising. It would have burned the rest of the night on one
+candidate.
+**FIXED** in `factory_trainer.py`: an exception from `_train_and_measure` now returns
+`ok=True, stable=False` → **FAILED_TRAINING**, not retryable. The reasoning is structural,
+not a guess — by that point `_setup`, the model build and the integration probe have all
+succeeded, so the failure is the candidate misbehaving on real data. Genuine
+infrastructure failures (missing torch/corpus, unloadable module) return *earlier* and
+remain retryable, which preserves the original design intent. 37/37 tests green.
+- Worth noting: this bug was invisible while the wrapper kept killing the daemon every
+  few minutes. Fixing the crash surfaced it within four minutes.
+
 ### ⭐⭐ ROOT CAUSE FOUND AND FIXED (05:46) — the wrapper was killing the daemon
 
 **Every silent daemon death tonight was `research_worker.ps1`, not Python.** The wrapper
