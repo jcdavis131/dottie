@@ -708,6 +708,33 @@ independent reasons, both from the bundle's own numbers/code:**
   Standing lesson for future debugging: `run.log` silence ≠ stall, and `run.log`
   activity ≠ liveness. Query `data/research/ledger.sqlite3` (`select state, updated_ts
   … order by updated_ts desc`) to judge whether the loop is actually moving.
+- [ ] ⭐ **§5 ROOT CAUSE (03:42) — worker processes finish their work but never EXIT.
+  This one bug explains every lost tick tonight.** Measured after stopping the stuck
+  03:05 run: four orphaned worker processes survive it — two from 03:05 and two from the
+  **01:37** run. PID 8524 (the factory trainer) has burned **10,747 CPU-s (~3 h)** yet
+  shows **0.00 s CPU over a 6 s sample** and a **0 MB** working set; its work is long
+  since committed (OSA's rejection landed in the ledger at ~02:29). So the compute
+  finished, the results were written, and the process simply never terminated.
+  That single behaviour produces all four symptoms seen tonight:
+  * Task Scheduler keeps the task in state **Running** (it waits on the process tree),
+  * `MultipleInstances=IgnoreNew` then **silently refuses** the next hourly trigger
+    (02:05 → `0x800710E0`), losing an hour with no error anywhere,
+  * a later forced teardown surfaces as **`0xC000013A`** (killed abnormally),
+  * and a "stuck" run (03:05) is really a run whose predecessor never let go.
+  HYPOTHESIS for the hang (needs one diagnostic, not a guess): a non-daemon thread at
+  interpreter shutdown — most likely torch/OpenMP worker threads in the factory trainer
+  (8524 is exactly that process, and `OMP_NUM_THREADS=4` is set). Confirm with
+  `py-spy dump --pid 8524` or by enabling `faulthandler` and signalling the process;
+  that names the blocking frame instead of assuming it.
+  FIXES, in order of preference: (1) close/join whatever holds the interpreter open at
+  the end of `dottie.research.__main__` (real fix, once the diagnostic names it);
+  (2) `os._exit(code)` after an explicit flush of stdout + the ledger connection
+  (pragmatic stopgap that guarantees termination); (3) set `MultipleInstances` to
+  Queue/Parallel so orphans can no longer eat ticks (mitigation — the wrapper's
+  exclusive lock is the real concurrency guard, and it IS released correctly:
+  verified the lock file re-opens exclusively after the stop, so 04:05 will run).
+  NOT DONE deliberately: the four orphans are inert (0 MB, 0 CPU) and killing them
+  would free nothing while risking an in-flight sqlite write, so they were left alone.
 - [ ] **§5 runner incident 3 (03:00) — SAME zombie pattern, now understood.** The task
   sat in state `Running` with NO worker process alive (checked: no python/powershell from
   that instance), i.e. Task Scheduler still believed a run was in flight. With
