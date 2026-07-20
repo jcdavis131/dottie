@@ -1359,6 +1359,26 @@ most valuable catch so far:
 - [ ] Effect of the prompt change is **UNMEASURED**, and per §5.3.R8 the constraint-8
   comparison is already confounded. Scope any future before/after by the `boot` lines, not
   by commit timestamps.
+### 5.3.R13 — housekeeping on my own additions
+
+- [x] **`LEVELS` had gone stale and I did not notice while adding to it (08:12).** Three
+  stages landed tonight — rank collapse inside `dry_run`, plus `integration_width` and
+  `residual_stream` — while `LEVELS` still declared four. Nothing consumed the constant, so
+  nothing broke, which is precisely how a stale constant survives until something iterates
+  it to report coverage and **silently under-reports**. Every "4-level validator" claim in
+  the package docstrings was wrong too (`validate.py`, `implementation.py`, `__init__.py`,
+  the test module header).
+  - Fixed, and the validator docstring now describes all six stages with *why* L5/L6 exist
+    (candidates were passing every earlier stage and dying at integration; replaying the
+    stored failures, the six together catch 5 of 5).
+  - Added `test_LEVELS_matches_what_validate_actually_records`, which runs a healthy block
+    and asserts the recorded stages equal the declared ones. Verified red on the stale
+    version with the exact diff, not a structural error:
+    `recorded [... 'integration_width', 'residual_stream'] but LEVELS declares [... 'dry_run']`.
+  - Full suite 164 passed. Daemon confirmed alive (ideate at 08:13:17).
+  - The pattern is worth naming: **I added three gates and never re-read the file's own
+    description of itself.** Documentation drift is the cheapest kind of dishonesty to
+    introduce and the hardest to notice from inside the change.
 - [ ] NOTE for the operator's re-seed decision (#5): the re-seed should supply
   `metric_sem` from a **measured** run if one is available. A baseline re-seeded as a bare
   number is honest but keeps the loop on the weaker one-sample test indefinitely.

@@ -1,5 +1,5 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
-"""The 4-level validator — the chokepoint that keeps unsound LLM code off the GPU.
+"""The 6-stage validator — the chokepoint that keeps unsound LLM code off the GPU.
 
 LLM-generated PyTorch is treated as untrusted input and passed through a strict fail-fast
 hierarchy; the first failure short-circuits and its traceback is fed back to the implementation
@@ -9,8 +9,17 @@ model for a self-correction pass (capped retries).
     L2  contract      AST: a class with a ``forward`` method; no os/subprocess/shutil/sys
                       imports and no eval/exec/__import__ calls (untrusted code)
     L3  static        ruff --select=F821,E9 (undefined names, hallucinated methods, syntax)
-    L4  dry-run       import the module, instantiate the nn.Module, run a CPU forward pass,
-                      assert finite (no NaN/Inf) output
+    L4  dry-run       import the module, instantiate the nn.Module, run a CPU forward pass;
+                      assert finite output, reject a degenerate constant-offset block, and
+                      reject RANK COLLAPSE (right shape, every hidden feature identical)
+    L5  integration_width  re-run the dry run at the width the block is actually swapped in
+                      at (d_model), not the width the model declared for itself
+    L6  residual_stream    re-run it on a NON-LEAF tensor that requires grad — what a block
+                      in the residual stream actually receives, where `.grad` is None
+
+L5 and L6 exist because candidates were passing every earlier level and then dying at
+integration; replaying the stored failures, the six stages together catch 5 of 5 (TODOS
+§5.3.R8/R10/R11). A stage that cannot run is reported ``skipped`` with the true reason.
 
 Nothing here is fabricated: a level that cannot run (e.g. ruff or torch absent) is reported as
 ``skipped`` with the true reason — never counted as a pass.
@@ -34,7 +43,10 @@ from typing import Any, Callable, Dict, List, Optional
 ILLEGAL_IMPORTS = frozenset({"os", "subprocess", "shutil", "sys", "socket", "ctypes"})
 ILLEGAL_CALLS = frozenset({"eval", "exec", "__import__", "compile", "open"})
 
-LEVELS = ("syntax", "contract", "static", "dry_run")
+#: Ordered stages. Keep in step with `validate()` — anything iterating this to
+#: report coverage silently under-reports when a stage is added and not listed.
+LEVELS = ("syntax", "contract", "static", "dry_run", "integration_width",
+          "residual_stream")
 
 
 @dataclass

@@ -2,7 +2,7 @@
 """Implementation worker (worker 2) — hypothesis -> validated, drop-in PyTorch.
 
 The highest-failure-rate stage: LLMs mangle tensor shapes and numerical stability. The worker
-calls the real model, then runs the generated code through the 4-level validator with up to
+calls the real model, then runs the generated code through the 6-stage validator with up to
 ``max_retries`` self-correction passes (each pass hands the exact traceback back to the model).
 Only code that passes every runnable level is written to an experiment workspace and advanced to
 ``ready_for_training``; code that fails all retries is marked ``failed_validation`` honestly.

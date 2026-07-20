@@ -1,5 +1,5 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
-"""Tests for the research loop — ledger state machine, 4-level validator + self-correction,
+"""Tests for the research loop — ledger state machine, 6-stage validator + self-correction,
 constrained prompts + JSON parsing, the four workers end-to-end (real CPU training, honest
 promote/reject/fail paths), and honest Ollama refusal. CPU-only, no network."""
 
@@ -115,6 +115,31 @@ def test_validator_levels():
     assert not r.ok and r.level in ("static", "dry_run")
     r = validate.validate(NAN_CODE, class_name="Diverge", input_shape=[2, 4, 8])
     assert r.level == "dry_run" and "NaN" in r.detail
+
+
+def test_LEVELS_matches_what_validate_actually_records():
+    """The declared stage list must not drift from the stages that actually run.
+
+    Three stages were added on 2026-07-20 (rank collapse inside dry_run, plus
+    integration_width and residual_stream) while `LEVELS` still listed four. Nothing
+    consumed it yet, so nothing broke — which is exactly how a stale constant survives
+    until something iterates it to report coverage and silently under-reports.
+    """
+    healthy = """import torch
+import torch.nn as nn
+class Ok(nn.Module):
+    def __init__(self, dim: int = 64):
+        super().__init__()
+        self.w = nn.Linear(dim, dim)
+    def forward(self, x):
+        return x + torch.tanh(self.w(x))
+"""
+    r = validate.validate(healthy, class_name="Ok", init_kwargs={"dim": 64},
+                          input_shape=[4, 16, 64])
+    assert r.ok, r.detail
+    recorded = list(r.per_level)
+    assert recorded == list(validate.LEVELS), (
+        f"validate() recorded {recorded} but LEVELS declares {list(validate.LEVELS)}")
 
 
 def test_dry_run_enforces_output_shape_contract():
