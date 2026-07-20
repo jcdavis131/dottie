@@ -106,14 +106,37 @@ if ($heavy) {
 }
 
 # --- 4. Verdict --------------------------------------------------------------------
+# In -DryRun nothing was actually freed, so measuring now would compare against an
+# unchanged system and report NO-GO almost every time the model happens to be loaded --
+# telling the operator "do not proceed" when the real run would free several GB and
+# succeed. Project the reclaim instead, and label it clearly as a projection.
 $after = Get-AvailMB
 Step 4 "Result"
-Write-Host ("  available memory: {0} MB -> {1} MB  (need at least {2} MB)" -f $before, $after, $RequiredFreeMB)
-if ($after -ge $RequiredFreeMB) {
-    Write-Host "  GO - enough headroom for the VM and the fleet." -ForegroundColor Green
+if ($DryRun) {
+    $reclaimable = 0
+    Get-Process llama-server -ErrorAction SilentlyContinue |
+        ForEach-Object { $reclaimable += $_.WorkingSet64 }
+    foreach ($o in $orphans) {
+        $op = Get-Process -Id $o.ProcessId -ErrorAction SilentlyContinue
+        if ($op) { $reclaimable += $op.WorkingSet64 }
+    }
+    $reclaimMB = [math]::Round($reclaimable / 1MB)
+    $projected = $after + $reclaimMB
+    Write-Host ("  available now: {0} MB;  steps 1-2 would reclaim ~{1} MB" -f $after, $reclaimMB)
+    Write-Host ("  PROJECTED after a real run: ~{0} MB  (need at least {1} MB)" -f $projected, $RequiredFreeMB)
+    if ($projected -ge $RequiredFreeMB) {
+        Write-Host "  LIKELY GO - re-run without -DryRun to actually free it." -ForegroundColor Green
+    } else {
+        Write-Host "  LIKELY NO-GO even after freeing - close some browser/editor sessions too." -ForegroundColor Red
+    }
 } else {
-    Write-Host "  NO-GO - still tight. Close some browser/editor sessions, or wait for a" -ForegroundColor Red
-    Write-Host "  train to finish, then re-run this script." -ForegroundColor Red
+    Write-Host ("  available memory: {0} MB -> {1} MB  (need at least {2} MB)" -f $before, $after, $RequiredFreeMB)
+    if ($after -ge $RequiredFreeMB) {
+        Write-Host "  GO - enough headroom for the VM and the fleet." -ForegroundColor Green
+    } else {
+        Write-Host "  NO-GO - still tight. Close some browser/editor sessions, or wait for a" -ForegroundColor Red
+        Write-Host "  train to finish, then re-run this script." -ForegroundColor Red
+    }
 }
 
 Write-Host ""

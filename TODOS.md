@@ -63,8 +63,10 @@ permission classifier.
 ```powershell
 .\scripts\prepare_fleet_recovery.ps1          # add -DryRun to see it without changing anything
 ```
-It pauses the daemon, releases the model, reports any train still holding RAM, and prints
-GO/NO-GO against a 4 GB threshold — then stops and hands you `wsl --shutdown` plus the
+It pauses the daemon, kills orphaned workers, releases the model, reports any train
+still holding RAM, and prints GO/NO-GO against a 4 GB threshold (in `-DryRun` it
+PROJECTS the reclaim instead of measuring an unchanged system — measured 06:29:
+*"available now 354 MB; steps 1-2 would reclaim ~5,166 MB; projected ~5,520 MB — LIKELY GO"*) — then stops and hands you `wsl --shutdown` plus the
 T9.4 decision. It deliberately does NOT restart containers itself. Dry-run verified 04:33.
 
 **Or run these IN ORDER manually.** The research daemon cycles continuously (implement →
