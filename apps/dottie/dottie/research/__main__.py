@@ -14,6 +14,7 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from dottie.policy import OllamaPolicy, DottiePolicyUnavailable
@@ -210,6 +211,35 @@ def _choose_action(counts: Dict[str, int], *, now: float, last_ideate_ts: float,
     return "idle"
 
 
+def _boot_provenance() -> Dict[str, Any]:
+    """What code is actually running, recorded at start.
+
+    This daemon never live-reloads: a module edited while it runs takes effect only at
+    the next restart, and nothing recycles a forever-daemon on its own. So "which prompt
+    version produced this experiment?" is not answerable from commit timestamps — it
+    depends on when the process last started, which was previously only recoverable by
+    catching the PID's creation time before it died. Measured 2026-07-20: a before/after
+    comparison of the constraint-8 prompt refinement could not be scoped without it.
+    Recording the SHA and a prompts hash at boot makes every later comparison checkable
+    against the log instead of reconstructed from process tables."""
+    import hashlib
+    import subprocess
+    info: Dict[str, Any] = {}
+    try:
+        info["git_sha"] = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True,
+            timeout=10, cwd=str(Path(__file__).resolve().parent),
+        ).stdout.strip() or None
+    except Exception:                                  # git absent / not a checkout
+        info["git_sha"] = None
+    try:
+        src = Path(prompts.__file__).read_bytes()
+        info["prompts_sha256"] = hashlib.sha256(src).hexdigest()[:12]
+    except Exception:
+        info["prompts_sha256"] = None
+    return info
+
+
 def cmd_run(args) -> int:
     """Continuous chained runner: the moment one stage finishes, the next eligible
     stage starts — no hourly cadence. Honest refusals (Ollama down, unparseable
@@ -217,6 +247,10 @@ def cmd_run(args) -> int:
     unexpected errors exit non-zero so the scheduler heartbeat can restart clean."""
     import time
     led = _ledger(args)
+    print(json.dumps({"ts": time.time(), "action": "boot", "pid": os.getpid(),
+                      "trainer": getattr(args, "trainer", None),
+                      "max_retries": getattr(args, "max_retries", None),
+                      **_boot_provenance()}), flush=True)
     last_ideate = 0.0
     backoff = float(args.idle_seconds)
     consecutive_errors = 0

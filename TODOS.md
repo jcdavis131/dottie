@@ -983,7 +983,37 @@ most valuable catch so far:
   - Note also that the "50% die in validation" figure I have quoted came from a single
     overnight window (14 created / 5 evaluated), not lifetime. Lifetime is ~78%. Both
     can be true; they are different samples and should not be quoted interchangeably.
-- [ ] NEXT: **did the constraint-8 prompt refinement actually reduce dry_run failures?**
+- [x] **ATTEMPTED (07:55) — VERDICT: NOT YET MEASURABLE, n=2.** Buckets below, but the
+  honest answer is that the post-change sample is far too small and I am not going to
+  dress it up. Constraint-8 landed in two commits (`03f6b9d` 04:51, `94aa6e1` 06:20), but
+  **the commit time is the wrong boundary** — `prompts.py` is imported at daemon start and
+  this daemon never live-reloads, so the real boundary is the first restart *after* the
+  commit, which is 06:21:54. Only experiments created from 06:23 on actually ran the new
+  prompt.
+  | bucket | experiments | genuine fails | dry_run |
+  |---|---|---|---|
+  | before v1 commit | 66 | 47 | 35 (74%) |
+  | v1 commit -> daemon restart (still OLD prompt in memory) | 6 | 4 | 4 (100%) |
+  | after restart (both stages live) | 6 | 2 | 2 (100%) |
+  With n=2 the post-change figure is noise; the nominal direction is *worse* (100% vs
+  74%), which is exactly what two coin flips look like. **No conclusion either way.**
+  Re-run this once the post-restart bucket reaches ~20 genuine failures. Note the middle
+  bucket is mislabeled by construction in any commit-time-based analysis — it is
+  effectively "before", and would have silently contaminated the comparison.
+- [x] **BOOT PROVENANCE ADDED (08:00)** — the blocker above was that "which prompt version
+  produced this experiment?" was only recoverable by catching the daemon PID's creation
+  time before the process died. `cmd_run` now emits a `boot` line with pid, git SHA,
+  `prompts.py` sha256, trainer and max_retries. Verified against ground truth: reports
+  `70b43c5` / `3a70b43b736e`, both matching `git rev-parse` and a direct hash. Every
+  future before/after comparison is now checkable from run.log rather than reconstructed
+  from process tables. Full suite 151 passed.
+- [ ] NEXT: **re-run the constraint-8 comparison when n >= 20** in the post-restart
+  bucket, scoping it by the `boot` lines rather than commit timestamps. If dry_run share
+  has not moved, the axis-discipline guidance is not working and the dominant failure
+  mode (77% of genuine deaths) needs a different attack than prompt text — most likely
+  giving the corrector the actual tensor shapes at the failure point instead of a raw
+  traceback.
+- [ ] SUPERSEDED, kept for the record: did the constraint-8 refinement reduce dry_run?
   It was written to attack the dominant failure mode (77% of genuine deaths). Compare
   dry_run share of genuine failures for experiments created before vs after the prompt
   change, using the ledger timestamps. Two cautions: the refinement landed in two stages,
