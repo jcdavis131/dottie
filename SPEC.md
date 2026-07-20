@@ -55,8 +55,11 @@ The platform is "closing the loop" when, unattended:
    errors; this is the highest-leverage change to *what gets proposed*.
 3. **Per-seed factory trainer** — record `per_seed` so promotions are paired at source, not
    flagged after (§5.3.R93/R94; ~2 min/candidate idle).
-4. **Point the training monitor at real training-step telemetry** — it currently watches an
-   agent-task log and cries wolf (§5.3.R100).
+4. **Fix the training monitor's pseudo-steps fallback** — when `reports/metrics_<preset>.jsonl`
+   is absent (training never ran), `mode_monitor` falls back to STATUS.json and reports the
+   data builder's tokens/docs as training "steps", crying "training stale" off the builder's
+   clock (`dottie_continuous_loop.py:~408`, §5.3.R102, which corrects R100). Fix: absent
+   metrics file → report "not running", never "stale at step N".
 
 ## Constraints
 
