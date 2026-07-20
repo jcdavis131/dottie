@@ -3198,6 +3198,21 @@ repeatedly; the measurement disagreed with me.
   unilaterally; flagging it for decision.**
 - [ ] Re-run cost is now known and non-trivial: **~13 min/variant under memory pressure**
   (~3× the recorded 249 s), 40 min total. Worth budgeting before the seed sweep.
+- [ ] **⏳ SEED SWEEP RUNNING** (launched 14:59, ~55 min). R91 settled the *mechanism* but not
+  *reproducibility*: every variant ran at the single default seed 1234, so the headline delta
+  rests on one run per arm and cross-seed variance is unmeasured. Adds **seeds 0 and 1** to
+  the two arms carrying the claim — `baseline` (unmodified 787,072-param block) and `learned`
+  — giving **n=3 per arm** with the existing 1234 points.
+  Script `$CLAUDE_JOB_DIR/tmp/seed_sweep.py`, log `seed_sweep.log`, results
+  `seed_sweep_results.json` (flushed after EVERY run, so a crash cannot cost the sweep).
+  Started with `-u` and a logfile — R91's run was piped through `tail`, which buffered all
+  progress until exit and left me unable to tell a slow run from a hung one for 40 minutes.
+  **Deliberately not re-running `identity`/`fixed_half`:** they lost by 10.2 and 14.5 SEM, so
+  their ordering is not in question and each costs ~13 min.
+  **Reading it:** if the gap holds sign and rough size at all three seeds, R91 upgrades from
+  *"a result at this budget, one seed"* to a reproducible finding. If it flips or collapses at
+  any seed, the single-seed delta was a draw and **R91's headline needs retracting** — which
+  is the outcome this sweep exists to be able to detect.
 
 ### 5.3.R90 — the baseline moved this morning and every record of it was stale, mine included
 
