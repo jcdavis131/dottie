@@ -201,6 +201,16 @@ infrastructure failures (missing torch/corpus, unloadable module) return *earlie
 remain retryable, which preserves the original design intent. 37/37 tests green.
 - Worth noting: this bug was invisible while the wrapper kept killing the daemon every
   few minutes. Fixing the crash surfaced it within four minutes.
+- **VERIFIED 05:53** after restarting the daemon (the fix needed a restart to load — the
+  same skew I documented at 05:01 and then walked into three more times): the candidate
+  moved `ready_for_training → failed_training` with `attempts: 2` and the loop moved on.
+  Pipeline is now drained (no pending, no ready_for_training) so it proceeds to ideate.
+  Ledger: 54 failed_validation, 10 rejected, 3 failed_training, 2 sota.
+- ⚠ **STANDING OPERATIONAL RULE, learned four times tonight**: the research daemon imports
+  its code at process start, so **every code change to `apps/dottie/dottie/research/**`
+  requires an explicit restart** — `Stop-ScheduledTask`, kill any surviving
+  `dottie.research` python (the wrapper does not kill its child), then `Start-ScheduledTask`.
+  Waiting for a trigger does nothing while a daemon is alive.
 
 ### ⭐⭐ ROOT CAUSE FOUND AND FIXED (05:46) — the wrapper was killing the daemon
 
