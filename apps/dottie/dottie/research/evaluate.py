@@ -30,9 +30,24 @@ from dottie.research.ledger import Ledger, Experiment, Baseline, EVALUATION_PEND
 #: DIFFERENCES, which cancels shared variance); queued in TODOS §5.3.R.
 SIGNIFICANCE_SEM = 2.0
 
-#: Per-batch metric series a trainer may record, in preference order. The first one present
-#: supplies the spread; without any, significance is reported UNAVAILABLE, never assumed.
-_SERIES_KEYS = ("eval_ce_per_batch", "per_seed", "eval_losses")
+#: Metric series a trainer may record, in preference order. The first one present supplies
+#: the spread; without any, significance is reported UNAVAILABLE, never assumed.
+#:
+#: ``per_seed`` is FIRST on purpose. It holds one final loss per training seed, so its spread
+#: includes run-to-run variance; ``eval_ce_per_batch`` holds 20 batches from a SINGLE run and
+#: cannot see that variance at all. The order used to be the other way round, which meant a
+#: trainer recording both would have its stronger estimate silently ignored.
+#:
+#: This is not theoretical. TODOS §5.3.R93: the factory trainer records only
+#: ``eval_ce_per_batch`` (SEM 0.0172), and on that basis `5a7232ffea24` was promoted as a
+#: 4.4-SEM win. Paired seed testing then showed the same candidate is WORSE at all three
+#: seeds — because the unmodified model's own score swings **0.343 across seeds**, 4.5× the
+#: "effect". A bar built from within-run spread cannot measure the noise that decides the
+#: comparison.
+_SERIES_KEYS = ("per_seed", "eval_ce_per_batch", "eval_losses")
+
+#: Series that come from ONE training run, so their spread is blind to run-to-run variance.
+_WITHIN_RUN_SERIES = frozenset({"eval_ce_per_batch", "eval_losses"})
 
 
 def _baseline_provenance(baseline: Baseline) -> tuple:
@@ -286,6 +301,16 @@ def run_evaluation(ledger: Ledger, *, require_stable: bool = True,
             basis = (f"candidate-only SEM {sp['sem']:.5g} — the baseline records NO spread, "
                      f"so it is treated as an exact point and this test is weaker than "
                      f"{SIGNIFICANCE_SEM} SE of a real difference")
+        # Say which spread this rests on. A within-run series measures batch-to-batch noise
+        # inside ONE run and is blind to run-to-run variance — which is the variance that
+        # actually decides these comparisons (TODOS §5.3.R93: a candidate cleared this bar at
+        # 4.4 SEM and was then WORSE at all 3 seeds, because the unmodified model's own score
+        # swings 0.343 across seeds). Recorded, not gated: the honest fix is paired-seed
+        # evaluation, and `ab_nano.py` in every promotion bundle already does it.
+        if sp["series"] in _WITHIN_RUN_SERIES:
+            basis += (f" [spread from '{sp['series']}' — a SINGLE run's batch-to-batch "
+                      f"noise, which CANNOT see run-to-run variance. Verify with "
+                      f"promotions/<id>/ab_nano.py before trusting this]")
         significant = abs(delta) >= SIGNIFICANCE_SEM * se_diff
         # `significant` is direction-AGNOSTIC (it tests |delta| against noise), so a
         # candidate that is significantly WORSE also sets it true. Spell the direction out

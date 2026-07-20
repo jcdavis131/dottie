@@ -1660,6 +1660,56 @@ def test_two_sample_significance_when_baseline_records_spread(led, tmp_path):
     assert two["state"] == REJECTED                          # correctly HELD
 
 
+def test_cross_seed_spread_is_preferred_over_within_run_batch_spread(led, tmp_path):
+    """`per_seed` must win over `eval_ce_per_batch`, and a within-run basis must say so.
+
+    TODOS §5.3.R93 — the measured case. The factory trainer records only
+    `eval_ce_per_batch`: 20 batches from ONE run, SEM 0.0172. `5a7232ffea24` cleared the
+    2-SEM bar on that basis at 4.4 SEM and was promoted. Paired seed testing then found it
+    WORSE at all three seeds, because the unmodified model's own score swings **0.343 across
+    seeds** — 4.5x the "effect". Within-run spread is blind to the variance that decides the
+    comparison, so it is the wrong denominator.
+
+    `_SERIES_KEYS` used to list `eval_ce_per_batch` FIRST, meaning a trainer recording both
+    would have its cross-seed estimate silently ignored in favour of the weaker one.
+    """
+    # Wide cross-seed spread, deliberately tight batch spread: the two disagree hard.
+    per_seed = [4.30, 4.60, 4.90]                 # sem ~0.173
+    tight_batches = [4.60, 4.601, 4.599, 4.60, 4.601, 4.599]   # sem ~0.0004
+
+    def verdict_for(metrics):
+        L = Ledger(tmp_path / f"l_{abs(hash(str(sorted(metrics))))}.sqlite3")
+        L.seed_baseline(Baseline("proxy_loss", 4.9, higher_is_better=False,
+                                 architecture="ava-nano", experiment_id=None, updated_ts=0.0))
+        e = L.create(HYP)
+        L.transition(e.id, READY_FOR_TRAINING, implementation={"code": GOOD_CODE}, workspace="/w")
+        L.transition(e.id, EVALUATION_PENDING,
+                     train_metrics={"proxy_loss": 4.6, "integration": "proxy_micro_benchmark",
+                                    "params": 1000, **metrics})
+        return evaluate.run_evaluation(L)["verdict"]
+
+    # Both present -> the CROSS-SEED series must supply the spread.
+    both = verdict_for({"per_seed": per_seed, "eval_ce_per_batch": tight_batches})
+    assert both["sem_series"] == "per_seed", (
+        "within-run batch spread was preferred over cross-seed spread — the exact ordering "
+        "that let R93's candidate through")
+    assert both["sem"] > 0.1, both["sem"]
+
+    # delta is 0.3; on cross-seed SEM (~0.173) 2*SEM ~0.346 > 0.3 -> correctly NOT significant.
+    assert both["significant"] is False
+
+    # On the tight within-run spread alone the SAME delta looks overwhelming -- and the
+    # verdict must SAY the basis cannot see run-to-run variance.
+    within = verdict_for({"eval_ce_per_batch": tight_batches})
+    assert within["sem_series"] == "eval_ce_per_batch"
+    assert within["significant"] is True, "the weak basis passes what the honest one rejects"
+    assert "CANNOT see run-to-run variance" in within["significance"]
+    assert "ab_nano.py" in within["significance"], "must name the tool that settles it"
+
+    # A cross-seed basis carries no such warning -- the caveat must be specific, not decoration.
+    assert "CANNOT see run-to-run variance" not in both["significance"]
+
+
 def test_promotion_records_the_baselines_spread(led, tmp_path):
     """Promotion must carry the winning run's SEM onto the baseline.
 
