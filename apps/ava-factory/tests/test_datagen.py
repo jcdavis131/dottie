@@ -34,6 +34,19 @@ from ava.datagen.code_gen import CodeGenGenerator, SAFE_BUILTINS, run_sandboxed
 from ava.datagen.chat_safety import ChatSafetyGenerator, _SCENARIO_TEMPLATES
 from ava.datagen.react_tools import ASSISTANT, USER, ReactToolsGenerator
 from ava.datagen.scout_cli import ScoutCliGenerator
+from ava.datagen.zk_math import (
+    ZkMathGenerator,
+    _modexp_doc,
+    _modinv_doc,
+    _schnorr_doc,
+    _pedersen_doc,
+    _fiat_shamir_doc,
+    _merkle_doc,
+    _shamir_doc,
+    _challenge,
+    _h16,
+    _inv,
+)
 from ava.datagen.workflow_jobbench import (
     WorkflowJobBenchGenerator,
     _duplicate_doc,
@@ -90,6 +103,7 @@ ALL_GENERATORS = [
     DBTraceGenerator,
     CompressTraceGenerator,
     ScoutCliGenerator,
+    ZkMathGenerator,
 ]
 
 # A small byte target keeps tests fast while still exercising every family.
@@ -1027,6 +1041,95 @@ def test_scout_cli_build_docs_are_contract_complete():
 def test_scout_cli_task_types_present():
     tt = {d["task_type"] for d in _collect(ScoutCliGenerator)}
     assert {"automatic", "deliberate", "tool_selection"} <= tt, tt
+
+
+# ---------------------------------------------------------------------------
+# zk_math.py: every cryptographic transcript is re-verified INDEPENDENTLY from
+# the builder's meta -- re-check the Schnorr/Fiat-Shamir equation g^s==t*y^c,
+# recompute the Merkle root from the proof path, re-run Lagrange at 0. A doc
+# whose stated proof did not actually verify would fail here.
+# ---------------------------------------------------------------------------
+
+def test_zk_schnorr_and_fiat_shamir_equations_hold():
+    rng = random.Random(3)
+    for _ in range(60):
+        _t, tt, concept, m = _schnorr_doc(rng)
+        assert tt == "deliberate" and concept == "schnorr"
+        assert m["y"] == pow(m["g"], m["x"], m["p"]), "public key is not g^x"
+        assert pow(m["g"], m["s"], m["p"]) == (m["t"] * pow(m["y"], m["c"], m["p"])) % m["p"], \
+            "Schnorr verification g^s == t*y^c failed"
+        _t, tt, concept, m = _fiat_shamir_doc(rng)
+        assert concept == "fiat_shamir"
+        # the challenge must be the hash of the transcript prefix, not arbitrary
+        assert m["c"] == _challenge(m["preimage"], m["q"]), "Fiat-Shamir challenge not H(transcript)"
+        assert pow(m["g"], m["s"], m["p"]) == (m["t"] * pow(m["y"], m["c"], m["p"])) % m["p"]
+
+
+def test_zk_pedersen_opening_verifies():
+    rng = random.Random(5)
+    for _ in range(60):
+        _t, _tt, concept, m = _pedersen_doc(rng)
+        assert concept == "pedersen"
+        assert m["C"] == (pow(m["g"], m["m"], m["p"]) * pow(m["h"], m["r"], m["p"])) % m["p"]
+
+
+def test_zk_merkle_proof_recomputes_root():
+    rng = random.Random(7)
+    for _ in range(60):
+        _t, _tt, concept, m = _merkle_doc(rng)
+        assert concept == "merkle"
+        acc = m["leaf_hashes"][m["index"]]
+        for side, sib in m["proof"]:  # independent fold using the doc's own hash
+            acc = _h16(acc + sib) if side == "R" else _h16(sib + acc)
+        assert acc == m["root"], "Merkle inclusion proof does not recompute the committed root"
+
+
+def test_zk_shamir_reconstructs_secret():
+    rng = random.Random(9)
+    for _ in range(60):
+        _t, _tt, concept, m = _shamir_doc(rng)
+        assert concept == "shamir"
+        p = m["p"]
+        rec = 0  # independent Lagrange interpolation at x=0 over GF(p)
+        for j, (xj, yj) in enumerate(m["used"]):
+            num = den = 1
+            for k, (xk, _yk) in enumerate(m["used"]):
+                if k == j:
+                    continue
+                num = (num * (-xk)) % p
+                den = (den * (xj - xk)) % p
+            rec = (rec + yj * num * _inv(den % p, p)) % p
+        assert rec == m["secret"], "Shamir reconstruction != secret"
+        assert len(m["used"]) == m["t"], "reconstruction must use exactly t shares"
+
+
+def test_zk_field_drills_are_correct():
+    rng = random.Random(11)
+    for _ in range(80):
+        _t, tt, concept, m = _modexp_doc(rng)
+        assert tt == "automatic" and pow(m["g"], m["x"], m["p"]) == m["y"]
+        _t, tt, concept, m = _modinv_doc(rng)
+        assert tt == "automatic" and (m["a"] * m["inv"]) % m["p"] == 1
+
+
+def test_zk_safe_primes_are_actually_safe():
+    """p and (p-1)/2 must both be prime, or the order-q subgroup arguments in
+    every schnorr/pedersen/fiat_shamir doc are unfounded."""
+    from ava.datagen.zk_math import _SAFE_PRIMES
+
+    def is_prime(x):
+        if x < 2:
+            return False
+        i = 2
+        while i * i <= x:
+            if x % i == 0:
+                return False
+            i += 1
+        return True
+
+    for p in _SAFE_PRIMES:
+        assert is_prime(p), f"{p} is not prime"
+        assert is_prime((p - 1) // 2), f"(p-1)/2 for {p} is not prime -> not a safe prime"
 
 
 # ---------------------------------------------------------------------------

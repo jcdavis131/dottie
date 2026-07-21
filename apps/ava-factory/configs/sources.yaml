@@ -196,7 +196,7 @@ sources:
     generator: math
     text_field: text
     phases: [1]
-    weight: {1: 0.5}
+    weight: {1: 0.45}   # 2026-07-20: 0.50->0.45, freed 0.05 for synth_zk_math (verified number theory)
     task_type: deliberate
     filters: {min_chars: 1}
     license: synthetic
@@ -243,7 +243,7 @@ sources:
     generator: think_code
     text_field: text
     phases: [3, 5]
-    weight: {3: 0.15, 5: 0.15}
+    weight: {3: 0.15, 5: 0.11}   # 2026-07-20: P5 0.15->0.11, freed 0.04 for synth_zk_math P5 (verified NIZK anneal)
     task_type: deliberate
     filters: {min_chars: 1}
     license: synthetic
@@ -266,7 +266,7 @@ sources:
     generator: math
     text_field: text
     phases: [3]
-    weight: {3: 0.15}
+    weight: {3: 0.10}   # 2026-07-20: 0.15->0.10, freed 0.05 for synth_zk_math P3 (ZK protocols/proofs)
     task_type: temporal
     filters: {min_chars: 1}
     license: synthetic
@@ -548,6 +548,25 @@ sources:
     phases: [2, 3, 5]
     weight: {2: 0.05, 3: 0.05, 5: 0.04}
     task_type: tool_selection
+    filters: {min_chars: 1}
+    license: synthetic
+    gated: false
+
+  # ---- Zero-knowledge proofs + adjacent mathematics (2026-07-20). The crypto
+  # math ZK rests on was uncovered. Every doc's transcript is *computed* and its
+  # verification equation genuinely holds (g^s == t*y^c, Merkle root recompute,
+  # Lagrange at 0, ...); tests re-derive each proof independently from meta.
+  # p1 number-theory drills (modexp/modinv), p3 protocols (schnorr/pedersen/
+  # fiat_shamir/merkle/shamir), p5 verified NIZK anneal. Weight funded from the
+  # math budget: synth_math P1 0.50->0.45, synth_cot P3 0.15->0.10,
+  # synth_think_code P5 0.15->0.11; every phase stays at 1.0.
+  - name: synth_zk_math
+    kind: synthetic
+    generator: zk_math
+    text_field: text
+    phases: [1, 3, 5]
+    weight: {1: 0.05, 3: 0.05, 5: 0.04}
+    task_type: deliberate
     filters: {min_chars: 1}
     license: synthetic
     gated: false

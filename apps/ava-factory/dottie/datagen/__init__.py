@@ -29,6 +29,7 @@ from dottie.datagen.tool_curriculum import ToolUseGenerator
 from dottie.datagen.wiki_gen import WikiGenerator
 from dottie.datagen.workflow_gaia2 import WorkflowGaia2Generator
 from dottie.datagen.workflow_jobbench import WorkflowJobBenchGenerator
+from dottie.datagen.zk_math import ZkMathGenerator
 
 #: The single source of truth for synthetic sources. `configs/sources.yaml`
 #: refers to generators by these keys; dottie/pipeline/collector.py resolves
@@ -51,6 +52,7 @@ GENERATORS: dict[str, type[Generator]] = {
     WikiGenerator.name: WikiGenerator,
     WorkflowGaia2Generator.name: WorkflowGaia2Generator,
     WorkflowJobBenchGenerator.name: WorkflowJobBenchGenerator,
+    ZkMathGenerator.name: ZkMathGenerator,
 }
 
 __all__ = [
@@ -61,5 +63,5 @@ __all__ = [
     "ScoutCliGenerator",
     "SynProLiteGenerator", "ThinkInCodeGenerator", "ThinkToolsGenerator",
     "ToolUseGenerator", "WikiGenerator", "WorkflowGaia2Generator",
-    "WorkflowJobBenchGenerator",
+    "WorkflowJobBenchGenerator", "ZkMathGenerator",
 ]
