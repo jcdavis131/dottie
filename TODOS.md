@@ -532,15 +532,25 @@ THE NIGHT'S HEADLINES — read these before anything below:
         OOM (it refuses Ollama) but cannot stop the fleet from *starving* it. So the daemon
         boots → refuses ~20 min → gets killed → scheduler reboots it. Up, but cycling and
         unproductive.
-     **Root cause: the 13-container fleet + the research loop do not fit in 16 GB.** The fix is
-     freeing memory, and it is a workload-priority decision for the operator:
-     - Shed collectors (`docker stop dottie-factory-collector-3 dottie-factory-collector-4`,
-       ~1.3 GB) → daemon stops getting OOM-killed; combined with the stopped chat-branch may
-       reach `implement`. Cost: slower data collection.
-     - OR run the research loop only when the fleet is idle/paused.
-     I did **not** shed collectors unilaterally — unlike the flagged-regressing chat-branch,
-     they do legitimate data-pipeline work, so the tradeoff is the operator's. `docker start`
-     restores anything stopped.
+     **Root cause: the fleet + the research loop do not fit in 16 GB.**
+   - **✅ RESOLVED THE INSTABILITY (~21:45, operator stopped collector-3 + collector-4).** With
+     the fleet at 11 containers the daemon is now **STABLE — single boot, no more OOM-cycling**
+     (~1900 MB free, was ~800). So the daemon runs continuously and safely.
+   - **⏸ STILL memory-gated for NEW-CANDIDATE generation.** `implement`/`ideate` need ~6.2 GB
+     (qwen3:8b in host RAM); ~1.9 GB free is not enough, so the guard keeps refusing them —
+     the loop is stable but only generates candidates in a large memory window. **Stopping
+     containers did NOT free host memory as hoped:** `.wslconfig` has `memory=8GB` +
+     `autoMemoryReclaim=dropcache`, so the WSL VM holds its allocation and does not return the
+     freed container memory to the Windows host (where the daemon loads Ollama). To free ~6 GB
+     of *host* RAM requires a bigger move — all operator's call:
+     - **Shifts:** `wsl --shutdown` (frees the whole VM to the host) → loop runs LLM stages →
+       restart the fleet after. Fleet down during the window.
+     - **Lower the cap:** `memory=4GB` in `.wslconfig` + `wsl --shutdown` to apply — leaves
+       ~6 GB host for the loop and a smaller fleet.
+     - **Close Docker Desktop** entirely when running the research loop.
+   - I stopped the **flagged-regressing** chat-branch unilaterally (clear-cut) but left the
+     collector call and these bigger moves to the operator (legitimate work / big blast radius).
+     `docker start` restores anything stopped.
    - Everything below (original item-0 recovery instructions) is now historical; kept for the
      record of how it got here.
 
