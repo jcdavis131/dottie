@@ -314,6 +314,7 @@ def mode_monitor(args: argparse.Namespace) -> Dict[str, Any]:
     loss = None
     stale = False
     fallback = False
+    training_seen = False   # True only when real trainer telemetry is observed
     tokens = 0
     docs = 0
     eval_score = None
@@ -341,6 +342,7 @@ def mode_monitor(args: argparse.Namespace) -> Dict[str, Any]:
         if pipeline_status and isinstance(pipeline_status, dict):
             trainer = pipeline_status.get("trainer", {})
             last = trainer.get("last") or {}
+            training_seen = bool(last)   # a non-empty trainer row = real training telemetry
             # steps from various keys
             try:
                 steps = int(last.get("step") or last.get("steps") or trainer.get("n_points") or 0)
@@ -402,13 +404,13 @@ def mode_monitor(args: argparse.Namespace) -> Dict[str, Any]:
                     be = st.get("builder", {}).get("last_expansion", {})
                     tokens = int(be.get("tokens") or 0)
                     docs = int(be.get("docs") or 0)
-                    # Use doc count or token count as pseudo-steps per previous logs
-                    # Previous cron logs used tokens as steps? They logged steps 500044 etc where tokens=500034
-                    # We'll follow that: steps = docs + tokens? Actually observed steps 500044 ~ tokens
-                    steps = tokens or docs
-                    detail["fallback_source"] = "STATUS.json"
-                    detail["fallback_tokens"] = tokens
-                    detail["fallback_docs"] = docs
+                    # Builder tokens/docs are DATA-BUILDER activity, NOT training
+                    # steps. Never report them as training progress: doing so made
+                    # the monitor cry "stale at step 500044" off the builder's
+                    # token count when training had never run (R102).
+                    detail["fallback_source"] = "STATUS.json (builder activity)"
+                    detail["builder_tokens"] = tokens
+                    detail["builder_docs"] = docs
             except Exception as e:
                 detail["fallback_error"] = str(e)
 
@@ -417,8 +419,10 @@ def mode_monitor(args: argparse.Namespace) -> Dict[str, Any]:
         fallback = True
         status_str = "error"
 
-    # Final fallback if still 0 steps - try STATUS.json builder
-    if steps == 0:
+    # Capture DATA-BUILDER activity from STATUS.json for context. This is the
+    # builder's progress, surfaced alongside training -- never training steps and
+    # never training staleness (R102).
+    if "builder_tokens" not in detail:
         try:
             import json as _js
             status_json = _repo / "STATUS.json"
@@ -427,21 +431,18 @@ def mode_monitor(args: argparse.Namespace) -> Dict[str, Any]:
                 be = st.get("builder", {}).get("last_expansion", {})
                 tokens = int(be.get("tokens") or 0)
                 docs = int(be.get("docs") or 0)
-                if steps == 0:
-                    steps = tokens or docs or 0
-                if "fallback_source" not in detail:
-                    detail["fallback_source"] = "STATUS.json"
-                detail["fallback_tokens"] = tokens
-                detail["fallback_docs"] = docs
+                detail.setdefault("fallback_source", "STATUS.json (builder activity)")
+                detail["builder_tokens"] = tokens
+                detail["builder_docs"] = docs
                 if tokens == 0 and docs == 0:
-                    # older log showed 1606 fallback docs
                     detail["note"] = "no expansion found"
         except Exception:
             pass
-        fallback = fallback or (steps != 0 and loss is None)
 
-    # stale detection if fallback and no live timestamp: check builder timestamp age
-    if fallback and "last_event_ts" not in detail:
+    # Builder timestamp age -- recorded for context only. The builder's clock must
+    # NEVER mark *training* stale: that conflation is exactly what produced the
+    # false "stale 15.4h" alarm when training had simply never run (R102).
+    if fallback and "builder_last_expansion_ts" not in detail:
         try:
             import json as _js, datetime as _dt
             st_path = _repo / "STATUS.json"
@@ -451,19 +452,25 @@ def mode_monitor(args: argparse.Namespace) -> Dict[str, Any]:
                 ts_str = be.get("timestamp")
                 if ts_str:
                     try:
-                        # parse iso
-                        dt = _dt.datetime.fromisoformat(ts_str.replace("Z","+00:00"))
-                        age = ( _dt.datetime.now(_dt.timezone.utc) - dt ).total_seconds()
-                        detail["last_event_age_s"] = round(age,1)
-                        detail["last_event_ts"] = ts_str
-                        if age > 1800:
-                            stale = True
-                            status_str = "warn"
-                        detail["trainer_age_s"] = round(age,1)
+                        dt = _dt.datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                        age = (_dt.datetime.now(_dt.timezone.utc) - dt).total_seconds()
+                        detail["builder_age_s"] = round(age, 1)
+                        detail["builder_last_expansion_ts"] = ts_str
                     except Exception:
                         pass
         except Exception:
             pass
+
+    # Training steps/loss/staleness come ONLY from real trainer telemetry. If none
+    # was seen, training is NOT running -- report that plainly (status "not_running")
+    # instead of inventing a step count from the builder and crying stale off its
+    # clock (R102). A genuinely stale *trainer* (telemetry seen, old ts) keeps its
+    # real stale=True/status="warn" from the live branch above.
+    if not training_seen:
+        steps = 0
+        stale = False
+        if status_str != "error":
+            status_str = "not_running"
 
     duration = round(time.time() - start, 3)
     detail["stale_after_s"] = detail.get("stale_after_s", 180.0)

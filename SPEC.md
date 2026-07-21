@@ -55,11 +55,15 @@ The platform is "closing the loop" when, unattended:
    errors; this is the highest-leverage change to *what gets proposed*.
 3. **Per-seed factory trainer** — record `per_seed` so promotions are paired at source, not
    flagged after (§5.3.R93/R94; ~2 min/candidate idle).
-4. **Fix the training monitor's pseudo-steps fallback** — when `reports/metrics_<preset>.jsonl`
-   is absent (training never ran), `mode_monitor` falls back to STATUS.json and reports the
-   data builder's tokens/docs as training "steps", crying "training stale" off the builder's
-   clock (`dottie_continuous_loop.py:~408`, §5.3.R102, which corrects R100). Fix: absent
-   metrics file → report "not running", never "stale at step N".
+4. ✅ **DONE (2026-07-20) — Fix the training monitor's pseudo-steps fallback.** When no live
+   trainer telemetry exists, `mode_monitor` fell back to STATUS.json and reported the data
+   builder's tokens/docs as training "steps", crying "training stale" off the builder's clock
+   (§5.3.R102, which corrects R100). Fixed in `apps/ava-factory/scripts/dottie_continuous_loop.py`
+   (path was misstated here as `apps/dottie/…`): training steps/loss/staleness now come ONLY
+   from real trainer telemetry; absent it the status is **"not_running"** (steps=0, stale=False),
+   and builder activity is surfaced separately as `builder_tokens`/`builder_docs`/`builder_age_s`,
+   never as training progress. A genuinely stale *trainer* still warns. Locked in by
+   `tests/test_monitor_not_running.py` (4 tests).
 
 ## Constraints
 
