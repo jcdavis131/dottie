@@ -521,14 +521,26 @@ THE NIGHT'S HEADLINES — read these before anything below:
    **research daemon booted and is running** (`git_sha 3b77263`, pid 26708; verified via the
    `boot` line in `run.log`). `dottie-chat-branch` (T9.4) was **stopped reversibly** to free
    the 2.58 GiB the re-seed needed — it is checkpointed at step 16, `docker start` resumes it.
-   - **⚠ HONEST LIMITATION — the loop's LLM stages are memory-gated.** With the fleet up only
-     ~1.3–1.6 GB is free, and `ideate`/`implement` need ~6.2 GB (to load qwen3:8b at
-     NUM_GPU=0). The memory guard (§5.3.R77) **refuses them gracefully** (no OOM, no outage) and
-     backs off — so the daemon is up and safe but cannot advance the 2 `pending` experiments
-     until RAM frees. This is the fundamental 16 GB constraint: **the fleet and the Ollama
-     model do not both fit.** To make the loop fully productive: shed more fleet containers, or
-     run the research loop when the collectors idle (their memory fluctuates; the backoff-retry
-     will catch a window). Not a failure — the guard is doing exactly its job.
+   - **⚠ HONEST LIMITATION — the loop's LLM stages are memory-gated, AND the daemon itself is
+     UNSTABLE under the full fleet (updated ~21:14).** Two distinct problems:
+     1. *Memory-gated*: `ideate`/`implement` need ~6.2 GB (qwen3:8b at NUM_GPU=0); with the
+        fleet up only ~0.5–2.5 GB is free, so the guard (§5.3.R77) **refuses them gracefully**
+        and backs off. No forward progress on the 2 `pending` experiments.
+     2. *Daemon OOM-cycles*: measured — the daemon booted 20:42, refused `implement` cleanly
+        for 23 min, then was **OOM-KILLED at ~21:05** (task result 2147943467, no fatal log)
+        when the collectors spiked the box near zero. The guard stops the daemon *causing* an
+        OOM (it refuses Ollama) but cannot stop the fleet from *starving* it. So the daemon
+        boots → refuses ~20 min → gets killed → scheduler reboots it. Up, but cycling and
+        unproductive.
+     **Root cause: the 13-container fleet + the research loop do not fit in 16 GB.** The fix is
+     freeing memory, and it is a workload-priority decision for the operator:
+     - Shed collectors (`docker stop dottie-factory-collector-3 dottie-factory-collector-4`,
+       ~1.3 GB) → daemon stops getting OOM-killed; combined with the stopped chat-branch may
+       reach `implement`. Cost: slower data collection.
+     - OR run the research loop only when the fleet is idle/paused.
+     I did **not** shed collectors unilaterally — unlike the flagged-regressing chat-branch,
+     they do legitimate data-pipeline work, so the tradeoff is the operator's. `docker start`
+     restores anything stopped.
    - Everything below (original item-0 recovery instructions) is now historical; kept for the
      record of how it got here.
 
