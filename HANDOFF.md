@@ -2,6 +2,48 @@
 
 **For any assistant (or the operator) resuming Dottie work. Start here.**
 
+---
+
+## 📌 Session continuation — 2026-07-20 23:50 CDT (autonomous /loop run)
+
+**All work below is committed to local `main` (HEAD `12000d3`), test-verified, and additive to
+the git-B0 divergence — nothing pushed.** A long autonomous review+execute loop ran while the
+operator was away. What it did, and what is now YOURS to decide:
+
+### Shipped + verified this session (13 commits, `3b77263`…`12000d3`)
+- **Curriculum expansion** (the operator's `/auto-mode` ask — scout-cli, compression, DBs, ZK
+  math): wired the existing `compression`/`compress_trace`/`db_trace` generators + added two new
+  ones — `scout_cli` (using+building the agent CLI, grounded in the real contract) and `zk_math`
+  (Schnorr/Fiat-Shamir/Pedersen/Merkle/Shamir, every transcript computed+re-verified).
+  `9006865`,`3e03b44`,`8415a6b`. Every phase still sums to 1.0; **501 factory tests green.**
+- **SPEC build-priorities #1–#4 closed.** #4 monitor "not_running" fix (`b378bc3`); #3 per-seed
+  factory trainer **verified end-to-end on real torch** (`ca9f2f1`,`82fe0d9`); #2 measured
+  substantially-done from the ledger (100% param-declaration compliance — `e6d774f`).
+- **3 real correctness bugs fixed in packages** (found by review, each with tests):
+  `b5c4708` graphify — internal repo path **leaked into the public graph** (rst/qmd/yaml);
+  `9e87451` graphify — **dangling ecosystem edges** for every markdown doc (file:/doc: drift);
+  `12000d3` harness — **`auc_trapezoid` inflated AUC on ties** (a constant classifier scored 1.0).
+  Suites green: graphify **68**, harness **32/11 skip**.
+
+### ⚠ The two decisions that are YOURS (do NOT let a future autonomous tick ship these)
+- **Items 10 + 11 are COUPLED — decide together** (TODOS item 11, `76d7aaa`). The paired-seed
+  eval gate (item 11, the natural SPEC-#3 completion) lowers the promotion bar ~7×; with the
+  capacity gate (item 10) OFF, a capacity-*deleting* swap would then promote and re-contaminate
+  the baseline. Paired significance is a net win ONLY alongside item 10. Both are operator calls
+  (`evaluate.py:158`). I filed+specced them but deliberately did not ship.
+- **Item 9 (NEW) — deploy the new curriculum to the running collectors** (`43bced2`). Committed
+  but NOT live: collectors run the baked `ava/cpu:latest` (grep-confirmed 0 of the 3 new
+  sources). Needs a local image rebuild in a **memory-ample window** (a `docker build` at
+  <~2 GB free risks the VM). ⚠ NUMBERING: this NEW item 9 ≠ the OLD "item 9 WITHDRAWN" noted
+  further down — that referred to a since-superseded item.
+
+### Nothing else autonomous remains high-value
+The memory-safe review surface is largely exhausted (≈11 functions verified correct across
+factory/graphify/ava-skills/harness/scout-cli in addition to the 3 fixes). Remaining work is
+git reconcile (#0), the coupled gates (10+11), and the memory-gated deploy (#9) — all yours.
+
+---
+
 The living source of truth is [`TODOS.md`](./TODOS.md) — read its **"YOUR DECISION QUEUE"**
 section (search that header) and the **§5.3.R98–R100** entries at the top of the R-log. This
 file is just the entry point; `TODOS.md` has the detail and stays current.
