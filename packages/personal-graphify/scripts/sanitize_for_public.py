@@ -92,7 +92,15 @@ def sanitize_id(raw_id: str):
                 parts = rest.split(":")
                 title = parts[0]
                 for part in parts[1:]:
-                    if re.search(r"(?i)^[A-Z]/|^/|personal-graphify|ava-agi|scout-|\.md|\.py|\.txt", part):
+                    # The extension list must match the doc types the pipeline indexes
+                    # (detect.py DOC_EXTS: md/mdx/mdc/txt/rst/qmd/yaml/yml — `.md` already
+                    # covers mdx/mdc as a substring). Omitting rst/qmd/yaml leaked the
+                    # internal repo path (e.g. dottie/notes/guide.rst) into the "public"
+                    # concept id AND broke title-only dedup against the same heading in a
+                    # .md file. A per-extension list is used, not a generic `\.\w+$`, so a
+                    # legitimate title segment like "Node.js" is not mistaken for a path.
+                    if re.search(r"(?i)^[A-Z]/|^/|personal-graphify|ava-agi|scout-|"
+                                 r"\.md|\.py|\.txt|\.rst|\.qmd|\.ya?ml", part):
                         break
                     title = f"{title}:{part}"
             else:
