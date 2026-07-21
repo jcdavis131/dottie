@@ -516,9 +516,25 @@ THE NIGHT'S HEADLINES — read these before anything below:
      include the ruff reformat or CI. That is fine for running the daemon (formatting is
      cosmetic), but do the reconciliation before the CI workflow would judge this branch.
 
-0. ⛔ **TRAINING IS OFF AND DOCKER IS DOWN. Restore both — but RE-SEED FIRST (see below).**
+0. ✅ **RECOVERED 2026-07-20 ~20:43 — the loop is back up.** Docker fleet up (13 containers),
+   baseline re-seeded (`5.54404` → honest **`5.73733`**, cross-seed SEM 0.099 n=3), and the
+   **research daemon booted and is running** (`git_sha 3b77263`, pid 26708; verified via the
+   `boot` line in `run.log`). `dottie-chat-branch` (T9.4) was **stopped reversibly** to free
+   the 2.58 GiB the re-seed needed — it is checkpointed at step 16, `docker start` resumes it.
+   - **⚠ HONEST LIMITATION — the loop's LLM stages are memory-gated.** With the fleet up only
+     ~1.3–1.6 GB is free, and `ideate`/`implement` need ~6.2 GB (to load qwen3:8b at
+     NUM_GPU=0). The memory guard (§5.3.R77) **refuses them gracefully** (no OOM, no outage) and
+     backs off — so the daemon is up and safe but cannot advance the 2 `pending` experiments
+     until RAM frees. This is the fundamental 16 GB constraint: **the fleet and the Ollama
+     model do not both fit.** To make the loop fully productive: shed more fleet containers, or
+     run the research loop when the collectors idle (their memory fluctuates; the backoff-retry
+     will catch a window). Not a failure — the guard is doing exactly its job.
+   - Everything below (original item-0 recovery instructions) is now historical; kept for the
+     record of how it got here.
+
+   ~~⛔ **TRAINING IS OFF AND DOCKER IS DOWN. Restore both — but RE-SEED FIRST (see below).**
    Re-verified 15:40: scheduled task **`Disabled`**, **0** research processes, **~3.1 GB**
-   free, on AC, Docker engine down (`dockerd` never started inside the VM — the VM is up).
+   free, on AC, Docker engine down (`dockerd` never started inside the VM — the VM is up).~~
    ```powershell
    python -m dottie.research calibrate-baseline --overwrite   # FIRST — see the coupling note
    wsl --shutdown                                             # docker engine back in ~2 min
