@@ -700,6 +700,42 @@ significance test; and a mutation audit (8/8) that caught a hollow test in my ow
 **Real wins remain ZERO** — both recorded SOTAs are artifacts. The gates stop false wins;
 item 8 is what would produce a true one.
 
+---
+
+9. 📚 **DEPLOY THE NEW CURRICULUM to the running collectors (added 22:40 2026-07-20 — state
+   read live).** This session added three curriculum topics you asked for and they are
+   committed + fully test-verified (501 factory tests green) but **NOT yet live** — the
+   collectors run the baked `ava/cpu:latest` image, which does not contain them.
+   - **What changed (local commits, HEAD `8415a6b`):** `9006865` wires the existing but
+     unregistered `compression`/`compress_trace`/`db_trace` generators into `sources.yaml`;
+     `3e03b44` adds a new `scout_cli` generator (using + building the agent CLI, grounded in
+     the real bigbang contract); `8415a6b` adds a new `zk_math` generator (Schnorr, Fiat-Shamir
+     NIZK, Pedersen, Merkle, Shamir — every transcript computed and re-verified). Every phase's
+     mixture still sums to 1.0.
+   - **Why not live (confirmed, not assumed):** `docker exec dottie-factory-collector-1 grep -c
+     'synth_zk_math\|synth_scout_cli\|synth_compression' /app/configs/sources.yaml` → **0**, and
+     the new generator `.py` files are absent from the image too. The Dockerfile bakes config via
+     `COPY . /workspace`; the running collector bind-mounts only `ava_raw/ava_state/ava_reports/C:`.
+     Same situation as the item-2.1 rebuild note in Standing State.
+   - **⚠ PRECONDITION — memory.** A `docker build` spikes RAM/CPU; at **813 MB free** (measured
+     this tick) it risks the exact VM death that took the fleet down before. **Do this only when
+     available memory is ample** (`(Get-Counter '\Memory\Available MBytes').CounterSamples[0].CookedValue`,
+     want > ~3 GB — ideally with Ollama unloaded). That is why I did not run it autonomously.
+   - **Command (local build from working-tree HEAD — independent of item 00; no push/pull):**
+     from `apps/ava-factory`:
+     `docker compose -f docker-compose.yml -f docker-compose.tool-fork.yml build` (rebuilds the
+     shared `ava/cpu:latest` from local code, picking up the new configs + generators), then
+     `docker compose -f docker-compose.yml -f docker-compose.tool-fork.yml up -d --no-deps --force-recreate collector`
+     (recreate the data-selector; add `curator` if you want it recreated too). No data loss —
+     checkpoints/manifest live on the named volumes.
+   - **Lighter alternative (no rebuild):** add `../configs:/app/configs:ro` **and** the datagen
+     package as bind-mounts to the `collector` service in `docker-compose.tool-fork.yml`, then
+     `up -d --no-deps --force-recreate collector`. Cheaper on memory (no image build) but you must
+     bind the whole importable package so `scout_cli`/`zk_math` resolve; the rebuild is cleaner.
+   - **Acceptance:** the grep above returns **3**, and a collection epoch emits docs whose
+     `source` starts with `compression/`, `scout_cli/`, or `zk_math/` (check `/reports` or
+     `docker logs dottie-factory-collector-1`).
+
 ## Standing state (context for every step below)
 
 - `dottie-factory` fleet (13 containers) runs ONLY from `apps/ava-factory`; trainer is
