@@ -18,6 +18,7 @@ an artifact of running scripts/cpu_pilot_e2e.py, not of checking out the repo.
 
 from __future__ import annotations
 
+import itertools
 import json
 import math
 from pathlib import Path
@@ -37,7 +38,7 @@ def _resolve_artifact(recorded: str) -> Path | None:
         return cand
     s = str(recorded).replace("\\", "/")
     if "runs/" in s:
-        rel = REPO / s[s.index("runs/"):]
+        rel = REPO / s[s.index("runs/") :]
         if rel.exists():
             return rel
     return None
@@ -51,7 +52,9 @@ RUN_KEYS = ("pretrain", "branch_agentic")
 @pytest.fixture(scope="module")
 def manifest() -> dict:
     if not MANIFEST_PATH.exists():
-        pytest.skip(f"no pilot manifest at {MANIFEST_PATH}; run scripts/cpu_pilot_e2e.py")
+        pytest.skip(
+            f"no pilot manifest at {MANIFEST_PATH}; run scripts/cpu_pilot_e2e.py"
+        )
     return json.loads(MANIFEST_PATH.read_text())
 
 
@@ -59,7 +62,8 @@ def test_scale_and_capability_labels(manifest):
     assert manifest["scale"] == "smoke_cpu_pilot"
     assert manifest["capability_claim"] == "none"
     assert manifest["status"] == "success", (
-        f"pilot manifest records a failed run: {manifest.get('error')!r}")
+        f"pilot manifest records a failed run: {manifest.get('error')!r}"
+    )
 
 
 def test_all_stages_present_with_real_timings(manifest):
@@ -85,8 +89,10 @@ def test_tokenizer_artifact_exists_with_sha(manifest):
     assert t["vocab_size"] >= 6  # at minimum the pinned specials
     resolved = _resolve_artifact(t["path"])
     if resolved is None:
-        pytest.skip(f"tokenizer artifact not on this box ({t['path']}) — "
-                    "regenerate via scripts/cpu_pilot_e2e.py")
+        pytest.skip(
+            f"tokenizer artifact not on this box ({t['path']}) — "
+            "regenerate via scripts/cpu_pilot_e2e.py"
+        )
 
 
 def test_packed_shard_sidecars_exist(manifest):
@@ -98,7 +104,9 @@ def test_packed_shard_sidecars_exist(manifest):
     # the module's skip-when-artifacts-absent philosophy. When present (a real run), validate
     # their cross-file consistency fully.
     if not Path(p["shards"][0]["idx"]).exists():
-        pytest.skip("packed idx sidecars absent (fresh clone — gitignored, regenerable)")
+        pytest.skip(
+            "packed idx sidecars absent (fresh clone — gitignored, regenerable)"
+        )
     for s in p["shards"]:
         assert s["tokens"] > 0
         idx = Path(s["idx"])
@@ -119,7 +127,9 @@ def _check_loss_series(run: dict) -> None:
             assert math.isfinite(v), f"{series_key} has non-finite {v!r}"
     # steps strictly increasing ints — a real, ordered log, not a paste
     assert all(isinstance(s, int) for s in steps)
-    assert all(b > a for a, b in zip(steps, steps[1:])), "logged_steps not increasing"
+    assert all(b > a for a, b in itertools.pairwise(steps)), (
+        "logged_steps not increasing"
+    )
 
 
 @pytest.mark.parametrize("run_key", RUN_KEYS)
@@ -127,7 +137,10 @@ def test_run_loss_series_is_real(manifest, run_key):
     run = manifest["runs"][run_key]
     _check_loss_series(run)
     assert run["wall_seconds"] > 0
-    assert isinstance(run["final_ckpt_sha256"], str) and len(run["final_ckpt_sha256"]) == 64
+    assert (
+        isinstance(run["final_ckpt_sha256"], str)
+        and len(run["final_ckpt_sha256"]) == 64
+    )
 
 
 @pytest.mark.parametrize("run_key", RUN_KEYS)
@@ -140,16 +153,23 @@ def test_run_metrics_file_exists_and_matches(manifest, run_key):
     run = manifest["runs"][run_key]
     mpath = _resolve_artifact(run["metrics_file"])
     if mpath is None:
-        pytest.skip(f"metrics jsonl not on this box ({run['metrics_file']}) — "
-                    "regenerate via scripts/cpu_pilot_e2e.py")
+        pytest.skip(
+            f"metrics jsonl not on this box ({run['metrics_file']}) — "
+            "regenerate via scripts/cpu_pilot_e2e.py"
+        )
     records = [json.loads(l) for l in mpath.read_text().splitlines() if l.strip()]
     steps = [r for r in records if r.get("event") == "step"]
-    assert [r["step"] for r in steps] == run["logged_steps"], "step indices diverge from jsonl"
-    for series_key, jsonl_key in (("lm_loss_series", "lm"), ("total_loss_series", "total")):
+    assert [r["step"] for r in steps] == run["logged_steps"], (
+        "step indices diverge from jsonl"
+    )
+    for series_key, jsonl_key in (
+        ("lm_loss_series", "lm"),
+        ("total_loss_series", "total"),
+    ):
         manifest_vals = run[series_key]
         jsonl_vals = [r[jsonl_key] for r in steps]
         assert len(manifest_vals) == len(jsonl_vals)
-        for i, (mv, jv) in enumerate(zip(manifest_vals, jsonl_vals)):
+        for i, (mv, jv) in enumerate(zip(manifest_vals, jsonl_vals, strict=False)):
             assert math.isclose(mv, jv, rel_tol=1e-6, abs_tol=1e-9), (
                 f"{series_key}[{i}] = {mv} != jsonl {jsonl_key} {jv} — manifest does not "
                 f"match the raw log"
@@ -163,7 +183,8 @@ def test_branch_forked_from_pretrain_ckpt(manifest):
     assert fork, "branch run has no branch_forked event"
     assert fork["branch"] == "agentic"
     assert fork["init"] == pre["final_ckpt"], (
-        "branch did not init from the pretrain final checkpoint")
+        "branch did not init from the pretrain final checkpoint"
+    )
     assert fork["frozen"] == ["system1", "system2"]
     assert isinstance(fork["trainable"], int) and fork["trainable"] > 0
 

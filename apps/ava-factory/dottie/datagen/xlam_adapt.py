@@ -11,6 +11,7 @@ grounding still comes from ``synth_tool_use`` / ``synth_react``.
 Collector wiring: ``adapter: xlam_react`` on an HF source. Returns a record
 with ``text`` / ``_task_type`` / ``_concept``, or ``None`` to skip.
 """
+
 from __future__ import annotations
 
 import json
@@ -131,11 +132,12 @@ def record_to_react(rec: dict) -> dict | None:
             arguments = {}
         call = format_action(name, arguments)
         used.append(name)
-        turns.append((
-            "assistant",
-            f"Thought: of the listed tools, {name} fits this step.\n"
-            f"Action: {call}",
-        ))
+        turns.append(
+            (
+                "assistant",
+                f"Thought: of the listed tools, {name} fits this step.\nAction: {call}",
+            )
+        )
         obs = json.dumps(
             {"ok": True, "tool": name, "arguments": arguments},
             ensure_ascii=False,
@@ -143,11 +145,13 @@ def record_to_react(rec: dict) -> dict | None:
         turns.append(("user", f"Observation: {obs}"))
 
     summary = ", ".join(used)
-    turns.append((
-        "assistant",
-        f"I selected and called: {summary}. "
-        f"Each Observation echoes the chosen call (verified format).",
-    ))
+    turns.append(
+        (
+            "assistant",
+            f"I selected and called: {summary}. "
+            f"Each Observation echoes the chosen call (verified format).",
+        )
+    )
     text = _dialogue(turns)
     return {
         "text": text,

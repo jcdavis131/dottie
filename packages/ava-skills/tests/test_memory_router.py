@@ -3,7 +3,6 @@
 measured, surfaced recall errors."""
 
 import pytest
-
 from conftest import load_skill_module
 
 mr = load_skill_module("memory-router")
@@ -47,15 +46,21 @@ class TestShardMemoScoping:
 
 class TestKL:
     QUERIES = [
-        "", "write python code function", "blackmail threat expose",
-        "plan the schedule then deadline", "prove the theorem with logic",
-        "remember the openwiki fact", "quick fast react",
+        "",
+        "write python code function",
+        "blackmail threat expose",
+        "plan the schedule then deadline",
+        "prove the theorem with logic",
+        "remember the openwiki fact",
+        "quick fast react",
     ]
 
     def test_kl_nonnegative_for_all_routes(self):
         for q in self.QUERIES:
             r = mr.run(mode="mock", instruction=q)
-            assert r["measured"]["kl"] >= 0.0, f"KL must be >=0, got {r['measured']['kl']} for {q!r}"
+            assert r["measured"]["kl"] >= 0.0, (
+                f"KL must be >=0, got {r['measured']['kl']} for {q!r}"
+            )
 
     def test_kl_zero_when_routed_equals_bias(self):
         # 'write python code function' -> Router_default tier-B, route_score code branch
@@ -68,8 +73,15 @@ class TestKL:
 class TestTargetsOutsideMeasured:
     def test_measured_contains_no_target_fields(self):
         r = mr.run(mode="mock", instruction="remember the wiki fact")
-        for k in ("target_f1_improvement", "target_kl_w", "inter_mi_target", "vecscan_reduction"):
-            assert k not in r["measured"], f"{k} is a design target and must not be in measured"
+        for k in (
+            "target_f1_improvement",
+            "target_kl_w",
+            "inter_mi_target",
+            "vecscan_reduction",
+        ):
+            assert k not in r["measured"], (
+                f"{k} is a design target and must not be in measured"
+            )
 
     def test_targets_key_present_at_top_level(self):
         r = mr.run(mode="mock", instruction="remember the wiki fact")
@@ -79,19 +91,35 @@ class TestTargetsOutsideMeasured:
 class TestRecallErrors:
     def test_recall_roundtrip_from_minted_store(self, tmp_path):
         store = mm.ShardStore(tmp_path)
-        store.append(mm.mint_shard(mm.TraceEvent(
-            source="test", instruction="remember the wiki fact about spiders",
-            outcome="stored", ok=True, branch="base")))
-        r = mr.run(mode="mock", instruction="remember the wiki fact",
-                   memory_store_dir=str(tmp_path))
-        assert any("spiders" in m["instruction"] for m in r["measured"]["recalled_memories"])
+        store.append(
+            mm.mint_shard(
+                mm.TraceEvent(
+                    source="test",
+                    instruction="remember the wiki fact about spiders",
+                    outcome="stored",
+                    ok=True,
+                    branch="base",
+                )
+            )
+        )
+        r = mr.run(
+            mode="mock",
+            instruction="remember the wiki fact",
+            memory_store_dir=str(tmp_path),
+        )
+        assert any(
+            "spiders" in m["instruction"] for m in r["measured"]["recalled_memories"]
+        )
         assert "memory_recall_error" not in r["measured"]
 
     def test_store_failure_is_surfaced_not_swallowed(self, tmp_path):
         blocker = tmp_path / "not-a-dir"
         blocker.write_text("i am a file where a directory is expected")
-        r = mr.run(mode="mock", instruction="remember the wiki fact",
-                   memory_store_dir=str(blocker))
+        r = mr.run(
+            mode="mock",
+            instruction="remember the wiki fact",
+            memory_store_dir=str(blocker),
+        )
         assert r["measured"]["recalled_memories"] == []
         assert "memory_recall_error" in r["measured"]
         assert "Error" in r["measured"]["memory_recall_error"]

@@ -18,6 +18,7 @@ generated state can ever be committed; DOTTIE_STATE_DB overrides for tests and c
 Solo personal project, no connection to employer, built with public/free-tier only.
 Stdlib only (sqlite3, json) — no new dependencies.
 """
+
 from __future__ import annotations
 
 import json
@@ -25,7 +26,7 @@ import os
 import pathlib
 import sqlite3
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 SCHEMA_VERSION = 1
 
@@ -87,13 +88,14 @@ class JSpaceStateStore:
         self._conn.executescript(_SCHEMA)
         self._conn.execute(
             "INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', ?)",
-            (str(SCHEMA_VERSION),))
+            (str(SCHEMA_VERSION),),
+        )
         self._conn.commit()
 
     def close(self) -> None:
         self._conn.close()
 
-    def __enter__(self) -> "JSpaceStateStore":
+    def __enter__(self) -> JSpaceStateStore:
         return self
 
     def __exit__(self, *exc) -> None:
@@ -101,39 +103,65 @@ class JSpaceStateStore:
 
     # -- skills_library ------------------------------------------------------
 
-    def register_skill(self, name: str, code: str, *, schema: Optional[Dict] = None,
-                       capabilities: str = "", source: str = "forge") -> int:
+    def register_skill(
+        self,
+        name: str,
+        code: str,
+        *,
+        schema: dict | None = None,
+        capabilities: str = "",
+        source: str = "forge",
+    ) -> int:
         """Insert or version-bump a skill. Returns the stored version."""
         now = time.time()
-        cur = self._conn.execute("SELECT version FROM skills_library WHERE name=?", (name,))
+        cur = self._conn.execute(
+            "SELECT version FROM skills_library WHERE name=?", (name,)
+        )
         row = cur.fetchone()
         if row is None:
             self._conn.execute(
                 "INSERT INTO skills_library (name, code, schema_json, capabilities, source,"
                 " version, created_ts, updated_ts) VALUES (?,?,?,?,?,1,?,?)",
-                (name, code, json.dumps(schema) if schema else None, capabilities,
-                 source, now, now))
+                (
+                    name,
+                    code,
+                    json.dumps(schema) if schema else None,
+                    capabilities,
+                    source,
+                    now,
+                    now,
+                ),
+            )
             version = 1
         else:
             version = int(row["version"]) + 1
             self._conn.execute(
                 "UPDATE skills_library SET code=?, schema_json=?, capabilities=?, source=?,"
                 " version=?, updated_ts=? WHERE name=?",
-                (code, json.dumps(schema) if schema else None, capabilities, source,
-                 version, now, name))
+                (
+                    code,
+                    json.dumps(schema) if schema else None,
+                    capabilities,
+                    source,
+                    version,
+                    now,
+                    name,
+                ),
+            )
         self._conn.commit()
         return version
 
-    def get_skill(self, name: str) -> Optional[Dict[str, Any]]:
+    def get_skill(self, name: str) -> dict[str, Any] | None:
         row = self._conn.execute(
-            "SELECT * FROM skills_library WHERE name=?", (name,)).fetchone()
+            "SELECT * FROM skills_library WHERE name=?", (name,)
+        ).fetchone()
         if row is None:
             return None
         d = dict(row)
         d["schema"] = json.loads(d.pop("schema_json")) if d.get("schema_json") else None
         return d
 
-    def list_skills(self, *, source: Optional[str] = None) -> List[Dict[str, Any]]:
+    def list_skills(self, *, source: str | None = None) -> list[dict[str, Any]]:
         q = "SELECT name, capabilities, source, version, updated_ts FROM skills_library"
         args: tuple = ()
         if source:
@@ -143,49 +171,76 @@ class JSpaceStateStore:
 
     # -- session_context (OpenClaw) -----------------------------------------
 
-    def set_context(self, session_id: str, key: str, value: Any,
-                    *, channel: str = "default") -> None:
+    def set_context(
+        self, session_id: str, key: str, value: Any, *, channel: str = "default"
+    ) -> None:
         self._conn.execute(
             "INSERT INTO session_context (session_id, channel, key, value_json, updated_ts)"
             " VALUES (?,?,?,?,?) ON CONFLICT (session_id, channel, key)"
             " DO UPDATE SET value_json=excluded.value_json, updated_ts=excluded.updated_ts",
-            (session_id, channel, key, json.dumps(value), time.time()))
+            (session_id, channel, key, json.dumps(value), time.time()),
+        )
         self._conn.commit()
 
-    def get_context(self, session_id: str, key: str, default: Any = None,
-                    *, channel: str = "default") -> Any:
+    def get_context(
+        self,
+        session_id: str,
+        key: str,
+        default: Any = None,
+        *,
+        channel: str = "default",
+    ) -> Any:
         row = self._conn.execute(
             "SELECT value_json FROM session_context WHERE session_id=? AND channel=?"
-            " AND key=?", (session_id, channel, key)).fetchone()
+            " AND key=?",
+            (session_id, channel, key),
+        ).fetchone()
         return json.loads(row["value_json"]) if row else default
 
-    def session_snapshot(self, session_id: str) -> Dict[str, Dict[str, Any]]:
+    def session_snapshot(self, session_id: str) -> dict[str, dict[str, Any]]:
         """All channels and keys for a session — the cross-channel state OpenClaw
         loops re-enter with."""
-        out: Dict[str, Dict[str, Any]] = {}
+        out: dict[str, dict[str, Any]] = {}
         for r in self._conn.execute(
-                "SELECT channel, key, value_json FROM session_context WHERE session_id=?",
-                (session_id,)):
+            "SELECT channel, key, value_json FROM session_context WHERE session_id=?",
+            (session_id,),
+        ):
             out.setdefault(r["channel"], {})[r["key"]] = json.loads(r["value_json"])
         return out
 
     # -- task_logs -----------------------------------------------------------
 
-    def log_task(self, session_id: str, task: str, outcome: str, *,
-                 trace: Optional[Dict] = None, policy_ok: Optional[bool] = None,
-                 eval_score: Optional[float] = None) -> int:
+    def log_task(
+        self,
+        session_id: str,
+        task: str,
+        outcome: str,
+        *,
+        trace: dict | None = None,
+        policy_ok: bool | None = None,
+        eval_score: float | None = None,
+    ) -> int:
         """Record one execution. eval_score/policy_ok stay NULL unless a real check ran —
         the anti-mock guard asserts no defaulted scores ever enter this table."""
         cur = self._conn.execute(
             "INSERT INTO task_logs (session_id, task, outcome, trace_json, policy_ok,"
             " eval_score, ts) VALUES (?,?,?,?,?,?,?)",
-            (session_id, task, outcome, json.dumps(trace) if trace else None,
-             None if policy_ok is None else int(policy_ok), eval_score, time.time()))
+            (
+                session_id,
+                task,
+                outcome,
+                json.dumps(trace) if trace else None,
+                None if policy_ok is None else int(policy_ok),
+                eval_score,
+                time.time(),
+            ),
+        )
         self._conn.commit()
         return int(cur.lastrowid)
 
-    def recent_tasks(self, limit: int = 50,
-                     session_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    def recent_tasks(
+        self, limit: int = 50, session_id: str | None = None
+    ) -> list[dict[str, Any]]:
         q = "SELECT * FROM task_logs"
         args: tuple = ()
         if session_id:
@@ -196,19 +251,29 @@ class JSpaceStateStore:
         out = []
         for r in rows:
             d = dict(r)
-            d["trace"] = json.loads(d.pop("trace_json")) if d.get("trace_json") else None
+            d["trace"] = (
+                json.loads(d.pop("trace_json")) if d.get("trace_json") else None
+            )
             out.append(d)
         return out
 
-    def task_stats(self) -> Dict[str, Any]:
-        by_outcome = {r["outcome"]: r["n"] for r in self._conn.execute(
-            "SELECT outcome, COUNT(*) AS n FROM task_logs GROUP BY outcome")}
+    def task_stats(self) -> dict[str, Any]:
+        by_outcome = {
+            r["outcome"]: r["n"]
+            for r in self._conn.execute(
+                "SELECT outcome, COUNT(*) AS n FROM task_logs GROUP BY outcome"
+            )
+        }
         scored = self._conn.execute(
             "SELECT COUNT(*) AS n, AVG(eval_score) AS avg FROM task_logs"
-            " WHERE eval_score IS NOT NULL").fetchone()
-        return {"by_outcome": by_outcome, "total": sum(by_outcome.values()),
-                "evaluated": int(scored["n"]),
-                "avg_eval_score": scored["avg"]}      # None when nothing evaluated — honest
+            " WHERE eval_score IS NOT NULL"
+        ).fetchone()
+        return {
+            "by_outcome": by_outcome,
+            "total": sum(by_outcome.values()),
+            "evaluated": int(scored["n"]),
+            "avg_eval_score": scored["avg"],
+        }  # None when nothing evaluated — honest
 
     # -- telemetry feed ------------------------------------------------------
 
@@ -217,21 +282,25 @@ class JSpaceStateStore:
         exported timestamp (kept in the meta table), so an hourly tick never writes a
         record twice. Returns records written."""
         row = self._conn.execute(
-            "SELECT value FROM meta WHERE key='telemetry_watermark'").fetchone()
+            "SELECT value FROM meta WHERE key='telemetry_watermark'"
+        ).fetchone()
         watermark = float(row["value"]) if row else 0.0
         newest = self._conn.execute(
-            "SELECT MAX(ts) AS m FROM task_logs WHERE ts > ?", (watermark,)).fetchone()
+            "SELECT MAX(ts) AS m FROM task_logs WHERE ts > ?", (watermark,)
+        ).fetchone()
         n = self.export_telemetry(path, since_ts=watermark)
         if n and newest["m"] is not None:
             self._conn.execute(
                 "INSERT INTO meta (key, value) VALUES ('telemetry_watermark', ?)"
                 " ON CONFLICT (key) DO UPDATE SET value=excluded.value",
-                (repr(float(newest["m"])),))
+                (repr(float(newest["m"])),),
+            )
             self._conn.commit()
         return n
 
-    def export_telemetry(self, path: str | os.PathLike, *,
-                         since_ts: float = 0.0) -> int:
+    def export_telemetry(
+        self, path: str | os.PathLike, *, since_ts: float = 0.0
+    ) -> int:
         """Append task_logs newer than since_ts as JSONL records (the format
         reports/dottie_telemetry.jsonl aggregates). Returns records written."""
         p = pathlib.Path(path)
@@ -239,11 +308,18 @@ class JSpaceStateStore:
         n = 0
         with p.open("a", encoding="utf-8") as fh:
             for r in self._conn.execute(
-                    "SELECT * FROM task_logs WHERE ts > ? ORDER BY ts", (since_ts,)):
-                rec = {"ts": r["ts"], "event": "task", "service": "jspace-state",
-                       "session": r["session_id"], "task": r["task"],
-                       "outcome": r["outcome"], "policy_ok": r["policy_ok"],
-                       "eval_score": r["eval_score"]}
+                "SELECT * FROM task_logs WHERE ts > ? ORDER BY ts", (since_ts,)
+            ):
+                rec = {
+                    "ts": r["ts"],
+                    "event": "task",
+                    "service": "jspace-state",
+                    "session": r["session_id"],
+                    "task": r["task"],
+                    "outcome": r["outcome"],
+                    "policy_ok": r["policy_ok"],
+                    "eval_score": r["eval_score"],
+                }
                 fh.write(json.dumps(rec) + "\n")
                 n += 1
         return n

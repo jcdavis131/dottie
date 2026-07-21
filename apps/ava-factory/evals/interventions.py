@@ -6,7 +6,6 @@ from typing import Any
 
 import torch
 import torch.nn.functional as F
-
 from multi_jspace_module import SPACE_NAMES
 
 _SPACE_ALIASES = {
@@ -46,13 +45,17 @@ def concept_vector(model, tokenizer, word: str) -> tuple[torch.Tensor, int]:
     return F.normalize(vec, dim=0), tok_id
 
 
-def _swap_workspace(ws: torch.Tensor, from_vec: torch.Tensor, to_vec: torch.Tensor, alpha: float) -> torch.Tensor:
+def _swap_workspace(
+    ws: torch.Tensor, from_vec: torch.Tensor, to_vec: torch.Tensor, alpha: float
+) -> torch.Tensor:
     """Project each slot onto from_vec, replace that component with alpha * to_vec."""
     coef = torch.einsum("bsd,d->bs", ws, from_vec)
     return ws - coef.unsqueeze(-1) * from_vec + coef.unsqueeze(-1) * alpha * to_vec
 
 
-def _swap_broadcast(b: torch.Tensor, from_vec: torch.Tensor, to_vec: torch.Tensor, alpha: float) -> torch.Tensor:
+def _swap_broadcast(
+    b: torch.Tensor, from_vec: torch.Tensor, to_vec: torch.Tensor, alpha: float
+) -> torch.Tensor:
     """Swap concept direction in a broadcast tensor [B, L, D]."""
     coef = torch.einsum("bld,d->bl", b, from_vec)
     return b - coef.unsqueeze(-1) * from_vec + coef.unsqueeze(-1) * alpha * to_vec
@@ -61,7 +64,15 @@ def _swap_broadcast(b: torch.Tensor, from_vec: torch.Tensor, to_vec: torch.Tenso
 class WorkspaceSwap:
     """Swap a concept direction in one workspace's state before each chunk broadcast."""
 
-    def __init__(self, model, tokenizer, space: str, from_word: str, to_word: str, alpha: float = 1.0):
+    def __init__(
+        self,
+        model,
+        tokenizer,
+        space: str,
+        from_word: str,
+        to_word: str,
+        alpha: float = 1.0,
+    ):
         self.model = model
         self.tokenizer = tokenizer
         self.space = resolve_space(space)
@@ -95,7 +106,15 @@ class WorkspaceSwap:
 class BroadcastSwap:
     """Swap concept direction in one space's broadcast contribution only."""
 
-    def __init__(self, model, tokenizer, space: str, from_word: str, to_word: str, alpha: float = 1.0):
+    def __init__(
+        self,
+        model,
+        tokenizer,
+        space: str,
+        from_word: str,
+        to_word: str,
+        alpha: float = 1.0,
+    ):
         self.model = model
         self.tokenizer = tokenizer
         self.space = resolve_space(space)
@@ -122,12 +141,16 @@ class BroadcastSwap:
                     raw = _swap_broadcast(raw, fv, tv, alpha)
                 b[n] = raw
 
-            pooled = torch.stack([states[n].mean(dim=1) for n in SPACE_NAMES], 0).mean(0)
+            pooled = torch.stack([states[n].mean(dim=1) for n in SPACE_NAMES], 0).mean(
+                0
+            )
             route_probs, route_logits = mj.router(pooled, task_type=task_type)
-            veto = mj.arbitration(states["system1"].mean(dim=1), states["system2"].mean(dim=1))
+            veto = mj.arbitration(
+                states["system1"].mean(dim=1), states["system2"].mean(dim=1)
+            )
             w = [route_probs[:, i].view(B, 1, 1) for i in range(4)]
             w[1] = w[1] * (1 + veto.view(B, 1, 1) * 0.5)
-            combined = sum(wi * b[n] for wi, n in zip(w, SPACE_NAMES))
+            combined = sum(wi * b[n] for wi, n in zip(w, SPACE_NAMES, strict=False))
             return combined, route_probs, route_logits, veto
 
         mj._emit = patched_emit  # type: ignore[method-assign]
@@ -139,7 +162,9 @@ class BroadcastSwap:
             self.model.multi_jspace._emit = self._orig_emit  # type: ignore[method-assign]
 
 
-def top_concept_trace(model, tokenizer, out: dict[str, Any], k: int = 8) -> dict[str, list[tuple[str, float]]]:
+def top_concept_trace(
+    model, tokenizer, out: dict[str, Any], k: int = 8
+) -> dict[str, list[tuple[str, float]]]:
     """Map jspace top_concepts/top_probs to (token_str, prob) pairs per space."""
     trace: dict[str, list[tuple[str, float]]] = {}
     jspace = out.get("jspace", {})
@@ -149,7 +174,7 @@ def top_concept_trace(model, tokenizer, out: dict[str, Any], k: int = 8) -> dict
         top_idx = jspace[space]["top_concepts"][0]
         top_vals = jspace[space]["top_probs"][0]
         pairs = []
-        for idx, prob in zip(top_idx.tolist(), top_vals.tolist()):
+        for idx, prob in zip(top_idx.tolist(), top_vals.tolist(), strict=False):
             pairs.append((tokenizer.decode([int(idx)]), float(prob)))
         trace[space] = pairs
     return trace

@@ -48,6 +48,7 @@ def test_unknown_family_rejected():
 
 # -- verify_fn correctness on hand-built finals --------------------------------------
 
+
 def test_compute_verify_right_and_wrong():
     t = provider.build("compute", 0)
     assert t.verify(f"After running the code, the result is {t.expected}.", []) == 1.0
@@ -67,11 +68,13 @@ def test_tool_chain_verify_requires_value_and_real_tool_calls():
     t = provider.build("tool_chain", 2)
     both = [{"ok": True, "tool_calls": [{"tool": "part_lookup"}, {"tool": "bin_rate"}]}]
     one = [{"ok": True, "tool_calls": [{"tool": "part_lookup"}]}]
-    failed_step = [{"ok": False, "tool_calls": [{"tool": "part_lookup"}, {"tool": "bin_rate"}]}]
+    failed_step = [
+        {"ok": False, "tool_calls": [{"tool": "part_lookup"}, {"tool": "bin_rate"}]}
+    ]
     right = f"The shipping score is {t.expected}."
     assert t.verify(right, both) == 1.0
     assert t.verify(f"The shipping score is {int(t.expected) + 3}.", both) == 0.0
-    assert t.verify(right, one) == 0.0        # value without both real tool calls scores 0
+    assert t.verify(right, one) == 0.0  # value without both real tool calls scores 0
     assert t.verify(right, []) == 0.0
     assert t.verify(right, failed_step) == 0.0  # calls on an errored step don't count
 
@@ -86,7 +89,9 @@ def test_file_ops_expected_digest_rederivable_from_prompt():
     digest12 = hashlib.sha256(content.encode("utf-8")).hexdigest()[:12]
     assert digest12 == t.expected
     assert t.verify(f"Digest prefix: {digest12}", []) == 1.0
-    assert t.verify(f"Digest prefix: {digest12.upper()}", []) == 1.0   # hex case-insensitive
+    assert (
+        t.verify(f"Digest prefix: {digest12.upper()}", []) == 1.0
+    )  # hex case-insensitive
     corrupted = ("0" if digest12[0] != "0" else "1") + digest12[1:]
     assert t.verify(f"Digest prefix: {corrupted}", []) == 0.0
 
@@ -96,7 +101,7 @@ def test_constraint_verify_graded_and_token_gated():
     m = re.search(r"between (\d+) and (\d+) words", t.prompt)
     lo, hi = int(m.group(1)), int(m.group(2))
     filler = ["workshop"] * (lo + 2)
-    good = " ".join([t.expected] + filler[: lo + 1])          # token + in-band + clean
+    good = " ".join([t.expected] + filler[: lo + 1])  # token + in-band + clean
     assert lo <= len(good.split()) <= hi
     assert t.verify(good, []) == 1.0
     # Token present but word count out of band -> 2/3.
@@ -111,6 +116,7 @@ def test_constraint_verify_graded_and_token_gated():
 
 
 # -- batch helper --------------------------------------------------------------------
+
 
 def test_batch_seeds_single_family_and_defaults():
     pairs = provider.batch_seeds("compute", 3)

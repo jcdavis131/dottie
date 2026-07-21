@@ -3,6 +3,7 @@
 Adapters are pure functions: ``rec -> {text, _task_type?, _concept?} | None``.
 They never open the network; the collector streams HF rows and calls these.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable

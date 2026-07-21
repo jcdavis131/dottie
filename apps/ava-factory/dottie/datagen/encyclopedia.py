@@ -7,9 +7,12 @@ is exactly one source of truth per entity, so no doc can contradict another.
 
 from __future__ import annotations
 
-from typing import Iterator
+from typing import TYPE_CHECKING
 
 from dottie.datagen.base import Generator
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 # ---------------------------------------------------------------------------
 # Fixed fact tables (single source of truth -- internally consistent)
@@ -17,44 +20,145 @@ from dottie.datagen.base import Generator
 
 # category -> (leg_count, habitat, diet, class_label)
 _CATEGORY_INFO = {
-    "insect": (6, "gardens, forests, and grasslands", "plants, nectar, and smaller insects", "insect"),
-    "arachnid": (8, "webs, burrows, and dark corners", "insects and other small invertebrates", "arachnid"),
-    "crustacean": (10, "oceans, rivers, and lakes", "algae and small aquatic creatures", "crustacean"),
-    "mammal": (4, "forests, grasslands, and other terrestrial habitats", "plants and/or other animals depending on the species", "mammal"),
-    "bird": (2, "trees, wetlands, and open skies", "seeds, insects, and/or small animals depending on the species", "bird"),
-    "reptile": (4, "warm terrestrial and freshwater habitats", "insects and small animals", "reptile"),
-    "snake": (0, "forests, deserts, and grasslands", "small animals swallowed whole", "reptile"),
-    "amphibian": (4, "freshwater ponds and moist land habitats", "insects and other small invertebrates", "amphibian"),
-    "fish": (0, "oceans, rivers, and lakes", "plankton, smaller fish, or aquatic plants depending on the species", "fish"),
+    "insect": (
+        6,
+        "gardens, forests, and grasslands",
+        "plants, nectar, and smaller insects",
+        "insect",
+    ),
+    "arachnid": (
+        8,
+        "webs, burrows, and dark corners",
+        "insects and other small invertebrates",
+        "arachnid",
+    ),
+    "crustacean": (
+        10,
+        "oceans, rivers, and lakes",
+        "algae and small aquatic creatures",
+        "crustacean",
+    ),
+    "mammal": (
+        4,
+        "forests, grasslands, and other terrestrial habitats",
+        "plants and/or other animals depending on the species",
+        "mammal",
+    ),
+    "bird": (
+        2,
+        "trees, wetlands, and open skies",
+        "seeds, insects, and/or small animals depending on the species",
+        "bird",
+    ),
+    "reptile": (
+        4,
+        "warm terrestrial and freshwater habitats",
+        "insects and small animals",
+        "reptile",
+    ),
+    "snake": (
+        0,
+        "forests, deserts, and grasslands",
+        "small animals swallowed whole",
+        "reptile",
+    ),
+    "amphibian": (
+        4,
+        "freshwater ponds and moist land habitats",
+        "insects and other small invertebrates",
+        "amphibian",
+    ),
+    "fish": (
+        0,
+        "oceans, rivers, and lakes",
+        "plankton, smaller fish, or aquatic plants depending on the species",
+        "fish",
+    ),
 }
 
 _ANIMALS = {
     # insects (6 legs)
-    "ant": "insect", "bee": "insect", "fly": "insect", "butterfly": "insect", "beetle": "insect",
-    "grasshopper": "insect", "cockroach": "insect", "mosquito": "insect", "ladybug": "insect",
-    "dragonfly": "insect", "wasp": "insect", "moth": "insect", "cricket": "insect", "termite": "insect",
+    "ant": "insect",
+    "bee": "insect",
+    "fly": "insect",
+    "butterfly": "insect",
+    "beetle": "insect",
+    "grasshopper": "insect",
+    "cockroach": "insect",
+    "mosquito": "insect",
+    "ladybug": "insect",
+    "dragonfly": "insect",
+    "wasp": "insect",
+    "moth": "insect",
+    "cricket": "insect",
+    "termite": "insect",
     "aphid": "insect",
     # arachnids (8 legs)
-    "spider": "arachnid", "scorpion": "arachnid", "tick": "arachnid", "mite": "arachnid", "harvestman": "arachnid",
+    "spider": "arachnid",
+    "scorpion": "arachnid",
+    "tick": "arachnid",
+    "mite": "arachnid",
+    "harvestman": "arachnid",
     # crustaceans (10 legs)
-    "crab": "crustacean", "lobster": "crustacean", "crayfish": "crustacean",
+    "crab": "crustacean",
+    "lobster": "crustacean",
+    "crayfish": "crustacean",
     # mammals (4 legs)
-    "dog": "mammal", "cat": "mammal", "horse": "mammal", "cow": "mammal", "pig": "mammal", "sheep": "mammal",
-    "goat": "mammal", "lion": "mammal", "tiger": "mammal", "elephant": "mammal", "zebra": "mammal",
-    "giraffe": "mammal", "bear": "mammal", "wolf": "mammal", "fox": "mammal", "deer": "mammal",
-    "rabbit": "mammal", "squirrel": "mammal", "kangaroo": "mammal", "koala": "mammal", "panda": "mammal",
+    "dog": "mammal",
+    "cat": "mammal",
+    "horse": "mammal",
+    "cow": "mammal",
+    "pig": "mammal",
+    "sheep": "mammal",
+    "goat": "mammal",
+    "lion": "mammal",
+    "tiger": "mammal",
+    "elephant": "mammal",
+    "zebra": "mammal",
+    "giraffe": "mammal",
+    "bear": "mammal",
+    "wolf": "mammal",
+    "fox": "mammal",
+    "deer": "mammal",
+    "rabbit": "mammal",
+    "squirrel": "mammal",
+    "kangaroo": "mammal",
+    "koala": "mammal",
+    "panda": "mammal",
     # birds (2 legs)
-    "chicken": "bird", "duck": "bird", "goose": "bird", "eagle": "bird", "owl": "bird", "sparrow": "bird",
-    "penguin": "bird", "ostrich": "bird", "flamingo": "bird", "parrot": "bird", "crow": "bird", "pigeon": "bird",
+    "chicken": "bird",
+    "duck": "bird",
+    "goose": "bird",
+    "eagle": "bird",
+    "owl": "bird",
+    "sparrow": "bird",
+    "penguin": "bird",
+    "ostrich": "bird",
+    "flamingo": "bird",
+    "parrot": "bird",
+    "crow": "bird",
+    "pigeon": "bird",
     # reptiles (4 legs)
-    "lizard": "reptile", "turtle": "reptile", "crocodile": "reptile", "alligator": "reptile",
-    "iguana": "reptile", "gecko": "reptile", "chameleon": "reptile",
+    "lizard": "reptile",
+    "turtle": "reptile",
+    "crocodile": "reptile",
+    "alligator": "reptile",
+    "iguana": "reptile",
+    "gecko": "reptile",
+    "chameleon": "reptile",
     # snake (0 legs)
     "snake": "snake",
     # amphibians (4 legs)
-    "frog": "amphibian", "toad": "amphibian", "salamander": "amphibian", "newt": "amphibian",
+    "frog": "amphibian",
+    "toad": "amphibian",
+    "salamander": "amphibian",
+    "newt": "amphibian",
     # fish (0 legs)
-    "goldfish": "fish", "shark": "fish", "salmon": "fish", "tuna": "fish", "trout": "fish",
+    "goldfish": "fish",
+    "shark": "fish",
+    "salmon": "fish",
+    "tuna": "fish",
+    "trout": "fish",
 }
 assert len(_ANIMALS) >= 60, len(_ANIMALS)
 assert _ANIMALS["spider"] == "arachnid" and _CATEGORY_INFO["arachnid"][0] == 8
@@ -135,28 +239,123 @@ assert _COUNTRIES["china"] == ("Beijing", "Mandarin", "Yuan", "Asia")
 
 # sport -> (players_per_side, ball_shape, hand_use_clause, score_term)
 _SPORTS = {
-    "soccer": (11, "round", "players are not allowed to use their hands (except the goalkeeper)", "goals"),
-    "rugby": (15, "oval", "players are allowed to use their hands to carry and pass the ball", "tries"),
-    "basketball": (5, "round", "players use their hands to dribble, pass, and shoot the ball", "baskets"),
-    "volleyball": (6, "round", "players use their hands to hit the ball over the net", "points"),
-    "american_football": (11, "oval", "players use their hands to throw and carry the ball", "touchdowns"),
-    "baseball": (9, "round", "players use a bat and glove rather than bare hands to play", "runs"),
-    "handball": (7, "round", "players use their hands to throw the ball into the goal", "goals"),
-    "field_hockey": (11, "round", "players may not touch the ball with their hands; they use hooked sticks", "goals"),
-    "water_polo": (7, "round", "players use their hands to throw and hold the ball", "goals"),
-    "netball": (7, "round", "players use their hands to pass and shoot the ball", "goals"),
-    "cricket": (11, "round", "players use a bat, not their hands, to hit the ball", "runs"),
-    "tennis": (2, "round", "players use a racket, not their hands, to hit the ball", "points"),
-    "badminton": (2, "feathered", "players use a racket to hit the shuttlecock", "points"),
+    "soccer": (
+        11,
+        "round",
+        "players are not allowed to use their hands (except the goalkeeper)",
+        "goals",
+    ),
+    "rugby": (
+        15,
+        "oval",
+        "players are allowed to use their hands to carry and pass the ball",
+        "tries",
+    ),
+    "basketball": (
+        5,
+        "round",
+        "players use their hands to dribble, pass, and shoot the ball",
+        "baskets",
+    ),
+    "volleyball": (
+        6,
+        "round",
+        "players use their hands to hit the ball over the net",
+        "points",
+    ),
+    "american_football": (
+        11,
+        "oval",
+        "players use their hands to throw and carry the ball",
+        "touchdowns",
+    ),
+    "baseball": (
+        9,
+        "round",
+        "players use a bat and glove rather than bare hands to play",
+        "runs",
+    ),
+    "handball": (
+        7,
+        "round",
+        "players use their hands to throw the ball into the goal",
+        "goals",
+    ),
+    "field_hockey": (
+        11,
+        "round",
+        "players may not touch the ball with their hands; they use hooked sticks",
+        "goals",
+    ),
+    "water_polo": (
+        7,
+        "round",
+        "players use their hands to throw and hold the ball",
+        "goals",
+    ),
+    "netball": (
+        7,
+        "round",
+        "players use their hands to pass and shoot the ball",
+        "goals",
+    ),
+    "cricket": (
+        11,
+        "round",
+        "players use a bat, not their hands, to hit the ball",
+        "runs",
+    ),
+    "tennis": (
+        2,
+        "round",
+        "players use a racket, not their hands, to hit the ball",
+        "points",
+    ),
+    "badminton": (
+        2,
+        "feathered",
+        "players use a racket to hit the shuttlecock",
+        "points",
+    ),
     "table_tennis": (2, "round", "players use a paddle to hit the ball", "points"),
-    "golf": (1, "round", "players use clubs, not their hands, to hit the ball", "strokes"),
-    "softball": (9, "round", "players use a bat and glove, not bare hands, to play", "runs"),
-    "lacrosse": (10, "round", "players use a netted stick, not their hands, to carry the ball", "goals"),
-    "polo": (4, "round", "players use a mallet, not their hands, to hit the ball from horseback", "goals"),
+    "golf": (
+        1,
+        "round",
+        "players use clubs, not their hands, to hit the ball",
+        "strokes",
+    ),
+    "softball": (
+        9,
+        "round",
+        "players use a bat and glove, not bare hands, to play",
+        "runs",
+    ),
+    "lacrosse": (
+        10,
+        "round",
+        "players use a netted stick, not their hands, to carry the ball",
+        "goals",
+    ),
+    "polo": (
+        4,
+        "round",
+        "players use a mallet, not their hands, to hit the ball from horseback",
+        "goals",
+    ),
 }
 assert len(_SPORTS) >= 15, len(_SPORTS)
-assert _SPORTS["soccer"] == (11, "round", "players are not allowed to use their hands (except the goalkeeper)", "goals")
-assert _SPORTS["rugby"] == (15, "oval", "players are allowed to use their hands to carry and pass the ball", "tries")
+assert _SPORTS["soccer"] == (
+    11,
+    "round",
+    "players are not allowed to use their hands (except the goalkeeper)",
+    "goals",
+)
+assert _SPORTS["rugby"] == (
+    15,
+    "oval",
+    "players are allowed to use their hands to carry and pass the ball",
+    "tries",
+)
 
 
 def cap(s: str) -> str:
@@ -189,7 +388,14 @@ def animal_fill(name: str) -> dict:
 # hand-author dozens of fully independent sentences.
 # ---------------------------------------------------------------------------
 
-_OPENERS = ["", "Fact: ", "Note: ", "Interesting fact -- ", "Did you know? ", "Biology and geography fact: "]
+_OPENERS = [
+    "",
+    "Fact: ",
+    "Note: ",
+    "Interesting fact -- ",
+    "Did you know? ",
+    "Biology and geography fact: ",
+]
 
 
 def paraphrases(frames: list[str], fill: dict) -> list[str]:
@@ -331,6 +537,7 @@ _CLASS_FRAMES = [
 # Doc builders
 # ---------------------------------------------------------------------------
 
+
 def _animal_legs_doc(rng) -> tuple[str, str, str]:
     name = rng.choice(sorted(_ANIMALS))
     category = _ANIMALS[name]
@@ -352,7 +559,9 @@ def _animal_other_doc(rng) -> tuple[str, str, str]:
     for frames, value in ((_HABITAT_FRAMES, habitat), (_DIET_FRAMES, diet)):
         pool = paraphrases(frames, {**fill, "value": value})
         lines.extend(rng.sample(pool, min(len(pool), rng.randint(2, 4))))
-    class_pool = paraphrases(_CLASS_FRAMES, {**fill, "value": class_label, "value_art": indef(class_label)})
+    class_pool = paraphrases(
+        _CLASS_FRAMES, {**fill, "value": class_label, "value_art": indef(class_label)}
+    )
     lines.extend(rng.sample(class_pool, min(len(class_pool), rng.randint(2, 4))))
     text = f"General facts about the {name}:\n" + "\n".join(lines)
     return text, "automatic", name
@@ -404,13 +613,20 @@ def _sport_doc(rng) -> tuple[str, str, str]:
     fill = {"sport": disp, "Sport": cap(disp)}
     attr = rng.choice(["players", "ball", "hand", "score"])
     frames_map = {
-        "players": (_PLAYERS_FRAMES, f"{players} players" if players > 1 else "1 player"),
+        "players": (
+            _PLAYERS_FRAMES,
+            f"{players} players" if players > 1 else "1 player",
+        ),
         "ball": (_BALL_FRAMES, ball_shape),
         "hand": (_HAND_FRAMES, hand_clause),
         "score": (_SCORE_FRAMES, score_term),
     }
     frames, value = frames_map[attr]
-    extra = {"ball_art": indef(ball_shape), "Ball_Art": cap(indef(ball_shape))} if attr == "ball" else {}
+    extra = (
+        {"ball_art": indef(ball_shape), "Ball_Art": cap(indef(ball_shape))}
+        if attr == "ball"
+        else {}
+    )
     pool = paraphrases(frames, {**fill, "value": value, **extra})
     n_sample = min(len(pool), rng.randint(8, 18))
     chosen = rng.sample(pool, n_sample)
@@ -537,22 +753,66 @@ def _fr_beau(word: str, gender: str) -> str:
 
 
 _PARALLEL_TEMPLATES = [
-    ("I have a {noun}.", lambda es, esg, fr, frg: f"Tengo {_es_indef(es, esg)}.", lambda es, esg, fr, frg: f"J'ai {_fr_indef(fr, frg)}."),
-    ("The {noun} is here.", lambda es, esg, fr, frg: f"{cap(_es_def(es, esg))} está aquí.", lambda es, esg, fr, frg: f"{cap(_fr_def(fr, frg))} est ici."),
-    ("I see the {noun}.", lambda es, esg, fr, frg: f"Veo {_es_def(es, esg)}.", lambda es, esg, fr, frg: f"Je vois {_fr_def(fr, frg)}."),
-    ("Where is the {noun}?", lambda es, esg, fr, frg: f"¿Dónde está {_es_def(es, esg)}?", lambda es, esg, fr, frg: f"Où est {_fr_def(fr, frg)} ?"),
-    ("This is my {noun}.", lambda es, esg, fr, frg: f"Esto es {_es_mi(es)}.", lambda es, esg, fr, frg: f"C'est {_fr_mon(fr, frg)}."),
-    ("I like the {noun}.", lambda es, esg, fr, frg: f"Me gusta {_es_def(es, esg)}.", lambda es, esg, fr, frg: f"J'aime {_fr_def(fr, frg)}."),
-    ("The {noun} is beautiful.", lambda es, esg, fr, frg: f"{cap(_es_def(es, esg))} es {_es_bonito(es, esg)}.", lambda es, esg, fr, frg: f"{cap(_fr_def(fr, frg))} est {_fr_beau(fr, frg)}."),
-    ("We have a {noun}.", lambda es, esg, fr, frg: f"Tenemos {_es_indef(es, esg)}.", lambda es, esg, fr, frg: f"Nous avons {_fr_indef(fr, frg)}."),
-    ("I bought the {noun}.", lambda es, esg, fr, frg: f"Compré {_es_def(es, esg)}.", lambda es, esg, fr, frg: f"J'ai acheté {_fr_def(fr, frg)}."),
-    ("I don't have a {noun}.", lambda es, esg, fr, frg: f"No tengo {_es_indef(es, esg)}.", lambda es, esg, fr, frg: f"Je n'ai pas {_fr_indef(fr, frg)}."),
+    (
+        "I have a {noun}.",
+        lambda es, esg, fr, frg: f"Tengo {_es_indef(es, esg)}.",
+        lambda es, esg, fr, frg: f"J'ai {_fr_indef(fr, frg)}.",
+    ),
+    (
+        "The {noun} is here.",
+        lambda es, esg, fr, frg: f"{cap(_es_def(es, esg))} está aquí.",
+        lambda es, esg, fr, frg: f"{cap(_fr_def(fr, frg))} est ici.",
+    ),
+    (
+        "I see the {noun}.",
+        lambda es, esg, fr, frg: f"Veo {_es_def(es, esg)}.",
+        lambda es, esg, fr, frg: f"Je vois {_fr_def(fr, frg)}.",
+    ),
+    (
+        "Where is the {noun}?",
+        lambda es, esg, fr, frg: f"¿Dónde está {_es_def(es, esg)}?",
+        lambda es, esg, fr, frg: f"Où est {_fr_def(fr, frg)} ?",
+    ),
+    (
+        "This is my {noun}.",
+        lambda es, esg, fr, frg: f"Esto es {_es_mi(es)}.",
+        lambda es, esg, fr, frg: f"C'est {_fr_mon(fr, frg)}.",
+    ),
+    (
+        "I like the {noun}.",
+        lambda es, esg, fr, frg: f"Me gusta {_es_def(es, esg)}.",
+        lambda es, esg, fr, frg: f"J'aime {_fr_def(fr, frg)}.",
+    ),
+    (
+        "The {noun} is beautiful.",
+        lambda es, esg, fr, frg: f"{cap(_es_def(es, esg))} es {_es_bonito(es, esg)}.",
+        lambda es, esg, fr, frg: f"{cap(_fr_def(fr, frg))} est {_fr_beau(fr, frg)}.",
+    ),
+    (
+        "We have a {noun}.",
+        lambda es, esg, fr, frg: f"Tenemos {_es_indef(es, esg)}.",
+        lambda es, esg, fr, frg: f"Nous avons {_fr_indef(fr, frg)}.",
+    ),
+    (
+        "I bought the {noun}.",
+        lambda es, esg, fr, frg: f"Compré {_es_def(es, esg)}.",
+        lambda es, esg, fr, frg: f"J'ai acheté {_fr_def(fr, frg)}.",
+    ),
+    (
+        "I don't have a {noun}.",
+        lambda es, esg, fr, frg: f"No tengo {_es_indef(es, esg)}.",
+        lambda es, esg, fr, frg: f"Je n'ai pas {_fr_indef(fr, frg)}.",
+    ),
 ]
 assert len(_PARALLEL_TEMPLATES) * len(_VOCAB) >= 200
 
 
 def _parallel_sentence_doc(rng) -> tuple[str, str, str]:
-    combos = [(t_idx, v_idx) for t_idx in range(len(_PARALLEL_TEMPLATES)) for v_idx in range(len(_VOCAB))]
+    combos = [
+        (t_idx, v_idx)
+        for t_idx in range(len(_PARALLEL_TEMPLATES))
+        for v_idx in range(len(_VOCAB))
+    ]
     n_sample = min(len(combos), rng.randint(6, 12))
     chosen = rng.sample(combos, n_sample)
     lines = []
@@ -579,7 +839,10 @@ def _animal_compendium_doc(rng) -> tuple[str, str, str]:
         leg_pool = paraphrases(_LEG_FRAMES, {**fill, "n": n_legs})
         habitat_pool = paraphrases(_HABITAT_FRAMES, {**fill, "value": habitat})
         diet_pool = paraphrases(_DIET_FRAMES, {**fill, "value": diet})
-        class_pool = paraphrases(_CLASS_FRAMES, {**fill, "value": class_label, "value_art": indef(class_label)})
+        class_pool = paraphrases(
+            _CLASS_FRAMES,
+            {**fill, "value": class_label, "value_art": indef(class_label)},
+        )
         block = [f"-- {cap(name)} --"]
         block.extend(rng.sample(leg_pool, min(len(leg_pool), 6)))
         block.extend(rng.sample(habitat_pool, min(len(habitat_pool), 3)))
@@ -594,6 +857,7 @@ def _animal_compendium_doc(rng) -> tuple[str, str, str]:
 # ---------------------------------------------------------------------------
 # Generator
 # ---------------------------------------------------------------------------
+
 
 class EncyclopediaGenerator(Generator):
     name = "ency"
@@ -626,7 +890,13 @@ class EncyclopediaGenerator(Generator):
                 else:
                     text, task_type, concept = _animal_compendium_doc(self.rng)
                     source = "ency/animal_compendium"
-                d = self.doc(text=text, task_type=task_type, concept=concept, phase=4, source=source)
+                d = self.doc(
+                    text=text,
+                    task_type=task_type,
+                    concept=concept,
+                    phase=4,
+                    source=source,
+                )
             else:
                 r = self.rng.random() * total
                 idx = 0
@@ -634,7 +904,13 @@ class EncyclopediaGenerator(Generator):
                     idx += 1
                 _, builder, source = self._FAMILIES[idx]
                 text, task_type, concept = builder(self.rng)
-                d = self.doc(text=text, task_type=task_type, concept=concept, phase=2, source=source)
+                d = self.doc(
+                    text=text,
+                    task_type=task_type,
+                    concept=concept,
+                    phase=2,
+                    source=source,
+                )
             produced += len(d["text"].encode("utf-8"))
             yield d
 

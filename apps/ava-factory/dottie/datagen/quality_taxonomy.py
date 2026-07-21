@@ -14,27 +14,31 @@ Implements:
 Also Bloom taxonomy for mid-training: Essential AI heuristic + Anderson Krathwohl
 Solo personal project, no connection to employer
 """
+
 from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Tuple
-import re
+
 
 class QualityTier(Enum):
     T1_HIGH = "t1_high"
     T2_MID = "t2_mid"
     T3_LOW = "t3_low"
 
+
 class EduValue(Enum):
     LOW = 0
     MID = 1
     HIGH = 2
+
 
 class EduLevel(Enum):
     ELEMENTARY = 1
     HIGH_SCHOOL = 2
     COLLEGE = 3
     GRADUATE = 4
+
 
 class Topic(Enum):
     CODE = "coding"
@@ -46,6 +50,7 @@ class Topic(Enum):
     SAFETY = "safety"
     ENCYCLOPEDIA = "encyclopedia"
     TOOL_USE = "tool_use"
+
 
 @dataclass
 class QualityLabels:
@@ -60,10 +65,27 @@ class QualityLabels:
     keep: bool = True
     reason: str = ""
 
+
 # --- heuristics ---
-STEM_KEYWORDS = {"theorem","proof","equation","molecule","algorithm","experiment","derivative","integral"}
-CODE_EXTS = {".py",".js",".ts",".java",".cpp",".rs",".go"}
-HIGH_QUALITY_DOMAINS = {"arxiv.org","wikipedia.org","github.com","mathoverflow.net","openai.com"}
+STEM_KEYWORDS = {
+    "theorem",
+    "proof",
+    "equation",
+    "molecule",
+    "algorithm",
+    "experiment",
+    "derivative",
+    "integral",
+}
+CODE_EXTS = {".py", ".js", ".ts", ".java", ".cpp", ".rs", ".go"}
+HIGH_QUALITY_DOMAINS = {
+    "arxiv.org",
+    "wikipedia.org",
+    "github.com",
+    "mathoverflow.net",
+    "openai.com",
+}
+
 
 def _topic_from_source(source: str, text: str) -> Topic:
     s = source.lower()
@@ -82,11 +104,20 @@ def _topic_from_source(source: str, text: str) -> Topic:
         return Topic.SAFETY
     return Topic.GENERAL
 
+
 def _edu_value_heuristic(text: str) -> EduValue:
     # simple length + reasoning cues
     if len(text) < 200:
         return EduValue.LOW
-    reasoning_cues = ["because","therefore","however","implies","derive","compare","analyze"]
+    reasoning_cues = [
+        "because",
+        "therefore",
+        "however",
+        "implies",
+        "derive",
+        "compare",
+        "analyze",
+    ]
     score = sum(text.lower().count(w) for w in reasoning_cues)
     if score >= 4 and len(text) > 1000:
         return EduValue.HIGH
@@ -94,19 +125,34 @@ def _edu_value_heuristic(text: str) -> EduValue:
         return EduValue.MID
     return EduValue.LOW
 
+
 def _edu_level_heuristic(text: str) -> EduLevel:
     # crude: Flesch-like via avg word length + keywords
-    if any(w in text.lower() for w in ["quantum","relativity","cohomology","stochastic"]):
+    if any(
+        w in text.lower() for w in ["quantum", "relativity", "cohomology", "stochastic"]
+    ):
         return EduLevel.GRADUATE
-    if any(w in text.lower() for w in ["derivative","molecule","algorithm"]):
+    if any(w in text.lower() for w in ["derivative", "molecule", "algorithm"]):
         return EduLevel.COLLEGE
     if len(text.split()) > 500:
         return EduLevel.HIGH_SCHOOL
     return EduLevel.ELEMENTARY
 
+
 def _bloom_score(text: str) -> int:
-    cues_high = ["analyze","compare","evaluate","derive","prove","theorem","consequence","because","therefore","implies","hypothesis"]
-    low = 0
+    cues_high = [
+        "analyze",
+        "compare",
+        "evaluate",
+        "derive",
+        "prove",
+        "theorem",
+        "consequence",
+        "because",
+        "therefore",
+        "implies",
+        "hypothesis",
+    ]
     high = sum(text.lower().count(w) for w in cues_high)
     if high >= 3:
         return 5
@@ -116,14 +162,23 @@ def _bloom_score(text: str) -> int:
         return 3
     return 2
 
-def _quality_tier(text: str, edu_value: EduValue, edu_level: EduLevel, domain: str) -> QualityTier:
-    if domain in HIGH_QUALITY_DOMAINS or edu_value==EduValue.HIGH and edu_level in (EduLevel.COLLEGE, EduLevel.GRADUATE):
+
+def _quality_tier(
+    text: str, edu_value: EduValue, edu_level: EduLevel, domain: str
+) -> QualityTier:
+    if domain in HIGH_QUALITY_DOMAINS or (
+        edu_value == EduValue.HIGH
+        and edu_level in (EduLevel.COLLEGE, EduLevel.GRADUATE)
+    ):
         return QualityTier.T1_HIGH
-    if edu_value==EduValue.LOW or len(text)<300:
+    if edu_value == EduValue.LOW or len(text) < 300:
         return QualityTier.T3_LOW
     return QualityTier.T2_MID
 
-def classify(text: str, source: str = "general", meta: Dict | None = None) -> QualityLabels:
+
+def classify(
+    text: str, source: str = "general", meta: dict | None = None
+) -> QualityLabels:
     meta = meta or {}
     domain = meta.get("domain") or ""
     topic = _topic_from_source(source, text)
@@ -141,11 +196,24 @@ def classify(text: str, source: str = "general", meta: Dict | None = None) -> Qu
         # for mid-training STEM filter we want >=Analyze, but for general keep
         pass
     lang = meta.get("language") or "en"
-    return QualityLabels(tier=tier, topic=topic, edu_value=edu_value, edu_level=edu_level, language=lang, bloom_level=bloom, source_type=source, domain=domain, keep=keep, reason=reason)
+    return QualityLabels(
+        tier=tier,
+        topic=topic,
+        edu_value=edu_value,
+        edu_level=edu_level,
+        language=lang,
+        bloom_level=bloom,
+        source_type=source,
+        domain=domain,
+        keep=keep,
+        reason=reason,
+    )
+
 
 # Bloom Analyze filter for mid-training
 def bloom_analyze_keep(text: str, min_level: int = 4) -> bool:
     return _bloom_score(text) >= min_level
+
 
 # File-level + repo-level formatting complementary flag
 def code_format_type(source: str) -> str:
@@ -153,8 +221,11 @@ def code_format_type(source: str) -> str:
         return "repo-level"
     return "file-level"
 
+
 # Memorization-aware epoch capping proxy
-def mem_aware_fraction(nll_before: float, nll_after: float, nll_near_zero_frac: float) -> float:
+def mem_aware_fraction(
+    nll_before: float, nll_after: float, nll_near_zero_frac: float
+) -> float:
     """
     Proxy fraction validation loss improvement that comes tokens predicted near-certainty NLL<0.01
     Higher fraction indicates significant NLL reduction due memorization highly repeated structure
@@ -168,6 +239,7 @@ def mem_aware_fraction(nll_before: float, nll_after: float, nll_near_zero_frac: 
     if nll_near_zero_frac > 0.15:
         return 4.0
     return 8.0
+
 
 # Convenience for data flywheel
 def bucket_key(labels: QualityLabels) -> str:

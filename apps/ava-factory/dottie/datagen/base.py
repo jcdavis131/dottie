@@ -17,14 +17,23 @@ import json
 import os
 import random
 from abc import ABC, abstractmethod
-from typing import Iterable, Iterator
+from typing import TYPE_CHECKING
 
 import zstandard as zstd
 
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator
+
 DOC_KEYS = frozenset({"doc_id", "text", "task_type", "concept", "phase", "source"})
-VALID_TASK_TYPES = frozenset({
-    "automatic", "deliberate", "safety", "temporal", "tool_selection",
-})
+VALID_TASK_TYPES = frozenset(
+    {
+        "automatic",
+        "deliberate",
+        "safety",
+        "temporal",
+        "tool_selection",
+    }
+)
 VALID_PHASES = frozenset({"p0", "p1", "p2", "p3", "p4", "p5"})
 
 
@@ -71,7 +80,9 @@ def validate_doc(doc: dict, allowed_phases: Iterable[int] | None = None) -> None
     assert doc["task_type"] in VALID_TASK_TYPES, f"bad task_type: {doc['task_type']!r}"
     assert doc["phase"] in VALID_PHASES, f"bad phase: {doc['phase']!r}"
     expected_id = make_doc_id(doc["source"], doc["text"])
-    assert doc["doc_id"] == expected_id, f"doc_id mismatch: {doc['doc_id']!r} != {expected_id!r}"
+    assert doc["doc_id"] == expected_id, (
+        f"doc_id mismatch: {doc['doc_id']!r} != {expected_id!r}"
+    )
     if allowed_phases is not None:
         phase_num = int(doc["phase"][1:])
         assert phase_num in allowed_phases, (
@@ -92,7 +103,9 @@ class Generator(ABC):
 
     def __init__(self, seed: int):
         self.seed = seed
-        self.rng = random.Random(seed)  # private instance only; never touch the global random module
+        self.rng = random.Random(
+            seed
+        )  # private instance only; never touch the global random module
 
     @abstractmethod
     def generate(self, target_bytes: int) -> Iterator[dict]:
@@ -101,17 +114,27 @@ class Generator(ABC):
         must stream -- never materialize the whole corpus in memory."""
         raise NotImplementedError
 
-    def doc(self, text: str, task_type: str, concept: str, phase: int, source: str) -> dict:
+    def doc(
+        self, text: str, task_type: str, concept: str, phase: int, source: str
+    ) -> dict:
         """Convenience wrapper: build a doc with an int phase number,
         converted to the "pN" string form, and validate it against this
         generator's declared phases."""
         phase_str = f"p{phase}"
-        d = make_doc(text=text, task_type=task_type, concept=concept, phase=phase_str, source=source)
+        d = make_doc(
+            text=text,
+            task_type=task_type,
+            concept=concept,
+            phase=phase_str,
+            source=source,
+        )
         validate_doc(d, allowed_phases=self.phases)
         return d
 
 
-def write_shards(gen: Generator, out_dir: str, target_mb: float, shard_mb: float = 8) -> dict:
+def write_shards(
+    gen: Generator, out_dir: str, target_mb: float, shard_mb: float = 8
+) -> dict:
     """Drive ``gen.generate()`` and write zstd-compressed JSONL shards.
 
     Files are named ``{out_dir}/{gen.name}_{shard:04d}.jsonl.zst``. Each
@@ -126,8 +149,8 @@ def write_shards(gen: Generator, out_dir: str, target_mb: float, shard_mb: float
     filename order.
     """
     os.makedirs(out_dir, exist_ok=True)
-    target_bytes = int(target_mb * (1024 ** 2))
-    shard_bytes_limit = int(shard_mb * (1024 ** 2))
+    target_bytes = int(target_mb * (1024**2))
+    shard_bytes_limit = int(shard_mb * (1024**2))
 
     files: list[str] = []
     total_bytes = 0
@@ -171,7 +194,12 @@ def write_shards(gen: Generator, out_dir: str, target_mb: float, shard_mb: float
         with open(os.path.join(out_dir, fname), "rb") as f:
             h.update(f.read())
 
-    return {"files": files, "bytes": total_bytes, "docs": total_docs, "sha256": h.hexdigest()}
+    return {
+        "files": files,
+        "bytes": total_bytes,
+        "docs": total_docs,
+        "sha256": h.hexdigest(),
+    }
 
 
 def read_shards(out_dir: str, files: Iterable[str] | None = None) -> Iterator[dict]:
@@ -190,7 +218,9 @@ def read_shards(out_dir: str, files: Iterable[str] | None = None) -> Iterator[di
 
 def run_cli(generator_cls: type[Generator]) -> None:
     """Shared CLI entrypoint for `python -m ava.datagen.<mod> --seed S --out DIR --mb N`."""
-    parser = argparse.ArgumentParser(description=f"Run the {generator_cls.__name__} data generator.")
+    parser = argparse.ArgumentParser(
+        description=f"Run the {generator_cls.__name__} data generator."
+    )
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--out", type=str, required=True)
     parser.add_argument("--mb", type=float, required=True)

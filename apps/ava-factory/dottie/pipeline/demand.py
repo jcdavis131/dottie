@@ -13,10 +13,13 @@ import tempfile
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import TYPE_CHECKING, Any
 
 from dottie.pipeline.evolve_lite import bliss_lite_effort_nudge
-from dottie.pipeline.flow import FlowConfig, N_PHASES, prefetch_phases
+from dottie.pipeline.flow import N_PHASES, FlowConfig, prefetch_phases
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
 
 _DEFAULT_DEMAND = "/state/demand.json"
 
@@ -76,7 +79,7 @@ class DemandSnapshot:
         }
 
     @classmethod
-    def from_dict(cls, d: Mapping[str, Any]) -> "DemandSnapshot":
+    def from_dict(cls, d: Mapping[str, Any]) -> DemandSnapshot:
         phases = tuple(
             PhaseDemand(
                 phase=int(p["phase"]),
@@ -94,7 +97,9 @@ class DemandSnapshot:
             trainer_phase=int(d.get("trainer_phase") or 0),
             preset=str(d.get("preset") or ""),
             phases=phases,
-            boost_task_types={str(k): float(v) for k, v in (d.get("boost_task_types") or {}).items()},
+            boost_task_types={
+                str(k): float(v) for k, v in (d.get("boost_task_types") or {}).items()
+            },
             curate_stricter=bool(d.get("curate_stricter")),
             reasons=tuple(d.get("reasons") or ()),
             schema=int(d.get("schema") or 1),
@@ -151,7 +156,7 @@ def compute_demand(
         if deficit > 0:
             actions.append("expand")
             if p == trainer_phase:
-                reasons.append(f"P{p} deficit {deficit/1e6:.0f}M tok → expand")
+                reasons.append(f"P{p} deficit {deficit / 1e6:.0f}M tok → expand")
         if curate and p in window:
             actions.append("curate")
         if p in window and "deliberate" in boost:
@@ -160,14 +165,16 @@ def compute_demand(
         # Keep a floor on the trainer phase so miners never idle the GPU phase.
         if p == trainer_phase and effort < 0.15 and tok < packed_min * 2:
             effort = max(effort, 0.15)
-        phase_rows.append(PhaseDemand(
-            phase=p,
-            tokens_ready=tok,
-            packed_min=packed_min,
-            deficit=deficit,
-            effort=round(effort, 4),
-            actions=tuple(dict.fromkeys(actions)),
-        ))
+        phase_rows.append(
+            PhaseDemand(
+                phase=p,
+                tokens_ready=tok,
+                packed_min=packed_min,
+                deficit=deficit,
+                effort=round(effort, 4),
+                actions=tuple(dict.fromkeys(actions)),
+            )
+        )
 
     if not reasons:
         reasons.append("runway healthy — maintain mixture")

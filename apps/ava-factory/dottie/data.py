@@ -29,22 +29,30 @@ import json
 import random
 import time
 from pathlib import Path
-from typing import Iterator
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from dottie.config import TASK_TYPES, DottieConfig
-from dottie.pipeline.flow import DataState, FlowConfig, StarvationTracker, trainer_data_state
+from dottie.pipeline.flow import (
+    DataState,
+    FlowConfig,
+    StarvationTracker,
+    trainer_data_state,
+)
 from dottie.pipeline.manifest import Manifest, Shard, worker_id
 from dottie.tokenizer import ENDOFDOC_ID
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 UNTAGGED_CONCEPT = -1
 
 
 @dataclasses.dataclass
 class Batch:
-    input_ids: np.ndarray      # [B, T] int64
-    concept_ids: np.ndarray    # [B]    int64, -1 where untagged
+    input_ids: np.ndarray  # [B, T] int64
+    concept_ids: np.ndarray  # [B]    int64, -1 where untagged
     task_type: str
     phase: int
     tokens: int
@@ -56,7 +64,7 @@ class _LoadedShard:
     def __init__(self, shard: Shard) -> None:
         self.shard = shard
         idx_path = Path(shard.path).with_suffix("").with_suffix(".idx.json")
-        if not idx_path.exists():                     # {stem}.bin -> {stem}.idx.json
+        if not idx_path.exists():  # {stem}.bin -> {stem}.idx.json
             idx_path = Path(str(shard.path).replace(".bin", ".idx.json"))
         meta = json.loads(idx_path.read_text())
         self.tokens: int = meta["tokens"]
@@ -67,7 +75,9 @@ class _LoadedShard:
         for d in meta["docs"]:
             self.by_task.setdefault(d["task_type"], []).append(d)
 
-    def windows(self, task_type: str, seq_len: int, rng: random.Random) -> Iterator[tuple[np.ndarray, int]]:
+    def windows(
+        self, task_type: str, seq_len: int, rng: random.Random
+    ) -> Iterator[tuple[np.ndarray, int]]:
         """Yield (tokens[seq_len+1], concept_id) windows for one task_type.
 
         Documents are CONCATENATED, separated by <|endofdoc|>, and then sliced
@@ -88,13 +98,13 @@ class _LoadedShard:
         if not docs:
             return
         rng.shuffle(docs)
-        need = seq_len + 1                        # +1 for the shifted target
+        need = seq_len + 1  # +1 for the shifted target
 
         buf: list[np.ndarray] = []
         concepts: list[int] = []
         filled = 0
         for d in docs:
-            span = np.asarray(self.arr[d["start"]:d["end"]], dtype=np.int64)
+            span = np.asarray(self.arr[d["start"] : d["end"]], dtype=np.int64)
             if span.size == 0:
                 continue
             buf.append(span)
@@ -104,17 +114,27 @@ class _LoadedShard:
 
             while filled >= need:
                 flat = np.concatenate(buf)
-                yield flat[:need], next((c for c in concepts if c >= 0), UNTAGGED_CONCEPT)
-                rest = flat[seq_len:]             # stride by seq_len, keep the overlap token
+                yield (
+                    flat[:need],
+                    next((c for c in concepts if c >= 0), UNTAGGED_CONCEPT),
+                )
+                rest = flat[seq_len:]  # stride by seq_len, keep the overlap token
                 buf = [rest] if rest.size else []
                 filled = rest.size
-                concepts = concepts[-1:]          # the doc the remainder came from
+                concepts = concepts[-1:]  # the doc the remainder came from
 
 
 class StreamingShardSampler:
-    def __init__(self, cfg: DottieConfig, manifest: Manifest, flow: FlowConfig, *,
-                 seed: int = 1234, worker: str | None = None,
-                 packed_dir: str = "/packed") -> None:
+    def __init__(
+        self,
+        cfg: DottieConfig,
+        manifest: Manifest,
+        flow: FlowConfig,
+        *,
+        seed: int = 1234,
+        worker: str | None = None,
+        packed_dir: str = "/packed",
+    ) -> None:
         self.cfg = cfg
         self.m = manifest
         self.flow = flow
@@ -140,8 +160,12 @@ class StreamingShardSampler:
     # -- shard acquisition --------------------------------------------------
 
     def _claim(self, phase: int) -> _LoadedShard | None:
-        s = self.m.claim("train", by=self.worker, phases=[phase],
-                         lease_seconds=self.flow.train_lease_seconds)
+        s = self.m.claim(
+            "train",
+            by=self.worker,
+            phases=[phase],
+            lease_seconds=self.flow.train_lease_seconds,
+        )
         if s is None:
             return None
         try:
@@ -182,11 +206,16 @@ class StreamingShardSampler:
             return
         self._last_renew = now
         try:
-            ok = self.m.renew(self._held.shard.id, by=self.worker,
-                              lease_seconds=self.flow.train_lease_seconds)
+            ok = self.m.renew(
+                self._held.shard.id,
+                by=self.worker,
+                lease_seconds=self.flow.train_lease_seconds,
+            )
             if not ok:
-                print(f"[sampler] lost lease on {self._held.shard.id}; "
-                      "it was requeued and may be re-served")
+                print(
+                    f"[sampler] lost lease on {self._held.shard.id}; "
+                    "it was requeued and may be re-served"
+                )
         except Exception as exc:
             print(f"[sampler] lease renew failed: {exc}")
 
@@ -206,15 +235,17 @@ class StreamingShardSampler:
         finally:
             self._held = None
 
-    def __enter__(self) -> "StreamingShardSampler":
+    def __enter__(self) -> StreamingShardSampler:
         # Any shard whose owner died is fair game again.
         self.m.requeue_expired()
         # And any PACKED shard whose attempts hit the cap through ordinary
         # crash-restarts (not poison -- those live in FAILED) is claimable again.
         rescued = self.m.rescue_stranded()
         if rescued:
-            print(f"[sampler] rescued {len(rescued)} stranded PACKED shards "
-                  "(attempts reset)")
+            print(
+                f"[sampler] rescued {len(rescued)} stranded PACKED shards "
+                "(attempts reset)"
+            )
         return self
 
     def __exit__(self, *exc) -> None:
@@ -223,8 +254,9 @@ class StreamingShardSampler:
     def _wait_for_data(self, phase: int, log=print) -> _LoadedShard:
         """Block until a shard for `phase` is claimable. Never raises on empty."""
         while True:
-            state, msg = trainer_data_state(self.m, self.flow, phase=phase,
-                                            disk_path=self.packed_dir)
+            state, msg = trainer_data_state(
+                self.m, self.flow, phase=phase, disk_path=self.packed_dir
+            )
             if state is DataState.CRITICAL_DISK:
                 raise RuntimeError(f"refusing to train: {msg}")
 
@@ -256,7 +288,9 @@ class StreamingShardSampler:
         self._task_cursor += 1
         return present[k:] + present[:k]
 
-    def batches(self, phase: int, seq_len: int, micro_batch: int, log=print) -> Iterator[Batch]:
+    def batches(
+        self, phase: int, seq_len: int, micro_batch: int, log=print
+    ) -> Iterator[Batch]:
         """Endless stream of task_type-pure batches for `phase`."""
         while True:
             loaded = self._held or self._wait_for_data(phase, log=log)
@@ -275,7 +309,8 @@ class StreamingShardSampler:
                         yield Batch(
                             input_ids=np.stack(buf_x),
                             concept_ids=np.asarray(buf_c, dtype=np.int64),
-                            task_type=tt, phase=phase,
+                            task_type=tt,
+                            phase=phase,
                             tokens=micro_batch * seq_len,
                         )
                         buf_x, buf_c = [], []

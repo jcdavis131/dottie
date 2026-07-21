@@ -4,7 +4,7 @@ Solo personal project, no connection to employer, built with public/free-tier on
 
 Implements 2026 distillation SOTA from https://huggingface.co/blog/sergiopaniego/distillation-2026 :
 
-- Off-policy: large teacher -> small student via soft labels (white-box KL) + hard SFT on traces (black-box). 
+- Off-policy: large teacher -> small student via soft labels (white-box KL) + hard SFT on traces (black-box).
   Gemma3/4 "improved KD from large IT teacher", DeepSeek-R1-Distill reasoning traces -> Qwen/Llama students.
   Signal: match teacher next-token distribution or train on teacher text.
 
@@ -72,45 +72,68 @@ Logs: logs/distill.log + metrics.jsonl
 CKPT: checkpoints/distill/ava_distill_<mode>_<step>.pt + hf_model/distill/ via convert_to_hf.py hook
 Eval: eval_branch_harness.py 5 J-tests + eval_frontier_rubric.py --judge ollama (OLLAMA_HOST)
 """
+
 import argparse
 import json
 import math
 import os
+import random
 import sys
 import time
-import pathlib
-import random
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Any
 
 # Solo disclaimer for import-time
-print("Solo personal project, no connection to employer, built with public/free-tier only")
-print("[Distill] Loading Ava distillation module — off-policy + MOPD + privileged + earlier")
+print(
+    "Solo personal project, no connection to employer, built with public/free-tier only"
+)
+print(
+    "[Distill] Loading Ava distillation module — off-policy + MOPD + privileged + earlier"
+)
 
 # Try torch
 try:
     import torch
     import torch.nn.functional as F
+
     HAS_TORCH = True
 except Exception as e:
     HAS_TORCH = False
     print(f"[Distill] torch not available in mock mode: {e}")
+
     # Mock stubs for compile verification
     class _Mock:
-        def __getattr__(self, n): return _Mock()
-        def __call__(self, *a, **k): return _Mock()
+        def __getattr__(self, n):
+            return _Mock()
+
+        def __call__(self, *a, **k):
+            return _Mock()
+
     torch = _Mock()
     F = _Mock()
 
 # WSD schedule from train_1b_deepspeed.py
-WSD_CONFIG = {"warmup": 2000, "stable_steps": 736000, "total_steps": 800000, "lr_max": 2e-4, "lr_min": 2e-5}
+WSD_CONFIG = {
+    "warmup": 2000,
+    "stable_steps": 736000,
+    "total_steps": 800000,
+    "lr_max": 2e-4,
+    "lr_min": 2e-5,
+}
 ROPE_SCHEDULE = [
     {"start": 0, "end": 140000, "base": 10000, "ctx": 2048, "ntk": 1.0},
     {"start": 140000, "end": 384000, "base": 10000, "ctx": 4096, "ntk": 1.0},
     {"start": 384000, "end": 420000, "base": 50000, "ctx": 8192, "ntk": 1.0},
     {"start": 420000, "end": 480000, "base": 100000, "ctx": 16384, "ntk": 1.2},
     {"start": 480000, "end": 660000, "base": 500000, "ctx": 32768, "ntk": 1.5},
-    {"start": 660000, "end": 800000, "base": 1000000, "ctx": 131072, "yarn": True, "ntk": 2.0},
+    {
+        "start": 660000,
+        "end": 800000,
+        "base": 1000000,
+        "ctx": 131072,
+        "yarn": True,
+        "ntk": 2.0,
+    },
 ]
 
 # Branch router targets from train_1b_deepspeed.py
@@ -124,6 +147,7 @@ BRANCH_ROUTER_TARGETS = {
     "chat": [0.15, 0.25, 0.35, 0.25],
 }
 
+
 def wsd_lr(step: int) -> float:
     cfg = WSD_CONFIG
     if step < cfg["warmup"]:
@@ -131,10 +155,15 @@ def wsd_lr(step: int) -> float:
     elif step < cfg["stable_steps"]:
         return cfg["lr_max"]
     else:
-        progress = (step - cfg["stable_steps"]) / max(1, (cfg["total_steps"] - cfg["stable_steps"]))
-        return cfg["lr_min"] + 0.5 * (cfg["lr_max"] - cfg["lr_min"]) * (1 + math.cos(math.pi * progress))
+        progress = (step - cfg["stable_steps"]) / max(
+            1, (cfg["total_steps"] - cfg["stable_steps"])
+        )
+        return cfg["lr_min"] + 0.5 * (cfg["lr_max"] - cfg["lr_min"]) * (
+            1 + math.cos(math.pi * progress)
+        )
 
-def parse_teachers(s: str) -> List[Tuple[str, str]]:
+
+def parse_teachers(s: str) -> list[tuple[str, str]]:
     """Parse teachers string like 'code:path,math:path' or 'teacher:path' into [(domain, path)]"""
     if not s:
         return []
@@ -150,7 +179,14 @@ def parse_teachers(s: str) -> List[Tuple[str, str]]:
             out.append(("generic", part))
     return out
 
-def reverse_kl_loss(student_logits, teacher_logits, mask=None, temperature: float = 1.0, reduction: str = "mean"):
+
+def reverse_kl_loss(
+    student_logits,
+    teacher_logits,
+    mask=None,
+    temperature: float = 1.0,
+    reduction: str = "mean",
+):
     """
     Reverse KL: KL(p_student || p_teacher) per token
     = sum_v p_s * (log p_s - log p_t)
@@ -167,8 +203,11 @@ def reverse_kl_loss(student_logits, teacher_logits, mask=None, temperature: floa
     # (Previous form `isinstance(x, type(torch) and ...)` collapsed to
     # `isinstance(x, bool)` when torch WAS installed and raised TypeError,
     # breaking the real KD path.)
-    if not HAS_TORCH or student_logits.__class__.__name__ == "_Mock" \
-            or teacher_logits.__class__.__name__ == "_Mock":
+    if (
+        not HAS_TORCH
+        or student_logits.__class__.__name__ == "_Mock"
+        or teacher_logits.__class__.__name__ == "_Mock"
+    ):
         return 0.0
 
     # Scale by temperature
@@ -199,7 +238,10 @@ def reverse_kl_loss(student_logits, teacher_logits, mask=None, temperature: floa
             return kl_per_token.sum()
         return kl_per_token
 
-def forward_kl_loss(student_logits, teacher_logits, mask=None, temperature: float = 1.0):
+
+def forward_kl_loss(
+    student_logits, teacher_logits, mask=None, temperature: float = 1.0
+):
     """
     Forward KL: KL(p_teacher || p_student) — classic KD (Gemma 3/4).
     More mode-covering than reverse KL. Useful for off-policy soft labels.
@@ -217,6 +259,7 @@ def forward_kl_loss(student_logits, teacher_logits, mask=None, temperature: floa
         return kl_per_token.sum() / (mask.sum().clamp(min=1))
     return kl_per_token.mean()
 
+
 def ce_loss_student(student_logits, labels, mask=None):
     """Hard SFT loss on teacher traces (DeepSeek-R1-Distill pattern: train on teacher generated text)"""
     if not HAS_TORCH:
@@ -225,23 +268,29 @@ def ce_loss_student(student_logits, labels, mask=None):
     # shift for next-token prediction
     B, L, V = student_logits.shape
     # flatten
-    loss = F.cross_entropy(student_logits.view(-1, V), labels.view(-1), reduction="none").view(B, L)
+    loss = F.cross_entropy(
+        student_logits.view(-1, V), labels.view(-1), reduction="none"
+    ).view(B, L)
     if mask is not None:
         loss = loss * mask
         return loss.sum() / (mask.sum().clamp(min=1))
     return loss.mean()
 
-def get_router_targets(task_type: str) -> List[float]:
+
+def get_router_targets(task_type: str) -> list[float]:
     return BRANCH_ROUTER_TARGETS.get(task_type, BRANCH_ROUTER_TARGETS["deliberate"])
 
-def load_yaml_config(path: str) -> Dict:
+
+def load_yaml_config(path: str) -> dict:
     try:
         import yaml
-        with open(path, 'r') as f:
+
+        with open(path) as f:
             return yaml.safe_load(f)
     except Exception as e:
         print(f"[Distill] config load failed {path}: {e}, using base1b defaults")
         return {}
+
 
 def get_model_from_config(config_path: str = "configs/base1b.yaml", device="cpu"):
     """Load DottieModel1B from config, tolerant to missing deps (mock fallback)"""
@@ -259,6 +308,7 @@ def get_model_from_config(config_path: str = "configs/base1b.yaml", device="cpu"
 
     try:
         from model_1b import DottieModel1B
+
         model = DottieModel1B(
             vocab_size=vocab_size,
             d_model=d_model,
@@ -268,31 +318,45 @@ def get_model_from_config(config_path: str = "configs/base1b.yaml", device="cpu"
             multi_jspace_enabled=True,
             spike_sink_enabled=False,
         )
-        print(f"[Distill] DottieModel1B loaded config={config_path} vocab={vocab_size} d={d_model} layers={n_text}/{n_fusion}/{n_reason}")
+        print(
+            f"[Distill] DottieModel1B loaded config={config_path} vocab={vocab_size} d={d_model} layers={n_text}/{n_fusion}/{n_reason}"
+        )
         return model
     except Exception as e:
-        print(f"[Distill] DottieModel1B load failed: {e}, falling back to random Linear mock")
+        print(
+            f"[Distill] DottieModel1B load failed: {e}, falling back to random Linear mock"
+        )
+
         # Minimal mock for compile verification
         class MockLM(torch.nn.Module):
             def __init__(self, vocab=32000, d=2048):
                 super().__init__()
                 self.embed = torch.nn.Embedding(vocab, d)
                 self.lm_head = torch.nn.Linear(d, vocab, bias=False)
+
             def forward(self, input_ids=None, **kwargs):
                 if input_ids is None:
                     return {"logits": torch.randn(1, 10, 32000)}
                 x = self.embed(input_ids)
                 logits = self.lm_head(x)
                 # fake jspace outputs for router preservation
-                B, L = input_ids.shape
-                workspaces = torch.randn(B, 44, d) if isinstance(x, torch.Tensor) else None
+                B, _L = input_ids.shape
+                workspaces = (
+                    torch.randn(B, 44, d) if isinstance(x, torch.Tensor) else None
+                )
                 route_probs = torch.softmax(torch.randn(B, 4), dim=-1)
-                return {"logits": logits, "workspaces": workspaces, "route_probs": route_probs}
+                return {
+                    "logits": logits,
+                    "workspaces": workspaces,
+                    "route_probs": route_probs,
+                }
+
         return MockLM(vocab=vocab_size, d=d_model)
+
 
 def load_checkpoint(model, ckpt_path: str, device="cpu"):
     if not ckpt_path or ckpt_path.lower() == "none":
-        print(f"[Distill] no ckpt provided, using random init")
+        print("[Distill] no ckpt provided, using random init")
         return model
     p = Path(ckpt_path)
     if not p.exists():
@@ -316,32 +380,44 @@ def load_checkpoint(model, ckpt_path: str, device="cpu"):
         print(f"[Distill] ckpt load failed {ckpt_path}: {e}")
     return model
 
-def get_streaming_dataloader(data_root: str, batch_size: int, seq_len: int, shuffle_buffer: int = 10000):
+
+def get_streaming_dataloader(
+    data_root: str, batch_size: int, seq_len: int, shuffle_buffer: int = 10000
+):
     """Constant-memory streaming loader via streaming_data.py, fallback to dummy"""
     try:
         from streaming_data import AvaStreamingDataset
+
         ds = AvaStreamingDataset(
             data_root=data_root,
             seq_len=seq_len,
             shuffle_buffer=shuffle_buffer,
         )
         from torch.utils.data import DataLoader
+
         dl = DataLoader(ds, batch_size=batch_size, num_workers=0)
-        print(f"[Distill] Streaming dataset ready root={data_root} seq={seq_len} batch={batch_size}")
+        print(
+            f"[Distill] Streaming dataset ready root={data_root} seq={seq_len} batch={batch_size}"
+        )
         return dl
     except Exception as e:
         print(f"[Distill] streaming_data not available: {e}, using dummy generator")
+
         # Dummy infinite generator yielding random tokens
         class DummyIter:
             def __init__(self):
                 self.vocab = 32000
+
             def __iter__(self):
                 return self
+
             def __next__(self):
                 # Return dict with input_ids, labels, task_type, domain
                 B = batch_size
                 L = seq_len
-                input_ids = torch.randint(0, 32000, (B, L)) if HAS_TORCH else [[0]*L]*B
+                input_ids = (
+                    torch.randint(0, 32000, (B, L)) if HAS_TORCH else [[0] * L] * B
+                )
                 labels = input_ids.clone() if HAS_TORCH else input_ids
                 domain = random.choice(["code", "math", "chat", "deliberate"])
                 task_type = domain
@@ -351,27 +427,35 @@ def get_streaming_dataloader(data_root: str, batch_size: int, seq_len: int, shuf
                     "task_type": task_type,
                     "domain": domain,
                 }
+
         # Wrap as dataloader-like
         class DummyLoader:
             def __iter__(self):
                 return DummyIter()
+
         return DummyLoader()
+
 
 def compute_router_preservation_loss(route_probs, target_weights, reduction="mean"):
     """Preserve routing: KL(route_probs || target) or MSE, prevents collapse"""
     if not HAS_TORCH or route_probs is None:
         return 0.0
-    target = torch.tensor(target_weights, device=route_probs.device, dtype=route_probs.dtype)
+    target = torch.tensor(
+        target_weights, device=route_probs.device, dtype=route_probs.dtype
+    )
     # route_probs [B, 4] or [B,L,4] -> mean over batch
     if route_probs.dim() == 3:
         route_probs = route_probs.mean(dim=1)
     # Avoid log 0
-    log_probs = torch.log_softmax(route_probs, dim=-1) if route_probs.min() < 0 else torch.log(route_probs.clamp(min=1e-8))
+    torch.log_softmax(route_probs, dim=-1) if route_probs.min() < 0 else torch.log(
+        route_probs.clamp(min=1e-8)
+    )
     # KL(target || predicted) or predicted vs target? Use KL to target: encourage match
     # Use MSE for simplicity stable
     target_b = target.unsqueeze(0).expand_as(route_probs)
     mse = F.mse_loss(route_probs, target_b)
     return mse
+
 
 def save_checkpoint(model, optimizer, step, ckpt_dir: Path, mode: str):
     ckpt_dir.mkdir(parents=True, exist_ok=True)
@@ -380,7 +464,9 @@ def save_checkpoint(model, optimizer, step, ckpt_dir: Path, mode: str):
         if HAS_TORCH:
             state = {
                 "model": model.state_dict() if hasattr(model, "state_dict") else {},
-                "optimizer": optimizer.state_dict() if optimizer and hasattr(optimizer, "state_dict") else {},
+                "optimizer": optimizer.state_dict()
+                if optimizer and hasattr(optimizer, "state_dict")
+                else {},
                 "step": step,
                 "mode": mode,
             }
@@ -391,7 +477,8 @@ def save_checkpoint(model, optimizer, step, ckpt_dir: Path, mode: str):
     except Exception as e:
         print(f"[Distill] save ckpt failed {e}")
 
-def log_metrics(metrics: Dict, log_dir: Path, metrics_file: Path):
+
+def log_metrics(metrics: dict, log_dir: Path, metrics_file: Path):
     log_dir.mkdir(parents=True, exist_ok=True)
     # metrics.jsonl append
     try:
@@ -403,28 +490,53 @@ def log_metrics(metrics: Dict, log_dir: Path, metrics_file: Path):
     except Exception as e:
         print(f"[Distill] log failed: {e}")
 
-def run_eval_hooks(step: int, ckpt_path: str = None):
+
+def run_eval_hooks(step: int, ckpt_path: str | None = None):
     """Call eval_branch_harness.py + frontier rubric (mock safe, Ollama judge if OLLAMA_HOST set)"""
     try:
         import subprocess
+
         print(f"[Distill] eval hook step={step}")
         # Branch harness 5 J-tests
-        cmd = [sys.executable, "eval_branch_harness.py", "--branch", "all", "--mode", "mock"]
-        result = subprocess.run(cmd, cwd=".", capture_output=True, text=True, timeout=120)
+        cmd = [
+            sys.executable,
+            "eval_branch_harness.py",
+            "--branch",
+            "all",
+            "--mode",
+            "mock",
+        ]
+        result = subprocess.run(
+            cmd, cwd=".", capture_output=True, text=True, timeout=120
+        )
         print(f"[Distill] eval_branch_harness stdout tail: {result.stdout[-500:]}")
         # Frontier rubric with ollama judge if env set
         ollama_host = os.environ.get("OLLAMA_HOST", "")
         if ollama_host:
-            print(f"[Distill] running frontier rubric with Ollama judge host={ollama_host}")
-            cmd2 = [sys.executable, "eval_frontier_rubric.py", "--domain", "all", "--judge", "ollama", "--mode", "mock"]
+            print(
+                f"[Distill] running frontier rubric with Ollama judge host={ollama_host}"
+            )
+            cmd2 = [
+                sys.executable,
+                "eval_frontier_rubric.py",
+                "--domain",
+                "all",
+                "--judge",
+                "ollama",
+                "--mode",
+                "mock",
+            ]
             env = os.environ.copy()
             # keep host
-            result2 = subprocess.run(cmd2, cwd=".", capture_output=True, text=True, timeout=300, env=env)
+            result2 = subprocess.run(
+                cmd2, cwd=".", capture_output=True, text=True, timeout=300, env=env
+            )
             print(f"[Distill] eval_frontier_rubric tail: {result2.stdout[-500:]}")
         else:
             print("[Distill] OLLAMA_HOST not set, skipping ollama judge (mock only)")
     except Exception as e:
         print(f"[Distill] eval hook failed: {e}")
+
 
 def train_loop(args):
     """Main training loop for all modes"""
@@ -457,31 +569,43 @@ def train_loop(args):
             except Exception as e:
                 print(f"[Distill] compile failed: {e}")
 
-    student_model = load_checkpoint(student_model, args.student_ckpt, device=str(device))
+    student_model = load_checkpoint(
+        student_model, args.student_ckpt, device=str(device)
+    )
 
     # Teachers: list of (domain, ckpt_path, model)
     teacher_list = parse_teachers(args.teachers)
     if not teacher_list:
         # Self-distill defaults: teacher = student copy for privileged/earlier modes
-        print(f"[Distill] no teachers parsed, using self-distill defaults for mode={args.mode}")
+        print(
+            f"[Distill] no teachers parsed, using self-distill defaults for mode={args.mode}"
+        )
         if args.mode in ["privileged", "earlier"]:
             teacher_list = [("self", args.student_ckpt or "")]
         else:
             teacher_list = [("generic", args.student_ckpt or "")]
 
-    teachers: List[Tuple[str, Any, str]] = []  # (domain, model, ckpt_path)
+    teachers: list[tuple[str, Any, str]] = []  # (domain, model, ckpt_path)
     for domain, ckpt_path in teacher_list:
-        t_model = get_model_from_config(teacher_configs, device=str(device)) if HAS_TORCH else None
+        t_model = (
+            get_model_from_config(teacher_configs, device=str(device))
+            if HAS_TORCH
+            else None
+        )
         if HAS_TORCH and t_model:
             t_model = t_model.to(device)
             t_model.eval()
             # No grad for teachers (inference only) — saves VRAM
             for p in t_model.parameters():
                 p.requires_grad = False
-        t_model = load_checkpoint(t_model, ckpt_path, device=str(device)) if ckpt_path else t_model
+        t_model = (
+            load_checkpoint(t_model, ckpt_path, device=str(device))
+            if ckpt_path
+            else t_model
+        )
         teachers.append((domain, t_model, ckpt_path))
 
-    print(f"[Distill] teachers loaded: {[(d,p) for d,_,p in teachers]}")
+    print(f"[Distill] teachers loaded: {[(d, p) for d, _, p in teachers]}")
 
     # Optimizer: AdamW or 8-bit via bitsandbytes
     optimizer = None
@@ -489,41 +613,55 @@ def train_loop(args):
         if args.optimizer == "adamw8bit":
             try:
                 import bitsandbytes as bnb
-                optimizer = bnb.optim.AdamW8bit(student_model.parameters(), lr=args.lr, betas=(0.9, 0.95), weight_decay=0.1)
-                print("[Distill] optimizer=AdamW8bit (bitsandbytes) — VRAM ~2.3GB for 1.17B")
+
+                optimizer = bnb.optim.AdamW8bit(
+                    student_model.parameters(),
+                    lr=args.lr,
+                    betas=(0.9, 0.95),
+                    weight_decay=0.1,
+                )
+                print(
+                    "[Distill] optimizer=AdamW8bit (bitsandbytes) — VRAM ~2.3GB for 1.17B"
+                )
             except Exception as e:
                 print(f"[Distill] bitsandbytes not available {e}, fallback AdamW")
-                optimizer = torch.optim.AdamW(student_model.parameters(), lr=args.lr, betas=(0.9, 0.95), weight_decay=0.1)
+                optimizer = torch.optim.AdamW(
+                    student_model.parameters(),
+                    lr=args.lr,
+                    betas=(0.9, 0.95),
+                    weight_decay=0.1,
+                )
         else:
-            optimizer = torch.optim.AdamW(student_model.parameters(), lr=args.lr, betas=(0.9, 0.95), weight_decay=0.1)
+            optimizer = torch.optim.AdamW(
+                student_model.parameters(),
+                lr=args.lr,
+                betas=(0.9, 0.95),
+                weight_decay=0.1,
+            )
             print(f"[Distill] optimizer=AdamW lr={args.lr}")
 
     # Deepspeed optional
-    ds_engine = None
     if args.deepspeed and HAS_TORCH:
         try:
-            import deepspeed
             # Minimal DS config load
             ds_config_path = args.deepspeed
             if Path(ds_config_path).exists():
                 with open(ds_config_path) as f:
-                    ds_config = json.load(f)
+                    json.load(f)
             else:
-                ds_config = {
-                    "bf16": {"enabled": True},
-                    "zero_optimization": {"stage": 3, "offload_optimizer": {"device": "none"}, "overlap_comm": True},
-                    "train_batch_size": args.batch,
-                    "train_micro_batch_size_per_gpu": args.batch,
-                    "gradient_clipping": 1.0,
-                }
+                pass
             # deepspeed.initialize would normally take model, optimizer, config
             # We skip full init if mock, but show intent
-            print(f"[Distill] DeepSpeed Zero3 bf16 ready config={ds_config_path} (use torchrun --deepspeed {ds_config_path} for full)")
+            print(
+                f"[Distill] DeepSpeed Zero3 bf16 ready config={ds_config_path} (use torchrun --deepspeed {ds_config_path} for full)"
+            )
         except Exception as e:
             print(f"[Distill] deepspeed not available or init skipped: {e}")
 
     # Dataloader
-    dataloader = get_streaming_dataloader(args.data_root, args.batch, args.seq_len, shuffle_buffer=args.shuffle_buffer)
+    dataloader = get_streaming_dataloader(
+        args.data_root, args.batch, args.seq_len, shuffle_buffer=args.shuffle_buffer
+    )
     dataloader_iter = iter(dataloader)
 
     # Tracking
@@ -532,12 +670,21 @@ def train_loop(args):
     start_time = time.time()
 
     # Hint for privileged mode
-    hint_text = args.hint or "think with 4 workspaces S1 Fast hl8 S2 Slow hl300 Critic hl30 Planner hl150, broadcast 0.18 0.22 0.20 0.20, verify stepwise, preserve routing"
+    hint_text = (
+        args.hint
+        or "think with 4 workspaces S1 Fast hl8 S2 Slow hl300 Critic hl30 Planner hl150, broadcast 0.18 0.22 0.20 0.20, verify stepwise, preserve routing"
+    )
 
-    print(f"[Distill] starting loop mode={args.mode} tokens_total={args.tokens_total} batch={args.batch} seq={args.seq_len}")
-    print(f"[Distill] VRAM budget: student 2.3GB + 1 teacher 2.3GB + grads 2.3GB + adam8bit 2.3GB + act 1-2GB = 9-10GB fits 12GB")
+    print(
+        f"[Distill] starting loop mode={args.mode} tokens_total={args.tokens_total} batch={args.batch} seq={args.seq_len}"
+    )
+    print(
+        "[Distill] VRAM budget: student 2.3GB + 1 teacher 2.3GB + grads 2.3GB + adam8bit 2.3GB + act 1-2GB = 9-10GB fits 12GB"
+    )
 
-    max_steps = args.tokens_total // (args.batch * args.seq_len) if args.tokens_total else 1000
+    max_steps = (
+        args.tokens_total // (args.batch * args.seq_len) if args.tokens_total else 1000
+    )
 
     for step in range(1, max_steps + 1):
         try:
@@ -548,8 +695,12 @@ def train_loop(args):
         except Exception as e:
             print(f"[Distill] dataloader next failed {e}, using dummy")
             batch = {
-                "input_ids": torch.randint(0, 32000, (args.batch, args.seq_len)) if HAS_TORCH else None,
-                "labels": torch.randint(0, 32000, (args.batch, args.seq_len)) if HAS_TORCH else None,
+                "input_ids": torch.randint(0, 32000, (args.batch, args.seq_len))
+                if HAS_TORCH
+                else None,
+                "labels": torch.randint(0, 32000, (args.batch, args.seq_len))
+                if HAS_TORCH
+                else None,
                 "task_type": random.choice(["code", "math", "chat"]),
                 "domain": random.choice(["code", "math", "chat"]),
             }
@@ -595,10 +746,16 @@ def train_loop(args):
         # Handle dict or direct logits
         if isinstance(student_out, dict):
             student_logits = student_out.get("logits")
-            route_probs = student_out.get("route_probs") or student_out.get("routing_probs")
+            route_probs = student_out.get("route_probs") or student_out.get(
+                "routing_probs"
+            )
             # For jspace models, route_probs might be in jspace_out
             if route_probs is None and "jspace_out" in student_out:
-                route_probs = student_out["jspace_out"].get("route_probs") if isinstance(student_out["jspace_out"], dict) else None
+                route_probs = (
+                    student_out["jspace_out"].get("route_probs")
+                    if isinstance(student_out["jspace_out"], dict)
+                    else None
+                )
         elif isinstance(student_out, (list, tuple)):
             student_logits = student_out[0]
             route_probs = None
@@ -612,7 +769,12 @@ def train_loop(args):
 
         # Select teacher(s) based on mode
         total_loss = 0.0
-        metrics = {"step": step, "mode": args.mode, "domain": domain, "task_type": str(task_type)}
+        metrics = {
+            "step": step,
+            "mode": args.mode,
+            "domain": domain,
+            "task_type": str(task_type),
+        }
 
         if args.mode == "mopd":
             # Multi-teacher on-policy: student rollout already = current batch (student generated)
@@ -633,7 +795,9 @@ def train_loop(args):
                     t_logits = t_out.get("logits") if isinstance(t_out, dict) else t_out
                     if isinstance(t_logits, (list, tuple)):
                         t_logits = t_logits[0]
-                loss_kl = reverse_kl_loss(student_logits, t_logits, mask=mask, temperature=args.temperature)
+                loss_kl = reverse_kl_loss(
+                    student_logits, t_logits, mask=mask, temperature=args.temperature
+                )
 
             router_loss = 0.0
             if args.preserve_router and route_probs is not None:
@@ -642,11 +806,19 @@ def train_loop(args):
 
             # Combined: reverse KL dominates (dense signal) + small router preservation
             total_loss = loss_kl + args.router_weight * router_loss
-            metrics.update({
-                "reverse_kl": float(loss_kl.item() if isinstance(loss_kl, torch.Tensor) else loss_kl),
-                "router_pres": float(router_loss.item() if isinstance(router_loss, torch.Tensor) else router_loss),
-                "teacher_domain": t_domain,
-            })
+            metrics.update(
+                {
+                    "reverse_kl": float(
+                        loss_kl.item() if isinstance(loss_kl, torch.Tensor) else loss_kl
+                    ),
+                    "router_pres": float(
+                        router_loss.item()
+                        if isinstance(router_loss, torch.Tensor)
+                        else router_loss
+                    ),
+                    "teacher_domain": t_domain,
+                }
+            )
 
         elif args.mode == "privileged":
             # Privileged teacher: teacher input = hint + input_ids, student = input_ids only
@@ -655,7 +827,9 @@ def train_loop(args):
             # For simplicity, we reuse same input_ids for teacher but with hint context simulated by using teacher model that was finetuned with hint.
             # Real implementation: tokenize hint + input_ids, run teacher, then slice logits to match student length.
             # Here: teacher = same model but we treat first teacher as hinted.
-            t_domain, t_model, t_ckpt = teachers[0] if teachers else ("self", student_model, "")
+            t_domain, t_model, t_ckpt = (
+                teachers[0] if teachers else ("self", student_model, "")
+            )
             # If teacher is None, use student copy as hinted self (self-distill)
             if t_model is None:
                 t_model = student_model
@@ -670,19 +844,27 @@ def train_loop(args):
                 if isinstance(t_logits, (list, tuple)):
                     t_logits = t_logits[0]
 
-            loss_kl = reverse_kl_loss(student_logits, t_logits, mask=mask, temperature=args.temperature)
+            loss_kl = reverse_kl_loss(
+                student_logits, t_logits, mask=mask, temperature=args.temperature
+            )
             total_loss = loss_kl
-            metrics.update({
-                "reverse_kl": float(loss_kl.item() if isinstance(loss_kl, torch.Tensor) else loss_kl),
-                "hint": hint_text[:80],
-            })
+            metrics.update(
+                {
+                    "reverse_kl": float(
+                        loss_kl.item() if isinstance(loss_kl, torch.Tensor) else loss_kl
+                    ),
+                    "hint": hint_text[:80],
+                }
+            )
 
         elif args.mode == "earlier":
             # Earlier teacher: teacher = pre-finetune ckpt, student = current finetuned.
             # Distill from earlier to restore behavior that finetuning erased, while keeping new knowledge.
             # Data: mix of replay buffer (old caps) + new domain data.
             # Loss = reverse KL to earlier teacher on replay portion + CE on new.
-            t_domain, t_model, t_ckpt = teachers[0] if teachers else ("earlier", None, "")
+            t_domain, t_model, t_ckpt = (
+                teachers[0] if teachers else ("earlier", None, "")
+            )
             if t_model is None:
                 t_model = student_model
 
@@ -693,20 +875,32 @@ def train_loop(args):
                 if isinstance(t_logits, (list, tuple)):
                     t_logits = t_logits[0]
 
-            loss_kl = reverse_kl_loss(student_logits, t_logits, mask=mask, temperature=args.temperature)
+            loss_kl = reverse_kl_loss(
+                student_logits, t_logits, mask=mask, temperature=args.temperature
+            )
             loss_ce = ce_loss_student(student_logits, labels, mask=mask)
             # Earlier teacher weighting: Cap restoration (GLM-5) uses higher KL weight for old caps
-            total_loss = args.earlier_kl_weight * loss_kl + args.earlier_ce_weight * loss_ce
-            metrics.update({
-                "reverse_kl": float(loss_kl.item() if isinstance(loss_kl, torch.Tensor) else loss_kl),
-                "ce": float(loss_ce.item() if isinstance(loss_ce, torch.Tensor) else loss_ce),
-                "earlier_ckpt": t_ckpt,
-            })
+            total_loss = (
+                args.earlier_kl_weight * loss_kl + args.earlier_ce_weight * loss_ce
+            )
+            metrics.update(
+                {
+                    "reverse_kl": float(
+                        loss_kl.item() if isinstance(loss_kl, torch.Tensor) else loss_kl
+                    ),
+                    "ce": float(
+                        loss_ce.item() if isinstance(loss_ce, torch.Tensor) else loss_ce
+                    ),
+                    "earlier_ckpt": t_ckpt,
+                }
+            )
 
         elif args.mode == "offpolicy":
             # Off-policy: large teacher -> small student
             # Soft labels (forward KL) + hard SFT on teacher traces
-            t_domain, t_model, t_ckpt = teachers[0] if teachers else ("teacher", None, "")
+            t_domain, t_model, t_ckpt = (
+                teachers[0] if teachers else ("teacher", None, "")
+            )
             if t_model is None:
                 t_model = student_model
 
@@ -717,15 +911,28 @@ def train_loop(args):
                 if isinstance(t_logits, (list, tuple)):
                     t_logits = t_logits[0]
 
-            loss_forward_kl = forward_kl_loss(student_logits, t_logits, mask=mask, temperature=args.temperature)
+            loss_forward_kl = forward_kl_loss(
+                student_logits, t_logits, mask=mask, temperature=args.temperature
+            )
             loss_ce = ce_loss_student(student_logits, labels, mask=mask)
             # Combine: alpha soft + (1-alpha) hard, like Gemma KD
-            total_loss = args.offpolicy_alpha * loss_forward_kl + (1 - args.offpolicy_alpha) * loss_ce
-            metrics.update({
-                "forward_kl": float(loss_forward_kl.item() if isinstance(loss_forward_kl, torch.Tensor) else loss_forward_kl),
-                "ce": float(loss_ce.item() if isinstance(loss_ce, torch.Tensor) else loss_ce),
-                "alpha": args.offpolicy_alpha,
-            })
+            total_loss = (
+                args.offpolicy_alpha * loss_forward_kl
+                + (1 - args.offpolicy_alpha) * loss_ce
+            )
+            metrics.update(
+                {
+                    "forward_kl": float(
+                        loss_forward_kl.item()
+                        if isinstance(loss_forward_kl, torch.Tensor)
+                        else loss_forward_kl
+                    ),
+                    "ce": float(
+                        loss_ce.item() if isinstance(loss_ce, torch.Tensor) else loss_ce
+                    ),
+                    "alpha": args.offpolicy_alpha,
+                }
+            )
 
         else:
             raise ValueError(f"Unknown mode {args.mode}")
@@ -735,7 +942,9 @@ def train_loop(args):
             optimizer.zero_grad()
             total_loss.backward()
             if args.grad_clip:
-                torch.nn.utils.clip_grad_norm_(student_model.parameters(), args.grad_clip)
+                torch.nn.utils.clip_grad_norm_(
+                    student_model.parameters(), args.grad_clip
+                )
             optimizer.step()
 
             metrics["loss"] = float(total_loss.item())
@@ -747,13 +956,18 @@ def train_loop(args):
 
             if step % args.log_every == 0:
                 log_metrics(metrics, log_dir, metrics_file)
-                print(f"[Distill] step={step} mode={args.mode} loss={metrics['loss']:.4f} kl={metrics.get('reverse_kl', metrics.get('forward_kl', 0)):.4f} tokens={tokens_seen}")
+                print(
+                    f"[Distill] step={step} mode={args.mode} loss={metrics['loss']:.4f} kl={metrics.get('reverse_kl', metrics.get('forward_kl', 0)):.4f} tokens={tokens_seen}"
+                )
 
             if step % args.ckpt_every == 0:
                 save_checkpoint(student_model, optimizer, step, ckpt_dir, args.mode)
                 # Eval hooks
                 if args.eval_every and step % args.eval_every == 0:
-                    run_eval_hooks(step, ckpt_path=str(ckpt_dir / f"ava_distill_{args.mode}_{step}.pt"))
+                    run_eval_hooks(
+                        step,
+                        ckpt_path=str(ckpt_dir / f"ava_distill_{args.mode}_{step}.pt"),
+                    )
 
             # LR scheduling WSD
             if args.use_wsd:
@@ -763,7 +977,9 @@ def train_loop(args):
 
         # Early stop for demo if tokens_total reached
         if tokens_seen >= args.tokens_total:
-            print(f"[Distill] tokens_total reached {tokens_seen} >= {args.tokens_total}")
+            print(
+                f"[Distill] tokens_total reached {tokens_seen} >= {args.tokens_total}"
+            )
             break
 
     # Final save
@@ -774,57 +990,187 @@ def train_loop(args):
     # Convert to HF via existing script if available
     try:
         import subprocess
+
         hf_out = f"hf_model/distill_{args.mode}"
-        cmd = [sys.executable, "convert_to_hf.py", "--ckpt", str(ckpt_dir / f"ava_distill_{args.mode}_{step}.pt"), "--out", hf_out]
+        cmd = [
+            sys.executable,
+            "convert_to_hf.py",
+            "--ckpt",
+            str(ckpt_dir / f"ava_distill_{args.mode}_{step}.pt"),
+            "--out",
+            hf_out,
+        ]
         subprocess.run(cmd, cwd=".", timeout=60)
         print(f"[Distill] HF conversion attempted out={hf_out}")
     except Exception as e:
         print(f"[Distill] HF conversion skipped: {e}")
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Ava AGI Factory v6.4 — On-Policy Distillation (MOPD/privileged/earlier/offpolicy) — Solo personal project")
-    parser.add_argument("--mode", default="mopd", choices=["mopd", "privileged", "earlier", "offpolicy"],
-                        help="mopd=Multi-Teacher On-Policy merging RL experts, privileged=hint self-distill (Cursor), earlier=pre-finetune cap restoration (GLM-5/Thinking Machines), offpolicy=large teacher->small student")
-    parser.add_argument("--student-ckpt", default="checkpoints/base1b/ava_stable_736k.pt", help="Student checkpoint path, or None for random init")
-    parser.add_argument("--student-config", default="configs/base1b.yaml", help="Student model config yaml")
-    parser.add_argument("--teacher-config", default=None, help="Teacher model config yaml (defaults to student-config)")
-    parser.add_argument("--teachers", default="code:checkpoints/code/exp.pt,math:checkpoints/math/exp.pt,chat:checkpoints/chat/exp.pt",
-                        help="Comma list domain:ckpt e.g. code:ckpts/code.pt,math:ckpts/math.pt. For mopd use 3 domains, for earlier use earlier:ckpt, for offpolicy teacher:ckpt")
-    parser.add_argument("--hint", default="think with 4 workspaces S1 Fast hl8 broadcast 0.18 S2 Slow hl300 mass 0.065 Critic hl30 safety Planner hl150 temporal 0.20, verify stepwise, preserve routing",
-                        help="Privileged teacher hint describing desired behavior")
-    parser.add_argument("--data_root", default="data/streaming_shards", help="Streaming shards root")
-    parser.add_argument("--batch", type=int, default=1, help="Micro batch per GPU, 1 fits 12GB with checkpointing")
-    parser.add_argument("--seq_len", type=int, default=2048, help="Sequence length, 2048 early, 16384 for long")
-    parser.add_argument("--tokens_total", type=int, default=500_000_000, help="Total tokens to distill, e.g. 500M demo, 2B M1, 10B M2")
-    parser.add_argument("--lr", type=float, default=8e-5, help="Learning rate for distillation, lower than pretrain 2e-4 -> 8e-5 typical")
-    parser.add_argument("--temperature", type=float, default=1.0, help="Softmax temperature for KD, 1.0 default, >1 smooths (Gemma)")
-    parser.add_argument("--preserve-router", action="store_true", default=True, help="Preserve routing via MSE to target bias")
-    parser.add_argument("--no-preserve-router", dest="preserve_router", action="store_false")
-    parser.add_argument("--router-weight", type=float, default=0.1, help="Weight for router preservation term")
-    parser.add_argument("--offpolicy-alpha", type=float, default=0.5, help="Off-policy alpha soft vs hard: loss = alpha*KL + (1-alpha)*CE")
-    parser.add_argument("--earlier-kl-weight", type=float, default=0.7, help="Earlier teacher KL weight")
-    parser.add_argument("--earlier-ce-weight", type=float, default=0.3, help="Earlier teacher CE weight for new knowledge")
-    parser.add_argument("--deepspeed", default="deepspeed_zero3_bf16.json", help="DeepSpeed config path, or empty to disable")
-    parser.add_argument("--no-deepspeed", dest="deepspeed", action="store_const", const="", help="Disable DeepSpeed")
-    parser.add_argument("--optimizer", default="adamw8bit", choices=["adamw", "adamw8bit"], help="adamw8bit saves VRAM 2.3GB")
-    parser.add_argument("--gradient-checkpointing", action="store_true", default=True, help="Enable grad checkpointing to fit 12GB")
-    parser.add_argument("--no-gradient-checkpointing", dest="gradient_checkpointing", action="store_false")
-    parser.add_argument("--compile", action="store_true", default=True, help="torch.compile for throughput")
+    parser = argparse.ArgumentParser(
+        description="Ava AGI Factory v6.4 — On-Policy Distillation (MOPD/privileged/earlier/offpolicy) — Solo personal project"
+    )
+    parser.add_argument(
+        "--mode",
+        default="mopd",
+        choices=["mopd", "privileged", "earlier", "offpolicy"],
+        help="mopd=Multi-Teacher On-Policy merging RL experts, privileged=hint self-distill (Cursor), earlier=pre-finetune cap restoration (GLM-5/Thinking Machines), offpolicy=large teacher->small student",
+    )
+    parser.add_argument(
+        "--student-ckpt",
+        default="checkpoints/base1b/ava_stable_736k.pt",
+        help="Student checkpoint path, or None for random init",
+    )
+    parser.add_argument(
+        "--student-config",
+        default="configs/base1b.yaml",
+        help="Student model config yaml",
+    )
+    parser.add_argument(
+        "--teacher-config",
+        default=None,
+        help="Teacher model config yaml (defaults to student-config)",
+    )
+    parser.add_argument(
+        "--teachers",
+        default="code:checkpoints/code/exp.pt,math:checkpoints/math/exp.pt,chat:checkpoints/chat/exp.pt",
+        help="Comma list domain:ckpt e.g. code:ckpts/code.pt,math:ckpts/math.pt. For mopd use 3 domains, for earlier use earlier:ckpt, for offpolicy teacher:ckpt",
+    )
+    parser.add_argument(
+        "--hint",
+        default="think with 4 workspaces S1 Fast hl8 broadcast 0.18 S2 Slow hl300 mass 0.065 Critic hl30 safety Planner hl150 temporal 0.20, verify stepwise, preserve routing",
+        help="Privileged teacher hint describing desired behavior",
+    )
+    parser.add_argument(
+        "--data_root", default="data/streaming_shards", help="Streaming shards root"
+    )
+    parser.add_argument(
+        "--batch",
+        type=int,
+        default=1,
+        help="Micro batch per GPU, 1 fits 12GB with checkpointing",
+    )
+    parser.add_argument(
+        "--seq_len",
+        type=int,
+        default=2048,
+        help="Sequence length, 2048 early, 16384 for long",
+    )
+    parser.add_argument(
+        "--tokens_total",
+        type=int,
+        default=500_000_000,
+        help="Total tokens to distill, e.g. 500M demo, 2B M1, 10B M2",
+    )
+    parser.add_argument(
+        "--lr",
+        type=float,
+        default=8e-5,
+        help="Learning rate for distillation, lower than pretrain 2e-4 -> 8e-5 typical",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=1.0,
+        help="Softmax temperature for KD, 1.0 default, >1 smooths (Gemma)",
+    )
+    parser.add_argument(
+        "--preserve-router",
+        action="store_true",
+        default=True,
+        help="Preserve routing via MSE to target bias",
+    )
+    parser.add_argument(
+        "--no-preserve-router", dest="preserve_router", action="store_false"
+    )
+    parser.add_argument(
+        "--router-weight",
+        type=float,
+        default=0.1,
+        help="Weight for router preservation term",
+    )
+    parser.add_argument(
+        "--offpolicy-alpha",
+        type=float,
+        default=0.5,
+        help="Off-policy alpha soft vs hard: loss = alpha*KL + (1-alpha)*CE",
+    )
+    parser.add_argument(
+        "--earlier-kl-weight", type=float, default=0.7, help="Earlier teacher KL weight"
+    )
+    parser.add_argument(
+        "--earlier-ce-weight",
+        type=float,
+        default=0.3,
+        help="Earlier teacher CE weight for new knowledge",
+    )
+    parser.add_argument(
+        "--deepspeed",
+        default="deepspeed_zero3_bf16.json",
+        help="DeepSpeed config path, or empty to disable",
+    )
+    parser.add_argument(
+        "--no-deepspeed",
+        dest="deepspeed",
+        action="store_const",
+        const="",
+        help="Disable DeepSpeed",
+    )
+    parser.add_argument(
+        "--optimizer",
+        default="adamw8bit",
+        choices=["adamw", "adamw8bit"],
+        help="adamw8bit saves VRAM 2.3GB",
+    )
+    parser.add_argument(
+        "--gradient-checkpointing",
+        action="store_true",
+        default=True,
+        help="Enable grad checkpointing to fit 12GB",
+    )
+    parser.add_argument(
+        "--no-gradient-checkpointing",
+        dest="gradient_checkpointing",
+        action="store_false",
+    )
+    parser.add_argument(
+        "--compile",
+        action="store_true",
+        default=True,
+        help="torch.compile for throughput",
+    )
     parser.add_argument("--no-compile", dest="compile", action="store_false")
     parser.add_argument("--grad-clip", type=float, default=1.0, help="Grad clip")
-    parser.add_argument("--shuffle_buffer", type=int, default=10000, help="Shuffle buffer size fixed memory")
+    parser.add_argument(
+        "--shuffle_buffer",
+        type=int,
+        default=10000,
+        help="Shuffle buffer size fixed memory",
+    )
     parser.add_argument("--log-every", type=int, default=10, help="Log every N steps")
-    parser.add_argument("--ckpt-every", type=int, default=500, help="CKPT every N steps")
-    parser.add_argument("--eval-every", type=int, default=1000, help="Eval hook every N steps")
-    parser.add_argument("--use-wsd", action="store_true", default=True, help="Use WSD LR schedule 736k stable 92%%")
+    parser.add_argument(
+        "--ckpt-every", type=int, default=500, help="CKPT every N steps"
+    )
+    parser.add_argument(
+        "--eval-every", type=int, default=1000, help="Eval hook every N steps"
+    )
+    parser.add_argument(
+        "--use-wsd",
+        action="store_true",
+        default=True,
+        help="Use WSD LR schedule 736k stable 92%%",
+    )
     parser.add_argument("--no-wsd", dest="use_wsd", action="store_false")
 
     args = parser.parse_args()
 
-    print(f"Solo personal project, no connection to employer, built with public/free-tier only")
+    print(
+        "Solo personal project, no connection to employer, built with public/free-tier only"
+    )
     print(f"Args: {args}")
 
     train_loop(args)
+
 
 if __name__ == "__main__":
     main()

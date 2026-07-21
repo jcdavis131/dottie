@@ -7,19 +7,22 @@ Exposes:
   async def call_mcp_tool(url, name, args) -> dict
   sync wrappers: list_mcp_tools_sync, call_mcp_tool_sync
 """
+
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from bigbang.core.http_utils import sanitize_no_proxy_env
+
 sanitize_no_proxy_env()
 
 try:
-    from mcp.client.sse import sse_client
-    from mcp.client.session import ClientSession
-    from mcp.client.streamable_http import streamablehttp_client
     import httpx as _httpx
+    from mcp.client.session import ClientSession
+    from mcp.client.sse import sse_client
+    from mcp.client.streamable_http import streamablehttp_client
+
     _SDK_AVAILABLE = True
 except ImportError:  # pragma: no cover
     sse_client = None  # type: ignore
@@ -35,7 +38,10 @@ def _check_sdk():
             "mcp SDK not installed. Run: pip install 'mcp>=1.28.1' or pip install bigbang-cli[all]."
         )
 
-def _mcp_http_client_factory(headers: dict | None = None, timeout: Any | None = None, auth: Any | None = None) -> Any:
+
+def _mcp_http_client_factory(
+    headers: dict | None = None, timeout: Any | None = None, auth: Any | None = None
+) -> Any:
     """Fix NO_PROXY and create httpx AsyncClient"""
     sanitize_no_proxy_env()
     if _httpx is None:
@@ -52,45 +58,70 @@ def _mcp_http_client_factory(headers: dict | None = None, timeout: Any | None = 
     return _httpx.AsyncClient(**kw)
 
 
-async def list_mcp_tools(url: str) -> List[Dict[str, Any]]:
+async def list_mcp_tools(url: str) -> list[dict[str, Any]]:
     _check_sdk()
-    last_exc: Optional[Exception] = None
+    last_exc: Exception | None = None
     for factory in [sse_client, streamablehttp_client]:
         if factory is None:
             continue
         try:
-            async with factory(url, httpx_client_factory=_mcp_http_client_factory) as (read, write):  # type: ignore
+            async with factory(url, httpx_client_factory=_mcp_http_client_factory) as (
+                read,
+                write,
+            ):  # type: ignore
                 async with ClientSession(read, write) as session:  # type: ignore
                     await session.initialize()
                     resp = await session.list_tools()
                     tools_raw = getattr(resp, "tools", resp)
-                    iterable = tools_raw if isinstance(tools_raw, (list, tuple)) else getattr(tools_raw, "tools", [])
-                    out: List[Dict[str, Any]] = []
+                    iterable = (
+                        tools_raw
+                        if isinstance(tools_raw, (list, tuple))
+                        else getattr(tools_raw, "tools", [])
+                    )
+                    out: list[dict[str, Any]] = []
                     for t in iterable:
-                        name = getattr(t, "name", None) or (t.get("name") if isinstance(t, dict) else "unknown")  # type: ignore
-                        desc = getattr(t, "description", "") or (t.get("description") if isinstance(t, dict) else "")  # type: ignore
-                        schema = getattr(t, "inputSchema", {}) or (t.get("inputSchema") if isinstance(t, dict) else {})  # type: ignore
+                        name = getattr(t, "name", None) or (
+                            t.get("name") if isinstance(t, dict) else "unknown"
+                        )  # type: ignore
+                        desc = getattr(t, "description", "") or (
+                            t.get("description") if isinstance(t, dict) else ""
+                        )  # type: ignore
+                        schema = getattr(t, "inputSchema", {}) or (
+                            t.get("inputSchema") if isinstance(t, dict) else {}
+                        )  # type: ignore
                         if hasattr(schema, "model_dump"):
                             try:
                                 schema = schema.model_dump()  # type: ignore
                             except Exception:
                                 schema = {}
-                        out.append({"name": name, "description": desc or "", "inputSchema": schema or {}})
+                        out.append(
+                            {
+                                "name": name,
+                                "description": desc or "",
+                                "inputSchema": schema or {},
+                            }
+                        )
                     return out
         except Exception as e:
             last_exc = e
             continue
     raise ConnectionError(f"Failed to list tools from {url}: {last_exc}")
 
-async def call_mcp_tool(url: str, tool_name: str, args: Dict[str, Any] | None = None) -> Dict[str, Any]:
+
+async def call_mcp_tool(
+    url: str, tool_name: str, args: dict[str, Any] | None = None
+) -> dict[str, Any]:
     _check_sdk()
     args = args or {}
-    last_exc: Optional[Exception] = None
+    last_exc: Exception | None = None
     for factory in [sse_client, streamablehttp_client]:
         if factory is None:
             continue
         try:
-            async with factory(url, httpx_client_factory=_mcp_http_client_factory) as (read, write):  # type: ignore
+            async with factory(url, httpx_client_factory=_mcp_http_client_factory) as (
+                read,
+                write,
+            ):  # type: ignore
                 async with ClientSession(read, write) as session:  # type: ignore
                     await session.initialize()
                     result = await session.call_tool(tool_name, arguments=args)
@@ -101,19 +132,21 @@ async def call_mcp_tool(url: str, tool_name: str, args: Dict[str, Any] | None = 
                         except Exception:
                             pass
                     if hasattr(result, "content"):
-                        return {"content": getattr(result, "content"), "raw": str(result)}
+                        return {"content": result.content, "raw": str(result)}
                     return {"result": result}
         except Exception as e:
             last_exc = e
             continue
     raise ConnectionError(f"Failed to call tool {tool_name} at {url}: {last_exc}")
 
-def list_mcp_tools_sync(url: str) -> List[Dict[str, Any]]:
+
+def list_mcp_tools_sync(url: str) -> list[dict[str, Any]]:
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
             # create new loop in thread
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor() as ex:
                 fut = ex.submit(asyncio.run, list_mcp_tools(url))
                 return fut.result(timeout=30)
@@ -122,11 +155,15 @@ def list_mcp_tools_sync(url: str) -> List[Dict[str, Any]]:
     except RuntimeError:
         return asyncio.run(list_mcp_tools(url))
 
-def call_mcp_tool_sync(url: str, tool_name: str, args: Dict[str, Any] | None = None) -> Dict[str, Any]:
+
+def call_mcp_tool_sync(
+    url: str, tool_name: str, args: dict[str, Any] | None = None
+) -> dict[str, Any]:
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor() as ex:
                 fut = ex.submit(asyncio.run, call_mcp_tool(url, tool_name, args))
                 return fut.result(timeout=30)
@@ -134,5 +171,6 @@ def call_mcp_tool_sync(url: str, tool_name: str, args: Dict[str, Any] | None = N
             return loop.run_until_complete(call_mcp_tool(url, tool_name, args))
     except RuntimeError:
         return asyncio.run(call_mcp_tool(url, tool_name, args))
+
 
 # Solo personal project, no connection to employer, built with public/free-tier only

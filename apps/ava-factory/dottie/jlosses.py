@@ -17,14 +17,17 @@ its formulas.
 from __future__ import annotations
 
 import dataclasses
-from typing import Mapping
+from typing import TYPE_CHECKING
 
 import torch
 import torch.nn.functional as F
+from multi_jspace_module import MultiJSpaceLosses
 from torch.utils.checkpoint import checkpoint as _ckpt
 
 from dottie.config import SPACES, DottieConfig
-from multi_jspace_module import MultiJSpaceLosses
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 # Rows per cross-entropy chunk. The CE upcast used to materialize the FULL
 # [B*T, V] logits in fp32 twice (the .float() copy + log_softmax's buffer):
@@ -76,12 +79,18 @@ class JSpaceObjective(torch.nn.Module):
             return F.cross_entropy(lg.float(), tgt)
         total: torch.Tensor | None = None
         for i in range(0, n, _CE_CHUNK_ROWS):
-            piece = _ckpt(self._ce_sum, lg[i:i + _CE_CHUNK_ROWS],
-                          tgt[i:i + _CE_CHUNK_ROWS], use_reentrant=False)
+            piece = _ckpt(
+                self._ce_sum,
+                lg[i : i + _CE_CHUNK_ROWS],
+                tgt[i : i + _CE_CHUNK_ROWS],
+                use_reentrant=False,
+            )
             total = piece if total is None else total + piece
         return total / n
 
-    def _report_loss(self, model, jm: Mapping, concept_ids: torch.Tensor | None) -> torch.Tensor:
+    def _report_loss(
+        self, model, jm: Mapping, concept_ids: torch.Tensor | None
+    ) -> torch.Tensor:
         """CE(verbalizer(S2 workspace mean) -> concept token), over TAGGED docs only.
 
         Only synthetic docs carry a concept; HF records arrive as
@@ -104,7 +113,9 @@ class JSpaceObjective(torch.nn.Module):
     def _broadcast_loss(self, jm: Mapping) -> torch.Tensor:
         # per-space broadcast strength toward its configured target
         terms = [
-            self.losses.broadcast_loss(jm[s]["broadcast_strength"], self.j.broadcast_target[s])
+            self.losses.broadcast_loss(
+                jm[s]["broadcast_strength"], self.j.broadcast_target[s]
+            )
             for s in SPACES
         ]
         return torch.stack(terms).mean()
@@ -146,25 +157,38 @@ class JSpaceObjective(torch.nn.Module):
     def _half_life_loss(self, model) -> torch.Tensor:
         mj = model.multi_jspace
         terms = [
-            self.losses.half_life_loss(getattr(mj, s), self.j.half_life[s]) * self.j.hl_weight[s]
+            self.losses.half_life_loss(getattr(mj, s), self.j.half_life[s])
+            * self.j.hl_weight[s]
             for s in SPACES
         ]
         return torch.stack(terms).sum()
 
     def _inter_mi(self, jm: Mapping) -> torch.Tensor:
         return self.losses.inter_space_mi_regularizer(
-            jm["workspaces"]["system1"], jm["workspaces"]["system2"], self.j.inter_mi_cos_target
+            jm["workspaces"]["system1"],
+            jm["workspaces"]["system2"],
+            self.j.inter_mi_cos_target,
         )
 
     def _routing(self, jm: Mapping, task_type: str) -> torch.Tensor:
         return self.losses.routing_loss(
-            jm["route_probs"], task_type, targets=self.j.routing_targets,
+            jm["route_probs"],
+            task_type,
+            targets=self.j.routing_targets,
         )
 
     # -- entry point ---------------------------------------------------------
 
-    def forward(self, model, out: Mapping, input_ids: torch.Tensor, *, phase: int,
-                task_type: str, concept_ids: torch.Tensor | None = None) -> LossBreakdown:
+    def forward(
+        self,
+        model,
+        out: Mapping,
+        input_ids: torch.Tensor,
+        *,
+        phase: int,
+        task_type: str,
+        concept_ids: torch.Tensor | None = None,
+    ) -> LossBreakdown:
         jm = out["jspace"]
         w = self.j.base_loss_weights
         jw = self.j.j_weight_for_phase(phase)
@@ -178,14 +202,29 @@ class JSpaceObjective(torch.nn.Module):
         inter_mi = self._inter_mi(jm)
         routing = self._routing(jm, task_type)
 
-        aux = (report * w["report"] + broadcast * w["broadcast"]
-               + selectivity * w["selectivity"] + modulation * w["modulation"])
+        aux = (
+            report * w["report"]
+            + broadcast * w["broadcast"]
+            + selectivity * w["selectivity"]
+            + modulation * w["modulation"]
+        )
 
-        total = (lm + aux * jw
-                 + half_life
-                 + inter_mi * self.j.inter_mi_weight
-                 + routing * self.j.routing_weight)
+        total = (
+            lm
+            + aux * jw
+            + half_life
+            + inter_mi * self.j.inter_mi_weight
+            + routing * self.j.routing_weight
+        )
 
-        return LossBreakdown(total=total, lm=lm, report=report, broadcast=broadcast,
-                             selectivity=selectivity, modulation=modulation,
-                             half_life=half_life, inter_mi=inter_mi, routing=routing)
+        return LossBreakdown(
+            total=total,
+            lm=lm,
+            report=report,
+            broadcast=broadcast,
+            selectivity=selectivity,
+            modulation=modulation,
+            half_life=half_life,
+            inter_mi=inter_mi,
+            routing=routing,
+        )

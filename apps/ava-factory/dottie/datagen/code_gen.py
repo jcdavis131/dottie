@@ -8,12 +8,16 @@ determinism is preserved -- the discard/retry loop is itself deterministic).
 from __future__ import annotations
 
 import builtins as _builtins_module
-from typing import Iterator
+from typing import TYPE_CHECKING
 
 from dottie.datagen.base import Generator
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
 try:
     import signal as _signal
+
     _HAS_ALARM = hasattr(_signal, "SIGALRM")
 except ImportError:  # pragma: no cover
     _signal = None
@@ -24,9 +28,28 @@ except ImportError:  # pragma: no cover
 # ---------------------------------------------------------------------------
 
 SAFE_NAMES = [
-    "abs", "min", "max", "sum", "len", "range", "enumerate", "zip", "sorted",
-    "reversed", "int", "float", "str", "bool", "list", "dict", "set", "tuple",
-    "print", "isinstance", "ValueError", "TypeError",
+    "abs",
+    "min",
+    "max",
+    "sum",
+    "len",
+    "range",
+    "enumerate",
+    "zip",
+    "sorted",
+    "reversed",
+    "int",
+    "float",
+    "str",
+    "bool",
+    "list",
+    "dict",
+    "set",
+    "tuple",
+    "print",
+    "isinstance",
+    "ValueError",
+    "TypeError",
 ]
 SAFE_BUILTINS = {name: getattr(_builtins_module, name) for name in SAFE_NAMES}
 # __build_class__ is the interpreter's internal primitive for the `class`
@@ -46,6 +69,7 @@ class _CodeGenTimeout(Exception):
 
 def _run_with_timeout(fn, timeout_s: int = 2):
     if _HAS_ALARM:
+
         def _handler(signum, frame):
             raise _CodeGenTimeout("sandboxed execution timed out")
 
@@ -98,7 +122,9 @@ def run_sandboxed(code: str, steps: list[tuple[str, bool]]):
         return None
 
 
-def render_snippet(code: str, description: str, rendered_steps: list[tuple[str, str | None]]) -> str:
+def render_snippet(
+    code: str, description: str, rendered_steps: list[tuple[str, str | None]]
+) -> str:
     doc_lines = [f'    """{description}', "", "    Examples:"]
     for src, expected in rendered_steps:
         doc_lines.append(f"    >>> {src}")
@@ -113,7 +139,11 @@ def render_snippet(code: str, description: str, rendered_steps: list[tuple[str, 
     inserted = False
     for line in lines:
         out.append(line)
-        if not inserted and line.lstrip().startswith(("def ", "class ")) and line.rstrip().endswith(":"):
+        if (
+            not inserted
+            and line.lstrip().startswith(("def ", "class "))
+            and line.rstrip().endswith(":")
+        ):
             out.append(docstring)
             inserted = True
     return "\n".join(out)
@@ -123,8 +153,28 @@ def render_snippet(code: str, description: str, rendered_steps: list[tuple[str, 
 # Templates -- each returns (code, steps, concept, description)
 # ---------------------------------------------------------------------------
 
-_WORDS = sorted(["python", "hello", "level", "radar", "banana", "apple", "kayak", "noon", "rotor",
-                  "widget", "gadget", "october", "zebra", "yellow", "orange", "purple", "civic", "matter"])
+_WORDS = sorted(
+    [
+        "python",
+        "hello",
+        "level",
+        "radar",
+        "banana",
+        "apple",
+        "kayak",
+        "noon",
+        "rotor",
+        "widget",
+        "gadget",
+        "october",
+        "zebra",
+        "yellow",
+        "orange",
+        "purple",
+        "civic",
+        "matter",
+    ]
+)
 
 
 def _tmpl_factorial(rng):
@@ -150,7 +200,12 @@ def _tmpl_fibonacci(rng):
     )
     ns = sorted(rng.sample(range(0, 15), 3))
     steps = [(f"fibonacci({n})", True) for n in ns]
-    return code, steps, "fibonacci", "Returns the nth Fibonacci number (0-indexed, fibonacci(0) == 0)."
+    return (
+        code,
+        steps,
+        "fibonacci",
+        "Returns the nth Fibonacci number (0-indexed, fibonacci(0) == 0).",
+    )
 
 
 def _tmpl_is_prime(rng):
@@ -171,22 +226,19 @@ def _tmpl_is_prime(rng):
 
 
 def _tmpl_gcd(rng):
-    code = (
-        "def gcd(a, b):\n"
-        "    while b:\n"
-        "        a, b = b, a % b\n"
-        "    return a\n"
-    )
+    code = "def gcd(a, b):\n    while b:\n        a, b = b, a % b\n    return a\n"
     pairs = [(rng.randint(1, 100), rng.randint(1, 100)) for _ in range(3)]
     steps = [(f"gcd({a}, {b})", True) for a, b in pairs]
-    return code, steps, "gcd", "Computes the greatest common divisor of a and b via the Euclidean algorithm."
+    return (
+        code,
+        steps,
+        "gcd",
+        "Computes the greatest common divisor of a and b via the Euclidean algorithm.",
+    )
 
 
 def _tmpl_reverse_string(rng):
-    code = (
-        "def reverse_string(s):\n"
-        "    return s[::-1]\n"
-    )
+    code = "def reverse_string(s):\n    return s[::-1]\n"
     words = rng.sample(_WORDS, 3)
     steps = [(f"reverse_string({w!r})", True) for w in words]
     return code, steps, "reverse_string", "Reverses a string using slicing."
@@ -198,9 +250,14 @@ def _tmpl_is_palindrome(rng):
         "    cleaned = s.lower()\n"
         "    return cleaned == cleaned[::-1]\n"
     )
-    words = list(rng.sample(_WORDS, 2)) + ["level", "Racecar"]
+    words = [*list(rng.sample(_WORDS, 2)), "level", "Racecar"]
     steps = [(f"is_palindrome({w!r})", True) for w in words]
-    return code, steps, "is_palindrome", "Checks whether a string reads the same forwards and backwards (case-insensitive)."
+    return (
+        code,
+        steps,
+        "is_palindrome",
+        "Checks whether a string reads the same forwards and backwards (case-insensitive).",
+    )
 
 
 def _tmpl_sum_list(rng):
@@ -227,7 +284,12 @@ def _tmpl_max_list(rng):
     )
     lists = [[rng.randint(-20, 20) for _ in range(rng.randint(1, 6))] for _ in range(3)]
     steps = [(f"max_list({lst!r})", True) for lst in lists]
-    return code, steps, "max_list", "Finds the largest element of a non-empty list by scanning."
+    return (
+        code,
+        steps,
+        "max_list",
+        "Finds the largest element of a non-empty list by scanning.",
+    )
 
 
 def _tmpl_count_vowels(rng):
@@ -260,7 +322,12 @@ def _tmpl_dedup(rng):
     steps = [("dedup_preserve_order(" + repr(base) + ")", True)]
     base2 = [rng.randint(0, 5) for _ in range(rng.randint(4, 9))]
     steps.append(("dedup_preserve_order(" + repr(base2) + ")", True))
-    return code, steps, "dedup", "Removes duplicate elements while preserving first-seen order."
+    return (
+        code,
+        steps,
+        "dedup",
+        "Removes duplicate elements while preserving first-seen order.",
+    )
 
 
 def _tmpl_bubble_sort(rng):
@@ -276,7 +343,12 @@ def _tmpl_bubble_sort(rng):
     )
     lists = [[rng.randint(-20, 20) for _ in range(rng.randint(2, 7))] for _ in range(2)]
     steps = [(f"bubble_sort({lst!r})", True) for lst in lists]
-    return code, steps, "bubble_sort", "Sorts a list ascending using the bubble sort algorithm."
+    return (
+        code,
+        steps,
+        "bubble_sort",
+        "Sorts a list ascending using the bubble sort algorithm.",
+    )
 
 
 def _tmpl_linear_search(rng):
@@ -290,8 +362,16 @@ def _tmpl_linear_search(rng):
     lst = [rng.randint(0, 9) for _ in range(rng.randint(3, 8))]
     present = rng.choice(lst)
     absent = 99
-    steps = [(f"linear_search({lst!r}, {present!r})", True), (f"linear_search({lst!r}, {absent!r})", True)]
-    return code, steps, "linear_search", "Finds the index of target in nums, or -1 if not present."
+    steps = [
+        (f"linear_search({lst!r}, {present!r})", True),
+        (f"linear_search({lst!r}, {absent!r})", True),
+    ]
+    return (
+        code,
+        steps,
+        "linear_search",
+        "Finds the index of target in nums, or -1 if not present.",
+    )
 
 
 def _tmpl_sum_digits(rng):
@@ -321,7 +401,12 @@ def _tmpl_running_total(rng):
     )
     lst = [rng.randint(-10, 10) for _ in range(rng.randint(2, 7))]
     steps = [(f"running_total({lst!r})", True)]
-    return code, steps, "running_total", "Returns the running (cumulative) sum of a list of numbers."
+    return (
+        code,
+        steps,
+        "running_total",
+        "Returns the running (cumulative) sum of a list of numbers.",
+    )
 
 
 def _tmpl_flatten(rng):
@@ -333,7 +418,10 @@ def _tmpl_flatten(rng):
         "            result.append(x)\n"
         "    return result\n"
     )
-    nested = [[rng.randint(0, 9) for _ in range(rng.randint(1, 3))] for _ in range(rng.randint(2, 4))]
+    nested = [
+        [rng.randint(0, 9) for _ in range(rng.randint(1, 3))]
+        for _ in range(rng.randint(2, 4))
+    ]
     steps = [(f"flatten_2level({nested!r})", True)]
     return code, steps, "flatten", "Flattens a list of lists by one level."
 
@@ -354,7 +442,12 @@ def _tmpl_matrix_transpose(rng):
     rows, cols = rng.randint(2, 3), rng.randint(2, 3)
     matrix = [[rng.randint(0, 9) for _ in range(cols)] for _ in range(rows)]
     steps = [(f"matrix_transpose({matrix!r})", True)]
-    return code, steps, "matrix_transpose", "Transposes a rectangular matrix represented as a list of row-lists."
+    return (
+        code,
+        steps,
+        "matrix_transpose",
+        "Transposes a rectangular matrix represented as a list of row-lists.",
+    )
 
 
 def _tmpl_second_largest(rng):
@@ -365,7 +458,12 @@ def _tmpl_second_largest(rng):
     )
     base = list(rng.sample(range(0, 30), rng.randint(4, 8)))
     steps = [(f"second_largest({base!r})", True)]
-    return code, steps, "second_largest", "Finds the second-largest distinct value in a list."
+    return (
+        code,
+        steps,
+        "second_largest",
+        "Finds the second-largest distinct value in a list.",
+    )
 
 
 def _tmpl_merge_sorted(rng):
@@ -388,7 +486,12 @@ def _tmpl_merge_sorted(rng):
     a = sorted(rng.sample(range(0, 20), rng.randint(2, 5)))
     b = sorted(rng.sample(range(0, 20), rng.randint(2, 5)))
     steps = [(f"merge_sorted({a!r}, {b!r})", True)]
-    return code, steps, "merge_sorted", "Merges two already-sorted lists into one sorted list."
+    return (
+        code,
+        steps,
+        "merge_sorted",
+        "Merges two already-sorted lists into one sorted list.",
+    )
 
 
 def _tmpl_rotate_list(rng):
@@ -419,7 +522,12 @@ def _tmpl_char_frequency(rng):
     )
     word = rng.choice(_WORDS)
     steps = [(f"char_frequency({word!r})", True)]
-    return code, steps, "char_frequency", "Counts occurrences of each character in a string."
+    return (
+        code,
+        steps,
+        "char_frequency",
+        "Counts occurrences of each character in a string.",
+    )
 
 
 def _tmpl_stack_class(rng):
@@ -453,7 +561,12 @@ def _tmpl_stack_class(rng):
         ("s.size()", True),
         ("s.is_empty()", True),
     ]
-    return code, steps, "stack", "A simple last-in-first-out Stack class backed by a Python list."
+    return (
+        code,
+        steps,
+        "stack",
+        "A simple last-in-first-out Stack class backed by a Python list.",
+    )
 
 
 def _tmpl_point_class(rng):
@@ -483,7 +596,12 @@ def _tmpl_point_class(rng):
         ("p1.distance_squared(p2)", True),
         (f"p1.translate({dx}, {dy})", True),
     ]
-    return code, steps, "point_class", "A 2D Point class with squared distance and translation."
+    return (
+        code,
+        steps,
+        "point_class",
+        "A 2D Point class with squared distance and translation.",
+    )
 
 
 def _tmpl_word_counter_class(rng):
@@ -516,15 +634,37 @@ def _tmpl_word_counter_class(rng):
         (f"c.count_of({w2!r})", True),
         ("c.total()", True),
     ]
-    return code, steps, "word_counter", "A simple word-frequency counter class backed by a dict."
+    return (
+        code,
+        steps,
+        "word_counter",
+        "A simple word-frequency counter class backed by a dict.",
+    )
 
 
 _TEMPLATES = [
-    _tmpl_factorial, _tmpl_fibonacci, _tmpl_is_prime, _tmpl_gcd, _tmpl_reverse_string,
-    _tmpl_is_palindrome, _tmpl_sum_list, _tmpl_max_list, _tmpl_count_vowels, _tmpl_dedup,
-    _tmpl_bubble_sort, _tmpl_linear_search, _tmpl_sum_digits, _tmpl_running_total,
-    _tmpl_flatten, _tmpl_matrix_transpose, _tmpl_second_largest, _tmpl_merge_sorted,
-    _tmpl_rotate_list, _tmpl_char_frequency, _tmpl_stack_class, _tmpl_point_class,
+    _tmpl_factorial,
+    _tmpl_fibonacci,
+    _tmpl_is_prime,
+    _tmpl_gcd,
+    _tmpl_reverse_string,
+    _tmpl_is_palindrome,
+    _tmpl_sum_list,
+    _tmpl_max_list,
+    _tmpl_count_vowels,
+    _tmpl_dedup,
+    _tmpl_bubble_sort,
+    _tmpl_linear_search,
+    _tmpl_sum_digits,
+    _tmpl_running_total,
+    _tmpl_flatten,
+    _tmpl_matrix_transpose,
+    _tmpl_second_largest,
+    _tmpl_merge_sorted,
+    _tmpl_rotate_list,
+    _tmpl_char_frequency,
+    _tmpl_stack_class,
+    _tmpl_point_class,
     _tmpl_word_counter_class,
 ]
 
@@ -547,6 +687,7 @@ def build_candidate(rng) -> tuple[str, str] | None:
 # Generator
 # ---------------------------------------------------------------------------
 
+
 class CodeGenGenerator(Generator):
     name = "code"
     phases = (2,)
@@ -559,11 +700,19 @@ class CodeGenGenerator(Generator):
             if candidate is None:
                 attempts_since_success += 1
                 if attempts_since_success > 10000:
-                    raise RuntimeError("code_gen: too many consecutive sandbox failures")
+                    raise RuntimeError(
+                        "code_gen: too many consecutive sandbox failures"
+                    )
                 continue
             attempts_since_success = 0
             text, concept = candidate
-            d = self.doc(text=text, task_type="deliberate", concept=concept, phase=2, source="code/pyfunc")
+            d = self.doc(
+                text=text,
+                task_type="deliberate",
+                concept=concept,
+                phase=2,
+                source="code/pyfunc",
+            )
             produced += len(d["text"].encode("utf-8"))
             yield d
 

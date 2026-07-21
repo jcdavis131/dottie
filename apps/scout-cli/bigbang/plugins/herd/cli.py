@@ -3,11 +3,11 @@
 Scout owns tools/MCP/Ava/policy. Herdr owns real PTY panes.
 `scout herd` is the JSON ledger + wait/read/report API agents can drive.
 """
+
 from __future__ import annotations
 
 import shlex
 from pathlib import Path
-from typing import List, Optional
 
 import typer
 
@@ -56,10 +56,12 @@ def status_cmd():
 
 @app.command(
     "list",
-    epilog=examples_epilog(["scout --json herd list", "scout herd list --status working"]),
+    epilog=examples_epilog(
+        ["scout --json herd list", "scout herd list --status working"]
+    ),
 )
 def list_cmd(
-    status: Optional[str] = typer.Option(
+    status: str | None = typer.Option(
         None, "--status", help="filter: idle|working|blocked|done|failed|unknown"
     ),
 ):
@@ -93,8 +95,12 @@ def list_cmd(
     ),
 )
 def create_cmd(
-    label: str = typer.Option(..., "--label", "-l", help="human label e.g. api, logs, claude"),
-    cwd: Optional[str] = typer.Option(None, "--cwd", help="working directory (default: cwd)"),
+    label: str = typer.Option(
+        ..., "--label", "-l", help="human label e.g. api, logs, claude"
+    ),
+    cwd: str | None = typer.Option(
+        None, "--cwd", help="working directory (default: cwd)"
+    ),
     note: str = typer.Option("", "--note", help="optional note"),
 ):
     """Create an idle session slot (Herdr workspace-create analogue)."""
@@ -146,19 +152,19 @@ def get_cmd(key: str = typer.Argument(..., help="session id or label")):
 )
 def start_cmd(
     ctx: typer.Context,
-    key: Optional[str] = typer.Argument(
+    key: str | None = typer.Argument(
         None, help="session id or label (optional if --label creates)"
     ),
-    cmd: Optional[str] = typer.Option(
+    cmd: str | None = typer.Option(
         None, "--cmd", help="shell command string (shlex-split)"
     ),
-    label: Optional[str] = typer.Option(
+    label: str | None = typer.Option(
         None, "--label", "-l", help="create+start with this label when key omitted"
     ),
-    cwd: Optional[str] = typer.Option(None, "--cwd", help="working directory override"),
+    cwd: str | None = typer.Option(None, "--cwd", help="working directory override"),
 ):
     """Start a detached process in a herd session (logs to ~/.local/share/bigbang/herd/logs/)."""
-    parts: List[str] = list(ctx.args) if ctx.args else []
+    parts: list[str] = list(ctx.args) if ctx.args else []
     if cmd:
         parts = shlex.split(cmd)
     if not parts:
@@ -223,7 +229,7 @@ def report_cmd(
     status: str = typer.Option(
         ..., "--status", "-s", help="idle|working|blocked|done|failed|unknown"
     ),
-    note: Optional[str] = typer.Option(None, "--note", help="why blocked / context"),
+    note: str | None = typer.Option(None, "--note", help="why blocked / context"),
 ):
     """Agent/human status report (Herdr pane.report_agent analogue)."""
     try:
@@ -368,7 +374,7 @@ def herdr_cmd():
             "scout herd create --label api --cwd ~/project",
             'scout herd start api --cmd "claude"   # or run agent inside herdr pane',
             "scout --json herd wait api --status done",
-            "scout agent run \"summarize herd status\" --execute",
+            'scout agent run "summarize herd status" --execute',
         ],
         "agent_skill": str(
             Path(__file__).resolve().parents[2] / "skills" / "scout-herd.md"

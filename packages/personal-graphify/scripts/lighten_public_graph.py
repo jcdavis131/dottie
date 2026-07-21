@@ -7,6 +7,7 @@ inferred_ref builtins, call-graph spam, and low-value markdown concepts.
 
 Solo personal project, no connection to employer, built with public/free-tier only.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -96,7 +97,11 @@ def _strip_paths(text: str) -> str:
         return ""
     text = text.replace("\\", "/")
     text = re.sub(r"(?i)[A-Z]:/[^:\s]+", " ", text)
-    text = re.sub(r"(?i)/(?:users|home|ava-agi[^/\s]*|scout-cli|personal-graphify|vector-[^/\s]*)/[^:\s]*", " ", text)
+    text = re.sub(
+        r"(?i)/(?:users|home|ava-agi[^/\s]*|scout-cli|personal-graphify|vector-[^/\s]*)/[^:\s]*",
+        " ",
+        text,
+    )
     # dottie monorepo layout: apps/* + packages/* fragments (relative ids have no leading /)
     text = re.sub(
         r"(?i)\b(?:apps/(?:scout-cli|scout-rtx|ava-factory)|"
@@ -129,9 +134,7 @@ def is_seed(n: dict) -> bool:
     if typ in ("function", "class", "module", "symbol", "inferred_ref", "file"):
         # Files can seed only via label (basename already) matching strong patterns
         blob = str(n.get("label", ""))
-        strong = (
-            re.compile(r"multi_jspace|graphify|turnover|scout", re.I),
-        )
+        strong = (re.compile(r"multi_jspace|graphify|turnover|scout", re.I),)
         return any(rx.search(blob) for rx in strong)
     blob = _label_blob(n)
     return any(rx.search(blob) for rx in SEED_LABEL_RES)
@@ -143,12 +146,16 @@ def is_junk(n: dict) -> bool:
     typ = n.get("type", "")
     if typ == "inferred_ref" and BUILTIN_RE.match(label.replace("func:", "")):
         return True
-    if BUILTIN_RE.match(nid.replace("func:", "").split(":")[0] if nid.startswith("func:") else ""):
+    if BUILTIN_RE.match(
+        nid.replace("func:", "").split(":")[0] if nid.startswith("func:") else ""
+    ):
         # func:len / func:str style
         short = nid.split(":")[1] if nid.startswith("func:") and ":" in nid else label
         if BUILTIN_RE.match(short) or BUILTIN_RE.match(f"func:{short}"):
             return True
-    if nid.startswith("func:") and BUILTIN_RE.match(nid.split(":")[1] if ":" in nid else ""):
+    if nid.startswith("func:") and BUILTIN_RE.match(
+        nid.split(":")[1] if ":" in nid else ""
+    ):
         return True
     if JUNK_PATH_RE.search(_path_blob(n)) or JUNK_PATH_RE.search(_label_blob(n)):
         return True
@@ -157,8 +164,19 @@ def is_junk(n: dict) -> bool:
         return True
     # Drop generic Python/stdlib module noise even if high degree
     if typ in ("module", "symbol") and label.lower() in {
-        "json", "os", "re", "sys", "path", "typing", "pathlib", "annotations",
-        "collections", "dataclasses", "functools", "itertools", "asyncio",
+        "json",
+        "os",
+        "re",
+        "sys",
+        "path",
+        "typing",
+        "pathlib",
+        "annotations",
+        "collections",
+        "dataclasses",
+        "functools",
+        "itertools",
+        "asyncio",
     }:
         return True
     return False
@@ -238,10 +256,19 @@ def lighten(data: dict, max_nodes: int = 480, max_hops: int = 1) -> dict:
             score = int(n.get("degree") or 0)
             path = _path_blob(n)
             # bare names match both standalone (scout-cli/) and dottie (apps/scout-cli/) layouts
-            if any(k in path for k in (
-                "scout-cli", "scout-rtx", "personal-graphify", "vector-", "turnover",
-                "ava-factory", "ava-skills", "ava-open-harness",
-            )):
+            if any(
+                k in path
+                for k in (
+                    "scout-cli",
+                    "scout-rtx",
+                    "personal-graphify",
+                    "vector-",
+                    "turnover",
+                    "ava-factory",
+                    "ava-skills",
+                    "ava-open-harness",
+                )
+            ):
                 score += 40
             # multi_jspace / graphify core files
             if any(k in path for k in ("multi_jspace", "graphify", "/ava/", "bigbang")):
@@ -304,18 +331,22 @@ def lighten(data: dict, max_nodes: int = 480, max_hops: int = 1) -> dict:
         # Drop call-graph spam unless both ends are seeds or priority type
         if et == "calls" and not (s in seeds or t in seeds):
             continue
-        if et == "imports" and not (s in seeds or t in seeds or nodes[s].get("type") in ("file", "doc")):
+        if et == "imports" and not (
+            s in seeds or t in seeds or nodes[s].get("type") in ("file", "doc")
+        ):
             continue
         key = (s, t, et)
         if key in seen:
             continue
         seen.add(key)
-        out_edges.append({
-            "source": s,
-            "target": t,
-            "type": et,
-            "confidence": e.get("confidence", "INFERRED"),
-        })
+        out_edges.append(
+            {
+                "source": s,
+                "target": t,
+                "type": et,
+                "confidence": e.get("confidence", "INFERRED"),
+            }
+        )
 
     # Ensure priority edges among seeds survive even if filtered oddly
     for e in edges:
@@ -326,12 +357,14 @@ def lighten(data: dict, max_nodes: int = 480, max_hops: int = 1) -> dict:
             key = (s, t, e.get("type"))
             if key not in seen:
                 seen.add(key)
-                out_edges.append({
-                    "source": s,
-                    "target": t,
-                    "type": e.get("type"),
-                    "confidence": e.get("confidence", "INFERRED"),
-                })
+                out_edges.append(
+                    {
+                        "source": s,
+                        "target": t,
+                        "type": e.get("type"),
+                        "confidence": e.get("confidence", "INFERRED"),
+                    }
+                )
 
     out_nodes.sort(key=lambda n: (-n.get("degree", 0), n.get("label", "")))
     return {

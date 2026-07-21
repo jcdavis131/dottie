@@ -12,6 +12,7 @@ act -> observe -> continue structure of multi-step workflows, not a blur of
 assistant text. Degenerate records (no turns, no assistant turn, empty text)
 return None and are skipped by the collector — never emitted as junk.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -23,9 +24,13 @@ TOOL = "<|tool|>"
 
 _MARKERS = {
     "system": SYSTEM,
-    "user": USER, "human": USER,
-    "assistant": ASSISTANT, "gpt": ASSISTANT,
-    "tool": TOOL, "observation": TOOL, "function": TOOL,
+    "user": USER,
+    "human": USER,
+    "assistant": ASSISTANT,
+    "gpt": ASSISTANT,
+    "tool": TOOL,
+    "observation": TOOL,
+    "function": TOOL,
 }
 
 

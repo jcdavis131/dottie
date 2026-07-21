@@ -18,7 +18,10 @@ import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 _REPO = Path(__file__).resolve().parent.parent
 
@@ -139,8 +142,7 @@ def _check_inspect(
         ):
             _fail(
                 "inspect",
-                "verbalizable_mass + top_concepts identical across inputs "
-                f"(mass={m1})",
+                f"verbalizable_mass + top_concepts identical across inputs (mass={m1})",
             )
         _ok("inspect", f"mass_A={m1} mass_B={m2} (input-dependent)")
     else:
@@ -317,8 +319,8 @@ def run_dry() -> None:
     if str(_REPO) not in sys.path:
         sys.path.insert(0, str(_REPO))
 
-    from ava import serve_engine as se
     import server as srv
+    from ava import serve_engine as se
 
     class _FakeEngine:
         def stats(self) -> dict[str, Any]:
@@ -384,7 +386,7 @@ def run_dry() -> None:
                 "audit_logged": True,
             }
 
-        def block_stream(self, text: str):  # noqa: ANN201
+        def block_stream(self, text: str):
             if False:
                 yield {}
 
@@ -552,7 +554,10 @@ def main() -> int:
 
     try:
         if args.dry:
-            print("smoke_live_checks: DRY-RUN (ASGI fake engine, no real ckpt)", flush=True)
+            print(
+                "smoke_live_checks: DRY-RUN (ASGI fake engine, no real ckpt)",
+                flush=True,
+            )
             run_dry()
         else:
             if not args.base_url:

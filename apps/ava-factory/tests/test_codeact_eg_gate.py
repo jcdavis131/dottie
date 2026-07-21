@@ -5,8 +5,8 @@ Math tested on synthetic ladders (success-rate → error transform, per-rung EG,
 verdict). The real verdict is honestly gated: it refuses the honest-fail eval records rather than
 fabricating a capability rate.
 """
-import pytest
 
+import pytest
 from ava.rl.codeact_eg_gate import (
     CodeActEGGateBlockedError,
     RungLadder,
@@ -21,11 +21,15 @@ class TestSuccessToError:
         assert success_to_error(0.9) < success_to_error(0.5)
 
     def test_floor_clamps(self):
-        assert success_to_error(1.0, error_floor=0.05) == 0.05   # perfect rate clamped to floor
+        assert (
+            success_to_error(1.0, error_floor=0.05) == 0.05
+        )  # perfect rate clamped to floor
         assert success_to_error(0.5, error_floor=0.05) == 0.5
 
 
-def _efficient_ladder(rung: str, codeact_compute: float, codeact_sr: float) -> RungLadder:
+def _efficient_ladder(
+    rung: str, codeact_compute: float, codeact_sr: float
+) -> RungLadder:
     # baseline: error falls with compute (a real scaling curve). CodeAct reaches a good rate cheap.
     return RungLadder(
         rung=rung,
@@ -51,10 +55,18 @@ class TestGateVerdict:
     def test_hold_when_codeact_not_more_efficient(self):
         # CodeAct spends MORE compute than the baseline needs for its rate → EG < 1 → hold
         ladders = [
-            RungLadder("nano", [(1.0, 0.50), (2.0, 0.60), (4.0, 0.68)],
-                       codeact_compute=8.0, codeact_success_rate=0.55),
-            RungLadder("mini", [(1.0, 0.50), (2.0, 0.60), (4.0, 0.68)],
-                       codeact_compute=8.0, codeact_success_rate=0.55),
+            RungLadder(
+                "nano",
+                [(1.0, 0.50), (2.0, 0.60), (4.0, 0.68)],
+                codeact_compute=8.0,
+                codeact_success_rate=0.55,
+            ),
+            RungLadder(
+                "mini",
+                [(1.0, 0.50), (2.0, 0.60), (4.0, 0.68)],
+                codeact_compute=8.0,
+                codeact_success_rate=0.55,
+            ),
         ]
         v = codeact_eg_gate(ladders)
         assert v["verdict"] == "hold"
@@ -64,8 +76,12 @@ class TestGateVerdict:
         # wins big on nano, loses on mini → rank-invariance says HOLD (the exact trap the gate guards)
         ladders = [
             _efficient_ladder("nano", codeact_compute=1.0, codeact_sr=0.74),
-            RungLadder("mini", [(1.0, 0.50), (2.0, 0.60), (4.0, 0.68)],
-                       codeact_compute=8.0, codeact_success_rate=0.55),
+            RungLadder(
+                "mini",
+                [(1.0, 0.50), (2.0, 0.60), (4.0, 0.68)],
+                codeact_compute=8.0,
+                codeact_success_rate=0.55,
+            ),
         ]
         v = codeact_eg_gate(ladders)
         assert v["verdict"] == "hold"
@@ -79,8 +95,18 @@ class TestHonestGate:
     def test_refuses_honest_fail_eval_records(self):
         # the records run_codeact_eval actually returns today (measured=None, gated)
         records = {
-            "nano": {"test": "codeact", "measured": None, "pass": False, "error": "BLOCKED_NO_GPU"},
-            "mini": {"test": "codeact", "measured": None, "pass": False, "error": "BLOCKED_NO_GPU"},
+            "nano": {
+                "test": "codeact",
+                "measured": None,
+                "pass": False,
+                "error": "BLOCKED_NO_GPU",
+            },
+            "mini": {
+                "test": "codeact",
+                "measured": None,
+                "pass": False,
+                "error": "BLOCKED_NO_GPU",
+            },
         }
         with pytest.raises(CodeActEGGateBlockedError) as ei:
             codeact_eg_gate_from_eval(records)
@@ -89,8 +115,16 @@ class TestHonestGate:
     def test_refuses_when_baseline_curve_absent_even_with_rates(self):
         # even if CodeAct rates existed, the baseline scaling curve is its own gated run
         records = {
-            "nano": {"test": "codeact", "measured": {"success_rate": 0.7, "n": 20}, "pass": True},
-            "mini": {"test": "codeact", "measured": {"success_rate": 0.72, "n": 20}, "pass": True},
+            "nano": {
+                "test": "codeact",
+                "measured": {"success_rate": 0.7, "n": 20},
+                "pass": True,
+            },
+            "mini": {
+                "test": "codeact",
+                "measured": {"success_rate": 0.72, "n": 20},
+                "pass": True,
+            },
         }
         with pytest.raises(CodeActEGGateBlockedError):
             codeact_eg_gate_from_eval(records)

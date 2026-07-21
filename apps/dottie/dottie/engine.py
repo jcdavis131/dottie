@@ -35,7 +35,7 @@ import os
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from dottie import resolve
 from dottie.policy import get_policy
@@ -46,7 +46,7 @@ TRACE_SCHEMA_VERSION = "1.0.0"
 # Safe, deterministic, network-free tools bound into the sandbox via tool_sources (the
 # sandbox additionally always binds get_clock()). Pure functions only — the sandbox itself
 # enforces no-network / no-outside-writes regardless.
-DEFAULT_TOOL_SOURCES: Dict[str, str] = {
+DEFAULT_TOOL_SOURCES: dict[str, str] = {
     "word_count": "def word_count(text):\n    return len(str(text).split())\n",
     "char_count": "def char_count(text):\n    return len(str(text))\n",
     "reverse_text": "def reverse_text(text):\n    return str(text)[::-1]\n",
@@ -67,7 +67,7 @@ def default_data_dir() -> Path:
 class DottieEngine:
     """Task runner + trace capture over the factory's real CodeAct machinery."""
 
-    def __init__(self, data_dir: Optional[str | Path] = None) -> None:
+    def __init__(self, data_dir: str | Path | None = None) -> None:
         self.data_dir = Path(data_dir) if data_dir is not None else default_data_dir()
         self.traces_dir = self.data_dir / "traces"
         self.traces_dir.mkdir(parents=True, exist_ok=True)
@@ -75,8 +75,11 @@ class DottieEngine:
 
     # -- prompt composition -------------------------------------------------------
     @staticmethod
-    def compose_prompt(prompt: str, extra_tool_names: Optional[List[str]] = None,
-                       context: Optional[str] = None) -> str:
+    def compose_prompt(
+        prompt: str,
+        extra_tool_names: list[str] | None = None,
+        context: str | None = None,
+    ) -> str:
         """The task prompt plus an honest statement of the sandbox contract and bound tools.
 
         ``extra_tool_names`` are display signatures for task/skill tools bound beyond the
@@ -96,16 +99,16 @@ class DottieEngine:
     # -- core ---------------------------------------------------------------------
     def run_task(
         self,
-        prompt: Optional[str] = None,
+        prompt: str | None = None,
         *,
-        backend: Optional[str] = None,   # None -> DOTTIE_POLICY env, else "ollama"
+        backend: str | None = None,  # None -> DOTTIE_POLICY env, else "ollama"
         max_steps: int = 8,
         timeout_s: float = 5.0,
-        task_id: Optional[str] = None,
-        family: Optional[str] = None,
+        task_id: str | None = None,
+        family: str | None = None,
         seed: int = 0,
         use_skills: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Run one task end-to-end; returns (and appends to the trace log) the trace record.
 
         Exactly one of ``prompt`` (free-form; ``r_task`` stays null with an honest note) or
@@ -116,7 +119,7 @@ class DottieEngine:
         unknown backend/family or bad arguments, and ``DottieSkillsUnavailable`` if
         ``use_skills=True`` but ava-skills cannot really run — all surfaced to the caller,
         never masked with a fake result."""
-        task: Optional[VerifiedTask] = None
+        task: VerifiedTask | None = None
         if family is not None:
             if prompt is not None:
                 raise ValueError("pass either prompt or family, not both")
@@ -131,11 +134,15 @@ class DottieEngine:
         resolve.ensure_factory_on_path()
         from ava.rl.codeact_loop import run_code_act
         from ava.rl.codeact_rewards import (
-            ReturnWeights, codeact_return, r_codeuse, r_exec, redundant_calls,
+            ReturnWeights,
+            codeact_return,
+            r_codeuse,
+            r_exec,
+            redundant_calls,
         )
 
-        tool_sources: Dict[str, str] = dict(DEFAULT_TOOL_SOURCES)
-        extra_tool_names: List[str] = []
+        tool_sources: dict[str, str] = dict(DEFAULT_TOOL_SOURCES)
+        extra_tool_names: list[str] = []
         if task is not None:
             for name in task.tool_sources:
                 if name in tool_sources:
@@ -143,8 +150,8 @@ class DottieEngine:
             tool_sources.update(task.tool_sources)
             extra_tool_names += list(task.tool_names)
 
-        skills_info: Optional[Dict[str, Any]] = None
-        context: Optional[str] = None
+        skills_info: dict[str, Any] | None = None
+        context: str | None = None
         if use_skills:
             from dottie import skill_tools
 
@@ -158,7 +165,9 @@ class DottieEngine:
             )
             for name in bridged:
                 if name in tool_sources:
-                    raise ValueError(f"bridged skill tool {name!r} collides with a bound tool")
+                    raise ValueError(
+                        f"bridged skill tool {name!r} collides with a bound tool"
+                    )
             tool_sources.update(bridged)
             extra_tool_names += [
                 skill_tools.BRIDGED_TOOL_SIGNATURES[n]
@@ -167,9 +176,11 @@ class DottieEngine:
             skills_info = {
                 "memory_recall": recall,
                 "bridged_tools": sorted(bridged),
-                "note": ("memory recall ran parent-side (real memory-router); bridged tools "
-                         "are source-extracted from live skills and parity-checked; "
-                         "recalled_memories() is a labeled snapshot of the real recall"),
+                "note": (
+                    "memory recall ran parent-side (real memory-router); bridged tools "
+                    "are source-extracted from live skills and parity-checked; "
+                    "recalled_memories() is a labeled snapshot of the real recall"
+                ),
             }
 
         policy = get_policy(backend)
@@ -189,7 +200,7 @@ class DottieEngine:
 
         # Reward components: measurable-from-execution values always; r_task only when a real
         # verifier exists (verified tasks), else null with the honest note (never invented).
-        components: Dict[str, Any] = {
+        components: dict[str, Any] = {
             "r_exec": r_exec(obs),
             "r_codeuse": r_codeuse(obs),
             "redundant_calls": redundant_calls(obs),
@@ -197,27 +208,38 @@ class DottieEngine:
         if task is not None:
             if result.reached_final:
                 r_task = task.verify(result.final, obs)
-                r_task_note = (f"verified: family={task.family_id} seed={task.seed} "
-                               f"deterministic verifier ({task.grading})")
+                r_task_note = (
+                    f"verified: family={task.family_id} seed={task.seed} "
+                    f"deterministic verifier ({task.grading})"
+                )
             else:
                 r_task = 0.0
-                r_task_note = (f"verified failure: no FINAL emitted "
-                               f"(terminated={result.terminated})")
+                r_task_note = (
+                    f"verified failure: no FINAL emitted "
+                    f"(terminated={result.terminated})"
+                )
             components["r_task"] = r_task
             components["r_task_note"] = r_task_note
             # Blended scalar via the factory's real codeact_return. w_len=0: no historical
             # family pass-rate stats exist yet, so the length term is omitted, not invented.
             components["rl_return"] = codeact_return(
-                r_task, obs, token_count=0, family_pass_rate=1.0,
+                r_task,
+                obs,
+                token_count=0,
+                family_pass_rate=1.0,
                 weights=ReturnWeights(w_task=1.0, w_exec=0.2, w_codeuse=0.2, w_len=0.0),
             )
-            components["rl_return_note"] = "w_task=1.0 w_exec=0.2 w_codeuse=0.2; " \
-                                           "r_len omitted (no family pass-rate history)"
+            components["rl_return_note"] = (
+                "w_task=1.0 w_exec=0.2 w_codeuse=0.2; "
+                "r_len omitted (no family pass-rate history)"
+            )
         else:
             components["r_task"] = None
-            components["r_task_note"] = "unscored: no automatic verifier for open-ended tasks"
+            components["r_task_note"] = (
+                "unscored: no automatic verifier for open-ended tasks"
+            )
 
-        record: Dict[str, Any] = {
+        record: dict[str, Any] = {
             "schema_version": TRACE_SCHEMA_VERSION,
             "task_id": task_id,
             "ts": ts,
@@ -251,18 +273,22 @@ class DottieEngine:
             record["skills"] = skills_info
         # Cross-surface persistence: the same J-Space store scout's profiles use
         # (channel "engine"); unavailable => recorded honestly, never a dependency.
-        from dottie import jspace_state
         import os as _os
+
+        from dottie import jspace_state
+
         outcome = "ok" if record.get("final") is not None else "failed"
         record["jspace_state"] = jspace_state.record_task(
             _os.environ.get("DOTTIE_SESSION", "engine"),
-            (base_prompt or "")[:200], outcome,
-            trace={"task_id": record.get("task_id"), "backend": backend})
+            (base_prompt or "")[:200],
+            outcome,
+            trace={"task_id": record.get("task_id"), "backend": backend},
+        )
         self._append_trace(record)
         return record
 
     # -- trace log ----------------------------------------------------------------
-    def _append_trace(self, record: Dict[str, Any]) -> None:
+    def _append_trace(self, record: dict[str, Any]) -> None:
         with self.traces_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record) + "\n")
 

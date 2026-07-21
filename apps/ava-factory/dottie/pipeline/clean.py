@@ -77,7 +77,9 @@ ENGLISH_STOPWORDS = frozenset(
 _WORD_RE = re.compile(r"[^\W\d_]+", re.UNICODE)  # letters only, no digits/underscore
 
 
-def is_english(text: str, *, min_latin_ratio: float = 0.85, min_stopwords: int = 2) -> bool:
+def is_english(
+    text: str, *, min_latin_ratio: float = 0.85, min_stopwords: int = 2
+) -> bool:
     """Cheap English-language heuristic — no network, no model.
 
     Two signals combined:
@@ -162,7 +164,9 @@ def gopher_quality(text: str) -> tuple[bool, str]:
             return False, "bullet_lines"
 
         ellipsis_lines = sum(
-            1 for ln in lines if ln.rstrip().endswith("…") or ln.rstrip().endswith("...")
+            1
+            for ln in lines
+            if ln.rstrip().endswith("…") or ln.rstrip().endswith("...")
         )
         if ellipsis_lines / len(lines) >= 0.3:
             return False, "ellipsis_lines"
@@ -188,7 +192,9 @@ def gopher_quality(text: str) -> tuple[bool, str]:
 DEFAULT_EDU_THRESHOLDS: dict[int, float] = {2: 2.0, 5: 4.5}
 
 
-def edu_score_ok(meta: dict | None, phase: int, thresholds: dict[int, float] | None = None) -> bool:
+def edu_score_ok(
+    meta: dict | None, phase: int, thresholds: dict[int, float] | None = None
+) -> bool:
     """Apply per-phase fineweb-edu score thresholds.
 
     ``meta`` may carry a numeric ``"score"`` (fineweb-edu classifier output). A
@@ -231,7 +237,9 @@ _SK_KEY_RE = re.compile(r"\bsk-[A-Za-z0-9]{20,}\b")
 _AWS_KEY_RE = re.compile(r"\bAKIA[0-9A-Z]{16}\b")
 
 # Generic hex secret: >=32 hex chars, NOT a 0x-prefixed C/asm literal.
-_HEX_SECRET_RE = re.compile(r"(?<![0-9A-Za-z])(?<!0x)(?<!0X)[0-9a-fA-F]{32,}(?![0-9A-Za-z])")
+_HEX_SECRET_RE = re.compile(
+    r"(?<![0-9A-Za-z])(?<!0x)(?<!0X)[0-9a-fA-F]{32,}(?![0-9A-Za-z])"
+)
 # Generic base64-ish secret: >=32 chars that mix letters AND digits (so plain
 # long words, which have no digits, are left alone). Conservative on purpose.
 _B64_SECRET_RE = re.compile(
@@ -242,7 +250,9 @@ _B64_SECRET_RE = re.compile(
 )
 
 # IPv4 dotted quad.
-_IPV4_RE = re.compile(r"\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b")
+_IPV4_RE = re.compile(
+    r"\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b"
+)
 # IPv6: require >=4 colon-separated hextets, or a "::" compression, to avoid
 # eating time-like "12:34:56:78" (decimal, no hex letters is still ambiguous —
 # we accept that as a rare false positive; a mangled timestamp is harmless

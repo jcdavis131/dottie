@@ -3,17 +3,26 @@ runner.py — runs harness, supports mock and real modes, torch optional
 YAML-versioned tasks (harness/tasks/*.yaml) + Eleuther-style log_samples
 Solo personal project, no connection to employer, built with public/free-tier only
 """
-from __future__ import annotations
-from typing import Any, Dict, List, Optional
-import argparse, json, time, os, sys, pathlib
 
-from .registry import EVAL_REGISTRY, list_evals
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import pathlib
+import sys
+import time
+from typing import Any
+
 # ensure evals loaded
 import harness.evals  # noqa
 
-def _try_load_yaml_tasks(tasks_dir: str = "harness/tasks") -> Dict[str, Dict[str,Any]]:
+from .registry import EVAL_REGISTRY, list_evals
+
+
+def _try_load_yaml_tasks(tasks_dir: str = "harness/tasks") -> dict[str, dict[str, Any]]:
     """Load versioned YAML task definitions if pyyaml available."""
-    tasks: Dict[str, Dict[str,Any]] = {}
+    tasks: dict[str, dict[str, Any]] = {}
     # resolve path relative to this file
     here = pathlib.Path(__file__).parent
     cand_dirs = [
@@ -46,7 +55,7 @@ def _try_load_yaml_tasks(tasks_dir: str = "harness/tasks") -> Dict[str, Dict[str
     return tasks
 
 
-def resolve_eval_names(eval_names: List[str] | str) -> List[str]:
+def resolve_eval_names(eval_names: list[str] | str) -> list[str]:
     """Resolve eval names and group names to registered evals.
 
     Unknown names are a HARD ERROR listing valid choices — a typo must never
@@ -59,7 +68,7 @@ def resolve_eval_names(eval_names: List[str] | str) -> List[str]:
             return list_evals()
         eval_names = [s.strip() for s in eval_names.split(",") if s.strip()]
     groups = sorted({v["group"] for v in EVAL_REGISTRY.values()})
-    resolved: List[str] = []
+    resolved: list[str] = []
     for n in eval_names:
         if n == "all":
             expansion = list_evals()
@@ -80,7 +89,7 @@ def resolve_eval_names(eval_names: List[str] | str) -> List[str]:
     return resolved
 
 
-def _extract_log_samples(res: Dict[str, Any], limit: int) -> List[Any]:
+def _extract_log_samples(res: dict[str, Any], limit: int) -> list[Any]:
     """Per-sample records for --log-samples.
 
     Only REAL per-sample data provided by the eval itself is passed through
@@ -97,7 +106,7 @@ def _extract_log_samples(res: Dict[str, Any], limit: int) -> List[Any]:
 
 
 def run_harness(
-    eval_names: List[str] | str = "all",
+    eval_names: list[str] | str = "all",
     mode: str = "mock",
     backend: str = "auto",
     ckpt: str | None = None,
@@ -108,8 +117,8 @@ def run_harness(
     task_version: str = "1.0",
     tokenizer: str | None = None,
     **kwargs,
-) -> Dict[str,Any]:
-    from .common import load_model, factory_available, factory_root
+) -> dict[str, Any]:
+    from .common import factory_available, factory_root, load_model
 
     # backend: auto|mock only. 'mock' forces mock inference regardless of mode;
     # 'auto' follows mode (mock→mock, real→torch). No phantom hf/vllm backends.
@@ -124,7 +133,7 @@ def run_harness(
     # load YAML versioned tasks
     yaml_tasks = _try_load_yaml_tasks()
     # merge version info
-    versions: Dict[str,str] = {}
+    versions: dict[str, str] = {}
     for n in eval_names:
         if n in yaml_tasks:
             versions[n] = str(yaml_tasks[n].get("version", task_version))
@@ -134,28 +143,33 @@ def run_harness(
     # load model — in real mode any load failure becomes a structured
     # honest-failure report below (never a silent mock).
     model = tok = None
-    load_error: Optional[str] = None
+    load_error: str | None = None
     if mode == "real":
         if ckpt is None:
             load_error = "no --ckpt provided"
         else:
             try:
-                model, tok = load_model(ckpt, preset=preset, device=device, tokenizer_path=tokenizer)
+                model, tok = load_model(
+                    ckpt, preset=preset, device=device, tokenizer_path=tokenizer
+                )
             except Exception as e:
                 load_error = str(e)
     else:
         model, tok = load_model(None, preset=preset, device=device)
 
-    from .common import MockModel as _MockModel, MockTokenizer as _MockTokenizer
+    from .common import MockModel as _MockModel
+    from .common import MockTokenizer as _MockTokenizer
+
     # A "real" report backed by a mock model OR a mock tokenizer is fabricated
     # (HARNESS_SPEC anti-mock rule). Also covers the real-model-but-missing-tokenizer
     # case, where the model would run over hash-derived garbage token IDs.
     real_load_failed = mode == "real" and (
         load_error is not None
-        or isinstance(model, _MockModel) or isinstance(tok, _MockTokenizer)
+        or isinstance(model, _MockModel)
+        or isinstance(tok, _MockTokenizer)
     )
 
-    results: Dict[str,Any] = {
+    results: dict[str, Any] = {
         "meta": {
             "mode": mode,
             "backend": effective_backend,
@@ -170,7 +184,7 @@ def run_harness(
             "factory_root": factory_root(),
             "factory_available": factory_available(),
         },
-        "evals": {}
+        "evals": {},
     }
     start = time.time()
     if real_load_failed:
@@ -179,16 +193,22 @@ def run_harness(
         # training gate — receives a normal report shape with pass=False + an error
         # per eval, instead of an exception a broad `except` could swallow and then
         # fabricate around. This is the loud failure, expressed as data.
-        why = (f"--mode real requested but no real model/tokenizer loaded "
-               f"(ckpt={ckpt!r}"
-               + (f", cause: {load_error}" if load_error else "")
-               + "). Provide a valid --ckpt (and --tokenizer), or use --mode mock.")
+        why = (
+            f"--mode real requested but no real model/tokenizer loaded "
+            f"(ckpt={ckpt!r}"
+            + (f", cause: {load_error}" if load_error else "")
+            + "). Provide a valid --ckpt (and --tokenizer), or use --mode mock."
+        )
         results["meta"]["error"] = why
         results["meta"]["real_load_failed"] = True
         for name in eval_names:
-            results["evals"][name] = {"test": name, "measured": None, "pass": False,
-                                      "bar": EVAL_REGISTRY[name].get("description", ""),
-                                      "error": f"real mode not run: {why}"}
+            results["evals"][name] = {
+                "test": name,
+                "measured": None,
+                "pass": False,
+                "bar": EVAL_REGISTRY[name].get("description", ""),
+                "error": f"real mode not run: {why}",
+            }
         results["meta"]["wall_s"] = time.time() - start
         results["meta"]["passed"] = 0
         results["meta"]["total"] = len(results["evals"])
@@ -197,28 +217,42 @@ def run_harness(
         entry = EVAL_REGISTRY[name]
         fn = entry["fn"]
         if verbose:
-            print(f"[runner] running {name} ({entry['description']}) version={versions.get(name)}")
+            print(
+                f"[runner] running {name} ({entry['description']}) version={versions.get(name)}"
+            )
         try:
             extra = dict(kwargs)
-            extra.update({
-                "preset": preset,
-                "version": versions.get(name, task_version),
-                "yaml_task": yaml_tasks.get(name),
-            })
+            extra.update(
+                {
+                    "preset": preset,
+                    "version": versions.get(name, task_version),
+                    "yaml_task": yaml_tasks.get(name),
+                }
+            )
             res = fn(model, tok, device, **extra)
             if log_samples > 0:
                 res["log_samples"] = _extract_log_samples(res, log_samples)
             results["evals"][name] = res
         except Exception as e:
             import traceback
+
             tb = traceback.format_exc()[-800:]
-            results["evals"][name] = {"test": name, "error": str(e), "traceback": tb, "pass": False, "version": versions.get(name)}
-    results["meta"]["wall_s"] = time.time()-start
-    results["meta"]["passed"] = sum(1 for r in results["evals"].values() if r.get("pass"))
+            results["evals"][name] = {
+                "test": name,
+                "error": str(e),
+                "traceback": tb,
+                "pass": False,
+                "version": versions.get(name),
+            }
+    results["meta"]["wall_s"] = time.time() - start
+    results["meta"]["passed"] = sum(
+        1 for r in results["evals"].values() if r.get("pass")
+    )
     results["meta"]["total"] = len(results["evals"])
     return results
 
-def write_reports(results: Dict[str,Any], out_dir: str = "reports"):
+
+def write_reports(results: dict[str, Any], out_dir: str = "reports"):
     os.makedirs(out_dir, exist_ok=True)
     json_path = os.path.join(out_dir, "branch_eval_results_real.json")
     with open(json_path, "w", encoding="utf-8") as f:
@@ -228,18 +262,27 @@ def write_reports(results: Dict[str,Any], out_dir: str = "reports"):
     lines = []
     lines.append("# Ava Open Harness — Real Eval Report")
     lines.append("")
-    lines.append(f"Mode: {results['meta'].get('mode')} | Backend: {results['meta'].get('backend')} | CKPT: {results['meta'].get('ckpt')} | Passed {results['meta'].get('passed')}/{results['meta'].get('total')} | {results['meta'].get('wall_s',0):.3f}s | Versions: {results['meta'].get('task_version')}")
+    lines.append(
+        f"Mode: {results['meta'].get('mode')} | Backend: {results['meta'].get('backend')} | CKPT: {results['meta'].get('ckpt')} | Passed {results['meta'].get('passed')}/{results['meta'].get('total')} | {results['meta'].get('wall_s', 0):.3f}s | Versions: {results['meta'].get('task_version')}"
+    )
     lines.append("")
-    lines.append(f"YAML tasks loaded: {results['meta'].get('yaml_tasks_loaded')} | Factory available: {results['meta'].get('factory_available')} ({results['meta'].get('factory_root')})")
+    lines.append(
+        f"YAML tasks loaded: {results['meta'].get('yaml_tasks_loaded')} | Factory available: {results['meta'].get('factory_available')} ({results['meta'].get('factory_root')})"
+    )
     lines.append("")
     lines.append("| Test | Version | Bar | Measured | PASS/FAIL | Scale | Samples |")
     lines.append("|---|---|---|---|---|---|---|")
     for name, r in results["evals"].items():
-        bar = r.get("bar","")
+        bar = r.get("bar", "")
         version = r.get("version", results["meta"].get("versions", {}).get(name, ""))
-        measured = r.get("measured",{})
+        measured = r.get("measured", {})
         if isinstance(measured, dict):
-            summary = str({k: (v if not isinstance(v,float) else round(v,3)) for k,v in list(measured.items())[:4]})[:120]
+            summary = str(
+                {
+                    k: (v if not isinstance(v, float) else round(v, 3))
+                    for k, v in list(measured.items())[:4]
+                }
+            )[:120]
         else:
             summary = str(measured)[:120]
         verdict = "PASS" if r.get("pass") else "FAIL"
@@ -249,33 +292,72 @@ def write_reports(results: Dict[str,Any], out_dir: str = "reports"):
         scale = r.get("scale", "-")
         if r.get("capability_claim") == "none":
             scale = f"{scale} (capability_claim=none)"
-        samples_n = len(r.get("log_samples", [])) if isinstance(r.get("log_samples"), list) else 0
-        lines.append(f"| {name} | {version} | {bar} | {summary} | {verdict} | {scale} | {samples_n} |")
+        samples_n = (
+            len(r.get("log_samples", []))
+            if isinstance(r.get("log_samples"), list)
+            else 0
+        )
+        lines.append(
+            f"| {name} | {version} | {bar} | {summary} | {verdict} | {scale} | {samples_n} |"
+        )
     lines.append("")
     lines.append("## Versioned Tasks")
-    lines.append("Tasks are versioned YAML in `harness/tasks/*.yaml` with `name`, `version`, `description`, `bar`, `group`. Log samples stored per eval when --log-samples >0 (only real per-sample data from the eval itself; [] otherwise).")
+    lines.append(
+        "Tasks are versioned YAML in `harness/tasks/*.yaml` with `name`, `version`, `description`, `bar`, `group`. Log samples stored per eval when --log-samples >0 (only real per-sample data from the eval itself; [] otherwise)."
+    )
     lines.append("")
     lines.append("## Backend")
-    lines.append("- `auto`: mock inference when mode=mock, torch CPU/GPU inference when mode=real")
-    lines.append("- `mock`: force deterministic MockTokenizer/MockModel (no torch needed)")
+    lines.append(
+        "- `auto`: mock inference when mode=mock, torch CPU/GPU inference when mode=real"
+    )
+    lines.append(
+        "- `mock`: force deterministic MockTokenizer/MockModel (no torch needed)"
+    )
     lines.append("")
     lines.append("## Scale honesty")
-    lines.append("Real measurements from the cpu_pilot smoke checkpoint carry `scale: smoke` and `capability_claim: none` — they prove the pipeline is real end-to-end and imply NO model capability.")
+    lines.append(
+        "Real measurements from the cpu_pilot smoke checkpoint carry `scale: smoke` and `capability_claim: none` — they prove the pipeline is real end-to-end and imply NO model capability."
+    )
     lines.append("")
     lines.append("## Frozen-capability comparison (base vs chat)")
-    lines.append("When both base and chat ckpts supplied, Δ% column shows regression if chat >5% worse (system1+system2 frozen).")
+    lines.append(
+        "When both base and chat ckpts supplied, Δ% column shows regression if chat >5% worse (system1+system2 frozen)."
+    )
     with open(md_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
     print(f"[runner] wrote {json_path} and {md_path}")
     return json_path, md_path
 
+
 def main():
-    ap = argparse.ArgumentParser(description="Ava Open Harness — mock and real eval runner with YAML versioned tasks")
-    ap.add_argument("--eval", default="all", help="comma list of eval or group names, or all")
-    ap.add_argument("--mode", default="mock", choices=["mock","real"], help="mock = no torch, real = load ckpt (fails loudly if it can't)")
-    ap.add_argument("--backend", default="auto", choices=["auto","mock"], help="auto follows --mode; mock forces mock inference")
-    ap.add_argument("--ckpt", default=None, help="checkpoint path for real mode, e.g. $AVA_FACTORY_ROOT/runs/cpu_pilot/base/base_final.pt")
-    ap.add_argument("--tokenizer", default=None, help="tokenizer JSON path for real mode (default: factory runs/cpu_pilot/tokenizer/ava_nano_bpe.json)")
+    ap = argparse.ArgumentParser(
+        description="Ava Open Harness — mock and real eval runner with YAML versioned tasks"
+    )
+    ap.add_argument(
+        "--eval", default="all", help="comma list of eval or group names, or all"
+    )
+    ap.add_argument(
+        "--mode",
+        default="mock",
+        choices=["mock", "real"],
+        help="mock = no torch, real = load ckpt (fails loudly if it can't)",
+    )
+    ap.add_argument(
+        "--backend",
+        default="auto",
+        choices=["auto", "mock"],
+        help="auto follows --mode; mock forces mock inference",
+    )
+    ap.add_argument(
+        "--ckpt",
+        default=None,
+        help="checkpoint path for real mode, e.g. $AVA_FACTORY_ROOT/runs/cpu_pilot/base/base_final.pt",
+    )
+    ap.add_argument(
+        "--tokenizer",
+        default=None,
+        help="tokenizer JSON path for real mode (default: factory runs/cpu_pilot/tokenizer/ava_nano_bpe.json)",
+    )
     ap.add_argument("--preset", default="nano")
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--probe-n", type=int, default=200)
@@ -283,18 +365,36 @@ def main():
     ap.add_argument("--out-dir", default="reports")
     ap.add_argument("--verbose", action="store_true")
     ap.add_argument("--wiki-path", default=None)
-    ap.add_argument("--log-samples", type=int, default=0, help="pass through up to N real per-sample records per eval (Eleuther compat)")
-    ap.add_argument("--task-version", default="1.0", help="global task version fallback, per-task YAML overrides")
+    ap.add_argument(
+        "--log-samples",
+        type=int,
+        default=0,
+        help="pass through up to N real per-sample records per eval (Eleuther compat)",
+    )
+    ap.add_argument(
+        "--task-version",
+        default="1.0",
+        help="global task version fallback, per-task YAML overrides",
+    )
     args = ap.parse_args()
 
-    skip = set([s.strip() for s in args.skip.split(",") if s.strip()])
+    skip = {s.strip() for s in args.skip.split(",") if s.strip()}
     try:
         eval_names = [n for n in resolve_eval_names(args.eval) if n not in skip]
-        res = run_harness(eval_names=eval_names, mode=args.mode, backend=args.backend,
-                          ckpt=args.ckpt, tokenizer=args.tokenizer, preset=args.preset,
-                          device=args.device, verbose=args.verbose, probe_n=args.probe_n,
-                          wiki_path=args.wiki_path, log_samples=args.log_samples,
-                          task_version=args.task_version)
+        res = run_harness(
+            eval_names=eval_names,
+            mode=args.mode,
+            backend=args.backend,
+            ckpt=args.ckpt,
+            tokenizer=args.tokenizer,
+            preset=args.preset,
+            device=args.device,
+            verbose=args.verbose,
+            probe_n=args.probe_n,
+            wiki_path=args.wiki_path,
+            log_samples=args.log_samples,
+            task_version=args.task_version,
+        )
     except ValueError as e:
         print(f"[runner] error: {e}", file=sys.stderr)
         return 2
@@ -302,6 +402,7 @@ def main():
     # exit 0 even if bars fail, per spec
     print(json.dumps(res["meta"], indent=2))
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

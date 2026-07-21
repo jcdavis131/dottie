@@ -11,6 +11,7 @@ Design (stdlib only, no tree-sitter, no new deps):
   are re-resolved after every index run, so incremental re-index never leaves
   dangling cross-file edges.
 """
+
 from __future__ import annotations
 
 import ast
@@ -21,9 +22,12 @@ import re
 import sqlite3
 import subprocess
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
 
 SCHEMA_VERSION = "1"
 DB_REL = Path(".scout") / "reviewgraph.db"
@@ -31,17 +35,54 @@ DB_REL = Path(".scout") / "reviewgraph.db"
 PY_SUFFIXES = {".py"}
 JS_SUFFIXES = {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"}
 SKIP_DIRS = {
-    ".git", ".hg", ".svn", ".scout", ".venv", "venv", "env", "node_modules",
-    "__pycache__", ".mypy_cache", ".ruff_cache", ".pytest_cache", "dist",
-    "build", ".eggs", "site-packages", ".idea", ".vscode", ".tox",
+    ".git",
+    ".hg",
+    ".svn",
+    ".scout",
+    ".venv",
+    "venv",
+    "env",
+    "node_modules",
+    "__pycache__",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".pytest_cache",
+    "dist",
+    "build",
+    ".eggs",
+    "site-packages",
+    ".idea",
+    ".vscode",
+    ".tox",
 }
 MAX_FILE_BYTES = 2_000_000
 CHARS_PER_TOKEN = 4  # honest approximation, documented in output
 
 _JS_KEYWORDS = {
-    "if", "for", "while", "switch", "catch", "return", "function", "new",
-    "typeof", "await", "else", "do", "in", "of", "super", "import", "require",
-    "constructor", "throw", "delete", "void", "yield", "instanceof", "case",
+    "if",
+    "for",
+    "while",
+    "switch",
+    "catch",
+    "return",
+    "function",
+    "new",
+    "typeof",
+    "await",
+    "else",
+    "do",
+    "in",
+    "of",
+    "super",
+    "import",
+    "require",
+    "constructor",
+    "throw",
+    "delete",
+    "void",
+    "yield",
+    "instanceof",
+    "case",
 }
 
 
@@ -50,12 +91,13 @@ class ReviewGraphError(Exception):
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 # ---------------------------------------------------------------------------
 # store
 # ---------------------------------------------------------------------------
+
 
 def db_path(root: Path) -> Path:
     return Path(root) / DB_REL
@@ -143,9 +185,10 @@ def open_db(root: Path, *, create: bool = False) -> sqlite3.Connection:
 # extraction — Python (ast)
 # ---------------------------------------------------------------------------
 
-def _py_call_target(func: ast.expr) -> Optional[str]:
+
+def _py_call_target(func: ast.expr) -> str | None:
     """Dotted best-effort name for a call target; None when not name-like."""
-    parts: List[str] = []
+    parts: list[str] = []
     node = func
     while isinstance(node, ast.Attribute):
         parts.append(node.attr)
@@ -173,24 +216,22 @@ def _py_signature(node: ast.AST) -> str:
     return getattr(node, "name", "")
 
 
-def _extract_python(rel_path: str, text: str) -> Tuple[List[dict], List[dict]]:
+def _extract_python(rel_path: str, text: str) -> tuple[list[dict], list[dict]]:
     """Return (symbols, refs) for one Python file. Raises SyntaxError upward."""
     tree = ast.parse(text)
-    symbols: List[dict] = []
-    refs: List[dict] = []
+    symbols: list[dict] = []
+    refs: list[dict] = []
 
-    def add_ref(owner: str, kind: str, target: Optional[str], level: int = 0) -> None:
+    def add_ref(owner: str, kind: str, target: str | None, level: int = 0) -> None:
         if target:
             refs.append(
                 {"src_qualname": owner, "kind": kind, "target": target, "level": level}
             )
 
-    def visit(node: ast.AST, scope: List[str], owner: str, in_class: bool) -> None:
+    def visit(node: ast.AST, scope: list[str], owner: str, in_class: bool) -> None:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             qual = ".".join(scope + [node.name])
-            start = min(
-                [node.lineno] + [d.lineno for d in node.decorator_list]
-            )
+            start = min([node.lineno] + [d.lineno for d in node.decorator_list])
             symbols.append(
                 {
                     "name": node.name,
@@ -247,7 +288,9 @@ def _extract_python(rel_path: str, text: str) -> Tuple[List[dict], List[dict]]:
 # ---------------------------------------------------------------------------
 
 _JS_LINE_COMMENT = re.compile(r"//[^\n]*")
-_JS_STRING = re.compile(r"('(?:\\.|[^'\\\n])*'|\"(?:\\.|[^\"\\\n])*\"|`(?:\\.|[^`\\])*`)", re.S)
+_JS_STRING = re.compile(
+    r"('(?:\\.|[^'\\\n])*'|\"(?:\\.|[^\"\\\n])*\"|`(?:\\.|[^`\\])*`)", re.S
+)
 _JS_IMPORT = re.compile(
     r"""(?:^|\s)(?:import\s+(?:[\w{}\s,*$]+\s+from\s+)?|import\s*\(\s*|export\s+[\w{}\s,*$]*\s+from\s+|require\s*\(\s*)['"]([^'"]+)['"]""",
     re.M,
@@ -281,9 +324,14 @@ def _js_sanitize(text: str) -> str:
 
     # order matters: block comments can contain //, strings can contain both
     text = re.sub(r"/\*.*?\*/", _blank, text, flags=re.S)
-    text = _JS_STRING.sub(lambda m: m.group(0)[0] + " " * (len(m.group(0)) - 2) + m.group(0)[-1]
-                          if len(m.group(0)) >= 2 and "\n" not in m.group(0)
-                          else _blank(m), text)
+    text = _JS_STRING.sub(
+        lambda m: (
+            m.group(0)[0] + " " * (len(m.group(0)) - 2) + m.group(0)[-1]
+            if len(m.group(0)) >= 2 and "\n" not in m.group(0)
+            else _blank(m)
+        ),
+        text,
+    )
     text = _JS_LINE_COMMENT.sub(lambda m: " " * len(m.group(0)), text)
     return text
 
@@ -308,18 +356,22 @@ def _js_block_end(clean: str, start_line: int) -> int:
     return limit
 
 
-def _extract_js(rel_path: str, text: str) -> Tuple[List[dict], List[dict]]:
+def _extract_js(rel_path: str, text: str) -> tuple[list[dict], list[dict]]:
     """Regex extraction: imports/exports, function decls, classes, calls."""
     clean = _js_sanitize(text)
-    symbols: List[dict] = []
-    refs: List[dict] = []
-    decl_positions: Set[Tuple[int, str]] = set()
+    symbols: list[dict] = []
+    refs: list[dict] = []
+    decl_positions: set[tuple[int, str]] = set()
 
     def line_of(pos: int) -> int:
         return clean.count("\n", 0, pos) + 1
 
-    for pat, kind in ((_JS_FUNC, "function"), (_JS_ARROW, "function"),
-                      (_JS_FUNC_EXPR, "function"), (_JS_CLASS, "class")):
+    for pat, kind in (
+        (_JS_FUNC, "function"),
+        (_JS_ARROW, "function"),
+        (_JS_FUNC_EXPR, "function"),
+        (_JS_CLASS, "class"),
+    ):
         for m in pat.finditer(clean):
             name = m.group(1)
             lineno = line_of(m.start())
@@ -357,7 +409,9 @@ def _extract_js(rel_path: str, text: str) -> Tuple[List[dict], List[dict]]:
         stripped = raw_lines[lineno - 1].lstrip() if lineno <= len(raw_lines) else ""
         if stripped.startswith(("//", "*", "/*")):
             continue
-        refs.append({"src_qualname": "", "kind": "import", "target": m.group(1), "level": 0})
+        refs.append(
+            {"src_qualname": "", "kind": "import", "target": m.group(1), "level": 0}
+        )
 
     # best-effort calls, attributed to the innermost enclosing declared symbol
     spans = sorted(symbols, key=lambda s: (s["lineno"], -s["end_lineno"]))
@@ -372,7 +426,7 @@ def _extract_js(rel_path: str, text: str) -> Tuple[List[dict], List[dict]]:
                     best, best_size = s["qualname"], size
         return best
 
-    seen: Set[Tuple[str, str]] = set()
+    seen: set[tuple[str, str]] = set()
     for m in _JS_CALL.finditer(clean):
         name = m.group(2)
         lineno = line_of(m.start(2))
@@ -391,7 +445,8 @@ def _extract_js(rel_path: str, text: str) -> Tuple[List[dict], List[dict]]:
 # indexing
 # ---------------------------------------------------------------------------
 
-def _lang_of(path: Path) -> Optional[str]:
+
+def _lang_of(path: Path) -> str | None:
     if path.suffix in PY_SUFFIXES:
         return "python"
     if path.suffix in JS_SUFFIXES:
@@ -410,7 +465,11 @@ def _iter_source_files(root: Path) -> Iterable[Path]:
         for entry in entries:
             name = entry.name
             if entry.is_dir():
-                if name in SKIP_DIRS or name.startswith(".") or name.endswith(".egg-info"):
+                if (
+                    name in SKIP_DIRS
+                    or name.startswith(".")
+                    or name.endswith(".egg-info")
+                ):
                     continue
                 stack.append(entry)
             elif entry.is_file() and _lang_of(entry):
@@ -421,7 +480,7 @@ def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def index_repo(root: str | Path) -> Dict[str, Any]:
+def index_repo(root: str | Path) -> dict[str, Any]:
     """Build or incrementally refresh the graph. Returns index stats."""
     root = _resolve_root(root)
     t0 = time.time()
@@ -431,7 +490,7 @@ def index_repo(root: str | Path) -> Dict[str, Any]:
             r["path"]: (r["mtime_ns"], r["sha256"])
             for r in conn.execute("SELECT path, mtime_ns, sha256 FROM files")
         }
-        seen: Set[str] = set()
+        seen: set[str] = set()
         parsed = 0
         unchanged = 0
         warnings = 0
@@ -447,7 +506,9 @@ def index_repo(root: str | Path) -> Dict[str, Any]:
                 unchanged += 1
                 continue
             if stat.st_size > MAX_FILE_BYTES:
-                _replace_file(conn, rel, _lang_of(fpath) or "python", mtime_ns, "oversize", [], [])
+                _replace_file(
+                    conn, rel, _lang_of(fpath) or "python", mtime_ns, "oversize", [], []
+                )
                 _warn(conn, rel, f"skipped: file larger than {MAX_FILE_BYTES} bytes")
                 warnings += 1
                 continue
@@ -470,7 +531,11 @@ def index_repo(root: str | Path) -> Dict[str, Any]:
                     syms, refs = _extract_js(rel, text)
             except SyntaxError as e:
                 _replace_file(conn, rel, lang, mtime_ns, digest, [], [])
-                _warn(conn, rel, f"unparseable, symbols skipped: {e.msg} (line {e.lineno})")
+                _warn(
+                    conn,
+                    rel,
+                    f"unparseable, symbols skipped: {e.msg} (line {e.lineno})",
+                )
                 warnings += 1
                 continue
             except RecursionError:
@@ -550,10 +615,17 @@ def _replace_file(
         conn.execute(
             "INSERT OR IGNORE INTO nodes(kind, path, name, qualname, lineno, end_lineno, signature)"
             " VALUES(?,?,?,?,?,?,?)",
-            (s["kind"], rel, s["name"], s["qualname"], s["lineno"], s["end_lineno"],
-             s["signature"]),
+            (
+                s["kind"],
+                rel,
+                s["name"],
+                s["qualname"],
+                s["lineno"],
+                s["end_lineno"],
+                s["signature"],
+            ),
         )
-    dedup: Set[Tuple[str, str, str, int]] = set()
+    dedup: set[tuple[str, str, str, int]] = set()
     for r in refs:
         key = (r["src_qualname"], r["kind"], r["target"], r["level"])
         if key in dedup:
@@ -569,9 +641,10 @@ def _replace_file(
 # edge resolution (re-run wholesale after each index pass)
 # ---------------------------------------------------------------------------
 
+
 def _resolve_module_path(
-    files: Set[str], src_path: str, target: str, level: int, lang: str
-) -> Optional[str]:
+    files: set[str], src_path: str, target: str, level: int, lang: str
+) -> str | None:
     """Map an import target to an indexed file path (None = external/unknown)."""
     if lang == "javascript":
         if not target.startswith("."):
@@ -590,7 +663,7 @@ def _resolve_module_path(
         pkg = PurePosixPath(src_path).parent
         for _ in range(level - 1):
             pkg = pkg.parent
-        parts = [p for p in pkg.parts]
+        parts = list(pkg.parts)
         if target and target != ".":
             parts += target.split(".")
         cand = "/".join(parts)
@@ -613,14 +686,14 @@ def _resolve_module_path(
     return None
 
 
-def _rebuild_edges(conn: sqlite3.Connection) -> Dict[str, int]:
+def _rebuild_edges(conn: sqlite3.Connection) -> dict[str, int]:
     """Re-resolve all refs into the edges table. Cheap at personal-repo scale."""
     conn.execute("DELETE FROM edges")
-    files: Set[str] = {r["path"] for r in conn.execute("SELECT path FROM files")}
+    files: set[str] = {r["path"] for r in conn.execute("SELECT path FROM files")}
     langs = {r["path"]: r["lang"] for r in conn.execute("SELECT path, lang FROM files")}
-    file_node: Dict[str, int] = {}
-    sym_by_name: Dict[str, List[sqlite3.Row]] = {}
-    sym_by_qual: Dict[str, int] = {}
+    file_node: dict[str, int] = {}
+    sym_by_name: dict[str, list[sqlite3.Row]] = {}
+    sym_by_qual: dict[str, int] = {}
     for r in conn.execute("SELECT id, kind, path, name, qualname FROM nodes"):
         if r["kind"] == "file":
             file_node[r["path"]] = r["id"]
@@ -634,16 +707,19 @@ def _rebuild_edges(conn: sqlite3.Connection) -> Dict[str, int]:
         if src == dst:
             return
         cur = conn.execute(
-            "INSERT OR IGNORE INTO edges(src, dst, kind) VALUES(?,?,?)", (src, dst, kind)
+            "INSERT OR IGNORE INTO edges(src, dst, kind) VALUES(?,?,?)",
+            (src, dst, kind),
         )
         if cur.rowcount:
             counts[kind] += 1
 
     for path, node_id in file_node.items():
-        for r in conn.execute("SELECT id FROM nodes WHERE path=? AND kind!='file'", (path,)):
+        for r in conn.execute(
+            "SELECT id FROM nodes WHERE path=? AND kind!='file'", (path,)
+        ):
             add_edge(node_id, r["id"], "defines")
 
-    imported_by_src: Dict[str, Set[str]] = {}
+    imported_by_src: dict[str, set[str]] = {}
     rows = list(
         conn.execute("SELECT src_path, src_qualname, kind, target, level FROM refs")
     )
@@ -651,7 +727,11 @@ def _rebuild_edges(conn: sqlite3.Connection) -> Dict[str, int]:
         if r["kind"] != "import":
             continue
         dst_path = _resolve_module_path(
-            files, r["src_path"], r["target"], r["level"], langs.get(r["src_path"], "python")
+            files,
+            r["src_path"],
+            r["target"],
+            r["level"],
+            langs.get(r["src_path"], "python"),
         )
         if dst_path and dst_path != r["src_path"]:
             imported_by_src.setdefault(r["src_path"], set()).add(dst_path)
@@ -686,7 +766,7 @@ def _rebuild_edges(conn: sqlite3.Connection) -> Dict[str, int]:
     return counts
 
 
-def _counts(conn: sqlite3.Connection) -> Dict[str, Any]:
+def _counts(conn: sqlite3.Connection) -> dict[str, Any]:
     files = conn.execute("SELECT COUNT(*) c FROM files").fetchone()["c"]
     symbols = {
         r["kind"]: r["c"]
@@ -713,11 +793,14 @@ def _counts(conn: sqlite3.Connection) -> Dict[str, Any]:
 # status
 # ---------------------------------------------------------------------------
 
-def graph_status(root: str | Path) -> Dict[str, Any]:
+
+def graph_status(root: str | Path) -> dict[str, Any]:
     root = _resolve_root(root)
     conn = open_db(root)
     try:
-        meta = {r["key"]: r["value"] for r in conn.execute("SELECT key, value FROM meta")}
+        meta = {
+            r["key"]: r["value"] for r in conn.execute("SELECT key, value FROM meta")
+        }
         stale = 0
         missing = 0
         for r in conn.execute("SELECT path, mtime_ns FROM files"):
@@ -745,10 +828,16 @@ def graph_status(root: str | Path) -> Dict[str, Any]:
 # git helpers + diff parsing
 # ---------------------------------------------------------------------------
 
+
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["git", *args], cwd=str(root), capture_output=True, text=True,
-        encoding="utf-8", errors="replace", timeout=60,
+        ["git", *args],
+        cwd=str(root),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=60,
     )
 
 
@@ -770,14 +859,20 @@ def _require_git_repo(root: Path) -> str:
 _HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 
 
-def _parse_diff(diff_text: str) -> Dict[str, List[Tuple[int, int]]]:
+def _parse_diff(diff_text: str) -> dict[str, list[tuple[int, int]]]:
     """`git diff --unified=0` → {new_path: [(start_line, end_line), ...]}."""
-    ranges: Dict[str, List[Tuple[int, int]]] = {}
-    current: Optional[str] = None
+    ranges: dict[str, list[tuple[int, int]]] = {}
+    current: str | None = None
     for line in diff_text.splitlines():
         if line.startswith("+++ "):
             target = line[4:].strip()
-            current = None if target == "/dev/null" else target[2:] if target.startswith("b/") else target
+            current = (
+                None
+                if target == "/dev/null"
+                else target[2:]
+                if target.startswith("b/")
+                else target
+            )
         elif line.startswith("--- "):
             continue
         elif current is not None and line.startswith("@@"):
@@ -794,10 +889,10 @@ def _parse_diff(diff_text: str) -> Dict[str, List[Tuple[int, int]]]:
     return ranges
 
 
-def _deleted_paths(diff_text: str) -> Set[str]:
+def _deleted_paths(diff_text: str) -> set[str]:
     """Old-side paths whose new side is /dev/null (file deletions)."""
-    deleted: Set[str] = set()
-    pending: Optional[str] = None
+    deleted: set[str] = set()
+    pending: str | None = None
     for line in diff_text.splitlines():
         if line.startswith("--- "):
             target = line[4:].strip()
@@ -809,7 +904,7 @@ def _deleted_paths(diff_text: str) -> Set[str]:
     return deleted
 
 
-def _collect_diff(root: Path, diff_ref: Optional[str]) -> Dict[str, Any]:
+def _collect_diff(root: Path, diff_ref: str | None) -> dict[str, Any]:
     """Changed line ranges (root-relative) from git, plus untracked source files."""
     prefix = _require_git_repo(root)
     ref = diff_ref or "HEAD"
@@ -817,12 +912,12 @@ def _collect_diff(root: Path, diff_ref: Optional[str]) -> Dict[str, Any]:
     if r.returncode != 0:
         raise ReviewGraphError(f"git diff {ref} failed: {r.stderr.strip()[:200]}")
 
-    def to_rel(p: str) -> Optional[str]:
+    def to_rel(p: str) -> str | None:
         if prefix and not p.startswith(prefix):
             return None  # changed outside --root subtree
-        return p[len(prefix):] if prefix else p
+        return p[len(prefix) :] if prefix else p
 
-    ranges: Dict[str, List[Tuple[int, int]]] = {}
+    ranges: dict[str, list[tuple[int, int]]] = {}
     outside = 0
     for path, spans in _parse_diff(r.stdout).items():
         rel = to_rel(path)
@@ -836,7 +931,7 @@ def _collect_diff(root: Path, diff_ref: Optional[str]) -> Dict[str, Any]:
         if rel:
             deleted.add(rel)
 
-    untracked: List[str] = []
+    untracked: list[str] = []
     st = _git(root, "status", "--porcelain", "--untracked-files=all", "--", ".")
     if st.returncode == 0:
         for line in st.stdout.splitlines():
@@ -844,17 +939,23 @@ def _collect_diff(root: Path, diff_ref: Optional[str]) -> Dict[str, Any]:
                 rel = to_rel(line[3:].strip())
                 if rel and _lang_of(Path(rel)):
                     untracked.append(rel)
-    return {"ref": ref, "ranges": ranges, "deleted": deleted,
-            "untracked": untracked, "outside_root": outside}
+    return {
+        "ref": ref,
+        "ranges": ranges,
+        "deleted": deleted,
+        "untracked": untracked,
+        "outside_root": outside,
+    }
 
 
 # ---------------------------------------------------------------------------
 # blast radius
 # ---------------------------------------------------------------------------
 
-def _fan_in(conn: sqlite3.Connection) -> Dict[int, int]:
+
+def _fan_in(conn: sqlite3.Connection) -> dict[int, int]:
     """node id → incoming calls+inherits (symbols) / incoming imports (files)."""
-    fan: Dict[int, int] = {}
+    fan: dict[int, int] = {}
     for r in conn.execute(
         "SELECT dst, COUNT(*) c FROM edges WHERE kind IN ('calls','inherits','imports') "
         "GROUP BY dst"
@@ -864,8 +965,8 @@ def _fan_in(conn: sqlite3.Connection) -> Dict[int, int]:
 
 
 def _changed_symbols_for(
-    conn: sqlite3.Connection, rel: str, spans: List[Tuple[int, int]]
-) -> List[sqlite3.Row]:
+    conn: sqlite3.Connection, rel: str, spans: list[tuple[int, int]]
+) -> list[sqlite3.Row]:
     rows = list(
         conn.execute(
             "SELECT id, kind, path, name, qualname, lineno, end_lineno, signature "
@@ -874,7 +975,8 @@ def _changed_symbols_for(
         )
     )
     hit = [
-        r for r in rows
+        r
+        for r in rows
         if any(r["lineno"] <= hi and r["end_lineno"] >= lo for lo, hi in spans)
     ]
     # innermost wins: drop symbols that strictly contain another hit symbol
@@ -893,24 +995,27 @@ def _changed_symbols_for(
 
 
 def compute_blast(
-    root: str | Path, diff_ref: Optional[str] = None, hops: int = 2
-) -> Dict[str, Any]:
+    root: str | Path, diff_ref: str | None = None, hops: int = 2
+) -> dict[str, Any]:
     """Blast radius of the working diff: reverse-dependency walk to N hops."""
     root = _resolve_root(root)
     conn = open_db(root)
     try:
         diff = _collect_diff(root, diff_ref)
         indexed = {r["path"] for r in conn.execute("SELECT path FROM files")}
-        node_by_id: Dict[int, sqlite3.Row] = {
-            r["id"]: r for r in conn.execute(
+        node_by_id: dict[int, sqlite3.Row] = {
+            r["id"]: r
+            for r in conn.execute(
                 "SELECT id, kind, path, name, qualname, lineno, end_lineno, signature FROM nodes"
             )
         }
-        file_node = {r["path"]: r["id"] for r in node_by_id.values() if r["kind"] == "file"}
+        file_node = {
+            r["path"]: r["id"] for r in node_by_id.values() if r["kind"] == "file"
+        }
         fan = _fan_in(conn)
 
-        changed_files: List[dict] = []
-        changed_syms: Dict[int, sqlite3.Row] = {}
+        changed_files: list[dict] = []
+        changed_syms: dict[int, sqlite3.Row] = {}
         for rel, spans in sorted(diff["ranges"].items()):
             entry = {"path": rel, "status": "modified", "indexed": rel in indexed}
             changed_files.append(entry)
@@ -918,9 +1023,13 @@ def compute_blast(
                 for row in _changed_symbols_for(conn, rel, spans):
                     changed_syms[row["id"]] = row
         for rel in sorted(diff["deleted"]):
-            changed_files.append({"path": rel, "status": "deleted", "indexed": rel in indexed})
+            changed_files.append(
+                {"path": rel, "status": "deleted", "indexed": rel in indexed}
+            )
         for rel in sorted(diff["untracked"]):
-            changed_files.append({"path": rel, "status": "untracked", "indexed": rel in indexed})
+            changed_files.append(
+                {"path": rel, "status": "untracked", "indexed": rel in indexed}
+            )
             if rel in indexed:  # whole new file — every symbol counts as changed
                 for row in conn.execute(
                     "SELECT id, kind, path, name, qualname, lineno, end_lineno, signature "
@@ -930,9 +1039,9 @@ def compute_blast(
                     changed_syms[row["id"]] = row
 
         # BFS over reverse edges: callers, subclasses (symbol) + importers (file)
-        dist: Dict[int, int] = {}
-        via: Dict[int, str] = {}
-        frontier: List[int] = []
+        dist: dict[int, int] = {}
+        via: dict[int, str] = {}
+        frontier: list[int] = []
         for sid, row in changed_syms.items():
             dist[sid] = 0
             frontier.append(sid)
@@ -943,7 +1052,7 @@ def compute_blast(
                 frontier.append(nid)
 
         for hop in range(1, max(hops, 0) + 1):
-            nxt: List[int] = []
+            nxt: list[int] = []
             for nid in frontier:
                 node = node_by_id.get(nid)
                 if node is None:
@@ -1019,7 +1128,8 @@ def compute_blast(
 # review context (the flagship — compact JSON for an AI reviewer)
 # ---------------------------------------------------------------------------
 
-def _snippet(root: Path, path: str, lo: int, hi: int, cap: int) -> Tuple[str, bool]:
+
+def _snippet(root: Path, path: str, lo: int, hi: int, cap: int) -> tuple[str, bool]:
     try:
         lines = (root / path).read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
@@ -1031,27 +1141,27 @@ def _snippet(root: Path, path: str, lo: int, hi: int, cap: int) -> Tuple[str, bo
     return "\n".join(chunk), truncated
 
 
-def _import_cycles(conn: sqlite3.Connection, limit: int = 10) -> List[List[str]]:
+def _import_cycles(conn: sqlite3.Connection, limit: int = 10) -> list[list[str]]:
     """File-level import cycles via iterative Tarjan SCC (size > 1 only)."""
     node_path = {
         r["id"]: r["path"]
         for r in conn.execute("SELECT id, path FROM nodes WHERE kind='file'")
     }
-    adj: Dict[int, List[int]] = {}
+    adj: dict[int, list[int]] = {}
     for r in conn.execute("SELECT src, dst FROM edges WHERE kind='imports'"):
         adj.setdefault(r["src"], []).append(r["dst"])
 
-    index: Dict[int, int] = {}
-    low: Dict[int, int] = {}
-    on_stack: Set[int] = set()
-    stack: List[int] = []
+    index: dict[int, int] = {}
+    low: dict[int, int] = {}
+    on_stack: set[int] = set()
+    stack: list[int] = []
     counter = [0]
-    sccs: List[List[str]] = []
+    sccs: list[list[str]] = []
 
     for start in node_path:
         if start in index:
             continue
-        work: List[Tuple[int, int]] = [(start, 0)]
+        work: list[tuple[int, int]] = [(start, 0)]
         while work:
             v, pi = work[-1]
             if pi == 0:
@@ -1093,10 +1203,10 @@ def _import_cycles(conn: sqlite3.Connection, limit: int = 10) -> List[List[str]]
 
 def build_context(
     root: str | Path,
-    diff_ref: Optional[str] = None,
+    diff_ref: str | None = None,
     hops: int = 2,
     budget_tokens: int = 4000,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Compact review-context JSON, trimmed to ~budget_tokens (chars/4)."""
     root = _resolve_root(root)
     blast = compute_blast(root, diff_ref=diff_ref, hops=hops)
@@ -1108,7 +1218,7 @@ def build_context(
         conn.close()
 
     changed_paths = {c["path"] for c in blast["changed_files"]}
-    risk_notes: List[str] = []
+    risk_notes: list[str] = []
     for s in blast["changed_symbols"]:
         if s["fan_in"] >= 5:
             risk_notes.append(
@@ -1129,7 +1239,9 @@ def build_context(
             f"index is stale for {stale['stale_files']} file(s) — symbol line ranges may drift"
         )
 
-    dependents = [i for i in blast["impacted"] if i["type"] == "symbol" and i["distance"] == 1]
+    dependents = [
+        i for i in blast["impacted"] if i["type"] == "symbol" and i["distance"] == 1
+    ]
     dependents.sort(key=lambda x: (-x["fan_in"], x["name"]))
     impacted_files = sorted(
         {i["path"] for i in blast["impacted"]} | {i["path"] for i in dependents}
@@ -1144,7 +1256,7 @@ def build_context(
     full_snips = len(changed_ranked)  # first N changed get snippets; rest sig-only
     max_changed = len(changed_ranked)
 
-    def assemble(cap: int, dep_n: int, snips: int, changed_n: int) -> Dict[str, Any]:
+    def assemble(cap: int, dep_n: int, snips: int, changed_n: int) -> dict[str, Any]:
         changed = []
         for i, s in enumerate(changed_ranked[:changed_n]):
             entry = {
@@ -1156,7 +1268,9 @@ def build_context(
                 "signature": s["signature"],
             }
             if i < snips:
-                text, truncated = _snippet(root, s["path"], s["lines"][0], s["lines"][1], cap)
+                text, truncated = _snippet(
+                    root, s["path"], s["lines"][0], s["lines"][1], cap
+                )
                 entry["snippet"] = text
                 entry["snippet_truncated"] = truncated
             changed.append(entry)
@@ -1185,7 +1299,7 @@ def build_context(
             "counts": blast["counts"],
         }
 
-    def estimate(payload: Dict[str, Any]) -> int:
+    def estimate(payload: dict[str, Any]) -> int:
         return len(json.dumps(payload, default=str)) // CHARS_PER_TOKEN
 
     payload = assemble(snippet_cap, max_dependents, full_snips, max_changed)
@@ -1215,9 +1329,10 @@ def build_context(
 # repo-level risks
 # ---------------------------------------------------------------------------
 
+
 def compute_risks(
     root: str | Path, top: int = 10, churn_commits: int = 500
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Top fan-in symbols, import cycles, churn-coupled files."""
     root = _resolve_root(root)
     conn = open_db(root)
@@ -1229,8 +1344,12 @@ def compute_risks(
         }
         sym_fan = sorted(
             (
-                {"qualname": nodes[nid]["qualname"], "kind": nodes[nid]["kind"],
-                 "path": nodes[nid]["path"], "fan_in": c}
+                {
+                    "qualname": nodes[nid]["qualname"],
+                    "kind": nodes[nid]["kind"],
+                    "path": nodes[nid]["path"],
+                    "fan_in": c,
+                }
                 for nid, c in fan.items()
                 if nid in nodes and nodes[nid]["kind"] != "file"
             ),
@@ -1248,25 +1367,35 @@ def compute_risks(
     finally:
         conn.close()
 
-    churn_coupled: List[dict] = []
+    churn_coupled: list[dict] = []
     churn_note = None
     try:
         prefix = _require_git_repo(root)
         log = _git(
-            root, "log", f"-n{churn_commits}", "--pretty=format:", "--name-only", "--", "."
+            root,
+            "log",
+            f"-n{churn_commits}",
+            "--pretty=format:",
+            "--name-only",
+            "--",
+            ".",
         )
-        churn: Dict[str, int] = {}
+        churn: dict[str, int] = {}
         for line in log.stdout.splitlines():
             line = line.strip()
             if not line:
                 continue
-            rel = line[len(prefix):] if prefix and line.startswith(prefix) else line
+            rel = line[len(prefix) :] if prefix and line.startswith(prefix) else line
             if rel in indexed:
                 churn[rel] = churn.get(rel, 0) + 1
         churn_coupled = sorted(
             (
-                {"path": p, "churn": c, "importers": importer_count.get(p, 0),
-                 "score": c * (1 + importer_count.get(p, 0))}
+                {
+                    "path": p,
+                    "churn": c,
+                    "importers": importer_count.get(p, 0),
+                    "score": c * (1 + importer_count.get(p, 0)),
+                }
                 for p, c in churn.items()
                 if importer_count.get(p, 0) > 0
             ),
@@ -1275,7 +1404,7 @@ def compute_risks(
     except ReviewGraphError as e:
         churn_note = str(e)
 
-    out: Dict[str, Any] = {
+    out: dict[str, Any] = {
         "root": str(root),
         "top_fan_in": sym_fan,
         "import_cycles": cycles,

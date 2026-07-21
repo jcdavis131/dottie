@@ -29,8 +29,11 @@ the pool; the actual safety hold is checked by `evals` on the merged checkpoint.
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence, Tuple
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 @dataclass(frozen=True)
@@ -41,12 +44,13 @@ class ConsolidationTrace:
     caller computes it via `evals.codeact_eval.score_emission`, this module does not take it on
     faith beyond admitting it. `family` is the datagen concept (e.g. `codeact_recover`); `behavior`
     ∈ {'solve','refuse'} lets the rare 'refuse to run this' safety trajectories be counted and kept."""
+
     prompt: str
-    rendered: str                 # the full transcript (turns + observations) to distill on
+    rendered: str  # the full transcript (turns + observations) to distill on
     answer: str
     family: str
     verified: bool
-    behavior: str = "solve"       # 'solve' | 'refuse'
+    behavior: str = "solve"  # 'solve' | 'refuse'
     step: int = 0
 
 
@@ -59,8 +63,9 @@ def admit_trace(trace: ConsolidationTrace) -> bool:
 @dataclass(frozen=True)
 class ConsolidationPool:
     """The prepared MOPD trace pool + a manifest of what it contains (for logging / provenance)."""
-    traces: List[ConsolidationTrace]
-    per_family: Dict[str, int]
+
+    traces: list[ConsolidationTrace]
+    per_family: dict[str, int]
     dropped_unverified: int
     dropped_duplicate: int
 
@@ -68,12 +73,13 @@ class ConsolidationPool:
         return len(self.traces)
 
 
-def _dedupe_by_prompt(traces: Sequence[ConsolidationTrace]
-                      ) -> Tuple[List[ConsolidationTrace], int]:
+def _dedupe_by_prompt(
+    traces: Sequence[ConsolidationTrace],
+) -> tuple[list[ConsolidationTrace], int]:
     """Keep the first trace per (prompt) — prompt diversity over per-prompt volume. Deterministic:
     preserves input order. Returns (deduped, n_dropped)."""
     seen = set()
-    out: List[ConsolidationTrace] = []
+    out: list[ConsolidationTrace] = []
     dropped = 0
     for t in traces:
         if t.prompt in seen:
@@ -84,9 +90,12 @@ def _dedupe_by_prompt(traces: Sequence[ConsolidationTrace]
     return out, dropped
 
 
-def consolidate(traces: Sequence[ConsolidationTrace], *,
-                per_family_cap: Optional[int] = None,
-                balance: bool = True) -> ConsolidationPool:
+def consolidate(
+    traces: Sequence[ConsolidationTrace],
+    *,
+    per_family_cap: int | None = None,
+    balance: bool = True,
+) -> ConsolidationPool:
     """Build the MOPD pool: drop unverified, dedupe by prompt, then (optionally) stratify by family.
 
     Stratification (`balance=True`) caps every family at the same size so no capability dominates or
@@ -101,14 +110,17 @@ def consolidate(traces: Sequence[ConsolidationTrace], *,
 
     deduped, dropped_duplicate = _dedupe_by_prompt(verified)
 
-    by_family: Dict[str, List[ConsolidationTrace]] = defaultdict(list)
+    by_family: dict[str, list[ConsolidationTrace]] = defaultdict(list)
     for t in deduped:
         by_family[t.family].append(t)
 
     if balance and by_family:
-        cap = per_family_cap if per_family_cap is not None else min(
-            len(v) for v in by_family.values())
-        selected: List[ConsolidationTrace] = []
+        cap = (
+            per_family_cap
+            if per_family_cap is not None
+            else min(len(v) for v in by_family.values())
+        )
+        selected: list[ConsolidationTrace] = []
         for family in sorted(by_family):
             selected.extend(by_family[family][:cap])
     elif per_family_cap is not None:
@@ -121,9 +133,12 @@ def consolidate(traces: Sequence[ConsolidationTrace], *,
     per_family = defaultdict(int)
     for t in selected:
         per_family[t.family] += 1
-    return ConsolidationPool(traces=selected, per_family=dict(per_family),
-                             dropped_unverified=dropped_unverified,
-                             dropped_duplicate=dropped_duplicate)
+    return ConsolidationPool(
+        traces=selected,
+        per_family=dict(per_family),
+        dropped_unverified=dropped_unverified,
+        dropped_duplicate=dropped_duplicate,
+    )
 
 
 class ConsolidationBlockedError(RuntimeError):

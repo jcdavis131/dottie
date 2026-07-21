@@ -1,16 +1,26 @@
-from typing import Optional
-from urllib.parse import urlparse as _up
 import json
 import re
+from urllib.parse import urlparse as _up
 
 import typer
 
 from bigbang.core.cli_ux import examples_epilog, fail_agent
-from bigbang.core.output import emit
-from bigbang.core.registry import register_tool, list_tools, get_tool, unregister_tool, search_tools
-from bigbang.core.policy import enforce_or_raise, enforce_user_url_or_raise
 from bigbang.core.http_utils import sanitize_no_proxy_env
-from bigbang.core.openapi import fetch_spec, generate_typer_plugin, call_openapi, parse_operations
+from bigbang.core.openapi import (
+    call_openapi,
+    fetch_spec,
+    generate_typer_plugin,
+    parse_operations,
+)
+from bigbang.core.output import emit
+from bigbang.core.policy import enforce_or_raise, enforce_user_url_or_raise
+from bigbang.core.registry import (
+    get_tool,
+    list_tools,
+    register_tool,
+    search_tools,
+    unregister_tool,
+)
 
 sanitize_no_proxy_env()
 
@@ -29,8 +39,11 @@ app = typer.Typer(
 )
 
 
-@app.command("list", epilog=examples_epilog(["scout --json tools list", "scout tools list --tag api"]))
-def list_cmd(tag: Optional[str] = typer.Option(None, help="filter by tag")):
+@app.command(
+    "list",
+    epilog=examples_epilog(["scout --json tools list", "scout tools list --tag api"]),
+)
+def list_cmd(tag: str | None = typer.Option(None, help="filter by tag")):
     """List registered tools (keys + manifests)."""
     tools = list_tools()
     if tag:
@@ -58,7 +71,7 @@ def list_cmd(tag: Optional[str] = typer.Option(None, help="filter by tag")):
 def add_cmd(
     name: str = typer.Argument(..., help="tool name e.g. github, notion, stripe"),
     type: str = typer.Option("openapi", help="openapi|mcp|cli|docker|python"),
-    url: Optional[str] = typer.Option(None, help="OpenAPI spec URL or MCP server URL"),
+    url: str | None = typer.Option(None, help="OpenAPI spec URL or MCP server URL"),
     description: str = typer.Option("", help="what it does"),
     tags: str = typer.Option("", help="comma-separated tags e.g. api,work,ai"),
 ):
@@ -78,7 +91,10 @@ def add_cmd(
         "description": description,
         "tags": [t.strip() for t in tags.split(",") if t.strip()],
         "capabilities": {
-            "network": {"enabled": True, "domains": [domain_guess] if domain_guess else []},
+            "network": {
+                "enabled": True,
+                "domains": [domain_guess] if domain_guess else [],
+            },
             "filesystem": {"write": False},
         },
     }
@@ -90,7 +106,8 @@ def add_cmd(
             manifest["paths_count"] = len(spec.get("paths", {}))
             if not description:
                 manifest["description"] = (
-                    spec.get("info", {}).get("description") or spec.get("info", {}).get("title", "")
+                    spec.get("info", {}).get("description")
+                    or spec.get("info", {}).get("title", "")
                 )[:200]
         except Exception as e:
             manifest["openapi_error"] = str(e)
@@ -133,13 +150,18 @@ def get_cmd(name: str = typer.Argument(..., help="registered tool name")):
 )
 def rm_cmd(
     name: str = typer.Argument(..., help="tool name to remove"),
-    force: bool = typer.Option(False, "--force", "-f", help="required in non-interactive mode"),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="required in non-interactive mode"
+    ),
     dry_run: bool = typer.Option(False, "--dry-run", help="show what would be removed"),
 ):
     """Unregister a tool. Idempotent with --force when missing."""
     exists = get_tool(name) is not None
     if dry_run:
-        emit({"would_remove": name, "exists": exists, "dry_run": True}, command="tools rm")
+        emit(
+            {"would_remove": name, "exists": exists, "dry_run": True},
+            command="tools rm",
+        )
         return
     if exists and not force:
         # No confirm prompt for registry entries (low blast radius), but require
@@ -155,10 +177,15 @@ def rm_cmd(
 
 
 @app.command("search", epilog=examples_epilog(["scout tools search translate"]))
-def search_cmd(query: str = typer.Argument(..., help="search e.g. 'translate', 'github'")):
+def search_cmd(
+    query: str = typer.Argument(..., help="search e.g. 'translate', 'github'"),
+):
     """Search registered tools by name/description/tags."""
     results = search_tools(query)
-    emit({"query": query, "results": results, "count": len(results)}, command="tools search")
+    emit(
+        {"query": query, "results": results, "count": len(results)},
+        command="tools search",
+    )
 
 
 @app.command(
@@ -172,8 +199,8 @@ def search_cmd(query: str = typer.Argument(..., help="search e.g. 'translate', '
 )
 def call_cmd(
     name: str = typer.Argument(..., help="registered tool name"),
-    action: Optional[str] = typer.Argument(None, help="action / operationId"),
-    args: Optional[str] = typer.Argument(None, help="json args"),
+    action: str | None = typer.Argument(None, help="action / operationId"),
+    args: str | None = typer.Argument(None, help="json args"),
 ):
     """Call a registered OpenAPI/MCP tool (policy-checked)."""
     tool = get_tool(name)
@@ -200,9 +227,7 @@ def call_cmd(
                     emit(
                         {
                             "warning": "args not valid JSON",
-                            "example": 'scout tools call {name} {action} \'{{"param":"value"}}\''.format(
-                                name=name, action=action
-                            ),
+                            "example": f'scout tools call {name} {action} \'{{"param":"value"}}\'',
                         }
                     )
                     parsed_args = {}
@@ -240,7 +265,7 @@ def call_cmd(
 @app.command("import-openapi")
 def import_openapi(
     url: str = typer.Argument(..., help="OpenAPI JSON URL"),
-    name: Optional[str] = typer.Option(None),
+    name: str | None = typer.Option(None),
 ):
     """Fetch an OpenAPI spec, register it, enforce user URL allowlist."""
     sanitize_no_proxy_env()
@@ -249,14 +274,17 @@ def import_openapi(
     enforce_user_url_or_raise(url, context="tools import-openapi")
     try:
         spec = fetch_spec(url)
-        derived_name = name or spec.get("info", {}).get("title", "api").lower().replace(" ", "-")
+        derived_name = name or spec.get("info", {}).get("title", "api").lower().replace(
+            " ", "-"
+        )
         derived_name = re.sub(r"[^0-9A-Za-z_-]+", "-", derived_name).strip("-") or "api"
         domain = _up(url).netloc
         manifest = {
             "type": "openapi",
             "url": url,
             "description": (
-                spec.get("info", {}).get("description", "") or spec.get("info", {}).get("title", "")
+                spec.get("info", {}).get("description", "")
+                or spec.get("info", {}).get("title", "")
             )[:200],
             "openapi_version": spec.get("openapi", ""),
             "paths_count": len(spec.get("paths", {})),
@@ -273,7 +301,13 @@ def import_openapi(
             command="tools import-openapi",
         )
     except Exception as e:
-        emit({"error": str(e), "url": url, "example": f"scout tools import-openapi {url}"})
+        emit(
+            {
+                "error": str(e),
+                "url": url,
+                "example": f"scout tools import-openapi {url}",
+            }
+        )
 
 
 @app.command("generate")

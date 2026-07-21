@@ -10,7 +10,12 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from efficiency_gain import EGResult, efficiency_gain, eg_trend, fit_power_law  # noqa: E402
+from efficiency_gain import (
+    EGResult,
+    efficiency_gain,
+    eg_trend,
+    fit_power_law,
+)
 
 
 def synth_curve(a=100.0, b=0.5, xs=(1e15, 1e16, 1e17, 1e18), floor=0.0):
@@ -26,7 +31,7 @@ class TestFit:
     def test_recovers_with_floor(self):
         fit = fit_power_law(synth_curve(floor=1.7), floor=1.7)
         assert math.isclose(fit.b, 0.5, rel_tol=1e-9)
-        assert math.isclose(fit.loss_at(1e16), 100.0 * 1e16 ** -0.5 + 1.7, rel_tol=1e-9)
+        assert math.isclose(fit.loss_at(1e16), 100.0 * 1e16**-0.5 + 1.7, rel_tol=1e-9)
 
     def test_rejects_single_point(self):
         with pytest.raises(ValueError, match=">= 2 usable points"):
@@ -57,11 +62,17 @@ class TestEG:
     def test_flops_vs_time_decoupling(self):
         # Same candidate quality; algorithmic win (fewer FLOPs) but slow kernels (more secs).
         flops_fit = fit_power_law(synth_curve(xs=(1e15, 1e16, 1e17)))
-        time_fit = fit_power_law([(x / 1e12, y) for x, y in synth_curve(xs=(1e15, 1e16, 1e17))])
+        time_fit = fit_power_law(
+            [(x / 1e12, y) for x, y in synth_curve(xs=(1e15, 1e16, 1e17))]
+        )
         loss = flops_fit.loss_at(1e16)
         eg_flops = efficiency_gain(flops_fit, 0.7e16, loss).eg
-        eg_time = efficiency_gain(time_fit, 1.5e4, loss).eg  # baseline equiv is 1e4 secs
-        assert eg_flops > 1.0 > eg_time  # the DeltaNet/LatentMoE state: keep, but not shipped
+        eg_time = efficiency_gain(
+            time_fit, 1.5e4, loss
+        ).eg  # baseline equiv is 1e4 secs
+        assert (
+            eg_flops > 1.0 > eg_time
+        )  # the DeltaNet/LatentMoE state: keep, but not shipped
 
     def test_below_floor_is_undefined(self):
         fit = fit_power_law(synth_curve(floor=1.7), floor=1.7)
@@ -75,8 +86,17 @@ class TestEG:
 
 
 def _res(label, eg):
-    return (label, EGResult(label=label, eg=eg, candidate_compute=1.0,
-                            candidate_loss=1.0, baseline_compute_equiv=eg, extrapolated=False))
+    return (
+        label,
+        EGResult(
+            label=label,
+            eg=eg,
+            candidate_compute=1.0,
+            candidate_loss=1.0,
+            baseline_compute_equiv=eg,
+            extrapolated=False,
+        ),
+    )
 
 
 class TestTrend:
@@ -93,23 +113,45 @@ class TestTrend:
 
     def test_shrinking_but_positive_win_holds(self):
         t = eg_trend([_res("nano", 1.8), _res("mini", 1.4), _res("base1b", 1.05)])
-        assert t["verdict"] == "hold" and t["all_rungs_gt_1"] and not t["largest_rung_not_worst"]
+        assert (
+            t["verdict"] == "hold"
+            and t["all_rungs_gt_1"]
+            and not t["largest_rung_not_worst"]
+        )
 
 
 class TestCLI:
     def test_end_to_end_json(self, tmp_path):
         base = tmp_path / "base.jsonl"
-        base.write_text("\n".join(json.dumps({"flops": x, "loss": y}) for x, y in synth_curve()))
+        base.write_text(
+            "\n".join(json.dumps({"flops": x, "loss": y}) for x, y in synth_curve())
+        )
         cand = tmp_path / "cand.jsonl"
         fit = fit_power_law(synth_curve())
-        cand.write_text("\n".join([
-            json.dumps({"label": "nano", "flops": 0.8e16, "loss": fit.loss_at(1e16)}),
-            json.dumps({"label": "mini", "flops": 0.8e17, "loss": fit.loss_at(1e17)}),
-        ]))
+        cand.write_text(
+            "\n".join(
+                [
+                    json.dumps(
+                        {"label": "nano", "flops": 0.8e16, "loss": fit.loss_at(1e16)}
+                    ),
+                    json.dumps(
+                        {"label": "mini", "flops": 0.8e17, "loss": fit.loss_at(1e17)}
+                    ),
+                ]
+            )
+        )
         proc = subprocess.run(
-            [sys.executable, str(Path(__file__).resolve().parent.parent / "efficiency_gain.py"),
-             "--baseline", str(base), "--candidate", str(cand)],
-            capture_output=True, text=True, check=True,
+            [
+                sys.executable,
+                str(Path(__file__).resolve().parent.parent / "efficiency_gain.py"),
+                "--baseline",
+                str(base),
+                "--candidate",
+                str(cand),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
         )
         out = json.loads(proc.stdout)
         assert out["results"][0]["eg"] == pytest.approx(1.25, rel=1e-6)

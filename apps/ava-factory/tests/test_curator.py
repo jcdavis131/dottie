@@ -15,14 +15,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 import zstandard as zstd
-
-from ava.pipeline import clean
-from ava.pipeline.dedup import MinHashDeduper, exact_hash
+from ava.pipeline import clean, pack
 from ava.pipeline.decontaminate import Decontaminator, write_report
+from ava.pipeline.dedup import MinHashDeduper, exact_hash
+from ava.pipeline.manifest import PACKED, Manifest, TokenizerMismatch, worker_id
 from ava.pipeline.split import assign_split
-from ava.pipeline import pack
-from ava.pipeline.manifest import Manifest, PACKED, TokenizerMismatch, worker_id
-from evals.eval_sets import all_eval_texts, EVAL_SETS
+from evals.eval_sets import EVAL_SETS, all_eval_texts
 
 # ---------------------------------------------------------------------------
 # shared fixtures
@@ -85,7 +83,7 @@ def tiny_tokenizer(tmp_path_factory) -> Path:
     ByteLevel guarantees exact decode round-trips, which the pack test relies on.
     Independent of Stage 5.
     """
-    from tokenizers import Tokenizer, models, trainers, pre_tokenizers, decoders
+    from tokenizers import Tokenizer, decoders, models, pre_tokenizers, trainers
 
     tok = Tokenizer(models.BPE())
     tok.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
@@ -107,6 +105,7 @@ def tiny_tokenizer(tmp_path_factory) -> Path:
 # ---------------------------------------------------------------------------
 # clean
 # ---------------------------------------------------------------------------
+
 
 def test_normalize_idempotent_and_collapses():
     raw = "Hello\x00 \t world\r\n\n\n\nnext   line   \n"
@@ -143,8 +142,10 @@ def test_gopher_accepts_good_rejects_bad():
 def test_edu_score_thresholds():
     assert clean.edu_score_ok({"score": 4.6}, 5, {2: 2.0, 5: 4.5})
     assert not clean.edu_score_ok({"score": 3.0}, 5, {2: 2.0, 5: 4.5})
-    assert clean.edu_score_ok({}, 5, {2: 2.0, 5: 4.5})       # missing score -> pass
-    assert clean.edu_score_ok({"score": 0.0}, 0, {2: 2.0})   # phase with no threshold -> pass
+    assert clean.edu_score_ok({}, 5, {2: 2.0, 5: 4.5})  # missing score -> pass
+    assert clean.edu_score_ok(
+        {"score": 0.0}, 0, {2: 2.0}
+    )  # phase with no threshold -> pass
 
 
 def test_scrub_pii_redacts_but_preserves_code():
@@ -253,14 +254,20 @@ def test_dedup_concurrent_no_double_accept(tmp_path):
 
         t1 = threading.Thread(target=worker, args=(f"a{trial}", a_text))
         t2 = threading.Thread(target=worker, args=(f"b{trial}", b_text))
-        t1.start(); t2.start(); t1.join(30); t2.join(30)
+        t1.start()
+        t2.start()
+        t1.join(30)
+        t2.join(30)
 
-        assert sum(results) == 1, f"trial {trial}: exactly one should accept, got {results}"
+        assert sum(results) == 1, (
+            f"trial {trial}: exactly one should accept, got {results}"
+        )
 
 
 # ---------------------------------------------------------------------------
 # decontaminate
 # ---------------------------------------------------------------------------
+
 
 def test_decontaminate_removes_every_eval_prompt():
     d = Decontaminator(ngram=13)
@@ -331,17 +338,20 @@ def test_split_ratios_within_tolerance():
 # pack
 # ---------------------------------------------------------------------------
 
+
 def _docs(rng: random.Random, n: int = 12) -> list[dict]:
     out = []
     for i in range(n):
         text = make_english_doc(rng, n_sentences=6)
-        out.append({
-            "doc_id": f"pk:{i}",
-            "text": text,
-            "task_type": "deliberate",
-            "concept": "spider",
-            "phase": "p1",
-        })
+        out.append(
+            {
+                "doc_id": f"pk:{i}",
+                "text": text,
+                "task_type": "deliberate",
+                "concept": "spider",
+                "phase": "p1",
+            }
+        )
     return out
 
 
@@ -360,7 +370,7 @@ def test_pack_roundtrip_and_offsets(tiny_tokenizer, tmp_path):
     assert idx2["tokenizer_sha"] == lt.sha256
 
     tok = lt.tokenizer
-    for d, meta in zip(docs, idx2["docs"]):
+    for d, meta in zip(docs, idx2["docs"], strict=False):
         s, e = meta["start"], meta["end"]
         # exact round-trip of the doc's token range
         assert tok.decode(arr2[s:e].tolist()) == d["text"]
@@ -392,12 +402,16 @@ def test_complete_wrong_tokenizer_sha_raises(tmp_path, tiny_tokenizer):
     db = str(tmp_path / "manifest.db")
     with Manifest(db) as m:
         me = worker_id()
-        m.add_shard("s1", source="test", phase=1, path="/raw/s1.jsonl.zst", bytes_=1, docs=1)
+        m.add_shard(
+            "s1", source="test", phase=1, path="/raw/s1.jsonl.zst", bytes_=1, docs=1
+        )
         m.freeze_tokenizer(lt.sha256, lt.vocab_size)
         shard = m.claim("curate", by=me)
         assert shard is not None
         with pytest.raises(TokenizerMismatch):
-            m.complete("s1", by=me, tokenizer_sha="deadbeef" * 8, tokens=1, split="train")
+            m.complete(
+                "s1", by=me, tokenizer_sha="deadbeef" * 8, tokens=1, split="train"
+            )
 
 
 def test_complete_no_frozen_tokenizer_raises(tmp_path):
@@ -415,8 +429,11 @@ def test_complete_no_frozen_tokenizer_raises(tmp_path):
 # end-to-end --once
 # ---------------------------------------------------------------------------
 
+
 def _write_raw_shard(path: Path, docs: list[dict]) -> None:
-    payload = "".join(json.dumps(d, ensure_ascii=False) + "\n" for d in docs).encode("utf-8")
+    payload = "".join(json.dumps(d, ensure_ascii=False) + "\n" for d in docs).encode(
+        "utf-8"
+    )
     compressed = zstd.ZstdCompressor(level=10).compress(payload)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(compressed)
@@ -445,14 +462,16 @@ def test_end_to_end_once(tmp_path, tiny_tokenizer, monkeypatch):
     ratios = {"train": 0.98, "val": 0.01, "test": 0.01}
     docs = []
     for i in range(60):
-        docs.append({
-            "doc_id": f"e2e:{i:04d}",
-            "text": make_english_doc(rng, n_sentences=9),
-            "task_type": "deliberate",
-            "concept": "spider",
-            "phase": "p1",
-            "source": "e2e",
-        })
+        docs.append(
+            {
+                "doc_id": f"e2e:{i:04d}",
+                "text": make_english_doc(rng, n_sentences=9),
+                "task_type": "deliberate",
+                "concept": "spider",
+                "phase": "p1",
+                "source": "e2e",
+            }
+        )
     expected_splits = {d["doc_id"]: assign_split(d["doc_id"], ratios) for d in docs}
     present_splits = set(expected_splits.values())
 
@@ -461,8 +480,14 @@ def test_end_to_end_once(tmp_path, tiny_tokenizer, monkeypatch):
 
     lt = pack.load_tokenizer(tiny_tokenizer)
     with Manifest(db) as m:
-        m.add_shard("e2e_0000", source="e2e", phase=1, path=str(raw_path),
-                    bytes_=raw_path.stat().st_size, docs=len(docs))
+        m.add_shard(
+            "e2e_0000",
+            source="e2e",
+            phase=1,
+            path=str(raw_path),
+            bytes_=raw_path.stat().st_size,
+            docs=len(docs),
+        )
         m.freeze_tokenizer(lt.sha256, lt.vocab_size)
         m.upsert_run("e2e", preset="nano", step=0, phase=1, status="running")
 
@@ -495,10 +520,14 @@ def test_end_to_end_once(tmp_path, tiny_tokenizer, monkeypatch):
             row = m.db.execute("SELECT * FROM shards WHERE id=?", (row_id,)).fetchone()
             assert row is not None and row["state"] == PACKED and row["split"] == split
             bin_path = Path(row["path"])
-            assert bin_path.exists(), f"missing packed file for split {split}: {bin_path}"
+            assert bin_path.exists(), (
+                f"missing packed file for split {split}: {bin_path}"
+            )
             assert bin_path == packed_dir / "p1" / split / "e2e_0000.bin"
             arr, idx = pack.read_shard(bin_path)
             assert idx["tokens"] == arr.size > 0
             if split == "train":
-                assert train_row["tokens"] == idx["tokens"], "manifest train tokens mismatch"
+                assert train_row["tokens"] == idx["tokens"], (
+                    "manifest train tokens mismatch"
+                )
                 assert m.tokens_ready(1, split="train") == idx["tokens"]

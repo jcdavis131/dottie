@@ -27,12 +27,15 @@ import os
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import TYPE_CHECKING, Any
 
 from dottie import resolve
 from dottie.engine import DottieEngine
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 class FlywheelUnavailable(RuntimeError):
@@ -47,6 +50,7 @@ class FlywheelError(RuntimeError):
 # Module loading helpers (file-path imports, registered in sys.modules first —
 # the memory-mint skill itself documents why registration must precede exec).
 # ---------------------------------------------------------------------------
+
 
 def _load_module_from_path(name: str, path: Path):
     if name in sys.modules:
@@ -64,7 +68,7 @@ def _load_module_from_path(name: str, path: Path):
     return mod
 
 
-def _require_traces(engine: DottieEngine) -> List[Dict[str, Any]]:
+def _require_traces(engine: DottieEngine) -> list[dict[str, Any]]:
     traces = list(engine.iter_traces())
     if not traces:
         raise FlywheelUnavailable(
@@ -78,46 +82,54 @@ def _require_traces(engine: DottieEngine) -> List[Dict[str, Any]]:
 # (a) traces -> RFT dataset via the REAL scout-cli ETL
 # ---------------------------------------------------------------------------
 
+
 def _iso(ts: float) -> str:
-    return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+    return datetime.fromtimestamp(ts, tz=UTC).isoformat()
 
 
-def _trace_to_audit_events(record: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _trace_to_audit_events(record: dict[str, Any]) -> list[dict[str, Any]]:
     """One dottie trace -> audit.jsonl-shaped events (the ETL's canonical input).
 
     Timestamps are the REAL task timestamp advanced by each step's REAL measured wall_ms;
     step status mirrors the real sandbox outcome; a terminal ``codeact.final`` event carries
     whether the episode really reached a FINAL (feeds the ETL's r_task_terminal_ok)."""
-    events: List[Dict[str, Any]] = []
+    events: list[dict[str, Any]] = []
     ts = float(record["ts"])
     backend = record.get("backend", "unknown")
     for i, step in enumerate(record.get("steps", [])):
-        events.append({
+        events.append(
+            {
+                "ts": _iso(ts),
+                "command": f"codeact.{backend}.step",
+                "args": {
+                    "task_id": record["task_id"],
+                    "step": i,
+                    "code": str(step.get("code", ""))[:400],
+                    "tools": [c.get("tool") for c in step.get("tool_calls", [])],
+                },
+                "status": "ok" if step.get("ok") else "error",
+                "duration_ms": int(step.get("wall_ms") or 0),
+            }
+        )
+        ts += (float(step.get("wall_ms") or 0)) / 1000.0
+    events.append(
+        {
             "ts": _iso(ts),
-            "command": f"codeact.{backend}.step",
+            "command": f"codeact.{backend}.final",
             "args": {
                 "task_id": record["task_id"],
-                "step": i,
-                "code": str(step.get("code", ""))[:400],
-                "tools": [c.get("tool") for c in step.get("tool_calls", [])],
+                "terminated": record.get("terminated"),
             },
-            "status": "ok" if step.get("ok") else "error",
-            "duration_ms": int(step.get("wall_ms") or 0),
-        })
-        ts += (float(step.get("wall_ms") or 0)) / 1000.0
-    events.append({
-        "ts": _iso(ts),
-        "command": f"codeact.{backend}.final",
-        "args": {"task_id": record["task_id"], "terminated": record.get("terminated")},
-        "status": "ok" if record.get("reached_final") else "error",
-        "duration_ms": 0,
-    })
+            "status": "ok" if record.get("reached_final") else "error",
+            "duration_ms": 0,
+        }
+    )
     return events
 
 
 def export_rft_dataset(
-    data_dir: Optional[str | Path] = None, *, gap_seconds: float = 300.0
-) -> Dict[str, Any]:
+    data_dir: str | Path | None = None, *, gap_seconds: float = 300.0
+) -> dict[str, Any]:
     """Convert dottie traces into the ETL's audit shape and run the REAL scout-cli ETL.
 
     Returns the ETL's own summary (schema_version, episodes, records_written, drops, out path)
@@ -133,7 +145,7 @@ def export_rft_dataset(
 
     fly_dir = engine.data_dir / "flywheel"
     fly_dir.mkdir(parents=True, exist_ok=True)
-    audit_path = fly_dir / "audit.jsonl"      # derived artifact, rebuilt per export
+    audit_path = fly_dir / "audit.jsonl"  # derived artifact, rebuilt per export
     out_path = fly_dir / "rft_dataset.jsonl"
     n_events = 0
     with audit_path.open("w", encoding="utf-8") as f:
@@ -155,7 +167,8 @@ def export_rft_dataset(
 # (b) traces -> memory shards via ava-skills memory-mint (real pipeline)
 # ---------------------------------------------------------------------------
 
-def mint_memories(data_dir: Optional[str | Path] = None) -> Dict[str, Any]:
+
+def mint_memories(data_dir: str | Path | None = None) -> dict[str, Any]:
     """Feed completed task traces through the REAL memory-mint pipeline.
 
     Shards land in ``<data_dir>/memory_shards`` (dottie-local store; the global
@@ -178,7 +191,8 @@ def mint_memories(data_dir: Optional[str | Path] = None) -> Dict[str, Any]:
         for record in traces:
             comps = record.get("reward_components", {})
             metrics = {
-                k: float(v) for k, v in comps.items()
+                k: float(v)
+                for k, v in comps.items()
                 if isinstance(v, (int, float)) and not isinstance(v, bool)
             }
             metrics["n_steps"] = float(record.get("n_steps", 0))
@@ -187,16 +201,18 @@ def mint_memories(data_dir: Optional[str | Path] = None) -> Dict[str, Any]:
                 if record.get("reached_final")
                 else f"no FINAL (terminated={record.get('terminated')})"
             )
-            pipe.capture(mint.TraceEvent(
-                source=f"dottie:{record.get('backend', 'unknown')}",
-                instruction=str(record.get("prompt", ""))[:500],
-                outcome=outcome,
-                ok=bool(record.get("reached_final")),
-                ts=float(record.get("ts", time.time())),
-                branch="base",
-                metrics=metrics,
-                tags=["dottie", str(record.get("backend", "unknown"))],
-            ))
+            pipe.capture(
+                mint.TraceEvent(
+                    source=f"dottie:{record.get('backend', 'unknown')}",
+                    instruction=str(record.get("prompt", ""))[:500],
+                    outcome=outcome,
+                    ok=bool(record.get("reached_final")),
+                    ts=float(record.get("ts", time.time())),
+                    branch="base",
+                    metrics=metrics,
+                    tags=["dottie", str(record.get("backend", "unknown"))],
+                )
+            )
             captured += 1
         flushed = pipe.flush(timeout=10.0)
         stats = dict(pipe.stats)
@@ -214,15 +230,16 @@ def mint_memories(data_dir: Optional[str | Path] = None) -> Dict[str, Any]:
 # (c) eval gate — real ava-open-harness subprocess
 # ---------------------------------------------------------------------------
 
+
 def evaluate(
-    data_dir: Optional[str | Path] = None,
+    data_dir: str | Path | None = None,
     *,
     mode: str = "mock",
     evals: str = "all",
-    ckpt: Optional[str] = None,
-    tokenizer: Optional[str] = None,
+    ckpt: str | None = None,
+    tokenizer: str | None = None,
     timeout_s: float = 900.0,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Shell out to the REAL harness runner (``python -m harness run``).
 
     Returns the real report paths and the report's own meta (passed/total/wall_s) — parsed
@@ -233,10 +250,24 @@ def evaluate(
         hroot = resolve.harness_root()
     except resolve.DottieResolutionError as e:
         raise FlywheelUnavailable(str(e)) from e
-    out_dir = engine.data_dir / "reports" / time.strftime("harness_%Y%m%dT%H%M%SZ", time.gmtime())
+    out_dir = (
+        engine.data_dir
+        / "reports"
+        / time.strftime("harness_%Y%m%dT%H%M%SZ", time.gmtime())
+    )
     out_dir.mkdir(parents=True, exist_ok=True)
-    cmd = [sys.executable, "-m", "harness", "run",
-           "--eval", evals, "--mode", mode, "--out-dir", str(out_dir)]
+    cmd = [
+        sys.executable,
+        "-m",
+        "harness",
+        "run",
+        "--eval",
+        evals,
+        "--mode",
+        mode,
+        "--out-dir",
+        str(out_dir),
+    ]
     if ckpt:
         cmd += ["--ckpt", ckpt]
     if tokenizer:
@@ -246,8 +277,14 @@ def evaluate(
     env.setdefault("DOTTIE_ROOT", str(resolve.dottie_root()))
     t0 = time.monotonic()
     try:
-        proc = subprocess.run(cmd, cwd=str(hroot), env=env, capture_output=True,
-                              text=True, timeout=timeout_s)
+        proc = subprocess.run(
+            cmd,
+            cwd=str(hroot),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+        )
     except subprocess.TimeoutExpired as e:
         raise FlywheelError(f"harness run exceeded {timeout_s}s: {e}") from e
     wall_s = time.monotonic() - t0
@@ -263,8 +300,18 @@ def evaluate(
         "command": cmd,
         "report_json": str(report_json),
         "report_md": str(out_dir / "REPORT_REAL.md"),
-        "meta": {k: meta.get(k) for k in
-                 ("mode", "backend", "ckpt", "passed", "total", "wall_s", "factory_available")},
+        "meta": {
+            k: meta.get(k)
+            for k in (
+                "mode",
+                "backend",
+                "ckpt",
+                "passed",
+                "total",
+                "wall_s",
+                "factory_available",
+            )
+        },
         "wall_s": round(wall_s, 3),
         "stdout_tail": proc.stdout[-600:],
     }
@@ -274,21 +321,24 @@ def evaluate(
 # (d) train step — the factory's proven GRPO smoke update, honestly gated
 # ---------------------------------------------------------------------------
 
-def _default_run_dir() -> Optional[Path]:
+
+def _default_run_dir() -> Path | None:
     """First factory candidate whose runs/cpu_pilot actually holds a trainable checkpoint."""
     for ckpt in resolve.ava_ckpt_candidates():
         if ckpt.is_file():
-            return ckpt.parent.parent  # .../runs/cpu_pilot/<branch>/x.pt -> runs/cpu_pilot
+            return (
+                ckpt.parent.parent
+            )  # .../runs/cpu_pilot/<branch>/x.pt -> runs/cpu_pilot
     return None
 
 
 def train_step(
     *,
-    run_dir: Optional[str | Path] = None,
+    run_dir: str | Path | None = None,
     device: str = "cpu",
     extra_args: Sequence[str] = (),
     timeout_s: float = 3600.0,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """ONE real GRPO update via the factory's ``scripts/rl_smoke_update.py`` subprocess.
 
     The script does the whole proven chain itself: real checkpoint -> real decode policy ->
@@ -329,14 +379,27 @@ def train_step(
             "installed in this environment."
         )
 
-    cmd = [sys.executable, str(script), "--run-dir", str(run_dir), "--device", device,
-           *list(extra_args)]
+    cmd = [
+        sys.executable,
+        str(script),
+        "--run-dir",
+        str(run_dir),
+        "--device",
+        device,
+        *list(extra_args),
+    ]
     env = dict(os.environ)
     env.setdefault("DOTTIE_ROOT", str(resolve.dottie_root()))
     t0 = time.monotonic()
     try:
-        proc = subprocess.run(cmd, cwd=str(script.parent.parent), env=env,
-                              capture_output=True, text=True, timeout=timeout_s)
+        proc = subprocess.run(
+            cmd,
+            cwd=str(script.parent.parent),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+        )
     except subprocess.TimeoutExpired as e:
         raise FlywheelError(f"train step exceeded {timeout_s}s: {e}") from e
     wall_s = time.monotonic() - t0

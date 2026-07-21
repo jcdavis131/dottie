@@ -5,14 +5,24 @@ from __future__ import annotations
 import random
 from typing import Any
 
-import torch
+from model_1b import apply_rope_scaling
 
 from evals.common import EVAL_SEED, greedy_decode, prep_eval
-from model_1b import apply_rope_scaling
 
 
 def _filler(rng: random.Random, n_tokens: int, tokenizer) -> str:
-    words = ["the", "quick", "brown", "fox", "jumps", "over", "lazy", "dog", "and", "then"]
+    words = [
+        "the",
+        "quick",
+        "brown",
+        "fox",
+        "jumps",
+        "over",
+        "lazy",
+        "dog",
+        "and",
+        "then",
+    ]
     parts = []
     while len(tokenizer.encode(" ".join(parts))) < n_tokens:
         parts.append(rng.choice(words))
@@ -30,7 +40,9 @@ def run_needle(
     device: str = "cpu",
 ) -> dict[str, Any]:
     """Pass-key retrieval accuracy per depth, native + YaRN contexts."""
-    depths = depths or [round(x, 1) for x in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]]
+    depths = depths or [
+        round(x, 1) for x in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+    ]
     rng = random.Random(EVAL_SEED)
     results: dict[str, Any] = {"native": {}, "yarn": {}}
 
@@ -44,7 +56,9 @@ def run_needle(
                     prep_eval(model)
                     key = str(rng.randint(1000, 9999))
                     needle = f"The magic number is {key}."
-                    pre_toks = int((ctx_len - len(tokenizer.encode(needle)) - 16) * depth)
+                    pre_toks = int(
+                        (ctx_len - len(tokenizer.encode(needle)) - 16) * depth
+                    )
                     pre_toks = max(pre_toks, 8)
                     filler = _filler(rng, pre_toks, tokenizer)
                     prompt = f"{filler} {needle} {_filler(rng, 32, tokenizer)} What is the magic number? Answer:"

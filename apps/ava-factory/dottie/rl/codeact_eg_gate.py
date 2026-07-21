@@ -22,9 +22,12 @@ than inventing a rate, so the gate can never emit a promote/hold verdict off fab
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Sequence, Tuple
+from typing import TYPE_CHECKING
 
 from efficiency_gain import EGResult, efficiency_gain, eg_trend, fit_power_law
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 @dataclass(frozen=True)
@@ -34,8 +37,9 @@ class RungLadder:
     `baseline_points` is the non-CodeAct agentic mode's (compute, success_rate) curve at this rung
     — the scaling reference CodeAct is measured against. `codeact_*` is the CodeAct candidate at the
     same rung. All success rates ∈ [0, 1]; compute in any consistent unit (FLOPs / tokens / GPU-h)."""
+
     rung: str
-    baseline_points: List[Tuple[float, float]]      # [(compute, success_rate), ...]
+    baseline_points: list[tuple[float, float]]  # [(compute, success_rate), ...]
     codeact_compute: float
     codeact_success_rate: float
 
@@ -52,7 +56,7 @@ def success_to_error(success_rate: float, *, error_floor: float = 0.0) -> float:
     return err if err > error_floor else error_floor
 
 
-def codeact_eg_gate(ladders: Sequence[RungLadder], *, error_floor: float = 0.0) -> Dict:
+def codeact_eg_gate(ladders: Sequence[RungLadder], *, error_floor: float = 0.0) -> dict:
     """Compose per-rung EG (CodeAct vs baseline) into the ladder verdict via `eg_trend`.
 
     For each rung: fit the baseline error-vs-compute power law, then compute the CodeAct candidate's
@@ -60,12 +64,16 @@ def codeact_eg_gate(ladders: Sequence[RungLadder], *, error_floor: float = 0.0) 
     the rank-invariance promotion rule across rungs. Pure over its inputs — the numbers may be
     synthetic (tests) or real (a future climb); this function does not care where they came from,
     which is exactly why it must never be fed fabricated rates (see `codeact_eg_gate_from_eval`)."""
-    rung_results: List[Tuple[str, EGResult]] = []
+    rung_results: list[tuple[str, EGResult]] = []
     for lad in ladders:
-        pts = [(c, success_to_error(sr, error_floor=error_floor)) for c, sr in lad.baseline_points]
+        pts = [
+            (c, success_to_error(sr, error_floor=error_floor))
+            for c, sr in lad.baseline_points
+        ]
         fit = fit_power_law(pts, floor=error_floor)
         eg = efficiency_gain(
-            fit, lad.codeact_compute,
+            fit,
+            lad.codeact_compute,
             success_to_error(lad.codeact_success_rate, error_floor=error_floor),
             label=lad.rung,
         )
@@ -79,7 +87,7 @@ class CodeActEGGateBlockedError(RuntimeError):
     """Raised when the EG gate is asked for a real verdict but the capability numbers don't exist."""
 
 
-def codeact_eg_gate_from_eval(eval_records: Dict[str, Dict], *args, **kwargs):
+def codeact_eg_gate_from_eval(eval_records: dict[str, dict], *args, **kwargs):
     """Build the real EG verdict from per-rung `run_codeact_eval` records — or refuse if they are
     the honest-fail records (measured is None), which they are today.
 
@@ -88,7 +96,9 @@ def codeact_eg_gate_from_eval(eval_records: Dict[str, Dict], *args, **kwargs):
     None, so this refuses. It also needs the baseline agentic-mode curve (its own gated runs), which
     is why even non-None CodeAct rates alone would be insufficient. This is the honest terminal
     state of the T13C.6 wiring: the adapter is built and tested; the verdict waits on real runs."""
-    missing = [rung for rung, rec in eval_records.items() if rec.get("measured") is None]
+    missing = [
+        rung for rung, rec in eval_records.items() if rec.get("measured") is None
+    ]
     if missing:
         raise CodeActEGGateBlockedError(
             "CodeAct EG gate cannot produce a real verdict: the CodeAct success rates are gated "

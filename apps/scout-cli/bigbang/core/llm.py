@@ -8,13 +8,13 @@ No hard dependency: if httpx missing or Ollama down, returns None/false graceful
 
 from __future__ import annotations
 
-from typing import List, Dict, Optional, Any
 import json
+import os
 import re
-import time
 import socket
 import threading
-import os
+import time
+from typing import Any
 from urllib.parse import urlparse
 
 OLLAMA_URLS = [
@@ -40,7 +40,7 @@ PREFERRED_MODELS = [
     "gemma3:4b",
 ]
 
-_CACHED_BASE: Optional[str] = None
+_CACHED_BASE: str | None = None
 _CACHED_AT: float = 0.0
 _CACHE_TTL: float = 30.0
 
@@ -56,10 +56,14 @@ def _is_resolvable(host: str, timeout: float = 0.8) -> bool:
         return True
     if host == "host.docker.internal":
         # Allow override via env
-        allow = os.environ.get("OLLAMA_ALLOW_DOCKER_HOST") or os.environ.get("BIGBANG_USE_DOCKER_HOST") or os.environ.get("OLLAMA_BASE", "")
+        allow = (
+            os.environ.get("OLLAMA_ALLOW_DOCKER_HOST")
+            or os.environ.get("BIGBANG_USE_DOCKER_HOST")
+            or os.environ.get("OLLAMA_BASE", "")
+        )
         if "host.docker.internal" not in allow:
             try:
-                with open("/etc/hosts", "r", encoding="utf-8", errors="ignore") as f:
+                with open("/etc/hosts", encoding="utf-8", errors="ignore") as f:
                     content = f.read()
                     if "host.docker.internal" not in content:
                         return False
@@ -67,7 +71,7 @@ def _is_resolvable(host: str, timeout: float = 0.8) -> bool:
                 # If can't read hosts, skip to avoid 20s DNS block
                 return False
 
-    result: List[bool] = []
+    result: list[bool] = []
 
     def _do():
         try:
@@ -105,16 +109,29 @@ def _httpx_client(timeout: float = 2.0):
         return None
 
 
-def get_ollama_base(timeout: float = 2.0, use_cache: bool = True) -> Optional[str]:
+def get_ollama_base(timeout: float = 2.0, use_cache: bool = True) -> str | None:
     global _CACHED_BASE, _CACHED_AT
 
-    if use_cache and _CACHED_BASE is not None and (time.time() - _CACHED_AT) < _CACHE_TTL:
+    if (
+        use_cache
+        and _CACHED_BASE is not None
+        and (time.time() - _CACHED_AT) < _CACHE_TTL
+    ):
         return _CACHED_BASE
-    if use_cache and _CACHED_AT and (time.time() - _CACHED_AT) < 5.0 and _CACHED_BASE is None:
+    if (
+        use_cache
+        and _CACHED_AT
+        and (time.time() - _CACHED_AT) < 5.0
+        and _CACHED_BASE is None
+    ):
         return None
 
     # Env override - if OLLAMA_BASE set, try it first
-    env_base = os.environ.get("OLLAMA_BASE") or os.environ.get("OLLAMA_URL") or os.environ.get("OLLAMA_HOST")
+    env_base = (
+        os.environ.get("OLLAMA_BASE")
+        or os.environ.get("OLLAMA_URL")
+        or os.environ.get("OLLAMA_HOST")
+    )
     urls_to_try = []
     if env_base:
         # Normalize
@@ -131,7 +148,7 @@ def get_ollama_base(timeout: float = 2.0, use_cache: bool = True) -> Optional[st
     except ImportError:
         return None
 
-    found: Optional[str] = None
+    found: str | None = None
     for base in urls_to_try:
         # strip /api/tags if user passed full
         b = base
@@ -175,11 +192,11 @@ def ollama_available(timeout: float = 2.0) -> bool:
     return get_ollama_base(timeout=timeout) is not None
 
 
-def list_ollama_models(base: Optional[str] = None, timeout: float = 2.0) -> List[str]:
+def list_ollama_models(base: str | None = None, timeout: float = 2.0) -> list[str]:
     if base is None:
         base = get_ollama_base(timeout=timeout)
     else:
-        base = base.rstrip('/')
+        base = base.rstrip("/")
     if not base:
         return []
     try:
@@ -218,7 +235,7 @@ def list_ollama_models(base: Optional[str] = None, timeout: float = 2.0) -> List
             pass
 
 
-def get_best_model(base: Optional[str] = None, timeout: float = 2.0) -> str:
+def get_best_model(base: str | None = None, timeout: float = 2.0) -> str:
     available = list_ollama_models(base=base, timeout=timeout)
     if not available:
         return "qwen3:32b"
@@ -236,11 +253,11 @@ def get_best_model(base: Optional[str] = None, timeout: float = 2.0) -> str:
 
 def ollama_chat(
     model: str,
-    messages: List[Dict[str, str]],
+    messages: list[dict[str, str]],
     json_mode: bool = False,
-    base: Optional[str] = None,
+    base: str | None = None,
     timeout: float = 60.0,
-) -> Optional[str]:
+) -> str | None:
     if base is None:
         base = get_ollama_base(timeout=2.0)
     if not base:
@@ -258,7 +275,7 @@ def ollama_chat(
     if client is None:
         return None
     try:
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
             "stream": False,
@@ -287,7 +304,7 @@ def ollama_chat(
             pass
 
 
-def extract_json_from_text(text: str) -> Optional[Any]:
+def extract_json_from_text(text: str) -> Any | None:
     if not text:
         return None
     t = text.strip()
@@ -318,5 +335,6 @@ def extract_json_from_text(text: str) -> Optional[Any]:
         except Exception:
             pass
     return None
+
 
 # Solo personal project, no connection to employer, built with public/free-tier only

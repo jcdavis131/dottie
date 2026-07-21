@@ -1,16 +1,17 @@
 """Audit trail — every invocation logged, security first"""
+
 import json
-import time
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, timezone
 
 AUDIT_DIR = Path.home() / ".local" / "share" / "bigbang"
 AUDIT_FILE = AUDIT_DIR / "audit.jsonl"
 AUDIT_DIR.mkdir(parents=True, exist_ok=True)
 
+
 def log_event(command: str, args: dict, status: str = "ok", duration_ms: int = 0):
     entry = {
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "ts": datetime.now(UTC).isoformat(),
         "command": command,
         "args": args,
         "status": status,
@@ -23,6 +24,7 @@ def log_event(command: str, args: dict, status: str = "ok", duration_ms: int = 0
             f.write(json.dumps(entry, default=str) + "\n")
     except OSError:
         pass
+
 
 def tail_events(n: int = 20):
     if not AUDIT_FILE.exists():

@@ -39,9 +39,12 @@ Families:
 
 from __future__ import annotations
 
-from typing import Iterator
+from typing import TYPE_CHECKING
 
 from dottie.datagen.base import Generator
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 USER = "<|user|>"
 ASSISTANT = "<|assistant|>"
@@ -60,19 +63,27 @@ def dialogue(turns: list[tuple[str, str]]) -> str:
 # own (possibly wrong) mental arithmetic.
 # ---------------------------------------------------------------------------
 
+
 def _tool_math_doc(rng) -> tuple[str, str, str]:
     a, b = rng.randint(2, 97), rng.randint(2, 97)
     op = rng.choice(["+", "-", "*"])
     result = {"+": a + b, "-": a - b, "*": a * b}[op]
     fn = {"+": "add", "-": "subtract", "*": "multiply"}[op]
-    text = dialogue([
-        ("user", f"What is {a} {op} {b}? Use the calculator tool rather than doing it in your head."),
-        ("assistant",
-         f"Thought: I should call the calculator tool rather than trust my own arithmetic.\n"
-         f"Action: {fn}(a={a}, b={b})"),
-        ("user", f"Observation: {result}"),
-        ("assistant", f"{a} {op} {b} = {result}."),
-    ])
+    text = dialogue(
+        [
+            (
+                "user",
+                f"What is {a} {op} {b}? Use the calculator tool rather than doing it in your head.",
+            ),
+            (
+                "assistant",
+                f"Thought: I should call the calculator tool rather than trust my own arithmetic.\n"
+                f"Action: {fn}(a={a}, b={b})",
+            ),
+            ("user", f"Observation: {result}"),
+            ("assistant", f"{a} {op} {b} = {result}."),
+        ]
+    )
     return text, "deliberate", "tool_math"
 
 
@@ -85,14 +96,18 @@ _DATES = [f"2026-{m:02d}-{d:02d}" for m in range(1, 13) for d in (1, 8, 15, 22)]
 
 def _tool_date_doc(rng) -> tuple[str, str, str]:
     date = rng.choice(_DATES)
-    text = dialogue([
-        ("user", "What is today's date?"),
-        ("assistant",
-         "Thought: my weights are frozen; I can't know today's date from memory. I need to check.\n"
-         "Action: get_clock()"),
-        ("user", f"Observation: {date}"),
-        ("assistant", f"Today is {date}."),
-    ])
+    text = dialogue(
+        [
+            ("user", "What is today's date?"),
+            (
+                "assistant",
+                "Thought: my weights are frozen; I can't know today's date from memory. I need to check.\n"
+                "Action: get_clock()",
+            ),
+            ("user", f"Observation: {date}"),
+            ("assistant", f"Today is {date}."),
+        ]
+    )
     return text, "temporal", "tool_date"
 
 
@@ -103,8 +118,14 @@ def _tool_date_doc(rng) -> tuple[str, str, str]:
 # ---------------------------------------------------------------------------
 
 _FAKE_FUNCTIONS = [
-    "divide_safely", "normalize_path", "auto_retry", "parse_config_v2",
-    "cached_lookup", "safe_delete", "batch_convert", "validate_schema_strict",
+    "divide_safely",
+    "normalize_path",
+    "auto_retry",
+    "parse_config_v2",
+    "cached_lookup",
+    "safe_delete",
+    "batch_convert",
+    "validate_schema_strict",
 ]
 _FILES = ["utils.py", "helpers.py", "core.py", "config.py", "models.py"]
 
@@ -112,18 +133,24 @@ _FILES = ["utils.py", "helpers.py", "core.py", "config.py", "models.py"]
 def _tool_grounding_notfound_doc(rng) -> tuple[str, str, str]:
     fn = rng.choice(_FAKE_FUNCTIONS)
     fname = rng.choice(_FILES)
-    text = dialogue([
-        ("user", f"What does the {fn} function in {fname} do?"),
-        ("assistant",
-         f"Thought: I should check the file before answering rather than guess what a function "
-         f"with that name might do.\n"
-         f"Action: repo_grep(pattern=\"{fn}\", path=\"{fname}\")"),
-        ("user", "Observation: (no matches)"),
-        ("assistant",
-         f"I checked {fname} and there's no function called {fn} in it — I can't tell you what it "
-         f"does because it doesn't exist. I'm not going to guess at plausible-sounding behavior for "
-         f"a function that isn't there."),
-    ])
+    text = dialogue(
+        [
+            ("user", f"What does the {fn} function in {fname} do?"),
+            (
+                "assistant",
+                f"Thought: I should check the file before answering rather than guess what a function "
+                f"with that name might do.\n"
+                f'Action: repo_grep(pattern="{fn}", path="{fname}")',
+            ),
+            ("user", "Observation: (no matches)"),
+            (
+                "assistant",
+                f"I checked {fname} and there's no function called {fn} in it — I can't tell you what it "
+                f"does because it doesn't exist. I'm not going to guess at plausible-sounding behavior for "
+                f"a function that isn't there.",
+            ),
+        ]
+    )
     return text, "deliberate", "tool_grounding_notfound"
 
 
@@ -142,14 +169,21 @@ _PURPOSES = [
 
 def _tool_read_cite_doc(rng) -> tuple[str, str, str]:
     purpose = rng.choice(_PURPOSES)
-    text = dialogue([
-        ("user", "What is this repo for, according to its README? Quote it, don't paraphrase."),
-        ("assistant",
-         "Thought: I should read the actual file rather than assume what a typical README says.\n"
-         "Action: repo_read_file(path=\"README.md\")"),
-        ("user", f"Observation: \"This repo is {purpose}.\""),
-        ("assistant", f"According to the README: \"This repo is {purpose}.\""),
-    ])
+    text = dialogue(
+        [
+            (
+                "user",
+                "What is this repo for, according to its README? Quote it, don't paraphrase.",
+            ),
+            (
+                "assistant",
+                "Thought: I should read the actual file rather than assume what a typical README says.\n"
+                'Action: repo_read_file(path="README.md")',
+            ),
+            ("user", f'Observation: "This repo is {purpose}."'),
+            ("assistant", f'According to the README: "This repo is {purpose}."'),
+        ]
+    )
     return text, "deliberate", "tool_read_cite"
 
 
@@ -159,18 +193,36 @@ def _tool_read_cite_doc(rng) -> tuple[str, str, str]:
 # ---------------------------------------------------------------------------
 
 _SKILLS = [
-    ("commit the staged changes", "commit",
-     "write a one-line imperative subject under 50 characters, then commit"),
-    ("open a pull request for this branch", "commit-push-pr",
-     "commit, push the branch, then open a PR with a summary and test plan"),
-    ("summarize this PDF report", "pdf",
-     "extract the text layer page by page before summarizing; never guess at tables"),
-    ("set up a recurring nightly job", "schedule",
-     "create a cron-backed routine and confirm the schedule back to the user"),
-    ("review this diff for bugs", "code-review",
-     "verify each finding against the code before reporting; rank by severity"),
-    ("build a chart of these results", "dataviz",
-     "pick the mark from the data's shape and validate the palette for contrast"),
+    (
+        "commit the staged changes",
+        "commit",
+        "write a one-line imperative subject under 50 characters, then commit",
+    ),
+    (
+        "open a pull request for this branch",
+        "commit-push-pr",
+        "commit, push the branch, then open a PR with a summary and test plan",
+    ),
+    (
+        "summarize this PDF report",
+        "pdf",
+        "extract the text layer page by page before summarizing; never guess at tables",
+    ),
+    (
+        "set up a recurring nightly job",
+        "schedule",
+        "create a cron-backed routine and confirm the schedule back to the user",
+    ),
+    (
+        "review this diff for bugs",
+        "code-review",
+        "verify each finding against the code before reporting; rank by severity",
+    ),
+    (
+        "build a chart of these results",
+        "dataviz",
+        "pick the mark from the data's shape and validate the palette for contrast",
+    ),
 ]
 
 _NO_SKILL_TASKS = [
@@ -183,35 +235,52 @@ _NO_SKILL_TASKS = [
 def _skill_invoke_doc(rng) -> tuple[str, str, str]:
     if rng.random() < 0.30:
         task = rng.choice(_NO_SKILL_TASKS)
-        text = dialogue([
-            ("user", f"Can you {task}?"),
-            ("assistant",
-             "Thought: before improvising a procedure I should check whether the harness "
-             "has a skill for this.\n"
-             f"Action: skill_search(query=\"{task}\")"),
-            ("user", "Observation: (no matching skills)"),
-            ("assistant",
-             f"I checked and there's no skill for \"{task}\", so I'll proceed manually and "
-             "tell you exactly what I'm doing at each step rather than pretend there's an "
-             "established procedure."),
-        ])
+        text = dialogue(
+            [
+                ("user", f"Can you {task}?"),
+                (
+                    "assistant",
+                    "Thought: before improvising a procedure I should check whether the harness "
+                    "has a skill for this.\n"
+                    f'Action: skill_search(query="{task}")',
+                ),
+                ("user", "Observation: (no matching skills)"),
+                (
+                    "assistant",
+                    f"I checked and there's no skill for \"{task}\", so I'll proceed manually and "
+                    "tell you exactly what I'm doing at each step rather than pretend there's an "
+                    "established procedure.",
+                ),
+            ]
+        )
         return text, "deliberate", "skill_none"
     task, skill, instruction = rng.choice(_SKILLS)
-    text = dialogue([
-        ("user", f"Please {task}."),
-        ("assistant",
-         "Thought: the harness may already have a skill for this; using it beats "
-         "improvising my own procedure.\n"
-         f"Action: skill_search(query=\"{task}\")"),
-        ("user", f"Observation: found skill \"{skill}\""),
-        ("assistant",
-         f"Thought: \"{skill}\" covers this. I'll load it and follow its instructions.\n"
-         f"Action: skill_invoke(name=\"{skill}\")"),
-        ("user", f"Observation: skill \"{skill}\" loaded — instructions: {instruction}."),
-        ("assistant",
-         f"Following the \"{skill}\" skill's instructions — {instruction} — done. "
-         f"I used the skill's procedure rather than my own guess at one."),
-    ])
+    text = dialogue(
+        [
+            ("user", f"Please {task}."),
+            (
+                "assistant",
+                "Thought: the harness may already have a skill for this; using it beats "
+                "improvising my own procedure.\n"
+                f'Action: skill_search(query="{task}")',
+            ),
+            ("user", f'Observation: found skill "{skill}"'),
+            (
+                "assistant",
+                f'Thought: "{skill}" covers this. I\'ll load it and follow its instructions.\n'
+                f'Action: skill_invoke(name="{skill}")',
+            ),
+            (
+                "user",
+                f'Observation: skill "{skill}" loaded — instructions: {instruction}.',
+            ),
+            (
+                "assistant",
+                f'Following the "{skill}" skill\'s instructions — {instruction} — done. '
+                f"I used the skill's procedure rather than my own guess at one.",
+            ),
+        ]
+    )
     return text, "deliberate", "skill_invoke"
 
 
@@ -229,25 +298,35 @@ def _agent_workflow_doc(rng) -> tuple[str, str, str]:
     n = rng.randint(3, 6)
     sizes = [rng.randint(4, 512) for _ in range(n)]
     names = [f"{dirname[:-1]}_{i:02d}.dat" for i in range(n)]
-    listing = ", ".join(f"{nm} ({sz} KB)" for nm, sz in zip(names, sizes))
+    listing = ", ".join(f"{nm} ({sz} KB)" for nm, sz in zip(names, sizes, strict=False))
     total = sum(sizes)
     largest = names[sizes.index(max(sizes))]
-    text = dialogue([
-        ("user",
-         f"How many files are in /{dirname}, what's their total size, and which is largest?"),
-        ("assistant",
-         "Thought: three facts, none of which I should guess. First list the directory.\n"
-         f"Action: list_dir(path=\"/{dirname}\")"),
-        ("user", f"Observation: {listing}"),
-        ("assistant",
-         "Thought: the listing gives per-file sizes; I'll have the calculator sum them "
-         "rather than adding in my head.\n"
-         f"Action: sum(values=[{', '.join(str(s) for s in sizes)}])"),
-        ("user", f"Observation: {total}"),
-        ("assistant",
-         f"/{dirname} has {n} files totaling {total} KB; the largest is {largest} "
-         f"at {max(sizes)} KB. All three numbers come from the tool observations."),
-    ])
+    text = dialogue(
+        [
+            (
+                "user",
+                f"How many files are in /{dirname}, what's their total size, and which is largest?",
+            ),
+            (
+                "assistant",
+                "Thought: three facts, none of which I should guess. First list the directory.\n"
+                f'Action: list_dir(path="/{dirname}")',
+            ),
+            ("user", f"Observation: {listing}"),
+            (
+                "assistant",
+                "Thought: the listing gives per-file sizes; I'll have the calculator sum them "
+                "rather than adding in my head.\n"
+                f"Action: sum(values=[{', '.join(str(s) for s in sizes)}])",
+            ),
+            ("user", f"Observation: {total}"),
+            (
+                "assistant",
+                f"/{dirname} has {n} files totaling {total} KB; the largest is {largest} "
+                f"at {max(sizes)} KB. All three numbers come from the tool observations.",
+            ),
+        ]
+    )
     return text, "temporal", "agent_workflow"
 
 
@@ -283,7 +362,13 @@ class ReactToolsGenerator(Generator):
                 idx += 1
             _, builder, source, phase = self._FAMILIES[idx]
             text, task_type, concept = builder(self.rng)
-            d = self.doc(text=text, task_type=task_type, concept=concept, phase=phase, source=source)
+            d = self.doc(
+                text=text,
+                task_type=task_type,
+                concept=concept,
+                phase=phase,
+                source=source,
+            )
             produced += len(d["text"].encode("utf-8"))
             yield d
 

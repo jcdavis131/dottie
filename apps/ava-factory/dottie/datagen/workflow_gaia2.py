@@ -23,26 +23,49 @@ family is about reasoning over an evolving environment/timeline.
 
 from __future__ import annotations
 
-from typing import Iterator
+from typing import TYPE_CHECKING
 
 from dottie.datagen.base import Generator
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
 _UNIVERSES = [
-    "Household Ops", "Startup Ops", "Campus Life", "Field Research",
-    "Retail Floor", "Clinic Desk", "Newsroom", "Logistics Hub",
-    "Studio Production", "Civic Services",
+    "Household Ops",
+    "Startup Ops",
+    "Campus Life",
+    "Field Research",
+    "Retail Floor",
+    "Clinic Desk",
+    "Newsroom",
+    "Logistics Hub",
+    "Studio Production",
+    "Civic Services",
 ]
 
 _APPS = [
-    "Calendar", "Email", "Messaging", "Contacts", "Files", "Calculator",
-    "Maps", "Shopping", "Notes", "Reminders", "Weather",
+    "Calendar",
+    "Email",
+    "Messaging",
+    "Contacts",
+    "Files",
+    "Calculator",
+    "Maps",
+    "Shopping",
+    "Notes",
+    "Reminders",
+    "Weather",
 ]
 
 _PARTICIPANTS = ["Alex", "Priya", "Sam", "Jordan", "Riley", "Morgan", "Casey"]
 
 _GOAL_TASKS = [
-    "book a review meeting", "confirm a delivery window", "schedule an interview",
-    "arrange a maintenance visit", "set up a handoff call", "reserve a shared room",
+    "book a review meeting",
+    "confirm a delivery window",
+    "schedule an interview",
+    "arrange a maintenance visit",
+    "set up a handoff call",
+    "reserve a shared room",
 ]
 
 
@@ -71,7 +94,9 @@ def _fmt_events(events: list[str]) -> str:
     return "\n".join(f"- {e}" for e in events)
 
 
-def _earliest_before(slots: list[tuple[int, int]], deadline: tuple[int, int]) -> tuple[int, int] | None:
+def _earliest_before(
+    slots: list[tuple[int, int]], deadline: tuple[int, int]
+) -> tuple[int, int] | None:
     candidates = [s for s in slots if s <= deadline]
     return min(candidates) if candidates else None
 
@@ -79,6 +104,7 @@ def _earliest_before(slots: list[tuple[int, int]], deadline: tuple[int, int]) ->
 # ---------------------------------------------------------------------------
 # Twist: adaptability (a candidate slot is declined mid-scenario)
 # ---------------------------------------------------------------------------
+
 
 def _adaptability_doc(rng) -> tuple[str, str, str]:
     universe, apps, task, deadline = _header(rng, rng.randint(2, 3))
@@ -104,8 +130,8 @@ def _adaptability_doc(rng) -> tuple[str, str, str]:
         + (
             f"The earliest remaining slot at or before the deadline is {_slot_str(*chosen)}; "
             f"book that one and notify {person}."
-            if chosen is not None else
-            f"No remaining slot falls at or before the deadline {_slot_str(*deadline)}; "
+            if chosen is not None
+            else f"No remaining slot falls at or before the deadline {_slot_str(*deadline)}; "
             f"escalate and propose extending the deadline to the nearest remaining slot, "
             f"{_slot_str(*min(remaining))}."
         )
@@ -117,6 +143,7 @@ def _adaptability_doc(rng) -> tuple[str, str, str]:
 # Twist: ambiguity (two conflicting messages; explicit time beats vague ask)
 # ---------------------------------------------------------------------------
 
+
 def _ambiguity_doc(rng) -> tuple[str, str, str]:
     universe, apps, task, deadline = _header(rng, rng.randint(2, 3))
     slots = _gen_slots(rng, rng.randint(3, 5))
@@ -126,9 +153,9 @@ def _ambiguity_doc(rng) -> tuple[str, str, str]:
 
     events = [
         f"[{_slot_str(*vague_slot)} minus 3h] Messaging: {person} says \"maybe let's keep it "
-        f"around the usual time, whatever works.\"",
+        f'around the usual time, whatever works."',
         f"[{_slot_str(*vague_slot)} minus 1h] Messaging: {person} follows up: \"actually, let's "
-        f"lock in {_slot_str(*explicit_slot)} specifically.\"",
+        f'lock in {_slot_str(*explicit_slot)} specifically."',
     ]
     # The tie-break rule is "later explicit beats earlier vague" -- it is not
     # "book whatever else happens to fit". If the explicit slot itself misses
@@ -146,8 +173,8 @@ def _ambiguity_doc(rng) -> tuple[str, str, str]:
         f"Tie-break rule: a later, explicit time supersedes an earlier, vague one. "
         + (
             f"Book {_slot_str(*chosen)}."
-            if chosen is not None else
-            f"{_slot_str(*explicit_slot)} falls after the deadline {_slot_str(*deadline)}; "
+            if chosen is not None
+            else f"{_slot_str(*explicit_slot)} falls after the deadline {_slot_str(*deadline)}; "
             f"flag the conflict to {person} rather than silently rebooking."
         )
     )
@@ -157,6 +184,7 @@ def _ambiguity_doc(rng) -> tuple[str, str, str]:
 # ---------------------------------------------------------------------------
 # Twist: deadline pressure (a new constraint shrinks the window late)
 # ---------------------------------------------------------------------------
+
 
 def _deadline_doc(rng) -> tuple[str, str, str]:
     universe, apps, task, deadline = _header(rng, rng.randint(2, 3))
@@ -182,9 +210,9 @@ def _deadline_doc(rng) -> tuple[str, str, str]:
         + (
             f"The earliest of those at or before the deadline is {_slot_str(*chosen)}; book it "
             f"immediately given the tightened window."
-            if chosen is not None else
-            f"No slot survives at or before the deadline; escalate now rather than wait, since "
-            f"the reminder confirms the cutoff is hard."
+            if chosen is not None
+            else "No slot survives at or before the deadline; escalate now rather than wait, since "
+            "the reminder confirms the cutoff is hard."
         )
     )
     return text, "deadline"
@@ -193,6 +221,7 @@ def _deadline_doc(rng) -> tuple[str, str, str]:
 # ---------------------------------------------------------------------------
 # Twist: collaboration (a second agent reports partial progress)
 # ---------------------------------------------------------------------------
+
 
 def _collaboration_doc(rng) -> tuple[str, str, str]:
     universe, apps, task, deadline = _header(rng, rng.randint(2, 3))
@@ -216,8 +245,8 @@ def _collaboration_doc(rng) -> tuple[str, str, str]:
         + (
             f"that slot is at or before the deadline {_slot_str(*deadline)}, so accept "
             f"{other_bot}'s booking rather than duplicate it or pick a different slot."
-            if fits_deadline else
-            f"but that slot is after the deadline {_slot_str(*deadline)}, so flag the conflict "
+            if fits_deadline
+            else f"but that slot is after the deadline {_slot_str(*deadline)}, so flag the conflict "
             f"to {other_bot} instead of silently accepting a booking that misses the goal."
         )
     )
@@ -227,6 +256,7 @@ def _collaboration_doc(rng) -> tuple[str, str, str]:
 # ---------------------------------------------------------------------------
 # Generator
 # ---------------------------------------------------------------------------
+
 
 class WorkflowGaia2Generator(Generator):
     name = "gaia2"
@@ -288,13 +318,20 @@ class WorkflowGaia2Generator(Generator):
                         tj += 1
                     text_n, _concept_n = self._TWISTS[tj][1](self.rng)
                     text = (
-                        text + f"\n\n--- Segment {segments + 1} (same universe, later that day) ---\n\n"
+                        text
+                        + f"\n\n--- Segment {segments + 1} (same universe, later that day) ---\n\n"
                         + text_n
                     )
                     segments += 1
                 concept = f"{concept}_chain"
             source = f"workflow/gaia2_{concept.split('_chain')[0]}"
-            d = self.doc(text=text, task_type="temporal", concept=concept, phase=phase, source=source)
+            d = self.doc(
+                text=text,
+                task_type="temporal",
+                concept=concept,
+                phase=phase,
+                source=source,
+            )
             produced += len(d["text"].encode("utf-8"))
             yield d
 

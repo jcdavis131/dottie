@@ -60,9 +60,13 @@ def adapt_record(rec: dict) -> dict | None:
         texts = entry.get("source_text") or []
         if not isinstance(urls, list) or not isinstance(texts, list):
             continue
-        sources = [(str(u), str(t).strip()) for u, t in zip(urls, texts) if str(t).strip()]
+        sources = [
+            (str(u), str(t).strip())
+            for u, t in zip(urls, texts, strict=False)
+            if str(t).strip()
+        ]
         if not passage or len(sources) < MIN_SOURCES:
-            continue                      # single-source claims are the bias we exclude
+            continue  # single-source claims are the bias we exclude
         blocks = [passage, "", "SOURCES (independently authored):"]
         for i, (u, t) in enumerate(sources[:MAX_SOURCES_PER_ENTRY], 1):
             blocks.append(f"[{i}] {u}")

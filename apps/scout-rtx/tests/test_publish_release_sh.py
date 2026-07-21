@@ -36,13 +36,13 @@ def test_awk_selects_minimum_val_bpb(tmp_path):
         "c2\t0.9812\t11.0\tkeep\tbest",
         "c3\t1.1000\t12.2\tkeep\tworst",
     ]
-    (tmp_path / "results.tsv").write_text("\n".join([HEADER] + rows) + "\n")
+    (tmp_path / "results.tsv").write_text("\n".join([HEADER, *rows]) + "\n")
     assert float(_run_best(tmp_path)) == 0.9812
 
 
 def test_awk_min_when_best_row_is_first(tmp_path):
     rows = ["c1\t0.9000\t10\tkeep\ta", "c2\t0.9500\t10\tkeep\tb"]
-    (tmp_path / "results.tsv").write_text("\n".join([HEADER] + rows) + "\n")
+    (tmp_path / "results.tsv").write_text("\n".join([HEADER, *rows]) + "\n")
     assert float(_run_best(tmp_path)) == 0.9
 
 
@@ -55,7 +55,7 @@ def _stub_bin(tmp_path):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     gh = bin_dir / "gh"
-    gh.write_text("#!/usr/bin/env bash\necho \"gh-stub $*\"\nexit 0\n")
+    gh.write_text('#!/usr/bin/env bash\necho "gh-stub $*"\nexit 0\n')
     git = bin_dir / "git"
     git.write_text("#!/usr/bin/env bash\necho abc1234\nexit 0\n")
     for f in (gh, git):
@@ -89,7 +89,9 @@ def _run_script(tmp_path, *args, env_path):
 
 def test_script_errors_without_results_tsv(tmp_path):
     bin_dir = _stub_bin(tmp_path)
-    proc = _run_script(tmp_path, "programs/program-ava.md", "v0.6.0-test", env_path=bin_dir)
+    proc = _run_script(
+        tmp_path, "programs/program-ava.md", "v0.6.0-test", env_path=bin_dir
+    )
     assert proc.returncode == 1
     assert "no results.tsv" in proc.stderr
     assert not (tmp_path / "results.tsv").exists()
@@ -97,7 +99,9 @@ def test_script_errors_without_results_tsv(tmp_path):
 
 def test_script_demo_flag_creates_demo_tagged_row(tmp_path):
     bin_dir = _stub_bin(tmp_path)
-    proc = _run_script(tmp_path, "programs/program-ava.md", "v0.6.0-test", "--demo", env_path=bin_dir)
+    proc = _run_script(
+        tmp_path, "programs/program-ava.md", "v0.6.0-test", "--demo", env_path=bin_dir
+    )
     assert proc.returncode == 0, proc.stderr
     tsv = (tmp_path / "results.tsv").read_text().strip().splitlines()
     assert tsv[0] == HEADER
@@ -107,7 +111,9 @@ def test_script_demo_flag_creates_demo_tagged_row(tmp_path):
 def test_script_real_results_publishes_min(tmp_path):
     bin_dir = _stub_bin(tmp_path)
     rows = ["c1\t1.0500\t10\tkeep\ta", "c2\t0.9812\t11\tkeep\tb"]
-    (tmp_path / "results.tsv").write_text("\n".join([HEADER] + rows) + "\n")
-    proc = _run_script(tmp_path, "programs/program-ava.md", "v0.6.0-test", env_path=bin_dir)
+    (tmp_path / "results.tsv").write_text("\n".join([HEADER, *rows]) + "\n")
+    proc = _run_script(
+        tmp_path, "programs/program-ava.md", "v0.6.0-test", env_path=bin_dir
+    )
     assert proc.returncode == 0, proc.stderr
     assert "Best: 0.9812" in proc.stdout

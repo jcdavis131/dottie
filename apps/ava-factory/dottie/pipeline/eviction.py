@@ -42,7 +42,7 @@ class StorageConfig:
     evict_batch_limit: int
 
     @classmethod
-    def load(cls, path: str | Path | None = None) -> "StorageConfig":
+    def load(cls, path: str | Path | None = None) -> StorageConfig:
         p = Path(path or os.environ.get("AVA_PIPELINE_CONFIG", _DEFAULT_CONFIG))
         cfg = yaml.safe_load(p.read_text())
         s = cfg.get("storage", {})
@@ -178,7 +178,9 @@ def evict_oversupplied(
     limit: int | None = None,
 ) -> dict:
     """Delete up to ``limit`` least-useful train shards. Never val/test."""
-    cur = current_phase if current_phase is not None else current_training_phase(manifest)
+    cur = (
+        current_phase if current_phase is not None else current_training_phase(manifest)
+    )
     batch = limit if limit is not None else storage.evict_batch_limit
     stats = {
         "examined": 0,
@@ -197,7 +199,7 @@ def evict_oversupplied(
                 stats["skipped_error"] += 1
                 continue
             to_mark.append(c.id)
-        except Exception:  # noqa: BLE001
+        except Exception:
             stats["skipped_error"] += 1
 
     if to_mark:
@@ -207,7 +209,7 @@ def evict_oversupplied(
             # One protected slip — refuse all in batch rather than partial illegal transition.
             stats["refused_protected"] += len(to_mark)
             stats["deleted"] = 0
-        except Exception:  # noqa: BLE001
+        except Exception:
             stats["skipped_error"] += len(to_mark)
             stats["deleted"] = 0
     return stats

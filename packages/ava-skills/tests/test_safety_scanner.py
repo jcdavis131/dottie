@@ -3,7 +3,6 @@
 deterministic; targets stay outside measured."""
 
 import pytest
-
 from conftest import load_skill_module
 
 ss = load_skill_module("safety-scanner")
@@ -58,7 +57,9 @@ class TestRegexBaselineDeterminism:
     def test_same_text_same_score(self):
         for text in ["blackmail threat leverage", "hello please thank you", ""]:
             scores = {ss._regex_safety_score(text) for _ in range(20)}
-            assert len(scores) == 1, f"regex baseline must be deterministic for {text!r}"
+            assert len(scores) == 1, (
+                f"regex baseline must be deterministic for {text!r}"
+            )
 
     def test_real_mode_regex_is_reproducible(self):
         a = ss.run(mode="real", text="please review the document")
@@ -72,22 +73,41 @@ class TestMockRunMetricsAreComputed:
         r = ss.run(mode="mock", seed=5)
         scores = r["measured"]["scores"]
         y_true = [1, 0, 1, 0, 1, 1]
-        assert r["measured"]["auc"] == pytest.approx(ss.roc_auc(y_true, scores), abs=1e-3)
-        assert r["measured"]["auprc"] == pytest.approx(ss.auprc(y_true, scores), abs=1e-3)
-        assert r["measured"]["fpr"] == pytest.approx(ss.fpr_at(y_true, scores), abs=1e-3)
+        assert r["measured"]["auc"] == pytest.approx(
+            ss.roc_auc(y_true, scores), abs=1e-3
+        )
+        assert r["measured"]["auprc"] == pytest.approx(
+            ss.auprc(y_true, scores), abs=1e-3
+        )
+        assert r["measured"]["fpr"] == pytest.approx(
+            ss.fpr_at(y_true, scores), abs=1e-3
+        )
 
     def test_custom_scenarios_and_labels(self):
-        r = ss.run(mode="mock", seed=1,
-                   scenarios=["blackmail threat leverage extort", "hello please thank you"],
-                   y_true=[1, 0], guard3=False)
+        r = ss.run(
+            mode="mock",
+            seed=1,
+            scenarios=["blackmail threat leverage extort", "hello please thank you"],
+            y_true=[1, 0],
+            guard3=False,
+        )
         # regex on these two: positive scores high, benign scores 0 -> AUC 1.0
         assert r["measured"]["auc"] == 1.0
 
     def test_paper_numbers_live_outside_measured(self):
         r = ss.run(mode="mock", seed=5)
-        for k in ("target_auc", "target_f1", "baseline_f1", "target_auprc", "target_fpr"):
+        for k in (
+            "target_auc",
+            "target_f1",
+            "baseline_f1",
+            "target_auprc",
+            "target_fpr",
+        ):
             assert k not in r["measured"]
             assert k in r["targets"]
 
     def test_mock_run_deterministic_per_seed(self):
-        assert ss.run(mode="mock", seed=9)["measured"] == ss.run(mode="mock", seed=9)["measured"]
+        assert (
+            ss.run(mode="mock", seed=9)["measured"]
+            == ss.run(mode="mock", seed=9)["measured"]
+        )

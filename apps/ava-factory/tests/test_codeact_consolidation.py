@@ -5,8 +5,8 @@ Verifies the two rules that distinguish consolidation from spec-12 recovery samp
 traces are admitted, and the pool is stratified (balanced) across families so rare grounding/refuse
 behaviors aren't washed out. The GPU MOPD run itself is honestly gated.
 """
-import pytest
 
+import pytest
 from ava.rl.codeact_consolidation import (
     ConsolidationBlockedError,
     ConsolidationTrace,
@@ -17,8 +17,14 @@ from ava.rl.codeact_consolidation import (
 
 
 def trace(prompt, family, verified=True, behavior="solve"):
-    return ConsolidationTrace(prompt=prompt, rendered=f"<{prompt}>", answer="a",
-                              family=family, verified=verified, behavior=behavior)
+    return ConsolidationTrace(
+        prompt=prompt,
+        rendered=f"<{prompt}>",
+        answer="a",
+        family=family,
+        verified=verified,
+        behavior=behavior,
+    )
 
 
 class TestAdmission:
@@ -35,7 +41,11 @@ class TestAdmission:
 
 class TestDedupe:
     def test_duplicate_prompts_collapsed(self):
-        traces = [trace("same", "compute"), trace("same", "compute"), trace("other", "compute")]
+        traces = [
+            trace("same", "compute"),
+            trace("same", "compute"),
+            trace("other", "compute"),
+        ]
         pool = consolidate(traces, balance=False)
         assert len(pool) == 2 and pool.dropped_duplicate == 1
 

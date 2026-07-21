@@ -6,6 +6,7 @@ checkpoint (REAL ~14M-param smoke-scale artifact) and runs the wired real
 paths end-to-end, asserting real finite floats and the smoke-scale honesty
 labels. Skipped when the checkpoint/tokenizer/torch are absent.
 """
+
 import json
 import math
 import os
@@ -17,15 +18,18 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from harness.common import MockModel, MockTokenizer, factory_root  # noqa: E402
-from harness.registry import EVAL_REGISTRY, register_eval  # noqa: E402
-from harness.runner import (  # noqa: E402
-    _try_load_yaml_tasks, resolve_eval_names, run_harness, write_reports,
+from harness.common import MockModel, MockTokenizer, factory_root
+from harness.evals.needle import needle
+from harness.evals.openwiki_knowledge import openwiki_knowledge
+from harness.evals.perplexity import perplexity
+from harness.evals.probes import probes
+from harness.registry import EVAL_REGISTRY, register_eval
+from harness.runner import (
+    _try_load_yaml_tasks,
+    resolve_eval_names,
+    run_harness,
+    write_reports,
 )
-from harness.evals.needle import needle  # noqa: E402
-from harness.evals.perplexity import perplexity  # noqa: E402
-from harness.evals.probes import probes  # noqa: E402
-from harness.evals.openwiki_knowledge import openwiki_knowledge  # noqa: E402
 
 # factory_root() resolves: env AVA_FACTORY_ROOT -> dottie sibling apps/ava-factory
 # (only if it holds the smoke checkpoint; code-only otherwise) -> default path.
@@ -37,6 +41,7 @@ TOKENIZER = FACTORY / "runs" / "cpu_pilot" / "tokenizer" / "ava_nano_bpe.json"
 def _torch_available() -> bool:
     try:
         import torch  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -51,8 +56,14 @@ class TestEvalNameResolution:
 
     def test_group_name_resolves_to_group_members(self):
         names = resolve_eval_names("jspace")
-        assert set(names) == {"spider_ant", "france_china", "soccer_rugby",
-                              "spanish_french", "safety_blackmail", "jspace_all"}
+        assert set(names) == {
+            "spider_ant",
+            "france_china",
+            "soccer_rugby",
+            "spanish_french",
+            "safety_blackmail",
+            "jspace_all",
+        }
 
     def test_run_harness_rejects_unknown_eval(self):
         with pytest.raises(ValueError):
@@ -73,7 +84,9 @@ class TestReportsAndSamples:
     def test_log_samples_honesty(self):
         # perplexity's mock measured has no per-sample list → MUST be [] (never
         # synthesized); france_china provides real per-prompt details → passed through.
-        res = run_harness(eval_names=["perplexity", "france_china"], mode="mock", log_samples=5)
+        res = run_harness(
+            eval_names=["perplexity", "france_china"], mode="mock", log_samples=5
+        )
         assert res["evals"]["perplexity"]["log_samples"] == []
         fc = res["evals"]["france_china"]["log_samples"]
         assert fc and all("prompt" in row for row in fc)
@@ -90,8 +103,10 @@ class TestRegistry:
         @register_eval(name="_dup_probe_eval", description="x", group="test")
         def _e1(model, tokenizer, device, **kw):
             return {}
+
         try:
             with pytest.raises(ValueError):
+
                 @register_eval(name="_dup_probe_eval", description="y", group="test")
                 def _e2(model, tokenizer, device, **kw):
                     return {}
@@ -110,9 +125,20 @@ class TestMockSeedVariation:
 class TestYamlTasks:
     def test_all_12_tasks_ship_and_are_versioned(self):
         tasks = _try_load_yaml_tasks()
-        expected = {"spider_ant", "france_china", "soccer_rugby", "spanish_french",
-                    "safety_blackmail", "jspace_all", "frontier_rubric", "probes",
-                    "perplexity", "needle", "openwiki_knowledge", "dottie_assistant"}
+        expected = {
+            "spider_ant",
+            "france_china",
+            "soccer_rugby",
+            "spanish_french",
+            "safety_blackmail",
+            "jspace_all",
+            "frontier_rubric",
+            "probes",
+            "perplexity",
+            "needle",
+            "openwiki_knowledge",
+            "dottie_assistant",
+        }
         assert expected <= set(tasks)
         for name in expected:
             t = tasks[name]
@@ -134,7 +160,9 @@ def real_report():
     )
 
 
-@pytest.mark.skipif(not _REAL_READY, reason="cpu_pilot checkpoint/tokenizer or torch absent")
+@pytest.mark.skipif(
+    not _REAL_READY, reason="cpu_pilot checkpoint/tokenizer or torch absent"
+)
 class TestRealModeSmoke:
     """Headline: real end-to-end run on the factory cpu_pilot smoke checkpoint.
 
@@ -151,7 +179,13 @@ class TestRealModeSmoke:
         sa = real_report["evals"]["spider_ant"]
         assert "error" not in sa, sa.get("error")
         m = sa["measured"]
-        for key in ("logP_base_8", "logP_base_6", "logP_int_8", "logP_int_6", "causal_effect"):
+        for key in (
+            "logP_base_8",
+            "logP_base_6",
+            "logP_int_8",
+            "logP_int_6",
+            "causal_effect",
+        ):
             assert isinstance(m[key], float) and math.isfinite(m[key]), key
         # logprobs are real log-softmax sums → strictly negative
         assert m["logP_base_8"] < 0 and m["logP_base_6"] < 0
@@ -162,7 +196,11 @@ class TestRealModeSmoke:
         pp = real_report["evals"]["perplexity"]
         assert "error" not in pp, pp.get("error")
         m = pp["measured"]
-        assert isinstance(m["avg_ppl"], float) and math.isfinite(m["avg_ppl"]) and m["avg_ppl"] > 0
+        assert (
+            isinstance(m["avg_ppl"], float)
+            and math.isfinite(m["avg_ppl"])
+            and m["avg_ppl"] > 0
+        )
         assert m["tokens"] > 0
         # source honesty: either true heldout bins or explicitly-labeled fallback
         assert m.get("heldout") in (True, False)

@@ -8,8 +8,8 @@ Laplacian relax the NP-hard normalized-cut into a tractable eigenproblem (L x = 
 the discrete Laplacian converges to the manifold's Laplace-Beltrami operator as the graph
 grows — so it stays meaningful as the code graph scales.
 """
+
 import networkx as nx
-from typing import Dict, List, Optional
 
 
 def _to_weighted_undirected(G: nx.MultiDiGraph) -> nx.Graph:
@@ -28,12 +28,15 @@ def _to_weighted_undirected(G: nx.MultiDiGraph) -> nx.Graph:
 def _deterministic_kmeans(X, k: int, seed: int = 0, iters: int = 50):
     """Tiny seeded k-means++ (numpy only) — deterministic for reproducible clustering."""
     import numpy as np
+
     rng = np.random.default_rng(seed)
     n = X.shape[0]
     # k-means++ init
     centers = [int(rng.integers(n))]
     for _ in range(1, k):
-        d2 = np.min(((X[:, None, :] - X[np.array(centers)][None, :, :]) ** 2).sum(-1), axis=1)
+        d2 = np.min(
+            ((X[:, None, :] - X[np.array(centers)][None, :, :]) ** 2).sum(-1), axis=1
+        )
         total = d2.sum()
         probs = d2 / total if total > 0 else np.full(n, 1.0 / n)
         centers.append(int(rng.choice(n, p=probs)))
@@ -51,10 +54,13 @@ def _deterministic_kmeans(X, k: int, seed: int = 0, iters: int = 50):
     return labels
 
 
-def _spectral_communities(UG: nx.Graph, k: Optional[int] = None, seed: int = 0) -> Dict[str, int]:
+def _spectral_communities(
+    UG: nx.Graph, k: int | None = None, seed: int = 0
+) -> dict[str, int]:
     """Normalized-cut spectral clustering (Ng–Jordan–Weiss). Raises on any degeneracy so the
     caller can fall back; never fabricates a partition."""
     import numpy as np
+
     nodes = list(UG.nodes())
     n = len(nodes)
     if n < 3:
@@ -70,12 +76,16 @@ def _spectral_communities(UG: nx.Graph, k: Optional[int] = None, seed: int = 0) 
     nz = deg > 0
     d_inv_sqrt[nz] = 1.0 / np.sqrt(deg[nz])
     L = np.eye(n) - (d_inv_sqrt[:, None] * A * d_inv_sqrt[None, :])
-    vals, vecs = np.linalg.eigh((L + L.T) / 2.0)  # symmetrize for numerical safety; ascending
+    vals, vecs = np.linalg.eigh(
+        (L + L.T) / 2.0
+    )  # symmetrize for numerical safety; ascending
     if k is None:
         # eigengap heuristic over the smallest non-trivial eigenvalues
         window = vals[: min(n, 12)]
         gaps = np.diff(window)
-        k = int(np.argmax(gaps[1:]) + 2) if len(gaps) > 1 else 2  # skip the trivial ~0 eigenvalue
+        k = (
+            int(np.argmax(gaps[1:]) + 2) if len(gaps) > 1 else 2
+        )  # skip the trivial ~0 eigenvalue
         k = max(2, min(k, 10, n - 1))
     U = vecs[:, :k]
     norms = np.linalg.norm(U, axis=1, keepdims=True)
@@ -85,7 +95,7 @@ def _spectral_communities(UG: nx.Graph, k: Optional[int] = None, seed: int = 0) 
     return {nodes[i]: int(labels[i]) for i in range(n)}
 
 
-def detect_communities(G: nx.MultiDiGraph, method: str = "auto") -> Dict[str, int]:
+def detect_communities(G: nx.MultiDiGraph, method: str = "auto") -> dict[str, int]:
     """Community detection.
 
     method="auto" (default, unchanged): Leiden if installed → greedy modularity → per-file.
@@ -103,7 +113,9 @@ def detect_communities(G: nx.MultiDiGraph, method: str = "auto") -> Dict[str, in
     elif method != "greedy":
         # Try leiden if installed
         try:
-            import leidenalg, igraph
+            import igraph
+            import leidenalg
+
             g = igraph.Graph.from_networkx(UG)
             part = leidenalg.find_partition(g, leidenalg.ModularityVertexPartition)
             clustering = {}
@@ -118,6 +130,7 @@ def detect_communities(G: nx.MultiDiGraph, method: str = "auto") -> Dict[str, in
     # fallback: greedy modularity
     try:
         from networkx.algorithms.community import greedy_modularity_communities
+
         coms = list(greedy_modularity_communities(UG, weight="weight"))
         clustering = {}
         for i, comm in enumerate(coms):
@@ -132,10 +145,11 @@ def detect_communities(G: nx.MultiDiGraph, method: str = "auto") -> Dict[str, in
         for nid, data in G.nodes(data=True):
             f = data.get("file", "nofile")
             if f not in files:
-                files[f]=counter
-                counter+=1
-            clustering[nid]=files[f]
+                files[f] = counter
+                counter += 1
+            clustering[nid] = files[f]
         return clustering
+
 
 def assign_communities(G: nx.MultiDiGraph, method: str = "auto") -> nx.MultiDiGraph:
     clustering = detect_communities(G, method=method)
@@ -143,19 +157,27 @@ def assign_communities(G: nx.MultiDiGraph, method: str = "auto") -> nx.MultiDiGr
         G.nodes[nid]["community"] = clustering.get(nid, 0)
     return G
 
-def community_summary(G: nx.MultiDiGraph) -> List[Dict]:
+
+def community_summary(G: nx.MultiDiGraph) -> list[dict]:
     # summarize communities
     from collections import Counter, defaultdict
+
     comm_nodes = defaultdict(list)
     for nid, data in G.nodes(data=True):
-        comm_nodes[data.get("community",0)].append((nid, data))
+        comm_nodes[data.get("community", 0)].append((nid, data))
     summaries = []
-    for comm_id, nodes in sorted(comm_nodes.items(), key=lambda x: len(x[1]), reverse=True):
-        labels = [data.get("label","")[:30] for _, data in nodes[:8]]
-        summaries.append({
-            "id": comm_id,
-            "size": len(nodes),
-            "sample_labels": labels,
-            "types": Counter([data.get("type","") for _, data in nodes]).most_common(5)
-        })
+    for comm_id, nodes in sorted(
+        comm_nodes.items(), key=lambda x: len(x[1]), reverse=True
+    ):
+        labels = [data.get("label", "")[:30] for _, data in nodes[:8]]
+        summaries.append(
+            {
+                "id": comm_id,
+                "size": len(nodes),
+                "sample_labels": labels,
+                "types": Counter(
+                    [data.get("type", "") for _, data in nodes]
+                ).most_common(5),
+            }
+        )
     return summaries

@@ -51,7 +51,6 @@ import os
 from pathlib import Path
 
 import regex as re
-
 from evals.eval_sets import EVAL_SETS
 
 try:  # POSIX file locking (curator runs in a Linux container).
@@ -91,7 +90,9 @@ class Decontaminator:
     per doc. Thread-safe for reads: after construction the indexes are immutable.
     """
 
-    def __init__(self, ngram: int = 13, eval_sets: dict[str, list[str]] | None = None) -> None:
+    def __init__(
+        self, ngram: int = 13, eval_sets: dict[str, list[str]] | None = None
+    ) -> None:
         self.ngram = ngram
         eval_sets = eval_sets if eval_sets is not None else EVAL_SETS
 

@@ -7,10 +7,14 @@ differ only by YAML.
 
 from __future__ import annotations
 
-import torch
+from typing import TYPE_CHECKING
+
+from model_1b import DottieModel1B, apply_rope_scaling
 
 from dottie.config import SPACES, DottieConfig
-from model_1b import DottieModel1B, apply_rope_scaling
+
+if TYPE_CHECKING:
+    import torch
 
 
 def build_model(cfg: DottieConfig, *, use_memory: bool = False) -> DottieModel1B:
@@ -67,7 +71,7 @@ def count_params(model: torch.nn.Module, *, trainable_only: bool = False) -> int
     return sum(seen.values())
 
 
-__all__ = ["build_model", "set_router_bias", "count_params", "SPACES"]
+__all__ = ["SPACES", "build_model", "count_params", "set_router_bias"]
 
 # Legacy alias (Ava was the placeholder name; submodule-level import compat)
 AvaModel1B = DottieModel1B

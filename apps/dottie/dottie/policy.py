@@ -21,7 +21,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 
@@ -66,23 +66,23 @@ class PolicyProvider:
     def __call__(self, transcript: str) -> str:  # pragma: no cover - abstract
         raise NotImplementedError
 
-    def probe(self) -> Dict[str, Any]:
+    def probe(self) -> dict[str, Any]:
         """Real availability check (no fabrication): returns {'available': bool, ...}."""
         raise NotImplementedError  # pragma: no cover - abstract
 
 
-def transcript_to_messages(transcript: str) -> List[Dict[str, str]]:
+def transcript_to_messages(transcript: str) -> list[dict[str, str]]:
     """Parse the CodeAct transcript (``<|user|>``/``<|assistant|>`` marked) into chat messages.
 
     Sandbox Observations are rendered by the loop as user turns (``Observation:\\n...``), which
     is exactly the role a chat API expects them in."""
     parts = _MARKER_SPLIT.split(transcript)
-    messages: List[Dict[str, str]] = []
+    messages: list[dict[str, str]] = []
     # parts = [preamble, role, content, role, content, ...]; a non-empty preamble (no leading
     # marker) is treated as user content so a bare prompt still works.
     if parts and parts[0].strip():
         messages.append({"role": "user", "content": parts[0].strip()})
-    for role, content in zip(parts[1::2], parts[2::2]):
+    for role, content in zip(parts[1::2], parts[2::2], strict=False):
         content = content.strip()
         if content:
             messages.append({"role": role, "content": content})
@@ -110,26 +110,38 @@ class OllamaPolicy(PolicyProvider):
 
     def __init__(
         self,
-        base_url: Optional[str] = None,
-        model: Optional[str] = None,
+        base_url: str | None = None,
+        model: str | None = None,
         *,
         connect_timeout_s: float = 5.0,
-        read_timeout_s: Optional[float] = None,
+        read_timeout_s: float | None = None,
         temperature: float = 0.2,
     ) -> None:
-        self.base_url = (base_url or os.environ.get("DOTTIE_OLLAMA_URL") or DEFAULT_OLLAMA_URL).rstrip("/")
-        self.model = model or os.environ.get("DOTTIE_OLLAMA_MODEL") or DEFAULT_OLLAMA_MODEL
+        self.base_url = (
+            base_url or os.environ.get("DOTTIE_OLLAMA_URL") or DEFAULT_OLLAMA_URL
+        ).rstrip("/")
+        self.model = (
+            model or os.environ.get("DOTTIE_OLLAMA_MODEL") or DEFAULT_OLLAMA_MODEL
+        )
         if read_timeout_s is None:
             # Env knob for slow local models (partial VRAM offload, thinking modes). A timeout
             # still refuses honestly — this only sets how long we wait for a REAL reply.
-            read_timeout_s = float(os.environ.get("DOTTIE_OLLAMA_READ_TIMEOUT_S") or 300.0)
+            read_timeout_s = float(
+                os.environ.get("DOTTIE_OLLAMA_READ_TIMEOUT_S") or 300.0
+            )
         # DOTTIE_OLLAMA_THINK=false disables thinking on models that support it (e.g. qwen3):
         # for strict-JSON research completions the long CoT only burns the read timeout.
         think_env = os.environ.get("DOTTIE_OLLAMA_THINK")
-        self.think: Optional[bool] = (
-            None if think_env is None else think_env.strip().lower() in ("1", "true", "yes"))
+        self.think: bool | None = (
+            None
+            if think_env is None
+            else think_env.strip().lower() in ("1", "true", "yes")
+        )
         self.timeout = httpx.Timeout(
-            connect=connect_timeout_s, read=read_timeout_s, write=30.0, pool=connect_timeout_s
+            connect=connect_timeout_s,
+            read=read_timeout_s,
+            write=30.0,
+            pool=connect_timeout_s,
         )
         self.temperature = float(temperature)
 
@@ -138,8 +150,13 @@ class OllamaPolicy(PolicyProvider):
         messages += transcript_to_messages(transcript)
         return self._chat(messages)
 
-    def complete(self, prompt: str, *, system: Optional[str] = None,
-                 temperature: Optional[float] = None) -> str:
+    def complete(
+        self,
+        prompt: str,
+        *,
+        system: str | None = None,
+        temperature: float | None = None,
+    ) -> str:
         """Plain single-turn completion WITHOUT the CodeAct agent protocol.
 
         The research workers use this: under the CodeAct system prompt the model answers with
@@ -147,12 +164,16 @@ class OllamaPolicy(PolicyProvider):
         prompts demand. ``temperature`` overrides the instance default per call (ideation wants
         diverse sampling; code generation wants precision). Same honest transport/refusal
         semantics as ``__call__``."""
-        messages = ([{"role": "system", "content": system}] if system else [])
+        messages = [{"role": "system", "content": system}] if system else []
         messages.append({"role": "user", "content": prompt})
         return self._chat(messages, temperature=temperature)
 
-    def _chat(self, messages: list, *, temperature: Optional[float] = None) -> str:
-        options: dict = {"temperature": self.temperature if temperature is None else float(temperature)}
+    def _chat(self, messages: list, *, temperature: float | None = None) -> str:
+        options: dict = {
+            "temperature": self.temperature
+            if temperature is None
+            else float(temperature)
+        }
         # DOTTIE_OLLAMA_NUM_GPU=0 pins inference to CPU (doctrine: the GPU belongs to
         # model TRAINING; LLM inference and everything else run on CPU). Any integer is
         # passed through as the number of offloaded layers.
@@ -177,7 +198,9 @@ class OllamaPolicy(PolicyProvider):
         if self.think is not None:
             payload["think"] = self.think
         try:
-            r = httpx.post(f"{self.base_url}/api/chat", json=payload, timeout=self.timeout)
+            r = httpx.post(
+                f"{self.base_url}/api/chat", json=payload, timeout=self.timeout
+            )
         except httpx.HTTPError as e:
             raise DottiePolicyUnavailable(
                 f"Ollama server unreachable at {self.base_url} ({type(e).__name__}: {e}). "
@@ -199,7 +222,7 @@ class OllamaPolicy(PolicyProvider):
             ) from e
         return strip_think(str(content))
 
-    def probe(self) -> Dict[str, Any]:
+    def probe(self) -> dict[str, Any]:
         """Real ping: GET /api/tags. Reports whether the configured model is present."""
         base = {"backend": self.name, "url": self.base_url, "model": self.model}
         try:
@@ -212,8 +235,10 @@ class OllamaPolicy(PolicyProvider):
             **base,
             "available": True,
             "models_count": len(models),
-            "model_present": any(m == self.model or m.split(":")[0] == self.model.split(":")[0]
-                                 for m in models),
+            "model_present": any(
+                m == self.model or m.split(":")[0] == self.model.split(":")[0]
+                for m in models
+            ),
         }
 
 
@@ -235,7 +260,7 @@ class AvaPolicy(PolicyProvider):
 
     def __init__(
         self,
-        ckpt: Optional[str] = None,
+        ckpt: str | None = None,
         *,
         device: str = "cpu",
         max_new_tokens: int = 48,
@@ -245,7 +270,7 @@ class AvaPolicy(PolicyProvider):
         seed: int = 0,
     ) -> None:
         env_ckpt = os.environ.get("DOTTIE_AVA_CKPT")
-        self.ckpt: Optional[Path] = Path(ckpt or env_ckpt) if (ckpt or env_ckpt) else None
+        self.ckpt: Path | None = Path(ckpt or env_ckpt) if (ckpt or env_ckpt) else None
         self.device = device
         self.max_new_tokens = int(max_new_tokens)
         self.temperature = float(temperature)
@@ -300,12 +325,15 @@ class AvaPolicy(PolicyProvider):
         if tok_path is None:
             raise DottiePolicyUnavailable(
                 "ava tokenizer not found (a real model over a mock tokenizer would decode "
-                "garbage — refused). Probed: " + ", ".join(str(p) for p in tok_candidates)
+                "garbage — refused). Probed: "
+                + ", ".join(str(p) for p in tok_candidates)
             )
         try:
             cfg = AvaConfig.load("nano")
             model = build_model(cfg)
-            blob = torch.load(str(ckpt_path), map_location=self.device, weights_only=False)
+            blob = torch.load(
+                str(ckpt_path), map_location=self.device, weights_only=False
+            )
             model.load_state_dict(blob.get("model", blob))
             model.to(self.device)
             model.eval()
@@ -331,24 +359,35 @@ class AvaPolicy(PolicyProvider):
         self._ensure_loaded()
         return self._policy(transcript)
 
-    def probe(self) -> Dict[str, Any]:
+    def probe(self) -> dict[str, Any]:
         """Checkpoint existence + torch importability — checked, not loaded (probe is cheap)."""
-        base: Dict[str, Any] = {
+        base: dict[str, Any] = {
             "backend": self.name,
             "capability_note": "smoke-scale checkpoint, zero task capability; flywheel trainee",
         }
         try:
             import importlib.util
+
             torch_ok = importlib.util.find_spec("torch") is not None
         except Exception:  # pragma: no cover - importlib misbehaving
             torch_ok = False
         try:
             ckpt = self._resolve_ckpt()
         except DottiePolicyUnavailable as e:
-            return {**base, "available": False, "torch_installed": torch_ok, "error": str(e)}
+            return {
+                **base,
+                "available": False,
+                "torch_installed": torch_ok,
+                "error": str(e),
+            }
         if not torch_ok:
-            return {**base, "available": False, "ckpt": str(ckpt), "torch_installed": False,
-                    "error": "torch not installed"}
+            return {
+                **base,
+                "available": False,
+                "ckpt": str(ckpt),
+                "torch_installed": False,
+                "error": "torch not installed",
+            }
         return {**base, "available": True, "ckpt": str(ckpt), "torch_installed": True}
 
 
@@ -387,9 +426,13 @@ class EchoPolicy(PolicyProvider):
         self._i += 1
         return turn
 
-    def probe(self) -> Dict[str, Any]:
-        return {"backend": self.name, "available": True, "plumbing_only": True,
-                "note": "deterministic CI plumbing policy; not a capability measurement"}
+    def probe(self) -> dict[str, Any]:
+        return {
+            "backend": self.name,
+            "available": True,
+            "plumbing_only": True,
+            "note": "deterministic CI plumbing policy; not a capability measurement",
+        }
 
 
 class FactoryPolicy(PolicyProvider):
@@ -405,20 +448,37 @@ class FactoryPolicy(PolicyProvider):
 
     name = "factory"
 
-    def __init__(self, base_url: Optional[str] = None, *,
-                 max_tokens: int = 256, temperature: float = 0.8,
-                 read_timeout_s: Optional[float] = None) -> None:
-        self.base_url = (base_url or os.environ.get("DOTTIE_FACTORY_URL")
-                         or "http://localhost:8000").rstrip("/")
+    def __init__(
+        self,
+        base_url: str | None = None,
+        *,
+        max_tokens: int = 256,
+        temperature: float = 0.8,
+        read_timeout_s: float | None = None,
+    ) -> None:
+        self.base_url = (
+            base_url or os.environ.get("DOTTIE_FACTORY_URL") or "http://localhost:8000"
+        ).rstrip("/")
         self.max_tokens = int(max_tokens)
         self.temperature = float(temperature)
         if read_timeout_s is None:
-            read_timeout_s = float(os.environ.get("DOTTIE_FACTORY_READ_TIMEOUT_S") or 120.0)
-        self.timeout = httpx.Timeout(connect=5.0, read=read_timeout_s, write=30.0, pool=5.0)
+            read_timeout_s = float(
+                os.environ.get("DOTTIE_FACTORY_READ_TIMEOUT_S") or 120.0
+            )
+        self.timeout = httpx.Timeout(
+            connect=5.0, read=read_timeout_s, write=30.0, pool=5.0
+        )
 
-    def _chat(self, messages: List[Dict[str, str]], *, temperature: Optional[float] = None) -> str:
-        payload = {"messages": messages, "max_tokens": self.max_tokens,
-                   "temperature": self.temperature if temperature is None else float(temperature)}
+    def _chat(
+        self, messages: list[dict[str, str]], *, temperature: float | None = None
+    ) -> str:
+        payload = {
+            "messages": messages,
+            "max_tokens": self.max_tokens,
+            "temperature": self.temperature
+            if temperature is None
+            else float(temperature),
+        }
         try:
             r = httpx.post(f"{self.base_url}/chat", json=payload, timeout=self.timeout)
         except httpx.HTTPError as e:
@@ -430,39 +490,56 @@ class FactoryPolicy(PolicyProvider):
         if r.status_code != 200:
             raise DottiePolicyUnavailable(
                 f"factory server at {self.base_url} returned HTTP {r.status_code}: "
-                f"{r.text[:300]}")
+                f"{r.text[:300]}"
+            )
         try:
             return r.json()["content"]
         except (ValueError, KeyError, TypeError) as e:
             raise DottiePolicyUnavailable(
-                f"factory server returned an unparseable /chat body: {e}") from e
+                f"factory server returned an unparseable /chat body: {e}"
+            ) from e
 
     def __call__(self, transcript: str) -> str:
         # /chat knows only the frozen user/assistant convention (tokenizer SPECIALS) —
         # the CodeAct system contract rides in the first user turn.
         messages = transcript_to_messages(transcript)
         if messages and messages[0]["role"] == "user":
-            messages[0] = {"role": "user",
-                           "content": CODEACT_SYSTEM_PROMPT + "\n\n" + messages[0]["content"]}
+            messages[0] = {
+                "role": "user",
+                "content": CODEACT_SYSTEM_PROMPT + "\n\n" + messages[0]["content"],
+            }
         else:
             messages.insert(0, {"role": "user", "content": CODEACT_SYSTEM_PROMPT})
         return self._chat(messages)
 
-    def complete(self, prompt: str, *, system: Optional[str] = None,
-                 temperature: Optional[float] = None) -> str:
+    def complete(
+        self,
+        prompt: str,
+        *,
+        system: str | None = None,
+        temperature: float | None = None,
+    ) -> str:
         text = f"{system}\n\n{prompt}" if system else prompt
         return self._chat([{"role": "user", "content": text}], temperature=temperature)
 
-    def probe(self) -> Dict[str, Any]:
+    def probe(self) -> dict[str, Any]:
         try:
             r = httpx.get(f"{self.base_url}/pipeline/status", timeout=self.timeout)
             ok = r.status_code == 200
             mode = (r.json().get("mode", {}) or {}).get("id") if ok else None
-            return {"backend": self.name, "available": ok, "base_url": self.base_url,
-                    "server_mode": mode}
+            return {
+                "backend": self.name,
+                "available": ok,
+                "base_url": self.base_url,
+                "server_mode": mode,
+            }
         except httpx.HTTPError as e:
-            return {"backend": self.name, "available": False, "base_url": self.base_url,
-                    "error": f"{type(e).__name__}: {e}"}
+            return {
+                "backend": self.name,
+                "available": False,
+                "base_url": self.base_url,
+                "error": f"{type(e).__name__}: {e}",
+            }
 
 
 BACKENDS = ("ollama", "ava", "echo", "factory")

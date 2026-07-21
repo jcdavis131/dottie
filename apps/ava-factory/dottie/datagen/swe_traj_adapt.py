@@ -11,6 +11,7 @@ present, else a deterministic stub.
 
 Collector wiring: ``adapter: swe_react``.
 """
+
 from __future__ import annotations
 
 import json
@@ -115,8 +116,18 @@ def _map_tool(raw_name: str, arguments: dict) -> tuple[str, dict] | None:
         )
         return mapped, {"path": path}
     if mapped == "repo_grep":
-        pat = arguments.get("pattern") or arguments.get("query") or arguments.get("search") or "TODO"
-        path = arguments.get("path") or arguments.get("dir") or arguments.get("file") or "."
+        pat = (
+            arguments.get("pattern")
+            or arguments.get("query")
+            or arguments.get("search")
+            or "TODO"
+        )
+        path = (
+            arguments.get("path")
+            or arguments.get("dir")
+            or arguments.get("file")
+            or "."
+        )
         return mapped, {"pattern": pat, "path": path}
     if mapped == "run_tests":
         target = (
@@ -128,7 +139,12 @@ def _map_tool(raw_name: str, arguments: dict) -> tuple[str, dict] | None:
         return mapped, {"target": target}
     # apply_patch
     path = arguments.get("path") or arguments.get("file") or "unknown.py"
-    patch = arguments.get("patch") or arguments.get("diff") or arguments.get("new_str") or ""
+    patch = (
+        arguments.get("patch")
+        or arguments.get("diff")
+        or arguments.get("new_str")
+        or ""
+    )
     return mapped, {"path": path, "patch": patch}
 
 
@@ -146,7 +162,9 @@ def _extract_calls(msg: dict) -> list[tuple[str, dict, str | None]]:
             if not isinstance(fn, dict):
                 continue
             name = fn.get("name") or tc.get("name") or ""
-            args = fn.get("arguments") or fn.get("parameters") or tc.get("arguments") or {}
+            args = (
+                fn.get("arguments") or fn.get("parameters") or tc.get("arguments") or {}
+            )
             args = _loads(args)
             if not isinstance(args, dict):
                 args = {}
@@ -225,11 +243,13 @@ def record_to_react(rec: dict) -> dict | None:
                 inner = ", ".join(
                     f"{k}={_format_arg_value(v)}" for k, v in mapped_args.items()
                 )
-                turns.append((
-                    "assistant",
-                    f"Thought: use {tool} from the fixed catalog.\n"
-                    f"Action: {tool}({inner})",
-                ))
+                turns.append(
+                    (
+                        "assistant",
+                        f"Thought: use {tool} from the fixed catalog.\n"
+                        f"Action: {tool}({inner})",
+                    )
+                )
                 obs = None
                 # Look ahead for tool / function response.
                 if i + 1 < len(messages):

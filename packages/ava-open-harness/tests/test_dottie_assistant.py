@@ -12,17 +12,24 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from harness.common import MockModel, MockTokenizer  # noqa: E402
-from harness.registry import EVAL_REGISTRY, list_evals  # noqa: E402
-from harness.runner import _try_load_yaml_tasks, resolve_eval_names, run_harness  # noqa: E402
-from harness.evals.dottie_assistant import (  # noqa: E402
-    _import_dottie, dottie_assistant, dottie_assistant_available,
+from harness.common import MockModel, MockTokenizer
+from harness.evals.dottie_assistant import (
+    _import_dottie,
+    dottie_assistant,
+    dottie_assistant_available,
+)
+from harness.registry import EVAL_REGISTRY, list_evals
+from harness.runner import (
+    _try_load_yaml_tasks,
+    resolve_eval_names,
+    run_harness,
 )
 
 
 def _torch_available() -> bool:
     try:
         import torch  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -63,15 +70,22 @@ class TestRegistrationAndYaml:
         assert len(tasks) >= 12  # loader count 11 -> 12
 
 
-@pytest.mark.skipif(not _PLUMBING_READY,
-                    reason=f"dottie app / factory substrate unavailable: {_IMPORT_ERR}")
+@pytest.mark.skipif(
+    not _PLUMBING_READY,
+    reason=f"dottie app / factory substrate unavailable: {_IMPORT_ERR}",
+)
 class TestMockPlumbing:
     """Mock mode runs FOR REAL through DottieEngine + the real sandbox + real
     verifiers — labeled plumbing, small n to stay fast."""
 
     def test_echo_zero_scripted_nonzero_through_real_engine(self):
-        res = dottie_assistant(MockModel(seed=1), MockTokenizer(), "cpu",
-                               dottie_n_echo=2, dottie_n_scripted=1)
+        res = dottie_assistant(
+            MockModel(seed=1),
+            MockTokenizer(),
+            "cpu",
+            dottie_n_echo=2,
+            dottie_n_scripted=1,
+        )
         assert "error" not in res, res.get("error")
         assert res["plumbing_only"] is True
         m = res["measured"]
@@ -82,22 +96,32 @@ class TestMockPlumbing:
         assert m["scripted_success_rate"] == 1.0
         assert res["pass"] is True
         # the runs really went through the engine: real sandbox steps recorded
-        scripted = [d for d in m["details"] if d["backend"] == "scripted-compute-solver"]
+        scripted = [
+            d for d in m["details"] if d["backend"] == "scripted-compute-solver"
+        ]
         assert scripted and all(d["n_steps"] >= 1 and d["steps_ok"] for d in scripted)
         assert all(d["terminated"] == "final" for d in m["details"])
 
     def test_mock_measured_varies_with_seed(self):
         # Anti-mock guard convention: a static fabricated measured dict would be
         # identical across seeds; here the task mix + per-task details vary.
-        kw = dict(dottie_n_echo=2, dottie_n_scripted=1)
-        m1 = dottie_assistant(MockModel(seed=1), MockTokenizer(), "cpu", **kw)["measured"]
-        m2 = dottie_assistant(MockModel(seed=2), MockTokenizer(), "cpu", **kw)["measured"]
+        kw = {"dottie_n_echo": 2, "dottie_n_scripted": 1}
+        m1 = dottie_assistant(MockModel(seed=1), MockTokenizer(), "cpu", **kw)[
+            "measured"
+        ]
+        m2 = dottie_assistant(MockModel(seed=2), MockTokenizer(), "cpu", **kw)[
+            "measured"
+        ]
         assert m1 != m2, "dottie_assistant mock measured did not vary with seed"
         assert m1["task_mix"] != m2["task_mix"]
 
     def test_runs_via_run_harness_mock(self):
-        res = run_harness(eval_names=["dottie_assistant"], mode="mock",
-                          dottie_n_echo=1, dottie_n_scripted=1)
+        res = run_harness(
+            eval_names=["dottie_assistant"],
+            mode="mock",
+            dottie_n_echo=1,
+            dottie_n_scripted=1,
+        )
         entry = res["evals"]["dottie_assistant"]
         assert "error" not in entry, entry.get("error")
         assert entry["measured"]["mode_label"] == "mock_plumbing"
@@ -120,45 +144,54 @@ class TestHonestFailures:
 
     def test_real_missing_dottie_fails_honestly(self, monkeypatch):
         monkeypatch.setenv("DOTTIE_ASSISTANT_ROOT", "/nonexistent-dottie-root")
-        res = dottie_assistant(object(), MockTokenizer(), "cpu")  # non-MockModel → real path
+        res = dottie_assistant(
+            object(), MockTokenizer(), "cpu"
+        )  # non-MockModel → real path
         assert res["pass"] is False and res["measured"] is None
         assert "dottie app not found" in res["error"]
 
-    @pytest.mark.skipif(not _PLUMBING_READY,
-                        reason=f"dottie app unavailable: {_IMPORT_ERR}")
+    @pytest.mark.skipif(
+        not _PLUMBING_READY, reason=f"dottie app unavailable: {_IMPORT_ERR}"
+    )
     def test_real_missing_ava_ckpt_fails_honestly(self, monkeypatch):
         monkeypatch.setenv("DOTTIE_AVA_CKPT", "/nonexistent-ckpt.pt")
         res = dottie_assistant(object(), MockTokenizer(), "cpu")
         assert res["pass"] is False and res["measured"] is None
         assert "unavailable" in res["error"] and "/nonexistent-ckpt.pt" in res["error"]
 
-    @pytest.mark.skipif(not _PLUMBING_READY,
-                        reason=f"dottie app unavailable: {_IMPORT_ERR}")
+    @pytest.mark.skipif(
+        not _PLUMBING_READY, reason=f"dottie app unavailable: {_IMPORT_ERR}"
+    )
     def test_real_ollama_backend_unreachable_fails_honestly(self, monkeypatch):
         # port 9 (discard) on localhost: nothing listens in CI — connect refuses fast.
         monkeypatch.setenv("DOTTIE_OLLAMA_URL", "http://127.0.0.1:9")
-        res = dottie_assistant(object(), MockTokenizer(), "cpu", dottie_backend="ollama")
+        res = dottie_assistant(
+            object(), MockTokenizer(), "cpu", dottie_backend="ollama"
+        )
         assert res["pass"] is False and res["measured"] is None
         assert "'ollama' unavailable" in res["error"]
 
-    @pytest.mark.skipif(not _PLUMBING_READY,
-                        reason=f"dottie app unavailable: {_IMPORT_ERR}")
+    @pytest.mark.skipif(
+        not _PLUMBING_READY, reason=f"dottie app unavailable: {_IMPORT_ERR}"
+    )
     def test_real_rejects_mock_only_backend(self):
         res = dottie_assistant(object(), MockTokenizer(), "cpu", dottie_backend="echo")
         assert res["pass"] is False and res["measured"] is None
         assert "unsupported real backend" in res["error"]
 
 
-@pytest.mark.skipif(not _REAL_READY,
-                    reason="ava smoke checkpoint / torch / dottie app absent")
+@pytest.mark.skipif(
+    not _REAL_READY, reason="ava smoke checkpoint / torch / dottie app absent"
+)
 class TestRealAvaSmoke:
     """Real end-to-end: dottie engine + AvaPolicy over the real smoke checkpoint.
     The honest expectation at smoke scale is a near-zero success rate; the
     assertions check realness and honesty labels, not capability."""
 
     def test_real_ava_success_rate_is_honest_smoke_measurement(self):
-        res = dottie_assistant(object(), MockTokenizer(), "cpu",
-                               dottie_n_real=2, dottie_max_steps=2)
+        res = dottie_assistant(
+            object(), MockTokenizer(), "cpu", dottie_n_real=2, dottie_max_steps=2
+        )
         assert "error" not in res, res.get("error")
         m = res["measured"]
         assert m["backend"] == "ava"

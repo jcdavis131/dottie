@@ -6,6 +6,7 @@ Wires FastAPI endpoints to ``ava.serve_engine.ServeEngine``. Checkpoint loads
 in the lifespan handler so a broken ``AVA_CKPT`` fails at boot, not on first
 request. Hot-reload of ``ckpt/latest`` (text pointer) lives inside the engine.
 """
+
 from __future__ import annotations
 
 import json
@@ -13,7 +14,7 @@ import os
 import re
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, WebSocket
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
@@ -28,7 +29,9 @@ _REPO = Path(__file__).resolve().parent
 # at AVA_HOST_REPORTS_DIR=/host_reports so /evals sees rung results without
 # docker-cp into the volume.
 _REPORTS = Path(os.environ.get("AVA_REPORTS_DIR", str(_REPO / "reports")))
-_EVAL_JSON = _REPORTS / "branch_eval_results_real.json"  # legacy default; prefer resolve_*
+_EVAL_JSON = (
+    _REPORTS / "branch_eval_results_real.json"
+)  # legacy default; prefer resolve_*
 _EVAL_MD = _REPORTS / "REPORT_REAL.md"
 _REPORT_HTML = _REPORTS / "index.html"
 # Read-only mount of the sibling agent-eval repo (see docker-compose.yml's
@@ -36,7 +39,9 @@ _REPORT_HTML = _REPORTS / "index.html"
 # a different axis from the pretraining evals above (tool-use/grounding vs.
 # perplexity/probes/J-Space). Optional: /agent_eval/scoreboard 404s cleanly
 # if the mount isn't present (e.g. a bare-metal boot with no AGENT_EVAL_DIR).
-_AGENT_EVAL_DIR = Path(os.environ.get("AGENT_EVAL_DIR", str(_REPO.parent / "agent-eval")))
+_AGENT_EVAL_DIR = Path(
+    os.environ.get("AGENT_EVAL_DIR", str(_REPO.parent / "agent-eval"))
+)
 _AGENT_EVAL_SCOREBOARD = _AGENT_EVAL_DIR / "scoreboard.md"
 
 # All metric fields render as "—" until the page fetches real values from
@@ -136,20 +141,20 @@ loadEvalSummary();
 
 class InspectReq(BaseModel):
     text: str
-    instruction: Optional[str] = None
-    image: Optional[str] = None
+    instruction: str | None = None
+    image: str | None = None
 
 
 class InterveneReq(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    from_: Optional[str] = Field(default=None, alias="from")
-    to: Optional[str] = None
+    from_: str | None = Field(default=None, alias="from")
+    to: str | None = None
     branch: str = "base"
-    text: Optional[str] = None
+    text: str | None = None
     space: str = "system2"
-    from_c: Optional[str] = None
-    to_c: Optional[str] = None
+    from_c: str | None = None
+    to_c: str | None = None
 
     @property
     def from_concept(self) -> str:
@@ -204,7 +209,9 @@ app = FastAPI(title="Ava J-Space Viewer v6.4", lifespan=lifespan)
 # and the running dashboard are unaffected. Set it to a comma-separated origin
 # allowlist (e.g. "https://arxiviq.com") only when exposing /assistant to a
 # browser frontend through a tunnel.
-_ASSISTANT_CORS = [o.strip() for o in os.environ.get("AVA_ASSISTANT_CORS", "").split(",") if o.strip()]
+_ASSISTANT_CORS = [
+    o.strip() for o in os.environ.get("AVA_ASSISTANT_CORS", "").split(",") if o.strip()
+]
 if _ASSISTANT_CORS:
     from fastapi.middleware.cors import CORSMiddleware
 
@@ -215,11 +222,12 @@ if _ASSISTANT_CORS:
         allow_headers=["Authorization", "Content-Type"],
     )
 
+
 # Opt-in bearer auth for POST /assistant only (spec 15 §2.2 "Trust"). Default
 # OFF (open locally); when AVA_ASSISTANT_TOKEN is set, /assistant requires
 # `Authorization: Bearer <token>`. Never applied to the read-only status/HTML
 # routes or any pre-existing endpoint.
-def _require_assistant_token(authorization: Optional[str] = Header(None)) -> None:
+def _require_assistant_token(authorization: str | None = Header(None)) -> None:
     expected = os.environ.get("AVA_ASSISTANT_TOKEN", "")
     if not expected:
         return  # auth disabled
@@ -339,9 +347,12 @@ def chat(req: ChatReq):
     """
     if not req.messages:
         raise HTTPException(status_code=422, detail="messages must be non-empty")
-    prompt = "".join(
-        f"{_ROLE_TAGS.get(m.role, '<|user|>')}{m.content}" for m in req.messages
-    ) + "<|assistant|>"
+    prompt = (
+        "".join(
+            f"{_ROLE_TAGS.get(m.role, '<|user|>')}{m.content}" for m in req.messages
+        )
+        + "<|assistant|>"
+    )
     result = get_engine().generate(
         prompt,
         max_tokens=min(req.max_tokens, 256),
@@ -352,7 +363,11 @@ def chat(req: ChatReq):
     m = _TURN_END_RE.search(content)
     if m:
         content = content[: m.start()]
-    return {"content": content, "tokens": result["tokens"], "latency_ms": result["latency_ms"]}
+    return {
+        "content": content,
+        "tokens": result["tokens"],
+        "latency_ms": result["latency_ms"],
+    }
 
 
 @app.get("/assistant", response_class=HTMLResponse)
@@ -393,7 +408,7 @@ def assistant(req: AssistantReq):
         raise HTTPException(
             status_code=503,
             detail=f"assistant engine unavailable ({type(exc).__name__}); "
-                   "the trainer likely owns the GPU (AVA_SKIP_ENGINE_BOOT=1)",
+            "the trainer likely owns the GPU (AVA_SKIP_ENGINE_BOOT=1)",
         )
     messages = [{"role": m.role, "content": m.content} for m in req.messages]
     result = run_assistant(
@@ -438,7 +453,7 @@ async def research_status_proxy():
         try:
             data = await asyncio.to_thread(_fetch, url)
             return {"ok": True, "source": url, "status": data}
-        except Exception as exc:  # noqa: BLE001 — report, don't fabricate
+        except Exception as exc:
             errors.append(f"{url}: {type(exc).__name__}: {exc}")
     return JSONResponse(
         status_code=502,
@@ -479,15 +494,14 @@ async def network_status(norms: int = 0):
         collect_network_status, include_ckpt_norms=bool(norms)
     )
 
+
 @app.get("/report/offline")
 async def report_offline():
     """Pre-built static training report from scripts/make_report.py (loss
     curves, LR schedule, half-lives, routing, eval). Kept as a sibling so
     the live /report page stays focused on a single-screen summary."""
     if not _REPORT_HTML.is_file():
-        raise HTTPException(
-            status_code=404, detail="run scripts/make_report.py first"
-        )
+        raise HTTPException(status_code=404, detail="run scripts/make_report.py first")
     return FileResponse(_REPORT_HTML)
 
 
@@ -624,7 +638,7 @@ def agent_eval_scoreboard():
 # CDN). Mounted last so it can never shadow an API route; check_dir=False keeps
 # boot alive on a checkout without the webapp (requests then 404 honestly).
 # fastapi.staticfiles is starlette's — already a dependency, nothing new.
-from fastapi.staticfiles import StaticFiles  # noqa: E402
+from fastapi.staticfiles import StaticFiles
 
 app.mount(
     "/app",
@@ -637,8 +651,10 @@ app.mount(
 async def ws_stream(ws: WebSocket):
     await ws.accept()
     raw = await ws.receive_text()
-    prompt = raw.strip() if raw and raw.strip() and raw.strip() != "subscribe" else (
-        "The number of legs on the animal that spins webs is"
+    prompt = (
+        raw.strip()
+        if raw and raw.strip() and raw.strip() != "subscribe"
+        else ("The number of legs on the animal that spins webs is")
     )
     for block in get_engine().block_stream(prompt):
         await ws.send_text(json.dumps(block))

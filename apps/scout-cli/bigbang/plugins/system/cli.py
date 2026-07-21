@@ -9,34 +9,73 @@ from bigbang.core.audit import tail_events
 from bigbang.core.output import emit
 from bigbang.core.plugin_loader import get_all_manifests
 
-app = typer.Typer(name="system", help="🖥️ System — doctor, audit, policy, scaffold", no_args_is_help=True)
+app = typer.Typer(
+    name="system",
+    help="🖥️ System — doctor, audit, policy, scaffold",
+    no_args_is_help=True,
+)
+
 
 def run_doctor():
     from pathlib import Path
+
     import httpx
+
     checks = []
     checks.append({"check": "python", "status": platform.python_version(), "ok": True})
-    checks.append({"check": "git", "status": shutil.which("git") or "missing", "ok": bool(shutil.which("git"))})
-    checks.append({"check": "docker", "status": shutil.which("docker") or "missing", "ok": bool(shutil.which("docker"))})
+    checks.append(
+        {
+            "check": "git",
+            "status": shutil.which("git") or "missing",
+            "ok": bool(shutil.which("git")),
+        }
+    )
+    checks.append(
+        {
+            "check": "docker",
+            "status": shutil.which("docker") or "missing",
+            "ok": bool(shutil.which("docker")),
+        }
+    )
     try:
         r = httpx.get("http://localhost:11434/api/tags", timeout=2)
         checks.append({"check": "ollama", "status": f"up {r.status_code}", "ok": True})
     except Exception:
-        checks.append({"check": "ollama", "status": "down (expected local)", "ok": False})
+        checks.append(
+            {"check": "ollama", "status": "down (expected local)", "ok": False}
+        )
     mem = Path.home() / "MEMORY.md"
-    checks.append({"check": "MEMORY.md", "status": f"{mem} {'exists' if mem.exists() else 'missing'}", "ok": mem.exists()})
+    checks.append(
+        {
+            "check": "MEMORY.md",
+            "status": f"{mem} {'exists' if mem.exists() else 'missing'}",
+            "ok": mem.exists(),
+        }
+    )
     import os as _os
 
     def _file_check(name: str, path: Path, require_mode_0600: bool = False):
         """Real check: ok only when the file exists, is readable, and (for the vault) is 0600."""
         if not path.exists():
-            return {"check": name, "status": f"{path} missing (not created yet)", "ok": False}
+            return {
+                "check": name,
+                "status": f"{path} missing (not created yet)",
+                "ok": False,
+            }
         if not _os.access(path, _os.R_OK):
-            return {"check": name, "status": f"{path} exists but not readable", "ok": False}
+            return {
+                "check": name,
+                "status": f"{path} exists but not readable",
+                "ok": False,
+            }
         if require_mode_0600:
             mode = path.stat().st_mode & 0o777
             if mode != 0o600:
-                return {"check": name, "status": f"{path} exists but mode is {oct(mode)} (want 0600)", "ok": False}
+                return {
+                    "check": name,
+                    "status": f"{path} exists but mode is {oct(mode)} (want 0600)",
+                    "ok": False,
+                }
             return {"check": name, "status": f"{path} exists, mode 0600", "ok": True}
         return {"check": name, "status": f"{path} exists, readable", "ok": True}
 
@@ -44,21 +83,45 @@ def run_doctor():
     checks.append(_file_check("vault", share / "secrets.json", require_mode_0600=True))
     checks.append(_file_check("audit_log", share / "audit.jsonl"))
     checks.append(_file_check("tool_registry", share / "registry.json"))
-    emit({"message": "doctor complete", "checks": checks, "security": "vault 0600, policy caps, audit jsonl"}, command="system doctor")
+    emit(
+        {
+            "message": "doctor complete",
+            "checks": checks,
+            "security": "vault 0600, policy caps, audit jsonl",
+        },
+        command="system doctor",
+    )
+
 
 @app.command("doctor")
 def doctor():
     run_doctor()
 
+
 @app.command("audit")
 def audit_cmd(n: int = typer.Option(20, help="last n events")):
     events = tail_events(n)
-    emit({"audit_tail": events, "count": len(events), "file": "~/.local/share/bigbang/audit.jsonl"}, command="system audit")
+    emit(
+        {
+            "audit_tail": events,
+            "count": len(events),
+            "file": "~/.local/share/bigbang/audit.jsonl",
+        },
+        command="system audit",
+    )
+
 
 @app.command("policy")
 def policy_cmd():
     manifests = get_all_manifests()
-    emit({"policies": manifests, "note": "each plugin/tool declares capabilities.network, filesystem, secrets — default deny"}, command="system policy")
+    emit(
+        {
+            "policies": manifests,
+            "note": "each plugin/tool declares capabilities.network, filesystem, secrets — default deny",
+        },
+        command="system policy",
+    )
+
 
 @app.command("scaffold")
 def scaffold_plugin(
@@ -159,6 +222,7 @@ capabilities:
         },
         command="system scaffold",
     )
+
 
 def register(root):
     root.add_typer(app, name="system")

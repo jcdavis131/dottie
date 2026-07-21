@@ -1,8 +1,11 @@
 """Auto plugin discovery with manifest + capability awareness"""
-from pathlib import Path
+
 import importlib
+from pathlib import Path
+
 import typer
 import yaml
+
 
 def _load_manifest(pkg_path: Path):
     mf = pkg_path / "manifest.yaml"
@@ -12,6 +15,7 @@ def _load_manifest(pkg_path: Path):
         except Exception:
             return {}
     return {}
+
 
 def discover_plugins(app: typer.Typer):
     plugins_pkg = Path(__file__).parent.parent / "plugins"
@@ -25,31 +29,37 @@ def discover_plugins(app: typer.Typer):
             module = importlib.import_module(full_mod)
             # attach manifest if present
             manifest = _load_manifest(pkg_path)
-            if hasattr(module, "app") and isinstance(getattr(module, "app"), typer.Typer):
-                sub_app = getattr(module, "app")
+            if hasattr(module, "app") and isinstance(module.app, typer.Typer):
+                sub_app = module.app
                 # store manifest on app for policy checks
                 sub_app._bb_manifest = manifest
                 app.add_typer(sub_app, name=pkg_path.name)
             elif hasattr(module, "register"):
-                getattr(module, "register")(app)
+                module.register(app)
         except ModuleNotFoundError:
             try:
                 full_mod2 = f"bigbang.plugins.{pkg_path.name}"
                 module = importlib.import_module(full_mod2)
                 if hasattr(module, "app"):
-                    app.add_typer(getattr(module, "app"), name=pkg_path.name)
+                    app.add_typer(module.app, name=pkg_path.name)
                 elif hasattr(module, "register"):
-                    getattr(module, "register")(app)
-            except Exception as e:
+                    module.register(app)
+            except Exception:
                 # fail silent but log
                 pass
-        except Exception as e:
+        except Exception:
             # allow other plugins to load
             pass
 
+
 def list_plugin_names():
     plugins_pkg = Path(__file__).parent.parent / "plugins"
-    return [p.name for p in plugins_pkg.iterdir() if p.is_dir() and not p.name.startswith("__") and not p.name.startswith(".")]
+    return [
+        p.name
+        for p in plugins_pkg.iterdir()
+        if p.is_dir() and not p.name.startswith("__") and not p.name.startswith(".")
+    ]
+
 
 def get_all_manifests():
     plugins_pkg = Path(__file__).parent.parent / "plugins"
@@ -61,6 +71,7 @@ def get_all_manifests():
         if mf.exists():
             try:
                 import yaml
+
                 out[p.name] = yaml.safe_load(mf.read_text())
             except Exception:
                 out[p.name] = {}

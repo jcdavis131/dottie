@@ -12,10 +12,9 @@ from __future__ import annotations
 import multiprocessing as mp
 import threading
 import time
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
-
 from ava.pipeline.manifest import (
     CLAIMED_CURATE,
     CONSUMED,
@@ -29,6 +28,9 @@ from ava.pipeline.manifest import (
     worker_id,
 )
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 N_SHARDS = 1000
 N_CLAIMERS = 12
 
@@ -41,12 +43,19 @@ def db_path(tmp_path: Path) -> str:
 def _seed(db_path: str, n: int = N_SHARDS) -> None:
     with Manifest(db_path) as m:
         for i in range(n):
-            m.add_shard(f"s{i:05d}", source="test", phase=i % 6, path=f"/raw/s{i:05d}.jsonl.zst",
-                        bytes_=1000, docs=10)
+            m.add_shard(
+                f"s{i:05d}",
+                source="test",
+                phase=i % 6,
+                path=f"/raw/s{i:05d}.jsonl.zst",
+                bytes_=1000,
+                docs=10,
+            )
 
 
 # --------------------------------------------------------------------------
 # The headline property: no double claims, no lost shards.
+
 
 def _claim_loop(db_path: str, out: list) -> None:
     me = worker_id()
@@ -64,8 +73,10 @@ def test_concurrent_claims_no_double_no_loss(db_path):
     _seed(db_path)
 
     results: list[list[str]] = [[] for _ in range(N_CLAIMERS)]
-    threads = [threading.Thread(target=_claim_loop, args=(db_path, results[i]))
-               for i in range(N_CLAIMERS)]
+    threads = [
+        threading.Thread(target=_claim_loop, args=(db_path, results[i]))
+        for i in range(N_CLAIMERS)
+    ]
     for t in threads:
         t.start()
     for t in threads:
@@ -91,8 +102,10 @@ def _proc_claim(db_path: str, q: mp.Queue) -> None:
     q.put(got)
 
 
-@pytest.mark.skipif(mp.get_start_method(allow_none=True) == "spawn" and __name__ != "__main__",
-                    reason="spawn re-imports; guarded below")
+@pytest.mark.skipif(
+    mp.get_start_method(allow_none=True) == "spawn" and __name__ != "__main__",
+    reason="spawn re-imports; guarded below",
+)
 def test_cross_process_claims(db_path):
     """Same property across OS processes -- the real container topology."""
     _seed(db_path, n=200)
@@ -112,6 +125,7 @@ def test_cross_process_claims(db_path):
 
 # --------------------------------------------------------------------------
 # Leases
+
 
 def test_expired_lease_requeues(db_path):
     _seed(db_path, n=1)
@@ -163,13 +177,16 @@ def test_renew_extends_only_for_holder(db_path):
 # --------------------------------------------------------------------------
 # State machine
 
+
 def test_full_lifecycle(db_path):
     _seed(db_path, n=1)
     with Manifest(db_path) as m:
         m.freeze_tokenizer("abc123", 8192)
 
         s = m.claim("curate", by="c1")
-        m.complete(s.id, by="c1", path="/packed/s.bin", tokens=4096, tokenizer_sha="abc123")
+        m.complete(
+            s.id, by="c1", path="/packed/s.bin", tokens=4096, tokenizer_sha="abc123"
+        )
         assert m.counts_by_state() == {PACKED: 1}
         assert m.tokens_ready(phase=0) == 4096
 
@@ -193,23 +210,30 @@ def test_failure_retries_then_parks(db_path):
     _seed(db_path, n=1)
     with Manifest(db_path, max_attempts=2) as m:
         s = m.claim("curate", by="w")
-        assert m.fail(s.id, by="w", error="boom") == RAW      # attempt 1 -> retry
+        assert m.fail(s.id, by="w", error="boom") == RAW  # attempt 1 -> retry
 
         s = m.claim("curate", by="w")
-        assert m.fail(s.id, by="w", error="boom") == FAILED   # attempt 2 -> parked
+        assert m.fail(s.id, by="w", error="boom") == FAILED  # attempt 2 -> parked
 
-        assert m.claim("curate", by="w") is None              # poison shard not respun
+        assert m.claim("curate", by="w") is None  # poison shard not respun
 
 
 # --------------------------------------------------------------------------
 # Split protection: the trainer must never see val/test; janitor must not delete them.
 
+
 def test_trainer_never_claims_val_or_test(db_path):
     with Manifest(db_path) as m:
         m.freeze_tokenizer("t", 8192)
         for split in ("train", "val", "test"):
-            m.add_shard(f"s-{split}", source="x", phase=0, path=f"/p/{split}.bin",
-                        split=split, state=PACKED)
+            m.add_shard(
+                f"s-{split}",
+                source="x",
+                phase=0,
+                path=f"/p/{split}.bin",
+                split=split,
+                state=PACKED,
+            )
             m.db.execute("UPDATE shards SET tokens=100 WHERE id=?", (f"s-{split}",))
 
         claimed = []
@@ -222,7 +246,9 @@ def test_trainer_never_claims_val_or_test(db_path):
 
 def test_janitor_refuses_to_delete_protected_split(db_path):
     with Manifest(db_path) as m:
-        m.add_shard("v1", source="x", phase=0, path="/p/v.bin", split="val", state=PACKED)
+        m.add_shard(
+            "v1", source="x", phase=0, path="/p/v.bin", split="val", state=PACKED
+        )
         m.db.execute("UPDATE shards SET state=? WHERE id='v1'", (CONSUMED,))
         with pytest.raises(StateError, match="protected split"):
             m.mark_deleted(["v1"])
@@ -231,14 +257,19 @@ def test_janitor_refuses_to_delete_protected_split(db_path):
 def test_consumed_shards_excludes_protected(db_path):
     with Manifest(db_path) as m:
         for split in ("train", "val"):
-            m.add_shard(f"c-{split}", source="x", phase=0, path="/p", split=split, state=PACKED)
-            m.db.execute("UPDATE shards SET state=? WHERE id=?", (CONSUMED, f"c-{split}"))
+            m.add_shard(
+                f"c-{split}", source="x", phase=0, path="/p", split=split, state=PACKED
+            )
+            m.db.execute(
+                "UPDATE shards SET state=? WHERE id=?", (CONSUMED, f"c-{split}")
+            )
         ids = [s.id for s in m.consumed_shards()]
         assert ids == ["c-train"]
 
 
 # --------------------------------------------------------------------------
 # Tokenizer freeze gate
+
 
 def test_pack_with_wrong_tokenizer_rejected(db_path):
     _seed(db_path, n=1)
@@ -264,9 +295,17 @@ def test_complete_to_packed_resets_attempts(db_path):
         m.freeze_tokenizer("sha", 8192)
         s = m.claim("curate", by="c")
         assert s.attempts == 1
-        m.complete(s.id, by="c", tokens=100, path="/packed/a.bin",
-                   tokenizer_sha="sha", split="train")
-        row = m.db.execute("SELECT attempts, state FROM shards WHERE id=?", (s.id,)).fetchone()
+        m.complete(
+            s.id,
+            by="c",
+            tokens=100,
+            path="/packed/a.bin",
+            tokenizer_sha="sha",
+            split="train",
+        )
+        row = m.db.execute(
+            "SELECT attempts, state FROM shards WHERE id=?", (s.id,)
+        ).fetchone()
         assert row["state"] == PACKED
         assert row["attempts"] == 0
 
@@ -276,8 +315,14 @@ def test_clear_tokenizer_for_retrain_allows_new_freeze(db_path):
     with Manifest(db_path) as m:
         m.freeze_tokenizer("sha-a", 8192)
         s = m.claim("curate", by="c")
-        m.complete(s.id, by="c", tokens=100, path="/packed/a.bin",
-                   tokenizer_sha="sha-a", split="train")
+        m.complete(
+            s.id,
+            by="c",
+            tokens=100,
+            path="/packed/a.bin",
+            tokenizer_sha="sha-a",
+            split="train",
+        )
         s2 = m.claim("train", by="t")
         with pytest.raises(StateError, match="CLAIMED_"):
             m.clear_tokenizer_for_retrain()
@@ -301,6 +346,7 @@ def test_pack_before_tokenizer_frozen_rejected(db_path):
 # --------------------------------------------------------------------------
 # Cursors (collector resume)
 
+
 def test_cursor_roundtrip_and_idempotent_add(db_path):
     with Manifest(db_path) as m:
         assert m.get_cursor("fineweb") == (None, 0)
@@ -310,11 +356,14 @@ def test_cursor_roundtrip_and_idempotent_add(db_path):
         assert m.get_cursor("fineweb") == ("offset:2000", 2000)
 
         assert m.add_shard("dup", source="s", phase=0, path="/p") is True
-        assert m.add_shard("dup", source="s", phase=0, path="/p") is False  # no duplicate
+        assert (
+            m.add_shard("dup", source="s", phase=0, path="/p") is False
+        )  # no duplicate
 
 
 # --------------------------------------------------------------------------
 # release_claim: a clean handback is not a failure
+
 
 def test_release_claim_does_not_burn_attempts(db_path):
     """A trainer restarting mid-shard hands the shard back. Doing that through
@@ -343,6 +392,6 @@ def test_release_claim_returns_train_shard_to_packed(db_path):
         m.add_shard("p", source="x", phase=0, path="/p/p.bin", state=PACKED)
         m.db.execute("UPDATE shards SET tokens=100 WHERE id='p'")
         s = m.claim("train", by="trainer-1")
-        assert m.tokens_ready(0) == 0                 # locked while claimed
+        assert m.tokens_ready(0) == 0  # locked while claimed
         assert m.release_claim(s.id, by="trainer-1") == PACKED
-        assert m.tokens_ready(0) == 100              # available again
+        assert m.tokens_ready(0) == 100  # available again

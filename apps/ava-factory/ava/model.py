@@ -1,5 +1,8 @@
 """Shim: ava.model -> dottie.model (renamed to Dottie)"""
-from dottie.model import *  # noqa: F401,F403
-import dottie.model as _m
+
 import sys
+
+import dottie.model as _m
+from dottie.model import *  # noqa: F403
+
 sys.modules[__name__] = _m

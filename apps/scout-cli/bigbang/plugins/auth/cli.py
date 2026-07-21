@@ -5,21 +5,26 @@ secure vault storage, and env fallback.
 
 Solo personal project, no connection to employer, built with public/free-tier only
 """
+
 import json
 import os
 import time
 import webbrowser
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional, Dict, Any
-from datetime import datetime, timezone
+from typing import Any
 
 import typer
 from rich.console import Console
 
-from bigbang.core.cli_ux import examples_epilog, prompt_secret_or_fail, require_secret_value
-from bigbang.core.output import emit
-from bigbang.core.security import set_secret, get_secret
+from bigbang.core.cli_ux import (
+    examples_epilog,
+    prompt_secret_or_fail,
+    require_secret_value,
+)
 from bigbang.core.http_utils import sanitize_no_proxy_env
+from bigbang.core.output import emit
+from bigbang.core.security import get_secret, set_secret
 
 # Ensure NO_PROXY sanitized for httpx
 sanitize_no_proxy_env()
@@ -48,7 +53,8 @@ REG = Path.home() / ".local" / "share" / "bigbang" / "auth.json"
 # Storage helpers
 # ---------------------------------------------------------------------------
 
-def _load_auth() -> Dict[str, Any]:
+
+def _load_auth() -> dict[str, Any]:
     """Load auth registry from REG. Returns {} if missing/corrupt."""
     if REG.exists():
         try:
@@ -57,7 +63,8 @@ def _load_auth() -> Dict[str, Any]:
             return {}
     return {}
 
-def _save_auth(data: Dict[str, Any]) -> None:
+
+def _save_auth(data: dict[str, Any]) -> None:
     """Save auth registry with 0600 perms."""
     REG.parent.mkdir(parents=True, exist_ok=True)
     REG.write_text(json.dumps(data, indent=2))
@@ -66,18 +73,21 @@ def _save_auth(data: Dict[str, Any]) -> None:
     except Exception:
         pass
 
+
 # Backward compat shims for old names
-def _load() -> Dict[str, Any]:
+def _load() -> dict[str, Any]:
     return _load_auth()
 
-def _save(d: Dict[str, Any]) -> None:
+
+def _save(d: dict[str, Any]) -> None:
     return _save_auth(d)
+
 
 # ---------------------------------------------------------------------------
 # Service configs for device flow
 # ---------------------------------------------------------------------------
 
-SERVICE_CONFIGS: Dict[str, Dict[str, Any]] = {
+SERVICE_CONFIGS: dict[str, dict[str, Any]] = {
     "github": {
         "display_name": "GitHub",
         "device_code_url": "https://github.com/login/device/code",
@@ -128,7 +138,8 @@ SERVICE_CONFIGS: Dict[str, Dict[str, Any]] = {
 # Token retrieval with env fallback
 # ---------------------------------------------------------------------------
 
-def get_token(service: str) -> Optional[str]:
+
+def get_token(service: str) -> str | None:
     """
     Internal helper: retrieve token for service via security.get_secret with env fallback.
     Order:
@@ -146,13 +157,15 @@ def get_token(service: str) -> Optional[str]:
     if cfg and cfg.get("vault_key"):
         candidates.append(cfg["vault_key"])
     # Generic variants
-    candidates.extend([
-        f"{svc.upper()}_TOKEN",
-        f"{svc.upper()}_API_KEY",
-        f"{svc.upper()}_PAT",
-        svc.upper(),
-        svc,
-    ])
+    candidates.extend(
+        [
+            f"{svc.upper()}_TOKEN",
+            f"{svc.upper()}_API_KEY",
+            f"{svc.upper()}_PAT",
+            svc.upper(),
+            svc,
+        ]
+    )
     # Deduplicate preserve order
     seen = set()
     uniq = []
@@ -170,14 +183,20 @@ def get_token(service: str) -> Optional[str]:
             continue
 
     # Direct env fallback (get_secret already checks BB_SECRET_{key}, but also check bare tokens for DX)
-    for env_name in [f"{svc.upper()}_TOKEN", f"{svc.upper()}_API_KEY", f"{svc.upper()}_PAT"]:
+    for env_name in [
+        f"{svc.upper()}_TOKEN",
+        f"{svc.upper()}_API_KEY",
+        f"{svc.upper()}_PAT",
+    ]:
         if env_name in os.environ and os.environ[env_name].strip():
             return os.environ[env_name].strip()
 
     return None
 
 
-def _resolve_client_id(service: str, cfg: Dict[str, Any], explicit: Optional[str] = None) -> Optional[str]:
+def _resolve_client_id(
+    service: str, cfg: dict[str, Any], explicit: str | None = None
+) -> str | None:
     """Resolve OAuth client_id from explicit arg, env vars, or vault."""
     if explicit and explicit.strip():
         return explicit.strip()
@@ -193,7 +212,7 @@ def _resolve_client_id(service: str, cfg: Dict[str, Any], explicit: Optional[str
         # Direct get_secret lookup for similar key
         # strip BB_SECRET_ prefix
         if env_name.startswith("BB_SECRET_"):
-            inner = env_name[len("BB_SECRET_"):]
+            inner = env_name[len("BB_SECRET_") :]
             v = get_secret(inner)
             if v:
                 return v
@@ -221,11 +240,13 @@ def _resolve_client_id(service: str, cfg: Dict[str, Any], explicit: Optional[str
 
     return None
 
+
 # ---------------------------------------------------------------------------
 # Device flow helpers
 # ---------------------------------------------------------------------------
 
-def _prompt_for_pat(service: str, flag_value: Optional[str] = None) -> Optional[str]:
+
+def _prompt_for_pat(service: str, flag_value: str | None = None) -> str | None:
     """Resolve PAT/API key from --token, else prompt on TTY, else fail (never hang)."""
     svc_display = SERVICE_CONFIGS.get(service.lower(), {}).get("display_name", service)
     cfg = SERVICE_CONFIGS.get(service.lower(), {})
@@ -261,14 +282,16 @@ def _open_browser_url(url: str, do_open: bool) -> None:
         webbrowser.open(url)
         _console.print(f"[dim]Opened browser to {url}[/dim]")
     except Exception as e:
-        _console.print(f"[dim]Could not open browser automatically: {e}. Please open {url} manually.[/dim]")
+        _console.print(
+            f"[dim]Could not open browser automatically: {e}. Please open {url} manually.[/dim]"
+        )
 
 
 def _do_github_device_flow(
     client_id: str,
-    scopes: Optional[str] = None,
+    scopes: str | None = None,
     open_browser_flag: bool = True,
-) -> Optional[str]:
+) -> str | None:
     """
     Full GitHub OAuth device flow:
     POST https://github.com/login/device/code with client_id
@@ -305,13 +328,23 @@ def _do_github_device_flow(
             if resp.status_code != 200:
                 try:
                     err_j = resp.json()
-                    msg = err_j.get("error_description") or err_j.get("error") or resp.text
+                    msg = (
+                        err_j.get("error_description")
+                        or err_j.get("error")
+                        or resp.text
+                    )
                 except Exception:
                     msg = resp.text
-                _console.print(f"[red]Failed to start device flow ({resp.status_code}): {msg}[/red]")
+                _console.print(
+                    f"[red]Failed to start device flow ({resp.status_code}): {msg}[/red]"
+                )
                 return None
 
-            data = resp.json() if "application/json" in resp.headers.get("content-type", "") else {}
+            data = (
+                resp.json()
+                if "application/json" in resp.headers.get("content-type", "")
+                else {}
+            )
             if not data:
                 # Try urlencoded fallback
                 try:
@@ -324,20 +357,28 @@ def _do_github_device_flow(
 
             device_code = data.get("device_code")
             user_code = data.get("user_code")
-            verification_uri = data.get("verification_uri") or "https://github.com/login/device"
-            verification_uri_complete = data.get("verification_uri_complete") or verification_uri
+            verification_uri = (
+                data.get("verification_uri") or "https://github.com/login/device"
+            )
+            verification_uri_complete = (
+                data.get("verification_uri_complete") or verification_uri
+            )
             expires_in = int(data.get("expires_in", 900))
             interval = int(data.get("interval", 5))
 
             if not device_code or not user_code:
-                _console.print(f"[red]Device flow initiation failed, response: {data}[/red]")
+                _console.print(
+                    f"[red]Device flow initiation failed, response: {data}[/red]"
+                )
                 return None
 
             # Step 2: Instruct user
             _console.print("\n[bold]🔑 GitHub Device Flow[/bold]")
             _console.print(f"  1. Go to: [bold cyan]{verification_uri}[/bold cyan]")
             _console.print(f"  2. Enter code: [bold green]{user_code}[/bold green]")
-            _console.print(f"  3. Complete URL (with code): {verification_uri_complete}")
+            _console.print(
+                f"  3. Complete URL (with code): {verification_uri_complete}"
+            )
             _console.print(f"  Expires in {expires_in}s, polling every {interval}s")
             _console.print("  Waiting for authorization...\n")
 
@@ -349,7 +390,9 @@ def _do_github_device_flow(
 
             while True:
                 if time.time() - start > expires_in:
-                    _console.print("[red]Device code expired, please run `scout auth login github` again.[/red]")
+                    _console.print(
+                        "[red]Device code expired, please run `scout auth login github` again.[/red]"
+                    )
                     return None
 
                 time.sleep(poll_interval)
@@ -364,7 +407,12 @@ def _do_github_device_flow(
                         },
                         headers={"Accept": "application/json"},
                     )
-                    poll_data = poll_resp.json() if "application/json" in poll_resp.headers.get("content-type", "") else {}
+                    poll_data = (
+                        poll_resp.json()
+                        if "application/json"
+                        in poll_resp.headers.get("content-type", "")
+                        else {}
+                    )
                     if not poll_data:
                         from urllib.parse import parse_qs
 
@@ -383,27 +431,42 @@ def _do_github_device_flow(
                         continue
                     elif err == "slow_down":
                         poll_interval += 5
-                        _console.print(f"[yellow]Slow down requested, now polling every {poll_interval}s[/yellow]")
+                        _console.print(
+                            f"[yellow]Slow down requested, now polling every {poll_interval}s[/yellow]"
+                        )
                         continue
                     elif err == "expired_token":
-                        _console.print("[red]Device code expired (expired_token).[/red]")
+                        _console.print(
+                            "[red]Device code expired (expired_token).[/red]"
+                        )
                         return None
                     elif err == "unsupported_grant_type":
-                        _console.print(f"[red]Unsupported grant type: {poll_data}[/red]")
+                        _console.print(
+                            f"[red]Unsupported grant type: {poll_data}[/red]"
+                        )
                         return None
-                    elif err == "incorrect_client_credentials" or err == "incorrect_device_code":
-                        _console.print(f"[red]Client error: {poll_data.get('error_description') or err}[/red]")
+                    elif (
+                        err == "incorrect_client_credentials"
+                        or err == "incorrect_device_code"
+                    ):
+                        _console.print(
+                            f"[red]Client error: {poll_data.get('error_description') or err}[/red]"
+                        )
                         return None
                     elif err == "access_denied":
                         _console.print("[red]Access denied by user.[/red]")
                         return None
                     elif err:
                         # Other errors
-                        _console.print(f"[yellow]Poll error {err}: {poll_data.get('error_description','')}, retrying...[/yellow]")
+                        _console.print(
+                            f"[yellow]Poll error {err}: {poll_data.get('error_description', '')}, retrying...[/yellow]"
+                        )
                         continue
 
                 except Exception as e:
-                    _console.print(f"[yellow]Poll request failed: {e}, retrying...[/yellow]")
+                    _console.print(
+                        f"[yellow]Poll request failed: {e}, retrying...[/yellow]"
+                    )
                     continue
 
     except Exception as e:
@@ -413,11 +476,11 @@ def _do_github_device_flow(
 
 def _do_generic_device_flow(
     service: str,
-    cfg: Dict[str, Any],
+    cfg: dict[str, Any],
     client_id: str,
-    scopes: Optional[str] = None,
+    scopes: str | None = None,
     open_browser_flag: bool = True,
-) -> Optional[str]:
+) -> str | None:
     """
     Generic OAuth device flow if service defines device_code_url and access_token_url.
     Implements RFC 8628 generic.
@@ -426,7 +489,9 @@ def _do_generic_device_flow(
     try:
         import httpx
     except ImportError:
-        emit({"error": "httpx not installed, need httpx for OAuth"}, command="auth login")
+        emit(
+            {"error": "httpx not installed, need httpx for OAuth"}, command="auth login"
+        )
         return None
 
     device_url = cfg.get("device_code_url")
@@ -446,7 +511,9 @@ def _do_generic_device_flow(
                 headers={"Accept": "application/json"},
             )
             if resp.status_code != 200:
-                _console.print(f"[red]{display} device flow start failed {resp.status_code}: {resp.text[:500]}[/red]")
+                _console.print(
+                    f"[red]{display} device flow start failed {resp.status_code}: {resp.text[:500]}[/red]"
+                )
                 return None
             try:
                 data = resp.json()
@@ -458,13 +525,21 @@ def _do_generic_device_flow(
 
             device_code = data.get("device_code")
             user_code = data.get("user_code")
-            verification_uri = data.get("verification_uri") or data.get("verification_url")
-            verification_complete = data.get("verification_uri_complete") or data.get("verification_url_complete") or verification_uri
+            verification_uri = data.get("verification_uri") or data.get(
+                "verification_url"
+            )
+            verification_complete = (
+                data.get("verification_uri_complete")
+                or data.get("verification_url_complete")
+                or verification_uri
+            )
             expires_in = int(data.get("expires_in", 600))
             interval = int(data.get("interval", 5))
 
             if not device_code or not user_code:
-                _console.print(f"[red]Could not start {display} device flow: {data}[/red]")
+                _console.print(
+                    f"[red]Could not start {display} device flow: {data}[/red]"
+                )
                 return None
 
             _console.print(f"\n[bold]🔑 {display} Device Flow[/bold]")
@@ -474,7 +549,9 @@ def _do_generic_device_flow(
                 _console.print(f"  Complete: {verification_complete}")
             _console.print(f"  Expires in {expires_in}s")
 
-            _open_browser_url(verification_complete or verification_uri, open_browser_flag)
+            _open_browser_url(
+                verification_complete or verification_uri, open_browser_flag
+            )
 
             start = time.time()
             poll_interval = interval
@@ -515,7 +592,9 @@ def _do_generic_device_flow(
                         _console.print(f"[red]{err}[/red]")
                         return None
                     if err:
-                        _console.print(f"[yellow]{err}: {poll_data.get('error_description','')} retrying[/yellow]")
+                        _console.print(
+                            f"[yellow]{err}: {poll_data.get('error_description', '')} retrying[/yellow]"
+                        )
                         continue
                 except Exception as e:
                     _console.print(f"[yellow]Poll error {e}[/yellow]")
@@ -525,9 +604,11 @@ def _do_generic_device_flow(
         _console.print(f"[red]{display} device flow error: {e}[/red]")
         return None
 
+
 # ---------------------------------------------------------------------------
 # CLI Commands
 # ---------------------------------------------------------------------------
+
 
 @app.command(
     "login",
@@ -540,13 +621,28 @@ def _do_generic_device_flow(
     ),
 )
 def login(
-    service: str = typer.Argument(..., help="service name e.g. github, google, notion, linear, openai"),
-    method: str = typer.Option("auto", "--method", "-m", help="auto|device|pat|api_key|oauth_device|token"),
-    client_id: Optional[str] = typer.Option(None, "--client-id", help="OAuth client_id, or set BB_SECRET_GITHUB_CLIENT_ID"),
-    open_browser: bool = typer.Option(True, "--browser/--no-browser", help="Open browser automatically for device flow"),
-    scope: Optional[str] = typer.Option(None, "--scope", help="OAuth scopes (e.g. 'repo read:user')"),
-    token: Optional[str] = typer.Option(
-        None, "--token", "-t", help="PAT/API key for non-interactive login (skip prompt)"
+    service: str = typer.Argument(
+        ..., help="service name e.g. github, google, notion, linear, openai"
+    ),
+    method: str = typer.Option(
+        "auto", "--method", "-m", help="auto|device|pat|api_key|oauth_device|token"
+    ),
+    client_id: str | None = typer.Option(
+        None, "--client-id", help="OAuth client_id, or set BB_SECRET_GITHUB_CLIENT_ID"
+    ),
+    open_browser: bool = typer.Option(
+        True,
+        "--browser/--no-browser",
+        help="Open browser automatically for device flow",
+    ),
+    scope: str | None = typer.Option(
+        None, "--scope", help="OAuth scopes (e.g. 'repo read:user')"
+    ),
+    token: str | None = typer.Option(
+        None,
+        "--token",
+        "-t",
+        help="PAT/API key for non-interactive login (skip prompt)",
     ),
 ):
     """
@@ -559,7 +655,15 @@ def login(
 
     # Normalize method
     method_norm = method.lower().strip()
-    if method_norm not in ("auto", "device", "oauth_device", "oauth", "pat", "api_key", "token"):
+    if method_norm not in (
+        "auto",
+        "device",
+        "oauth_device",
+        "oauth",
+        "pat",
+        "api_key",
+        "token",
+    ):
         emit(
             {
                 "error": f"Unknown method {method}",
@@ -576,14 +680,16 @@ def login(
         if not token_val:
             emit({"service": svc, "status": "cancelled"}, command="auth login")
             raise typer.Exit(code=1)
-        vault_key = (cfg.get("vault_key") if cfg else f"{svc.upper()}_TOKEN") or f"{svc.upper()}_TOKEN"
+        vault_key = (
+            cfg.get("vault_key") if cfg else f"{svc.upper()}_TOKEN"
+        ) or f"{svc.upper()}_TOKEN"
         set_secret(vault_key, token_val)
         db = _load_auth()
         db[svc] = {
             "method": "token",
             "vault_key": vault_key,
             "service": svc,
-            "authenticated_at": datetime.now(timezone.utc).isoformat(),
+            "authenticated_at": datetime.now(UTC).isoformat(),
             "has_token": True,
         }
         _save_auth(db)
@@ -607,8 +713,8 @@ def login(
             # No client_id -> fallback messaging and PAT prompt for MVP v0.4
             if svc == "github":
                 _console.print(
-                    f"[yellow]GitHub client_id not found. Set via --client-id, "
-                    f"or env BB_SECRET_GITHUB_CLIENT_ID, or via: scout secrets set GITHUB_CLIENT_ID --value <id>[/yellow]"
+                    "[yellow]GitHub client_id not found. Set via --client-id, "
+                    "or env BB_SECRET_GITHUB_CLIENT_ID, or via: scout secrets set GITHUB_CLIENT_ID --value <id>[/yellow]"
                 )
                 _console.print(
                     "[dim]Falling back to PAT flow. Create PAT at https://github.com/settings/tokens "
@@ -626,7 +732,7 @@ def login(
                     {
                         "service": svc,
                         "status": "client_id_missing",
-                        "hint": f"Set {cfg.get('client_id_env_vars', ['BB_SECRET_'+svc.upper()+'_CLIENT_ID'])[0]} or pass --client-id, or use PAT fallback",
+                        "hint": f"Set {cfg.get('client_id_env_vars', ['BB_SECRET_' + svc.upper() + '_CLIENT_ID'])[0]} or pass --client-id, or use PAT fallback",
                         "fallback": f"scout auth set-token {svc} <token>",
                     },
                     command="auth login",
@@ -641,7 +747,7 @@ def login(
                         "method": "token",
                         "vault_key": vault_key,
                         "service": svc,
-                        "authenticated_at": datetime.now(timezone.utc).isoformat(),
+                        "authenticated_at": datetime.now(UTC).isoformat(),
                         "has_token": True,
                     }
                     _save_auth(db)
@@ -671,7 +777,7 @@ def login(
                     "method": "token",
                     "vault_key": vault_key,
                     "service": svc,
-                    "authenticated_at": datetime.now(timezone.utc).isoformat(),
+                    "authenticated_at": datetime.now(UTC).isoformat(),
                     "has_token": True,
                 }
                 _save_auth(db)
@@ -689,9 +795,13 @@ def login(
         else:
             # Have client_id -> run device flow
             if svc == "github":
-                token_val = _do_github_device_flow(resolved_cid, scopes=scope, open_browser_flag=open_browser)
+                token_val = _do_github_device_flow(
+                    resolved_cid, scopes=scope, open_browser_flag=open_browser
+                )
             else:
-                token_val = _do_generic_device_flow(svc, cfg, resolved_cid, scopes=scope, open_browser_flag=open_browser)
+                token_val = _do_generic_device_flow(
+                    svc, cfg, resolved_cid, scopes=scope, open_browser_flag=open_browser
+                )
 
             if not token_val:
                 emit(
@@ -712,7 +822,7 @@ def login(
                 "method": "oauth_device",
                 "vault_key": vault_key,
                 "service": svc,
-                "authenticated_at": datetime.now(timezone.utc).isoformat(),
+                "authenticated_at": datetime.now(UTC).isoformat(),
                 "has_token": True,
                 "scopes": scope or cfg.get("default_scopes"),
             }
@@ -732,18 +842,24 @@ def login(
         # Service not in SERVICE_CONFIGS or no device_code_url -> generic manual instructions
         # For MVP v0.4: prompt PAT and store
         if cfg and not cfg.get("device_code_url"):
-            _console.print(f"[dim]{cfg.get('display_name', svc)} does not support device flow; using token flow.[/dim]")
+            _console.print(
+                f"[dim]{cfg.get('display_name', svc)} does not support device flow; using token flow.[/dim]"
+            )
 
-        token_val: Optional[str] = None
+        token_val: str | None = None
 
         # If user is in auto and service unknown, show generic flow description but still allow PAT
         if method_norm == "auto":
             # For unknown services, explain both options
             _console.print(f"[bold]Auth for {svc}[/bold]")
             _console.print(f"  No device flow configured for {svc}.")
-            _console.print(f"  Options:")
-            _console.print(f"    1. scout auth set-token {svc} <token>  (stores via vault)")
-            _console.print(f"    2. Set env {svc.upper()}_TOKEN or BB_SECRET_{svc.upper()}_TOKEN")
+            _console.print("  Options:")
+            _console.print(
+                f"    1. scout auth set-token {svc} <token>  (stores via vault)"
+            )
+            _console.print(
+                f"    2. Set env {svc.upper()}_TOKEN or BB_SECRET_{svc.upper()}_TOKEN"
+            )
             # Still prompt
             token_val = _prompt_for_pat(svc, flag_value=token)
         else:
@@ -776,7 +892,7 @@ def login(
             "method": "token",
             "vault_key": vault_key,
             "service": svc,
-            "authenticated_at": datetime.now(timezone.utc).isoformat(),
+            "authenticated_at": datetime.now(UTC).isoformat(),
             "has_token": True,
         }
         _save_auth(db)
@@ -805,11 +921,11 @@ def login(
 )
 def set_token(
     service: str = typer.Argument(..., help="service name e.g. github, notion, openai"),
-    token: Optional[str] = typer.Argument(
+    token: str | None = typer.Argument(
         None,
         help="Token value (prefer --token or --stdin so it stays out of shell history)",
     ),
-    token_opt: Optional[str] = typer.Option(
+    token_opt: str | None = typer.Option(
         None, "--token", "-t", help="Token value (preferred for scripting)"
     ),
     use_stdin: bool = typer.Option(
@@ -843,7 +959,7 @@ def set_token(
         "method": "token",
         "vault_key": vault_key,
         "service": svc,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(UTC).isoformat(),
         "has_token": True,
     }
     _save_auth(db)
@@ -889,7 +1005,9 @@ def list_auth():
 @app.command("get-token")
 def get_token_cmd(
     service: str = typer.Argument(..., help="service name"),
-    reveal: bool = typer.Option(False, "--reveal", help="Reveal full token value (default masks, for scripting)"),
+    reveal: bool = typer.Option(
+        False, "--reveal", help="Reveal full token value (default masks, for scripting)"
+    ),
 ):
     """
     Retrieve token via security.get_secret with env fallback.
@@ -913,7 +1031,7 @@ def get_token_cmd(
 
     masked = (token_val[:4] + "****") if len(token_val) > 8 else "****"
 
-    out: Dict[str, Any] = {
+    out: dict[str, Any] = {
         "service": svc,
         "found": True,
         "masked": masked,
@@ -923,7 +1041,9 @@ def get_token_cmd(
     }
     if reveal:
         out["value"] = token_val
-        out["warning"] = "Full token revealed because --reveal was passed. Avoid logging."
+        out["warning"] = (
+            "Full token revealed because --reveal was passed. Avoid logging."
+        )
     else:
         out["value"] = None
         out["note"] = "Use --reveal to show full value, or env BB_SECRET_..."
@@ -932,7 +1052,11 @@ def get_token_cmd(
 
 
 @app.command("status")
-def status_cmd(service: Optional[str] = typer.Argument(None, help="Service to check, or all if omitted")):
+def status_cmd(
+    service: str | None = typer.Argument(
+        None, help="Service to check, or all if omitted"
+    ),
+):
     """
     Show auth status without revealing secrets.
     """
@@ -978,7 +1102,9 @@ def status_cmd(service: Optional[str] = typer.Argument(None, help="Service to ch
 @app.command("logout")
 def logout(
     service: str = typer.Argument(..., help="service to logout"),
-    delete_vault: bool = typer.Option(True, "--delete-vault/--keep-vault", help="Delete from vault as well"),
+    delete_vault: bool = typer.Option(
+        True, "--delete-vault/--keep-vault", help="Delete from vault as well"
+    ),
 ):
     """
     Remove service from auth.json and optionally delete vault secret.
@@ -1015,5 +1141,6 @@ def logout(
 
 def register(root):
     root.add_typer(app, name="auth")
+
 
 # Solo personal project, no connection to employer, built with public/free-tier only

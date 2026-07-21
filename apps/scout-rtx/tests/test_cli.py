@@ -3,13 +3,13 @@
 import json
 
 import httpx
-import pytest
 from typer.testing import CliRunner
 
 runner = CliRunner()
 
 
 # --- CUSTOM_ROOT resolution ------------------------------------------------
+
 
 def test_custom_root_env_override(cli_mod, tmp_path):
     assert cli_mod.CUSTOM_ROOT == tmp_path / "rtx-root"
@@ -45,8 +45,19 @@ def test_custom_root_fallback_order(cli_mod, monkeypatch, tmp_path):
 
 # --- queue add / list / clear ----------------------------------------------
 
+
 def test_queue_add_list_clear(cli_mod, emit_records):
-    result = runner.invoke(cli_mod.app, ["queue", "add", "--task", "tune router entropy", "--program", "programs/program-ava.md"])
+    result = runner.invoke(
+        cli_mod.app,
+        [
+            "queue",
+            "add",
+            "--task",
+            "tune router entropy",
+            "--program",
+            "programs/program-ava.md",
+        ],
+    )
     assert result.exit_code == 0
     added = emit_records[-1]
     assert added["added"]["task"] == "tune router entropy"
@@ -79,11 +90,12 @@ def test_queue_unknown_action(cli_mod, emit_records):
 
 # --- results TSV fallback returns LAST n rows ------------------------------
 
+
 def test_results_tsv_fallback_returns_last_n(cli_mod, emit_records):
     header = "commit\tval_bpb\tmemory_gb\tstatus\tdescription"
     rows = [f"c{i}\t1.{i:02d}\t10\tkeep\trow{i}" for i in range(10)]
     cli_mod.RESULTS_TSV.parent.mkdir(parents=True, exist_ok=True)
-    cli_mod.RESULTS_TSV.write_text("\n".join([header] + rows) + "\n")
+    cli_mod.RESULTS_TSV.write_text("\n".join([header, *rows]) + "\n")
 
     result = runner.invoke(cli_mod.app, ["results", "--n", "3"])
     assert result.exit_code == 0
@@ -95,6 +107,7 @@ def test_results_tsv_fallback_returns_last_n(cli_mod, emit_records):
 
 
 # --- sync actually writes the MRR record (no longer a stub) ----------------
+
 
 def test_sync_appends_mrr_record(cli_mod, emit_records):
     cli_mod.RESULTS_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -128,6 +141,7 @@ def test_sync_without_results_is_honest(cli_mod, emit_records):
 
 # --- releases subcommand offline behavior ----------------------------------
 
+
 def _raise_connect_error(*args, **kwargs):
     raise httpx.ConnectError("network unreachable")
 
@@ -143,7 +157,9 @@ def test_releases_list_offline_is_honest_nonzero(cli_mod, emit_records, monkeypa
 
 def test_releases_sync_offline_is_honest_nonzero(cli_mod, emit_records, monkeypatch):
     monkeypatch.setattr(cli_mod.httpx, "get", _raise_connect_error)
-    result = runner.invoke(cli_mod.app, ["releases", "sync", "--tag", "v0.6.0-ava-0716"])
+    result = runner.invoke(
+        cli_mod.app, ["releases", "sync", "--tag", "v0.6.0-ava-0716"]
+    )
     assert result.exit_code == 1
     assert emit_records[-1]["offline"] is True
 
@@ -155,7 +171,13 @@ def test_releases_list_parses_api_payload(cli_mod, emit_records, monkeypatch):
             "name": "v0.6.0-ava-0716 best 0.98",
             "published_at": "2026-07-16T00:00:00Z",
             "html_url": "https://github.com/jcdavis131/scout-rtx/releases/tag/v0.6.0-ava-0716",
-            "assets": [{"name": "results.tsv", "size": 337, "browser_download_url": "https://example.invalid/results.tsv"}],
+            "assets": [
+                {
+                    "name": "results.tsv",
+                    "size": 337,
+                    "browser_download_url": "https://example.invalid/results.tsv",
+                }
+            ],
         }
     ]
 

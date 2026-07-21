@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Dev install script"""
-import subprocess, sys
+
+import subprocess
+import sys
+
 subprocess.check_call([sys.executable, "-m", "pip", "install", "-e", ".[all]"])
 print("bb installed — try: bb doctor")

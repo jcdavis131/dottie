@@ -1,11 +1,13 @@
 """HTTP utils with NO_PROXY sanitization for Hatch egress proxy compatibility"""
+
 import os
+
 
 def _clean_no_proxy_value(s: str) -> str:
     parts = s.split(",")
-    clean=[]
+    clean = []
     for p in parts:
-        p=p.strip()
+        p = p.strip()
         if not p:
             continue
         if "[" in p or "]" in p:
@@ -19,7 +21,7 @@ def _clean_no_proxy_value(s: str) -> str:
         # Actually no_proxy entries usually don't include :port, except maybe host:port - but not needed
         # We'll keep entries that have at most one ':' and that ':' is not part of IPv6 (we already filtered ::)
         # Simplify: if ':' in p and p.count(':')>1: skip
-        if p.count(":")>1:
+        if p.count(":") > 1:
             continue
         # also skip fd8b etc which now have no :: after cleaning? but they contain : so skip if contains : and not IPv4?
         # Keep IPv4 and hostnames and CIDR with / but no ':'
@@ -29,6 +31,7 @@ def _clean_no_proxy_value(s: str) -> str:
                 continue
         clean.append(p)
     return ",".join(clean)
+
 
 def sanitize_no_proxy_env():
     """Fix broken NO_PROXY env that contains IPv6 bracket notation breaking httpx URLPattern"""
@@ -40,6 +43,7 @@ def sanitize_no_proxy_env():
         # only update if different
         if cleaned != val:
             os.environ[key] = cleaned
+
 
 # Auto-sanitize on import
 sanitize_no_proxy_env()

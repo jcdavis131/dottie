@@ -5,6 +5,7 @@ Drives the loop with a model-free TrajectoryReplayPolicy against the REAL T13C.1
 the serving accept criterion: a multi-step task runs end-to-end and only the sanitized FINAL is
 returned (code + observations stay in the captured trace). Real-model policy is honestly gated.
 """
+
 import os
 import sys
 from pathlib import Path
@@ -12,12 +13,16 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from ava.datagen.codeact import iter_trajectories  # noqa: E402
-from ava.rl.codeact_loop import (  # noqa: E402
-    ModelPolicy, ModelPolicyBlockedError, TrajectoryReplayPolicy, CodeActResult,
-    extract_action, run_code_act, sanitize_final,
+from ava.datagen.codeact import iter_trajectories
+from ava.rl.codeact_loop import (
+    ModelPolicy,
+    ModelPolicyBlockedError,
+    TrajectoryReplayPolicy,
+    extract_action,
+    run_code_act,
+    sanitize_final,
 )
-from ava.rl.codeact_rewards import r_exec  # noqa: E402
+from ava.rl.codeact_rewards import r_exec
 
 POSIX = os.name == "posix"
 posix_only = pytest.mark.skipif(not POSIX, reason="sandbox resource caps require POSIX")
@@ -44,9 +49,15 @@ class TestParsing:
 class TestReplayLoopEndToEnd:
     @posix_only
     def test_multistep_task_runs_and_returns_only_final(self):
-        traj = next(t for t in iter_trajectories(seed=1, n=40) if t.concept == "codeact_multistep")
+        traj = next(
+            t
+            for t in iter_trajectories(seed=1, n=40)
+            if t.concept == "codeact_multistep"
+        )
         policy = TrajectoryReplayPolicy(traj)
-        res = run_code_act(policy, traj.user, tool_sources=traj.tool_sources, max_steps=8)
+        res = run_code_act(
+            policy, traj.user, tool_sources=traj.tool_sources, max_steps=8
+        )
         assert res.reached_final
         # only the FINAL reaches the user; the answer is present, code/observations are NOT leaked
         assert traj.answer in res.final
@@ -58,26 +69,40 @@ class TestReplayLoopEndToEnd:
     @posix_only
     def test_every_family_reaches_final_via_real_sandbox(self):
         for traj in iter_trajectories(seed=2, n=24):
-            res = run_code_act(TrajectoryReplayPolicy(traj), traj.user,
-                               tool_sources=traj.tool_sources, max_steps=8)
+            res = run_code_act(
+                TrajectoryReplayPolicy(traj),
+                traj.user,
+                tool_sources=traj.tool_sources,
+                max_steps=8,
+            )
             assert res.reached_final, f"{traj.concept} did not reach FINAL"
             assert traj.answer in res.final
 
     @posix_only
     def test_observations_feed_reward_functions(self):
         # the loop's captured observations are exactly what codeact_rewards consumes
-        traj = next(t for t in iter_trajectories(seed=3, n=40) if t.concept == "codeact_compute")
-        res = run_code_act(TrajectoryReplayPolicy(traj), traj.user,
-                           tool_sources=traj.tool_sources)
-        assert r_exec(res.observations) == 1.0     # clean compute trajectory → all blocks ran
+        traj = next(
+            t for t in iter_trajectories(seed=3, n=40) if t.concept == "codeact_compute"
+        )
+        res = run_code_act(
+            TrajectoryReplayPolicy(traj), traj.user, tool_sources=traj.tool_sources
+        )
+        assert (
+            r_exec(res.observations) == 1.0
+        )  # clean compute trajectory → all blocks ran
 
     @posix_only
     def test_recover_family_has_an_erroring_step_but_still_finals(self):
-        traj = next(t for t in iter_trajectories(seed=1, n=60) if t.concept == "codeact_recover")
-        res = run_code_act(TrajectoryReplayPolicy(traj), traj.user,
-                           tool_sources=traj.tool_sources)
+        traj = next(
+            t for t in iter_trajectories(seed=1, n=60) if t.concept == "codeact_recover"
+        )
+        res = run_code_act(
+            TrajectoryReplayPolicy(traj), traj.user, tool_sources=traj.tool_sources
+        )
         assert res.reached_final and traj.answer in res.final
-        assert any(not o.ok for o in res.observations)   # the first block genuinely errored
+        assert any(
+            not o.ok for o in res.observations
+        )  # the first block genuinely errored
         assert r_exec(res.observations) < 1.0
 
 
@@ -87,6 +112,7 @@ class TestTerminalStates:
         # a policy that only ever emits actions (never a FINAL) must hit the cap with final=None
         def action_only(_transcript: str) -> str:
             return "```python\n1 + 1\n```"
+
         res = run_code_act(action_only, "go", max_steps=3)
         assert res.terminated == "step_cap" and res.final is None
         assert len(res.steps) == 3

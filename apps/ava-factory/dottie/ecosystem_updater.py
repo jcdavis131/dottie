@@ -15,9 +15,11 @@ import os
 import shutil
 import time
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
-DISCLAIMER = "Solo personal project, no connection to employer, built with public/free-tier only"
+DISCLAIMER = (
+    "Solo personal project, no connection to employer, built with public/free-tier only"
+)
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _DATA_DAILY = _REPO_ROOT / "data" / "daily_expanded"
@@ -26,20 +28,20 @@ _DOCS_DIR = _REPO_ROOT / "docs"
 _SKILLS_DIR = _REPO_ROOT / "dottie" / "skills"
 
 try:
-    from .telemetry import log_ecosystem, log_event, log_error
+    from .telemetry import log_ecosystem, log_error, log_event
 except ImportError:
-    from dottie.telemetry import log_ecosystem, log_event, log_error  # type: ignore
+    from dottie.telemetry import log_ecosystem, log_error, log_event  # type: ignore
 
 
 def _now_iso() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+    return datetime.datetime.now(datetime.UTC).isoformat()
 
 
-def sync_openwiki() -> Dict[str, Any]:
+def sync_openwiki() -> dict[str, Any]:
     """Sync ~/.openwiki/wiki -> S2 Slow memory if available. Mocked safe if not present."""
     start = time.time()
     openwiki_root = Path.home() / ".openwiki" / "wiki"
-    result: Dict[str, Any] = {"found": False, "files": 0, "duration_s": 0}
+    result: dict[str, Any] = {"found": False, "files": 0, "duration_s": 0}
 
     try:
         if openwiki_root.exists():
@@ -59,7 +61,11 @@ def sync_openwiki() -> Dict[str, Any]:
             result["note"] = f"openwiki not found at {openwiki_root}"
 
         result["duration_s"] = round(time.time() - start, 2)
-        log_ecosystem("openwiki_sync", f"OpenWiki sync found={result['found']} files={result['files']}", metrics=result)
+        log_ecosystem(
+            "openwiki_sync",
+            f"OpenWiki sync found={result['found']} files={result['files']}",
+            metrics=result,
+        )
         return result
     except Exception as e:
         result["error"] = str(e)
@@ -67,13 +73,20 @@ def sync_openwiki() -> Dict[str, Any]:
         return result
 
 
-def rotate_shards(keep_last_days: int = 2, disk_threshold_pct: int = 80) -> Dict[str, Any]:
+def rotate_shards(
+    keep_last_days: int = 2, disk_threshold_pct: int = 80
+) -> dict[str, Any]:
     """
     Rotate old shards from data/daily_expanded to data/for_upload if disk > threshold
     or older than keep_last_days. Keeps manifest.jsonl intact.
     """
     start = time.time()
-    metrics: Dict[str, Any] = {"moved": 0, "freed_mb": 0, "disk_pct": 0, "threshold": disk_threshold_pct}
+    metrics: dict[str, Any] = {
+        "moved": 0,
+        "freed_mb": 0,
+        "disk_pct": 0,
+        "threshold": disk_threshold_pct,
+    }
 
     try:
         # disk check
@@ -95,14 +108,19 @@ def rotate_shards(keep_last_days: int = 2, disk_threshold_pct: int = 80) -> Dict
                 try:
                     mtime = f.stat().st_mtime
                     is_old = mtime < cutoff_time
-                    should_move = (pct >= disk_threshold_pct and is_old) or (is_old and keep_last_days <= 2)
                     # For safety in VM, only move if both old AND over threshold, or if --force behavior via env
                     force = os.environ.get("DOTTIE_FORCE_ROTATE") == "1"
                     if (pct >= disk_threshold_pct) or (is_old and force):
                         dest = _DATA_UPLOAD / f.name
                         if not dest.exists():
                             shutil.move(str(f), str(dest))
-                            freed += f.stat().st_size if dest.exists() else dest.stat().st_size if dest.exists() else 0
+                            freed += (
+                                f.stat().st_size
+                                if dest.exists()
+                                else dest.stat().st_size
+                                if dest.exists()
+                                else 0
+                            )
                             moved.append(f.name)
                         else:
                             # already exists, remove old to free
@@ -130,10 +148,10 @@ def rotate_shards(keep_last_days: int = 2, disk_threshold_pct: int = 80) -> Dict
         return metrics
 
 
-def update_skillbooks() -> Dict[str, Any]:
+def update_skillbooks() -> dict[str, Any]:
     """Bump skillbook versions / validate json."""
     start = time.time()
-    result: Dict[str, Any] = {"checked": 0, "valid": 0, "invalid": 0, "files": []}
+    result: dict[str, Any] = {"checked": 0, "valid": 0, "invalid": 0, "files": []}
     try:
         if not _SKILLS_DIR.exists():
             result["note"] = "skills dir missing"
@@ -143,7 +161,7 @@ def update_skillbooks() -> Dict[str, Any]:
         for jf in _SKILLS_DIR.glob("*.json"):
             result["checked"] += 1
             try:
-                data = json.loads(jf.read_text(encoding="utf-8")[:100000])
+                json.loads(jf.read_text(encoding="utf-8")[:100000])
                 # must have name/version or at least parseable
                 result["valid"] += 1
                 result["files"].append(jf.name)
@@ -151,7 +169,11 @@ def update_skillbooks() -> Dict[str, Any]:
                 result["invalid"] += 1
 
         result["duration_s"] = round(time.time() - start, 2)
-        log_ecosystem("skillbooks", f"Skillbooks checked {result['checked']} valid {result['valid']}", metrics=result)
+        log_ecosystem(
+            "skillbooks",
+            f"Skillbooks checked {result['checked']} valid {result['valid']}",
+            metrics=result,
+        )
         return result
     except Exception as e:
         result["error"] = str(e)
@@ -159,10 +181,10 @@ def update_skillbooks() -> Dict[str, Any]:
         return result
 
 
-def check_docs_links() -> Dict[str, Any]:
+def check_docs_links() -> dict[str, Any]:
     """Simple docs link existence check (no network)."""
     start = time.time()
-    result: Dict[str, Any] = {"docs": 0, "missing_refs": []}
+    result: dict[str, Any] = {"docs": 0, "missing_refs": []}
     try:
         if not _DOCS_DIR.exists():
             result["note"] = "docs missing"
@@ -199,10 +221,16 @@ def check_docs_links() -> Dict[str, Any]:
         return result
 
 
-def run_all() -> Dict[str, Any]:
+def run_all() -> dict[str, Any]:
     """Run full ecosystem update cycle."""
     start = time.time()
-    log_event(source="ecosystem", event_type="start", message="Ecosystem update cycle start", metrics={}, level="info")
+    log_event(
+        source="ecosystem",
+        event_type="start",
+        message="Ecosystem update cycle start",
+        metrics={},
+        level="info",
+    )
 
     results = {}
     results["openwiki"] = sync_openwiki()
@@ -228,7 +256,11 @@ if __name__ == "__main__":
     import argparse
 
     ap = argparse.ArgumentParser(description="Dottie ecosystem updater")
-    ap.add_argument("--action", choices=["all", "openwiki", "rotate", "skillbooks", "docs"], default="all")
+    ap.add_argument(
+        "--action",
+        choices=["all", "openwiki", "rotate", "skillbooks", "docs"],
+        default="all",
+    )
     ap.add_argument("--keep-days", type=int, default=2)
     ap.add_argument("--disk-threshold", type=int, default=80)
     args = ap.parse_args()
@@ -240,7 +272,15 @@ if __name__ == "__main__":
     elif args.action == "openwiki":
         print(json.dumps(sync_openwiki(), indent=2))
     elif args.action == "rotate":
-        print(json.dumps(rotate_shards(keep_last_days=args.keep_days, disk_threshold_pct=args.disk_threshold), indent=2))
+        print(
+            json.dumps(
+                rotate_shards(
+                    keep_last_days=args.keep_days,
+                    disk_threshold_pct=args.disk_threshold,
+                ),
+                indent=2,
+            )
+        )
     elif args.action == "skillbooks":
         print(json.dumps(update_skillbooks(), indent=2))
     elif args.action == "docs":

@@ -90,8 +90,12 @@ def test_submit_echo_task_and_poll_to_completion(client):
 
 
 def test_task_listing_and_counts(client):
-    ids = [client.post("/tasks", json={"prompt": f"t{i}", "backend": "echo"}).json()["task_id"]
-           for i in range(2)]
+    ids = [
+        client.post("/tasks", json={"prompt": f"t{i}", "backend": "echo"}).json()[
+            "task_id"
+        ]
+        for i in range(2)
+    ]
     for tid in ids:
         _wait_done(client, tid)
     body = client.get("/tasks").json()
@@ -111,7 +115,9 @@ def test_bad_backend_rejected_by_validation(client):
 
 
 def test_empty_prompt_rejected(client):
-    assert client.post("/tasks", json={"prompt": "", "backend": "echo"}).status_code == 422
+    assert (
+        client.post("/tasks", json={"prompt": "", "backend": "echo"}).status_code == 422
+    )
 
 
 def test_ollama_task_fails_honestly_via_api(client, monkeypatch):
@@ -138,11 +144,20 @@ def test_status_shape_is_stable_and_honest(client):
     # Real probes: booleans measured now, not asserted to specific values (env-dependent) —
     # except echo, which is always available, and ollama on this CI box (no server).
     assert isinstance(backends["ollama"]["available"], bool)
-    assert backends["echo"]["available"] is True and backends["echo"]["plumbing_only"] is True
+    assert (
+        backends["echo"]["available"] is True
+        and backends["echo"]["plumbing_only"] is True
+    )
     assert "capability_note" in backends["ava"]
     integ = s["integrations"]
-    for key in ("factory_code", "harness", "skills_memory_mint", "rft_etl",
-                "rl_smoke_update", "ava_checkpoint"):
+    for key in (
+        "factory_code",
+        "harness",
+        "skills_memory_mint",
+        "rft_etl",
+        "rl_smoke_update",
+        "ava_checkpoint",
+    ):
         assert key in integ and isinstance(integ[key]["available"], bool)
     assert s["data"]["traces"] == 0
     assert s["data"]["tasks"]["total"] == 0
@@ -156,7 +171,9 @@ def test_flywheel_endpoints_gate_then_run(client):
     assert r.status_code == 503
 
     # Run a real echo task, then the same endpoints do real work.
-    tid = client.post("/tasks", json={"prompt": "fw", "backend": "echo"}).json()["task_id"]
+    tid = client.post("/tasks", json={"prompt": "fw", "backend": "echo"}).json()[
+        "task_id"
+    ]
     _wait_done(client, tid)
     exp = client.post("/flywheel/export-rft")
     assert exp.status_code == 200
@@ -190,11 +207,18 @@ def test_research_status_serves_worker_mirror(data_dir):
     # The workers' status.json snapshot is the documented source for this endpoint (it is the
     # only readable source when the research dir is mounted read-only into the container).
     import json as _json
+
     research = data_dir / "research"
     research.mkdir(parents=True)
-    snapshot = {"service": "dottie-research", "ts": 123.0,
-                "baseline": {"metric_name": "proxy_loss", "metric_value": 0.5},
-                "counts": {"total": 1}, "experiments": [], "sota_history": [], "note": "n"}
+    snapshot = {
+        "service": "dottie-research",
+        "ts": 123.0,
+        "baseline": {"metric_name": "proxy_loss", "metric_value": 0.5},
+        "counts": {"total": 1},
+        "experiments": [],
+        "sota_history": [],
+        "note": "n",
+    }
     (research / "status.json").write_text(_json.dumps(snapshot), encoding="utf-8")
     app = create_app(engine=DottieEngine(data_dir))
     with TestClient(app) as c:

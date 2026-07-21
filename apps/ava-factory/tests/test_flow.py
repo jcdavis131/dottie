@@ -11,7 +11,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from ava.pipeline import flow
 from ava.pipeline.flow import DataState, FlowConfig, StarvationTracker
 from ava.pipeline.manifest import PACKED, Manifest
@@ -20,10 +19,16 @@ from ava.pipeline.manifest import PACKED, Manifest
 @pytest.fixture()
 def cfg() -> FlowConfig:
     return FlowConfig(
-        low_water_gb=12, janitor_trigger_gb=18, critical_gb=6,
-        raw_max_bytes=4_000_000_000, packed_ahead_max_tokens=3_000_000_000,
-        packed_min_tokens=200_000_000, starved_poll_seconds=5, starved_warn_seconds=60,
-        prefetch_phases=2, delete_consumed=True,
+        low_water_gb=12,
+        janitor_trigger_gb=18,
+        critical_gb=6,
+        raw_max_bytes=4_000_000_000,
+        packed_ahead_max_tokens=3_000_000_000,
+        packed_min_tokens=200_000_000,
+        starved_poll_seconds=5,
+        starved_warn_seconds=60,
+        prefetch_phases=2,
+        delete_consumed=True,
     )
 
 
@@ -34,8 +39,12 @@ def m(tmp_path: Path) -> Manifest:
         yield mm
 
 
-def _packed(m: Manifest, sid: str, phase: int, tokens: int, split: str = "train") -> None:
-    m.add_shard(sid, source="s", phase=phase, path=f"/p/{sid}", split=split, state=PACKED)
+def _packed(
+    m: Manifest, sid: str, phase: int, tokens: int, split: str = "train"
+) -> None:
+    m.add_shard(
+        sid, source="s", phase=phase, path=f"/p/{sid}", split=split, state=PACKED
+    )
     m.db.execute("UPDATE shards SET tokens=? WHERE id=?", (tokens, sid))
 
 
@@ -43,7 +52,9 @@ def test_config_loads_from_repo_yaml():
     cfg = FlowConfig.load(Path(__file__).parent.parent / "configs" / "pipeline.yaml")
     assert cfg.low_water_gb == 12
     assert cfg.packed_min_tokens == 200_000_000
-    assert cfg.critical_gb < cfg.low_water_gb < cfg.janitor_trigger_gb  # ordering sanity
+    assert (
+        cfg.critical_gb < cfg.low_water_gb < cfg.janitor_trigger_gb
+    )  # ordering sanity
 
 
 def test_collector_pauses_on_low_disk(m, cfg, monkeypatch):
@@ -184,13 +195,13 @@ def test_starvation_tracker_warns_only_after_threshold(cfg, monkeypatch):
     clock = {"v": 1000.0}
     monkeypatch.setattr(flow.time, "monotonic", lambda: clock["v"])
 
-    assert t.record(True) is None            # just started
+    assert t.record(True) is None  # just started
     clock["v"] += 59
-    assert t.record(True) is None            # under warn threshold
+    assert t.record(True) is None  # under warn threshold
     clock["v"] += 2
     assert "DATA_STARVED for" in t.record(True)
 
-    assert t.record(False) is None           # recovery resets
+    assert t.record(False) is None  # recovery resets
     assert t.starved_seconds == 0.0
 
 

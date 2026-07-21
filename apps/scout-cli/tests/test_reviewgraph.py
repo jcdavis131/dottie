@@ -1,4 +1,5 @@
 """ReviewGraph plugin — index/blast/context against real fixture trees + git."""
+
 from __future__ import annotations
 
 import json
@@ -72,9 +73,7 @@ def _fixture_tree(root: Path) -> None:
     )
     (root / "web").mkdir()
     (root / "web" / "util.ts").write_text(
-        "export function utilFn(x: number): number {\n"
-        "  return x * 2;\n"
-        "}\n",
+        "export function utilFn(x: number): number {\n  return x * 2;\n}\n",
         encoding="utf-8",
     )
     (root / "web" / "app.ts").write_text(
@@ -90,7 +89,10 @@ def _fixture_tree(root: Path) -> None:
 def _edges(root: Path):
     conn = graph.open_db(root)
     try:
-        nodes = {r["id"]: r["qualname"] for r in conn.execute("SELECT id, qualname FROM nodes")}
+        nodes = {
+            r["id"]: r["qualname"]
+            for r in conn.execute("SELECT id, qualname FROM nodes")
+        }
         return {
             (nodes[r["src"]], nodes[r["dst"]], r["kind"])
             for r in conn.execute("SELECT src, dst, kind FROM edges")
@@ -169,7 +171,9 @@ def test_removed_file_leaves_graph(tmp_path):
 
 def test_unparseable_file_warns_never_crashes(tmp_path):
     _fixture_tree(tmp_path)
-    (tmp_path / "pkg" / "broken.py").write_text("def broken(:\n    oops\n", encoding="utf-8")
+    (tmp_path / "pkg" / "broken.py").write_text(
+        "def broken(:\n    oops\n", encoding="utf-8"
+    )
     stats = graph.index_repo(tmp_path)
     assert stats["warnings"] == 1
     status = graph.graph_status(tmp_path)
@@ -216,8 +220,12 @@ def test_blast_and_context_on_real_diff(tmp_path):
 
     ctx = graph.build_context(tmp_path, budget_tokens=4000)
     for key in (
-        "changed_symbols", "direct_dependents", "impacted_files",
-        "risk_notes", "token_estimate", "budget_tokens",
+        "changed_symbols",
+        "direct_dependents",
+        "impacted_files",
+        "risk_notes",
+        "token_estimate",
+        "budget_tokens",
     ):
         assert key in ctx
     assert ctx["token_estimate"] <= 4000
@@ -233,7 +241,9 @@ def test_blast_and_context_on_real_diff(tmp_path):
     _git(tmp_path, "add", ".")
     _git(tmp_path, "commit", "-m", "edit helper")
     blast_ref = graph.compute_blast(tmp_path, diff_ref=first_sha, hops=1)
-    assert "pkg/base.py::helper" in {s["qualname"] for s in blast_ref["changed_symbols"]}
+    assert "pkg/base.py::helper" in {
+        s["qualname"] for s in blast_ref["changed_symbols"]
+    }
 
 
 def test_context_respects_tight_budget(tmp_path):
@@ -242,8 +252,10 @@ def test_context_respects_tight_budget(tmp_path):
     _git(tmp_path, "add", ".")
     _git(tmp_path, "commit", "-m", "fixture")
     base = tmp_path / "pkg" / "base.py"
-    base.write_text(base.read_text(encoding="utf-8") + "\n\ndef extra():\n    return 1\n",
-                    encoding="utf-8")
+    base.write_text(
+        base.read_text(encoding="utf-8") + "\n\ndef extra():\n    return 1\n",
+        encoding="utf-8",
+    )
     graph.index_repo(tmp_path)
     ctx = graph.build_context(tmp_path, budget_tokens=300)
     assert ctx["token_estimate"] <= 300 or (
@@ -282,7 +294,9 @@ def test_cli_status_without_index_fails_with_example(tmp_path):
     assert r.returncode == 1
     body = json.loads(r.stdout)
     assert "error" in body
-    assert "reviewgraph index" in body["error"] or "reviewgraph index" in body.get("example", "")
+    assert "reviewgraph index" in body["error"] or "reviewgraph index" in body.get(
+        "example", ""
+    )
 
 
 def test_cli_blast_outside_git_fails_clean(tmp_path):

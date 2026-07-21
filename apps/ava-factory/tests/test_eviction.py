@@ -11,7 +11,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-
 from ava.pipeline import flow, janitor
 from ava.pipeline.eviction import (
     StorageConfig,
@@ -57,13 +56,18 @@ def _write_raw(path: Path, payload: bytes = b"raw") -> Path:
 def _write_packed(path: Path, payload: bytes = b"tok") -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(payload)
-    path.with_suffix(".idx.json").write_text('{"tokens": 1, "docs": []}', encoding="utf-8")
+    path.with_suffix(".idx.json").write_text(
+        '{"tokens": 1, "docs": []}', encoding="utf-8"
+    )
     return path
 
 
-def _add_raw(m: Manifest, sid: str, phase: int, path: str, *, bytes_: int = 100) -> None:
-    m.add_shard(sid, source="s", phase=phase, path=path, split="train",
-                state=RAW, bytes_=bytes_)
+def _add_raw(
+    m: Manifest, sid: str, phase: int, path: str, *, bytes_: int = 100
+) -> None:
+    m.add_shard(
+        sid, source="s", phase=phase, path=path, split="train", state=RAW, bytes_=bytes_
+    )
 
 
 def _add_packed(m: Manifest, sid: str, phase: int, path: str, tokens: int) -> None:
@@ -107,8 +111,12 @@ def test_rank_protects_packed_at_or_below_lead(fcfg, tmp_path: Path):
     with Manifest(str(tmp_path / "m.db")) as m:
         _add_packed(m, "p3", phase=3, path="/p/p3.bin", tokens=fcfg.packed_min_tokens)
         # Two P0 shards: removing the fat one still leaves lead on the floor.
-        _add_packed(m, "p0_fat", phase=0, path="/p/p0a.bin", tokens=fcfg.packed_ahead_max_tokens)
-        _add_packed(m, "p0_keep", phase=0, path="/p/p0b.bin", tokens=fcfg.packed_min_tokens)
+        _add_packed(
+            m, "p0_fat", phase=0, path="/p/p0a.bin", tokens=fcfg.packed_ahead_max_tokens
+        )
+        _add_packed(
+            m, "p0_keep", phase=0, path="/p/p0b.bin", tokens=fcfg.packed_min_tokens
+        )
         ranked = rank_eviction_candidates(m, fcfg, current_phase=3)
         ids = [c.id for c in ranked]
         assert "p3" not in ids
@@ -116,7 +124,9 @@ def test_rank_protects_packed_at_or_below_lead(fcfg, tmp_path: Path):
         assert "p0_keep" not in ids  # removing it would drop P0 below lead
 
 
-def test_evict_deletes_oversupplied_raw_under_pressure(fcfg, storage, tmp_path: Path, monkeypatch):
+def test_evict_deletes_oversupplied_raw_under_pressure(
+    fcfg, storage, tmp_path: Path, monkeypatch
+):
     monkeypatch.setattr(flow, "free_gb", lambda _p: 10.0)  # below high-water 15
     raw_dir = tmp_path / "raw"
     old = _write_raw(raw_dir / "p0" / "old.jsonl.zst")
@@ -126,7 +136,10 @@ def test_evict_deletes_oversupplied_raw_under_pressure(fcfg, storage, tmp_path: 
         stats = evict_oversupplied(m, fcfg, storage, current_phase=3)
         assert stats["deleted"] == 1
         assert not old.exists()
-        assert m.db.execute("SELECT state FROM shards WHERE id='old'").fetchone()[0] == DELETED
+        assert (
+            m.db.execute("SELECT state FROM shards WHERE id='old'").fetchone()[0]
+            == DELETED
+        )
 
 
 def test_evict_refuses_val_negative_control(fcfg, storage, tmp_path: Path):

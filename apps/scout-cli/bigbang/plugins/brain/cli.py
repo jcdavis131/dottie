@@ -1,20 +1,27 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
-import typer
 import json
-from pathlib import Path
-from typing import Optional, List
 from datetime import datetime
+from pathlib import Path
+
+import typer
+
 from bigbang.core.output import emit
 
-app = typer.Typer(name="brain", help="🧠 Hatch brain — goals, memory, daily notes for Ava co-dev", no_args_is_help=True)
+app = typer.Typer(
+    name="brain",
+    help="🧠 Hatch brain — goals, memory, daily notes for Ava co-dev",
+    no_args_is_help=True,
+)
 
-def _read_if_exists(p: Path) -> Optional[str]:
+
+def _read_if_exists(p: Path) -> str | None:
     try:
         if p.exists():
             return p.read_text(encoding="utf-8", errors="ignore")[:8000]
     except Exception:
         return None
     return None
+
 
 @app.command("memory")
 def memory_cmd(
@@ -28,12 +35,16 @@ def memory_cmd(
     if query:
         lines = [l for l in lines if query.lower() in l.lower()]
     daily = _read_if_exists(today)
-    emit({
-        "MEMORY.md_tail": lines,
-        "today_note": daily[:2000] if daily else None,
-        "today_path": str(today),
-        "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only"
-    }, command="brain memory")
+    emit(
+        {
+            "MEMORY.md_tail": lines,
+            "today_note": daily[:2000] if daily else None,
+            "today_path": str(today),
+            "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
+        },
+        command="brain memory",
+    )
+
 
 @app.command("goals")
 def goals_cmd(
@@ -57,26 +68,40 @@ def goals_cmd(
             # first line of PROJECT.md
             if content:
                 first = content.splitlines()[0][:120]
-                title = first.replace("#","").strip()
-            if search and search.lower() not in title.lower() and search.lower() not in content.lower():
+                title = first.replace("#", "").strip()
+            if (
+                search
+                and search.lower() not in title.lower()
+                and search.lower() not in content.lower()
+            ):
                 continue
             # progress entries
             files_dir = p / "files"
             briefs_dir = p / "briefs"
-            goals.append({
-                "slug": p.name,
-                "title": title,
-                "has_PROJECT": True,
-                "files_count": len(list(files_dir.iterdir())) if files_dir.exists() else 0,
-                "briefs_count": len(list(briefs_dir.iterdir())) if briefs_dir.exists() else 0,
-                "path": str(p)
-            })
-    emit({
-        "goals": goals,
-        "count": len(goals),
-        "hint": "bb brain goal <slug> for detail, bb brain sync to export for Ava",
-        "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only"
-    }, command="brain goals")
+            goals.append(
+                {
+                    "slug": p.name,
+                    "title": title,
+                    "has_PROJECT": True,
+                    "files_count": len(list(files_dir.iterdir()))
+                    if files_dir.exists()
+                    else 0,
+                    "briefs_count": len(list(briefs_dir.iterdir()))
+                    if briefs_dir.exists()
+                    else 0,
+                    "path": str(p),
+                }
+            )
+    emit(
+        {
+            "goals": goals,
+            "count": len(goals),
+            "hint": "bb brain goal <slug> for detail, bb brain sync to export for Ava",
+            "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
+        },
+        command="brain goals",
+    )
+
 
 @app.command("goal")
 def goal_detail(
@@ -93,18 +118,24 @@ def goal_detail(
     briefs = []
     if (p / "briefs").exists():
         briefs = [str(f.name) for f in (p / "briefs").iterdir()][:20]
-    emit({
-        "slug": slug,
-        "PROJECT.md": proj_md[:6000] if proj_md else None,
-        "files": files,
-        "briefs": briefs,
-        "path": str(p),
-        "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only"
-    }, command="brain goal")
+    emit(
+        {
+            "slug": slug,
+            "PROJECT.md": proj_md[:6000] if proj_md else None,
+            "files": files,
+            "briefs": briefs,
+            "path": str(p),
+            "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
+        },
+        command="brain goal",
+    )
+
 
 @app.command("sync")
 def sync_cmd(
-    out: Path = typer.Option(Path.home() / "workspace" / "your_files" / "brain-sync.json", "--out"),
+    out: Path = typer.Option(
+        Path.home() / "workspace" / "your_files" / "brain-sync.json", "--out"
+    ),
 ):
     """Export token-efficient brain snapshot for Ava / LLM-wiki ingestion"""
     mem_path = Path.home() / "MEMORY.md"
@@ -125,7 +156,11 @@ def sync_cmd(
     }
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    emit({"synced": str(out), "goals": goals, "memory_tail": data["memory_tail"][:10]}, command="brain sync")
+    emit(
+        {"synced": str(out), "goals": goals, "memory_tail": data["memory_tail"][:10]},
+        command="brain sync",
+    )
+
 
 @app.command("daily")
 def daily_cmd(
@@ -137,7 +172,9 @@ def daily_cmd(
         f.write(f"\n- {datetime.now().strftime('%H:%M')} bb brain: {note}\n")
     emit({"appended": str(today_path), "note": note}, command="brain daily")
 
+
 def register(root):
     root.add_typer(app, name="brain")
+
 
 # Solo personal project, no connection to employer, built with public/free-tier only

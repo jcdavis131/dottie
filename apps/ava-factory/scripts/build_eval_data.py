@@ -12,7 +12,6 @@ _REPO = Path(__file__).resolve().parent.parent
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
-import numpy as np
 
 from ava.config import AvaConfig
 from ava.datagen.chat_safety import ChatSafetyGenerator
@@ -20,7 +19,7 @@ from ava.datagen.code_gen import CodeGenGenerator
 from ava.datagen.encyclopedia import EncyclopediaGenerator
 from ava.datagen.logic import LogicGenerator
 from ava.datagen.math_gen import MathGenerator
-from ava.pipeline.pack import LoadedTokenizer, load_tokenizer, pack_docs, write_shard
+from ava.pipeline.pack import load_tokenizer, pack_docs, write_shard
 from ava.tokenizer import train as train_tokenizer
 from evals.probe_items_gen import generate_probe_items
 
@@ -54,7 +53,9 @@ def _collect_docs(target_bytes: int = 500_000) -> list[dict]:
 def build(preset: str = "nano", force: bool = False) -> None:
     cfg = AvaConfig.load(preset)
     data_root = _REPO_ROOT / "data" / preset
-    tok_path = _REPO_ROOT / cfg.data.get("tokenizer_path", f"data/{preset}/tokenizer/ava_nano_bpe.json")
+    tok_path = _REPO_ROOT / cfg.data.get(
+        "tokenizer_path", f"data/{preset}/tokenizer/ava_nano_bpe.json"
+    )
     corpus_dir = data_root / "eval_corpus"
     corpus_dir.mkdir(parents=True, exist_ok=True)
 
@@ -72,7 +73,6 @@ def build(preset: str = "nano", force: bool = False) -> None:
 
     lt = load_tokenizer(tok_path)
     docs = _collect_docs()
-    phase_map = {"p0": 0, "p1": 1, "p2": 2, "p3": 3, "p4": 4, "p5": 5}
     heldout_budget = int(cfg.data.get("heldout_tokens_per_phase", 200_000))
 
     for phase_idx in range(len(cfg.phases)):
@@ -108,7 +108,9 @@ def build(preset: str = "nano", force: bool = False) -> None:
         out = data_root / f"heldout_phase{phase_idx}.bin"
         if force or not out.exists():
             write_shard(arr, idx, out)
-            print(f"heldout phase {phase_idx}: {arr.size} tokens, {len(idx['docs'])} docs -> {out}")
+            print(
+                f"heldout phase {phase_idx}: {arr.size} tokens, {len(idx['docs'])} docs -> {out}"
+            )
 
 
 def main() -> int:

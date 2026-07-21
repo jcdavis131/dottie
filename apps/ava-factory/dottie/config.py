@@ -15,9 +15,12 @@ import argparse
 import dataclasses
 import os
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import TYPE_CHECKING, Any
 
 import yaml
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
 
 SPACES = ("system1", "system2", "critic", "planner")
 # tool_selection ported from the live checkout (2026-07-19): the mini tool-branch
@@ -25,7 +28,11 @@ SPACES = ("system1", "system2", "critic", "planner")
 TASK_TYPES = ("automatic", "deliberate", "safety", "temporal", "tool_selection")
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-_CONFIG_DIR = Path(os.environ.get("DOTTIE_CONFIG_DIR", os.environ.get("AVA_CONFIG_DIR", _REPO_ROOT / "configs")))
+_CONFIG_DIR = Path(
+    os.environ.get(
+        "DOTTIE_CONFIG_DIR", os.environ.get("AVA_CONFIG_DIR", _REPO_ROOT / "configs")
+    )
+)
 
 
 class ConfigError(ValueError):
@@ -37,7 +44,9 @@ def _strict(section: str, data: Mapping[str, Any], cls: type) -> dict:
     known = {f.name for f in dataclasses.fields(cls)}
     unknown = set(data) - known
     if unknown:
-        raise ConfigError(f"{section}: unknown key(s) {sorted(unknown)}; known: {sorted(known)}")
+        raise ConfigError(
+            f"{section}: unknown key(s) {sorted(unknown)}; known: {sorted(known)}"
+        )
     return dict(data)
 
 
@@ -78,16 +87,22 @@ class ModelConfig:
             )
         kv = self.n_kv_heads or self.n_heads
         if self.n_heads % kv:
-            raise ConfigError(f"n_heads ({self.n_heads}) must be divisible by n_kv_heads ({kv})")
+            raise ConfigError(
+                f"n_heads ({self.n_heads}) must be divisible by n_kv_heads ({kv})"
+            )
         if self.mlp not in ("gelu", "swiglu"):
             raise ConfigError(f"mlp must be 'gelu' or 'swiglu', got {self.mlp!r}")
         if self.rope_type not in ("yarn", "longrope2"):
-            raise ConfigError(f"rope_type must be 'yarn' or 'longrope2', got {self.rope_type!r}")
+            raise ConfigError(
+                f"rope_type must be 'yarn' or 'longrope2', got {self.rope_type!r}"
+            )
         if self.n_sinks < 0:
             raise ConfigError(f"n_sinks must be >= 0, got {self.n_sinks}")
         # Packed token shards are uint16; a larger vocab would silently wrap.
         if self.vocab_size > 65535:
-            raise ConfigError(f"vocab_size {self.vocab_size} > 65535 breaks uint16 token packing")
+            raise ConfigError(
+                f"vocab_size {self.vocab_size} > 65535 breaks uint16 token packing"
+            )
 
     @property
     def kv_heads(self) -> int:
@@ -121,12 +136,16 @@ class JSpaceConfig:
         for field in ("slots", "half_life", "hl_weight", "broadcast_target"):
             keys = set(getattr(self, field))
             if keys != set(SPACES):
-                raise ConfigError(f"jspace.{field} keys {sorted(keys)} != {sorted(SPACES)}")
+                raise ConfigError(
+                    f"jspace.{field} keys {sorted(keys)} != {sorted(SPACES)}"
+                )
         if set(self.routing_targets) != set(TASK_TYPES):
             raise ConfigError(f"jspace.routing_targets keys != {sorted(TASK_TYPES)}")
         for tt, probs in self.routing_targets.items():
             if len(probs) != 4 or abs(sum(probs) - 1.0) > 1e-6:
-                raise ConfigError(f"routing_targets[{tt}] must be 4 probs summing to 1, got {probs}")
+                raise ConfigError(
+                    f"routing_targets[{tt}] must be 4 probs summing to 1, got {probs}"
+                )
 
     def j_weight_for_phase(self, phase: int) -> float:
         """Blueprint: 0.08 for the early phases (P0-P2), 0.15 for reasoning/long (P3+)."""
@@ -208,17 +227,19 @@ class DottieConfig:
     # -- loading ------------------------------------------------------------
 
     @classmethod
-    def load(cls, preset: str, config_dir: str | Path | None = None) -> "DottieConfig":
+    def load(cls, preset: str, config_dir: str | Path | None = None) -> DottieConfig:
         d = Path(config_dir or _CONFIG_DIR)
         path = d / f"{preset}.yaml"
         if not path.exists():
             available = sorted(p.stem for p in d.glob("*.yaml"))
-            raise FileNotFoundError(f"no preset {preset!r} at {path}; available: {available}")
+            raise FileNotFoundError(
+                f"no preset {preset!r} at {path}; available: {available}"
+            )
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
         return cls.from_dict(raw)
 
     @classmethod
-    def from_dict(cls, raw: Mapping[str, Any]) -> "DottieConfig":
+    def from_dict(cls, raw: Mapping[str, Any]) -> DottieConfig:
         try:
             model = ModelConfig(**_strict("model", raw["model"], ModelConfig))
             jspace = JSpaceConfig(**_strict("jspace", raw["jspace"], JSpaceConfig))
@@ -228,19 +249,30 @@ class DottieConfig:
             opt_raw = dict(t.pop("optimizer", {}))
             if "betas" in opt_raw:
                 opt_raw["betas"] = tuple(opt_raw["betas"])
-            optimizer = OptimizerConfig(**_strict("training.optimizer", opt_raw, OptimizerConfig))
+            optimizer = OptimizerConfig(
+                **_strict("training.optimizer", opt_raw, OptimizerConfig)
+            )
             training = TrainingConfig(
                 wsd=wsd, optimizer=optimizer, **_strict("training", t, TrainingConfig)
             )
 
-            phases = [PhaseConfig(**_strict("phases[]", p, PhaseConfig)) for p in raw["phases"]]
+            phases = [
+                PhaseConfig(**_strict("phases[]", p, PhaseConfig))
+                for p in raw["phases"]
+            ]
         except KeyError as e:
             raise ConfigError(f"missing required section {e}") from e
 
         return cls(
-            preset=raw["preset"], model=model, jspace=jspace, training=training, phases=phases,
-            data=raw.get("data", {}), branch_chat=raw.get("branch_chat"),
-            branches=raw.get("branches"), milestones=raw.get("milestones"),
+            preset=raw["preset"],
+            model=model,
+            jspace=jspace,
+            training=training,
+            phases=phases,
+            data=raw.get("data", {}),
+            branch_chat=raw.get("branch_chat"),
+            branches=raw.get("branches"),
+            milestones=raw.get("milestones"),
         )
 
     # -- derived ------------------------------------------------------------
@@ -251,7 +283,9 @@ class DottieConfig:
     def total_steps(self) -> int:
         total = self.training.tokens_total
         if total is None:
-            raise ConfigError(f"{self.preset}: tokens_total unset (milestone presets set it per milestone)")
+            raise ConfigError(
+                f"{self.preset}: tokens_total unset (milestone presets set it per milestone)"
+            )
         return max(1, total // self.training.tokens_per_step)
 
     def analytic_param_count(self) -> int:
@@ -266,13 +300,13 @@ class DottieConfig:
         embed = v * d * (1 if m.tie_lm_head else 2)
 
         kv = m.kv_heads
-        attn = d * d + 2 * (kv * m.head_dim * d) + d * d          # q, k, v, o
+        attn = d * d + 2 * (kv * m.head_dim * d) + d * d  # q, k, v, o
         if m.mlp == "swiglu":
             hidden = int((m.mlp_ratio or 4.0) * d)
             mlp = 3 * d * hidden
         else:
             mlp = 2 * d * (m.mlp_mult * d)
-        per_layer = attn + mlp + 2 * d                             # + 2 RMSNorms
+        per_layer = attn + mlp + 2 * d  # + 2 RMSNorms
         layers = m.n_layers * per_layer
 
         # Multi-J-Space: 4 workspaces (2 MHA each = 4d^2 apiece, gate + broadcast
@@ -311,8 +345,10 @@ def main() -> int:
         return 2
 
     if not args.count_params:
-        print(f"preset={cfg.preset} d_model={cfg.model.d_model} layers={cfg.model.n_layers} "
-              f"vocab={cfg.model.vocab_size}")
+        print(
+            f"preset={cfg.preset} d_model={cfg.model.d_model} layers={cfg.model.n_layers} "
+            f"vocab={cfg.model.vocab_size}"
+        )
         return 0
 
     if args.analytic:
@@ -321,13 +357,14 @@ def main() -> int:
     else:
         try:
             from dottie.model import build_model
+
             n = sum(p.numel() for p in build_model(cfg).parameters())
             src = "built"
         except ImportError:
             n = cfg.analytic_param_count()
             src = "analytic (torch unavailable)"
 
-    print(f"preset={cfg.preset} params={n} (~{n/1e6:.1f}M) [{src}]")
+    print(f"preset={cfg.preset} params={n} (~{n / 1e6:.1f}M) [{src}]")
     return 0
 
 

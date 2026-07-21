@@ -1,5 +1,6 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
 """export.py — HTML export must embed real JSON (not Python repr), JSON round-trip."""
+
 import json
 import re
 
@@ -11,8 +12,17 @@ from personal_graphify.query import load_graph_json
 
 def _sample_graph() -> nx.MultiDiGraph:
     G = nx.MultiDiGraph()
-    G.add_node("file:a.py", label="a.py", type="file", file="a.py", degree=2, community=0)
-    G.add_node("func:main", label="main <script>", type="function", file="a.py", degree=1, community=1)
+    G.add_node(
+        "file:a.py", label="a.py", type="file", file="a.py", degree=2, community=0
+    )
+    G.add_node(
+        "func:main",
+        label="main <script>",
+        type="function",
+        file="a.py",
+        degree=1,
+        community=1,
+    )
     G.add_edge("file:a.py", "func:main", type="defines", confidence="EXTRACTED")
     G.add_edge("func:main", "file:a.py", type="calls", confidence="INFERRED")
     return G
@@ -43,7 +53,9 @@ class TestExportHtml:
     def test_labels_html_escaped(self, tmp_path):
         out = tmp_path / "graph.html"
         export_html(_sample_graph(), out)
-        arrays = re.findall(r"new vis\.DataSet\((\[.*?\])\);", out.read_text(encoding="utf-8"), re.S)
+        arrays = re.findall(
+            r"new vis\.DataSet\((\[.*?\])\);", out.read_text(encoding="utf-8"), re.S
+        )
         nodes = json.loads(arrays[0])
         labels = {n["label"] for n in nodes}
         assert any("&lt;script&gt;" in lbl for lbl in labels)

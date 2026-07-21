@@ -2,10 +2,10 @@
 wandb_dashboard.py — adds J-space live charts
 Solo personal project, no connection to employer, built with public/free-tier only
 """
-import math
+
 
 def define_charts():
-    charts=[
+    charts = [
         "half_life/S1_decay, S1_hl_est, S1_target=8",
         "half_life/S2_decay, S2 target 300",
         "half_life/Critic target 30",
@@ -20,5 +20,6 @@ def define_charts():
     print("W&B charts defined:", charts)
     return charts
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     define_charts()

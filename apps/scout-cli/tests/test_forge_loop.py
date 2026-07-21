@@ -8,6 +8,7 @@ with a contract-compliant implementation, `forge test` smoke, SKILL.md, `skill i
 second-pass computation on a real file. Every step is the actual CLI in a subprocess;
 nothing is mocked, and the forged artifacts are removed again in the finally block.
 """
+
 from __future__ import annotations
 
 import json
@@ -61,15 +62,22 @@ def register(root):
     root.add_typer(app, name="csvstat_loop_test")
 '''
 
+
 def _cli(*args: str, timeout: int = 120) -> dict:
     """Run the real CLI, parse the JSON envelope."""
-    p = subprocess.run([sys.executable, "-m", "bigbang.cli", "--json", *args],
-                       capture_output=True, text=True, timeout=timeout,
-                       cwd=str(SCOUT_ROOT))
+    p = subprocess.run(
+        [sys.executable, "-m", "bigbang.cli", "--json", *args],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        cwd=str(SCOUT_ROOT),
+    )
     raw = p.stdout
     start = raw.find("{")
-    assert start != -1, f"no JSON from {args}: stdout={raw[:300]!r} stderr={p.stderr[:300]!r}"
-    return json.loads(raw[start:raw.rindex("}") + 1])
+    assert start != -1, (
+        f"no JSON from {args}: stdout={raw[:300]!r} stderr={p.stderr[:300]!r}"
+    )
+    return json.loads(raw[start : raw.rindex("}") + 1])
 
 
 def _tool_names(listing: dict) -> list:
@@ -86,14 +94,17 @@ def test_self_evolution_loop_forges_tests_installs_and_reexecutes(tmp_path):
     installed_skill = Path.home() / ".dottie-claw" / "skills" / TOOL
     try:
         # 0. the synthetic task's capability is genuinely missing
-        assert TOOL not in _tool_names(_cli("forge", "list")), \
+        assert TOOL not in _tool_names(_cli("forge", "list")), (
             f"{TOOL} already exists — stale cleanup?"
+        )
 
         # 1. forge the scaffold — SKILL.md is scaffolded alongside (TODOS 6.4), so
         # `skill install` works with no manual authoring step
         new = _cli("forge", "new", TOOL, "--description", "CSV column statistics")
         assert (new.get("data", new)).get("status") == "scaffolded"
-        assert packaged_skill.joinpath("SKILL.md").exists(), "forge new must scaffold SKILL.md"
+        assert packaged_skill.joinpath("SKILL.md").exists(), (
+            "forge new must scaffold SKILL.md"
+        )
         fm = packaged_skill.joinpath("SKILL.md").read_text(encoding="utf-8")
         assert f"name: {TOOL}" in fm and "triggers:" in fm
 
@@ -120,9 +131,13 @@ def test_self_evolution_loop_forges_tests_installs_and_reexecutes(tmp_path):
         assert cols["a"] == {"count": 3, "mean": 2.0, "min": 1.0, "max": 3.0}
         assert cols["b"]["mean"] == 20.0
     finally:
-        subprocess.run([sys.executable, "-m", "bigbang.cli", "forge", "rm", TOOL,
-                        "--force"], capture_output=True, text=True, timeout=60,
-                       cwd=str(SCOUT_ROOT))
+        subprocess.run(
+            [sys.executable, "-m", "bigbang.cli", "forge", "rm", TOOL, "--force"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=str(SCOUT_ROOT),
+        )
         shutil.rmtree(packaged_skill, ignore_errors=True)
         shutil.rmtree(installed_skill, ignore_errors=True)
         shutil.rmtree(plugin_dir, ignore_errors=True)

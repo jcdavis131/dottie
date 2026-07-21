@@ -2,9 +2,7 @@
 """RFT ETL: parsing, segmentation, redaction, reward components, schema validation, export."""
 
 import json
-from datetime import datetime, timedelta, timezone
-
-import pytest
+from datetime import UTC, datetime, timedelta
 
 from bigbang.plugins.rft.etl import (
     REDACTED,
@@ -19,17 +17,21 @@ from bigbang.plugins.rft.etl import (
     validate_record,
 )
 
-T0 = datetime(2026, 7, 17, 12, 0, 0, tzinfo=timezone.utc)
+T0 = datetime(2026, 7, 17, 12, 0, 0, tzinfo=UTC)
 
 
-def audit_line(offset_s=0, command="tasks list", args=None, status="ok", duration_ms=40):
-    return json.dumps({
-        "ts": (T0 + timedelta(seconds=offset_s)).isoformat(),
-        "command": command,
-        "args": args or {"tasklist": "@default"},
-        "status": status,
-        "duration_ms": duration_ms,
-    })
+def audit_line(
+    offset_s=0, command="tasks list", args=None, status="ok", duration_ms=40
+):
+    return json.dumps(
+        {
+            "ts": (T0 + timedelta(seconds=offset_s)).isoformat(),
+            "command": command,
+            "args": args or {"tasklist": "@default"},
+            "status": status,
+            "duration_ms": duration_ms,
+        }
+    )
 
 
 class TestParsing:
@@ -50,7 +52,9 @@ class TestRedaction:
         assert out["query"] == "hello"
 
     def test_secret_shaped_values_masked_anywhere(self):
-        out = redact({"note": "sk-abcdefghijklmnop", "nested": [{"v": "ghp_ABCDEFGH1234"}]})
+        out = redact(
+            {"note": "sk-abcdefghijklmnop", "nested": [{"v": "ghp_ABCDEFGH1234"}]}
+        )
         assert out["note"] == REDACTED and out["nested"][0]["v"] == REDACTED
 
     def test_embedded_secret_in_command_redacted(self):
@@ -61,17 +65,24 @@ class TestRedaction:
         assert "https://api.x.com" in out["cmd"]  # non-secret parts preserved
 
     def test_parse_redacts_command_and_status(self):
-        line = json.dumps({
-            "ts": T0.isoformat(), "command": "auth login token=ghp_ABCDEFGH1234",
-            "args": {}, "status": "ok", "duration_ms": 5,
-        })
+        line = json.dumps(
+            {
+                "ts": T0.isoformat(),
+                "command": "auth login token=ghp_ABCDEFGH1234",
+                "args": {},
+                "status": "ok",
+                "duration_ms": 5,
+            }
+        )
         ev = parse_audit_lines([line])[0]
         assert "ghp_ABCDEFGH1234" not in ev["command"] and REDACTED in ev["command"]
 
     def test_embedded_secret_flagged_by_validator(self):
         ep = segment_episodes(parse_audit_lines([audit_line(0)]))[0]
         record = to_rft_record(ep)
-        record["steps"][0]["args"]["blob"] = "log line with token sk-abc123def456ghij embedded"
+        record["steps"][0]["args"]["blob"] = (
+            "log line with token sk-abc123def456ghij embedded"
+        )
         assert any("secret" in p for p in validate_record(record))
 
     def test_parse_applies_redaction(self):
@@ -81,7 +92,12 @@ class TestRedaction:
 
 class TestSegmentation:
     def test_gap_splits_episodes(self):
-        lines = [audit_line(0), audit_line(30), audit_line(30 + 400), audit_line(30 + 430)]
+        lines = [
+            audit_line(0),
+            audit_line(30),
+            audit_line(30 + 400),
+            audit_line(30 + 430),
+        ]
         episodes = segment_episodes(parse_audit_lines(lines), gap_seconds=300)
         assert [len(e.steps) for e in episodes] == [2, 2]
 
@@ -104,9 +120,16 @@ class TestRewardComponents:
         assert reward_components(ep)["r_task_terminal_ok"] == 0.0
 
     def test_redundant_consecutive_calls_counted(self):
-        lines = [audit_line(0), audit_line(5), audit_line(10, command="rtx status"), audit_line(15)]
+        lines = [
+            audit_line(0),
+            audit_line(5),
+            audit_line(10, command="rtx status"),
+            audit_line(15),
+        ]
         ep = segment_episodes(parse_audit_lines(lines))[0]
-        assert reward_components(ep)["redundant_steps"] == 1  # only the first identical pair
+        assert (
+            reward_components(ep)["redundant_steps"] == 1
+        )  # only the first identical pair
 
     def test_length_signals_raw_not_weighted(self):
         lines = [audit_line(0, duration_ms=100), audit_line(5, duration_ms=250)]
@@ -138,11 +161,18 @@ class TestSchema:
 class TestExport:
     def test_end_to_end(self, tmp_path):
         audit = tmp_path / "audit.jsonl"
-        audit.write_text("\n".join([
-            audit_line(0), audit_line(20), "garbage",
-            audit_line(500), audit_line(510, status="error"),
-            audit_line(2000),  # single-step episode -> dropped by min_steps=2
-        ]))
+        audit.write_text(
+            "\n".join(
+                [
+                    audit_line(0),
+                    audit_line(20),
+                    "garbage",
+                    audit_line(500),
+                    audit_line(510, status="error"),
+                    audit_line(2000),  # single-step episode -> dropped by min_steps=2
+                ]
+            )
+        )
         out = tmp_path / "rft.jsonl"
         summary = export_dataset(audit, out, gap_seconds=300, min_steps=2)
         assert summary["records_written"] == 2 and summary["dropped_short"] == 1
@@ -158,12 +188,16 @@ class TestExport:
 class TestCli:
     def test_export_and_stats_commands(self, tmp_path):
         from typer.testing import CliRunner
+
         from bigbang.plugins.rft.cli import app
+
         audit = tmp_path / "audit.jsonl"
         audit.write_text("\n".join([audit_line(0), audit_line(10)]))
         out = tmp_path / "ds.jsonl"
         runner = CliRunner()
-        r1 = runner.invoke(app, ["export", "--audit-file", str(audit), "--out", str(out)])
+        r1 = runner.invoke(
+            app, ["export", "--audit-file", str(audit), "--out", str(out)]
+        )
         assert r1.exit_code == 0 and out.exists()
         r2 = runner.invoke(app, ["stats", "--dataset", str(out)])
         assert r2.exit_code == 0

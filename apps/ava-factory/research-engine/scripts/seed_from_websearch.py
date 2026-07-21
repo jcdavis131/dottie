@@ -3,9 +3,10 @@
 Seed research graphify_source from web search results (fallback when arXiv egress fails)
 Uses real arXiv IDs from browser.search to ensure quality corpus across all 7 topics
 """
+
 import json
-from pathlib import Path
 import os
+from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
 graph_src = ROOT / "graphify_source"
@@ -235,7 +236,7 @@ seed_papers = [
     },
 ]
 
-created=0
+created = 0
 for paper in seed_papers:
     pid = paper["arxiv_id"]
     path = graph_src / f"{pid}.md"
@@ -252,28 +253,28 @@ for paper in seed_papers:
 **ArXiv ID:** {pid} — https://arxiv.org/abs/{pid}
 **PDF:** https://arxiv.org/pdf/{pid}
 **Published:** 2025-2026 (seeded from web search due to arxiv egress timeout)
-**Authors:** {paper.get('authors','')[0] if isinstance(paper.get('authors'), list) else paper.get('authors','')} et al
-**Categories:** {paper.get('categories','')}
-**Query:** {paper.get('query','')}
+**Authors:** {paper.get("authors", "")[0] if isinstance(paper.get("authors"), list) else paper.get("authors", "")} et al
+**Categories:** {paper.get("categories", "")}
+**Query:** {paper.get("query", "")}
 **Topics:** {topics_str}
-**Ecosystem:** {paper['ecosystem']}
-**Importance:** {paper.get('importance','critical')}
+**Ecosystem:** {paper["ecosystem"]}
+**Importance:** {paper.get("importance", "critical")}
 
 ## Abstract
 {abs_text}
 
 ## Why Relevant to Ava-AGI Ecosystem
-Topic `{paper['topics'][0]}` — {paper['ecosystem']}
+Topic `{paper["topics"][0]}` — {paper["ecosystem"]}
 
 Potentially impacts:
-- {paper['ecosystem']}
+- {paper["ecosystem"]}
 
 This paper was seeded manually from browser.search results because arXiv API egress timed out (IncompleteRead) for 6/7 topics on 2026-07-15. Real arXiv ID verified via search.
 
 ## Suggested Experiment (for program.md autoresearch loop — one file to modify, 5min budget)
 
-- **Hypothesis:** Based on "{title}", try applying idea to Ava {paper['topics'][0]}
-- **What to modify:** {paper['ecosystem']} — ONE file only
+- **Hypothesis:** Based on "{title}", try applying idea to Ava {paper["topics"][0]}
+- **What to modify:** {paper["ecosystem"]} — ONE file only
 - For Muon variants: try in `train_1b_deepspeed.py` — Muon for S1 Fast hl=8, AdamW for S2 Slow hl=300
 - For YaRN/LongRoPE2: `model_1b.py` YaRN NTK-aware QK-Norm 10k->1M -> extend to 2M
 - For Jacobian/DREG: `multi_jspace_module.py` layer-wise Jacobian reg lambda=1e-2.5
@@ -293,18 +294,19 @@ This paper was seeded manually from browser.search results because arXiv API egr
 ---
 Solo personal project, no connection to employer, built with public/free-tier only
 - Tags: {topics_str}, arxiv, research, seeded-from-web-search
-- Graphify community: {paper['topics'][0]}
+- Graphify community: {paper["topics"][0]}
 - Seeded: 2026-07-15 due to egress timeout, verified real arXiv ID via browser.search
 """
     path.write_text(md)
-    created+=1
+    created += 1
     print(f"seeded {path.name}")
 
 print(f"Created {created} seed files, total now {len(list(graph_src.glob('*.md')))}")
 
 # Also update rolling_index.json with seeded papers if not present
-import json, os
-rolling_path = Path(os.path.expanduser("~/workspace/your_files/research/arxiv/rolling_index.json"))
+rolling_path = Path(
+    os.path.expanduser("~/workspace/your_files/research/arxiv/rolling_index.json")
+)
 if rolling_path.exists():
     rolling = json.loads(rolling_path.read_text())
 else:
@@ -319,13 +321,17 @@ for paper in seed_papers:
             "title": paper["title"],
             "abstract": paper["abstract"],
             "summary": paper["abstract"],
-            "authors": [paper.get('authors','')] if isinstance(paper.get('authors'), str) else paper.get('authors',['']),
+            "authors": [paper.get("authors", "")]
+            if isinstance(paper.get("authors"), str)
+            else paper.get("authors", [""]),
             "published": "2026-07-15T00:00:00Z",
             "updated": "2026-07-15T00:00:00Z",
-            "categories": paper.get("categories",[]).split(",") if isinstance(paper.get("categories"), str) else paper.get("categories",[]),
+            "categories": paper.get("categories", []).split(",")
+            if isinstance(paper.get("categories"), str)
+            else paper.get("categories", []),
             "pdf_url": f"https://arxiv.org/pdf/{pid}",
             "arxiv_url": f"https://arxiv.org/abs/{pid}",
-            "query": paper.get("query",""),
+            "query": paper.get("query", ""),
             "topics": paper["topics"],
             "ecosystem": paper["ecosystem"],
         }

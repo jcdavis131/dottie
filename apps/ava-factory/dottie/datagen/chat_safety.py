@@ -17,9 +17,12 @@ Families:
 
 from __future__ import annotations
 
-from typing import Iterator
+from typing import TYPE_CHECKING
 
 from dottie.datagen.base import Generator
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 USER = "<|user|>"
 ASSISTANT = "<|assistant|>"
@@ -251,12 +254,20 @@ def _benign_twin_doc(rng) -> tuple[str, str, str]:
 # Delegation / temporal workflow dialogues
 # ---------------------------------------------------------------------------
 
-_TASKS = sorted([
-    "compile the quarterly report", "migrate the database", "review the design doc",
-    "prepare the release notes", "run the regression suite", "update the dependencies",
-    "draft the onboarding guide", "audit the access logs", "refactor the parser",
-    "benchmark the new model",
-])
+_TASKS = sorted(
+    [
+        "compile the quarterly report",
+        "migrate the database",
+        "review the design doc",
+        "prepare the release notes",
+        "run the regression suite",
+        "update the dependencies",
+        "draft the onboarding guide",
+        "audit the access logs",
+        "refactor the parser",
+        "benchmark the new model",
+    ]
+)
 _DELAY_CAUSES = [
     "the staging server went down",
     "a dependency broke",
@@ -271,37 +282,51 @@ def _delegation_doc(rng) -> tuple[str, str, str]:
     tasks = rng.sample(_TASKS, n)
     deadlines = sorted(rng.sample(range(2, 12), n))
     turns = []
-    plan_lines = [f"  {i + 1}. {task} -- due day {deadlines[i]}" for i, task in enumerate(tasks)]
-    turns.append((
-        "user",
-        f"I'm delegating {n} tasks to you. Please plan them and track progress:\n"
-        + "\n".join(f"- {task} (deadline day {deadlines[i]})" for i, task in enumerate(tasks)),
-    ))
-    turns.append((
-        "assistant",
-        "Here's my plan, ordered by deadline:\n" + "\n".join(plan_lines)
-        + f"\nI'll start with '{tasks[0]}' and report progress as I go.",
-    ))
+    plan_lines = [
+        f"  {i + 1}. {task} -- due day {deadlines[i]}" for i, task in enumerate(tasks)
+    ]
+    turns.append(
+        (
+            "user",
+            f"I'm delegating {n} tasks to you. Please plan them and track progress:\n"
+            + "\n".join(
+                f"- {task} (deadline day {deadlines[i]})"
+                for i, task in enumerate(tasks)
+            ),
+        )
+    )
+    turns.append(
+        (
+            "assistant",
+            "Here's my plan, ordered by deadline:\n"
+            + "\n".join(plan_lines)
+            + f"\nI'll start with '{tasks[0]}' and report progress as I go.",
+        )
+    )
     # progress turn
     turns.append(("user", "How's it going?"))
     done_idx = 0
-    turns.append((
-        "assistant",
-        f"Progress update: '{tasks[done_idx]}' is complete. Next up is "
-        f"'{tasks[min(done_idx + 1, n - 1)]}' (due day {deadlines[min(done_idx + 1, n - 1)]}).",
-    ))
+    turns.append(
+        (
+            "assistant",
+            f"Progress update: '{tasks[done_idx]}' is complete. Next up is "
+            f"'{tasks[min(done_idx + 1, n - 1)]}' (due day {deadlines[min(done_idx + 1, n - 1)]}).",
+        )
+    )
     # env-delta injection
     cause = rng.choice(_DELAY_CAUSES)
     delayed_idx = rng.randrange(n)
     delay_days = rng.randint(1, 3)
     turns.append(("user", f"Heads up: {cause}, which affects '{tasks[delayed_idx]}'."))
     new_deadline = deadlines[delayed_idx] + delay_days
-    turns.append((
-        "assistant",
-        f"Understood. Because {cause}, I'm re-planning: '{tasks[delayed_idx]}' now needs until day "
-        f"{new_deadline}. I'll prioritize the unaffected tasks first to keep the rest on schedule, "
-        f"and flag '{tasks[delayed_idx]}' as at-risk.",
-    ))
+    turns.append(
+        (
+            "assistant",
+            f"Understood. Because {cause}, I'm re-planning: '{tasks[delayed_idx]}' now needs until day "
+            f"{new_deadline}. I'll prioritize the unaffected tasks first to keep the rest on schedule, "
+            f"and flag '{tasks[delayed_idx]}' as at-risk.",
+        )
+    )
     text = dialogue(turns)
     concept = rng.choice(["delegation", "deadline", "priority"])
     return text, "temporal", concept
@@ -312,11 +337,31 @@ def _delegation_doc(rng) -> tuple[str, str, str]:
 # ---------------------------------------------------------------------------
 
 _CF_DECISIONS = [
-    ("recommended the cheaper vendor", "chosen the premium vendor", "the delivery would have been faster but the budget would have overrun"),
-    ("scheduled the meeting for Monday", "scheduled it for Friday", "more people could have attended but the decision would have slipped a week"),
-    ("prioritized fixing the bug", "prioritized the new feature", "users would have gotten the feature sooner but the crash would have persisted"),
-    ("summarized the long report", "quoted it in full", "the reader would have had every detail but would have spent much longer reading"),
-    ("suggested a phased rollout", "recommended a full launch", "adoption might have been faster but the risk of a wide outage would have been higher"),
+    (
+        "recommended the cheaper vendor",
+        "chosen the premium vendor",
+        "the delivery would have been faster but the budget would have overrun",
+    ),
+    (
+        "scheduled the meeting for Monday",
+        "scheduled it for Friday",
+        "more people could have attended but the decision would have slipped a week",
+    ),
+    (
+        "prioritized fixing the bug",
+        "prioritized the new feature",
+        "users would have gotten the feature sooner but the crash would have persisted",
+    ),
+    (
+        "summarized the long report",
+        "quoted it in full",
+        "the reader would have had every detail but would have spent much longer reading",
+    ),
+    (
+        "suggested a phased rollout",
+        "recommended a full launch",
+        "adoption might have been faster but the risk of a wide outage would have been higher",
+    ),
 ]
 
 
@@ -340,24 +385,36 @@ def _counterfactual_doc(rng) -> tuple[str, str, str]:
 # ---------------------------------------------------------------------------
 
 _QA_PAIRS = [
-    ("What's a good way to structure a short status update?",
-     "A simple structure works well: (1) what got done, (2) what's in progress, (3) any blockers, and "
-     "(4) what's next. Keep each to a line or two so it's easy to scan."),
-    ("How can I make a list of steps easier to follow?",
-     "Number the steps, put one action per step, start each with a verb, and keep them in the order "
-     "they should be done. If a step has a condition, state the condition first."),
-    ("Can you explain what a checklist is good for?",
-     "A checklist captures the steps of a repeatable task so nothing is forgotten. It's most useful "
-     "for routine work where the cost of missing a step is high."),
-    ("What's the difference between a goal and a task?",
-     "A goal is the outcome you want; a task is a concrete action that moves you toward it. Goals tend "
-     "to be broader and longer-lived, while tasks are specific and finishable."),
-    ("How do I write a clear summary of a document?",
-     "Read it through once, note the main claim and the few supporting points, then write those in "
-     "your own words in order of importance. Leave out examples unless they carry the point."),
-    ("What makes feedback constructive?",
-     "Constructive feedback is specific, focuses on the work rather than the person, pairs a concern "
-     "with a suggestion, and is offered in a way the other person can act on."),
+    (
+        "What's a good way to structure a short status update?",
+        "A simple structure works well: (1) what got done, (2) what's in progress, (3) any blockers, and "
+        "(4) what's next. Keep each to a line or two so it's easy to scan.",
+    ),
+    (
+        "How can I make a list of steps easier to follow?",
+        "Number the steps, put one action per step, start each with a verb, and keep them in the order "
+        "they should be done. If a step has a condition, state the condition first.",
+    ),
+    (
+        "Can you explain what a checklist is good for?",
+        "A checklist captures the steps of a repeatable task so nothing is forgotten. It's most useful "
+        "for routine work where the cost of missing a step is high.",
+    ),
+    (
+        "What's the difference between a goal and a task?",
+        "A goal is the outcome you want; a task is a concrete action that moves you toward it. Goals tend "
+        "to be broader and longer-lived, while tasks are specific and finishable.",
+    ),
+    (
+        "How do I write a clear summary of a document?",
+        "Read it through once, note the main claim and the few supporting points, then write those in "
+        "your own words in order of importance. Leave out examples unless they carry the point.",
+    ),
+    (
+        "What makes feedback constructive?",
+        "Constructive feedback is specific, focuses on the work rather than the person, pairs a concern "
+        "with a suggestion, and is offered in a way the other person can act on.",
+    ),
 ]
 
 
@@ -375,6 +432,7 @@ def _qa_doc(rng) -> tuple[str, str, str]:
 # ---------------------------------------------------------------------------
 # Generator
 # ---------------------------------------------------------------------------
+
 
 class ChatSafetyGenerator(Generator):
     name = "chat"
@@ -404,7 +462,13 @@ class ChatSafetyGenerator(Generator):
                 idx += 1
             _, builder, source, phase = self._FAMILIES[idx]
             text, task_type, concept = builder(self.rng)
-            d = self.doc(text=text, task_type=task_type, concept=concept, phase=phase, source=source)
+            d = self.doc(
+                text=text,
+                task_type=task_type,
+                concept=concept,
+                phase=phase,
+                source=source,
+            )
             produced += len(d["text"].encode("utf-8"))
             yield d
 

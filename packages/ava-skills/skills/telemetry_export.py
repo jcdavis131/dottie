@@ -8,6 +8,7 @@ registration — the module has no baked-in box paths.
 
 Solo personal project, no connection to employer, built with public/free-tier only.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -18,12 +19,17 @@ from skills.state_store import JSpaceStateStore, default_db_path
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="skills.telemetry_export")
-    ap.add_argument("--path", required=True, help="JSONL file to append to (gitignored!)")
+    ap.add_argument(
+        "--path", required=True, help="JSONL file to append to (gitignored!)"
+    )
     args = ap.parse_args(argv)
     with JSpaceStateStore() as st:
         n = st.export_telemetry_incremental(args.path)
-    print(json.dumps({"ok": True, "exported": n, "path": args.path,
-                      "db": str(default_db_path())}))
+    print(
+        json.dumps(
+            {"ok": True, "exported": n, "path": args.path, "db": str(default_db_path())}
+        )
+    )
     return 0
 
 

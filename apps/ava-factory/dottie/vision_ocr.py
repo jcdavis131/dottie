@@ -36,12 +36,13 @@ import torch.nn.functional as F
 
 from dottie.pipeline import pxpipe
 
-__all__ = ["ocr_decompress_loss", "render_window", "comprehension_probe"]
+__all__ = ["comprehension_probe", "ocr_decompress_loss", "render_window"]
 
 
 # ---------------------------------------------------------------------------
 # 1. OCR-decompression loss
 # ---------------------------------------------------------------------------
+
 
 def _as_tensor_patches(patches, batch: int) -> torch.Tensor:
     """Coerce ``patches`` to a float32 tensor of shape [batch, N, 1024].
@@ -53,14 +54,17 @@ def _as_tensor_patches(patches, batch: int) -> torch.Tensor:
     if not torch.is_tensor(patches):
         patches = torch.as_tensor(np.asarray(patches))
     patches = patches.to(torch.float32)
-    if patches.dim() == 2:                         # [N, 1024] -> [B, N, 1024]
+    if patches.dim() == 2:  # [N, 1024] -> [B, N, 1024]
         patches = patches.unsqueeze(0).expand(batch, -1, -1)
-    elif patches.dim() == 3:                       # [B, N, 1024]
+    elif patches.dim() == 3:  # [B, N, 1024]
         if patches.shape[0] != batch:
             raise ValueError(
-                f"batched patches B={patches.shape[0]} != input_ids B={batch}")
+                f"batched patches B={patches.shape[0]} != input_ids B={batch}"
+            )
     else:
-        raise ValueError(f"patches must be [N,1024] or [B,N,1024], got {tuple(patches.shape)}")
+        raise ValueError(
+            f"patches must be [N,1024] or [B,N,1024], got {tuple(patches.shape)}"
+        )
     return patches
 
 
@@ -81,14 +85,14 @@ def ocr_decompress_loss(model, input_ids, patches) -> torch.Tensor:
         input_ids = torch.as_tensor(input_ids, dtype=torch.long)
     input_ids = input_ids.long()
     if input_ids.dim() == 1:
-        input_ids = input_ids.unsqueeze(0)         # [L] -> [1, L]
+        input_ids = input_ids.unsqueeze(0)  # [L] -> [1, L]
     B, L = input_ids.shape
     if L < 2:
         raise ValueError("need at least 2 text tokens to form a next-token target")
 
     images = _as_tensor_patches(patches, B)
     out = model(images=images, input_ids=input_ids)
-    logits = out["lm_logits"]                       # [B, L, V]
+    logits = out["lm_logits"]  # [B, L, V]
     V = logits.shape[-1]
 
     shift_logits = logits[:, :-1, :].reshape(-1, V)
@@ -99,6 +103,7 @@ def ocr_decompress_loss(model, input_ids, patches) -> torch.Tensor:
 # ---------------------------------------------------------------------------
 # 2. render_window -- thin wrapper over the pxpipe render step
 # ---------------------------------------------------------------------------
+
 
 def render_window(text: str, max_pages: int = 4) -> np.ndarray:
     """Render ``text`` to the model-ready optical form: [n_vision_tokens, 1024]
@@ -125,7 +130,10 @@ def render_window(text: str, max_pages: int = 4) -> np.ndarray:
 _FACT_PATTERNS = (
     ("orbit", re.compile(r"Orbit:\s*([0-9]+(?:\.[0-9]+)?)\s*AU")),
     ("period", re.compile(r"Period:\s*([0-9]+(?:\.[0-9]+)?)\s*yr")),
-    ("equilibrium temperature", re.compile(r"Equilibrium temperature:\s*([0-9]+(?:\.[0-9]+)?)\s*K")),
+    (
+        "equilibrium temperature",
+        re.compile(r"Equilibrium temperature:\s*([0-9]+(?:\.[0-9]+)?)\s*K"),
+    ),
     ("moons", re.compile(r"Moons:\s*([0-9]+)")),
 )
 _HEADING = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
@@ -160,15 +168,17 @@ def _parse_facts(atlas_text: str) -> list[dict]:
             if key in seen:
                 continue
             seen.add(key)
-            facts.append({"name": name, "field": field, "value": m.group(1),
-                          "pos": m.start()})
-    facts.sort(key=lambda f: f["pos"])              # restore document order
+            facts.append(
+                {"name": name, "field": field, "value": m.group(1), "pos": m.start()}
+            )
+    facts.sort(key=lambda f: f["pos"])  # restore document order
     return facts
 
 
 @torch.no_grad()
-def _greedy_decode(model, tok, patches: torch.Tensor, prompt_ids: list[int],
-                   max_new: int = 8) -> str:
+def _greedy_decode(
+    model, tok, patches: torch.Tensor, prompt_ids: list[int], max_new: int = 8
+) -> str:
     """Greedy-decode <=``max_new`` tokens conditioned on the image prefix and
     the prompt; return the decoded *continuation* only."""
     ids = list(prompt_ids)
@@ -200,7 +210,9 @@ def comprehension_probe(model, tok, atlas_text: str, max_questions: int = 4) -> 
         return {"score": 0.0, "n": 0}
 
     patches_np = render_window(atlas_text)
-    patches = torch.as_tensor(patches_np, dtype=torch.float32).unsqueeze(0)  # [1, N, 1024]
+    patches = torch.as_tensor(patches_np, dtype=torch.float32).unsqueeze(
+        0
+    )  # [1, N, 1024]
 
     hits = 0
     for fact in facts:

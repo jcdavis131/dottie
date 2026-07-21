@@ -12,11 +12,15 @@ generator bug cannot silently poison a shard.
 
 from __future__ import annotations
 
+import itertools
 from fractions import Fraction
-from typing import Iterator
+from typing import TYPE_CHECKING
 
 from dottie.datagen.base import Generator
 from dottie.datagen.trace_common import elide, render_etcot, step_lines
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 # ---------------------------------------------------------------------------
 # RLE
@@ -58,7 +62,9 @@ def _rle_doc(rng, n: int, elide_over: int):
             f"emit pair ({ch},{ln}); pos -> {pos + ln}"
         )
         pos += ln
-        states.append(f"pos={pos}, pairs so far={[(c, k) for c, k in runs[: len(states) + 1]]}")
+        states.append(
+            f"pos={pos}, pairs so far={[(c, k) for c, k in runs[: len(states) + 1]]}"
+        )
     encoded = "".join(f"{k}{c}" for c, k in runs)
     task = (
         "### Task: simulate run-length encoding (RLE)\n"
@@ -119,7 +125,9 @@ def _lz77_decode(triples: list[tuple[int, int, str]]) -> str:
 
 def _lz77_doc(rng, n: int, elide_over: int):
     # small alphabet + phrase reuse so real back-references occur
-    phrases = ["".join(rng.choice("abcd") for _ in range(rng.randint(2, 4))) for _ in range(3)]
+    phrases = [
+        "".join(rng.choice("abcd") for _ in range(rng.randint(2, 4))) for _ in range(3)
+    ]
     parts = []
     while sum(len(p) for p in parts) < n:
         parts.append(rng.choice(phrases) if rng.random() < 0.7 else rng.choice("abcd"))
@@ -131,10 +139,10 @@ def _lz77_doc(rng, n: int, elide_over: int):
     raw_steps, states = [], []
     i = 0
     for off, length, lit in triples:
-        window = data[max(0, i - _LZ_WINDOW): i]
-        look = data[i: i + _LZ_LOOKAHEAD]
+        window = data[max(0, i - _LZ_WINDOW) : i]
+        look = data[i : i + _LZ_LOOKAHEAD]
         if length:
-            src = data[i - off: i - off + length]
+            src = data[i - off : i - off + length]
             raw_steps.append(
                 f"pos {i}: window='{window}' lookahead='{look}' -> longest match "
                 f"'{src}' at offset {off}, length {length}; emit ({off},{length},'{lit}'); "
@@ -172,7 +180,9 @@ def _lz77_doc(rng, n: int, elide_over: int):
 def _huffman_codes(freqs: dict[str, int]):
     """Deterministic Huffman: ties broken by node creation order (leaves in
     alphabetical order first). Returns (codes, merge trace rows)."""
-    nodes = [(f, i, sym, None, None) for i, (sym, f) in enumerate(sorted(freqs.items()))]
+    nodes = [
+        (f, i, sym, None, None) for i, (sym, f) in enumerate(sorted(freqs.items()))
+    ]
     labels = {i: f"'{sym}'({f})" for i, (sym, f) in enumerate(sorted(freqs.items()))}
     next_id = len(nodes)
     merges = []
@@ -182,7 +192,7 @@ def _huffman_codes(freqs: dict[str, int]):
         merged = (a[0] + b[0], next_id, None, a, b)
         labels[next_id] = f"T{next_id - len(freqs) + 1}({a[0] + b[0]})"
         merges.append((labels[a[1]], labels[b[1]], labels[next_id]))
-        nodes = nodes[2:] + [merged]
+        nodes = [*nodes[2:], merged]
         next_id += 1
 
     codes: dict[str, str] = {}
@@ -222,16 +232,27 @@ def _huffman_doc(rng, n: int, elide_over: int):
 
     raw_steps, states = [], []
     for a, b, m in merges:
-        raw_steps.append(f"pop two lowest-frequency nodes {a} and {b} -> merge into {m} (left={a} gets bit 0, right={b} gets bit 1)")
+        raw_steps.append(
+            f"pop two lowest-frequency nodes {a} and {b} -> merge into {m} (left={a} gets bit 0, right={b} gets bit 1)"
+        )
         states.append(f"merged nodes={len(states) + 1}")
-    raw_steps.append("assign codes by walking the tree root->leaf: " + ", ".join(f"'{s}'={codes[s]}" for s in sorted(codes)))
+    raw_steps.append(
+        "assign codes by walking the tree root->leaf: "
+        + ", ".join(f"'{s}'={codes[s]}" for s in sorted(codes))
+    )
     states.append("code table complete")
     group = 12
     for gi in range(0, len(data), group):
-        chunk = data[gi: gi + group]
+        chunk = data[gi : gi + group]
         bits = "".join(codes[c] for c in chunk)
-        raw_steps.append(f"encode '{chunk}' -> " + " ".join(codes[c] for c in chunk) + f" ({len(bits)} bits)")
-        states.append(f"encoded {min(gi + group, len(data))}/{len(data)} symbols, {len(''.join(codes[c] for c in data[: gi + group]))} bits so far")
+        raw_steps.append(
+            f"encode '{chunk}' -> "
+            + " ".join(codes[c] for c in chunk)
+            + f" ({len(bits)} bits)"
+        )
+        states.append(
+            f"encoded {min(gi + group, len(data))}/{len(data)} symbols, {len(''.join(codes[c] for c in data[: gi + group]))} bits so far"
+        )
 
     fixed_bits = len(data) * 8
     task = (
@@ -249,7 +270,12 @@ def _huffman_doc(rng, n: int, elide_over: int):
         f"(ratio {fixed_bits / len(encoded):.2f}x)",
     ]
     text = render_etcot(task, elide(step_lines(raw_steps), states, elide_over), answer)
-    return text, "deliberate", "huffman_trace", {"data": data, "freqs": freqs, "codes": codes, "encoded": encoded}
+    return (
+        text,
+        "deliberate",
+        "huffman_trace",
+        {"data": data, "freqs": freqs, "codes": codes, "encoded": encoded},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -283,17 +309,21 @@ def _unvarint(stream: list[int]) -> list[int]:
 
 
 def _delta_varint_doc(rng, n: int, elide_over: int):
-    t0 = 1_700_000_000 + rng.randint(0, 10 ** 6)
+    t0 = 1_700_000_000 + rng.randint(0, 10**6)
     ts = [t0]
     for _ in range(n - 1):
         ts.append(ts[-1] + rng.randint(1, 300))
-    deltas = [ts[0]] + [b - a for a, b in zip(ts, ts[1:])]
+    deltas = [ts[0]] + [b - a for a, b in itertools.pairwise(ts)]
     stream: list[int] = []
     raw_steps, states = [], []
     for i, d in enumerate(deltas):
         enc = _varint(d)
         stream.extend(enc)
-        what = f"t[0]={d} (raw first timestamp)" if i == 0 else f"delta t[{i}]-t[{i - 1}] = {ts[i]} - {ts[i - 1]} = {d}"
+        what = (
+            f"t[0]={d} (raw first timestamp)"
+            if i == 0
+            else f"delta t[{i}]-t[{i - 1}] = {ts[i]} - {ts[i - 1]} = {d}"
+        )
         raw_steps.append(
             f"{what}; varint: {d} = 0b{d:b} -> 7-bit groups little-endian -> bytes "
             f"[{', '.join(f'0x{b:02X}' for b in enc)}]"
@@ -335,14 +365,14 @@ def _quant_int8_doc(rng, n: int, elide_over: int):
     scale = amax / 127.0
     q = [max(-127, min(127, round(v / scale))) for v in vals]
     deq = [qi * scale for qi in q]
-    errs = [abs(v - d) for v, d in zip(vals, deq)]
+    errs = [abs(v - d) for v, d in zip(vals, deq, strict=False)]
 
     raw_steps = [
         f"amax = max(|x_i|) = {amax:.3f}; scale = amax/127 = {amax:.3f}/127 = {scale:.6f}; "
         "zero_point = 0 (symmetric int8)"
     ]
     states = [f"scale={scale:.6f}"]
-    for i, (v, qi, d, e) in enumerate(zip(vals, q, deq, errs)):
+    for i, (v, qi, d, e) in enumerate(zip(vals, q, deq, errs, strict=False)):
         raw_steps.append(
             f"x[{i}] = {v:.3f}: q = clamp(round({v:.3f}/{scale:.6f}), -127, 127) = {qi}; "
             f"dequant = {qi}*{scale:.6f} = {d:.6f}; |err| = {e:.6f}"
@@ -363,7 +393,12 @@ def _quant_int8_doc(rng, n: int, elide_over: int):
         f"size: {n * 4} bytes float32 -> {n} bytes int8 (+4-byte scale), ratio ~{n * 4 / (n + 4):.2f}x",
     ]
     text = render_etcot(task, elide(step_lines(raw_steps), states, elide_over), answer)
-    return text, "deliberate", "quant_int8_trace", {"vals": vals, "scale": scale, "q": q}
+    return (
+        text,
+        "deliberate",
+        "quant_int8_trace",
+        {"vals": vals, "scale": scale, "q": q},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -441,13 +476,19 @@ def _arith_eiw_doc(rng, n: int, elide_over: int):
                 f"window {widx + 1} full: width = 2^-{b}, low = {code} (binary) -> "
                 f"FLUSH '{syms}' as bits {code}; reset interval to [0,1)"
             )
-            states.append(f"windows flushed={widx + 1}, symbols consumed incl. this window")
+            states.append(
+                f"windows flushed={widx + 1}, symbols consumed incl. this window"
+            )
             low, width, bits = Fraction(0), Fraction(1), 0
             widx += 1
-        states.append(f"low={low}, width={width}, window bits={bits}, windows flushed={widx}")
+        states.append(
+            f"low={low}, width={width}, window bits={bits}, windows flushed={widx}"
+        )
     if bits:
         syms, b, code = windows[widx]
-        raw_steps.append(f"end of input: flush final partial window '{syms}' ({b} bits) as {code}")
+        raw_steps.append(
+            f"end of input: flush final partial window '{syms}' ({b} bits) as {code}"
+        )
         states.append(f"windows flushed={widx + 1}")
 
     bitstream = "".join(c for _, _, c in windows)
@@ -476,8 +517,8 @@ def _arith_eiw_doc(rng, n: int, elide_over: int):
 # DEFLATE-style composition: LZ77 stage feeding a Huffman stage
 # ---------------------------------------------------------------------------
 
-_DEFLATE_OFF_BITS = 5   # offsets 0..16 (window 16)
-_DEFLATE_LEN_BITS = 4   # lengths 0..8 (lookahead 8)
+_DEFLATE_OFF_BITS = 5  # offsets 0..16 (window 16)
+_DEFLATE_LEN_BITS = 4  # lengths 0..8 (lookahead 8)
 
 
 def _deflate_pack(triples: list[tuple[int, int, str]], codes: dict[str, str]) -> str:
@@ -489,13 +530,15 @@ def _deflate_pack(triples: list[tuple[int, int, str]], codes: dict[str, str]) ->
     return "".join(bits)
 
 
-def _deflate_unpack(bitstream: str, codes: dict[str, str]) -> list[tuple[int, int, str]]:
+def _deflate_unpack(
+    bitstream: str, codes: dict[str, str]
+) -> list[tuple[int, int, str]]:
     inv = {v: k for k, v in codes.items()}
     triples, i = [], 0
     while i < len(bitstream):
-        off = int(bitstream[i: i + _DEFLATE_OFF_BITS], 2)
+        off = int(bitstream[i : i + _DEFLATE_OFF_BITS], 2)
         i += _DEFLATE_OFF_BITS
-        length = int(bitstream[i: i + _DEFLATE_LEN_BITS], 2)
+        length = int(bitstream[i : i + _DEFLATE_LEN_BITS], 2)
         i += _DEFLATE_LEN_BITS
         cur = ""
         while cur not in inv:
@@ -506,7 +549,9 @@ def _deflate_unpack(bitstream: str, codes: dict[str, str]) -> list[tuple[int, in
 
 
 def _deflate_doc(rng, n: int, elide_over: int):
-    phrases = ["".join(rng.choice("abcd") for _ in range(rng.randint(2, 4))) for _ in range(3)]
+    phrases = [
+        "".join(rng.choice("abcd") for _ in range(rng.randint(2, 4))) for _ in range(3)
+    ]
     parts: list[str] = []
     while sum(len(p) for p in parts) < n:
         parts.append(rng.choice(phrases) if rng.random() < 0.7 else rng.choice("abcd"))
@@ -525,16 +570,24 @@ def _deflate_doc(rng, n: int, elide_over: int):
     for idx, (off, length, lit) in enumerate(triples):
         raw_steps.append(
             f"stage 1 (LZ77): emit triple ({off},{length},'{lit}')"
-            + (f" -- back-reference offset {off}, copy {length}" if length else " -- literal")
+            + (
+                f" -- back-reference offset {off}, copy {length}"
+                if length
+                else " -- literal"
+            )
         )
         states.append(f"triples emitted={idx + 1}/{len(triples)}")
-    raw_steps.append(f"stage 1 done: {len(data)} bytes -> {len(triples)} triples; "
-                     f"literal frequencies {dict(sorted(lit_freqs.items()))}")
+    raw_steps.append(
+        f"stage 1 done: {len(data)} bytes -> {len(triples)} triples; "
+        f"literal frequencies {dict(sorted(lit_freqs.items()))}"
+    )
     states.append("stage 1 done")
     for a, b, m in merges:
         raw_steps.append(f"stage 2 (Huffman over literals): merge {a} + {b} -> {m}")
         states.append("building literal tree")
-    raw_steps.append("stage 2 code table: " + ", ".join(f"'{s}'={codes[s]}" for s in sorted(codes)))
+    raw_steps.append(
+        "stage 2 code table: " + ", ".join(f"'{s}'={codes[s]}" for s in sorted(codes))
+    )
     states.append("code table done")
     for off, length, lit in triples:
         raw_steps.append(
@@ -598,7 +651,9 @@ def _prune_doc(rng, n: int, elide_over: int):
             raw_steps.append(
                 f"x[{i}] = {v:.3f}: magnitude rank {rank[i]} >= k={k} -> keep"
             )
-        states.append(f"processed {i + 1}/{n}, zeros so far={sum(1 for j in range(i + 1) if j in pruned)}")
+        states.append(
+            f"processed {i + 1}/{n}, zeros so far={sum(1 for j in range(i + 1) if j in pruned)}"
+        )
 
     task = (
         "### Task: simulate magnitude pruning of a tensor (neural compression)\n"
@@ -613,7 +668,13 @@ def _prune_doc(rng, n: int, elide_over: int):
         f"prune threshold |x| = {threshold:.3f})",
     ]
     text = render_etcot(task, elide(step_lines(raw_steps), states, elide_over), answer)
-    meta = {"vals": vals, "k": k, "pruned": sorted(pruned), "out": out, "threshold": threshold}
+    meta = {
+        "vals": vals,
+        "k": k,
+        "pruned": sorted(pruned),
+        "out": out,
+        "threshold": threshold,
+    }
     return text, "deliberate", "prune_magnitude", meta
 
 
@@ -636,11 +697,46 @@ class CompressTraceGenerator(Generator):
     _FAMILIES = [
         (0.11, _rle_doc, "compress/rle", (5, 9), (18, 36), (45, 8, 6200, 160)),
         (0.15, _lz77_doc, "compress/lz77", (10, 16), (36, 64), (60, 10, 6200, 220)),
-        (0.15, _huffman_doc, "compress/huffman", (12, 20), (30, 48), (90, 16, 6200, 900)),
-        (0.12, _delta_varint_doc, "compress/delta_varint", (5, 8), (16, 34), (36, 6, 6200, 140)),
-        (0.13, _quant_int8_doc, "compress/quant_int8", (5, 8), (16, 34), (34, 6, 6200, 140)),
-        (0.12, _arith_eiw_doc, "compress/arith_eiw", (8, 14), (24, 44), (48, 8, 6200, 200)),
-        (0.12, _deflate_doc, "compress/deflate", (10, 16), (24, 40), (44, 8, 6200, 200)),
+        (
+            0.15,
+            _huffman_doc,
+            "compress/huffman",
+            (12, 20),
+            (30, 48),
+            (90, 16, 6200, 900),
+        ),
+        (
+            0.12,
+            _delta_varint_doc,
+            "compress/delta_varint",
+            (5, 8),
+            (16, 34),
+            (36, 6, 6200, 140),
+        ),
+        (
+            0.13,
+            _quant_int8_doc,
+            "compress/quant_int8",
+            (5, 8),
+            (16, 34),
+            (34, 6, 6200, 140),
+        ),
+        (
+            0.12,
+            _arith_eiw_doc,
+            "compress/arith_eiw",
+            (8, 14),
+            (24, 44),
+            (48, 8, 6200, 200),
+        ),
+        (
+            0.12,
+            _deflate_doc,
+            "compress/deflate",
+            (10, 16),
+            (24, 40),
+            (44, 8, 6200, 200),
+        ),
         (0.10, _prune_doc, "compress/prune", (6, 10), (14, 28), (30, 6, 6200, 160)),
     ]
 
@@ -682,9 +778,17 @@ class CompressTraceGenerator(Generator):
                     text, task_type, concept, _meta = builder(self.rng, n, elide_over)
             else:
                 lo, hi = p2_range if phase == 2 else p3_range
-                text, task_type, concept, _meta = builder(self.rng, self.rng.randint(lo, hi), elide_over)
+                text, task_type, concept, _meta = builder(
+                    self.rng, self.rng.randint(lo, hi), elide_over
+                )
 
-            d = self.doc(text=text, task_type=task_type, concept=concept, phase=phase, source=source)
+            d = self.doc(
+                text=text,
+                task_type=task_type,
+                concept=concept,
+                phase=phase,
+                source=source,
+            )
             produced += len(d["text"].encode("utf-8"))
             yield d
 

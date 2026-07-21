@@ -38,7 +38,7 @@ import random
 import sys
 import time
 from pathlib import Path
-from typing import Callable, Iterator
+from typing import TYPE_CHECKING
 
 import yaml
 
@@ -48,10 +48,12 @@ from dottie.pipeline.flow import (
     N_PHASES,
     FlowConfig,
     collector_should_pause,
-    free_gb,
     pick_target_phase,
 )
 from dottie.pipeline.manifest import RAW, Manifest, worker_id
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
 
 try:  # zstandard is pinned in the image; guard only so the module imports bare.
     import zstandard as zstd
@@ -68,10 +70,22 @@ _DEFAULT_PIPELINE_CONFIG = "/app/configs/pipeline.yaml"
 def make_logger(worker: str, stream=None) -> Callable[..., None]:
     out = stream if stream is not None else sys.stdout
 
-    def log(event: str, *, level: str = "info", source: str | None = None,
-            phase: int | None = None, **fields) -> None:
-        rec = {"ts": round(time.time(), 3), "level": level, "worker": worker,
-               "source": source, "phase": phase, "event": event}
+    def log(
+        event: str,
+        *,
+        level: str = "info",
+        source: str | None = None,
+        phase: int | None = None,
+        **fields,
+    ) -> None:
+        rec = {
+            "ts": round(time.time(), 3),
+            "level": level,
+            "worker": worker,
+            "source": source,
+            "phase": phase,
+            "event": event,
+        }
         rec.update(fields)
         out.write(json.dumps(rec, ensure_ascii=False) + "\n")
         out.flush()
@@ -92,8 +106,10 @@ class CollectorConfig:
     raw_target_bytes: int
 
     @classmethod
-    def load(cls, path: str | Path | None = None) -> "CollectorConfig":
-        p = Path(path or os.environ.get("AVA_PIPELINE_CONFIG", _DEFAULT_PIPELINE_CONFIG))
+    def load(cls, path: str | Path | None = None) -> CollectorConfig:
+        p = Path(
+            path or os.environ.get("AVA_PIPELINE_CONFIG", _DEFAULT_PIPELINE_CONFIG)
+        )
         cfg = yaml.safe_load(p.read_text())
         c = cfg.get("collector", {})
         s = cfg.get("shards", {})
@@ -120,7 +136,7 @@ def backoff_delay(attempt: int, cfg: CollectorConfig, rng: random.Random) -> flo
 @dataclasses.dataclass
 class SourceSpec:
     name: str
-    kind: str                         # "hf" | "synthetic"
+    kind: str  # "hf" | "synthetic"
     text_field: str = "text"
     dataset: str | None = None
     config: str | None = None
@@ -136,24 +152,33 @@ class SourceSpec:
     filters: dict = dataclasses.field(default_factory=dict)
     license: str | None = None
     gated: bool = False
-    seed: int = 1234                  # synthetic only; same seed => same corpus
+    seed: int = 1234  # synthetic only; same seed => same corpus
     # Test/override hook: a callable(skip_n) -> iterator of record dicts.
     # When set it fully replaces network/synthetic streaming for this source.
     stream_factory: Callable[[int], Iterator[dict]] | None = None
 
     @classmethod
-    def from_dict(cls, d: dict) -> "SourceSpec":
+    def from_dict(cls, d: dict) -> SourceSpec:
         weight = {int(k): float(v) for k, v in (d.get("weight") or {}).items()}
         phases = tuple(int(p) for p in d.get("phases", []))
         return cls(
-            name=d["name"], kind=d["kind"], text_field=d.get("text_field", "text"),
-            dataset=d.get("dataset"), config=d.get("config"), split=d.get("split", "train"),
-            score_field=d.get("score_field"), generator=d.get("generator"),
+            name=d["name"],
+            kind=d["kind"],
+            text_field=d.get("text_field", "text"),
+            dataset=d.get("dataset"),
+            config=d.get("config"),
+            split=d.get("split", "train"),
+            score_field=d.get("score_field"),
+            generator=d.get("generator"),
             adapter=d.get("adapter"),
             trust_remote_code=bool(d.get("trust_remote_code", False)),
-            phases=phases, weight=weight, task_type=d.get("task_type", "automatic"),
-            filters=d.get("filters") or {}, license=d.get("license"),
-            gated=bool(d.get("gated", False)), seed=int(d.get("seed", 1234)),
+            phases=phases,
+            weight=weight,
+            task_type=d.get("task_type", "automatic"),
+            filters=d.get("filters") or {},
+            license=d.get("license"),
+            gated=bool(d.get("gated", False)),
+            seed=int(d.get("seed", 1234)),
         )
 
 
@@ -253,7 +278,9 @@ def build_doc(spec: SourceSpec, phase: int, rec: dict) -> dict | None:
 _SYNTH_EPOCH_BYTES = 8 * 1024 * 1024
 
 
-def _synthetic_stream(spec: SourceSpec, skip_n: int, phase: int | None = None) -> Iterator[dict]:
+def _synthetic_stream(
+    spec: SourceSpec, skip_n: int, phase: int | None = None
+) -> Iterator[dict]:
     """Endless deterministic doc stream from an ava.datagen generator.
 
     The generator -- not the registry -- decides each doc's phase, task_type and
@@ -297,8 +324,11 @@ def _synthetic_stream(spec: SourceSpec, skip_n: int, phase: int | None = None) -
                 seen += 1
                 continue
             seen += 1
-            yield {"text": doc["text"], "_concept": doc["concept"],
-                   "_task_type": doc["task_type"]}
+            yield {
+                "text": doc["text"],
+                "_concept": doc["concept"],
+                "_task_type": doc["task_type"],
+            }
         epoch += 1
 
 
@@ -307,7 +337,10 @@ def _hf_stream(spec: SourceSpec, skip_n: int) -> Iterator[dict]:
     from datasets import load_dataset
 
     ds = load_dataset(
-        spec.dataset, spec.config, split=spec.split, streaming=True,
+        spec.dataset,
+        spec.config,
+        split=spec.split,
+        streaming=True,
         trust_remote_code=spec.trust_remote_code,
     )
     if skip_n:
@@ -315,7 +348,9 @@ def _hf_stream(spec: SourceSpec, skip_n: int) -> Iterator[dict]:
     return iter(ds)
 
 
-def make_factory(spec: SourceSpec, phase: int | None = None) -> Callable[[int], Iterator[dict]]:
+def make_factory(
+    spec: SourceSpec, phase: int | None = None
+) -> Callable[[int], Iterator[dict]]:
     if spec.stream_factory is not None:
         return spec.stream_factory
     if spec.kind == "hf":
@@ -360,12 +395,24 @@ def iter_records(
             it = None  # re-establish and skip back to where we were
             fails += 1
             if fails > cfg.http_retries:
-                log("source_give_up", level="error", source=spec.name,
-                    error=f"{type(e).__name__}: {e}", after_retries=cfg.http_retries)
+                log(
+                    "source_give_up",
+                    level="error",
+                    source=spec.name,
+                    error=f"{type(e).__name__}: {e}",
+                    after_retries=cfg.http_retries,
+                )
                 raise GiveUp(spec.name) from e
             delay = backoff_delay(fails, cfg, rng)
-            log("stream_retry", level="warn", source=spec.name, attempt=fails,
-                position=pos, delay_s=round(delay, 2), error=f"{type(e).__name__}: {e}")
+            log(
+                "stream_retry",
+                level="warn",
+                source=spec.name,
+                attempt=fails,
+                position=pos,
+                delay_s=round(delay, 2),
+                error=f"{type(e).__name__}: {e}",
+            )
             sleep_fn(delay)
             continue
         fails = 0
@@ -423,8 +470,10 @@ class ShardWriter:
         if zstd is None:  # pragma: no cover
             raise RuntimeError("zstandard is required to write shards")
         # Deterministic id: same docs -> same shard id -> idempotent re-register.
-        shard_id = f"{self.source}-" + hashlib.sha1(
-            "\n".join(self._doc_ids).encode("utf-8")).hexdigest()[:16]
+        shard_id = (
+            f"{self.source}-"
+            + hashlib.sha1("\n".join(self._doc_ids).encode("utf-8")).hexdigest()[:16]
+        )
         final = self.dir / f"{shard_id}.jsonl.zst"
         tmp = self.dir / f".{shard_id}.{os.getpid()}.tmp"
         blob = zstd.ZstdCompressor(level=10).compress(b"".join(self._lines))
@@ -433,7 +482,7 @@ class ShardWriter:
                 f.write(blob)
                 f.flush()
                 os.fsync(f.fileno())
-            os.replace(tmp, final)          # atomic publish
+            os.replace(tmp, final)  # atomic publish
             self._fsync_dir(self.dir)
         finally:
             if tmp.exists():
@@ -442,8 +491,11 @@ class ShardWriter:
                 except OSError:
                     pass
         return ShardInfo(
-            shard_id=shard_id, path=str(final), bytes=self.uncompressed,
-            docs=self.docs, sha256=hashlib.sha256(blob).hexdigest(),
+            shard_id=shard_id,
+            path=str(final),
+            bytes=self.uncompressed,
+            docs=self.docs,
+            sha256=hashlib.sha256(blob).hexdigest(),
         )
 
     @staticmethod
@@ -467,21 +519,44 @@ def cursor_key(spec: SourceSpec, phase: int) -> str:
     return f"{spec.name}#p{phase}" if spec.kind == "synthetic" else spec.name
 
 
-def _commit_shard(writer: ShardWriter, spec: SourceSpec, phase: int, m: Manifest,
-                  n_read: int, log: Callable[..., None], split: str = "train") -> ShardInfo:
+def _commit_shard(
+    writer: ShardWriter,
+    spec: SourceSpec,
+    phase: int,
+    m: Manifest,
+    n_read: int,
+    log: Callable[..., None],
+    split: str = "train",
+) -> ShardInfo:
     """Publish to disk, register (idempotent), then advance the resume cursor.
 
     Order matters: the cursor advances last so a crash before it re-reads the
     same source records into an identical (idempotent) shard next time."""
     info = writer.publish()
     assert info is not None
-    added = m.add_shard(info.shard_id, source=spec.name, phase=phase, path=info.path,
-                        split=split, bytes_=info.bytes, docs=info.docs,
-                        sha256=info.sha256, state=RAW)
+    added = m.add_shard(
+        info.shard_id,
+        source=spec.name,
+        phase=phase,
+        path=info.path,
+        split=split,
+        bytes_=info.bytes,
+        docs=info.docs,
+        sha256=info.sha256,
+        state=RAW,
+    )
     m.set_cursor(cursor_key(spec, phase), f"docs:{n_read}", n_read)
-    log("shard_committed", source=spec.name, phase=phase, shard_id=info.shard_id,
-        path=info.path, docs=info.docs, bytes=info.bytes, cursor=n_read,
-        newly_registered=added)
+    log(
+        "shard_committed",
+        source=spec.name,
+        phase=phase,
+        shard_id=info.shard_id,
+        path=info.path,
+        docs=info.docs,
+        bytes=info.bytes,
+        cursor=n_read,
+        newly_registered=added,
+    )
     return info
 
 
@@ -536,7 +611,13 @@ def run_source(
                 break
     if writer.docs > 0:
         _commit_shard(writer, spec, phase, m, n_read, log, split)
-    log("source_done", source=spec.name, phase=phase, docs_written=written, cursor=n_read)
+    log(
+        "source_done",
+        source=spec.name,
+        phase=phase,
+        docs_written=written,
+        cursor=n_read,
+    )
     return written
 
 
@@ -634,7 +715,10 @@ def serve(
         base = sources_for_phase(sources, phase)
         task_types = {s.name: s.task_type for s in sources}
         weighted = apply_demand_weights(
-            base, source_task_types=task_types, demand=demand, phase=phase,
+            base,
+            source_task_types=task_types,
+            demand=demand,
+            phase=phase,
         )
         key = (phase, tuple(weighted))
         if rr is None or key != rr_key:
@@ -648,13 +732,27 @@ def serve(
         if demand is not None and it % 20 == 1:
             acts = demand.actions_for(phase)
             if acts:
-                log("demand_actuate", phase=phase, source=name, actions=list(acts),
+                log(
+                    "demand_actuate",
+                    phase=phase,
+                    source=name,
+                    actions=list(acts),
                     effort=demand.effort_map().get(phase, 0.0),
-                    reasons=list(demand.reasons)[:2])
+                    reasons=list(demand.reasons)[:2],
+                )
 
         try:
-            run_source(by_name[name], phase, m, cfg, raw_dir, log,
-                       once=True, rng=rng, sleep_fn=sleep_fn)
+            run_source(
+                by_name[name],
+                phase,
+                m,
+                cfg,
+                raw_dir,
+                log,
+                once=True,
+                rng=rng,
+                sleep_fn=sleep_fn,
+            )
         except GiveUp:
             continue  # move to the next source rather than crashing the container
 
@@ -694,14 +792,19 @@ def bootstrap_sample(
                 share = per_phase * (w / wsum)
                 got = 0
                 try:
-                    for pos, rec in iter_records(spec, 0, cfg, log, make_factory(spec, phase),
-                                                 rng, sleep_fn):
+                    for pos, rec in iter_records(
+                        spec, 0, cfg, log, make_factory(spec, phase), rng, sleep_fn
+                    ):
                         doc = build_doc(spec, phase, rec)
                         if doc is None:
                             continue
-                        line = json.dumps(
-                            {"text": doc["text"], "phase": phase, "source": name},
-                            ensure_ascii=False) + "\n"
+                        line = (
+                            json.dumps(
+                                {"text": doc["text"], "phase": phase, "source": name},
+                                ensure_ascii=False,
+                            )
+                            + "\n"
+                        )
                         f.write(line)
                         n = len(line.encode("utf-8"))
                         got += n
@@ -722,13 +825,20 @@ def bootstrap_sample(
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Ava collector")
     ap.add_argument("--once", action="store_true", help="collect one shard then exit")
-    ap.add_argument("--source", default=None, help="restrict to a single source by name")
+    ap.add_argument(
+        "--source", default=None, help="restrict to a single source by name"
+    )
     ap.add_argument("--phase", type=int, default=None, help="override target phase")
-    ap.add_argument("--max-docs", type=int, default=None, help="cap docs written this run")
+    ap.add_argument(
+        "--max-docs", type=int, default=None, help="cap docs written this run"
+    )
     ap.add_argument("--sources", default=None, help="path to sources.yaml")
     ap.add_argument("--raw-dir", default=None, help="override AVA_RAW_DIR")
-    ap.add_argument("--bootstrap-sample", action="store_true",
-                    help="stratified sample across phases for tokenizer training")
+    ap.add_argument(
+        "--bootstrap-sample",
+        action="store_true",
+        help="stratified sample across phases for tokenizer training",
+    )
     ap.add_argument("--target-bytes", type=int, default=64_000_000)
     ap.add_argument("--out", default=None, help="output dir for --bootstrap-sample")
     args = ap.parse_args(argv)
@@ -751,18 +861,24 @@ def main(argv: list[str] | None = None) -> int:
                 spec = next((s for s in sources if s.name == args.source), None)
                 if spec is None:
                     ap.error(f"unknown source {args.source!r}")
-                phase = args.phase if args.phase is not None else (
-                    spec.phases[0] if spec.phases else 0)
+                phase = (
+                    args.phase
+                    if args.phase is not None
+                    else (spec.phases[0] if spec.phases else 0)
+                )
             else:
-                phase = args.phase if args.phase is not None else pick_target_phase(m, fcfg)
+                phase = (
+                    args.phase if args.phase is not None else pick_target_phase(m, fcfg)
+                )
                 names = sources_for_phase(sources, phase)
                 if not names:
                     log("no_source_for_phase", level="error", phase=phase)
                     return 1
                 spec = next(s for s in sources if s.name == names[0][0])
             try:
-                run_source(spec, phase, m, cfg, raw_dir, log,
-                           once=True, max_docs=args.max_docs)
+                run_source(
+                    spec, phase, m, cfg, raw_dir, log, once=True, max_docs=args.max_docs
+                )
             except GiveUp:
                 log("once_give_up", level="error", source=spec.name)
                 return 1

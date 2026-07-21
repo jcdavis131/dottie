@@ -5,17 +5,23 @@ The persistence tests run against a REAL JSpaceStateStore on a tmp database (via
 DOTTIE_STATE_DB) — no mocks; a second store instance re-reads the file to prove the
 cross-loop property the OpenClaw profile exists for.
 """
+
 from __future__ import annotations
 
 import pytest
 
 from bigbang.core.profiles import (
-    HERMES_SYSTEM_ROLE, OPENCLAW_SYSTEM_ROLE, PROFILES,
-    after_run, build_system_prompt, get_profile,
+    HERMES_SYSTEM_ROLE,
+    OPENCLAW_SYSTEM_ROLE,
+    PROFILES,
+    after_run,
+    build_system_prompt,
+    get_profile,
 )
 
 skills_store = pytest.importorskip(
-    "skills.state_store", reason="ava-skills workspace member not installed")
+    "skills.state_store", reason="ava-skills workspace member not installed"
+)
 
 
 def test_registry_carries_the_mandated_system_roles():
@@ -46,34 +52,41 @@ def test_openclaw_prompt_reenters_with_real_session_state(tmp_path, monkeypatch)
     assert p["persistence"] == "on"
     assert p["context"] == {"default": {"deploy_stage": "canary"}}
     assert "deploy_stage" in p["system"] and "canary" in p["system"]
-    assert "scout --json forge list" in p["system"]      # discover-first directive
+    assert "scout --json forge list" in p["system"]  # discover-first directive
 
 
 def test_hermes_after_run_registers_routine_and_logs(tmp_path, monkeypatch):
     monkeypatch.setenv("DOTTIE_STATE_DB", str(tmp_path / "state.sqlite3"))
-    out = after_run(PROFILES["hermes"], session_id="sess-h", task="index the repo",
-                    outcome="ok", plan=["bb reviewgraph index", "bb reviewgraph risks"])
+    out = after_run(
+        PROFILES["hermes"],
+        session_id="sess-h",
+        task="index the repo",
+        outcome="ok",
+        plan=["bb reviewgraph index", "bb reviewgraph risks"],
+    )
     assert out["persistence"] == "on"
     assert out["skill_registered_version"] == 1
     # the registered artifact is a contract-compliant, COMPILABLE plugin draft, and the
     # proposal is explicit human-gated commands (TODOS 6.1)
     assert any("forge new" in c for c in out["forge_proposal"])
     import ast
-    with skills_store.JSpaceStateStore() as st:          # fresh instance, same file
+
+    with skills_store.JSpaceStateStore() as st:  # fresh instance, same file
         skills = st.list_skills(source="hermes")
         assert len(skills) == 1 and skills[0]["name"].startswith("routine_")
         draft = st.get_skill(skills[0]["name"])["code"]
-        ast.parse(draft)                                  # must be real, parseable code
+        ast.parse(draft)  # must be real, parseable code
         assert "make_plugin_app" in draft and "bb reviewgraph index" in draft
         logged = st.recent_tasks(5, session_id="sess-h")
         assert logged[0]["task"] == "index the repo" and logged[0]["outcome"] == "ok"
-        assert logged[0]["eval_score"] is None           # no eval ran — stays NULL
+        assert logged[0]["eval_score"] is None  # no eval ran — stays NULL
 
 
 def test_hermes_does_not_register_on_failure(tmp_path, monkeypatch):
     monkeypatch.setenv("DOTTIE_STATE_DB", str(tmp_path / "state.sqlite3"))
-    out = after_run(PROFILES["hermes"], session_id="s", task="t", outcome="failed",
-                    plan=["bb x"])
+    out = after_run(
+        PROFILES["hermes"], session_id="s", task="t", outcome="failed", plan=["bb x"]
+    )
     assert "skill_registered_version" not in out
     with skills_store.JSpaceStateStore() as st:
         assert st.list_skills(source="hermes") == []

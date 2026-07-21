@@ -29,9 +29,12 @@ per spec 02's convention.
 
 from __future__ import annotations
 
-from typing import Iterator
+from typing import TYPE_CHECKING
 
 from dottie.datagen.base import Generator
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 # ---------------------------------------------------------------------------
 # Occupations: (name, domain, line-item noun, value unit)
@@ -39,33 +42,50 @@ from dottie.datagen.base import Generator
 # its occupation list.
 # ---------------------------------------------------------------------------
 
-_OCCUPATIONS = sorted([
-    ("Accountant", "Business/Financial Operations", "ledger entry", "$"),
-    ("HR Specialist", "Business/Financial Operations", "headcount record", "employees"),
-    ("Financial Advisor", "Business/Financial Operations", "client position", "$"),
-    ("Purchasing Agent", "Business/Financial Operations", "purchase order", "$"),
-    ("Court Clerk", "Office/Administrative Support", "filed case", "cases"),
-    ("Customer Service Rep", "Office/Administrative Support", "ticket", "tickets"),
-    ("Data Entry Specialist", "Office/Administrative Support", "batch record", "records"),
-    ("Secretary", "Office/Administrative Support", "logged appointment", "appointments"),
-    ("Biostatistician", "Computer/Mathematical", "trial arm count", "subjects"),
-    ("CS Researcher", "Computer/Mathematical", "benchmark run", "runs"),
-    ("Statistician", "Computer/Mathematical", "sample count", "samples"),
-    ("Web Administrator", "Computer/Mathematical", "server log entry", "requests"),
-    ("Civil Engineer", "Architecture/Engineering", "work order", "hours"),
-    ("Mechanical Engineer", "Architecture/Engineering", "part count", "units"),
-    ("Petroleum Engineer", "Architecture/Engineering", "well reading", "barrels"),
-    ("Financial Manager", "Management", "cost center entry", "$"),
-    ("Supply Chain Manager", "Management", "shipment", "units"),
-    ("IT Manager", "Management", "incident", "incidents"),
-    ("Reporter", "Arts/Media", "cited figure", "respondents"),
-    ("Technical Writer", "Arts/Media", "revision", "pages"),
-    ("Producer", "Arts/Media", "budget line", "$"),
-    ("Lawyer", "Other", "billed hour", "hours"),
-    ("Online Merchant", "Other", "order", "orders"),
-    ("Sales Agent", "Other", "closed deal", "$"),
-    ("Science Teacher", "Other", "graded assignment", "points"),
-])
+_OCCUPATIONS = sorted(
+    [
+        ("Accountant", "Business/Financial Operations", "ledger entry", "$"),
+        (
+            "HR Specialist",
+            "Business/Financial Operations",
+            "headcount record",
+            "employees",
+        ),
+        ("Financial Advisor", "Business/Financial Operations", "client position", "$"),
+        ("Purchasing Agent", "Business/Financial Operations", "purchase order", "$"),
+        ("Court Clerk", "Office/Administrative Support", "filed case", "cases"),
+        ("Customer Service Rep", "Office/Administrative Support", "ticket", "tickets"),
+        (
+            "Data Entry Specialist",
+            "Office/Administrative Support",
+            "batch record",
+            "records",
+        ),
+        (
+            "Secretary",
+            "Office/Administrative Support",
+            "logged appointment",
+            "appointments",
+        ),
+        ("Biostatistician", "Computer/Mathematical", "trial arm count", "subjects"),
+        ("CS Researcher", "Computer/Mathematical", "benchmark run", "runs"),
+        ("Statistician", "Computer/Mathematical", "sample count", "samples"),
+        ("Web Administrator", "Computer/Mathematical", "server log entry", "requests"),
+        ("Civil Engineer", "Architecture/Engineering", "work order", "hours"),
+        ("Mechanical Engineer", "Architecture/Engineering", "part count", "units"),
+        ("Petroleum Engineer", "Architecture/Engineering", "well reading", "barrels"),
+        ("Financial Manager", "Management", "cost center entry", "$"),
+        ("Supply Chain Manager", "Management", "shipment", "units"),
+        ("IT Manager", "Management", "incident", "incidents"),
+        ("Reporter", "Arts/Media", "cited figure", "respondents"),
+        ("Technical Writer", "Arts/Media", "revision", "pages"),
+        ("Producer", "Arts/Media", "budget line", "$"),
+        ("Lawyer", "Other", "billed hour", "hours"),
+        ("Online Merchant", "Other", "order", "orders"),
+        ("Sales Agent", "Other", "closed deal", "$"),
+        ("Science Teacher", "Other", "graded assignment", "points"),
+    ]
+)
 
 
 def _slug(name: str) -> str:
@@ -92,7 +112,7 @@ def _values(rng, n: int, unit: str) -> list[int]:
 
 def _csv_table(labels: list[str], values: list[int], unit: str) -> str:
     lines = [f"line_item,value_{unit.strip('$') or 'usd'}"]
-    for label, value in zip(labels, values):
+    for label, value in zip(labels, values, strict=False):
         lines.append(f"{label},{value}")
     return "\n".join(lines)
 
@@ -105,14 +125,15 @@ def _fmt_val(value: int, unit: str) -> str:
 # Family: duplicate line item
 # ---------------------------------------------------------------------------
 
+
 def _duplicate_doc(rng, occ: tuple[str, str, str, str], n: int) -> tuple[str, str, str]:
     name, domain, noun, unit = occ
     labels = _labels(rng, noun, n)
     values = _values(rng, n, unit)
     true_sum = sum(values)
     dup_idx = rng.randrange(n)
-    table_labels = labels + [labels[dup_idx]]
-    table_values = values + [values[dup_idx]]
+    table_labels = [*labels, labels[dup_idx]]
+    table_values = [*values, values[dup_idx]]
     naive_sum = true_sum + values[dup_idx]
 
     table = _csv_table(table_labels, table_values, unit)
@@ -128,8 +149,8 @@ def _duplicate_doc(rng, occ: tuple[str, str, str, str], n: int) -> tuple[str, st
         f"## Source A -- raw table\n```\n{table}\n```\n\n"
         f"## Source B -- memo\n{memo}\n\n"
         f"## Reconciliation\n"
-        f"Row {dup_idx + 1} (\"{labels[dup_idx]}\", {_fmt_val(values[dup_idx], unit)}) and row "
-        f"{n + 1} (\"{table_labels[-1]}\", {_fmt_val(table_values[-1], unit)}) are an exact "
+        f'Row {dup_idx + 1} ("{labels[dup_idx]}", {_fmt_val(values[dup_idx], unit)}) and row '
+        f'{n + 1} ("{table_labels[-1]}", {_fmt_val(table_values[-1], unit)}) are an exact '
         f"duplicate -- same label, same value. The memo's total of {_fmt_val(naive_sum, unit)} "
         f"double-counts this row.\n"
         f"Deduped total = sum of the {n} distinct rows = {_fmt_val(true_sum, unit)}.\n"
@@ -144,12 +165,15 @@ def _duplicate_doc(rng, occ: tuple[str, str, str, str], n: int) -> tuple[str, st
 # Family: unit mismatch
 # ---------------------------------------------------------------------------
 
+
 def _units_doc(rng, occ: tuple[str, str, str, str], n: int) -> tuple[str, str, str]:
     name, domain, noun, unit = occ
     labels = _labels(rng, noun, n)
     values = _values(rng, n, unit)
     true_sum = sum(values)
-    other_office = rng.choice(["Regional Office", "Field Office", "Partner Office", "Satellite Desk"])
+    other_office = rng.choice(
+        ["Regional Office", "Field Office", "Partner Office", "Satellite Desk"]
+    )
     bad_unit_label = "thousands" if unit == "$" else f"hundreds of {unit}"
     bad_multiplier = 1000 if unit == "$" else 100
 
@@ -182,6 +206,7 @@ def _units_doc(rng, occ: tuple[str, str, str, str], n: int) -> tuple[str, str, s
 # Family: stale snapshot
 # ---------------------------------------------------------------------------
 
+
 def _stale_doc(rng, occ: tuple[str, str, str, str], n: int) -> tuple[str, str, str]:
     name, domain, noun, unit = occ
     labels = _labels(rng, noun, n)
@@ -199,10 +224,14 @@ def _stale_doc(rng, occ: tuple[str, str, str, str], n: int) -> tuple[str, str, s
         new_value = _values(rng, 1, unit)[0]
         labels_b.append(new_label)
         values_b.append(new_value)
-        change_desc = f"a new row (\"{new_label}\", {_fmt_val(new_value, unit)}) was added"
+        change_desc = (
+            f'a new row ("{new_label}", {_fmt_val(new_value, unit)}) was added'
+        )
     elif change == "removed":
         rm_idx = rng.randrange(n)
-        change_desc = f"row \"{labels_b[rm_idx]}\" ({_fmt_val(values_b[rm_idx], unit)}) was removed"
+        change_desc = (
+            f'row "{labels_b[rm_idx]}" ({_fmt_val(values_b[rm_idx], unit)}) was removed'
+        )
         del labels_b[rm_idx]
         del values_b[rm_idx]
     else:
@@ -212,7 +241,7 @@ def _stale_doc(rng, occ: tuple[str, str, str, str], n: int) -> tuple[str, str, s
         new_v = max(1, old_v + delta)
         values_b[chg_idx] = new_v
         change_desc = (
-            f"row \"{labels_b[chg_idx]}\" changed from {_fmt_val(old_v, unit)} to "
+            f'row "{labels_b[chg_idx]}" changed from {_fmt_val(old_v, unit)} to '
             f"{_fmt_val(new_v, unit)}"
         )
 
@@ -248,6 +277,7 @@ def _stale_doc(rng, occ: tuple[str, str, str, str], n: int) -> tuple[str, str, s
 # Generator
 # ---------------------------------------------------------------------------
 
+
 class WorkflowJobBenchGenerator(Generator):
     name = "jobbench"
     phases = (3, 4, 5)
@@ -265,9 +295,30 @@ class WorkflowJobBenchGenerator(Generator):
     # `_stale_doc` renders two full tables (~2x chars/item of the other two
     # families) so its start/step/cap are roughly half.
     _FAMILIES = [
-        (0.40, _duplicate_doc, "workflow/jobbench_duplicate", (3, 6), (4, 8), (220, 40, 6200, 600)),
-        (0.35, _units_doc, "workflow/jobbench_units", (3, 6), (4, 8), (220, 40, 6200, 600)),
-        (0.25, _stale_doc, "workflow/jobbench_stale", (3, 6), (4, 8), (100, 20, 6200, 300)),
+        (
+            0.40,
+            _duplicate_doc,
+            "workflow/jobbench_duplicate",
+            (3, 6),
+            (4, 8),
+            (220, 40, 6200, 600),
+        ),
+        (
+            0.35,
+            _units_doc,
+            "workflow/jobbench_units",
+            (3, 6),
+            (4, 8),
+            (220, 40, 6200, 600),
+        ),
+        (
+            0.25,
+            _stale_doc,
+            "workflow/jobbench_stale",
+            (3, 6),
+            (4, 8),
+            (100, 20, 6200, 300),
+        ),
     ]
 
     _PHASE_MIX = [
@@ -303,7 +354,9 @@ class WorkflowJobBenchGenerator(Generator):
                 pi += 1
             _, phase = self._PHASE_MIX[pi]
 
-            occ = self._OCCUPATIONS_LIST[self.rng.randrange(len(self._OCCUPATIONS_LIST))]
+            occ = self._OCCUPATIONS_LIST[
+                self.rng.randrange(len(self._OCCUPATIONS_LIST))
+            ]
             if phase == 4:
                 start_n, step, target_chars, max_n = p4_growth
                 n = start_n
@@ -316,7 +369,13 @@ class WorkflowJobBenchGenerator(Generator):
                 n = self.rng.randint(lo, hi)
                 text, task_type, concept = builder(self.rng, occ, n)
 
-            d = self.doc(text=text, task_type=task_type, concept=concept, phase=phase, source=source)
+            d = self.doc(
+                text=text,
+                task_type=task_type,
+                concept=concept,
+                phase=phase,
+                source=source,
+            )
             produced += len(d["text"].encode("utf-8"))
             yield d
 

@@ -8,9 +8,12 @@ from __future__ import annotations
 
 import math
 from fractions import Fraction
-from typing import Iterator
+from typing import TYPE_CHECKING
 
 from dottie.datagen.base import Generator
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -37,6 +40,7 @@ def base_str(x: int) -> str:
 # P1(a): column arithmetic
 # ---------------------------------------------------------------------------
 
+
 def _column_add(a: int, b: int) -> tuple[list[str], int]:
     sa, sb = str(a), str(b)
     n = max(len(sa), len(sb))
@@ -50,7 +54,9 @@ def _column_add(a: int, b: int) -> tuple[list[str], int]:
         digit = total % 10
         newcarry = total // 10
         col = n - i
-        steps.append(f"  column {col} (from the right): {da} + {db} + carry {carry} = {total} -> write {digit}, carry {newcarry}")
+        steps.append(
+            f"  column {col} (from the right): {da} + {db} + carry {carry} = {total} -> write {digit}, carry {newcarry}"
+        )
         digits.append(str(digit))
         carry = newcarry
     if carry:
@@ -91,17 +97,21 @@ def _column_sub(a: int, b: int) -> tuple[list[str], int]:
 
 def _column_mul(a: int, b: int) -> tuple[list[str], int]:
     sb = str(b)
-    n = len(sb)
+    len(sb)
     partials = []
     steps = []
     total = 0
     for i, ch in enumerate(reversed(sb)):
         digit = int(ch)
-        partial = a * digit * (10 ** i)
-        steps.append(f"  {a} x {digit} (digit at position {i}, place value {10 ** i}) = {a * digit}, shifted -> {partial}")
+        partial = a * digit * (10**i)
+        steps.append(
+            f"  {a} x {digit} (digit at position {i}, place value {10**i}) = {a * digit}, shifted -> {partial}"
+        )
         partials.append(partial)
         total += partial
-    steps.append(f"  sum of partial products: {' + '.join(str(p) for p in partials)} = {total}")
+    steps.append(
+        f"  sum of partial products: {' + '.join(str(p) for p in partials)} = {total}"
+    )
     assert total == a * b
     return steps, total
 
@@ -110,8 +120,8 @@ def _arith_doc(rng) -> tuple[str, str, str]:
     op = rng.choice(["add", "sub", "mul"])
     d1 = rng.randint(1, 3)
     d2 = rng.randint(1, 3)
-    a = rng.randint(10 ** (d1 - 1) if d1 > 1 else 0, 10 ** d1 - 1)
-    b = rng.randint(10 ** (d2 - 1) if d2 > 1 else 0, 10 ** d2 - 1)
+    a = rng.randint(10 ** (d1 - 1) if d1 > 1 else 0, 10**d1 - 1)
+    b = rng.randint(10 ** (d2 - 1) if d2 > 1 else 0, 10**d2 - 1)
     a = max(a, 1 if d1 == 1 else a)
     trivial = d1 == 1 and d2 == 1
     if op == "add":
@@ -128,7 +138,12 @@ def _arith_doc(rng) -> tuple[str, str, str]:
         steps, result = _column_mul(a, b)
         prompt = f"Compute {a} x {b} using the standard (partial products) algorithm."
         concept = "multiplication"
-    text = prompt + "\n\nWorked steps:\n" + "\n".join(steps) + f"\n\nFinal answer: {result}"
+    text = (
+        prompt
+        + "\n\nWorked steps:\n"
+        + "\n".join(steps)
+        + f"\n\nFinal answer: {result}"
+    )
     task_type = "automatic" if trivial else "deliberate"
     return text, task_type, concept
 
@@ -136,6 +151,7 @@ def _arith_doc(rng) -> tuple[str, str, str]:
 # ---------------------------------------------------------------------------
 # P1(b): linear equations
 # ---------------------------------------------------------------------------
+
 
 def _linear_eq_doc(rng) -> tuple[str, str, str]:
     a = rng.choice([n for n in range(-20, 21) if n != 0])
@@ -158,6 +174,7 @@ def _linear_eq_doc(rng) -> tuple[str, str, str]:
 # ---------------------------------------------------------------------------
 # P1(c): geometry
 # ---------------------------------------------------------------------------
+
 
 def _geometry_doc(rng) -> tuple[str, str, str]:
     shape = rng.choice(["rectangle", "triangle", "circle"])
@@ -202,6 +219,7 @@ def _geometry_doc(rng) -> tuple[str, str, str]:
 # P1(d): modular arithmetic
 # ---------------------------------------------------------------------------
 
+
 def _modular_doc(rng) -> tuple[str, str, str]:
     m = rng.randint(3, 12)
     if rng.random() < 0.5:
@@ -218,7 +236,9 @@ def _modular_doc(rng) -> tuple[str, str, str]:
         coeff = rng.randint(1, m - 1)
         target = rng.randint(0, m - 1)
         solutions = sorted(x for x in range(m) if (coeff * x) % m == target)
-        lines = [f"  x={x}: {coeff} x {x} mod {m} = {(coeff * x) % m}" for x in range(m)]
+        lines = [
+            f"  x={x}: {coeff} x {x} mod {m} = {(coeff * x) % m}" for x in range(m)
+        ]
         if solutions:
             verdict = f"Solutions in {{0, ..., {m - 1}}}: {', '.join(str(s) for s in solutions)}"
         else:
@@ -234,6 +254,7 @@ def _modular_doc(rng) -> tuple[str, str, str]:
 # ---------------------------------------------------------------------------
 # P1(e): sequences
 # ---------------------------------------------------------------------------
+
 
 def _sequence_doc(rng) -> tuple[str, str, str]:
     kind = rng.choice(["arithmetic", "geometric"])
@@ -257,7 +278,7 @@ def _sequence_doc(rng) -> tuple[str, str, str]:
         a1 = rng.randint(1, 6)
         r = rng.choice([n for n in range(-3, 4) if n not in (0, 1)])
         n = rng.randint(4, 8)  # keep geometric growth bounded
-        terms = [a1 * (r ** i) for i in range(min(n, 6))]
+        terms = [a1 * (r**i) for i in range(min(n, 6))]
         nth = a1 * (r ** (n - 1))
         total = Fraction(a1) * (Fraction(r) ** n - 1) / (Fraction(r) - 1)
         text = (
@@ -265,7 +286,7 @@ def _sequence_doc(rng) -> tuple[str, str, str]:
             f"First terms: {', '.join(str(t) for t in terms)}, ...\n"
             f"nth term formula: a_n = a1 x r^(n-1). For n={n}: a_{n} = {a1} x {base_str(r)}^{n - 1} = {nth}\n"
             f"Sum formula: S_n = a1 x (r^n - 1) / (r - 1). For n={n}: "
-            f"S_{n} = {a1} x ({base_str(r)}^{n} - 1) / ({base_str(r)} - 1) = {a1} x ({r ** n} - 1) / {r - 1} = {fmt_frac(total)}\n"
+            f"S_{n} = {a1} x ({base_str(r)}^{n} - 1) / ({base_str(r)} - 1) = {a1} x ({r**n} - 1) / {r - 1} = {fmt_frac(total)}\n"
             f"Final answer: a_{n} = {nth}, S_{n} = {fmt_frac(total)}"
         )
         concept = "sequence_geometric"
@@ -276,11 +297,14 @@ def _sequence_doc(rng) -> tuple[str, str, str]:
 # P1(f): probability word problems
 # ---------------------------------------------------------------------------
 
+
 def _probability_doc(rng) -> tuple[str, str, str]:
     kind = rng.choice(["dice", "coins", "urn"])
     if kind == "dice":
         target_sum = rng.randint(2, 12)
-        outcomes = [(i, j) for i in range(1, 7) for j in range(1, 7) if i + j == target_sum]
+        outcomes = [
+            (i, j) for i in range(1, 7) for j in range(1, 7) if i + j == target_sum
+        ]
         favorable = len(outcomes)
         prob = Fraction(favorable, 36)
         text = (
@@ -295,12 +319,12 @@ def _probability_doc(rng) -> tuple[str, str, str]:
         n = rng.randint(2, 8)
         k = rng.randint(0, n)
         ways = math.comb(n, k)
-        prob = Fraction(ways, 2 ** n)
+        prob = Fraction(ways, 2**n)
         text = (
             f"A fair coin is flipped {n} times. What is the probability of exactly {k} heads?\n"
             f"Number of ways to choose which {k} of the {n} flips are heads: C({n},{k}) = {ways}.\n"
-            f"Total equally likely outcomes: 2^{n} = {2 ** n}.\n"
-            f"P(exactly {k} heads) = {ways}/{2 ** n} = {fmt_frac(prob)}\n"
+            f"Total equally likely outcomes: 2^{n} = {2**n}.\n"
+            f"P(exactly {k} heads) = {ways}/{2**n} = {fmt_frac(prob)}\n"
             f"Final answer: {fmt_frac(prob)}"
         )
         concept = "probability"
@@ -312,7 +336,11 @@ def _probability_doc(rng) -> tuple[str, str, str]:
         want_red = rng.randint(0, draw)
         if want_red > red:
             want_red = red
-        ways_favorable = math.comb(red, want_red) * math.comb(blue, draw - want_red) if draw - want_red <= blue else 0
+        ways_favorable = (
+            math.comb(red, want_red) * math.comb(blue, draw - want_red)
+            if draw - want_red <= blue
+            else 0
+        )
         ways_total = math.comb(total, draw)
         prob = Fraction(ways_favorable, ways_total) if ways_total else Fraction(0)
         text = (
@@ -329,7 +357,14 @@ def _probability_doc(rng) -> tuple[str, str, str]:
     return text, "deliberate", concept
 
 
-_P1_FAMILIES = [_arith_doc, _linear_eq_doc, _geometry_doc, _modular_doc, _sequence_doc, _probability_doc]
+_P1_FAMILIES = [
+    _arith_doc,
+    _linear_eq_doc,
+    _geometry_doc,
+    _modular_doc,
+    _sequence_doc,
+    _probability_doc,
+]
 
 
 # ---------------------------------------------------------------------------
@@ -386,12 +421,15 @@ def _word_problem_doc(rng) -> tuple[str, str, str]:
         items = rng.randint(2, 4)
         prices = [rng.randint(1, 50) for _ in range(items)]
         quantities = [rng.randint(1, 10) for _ in range(items)]
-        subtotals = [p * q for p, q in zip(prices, quantities)]
+        subtotals = [p * q for p, q in zip(prices, quantities, strict=False)]
         total = sum(subtotals)
         discount_pct = rng.choice([0, 5, 10, 15, 20])
         discount_amt = Fraction(total * discount_pct, 100)
         final = Fraction(total) - discount_amt
-        lines = [f"Step {i + 1}: item {i + 1} costs {prices[i]} x {quantities[i]} = {subtotals[i]}." for i in range(items)]
+        lines = [
+            f"Step {i + 1}: item {i + 1} costs {prices[i]} x {quantities[i]} = {subtotals[i]}."
+            for i in range(items)
+        ]
         text = (
             f"A shopper buys {items} kinds of items:\n"
             + "\n".join(lines)
@@ -409,10 +447,20 @@ def _word_problem_doc(rng) -> tuple[str, str, str]:
 # ---------------------------------------------------------------------------
 
 _WORKER_NAMES = ["Worker-A", "Worker-B", "Worker-C"]
-_TASK_NOUNS = sorted([
-    "data ingest", "schema migration", "model training run", "eval sweep", "report draft",
-    "code review", "deploy staging", "load test", "index rebuild", "backup verification",
-])
+_TASK_NOUNS = sorted(
+    [
+        "data ingest",
+        "schema migration",
+        "model training run",
+        "eval sweep",
+        "report draft",
+        "code review",
+        "deploy staging",
+        "load test",
+        "index rebuild",
+        "backup verification",
+    ]
+)
 _DELAY_EVENTS = [
     "a server outage",
     "an upstream dependency failure",
@@ -433,10 +481,10 @@ def _temporal_workflow_doc(rng, n_tasks: int | None = None) -> tuple[str, str, s
     deadlines = []
 
     # sequential schedule per worker track
-    track_end = {w: 0 for w in set(workers)}
+    track_end = dict.fromkeys(set(workers), 0)
     starts = []
     ends = []
-    for name, worker, dur in zip(task_names, workers, durations):
+    for name, worker, dur in zip(task_names, workers, durations, strict=False):
         start = track_end[worker]
         end = start + dur
         starts.append(start)
@@ -458,7 +506,9 @@ def _temporal_workflow_doc(rng, n_tasks: int | None = None) -> tuple[str, str, s
     event = rng.choice(_DELAY_EVENTS)
     event_day = rng.randint(0, ends[delay_idx])
     lines.append("")
-    lines.append(f"Day {event_day}: {event} delays '{task_names[delay_idx]}' by {delay_days} day(s).")
+    lines.append(
+        f"Day {event_day}: {event} delays '{task_names[delay_idx]}' by {delay_days} day(s)."
+    )
 
     # recompute: shift the delayed task and every later task on the same worker track
     new_ends = list(ends)
@@ -485,7 +535,9 @@ def _temporal_workflow_doc(rng, n_tasks: int | None = None) -> tuple[str, str, s
             f"deadline day {deadlines[i]}: {status}"
         )
     if missed:
-        lines.append(f"\nSummary: {len(missed)} task(s) now miss their deadline: {', '.join(missed)}.")
+        lines.append(
+            f"\nSummary: {len(missed)} task(s) now miss their deadline: {', '.join(missed)}."
+        )
     else:
         lines.append("\nSummary: all tasks remain on schedule after the delay.")
 
@@ -497,6 +549,7 @@ def _temporal_workflow_doc(rng, n_tasks: int | None = None) -> tuple[str, str, s
 # ---------------------------------------------------------------------------
 # Generator
 # ---------------------------------------------------------------------------
+
 
 class MathGenerator(Generator):
     name = "math"
@@ -522,7 +575,13 @@ class MathGenerator(Generator):
             while family_produced < per_family and produced < budget:
                 text, task_type, concept = builder(self.rng)
                 source = f"math/p1_{builder.__name__.strip('_').replace('_doc', '')}"
-                d = self.doc(text=text, task_type=task_type, concept=concept, phase=1, source=source)
+                d = self.doc(
+                    text=text,
+                    task_type=task_type,
+                    concept=concept,
+                    phase=1,
+                    source=source,
+                )
                 n = len(d["text"].encode("utf-8"))
                 family_produced += n
                 produced += n
@@ -530,7 +589,13 @@ class MathGenerator(Generator):
         # if rounding left the budget short, top up with arithmetic drills
         while produced < budget:
             text, task_type, concept = _arith_doc(self.rng)
-            d = self.doc(text=text, task_type=task_type, concept=concept, phase=1, source="math/p1_arith")
+            d = self.doc(
+                text=text,
+                task_type=task_type,
+                concept=concept,
+                phase=1,
+                source="math/p1_arith",
+            )
             produced += len(d["text"].encode("utf-8"))
             yield d
 
@@ -541,7 +606,9 @@ class MathGenerator(Generator):
             temporal = self.rng.random() < 0.35
             if temporal:
                 n_tasks = self.rng.randint(6, 10) if long_form else None
-                text, task_type, concept = _temporal_workflow_doc(self.rng, n_tasks=n_tasks)
+                text, task_type, concept = _temporal_workflow_doc(
+                    self.rng, n_tasks=n_tasks
+                )
                 source = "math/p3_temporal"
             else:
                 if long_form:
@@ -557,7 +624,13 @@ class MathGenerator(Generator):
                     text, task_type, concept = _word_problem_doc(self.rng)
                 source = "math/p3_word_problem"
             phase = 4 if long_form else 3
-            d = self.doc(text=text, task_type=task_type, concept=concept, phase=phase, source=source)
+            d = self.doc(
+                text=text,
+                task_type=task_type,
+                concept=concept,
+                phase=phase,
+                source=source,
+            )
             produced += len(d["text"].encode("utf-8"))
             yield d
 

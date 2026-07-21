@@ -23,14 +23,14 @@ def test_wsd_warms_up_then_plateaus_then_decays(cfg):
     total = 1000
     w = cfg.training.wsd
 
-    assert wsd_lr(0, total, cfg) < w.lr_max                       # warming
+    assert wsd_lr(0, total, cfg) < w.lr_max  # warming
     assert wsd_lr(w.warmup_steps, total, cfg) == pytest.approx(w.lr_max)
 
     stable_until = int(total * w.stable_frac)
     mid = (w.warmup_steps + stable_until) // 2
-    assert wsd_lr(mid, total, cfg) == pytest.approx(w.lr_max)     # plateau
+    assert wsd_lr(mid, total, cfg) == pytest.approx(w.lr_max)  # plateau
 
-    assert wsd_lr(total - 1, total, cfg) < w.lr_max               # decaying
+    assert wsd_lr(total - 1, total, cfg) < w.lr_max  # decaying
     assert wsd_lr(total - 1, total, cfg) >= w.lr_min
 
 
@@ -50,7 +50,9 @@ def test_stable_plateau_is_what_makes_checkpoints_usable(cfg):
     basis of the stop-anytime milestone schedule."""
     total = 1000
     w = cfg.training.wsd
-    lrs = {wsd_lr(s, total, cfg) for s in range(w.warmup_steps, int(total * w.stable_frac))}
+    lrs = {
+        wsd_lr(s, total, cfg) for s in range(w.warmup_steps, int(total * w.stable_frac))
+    }
     assert lrs == {w.lr_max}
 
 
@@ -63,7 +65,7 @@ def test_micro_batch_always_hits_tokens_per_step():
 
 def test_micro_batch_is_capped():
     mb, _ = micro_batch_for(64, 8192)
-    assert mb <= 8                                   # MAX_MICRO_BATCH
+    assert mb <= 8  # MAX_MICRO_BATCH
 
 
 def test_phase_advances_with_the_token_budget(cfg):
@@ -71,9 +73,13 @@ def test_phase_advances_with_the_token_budget(cfg):
     first = cfg.phases[0].tokens
     assert phase_for_step(cfg, first - 1) == 0
     assert phase_for_step(cfg, first) == 1
-    assert phase_for_step(cfg, 10**12) == len(cfg.phases) - 1     # clamps, never IndexError
+    assert (
+        phase_for_step(cfg, 10**12) == len(cfg.phases) - 1
+    )  # clamps, never IndexError
 
 
 def test_every_phase_is_reachable(cfg):
-    seen = {phase_for_step(cfg, t) for t in range(0, cfg.training.tokens_total, 250_000)}
+    seen = {
+        phase_for_step(cfg, t) for t in range(0, cfg.training.tokens_total, 250_000)
+    }
     assert seen == set(range(len(cfg.phases)))

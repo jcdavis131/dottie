@@ -38,6 +38,7 @@ the dottie package is imported from one root, a later different root cannot be
 re-imported in-process (availability is checked before import, so honest
 failures still work).
 """
+
 from __future__ import annotations
 
 import os
@@ -45,10 +46,10 @@ import re
 import shutil
 import sys
 import tempfile
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
-from ..registry import register_eval
 from ..common import MockModel, attach_smoke_labels, real_unimplemented
+from ..registry import register_eval
 
 TEST = "dottie_assistant"
 BAR = "success_rate>=0.6"
@@ -66,15 +67,18 @@ REAL_BACKENDS = ("ava", "ollama")
 # Dottie app resolution (mirrors common.factory_root's tiered pattern)
 # ---------------------------------------------------------------------------
 
+
 def _has_dottie_code(root: str) -> bool:
     """Marker: the dottie assistant package is present (dottie/engine.py)."""
-    return os.path.isdir(root) and os.path.isfile(os.path.join(root, "dottie", "engine.py"))
+    return os.path.isdir(root) and os.path.isfile(
+        os.path.join(root, "dottie", "engine.py")
+    )
 
 
-def _dottie_candidates() -> List[str]:
+def _dottie_candidates() -> list[str]:
     """Ordered dottie-app root candidates. Env DOTTIE_ASSISTANT_ROOT is honored
     verbatim first (pointing it at a bogus path forces honest failures)."""
-    cands: List[str] = []
+    cands: list[str] = []
     env = os.environ.get("DOTTIE_ASSISTANT_ROOT")
     if env:
         return [env]  # verbatim, even if missing — mirrors AVA_FACTORY_ROOT semantics
@@ -83,11 +87,14 @@ def _dottie_candidates() -> List[str]:
         cands.append(os.path.join(dottie, "apps", "dottie"))
     try:
         here = os.path.dirname(os.path.abspath(__file__))
-        cands.append(os.path.abspath(
-            os.path.join(here, "..", "..", "..", "..", "apps", "dottie")))
+        cands.append(
+            os.path.abspath(
+                os.path.join(here, "..", "..", "..", "..", "apps", "dottie")
+            )
+        )
     except Exception:
         pass  # never let probing break import
-    out: List[str] = []
+    out: list[str] = []
     for c in cands:
         if c not in out:
             out.append(c)
@@ -107,7 +114,7 @@ def dottie_assistant_available() -> bool:
     return _has_dottie_code(dottie_assistant_root())
 
 
-def _import_dottie() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+def _import_dottie() -> tuple[dict[str, Any] | None, str | None]:
     """Import the dottie app's real modules.
 
     Returns (modules_dict, None) or (None, reason). The reason is surfaced in
@@ -117,15 +124,22 @@ def _import_dottie() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     if not _has_dottie_code(root):
         return None, (
             "dottie app not found (looked for dottie/engine.py). Probed: "
-            + ", ".join(cands) + ". Set DOTTIE_ASSISTANT_ROOT or DOTTIE_ROOT."
+            + ", ".join(cands)
+            + ". Set DOTTIE_ASSISTANT_ROOT or DOTTIE_ROOT."
         )
     if root not in sys.path:
         sys.path.insert(0, root)
     try:
         import importlib
+
         mods = {
             name: importlib.import_module(name)
-            for name in ("dottie.engine", "dottie.policy", "dottie.tasks", "dottie.resolve")
+            for name in (
+                "dottie.engine",
+                "dottie.policy",
+                "dottie.tasks",
+                "dottie.resolve",
+            )
         }
     except Exception as e:  # surfaced, not swallowed
         return None, f"dottie app import failed from {root}: {type(e).__name__}: {e}"
@@ -135,6 +149,7 @@ def _import_dottie() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
 # ---------------------------------------------------------------------------
 # In-eval scripted solver — SYNTHETIC (labeled), real execution.
 # ---------------------------------------------------------------------------
+
 
 class _ScriptedComputeSolver:
     """Labeled synthetic scripted-solver policy for the 'compute' family
@@ -166,7 +181,7 @@ class _ScriptedComputeSolver:
             return f"FINAL: computed in the real sandbox; the result is {got}."
         return ""  # exhausted -> honest policy_empty termination
 
-    def probe(self) -> Dict[str, Any]:
+    def probe(self) -> dict[str, Any]:
         return {"backend": self.name, "available": True, "plumbing_only": True}
 
 
@@ -174,7 +189,8 @@ class _ScriptedComputeSolver:
 # Batch runner over the REAL DottieEngine
 # ---------------------------------------------------------------------------
 
-def _detail(rec: Dict[str, Any]) -> Dict[str, Any]:
+
+def _detail(rec: dict[str, Any]) -> dict[str, Any]:
     return {
         "task_id": rec["task_id"],
         "family": rec["verified_task"]["family"],
@@ -191,26 +207,31 @@ def _detail(rec: Dict[str, Any]) -> Dict[str, Any]:
 def _run_batch(
     engine_mod: Any,
     engine: Any,
-    specs: List[Tuple[str, int]],
+    specs: list[tuple[str, int]],
     backend: str,
     *,
     max_steps: int,
     timeout_s: float,
     policy_factory: Any = None,
-) -> Tuple[float, List[Dict[str, Any]]]:
+) -> tuple[float, list[dict[str, Any]]]:
     """Run (family, seed) specs through engine.run_task; returns (mean r_task, details).
 
     ``policy_factory`` (mock scripted solver only) temporarily swaps the engine
     module's get_policy — restored in a finally — mirroring dottie's own
     scripted-solver tests; every sandbox step and verifier call stays real."""
-    details: List[Dict[str, Any]] = []
+    details: list[dict[str, Any]] = []
     orig_get_policy = engine_mod.get_policy
     try:
         if policy_factory is not None:
             engine_mod.get_policy = lambda _backend, **_kw: policy_factory()
         for family, seed in specs:
-            rec = engine.run_task(family=family, seed=seed, backend=backend,
-                                  max_steps=max_steps, timeout_s=timeout_s)
+            rec = engine.run_task(
+                family=family,
+                seed=seed,
+                backend=backend,
+                max_steps=max_steps,
+                timeout_s=timeout_s,
+            )
             details.append(_detail(rec))
     finally:
         engine_mod.get_policy = orig_get_policy
@@ -222,26 +243,36 @@ def _run_batch(
 # Eval
 # ---------------------------------------------------------------------------
 
+
 @register_eval(
     name=TEST,
     description="Assistant verified-task success rate through the real dottie engine "
-                "(CodeAct sandbox + deterministic verifiers)",
+    "(CodeAct sandbox + deterministic verifiers)",
     group="assistant",
 )
-def dottie_assistant(model: Any, tokenizer: Any, device: str = "cpu", **kw: Any) -> Dict[str, Any]:
+def dottie_assistant(
+    model: Any, tokenizer: Any, device: str = "cpu", **kw: Any
+) -> dict[str, Any]:
     if isinstance(model, MockModel):
         return _mock_run(model, kw)
     return _real_run(kw)
 
 
-def _mock_run(model: MockModel, kw: Dict[str, Any]) -> Dict[str, Any]:
+def _mock_run(model: MockModel, kw: dict[str, Any]) -> dict[str, Any]:
     mods, err = _import_dottie()
     if mods is None:
         # Labeled structured 'dottie app not found' record — never a crash.
-        return {"test": TEST, "measured": None, "pass": False, "bar": BAR,
-                "mode_label": "mock_plumbing", "plumbing_only": True, "error": err}
+        return {
+            "test": TEST,
+            "measured": None,
+            "pass": False,
+            "bar": BAR,
+            "mode_label": "mock_plumbing",
+            "plumbing_only": True,
+            "error": err,
+        }
     engine_mod = mods["dottie.engine"]
-    fams: Tuple[str, ...] = mods["dottie.tasks"].FAMILIES
+    fams: tuple[str, ...] = mods["dottie.tasks"].FAMILIES
     n_echo = int(kw.get("dottie_n_echo", DEFAULT_ECHO_N))
     n_scripted = int(kw.get("dottie_n_scripted", DEFAULT_SCRIPTED_N))
     seed = int(getattr(model, "seed", 0))
@@ -257,15 +288,28 @@ def _mock_run(model: MockModel, kw: Dict[str, Any]) -> Dict[str, Any]:
     try:
         engine = engine_mod.DottieEngine(data_dir)
         echo_rate, echo_details = _run_batch(
-            engine_mod, engine, echo_specs, "echo", max_steps=6, timeout_s=5.0)
+            engine_mod, engine, echo_specs, "echo", max_steps=6, timeout_s=5.0
+        )
         scripted_rate, scripted_details = _run_batch(
-            engine_mod, engine, scripted_specs, "scripted", max_steps=4, timeout_s=5.0,
-            policy_factory=_ScriptedComputeSolver)
+            engine_mod,
+            engine,
+            scripted_specs,
+            "scripted",
+            max_steps=4,
+            timeout_s=5.0,
+            policy_factory=_ScriptedComputeSolver,
+        )
     except Exception as e:
         # e.g. factory (CodeAct substrate) missing → honest structured record.
-        return {"test": TEST, "measured": None, "pass": False, "bar": BAR,
-                "mode_label": "mock_plumbing", "plumbing_only": True,
-                "error": f"mock plumbing batch could not run: {type(e).__name__}: {e}"}
+        return {
+            "test": TEST,
+            "measured": None,
+            "pass": False,
+            "bar": BAR,
+            "mode_label": "mock_plumbing",
+            "plumbing_only": True,
+            "error": f"mock plumbing batch could not run: {type(e).__name__}: {e}",
+        }
     finally:
         shutil.rmtree(data_dir, ignore_errors=True)
     measured = {
@@ -280,29 +324,40 @@ def _mock_run(model: MockModel, kw: Dict[str, Any]) -> Dict[str, Any]:
         "scripted_n": n_scripted,
         "task_mix": [f"{f}:{s}" for f, s in echo_specs + scripted_specs],
         "details": echo_details + scripted_details,
-        "note": ("plumbing measurement through the REAL DottieEngine/sandbox/verifiers; "
-                 "echo scores 0.0 by construction (provider no-leak guarantee), the "
-                 "labeled synthetic scripted solver proves a nonzero rate is measurable. "
-                 "NOT a capability claim."),
+        "note": (
+            "plumbing measurement through the REAL DottieEngine/sandbox/verifiers; "
+            "echo scores 0.0 by construction (provider no-leak guarantee), the "
+            "labeled synthetic scripted solver proves a nonzero rate is measurable. "
+            "NOT a capability claim."
+        ),
     }
     ok = scripted_rate >= _CAPABILITY_BAR and echo_rate == 0.0
-    return {"test": TEST, "measured": measured, "pass": ok, "bar": BAR,
-            "plumbing_only": True}
+    return {
+        "test": TEST,
+        "measured": measured,
+        "pass": ok,
+        "bar": BAR,
+        "plumbing_only": True,
+    }
 
 
-def _real_run(kw: Dict[str, Any]) -> Dict[str, Any]:
-    backend = str(kw.get("dottie_backend") or os.environ.get("DOTTIE_EVAL_BACKEND") or "ava")
+def _real_run(kw: dict[str, Any]) -> dict[str, Any]:
+    backend = str(
+        kw.get("dottie_backend") or os.environ.get("DOTTIE_EVAL_BACKEND") or "ava"
+    )
     mods, err = _import_dottie()
     if mods is None:
         return real_unimplemented(TEST, BAR, err)
     if backend not in REAL_BACKENDS:
         return real_unimplemented(
-            TEST, BAR,
+            TEST,
+            BAR,
             f"unsupported real backend {backend!r} (choices: {', '.join(REAL_BACKENDS)}; "
-            "echo is mock-only plumbing)")
+            "echo is mock-only plumbing)",
+        )
     engine_mod = mods["dottie.engine"]
     policy_mod = mods["dottie.policy"]
-    fams: Tuple[str, ...] = mods["dottie.tasks"].FAMILIES
+    fams: tuple[str, ...] = mods["dottie.tasks"].FAMILIES
     n = int(kw.get("dottie_n_real", DEFAULT_REAL_N))
     max_steps = int(kw.get("dottie_max_steps", 3))
     timeout_s = float(kw.get("dottie_timeout_s", 5.0))
@@ -310,16 +365,23 @@ def _real_run(kw: Dict[str, Any]) -> Dict[str, Any]:
     data_dir = tempfile.mkdtemp(prefix="dottie-assistant-eval-")
     try:
         engine = engine_mod.DottieEngine(data_dir)
-        details: List[Dict[str, Any]] = []
+        details: list[dict[str, Any]] = []
         for family, seed in specs:
-            rec = engine.run_task(family=family, seed=seed, backend=backend,
-                                  max_steps=max_steps, timeout_s=timeout_s)
+            rec = engine.run_task(
+                family=family,
+                seed=seed,
+                backend=backend,
+                max_steps=max_steps,
+                timeout_s=timeout_s,
+            )
             details.append(_detail(rec))
     except policy_mod.DottiePolicyUnavailable as e:
         # Missing checkpoint / torch / unreachable Ollama → honest structured failure.
         return real_unimplemented(TEST, BAR, f"backend {backend!r} unavailable: {e}")
     except Exception as e:
-        return real_unimplemented(TEST, BAR, f"real run failed: {type(e).__name__}: {e}")
+        return real_unimplemented(
+            TEST, BAR, f"real run failed: {type(e).__name__}: {e}"
+        )
     finally:
         shutil.rmtree(data_dir, ignore_errors=True)
     rate = sum(d["r_task"] for d in details) / len(details)
@@ -330,11 +392,19 @@ def _real_run(kw: Dict[str, Any]) -> Dict[str, Any]:
         "max_steps": max_steps,
         "task_mix": [f"{f}:{s}" for f, s in specs],
         "details": details,
-        "note": ("real end-to-end run: dottie engine + real CodeAct sandbox + deterministic "
-                 "verifiers over the real policy backend. The harness-loaded model/tokenizer "
-                 "are unused here; the engine's backend does the decoding. For the smoke-scale "
-                 "ava checkpoint an honest near-zero rate is the EXPECTED result — the bar is "
-                 "the eventual capability bar and today's result fails it honestly."),
+        "note": (
+            "real end-to-end run: dottie engine + real CodeAct sandbox + deterministic "
+            "verifiers over the real policy backend. The harness-loaded model/tokenizer "
+            "are unused here; the engine's backend does the decoding. For the smoke-scale "
+            "ava checkpoint an honest near-zero rate is the EXPECTED result — the bar is "
+            "the eventual capability bar and today's result fails it honestly."
+        ),
     }
     return attach_smoke_labels(
-        {"test": TEST, "measured": measured, "pass": rate >= _CAPABILITY_BAR, "bar": BAR})
+        {
+            "test": TEST,
+            "measured": measured,
+            "pass": rate >= _CAPABILITY_BAR,
+            "bar": BAR,
+        }
+    )

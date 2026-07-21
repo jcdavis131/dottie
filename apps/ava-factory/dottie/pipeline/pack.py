@@ -75,13 +75,17 @@ def load_tokenizer(path: str | Path | None = None) -> LoadedTokenizer:
     tok = Tokenizer.from_file(str(p))
     eod_id = tok.token_to_id(EOD_TOKEN)
     if eod_id is None:
-        raise ValueError(f"tokenizer at {p} is missing the required {EOD_TOKEN!r} special token")
+        raise ValueError(
+            f"tokenizer at {p} is missing the required {EOD_TOKEN!r} special token"
+        )
     vocab_size = tok.get_vocab_size()
     assert vocab_size <= _UINT16_MAX + 1, (
         f"vocab_size {vocab_size} exceeds uint16 range; packed shards would wrap. "
         f"uint16 packing requires vocab <= {_UINT16_MAX + 1}."
     )
-    return LoadedTokenizer(tokenizer=tok, sha256=_sha256_file(p), eod_id=eod_id, vocab_size=vocab_size)
+    return LoadedTokenizer(
+        tokenizer=tok, sha256=_sha256_file(p), eod_id=eod_id, vocab_size=vocab_size
+    )
 
 
 def pack_docs(docs: list[dict], lt: LoadedTokenizer) -> tuple[np.ndarray, dict]:

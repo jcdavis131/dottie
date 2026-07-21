@@ -73,7 +73,9 @@ def _stale_threshold_s(
     expected = None
     if len(steps) >= 2:
         try:
-            tok_delta = float(steps[-1].get("tokens") or 0) - float(steps[-2].get("tokens") or 0)
+            tok_delta = float(steps[-1].get("tokens") or 0) - float(
+                steps[-2].get("tokens") or 0
+            )
             tok_s = float(steps[-1].get("tok_s") or 0)
             if tok_delta > 0 and tok_s > 0:
                 expected = tok_delta / tok_s
@@ -84,6 +86,7 @@ def _stale_threshold_s(
     if expected is None or expected <= 0:
         return _STALE_STEP_S
     return min(_STALE_MAX_S, max(_STALE_STEP_S, _STALE_CADENCE_MULT * expected))
+
 
 def _throttle_state(metrics: list[dict[str, Any]]) -> tuple[bool, str]:
     """Detect a power-throttled GPU from throughput collapse.
@@ -107,10 +110,13 @@ def _throttle_state(metrics: list[dict[str, Any]]) -> tuple[bool, str]:
         if med <= 0 or latest >= 0.4 * med:
             return False, ""
         watts = rows[-1].get("gpu_power_w")
-        detail = (f"tok/s {latest:.0f} is {latest / med:.0%} of the phase median "
-                  f"{med:.0f}" + (f"; GPU drawing {watts:.0f}W" if watts else "")
-                  + " — host likely on battery or power-saving. Plug in / set "
-                  "High Performance to restore ~6x throughput.")
+        detail = (
+            f"tok/s {latest:.0f} is {latest / med:.0%} of the phase median "
+            f"{med:.0f}"
+            + (f"; GPU drawing {watts:.0f}W" if watts else "")
+            + " — host likely on battery or power-saving. Plug in / set "
+            "High Performance to restore ~6x throughput."
+        )
         return True, detail
     except (TypeError, ValueError, KeyError):
         return False, ""
@@ -125,25 +131,27 @@ def _curriculum(preset: str) -> dict[str, Any] | None:
         from dottie.config import DottieConfig
 
         cfg = DottieConfig.load(preset)
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None
     phases: list[dict[str, Any]] = []
     cum = 0
     for i, p in enumerate(cfg.phases):
         tok = int(p.tokens or 0)
         short = p.name.split("_", 1)[-1].replace("_", " ") if "_" in p.name else p.name
-        phases.append({
-            "index": i,
-            "name": p.name,
-            "short": short,
-            "tokens": tok,
-            "seq": int(p.seq),
-            "rope_base": int(p.rope_base),
-            "ntk": float(p.ntk),
-            "mix": dict(p.mix),
-            "token_start": cum,
-            "token_end": cum + tok,
-        })
+        phases.append(
+            {
+                "index": i,
+                "name": p.name,
+                "short": short,
+                "tokens": tok,
+                "seq": int(p.seq),
+                "rope_base": int(p.rope_base),
+                "ntk": float(p.ntk),
+                "mix": dict(p.mix),
+                "token_start": cum,
+                "token_end": cum + tok,
+            }
+        )
         cum += tok
     out: dict[str, Any] = {
         "tokens_total": int(cfg.training.tokens_total),
@@ -173,7 +181,7 @@ def _objective(preset: str) -> dict[str, Any] | None:
         from dottie.config import DottieConfig
 
         cfg = DottieConfig.load(preset)
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None
     j = cfg.jspace
     return {
@@ -225,7 +233,9 @@ def _watch(
                 ent -= p * math.log(p, 2)
         out["route_entropy"] = round(ent, 3)
         if probs[dom_i] > 0.75:
-            out["hints"].append(f"Route collapsed toward {name} ({probs[dom_i]:.0%}) — check task mix.")
+            out["hints"].append(
+                f"Route collapsed toward {name} ({probs[dom_i]:.0%}) — check task mix."
+            )
         if ent < 1.0:
             out["hints"].append("Low route entropy — router may be under-exploring.")
 
@@ -239,7 +249,9 @@ def _watch(
         if out["j_aux_share"] > 0.5:
             out["hints"].append("J-aux >50% of total loss — LM signal diluted.")
         if lm_f < 0.05:
-            out["hints"].append("lm very low — possible memorization / easy batch; watch val later.")
+            out["hints"].append(
+                "lm very low — possible memorization / easy batch; watch val later."
+            )
 
     losses = [v for v in (series.get("lm_loss") or []) if v is not None]
     if len(losses) >= 2:
@@ -247,13 +259,17 @@ def _watch(
         prev = losses[max(0, len(losses) - 2)]
         out["lm_delta_10"] = round(float(losses[-1]) - float(prev), 4)
         if out["lm_delta_10"] > 0.05:
-            out["hints"].append("lm rising vs prior log — demand may request more examples.")
+            out["hints"].append(
+                "lm rising vs prior log — demand may request more examples."
+            )
 
     gnorm = last_step.get("grad_norm")
     if gnorm is not None:
         out["grad_vs_clip"] = round(float(gnorm), 3)
         if float(gnorm) > 5.0:
-            out["hints"].append(f"grad_norm {float(gnorm):.1f} high — instability risk.")
+            out["hints"].append(
+                f"grad_norm {float(gnorm):.1f} high — instability risk."
+            )
 
     tokens_done = last_step.get("tokens")
     step = last_step.get("step")
@@ -449,7 +465,9 @@ def _tokens_per_param(
         out["t2t_target"] = target
         out["t2t_frac"] = round(tpp / target, 4) if target > 0 else None
     if regime == "undertrain":
-        out["hint"] = "TPP below ~15 — Chinchilla/T2T prefer more unique tokens per param."
+        out["hint"] = (
+            "TPP below ~15 — Chinchilla/T2T prefer more unique tokens per param."
+        )
     elif regime == "overtrain":
         out["hint"] = "Overtrain regime — good for test-time sampling footprint."
     return out
@@ -490,7 +508,9 @@ def _disk_probe_label() -> str:
     return "/"
 
 
-def _tail_jsonl(path: Path, n: int = 120, max_bytes: int = 262_144) -> list[dict[str, Any]]:
+def _tail_jsonl(
+    path: Path, n: int = 120, max_bytes: int = 262_144
+) -> list[dict[str, Any]]:
     if not path.is_file():
         return []
     try:
@@ -531,10 +551,18 @@ def _step_rows(metrics: list[dict[str, Any]]) -> list[dict[str, Any]]:
 # lm/total plus the LossBreakdown aux terms (ava/jlosses.py's loss formula),
 # the optimizer/throughput readouts, and the J-space workspace scalars.
 _SERIES_FIELDS = (
-    "tok_s", "grad_norm", "lr",
-    "report", "broadcast", "selectivity", "modulation",
-    "half_life", "inter_mi", "routing",
-    "verbalizable_mass", "broadcast_strength",
+    "tok_s",
+    "grad_norm",
+    "lr",
+    "report",
+    "broadcast",
+    "selectivity",
+    "modulation",
+    "half_life",
+    "inter_mi",
+    "routing",
+    "verbalizable_mass",
+    "broadcast_strength",
 )
 
 
@@ -544,7 +572,10 @@ def current_run_series(metrics: list[dict[str, Any]]) -> dict[str, list[Any]]:
     A restart is detected when ``step`` decreases vs the previous step row.
     """
     empty: dict[str, list[Any]] = {
-        "step": [], "lm_loss": [], "phase": [], "total": [],
+        "step": [],
+        "lm_loss": [],
+        "phase": [],
+        "total": [],
         **{k: [] for k in _SERIES_FIELDS},
     }
     rows = _step_rows(metrics)
@@ -612,11 +643,13 @@ def full_run_series(metrics: list[dict[str, Any]]) -> dict[str, Any]:
             # instead of jumping backward.
             offset = cum_steps[-1] + 1 - raw
             ts = row.get("ts")
-            restarts.append({"cum_step": raw + offset, "ts": float(ts) if ts is not None else None})
+            restarts.append(
+                {"cum_step": raw + offset, "ts": float(ts) if ts is not None else None}
+            )
         cum_steps.append(raw + offset)
         prev_step = raw
 
-    paired = list(zip(rows, cum_steps))
+    paired = list(zip(rows, cum_steps, strict=False))
     if len(paired) > _FULL_SERIES_MAX_POINTS:
         stride = math.ceil(len(paired) / _FULL_SERIES_MAX_POINTS)
         sampled = paired[::stride]
@@ -648,15 +681,17 @@ def _phase_runway(
     for p in range(6):
         n = int(tokens_by_phase.get(str(p), 0))
         fill = min(1.0, n / packed_min) if packed_min > 0 else 0.0
-        out.append({
-            "phase": p,
-            "tokens": n,
-            "packed_min": packed_min,
-            "fill": round(fill, 3),
-            "ok": n >= packed_min,
-            "is_trainer": p == trainer_phase,
-            "is_target": p == target_phase,
-        })
+        out.append(
+            {
+                "phase": p,
+                "tokens": n,
+                "packed_min": packed_min,
+                "fill": round(fill, 3),
+                "ok": n >= packed_min,
+                "is_trainer": p == trainer_phase,
+                "is_target": p == target_phase,
+            }
+        )
     return out
 
 
@@ -676,9 +711,19 @@ def _gates(
     raw_ok = raw_bytes < raw_max
     # Soft quality proxy: active queue not dominated by FAILED.
     failed = int(by_state.get("FAILED", 0))
-    active = max(1, sum(int(by_state.get(s, 0)) for s in (
-        "RAW", "CLAIMED_CURATE", "PACKED", "CLAIMED_TRAIN", "FAILED",
-    )))
+    active = max(
+        1,
+        sum(
+            int(by_state.get(s, 0))
+            for s in (
+                "RAW",
+                "CLAIMED_CURATE",
+                "PACKED",
+                "CLAIMED_TRAIN",
+                "FAILED",
+            )
+        ),
+    )
     fail_frac = failed / active
     return [
         {
@@ -783,7 +828,7 @@ def collect_status(preset: str | None = None) -> dict[str, Any]:
     reports = _reports_dir()
     ckpt = _ckpt_dir()
 
-    by_state = {s: 0 for s in _STATES}
+    by_state = dict.fromkeys(_STATES, 0)
     tokens_by_phase: dict[str, int] = {str(p): 0 for p in range(6)}
     raw_bytes = 0
     tok_sha = None
@@ -799,7 +844,7 @@ def collect_status(preset: str | None = None) -> dict[str, Any]:
 
     try:
         cfg = FlowConfig.load()
-    except Exception:  # noqa: BLE001
+    except Exception:
         cfg = None
 
     try:
@@ -822,7 +867,7 @@ def collect_status(preset: str | None = None) -> dict[str, Any]:
                 data_detail = detail
             else:
                 target_phase = trainer_phase
-    except Exception as e:  # noqa: BLE001 — dashboard must never 500 the server
+    except Exception as e:
         manifest_ok = False
         manifest_err = str(e)
 
@@ -844,13 +889,17 @@ def collect_status(preset: str | None = None) -> dict[str, Any]:
     ckpt_files = []
     if ckpt.is_dir():
         try:
-            for p in sorted(ckpt.glob("*.pt"), key=lambda x: x.stat().st_mtime, reverse=True)[:8]:
-                ckpt_files.append({
-                    "name": p.name,
-                    "mb": round(p.stat().st_size / (1024 * 1024), 1),
-                    "mtime": int(p.stat().st_mtime),
-                    "age_s": int(time.time() - p.stat().st_mtime),
-                })
+            for p in sorted(
+                ckpt.glob("*.pt"), key=lambda x: x.stat().st_mtime, reverse=True
+            )[:8]:
+                ckpt_files.append(
+                    {
+                        "name": p.name,
+                        "mb": round(p.stat().st_size / (1024 * 1024), 1),
+                        "mtime": int(p.stat().st_mtime),
+                        "age_s": int(time.time() - p.stat().st_mtime),
+                    }
+                )
         except OSError:
             pass
 
@@ -872,7 +921,7 @@ def collect_status(preset: str | None = None) -> dict[str, Any]:
     disk = None
     try:
         disk = round(free_gb("/"), 2)
-    except Exception:  # noqa: BLE001
+    except Exception:
         disk = None
     disk_probe = _disk_probe_label()
 
@@ -886,7 +935,10 @@ def collect_status(preset: str | None = None) -> dict[str, Any]:
         starved = False
         last_ts = float(last_step.get("ts") or 0)
         for row in metrics[-20:]:
-            if row.get("event") == "data_starved" and float(row.get("ts") or 0) > last_ts:
+            if (
+                row.get("event") == "data_starved"
+                and float(row.get("ts") or 0) > last_ts
+            ):
                 starved = True
                 break
     if data_state == "DATA_STARVED":
@@ -914,8 +966,13 @@ def collect_status(preset: str | None = None) -> dict[str, Any]:
         ev = row.get("event")
         if ev == "step":
             break
-        if ev in ("model_built", "resumed", "phase_enter", "branch_forked",
-                  "trainer_crash"):
+        if ev in (
+            "model_built",
+            "resumed",
+            "phase_enter",
+            "branch_forked",
+            "trainer_crash",
+        ):
             recovering = True
             break
     stale_after_s = _stale_threshold_s(run_rows, all_rows=metrics)
@@ -938,9 +995,16 @@ def collect_status(preset: str | None = None) -> dict[str, Any]:
         collector_paused=bool(pause.get("paused")),
         by_state=by_state,
     )
-    mode = _mode(last_step=last_step, starved=starved, age_s=age_s,
-                 stale_after_s=stale_after_s, gates=gates, recovering=recovering,
-                 throttled=throttled, throttle_detail=throttle_detail)
+    mode = _mode(
+        last_step=last_step,
+        starved=starved,
+        age_s=age_s,
+        stale_after_s=stale_after_s,
+        gates=gates,
+        recovering=recovering,
+        throttled=throttled,
+        throttle_detail=throttle_detail,
+    )
     runway = _phase_runway(
         tokens_by_phase,
         packed_min=packed_min,
@@ -1015,8 +1079,13 @@ def collect_status(preset: str | None = None) -> dict[str, Any]:
             "states": list(_STATES),
             "help": dict(_STATE_HELP),
             "order": [
-                "RAW", "CLAIMED_CURATE", "PACKED", "CLAIMED_TRAIN",
-                "CONSUMED", "FAILED", "DELETED",
+                "RAW",
+                "CLAIMED_CURATE",
+                "PACKED",
+                "CLAIMED_TRAIN",
+                "CONSUMED",
+                "FAILED",
+                "DELETED",
             ],
         },
         "manifest": {
@@ -1027,7 +1096,7 @@ def collect_status(preset: str | None = None) -> dict[str, Any]:
             "by_state": by_state,
             "funnel": funnel,
             "raw_bytes": raw_bytes,
-            "raw_gb": round(raw_bytes / (1024 ** 3), 3),
+            "raw_gb": round(raw_bytes / (1024**3), 3),
             "raw_max_gb": round(raw_max / 1e9, 2),
             "raw_fill": round(min(1.0, raw_bytes / raw_max), 3) if raw_max else 0.0,
             "tokenizer_sha": tok_sha,
@@ -1074,7 +1143,9 @@ def collect_status(preset: str | None = None) -> dict[str, Any]:
             # start; the chart-anchored `restarts` (step-counter decreases)
             # undercounts because back-to-back crashes resume from the same
             # checkpoint without a step in between.
-            "restarts_window": sum(1 for r in metrics if r.get("event") == "model_built"),
+            "restarts_window": sum(
+                1 for r in metrics if r.get("event") == "model_built"
+            ),
         },
         "eval": {
             "json_exists": (

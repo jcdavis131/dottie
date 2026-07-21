@@ -2,9 +2,8 @@
 """loader: frontmatter parsing, topo sort (+cycle fallback), wRRF determinism,
 describe()/manifest consistency, Tier-A-first graph execution."""
 
-from pathlib import Path
-
 from conftest import SKILLS_DIR, load_skill_module
+
 from skills.loader import SkillLoader, _parse_frontmatter, describe_from_manifest
 
 
@@ -34,11 +33,21 @@ class TestFrontmatterParsing:
         for md in sorted(SKILLS_DIR.glob("*/SKILL.md")):
             meta, _ = _parse_frontmatter(md.read_text(encoding="utf-8"))
             assert meta.get("name") == md.parent.name, md
-            for field in ("description", "j_space_target", "half_life", "triggers", "version"):
+            for field in (
+                "description",
+                "j_space_target",
+                "half_life",
+                "triggers",
+                "version",
+            ):
                 assert field in meta, f"{md} missing {field}"
             # honesty fields introduced by the manifest cleanup
-            assert meta.get("provider") == "none", f"{md} claims an LLM provider it does not use"
-            assert meta.get("connectors") == [], f"{md} claims connectors it does not use"
+            assert meta.get("provider") == "none", (
+                f"{md} claims an LLM provider it does not use"
+            )
+            assert meta.get("connectors") == [], (
+                f"{md} claims connectors it does not use"
+            )
 
 
 class TestTopoSort:
@@ -118,4 +127,6 @@ class TestRunWithGraphTierA:
         # query that pulls in skills requiring safety-scanner
         loader.run_with_graph("safety check then inspect jspace")
         assert "safety-scanner" in executed, "Tier A gate missing from resolved graph"
-        assert executed[0] == "safety-scanner", f"Tier A must execute first, got {executed}"
+        assert executed[0] == "safety-scanner", (
+            f"Tier A must execute first, got {executed}"
+        )

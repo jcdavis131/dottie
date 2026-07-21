@@ -6,20 +6,42 @@ v2 streaming: constant low-memory rotating shards 100MB each, never holds 50B/30
 Old batch mode kept for compatibility via --batch flag.
 Streaming mode intended to feed AvaStreamingDataset background generator.
 """
-import argparse, json, random, time, gzip
+
+import argparse
+import gzip
+import json
+import random
+import time
 from pathlib import Path
 
-PHI_PROMPTS=[
+PHI_PROMPTS = [
     "Explain {topic} like a textbook chapter with definitions, theorems, examples.",
     "Create a problem set for {topic} with step-by-step solutions.",
     "Write a Socratic dialogue exploring {topic} misconceptions.",
 ]
 
-TOPICS_LOGIC=["propositional logic","first-order logic","modal logic","proof by contradiction","induction","pigeonhole"]
-TOPICS_MATH=["arithmetic","algebra","geometry","discrete","calculus","linear algebra","probability"]
+TOPICS_LOGIC = [
+    "propositional logic",
+    "first-order logic",
+    "modal logic",
+    "proof by contradiction",
+    "induction",
+    "pigeonhole",
+]
+TOPICS_MATH = [
+    "arithmetic",
+    "algebra",
+    "geometry",
+    "discrete",
+    "calculus",
+    "linear algebra",
+    "probability",
+]
+
 
 def gen_textbook(topic, method="Phi B"):
     return f"# {topic}\n\nDefinition: ...\nTheorem: If ... then ...\nProof: ...\nExample: ...\nExercise: ... (Method {method})"
+
 
 def heuristic_quality_score(text: str) -> float:
     """Deterministic CPU heuristic (same family as scripts/dataset_expansion.py's
@@ -40,15 +62,23 @@ def heuristic_quality_score(text: str) -> float:
             score -= 0.3
     return round(max(0.0, min(1.0, score)), 4)
 
-def gen_jsonl_example(topic, prompt_template=None, source="synthetic_logic_textbooks_phi_B"):
+
+def gen_jsonl_example(
+    topic, prompt_template=None, source="synthetic_logic_textbooks_phi_B"
+):
     prompt = prompt_template or random.choice(PHI_PROMPTS)
     txt = gen_textbook(topic)
     # Phi B style: textbook chapter + problem set
-    text = f"{prompt.format(topic=topic)}\n\n{txt}\n\n" + "Exercise solution with reasoning. " * 10
+    text = (
+        f"{prompt.format(topic=topic)}\n\n{txt}\n\n"
+        + "Exercise solution with reasoning. " * 10
+    )
     return {
         "text": text,
         "source": source,
-        "task_type": "deliberate" if "logic" in topic or topic in TOPICS_LOGIC else "deliberate",
+        "task_type": "deliberate"
+        if "logic" in topic or topic in TOPICS_LOGIC
+        else "deliberate",
         "topic": topic,
         "prompt_type": prompt,
         # Deterministic structural heuristic — was random.uniform masquerading
@@ -57,7 +87,14 @@ def gen_jsonl_example(topic, prompt_template=None, source="synthetic_logic_textb
         "method": "Phi B",
     }
 
-def run_streaming(out_root: Path, shard_mb: int = 100, max_shards: int = 0, filter_threshold: float = 0.8, sleep: float = 0.01):
+
+def run_streaming(
+    out_root: Path,
+    shard_mb: int = 100,
+    max_shards: int = 0,
+    filter_threshold: float = 0.8,
+    sleep: float = 0.01,
+):
     """
     Constant low-memory streaming writer:
     - 1 file handle open, 100MB per shard gzipped jsonl, rotates forever
@@ -74,6 +111,7 @@ def run_streaming(out_root: Path, shard_mb: int = 100, max_shards: int = 0, filt
 
     all_topics = TOPICS_LOGIC + TOPICS_MATH
     shard_idx = len(list(logic_dir.glob("*.jsonl*")))
+
     # open rotating shards
     def new_shard(dir_path: Path, idx: int):
         p = dir_path / f"shard_{idx:05d}.jsonl.gz"
@@ -83,7 +121,7 @@ def run_streaming(out_root: Path, shard_mb: int = 100, max_shards: int = 0, filt
     fh_logic, cur_path_logic, cur_bytes_logic = new_shard(logic_dir, shard_idx)
     fh_math, cur_path_math, cur_bytes_math = new_shard(math_dir, shard_idx)
 
-    topics_cycle = (all_topics * 1000)  # infinite iterator conceptually
+    topics_cycle = all_topics * 1000  # infinite iterator conceptually
     written = 0
     kept = 0
     try:
@@ -103,57 +141,101 @@ def run_streaming(out_root: Path, shard_mb: int = 100, max_shards: int = 0, filt
                 if cur_bytes_logic > shard_mb * 1024 * 1024:
                     fh_logic.close()
                     shard_idx += 1
-                    fh_logic, cur_path_logic, cur_bytes_logic = new_shard(logic_dir, shard_idx)
+                    fh_logic, _cur_path_logic, cur_bytes_logic = new_shard(
+                        logic_dir, shard_idx
+                    )
             else:
                 fh_math.write(line)
                 cur_bytes_math += len(line.encode("utf-8"))
                 if cur_bytes_math > shard_mb * 1024 * 1024:
                     fh_math.close()
-                    fh_math, cur_path_math, cur_bytes_math = new_shard(math_dir, shard_idx)
+                    fh_math, _cur_path_math, cur_bytes_math = new_shard(
+                        math_dir, shard_idx
+                    )
 
             written += 1
             kept += 1
             if written % 500 == 0:
-                print(f"[streaming] written={written} kept={kept} shard={shard_idx} current_bytes log={cur_bytes_logic//1024}KB math={cur_bytes_math//1024}KB RAM ~ constant (1 handle)")
+                print(
+                    f"[streaming] written={written} kept={kept} shard={shard_idx} current_bytes log={cur_bytes_logic // 1024}KB math={cur_bytes_math // 1024}KB RAM ~ constant (1 handle)"
+                )
                 # backpressure check
-                total_shards = len(list(logic_dir.glob("*.jsonl*"))) + len(list(math_dir.glob("*.jsonl*")))
+                total_shards = len(list(logic_dir.glob("*.jsonl*"))) + len(
+                    list(math_dir.glob("*.jsonl*"))
+                )
                 if total_shards > 30:  # if trainer slow, pause
                     time.sleep(1.0)
             time.sleep(sleep)  # throttle to avoid CPU spin
     finally:
-        try: fh_logic.close()
-        except: pass
-        try: fh_math.close()
-        except: pass
-    print(f"Streaming finished — kept {kept}/{written} examples, shards in {out_root} — train can consume while generating")
+        try:
+            fh_logic.close()
+        except:
+            pass
+        try:
+            fh_math.close()
+        except:
+            pass
+    print(
+        f"Streaming finished — kept {kept}/{written} examples, shards in {out_root} — train can consume while generating"
+    )
+
 
 def run_batch(out: Path):
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     print(f"Generating batch (old mode) to {out}")
     for i, t in enumerate(TOPICS_LOGIC):
-        (out/f"logic_{i}_{t.replace(' ','_')}.md").write_text(gen_textbook(t))
+        (out / f"logic_{i}_{t.replace(' ', '_')}.md").write_text(gen_textbook(t))
     for i, t in enumerate(TOPICS_MATH):
-        (out/f"math_{i}_{t.replace(' ','_')}.md").write_text(gen_textbook(t))
-    print(f"Wrote {len(TOPICS_LOGIC)+len(TOPICS_MATH)} mock textbooks to {out} — for streaming use, run without --batch")
+        (out / f"math_{i}_{t.replace(' ', '_')}.md").write_text(gen_textbook(t))
+    print(
+        f"Wrote {len(TOPICS_LOGIC) + len(TOPICS_MATH)} mock textbooks to {out} — for streaming use, run without --batch"
+    )
+
 
 def main():
-    parser=argparse.ArgumentParser()
+    parser = argparse.ArgumentParser()
     parser.add_argument("--logic_tokens", default="50B")
     parser.add_argument("--math_tokens", default="300B")
-    parser.add_argument("--out", default="data/streaming_shards", help="output root for streaming shards (was data/synthetic)")
-    parser.add_argument("--batch", action="store_true", help="old batch mode: write handful of md files")
-    parser.add_argument("--shard_mb", type=int, default=100, help="MB per rotating shard")
-    parser.add_argument("--max_shards", type=int, default=0, help="0 = infinite stream until Ctrl-C")
-    parser.add_argument("--reward_threshold", type=float, default=0.8, help="heuristic_quality_score filter threshold")
+    parser.add_argument(
+        "--out",
+        default="data/streaming_shards",
+        help="output root for streaming shards (was data/synthetic)",
+    )
+    parser.add_argument(
+        "--batch", action="store_true", help="old batch mode: write handful of md files"
+    )
+    parser.add_argument(
+        "--shard_mb", type=int, default=100, help="MB per rotating shard"
+    )
+    parser.add_argument(
+        "--max_shards", type=int, default=0, help="0 = infinite stream until Ctrl-C"
+    )
+    parser.add_argument(
+        "--reward_threshold",
+        type=float,
+        default=0.8,
+        help="heuristic_quality_score filter threshold",
+    )
     parser.add_argument("--sleep", type=float, default=0.01)
-    args=parser.parse_args()
+    args = parser.parse_args()
     if args.batch:
         run_batch(Path(args.out))
     else:
-        print(f"Streaming Phi Method B generation: {args.logic_tokens} logic + {args.math_tokens} math -> {args.out} rotating {args.shard_mb}MB shards, heuristic score>{args.reward_threshold}")
-        print("Constant memory: 1 file handle, ~100MB buffer, no full corpus in RAM. Ctrl-C to stop. Trainer can consume concurrently.")
-        run_streaming(Path(args.out), shard_mb=args.shard_mb, max_shards=args.max_shards, filter_threshold=args.reward_threshold, sleep=args.sleep)
+        print(
+            f"Streaming Phi Method B generation: {args.logic_tokens} logic + {args.math_tokens} math -> {args.out} rotating {args.shard_mb}MB shards, heuristic score>{args.reward_threshold}"
+        )
+        print(
+            "Constant memory: 1 file handle, ~100MB buffer, no full corpus in RAM. Ctrl-C to stop. Trainer can consume concurrently."
+        )
+        run_streaming(
+            Path(args.out),
+            shard_mb=args.shard_mb,
+            max_shards=args.max_shards,
+            filter_threshold=args.reward_threshold,
+            sleep=args.sleep,
+        )
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     main()

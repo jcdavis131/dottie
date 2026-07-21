@@ -11,10 +11,15 @@ Reference: https://github.com/KellerJordan/Muon (Newton-Schulz orthogonalization
 """
 
 from __future__ import annotations
+
 import math
-from typing import Iterable, Optional, List, Dict, Any
+from typing import TYPE_CHECKING
+
 import torch
 import torch.nn as nn
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 
 def zeropower_via_newtonschulz5(G: torch.Tensor, steps: int = 5) -> torch.Tensor:
@@ -61,11 +66,24 @@ class Muon(torch.optim.Optimizer):
         optimizer = Muon(muon_params, lr=0.02, momentum=0.95, weight_decay=0.01)
     """
 
-    def __init__(self, params: Iterable[torch.nn.Parameter], lr: float = 0.02,
-                 weight_decay: float = 0.01, momentum: float = 0.95,
-                 nesterov: bool = True, ns_steps: int = 5,adam_wd: bool = True):
-        defaults = dict(lr=lr, weight_decay=weight_decay, momentum=momentum,
-                        nesterov=nesterov, ns_steps=ns_steps, adam_wd=adam_wd)
+    def __init__(
+        self,
+        params: Iterable[torch.nn.Parameter],
+        lr: float = 0.02,
+        weight_decay: float = 0.01,
+        momentum: float = 0.95,
+        nesterov: bool = True,
+        ns_steps: int = 5,
+        adam_wd: bool = True,
+    ):
+        defaults = {
+            "lr": lr,
+            "weight_decay": weight_decay,
+            "momentum": momentum,
+            "nesterov": nesterov,
+            "ns_steps": ns_steps,
+            "adam_wd": adam_wd,
+        }
         super().__init__(params, defaults)
 
     @torch.no_grad()
@@ -76,13 +94,13 @@ class Muon(torch.optim.Optimizer):
                 loss = closure()
 
         for group in self.param_groups:
-            lr = group['lr']
-            wd = group['weight_decay']
-            momentum = group['momentum']
-            nesterov = group['nesterov']
-            ns_steps = group['ns_steps']
+            lr = group["lr"]
+            wd = group["weight_decay"]
+            momentum = group["momentum"]
+            nesterov = group["nesterov"]
+            ns_steps = group["ns_steps"]
 
-            for p in group['params']:
+            for p in group["params"]:
                 if p.grad is None:
                     continue
                 grad = p.grad
@@ -90,10 +108,10 @@ class Muon(torch.optim.Optimizer):
                     raise RuntimeError("Muon does not support sparse gradients")
 
                 state = self.state[p]
-                if 'momentum_buffer' not in state:
-                    state['momentum_buffer'] = torch.zeros_like(p)
+                if "momentum_buffer" not in state:
+                    state["momentum_buffer"] = torch.zeros_like(p)
 
-                buf = state['momentum_buffer']
+                buf = state["momentum_buffer"]
                 # momentum update: buf = momentum*buf + (1-momentum)*grad  OR classic
                 # Use classic: buf = momentum*buf + grad (per original Muon)
                 buf.mul_(momentum).add_(grad)
@@ -153,17 +171,31 @@ class MuonAdamHybrid:
     Others go to AdamW.
     """
 
-    def __init__(self, model: nn.Module, lr_max: float = 2e-4, base_wd: float = 0.1,
-                 muon_lr: float = 0.02, adam_lr: float = None,
-                 momentum: float = 0.95, betas=(0.9, 0.95),
-                 min_muon_params: int = 4096,
-                 adam_exclude_names: Optional[List[str]] = None):
+    def __init__(
+        self,
+        model: nn.Module,
+        lr_max: float = 2e-4,
+        base_wd: float = 0.1,
+        muon_lr: float = 0.02,
+        adam_lr: float | None = None,
+        momentum: float = 0.95,
+        betas=(0.9, 0.95),
+        min_muon_params: int = 4096,
+        adam_exclude_names: list[str] | None = None,
+    ):
         self.lr_max = lr_max
         self.base_wd = base_wd
         self.muon_lr = muon_lr
         self.adam_lr = adam_lr if adam_lr is not None else lr_max
 
-        adam_exclude_names = adam_exclude_names or ["embed", "lm_head", "norm", "bias", "router", "sink"]
+        adam_exclude_names = adam_exclude_names or [
+            "embed",
+            "lm_head",
+            "norm",
+            "bias",
+            "router",
+            "sink",
+        ]
 
         muon_params = []
         adam_params_decay = []
@@ -188,14 +220,21 @@ class MuonAdamHybrid:
         self.adam_decay = adam_params_decay
         self.adam_no_decay = adam_params_no_decay
 
-        print(f"[MuonHybrid] Muon params: {len(muon_params)} tensors, {sum(p.numel() for p in muon_params)/1e6:.2f}M")
-        print(f"[MuonHybrid] Adam decay: {len(adam_params_decay)} tensors, Adam no_decay: {len(adam_params_no_decay)}")
+        print(
+            f"[MuonHybrid] Muon params: {len(muon_params)} tensors, {sum(p.numel() for p in muon_params) / 1e6:.2f}M"
+        )
+        print(
+            f"[MuonHybrid] Adam decay: {len(adam_params_decay)} tensors, Adam no_decay: {len(adam_params_no_decay)}"
+        )
 
         self.muon_opt = None
         if len(muon_params) > 0:
-            self.muon_opt = Muon(muon_params, lr=self.muon_lr,
-                                 weight_decay=get_coupled_weight_decay(base_wd, self.muon_lr, lr_max),
-                                 momentum=momentum)
+            self.muon_opt = Muon(
+                muon_params,
+                lr=self.muon_lr,
+                weight_decay=get_coupled_weight_decay(base_wd, self.muon_lr, lr_max),
+                momentum=momentum,
+            )
 
         adam_groups = []
         if adam_params_decay:
@@ -207,7 +246,9 @@ class MuonAdamHybrid:
         if adam_groups:
             self.adam_opt = torch.optim.AdamW(adam_groups, lr=self.adam_lr, betas=betas)
 
-    def set_lr(self, lr: float, adam_lr: Optional[float] = None, muon_lr: Optional[float] = None):
+    def set_lr(
+        self, lr: float, adam_lr: float | None = None, muon_lr: float | None = None
+    ):
         """
         Update LR and coupled weight decay for both optimizers.
         wd = base_wd * (lr / lr_max)^2
@@ -219,15 +260,17 @@ class MuonAdamHybrid:
 
         if self.muon_opt:
             for g in self.muon_opt.param_groups:
-                g['lr'] = muon_lr_eff
-                g['weight_decay'] = get_coupled_weight_decay(self.base_wd, muon_lr_eff, self.lr_max)
+                g["lr"] = muon_lr_eff
+                g["weight_decay"] = get_coupled_weight_decay(
+                    self.base_wd, muon_lr_eff, self.lr_max
+                )
 
         if self.adam_opt:
             for g in self.adam_opt.param_groups:
-                g['lr'] = adam_lr_eff
+                g["lr"] = adam_lr_eff
                 # Keep no_decay groups at 0, decay groups at coupled_wd
-                if g['weight_decay'] != 0:
-                    g['weight_decay'] = coupled_wd
+                if g["weight_decay"] != 0:
+                    g["weight_decay"] = coupled_wd
 
     def zero_grad(self, set_to_none: bool = True):
         if self.muon_opt:
@@ -257,6 +300,7 @@ class MuonAdamHybrid:
 # ---------------------------------------------------------------------------
 # Effort conditioning (Inkling controllable thinking effort 0.2-0.99)
 
+
 class EffortConditioning(nn.Module):
     """
     Controllable thinking effort 0.2-0.99 via system message + per-token cost.
@@ -278,13 +322,11 @@ class EffortConditioning(nn.Module):
         self.net = nn.Sequential(
             nn.Linear(1, hidden, bias=False),
             nn.SiLU(),
-            nn.Linear(hidden, d_model, bias=False)
+            nn.Linear(hidden, d_model, bias=False),
         )
         # Learnable per-token cost scaling
         self.cost_predictor = nn.Sequential(
-            nn.Linear(1, hidden // 2),
-            nn.SiLU(),
-            nn.Linear(hidden // 2, 1)
+            nn.Linear(1, hidden // 2), nn.SiLU(), nn.Linear(hidden // 2, 1)
         )
         # Initialize small
         for m in self.modules():
@@ -293,7 +335,9 @@ class EffortConditioning(nn.Module):
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
 
-    def effort_embedding(self, effort: torch.Tensor | float, device=None, dtype=None) -> torch.Tensor:
+    def effort_embedding(
+        self, effort: torch.Tensor | float, device=None, dtype=None
+    ) -> torch.Tensor:
         """
         effort: scalar float or [B] tensor or [B,1]
         Returns: [B,1,D] or [1,D] embedding to add to token embeddings
@@ -318,7 +362,9 @@ class EffortConditioning(nn.Module):
         emb = self.net(e)  # [B, D] or [1,D]
         return emb
 
-    def forward(self, x: torch.Tensor, effort: torch.Tensor | float | None) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, effort: torch.Tensor | float | None
+    ) -> torch.Tensor:
         """
         x: [B,L,D]
         effort: optional
@@ -326,13 +372,17 @@ class EffortConditioning(nn.Module):
         """
         if effort is None:
             return x
-        emb = self.effort_embedding(effort, device=x.device, dtype=x.dtype)  # [B,D] or [B,1]
+        emb = self.effort_embedding(
+            effort, device=x.device, dtype=x.dtype
+        )  # [B,D] or [B,1]
         if emb.shape[0] == 1 and x.shape[0] > 1:
             emb = emb.expand(x.shape[0], -1)
         # [B,D] -> [B,1,D] broadcast over L
         return x + emb.unsqueeze(1)
 
-    def per_token_cost_multiplier(self, effort: torch.Tensor | float, base_alpha: float = 0.5) -> torch.Tensor:
+    def per_token_cost_multiplier(
+        self, effort: torch.Tensor | float, base_alpha: float = 0.5
+    ) -> torch.Tensor:
         """
         Computes cost multiplier for loss that teaches fewer tokens at low effort.
         Inkling: per-token cost adjusted + system message controls effort.
@@ -355,14 +405,20 @@ class EffortConditioning(nn.Module):
         return torch.tensor(max(0.5, min(2.0, mult)))
 
     @staticmethod
-    def sample_effort(batch_size: int, device=None, low: float = 0.2, high: float = 0.99) -> torch.Tensor:
+    def sample_effort(
+        batch_size: int, device=None, low: float = 0.2, high: float = 0.99
+    ) -> torch.Tensor:
         """Sample random effort levels for training, as Inkling does via system message variation."""
         e = torch.rand(batch_size, 1, device=device) * (high - low) + low
         return e
 
 
-def compute_effort_scaled_loss(lm_loss: torch.Tensor, effort: torch.Tensor | float | None,
-                               alpha: float = 0.5, token_count: int | None = None) -> torch.Tensor:
+def compute_effort_scaled_loss(
+    lm_loss: torch.Tensor,
+    effort: torch.Tensor | float | None,
+    alpha: float = 0.5,
+    token_count: int | None = None,
+) -> torch.Tensor:
     """
     Apply per-token cost multiplier.
     If effort low, penalize more for token count (if provided).
@@ -382,12 +438,20 @@ def compute_effort_scaled_loss(lm_loss: torch.Tensor, effort: torch.Tensor | flo
     # This teaches model to be brief when effort low
     if token_count is not None:
         # token penalty scales as (0.99 - effort) * log(token_count)
-        tok_penalty = (0.99 - e_mean.clamp(0.2, 0.99)) * 0.01 * math.log(max(1, token_count))
+        tok_penalty = (
+            (0.99 - e_mean.clamp(0.2, 0.99)) * 0.01 * math.log(max(1, token_count))
+        )
         return lm_loss * mult + tok_penalty
     return lm_loss * mult
 
 
-__all__ = ["Muon", "MuonAdamHybrid", "zeropower_via_newtonschulz5",
-           "get_coupled_weight_decay", "EffortConditioning", "compute_effort_scaled_loss"]
+__all__ = [
+    "EffortConditioning",
+    "Muon",
+    "MuonAdamHybrid",
+    "compute_effort_scaled_loss",
+    "get_coupled_weight_decay",
+    "zeropower_via_newtonschulz5",
+]
 
 # Solo personal project, no connection to employer, built with public/free-tier only

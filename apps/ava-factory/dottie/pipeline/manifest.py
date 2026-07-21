@@ -44,7 +44,10 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, Sequence
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator, Sequence
 
 # ---------------------------------------------------------------------------
 # States
@@ -64,7 +67,9 @@ STAGES = {
 }
 
 _LEGAL_TRANSITIONS: dict[str, frozenset[str]] = {
-    RAW: frozenset({CLAIMED_CURATE, FAILED, DELETED}),  # DELETED: T10.9 janitor eviction
+    RAW: frozenset(
+        {CLAIMED_CURATE, FAILED, DELETED}
+    ),  # DELETED: T10.9 janitor eviction
     CLAIMED_CURATE: frozenset({PACKED, RAW, FAILED}),  # -> RAW on lease requeue
     PACKED: frozenset({CLAIMED_TRAIN, FAILED, DELETED}),
     CLAIMED_TRAIN: frozenset({CONSUMED, PACKED, FAILED}),  # -> PACKED on requeue
@@ -164,11 +169,18 @@ class Shard:
     attempts: int
 
     @classmethod
-    def _from_row(cls, r: sqlite3.Row) -> "Shard":
+    def _from_row(cls, r: sqlite3.Row) -> Shard:
         return cls(
-            id=r["id"], source=r["source"], phase=r["phase"], split=r["split"],
-            state=r["state"], path=r["path"], bytes=r["bytes"],
-            tokens=r["tokens"], docs=r["docs"], attempts=r["attempts"],
+            id=r["id"],
+            source=r["source"],
+            phase=r["phase"],
+            split=r["split"],
+            state=r["state"],
+            path=r["path"],
+            bytes=r["bytes"],
+            tokens=r["tokens"],
+            docs=r["docs"],
+            attempts=r["attempts"],
         )
 
 
@@ -186,7 +198,9 @@ class Manifest:
         max_attempts: int = DEFAULT_MAX_ATTEMPTS,
         timeout: float = 30.0,
     ) -> None:
-        self.db_path = str(db_path or os.environ.get("AVA_STATE_DB", "/state/manifest.db"))
+        self.db_path = str(
+            db_path or os.environ.get("AVA_STATE_DB", "/state/manifest.db")
+        )
         self.lease_seconds = lease_seconds
         self.max_attempts = max_attempts
         if self.db_path != ":memory:":
@@ -208,7 +222,7 @@ class Manifest:
     def close(self) -> None:
         self.db.close()
 
-    def __enter__(self) -> "Manifest":
+    def __enter__(self) -> Manifest:
         return self
 
     def __exit__(self, *exc) -> None:
@@ -256,7 +270,19 @@ class Manifest:
                    (id, source, phase, split, state, path, bytes, docs, sha256,
                     created_at, updated_at)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-                (shard_id, source, phase, split, state, path, bytes_, docs, sha256, now, now),
+                (
+                    shard_id,
+                    source,
+                    phase,
+                    split,
+                    state,
+                    path,
+                    bytes_,
+                    docs,
+                    sha256,
+                    now,
+                    now,
+                ),
             )
             return cur.rowcount > 0
 
@@ -315,20 +341,33 @@ class Manifest:
                       SET state=?, claimed_by=?, lease_expires_at=?,
                           attempts=attempts+1, updated_at=?
                     WHERE id=?""",
-                (claimed_state, by, now + (lease_seconds or self.lease_seconds),
-                 now, row["id"]),
+                (
+                    claimed_state,
+                    by,
+                    now + (lease_seconds or self.lease_seconds),
+                    now,
+                    row["id"],
+                ),
             )
-            updated = db.execute("SELECT * FROM shards WHERE id=?", (row["id"],)).fetchone()
+            updated = db.execute(
+                "SELECT * FROM shards WHERE id=?", (row["id"],)
+            ).fetchone()
             return Shard._from_row(updated)
 
-    def renew(self, shard_id: str, *, by: str, lease_seconds: int | None = None) -> bool:
+    def renew(
+        self, shard_id: str, *, by: str, lease_seconds: int | None = None
+    ) -> bool:
         """Extend a lease on a long-running shard. False if we no longer own it."""
         with self._immediate() as db:
             cur = db.execute(
                 "UPDATE shards SET lease_expires_at=?, updated_at=? "
                 "WHERE id=? AND claimed_by=?",
-                (time.time() + (lease_seconds or self.lease_seconds), time.time(),
-                 shard_id, by),
+                (
+                    time.time() + (lease_seconds or self.lease_seconds),
+                    time.time(),
+                    shard_id,
+                    by,
+                ),
             )
             return cur.rowcount > 0
 
@@ -377,8 +416,19 @@ class Manifest:
                           bytes=COALESCE(?, bytes), error=NULL, updated_at=?,
                           attempts=CASE WHEN ?=? THEN 0 ELSE attempts END
                     WHERE id=?""",
-                (target, path, tokens, docs, split, tokenizer_sha, bytes_, time.time(),
-                 target, PACKED, shard_id),
+                (
+                    target,
+                    path,
+                    tokens,
+                    docs,
+                    split,
+                    tokenizer_sha,
+                    bytes_,
+                    time.time(),
+                    target,
+                    PACKED,
+                    shard_id,
+                ),
             )
 
     def fail(self, shard_id: str, *, by: str, error: str) -> str:
@@ -393,7 +443,9 @@ class Manifest:
             if row is None:
                 raise KeyError(shard_id)
 
-            origin = {CLAIMED_CURATE: RAW, CLAIMED_TRAIN: PACKED}.get(row["state"], row["state"])
+            origin = {CLAIMED_CURATE: RAW, CLAIMED_TRAIN: PACKED}.get(
+                row["state"], row["state"]
+            )
             target = FAILED if row["attempts"] >= self.max_attempts else origin
             self._assert_legal(row["state"], target)
             db.execute(
@@ -486,7 +538,9 @@ class Manifest:
             n = 0
             for r in rows:
                 if r["split"] in PROTECTED_SPLITS:
-                    raise StateError(f"{r['id']}: refusing to delete protected split {r['split']!r}")
+                    raise StateError(
+                        f"{r['id']}: refusing to delete protected split {r['split']!r}"
+                    )
                 self._assert_legal(r["state"], DELETED)
                 db.execute(
                     "UPDATE shards SET state=?, path=NULL, updated_at=? WHERE id=?",
@@ -498,7 +552,9 @@ class Manifest:
     # -- queries used by flow control ---------------------------------------
 
     def counts_by_state(self) -> dict[str, int]:
-        rows = self.db.execute("SELECT state, COUNT(*) c FROM shards GROUP BY state").fetchall()
+        rows = self.db.execute(
+            "SELECT state, COUNT(*) c FROM shards GROUP BY state"
+        ).fetchall()
         return {r["state"]: r["c"] for r in rows}
 
     def tokens_ready(self, phase: int, *, split: str = "train") -> int:
@@ -555,7 +611,9 @@ class Manifest:
     # -- cursors ------------------------------------------------------------
 
     def get_cursor(self, source: str) -> tuple[str | None, int]:
-        r = self.db.execute("SELECT position, docs_seen FROM cursors WHERE source=?", (source,)).fetchone()
+        r = self.db.execute(
+            "SELECT position, docs_seen FROM cursors WHERE source=?", (source,)
+        ).fetchone()
         return (r["position"], r["docs_seen"]) if r else (None, 0)
 
     def set_cursor(self, source: str, position: str, docs_seen: int) -> None:
@@ -644,7 +702,9 @@ class Manifest:
     def _assert_tokenizer(db: sqlite3.Connection, sha: str) -> None:
         r = db.execute("SELECT sha256 FROM tokenizer WHERE id=1").fetchone()
         if r is None:
-            raise TokenizerMismatch("no tokenizer frozen; run `python -m ava.tokenizer train` first")
+            raise TokenizerMismatch(
+                "no tokenizer frozen; run `python -m ava.tokenizer train` first"
+            )
         if r["sha256"] != sha:
             raise TokenizerMismatch(
                 f"shard packed with tokenizer {sha[:12]} but frozen tokenizer is "
@@ -653,7 +713,9 @@ class Manifest:
 
     # -- run / metrics bookkeeping ------------------------------------------
 
-    def upsert_run(self, run_id: str, *, preset: str, step: int, phase: int, status: str) -> None:
+    def upsert_run(
+        self, run_id: str, *, preset: str, step: int, phase: int, status: str
+    ) -> None:
         with self._immediate() as db:
             db.execute(
                 """INSERT INTO runs (run_id, preset, started_at, step, phase, status, updated_at)
@@ -683,14 +745,19 @@ def _summary(db_path: str | None) -> int:
     with Manifest(db_path) as m:
         counts = m.counts_by_state()
         total = sum(counts.values())
-        print(json.dumps({
-            "db": m.db_path,
-            "total_shards": total,
-            "by_state": counts,
-            "raw_bytes": m.raw_bytes(),
-            "tokenizer_sha": (m.tokenizer_sha() or "")[:12] or None,
-            "tokens_ready_by_phase": {p: m.tokens_ready(p) for p in range(6)},
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "db": m.db_path,
+                    "total_shards": total,
+                    "by_state": counts,
+                    "raw_bytes": m.raw_bytes(),
+                    "tokenizer_sha": (m.tokenizer_sha() or "")[:12] or None,
+                    "tokens_ready_by_phase": {p: m.tokens_ready(p) for p in range(6)},
+                },
+                indent=2,
+            )
+        )
     return 0
 
 

@@ -1,9 +1,10 @@
 """Capability-based policy engine — security first, default-deny"""
-from pathlib import Path
-import yaml
-from typing import Dict, Tuple
+
 import os
+from pathlib import Path
 from urllib.parse import urlparse
+
+import yaml
 
 DEFAULT_POLICY = {
     "allow_network": False,
@@ -36,7 +37,7 @@ def user_policy_file() -> Path:
     return Path(xdg) / "bigbang" / "policy.yaml"
 
 
-def load_user_policy() -> Dict:
+def load_user_policy() -> dict:
     fp = user_policy_file()
     if not fp.exists():
         # Materialize the default so users have a real file to edit.
@@ -74,7 +75,7 @@ def _domain_matches(domain: str, resource: str) -> bool:
     return bool(domain) and (domain in resource or resource.endswith(domain))
 
 
-def check_user_url(url: str) -> Tuple[bool, str]:
+def check_user_url(url: str) -> tuple[bool, str]:
     """Check a URL against the persisted user allowlist. Default-deny."""
     policy = load_user_policy()
     domains = (policy.get("network") or {}).get("allowed_domains") or []
@@ -93,7 +94,11 @@ def enforce_user_url_or_raise(url: str, context: str = ""):
     ok, reason = check_user_url(url)
     if not ok:
         import typer
-        typer.secho(f"⛔ Policy denied [network {url}]{' (' + context + ')' if context else ''}: {reason}", fg=typer.colors.RED)
+
+        typer.secho(
+            f"⛔ Policy denied [network {url}]{' (' + context + ')' if context else ''}: {reason}",
+            fg=typer.colors.RED,
+        )
         raise typer.Exit(code=1)
     return True
 
@@ -102,7 +107,8 @@ def enforce_user_url_or_raise(url: str, context: str = ""):
 # Manifest capability checks — default-deny on every axis.
 # ---------------------------------------------------------------------------
 
-def load_manifest(plugin_path: Path) -> Dict:
+
+def load_manifest(plugin_path: Path) -> dict:
     manifest = plugin_path / "manifest.yaml"
     if not manifest.exists():
         return {}
@@ -112,18 +118,21 @@ def load_manifest(plugin_path: Path) -> Dict:
         return {}
 
 
-def check_permission(manifest: Dict, action: str, resource: str) -> Tuple[bool, str]:
+def check_permission(manifest: dict, action: str, resource: str) -> tuple[bool, str]:
     """Returns (allowed, reason). Default-deny: empty allowlists deny everything."""
     caps = manifest.get("capabilities", {})
     if action == "network":
         net = caps.get("network", {})
         if not net.get("enabled", False):
-            return False, f"network disabled for {manifest.get('name','tool')} — add manifest capabilities.network.enabled"
+            return (
+                False,
+                f"network disabled for {manifest.get('name', 'tool')} — add manifest capabilities.network.enabled",
+            )
         domains = net.get("domains", []) or []
         if not domains:
             # documented default-deny: enabling network without naming domains allows nothing
             return False, (
-                f"network enabled but domain allowlist is empty for {manifest.get('name','tool')} "
+                f"network enabled but domain allowlist is empty for {manifest.get('name', 'tool')} "
                 "— default-deny; list domains in manifest capabilities.network.domains"
             )
         # explicit deny on mismatch for every resource shape (URLs and bare hosts alike)
@@ -131,7 +140,10 @@ def check_permission(manifest: Dict, action: str, resource: str) -> Tuple[bool, 
             return False, f"domain {resource} not in allowlist {domains}"
     if action == "fs_write":
         if not caps.get("filesystem", {}).get("write", False):
-            return False, "filesystem write disabled — add manifest capabilities.filesystem.write=true"
+            return (
+                False,
+                "filesystem write disabled — add manifest capabilities.filesystem.write=true",
+            )
     if action == "secret":
         allowed = caps.get("secrets", {}).get("allow", [])
         if allowed and resource not in allowed:
@@ -139,12 +151,18 @@ def check_permission(manifest: Dict, action: str, resource: str) -> Tuple[bool, 
     return True, "ok"
 
 
-def enforce_or_raise(manifest: Dict, action: str, resource: str):
+def enforce_or_raise(manifest: dict, action: str, resource: str):
     ok, reason = check_permission(manifest, action, resource)
     if not ok:
-        from typer import Exit
         import typer
-        typer.secho(f"⛔ Policy denied [{action} {resource}]: {reason}", fg=typer.colors.RED)
-        typer.secho(f"   Manifest: {manifest.get('name')} v{manifest.get('version')} — edit {manifest.get('name')}/manifest.yaml to allow", fg=typer.colors.YELLOW)
+        from typer import Exit
+
+        typer.secho(
+            f"⛔ Policy denied [{action} {resource}]: {reason}", fg=typer.colors.RED
+        )
+        typer.secho(
+            f"   Manifest: {manifest.get('name')} v{manifest.get('version')} — edit {manifest.get('name')}/manifest.yaml to allow",
+            fg=typer.colors.YELLOW,
+        )
         raise Exit(code=1)
     return True

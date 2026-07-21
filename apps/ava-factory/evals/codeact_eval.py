@@ -17,9 +17,9 @@ T13C.3 acceptance criteria without a model.
 from __future__ import annotations
 
 import random
-from pathlib import Path
 import sys
-from typing import Any, Dict, List, Optional, Sequence
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 _REPO = Path(__file__).resolve().parent.parent
 if str(_REPO) not in sys.path:
@@ -28,11 +28,16 @@ if str(_REPO) not in sys.path:
 from ava.datagen.codeact import Trajectory, iter_trajectories
 from ava.rl.codeact_sandbox import Sandbox
 
-CODEACT_EVAL_SEED = 20_240_717   # frozen held-out set seed (comparable across milestones)
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+CODEACT_EVAL_SEED = (
+    20_240_717  # frozen held-out set seed (comparable across milestones)
+)
 CODEACT_BAR = 0.70
 
 
-def held_out(n: int) -> List[Trajectory]:
+def held_out(n: int) -> list[Trajectory]:
     """Frozen held-out trajectory set — same seed every call so scores are comparable."""
     return list(iter_trajectories(seed=CODEACT_EVAL_SEED, n=n))
 
@@ -40,8 +45,13 @@ def held_out(n: int) -> List[Trajectory]:
 _CORRUPT_SENTINEL = "'__codeact_corrupted__'"
 
 
-def score_emission(blocks: Sequence[str], gold_answer: str,
-                   tool_sources: Optional[Dict[str, str]] = None, *, max_steps: int = 32) -> bool:
+def score_emission(
+    blocks: Sequence[str],
+    gold_answer: str,
+    tool_sources: dict[str, str] | None = None,
+    *,
+    max_steps: int = 32,
+) -> bool:
     """Run emitted code through the REAL sandbox; True iff the FINAL block succeeds with the gold
     answer.
 
@@ -53,22 +63,28 @@ def score_emission(blocks: Sequence[str], gold_answer: str,
         final = None
         for block in blocks:
             final = vm.step(block)
-    if final is None or not final.ok:      # empty trajectory, trailing error, or step-cap hit
+    if (
+        final is None or not final.ok
+    ):  # empty trajectory, trailing error, or step-cap hit
         return False
     return final.value == gold_answer
 
 
-def _corrupt(blocks: List[str]) -> List[str]:
+def _corrupt(blocks: list[str]) -> list[str]:
     """Deterministically break a trajectory so its final value can NEVER equal any gold answer.
 
     Emits a fixed sentinel STRING (repr `'__codeact_corrupted__'`) rather than the literal 0 — the
     old `0` collided with any future family whose gold answer is 0, which would silently inflate
     the plumbing success rate. Used only by the synthetic-policy plumbing check."""
-    return list(blocks[:-1]) + [f"{_CORRUPT_SENTINEL}  # corrupted emission"]
+    return [*list(blocks[:-1]), f"{_CORRUPT_SENTINEL}  # corrupted emission"]
 
 
-def simulate_policy_eval(n: int = 20, accuracy: float = 0.8, seed: int = CODEACT_EVAL_SEED,
-                         tool_binding_ok: bool = True) -> Dict[str, Any]:
+def simulate_policy_eval(
+    n: int = 20,
+    accuracy: float = 0.8,
+    seed: int = CODEACT_EVAL_SEED,
+    tool_binding_ok: bool = True,
+) -> dict[str, Any]:
     """Plumbing check: a seeded synthetic 'policy' emits correct-or-corrupted code per trajectory;
     every score comes from REAL sandbox execution. NOT a model-capability measurement — it exists to
     prove the eval harness works, varies by seed, and is sensitive to a broken tool binding."""
@@ -84,17 +100,23 @@ def simulate_policy_eval(n: int = 20, accuracy: float = 0.8, seed: int = CODEACT
     # Distinct test name + capability:false so a consumer keying on test-name+pass can never mistake
     # this plumbing check for a real capability measurement.
     return {
-        "test": "codeact_simulation", "mode": "simulation", "capability": False,
-        "measured": {"success_rate": round(rate, 4), "n": len(trajs),
-                     "tool_binding_ok": tool_binding_ok},
+        "test": "codeact_simulation",
+        "mode": "simulation",
+        "capability": False,
+        "measured": {
+            "success_rate": round(rate, 4),
+            "n": len(trajs),
+            "tool_binding_ok": tool_binding_ok,
+        },
         "pass": rate >= CODEACT_BAR,
         "bar": f"success_rate>={CODEACT_BAR}",
         "note": "synthetic-policy plumbing check — NOT model capability",
     }
 
 
-def run_codeact_eval(model: Any, tokenizer: Any, preset: str = "nano",
-                     device: str = "cpu", n: int = 20) -> Dict[str, Any]:
+def run_codeact_eval(
+    model: Any, tokenizer: Any, preset: str = "nano", device: str = "cpu", n: int = 20
+) -> dict[str, Any]:
     """Real-model CodeAct eval, now WIRED to the T13C.5 decode loop: it drives the model through
     `run_code_act` over the frozen held-out set and scores each episode's FINAL against the gold
     answer via the real sandbox. It still **fails honestly** — the model-driving policy (`ModelPolicy`)
@@ -110,12 +132,22 @@ def run_codeact_eval(model: Any, tokenizer: Any, preset: str = "nano",
         successes = 0
         for traj in trajs:
             res = run_code_act(policy, traj.user, tool_sources=traj.tool_sources)
-            successes += int(res.reached_final and res.final is not None
-                             and traj.answer in res.final)
+            successes += int(
+                res.reached_final and res.final is not None and traj.answer in res.final
+            )
         rate = successes / max(1, len(trajs))
-        return {"test": "codeact", "measured": {"success_rate": round(rate, 4), "n": len(trajs)},
-                "pass": rate >= CODEACT_BAR, "bar": f"success_rate>={CODEACT_BAR}"}
+        return {
+            "test": "codeact",
+            "measured": {"success_rate": round(rate, 4), "n": len(trajs)},
+            "pass": rate >= CODEACT_BAR,
+            "bar": f"success_rate>={CODEACT_BAR}",
+        }
     except ModelPolicyBlockedError as e:
         # The wired loop reached its honest boundary: no real policy to decode with.
-        return {"test": "codeact", "measured": None, "pass": False,
-                "bar": f"success_rate>={CODEACT_BAR}", "error": str(e)}
+        return {
+            "test": "codeact",
+            "measured": None,
+            "pass": False,
+            "bar": f"success_rate>={CODEACT_BAR}",
+            "error": str(e),
+        }

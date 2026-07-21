@@ -21,9 +21,9 @@ import dottie.engine as engine_mod
 
 def test_echo_cannot_pass_verifier_r_task_zero_recorded(engine):
     rec = engine.run_task(family="compute", seed=0, backend="echo")
-    assert rec["terminated"] == "final"          # echo reached a FINAL...
+    assert rec["terminated"] == "final"  # echo reached a FINAL...
     comps = rec["reward_components"]
-    assert comps["r_task"] == 0.0                # ...but the verifier honestly scored it 0
+    assert comps["r_task"] == 0.0  # ...but the verifier honestly scored it 0
     assert comps["r_task_note"].startswith("verified: family=compute")
     # rl_return blends the real components; with r_task=0 it is exactly the exec+codeuse part.
     assert comps["rl_return"] == pytest.approx(
@@ -31,7 +31,9 @@ def test_echo_cannot_pass_verifier_r_task_zero_recorded(engine):
     )
     detail = rec["verified_task"]
     assert detail["family"] == "compute" and detail["seed"] == 0
-    assert detail["expected"] not in rec["prompt"]   # the no-leak property, on the real record
+    assert (
+        detail["expected"] not in rec["prompt"]
+    )  # the no-leak property, on the real record
 
 
 def test_no_final_is_a_verified_failure_not_a_crash(engine):
@@ -47,7 +49,7 @@ def test_prompt_and_family_are_exclusive(engine):
     with pytest.raises(ValueError):
         engine.run_task("free-form", family="compute", backend="echo")
     with pytest.raises(ValueError):
-        engine.run_task(backend="echo")   # neither form given
+        engine.run_task(backend="echo")  # neither form given
 
 
 def test_freeform_contract_unchanged(engine):
@@ -59,6 +61,7 @@ def test_freeform_contract_unchanged(engine):
 # ---------------------------------------------------------------------------
 # Scripted solver policies — synthetic plumbing policies (labeled), REAL execution.
 # ---------------------------------------------------------------------------
+
 
 class _ScriptedSolver:
     """Base: emit one real code block built from the task prompt, then a FINAL whose value is
@@ -90,8 +93,10 @@ class _ScriptedSolver:
 class _ComputeSolver(_ScriptedSolver):
     def code_for(self, transcript: str) -> str:
         nums = re.search(r"Data list: (\[[^\]]*\])", transcript).group(1)
-        return (f"nums = {nums}\n"
-                "sum(x * x for x in nums if x % 2 == 0) - sum(x for x in nums if x % 2 == 1)")
+        return (
+            f"nums = {nums}\n"
+            "sum(x * x for x in nums if x % 2 == 0) - sum(x for x in nums if x % 2 == 1)"
+        )
 
 
 class _ToolChainSolver(_ScriptedSolver):
@@ -130,11 +135,12 @@ def _run_scripted(engine, monkeypatch, family: str, seed: int, solver_cls):
 def test_scripted_solver_earns_r_task_one_through_real_sandbox(engine, monkeypatch):
     rec = _run_scripted(engine, monkeypatch, "compute", 3, _ComputeSolver)
     assert rec["terminated"] == "final"
-    assert rec["steps"][0]["ok"] is True          # the code REALLY ran in the sandbox
+    assert rec["steps"][0]["ok"] is True  # the code REALLY ran in the sandbox
     comps = rec["reward_components"]
     assert comps["r_task"] == 1.0
-    assert comps["rl_return"] == pytest.approx(1.0 + 0.2 * comps["r_exec"]
-                                               + 0.2 * comps["r_codeuse"])
+    assert comps["rl_return"] == pytest.approx(
+        1.0 + 0.2 * comps["r_exec"] + 0.2 * comps["r_codeuse"]
+    )
     assert rec["verified_task"]["expected"] in rec["final"]
 
 
@@ -160,7 +166,7 @@ def test_scripted_solver_fails_honestly_on_wrong_computation(engine, monkeypatch
 
     class _WrongSolver(_ComputeSolver):
         def code_for(self, transcript: str) -> str:
-            return super().code_for(transcript) + " + 1"   # off by one, really executed
+            return super().code_for(transcript) + " + 1"  # off by one, really executed
 
     rec = _run_scripted(engine, monkeypatch, "compute", 3, _WrongSolver)
     assert rec["steps"][0]["ok"] is True

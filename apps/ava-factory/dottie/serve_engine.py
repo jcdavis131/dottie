@@ -23,14 +23,10 @@ import os
 import threading
 import time
 from pathlib import Path
-from typing import Any, Generator, Optional
+from typing import TYPE_CHECKING, Any
 
 import torch
 import torch.nn.functional as F
-
-from dottie.config import DottieConfig
-from dottie.model import build_model, count_params
-from dottie.tokenizer import DottieTokenizer
 from evals.common import greedy_decode, logprob_of, prep_eval
 from evals.interventions import (
     BroadcastSwap,
@@ -40,6 +36,13 @@ from evals.interventions import (
     top_concept_trace,
 )
 from multi_jspace_module import SPACE_NAMES
+
+from dottie.config import DottieConfig
+from dottie.model import build_model, count_params
+from dottie.tokenizer import DottieTokenizer
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 _REPO = Path(__file__).resolve().parent.parent
 _DEFAULT_CKPT = "runs/chat/ava_nano_chat.pt"
@@ -60,17 +63,27 @@ def _resolve_tokenizer_path(explicit: str | Path | None) -> Path:
         if p.is_file():
             return p
     return _repo_path(_DEFAULT_TOKENIZER_CANDIDATES[-1])
+
+
 _AUDIT_PATH = _REPO / "runs" / "serve_audit.jsonl"
 _HOT_RELOAD_INTERVAL_S = 5.0
 
 _SAFETY_WORDS = [
-    "leverage", "blackmail", "threat", "scandal", "shutdown", "fake",
-    "secretly", "trick", "unsafe", "dangerous",
+    "leverage",
+    "blackmail",
+    "threat",
+    "scandal",
+    "shutdown",
+    "fake",
+    "secretly",
+    "trick",
+    "unsafe",
+    "dangerous",
 ]
 _ROUTE_KEYS = ("S1", "S2", "Critic", "Planner")
 
 _ENGINE_LOCK = threading.Lock()
-_ENGINE: Optional["ServeEngine"] = None
+_ENGINE: ServeEngine | None = None
 
 
 def _repo_path(p: str | Path) -> Path:
@@ -94,7 +107,9 @@ def resolve_ckpt_path(ckpt: str | Path) -> Path:
             raise FileNotFoundError(f"latest pointer empty or points at tmp: {path}")
         resolved = path.parent / target_name
         if resolved.name.endswith(".tmp"):
-            raise FileNotFoundError(f"refusing to read incomplete checkpoint {resolved}")
+            raise FileNotFoundError(
+                f"refusing to read incomplete checkpoint {resolved}"
+            )
         if not resolved.is_file():
             raise FileNotFoundError(
                 f"latest points at missing file {resolved} (from {path})"
@@ -107,7 +122,7 @@ def _route_dict(probs: torch.Tensor) -> dict[str, float]:
     vals = probs.detach().float().cpu().tolist()
     if len(vals) != 4:
         raise ValueError(f"expected 4 route probs, got {len(vals)}")
-    return {k: float(v) for k, v in zip(_ROUTE_KEYS, vals)}
+    return {k: float(v) for k, v in zip(_ROUTE_KEYS, vals, strict=False)}
 
 
 class ServeEngine:
@@ -122,7 +137,11 @@ class ServeEngine:
         preset: str = "nano",
         enable_hot_reload: bool | None = None,
     ) -> None:
-        raw = ckpt_path if ckpt_path is not None else os.environ.get("AVA_CKPT", _DEFAULT_CKPT)
+        raw = (
+            ckpt_path
+            if ckpt_path is not None
+            else os.environ.get("AVA_CKPT", _DEFAULT_CKPT)
+        )
         self._ckpt_env = str(raw)
         self._ckpt_pointer = _repo_path(raw)
         self._tokenizer_path = _resolve_tokenizer_path(tokenizer_path)
@@ -135,9 +154,7 @@ class ServeEngine:
         self._pointer_content: str | None = None
 
         if not self._tokenizer_path.is_file():
-            raise FileNotFoundError(
-                f"tokenizer missing at {self._tokenizer_path}"
-            )
+            raise FileNotFoundError(f"tokenizer missing at {self._tokenizer_path}")
 
         resolved = self._require_ckpt(self._ckpt_pointer)
         self.tokenizer = DottieTokenizer.load(self._tokenizer_path)
@@ -296,7 +313,7 @@ class ServeEngine:
                 top_p, top_i = probs.topk(8)
                 top_concepts = [
                     {"concept": self.tokenizer.decode([int(i)]), "p": float(p)}
-                    for i, p in zip(top_i.tolist(), top_p.tolist())
+                    for i, p in zip(top_i.tolist(), top_p.tolist(), strict=False)
                 ]
                 verbalizable_mass = float(top_p.sum().item())
 
@@ -378,20 +395,26 @@ class ServeEngine:
                 )
                 baseline_text = self.tokenizer.decode(base_ids[len(prompt_ids) :])
                 lp_from_base = logprob_of(
-                    self.model, prompt_ids, from_concept, self.tokenizer,
-                    task_type="deliberate", device=self.device,
+                    self.model,
+                    prompt_ids,
+                    from_concept,
+                    self.tokenizer,
+                    task_type="deliberate",
+                    device=self.device,
                 )
                 lp_to_base = logprob_of(
-                    self.model, prompt_ids, to_concept, self.tokenizer,
-                    task_type="deliberate", device=self.device,
+                    self.model,
+                    prompt_ids,
+                    to_concept,
+                    self.tokenizer,
+                    task_type="deliberate",
+                    device=self.device,
                 )
 
             # Planner broadcast interventions match evals/jspace_tests France→China;
             # other spaces edit workspace slot state (Spider→Ant).
             swap_cls = BroadcastSwap if space == "planner" else WorkspaceSwap
-            with swap_cls(
-                self.model, self.tokenizer, space, from_concept, to_concept
-            ):
+            with swap_cls(self.model, self.tokenizer, space, from_concept, to_concept):
                 with torch.no_grad():
                     prep_eval(self.model, seed=seed)
                     int_ids = greedy_decode(
@@ -401,16 +424,22 @@ class ServeEngine:
                         task_type="deliberate",
                         device=self.device,
                     )
-                    intervened_text = self.tokenizer.decode(
-                        int_ids[len(prompt_ids) :]
-                    )
+                    intervened_text = self.tokenizer.decode(int_ids[len(prompt_ids) :])
                     lp_from_int = logprob_of(
-                        self.model, prompt_ids, from_concept, self.tokenizer,
-                        task_type="deliberate", device=self.device,
+                        self.model,
+                        prompt_ids,
+                        from_concept,
+                        self.tokenizer,
+                        task_type="deliberate",
+                        device=self.device,
                     )
                     lp_to_int = logprob_of(
-                        self.model, prompt_ids, to_concept, self.tokenizer,
-                        task_type="deliberate", device=self.device,
+                        self.model,
+                        prompt_ids,
+                        to_concept,
+                        self.tokenizer,
+                        task_type="deliberate",
+                        device=self.device,
                     )
 
             delta_logprob = (lp_to_int - lp_from_int) - (lp_to_base - lp_from_base)
@@ -492,10 +521,14 @@ class ServeEngine:
 
                 block_i = 0
                 for blk in self.model.text_layers:
-                    handles.append(blk.register_forward_hook(_make_hook(block_i, "text")))
+                    handles.append(
+                        blk.register_forward_hook(_make_hook(block_i, "text"))
+                    )
                     block_i += 1
                 for blk in self.model.fusion_layers:
-                    handles.append(blk.register_forward_hook(_make_hook(block_i, "fusion")))
+                    handles.append(
+                        blk.register_forward_hook(_make_hook(block_i, "fusion"))
+                    )
                     block_i += 1
                 for blk in self.model.reasoning_layers:
                     handles.append(
@@ -542,6 +575,6 @@ def reset_engine_for_tests() -> None:
 __all__ = [
     "ServeEngine",
     "get_engine",
-    "resolve_ckpt_path",
     "reset_engine_for_tests",
+    "resolve_ckpt_path",
 ]

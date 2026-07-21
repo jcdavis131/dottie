@@ -11,7 +11,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-
 from ava.pipeline import flow, janitor
 from ava.pipeline.janitor import (
     Janitor,
@@ -81,8 +80,12 @@ def test_janitor_reads_watermarks_from_config(tmp_path: Path):
     }
     p = tmp_path / "pipeline.yaml"
     p.write_text(yaml.safe_dump(cfg), encoding="utf-8")
-    j = Janitor(config_path=str(p), db_path=str(tmp_path / "m.db"),
-                packed_dir=str(tmp_path), ckpt_dir=str(tmp_path / "ckpt"))
+    j = Janitor(
+        config_path=str(p),
+        db_path=str(tmp_path / "m.db"),
+        packed_dir=str(tmp_path),
+        ckpt_dir=str(tmp_path / "ckpt"),
+    )
     assert j.flow.janitor_trigger_gb == 18
     assert j.retention.keep_last_checkpoints == 2
 
@@ -165,15 +168,26 @@ def test_janitor_explicit_refuse_protected_split(db_path, tmp_path: Path, monkey
         from ava.pipeline.manifest import Shard
 
         fake = Shard(
-            id="v1", source="x", phase=0, split="val", state=CONSUMED,
-            path=str(val_bin), bytes=1, tokens=1, docs=1, attempts=0,
+            id="v1",
+            source="x",
+            phase=0,
+            split="val",
+            state=CONSUMED,
+            path=str(val_bin),
+            bytes=1,
+            tokens=1,
+            docs=1,
+            attempts=0,
         )
         monkeypatch.setattr(m, "consumed_shards", lambda limit=100: [fake])
         stats = reclaim_consumed(m)
         assert stats["refused_protected"] == 1
         assert stats["deleted"] == 0
         assert val_bin.exists()
-        assert m.db.execute("SELECT state FROM shards WHERE id='v1'").fetchone()[0] == CONSUMED
+        assert (
+            m.db.execute("SELECT state FROM shards WHERE id='v1'").fetchone()[0]
+            == CONSUMED
+        )
 
 
 def test_reclaim_skips_bad_shard_without_raising(db_path, tmp_path: Path, monkeypatch):
@@ -294,11 +308,17 @@ def test_cli_once(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(flow, "free_gb", lambda _p: 50.0)
     # janitor binds free_gb at import; patch the local name too for disk_free_gb.
     monkeypatch.setattr(janitor, "free_gb", lambda _p: 50.0)
-    rc = janitor.main([
-        "--once",
-        "--config", str(cfg_path),
-        "--db", str(tmp_path / "m.db"),
-        "--packed-dir", str(packed),
-        "--ckpt-dir", str(ckpt),
-    ])
+    rc = janitor.main(
+        [
+            "--once",
+            "--config",
+            str(cfg_path),
+            "--db",
+            str(tmp_path / "m.db"),
+            "--packed-dir",
+            str(packed),
+            "--ckpt-dir",
+            str(ckpt),
+        ]
+    )
     assert rc == 0

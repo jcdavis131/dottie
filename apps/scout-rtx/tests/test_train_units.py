@@ -2,12 +2,10 @@
 
 import math
 
+import prepare
 import pytest
 import torch
-
-import prepare
 import train
-
 
 # --- _resolve_gpu_profile tier boundaries ---------------------------------
 
@@ -80,6 +78,7 @@ def test_below_vram_floor_falls_to_compatibility():
 
 # --- _get_gpu_peak_flops ---------------------------------------------------
 
+
 @pytest.mark.parametrize(
     "name,expected",
     [
@@ -97,6 +96,7 @@ def test_get_gpu_peak_flops(name, expected):
 
 
 # --- autotune cache round-trip --------------------------------------------
+
 
 def test_autotune_cache_round_trip(tmp_path):
     path = tmp_path / "cache" / "gpu-profile-v2.json"
@@ -134,6 +134,7 @@ def test_autotune_cache_non_dict_payload_returns_empty(tmp_path):
 
 # --- _filter_train_batch_sizes divisibility --------------------------------
 
+
 def test_filter_train_batch_sizes_keeps_divisible_candidates():
     # TOTAL_BATCH_SIZE = 2**19, MAX_SEQ_LEN = 2048 -> batch must divide 256
     assert train._filter_train_batch_sizes((64, 32, 16, 8, 4)) == [64, 32, 16, 8, 4]
@@ -153,6 +154,7 @@ def test_filter_train_batch_sizes_raises_when_nothing_valid():
 
 
 # --- evaluate_bpb math on a constant-loss stub model -----------------------
+
 
 class _ConstantLossModel:
     """Stub model returning a constant per-token loss of ln(2) nats."""
@@ -179,7 +181,9 @@ def test_evaluate_bpb_constant_loss(monkeypatch):
     # every token id maps to 2 bytes
     token_bytes = torch.full((prepare.VOCAB_SIZE,), 2, dtype=torch.long)
     monkeypatch.setattr(prepare, "make_dataloader", fake_loader)
-    monkeypatch.setattr(prepare, "get_token_bytes", lambda device=None, dataset=None: token_bytes)
+    monkeypatch.setattr(
+        prepare, "get_token_bytes", lambda device=None, dataset=None: token_bytes
+    )
 
     model = _ConstantLossModel(loss_nats=math.log(2))
     tokenizer = type("Tok", (), {"dataset": "tinystories"})()
@@ -209,12 +213,18 @@ def test_evaluate_bpb_excludes_zero_byte_tokens(monkeypatch):
     token_bytes = torch.full((prepare.VOCAB_SIZE,), 2, dtype=torch.long)
     token_bytes[0] = 0
     monkeypatch.setattr(prepare, "make_dataloader", fake_loader)
-    monkeypatch.setattr(prepare, "get_token_bytes", lambda device=None, dataset=None: token_bytes)
+    monkeypatch.setattr(
+        prepare, "get_token_bytes", lambda device=None, dataset=None: token_bytes
+    )
 
     model = _ConstantLossModel(loss_nats=math.log(2))
     tokenizer = type("Tok", (), {"dataset": "tinystories"})()
     bpb = prepare.evaluate_bpb(
-        model, tokenizer, batch_size, device="cpu", dataset="tinystories",
+        model,
+        tokenizer,
+        batch_size,
+        device="cpu",
+        dataset="tinystories",
         eval_tokens=batch_size * seq_len,
     )
     # only the 1024 two-byte tokens count: (1024 * ln2) / (ln2 * 2048) = 0.5
@@ -222,6 +232,7 @@ def test_evaluate_bpb_excludes_zero_byte_tokens(monkeypatch):
 
 
 # --- misc runtime plumbing -------------------------------------------------
+
 
 def test_runtime_config_has_no_use_compile_field():
     # constant-False use_compile plumbing was removed (audit finding 14)

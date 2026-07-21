@@ -22,16 +22,15 @@ covered by the contract itself plus the `decode(ids, skip_special=...)` keyword 
 import os
 import sys
 from pathlib import Path
-from typing import List
 
 import pytest
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from ava.config import AvaConfig                          # noqa: E402
-from ava.model import build_model                         # noqa: E402
-from ava.rl.codeact_loop import run_code_act              # noqa: E402
-from ava.rl.codeact_policy import TorchModelPolicy, _extract_logits  # noqa: E402
+from ava.config import AvaConfig
+from ava.model import build_model
+from ava.rl.codeact_loop import run_code_act
+from ava.rl.codeact_policy import TorchModelPolicy, _extract_logits
 
 POSIX = os.name == "posix"
 posix_only = pytest.mark.skipif(not POSIX, reason="sandbox resource caps require POSIX")
@@ -50,10 +49,10 @@ class CharTokenizer:
     def __init__(self, vocab_size: int = VOCAB) -> None:
         self.vocab_size = vocab_size
 
-    def encode(self, text: str) -> List[int]:
+    def encode(self, text: str) -> list[int]:
         return [min(ord(c), self.vocab_size - 1) for c in text]
 
-    def decode(self, ids: List[int]) -> str:
+    def decode(self, ids: list[int]) -> str:
         return "".join(chr(i) for i in ids)
 
 
@@ -68,11 +67,11 @@ class ScriptedSequenceLM:
     Returns the AvaModel dict contract ({'lm_logits': [B, L, V]}). Peaked logits (+/-30) make
     greedy argmax unambiguous. Clearly synthetic — machinery only."""
 
-    def __init__(self, script_ids: List[int], vocab: int = VOCAB) -> None:
+    def __init__(self, script_ids: list[int], vocab: int = VOCAB) -> None:
         self._script = list(script_ids)
         self._i = 0
         self.vocab = vocab
-        self.seen_lengths: List[int] = []          # recorded per forward, for truncation checks
+        self.seen_lengths: list[int] = []  # recorded per forward, for truncation checks
 
     def __call__(self, *, input_ids: torch.Tensor, **kw) -> dict:
         self.seen_lengths.append(int(input_ids.shape[1]))
@@ -92,9 +91,9 @@ class HandComputedLM:
     """
 
     ROWS = {
-        3: [0.0, 0.1, 0.2, 0.15, 0.9, 0.3, 0.1, 0.05],   # argmax = 4
-        4: [0.5, 0.1, 0.2, 0.3, 0.0, 1.2, 0.4, 0.1],     # argmax = 5
-        5: [2.0, 0.1, 0.2, 0.3, 0.0, 0.2, 0.4, 0.1],     # argmax = 0
+        3: [0.0, 0.1, 0.2, 0.15, 0.9, 0.3, 0.1, 0.05],  # argmax = 4
+        4: [0.5, 0.1, 0.2, 0.3, 0.0, 1.2, 0.4, 0.1],  # argmax = 5
+        5: [2.0, 0.1, 0.2, 0.3, 0.0, 0.2, 0.4, 0.1],  # argmax = 0
     }
 
     def __call__(self, *, input_ids: torch.Tensor, **kw) -> torch.Tensor:
@@ -108,10 +107,10 @@ class HandComputedLM:
 class DigitTokenizer:
     """Tokens ARE digits: '3' -> [3], [4, 5] -> '45'. Vocab 8, for the hand-computed case."""
 
-    def encode(self, text: str) -> List[int]:
+    def encode(self, text: str) -> list[int]:
         return [int(c) for c in text]
 
-    def decode(self, ids: List[int]) -> str:
+    def decode(self, ids: list[int]) -> str:
         return "".join(str(i) for i in ids)
 
 
@@ -120,7 +119,7 @@ class RecordingWrapper:
 
     def __init__(self, model) -> None:
         self._m = model
-        self.seen_lengths: List[int] = []
+        self.seen_lengths: list[int] = []
 
     def __call__(self, *, input_ids: torch.Tensor, **kw):
         self.seen_lengths.append(int(input_ids.shape[1]))
@@ -178,24 +177,38 @@ class TestRealModelDecode:
     PROMPT = "<|user|>\nCompute 2 + 2 using python."
 
     def test_greedy_returns_string_and_is_deterministic(self, nano_model, char_tok):
-        pol = TorchModelPolicy(nano_model, char_tok, max_new_tokens=12,
-                               temperature=0.0, context_window=128)
+        pol = TorchModelPolicy(
+            nano_model, char_tok, max_new_tokens=12, temperature=0.0, context_window=128
+        )
         a = pol(self.PROMPT)
         b = pol(self.PROMPT)
         assert isinstance(a, str)
         assert a == b, "greedy decode must be run-to-run deterministic"
 
     def test_sampling_same_seed_identical(self, nano_model, char_tok):
-        pol = TorchModelPolicy(nano_model, char_tok, max_new_tokens=12, temperature=1.0,
-                               top_k=50, seed=123, context_window=128)
+        pol = TorchModelPolicy(
+            nano_model,
+            char_tok,
+            max_new_tokens=12,
+            temperature=1.0,
+            top_k=50,
+            seed=123,
+            context_window=128,
+        )
         a = pol.generate(self.PROMPT)
         b = pol.generate(self.PROMPT)
         assert isinstance(a, str)
         assert a == b, "same torch.Generator seed must reproduce the sample bit-for-bit"
 
     def test_sampling_different_seeds_differ(self, nano_model, char_tok):
-        pol = TorchModelPolicy(nano_model, char_tok, max_new_tokens=16, temperature=1.0,
-                               top_k=0, context_window=128)
+        pol = TorchModelPolicy(
+            nano_model,
+            char_tok,
+            max_new_tokens=16,
+            temperature=1.0,
+            top_k=0,
+            context_window=128,
+        )
         a = pol.generate(self.PROMPT, seed=1)
         b = pol.generate(self.PROMPT, seed=2)
         # 16 near-uniform draws over ~8192 ids: identical outputs across seeds would signal a
@@ -211,8 +224,13 @@ class TestRealModelDecode:
 class TestStopCutting:
     def test_user_marker_cuts_turn(self, char_tok):
         script = char_tok.encode("hello world<|user|>LEAKED")
-        pol = TorchModelPolicy(ScriptedSequenceLM(script), char_tok, max_new_tokens=64,
-                               stop_sequences=("<|user|>",), context_window=256)
+        pol = TorchModelPolicy(
+            ScriptedSequenceLM(script),
+            char_tok,
+            max_new_tokens=64,
+            stop_sequences=("<|user|>",),
+            context_window=256,
+        )
         out = pol("<|user|>\nhi")
         assert out == "hello world"
         assert "LEAKED" not in out and "<|user|>" not in out
@@ -220,16 +238,26 @@ class TestStopCutting:
     def test_eos_id_cuts_turn(self):
         tok = DigitTokenizer()
         # script: 4, 5, then eos (7), then 6 which must never be reached
-        pol = TorchModelPolicy(ScriptedSequenceLM([4, 5, 7, 6], vocab=8), tok,
-                               max_new_tokens=16, eos_id=7, stop_sequences=(),
-                               context_window=32)
+        pol = TorchModelPolicy(
+            ScriptedSequenceLM([4, 5, 7, 6], vocab=8),
+            tok,
+            max_new_tokens=16,
+            eos_id=7,
+            stop_sequences=(),
+            context_window=32,
+        )
         assert pol.generate("3") == "45"
 
     def test_budget_exhaustion_returns_partial_turn(self, char_tok):
-        script = char_tok.encode("abcdefgh")            # no stop anywhere in the stream
-        pol = TorchModelPolicy(ScriptedSequenceLM(script), char_tok, max_new_tokens=4,
-                               stop_sequences=("<|user|>",), context_window=64)
-        assert pol.generate("x") == "abcd"              # budget cap, honest partial
+        script = char_tok.encode("abcdefgh")  # no stop anywhere in the stream
+        pol = TorchModelPolicy(
+            ScriptedSequenceLM(script),
+            char_tok,
+            max_new_tokens=4,
+            stop_sequences=("<|user|>",),
+            context_window=64,
+        )
+        assert pol.generate("x") == "abcd"  # budget cap, honest partial
 
 
 # ---------------------------------------------------------------------------
@@ -241,19 +269,24 @@ class TestLeftTruncation:
     def test_window_enforced_on_real_model(self, nano_model, char_tok):
         rec = RecordingWrapper(nano_model)
         pol = TorchModelPolicy(rec, char_tok, max_new_tokens=4, context_window=32)
-        long_prompt = "x" * 200                          # 200 tokens >> 32-token window
+        long_prompt = "x" * 200  # 200 tokens >> 32-token window
         pol.generate(long_prompt)
         assert rec.seen_lengths, "model was never called"
         assert max(rec.seen_lengths) <= 32
-        assert rec.seen_lengths[0] == 32                 # truncated, not padded/short
+        assert rec.seen_lengths[0] == 32  # truncated, not padded/short
 
     def test_left_side_is_the_side_dropped(self):
         tok = DigitTokenizer()
         # HandComputedLM keys logits on the LAST id. Prompt '73' with window=1 feeds only [3]
         # (the RIGHTMOST token) -> first pick is ROWS[3] argmax = 4. If the RIGHT side were
         # dropped instead, last id would be 7 and ROWS would KeyError.
-        pol = TorchModelPolicy(HandComputedLM(), tok, max_new_tokens=1, context_window=1,
-                               stop_sequences=(), )
+        pol = TorchModelPolicy(
+            HandComputedLM(),
+            tok,
+            max_new_tokens=1,
+            context_window=1,
+            stop_sequences=(),
+        )
         assert pol.generate("73") == "4"
 
 
@@ -266,15 +299,24 @@ class TestGreedyHandComputed:
     def test_two_step_argmax_chain(self):
         # Hand computation (see HandComputedLM.ROWS): prompt '3' -> last=3 -> argmax 4;
         # then last=4 -> argmax 5. Two steps => '45'.
-        pol = TorchModelPolicy(HandComputedLM(), DigitTokenizer(), max_new_tokens=2,
-                               temperature=0.0, stop_sequences=(), context_window=8)
+        pol = TorchModelPolicy(
+            HandComputedLM(),
+            DigitTokenizer(),
+            max_new_tokens=2,
+            temperature=0.0,
+            stop_sequences=(),
+            context_window=8,
+        )
         assert pol.generate("3") == "45"
 
     def test_adapter_rejects_garbage_output(self):
         class BadLM:
             def __call__(self, *, input_ids, **kw):
                 return [1, 2, 3]
-        pol = TorchModelPolicy(BadLM(), DigitTokenizer(), max_new_tokens=1, stop_sequences=())
+
+        pol = TorchModelPolicy(
+            BadLM(), DigitTokenizer(), max_new_tokens=1, stop_sequences=()
+        )
         with pytest.raises(TypeError, match="logits"):
             pol.generate("3")
 
@@ -284,7 +326,10 @@ class TestGreedyHandComputed:
                 logits = torch.full((1, 8), -30.0)
                 logits[0, 6] = 30.0
                 return logits
-        pol = TorchModelPolicy(TwoDLM(), DigitTokenizer(), max_new_tokens=1, stop_sequences=())
+
+        pol = TorchModelPolicy(
+            TwoDLM(), DigitTokenizer(), max_new_tokens=1, stop_sequences=()
+        )
         assert pol.generate("3") == "6"
 
     def test_extract_logits_dict_contract(self):
@@ -307,19 +352,28 @@ class TestLoopIntegration:
     @posix_only
     def test_scripted_policy_through_real_sandbox_reaches_final(self, char_tok):
         # The stub's logits spell out: action turn, stop marker, final turn, stop marker.
-        script = char_tok.encode(self.TURN_ACT + "<|user|>" + self.TURN_FINAL + "<|user|>")
+        script = char_tok.encode(
+            self.TURN_ACT + "<|user|>" + self.TURN_FINAL + "<|user|>"
+        )
         stub = ScriptedSequenceLM(script)
-        pol = TorchModelPolicy(stub, char_tok, max_new_tokens=len(script) + 8,
-                               temperature=0.0, stop_sequences=("<|user|>",),
-                               context_window=2048)
+        pol = TorchModelPolicy(
+            stub,
+            char_tok,
+            max_new_tokens=len(script) + 8,
+            temperature=0.0,
+            stop_sequences=("<|user|>",),
+            context_window=2048,
+        )
         res = run_code_act(pol, "What is 2 + 2? Use python.", max_steps=4)
 
         assert res.reached_final
-        assert "4" in res.final                         # sanitized FINAL carries the answer
-        assert "```python" not in res.final             # code never leaks to the user string
-        assert len(res.steps) == 1                      # exactly one real sandbox execution
+        assert "4" in res.final  # sanitized FINAL carries the answer
+        assert "```python" not in res.final  # code never leaks to the user string
+        assert len(res.steps) == 1  # exactly one real sandbox execution
         obs = res.steps[0].observation
-        assert obs.ok and obs.stdout.strip() == "4"     # REAL sandbox actually ran print(2+2)
+        assert (
+            obs.ok and obs.stdout.strip() == "4"
+        )  # REAL sandbox actually ran print(2+2)
         assert res.steps[0].code == "print(2 + 2)"
 
     @posix_only
@@ -328,7 +382,8 @@ class TestLoopIntegration:
         # valid fence, so the loop terminates via 'final' (noise prose) or 'policy_empty' /
         # 'step_cap'. The claim under test is only that the REAL model drives the REAL loop and
         # sandbox without exceptions — capability arrives with a trained checkpoint, not here.
-        pol = TorchModelPolicy(nano_model, char_tok, max_new_tokens=16, temperature=0.0,
-                               context_window=128)
+        pol = TorchModelPolicy(
+            nano_model, char_tok, max_new_tokens=16, temperature=0.0, context_window=128
+        )
         res = run_code_act(pol, "What is 2 + 2?", max_steps=2, timeout_s=5.0)
         assert res.terminated in {"final", "policy_empty", "step_cap"}

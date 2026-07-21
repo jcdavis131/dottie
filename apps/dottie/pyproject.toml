@@ -35,3 +35,26 @@ packages = ["dottie"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+exclude = ["__pycache__", ".git", ".venv", "graphify_out*", "results/*", ".mypy_cache", "*.egg-info"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP", "N", "S", "PTH", "TCH", "RUF"]
+ignore = ["S101","S603","S607","E501","N806","N803","S110","S112","RUF001","RUF002","B007","PTH120","E402","N812","RUF003","S311","W505","RUF005","B008"]
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = ["dottie","bigbang","skills","harness","personal_graphify"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+docstring-code-format = true

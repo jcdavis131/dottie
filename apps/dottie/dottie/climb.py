@@ -46,11 +46,14 @@ import time
 import uuid
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any
 
 from dottie import flywheel, resolve
 from dottie.engine import DottieEngine
 from dottie.tasks import VerifiedTaskProvider
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 CLIMB_SCHEMA_VERSION = "1.0.0"
 
@@ -80,32 +83,46 @@ class ClimbError(RuntimeError):
 class ClimbConfig:
     """One iteration's configuration — recorded verbatim in the climb log."""
 
-    families: str = "mixed"          # one family name or 'mixed' (cycles all five)
-    n: int = 5                       # tasks per iteration
-    seed_base: int = 0               # seeds are seed_base .. seed_base+n-1 (pairing key)
+    families: str = "mixed"  # one family name or 'mixed' (cycles all five)
+    n: int = 5  # tasks per iteration
+    seed_base: int = 0  # seeds are seed_base .. seed_base+n-1 (pairing key)
     backend: str = "ollama"
     max_steps: int = 8
     use_skills: bool = False
-    evaluate: Optional[str] = None   # None | 'mock' | 'real' — harness gate passthrough
-    train_step: bool = False         # real GRPO update via flywheel (checkpoint/torch gated)
-    compute: Optional[float] = None  # labeled compute point (e.g. ckpt train steps) for EG
-    tolerance: float = 0.05          # per-family regression tolerance for the promotion gate
+    evaluate: str | None = None  # None | 'mock' | 'real' — harness gate passthrough
+    train_step: bool = False  # real GRPO update via flywheel (checkpoint/torch gated)
+    compute: float | None = None  # labeled compute point (e.g. ckpt train steps) for EG
+    tolerance: float = 0.05  # per-family regression tolerance for the promotion gate
 
 
 # ---------------------------------------------------------------------------
 # Identity: git SHA + policy backend identity (all really probed, never guessed)
 # ---------------------------------------------------------------------------
 
-def git_identity() -> Dict[str, Any]:
+
+def git_identity() -> dict[str, Any]:
     """Real ``git rev-parse`` of the dottie monorepo root; honest null when not a repo."""
     root = resolve.dottie_root()
     try:
-        sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True,
-                             text=True, timeout=10)
+        sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
         if sha.returncode != 0:
-            return {"sha": None, "note": f"git rev-parse failed: {sha.stderr.strip()[:200]}"}
-        dirty = subprocess.run(["git", "status", "--porcelain"], cwd=root,
-                               capture_output=True, text=True, timeout=10)
+            return {
+                "sha": None,
+                "note": f"git rev-parse failed: {sha.stderr.strip()[:200]}",
+            }
+        dirty = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
         return {
             "sha": sha.stdout.strip(),
             "dirty": bool(dirty.stdout.strip()) if dirty.returncode == 0 else None,
@@ -125,7 +142,7 @@ def _sha256_file(path: Path, chunk: int = 1 << 20) -> str:
     return h.hexdigest()
 
 
-def policy_identity(backend: str) -> Dict[str, Any]:
+def policy_identity(backend: str) -> dict[str, Any]:
     """What exactly generated the turns — resolvable identity per backend, honest otherwise.
 
     ava: the resolved checkpoint path + its real sha256 (the comparable identity across train
@@ -140,43 +157,59 @@ def policy_identity(backend: str) -> Dict[str, Any]:
         env_ckpt = os.environ.get("DOTTIE_AVA_CKPT")
         ckpt = Path(env_ckpt) if env_ckpt else resolve.default_ava_ckpt()
         if ckpt is None or not Path(ckpt).is_file():
-            return {"backend": "ava", "ckpt": str(ckpt) if ckpt else None,
-                    "ckpt_sha256": None,
-                    "note": "no ava checkpoint resolvable — identity honestly unknown"}
-        return {"backend": "ava", "ckpt": str(ckpt),
-                "ckpt_sha256": _sha256_file(Path(ckpt)),
-                "ckpt_bytes": Path(ckpt).stat().st_size}
+            return {
+                "backend": "ava",
+                "ckpt": str(ckpt) if ckpt else None,
+                "ckpt_sha256": None,
+                "note": "no ava checkpoint resolvable — identity honestly unknown",
+            }
+        return {
+            "backend": "ava",
+            "ckpt": str(ckpt),
+            "ckpt_sha256": _sha256_file(Path(ckpt)),
+            "ckpt_bytes": Path(ckpt).stat().st_size,
+        }
     if backend == "echo":
-        return {"backend": "echo", "plumbing_only": True,
-                "note": "deterministic CI plumbing policy; never a capability claim"}
-    return {"backend": backend,
-            "note": "unknown/injected backend — identity not resolvable by dottie"}
+        return {
+            "backend": "echo",
+            "plumbing_only": True,
+            "note": "deterministic CI plumbing policy; never a capability claim",
+        }
+    return {
+        "backend": backend,
+        "note": "unknown/injected backend — identity not resolvable by dottie",
+    }
 
 
 # ---------------------------------------------------------------------------
 # Scoreboard — pure aggregation over the REAL per-task results
 # ---------------------------------------------------------------------------
 
-def _mean(xs: Sequence[float]) -> Optional[float]:
+
+def _mean(xs: Sequence[float]) -> float | None:
     return round(sum(xs) / len(xs), 4) if xs else None
 
 
-def build_scoreboard(tasks: List[Dict[str, Any]]) -> Dict[str, Any]:
+def build_scoreboard(tasks: list[dict[str, Any]]) -> dict[str, Any]:
     """Aggregate per-task results (family, r_task, rl_return, wall_s, ...) into the measured
     iteration scoreboard. Pure over its inputs; every number is an aggregate of real values."""
-    per_family: Dict[str, Dict[str, Any]] = {}
+    per_family: dict[str, dict[str, Any]] = {}
     for fam in sorted({t["family"] for t in tasks}):
         rows = [t for t in tasks if t["family"] == fam]
         per_family[fam] = {
             "n": len(rows),
-            "success_rate": round(sum(1 for t in rows if t["r_task"] == 1.0) / len(rows), 4),
+            "success_rate": round(
+                sum(1 for t in rows if t["r_task"] == 1.0) / len(rows), 4
+            ),
             "mean_r_task": _mean([float(t["r_task"]) for t in rows]),
             "mean_rl_return": _mean([float(t["rl_return"]) for t in rows]),
         }
     n = len(tasks)
     overall = {
         "n": n,
-        "success_rate": round(sum(1 for t in tasks if t["r_task"] == 1.0) / n, 4) if n else None,
+        "success_rate": round(sum(1 for t in tasks if t["r_task"] == 1.0) / n, 4)
+        if n
+        else None,
         "mean_r_task": _mean([float(t["r_task"]) for t in tasks]),
         "mean_rl_return": _mean([float(t["rl_return"]) for t in tasks]),
     }
@@ -188,11 +221,15 @@ def build_scoreboard(tasks: List[Dict[str, Any]]) -> Dict[str, Any]:
         "chars_final_total": int(sum(int(t.get("chars_final") or 0) for t in tasks)),
         "token_note": TOKEN_COST_NOTE,
     }
-    return {"overall": overall, "per_family": per_family, "cost": cost,
-            "success_definition": SUCCESS_DEFINITION}
+    return {
+        "overall": overall,
+        "per_family": per_family,
+        "cost": cost,
+        "success_definition": SUCCESS_DEFINITION,
+    }
 
 
-def _task_row(rec: Dict[str, Any], family: str, seed: int) -> Dict[str, Any]:
+def _task_row(rec: dict[str, Any], family: str, seed: int) -> dict[str, Any]:
     """Distill one engine trace record into the climb-log per-task row (all real values)."""
     comps = rec.get("reward_components", {})
     steps = rec.get("steps", [])
@@ -218,7 +255,8 @@ def _task_row(rec: Dict[str, Any], family: str, seed: int) -> Dict[str, Any]:
 # One iteration
 # ---------------------------------------------------------------------------
 
-def _flywheel_stage(fn, *args, **kwargs) -> Dict[str, Any]:
+
+def _flywheel_stage(fn, *args, **kwargs) -> dict[str, Any]:
     """Run one real flywheel stage; an absent prerequisite becomes an honest recorded
     refusal (status=unavailable + true reason). A stage that ran and FAILED raises
     (``FlywheelError``) — that is infrastructure failure, not data."""
@@ -228,13 +266,14 @@ def _flywheel_stage(fn, *args, **kwargs) -> Dict[str, Any]:
         return {"status": "unavailable", "reason": str(e)}
 
 
-def climb_log_path(data_dir: Optional[str | Path] = None) -> Path:
+def climb_log_path(data_dir: str | Path | None = None) -> Path:
     engine = DottieEngine(data_dir)
     return engine.data_dir / "climb" / "climb_log.jsonl"
 
 
-def run_iteration(config: ClimbConfig, data_dir: Optional[str | Path] = None
-                  ) -> Dict[str, Any]:
+def run_iteration(
+    config: ClimbConfig, data_dir: str | Path | None = None
+) -> dict[str, Any]:
     """Run ONE climb iteration end-to-end and append its record to the climb log.
 
     Raises ``DottiePolicyUnavailable`` (backend cannot run), ``ValueError`` (bad config),
@@ -246,11 +285,14 @@ def run_iteration(config: ClimbConfig, data_dir: Optional[str | Path] = None
     pairs = provider.batch_seeds(config.families, config.n, seeds)
 
     t0 = time.monotonic()
-    tasks: List[Dict[str, Any]] = []
+    tasks: list[dict[str, Any]] = []
     for family, seed in pairs:
         rec = engine.run_task(
-            family=family, seed=seed, backend=config.backend,
-            max_steps=config.max_steps, use_skills=config.use_skills,
+            family=family,
+            seed=seed,
+            backend=config.backend,
+            max_steps=config.max_steps,
+            use_skills=config.use_skills,
         )
         tasks.append(_task_row(rec, family, seed))
 
@@ -262,19 +304,23 @@ def run_iteration(config: ClimbConfig, data_dir: Optional[str | Path] = None
     fly = {
         "export_rft": _flywheel_stage(flywheel.export_rft_dataset, engine.data_dir),
         "mint": _flywheel_stage(flywheel.mint_memories, engine.data_dir),
-        "note": ("stages run over the data dir's full trace log; mint dedupes older traces "
-                 "(counts reported by the stage itself)"),
+        "note": (
+            "stages run over the data dir's full trace log; mint dedupes older traces "
+            "(counts reported by the stage itself)"
+        ),
     }
 
-    eval_result: Optional[Dict[str, Any]] = None
+    eval_result: dict[str, Any] | None = None
     if config.evaluate is not None:
-        eval_result = _flywheel_stage(flywheel.evaluate, engine.data_dir, mode=config.evaluate)
+        eval_result = _flywheel_stage(
+            flywheel.evaluate, engine.data_dir, mode=config.evaluate
+        )
 
-    train_result: Optional[Dict[str, Any]] = None
+    train_result: dict[str, Any] | None = None
     if config.train_step:
         train_result = _flywheel_stage(flywheel.train_step)
 
-    record: Dict[str, Any] = {
+    record: dict[str, Any] = {
         "schema_version": CLIMB_SCHEMA_VERSION,
         "iteration_id": uuid.uuid4().hex[:12],
         "ts": time.time(),
@@ -299,10 +345,10 @@ def run_iteration(config: ClimbConfig, data_dir: Optional[str | Path] = None
     return record
 
 
-def read_log(data_dir: Optional[str | Path] = None) -> List[Dict[str, Any]]:
+def read_log(data_dir: str | Path | None = None) -> list[dict[str, Any]]:
     """All recorded iterations, oldest first (partially-written lines skipped)."""
     path = climb_log_path(data_dir)
-    out: List[Dict[str, Any]] = []
+    out: list[dict[str, Any]] = []
     if not path.exists():
         return out
     with path.open(encoding="utf-8") as f:
@@ -321,12 +367,14 @@ def read_log(data_dir: Optional[str | Path] = None) -> List[Dict[str, Any]]:
 # Promotion gate — paired per-family comparison with regression tolerance
 # ---------------------------------------------------------------------------
 
-def _insufficient(reason: str) -> Dict[str, Any]:
+
+def _insufficient(reason: str) -> dict[str, Any]:
     return {"verdict": "insufficient", "reason": reason}
 
 
-def compare_iterations(prev: Optional[Dict[str, Any]], curr: Optional[Dict[str, Any]],
-                       *, tolerance: float = 0.05) -> Dict[str, Any]:
+def compare_iterations(
+    prev: dict[str, Any] | None, curr: dict[str, Any] | None, *, tolerance: float = 0.05
+) -> dict[str, Any]:
     """Paired promotion verdict between two iteration records.
 
     Pairing precondition: identical task sets — same ``families``/``n``/``seed_base`` (so
@@ -337,10 +385,13 @@ def compare_iterations(prev: Optional[Dict[str, Any]], curr: Optional[Dict[str, 
     if prev is None or curr is None:
         missing = [s for s, r in (("prev", prev), ("curr", curr)) if r is None]
         return _insufficient(
-            f"need two iterations to compare; missing: {', '.join(missing)}")
+            f"need two iterations to compare; missing: {', '.join(missing)}"
+        )
     for label, rec in (("prev", prev), ("curr", curr)):
-        if not isinstance(rec.get("scoreboard"), dict) or \
-                rec["scoreboard"].get("overall", {}).get("success_rate") is None:
+        if (
+            not isinstance(rec.get("scoreboard"), dict)
+            or rec["scoreboard"].get("overall", {}).get("success_rate") is None
+        ):
             return _insufficient(f"{label} iteration has no measured scoreboard")
     pc, cc = prev.get("config", {}), curr.get("config", {})
     for key in ("families", "n", "seed_base"):
@@ -353,37 +404,54 @@ def compare_iterations(prev: Optional[Dict[str, Any]], curr: Optional[Dict[str, 
     prev_tasks = {(t["family"], t["seed"]): t for t in prev.get("tasks", [])}
     curr_tasks = {(t["family"], t["seed"]): t for t in curr.get("tasks", [])}
     if set(prev_tasks) != set(curr_tasks) or not prev_tasks:
-        return _insufficient("iterations do not share an identical (family, seed) task set")
+        return _insufficient(
+            "iterations do not share an identical (family, seed) task set"
+        )
 
     pf, cf = prev["scoreboard"]["per_family"], curr["scoreboard"]["per_family"]
     if set(pf) != set(cf):
         return _insufficient("per-family scoreboards cover different families")
-    per_family: Dict[str, Dict[str, Any]] = {}
+    per_family: dict[str, dict[str, Any]] = {}
     for fam in sorted(pf):
         p_sr, c_sr = pf[fam]["success_rate"], cf[fam]["success_rate"]
         delta = round(c_sr - p_sr, 4)
         per_family[fam] = {
-            "prev": p_sr, "curr": c_sr, "delta": delta,
+            "prev": p_sr,
+            "curr": c_sr,
+            "delta": delta,
             "regressed_beyond_tolerance": delta < -tolerance,
         }
     p_overall = prev["scoreboard"]["overall"]["success_rate"]
     c_overall = curr["scoreboard"]["overall"]["success_rate"]
     overall_delta = round(c_overall - p_overall, 4)
 
-    wins = sum(1 for k in curr_tasks
-               if float(curr_tasks[k]["r_task"]) > float(prev_tasks[k]["r_task"]))
-    losses = sum(1 for k in curr_tasks
-                 if float(curr_tasks[k]["r_task"]) < float(prev_tasks[k]["r_task"]))
+    wins = sum(
+        1
+        for k in curr_tasks
+        if float(curr_tasks[k]["r_task"]) > float(prev_tasks[k]["r_task"])
+    )
+    losses = sum(
+        1
+        for k in curr_tasks
+        if float(curr_tasks[k]["r_task"]) < float(prev_tasks[k]["r_task"])
+    )
     ties = len(curr_tasks) - wins - losses
 
-    regressed = sorted(f for f, d in per_family.items() if d["regressed_beyond_tolerance"])
-    reasons: List[str] = []
+    regressed = sorted(
+        f for f, d in per_family.items() if d["regressed_beyond_tolerance"]
+    )
+    reasons: list[str] = []
     if overall_delta <= 0:
-        reasons.append(f"overall success rate did not improve (delta {overall_delta:+.4f})")
+        reasons.append(
+            f"overall success rate did not improve (delta {overall_delta:+.4f})"
+        )
     if regressed:
         regressed_bits = ", ".join(
-            "{} ({:+.4f})".format(f, per_family[f]["delta"]) for f in regressed)
-        reasons.append(f"family regression beyond tolerance {tolerance}: {regressed_bits}")
+            "{} ({:+.4f})".format(f, per_family[f]["delta"]) for f in regressed
+        )
+        reasons.append(
+            f"family regression beyond tolerance {tolerance}: {regressed_bits}"
+        )
     verdict = "promote" if not reasons else "hold"
     pm = prev["scoreboard"]["overall"].get("mean_rl_return")
     cm = curr["scoreboard"]["overall"].get("mean_rl_return")
@@ -393,9 +461,17 @@ def compare_iterations(prev: Optional[Dict[str, Any]], curr: Optional[Dict[str, 
         "tolerance": tolerance,
         "overall": {"prev": p_overall, "curr": c_overall, "delta": overall_delta},
         "per_family": per_family,
-        "paired_tasks": {"n": len(curr_tasks), "wins": wins, "losses": losses, "ties": ties},
-        "mean_rl_return": {"prev": pm, "curr": cm,
-                           "delta": round(cm - pm, 4) if None not in (pm, cm) else None},
+        "paired_tasks": {
+            "n": len(curr_tasks),
+            "wins": wins,
+            "losses": losses,
+            "ties": ties,
+        },
+        "mean_rl_return": {
+            "prev": pm,
+            "curr": cm,
+            "delta": round(cm - pm, 4) if None not in (pm, cm) else None,
+        },
         "reasons": reasons,
         "rank_invariance_note": RANK_INVARIANCE_NOTE,
         "prev_iteration_id": prev.get("iteration_id"),
@@ -407,9 +483,13 @@ def compare_iterations(prev: Optional[Dict[str, Any]], curr: Optional[Dict[str, 
 # EG trend across compute points — REUSES the factory's machinery, no reimplementation
 # ---------------------------------------------------------------------------
 
-def eg_trend_verdict(records: Sequence[Dict[str, Any]],
-                     baseline_points: Sequence[Tuple[float, float]],
-                     *, error_floor: float = 0.0) -> Dict[str, Any]:
+
+def eg_trend_verdict(
+    records: Sequence[dict[str, Any]],
+    baseline_points: Sequence[tuple[float, float]],
+    *,
+    error_floor: float = 0.0,
+) -> dict[str, Any]:
     """Ladder verdict over climb iterations at distinct labeled compute points.
 
     Reuses (never reimplements) the factory's ``ava.rl.codeact_eg_gate``: each iteration
@@ -419,10 +499,13 @@ def eg_trend_verdict(records: Sequence[Dict[str, Any]],
     ``eg_trend`` applies the rank-invariance promotion rule. Refuses honestly (verdict
     ``insufficient``) when < 2 distinct compute points, no baseline curve, or the EG math is
     undefined for the real numbers (e.g. success at/below the achievable floor)."""
-    labeled = [r for r in records
-               if isinstance(r.get("config"), dict)
-               and r["config"].get("compute") is not None
-               and r.get("scoreboard", {}).get("overall", {}).get("success_rate") is not None]
+    labeled = [
+        r
+        for r in records
+        if isinstance(r.get("config"), dict)
+        and r["config"].get("compute") is not None
+        and r.get("scoreboard", {}).get("overall", {}).get("success_rate") is not None
+    ]
     computes = sorted({float(r["config"]["compute"]) for r in labeled})
     if len(computes) < 2:
         return _insufficient(
@@ -460,7 +543,8 @@ def eg_trend_verdict(records: Sequence[Dict[str, Any]],
 # Rendering (CLI) — plain text over the recorded real numbers
 # ---------------------------------------------------------------------------
 
-def render_scoreboard(record: Dict[str, Any]) -> str:
+
+def render_scoreboard(record: dict[str, Any]) -> str:
     cfg = record.get("config", {})
     sb = record["scoreboard"]
     ident = record.get("policy_identity", {})
@@ -479,9 +563,11 @@ def render_scoreboard(record: Dict[str, Any]) -> str:
         f"{'family':<12}{'n':>4}{'success':>10}{'mean_r_task':>13}{'mean_rl_return':>16}",
     ]
 
-    def _row(name: str, d: Dict[str, Any]) -> str:
-        return (f"{name:<12}{d['n']:>4}{d['success_rate']:>10.3f}"
-                f"{d['mean_r_task']:>13.3f}{d['mean_rl_return']:>16.3f}")
+    def _row(name: str, d: dict[str, Any]) -> str:
+        return (
+            f"{name:<12}{d['n']:>4}{d['success_rate']:>10.3f}"
+            f"{d['mean_r_task']:>13.3f}{d['mean_rl_return']:>16.3f}"
+        )
 
     for fam, d in sb["per_family"].items():
         lines.append(_row(fam, d))
@@ -498,7 +584,9 @@ def render_scoreboard(record: Dict[str, Any]) -> str:
             key = "records_written" if stage == "export_rft" else "stats"
             lines.append(f"flywheel {stage}: ok ({key}={s.get(key)})")
         else:
-            lines.append(f"flywheel {stage}: unavailable — {s.get('reason', '?')[:160]}")
+            lines.append(
+                f"flywheel {stage}: unavailable — {s.get('reason', '?')[:160]}"
+            )
     for name in ("evaluate", "train_step"):
         s = record.get(name)
         if s is None:
@@ -511,7 +599,7 @@ def render_scoreboard(record: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def render_verdict(verdict: Dict[str, Any]) -> str:
+def render_verdict(verdict: dict[str, Any]) -> str:
     if verdict["verdict"] == "insufficient":
         return f"verdict: INSUFFICIENT — {verdict['reason']}"
     o = verdict["overall"]
@@ -522,15 +610,19 @@ def render_verdict(verdict: Dict[str, Any]) -> str:
     ]
     for fam, d in verdict["per_family"].items():
         flag = "  REGRESSED>tol" if d["regressed_beyond_tolerance"] else ""
-        lines.append(f"  {fam:<12} {d['prev']:.3f} -> {d['curr']:.3f} ({d['delta']:+.4f}){flag}")
+        lines.append(
+            f"  {fam:<12} {d['prev']:.3f} -> {d['curr']:.3f} ({d['delta']:+.4f}){flag}"
+        )
     pt = verdict["paired_tasks"]
-    lines.append(f"  paired tasks: {pt['wins']}W/{pt['losses']}L/{pt['ties']}T of {pt['n']}")
+    lines.append(
+        f"  paired tasks: {pt['wins']}W/{pt['losses']}L/{pt['ties']}T of {pt['n']}"
+    )
     for r in verdict.get("reasons", []):
         lines.append(f"  hold reason: {r}")
     return "\n".join(lines)
 
 
-def render_report(records: List[Dict[str, Any]], *, tolerance: float = 0.05) -> str:
+def render_report(records: list[dict[str, Any]], *, tolerance: float = 0.05) -> str:
     """The climb-report table + consecutive paired verdicts over the recorded log."""
     if not records:
         return "no climb iterations recorded yet — run `python -m dottie climb` first"
@@ -545,15 +637,18 @@ def render_report(records: List[Dict[str, Any]], *, tolerance: float = 0.05) -> 
         sr = ov.get("success_rate")
         mr = ov.get("mean_rl_return")
         lines.append(
-            f"{i:>3} {str(r.get('iteration_id')):<13}{str(cfg.get('backend')):<10}"
-            f"{str(cfg.get('families')):<10}{cfg.get('n', 0):>4}{cfg.get('seed_base', 0):>6}"
+            f"{i:>3} {r.get('iteration_id')!s:<13}{cfg.get('backend')!s:<10}"
+            f"{cfg.get('families')!s:<10}{cfg.get('n', 0):>4}{cfg.get('seed_base', 0):>6}"
             f"{(f'{sr:.3f}' if sr is not None else 'n/a'):>9}"
             f"{(f'{mr:.3f}' if mr is not None else 'n/a'):>9}"
-            f"{str(sb.get('cost', {}).get('wall_s_total', 'n/a')):>8}  "
+            f"{sb.get('cost', {}).get('wall_s_total', 'n/a')!s:>8}  "
             f"{str(git.get('sha'))[:9]}{'+dirty' if git.get('dirty') else ''}"
         )
     for i in range(1, len(records)):
         lines.append(f"-- iterations {i - 1} -> {i} --")
-        lines.append(render_verdict(
-            compare_iterations(records[i - 1], records[i], tolerance=tolerance)))
+        lines.append(
+            render_verdict(
+                compare_iterations(records[i - 1], records[i], tolerance=tolerance)
+            )
+        )
     return "\n".join(lines)

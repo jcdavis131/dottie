@@ -2,20 +2,25 @@
 export.py — export graph.json + graph.html
 Solo personal project, no connection to employer, built with public/free-tier only
 """
+
 import json
-import networkx as nx
 from pathlib import Path
+
+import networkx as nx
+
 from .security import sanitize_label
+
 
 def export_json(G: nx.MultiDiGraph, out_path: Path):
     # serializable
     data = {
         "nodes": [{"id": nid, **G.nodes[nid]} for nid in G.nodes],
         "edges": [{"source": u, "target": v, **d} for u, v, d in G.edges(data=True)],
-        "meta": {"nodes": G.number_of_nodes(), "edges": G.number_of_edges()}
+        "meta": {"nodes": G.number_of_nodes(), "edges": G.number_of_edges()},
     }
     out_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     return out_path
+
 
 def export_html(G: nx.MultiDiGraph, out_path: Path):
     # Build simple vis-network HTML (free CDN, no build step)
@@ -24,26 +29,40 @@ def export_html(G: nx.MultiDiGraph, out_path: Path):
         label = sanitize_label(str(d.get("label", nid))[:80])
         community = d.get("community", 0)
         # color by community using Okabe-Ito palette (AAA)
-        palette = ["#0072B2","#D55E00","#009E73","#CC79A7","#F0E442","#56B4E9","#E69F00","#000000"]
+        palette = [
+            "#0072B2",
+            "#D55E00",
+            "#009E73",
+            "#CC79A7",
+            "#F0E442",
+            "#56B4E9",
+            "#E69F00",
+            "#000000",
+        ]
         color = palette[community % len(palette)]
-        nodes_json.append({
-            "id": nid,
-            "label": label,
-            "group": community,
-            "color": color,
-            "title": f"{d.get('type','')} | {d.get('file','')} | deg {d.get('degree',0)}"
-        })
+        nodes_json.append(
+            {
+                "id": nid,
+                "label": label,
+                "group": community,
+                "color": color,
+                "title": f"{d.get('type', '')} | {d.get('file', '')} | deg {d.get('degree', 0)}",
+            }
+        )
     edges_json = []
     for u, v, d in G.edges(data=True):
-        conf = d.get("confidence","INFERRED")
+        conf = d.get("confidence", "INFERRED")
         # style by confidence
-        dash = False if conf=="EXTRACTED" else True
-        edges_json.append({
-            "from": u, "to": v,
-            "label": d.get("type",""),
-            "dashes": dash,
-            "title": f"{d.get('type')} [{conf}]"
-        })
+        dash = False if conf == "EXTRACTED" else True
+        edges_json.append(
+            {
+                "from": u,
+                "to": v,
+                "label": d.get("type", ""),
+                "dashes": dash,
+                "title": f"{d.get('type')} [{conf}]",
+            }
+        )
 
     html_content = f"""<!DOCTYPE html>
 <html>

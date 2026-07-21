@@ -35,7 +35,6 @@ _PILOT_CKPT = _REPO / "runs" / "cpu_pilot" / "base" / "base_final.pt"
 def test_reverse_kl_loss_real_tensors():
     torch = pytest.importorskip("torch")
     import torch.nn.functional as F
-
     from on_policy_distill import reverse_kl_loss
 
     torch.manual_seed(0)
@@ -43,7 +42,9 @@ def test_reverse_kl_loss_real_tensors():
     t = torch.randn(2, 4, 8)
 
     loss = reverse_kl_loss(s, t)
-    assert isinstance(loss, torch.Tensor), "real tensors must produce a real tensor loss"
+    assert isinstance(loss, torch.Tensor), (
+        "real tensors must produce a real tensor loss"
+    )
 
     log_ps = F.log_softmax(s, dim=-1)
     log_pt = F.log_softmax(t, dim=-1)
@@ -59,7 +60,9 @@ def test_reverse_kl_loss_real_tensors():
     mask = torch.ones(2, 4)
     mask[:, -1] = 0
     masked = reverse_kl_loss(s, t, mask=mask)
-    manual_masked = ((log_ps.exp() * (log_ps - log_pt)).sum(-1) * mask).sum() / mask.sum()
+    manual_masked = (
+        (log_ps.exp() * (log_ps - log_pt)).sum(-1) * mask
+    ).sum() / mask.sum()
     assert torch.allclose(masked, manual_masked, atol=1e-6)
 
 
@@ -96,14 +99,24 @@ _OUT = "Analysis: cash $160M runway per 10-Q p.12 with calculation and risk disc
 
 
 def _clear_judge_keys(monkeypatch):
-    for k in ("META_API_KEY", "META_MUSE_API_KEY", "ZAI_API_KEY", "GLM_API_KEY",
-              "ANTHROPIC_API_KEY", "META_MUSE_API_URL", "ZAI_OPENAI_URL", "GLM_MODEL"):
+    for k in (
+        "META_API_KEY",
+        "META_MUSE_API_KEY",
+        "ZAI_API_KEY",
+        "GLM_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "META_MUSE_API_URL",
+        "ZAI_OPENAI_URL",
+        "GLM_MODEL",
+    ):
         monkeypatch.delenv(k, raising=False)
 
 
 def test_judges_without_keys_return_plain_mock_score_labeled_mock(monkeypatch):
     _clear_judge_keys(monkeypatch)
-    monkeypatch.setenv("OLLAMA_HOST", "http://127.0.0.1:9")  # nothing listens: instant refusal
+    monkeypatch.setenv(
+        "OLLAMA_HOST", "http://127.0.0.1:9"
+    )  # nothing listens: instant refusal
     import eval_frontier_rubric as fr
 
     r = _rubric()
@@ -112,8 +125,12 @@ def test_judges_without_keys_return_plain_mock_score_labeled_mock(monkeypatch):
     for cls in (fr.MetaMuseJudge, fr.Glm52Judge, fr.LocalHFJudge, fr.OllamaJudge):
         j = cls()
         got = j.score(r, _OUT, "gt")
-        assert got == base, f"{cls.__name__} must return the PLAIN mock score (no +bonus), got {got} != {base}"
-        assert j.label == "mock", f"{cls.__name__} must label fallback scores judge='mock'"
+        assert got == base, (
+            f"{cls.__name__} must return the PLAIN mock score (no +bonus), got {got} != {base}"
+        )
+        assert j.label == "mock", (
+            f"{cls.__name__} must label fallback scores judge='mock'"
+        )
 
 
 class _FakeResp:
@@ -179,7 +196,10 @@ def test_no_additive_bonus_literals_in_judge_source():
 def test_eval_branch_harness_real_mode_refuses():
     res = subprocess.run(
         [sys.executable, str(_REPO / "eval_branch_harness.py"), "--mode", "real"],
-        capture_output=True, text=True, cwd=str(_REPO), timeout=120,
+        capture_output=True,
+        text=True,
+        cwd=str(_REPO),
+        timeout=120,
     )
     assert res.returncode != 0, "--mode real must refuse (blueprint mock only)"
     assert "evals.run_harness" in (res.stderr + res.stdout)
@@ -200,7 +220,9 @@ def test_convert_to_hf_round_trip(tmp_path):
     assert cfg["model_type"] == "ava-nano"
     assert cfg["d_model"] == 256 and cfg["vocab_size"] == 8192
     assert 13_000_000 < cfg["param_count"] < 16_000_000
-    assert cfg["scale"] == "smoke_cpu_pilot", "pilot exports must carry the smoke scale label"
+    assert cfg["scale"] == "smoke_cpu_pilot", (
+        "pilot exports must carry the smoke scale label"
+    )
     assert cfg["tied_keys"], "tied embedding/verbalizer aliases must be recorded"
     assert (out / "model.safetensors").is_file()
     assert "smoke" in (out / "README.md").read_text().lower()
@@ -208,11 +230,15 @@ def test_convert_to_hf_round_trip(tmp_path):
     # tokenizer byte-identical
     src_tok = _REPO / "runs" / "cpu_pilot" / "tokenizer" / "ava_nano_bpe.json"
     if src_tok.exists():
-        assert (hashlib.sha256((out / "tokenizer.json").read_bytes()).hexdigest()
-                == hashlib.sha256(src_tok.read_bytes()).hexdigest())
+        assert (
+            hashlib.sha256((out / "tokenizer.json").read_bytes()).hexdigest()
+            == hashlib.sha256(src_tok.read_bytes()).hexdigest()
+        )
 
     # logits round-trip vs the original checkpoint
-    assert conv.verify(_PILOT_CKPT, out), "converted safetensors must reproduce original logits"
+    assert conv.verify(_PILOT_CKPT, out), (
+        "converted safetensors must reproduce original logits"
+    )
 
 
 # --------------------------------- fixes 9/10: deterministic heuristics
@@ -222,29 +248,38 @@ def test_logic_pipeline_heuristic_deterministic():
     import logic_textbook_pipeline as ltp
 
     ex = ltp.gen_jsonl_example("induction")
-    assert "reward_heuristic" in ex and "reward_score" not in ex, \
+    assert "reward_heuristic" in ex and "reward_score" not in ex, (
         "field must be renamed reward_heuristic (it is a heuristic, not a reward)"
+    )
     scores = {ltp.heuristic_quality_score(ex["text"]) for _ in range(50)}
     assert len(scores) == 1, "same input must always produce the same score"
     assert ex["reward_heuristic"] == ltp.heuristic_quality_score(ex["text"])
     # structure markers must matter deterministically
-    assert ltp.heuristic_quality_score("Theorem: x. Proof: y. Example: z. " + "w " * 40) > \
-        ltp.heuristic_quality_score("plain filler text " + "w " * 40)
+    assert ltp.heuristic_quality_score(
+        "Theorem: x. Proof: y. Example: z. " + "w " * 40
+    ) > ltp.heuristic_quality_score("plain filler text " + "w " * 40)
 
 
 def test_dataset_expansion_filter_deterministic():
     from scripts.dataset_expansion import quality_filter
 
-    good = ("# topic\n\nDefinition: d\nTheorem: t\nProof: p\nExample: e\n"
-            + " ".join(f"reasoning step number{i} analysis" for i in range(30)))
+    good = "# topic\n\nDefinition: d\nTheorem: t\nProof: p\nExample: e\n" + " ".join(
+        f"reasoning step number{i} analysis" for i in range(30)
+    )
     results = {quality_filter(good) for _ in range(200)}
-    assert len(results) == 1, "quality_filter must be deterministic (no random rejection)"
+    assert len(results) == 1, (
+        "quality_filter must be deterministic (no random rejection)"
+    )
     ok, reason = quality_filter(good)
     assert ok
-    assert "heuristic_score" in reason, "reason string must name the heuristic, not 'reward'"
+    assert "heuristic_score" in reason, (
+        "reason string must name the heuristic, not 'reward'"
+    )
 
     src = (_REPO / "scripts" / "dataset_expansion.py").read_text(encoding="utf-8")
-    assert "random.random()" not in src, "the random 5% rejection penalty must stay removed"
+    assert "random.random()" not in src, (
+        "the random 5% rejection penalty must stay removed"
+    )
 
 
 # ----------------------------------------- fix 2: viewer has no fake numbers
@@ -255,18 +290,35 @@ def test_viewer_html_has_no_fabricated_metric_literals():
     # the cpu image); VIEWER_HTML is a module-level literal in server.py.
     src = (_REPO / "server.py").read_text(encoding="utf-8")
     start = src.index('VIEWER_HTML = """')
-    VIEWER_HTML = src[start:src.index('"""', start + len('VIEWER_HTML = """') + 1)]
+    VIEWER_HTML = src[start : src.index('"""', start + len('VIEWER_HTML = """') + 1)]
 
     old_fakes = [
-        "spider 0.23", "eight 0.18", "thinking 0.12", "focused 0.09",
-        "leverage 0.04", "0.064", "0.23</", "AUC 0.91", "4.5 tok",
-        "early 4.5", "veto 72%", "mass 0.064", ">0.22<", "5.2",
+        "spider 0.23",
+        "eight 0.18",
+        "thinking 0.12",
+        "focused 0.09",
+        "leverage 0.04",
+        "0.064",
+        "0.23</",
+        "AUC 0.91",
+        "4.5 tok",
+        "early 4.5",
+        "veto 72%",
+        "mass 0.064",
+        ">0.22<",
+        "5.2",
         "0/180 blackmail AUC",
     ]
     for lit in old_fakes:
-        assert lit not in VIEWER_HTML, f"fabricated metric literal {lit!r} back in VIEWER_HTML"
+        assert lit not in VIEWER_HTML, (
+            f"fabricated metric literal {lit!r} back in VIEWER_HTML"
+        )
 
     # placeholders + real data fetch must be present
     assert "—" in VIEWER_HTML, "metrics must render as placeholders until data arrives"
-    assert "/jspace/inspect" in VIEWER_HTML, "viewer must fetch real inspect data on load"
-    assert "make eval" in VIEWER_HTML, "viewer must point at `make eval` when no report exists"
+    assert "/jspace/inspect" in VIEWER_HTML, (
+        "viewer must fetch real inspect data on load"
+    )
+    assert "make eval" in VIEWER_HTML, (
+        "viewer must point at `make eval` when no report exists"
+    )

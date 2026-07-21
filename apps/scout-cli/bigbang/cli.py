@@ -3,6 +3,7 @@ Scout CLI - main entry (formerly BigBang CLI)
 `scout`, `bb`, `bigbang`, `dv`, `kitty` all point here via pyproject.toml scripts
 Primary command is now `scout` — distinct from any work/meta tooling
 """
+
 import os
 import sys
 from pathlib import Path
@@ -21,14 +22,15 @@ import typer
 from rich.console import Console
 
 from bigbang.core.cli_ux import examples_epilog
-from bigbang.core.plugin_loader import discover_plugins
 from bigbang.core.output import set_json_mode
+from bigbang.core.plugin_loader import discover_plugins
 
 # Detect which invocation name was used for nicer help
 _invoked = Path(sys.argv[0]).name if sys.argv else "scout"
 _prog_name = os.path.splitext(_invoked)[0] if _invoked else "scout"
 if _prog_name in ("python", "python3", ""):
     _prog_name = "scout"
+
 
 class ScoutTyper(typer.Typer):
     """Typer app that accepts --json in any position.
@@ -65,7 +67,7 @@ app = ScoutTyper(
             "scout --json system doctor",
             "scout auth set-token github --token <token>",
             "printf '%s' \"$TOKEN\" | scout secrets set GITHUB_TOKEN --stdin",
-            "scout agent run \"list my tools\" --execute",
+            'scout agent run "list my tools" --execute',
             "scout --json herd status",
             'scout herd start --label api --cmd "pytest -q"',
             "scout --json planes status",
@@ -77,23 +79,30 @@ app = ScoutTyper(
 )
 console = Console()
 
+
 @app.callback()
 def main(
-    json: bool = typer.Option(False, "--json", help="Output structured JSON for agents"),
+    json: bool = typer.Option(
+        False, "--json", help="Output structured JSON for agents"
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logs"),
 ):
     """Scout root. Prefer flags over prompts; use --json for machine output."""
     set_json_mode(json)
 
+
 # Auto-discover plugins
 discover_plugins(app)
+
 
 @app.command("doctor")
 def doctor_cmd():
     """Check local environment, tools, and free-tier services."""
     # import here to avoid circular
     from bigbang.plugins.system.cli import run_doctor
+
     run_doctor()
+
 
 if __name__ == "__main__":
     app()

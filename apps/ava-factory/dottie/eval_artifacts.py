@@ -32,7 +32,9 @@ def report_roots() -> list[Path]:
     return roots
 
 
-def _first_existing(names: list[str], *, roots: list[Path] | None = None) -> Path | None:
+def _first_existing(
+    names: list[str], *, roots: list[Path] | None = None
+) -> Path | None:
     for root in roots or report_roots():
         for name in names:
             path = root / name
@@ -41,7 +43,9 @@ def _first_existing(names: list[str], *, roots: list[Path] | None = None) -> Pat
     return None
 
 
-def resolve_eval_json(*, preset: str | None = None, source: str | None = None) -> Path | None:
+def resolve_eval_json(
+    *, preset: str | None = None, source: str | None = None
+) -> Path | None:
     """Pick the JSON artifact to serve on ``/jspace/eval_branch``.
 
     ``source`` may be a stem (``eval_mini_base``), a filename, or ``legacy``.
@@ -64,7 +68,9 @@ def resolve_eval_json(*, preset: str | None = None, source: str | None = None) -
     return _first_existing(_dedupe(names))
 
 
-def resolve_eval_md(*, preset: str | None = None, source: str | None = None) -> Path | None:
+def resolve_eval_md(
+    *, preset: str | None = None, source: str | None = None
+) -> Path | None:
     preset = (preset or os.environ.get("AVA_PRESET") or "").strip()
     if source:
         src = source.strip()
