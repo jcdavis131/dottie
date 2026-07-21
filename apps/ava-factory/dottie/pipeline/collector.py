@@ -509,6 +509,10 @@ def run_source(
     Resumes from the manifest cursor. With `once=True` it produces at most one
     shard (rolls or exhausts, whichever first) then stops. `max_docs` caps the
     number of *written* docs for this call (smoke tests / bootstrap)."""
+    # This rng is used ONLY for retry-backoff jitter (iter_records -> backoff_delay), where
+    # non-determinism is fine — even desirable (it de-syncs collectors retrying together). So
+    # builtin hash() (PYTHONHASHSEED-salted) is intentional here; do NOT "fix" it to a stable
+    # hash the way a determinism-contract call site would need (cf. openwiki_knowledge mock).
     rng = rng or random.Random(hash(spec.name) & 0xFFFFFFFF)
     factory = factory or make_factory(spec, phase)
     _, start = m.get_cursor(cursor_key(spec, phase))
