@@ -22,6 +22,7 @@ from dottie.datagen.encyclopedia import EncyclopediaGenerator
 from dottie.datagen.logic import LogicGenerator
 from dottie.datagen.math_gen import MathGenerator
 from dottie.datagen.react_tools import ReactToolsGenerator
+from dottie.datagen.scout_cli import ScoutCliGenerator
 from dottie.datagen.synpro_gen import SynProLiteGenerator
 from dottie.datagen.think_in_code import ThinkInCodeGenerator, ThinkToolsGenerator
 from dottie.datagen.tool_curriculum import ToolUseGenerator
@@ -42,6 +43,7 @@ GENERATORS: dict[str, type[Generator]] = {
     LogicGenerator.name: LogicGenerator,
     MathGenerator.name: MathGenerator,
     ReactToolsGenerator.name: ReactToolsGenerator,
+    ScoutCliGenerator.name: ScoutCliGenerator,
     SynProLiteGenerator.name: SynProLiteGenerator,
     ThinkInCodeGenerator.name: ThinkInCodeGenerator,
     ThinkToolsGenerator.name: ThinkToolsGenerator,
@@ -56,6 +58,7 @@ __all__ = [
     "ChatSafetyGenerator", "CodeGenGenerator", "CompressTraceGenerator",
     "CompressionGenerator", "DBTraceGenerator", "EncyclopediaGenerator",
     "LogicGenerator", "MathGenerator", "ReactToolsGenerator",
+    "ScoutCliGenerator",
     "SynProLiteGenerator", "ThinkInCodeGenerator", "ThinkToolsGenerator",
     "ToolUseGenerator", "WikiGenerator", "WorkflowGaia2Generator",
     "WorkflowJobBenchGenerator",

@@ -321,7 +321,7 @@ sources:
     generator: tool_use
     text_field: text
     phases: [2, 3, 4, 5]
-    weight: {2: 0.08, 3: 0.15, 4: 0.10, 5: 0.12}
+    weight: {2: 0.03, 3: 0.10, 4: 0.10, 5: 0.08}   # 2026-07-20: P2 0.08->0.03, P3 0.15->0.10, P5 0.12->0.08; that 0.05/0.05/0.04 moves to synth_scout_cli (grounded real-CLI tool use)
     task_type: tool_selection
     filters: {min_chars: 1}
     license: synthetic
@@ -531,4 +531,23 @@ sources:
     task_type: deliberate
     filters: {min_chars: 1}
     license: mit
+    gated: false
+
+  # ---- Agent-OS curriculum (2026-07-20): using and building with scout-cli.
+  # `scout` is the agent's only self-extending interface (apps/scout-cli). The
+  # model never learned its contract; this teaches both halves grounded in the
+  # real foundation contract -- using it (task -> `scout --json <plugin> <cmd>`
+  # -> read the ok/command/data envelope), staying grounded (ok:false / empty /
+  # down => report it, don't fabricate), and building plugins (make_plugin_app,
+  # emit(ok(...)), register(root), default-deny manifest). Weight taken from the
+  # generic synth_tool_use budget (P2/P3/P5), keeping tool-use category mass ~flat.
+  - name: synth_scout_cli
+    kind: synthetic
+    generator: scout_cli
+    text_field: text
+    phases: [2, 3, 5]
+    weight: {2: 0.05, 3: 0.05, 5: 0.04}
+    task_type: tool_selection
+    filters: {min_chars: 1}
+    license: synthetic
     gated: false

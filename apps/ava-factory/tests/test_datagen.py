@@ -33,6 +33,7 @@ from ava.datagen.encyclopedia import EncyclopediaGenerator
 from ava.datagen.code_gen import CodeGenGenerator, SAFE_BUILTINS, run_sandboxed
 from ava.datagen.chat_safety import ChatSafetyGenerator, _SCENARIO_TEMPLATES
 from ava.datagen.react_tools import ASSISTANT, USER, ReactToolsGenerator
+from ava.datagen.scout_cli import ScoutCliGenerator
 from ava.datagen.workflow_jobbench import (
     WorkflowJobBenchGenerator,
     _duplicate_doc,
@@ -88,6 +89,7 @@ ALL_GENERATORS = [
     WorkflowGaia2Generator,
     DBTraceGenerator,
     CompressTraceGenerator,
+    ScoutCliGenerator,
 ]
 
 # A small byte target keeps tests fast while still exercising every family.
@@ -960,6 +962,71 @@ def test_react_tools_parse_with_ava_bridge():
         parsed = ava_bridge.parse_react_response(first_assistant)
         assert "tool_calls" in parsed, f"ava_bridge failed to parse a real Action: line: {d['text']!r}"
         assert parsed["tool_calls"][0]["function"]["name"], "empty tool name parsed"
+
+
+# ---------------------------------------------------------------------------
+# scout_cli.py: the emitted JSON envelopes must be real (re-parse to the
+# ok()/err() shape), grounding docs must never fabricate, and every build doc
+# must carry the four load-bearing contract pieces + a default-deny manifest.
+# ---------------------------------------------------------------------------
+
+_JSON_BLOCK = re.compile(r"```json\n(.*?)\n```", re.S)
+
+
+def test_scout_cli_envelopes_are_valid_and_shaped():
+    """Every ```json block re-parses and matches the scout envelope contract:
+    ok:true carries a command (and usually data); ok:false carries an error."""
+    gen = ScoutCliGenerator(seed=1234)
+    seen_true = seen_false = 0
+    for d in gen.generate(400_000):
+        for m in _JSON_BLOCK.finditer(d["text"]):
+            env = json.loads(m.group(1))  # invalid JSON would raise here
+            assert isinstance(env["ok"], bool)
+            assert isinstance(env["command"], str) and env["command"]
+            if env["ok"]:
+                seen_true += 1
+            else:
+                assert env["error"], "ok:false envelope must carry a non-empty error"
+                seen_false += 1
+    assert seen_true > 0 and seen_false > 0, "need both success and error envelopes"
+
+
+def test_scout_cli_grounding_never_fabricates():
+    """scout_cli/ground docs must surface the failure/emptiness, not invent a
+    result -- the same discipline react_tools enforces."""
+    gen = ScoutCliGenerator(seed=1234)
+    docs = [d for d in gen.generate(400_000) if d["source"] == "scout_cli/ground"]
+    assert docs, "no grounding docs produced"
+    fabrication = ("returns the", "would return", "computes the", "the result is ")
+    for d in docs:
+        final = d["text"].rsplit("Answer:", 1)[-1].lower()
+        assert not any(f in final for f in fabrication), f"grounding doc fabricates:\n{d['text']}"
+        # a partial-success (doctor) doc must NAME a down check, not claim all green
+        if "doctor ran fine" in d["text"]:
+            assert re.search(r"(is|are) down", d["text"])
+        # an empty-result doc must say so
+        if "results\": []" in d["text"] or "results': []" in d["text"]:
+            assert "no matches" in final
+
+
+def test_scout_cli_build_docs_are_contract_complete():
+    """Every build doc emits a plugin skeleton with the four pieces the loader
+    requires, plus a manifest that is default-deny."""
+    gen = ScoutCliGenerator(seed=1234)
+    builds = [d for d in gen.generate(400_000) if d["source"] == "scout_cli/build"]
+    assert builds, "no build docs produced"
+    for d in builds:
+        t = d["text"]
+        assert "make_plugin_app(" in t, "missing make_plugin_app"
+        assert "emit(" in t and "ok(" in t, "missing emit(ok(...))"
+        assert "def register(root):" in t and "root.add_typer(" in t, "missing register()"
+        # default-deny manifest
+        assert "enabled: false" in t and "write: false" in t and "allow: []" in t
+
+
+def test_scout_cli_task_types_present():
+    tt = {d["task_type"] for d in _collect(ScoutCliGenerator)}
+    assert {"automatic", "deliberate", "tool_selection"} <= tt, tt
 
 
 # ---------------------------------------------------------------------------
