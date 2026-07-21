@@ -806,8 +806,18 @@ item 8 is what would produce a true one.
         floor (2 passed at ~1.4 GB free; real training records `per_seed`, `_spread` consumes it
         cross-seed). So the "unproven pipeline" blocker is GONE; item 11's own parts (ledger
         `per_seed` storage, the paired test, their tests) are all memory-safe and unit-testable.
-        Execute when ready — the remaining caution is only the promotion-gate/live-schema
-        sensitivity, not verification. Backward-compatible.
+      - **⚠ CORRECTION 2026-07-20 23:26 — item 11 is COUPLED to item 10; do NOT ship it alone.**
+        I called it "cleanly executable" above; on closer analysis that is wrong. The paired test
+        does not merely refine the basis — it can DRASTICALLY lower the promotion bar. With
+        cross-seed SEMs ~0.1 each, the current unpaired `sqrt(sem_c²+sem_b²)` ≈ 0.14 → 2σ
+        threshold ~0.28. Paired `stdev(cᵢ−bᵢ)/√n` cancels the shared seed variance and can fall
+        to ~0.02 → threshold ~0.04 — roughly **7× easier to clear**. Because promotion is NOT
+        capacity-gated (item 10, the operator's call), a marginal capacity-DELETING swap
+        (delta −0.05) that the unpaired test correctly rejects would then PROMOTE and ratchet
+        the baseline — the exact contamination this loop has fought. So paired significance is a
+        net win ONLY alongside item 10's capacity gate (or a capacity-aware promote guard);
+        shipped alone it makes contamination MORE likely. **Decide item 10 and item 11 together.**
+        This is why I did not execute it this session despite the pipeline being verified.
 
 ## Standing state (context for every step below)
 
