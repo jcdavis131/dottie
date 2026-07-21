@@ -367,20 +367,34 @@ def cosine_sim(a: Any, b: Any) -> float:
         return dot/(na*nb+1e-9)
 
 def auc_trapezoid(y_true: List[int], y_score: List[float]) -> float:
-    """Compute ROC AUC via trapezoid, no sklearn."""
-    # sort by score descending
-    pairs = sorted(zip(y_score, y_true), reverse=True)
-    # compute TPR/FPR steps
+    """Compute ROC AUC via trapezoid, no sklearn.
+
+    Tied scores MUST be consumed as one threshold step. Emitting a curve point per
+    example instead lets the sort order inside a tie block decide the area — and since
+    equal scores can't be told apart, that is not a real ranking. The old code sorted
+    (score, label) descending, which put every positive ahead of every negative within a
+    tie, scoring ties as perfect separation: a constant-output classifier (all scores
+    equal, zero discrimination) came out at AUC 1.0 instead of the correct 0.5. Grouping
+    the tie block makes it integrate diagonally, matching the exact pairwise-concordance
+    AUC (ties = 0.5) — the honest number this harness is supposed to report.
+    """
+    # sort by SCORE only (descending); label order within a tie must not matter
+    pairs = sorted(zip(y_score, y_true), key=lambda t: t[0], reverse=True)
     pos = sum(y_true); neg = len(y_true)-pos
     if pos==0 or neg==0:
         return 0.5
     tp = fp = 0
     prev_fpr = 0.0; prev_tpr = 0.0; auc=0.0
-    for _, label in pairs:
-        if label==1:
-            tp+=1
-        else:
-            fp+=1
+    i = 0; n = len(pairs)
+    while i < n:
+        score = pairs[i][0]
+        # advance the counts across the whole block of equal scores, then emit ONE point
+        while i < n and pairs[i][0] == score:
+            if pairs[i][1] == 1:
+                tp += 1
+            else:
+                fp += 1
+            i += 1
         tpr = tp/pos; fpr = fp/neg
         auc += (fpr-prev_fpr)*(tpr+prev_tpr)/2.0
         prev_fpr, prev_tpr = fpr, tpr
