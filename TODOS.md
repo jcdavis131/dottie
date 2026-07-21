@@ -771,6 +771,40 @@ item 8 is what would produce a true one.
       fleet up. More shots on goal needs memory headroom (item 0 / the 16 GB budget), not a better
       proposer.
 
+11. 🎯 **PAIRED-SEED EVAL GATE — the natural completion of SPEC #3, ready to execute (added
+    23:13 2026-07-20).** Now that the factory trainer records candidate `per_seed` at seeds
+    [0,1,2] (commit `ca9f2f1`) and the baseline is calibrated at the same seeds, the evaluator
+    can do the PAIRED test its own comments call "the honest fix" (`evaluate.py:305`,
+    `promote.py:34`) instead of the current unpaired two-sample test. Reviewed 23:10: the
+    current gate is CORRECT and well-tested (two-sample `sqrt(sem_c²+sem_b²)`,
+    `test_two_sample_significance_when_baseline_records_spread`; a `per_seed` case at
+    test_research.py:1582) — this is a rigor UPGRADE, not a bug fix.
+    - **Why paired is better:** candidate and baseline are trained at the SAME seeds, so a
+      "hard seed" hurts both; the unpaired test ignores that shared variance and OVERESTIMATES
+      SE_diff (it is conservative — it MISSES real wins). Paired `diffs = c_i − b_i`,
+      `SE = stdev(diffs)/√n` cancels the shared seed variance — exactly what `ab_nano.py`
+      already does in every promotion bundle, but at eval time so the gate itself is as strict.
+    - **Four parts (the first three are memory-safe + unit-testable WITHOUT torch; only the
+      end-to-end needs the deferred multi-seed integration run):**
+      1. `ledger.py`: add `per_seed: Optional[List[float]]` to `Baseline` + a `per_seed TEXT`
+         (JSON) column, following the existing additive `metric_sem` ALTER-TABLE idiom
+         (`ledger.py:181`). Persist in `seed_baseline`, parse in `_row_to_baseline`, and carry
+         the candidate's `per_seed` in `promote_baseline` so the NEXT comparison is paired too.
+      2. `__main__.py::cmd_calibrate_baseline`: store `per_seed` structurally (today it is only
+         in the baseline NOTES text, `__main__.py:160`).
+      3. `evaluate.py`: when candidate `per_seed` and `baseline.per_seed` are both present and
+         same length, compute the paired `SE`; else fall back to the current unpaired test
+         (backward-compatible — pre-per_seed baselines are unchanged). Say "paired" in the
+         significance prose.
+      4. Tests: paired-vs-unpaired significance (pure math, no torch) + baseline `per_seed`
+         ledger round-trip (sqlite, no torch).
+    - **Why I filed instead of shipping:** it modifies the PROMOTION gate (higher-stakes: paired
+      is more powerful, so more candidates promote) and would migrate the schema of the LIVE
+      ledger the daemon reads. The pure logic is unit-testable now, but the honest end-to-end
+      proof is the deferred multi-seed integration test — which needs torch and >~2 GB free
+      (measured 640 MB this tick). **Ship this together with that integration run**, so the gate
+      change is verified end-to-end, not just in units. Backward-compatible; no rush.
+
 ## Standing state (context for every step below)
 
 - `dottie-factory` fleet (13 containers) runs ONLY from `apps/ava-factory`; trainer is
