@@ -800,10 +800,14 @@ item 8 is what would produce a true one.
          ledger round-trip (sqlite, no torch).
     - **Why I filed instead of shipping:** it modifies the PROMOTION gate (higher-stakes: paired
       is more powerful, so more candidates promote) and would migrate the schema of the LIVE
-      ledger the daemon reads. The pure logic is unit-testable now, but the honest end-to-end
-      proof is the deferred multi-seed integration test — which needs torch and >~2 GB free
-      (measured 640 MB this tick). **Ship this together with that integration run**, so the gate
-      change is verified end-to-end, not just in units. Backward-compatible; no rush.
+      ledger the daemon reads. Those two cautions remain and make it a deliberate change.
+      - **UPDATE 2026-07-20: the multi-seed candidate pipeline this builds on is now VERIFIED
+        end-to-end** — the deferred integration tests passed once free memory cleared the R77
+        floor (2 passed at ~1.4 GB free; real training records `per_seed`, `_spread` consumes it
+        cross-seed). So the "unproven pipeline" blocker is GONE; item 11's own parts (ledger
+        `per_seed` storage, the paired test, their tests) are all memory-safe and unit-testable.
+        Execute when ready — the remaining caution is only the promotion-gate/live-schema
+        sensitivity, not verification. Backward-compatible.
 
 ## Standing state (context for every step below)
 

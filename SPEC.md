@@ -63,10 +63,12 @@ The platform is "closing the loop" when, unattended:
    seed mean), so `evaluate._spread` uses CROSS-SEED spread instead of the within-run
    `eval_ce_per_batch` fallback (§5.3.R93/R94). Wired into the daemon `run` command (new
    `--seeds`, default `0,1,2` to match calibrate-baseline; one seed = unchanged single-seed
-   behaviour). Verified: `_resolve_seeds` unit tests + a pure `_spread` check (per_seed used at
-   ≥2 seeds, single-seed unchanged); a real multi-seed integration test is added but deferred
-   from this run (620 MB free — torch model builds would risk the VM). **Takes effect on the
-   next daemon restart** (no live-reload) and adds ~2 min/candidate/extra seed at nano scale.
+   behaviour). **Verified end-to-end (2026-07-20, once free memory cleared the R77 floor —
+   2 integration tests passed at ~1.4 GB free in 22 s, box stable):** real multi-seed training
+   records `per_seed`, `factory_lm_loss` = the seed mean, and `evaluate._spread` consumes
+   `per_seed` cross-seed; single-seed back-compat intact. Also unit-covered: `_resolve_seeds`
+   parsing + a pure `_spread` check. **Takes effect on the next daemon restart** (no live-reload)
+   and adds ~2 min/candidate/extra seed at nano scale.
 4. ✅ **DONE (2026-07-20) — Fix the training monitor's pseudo-steps fallback.** When no live
    trainer telemetry exists, `mode_monitor` fell back to STATUS.json and reported the data
    builder's tokens/docs as training "steps", crying "training stale" off the builder's clock
