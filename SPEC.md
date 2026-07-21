@@ -58,8 +58,15 @@ The platform is "closing the loop" when, unattended:
    zero-parameter leak is declaration↔code divergence, already caught fast (~106 ms) at
    validation — an ideation-declaration gate would catch nothing. **Remaining lever is a
    capacity PROMOTE-gate in `evaluate.py`, which `evaluate.py:158` marks as the operator's call.**
-3. **Per-seed factory trainer** — record `per_seed` so promotions are paired at source, not
-   flagged after (§5.3.R93/R94; ~2 min/candidate idle).
+3. ✅ **DONE (2026-07-20) — Per-seed factory trainer.** `factory_nano_trainer` now honours a
+   `seeds` list: it trains the candidate once per seed and records `per_seed` (metric = the
+   seed mean), so `evaluate._spread` uses CROSS-SEED spread instead of the within-run
+   `eval_ce_per_batch` fallback (§5.3.R93/R94). Wired into the daemon `run` command (new
+   `--seeds`, default `0,1,2` to match calibrate-baseline; one seed = unchanged single-seed
+   behaviour). Verified: `_resolve_seeds` unit tests + a pure `_spread` check (per_seed used at
+   ≥2 seeds, single-seed unchanged); a real multi-seed integration test is added but deferred
+   from this run (620 MB free — torch model builds would risk the VM). **Takes effect on the
+   next daemon restart** (no live-reload) and adds ~2 min/candidate/extra seed at nano scale.
 4. ✅ **DONE (2026-07-20) — Fix the training monitor's pseudo-steps fallback.** When no live
    trainer telemetry exists, `mode_monitor` fell back to STATUS.json and reported the data
    builder's tokens/docs as training "steps", crying "training stale" off the builder's clock

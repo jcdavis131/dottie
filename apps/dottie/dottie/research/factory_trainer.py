@@ -192,40 +192,50 @@ def _base_metrics(cfg, packed_dir: str, device: str, knobs: Dict[str, Any], n_to
     }
 
 
-def factory_nano_trainer(experiment: Experiment, config: Dict[str, Any]) -> TrainResult:
-    """The real-factory ``Trainer``: candidate block into the real nano model, real corpus."""
-    try:
-        torch, np, cfg, tokens, packed_dir, device, knobs = _setup(config)
-    except Exception as e:
-        return TrainResult(False, False, detail=f"factory trainer infrastructure missing: {e}")
+def _resolve_seeds(config: Dict[str, Any], default_seed: int) -> List[int]:
+    """The seeds to train the candidate at.
 
-    from ava.model import build_model, count_params
+    A ``seeds`` list in the config enables the CROSS-SEED measurement the evaluator's
+    significance test pairs at source (recorded as ``per_seed``); absent it, the single
+    configured seed is used and behaviour is unchanged. The unmodified model's own held-out
+    loss swings ~0.34 across seeds (TODOS §5.3.R93), so a one-seed candidate number cannot be
+    compared honestly against the multi-seed baseline — this is what closes that gap."""
+    raw = config.get("seeds")
+    if isinstance(raw, (list, tuple)) and raw:
+        seen: set = set()
+        out: List[int] = []
+        for s in raw:
+            try:
+                v = int(s)
+            except (TypeError, ValueError):
+                continue
+            if v not in seen:
+                seen.add(v)
+                out.append(v)
+        if out:
+            return out
+    return [int(default_seed)]
 
-    # Load the validated candidate and instantiate it at the model's width.
-    impl = experiment.implementation or {}
-    dry = (impl.get("dry_run") or {}) if isinstance(impl.get("dry_run"), dict) else {}
-    try:
-        module = _load_module(experiment.workspace, impl.get("module_name"))
-        Cls = _select_module_class(module, impl.get("module_name"), torch)
-    except Exception:
-        # ok=True/stable=False -> FAILED_TRAINING (the candidate's fault), NOT ok=False
-        # (retryable infrastructure). The module being imported here is the CANDIDATE's own
-        # artifact, so a load or class-selection failure reproduces identically on every
-        # retry: as ok=False the experiment stays ready_for_training forever and blocks the
-        # queue behind it.
-        #
-        # TODOS 5.3.R45: this is the same bug fixed in train.py, in the file I cited as
-        # already getting it right. The integration probe and the training loop below both
-        # return ok=True correctly; only this path did not. Two of three correct is how a
-        # file passes a spot check. Observed frequency: zero, same as train.py -- fixed on
-        # consistency grounds, because a silent queue stall is a bad enough failure not to
-        # wait for.
-        return TrainResult(True, False,
-                           metrics={"integration": "factory_nano_block_swap",
-                                    "detail": "candidate module not loadable"},
-                           detail=traceback.format_exc()[-1500:])
 
-    torch.manual_seed(knobs["seed"])
+class _CandidateFailure(Exception):
+    """Carries the exact ``TrainResult`` for a per-seed hard failure so the seed loop can
+    surface it unchanged (integration failure / candidate raised during training)."""
+
+    def __init__(self, result: TrainResult) -> None:
+        super().__init__(result.detail or "candidate failure")
+        self.result = result
+
+
+def _build_swap_train(Cls, dry, cfg, tokens, *, torch, np, build_model, count_params,
+                      device: str, knobs: Dict[str, Any], seed: int, config: Dict[str, Any]):
+    """One seed: build the real model, swap the candidate into the fusion slot, prove the
+    integrated forward runs, then train and measure held-out CE.
+
+    Returns ``(heldout, extras, replaced_params, candidate_block_params, params, swap_idx)``;
+    ``heldout`` is None when the run went NaN/Inf. Raises ``_CandidateFailure`` (carrying the
+    caller's TrainResult) on an integration or training-time exception — the candidate's own
+    artifact failing, reproducible across seeds, so it is not retryable infrastructure."""
+    torch.manual_seed(seed)
     model = build_model(cfg)
     d_model = model.d_model
     try:
@@ -260,41 +270,109 @@ def factory_nano_trainer(experiment: Experiment, config: Dict[str, Any]) -> Trai
             probe = model(input_ids=torch.randint(0, model.vocab_size, (2, 16)))
             assert torch.isfinite(probe["lm_logits"]).all(), "non-finite logits at init"
     except Exception:
-        return TrainResult(True, False,
-                           metrics={"integration": "factory_nano_block_swap",
-                                    "detail": "candidate not integrable into the factory model"},
-                           detail="candidate not integrable at d_model="
-                                  f"{d_model}: {traceback.format_exc()[-1500:]}")
+        raise _CandidateFailure(TrainResult(
+            True, False,
+            metrics={"integration": "factory_nano_block_swap",
+                     "detail": "candidate not integrable into the factory model"},
+            detail=f"candidate not integrable at d_model={d_model}: "
+                   f"{traceback.format_exc()[-1500:]}"))
 
     params = count_params(model)
     try:
         heldout, extras = _train_and_measure(model, tokens, torch=torch, np=np, device=device,
-                                             **knobs)
+                                             **{**knobs, "seed": seed})
+    except Exception:
+        raise _CandidateFailure(TrainResult(
+            True, False,
+            metrics={"integration": "factory_nano_block_swap",
+                     "detail": "candidate raised during training"},
+            detail=traceback.format_exc()[-1500:]))
+    return heldout, extras, replaced_params, candidate_block_params, params, swap_idx
+
+
+def factory_nano_trainer(experiment: Experiment, config: Dict[str, Any]) -> TrainResult:
+    """The real-factory ``Trainer``: candidate block into the real nano model, real corpus.
+
+    With a ``seeds`` list in the config the candidate is trained once per seed and each seed's
+    held-out CE is recorded in ``per_seed`` (the metric is their mean), so the evaluator's
+    significance test pairs against the multi-seed baseline at source instead of falling back
+    to within-run per-batch spread (TODOS §5.3.R93/R94, SPEC #3)."""
+    try:
+        torch, np, cfg, tokens, packed_dir, device, knobs = _setup(config)
+    except Exception as e:
+        return TrainResult(False, False, detail=f"factory trainer infrastructure missing: {e}")
+
+    from ava.model import build_model, count_params
+
+    # Load the validated candidate and instantiate it at the model's width.
+    impl = experiment.implementation or {}
+    dry = (impl.get("dry_run") or {}) if isinstance(impl.get("dry_run"), dict) else {}
+    try:
+        module = _load_module(experiment.workspace, impl.get("module_name"))
+        Cls = _select_module_class(module, impl.get("module_name"), torch)
     except Exception:
         # ok=True/stable=False -> FAILED_TRAINING (the candidate's fault), NOT ok=False
-        # (retryable infrastructure). By this point `_setup`, the model build and the
-        # integration probe have all SUCCEEDED, so an exception here is the candidate
-        # misbehaving on real data — retrying it just reproduces the same crash.
-        # Measured 2026-07-20: 87b8635f50f8 raised `AttributeError: 'NoneType' object has
-        # no attribute 'layout'` from its own forward, stayed `ready_for_training`, and was
-        # re-picked immediately in an unbounded loop. Genuine infra failures (missing
-        # torch/corpus, unloadable module) return earlier and remain retryable.
+        # (retryable infrastructure). The module being imported here is the CANDIDATE's own
+        # artifact, so a load or class-selection failure reproduces identically on every
+        # retry: as ok=False the experiment stays ready_for_training forever and blocks the
+        # queue behind it.
+        #
+        # TODOS 5.3.R45: this is the same bug fixed in train.py, in the file I cited as
+        # already getting it right. The integration probe and the training loop below both
+        # return ok=True correctly; only this path did not. Two of three correct is how a
+        # file passes a spot check. Observed frequency: zero, same as train.py -- fixed on
+        # consistency grounds, because a silent queue stall is a bad enough failure not to
+        # wait for.
         return TrainResult(True, False,
                            metrics={"integration": "factory_nano_block_swap",
-                                    "detail": "candidate raised during training"},
+                                    "detail": "candidate module not loadable"},
                            detail=traceback.format_exc()[-1500:])
 
-    metrics = {**_base_metrics(cfg, packed_dir, device, knobs, len(tokens), params), **extras,
-               "swap_layer": int(config.get("swap_layer", len(model.fusion_layers) // 2)),
+    # One training run per seed. `first` captures the seed-independent facts (capacity
+    # accounting, swap index, param count, seed-0 extras) recorded regardless of outcome; a
+    # per-seed integration/training exception surfaces unchanged via _CandidateFailure, and a
+    # NaN/Inf at ANY seed is a real instability (stable=False) — a candidate that only trains
+    # on some seeds has not earned a promotion.
+    seed_list = _resolve_seeds(config, knobs["seed"])
+    per_seed: List[float] = []
+    first: Optional[Tuple[Dict[str, Any], int, int, int, int]] = None
+    for seed in seed_list:
+        try:
+            heldout, extras, replaced_params, candidate_block_params, params, swap_idx = (
+                _build_swap_train(Cls, dry, cfg, tokens, torch=torch, np=np,
+                                  build_model=build_model, count_params=count_params,
+                                  device=device, knobs=knobs, seed=seed, config=config))
+        except _CandidateFailure as f:
+            return f.result
+        if first is None:
+            first = (extras, replaced_params, candidate_block_params, params, swap_idx)
+        if heldout is None:
+            extras0, replaced_params, candidate_block_params, params, swap_idx = first
+            metrics = {**_base_metrics(cfg, packed_dir, device, knobs, len(tokens), params),
+                       **extras0, "seed": seed_list[0], "seeds": seed_list,
+                       "per_seed": [round(v, 5) for v in per_seed], "failed_seed": seed,
+                       "swap_layer": swap_idx, "replaced_block_params": replaced_params,
+                       "candidate_block_params": candidate_block_params,
+                       "block_param_delta": candidate_block_params - replaced_params}
+            return TrainResult(True, False, metrics=metrics,
+                               detail=f"loss became NaN/Inf at seed {seed} — unstable in the "
+                                      "factory model, killed")
+        per_seed.append(heldout)
+
+    extras0, replaced_params, candidate_block_params, params, swap_idx = first
+    mean_heldout = sum(per_seed) / len(per_seed)
+    metrics = {**_base_metrics(cfg, packed_dir, device, knobs, len(tokens), params), **extras0,
+               # `seed` echoes the first seed for back-compat; `seeds`/`per_seed` are the
+               # authoritative cross-seed record the evaluator's significance test consumes.
+               "seed": seed_list[0], "seeds": seed_list,
+               "per_seed": [round(v, 5) for v in per_seed],
+               "swap_layer": swap_idx,
                # Capacity delta of the swap itself: negative means the candidate REMOVED
                # capacity, which confounds a fixed-step comparison (see TODOS §5.3.R).
                "replaced_block_params": replaced_params,
                "candidate_block_params": candidate_block_params,
                "block_param_delta": candidate_block_params - replaced_params}
-    if heldout is None:
-        return TrainResult(True, False, metrics=metrics,
-                           detail="loss became NaN/Inf — unstable in the factory model, killed")
-    metrics[FACTORY_METRIC] = round(heldout, 5)
+    metrics[FACTORY_METRIC] = round(mean_heldout, 5)
     return TrainResult(True, True, metrics=metrics)
 
 

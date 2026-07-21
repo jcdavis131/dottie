@@ -468,6 +468,8 @@ def cmd_run(args) -> int:
                 tcfg: Dict[str, Any] = {"steps": args.steps}
                 if getattr(args, "device", None):
                     tcfg["device"] = args.device
+                if getattr(args, "seeds", ""):
+                    tcfg["seeds"] = [int(s) for s in str(args.seeds).split(",") if s.strip() != ""]
                 rec["result"] = train.run_training(led, trainer=_trainer(args), config=tcfg)
             elif action == "implement":
                 rec["result"] = implementation.run_implementation(
@@ -566,6 +568,12 @@ def build_parser() -> argparse.ArgumentParser:
     rn.add_argument("--trainer", choices=["proxy", "factory"], default="proxy")
     rn.add_argument("--device", default=None, choices=[None, "cpu", "cuda"],
                     help="cpu keeps the research trainer off a GPU another run owns")
+    rn.add_argument("--seeds", default="0,1,2",
+                    help="comma-separated seeds the factory trainer measures each candidate "
+                         "at, recording per_seed so promotions are paired cross-seed against "
+                         "the baseline (SPEC #3). One seed = the old single-seed behaviour; "
+                         "the default 0,1,2 matches calibrate-baseline. ~2 min/candidate/extra "
+                         "seed at nano scale (proxy trainer ignores it).")
     rn.add_argument("--idle-seconds", type=float, default=30.0)
     rn.add_argument("--ideate-cooldown", type=float, default=600.0,
                     help="min seconds between ideations on an empty pipeline — dedup "
