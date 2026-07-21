@@ -104,3 +104,41 @@ class TestExtractFileDedup:
         nodes, edges = extract_file(f)
         ids = [n["id"] for n in nodes]
         assert len(ids) == len(set(ids))
+
+
+class TestFileNodeIdConsistency:
+    """Every edge sourcing a file's own node must reference the id extract_file created for
+    it: doc: for a markdown-family file, file: otherwise. Regression for the drift where
+    ecosystem/goal/pattern edges hard-coded file: (or special-cased only .md), so a
+    markdown doc's links dangled off a non-existent file: node."""
+
+    def test_markdown_ecosystem_edges_anchor_to_doc_node(self, tmp_path):
+        fin = tmp_path / "01_Finance"
+        fin.mkdir()
+        for ext in (".md", ".rst", ".qmd", ".txt"):
+            f = fin / ("note" + ext)
+            f.write_text("# Budget\nfinance notes\n", encoding="utf-8")
+            nodes, edges = extract_file(f)
+            node_ids = {n["id"] for n in nodes}
+            doc_id = f"doc:{f}"
+            assert doc_id in node_ids, ext
+            eco = [e for e in edges if e["target"] == "ecosystem:finance"]
+            assert eco, f"no ecosystem edge for {ext}"
+            for e in eco:
+                assert e["source"] == doc_id, (ext, e["source"])
+            # no edge may source a non-existent node for THIS file
+            for e in edges:
+                if e["source"].startswith(("file:", "doc:")) and str(f) in e["source"]:
+                    assert e["source"] in node_ids, (ext, e["source"])
+
+    def test_code_file_uses_file_node(self, tmp_path):
+        fin = tmp_path / "01_Finance"
+        fin.mkdir()
+        f = fin / "app.py"
+        f.write_text("def foo():\n    return 1\n", encoding="utf-8")
+        nodes, edges = extract_file(f)
+        node_ids = {n["id"] for n in nodes}
+        assert f"file:{f}" in node_ids
+        for e in edges:
+            if e["target"] == "ecosystem:finance":
+                assert e["source"] == f"file:{f}"

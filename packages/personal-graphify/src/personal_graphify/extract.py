@@ -362,27 +362,35 @@ PERSONAL_PATTERNS = {
     "jcamd.com": ("concept:jcamd", "jcamd.com hub", "product", "Workforce intelligence consulting + Lab + public Personal Graphify"),
 }
 
+#: Extensions whose files get a `doc:` node (extract_markdown); everything else gets a
+#: `file:` node. Single source of truth shared with extract_file's dispatch below so the two
+#: never drift — a mismatch dangled every ecosystem/goal/pattern edge off a phantom `file:`
+#: node for markdown docs, so e.g. a .md/.rst note in 01_Finance was never linked to
+#: ecosystem:finance (edges hard-coded `file:` or special-cased only `.md`).
+_DOC_NODE_EXTS = (".md", ".mdx", ".mdc", ".txt", ".rst", ".qmd")
+
+
 def extract_personal_patterns(file_path: Path) -> Tuple[List[Dict], List[Dict]]:
     nodes, edges = [], []
     fp_str = str(file_path)
+    # This file's canonical node id, matching what extract_file created for it (doc: for a
+    # markdown-family file, file: otherwise). Used for EVERY edge below.
+    file_id = f"doc:{file_path}" if file_path.suffix.lower() in _DOC_NODE_EXTS else f"file:{file_path}"
     # ecosystem domain mapping
     parts = file_path.parts
     if "01_Finance" in parts:
         nid = "ecosystem:finance"
         if not any(n["id"]==nid for n in nodes):
             nodes.append({"id": nid, "label": "01_Finance - Davis Family Brain & FIRE $50", "type": "ecosystem_domain", "desc": "Family finance $2.25M vested + $11k burn FIRE 50"})
-        file_id = f"file:{file_path}"
         edges.append({"source": file_id, "target": nid, "type": "belongs_to", "confidence": INFERRED})
     if "02_Passive_Lab" in parts:
         nid = "ecosystem:passive_lab"
         if not any(n["id"]==nid for n in nodes):
             nodes.append({"id": nid, "label": "02_Passive_Lab - Turnover Shield + 10 boring B2B", "type": "ecosystem_domain", "desc": "Top 10 boring SaaS $79-149/mo, aiming first $1k/mo"})
-        file_id = f"file:{file_path}"
         edges.append({"source": file_id, "target": nid, "type": "belongs_to", "confidence": INFERRED})
     if "04_Tennis_DINOv3" in parts or "tennis" in fp_str.lower():
         nid = "ecosystem:tennis"
         nodes.append({"id": nid, "label": "04_Tennis_DINOv3 ExecuTorch", "type": "ecosystem_domain"})
-        file_id = f"file:{file_path}"
         edges.append({"source": file_id, "target": nid, "type": "belongs_to", "confidence": INFERRED})
     # SOTA goal linking: first-1k-mo-passive and self-sustaining app projects
     fp_lower = fp_str.lower()
@@ -390,9 +398,6 @@ def extract_personal_patterns(file_path: Path) -> Tuple[List[Dict], List[Dict]]:
         nid = "ecosystem:goal-first-1k"
         if not any(n["id"]==nid for n in nodes):
             nodes.append({"id": nid, "label": "Goal: First $1k/mo passive — Turnover Shield", "type": "ecosystem_domain", "desc": "Outcome $1k MRR sustained, 7-13 customers @ $79-149/mo, pricing vs competitors, weekly tracking trials/paid/MRR/churn"})
-        file_id = f"file:{file_path}"
-        if file_path.suffix == ".md":
-            file_id = f"doc:{file_path}"
         edges.append({"source": file_id, "target": nid, "type": "belongs_to", "confidence": INFERRED})
         # also link file directly to core product nodes
         edges.append({"source": file_id, "target": "concept:turnover-shield", "type": "tracks", "confidence": INFERRED})
@@ -402,19 +407,12 @@ def extract_personal_patterns(file_path: Path) -> Tuple[List[Dict], List[Dict]]:
         nid2 = "ecosystem:goal-passive-app"
         if not any(n["id"]==nid2 for n in nodes):
             nodes.append({"id": nid2, "label": "Goal: Build self-sustaining web app for passive income", "type": "ecosystem_domain", "desc": "Start small grow long-term, deep market research niche, no ongoing input"})
-        file_id2 = f"file:{file_path}"
-        if file_path.suffix == ".md":
-            file_id2 = f"doc:{file_path}"
-        edges.append({"source": file_id2, "target": nid2, "type": "belongs_to", "confidence": INFERRED})
+        edges.append({"source": file_id, "target": nid2, "type": "belongs_to", "confidence": INFERRED})
 
     # text pattern matching - lower + keep case for mtNN
     try:
         src = file_path.read_text(encoding="utf-8", errors="ignore")
         low = src.lower()
-        file_id = f"file:{file_path}"
-        # also check doc: prefix for markdown files
-        if file_path.suffix == ".md":
-            file_id = f"doc:{file_path}"
 
         for key, vals in PERSONAL_PATTERNS.items():
             # vals may be 3 or 4 tuple
@@ -476,7 +474,7 @@ def extract_file(file_path: Path) -> Tuple[List[Dict], List[Dict]]:
     elif suffix in (".js",".ts",".jsx",".tsx",".mjs",".mts",".cts",".vue",".svelte"):
         n, e = extract_js_generic(file_path)
         nodes.extend(n); edges.extend(e)
-    elif suffix in (".md",".mdx",".mdc",".txt",".rst",".qmd"):
+    elif suffix in _DOC_NODE_EXTS:
         n, e = extract_markdown(file_path)
         nodes.extend(n); edges.extend(e)
     else:
