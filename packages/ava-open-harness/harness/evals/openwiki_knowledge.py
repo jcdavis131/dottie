@@ -14,7 +14,7 @@ from ..registry import register_eval
 from ..common import (
     MockModel, real_unimplemented, factory_modules, factory_root, attach_smoke_labels,
 )
-import os, random, pathlib
+import os, random, pathlib, zlib
 
 BAR = "mass>=0.06"
 
@@ -102,7 +102,10 @@ def openwiki_knowledge(model: Any, tokenizer: Any, device: str="cpu", wiki_path:
     # mock recall: each wiki page title -> seeded concept probe
     scores = []
     for f in wiki_files[:20]:
-        random.seed(hash(f.name) % 10000 + model.seed)
+        # zlib.crc32, NOT builtin hash(): hash() on str is salted by PYTHONHASHSEED, so the
+        # "deterministic" mock (see module docstring) actually drew different scores every
+        # run. Same fix probes.py::_stable_seed already applies; this call site was missed.
+        random.seed(zlib.crc32(f.name.encode()) % 10000 + model.seed)
         scores.append(random.uniform(0.04, 0.18))
     avg = sum(scores)/len(scores) if scores else 0.0
     measured = {"n_wiki_files": len(wiki_files), "sampled": len(scores), "recall_mass": avg, "files": [str(p) for p in wiki_files[:5]]}
