@@ -736,6 +736,41 @@ item 8 is what would produce a true one.
      `source` starts with `compression/`, `scout_cli/`, or `zk_math/` (check `/reports` or
      `docker logs dottie-factory-collector-1`).
 
+10. 🔬 **PROPOSAL PIPELINE (SPEC #2) IS SUBSTANTIALLY DONE — measured 22:58 2026-07-20; the
+    real remaining lever is a capacity PROMOTE-gate, and that is YOUR call.** SPEC #2 said "36%
+    of proposals are category errors; highest-leverage change to what gets proposed." Measured
+    against the live ledger (`data/research/ledger.sqlite3`, 100 experiments) this is now largely
+    resolved by the already-landed prompt work — and the naive next fix would be dead code:
+    - **Declaration compliance is 100% (11/11).** Every post-fix hypothesis (the 11 carrying the
+      `learnable_parameters` field; 89 predate it) declares a real trainable tensor
+      (`nn.Parameter`/`nn.Linear`/…). So the §5.3.R19 fear that enforcing the field "starves the
+      loop if the live model omits it" is **not borne out** — but enforcing it would also catch
+      **nothing**, because the zero-parameter leak is **declaration↔implementation divergence**
+      (the model declares `nn.Linear` then the *generated code* builds zero trainable params),
+      which shows up only in the code and is already caught fast (~106 ms) at the validator's
+      zero-parameter stage. An ideation-declaration gate would never fire. **I did not add it.**
+    - **Post-fix proposals are block-shaped, not category errors.** The 11 are gating /
+      normalisation / sparsity / token-mixing blocks (states: 5 rejected, 2 failed_validation,
+      1 failed_training, 1 sota-artifact, 2 pending) — being built and validated as blocks, not
+      bounced at the contract stage. The "36%" is the pre-fix lifetime tally; the prompt rewrite
+      (DEFAULT_SEARCH_SPACE domain-2, the INTEGRATION CONTRACT, the loss/regulariser warnings)
+      already fixed *what gets proposed*.
+    - **The real lever for moving real-wins off zero is capacity-fair PROMOTION — and it is
+      explicitly yours.** `evaluate.py:347` promotes on `improved and stable and significant`;
+      the candidate's own `block_param_delta` is computed and surfaced as a caveat but **excluded
+      from the gate** (`evaluate.py:328-356`). A capacity-deleting swap that wins at fixed steps
+      still promotes and ratchets the baseline — the exact contamination chain behind the
+      artifact SOTAs. `evaluate.py:158` states outright that whether a capacity-confounded result
+      should halt the loop "is the operator's call," so I am **surfacing it, not changing it**.
+      **Decision for you:** gate promotion on capacity parity (refuse when a candidate wins while
+      deleting > the confound threshold of the block's parameters), or keep caveat-only. If you
+      want it gated, that is a focused, memory-safe change to `evaluate.py` I can execute on your
+      go — with a paired capacity-fair re-eval so a genuine smaller-but-better block can still win.
+    - **Beyond that, the binding constraint is THROUGHPUT, not proposal quality:** only ~11 real
+      block-shaped candidates have ever been tried, and ideate/implement are memory-gated with the
+      fleet up. More shots on goal needs memory headroom (item 0 / the 16 GB budget), not a better
+      proposer.
+
 ## Standing state (context for every step below)
 
 - `dottie-factory` fleet (13 containers) runs ONLY from `apps/ava-factory`; trainer is

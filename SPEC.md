@@ -51,8 +51,13 @@ The platform is "closing the loop" when, unattended:
    (he is curating origin by hand). Verified procedure: merge → `ruff check --fix` → suites.
 1. **Re-seed the baseline, then restart** — the loop rejects everything against the current
    unreachable bar until re-seeded (`calibrate-baseline --overwrite`, ≈5.737).
-2. **Fix the proposal pipeline** (search-quality, §item 8) — 36% of proposals are category
-   errors; this is the highest-leverage change to *what gets proposed*.
+2. ✅ **SUBSTANTIALLY DONE (measured 2026-07-20) — Fix the proposal pipeline** (search-quality).
+   The "36% category errors" was the pre-fix lifetime tally; the landed prompt rewrite fixed
+   *what gets proposed*. Ledger evidence (TODOS item 10): post-fix proposals are block-shaped,
+   and 11/11 declare a real `learnable_parameters` tensor (100% compliance). The residual
+   zero-parameter leak is declaration↔code divergence, already caught fast (~106 ms) at
+   validation — an ideation-declaration gate would catch nothing. **Remaining lever is a
+   capacity PROMOTE-gate in `evaluate.py`, which `evaluate.py:158` marks as the operator's call.**
 3. **Per-seed factory trainer** — record `per_seed` so promotions are paired at source, not
    flagged after (§5.3.R93/R94; ~2 min/candidate idle).
 4. ✅ **DONE (2026-07-20) — Fix the training monitor's pseudo-steps fallback.** When no live
