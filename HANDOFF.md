@@ -4,7 +4,53 @@
 
 ---
 
-## 📌 Session continuation — 2026-07-22 00:09 CDT (continues the 07-21 block below)
+## 📌 Session continuation — 2026-07-22 ~11:35 CDT (supersedes the 00:09 block)
+
+**The product PIVOTED twice today on operator directives — current truth:**
+**bluehenre is a mobile org COMMAND CONSOLE (no 3D world; deleted).** Cozy
+amber-terminal page at https://bluehenre-campus.vercel.app: RUN (dashboard),
+ALERTS//UNBLOCK (real events), DOTTIE chat, FLEET (docker), HUB, SITES.
+`apps/bluehenre` = index.html + js/console.mjs + js/twin.mjs (parsers, 41
+bare-node checks) + server.mjs + api/{twin-status,fleet,npc-chat}.mjs.
+SPEC.md/README.md rewritten console-only. HEAD `177a41b`+, pushed, deployed.
+
+### Live state
+- **Trainer**: tool branch extended to the FULL curriculum (mini.yaml tokens
+  750M, commit 8b74c42 saga): resumed through p4_long (seq 4096) at step
+  ~1580, lm 0.1405 (best), ~60-90s/step wall. p4 OOM crash-loop was fixed by
+  mb=2 + torch.cuda.empty_cache() at ckpt saves + phase transitions
+  (dottie/train.py, bind-mounted; 4260c91). mb=1 was a FAILED experiment
+  (GPU-starved, 0 steps/40min) — do not repeat. p4→p5 boundary at 2.3B tokens
+  is the next risk point; ratchet ckpts every 15 steps.
+- **Publisher**: "Dottie Status publisher" task now EVERY 10 MIN
+  (operator-approved); pushes pipeline+research+hub(network/ecosystem/
+  agent-eval/evals/fleet/sites) to gist 929c3c0b…; hosted freshness caps 30
+  min. Fleet snapshot + 8 site probes included.
+- **Fleet**: 13-14 docker containers healthy; trainer restarts=0 since fix.
+- **Console data spine**: local /api/twin-status chain = live :8000/pipeline/
+  status → exported file → raw artifacts; /api/fleet = docker CLI 10s cache;
+  hosted = gist-feed. Provenance doctrine everywhere.
+
+### Verify (fresh session)
+```bash
+docker logs --since 10m dottie-factory-trainer-1 | grep '"event": "step"' | tail -1
+curl -s https://bluehenre-campus.vercel.app/api/twin-status   # source:"local" via gist-feed
+node apps/bluehenre/public/js/twin.contract.test.mjs           # 41 checks
+cd apps/bluehenre && vercel deploy --prod --yes                # CLI, NOT the MCP connector
+```
+
+### Operator decisions OPEN
+1. **Write path** (the named next core item in SPEC): tunnel +
+   DOTTIE_CHAT_URL/TWIN_STATUS_URL on Vercel, or a directive-queue gist —
+   makes hosted ALERTS/DOTTIE two-way. Read-only (and says so) until then.
+2. **Domain**: campus.bhenre.com is free today (operator owns bhenre.com,
+   dumbmodel.com, jcamd.com); bluehenre.com is unregistered (~$15/yr, operator
+   must run the purchase).
+3. Monorepo-review items #2 (eval gate in ckpt promotion) + #3 (CI `|| true`).
+
+---
+
+## (superseded) Session continuation — 2026-07-22 00:09 CDT (continues the 07-21 block below)
 
 **Supersedes the 07-21 block's "Decisions still YOURS": BOTH were decided and executed.**
 Local `main` HEAD `ec284b3`, tree clean, 12 session commits (`a7ae0d4`…`ec284b3`).
