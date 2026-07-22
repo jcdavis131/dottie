@@ -33,7 +33,10 @@ function rng(seed) {
   };
 }
 
-const lambert = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, ...extra });
+// dithering:true on every material — smooth gradients break into the ordered
+// noise that reads as 16-bit shading once the low-res pixel grid lands on it
+const lambert = (color, extra = {}) =>
+  new THREE.MeshLambertMaterial({ color, dithering: true, ...extra });
 
 function shadowed(mesh, cast = true, receive = true) {
   mesh.castShadow = cast;
@@ -84,17 +87,65 @@ function labelTexture(text, bg) {
 }
 
 function grassTexture() {
+  // dusk-lit olive greens — sunset light on hill-country grass
   return canvasTexture(256, 256, (g) => {
-    g.fillStyle = "#7fb765"; g.fillRect(0, 0, 256, 256);
+    g.fillStyle = "#96a55b"; g.fillRect(0, 0, 256, 256);
     for (let i = 0; i < 8; i++) { // mowing stripes
-      g.fillStyle = i % 2 ? "#78ae5f" : "#86bf6c";
+      g.fillStyle = i % 2 ? "#8d9c54" : "#9fae62";
       g.fillRect(0, i * 32, 256, 32);
     }
     const r = rng(7);
-    g.fillStyle = "#6da257";
+    g.fillStyle = "#7d9150";
     for (let i = 0; i < 420; i++) g.fillRect(r() * 256, r() * 256, 2, 2);
-    g.fillStyle = "#f2e29b"; // scattered wildflowers, hill-country style
+    g.fillStyle = "#f2c98b"; // wildflowers catching the last light
     for (let i = 0; i < 40; i++) g.fillRect(r() * 256, r() * 256, 2, 2);
+  });
+}
+
+// SNES sunset backdrop: hard color bands with checkerboard-dithered seams (the
+// classic 16-bit gradient trick), a chunky low sun, and slab clouds. Nearest-
+// filtered so every pixel stays where it was placed.
+function sunsetSkyTexture() {
+  const W = 160, H = 120;
+  const bands = ["#2b1e4e", "#4b2a63", "#7a3b6e", "#a84a6c", "#cf6260",
+                 "#e8815c", "#f29a5e", "#f7b878"];
+  return canvasTexture(W, H, (g) => {
+    const bh = H / bands.length;
+    bands.forEach((c, i) => {
+      g.fillStyle = c;
+      g.fillRect(0, Math.floor(i * bh), W, Math.ceil(bh));
+    });
+    // dither the seams: two checkerboard rows blending each pair of bands
+    for (let i = 1; i < bands.length; i++) {
+      const y = Math.floor(i * bh);
+      for (const [row, color] of [[y - 1, bands[i]], [y, bands[i - 1]]]) {
+        g.fillStyle = color;
+        for (let x = (row % 2 === 0 ? 0 : 1); x < W; x += 2) g.fillRect(x, row, 1, 1);
+      }
+    }
+    // the low sun: chunky disc with a dithered halo ring
+    const sx = Math.floor(W * 0.62), sy = Math.floor(H * 0.68);
+    g.fillStyle = "#ffcf8f";
+    for (let dy = -7; dy <= 7; dy++)
+      for (let dx = -7; dx <= 7; dx++)
+        if (dx * dx + dy * dy <= 49) g.fillRect(sx + dx, sy + dy, 1, 1);
+    g.fillStyle = "#ffe9bd";
+    for (let dy = -4; dy <= 4; dy++)
+      for (let dx = -4; dx <= 4; dx++)
+        if (dx * dx + dy * dy <= 16) g.fillRect(sx + dx, sy + dy, 1, 1);
+    g.fillStyle = "#f7b878";
+    for (let dy = -9; dy <= 9; dy++)
+      for (let dx = -9; dx <= 9; dx++) {
+        const d = dx * dx + dy * dy;
+        if (d > 49 && d <= 81 && (dx + dy) % 2 === 0) g.fillRect(sx + dx, sy + dy, 1, 1);
+      }
+    // slab clouds, lit from below
+    g.fillStyle = "#8a4a72";
+    g.fillRect(10, 34, 44, 3); g.fillRect(18, 37, 30, 2);
+    g.fillRect(96, 22, 52, 3); g.fillRect(104, 25, 36, 2);
+    g.fillStyle = "#d97a6a";
+    g.fillRect(30, 62, 56, 3); g.fillRect(40, 65, 38, 2);
+    g.fillRect(112, 76, 40, 3);
   });
 }
 
@@ -153,7 +204,7 @@ function lampPost() {
   const pole = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 3.4, 8), lambert(0x3d4148)));
   pole.position.y = 1.7;
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 8),
-    new THREE.MeshLambertMaterial({ color: 0xfff2c4, emissive: 0xffe9a8, emissiveIntensity: 0.9 }));
+    new THREE.MeshLambertMaterial({ color: 0xffe4b0, emissive: 0xffc46b, emissiveIntensity: 1.6 }));
   head.position.y = 3.5;
   g.add(pole, head);
   return g;
@@ -345,18 +396,18 @@ function buildingFor(d, r) {
 
 export function buildWorld(scene) {
   const r = rng(0xa757e); // "Austin" seed — deterministic campus
-  scene.background = new THREE.Color(0x9fd2ef); // big Texas sky
-  scene.fog = new THREE.Fog(0x9fd2ef, 90, 230);
+  scene.background = sunsetSkyTexture(); // banded, dithered SNES sunset
+  scene.fog = new THREE.Fog(0xe8935f, 70, 210); // dusty golden-hour haze
 
-  // warm Texas sun + soft sky bounce
-  const sun = new THREE.DirectionalLight(0xffe9c4, 2.6);
-  sun.position.set(45, 70, 25);
+  // golden hour: a LOW warm sun (long cozy shadows) + lavender sky bounce
+  const sun = new THREE.DirectionalLight(0xffb36b, 2.4);
+  sun.position.set(60, 26, 38);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  Object.assign(sun.shadow.camera, { left: -95, right: 95, top: 95, bottom: -95, far: 220 });
+  Object.assign(sun.shadow.camera, { left: -95, right: 95, top: 95, bottom: -95, far: 260 });
   scene.add(sun,
-    new THREE.HemisphereLight(0xbfe3f7, 0xc4b48a, 0.85),
-    new THREE.AmbientLight(0xe8f1f7, 0.25));
+    new THREE.HemisphereLight(0xd9a0c8, 0x8a6a4f, 0.7),
+    new THREE.AmbientLight(0xffd9b0, 0.32));
 
   // hill-country grass, mown in stripes
   const grass = grassTexture();
@@ -377,7 +428,7 @@ export function buildWorld(scene) {
 
   // "Lady Bird Creek" + the bat bridge (Congress Ave nod, complete with bats)
   const water = new THREE.Mesh(new THREE.PlaneGeometry(200, 14),
-    new THREE.MeshPhongMaterial({ color: 0x3f8fae, shininess: 120, transparent: true, opacity: 0.9 }));
+    new THREE.MeshPhongMaterial({ color: 0x6b5d9e, shininess: 150, specular: 0xffb36b, transparent: true, opacity: 0.9, dithering: true }));
   water.rotation.x = -Math.PI / 2; water.rotation.z = 0.35;
   water.position.set(-38, 0.015, 74);
   water.receiveShadow = true;
@@ -606,13 +657,13 @@ export function buildWorld(scene) {
   const skyline = new THREE.Group();
   const heights = [26, 34, 22, 40, 18, 30, 24, 36, 20];
   heights.forEach((h, i) => {
-    const b = new THREE.Mesh(new THREE.BoxGeometry(7 + (i % 3) * 3, h, 8), lambert(0x7d97ad));
+    const b = new THREE.Mesh(new THREE.BoxGeometry(7 + (i % 3) * 3, h, 8), lambert(0x5c5480));
     b.position.set(-64 + i * 15, h / 2, 128);
     skyline.add(b);
     if (h === 40) { // the tallest gets a Frost-style crown + antenna
-      const crown = new THREE.Mesh(new THREE.CylinderGeometry(0, 4.4, 5, 4), lambert(0x8fa9bd));
+      const crown = new THREE.Mesh(new THREE.CylinderGeometry(0, 4.4, 5, 4), lambert(0x6a6290));
       crown.position.set(b.position.x, h + 2.5, 128); crown.rotation.y = Math.PI / 4;
-      const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 8, 6), lambert(0x9db4c6));
+      const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 8, 6), lambert(0x756c9c));
       ant.position.set(b.position.x, h + 9, 128);
       skyline.add(crown, ant);
     }

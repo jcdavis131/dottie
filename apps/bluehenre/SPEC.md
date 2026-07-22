@@ -54,8 +54,11 @@ Subterranean Server Farms · The Great Hall & Cafeteria · Botanical Gardens · 
 Terminals scattered through the world: persona hot-swap points.
 
 **Setting (operator directive 2026-07-22): the campus is in Austin, TX** (`ORG.hq`).
-**Visual bar: Sims/RCT ~2010 tycoon fidelity** (upgraded from the P1 cel-shaded blockout,
-operator directive same day). The visual layer (`world.mjs`) is render-only and deterministic
+**Visual bar: 16-bit SNES-era pixel art at golden hour** (operator directive 2026-07-22,
+superseding the earlier Sims/RCT-2010 bar): warm sunset palette, banded sky with
+checkerboard-dithered seams + chunky sun, low-res render upscaled nearest-neighbor
+(PIXEL_SCALE=3 — real pixel grid, clean pixel placement), `dithering:true` on all
+materials, low warm sun with long shadows, cozy dusk lamps. The visual layer (`world.mjs`) is render-only and deterministic
 (mulberry32 seed): per-department building archetypes with procedural lit-window facades
 (NearestFilter), ring road + limestone plaza + sidewalks, Lady Bird Creek + bat bridge (with
 bats), 26 live oaks, food-truck row at the Great Hall, Texas flag, ATX water tower, parking

@@ -16,20 +16,29 @@ const coarse = matchMedia("(pointer: coarse)").matches; // phone/tablet = defaul
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 400);
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(innerWidth, innerHeight);
-// 2010 Sims/tycoon presentation: soft shadows + filmic tone mapping + crisp DPR
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+// 16-bit presentation (SPEC visual bar, sunset pass): render at 1/PIXEL_SCALE
+// internal resolution and let CSS upscale with nearest-neighbor — a real pixel
+// grid, clean pixel placement, no antialiasing smear. Materials keep
+// dithering:true so shading breaks into ordered noise on that grid.
+const PIXEL_SCALE = 3;
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setPixelRatio(1);
+const sizeToPixelGrid = () => {
+  renderer.setSize(Math.floor(innerWidth / PIXEL_SCALE), Math.floor(innerHeight / PIXEL_SCALE), false);
+  renderer.domElement.style.width = "100%";
+  renderer.domElement.style.height = "100%";
+};
+sizeToPixelGrid();
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.08;
+renderer.toneMappingExposure = 1.12;
 document.body.appendChild(renderer.domElement);
 addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
+  sizeToPixelGrid();
 });
 
 const world = buildWorld(scene);
