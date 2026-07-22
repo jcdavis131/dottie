@@ -66,8 +66,13 @@ def _err(error: str, *, command: str, discover: str | None = None) -> Dict[str, 
 
 
 def _dumps(envelope: Dict[str, Any]) -> str:
-    """How `scout --json` serializes: indent=2. sort_keys for determinism."""
-    return json.dumps(envelope, indent=2, sort_keys=True)
+    """How `scout --json` serializes: json.dump(..., indent=2) with NO sort_keys
+    (see bigbang/core/output.py:emit), so keys print in insertion order -- ok,
+    command, data -- exactly like the real envelope. The builders construct every
+    dict deterministically, so the corpus stays byte-identical without sorting;
+    sort_keys would re-order to alphabetical (ok LAST), a shape real scout never
+    emits and the trainee should never learn."""
+    return json.dumps(envelope, indent=2)
 
 
 # --- real scout surface (confirmed against apps/scout-cli/bigbang/plugins) ---
