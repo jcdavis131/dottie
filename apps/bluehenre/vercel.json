@@ -1,16 +1,18 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "outputDirectory": "public",
-  "rewrites": [
+  "redirects": [
     {
       "source": "/",
       "has": [{ "type": "host", "value": "www.bhenre.com" }],
-      "destination": "/org.html"
+      "destination": "/org.html",
+      "permanent": false
     },
     {
       "source": "/",
       "has": [{ "type": "host", "value": "bhenre.com" }],
-      "destination": "/org.html"
+      "destination": "/org.html",
+      "permanent": false
     }
   ]
 }
