@@ -11,6 +11,7 @@ import { createQuestLog, advance, briefs, ORG } from "./quests.mjs";
 import { createRun, record, recordQuestComplete, extractRun } from "./workflow.mjs";
 import { createTouchControls } from "./touch.mjs";
 import { createPipeline, tickPipeline, resolveBlocker, statusLine } from "./pipeline.mjs";
+import { twinLine } from "./twin.mjs";
 
 const coarse = matchMedia("(pointer: coarse)").matches; // phone/tablet = default profile
 
@@ -78,7 +79,22 @@ let run = createRun(Number(localStorage.getItem("bluehenre.runId") || 1));
 // The Project: each run is a fresh consulting engagement, seeded by run id so a
 // replayed run meets the same blockers (SPEC "The Project").
 let pl = createPipeline(run.runId);
-world.updateProject(pl);
+// REAL twin telemetry (SPEC "the Dottie digital twin"): poll the status endpoint;
+// numbers render ONLY when source is "local" — twinLine enforces the doctrine.
+let twin = null;
+async function fetchTwin() {
+  try {
+    const r = await fetch("/api/twin-status");
+    const s = await r.json();
+    twin = { ...s, line: twinLine(s) };
+  } catch {
+    twin = { source: "offline", line: twinLine(null) };
+  }
+  world.updateProject(pl, twin);
+}
+fetchTwin();
+setInterval(fetchTwin, 60_000);
+world.updateProject(pl, twin);
 
 const hud = document.getElementById("hud");
 const questsPanel = document.getElementById("quests");
@@ -146,12 +162,12 @@ async function useAbility() {
     bw.value = Math.min(bw.max, bw.value + rb.retainer);
     record(run, { action: "resolve_blocker", persona: me.persona, dept, ok: true, cost: -rb.retainer });
     say(`BLOCKER CLEARED — retainer +${rb.retainer} bandwidth. The org resumes.`);
-    world.updateProject(pl);
+    world.updateProject(pl, twin);
   } else if (pl.blocker && dept === pl.blocker.dept) {
     say(`blocker unmoved: ${rb.reason}`);
   }
 
-  const prompt = `${action} request from ${PERSONAS[me.persona].label}`;
+  const prompt = `${action} request from ${PERSONAS[me.persona].label} to the resident expert on ${npc.userData.expert ?? dept}`;
   remember(router, npc.userData.npcId, prompt);
   say(`${action} → ${npc.userData.npcId} (cost ${sp.cost}) …`);
   try {
@@ -206,7 +222,7 @@ async function endRun() {
   run = createRun(run.runId + 1);
   localStorage.setItem("bluehenre.runId", String(run.runId));
   pl = createPipeline(run.runId); // a fresh engagement for the new run
-  world.updateProject(pl);
+  world.updateProject(pl, twin);
   say(`fresh run #${run.runId} — spent ${stats.spentTotal.toFixed(0)} bw last run; ${wiped.wiped} memories wiped`);
 }
 function tryReset() {
@@ -284,7 +300,7 @@ function frame(now) {
       recordQuestComplete(run, `ship_${pl.model}`);
       say(`🚢 ${pl.model} SHIPPED — engagement validated; end the run to extract it`);
     }
-    world.updateProject(pl);
+    world.updateProject(pl, twin);
   }
   // dept beacons mirror the pipeline every frame: done/idle dark, current green/red
   pl.stages.forEach((s, i) => {
@@ -292,7 +308,7 @@ function frame(now) {
       i === pl.stage ? (pl.blocker ? "blocked" : "working") : "idle");
   });
   boardTimer += dt;
-  if (boardTimer > 0.5 && !pl.shipped && !pl.blocker) { boardTimer = 0; world.updateProject(pl); }
+  if (boardTimer > 0.5 && !pl.shipped && !pl.blocker) { boardTimer = 0; world.updateProject(pl, twin); }
 
   world.animate?.(dt, now / 1000); // plumbobs, bats, the flag — pure set dressing
 

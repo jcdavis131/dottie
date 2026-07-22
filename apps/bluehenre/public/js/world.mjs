@@ -11,15 +11,26 @@
 //     deterministic seed below keeps the campus byte-identical across loads.
 import * as THREE from "three";
 
+// Each department IS a real Dottie subsystem, staffed by its resident expert
+// (SPEC "the Dottie digital twin"). ids/colors/order stay contract-frozen; the
+// labels/experts are the twin mapping.
 export const DEPARTMENTS = [
-  { id: "labs", label: "Developer Labs", color: 0x93c47d },
-  { id: "design", label: "Design Studio & Marketing Plazas", color: 0x6fa8dc },
-  { id: "finance", label: "Finance Towers", color: 0xe06666 },
-  { id: "archives", label: "Legal Archives", color: 0x8e7cc3 },
-  { id: "servers", label: "Subterranean Server Farms", color: 0xf6b26b },
-  { id: "hall", label: "The Great Hall & Cafeteria", color: 0xffd966 },
-  { id: "gardens", label: "Botanical Gardens", color: 0x76d7a5 },
-  { id: "proving", label: "Proving Grounds", color: 0x76a5af },
+  { id: "labs", label: "Foundation Training Lab", color: 0x93c47d,
+    expert: "foundation LLM training (ava-factory trainer)" },
+  { id: "design", label: "Skills Ecosystem Studio", color: 0x6fa8dc,
+    expert: "skills ecosystem (ava-skills + scout plugins)" },
+  { id: "finance", label: "Compute & Fleet Ops", color: 0xe06666,
+    expert: "infra & compute budgeting (16GB box, GPU, fleet)" },
+  { id: "archives", label: "Data Curation & Archives", color: 0x8e7cc3,
+    expert: "data curation & curriculum (datagen)" },
+  { id: "servers", label: "Collector Farm", color: 0xf6b26b,
+    expert: "data collection (collector fleet)" },
+  { id: "hall", label: "The Great Hall", color: 0xffd966,
+    expert: "org commons — all-hands and memo hub" },
+  { id: "gardens", label: "Memory & Router Gardens", color: 0x76d7a5,
+    expert: "memory architecture (router + per-NPC stores)" },
+  { id: "proving", label: "Eval Harness Proving Grounds", color: 0x76a5af,
+    expert: "evals & measurement (run_harness + open-harness)" },
 ];
 
 // deterministic PRNG (mulberry32) — a reproducible campus, per repo discipline
@@ -517,12 +528,18 @@ export function buildWorld(scene) {
   boardGroup.add(boardMesh);
   boardGroup.position.set(0, 0, -17); // faces the spawn/camera side
   scene.add(boardGroup);
-  function updateProject(pl) {
+  function updateProject(pl, twin = null) {
     const g = boardCanvas.getContext("2d");
     g.fillStyle = "#101418"; g.fillRect(0, 0, 512, 192);
     g.fillStyle = "#8fd8ff"; g.font = "bold 30px system-ui, sans-serif";
     g.textAlign = "left"; g.textBaseline = "top";
     g.fillText(`PROJECT: ${pl.model}${pl.shipped ? " — SHIPPED" : ""}`, 16, 10);
+    // the REAL twin line: live telemetry from the training box, or honest offline
+    if (twin) {
+      g.font = "bold 13px system-ui, sans-serif";
+      g.fillStyle = twin.source === "local" ? "#f2c14e" : "#77848f";
+      g.fillText(twin.line ?? "", 16, 40);
+    }
     pl.stages.forEach((s, i) => {
       const y = 56 + i * 26;
       const frac = i < pl.stage ? 1 : i > pl.stage ? 0 : Math.min(1, pl.progress / s.work);
@@ -676,7 +693,7 @@ export function buildWorld(scene) {
     const m = minifig({ shirt: d.color });
     const a = (i / DEPARTMENTS.length) * Math.PI * 2;
     m.position.set(Math.cos(a) * 25, 0, Math.sin(a) * 25);
-    m.userData = { npcId: `${d.id}-1`, dept: d.id, heading: 0 };
+    m.userData = { npcId: `${d.id}-1`, dept: d.id, expert: d.expert, heading: 0 };
     scene.add(m);
     return m;
   });

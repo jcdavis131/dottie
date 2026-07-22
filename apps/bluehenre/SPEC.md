@@ -5,6 +5,56 @@ re-distilled 2026-07-21 after the operator's correction: **the org is "bluehenre
 was a discarded working name**). This file is the in-repo spec of record; the doc is the
 narrative history behind it.
 
+## What this game IS — the Dottie digital twin (operator directive 2026-07-22)
+
+**BLUEHENRE is the playable digital twin of the REAL Dottie project** — the agentic
+assistant being built end-to-end in this monorepo, including the model training on this
+local machine. Explicitly:
+
+- **World**: a low-grade digital twin of Earth; the playable slice is the company HQ in
+  **Austin, TX**. (The campus is one node of the Earth twin; more nodes are future work.)
+- **NPCs are expert researchers/practitioners, one per REAL project component** (the
+  department→subsystem map below). Their chat brains are our **homegrown local
+  Assistants**: when a Dottie engine is reachable (`DOTTIE_CHAT_URL`), each NPC answers
+  as its subsystem's expert (the chat prompt carries their focus); until Dottie is at a
+  usable state they say so honestly in-world — no fabricated expertise, ever.
+- **The in-game Project tracks the REAL model**: alongside the fictional pipeline, the
+  world surfaces live **twin telemetry** from this machine — the actual training step,
+  loss and eval numbers of the model in `apps/ava-factory` — via `/api/twin-status`
+  (source-stamped `local`; the hosted build reports `offline` because it has no access
+  to this machine, honestly).
+- **The closed loop users visit, interact with, and help progress**:
+  1. real training/eval telemetry flows IN (twin board);
+  2. players clear blockers/quests as consultants → validated workflows are extracted
+     as curriculum shards in the factory doc contract (P4, already live);
+  3. the operator feeds validated shards to the collector → they become training data
+     for the very model the twin board tracks;
+  4. a better Dottie powers better NPC brains → better play → better signal. Hill-climb.
+
+### Department → real Dottie subsystem map (ids/colors/order are contract-frozen)
+
+| dept id | in-world | real subsystem | resident expert |
+|---|---|---|---|
+| labs | Foundation Training Lab | `apps/ava-factory` trainer (nano/mini runs on this box) | foundation LLM training |
+| servers | Collector Farm | factory collector fleet (docker) | data collection |
+| archives | Data Curation & Archives | curator + datagen curriculum | data curation |
+| proving | Eval Harness Proving Grounds | `evals/run_harness` + ava-open-harness | evals & measurement |
+| design | Skills Ecosystem Studio | `packages/ava-skills` + scout plugins | skills ecosystem |
+| gardens | Memory & Router Gardens | memory-mint / router (keyword-stub → vector) | memory architecture |
+| finance | Compute & Fleet Ops | 16GB budget, GPU, fleet scheduling | infra & compute |
+| hall | The Great Hall | the org commons (all-hands, memo hub) | — social hub |
+
+### Hill-climb ladder (next rungs, in order)
+
+1. ✅ Twin telemetry v1: last training step/loss + eval ppl on the holo-board (this build).
+2. NPC expert prompts v1: chat carries subsystem focus (this build) — richer per-NPC
+   system prompts once Dottie chat is stable.
+3. Blockers driven by REAL events (a real data_starved / eval flake raises the in-game
+   blocker) — needs a local event feed.
+4. Shard feedback loop closes visibly: board shows how many player-validated shards the
+   operator has fed to the collector.
+5. More Earth-twin nodes (remote "field offices" for remote subsystems).
+
 ## Concept
 
 A 3D browser game set on the Austin, TX campus of **bluehenre**, a fictional tech company

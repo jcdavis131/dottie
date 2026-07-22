@@ -10,12 +10,21 @@ import { readFile, appendFile, mkdir } from "node:fs/promises";
 import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { toShards } from "./public/js/extract.mjs";
+import { parseMetricsTail, safeParseJson, parseEvalSummary } from "./public/js/twin.mjs";
 
 const ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "public");
 const DATA_DIR = join(fileURLToPath(new URL(".", import.meta.url)), "data");
 const SHARD_FILE = join(DATA_DIR, "workflows.jsonl");
 const PORT = Number(process.env.PORT || 8321);
 const DOTTIE_CHAT_URL = process.env.DOTTIE_CHAT_URL || ""; // e.g. http://localhost:8100/app/api/chat
+// Twin telemetry sources — the REAL factory artifacts on this machine (SPEC
+// "the Dottie digital twin"). Overridable so the operator can point at live
+// exports; absent files degrade honestly to source:"offline".
+const APP_DIR = fileURLToPath(new URL(".", import.meta.url));
+const TWIN_METRICS = process.env.DOTTIE_TWIN_METRICS ||
+  join(APP_DIR, "..", "ava-factory", "reports", "metrics_mini.jsonl");
+const TWIN_EVAL = process.env.DOTTIE_TWIN_EVAL ||
+  join(APP_DIR, "..", "ava-factory", "reports", "branch_eval_results_real.json");
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -101,6 +110,22 @@ const server = createServer(async (req, res) => {
           stored: 0, detail: `extraction refused: ${e.message}`,
         }));
       }
+    }
+    if (req.method === "GET" && (req.url || "").split("?")[0] === "/api/twin-status") {
+      // REAL telemetry from this machine — the digital twin's whole point.
+      // Numbers only when actual factory artifacts are readable; else offline.
+      const status = { source: "offline", model: "ava-mini/tool" };
+      try {
+        const tail = parseMetricsTail(await readFile(TWIN_METRICS, "utf-8"));
+        if (tail) Object.assign(status, tail, { source: "local" });
+      } catch { /* metrics not exported to host — eval alone may still light it */ }
+      try {
+        const summary = parseEvalSummary(safeParseJson(await readFile(TWIN_EVAL, "utf-8")));
+        if (summary) Object.assign(status, summary, { source: "local" });
+      } catch { /* no eval report — fine */ }
+      if (status.source !== "local")
+        status.detail = "no factory artifacts readable here — set DOTTIE_TWIN_METRICS / DOTTIE_TWIN_EVAL";
+      return send(200, MIME[".json"], JSON.stringify(status));
     }
     // static: normalize + confine to ROOT
     const rel = normalize(decodeURIComponent((req.url || "/").split("?")[0])).replace(/^([/\\])+/, "");
