@@ -1,6 +1,9 @@
 # HANDOFF — pick up and execute this session's work
 
-**For any assistant (or the operator) resuming Dottie work. Start here.**
+**For any assistant (or the operator) resuming Dottie work. Start here —
+but the CURRENT operational brief lives in [`CURSOR_HANDOFF.md`](CURSOR_HANDOFF.md)
+(kept continuously updated; supersedes the session blocks below for live
+state, runbooks and standing orders).**
 
 ---
 
