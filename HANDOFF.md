@@ -20,8 +20,11 @@ SPEC.md/README.md rewritten console-only. HEAD `177a41b`+, pushed, deployed.
   ~1580, lm 0.1405 (best), ~60-90s/step wall. p4 OOM crash-loop was fixed by
   mb=2 + torch.cuda.empty_cache() at ckpt saves + phase transitions
   (dottie/train.py, bind-mounted; 4260c91). mb=1 was a FAILED experiment
-  (GPU-starved, 0 steps/40min) — do not repeat. p4→p5 boundary at 2.3B tokens
-  is the next risk point; ratchet ckpts every 15 steps.
+  (GPU-starved, 0 steps/40min) — do not repeat. p4→p5 boundary ~step 2098
+  (2.3B tokens) is the next risk point; ratchet ckpts every 15 steps.
+  **ON COMPLETION** (`"event":"done"` → new tool_final.pt, ~step 2861): run
+  the mini eval harness on it (memory: dottie-evaluating-checkpoints) and A/B
+  against the pre-extension 275.95 weighted ppl — GPU is free then.
 - **Publisher**: "Dottie Status publisher" task now EVERY 10 MIN
   (operator-approved); pushes pipeline+research+hub(network/ecosystem/
   agent-eval/evals/fleet/sites) to gist 929c3c0b…; hosted freshness caps 30
