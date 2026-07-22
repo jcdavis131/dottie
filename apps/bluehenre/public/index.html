@@ -2,94 +2,108 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>BLUEHENRE — Austin, TX · synthetic AI-org campus</title>
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<title>BLUEHENRE — org command console</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <style>
-  /* MOBILE-FIRST layout. Cyberpunk command-center chrome (operator art directive):
-     hard pixel edges (no radii), neon-on-black indexed palette, monospace. */
-  html, body { margin: 0; height: 100%; overflow: hidden; font-family: "Courier New", ui-monospace, monospace;
-               touch-action: none; -webkit-user-select: none; user-select: none; }
-  /* full-resolution crisp render (operator 2026-07-22); no pixelated upscale */
-  canvas { display: block; }
-  #hud {
-    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 6px);
-    left: calc(env(safe-area-inset-left, 0px) + 6px); right: calc(env(safe-area-inset-right, 0px) + 6px);
-    padding: 6px 10px; background: #070b12; color: #28e6ff; border: 1px solid #232c44; border-top-color: #28e6ff;
-    font-size: clamp(11px, 2.6vw, 14px); line-height: 1.35;
+  /* MOBILE COMMAND CONSOLE (operator directive 2026-07-22): retro console
+     vibe, crisp and authentic. Hard pixels, indexed palette, monospace,
+     subtle CRT scanlines — but full-resolution text everywhere. */
+  :root {
+    --bg: #05070c; --panel: #0a0e18; --bezel: #151b2b; --line: #232c44;
+    --cyan: #28e6ff; --amber: #ffb02e; --magenta: #ff3fa8; --green: #2eff6a;
+    --red: #ff2e4d; --text: #c8e6f0; --dim: #5a7284; --white: #f0f6ff;
   }
-  #quests {
-    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 52px);
-    right: calc(env(safe-area-inset-right, 0px) + 6px); max-width: min(78vw, 46ch);
-    padding: 6px 10px; background: #070b12; color: #ffb02e; border: 1px solid #232c44; border-top-color: #ff3fa8;
-    font-size: clamp(10px, 2.4vw, 12px); white-space: pre-line;
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+               font-family: "Courier New", ui-monospace, monospace; }
+  body::after { /* CRT scanlines — faint enough to keep text crisp */
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 99;
+    background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(0,0,0,.14) 3px 4px);
   }
-  /* quest tracker collapses to a chip on phones; tap toggles (wired in main.mjs) */
-  #quests.collapsed #questbody { display: none; }
-  #queststoggle { cursor: pointer; font-weight: 600; }
-  #log {
-    position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 118px);
-    left: calc(env(safe-area-inset-left, 0px) + 6px); max-width: 92vw; max-height: 26vh;
-    overflow: hidden; padding: 4px 10px; background: #070b12; color: #c8e6f0; border: 1px solid #232c44;
-    font-size: clamp(10px, 2.4vw, 12px);
-  }
-  #log p { margin: 3px 0; }
-
-  /* touch controls — only shown on coarse pointers (main.mjs decides) */
-  #touch { position: fixed; inset: 0; pointer-events: none; }
-  #stick {
-    position: absolute; left: calc(env(safe-area-inset-left, 0px) + 18px);
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
-    width: 112px; height: 112px;
-    background: #070b12cc; border: 1px solid #28e6ff;
-    pointer-events: auto;
-  }
-  #nub {
-    position: absolute; left: 50%; top: 50%; width: 48px; height: 48px;
-    margin: -24px 0 0 -24px; background: #28e6ff;
-  }
-  #actions, #personas {
-    position: absolute; right: calc(env(safe-area-inset-right, 0px) + 18px);
-    display: flex; flex-direction: column; gap: 10px; pointer-events: auto;
-  }
-  #actions { bottom: calc(env(safe-area-inset-bottom, 0px) + 18px); }
-  #personas { bottom: calc(env(safe-area-inset-bottom, 0px) + 18px); right: calc(env(safe-area-inset-right, 0px) + 88px);
-              flex-direction: row; }
-  #touch button {
-    width: 56px; height: 56px; border: 1px solid #28e6ff;
-    background: #070b12; color: #28e6ff; font-size: 20px; font-weight: 700; font-family: inherit;
-  }
-  #touch button:active { background: #0f6f80; color: #f0f6ff; }
-
-  /* the Dottie terminal modal — the assistant console in-world */
-  #dottie-modal { position: fixed; inset: 4%; z-index: 30; background: #070b12;
-                  border: 1px solid #ff3fa8; display: flex; flex-direction: column; }
-  #dmbar { display: flex; justify-content: space-between; align-items: center;
-           padding: 8px 12px; color: #ff3fa8; border-bottom: 1px solid #232c44; font-weight: 700; }
-  #dmbar button { background: none; border: 1px solid #28e6ff; color: #28e6ff;
-                  width: 34px; height: 34px; font-size: 16px; font-family: inherit; }
-  #dmframe { flex: 1; border: 0; background: #fff; }
-  #dmbody { padding: 14px; color: #c8e6f0; overflow: auto; }
-  #dmform { display: flex; gap: 8px; margin: 10px 0; }
-  #dmq { flex: 1; background: #0a0e18; border: 1px solid #232c44; color: #f0f6ff;
-         padding: 10px; font-family: inherit; }
-  #dmform button { border: 1px solid #28e6ff; background: #070b12; color: #28e6ff; padding: 0 16px; }
-  #dmlog p { margin: 6px 0; }
-
-  /* desktop and up: widen panels; touch UI is not rendered there anyway */
-  @media (min-width: 900px) {
-    #hud { right: auto; max-width: 70ch; font-size: 14px; }
-    #quests { max-width: 46ch; top: calc(env(safe-area-inset-top, 0px) + 10px); }
-    #log { bottom: 10px; max-width: 70ch; max-height: none; }
-  }
+  #wrap { max-width: 760px; margin: 0 auto; padding: 10px 10px
+          calc(env(safe-area-inset-bottom, 0px) + 24px); }
+  header { display: flex; justify-content: space-between; align-items: baseline;
+           border-bottom: 2px solid var(--magenta); padding: 10px 2px 8px; }
+  header h1 { margin: 0; font-size: 18px; color: var(--cyan); letter-spacing: 1px; }
+  header .sub { color: var(--dim); font-size: 11px; text-align: right; }
+  .card { background: var(--panel); border: 1px solid var(--line);
+          border-top: 2px solid var(--bezel); margin-top: 12px; }
+  .card > h2 { margin: 0; padding: 7px 10px; font-size: 13px; color: var(--cyan);
+               background: var(--bezel); border-bottom: 1px solid var(--magenta);
+               letter-spacing: 1px; }
+  .card .body { padding: 10px; font-size: 13px; line-height: 1.5; }
+  .rowline { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
+  .rowline .k { color: var(--dim); }
+  .rowline .v { color: var(--white); text-align: right; }
+  .bar { position: relative; height: 14px; background: #0e1524; border: 1px solid var(--line);
+         margin: 6px 0; overflow: hidden; }
+  .bar > i { position: absolute; inset: 1px auto 1px 1px; background: var(--cyan); }
+  .bar > b { position: absolute; inset: 0; display: flex; align-items: center;
+             padding: 0 6px; font-size: 10px; font-weight: 700; color: var(--white);
+             font-style: normal; }
+  .bar.phase > i { background: var(--magenta); }
+  .led { display: inline-block; width: 9px; height: 9px; margin-right: 5px; vertical-align: -1px; }
+  .up { background: var(--green); } .down { background: var(--red); } .idle { background: var(--dim); }
+  .mode { font-weight: 700; }
+  .mode.training, .mode.running { color: var(--green); }
+  .mode.recovering { color: var(--amber); }
+  .mode.stale, .mode.error { color: var(--red); }
+  canvas#spark { width: 100%; height: 72px; display: block; background: #0e1524;
+                 border: 1px solid var(--line); margin-top: 6px; }
+  table.fleet { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.fleet td { padding: 3px 4px; border-bottom: 1px solid #0e1524; }
+  table.fleet td.cpu { width: 40%; }
+  .cpubar { height: 10px; background: #0e1524; border: 1px solid var(--line); position: relative; }
+  .cpubar > i { position: absolute; inset: 1px auto 1px 1px; background: var(--green); }
+  .cpubar.hot > i { background: var(--amber); }
+  .alert { border-left: 3px solid var(--red); background: #170a10; padding: 6px 8px; margin: 6px 0; }
+  .alert .who { color: var(--amber); font-size: 11px; }
+  .ok-line { color: var(--green); }
+  #chatlog { max-height: 40vh; overflow: auto; margin-top: 8px; }
+  #chatlog p { margin: 6px 0; white-space: pre-wrap; }
+  #chatlog .src { color: var(--dim); font-size: 11px; }
+  form.ask { display: flex; gap: 8px; }
+  form.ask input { flex: 1; background: #0a0e18; border: 1px solid var(--line);
+                   color: var(--white); padding: 10px; font-family: inherit; font-size: 14px; }
+  form.ask button { border: 1px solid var(--cyan); background: var(--bg); color: var(--cyan);
+                    padding: 0 16px; font-family: inherit; font-weight: 700; }
+  .sites { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+  .sites span { white-space: nowrap; }
+  .dimtxt { color: var(--dim); font-size: 11px; }
+  footer { margin-top: 16px; padding: 10px 2px; color: var(--dim); font-size: 11px;
+           border-top: 1px solid var(--line); display: flex; justify-content: space-between; }
+  footer a { color: var(--cyan); text-decoration: none; }
+  @media (min-width: 700px) { #grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; } }
 </style>
-<script type="importmap">
-  { "imports": { "three": "https://unpkg.com/three@0.164.1/build/three.module.js" } }
-</script>
 </head>
 <body>
-<div id="hud">booting…</div>
-<div id="quests"><span id="queststoggle">▾ quests</span><div id="questbody"></div></div>
-<div id="log"></div>
-<script type="module" src="./js/main.mjs"></script>
+<div id="wrap">
+  <header>
+    <h1>▮ BLUEHENRE//ORG</h1>
+    <div class="sub" id="feedsub">connecting…</div>
+  </header>
+
+  <section class="card"><h2>▮ RUN//AVA-MINI</h2><div class="body" id="run">…</div></section>
+  <section class="card"><h2>▮ ALERTS//UNBLOCK</h2><div class="body" id="alerts">…</div></section>
+  <section class="card"><h2>▮ DOTTIE//ASSISTANT</h2><div class="body">
+    <div class="dimtxt" id="chathint"></div>
+    <form class="ask" id="askform" autocomplete="off">
+      <input id="askq" placeholder="ask · guide · unblock…" />
+      <button>SEND</button>
+    </form>
+    <div id="chatlog"></div>
+  </div></section>
+  <section class="card"><h2>▮ FLEET//DOCKER</h2><div class="body" id="fleet">…</div></section>
+  <div id="grid2">
+    <section class="card"><h2>▮ HUB//SUBSYSTEMS</h2><div class="body" id="hub">…</div></section>
+    <section class="card"><h2>▮ SITES//GLOBAL</h2><div class="body" id="sites">…</div></section>
+  </div>
+
+  <footer>
+    <span id="prov">provenance: —</span>
+    <a href="./world.html">3D campus →</a>
+  </footer>
+</div>
+<script type="module" src="./js/console.mjs"></script>
 </body>
 </html>

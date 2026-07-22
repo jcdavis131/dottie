@@ -1,17 +1,35 @@
 # BLUEHENRE — spec of record
 
-**The story:** **bluehenre.com is a window into the org** that is building
-**dumbmodels.com** — vector games (MTNN-based gaming/prediction platforms:
-vector-hoops, -gridiron, -pitch, …) — and building **Dottie**, the agentic
-assistant that helps the org hill-climb better models for each game, plus a
-**Universal MTNN** that connects them all. The org runs autonomously on the
-operator's machine; the game is the public window and steering wheel.
+**The story:** **bluehenre is the org's command console** — the window into
+(and steering wheel for) the org that is building **dumbmodel.com** vector
+games (MTNN gaming/prediction platforms: hoops, gridiron, pitch, equities),
+**Dottie** the agentic assistant that hill-climbs better models for each game,
+and a **Universal MTNN** connecting them all. The org runs autonomously on the
+operator's machine.
+
+**Primary surface (operator pivot 2026-07-22): the MOBILE COMMAND CONSOLE** at
+`/` — a phone-first retro-console page (crisp, authentic; no 3D) where the
+operator checks org progress, watches the run + fleet, sees real alerts,
+and asks/guides Dottie. Cards: RUN (dashboard: mode, step/loss, run/phase
+bars, sparkline, gates, funnel), ALERTS//UNBLOCK (real events), DOTTIE
+(source-stamped chat), FLEET (docker containers, cpu/mem), HUB (subsystems),
+SITES (global fleet). Data: `/api/twin-status` + `/api/fleet` on the shared
+spine below. The 3D campus remains as a **secondary visualization** at
+`/world.html` — same data, same doctrine, no longer the front door.
+
+**Core focus: get the hill-climb and data flywheel going.** Everything else is
+decoration. The flywheel: train → eval → publish telemetry → operator (and
+players) see truth fast → decisions/blockers cleared quickly → curriculum
+shards and research promotions feed back → better model → better Dottie →
+better games. NEXT CORE ITEM: the write path — a directive channel so the
+operator can unblock/steer from the phone (needs the operator's tunnel or
+token decision; read-only until then).
 
 Source: operator's design doc (`1EpAenKrYUgCi1xwbnz7fpKumXR6Om_NabPgoaUhitFU`);
 org name is **bluehenre** ("Limbic" was a discarded working title). This file
 supersedes the doc.
 
-## What the game IS — the Dottie digital twin
+## The digital twin (data spine — shared by console and world)
 
 - **World:** a low-grade digital twin of Earth; the playable slice is the org's
   HQ in **Austin, TX**. More Earth nodes are future rungs.

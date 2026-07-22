@@ -1,51 +1,42 @@
-# BLUEHENRE — the org, playable
+# BLUEHENRE — the org's command console
 
-**One line:** bluehenre.com is a window into the org building
-**dumbmodels.com** — MTNN-based vector games (gaming/prediction platforms) —
-and **Dottie**, the assistant that helps it hill-climb better models for each
-game and a **Universal MTNN** to connect them all.
+**One line:** bluehenre is the mobile command console for the org building
+**dumbmodel.com** vector games (MTNN gaming/prediction platforms), **Dottie**
+the agentic assistant that hill-climbs better models for each game, and a
+**Universal MTNN** to connect them all.
 
-**Why it matters:** the org works autonomously on this machine. The game is how
-you watch it — and help it. Real training telemetry renders in-world; validated
-play becomes real curriculum shards.
+**Why it matters:** the org works autonomously on the operator's machine. The
+console is how you watch it and steer it from anywhere — the run, the docker
+fleet, real alerts, Dottie chat — all real telemetry, provenance-stamped.
+**Core focus: keep the hill-climb and data flywheel spinning.**
 
-**The form:** a zero-dependency 3D browser game (three.js via import map, bare-
-node server) set on the org's Austin, TX campus. You are the hired consultant.
+## Surfaces
+
+- **`/` — the console (primary, mobile-first):** RUN (mode, step/loss, run +
+  phase bars, loss sparkline, flow gates, shard funnel) · ALERTS//UNBLOCK
+  (real factory events) · DOTTIE (source-stamped chat) · FLEET (containers,
+  live cpu/mem) · HUB (subsystems) · SITES (the deployed global fleet).
+  Retro-console look; crisp full-resolution text.
+- **`/world.html` — the 3D campus (secondary):** the same data as a walkable
+  Austin, TX digital twin. Fleet containers are the NPCs; validated play
+  extracts curriculum shards (`data/workflows.jsonl`, operator-fed only).
 
 ## Run
 
 ```bash
-node server.mjs                        # http://localhost:8321, NPCs offline-honest
-DOTTIE_CHAT_URL=http://localhost:8100/app/api/chat node server.mjs   # NPCs answer via Dottie
+node server.mjs                        # http://localhost:8321 — live docker + hub feeds
+DOTTIE_CHAT_URL=http://localhost:8100/app/api/chat node server.mjs   # chat answers via Dottie
 ```
 
-- **Controls:** WASD move · Shift sprint (spends bandwidth) · E ability at the
-  nearest NPC (advances quests, clears blockers) · Q memory router · V observe
-  mode (aerial orbit — the org runs itself) · 1/2/3 hot-swap persona on a
-  terminal · R reset after run-over. Phones get a touch joystick + buttons.
-
-## The loop
-
-- The org builds **DUMBMODEL-1** on its own: data → curate → train → eval → ship.
-- **Real factory events** (trainer stale, data starved, red gates) stall it with
-  `REAL:`-stamped blockers; seeded fictional blockers fill the gaps.
-- You clear blockers as the right persona at the right department. Bandwidth 0
-  ends the run: memory **actually wipes**, the transcript is extracted —
-  **validated** (quest line done, majority of actions ok) or **discarded with
-  the reason**.
-- Validated workflows land in `data/workflows.jsonl` (factory doc shape,
-  `source:"bluehenre/workflow"`). **The operator feeds them to the factory
-  explicitly — nothing auto-ingests.**
+Hosted (Vercel) reads the box's own published gist — real numbers publicly,
+box unexposed, freshness-capped.
 
 ## Honesty doctrine
 
-- Every NPC line is tagged `[dottie]` (real engine) or `[offline]` (withheld,
-  says so). No fabricated replies, ever.
-- Twin boards render numbers **only** from `source:"local"` telemetry; stale
-  feeds say "history, not telemetry". The hosted build reads the operator's own
-  published gist — provenance intact, box unexposed.
-- The router stamps `keyword-stub` on every result. Extraction refuses
-  unvalidated runs loudly.
+- Numbers render **only** from `source:"local"` telemetry; stale feeds say
+  "history, not telemetry"; unreachable blocks render as offline lines.
+- Every chat line is `[dottie]` or `[offline]` — withheld beats fabricated.
+- Nothing auto-ingests: the operator feeds shards to the factory explicitly.
 
 ## Tests
 

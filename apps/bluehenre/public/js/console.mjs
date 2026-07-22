@@ -1,0 +1,251 @@
+// BLUEHENRE mobile command console (operator directive 2026-07-22): check the
+// org from a phone — run status, fleet, alerts, Dottie chat, sites. Same data
+// spine and provenance doctrine as everything else: numbers render only from
+// source:"local" feeds; everything else says offline, honestly.
+import { twinLine, parseHub } from "./twin.mjs";
+
+const $ = (id) => document.getElementById(id);
+const esc = (el, text) => { el.textContent = text; return el; };
+const line = (k, v, cls = "") => {
+  const d = document.createElement("div");
+  d.className = "rowline";
+  const ks = document.createElement("span"); ks.className = "k"; ks.textContent = k;
+  const vs = document.createElement("span"); vs.className = "v" + (cls ? " " + cls : "");
+  vs.textContent = v;
+  d.append(ks, vs);
+  return d;
+};
+const fmtDur = (s) => {
+  if (!Number.isFinite(s)) return "?";
+  if (s < 90) return `${Math.round(s)}s`;
+  if (s < 5400) return `${Math.round(s / 60)}m`;
+  return `${Math.floor(s / 3600)}h${String(Math.round((s % 3600) / 60)).padStart(2, "0")}m`;
+};
+const bar = (frac, label, phase = false) => {
+  const d = document.createElement("div");
+  d.className = "bar" + (phase ? " phase" : "");
+  const i = document.createElement("i");
+  i.style.width = `${Math.max(0, Math.min(100, (frac ?? 0) * 100)).toFixed(1)}%`;
+  const b = document.createElement("b"); b.textContent = label;
+  d.append(i, b);
+  return d;
+};
+
+let twin = null;
+
+function renderRun() {
+  const el = $("run");
+  el.replaceChildren();
+  if (twin?.source !== "local") {
+    el.append(esc(document.createElement("p"),
+      twin?.detail ?? "feed offline — this build cannot see the training box"));
+    return;
+  }
+  const dash = twin.dashboard ?? {};
+  if (dash.mode) {
+    const m = document.createElement("div");
+    m.className = `mode ${dash.mode.id}`;
+    m.textContent = `● ${dash.mode.label.toUpperCase()}`;
+    m.title = dash.mode.detail ?? "";
+    el.append(m);
+  }
+  el.append(
+    line("step · loss", `${twin.step ?? "?"} · ${Number.isFinite(twin.lm) ? twin.lm.toFixed(4) : "?"}`),
+    line("heldout ppl", Number.isFinite(twin.weightedPpl) ? twin.weightedPpl.toFixed(1) : "—"),
+  );
+  if (dash.timing)
+    el.append(line("throughput · eta",
+      `${Number.isFinite(dash.timing.tokS) ? Math.round(dash.timing.tokS).toLocaleString() : "?"} tok/s · ${fmtDur(dash.timing.etaS)}`));
+  if (Number.isFinite(dash.ckptAgeS)) el.append(line("checkpoint", `${fmtDur(dash.ckptAgeS)} ago`));
+  if (Number.isFinite(twin.shardsBanked))
+    el.append(line("player shards banked", String(twin.shardsBanked)));
+  if (Number.isFinite(dash.run?.frac))
+    el.append(bar(dash.run.frac,
+      `RUN ${(dash.run.frac * 100).toFixed(1)}%${Number.isFinite(dash.run.total) ? ` of ${(dash.run.total / 1e9).toFixed(1)}B tok` : ""}`));
+  if (Number.isFinite(dash.phase?.frac))
+    el.append(bar(dash.phase.frac,
+      `${dash.phase.name.toUpperCase()} ${(dash.phase.frac * 100).toFixed(0)}% · SEQ ${dash.phase.seq ?? "?"}`, true));
+  if (Array.isArray(dash.gates) && dash.gates.length) {
+    const g = document.createElement("div");
+    for (const gt of dash.gates) {
+      const s = document.createElement("span");
+      s.style.marginRight = "12px";
+      const led = document.createElement("i");
+      led.className = `led ${gt.ok ? "up" : "down"}`;
+      s.append(led, document.createTextNode(gt.id));
+      s.title = `${gt.name}: ${gt.value}`;
+      g.append(s);
+    }
+    el.append(g);
+  }
+  if (dash.funnel) {
+    const f = dash.funnel;
+    el.append(line("shard funnel",
+      `raw ${f.raw ?? 0} · packed ${f.packed ?? 0} · used ${f.consumed ?? 0} · fail ${f.failed ?? 0}`));
+  }
+  if (dash.spark?.lm?.length >= 2) {
+    const c = document.createElement("canvas");
+    c.id = "spark";
+    el.append(c);
+    requestAnimationFrame(() => drawSpark(c, dash.spark));
+  }
+}
+
+function drawSpark(c, spark) {
+  const W = c.clientWidth * 2, H = c.clientHeight * 2;
+  c.width = W; c.height = H;
+  const g = c.getContext("2d");
+  const lo = Math.min(...spark.lm), hi = Math.max(...spark.lm), span = hi - lo || 1;
+  spark.lm.forEach((v, i) => {
+    const x = Math.floor((i / Math.max(1, spark.lm.length - 1)) * (W - 6));
+    const y = 6 + Math.floor((1 - (v - lo) / span) * (H - 24));
+    g.fillStyle = "#0f6f80"; g.fillRect(x, y + 4, 4, Math.max(0, H - 4 - y));
+    g.fillStyle = "#28e6ff"; g.fillRect(x, y, 4, 4);
+  });
+  g.font = "20px monospace"; g.fillStyle = "#5a7284"; g.textBaseline = "top";
+  g.fillText(`LM ${hi.toFixed(3)}→${lo.toFixed(3)}  steps ${spark.steps[0]}–${spark.steps[spark.steps.length - 1]}`, 8, 4);
+}
+
+function renderAlerts() {
+  const el = $("alerts");
+  el.replaceChildren();
+  if (twin?.source !== "local") { el.append(esc(document.createElement("p"), "feed offline")); return; }
+  const evs = Array.isArray(twin.events) ? twin.events : [];
+  if (!evs.length) {
+    el.append(esc(document.createElement("p"), "● no active alerts — the org is unblocked"))
+      .firstChild.parentElement.classList.add("ok-line");
+    return;
+  }
+  for (const ev of evs) {
+    const a = document.createElement("div");
+    a.className = "alert";
+    const who = document.createElement("div");
+    who.className = "who";
+    who.textContent = `${ev.kind} @ ${ev.dept} — needs ${ev.persona}/${ev.action}`;
+    const what = document.createElement("div");
+    what.textContent = ev.label;
+    a.append(who, what);
+    el.append(a);
+  }
+}
+
+function renderFleet(f) {
+  const el = $("fleet");
+  el.replaceChildren();
+  if (f?.source !== "local" || !Array.isArray(f.containers)) {
+    el.append(esc(document.createElement("p"), f?.detail ?? "docker feed offline"));
+    return;
+  }
+  const t = document.createElement("table");
+  t.className = "fleet";
+  for (const c of [...f.containers].sort((a, b) => (b.cpuPct ?? 0) - (a.cpuPct ?? 0))) {
+    const tr = document.createElement("tr");
+    const name = document.createElement("td");
+    const led = document.createElement("i");
+    led.className = `led ${(c.cpuPct ?? 0) >= 1 ? "up" : "idle"}`;
+    name.append(led, document.createTextNode(c.short));
+    const cpu = document.createElement("td");
+    cpu.className = "cpu";
+    const cb = document.createElement("div");
+    cb.className = "cpubar" + ((c.cpuPct ?? 0) > 80 ? " hot" : "");
+    const ci = document.createElement("i");
+    ci.style.width = `${Math.min(100, c.cpuPct ?? 0).toFixed(0)}%`;
+    cb.append(ci);
+    cpu.append(cb);
+    const num = document.createElement("td");
+    num.style.textAlign = "right";
+    num.textContent = `${c.cpuPct ?? "?"}% · ${c.mem ?? "?"}`;
+    tr.append(name, cpu, num);
+    t.append(tr);
+  }
+  el.append(t);
+  if (f.via === "gist-feed")
+    el.append(esc(Object.assign(document.createElement("p"), { className: "dimtxt" }),
+      `snapshot from the box's published feed (${fmtDur(f.ageS)} old)`));
+}
+
+function renderHub() {
+  const el = $("hub");
+  el.replaceChildren();
+  const h = twin?.source === "local" ? parseHub(twin) : null;
+  if (!h) { el.append(esc(document.createElement("p"), "feed offline")); return; }
+  if (h.network)
+    el.append(line("model", `${h.network.preset} · ${(h.network.params / 1e6).toFixed(1)}M · ${h.network.layers}L (${h.network.split ?? "?"})`));
+  if (h.ecosystem)
+    el.append(line("skills ecosystem", `tools ${h.ecosystem.toolsBuilt}/${h.ecosystem.toolsTotal} · skills ${h.ecosystem.skillsTotal}`));
+  if (h.evals)
+    el.append(line("evals", `${h.evals.pass} PASS / ${h.evals.fail} FAIL`, h.evals.fail ? "" : "ok-line"));
+  if (h.research) {
+    el.append(line("research baseline",
+      `${h.research.value?.toFixed(4) ?? "?"} ±${h.research.sem?.toFixed(3) ?? "?"} (${h.research.provenance})`));
+    el.append(line("research queue",
+      `pending ${h.research.pending ?? "?"} · sota ${h.research.sota ?? "?"} · rejected ${h.research.rejected ?? "?"}`));
+  }
+}
+
+function renderSites() {
+  const el = $("sites");
+  el.replaceChildren();
+  const h = twin?.source === "local" ? parseHub(twin) : null;
+  if (!h?.sites) { el.append(esc(document.createElement("p"), "feed offline")); return; }
+  const wrap = document.createElement("div");
+  wrap.className = "sites";
+  for (const s of h.sites) {
+    const sp = document.createElement("span");
+    const led = document.createElement("i");
+    led.className = `led ${s.up ? "up" : "down"}`;
+    sp.append(led, document.createTextNode(`${s.name}${Number.isFinite(s.ms) ? ` ${s.ms}ms` : ""}`));
+    wrap.append(sp);
+  }
+  el.append(wrap);
+}
+
+async function refreshTwin() {
+  try {
+    const r = await fetch("/api/twin-status");
+    twin = await r.json();
+  } catch { twin = { source: "offline", detail: "console cannot reach its own API" }; }
+  $("feedsub").textContent = twin.source === "local"
+    ? `LIVE · ${twin.via ?? "local"}${Number.isFinite(twin.ageS) ? ` · ${fmtDur(twin.ageS)} old` : ""}`
+    : "OFFLINE";
+  $("prov").textContent = `provenance: ${twinLine(twin)}`;
+  $("chathint").textContent = twin.source === "local" && twin.via === "pipeline-endpoint"
+    ? "wired to the local Dottie engine when configured — replies are source-stamped"
+    : "replies are source-stamped [dottie] or [offline] — never fabricated";
+  renderRun(); renderAlerts(); renderHub(); renderSites();
+}
+async function refreshFleet() {
+  let f = null;
+  try { f = await (await fetch("/api/fleet")).json(); } catch { f = { source: "offline" }; }
+  renderFleet(f);
+}
+
+$("askform").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const q = $("askq");
+  const text = q.value.trim();
+  if (!text) return;
+  q.value = "";
+  const log = $("chatlog");
+  const you = document.createElement("p");
+  you.textContent = `you: ${text}`;
+  log.prepend(you);
+  try {
+    const r = await fetch("/api/npc-chat", { method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ npc: "dottie:app", dept: "org", prompt: text }) });
+    const d = await r.json();
+    const re = document.createElement("p");
+    const src = document.createElement("span");
+    src.className = "src";
+    src.textContent = `dottie [${d.source}]: `;
+    re.append(src, document.createTextNode(d.reply));
+    log.prepend(re);
+  } catch {
+    log.prepend(esc(document.createElement("p"), "dottie [offline]: unreachable"));
+  }
+});
+
+refreshTwin(); refreshFleet();
+setInterval(refreshTwin, 15_000);
+setInterval(refreshFleet, 10_000);
