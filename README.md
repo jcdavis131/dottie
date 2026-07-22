@@ -25,10 +25,10 @@ Dottie is a *closed-loop MLOps factory*: data → train → eval gate → serve 
 | **Data Versioning** | Streaming manifests `fineweb-edu score>=2`, `proof-pile-2`, synthetic Phi Method B logic, `openwiki` + personal brain; curator x6 `clean·dedup·decon·tag concept+task_type`, packed `P0-P5` 98/1/1 split, 13-gram decontam vs eval |
 | **Training** | WSD warmup 2k stable 736k 92% decay 2e-5, YaRN 10k→1M, J-Space 4 workspaces S1 Fast 32 hl8 + S2 Slow 64 hl300 + Critic 16 hl30 + Planner 32 hl150, losses: reportability + broadcast 20% + selectivity + MI cos 0.45 + router KL; presets nano 13.8M (50M toks 10min) → mini 171M (2.5B 3-5d) → base1b 1.4B (100M/day) |
 | **Eval Gate** | `ava-open-harness` — J-Space tests, frontier rubric 11 cats (Financial Accuracy, Process Transparency, Risk/Ethical, Coverage, Attribution, Numerical Accuracy, Logical Coherence, Citation Grounding, Instruction Following, Edge Case, Client-Ready Polish), safety blackmail, spider-ant, france-china, soccer-rugby, `test_no_mock.py` anti-mock guard. Only passing ckpt promoted |
-| **Serving** | `dottie/serve_engine.py` FastAPI hot-reload `/generate /jspace/inspect /tools`, QK-Norm, streaming, tool calling |
+| **Serving** | `apps/ava-factory/dottie/serve_engine.py` FastAPI hot-reload `/generate /jspace/inspect /tools`, QK-Norm, streaming, tool calling |
 | **Agent OS** | `apps/dottie` — Hermes/OpenClaw style: `engine.py + flywheel.py + policy.py + resolve.py + status.py`, demand queue, task inbox, BENIGN=brain, policy=guardrails |
 | **Single CLI Doctrine** | **LLM tool list = [scout]**. All capabilities via `scout --json ...`. Self-evolution via `scout forge new/from-openapi/from-mcp → cat → edit → test → skill install`. See below |
-| **Skills = J-Space** | `memory-router` (Router+Arbitration veto), `memory-mint`, `code-bench` exec-verified 3s timeout [0.25,0.45,0.05,0.25], `jspace-inspector`, `eval-harness-runner`, `safety-scanner` Llama Guard 3 ONNX F1 0.939, `logic-prover` Phi B, `openwiki-sync` |
+| **Skills = J-Space** | `memory-router` (Router+Arbitration veto), `memory-mint`, `code-bench` exec-verified 3s timeout [0.25,0.45,0.05,0.25], `jspace-inspector`, `eval-harness-runner`, `safety-scanner` Llama Guard 3 ONNX F1 0.939, `logic-prover` Phi B, `openwiki-sync`, `family-brain-wiki` |
 | **Build & Deploy** | `scout` scaffolds web artifact + deploys to Vercel/R2/Supabase/HF ZeroGPU free-tier, client-only shareable, 5-min smoke `nano count-params + pytest -q` |
 | **Observability** | `reports/dottie_telemetry.jsonl` (gitignored, local) + `dottie_live_status.json` → arxiviq Control Plane, `STATUS.json` transient, `logs/cron-*`, `ava-skills` traces, hill-climb dashboard |
 
@@ -79,7 +79,7 @@ Forge engine: `apps/scout-cli/bigbang/plugins/forge/cli.py` — shipped `4528f85
 | `apps/ava-factory` | ava-agi-factory-v6-4 | Model factory: data pipeline, trainer, FastAPI server, CPU-pilot chain, research engine |
 | `apps/scout-cli` | scout-cli | `scout` CLI (ex-BigBang) — 20+ plugins, forge engine, arxiviq console |
 | `apps/scout-rtx` | scout-rtx | Windows RTX hill-climb runner + bigbang-bridge (torch==2.9.1 cu128 hard-pin, excluded from uv workspace) |
-| `packages/ava-skills` | ava-skills | Skill system: memory-mint/router + 9 skills, MSFT Agent Framework Skills v1.11.0 compatible |
+| `packages/ava-skills` | ava-skills | Skill system: 9 skills incl. memory-mint/router, MSFT Agent Framework Skills v1.11.0 compatible |
 | `packages/ava-open-harness` | ava-open-harness | Eval gate: J-Space tests, frontier rubric, anti-mock |
 | `packages/personal-graphify` | personal-graphify | Code knowledge-graph CLI/library (Ollama-first) |
 
