@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Org Console — Blue Hen RE</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#f1e7e0" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#0b0d0a" media="(prefers-color-scheme: dark)" />
+<link rel="icon" href="./icon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=DM+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" />
+<style>
+  /* Blue Hen RE aesthetic (tokens lifted from www.bhenre.com): parchment
+     canvas, Instrument Serif display, DM Sans body, IBM Plex Mono data,
+     naturalist accents. Light default, dark via prefers-color-scheme. */
+  :root {
+    --bh-canvas: #f1e7e0; --bh-surface: #fbf6ef; --bh-raised: #ffffff;
+    --bh-ink: #201a13; --bh-secondary: #4c443a; --bh-muted: #6f655a;
+    --bh-border: #d9cabe; --bh-border-strong: #b9a795;
+    --bh-hen-blue: #3d6b89; --bh-copper: #8e5527; --bh-moss: #4c7052;
+    --bh-instrument: #35706c; --bh-rust: #a4522e; --bh-heather: #5c5b85;
+    --bh-slate: #52657f; --bh-ok: #4c7052; --bh-bad: #a4522e;
+    --bh-font-display: "Instrument Serif", Georgia, serif;
+    --bh-font-body: "DM Sans", system-ui, sans-serif;
+    --bh-font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bh-canvas: #0b0d0a; --bh-surface: #161814; --bh-raised: #1c1f1a;
+      --bh-ink: #d9d2c4; --bh-secondary: #b8bfb4; --bh-muted: #7a8278;
+      --bh-border: #2a2f28; --bh-border-strong: #3a4238;
+      --bh-hen-blue: #5384a1; --bh-copper: #c08960; --bh-moss: #6d8d72;
+      --bh-instrument: #66a09d; --bh-rust: #b27450; --bh-heather: #8786b5;
+      --bh-slate: #6d7f98; --bh-ok: #6d8d72; --bh-bad: #b27450;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bh-canvas); color: var(--bh-ink);
+               font-family: var(--bh-font-body); font-size: 15px; line-height: 1.5; }
+  #wrap { max-width: 1080px; margin: 0 auto;
+          padding: 18px 14px calc(env(safe-area-inset-bottom, 0px) + 40px); }
+  header { border-bottom: 2px solid var(--bh-ink); padding: 6px 2px 14px;
+           display: flex; justify-content: space-between; align-items: flex-end;
+           gap: 12px; flex-wrap: wrap; }
+  header h1 { margin: 0; font-family: var(--bh-font-display); font-weight: 400;
+              font-size: clamp(28px, 5vw, 40px); letter-spacing: .2px; }
+  header h1 em { font-style: italic; color: var(--bh-hen-blue); }
+  header .sub { font-family: var(--bh-font-mono); font-size: 12px;
+                color: var(--bh-muted); text-align: right; }
+  .motto { color: var(--bh-secondary); font-size: 13px; padding: 10px 2px 0;
+           font-style: italic; font-family: var(--bh-font-display); }
+  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+          gap: 14px; margin-top: 16px; }
+  .card { background: var(--bh-surface); border: 1px solid var(--bh-border);
+          border-radius: 6px; overflow: hidden; }
+  .card.wide { grid-column: 1 / -1; }
+  .card > h2 { margin: 0; padding: 8px 12px 7px; font-family: var(--bh-font-display);
+               font-weight: 400; font-size: 19px; letter-spacing: .3px;
+               background: var(--bh-raised); border-bottom: 2px solid var(--acc, var(--bh-hen-blue)); }
+  .card .body { padding: 10px 12px 12px; font-size: 13px; }
+  .mono, .rowline .v, td, .chip { font-family: var(--bh-font-mono); }
+  .rowline { display: flex; justify-content: space-between; gap: 10px; padding: 2.5px 0;
+             border-bottom: 1px dotted var(--bh-border); }
+  .rowline:last-child { border-bottom: 0; }
+  .rowline .k { color: var(--bh-muted); }
+  .rowline .v { color: var(--bh-ink); text-align: right; font-size: 12.5px; }
+  .bar { position: relative; height: 13px; background: var(--bh-canvas);
+         border: 1px solid var(--bh-border); border-radius: 3px; margin: 5px 0; overflow: hidden; }
+  .bar > i { position: absolute; inset: 0 auto 0 0; background: var(--acc, var(--bh-hen-blue)); }
+  .bar > b { position: absolute; inset: 0; display: flex; align-items: center; padding: 0 6px;
+             font-size: 10px; font-weight: 600; font-family: var(--bh-font-mono);
+             color: var(--bh-ink); font-style: normal; mix-blend-mode: normal; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  td, th { padding: 3px 6px; border-bottom: 1px solid var(--bh-border); text-align: left; }
+  th { font-family: var(--bh-font-body); font-weight: 600; color: var(--bh-muted);
+       font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+  td.r, th.r { text-align: right; }
+  .led { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+         margin-right: 6px; vertical-align: 0; }
+  .ok { background: var(--bh-ok); } .bad { background: var(--bh-bad); }
+  .idle { background: var(--bh-border-strong); }
+  .chip { display: inline-block; padding: 1px 7px; margin: 2px 3px 2px 0;
+          border: 1px solid var(--bh-border); border-radius: 10px; font-size: 11px;
+          color: var(--bh-secondary); background: var(--bh-raised); }
+  .note { color: var(--bh-muted); font-size: 12px; font-style: italic; }
+  canvas#spark { width: 100%; height: 70px; display: block; background: var(--bh-canvas);
+                 border: 1px solid var(--bh-border); border-radius: 3px; margin-top: 6px; }
+  .alert { border-left: 3px solid var(--bh-rust); background: var(--bh-raised);
+           padding: 6px 9px; margin: 6px 0; border-radius: 0 4px 4px 0; }
+  .alert .who { color: var(--bh-copper); font-family: var(--bh-font-mono); font-size: 11px; }
+  form.ask { display: flex; gap: 8px; margin-top: 4px; }
+  form.ask input { flex: 1; background: var(--bh-raised); border: 1px solid var(--bh-border-strong);
+                   border-radius: 4px; color: var(--bh-ink); padding: 9px 10px;
+                   font-family: var(--bh-font-body); font-size: 14px; }
+  form.ask button { border: 1px solid var(--bh-hen-blue); background: var(--bh-hen-blue);
+                    color: #fff; border-radius: 4px; padding: 0 16px;
+                    font-family: var(--bh-font-body); font-weight: 600; cursor: pointer; }
+  #chatlog { max-height: 300px; overflow: auto; margin-top: 8px; font-size: 13px; }
+  #chatlog p { margin: 6px 0; }
+  #chatlog .src { color: var(--bh-muted); font-family: var(--bh-font-mono); font-size: 11px; }
+  footer { margin-top: 22px; padding-top: 10px; border-top: 1px solid var(--bh-border);
+           color: var(--bh-muted); font-size: 11.5px; font-family: var(--bh-font-mono);
+           display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  footer a { color: var(--bh-hen-blue); }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <header>
+    <h1>Blue Hen RE <em>· Org Console</em></h1>
+    <div class="sub" id="feedsub">connecting…</div>
+  </header>
+  <div class="motto">sota models, faster — research the whole stack; models → insights → revenue.</div>
+
+  <div id="grid">
+    <section class="card wide" style="--acc: var(--bh-hen-blue)"><h2>Training Run</h2><div class="body" id="run">…</div></section>
+    <section class="card" style="--acc: var(--bh-rust)"><h2>Alerts &amp; Unblock</h2><div class="body" id="alerts">…</div></section>
+    <section class="card" style="--acc: var(--bh-hen-blue)"><h2>Dottie — Assistant</h2><div class="body">
+      <form class="ask" id="askform" autocomplete="off"><input id="askq" placeholder="ask · guide · unblock…" /><button>Send</button></form>
+      <div id="chatlog"></div>
+    </div></section>
+    <section class="card wide" style="--acc: var(--bh-copper)"><h2>Curriculum</h2><div class="body" id="curriculum">…</div></section>
+    <section class="card" style="--acc: var(--bh-moss)"><h2>Data Flow</h2><div class="body" id="flow">…</div></section>
+    <section class="card" style="--acc: var(--bh-moss)"><h2>Shard Manifest</h2><div class="body" id="manifest">…</div></section>
+    <section class="card" style="--acc: var(--bh-slate)"><h2>Checkpoints</h2><div class="body" id="ckpts">…</div></section>
+    <section class="card" style="--acc: var(--bh-slate)"><h2>Compute</h2><div class="body" id="compute">…</div></section>
+    <section class="card" style="--acc: var(--bh-heather)"><h2>Network</h2><div class="body" id="network">…</div></section>
+    <section class="card" style="--acc: var(--bh-heather)"><h2>Routing Watch</h2><div class="body" id="watch">…</div></section>
+    <section class="card" style="--acc: var(--bh-instrument)"><h2>Research Loop</h2><div class="body" id="research">…</div></section>
+    <section class="card" style="--acc: var(--bh-instrument)"><h2>Evals</h2><div class="body" id="evals">…</div></section>
+    <section class="card" style="--acc: var(--bh-copper)"><h2>Skills Ecosystem</h2><div class="body" id="eco">…</div></section>
+    <section class="card wide" style="--acc: var(--bh-hen-blue)"><h2>Compute Fleet</h2><div class="body" id="fleet">…</div></section>
+    <section class="card" style="--acc: var(--bh-moss)"><h2>Global Sites</h2><div class="body" id="sites">…</div></section>
+    <section class="card" style="--acc: var(--bh-slate)"><h2>Demand Signal</h2><div class="body" id="demand">…</div></section>
+  </div>
+
+  <footer>
+    <span id="prov">provenance: —</span>
+    <span>every number is a real feed value or an honest absence · <a href="https://bluehenre-campus.vercel.app/">terminal view</a></span>
+  </footer>
+</div>
+<script type="module" src="./js/org.mjs"></script>
+</body>
+</html>

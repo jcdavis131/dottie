@@ -159,6 +159,38 @@ check("research daemon maps to proving", fl[2].dept === "proving" && fl[2].short
 check("unknown role lands in gardens", fleetRole("mystery-svc-1").dept === "gardens");
 check("empty fleet -> []", parseFleet("").length === 0 && parseFleet(null).length === 0);
 
+// comprehensive org model (bhenre console): lifts every feed aspect honestly
+import { parseOrg } from "./twin.mjs";
+const orgFeed = { pipeline: {
+  curriculum: { tokens_total: 2500000000, tokens_per_step: 262144,
+    phases: [{ index: 0, name: "p0_logic", seq: 512, tokens: 400000000,
+               token_start: 0, token_end: 400000000, mix: { logic: 1 } }] },
+  watch: { phase_progress: { phase: 0 }, timing: { steps_done: 10, steps_total: 100 },
+           tokens_per_param: { tpp: 12.4, regime: "undertrain", t2t_target: 40 },
+           dominant_route: { name: "planner", p: 0.5 }, route_entropy: 1.68, hints: ["h1"] },
+  flow: { data_state: "READY", phase_runway: [{ phase: 0, tokens: 1e9, fill: 1, ok: true, is_trainer: true }],
+          gates: [{ id: "D1", name: "host free", ok: true, value: "48 GB", target: ">= 12" }],
+          collector_pause: { paused: true, reason: "runway full" } },
+  manifest: { total_shards: 1300, by_state: { PACKED: 1002 }, raw_gb: 0.25, raw_max_gb: 4, raw_fill: 0.06 },
+  disk: { free_gb: 48, low_water_gb: 12, critical_gb: 6, below_low_water: false },
+  ckpt: { latest_pointer: "x.pt", files: [{ name: "x.pt", mb: 1960, age_s: 60 }] },
+  trainer: { last: { event: "step", step: 1, gpu_util_pct: 84, gpu_mem_mb: 10038,
+                     gpu_mem_total_mb: 12282, gpu_temp_c: 70, gpu_power_w: 110, lr: 6e-4, grad_norm: 0.03 } },
+  demand: { step: 1, reasons: ["runway healthy"] },
+}, research: { ts: 1, counts: { sota: 3 }, note: "caveat", sota_history: [1, 2, 3] },
+   hub: { eval_catalog: { active_name: "r.json", artifacts: [{ name: "r.json", preset: "mini", base_ckpt: "/ckpt/x" }] } } };
+const org = parseOrg(orgFeed);
+check("org curriculum + current phase", org?.curriculum?.phases.length === 1 && org.curriculum.current === 0);
+check("org flow runway + gates + collector", org?.flow?.runway[0].isTrainer === true &&
+  org.flow.gates[0].ok === true && org.flow.collectorPaused === true);
+check("org manifest + disk + ckpts", org?.manifest?.total === 1300 && org.disk.freeGb === 48 &&
+  org.ckpts.files[0].name === "x.pt");
+check("org gpu + watch + demand", org?.gpu?.utilPct === 84 && org.watch.dominantRoute.name === "planner" &&
+  org.demand.reasons.length === 1);
+check("org research note verbatim + catalog", org?.research?.note === "caveat" &&
+  org.research.sotaRows === 3 && org.evalCatalog.active === "r.json");
+check("org of nothing -> null", parseOrg(null) === null);
+
 // freshness: published_utc wins; bare ts works; garbage -> null
 const t0 = Date.parse("2026-07-22T14:30:02Z");
 check("age from published_utc", Math.abs(liveAgeS(wrapped, t0) - 600) < 1);

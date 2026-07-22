@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { parseMetricsTail, safeParseJson, parseEvalSummary, parseTrainerTail,
-         parseDashboard, parseLiveEvents, liveAgeS, parseFleet } from "./public/js/twin.mjs";
+         parseDashboard, parseLiveEvents, liveAgeS, parseFleet, parseOrg } from "./public/js/twin.mjs";
 
 const execFileP = promisify(execFile);
 
@@ -140,6 +140,8 @@ const server = createServer(async (req, res) => {
         const dash = parseDashboard(live);
         if (dash) Object.assign(status, { dashboard: dash, source: "local", via: liveVia });
         status.events = parseLiveEvents(live);
+        const org = parseOrg(live);
+        if (org) status.org = org; // comprehensive org model (bhenre console)
       }
       if (status.source !== "local") {
         try {

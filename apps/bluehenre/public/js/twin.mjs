@@ -233,6 +233,101 @@ export function parseFleet(text) {
   return out;
 }
 
+/** The COMPREHENSIVE org model (bhenre.com console): every little aspect the
+ * feed truthfully carries — curriculum, data flow, manifest, checkpoints,
+ * compute, routing watch, demand, research detail, eval catalog. Missing or
+ * unreachable pieces come back null; nothing is invented. */
+export function parseOrg(live) {
+  const p = pipelineOf(live);
+  if (!p || typeof p !== "object") return null;
+  const num = (v) => (Number.isFinite(v) ? v : null);
+  const w = p.watch ?? {};
+  const cur = p.curriculum;
+  const curriculum = Array.isArray(cur?.phases)
+    ? {
+        tokensTotal: num(cur.tokens_total), tokensPerStep: num(cur.tokens_per_step),
+        current: num(w.phase_progress?.phase),
+        phases: cur.phases.map((ph) => ({
+          index: ph.index, name: String(ph.name ?? "?"), seq: num(ph.seq),
+          tokens: num(ph.tokens), start: num(ph.token_start), end: num(ph.token_end),
+          mix: ph.mix && typeof ph.mix === "object" ? ph.mix : {},
+        })),
+      }
+    : null;
+  const flow = p.flow
+    ? {
+        dataState: String(p.flow.data_state ?? "?"), dataDetail: String(p.flow.data_detail ?? ""),
+        collectorPaused: p.flow.collector_pause?.paused === true,
+        collectorReason: String(p.flow.collector_pause?.reason ?? ""),
+        runway: Array.isArray(p.flow.phase_runway)
+          ? p.flow.phase_runway.map((r) => ({ phase: r.phase, tokens: num(r.tokens),
+              fill: num(r.fill), ok: r.ok === true, isTrainer: r.is_trainer === true }))
+          : [],
+        gates: Array.isArray(p.flow.gates)
+          ? p.flow.gates.map((g) => ({ id: String(g.id ?? "?"), name: String(g.name ?? "?"),
+              ok: g.ok === true, value: String(g.value ?? ""), target: String(g.target ?? "") }))
+          : [],
+      }
+    : null;
+  const manifest = p.manifest
+    ? { total: num(p.manifest.total_shards), byState: p.manifest.by_state ?? {},
+        rawGb: num(p.manifest.raw_gb), rawMaxGb: num(p.manifest.raw_max_gb),
+        rawFill: num(p.manifest.raw_fill) }
+    : null;
+  const disk = p.disk
+    ? { freeGb: num(p.disk.free_gb), lowGb: num(p.disk.low_water_gb),
+        critGb: num(p.disk.critical_gb), belowLow: p.disk.below_low_water === true,
+        belowCrit: p.disk.below_critical === true }
+    : null;
+  const ckpts = Array.isArray(p.ckpt?.files)
+    ? { latest: String(p.ckpt.latest_pointer ?? "?"),
+        files: p.ckpt.files.slice(0, 8).map((f) => ({ name: String(f.name ?? "?"),
+          mb: num(f.mb), ageS: num(f.age_s) })) }
+    : null;
+  const t = w.timing;
+  const timing = t
+    ? { tokS: num(t.tok_s), etaS: num(t.eta_remaining_s), stepsDone: num(t.steps_done),
+        stepsTotal: num(t.steps_total), tokensDone: num(t.tokens_done),
+        tokensTotal: num(t.tokens_total) }
+    : null;
+  const tpp = w.tokens_per_param
+    ? { tpp: num(w.tokens_per_param.tpp), regime: String(w.tokens_per_param.regime ?? "?"),
+        target: num(w.tokens_per_param.t2t_target) }
+    : null;
+  const last = p.trainer?.last;
+  const gpu = last && Number.isFinite(last.gpu_util_pct)
+    ? { utilPct: num(last.gpu_util_pct), memMb: num(last.gpu_mem_mb),
+        memTotalMb: num(last.gpu_mem_total_mb), tempC: num(last.gpu_temp_c),
+        powerW: num(last.gpu_power_w), lr: num(last.lr), gradNorm: num(last.grad_norm) }
+    : null;
+  const watch = {
+    dominantRoute: w.dominant_route
+      ? { name: String(w.dominant_route.name ?? "?"), p: num(w.dominant_route.p) } : null,
+    routeEntropy: num(w.route_entropy),
+    hints: Array.isArray(w.hints) ? w.hints.map(String).slice(0, 4) : [],
+  };
+  const demand = p.demand
+    ? { step: num(p.demand.step),
+        reasons: Array.isArray(p.demand.reasons) ? p.demand.reasons.map(String).slice(0, 3) : [] }
+    : null;
+  const r = live?.research && !live.research.unreachable ? live.research : null;
+  const research = r
+    ? { counts: r.counts ?? {}, note: String(r.note ?? ""),
+        sotaRows: Array.isArray(r.sota_history) ? r.sota_history.length : null,
+        ts: num(r.ts) }
+    : null;
+  const cat = live?.hub?.eval_catalog && !live.hub.eval_catalog.unreachable ? live.hub.eval_catalog : null;
+  const evalCatalog = cat
+    ? { active: String(cat.active_name ?? "?"),
+        artifacts: Array.isArray(cat.artifacts)
+          ? cat.artifacts.slice(0, 6).map((a) => ({ name: String(a.name ?? "?"),
+              preset: String(a.preset ?? "?"), ckpt: String(a.base_ckpt ?? "?") }))
+          : [] }
+    : null;
+  return { curriculum, flow, manifest, disk, ckpts, timing, tpp, gpu, watch, demand,
+           research, evalCatalog };
+}
+
 // which department (and consultant hat) owns each REAL problem kind
 const MODE_EVENTS = {
   stale: { dept: "labs", persona: "cipher", action: "decode" },

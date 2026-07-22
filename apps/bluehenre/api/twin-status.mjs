@@ -7,7 +7,7 @@
 //   3. Honest offline.
 // Nothing here invents numbers; every value traces to a feed the training box
 // itself published.
-import { safeParseJson, parseTrainerTail, parseDashboard, parseLiveEvents, liveAgeS }
+import { safeParseJson, parseTrainerTail, parseDashboard, parseLiveEvents, liveAgeS, parseOrg }
   from "../public/js/twin.mjs";
 
 const GIST_URL = process.env.TWIN_GIST_URL ||
@@ -50,6 +50,8 @@ export default async function handler(req, res) {
       if (live.hub) status.hub = live.hub;
       if (live.research) status.research = live.research;
       status.hubPublishedUtc = live.published_utc ?? null;
+      const org = parseOrg(live);
+      if (org) status.org = org; // the comprehensive org model (bhenre console)
     } else {
       status.detail = "published feed had no readable telemetry";
     }
