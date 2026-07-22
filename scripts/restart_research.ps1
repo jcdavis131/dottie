@@ -111,8 +111,23 @@ $boot = $null
 while ((Get-Date) -lt $deadline -and -not $boot) {
     Start-Sleep -Seconds 3
     if (-not (Test-Path $log)) { continue }
-    $raw = [System.IO.File]::ReadAllBytes($log)
-    $text = try { [System.Text.Encoding]::Unicode.GetString($raw) } catch { [System.Text.Encoding]::UTF8.GetString($raw) }
+    # SHARED read, two observed bugs fixed here (2026-07-21, both made this verifier
+    # report "NO boot line" for a daemon that HAD booted on the right sha):
+    #   1. ReadAllBytes opens the file exclusively and throws IOException while the
+    #      live daemon holds run.log open for append -- the verifier crash-looped.
+    #   2. Unicode-FIRST decoding: GetString never throws on a wrong encoding, so the
+    #      try/catch always kept the UTF-16 attempt and the (UTF-8) log decoded to
+    #      mojibake the boot regex could never match. StreamReader with BOM detection
+    #      decodes UTF-8 by default and still honors a real UTF-16 BOM.
+    $text = $null
+    try {
+        $share = [System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete
+        $fs = New-Object System.IO.FileStream($log, [System.IO.FileMode]::Open,
+                                              [System.IO.FileAccess]::Read, $share)
+        $sr = New-Object System.IO.StreamReader($fs, $true)
+        $text = $sr.ReadToEnd()
+        $sr.Close()
+    } catch { continue }
     foreach ($line in ($text -split "`r?`n")) {
         if ($line -match '"action":\s*"boot"') { $boot = $line }
     }
