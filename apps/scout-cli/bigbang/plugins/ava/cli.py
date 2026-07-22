@@ -71,12 +71,16 @@ try:
         list_ollama_models as _core_list_models,
         get_best_model as _core_best_model,
         extract_json_from_text as _extract_json,
+        chat_with_metrics as _core_chat_metrics,
+        koboldcpp_available as _core_kobold_available,
         OLLAMA_URLS,
         PREFERRED_MODELS,
     )
     _HAS_CORE_LLM = True
 except Exception:
     _HAS_CORE_LLM = False
+    _core_chat_metrics = None
+    _core_kobold_available = None
     OLLAMA_URLS = [
         "http://localhost:11434",
         "http://host.docker.internal:11434",
@@ -595,6 +599,63 @@ def status():
         "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
     }
     emit(payload, command="ava status")
+
+
+@app.command("infer")
+def infer(
+    prompt: str = typer.Argument(..., help="the user prompt to send to the local model"),
+    backend: str = typer.Option("ollama", "--backend", help="local runner: ollama | koboldcpp"),
+    model: str = typer.Option("", "--model", help="model name; default = backend's best/loaded"),
+    base: str = typer.Option("", "--base", help="override endpoint URL (else auto-detect)"),
+    system: str = typer.Option("", "--system", help="optional system prompt"),
+    json_mode: bool = typer.Option(False, "--json", help="ask the model for a JSON object"),
+    max_tokens: int = typer.Option(0, "--max-tokens", help="cap generated tokens (0 = server default)"),
+    context_shift: bool = typer.Option(False, "--context-shift", help="record that KoboldCpp ContextShift is enabled (telemetry only)"),
+):
+    """One local inference call against a pluggable backend, with tokens/sec telemetry.
+
+    KoboldCpp is Ollama-API-compatible: launch it on :11434 and `--backend ollama`
+    drives it unchanged. `--backend koboldcpp` instead targets its OpenAI-compatible
+    :5001/v1 surface (auto-detected, or set KOBOLDCPP_BASE). The envelope is honest —
+    on a backend failure it is ok:false + error, never a fabricated completion.
+
+    Only ever install KoboldCpp from github.com/LostRuins/koboldcpp/releases/latest
+    (the koboldcpp[.]com domain is a phishing clone).
+    """
+    if not _HAS_CORE_LLM or _core_chat_metrics is None:
+        emit({"ok": False, "command": "ava infer",
+              "error": "core.llm backend layer unavailable in this environment"},
+             command="ava infer")
+        raise typer.Exit(1)
+
+    bk = (backend or "ollama").lower()
+    mdl = model
+    if not mdl:
+        if bk in ("kobold", "koboldcpp", "openai"):
+            mdl = "koboldcpp"  # KoboldCpp serves the one loaded GGUF; the name is ignored
+        else:
+            try:
+                b = _ollama_available()
+                mdl = (_core_best_model(base=b, timeout=2.0) if (b and _HAS_CORE_LLM) else "") or "qwen3:8b"
+            except Exception:
+                mdl = "qwen3:8b"
+
+    messages: List[Dict[str, str]] = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+
+    res = _core_chat_metrics(
+        bk, mdl, messages,
+        base=(base or None), json_mode=json_mode,
+        timeout=120.0, max_tokens=(max_tokens or None),
+        context_shift=context_shift,
+    )
+    res["command"] = "ava infer"
+    res["disclaimer"] = "Solo personal project, no connection to employer, built with public/free-tier only"
+    emit(res, command="ava infer")
+    if not res.get("ok"):
+        raise typer.Exit(1)
 
 
 def _run_in_factory(argv: list, yes: bool, command: str, description: str):

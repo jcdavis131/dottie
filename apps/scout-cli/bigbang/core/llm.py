@@ -337,4 +337,197 @@ def extract_json_from_text(text: str) -> Any | None:
     return None
 
 
+# --- KoboldCpp / OpenAI-compatible backend ----------------------------------
+# KoboldCpp (github.com/LostRuins/koboldcpp — the ONLY trusted source; the
+# koboldcpp[.]com domain is a known phishing clone) speaks several protocols at
+# once: an OpenAI-compatible API on :5001/v1, an Ollama-compatible API on :11434,
+# and its native /api. We target the OpenAI /v1 surface because it is the most
+# portable (llama.cpp-server, vLLM, and OpenAI itself all speak it) and returns a
+# `usage` block we can turn into tokens/sec. NOTE: if you instead launch KoboldCpp
+# on port 11434, the existing ollama_chat() path already drives it UNCHANGED — no
+# code needed, just point OLLAMA_BASE at it.
+KOBOLDCPP_URLS = [
+    "http://localhost:5001",
+    "http://host.docker.internal:5001",
+]
+
+
+def koboldcpp_available(base: str | None = None, timeout: float = 2.0) -> str | None:
+    """Return a reachable KoboldCpp OpenAI base (no trailing slash), or None.
+    Never raises; honours KOBOLDCPP_BASE / OPENAI_BASE_URL env overrides."""
+    env_base = os.environ.get("KOBOLDCPP_BASE") or os.environ.get("OPENAI_BASE_URL")
+    urls = ([base.rstrip("/")] if base else []) \
+        + ([env_base.rstrip("/")] if env_base else []) + KOBOLDCPP_URLS
+    client = _httpx_client(timeout=timeout)
+    if client is None:
+        return None
+    try:
+        for b in urls:
+            b = b.rstrip("/")
+            host = urlparse(b).hostname or ""
+            if host not in ("localhost", "127.0.0.1", "::1", "") and not _is_resolvable(host, 0.8):
+                continue
+            try:
+                r = client.get(f"{b}/v1/models")
+                if r.status_code == 200:
+                    return b
+            except Exception:
+                continue
+        return None
+    finally:
+        try:
+            client.close()
+        except Exception:
+            pass
+
+
+def openai_chat(
+    model: str,
+    messages: list[dict[str, str]],
+    base: str,
+    *,
+    json_mode: bool = False,
+    timeout: float = 120.0,
+    max_tokens: int | None = None,
+) -> dict[str, Any] | None:
+    """One non-streaming OpenAI /v1/chat/completions call. Returns
+    {"content": str, "completion_tokens": int|None} or None on ANY failure.
+    Works against KoboldCpp, llama.cpp-server, vLLM, or OpenAI."""
+    client = _httpx_client(timeout=timeout)
+    if client is None:
+        return None
+    try:
+        payload: dict[str, Any] = {"model": model, "messages": messages, "stream": False}
+        if max_tokens:
+            payload["max_tokens"] = max_tokens
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+        r = client.post(f"{base.rstrip('/')}/v1/chat/completions", json=payload)
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        choices = data.get("choices") or []
+        if not choices:
+            return None
+        content = (choices[0].get("message") or {}).get("content")
+        if content is None:
+            return None
+        usage = data.get("usage") or {}
+        return {"content": content, "completion_tokens": usage.get("completion_tokens")}
+    except Exception:
+        return None
+    finally:
+        try:
+            client.close()
+        except Exception:
+            pass
+
+
+def _ollama_generate(
+    model: str,
+    messages: list[dict[str, str]],
+    base: str,
+    *,
+    json_mode: bool = False,
+    timeout: float = 120.0,
+) -> dict[str, Any] | None:
+    """Like ollama_chat() but also surfaces the server-side eval_count +
+    eval_duration so callers can compute the model's own tokens/sec (which
+    excludes network/queueing). Returns dict or None."""
+    client = _httpx_client(timeout=timeout)
+    if client is None:
+        return None
+    try:
+        payload: dict[str, Any] = {"model": model, "messages": messages, "stream": False}
+        if json_mode:
+            payload["format"] = "json"
+        r = client.post(f"{base.rstrip('/')}/api/chat", json=payload)
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        content = (data.get("message") or {}).get("content") or data.get("response")
+        if content is None:
+            return None
+        dur_ns = data.get("eval_duration") or 0
+        return {
+            "content": content,
+            "completion_tokens": data.get("eval_count"),
+            "server_seconds": (dur_ns / 1e9) if dur_ns else None,
+        }
+    except Exception:
+        return None
+    finally:
+        try:
+            client.close()
+        except Exception:
+            pass
+
+
+def chat_with_metrics(
+    backend: str,
+    model: str,
+    messages: list[dict[str, str]],
+    *,
+    base: str | None = None,
+    json_mode: bool = False,
+    timeout: float = 120.0,
+    max_tokens: int | None = None,
+    context_shift: bool | None = None,
+) -> dict[str, Any]:
+    """Backend-dispatching chat that returns a telemetry dict and NEVER raises.
+
+    backend in {"ollama", "koboldcpp"}. On any failure: ok=False + a human error
+    and content=None — we never fabricate a completion. ``tok_per_s`` is
+    wall-clock; ``server_tok_per_s`` uses the backend's own timing when reported
+    (Ollama's eval_duration). ``context_shift`` is recorded as-launched telemetry,
+    not detected per-request (it is a KoboldCpp startup flag)."""
+    backend = (backend or "ollama").lower()
+    meta: dict[str, Any] = {
+        "ok": False, "backend": backend, "model": model, "base": base,
+        "content": None, "completion_tokens": None, "elapsed_s": None,
+        "tok_per_s": None, "server_tok_per_s": None,
+        "context_shift": context_shift, "error": None,
+    }
+    try:
+        server_seconds: float | None = None
+        if backend in ("kobold", "koboldcpp", "openai"):
+            b = base or koboldcpp_available(timeout=timeout)
+            if not b:
+                meta["error"] = "koboldcpp not reachable — launch it on :5001 or set KOBOLDCPP_BASE"
+                return meta
+            meta["base"] = b
+            t0 = time.time()
+            res = openai_chat(model, messages, b, json_mode=json_mode,
+                              timeout=timeout, max_tokens=max_tokens)
+            elapsed = time.time() - t0
+        elif backend == "ollama":
+            b = base or get_ollama_base(timeout=timeout)
+            if not b:
+                meta["error"] = "ollama not reachable — is it running on :11434?"
+                return meta
+            meta["base"] = b
+            t0 = time.time()
+            res = _ollama_generate(model, messages, b, json_mode=json_mode, timeout=timeout)
+            elapsed = time.time() - t0
+            server_seconds = res.get("server_seconds") if res else None
+        else:
+            meta["error"] = f"unknown backend {backend!r} — use ollama|koboldcpp"
+            return meta
+
+        meta["elapsed_s"] = round(elapsed, 4)
+        if not res or res.get("content") is None:
+            meta["error"] = "backend returned no completion"
+            return meta
+        toks = res.get("completion_tokens")
+        meta.update(ok=True, content=res["content"], completion_tokens=toks)
+        if toks and elapsed > 0:
+            meta["tok_per_s"] = round(toks / elapsed, 2)
+        if toks and server_seconds and server_seconds > 0:
+            meta["server_tok_per_s"] = round(toks / server_seconds, 2)
+        return meta
+    except Exception as e:  # the dispatcher must never raise into the CLI
+        meta["error"] = f"{type(e).__name__}: {e}"
+        return meta
+
+
 # Solo personal project, no connection to employer, built with public/free-tier only
