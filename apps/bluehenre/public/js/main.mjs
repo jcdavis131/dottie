@@ -9,9 +9,16 @@ import { createQuestLog, advance, briefs, ORG } from "./quests.mjs";
 import { createRun, record, recordQuestComplete, extractRun } from "./workflow.mjs";
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 300);
+const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 400);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
+// 2010 Sims/tycoon presentation: soft shadows + filmic tone mapping + crisp DPR
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.08;
 document.body.appendChild(renderer.domElement);
 addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
@@ -175,6 +182,7 @@ function frame(now) {
     if (observe || Math.random() < 0.3) say(`overheard: ${x.memo}`);
   }
   bwTick(bw, dt * 2);
+  world.animate?.(dt, now / 1000); // plumbobs, bats, the flag — pure set dressing
 
   if (observe) {
     // tycoon view: slow aerial orbit of the whole campus
@@ -188,8 +196,8 @@ function frame(now) {
 
   const term = onTerminal(world.player, world.terminals);
   hud.textContent = observe
-    ? `${ORG.name} campus | OBSERVE MODE — the org at work (${eco.memos} memos so far) | V=return`
-    : `${ORG.name} campus | ${PERSONAS[me.persona].label} | bandwidth ${bw.value.toFixed(0)}/${bw.max}` +
+    ? `${ORG.name} — ${ORG.hq} | OBSERVE MODE — the org at work (${eco.memos} memos so far) | V=return`
+    : `${ORG.name} — ${ORG.hq} | ${PERSONAS[me.persona].label} | bandwidth ${bw.value.toFixed(0)}/${bw.max}` +
       (term ? " | TERMINAL: 1=auditor 2=cipher 3=architect" : "") +
       (bw.runOver ? " | RUN OVER — R resets (session wipes)" : " | E=ability Q=router V=observe Shift=sprint");
   if (bw.runOver && keys.has("r") && !resetLatch) {

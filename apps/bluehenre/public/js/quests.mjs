@@ -80,6 +80,7 @@ export function briefs(log) {
 /** bluehenre org identity, surfaced in-world (SPEC "org identity"). */
 export const ORG = {
   name: "bluehenre",
+  hq: "Austin, TX",
   mission: "ship autonomous organizations that audit themselves",
   vision: "every workflow a training signal; every campus a curriculum",
   values: ["provenance over polish", "refuse to fabricate", "ephemeral play, persistent signal"],
