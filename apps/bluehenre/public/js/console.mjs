@@ -146,7 +146,20 @@ function renderAlerts() {
   }
 }
 
+// Fleet control (operator 2026-07-22): tap a container -> action bar -> the
+// `fleet: <verb> <name>` command is copied and the STEER gist opens. The
+// LOGIN IS GITHUB: only owner comments are executed by the box (closed
+// verb/target allowlist there too) — visitors can tap all they like.
+const STEER_URL = "https://gist.github.com/jcdavis131/c899ef776dcb81e99319239efa0f92ba";
+let fleetSel = null;
+let lastFleet = null;
+async function fleetAct(verb) {
+  const cmd = `fleet: ${verb} ${fleetSel}`;
+  try { await navigator.clipboard.writeText(cmd); } catch { /* clipboard denied — gist still opens */ }
+  open(STEER_URL, "_blank", "noopener");
+}
 function renderFleet(f) {
+  lastFleet = f;
   const el = $("fleet");
   el.replaceChildren();
   if (f?.source !== "local" || !Array.isArray(f.containers)) {
@@ -157,6 +170,11 @@ function renderFleet(f) {
   t.className = "fleet";
   for (const c of [...f.containers].sort((a, b) => (b.cpuPct ?? 0) - (a.cpuPct ?? 0))) {
     const tr = document.createElement("tr");
+    if (c.short === fleetSel) tr.className = "sel";
+    tr.addEventListener("click", () => {
+      fleetSel = fleetSel === c.short ? null : c.short;
+      renderFleet(lastFleet);
+    });
     const name = document.createElement("td");
     const led = document.createElement("i");
     led.className = `led ${(c.cpuPct ?? 0) >= 1 ? "up" : "idle"}`;
@@ -176,6 +194,23 @@ function renderFleet(f) {
     t.append(tr);
   }
   el.append(t);
+  if (fleetSel) {
+    const bar2 = document.createElement("div");
+    bar2.className = "fleetact";
+    const label = document.createElement("span");
+    label.textContent = `${fleetSel} →`;
+    bar2.append(label);
+    for (const verb of ["restart", "stop", "start"]) {
+      const b = document.createElement("button");
+      b.textContent = verb;
+      b.addEventListener("click", () => fleetAct(verb));
+      bar2.append(b);
+    }
+    el.append(bar2);
+    el.append(esc(Object.assign(document.createElement("p"), { className: "dimtxt" }),
+      "copies the command + opens STEER — operator-gated by GitHub login; " +
+      "the box only executes owner comments (allowlisted verbs/targets)"));
+  }
   if (f.via === "gist-feed")
     el.append(esc(Object.assign(document.createElement("p"), { className: "dimtxt" }),
       `snapshot from the box's published feed (${fmtDur(f.ageS)} old)`));

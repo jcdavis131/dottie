@@ -66,6 +66,12 @@
   table.fleet td { padding: 3px 4px; border-bottom: 1px solid #0e1524; }
   table.fleet td.cpu { width: 40%; }
   .cpubar { height: 10px; background: #0e1524; border: 1px solid var(--line); position: relative; }
+  table.fleet tr { cursor: pointer; }
+  table.fleet tr.sel td { background: #241a12; }
+  .fleetact { display: flex; gap: 8px; align-items: center; margin: 8px 0 2px; }
+  .fleetact span { color: var(--amber); font-weight: 700; }
+  .fleetact button { border: 1px solid var(--cyan); background: var(--bg); color: var(--cyan);
+                     padding: 6px 14px; font-family: inherit; font-weight: 700; }
   .cpubar > i { position: absolute; inset: 1px auto 1px 1px; background: var(--green); }
   .cpubar.hot > i { background: var(--amber); }
   .alert { border-left: 3px solid var(--red); background: #170a10; padding: 6px 8px; margin: 6px 0; }
