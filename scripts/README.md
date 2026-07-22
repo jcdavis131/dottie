@@ -16,6 +16,8 @@ So: this file is the source. Check it first.
 | `restart_research.ps1` | Restarts the research daemon and **proves it booted** by waiting for the `boot` line in `run.log`. Refuses on low memory or orphaned processes. Measures the Ollama model's real load cost rather than assuming it. | training is off |
 | `prepare_fleet_recovery.ps1` | Prep + GO/NO-GO for bringing the Docker fleet back. **Step 1 disables the scheduled task by design** — know that before running it. | fleet is down |
 | `tune_docker_desktop.ps1` | Docker Desktop resource configuration for this box. | after a WSL/Docker reinstall |
+| `dev-env-setup.sh` | Idempotent uv + Python 3.11 + workspace sync + `scout`/`pgraphify` tools + shell env (`DOTTIE_ROOT`, `AVA_FACTORY_ROOT`). Used by `.cursor/environment.json`. | fresh Linux / Cursor Cloud / new laptop |
+| `dev-env-verify.sh` | Post-setup gate: uv/python3.11/ruff/scout + `make forge`/`doctor` + skills/harness pytest. | after `dev-env-setup.sh` or CI smoke |
 | `check_todos_timestamps.py` | Fails if any clock time claimed in a TODOS `5.3.R<N>` entry is in the future relative to HEAD. **Ops discipline 9.5: run it on any tick that writes TODOS.** | before committing TODOS |
 
 ## Research loop — `apps/dottie/scripts/`

@@ -19,6 +19,7 @@ __pycache__/
 .idea/
 *.swp
 .cursor/
+!.cursor/environment.json
 
 # --- ML Artifacts (never commit binaries) ---
 *.pt

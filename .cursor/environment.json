@@ -1,0 +1,14 @@
+{
+  "name": "dottie + scout-cli",
+  "install": "bash scripts/dev-env-setup.sh",
+  "repositoryDependencies": [
+    "github.com/jcdavis131/scout-cli"
+  ],
+  "terminals": [
+    {
+      "name": "dottie-workspace",
+      "command": "source ~/.bashrc 2>/dev/null; cd \"${DOTTIE_ROOT:-.}\" && uv sync --all-groups --frozen || uv sync --all-groups; printf '\\n[ready] DOTTIE_ROOT=%s\\n' \"${DOTTIE_ROOT:-$(pwd)}\"",
+      "description": "Ensure uv workspace is synced and shell env is loaded for dottie development."
+    }
+  ]
+}

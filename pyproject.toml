@@ -13,7 +13,7 @@ members = [
 exclude = ["apps/scout-rtx", "apps/ava-factory"]
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "ruff>=0.8,<0.9", "pre-commit>=3.7"]
 
 [tool.ruff]
 target-version = "py311"
