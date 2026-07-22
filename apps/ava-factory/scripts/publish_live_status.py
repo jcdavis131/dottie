@@ -52,13 +52,25 @@ def compose() -> dict:
         research = json.loads(research_path.read_text(encoding="utf-8"))
     except Exception as e:
         research = {"unreachable": f"{type(e).__name__}: {e}"}
+    # The rest of the :8000 hub, snapshotted for the public twin (operator
+    # 2026-07-22: "bring all of localhost:8000 live to bluehenre.com"). Each
+    # panel is the endpoint's real JSON or an honest {"unreachable": ...}.
+    # ~12KB combined — negligible next to the pipeline block.
+    hub = {
+        "network": _get_json("http://localhost:8000/network/status"),
+        "ecosystem": _get_json("http://localhost:8000/ecosystem/status"),
+        "agent_eval": _get_json("http://localhost:8000/agent_eval/scoreboard"),
+        "eval_report": _get_json("http://localhost:8000/jspace/eval_report"),
+        "eval_catalog": _get_json("http://localhost:8000/jspace/eval_catalog"),
+    }
     snapshot = {
         **existing,
-        "schema": "dottie_live_status/v2",
+        "schema": "dottie_live_status/v2",  # additive: v2 consumers unaffected by "hub"
         "published_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "source": "publish_live_status.py on the 4080 box (gist; repo telemetry stays gitignored)",
         "pipeline": pipeline,
         "research": research,
+        "hub": hub,
     }
     return snapshot
 
