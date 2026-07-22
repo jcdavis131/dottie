@@ -7,12 +7,19 @@
 ## 📌 Session continuation — 2026-07-22 ~11:35 CDT (supersedes the 00:09 block)
 
 **The product PIVOTED twice today on operator directives — current truth:**
-**bluehenre is a mobile org COMMAND CONSOLE (no 3D world; deleted).** Cozy
-amber-terminal page at https://bluehenre-campus.vercel.app: RUN (dashboard),
-ALERTS//UNBLOCK (real events), DOTTIE chat, FLEET (docker), HUB, SITES.
-`apps/bluehenre` = index.html + js/console.mjs + js/twin.mjs (parsers, 41
-bare-node checks) + server.mjs + api/{twin-status,fleet,npc-chat}.mjs.
-SPEC.md/README.md rewritten console-only. HEAD `177a41b`+, pushed, deployed.
+**bluehenre is the org's COMMAND CONSOLE (no 3D world; deleted), on TWO
+surfaces:** (1) cozy amber terminal at https://bluehenre-campus.vercel.app
+(quick mobile: RUN/ALERTS/DOTTIE/FLEET/HUB/SITES; installable PWA); (2) the
+comprehensive **Blue Hen RE org console at https://www.bhenre.com/** —
+16 cards (curriculum phases, data flow, manifest, checkpoints, compute,
+routing watch, demand, etc.) in that site's own aesthetic, via `parseOrg`
+(`status.org`). ⚠ **www.bhenre.com is a DEPLOYMENT ALIAS** (domain still on
+the `frontend` project): after every `vercel deploy --prod`, run
+`vercel alias set <new-deployment-url> www.bhenre.com` or bhenre goes stale.
+Apex bhenre.com = old storefront, untouched. `apps/bluehenre` = index.html
+(terminal) + org.html + js/{console,org,twin}.mjs (47 bare-node checks) +
+server.mjs + api/{twin-status,fleet,npc-chat}.mjs. Org mission encoded in
+SPEC/README: SOTA models faster → insights → revenue.
 
 ### Live state
 - **Trainer**: tool branch extended to the FULL curriculum (mini.yaml tokens
