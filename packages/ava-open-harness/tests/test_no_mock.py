@@ -56,6 +56,42 @@ def _run_eval(name, seed):
     return fn(MockModel(seed=seed), MockTokenizer(), "cpu")
 
 
+# Seeds used for the per-field variance sweep. Fixed → the test is deterministic
+# (MockModel seeding is deterministic), so this never flakes.
+VARIANCE_SEEDS = (1, 2, 3)
+
+# Numeric-leaf field NAMES that are legitimately seed-invariant: structural
+# constants and fixed operating points, NOT measurements. Every OTHER float leaf
+# of a measured dict MUST vary across seeds. Keep this list tiny and auditable —
+# adding a name here is asserting "this number is a fixed design constant, not a
+# measurement", so a reviewer can check that claim.
+STATIC_FLOAT_FIELDS = {
+    "threshold_95",  # safety_blackmail: fixed 95th-percentile operating threshold
+}
+
+
+def _float_leaves(key, obj, out):
+    """Collect a measured value's float leaves as {field_name: [values, ...]}.
+
+    Recurses dicts and lists, keying each leaf by its terminal field name (so a
+    nested details[i].logP_gain is keyed "logP_gain"). Only real-valued floats
+    are collected — the exact shape every fabricated measurement in this repo
+    has taken. Bools (low-cardinality gate flags) and ints (structural
+    counts/indices/config) are skipped: requiring THOSE to vary would be both
+    flaky and wrong (e.g. hl=320 must NOT change with the seed).
+    """
+    if isinstance(obj, bool):  # bool is an int subclass — check before int/float
+        return
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            _float_leaves(k, v, out)
+    elif isinstance(obj, (list, tuple)):
+        for v in obj:
+            _float_leaves(key, v, out)
+    elif isinstance(obj, float):
+        out.setdefault(key, []).append(obj)
+
+
 class TestDynamicVariation:
     @pytest.mark.parametrize("name", JSPACE)
     def test_measured_differs_across_seeds(self, name):
@@ -65,6 +101,35 @@ class TestDynamicVariation:
         assert m1 != m2, (
             f"{name} measured did not vary with seed → looks static/fabricated"
         )
+
+    @pytest.mark.parametrize("name", JSPACE)
+    def test_every_float_leaf_varies_per_field(self, name):
+        # Per-field variance — closes the whole-dict blind spot. The check above
+        # only asserts m1 != m2, which is satisfied as soon as ANY one field
+        # moves; a single fabricated static measurement (e.g. deliberate_cos
+        # hardcoded to 0.77 — a value OUTSIDE the FORBIDDEN grep list, so
+        # TestReportGrep can't catch it either) hides behind its varying
+        # siblings. Here every non-allowlisted float leaf must take >=2 distinct
+        # values across the seed sweep; a hardcoded constant collapses to exactly
+        # one and is caught, wherever in the measured tree it lives.
+        per_field: dict = {}
+        for seed in VARIANCE_SEEDS:
+            measured = _run_eval(name, seed).get("measured") or {}
+            leaves: dict = {}
+            _float_leaves(None, measured, leaves)
+            for field, vals in leaves.items():
+                per_field.setdefault(field, []).extend(vals)
+        assert per_field, f"{name} produced no float leaves to check"
+        for field, vals in per_field.items():
+            if field in STATIC_FLOAT_FIELDS:
+                continue
+            distinct = {round(v, 9) for v in vals}
+            assert len(distinct) >= 2, (
+                f"{name}.{field} is a constant float {distinct} across seeds "
+                f"{VARIANCE_SEEDS} → fabricated/hardcoded, not measured "
+                f"(add to STATIC_FLOAT_FIELDS only if it is truly a fixed "
+                f"design constant, not a measurement)"
+            )
 
 
 class TestReportGrep:
