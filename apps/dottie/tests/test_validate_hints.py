@@ -6,7 +6,8 @@ fragment) from the ledger's failed_validation population as of 2026-07-22 —
 the hints must fire on what actually kills candidates, not on invented text.
 """
 
-from dottie.research.validate import ValidationResult, diagnose_failure
+from dottie.research.validate import (ValidationResult, check_self_attributes,
+                                      diagnose_failure)
 
 # real ledger fragments -> the hint class that must fire
 REAL_CASES = [
@@ -63,3 +64,56 @@ def test_as_feedback_unchanged_when_no_hint():
     fb = r.as_feedback()
     assert "REPAIR HINT:" not in fb
     assert fb.startswith("Validation failed at level 'syntax'")
+
+
+# ---- check_self_attributes: advisory only, silent when unsure ---------------
+
+UNASSIGNED = """
+import torch.nn as nn
+class Block(nn.Module):
+    def __init__(self, d_model):
+        super().__init__()
+        self.proj = nn.Linear(d_model, d_model)
+    def forward(self, x):
+        return self.proj(x) * self.hidden   # self.hidden never assigned
+"""
+
+CLEAN = """
+import torch.nn as nn
+class Block(nn.Module):
+    def __init__(self, d_model):
+        super().__init__()
+        self.proj = nn.Linear(d_model, d_model)
+        self.scale = 0.5
+    def forward(self, x):
+        if self.training:                    # nn.Module builtin — not a warning
+            x = self.helper(x)               # method — not a warning
+        return self.proj(x) * self.scale
+    def helper(self, x):
+        return x
+"""
+
+DYNAMIC = """
+class Block:
+    def __init__(self):
+        setattr(self, "gate", 1)
+    def forward(self, x):
+        return x * self.gate
+"""
+
+
+def test_unassigned_self_attribute_is_warned_with_name():
+    ws = check_self_attributes(UNASSIGNED)
+    assert len(ws) == 1 and "self.hidden" in ws[0] and "Block" in ws[0]
+
+
+def test_clean_class_produces_no_warnings():
+    assert check_self_attributes(CLEAN) == []
+
+
+def test_setattr_class_stays_silent_not_wrong():
+    assert check_self_attributes(DYNAMIC) == []
+
+
+def test_broken_syntax_stays_silent():
+    assert check_self_attributes("def broken(:") == []

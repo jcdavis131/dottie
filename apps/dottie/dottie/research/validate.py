@@ -123,6 +123,54 @@ _HINTS: tuple = (
 )
 
 
+def check_self_attributes(code: str) -> List[str]:
+    """Static warnings: ``self.<name>`` read in a method but never assigned in
+    the class and not a method/class attribute. Advisory ONLY — dynamic
+    assignment patterns exist, so this must never gate; it annotates the
+    correction feedback so the model fixes the missing assignment in the same
+    pass instead of discovering it via AttributeError next attempt."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return []
+    warnings: List[str] = []
+    # attributes nn.Module provides that generated code legitimately reads
+    module_builtins = {"training"}
+    for cls in (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)):
+        assigned: set = set()
+        methods: set = set()
+        reads: Dict[str, str] = {}
+        for item in cls.body:
+            if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                methods.add(item.name)
+            elif isinstance(item, ast.Assign):
+                for t in item.targets:
+                    if isinstance(t, ast.Name):
+                        assigned.add(t.id)
+            elif isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name):
+                assigned.add(item.target.id)
+        for node in ast.walk(cls):
+            if (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
+                    and node.value.id == "self"):
+                if isinstance(node.ctx, ast.Store):  # covers Assign + AugAssign targets
+                    assigned.add(node.attr)
+                elif isinstance(node.ctx, ast.Load):
+                    reads.setdefault(node.attr, cls.name)
+        # setattr(self, ...) makes static analysis unreliable — detect and stay silent:
+        for node in ast.walk(cls):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                    and node.func.id == "setattr"):
+                assigned.add("*dynamic*")
+        if "*dynamic*" in assigned:
+            continue  # setattr present — analysis unreliable for this class, stay silent
+        for attr, cname in reads.items():
+            if attr not in assigned and attr not in methods and attr not in module_builtins:
+                warnings.append(
+                    f"{cname}: reads `self.{attr}` but never assigns it — "
+                    f"set `self.{attr}` in __init__ before use")
+    return warnings
+
+
 def diagnose_failure(level: str, detail: str) -> str:
     """Targeted repair hint for a known failure class, or '' when unknown."""
     for pattern, hint in _HINTS:
@@ -698,6 +746,13 @@ def validate_with_correction(code: str, corrector: Corrector, *, max_retries: in
     while not result.ok and attempts < max_retries:
         attempts += 1
         feedback = result.as_feedback()
+        # Advisory static warnings ride along with EVERY failure so the model
+        # fixes latent AttributeErrors in the same pass instead of finding
+        # them one dry-run death at a time (never a gate — see the docstring).
+        attr_warnings = check_self_attributes(current)
+        if attr_warnings:
+            feedback += ("\n\nSTATIC WARNINGS (fix these in the same rewrite):\n- "
+                         + "\n- ".join(attr_warnings[:6]))
         # Near-greedy sampling can regenerate the same broken fix forever (observed live,
         # f9256ee7c029: identical wrong output shape four times). When a correction lands on
         # EXACTLY the same failure, say so — a materially different prompt breaks the loop.
