@@ -4,6 +4,54 @@
 
 ---
 
+## 📌 Session continuation — 2026-07-22 00:09 CDT (continues the 07-21 block below)
+
+**Supersedes the 07-21 block's "Decisions still YOURS": BOTH were decided and executed.**
+Local `main` HEAD `ec284b3`, tree clean, 12 session commits (`a7ae0d4`…`ec284b3`), NOTHING pushed.
+
+### Done since the 07-21 block
+- **Decision A EXECUTED — trained on the new curriculum** (operator picked "extend the mini
+  tool-branch"). `659a9da`: mini.yaml tool tokens 300M→390M; resumed step 1144 → done 1487
+  (Exited 0, `tool_final.pt`), lm 0.2266→0.1508 (−33%), zero restarts. The step-1250 grad
+  spike (6.15) was the new scout_cli/zk_math shards entering — absorbed in one step.
+- **Real eval harness now WORKS on this box** (took 5 attempts; procedure + footguns in the
+  `dottie-evaluating-checkpoints` memory): frozen 32k tokenizer recovered from the `ava_state`
+  volume → `data/mini/tokenizer/ava_bpe_32k.json`; `a811f33` adds `--target-bytes` + guards the
+  frozen tokenizer from `--force`. Report-of-record committed (`195a7e0`):
+  **tool_final weighted ppl 275.95** (p0 114/p1 162/p2 630/p3 343; random floor ~36k; probes
+  0/200 = the documented honest baseline). **A/B on identical bins: pre-extension step_1140 was
+  7,813.80 weighted → −96.5%** (attribution = new data + clean arc + full WSD decay, inseparable
+  without a control run).
+- **Decision B EXECUTED — items 10+11 gates ACTIVE** (operator: "activate the gates"). `35351a7`:
+  capacity gate (>10% block deletion cannot promote) + paired-seed significance
+  (`Baseline.per_seed`, paired SE, conservative fallback); live 5.73733 baseline backfilled with
+  per_seed [5.74331, 5.56278, 5.90589]; **daemon boot line verified `git_sha: 35351a7`**, running
+  with `--seeds 0,1,2` default; memory guard refusing LLM stages gracefully until RAM frees.
+  Restart gotchas (daemon = parent→child pair; script verifier) in the research-live-state memory;
+  `e65e913` fixes the verifier (shared read + BOM detection, proven against the live writer).
+- **BLUEHENRE game built end-to-end + deployed** (operator-forked subtasks; `26c287d`,`ec284b3`):
+  **live at https://bluehenre-campus.vercel.app** — P1 campus slice → P2 NPC ecosystem →
+  P3 quest pillars → P4 run-extraction into factory-shaped curriculum shards; 61/61 contract
+  checks; offline-honest NPC chat. The doc's gameplay→GitHub auto-PR pipeline deliberately NOT
+  built (operator sign-off required, per its SPEC).
+
+### Operator options open (none blocking)
+push to origin (`git fetch` first — 290+ ahead) · p4/p5 heldout bins (need >4096 contiguous tok)
+· control extension to isolate the curriculum's share of the −96.5% · delete the dead `bluehenre`
+Vercel project · set `DOTTIE_CHAT_URL` in Vercel env for hosted NPCs · stop collectors 3/4
+(classifier-blocked for me).
+
+### Gate commands
+```bash
+git log --oneline -1                                   # ec284b3
+# daemon on gated code? (shared read — do NOT trust restart script [3] before e65e913)
+powershell -c "$fs=[IO.FileStream]::new('apps/dottie/data/research/logs/run.log','Open','Read','ReadWrite');$sr=[IO.StreamReader]::new($fs);($sr.ReadToEnd() -split \"`n\") -match '\"boot\"' | select -Last 1"   # git_sha 35351a7
+cd apps/dottie && AVA_FACTORY_ROOT='C:\Users\jcdav\workspace\ava-agi-factory-v6-4' ./.venv/Scripts/python -m pytest -q   # 211 passed
+curl -s https://bluehenre-campus.vercel.app | head -c 200                                # live
+```
+
+---
+
 ## 📌 Session continuation — 2026-07-21 19:35 CDT (autonomous /loop + /auto-mode run)
 
 **Supersedes the 07-20 block below: its item 00 (git reconcile) and item 9 (curriculum deploy)
