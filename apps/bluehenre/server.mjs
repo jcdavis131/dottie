@@ -159,6 +159,17 @@ const server = createServer(async (req, res) => {
           if (tail) Object.assign(status, tail, { source: "local" });
         } catch { /* metrics not exported to host — eval alone may still light it */ }
       }
+      // Rung 5 (shard-feedback counter): how many player-validated curriculum
+      // shards sit in the LOCAL bank awaiting the operator. Real line count of
+      // workflows.jsonl; an absent file is an honest zero. Only the local
+      // server attaches this — the hosted build cannot see the bank and says
+      // nothing rather than claiming 0.
+      try {
+        status.shardsBanked = (await readFile(SHARD_FILE, "utf-8"))
+          .split("\n").filter((l) => l.trim()).length;
+      } catch {
+        status.shardsBanked = 0;
+      }
       // hub panels + research ride the published live-status FILE regardless of
       // which primary source won (the /pipeline/status endpoint doesn't carry
       // them). Hourly publisher cadence; a stale file (>2h) attaches nothing.

@@ -56,7 +56,10 @@ supersedes the doc.
    full-runway pauses excluded) → `pipeline.raiseLiveBlocker` stalls the org
    with a `REAL:` blocker. One block per distinct event per session.
 4. ✅ Dashboard-on-the-board + dept hub panels (all of :8000 in-world).
-5. Shard feedback counter: board shows operator-fed shard count.
+5. ✅ Shard feedback counter (banked half): the board's twin line shows the
+   LOCAL bank's real count (`workflows.jsonl` lines; absent file = honest 0;
+   hosted build claims nothing). The fed-to-factory half needs a factory-side
+   source marker — future.
 6. More Earth-twin nodes (field offices for remote subsystems; the
    dumbmodels.com vector games as visitable sites).
 

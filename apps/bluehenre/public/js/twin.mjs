@@ -240,5 +240,8 @@ export function twinLine(status) {
   if (Number.isFinite(status.step)) bits.push(`step ${status.step}`);
   if (Number.isFinite(status.lm)) bits.push(`loss ${status.lm.toFixed(4)}`);
   if (Number.isFinite(status.weightedPpl)) bits.push(`heldout ppl ${status.weightedPpl.toFixed(1)}`);
+  // rung 5: the local shard bank (player-validated, operator-fed) — only the
+  // local server attaches this, so the hosted board never claims a count
+  if (Number.isFinite(status.shardsBanked)) bits.push(`player shards banked ${status.shardsBanked}`);
   return `REAL TWIN (${status.model ?? "ava-mini"}): ${bits.length ? bits.join(" · ") : "no numbers yet"} [local]`;
 }

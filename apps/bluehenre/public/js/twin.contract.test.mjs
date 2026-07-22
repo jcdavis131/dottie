@@ -40,6 +40,10 @@ const line = twinLine({ source: "local", model: "ava-mini/tool", step: 1487, lm:
 check("local renders step+loss+ppl", line.includes("1487") && line.includes("0.1508") && line.includes("276.0") === false && line.includes("275.9"));
 check("hosted status with numbers but wrong source stays offline",
   twinLine({ source: "proxy?", step: 999 }).includes("offline"));
+check("shard bank count renders when attached (rung 5)",
+  twinLine({ source: "local", step: 1, shardsBanked: 1 }).includes("player shards banked 1"));
+check("no shard claim when the bank is unseen (hosted)",
+  !twinLine({ source: "local", step: 1 }).includes("shards"));
 
 // ---- live pipeline feed (rung 3 + dashboard) --------------------------------
 // both shapes: the bare /pipeline/status object and the gist's {pipeline:{...}}
