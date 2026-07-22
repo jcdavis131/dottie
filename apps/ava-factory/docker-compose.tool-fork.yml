@@ -30,6 +30,11 @@ services:
       # transitions (dottie/train.py, bind-mounted). Keep mb pinned at 2 so
       # a future MAX_MICRO_BATCH default change can't silently raise it here.
       AVA_MAX_MICRO_BATCH: "2"
+      # Emergency ckpt rotation (2026-07-22, disk critical at 5.4 GB): rotate
+      # ONLY step files >= 1905 (all history preserved for the operator's own
+      # prune decision), keep last 3. Inert without AVA_CKPT_ROTATE_MIN.
+      AVA_CKPT_ROTATE_MIN: "1905"
+      AVA_CKPT_KEEP: "3"
     volumes:
       - ava_packed:/packed
       - ava_ckpt:/ckpt

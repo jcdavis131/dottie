@@ -664,6 +664,17 @@ def main(argv=None) -> int:
                 )
                 _point_latest_at(ckpt_dir, p)
                 log("checkpoint", path=str(p), step=step)
+                # Keep-last-N rotation, armed ONLY when AVA_CKPT_ROTATE_MIN is
+                # set (the deploy floor — files below it are never touched).
+                # Emergency-armed 2026-07-22 at disk-critical; see train.py
+                # _rotate_step_ckpts docstring for the 211 GB story.
+                _rot_min = int(os.environ.get("AVA_CKPT_ROTATE_MIN", "0"))
+                if _rot_min > 0:
+                    _n = _rotate_step_ckpts(
+                        ckpt_dir, keep=int(os.environ.get("AVA_CKPT_KEEP", "3")),
+                        min_step=_rot_min)
+                    if _n:
+                        log("ckpt_rotated", removed=_n, keep_floor=_rot_min, step=step)
                 heartbeat(step, phase)
                 # Anti-fragmentation at the natural pause: the 2GB state-dict
                 # save + hours of varied-shape allocations intermittently OOM'd
