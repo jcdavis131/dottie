@@ -1,0 +1,14 @@
+name: reach
+version: 0.1.0
+description: Point Scout at any target; classify it and self-unblock when connections fail
+capabilities:
+  network:
+    enabled: true
+    # Default-deny still applies at call time via the user allowlist
+    # (scout reach allow <host>). This manifest only declares the axis;
+    # the user policy file is the actual gate.
+    domains: ["localhost", "127.0.0.1"]
+  filesystem:
+    write: false
+  secrets:
+    allow: []

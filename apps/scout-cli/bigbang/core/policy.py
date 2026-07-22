@@ -99,6 +99,45 @@ def check_user_url(url: str) -> tuple[bool, str]:
     )
 
 
+def add_allowed_domain(host: str) -> tuple[bool, str]:
+    """Persist a host into the user network allowlist (self-unblock, network axis).
+
+    Returns (changed, message). Idempotent — re-adding an already-allowed host
+    is a no-op success. This is how the LLM unblocks itself on a policy-denied
+    reach: an explicit, auditable edit to the user's own allowlist file, never a
+    silent fail-open or an in-memory override that evaporates next call.
+
+    Only a bare host is accepted (parsed out of a URL if one is passed). Wildcard
+    or empty entries are refused so the allowlist can't be widened to match-all.
+    """
+    host = _host_of(str(host).strip())
+    if not host or host in ("*", "0.0.0.0") or "*" in host:
+        return False, f"refusing to allowlist {host!r} — must be a concrete host"
+    policy = load_user_policy()
+    net = policy.get("network")
+    if not isinstance(net, dict):
+        net = {}
+        policy["network"] = net
+    domains = net.get("allowed_domains")
+    if not isinstance(domains, list):
+        domains = []
+        net["allowed_domains"] = domains
+    if host in domains:
+        return False, f"{host} already allowed"
+    domains.append(host)
+    fp = user_policy_file()
+    try:
+        fp.parent.mkdir(parents=True, exist_ok=True)
+        fp.write_text(
+            "# scout-cli user policy — default-deny.\n"
+            "# Add domains under network.allowed_domains to allow outbound calls.\n"
+            + yaml.safe_dump(policy, sort_keys=False)
+        )
+    except OSError as e:
+        return False, f"could not write {fp}: {e}"
+    return True, f"{host} added to network allowlist ({fp})"
+
+
 def enforce_user_url_or_raise(url: str, context: str = ""):
     ok, reason = check_user_url(url)
     if not ok:
