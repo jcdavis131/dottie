@@ -130,6 +130,21 @@ check("hub evals panel counts verdicts from the real report",
 check("hub research panel lifts baseline + counts + ts",
   hb?.research?.value === 5.73733 && hb.research.provenance === "calibrated" &&
   hb.research.sota === 3 && hb.research.ts === 1784598101);
+// batch sample: real decoded training text passes through verbatim (clipped);
+// unreachable probes and text-less blocks parse to null — never fabricated
+const sampleHub = parseHub({ hub: { batch_sample: {
+  shard: "synth_gaia2-3082f1f3737325aa", source: "synth_gaia2", phase: 4,
+  state: "CLAIMED_TRAIN", docs_in_shard: 36675, doc_id: "synth_gaia2:910",
+  task_type: "temporal", doc_tokens: 2153, shown_tokens: 160,
+  text: "Universe: Startup Ops. Goal: set up a handoff call with Alex.",
+} } });
+check("batch sample parses the claimed shard's real doc",
+  sampleHub?.sample?.source === "synth_gaia2" && sampleHub.sample.phase === 4 &&
+  sampleHub.sample.taskType === "temporal" && sampleHub.sample.docTokens === 2153 &&
+  sampleHub.sample.text.startsWith("Universe: Startup Ops."));
+check("unreachable or text-less batch sample -> null",
+  parseHub({ hub: { batch_sample: { unreachable: "x" } } })?.sample == null &&
+  parseHub({ hub: { batch_sample: { shard: "s" } } })?.sample == null);
 const siteHub = parseHub({ hub: { sites: [
   { name: "hub", url: "https://dumbmodel.com", http: 200, ms: 120, up: true },
   { name: "pitch", url: "https://pitch.jcamd.com", http: 503, ms: 900, up: false },

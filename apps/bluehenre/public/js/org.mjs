@@ -255,6 +255,25 @@ function renderCompute() {
   }
 }
 
+function renderBatch(h) {
+  const el = $("batch");
+  el.replaceChildren();
+  const s = h?.sample;
+  if (twin?.source !== "local" || !s) return offline(el);
+  el.append(
+    line("shard (claimed by trainer)", `${s.source} · p${s.phase ?? "?"} · ${s.state}`),
+    line("document", `${s.taskType} · ${s.docTokens ?? "?"} tokens (showing ${s.shownTokens ?? "?"})`),
+  );
+  const t = document.createElement("div");
+  t.className = "sampletext";
+  t.textContent = s.text; // verbatim feed text — textContent only
+  el.append(t);
+  const n = document.createElement("p");
+  n.className = "note";
+  n.textContent = `decoded from ${s.shard} (${s.docsInShard ?? "?"} docs in shard); a fresh example each publish`;
+  el.append(n);
+}
+
 function renderNetwork(h) {
   const el = $("network");
   el.replaceChildren();
@@ -378,7 +397,7 @@ async function refreshTwin() {
     : "offline";
   $("prov").textContent = `provenance: ${twinLine(twin)}`;
   const h = twin.source === "local" ? parseHub(twin) : null;
-  renderRun(); renderAlerts(); renderCurriculum(); renderFlow(); renderManifest();
+  renderRun(); renderBatch(h); renderAlerts(); renderCurriculum(); renderFlow(); renderManifest();
   renderCkpts(); renderCompute(); renderNetwork(h); renderWatch(); renderResearch(h);
   renderEvals(h); renderEco(h); renderSites(h); renderDemand();
 }

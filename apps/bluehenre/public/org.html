@@ -85,6 +85,11 @@
           border: 1px solid var(--bh-border); border-radius: 10px; font-size: 11px;
           color: var(--bh-secondary); background: var(--bh-raised); }
   .note { color: var(--bh-muted); font-size: 12px; font-style: italic; }
+  .sampletext { background: var(--bh-canvas); border: 1px solid var(--bh-border);
+                border-radius: 4px; padding: 10px; margin-top: 6px; font-size: 12.5px;
+                line-height: 1.5; white-space: pre-wrap; word-break: break-word;
+                max-height: 220px; overflow-y: auto; font-family: var(--bh-font-mono);
+                color: var(--bh-secondary); }
   canvas#spark { width: 100%; height: 70px; display: block; background: var(--bh-canvas);
                  border: 1px solid var(--bh-border); border-radius: 3px; margin-top: 6px; }
   .alert { border-left: 3px solid var(--bh-rust); background: var(--bh-raised);
@@ -116,6 +121,7 @@
 
   <div id="grid">
     <section class="card wide" style="--acc: var(--bh-hen-blue)"><h2>Training Run</h2><div class="body" id="run">…</div></section>
+    <section class="card wide" style="--acc: var(--bh-copper)"><h2>Training Data — Latest Batch</h2><div class="body" id="batch">…</div></section>
     <section class="card" style="--acc: var(--bh-rust)"><h2>Alerts &amp; Unblock</h2><div class="body" id="alerts">…</div></section>
     <section class="card" style="--acc: var(--bh-hen-blue)"><h2>Dottie — Assistant</h2><div class="body">
       <form class="ask" id="askform" autocomplete="off"><input id="askq" placeholder="ask · guide · unblock…" /><button>Send</button></form>

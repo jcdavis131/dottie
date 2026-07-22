@@ -71,6 +71,52 @@ def _probe_sites() -> list:
     return out
 
 
+# Decode a REAL example from the shard the trainer has claimed right now
+# (manifest state CLAIMED_TRAIN; falls back to newest CONSUMED). Runs inside
+# the trainer container where the tokenizer + packed volumes live. The doc
+# index rotates once per publish window so the console shows fresh examples.
+_SAMPLE_SCRIPT = r"""
+import json, sqlite3, time
+import numpy as np
+from dottie.tokenizer import DottieTokenizer
+db = sqlite3.connect("/state/manifest.db"); db.row_factory = sqlite3.Row
+row = db.execute(
+    "select * from shards where state='CLAIMED_TRAIN' order by updated_at desc limit 1"
+).fetchone() or db.execute(
+    "select * from shards where state='CONSUMED' order by updated_at desc limit 1"
+).fetchone()
+if not row:
+    print(json.dumps({"unreachable": "no CLAIMED_TRAIN/CONSUMED shard in manifest"})); raise SystemExit
+idx = json.load(open(str(row["path"]).replace(".bin", ".idx.json")))
+docs = idx["docs"]
+d = docs[int(time.time() // 600) % len(docs)]
+arr = np.memmap(row["path"], dtype=np.uint16, mode="r")
+ids = arr[d["start"]: min(d["end"], d["start"] + 160)].tolist()
+text = DottieTokenizer.load().decode(ids)
+print(json.dumps({
+    "shard": row["id"], "source": row["source"], "phase": row["phase"],
+    "state": row["state"], "docs_in_shard": len(docs),
+    "doc_id": d.get("doc_id"), "task_type": d.get("task_type"),
+    "doc_tokens": d["end"] - d["start"], "shown_tokens": len(ids),
+    "text": text[:700],
+}))
+"""
+
+
+def _batch_sample() -> dict:
+    try:
+        p = subprocess.run(
+            ["docker", "exec", "dottie-factory-trainer-1", "python", "-c", _SAMPLE_SCRIPT],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=45,
+        )
+        if p.returncode != 0:
+            return {"unreachable": (p.stderr or "sample exec failed")[:200]}
+        return json.loads(p.stdout.strip().splitlines()[-1])
+    except Exception as e:  # noqa: BLE001 - publisher must never crash on a probe
+        return {"unreachable": f"{type(e).__name__}: {e}"}
+
+
 def _fleet_snapshot() -> dict:
     """Real docker-stats snapshot for the game's fleet NPCs (2026-07-22).
     Raw docker JSONL rows, parsed client-side; unreachable is honest."""
@@ -127,6 +173,7 @@ def compose() -> dict:
         "eval_catalog": _get_json("http://localhost:8000/jspace/eval_catalog"),
         "fleet": _fleet_snapshot(),
         "sites": _probe_sites(),
+        "batch_sample": _batch_sample(),
     }
     snapshot = {
         **existing,
