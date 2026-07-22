@@ -94,3 +94,6 @@ your_files/
 # --- Dolma / Data tooling ---
 .dolma/
 .jupyter/
+
+# Claude Code local scratch (workflow worktrees, agent state)
+.claude/
