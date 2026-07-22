@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import time
@@ -13,6 +14,13 @@ CLI = [sys.executable, "-m", "bigbang.cli"]
 
 
 def _run(args, *, input_text=None, timeout=8, env=None):
+    # --help is rendered by Typer/Rich. Under a color-forcing CI terminal (FORCE_COLOR,
+    # which GitHub Actions sets) Rich wraps help into an ANSI panel, splitting literal
+    # example substrings across lines so content assertions fail. Pin a plain, wide,
+    # color-free render so these tests assert on content, not terminal layout.
+    run_env = {**os.environ, "TERM": "dumb", "NO_COLOR": "1", "COLUMNS": "200"}
+    if env:
+        run_env.update(env)
     return subprocess.run(
         CLI + args,
         input=input_text,
@@ -22,7 +30,7 @@ def _run(args, *, input_text=None, timeout=8, env=None):
         errors="replace",
         timeout=timeout,
         cwd=str(ROOT),
-        env=env,
+        env=run_env,
     )
 
 
