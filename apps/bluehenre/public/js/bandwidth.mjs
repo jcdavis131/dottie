@@ -1,4 +1,4 @@
-// Bandwidth — the per-run action budget (LIMBIC SPEC "Core mechanics").
+// Bandwidth — the per-run action budget (BLUEHENRE SPEC "Core mechanics").
 // Pure logic: no DOM, no clock — the caller supplies ticks. Testable in bare node.
 
 export const ACTION_COSTS = {

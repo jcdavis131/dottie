@@ -1,15 +1,16 @@
-// Campus blockout — 7 departments, terminals, wandering NPCs (LIMBIC SPEC "World").
+// Campus blockout — the 8 doc locations, terminals, wandering NPCs (BLUEHENRE SPEC "World").
 // All three.js scene construction lives here; main.mjs owns input + game state.
 import * as THREE from "three";
 
 export const DEPARTMENTS = [
-  { id: "archive", label: "Archive", color: 0x8e7cc3 },
-  { id: "performance", label: "Performance", color: 0xe06666 },
-  { id: "design", label: "Design", color: 0x6fa8dc },
-  { id: "hardware", label: "Hardware", color: 0xf6b26b },
-  { id: "research", label: "Research", color: 0x93c47d },
-  { id: "safety", label: "Safety", color: 0xffd966 },
-  { id: "operations", label: "Operations", color: 0x76a5af },
+  { id: "labs", label: "Developer Labs", color: 0x93c47d },
+  { id: "design", label: "Design Studio & Marketing Plazas", color: 0x6fa8dc },
+  { id: "finance", label: "Finance Towers", color: 0xe06666 },
+  { id: "archives", label: "Legal Archives", color: 0x8e7cc3 },
+  { id: "servers", label: "Subterranean Server Farms", color: 0xf6b26b },
+  { id: "hall", label: "The Great Hall & Cafeteria", color: 0xffd966 },
+  { id: "gardens", label: "Botanical Gardens", color: 0x76d7a5 },
+  { id: "proving", label: "Proving Grounds", color: 0x76a5af },
 ];
 
 const toon = (color) => new THREE.MeshToonMaterial({ color });
@@ -67,16 +68,8 @@ export function buildWorld(scene) {
   return { player, npcs, terminals, buildings };
 }
 
-/** Cheap wander: turn a little, walk forward, stay on campus. */
-export function tickNpcs(npcs, dt) {
-  for (const n of npcs) {
-    n.userData.heading += (Math.random() - 0.5) * 0.6 * dt;
-    n.position.x += Math.cos(n.userData.heading) * 1.5 * dt;
-    n.position.z += Math.sin(n.userData.heading) * 1.5 * dt;
-    const r = Math.hypot(n.position.x, n.position.z);
-    if (r > 55) n.userData.heading += Math.PI; // bounce back toward campus
-  }
-}
+// (P1's random-wander tickNpcs was removed in P2 — ecosystem.mjs circuits now
+// drive every NPC, so there is exactly ONE movement system.)
 
 export const onTerminal = (player, terminals) =>
   terminals.some((t) => player.position.distanceTo(t.position) < 2.2);

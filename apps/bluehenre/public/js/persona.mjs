@@ -1,4 +1,4 @@
-// Personas + terminal-gated hot-swap (LIMBIC SPEC "Playable personas").
+// Personas + terminal-gated hot-swap (BLUEHENRE SPEC "Playable personas").
 // Pure logic — the 3D layer only reports whether the player stands on a terminal.
 
 export const PERSONAS = {

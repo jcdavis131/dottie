@@ -1,4 +1,4 @@
-// Memory-router STUB (LIMBIC SPEC "Memory architecture").
+// Memory-router STUB (BLUEHENRE SPEC "Memory architecture").
 // Honest placeholder for the target global-router + per-NPC vector stores:
 // plain keyword overlap scoring into per-NPC memory buckets. It never claims
 // to be semantic — `kind:"keyword-stub"` is stamped on every result so a later
