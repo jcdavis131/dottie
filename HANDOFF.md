@@ -4,6 +4,63 @@
 
 ---
 
+## 📌 Session continuation — 2026-07-21 19:35 CDT (autonomous /loop + /auto-mode run)
+
+**Supersedes the 07-20 block below: its item 00 (git reconcile) and item 9 (curriculum deploy)
+are DONE.** Local `main` is the merge `eb81a43` + the 5 session commits below (`a7ae0d4`…),
+**COMMITTED but NOT pushed**. See "Committed this session" for the SHAs.
+
+### Done + verified this session
+- **Git reconcile COMPLETE** (old item 00) → merge `eb81a43` (`--ours` for logic, origin's ruff
+  formatting kept). Targeted suites green; dottie + ava-factory collect clean (206 + 542, 0 errors).
+- **Curriculum deploy LIVE** (old item 9) — done the **memory-safe** way: bind-mounted local
+  `configs/` + `dottie/datagen/` into the collectors via `docker-compose.tool-fork.yml`
+  (`collector:` override), NOT the ~530 MB image build the 07-20 block feared. 7 new sources
+  confirmed live in the running collector; collector is PAUSED (no trainer demand — see decision A).
+- **scout_cli curriculum bug fixed** — `_dumps` used `sort_keys=True` → taught alphabetical
+  envelope keys (`ok` last); real scout emits insertion order (`ok` first). Now matches real
+  `contract.py`/`output.py`. 104 datagen tests green.
+- **KoboldCpp runner support drafted** (operator's `/auto-mode` ask) — `scout ava infer
+  --backend {ollama,koboldcpp}` + `chat_with_metrics()` in scout-cli `core/llm.py` (OpenAI /v1,
+  tok/s telemetry, never fabricates on failure) + `scripts/bench_local_runner.py` (measures the
+  REAL ollama-vs-kobold delta; the article's "7×" is LM-Studio→Kobold, not Ollama) +
+  `tests/test_llm_backends.py` (7 passed). Kobold on :11434 is a zero-code drop-in for the
+  existing Ollama path.
+- **⚠ scout CLI CRASH found + fixed** — the reconcile's own `ruff check --fix` moved `import
+  typer` under `TYPE_CHECKING` in `plugins/planes/cli.py`; typer eval's annotations at runtime →
+  `NameError: typer` → the WHOLE `scout` CLI crashed at startup, failing all ~29 subprocess tests
+  (130→108). Fixed: runtime `import typer  # noqa: TC002`. scout-cli now **137 passed**. Same
+  NameError class the 07-20 block warned about, but caused BY the recommended `ruff --fix` —
+  **do NOT blindly `ruff --fix` typer/pydantic/fastapi CLI modules.**
+
+### ⚠ Decisions still YOURS (un-shipped)
+- **A. Kick off a training run on the new curriculum.** The mini tool-branch (T9.3) is complete
+  (`already_done`, step 1144); the nano `--resume` crashes on an incompatible checkpoint. So
+  "train on the curriculum" needs your pick: nano-fresh / resume-a-compatible-ckpt / extend-mini.
+  Collector stays paused until a trainer creates demand.
+- **B. Items 10 + 11 — still COUPLED, still un-shipped, AND the guard is DORMANT.** The paired-seed
+  trainer (`ca9f2f1`) is merged but the running daemon booted at `3b77263` (predates it, never
+  live-reloads), so the loop still promotes on within-run spread (the measure that falsely promoted
+  `5a7232ffea24`). Activating = `restart_research.ps1` — must be done WITH the item-10 capacity gate
+  or it re-contaminates the 5.737 baseline. Detail in the research-loop-live-state memory.
+
+### Committed this session (local `main`, NOT pushed — `git fetch` before any push)
+- `a7ae0d4` fix(datagen): scout_cli envelope keys in insertion order (ok first)
+- `3aeea2d` ops(factory): memory-safe curriculum deploy (collector bind-mount)
+- `f7e3721` feat(scout-cli): KoboldCpp backend + `scout ava infer` + bench + 7 tests
+- `feb1900` fix(scout-cli): keep typer a runtime import (planes CLI-crash fix)
+- (this doc) docs: refresh HANDOFF to 2026-07-21 state
+
+### Gate commands to verify current state
+```bash
+git rev-parse --short HEAD                                    # eb81a43 (reconcile done)
+cd apps/scout-cli && python -m pytest -q                      # 137 passed
+cd apps/ava-factory && AVA_FACTORY_ROOT=$(pwd) ../../apps/dottie/.venv/Scripts/python -m pytest tests --collect-only -q   # 542, 0 errors
+docker exec dottie-factory-collector-1 grep -c synth_zk_math /app/configs/sources.yaml    # >0 → deploy live
+```
+
+---
+
 ## 📌 Session continuation — 2026-07-20 23:50 CDT (autonomous /loop run)
 
 **All work below is committed to local `main` (HEAD `12000d3`), test-verified, and additive to
