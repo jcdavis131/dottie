@@ -1,25 +1,22 @@
-// BLUEHENRE dev server — static files + the HONEST NPC-chat proxy.
+// BLUEHENRE org console server — static console + honest data APIs.
 // Zero dependencies (node >= 18). Run: node server.mjs   (PORT, DOTTIE_CHAT_URL env)
 //
-// Provenance doctrine (same as the Dottie console webapp): an NPC reply either
-// comes from the real Dottie engine (source:"dottie") or the server says plainly
-// that no engine is reachable (source:"offline"). Nothing here fabricates a
-// model reply, and the client displays the source tag with every line.
+// Provenance doctrine: a chat reply either comes from the real Dottie engine
+// (source:"dottie") or the server says plainly that no engine is reachable
+// (source:"offline"). Telemetry renders only from source:"local" feeds.
+// Nothing here fabricates a model reply or a number.
 import { createServer } from "node:http";
-import { readFile, appendFile, mkdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { toShards } from "./public/js/extract.mjs";
 import { parseMetricsTail, safeParseJson, parseEvalSummary, parseTrainerTail,
          parseDashboard, parseLiveEvents, liveAgeS, parseFleet } from "./public/js/twin.mjs";
 
 const execFileP = promisify(execFile);
 
 const ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "public");
-const DATA_DIR = join(fileURLToPath(new URL(".", import.meta.url)), "data");
-const SHARD_FILE = join(DATA_DIR, "workflows.jsonl");
 const PORT = Number(process.env.PORT || 8321);
 const DOTTIE_CHAT_URL = process.env.DOTTIE_CHAT_URL || ""; // e.g. http://localhost:8100/app/api/chat
 // Twin telemetry sources — the REAL factory artifacts on this machine (SPEC
@@ -94,39 +91,6 @@ const server = createServer(async (req, res) => {
       }
       return send(200, MIME[".json"], JSON.stringify(await npcChat(body)));
     }
-    // P4: run-end extraction. VALIDATED runs become curriculum shards banked to a
-    // LOCAL jsonl the operator can inspect and feed to the factory by hand —
-    // nothing auto-ingests (SPEC "OUT of autonomous scope"). Discarded runs get an
-    // honest refusal, never a silent 200-that-stored-nothing.
-    if (req.method === "POST" && req.url === "/api/extract-run") {
-      const chunks = [];
-      for await (const c of req) chunks.push(c);
-      let body = null;
-      try {
-        body = JSON.parse(Buffer.concat(chunks).toString("utf-8"));
-      } catch {
-        return send(400, MIME[".json"], JSON.stringify({ stored: 0, detail: "bad JSON" }));
-      }
-      if (body?.validated !== true)
-        return send(200, MIME[".json"], JSON.stringify({
-          stored: 0,
-          detail: `discarded (${body?.reason ?? "unvalidated"}) — wiped with the session`,
-        }));
-      try {
-        const shards = toShards(body);
-        await mkdir(DATA_DIR, { recursive: true });
-        await appendFile(SHARD_FILE, shards.map((s) => JSON.stringify(s)).join("\n") + "\n");
-        return send(200, MIME[".json"], JSON.stringify({
-          stored: shards.length,
-          detail: `${shards.length} curriculum shard(s) banked to data/workflows.jsonl — ` +
-            "operator feeds these to the factory explicitly; nothing auto-ingests",
-        }));
-      } catch (e) {
-        return send(200, MIME[".json"], JSON.stringify({
-          stored: 0, detail: `extraction refused: ${e.message}`,
-        }));
-      }
-    }
     if (req.method === "GET" && (req.url || "").split("?")[0] === "/api/fleet") {
       // The REAL docker fleet (operator 2026-07-22: NPCs are the containers).
       // docker's own numbers via the CLI, cached 10s; honest offline on error.
@@ -181,17 +145,6 @@ const server = createServer(async (req, res) => {
           const tail = parseMetricsTail(await readFile(TWIN_METRICS, "utf-8"));
           if (tail) Object.assign(status, tail, { source: "local" });
         } catch { /* metrics not exported to host — eval alone may still light it */ }
-      }
-      // Rung 5 (shard-feedback counter): how many player-validated curriculum
-      // shards sit in the LOCAL bank awaiting the operator. Real line count of
-      // workflows.jsonl; an absent file is an honest zero. Only the local
-      // server attaches this — the hosted build cannot see the bank and says
-      // nothing rather than claiming 0.
-      try {
-        status.shardsBanked = (await readFile(SHARD_FILE, "utf-8"))
-          .split("\n").filter((l) => l.trim()).length;
-      } catch {
-        status.shardsBanked = 0;
       }
       // hub panels + research ride the published live-status FILE regardless of
       // which primary source won (the /pipeline/status endpoint doesn't carry

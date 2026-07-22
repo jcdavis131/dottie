@@ -5,38 +5,44 @@
 <title>BLUEHENRE — org command console</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <style>
-  /* MOBILE COMMAND CONSOLE (operator directive 2026-07-22): retro console
-     vibe, crisp and authentic. Hard pixels, indexed palette, monospace,
-     subtle CRT scanlines — but full-resolution text everywhere. */
+  /* MOBILE COMMAND CONSOLE — cozy & warm (operator 2026-07-22): amber-
+     phosphor terminal. Warm browns, cream text, golden accents, soft header
+     glow. Retro and authentic, text stays crisp full-resolution. */
   :root {
-    --bg: #05070c; --panel: #0a0e18; --bezel: #151b2b; --line: #232c44;
-    --cyan: #28e6ff; --amber: #ffb02e; --magenta: #ff3fa8; --green: #2eff6a;
-    --red: #ff2e4d; --text: #c8e6f0; --dim: #5a7284; --white: #f0f6ff;
+    --bg: #140e09; --panel: #1b1410; --bezel: #261c13; --line: #3c2d1f;
+    --cyan: #ffb45e; --amber: #ffcf8f; --magenta: #ff7a5c; --green: #b6e07d;
+    --red: #ff5d47; --text: #efdcc4; --dim: #96805f; --white: #fff3e0;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--bg); color: var(--text);
                font-family: "Courier New", ui-monospace, monospace; }
+  body::before { /* warm hearth vignette — barely-there amber wash */
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 98;
+    background: radial-gradient(120% 90% at 50% 0%, rgba(255,180,94,.05), transparent 60%);
+  }
   body::after { /* CRT scanlines — faint enough to keep text crisp */
     content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 99;
-    background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(0,0,0,.14) 3px 4px);
+    background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(0,0,0,.12) 3px 4px);
   }
   #wrap { max-width: 760px; margin: 0 auto; padding: 10px 10px
           calc(env(safe-area-inset-bottom, 0px) + 24px); }
   header { display: flex; justify-content: space-between; align-items: baseline;
            border-bottom: 2px solid var(--magenta); padding: 10px 2px 8px; }
-  header h1 { margin: 0; font-size: 18px; color: var(--cyan); letter-spacing: 1px; }
+  header h1 { margin: 0; font-size: 18px; color: var(--cyan); letter-spacing: 1px;
+              text-shadow: 0 0 10px rgba(255,180,94,.35); }
   header .sub { color: var(--dim); font-size: 11px; text-align: right; }
   .card { background: var(--panel); border: 1px solid var(--line);
-          border-top: 2px solid var(--bezel); margin-top: 12px; }
+          border-top: 2px solid var(--bezel); border-radius: 4px; margin-top: 12px;
+          overflow: hidden; }
   .card > h2 { margin: 0; padding: 7px 10px; font-size: 13px; color: var(--cyan);
                background: var(--bezel); border-bottom: 1px solid var(--magenta);
-               letter-spacing: 1px; }
+               letter-spacing: 1px; text-shadow: 0 0 8px rgba(255,180,94,.25); }
   .card .body { padding: 10px; font-size: 13px; line-height: 1.5; }
   .rowline { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
   .rowline .k { color: var(--dim); }
   .rowline .v { color: var(--white); text-align: right; }
-  .bar { position: relative; height: 14px; background: #0e1524; border: 1px solid var(--line);
-         margin: 6px 0; overflow: hidden; }
+  .bar { position: relative; height: 14px; background: #221812; border: 1px solid var(--line);
+         margin: 6px 0; overflow: hidden; border-radius: 3px; }
   .bar > i { position: absolute; inset: 1px auto 1px 1px; background: var(--cyan); }
   .bar > b { position: absolute; inset: 0; display: flex; align-items: center;
              padding: 0 6px; font-size: 10px; font-weight: 700; color: var(--white);
@@ -101,7 +107,6 @@
 
   <footer>
     <span id="prov">provenance: —</span>
-    <a href="./world.html">3D campus →</a>
   </footer>
 </div>
 <script type="module" src="./js/console.mjs"></script>

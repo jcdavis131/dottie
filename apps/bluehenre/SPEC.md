@@ -5,162 +5,71 @@
 games (MTNN gaming/prediction platforms: hoops, gridiron, pitch, equities),
 **Dottie** the agentic assistant that hill-climbs better models for each game,
 and a **Universal MTNN** connecting them all. The org runs autonomously on the
-operator's machine.
+operator's machine; the console runs the org end to end.
 
-**Primary surface (operator pivot 2026-07-22): the MOBILE COMMAND CONSOLE** at
-`/` — a phone-first retro-console page (crisp, authentic; no 3D) where the
-operator checks org progress, watches the run + fleet, sees real alerts,
-and asks/guides Dottie. Cards: RUN (dashboard: mode, step/loss, run/phase
-bars, sparkline, gates, funnel), ALERTS//UNBLOCK (real events), DOTTIE
-(source-stamped chat), FLEET (docker containers, cpu/mem), HUB (subsystems),
-SITES (global fleet). Data: `/api/twin-status` + `/api/fleet` on the shared
-spine below. The 3D campus remains as a **secondary visualization** at
-`/world.html` — same data, same doctrine, no longer the front door.
+**Core focus: the hill-climb and the data flywheel.** Train → eval → publish
+telemetry → operator sees truth fast (anywhere) → blockers cleared quickly →
+curriculum and research promotions feed back → better model → better Dottie →
+better games. Everything in this app serves that loop.
 
-**Core focus: get the hill-climb and data flywheel going.** Everything else is
-decoration. The flywheel: train → eval → publish telemetry → operator (and
-players) see truth fast → decisions/blockers cleared quickly → curriculum
-shards and research promotions feed back → better model → better Dottie →
-better games. NEXT CORE ITEM: the write path — a directive channel so the
-operator can unblock/steer from the phone (needs the operator's tunnel or
-token decision; read-only until then).
+Simplification 2026-07-22 (operator): the 3D world is REMOVED. The console is
+the product. Org name is **bluehenre** ("Limbic" was a discarded working
+title); design doc `1EpAenKrYUgCi1xwbnz7fpKumXR6Om_NabPgoaUhitFU` is history,
+this file supersedes it.
 
-Source: operator's design doc (`1EpAenKrYUgCi1xwbnz7fpKumXR6Om_NabPgoaUhitFU`);
-org name is **bluehenre** ("Limbic" was a discarded working title). This file
-supersedes the doc.
+## The console (`/` — mobile-first, cozy amber-phosphor retro terminal)
 
-## The digital twin (data spine — shared by console and world)
+Crisp full-resolution text; warm browns/cream/gold; faint CRT scanlines.
+Cards, in order:
 
-- **World:** a low-grade digital twin of Earth; the playable slice is the org's
-  HQ in **Austin, TX**. More Earth nodes are future rungs.
-- **NPCs ARE the docker fleet** (operator 2026-07-22): every running container
-  (trainer, collectors, curators, server, janitor, research daemon) walks the
-  campus near its department, wearing a live nameplate with docker's own
-  cpu%/mem, streamed via `/api/fleet` (local: docker CLI, 10s cache; hosted:
-  the published gist's `hub.fleet` snapshot). Activity drives the body — busy
-  containers pace, idle ones stand; stopped containers leave the campus. The
-  per-dept expert minifigs remain visible ONLY where no live node exists.
-  Chat brains = local Dottie when reachable (`DOTTIE_CHAT_URL`); otherwise
-  they say so in-world. No fabricated expertise, ever.
-- **The Dottie terminal:** ONE special NPC on the plaza. Interacting opens a
-  modal: the full dottie:app console (iframe) when the hub is reachable from
-  the build, else an honest source-stamped chat over `/api/npc-chat`.
-- **Twin telemetry:** the real training run (step, loss, eval ppl) renders on
-  the plaza console via `/api/twin-status`, source-stamped `local` or honestly
-  offline.
-- **The :8000 hub lives in-world:**
-  - Plaza console = the training dashboard: mode badge, run/phase bars, lm-loss
-    sparkline, five flow-gate LEDs, shard funnel. 15s poll.
-  - Dept-sited mini-boards = the rest of the hub: NETWORK//ARCH (labs),
-    SKILLS//ECOSYSTEM (design), EVAL//REPORT (proving), RESEARCH//LOOP (hall).
-  - Source priority (`server.mjs`): live `/pipeline/status` → exported
-    `dottie_live_status.json` → raw artifacts, each freshness-capped. The
-    hosted site reads the operator's published gist (`via:"gist-feed"`, hourly
-    publisher, 75-min cap) — real numbers publicly, box unexposed.
-- **The closed loop:** telemetry IN → players clear blockers/quests →
-  validated workflows OUT as curriculum shards → operator feeds the factory →
-  better Dottie → better NPC brains → better play. Hill-climb.
+- **RUN//AVA-MINI** — the training run: mode badge, step · loss, held-out ppl,
+  throughput + ETA, checkpoint age, RUN and PHASE progress bars, flow-gate
+  LEDs (D1–D5), shard funnel, lm-loss sparkline. 15s poll.
+- **ALERTS//UNBLOCK** — REAL factory events (trainer stale/error, data
+  starved, disk water-marks, red gates; benign full-runway pauses excluded),
+  each naming the owning team + the feed's own words. Empty = "org unblocked".
+- **DOTTIE//ASSISTANT** — chat with the org's assistant. Source-stamped
+  `[dottie]` / `[offline]`; withheld beats fabricated.
+- **FLEET//DOCKER** — every running container (docker's own cpu%/mem), sorted
+  by activity, 10s poll locally.
+- **HUB//SUBSYSTEMS** — model card (params/layers/split), skills ecosystem,
+  eval verdicts, research baseline ±SEM + queue counts.
+- **SITES//GLOBAL** — the org's deployed sites (dumbmodel.com hub, the four
+  vector games, arcade, arxiviq, bhenre.com) probed for liveness + latency.
 
-### Department → subsystem map (ids/colors/order contract-frozen)
+## Data spine (shared, provenance-honest)
 
-| dept id | in-world | real subsystem | expert |
-|---|---|---|---|
-| labs | Foundation Training Lab | `apps/ava-factory` trainer | foundation LLM training |
-| servers | Collector Farm | collector fleet (docker) | data collection |
-| archives | Data Curation & Archives | curator + datagen | data curation |
-| proving | Eval Harness Proving Grounds | `evals/run_harness` + open-harness | evals |
-| design | Skills Ecosystem Studio | `packages/ava-skills` + scout plugins | skills ecosystem |
-| gardens | Memory & Router Gardens | memory-mint / router | memory architecture |
-| finance | Compute & Fleet Ops | GPU, fleet, budgets | infra & compute |
-| hall | The Great Hall | org commons | — social hub |
-
-### Hill-climb ladder
-
-1. ✅ Twin telemetry v1 (step/loss/ppl on the board).
-2. ✅ NPC expert prompts v1 (chat carries subsystem focus).
-3. ✅ REAL-event blockers: `twin.parseLiveEvents` maps genuine problems
-   (trainer stale/error, data starved, disk water-marks, red gates; benign
-   full-runway pauses excluded) → `pipeline.raiseLiveBlocker` stalls the org
-   with a `REAL:` blocker. One block per distinct event per session.
-4. ✅ Dashboard-on-the-board + dept hub panels (all of :8000 in-world).
-5. ✅ Shard feedback counter (banked half): the board's twin line shows the
-   LOCAL bank's real count (`workflows.jsonl` lines; absent file = honest 0;
-   hosted build claims nothing). The fed-to-factory half needs a factory-side
-   source marker — future.
-6. ✅ Earth-twin nodes (2026-07-22): the org's REAL deployed sites on the
-   satellite board — dumbmodel.com hub, the four vector games, arcade,
-   arxiviq, bhenre.com — publisher-probed (real http/latency), green/red
-   nodes + legend. Visitable interiors: future.
-7. Campus densification (operator 2026-07-22): keep the world tight, not
-   sprawling — make the org campus itself hyper-detailed and life-like.
-   Slice 1 ✅ (staff desk-routes, curbs/planters/conduit/doorways, tighter
-   scatter); further slices open-ended.
-
-## Core mechanic — The Project (`pipeline.mjs`)
-
-The org ships **DUMBMODEL-1**: data → curate → train → eval → ship, each stage
-owned by a department.
-
-- **NPCs do the work.** A stage progresses only while its dept's NPC is at
-  their post (ecosystem circuits: home → Great Hall → peer). No player input
-  needed — observe mode (V) proves the org runs itself.
-- **Blockers stall it** — seeded (deterministic per run seed) and REAL (rung 3).
-  Each names the dept + consultant hat + action. Resolution pays a retainer
-  (bandwidth refund).
-- **Shipping = validated run** (counts as a completed quest line).
-- Pure logic, seeded, bare-node contract-tested — like every module.
-
-**Personas** (consultant hats; keys/abilities frozen): auditor = Discovery
-Consultant (interview) · cipher = Systems Cipher (decode) · architect =
-Delivery Architect (replan). Hot-swap on terminals only.
-
-**Quest lines (optional briefs):** Archival Cipher (archives) · Performance
-Division (finance) · Design Sabotage (design + hall) · Hardware Heist (servers).
-
-**Bandwidth:** per-run action budget, slow regen, specialty at half cost, 0 =
-run over → GTA-style reset (memory wipes; only validated workflows survive as
-extracted signal).
-
-## Presentation
-
-- **Visual bar: CRISP-FIRST at golden hour** (operator 2026-07-22: "make
-  everything much more crisp and clear — I cannot read much of it"). Full-
-  resolution render, AA on, devicePixelRatio-aware; NO low-res upscale and NO
-  vertex wobble (both made text illegible). Retro character lives in materials:
-  flatShading facets, ordered dithering, indexed board palettes, fog, the
-  dithered SNES sunset. Every board/sign canvas is 2x supersampled
-  (`setTransform(2,0,0,2,…)` over the logical grid).
-- **Boards are cyberpunk consoles** (32-color indexed palette, hard pixels,
-  zero AA); the Earth board is a 90s weather-satellite map (natural palette,
-  dithered oceans, comma clouds, HQ AUSTIN marker, 2Hz redraw).
-- **Austin set dressing:** ring road, limestone plaza, Lady Bird Creek + bat
-  bridge, live oaks, food trucks, Texas flag, ATX water tower, hazy skyline.
-  Sims-style minifigs with plumbobs.
-- **Render contract (frozen):** DEPARTMENTS order/ids; buildings r=40, NPC
-  homes r=24, same angle formula; terminals [6,0] [-6,4] [0,-7]; `buildWorld`
-  API (+ `animate(dt,t)`). `world.mjs` is render-only and deterministic
-  (mulberry32).
-
-## Input — mobile-first
-
-Touch is the default (left-thumb joystick, right-thumb action buttons, persona
-buttons appear on terminals; coarse-pointer gated); keyboard is the desktop
-enhancement — both drive the same handlers. Joystick math is pure and
-contract-tested (`touch.mjs`). Safe-area CSS, portrait-aware camera, shadow map
-1024 on phones / 2048 desktop.
+- Local server (`node server.mjs`, zero-dep): `/api/twin-status` (live
+  `:8000/pipeline/status` → exported `dottie_live_status.json` → raw
+  artifacts, freshness-capped), `/api/fleet` (docker CLI, 10s cache),
+  `/api/npc-chat` (Dottie engine via `DOTTIE_CHAT_URL` or honest offline).
+- Hosted (Vercel prod, `vercel deploy --prod`): the same endpoints read the
+  box's OWN published gist (publisher task runs every 10 min; 30-min
+  freshness cap; `via:"gist-feed"`, ageS included). Real numbers publicly,
+  box unexposed.
+- Publisher (`apps/ava-factory/scripts/publish_live_status.py`, scheduled):
+  pipeline + research + the full :8000 hub (network/ecosystem/agent-eval/
+  eval report+catalog) + docker fleet snapshot + site probes.
+- Pure parsers + contract tests live in `public/js/twin.mjs` (bare-node
+  `twin.contract.test.mjs`) — the only test suite now.
 
 ## Honesty doctrine (non-negotiable)
 
-- NPC replies: `[dottie]` or `[offline]` — withheld beats fabricated.
-- Twin numbers only from `source:"local"`; stale feeds are "history, not
-  telemetry"; unreachable hub blocks render as offline lines.
-- Router results stamped `keyword-stub` until a real vector store exists.
-- Extraction refuses unvalidated runs loudly; discarded runs say why.
+- Numbers render ONLY from `source:"local"` telemetry; stale feeds are
+  "history, not telemetry"; unreachable blocks render as offline lines.
+- Chat replies are `[dottie]` or `[offline]` — never fabricated.
+- Nothing auto-ingests into training; the operator feeds the factory
+  explicitly.
+
+## Next core item — the write path
+
+Unblock/steer from the phone needs a channel back to the box: an operator-run
+tunnel (+ `DOTTIE_CHAT_URL`/`TWIN_STATUS_URL` on Vercel) or a directive-queue
+the box polls. Operator decision pending; the hosted console is truthfully
+read-only until then and says so.
 
 ## Explicitly OUT of autonomous scope
 
-Auto-pushing generated code to public repos, and any write-integration into
-dumbmodels.com, are outward-facing automation: **not built** without the
-operator's own design + sign-off. Shards never auto-ingest — the operator feeds
-the factory explicitly. Deploying the game itself is in scope (established:
-Vercel production, `vercel deploy --prod` from `apps/bluehenre`).
+Auto-pushing generated code to public repos and any write-integration into
+dumbmodel.com properties. Buying domains / entering credentials is the
+operator's own action. Deploying the console is in scope (established).

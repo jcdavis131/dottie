@@ -57,8 +57,6 @@ function renderRun() {
     el.append(line("throughput · eta",
       `${Number.isFinite(dash.timing.tokS) ? Math.round(dash.timing.tokS).toLocaleString() : "?"} tok/s · ${fmtDur(dash.timing.etaS)}`));
   if (Number.isFinite(dash.ckptAgeS)) el.append(line("checkpoint", `${fmtDur(dash.ckptAgeS)} ago`));
-  if (Number.isFinite(twin.shardsBanked))
-    el.append(line("player shards banked", String(twin.shardsBanked)));
   if (Number.isFinite(dash.run?.frac))
     el.append(bar(dash.run.frac,
       `RUN ${(dash.run.frac * 100).toFixed(1)}%${Number.isFinite(dash.run.total) ? ` of ${(dash.run.total / 1e9).toFixed(1)}B tok` : ""}`));
@@ -123,7 +121,7 @@ function renderAlerts() {
     a.className = "alert";
     const who = document.createElement("div");
     who.className = "who";
-    who.textContent = `${ev.kind} @ ${ev.dept} — needs ${ev.persona}/${ev.action}`;
+    who.textContent = `${ev.kind} @ ${ev.dept} team`;
     const what = document.createElement("div");
     what.textContent = ev.label;
     a.append(who, what);
