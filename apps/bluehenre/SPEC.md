@@ -69,10 +69,14 @@ supersedes the doc.
    LOCAL bank's real count (`workflows.jsonl` lines; absent file = honest 0;
    hosted build claims nothing). The fed-to-factory half needs a factory-side
    source marker — future.
-6. More Earth-twin nodes (field offices for remote subsystems; the
-   dumbmodels.com vector games as visitable sites).
+6. ✅ Earth-twin nodes (2026-07-22): the org's REAL deployed sites on the
+   satellite board — dumbmodel.com hub, the four vector games, arcade,
+   arxiviq, bhenre.com — publisher-probed (real http/latency), green/red
+   nodes + legend. Visitable interiors: future.
 7. Campus densification (operator 2026-07-22): keep the world tight, not
    sprawling — make the org campus itself hyper-detailed and life-like.
+   Slice 1 ✅ (staff desk-routes, curbs/planters/conduit/doorways, tighter
+   scatter); further slices open-ended.
 
 ## Core mechanic — The Project (`pipeline.mjs`)
 
