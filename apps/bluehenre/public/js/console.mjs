@@ -112,8 +112,10 @@ function renderAlerts() {
   if (twin?.source !== "local") { el.append(esc(document.createElement("p"), "feed offline")); return; }
   const evs = Array.isArray(twin.events) ? twin.events : [];
   if (!evs.length) {
-    el.append(esc(document.createElement("p"), "● no active alerts — the org is unblocked"))
-      .firstChild.parentElement.classList.add("ok-line");
+    const p = document.createElement("p");
+    p.className = "ok-line";
+    p.textContent = "● no active alerts — the org is unblocked";
+    el.append(p);
     return;
   }
   for (const ev of evs) {
