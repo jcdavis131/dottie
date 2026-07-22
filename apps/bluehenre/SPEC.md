@@ -17,8 +17,18 @@ signal ("Trojan horse" framing in the source doc).
 
 Developer Labs · Design Studio & Marketing Plazas · Finance Towers · Legal Archives ·
 Subterranean Server Farms · The Great Hall & Cafeteria · Botanical Gardens · Proving Grounds.
-Ghibli-ish cel shading (MeshToonMaterial approximation). Terminals scattered through the
-world: persona hot-swap points.
+Terminals scattered through the world: persona hot-swap points.
+
+**Setting (operator directive 2026-07-22): the campus is in Austin, TX** (`ORG.hq`).
+**Visual bar: Sims/RCT ~2010 tycoon fidelity** (upgraded from the P1 cel-shaded blockout,
+operator directive same day). The visual layer (`world.mjs`) is render-only and deterministic
+(mulberry32 seed): per-department building archetypes with procedural lit-window facades
+(NearestFilter), ring road + limestone plaza + sidewalks, Lady Bird Creek + bat bridge (with
+bats), 26 live oaks, food-truck row at the Great Hall, Texas flag, ATX water tower, parking
+lot, hazy downtown skyline; NPCs/player are Sims-style minifigs with plumbobs; PCFSoft
+shadows + ACES tone mapping. CONTRACT preserved for the logic layer: DEPARTMENTS order, ring
+anchors (buildings r=40, NPC homes r=24), terminal coords, `buildWorld` API (+ optional
+`animate(dt,t)` hook).
 
 ## Playable personas (hot-swap at terminals only)
 
