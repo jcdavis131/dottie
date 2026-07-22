@@ -20,12 +20,25 @@ jobs:
       - name: Sync workspace (light packages)
         run: uv sync --all-groups --frozen || uv sync
       - name: Ruff lint
+        # `|| true` kept intentionally: ~1139 pre-existing ruff errors repo-wide, so ruff
+        # cannot yet be a hard gate. Making it one is tracked separately
+        # (knowledge/reviews/fixes-followup-2026-07-22.md).
         run: uv run ruff check packages/ava-skills packages/ava-open-harness packages/personal-graphify apps/scout-cli --exclude apps/scout-cli/.venv || true
-      - name: Pytest skills + harness
+      - name: Pytest skills + harness (real gate)
         run: |
-          uv run pytest packages/ava-skills -q || true
-          uv run pytest packages/ava-open-harness -q || true
-          uv run pytest apps/scout-cli/tests -q || true
+          uv run pytest packages/ava-skills -q
+          uv run pytest packages/ava-open-harness -q
+          uv run pytest packages/personal-graphify -q
+      - name: Pytest scout-cli (real gate — runs from its dir for CWD-relative fixtures)
+        run: |
+          cd apps/scout-cli
+          uv run pytest tests -q
+      - name: Pytest dottie agent-os (runs now it is a workspace member; not yet a gate)
+        # apps/dottie is a uv workspace member, so its fastapi dep installs and the suite
+        # runs. ~20 pre-existing failures (test_research / test_api) are tracked and NOT
+        # introduced here, so this stays non-blocking until they are triaged — but the
+        # flagship Agent OS suite now RUNS in CI instead of being silently absent.
+        run: uv run pytest apps/dottie/tests -q || true
       - name: Forge smoke test (single CLI doctrine)
         run: |
           cd apps/scout-cli
@@ -33,8 +46,9 @@ jobs:
           uv run python -m bigbang.cli --json system doctor
       - name: Eval gate quick (nano)
         run: |
-          # Quick J-Space sanity, no GPU
-          uv run python -m packages.ava-open-harness.cli --help 2>&1 | head -n 20 || true
+          # Quick J-Space harness sanity, no GPU. Real module path (`-m harness`);
+          # the old `-m packages.ava-open-harness.cli` was unimportable (hyphens) and masked.
+          uv run python -m harness --help | head -n 20
 
   dottie-factory-smoke:
     runs-on: ubuntu-latest
@@ -44,9 +58,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Check factory imports
+      - name: Check factory imports (torch-free module)
+        # Imports a real stdlib-only factory module instead of only printing a string;
+        # gives an actual signal that apps/ava-factory is importable without a GPU/torch.
         run: |
-          python -c "import sys; sys.path.insert(0, 'apps/ava-factory'); print('factory importable')"
+          python -c "import sys; sys.path.insert(0, 'apps/ava-factory'); import efficiency_gain; print('factory importable (efficiency_gain)')"
       - name: Verify no telemetry tracked
         run: |
           if git ls-files | grep -E "dottie_live_status|dottie_telemetry|STATUS.json|results.tsv" ; then echo "Telemetry still tracked!"; exit 1; fi

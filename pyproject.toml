@@ -9,6 +9,7 @@ members = [
   "packages/ava-open-harness",
   "packages/personal-graphify",
   "apps/scout-cli",
+  "apps/dottie",
 ]
 exclude = ["apps/scout-rtx", "apps/ava-factory"]
 
