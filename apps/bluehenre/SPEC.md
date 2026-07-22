@@ -1,202 +1,127 @@
-# BLUEHENRE — synthetic AI-org campus game (distilled spec)
+# BLUEHENRE — spec of record
 
-Source: operator's design doc (Google Doc `1EpAenKrYUgCi1xwbnz7fpKumXR6Om_NabPgoaUhitFU`,
-re-distilled 2026-07-21 after the operator's correction: **the org is "bluehenre" — "Limbic"
-was a discarded working name**). This file is the in-repo spec of record; the doc is the
-narrative history behind it.
+**The story:** **bluehenre.com is a window into the org** that is building
+**dumbmodels.com** — vector games (MTNN-based gaming/prediction platforms:
+vector-hoops, -gridiron, -pitch, …) — and building **Dottie**, the agentic
+assistant that helps the org hill-climb better models for each game, plus a
+**Universal MTNN** that connects them all. The org runs autonomously on the
+operator's machine; the game is the public window and steering wheel.
 
-## What this game IS — the Dottie digital twin (operator directive 2026-07-22)
+Source: operator's design doc (`1EpAenKrYUgCi1xwbnz7fpKumXR6Om_NabPgoaUhitFU`);
+org name is **bluehenre** ("Limbic" was a discarded working title). This file
+supersedes the doc.
 
-**BLUEHENRE is the playable digital twin of the REAL Dottie project** — the agentic
-assistant being built end-to-end in this monorepo, including the model training on this
-local machine. Explicitly:
+## What the game IS — the Dottie digital twin
 
-- **World**: a low-grade digital twin of Earth; the playable slice is the company HQ in
-  **Austin, TX**. (The campus is one node of the Earth twin; more nodes are future work.)
-- **NPCs are expert researchers/practitioners, one per REAL project component** (the
-  department→subsystem map below). Their chat brains are our **homegrown local
-  Assistants**: when a Dottie engine is reachable (`DOTTIE_CHAT_URL`), each NPC answers
-  as its subsystem's expert (the chat prompt carries their focus); until Dottie is at a
-  usable state they say so honestly in-world — no fabricated expertise, ever.
-- **The in-game Project tracks the REAL model**: alongside the fictional pipeline, the
-  world surfaces live **twin telemetry** from this machine — the actual training step,
-  loss and eval numbers of the model in `apps/ava-factory` — via `/api/twin-status`
-  (source-stamped `local`; anything else renders offline, honestly).
-- **The :8000 training dashboard lives on the plaza board** (operator directive
-  2026-07-22 "bring the dashboard to life in the game"): mode badge, run/phase progress
-  bars, an lm-loss sparkline, the five flow-gate LEDs and the shard funnel — all drawn
-  from real telemetry only. Twin source priority (`server.mjs`): the factory hub's live
-  `/pipeline/status` endpoint → the exported `dottie_live_status.json` → raw
-  metrics/eval artifacts; each is freshness-capped (a stale feed is history, not
-  telemetry, and says so). The HOSTED gamesite reads the operator's own published
-  live-status gist (`via:"gist-feed"`, hourly publisher, 75-min cap) — real numbers on
-  the public site with the provenance chain intact.
-- **The closed loop users visit, interact with, and help progress**:
-  1. real training/eval telemetry flows IN (twin board);
-  2. players clear blockers/quests as consultants → validated workflows are extracted
-     as curriculum shards in the factory doc contract (P4, already live);
-  3. the operator feeds validated shards to the collector → they become training data
-     for the very model the twin board tracks;
-  4. a better Dottie powers better NPC brains → better play → better signal. Hill-climb.
+- **World:** a low-grade digital twin of Earth; the playable slice is the org's
+  HQ in **Austin, TX**. More Earth nodes are future rungs.
+- **NPCs:** one expert per REAL subsystem (map below), brains = local Dottie
+  when reachable (`DOTTIE_CHAT_URL`); otherwise they say so in-world. No
+  fabricated expertise, ever.
+- **Twin telemetry:** the real training run (step, loss, eval ppl) renders on
+  the plaza console via `/api/twin-status`, source-stamped `local` or honestly
+  offline.
+- **The :8000 hub lives in-world:**
+  - Plaza console = the training dashboard: mode badge, run/phase bars, lm-loss
+    sparkline, five flow-gate LEDs, shard funnel. 15s poll.
+  - Dept-sited mini-boards = the rest of the hub: NETWORK//ARCH (labs),
+    SKILLS//ECOSYSTEM (design), EVAL//REPORT (proving), RESEARCH//LOOP (hall).
+  - Source priority (`server.mjs`): live `/pipeline/status` → exported
+    `dottie_live_status.json` → raw artifacts, each freshness-capped. The
+    hosted site reads the operator's published gist (`via:"gist-feed"`, hourly
+    publisher, 75-min cap) — real numbers publicly, box unexposed.
+- **The closed loop:** telemetry IN → players clear blockers/quests →
+  validated workflows OUT as curriculum shards → operator feeds the factory →
+  better Dottie → better NPC brains → better play. Hill-climb.
 
-### Department → real Dottie subsystem map (ids/colors/order are contract-frozen)
+### Department → subsystem map (ids/colors/order contract-frozen)
 
-| dept id | in-world | real subsystem | resident expert |
+| dept id | in-world | real subsystem | expert |
 |---|---|---|---|
-| labs | Foundation Training Lab | `apps/ava-factory` trainer (nano/mini runs on this box) | foundation LLM training |
-| servers | Collector Farm | factory collector fleet (docker) | data collection |
-| archives | Data Curation & Archives | curator + datagen curriculum | data curation |
-| proving | Eval Harness Proving Grounds | `evals/run_harness` + ava-open-harness | evals & measurement |
+| labs | Foundation Training Lab | `apps/ava-factory` trainer | foundation LLM training |
+| servers | Collector Farm | collector fleet (docker) | data collection |
+| archives | Data Curation & Archives | curator + datagen | data curation |
+| proving | Eval Harness Proving Grounds | `evals/run_harness` + open-harness | evals |
 | design | Skills Ecosystem Studio | `packages/ava-skills` + scout plugins | skills ecosystem |
-| gardens | Memory & Router Gardens | memory-mint / router (keyword-stub → vector) | memory architecture |
-| finance | Compute & Fleet Ops | 16GB budget, GPU, fleet scheduling | infra & compute |
-| hall | The Great Hall | the org commons (all-hands, memo hub) | — social hub |
+| gardens | Memory & Router Gardens | memory-mint / router | memory architecture |
+| finance | Compute & Fleet Ops | GPU, fleet, budgets | infra & compute |
+| hall | The Great Hall | org commons | — social hub |
 
-### Hill-climb ladder (next rungs, in order)
+### Hill-climb ladder
 
-1. ✅ Twin telemetry v1: last training step/loss + eval ppl on the holo-board.
-2. ✅ NPC expert prompts v1: chat carries subsystem focus — richer per-NPC
-   system prompts once Dottie chat is stable.
-3. ✅ Blockers driven by REAL events (2026-07-22): `twin.parseLiveEvents` maps genuine
-   feed problems (trainer stale/error, data starved, disk water-marks, red flow gates —
-   benign full-runway collector pauses excluded) to `{dept, persona, action}`;
-   `pipeline.raiseLiveBlocker` stalls the org with a `REAL:`-stamped blocker the
-   consultant clears at the owning department. One block per distinct event per session.
-4. ✅ Dashboard-on-the-board (2026-07-22): the :8000 training dashboard rendered on the
-   plaza console from live telemetry (mode/run/phase/sparkline/gates/funnel), 15s poll;
-   hosted site fed by the operator's published gist.
-5. Shard feedback loop closes visibly: board shows how many player-validated shards the
-   operator has fed to the collector.
-6. More Earth-twin nodes (remote "field offices" for remote subsystems).
+1. ✅ Twin telemetry v1 (step/loss/ppl on the board).
+2. ✅ NPC expert prompts v1 (chat carries subsystem focus).
+3. ✅ REAL-event blockers: `twin.parseLiveEvents` maps genuine problems
+   (trainer stale/error, data starved, disk water-marks, red gates; benign
+   full-runway pauses excluded) → `pipeline.raiseLiveBlocker` stalls the org
+   with a `REAL:` blocker. One block per distinct event per session.
+4. ✅ Dashboard-on-the-board + dept hub panels (all of :8000 in-world).
+5. Shard feedback counter: board shows operator-fed shard count.
+6. More Earth-twin nodes (field offices for remote subsystems; the
+   dumbmodels.com vector games as visitable sites).
 
-## Concept
+## Core mechanic — The Project (`pipeline.mjs`)
 
-A 3D browser game set on the Austin, TX campus of **bluehenre**, a fictional tech company
-staffed by autonomous NPC instances (bluehenre also operates the public platform
-dumbmodels.com in the fiction). **The org runs itself and the game is watching it work**
-(operator directive 2026-07-22): the NPCs run the business and BUILD THE MODELS in this
-digital-twin world — the campus pipeline visibly collects, curates, trains, evaluates and
-ships a model. **The player is a CONSULTANT the company hired to advance the project**:
-discovery, debugging and re-planning to clear the blockers the org hits. Successful player
-workflows become training signal for Dottie — ephemeral play, persistent signal.
+The org ships **DUMBMODEL-1**: data → curate → train → eval → ship, each stage
+owned by a department.
 
-## The Project — the org's model-build pipeline (core mechanic, `pipeline.mjs`)
+- **NPCs do the work.** A stage progresses only while its dept's NPC is at
+  their post (ecosystem circuits: home → Great Hall → peer). No player input
+  needed — observe mode (V) proves the org runs itself.
+- **Blockers stall it** — seeded (deterministic per run seed) and REAL (rung 3).
+  Each names the dept + consultant hat + action. Resolution pays a retainer
+  (bandwidth refund).
+- **Shipping = validated run** (counts as a completed quest line).
+- Pure logic, seeded, bare-node contract-tested — like every module.
 
-The company is shipping **DUMBMODEL-1**. Five stages, in order: **data → curate → train →
-eval → ship**, each owned by a department (servers, archives, labs, proving, design).
+**Personas** (consultant hats; keys/abilities frozen): auditor = Discovery
+Consultant (interview) · cipher = Systems Cipher (decode) · architect =
+Delivery Architect (replan). Hot-swap on terminals only.
 
-- **NPCs do the work**: a stage progresses only while its owning department's NPC is at
-  their home post (the ecosystem circuits already take them home → Great Hall → peer, so
-  work happens in visible shifts). No player input is required for progress — the org
-  runs itself; observe mode proves it.
-- **Blockers**: at seeded progress thresholds a stage raises a blocker ("loss spike",
-  "data drift", "eval flake", …) and STALLS. Each blocker names the department, the
-  consultant hat (persona) and the action that clears it — the consultant travels there
-  and resolves it. Resolution pays a **retainer** (bandwidth refund): consulting is how
-  you stay funded.
-- **Shipping = validated run**: when the pipeline completes, the run records a shipped
-  milestone (the extraction path treats it like a completed quest line) — the consultant's
-  engagement produced a real, validated workflow.
-- Pure logic, seeded, deterministic, bare-node contract-tested like every module.
+**Quest lines (optional briefs):** Archival Cipher (archives) · Performance
+Division (finance) · Design Sabotage (design + hall) · Hardware Heist (servers).
 
-Personas are reframed as consultant hats (keys/abilities unchanged): auditor = Discovery
-Consultant (interview), cipher = Systems Cipher (decode), architect = Delivery Architect
-(replan). The four P3 quest lines remain as optional engagement briefs.
+**Bandwidth:** per-run action budget, slow regen, specialty at half cost, 0 =
+run over → GTA-style reset (memory wipes; only validated workflows survive as
+extracted signal).
 
-## Working-org visuals (graphics upgrade, same render contract)
+## Presentation
 
-The world must SHOW the business running: a central **project holo-board** on the plaza
-renders live stage progress (canvas texture, redrawn on change); each pipeline department
-carries a **status beacon** (green pulse = working, red pulse = blocked); NPCs **walk with
-a gait bob and lean into their work** at their home post; memo exchanges flash a bubble.
-All deterministic, all inside `world.mjs`'s render-only contract.
+- **Visual bar: 32-bit PS1 at golden hour.** PIXEL_SCALE=2 (~320p upscaled
+  nearest-neighbor), flatShading everywhere, PS1 vertex wobble (clip-space snap
+  to a 320×240 grid), no AA, dithering on, heavy fog as honest draw distance.
+  Dithered SNES sunset backdrop carries over.
+- **Boards are cyberpunk consoles** (32-color indexed palette, hard pixels,
+  zero AA); the Earth board is a 90s weather-satellite map (natural palette,
+  dithered oceans, comma clouds, HQ AUSTIN marker, 2Hz redraw).
+- **Austin set dressing:** ring road, limestone plaza, Lady Bird Creek + bat
+  bridge, live oaks, food trucks, Texas flag, ATX water tower, hazy skyline.
+  Sims-style minifigs with plumbobs.
+- **Render contract (frozen):** DEPARTMENTS order/ids; buildings r=40, NPC
+  homes r=24, same angle formula; terminals [6,0] [-6,4] [0,-7]; `buildWorld`
+  API (+ `animate(dt,t)`). `world.mjs` is render-only and deterministic
+  (mulberry32).
 
-## World — campus locations (from the doc)
+## Input — mobile-first
 
-Developer Labs · Design Studio & Marketing Plazas · Finance Towers · Legal Archives ·
-Subterranean Server Farms · The Great Hall & Cafeteria · Botanical Gardens · Proving Grounds.
-Terminals scattered through the world: persona hot-swap points.
+Touch is the default (left-thumb joystick, right-thumb action buttons, persona
+buttons appear on terminals; coarse-pointer gated); keyboard is the desktop
+enhancement — both drive the same handlers. Joystick math is pure and
+contract-tested (`touch.mjs`). Safe-area CSS, portrait-aware camera, shadow map
+1024 on phones / 2048 desktop.
 
-**Setting (operator directive 2026-07-22): the campus is in Austin, TX** (`ORG.hq`).
-**Visual bar: 32-bit PS1-era graphics at golden hour** (operator directive 2026-07-22,
-superseding the 16-bit SNES bar — the sunset direction stays, the fidelity jumps a
-generation): PIXEL_SCALE=2 (~320p-class internal res, upscaled nearest-neighbor),
-`flatShading` on every surface (faceted Gouraud-style polys — spheres and cylinders
-show their facets like real PSX geometry), the signature **PS1 vertex wobble** (every
-material's vertex shader snaps clip-space positions to a coarse 320×240 virtual grid,
-so geometry jitters subtly as the camera moves), antialiasing off, `dithering:true`
-everywhere, nearest-neighbor textures, heavy golden-hour fog as honest draw-distance.
-The 16-bit dithered sunset backdrop (banded sky, chunky sun) carries over unchanged. The visual layer (`world.mjs`) is render-only and deterministic
-(mulberry32 seed): per-department building archetypes with procedural lit-window facades
-(NearestFilter), ring road + limestone plaza + sidewalks, Lady Bird Creek + bat bridge (with
-bats), 26 live oaks, food-truck row at the Great Hall, Texas flag, ATX water tower, parking
-lot, hazy downtown skyline; NPCs/player are Sims-style minifigs with plumbobs; PCFSoft
-shadows + ACES tone mapping. CONTRACT preserved for the logic layer: DEPARTMENTS order, ring
-anchors (buildings r=40, NPC homes r=24), terminal coords, `buildWorld` API (+ optional
-`animate(dt,t)` hook).
+## Honesty doctrine (non-negotiable)
 
-## Presentation & input — MOBILE-FIRST (operator directive 2026-07-22)
-
-The game is designed for a phone in the hand FIRST; desktop is the progressive
-enhancement, never the other way round.
-
-- **Touch is the default input**: left-thumb virtual joystick (drag = walk, full
-  deflection = sprint), right-thumb action buttons (ability / router / observe / reset),
-  and persona buttons (1/2/3) that appear only while standing on a terminal. Touch
-  controls render only on coarse-pointer devices (`matchMedia("(pointer: coarse)")`);
-  keyboard (WASD/E/Q/V/R/1-3) stays fully functional everywhere.
-- **Joystick math is pure and contract-tested** (`touch.mjs stickState`): radius-normalized,
-  clamped, deadzone-rescaled, sprint threshold — bare-node testable like every other module.
-- **HUD is mobile-first CSS**: compact type via `clamp()`, safe-area insets
-  (`viewport-fit=cover`), quest tracker collapses to a tap-to-expand chip on small
-  screens, log trimmed; `@media (min-width: 900px)` widens panels for desktop.
-- **Portrait-aware camera**: taller/farther follow framing when `aspect < 1` so the
-  campus reads in portrait; observe-mode orbit unchanged.
-- **Perf budget**: DPR capped at 2 (already), shadow map 1024 on coarse-pointer devices
-  (2048 on desktop) — the Sims/RCT-2010 look must hold 60fps-ish on a mid phone.
-
-## Playable personas (hot-swap at terminals only)
-
-| persona | role | flavor |
-|---|---|---|
-| auditor | The External Auditor — the primary lens | interviews NPCs, files findings |
-| cipher | The Cipher (hacker) | decodes, exfiltrates, opens locked context |
-| architect | The Spatial Architect (optimizer) | re-plans space/compute for efficiency wins |
-
-## Gameplay pillars (quest lines)
-
-1. **The Archival Cipher** — deep puzzle-solving / cryptography hunts (Legal Archives)
-2. **The Performance Division** — workflow optimization + resource allocation (Finance Towers)
-3. **The Design Sabotage** — social deduction + NPC persuasion (Design Studio)
-4. **The Hardware Heist** — logic-based security bypass / adversarial testing (Server Farms)
-
-## Core mechanics
-
-- **Bandwidth**: per-run action budget; slow regen; 0 ends the run. Personas do their
-  specialty at half cost.
-- **GTA-style reset loop**: session memory wipes at run end; only *validated* workflows are
-  extracted as training data.
-- **Memory architecture** (target): global memory-router + per-NPC stores. The code ships an
-  honest keyword-scoring router stub — no fabricated "vector DB".
-- **NPC chat**: NPCs answer via the Dottie engine when reachable (`DOTTIE_CHAT_URL`);
-  otherwise the NPC says so in-world. **No fabricated replies, ever.**
-
-## Phases (doc phases, honestly scoped)
-
-1. **P1 — engine + campus** (done): three.js blockout, WASD player, terminals + persona
-   hot-swap, bandwidth HUD, honest NPC chat proxy, pure-logic modules under bare-node tests.
-2. **P2 — closed-loop NPC ecosystem + persistence** (this build): NPC schedules and
-   inter-NPC memo traffic feeding per-NPC memory buckets; run-end workflow extraction.
-   (The doc's WebSocket multiplayer is future work — single-player persistence first.)
-3. **P3 — gameplay pillars as quest lines** (this build): the 4 pillars above as ordered
-   quest steps gated by persona + location; org identity surfaced in-world.
-4. **P4 — training-signal extraction** (this build): validated run workflows → curriculum-
-   shard JSONL (`{text, task_type, concept, phase, source:"bluehenre/workflow"}`) written
-   LOCALLY for the operator to feed the factory. Nothing auto-ingests.
+- NPC replies: `[dottie]` or `[offline]` — withheld beats fabricated.
+- Twin numbers only from `source:"local"`; stale feeds are "history, not
+  telemetry"; unreachable hub blocks render as offline lines.
+- Router results stamped `keyword-stub` until a real vector store exists.
+- Extraction refuses unvalidated runs loudly; discarded runs say why.
 
 ## Explicitly OUT of autonomous scope
 
-The doc's **"Live Deployment: real GitHub integration pushing validated code to a public
-bluehenre repository"** and any dumbmodels.com integration are outward-facing automation.
-NOT built; needs the operator's own design + sign-off. Deploying the *game itself* to a
-host is fine; a pipeline that pushes generated code anywhere public is not.
+Auto-pushing generated code to public repos, and any write-integration into
+dumbmodels.com, are outward-facing automation: **not built** without the
+operator's own design + sign-off. Shards never auto-ingest — the operator feeds
+the factory explicitly. Deploying the game itself is in scope (established:
+Vercel production, `vercel deploy --prod` from `apps/bluehenre`).

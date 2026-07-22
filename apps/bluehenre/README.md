@@ -1,13 +1,16 @@
-# BLUEHENRE — synthetic AI-org campus game
+# BLUEHENRE — the org, playable
 
-Cel-shaded 3D browser game on the campus of **bluehenre**, a fictional tech company staffed
-by NPC AIs (see [SPEC.md](./SPEC.md) — the in-repo spec distilled from the operator's design
-doc; the org was renamed from the working title "Limbic"). Zero npm dependencies: three.js
-loads via import map at runtime, the server is bare node.
+**One line:** bluehenre.com is a window into the org building
+**dumbmodels.com** — MTNN-based vector games (gaming/prediction platforms) —
+and **Dottie**, the assistant that helps it hill-climb better models for each
+game and a **Universal MTNN** to connect them all.
 
-Phases P1–P4 are built: campus + personas + bandwidth (P1), closed-loop NPC ecosystem with
-memo traffic into per-NPC memory buckets (P2), the four doc pillars as quest lines +
-org identity (P3), and validated-run → curriculum-shard extraction (P4).
+**Why it matters:** the org works autonomously on this machine. The game is how
+you watch it — and help it. Real training telemetry renders in-world; validated
+play becomes real curriculum shards.
+
+**The form:** a zero-dependency 3D browser game (three.js via import map, bare-
+node server) set on the org's Austin, TX campus. You are the hired consultant.
 
 ## Run
 
@@ -16,31 +19,38 @@ node server.mjs                        # http://localhost:8321, NPCs offline-hon
 DOTTIE_CHAT_URL=http://localhost:8100/app/api/chat node server.mjs   # NPCs answer via Dottie
 ```
 
-Controls: **WASD** move · **Shift** sprint (spends bandwidth) · **E** persona ability at the
-nearest NPC (advances quests) · **Q** query the memory router · **V** observe mode — a
-RollerCoaster-Tycoon-style aerial orbit where you just watch the org at work ·
-**1/2/3** hot-swap persona *on a terminal pad* · **R** reset after run-over.
+- **Controls:** WASD move · Shift sprint (spends bandwidth) · E ability at the
+  nearest NPC (advances quests, clears blockers) · Q memory router · V observe
+  mode (aerial orbit — the org runs itself) · 1/2/3 hot-swap persona on a
+  terminal · R reset after run-over. Phones get a touch joystick + buttons.
 
 ## The loop
 
-Complete quest steps as the right persona in the right location. When bandwidth hits 0 the
-run ends: the session memory **actually wipes**, and the run transcript is extracted —
-**validated** (a quest line completed, majority of actions succeeded) or **discarded with
-the reason**. Validated workflows become curriculum shards appended to
-`data/workflows.jsonl` (factory doc shape, `source:"bluehenre/workflow"`). **The operator
-feeds those to the factory explicitly — nothing auto-ingests** (SPEC "OUT of autonomous
-scope", same boundary as the doc's GitHub auto-PR pipeline, which is not built).
+- The org builds **DUMBMODEL-1** on its own: data → curate → train → eval → ship.
+- **Real factory events** (trainer stale, data starved, red gates) stall it with
+  `REAL:`-stamped blockers; seeded fictional blockers fill the gaps.
+- You clear blockers as the right persona at the right department. Bandwidth 0
+  ends the run: memory **actually wipes**, the transcript is extracted —
+  **validated** (quest line done, majority of actions ok) or **discarded with
+  the reason**.
+- Validated workflows land in `data/workflows.jsonl` (factory doc shape,
+  `source:"bluehenre/workflow"`). **The operator feeds them to the factory
+  explicitly — nothing auto-ingests.**
 
 ## Honesty doctrine
 
-Same as the Dottie console webapp: every NPC line is tagged `[dottie]` (real engine reply)
-or `[offline]` (no engine — the reply is withheld and says so). The memory router stamps
-`keyword-stub` on every result — it never claims to be a vector store. Extraction refuses
-unvalidated runs loudly. The hosted (Vercel) build says plainly that it cannot reach a
-Dottie engine and cannot bank shards.
+- Every NPC line is tagged `[dottie]` (real engine) or `[offline]` (withheld,
+  says so). No fabricated replies, ever.
+- Twin boards render numbers **only** from `source:"local"` telemetry; stale
+  feeds say "history, not telemetry". The hosted build reads the operator's own
+  published gist — provenance intact, box unexposed.
+- The router stamps `keyword-stub` on every result. Extraction refuses
+  unvalidated runs loudly.
 
-## Tests (bare node, like the webapp — 61 checks)
+## Tests
 
 ```bash
-for f in public/js/*.contract.test.mjs; do node "$f"; done
+for f in public/js/*.contract.test.mjs; do node "$f"; done   # 10 suites, bare node
 ```
+
+Spec of record: [SPEC.md](./SPEC.md).
