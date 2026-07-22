@@ -515,6 +515,12 @@ def main(argv=None) -> int:
                 stream = sampler.batches(
                     phase, pc.seq, mb, log=lambda m: log("data_starved", msg=m)
                 )
+                # Defragment before the new phase's (bigger) activations land.
+                # p3->p4 doubles seq; cached p3-shaped blocks otherwise OOM the
+                # first seq-4096 step on this 12GB WSL2 stack (2026-07-22:
+                # CUDA unknown-error exactly at this boundary, restarts=3).
+                if device == "cuda":
+                    torch.cuda.empty_cache()
 
             lr = wsd_lr(step, total_steps, cfg)
             for g in opt.param_groups:
@@ -630,6 +636,11 @@ def main(argv=None) -> int:
                 _point_latest_at(ckpt_dir, p)
                 log("checkpoint", path=str(p), step=step)
                 heartbeat(step, phase)
+                # Anti-fragmentation at the natural pause: the 2GB state-dict
+                # save + hours of varied-shape allocations intermittently OOM'd
+                # mid-p4 at mb 2 (~40 min in). Cheap here (every 15 steps).
+                if device == "cuda":
+                    torch.cuda.empty_cache()
 
         final = ckpt_dir / f"{args.branch or 'base'}_final.pt"
         save_ckpt(

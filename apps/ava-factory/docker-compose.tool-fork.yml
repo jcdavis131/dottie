@@ -23,13 +23,13 @@ services:
       # that way. On a FRESH fork /ckpt/tool has no latest and this is a no-op.
       - --resume
     environment:
-      # p4 seq-4096 crash-loop relief (2026-07-22): mb 2 -> 1 halves activation
-      # memory; identical training math via accum 64 (same 262144 tok/step).
-      # Evidence: restarts=3 — CUDA unknown-error at the p3->p4 boundary, then
-      # ~40 min of healthy p4 steps, then CUDA OOM at mb 2 on this 12GB WSL2
-      # stack (fragmentation + 2GB checkpoint writes spike past the ~10.2GB
-      # working set). Merges with the base service env (compose map merge).
-      AVA_MAX_MICRO_BATCH: "1"
+      # p4 seq-4096 memory story (2026-07-22): mb 2 OOM'd intermittently
+      # (fragmentation; restarts=3), but mb 1 was CPU/data-bound — GPU 19%,
+      # ZERO steps in 40 min (64 sequential micros starve the GPU). Fix is
+      # mb 2 + torch.cuda.empty_cache() at checkpoint saves and phase
+      # transitions (dottie/train.py, bind-mounted). Keep mb pinned at 2 so
+      # a future MAX_MICRO_BATCH default change can't silently raise it here.
+      AVA_MAX_MICRO_BATCH: "2"
     volumes:
       - ava_packed:/packed
       - ava_ckpt:/ckpt
