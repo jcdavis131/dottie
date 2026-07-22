@@ -37,6 +37,24 @@ def _resolve_factory_root() -> Path:
 
 FACTORY = _resolve_factory_root()
 
+
+def _env_float(name: str, default: float) -> float:
+    """Read a positive float from the environment, else fall back to `default`."""
+    try:
+        val = float(os.environ.get(name, ""))
+        return val if val > 0 else default
+    except (TypeError, ValueError):
+        return default
+
+
+# Hard ceiling (seconds) on a single factory subprocess. `_run_in_factory` uses
+# capture_output=True, which buffers all stdout/stderr in memory until the child
+# exits — so a hung job would block the CLI forever while growing that buffer
+# unbounded. subprocess.run(timeout=...) force-kills it instead and raises
+# TimeoutExpired. Override with FACTORY_SUBPROCESS_TIMEOUT (0/invalid = default).
+FACTORY_SUBPROCESS_TIMEOUT = _env_float("FACTORY_SUBPROCESS_TIMEOUT", 900.0)
+
+
 def _is_resolvable_fast(host: str, timeout: float = 0.8) -> bool:
     if not host:
         return False
@@ -673,7 +691,28 @@ def _run_in_factory(argv: list, yes: bool, command: str, description: str):
         if not confirmed:
             emit({"cancelled": True, "cmd": " ".join(argv)}, command=command)
             raise typer.Exit(1)
-    proc = subprocess.run(argv, cwd=str(FACTORY), capture_output=True, text=True)
+    try:
+        proc = subprocess.run(
+            argv, cwd=str(FACTORY), capture_output=True, text=True,
+            timeout=FACTORY_SUBPROCESS_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired as exc:
+        # text=True means .stdout/.stderr are str|None; keep the partial capture.
+        partial_out = exc.stdout if isinstance(exc.stdout, str) else ""
+        partial_err = exc.stderr if isinstance(exc.stderr, str) else ""
+        emit({
+            "error": f"factory command timed out after {FACTORY_SUBPROCESS_TIMEOUT:g}s",
+            "cmd": " ".join(argv),
+            "cwd": str(FACTORY),
+            "timeout_seconds": FACTORY_SUBPROCESS_TIMEOUT,
+            "stdout": partial_out[-4000:],
+            "stderr": partial_err[-2000:],
+            "hint": "raise FACTORY_SUBPROCESS_TIMEOUT (seconds) for a longer ceiling, "
+                    "or use `scout ava loop`, which streams long-running jobs instead "
+                    "of buffering them",
+            "disclaimer": "Solo personal project, no connection to employer, built with public/free-tier only",
+        }, command=command)
+        raise typer.Exit(124)  # conventional timeout exit code
     emit({
         "action": description,
         "cmd": " ".join(argv),
