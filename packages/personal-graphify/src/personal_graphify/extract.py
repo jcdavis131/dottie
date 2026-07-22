@@ -7,9 +7,12 @@ Solo personal project, no connection to employer, built with public/free-tier on
 """
 import ast
 import re
+import logging
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
 import hashlib
+
+logger = logging.getLogger(__name__)
 
 EXTRACTED = "EXTRACTED"
 INFERRED = "INFERRED"
@@ -39,7 +42,8 @@ def extract_python(file_path: Path) -> Tuple[List[Dict], List[Dict]]:
     nodes, edges = [], []
     try:
         source = file_path.read_text(encoding="utf-8", errors="ignore")
-    except:
+    except Exception:
+        logger.warning("Failed to read Python file %s, skipping", file_path, exc_info=True)
         return nodes, edges
     file_node_id = f"file:{file_path}"
     nodes.append({
@@ -54,7 +58,8 @@ def extract_python(file_path: Path) -> Tuple[List[Dict], List[Dict]]:
     # Use AST for reliability, tree-sitter for extra if needed later
     try:
         tree = ast.parse(source, filename=str(file_path))
-    except:
+    except Exception:
+        logger.warning("Failed to parse Python AST for %s, falling back to rationale-only extraction", file_path, exc_info=True)
         tree = None
 
     if tree is not None:
@@ -184,7 +189,8 @@ def extract_js_generic(file_path: Path) -> Tuple[List[Dict], List[Dict]]:
     try:
         src = file_path.read_text(encoding="utf-8", errors="ignore")
         src_bytes = src.encode()
-    except:
+    except Exception:
+        logger.warning("Failed to read JS/TS file %s, skipping", file_path, exc_info=True)
         return nodes, edges
     file_node_id = f"file:{file_path}"
     nodes.append({"id": file_node_id, "label": file_path.name, "type": "file", "file": str(file_path), "language": file_path.suffix.strip("."), "full_path": str(file_path)})
@@ -248,7 +254,8 @@ def extract_markdown(file_path: Path) -> Tuple[List[Dict], List[Dict]]:
     nodes, edges = [], []
     try:
         src = file_path.read_text(encoding="utf-8", errors="ignore")
-    except:
+    except Exception:
+        logger.warning("Failed to read Markdown file %s, skipping", file_path, exc_info=True)
         return nodes, edges
     file_id = f"doc:{file_path}"
     nodes.append({"id": file_id, "label": file_path.name, "type": "doc", "file": str(file_path), "full_path": str(file_path)})
@@ -263,7 +270,10 @@ def extract_markdown(file_path: Path) -> Tuple[List[Dict], List[Dict]]:
                 nid = f"concept:{k}={v}:{file_path}"
                 nodes.append({"id": nid, "label": f"{k}: {v}", "type": "metadata", "file": str(file_path)})
                 edges.append({"source": file_id, "target": nid, "type": "has_metadata", "confidence": EXTRACTED})
-    except:
+    except Exception:
+        # Optional dependency (python-frontmatter) may be absent, or the document's
+        # frontmatter may be malformed — metadata extraction is best-effort, so skip it.
+        logger.warning("Frontmatter metadata extraction skipped for %s", file_path, exc_info=True)
         pass
 
     # headings as concepts + hierarchy
