@@ -132,3 +132,60 @@ class TestFsWriteEnforcementWired:
             mf = policy.load_manifest(Path("bigbang/plugins") / plugin)
             ok, reason = policy.check_permission(mf, "fs_write", "/anywhere")
             assert ok, f"{plugin}: {reason}"
+
+
+class TestDomainMatchBypasses:
+    """Regression: the 2026-07-22 monorepo review reproduced two allowlist
+    bypasses against the legacy substring matcher. Matching is host-only now:
+    exact host or dot-suffix subdomain — never a substring of path or a crafted
+    hostname."""
+
+    @pytest.fixture(autouse=True)
+    def _policy_file(self, tmp_path, monkeypatch):
+        self.fp = tmp_path / "policy.yaml"
+        monkeypatch.setenv("BIGBANG_POLICY_FILE", str(self.fp))
+
+    def test_allowlisted_host_in_path_does_not_bypass(self):
+        # bypass #1: "localhost" allowlisted, attacker URL carries it in the PATH
+        self.fp.write_text("network:\n  allowed_domains: [localhost]\n")
+        ok, reason = policy.check_user_url("http://evil.com/localhost")
+        assert not ok, "substring-in-path must not satisfy the allowlist"
+        assert "evil.com" in reason
+
+    def test_allowlisted_host_as_hostname_prefix_does_not_bypass(self):
+        # bypass #2: "127.0.0.1" allowlisted, attacker registers 127.0.0.1.evil.com
+        self.fp.write_text("network:\n  allowed_domains: [127.0.0.1]\n")
+        ok, _ = policy.check_user_url("http://127.0.0.1.evil.com/x")
+        assert not ok, "crafted hostname carrying the allowlisted host must not pass"
+
+    def test_exact_and_subdomain_still_allowed(self):
+        self.fp.write_text("network:\n  allowed_domains: [example.com]\n")
+        assert policy.check_user_url("https://example.com/x")[0]
+        assert policy.check_user_url("https://api.example.com/x")[0]
+        assert not policy.check_user_url("https://notexample.com/x")[0]  # no suffix trick
+
+    def test_legacy_full_url_manifest_entry_matches_by_host_only(self):
+        m = {"name": "t", "capabilities": {"network": {
+            "enabled": True, "domains": ["https://api.github.com"]}}}
+        assert policy.check_permission(m, "network", "https://api.github.com/repos")[0]
+        assert not policy.check_permission(m, "network", "https://evil.com/https://api.github.com")[0]
+
+
+class TestSecretsDefaultDeny:
+    """Regression: an EMPTY capabilities.secrets.allow used to grant EVERY secret
+    (default-allow) — the opposite of the documented default-deny."""
+
+    def test_empty_allowlist_denies_every_secret(self):
+        m = {"name": "t", "capabilities": {"secrets": {"allow": []}}}
+        ok, reason = policy.check_permission(m, "secret", "OPENAI_API_KEY")
+        assert not ok
+        assert "default-deny" in reason
+
+    def test_missing_secrets_block_denies(self):
+        ok, _ = policy.check_permission({"name": "t", "capabilities": {}}, "secret", "ANY")
+        assert not ok
+
+    def test_named_secret_allowed_others_denied(self):
+        m = {"name": "t", "capabilities": {"secrets": {"allow": ["GH_TOKEN"]}}}
+        assert policy.check_permission(m, "secret", "GH_TOKEN")[0]
+        assert not policy.check_permission(m, "secret", "OPENAI_API_KEY")[0]

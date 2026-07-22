@@ -66,13 +66,22 @@ def _host_of(resource: str) -> str:
 
 
 def _domain_matches(domain: str, resource: str) -> bool:
+    """Exact-host or dot-suffix (subdomain) match ONLY.
+
+    The old "legacy substring" branch (`domain in resource`) nullified the whole
+    default-deny story: with `localhost` allowlisted, `http://evil.com/localhost`
+    passed (substring in the PATH), and with `127.0.0.1` allowlisted,
+    `http://127.0.0.1.evil.com/x` passed (substring in a crafted HOSTNAME). Both
+    were reproduced live in the 2026-07-22 monorepo review. Matching is now done
+    on the parsed HOST only. Manifest entries that store full URLs keep working
+    because the allowlist entry itself is normalized through _host_of too."""
+    if not domain:
+        return False
+    want = _host_of(domain)  # legacy full-URL entries match by their host
+    if not want:
+        return False
     host = _host_of(resource)
-    if domain == resource or domain == host:
-        return True
-    if host.endswith("." + domain):
-        return True
-    # legacy substring semantics kept for manifest entries that store full URLs
-    return bool(domain) and (domain in resource or resource.endswith(domain))
+    return host == want or host.endswith("." + want)
 
 
 def check_user_url(url: str) -> tuple[bool, str]:
@@ -146,7 +155,15 @@ def check_permission(manifest: dict, action: str, resource: str) -> tuple[bool, 
             )
     if action == "secret":
         allowed = caps.get("secrets", {}).get("allow", [])
-        if allowed and resource not in allowed:
+        # default-deny like every other axis: an EMPTY allowlist grants nothing.
+        # (The old `if allowed and ...` guard silently allowed EVERY secret when
+        # the list was empty — the opposite of this function's own docstring.)
+        if not allowed:
+            return False, (
+                f"secrets allowlist is empty for {manifest.get('name', 'tool')} — "
+                "default-deny; name each secret in manifest capabilities.secrets.allow"
+            )
+        if resource not in allowed:
             return False, f"secret {resource} not in allowlist {allowed}"
     return True, "ok"
 
