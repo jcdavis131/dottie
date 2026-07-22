@@ -5,7 +5,7 @@ import { safeParseJson, liveAgeS, parseFleet } from "../public/js/twin.mjs";
 
 const GIST_URL = process.env.TWIN_GIST_URL ||
   "https://gist.githubusercontent.com/jcdavis131/929c3c0b8ad38457f0a19f4f6605085c/raw/dottie_live_status.json";
-const TWIN_MAX_AGE_S = 4500;
+const TWIN_MAX_AGE_S = 1800; // publisher runs every 10 min (operator, 2026-07-22)
 
 export default async function handler(req, res) {
   try {

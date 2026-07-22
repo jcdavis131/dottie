@@ -12,10 +12,11 @@ import { safeParseJson, parseTrainerTail, parseDashboard, parseLiveEvents, liveA
 
 const GIST_URL = process.env.TWIN_GIST_URL ||
   "https://gist.githubusercontent.com/jcdavis131/929c3c0b8ad38457f0a19f4f6605085c/raw/dottie_live_status.json";
-// The box's "Dottie Status publisher" task pushes the gist HOURLY — cap at
-// 75 min so a healthy cadence never flickers offline, while genuinely stale
-// history still refuses to render as live telemetry (ageS ships regardless).
-const TWIN_MAX_AGE_S = 4500;
+// The box's "Dottie Status publisher" task pushes the gist every 10 MINUTES
+// (operator bumped it 2026-07-22; was hourly) — cap at 30 min so a healthy
+// cadence never flickers offline while genuinely stale history still refuses
+// to render as live telemetry (ageS ships regardless).
+const TWIN_MAX_AGE_S = 1800;
 
 export default async function handler(req, res) {
   const url = process.env.TWIN_STATUS_URL || "";
