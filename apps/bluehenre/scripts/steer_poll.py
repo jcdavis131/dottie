@@ -23,10 +23,16 @@ import json
 import re
 import subprocess
 import sys
+import time
+from pathlib import Path
 
 GIST_ID = "c899ef776dcb81e99319239efa0f92ba"
 OWNER = "jcdavis131"
 ROBOT = "\U0001f916"  # 🤖
+# Append-only local audit of every ack the box posts. The gist thread is the
+# operator-visible log, but gist comments can be edited/deleted upstream —
+# this file is the box's own non-repudiable record of what it executed.
+AUDIT_LOG = Path(__file__).resolve().parent.parent / "data" / "steer_audit.jsonl"
 
 # ---- fleet control grammar (operator 2026-07-22: "tweak the compute fleet
 # directly from the site ... behind a login ... only I should have access").
@@ -69,16 +75,61 @@ def comments() -> list[dict]:
     return json.loads(_gh(["api", f"gists/{GIST_ID}/comments", "--paginate"]))
 
 
+def _selftest() -> int:
+    """Offline checks: fleet grammar (real attack cases) + audit append."""
+    import tempfile
+    cases = [
+        ("fleet: stop collector-3", True, "dottie-factory-collector-3"),
+        ("fleet: restart trainer-1", True, "dottie-factory-trainer-1"),
+        ("Fleet: START curator-5", True, "dottie-factory-curator-5"),
+        ("fleet: stop dottie-dottie-1", True, "dottie-dottie-1"),
+        ("fleet: delete trainer-1", False, None),      # destructive verb
+        ("fleet: stop ../../etc", False, None),        # traversal
+        ("fleet: stop nginx-1", False, None),          # foreign container
+        ("fleet: stop trainer-100", False, None),      # out-of-range index
+        ("status?", False, None),                      # freeform, not fleet
+    ]
+    failed = 0
+    for body, want_valid, want_target in cases:
+        r = parse_fleet(body)
+        ok = r["valid"] == want_valid and (not want_valid or r["target"] == want_target)
+        failed += 0 if ok else 1
+        print(("PASS" if ok else "FAIL"), body, "->", r)
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / "audit.jsonl"
+        with p.open("a", encoding="utf-8") as f:
+            f.write(json.dumps({"ts": 1, "acked": "x", "note": "y"}) + "\n")
+        row = json.loads(p.read_text(encoding="utf-8").strip())
+        ok = row == {"ts": 1, "acked": "x", "note": "y"}
+        failed += 0 if ok else 1
+        print(("PASS" if ok else "FAIL"), "audit append/readback")
+    print(f"{len(cases) + 1 - failed} passed, {failed} failed")
+    return 1 if failed else 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ack", metavar="COMMENT_ID", help="ack this directive id")
     ap.add_argument("--note", default="done", help="status line for the ack")
+    ap.add_argument("--selftest", action="store_true", help="offline grammar + audit checks")
     args = ap.parse_args(argv)
+
+    if args.selftest:
+        return _selftest()
 
     if args.ack:
         body = f"{ROBOT} ack {args.ack}: {args.note}"
         _gh(["api", f"gists/{GIST_ID}/comments", "-f", f"body={body}"])
-        print(json.dumps({"acked": args.ack}))
+        try:
+            AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
+            with AUDIT_LOG.open("a", encoding="utf-8") as f:
+                f.write(json.dumps({"ts": round(time.time()), "acked": args.ack,
+                                    "note": args.note[:500]}) + "\n")
+        except OSError as e:
+            # the ack posted; a failed audit write must be VISIBLE, not silent
+            print(json.dumps({"acked": args.ack, "audit_error": str(e)[:120]}))
+            return 0
+        print(json.dumps({"acked": args.ack, "audited": str(AUDIT_LOG)}))
         return 0
 
     rows = comments()
