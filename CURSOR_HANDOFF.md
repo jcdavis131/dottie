@@ -67,8 +67,13 @@ steers from anywhere.
    on disk, biggest object on C:; Home edition has no Optimize-VHD; budget
    30–90 min. Then relaunch Docker Desktop + `docker start` the fleet.
 3. Then: research daemon gets the GPU (2 pending candidates through the
-   gates; report promotions/rejections). Note: 59% of past failures are
-   dry_run crashes — generator quality is the bottleneck.
+   gates; report promotions/rejections). **RESTART the daemon first**
+   (kill the `dottie.research run` python pair or re-run scheduled task
+   “Dottie Research runner”) — it never live-reloads, and commit `54c43f4`
+   added targeted repair hints to the self-correction loop
+   (`validate.diagnose_failure`, tests in `tests/test_validate_hints.py`)
+   that attack the measured bottleneck: 59% of failures died at dry_run
+   (einsum/shape-algebra classes).
 3. p5 anneal crashes >2× ⇒ HOLD and page the operator via steer thread.
 4. Weekly: STATE OF THE ORG digest in the steer thread (first posted 07-22).
 5. Max 2 heavyweight builders/agents while training runs (disk hit 0 bytes
