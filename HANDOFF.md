@@ -7,7 +7,10 @@
 ## 📌 Session continuation — 2026-07-22 00:09 CDT (continues the 07-21 block below)
 
 **Supersedes the 07-21 block's "Decisions still YOURS": BOTH were decided and executed.**
-Local `main` HEAD `ec284b3`, tree clean, 12 session commits (`a7ae0d4`…`ec284b3`), NOTHING pushed.
+Local `main` HEAD `ec284b3`, tree clean, 12 session commits (`a7ae0d4`…`ec284b3`).
+**PUSHED 2026-07-22: operator said "push everything to origin" — `0decec3..79efda3` (296
+commits) is on origin/main; local and origin are identical. The "local-only" caveats in the
+blocks below are resolved.**
 
 ### Done since the 07-21 block
 - **Decision A EXECUTED — trained on the new curriculum** (operator picked "extend the mini
