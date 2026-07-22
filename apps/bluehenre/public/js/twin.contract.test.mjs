@@ -148,7 +148,13 @@ check("unreachable or text-less batch sample -> null",
 const siteHub = parseHub({ hub: { sites: [
   { name: "hub", url: "https://dumbmodel.com", http: 200, ms: 120, up: true },
   { name: "pitch", url: "https://pitch.jcamd.com", http: 503, ms: 900, up: false },
-] } });
+], site_history: {
+  hub: [{ t: 1, up: true, ms: 100 }, { t: 2, up: false, ms: 0 }, { t: 3, up: true, ms: 120 },
+        { t: 4, up: true, ms: 110 }],
+} } });
+check("site 24h history -> uptime pct + strip (steer: trends)",
+  siteHub?.sites?.[0].up24 === 75 && siteHub.sites[0].strip.join(",") === "true,false,true,true" &&
+  siteHub.sites[1].up24 === null && siteHub.sites[1].strip.length === 0);
 check("hub sites parse with honest up/down (rung 6)",
   siteHub?.sites?.length === 2 && siteHub.sites[0].up === true && siteHub.sites[1].up === false);
 check("site urls pass through only when real http(s)",

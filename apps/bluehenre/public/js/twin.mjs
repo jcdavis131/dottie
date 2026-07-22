@@ -199,12 +199,20 @@ export function parseHub(feed) {
     };
   }
 
-  // rung 6: the org's real deployed sites, probed by the publisher
+  // rung 6: the org's real deployed sites, probed by the publisher; plus the
+  // rolling 24h probe history (steer directive: trends, not just now)
+  const histAll = hub?.site_history;
   const sites = Array.isArray(hub?.sites)
-    ? hub.sites.map((s) => ({ name: String(s.name ?? "?"), up: s.up === true,
-                              ms: Number.isFinite(s.ms) ? s.ms : null,
-                              // link only when the probe URL is a real http(s) URL
-                              url: /^https?:\/\//.test(s.url ?? "") ? String(s.url) : null }))
+    ? hub.sites.map((s) => {
+        const h = Array.isArray(histAll?.[s.name]) ? histAll[s.name] : [];
+        const ups = h.filter((r) => r?.up === true).length;
+        return { name: String(s.name ?? "?"), up: s.up === true,
+                 ms: Number.isFinite(s.ms) ? s.ms : null,
+                 // link only when the probe URL is a real http(s) URL
+                 url: /^https?:\/\//.test(s.url ?? "") ? String(s.url) : null,
+                 up24: h.length ? Math.round((ups / h.length) * 100) : null,
+                 strip: h.slice(-36).map((r) => r?.up === true) };
+      })
     : null;
 
   if (!network && !ecosystem && !evals && !researchOut && !sites && !sample) return null;

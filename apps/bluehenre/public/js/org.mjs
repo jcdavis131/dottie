@@ -434,7 +434,7 @@ function renderSites(h) {
   const el = $("sites");
   el.replaceChildren();
   if (!h?.sites) return offline(el);
-  el.append(table(["site", "status", "latency|r"],
+  el.append(table(["site", "status", "24h|r", "latency|r"],
     h.sites.map((s) => {
       let nameCell = s.name;
       if (s.url) {
@@ -445,8 +445,10 @@ function renderSites(h) {
         nameCell.textContent = s.name;
       }
       return [nameCell, withLed(s.up, s.up ? " up" : " down"),
+        Number.isFinite(s.up24) ? `${s.up24}%` : "—",
         Number.isFinite(s.ms) ? `${s.ms}ms` : "—"];
     })));
+  el.append(P("24h = share of real probes up over the rolling day (10-min cadence)", "note"));
 }
 
 function renderDemand() {

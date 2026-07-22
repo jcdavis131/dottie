@@ -117,6 +117,21 @@ def _batch_sample() -> dict:
         return {"unreachable": f"{type(e).__name__}: {e}"}
 
 
+def _site_history(existing_hub, probes: list) -> dict:
+    """Rolling 24h of real probe results per site (steer directive 2026-07-22:
+    'the console shows trends, not just now'). Carried through the existing
+    file across publishes; pruned by wall clock; capped defensively."""
+    prev = existing_hub.get("site_history", {}) if isinstance(existing_hub, dict) else {}
+    now = time.time()
+    hist = {}
+    for p in probes:
+        rows = [r for r in prev.get(p["name"], [])
+                if isinstance(r, dict) and now - r.get("t", 0) < 86400]
+        rows.append({"t": round(now), "up": p["up"], "ms": p["ms"]})
+        hist[p["name"]] = rows[-160:]
+    return hist
+
+
 def _fleet_snapshot() -> dict:
     """Real docker-stats snapshot for the game's fleet NPCs (2026-07-22).
     Raw docker JSONL rows, parsed client-side; unreachable is honest."""
@@ -175,6 +190,7 @@ def compose() -> dict:
         "sites": _probe_sites(),
         "batch_sample": _batch_sample(),
     }
+    hub["site_history"] = _site_history(existing.get("hub", {}), hub["sites"])
     snapshot = {
         **existing,
         "schema": "dottie_live_status/v2",  # additive: v2 consumers unaffected by "hub"

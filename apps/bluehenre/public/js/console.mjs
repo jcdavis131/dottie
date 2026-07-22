@@ -252,7 +252,20 @@ function renderSites() {
     if (s.url) { sp.href = s.url; sp.target = "_blank"; sp.rel = "noopener"; }
     const led = document.createElement("i");
     led.className = `led ${s.up ? "up" : "down"}`;
-    sp.append(led, document.createTextNode(`${s.name}${Number.isFinite(s.ms) ? ` ${s.ms}ms` : ""}`));
+    sp.append(led, document.createTextNode(
+      `${s.name}${Number.isFinite(s.ms) ? ` ${s.ms}ms` : ""}` +
+      (Number.isFinite(s.up24) ? ` · ${s.up24}%/24h` : "")));
+    // 24h trend strip: one tick per real probe (steer directive: trends)
+    if (s.strip?.length) {
+      const strip = document.createElement("span");
+      strip.className = "upstrip";
+      for (const ok of s.strip) {
+        const t = document.createElement("i");
+        t.className = ok ? "up" : "down";
+        strip.append(t);
+      }
+      sp.append(strip);
+    }
     wrap.append(sp);
   }
   el.append(wrap);
