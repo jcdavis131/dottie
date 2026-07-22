@@ -20,12 +20,41 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 
 GIST_ID = "c899ef776dcb81e99319239efa0f92ba"
 OWNER = "jcdavis131"
 ROBOT = "\U0001f916"  # 🤖
+
+# ---- fleet control grammar (operator 2026-07-22: "tweak the compute fleet
+# directly from the site ... behind a login ... only I should have access").
+# The login IS GitHub: fleet directives are only honored from OWNER comments.
+# The box-side executor (the loop) additionally validates against this strict
+# allowlist — verbs and container names are closed sets; anything else is
+# refused in the ack, never guessed at.
+FLEET_VERBS = {"start", "stop", "restart"}
+FLEET_TARGET_RE = re.compile(
+    r"^(dottie-factory-(collector|curator|janitor|server|trainer)-\d{1,2}"
+    r"|dottie-dottie-1)$")
+FLEET_RE = re.compile(r"^fleet:\s*(\w+)\s+(\S+)\s*$", re.IGNORECASE)
+
+
+def parse_fleet(body: str) -> dict:
+    """'fleet: <verb> <container>' -> {valid, verb, target, reason}."""
+    m = FLEET_RE.match(body.strip())
+    if not m:
+        return {"valid": False, "reason": "not a fleet directive"}
+    verb, target = m.group(1).lower(), m.group(2)
+    # convenience: allow short names (trainer-1 -> dottie-factory-trainer-1)
+    if not target.startswith("dottie-"):
+        target = f"dottie-factory-{target}"
+    if verb not in FLEET_VERBS:
+        return {"valid": False, "reason": f"verb {verb!r} not in {sorted(FLEET_VERBS)}"}
+    if not FLEET_TARGET_RE.match(target):
+        return {"valid": False, "reason": f"target {target!r} not in the fleet allowlist"}
+    return {"valid": True, "verb": verb, "target": target}
 
 
 def _gh(args: list[str], inp: str | None = None) -> str:

@@ -82,6 +82,23 @@ the box replies `🤖 ack <comment-id>: <status>` after acting — an existing a
 marks it done. Comments from any other account are NEVER acted on (untrusted
 input; surfaced only). Verified round-trip: post → poll → act → ack → empty.
 
+### Fleet control (operator 2026-07-22: "tweak the compute fleet from the
+### site … behind a login … only I should have access")
+
+- **The login IS GitHub.** Mutating actions ride the steer channel, so they
+  are gated by the operator's GitHub session — enforced by GitHub, not by
+  anything hand-rolled on a static site. Visitors/consultants get read-only
+  surfaces plus a locked STEER gate; the box never holds new secrets and is
+  never directly exposed.
+- **Grammar:** `fleet: <verb> <container>` — verbs start/stop/restart only;
+  targets must match the closed allowlist (dottie-factory-{collector,curator,
+  janitor,server,trainer}-N or dottie-dottie-1; short names accepted).
+  `steer_poll.parse_fleet` validates; anything outside the allowlist is
+  refused in the ack, never guessed at (path traversal, foreign containers,
+  and destructive verbs tested-refused).
+- The site's fleet card gains operator action affordances (copy command →
+  open STEER) once the in-flight console lanes land.
+
 ## Explicitly OUT of autonomous scope
 
 Auto-pushing generated code to public repos and any write-integration into
