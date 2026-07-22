@@ -1087,6 +1087,95 @@ export function buildWorld(scene) {
     scene.add(doorGrp);
   });
 
+  // ---- FLEET NPCs (operator 2026-07-22: the NPCs ARE the docker fleet) -----
+  // Each running container is a walking minifig near its department, wearing a
+  // live nameplate with docker's own numbers. The per-dept expert minifigs stay
+  // visible ONLY where no live node exists (honest: no daemon runs there).
+  const fleetGroup = new THREE.Group();
+  scene.add(fleetGroup);
+  const fleetNpcs = new Map(); // container name -> minifig
+  function nameplateTexture(c) {
+    return canvasTexture(512, 128, (g) => {
+      g.scale(2, 2);
+      g.fillStyle = "#070b12"; g.fillRect(0, 0, 256, 64);
+      g.fillStyle = "#232c44"; g.fillRect(0, 0, 256, 2);
+      const active = (c.cpuPct ?? 0) >= 1;
+      g.fillStyle = active ? "#2eff6a" : "#5a7284";
+      g.fillRect(8, 12, 10, 10);
+      g.fillStyle = "#f0f6ff"; g.font = "bold 20px monospace";
+      g.textAlign = "left"; g.textBaseline = "top";
+      g.fillText(c.short, 26, 8);
+      g.fillStyle = "#28e6ff"; g.font = "16px monospace";
+      g.fillText(`cpu ${c.cpuPct ?? "?"}%  ·  ${c.mem ?? "?"}`, 8, 38);
+    });
+  }
+  const nameHash = (s) => [...String(s)].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
+  function applyFleet(containers) {
+    if (!Array.isArray(containers)) return;
+    const seen = new Set();
+    const perDept = {};
+    for (const c of containers) {
+      seen.add(c.name);
+      perDept[c.dept] = (perDept[c.dept] ?? 0) + 1;
+      let m = fleetNpcs.get(c.name);
+      if (!m) {
+        const i = Math.max(0, DEPARTMENTS.findIndex((x) => x.id === c.dept));
+        const d = DEPARTMENTS[i];
+        m = minifig({ shirt: d.color, plumbob: 0x28e6ff });
+        const a = (i / DEPARTMENTS.length) * Math.PI * 2;
+        const slot = perDept[c.dept];
+        m.userData = {
+          npcId: c.name, dept: c.dept, container: true,
+          expert: `the ${c.short} container (${c.role})`,
+          home: [Math.cos(a) * 29 + Math.cos(a + Math.PI / 2) * (slot - 1) * 2.6,
+                 Math.sin(a) * 29 + Math.sin(a + Math.PI / 2) * (slot - 1) * 2.6],
+          phase: (nameHash(c.name) % 628) / 100, cpu: c.cpuPct ?? 0,
+        };
+        m.position.set(m.userData.home[0], 0, m.userData.home[1]);
+        const plate = new THREE.Sprite(new THREE.SpriteMaterial({
+          map: nameplateTexture(c), transparent: true, depthWrite: false }));
+        plate.scale.set(4.6, 1.15, 1);
+        plate.position.y = 3.1;
+        plate.name = "plate";
+        m.add(plate);
+        fleetGroup.add(m);
+        fleetNpcs.set(c.name, m);
+      } else {
+        m.userData.cpu = c.cpuPct ?? 0;
+        const plate = m.getObjectByName("plate");
+        plate.material.map?.dispose();
+        plate.material.map = nameplateTexture(c);
+        plate.material.needsUpdate = true;
+      }
+    }
+    for (const [name, m] of fleetNpcs) { // stopped containers leave the campus
+      if (!seen.has(name)) { fleetGroup.remove(m); fleetNpcs.delete(name); }
+    }
+    npcs.forEach((n) => { n.visible = !(perDept[n.userData.dept] > 0); });
+  }
+
+  // The Dottie terminal — ONE special NPC; interacting opens the dottie:app
+  // modal (main.mjs owns the modal; this is just the body + nameplate).
+  const dottieTerminal = minifig({ shirt: 0xff3fa8, hair: 0x1a1e26, plumbob: 0x28e6ff });
+  dottieTerminal.position.set(3.5, 0, 5.5);
+  dottieTerminal.rotation.y = Math.PI;
+  dottieTerminal.userData = { npcId: "dottie:app", dept: "hall", dottieTerminal: true,
+    expert: "the Dottie assistant console" };
+  const dtPlate = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: canvasTexture(512, 128, (g) => {
+      g.scale(2, 2);
+      g.fillStyle = "#070b12"; g.fillRect(0, 0, 256, 64);
+      g.fillStyle = "#ff3fa8"; g.fillRect(0, 0, 256, 2);
+      g.fillStyle = "#f0f6ff"; g.font = "bold 22px monospace";
+      g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText("DOTTIE", 128, 20);
+      g.fillStyle = "#28e6ff"; g.font = "15px monospace";
+      g.fillText("talk to the assistant [E]", 128, 46);
+    }), transparent: true, depthWrite: false }));
+  dtPlate.scale.set(4.6, 1.15, 1); dtPlate.position.y = 3.1;
+  dottieTerminal.add(dtPlate);
+  scene.add(dottieTerminal);
+
   // the player: visitor badge grey-blue + golden plumbob (you are not org staff)
   const player = minifig({ shirt: 0x444a5a, hair: 0x2c2320, plumbob: 0xf2c14e });
   player.position.set(0, 0, 12);
@@ -1094,7 +1183,8 @@ export function buildWorld(scene) {
 
   // cheap idle animation: plumbobs spin, bats flap-bob, flag sways, walkers get a
   // gait bob, beacons pulse their dept status, memo bubbles pop and fade
-  const bobs = [player, ...npcs, ...staff].map((m) => m.getObjectByName("plumbob")).filter(Boolean);
+  const bobs = [player, ...npcs, ...staff, dottieTerminal]
+    .map((m) => m.getObjectByName("plumbob")).filter(Boolean);
   const walkers = [player, ...npcs, ...staff].map((m) => ({
     body: m.getObjectByName("body"), grp: m, lastX: m.position.x, lastZ: m.position.z,
   }));
@@ -1110,6 +1200,22 @@ export function buildWorld(scene) {
       s.position.x += (dx / d) * u.speed * dt;
       s.position.z += (dz / d) * u.speed * dt;
       s.rotation.y = Math.atan2(dx, dz);
+    }
+    // fleet wander: docker's cpu% drives the body — busy containers pace
+    // wide and fast, idle ones hold their post. Numbers are docker's own.
+    for (const m of fleetNpcs.values()) {
+      const u = m.userData;
+      const bob2 = m.getObjectByName("plumbob");
+      if (bob2) bob2.rotation.y += dt * 2.2;
+      if ((u.cpu ?? 0) < 0.5) continue; // idle container: standing by
+      const amp = Math.min(6, 1.5 + Math.log10(1 + u.cpu) * 3);
+      const w = 0.25 + Math.min(1.2, u.cpu / 100);
+      const nx = u.home[0] + Math.cos(t * w + u.phase) * amp;
+      const nz = u.home[1] + Math.sin(t * w * 0.8 + u.phase) * amp * 0.7;
+      m.rotation.y = Math.atan2(nx - m.position.x, nz - m.position.z);
+      m.position.x = nx; m.position.z = nz;
+      const body = m.getObjectByName("body");
+      if (body) { body.position.y = Math.abs(Math.sin(t * 9 + u.phase)) * 0.1; body.rotation.x = 0.09; }
     }
     for (const b of bobs) {
       b.rotation.y += dt * 2.2;
@@ -1157,7 +1263,8 @@ export function buildWorld(scene) {
   }
 
   return { player, npcs, terminals, buildings, animate,
-           updateProject, setDeptStatus, flashMemo, updateHubPanels };
+           updateProject, setDeptStatus, flashMemo, updateHubPanels,
+           applyFleet, dottieTerminal, fleetNpcs: () => [...fleetNpcs.values()] };
 }
 
 // (P1's random-wander tickNpcs was removed in P2 — ecosystem.mjs circuits now

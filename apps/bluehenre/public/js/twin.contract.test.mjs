@@ -139,6 +139,23 @@ check("unreachable hub blocks parse to null panels, not fabrications",
   brokenHub === null);
 check("no hub at all -> null", parseHub({}) === null && parseHub(null) === null);
 
+// fleet: docker's own rows parse; roles map to depts; garbage skipped
+import { parseFleet, fleetRole } from "./twin.mjs";
+const fleetText = [
+  '{"Name":"dottie-factory-trainer-1","CPUPerc":"100.16%","MemPerc":"25.2%","MemUsage":"2.39GiB / 9.485GiB"}',
+  '{"Name":"dottie-factory-collector-3","CPUPerc":"74.66%","MemPerc":"6.03%","MemUsage":"585.6MiB / 9.485GiB"}',
+  '{"Name":"dottie-dottie-1","CPUPerc":"0.02%","MemPerc":"0.9%","MemUsage":"87.15MiB / 9.485GiB"}',
+  "not json",
+].join("\n");
+const fl = parseFleet(fleetText);
+check("fleet parses docker rows, skips garbage", fl.length === 3);
+check("trainer maps to labs with real numbers",
+  fl[0].dept === "labs" && fl[0].short === "trainer-1" && fl[0].cpuPct === 100.16 && fl[0].mem === "2.39GiB");
+check("collector maps to servers", fl[1].dept === "servers" && fl[1].role === "data collector");
+check("research daemon maps to proving", fl[2].dept === "proving" && fl[2].short === "dottie-1");
+check("unknown role lands in gardens", fleetRole("mystery-svc-1").dept === "gardens");
+check("empty fleet -> []", parseFleet("").length === 0 && parseFleet(null).length === 0);
+
 // freshness: published_utc wins; bare ts works; garbage -> null
 const t0 = Date.parse("2026-07-22T14:30:02Z");
 check("age from published_utc", Math.abs(liveAgeS(wrapped, t0) - 600) < 1);

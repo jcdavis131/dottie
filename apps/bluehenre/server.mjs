@@ -9,9 +9,13 @@ import { createServer } from "node:http";
 import { readFile, appendFile, mkdir } from "node:fs/promises";
 import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { toShards } from "./public/js/extract.mjs";
 import { parseMetricsTail, safeParseJson, parseEvalSummary, parseTrainerTail,
-         parseDashboard, parseLiveEvents, liveAgeS } from "./public/js/twin.mjs";
+         parseDashboard, parseLiveEvents, liveAgeS, parseFleet } from "./public/js/twin.mjs";
+
+const execFileP = promisify(execFile);
 
 const ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "public");
 const DATA_DIR = join(fileURLToPath(new URL(".", import.meta.url)), "data");
@@ -35,6 +39,8 @@ const TWIN_PIPELINE_URL = process.env.DOTTIE_TWIN_PIPELINE ??
 const TWIN_LIVE_FILE = process.env.DOTTIE_TWIN_LIVE ||
   join(APP_DIR, "..", "ava-factory", "reports", "dottie_live_status.json");
 const TWIN_MAX_AGE_S = 3600; // a feed older than this is history, not telemetry
+
+const fleetCache = { at: 0, value: null };
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -120,6 +126,23 @@ const server = createServer(async (req, res) => {
           stored: 0, detail: `extraction refused: ${e.message}`,
         }));
       }
+    }
+    if (req.method === "GET" && (req.url || "").split("?")[0] === "/api/fleet") {
+      // The REAL docker fleet (operator 2026-07-22: NPCs are the containers).
+      // docker's own numbers via the CLI, cached 10s; honest offline on error.
+      const now = Date.now();
+      if (!fleetCache.at || now - fleetCache.at > 10_000) {
+        try {
+          const { stdout } = await execFileP(
+            "docker", ["stats", "--no-stream", "--format", "{{json .}}"],
+            { timeout: 15_000 });
+          fleetCache.value = { source: "local", ts: now, containers: parseFleet(stdout) };
+        } catch (e) {
+          fleetCache.value = { source: "offline", detail: `docker unreachable (${e.code ?? e.message})` };
+        }
+        fleetCache.at = now;
+      }
+      return send(200, MIME[".json"], JSON.stringify(fleetCache.value));
     }
     if (req.method === "GET" && (req.url || "").split("?")[0] === "/api/twin-status") {
       // REAL telemetry from this machine — the digital twin's whole point.

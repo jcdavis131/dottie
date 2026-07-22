@@ -15,9 +15,18 @@ supersedes the doc.
 
 - **World:** a low-grade digital twin of Earth; the playable slice is the org's
   HQ in **Austin, TX**. More Earth nodes are future rungs.
-- **NPCs:** one expert per REAL subsystem (map below), brains = local Dottie
-  when reachable (`DOTTIE_CHAT_URL`); otherwise they say so in-world. No
-  fabricated expertise, ever.
+- **NPCs ARE the docker fleet** (operator 2026-07-22): every running container
+  (trainer, collectors, curators, server, janitor, research daemon) walks the
+  campus near its department, wearing a live nameplate with docker's own
+  cpu%/mem, streamed via `/api/fleet` (local: docker CLI, 10s cache; hosted:
+  the published gist's `hub.fleet` snapshot). Activity drives the body — busy
+  containers pace, idle ones stand; stopped containers leave the campus. The
+  per-dept expert minifigs remain visible ONLY where no live node exists.
+  Chat brains = local Dottie when reachable (`DOTTIE_CHAT_URL`); otherwise
+  they say so in-world. No fabricated expertise, ever.
+- **The Dottie terminal:** ONE special NPC on the plaza. Interacting opens a
+  modal: the full dottie:app console (iframe) when the hub is reachable from
+  the build, else an honest source-stamped chat over `/api/npc-chat`.
 - **Twin telemetry:** the real training run (step, loss, eval ppl) renders on
   the plaza console via `/api/twin-status`, source-stamped `local` or honestly
   offline.

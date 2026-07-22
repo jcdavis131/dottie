@@ -39,6 +39,37 @@ def _get_json(url: str, timeout: float = 10.0):
         return {"unreachable": f"{type(e).__name__}: {e}", "url": url}
 
 
+def _fleet_snapshot() -> dict:
+    """Real docker-stats snapshot for the game's fleet NPCs (2026-07-22).
+    Raw docker JSONL rows, parsed client-side; unreachable is honest."""
+    try:
+        p = subprocess.run(
+            ["docker", "stats", "--no-stream", "--format", "{{json .}}"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=30,
+        )
+        if p.returncode != 0:
+            return {"unreachable": (p.stderr or "docker stats failed")[:200]}
+        containers = []
+        for line in p.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                d = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            containers.append({
+                "Name": d.get("Name") or d.get("Container"),
+                "CPUPerc": d.get("CPUPerc"),
+                "MemPerc": d.get("MemPerc"),
+                "MemUsage": d.get("MemUsage"),
+            })
+        return {"containers": containers}
+    except Exception as e:  # noqa: BLE001 - publisher must never crash on a probe
+        return {"unreachable": f"{type(e).__name__}: {e}"}
+
+
 def compose() -> dict:
     existing = {}
     if OUT.exists():
@@ -62,6 +93,7 @@ def compose() -> dict:
         "agent_eval": _get_json("http://localhost:8000/agent_eval/scoreboard"),
         "eval_report": _get_json("http://localhost:8000/jspace/eval_report"),
         "eval_catalog": _get_json("http://localhost:8000/jspace/eval_catalog"),
+        "fleet": _fleet_snapshot(),
     }
     snapshot = {
         **existing,

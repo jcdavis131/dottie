@@ -185,6 +185,47 @@ export function parseHub(feed) {
   return { network, ecosystem, evals, research: researchOut };
 }
 
+// ---- fleet (operator 2026-07-22: NPCs ARE the docker containers) -----------
+// Parse `docker stats --no-stream --format "{{json .}}"` line output into the
+// game's fleet model. Every number is docker's own; nothing is invented.
+
+/** Which campus department a container reports to, by its role in the org. */
+export function fleetRole(name) {
+  const n = String(name).toLowerCase();
+  const short = n.replace(/^dottie-factory-/, "").replace(/^dottie-/, "");
+  const pick = (role, dept) => ({ role, dept, short });
+  if (n.includes("trainer")) return pick("foundation trainer", "labs");
+  if (n.includes("collector")) return pick("data collector", "servers");
+  if (n.includes("curator")) return pick("data curator", "archives");
+  if (n.includes("janitor")) return pick("fleet janitor", "finance");
+  if (n.includes("server")) return pick("hub server", "hall");
+  if (n.includes("dottie")) return pick("research daemon", "proving");
+  return pick("service", "gardens");
+}
+
+/** docker-stats JSONL -> [{name, short, role, dept, cpuPct, mem, memPct}].
+ * Garbage lines skipped; no containers -> []. */
+export function parseFleet(text) {
+  const out = [];
+  for (const line of String(text ?? "").split("\n")) {
+    const l = line.trim();
+    if (!l) continue;
+    try {
+      const d = JSON.parse(l);
+      const name = d.Name ?? d.Container;
+      if (!name) continue;
+      const cpu = parseFloat(String(d.CPUPerc ?? "").replace("%", ""));
+      const memPct = parseFloat(String(d.MemPerc ?? "").replace("%", ""));
+      const mem = String(d.MemUsage ?? "").split("/")[0].trim();
+      out.push({ name: String(name), ...fleetRole(name),
+                 cpuPct: Number.isFinite(cpu) ? cpu : null,
+                 memPct: Number.isFinite(memPct) ? memPct : null,
+                 mem: mem || null });
+    } catch { /* partial line — skip */ }
+  }
+  return out;
+}
+
 // which department (and consultant hat) owns each REAL problem kind
 const MODE_EVENTS = {
   stale: { dept: "labs", persona: "cipher", action: "decode" },

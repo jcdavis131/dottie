@@ -100,6 +100,21 @@ async function fetchTwin() {
 fetchTwin();
 setInterval(fetchTwin, 15_000); // dashboard cadence — the board is live now
 world.updateProject(pl, twin);
+// The FLEET (operator 2026-07-22: NPCs are the docker containers). Live
+// stats stream every 10s; where docker is unreachable the virtual dept
+// experts simply remain — no fabricated containers.
+async function fetchFleet() {
+  try {
+    const r = await fetch("/api/fleet");
+    const f = await r.json();
+    if (f.source === "local") world.applyFleet(f.containers);
+  } catch { /* offline — virtual experts remain */ }
+}
+fetchFleet();
+setInterval(fetchFleet, 10_000);
+// every interactable body on campus: visible experts + fleet + the terminal
+const interactables = () =>
+  [...world.npcs.filter((n) => n.visible), ...world.fleetNpcs(), world.dottieTerminal];
 
 const hud = document.getElementById("hud");
 const questsPanel = document.getElementById("quests");
@@ -126,7 +141,8 @@ questsToggle.addEventListener("click", toggleQuests);
 questsToggle.addEventListener("touchstart", toggleQuests, { passive: false });
 
 const keys = new Set();
-addEventListener("keydown", (e) => keys.add(e.key.toLowerCase()));
+const typing = (e) => e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+addEventListener("keydown", (e) => { if (!typing(e)) keys.add(e.key.toLowerCase()); });
 addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
 
 // ---- ONE action system: these handlers serve keyboard AND touch --------------
@@ -143,9 +159,57 @@ function swapTo(i) {
   say(sp.ok ? `now ${PERSONAS[target].label}` : `swap denied: ${sp.reason}`);
 }
 
+// The Dottie terminal modal: the detailed dottie:app when the hub is
+// reachable from this build (local), else an honest chat panel over
+// /api/npc-chat — source-stamped, never fabricated.
+function openDottie() {
+  let m = document.getElementById("dottie-modal");
+  if (m) { m.hidden = false; return; }
+  m = document.createElement("div");
+  m.id = "dottie-modal";
+  const localHub = twin?.via === "pipeline-endpoint";
+  m.innerHTML = `
+    <div id="dmbar"><span>DOTTIE — assistant console</span><button id="dmclose">✕</button></div>
+    ${localHub
+      ? `<iframe id="dmframe" src="http://localhost:8000/app" title="dottie app"></iframe>`
+      : `<div id="dmbody"><p>The full dottie:app console lives on the training box —
+           this build cannot reach it. No pretend console.</p>
+         <p>Ask Dottie from here instead (source-stamped):</p>
+         <form id="dmform"><input id="dmq" placeholder="ask the assistant…" autocomplete="off"/>
+         <button>send</button></form><div id="dmlog"></div></div>`}`;
+  document.body.appendChild(m);
+  m.querySelector("#dmclose").addEventListener("click", () => { m.hidden = true; });
+  const form = m.querySelector("#dmform");
+  if (form) form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const q = m.querySelector("#dmq");
+    const text = q.value.trim();
+    if (!text) return;
+    q.value = "";
+    const dlog = m.querySelector("#dmlog");
+    const li = document.createElement("p");
+    li.textContent = `you: ${text}`;
+    dlog.prepend(li);
+    try {
+      const r = await fetch("/api/npc-chat", { method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ npc: "dottie:app", dept: "hall", prompt: text }) });
+      const d = await r.json();
+      const re = document.createElement("p");
+      re.textContent = `dottie [${d.source}]: ${d.reply}`;
+      dlog.prepend(re);
+    } catch {
+      const re = document.createElement("p");
+      re.textContent = "dottie [offline]: unreachable";
+      dlog.prepend(re);
+    }
+  });
+}
+
 async function useAbility() {
-  const npc = nearestNpc(world.player, world.npcs);
+  const npc = nearestNpc(world.player, interactables());
   if (!npc) return say("no NPC in range");
+  if (npc.userData.dottieTerminal) return openDottie(); // the terminal is UI, not a spend
   const action = PERSONAS[me.persona].ability;
   const dept = npc.userData.dept;
   const sp = spend(bw, action, me.persona);
@@ -236,8 +300,9 @@ function tryReset() {
   endRun().finally(() => (resetLatch = false));
 }
 
-// keyboard bindings → the shared handlers
+// keyboard bindings → the shared handlers (ignored while typing in the modal)
 addEventListener("keydown", (e) => {
+  if (typing(e)) return;
   const i = ["1", "2", "3"].indexOf(e.key);
   if (i !== -1) return swapTo(i);
   const k = e.key.toLowerCase();
