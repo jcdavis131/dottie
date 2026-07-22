@@ -30,6 +30,13 @@ from typing import Any
 
 SCHEMA_VERSION = 1
 
+
+class StateStoreCorruptError(sqlite3.DatabaseError):
+    """The backing SQLite file is unreadable / malformed. Subclasses sqlite3.DatabaseError
+    so any existing broad handler still catches it, but carries the db path so a caller
+    can quarantine or recreate the file instead of dying on a raw error deep in a write."""
+
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY, value TEXT NOT NULL
@@ -83,14 +90,26 @@ class JSpaceStateStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(str(self.path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA synchronous=NORMAL")
-        self._conn.executescript(_SCHEMA)
-        self._conn.execute(
-            "INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', ?)",
-            (str(SCHEMA_VERSION),),
+        try:
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA synchronous=NORMAL")
+            # concurrent writers (scout CLI + engine, each its own connection) block on
+            # the single WAL writer lock instead of failing fast with "database is locked"
+            self._conn.execute("PRAGMA busy_timeout=5000")
+            self._conn.executescript(_SCHEMA)
+            self._conn.execute(
+                "INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', ?)",
+                (str(SCHEMA_VERSION),),
+            )
+            self._conn.commit()
+        except sqlite3.DatabaseError as exc:  # a pre-existing corrupt file on disk
+            self._conn.close()
+            raise self._corrupt(exc) from exc
+
+    def _corrupt(self, exc: sqlite3.DatabaseError) -> StateStoreCorruptError:
+        return StateStoreCorruptError(
+            f"state db at {self.path} is unreadable ({exc}); quarantine or recreate it"
         )
-        self._conn.commit()
 
     def close(self) -> None:
         self._conn.close()
@@ -112,44 +131,38 @@ class JSpaceStateStore:
         capabilities: str = "",
         source: str = "forge",
     ) -> int:
-        """Insert or version-bump a skill. Returns the stored version."""
+        """Insert or version-bump a skill. Returns the stored version.
+
+        Insert-or-bump is one atomic UPSERT (``INSERT ... ON CONFLICT DO UPDATE ...
+        RETURNING``) inside a single transaction. The bump ``version = version + 1`` is
+        evaluated by SQLite under the write lock, so it replaces the old non-transactional
+        SELECT-then-UPDATE: two writers sharing the WAL file (scout CLI + engine, each on
+        its own connection) can no longer both read the same stale version and clobber one
+        another's bump. ``with self._conn`` commits on success, rolls back on error."""
         now = time.time()
-        cur = self._conn.execute(
-            "SELECT version FROM skills_library WHERE name=?", (name,)
-        )
-        row = cur.fetchone()
-        if row is None:
-            self._conn.execute(
-                "INSERT INTO skills_library (name, code, schema_json, capabilities, source,"
-                " version, created_ts, updated_ts) VALUES (?,?,?,?,?,1,?,?)",
-                (
-                    name,
-                    code,
-                    json.dumps(schema) if schema else None,
-                    capabilities,
-                    source,
-                    now,
-                    now,
-                ),
-            )
-            version = 1
-        else:
-            version = int(row["version"]) + 1
-            self._conn.execute(
-                "UPDATE skills_library SET code=?, schema_json=?, capabilities=?, source=?,"
-                " version=?, updated_ts=? WHERE name=?",
-                (
-                    code,
-                    json.dumps(schema) if schema else None,
-                    capabilities,
-                    source,
-                    version,
-                    now,
-                    name,
-                ),
-            )
-        self._conn.commit()
-        return version
+        try:
+            with self._conn:
+                row = self._conn.execute(
+                    "INSERT INTO skills_library (name, code, schema_json, capabilities,"
+                    " source, version, created_ts, updated_ts) VALUES (?,?,?,?,?,1,?,?)"
+                    " ON CONFLICT (name) DO UPDATE SET"
+                    " code=excluded.code, schema_json=excluded.schema_json,"
+                    " capabilities=excluded.capabilities, source=excluded.source,"
+                    " version=skills_library.version + 1, updated_ts=excluded.updated_ts"
+                    " RETURNING version",
+                    (
+                        name,
+                        code,
+                        json.dumps(schema) if schema else None,
+                        capabilities,
+                        source,
+                        now,
+                        now,
+                    ),
+                ).fetchone()
+        except sqlite3.DatabaseError as exc:
+            raise self._corrupt(exc) from exc
+        return int(row["version"])
 
     def get_skill(self, name: str) -> dict[str, Any] | None:
         row = self._conn.execute(

@@ -8,8 +8,16 @@ process boundary (the OpenClaw property the engine depends on).
 from __future__ import annotations
 
 import json
+import sqlite3
+import threading
 
-from skills.state_store import JSpaceStateStore, default_db_path
+import pytest
+
+from skills.state_store import (
+    JSpaceStateStore,
+    StateStoreCorruptError,
+    default_db_path,
+)
 
 
 def test_skills_library_register_get_version_bump(tmp_path):
@@ -105,3 +113,53 @@ def test_incremental_export_is_idempotent(tmp_path):
         st2.log_task("s", "three", "ok")
         assert st2.export_telemetry_incremental(out) == 1
     assert len(out.read_text(encoding="utf-8").splitlines()) == 3
+
+
+def test_register_skill_concurrent_bumps_are_monotonic_without_loss(tmp_path):
+    """Many writers, each on its OWN connection to the same WAL file (the scout-CLI +
+    engine sharing scenario the module docstring calls out), hammer register_skill on one
+    skill name simultaneously. The insert-or-bump is a single atomic UPSERT, so every call
+    must return a DISTINCT version and the final stored version must equal the number of
+    registrations -- no bump silently lost to a read-modify-write race. This test fails
+    against the old SELECT-then-UPDATE, which let two writers both read version N and both
+    write N+1."""
+    db = tmp_path / "s.sqlite3"
+    writers = 24
+    returned: list[int] = []
+    guard = threading.Lock()
+    ready = threading.Barrier(writers)
+
+    def worker(i: int) -> None:
+        # a fresh store == a fresh connection, exactly like separate OS processes
+        with JSpaceStateStore(db) as st:
+            ready.wait()  # release all threads at once to maximise contention
+            v = st.register_skill("shared", f"def run(): return {i}")
+            with guard:
+                returned.append(v)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(writers)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    # every writer observed a unique version 1..writers -- none collided or was lost
+    assert sorted(returned) == list(range(1, writers + 1))
+    with JSpaceStateStore(db) as st:
+        assert st.get_skill("shared")["version"] == writers
+
+
+def test_register_skill_repeated_bumps_increment_monotonically(tmp_path):
+    with JSpaceStateStore(tmp_path / "s.sqlite3") as st:
+        versions = [st.register_skill("k", f"def run(): return {i}") for i in range(5)]
+        assert versions == [1, 2, 3, 4, 5]  # monotonic, one per call
+        assert st.get_skill("k")["version"] == 5
+
+
+def test_corrupt_db_surfaces_typed_error_not_raw_crash(tmp_path):
+    db = tmp_path / "s.sqlite3"
+    db.write_bytes(b"NOT A SQLITE DATABASE" * 64)
+    with pytest.raises(StateStoreCorruptError) as exc:
+        JSpaceStateStore(db)
+    assert str(db) in str(exc.value)
+    assert issubclass(StateStoreCorruptError, sqlite3.DatabaseError)
