@@ -88,7 +88,9 @@ function facadeTexture(wallColor, floors, cols, r, { glass = false } = {}) {
 }
 
 function labelTexture(text, bg) {
-  return canvasTexture(256, 64, (g) => {
+  // 2x supersampled (crisp-first directive): same logical coords via scale(2)
+  return canvasTexture(512, 128, (g) => {
+    g.scale(2, 2);
     g.fillStyle = hex(bg); g.fillRect(0, 0, 256, 64);
     g.fillStyle = "rgba(0,0,0,.25)"; g.fillRect(0, 52, 256, 12);
     g.fillStyle = "#ffffff"; g.font = "bold 26px system-ui, sans-serif";
@@ -511,7 +513,7 @@ export function buildWorld(scene) {
   // ---- working-org layer (SPEC "Working-org visuals") ----------------------
   // Project holo-board on the plaza: live pipeline state, redrawn on change.
   const boardCanvas = document.createElement("canvas");
-  boardCanvas.width = 512; boardCanvas.height = 256; // taller: the REAL dashboard lives here now
+  boardCanvas.width = 1024; boardCanvas.height = 512; // 2x supersampled 512x256 logical grid
   const boardTex = new THREE.CanvasTexture(boardCanvas);
   boardTex.colorSpace = THREE.SRGBColorSpace;
   const boardGroup = new THREE.Group();
@@ -545,6 +547,7 @@ export function buildWorld(scene) {
   };
   function updateProject(pl, twin = null) {
     const g = boardCanvas.getContext("2d");
+    g.setTransform(2, 0, 0, 2, 0, 0); // draw in the 512x256 logical grid, 2x sharp
     const W = 512, H = 256;
     // panel + bezel frame with corner rivets
     g.fillStyle = PAL.bg; g.fillRect(0, 0, W, H);
@@ -703,9 +706,8 @@ export function buildWorld(scene) {
   ];
   const hubPanels = HUB_PANELS.map((spec) => {
     const canvas = document.createElement("canvas");
-    canvas.width = 256; canvas.height = 128;
+    canvas.width = 512; canvas.height = 256; // 2x supersampled 256x128 logical grid
     const tex = new THREE.CanvasTexture(canvas);
-    tex.magFilter = THREE.NearestFilter;
     tex.colorSpace = THREE.SRGBColorSpace;
     const grp = new THREE.Group();
     const post = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.13, 2.4, 8), lambert(0x3d4148)));
@@ -725,6 +727,7 @@ export function buildWorld(scene) {
   });
   function drawHubPanel(p, lines) {
     const g = p.canvas.getContext("2d");
+    g.setTransform(2, 0, 0, 2, 0, 0); // 256x128 logical grid, 2x sharp
     const W = 256, H = 128;
     g.fillStyle = PAL.bg; g.fillRect(0, 0, W, H);
     g.fillStyle = PAL.panel; g.fillRect(3, 3, W - 6, H - 6);
@@ -806,9 +809,9 @@ export function buildWorld(scene) {
   // whites), reef shallows on every coast, swirling comma-shaped cloud systems,
   // thin tracking overlay. Hard pixels only; redrawn at 2Hz for clouds/sats.
   const earthCanvas = document.createElement("canvas");
-  earthCanvas.width = 320; earthCanvas.height = 160;
+  earthCanvas.width = 640; earthCanvas.height = 320; // 2x supersampled 320x160 map grid
   const earthTex = new THREE.CanvasTexture(earthCanvas);
-  earthTex.magFilter = THREE.NearestFilter;
+  earthTex.magFilter = THREE.NearestFilter; // terrain keeps its hard-pixel texels
   earthTex.colorSpace = THREE.SRGBColorSpace;
   const SAT = { // natural indexed palette — the 90s GOES look
     deep: "#0b2a4a", mid: "#103a5e", shallow: "#17507a", reef: "#3fa8a0",
@@ -835,6 +838,7 @@ export function buildWorld(scene) {
   const SPECKS = Array.from({ length: 900 }, () => [tr(), tr(), tr()]);
   function drawEarthMap(t) {
     const g = earthCanvas.getContext("2d");
+    g.setTransform(2, 0, 0, 2, 0, 0); // 320x160 map grid, 2x sharp (text readable)
     const W = 320, H = 160;
     // dithered ocean depth bands: deep -> mid -> shallow, checkerboard seams
     g.fillStyle = SAT.deep; g.fillRect(0, 0, W, H);

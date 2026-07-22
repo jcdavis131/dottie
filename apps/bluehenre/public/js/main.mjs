@@ -17,18 +17,14 @@ const coarse = matchMedia("(pointer: coarse)").matches; // phone/tablet = defaul
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 400);
-// 32-bit PS1 presentation (SPEC visual bar): render at 1/PIXEL_SCALE internal
-// resolution (~320p-class, a generation finer than the SNES pass) and let CSS
-// upscale nearest-neighbor. Materials keep dithering:true; the PS1 facet+wobble
-// pass below completes the look.
-const PIXEL_SCALE = 2;
-const renderer = new THREE.WebGLRenderer({ antialias: false });
-renderer.setPixelRatio(1);
-const sizeToPixelGrid = () => {
-  renderer.setSize(Math.floor(innerWidth / PIXEL_SCALE), Math.floor(innerHeight / PIXEL_SCALE), false);
-  renderer.domElement.style.width = "100%";
-  renderer.domElement.style.height = "100%";
-};
+// CRISP-FIRST render (operator directive 2026-07-22: "make everything much
+// more crisp and clear — I cannot read much of it"). Full-resolution render
+// with AA; the retro character now lives in materials (flat shading, dither,
+// indexed board palettes, fog) instead of a low-res upscale that made every
+// board illegible.
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const sizeToPixelGrid = () => renderer.setSize(innerWidth, innerHeight);
 sizeToPixelGrid();
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -47,25 +43,15 @@ const world = buildWorld(scene);
 if (coarse)
   scene.traverse((o) => { if (o.isDirectionalLight && o.shadow) o.shadow.mapSize.set(1024, 1024); });
 
-// ---- 32-bit PS1 pass (SPEC visual bar) --------------------------------------
-// One sweep over every material in the built scene: faceted Gouraud-style
-// shading (flatShading — spheres/cylinders show their polys like real PSX
-// geometry) + the signature vertex wobble: clip-space positions snap to a
-// coarse 320x240 virtual grid, so geometry jitters subtly as the camera moves.
-const PS1_SNAP = `#include <project_vertex>
-  {
-    vec2 ps1Grid = vec2(320.0, 240.0);
-    gl_Position.xy = floor(gl_Position.xy / gl_Position.w * ps1Grid + 0.5) / ps1Grid * gl_Position.w;
-  }`;
+// ---- stylized-material pass -------------------------------------------------
+// Faceted Gouraud-style shading (flatShading — spheres/cylinders show their
+// polys) + ordered dithering keep the retro character. The old PS1 vertex
+// wobble is GONE: it made every board's text swim (crisp-first directive).
 scene.traverse((o) => {
   if (!o.isMesh) return;
   for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
     if ("flatShading" in m) m.flatShading = true;
     m.dithering = true;
-    m.onBeforeCompile = (s) => {
-      s.vertexShader = s.vertexShader.replace("#include <project_vertex>", PS1_SNAP);
-    };
-    m.customProgramCacheKey = () => "ps1"; // shared snap variant, dedupe programs
     m.needsUpdate = true;
   }
 });

@@ -62,6 +62,8 @@ supersedes the doc.
    source marker — future.
 6. More Earth-twin nodes (field offices for remote subsystems; the
    dumbmodels.com vector games as visitable sites).
+7. Campus densification (operator 2026-07-22): keep the world tight, not
+   sprawling — make the org campus itself hyper-detailed and life-like.
 
 ## Core mechanic — The Project (`pipeline.mjs`)
 
@@ -90,10 +92,13 @@ extracted signal).
 
 ## Presentation
 
-- **Visual bar: 32-bit PS1 at golden hour.** PIXEL_SCALE=2 (~320p upscaled
-  nearest-neighbor), flatShading everywhere, PS1 vertex wobble (clip-space snap
-  to a 320×240 grid), no AA, dithering on, heavy fog as honest draw distance.
-  Dithered SNES sunset backdrop carries over.
+- **Visual bar: CRISP-FIRST at golden hour** (operator 2026-07-22: "make
+  everything much more crisp and clear — I cannot read much of it"). Full-
+  resolution render, AA on, devicePixelRatio-aware; NO low-res upscale and NO
+  vertex wobble (both made text illegible). Retro character lives in materials:
+  flatShading facets, ordered dithering, indexed board palettes, fog, the
+  dithered SNES sunset. Every board/sign canvas is 2x supersampled
+  (`setTransform(2,0,0,2,…)` over the logical grid).
 - **Boards are cyberpunk consoles** (32-color indexed palette, hard pixels,
   zero AA); the Earth board is a 90s weather-satellite map (natural palette,
   dithered oceans, comma clouds, HQ AUSTIN marker, 2Hz redraw).
