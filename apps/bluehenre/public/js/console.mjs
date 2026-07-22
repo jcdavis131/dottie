@@ -104,6 +104,23 @@ function drawSpark(c, spark) {
   g.fillText(`LM ${hi.toFixed(3)}→${lo.toFixed(3)}  steps ${spark.steps[0]}–${spark.steps[spark.steps.length - 1]}`, 8, 4);
 }
 
+function renderBatch() {
+  const el = $("batch");
+  el.replaceChildren();
+  const s = twin?.source === "local" ? parseHub(twin)?.sample : null;
+  if (!s) { el.append(esc(document.createElement("p"), "feed offline — no batch sample")); return; }
+  el.append(
+    line("shard (claimed)", `${s.source} · p${s.phase ?? "?"} · ${s.state}`),
+    line("doc", `${s.taskType} · ${s.docTokens ?? "?"} tok (showing ${s.shownTokens ?? "?"})`),
+  );
+  const t = document.createElement("div");
+  t.className = "sampletext";
+  t.textContent = s.text; // verbatim feed text — textContent only, never markup
+  el.append(t);
+  el.append(esc(Object.assign(document.createElement("p"), { className: "dimtxt" }),
+    `real tokens the trainer is consuming, decoded from ${s.shard} (${s.docsInShard ?? "?"} docs); rotates each publish`));
+}
+
 function renderAlerts() {
   const el = $("alerts");
   el.replaceChildren();
@@ -195,7 +212,9 @@ function renderSites() {
   const wrap = document.createElement("div");
   wrap.className = "sites";
   for (const s of h.sites) {
-    const sp = document.createElement("span");
+    // each site links out when the probe URL is real (parseHub validates http(s))
+    const sp = document.createElement(s.url ? "a" : "span");
+    if (s.url) { sp.href = s.url; sp.target = "_blank"; sp.rel = "noopener"; }
     const led = document.createElement("i");
     led.className = `led ${s.up ? "up" : "down"}`;
     sp.append(led, document.createTextNode(`${s.name}${Number.isFinite(s.ms) ? ` ${s.ms}ms` : ""}`));
@@ -216,7 +235,7 @@ async function refreshTwin() {
   $("chathint").textContent = twin.source === "local" && twin.via === "pipeline-endpoint"
     ? "wired to the local Dottie engine when configured — replies are source-stamped"
     : "replies are source-stamped [dottie] or [offline] — never fabricated";
-  renderRun(); renderAlerts(); renderHub(); renderSites();
+  renderRun(); renderBatch(); renderAlerts(); renderHub(); renderSites();
 }
 async function refreshFleet() {
   let f = null;

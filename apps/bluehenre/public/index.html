@@ -80,8 +80,13 @@
   form.ask button { border: 1px solid var(--cyan); background: var(--bg); color: var(--cyan);
                     padding: 0 16px; font-family: inherit; font-weight: 700; }
   .sites { display: flex; flex-wrap: wrap; gap: 8px 14px; }
-  .sites span { white-space: nowrap; }
+  .sites span, .sites a { white-space: nowrap; }
+  .sites a { color: var(--text); text-decoration-color: var(--dim); }
   .dimtxt { color: var(--dim); font-size: 11px; }
+  .sampletext { background: #221812; border: 1px solid var(--line); border-radius: 3px;
+                padding: 8px; margin-top: 6px; font-size: 12px; line-height: 1.45;
+                white-space: pre-wrap; word-break: break-word; max-height: 200px;
+                overflow-y: auto; color: var(--amber); }
   footer { margin-top: 16px; padding: 10px 2px; color: var(--dim); font-size: 11px;
            border-top: 1px solid var(--line); display: flex; justify-content: space-between; }
   footer a { color: var(--cyan); text-decoration: none; }
@@ -99,6 +104,7 @@
   </div>
 
   <section class="card"><h2>▮ RUN//AVA-MINI</h2><div class="body" id="run">…</div></section>
+  <section class="card"><h2>▮ DATA//LATEST-BATCH</h2><div class="body" id="batch">…</div></section>
   <section class="card"><h2>▮ ALERTS//UNBLOCK</h2><div class="body" id="alerts">…</div></section>
   <section class="card"><h2>▮ DOTTIE//ASSISTANT</h2><div class="body">
     <div class="dimtxt" id="chathint"></div>

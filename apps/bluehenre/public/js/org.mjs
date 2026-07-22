@@ -336,8 +336,18 @@ function renderSites(h) {
   el.replaceChildren();
   if (!h?.sites) return offline(el);
   el.append(table(["site", "status", "latency|r"],
-    h.sites.map((s) => [s.name, withLed(s.up, s.up ? " up" : " down"),
-      Number.isFinite(s.ms) ? `${s.ms}ms` : "—"])));
+    h.sites.map((s) => {
+      let nameCell = s.name;
+      if (s.url) {
+        nameCell = document.createElement("a");
+        nameCell.href = s.url;
+        nameCell.target = "_blank";
+        nameCell.rel = "noopener";
+        nameCell.textContent = s.name;
+      }
+      return [nameCell, withLed(s.up, s.up ? " up" : " down"),
+        Number.isFinite(s.ms) ? `${s.ms}ms` : "—"];
+    })));
 }
 
 function renderDemand() {

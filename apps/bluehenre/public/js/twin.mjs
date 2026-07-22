@@ -182,14 +182,33 @@ export function parseHub(feed) {
     };
   }
 
+  // a REAL example from the shard the trainer has claimed (decoded in-container
+  // from the packed tokens; rotates each publish). Text is the feed's verbatim.
+  let sample = null;
+  if (ok(hub?.batch_sample) && typeof hub.batch_sample.text === "string") {
+    const b = hub.batch_sample;
+    sample = {
+      shard: String(b.shard ?? "?"), source: String(b.source ?? "?"),
+      phase: Number.isFinite(b.phase) ? b.phase : null,
+      state: String(b.state ?? "?"), taskType: String(b.task_type ?? "?"),
+      docId: String(b.doc_id ?? "?"),
+      docTokens: Number.isFinite(b.doc_tokens) ? b.doc_tokens : null,
+      shownTokens: Number.isFinite(b.shown_tokens) ? b.shown_tokens : null,
+      docsInShard: Number.isFinite(b.docs_in_shard) ? b.docs_in_shard : null,
+      text: b.text.slice(0, 700),
+    };
+  }
+
   // rung 6: the org's real deployed sites, probed by the publisher
   const sites = Array.isArray(hub?.sites)
     ? hub.sites.map((s) => ({ name: String(s.name ?? "?"), up: s.up === true,
-                              ms: Number.isFinite(s.ms) ? s.ms : null }))
+                              ms: Number.isFinite(s.ms) ? s.ms : null,
+                              // link only when the probe URL is a real http(s) URL
+                              url: /^https?:\/\//.test(s.url ?? "") ? String(s.url) : null }))
     : null;
 
-  if (!network && !ecosystem && !evals && !researchOut && !sites) return null;
-  return { network, ecosystem, evals, research: researchOut, sites };
+  if (!network && !ecosystem && !evals && !researchOut && !sites && !sample) return null;
+  return { network, ecosystem, evals, research: researchOut, sites, sample };
 }
 
 // ---- fleet (operator 2026-07-22: NPCs ARE the docker containers) -----------

@@ -136,6 +136,10 @@ const siteHub = parseHub({ hub: { sites: [
 ] } });
 check("hub sites parse with honest up/down (rung 6)",
   siteHub?.sites?.length === 2 && siteHub.sites[0].up === true && siteHub.sites[1].up === false);
+check("site urls pass through only when real http(s)",
+  siteHub.sites[0].url === "https://dumbmodel.com" &&
+  parseHub({ hub: { sites: [{ name: "x", up: true, ms: 1, url: "javascript:alert(1)" }] } })
+    .sites[0].url === null);
 const brokenHub = parseHub({ hub: { network: { unreachable: "x" } },
   research: { unreachable: "y" } });
 check("unreachable hub blocks parse to null panels, not fabrications",
