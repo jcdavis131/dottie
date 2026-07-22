@@ -1,5 +1,6 @@
 // Contract: the twin never fabricates the real model's state.
-import { parseMetricsTail, safeParseJson, parseEvalSummary, twinLine } from "./twin.mjs";
+import { parseMetricsTail, safeParseJson, parseEvalSummary, twinLine,
+         parseTrainerTail, parseDashboard, parseLiveEvents, liveAgeS } from "./twin.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = "") => {
@@ -39,6 +40,74 @@ const line = twinLine({ source: "local", model: "ava-mini/tool", step: 1487, lm:
 check("local renders step+loss+ppl", line.includes("1487") && line.includes("0.1508") && line.includes("276.0") === false && line.includes("275.9"));
 check("hosted status with numbers but wrong source stays offline",
   twinLine({ source: "proxy?", step: 999 }).includes("offline"));
+
+// ---- live pipeline feed (rung 3 + dashboard) --------------------------------
+// both shapes: the bare /pipeline/status object and the gist's {pipeline:{...}}
+const pipelineObj = {
+  ts: 1000, preset: "mini",
+  mode: { id: "stale", label: "Trainer stale", detail: "No trainer activity for 38906s" },
+  watch: {
+    run_progress: { frac: 0.8552, tokens_done: 2137973120, tokens_total: 2500000000 },
+    phase_progress: { phase: 3, name: "p3_reasoning", short: "reasoning", frac: 0.9699, seq: 2048 },
+    timing: { tok_s: 10943.5, eta_remaining_s: 33081.5 },
+  },
+  flow: {
+    data_state: "READY", data_detail: "phase 3: 3163M tokens ready",
+    collector_pause: { paused: true, reason: "packed runway 3.16B tokens >= max 3.00B" },
+    gates: [
+      { id: "D1", name: "host free", ok: true, value: "48.2 GB", target: ">= 12 GB" },
+      { id: "D3", name: "collectors", ok: false, value: "paused", target: "not disk-paused" },
+    ],
+  },
+  disk: { free_gb: 48.19, low_water_gb: 12, critical_gb: 6, below_low_water: false, below_critical: false },
+  manifest: { funnel: { raw: 1, curating: 0, packed: 1002, training: 0, consumed: 37, failed: 1 } },
+  ckpt: { files: [{ name: "base_final.pt", age_s: 330561 }] },
+  trainer: {
+    last: { event: "step", step: 1480, lm: 0.1508, tokens: 2137973120 },
+    series: { step: [1460, 1470, 1480], lm_loss: [0.1512, 0.1509, 0.1508] },
+  },
+};
+const wrapped = { schema: "dottie_live_status/v2", published_utc: "2026-07-22T14:20:02Z", pipeline: pipelineObj };
+
+const tailLive = parseTrainerTail(pipelineObj);
+check("trainer tail from bare endpoint shape", tailLive?.step === 1480 && tailLive?.tokens === 2137973120);
+check("trainer tail from wrapped gist shape", parseTrainerTail(wrapped)?.step === 1480);
+check("trainer tail of nothing -> null", parseTrainerTail(null) === null && parseTrainerTail({}) === null);
+
+const dash = parseDashboard(wrapped);
+check("dashboard carries mode + run + phase + timing",
+  dash?.mode?.id === "stale" && Math.abs(dash?.run?.frac - 0.8552) < 1e-9 &&
+  dash?.phase?.short === "reasoning" && dash?.timing?.tokS === 10943.5);
+check("dashboard gates + funnel + ckpt age survive",
+  dash?.gates?.length === 2 && dash?.funnel?.packed === 1002 && dash?.ckptAgeS === 330561);
+check("dashboard sparkline pairs steps with losses",
+  dash?.spark?.steps.join(",") === "1460,1470,1480" && dash?.spark?.lm[2] === 0.1508);
+check("dashboard of nothing -> null", parseDashboard(null) === null && parseDashboard({}) === null);
+
+// REAL events: a stale trainer is an event; a benign full-runway pause is not
+const events = parseLiveEvents(wrapped);
+check("stale trainer raises a labs event with the feed's own words",
+  events.some((e) => e.kind === "mode_stale" && e.dept === "labs" &&
+    e.persona === "cipher" && e.label.includes("38906s")));
+check("full-runway collector pause is NOT an event (healthy backpressure)",
+  !events.some((e) => e.kind === "gate_D3"));
+const angry = JSON.parse(JSON.stringify(pipelineObj));
+angry.mode = { id: "training", label: "Training" };
+angry.flow.data_state = "STARVED";
+angry.flow.collector_pause = { paused: true, reason: "disk pressure" };
+angry.disk.below_low_water = true;
+const angryEvents = parseLiveEvents(angry);
+check("healthy mode raises no mode event", !angryEvents.some((e) => e.kind.startsWith("mode_")));
+check("data STARVED -> servers event", angryEvents.some((e) => e.kind === "data_starved" && e.dept === "servers"));
+check("disk low -> finance event", angryEvents.some((e) => e.kind === "disk_low" && e.dept === "finance"));
+check("non-benign collector pause -> gate event", angryEvents.some((e) => e.kind === "gate_D3"));
+check("no feed -> no events, no throw", parseLiveEvents(null).length === 0);
+
+// freshness: published_utc wins; bare ts works; garbage -> null
+const t0 = Date.parse("2026-07-22T14:30:02Z");
+check("age from published_utc", Math.abs(liveAgeS(wrapped, t0) - 600) < 1);
+check("age from bare ts", Math.abs(liveAgeS({ ts: 500 }, 1000_000) - 500) < 1);
+check("age of garbage -> null", liveAgeS({}, t0) === null && liveAgeS(wrapped, NaN) === null);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

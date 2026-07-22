@@ -47,6 +47,126 @@ export function parseEvalSummary(report) {
   return tokens ? { weightedPpl: Math.exp(ws / tokens), tokens } : null;
 }
 
+// ---- live pipeline feed (hill-climb rung 3 + the dashboard board) ----------
+// Two REAL sources share one shape: the factory hub's live `/pipeline/status`
+// endpoint returns the pipeline object bare; the exported dottie_live_status
+// gist wraps the same object under `pipeline` (plus published_utc). Every
+// parser here accepts either. Labels/numbers come from the feed verbatim —
+// the twin never invents telemetry.
+
+const pipelineOf = (live) =>
+  (live?.pipeline && typeof live.pipeline === "object" ? live.pipeline : live) ?? null;
+
+/** Seconds since the feed was published, or null if unparseable. Uses the
+ * gist's published_utc when present, else the endpoint's epoch-seconds ts. */
+export function liveAgeS(live, nowMs) {
+  if (!Number.isFinite(nowMs)) return null;
+  const utc = Date.parse(live?.published_utc ?? "");
+  if (Number.isFinite(utc)) return (nowMs - utc) / 1000;
+  const ts = pipelineOf(live)?.ts;
+  return Number.isFinite(ts) ? nowMs / 1000 - ts : null;
+}
+
+/** Trainer tail from the live feed: {step, lm, tokens} or null. Same shape as
+ * parseMetricsTail, sourced from trainer.last instead of a jsonl. */
+export function parseTrainerTail(live) {
+  const d = pipelineOf(live)?.trainer?.last;
+  if (!d || d.event !== "step" || !Number.isFinite(d.step)) return null;
+  return { step: d.step, lm: Number.isFinite(d.lm) ? d.lm : null,
+           tokens: Number.isFinite(d.tokens) ? d.tokens : null };
+}
+
+/** The dashboard board model: everything the in-game command console renders
+ * of the REAL run (operator directive 2026-07-22: bring the :8000 dashboard
+ * to life in the game). Missing pieces come back null — drawn as absent. */
+export function parseDashboard(live) {
+  const p = pipelineOf(live);
+  if (!p || typeof p !== "object") return null;
+  const num = (v) => (Number.isFinite(v) ? v : null);
+  const w = p.watch ?? {};
+  const mode = p.mode?.id
+    ? { id: String(p.mode.id), label: String(p.mode.label ?? p.mode.id),
+        detail: String(p.mode.detail ?? "") }
+    : null;
+  const run = w.run_progress
+    ? { frac: num(w.run_progress.frac), done: num(w.run_progress.tokens_done),
+        total: num(w.run_progress.tokens_total) }
+    : null;
+  const phase = w.phase_progress
+    ? { name: String(w.phase_progress.name ?? "?"), short: String(w.phase_progress.short ?? "?"),
+        frac: num(w.phase_progress.frac), seq: num(w.phase_progress.seq) }
+    : null;
+  const timing = w.timing
+    ? { tokS: num(w.timing.tok_s), etaS: num(w.timing.eta_remaining_s) }
+    : null;
+  const gates = Array.isArray(p.flow?.gates)
+    ? p.flow.gates.map((g) => ({ id: String(g.id ?? "?"), name: String(g.name ?? "?"),
+                                 ok: g.ok === true, value: String(g.value ?? "") }))
+    : [];
+  const funnel = p.manifest?.funnel && typeof p.manifest.funnel === "object"
+    ? Object.fromEntries(Object.entries(p.manifest.funnel)
+        .filter(([, v]) => Number.isFinite(v)).map(([k, v]) => [k, v]))
+    : null;
+  const ckptAgeS = num(p.ckpt?.files?.[0]?.age_s);
+  // loss sparkline: the last 40 (step, lm_loss) pairs of the recent series
+  const s = p.trainer?.series;
+  let spark = null;
+  if (Array.isArray(s?.step) && Array.isArray(s?.lm_loss) && s.step.length === s.lm_loss.length) {
+    const pairs = s.step.map((st, i) => [st, s.lm_loss[i]])
+      .filter(([st, lm]) => Number.isFinite(st) && Number.isFinite(lm))
+      .slice(-40);
+    if (pairs.length >= 2) spark = { steps: pairs.map((x) => x[0]), lm: pairs.map((x) => x[1]) };
+  }
+  if (!mode && !run && !phase && !timing && !gates.length && !funnel && spark === null) return null;
+  return { mode, run, phase, timing, gates, funnel, ckptAgeS, spark };
+}
+
+// which department (and consultant hat) owns each REAL problem kind
+const MODE_EVENTS = {
+  stale: { dept: "labs", persona: "cipher", action: "decode" },
+  error: { dept: "labs", persona: "cipher", action: "decode" },
+  starved: { dept: "servers", persona: "auditor", action: "interview" },
+};
+const GATE_EVENTS = {
+  D1: { dept: "finance", persona: "architect", action: "replan" },  // host disk
+  D2: { dept: "archives", persona: "architect", action: "replan" }, // token runway
+  D3: { dept: "servers", persona: "auditor", action: "interview" }, // collectors
+  D4: { dept: "servers", persona: "auditor", action: "interview" }, // raw headroom
+  D5: { dept: "archives", persona: "cipher", action: "decode" },    // fail rate
+};
+const clip = (s, n = 140) => (String(s).length > n ? String(s).slice(0, n - 1) + "…" : String(s));
+
+/** Extract REAL problem events from a parsed live-status feed. Healthy feeds
+ * return []. Unknown problem shapes are skipped, not guessed at. */
+export function parseLiveEvents(live) {
+  const p = pipelineOf(live);
+  if (!p || typeof p !== "object") return [];
+  const out = [];
+  const mode = p.mode;
+  if (mode?.id && MODE_EVENTS[mode.id])
+    out.push({ kind: `mode_${mode.id}`, ...MODE_EVENTS[mode.id],
+               label: clip(`${mode.label ?? mode.id}: ${mode.detail ?? ""}`) });
+  const flow = p.flow;
+  if (typeof flow?.data_state === "string" && flow.data_state !== "READY")
+    out.push({ kind: "data_starved", ...MODE_EVENTS.starved,
+               label: clip(`data ${flow.data_state}: ${flow.data_detail ?? ""}`) });
+  const disk = p.disk;
+  if (disk?.below_critical === true)
+    out.push({ kind: "disk_critical", ...GATE_EVENTS.D1,
+               label: clip(`disk critical: ${disk.free_gb} GB free (< ${disk.critical_gb} GB)`) });
+  else if (disk?.below_low_water === true)
+    out.push({ kind: "disk_low", ...GATE_EVENTS.D1,
+               label: clip(`disk low: ${disk.free_gb} GB free (< ${disk.low_water_gb} GB)`) });
+  const benignPause = /runway/.test(flow?.collector_pause?.reason ?? "");
+  for (const gate of Array.isArray(flow?.gates) ? flow.gates : []) {
+    if (gate?.ok !== false || !GATE_EVENTS[gate.id]) continue;
+    if (gate.id === "D3" && benignPause) continue; // full-runway pause is healthy backpressure
+    out.push({ kind: `gate_${gate.id}`, ...GATE_EVENTS[gate.id],
+               label: clip(`${gate.name}: ${gate.value} (want ${gate.target})`) });
+  }
+  return out;
+}
+
 /** One-line board rendering of a twin status. Numbers ONLY when source is
  * "local"; every other source renders as an honest offline line. */
 export function twinLine(status) {

@@ -511,20 +511,20 @@ export function buildWorld(scene) {
   // ---- working-org layer (SPEC "Working-org visuals") ----------------------
   // Project holo-board on the plaza: live pipeline state, redrawn on change.
   const boardCanvas = document.createElement("canvas");
-  boardCanvas.width = 512; boardCanvas.height = 192;
+  boardCanvas.width = 512; boardCanvas.height = 256; // taller: the REAL dashboard lives here now
   const boardTex = new THREE.CanvasTexture(boardCanvas);
   boardTex.colorSpace = THREE.SRGBColorSpace;
   const boardGroup = new THREE.Group();
   for (const x of [-4.6, 4.6]) {
-    const post = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 4.6, 8), lambert(0x3d4148)));
-    post.position.set(x, 2.3, 0);
+    const post = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 5.2, 8), lambert(0x3d4148)));
+    post.position.set(x, 2.6, 0);
     boardGroup.add(post);
   }
-  const boardMesh = new THREE.Mesh(new THREE.BoxGeometry(10, 3.75, 0.18),
+  const boardMesh = new THREE.Mesh(new THREE.BoxGeometry(10.4, 5.2, 0.18),
     [lambert(0x22262b), lambert(0x22262b), lambert(0x22262b), lambert(0x22262b),
      new THREE.MeshLambertMaterial({ map: boardTex, emissive: 0x8fd8ff, emissiveIntensity: 0.12, emissiveMap: boardTex }),
      lambert(0x22262b)]);
-  boardMesh.position.y = 4.1;
+  boardMesh.position.y = 4.4;
   boardGroup.add(boardMesh);
   boardGroup.position.set(0, 0, -17); // faces the spawn/camera side
   scene.add(boardGroup);
@@ -537,9 +537,15 @@ export function buildWorld(scene) {
     amber: "#ffb02e", amberDim: "#7a5010", green: "#2eff6a", greenDim: "#0e662a",
     red: "#ff2e4d", redDim: "#6e1020", text: "#c8e6f0", textDim: "#5a7284", white: "#f0f6ff",
   };
+  const fmtDur = (s) => {
+    if (!Number.isFinite(s)) return "?";
+    if (s < 90) return `${Math.round(s)}s`;
+    if (s < 5400) return `${Math.round(s / 60)}m`;
+    return `${Math.floor(s / 3600)}h${String(Math.round((s % 3600) / 60)).padStart(2, "0")}m`;
+  };
   function updateProject(pl, twin = null) {
     const g = boardCanvas.getContext("2d");
-    const W = 512, H = 192;
+    const W = 512, H = 256;
     // panel + bezel frame with corner rivets
     g.fillStyle = PAL.bg; g.fillRect(0, 0, W, H);
     g.fillStyle = PAL.bezel; g.fillRect(2, 2, W - 4, H - 4);
@@ -571,27 +577,91 @@ export function buildWorld(scene) {
       g.fillStyle = twin.source === "local" ? PAL.amberDim : PAL.grid;
       g.fillRect(14, 52, W - 28, 1);
     }
-    // stage gauges: holographic bars with hard tick marks
+    // ---- REAL RUN DASHBOARD (operator 2026-07-22: the :8000 training dash-
+    // board, alive in-world). Rendered ONLY from source:"local" telemetry;
+    // otherwise the block says plainly that it is offline.
+    const dash = twin?.source === "local" ? twin.dashboard : null;
+    const top = 58;
+    if (dash) {
+      const modeColor =
+        { training: PAL.green, running: PAL.green, recovering: PAL.amber }[dash.mode?.id] ??
+        (dash.mode ? PAL.red : PAL.textDim);
+      if (dash.mode) {
+        g.fillStyle = modeColor; g.fillRect(14, top + 1, 8, 8);
+        g.font = "bold 12px monospace"; g.fillStyle = modeColor;
+        g.fillText(dash.mode.label.toUpperCase(), 27, top);
+      }
+      g.font = "11px monospace"; g.fillStyle = PAL.text;
+      g.fillText(`STEP ${twin.step ?? "?"}  LOSS ${Number.isFinite(twin.lm) ? twin.lm.toFixed(4) : "?"}`, 14, top + 16);
+      if (dash.timing)
+        g.fillText(`${Number.isFinite(dash.timing.tokS) ? Math.round(dash.timing.tokS).toLocaleString() : "?"} tok/s  ETA ${fmtDur(dash.timing.etaS)}`, 14, top + 30);
+      if (Number.isFinite(dash.ckptAgeS))
+        g.fillText(`CKPT ${fmtDur(dash.ckptAgeS)} ago`, 14, top + 44);
+      // flow gates: LED row with ids — red LED = a REAL gate is failing
+      dash.gates.forEach((gt, i) => {
+        g.fillStyle = gt.ok ? PAL.greenDim : PAL.red;
+        g.fillRect(14 + i * 28, top + 58, 10, 10);
+        g.font = "8px monospace"; g.fillStyle = gt.ok ? PAL.textDim : PAL.red;
+        g.fillText(gt.id, 26 + i * 28, top + 59);
+      });
+      if (dash.funnel) {
+        g.font = "9px monospace"; g.fillStyle = PAL.textDim;
+        g.fillText(`raw ${dash.funnel.raw ?? 0} · packed ${dash.funnel.packed ?? 0} · used ${dash.funnel.consumed ?? 0} · fail ${dash.funnel.failed ?? 0}`, 14, top + 76);
+      }
+      // right block: run + phase progress bars, then the loss sparkline
+      const rx = 180, rw = 290;
+      const bar = (y, frac, label, color) => {
+        g.fillStyle = PAL.grid; g.fillRect(rx, y, rw, 12);
+        g.fillStyle = PAL.cyanDim; g.fillRect(rx, y, rw, 1); g.fillRect(rx, y + 11, rw, 1);
+        g.fillStyle = color; g.fillRect(rx, y + 2, Math.floor(rw * Math.max(0, Math.min(1, frac))), 8);
+        g.font = "9px monospace"; g.fillStyle = PAL.white;
+        g.fillText(label, rx + 3, y + 2);
+      };
+      if (Number.isFinite(dash.run?.frac))
+        bar(top, dash.run.frac,
+            `RUN ${(dash.run.frac * 100).toFixed(1)}%${Number.isFinite(dash.run.total) ? ` of ${(dash.run.total / 1e9).toFixed(1)}B tok` : ""}`, PAL.cyan);
+      if (Number.isFinite(dash.phase?.frac))
+        bar(top + 18, dash.phase.frac,
+            `${dash.phase.name.toUpperCase()} ${(dash.phase.frac * 100).toFixed(0)}%${Number.isFinite(dash.phase.seq) ? ` · SEQ ${dash.phase.seq}` : ""}`, PAL.magenta);
+      if (dash.spark) {
+        const sy = top + 36, sh = 56;
+        g.fillStyle = PAL.grid; g.fillRect(rx, sy, rw, sh);
+        const lo = Math.min(...dash.spark.lm), hi = Math.max(...dash.spark.lm);
+        const span = hi - lo || 1;
+        dash.spark.lm.forEach((v, i) => {
+          const x = rx + Math.floor((i / Math.max(1, dash.spark.lm.length - 1)) * (rw - 3));
+          const y = sy + 2 + Math.floor((1 - (v - lo) / span) * (sh - 6));
+          g.fillStyle = PAL.cyanDim; g.fillRect(x, y + 2, 2, Math.max(0, sy + sh - 2 - y)); // area fill
+          g.fillStyle = PAL.cyan; g.fillRect(x, y, 2, 2);
+        });
+        g.font = "8px monospace"; g.fillStyle = PAL.textDim;
+        g.fillText(`LM LOSS  hi ${hi.toFixed(3)} · lo ${lo.toFixed(3)}`, rx + 3, sy + 2);
+        g.fillText(`steps ${dash.spark.steps[0]}–${dash.spark.steps[dash.spark.steps.length - 1]}`, rx + 3, sy + sh - 10);
+      }
+    } else {
+      g.font = "11px monospace"; g.fillStyle = PAL.textDim;
+      g.fillText("REAL RUN DASHBOARD OFFLINE — renders only where the training box is reachable", 14, top + 2);
+    }
+    // stage gauges (the game's own pipeline), compressed below the dashboard
     pl.stages.forEach((s, i) => {
-      const y = 60 + i * 22;
+      const y = 152 + i * 16;
       const frac = i < pl.stage ? 1 : i > pl.stage ? 0 : Math.min(1, pl.progress / s.work);
-      g.font = "12px monospace";
+      g.font = "10px monospace";
       g.fillStyle = i === pl.stage ? PAL.white : PAL.text;
-      g.fillText(s.label.toUpperCase(), 14, y + 2);
-      // gauge trough + ticks
-      g.fillStyle = PAL.grid; g.fillRect(170, y, 300, 14);
+      g.fillText(s.label.toUpperCase(), 14, y + 1);
+      g.fillStyle = PAL.grid; g.fillRect(170, y, 300, 10);
       g.fillStyle = PAL.cyanDim;
-      g.fillRect(170, y, 300, 1); g.fillRect(170, y + 13, 300, 1);
+      g.fillRect(170, y, 300, 1); g.fillRect(170, y + 9, 300, 1);
       const fill = Math.floor(300 * frac);
       g.fillStyle = i === pl.stage && pl.blocker ? PAL.red : PAL.cyan;
-      g.fillRect(170, y + 2, fill, 10);
+      g.fillRect(170, y + 2, fill, 6);
       if (fill > 2) { // hard highlight row = sub-pixel sheen
         g.fillStyle = i === pl.stage && pl.blocker ? "#ff8093" : "#a8f4ff";
         g.fillRect(170, y + 2, fill, 1);
       }
       g.fillStyle = PAL.panel;
-      for (let t = 1; t < 10; t++) g.fillRect(170 + t * 30, y + 2, 1, 10);
-      g.fillStyle = PAL.textDim; g.fillText(String(Math.floor(frac * 100)).padStart(3) + "%", 476, y + 2);
+      for (let t = 1; t < 10; t++) g.fillRect(170 + t * 30, y + 2, 1, 6);
+      g.fillStyle = PAL.textDim; g.fillText(String(Math.floor(frac * 100)).padStart(3) + "%", 476, y + 1);
     });
     // alert strip: hazard-striped blocker readout
     if (pl.blocker) {

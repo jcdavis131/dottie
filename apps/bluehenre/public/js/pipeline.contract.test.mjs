@@ -1,5 +1,6 @@
 // Contract: the org builds the model ITSELF; the consultant only clears blockers.
-import { createPipeline, tickPipeline, resolveBlocker, statusLine, STAGES, RETAINER } from "./pipeline.mjs";
+import { createPipeline, tickPipeline, resolveBlocker, raiseLiveBlocker,
+         statusLine, STAGES, RETAINER } from "./pipeline.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = "") => {
@@ -63,6 +64,25 @@ check("cleared engagement ships the model", shipped && full.shipped && stagesDon
 const a1 = createPipeline(42), a2 = createPipeline(42);
 check("same seed, same engagement",
   JSON.stringify(a1.stages.map((s) => s.blockers)) === JSON.stringify(a2.stages.map((s) => s.blockers)));
+
+// rung 3: a REAL factory event stalls the org until the right consultant fixes it
+const lv = createPipeline(11);
+const ev = { kind: "mode_stale", dept: "labs", persona: "cipher", action: "decode",
+             label: "Trainer stale: No trainer activity for 38906s" };
+check("real event raises a REAL-stamped blocker",
+  raiseLiveBlocker(lv, ev).ok && lv.blocker?.live === true && lv.blocker.label.startsWith("REAL:"));
+const before = lv.progress;
+tickPipeline(lv, 5, ["servers", "archives", "labs", "proving", "design"]);
+check("real blocker freezes the org", lv.progress === before);
+check("second event refused while blocked", !raiseLiveBlocker(lv, ev).ok);
+check("wrong hat cannot clear a real blocker",
+  !resolveBlocker(lv, { persona: "auditor", action: "interview", dept: "labs" }).ok);
+check("right consultant clears the real blocker",
+  resolveBlocker(lv, { persona: "cipher", action: "decode", dept: "labs" }).ok && lv.blocker === null);
+check("malformed event refused", !raiseLiveBlocker(lv, { kind: "x" }).ok);
+const shippedPl = createPipeline(11);
+shippedPl.shipped = true;
+check("no real blockers after shipping", !raiseLiveBlocker(shippedPl, ev).ok);
 
 // status line is honest about the blocker
 const st = createPipeline(7);

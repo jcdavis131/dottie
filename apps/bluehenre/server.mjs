@@ -10,7 +10,8 @@ import { readFile, appendFile, mkdir } from "node:fs/promises";
 import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { toShards } from "./public/js/extract.mjs";
-import { parseMetricsTail, safeParseJson, parseEvalSummary } from "./public/js/twin.mjs";
+import { parseMetricsTail, safeParseJson, parseEvalSummary, parseTrainerTail,
+         parseDashboard, parseLiveEvents, liveAgeS } from "./public/js/twin.mjs";
 
 const ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "public");
 const DATA_DIR = join(fileURLToPath(new URL(".", import.meta.url)), "data");
@@ -25,6 +26,15 @@ const TWIN_METRICS = process.env.DOTTIE_TWIN_METRICS ||
   join(APP_DIR, "..", "ava-factory", "reports", "metrics_mini.jsonl");
 const TWIN_EVAL = process.env.DOTTIE_TWIN_EVAL ||
   join(APP_DIR, "..", "ava-factory", "reports", "branch_eval_results_real.json");
+// Primary twin source (operator 2026-07-22 "bring the dashboard to life"):
+// the factory hub's live /pipeline/status endpoint — the same JSON the :8000
+// dashboard renders, fetched fresh. Fallback: the exported live-status gist
+// file, then the raw metrics/eval artifacts. All degrade honestly to offline.
+const TWIN_PIPELINE_URL = process.env.DOTTIE_TWIN_PIPELINE ??
+  "http://localhost:8000/pipeline/status";
+const TWIN_LIVE_FILE = process.env.DOTTIE_TWIN_LIVE ||
+  join(APP_DIR, "..", "ava-factory", "reports", "dottie_live_status.json");
+const TWIN_MAX_AGE_S = 3600; // a feed older than this is history, not telemetry
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -113,18 +123,51 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "GET" && (req.url || "").split("?")[0] === "/api/twin-status") {
       // REAL telemetry from this machine — the digital twin's whole point.
-      // Numbers only when actual factory artifacts are readable; else offline.
+      // Numbers only when a genuine feed is readable AND fresh; else offline.
       const status = { source: "offline", model: "ava-mini/tool" };
-      try {
-        const tail = parseMetricsTail(await readFile(TWIN_METRICS, "utf-8"));
+      let live = null;
+      let liveVia = null;
+      if (TWIN_PIPELINE_URL) {
+        try {
+          const r = await fetch(TWIN_PIPELINE_URL, { signal: AbortSignal.timeout(2500) });
+          if (r.ok) { live = await r.json(); liveVia = "pipeline-endpoint"; }
+        } catch { /* hub down — fall through to the exported file */ }
+      }
+      if (!live) {
+        try {
+          live = safeParseJson(await readFile(TWIN_LIVE_FILE, "utf-8"));
+          liveVia = "live-status-file";
+        } catch { /* no export either — raw artifacts below */ }
+      }
+      if (live) {
+        const age = liveAgeS(live, Date.now());
+        if (age !== null && age > TWIN_MAX_AGE_S) {
+          status.detail = `live feed is ${Math.round(age / 60)} min old — history, not telemetry`;
+          live = null;
+        }
+      }
+      if (live) {
+        const tail = parseTrainerTail(live);
         if (tail) Object.assign(status, tail, { source: "local" });
-      } catch { /* metrics not exported to host — eval alone may still light it */ }
+        const dash = parseDashboard(live);
+        if (dash) Object.assign(status, { dashboard: dash, source: "local", via: liveVia });
+        status.events = parseLiveEvents(live);
+      }
+      if (status.source !== "local") {
+        try {
+          const tail = parseMetricsTail(await readFile(TWIN_METRICS, "utf-8"));
+          if (tail) Object.assign(status, tail, { source: "local" });
+        } catch { /* metrics not exported to host — eval alone may still light it */ }
+      }
       try {
         const summary = parseEvalSummary(safeParseJson(await readFile(TWIN_EVAL, "utf-8")));
-        if (summary) Object.assign(status, summary, { source: "local" });
+        // evalTokens, NOT tokens: the trainer's cumulative token count must not
+        // be overwritten by the (tiny) held-out eval token count.
+        if (summary) Object.assign(status,
+          { weightedPpl: summary.weightedPpl, evalTokens: summary.tokens, source: "local" });
       } catch { /* no eval report — fine */ }
       if (status.source !== "local")
-        status.detail = "no factory artifacts readable here — set DOTTIE_TWIN_METRICS / DOTTIE_TWIN_EVAL";
+        status.detail ??= "no factory feed readable here — set DOTTIE_TWIN_PIPELINE / DOTTIE_TWIN_LIVE / DOTTIE_TWIN_METRICS";
       return send(200, MIME[".json"], JSON.stringify(status));
     }
     // static: normalize + confine to ROOT

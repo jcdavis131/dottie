@@ -10,7 +10,7 @@ import { createEcosystem, tickEcosystem } from "./ecosystem.mjs";
 import { createQuestLog, advance, briefs, ORG } from "./quests.mjs";
 import { createRun, record, recordQuestComplete, extractRun } from "./workflow.mjs";
 import { createTouchControls } from "./touch.mjs";
-import { createPipeline, tickPipeline, resolveBlocker, statusLine } from "./pipeline.mjs";
+import { createPipeline, tickPipeline, resolveBlocker, raiseLiveBlocker, statusLine } from "./pipeline.mjs";
 import { twinLine } from "./twin.mjs";
 
 const coarse = matchMedia("(pointer: coarse)").matches; // phone/tablet = default profile
@@ -82,6 +82,22 @@ let pl = createPipeline(run.runId);
 // REAL twin telemetry (SPEC "the Dottie digital twin"): poll the status endpoint;
 // numbers render ONLY when source is "local" — twinLine enforces the doctrine.
 let twin = null;
+// Rung 3 (SPEC hill-climb): REAL factory events raise in-game blockers. Each
+// distinct event blocks once per session — after the consultant clears it the
+// org isn't re-stalled by the same alarm every poll.
+const seenLiveEvents = new Set();
+function raiseRealEvents() {
+  if (twin?.source !== "local" || !Array.isArray(twin.events)) return;
+  for (const ev of twin.events) {
+    const key = `${ev.kind}:${ev.label}`;
+    if (seenLiveEvents.has(key)) continue;
+    if (!raiseLiveBlocker(pl, ev).ok) return; // already blocked — retry next poll
+    seenLiveEvents.add(key);
+    say(`⚠ REAL EVENT stalls the org @ ${ev.dept}: ${ev.label} — needs ${ev.persona}/${ev.action}`);
+    world.updateProject(pl, twin);
+    return; // one live blocker at a time
+  }
+}
 async function fetchTwin() {
   try {
     const r = await fetch("/api/twin-status");
@@ -90,10 +106,11 @@ async function fetchTwin() {
   } catch {
     twin = { source: "offline", line: twinLine(null) };
   }
+  raiseRealEvents();
   world.updateProject(pl, twin);
 }
 fetchTwin();
-setInterval(fetchTwin, 60_000);
+setInterval(fetchTwin, 15_000); // dashboard cadence — the board is live now
 world.updateProject(pl, twin);
 
 const hud = document.getElementById("hud");

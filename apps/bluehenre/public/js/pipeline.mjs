@@ -103,6 +103,22 @@ export function tickPipeline(pl, dt, workingDepts) {
   return events;
 }
 
+/** Hill-climb rung 3: a REAL factory event (trainer stale, data starved, gate
+ * red — parsed by twin.parseLiveEvents from genuine telemetry) raises an
+ * in-game blocker that stalls the org until the consultant clears it at the
+ * owning department. The label is stamped REAL: so play never confuses the
+ * seeded fiction with the actual machine's problems. resolveBlocker clears it
+ * like any other blocker — right hat, right fix, right department. */
+export function raiseLiveBlocker(pl, event) {
+  if (pl.shipped) return { ok: false, reason: "engagement over — model shipped" };
+  if (pl.blocker) return { ok: false, reason: "already blocked" };
+  if (!event?.dept || !event?.persona || !event?.action || !event?.label)
+    return { ok: false, reason: "malformed event" };
+  pl.blocker = { at: 0, dept: event.dept, persona: event.persona, action: event.action,
+                 label: `REAL: ${event.label}`, resolved: false, live: true };
+  return { ok: true };
+}
+
 /** The consultant attempts to clear the active blocker with {persona, action, dept}.
  * All three must match — right hat, right fix, right department. Honest reasons. */
 export function resolveBlocker(pl, { persona, action, dept }) {

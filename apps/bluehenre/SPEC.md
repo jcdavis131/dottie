@@ -21,8 +21,16 @@ local machine. Explicitly:
 - **The in-game Project tracks the REAL model**: alongside the fictional pipeline, the
   world surfaces live **twin telemetry** from this machine — the actual training step,
   loss and eval numbers of the model in `apps/ava-factory` — via `/api/twin-status`
-  (source-stamped `local`; the hosted build reports `offline` because it has no access
-  to this machine, honestly).
+  (source-stamped `local`; anything else renders offline, honestly).
+- **The :8000 training dashboard lives on the plaza board** (operator directive
+  2026-07-22 "bring the dashboard to life in the game"): mode badge, run/phase progress
+  bars, an lm-loss sparkline, the five flow-gate LEDs and the shard funnel — all drawn
+  from real telemetry only. Twin source priority (`server.mjs`): the factory hub's live
+  `/pipeline/status` endpoint → the exported `dottie_live_status.json` → raw
+  metrics/eval artifacts; each is freshness-capped (a stale feed is history, not
+  telemetry, and says so). The HOSTED gamesite reads the operator's own published
+  live-status gist (`via:"gist-feed"`, hourly publisher, 75-min cap) — real numbers on
+  the public site with the provenance chain intact.
 - **The closed loop users visit, interact with, and help progress**:
   1. real training/eval telemetry flows IN (twin board);
   2. players clear blockers/quests as consultants → validated workflows are extracted
@@ -46,14 +54,20 @@ local machine. Explicitly:
 
 ### Hill-climb ladder (next rungs, in order)
 
-1. ✅ Twin telemetry v1: last training step/loss + eval ppl on the holo-board (this build).
-2. NPC expert prompts v1: chat carries subsystem focus (this build) — richer per-NPC
+1. ✅ Twin telemetry v1: last training step/loss + eval ppl on the holo-board.
+2. ✅ NPC expert prompts v1: chat carries subsystem focus — richer per-NPC
    system prompts once Dottie chat is stable.
-3. Blockers driven by REAL events (a real data_starved / eval flake raises the in-game
-   blocker) — needs a local event feed.
-4. Shard feedback loop closes visibly: board shows how many player-validated shards the
+3. ✅ Blockers driven by REAL events (2026-07-22): `twin.parseLiveEvents` maps genuine
+   feed problems (trainer stale/error, data starved, disk water-marks, red flow gates —
+   benign full-runway collector pauses excluded) to `{dept, persona, action}`;
+   `pipeline.raiseLiveBlocker` stalls the org with a `REAL:`-stamped blocker the
+   consultant clears at the owning department. One block per distinct event per session.
+4. ✅ Dashboard-on-the-board (2026-07-22): the :8000 training dashboard rendered on the
+   plaza console from live telemetry (mode/run/phase/sparkline/gates/funnel), 15s poll;
+   hosted site fed by the operator's published gist.
+5. Shard feedback loop closes visibly: board shows how many player-validated shards the
    operator has fed to the collector.
-5. More Earth-twin nodes (remote "field offices" for remote subsystems).
+6. More Earth-twin nodes (remote "field offices" for remote subsystems).
 
 ## Concept
 

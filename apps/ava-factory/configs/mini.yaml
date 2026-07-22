@@ -89,11 +89,15 @@ phases:                            # same 6-phase shape, 2.5B budget
 branches:
   tool:
     init: /ckpt/base_final.pt
-    tokens: 390_000_000            # extended 2026-07-21 (was 300M/1144 steps): ~1487 steps
-                                   # @ 262144 tok/step. +343 steps, all within p3 (1.75B->2.14B
-                                   # < p3 end 2.15B) so it keeps the tool regime (seq 2048, no
-                                   # memory-heavy p4 seq-4096) and trains the new scout_cli
-                                   # (tool_use) + zk_math (math_reasoning) P3 curriculum.
+    tokens: 750_000_000            # extended 2026-07-22 (was 390M/1487 steps, done): ~2861
+                                   # steps @ 262144 tok/step. Completes the FULL curriculum:
+                                   # p3 tail (2.14->2.15B) then p4_long + p5_anneal to 2.5B.
+                                   # p4/p5 seq-4096 is proven on this GPU in bf16 (base run's
+                                   # stable_p4 exists); AVA_MAX_MICRO_BATCH is the relief valve.
+                                   # Operator 2026-07-22: "get training up and running" for the
+                                   # live dashboard + game twin. Prior leg (390M) logged below.
+                                   # was: 300M->390M 2026-07-21, +343 steps within p3 for the
+                                   # scout_cli (tool_use) + zk_math (math_reasoning) curriculum.
     start_tokens: 1_750_000_000    # cum through p0+p1+p2 → enter p3
     freeze: [system1, system2]
     finetune: [critic, planner, router, arbitration]
