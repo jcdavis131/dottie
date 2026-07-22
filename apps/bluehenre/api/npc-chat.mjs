@@ -8,8 +8,9 @@ export default async function handler(req, res) {
   if (!url) {
     return res.status(200).json({
       source: "offline",
-      reply: `(${npc}/${dept}) hosted build — no Dottie engine is reachable from here. ` +
-        "This NPC will not pretend to think. Run locally with DOTTIE_CHAT_URL for real replies.",
+      reply: "hosted build — no Dottie engine is reachable from here. The assistant " +
+        "will not pretend to think. (The write path is the next core item: a tunnel " +
+        "or directive channel makes this live from anywhere.)",
     });
   }
   try {

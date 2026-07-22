@@ -1,0 +1,13 @@
+{
+  "name": "BLUEHENRE — org command console",
+  "short_name": "BLUEHENRE",
+  "description": "Run the org from anywhere: training run, fleet, alerts, Dottie.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#140e09",
+  "theme_color": "#140e09",
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

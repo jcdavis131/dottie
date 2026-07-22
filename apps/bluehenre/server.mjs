@@ -45,6 +45,7 @@ const MIME = {
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
 };
 
 async function npcChat(body) {
@@ -52,8 +53,8 @@ async function npcChat(body) {
   if (!DOTTIE_CHAT_URL) {
     return {
       source: "offline",
-      reply: `(${npc}/${dept}) no Dottie engine configured — set DOTTIE_CHAT_URL. ` +
-        "This NPC will not pretend to think.",
+      reply: "no Dottie engine configured — set DOTTIE_CHAT_URL. " +
+        "The assistant will not pretend to think.",
     };
   }
   try {
