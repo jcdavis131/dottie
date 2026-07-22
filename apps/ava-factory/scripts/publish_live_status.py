@@ -165,6 +165,42 @@ def _deploys_snapshot() -> dict:
         return {"unreachable": f"{type(e).__name__}: {e}"}
 
 
+def _site_perf(existing_hub) -> dict:
+    """Weekly TTFB + page-weight per site with >20% regression flags (steer
+    directive). Self-scheduling: re-measures only when the carried block is
+    older than 6 days; otherwise carries it forward untouched. Real requests,
+    honest failures; regressions compare against the PREVIOUS measurement."""
+    prev = existing_hub.get("site_perf", {}) if isinstance(existing_hub, dict) else {}
+    now = time.time()
+    if isinstance(prev.get("measured_at"), (int, float)) and now - prev["measured_at"] < 6 * 86400:
+        return prev
+    rows = []
+    regressions = []
+    prev_rows = {r["name"]: r for r in prev.get("rows", []) if isinstance(r, dict)}
+    for name, url in SITES:
+        try:
+            t0 = time.time()
+            with urllib.request.urlopen(url, timeout=15) as r:
+                r.read(1)
+                ttfb_ms = round((time.time() - t0) * 1000)
+                body = r.read()
+            page_bytes = len(body) + 1
+            row = {"name": name, "ttfb_ms": ttfb_ms, "page_bytes": page_bytes}
+            p = prev_rows.get(name)
+            for metric, label in (("ttfb_ms", "TTFB"), ("page_bytes", "page weight")):
+                if p and isinstance(p.get(metric), (int, float)) and p[metric] > 0:
+                    ratio = row[metric] / p[metric]
+                    if ratio > 1.2:
+                        regressions.append({
+                            "name": name, "metric": metric,
+                            "label": f"{name} {label} regressed {round((ratio - 1) * 100)}% "
+                                     f"({p[metric]} -> {row[metric]})"})
+            rows.append(row)
+        except Exception as e:  # noqa: BLE001
+            rows.append({"name": name, "error": f"{type(e).__name__}"[:60]})
+    return {"measured_at": round(now), "rows": rows, "regressions": regressions}
+
+
 def _fleet_snapshot() -> dict:
     """Real docker-stats snapshot for the game's fleet NPCs (2026-07-22).
     Raw docker JSONL rows, parsed client-side; unreachable is honest."""
@@ -225,6 +261,7 @@ def compose() -> dict:
     }
     hub["site_history"] = _site_history(existing.get("hub", {}), hub["sites"])
     hub["deploys"] = _deploys_snapshot()
+    hub["site_perf"] = _site_perf(existing.get("hub", {}))
     snapshot = {
         **existing,
         "schema": "dottie_live_status/v2",  # additive: v2 consumers unaffected by "hub"

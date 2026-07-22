@@ -222,8 +222,17 @@ export function parseHub(feed) {
         url: /^https?:\/\//.test(p.url ?? "") ? String(p.url) : null }))
     : null;
 
-  if (!network && !ecosystem && !evals && !researchOut && !sites && !sample && !deploys) return null;
-  return { network, ecosystem, evals, research: researchOut, sites, sample, deploys };
+  // weekly TTFB/page-weight measurement + >20% regression flags (steer)
+  const sitePerf = hub?.site_perf && typeof hub.site_perf === "object" && !hub.site_perf.unreachable
+    ? { measuredAt: Number.isFinite(hub.site_perf.measured_at) ? hub.site_perf.measured_at : null,
+        rows: Array.isArray(hub.site_perf.rows) ? hub.site_perf.rows : [],
+        regressions: Array.isArray(hub.site_perf.regressions)
+          ? hub.site_perf.regressions.map((r) => String(r.label ?? "")) : [] }
+    : null;
+
+  if (!network && !ecosystem && !evals && !researchOut && !sites && !sample && !deploys && !sitePerf)
+    return null;
+  return { network, ecosystem, evals, research: researchOut, sites, sample, deploys, sitePerf };
 }
 
 // ---- fleet (operator 2026-07-22: NPCs ARE the docker containers) -----------

@@ -228,11 +228,22 @@ function renderAlerts() {
   el.replaceChildren();
   if (twin?.source !== "local") return offline(el);
   const evs = Array.isArray(twin.events) ? twin.events : [];
-  if (!evs.length) {
+  // weekly site-perf regressions surface here too (steer: flag as ALERT)
+  const regressions = parseHub(twin)?.sitePerf?.regressions ?? [];
+  if (!evs.length && !regressions.length) {
     const p = P("● no active alerts — the org is unblocked");
     p.style.color = "var(--bh-ok)";
     el.append(p);
     return;
+  }
+  for (const label of regressions) {
+    const a = document.createElement("div");
+    a.className = "alert";
+    const who = document.createElement("div");
+    who.className = "who";
+    who.textContent = "site-perf regression (weekly probe)";
+    a.append(who, P(label));
+    el.append(a);
   }
   for (const ev of evs) {
     const a = document.createElement("div");

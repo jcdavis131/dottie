@@ -152,6 +152,14 @@ const siteHub = parseHub({ hub: { sites: [
   hub: [{ t: 1, up: true, ms: 100 }, { t: 2, up: false, ms: 0 }, { t: 3, up: true, ms: 120 },
         { t: 4, up: true, ms: 110 }],
 } } });
+const perfHub = parseHub({ hub: { site_perf: {
+  measured_at: 1784750000,
+  rows: [{ name: "hub", ttfb_ms: 200, page_bytes: 27000 }],
+  regressions: [{ name: "hub", metric: "ttfb_ms", label: "hub TTFB regressed 34% (200 -> 268)" }],
+} } });
+check("weekly site-perf parses with regression labels",
+  perfHub?.sitePerf?.measuredAt === 1784750000 && perfHub.sitePerf.rows.length === 1 &&
+  perfHub.sitePerf.regressions[0].includes("34%"));
 const depHub = parseHub({ hub: { deploys: { projects: [
   { name: "arxiviq", url: "https://www.arxiviq.com", updated: "49s" },
   { name: "weird", url: "javascript:alert(1)", updated: "1d" },
