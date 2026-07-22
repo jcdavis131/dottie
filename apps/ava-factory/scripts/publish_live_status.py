@@ -132,6 +132,39 @@ def _site_history(existing_hub, probes: list) -> dict:
     return hist
 
 
+_ANSI_RE = None  # lazy-compiled below
+
+
+def _deploys_snapshot() -> dict:
+    """Read-only deploy recency per Vercel project (steer directive: DEPLOYS
+    card). Parses the CLI's human table (no --json exists); ANSI stripped;
+    honest unreachable on any failure."""
+    global _ANSI_RE
+    import re as _re
+    if _ANSI_RE is None:
+        _ANSI_RE = _re.compile(r"\x1b\[[0-9;]*m")
+    try:
+        vercel_bin = "vercel.cmd" if os.name == "nt" else "vercel"
+        p = subprocess.run(
+            [vercel_bin, "projects", "ls", "--scope", "cams-projects-c5c4c5f6"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=60,
+        )
+        if p.returncode != 0:
+            return {"unreachable": (p.stderr or "vercel ls failed")[:200]}
+        projects = []
+        # the CLI prints its table on STDERR (stdout stays empty) — parse both
+        for line in (p.stdout + "\n" + p.stderr).splitlines():
+            clean = _ANSI_RE.sub("", line)
+            m = _re.match(r"^\s{2}(\S+)\s+(https://\S+)\s+(\S+)", clean)
+            if m and m.group(1) != "Project":
+                projects.append({"name": m.group(1), "url": m.group(2),
+                                 "updated": m.group(3)})
+        return {"projects": projects} if projects else {"unreachable": "no rows parsed"}
+    except Exception as e:  # noqa: BLE001 - publisher must never crash on a probe
+        return {"unreachable": f"{type(e).__name__}: {e}"}
+
+
 def _fleet_snapshot() -> dict:
     """Real docker-stats snapshot for the game's fleet NPCs (2026-07-22).
     Raw docker JSONL rows, parsed client-side; unreachable is honest."""
@@ -191,6 +224,7 @@ def compose() -> dict:
         "batch_sample": _batch_sample(),
     }
     hub["site_history"] = _site_history(existing.get("hub", {}), hub["sites"])
+    hub["deploys"] = _deploys_snapshot()
     snapshot = {
         **existing,
         "schema": "dottie_live_status/v2",  # additive: v2 consumers unaffected by "hub"

@@ -215,8 +215,15 @@ export function parseHub(feed) {
       })
     : null;
 
-  if (!network && !ecosystem && !evals && !researchOut && !sites && !sample) return null;
-  return { network, ecosystem, evals, research: researchOut, sites, sample };
+  // read-only deploy recency per Vercel project (steer: DEPLOYS card)
+  const deploys = Array.isArray(hub?.deploys?.projects)
+    ? hub.deploys.projects.map((p) => ({
+        name: String(p.name ?? "?"), updated: String(p.updated ?? "?"),
+        url: /^https?:\/\//.test(p.url ?? "") ? String(p.url) : null }))
+    : null;
+
+  if (!network && !ecosystem && !evals && !researchOut && !sites && !sample && !deploys) return null;
+  return { network, ecosystem, evals, research: researchOut, sites, sample, deploys };
 }
 
 // ---- fleet (operator 2026-07-22: NPCs ARE the docker containers) -----------

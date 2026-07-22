@@ -451,6 +451,25 @@ function renderSites(h) {
   el.append(P("24h = share of real probes up over the rolling day (10-min cadence)", "note"));
 }
 
+function renderDeploys(h) {
+  const el = $("deploys");
+  el.replaceChildren();
+  if (!h?.deploys) return offline(el);
+  el.append(table(["project", "updated|r"],
+    h.deploys.map((p) => {
+      let nameCell = p.name;
+      if (p.url) {
+        nameCell = document.createElement("a");
+        nameCell.href = p.url;
+        nameCell.target = "_blank";
+        nameCell.rel = "noopener";
+        nameCell.textContent = p.name;
+      }
+      return [nameCell, p.updated];
+    })));
+  el.append(P("read-only, from vercel ls at each publish — deploys stay CLI/steer-gated", "note"));
+}
+
 function renderDemand() {
   const el = $("demand");
   el.replaceChildren();
@@ -514,7 +533,7 @@ async function refreshTwin() {
   renderRun(); renderCurve(); renderSignals(); renderBatch(h); renderAlerts();
   renderCurriculum(); renderFlow(); renderManifest();
   renderCkpts(); renderCompute(); renderNetwork(h); renderWatch(); renderJspace();
-  renderResearch(h); renderEvals(h); renderEco(h); renderSites(h); renderDemand();
+  renderResearch(h); renderEvals(h); renderEco(h); renderSites(h); renderDeploys(h); renderDemand();
 }
 async function refreshFleet() {
   let f = null;

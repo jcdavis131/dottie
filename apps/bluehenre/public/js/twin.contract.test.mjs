@@ -152,6 +152,13 @@ const siteHub = parseHub({ hub: { sites: [
   hub: [{ t: 1, up: true, ms: 100 }, { t: 2, up: false, ms: 0 }, { t: 3, up: true, ms: 120 },
         { t: 4, up: true, ms: 110 }],
 } } });
+const depHub = parseHub({ hub: { deploys: { projects: [
+  { name: "arxiviq", url: "https://www.arxiviq.com", updated: "49s" },
+  { name: "weird", url: "javascript:alert(1)", updated: "1d" },
+] } } });
+check("deploys card parses rows; non-http urls nulled",
+  depHub?.deploys?.length === 2 && depHub.deploys[0].updated === "49s" &&
+  depHub.deploys[1].url === null);
 check("site 24h history -> uptime pct + strip (steer: trends)",
   siteHub?.sites?.[0].up24 === 75 && siteHub.sites[0].strip.join(",") === "true,false,true,true" &&
   siteHub.sites[1].up24 === null && siteHub.sites[1].strip.length === 0);
