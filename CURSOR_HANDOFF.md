@@ -61,7 +61,12 @@ steers from anywhere.
 1. On trainer `done`: run mini eval harness on new `tool_final.pt`
    (memory: dottie-evaluating-checkpoints has the exact invocation), A/B vs
    **275.95 weighted ppl**, post table to the steer thread.
-2. After eval: research daemon gets the GPU (2 pending candidates through the
+2. After eval: **compact the vhdx** (operator order 07-22): stop fleet,
+   `wsl --shutdown`, then diskpart (`select vdisk file="C:\Users\jcdav\AppData\Local\Docker\wsl\disk\docker_data.vhdx"`,
+   `attach vdisk readonly`, `compact vdisk`, `detach vdisk`) — it is 350.5 GB
+   on disk, biggest object on C:; Home edition has no Optimize-VHD; budget
+   30–90 min. Then relaunch Docker Desktop + `docker start` the fleet.
+3. Then: research daemon gets the GPU (2 pending candidates through the
    gates; report promotions/rejections). Note: 59% of past failures are
    dry_run crashes — generator quality is the bottleneck.
 3. p5 anneal crashes >2× ⇒ HOLD and page the operator via steer thread.
