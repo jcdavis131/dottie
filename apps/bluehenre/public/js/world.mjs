@@ -410,7 +410,7 @@ function buildingFor(d, r) {
 export function buildWorld(scene) {
   const r = rng(0xa757e); // "Austin" seed — deterministic campus
   scene.background = sunsetSkyTexture(); // banded, dithered SNES sunset
-  scene.fog = new THREE.Fog(0xe8935f, 70, 210); // dusty golden-hour haze
+  scene.fog = new THREE.Fog(0xe8935f, 60, 190); // dusty golden-hour haze, tighter world
 
   // golden hour: a LOW warm sun (long cozy shadows) + lavender sky bounce
   const sun = new THREE.DirectionalLight(0xffb36b, 2.4);
@@ -426,7 +426,7 @@ export function buildWorld(scene) {
   const grass = grassTexture();
   grass.wrapS = grass.wrapT = THREE.RepeatWrapping;
   grass.repeat.set(18, 18);
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(260, 260),
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(220, 220),
     new THREE.MeshLambertMaterial({ map: grass }));
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
@@ -925,7 +925,7 @@ export function buildWorld(scene) {
   const treeSpots = [];
   for (let i = 0; i < 22; i++) {
     const a = r() * Math.PI * 2;
-    const rad = 46 + r() * 40;
+    const rad = 44 + r() * 22; // tighter scatter: density near campus, not sprawl
     const x = Math.cos(a) * rad, z = Math.sin(a) * rad;
     if (z > 55 && x < 0) continue; // keep the creek bank clear
     treeSpots.push([x, z]);
@@ -1023,6 +1023,70 @@ export function buildWorld(scene) {
     return m;
   });
 
+  // ---- rung 7 slice 1: a lived-in campus -----------------------------------
+  // Staff: two extra walkers per dept doing desk-routes (building door → plaza
+  // edge → a hangout → back, with pauses). Pure set dressing — NOT in `npcs`,
+  // so chat/quests/ecosystem/pipeline contracts are untouched.
+  const staff = [];
+  DEPARTMENTS.forEach((d, i) => {
+    const a = (i / DEPARTMENTS.length) * Math.PI * 2;
+    for (let k = 0; k < 2; k++) {
+      const m = minifig({ shirt: d.color, hair: k ? 0x2c2320 : 0x6b4a2f });
+      const door = [Math.cos(a) * 36, Math.sin(a) * 36];
+      const mid = [Math.cos(a + (k ? 0.25 : -0.25)) * 20, Math.sin(a + (k ? 0.25 : -0.25)) * 20];
+      const hang = k
+        ? [Math.cos(a + 0.5) * 15, Math.sin(a + 0.5) * 15]  // plaza edge stroll
+        : [9 - (i % 3) * 6, 8 - (i % 2) * 14];              // benches / kiosk side
+      m.position.set(door[0], 0, door[1]);
+      m.userData = { route: [door, mid, hang, mid], leg: 0,
+                     speed: 1.2 + r() * 0.8, pause: r() * 3 };
+      scene.add(m);
+      staff.push(m);
+    }
+  });
+  // Ground detail: plaza curb, planters with a bloom, conduit into the server
+  // bunker, and a lit doorway per building — small anchors that read as life.
+  const curb = new THREE.Mesh(new THREE.RingGeometry(13.0, 13.55, 48), lambert(0xe4dcc2));
+  curb.rotation.x = -Math.PI / 2; curb.position.y = 0.045; curb.receiveShadow = true;
+  scene.add(curb);
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 + 0.8;
+    const planter = new THREE.Group();
+    const box = shadowed(new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.6, 1.6), lambert(0xb8a982)));
+    box.position.y = 0.3;
+    const bush = shadowed(new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 6), lambert(0x4f9c53)));
+    bush.position.y = 0.85;
+    const bloom = new THREE.Mesh(new THREE.SphereGeometry(0.16, 6, 5),
+      new THREE.MeshLambertMaterial({ color: 0xf2c14e, emissive: 0xf2c14e, emissiveIntensity: 0.25 }));
+    bloom.position.set(0.3, 1.0, 0.2);
+    planter.add(box, bush, bloom);
+    planter.position.set(Math.cos(a) * 16.5, 0, Math.sin(a) * 16.5);
+    scene.add(planter);
+  }
+  const sIdx = DEPARTMENTS.findIndex((d) => d.id === "servers");
+  const sA = (sIdx / DEPARTMENTS.length) * Math.PI * 2;
+  for (let k = 0; k < 3; k++) {
+    const duct = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.18, 7), lambert(0x33383e)), false, true);
+    duct.position.set(Math.cos(sA) * 34.5 + (k - 1) * 1.1 * Math.sin(sA),
+                      0.09,
+                      Math.sin(sA) * 34.5 - (k - 1) * 1.1 * Math.cos(sA));
+    duct.rotation.y = Math.PI / 2 - sA; // long axis along the radial walkway
+    scene.add(duct);
+  }
+  DEPARTMENTS.forEach((d, i) => {
+    const a = (i / DEPARTMENTS.length) * Math.PI * 2;
+    const doorGrp = new THREE.Group();
+    const door = new THREE.Mesh(new THREE.BoxGeometry(1.4, 2.2, 0.12), lambert(0x2e3338));
+    door.position.y = 1.1;
+    const glow = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 0.9),
+      new THREE.MeshBasicMaterial({ color: 0xffd9a0, transparent: true, opacity: 0.35, depthWrite: false }));
+    glow.rotation.x = -Math.PI / 2; glow.position.set(0, 0.02, 0.9);
+    doorGrp.add(door, glow);
+    doorGrp.position.set(Math.cos(a) * 36.2, 0, Math.sin(a) * 36.2);
+    doorGrp.lookAt(0, 0, 0);
+    scene.add(doorGrp);
+  });
+
   // the player: visitor badge grey-blue + golden plumbob (you are not org staff)
   const player = minifig({ shirt: 0x444a5a, hair: 0x2c2320, plumbob: 0xf2c14e });
   player.position.set(0, 0, 12);
@@ -1030,11 +1094,23 @@ export function buildWorld(scene) {
 
   // cheap idle animation: plumbobs spin, bats flap-bob, flag sways, walkers get a
   // gait bob, beacons pulse their dept status, memo bubbles pop and fade
-  const bobs = [player, ...npcs].map((m) => m.getObjectByName("plumbob")).filter(Boolean);
-  const walkers = [player, ...npcs].map((m) => ({
+  const bobs = [player, ...npcs, ...staff].map((m) => m.getObjectByName("plumbob")).filter(Boolean);
+  const walkers = [player, ...npcs, ...staff].map((m) => ({
     body: m.getObjectByName("body"), grp: m, lastX: m.position.x, lastZ: m.position.z,
   }));
   function animate(dt, t) {
+    // staff desk-routes: waypoint walk with lingering pauses at each stop
+    for (const s of staff) {
+      const u = s.userData;
+      if (u.pause > 0) { u.pause -= dt; continue; }
+      const tgt = u.route[u.leg];
+      const dx = tgt[0] - s.position.x, dz = tgt[1] - s.position.z;
+      const d = Math.hypot(dx, dz);
+      if (d < 0.4) { u.leg = (u.leg + 1) % u.route.length; u.pause = 1.5 + (u.leg % 3) * 1.2; continue; }
+      s.position.x += (dx / d) * u.speed * dt;
+      s.position.z += (dz / d) * u.speed * dt;
+      s.rotation.y = Math.atan2(dx, dz);
+    }
     for (const b of bobs) {
       b.rotation.y += dt * 2.2;
       b.position.y = 2.45 + Math.sin(t * 2) * 0.06;
