@@ -528,31 +528,78 @@ export function buildWorld(scene) {
   boardGroup.add(boardMesh);
   boardGroup.position.set(0, 0, -17); // faces the spawn/camera side
   scene.add(boardGroup);
+  // Cyberpunk command-center console (operator art directive 2026-07-22):
+  // high-density micro-pixel work from a fixed 32-color indexed palette, hard
+  // rectangles only — zero anti-aliasing, every pixel placed on purpose.
+  const PAL = {
+    bg: "#05070c", panel: "#0a0e18", bezel: "#151b2b", bezelHi: "#232c44", rivet: "#3a4666",
+    grid: "#0e1524", scan: "#0c1220", cyan: "#28e6ff", cyanDim: "#0f6f80", magenta: "#ff3fa8",
+    amber: "#ffb02e", amberDim: "#7a5010", green: "#2eff6a", greenDim: "#0e662a",
+    red: "#ff2e4d", redDim: "#6e1020", text: "#c8e6f0", textDim: "#5a7284", white: "#f0f6ff",
+  };
   function updateProject(pl, twin = null) {
     const g = boardCanvas.getContext("2d");
-    g.fillStyle = "#101418"; g.fillRect(0, 0, 512, 192);
-    g.fillStyle = "#8fd8ff"; g.font = "bold 30px system-ui, sans-serif";
+    const W = 512, H = 192;
+    // panel + bezel frame with corner rivets
+    g.fillStyle = PAL.bg; g.fillRect(0, 0, W, H);
+    g.fillStyle = PAL.bezel; g.fillRect(2, 2, W - 4, H - 4);
+    g.fillStyle = PAL.panel; g.fillRect(8, 8, W - 16, H - 16);
+    g.fillStyle = PAL.bezelHi; g.fillRect(2, 2, W - 4, 2); g.fillRect(2, 2, 2, H - 4);
+    g.fillStyle = PAL.rivet;
+    for (const [rx, ry] of [[4, 4], [W - 7, 4], [4, H - 7], [W - 7, H - 7]]) g.fillRect(rx, ry, 3, 3);
+    // faint holo grid + scanlines (1px, hard)
+    g.fillStyle = PAL.grid;
+    for (let x = 8; x < W - 8; x += 24) g.fillRect(x, 8, 1, H - 16);
+    g.fillStyle = PAL.scan;
+    for (let y = 9; y < H - 8; y += 4) g.fillRect(8, y, W - 16, 1);
     g.textAlign = "left"; g.textBaseline = "top";
-    g.fillText(`PROJECT: ${pl.model}${pl.shipped ? " — SHIPPED" : ""}`, 16, 10);
-    // the REAL twin line: live telemetry from the training box, or honest offline
-    if (twin) {
-      g.font = "bold 13px system-ui, sans-serif";
-      g.fillStyle = twin.source === "local" ? "#f2c14e" : "#77848f";
-      g.fillText(twin.line ?? "", 16, 40);
+    // title strip
+    g.fillStyle = PAL.bezel; g.fillRect(8, 8, W - 16, 26);
+    g.fillStyle = PAL.magenta; g.fillRect(8, 33, W - 16, 1);
+    g.fillStyle = PAL.cyan; g.font = "bold 18px monospace";
+    g.fillText(`▮ PROJECT//${pl.model}${pl.shipped ? " :: SHIPPED" : ""}`, 14, 13);
+    // status LEDs top-right
+    for (let i = 0; i < 4; i++) {
+      g.fillStyle = i < pl.stage ? PAL.green : i === pl.stage ? (pl.blocker ? PAL.red : PAL.amber) : PAL.cyanDim;
+      g.fillRect(W - 20 - i * 8, 16, 5, 5);
     }
+    // REAL twin readout: amber console line when local, dim when offline
+    if (twin) {
+      g.font = "bold 11px monospace";
+      g.fillStyle = twin.source === "local" ? PAL.amber : PAL.textDim;
+      g.fillText((twin.line ?? "").toUpperCase(), 14, 40);
+      g.fillStyle = twin.source === "local" ? PAL.amberDim : PAL.grid;
+      g.fillRect(14, 52, W - 28, 1);
+    }
+    // stage gauges: holographic bars with hard tick marks
     pl.stages.forEach((s, i) => {
-      const y = 56 + i * 26;
+      const y = 60 + i * 22;
       const frac = i < pl.stage ? 1 : i > pl.stage ? 0 : Math.min(1, pl.progress / s.work);
-      g.font = "16px system-ui, sans-serif";
-      g.fillStyle = "#d9f3ec"; g.fillText(s.label, 16, y);
-      g.fillStyle = "#2c333a"; g.fillRect(170, y + 2, 300, 14);
-      g.fillStyle = i === pl.stage && pl.blocker ? "#e0662a" : "#39e75f";
-      g.fillRect(170, y + 2, 300 * frac, 14);
-      g.fillStyle = "#9fb3c8"; g.fillText(`${Math.floor(frac * 100)}%`, 478, y);
+      g.font = "12px monospace";
+      g.fillStyle = i === pl.stage ? PAL.white : PAL.text;
+      g.fillText(s.label.toUpperCase(), 14, y + 2);
+      // gauge trough + ticks
+      g.fillStyle = PAL.grid; g.fillRect(170, y, 300, 14);
+      g.fillStyle = PAL.cyanDim;
+      g.fillRect(170, y, 300, 1); g.fillRect(170, y + 13, 300, 1);
+      const fill = Math.floor(300 * frac);
+      g.fillStyle = i === pl.stage && pl.blocker ? PAL.red : PAL.cyan;
+      g.fillRect(170, y + 2, fill, 10);
+      if (fill > 2) { // hard highlight row = sub-pixel sheen
+        g.fillStyle = i === pl.stage && pl.blocker ? "#ff8093" : "#a8f4ff";
+        g.fillRect(170, y + 2, fill, 1);
+      }
+      g.fillStyle = PAL.panel;
+      for (let t = 1; t < 10; t++) g.fillRect(170 + t * 30, y + 2, 1, 10);
+      g.fillStyle = PAL.textDim; g.fillText(String(Math.floor(frac * 100)).padStart(3) + "%", 476, y + 2);
     });
+    // alert strip: hazard-striped blocker readout
     if (pl.blocker) {
-      g.fillStyle = "#e0662a"; g.font = "bold 15px system-ui, sans-serif";
-      g.fillText(`BLOCKED: ${pl.blocker.label} — ${pl.blocker.persona}/${pl.blocker.action} @ ${pl.blocker.dept}`, 16, 172);
+      g.fillStyle = PAL.redDim; g.fillRect(8, H - 22, W - 16, 14);
+      g.fillStyle = PAL.red;
+      for (let x = 8; x < W - 8; x += 12) g.fillRect(x, H - 22, 6, 2);
+      g.font = "bold 11px monospace";
+      g.fillText(`⚠ ${pl.blocker.label} → ${pl.blocker.persona}/${pl.blocker.action} @ ${pl.blocker.dept}`.toUpperCase(), 14, H - 19);
     }
     boardTex.needsUpdate = true;
   }
@@ -595,6 +642,100 @@ export function buildWorld(scene) {
     m.userData.life = 1.4;
     m.visible = true;
   }
+
+  // ---- EARTH TWIN map board (operator art directive 2026-07-22) -------------
+  // Flat-projection digital Earth: micro-pixel continental terrain grids,
+  // glowing weather cells, orbital satellite tracking lines — hard pixels from
+  // the same 32-color sci-fi palette; redrawn at 2Hz for satellites/weather.
+  const earthCanvas = document.createElement("canvas");
+  earthCanvas.width = 256; earthCanvas.height = 128;
+  const earthTex = new THREE.CanvasTexture(earthCanvas);
+  earthTex.magFilter = THREE.NearestFilter;
+  earthTex.colorSpace = THREE.SRGBColorSpace;
+  // crude continent plates as pixel-rect clusters (a LOW-GRADE Earth, per SPEC)
+  const PLATES = [
+    [22, 26, 34, 18], [30, 44, 16, 10], [46, 20, 12, 8],           // North America
+    [58, 66, 16, 26], [54, 60, 12, 10],                            // South America
+    [116, 24, 18, 12], [112, 36, 10, 8],                           // Europe
+    [116, 46, 26, 34], [138, 54, 10, 16],                          // Africa
+    [140, 20, 62, 26], [168, 44, 22, 14], [196, 52, 10, 10],       // Asia
+    [200, 78, 20, 12],                                             // Australia
+    [92, 112, 90, 8],                                              // Antarctica
+  ];
+  const wr = rng(0xea27); // weather seed — deterministic drift
+  const WEATHER = Array.from({ length: 7 }, () => ({
+    x: wr() * 256, y: 14 + wr() * 96, s: 4 + wr() * 8, dx: 0.6 + wr() * 0.8,
+    warm: wr() < 0.4,
+  }));
+  function drawEarthMap(t) {
+    const g = earthCanvas.getContext("2d");
+    g.fillStyle = PAL.bg; g.fillRect(0, 0, 256, 128);
+    g.fillStyle = "#071426"; g.fillRect(2, 12, 252, 114); // ocean
+    // graticule
+    g.fillStyle = PAL.grid;
+    for (let x = 2; x < 254; x += 16) g.fillRect(x, 12, 1, 114);
+    for (let y = 12; y < 126; y += 16) g.fillRect(2, y, 252, 1);
+    // continents: dark landmass + green terrain grid micro-pixels
+    for (const [px, py, pw, ph] of PLATES) {
+      g.fillStyle = "#0e2e1c"; g.fillRect(px, py, pw, ph);
+      g.fillStyle = PAL.greenDim;
+      for (let yy = py + 1; yy < py + ph; yy += 3)
+        for (let xx = px + 1 + (yy % 2); xx < px + pw; xx += 3) g.fillRect(xx, yy, 1, 1);
+      g.fillStyle = PAL.green; // coastline glints
+      g.fillRect(px, py, pw, 1); g.fillRect(px, py, 1, ph);
+    }
+    // glowing weather cells drift west->east, wrap
+    for (const w of WEATHER) {
+      const wx = Math.floor((w.x + t * w.dx * 2) % 252) + 2;
+      g.fillStyle = w.warm ? PAL.amber : PAL.cyan;
+      for (let i = 0; i < w.s; i++)
+        g.fillRect((wx + i * 2) % 252 + 2, Math.floor(w.y + Math.sin(t + i) * 2), 2, 1);
+      g.fillStyle = w.warm ? PAL.amberDim : PAL.cyanDim;
+      g.fillRect(wx, Math.floor(w.y) + 2, Math.min(w.s * 2, 253 - wx), 1);
+    }
+    // orbital tracks: two sinusoid ground-traces + moving satellites
+    for (const [phase, color] of [[0, PAL.magenta], [Math.PI * 0.7, PAL.cyan]]) {
+      g.fillStyle = color;
+      for (let x = 2; x < 254; x += 3) {
+        const y = 64 + Math.sin((x / 256) * Math.PI * 2 + phase) * 38;
+        g.fillRect(x, Math.floor(y), 1, 1);
+      }
+      const sx = Math.floor((t * 18 + phase * 40) % 252) + 2;
+      const sy = 64 + Math.sin((sx / 256) * Math.PI * 2 + phase) * 38;
+      g.fillStyle = PAL.white;
+      g.fillRect(sx - 1, Math.floor(sy), 3, 1); g.fillRect(sx, Math.floor(sy) - 1, 1, 3);
+    }
+    // HQ AUSTIN marker: blinking beacon on the North-America plate
+    const blink = Math.floor(t * 2) % 2 === 0;
+    g.fillStyle = blink ? PAL.amber : PAL.red;
+    g.fillRect(40, 40, 2, 2);
+    g.fillStyle = PAL.text; g.font = "bold 7px monospace";
+    g.textAlign = "left"; g.textBaseline = "top";
+    g.fillText("HQ AUSTIN", 44, 38);
+    // title strip
+    g.fillStyle = PAL.bezel; g.fillRect(0, 0, 256, 11);
+    g.fillStyle = PAL.cyan; g.font = "bold 8px monospace";
+    g.fillText("▮ EARTH TWIN // GLOBAL OPS", 4, 2);
+    g.fillStyle = PAL.magenta; g.fillRect(0, 11, 256, 1);
+    earthTex.needsUpdate = true;
+  }
+  drawEarthMap(0);
+  const earthGroup = new THREE.Group();
+  for (const x of [-5.4, 5.4]) {
+    const post = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 4.2, 8), lambert(0x3d4148)));
+    post.position.set(x, 2.1, 0);
+    earthGroup.add(post);
+  }
+  const earthMesh = new THREE.Mesh(new THREE.BoxGeometry(11.6, 5.8, 0.18),
+    [lambert(0x151b2b), lambert(0x151b2b), lambert(0x151b2b), lambert(0x151b2b),
+     new THREE.MeshLambertMaterial({ map: earthTex, emissive: 0x28e6ff, emissiveIntensity: 0.14, emissiveMap: earthTex }),
+     lambert(0x151b2b)]);
+  earthMesh.position.y = 4.4;
+  earthGroup.add(earthMesh);
+  earthGroup.position.set(17, 0, -9);
+  earthGroup.lookAt(0, 0, 4); // angled toward the plaza approach
+  scene.add(earthGroup);
+  let earthTimer = 0;
 
   // Austin set dressing: live oaks, lamps, benches, food trucks, flag, water tower
   const treeSpots = [];
@@ -750,6 +891,9 @@ export function buildWorld(scene) {
       bat.rotation.z += dt * (i % 2 ? 1 : -1);
     });
     flag.rotation.y = Math.sin(t * 1.4) * 0.18;
+    // Earth twin board: satellites + weather redraw at 2Hz (cheap 256x128 canvas)
+    earthTimer += dt;
+    if (earthTimer > 0.5) { earthTimer = 0; drawEarthMap(t); }
   }
 
   return { player, npcs, terminals, buildings, animate,

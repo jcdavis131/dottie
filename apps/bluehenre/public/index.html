@@ -5,21 +5,22 @@
 <title>BLUEHENRE — Austin, TX · synthetic AI-org campus</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
 <style>
-  /* MOBILE-FIRST: base styles are the phone layout; desktop widens via media query. */
-  html, body { margin: 0; height: 100%; overflow: hidden; font-family: system-ui, sans-serif;
+  /* MOBILE-FIRST layout. Cyberpunk command-center chrome (operator art directive):
+     hard pixel edges (no radii), neon-on-black indexed palette, monospace. */
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: "Courier New", ui-monospace, monospace;
                touch-action: none; -webkit-user-select: none; user-select: none; }
   /* the low-res render upscales with hard pixels — the 16-bit grid */
   canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
   #hud {
     position: fixed; top: calc(env(safe-area-inset-top, 0px) + 6px);
     left: calc(env(safe-area-inset-left, 0px) + 6px); right: calc(env(safe-area-inset-right, 0px) + 6px);
-    padding: 6px 10px; background: rgba(20, 28, 34, .78); color: #d9f3ec; border-radius: 8px;
+    padding: 6px 10px; background: #070b12; color: #28e6ff; border: 1px solid #232c44; border-top-color: #28e6ff;
     font-size: clamp(11px, 2.6vw, 14px); line-height: 1.35;
   }
   #quests {
     position: fixed; top: calc(env(safe-area-inset-top, 0px) + 52px);
     right: calc(env(safe-area-inset-right, 0px) + 6px); max-width: min(78vw, 46ch);
-    padding: 6px 10px; background: rgba(20, 28, 34, .72); color: #f3ecd9; border-radius: 8px;
+    padding: 6px 10px; background: #070b12; color: #ffb02e; border: 1px solid #232c44; border-top-color: #ff3fa8;
     font-size: clamp(10px, 2.4vw, 12px); white-space: pre-line;
   }
   /* quest tracker collapses to a chip on phones; tap toggles (wired in main.mjs) */
@@ -28,8 +29,8 @@
   #log {
     position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 118px);
     left: calc(env(safe-area-inset-left, 0px) + 6px); max-width: 92vw; max-height: 26vh;
-    overflow: hidden; padding: 4px 10px; background: rgba(20, 28, 34, .65); color: #cfe3df;
-    border-radius: 8px; font-size: clamp(10px, 2.4vw, 12px);
+    overflow: hidden; padding: 4px 10px; background: #070b12; color: #c8e6f0; border: 1px solid #232c44;
+    font-size: clamp(10px, 2.4vw, 12px);
   }
   #log p { margin: 3px 0; }
 
@@ -38,13 +39,13 @@
   #stick {
     position: absolute; left: calc(env(safe-area-inset-left, 0px) + 18px);
     bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
-    width: 112px; height: 112px; border-radius: 50%;
-    background: rgba(20, 28, 34, .35); border: 2px solid rgba(217, 243, 236, .5);
+    width: 112px; height: 112px;
+    background: #070b12cc; border: 1px solid #28e6ff;
     pointer-events: auto;
   }
   #nub {
-    position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; border-radius: 50%;
-    margin: -24px 0 0 -24px; background: rgba(217, 243, 236, .75);
+    position: absolute; left: 50%; top: 50%; width: 48px; height: 48px;
+    margin: -24px 0 0 -24px; background: #28e6ff;
   }
   #actions, #personas {
     position: absolute; right: calc(env(safe-area-inset-right, 0px) + 18px);
@@ -54,10 +55,10 @@
   #personas { bottom: calc(env(safe-area-inset-bottom, 0px) + 18px); right: calc(env(safe-area-inset-right, 0px) + 88px);
               flex-direction: row; }
   #touch button {
-    width: 56px; height: 56px; border-radius: 50%; border: 2px solid rgba(217, 243, 236, .55);
-    background: rgba(20, 28, 34, .55); color: #d9f3ec; font-size: 20px; font-weight: 700;
+    width: 56px; height: 56px; border: 1px solid #28e6ff;
+    background: #070b12; color: #28e6ff; font-size: 20px; font-weight: 700; font-family: inherit;
   }
-  #touch button:active { background: rgba(102, 255, 224, .45); }
+  #touch button:active { background: #0f6f80; color: #f0f6ff; }
 
   /* desktop and up: widen panels; touch UI is not rendered there anyway */
   @media (min-width: 900px) {
