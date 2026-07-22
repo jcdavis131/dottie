@@ -10,6 +10,7 @@ import { createEcosystem, tickEcosystem } from "./ecosystem.mjs";
 import { createQuestLog, advance, briefs, ORG } from "./quests.mjs";
 import { createRun, record, recordQuestComplete, extractRun } from "./workflow.mjs";
 import { createTouchControls } from "./touch.mjs";
+import { createPipeline, tickPipeline, resolveBlocker, statusLine } from "./pipeline.mjs";
 
 const coarse = matchMedia("(pointer: coarse)").matches; // phone/tablet = default profile
 
@@ -42,6 +43,10 @@ const router = createRouter(world.npcs.map((n) => n.userData.npcId));
 const eco = createEcosystem(world.npcs.map((n) => n.userData.dept));
 const questLog = createQuestLog();
 let run = createRun(Number(localStorage.getItem("bluehenre.runId") || 1));
+// The Project: each run is a fresh consulting engagement, seeded by run id so a
+// replayed run meets the same blockers (SPEC "The Project").
+let pl = createPipeline(run.runId);
+world.updateProject(pl);
 
 const hud = document.getElementById("hud");
 const questsPanel = document.getElementById("quests");
@@ -103,6 +108,17 @@ async function useAbility() {
   }
   renderQuests();
 
+  // consulting: the same ability attempt can clear the project's active blocker
+  const rb = resolveBlocker(pl, { persona: me.persona, action, dept });
+  if (rb.ok) {
+    bw.value = Math.min(bw.max, bw.value + rb.retainer);
+    record(run, { action: "resolve_blocker", persona: me.persona, dept, ok: true, cost: -rb.retainer });
+    say(`BLOCKER CLEARED — retainer +${rb.retainer} bandwidth. The org resumes.`);
+    world.updateProject(pl);
+  } else if (pl.blocker && dept === pl.blocker.dept) {
+    say(`blocker unmoved: ${rb.reason}`);
+  }
+
   const prompt = `${action} request from ${PERSONAS[me.persona].label}`;
   remember(router, npc.userData.npcId, prompt);
   say(`${action} → ${npc.userData.npcId} (cost ${sp.cost}) …`);
@@ -157,6 +173,8 @@ async function endRun() {
   const stats = resetRun(bw);
   run = createRun(run.runId + 1);
   localStorage.setItem("bluehenre.runId", String(run.runId));
+  pl = createPipeline(run.runId); // a fresh engagement for the new run
+  world.updateProject(pl);
   say(`fresh run #${run.runId} — spent ${stats.spentTotal.toFixed(0)} bw last run; ${wiped.wiped} memories wiped`);
 }
 function tryReset() {
@@ -184,6 +202,7 @@ const touch = coarse
   : null;
 
 let last = performance.now();
+let boardTimer = 0;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
@@ -215,8 +234,34 @@ function frame(now) {
     remember(router, x.b, x.memo);
     // observe mode narrates ALL org traffic; on the ground you only overhear some
     if (observe || Math.random() < 0.3) say(`overheard: ${x.memo}`);
+    // a memo bubble pops where the two NPCs met
+    const ai = eco.npcs.findIndex((n) => n.id === x.a);
+    if (ai >= 0) world.flashMemo(eco.npcs[ai].pos[0], eco.npcs[ai].pos[1]);
   }
   bwTick(bw, dt * 2);
+
+  // The Project: NPCs at their home post do the work; the consultant clears blockers.
+  const atPost = eco.npcs
+    .filter((n) => Math.hypot(n.pos[0] - n.stops[0][0], n.pos[1] - n.stops[0][1]) < 3)
+    .map((n) => n.dept);
+  for (const e of tickPipeline(pl, dt, atPost)) {
+    if (e.type === "blocked")
+      say(`PROJECT BLOCKED @ ${e.dept}: ${e.label} — needs ${e.persona}/${e.action}`);
+    else if (e.type === "stage_done") say(`project: ${e.stage} stage complete`);
+    else if (e.type === "shipped") {
+      recordQuestComplete(run, `ship_${pl.model}`);
+      say(`🚢 ${pl.model} SHIPPED — engagement validated; end the run to extract it`);
+    }
+    world.updateProject(pl);
+  }
+  // dept beacons mirror the pipeline every frame: done/idle dark, current green/red
+  pl.stages.forEach((s, i) => {
+    world.setDeptStatus(s.dept,
+      i === pl.stage ? (pl.blocker ? "blocked" : "working") : "idle");
+  });
+  boardTimer += dt;
+  if (boardTimer > 0.5 && !pl.shipped && !pl.blocker) { boardTimer = 0; world.updateProject(pl); }
+
   world.animate?.(dt, now / 1000); // plumbobs, bats, the flag — pure set dressing
 
   if (observe) {
@@ -235,8 +280,8 @@ function frame(now) {
   touch?.setTerminal(term && !bw.runOver);
   touch?.setRunOver(bw.runOver);
   hud.textContent = observe
-    ? `${ORG.name} — ${ORG.hq} | OBSERVE MODE — the org at work (${eco.memos} memos so far) | V=return`
-    : `${ORG.name} — ${ORG.hq} | ${PERSONAS[me.persona].label} | bandwidth ${bw.value.toFixed(0)}/${bw.max}` +
+    ? `${ORG.name} — ${ORG.hq} | OBSERVE — the org at work (${eco.memos} memos) | ${statusLine(pl)} | V=return`
+    : `${statusLine(pl)} | ${PERSONAS[me.persona].label} | bw ${bw.value.toFixed(0)}/${bw.max}` +
       (term ? (coarse ? " | TERMINAL: tap 1/2/3" : " | TERMINAL: 1=auditor 2=cipher 3=architect") : "") +
       (bw.runOver ? (coarse ? " | RUN OVER — tap R (session wipes)" : " | RUN OVER — R resets (session wipes)")
                   : (coarse ? "" : " | E=ability Q=router V=observe Shift=sprint"));
@@ -248,6 +293,7 @@ function frame(now) {
 requestAnimationFrame(frame);
 renderQuests();
 say(`${ORG.name}: "${ORG.mission}" — ${ORG.platform}`);
+say(`engagement #${run.runId}: the org is building ${pl.model} — watch the board, clear its blockers`);
 say(coarse
-  ? `run #${run.runId} started. Left stick walks (full tilt sprints); E=ability. Router: ${router.kind}`
-  : `run #${run.runId} started. WASD to move. Router: ${router.kind}`);
+  ? `you are the hired consultant. Left stick walks (full tilt sprints); E=your hat's move. Router: ${router.kind}`
+  : `you are the hired consultant. WASD to move; E=your hat's move. Router: ${router.kind}`);

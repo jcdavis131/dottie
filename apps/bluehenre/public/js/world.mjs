@@ -216,8 +216,12 @@ function car(r) {
 
 // Sims-style minifig: legs + shirt torso + head + hair, plumbob above. Origin at
 // ground so main.mjs can keep setting x/z only. userData is stamped by the caller.
+// Everything except the plumbob lives in an inner "body" group so animate() can
+// give walkers a gait bob without fighting main's x/z placement.
 function minifig({ shirt, hair = 0x4a3324, skin = 0xe8bd93, plumbob = 0x39e75f }) {
   const g = new THREE.Group();
+  const body = new THREE.Group();
+  body.name = "body";
   const legs = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.7, 0.34), lambert(0x33415c)));
   legs.position.y = 0.35;
   const torso = shadowed(new THREE.Mesh(new THREE.CapsuleGeometry(0.32, 0.5, 4, 10), lambert(shirt)));
@@ -226,11 +230,12 @@ function minifig({ shirt, hair = 0x4a3324, skin = 0xe8bd93, plumbob = 0x39e75f }
   head.position.y = 1.72;
   const cap = shadowed(new THREE.Mesh(new THREE.SphereGeometry(0.31, 14, 8, 0, Math.PI * 2, 0, 1.2), lambert(hair)), true, false);
   cap.position.y = 1.76;
+  body.add(legs, torso, head, cap);
   const bob = new THREE.Mesh(new THREE.OctahedronGeometry(0.22),
     new THREE.MeshLambertMaterial({ color: plumbob, emissive: plumbob, emissiveIntensity: 0.55 }));
   bob.position.y = 2.45;
   bob.name = "plumbob";
-  g.add(legs, torso, head, cap, bob);
+  g.add(body, bob);
   return g;
 }
 
@@ -441,6 +446,88 @@ export function buildWorld(scene) {
     terminals.push(t);
   }
 
+  // ---- working-org layer (SPEC "Working-org visuals") ----------------------
+  // Project holo-board on the plaza: live pipeline state, redrawn on change.
+  const boardCanvas = document.createElement("canvas");
+  boardCanvas.width = 512; boardCanvas.height = 192;
+  const boardTex = new THREE.CanvasTexture(boardCanvas);
+  boardTex.colorSpace = THREE.SRGBColorSpace;
+  const boardGroup = new THREE.Group();
+  for (const x of [-4.6, 4.6]) {
+    const post = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 4.6, 8), lambert(0x3d4148)));
+    post.position.set(x, 2.3, 0);
+    boardGroup.add(post);
+  }
+  const boardMesh = new THREE.Mesh(new THREE.BoxGeometry(10, 3.75, 0.18),
+    [lambert(0x22262b), lambert(0x22262b), lambert(0x22262b), lambert(0x22262b),
+     new THREE.MeshLambertMaterial({ map: boardTex, emissive: 0x8fd8ff, emissiveIntensity: 0.12, emissiveMap: boardTex }),
+     lambert(0x22262b)]);
+  boardMesh.position.y = 4.1;
+  boardGroup.add(boardMesh);
+  boardGroup.position.set(0, 0, -17); // faces the spawn/camera side
+  scene.add(boardGroup);
+  function updateProject(pl) {
+    const g = boardCanvas.getContext("2d");
+    g.fillStyle = "#101418"; g.fillRect(0, 0, 512, 192);
+    g.fillStyle = "#8fd8ff"; g.font = "bold 30px system-ui, sans-serif";
+    g.textAlign = "left"; g.textBaseline = "top";
+    g.fillText(`PROJECT: ${pl.model}${pl.shipped ? " — SHIPPED" : ""}`, 16, 10);
+    pl.stages.forEach((s, i) => {
+      const y = 56 + i * 26;
+      const frac = i < pl.stage ? 1 : i > pl.stage ? 0 : Math.min(1, pl.progress / s.work);
+      g.font = "16px system-ui, sans-serif";
+      g.fillStyle = "#d9f3ec"; g.fillText(s.label, 16, y);
+      g.fillStyle = "#2c333a"; g.fillRect(170, y + 2, 300, 14);
+      g.fillStyle = i === pl.stage && pl.blocker ? "#e0662a" : "#39e75f";
+      g.fillRect(170, y + 2, 300 * frac, 14);
+      g.fillStyle = "#9fb3c8"; g.fillText(`${Math.floor(frac * 100)}%`, 478, y);
+    });
+    if (pl.blocker) {
+      g.fillStyle = "#e0662a"; g.font = "bold 15px system-ui, sans-serif";
+      g.fillText(`BLOCKED: ${pl.blocker.label} — ${pl.blocker.persona}/${pl.blocker.action} @ ${pl.blocker.dept}`, 16, 172);
+    }
+    boardTex.needsUpdate = true;
+  }
+
+  // Per-department status beacons: green pulse = working, red pulse = blocked.
+  const beaconHeights = { labs: 10, design: 9, finance: 19.5, archives: 8.5,
+                          servers: 6, hall: 9.5, gardens: 7.5, proving: 6.5 };
+  const beacons = new Map();
+  DEPARTMENTS.forEach((d, i) => {
+    const a = (i / DEPARTMENTS.length) * Math.PI * 2;
+    const orb = new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 10),
+      new THREE.MeshLambertMaterial({ color: 0x39424c, emissive: 0x000000, emissiveIntensity: 1 }));
+    orb.position.set(Math.cos(a) * 40, beaconHeights[d.id] ?? 9, Math.sin(a) * 40);
+    scene.add(orb);
+    beacons.set(d.id, { mesh: orb, status: "idle" });
+  });
+  function setDeptStatus(dept, status) {
+    const b = beacons.get(dept);
+    if (b) b.status = status; // "working" | "blocked" | "idle" — pulsed in animate()
+  }
+
+  // Memo-exchange flashes: a small pool of emissive bubbles that pop and fade.
+  const memoTex = canvasTexture(64, 64, (g) => {
+    g.fillStyle = "#f2e9c8"; g.fillRect(6, 14, 52, 36);
+    g.strokeStyle = "#5b5f66"; g.lineWidth = 4;
+    g.strokeRect(6, 14, 52, 36);
+    g.beginPath(); g.moveTo(6, 14); g.lineTo(32, 36); g.lineTo(58, 14); g.stroke();
+  });
+  const memoPool = [];
+  for (let i = 0; i < 6; i++) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.6),
+      new THREE.MeshBasicMaterial({ map: memoTex, transparent: true, opacity: 0, depthWrite: false }));
+    m.visible = false; m.userData.life = 0;
+    scene.add(m);
+    memoPool.push(m);
+  }
+  function flashMemo(x, z) {
+    const m = memoPool.find((p) => !p.visible) ?? memoPool[0];
+    m.position.set(x, 3.1, z);
+    m.userData.life = 1.4;
+    m.visible = true;
+  }
+
   // Austin set dressing: live oaks, lamps, benches, food trucks, flag, water tower
   const treeSpots = [];
   for (let i = 0; i < 22; i++) {
@@ -548,12 +635,47 @@ export function buildWorld(scene) {
   player.position.set(0, 0, 12);
   scene.add(player);
 
-  // cheap idle animation: plumbobs spin, bats flap-bob, flag sways
+  // cheap idle animation: plumbobs spin, bats flap-bob, flag sways, walkers get a
+  // gait bob, beacons pulse their dept status, memo bubbles pop and fade
   const bobs = [player, ...npcs].map((m) => m.getObjectByName("plumbob")).filter(Boolean);
+  const walkers = [player, ...npcs].map((m) => ({
+    body: m.getObjectByName("body"), grp: m, lastX: m.position.x, lastZ: m.position.z,
+  }));
   function animate(dt, t) {
     for (const b of bobs) {
       b.rotation.y += dt * 2.2;
       b.position.y = 2.45 + Math.sin(t * 2) * 0.06;
+    }
+    // gait: bob + slight forward lean while the group is actually moving
+    for (const w of walkers) {
+      const moved = Math.hypot(w.grp.position.x - w.lastX, w.grp.position.z - w.lastZ);
+      w.lastX = w.grp.position.x; w.lastZ = w.grp.position.z;
+      const moving = moved > 0.002;
+      if (w.body) {
+        w.body.position.y = moving ? Math.abs(Math.sin(t * 9)) * 0.1 : w.body.position.y * 0.8;
+        w.body.rotation.x = moving ? 0.09 : w.body.rotation.x * 0.8;
+      }
+    }
+    // dept beacons: working = green pulse, blocked = urgent red pulse, idle = dark
+    for (const { mesh, status } of beacons.values()) {
+      const m = mesh.material;
+      if (status === "working") {
+        m.emissive.setHex(0x39e75f);
+        m.emissiveIntensity = 0.55 + Math.sin(t * 3) * 0.25;
+      } else if (status === "blocked") {
+        m.emissive.setHex(0xe0431f);
+        m.emissiveIntensity = 0.7 + Math.sin(t * 8) * 0.3;
+      } else {
+        m.emissive.setHex(0x000000);
+      }
+    }
+    // memo bubbles rise + fade
+    for (const m of memoPool) {
+      if (!m.visible) continue;
+      m.userData.life -= dt;
+      m.position.y += dt * 0.9;
+      m.material.opacity = Math.max(0, Math.min(1, m.userData.life));
+      if (m.userData.life <= 0) m.visible = false;
     }
     bats.children.forEach((bat, i) => {
       bat.position.y += Math.sin(t * 3 + i) * dt * 0.8;
@@ -562,7 +684,8 @@ export function buildWorld(scene) {
     flag.rotation.y = Math.sin(t * 1.4) * 0.18;
   }
 
-  return { player, npcs, terminals, buildings, animate };
+  return { player, npcs, terminals, buildings, animate,
+           updateProject, setDeptStatus, flashMemo };
 }
 
 // (P1's random-wander tickNpcs was removed in P2 — ecosystem.mjs circuits now

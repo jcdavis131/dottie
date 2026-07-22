@@ -7,11 +7,45 @@ narrative history behind it.
 
 ## Concept
 
-A cel-shaded 3D browser game set on the campus of **bluehenre**, a fictional tech company
+A 3D browser game set on the Austin, TX campus of **bluehenre**, a fictional tech company
 staffed by autonomous NPC instances (bluehenre also operates the public platform
-dumbmodels.com in the fiction). The player probes, audits, and stress-tests the org.
-Successful player workflows become training signal for Dottie — ephemeral play, persistent
-signal ("Trojan horse" framing in the source doc).
+dumbmodels.com in the fiction). **The org runs itself and the game is watching it work**
+(operator directive 2026-07-22): the NPCs run the business and BUILD THE MODELS in this
+digital-twin world — the campus pipeline visibly collects, curates, trains, evaluates and
+ships a model. **The player is a CONSULTANT the company hired to advance the project**:
+discovery, debugging and re-planning to clear the blockers the org hits. Successful player
+workflows become training signal for Dottie — ephemeral play, persistent signal.
+
+## The Project — the org's model-build pipeline (core mechanic, `pipeline.mjs`)
+
+The company is shipping **DUMBMODEL-1**. Five stages, in order: **data → curate → train →
+eval → ship**, each owned by a department (servers, archives, labs, proving, design).
+
+- **NPCs do the work**: a stage progresses only while its owning department's NPC is at
+  their home post (the ecosystem circuits already take them home → Great Hall → peer, so
+  work happens in visible shifts). No player input is required for progress — the org
+  runs itself; observe mode proves it.
+- **Blockers**: at seeded progress thresholds a stage raises a blocker ("loss spike",
+  "data drift", "eval flake", …) and STALLS. Each blocker names the department, the
+  consultant hat (persona) and the action that clears it — the consultant travels there
+  and resolves it. Resolution pays a **retainer** (bandwidth refund): consulting is how
+  you stay funded.
+- **Shipping = validated run**: when the pipeline completes, the run records a shipped
+  milestone (the extraction path treats it like a completed quest line) — the consultant's
+  engagement produced a real, validated workflow.
+- Pure logic, seeded, deterministic, bare-node contract-tested like every module.
+
+Personas are reframed as consultant hats (keys/abilities unchanged): auditor = Discovery
+Consultant (interview), cipher = Systems Cipher (decode), architect = Delivery Architect
+(replan). The four P3 quest lines remain as optional engagement briefs.
+
+## Working-org visuals (graphics upgrade, same render contract)
+
+The world must SHOW the business running: a central **project holo-board** on the plaza
+renders live stage progress (canvas texture, redrawn on change); each pipeline department
+carries a **status beacon** (green pulse = working, red pulse = blocked); NPCs **walk with
+a gait bob and lean into their work** at their home post; memo exchanges flash a bubble.
+All deterministic, all inside `world.mjs`'s render-only contract.
 
 ## World — campus locations (from the doc)
 

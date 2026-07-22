@@ -1,21 +1,24 @@
 // Personas + terminal-gated hot-swap (BLUEHENRE SPEC "Playable personas").
 // Pure logic — the 3D layer only reports whether the player stands on a terminal.
 
+// The player is a CONSULTANT the company hired to advance the project (SPEC
+// "Concept"); the three hats keep their original keys + ability verbs so every
+// quest/pipeline contract is untouched — only the framing changed.
 export const PERSONAS = {
   auditor: {
-    label: "External Auditor",
+    label: "Discovery Consultant",
     ability: "interview",
-    blurb: "primary lens — interviews NPCs, files findings",
+    blurb: "runs discovery — interviews staff, surfaces what is really blocking",
   },
   cipher: {
-    label: "Cipher",
+    label: "Systems Cipher",
     ability: "decode",
-    blurb: "hacker — decodes archives, opens locked context",
+    blurb: "debugs the stack — decodes logs, checksums and locked context",
   },
   architect: {
-    label: "Spatial Architect",
+    label: "Delivery Architect",
     ability: "replan",
-    blurb: "optimizer — re-plans space and compute",
+    blurb: "re-plans schedules, compute and process to unblock delivery",
   },
 };
 
