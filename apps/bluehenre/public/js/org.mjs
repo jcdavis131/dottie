@@ -458,6 +458,12 @@ function renderDemand() {
   for (const r of d.reasons) el.append(P(`◦ ${r}`, "note"));
 }
 
+// Fleet control (operator 2026-07-22): pick a container + verb -> the
+// `fleet: <verb> <name>` command is copied and STEER opens. GitHub login
+// gates execution (owner comments only; box-side allowlist) — visitors can
+// click freely and steer nothing.
+const STEER_URL = "https://gist.github.com/jcdavis131/c899ef776dcb81e99319239efa0f92ba";
+let fleetSel = null;
 function renderFleet(f) {
   const el = $("fleet");
   el.replaceChildren();
@@ -466,6 +472,32 @@ function renderFleet(f) {
     [...f.containers].sort((a, b) => (b.cpuPct ?? 0) - (a.cpuPct ?? 0))
       .map((c) => [withLed((c.cpuPct ?? 0) >= 1 ? true : null, ` ${c.short}`),
         c.dept, `${c.cpuPct ?? "?"}%`, c.mem ?? "?"])));
+  const bar = document.createElement("div");
+  bar.className = "fleetact";
+  const sel = document.createElement("select");
+  for (const c of [...f.containers].sort((a, b) => a.short.localeCompare(b.short))) {
+    const o = document.createElement("option");
+    o.value = c.short;
+    o.textContent = c.short;
+    if (c.short === fleetSel) o.selected = true;
+    sel.append(o);
+  }
+  fleetSel = fleetSel ?? sel.value;
+  sel.addEventListener("change", () => { fleetSel = sel.value; });
+  bar.append(sel);
+  for (const verb of ["restart", "stop", "start"]) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = verb;
+    b.addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(`fleet: ${verb} ${fleetSel}`); } catch { /* gist still opens */ }
+      open(STEER_URL, "_blank", "noopener");
+    });
+    bar.append(b);
+  }
+  el.append(bar);
+  el.append(P("copies the command + opens STEER — GitHub login gates execution " +
+    "(owner-only, allowlisted verbs/targets); visitors are read-only", "note"));
   if (f.via === "gist-feed") el.append(P(`snapshot from the box's published feed (${fmtDur(f.ageS)} old)`, "note"));
 }
 
