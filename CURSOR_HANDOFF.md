@@ -2,6 +2,25 @@
 
 **Paste-able brief for any agent continuing this work. Everything below is live and verified.**
 
+## ⚠️ CURRENT STATE (evening 07-22): PARKED AT DISK-CRITICAL — resume procedure
+
+C: fell below the trainer's 6 GB guard (root cause: 211 GB of never-pruned
+step checkpoints ballooning the 350 GB docker vhdx). The system parked SAFELY:
+trainer + curators + collectors stopped (checkpoint `step_1904` banked, zero
+loss); server-1/janitor/dottie-1 up so consoles + feed keep working; disk
+stable ~4.9 GB. Checkpoint rotation is armed for resume (env
+`AVA_CKPT_ROTATE_MIN=1905`, keep-3, history untouched).
+
+**TO RESUME (after the operator authorizes a reclaim — steer thread has the
+two options: temp cleanup ~16 GB or the checkpoint prune ~190 GB):**
+1. Run the authorized reclaim; confirm C: ≥ 8 GB
+   (`(Get-PSDrive C).Free/1GB`).
+2. `docker start dottie-factory-curator-{1..6} dottie-factory-collector-{1..4}`
+3. `docker start dottie-factory-trainer-1` → verify `resumed` + stepping via
+   `docker exec dottie-factory-trainer-1 sh -c "tail /reports/metrics_mini.jsonl"`
+   and expect `ckpt_rotated` events (the rotation working).
+4. Then the normal completion sequence below (eval → vhdx compact → research).
+
 ## Mission
 Build SOTA models faster by researching every piece of the stack → generate
 insights with those models → turn insights into revenue. The org runs
