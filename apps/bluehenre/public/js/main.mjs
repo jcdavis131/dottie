@@ -94,8 +94,10 @@ async function fetchTwin() {
   }
   raiseRealEvents();
   world.updateProject(pl, twin);
-  // dept-sited hub panels: real published telemetry only (offline otherwise)
-  world.updateHubPanels?.(twin?.source === "local" ? parseHub(twin) : null);
+  // dept-sited hub panels + Earth nodes: real published telemetry only
+  const hubModel = twin?.source === "local" ? parseHub(twin) : null;
+  world.updateHubPanels?.(hubModel);
+  world.setEarthSites?.(hubModel?.sites ?? null);
 }
 fetchTwin();
 setInterval(fetchTwin, 15_000); // dashboard cadence — the board is live now

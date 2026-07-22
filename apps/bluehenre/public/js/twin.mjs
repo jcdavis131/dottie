@@ -181,8 +181,14 @@ export function parseHub(feed) {
     };
   }
 
-  if (!network && !ecosystem && !evals && !researchOut) return null;
-  return { network, ecosystem, evals, research: researchOut };
+  // rung 6: the org's real deployed sites, probed by the publisher
+  const sites = Array.isArray(hub?.sites)
+    ? hub.sites.map((s) => ({ name: String(s.name ?? "?"), up: s.up === true,
+                              ms: Number.isFinite(s.ms) ? s.ms : null }))
+    : null;
+
+  if (!network && !ecosystem && !evals && !researchOut && !sites) return null;
+  return { network, ecosystem, evals, research: researchOut, sites };
 }
 
 // ---- fleet (operator 2026-07-22: NPCs ARE the docker containers) -----------

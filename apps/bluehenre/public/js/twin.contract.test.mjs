@@ -133,6 +133,12 @@ check("hub evals panel counts verdicts from the real report",
   hb?.evals?.pass === 2 && hb.evals.fail === 1 && Math.abs(hb.evals.wallS - 421.02) < 1e-9);
 check("hub research panel lifts baseline + counts",
   hb?.research?.value === 5.73733 && hb.research.provenance === "calibrated" && hb.research.sota === 3);
+const siteHub = parseHub({ hub: { sites: [
+  { name: "hub", url: "https://dumbmodel.com", http: 200, ms: 120, up: true },
+  { name: "pitch", url: "https://pitch.jcamd.com", http: 503, ms: 900, up: false },
+] } });
+check("hub sites parse with honest up/down (rung 6)",
+  siteHub?.sites?.length === 2 && siteHub.sites[0].up === true && siteHub.sites[1].up === false);
 const brokenHub = parseHub({ hub: { network: { unreachable: "x" } },
   research: { unreachable: "y" } });
 check("unreachable hub blocks parse to null panels, not fabrications",

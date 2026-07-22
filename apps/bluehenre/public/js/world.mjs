@@ -890,6 +890,30 @@ export function buildWorld(scene) {
     const sx = Math.floor((t * 20) % W);
     const sy = Math.floor(80 + Math.sin((sx / W) * Math.PI * 2) * 48);
     g.fillRect(sx - 1, sy, 3, 1); g.fillRect(sx, sy - 1, 1, 3);
+    // rung 6: the org's REAL global fleet — deployed sites as Earth nodes
+    // (publisher-probed; green up / red down) + a status legend strip.
+    if (earthSites) {
+      const SPOTS = { hub: [60, 40], hoops: [32, 38], grid: [48, 44], pitch: [75, 90],
+                      equi: [150, 35], arcad: [215, 60], arxiv: [185, 40], bhenre: [258, 100] };
+      for (const s of earthSites) {
+        const [x, y] = SPOTS[s.name] ?? [300, 20];
+        g.fillStyle = s.up ? "#2eff6a" : "#ff2e4d";
+        g.fillRect(x - 1, y - 1, 3, 3);
+        g.fillStyle = SAT.label;
+        g.fillRect(x - 3, y, 1, 1); g.fillRect(x + 3, y, 1, 1);
+        g.fillRect(x, y - 3, 1, 1); g.fillRect(x, y + 3, 1, 1);
+      }
+      g.fillStyle = SAT.frame; g.fillRect(0, H - 11, W, 11);
+      g.font = "8px monospace"; g.textBaseline = "top";
+      let lx = 4;
+      for (const s of earthSites) {
+        g.fillStyle = s.up ? "#2eff6a" : "#ff2e4d";
+        g.fillRect(lx, H - 8, 4, 4);
+        g.fillStyle = SAT.label;
+        g.fillText(s.name, lx + 6, H - 10);
+        lx += 12 + s.name.length * 5;
+      }
+    }
     // HQ AUSTIN: red cross marker, weather-map style
     const blink = Math.floor(t * 2) % 2 === 0;
     g.fillStyle = blink ? SAT.hq : SAT.label;
@@ -920,6 +944,8 @@ export function buildWorld(scene) {
   earthGroup.lookAt(0, 0, 4); // angled toward the plaza approach
   scene.add(earthGroup);
   let earthTimer = 0;
+  let earthSites = null; // rung 6: publisher-probed site statuses (or null)
+  function setEarthSites(sites) { earthSites = Array.isArray(sites) ? sites : null; }
 
   // Austin set dressing: live oaks, lamps, benches, food trucks, flag, water tower
   const treeSpots = [];
@@ -1263,7 +1289,7 @@ export function buildWorld(scene) {
   }
 
   return { player, npcs, terminals, buildings, animate,
-           updateProject, setDeptStatus, flashMemo, updateHubPanels,
+           updateProject, setDeptStatus, flashMemo, updateHubPanels, setEarthSites,
            applyFleet, dottieTerminal, fleetNpcs: () => [...fleetNpcs.values()] };
 }
 

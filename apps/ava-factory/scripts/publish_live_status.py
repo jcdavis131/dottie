@@ -39,6 +39,38 @@ def _get_json(url: str, timeout: float = 10.0):
         return {"unreachable": f"{type(e).__name__}: {e}", "url": url}
 
 
+# The org's REAL global fleet (rung 6): the operator's deployed sites, probed
+# for liveness so the game's Earth board shows genuine field-office status.
+SITES = [
+    ("hub", "https://dumbmodel.com"),
+    ("hoops", "https://hoops.jcamd.com"),
+    ("grid", "https://gridiron.dumbmodel.com"),
+    ("pitch", "https://pitch.jcamd.com"),
+    ("equi", "https://equities.jcamd.com"),
+    ("arcad", "https://arcade.dumbmodel.com"),
+    ("arxiv", "https://arxiviq.com"),
+    ("bhenre", "https://www.bhenre.com"),
+]
+
+
+def _probe_sites() -> list:
+    out = []
+    for name, url in SITES:
+        t0 = time.time()
+        try:
+            req = urllib.request.Request(url, method="HEAD")
+            with urllib.request.urlopen(req, timeout=8) as r:
+                code = r.status
+        except urllib.error.HTTPError as e:
+            code = e.code
+        except Exception:
+            code = None
+        out.append({"name": name, "url": url, "http": code,
+                    "ms": round((time.time() - t0) * 1000),
+                    "up": bool(code and 200 <= code < 400)})
+    return out
+
+
 def _fleet_snapshot() -> dict:
     """Real docker-stats snapshot for the game's fleet NPCs (2026-07-22).
     Raw docker JSONL rows, parsed client-side; unreachable is honest."""
@@ -94,6 +126,7 @@ def compose() -> dict:
         "eval_report": _get_json("http://localhost:8000/jspace/eval_report"),
         "eval_catalog": _get_json("http://localhost:8000/jspace/eval_catalog"),
         "fleet": _fleet_snapshot(),
+        "sites": _probe_sites(),
     }
     snapshot = {
         **existing,
