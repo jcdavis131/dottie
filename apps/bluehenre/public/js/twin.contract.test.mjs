@@ -115,7 +115,7 @@ const hubFeed = {
     agent_eval: { scoreboard_markdown: "| model |" },
     eval_catalog: { unreachable: "TimeoutError", url: "x" },
   },
-  research: { baseline: { metric_name: "factory_lm_loss", metric_value: 5.73733,
+  research: { ts: 1784598101, baseline: { metric_name: "factory_lm_loss", metric_value: 5.73733,
       metric_sem: 0.099092, provenance: "calibrated" },
     counts: { pending: 2, sota: 3, rejected: 19 } },
 };
@@ -127,8 +127,9 @@ check("hub ecosystem panel parses tools+skills+agent-eval",
   hb.ecosystem.agentEval[0].model === "ava_nano-chat");
 check("hub evals panel counts verdicts from the real report",
   hb?.evals?.pass === 2 && hb.evals.fail === 1 && Math.abs(hb.evals.wallS - 421.02) < 1e-9);
-check("hub research panel lifts baseline + counts",
-  hb?.research?.value === 5.73733 && hb.research.provenance === "calibrated" && hb.research.sota === 3);
+check("hub research panel lifts baseline + counts + ts",
+  hb?.research?.value === 5.73733 && hb.research.provenance === "calibrated" &&
+  hb.research.sota === 3 && hb.research.ts === 1784598101);
 const siteHub = parseHub({ hub: { sites: [
   { name: "hub", url: "https://dumbmodel.com", http: 200, ms: 120, up: true },
   { name: "pitch", url: "https://pitch.jcamd.com", http: 503, ms: 900, up: false },

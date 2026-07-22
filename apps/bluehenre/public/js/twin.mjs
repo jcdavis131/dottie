@@ -178,6 +178,7 @@ export function parseHub(feed) {
       sem: Number.isFinite(b.metric_sem) ? b.metric_sem : null,
       provenance: String(b.provenance ?? "?"),
       pending: c.pending ?? null, sota: c.sota ?? null, rejected: c.rejected ?? null,
+      ts: Number.isFinite(research.ts) ? research.ts : null, // caller renders staleness
     };
   }
 

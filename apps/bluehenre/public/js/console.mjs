@@ -176,8 +176,12 @@ function renderHub() {
   if (h.evals)
     el.append(line("evals", `${h.evals.pass} PASS / ${h.evals.fail} FAIL`, h.evals.fail ? "" : "ok-line"));
   if (h.research) {
+    // honesty: the research loop parks while the trainer owns the GPU — flag
+    // how old its status actually is instead of presenting it as current
+    const ageH = Number.isFinite(h.research.ts) ? (Date.now() / 1000 - h.research.ts) / 3600 : null;
+    const stale = ageH !== null && ageH > 1 ? ` · ${ageH.toFixed(0)}h old` : "";
     el.append(line("research baseline",
-      `${h.research.value?.toFixed(4) ?? "?"} ±${h.research.sem?.toFixed(3) ?? "?"} (${h.research.provenance})`));
+      `${h.research.value?.toFixed(4) ?? "?"} ±${h.research.sem?.toFixed(3) ?? "?"} (${h.research.provenance}${stale})`));
     el.append(line("research queue",
       `pending ${h.research.pending ?? "?"} · sota ${h.research.sota ?? "?"} · rejected ${h.research.rejected ?? "?"}`));
   }
