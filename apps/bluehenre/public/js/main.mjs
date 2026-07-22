@@ -11,7 +11,7 @@ import { createQuestLog, advance, briefs, ORG } from "./quests.mjs";
 import { createRun, record, recordQuestComplete, extractRun } from "./workflow.mjs";
 import { createTouchControls } from "./touch.mjs";
 import { createPipeline, tickPipeline, resolveBlocker, raiseLiveBlocker, statusLine } from "./pipeline.mjs";
-import { twinLine } from "./twin.mjs";
+import { twinLine, parseHub } from "./twin.mjs";
 
 const coarse = matchMedia("(pointer: coarse)").matches; // phone/tablet = default profile
 
@@ -108,6 +108,8 @@ async function fetchTwin() {
   }
   raiseRealEvents();
   world.updateProject(pl, twin);
+  // dept-sited hub panels: real published telemetry only (offline otherwise)
+  world.updateHubPanels?.(twin?.source === "local" ? parseHub(twin) : null);
 }
 fetchTwin();
 setInterval(fetchTwin, 15_000); // dashboard cadence — the board is live now

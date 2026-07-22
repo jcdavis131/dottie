@@ -159,6 +159,18 @@ const server = createServer(async (req, res) => {
           if (tail) Object.assign(status, tail, { source: "local" });
         } catch { /* metrics not exported to host — eval alone may still light it */ }
       }
+      // hub panels + research ride the published live-status FILE regardless of
+      // which primary source won (the /pipeline/status endpoint doesn't carry
+      // them). Hourly publisher cadence; a stale file (>2h) attaches nothing.
+      try {
+        const lf = safeParseJson(await readFile(TWIN_LIVE_FILE, "utf-8"));
+        const lfAge = liveAgeS(lf, Date.now());
+        if (lf && (lfAge === null || lfAge < 7200)) {
+          if (lf.hub) status.hub = lf.hub;
+          if (lf.research) status.research = lf.research;
+          status.hubPublishedUtc = lf.published_utc ?? null;
+        }
+      } catch { /* no export — panels stay offline */ }
       try {
         const summary = parseEvalSummary(safeParseJson(await readFile(TWIN_EVAL, "utf-8")));
         // evalTokens, NOT tokens: the trainer's cumulative token count must not

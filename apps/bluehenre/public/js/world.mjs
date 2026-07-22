@@ -691,6 +691,93 @@ export function buildWorld(scene) {
     if (b) b.status = status; // "working" | "blocked" | "idle" — pulsed in animate()
   }
 
+  // ---- HUB PANELS (operator 2026-07-22: all of :8000 in-world) -------------
+  // One mini-board per subsystem department, mounted by its building: walking
+  // the campus IS browsing the hub. Drawn ONLY from real published telemetry
+  // (parseHub display models); otherwise each shows an honest offline line.
+  const HUB_PANELS = [
+    { dept: "labs", key: "network", title: "NETWORK//ARCH" },
+    { dept: "design", key: "ecosystem", title: "SKILLS//ECOSYSTEM" },
+    { dept: "proving", key: "evals", title: "EVAL//REPORT" },
+    { dept: "hall", key: "research", title: "RESEARCH//LOOP" },
+  ];
+  const hubPanels = HUB_PANELS.map((spec) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 256; canvas.height = 128;
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.magFilter = THREE.NearestFilter;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const grp = new THREE.Group();
+    const post = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.13, 2.4, 8), lambert(0x3d4148)));
+    post.position.y = 1.2;
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(5.6, 2.8, 0.14),
+      [lambert(0x151b2b), lambert(0x151b2b), lambert(0x151b2b), lambert(0x151b2b),
+       new THREE.MeshLambertMaterial({ map: tex, emissive: 0x8fd8ff, emissiveIntensity: 0.1, emissiveMap: tex }),
+       lambert(0x151b2b)]);
+    mesh.position.y = 3.2;
+    grp.add(post, mesh);
+    const i = DEPARTMENTS.findIndex((d) => d.id === spec.dept);
+    const a = (i / DEPARTMENTS.length) * Math.PI * 2 + 0.16;
+    grp.position.set(Math.cos(a) * 34.5, 0, Math.sin(a) * 34.5);
+    grp.lookAt(0, 3.2, 0);
+    scene.add(grp);
+    return { ...spec, canvas, tex };
+  });
+  function drawHubPanel(p, lines) {
+    const g = p.canvas.getContext("2d");
+    const W = 256, H = 128;
+    g.fillStyle = PAL.bg; g.fillRect(0, 0, W, H);
+    g.fillStyle = PAL.panel; g.fillRect(3, 3, W - 6, H - 6);
+    g.fillStyle = PAL.bezelHi; g.fillRect(3, 3, W - 6, 1); g.fillRect(3, 3, 1, H - 6);
+    g.fillStyle = PAL.scan;
+    for (let y = 4; y < H - 3; y += 4) g.fillRect(3, y, W - 6, 1);
+    g.textAlign = "left"; g.textBaseline = "top";
+    g.fillStyle = PAL.bezel; g.fillRect(3, 3, W - 6, 18);
+    g.fillStyle = PAL.magenta; g.fillRect(3, 20, W - 6, 1);
+    g.fillStyle = PAL.cyan; g.font = "bold 12px monospace";
+    g.fillText(`▮ ${p.title}`, 8, 6);
+    g.font = "11px monospace";
+    lines.slice(0, 7).forEach(([text, color], i) => {
+      g.fillStyle = color ?? PAL.text;
+      g.fillText(String(text).slice(0, 36), 8, 26 + i * 14);
+    });
+    p.tex.needsUpdate = true;
+  }
+  /** hubModel = twin.parseHub output (or null when offline/unlocal). */
+  function updateHubPanels(hubModel) {
+    for (const p of hubPanels) {
+      const m = hubModel?.[p.key];
+      if (!m) {
+        drawHubPanel(p, [["feed offline — this build cannot", PAL.textDim],
+                         ["see the training box", PAL.textDim]]);
+        continue;
+      }
+      if (p.key === "network") drawHubPanel(p, [
+        [`preset ${m.preset} · ${m.mlp}`, PAL.white],
+        [m.params ? `${(m.params / 1e6).toFixed(1)}M params` : "params ?", PAL.amber],
+        [`d_model ${m.dModel} · ${m.heads} heads`],
+        [`${m.layers} layers${m.split ? ` (${m.split})` : ""}`],
+      ]);
+      else if (p.key === "ecosystem") drawHubPanel(p, [
+        [`tools built ${m.toolsBuilt ?? "?"}/${m.toolsTotal ?? "?"}`, PAL.white],
+        [`skills ${m.skillsTotal ?? "?"} (${m.skillsOwn ?? "?"} own)`, PAL.amber],
+        ...m.agentEval.map((r) => [`${r.model}: ${r.success}/${r.tasks} ok`, PAL.text]),
+      ]);
+      else if (p.key === "evals") drawHubPanel(p, [
+        [`verdicts: ${m.pass} PASS / ${m.fail} FAIL`, m.fail ? PAL.red : PAL.green],
+        [m.preset ? `preset ${m.preset}` : "", PAL.text],
+        [m.wallS ? `wall ${Math.round(m.wallS)}s · cuda` : "", PAL.textDim],
+      ]);
+      else if (p.key === "research") drawHubPanel(p, [
+        [`${m.metric}`, PAL.white],
+        [m.value !== null ? `baseline ${m.value.toFixed(4)}${m.sem ? ` ±${m.sem.toFixed(3)}` : ""}` : "no baseline", PAL.amber],
+        [`provenance: ${m.provenance}`, PAL.textDim],
+        [`pending ${m.pending ?? "?"} · sota ${m.sota ?? "?"} · rejected ${m.rejected ?? "?"}`],
+      ]);
+    }
+  }
+  updateHubPanels(null);
+
   // Memo-exchange flashes: a small pool of emissive bubbles that pop and fade.
   const memoTex = canvasTexture(64, 64, (g) => {
     g.fillStyle = "#f2e9c8"; g.fillRect(6, 14, 52, 36);
@@ -990,7 +1077,7 @@ export function buildWorld(scene) {
   }
 
   return { player, npcs, terminals, buildings, animate,
-           updateProject, setDeptStatus, flashMemo };
+           updateProject, setDeptStatus, flashMemo, updateHubPanels };
 }
 
 // (P1's random-wander tickNpcs was removed in P2 — ecosystem.mjs circuits now

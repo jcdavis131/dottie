@@ -43,10 +43,15 @@ export default async function handler(req, res) {
     if (tail) Object.assign(status, tail, { source: "local" });
     const dash = parseDashboard(live);
     if (dash) Object.assign(status, { dashboard: dash, source: "local" });
-    if (status.source === "local")
+    if (status.source === "local") {
       Object.assign(status, { via: "gist-feed", ageS: age, events: parseLiveEvents(live) });
-    else
+      // the published gist also carries the full :8000 hub + research loop
+      if (live.hub) status.hub = live.hub;
+      if (live.research) status.research = live.research;
+      status.hubPublishedUtc = live.published_utc ?? null;
+    } else {
       status.detail = "published feed had no readable telemetry";
+    }
     return res.status(200).json(status);
   } catch (e) {
     return res.status(200).json({ source: "offline", detail: `gist feed unreachable (${e.name})` });

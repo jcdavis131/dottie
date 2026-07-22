@@ -121,6 +121,70 @@ export function parseDashboard(live) {
   return { mode, run, phase, timing, gates, funnel, ckptAgeS, spark };
 }
 
+/** Hub panels (operator 2026-07-22: ALL of the :8000 hub, in-world). Input is
+ * a status/feed object carrying `hub` (+ `research`) as published by
+ * publish_live_status.py. Returns per-department display models, null when a
+ * block is missing or {"unreachable"} — panels render an honest offline line.
+ * Every number is lifted from the feed; nothing is computed beyond counting. */
+export function parseHub(feed) {
+  const hub = feed?.hub;
+  const research = feed?.research;
+  if (!hub && !research) return null;
+  const ok = (b) => b && typeof b === "object" && !b.unreachable;
+
+  let network = null;
+  const arch = ok(hub?.network) ? hub.network.architecture : null;
+  if (arch && typeof arch === "object") {
+    network = {
+      preset: String(arch.preset ?? "?"), params: Number.isFinite(arch.params_analytic) ? arch.params_analytic : null,
+      dModel: arch.d_model ?? null, layers: arch.n_layers ?? null, heads: arch.n_heads ?? null,
+      mlp: String(arch.mlp ?? "?"),
+      split: [arch.n_text, arch.n_fusion, arch.n_reasoning].every(Number.isFinite)
+        ? `${arch.n_text}T/${arch.n_fusion}F/${arch.n_reasoning}R` : null,
+    };
+  }
+
+  let ecosystem = null;
+  if (ok(hub?.ecosystem)) {
+    const e = hub.ecosystem;
+    ecosystem = {
+      toolsBuilt: e.agenticos?.built ?? null, toolsTotal: e.agenticos?.total ?? null,
+      skillsTotal: e.skills?.total ?? null, skillsOwn: e.skills?.agenticos_own ?? null,
+      agentEval: Array.isArray(e.agent_eval?.results)
+        ? e.agent_eval.results.slice(0, 3).map((r) => ({
+            model: String(r.model ?? "?"), tasks: r.tasks ?? 0, success: r.success ?? 0 }))
+        : [],
+    };
+  }
+
+  let evals = null;
+  if (ok(hub?.eval_report) && typeof hub.eval_report.report_markdown === "string") {
+    const md = hub.eval_report.report_markdown;
+    evals = {
+      pass: (md.match(/PASS/g) ?? []).length,
+      fail: (md.match(/FAIL/g) ?? []).length,
+      wallS: Number(md.match(/Wall:\s*([\d.]+)s/)?.[1]) || null,
+      preset: md.match(/Preset:\s*(\w+)/)?.[1] ?? null,
+    };
+  }
+
+  let researchOut = null;
+  if (ok(research) && research.baseline) {
+    const b = research.baseline;
+    const c = research.counts ?? {};
+    researchOut = {
+      metric: String(b.metric_name ?? "?"),
+      value: Number.isFinite(b.metric_value) ? b.metric_value : null,
+      sem: Number.isFinite(b.metric_sem) ? b.metric_sem : null,
+      provenance: String(b.provenance ?? "?"),
+      pending: c.pending ?? null, sota: c.sota ?? null, rejected: c.rejected ?? null,
+    };
+  }
+
+  if (!network && !ecosystem && !evals && !researchOut) return null;
+  return { network, ecosystem, evals, research: researchOut };
+}
+
 // which department (and consultant hat) owns each REAL problem kind
 const MODE_EVENTS = {
   stale: { dept: "labs", persona: "cipher", action: "decode" },

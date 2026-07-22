@@ -1,6 +1,6 @@
 // Contract: the twin never fabricates the real model's state.
 import { parseMetricsTail, safeParseJson, parseEvalSummary, twinLine,
-         parseTrainerTail, parseDashboard, parseLiveEvents, liveAgeS } from "./twin.mjs";
+         parseTrainerTail, parseDashboard, parseLiveEvents, liveAgeS, parseHub } from "./twin.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = "") => {
@@ -102,6 +102,38 @@ check("data STARVED -> servers event", angryEvents.some((e) => e.kind === "data_
 check("disk low -> finance event", angryEvents.some((e) => e.kind === "disk_low" && e.dept === "finance"));
 check("non-benign collector pause -> gate event", angryEvents.some((e) => e.kind === "gate_D3"));
 check("no feed -> no events, no throw", parseLiveEvents(null).length === 0);
+
+// hub panels: real blocks parse, unreachable blocks vanish, nothing invents
+const hubFeed = {
+  hub: {
+    network: { architecture: { preset: "mini", d_model: 768, n_heads: 12, n_layers: 12,
+      n_text: 3, n_fusion: 6, n_reasoning: 3, params_analytic: 171283072, mlp: "swiglu" } },
+    ecosystem: { agenticos: { built: 8, total: 8 },
+      skills: { total: 76, agenticos_own: 9 },
+      agent_eval: { results: [{ model: "ava_nano-chat", tasks: 1, success: 0 }] } },
+    eval_report: { report_markdown: "# Report\nPreset: mini | Wall: 421.02s\n| a | PASS |\n| b | FAIL |\n| c | PASS |" },
+    agent_eval: { scoreboard_markdown: "| model |" },
+    eval_catalog: { unreachable: "TimeoutError", url: "x" },
+  },
+  research: { baseline: { metric_name: "factory_lm_loss", metric_value: 5.73733,
+      metric_sem: 0.099092, provenance: "calibrated" },
+    counts: { pending: 2, sota: 3, rejected: 19 } },
+};
+const hb = parseHub(hubFeed);
+check("hub network panel parses arch", hb?.network?.params === 171283072 &&
+  hb.network.split === "3T/6F/3R" && hb.network.preset === "mini");
+check("hub ecosystem panel parses tools+skills+agent-eval",
+  hb?.ecosystem?.toolsBuilt === 8 && hb.ecosystem.skillsTotal === 76 &&
+  hb.ecosystem.agentEval[0].model === "ava_nano-chat");
+check("hub evals panel counts verdicts from the real report",
+  hb?.evals?.pass === 2 && hb.evals.fail === 1 && Math.abs(hb.evals.wallS - 421.02) < 1e-9);
+check("hub research panel lifts baseline + counts",
+  hb?.research?.value === 5.73733 && hb.research.provenance === "calibrated" && hb.research.sota === 3);
+const brokenHub = parseHub({ hub: { network: { unreachable: "x" } },
+  research: { unreachable: "y" } });
+check("unreachable hub blocks parse to null panels, not fabrications",
+  brokenHub === null);
+check("no hub at all -> null", parseHub({}) === null && parseHub(null) === null);
 
 // freshness: published_utc wins; bare ts works; garbage -> null
 const t0 = Date.parse("2026-07-22T14:30:02Z");
