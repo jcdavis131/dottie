@@ -1,16 +1,24 @@
 # BLUEHENRE — spec of record
 
-**The story:** **bluehenre is the org's command console** — the window into
-(and steering wheel for) the org that is building **dumbmodel.com** vector
-games (MTNN gaming/prediction platforms: hoops, gridiron, pitch, equities),
-**Dottie** the agentic assistant that hill-climbs better models for each game,
-and a **Universal MTNN** connecting them all. The org runs autonomously on the
-operator's machine; the console runs the org end to end.
+**The org's primary goal & motivation (operator, 2026-07-22):** build SOTA
+models FASTER by researching every piece of the stack — data, curriculum,
+architecture, training, evals, harness, skills, memory — then **generate
+insights** leveraging those models, and **turn the insights into revenue**.
 
-**Core focus: the hill-climb and the data flywheel.** Train → eval → publish
-telemetry → operator sees truth fast (anywhere) → blockers cleared quickly →
-curriculum and research promotions feed back → better model → better Dottie →
-better games. Everything in this app serves that loop.
+**The story:** **bluehenre is the org's command console** — the window into
+(and steering wheel for) the org executing that goal: **dumbmodel.com**
+vector games and prediction platforms (hoops, gridiron, pitch, equities —
+the insight/revenue surfaces), **Dottie** the agentic assistant that
+hill-climbs better models for each, and a **Universal MTNN** connecting them
+all. The org runs autonomously on the operator's machine; the console runs
+the org end to end.
+
+**Core focus: the hill-climb and the data flywheel** — the mechanism behind
+"faster". Train → eval → publish telemetry → operator sees truth fast
+(anywhere) → blockers cleared quickly → curriculum and research promotions
+feed back → better model → better Dottie → better games/predictions → more
+insight → revenue that funds the next climb. Everything in this app serves
+that loop.
 
 Simplification 2026-07-22 (operator): the 3D world is REMOVED. The console is
 the product. Org name is **bluehenre** ("Limbic" was a discarded working

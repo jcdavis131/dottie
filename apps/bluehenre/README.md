@@ -1,9 +1,12 @@
 # BLUEHENRE — the org's command console
 
-**One line:** bluehenre is the mobile command console for the org building
-**dumbmodel.com** vector games (MTNN gaming/prediction platforms), **Dottie**
-the agentic assistant that hill-climbs better models for each game, and a
-**Universal MTNN** to connect them all.
+**The mission:** build SOTA models faster by researching every piece of the
+stack → generate insights with those models → turn insights into revenue.
+
+**One line:** bluehenre is the mobile command console for the org executing
+that mission — **dumbmodel.com** vector games and prediction platforms (the
+insight/revenue surfaces), **Dottie** the agentic assistant that hill-climbs
+better models for each, and a **Universal MTNN** to connect them all.
 
 **Why it matters:** the org works autonomously on the operator's machine. The
 console is how you run it end to end from anywhere — the training run, the
