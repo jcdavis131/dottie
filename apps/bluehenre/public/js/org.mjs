@@ -73,6 +73,86 @@ const offline = (el, detail) => { el.replaceChildren(P(detail ?? "feed offline �
 
 let twin = null;
 
+// Shared series renderer (the :8000 dashboard's visual idiom): supersampled
+// hard-pixel marks in a brand hue, x mapped by real step value (restart gaps
+// stay honest), optional log y, muted-ink direct label — title carries
+// identity, so single-series charts need no legend.
+function seriesCanvas(xs, ys, { label, accVar = "--bh-hen-blue", logY = false, tall = false } = {}) {
+  const c = document.createElement("canvas");
+  c.className = "seriescv" + (tall ? " tall" : "");
+  requestAnimationFrame(() => {
+    const W = c.clientWidth * 2, H = c.clientHeight * 2;
+    if (!W) return;
+    c.width = W; c.height = H;
+    const g = c.getContext("2d");
+    const cs = getComputedStyle(document.documentElement);
+    const acc = cs.getPropertyValue(accVar).trim() || "#3d6b89";
+    const mut = cs.getPropertyValue("--bh-muted").trim() || "#6f655a";
+    const ty = logY ? ys.map((v) => Math.log10(v)) : ys;
+    const lo = Math.min(...ty), hi = Math.max(...ty), span = hi - lo || 1;
+    const x0 = Math.min(...xs), xr = (Math.max(...xs) - x0) || 1;
+    ys.forEach((_, i) => {
+      const x = Math.floor(((xs[i] - x0) / xr) * (W - 6));
+      const y = 8 + Math.floor((1 - (ty[i] - lo) / span) * (H - 30));
+      g.fillStyle = acc;
+      g.globalAlpha = 0.3; g.fillRect(x, y + 4, 3, Math.max(0, H - 4 - y));
+      g.globalAlpha = 1; g.fillRect(x, y, 3, 3);
+    });
+    g.font = "600 19px IBM Plex Mono, monospace"; g.fillStyle = mut; g.textBaseline = "top";
+    g.fillText(label, 8, 4);
+  });
+  return c;
+}
+
+function renderCurve() {
+  const el = $("curve");
+  el.replaceChildren();
+  const fc = twin?.org?.fullCurve;
+  if (twin?.source !== "local" || !fc) return offline(el);
+  el.append(seriesCanvas(fc.steps, fc.lm, {
+    label: `lm loss ${fc.lm[0].toFixed(2)} → ${fc.lm.at(-1).toFixed(3)} · ${fc.steps.at(-1).toLocaleString()} cumulative steps · log scale`,
+    accVar: "--bh-hen-blue", logY: true, tall: true,
+  }));
+  el.append(P("every metrics event since step 1, cumulative across restarts, downsampled — the whole climb in one line", "note"));
+}
+
+function renderSignals() {
+  const el = $("signals");
+  el.replaceChildren();
+  const s = twin?.org?.signals;
+  if (twin?.source !== "local" || !s) return offline(el);
+  const grid = document.createElement("div");
+  grid.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px";
+  const put = (pairs, label, accVar, logY = false) => {
+    if (!Array.isArray(pairs) || pairs.length < 2) return;
+    grid.append(seriesCanvas(pairs.map((x) => x[0]), pairs.map((x) => x[1]), { label, accVar, logY }));
+  };
+  put(s.tokS, `tok/s · now ${Math.round(s.tokS.at(-1)?.[1] ?? 0).toLocaleString()}`, "--bh-moss");
+  put(s.gradNorm, `grad norm · now ${(s.gradNorm.at(-1)?.[1] ?? 0).toFixed(3)} · log`, "--bh-rust", true);
+  put(s.lr, `lr · now ${(s.lr.at(-1)?.[1] ?? 0).toExponential(1)}`, "--bh-copper");
+  el.append(grid);
+  el.append(P("recent metrics window — throughput, gradient norm, learning rate", "note"));
+}
+
+function renderJspace() {
+  const el = $("jspace");
+  el.replaceChildren();
+  const j = twin?.org?.jspace;
+  if (twin?.source !== "local" || !j) return offline(el);
+  // fixed space order + fixed brand hues; the bar label carries identity
+  const ACC = { system1: "--bh-slate", system2: "--bh-hen-blue",
+                critic: "--bh-rust", planner: "--bh-copper" };
+  for (const r of j.routes)
+    if (Number.isFinite(r.p))
+      el.append(bar(r.p, `route ${r.name} · ${(r.p * 100).toFixed(1)}%`, ACC[r.name]));
+  el.append(table(["space", "half-life est|r", "target|r"],
+    j.halfLife.map((hl) => [hl.name, hl.est ?? "?", hl.target ?? "?"])));
+  if (Number.isFinite(j.verbalizableMass))
+    el.append(line("verbalizable mass", j.verbalizableMass.toFixed(4)));
+  if (Number.isFinite(j.broadcastStrength))
+    el.append(line("broadcast strength", j.broadcastStrength.toFixed(3)));
+}
+
 function renderRun() {
   const el = $("run");
   el.replaceChildren();
@@ -397,9 +477,10 @@ async function refreshTwin() {
     : "offline";
   $("prov").textContent = `provenance: ${twinLine(twin)}`;
   const h = twin.source === "local" ? parseHub(twin) : null;
-  renderRun(); renderBatch(h); renderAlerts(); renderCurriculum(); renderFlow(); renderManifest();
-  renderCkpts(); renderCompute(); renderNetwork(h); renderWatch(); renderResearch(h);
-  renderEvals(h); renderEco(h); renderSites(h); renderDemand();
+  renderRun(); renderCurve(); renderSignals(); renderBatch(h); renderAlerts();
+  renderCurriculum(); renderFlow(); renderManifest();
+  renderCkpts(); renderCompute(); renderNetwork(h); renderWatch(); renderJspace();
+  renderResearch(h); renderEvals(h); renderEco(h); renderSites(h); renderDemand();
 }
 async function refreshFleet() {
   let f = null;

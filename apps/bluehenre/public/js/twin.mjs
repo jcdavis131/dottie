@@ -343,8 +343,48 @@ export function parseOrg(live) {
               preset: String(a.preset ?? "?"), ckpt: String(a.base_ckpt ?? "?") }))
           : [] }
     : null;
+  // ---- dashboard visuals (operator: "add more from :8000/dashboard") -------
+  // Recent training signals (tok/s, grad norm, lr) from the rolling series.
+  const ser = p.trainer?.series;
+  let signals = null;
+  if (Array.isArray(ser?.step) && ser.step.length >= 2) {
+    const pick = (key) => Array.isArray(ser[key])
+      ? ser.step.map((st, i) => [st, ser[key][i]])
+          .filter(([st, v]) => Number.isFinite(st) && Number.isFinite(v))
+      : [];
+    const tokS = pick("tok_s"), gradNorm = pick("grad_norm"), lr = pick("lr");
+    if (tokS.length >= 2 || gradNorm.length >= 2 || lr.length >= 2)
+      signals = { tokS, gradNorm, lr };
+  }
+  // Full-run loss curve from full_series (cum_step keeps restarts monotonic),
+  // downsampled to <=240 points — the whole story, 10.6 -> now.
+  const fs = p.trainer?.full_series;
+  let fullCurve = null;
+  if (Array.isArray(fs?.cum_step) && Array.isArray(fs?.lm_loss)) {
+    let pairs = fs.cum_step.map((st, i) => [st, fs.lm_loss[i]])
+      .filter(([st, v]) => Number.isFinite(st) && Number.isFinite(v) && v > 0);
+    if (pairs.length >= 8) {
+      const stride = Math.max(1, Math.ceil(pairs.length / 240));
+      pairs = pairs.filter((_, i) => i % stride === 0 || i === pairs.length - 1);
+      fullCurve = { steps: pairs.map((x) => x[0]), lm: pairs.map((x) => x[1]) };
+    }
+  }
+  // J-Space internals: route probabilities align with the hl_est key order
+  // (verified: watch.dominant_route matches route_probs by position).
+  const JSPACES = ["system1", "system2", "critic", "planner"];
+  const hlT = p.objective?.half_life_target ?? {};
+  let jspace = null;
+  if (last && Array.isArray(last.route_probs) && last.route_probs.length === JSPACES.length) {
+    jspace = {
+      routes: JSPACES.map((name, i) => ({ name, p: num(last.route_probs[i]) })),
+      halfLife: JSPACES.map((name) => ({ name, est: num(last.hl_est?.[name]),
+                                         target: num(hlT[name]) })),
+      verbalizableMass: num(last.verbalizable_mass),
+      broadcastStrength: num(last.broadcast_strength),
+    };
+  }
   return { curriculum, flow, manifest, disk, ckpts, timing, tpp, gpu, watch, demand,
-           research, evalCatalog };
+           research, evalCatalog, signals, fullCurve, jspace };
 }
 
 // which department (and consultant hat) owns each REAL problem kind

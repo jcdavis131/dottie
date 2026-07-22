@@ -92,6 +92,9 @@
                 color: var(--bh-secondary); }
   canvas#spark { width: 100%; height: 70px; display: block; background: var(--bh-canvas);
                  border: 1px solid var(--bh-border); border-radius: 3px; margin-top: 6px; }
+  canvas.seriescv { width: 100%; height: 64px; display: block; background: var(--bh-canvas);
+                    border: 1px solid var(--bh-border); border-radius: 3px; }
+  canvas.seriescv.tall { height: 130px; }
   .alert { border-left: 3px solid var(--bh-rust); background: var(--bh-raised);
            padding: 6px 9px; margin: 6px 0; border-radius: 0 4px 4px 0; }
   .alert .who { color: var(--bh-copper); font-family: var(--bh-font-mono); font-size: 11px; }
@@ -121,6 +124,8 @@
 
   <div id="grid">
     <section class="card wide" style="--acc: var(--bh-hen-blue)"><h2>Training Run</h2><div class="body" id="run">…</div></section>
+    <section class="card wide" style="--acc: var(--bh-hen-blue)"><h2>Loss Curve — Full Run</h2><div class="body" id="curve">…</div></section>
+    <section class="card wide" style="--acc: var(--bh-moss)"><h2>Training Signals</h2><div class="body" id="signals">…</div></section>
     <section class="card wide" style="--acc: var(--bh-copper)"><h2>Training Data — Latest Batch</h2><div class="body" id="batch">…</div></section>
     <section class="card" style="--acc: var(--bh-rust)"><h2>Alerts &amp; Unblock</h2><div class="body" id="alerts">…</div></section>
     <section class="card" style="--acc: var(--bh-hen-blue)"><h2>Dottie — Assistant</h2><div class="body">
@@ -134,6 +139,7 @@
     <section class="card" style="--acc: var(--bh-slate)"><h2>Compute</h2><div class="body" id="compute">…</div></section>
     <section class="card" style="--acc: var(--bh-heather)"><h2>Network</h2><div class="body" id="network">…</div></section>
     <section class="card" style="--acc: var(--bh-heather)"><h2>Routing Watch</h2><div class="body" id="watch">…</div></section>
+    <section class="card" style="--acc: var(--bh-heather)"><h2>J-Space Internals</h2><div class="body" id="jspace">…</div></section>
     <section class="card" style="--acc: var(--bh-instrument)"><h2>Research Loop</h2><div class="body" id="research">…</div></section>
     <section class="card" style="--acc: var(--bh-instrument)"><h2>Evals</h2><div class="body" id="evals">…</div></section>
     <section class="card" style="--acc: var(--bh-copper)"><h2>Skills Ecosystem</h2><div class="body" id="eco">…</div></section>

@@ -210,6 +210,38 @@ check("org research note verbatim + catalog", org?.research?.note === "caveat" &
   org.research.sotaRows === 3 && org.evalCatalog.active === "r.json");
 check("org of nothing -> null", parseOrg(null) === null);
 
+// dashboard visuals: signals + full-run curve + j-space internals
+const vizOrg = parseOrg({ pipeline: {
+  objective: { half_life_target: { system1: 8, system2: 300, critic: 30, planner: 150 } },
+  trainer: {
+    last: { event: "step", step: 1750, gpu_util_pct: 50,
+      route_probs: [0.1, 0.3, 0.1, 0.5],
+      hl_est: { system1: 8.0, system2: 299.9, critic: 30.0, planner: 149.8 },
+      verbalizable_mass: 0.995, broadcast_strength: 0.717 },
+    series: { step: [1730, 1740, 1750], tok_s: [7000, null, 7100],
+              grad_norm: [0.05, 0.04, 0.06], lr: [6e-4, 6e-4, 5.9e-4], lm_loss: [1, 1, 1] },
+    full_series: { cum_step: Array.from({ length: 500 }, (_, i) => i + 1),
+                   lm_loss: Array.from({ length: 500 }, (_, i) => (i === 3 ? -1 : 10 / (i + 1))) },
+  },
+} });
+check("signals pair steps with finite values only (null tok_s dropped)",
+  vizOrg?.signals?.tokS.length === 2 && vizOrg.signals.gradNorm.length === 3 &&
+  vizOrg.signals.tokS[1][1] === 7100);
+check("full curve downsampled <=240, non-positive losses dropped, endpoint kept",
+  vizOrg?.fullCurve?.steps.length <= 240 && vizOrg.fullCurve.steps.at(-1) === 500 &&
+  vizOrg.fullCurve.lm.every((v) => v > 0));
+check("jspace routes keep fixed space order aligned to route_probs",
+  vizOrg?.jspace?.routes.map((r) => r.name).join(",") === "system1,system2,critic,planner" &&
+  vizOrg.jspace.routes[3].p === 0.5);
+check("jspace half-life carries est and target per space",
+  vizOrg?.jspace?.halfLife[1].est === 299.9 && vizOrg.jspace.halfLife[1].target === 300);
+check("jspace mass + strength lifted", vizOrg?.jspace?.verbalizableMass === 0.995 &&
+  vizOrg.jspace.broadcastStrength === 0.717);
+check("no series -> null signals/curve, no throw",
+  parseOrg({ pipeline: { mode: { id: "training" } } })?.signals === null ||
+  parseOrg({ pipeline: { mode: { id: "training" } } })?.signals === undefined ||
+  (parseOrg({ pipeline: { mode: { id: "training" } } })?.signals ?? null) === null);
+
 // freshness: published_utc wins; bare ts works; garbage -> null
 const t0 = Date.parse("2026-07-22T14:30:02Z");
 check("age from published_utc", Math.abs(liveAgeS(wrapped, t0) - 600) < 1);
