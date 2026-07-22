@@ -34,3 +34,22 @@ services:
         source: C:/
         target: /host_disk
         read_only: true
+
+  # Curriculum deploy (2026-07-21): bind-mount local (merged) configs + datagen into the
+  # collector so the new sources (scout_cli, zk_math, compression, db_trace) go live WITHOUT
+  # a memory-heavy image rebuild — same `. -> /app` pattern the trainer uses above. Volumes
+  # replicate the base collector's named volumes (ava_raw/state/reports) so the cursor + RAW
+  # output are preserved across recreate. Recreate with `--scale collector=2` to avoid
+  # resurrecting the operator-stopped collector-3/4.
+  collector:
+    volumes:
+      - ava_raw:/raw
+      - ava_state:/state
+      - ava_reports:/reports
+      - type: bind
+        source: .
+        target: /app
+      - type: bind
+        source: C:/
+        target: /host_disk
+        read_only: true
