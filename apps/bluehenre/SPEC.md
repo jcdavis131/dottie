@@ -69,12 +69,18 @@ Cards, in order:
 - Nothing auto-ingests into training; the operator feeds the factory
   explicitly.
 
-## Next core item — the write path
+## The write path — CONNECTED (2026-07-22, operator: "connect the write path")
 
-Unblock/steer from the phone needs a channel back to the box: an operator-run
-tunnel (+ `DOTTIE_CHAT_URL`/`TWIN_STATUS_URL` on Vercel) or a directive-queue
-the box polls. Operator decision pending; the hosted console is truthfully
-read-only until then and says so.
+**Steer channel = comments on the steer gist**
+(`gist.github.com/jcdavis131/c899ef776dcb81e99319239efa0f92ba`; STEER links in
+both console footers). Zero new secrets, zero tunnel, zero box exposure:
+writes are GitHub-authenticated from the operator's phone; the box's loop
+polls every ~3 min via `scripts/steer_poll.py` and acts.
+
+Protocol (stateless, auditable): owner comments not starting 🤖 = DIRECTIVES;
+the box replies `🤖 ack <comment-id>: <status>` after acting — an existing ack
+marks it done. Comments from any other account are NEVER acted on (untrusted
+input; surfaced only). Verified round-trip: post → poll → act → ack → empty.
 
 ## Explicitly OUT of autonomous scope
 
