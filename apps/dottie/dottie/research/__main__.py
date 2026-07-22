@@ -158,7 +158,9 @@ def cmd_calibrate_baseline(args) -> int:
                  notes=(f"measured baseline calibration: steps={m0['steps']} seq={m0['seq_len']} "
                         f"batch={m0['batch']} lr={m0['lr']} device={m0['device']} "
                         f"seeds={seeds} per_seed={[round(v, 5) for v in values]}"),
-                 metric_sem=sem, metric_sem_n=len(values))
+                 metric_sem=sem, metric_sem_n=len(values),
+                 # structured copy of the notes' per_seed: the evaluator pairs against THIS
+                 per_seed=[round(v, 5) for v in values])
     eff = led.seed_baseline(b, overwrite=args.overwrite)
     _refresh_status(led, args)
     _emit({"measured": {"seeds": seeds, "per_seed": [round(v, 5) for v in values],

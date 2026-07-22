@@ -117,6 +117,12 @@ class Baseline:
     #: inventing one would be worse than admitting it is absent.
     metric_sem: Optional[float] = None
     metric_sem_n: Optional[int] = None
+    #: Per-seed metric values of the run/calibration that SET this baseline, in seed order.
+    #: When a candidate records `per_seed` at the SAME seeds, the evaluator can run a PAIRED
+    #: significance test (differences cancel the shared seed variance — §5.3.R93: the
+    #: unmodified model alone swings 0.343 across seeds, so unpaired tests are mostly
+    #: measuring that). Optional: legacy/hand-seeded baselines genuinely have none.
+    per_seed: Optional[List[float]] = None
 
     def improves(self, value: float) -> bool:
         """Is ``value`` a real improvement over this baseline (strict, direction-aware)?"""
@@ -149,7 +155,8 @@ CREATE TABLE IF NOT EXISTS baseline (
     updated_ts   REAL NOT NULL,
     notes        TEXT NOT NULL DEFAULT '',
     metric_sem   REAL,
-    metric_sem_n INTEGER
+    metric_sem_n INTEGER,
+    per_seed     TEXT
 );
 """
 
@@ -178,7 +185,8 @@ class Ledger:
         column list, so it keeps working against a migrated database — which matters here
         because the research daemon holds this file open for hours and does not reload."""
         have = {r["name"] for r in c.execute("PRAGMA table_info(baseline)")}
-        for col, decl in (("metric_sem", "REAL"), ("metric_sem_n", "INTEGER")):
+        for col, decl in (("metric_sem", "REAL"), ("metric_sem_n", "INTEGER"),
+                          ("per_seed", "TEXT")):
             if col not in have:
                 c.execute(f"ALTER TABLE baseline ADD COLUMN {col} {decl}")
 
@@ -204,18 +212,22 @@ class Ledger:
         with self._conn() as c:
             c.execute(
                 "INSERT INTO baseline (singleton, metric_name, metric_value, higher_is_better, "
-                "architecture, experiment_id, updated_ts, notes, metric_sem, metric_sem_n) "
-                "VALUES (1,?,?,?,?,?,?,?,?,?) "
+                "architecture, experiment_id, updated_ts, notes, metric_sem, metric_sem_n, "
+                "per_seed) "
+                "VALUES (1,?,?,?,?,?,?,?,?,?,?) "
                 "ON CONFLICT(singleton) DO UPDATE SET metric_name=excluded.metric_name, "
                 "metric_value=excluded.metric_value, higher_is_better=excluded.higher_is_better, "
                 "architecture=excluded.architecture, experiment_id=excluded.experiment_id, "
                 "updated_ts=excluded.updated_ts, notes=excluded.notes, "
-                "metric_sem=excluded.metric_sem, metric_sem_n=excluded.metric_sem_n",
+                "metric_sem=excluded.metric_sem, metric_sem_n=excluded.metric_sem_n, "
+                "per_seed=excluded.per_seed",
                 (baseline.metric_name, float(baseline.metric_value),
                  1 if baseline.higher_is_better else 0, baseline.architecture,
                  baseline.experiment_id, baseline.updated_ts, baseline.notes,
                  None if baseline.metric_sem is None else float(baseline.metric_sem),
-                 None if baseline.metric_sem_n is None else int(baseline.metric_sem_n)),
+                 None if baseline.metric_sem_n is None else int(baseline.metric_sem_n),
+                 None if baseline.per_seed is None
+                 else json.dumps([float(v) for v in baseline.per_seed])),
             )
         return baseline
 
@@ -229,14 +241,19 @@ class Ledger:
             higher_is_better=bool(row["higher_is_better"]), architecture=row["architecture"],
             experiment_id=row["experiment_id"], updated_ts=row["updated_ts"], notes=row["notes"],
             metric_sem=row["metric_sem"], metric_sem_n=row["metric_sem_n"],
+            per_seed=json.loads(row["per_seed"]) if row["per_seed"] else None,
         )
 
     def promote_baseline(self, experiment_id: str, metric_value: float, *,
                          architecture: Optional[str] = None, notes: str = "",
                          metric_sem: Optional[float] = None,
                          metric_sem_n: Optional[int] = None,
+                         per_seed: Optional[List[float]] = None,
                          ts: Optional[float] = None) -> Baseline:
-        """Move the baseline to a new SOTA. Caller must have already verified real improvement."""
+        """Move the baseline to a new SOTA. Caller must have already verified real improvement.
+
+        ``per_seed`` carries the winning candidate's cross-seed values onto the new
+        baseline so the NEXT comparison can be paired at the same seeds."""
         cur = self.get_baseline()
         if cur is None:
             raise LedgerError("no baseline to promote from; call seed_baseline first")
@@ -245,7 +262,7 @@ class Ledger:
             higher_is_better=cur.higher_is_better,
             architecture=architecture or cur.architecture, experiment_id=experiment_id,
             updated_ts=ts if ts is not None else time.time(), notes=notes,
-            metric_sem=metric_sem, metric_sem_n=metric_sem_n,
+            metric_sem=metric_sem, metric_sem_n=metric_sem_n, per_seed=per_seed,
         )
         return self.seed_baseline(new, overwrite=True)
 

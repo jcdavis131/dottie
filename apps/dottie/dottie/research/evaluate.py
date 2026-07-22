@@ -30,6 +30,15 @@ from dottie.research.ledger import Ledger, Experiment, Baseline, EVALUATION_PEND
 #: DIFFERENCES, which cancels shared variance); queued in TODOS §5.3.R.
 SIGNIFICANCE_SEM = 2.0
 
+#: Capacity gate (TODOS item 10, operator-activated 2026-07-21). A swap that DELETES more
+#: than this fraction of the block it replaces can "win" a fixed-step comparison simply by
+#: being easier to fit — the exact chain behind every artifact SOTA in this ledger (MLBR
+#: removed 100%; `5a7232ffea24` removed 99.97%). Such a win must not ratchet the baseline.
+#: 10% headroom keeps a genuinely leaner-but-better block eligible while refusing wins that
+#: are mostly shrinkage; a gated candidate is REJECTED with the reason spelled out, and a
+#: capacity-fair re-eval (same param budget) can always be run from its promotion bundle.
+CAPACITY_DELETE_FRAC = 0.10
+
 #: Metric series a trainer may record, in preference order. The first one present supplies
 #: the spread; without any, significance is reported UNAVAILABLE, never assumed.
 #:
@@ -278,6 +287,23 @@ def run_evaluation(ledger: Ledger, *, require_stable: bool = True,
     # errors of the candidate's own measurement spread. No series recorded => reported
     # unavailable and NOT treated as passing (the ratchet only moves on evidence).
     sp = _spread(metrics)
+    # PAIRED test (TODOS item 11, operator-activated 2026-07-21): when the candidate and the
+    # baseline both carry `per_seed` at the same n, the honest denominator is the SE of the
+    # per-seed DIFFERENCES — a hard seed hurts both runs, so differencing cancels the shared
+    # seed variance the unpaired test wrongly counts (§5.3.R93: the unmodified model alone
+    # swings 0.343 across seeds). Falls back to the unpaired test whenever pairing is not
+    # possible, which keeps every pre-per_seed baseline behaving exactly as before.
+    paired_diffs: Optional[List[float]] = None
+    cand_ps = metrics.get("per_seed")
+    base_ps = getattr(baseline, "per_seed", None)
+    if (isinstance(cand_ps, (list, tuple)) and isinstance(base_ps, (list, tuple))
+            and len(cand_ps) == len(base_ps) and len(cand_ps) >= 2):
+        try:
+            diffs = [float(c) - float(b) for c, b in zip(cand_ps, base_ps)]
+        except (TypeError, ValueError):
+            diffs = None
+        if diffs is not None and all(math.isfinite(x) for x in diffs):
+            paired_diffs = diffs
     if sp is None:
         significant, sig_note = None, "no per-batch series recorded — significance unmeasurable"
     else:
@@ -289,7 +315,15 @@ def run_evaluation(ledger: Ledger, *, require_stable: bool = True,
         # kept — most baselines here predate this field — but it now says so out loud
         # instead of leaving the reader to assume the stronger test was applied.
         base_sem = baseline.metric_sem
-        if base_sem is not None and base_sem >= 0:
+        if paired_diffs is not None:
+            n_p = len(paired_diffs)
+            mean_d = sum(paired_diffs) / n_p
+            var_d = sum((x - mean_d) ** 2 for x in paired_diffs) / (n_p - 1)
+            se_diff = math.sqrt(var_d) / math.sqrt(n_p)
+            basis = (f"PAIRED per-seed SE {se_diff:.5g} over n={n_p} shared seeds "
+                     f"(candidate vs baseline differenced at the SAME seeds — shared "
+                     f"seed variance cancels)")
+        elif base_sem is not None and base_sem >= 0:
             se_diff = (sp["sem"] ** 2 + float(base_sem) ** 2) ** 0.5
             basis = (f"two-sample SE_diff {se_diff:.5g} "
                      f"(candidate SEM {sp['sem']:.5g}, baseline SEM {float(base_sem):.5g})")
@@ -344,9 +378,22 @@ def run_evaluation(ledger: Ledger, *, require_stable: bool = True,
         # This source validates cleanly and still won partly by shrinking the model.
         base_kind = "promoted_capacity_flagged" if base_kind == "promoted" else base_kind
         base_caveat = "\n".join(x for x in (base_caveat, capacity_confound) if x)
-    promote = improved and (stable if require_stable else True) and bool(significant)
+    # CAPACITY GATE (TODOS item 10, operator-activated): a candidate that deleted more than
+    # CAPACITY_DELETE_FRAC of the block it replaced may not promote, however good its number —
+    # at fixed steps that win is confounded with being easier to fit. Gates only on POSITIVE
+    # knowledge of a large deletion: swaps that add capacity, and trainers that never record
+    # the delta, are untouched (their absence of evidence is already surfaced as a caveat).
+    replaced_params = metrics.get("replaced_block_params")
+    capacity_gated = (
+        isinstance(block_delta, int) and isinstance(replaced_params, int)
+        and replaced_params > 0 and block_delta < 0
+        and (-block_delta) / replaced_params > CAPACITY_DELETE_FRAC
+    )
+    promote = (improved and (stable if require_stable else True) and bool(significant)
+               and not capacity_gated)
     verdict = {
         "promote": promote, "improved": improved, "stable": bool(stable),
+        "capacity_gated": capacity_gated,
         "significant": significant, "significance": sig_note,
         "baseline_provenance": base_kind, "baseline_caveat": base_caveat,
         "sem": None if sp is None else round(sp["sem"], 6),
@@ -365,9 +412,14 @@ def run_evaluation(ledger: Ledger, *, require_stable: bool = True,
         ledger.transition(exp.id, SOTA, eval_verdict=verdict, writeup=writeup, ts=ts)
         # Carry this run's spread onto the baseline so the NEXT candidate gets a
         # two-sample test instead of inheriting the point-estimate weakness.
+        # Carry the winner's per-seed values too, so the NEXT candidate is compared PAIRED
+        # at the same seeds instead of falling back to the weaker unpaired test.
         ledger.promote_baseline(exp.id, value, notes=exp.name, ts=ts,
                                 metric_sem=None if sp is None else sp["sem"],
-                                metric_sem_n=None if sp is None else sp["n"])
+                                metric_sem_n=None if sp is None else sp["n"],
+                                per_seed=([float(v) for v in cand_ps]
+                                          if isinstance(cand_ps, (list, tuple)) and cand_ps
+                                          else None))
         return {"experiment": exp.id, "state": SOTA, "verdict": verdict}
 
     if not improved:
@@ -377,6 +429,11 @@ def run_evaluation(ledger: Ledger, *, require_stable: bool = True,
     elif not significant:
         reason = (f"improvement within noise — held ({sig_note})" if significant is False
                   else f"improvement unverifiable — held ({sig_note})")
+    elif capacity_gated:
+        reason = (f"capacity-gated — the swap deleted {-block_delta:,} of the replaced "
+                  f"block's {replaced_params:,} parameters "
+                  f"({-block_delta / replaced_params:.1%} > {CAPACITY_DELETE_FRAC:.0%} "
+                  f"threshold); a fixed-step win by shrinkage may not ratchet the baseline")
     else:
         reason = "held"
     writeup = _writeup(exp, baseline, value, promoted=False, reason=reason,
