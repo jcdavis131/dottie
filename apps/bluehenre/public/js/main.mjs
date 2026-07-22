@@ -16,11 +16,11 @@ const coarse = matchMedia("(pointer: coarse)").matches; // phone/tablet = defaul
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 400);
-// 16-bit presentation (SPEC visual bar, sunset pass): render at 1/PIXEL_SCALE
-// internal resolution and let CSS upscale with nearest-neighbor — a real pixel
-// grid, clean pixel placement, no antialiasing smear. Materials keep
-// dithering:true so shading breaks into ordered noise on that grid.
-const PIXEL_SCALE = 3;
+// 32-bit PS1 presentation (SPEC visual bar): render at 1/PIXEL_SCALE internal
+// resolution (~320p-class, a generation finer than the SNES pass) and let CSS
+// upscale nearest-neighbor. Materials keep dithering:true; the PS1 facet+wobble
+// pass below completes the look.
+const PIXEL_SCALE = 2;
 const renderer = new THREE.WebGLRenderer({ antialias: false });
 renderer.setPixelRatio(1);
 const sizeToPixelGrid = () => {
@@ -45,6 +45,29 @@ const world = buildWorld(scene);
 // perf budget (SPEC): phones get the 1024 shadow map, desktop keeps 2048
 if (coarse)
   scene.traverse((o) => { if (o.isDirectionalLight && o.shadow) o.shadow.mapSize.set(1024, 1024); });
+
+// ---- 32-bit PS1 pass (SPEC visual bar) --------------------------------------
+// One sweep over every material in the built scene: faceted Gouraud-style
+// shading (flatShading — spheres/cylinders show their polys like real PSX
+// geometry) + the signature vertex wobble: clip-space positions snap to a
+// coarse 320x240 virtual grid, so geometry jitters subtly as the camera moves.
+const PS1_SNAP = `#include <project_vertex>
+  {
+    vec2 ps1Grid = vec2(320.0, 240.0);
+    gl_Position.xy = floor(gl_Position.xy / gl_Position.w * ps1Grid + 0.5) / ps1Grid * gl_Position.w;
+  }`;
+scene.traverse((o) => {
+  if (!o.isMesh) return;
+  for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+    if ("flatShading" in m) m.flatShading = true;
+    m.dithering = true;
+    m.onBeforeCompile = (s) => {
+      s.vertexShader = s.vertexShader.replace("#include <project_vertex>", PS1_SNAP);
+    };
+    m.customProgramCacheKey = () => "ps1"; // shared snap variant, dedupe programs
+    m.needsUpdate = true;
+  }
+});
 const bw = createBandwidth(100);
 const me = createPlayer("auditor");
 const router = createRouter(world.npcs.map((n) => n.userData.npcId));

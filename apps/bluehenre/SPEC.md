@@ -54,11 +54,15 @@ Subterranean Server Farms · The Great Hall & Cafeteria · Botanical Gardens · 
 Terminals scattered through the world: persona hot-swap points.
 
 **Setting (operator directive 2026-07-22): the campus is in Austin, TX** (`ORG.hq`).
-**Visual bar: 16-bit SNES-era pixel art at golden hour** (operator directive 2026-07-22,
-superseding the earlier Sims/RCT-2010 bar): warm sunset palette, banded sky with
-checkerboard-dithered seams + chunky sun, low-res render upscaled nearest-neighbor
-(PIXEL_SCALE=3 — real pixel grid, clean pixel placement), `dithering:true` on all
-materials, low warm sun with long shadows, cozy dusk lamps. The visual layer (`world.mjs`) is render-only and deterministic
+**Visual bar: 32-bit PS1-era graphics at golden hour** (operator directive 2026-07-22,
+superseding the 16-bit SNES bar — the sunset direction stays, the fidelity jumps a
+generation): PIXEL_SCALE=2 (~320p-class internal res, upscaled nearest-neighbor),
+`flatShading` on every surface (faceted Gouraud-style polys — spheres and cylinders
+show their facets like real PSX geometry), the signature **PS1 vertex wobble** (every
+material's vertex shader snaps clip-space positions to a coarse 320×240 virtual grid,
+so geometry jitters subtly as the camera moves), antialiasing off, `dithering:true`
+everywhere, nearest-neighbor textures, heavy golden-hour fog as honest draw-distance.
+The 16-bit dithered sunset backdrop (banded sky, chunky sun) carries over unchanged. The visual layer (`world.mjs`) is render-only and deterministic
 (mulberry32 seed): per-department building archetypes with procedural lit-window facades
 (NearestFilter), ring road + limestone plaza + sidewalks, Lady Bird Creek + bat bridge (with
 bats), 26 live oaks, food-truck row at the Great Hall, Texas flag, ATX water tower, parking
