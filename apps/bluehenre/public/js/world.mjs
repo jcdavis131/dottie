@@ -643,80 +643,103 @@ export function buildWorld(scene) {
     m.visible = true;
   }
 
-  // ---- EARTH TWIN map board (operator art directive 2026-07-22) -------------
-  // Flat-projection digital Earth: micro-pixel continental terrain grids,
-  // glowing weather cells, orbital satellite tracking lines — hard pixels from
-  // the same 32-color sci-fi palette; redrawn at 2Hz for satellites/weather.
+  // ---- EARTH TWIN satellite board (operator art directive 2026-07-22) -------
+  // Top-down orthographic satellite view, 90s weather-satellite aesthetic:
+  // natural 32-color palette (muted greens, deep dithered blues, soft cloud
+  // whites), reef shallows on every coast, swirling comma-shaped cloud systems,
+  // thin tracking overlay. Hard pixels only; redrawn at 2Hz for clouds/sats.
   const earthCanvas = document.createElement("canvas");
-  earthCanvas.width = 256; earthCanvas.height = 128;
+  earthCanvas.width = 320; earthCanvas.height = 160;
   const earthTex = new THREE.CanvasTexture(earthCanvas);
   earthTex.magFilter = THREE.NearestFilter;
   earthTex.colorSpace = THREE.SRGBColorSpace;
-  // crude continent plates as pixel-rect clusters (a LOW-GRADE Earth, per SPEC)
+  const SAT = { // natural indexed palette — the 90s GOES look
+    deep: "#0b2a4a", mid: "#103a5e", shallow: "#17507a", reef: "#3fa8a0",
+    lowland: "#4a7a3a", green: "#5f8b47", highland: "#8a8a56", desert: "#b09a6a",
+    tundra: "#9aa48c", ice: "#dfe8ec", cloud: "#f4f8fa", cloudShade: "#c2ccd4",
+    grat: "#28496b", track: "#d8e0e6", hq: "#e04040", label: "#e8eef2", frame: "#101820",
+  };
+  // continent plates: [x, y, w, h, biome] — a LOW-GRADE Earth (per SPEC), scaled x1.25
   const PLATES = [
-    [22, 26, 34, 18], [30, 44, 16, 10], [46, 20, 12, 8],           // North America
-    [58, 66, 16, 26], [54, 60, 12, 10],                            // South America
-    [116, 24, 18, 12], [112, 36, 10, 8],                           // Europe
-    [116, 46, 26, 34], [138, 54, 10, 16],                          // Africa
-    [140, 20, 62, 26], [168, 44, 22, 14], [196, 52, 10, 10],       // Asia
-    [200, 78, 20, 12],                                             // Australia
-    [92, 112, 90, 8],                                              // Antarctica
+    [27, 32, 43, 23, "green"], [37, 55, 20, 13, "desert"], [57, 25, 15, 10, "tundra"],  // N America
+    [72, 82, 20, 33, "green"], [67, 75, 15, 13, "green"],                               // S America
+    [145, 30, 22, 15, "green"], [140, 45, 13, 10, "green"],                             // Europe
+    [145, 57, 33, 43, "desert"], [172, 67, 13, 20, "green"],                            // Africa
+    [175, 25, 78, 33, "tundra"], [210, 55, 28, 18, "green"], [245, 65, 13, 13, "green"],// Asia
+    [250, 97, 25, 15, "desert"],                                                        // Australia
+    [115, 140, 112, 10, "ice"],                                                         // Antarctica
   ];
-  const wr = rng(0xea27); // weather seed — deterministic drift
-  const WEATHER = Array.from({ length: 7 }, () => ({
-    x: wr() * 256, y: 14 + wr() * 96, s: 4 + wr() * 8, dx: 0.6 + wr() * 0.8,
-    warm: wr() < 0.4,
+  const wr = rng(0xea27); // weather seed — deterministic systems
+  const STORMS = Array.from({ length: 6 }, () => ({
+    x: wr() * 320, y: 20 + wr() * 115, arms: 8 + Math.floor(wr() * 8),
+    size: 5 + wr() * 7, spin: wr() < 0.5 ? 1 : -1, drift: 0.5 + wr() * 0.7,
   }));
+  const tr = rng(0x5a7); // terrain speckle seed (fixed — no texture tearing)
+  const SPECKS = Array.from({ length: 900 }, () => [tr(), tr(), tr()]);
   function drawEarthMap(t) {
     const g = earthCanvas.getContext("2d");
-    g.fillStyle = PAL.bg; g.fillRect(0, 0, 256, 128);
-    g.fillStyle = "#071426"; g.fillRect(2, 12, 252, 114); // ocean
-    // graticule
-    g.fillStyle = PAL.grid;
-    for (let x = 2; x < 254; x += 16) g.fillRect(x, 12, 1, 114);
-    for (let y = 12; y < 126; y += 16) g.fillRect(2, y, 252, 1);
-    // continents: dark landmass + green terrain grid micro-pixels
+    const W = 320, H = 160;
+    // dithered ocean depth bands: deep -> mid -> shallow, checkerboard seams
+    g.fillStyle = SAT.deep; g.fillRect(0, 0, W, H);
+    g.fillStyle = SAT.mid; g.fillRect(0, 30, W, 74);
+    g.fillStyle = SAT.deep;
+    for (let x = 0; x < W; x += 2) { g.fillRect(x + (30 % 2), 30, 1, 1); g.fillRect(x, 103, 1, 1); }
+    g.fillStyle = SAT.shallow; g.fillRect(0, 52, W, 34);
+    g.fillStyle = SAT.mid;
+    for (let x = 0; x < W; x += 2) { g.fillRect(x, 52, 1, 1); g.fillRect(x + 1, 85, 1, 1); }
+    // subtle graticule under everything else
+    g.fillStyle = SAT.grat;
+    for (let x = 0; x < W; x += 20) for (let y = 0; y < H; y += 2) g.fillRect(x, y, 1, 1);
+    for (let y = 0; y < H; y += 20) for (let x = 0; x < W; x += 2) g.fillRect(x, y, 1, 1);
+    // continents: reef shallows ring every coast, then biome terrain + speckle
     for (const [px, py, pw, ph] of PLATES) {
-      g.fillStyle = "#0e2e1c"; g.fillRect(px, py, pw, ph);
-      g.fillStyle = PAL.greenDim;
-      for (let yy = py + 1; yy < py + ph; yy += 3)
-        for (let xx = px + 1 + (yy % 2); xx < px + pw; xx += 3) g.fillRect(xx, yy, 1, 1);
-      g.fillStyle = PAL.green; // coastline glints
-      g.fillRect(px, py, pw, 1); g.fillRect(px, py, 1, ph);
+      g.fillStyle = SAT.reef; g.fillRect(px - 1, py - 1, pw + 2, ph + 2);
     }
-    // glowing weather cells drift west->east, wrap
-    for (const w of WEATHER) {
-      const wx = Math.floor((w.x + t * w.dx * 2) % 252) + 2;
-      g.fillStyle = w.warm ? PAL.amber : PAL.cyan;
-      for (let i = 0; i < w.s; i++)
-        g.fillRect((wx + i * 2) % 252 + 2, Math.floor(w.y + Math.sin(t + i) * 2), 2, 1);
-      g.fillStyle = w.warm ? PAL.amberDim : PAL.cyanDim;
-      g.fillRect(wx, Math.floor(w.y) + 2, Math.min(w.s * 2, 253 - wx), 1);
-    }
-    // orbital tracks: two sinusoid ground-traces + moving satellites
-    for (const [phase, color] of [[0, PAL.magenta], [Math.PI * 0.7, PAL.cyan]]) {
-      g.fillStyle = color;
-      for (let x = 2; x < 254; x += 3) {
-        const y = 64 + Math.sin((x / 256) * Math.PI * 2 + phase) * 38;
-        g.fillRect(x, Math.floor(y), 1, 1);
+    PLATES.forEach(([px, py, pw, ph, biome], pi) => {
+      const base = { green: SAT.green, desert: SAT.desert, tundra: SAT.tundra, ice: SAT.ice }[biome];
+      g.fillStyle = base; g.fillRect(px, py, pw, ph);
+      // micro-pixel terrain: deterministic speckle in sister biome colors
+      const sisters = { green: [SAT.lowland, SAT.highland], desert: [SAT.highland, SAT.green],
+                        tundra: [SAT.ice, SAT.highland], ice: [SAT.tundra, SAT.cloudShade] }[biome];
+      for (let i = pi * 60; i < pi * 60 + 60 && i < SPECKS.length; i++) {
+        const [sx, sy, sc] = SPECKS[i];
+        g.fillStyle = sisters[sc < 0.5 ? 0 : 1];
+        g.fillRect(px + 1 + Math.floor(sx * (pw - 2)), py + 1 + Math.floor(sy * (ph - 2)), 1, 1);
       }
-      const sx = Math.floor((t * 18 + phase * 40) % 252) + 2;
-      const sy = 64 + Math.sin((sx / 256) * Math.PI * 2 + phase) * 38;
-      g.fillStyle = PAL.white;
-      g.fillRect(sx - 1, Math.floor(sy), 3, 1); g.fillRect(sx, Math.floor(sy) - 1, 1, 3);
+    });
+    // swirling comma-shaped cloud systems (drift west->east, wrap) + shadows
+    for (const s of STORMS) {
+      const cx = (s.x + t * s.drift * 2) % (W + 40) - 20;
+      for (let i = 0; i < s.arms * 4; i++) {
+        const a = i * 0.42 * s.spin + t * 0.25 * s.spin;
+        const rr = 1 + (i / (s.arms * 4)) * s.size;
+        const x = Math.floor(cx + Math.cos(a) * rr);
+        const y = Math.floor(s.y + Math.sin(a) * rr * 0.6);
+        if (x < 0 || x >= W || y < 0 || y >= H) continue;
+        g.fillStyle = SAT.cloudShade; g.fillRect(x + 1, y + 1, 2, 1);
+        g.fillStyle = SAT.cloud; g.fillRect(x, y, 2, 1);
+      }
     }
-    // HQ AUSTIN marker: blinking beacon on the North-America plate
+    // thin tracking overlay: one dotted ground-trace + satellite blip (90s feed)
+    g.fillStyle = SAT.track;
+    for (let x = 0; x < W; x += 5) {
+      const y = 80 + Math.sin((x / W) * Math.PI * 2) * 48;
+      g.fillRect(x, Math.floor(y), 1, 1);
+    }
+    const sx = Math.floor((t * 20) % W);
+    const sy = Math.floor(80 + Math.sin((sx / W) * Math.PI * 2) * 48);
+    g.fillRect(sx - 1, sy, 3, 1); g.fillRect(sx, sy - 1, 1, 3);
+    // HQ AUSTIN: red cross marker, weather-map style
     const blink = Math.floor(t * 2) % 2 === 0;
-    g.fillStyle = blink ? PAL.amber : PAL.red;
-    g.fillRect(40, 40, 2, 2);
-    g.fillStyle = PAL.text; g.font = "bold 7px monospace";
+    g.fillStyle = blink ? SAT.hq : SAT.label;
+    g.fillRect(49, 51, 1, 5); g.fillRect(47, 53, 5, 1);
+    g.fillStyle = SAT.label; g.font = "bold 8px monospace";
     g.textAlign = "left"; g.textBaseline = "top";
-    g.fillText("HQ AUSTIN", 44, 38);
-    // title strip
-    g.fillStyle = PAL.bezel; g.fillRect(0, 0, 256, 11);
-    g.fillStyle = PAL.cyan; g.font = "bold 8px monospace";
-    g.fillText("▮ EARTH TWIN // GLOBAL OPS", 4, 2);
-    g.fillStyle = PAL.magenta; g.fillRect(0, 11, 256, 1);
+    g.fillText("HQ AUSTIN", 54, 49);
+    // feed header, broadcast style
+    g.fillStyle = SAT.frame; g.fillRect(0, 0, W, 12);
+    g.fillStyle = SAT.label; g.font = "bold 9px monospace";
+    g.fillText("EARTH TWIN · SAT VIEW · DOTTIE GLOBAL OPS", 4, 2);
     earthTex.needsUpdate = true;
   }
   drawEarthMap(0);
@@ -728,7 +751,7 @@ export function buildWorld(scene) {
   }
   const earthMesh = new THREE.Mesh(new THREE.BoxGeometry(11.6, 5.8, 0.18),
     [lambert(0x151b2b), lambert(0x151b2b), lambert(0x151b2b), lambert(0x151b2b),
-     new THREE.MeshLambertMaterial({ map: earthTex, emissive: 0x28e6ff, emissiveIntensity: 0.14, emissiveMap: earthTex }),
+     new THREE.MeshLambertMaterial({ map: earthTex, emissive: 0xbcd0da, emissiveIntensity: 0.1, emissiveMap: earthTex }),
      lambert(0x151b2b)]);
   earthMesh.position.y = 4.4;
   earthGroup.add(earthMesh);
