@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import ast
 import difflib
+import re
 import shutil as _shutil  # for which() only; generated code may not import shutil
 import inspect
 import subprocess
@@ -60,9 +61,79 @@ class ValidationResult:
     per_level: Dict[str, Dict[str, str]] = field(default_factory=dict)
 
     def as_feedback(self) -> str:
-        """The exact message handed back to the implementation LLM for self-correction."""
-        return (f"Validation failed at level '{self.level}' ({self.status}). "
+        """The exact message handed back to the implementation LLM for self-correction.
+
+        Appends a targeted repair hint when the failure matches a known class
+        (diagnose_failure) — mined 2026-07-22 from the ledger's real failure
+        population, where raw tracebacks alone left 59% of candidates dying at
+        dry_run across every self-correction attempt."""
+        base = (f"Validation failed at level '{self.level}' ({self.status}). "
                 f"Detail:\n{self.detail}")
+        hint = diagnose_failure(self.level, self.detail)
+        return f"{base}\n\nREPAIR HINT:\n{hint}" if hint else base
+
+
+# ---------------------------------------------------------------------------
+# Failure diagnosis — targeted repair hints for the correction pass
+# ---------------------------------------------------------------------------
+# Mined from the ledger's real failed_validation population (2026-07-22, n=70):
+# einsum subscript errors and tensor-shape algebra dominate dry_run deaths,
+# then undeclared constructor args and unassigned self attributes. A raw
+# traceback tells the corrector WHAT broke; these tell an 8B corrector HOW
+# this class of candidate actually gets fixed. Pure, no I/O; an unknown
+# failure gets no hint rather than a wrong one.
+_HINTS: tuple = (
+    (r"einsum\(\)",
+     "EINSUM REPAIR: the equation does not match the operands. Do not fiddle "
+     "with the letters — REPLACE the einsum with explicit ops: reshape/view "
+     "to split dims, torch.matmul for contractions, .transpose(-2, -1) to "
+     "align. One op per line, and add `assert x.shape == (...)` after each."),
+    (r"must match the size of tensor|Expected size for first two dimensions|mat1 and mat2 shapes",
+     "SHAPE-ALGEBRA REPAIR: track the shape symbolically through every line "
+     "starting from [batch, seq, hidden]. This error means an op changed a "
+     "dim you later treat as unchanged (usually a head split never merged "
+     "back, or a matmul on unaligned dims). Add a shape assert after each "
+     "reshape/matmul and merge heads back to [batch, seq, hidden] before the "
+     "residual add."),
+    (r"missing \d+ required positional argument",
+     "CONSTRUCTOR CONTRACT: the module must be instantiable from the declared "
+     "init_kwargs alone. Give EVERY extra __init__ parameter a default "
+     "derived from the width (e.g. `d_k=None` then "
+     "`self.d_k = d_k or d_model // n_heads`)."),
+    (r"has no attribute '\w+'",
+     "ATTRIBUTE REPAIR: forward() reads a `self.<name>` that __init__ never "
+     "assigned (or the torch API does not exist). Assign every attribute in "
+     "__init__ before use — submodules must be constructed there so their "
+     "parameters register — and use only standard documented torch.nn "
+     "modules (Linear, LayerNorm, GELU, Dropout, MultiheadAttention)."),
+    (r"NameError: name",
+     "UNDEFINED NAME: define it or import it (only torch / torch.nn / math "
+     "style imports are permitted; no os/sys/subprocess)."),
+    (r"NaN/Inf",
+     "STABILITY REPAIR: add a small eps inside every sqrt/log/division, "
+     "clamp attention logits (e.g. `logits.clamp(-30, 30)`) before softmax."),
+    (r"degenerate block|RANK COLLAPSE|rank collapse",
+     "CAPACITY REPAIR: the block must hold learnable parameters whose output "
+     "varies per position AND per feature. Put at least one nn.Linear over "
+     "the hidden dim in the main path — a scalar/bias offset cannot pass."),
+    (r"the SAME \[batch, seq, hidden\] shape",
+     "OUTPUT CONTRACT: return exactly one tensor with the input's shape. "
+     "Project back to hidden size with a final nn.Linear; do not return "
+     "tuples or attention maps."),
+)
+
+
+def diagnose_failure(level: str, detail: str) -> str:
+    """Targeted repair hint for a known failure class, or '' when unknown."""
+    for pattern, hint in _HINTS:
+        if re.search(pattern, detail):
+            return hint
+    if level == "dry_run" and "Traceback" in detail:
+        return ("GENERAL DRY-RUN REPAIR: mentally reproduce the validator — "
+                "import the module, instantiate with ONLY the declared "
+                "kwargs, run one [4, 16, 64] forward. Simplify until that "
+                "passes: standard nn modules, explicit shapes, no exotic ops.")
+    return ""
 
 
 # ---------------------------------------------------------------------------
