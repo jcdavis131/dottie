@@ -7,7 +7,7 @@
 // model reply, and the client displays the source tag with every line.
 import { createServer } from "node:http";
 import { readFile, appendFile, mkdir } from "node:fs/promises";
-import { extname, join, normalize } from "node:path";
+import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { toShards } from "./public/js/extract.mjs";
 
@@ -105,7 +105,10 @@ const server = createServer(async (req, res) => {
     // static: normalize + confine to ROOT
     const rel = normalize(decodeURIComponent((req.url || "/").split("?")[0])).replace(/^([/\\])+/, "");
     const path = join(ROOT, rel === "" ? "index.html" : rel);
-    if (!path.startsWith(ROOT)) return send(403, "text/plain", "forbidden");
+    // Prefix check WITH the separator: bare startsWith(ROOT) would also admit a
+    // sibling directory whose name extends ROOT's ("public_backup"), the classic
+    // latent traversal footgun. No such sibling exists today; keep it that way.
+    if (path !== ROOT && !path.startsWith(ROOT + sep)) return send(403, "text/plain", "forbidden");
     const data = await readFile(path.endsWith(ROOT) ? join(ROOT, "index.html") : path);
     return send(200, MIME[extname(path)] || "application/octet-stream", data);
   } catch (e) {
