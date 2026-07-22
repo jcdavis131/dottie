@@ -30,6 +30,26 @@ shadows + ACES tone mapping. CONTRACT preserved for the logic layer: DEPARTMENTS
 anchors (buildings r=40, NPC homes r=24), terminal coords, `buildWorld` API (+ optional
 `animate(dt,t)` hook).
 
+## Presentation & input — MOBILE-FIRST (operator directive 2026-07-22)
+
+The game is designed for a phone in the hand FIRST; desktop is the progressive
+enhancement, never the other way round.
+
+- **Touch is the default input**: left-thumb virtual joystick (drag = walk, full
+  deflection = sprint), right-thumb action buttons (ability / router / observe / reset),
+  and persona buttons (1/2/3) that appear only while standing on a terminal. Touch
+  controls render only on coarse-pointer devices (`matchMedia("(pointer: coarse)")`);
+  keyboard (WASD/E/Q/V/R/1-3) stays fully functional everywhere.
+- **Joystick math is pure and contract-tested** (`touch.mjs stickState`): radius-normalized,
+  clamped, deadzone-rescaled, sprint threshold — bare-node testable like every other module.
+- **HUD is mobile-first CSS**: compact type via `clamp()`, safe-area insets
+  (`viewport-fit=cover`), quest tracker collapses to a tap-to-expand chip on small
+  screens, log trimmed; `@media (min-width: 900px)` widens panels for desktop.
+- **Portrait-aware camera**: taller/farther follow framing when `aspect < 1` so the
+  campus reads in portrait; observe-mode orbit unchanged.
+- **Perf budget**: DPR capped at 2 (already), shadow map 1024 on coarse-pointer devices
+  (2048 on desktop) — the Sims/RCT-2010 look must hold 60fps-ish on a mid phone.
+
 ## Playable personas (hot-swap at terminals only)
 
 | persona | role | flavor |

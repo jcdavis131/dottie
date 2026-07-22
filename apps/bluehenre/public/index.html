@@ -3,24 +3,67 @@
 <head>
 <meta charset="utf-8" />
 <title>BLUEHENRE — Austin, TX · synthetic AI-org campus</title>
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; }
+  /* MOBILE-FIRST: base styles are the phone layout; desktop widens via media query. */
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: system-ui, sans-serif;
+               touch-action: none; -webkit-user-select: none; user-select: none; }
+  canvas { display: block; }
   #hud {
-    position: fixed; top: 10px; left: 10px; padding: 8px 12px;
-    background: rgba(20, 28, 34, .78); color: #d9f3ec; border-radius: 8px;
-    font-size: 14px; max-width: 70ch;
+    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 6px);
+    left: calc(env(safe-area-inset-left, 0px) + 6px); right: calc(env(safe-area-inset-right, 0px) + 6px);
+    padding: 6px 10px; background: rgba(20, 28, 34, .78); color: #d9f3ec; border-radius: 8px;
+    font-size: clamp(11px, 2.6vw, 14px); line-height: 1.35;
   }
   #quests {
-    position: fixed; top: 10px; right: 10px; padding: 8px 12px; max-width: 46ch;
-    background: rgba(20, 28, 34, .72); color: #f3ecd9; border-radius: 8px;
-    font-size: 12px; white-space: pre-line;
+    position: fixed; top: calc(env(safe-area-inset-top, 0px) + 52px);
+    right: calc(env(safe-area-inset-right, 0px) + 6px); max-width: min(78vw, 46ch);
+    padding: 6px 10px; background: rgba(20, 28, 34, .72); color: #f3ecd9; border-radius: 8px;
+    font-size: clamp(10px, 2.4vw, 12px); white-space: pre-line;
   }
+  /* quest tracker collapses to a chip on phones; tap toggles (wired in main.mjs) */
+  #quests.collapsed #questbody { display: none; }
+  #queststoggle { cursor: pointer; font-weight: 600; }
   #log {
-    position: fixed; bottom: 10px; left: 10px; padding: 6px 12px; max-width: 70ch;
-    background: rgba(20, 28, 34, .65); color: #cfe3df; border-radius: 8px; font-size: 12px;
+    position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 118px);
+    left: calc(env(safe-area-inset-left, 0px) + 6px); max-width: 92vw; max-height: 26vh;
+    overflow: hidden; padding: 4px 10px; background: rgba(20, 28, 34, .65); color: #cfe3df;
+    border-radius: 8px; font-size: clamp(10px, 2.4vw, 12px);
   }
   #log p { margin: 3px 0; }
+
+  /* touch controls — only shown on coarse pointers (main.mjs decides) */
+  #touch { position: fixed; inset: 0; pointer-events: none; }
+  #stick {
+    position: absolute; left: calc(env(safe-area-inset-left, 0px) + 18px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+    width: 112px; height: 112px; border-radius: 50%;
+    background: rgba(20, 28, 34, .35); border: 2px solid rgba(217, 243, 236, .5);
+    pointer-events: auto;
+  }
+  #nub {
+    position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; border-radius: 50%;
+    margin: -24px 0 0 -24px; background: rgba(217, 243, 236, .75);
+  }
+  #actions, #personas {
+    position: absolute; right: calc(env(safe-area-inset-right, 0px) + 18px);
+    display: flex; flex-direction: column; gap: 10px; pointer-events: auto;
+  }
+  #actions { bottom: calc(env(safe-area-inset-bottom, 0px) + 18px); }
+  #personas { bottom: calc(env(safe-area-inset-bottom, 0px) + 18px); right: calc(env(safe-area-inset-right, 0px) + 88px);
+              flex-direction: row; }
+  #touch button {
+    width: 56px; height: 56px; border-radius: 50%; border: 2px solid rgba(217, 243, 236, .55);
+    background: rgba(20, 28, 34, .55); color: #d9f3ec; font-size: 20px; font-weight: 700;
+  }
+  #touch button:active { background: rgba(102, 255, 224, .45); }
+
+  /* desktop and up: widen panels; touch UI is not rendered there anyway */
+  @media (min-width: 900px) {
+    #hud { right: auto; max-width: 70ch; font-size: 14px; }
+    #quests { max-width: 46ch; top: calc(env(safe-area-inset-top, 0px) + 10px); }
+    #log { bottom: 10px; max-width: 70ch; max-height: none; }
+  }
 </style>
 <script type="importmap">
   { "imports": { "three": "https://unpkg.com/three@0.164.1/build/three.module.js" } }
@@ -28,7 +71,7 @@
 </head>
 <body>
 <div id="hud">booting…</div>
-<div id="quests"></div>
+<div id="quests"><span id="queststoggle">▾ quests</span><div id="questbody"></div></div>
 <div id="log"></div>
 <script type="module" src="./js/main.mjs"></script>
 </body>

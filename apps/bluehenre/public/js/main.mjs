@@ -1,4 +1,6 @@
-// BLUEHENRE — glue: input, loop, HUD, quests, ecosystem, honest NPC chat.
+// BLUEHENRE — glue: input (touch-first + keyboard), loop, HUD, quests, ecosystem,
+// honest NPC chat. Mobile-first per SPEC "Presentation & input": touch is the
+// default; keyboard is the desktop enhancement; both drive the SAME handlers.
 import * as THREE from "three";
 import { buildWorld, onTerminal, nearestNpc } from "./world.mjs";
 import { createBandwidth, spend, tick as bwTick, resetRun } from "./bandwidth.mjs";
@@ -7,6 +9,9 @@ import { createRouter, remember, route, wipe } from "./router.mjs";
 import { createEcosystem, tickEcosystem } from "./ecosystem.mjs";
 import { createQuestLog, advance, briefs, ORG } from "./quests.mjs";
 import { createRun, record, recordQuestComplete, extractRun } from "./workflow.mjs";
+import { createTouchControls } from "./touch.mjs";
+
+const coarse = matchMedia("(pointer: coarse)").matches; // phone/tablet = default profile
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 400);
@@ -27,6 +32,9 @@ addEventListener("resize", () => {
 });
 
 const world = buildWorld(scene);
+// perf budget (SPEC): phones get the 1024 shadow map, desktop keeps 2048
+if (coarse)
+  scene.traverse((o) => { if (o.isDirectionalLight && o.shadow) o.shadow.mapSize.set(1024, 1024); });
 const bw = createBandwidth(100);
 const me = createPlayer("auditor");
 const router = createRouter(world.npcs.map((n) => n.userData.npcId));
@@ -36,13 +44,14 @@ const questLog = createQuestLog();
 let run = createRun(Number(localStorage.getItem("bluehenre.runId") || 1));
 
 const hud = document.getElementById("hud");
-const questsEl = document.getElementById("quests");
+const questsPanel = document.getElementById("quests");
+const questsEl = document.getElementById("questbody");
 const log = document.getElementById("log");
 const say = (line) => {
   const p = document.createElement("p");
   p.textContent = line; // textContent only — no markup injection from any source
   log.prepend(p);
-  while (log.childNodes.length > 8) log.lastChild.remove();
+  while (log.childNodes.length > (coarse ? 4 : 8)) log.lastChild.remove();
 };
 
 const renderQuests = () => {
@@ -51,29 +60,32 @@ const renderQuests = () => {
     .concat(questLog.completed.map((q) => `✓ ${q}`))
     .join("\n") || "all quest lines complete";
 };
+// quest tracker: collapsed-by-default on phones, tap the chip to toggle
+if (coarse) questsPanel.classList.add("collapsed");
+const toggleQuests = (e) => { e.preventDefault(); questsPanel.classList.toggle("collapsed"); };
+const questsToggle = document.getElementById("queststoggle");
+questsToggle.addEventListener("click", toggleQuests);
+questsToggle.addEventListener("touchstart", toggleQuests, { passive: false });
 
 const keys = new Set();
 addEventListener("keydown", (e) => keys.add(e.key.toLowerCase()));
 addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
 
-// persona hot-swap: keys 1/2/3, only on a terminal, costs bandwidth
+// ---- ONE action system: these handlers serve keyboard AND touch --------------
+
 const order = Object.keys(PERSONAS);
-addEventListener("keydown", (e) => {
-  const i = ["1", "2", "3"].indexOf(e.key);
-  if (i === -1) return;
+function swapTo(i) {
   const target = order[i];
+  if (!target) return;
   const term = onTerminal(world.player, world.terminals);
   const sw = hotSwap(me, target, { onTerminal: term });
   if (!sw.ok) return say(`swap → ${target}: ${sw.reason}`);
   const sp = spend(bw, "hot_swap", me.persona);
   record(run, { action: "hot_swap", persona: me.persona, ok: sp.ok, cost: sp.cost });
   say(sp.ok ? `now ${PERSONAS[target].label}` : `swap denied: ${sp.reason}`);
-});
+}
 
-// E = persona ability on the nearest NPC: spends bandwidth, advances quests,
-// records the workflow event, and chats through the HONEST proxy.
-addEventListener("keydown", async (e) => {
-  if (e.key.toLowerCase() !== "e") return;
+async function useAbility() {
   const npc = nearestNpc(world.player, world.npcs);
   if (!npc) return say("no NPC in range");
   const action = PERSONAS[me.persona].ability;
@@ -106,29 +118,27 @@ addEventListener("keydown", async (e) => {
   } catch {
     say(`${npc.userData.npcId} [offline]: chat backend unreachable`);
   }
-});
+}
 
-// Q = query the memory router (what does the org remember about my probes?)
-addEventListener("keydown", (e) => {
-  if (e.key.toLowerCase() !== "q") return;
+function queryRouter() {
   const hits = route(router, "request interview decode replan sync status");
   say(hits.length
     ? `router[${hits[0].kind}]: ${hits.slice(0, 4).map((h) => `${h.npcId}:${h.score}`).join("  ")}`
     : "router: no org memories match");
-});
+}
 
 // V = observe mode (RollerCoaster-Tycoon view): pull up to a slow aerial orbit and
 // just WATCH the org at work — circuits, hall meetings, memo traffic. Player input
 // is parked; the ecosystem keeps running because it never depended on the player.
 let observe = false;
 let orbitA = 0;
-addEventListener("keydown", (e) => {
-  if (e.key.toLowerCase() !== "v") return;
+function toggleObserve() {
   observe = !observe;
   say(observe ? "observe mode — the org runs itself; V to return" : "back on the ground");
-});
+}
 
 // Run-end reset — extract THEN wipe, honestly reporting validated vs discarded.
+let resetLatch = false;
 async function endRun() {
   const extraction = extractRun(run);
   const wiped = wipe(router); // the wipe is real now, not just a log line
@@ -149,23 +159,48 @@ async function endRun() {
   localStorage.setItem("bluehenre.runId", String(run.runId));
   say(`fresh run #${run.runId} — spent ${stats.spentTotal.toFixed(0)} bw last run; ${wiped.wiped} memories wiped`);
 }
+function tryReset() {
+  if (!bw.runOver || resetLatch) return;
+  resetLatch = true;
+  endRun().finally(() => (resetLatch = false));
+}
+
+// keyboard bindings → the shared handlers
+addEventListener("keydown", (e) => {
+  const i = ["1", "2", "3"].indexOf(e.key);
+  if (i !== -1) return swapTo(i);
+  const k = e.key.toLowerCase();
+  if (k === "e") useAbility();
+  else if (k === "q") queryRouter();
+  else if (k === "v") toggleObserve();
+});
+
+// touch controls: rendered ONLY on coarse pointers (SPEC mobile-first)
+const touch = coarse
+  ? createTouchControls(document.body, {
+      onAbility: useAbility, onRouter: queryRouter,
+      onObserve: toggleObserve, onSwap: swapTo, onReset: tryReset,
+    })
+  : null;
 
 let last = performance.now();
-let resetLatch = false;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
 
   const p = world.player.position;
   if (!observe) {
-    const sprint = keys.has("shift");
+    // merge keyboard + joystick into one analog move vector (unit-clamped)
+    const stick = touch ? touch.getStick() : { x: 0, z: 0, mag: 0, sprint: false };
+    let mx = (keys.has("d") ? 1 : 0) - (keys.has("a") ? 1 : 0) + stick.x;
+    let mz = (keys.has("s") ? 1 : 0) - (keys.has("w") ? 1 : 0) + stick.z;
+    const len = Math.hypot(mx, mz);
+    if (len > 1) { mx /= len; mz /= len; }
+    const sprint = keys.has("shift") || stick.sprint;
     const v = sprint ? 14 : 7;
-    if (keys.has("w")) p.z -= v * dt;
-    if (keys.has("s")) p.z += v * dt;
-    if (keys.has("a")) p.x -= v * dt;
-    if (keys.has("d")) p.x += v * dt;
-    if (sprint && (keys.has("w") || keys.has("a") || keys.has("s") || keys.has("d")))
-      spend(bw, "move_fast", me.persona);
+    p.x += mx * v * dt;
+    p.z += mz * v * dt;
+    if (sprint && len > 0.05) spend(bw, "move_fast", me.persona);
   }
 
   // P2 ecosystem: circuits drive the meshes; memos land in BOTH buckets.
@@ -190,20 +225,22 @@ function frame(now) {
     camera.position.set(Math.cos(orbitA) * 70, 55, Math.sin(orbitA) * 70);
     camera.lookAt(0, 0, 0);
   } else {
-    camera.position.set(p.x, 14, p.z + 18);
+    // portrait-aware follow framing: taller + farther when the screen is upright
+    const portrait = camera.aspect < 1;
+    camera.position.set(p.x, portrait ? 18 : 14, p.z + (portrait ? 23 : 18));
     camera.lookAt(p.x, 0, p.z);
   }
 
   const term = onTerminal(world.player, world.terminals);
+  touch?.setTerminal(term && !bw.runOver);
+  touch?.setRunOver(bw.runOver);
   hud.textContent = observe
     ? `${ORG.name} — ${ORG.hq} | OBSERVE MODE — the org at work (${eco.memos} memos so far) | V=return`
     : `${ORG.name} — ${ORG.hq} | ${PERSONAS[me.persona].label} | bandwidth ${bw.value.toFixed(0)}/${bw.max}` +
-      (term ? " | TERMINAL: 1=auditor 2=cipher 3=architect" : "") +
-      (bw.runOver ? " | RUN OVER — R resets (session wipes)" : " | E=ability Q=router V=observe Shift=sprint");
-  if (bw.runOver && keys.has("r") && !resetLatch) {
-    resetLatch = true;
-    endRun().finally(() => (resetLatch = false));
-  }
+      (term ? (coarse ? " | TERMINAL: tap 1/2/3" : " | TERMINAL: 1=auditor 2=cipher 3=architect") : "") +
+      (bw.runOver ? (coarse ? " | RUN OVER — tap R (session wipes)" : " | RUN OVER — R resets (session wipes)")
+                  : (coarse ? "" : " | E=ability Q=router V=observe Shift=sprint"));
+  if (bw.runOver && keys.has("r")) tryReset();
 
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
@@ -211,4 +248,6 @@ function frame(now) {
 requestAnimationFrame(frame);
 renderQuests();
 say(`${ORG.name}: "${ORG.mission}" — ${ORG.platform}`);
-say(`run #${run.runId} started. WASD to move. Router: ${router.kind}`);
+say(coarse
+  ? `run #${run.runId} started. Left stick walks (full tilt sprints); E=ability. Router: ${router.kind}`
+  : `run #${run.runId} started. WASD to move. Router: ${router.kind}`);
