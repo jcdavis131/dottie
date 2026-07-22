@@ -89,7 +89,11 @@ phases:                            # same 6-phase shape, 2.5B budget
 branches:
   tool:
     init: /ckpt/base_final.pt
-    tokens: 300_000_000            # ~1144 steps @ 262144 tok/step
+    tokens: 390_000_000            # extended 2026-07-21 (was 300M/1144 steps): ~1487 steps
+                                   # @ 262144 tok/step. +343 steps, all within p3 (1.75B->2.14B
+                                   # < p3 end 2.15B) so it keeps the tool regime (seq 2048, no
+                                   # memory-heavy p4 seq-4096) and trains the new scout_cli
+                                   # (tool_use) + zk_math (math_reasoning) P3 curriculum.
     start_tokens: 1_750_000_000    # cum through p0+p1+p2 → enter p3
     freeze: [system1, system2]
     finetune: [critic, planner, router, arbitration]
