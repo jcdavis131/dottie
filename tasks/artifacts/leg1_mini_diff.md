@@ -23,11 +23,13 @@ revision:
    the current comparable bins aside, and score BOTH finals — otherwise the
    gate cannot see what seq-4096 training buys, only what it costs.
 
-Open question for the steer thread: init Leg 1 from `tool_final.pt` @2861
-(resume the damaged-but-long-ctx-trained state; the 350M p3 re-entry may
-repair short-ctx — that is what the gate measures) vs from `stable_p4.pt` or
-even step-1487 (discard p5's narrowing). Recommendation: resume from
-tool_final @2861 WITH the replay mixes — one honest experiment, gated.
+Init question RESOLVED by the long-bin build (2026-07-23, steer comment
+6273012): step-1487 beats step-2861 on 5 of 6 bins INCLUDING the p4 long-doc
+bin (125.9 vs 1,398.7 — seq-4096 training bought no measurable long-ctx
+competence, only a 3.4-ppl template fit on the p5 anneal mix that any
+re-anneal rebuilds). **Recommendation: init Leg 1 from step-1487
+(`tool_final_ext1.pt`)** with the replay-heavy schedule below. Operator may
+still override on the steer thread.
 
 Status: **proposal only.** `apps/ava-factory/configs/` is bind-mounted into the
 live trainer and has not been touched. This posts to the steer thread; the
