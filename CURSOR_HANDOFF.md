@@ -101,6 +101,15 @@ steers from anywhere.
    bhenre apex) — waived once, by name, for the four measured improvements.
 7. `tool_use` curriculum-share increase: propose as diff AFTER the eval.
 
+## Confirm-why doctrine (operator, 2026-07-22)
+
+**"ALWAYS CONFIRM: why it is true."** Before asserting any mechanism/state
+claim — especially one driving an action or an operator report — decompose it
+into components (code path, config value, runtime state, data) and verify
+each against its source; every component needs a citable reason to exist.
+Assumed-not-confirmed components get labeled as unverified, and corrections
+are stated plainly when decomposition catches an error.
+
 ## Honesty doctrine (non-negotiable, everywhere)
 Numbers render only from `source:"local"` feeds; stale = “history, not
 telemetry”; unreachable renders as offline; chat is `[dottie]`/`[offline]`,
