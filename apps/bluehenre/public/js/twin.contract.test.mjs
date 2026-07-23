@@ -269,5 +269,78 @@ check("age from published_utc", Math.abs(liveAgeS(wrapped, t0) - 600) < 1);
 check("age from bare ts", Math.abs(liveAgeS({ ts: 500 }, 1000_000) - 500) < 1);
 check("age of garbage -> null", liveAgeS({}, t0) === null && liveAgeS(wrapped, NaN) === null);
 
+// ---- S6 gap coverage: contract-critical branches inside covered exports ----
+
+// evals wall time: a 0.00s wall is a REAL measurement, not an absent one
+const zeroWall = parseHub({ hub: { eval_report: {
+  report_markdown: "# Report\nPreset: mini | Wall: 0.00s\n| a | PASS |" } } });
+check("Wall: 0.00s -> wallS is 0, not null", zeroWall?.evals?.wallS === 0);
+const bareReport = parseHub({ hub: { eval_report: { report_markdown: "# Report\nno verdicts here" } } });
+check("report without Wall/Preset lines -> nulls",
+  bareReport?.evals?.wallS === null && bareReport.evals.preset === null &&
+  bareReport.evals.pass === 0 && bareReport.evals.fail === 0);
+
+// jspace arity guard: wrong route_probs length must never misalign labels
+const badArity = parseOrg({ pipeline: { trainer: { last: { event: "step", step: 1,
+  route_probs: [0.2, 0.8], hl_est: { system1: 8 } } } } });
+check("route_probs of wrong arity -> jspace null, labels never misaligned",
+  badArity !== null && badArity.jspace === null);
+
+// disk critical outranks disk low (else-if precedence)
+const critEvents = parseLiveEvents({ pipeline: { disk: { free_gb: 4.2, low_water_gb: 12,
+  critical_gb: 6, below_low_water: true, below_critical: true } } });
+check("disk critical -> finance event and suppresses disk_low",
+  critEvents.some((e) => e.kind === "disk_critical" && e.dept === "finance" && e.label.includes("4.2")) &&
+  !critEvents.some((e) => e.kind === "disk_low"));
+
+// every failing gate maps to its OWN department (only D3 was covered)
+const gateEvents = (id) => parseLiveEvents({ pipeline: { flow: { gates: [
+  { id, name: "g", ok: false, value: "v", target: "t" }] } } });
+check("gates D1/D2/D4/D5 map to their departments",
+  gateEvents("D1")[0]?.dept === "finance" && gateEvents("D2")[0]?.dept === "archives" &&
+  gateEvents("D4")[0]?.dept === "servers" && gateEvents("D5")[0]?.dept === "archives");
+check("mode error raises labs cipher event",
+  parseLiveEvents({ pipeline: { mode: { id: "error", label: "Trainer error", detail: "boom" } } })
+    .some((e) => e.kind === "mode_error" && e.dept === "labs" && e.persona === "cipher"));
+
+// clipping: batch text at 700 verbatim chars, event labels at 140 with ellipsis
+const clippedHub = parseHub({ hub: { batch_sample: { text: "x".repeat(900) } } });
+check("batch sample text clipped at 700", clippedHub?.sample?.text.length === 700);
+const longEvent = parseLiveEvents({ pipeline: {
+  mode: { id: "stale", label: "Stale", detail: "d".repeat(300) } } })[0];
+check("event labels clipped to 140 with ellipsis",
+  longEvent?.label.length === 140 && longEvent.label.endsWith("…"));
+
+// freshness: fallback within the wrapped feed + clock-skew sign
+check("garbage published_utc falls back to pipeline.ts",
+  Math.abs(liveAgeS({ published_utc: "not a date", pipeline: { ts: 500 } }, 1000_000) - 500) < 1);
+check("future published_utc -> negative age",
+  liveAgeS({ published_utc: "2026-07-22T15:00:02Z", pipeline: pipelineObj }, t0) < 0);
+
+// parseOrg absence branches: absent numbers stay null, never invented
+const bareOrg = parseOrg({ pipeline: { trainer: { last: { event: "step", step: 5 } } },
+  research: { unreachable: "y" }, hub: { eval_catalog: { unreachable: "x" } } });
+check("trainer.last without gpu_util_pct -> gpu null", bareOrg?.gpu === null);
+check("unreachable research/eval_catalog -> null panels",
+  bareOrg?.research === null && bareOrg?.evalCatalog === null);
+const noSpark = parseDashboard({ pipeline: {
+  trainer: { series: { step: [1, 2, 3], lm_loss: [0.5, 0.4] } },
+  manifest: { funnel: { raw: 1, packed: NaN, consumed: 2, weird: "x" } } } });
+check("mismatched step/lm_loss lengths -> no spark", noSpark?.spark === null);
+check("funnel drops non-finite counts",
+  noSpark?.funnel?.raw === 1 && noSpark.funnel.consumed === 2 &&
+  !("packed" in noSpark.funnel) && !("weird" in noSpark.funnel));
+
+// small honesty branches: default model line, non-finite fields, empty reports
+const bareLine = twinLine({ source: "local" });
+check("local with no numbers -> 'no numbers yet' + ava-mini default",
+  bareLine.includes("no numbers yet") && bareLine.includes("ava-mini") && bareLine.includes("[local]"));
+const nfTail = parseMetricsTail('{"event":"step","step":7,"lm":"fast","tokens":null}');
+check("step kept, non-finite lm/tokens nulled",
+  nfTail?.step === 7 && nfTail.lm === null && nfTail.tokens === null);
+check("missing base/perplexity -> null",
+  parseEvalSummary({}) === null && parseEvalSummary({ base: {} }) === null &&
+  parseEvalSummary(null) === null);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

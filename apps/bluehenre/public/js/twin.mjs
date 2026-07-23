@@ -160,10 +160,12 @@ export function parseHub(feed) {
   let evals = null;
   if (ok(hub?.eval_report) && typeof hub.eval_report.report_markdown === "string") {
     const md = hub.eval_report.report_markdown;
+    // Number.isFinite, not ||: a 0.00s wall is a real measurement, not absent
+    const wall = Number(md.match(/Wall:\s*([\d.]+)s/)?.[1]);
     evals = {
       pass: (md.match(/PASS/g) ?? []).length,
       fail: (md.match(/FAIL/g) ?? []).length,
-      wallS: Number(md.match(/Wall:\s*([\d.]+)s/)?.[1]) || null,
+      wallS: Number.isFinite(wall) ? wall : null,
       preset: md.match(/Preset:\s*(\w+)/)?.[1] ?? null,
     };
   }
