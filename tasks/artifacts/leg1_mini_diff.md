@@ -1,5 +1,34 @@
 # Leg 1 — tool-branch depth extension to TPP ~20 (PROPOSAL, not applied)
 
+## ⚠ REVISED 2026-07-23 after the completion eval — read this first
+
+The original draft leaned on the precedent "extension won last time (7,814 →
+276)." The completion A/B inverted that precedent for the p4/p5 phases:
+**275.95 (step 1487, through p3) → 2,341 (stable_p4) → 4,103 (step 2861,
+through p5 anneal)** on identical p0–p3 bins. The p3-extension precedent
+remains positive — the damage is specific to the seq-4096 phases and the
+narrow anneal (and bin 1 actually improved during p5: 1,150 → 617, so it is
+mix-narrowing, not global decay). Three consequences baked into this
+revision:
+
+1. **Replay is mandatory.** The p4/p5 mixes below now carry explicit
+   early-phase replay shares (logic/math/encyclopedia/code) so the tail
+   phases stop training away p0–p3 competence. TPP-only reasoning is dead:
+   p4/p5 proved tokens can subtract on the measured axis.
+2. **The doubled anneal is cut back.** The draft doubled p5 to 400M at an
+   even narrower mix — that would amplify the measured failure mode. p5 stays
+   200M with replay keys added.
+3. **New prerequisite: long-seq bins.** Before boot, build a long-seq bin set
+   (target-bytes bumped so p4/p5 bins hold >4096 contiguous tokens), stash
+   the current comparable bins aside, and score BOTH finals — otherwise the
+   gate cannot see what seq-4096 training buys, only what it costs.
+
+Open question for the steer thread: init Leg 1 from `tool_final.pt` @2861
+(resume the damaged-but-long-ctx-trained state; the 350M p3 re-entry may
+repair short-ctx — that is what the gate measures) vs from `stable_p4.pt` or
+even step-1487 (discard p5's narrowing). Recommendation: resume from
+tool_final @2861 WITH the replay mixes — one honest experiment, gated.
+
 Status: **proposal only.** `apps/ava-factory/configs/` is bind-mounted into the
 live trainer and has not been touched. This posts to the steer thread; the
 operator applies the diff and boots the tool-fork compose after the current run
@@ -25,9 +54,9 @@ number below is derived from the current `configs/mini.yaml` and
   use 1.3 for scheduling.
 - Phase walk of the resumed branch (`phase_for_step`, cumulative over
   `phases[]`; branch `mix:` is descriptive only — nothing in train.py reads it):
-  resume at tokens_done 2.5B → **p3 until 2.85B** (350M at the new mix), **p4
-  2.85–3.0B** (unchanged), **p5 anneal 3.0–3.4B** (400M, kept last). Anneal
-  tail kept, per the doc.
+  resume at tokens_done 2.5B → **p3 until 3.05B** (550M at the new mix — the
+  proven-positive seq-2048 regime), **p4 3.05–3.2B** (replay added), **p5
+  anneal 3.2–3.4B** (200M, replay added, kept last). Sum of phases = 3.4B ✅.
 
 ## Unified diff against `apps/ava-factory/configs/mini.yaml`
 
@@ -64,16 +93,22 @@ time with: `python tasks/artifacts/leg1_diffgen.py out.patch`.
    # grounding-heavy (notfound/cite) anneal in P5.
    - {name: p2_foundation, tokens: 850_000_000, seq: 1024, rope_base: 10000,  ntk: 1.0, mix: {encyclopedia: 0.30, code: 0.20, tool_use: 0.15, math: 0.15, logic: 0.10, chat: 0.10}}
 -  - {name: p3_reasoning,  tokens: 400_000_000, seq: 2048, rope_base: 50000,  ntk: 1.0, mix: {math_reasoning: 0.30, tool_use: 0.30, logic: 0.15, temporal: 0.15, code: 0.10}}
-+  # Leg 1 depth: +700M in p3, probe-facing axes up (weights still sum to 1.0).
-+  # phase_for_step() puts the resumed branch (tokens_done 2.5B) back in p3
-+  # until 2.85B: 350M fresh tail at this mix, then p4 unchanged, then anneal.
-+  - {name: p3_reasoning,  tokens: 1_100_000_000, seq: 2048, rope_base: 50000,  ntk: 1.0, mix: {math_reasoning: 0.35, tool_use: 0.35, logic: 0.10, temporal: 0.10, code: 0.10}}
++  # Leg 1 depth REVISED: +900M in p3 (the seq-2048 regime with the POSITIVE
++  # extension precedent; the eval killed the draft's p5 doubling). weights
++  # sum to 1.0. phase_for_step() puts the resumed branch (tokens_done 2.5B)
++  # back in p3 until 3.05B: 550M fresh at this mix, then p4, then anneal.
++  - {name: p3_reasoning,  tokens: 1_300_000_000, seq: 2048, rope_base: 50000,  ntk: 1.0, mix: {math_reasoning: 0.35, tool_use: 0.35, logic: 0.10, temporal: 0.10, code: 0.10}}
    # tool_use in P4 = long-context search/cite (tool_curriculum L2/L3 + p4_search_cite).
-   - {name: p4_long,       tokens: 150_000_000, seq: 4096, rope_base: 100000, ntk: 1.2, mix: {long_docs: 0.55, needle: 0.25, tool_use: 0.20}}
+-  - {name: p4_long,       tokens: 150_000_000, seq: 4096, rope_base: 100000, ntk: 1.2, mix: {long_docs: 0.55, needle: 0.25, tool_use: 0.20}}
 -  - {name: p5_anneal,     tokens: 200_000_000, seq: 4096, rope_base: 100000, ntk: 1.2, mix: {tool_use: 0.25, proofs_verified: 0.20, chat: 0.20, safety: 0.20, math_reasoning: 0.15}}
-+  # Anneal tail kept LAST and doubled; tool_use .25->.30 (proofs_verified
-+  # gives back the .05). chat/safety retention weights untouched.
-+  - {name: p5_anneal,     tokens: 400_000_000, seq: 4096, rope_base: 100000, ntk: 1.2, mix: {tool_use: 0.30, proofs_verified: 0.15, chat: 0.20, safety: 0.20, math_reasoning: 0.15}}
++  # REVISED: p4/p5 carry early-phase REPLAY shares (the completion eval showed
++  # these phases cost 275.95->4,103 weighted ppl on p0-p3 bins without them).
++  # Replay keys are existing generators — no collector/source edits needed.
++  - {name: p4_long,       tokens: 150_000_000, seq: 4096, rope_base: 100000, ntk: 1.2, mix: {long_docs: 0.40, needle: 0.20, tool_use: 0.20, encyclopedia: 0.10, math: 0.10}}
++  # Anneal stays 200M (the draft's doubling would amplify the measured
++  # narrowing); tool_use .25->.30; logic+math replay .15 funded by
++  # proofs_verified .20->.10 and chat .20->.15. safety untouched.
++  - {name: p5_anneal,     tokens: 200_000_000, seq: 4096, rope_base: 100000, ntk: 1.2, mix: {tool_use: 0.30, proofs_verified: 0.10, chat: 0.15, safety: 0.20, math_reasoning: 0.15, logic: 0.05, math: 0.05}}
  
  # Tool/chat forks from mini base_final (T9.3 gate before base1b).
  # --branch tool --init /ckpt/base_final.pt --run /ckpt/tool  (no --resume)
@@ -122,16 +157,19 @@ time with: `python tasks/artifacts/leg1_diffgen.py out.patch`.
    the extended horizon re-opens the WSD plateau (lr 6.0e-4 until step ~5790,
    cosine to 6.0e-5 by 6294). Same maneuver as the 390M→750M extension, whose
    result (weighted heldout ppl 7,814 → 276) is the measured precedent.
-2. **p3 `tokens` 400M → 1_100M, mix `math_reasoning/tool_use` .30→.35 each.**
-   Puts the resumed branch back inside p3 for 350M fresh tokens at a mix
+2. **p3 `tokens` 400M → 1_300M, mix `math_reasoning/tool_use` .30→.35 each.**
+   Puts the resumed branch back inside p3 for 550M fresh tokens at a mix
    shifted toward the two weakest measured axes (probes 0/200 tool-selection,
-   agent-eval 0%). Mix keys are unchanged as a SET — same generators, same
-   `source.phases` coverage — so no collector/source edits are needed (the
-   known collector-spin gotcha is avoided by construction). Weights sum to 1.0.
-3. **p5 `tokens` 200M → 400M, `tool_use` .25→.30, `proofs_verified` .20→.15.**
-   Keeps the anneal tail (doc requirement) as the LAST thing the model sees,
-   doubled so the tail stays ~12% of the run; chat/safety retention weights
-   untouched to protect the general-mix non-regression half of the tool gate.
+   agent-eval 0%) — and concentrates the +0.9B in the ONLY regime with a
+   positive extension precedent (7,814→276 was a within-p3 move). Mix keys
+   unchanged as a SET — no collector/source edits (collector-spin gotcha
+   avoided by construction). Weights sum to 1.0.
+3. **p4/p5 get REPLAY, p5 stays 200M (draft's doubling reverted).** The
+   completion eval measured what p4/p5 without replay cost: 275.95→2,341→4,103
+   weighted on p0–p3 bins. p4 funds encyclopedia+math replay (.10+.10) from
+   long_docs/needle; p5 funds logic+math replay (.05+.05) from proofs_verified
+   and chat. safety weight untouched to protect the general-mix
+   non-regression half of the tool gate.
 4. **`tokens_total` 2.5B → 3.4B.** Keeps `sum(phases) == tokens_total` and the
    dashboard/status run-fraction honest (pipeline_status derives run progress
    from it). Branch step math does NOT use it. See Risk #1 for the hazard; if
