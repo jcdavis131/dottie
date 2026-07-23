@@ -4,6 +4,12 @@
 Every positive case below is a REAL failure string (or its load-bearing
 fragment) from the ledger's failed_validation population as of 2026-07-22 —
 the hints must fire on what actually kills candidates, not on invented text.
+(Exceptions are individually marked CONSTRUCTED or validator-literal.)
+
+2026-07-23 expansion: NEW_REAL_CASES fragments come from
+implementation.validation.history in the ledger copy (358 failed attempts;
+the truncated `failure` column is not mined). Coverage over that corpus is
+measured by scripts/replay_hint_coverage.py: 71.2% before, 100.0% after.
 """
 
 from dottie.research.validate import (ValidationResult, check_self_attributes,
@@ -64,6 +70,107 @@ def test_as_feedback_unchanged_when_no_hint():
     fb = r.as_feedback()
     assert "REPAIR HINT:" not in fb
     assert fb.startswith("Validation failed at level 'syntax'")
+
+
+# ---- 2026-07-23 expansion: (level, real history fragment) -> hint class ------
+# Experiment ids in trailing comments locate each fragment in the ledger copy.
+
+NEW_REAL_CASES = [
+    ("static",
+     "F821 Undefined name `nn`\n  --> data\\research\\workspaces\\"
+     "bcf9e4d3e316\\candidate_051d030b.py:11:21\n   |\n 9 |         "
+     "self.eps = eps\n10 |         self.alpha = "
+     "nn.Parameter(torch.zeros(num_experts))",
+     "UNDEFINED NAME"),                                      # bcf9e4d3e316
+    ("static",
+     "F821 Undefined name `Dict`\n  --> data\\research\\workspaces\\"
+     "bcf9e4d3e316\\candidate_f7556b99.py:13:43",
+     "UNDEFINED NAME"),                                      # bcf9e4d3e316
+    ("dry_run",
+     "RuntimeError: element 0 of tensors does not require grad and does not "
+     "have a grad_fn",
+     "NO-AUTOGRAD-IN-FORWARD"),                              # bd158264b645
+    ("contract",
+     "no 'forward' method found on any class",
+     "MODULE SKELETON"),                                     # 52aaf2fe8d60
+    ("contract",
+     "no class defined (expected an nn.Module subclass)",
+     "MODULE SKELETON"),
+    ("syntax",
+     "SyntaxError on line 15: unexpected character after line continuation "
+     "character",
+     "MALFORMED SOURCE"),                                    # cd9d7b550b2d
+    ("syntax",
+     "SyntaxError on line 4: '(' was never closed",
+     "MALFORMED SOURCE"),
+    ("syntax",
+     "SyntaxError on line 9: unmatched ']'",
+     "MALFORMED SOURCE"),
+    ("syntax",
+     "SyntaxError on line 21: positional argument follows keyword argument",
+     "MALFORMED SOURCE"),
+    ("contract",
+     "forward() of HysteresisCrossEntropyLoss requires extra argument(s) "
+     "['targets'] beyond the single hidden-states tensor",
+     "LOSS-VS-BLOCK"),                                       # 0ee3e83776a1
+    # validator-literal (check_contract's own message), zero ledger rows yet:
+    ("contract",
+     "illegal imports (untrusted-code policy): ['os']",
+     "SANDBOX POLICY"),
+    ("dry_run",
+     "AssertionError: Routing probs shape torch.Size([4, 4]) does not match "
+     "expected [num_experts=4]",
+     "YOUR OWN ASSERT FIRED"),                               # 471f27050226
+    ("dry_run",
+     "RuntimeError: t() expects a tensor with <= 2 dimensions, but self is 3D",
+     "BATCHED TRANSPOSE"),                                   # d2b6308146f8
+    ("dry_run",
+     "ImportError: cannot import name 'einsum' from 'torch.nn.functional' "
+     "(C:\\Users\\jcdav\\dottie\\apps\\dottie\\.venv\\Lib\\site-packages\\"
+     "torch\\nn\\functional.py)",
+     "IMPORT REALITY"),                                      # 77e7ea900675
+    ("dry_run",
+     "RuntimeError: Index tensor must have the same number of dimensions as "
+     "input tensor",
+     "GATHER/TOPK REPAIR"),                                  # 97c3eb5b94a8
+    ("dry_run",
+     "RuntimeError: shape '[4, 4, 16]' is invalid for input of size 16",
+     "SHAPE-ALGEBRA REPAIR"),                                # 471f27050226
+]
+
+
+def test_expanded_real_failures_get_targeted_hints():
+    for level, detail, expected in NEW_REAL_CASES:
+        hint = diagnose_failure(level, detail)
+        assert expected in hint, f"{expected!r} not fired for: {detail[:60]}"
+
+
+def test_static_snippet_quoting_dry_run_text_gets_static_hint():
+    # CONSTRUCTED (not a ledger row): ruff details quote candidate source, so
+    # a dry_run-oriented pattern must not steal the diagnosis on its level —
+    # the level-scoped table is checked before the generic one.
+    detail = ("F821 Undefined name `w`\n   |\n12 |         y = "
+              "torch.einsum() * w\n   |")
+    hint = diagnose_failure("static", detail)
+    assert "UNDEFINED NAME" in hint and "EINSUM" not in hint
+
+
+def test_assert_catchall_loses_to_specific_classes():
+    # CONSTRUCTED (not a ledger row): when a candidate's assert wraps a known
+    # failure class, the specific hint must win — the bare `AssertionError:`
+    # catch-all is deliberately ordered last in _HINTS.
+    detail = ("AssertionError: shape '[4, 16, 8, 64]' is invalid for input "
+              "of size 12288")
+    assert "SHAPE-ALGEBRA REPAIR" in diagnose_failure("dry_run", detail)
+
+
+def test_as_feedback_appends_hint_for_static_failure():
+    r = ValidationResult(False, "static", "fail",
+                         "F821 Undefined name `nn`\n  --> "
+                         "candidate_051d030b.py:11:21")
+    fb = r.as_feedback()
+    assert "Validation failed at level 'static'" in fb
+    assert "REPAIR HINT:" in fb and "UNDEFINED NAME" in fb
 
 
 # ---- check_self_attributes: advisory only, silent when unsure ---------------

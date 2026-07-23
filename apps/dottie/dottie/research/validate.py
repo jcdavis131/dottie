@@ -82,13 +82,20 @@ class ValidationResult:
 # traceback tells the corrector WHAT broke; these tell an 8B corrector HOW
 # this class of candidate actually gets fixed. Pure, no I/O; an unknown
 # failure gets no hint rather than a wrong one.
+#
+# Expanded 2026-07-23 from implementation.validation.history in the ledger copy
+# (358 failed attempts across 100 experiments — the `failure` column truncates
+# at ~567 chars, usually BEFORE the terminal exception line, so history is the
+# real corpus; scripts/replay_hint_coverage.py measures coverage against it).
+# Before the expansion, 103/358 attempts (28.8%) got no hint at all, and every
+# syntax/static/contract failure was in that set.
 _HINTS: tuple = (
     (r"einsum\(\)",
      "EINSUM REPAIR: the equation does not match the operands. Do not fiddle "
      "with the letters — REPLACE the einsum with explicit ops: reshape/view "
      "to split dims, torch.matmul for contractions, .transpose(-2, -1) to "
      "align. One op per line, and add `assert x.shape == (...)` after each."),
-    (r"must match the size of tensor|Expected size for first two dimensions|mat1 and mat2 shapes",
+    (r"must match the size of tensor|Expected size for first two dimensions|mat1 and mat2 shapes|is invalid for input of size",
      "SHAPE-ALGEBRA REPAIR: track the shape symbolically through every line "
      "starting from [batch, seq, hidden]. This error means an op changed a "
      "dim you later treat as unchanged (usually a head split never merged "
@@ -120,7 +127,104 @@ _HINTS: tuple = (
      "OUTPUT CONTRACT: return exactly one tensor with the input's shape. "
      "Project back to hidden size with a final nn.Linear; do not return "
      "tuples or attention maps."),
+    # --- 2026-07-23 expansion: runtime-level classes, ordered by measured
+    # attempt count (30/8/7/6 of 358). The bare `AssertionError:` catch-all is
+    # LAST on purpose so every more specific class above it wins first.
+    (r"does not require grad and does not have a grad_fn|"
+     r"cannot register a hook on a tensor that doesn't require gradient|"
+     r"grad can be implicitly created only for scalar outputs|"
+     r"unexpected keyword argument 'retain_grad'",
+     "NO-AUTOGRAD-IN-FORWARD: you called torch.autograd.grad/backward/"
+     "register_hook on the input inside forward(). Validation runs under "
+     "no_grad and a residual-stream block does not own a loss, so these "
+     "calls can never succeed. Delete the autograd machinery and express "
+     "the idea with quantities computable in forward: activation statistics "
+     "(mean/std/norm of x), learnable nn.Parameter gates, or detached "
+     "proxies."),
+    (r"t\(\) expects a tensor with <= 2 dimensions",
+     "BATCHED TRANSPOSE: .t() only works on 2-D matrices; your tensors are "
+     "[batch, seq, hidden]. Use .transpose(-2, -1) (or .mT) for the last "
+     "two dims; torch.matmul already broadcasts over batch."),
+    (r"ImportError: cannot import name|ModuleNotFoundError: No module named",
+     "IMPORT REALITY: einsum and logsumexp live at torch top level "
+     "(torch.einsum, torch.logsumexp), NOT in torch.nn.functional; and no "
+     "custom/third-party module exists in the sandbox. Only torch, "
+     "torch.nn, torch.nn.functional and math are importable."),
+    (r"Index tensor must have the same number of dimensions|"
+     r"only integer tensors of a single element|"
+     r"is out of bounds for dimension|selected index k out of range",
+     "GATHER/TOPK REPAIR: gather needs an index tensor with the SAME ndim "
+     "as the input (unsqueeze/expand it), topk k must not exceed the size "
+     "of that dim (k = min(k, x.size(dim))), and boolean/float tensors "
+     "cannot index — use long indices from topk/argmax."),
+    (r"AssertionError:",
+     "YOUR OWN ASSERT FIRED: the assertion text is yours. The validator "
+     "instantiates from the declared init_kwargs and feeds a harness-chosen "
+     "[batch, seq, hidden] input; derive every dimension from x.shape at "
+     "forward time (b, s, h = x.shape) and delete asserts that encode a "
+     "fixed batch/seq/hidden or constructor constants."),
 )
+
+# Level-scoped patterns, tried BEFORE the generic _HINTS. Two reasons this is
+# keyed by level rather than folded into the flat list: (1) ruff and
+# SyntaxError details QUOTE the offending source snippet, so a dry_run-oriented
+# pattern (e.g. ``einsum\(\)``) could false-match code that merely appears in
+# the quote — scoping makes the static/syntax classes win on their own levels;
+# (2) it keeps the philosophy measurable: every entry fires only on text its
+# level's checker actually emits. Deliberately NO unconditional per-level
+# fallback — an unknown failure still gets no hint rather than a wrong one
+# (that contract is test-encoded in test_validate_hints.py).
+_LEVEL_HINTS: Dict[str, tuple] = {
+    # ruff runs --select=F821,E9; the ledger's static failures are 100% F821
+    # (43 of 43 attempts, 2026-07-23 mining — the single biggest hint-less class).
+    "static": (
+        (r"F821 Undefined name",
+         "UNDEFINED NAME (static): ruff flagged a name that does not exist at "
+         "that line. Three real causes in this loop: (1) missing import — add "
+         "`import torch.nn as nn` / `import torch.nn.functional as F` / "
+         "`from typing import Dict`; (2) typo or renamed variable — make the "
+         "assignment and the use match exactly; (3) your previous output was "
+         "TRUNCATED mid-identifier — rewrite the whole file, shorter, and "
+         "finish every line."),
+    ),
+    # Every syntax-level message observed in the ledger (23/23 attempts), not
+    # just the corruption cluster: the repair action — regenerate, don't patch —
+    # is the same for all of them.
+    "syntax": (
+        (r"unexpected character after line continuation character|"
+         r"was never closed|unterminated string literal|unmatched '|"
+         r"invalid syntax|unexpected indent|"
+         r"positional argument follows keyword argument|"
+         r"expression cannot contain assignment|f-string: expecting",
+         "MALFORMED SOURCE: the emitted file is corrupted — literal \\n text "
+         "instead of real newlines, a line cut off mid-expression (unclosed "
+         "bracket/string), or stray indentation. Do not patch the reported "
+         "line: regenerate the ENTIRE file from scratch, shorter and simpler, "
+         "with real newlines, ending on a complete line."),
+    ),
+    # check_contract emits exactly four problem shapes; the ledger's contract
+    # failures are 25x skeleton + 12x loss-shaped (37/37 attempts).
+    "contract": (
+        (r"no 'forward' method found on any class|no class defined",
+         "MODULE SKELETON: your rewrite lost the required structure. Emit "
+         "exactly one `class <Name>(nn.Module):` with `def __init__` and "
+         "`def forward(self, x)` taking ONE [batch, seq, hidden] tensor and "
+         "returning one same-shape tensor. All logic inside methods; no bare "
+         "functions, no top-level code."),
+        (r"requires extra argument\(s\)",
+         "LOSS-VS-BLOCK: your forward wants targets (or another extra input) "
+         "— that makes it a LOSS, and a residual-stream block never sees "
+         "labels. Re-express the idea as a transform of the hidden states "
+         "alone: replace target-dependent terms with self-supervised proxies "
+         "(statistics of x, activation-norm gates); any extra forward arg "
+         "must have a default and never be required."),
+        (r"illegal imports|illegal calls",
+         "SANDBOX POLICY: generated code may not import os/subprocess/shutil/"
+         "sys/socket/ctypes or call eval/exec/__import__/compile/open. Delete "
+         "them — a residual-stream block needs only torch, torch.nn, "
+         "torch.nn.functional and math."),
+    ),
+}
 
 
 def check_self_attributes(code: str) -> List[str]:
@@ -172,8 +276,12 @@ def check_self_attributes(code: str) -> List[str]:
 
 
 def diagnose_failure(level: str, detail: str) -> str:
-    """Targeted repair hint for a known failure class, or '' when unknown."""
-    for pattern, hint in _HINTS:
+    """Targeted repair hint for a known failure class, or '' when unknown.
+
+    Level-scoped patterns (_LEVEL_HINTS) run first, then the generic _HINTS;
+    dry_run keeps its generic fallback. An unknown failure gets no hint
+    rather than a wrong one."""
+    for pattern, hint in _LEVEL_HINTS.get(level, ()) + _HINTS:
         if re.search(pattern, detail):
             return hint
     if level == "dry_run" and "Traceback" in detail:
