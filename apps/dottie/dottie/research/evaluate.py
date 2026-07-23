@@ -3,16 +3,21 @@
 
 Compares a finished experiment's REAL measured metric against the global baseline. Promotion is
 strict and direction-aware (``Baseline.improves``) and additionally requires the run to be stable
-— an unstable "win" is never promoted (rank-invariance / rigor discipline). On promotion it moves
-the baseline, marks the experiment ``sota``, and writes an automated write-up. On no improvement
-it marks the experiment ``rejected`` and the failure feeds back into ideation as a dead end.
+— an unstable "win" is never promoted (rank-invariance / rigor discipline). A win whose only
+spread is within-run must additionally survive the paired-seed A/B gate (``_multi_seed_gate``):
+within-run SEM alone can never promote. On promotion it moves the baseline, marks the experiment
+``sota``, and writes an automated write-up. On no improvement it marks the experiment
+``rejected`` and the failure feeds back into ideation as a dead end.
 Nothing is compared that was not really measured — a missing metric is an honest rejection.
 """
 
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, List, Optional
+import os
+import sys
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from dottie.research.ledger import Ledger, Experiment, Baseline, EVALUATION_PENDING, REJECTED, SOTA
 
@@ -57,6 +62,105 @@ _SERIES_KEYS = ("per_seed", "eval_ce_per_batch", "eval_losses")
 
 #: Series that come from ONE training run, so their spread is blind to run-to-run variance.
 _WITHIN_RUN_SERIES = frozenset({"eval_ce_per_batch", "eval_losses"})
+
+#: Wall-clock ceiling for an auto-run ab_nano.py: 2 models × 3 seeds × ~150 nano steps,
+#: with CPU margin. Overridable via DOTTIE_AB_GATE_TIMEOUT_S. A timeout is MISSING
+#: evidence (refusal), never a pass.
+_AB_GATE_TIMEOUT_S_DEFAULT = 5400.0
+
+
+def parse_ab_verdict(output: str) -> Optional[str]:
+    """Classify an ab_nano.py run from its stdout: 'win' | 'loss' | 'within_noise' | None.
+
+    Keys off the VERDICT line the ``promote._AB_TEMPLATE`` script prints (the LAST one,
+    should reruns be concatenated). None means no verdict was printed — an aborted or
+    foreign script — which callers must treat as missing evidence, never as a pass."""
+    verdict: Optional[str] = None
+    for line in output.splitlines():
+        if "VERDICT:" not in line:
+            continue
+        if "BETTER beyond noise" in line:
+            verdict = "win"
+        elif "WORSE beyond noise" in line:
+            verdict = "loss"
+        elif "WITHIN NOISE" in line:
+            verdict = "within_noise"
+    return verdict
+
+
+def subprocess_ab_runner(script_path: str | Path) -> Tuple[Optional[int], str]:
+    """Run a promotion bundle's ab_nano.py in a FRESH interpreter; (returncode, output).
+
+    A subprocess on purpose, not an import: the daemon never live-reloads, and ab_nano
+    trains 2×len(SEEDS) real nano runs whose torch state must not accumulate inside the
+    forever-daemon's memory. NOT the default for run_evaluation — only entry points that
+    can actually pay for six training runs (__main__'s cmd_evaluate/cmd_loop/cmd_run)
+    wire it in; every unwired caller refuses within-run-only promotions outright."""
+    import subprocess
+    script = Path(script_path)
+    try:
+        timeout_s = float(os.environ.get("DOTTIE_AB_GATE_TIMEOUT_S",
+                                         _AB_GATE_TIMEOUT_S_DEFAULT))
+    except ValueError:
+        timeout_s = _AB_GATE_TIMEOUT_S_DEFAULT
+    proc = subprocess.run([sys.executable, str(script)], capture_output=True, text=True,
+                          cwd=str(script.parent), timeout=timeout_s)
+    out = proc.stdout or ""
+    if proc.stderr:
+        out += "\n" + proc.stderr
+    return proc.returncode, out
+
+
+def _multi_seed_gate(ledger: Ledger, exp: Experiment, *,
+                     ab_runner: Optional[Callable[..., Tuple[Optional[int], str]]],
+                     promotions_root: Optional[str | Path] = None) -> Dict[str, Any]:
+    """Demand paired-seed (ab_nano) evidence for a would-be promotion whose only spread
+    is within-run. Returns a gate record; ONLY ``status == "win"`` permits promotion.
+
+    Statuses: ``win`` (paired A/B better beyond noise), ``loss`` (worse beyond noise —
+    the R93 shape), ``within_noise`` (indistinguishable), ``error`` (script ran but
+    produced no clean verdict), ``unavailable`` (no runner wired, script unwritable, or
+    the run itself failed — e.g. no torch/GPU on this box). Everything except ``win`` is
+    an honest refusal: within-run SEM alone can never promote (§5.3.R93)."""
+    gate: Dict[str, Any] = {"evidence": "ab_nano"}
+    if ab_runner is None:
+        gate.update(status="unavailable",
+                    detail="no A/B runner wired into this evaluation (library callers "
+                           "get the refusing default; __main__ wires the real one)")
+        return gate
+    from dottie.research import promote as _promote   # lazy: promote imports this module
+    root = (Path(promotions_root) if promotions_root is not None
+            else Path(ledger.path).parent / "promotions")
+    try:
+        script = _promote.write_ab_script(ledger, exp.id, out_root=root)
+    except Exception as e:                            # never let the gate break evaluation
+        gate.update(status="unavailable", detail=f"could not write ab_nano.py: {e!r}")
+        return gate
+    gate["script"] = str(script)
+    try:
+        rc, out = ab_runner(script)
+    except Exception as e:
+        gate.update(status="unavailable", detail=f"ab_nano.py did not run: {e!r}")
+        return gate
+    gate["output_tail"] = (out or "").strip()[-2000:]
+    verdict = parse_ab_verdict(out or "")
+    if rc not in (0, None):
+        # A verdict printed by a script that then crashed is not evidence of anything.
+        gate.update(status="error", detail=f"ab_nano.py exited {rc}")
+    elif verdict is None:
+        gate.update(status="error", detail="ab_nano.py printed no VERDICT line")
+    elif verdict == "win":
+        gate.update(status="win",
+                    detail="paired-seed A/B: candidate BETTER than unmodified beyond noise")
+    elif verdict == "loss":
+        gate.update(status="loss",
+                    detail="paired-seed A/B: candidate WORSE than unmodified beyond noise "
+                           "— the within-run 'win' was noise (the R93 shape)")
+    else:
+        gate.update(status="within_noise",
+                    detail="paired-seed A/B: WITHIN NOISE — the runs do not distinguish "
+                           "the candidate from the unmodified model")
+    return gate
 
 
 def _baseline_provenance(baseline: Baseline) -> tuple:
@@ -250,9 +354,16 @@ def _writeup(exp: Experiment, baseline: Baseline, value: Optional[float], *,
 
 
 def run_evaluation(ledger: Ledger, *, require_stable: bool = True,
-                   ts: Optional[float] = None) -> Optional[Dict[str, Any]]:
+                   ts: Optional[float] = None,
+                   ab_runner: Optional[Callable[..., Tuple[Optional[int], str]]] = None,
+                   promotions_root: Optional[str | Path] = None) -> Optional[Dict[str, Any]]:
     """Evaluate the oldest evaluation_pending experiment against the baseline; hill-climb if it
-    really improved. Returns a summary, or None if nothing is pending."""
+    really improved. Returns a summary, or None if nothing is pending.
+
+    ``ab_runner``/``promotions_root`` feed the hard multi-seed gate: a would-be promotion
+    whose only spread is within-run auto-runs its bundle's ab_nano.py through ``ab_runner``
+    and promotes ONLY on a paired-seed win. The default (None) refuses such promotions
+    outright — within-run SEM alone can never promote, wired or not."""
     exp = ledger.next_in_state(EVALUATION_PENDING)
     if exp is None:
         return None
@@ -336,8 +447,9 @@ def run_evaluation(ledger: Ledger, *, require_stable: bool = True,
         # inside ONE run and is blind to run-to-run variance — which is the variance that
         # actually decides these comparisons (TODOS §5.3.R93: a candidate cleared this bar at
         # 4.4 SEM and was then WORSE at all 3 seeds, because the unmodified model's own score
-        # swings 0.343 across seeds). Recorded, not gated: the honest fix is paired-seed
-        # evaluation, and `ab_nano.py` in every promotion bundle already does it.
+        # swings 0.343 across seeds). The basis string RECORDS it; the hard multi-seed gate
+        # below (operator order B0) is what now REFUSES it: a would-be promotion on this
+        # basis must survive its bundle's paired-seed ab_nano.py first.
         if sp["series"] in _WITHIN_RUN_SERIES:
             basis += (f" [spread from '{sp['series']}' — a SINGLE run's batch-to-batch "
                       f"noise, which CANNOT see run-to-run variance. Verify with "
@@ -389,11 +501,29 @@ def run_evaluation(ledger: Ledger, *, require_stable: bool = True,
         and replaced_params > 0 and block_delta < 0
         and (-block_delta) / replaced_params > CAPACITY_DELETE_FRAC
     )
-    promote = (improved and (stable if require_stable else True) and bool(significant)
-               and not capacity_gated)
+    # HARD MULTI-SEED GATE (operator order B0, 2026-07-23): within-run SEM alone can NEVER
+    # promote. §5.3.R93 is the proof — a 4.4-SEM within-run "win" that was worse at every
+    # seed; all 3 historical "sota" rows rest on this class of evidence. When the only
+    # spread is within-run, the gate auto-runs the promotion bundle's ab_nano.py (paired
+    # seeds — the fix the comments above have named all along) and refuses on a loss, on
+    # noise, or on missing evidence. Checked AFTER the capacity gate on purpose: a
+    # capacity-gated candidate must not spend six training runs on evidence that cannot
+    # change its answer.
+    multi_seed_evidence = sp is not None and sp["series"] not in _WITHIN_RUN_SERIES
+    would_promote = (improved and (stable if require_stable else True) and bool(significant)
+                     and not capacity_gated)
+    seed_gate: Optional[Dict[str, Any]] = None
+    seed_gated = False
+    if would_promote and not multi_seed_evidence:
+        seed_gate = _multi_seed_gate(ledger, exp, ab_runner=ab_runner,
+                                     promotions_root=promotions_root)
+        seed_gated = seed_gate.get("status") != "win"
+    promote = would_promote and not seed_gated
     verdict = {
         "promote": promote, "improved": improved, "stable": bool(stable),
         "capacity_gated": capacity_gated,
+        "multi_seed_evidence": multi_seed_evidence,
+        "seed_gated": seed_gated, "seed_gate": seed_gate,
         "significant": significant, "significance": sig_note,
         "baseline_provenance": base_kind, "baseline_caveat": base_caveat,
         "sem": None if sp is None else round(sp["sem"], 6),
@@ -434,6 +564,12 @@ def run_evaluation(ledger: Ledger, *, require_stable: bool = True,
                   f"block's {replaced_params:,} parameters "
                   f"({-block_delta / replaced_params:.1%} > {CAPACITY_DELETE_FRAC:.0%} "
                   f"threshold); a fixed-step win by shrinkage may not ratchet the baseline")
+    elif seed_gated:
+        reason = (f"multi-seed gate — significance rests on within-run spread only "
+                  f"('{sp['series']}' cannot see run-to-run variance, §5.3.R93) and "
+                  f"{(seed_gate or {}).get('detail', 'no paired-seed evidence')}. "
+                  f"Run promotions/{exp.id}/ab_nano.py on a training-capable box, or "
+                  f"re-train with --seeds so per_seed is recorded")
     else:
         reason = "held"
     writeup = _writeup(exp, baseline, value, promoted=False, reason=reason,

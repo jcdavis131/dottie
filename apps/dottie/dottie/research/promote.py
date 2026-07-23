@@ -78,6 +78,35 @@ else:
 
 
 
+def write_ab_script(ledger: Ledger, exp_id: str, *, out_root: str | Path) -> Path:
+    """Write JUST ab_nano.py for an experiment — deliberately WITHOUT the sota requirement.
+
+    ``build_promotion`` refuses non-sota experiments by design, but the evaluator's hard
+    multi-seed gate needs this script BEFORE any sota transition: since operator order B0
+    the paired-seed A/B is what decides whether that transition happens at all. Same
+    template, same ``<out_root>/<exp_id>/`` location, so a later full bundle build simply
+    overwrites it in place."""
+    try:
+        exp = ledger.get(exp_id)
+    except LedgerError as e:
+        raise ValueError(f"unknown experiment {exp_id!r}") from e
+    metrics = exp.train_metrics or {}
+    steps = int((metrics.get("config") or {}).get("steps", 150)) if isinstance(
+        metrics.get("config"), dict) else 150
+    out = Path(out_root) / exp_id
+    out.mkdir(parents=True, exist_ok=True)
+    script = out / "ab_nano.py"
+    script.write_text(
+        # ledger_path, not module_path: factory_nano_trainer takes an Experiment (it reads
+        # .implementation and .workspace off it). The old template passed the module path as
+        # that argument, so every generated ab_nano.py raised AttributeError on its first
+        # candidate call — the re-verification step had never actually run (§5.3.R32).
+        _AB_TEMPLATE.format(exp_id=exp_id, steps=steps,
+                            ledger_path=str(Path(ledger.path).resolve())),
+        encoding="utf-8")
+    return script
+
+
 def _caveat_block(verdict: Dict[str, Any]) -> List[str]:
     """Everything qualifying this result, ABOVE the numbers rather than inside a JSON dump.
 
@@ -144,8 +173,6 @@ def build_promotion(ledger: Ledger, exp_id: str, *, out_root: str | Path,
 
     b = ledger.get_baseline()
     metrics = exp.train_metrics or {}
-    steps = int((metrics.get("config") or {}).get("steps", 150)) if isinstance(
-        metrics.get("config"), dict) else 150
 
     out = Path(out_root) / exp_id
     out.mkdir(parents=True, exist_ok=True)
@@ -178,14 +205,7 @@ def build_promotion(ledger: Ledger, exp_id: str, *, out_root: str | Path,
         "3. Gate the preset change through the eval harness before ANY promotion to serve.",
     ]
     (out / "PROMOTION.md").write_text("\n".join(md), encoding="utf-8")
-    (out / "ab_nano.py").write_text(
-        # ledger_path, not module_path: factory_nano_trainer takes an Experiment (it reads
-        # .implementation and .workspace off it). The old template passed the module path as
-        # that argument, so every generated ab_nano.py raised AttributeError on its first
-        # candidate call — the re-verification step has never actually run (§5.3.R32).
-        _AB_TEMPLATE.format(exp_id=exp_id, steps=steps,
-                            ledger_path=str(Path(ledger.path).resolve())),
-        encoding="utf-8")
+    write_ab_script(ledger, exp_id, out_root=out_root)
     return {"experiment": exp_id, "bundle": str(out),
             "files": ["candidate.py", "PROMOTION.md", "ab_nano.py"]}
 

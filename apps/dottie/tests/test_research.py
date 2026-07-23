@@ -1809,9 +1809,11 @@ def test_promotion_records_the_baselines_spread(led, tmp_path):
     """
     _implement(led, tmp_path, make_policy())
     e = led.next_in_state(READY_FOR_TRAINING)
+    # per_seed, not eval_ce_per_batch: the B0 multi-seed gate refuses within-run-only
+    # promotions outright, and what is under test here is the SEM carry, not that gate.
     led.transition(e.id, EVALUATION_PENDING,
                    train_metrics={"proxy_loss": 1.0,
-                                  "eval_ce_per_batch": [1.0, 1.01, 0.99, 1.0, 1.0, 1.0],
+                                  "per_seed": [1.0, 1.01, 0.99, 1.0, 1.0, 1.0],
                                   "integration": "proxy_micro_benchmark"})
     r = evaluate.run_evaluation(led)
     assert r["state"] == SOTA

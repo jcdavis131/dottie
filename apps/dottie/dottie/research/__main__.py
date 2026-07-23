@@ -26,6 +26,23 @@ def _ledger(args) -> Ledger:
     return Ledger(paths.ledger_path(args.data_dir))
 
 
+def _promotions_root(args) -> Path:
+    return paths.workspace_root(args.data_dir).parent / "promotions"
+
+
+def _evaluate(led: Ledger, args) -> Optional[Dict[str, Any]]:
+    """run_evaluation with the REAL A/B runner wired in.
+
+    The wiring lives here, not as a library default, on purpose: an unwired
+    run_evaluation refuses within-run-only promotions outright (hard multi-seed gate,
+    operator order B0), so only entry points that can actually pay for ab_nano's six
+    training runs hand it the subprocess runner. On a box that cannot train (no
+    torch/GPU) the run fails and the gate refuses with that reason — demanded evidence,
+    never assumed."""
+    return evaluate.run_evaluation(led, ab_runner=evaluate.subprocess_ab_runner,
+                                   promotions_root=_promotions_root(args))
+
+
 def _emit(obj: Any) -> None:
     print(json.dumps(obj, indent=2, default=str))
 
@@ -177,7 +194,7 @@ def cmd_calibrate_baseline(args) -> int:
 
 def cmd_evaluate(args) -> int:
     led = _ledger(args)
-    out = evaluate.run_evaluation(led)
+    out = _evaluate(led, args)
     if out is None:
         _emit({"note": "no experiments pending evaluation"})
         return 0
@@ -206,7 +223,7 @@ def cmd_loop(args) -> int:
     if getattr(args, "device", None):
         tcfg["device"] = args.device
     steps["train"] = train.run_training(led, trainer=_trainer(args), config=tcfg)
-    steps["evaluate"] = evaluate.run_evaluation(led)
+    steps["evaluate"] = _evaluate(led, args)
     _refresh_status(led, args)
     _emit(steps)
     return 0
@@ -216,7 +233,7 @@ def cmd_promote(args) -> int:
     from dottie.research import promote
     led = _ledger(args)
     out = promote.build_pending_promotions(
-        led, out_root=paths.workspace_root(args.data_dir).parent / "promotions",
+        led, out_root=_promotions_root(args),
         rebuild=bool(getattr(args, "rebuild", False)))
     _emit(out)
     return 0
@@ -460,12 +477,15 @@ def cmd_run(args) -> int:
             print(json.dumps({"ts": time.time(), "action": action, "phase": "start"}),
                   flush=True)
             if action == "evaluate":
-                rec["result"] = evaluate.run_evaluation(led)
+                # _evaluate wires the subprocess ab_runner: a within-run-only "win" now
+                # auto-runs its bundle's ab_nano.py right here, and refuses on a loss or
+                # on missing evidence (B0). This can block up to DOTTIE_AB_GATE_TIMEOUT_S.
+                rec["result"] = _evaluate(led, args)
                 if rec["result"] and rec["result"].get("state") == "sota":
                     from dottie.research import promote
                     rec["promotion"] = promote.build_promotion(
                         led, rec["result"]["experiment"],
-                        out_root=paths.workspace_root(args.data_dir).parent / "promotions")
+                        out_root=_promotions_root(args))
             elif action == "train":
                 tcfg: Dict[str, Any] = {"steps": args.steps}
                 if getattr(args, "device", None):
