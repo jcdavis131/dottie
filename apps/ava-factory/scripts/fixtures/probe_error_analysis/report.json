@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "preset": "mini",
+    "base_ckpt": "/ckpt/tool/tool_final.pt",
+    "chat_ckpt": "none",
+    "device": "cuda",
+    "probe_n": 200
+  },
+  "base": {
+    "ckpt": "/ckpt/tool/tool_final.pt",
+    "probes": {
+      "arithmetic": {"accuracy": 0.0, "correct": 0, "total": 200},
+      "facts": {"accuracy": 0.0, "correct": 0, "total": 200},
+      "tool_selection": {"accuracy": 0.1, "correct": 2, "total": 20}
+    }
+  },
+  "chat": {
+    "ckpt": "random-init",
+    "probes": {}
+  }
+}

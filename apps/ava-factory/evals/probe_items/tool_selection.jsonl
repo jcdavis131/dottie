@@ -1,0 +1,20 @@
+{"prompt": "Toolbox: translate, get_clock, db_query, sum. Needing the current UTC time before stamping a log entry, the single right tool for this is", "answer": "get_clock"}
+{"prompt": "Toolbox: char_count, word_count, list_dir, weather. Asked how many words notes.txt holds, the single right tool for this is", "answer": "word_count"}
+{"prompt": "Toolbox: word_count, char_count, add, send_email. To measure how many characters a headline draft uses, the single right tool for this is", "answer": "char_count"}
+{"prompt": "Toolbox: repo_read_file, repo_grep, multiply, get_clock. To count how often ERROR appears inside server.log, the single right tool for this is", "answer": "repo_grep"}
+{"prompt": "Toolbox: repo_grep, repo_read_file, delete_file, weather. To pull up the full text of config.yaml, the single right tool for this is", "answer": "repo_read_file"}
+{"prompt": "Toolbox: repo_read_file, list_dir, char_count, translate. To learn which files sit inside the backups folder, the single right tool for this is", "answer": "list_dir"}
+{"prompt": "Toolbox: add, multiply, sum, currency_convert. With 17 crates of 46 apples each to total up, the single right tool for this is", "answer": "multiply"}
+{"prompt": "Toolbox: multiply, add, word_count, get_clock. Combining a bill of 261 with a tip of 48, the single right tool for this is", "answer": "add"}
+{"prompt": "Toolbox: add, sum, db_query, weather. Totalling the list 4, 18, 9, 31, 22 in one call, the single right tool for this is", "answer": "sum"}
+{"prompt": "Toolbox: multiply, currency_convert, translate, send_email. Turning 250 euros into yen at the quoted rate, the single right tool for this is", "answer": "currency_convert"}
+{"prompt": "Toolbox: repo_read_file, summarize, char_count, list_dir. To boil a 40-page report down to its key points, the single right tool for this is", "answer": "summarize"}
+{"prompt": "Toolbox: summarize, translate, web_search, add. Rendering a customer complaint from German into English, the single right tool for this is", "answer": "translate"}
+{"prompt": "Toolbox: web_search, weather, get_clock, db_query. Checking whether Lisbon needs an umbrella this afternoon, the single right tool for this is", "answer": "weather"}
+{"prompt": "Toolbox: repo_grep, db_query, sum, delete_file. Fetching every orders row whose status equals refunded, the single right tool for this is", "answer": "db_query"}
+{"prompt": "Toolbox: translate, send_email, summarize, get_clock. Getting the quarterly numbers over to the finance lead's inbox, the single right tool for this is", "answer": "send_email"}
+{"prompt": "Toolbox: weather, web_search, repo_grep, multiply. Finding who won yesterday's championship final, the single right tool for this is", "answer": "web_search"}
+{"prompt": "Toolbox: repo_grep, web_search, repo_read_file, list_dir. The fact lives somewhere inside the local file audit.log, not on the internet; to find the matching line, the single right tool for this is", "answer": "repo_grep"}
+{"prompt": "Toolbox: get_clock, weather, add, char_count. To learn today's date before a deadline countdown, the single right tool for this is", "answer": "get_clock"}
+{"prompt": "Toolbox: get_clock, web_search, sum, translate. Asked to repeat the codeword the user stated two sentences ago, the single right tool for this is", "answer": "no tool"}
+{"prompt": "Toolbox: multiply, weather, db_query, send_email. Asked in plain conversation what color the sky is on a clear day, the single right tool for this is", "answer": "no tool"}
