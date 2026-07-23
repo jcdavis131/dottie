@@ -1,5 +1,26 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
-"""Publish the live status snapshot to the arxiviq Control Plane — hygiene-compatible.
+"""Hardened successor to publish_live_status.py — STAGED COPY, not yet scheduled.
+
+The live file (publish_live_status.py) is executed every 10 min by the
+"Dottie Status publisher" Task Scheduler job and must never be edited in place;
+the main loop swaps this copy in later. Changes over the live version:
+
+  * gist push is crash-proof: gh-CLI-absent (FileNotFoundError) or gh-hung
+    (TimeoutExpired) no longer aborts the run after OUT is written; 3 attempts
+    with exponential backoff, final failure lands in-band in the result JSON.
+  * stale markers on carried sections: site_perf gains "carried"/"carried_age_s"
+    when the weekly block is reused, failed site probes gain "err", and legacy
+    top-level keys respread from the previous snapshot are listed under
+    "carried_from_previous". All additive — hosted parsers (bluehenre twin.mjs,
+    arxiviq app.js) read known fields only and need no changes.
+  * stderr breadcrumbs on every swallowed exception (Task Scheduler discards
+    stdio, but console runs and any future logging wrapper see the trace).
+  * --dry-run/--offline builds the full payload with zero network/subprocess
+    calls, writes dottie_live_status_next_dryrun.json, and never pushes.
+
+Feed schema and live behavior are otherwise IDENTICAL to the live publisher.
+
+Original operating notes:
 
 The monorepo (correctly) gitignores telemetry, so the site can no longer read a
 committed STATUS.json from the code repo; the legacy-repo fallback froze at the
@@ -29,13 +50,29 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 OUT = REPO / "reports" / "dottie_live_status.json"
+DRYRUN_OUT = REPO / "reports" / "dottie_live_status_next_dryrun.json"
+
+OFFLINE = False  # set by --dry-run/--offline: no sockets, no subprocesses
+
+GIST_ATTEMPTS = 3
+GIST_BACKOFF_S = 3.0  # doubles between attempts: 3s, then 6s
+
+
+def _breadcrumb(msg: str) -> None:
+    # Task Scheduler discards stderr, but console runs (and a future logging
+    # wrapper) get an in-order trace of every failure the feed swallows.
+    ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    print(f"[publish_live_status_next] {ts} {msg}", file=sys.stderr)
 
 
 def _get_json(url: str, timeout: float = 10.0):
+    if OFFLINE:
+        return {"unreachable": "offline (--dry-run): network disabled", "url": url}
     try:
         with urllib.request.urlopen(url, timeout=timeout) as r:
             return json.loads(r.read().decode("utf-8"))
     except Exception as e:
+        _breadcrumb(f"_get_json {url}: {type(e).__name__}: {e}")
         return {"unreachable": f"{type(e).__name__}: {e}", "url": url}
 
 
@@ -54,20 +91,30 @@ SITES = [
 
 
 def _probe_sites() -> list:
+    if OFFLINE:
+        # keep the list shape (_site_history iterates it); rows are honest skips
+        return [{"name": name, "url": url, "http": None, "ms": 0, "up": False,
+                 "err": "offline (--dry-run)"} for name, url in SITES]
     out = []
     for name, url in SITES:
         t0 = time.time()
+        err = None
         try:
             req = urllib.request.Request(url, method="HEAD")
             with urllib.request.urlopen(req, timeout=8) as r:
                 code = r.status
         except urllib.error.HTTPError as e:
             code = e.code
-        except Exception:
+        except Exception as e:
             code = None
-        out.append({"name": name, "url": url, "http": code,
-                    "ms": round((time.time() - t0) * 1000),
-                    "up": bool(code and 200 <= code < 400)})
+            err = type(e).__name__  # additive: DNS vs TLS vs timeout visible in trends
+            _breadcrumb(f"_probe_sites {name} {url}: {type(e).__name__}: {e}")
+        row = {"name": name, "url": url, "http": code,
+               "ms": round((time.time() - t0) * 1000),
+               "up": bool(code and 200 <= code < 400)}
+        if err:
+            row["err"] = err
+        out.append(row)
     return out
 
 
@@ -104,6 +151,8 @@ print(json.dumps({
 
 
 def _batch_sample() -> dict:
+    if OFFLINE:
+        return {"unreachable": "offline (--dry-run): docker exec skipped"}
     try:
         p = subprocess.run(
             ["docker", "exec", "dottie-factory-trainer-1", "python", "-c", _SAMPLE_SCRIPT],
@@ -114,6 +163,7 @@ def _batch_sample() -> dict:
             return {"unreachable": (p.stderr or "sample exec failed")[:200]}
         return json.loads(p.stdout.strip().splitlines()[-1])
     except Exception as e:  # noqa: BLE001 - publisher must never crash on a probe
+        _breadcrumb(f"_batch_sample: {type(e).__name__}: {e}")
         return {"unreachable": f"{type(e).__name__}: {e}"}
 
 
@@ -143,6 +193,8 @@ def _deploys_snapshot() -> dict:
     import re as _re
     if _ANSI_RE is None:
         _ANSI_RE = _re.compile(r"\x1b\[[0-9;]*m")
+    if OFFLINE:
+        return {"unreachable": "offline (--dry-run): vercel CLI skipped"}
     try:
         vercel_bin = "vercel.cmd" if os.name == "nt" else "vercel"
         p = subprocess.run(
@@ -162,6 +214,7 @@ def _deploys_snapshot() -> dict:
                                  "updated": m.group(3)})
         return {"projects": projects} if projects else {"unreachable": "no rows parsed"}
     except Exception as e:  # noqa: BLE001 - publisher must never crash on a probe
+        _breadcrumb(f"_deploys_snapshot: {type(e).__name__}: {e}")
         return {"unreachable": f"{type(e).__name__}: {e}"}
 
 
@@ -173,7 +226,14 @@ def _site_perf(existing_hub) -> dict:
     prev = existing_hub.get("site_perf", {}) if isinstance(existing_hub, dict) else {}
     now = time.time()
     if isinstance(prev.get("measured_at"), (int, float)) and now - prev["measured_at"] < 6 * 86400:
-        return prev
+        carried = dict(prev)
+        # stale markers (additive): the weekly carry is by-design, but label it
+        # so consumers can tell a reused block from a fresh measurement
+        carried["carried"] = True
+        carried["carried_age_s"] = round(now - prev["measured_at"])
+        return carried
+    if OFFLINE:
+        return {"unreachable": "offline (--dry-run): perf measurement skipped"}
     rows = []
     regressions = []
     prev_rows = {r["name"]: r for r in prev.get("rows", []) if isinstance(r, dict)}
@@ -197,6 +257,7 @@ def _site_perf(existing_hub) -> dict:
                                      f"({p[metric]} -> {row[metric]})"})
             rows.append(row)
         except Exception as e:  # noqa: BLE001
+            _breadcrumb(f"_site_perf {name} {url}: {type(e).__name__}: {e}")
             rows.append({"name": name, "error": f"{type(e).__name__}"[:60]})
     return {"measured_at": round(now), "rows": rows, "regressions": regressions}
 
@@ -204,6 +265,8 @@ def _site_perf(existing_hub) -> dict:
 def _fleet_snapshot() -> dict:
     """Real docker-stats snapshot for the game's fleet NPCs (2026-07-22).
     Raw docker JSONL rows, parsed client-side; unreachable is honest."""
+    if OFFLINE:
+        return {"unreachable": "offline (--dry-run): docker stats skipped"}
     try:
         p = subprocess.run(
             ["docker", "stats", "--no-stream", "--format", "{{json .}}"],
@@ -219,7 +282,8 @@ def _fleet_snapshot() -> dict:
                 continue
             try:
                 d = json.loads(line)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as e:
+                _breadcrumb(f"_fleet_snapshot unparseable stats row {line[:80]!r}: {e}")
                 continue
             containers.append({
                 "Name": d.get("Name") or d.get("Container"),
@@ -229,6 +293,7 @@ def _fleet_snapshot() -> dict:
             })
         return {"containers": containers}
     except Exception as e:  # noqa: BLE001 - publisher must never crash on a probe
+        _breadcrumb(f"_fleet_snapshot: {type(e).__name__}: {e}")
         return {"unreachable": f"{type(e).__name__}: {e}"}
 
 
@@ -237,13 +302,15 @@ def compose() -> dict:
     if OUT.exists():
         try:
             existing = json.loads(OUT.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            _breadcrumb(f"existing snapshot unparseable, composing fresh: {e}")
             existing = {}
     pipeline = _get_json("http://localhost:8000/pipeline/status")
     research_path = REPO.parent / "dottie" / "data" / "research" / "status.json"
     try:
         research = json.loads(research_path.read_text(encoding="utf-8"))
     except Exception as e:
+        _breadcrumb(f"research status read {research_path}: {type(e).__name__}: {e}")
         research = {"unreachable": f"{type(e).__name__}: {e}"}
     # The rest of the :8000 hub, snapshotted for the public twin (operator
     # 2026-07-22: "bring all of localhost:8000 live to bluehenre.com"). Each
@@ -271,40 +338,130 @@ def compose() -> dict:
         "research": research,
         "hub": hub,
     }
+    # stale marker (additive): the **existing respread keeps legacy top-level
+    # keys (updated_at/run_id/counts/...) alive under a fresh published_utc;
+    # list them so consumers can tell carried from fresh. Recomputed each run.
+    snapshot.pop("carried_from_previous", None)
+    fresh_keys = {"schema", "published_utc", "source", "pipeline", "research",
+                  "hub", "carried_from_previous"}
+    carried_keys = sorted(k for k in existing if k not in fresh_keys)
+    if carried_keys:
+        snapshot["carried_from_previous"] = {
+            "keys": carried_keys,
+            "note": "top-level fields carried unchanged from the prior snapshot, "
+                    "not refreshed this run",
+        }
     return snapshot
 
 
+def _push_gist(gist_id: str) -> dict:
+    """gh gist edit with retry + exponential backoff. In the live publisher the
+    push is the one uncaught-crash path (gh absent -> FileNotFoundError, gh
+    hung -> TimeoutExpired after OUT is written, freezing the gist silently);
+    here every failure lands in-band in the result instead."""
+    delay = GIST_BACKOFF_S
+    last_err = ""
+    for attempt in range(1, GIST_ATTEMPTS + 1):
+        try:
+            p = subprocess.run(
+                ["gh", "gist", "edit", gist_id, "--add", str(OUT)],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=60,
+            )
+            if p.returncode == 0:
+                return {"published": True, "attempts": attempt}
+            last_err = (p.stderr or p.stdout)[:300]
+        except Exception as e:  # noqa: BLE001 - a failed push must not crash the run
+            last_err = f"{type(e).__name__}: {e}"[:300]
+        _breadcrumb(f"gist push attempt {attempt}/{GIST_ATTEMPTS} failed: {last_err}")
+        if attempt < GIST_ATTEMPTS:
+            time.sleep(delay)
+            delay *= 2
+    return {"published": False, "attempts": GIST_ATTEMPTS, "error": last_err}
+
+
+ALIAS_HOST = "https://www.bhenre.com"
+ALIAS_PIN = REPO.parent / "bluehenre" / "data" / "last_good_deployment.txt"
+
+
+def _alias_guard() -> dict:
+    """The www.bhenre.com domain is assigned to the `frontend` Vercel project,
+    so any git push that auto-deploys `frontend` silently re-points the domain
+    away from the org console (happened 2026-07-23). Until the operator moves
+    the domain in the dashboard, self-heal: probe /org.html and re-run the
+    alias set against the pinned known-good deployment on a miss. The deploy
+    runbook updates the pin file after every campus deploy."""
+    import urllib.request
+    try:
+        req = urllib.request.Request(f"{ALIAS_HOST}/org.html", method="HEAD")
+        with urllib.request.urlopen(req, timeout=10) as r:
+            if r.status == 200:
+                return {"ok": True}
+    except Exception as e:  # noqa: BLE001 - probe failure means repair attempt
+        _breadcrumb(f"alias probe failed: {type(e).__name__}: {e}")
+    try:
+        pin = ALIAS_PIN.read_text(encoding="utf-8").strip()
+        if not pin:
+            return {"ok": False, "error": "pin file empty"}
+        vercel_bin = "vercel.cmd" if os.name == "nt" else "vercel"
+        p = subprocess.run(
+            [vercel_bin, "alias", "set", pin, "www.bhenre.com",
+             "--scope", "cams-projects-c5c4c5f6"],
+            capture_output=True, text=True, encoding="utf-8",
+            errors="replace", timeout=90,
+        )
+        if p.returncode == 0:
+            _breadcrumb(f"alias REPAIRED -> {pin}")
+            return {"ok": True, "repaired": pin}
+        return {"ok": False, "error": (p.stderr or p.stdout)[:200]}
+    except Exception as e:  # noqa: BLE001 - guard must never crash the publish
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"[:200]}
+
+
 def main(argv=None) -> int:
+    global OFFLINE
     ap = argparse.ArgumentParser()
     ap.add_argument(
         "--gist",
         default=os.environ.get("DOTTIE_STATUS_GIST"),
         help="gist id to update (omit to only write the local file)",
     )
+    ap.add_argument(
+        "--dry-run", "--offline",
+        action="store_true",
+        dest="dry_run",
+        help="build the full payload with no network/subprocess calls, write "
+             "dottie_live_status_next_dryrun.json, never push the gist",
+    )
     args = ap.parse_args(argv)
-    OUT.parent.mkdir(parents=True, exist_ok=True)
+    OFFLINE = args.dry_run
+    out_path = DRYRUN_OUT if args.dry_run else OUT
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     snap = compose()
-    OUT.write_text(json.dumps(snap, indent=2), encoding="utf-8")
+    out_path.write_text(json.dumps(snap, indent=2), encoding="utf-8")
     result = {
         "ok": True,
-        "wrote": str(OUT),
+        "wrote": str(out_path),
         "pipeline_live": "unreachable" not in snap["pipeline"],
         "research_live": "unreachable" not in snap["research"],
     }
-    if args.gist:
-        p = subprocess.run(
-            ["gh", "gist", "edit", args.gist, "--add", str(OUT)],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=60,
-        )
+    if args.dry_run:
+        result["dry_run"] = True
+        result["sections"] = sorted(snap.keys())
+        result["hub_sections"] = sorted(snap["hub"].keys())
+    elif args.gist:
+        push = _push_gist(args.gist)
         result["gist"] = args.gist
-        result["published"] = p.returncode == 0
-        if p.returncode != 0:
+        result["published"] = push["published"]
+        result["gist_attempts"] = push["attempts"]
+        if not push["published"]:
             result["ok"] = False
-            result["error"] = (p.stderr or p.stdout)[:300]
+            result["error"] = push["error"]
+    if not args.dry_run:
+        result["alias_guard"] = _alias_guard()
     print(json.dumps(result))
     return 0 if result["ok"] else 1
 
