@@ -45,3 +45,5 @@ runs/cpu_pilot/*
 !runs/cpu_pilot/tokenizer/
 !runs/cpu_pilot/reports/
 !runs/cpu_pilot/reports/**
+
+.venv-test/

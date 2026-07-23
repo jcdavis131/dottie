@@ -570,3 +570,32 @@ sources:
     filters: {min_chars: 1}
     license: synthetic
     gated: false
+
+  # ---- Agentic research shelf (2026-07-23): STEM + causal PDFs / CFA drills.
+  # STAGED weight 0. Activation recipe (keep phase sums = 1.0):
+  #   P2: shave fineweb_edu or synth_facts by 0.02 → synth_causal_reason 0.02
+  #   P3: shave open_web_math / synth_cot by 0.03 → causal_reason 0.02 + research_pdf 0.01
+  #   P5: shave fineweb_edu by 0.02 → causal_reason 0.02
+  # Ingest path: docs/AGENTIC_CURRICULUM.md + scripts/ingest_research_pdfs.py
+  # Catalog (open only): configs/research_pdf_catalog.yaml — no upload mirrors.
+  - name: synth_causal_reason
+    kind: synthetic
+    generator: causal_reason
+    text_field: text
+    phases: [2, 3, 5]
+    weight: {2: 0.0, 3: 0.0, 5: 0.0}
+    task_type: deliberate
+    filters: {min_chars: 1}
+    license: synthetic
+    gated: false
+
+  - name: synth_research_pdf
+    kind: synthetic
+    generator: research_pdf      # reads AVA_RESEARCH_CORPUS (operator-populated)
+    text_field: text
+    phases: [1, 2, 3, 4, 5]
+    weight: {1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0, 5: 0.0}
+    task_type: deliberate
+    filters: {min_chars: 1}
+    license: mixed-open          # per-file sidecar; keep weight 0 until licenses clean
+    gated: false
