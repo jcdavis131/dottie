@@ -79,6 +79,16 @@ Wiki path (`tools/pdf_wiki_ingest/`) stays a **knowledge** ingest. This track is
 
 ---
 
+## OpenStax Math → independent OER (not OpenStax CDN)
+
+For [openstax.org/subjects/math](https://openstax.org/subjects/math), prefer
+**independent** CC books (Stitz–Zeager, Active Calculus, Think Stats, Book of Proof)
+over OpenStax mirrors. See `docs/OPENSTAX_MATH_OER_EQUIVALENTS.md` and:
+
+```bash
+python scripts/download_math_oer_equivalents.py --out data/research_inbox/math-oer-equivalents
+```
+
 ## OpenStax K12 bulk pull
 
 ```bash
