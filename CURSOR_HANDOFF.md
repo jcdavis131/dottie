@@ -2,27 +2,39 @@
 
 **Paste-able brief for any agent continuing this work. Everything below is live and verified.**
 
-## CURRENT STATE (midday 07-23): trainer in final p5 stretch + hill-climb landed
+## CURRENT STATE (evening 07-23): RUN COMPLETE — waiting on the compact window
 
-- **Training run:** mini tool branch, step ~2760 of 2861 (~50 min to `done`),
-  p5_anneal, healthy. Crash strikes: **2 of 3** (silent OOM-class kills at
-  ~2536 and ~2566, both self-healed with ≤6 steps lost). STANDING ORDER: one
-  more p5 crash = HOLD the run and page the operator on the steer thread —
-  do NOT retry.
-- **On `done` (armed, in sequence):** (1) mini eval harness on the new
-  /ckpt/tool/tool_final.pt (exact invocation: memory dottie-evaluating-
-  checkpoints), A/B vs **275.95 weighted ppl** (baseline preserved as
-  tool_final_ext1.pt), post table to the steer thread; (2) vhdx compact
-  (operator's elevated terminal — script at
-  C:\Users\jcdav\.claude\jobs\c2138bb7\tmp\compact_vhdx.txt); (3) RESTART the
-  research daemon (never live-reloads) — it then loads TODAY'S promotion gate
-  + hints (below) and runs its 2 pending candidates; (4) run the parked hoops
-  gate + equities suite (RAM frees post-run), commit those repos; (5) post the
-  Leg-1 curriculum diff (tasks/artifacts/leg1_mini_diff.md) to steer,
-  propose-first.
-- **RAM is the binding constraint while training** (often <900 MB available;
-  WSL VM died at ~281 MB once). One test suite at a time; check
-  `(Get-Counter '\Memory\Available MBytes')` ≥ 900 first.
+- **Training run FINISHED**: exit 0 at step 2861, 2.4997B tokens, final train
+  lm 0.060. New `tool_final.pt` written (old baseline preserved as
+  `tool_final_ext1.pt`; step-2861 eval report copied to
+  `reports/branch_eval_results_final2861.json`).
+- **Eval A/B (posted to steer, identical bins):** step1487 **275.95** →
+  stable_p4 **2,341** → step2861 **4,103** weighted ppl on p0–p3 bins. The
+  p4/p5 extension traded short-ctx ppl for long-seq training the bins can't
+  measure (p4/p5 bins "too short"); bin 1 improved during p5 (mix-narrowing,
+  not global decay). Probes ~0 everywhere (modus_ponens 10/200 appears at p4).
+- **Leg-1 REVISED accordingly** (`tasks/artifacts/leg1_mini_diff.md` @ccd7f77,
+  posted to steer): +0.9B into p3, replay shares mandatory in p4/p5, anneal
+  doubling reverted, long-seq-bin build is a boot prerequisite, init-ckpt
+  choice is the operator's.
+- **Research daemon restarted on today's code** (hard multi-seed promotion
+  gate + 100%-coverage hints) BUT its implement stage is RAM-BLOCKED: its own
+  guard needs ~6.2GB free to load qwen3:8b (system RAM, NUM_GPU=0); WSL holds
+  the box at ~0.5–1.2GB. It retries every ~5 min and self-clears when WSL
+  frees memory (log: apps/dottie/data/research/logs/run.log, UTF-16).
+- **CRITICAL PATH = the vhdx compact window** (operator-ordered, script ready):
+  operator quits Docker Desktop → elevated `wsl --shutdown` + `diskpart /s
+  C:\Users\jcdav\.claude\jobs\c2138bb7\tmp\compact_vhdx.txt` (~363GB vhdx,
+  30–90 min) → freed RAM unblocks the daemon AND the parked hoops/equities
+  suite gates → operator says done → relaunch Docker Desktop + 13-container
+  fleet (trainer stays down). Consoles/feed go honest-stale during the window.
+- **Classifier holds (do not route around):** fleet-wide `docker stop`, a
+  steer post embedding system-command instructions, and one pytest variant
+  were denied by the auto-mode classifier late 07-23 — those actions wait for
+  the operator's presence.
+- Parked, gate-ready: hoops fixes (working tree, byte-identical assets) and
+  equities contamination annotation (working tree) — run each repo's suite,
+  then commit.
 
 ## What landed 2026-07-23 (hill-climb workflow, 22 agents + KG task — all committed)
 
