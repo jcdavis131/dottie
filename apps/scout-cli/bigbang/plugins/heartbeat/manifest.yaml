@@ -1,0 +1,17 @@
+name: heartbeat
+version: 0.7.0
+description: Healthchecks.io/Cronitor-class dead-man's-switch, fully local (openswap #6 — stdlib heartbeat registry + stale-detection watcher on the shared uptime ledger)
+capabilities:
+  network:
+    enabled: true
+    # LOOPBACK ONLY: the optional `serve` check-in endpoint binds here for
+    # local daemons that prefer HTTP beats. This plugin makes no outbound
+    # call anywhere — a dead-man's-switch that phones out is the paid enemy.
+    domains:
+      - localhost
+      - 127.0.0.1
+  filesystem:
+    write: true
+    paths: [".scout"]
+  secrets:
+    allow: []

@@ -1,0 +1,12 @@
+name: prose
+version: 0.7.0
+description: Grammarly-class prose linting, fully local (openswap #1 — harper-cli native tier + pure-stdlib heuristic core)
+capabilities:
+  network:
+    enabled: false
+    domains: []
+  filesystem:
+    write: false
+    paths: []
+  secrets:
+    allow: []

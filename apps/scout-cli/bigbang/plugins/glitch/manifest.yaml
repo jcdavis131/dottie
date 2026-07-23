@@ -1,0 +1,15 @@
+name: glitch
+version: 0.7.0
+description: Sentry-class error tracking, fully local (openswap #8 — GlitchTip-lite; stdlib capture/fingerprint/sqlite store + static HTML issue browser)
+capabilities:
+  network:
+    # ZERO egress by design: what happens in your stack trace stays on the
+    # box. Sentry's DSN wire protocol is the paid enemy's architecture, so
+    # this plugin does not even get a loopback socket — nothing to audit.
+    enabled: false
+    domains: []
+  filesystem:
+    write: true
+    paths: [".scout"]
+  secrets:
+    allow: []

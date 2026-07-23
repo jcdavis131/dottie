@@ -1,0 +1,23 @@
+name: smoke
+version: 0.7.0
+description: Checkly-class post-deploy smoke gate, fully local (openswap #5 — urllib expected-string checks under a bounded retry/backoff budget)
+capabilities:
+  network:
+    enabled: true
+    # The deployable fleet ONLY (host exact-or-dot-suffix match) — same
+    # doctrine as uptime: a site's smoke.json naming a new host requires
+    # adding its domain here too; default-deny is the point.
+    domains:
+      - dumbmodel.com
+      - jcamd.com
+      - arxiviq.com
+      - bhenre.com
+      - bluehenre-campus.vercel.app
+      - localhost
+      - 127.0.0.1
+  filesystem:
+    # --mark writes deploy-marker events into the shared uptime ledger
+    write: true
+    paths: [".scout"]
+  secrets:
+    allow: []

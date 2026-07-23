@@ -1,0 +1,22 @@
+name: links
+version: 0.7.0
+description: Ahrefs broken-link / Dr. Link Check-class verifier, fully local (openswap #4 — crawl-store checks + policy-gated external probes)
+capabilities:
+  network:
+    enabled: true
+    # Only reached by opt-in `check --external` HEAD/GET probes, and only for
+    # the fleet apex domains (host exact-or-dot-suffix match) — cross-fleet
+    # links verify out of the box. Any OTHER external host must be in the
+    # persisted user allowlist; a denied URL is recorded as unverified and
+    # never fetched. Default `check`, `files`, `graph`, `diff` make zero
+    # network calls.
+    domains:
+      - dumbmodel.com
+      - jcamd.com
+      - arxiviq.com
+      - bhenre.com
+  filesystem:
+    write: true
+    paths: [".scout"]
+  secrets:
+    allow: []

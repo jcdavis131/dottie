@@ -1,0 +1,12 @@
+name: leaks
+version: 0.7.0
+description: GitGuardian-class secrets scanning, fully local (openswap #7 — regex signature pack + Shannon entropy over trees and read-only git patches; gitleaks surfaced, never executed)
+capabilities:
+  network:
+    enabled: false
+    domains: []
+  filesystem:
+    write: false
+    paths: []
+  secrets:
+    allow: []

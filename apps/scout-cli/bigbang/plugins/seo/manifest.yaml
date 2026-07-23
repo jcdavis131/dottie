@@ -1,0 +1,20 @@
+name: seo
+version: 0.7.0
+description: Screaming Frog/Semrush/Yoast-class SEO auditor, fully local (openswap #3 — stdlib polite crawler + on-page audit)
+capabilities:
+  network:
+    enabled: true
+    # The crawlable 8-site public fleet ONLY (host exact-or-dot-suffix match).
+    # The crawler is same-host by construction, so these four apex domains
+    # cover every named site; an ad-hoc --url crawl is gated by the user
+    # allowlist instead — default-deny is the point.
+    domains:
+      - dumbmodel.com
+      - jcamd.com
+      - arxiviq.com
+      - bhenre.com
+  filesystem:
+    write: true
+    paths: [".scout"]
+  secrets:
+    allow: []
