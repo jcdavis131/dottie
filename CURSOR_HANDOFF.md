@@ -32,9 +32,14 @@
   steer post embedding system-command instructions, and one pytest variant
   were denied by the auto-mode classifier late 07-23 — those actions wait for
   the operator's presence.
-- Parked, gate-ready: hoops fixes (working tree, byte-identical assets) and
-  equities contamination annotation (working tree) — run each repo's suite,
-  then commit.
+- ✅ Parked gates CLEARED late 07-23 (RAM window): hoops suite green +
+  committed (05bd35e — assets/ dirt in that repo is the site's own daily
+  refresh, deliberately uncommitted); equities suite green + contamination
+  annotation committed (f36f7de). Hill-climb integration is 100% done.
+- Self-healing alias guard live (ee59dfc): frontend-project auto-deploys were
+  stealing www.bhenre.com (happened 07-23); the 10-min publisher now probes
+  /org.html and re-aliases from the pin file
+  apps/bluehenre/data/last_good_deployment.txt (update it on every deploy).
 
 ## What landed 2026-07-23 (hill-climb workflow, 22 agents + KG task — all committed)
 
