@@ -95,3 +95,17 @@ domains:
         url: https://pdfcoffee.com/
         status: blocked
         notes: User-upload mirror; DMCA surface; never automate download
+
+  openstax_k12:
+    priority: 0
+    phase_hint: [1, 2, 3, 4, 5]
+    seeds:
+      - id: openstax-k12-bulk
+        title: OpenStax K12 + AP textbook PDFs (CMS k12book_subjects / is_ap)
+        license: cc-by-4.0-or-cc-by-nc-sa-4.0  # per-title; see sidecar meta
+        url: https://openstax.org/k12
+        status: approved
+        notes: >
+          Bulk pull via scripts/download_openstax_k12.py into
+          data/research_inbox/openstax-k12/<category>/. Rights-holder CDN only.
+          NC titles remain operator-gated for commercial redistribution.

@@ -26,9 +26,15 @@ _DOMAIN_PHASE = {
     "stats": 3,
     "causal": 3,
     "physics": 2,
+    "science": 2,
     "psychology": 2,
     "psych": 2,
+    "social-studies": 2,
+    "college-readiness": 2,
+    "career-and-technical-education": 2,
+    "cte": 2,
     "general": 2,
+    "ap": 3,
 }
 
 _DOMAIN_TASK = {
@@ -37,9 +43,15 @@ _DOMAIN_TASK = {
     "stats": "deliberate",
     "causal": "deliberate",
     "physics": "automatic",
+    "science": "automatic",
     "psychology": "automatic",
     "psych": "automatic",
+    "social-studies": "automatic",
+    "college-readiness": "automatic",
+    "career-and-technical-education": "automatic",
+    "cte": "automatic",
     "general": "automatic",
+    "ap": "deliberate",
 }
 
 

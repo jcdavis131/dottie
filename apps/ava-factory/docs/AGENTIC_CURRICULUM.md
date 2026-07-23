@@ -79,17 +79,22 @@ Wiki path (`tools/pdf_wiki_ingest/`) stays a **knowledge** ingest. This track is
 
 ---
 
-## Verify
+## OpenStax K12 bulk pull
 
 ```bash
-export AVA_FACTORY_ROOT=/agent/repos/dottie/apps/ava-factory
 cd "$AVA_FACTORY_ROOT"
-python -m dottie.datagen.causal_reason --help   # if wired as module CLI
-pytest tests/test_causal_reason.py tests/test_research_pdf.py -q
-pytest tests/test_collector.py -q               # mixture still sums to 1.0
-# After dropping a licensed PDF into data/research_inbox/:
-python scripts/ingest_research_pdfs.py --inbox data/research_inbox --out data/research_corpus
+python scripts/download_openstax_k12.py --out data/research_inbox/openstax-k12
+# Then extract → corpus (per category folder):
+for d in data/research_inbox/openstax-k12/*/; do
+  [ -d "$d" ] || continue
+  base=$(basename "$d")
+  [[ "$base" == .* ]] && continue
+  python scripts/ingest_research_pdfs.py --inbox "$d" --out data/research_corpus --domain "$base"
+done
 ```
+
+PDFs are **not** committed to git (`data/` is gitignored). Sidecar `.meta.json`
+carries CC license + OpenStax source URL for every title.
 
 ---
 
