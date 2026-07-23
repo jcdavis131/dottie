@@ -23,6 +23,11 @@ integration; replaying the stored failures, the six stages together catch 5 of 5
 
 Nothing here is fabricated: a level that cannot run (e.g. ruff or torch absent) is reported as
 ``skipped`` with the true reason — never counted as a pass.
+
+Every property the stages prove also has a stable name in ``OBLIGATIONS`` (2026-07-23):
+a failure is reported as a named, still-open proof obligation — discharged / failed /
+unchecked / skipped — riding alongside the hint text in as_feedback() and per-attempt in
+validation.history, so the corrector, the ledger, and the KG all speak the same vocabulary.
 """
 
 from __future__ import annotations
@@ -66,11 +71,79 @@ class ValidationResult:
         Appends a targeted repair hint when the failure matches a known class
         (diagnose_failure) — mined 2026-07-22 from the ledger's real failure
         population, where raw tracebacks alone left 59% of candidates dying at
-        dry_run across every self-correction attempt."""
+        dry_run across every self-correction attempt.
+
+        Also appends the PROOF OBLIGATIONS ledger (2026-07-23): the named
+        property to discharge next, what is already discharged, and what stays
+        blocked behind the failure — so the corrector is aimed at a specific
+        obligation, not just shown a traceback. Additive: the base text and the
+        hint are byte-for-byte what they were before obligations existed."""
         base = (f"Validation failed at level '{self.level}' ({self.status}). "
                 f"Detail:\n{self.detail}")
         hint = diagnose_failure(self.level, self.detail)
-        return f"{base}\n\nREPAIR HINT:\n{hint}" if hint else base
+        parts = [base]
+        if hint:
+            parts.append(f"REPAIR HINT:\n{hint}")
+        obl = format_obligations(self.obligations())
+        if obl:
+            parts.append(obl)
+        return "\n\n".join(parts)
+
+    def obligations(self) -> List[Dict[str, str]]:
+        """Machine-readable proof-obligation ledger for this validation pass.
+
+        One entry per named property in ``OBLIGATIONS``:
+        ``{obligation_id, property, stage, status}`` with status one of
+
+            discharged  the property was checked and held
+            failed      this pass attributes the failure to this property
+            unchecked   fail-fast short-circuited before it could be checked
+                        (or the failing stage's detail could not attribute it)
+            skipped     the stage could not run (torch/ruff absent) — honestly
+                        reported, never laundered into discharged
+
+        Attribution within a failing stage is text-scoped exactly like
+        _LEVEL_HINTS: only messages that stage's checker actually emits are
+        matched, and an unclassifiable detail falls back to the stage's
+        execution-shaped obligation rather than a wrong one. Earlier same-stage
+        obligations are marked discharged only when that is PROVABLE — a
+        validator-literal message emitted after the forward pass completed
+        implies everything before it ran clean; a raw traceback implies
+        nothing, so its stage-mates stay unchecked."""
+        per = self.per_level or {
+            self.level: {"status": self.status, "detail": self.detail}}
+        out: List[Dict[str, str]] = []
+        for oid, stage, prop in OBLIGATIONS:
+            rec = per.get(stage)
+            entry = {"obligation_id": oid, "property": prop, "stage": stage}
+            if rec is None:
+                entry["status"] = "unchecked"
+            elif rec.get("status") == "pass":
+                entry["status"] = "discharged"
+            elif rec.get("status") == "skipped":
+                entry["status"] = "skipped"
+            else:  # this stage failed — attribute the failure within it
+                failed, attributed = _classify_stage_failure(
+                    stage, rec.get("detail", ""))
+                stage_ids = [o for o, s, _ in OBLIGATIONS if s == stage]
+                if oid in failed:
+                    entry["status"] = "failed"
+                elif not attributed:
+                    entry["status"] = "unchecked"
+                elif stage == "contract":
+                    # check_contract evaluates EVERY problem class in one pass
+                    # (not fail-fast within the stage), so an unmatched
+                    # contract obligation really was checked and held.
+                    entry["status"] = "discharged"
+                elif (stage == "dry_run"
+                      and any(f in _POST_FORWARD_LITERALS for f in failed)
+                      and stage_ids.index(oid)
+                      < min(stage_ids.index(f) for f in failed if f in stage_ids)):
+                    entry["status"] = "discharged"
+                else:
+                    entry["status"] = "unchecked"
+            out.append(entry)
+        return out
 
 
 # ---------------------------------------------------------------------------
@@ -225,6 +298,145 @@ _LEVEL_HINTS: Dict[str, tuple] = {
          "torch.nn.functional and math."),
     ),
 }
+
+
+# ---------------------------------------------------------------------------
+# Obligation tracking — verification-as-engine, not verification-as-gate
+# ---------------------------------------------------------------------------
+# (2026-07-23, distilled from the Emira/LemmaScript obligation-discharge
+# mechanic — tasks/artifacts/verification_engine_learnings.md.) Every property
+# this validator proves gets a stable machine-readable name, so a failure is
+# not just a traceback: it is a NAMED, still-open proof obligation, and the
+# corrector's next action is discharging that specific obligation. The ids
+# below are a public vocabulary — the ledger's validation.history, the KG's
+# failure→fix mining, and the repair-transcript exporter all key on them, so
+# renaming one is a breaking change to stored data. Additive by design:
+# nothing here alters per_level, statuses, or the existing hint text.
+
+#: (obligation_id, stage, property) — every property the validator proves, in
+#: the order the stages discharge them; within a stage, in the order the
+#: stage's own code checks them (the discharge-inference in
+#: ValidationResult.obligations() depends on that ordering). Keep the stage
+#: set identical to LEVELS — test-encoded in test_obligations.py, so adding a
+#: stage without naming its obligations fails the suite instead of silently
+#: under-reporting.
+OBLIGATIONS: tuple = (
+    ("parses", "syntax",
+     "source parses to a valid Python AST"),
+    ("module_skeleton", "contract",
+     "defines an nn.Module-style class with a forward method"),
+    ("block_signature", "contract",
+     "forward accepts exactly one [batch, seq, hidden] tensor (no required extras)"),
+    ("sandbox_policy", "contract",
+     "no illegal imports (os/subprocess/...) and no eval/exec/__import__/open"),
+    ("names_resolve", "static",
+     "every name is defined or imported (ruff F821/E9 clean)"),
+    ("constructible", "dry_run",
+     "module imports and the class instantiates from the declared init_kwargs alone"),
+    ("executes", "dry_run",
+     "one CPU forward pass completes without raising"),
+    ("output_contract", "dry_run",
+     "forward returns a tensor (not a scalar/tuple-only/None)"),
+    ("shape_conservation", "dry_run",
+     "output shape equals the input [batch, seq, hidden] shape"),
+    ("finite_output", "dry_run",
+     "output is finite — no NaN/Inf"),
+    ("non_degeneracy", "dry_run",
+     "not a constant-offset block — the transform is input-dependent or parameterised"),
+    ("rank_health", "dry_run",
+     "output varies across the hidden dim — no rank collapse to a broadcast scalar"),
+    ("param_capacity", "dry_run",
+     "at least one learnable parameter (gradient-flow has somewhere to go)"),
+    ("width_generalization", "integration_width",
+     "also runs at the real integration shape [batch, seq=256, hidden=256]"),
+    ("gradient_flow", "residual_stream",
+     "runs on a grad-carrying NON-LEAF input — no .grad reads off the input"),
+)
+
+#: Stage-scoped failure→obligation patterns, same philosophy as _LEVEL_HINTS:
+#: each pattern fires only on text its own stage's checker actually emits.
+#: Stages absent here carry exactly one obligation, attributed via
+#: _STAGE_FALLBACK_OBLIGATION.
+_OBLIGATION_PATTERNS: Dict[str, tuple] = {
+    "contract": (
+        ("module_skeleton", r"no class defined|no 'forward' method"),
+        ("block_signature", r"requires extra argument"),
+        ("sandbox_policy", r"illegal imports|illegal calls"),
+    ),
+    "dry_run": (
+        ("constructible",
+         r"missing \d+ required positional argument|cannot load module|"
+         r"not found in generated module|no nn\.Module subclass found"),
+        ("output_contract", r"forward returned \w+, not a tensor"),
+        ("shape_conservation", r"the SAME \[batch, seq, hidden\] shape"),
+        ("finite_output", r"NaN/Inf"),
+        ("non_degeneracy", r"degenerate block"),
+        ("rank_health", r"rank collapse"),
+        ("param_capacity", r"no learnable parameters"),
+    ),
+}
+
+#: Where an unclassifiable failure detail lands: the stage's execution-shaped
+#: obligation — a wrong specific attribution is worse than a broad honest one
+#: (the diagnose_failure philosophy, applied to obligations).
+_STAGE_FALLBACK_OBLIGATION: Dict[str, str] = {
+    "syntax": "parses",
+    "contract": "module_skeleton",
+    "static": "names_resolve",
+    "dry_run": "executes",
+    "integration_width": "width_generalization",
+    "residual_stream": "gradient_flow",
+}
+
+#: dry_run obligations whose failure message is a validator-authored literal
+#: emitted only AFTER the forward pass completed — matching one PROVES every
+#: earlier dry_run obligation was discharged on the way there. Tracebacks
+#: (constructible / the executes fallback) prove nothing about stage-mates.
+_POST_FORWARD_LITERALS = frozenset({
+    "output_contract", "shape_conservation", "finite_output",
+    "non_degeneracy", "rank_health", "param_capacity"})
+
+
+def _classify_stage_failure(level: str, detail: str) -> tuple:
+    """(failed obligation ids, attributed?) for a failing stage's detail.
+
+    ``attributed`` is False when only the fallback fired — callers must then
+    refuse to mark stage-mates discharged, because nothing was proven."""
+    hits = [oid for oid, pat in _OBLIGATION_PATTERNS.get(level, ())
+            if re.search(pat, detail or "")]
+    if hits:
+        return hits, True
+    fb = _STAGE_FALLBACK_OBLIGATION.get(level)
+    return ([fb] if fb else []), False
+
+
+def failed_obligations(level: str, detail: str) -> List[str]:
+    """Obligation ids a failing ``level``'s detail attributes the failure to
+    (possibly several: check_contract reports every violated property at once).
+    An unknown level yields [] rather than a wrong attribution."""
+    return _classify_stage_failure(level, detail)[0]
+
+
+def format_obligations(obls: List[Dict[str, str]]) -> str:
+    """The human/LLM-facing obligation ledger appended to as_feedback().
+
+    Empty string when nothing is attributed as failed (a passing result, or a
+    level outside the vocabulary) so feedback for those is unchanged."""
+    failed = [o for o in obls if o["status"] == "failed"]
+    if not failed:
+        return ""
+    discharged = [o["obligation_id"] for o in obls if o["status"] == "discharged"]
+    blocked = [o["obligation_id"] for o in obls if o["status"] == "unchecked"]
+    lines = [f"PROOF OBLIGATIONS [{len(discharged)}/{len(obls)} discharged]:"]
+    for o in failed:
+        lines.append(f"  DISCHARGE NEXT -> {o['obligation_id']}: {o['property']}")
+    if discharged:
+        lines.append("  already discharged (do not break these): "
+                     + ", ".join(discharged))
+    if blocked:
+        lines.append("  blocked behind the failure (unchecked): "
+                     + ", ".join(blocked))
+    return "\n".join(lines)
 
 
 def check_self_attributes(code: str) -> List[str]:
@@ -847,8 +1059,12 @@ def validate_with_correction(code: str, corrector: Corrector, *, max_retries: in
     attempts = 0
     result = validate(current, class_name=class_name, init_kwargs=init_kwargs,
                       input_shape=input_shape, workdir=workdir)
+    # Each attempt's obligation ledger rides in history (additive, 2026-07-23):
+    # per-attempt {obligation_id, property, stage, status} — the KG and the
+    # repair-transcript exporter mine failed→discharged transitions from it.
     history.append({"attempt": attempts, "ok": result.ok, "level": result.level,
-                    "status": result.status, "detail": result.detail[:2000]})
+                    "status": result.status, "detail": result.detail[:2000],
+                    "obligations": result.obligations()})
     prev_failure: Optional[tuple] = None
     prev_attempt_code: Optional[str] = None
     while not result.ok and attempts < max_retries:
@@ -887,6 +1103,7 @@ def validate_with_correction(code: str, corrector: Corrector, *, max_retries: in
         result = validate(current, class_name=class_name, init_kwargs=init_kwargs,
                           input_shape=input_shape, workdir=workdir)
         history.append({"attempt": attempts, "ok": result.ok, "level": result.level,
-                        "status": result.status, "detail": result.detail[:2000]})
+                        "status": result.status, "detail": result.detail[:2000],
+                        "obligations": result.obligations()})
     return CorrectionOutcome(ok=result.ok, code=current, attempts=attempts, result=result,
                              history=history)

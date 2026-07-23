@@ -45,3 +45,38 @@ proposed. Research daemon runs in parallel on its own gates (repair hints
 now in place).
 
 *Edit freely — every list above is a menu, not a commitment.*
+
+## Leg 2 addendum (2026-07-23) — verification-trace corpus
+
+Upgrades candidate 4 (repair-loop transcripts) from failure→fix pairs to
+**obligation→discharge traces**, after the Emira/LemmaScript pattern
+(distilled in `tasks/artifacts/verification_engine_learnings.md`): the
+training signal is the verification WORKFLOW itself — "obligation X open →
+targeted rewrite → obligation X discharged" — which is exactly what
+Graciolli's endgame fine-tunes an open model on, produced here from our own
+ledger instead of a proof assistant.
+
+- **New substrate (landed 2026-07-23):** `dottie/research/validate.py` now
+  emits a named obligation ledger — 15 stable ids (`shape_conservation`,
+  `rank_health`, `param_capacity`, `gradient_flow`, ...) with status
+  `discharged|failed|unchecked|skipped` — per attempt in
+  `validation.history` and in feedback (`PROOF OBLIGATIONS [11/15
+  discharged] / DISCHARGE NEXT -> rank_health`). Note: the research daemon
+  never live-reloads, so ledger rows carry `obligations` only after its next
+  restart; rows before that are hint-era rows.
+- **Existing machinery to extend:**
+  `apps/dottie/scripts/export_repair_transcripts.py` already exports
+  failure→hint→corrected-code rows from RECOVERED experiments off a ledger
+  COPY, with its honesty constraints structural (copy-only, recovered-only,
+  no fabricated per-attempt diffs, hint provenance stamped). Extension: emit
+  each attempt's `obligations` array plus the delta vs the next attempt
+  (`discharged_this_attempt: [...]`), so a row reads as a discharge step.
+  Pre-restart rows get obligations recomputed at export time from stored
+  per_level/detail (same recompute-and-say-so pattern as `hint_source`).
+- **Task shapes:** "given failing obligation + code + hint, produce the
+  rewrite that discharges it"; "given code + obligation ledger, name the
+  obligation to discharge next"; "given before/after, state which obligations
+  the edit discharged". All answerable offline from ledger data.
+- **Same gates as the rest of Leg 2:** generator lands with its own tests +
+  sample audit before collectors touch it; phases/weights per the build
+  discipline above; corpus remains a PROPOSAL artifact until audited.

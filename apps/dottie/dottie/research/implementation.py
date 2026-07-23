@@ -163,6 +163,12 @@ def run_implementation(ledger: Ledger, policy: Policy, *, workspace_root: str | 
         "ok": outcome.ok, "attempts": outcome.attempts,
         "level": outcome.result.level, "status": outcome.result.status,
         "per_level": outcome.result.per_level, "history": outcome.history,
+        # Additive (2026-07-23): the FINAL attempt's obligation ledger — named
+        # {obligation_id, property, stage, status} rows. Each history entry
+        # above carries its own per-attempt copy, so downstream (KG ingest,
+        # export_repair_transcripts) can mine failed→discharged traces without
+        # re-deriving attribution from per_level text.
+        "obligations": outcome.result.obligations(),
     }
 
     if outcome.ok:
