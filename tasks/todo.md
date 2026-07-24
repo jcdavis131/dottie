@@ -32,9 +32,11 @@ public deploy is the operator's gated step.
       against the real `hub_registry.json`; server serves it (200); all edited JS
       `node --check` clean. NOTE: live *visual* render not yet confirmed (Chrome
       extension was disconnected) — confirm on deploy or next browser session.
-- [ ] **Operator: deploy** — `cd apps/bluehenre && vercel deploy --prod --yes`
-      → re-alias www.bhenre.com → update `data/last_good_deployment.txt`. This
-      is the first visible face of the realigned vision.
+- [x] **DEPLOYED (2026-07-24, operator: "deploy")** — `vercel deploy --prod`
+      (deployment `bluehenre-campus-6p50gidtm…`) → aliased www.bhenre.com → pin
+      updated. Pre-deploy gate was green (100 + 9 + fresh). LIVE-verified:
+      org.html 200, `/hub_registry.json` 200 serving all 14 artifacts (model eval
+      2268, retracted note present). The realigned Dottie site is live.
 
 **Phase 1 (Hub Artifact Registry) is code-complete — pending the operator deploy.**
 
