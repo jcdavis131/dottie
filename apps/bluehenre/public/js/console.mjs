@@ -2,7 +2,7 @@
 // org from a phone — run status, fleet, alerts, Dottie chat, sites. Same data
 // spine and provenance doctrine as everything else: numbers render only from
 // source:"local" feeds; everything else says offline, honestly.
-import { twinLine, parseHub, nextActions, parseHubRegistry } from "./twin.mjs";
+import { twinLine, parseHub, nextActions, parseHubRegistry, provenanceSummary } from "./twin.mjs";
 
 const $ = (id) => document.getElementById(id);
 const esc = (el, text) => { el.textContent = text; return el; };
@@ -403,6 +403,25 @@ function renderArtifacts() {
   if (!artifacts || !artifacts.count) {
     el.append(esc(document.createElement("p"), "no artifacts in the registry yet"));
     return;
+  }
+  // provenance headline — the honesty accounting, glanceable (the differentiator)
+  const ps = provenanceSummary(artifacts);
+  if (ps) {
+    const bar = document.createElement("div");
+    bar.className = "provsum";
+    const tally = (n, cls, label) => {
+      if (!n) return;
+      const s = document.createElement("span");
+      s.className = `badge ${cls}`; s.textContent = `${n} ${label}`;
+      bar.append(s);
+    };
+    tally(ps.byClass.real, "real", "REAL");
+    tally(ps.byClass.synthetic, "synthetic", "SYNTH");
+    tally(ps.byClass.placeholder, "placeholder", "PLACEHOLD");
+    tally(ps.byClass.unknown, "unknown", "UNCLASS");
+    el.append(bar);
+    el.append(esc(Object.assign(document.createElement("p"), { className: "dimtxt" }),
+      `${ps.total} artifacts · ${ps.caveatsNamed} model caveats named · ${ps.research} research sha-pinned · provenance-honest`));
   }
   if (artifacts.datasets.length) {
     el.append(sec("datasets"));
