@@ -60,6 +60,19 @@
   .mode.training, .mode.running { color: var(--green); }
   .mode.recovering { color: var(--amber); }
   .mode.stale, .mode.error { color: var(--red); }
+  /* Hub artifacts — provenance badges (amber-terminal palette) */
+  .badge { display: inline-block; padding: 0 6px; border-radius: 8px; font-size: 10px;
+           font-weight: 700; letter-spacing: .3px; border: 1px solid; white-space: nowrap; }
+  .badge.real { color: var(--green); border-color: var(--green); }
+  .badge.synthetic { color: var(--amber); border-color: var(--amber); }
+  .badge.placeholder { color: var(--red); border-color: var(--red); }
+  .badge.unknown { color: var(--dim); border-color: var(--dim); }
+  .hubsec { color: var(--dim); font-size: 10px; font-weight: 700; letter-spacing: .6px;
+            text-transform: uppercase; margin: 8px 0 2px; border-bottom: 1px solid var(--line);
+            padding-bottom: 2px; }
+  .artline { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 3px 0; }
+  .artline a { color: var(--cyan); text-decoration: none; }
+  .retracted { color: var(--red); font-size: 11px; margin: 2px 0; }
   canvas#spark { width: 100%; height: 72px; display: block; background: #0e1524;
                  border: 1px solid var(--line); margin-top: 6px; }
   table.fleet { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -128,6 +141,7 @@
   <section class="card"><h2>▮ FLEET//DOCKER</h2><div class="body" id="fleet">…</div></section>
   <div id="grid2">
     <section class="card"><h2>▮ HUB//SUBSYSTEMS</h2><div class="body" id="hub">…</div></section>
+    <section class="card"><h2>▮ HUB//ARTIFACTS</h2><div class="body" id="artifacts">…</div></section>
     <section class="card"><h2>▮ SITES//GLOBAL</h2><div class="body" id="sites">…</div></section>
   </div>
 

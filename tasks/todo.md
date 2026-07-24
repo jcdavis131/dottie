@@ -103,6 +103,9 @@ public deploy is the operator's gated step.
         (Chrome extension down).
   - [ ] Vector MTNN model cards (gridiron/hoops/pitch/equities) — needs cross-repo
         eval sourcing; same card pattern.
+- [x] **Mobile Hub parity** — the phone terminal view now has a HUB//ARTIFACTS card
+      (datasets + models, provenance-badged in the amber palette, retracted number
+      named). Reuses the tested `parseHubRegistry`; loaded once, not polled. Suite 97.
 
 ## Operator calls (from the provenance audit — deliberately not auto-done)
 - [ ] Rotate the previously-committed `HF_TOKEN` and place the new value in the

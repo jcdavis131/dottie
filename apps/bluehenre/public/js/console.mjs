@@ -2,7 +2,7 @@
 // org from a phone — run status, fleet, alerts, Dottie chat, sites. Same data
 // spine and provenance doctrine as everything else: numbers render only from
 // source:"local" feeds; everything else says offline, honestly.
-import { twinLine, parseHub, nextActions } from "./twin.mjs";
+import { twinLine, parseHub, nextActions, parseHubRegistry } from "./twin.mjs";
 
 const $ = (id) => document.getElementById(id);
 const esc = (el, text) => { el.textContent = text; return el; };
@@ -371,6 +371,70 @@ $("askform").addEventListener("submit", async (e) => {
   }
 });
 
-refreshTwin(); refreshFleet();
+// Hub — the org's OWN datasets + models, each provenance-badged (the Dottie-site
+// differentiator, on the phone too). Static committed artifacts from the same
+// /hub_registry.json the org console uses; loaded once (not polled).
+const ART_REPO = "https://github.com/jcdavis131/dottie/blob/main/";
+let artifacts = null;
+function artRow(prettyName, cardPath, badge) {
+  const row = document.createElement("div");
+  row.className = "artline";
+  const nm = document.createElement("span");
+  if (cardPath) {
+    const a = document.createElement("a");
+    a.href = ART_REPO + cardPath; a.target = "_blank"; a.rel = "noopener";
+    a.textContent = prettyName;
+    nm.append(a);
+  } else nm.textContent = prettyName;
+  const b = document.createElement("span");
+  b.className = `badge ${badge.cls}`; b.textContent = badge.label;
+  row.append(nm, b);
+  return row;
+}
+function sec(text) {
+  const d = document.createElement("div");
+  d.className = "hubsec"; d.textContent = text;
+  return d;
+}
+function renderArtifacts() {
+  const el = $("artifacts");
+  if (!el) return;
+  el.replaceChildren();
+  if (!artifacts || !artifacts.count) {
+    el.append(esc(document.createElement("p"), "no artifacts in the registry yet"));
+    return;
+  }
+  if (artifacts.datasets.length) {
+    el.append(sec("datasets"));
+    for (const d of artifacts.datasets) {
+      el.append(artRow(d.prettyName, d.cardPath, d.badge));
+      const bits = [];
+      if (Number.isFinite(d.rows)) bits.push(`${d.rows.toLocaleString()} rows`);
+      if (Number.isFinite(d.nFields)) bits.push(`${d.nFields} fields`);
+      if (bits.length) el.append(line(d.taskCategories?.[0] ?? "", bits.join(" · ")));
+    }
+  }
+  if (artifacts.models.length) {
+    el.append(sec("models"));
+    for (const m of artifacts.models) {
+      el.append(artRow(m.prettyName, m.cardPath, m.badge));
+      if (Number.isFinite(m.eval.value)) el.append(line(m.eval.metric ?? "eval", m.eval.value.toLocaleString()));
+      // the differentiator, on mobile too: a retracted number is named, not dropped
+      if (m.eval.retracted) el.append(esc(Object.assign(document.createElement("p"),
+        { className: "retracted" }), `⚠ retracted: ${m.eval.retracted}`));
+    }
+  }
+  el.append(esc(Object.assign(document.createElement("p"), { className: "dimtxt" }),
+    `${artifacts.count} artifacts · provenance-badged (REAL / HONEST-SYNTHETIC / PLACEHOLDER)`));
+}
+async function loadArtifacts() {
+  const el = $("artifacts");
+  try { artifacts = parseHubRegistry(await (await fetch("/hub_registry.json", { cache: "no-cache" })).json()); }
+  catch { if (el) el.replaceChildren(esc(document.createElement("p"), "hub registry not built")); return; }
+  renderArtifacts();
+}
+
+refreshTwin(); refreshFleet(); loadArtifacts();
 setInterval(refreshTwin, 15_000);
 setInterval(refreshFleet, 10_000);
+// hub artifacts are static committed cards — load once, no poll.
