@@ -26,9 +26,32 @@
     → `api/assistant-chat.mjs`), and both front-ends (drops the `npc`/`dept`
     body params). Contract suite **76/76 green**; all edited JS `node --check`
     clean. **A deploy is pending the operator** (public surface = gated step).
-- **NOT started (held for the build phase):** the three pillars themselves. First
-  slice when greenlit = Phase 1 Hub Artifact Registry (additive/static/Vercel-safe;
-  no server change). See `tasks/dottie_site_plan.md` + `tasks/todo.md`.
+- **Pillars BUILT this session (code-complete, NOT deployed — deploy is the
+  operator's gated step):**
+  - **Hub Artifact Registry (Pillar 2, Phase 1)** — `build_hub_registry.mjs`
+    exporter → static `hub_registry.json` (now **3 datasets**) + `parseHubRegistry`
+    + "Hub — Datasets" card with provenance badges (REAL/HONEST-SYNTHETIC/
+    PLACEHOLDER/UNCLASSIFIED). Commits 4db3053, 0620e45.
+  - **Guide "what to do next" digest (Pillar 1, Phase 2)** — `nextActions()` ranks
+    real alerts + research queue + fleet health into the assistant card, each with
+    a steer command where unambiguous. Commit 9cec67c. (ReAct chat trace = Phase 4,
+    engine-dependent.)
+  - Contract suite **92 green**. Visual render NOT yet confirmed (Chrome extension
+    was disconnected). To ship: `cd apps/bluehenre && vercel deploy --prod --yes`
+    → re-alias www.bhenre.com → update `data/last_good_deployment.txt`.
+- **External data expansion (operator: "grounded in external validated sources"):**
+  - Rejected library.memoryoftheworld.org (verified shadow library → FORBIDDEN in
+    the SOP). `external_book_sources.md`.
+  - **OAPEN open-access books PILOTED** (operator: "go with DOAB/OAPEN") —
+    `apps/dottie/scripts/pull_oapen_books.py` (read-only, `dc.rights`-gated:
+    CC-BY/SA/CC0 only; ND + NC + unlicensed excluded). 10 CC-BY scholarly books,
+    license-verified + sha256-pinned, HF-standard card = REAL, in the Hub registry.
+    Gate excluded 29/39 scanned. Commit 770a137. Next: `--full` + scale + decon +
+    the frozen `sources.yaml` entry (operator).
+- **Still queued:** Phase 3 Monitor (runtrack readout — analysis found current-run
+  monitoring largely covered by existing cards; the runtrack value is persistent
+  cross-run history + comparison, best built box-side with provenance guards);
+  mobile terminal-view parity for Hub/Guide. See `tasks/todo.md`.
 
 ## CURRENT STATE (late evening 07-23): RUN COMPLETE — fleet RESTORED, compact deferred
 
