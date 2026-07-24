@@ -103,15 +103,24 @@ public deploy is the operator's gated step.
         number as a distinct rust-colored "do not cite" note (the differentiator,
         visible). org console. Suite 97; classes verified; pixels unconfirmed
         (Chrome extension down).
-  - [ ] Vector MTNN model cards (gridiron/hoops/pitch/equities). FEASIBILITY (checked
-        2026-07-24): the vector-* repos exist at ~/vector-* and carry committed,
-        git-tracked eval artifacts (e.g. vector-gridiron `assets/eval_backtest.json`,
-        already sha-cited by the gridiron dataset card). BUT that artifact holds the
-        BASELINE forecaster Spearman, not the trained MTNN's eval (per the gridiron
-        audit, MTNN predictions are recomputed in-memory, not persisted). So: honest
-        cards for the simple baselines are sourceable from committed artifacts now;
-        genuine MTNN-eval cards need a persisted model eval (compute/box) — do WITH
-        the operator (those repos had fabrications cleaned earlier; provenance-delicate).
+  - [x] **Vector MTNN model cards DONE** (operator: "vector model cards for each MTNN").
+        4 cards, each honestly classified + flagged: gridiron REAL (walk-forward weekly
+        Spearman **0.6899**, beats baselines, backtest-of-method caveat), hoops REAL
+        (held-out retrieval test top-5 **0.3633**), equities **PLACEHOLDER** (sector
+        purity 0.1742 but 2,200/4,941 rows are placeholder embeddings — contamination
+        carried), and the **Universal MTNN REAL** (see below). Hub: 5 models now.
+        (gridiron eval IS the trained MTNN v2 — `assets/eval_backtest.json` `model` block
+        + overall 0.6899 — correcting the earlier "baselines only" read. pitch has no
+        standalone eval artifact but is covered by the unified trunk; golf/tennis have
+        no trained MTNN eval yet.)
+  - [x] **Universal MTNN TRAINED** (operator: "start training the universal MTNN to
+        connect them all"). `vector-unified/pipeline/train_unified.py --epochs 60`,
+        Stage 1, 60 epochs in 162s on the free RTX 4080 → `unified_best.pt`. Eval
+        (`eval_unified.py`): 20,721 players in a shared 64-dim space across
+        hoops/gridiron/pitch; G1 per-sport non-inferiority PASS, G3 cross-sport
+        silhouette 0.7095 PASS, G2 sport-invariance DEFERRED (honest), collapse PASS.
+        Carded REAL in the Hub. Next stages (--finetune / --market / --cultural-text)
+        warm-start from this trunk.
 - [x] **Mobile Hub parity** — the phone terminal view now has a HUB//ARTIFACTS card
       (datasets + models, provenance-badged in the amber palette, retracted number
       named). Reuses the tested `parseHubRegistry`; loaded once, not polled. Suite 97.

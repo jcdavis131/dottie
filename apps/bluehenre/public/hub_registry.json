@@ -1,6 +1,6 @@
 {
   "generated_by": "build_hub_registry.mjs",
-  "count": 14,
+  "count": 18,
   "datasets": [
     {
       "name": "gridiron_forecast_rows",
@@ -185,6 +185,166 @@
       },
       "summary": null,
       "card_path": "tasks/artifacts/model_cards/ava_mini_tool_final/README.md",
+      "audit": {
+        "generated": null,
+        "source_sha256": [],
+        "sidecar_path": null
+      }
+    },
+    {
+      "name": "vector_equities_mtnn",
+      "kind": "model",
+      "pretty_name": "vector-equities MTNN (S&P sector embeddings)",
+      "classification": "PLACEHOLDER",
+      "license": "mit",
+      "tags": [
+        "mtnn",
+        "equities",
+        "sector-embeddings",
+        "vector-site",
+        "dottie"
+      ],
+      "arch": {
+        "preset": "MTNN sector-embedding trunk (dim 64)",
+        "dModel": null,
+        "nLayers": null,
+        "nHeads": null,
+        "mlp": null,
+        "jspaceSplit": null,
+        "vocab": null,
+        "maxContext": null,
+        "paramsNote": "64-dim company embedding over the S&P 500; evaluated by kNN GICS-sector purity"
+      },
+      "eval": {
+        "metric": "kNN sector purity @10 (cosine)",
+        "value": 0.1742,
+        "tokens": null,
+        "method": "fraction of each row's 10 nearest neighbors sharing its GICS sector, averaged; vs random-assignment baseline 0.111. 4,941 rows / 501 companies / 11 sectors",
+        "retracted": "CONTAMINATED — 2,200 of 4,941 rows (45%) are PLACEHOLDER embeddings (sector-centroid + Gaussian noise, expand_sp500.py @7d93c0b), which bias the purity UPWARD. The 0.1742 is NOT a clean model number."
+      },
+      "summary": null,
+      "card_path": "tasks/artifacts/model_cards/vector_equities_mtnn/README.md",
+      "audit": {
+        "generated": null,
+        "source_sha256": [],
+        "sidecar_path": null
+      }
+    },
+    {
+      "name": "vector_gridiron_mtnn",
+      "kind": "model",
+      "pretty_name": "vector-gridiron MTNN (NFL fantasy PPR)",
+      "classification": "REAL",
+      "license": "mit",
+      "tags": [
+        "mtnn",
+        "sports-prediction",
+        "nfl",
+        "fantasy-football",
+        "vector-site",
+        "dottie"
+      ],
+      "arch": {
+        "preset": "MTNN v2 (gated fusion)",
+        "dModel": null,
+        "nLayers": null,
+        "nHeads": null,
+        "mlp": null,
+        "jspaceSplit": null,
+        "vocab": null,
+        "maxContext": null,
+        "paramsNote": "gated-fusion multi-task net; selection split (train ≤2023, early-stop on 2024); calibration = bias-shrink + per-position affine fit on 2024 val"
+      },
+      "eval": {
+        "metric": "walk-forward weekly Spearman (rank corr, model vs actual PPR)",
+        "value": 0.6899,
+        "tokens": null,
+        "method": "17-week walk-forward backtest, 5,412 rows; per-week Spearman averaged; beats last-4-avg (0.654) and season-to-date (0.661) baselines",
+        "retracted": "none — but this is a backtest of the projection METHOD, not archived published projections (see Considerations)"
+      },
+      "summary": null,
+      "card_path": "tasks/artifacts/model_cards/vector_gridiron_mtnn/README.md",
+      "audit": {
+        "generated": null,
+        "source_sha256": [],
+        "sidecar_path": null
+      }
+    },
+    {
+      "name": "vector_hoops_mtnn",
+      "kind": "model",
+      "pretty_name": "vector-hoops MTNN (NBA player embeddings)",
+      "classification": "REAL",
+      "license": "mit",
+      "tags": [
+        "mtnn",
+        "sports-prediction",
+        "nba",
+        "player-embeddings",
+        "retrieval",
+        "vector-site",
+        "dottie"
+      ],
+      "arch": {
+        "preset": "MTNN player-embedding trunk",
+        "dModel": null,
+        "nLayers": null,
+        "nHeads": null,
+        "mlp": null,
+        "jspaceSplit": null,
+        "vocab": null,
+        "maxContext": null,
+        "paramsNote": "multi-task NBA player-season embedding model; evaluated by adjacent-season nearest-neighbor retrieval with train/val/test splits"
+      },
+      "eval": {
+        "metric": "held-out adjacent-season retrieval (test split top-5)",
+        "value": 0.3633,
+        "tokens": null,
+        "method": "test split n=790 — top1 0.1633, top5 0.3633 (overall n=10104 top1 0.266/top5 0.524; val top5 0.516); held-out by split",
+        "retracted": "none"
+      },
+      "summary": null,
+      "card_path": "tasks/artifacts/model_cards/vector_hoops_mtnn/README.md",
+      "audit": {
+        "generated": null,
+        "source_sha256": [],
+        "sidecar_path": null
+      }
+    },
+    {
+      "name": "vector_unified_mtnn",
+      "kind": "model",
+      "pretty_name": "Universal MTNN (vector-unified trunk, Stage 1)",
+      "classification": "REAL",
+      "license": "mit",
+      "tags": [
+        "mtnn",
+        "unified-representation",
+        "cross-sport",
+        "multi-task",
+        "vector-site",
+        "dottie"
+      ],
+      "arch": {
+        "preset": "unified trunk (Stage 1, frozen encoders)",
+        "dModel": null,
+        "nLayers": null,
+        "nHeads": null,
+        "mlp": null,
+        "jspaceSplit": null,
+        "vocab": null,
+        "maxContext": null,
+        "paramsNote": "shared 64-dim trunk over per-sport frozen encoders; CORAL domain-align + GRL sport-adversarial + VICReg anti-collapse + SupCon archetype heads. Trained 60 epochs on unified_matrix.npz, saved unified_best.pt (162s, RTX 4080)"
+      },
+      "eval": {
+        "metric": "cross-sport archetype silhouette (Stage-1 unified eval, G3)",
+        "value": 0.7095,
+        "tokens": null,
+        "method": "20,721 players → shared 64-dim z. G1 per-sport non-inferiority PASS (z vs frozen e_s kNN-5 — hoops 0.998, gridiron 0.991, pitch 0.996); G3 silhouette 0.7095 PASS (within-cos 0.767 > between-cos -0.138); collapse-detector PASS",
+        "retracted": "G2 sport-invariance is DEFERRED (acc 0.717 vs chance 0.333; the literal>32 rank test fails, the non-degenerate>12 passes — needs a no-GRL baseline to conclude) — not a clean pass, stated honestly"
+      },
+      "summary": null,
+      "card_path": "tasks/artifacts/model_cards/vector_unified_mtnn/README.md",
       "audit": {
         "generated": null,
         "source_sha256": [],
