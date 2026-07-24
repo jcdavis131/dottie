@@ -22,6 +22,20 @@
 
 
 **Newest first (post-run arc, all committed):**
+- **GLM-5.2 / Slime unified trajectory schema BUILT** (`apps/dottie/dottie/
+  trajectory_schema.py`, commits 734fb1c → d8955f2 → 30168e8). One
+  `Trajectory{steps:[Step{state,action,tool_calls,feedback}], outcome}` + ALL
+  FOUR rollout adapters (from_codeact_trace, from_validation_history,
+  from_repair_rows, from_agent_eval_events) + `to_sft_records` (one
+  source-agnostic learning consumer). 15 tests. ADDITIVE — the four live
+  emitters are NOT rewired. REMAINING (gated, operator go-ahead): collapse the
+  two live exporters (export_repair_transcripts.py + agent-eval
+  export_sft_corpus.py) onto to_sft_records — the only invasive piece; and the
+  PPO-critic idea is deferred (frozen + GPU-blocked + horizons ≤8 steps). Design:
+  tasks/artifacts/glm52_learnings.md.
+- **GLM-5.2 analysis** committed (c8be4a2): GRPO at ava-factory/dottie/rl/grpo.py
+  has no critic; index-share rejected (width 256); MIT/decoupled = already our
+  posture (scout-cli openswap).
 - **openswap adapter family SHIPPED** — 10 native offline replacements for paid
   SaaS in scout-cli (prose/harper, uptime, seo, links, smoke, heartbeat, leaks,
   glitch, certmon, runtrack), stdlib-only, zero new deps. Suite 137→**377**.
