@@ -2,10 +2,32 @@
 
 **Paste-able brief for any agent continuing this work. Everything below is live and verified.**
 
+## LATEST (2026-07-24, later) — DEPLOYED + vector cards + Universal MTNN trained
+
+- **Dottie site DEPLOYED to www.bhenre.com** (operator: "deploy") — live-verified
+  200s, Hub + honest APIs + real telemetry (~7 min fresh from the box). Commit 2192c57.
+- **OAPEN scaled up** (operator: "scale up OAPEN") — 19 unique CC-BY books (query
+  starvation + content-dup fixes); full corpus gitignored, bounded sample committed.
+  Commit 682ff88.
+- **Vector MTNN model cards + Universal MTNN TRAINED** (operator auto-mode: "vector
+  model cards for each MTNN and start training the universal MTNN"). Commit 7332bd7.
+  - 4 model cards, each honestly classified from its COMMITTED eval: gridiron REAL
+    (weekly Spearman 0.6899), hoops REAL (held-out retrieval test top5 0.3633),
+    equities PLACEHOLDER (sector purity 0.1742 — 2200/4941 placeholder rows,
+    contamination carried), Universal MTNN REAL.
+  - **Universal MTNN trained**: `vector-unified/pipeline/train_unified.py --epochs 60`
+    (Stage 1), 162s on the free RTX 4080 → `unified_best.pt` (in vector-unified repo).
+    Eval: 20,721 players in a shared 64-dim space across hoops/gridiron/pitch; G1
+    non-inferiority PASS, G3 silhouette 0.7095 PASS, G2 sport-invariance DEFERRED
+    (needs no-GRL baseline), collapse PASS.
+  - Hub registry now **3 datasets + 5 models + 10 research**. Suite 100, --check fresh.
+- **AWAITING OPERATOR:** redeploy to make the 5-model Hub live (the deployed site
+  still shows the pre-vector-card registry); further MTNN stages (--finetune/--market/
+  --cultural-text); the G2 no-GRL baseline; the larger OAPEN pull (OAI-PMH/DOAB).
+
 ## SESSION COMPLETE STATE (2026-07-24) — Dottie site built, tested, CI-enforced, DEPLOY-READY
 
-The whole `/goal` arc is committed and green; the one remaining high-leverage
-action is the **operator's deploy**. Full detail in the dated blocks below.
+The whole `/goal` arc is committed and green. Full detail in the dated blocks below.
 
 **Built + verified this session (all committed, NOT deployed):**
 - **Vision realigned + de-gamed** — SPEC of record (three faces), READMEs, TODO;
