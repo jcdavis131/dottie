@@ -1,0 +1,111 @@
+# Open-licensed / public-domain seeds for the agentic research-PDF track.
+# status: listed = operator may download manually; approved = cleared for inbox ingest;
+#         blocked = do not use (copyright / mirror / gated).
+#
+# Acquisition is ALWAYS operator-driven into data/research_inbox/. The collector never
+# fetches these URLs. Prefer HTML/PDF from the rights-holder or US-gov sites.
+
+version: 1
+doctrine:
+  - no_upload_mirrors   # pdfcoffee, scribd scrapes, etc. are blocked
+  - provenance_required # every ingested file needs license + source_url in sidecar
+  - multi_source_facts  # no single shelf owns a phase's factual mass
+
+domains:
+  math:
+    priority: 1
+    phase_hint: [1, 2, 3]
+    seeds:
+      - id: openstax-college-algebra
+        title: OpenStax College Algebra 2e
+        license: cc-by-4.0
+        url: https://openstax.org/details/books/college-algebra-2e
+        status: listed
+      - id: openstax-precalculus
+        title: OpenStax Precalculus 2e
+        license: cc-by-4.0
+        url: https://openstax.org/details/books/precalculus-2e
+        status: listed
+
+  statistics:
+    priority: 1
+    phase_hint: [1, 2, 3]
+    seeds:
+      - id: openstax-intro-stats
+        title: OpenStax Introductory Statistics 2e
+        license: cc-by-4.0
+        url: https://openstax.org/details/books/introductory-statistics-2e
+        status: listed
+      - id: think-stats-2e
+        title: Think Stats 2e (Downey)
+        license: cc-by-nc-4.0
+        url: https://greenteapress.com/wp/think-stats-2e/
+        status: listed
+        notes: NC — keep out of any commercial redistributed weights if that constraint binds
+
+  causal:
+    priority: 1
+    phase_hint: [2, 3, 5]
+    seeds:
+      - id: doe-accident-investigation
+        title: DOE Accident Investigation / causal factor analysis handbooks (US gov)
+        license: us-gov-public-domain
+        url: https://www.energy.gov/
+        status: listed
+        notes: Genre match for event/condition CFA diagrams; prefer primary DOE PDFs
+      - id: hernan-causal-inference
+        title: Causal Inference — What If (Hernán & Robins)
+        license: cc-by-nc-nd
+        url: https://www.hsph.harvard.edu/miguel-hernan/causal-inference-book/
+        status: listed
+        notes: NC-ND — training-use judgment is operator's; prefer citing + synthetic drills
+      - id: arxiv-causal-llm-eval
+        title: Causal Methods for LLM Development and Evaluation (arXiv)
+        license: arxiv-author
+        url: https://arxiv.org/abs/2605.25998
+        status: listed
+
+  physics:
+    priority: 2
+    phase_hint: [2, 4]
+    seeds:
+      - id: openstax-university-physics-1
+        title: OpenStax University Physics Volume 1
+        license: cc-by-4.0
+        url: https://openstax.org/details/books/university-physics-volume-1
+        status: listed
+
+  psychology:
+    priority: 2
+    phase_hint: [2, 5]
+    seeds:
+      - id: openstax-psychology-2e
+        title: OpenStax Psychology 2e
+        license: cc-by-4.0
+        url: https://openstax.org/details/books/psychology-2e
+        status: listed
+
+  blocked_mirrors:
+    priority: 99
+    phase_hint: []
+    seeds:
+      - id: pdfcoffee-generic
+        title: pdfcoffee.com uploads
+        license: unknown
+        url: https://pdfcoffee.com/
+        status: blocked
+        notes: User-upload mirror; DMCA surface; never automate download
+
+  openstax_k12:
+    priority: 0
+    phase_hint: [1, 2, 3, 4, 5]
+    seeds:
+      - id: openstax-k12-bulk
+        title: OpenStax K12 + AP textbook PDFs (CMS k12book_subjects / is_ap)
+        license: cc-by-4.0-or-cc-by-nc-sa-4.0  # per-title; see sidecar meta
+        url: https://openstax.org/k12
+        status: approved
+        notes: >
+          Bulk pull via scripts/download_openstax_k12.py into
+          data/research_inbox/openstax-k12/<category>/. Rights-holder CDN only.
+          NC titles remain operator-gated for commercial redistribution.

@@ -94,3 +94,4 @@ your_files/
 # --- Dolma / Data tooling ---
 .dolma/
 .jupyter/
+.venv-test/

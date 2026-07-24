@@ -13,6 +13,7 @@ to generators by these keys and the collector resolves them here.
 """
 
 from dottie.datagen.base import Generator, write_shards, run_cli, validate_doc
+from dottie.datagen.causal_reason import CausalReasonGenerator
 from dottie.datagen.chat_safety import ChatSafetyGenerator
 from dottie.datagen.code_gen import CodeGenGenerator
 from dottie.datagen.compress_trace import CompressTraceGenerator
@@ -22,6 +23,7 @@ from dottie.datagen.encyclopedia import EncyclopediaGenerator
 from dottie.datagen.logic import LogicGenerator
 from dottie.datagen.math_gen import MathGenerator
 from dottie.datagen.react_tools import ReactToolsGenerator
+from dottie.datagen.research_pdf import ResearchPdfGenerator
 from dottie.datagen.scout_cli import ScoutCliGenerator
 from dottie.datagen.synpro_gen import SynProLiteGenerator
 from dottie.datagen.think_in_code import ThinkInCodeGenerator, ThinkToolsGenerator
@@ -35,6 +37,7 @@ from dottie.datagen.zk_math import ZkMathGenerator
 #: refers to generators by these keys; dottie/pipeline/collector.py resolves
 #: them here rather than carrying its own copies.
 GENERATORS: dict[str, type[Generator]] = {
+    CausalReasonGenerator.name: CausalReasonGenerator,
     ChatSafetyGenerator.name: ChatSafetyGenerator,
     CodeGenGenerator.name: CodeGenGenerator,
     CompressTraceGenerator.name: CompressTraceGenerator,
@@ -44,6 +47,7 @@ GENERATORS: dict[str, type[Generator]] = {
     LogicGenerator.name: LogicGenerator,
     MathGenerator.name: MathGenerator,
     ReactToolsGenerator.name: ReactToolsGenerator,
+    ResearchPdfGenerator.name: ResearchPdfGenerator,
     ScoutCliGenerator.name: ScoutCliGenerator,
     SynProLiteGenerator.name: SynProLiteGenerator,
     ThinkInCodeGenerator.name: ThinkInCodeGenerator,
@@ -57,9 +61,11 @@ GENERATORS: dict[str, type[Generator]] = {
 
 __all__ = [
     "Generator", "write_shards", "run_cli", "validate_doc", "GENERATORS",
+    "CausalReasonGenerator",
     "ChatSafetyGenerator", "CodeGenGenerator", "CompressTraceGenerator",
     "CompressionGenerator", "DBTraceGenerator", "EncyclopediaGenerator",
     "LogicGenerator", "MathGenerator", "ReactToolsGenerator",
+    "ResearchPdfGenerator",
     "ScoutCliGenerator",
     "SynProLiteGenerator", "ThinkInCodeGenerator", "ThinkToolsGenerator",
     "ToolUseGenerator", "WikiGenerator", "WorkflowGaia2Generator",

@@ -1,0 +1,298 @@
+# Independent OER equivalents for every live title on
+# https://openstax.org/subjects/math
+#
+# Doctrine: these are NOT OpenStax mirrors / LibreTexts OpenStax forks.
+# Prefer author-maintained CC / GFDL books with rights-holder downloads.
+# status: verified_pdf = direct PDF tested; listed = page known, PDF TBD;
+#         html_source = HTML/GitHub primary (extract later).
+
+version: 1
+openstax_subject: https://openstax.org/subjects/math
+generated: "2026-07-23"
+
+equivalents:
+  - openstax_slug: prealgebra-2e
+    openstax_title: Prealgebra 2e
+    alternatives:
+      - id: stitz-zeager-college-algebra
+        title: Stitz–Zeager College Algebra (early chapters as prealgebra bridge)
+        license: cc-by-nc-sa-3.0
+        source_url: https://www.stitz-zeager.com/
+        pdf_url: https://www.stitz-zeager.com/szca07042013.pdf
+        status: verified_pdf
+        notes: Full college algebra; early chapters cover prealgebra refresh
+      - id: umn-elementary-algebra
+        title: Elementary Algebra (Open Textbook Library)
+        license: cc-by-nc-sa
+        source_url: https://open.umn.edu/opentextbooks/textbooks/elementary-algebra
+        status: listed
+
+  - openstax_slug: elementary-algebra-2e
+    openstax_title: Elementary Algebra 2e
+    alternatives:
+      - id: umn-elementary-algebra
+        title: Elementary Algebra (Burzynski / Open Textbook Library)
+        license: cc-by-nc-sa
+        source_url: https://open.umn.edu/opentextbooks/textbooks/elementary-algebra
+        status: listed
+      - id: stitz-zeager-college-algebra
+        title: Stitz–Zeager College Algebra
+        license: cc-by-nc-sa-3.0
+        source_url: https://www.stitz-zeager.com/
+        pdf_url: https://www.stitz-zeager.com/szca07042013.pdf
+        status: verified_pdf
+
+  - openstax_slug: intermediate-algebra-2e
+    openstax_title: Intermediate Algebra 2e
+    alternatives:
+      - id: umn-intermediate-algebra
+        title: Intermediate Algebra (Open Textbook Library)
+        license: gfdl
+        source_url: https://open.umn.edu/opentextbooks/textbooks/intermediate-algebra
+        status: listed
+      - id: stitz-zeager-college-algebra
+        title: Stitz–Zeager College Algebra
+        license: cc-by-nc-sa-3.0
+        pdf_url: https://www.stitz-zeager.com/szca07042013.pdf
+        source_url: https://www.stitz-zeager.com/
+        status: verified_pdf
+
+  - openstax_slug: college-algebra-2e
+    openstax_title: College Algebra 2e
+    alternatives:
+      - id: stitz-zeager-college-algebra
+        title: Stitz–Zeager College Algebra
+        license: cc-by-nc-sa-3.0
+        pdf_url: https://www.stitz-zeager.com/szca07042013.pdf
+        source_url: https://www.stitz-zeager.com/
+        status: verified_pdf
+      - id: umn-college-algebra
+        title: College Algebra (Open Textbook Library)
+        license: cc-by-nc-sa
+        source_url: https://open.umn.edu/opentextbooks/textbooks/college-algebra
+        status: listed
+
+  - openstax_slug: college-algebra-corequisite-support-2e
+    openstax_title: College Algebra 2e with Corequisite Support
+    alternatives:
+      - id: stitz-zeager-college-algebra
+        title: Stitz–Zeager College Algebra
+        license: cc-by-nc-sa-3.0
+        pdf_url: https://www.stitz-zeager.com/szca07042013.pdf
+        source_url: https://www.stitz-zeager.com/
+        status: verified_pdf
+        notes: Pair with Active Prelude for corequisite-style readiness
+
+  - openstax_slug: algebra-and-trigonometry-2e
+    openstax_title: Algebra and Trigonometry 2e
+    alternatives:
+      - id: stitz-zeager-college-algebra
+        title: Stitz–Zeager College Algebra
+        license: cc-by-nc-sa-3.0
+        pdf_url: https://www.stitz-zeager.com/szca07042013.pdf
+        source_url: https://www.stitz-zeager.com/
+        status: verified_pdf
+      - id: stitz-zeager-college-trig
+        title: Stitz–Zeager College Trigonometry
+        license: cc-by-nc-sa-3.0
+        pdf_url: https://www.stitz-zeager.com/szct07042013.pdf
+        source_url: https://www.stitz-zeager.com/
+        status: verified_pdf
+      - id: umn-college-trigonometry
+        title: College Trigonometry (Open Textbook Library)
+        license: cc-by-nc-sa
+        source_url: https://open.umn.edu/opentextbooks/textbooks/college-trigonometry
+        status: listed
+
+  - openstax_slug: precalculus-2e
+    openstax_title: Precalculus 2e
+    alternatives:
+      - id: stitz-zeager-precalculus-4
+        title: Stitz–Zeager Precalculus (4th / current PDF)
+        license: cc-by-nc-sa-3.0
+        pdf_url: https://www.stitz-zeager.com/Precalculus4.pdf
+        source_url: https://www.stitz-zeager.com/
+        status: verified_pdf
+      - id: stitz-zeager-precalculus-legacy
+        title: Stitz–Zeager Precalculus (2013 edition)
+        license: cc-by-nc-sa-3.0
+        pdf_url: https://www.stitz-zeager.com/szprecalculus07042013.pdf
+        source_url: https://www.stitz-zeager.com/
+        status: verified_pdf
+      - id: active-prelude-to-calculus
+        title: Active Prelude to Calculus (Boelkins)
+        license: cc-by-sa
+        source_url: https://activecalculus.org/
+        status: html_source
+        notes: HTML primary; PDF linked from activecalculus.org landing
+
+  - openstax_slug: calculus-volume-1
+    openstax_title: Calculus Volume 1
+    alternatives:
+      - id: active-calculus-single-2e
+        title: Active Calculus Single Variable (2e PDF)
+        license: cc-by-sa-4.0
+        pdf_url: https://activecalculus.org/wp-content/uploads/2025/08/acs2e-8-7-25.pdf
+        source_url: https://activecalculus.org/
+        status: verified_pdf
+      - id: whitman-guichard-calculus
+        title: Community Calculus / Whitman Calculus (Guichard)
+        license: cc-by-nc-sa
+        pdf_url: https://www.whitman.edu/mathematics/calculus/calculus.pdf
+        source_url: https://www.whitman.edu/mathematics/calculus/
+        status: verified_pdf
+      - id: apex-calculus
+        title: APEX Calculus
+        license: cc-by-nc
+        source_url: https://apexcalculus.com/
+        html_url: https://opentext.uleth.ca/apex-calculus/apex-calculus.html
+        status: html_source
+
+  - openstax_slug: calculus-volume-2
+    openstax_title: Calculus Volume 2
+    alternatives:
+      - id: active-calculus-single-2e
+        title: Active Calculus Single Variable (2e PDF)
+        license: cc-by-sa-4.0
+        pdf_url: https://activecalculus.org/wp-content/uploads/2025/08/acs2e-8-7-25.pdf
+        source_url: https://activecalculus.org/
+        status: verified_pdf
+      - id: whitman-guichard-calculus
+        title: Community Calculus / Whitman Calculus (Guichard)
+        license: cc-by-nc-sa
+        pdf_url: https://www.whitman.edu/mathematics/calculus/calculus.pdf
+        source_url: https://www.whitman.edu/mathematics/calculus/
+        status: verified_pdf
+
+  - openstax_slug: calculus-volume-3
+    openstax_title: Calculus Volume 3
+    alternatives:
+      - id: active-calculus-multi
+        title: Active Calculus Multivariable
+        license: cc-by-sa-4.0
+        pdf_url: https://activecalculus.org/wp-content/uploads/2024/09/acm-full-text.pdf
+        source_url: https://activecalculus.org/
+        status: verified_pdf
+      - id: whitman-multivariable
+        title: Whitman Multivariable Calculus (Guichard)
+        license: cc-by-nc-sa
+        pdf_url: https://www.whitman.edu/mathematics/multivariable/multivariable.pdf
+        source_url: https://www.whitman.edu/mathematics/multivariable/
+        status: verified_pdf
+
+  - openstax_slug: statistics
+    openstax_title: Statistics (K12 / TEA)
+    alternatives:
+      - id: think-stats-2e
+        title: Think Stats 2e (Downey)
+        license: cc-by-nc-4.0
+        source_url: https://greenteapress.com/wp/think-stats-2e/
+        pdf_url: https://greenteapress.com/thinkstats2/thinkstats2.pdf
+        status: verified_pdf
+      - id: openintro-ims
+        title: Introduction to Modern Statistics (OpenIntro IMS)
+        license: cc-by-sa-3.0
+        source_url: https://openintro-ims.netlify.app/
+        github: https://github.com/openintrostat/ims
+        status: html_source
+      - id: openintro-statistics
+        title: OpenIntro Statistics
+        license: cc-by-sa
+        source_url: https://www.openintro.org/book/os/
+        status: listed
+
+  - openstax_slug: introductory-statistics-2e
+    openstax_title: Introductory Statistics 2e
+    alternatives:
+      - id: think-stats-2e
+        title: Think Stats 2e (Downey)
+        license: cc-by-nc-4.0
+        source_url: https://greenteapress.com/wp/think-stats-2e/
+        pdf_url: https://greenteapress.com/thinkstats2/thinkstats2.pdf
+        status: verified_pdf
+      - id: openintro-ims
+        title: Introduction to Modern Statistics (OpenIntro IMS)
+        license: cc-by-sa-3.0
+        source_url: https://openintro-ims.netlify.app/
+        github: https://github.com/openintrostat/ims
+        status: html_source
+      - id: umn-collaborative-statistics
+        title: Collaborative Statistics
+        license: cc-by
+        source_url: https://open.umn.edu/opentextbooks/textbooks/collaborative-statistics
+        status: listed
+
+  - openstax_slug: introductory-business-statistics-2e
+    openstax_title: Introductory Business Statistics 2e
+    alternatives:
+      - id: think-stats-2e
+        title: Think Stats 2e (Downey)
+        license: cc-by-nc-4.0
+        source_url: https://greenteapress.com/wp/think-stats-2e/
+        pdf_url: https://greenteapress.com/thinkstats2/thinkstats2.pdf
+        status: verified_pdf
+      - id: openintro-ims
+        title: Introduction to Modern Statistics (OpenIntro IMS)
+        license: cc-by-sa-3.0
+        source_url: https://openintro-ims.netlify.app/
+        status: html_source
+
+  - openstax_slug: contemporary-mathematics
+    openstax_title: Contemporary Mathematics
+    alternatives:
+      - id: book-of-proof
+        title: Book of Proof (Hammack)
+        license: cc-by-nd
+        source_url: https://richardhammack.github.io/BookOfProof/
+        pdf_url: https://richardhammack.github.io/BookOfProof/Main.pdf
+        status: verified_pdf
+      - id: mathematical-reasoning
+        title: Mathematical Reasoning — Writing and Proof
+        license: cc-by-nc-sa
+        source_url: https://open.umn.edu/opentextbooks/textbooks/mathematical-reasoning-writing-and-proof-version-2-1
+        status: listed
+
+  - openstax_slug: principles-data-science
+    openstax_title: Principles of Data Science
+    alternatives:
+      - id: think-stats-2e
+        title: Think Stats 2e (Downey)
+        license: cc-by-nc-4.0
+        source_url: https://greenteapress.com/wp/think-stats-2e/
+        pdf_url: https://greenteapress.com/thinkstats2/thinkstats2.pdf
+        status: verified_pdf
+      - id: openintro-ims
+        title: Introduction to Modern Statistics (OpenIntro IMS)
+        license: cc-by-sa-3.0
+        source_url: https://openintro-ims.netlify.app/
+        status: html_source
+
+  - openstax_slug: algebra-1
+    openstax_title: Algebra 1 (RAISE / K12)
+    alternatives:
+      - id: stitz-zeager-college-algebra
+        title: Stitz–Zeager College Algebra (secondary-friendly early chapters)
+        license: cc-by-nc-sa-3.0
+        pdf_url: https://www.stitz-zeager.com/szca07042013.pdf
+        source_url: https://www.stitz-zeager.com/
+        status: verified_pdf
+      - id: umn-elementary-algebra
+        title: Elementary Algebra (Open Textbook Library)
+        license: cc-by-nc-sa
+        source_url: https://open.umn.edu/opentextbooks/textbooks/elementary-algebra
+        status: listed
+
+# Shared extras that strengthen the math shelf beyond 1:1 OpenStax coverage
+extras:
+  - id: first-course-linear-algebra
+    title: A First Course in Linear Algebra (Kuttler)
+    license: gfdl
+    source_url: https://open.umn.edu/opentextbooks/textbooks/a-first-course-in-linear-algebra
+    status: listed
+    covers: [linear-algebra]
+  - id: introduction-to-probability-grinstead-snell
+    title: Introduction to Probability (Grinstead & Snell)
+    license: gfdl
+    source_url: https://open.umn.edu/opentextbooks/textbooks/introduction-to-probability
+    status: listed
+    covers: [probability]
