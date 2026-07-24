@@ -22,9 +22,41 @@ services:
       # stack) each restarted the fork from step 0 — an 11h run can never finish
       # that way. On a FRESH fork /ckpt/tool has no latest and this is a no-op.
       - --resume
+    environment:
+      # p4 seq-4096 memory story (2026-07-22): mb 2 OOM'd intermittently
+      # (fragmentation; restarts=3), but mb 1 was CPU/data-bound — GPU 19%,
+      # ZERO steps in 40 min (64 sequential micros starve the GPU). Fix is
+      # mb 2 + torch.cuda.empty_cache() at checkpoint saves and phase
+      # transitions (dottie/train.py, bind-mounted). Keep mb pinned at 2 so
+      # a future MAX_MICRO_BATCH default change can't silently raise it here.
+      AVA_MAX_MICRO_BATCH: "2"
+      # Emergency ckpt rotation (2026-07-22, disk critical at 5.4 GB): rotate
+      # ONLY step files >= 1905 (all history preserved for the operator's own
+      # prune decision), keep last 3. Inert without AVA_CKPT_ROTATE_MIN.
+      AVA_CKPT_ROTATE_MIN: "1905"
+      AVA_CKPT_KEEP: "3"
     volumes:
       - ava_packed:/packed
       - ava_ckpt:/ckpt
+      - ava_state:/state
+      - ava_reports:/reports
+      - type: bind
+        source: .
+        target: /app
+      - type: bind
+        source: C:/
+        target: /host_disk
+        read_only: true
+
+  # Curriculum deploy (2026-07-21): bind-mount local (merged) configs + datagen into the
+  # collector so the new sources (scout_cli, zk_math, compression, db_trace) go live WITHOUT
+  # a memory-heavy image rebuild — same `. -> /app` pattern the trainer uses above. Volumes
+  # replicate the base collector's named volumes (ava_raw/state/reports) so the cursor + RAW
+  # output are preserved across recreate. Recreate with `--scale collector=2` to avoid
+  # resurrecting the operator-stopped collector-3/4.
+  collector:
+    volumes:
+      - ava_raw:/raw
       - ava_state:/state
       - ava_reports:/reports
       - type: bind

@@ -162,6 +162,35 @@ def save_ckpt(
     os.replace(tmp, path)  # atomic: the server may be reading
 
 
+def _rotate_step_ckpts(ckpt_dir: Path, keep: int = 3, min_step: int = 0) -> int:
+    """Prospective keep-last-N rotation for ``step_*.pt`` snapshots.
+
+    The tool run accumulated 211 GB of dead step checkpoints (2026-07-22 disk
+    incident) because nothing ever pruned them. Each save unlinks its own
+    older siblings beyond ``keep`` — ONLY numbered step files AT OR ABOVE
+    ``min_step`` (the deploy floor: historical files below it are the
+    operator's to prune, never this function's), and never stable_p*,
+    *_final.pt or named baselines. Non-fatal by design: a rotation error must
+    never kill a training step. Returns files removed."""
+    removed = 0
+    try:
+        steps = []
+        for f in ckpt_dir.glob("step_*.pt"):
+            try:
+                n = int(f.stem.split("_")[1])
+            except (IndexError, ValueError):
+                continue  # oddly named — leave it alone
+            if n >= min_step:
+                steps.append((n, f))
+        doomed = sorted(steps)[:-keep] if len(steps) > keep else []
+        for _, f in doomed:
+            f.unlink(missing_ok=True)
+            removed += 1
+    except OSError:
+        pass
+    return removed
+
+
 def _point_latest_at(ckpt_dir: Path, target: Path) -> None:
     latest = ckpt_dir / "latest"
     tmp = ckpt_dir / "latest.tmp"
@@ -515,6 +544,12 @@ def main(argv=None) -> int:
                 stream = sampler.batches(
                     phase, pc.seq, mb, log=lambda m: log("data_starved", msg=m)
                 )
+                # Defragment before the new phase's (bigger) activations land.
+                # p3->p4 doubles seq; cached p3-shaped blocks otherwise OOM the
+                # first seq-4096 step on this 12GB WSL2 stack (2026-07-22:
+                # CUDA unknown-error exactly at this boundary, restarts=3).
+                if device == "cuda":
+                    torch.cuda.empty_cache()
 
             lr = wsd_lr(step, total_steps, cfg)
             for g in opt.param_groups:
@@ -629,7 +664,23 @@ def main(argv=None) -> int:
                 )
                 _point_latest_at(ckpt_dir, p)
                 log("checkpoint", path=str(p), step=step)
+                # Keep-last-N rotation, armed ONLY when AVA_CKPT_ROTATE_MIN is
+                # set (the deploy floor — files below it are never touched).
+                # Emergency-armed 2026-07-22 at disk-critical; see train.py
+                # _rotate_step_ckpts docstring for the 211 GB story.
+                _rot_min = int(os.environ.get("AVA_CKPT_ROTATE_MIN", "0"))
+                if _rot_min > 0:
+                    _n = _rotate_step_ckpts(
+                        ckpt_dir, keep=int(os.environ.get("AVA_CKPT_KEEP", "3")),
+                        min_step=_rot_min)
+                    if _n:
+                        log("ckpt_rotated", removed=_n, keep_floor=_rot_min, step=step)
                 heartbeat(step, phase)
+                # Anti-fragmentation at the natural pause: the 2GB state-dict
+                # save + hours of varied-shape allocations intermittently OOM'd
+                # mid-p4 at mb 2 (~40 min in). Cheap here (every 15 steps).
+                if device == "cuda":
+                    torch.cuda.empty_cache()
 
         final = ckpt_dir / f"{args.branch or 'base'}_final.pt"
         save_ckpt(

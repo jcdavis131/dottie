@@ -144,12 +144,31 @@ async function tryLive() {
 
 const $ = (sel) => document.querySelector(sel);
 
+function relAge(iso) {
+  const t = Date.parse(iso);
+  if (!isFinite(t)) return null;
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 90) return "just now";
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  if (s < 172800) return `${(s / 3600).toFixed(1)} h ago`;
+  return `${Math.round(s / 86400)} d ago`;
+}
+
 function renderSourceBadge() {
   const el = $("#source-badge");
   el.classList.remove("live", "snapshot");
-  if (state.source === "live") {
+  // "Live" must mean the BOX is live, not just that a CDN fetch succeeded: the hourly
+  // gist feed carries published_utc, and a feed older than 2 missed beats is the box
+  // asleep — say so instead of implying freshness (7.4: honesty over uptime theater).
+  const pub = state.live.status?.published_utc;
+  const age = pub ? relAge(pub) : null;
+  const fresh = pub ? Date.now() - Date.parse(pub) < 2 * 3600 * 1000 : false;
+  if (state.source === "live" && age && !fresh) {
+    el.classList.add("snapshot");
+    el.textContent = `stale · box last seen ${age}`;
+  } else if (state.source === "live") {
     el.classList.add("live");
-    el.textContent = "live · GitHub";
+    el.textContent = age ? `live · box seen ${age}` : "live · GitHub";
   } else {
     el.classList.add("snapshot");
     const at = state.snapshot?.generated_at || "unknown";
@@ -177,39 +196,71 @@ const statusChip = (pass) => (pass ? chip("good", "PASS") : chip("critical", "FA
 
 function renderTelemetry() {
   const status = state.live.status || null;
-  const pipe = status
+  // Gist payload v2 (dottie_live_status/v2) carries the factory's full /pipeline/status
+  // under .pipeline — prefer it; fall back to the legacy v1 shape, then the baked snapshot.
+  const v2 = status?.pipeline && !status.pipeline.unreachable ? status.pipeline : null;
+  const pp = v2?.watch?.phase_progress;
+  const run = v2?.watch?.run_progress;
+  const last = v2?.trainer?.last;
+  const pipe = v2
     ? {
-        current_phase: status.builder?.current_phase,
-        phase_progress: status.builder?.phase_progress,
-        total_shards: status.builder?.total_shards,
-        trainer_steps: status.trainer?.steps,
-        trainer_loss: status.trainer?.loss,
-        weekly_training: status.weekly_training?.status ?? status.weekly_training,
+        current_phase: pp ? `p${pp.phase} ${pp.short || pp.name || ""}`.trim()
+                          : v2.flow?.trainer_phase,
+        phase_progress: pp?.frac,
+        total_shards: v2.manifest?.total_shards,
+        trainer_steps: last?.step ?? v2.demand?.step,
+        trainer_loss: last?.lm != null ? num(last.lm, 4) : null,
+        tok_s: last?.tok_s,
+        run_frac: run?.frac,
+        mode_label: v2.mode?.label,
+        mode_stale: !!v2.trainer?.stale,
       }
-    : state.snapshot.pipeline;
+    : status
+      ? {
+          current_phase: status.builder?.current_phase,
+          phase_progress: status.builder?.phase_progress,
+          total_shards: status.builder?.total_shards,
+          trainer_steps: status.trainer?.steps,
+          trainer_loss: status.trainer?.loss,
+          mode_label: status.weekly_training?.status ?? status.weekly_training,
+        }
+      : state.snapshot.pipeline;
   const exps = state.live.experiments || [];
   const best = exps.length ? Math.min(...exps.map((e) => e.val_bpb)) : null;
-  const weekly = String(pipe.weekly_training ?? "unknown");
-  const weeklyKind = weekly.startsWith("BLOCKED") ? "critical"
-    : weekly.toLowerCase().includes("run") ? "good" : "warning";
+  // The box can be up while the FACTORY is down (observed 2026-07-20: the WSL VM died and
+  // took all 14 containers with it, while the host-side publisher kept publishing). The
+  // publisher records {unreachable} honestly; say so instead of rendering bare em-dashes.
+  const down = status?.pipeline?.unreachable;
+  const mode = down ? "factory unreachable"
+    : String(pipe.mode_label ?? pipe.weekly_training ?? "unknown")
+      + (pipe.mode_stale ? " · stale" : "");
+  const modeKind = down ? "critical"
+    : pipe.mode_stale || mode.startsWith("BLOCKED") ? "warning"
+      : /training|run/i.test(mode) ? "good" : "warning";
 
   $("#telemetry-tiles").innerHTML = `
     <div class="tile"><div class="k">Pipeline phase</div>
-      <div class="v">${esc(pipe.current_phase ?? "—")}</div>
-      <div class="d">progress ${pipe.phase_progress != null ? Math.round(pipe.phase_progress * 100) + "%" : "—"} · ${esc(pipe.total_shards ?? "—")} shards</div></div>
+      <div class="v" style="font-size:18px; margin-top:4px">${esc(pipe.current_phase ?? "—")}</div>
+      <div class="d">phase ${pipe.phase_progress != null ? Math.round(pipe.phase_progress * 100) + "%" : "—"}${
+        pipe.run_frac != null ? ` · run ${Math.round(pipe.run_frac * 100)}%` : ""} · ${esc(pipe.total_shards ?? "—")} shards</div></div>
     <div class="tile"><div class="k">Trainer</div>
       <div class="v">${esc(pipe.trainer_steps ?? "—")}<span class="unit">steps</span></div>
-      <div class="d">loss ${esc(pipe.trainer_loss ?? "—")}</div></div>
-    <div class="tile"><div class="k">Weekly training</div>
-      <div class="v" style="font-size:15px; margin-top:6px">${chip(weeklyKind, weekly)}</div></div>
+      <div class="d">loss ${esc(pipe.trainer_loss ?? "—")}${
+        pipe.tok_s != null ? ` · ${esc(Math.round(pipe.tok_s))} tok/s` : ""}</div></div>
+    <div class="tile"><div class="k">Factory mode</div>
+      <div class="v" style="font-size:15px; margin-top:6px">${chip(modeKind, mode)}</div></div>
     <div class="tile"><div class="k">RTX experiments</div>
       <div class="v">${exps.length || "—"}</div>
       <div class="d">${best != null ? `best val_bpb ${num(best, 4)}` : "release feed unreachable"}</div></div>`;
 
   renderBpbChart(exps);
-  $("#telemetry-note").textContent = exps.length
+  const relnote = exps.length
     ? `${exps.length} experiments from scout-rtx releases · polling every ${POLL_MS / 60000} min`
     : "";
+  $("#telemetry-note").textContent = down
+    ? `factory pipeline unreachable from the box (${String(down).slice(0, 80)}) — tiles show `
+      + `no pipeline numbers rather than stale ones${relnote ? " · " + relnote : ""}`
+    : relnote;
 }
 
 function renderBpbChart(exps) {
@@ -738,6 +789,7 @@ function renderResearch() {
     sotaCard.classList.add("hidden");
   } else {
     sotaCard.classList.remove("hidden");
+    renderSotaSparkline(sota, b);
     $("#research-sota-table tbody").innerHTML = sota.map((h) => `
       <tr>
         <td><strong>${esc(h.name || h.id || "—")}</strong></td>
@@ -764,6 +816,46 @@ function renderResearch() {
       <td class="num">${esc(e.attempts ?? "—")}</td>
       <td>${esc(e.search_domain || "—")}</td>
     </tr>`).join("");
+}
+
+// The hill-climb series: seed baseline -> each sota, in order. Only points measured under the
+// CURRENT baseline metric are plotted (`metric` is regime-matched server-side; sota from a
+// retired metric regime arrives as null and is counted out loud instead of drawn dishonestly).
+function renderSotaSparkline(sota, baseline) {
+  const el = $("#research-sota-spark");
+  const pts = sota.filter((h) => typeof h.metric === "number")
+    .sort((p, q) => (p.updated_ts || 0) - (q.updated_ts || 0));
+  const seed = pts.length && typeof pts[0].baseline_value === "number"
+    ? pts[0].baseline_value : null;
+  const series = seed != null ? [seed, ...pts.map((p) => p.metric)] : pts.map((p) => p.metric);
+  if (series.length < 2) {
+    el.classList.add("hidden");
+    el.innerHTML = "";
+    return;
+  }
+  const first = series[0], last = series[series.length - 1];
+  const improved = baseline && baseline.higher_is_better ? last > first : last < first;
+  const skipped = sota.length - pts.length;
+  el.classList.remove("hidden");
+  el.innerHTML = sparklineSvg(series)
+    + `<div class="card-note">${esc(baseline ? baseline.metric_name : "metric")} `
+    + `${num(first)} → <span style="color:var(--status-${improved ? "good" : "critical"})">`
+    + `${num(last)}</span> (Δ ${num(last - first)})`
+    + `${seed != null ? " · anchored at the seed baseline" : ""}`
+    + `${skipped ? ` · ${skipped} sota point(s) from a retired metric regime not plotted` : ""}</div>`;
+}
+
+function sparklineSvg(series, w = 240, h = 44, pad = 4) {
+  const min = Math.min(...series), max = Math.max(...series);
+  const span = (max - min) || 1;
+  const x = (i) => pad + (i * (w - 2 * pad)) / (series.length - 1);
+  const y = (v) => pad + (1 - (v - min) / span) * (h - 2 * pad);
+  const line = series.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const dots = series.map((v, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" `
+    + `r="2.5" fill="${i ? "var(--accent)" : "var(--status-warning)"}"><title>${num(v)}</title></circle>`).join("");
+  return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img" `
+    + `aria-label="hill-climb sparkline"><polyline points="${line}" fill="none" `
+    + `stroke="var(--accent)" stroke-width="1.5"/>${dots}</svg>`;
 }
 
 /* ---------------- ecosystem ---------------- */

@@ -48,7 +48,20 @@ async function request(url, { method = "GET", body = null, timeoutMs = 8000, hea
     } catch { /* non-JSON error body */ }
     throw new ApiError("http", `HTTP ${res.status}`, { status: res.status, detail, url });
   }
-  return res.json();
+  try {
+    return await res.json();
+  } catch (e) {
+    // Doctrine (top of file): every failure leaves this module as a typed ApiError.
+    // A 2xx whose body is not JSON — a proxy error page, a truncated response, a
+    // misrouted HTML 200 — used to escape as a raw SyntaxError and surface in the UI
+    // as "Unexpected token <", which tells an operator nothing about what to fix.
+    throw new ApiError("http", `HTTP ${res.status} but the body was not JSON`, {
+      status: res.status,
+      // describe() prefers `detail`, so the explanation belongs here, not in `message`.
+      detail: `body was not JSON${e && e.message ? ` (${e.message})` : ""}`,
+      url,
+    });
+  }
 }
 
 const trim = (base) => (base || "").replace(/\/+$/, "");
@@ -100,6 +113,19 @@ export function makeClient(settings) {
       }
       try {
         const wrapped = await request(`${base}/research/status`, { timeoutMs: 8000 });
+        // Verified contract (server.py /research/status): 200 -> {ok, source, status},
+        // failure -> 502, which `request` already converts to an ApiError. So `status` is
+        // present today. Checked anyway because a 200 whose shape drifts would make
+        // `wrapped.status` undefined and hand the UI an EMPTY research panel that looks
+        // like a successful read — the one thing the doctrine at the top of this file
+        // forbids. Defensive, not a live bug; the failure it prevents is silent.
+        if (wrapped == null || typeof wrapped !== "object" || !("status" in wrapped)) {
+          throw new ApiError("http", "proxy returned 200 without a `status` payload", {
+            status: 200,
+            detail: `unexpected shape: keys=${JSON.stringify(Object.keys(wrapped || {}))}`,
+            url: `${base}/research/status`,
+          });
+        }
         return { data: wrapped.status, source: "proxy", sourceUrl: wrapped.source || `${base}/research/status` };
       } catch (proxyErr) {
         throw new ApiError(

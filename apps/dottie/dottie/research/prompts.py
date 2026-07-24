@@ -16,20 +16,36 @@ from __future__ import annotations
 import ast
 import json
 import re
-from typing import TYPE_CHECKING, Any
+from typing import Any, Dict, List, Optional, Tuple
 
-if TYPE_CHECKING:
-    from dottie.research.ledger import Baseline
+from dottie.research.ledger import Baseline
 
-# The three research sub-domains the ideation search space is fenced to. Kept compatible with the
-# Ava architecture so the resulting diff can actually run in the automated loop.
+# The research sub-domains the ideation search space is fenced to. Every one MUST be
+# expressible as a single [batch, seq, hidden] -> [batch, seq, hidden] block, because that is
+# the only thing this loop can build (see the INTEGRATION CONTRACT below).
+#
+# Measured 2026-07-20 (TODOS §5.3.R35): the previous domain 2 read "Alternative loss functions
+# or regularizers that improve pre-training stability" — a CATEGORY ERROR BY CONSTRUCTION, and
+# in direct contradiction with the integration contract in this same prompt, which declares
+# loss-signature ideas out of scope. One third of the fenced space asked for exactly what the
+# loop then rejected. 36% of 84 proposals came back as regularisers/losses with ZERO real
+# wins; the model was obediently sampling a domain we defined. The collapse vocabulary
+# (MoE / load-balancing / sparse / attention / regulariser) maps one-to-one onto the old list.
+#
+# Domain 2 is now the same GOAL — training stability — expressed as something a block can do.
+# Two domains were added because three narrow fences are themselves a cause of repetition.
 DEFAULT_SEARCH_SPACE = [
     "Novel routing mechanisms for Sparse Mixture-of-Experts (MoE) that improve load balancing "
-    "without an auxiliary-loss penalty.",
-    "Alternative loss functions or regularizers that improve pre-training stability "
-    "(fewer loss spikes, no NaN gradients).",
+    "through the block's own forward pass, without an auxiliary-loss penalty.",
+    "Stabilising transforms applied to the hidden states INSIDE the block — normalisation "
+    "variants, bounded activations, residual scaling, gradient-friendly reparameterisation — "
+    "that reduce loss spikes and NaN gradients without touching the training objective.",
     "Modifications to the attention mechanism that reduce memory complexity while preserving "
     "exact representations.",
+    "Token-mixing or channel-mixing operators that are NOT attention (convolutional, "
+    "state-space, gated-MLP, Fourier or pooling-based) used as a drop-in sequence block.",
+    "Adaptive-computation blocks whose transform is input-dependent — gating, dynamic depth "
+    "within the block, or learned per-token routing between internal branches.",
 ]
 
 # Sampling temperatures for the two research completions: ideation is a SEARCH (a near-greedy
@@ -53,58 +69,163 @@ IDEATION_SCHEMA = {
     "pytorch_implementation_strategy": "which nn.Module / autograd pieces to modify or create",
     "expected_outcome": "the specific metric that should improve",
     "search_domain": "which of the fenced sub-domains this belongs to",
+    # Asked at IDEATION so capacity is decided before any code exists. Measured 2026-07-20
+    # (TODOS §5.3.R17): 55% of candidates that passed validation had ZERO learnable
+    # parameters — fixed functions that cannot learn, replacing a real ~787K-parameter
+    # block. Naming the parameters up front is the cheapest point to catch that; the
+    # validator catches it ~8 minutes later, after a full implement cycle.
+    # FORM, not a fillable value. The first version offered
+    # "gate: nn.Linear(hidden, hidden); scale: nn.Parameter(hidden)" and **2 of 11 proposals
+    # returned the first clause verbatim** (TODOS 5.3.R64) — a fresh instance of the copy-bait
+    # class this same file's 5.3.R50 rule was written against, introduced by the fix for the
+    # zero-parameter problem. Angle-bracket placeholders cannot be pasted through.
+    "learnable_parameters": "every nn.Parameter / nn.Linear tensor this block will TRAIN, "
+                            "named and shaped, in the form "
+                            "'<your_name>: nn.Parameter(<shape>)' or "
+                            "'<your_name>: nn.Linear(<in>, <out>)', semicolon-separated — "
+                            "use YOUR names and YOUR shapes, derived from the mechanism you "
+                            "are proposing. A block with none is a fixed function and will "
+                            "be rejected: it cannot learn, and replacing a parameterised "
+                            "block with it shrinks the model.",
 }
 
 IMPLEMENTATION_SCHEMA = {
     "module_name": "the PyTorch class name (must subclass nn.Module and define forward)",
-    "target_file": "repo-relative path, e.g. ava/models/experimental_routing.py",
+    # Concrete "e.g." values in this schema get copied VERBATIM. Measured 2026-07-20
+    # (TODOS 5.3.R50): 23 of 98 candidates returned this exact example path, and 27 of 86
+    # returned the input_shape example below. That is not harmless -- 670ad9956bab copied
+    # [4, 16, 64], derived seq_len=16 from it, sized a positional table to 16, and crashed
+    # at the real seq of 256. Describe the value; do not hand over a fillable one.
+    "target_file": "repo-relative path naming THIS module, derived from module_name "
+                   "(e.g. ava/models/<your_module_name_lowercased>.py)",
     "code": "complete syntax-valid Python, with imports; a drop-in module",
     "init_kwargs": "JSON object of constructor kwargs to instantiate the module for the dry-run "
-    "(use small dims; {} if none)",
-    "input_shape": "list[int] input shape for the CPU dry-run forward pass, e.g. [4, 16, 64]",
+                   "(use small dims; {} if none)",
+    "input_shape": "list[int] [batch, seq, hidden] for the CPU dry-run, chosen for YOUR "
+                   "module and small enough to be fast. NOTE: this is only a probe shape. "
+                   "In training the block runs at seq=256, hidden=256, and it is re-validated "
+                   "at that shape — so nothing in your module may be sized to the numbers you "
+                   "put here. Derive every dimension from x.shape at forward time.",
     "shape_assertions": "how the output shape was kept compatible with the baseline",
 }
 
 
-def _baseline_block(baseline: Baseline | None, bottleneck: str) -> str:
+# The engineering constraints, shared by the implementation prompt AND the correction
+# prompt. TODOS 5.3.R38: the corrector previously received ONLY the failure message and
+# the previous code, so every rule the initial attempt was held to -- axis discipline,
+# the one-tensor contract, capacity, the ban on loss-shaped arguments -- vanished on
+# retry. A correction could reintroduce exactly what the constraints exist to prevent,
+# and the corrector is the path most candidates actually take.
+_ENGINEERING_CONSTRAINTS = """1. Shape integrity: document expected input/output shapes in every `forward` docstring
+   (e.g. [batch, seq, hidden]); add `assert` statements around einsum / novel ops.
+2. Numerical stability: add small `eps` to denominators, use `torch.logaddexp` where apt, and
+   clamp probabilities to prevent NaN gradients.
+3. Hardware efficiency: prefer vectorized ops; avoid Python for-loops over tensor dims.
+4. Do NOT import os / subprocess / shutil / sys, and do not call eval / exec.
+5. The module must be instantiable with the `init_kwargs` you declare and runnable on a CPU
+   forward pass of the `input_shape` you declare.
+6. Every `__init__` parameter after `self` MUST have a default value consistent with your
+   declared `input_shape` (a required positional argument that `init_kwargs` omits is an
+   automatic validation failure).
+7. `forward` MUST accept exactly one tensor `[batch, seq, hidden]` and return the same shape.
+   Name that argument `x` (or `hidden_states`) — never `predictions`, `logits` or `targets`:
+   those name a loss's inputs and this is not a loss.
+7b. CAPACITY: the block MUST own learnable parameters, and they must be the ones the
+   hypothesis declared in `learnable_parameters` above. A scale, gate, threshold,
+   temperature or mixing weight that matters should be an `nn.Parameter` or an `nn.Linear`
+   output that the LM loss can train — not a fixed float in `__init__`. Measured 2026-07-20:
+   55% of candidates that reached validation had ZERO learnable parameters and were
+   rejected; a fixed function cannot learn, and it replaces a real ~787K-parameter block.
+8. AXIS DISCIPLINE (the single most common failure — 4 of the 4 most recent rejects died
+   here). The input is 3-D: `batch = x.shape[0]`, `seq = x.shape[1]`, `hidden = x.shape[-1]`.
+   - Size every weight against the HIDDEN axis (`x.shape[-1]`), never against `seq`. An error
+     like "size of tensor a (512) must match tensor b (128) at dimension 2" means you built a
+     weight for the wrong axis.
+   - If your idea genuinely NEEDS the sequence length (a positional table, an attention bias,
+     a decay mask), read it at FORWARD time as `x.shape[-2]` and build the tensor there — or
+     store a generous maximum and SLICE it to `x.shape[-2]`. A parameter whose shape is fixed
+     to the dry-run sequence length is dead on arrival: validation runs at a short sequence
+     and the model trains at 256, so it will be built at the wrong length. Measured
+     2026-07-20 — a candidate declared `nn.Parameter((seq_len, hidden))`, passed every
+     validation stage, and raised `AssertionError: seq (256) must match seq_len (16)` on its
+     first training step.
+   - NEVER use `.T` or `torch.t()` on this tensor — they are 2-D only and raise
+     "t() expects a tensor with <= 2 dimensions". Use `x.transpose(-2, -1)`.
+   - EVERY `torch.einsum` subscript string must have ONE letter per dimension of each
+     operand. The input is 3-D, so it is `"bsd,...->..."` — never a 2-letter subscript
+     like `"sd"` for it. "einsum(): the number of subscripts in the equation (2) does not
+     match the number of dimensions (3)" means you wrote a 2-D equation for a 3-D tensor.
+     If you reshape to 2-D first, say so explicitly and reshape back before returning.
+   - Assign EVERY attribute you later read (`self.hidden = hidden` in `__init__` if
+     `forward` uses `self.hidden`) — "object has no attribute 'hidden'" is a real reject.
+   - Prefer inferring `hidden` from the input at forward time over trusting a constructor
+     default, so the module is correct at ANY declared `input_shape`."""
+
+
+def _baseline_block(baseline: Optional[Baseline], bottleneck: str) -> str:
     if baseline is None:
         arch, metric = "(unset — no baseline seeded)", "(unset)"
     else:
-        direction = (
-            "higher is better" if baseline.higher_is_better else "lower is better"
-        )
+        direction = "higher is better" if baseline.higher_is_better else "lower is better"
         arch = baseline.architecture
         metric = f"{baseline.metric_name} = {baseline.metric_value:.6g} ({direction})"
-    return (
-        f"- Architecture: {arch}\n"
-        f"- Current baseline metric: {metric}\n"
-        f"- Key bottleneck: {bottleneck}"
-    )
+    return (f"- Architecture: {arch}\n"
+            f"- Current baseline metric: {metric}\n"
+            f"- Key bottleneck: {bottleneck}")
 
 
-def _failed_block(failed_names: list[str]) -> str:
+#: Words too generic to count as a search direction when tallying overused vocabulary.
+_STOPWORDS = frozenset({"with", "from", "this", "that", "using", "based", "time", "via",
+                        "and", "for", "the", "aware", "driven", "guided"})
+
+
+def _failed_block(failed_names: List[str], *, show: int = 20) -> str:
+    """Dead ends, plus an explicit tally of the vocabulary they keep reusing.
+
+    Measured 2026-07-20 (TODOS §5.3.R24) on the live list of 20: "attention" appeared in
+    13, "gradient" in 11, "sparse" in 9. Under a heading saying *do not repeat*, that is
+    still 20 densely similar examples — which reads as a demonstration of the collapsed
+    vocabulary rather than a prohibition on it, since models handle negation poorly and
+    handle in-context patterns very well.
+
+    Naming the overused terms converts an implicit anti-example into an explicit,
+    checkable constraint the model can actually satisfy."""
     if not failed_names:
         return "(none yet)"
-    # Feed dead ends back so the search does not repeat them.
-    return "\n".join(f"- {n}" for n in failed_names[:20])
+    shown = failed_names[:show]
+    listing = "\n".join(f"- {n}" for n in shown)
+    counts: Dict[str, int] = {}
+    for name in shown:
+        for word in set(re.findall(r"[a-z]+", name.lower())):
+            if len(word) > 3 and word not in _STOPWORDS:
+                counts[word] = counts.get(word, 0) + 1
+    hot = [(w, c) for w, c in sorted(counts.items(), key=lambda kv: -kv[1])
+           if c >= max(3, len(shown) // 4)][:6]
+    if not hot:
+        return listing
+    terms = ", ".join(f"`{w}` ({c}/{len(shown)})" for w, c in hot)
+    return (f"{listing}\n\n"
+            f"OVERUSED TERMS in the failures above: {terms}. That is the region this search "
+            f"has already exhausted — the names above are anti-examples, NOT a vocabulary to "
+            f"draw from. Your proposals must avoid those words *and the mechanisms they "
+            f"stand for*; a new name built from the same terms is the same dead end with a "
+            f"new label. Go somewhere the list above does not reach.")
 
 
-def ideation_prompt(
-    baseline: Baseline | None,
-    *,
-    bottleneck: str,
-    search_space: list[str] | None = None,
-    failed_hypotheses: list[str] | None = None,
-    n_ideas: int = 1,
-) -> str:
+def ideation_prompt(baseline: Optional[Baseline], *, bottleneck: str,
+                    search_space: Optional[List[str]] = None,
+                    failed_hypotheses: Optional[List[str]] = None,
+                    n_ideas: int = 1) -> str:
     """The rigidly-structured ideation system prompt, grounded in the real baseline."""
     space = search_space or DEFAULT_SEARCH_SPACE
-    fenced = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(space))
+    fenced = "\n".join(f"{i+1}. {s}" for i, s in enumerate(space))
     schema = json.dumps(IDEATION_SCHEMA, indent=2)
-    plural = "s" if n_ideas != 1 else ""
+    # "hypothesis" + "s" produced "hypothesiss" in the very first instruction of every
+    # ideation call (TODOS 5.3.R36). English, not string concatenation.
+    noun = "hypotheses" if n_ideas != 1 else "hypothesis"
     return f"""# ROLE AND OBJECTIVE
 You are a Staff Research Scientist specializing in deep-learning architecture and LLM
-pre-training. Generate {n_ideas} novel, mathematically sound, empirically testable hypothesis{plural}
+pre-training. Generate {n_ideas} novel, mathematically sound, empirically testable {noun}
 to improve our current model architecture. Ideas must be publication-grade (ICLR/NeurIPS/ICML).
 Do NOT suggest generic hyperparameter tuning, standard augmentations, or well-known methods
 (standard AdamW, basic LoRA, standard Top-K routing).
@@ -123,6 +244,31 @@ with no extra inputs (no labels, no losses from previous steps, no optimizer sta
 spliced into a transformer's residual stream and trained by the surrounding model's LM loss.
 Ideas that need a custom loss signature or router-probability outputs are OUT OF SCOPE.
 
+IF THE BOTTLENECK ABOVE SOUNDS LIKE A TRAINING-DYNAMICS OR GENERALISATION PROBLEM (loss
+plateaus, a memorisation gap, overfitting), the honest answer to it is usually a loss term or
+a schedule — and neither can be expressed here. Measured 2026-07-20 over 84 proposals: 36%
+came back as a regulariser, penalty, or loss variant, every one of them unimplementable under
+the contract above, and NONE produced a real win. That is a third of the search budget spent
+on ideas that cannot be built. Do not spend yours there. Translate the goal into the block
+instead — the block sees hidden states and nothing else, so it can only help by changing what
+those states contain:
+  - mixing/routing information differently across positions or channels
+  - gating, sparsifying, or re-weighting features inside the transform
+  - normalisation or reparameterisation applied to the hidden states
+  - injecting structured noise or stochastic paths WITHIN forward
+Concretely: "penalise attention entropy" is out of scope; "re-weight the block's own token
+mixing by an entropy-derived gate computed from x" is in scope and targets the same effect.
+A proposal whose mechanism only makes sense as an added term in the training objective is a
+category error here, however good the idea is on its own.
+
+EVERY BLOCK MUST HAVE SOMETHING TO LEARN. Measured 2026-07-20 over the candidates that
+reached validation: 55% had ZERO learnable parameters — fixed functions built from constant
+floats. They are rejected, because a block with no parameters cannot learn anything AND it
+replaces a real ~787K-parameter block, so any apparent win at fixed steps may just be the
+model getting smaller. If your mechanism computes a scale, gate, threshold, temperature or
+mixing weight, make it an `nn.Parameter` or the output of an `nn.Linear` the LM loss can
+train — not a fixed float in `__init__`. State them in `learnable_parameters`.
+
 # DEAD ENDS (already tried and failed — do not repeat)
 {_failed_block(failed_hypotheses or [])}
 
@@ -130,8 +276,10 @@ Ideas that need a custom loss signature or router-probability outputs are OUT OF
 - Define the forward-pass modification in standard mathematical notation.
 - Explain the theoretical intuition for improved gradient flow, representational capacity, or
   compute efficiency vs. the baseline.
-- If proposing a new loss term, give its derivative w.r.t. the network outputs; it must be
-  differentiable and bounded.
+- State the shape of every tensor your forward pass creates, and confirm the output is
+  [batch, seq, hidden] like the input. (This bullet used to read "if proposing a new loss
+  term, give its derivative" — a third place the prompt contemplated the very thing the
+  INTEGRATION CONTRACT above forbids. See TODOS 5.3.R36.)
 
 # OUTPUT FORMAT
 Respond with ONE JSON object (an array of objects if more than one idea) strictly matching this
@@ -140,11 +288,19 @@ schema. EVERY key is REQUIRED and must be non-empty. No markdown, no prose outsi
 """
 
 
-def implementation_prompt(
-    hypothesis: dict[str, Any], *, codebase_note: str = ""
-) -> str:
+# TODOS 5.3.R37: the CODEBASE CONTEXT block below used to explain how to write custom
+# losses — "nn.Module classes or functions taking (predictions, targets) and returning a
+# scalar tensor" — which contradicted constraint 7 (one tensor in, same shape out) a few
+# lines further down. It left a measurable fingerprint: 7 of 92 stored candidates named
+# their forward argument after a loss input, including 694633b2d354, the rank-collapse
+# failure. The replacement text deliberately does NOT quote the old wording: this string is
+# rendered INTO the prompt, so an explanatory "we used to say X" would still show the model
+# X. Historical notes go here, in code, where the model never sees them.
+def implementation_prompt(hypothesis: Dict[str, Any], *,
+                          codebase_note: str = "") -> str:
     """The senior-engineer implementation prompt that turns a hypothesis into drop-in PyTorch."""
     schema = json.dumps(IMPLEMENTATION_SCHEMA, indent=2)
+    constraints = _ENGINEERING_CONSTRAINTS
     hjson = json.dumps({k: hypothesis.get(k) for k in IDEATION_SCHEMA}, indent=2)
     extra = f"\n{codebase_note}\n" if codebase_note else ""
     return f"""# ROLE AND OBJECTIVE
@@ -154,25 +310,14 @@ numerical stability, and modularity. Your code must compile on the first attempt
 
 # CODEBASE CONTEXT
 - All custom layers/routers subclass `torch.nn.Module`.
-- Custom losses are `nn.Module` classes or functions taking `(predictions, targets)` and
-  returning a scalar tensor.
+- You are writing a RESIDUAL-STREAM BLOCK, not a loss. Its `forward` receives hidden
+  states and returns hidden states. There are no targets here and no scalar to return.
 - The module must be SELF-CONTAINED: import only torch (and math/typing). Do NOT import
   or call any logging/telemetry helper — the training loop measures everything outside
   the module.{extra}
 
 # ENGINEERING CONSTRAINTS
-1. Shape integrity: document expected input/output shapes in every `forward` docstring
-   (e.g. [batch, seq, hidden]); add `assert` statements around einsum / novel ops.
-2. Numerical stability: add small `eps` to denominators, use `torch.logaddexp` where apt, and
-   clamp probabilities to prevent NaN gradients.
-3. Hardware efficiency: prefer vectorized ops; avoid Python for-loops over tensor dims.
-4. Do NOT import os / subprocess / shutil / sys, and do not call eval / exec.
-5. The module must be instantiable with the `init_kwargs` you declare and runnable on a CPU
-   forward pass of the `input_shape` you declare.
-6. Every `__init__` parameter after `self` MUST have a default value consistent with your
-   declared `input_shape` (a required positional argument that `init_kwargs` omits is an
-   automatic validation failure).
-7. `forward` MUST accept exactly one tensor `[batch, seq, hidden]` and return the same shape.
+{constraints}
 
 # INPUT HYPOTHESIS
 {hjson}
@@ -186,13 +331,21 @@ the COMPLETE replacement class/function, not a snippet:
 
 def correction_prompt(previous_code: str, failure_feedback: str) -> str:
     """The self-correction message when generated code fails a validation level."""
+    constraints = _ENGINEERING_CONSTRAINTS
+    schema_keys = ", ".join(IMPLEMENTATION_SCHEMA)
     return f"""The previous implementation failed automated validation.
 
 {failure_feedback}
 
 Rewrite the COMPLETE module to resolve this specific issue while preserving the original
-mathematical intent. Output ONE JSON object matching the implementation schema (module_name,
-target_file, code, init_kwargs, input_shape, shape_assertions). No markdown outside the JSON.
+mathematical intent. Output ONE JSON object matching the implementation schema ({schema_keys}).
+No markdown outside the JSON.
+
+EVERY constraint below still applies to the rewrite. Fixing the reported failure by breaking
+one of these is not a fix.
+
+# ENGINEERING CONSTRAINTS
+{constraints}
 
 # PREVIOUS CODE
 {previous_code}
@@ -228,7 +381,7 @@ def _salvage_truncated_array(s: str) -> Any:
         if end <= 0:
             return None
         try:
-            return json.loads(s[: end + 1] + "]")
+            return json.loads(s[:end + 1] + "]")
         except json.JSONDecodeError:
             continue
     return None
@@ -244,7 +397,7 @@ def extract_json(text: str) -> Any:
     if s.startswith("```"):
         first_nl = s.find("\n")
         if first_nl != -1:
-            s = s[first_nl + 1 :]
+            s = s[first_nl + 1:]
         if s.rstrip().endswith("```"):
             s = s.rstrip()[:-3]
     s = s.strip()
@@ -288,53 +441,48 @@ def extract_json(text: str) -> Any:
                 depth -= 1
                 if depth == 0:
                     try:
-                        return json.loads(s[start : i + 1])
+                        return json.loads(s[start:i + 1])
                     except json.JSONDecodeError:
                         break
     raise ValueError("no parseable JSON object found in model response")
 
 
-def parse_hypotheses(text: str) -> list[dict[str, Any]]:
+def parse_hypotheses(text: str) -> List[Dict[str, Any]]:
     """Parse ideation output into a list of hypothesis dicts (validating required keys)."""
     obj = extract_json(text)
-    required = {
-        "hypothesis_name",
-        "theoretical_intuition",
-        "mathematical_formulation",
-        "pytorch_implementation_strategy",
-        "expected_outcome",
-    }
+    required = {"hypothesis_name", "theoretical_intuition", "mathematical_formulation",
+                "pytorch_implementation_strategy", "expected_outcome"}
     if isinstance(obj, dict) and not (required & set(obj)):
         # Models sometimes wrap the list ({"hypotheses": [...]}) — observed live on qwen3:14b.
         # Unwrap the first list-of-dicts value; anything else still fails honestly below.
-        wrapped = next(
-            (
-                v
-                for v in obj.values()
-                if isinstance(v, list) and v and all(isinstance(x, dict) for x in v)
-            ),
-            None,
-        )
+        wrapped = next((v for v in obj.values()
+                        if isinstance(v, list) and v and all(isinstance(x, dict) for x in v)),
+                       None)
         if wrapped is not None:
             obj = wrapped
     items = obj if isinstance(obj, list) else [obj]
     # Per-item wrappers ({"hypothesis": {...}}) — a single-key dict whose value is a dict
     # is unwrapped (observed live on qwen3:8b after the list-level fix; models invent one
     # nesting level at a time). Anything else still fails honestly below.
-    items = [
-        next(iter(it.values()))
-        if isinstance(it, dict)
-        and len(it) == 1
-        and not (required & set(it))
-        and isinstance(next(iter(it.values())), dict)
-        else it
-        for it in items
-    ]
-    out: list[dict[str, Any]] = []
+    items = [next(iter(it.values()))
+             if isinstance(it, dict) and len(it) == 1 and not (required & set(it))
+             and isinstance(next(iter(it.values())), dict) else it
+             for it in items]
+    out: List[Dict[str, Any]] = []
     for it in items:
         if not isinstance(it, dict):
             continue
         missing = required - set(it)
+        if missing:
+            # Canonical-key repair: models occasionally corrupt a key mid-word ("hypo,thesis_name",
+            # observed live 2026-07-20). A missing required key is claimed from an existing key with
+            # the same lowercase-alphanumeric skeleton — deterministic, fill-only, never overwrites.
+            canon = {re.sub(r"[^a-z0-9]", "", k.lower()): k for k in it}
+            for want in sorted(missing):
+                got = canon.get(re.sub(r"[^a-z0-9]", "", want.lower()))
+                if got is not None:
+                    it[want] = it.pop(got)
+            missing = required - set(it)
         if missing:
             raise ValueError(f"hypothesis missing required keys: {sorted(missing)}")
         out.append(it)
@@ -363,7 +511,7 @@ def _unescape_flat_code(code: str) -> str:
     code; unrepairable code passes through unchanged and fails at ``syntax`` honestly."""
     if "\\n" not in code or _parses(code):
         return code
-    candidates: list[str] = []
+    candidates: List[str] = []
     # JSON string semantics first (also fixes \" and \\). Raises harmlessly when the code has
     # real newlines (raw control chars in a JSON string) or JSON-invalid escapes like \d.
     try:
@@ -378,18 +526,14 @@ def _unescape_flat_code(code: str) -> str:
     return code
 
 
-def parse_implementation(text: str) -> tuple[dict[str, Any], dict[str, Any]]:
+def parse_implementation(text: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Parse implementation output. Returns (implementation_record, dry_run_spec).
 
     dry_run_spec = {class_name, init_kwargs, input_shape} for the validator."""
     obj = extract_json(text)
     if isinstance(obj, list):
         obj = obj[0] if obj else {}
-    if (
-        not isinstance(obj, dict)
-        or "code" not in obj
-        or not str(obj.get("code", "")).strip()
-    ):
+    if not isinstance(obj, dict) or "code" not in obj or not str(obj.get("code", "")).strip():
         raise ValueError("implementation missing non-empty 'code'")
     obj["code"] = _unescape_flat_code(str(obj["code"]))
     module_name = obj.get("module_name")

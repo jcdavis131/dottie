@@ -100,6 +100,19 @@ def test_run_task_records_to_shared_jspace_store(engine, tmp_path, monkeypatch):
     assert "engine" in snap
 
 
+def test_run_task_channel_env_override(engine, tmp_path, monkeypatch):
+    # TODOS 6.2: surfaces are named channels. The arxiviq-facing server is tagged via
+    # DOTTIE_CHANNEL (compose sets arxiviq); writes land in that channel, snapshot-visible.
+    monkeypatch.setenv("DOTTIE_STATE_DB", str(tmp_path / "chan.sqlite3"))
+    monkeypatch.setenv("DOTTIE_SESSION", "xsurface2")
+    monkeypatch.setenv("DOTTIE_CHANNEL", "arxiviq")
+    rec = engine.run_task("conftest echo task", backend="echo")
+    assert rec["jspace_state"]["channel"] == "arxiviq"
+    from dottie import jspace_state
+    snap = jspace_state.session_context("xsurface2")
+    assert "arxiviq" in snap and "last_task" in snap["arxiviq"]
+
+
 def test_run_task_degrades_honestly_without_skills(engine, tmp_path, monkeypatch):
     monkeypatch.setenv("DOTTIE_STATE_DB", str(tmp_path / "s2.sqlite3"))
     from dottie import jspace_state as js

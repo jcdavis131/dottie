@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-import typer
+# MUST be a RUNTIME import, never TYPE_CHECKING-only. Typer eval's this module's
+# annotations (`_root(ctx: typer.Context)`) at CLI-build time via
+# inspect.signature(..., eval_str=True); if `typer` is absent at runtime the WHOLE
+# `scout` CLI dies at startup with `NameError: name 'typer' is not defined`. An
+# over-eager ruff TC autofix that moved this under TYPE_CHECKING is exactly what
+# broke the CLI once (130→108 passing tests) — the noqa keeps it a runtime import.
+import typer  # noqa: TC002
 
 from bigbang.core.cli_ux import examples_epilog
 from bigbang.core.contract import make_plugin_app, ok

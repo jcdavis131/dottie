@@ -31,14 +31,19 @@ export function mountSettings(root, ctx) {
   const savedNote = h("span", { class: "save-note", role: "status" });
   const saveBtn = h("button", { class: "btn", type: "button" }, "Save settings");
   saveBtn.addEventListener("click", () => {
-    saveSettings({
+    const { persisted } = saveSettings({
       base: baseIn.value.trim(),
       researchBase: researchIn.value.trim(),
       token: tokenIn.value, // deliberately not trimmed-and-logged anywhere
       prefer: preferSel.value,
       theme: themeSel.value,
     });
-    savedNote.textContent = "saved — clients and pollers restarted";
+    // Do not claim a save this browser refused. On quota/private-mode the settings --
+    // including the token -- revert on reload, and an unconditional "saved" is how the
+    // operator finds out the hard way (TODOS 5.3.R68).
+    savedNote.textContent = persisted
+      ? "saved — clients and pollers restarted"
+      : "applied for this session ONLY — the browser refused to store it (private mode or quota), so it will be lost on reload";
     ctx.onSettingsChanged?.();
     setTimeout(() => { savedNote.textContent = ""; }, 4000);
   });

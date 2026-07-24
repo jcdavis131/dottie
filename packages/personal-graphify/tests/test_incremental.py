@@ -39,7 +39,7 @@ class TestExtractWithCache:
         _nodes, _edges, stats = extract_with_cache(files, cache, update=False)
         assert stats["re_extracted"] == 3 and stats["reused"] == 0
         assert cache.exists()
-        meta = json.loads(cache.read_text())
+        meta = json.loads(cache.read_text(encoding="utf-8"))
         assert set(meta) == {str(f) for f in files}
         for entry in meta.values():
             assert {"mtime", "md5", "nodes", "edges"} <= set(entry)
@@ -99,5 +99,5 @@ class TestCmdBuildUpdate:
         assert stats2["cache"]["re_extracted"] == 1
         assert stats2["cache"]["reused"] == stats1["cache"]["files"] - 1
         # graph.json still rebuilt from the merged pool
-        meta = json.loads((out / "graph.json").read_text())["meta"]
+        meta = json.loads((out / "graph.json").read_text(encoding="utf-8"))["meta"]
         assert meta["nodes"] == stats2["nodes"]

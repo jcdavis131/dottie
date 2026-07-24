@@ -277,7 +277,12 @@ async def chat_page():
 
 
 @app.get("/pipeline/status")
-async def pipeline_status():
+def pipeline_status():
+    # `def`, NOT `async def`: collect_status() is synchronous and I/O-heavy — it opens the
+    # manifest sqlite, walks metrics_*.jsonl and probes disk. Inside an `async def` handler
+    # that work runs ON the event loop and blocks EVERY other request (/chat, /assistant,
+    # /health) for its duration. FastAPI runs a plain `def` handler in a threadpool
+    # instead. The console polls this endpoint every 5 s, so the stall was periodic.
     from dottie.pipeline_status import collect_status
 
     return collect_status()
@@ -291,14 +296,16 @@ async def ecosystem():
 
 
 @app.get("/ecosystem/status")
-async def ecosystem_status():
+def ecosystem_status():
+    # `def` for the same reason as /pipeline/status: collect_ecosystem_status() is a
+    # synchronous filesystem walk and must not run on the event loop.
     from dottie.ecosystem_status import collect_ecosystem_status
 
     return collect_ecosystem_status()
 
 
 @app.get("/health")
-async def health():
+def health():
     st = get_engine().stats()
     return {
         "status": "ok",
@@ -309,7 +316,7 @@ async def health():
 
 
 @app.post("/generate")
-async def generate(req: GenerateReq):
+def generate(req: GenerateReq):
     if not req.text or not req.text.strip():
         raise HTTPException(status_code=422, detail="text must be non-empty")
     return get_engine().generate(
@@ -329,7 +336,7 @@ _TURN_END_RE = re.compile(r"<\|eos\|>|<\|user\|>|<\|assistant\|>")
 
 
 @app.post("/chat")
-async def chat(req: ChatReq):
+def chat(req: ChatReq):
     """Thin wrapper over ServeEngine.generate() using the <|user|>/<|assistant|>
     convention already frozen in ava/tokenizer.py (SPECIALS ids 0-5) — the same
     convention ava/datagen/chat_safety.py already generates training data in.
@@ -373,16 +380,21 @@ async def assistant_page():
 
 
 @app.get("/assistant/status")
-async def assistant_status():
+def assistant_status():
     """Read-only capability/telemetry snapshot the arxiviq.com surface polls.
-    Never 500s (collector swallows its own errors)."""
+    Never 500s (collector swallows its own errors).
+
+    `def`, not `async def`: collect_assistant_status() is synchronous. /network/status
+    already handles this correctly via `asyncio.to_thread`; these sibling endpoints were
+    simply missed, so their blocking I/O ran on the event loop and stalled every
+    concurrent request."""
     from dottie.assistant_status import collect_assistant_status
 
     return collect_assistant_status()
 
 
 @app.post("/assistant", dependencies=[Depends(_require_assistant_token)])
-async def assistant(req: AssistantReq):
+def assistant(req: AssistantReq):
     """Dottie — the server-side ReAct tool loop (spec 15 §5). Grounded,
     trust-gated, telemetered. Degrades to a structured 503 when the engine is
     absent (AVA_SKIP_ENGINE_BOOT=1) rather than crashing."""
@@ -499,12 +511,12 @@ async def viewer(mode: str = Query("audit")):
 
 
 @app.post("/jspace/inspect")
-async def inspect(req: InspectReq):
+def inspect(req: InspectReq):
     return get_engine().inspect(req.text)
 
 
 @app.post("/jspace/intervene")
-async def intervene(req: InterveneReq, mode: str = Query("audit")):
+def intervene(req: InterveneReq, mode: str = Query("audit")):
     env_write = os.getenv("ENABLE_JSPACE_WRITE", "0") == "1"
     if mode != "research" or not env_write:
         raise HTTPException(
@@ -522,7 +534,7 @@ async def intervene(req: InterveneReq, mode: str = Query("audit")):
 
 
 @app.post("/jspace/safety")
-async def safety(req: InspectReq):
+def safety(req: InspectReq):
     scan = get_engine().inspect(req.text)["safety_scan"]
     hits = [w for w, p in scan.items() if w != "total" and float(p) > 0.01]
     # Also surface literal substring hits for operator visibility.
@@ -586,7 +598,7 @@ async def eval_branch(
 
 
 @app.get("/jspace/eval_report")
-async def eval_report(
+def eval_report(
     source: str | None = Query(default=None, description="eval_mini_base | legacy | …"),
 ):
     from dottie.eval_artifacts import resolve_compare_md, resolve_eval_md
@@ -609,7 +621,7 @@ async def eval_report(
 
 
 @app.get("/agent_eval/scoreboard")
-async def agent_eval_scoreboard():
+def agent_eval_scoreboard():
     """agent-eval's scoreboard.md (Ava-claw / AgenticOS hill-climb results) --
     see ava_claw_run.py in the agent-eval repo. 404 if that repo isn't
     mounted or hasn't produced a scoreboard yet (no run against Ava so far

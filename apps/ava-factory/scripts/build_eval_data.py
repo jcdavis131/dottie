@@ -50,7 +50,12 @@ def _collect_docs(target_bytes: int = 500_000) -> list[dict]:
     return docs
 
 
-def build(preset: str = "nano", force: bool = False) -> None:
+def build(
+    preset: str = "nano",
+    force: bool = False,
+    target_bytes: int = 500_000,
+    rebuild_tokenizer: bool = False,
+) -> None:
     cfg = AvaConfig.load(preset)
     data_root = _REPO_ROOT / "data" / preset
     tok_path = _REPO_ROOT / cfg.data.get(
@@ -59,8 +64,12 @@ def build(preset: str = "nano", force: bool = False) -> None:
     corpus_dir = data_root / "eval_corpus"
     corpus_dir.mkdir(parents=True, exist_ok=True)
 
-    if force or not tok_path.exists():
-        docs = _collect_docs()
+    # An existing tokenizer may be the FROZEN pipeline artifact the training corpus
+    # was packed with (mini's ava_bpe_32k.json is). Retraining it here from a small
+    # eval corpus would silently invalidate every future eval, so --force no longer
+    # touches it — only the explicit --rebuild-tokenizer flag does.
+    if rebuild_tokenizer or not tok_path.exists():
+        docs = _collect_docs(target_bytes)
         shard = corpus_dir / "corpus.jsonl"
         with open(shard, "w", encoding="utf-8") as f:
             for d in docs:
@@ -72,7 +81,7 @@ def build(preset: str = "nano", force: bool = False) -> None:
     generate_probe_items()
 
     lt = load_tokenizer(tok_path)
-    docs = _collect_docs()
+    docs = _collect_docs(target_bytes)
     heldout_budget = int(cfg.data.get("heldout_tokens_per_phase", 200_000))
 
     for phase_idx in range(len(cfg.phases)):
@@ -118,9 +127,24 @@ def main() -> int:
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--preset", default="nano")
-    ap.add_argument("--force", action="store_true")
+    ap.add_argument("--force", action="store_true", help="rewrite existing heldout bins")
+    ap.add_argument(
+        "--target-bytes", type=int, default=500_000,
+        help="doc bytes to collect; raise so sparse phases (p3/p5) clear the eval's "
+        "minimum-token floor (500k left mini p3 at 447 tokens -> 'too short')",
+    )
+    ap.add_argument(
+        "--rebuild-tokenizer", action="store_true",
+        help="retrain the tokenizer even if one exists — NEVER for a preset whose "
+        "tokenizer is the frozen pipeline artifact (e.g. mini's ava_bpe_32k.json)",
+    )
     args = ap.parse_args()
-    build(args.preset, force=args.force)
+    build(
+        args.preset,
+        force=args.force,
+        target_bytes=args.target_bytes,
+        rebuild_tokenizer=args.rebuild_tokenizer,
+    )
     return 0
 
 

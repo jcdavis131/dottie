@@ -7,12 +7,11 @@ sanitize_for_public.py — v4 non-PII public graph
 - Filters trivial stopwords + egg-info junk
 Solo personal project, no connection to employer, built with public/free-tier only
 """
-
 import json
 import os
 import re
-from collections import Counter
 from pathlib import Path
+from collections import Counter
 
 # Dottie monorepo checkout root (set when exports are built inside a dottie checkout).
 # Prefer DOTTIE_ROOT when present; the layout-fragment regexes below still redact
@@ -35,9 +34,7 @@ def sanitize_path(p: str) -> str:
     p = p.replace("\\", "/")
     if _DOTTIE_ROOT:
         p = p.replace(_DOTTIE_ROOT + "/", "")
-    p = re.sub(
-        r"/home/hatch/workspace/your_files/personal-graphify/", "personal-graphify/", p
-    )
+    p = re.sub(r"/home/hatch/workspace/your_files/personal-graphify/", "personal-graphify/", p)
     p = re.sub(r"/home/hatch/workspace/", "", p)
     p = HOME_HATCH_RE.sub("", p)
     replacements = [
@@ -77,12 +74,7 @@ def scrub_text(text: str) -> str:
     text = ACCT_RE.sub("[acct]", text)
     text = BURN_RE.sub("[redacted]", text)
     # Keep generic MRR pricing language; strip other dollar amounts in prose
-    if (
-        "MRR" not in text
-        and "79" not in text
-        and "149" not in text
-        and "1k" not in text.lower()
-    ):
+    if "MRR" not in text and "79" not in text and "149" not in text and "1k" not in text.lower():
         text = DOLLAR_AMT_RE.sub("[amt]", text)
     return text.strip()
 
@@ -100,10 +92,15 @@ def sanitize_id(raw_id: str):
                 parts = rest.split(":")
                 title = parts[0]
                 for part in parts[1:]:
-                    if re.search(
-                        r"(?i)^[A-Z]/|^/|personal-graphify|ava-agi|scout-|\.md|\.py|\.txt",
-                        part,
-                    ):
+                    # The extension list must match the doc types the pipeline indexes
+                    # (detect.py DOC_EXTS: md/mdx/mdc/txt/rst/qmd/yaml/yml — `.md` already
+                    # covers mdx/mdc as a substring). Omitting rst/qmd/yaml leaked the
+                    # internal repo path (e.g. dottie/notes/guide.rst) into the "public"
+                    # concept id AND broke title-only dedup against the same heading in a
+                    # .md file. A per-extension list is used, not a generic `\.\w+$`, so a
+                    # legitimate title segment like "Node.js" is not mistaken for a path.
+                    if re.search(r"(?i)^[A-Z]/|^/|personal-graphify|ava-agi|scout-|"
+                                 r"\.md|\.py|\.txt|\.rst|\.qmd|\.ya?ml", part):
                         break
                     title = f"{title}:{part}"
             else:
@@ -123,16 +120,10 @@ def sanitize_label(label: str, ntype: str) -> str:
         return ""
     label = scrub_text(label)
     # file:C:/... → basename
-    if label.startswith("file:") or (
-        len(label) > 60 and ("/" in label or "\\" in label)
-    ):
+    if label.startswith("file:") or (len(label) > 60 and ("/" in label or "\\" in label)):
         label = Path(label.replace("\\", "/").split(":")[-1]).name or label
     if "$" in label and ntype != "business_metric":
-        if (
-            re.search(r"\$\s*\d", label)
-            and "MRR" not in label
-            and "1k" not in label.lower()
-        ):
+        if re.search(r"\$\s*\d", label) and "MRR" not in label and "1k" not in label.lower():
             return ""
     if re.search(r"\b11k\b", label, re.I) and "burn" in label.lower():
         label = re.sub(r"\$?11k.*", "Burn Rate", label, flags=re.I)
@@ -159,20 +150,12 @@ def main(src_path: Path, dest_path: Path):
             continue
         if re.search(r"jcdavis131@gmail", label, re.I):
             continue
-        if (
-            "@" in label
-            and "github.com" not in label.lower()
-            and "[email]" not in label
-        ):
+        if "@" in label and "github.com" not in label.lower() and "[email]" not in label:
             continue
         if len(label.strip()) <= 1:
             continue
         if "$" in label and ntype not in ("business_metric", "integration"):
-            if (
-                re.search(r"\$\d", label)
-                and "MRR" not in label
-                and "1k" not in label.lower()
-            ):
+            if re.search(r"\$\d", label) and "MRR" not in label and "1k" not in label.lower():
                 continue
         # Drop nodes whose private desc is mostly account/burn PII and label is just bank name
         desc = str(n.get("desc", ""))
@@ -204,11 +187,7 @@ def main(src_path: Path, dest_path: Path):
         if desc:
             scrubbed_desc = scrub_text(desc)
             # Drop desc that still looks like account/burn detail
-            if (
-                scrubbed_desc
-                and not ACCT_RE.search(scrubbed_desc)
-                and "burn $" not in scrubbed_desc.lower()
-            ):
+            if scrubbed_desc and not ACCT_RE.search(scrubbed_desc) and "burn $" not in scrubbed_desc.lower():
                 # Soften remaining dollar product pricing only
                 clean["desc"] = scrubbed_desc[:200]
 
@@ -241,14 +220,12 @@ def main(src_path: Path, dest_path: Path):
         if key in seen:
             continue
         seen.add(key)
-        new_edges.append(
-            {
-                "source": ns,
-                "target": nt,
-                "type": e.get("type", "references"),
-                "confidence": e.get("confidence", "INFERRED"),
-            }
-        )
+        new_edges.append({
+            "source": ns,
+            "target": nt,
+            "type": e.get("type", "references"),
+            "confidence": e.get("confidence", "INFERRED"),
+        })
 
     print(
         f"Original {len(data['nodes'])} nodes {len(data['edges'])} edges "
@@ -286,9 +263,7 @@ def main(src_path: Path, dest_path: Path):
     }
     dest_path.parent.mkdir(parents=True, exist_ok=True)
     dest_path.write_text(json.dumps(sanitized, indent=2), encoding="utf-8")
-    print(
-        f"Wrote {dest_path} {len(dest_path.read_text(encoding='utf-8')) / 1024:.1f}KB"
-    )
+    print(f"Wrote {dest_path} {len(dest_path.read_text(encoding='utf-8'))/1024:.1f}KB")
 
 
 if __name__ == "__main__":

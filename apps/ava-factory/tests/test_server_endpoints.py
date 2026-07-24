@@ -405,3 +405,56 @@ def test_hot_reload_skips_tmp_and_reloads_under_lock(tmp_path, monkeypatch):
     w1 = float(eng.model.embed.weight[0, 0].item())
     assert w1 != pytest.approx(w0, abs=1e-6)
     eng.stop_hot_reload()
+
+
+def test_status_endpoints_are_threadpooled_not_async(client):
+    """The three status endpoints the consoles poll must be plain `def`.
+
+    They call synchronous collectors (manifest sqlite reads, metrics-file walks, disk
+    probes). Declared `async def`, that work runs ON the event loop and blocks every
+    other request — /chat, /assistant, /health — for its duration, and the Dottie console
+    polls /pipeline/status every 5 s. FastAPI runs a plain `def` handler in a threadpool
+    instead. Regression guard for the 2026-07-20 fix; /network/status already did this
+    correctly via asyncio.to_thread, which is how the oversight was spotted.
+    """
+    import ast
+    import pathlib as _p
+
+    # A REAL invariant over every route, not a hardcoded list. The previous version named
+    # five handlers while its own comment claimed to enforce the rule globally -- and seven
+    # more drifted past it, including /generate and /chat, which run model inference on the
+    # loop (TODOS 5.3.R62). A guard whose docstring outruns its implementation is how the
+    # drift happened; scanning every route is the only version that cannot rot.
+    SYNC_HEAVY = {"get_engine", "collect_status", "collect_ecosystem_status", "stats",
+                  "generate", "read_text"}
+    tree = ast.parse((_p.Path(__file__).resolve().parents[1] / "server.py")
+                     .read_text(encoding="utf-8"))
+    offenders = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.AsyncFunctionDef):
+            continue
+        routed = any(isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute)
+                     and d.func.attr in ("get", "post", "put", "delete")
+                     for d in node.decorator_list)
+        if not routed:
+            continue
+        # An `await` means the handler yields the loop -- that is the legitimate async path
+        # (/network/status uses asyncio.to_thread, which is how this class was first spotted).
+        if any(isinstance(n, ast.Await) for n in ast.walk(node)):
+            continue
+        called = {getattr(c.func, "attr", getattr(c.func, "id", ""))
+                  for c in ast.walk(node) if isinstance(c, ast.Call)}
+        if called & SYNC_HEAVY:
+            offenders.append((node.name, sorted(called & SYNC_HEAVY)))
+    assert not offenders, (
+        "async def route handlers doing synchronous heavy work with no await -- each blocks "
+        f"the event loop for every concurrent request: {offenders}")
+
+
+def test_status_endpoints_actually_respond(client):
+    """These were never called by the suite before — only asserted as a substring."""
+    for path in ("/pipeline/status", "/ecosystem/status", "/assistant/status"):
+        r = client.get(path)
+        assert r.status_code == 200, f"{path} -> {r.status_code}"
+        body = r.json()
+        assert isinstance(body, dict) and body, f"{path} returned {type(body).__name__}"

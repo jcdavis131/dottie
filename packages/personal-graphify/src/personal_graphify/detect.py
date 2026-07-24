@@ -95,7 +95,7 @@ def load_ignore_file(path: Path) -> list[str]:
     if not path.exists():
         return []
     patterns = []
-    for line in path.read_text().splitlines():
+    for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
             continue

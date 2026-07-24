@@ -170,3 +170,18 @@ class TestLightenDottieFragments:
             stripped = lighten._strip_paths(f"see {frag} for details")
             assert frag.split("/")[1] not in stripped, frag
             assert "apps/" not in stripped and "packages/" not in stripped
+
+    def test_sanitize_id_strips_all_indexed_doc_extensions(self):
+        # detect.py DOC_EXTS indexes rst/qmd/yaml/yml too; their concept ids must strip
+        # the path suffix exactly like .md/.txt, or the internal repo path leaks into the
+        # "public" graph and the title never dedupes against the same heading in a .md file.
+        base = r"concept:Overview:C:\Users\jcdav\dottie\notes\guide"
+        for ext in (".md", ".txt", ".rst", ".qmd", ".yaml", ".yml", ".mdx", ".mdc"):
+            assert sanitize.sanitize_id(base + ext) == "concept:Overview", ext
+
+    def test_sanitize_id_keeps_dotted_title_segment(self):
+        # regression guard for the fix above: a legitimate title segment ending in a
+        # dotted suffix ("Node.js") must NOT be mistaken for a file path. A generic
+        # `\.\w+$` extension match would wrongly truncate it to "concept:Overview".
+        assert sanitize.sanitize_id(
+            r"concept:Overview:Node.js:C:\Users\jcdav\dottie\x.md") == "concept:Overview:Node.js"

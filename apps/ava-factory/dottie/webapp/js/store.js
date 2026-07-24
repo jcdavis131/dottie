@@ -33,11 +33,16 @@ function read(key, fallback) {
   }
 }
 
+/** Persist a value. Returns false when storage refused it (quota/private mode).
+ *  The app keeps working from memory either way — but the caller is told, so the
+ *  UI can say so. Silent loss is the one degradation this console never marks:
+ *  on reload the session would quietly revert to the last write that fit. */
 function write(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    return true;
   } catch {
-    /* storage full/blocked — the app still works, it just won't persist */
+    return false;
   }
 }
 
@@ -45,10 +50,16 @@ export function getSettings() {
   return { ...DEFAULTS, ...read(SETTINGS_KEY, {}) };
 }
 
+/** Persist a settings patch. Returns { settings, persisted } — the caller MUST NOT
+ *  report success without checking `persisted`. write() has reported refusal since the
+ *  quota fix, but four of its five callers ignored it, and settings.js announced
+ *  "saved — clients and pollers restarted" unconditionally. On a refused write the token
+ *  and base URLs silently revert on reload, which is precisely the loss the return value
+ *  exists to surface (TODOS 5.3.R68). */
 export function saveSettings(patch) {
   const next = { ...getSettings(), ...patch };
-  write(SETTINGS_KEY, next);
-  return next;
+  const persisted = write(SETTINGS_KEY, next);
+  return { settings: next, persisted };
 }
 
 // ---------------------------------------------------------------- sessions
@@ -88,9 +99,11 @@ export function getMessages(id) {
   return read(MSGS_PREFIX + id, []);
 }
 
+/** Returns false when the transcript could not be persisted (see write()). */
 export function saveMessages(id, messages) {
-  write(MSGS_PREFIX + id, messages);
+  const ok = write(MSGS_PREFIX + id, messages);
   touchSession(id);
+  return ok;
 }
 
 export function clearAll() {

@@ -64,7 +64,7 @@ training:
   gradient_checkpointing: true
   optimizer: {name: adamw, betas: [0.9, 0.95], weight_decay: 0.1, grad_clip: 1.0}
   wsd: {warmup_steps: 300, stable_frac: 0.92, lr_max: 6.0e-4, lr_min: 6.0e-5}
-  checkpoint_every_steps: 15    # was 100->50->25->15; tool run still crash-clustering (2/15min this hour) — tighten further to keep the ratchet net-positive. RESTORE 50 after tool_final.
+  checkpoint_every_steps: 8     # was 100->50->25->15->8; chat run crash-clustering under the 45W cap (step-23 flake wiped 8 steps; a 15-step wipe risks thrash). Applies on the next container boot. RESTORE 50 once the power cap lifts (charger).
   metrics_every_steps: 10
   # T2T / overtrain gauge target (Chinchilla ~20). Live mini was planned ~15 TPP;
   # status watch.tokens_per_param reports regime vs this when set. Does not
@@ -89,7 +89,15 @@ phases:                            # same 6-phase shape, 2.5B budget
 branches:
   tool:
     init: /ckpt/base_final.pt
-    tokens: 300_000_000            # ~1144 steps @ 262144 tok/step
+    tokens: 750_000_000            # extended 2026-07-22 (was 390M/1487 steps, done): ~2861
+                                   # steps @ 262144 tok/step. Completes the FULL curriculum:
+                                   # p3 tail (2.14->2.15B) then p4_long + p5_anneal to 2.5B.
+                                   # p4/p5 seq-4096 is proven on this GPU in bf16 (base run's
+                                   # stable_p4 exists); AVA_MAX_MICRO_BATCH is the relief valve.
+                                   # Operator 2026-07-22: "get training up and running" for the
+                                   # live dashboard + game twin. Prior leg (390M) logged below.
+                                   # was: 300M->390M 2026-07-21, +343 steps within p3 for the
+                                   # scout_cli (tool_use) + zk_math (math_reasoning) curriculum.
     start_tokens: 1_750_000_000    # cum through p0+p1+p2 → enter p3
     freeze: [system1, system2]
     finetune: [critic, planner, router, arbitration]

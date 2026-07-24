@@ -4,7 +4,7 @@
 Four workers form a closed loop over an experiment ledger (a real SQLite state machine):
 
     ideation      -> writes hypotheses            (state: pending)
-    implementation-> code + 4-level validation     (pending      -> ready_for_training)
+    implementation-> code + 6-stage validation     (pending      -> ready_for_training)
     train         -> real factory training run     (ready_for_training -> evaluation_pending)
     evaluate      -> paired hill-climb vs baseline  (evaluation_pending -> sota | rejected)
 

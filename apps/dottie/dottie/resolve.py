@@ -61,10 +61,29 @@ def factory_code_root() -> Path:
     for cand in cands:
         if _has_factory_code(cand):
             return cand
+    # Name the file that already holds the answer. This message used to list the probed
+    # paths and stop -- technically honest, and it cost four hours (TODOS 5.3.R87): the
+    # daemon has always had AVA_FACTORY_ROOT set in the gitignored machine-local env file
+    # two directories away, so the error meant "this SHELL is unconfigured", while it read
+    # as "this REPO is broken". A whole suite was reported red and an operator decision was
+    # requested that did not exist.
+    #
+    # The probe list even contains the tell: DEFAULT_FACTORY_ROOT is a POSIX path, so on
+    # Windows it renders as \home\user\... A foreign-platform default in the list is the
+    # signature of "never configured here" -- say so instead of making the reader notice.
+    hint = ""
+    if not os.environ.get("AVA_FACTORY_ROOT"):
+        hint = (
+            " AVA_FACTORY_ROOT is NOT set in this environment. The research daemon sets it"
+            " from apps/dottie/research_orchestration/research_env.local.ps1 (gitignored,"
+            " machine-local) -- read that file for this box's working value and export it"
+            " before running tests or the trainer by hand."
+        )
     raise DottieResolutionError(
         "ava-factory code (ava/rl/codeact_loop.py) not found. Probed: "
         + ", ".join(str(c) for c in cands)
         + ". Set AVA_FACTORY_ROOT or DOTTIE_ROOT to a checkout that has it."
+        + hint
     )
 
 

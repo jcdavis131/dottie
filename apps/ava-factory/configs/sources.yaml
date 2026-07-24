@@ -196,7 +196,7 @@ sources:
     generator: math
     text_field: text
     phases: [1]
-    weight: {1: 0.5}
+    weight: {1: 0.45}   # 2026-07-20: 0.50->0.45, freed 0.05 for synth_zk_math (verified number theory)
     task_type: deliberate
     filters: {min_chars: 1}
     license: synthetic
@@ -243,7 +243,7 @@ sources:
     generator: think_code
     text_field: text
     phases: [3, 5]
-    weight: {3: 0.15, 5: 0.15}
+    weight: {3: 0.15, 5: 0.11}   # 2026-07-20: P5 0.15->0.11, freed 0.04 for synth_zk_math P5 (verified NIZK anneal)
     task_type: deliberate
     filters: {min_chars: 1}
     license: synthetic
@@ -266,7 +266,7 @@ sources:
     generator: math
     text_field: text
     phases: [3]
-    weight: {3: 0.15}
+    weight: {3: 0.10}   # 2026-07-20: 0.15->0.10, freed 0.05 for synth_zk_math P3 (ZK protocols/proofs)
     task_type: temporal
     filters: {min_chars: 1}
     license: synthetic
@@ -321,7 +321,7 @@ sources:
     generator: tool_use
     text_field: text
     phases: [2, 3, 4, 5]
-    weight: {2: 0.08, 3: 0.15, 4: 0.10, 5: 0.12}
+    weight: {2: 0.03, 3: 0.10, 4: 0.10, 5: 0.08}   # 2026-07-20: P2 0.08->0.03, P3 0.15->0.10, P5 0.12->0.08; that 0.05/0.05/0.04 moves to synth_scout_cli (grounded real-CLI tool use)
     task_type: tool_selection
     filters: {min_chars: 1}
     license: synthetic
@@ -385,7 +385,7 @@ sources:
     split: train
     text_field: text
     phases: [1, 3]
-    weight: {1: 0.5, 3: 0.15}   # +0.10 from quarantined proof_pile_2
+    weight: {1: 0.5, 3: 0.05}   # 2026-07-20: P3 0.15->0.05, freed 0.10 for compress_trace+db_trace (CS-reasoning curriculum)
     task_type: deliberate
     filters: {min_chars: 200}
     license: odc-by
@@ -399,7 +399,7 @@ sources:
     text_field: text
     score_field: score
     phases: [2, 4, 5]
-    weight: {2: 0.20, 4: 0.21, 5: 0.17}   # 2026-07-19: freed mass for wikipedia/peS2o/tool sets; 4: 0.27->0.21 for gutenberg_hist
+    weight: {2: 0.20, 4: 0.15, 5: 0.11}   # 2026-07-20: P4 0.21->0.15 + P5 0.17->0.11, both freed for compression textbook (long+anneal); earlier 4: 0.27->0.21 for gutenberg_hist
     task_type: automatic
     filters:
       min_chars: {2: 200, 4: 4000, 5: 200}   # P4 = long documents only
@@ -496,4 +496,77 @@ sources:
     task_type: automatic
     filters: {min_chars: 1}
     license: cdla-sharing-1.0
+    gated: false
+
+  # ---- CS-reasoning curriculum (2026-07-20): compression algorithms + database
+  # structures. These generators already existed in ava.datagen but were never
+  # wired into the mixture; turned on here as `deliberate` reasoning traces on the
+  # reasoning/long phases. Weight freed by shaving open_web_math P3 (0.15->0.05)
+  # and fineweb_edu P4 (0.21->0.15) / P5 (0.17->0.11); each phase still sums ~1.0.
+  - name: synth_compression
+    kind: synthetic
+    generator: compression      # BWT/MTF/ANS textbook derivations (long-form)
+    phases: [4, 5]              # generator emits [0-5]; P4 long + P5 anneal (highest-quality)
+    weight: {4: 0.06, 5: 0.06}
+    task_type: deliberate
+    filters: {min_chars: 1}
+    license: mit
+    gated: false
+
+  - name: synth_compress_trace
+    kind: synthetic
+    generator: compress_trace    # DEFLATE-style LZ77->Huffman step traces
+    phases: [3]                  # generator emits [2,3,4]; P3 reasoning is where step-traces belong
+    weight: {3: 0.05}
+    task_type: deliberate
+    filters: {min_chars: 1}
+    license: mit
+    gated: false
+
+  - name: synth_db_trace
+    kind: synthetic
+    generator: db_trace          # LSM-tree / storage-engine simulation traces
+    phases: [3]                  # generator emits [2,3,4]; P3 reasoning
+    weight: {3: 0.05}
+    task_type: deliberate
+    filters: {min_chars: 1}
+    license: mit
+    gated: false
+
+  # ---- Agent-OS curriculum (2026-07-20): using and building with scout-cli.
+  # `scout` is the agent's only self-extending interface (apps/scout-cli). The
+  # model never learned its contract; this teaches both halves grounded in the
+  # real foundation contract -- using it (task -> `scout --json <plugin> <cmd>`
+  # -> read the ok/command/data envelope), staying grounded (ok:false / empty /
+  # down => report it, don't fabricate), and building plugins (make_plugin_app,
+  # emit(ok(...)), register(root), default-deny manifest). Weight taken from the
+  # generic synth_tool_use budget (P2/P3/P5), keeping tool-use category mass ~flat.
+  - name: synth_scout_cli
+    kind: synthetic
+    generator: scout_cli
+    text_field: text
+    phases: [2, 3, 5]
+    weight: {2: 0.05, 3: 0.05, 5: 0.04}
+    task_type: tool_selection
+    filters: {min_chars: 1}
+    license: synthetic
+    gated: false
+
+  # ---- Zero-knowledge proofs + adjacent mathematics (2026-07-20). The crypto
+  # math ZK rests on was uncovered. Every doc's transcript is *computed* and its
+  # verification equation genuinely holds (g^s == t*y^c, Merkle root recompute,
+  # Lagrange at 0, ...); tests re-derive each proof independently from meta.
+  # p1 number-theory drills (modexp/modinv), p3 protocols (schnorr/pedersen/
+  # fiat_shamir/merkle/shamir), p5 verified NIZK anneal. Weight funded from the
+  # math budget: synth_math P1 0.50->0.45, synth_cot P3 0.15->0.10,
+  # synth_think_code P5 0.15->0.11; every phase stays at 1.0.
+  - name: synth_zk_math
+    kind: synthetic
+    generator: zk_math
+    text_field: text
+    phases: [1, 3, 5]
+    weight: {1: 0.05, 3: 0.05, 5: 0.04}
+    task_type: deliberate
+    filters: {min_chars: 1}
+    license: synthetic
     gated: false

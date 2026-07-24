@@ -60,6 +60,45 @@ def test_current_run_series_carries_aux_loss_and_optimizer_fields():
     assert series["verbalizable_mass"] == [0.06]
 
 
+def test_every_series_is_index_aligned_with_step():
+    """All series must be EXACTLY as long as `step`, including sparse fields.
+
+    The dashboard chart pairs x and y BY INDEX, and it slices them independently:
+    webapp/js/views/ops.js takes `series.step.slice(-120)` and `series[key].slice(-120)`
+    as separate expressions. If a sparse field were compacted instead of padded with None,
+    the two windows would begin at different rows and every point would be plotted against
+    the WRONG STEP -- a chart that is confidently, silently mislabelled rather than empty
+    or broken.
+
+    current_run_series gets this right by construction (`row.get(k)` appends None for a
+    missing key), so this test does not fix anything. It pins the property the chart
+    depends on, which was previously only implied -- and only for tok_s, in one case
+    (TODOS 5.3.R82).
+    """
+    metrics = [
+        # Deliberately ragged: tok_s missing on the 1st and 3rd rows, grad_norm only on
+        # the 2nd, lr only on the last. This is the shape that breaks index pairing if
+        # anything ever "helpfully" drops the empties.
+        {"event": "step", "step": 1, "lm": 9.0, "phase": 0},
+        {"event": "step", "step": 2, "lm": 8.0, "tok_s": 100, "grad_norm": 0.5, "phase": 0},
+        {"event": "step", "step": 3, "lm": 7.0, "phase": 0},
+        {"event": "step", "step": 4, "lm": 6.0, "tok_s": 120, "lr": 1e-4, "phase": 0},
+    ]
+    series = current_run_series(metrics)
+    n = len(series["step"])
+    assert n == 4
+    ragged = {k: len(v) for k, v in series.items() if len(v) != n}
+    assert not ragged, (
+        f"these series are not index-aligned with step (len {n}): {ragged}. "
+        "The dashboard pairs x/y by index after slicing each independently, so a shorter "
+        "array silently shifts every point onto the wrong step."
+    )
+    # The padding must be None, not a fabricated 0 -- a gap is a gap, and chart.js drops
+    # non-finite pairs on purpose. A 0 here would render as a real measured trough.
+    assert series["tok_s"] == [None, 100, None, 120]
+    assert series["grad_norm"] == [None, 0.5, None, None]
+
+
 def test_current_run_series_ignores_non_step_events():
     metrics = [
         {"event": "model_built", "preset": "mini"},

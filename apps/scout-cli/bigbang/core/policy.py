@@ -66,13 +66,22 @@ def _host_of(resource: str) -> str:
 
 
 def _domain_matches(domain: str, resource: str) -> bool:
+    """Exact-host or dot-suffix (subdomain) match ONLY.
+
+    The old "legacy substring" branch (`domain in resource`) nullified the whole
+    default-deny story: with `localhost` allowlisted, `http://evil.com/localhost`
+    passed (substring in the PATH), and with `127.0.0.1` allowlisted,
+    `http://127.0.0.1.evil.com/x` passed (substring in a crafted HOSTNAME). Both
+    were reproduced live in the 2026-07-22 monorepo review. Matching is now done
+    on the parsed HOST only. Manifest entries that store full URLs keep working
+    because the allowlist entry itself is normalized through _host_of too."""
+    if not domain:
+        return False
+    want = _host_of(domain)  # legacy full-URL entries match by their host
+    if not want:
+        return False
     host = _host_of(resource)
-    if domain == resource or domain == host:
-        return True
-    if host.endswith("." + domain):
-        return True
-    # legacy substring semantics kept for manifest entries that store full URLs
-    return bool(domain) and (domain in resource or resource.endswith(domain))
+    return host == want or host.endswith("." + want)
 
 
 def check_user_url(url: str) -> tuple[bool, str]:
@@ -88,6 +97,45 @@ def check_user_url(url: str) -> tuple[bool, str]:
     return False, (
         f"host {_host_of(url)} not in user allowlist {domains} — edit {user_policy_file()}"
     )
+
+
+def add_allowed_domain(host: str) -> tuple[bool, str]:
+    """Persist a host into the user network allowlist (self-unblock, network axis).
+
+    Returns (changed, message). Idempotent — re-adding an already-allowed host
+    is a no-op success. This is how the LLM unblocks itself on a policy-denied
+    reach: an explicit, auditable edit to the user's own allowlist file, never a
+    silent fail-open or an in-memory override that evaporates next call.
+
+    Only a bare host is accepted (parsed out of a URL if one is passed). Wildcard
+    or empty entries are refused so the allowlist can't be widened to match-all.
+    """
+    host = _host_of(str(host).strip())
+    if not host or host in ("*", "0.0.0.0") or "*" in host:
+        return False, f"refusing to allowlist {host!r} — must be a concrete host"
+    policy = load_user_policy()
+    net = policy.get("network")
+    if not isinstance(net, dict):
+        net = {}
+        policy["network"] = net
+    domains = net.get("allowed_domains")
+    if not isinstance(domains, list):
+        domains = []
+        net["allowed_domains"] = domains
+    if host in domains:
+        return False, f"{host} already allowed"
+    domains.append(host)
+    fp = user_policy_file()
+    try:
+        fp.parent.mkdir(parents=True, exist_ok=True)
+        fp.write_text(
+            "# scout-cli user policy — default-deny.\n"
+            "# Add domains under network.allowed_domains to allow outbound calls.\n"
+            + yaml.safe_dump(policy, sort_keys=False)
+        )
+    except OSError as e:
+        return False, f"could not write {fp}: {e}"
+    return True, f"{host} added to network allowlist ({fp})"
 
 
 def enforce_user_url_or_raise(url: str, context: str = ""):
@@ -146,7 +194,15 @@ def check_permission(manifest: dict, action: str, resource: str) -> tuple[bool, 
             )
     if action == "secret":
         allowed = caps.get("secrets", {}).get("allow", [])
-        if allowed and resource not in allowed:
+        # default-deny like every other axis: an EMPTY allowlist grants nothing.
+        # (The old `if allowed and ...` guard silently allowed EVERY secret when
+        # the list was empty — the opposite of this function's own docstring.)
+        if not allowed:
+            return False, (
+                f"secrets allowlist is empty for {manifest.get('name', 'tool')} — "
+                "default-deny; name each secret in manifest capabilities.secrets.allow"
+            )
+        if resource not in allowed:
             return False, f"secret {resource} not in allowlist {allowed}"
     return True, "ok"
 

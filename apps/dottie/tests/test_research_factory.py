@@ -39,6 +39,17 @@ def test_factory_trainer_refuses_honestly_without_infrastructure(monkeypatch, tm
     assert "infrastructure missing" in r.detail
 
 
+def test_resolve_seeds_parsing_and_dedup():
+    """Seed-list resolution is pure and defensive: a list enables cross-seed measurement,
+    absence falls back to the single configured seed (unchanged behaviour)."""
+    assert ft._resolve_seeds({}, 1234) == [1234]              # no list -> single default
+    assert ft._resolve_seeds({"seeds": []}, 1234) == [1234]   # empty list -> default
+    assert ft._resolve_seeds({"seeds": [0, 1, 2]}, 1234) == [0, 1, 2]
+    assert ft._resolve_seeds({"seeds": [0, 0, 1]}, 1234) == [0, 1]     # dedup, order kept
+    assert ft._resolve_seeds({"seeds": ["2", "3"]}, 1234) == [2, 3]    # str coercion
+    assert ft._resolve_seeds({"seeds": [1, "bad", 2]}, 1234) == [1, 2]  # skip unparseable
+
+
 def test_make_candidate_forces_model_width():
     class Cand:
         def __init__(self, d_model=64, alpha=0.5):
@@ -85,3 +96,34 @@ def test_factory_trainer_real_integration(tmp_path):
     assert m["factory_lm_loss"] > 0 and m["integration"] == "factory_nano_block_swap"
     assert m["capability_claim"] == "none" and m["params"] > 1_000_000
     assert json.dumps(m)  # metrics are JSON-serializable for the ledger
+
+
+@pytest.mark.skipif(not _factory_available(),
+                    reason="real factory checkout + packed pilot corpus not on this machine")
+def test_factory_trainer_multi_seed_records_per_seed(tmp_path):
+    """SPEC #3: with a seeds list the candidate is trained once per seed and each seed's
+    held-out CE is recorded in `per_seed`, so the evaluator's significance test uses
+    CROSS-SEED spread (not within-run per-batch spread). The metric is the seed mean."""
+    from dottie.research import ideation, implementation
+    from dottie.research.evaluate import _spread
+
+    led = Ledger(tmp_path / "ledger.sqlite3")
+    led.seed_baseline(Baseline("factory_lm_loss", 9.9, False, "nano", None, 0.0))
+    ideation.run_ideation(led, make_policy(), bottleneck="test", n_ideas=1)
+    r = implementation.run_implementation(led, make_policy(), workspace_root=tmp_path / "ws")
+    exp = led.get(r["experiment"])
+
+    result = ft.factory_nano_trainer(exp, {
+        "steps": 3, "seq_len": 32, "batch": 2, "eval_batches": 2, "device": "cpu",
+        "seeds": [0, 1],
+    })
+    assert result.ok and result.stable, result.detail
+    m = result.metrics
+    assert m["seeds"] == [0, 1]
+    assert isinstance(m["per_seed"], list) and len(m["per_seed"]) == 2
+    assert all(v > 0 for v in m["per_seed"])
+    # the metric is the cross-seed mean
+    assert abs(m["factory_lm_loss"] - sum(m["per_seed"]) / 2) < 1e-3
+    # and the evaluator now measures spread ACROSS SEEDS, not within one run
+    sp = _spread(m)
+    assert sp is not None and sp["series"] == "per_seed" and sp["n"] == 2

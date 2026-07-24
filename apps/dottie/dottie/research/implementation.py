@@ -2,7 +2,7 @@
 """Implementation worker (worker 2) — hypothesis -> validated, drop-in PyTorch.
 
 The highest-failure-rate stage: LLMs mangle tensor shapes and numerical stability. The worker
-calls the real model, then runs the generated code through the 4-level validator with up to
+calls the real model, then runs the generated code through the 6-stage validator with up to
 ``max_retries`` self-correction passes (each pass hands the exact traceback back to the model).
 Only code that passes every runnable level is written to an experiment workspace and advanced to
 ``ready_for_training``; code that fails all retries is marked ``failed_validation`` honestly.
@@ -10,36 +10,68 @@ Only code that passes every runnable level is written to an experiment workspace
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Dict, Optional
 
 from dottie.research import prompts, validate
 from dottie.research.ledger import (
-    FAILED_VALIDATION,
-    PENDING,
-    READY_FOR_TRAINING,
-    Ledger,
+    Ledger, PENDING, READY_FOR_TRAINING, FAILED_VALIDATION,
 )
 
 Policy = Callable[[str], str]
 
+#: Re-prompts allowed for an unparseable CORRECTION reply, pooled across the whole
+#: experiment. Small on purpose: every one costs a full model call (~90 s on the 4080
+#: box), and the failure it recovers from is a formatting slip that the model either
+#: fixes immediately or keeps repeating.
+_PARSE_RETRY_BUDGET = 3
 
-def _safe_basename(target_file: str | None, fallback: str) -> str:
+
+def _corrector_error(outcome) -> Optional[str]:
+    """The corrector's own exception, if the retry loop stopped because of one.
+
+    `validate_with_correction` breaks out early when the CORRECTOR raises (Ollama
+    unreachable, read timeout, unparseable reply) and records it only in `history`. The
+    stored failure was built from the last validation result alone, so an experiment
+    abandoned because the LLM was down looked identical to one that genuinely failed
+    validation on its merits — and its `attempts` count silently stopped short of
+    `max_retries` with no explanation (observed 2026-07-20: 48e0f39d8225, attempts=2 of 5).
+    That distinction matters: one is the candidate's fault, the other is infrastructure."""
+    for entry in reversed(getattr(outcome, "history", []) or []):
+        if isinstance(entry, dict) and entry.get("corrector_error"):
+            return str(entry["corrector_error"])[:300]
+    return None
+
+
+def _corrector_note(outcome) -> str:
+    err = _corrector_error(outcome)
+    return f" — STOPPED EARLY, the corrector itself failed: {err}" if err else ""
+
+
+def _keep_tail(detail: str, limit: int = 800) -> str:
+    """Keep the END of a failure detail, not the start.
+
+    Python puts the exception type and message on the LAST line of a traceback, so the
+    previous `detail[:500]` stored the "Traceback (most recent call last):" header and the
+    outermost frames while discarding the only line that says what actually broke.
+    Measured 2026-07-20: 36 of the 40 most recent `failed_validation` records were
+    unclassifiable for exactly this reason, which makes conversion-rate analysis (TODOS
+    §5.2) impossible. Short details are returned untouched."""
+    if len(detail) <= limit:
+        return detail
+    return "...[head truncated]... " + detail[-limit:]
+
+
+def _safe_basename(target_file: Optional[str], fallback: str) -> str:
     name = Path(str(target_file or "")).name
     if not name.endswith(".py") or not name[:-3].isidentifier():
         name = f"{fallback}.py"
     return name
 
 
-def run_implementation(
-    ledger: Ledger,
-    policy: Policy,
-    *,
-    workspace_root: str | Path,
-    max_retries: int = 3,
-    ts: float | None = None,
-) -> dict[str, Any] | None:
+def run_implementation(ledger: Ledger, policy: Policy, *, workspace_root: str | Path,
+                       max_retries: int = 3, ts: Optional[float] = None
+                       ) -> Optional[Dict[str, Any]]:
     """Implement the oldest pending hypothesis. Returns a summary, or None if none pending.
 
     Raises ``DottiePolicyUnavailable`` if the model is unreachable on the FIRST call (nothing to
@@ -48,9 +80,7 @@ def run_implementation(
     if exp is None:
         return None
 
-    text = policy(
-        prompts.implementation_prompt(exp.hypothesis)
-    )  # unavailability propagates
+    text = policy(prompts.implementation_prompt(exp.hypothesis))  # unavailability propagates
     impl = dry = None
     parse_attempts = 0
     while True:
@@ -64,47 +94,65 @@ def run_implementation(
             parse_attempts += 1
             if parse_attempts > max_retries:
                 ledger.transition(
-                    exp.id,
-                    FAILED_VALIDATION,
-                    attempts=parse_attempts,
+                    exp.id, FAILED_VALIDATION, attempts=parse_attempts,
                     failure=f"implementation output unparseable after {parse_attempts} "
-                    f"attempt(s): {e}",
-                    ts=ts,
-                )
-                return {
-                    "experiment": exp.id,
-                    "state": FAILED_VALIDATION,
-                    "level": "parse",
-                    "attempts": parse_attempts,
-                }
-            feedback = (
-                f"Validation failed at level 'parse' (fail). Detail:\n{e}\n"
-                "Your entire response must be ONE JSON object matching the "
-                "implementation schema — no markdown fences, no prose, and every "
-                "string field valid JSON (escape backslashes and newlines)."
-            )
+                            f"attempt(s): {e}", ts=ts)
+                return {"experiment": exp.id, "state": FAILED_VALIDATION,
+                        "level": "parse", "attempts": parse_attempts}
+            feedback = (f"Validation failed at level 'parse' (fail). Detail:\n{e}\n"
+                        "Your entire response must be ONE JSON object matching the "
+                        "implementation schema — no markdown fences, no prose, and every "
+                        "string field valid JSON (escape backslashes and newlines).")
             text = policy(prompts.correction_prompt(text, feedback))
 
     # Holder tracks the latest parsed impl/dry as the corrector re-calls the model, so the final
     # written module matches outcome.code.
     latest = {"impl": impl, "dry": dry}
+    # One pool of re-prompts for unparseable CORRECTION replies, shared across every
+    # correction attempt in this experiment — see the corrector's note on why this is not
+    # per-attempt.
+    parse_budget = {"left": _PARSE_RETRY_BUDGET}
 
     def corrector(prev_code: str, feedback: str) -> str:
-        new_text = policy(prompts.correction_prompt(prev_code, feedback))
-        new_impl, new_dry = prompts.parse_implementation(new_text)
-        latest["impl"], latest["dry"] = new_impl, new_dry
-        return new_impl["code"]
+        # A malformed CORRECTION reply used to abort the whole experiment: this raised
+        # straight out, which makes validate_with_correction break its retry loop. The
+        # INITIAL parse above re-prompts up to max_retries for the very same failure, so
+        # the model got several chances to emit valid JSON before its first attempt and
+        # none after. Measured 2026-07-20 over the 59 stored failed_validation records:
+        # 6 (10%) died this way, every one of them "no parseable JSON object found" —
+        # a recoverable formatting slip misfiled as a dead candidate.
+        #
+        # The budget is a small SHARED pool, not max_retries per invocation. Giving each
+        # correction attempt its own max_retries parse retries nests the two loops:
+        # 5 attempts x 6 calls = 30 policy calls worst case, against 5 before the retry
+        # existed at all. At the ~90 s/call this box measures that is 45 min for a single
+        # implement instead of 8 — a latency regression far worse than the 10% of
+        # experiments the retry reclaims. One pool for the whole experiment keeps the
+        # worst case at max_retries + _PARSE_RETRY_BUDGET.
+        current_feedback = feedback
+        while True:
+            new_text = policy(prompts.correction_prompt(prev_code, current_feedback))
+            try:
+                new_impl, new_dry = prompts.parse_implementation(new_text)
+            except ValueError as e:
+                if parse_budget["left"] <= 0:
+                    raise
+                parse_budget["left"] -= 1
+                current_feedback = (
+                    f"{feedback}\n\nYour previous reply could not be parsed: {e}\n"
+                    "Your entire response must be ONE JSON object matching the "
+                    "implementation schema — no markdown fences, no prose, and every "
+                    "string field valid JSON (escape backslashes and newlines).")
+                continue
+            latest["impl"], latest["dry"] = new_impl, new_dry
+            return new_impl["code"]
 
     ws = Path(workspace_root) / exp.id
     ws.mkdir(parents=True, exist_ok=True)
     outcome = validate.validate_with_correction(
-        impl["code"],
-        corrector,
-        max_retries=max_retries,
-        class_name=dry["class_name"],
-        init_kwargs=dry["init_kwargs"],
-        input_shape=dry["input_shape"],
-        workdir=ws,
+        impl["code"], corrector, max_retries=max_retries,
+        class_name=dry["class_name"], init_kwargs=dry["init_kwargs"],
+        input_shape=dry["input_shape"], workdir=ws,
     )
 
     final_impl = dict(latest["impl"])
@@ -112,47 +160,26 @@ def run_implementation(
     final_impl["code"] = outcome.code  # authoritative final code
     final_impl["dry_run"] = final_dry
     final_impl["validation"] = {
-        "ok": outcome.ok,
-        "attempts": outcome.attempts,
-        "level": outcome.result.level,
-        "status": outcome.result.status,
-        "per_level": outcome.result.per_level,
-        "history": outcome.history,
+        "ok": outcome.ok, "attempts": outcome.attempts,
+        "level": outcome.result.level, "status": outcome.result.status,
+        "per_level": outcome.result.per_level, "history": outcome.history,
     }
 
     if outcome.ok:
         module_path = ws / _safe_basename(final_impl.get("target_file"), exp.id)
         module_path.write_text(outcome.code, encoding="utf-8")
-        ledger.transition(
-            exp.id,
-            READY_FOR_TRAINING,
-            implementation=final_impl,
-            workspace=str(ws),
-            attempts=outcome.attempts,
-            ts=ts,
-        )
-        return {
-            "experiment": exp.id,
-            "state": READY_FOR_TRAINING,
-            "module": final_impl.get("module_name"),
-            "attempts": outcome.attempts,
-            "module_path": str(module_path),
-        }
+        ledger.transition(exp.id, READY_FOR_TRAINING, implementation=final_impl,
+                          workspace=str(ws), attempts=outcome.attempts, ts=ts)
+        return {"experiment": exp.id, "state": READY_FOR_TRAINING,
+                "module": final_impl.get("module_name"), "attempts": outcome.attempts,
+                "module_path": str(module_path)}
 
-    ledger.transition(
-        exp.id,
-        FAILED_VALIDATION,
-        implementation=final_impl,
-        workspace=str(ws),
-        attempts=outcome.attempts,
-        failure=f"validation failed at '{outcome.result.level}' after "
-        f"{outcome.attempts} self-correction attempt(s): "
-        f"{outcome.result.detail[:500]}",
-        ts=ts,
-    )
-    return {
-        "experiment": exp.id,
-        "state": FAILED_VALIDATION,
-        "level": outcome.result.level,
-        "attempts": outcome.attempts,
-    }
+    ledger.transition(exp.id, FAILED_VALIDATION, implementation=final_impl, workspace=str(ws),
+                      attempts=outcome.attempts,
+                      failure=f"validation failed at '{outcome.result.level}' after "
+                              f"{outcome.attempts} self-correction attempt(s)"
+                              f"{_corrector_note(outcome)}: "
+                              f"{_keep_tail(outcome.result.detail)}", ts=ts)
+    return {"experiment": exp.id, "state": FAILED_VALIDATION,
+            "level": outcome.result.level, "attempts": outcome.attempts,
+            "corrector_error": _corrector_error(outcome)}

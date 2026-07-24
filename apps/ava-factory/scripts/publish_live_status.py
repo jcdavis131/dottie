@@ -39,6 +39,199 @@ def _get_json(url: str, timeout: float = 10.0):
         return {"unreachable": f"{type(e).__name__}: {e}", "url": url}
 
 
+# The org's REAL global fleet (rung 6): the operator's deployed sites, probed
+# for liveness so the game's Earth board shows genuine field-office status.
+SITES = [
+    ("hub", "https://dumbmodel.com"),
+    ("hoops", "https://hoops.jcamd.com"),
+    ("grid", "https://gridiron.dumbmodel.com"),
+    ("pitch", "https://pitch.jcamd.com"),
+    ("equi", "https://equities.jcamd.com"),
+    ("arcad", "https://arcade.dumbmodel.com"),
+    ("arxiv", "https://arxiviq.com"),
+    ("bhenre", "https://www.bhenre.com"),
+]
+
+
+def _probe_sites() -> list:
+    out = []
+    for name, url in SITES:
+        t0 = time.time()
+        try:
+            req = urllib.request.Request(url, method="HEAD")
+            with urllib.request.urlopen(req, timeout=8) as r:
+                code = r.status
+        except urllib.error.HTTPError as e:
+            code = e.code
+        except Exception:
+            code = None
+        out.append({"name": name, "url": url, "http": code,
+                    "ms": round((time.time() - t0) * 1000),
+                    "up": bool(code and 200 <= code < 400)})
+    return out
+
+
+# Decode a REAL example from the shard the trainer has claimed right now
+# (manifest state CLAIMED_TRAIN; falls back to newest CONSUMED). Runs inside
+# the trainer container where the tokenizer + packed volumes live. The doc
+# index rotates once per publish window so the console shows fresh examples.
+_SAMPLE_SCRIPT = r"""
+import json, sqlite3, time
+import numpy as np
+from dottie.tokenizer import DottieTokenizer
+db = sqlite3.connect("/state/manifest.db"); db.row_factory = sqlite3.Row
+row = db.execute(
+    "select * from shards where state='CLAIMED_TRAIN' order by updated_at desc limit 1"
+).fetchone() or db.execute(
+    "select * from shards where state='CONSUMED' order by updated_at desc limit 1"
+).fetchone()
+if not row:
+    print(json.dumps({"unreachable": "no CLAIMED_TRAIN/CONSUMED shard in manifest"})); raise SystemExit
+idx = json.load(open(str(row["path"]).replace(".bin", ".idx.json")))
+docs = idx["docs"]
+d = docs[int(time.time() // 600) % len(docs)]
+arr = np.memmap(row["path"], dtype=np.uint16, mode="r")
+ids = arr[d["start"]: min(d["end"], d["start"] + 160)].tolist()
+text = DottieTokenizer.load().decode(ids)
+print(json.dumps({
+    "shard": row["id"], "source": row["source"], "phase": row["phase"],
+    "state": row["state"], "docs_in_shard": len(docs),
+    "doc_id": d.get("doc_id"), "task_type": d.get("task_type"),
+    "doc_tokens": d["end"] - d["start"], "shown_tokens": len(ids),
+    "text": text[:700],
+}))
+"""
+
+
+def _batch_sample() -> dict:
+    try:
+        p = subprocess.run(
+            ["docker", "exec", "dottie-factory-trainer-1", "python", "-c", _SAMPLE_SCRIPT],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=45,
+        )
+        if p.returncode != 0:
+            return {"unreachable": (p.stderr or "sample exec failed")[:200]}
+        return json.loads(p.stdout.strip().splitlines()[-1])
+    except Exception as e:  # noqa: BLE001 - publisher must never crash on a probe
+        return {"unreachable": f"{type(e).__name__}: {e}"}
+
+
+def _site_history(existing_hub, probes: list) -> dict:
+    """Rolling 24h of real probe results per site (steer directive 2026-07-22:
+    'the console shows trends, not just now'). Carried through the existing
+    file across publishes; pruned by wall clock; capped defensively."""
+    prev = existing_hub.get("site_history", {}) if isinstance(existing_hub, dict) else {}
+    now = time.time()
+    hist = {}
+    for p in probes:
+        rows = [r for r in prev.get(p["name"], [])
+                if isinstance(r, dict) and now - r.get("t", 0) < 86400]
+        rows.append({"t": round(now), "up": p["up"], "ms": p["ms"]})
+        hist[p["name"]] = rows[-160:]
+    return hist
+
+
+_ANSI_RE = None  # lazy-compiled below
+
+
+def _deploys_snapshot() -> dict:
+    """Read-only deploy recency per Vercel project (steer directive: DEPLOYS
+    card). Parses the CLI's human table (no --json exists); ANSI stripped;
+    honest unreachable on any failure."""
+    global _ANSI_RE
+    import re as _re
+    if _ANSI_RE is None:
+        _ANSI_RE = _re.compile(r"\x1b\[[0-9;]*m")
+    try:
+        vercel_bin = "vercel.cmd" if os.name == "nt" else "vercel"
+        p = subprocess.run(
+            [vercel_bin, "projects", "ls", "--scope", "cams-projects-c5c4c5f6"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=60,
+        )
+        if p.returncode != 0:
+            return {"unreachable": (p.stderr or "vercel ls failed")[:200]}
+        projects = []
+        # the CLI prints its table on STDERR (stdout stays empty) — parse both
+        for line in (p.stdout + "\n" + p.stderr).splitlines():
+            clean = _ANSI_RE.sub("", line)
+            m = _re.match(r"^\s{2}(\S+)\s+(https://\S+)\s+(\S+)", clean)
+            if m and m.group(1) != "Project":
+                projects.append({"name": m.group(1), "url": m.group(2),
+                                 "updated": m.group(3)})
+        return {"projects": projects} if projects else {"unreachable": "no rows parsed"}
+    except Exception as e:  # noqa: BLE001 - publisher must never crash on a probe
+        return {"unreachable": f"{type(e).__name__}: {e}"}
+
+
+def _site_perf(existing_hub) -> dict:
+    """Weekly TTFB + page-weight per site with >20% regression flags (steer
+    directive). Self-scheduling: re-measures only when the carried block is
+    older than 6 days; otherwise carries it forward untouched. Real requests,
+    honest failures; regressions compare against the PREVIOUS measurement."""
+    prev = existing_hub.get("site_perf", {}) if isinstance(existing_hub, dict) else {}
+    now = time.time()
+    if isinstance(prev.get("measured_at"), (int, float)) and now - prev["measured_at"] < 6 * 86400:
+        return prev
+    rows = []
+    regressions = []
+    prev_rows = {r["name"]: r for r in prev.get("rows", []) if isinstance(r, dict)}
+    for name, url in SITES:
+        try:
+            t0 = time.time()
+            with urllib.request.urlopen(url, timeout=15) as r:
+                r.read(1)
+                ttfb_ms = round((time.time() - t0) * 1000)
+                body = r.read()
+            page_bytes = len(body) + 1
+            row = {"name": name, "ttfb_ms": ttfb_ms, "page_bytes": page_bytes}
+            p = prev_rows.get(name)
+            for metric, label in (("ttfb_ms", "TTFB"), ("page_bytes", "page weight")):
+                if p and isinstance(p.get(metric), (int, float)) and p[metric] > 0:
+                    ratio = row[metric] / p[metric]
+                    if ratio > 1.2:
+                        regressions.append({
+                            "name": name, "metric": metric,
+                            "label": f"{name} {label} regressed {round((ratio - 1) * 100)}% "
+                                     f"({p[metric]} -> {row[metric]})"})
+            rows.append(row)
+        except Exception as e:  # noqa: BLE001
+            rows.append({"name": name, "error": f"{type(e).__name__}"[:60]})
+    return {"measured_at": round(now), "rows": rows, "regressions": regressions}
+
+
+def _fleet_snapshot() -> dict:
+    """Real docker-stats snapshot for the game's fleet NPCs (2026-07-22).
+    Raw docker JSONL rows, parsed client-side; unreachable is honest."""
+    try:
+        p = subprocess.run(
+            ["docker", "stats", "--no-stream", "--format", "{{json .}}"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=30,
+        )
+        if p.returncode != 0:
+            return {"unreachable": (p.stderr or "docker stats failed")[:200]}
+        containers = []
+        for line in p.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                d = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            containers.append({
+                "Name": d.get("Name") or d.get("Container"),
+                "CPUPerc": d.get("CPUPerc"),
+                "MemPerc": d.get("MemPerc"),
+                "MemUsage": d.get("MemUsage"),
+            })
+        return {"containers": containers}
+    except Exception as e:  # noqa: BLE001 - publisher must never crash on a probe
+        return {"unreachable": f"{type(e).__name__}: {e}"}
+
+
 def compose() -> dict:
     existing = {}
     if OUT.exists():
@@ -52,13 +245,31 @@ def compose() -> dict:
         research = json.loads(research_path.read_text(encoding="utf-8"))
     except Exception as e:
         research = {"unreachable": f"{type(e).__name__}: {e}"}
+    # The rest of the :8000 hub, snapshotted for the public twin (operator
+    # 2026-07-22: "bring all of localhost:8000 live to bluehenre.com"). Each
+    # panel is the endpoint's real JSON or an honest {"unreachable": ...}.
+    # ~12KB combined — negligible next to the pipeline block.
+    hub = {
+        "network": _get_json("http://localhost:8000/network/status"),
+        "ecosystem": _get_json("http://localhost:8000/ecosystem/status"),
+        "agent_eval": _get_json("http://localhost:8000/agent_eval/scoreboard"),
+        "eval_report": _get_json("http://localhost:8000/jspace/eval_report"),
+        "eval_catalog": _get_json("http://localhost:8000/jspace/eval_catalog"),
+        "fleet": _fleet_snapshot(),
+        "sites": _probe_sites(),
+        "batch_sample": _batch_sample(),
+    }
+    hub["site_history"] = _site_history(existing.get("hub", {}), hub["sites"])
+    hub["deploys"] = _deploys_snapshot()
+    hub["site_perf"] = _site_perf(existing.get("hub", {}))
     snapshot = {
         **existing,
-        "schema": "dottie_live_status/v2",
+        "schema": "dottie_live_status/v2",  # additive: v2 consumers unaffected by "hub"
         "published_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "source": "publish_live_status.py on the 4080 box (gist; repo telemetry stays gitignored)",
         "pipeline": pipeline,
         "research": research,
+        "hub": hub,
     }
     return snapshot
 

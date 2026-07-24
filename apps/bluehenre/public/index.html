@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>BLUEHENRE — org command console</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#140e09" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="BLUEHENRE" />
+<link rel="manifest" href="./manifest.json" />
+<link rel="icon" href="./icon.svg" type="image/svg+xml" />
+<style>
+  /* MOBILE COMMAND CONSOLE — cozy & warm (operator 2026-07-22): amber-
+     phosphor terminal. Warm browns, cream text, golden accents, soft header
+     glow. Retro and authentic, text stays crisp full-resolution. */
+  :root {
+    --bg: #140e09; --panel: #1b1410; --bezel: #261c13; --line: #3c2d1f;
+    --cyan: #ffb45e; --amber: #ffcf8f; --magenta: #ff7a5c; --green: #b6e07d;
+    --red: #ff5d47; --text: #efdcc4; --dim: #96805f; --white: #fff3e0;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+               font-family: "Courier New", ui-monospace, monospace; }
+  body::before { /* warm hearth vignette — barely-there amber wash */
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 98;
+    background: radial-gradient(120% 90% at 50% 0%, rgba(255,180,94,.05), transparent 60%);
+  }
+  body::after { /* CRT scanlines — faint enough to keep text crisp */
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 99;
+    background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(0,0,0,.12) 3px 4px);
+  }
+  #wrap { max-width: 760px; margin: 0 auto; padding: 10px 10px
+          calc(env(safe-area-inset-bottom, 0px) + 24px); }
+  header { display: flex; justify-content: space-between; align-items: baseline;
+           border-bottom: 2px solid var(--magenta); padding: 10px 2px 8px; }
+  header h1 { margin: 0; font-size: 18px; color: var(--cyan); letter-spacing: 1px;
+              text-shadow: 0 0 10px rgba(255,180,94,.35); }
+  header .sub { color: var(--dim); font-size: 11px; text-align: right; }
+  .card { background: var(--panel); border: 1px solid var(--line);
+          border-top: 2px solid var(--bezel); border-radius: 4px; margin-top: 12px;
+          overflow: hidden; }
+  .card > h2 { margin: 0; padding: 7px 10px; font-size: 13px; color: var(--cyan);
+               background: var(--bezel); border-bottom: 1px solid var(--magenta);
+               letter-spacing: 1px; text-shadow: 0 0 8px rgba(255,180,94,.25); }
+  .card .body { padding: 10px; font-size: 13px; line-height: 1.5; }
+  .rowline { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
+  .rowline .k { color: var(--dim); }
+  .rowline .v { color: var(--white); text-align: right; }
+  .bar { position: relative; height: 14px; background: #221812; border: 1px solid var(--line);
+         margin: 6px 0; overflow: hidden; border-radius: 3px; }
+  .bar > i { position: absolute; inset: 1px auto 1px 1px; background: var(--cyan); }
+  .bar > b { position: absolute; inset: 0; display: flex; align-items: center;
+             padding: 0 6px; font-size: 10px; font-weight: 700; color: var(--white);
+             font-style: normal; }
+  .bar.phase > i { background: var(--magenta); }
+  .led { display: inline-block; width: 9px; height: 9px; margin-right: 5px; vertical-align: -1px; }
+  .up { background: var(--green); } .down { background: var(--red); } .idle { background: var(--dim); }
+  .mode { font-weight: 700; }
+  .mode.training, .mode.running { color: var(--green); }
+  .mode.recovering { color: var(--amber); }
+  .mode.stale, .mode.error { color: var(--red); }
+  canvas#spark { width: 100%; height: 72px; display: block; background: #0e1524;
+                 border: 1px solid var(--line); margin-top: 6px; }
+  table.fleet { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.fleet td { padding: 3px 4px; border-bottom: 1px solid #0e1524; }
+  table.fleet td.cpu { width: 40%; }
+  .cpubar { height: 10px; background: #0e1524; border: 1px solid var(--line); position: relative; }
+  table.fleet tr { cursor: pointer; }
+  table.fleet tr.sel td { background: #241a12; }
+  .fleetact { display: flex; gap: 8px; align-items: center; margin: 8px 0 2px; }
+  .fleetact span { color: var(--amber); font-weight: 700; }
+  .fleetact button { border: 1px solid var(--cyan); background: var(--bg); color: var(--cyan);
+                     padding: 6px 14px; font-family: inherit; font-weight: 700; }
+  .cpubar > i { position: absolute; inset: 1px auto 1px 1px; background: var(--green); }
+  .cpubar.hot > i { background: var(--amber); }
+  .alert { border-left: 3px solid var(--red); background: #170a10; padding: 6px 8px; margin: 6px 0; }
+  .alert .who { color: var(--amber); font-size: 11px; }
+  .ok-line { color: var(--green); }
+  #chatlog { max-height: 40vh; overflow: auto; margin-top: 8px; }
+  #chatlog p { margin: 6px 0; white-space: pre-wrap; }
+  #chatlog .src { color: var(--dim); font-size: 11px; }
+  form.ask { display: flex; gap: 8px; }
+  form.ask input { flex: 1; background: #0a0e18; border: 1px solid var(--line);
+                   color: var(--white); padding: 10px; font-family: inherit; font-size: 14px; }
+  form.ask button { border: 1px solid var(--cyan); background: var(--bg); color: var(--cyan);
+                    padding: 0 16px; font-family: inherit; font-weight: 700; }
+  .sites { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+  .sites span, .sites a { white-space: nowrap; }
+  .sites a { color: var(--text); text-decoration-color: var(--dim); }
+  .upstrip { display: inline-flex; gap: 1px; margin-left: 6px; vertical-align: -1px; }
+  .upstrip i { width: 3px; height: 10px; display: inline-block; }
+  .upstrip i.up { background: var(--green); }
+  .upstrip i.down { background: var(--red); }
+  .dimtxt { color: var(--dim); font-size: 11px; }
+  .sampletext { background: #221812; border: 1px solid var(--line); border-radius: 3px;
+                padding: 8px; margin-top: 6px; font-size: 12px; line-height: 1.45;
+                white-space: pre-wrap; word-break: break-word; max-height: 200px;
+                overflow-y: auto; color: var(--amber); }
+  footer { margin-top: 16px; padding: 10px 2px; color: var(--dim); font-size: 11px;
+           border-top: 1px solid var(--line); display: flex; justify-content: space-between; }
+  footer a { color: var(--cyan); text-decoration: none; }
+  @media (min-width: 700px) { #grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; } }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <header>
+    <h1>▮ BLUEHENRE//ORG</h1>
+    <div class="sub" id="feedsub">connecting…</div>
+  </header>
+  <div class="dimtxt" style="padding: 6px 2px 0;">
+    sota models, faster · research the whole stack · models → insights → revenue
+  </div>
+
+  <section class="card"><h2>▮ RUN//AVA-MINI</h2><div class="body" id="run">…</div></section>
+  <section class="card"><h2>▮ DATA//LATEST-BATCH</h2><div class="body" id="batch">…</div></section>
+  <section class="card"><h2>▮ ALERTS//UNBLOCK</h2><div class="body" id="alerts">…</div></section>
+  <section class="card"><h2>▮ DOTTIE//ASSISTANT</h2><div class="body">
+    <div class="dimtxt" id="chathint"></div>
+    <form class="ask" id="askform" autocomplete="off">
+      <input id="askq" placeholder="ask · guide · unblock…" />
+      <button>SEND</button>
+    </form>
+    <div id="chatlog"></div>
+  </div></section>
+  <section class="card"><h2>▮ FLEET//DOCKER</h2><div class="body" id="fleet">…</div></section>
+  <div id="grid2">
+    <section class="card"><h2>▮ HUB//SUBSYSTEMS</h2><div class="body" id="hub">…</div></section>
+    <section class="card"><h2>▮ SITES//GLOBAL</h2><div class="body" id="sites">…</div></section>
+  </div>
+
+  <footer>
+    <span id="prov">provenance: —</span>
+    <a href="https://gist.github.com/jcdavis131/c899ef776dcb81e99319239efa0f92ba"
+       target="_blank" rel="noopener">STEER →</a>
+  </footer>
+</div>
+<script type="module" src="./js/console.mjs"></script>
+</body>
+</html>
