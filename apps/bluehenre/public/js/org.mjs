@@ -540,6 +540,31 @@ function renderHubRegistry() {
     }
   }
 
+  if (hubReg.research?.length) {
+    el.append(P("Research", "hubsec"));
+    for (const r of hubReg.research) {
+      const block = document.createElement("div");
+      block.className = "dsblock";
+      const head = document.createElement("div");
+      head.className = "dshead";
+      const nm = document.createElement("span");
+      nm.className = "nm";
+      if (r.cardPath) {
+        const a = document.createElement("a");
+        a.href = REPO_BASE + r.cardPath; a.target = "_blank"; a.rel = "noopener";
+        a.textContent = r.title;
+        nm.append(a);
+      } else nm.textContent = r.title;
+      const typ = document.createElement("span");
+      typ.className = "chip"; typ.textContent = r.reportType ?? "report";
+      head.append(nm, typ);
+      block.append(head);
+      if (r.summary) block.append(P(r.summary, "note"));
+      if (r.integrity.sha256short) block.append(line("integrity", `sha256 ${r.integrity.sha256short}…`));
+      el.append(block);
+    }
+  }
+
   el.append(P(`${hubReg.count} artifact${hubReg.count === 1 ? "" : "s"} · badge = provenance class ` +
     "per data_provenance_SOP.md (REAL measured · HONEST-SYNTHETIC labelled · PLACEHOLDER " +
     "stand-in); retracted numbers are named, never dropped — no card renders without provenance", "note"));

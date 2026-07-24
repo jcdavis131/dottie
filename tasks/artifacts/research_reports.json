@@ -1,0 +1,65 @@
+{
+  "_comment": "Curated index of the org's own committed research reports, surfaced in the Hub's Research facet. The exporter (build_hub_registry.mjs) verifies each path exists and sha256-pins it; a report whose file is missing does not render. Summaries are editorial (human-written); the provenance is the real committed file.",
+  "reports": [
+    {
+      "path": "tasks/artifacts/data_provenance_SOP.md",
+      "type": "doctrine",
+      "title": "Data Provenance SOP",
+      "summary": "The standing rule: no value trains, evals, or ships publicly unless its provenance is recorded and it is REAL or labelled HONEST-SYNTHETIC. Four-class taxonomy, HF-standard card structure, shadow-library sources forbidden."
+    },
+    {
+      "path": "tasks/artifacts/provenance_audit_MASTER.md",
+      "type": "audit",
+      "title": "Provenance Audit — MASTER",
+      "summary": "Full audit of every model data pipeline. Training data CLEAN; the eval bins were NOT disjoint from training (fixed); ships the first reliable perplexity number (2,268) and retracts the contaminated 275.95/4103."
+    },
+    {
+      "path": "tasks/artifacts/external_book_sources.md",
+      "type": "decision",
+      "title": "External Book Sources — provenance decision",
+      "summary": "Rejected library.memoryoftheworld.org (a shadow library) as FORBIDDEN; piloted DOAB/OAPEN CC-licensed open-access books instead. The vetted clean-source allowlist for expanding the corpus."
+    },
+    {
+      "path": "tasks/artifacts/ledger_retroflag.md",
+      "type": "finding",
+      "title": "Ledger Retro-flag — SOTA artifacts",
+      "summary": "2 of 3 historical 'sota' promotions were within-run-SEM-only artifacts. Real wins = zero; the promotion gate now demands paired-seed evidence."
+    },
+    {
+      "path": "tasks/artifacts/glm52_learnings.md",
+      "type": "analysis",
+      "title": "GLM-5.2 / Slime Learnings",
+      "summary": "Analysis of GLM-5.2's unified trajectory schema and RL posture, mapped onto the org's factory: one Trajectory type + four rollout adapters, GRPO-without-critic already our posture."
+    },
+    {
+      "path": "tasks/artifacts/kg_native_design.md",
+      "type": "design",
+      "title": "Native Knowledge Graph",
+      "summary": "Stdlib-only knowledge graph over incidents + experiments + events (Graphify/Rootly/DeepRefine ideas, natively), every claim cited; 208 nodes / 504 edges."
+    },
+    {
+      "path": "tasks/artifacts/openswap_rankings.md",
+      "type": "analysis",
+      "title": "OpenSwap Rankings",
+      "summary": "Ranked-50 native offline replacements for paid SaaS in scout-cli (prose/uptime/seo/links/smoke/leaks/runtrack/…), stdlib-only, zero new deps — the quality bar."
+    },
+    {
+      "path": "tasks/artifacts/goat_audit_monorepo.md",
+      "type": "audit",
+      "title": "GOAT Audit — monorepo (Carmack/Bellard bar)",
+      "summary": "Code-quality audit to a Carmack/Bellard standard: dead-code/dep cleanup, bare-except sweep, and the verified two-package dottie namespace-collision finding."
+    },
+    {
+      "path": "tasks/artifacts/verification_engine_learnings.md",
+      "type": "learnings",
+      "title": "Verification Engine Learnings",
+      "summary": "Proof-obligation tracking baked into the validator (Emira/LemmaScript pattern): named obligations across the six validation stages, discharge-next surfaced in feedback."
+    },
+    {
+      "path": "tasks/artifacts/revenue_instrumentation_proposal.md",
+      "type": "proposal",
+      "title": "Revenue Instrumentation (proposal)",
+      "summary": "Propose-first design for instrumenting the revenue-adjacent surfaces — held for operator review, not auto-enacted."
+    }
+  ]
+}

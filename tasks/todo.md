@@ -106,6 +106,11 @@ public deploy is the operator's gated step.
 - [x] **Mobile Hub parity** — the phone terminal view now has a HUB//ARTIFACTS card
       (datasets + models, provenance-badged in the amber palette, retracted number
       named). Reuses the tested `parseHubRegistry`; loaded once, not polled. Suite 97.
+- [x] **Research facet — Hub trinity COMPLETE** (datasets + models + research). Curated
+      `research_reports.json` (10 of the org's committed reports); the exporter verifies
+      each file exists + sha256-pins it (no phantom reports); `parseHubRegistry` exposes
+      `research[]`; rendered as a Research section on org + mobile (type chip + sha).
+      Registry now {datasets:3, models:1, research:10, count:14}. Suite 97→100.
 
 ## Operator calls (from the provenance audit — deliberately not auto-done)
 - [ ] Rotate the previously-committed `HF_TOKEN` and place the new value in the

@@ -424,8 +424,26 @@ function renderArtifacts() {
         { className: "retracted" }), `⚠ retracted: ${m.eval.retracted}`));
     }
   }
+  if (artifacts.research?.length) {
+    el.append(sec("research"));
+    for (const r of artifacts.research) {
+      const row = document.createElement("div");
+      row.className = "artline";
+      const nm = document.createElement("span");
+      if (r.cardPath) {
+        const a = document.createElement("a");
+        a.href = ART_REPO + r.cardPath; a.target = "_blank"; a.rel = "noopener";
+        a.textContent = r.title;
+        nm.append(a);
+      } else nm.textContent = r.title;
+      const typ = document.createElement("span");
+      typ.className = "badge unknown"; typ.textContent = r.reportType ?? "report"; // dim pill (not provenance-classified)
+      row.append(nm, typ);
+      el.append(row);
+    }
+  }
   el.append(esc(Object.assign(document.createElement("p"), { className: "dimtxt" }),
-    `${artifacts.count} artifacts · provenance-badged (REAL / HONEST-SYNTHETIC / PLACEHOLDER)`));
+    `${artifacts.count} artifacts · datasets + models provenance-badged; research sha-pinned`));
 }
 async function loadArtifacts() {
   const el = $("artifacts");

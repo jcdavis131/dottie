@@ -19,6 +19,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = process.env.DOTTIE_ROOT ? resolve(process.env.DOTTIE_ROOT) : resolve(HERE, "..", "..", "..");
 const PROPOSALS = join(ROOT, "tasks", "artifacts", "corpus_proposals");
 const MODELS = join(ROOT, "tasks", "artifacts", "model_cards");
+const RESEARCH_MANIFEST = join(ROOT, "tasks", "artifacts", "research_reports.json");
 const OUT = join(HERE, "..", "public", "hub_registry.json");
 
 const CLASSES = new Set(["REAL", "HONEST-SYNTHETIC", "PLACEHOLDER"]);
@@ -217,6 +218,37 @@ function buildModelRecord(dir, name) {
   };
 }
 
+/** Curated research reports (research_reports.json) -> registry records. Each
+ * report's file is verified present and sha256-pinned; a report whose file is
+ * missing is skipped (no phantom reports). Title/summary are the manifest's
+ * editorial text — the provenance is the real committed file. */
+function scanResearch() {
+  if (!existsSync(RESEARCH_MANIFEST)) return [];
+  let manifest;
+  try { manifest = JSON.parse(readFileSync(RESEARCH_MANIFEST, "utf-8")); }
+  catch { return []; }
+  const reports = Array.isArray(manifest?.reports) ? manifest.reports : [];
+  const out = [];
+  for (const r of reports) {
+    const p = typeof r?.path === "string" ? r.path : null;
+    if (!p) continue;
+    const full = join(ROOT, p);
+    if (!existsSync(full)) continue; // must be a real committed file
+    const buf = readFileSync(full);
+    const base = p.split("/").pop();
+    out.push({
+      name: base.replace(/\.md$/, ""),
+      kind: "research",
+      title: typeof r.title === "string" ? r.title : base,
+      report_type: typeof r.type === "string" ? r.type : "report",
+      summary: typeof r.summary === "string" ? r.summary : null,
+      card_path: p,
+      integrity: { bytes: buf.length, sha256: sha256(buf) },
+    });
+  }
+  return out;
+}
+
 /** Scan a dir of `<name>/README.md` cards, building each with `build`. */
 function scanCards(baseDir, build) {
   if (!existsSync(baseDir)) return [];
@@ -237,15 +269,16 @@ function main() {
   }
   const datasets = scanCards(PROPOSALS, buildRecord);
   const models = scanCards(MODELS, buildModelRecord);
+  const research = scanResearch();
   const doc = {
     generated_by: "build_hub_registry.mjs",
-    count: datasets.length + models.length,
-    datasets, models,
+    count: datasets.length + models.length + research.length,
+    datasets, models, research,
   };
   writeFileSync(OUT, JSON.stringify(doc, null, 2) + "\n");
   const fmt = (r) => `${r.name}=${r.classification ?? "unclassified"}`;
-  console.log(`wrote ${rel(OUT)}: ${datasets.length} datasets, ${models.length} models ` +
-    `(${[...datasets, ...models].map(fmt).join(", ")})`);
+  console.log(`wrote ${rel(OUT)}: ${datasets.length} datasets, ${models.length} models, ` +
+    `${research.length} research (${[...datasets, ...models].map(fmt).join(", ")})`);
 }
 
 // pure parser helpers, exported for the regression test (bare-node)

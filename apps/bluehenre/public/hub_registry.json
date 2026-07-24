@@ -1,6 +1,6 @@
 {
   "generated_by": "build_hub_registry.mjs",
-  "count": 4,
+  "count": 14,
   "datasets": [
     {
       "name": "gridiron_forecast_rows",
@@ -180,6 +180,128 @@
         "generated": null,
         "source_sha256": [],
         "sidecar_path": null
+      }
+    }
+  ],
+  "research": [
+    {
+      "name": "data_provenance_SOP",
+      "kind": "research",
+      "title": "Data Provenance SOP",
+      "report_type": "doctrine",
+      "summary": "The standing rule: no value trains, evals, or ships publicly unless its provenance is recorded and it is REAL or labelled HONEST-SYNTHETIC. Four-class taxonomy, HF-standard card structure, shadow-library sources forbidden.",
+      "card_path": "tasks/artifacts/data_provenance_SOP.md",
+      "integrity": {
+        "bytes": 6862,
+        "sha256": "2b3d3a293078c856567864131fbfc2fcff9397002dcafd4204b085a17a270060"
+      }
+    },
+    {
+      "name": "provenance_audit_MASTER",
+      "kind": "research",
+      "title": "Provenance Audit — MASTER",
+      "report_type": "audit",
+      "summary": "Full audit of every model data pipeline. Training data CLEAN; the eval bins were NOT disjoint from training (fixed); ships the first reliable perplexity number (2,268) and retracts the contaminated 275.95/4103.",
+      "card_path": "tasks/artifacts/provenance_audit_MASTER.md",
+      "integrity": {
+        "bytes": 5529,
+        "sha256": "496ff4a48baed963aeb3a2ed898ee8a8d37ba09d68f8433b00574ee0126ea62b"
+      }
+    },
+    {
+      "name": "external_book_sources",
+      "kind": "research",
+      "title": "External Book Sources — provenance decision",
+      "report_type": "decision",
+      "summary": "Rejected library.memoryoftheworld.org (a shadow library) as FORBIDDEN; piloted DOAB/OAPEN CC-licensed open-access books instead. The vetted clean-source allowlist for expanding the corpus.",
+      "card_path": "tasks/artifacts/external_book_sources.md",
+      "integrity": {
+        "bytes": 6582,
+        "sha256": "31a0df1b7af1b9b4e99a6ad72af634b4a78d911f7464045d73e578bd67d246fd"
+      }
+    },
+    {
+      "name": "ledger_retroflag",
+      "kind": "research",
+      "title": "Ledger Retro-flag — SOTA artifacts",
+      "report_type": "finding",
+      "summary": "2 of 3 historical 'sota' promotions were within-run-SEM-only artifacts. Real wins = zero; the promotion gate now demands paired-seed evidence.",
+      "card_path": "tasks/artifacts/ledger_retroflag.md",
+      "integrity": {
+        "bytes": 2380,
+        "sha256": "23d62daaf7b290b97b8be3589242e5a6c0afe2e819a589b0d63e1e32ee90a4ac"
+      }
+    },
+    {
+      "name": "glm52_learnings",
+      "kind": "research",
+      "title": "GLM-5.2 / Slime Learnings",
+      "report_type": "analysis",
+      "summary": "Analysis of GLM-5.2's unified trajectory schema and RL posture, mapped onto the org's factory: one Trajectory type + four rollout adapters, GRPO-without-critic already our posture.",
+      "card_path": "tasks/artifacts/glm52_learnings.md",
+      "integrity": {
+        "bytes": 15931,
+        "sha256": "13145a123b65328df30d1bec142b60ef6db2c3f7efc489be72e1c95b98f8a539"
+      }
+    },
+    {
+      "name": "kg_native_design",
+      "kind": "research",
+      "title": "Native Knowledge Graph",
+      "report_type": "design",
+      "summary": "Stdlib-only knowledge graph over incidents + experiments + events (Graphify/Rootly/DeepRefine ideas, natively), every claim cited; 208 nodes / 504 edges.",
+      "card_path": "tasks/artifacts/kg_native_design.md",
+      "integrity": {
+        "bytes": 19963,
+        "sha256": "088e93040e3866bba0a0df9b5dc09d39471eb572836ecd3a798d2ba704717ab0"
+      }
+    },
+    {
+      "name": "openswap_rankings",
+      "kind": "research",
+      "title": "OpenSwap Rankings",
+      "report_type": "analysis",
+      "summary": "Ranked-50 native offline replacements for paid SaaS in scout-cli (prose/uptime/seo/links/smoke/leaks/runtrack/…), stdlib-only, zero new deps — the quality bar.",
+      "card_path": "tasks/artifacts/openswap_rankings.md",
+      "integrity": {
+        "bytes": 21474,
+        "sha256": "c272c858fdac72ed417560b7d0e1554b719e98ba41ef1ebe9d0195cee289495c"
+      }
+    },
+    {
+      "name": "goat_audit_monorepo",
+      "kind": "research",
+      "title": "GOAT Audit — monorepo (Carmack/Bellard bar)",
+      "report_type": "audit",
+      "summary": "Code-quality audit to a Carmack/Bellard standard: dead-code/dep cleanup, bare-except sweep, and the verified two-package dottie namespace-collision finding.",
+      "card_path": "tasks/artifacts/goat_audit_monorepo.md",
+      "integrity": {
+        "bytes": 24206,
+        "sha256": "50867764896ef1f63c951b3b1908535c14dbdaf4508d7aba19941c9d3dd2d609"
+      }
+    },
+    {
+      "name": "verification_engine_learnings",
+      "kind": "research",
+      "title": "Verification Engine Learnings",
+      "report_type": "learnings",
+      "summary": "Proof-obligation tracking baked into the validator (Emira/LemmaScript pattern): named obligations across the six validation stages, discharge-next surfaced in feedback.",
+      "card_path": "tasks/artifacts/verification_engine_learnings.md",
+      "integrity": {
+        "bytes": 10541,
+        "sha256": "738d4f92fe029e9dbd8260775b75cae72553b7ead8c88fb6815d9d6e0e1bf45a"
+      }
+    },
+    {
+      "name": "revenue_instrumentation_proposal",
+      "kind": "research",
+      "title": "Revenue Instrumentation (proposal)",
+      "report_type": "proposal",
+      "summary": "Propose-first design for instrumenting the revenue-adjacent surfaces — held for operator review, not auto-enacted.",
+      "card_path": "tasks/artifacts/revenue_instrumentation_proposal.md",
+      "integrity": {
+        "bytes": 25176,
+        "sha256": "6a328c4f41989359ffecbe402e5dc25c098cf7fbc8c594c16283ec8db3b0e713"
       }
     }
   ]

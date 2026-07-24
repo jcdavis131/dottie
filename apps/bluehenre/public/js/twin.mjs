@@ -484,7 +484,8 @@ const _num = (v) => (Number.isFinite(v) ? v : null);
 export function parseHubRegistry(doc) {
   const dsRows = Array.isArray(doc?.datasets) ? doc.datasets : null;
   const mdRows = Array.isArray(doc?.models) ? doc.models : null;
-  if (!dsRows && !mdRows) return null;
+  const rsRows = Array.isArray(doc?.research) ? doc.research : null;
+  if (!dsRows && !mdRows && !rsRows) return null;
   const datasets = [];
   for (const d of dsRows || []) {
     if (!d || typeof d !== "object" || !_str(d.name)) continue; // skip malformed
@@ -533,7 +534,21 @@ export function parseHubRegistry(doc) {
       summary: _str(m.summary), cardPath: _str(m.card_path),
     });
   }
-  return { count: datasets.length + models.length, datasets, models };
+  const research = [];
+  for (const r of rsRows || []) {
+    if (!r || typeof r !== "object" || !_str(r.name)) continue;
+    const integ = r.integrity && typeof r.integrity === "object" ? r.integrity : {};
+    const sha = _str(integ.sha256);
+    research.push({
+      name: _str(r.name), title: _str(r.title) || _str(r.name),
+      kind: _str(r.kind) || "research",
+      reportType: _str(r.report_type),
+      summary: _str(r.summary),
+      cardPath: _str(r.card_path),
+      integrity: { bytes: _num(integ.bytes), sha256short: sha ? sha.slice(0, 12) : null },
+    });
+  }
+  return { count: datasets.length + models.length + research.length, datasets, models, research };
 }
 
 // ---- Guide: "what should I do next" digest (the Dottie site — Pillar 1) ----

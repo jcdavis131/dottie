@@ -395,6 +395,23 @@ check("unmarked model -> UNCLASSIFIED, never guessed",
   hm.models[1].classification === null && hm.models[1].badge.label === "UNCLASSIFIED");
 check("doc with neither datasets nor models -> null", parseHubRegistry({ foo: 1 }) === null);
 
+// ---- Hub registry: RESEARCH reports (committed docs, sha-pinned) ------------
+const hubResearchDoc = { research: [
+  { name: "sop", title: "Data Provenance SOP", kind: "research", report_type: "doctrine",
+    summary: "the standing rule", card_path: "tasks/artifacts/data_provenance_SOP.md",
+    integrity: { bytes: 1234, sha256: "abcdef0123456789" } },
+  { name: "", title: "malformed" },                       // no name -> skipped
+] };
+const hr = parseHubRegistry(hubResearchDoc);
+check("research parsed; count includes research; malformed skipped",
+  hr?.count === 1 && hr.research.length === 1 && hr.datasets.length === 0 && hr.models.length === 0);
+check("research report carries title/type/summary/link + sha short",
+  hr.research[0].title === "Data Provenance SOP" && hr.research[0].reportType === "doctrine" &&
+  hr.research[0].cardPath === "tasks/artifacts/data_provenance_SOP.md" &&
+  hr.research[0].integrity.sha256short === "abcdef012345");
+check("research-only doc is valid (datasets/models optional)",
+  Array.isArray(hr.datasets) && Array.isArray(hr.models) && hr.research.length === 1);
+
 // ---- Guide digest: nextActions ranks the org's real open items -------------
 const guideLive = { pipeline: {
   mode: { id: "stale", label: "Trainer stale", detail: "no step in 38906s" },
