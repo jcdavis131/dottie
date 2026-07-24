@@ -473,40 +473,67 @@ const _BADGE = {
 };
 const _UNCLASSIFIED = { label: "UNCLASSIFIED", cls: "unknown" };
 
-/** hub_registry.json doc -> { count, datasets:[{…, badge}] } or null. */
+const _badgeFor = (cls) => ({ ...((cls && _BADGE[cls]) || _UNCLASSIFIED) });
+const _str = (v) => (typeof v === "string" && v ? v : null);
+const _arr = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
+const _num = (v) => (Number.isFinite(v) ? v : null);
+
+/** hub_registry.json doc -> { count, datasets:[{…, badge}], models:[{…, badge}] }
+ * or null. Datasets AND models both carry a provenance badge; a model's
+ * RETRACTED eval is passed through verbatim (never dropped — the differentiator). */
 export function parseHubRegistry(doc) {
-  const rows = Array.isArray(doc?.datasets) ? doc.datasets : null;
-  if (!rows) return null;
-  const str = (v) => (typeof v === "string" && v ? v : null);
-  const arr = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
-  const num = (v) => (Number.isFinite(v) ? v : null);
+  const dsRows = Array.isArray(doc?.datasets) ? doc.datasets : null;
+  const mdRows = Array.isArray(doc?.models) ? doc.models : null;
+  if (!dsRows && !mdRows) return null;
   const datasets = [];
-  for (const d of rows) {
-    if (!d || typeof d !== "object" || !str(d.name)) continue; // skip malformed
-    const cls = str(d.classification);
-    const badge = { ...((cls && _BADGE[cls]) || _UNCLASSIFIED) };
+  for (const d of dsRows || []) {
+    if (!d || typeof d !== "object" || !_str(d.name)) continue; // skip malformed
+    const cls = _str(d.classification);
     const files = Array.isArray(d.data_files) ? d.data_files : [];
     const f0 = files[0] && typeof files[0] === "object" ? files[0] : null;
-    const sha = str(f0?.sha256);
+    const sha = _str(f0?.sha256);
     const audit = d.audit && typeof d.audit === "object" ? d.audit : {};
     datasets.push({
-      name: str(d.name), prettyName: str(d.pretty_name) || str(d.name),
-      kind: str(d.kind) || "dataset",
-      classification: cls, badge,
-      license: str(d.license), taskCategories: arr(d.task_categories), tags: arr(d.tags),
-      sizeCategory: str(d.size_category),
-      rows: num(d.rows), nFields: num(d.n_fields),
-      summary: str(d.summary),
-      cardPath: str(d.card_path), // repo-relative; caller builds any link (link guard)
+      name: _str(d.name), prettyName: _str(d.pretty_name) || _str(d.name),
+      kind: _str(d.kind) || "dataset",
+      classification: cls, badge: _badgeFor(cls),
+      license: _str(d.license), taskCategories: _arr(d.task_categories), tags: _arr(d.tags),
+      sizeCategory: _str(d.size_category),
+      rows: _num(d.rows), nFields: _num(d.n_fields),
+      summary: _str(d.summary),
+      cardPath: _str(d.card_path), // repo-relative; caller builds any link (link guard)
       integrity: {
-        file: str(f0?.name), bytes: num(f0?.bytes),
+        file: _str(f0?.name), bytes: _num(f0?.bytes),
         sha256short: sha ? sha.slice(0, 12) : null,
         sourceCount: Array.isArray(audit.source_sha256) ? audit.source_sha256.length : 0,
       },
-      generated: str(audit.generated),
+      generated: _str(audit.generated),
     });
   }
-  return { count: datasets.length, datasets };
+  const models = [];
+  for (const m of mdRows || []) {
+    if (!m || typeof m !== "object" || !_str(m.name)) continue;
+    const cls = _str(m.classification);
+    const a = m.arch && typeof m.arch === "object" ? m.arch : {};
+    const e = m.eval && typeof m.eval === "object" ? m.eval : {};
+    models.push({
+      name: _str(m.name), prettyName: _str(m.pretty_name) || _str(m.name),
+      kind: _str(m.kind) || "model",
+      classification: cls, badge: _badgeFor(cls),
+      license: _str(m.license), tags: _arr(m.tags),
+      arch: {
+        preset: _str(a.preset), dModel: _num(a.dModel), nLayers: _num(a.nLayers),
+        nHeads: _num(a.nHeads), mlp: _str(a.mlp), jspaceSplit: _str(a.jspaceSplit),
+        vocab: _num(a.vocab), maxContext: _num(a.maxContext), paramsNote: _str(a.paramsNote),
+      },
+      eval: {
+        metric: _str(e.metric), value: _num(e.value), tokens: _num(e.tokens),
+        method: _str(e.method), retracted: _str(e.retracted), // named, never dropped
+      },
+      summary: _str(m.summary), cardPath: _str(m.card_path),
+    });
+  }
+  return { count: datasets.length + models.length, datasets, models };
 }
 
 // ---- Guide: "what should I do next" digest (the Dottie site — Pillar 1) ----

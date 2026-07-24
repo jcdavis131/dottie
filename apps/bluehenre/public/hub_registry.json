@@ -1,6 +1,6 @@
 {
   "generated_by": "build_hub_registry.mjs",
-  "count": 3,
+  "count": 4,
   "datasets": [
     {
       "name": "gridiron_forecast_rows",
@@ -140,6 +140,46 @@
           "5150bdf0c9bfc12d8a1fc277cb92d02f739847c883f0421b686ea98f10b489c4"
         ],
         "sidecar_path": "tasks/artifacts/corpus_proposals/repair_transcripts/repair_transcripts_audit.md"
+      }
+    }
+  ],
+  "models": [
+    {
+      "name": "ava_mini_tool_final",
+      "kind": "model",
+      "pretty_name": "ava-mini (tool_final @ step 2861)",
+      "classification": "REAL",
+      "license": "mit",
+      "tags": [
+        "jspace",
+        "small-language-model",
+        "multi-timescale",
+        "dottie"
+      ],
+      "arch": {
+        "preset": "mini",
+        "dModel": 768,
+        "nLayers": 12,
+        "nHeads": 12,
+        "mlp": "swiglu",
+        "jspaceSplit": "3T/6F/3R",
+        "vocab": 32000,
+        "maxContext": 4096,
+        "paramsNote": "≈270M analytic (untied 4-workspace verbalizers); 171M nominal preset"
+      },
+      "eval": {
+        "metric": "weighted_heldout_ppl",
+        "value": 2268,
+        "tokens": 6360000,
+        "method": "disjoint held-out bins (HELDOUT_SEED), tool_final@2861, all 6 phases",
+        "retracted": "275.95 / 4103 (contaminated + tiny bins — unreliable, do not cite)"
+      },
+      "summary": null,
+      "card_path": "tasks/artifacts/model_cards/ava_mini_tool_final/README.md",
+      "audit": {
+        "generated": null,
+        "source_sha256": [],
+        "sidecar_path": null
       }
     }
   ]

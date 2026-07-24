@@ -375,6 +375,26 @@ check("bad registry shapes -> null, no throw",
   parseHubRegistry(null) === null && parseHubRegistry({}) === null &&
   parseHubRegistry({ datasets: "nope" }) === null);
 
+// ---- Hub registry: MODELS with honest + RETRACTED eval (the differentiator) --
+const hubModelDoc = { datasets: [], models: [
+  { name: "ava_mini", pretty_name: "ava-mini", classification: "REAL", license: "mit",
+    tags: ["jspace"], arch: { preset: "mini", dModel: 768, nLayers: 12, mlp: "swiglu", jspaceSplit: "3T/6F/3R" },
+    eval: { metric: "weighted_heldout_ppl", value: 2268, tokens: 6360000, retracted: "275.95 / 4103 (contaminated)" },
+    summary: "s", card_path: "tasks/artifacts/model_cards/ava_mini/README.md" },
+  { name: "unmarked_model", eval: {}, arch: {} }, // no classification
+  { name: "", classification: "REAL" },           // malformed -> skipped
+] };
+const hm = parseHubRegistry(hubModelDoc);
+check("models parsed; count = datasets + models", hm?.count === 2 && hm.models.length === 2 && hm.datasets.length === 0);
+check("model REAL badge + arch + honest eval",
+  hm.models[0].badge.cls === "real" && hm.models[0].arch.dModel === 768 &&
+  hm.models[0].eval.value === 2268 && hm.models[0].arch.jspaceSplit === "3T/6F/3R");
+check("model RETRACTED eval carried verbatim, never dropped",
+  hm.models[0].eval.retracted === "275.95 / 4103 (contaminated)");
+check("unmarked model -> UNCLASSIFIED, never guessed",
+  hm.models[1].classification === null && hm.models[1].badge.label === "UNCLASSIFIED");
+check("doc with neither datasets nor models -> null", parseHubRegistry({ foo: 1 }) === null);
+
 // ---- Guide digest: nextActions ranks the org's real open items -------------
 const guideLive = { pipeline: {
   mode: { id: "stale", label: "Trainer stale", detail: "no step in 38906s" },

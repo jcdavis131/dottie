@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = process.env.DOTTIE_ROOT ? resolve(process.env.DOTTIE_ROOT) : resolve(HERE, "..", "..", "..");
 const PROPOSALS = join(ROOT, "tasks", "artifacts", "corpus_proposals");
+const MODELS = join(ROOT, "tasks", "artifacts", "model_cards");
 const OUT = join(HERE, "..", "public", "hub_registry.json");
 
 const CLASSES = new Set(["REAL", "HONEST-SYNTHETIC", "PLACEHOLDER"]);
@@ -172,23 +173,79 @@ function buildRecord(dir, name) {
   };
 }
 
+/** A model card (model_cards/<name>/README.md) -> registry record, or null.
+ * Same provenance doctrine as datasets: the honest eval renders, a retracted
+ * number is carried EXPLICITLY (never dropped), classification is never guessed. */
+function buildModelRecord(dir, name) {
+  const cardPath = join(dir, "README.md");
+  if (!existsSync(cardPath)) return null;
+  const md = readFileSync(cardPath, "utf-8");
+  const fm = frontmatter(md);
+  if (!fm) return null;
+  const mi = (fm.match(/^model_info:[ \t]*\r?\n([\s\S]*)$/m) || [, ""])[1];
+  const clsRaw = scalar(mi, "provenance_classification") || scalar(fm, "provenance_classification");
+  const cls = clsRaw ? clsRaw.toUpperCase() : null;
+  const numOrNull = (s) => { const n = Number(s); return s != null && Number.isFinite(n) ? n : null; };
+  return {
+    name,
+    kind: "model",
+    pretty_name: scalar(fm, "pretty_name") || name,
+    classification: cls && CLASSES.has(cls) ? cls : null,
+    license: scalar(fm, "license"),
+    tags: list(fm, "tags"),
+    arch: {
+      preset: scalar(mi, "base_preset"),
+      dModel: numOrNull(scalar(mi, "d_model")),
+      nLayers: numOrNull(scalar(mi, "n_layers")),
+      nHeads: numOrNull(scalar(mi, "n_heads")),
+      mlp: scalar(mi, "mlp"),
+      jspaceSplit: scalar(mi, "jspace_split"),
+      vocab: numOrNull(scalar(mi, "vocab_size")),
+      maxContext: numOrNull(scalar(mi, "max_context")),
+      paramsNote: scalar(mi, "params_note"),
+    },
+    eval: {
+      metric: scalar(mi, "eval_metric"),
+      value: numOrNull(scalar(mi, "eval_value")),
+      tokens: numOrNull(scalar(mi, "eval_tokens")),
+      method: scalar(mi, "eval_method"),
+      retracted: scalar(mi, "eval_retracted"), // named, never silently dropped
+    },
+    summary: summary(md),
+    card_path: rel(cardPath),
+    audit: auditFacts(dir, name),
+  };
+}
+
+/** Scan a dir of `<name>/README.md` cards, building each with `build`. */
+function scanCards(baseDir, build) {
+  if (!existsSync(baseDir)) return [];
+  const out = [];
+  for (const entry of readdirSync(baseDir).sort()) {
+    const dir = join(baseDir, entry);
+    if (!statSync(dir).isDirectory()) continue;
+    const rec = build(dir, entry);
+    if (rec) out.push(rec);
+  }
+  return out;
+}
+
 function main() {
   if (!existsSync(PROPOSALS)) {
     console.error(`no corpus_proposals dir at ${PROPOSALS}`);
     process.exit(1);
   }
-  const records = [];
-  for (const entry of readdirSync(PROPOSALS).sort()) {
-    const dir = join(PROPOSALS, entry);
-    if (!statSync(dir).isDirectory()) continue;
-    const rec = buildRecord(dir, entry);
-    if (rec) records.push(rec);
-  }
-  // Sorted by name for deterministic output; built_at stamped at run time.
-  const doc = { generated_by: "build_hub_registry.mjs", count: records.length, datasets: records };
+  const datasets = scanCards(PROPOSALS, buildRecord);
+  const models = scanCards(MODELS, buildModelRecord);
+  const doc = {
+    generated_by: "build_hub_registry.mjs",
+    count: datasets.length + models.length,
+    datasets, models,
+  };
   writeFileSync(OUT, JSON.stringify(doc, null, 2) + "\n");
-  console.log(`wrote ${rel(OUT)}: ${records.length} datasets ` +
-    `(${records.map((r) => `${r.name}=${r.classification ?? "unclassified"}`).join(", ")})`);
+  const fmt = (r) => `${r.name}=${r.classification ?? "unclassified"}`;
+  console.log(`wrote ${rel(OUT)}: ${datasets.length} datasets, ${models.length} models ` +
+    `(${[...datasets, ...models].map(fmt).join(", ")})`);
 }
 
 // pure parser helpers, exported for the regression test (bare-node)

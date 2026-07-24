@@ -90,8 +90,16 @@ public deploy is the operator's gated step.
 - [ ] **Engine ReAct trace** (Guide chat) — needs the factory hub `/assistant` to
       expose a stable `steps[]`; verify the engine field first, pass through
       `server.mjs` verbatim.
-- [ ] **Model cards** — checkpoints (honest 2,268 ppl) + vector MTNNs as Hub model
-      cards (extends Phase 1's registry to models).
+- [x] **Model cards — data layer DONE**: `model_cards/ava_mini_tool_final/README.md`
+      (HF-standard model card, classification REAL) with the honest **2,268** ppl
+      AND the **retracted 275.95/4103 carried explicitly** (the anti-fabrication
+      differentiator). Exporter scans `model_cards/` → registry `models[]`;
+      `parseHubRegistry` returns models with badge + arch + eval. Suite 92→97,
+      exporter test 9. Registry now {datasets:3, models:1}.
+  - [ ] Model cards UI — render a "Hub — Models" section (org + mobile) showing the
+        badge, arch, honest eval, and the retracted-number note. ← next
+  - [ ] Vector MTNN model cards (gridiron/hoops/pitch/equities) — needs cross-repo
+        eval sourcing; same card pattern.
 
 ## Operator calls (from the provenance audit — deliberately not auto-done)
 - [ ] Rotate the previously-committed `HF_TOKEN` and place the new value in the
