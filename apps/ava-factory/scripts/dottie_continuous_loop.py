@@ -722,7 +722,15 @@ def mode_monitor(args: argparse.Namespace) -> dict[str, Any]:
         "docs": docs,
         "detail": detail,
     }
-    print(f"[Dottie:monitor] Starting at {datetime.datetime.now(_dt.UTC).isoformat()}")
+    import datetime as _dt_fix
+    try:
+        now_iso = datetime.datetime.now(_dt_fix.UTC).isoformat()
+    except Exception:
+        try:
+            now_iso = datetime.datetime.now(datetime.UTC).isoformat()
+        except Exception:
+            now_iso = datetime.datetime.now().isoformat()
+    print(f"[Dottie:monitor] Starting at {now_iso}")
     print(f"[monitor] result={json.dumps(result, indent=2)}")
     return result
 
