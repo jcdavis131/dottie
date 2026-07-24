@@ -262,23 +262,49 @@ function scanCards(baseDir, build) {
   return out;
 }
 
+/** Build the registry doc from the current cards + manifest (no I/O beyond
+ * reads). Deterministic — the same inputs always produce the same bytes. */
+function buildDoc() {
+  const datasets = scanCards(PROPOSALS, buildRecord);
+  const models = scanCards(MODELS, buildModelRecord);
+  const research = scanResearch();
+  return {
+    generated_by: "build_hub_registry.mjs",
+    count: datasets.length + models.length + research.length,
+    datasets, models, research,
+  };
+}
+
+const serialize = (doc) => JSON.stringify(doc, null, 2) + "\n";
+
 function main() {
   if (!existsSync(PROPOSALS)) {
     console.error(`no corpus_proposals dir at ${PROPOSALS}`);
     process.exit(1);
   }
-  const datasets = scanCards(PROPOSALS, buildRecord);
-  const models = scanCards(MODELS, buildModelRecord);
-  const research = scanResearch();
-  const doc = {
-    generated_by: "build_hub_registry.mjs",
-    count: datasets.length + models.length + research.length,
-    datasets, models, research,
-  };
-  writeFileSync(OUT, JSON.stringify(doc, null, 2) + "\n");
-  const fmt = (r) => `${r.name}=${r.classification ?? "unclassified"}`;
-  console.log(`wrote ${rel(OUT)}: ${datasets.length} datasets, ${models.length} models, ` +
-    `${research.length} research (${[...datasets, ...models].map(fmt).join(", ")})`);
+  const doc = buildDoc();
+  const fresh = serialize(doc);
+  const summary = `${doc.datasets.length} datasets, ${doc.models.length} models, ${doc.research.length} research`;
+
+  // --check: verify the committed registry is FRESH (matches the cards) without
+  // writing. A stale registry would make the Hub render data that no longer
+  // matches its source — a provenance-honesty violation. Use before deploy / CI.
+  if (process.argv.includes("--check")) {
+    if (!existsSync(OUT)) {
+      console.error(`STALE: ${rel(OUT)} does not exist — run without --check to build it`);
+      process.exit(1);
+    }
+    if (readFileSync(OUT, "utf-8") === fresh) {
+      console.log(`fresh: ${rel(OUT)} matches the cards (${summary})`);
+      process.exit(0);
+    }
+    console.error(`STALE: ${rel(OUT)} does not match the current cards (${summary}) — ` +
+      "re-run build_hub_registry.mjs and commit before deploying");
+    process.exit(1);
+  }
+
+  writeFileSync(OUT, fresh);
+  console.log(`wrote ${rel(OUT)}: ${summary}`);
 }
 
 // pure parser helpers, exported for the regression test (bare-node)

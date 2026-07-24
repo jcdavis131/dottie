@@ -111,6 +111,11 @@ public deploy is the operator's gated step.
       each file exists + sha256-pins it (no phantom reports); `parseHubRegistry` exposes
       `research[]`; rendered as a Research section on org + mobile (type chip + sha).
       Registry now {datasets:3, models:1, research:10, count:14}. Suite 97→100.
+- [x] **Registry freshness guard** — `build_hub_registry.mjs --check` fails if the
+      committed `hub_registry.json` no longer matches the cards (a stale registry =
+      the Hub rendering data that doesn't match its source = a provenance violation).
+      Pre-deploy verification sequence documented in the bluehenre README. Verified:
+      fresh→0, mutated→1, byte-identical refactor.
 
 ## Operator calls (from the provenance audit — deliberately not auto-done)
 - [ ] Rotate the previously-committed `HF_TOKEN` and place the new value in the

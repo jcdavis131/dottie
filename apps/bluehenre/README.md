@@ -57,8 +57,25 @@ freshness cap) — real numbers publicly, box unexposed.
 ## Tests
 
 ```bash
-node public/js/twin.contract.test.mjs   # pure parsers, bare node (76 checks)
+node public/js/twin.contract.test.mjs        # pure parsers, bare node (100 checks)
+node scripts/build_hub_registry.test.mjs     # Hub exporter parser regression (9 checks)
 ```
+
+## Pre-deploy verification (run all three; all must pass)
+
+```bash
+node public/js/twin.contract.test.mjs        # parsers green
+node scripts/build_hub_registry.test.mjs     # exporter parser green
+node scripts/build_hub_registry.mjs --check  # registry FRESH (matches the cards)
+```
+
+The `--check` guard fails if `public/hub_registry.json` no longer matches the
+dataset/model cards + `research_reports.json` — a stale registry would render
+data that doesn't match its source, a provenance-honesty violation. If it reports
+STALE, run `node scripts/build_hub_registry.mjs` and commit before deploying.
+
+Deploy (operator): `vercel deploy --prod --yes` → `vercel alias set <url>
+www.bhenre.com` → update `data/last_good_deployment.txt` (the alias-guard pin).
 
 Spec of record: [SPEC.md](./SPEC.md). Phased build plan:
 [../../tasks/dottie_site_plan.md](../../tasks/dottie_site_plan.md). Live board:
