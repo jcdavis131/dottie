@@ -2,7 +2,7 @@
 // org from a phone — run status, fleet, alerts, Dottie chat, sites. Same data
 // spine and provenance doctrine as everything else: numbers render only from
 // source:"local" feeds; everything else says offline, honestly.
-import { twinLine, parseHub, nextActions, parseHubRegistry, provenanceSummary, filterRegistry } from "./twin.mjs";
+import { twinLine, parseHub, nextActions, parseHubRegistry, provenanceSummary, filterRegistry, fmtEvalValue } from "./twin.mjs";
 
 const $ = (id) => document.getElementById(id);
 const esc = (el, text) => { el.textContent = text; return el; };
@@ -454,7 +454,7 @@ function renderArtifacts() {
     el.append(sec("models"));
     for (const m of view.models) {
       el.append(artRow(m.prettyName, m.cardPath, m.badge));
-      if (Number.isFinite(m.eval.value)) el.append(line(m.eval.metric ?? "eval", m.eval.value.toLocaleString()));
+      if (Number.isFinite(m.eval.value)) el.append(line(m.eval.metric ?? "eval", fmtEvalValue(m.eval.value)));
       // the differentiator, on mobile too: a retracted number is named, not dropped
       if (m.eval.retracted) el.append(esc(Object.assign(document.createElement("p"),
         { className: "retracted" }), `⚠ retracted: ${m.eval.retracted}`));

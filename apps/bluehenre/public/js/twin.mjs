@@ -551,6 +551,17 @@ export function parseHubRegistry(doc) {
   return { count: datasets.length + models.length + research.length, datasets, models, research };
 }
 
+/** Format a model eval value for display: integers/large get thousands commas,
+ * sub-1 values get 3 decimals (0.6899 -> "0.690"), mid values 2. null passes null. */
+export function fmtEvalValue(v) {
+  if (!Number.isFinite(v)) return null;
+  if (Number.isInteger(v)) return v.toLocaleString();
+  const a = Math.abs(v);
+  if (a >= 100) return Math.round(v).toLocaleString();
+  if (a >= 1) return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  return v.toFixed(3);
+}
+
 /** Filter a parsed hub registry by provenance class for the Hub's class filter.
  * cls: "all" | "real" | "synthetic" | "placeholder" | "unknown". Datasets+models
  * are filtered by badge.cls; research (no provenance class) shows only under "all".

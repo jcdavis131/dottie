@@ -1,7 +1,8 @@
 // Contract: the twin never fabricates the real model's state.
 import { parseMetricsTail, safeParseJson, parseEvalSummary, twinLine,
          parseTrainerTail, parseDashboard, parseLiveEvents, liveAgeS, parseHub,
-         parseHubRegistry, nextActions, provenanceSummary, filterRegistry } from "./twin.mjs";
+         parseHubRegistry, nextActions, provenanceSummary, filterRegistry,
+         fmtEvalValue } from "./twin.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = "") => {
@@ -473,6 +474,14 @@ check("filter 'real' keeps only REAL datasets+models, drops research",
 check("filter 'placeholder' keeps only the PLACEHOLDER model",
   (() => { const f = filterRegistry(fReg, "placeholder"); return f.datasets.length === 0 && f.models.length === 1 && f.models[0].name === "m2"; })());
 check("filter bad input -> null", filterRegistry(null, "real") === null);
+
+// ---- fmtEvalValue: clean model-eval value formatting -----------------------
+check("fmtEvalValue: integer -> thousands commas (2268 -> 2,268)", fmtEvalValue(2268) === "2,268");
+check("fmtEvalValue: sub-1 -> 3 decimals (0.6899 -> 0.690)", fmtEvalValue(0.6899) === "0.690");
+check("fmtEvalValue: sub-1 rounds (0.3633 -> 0.363, 0.7639 -> 0.764)",
+  fmtEvalValue(0.3633) === "0.363" && fmtEvalValue(0.7639) === "0.764");
+check("fmtEvalValue: large non-integer rounds (2268.7 -> 2,269)", fmtEvalValue(2268.7) === "2,269");
+check("fmtEvalValue: non-finite -> null", fmtEvalValue(NaN) === null && fmtEvalValue("x") === null);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

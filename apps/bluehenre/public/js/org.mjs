@@ -1,7 +1,7 @@
 // Blue Hen RE org console (www.bhenre.com): every little aspect of the org,
 // rendered from real telemetry only. Same provenance doctrine as everything
 // else: source:"local" or it says offline; absences render as absences.
-import { twinLine, parseHub, parseHubRegistry, nextActions, provenanceSummary, filterRegistry } from "./twin.mjs";
+import { twinLine, parseHub, parseHubRegistry, nextActions, provenanceSummary, filterRegistry, fmtEvalValue } from "./twin.mjs";
 
 const $ = (id) => document.getElementById(id);
 const P = (text, cls = "") => {
@@ -569,7 +569,7 @@ function renderHubRegistry() {
       if (a.paramsNote) block.append(line("params", a.paramsNote));
       if (Number.isFinite(m.eval.value)) {
         const tok = Number.isFinite(m.eval.tokens) ? ` · ${(m.eval.tokens / 1e6).toFixed(2)}M tok` : "";
-        block.append(line(m.eval.metric ?? "eval", `${m.eval.value.toLocaleString()}${tok}`));
+        block.append(line(m.eval.metric ?? "eval", `${fmtEvalValue(m.eval.value)}${tok}`));
       }
       // the differentiator: a retracted number is shown, named, never dropped
       if (m.eval.retracted) block.append(P(`⚠ retracted (do not cite): ${m.eval.retracted}`, "retracted"));
