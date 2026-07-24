@@ -1,6 +1,7 @@
 // Contract: the twin never fabricates the real model's state.
 import { parseMetricsTail, safeParseJson, parseEvalSummary, twinLine,
-         parseTrainerTail, parseDashboard, parseLiveEvents, liveAgeS, parseHub } from "./twin.mjs";
+         parseTrainerTail, parseDashboard, parseLiveEvents, liveAgeS, parseHub,
+         parseHubRegistry } from "./twin.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = "") => {
@@ -341,6 +342,38 @@ check("step kept, non-finite lm/tokens nulled",
 check("missing base/perplexity -> null",
   parseEvalSummary({}) === null && parseEvalSummary({ base: {} }) === null &&
   parseEvalSummary(null) === null);
+
+// ---- Hub Artifact Registry (Pillar 2): provenance badges, honest fallback ---
+const hubDoc = { count: 4, datasets: [
+  { name: "a_real", pretty_name: "A Real Set", classification: "REAL", license: "mit",
+    task_categories: ["tabular-regression"], tags: ["x"], size_category: "1K<n<10K",
+    rows: 5412, n_fields: 12, summary: "s", card_path: "tasks/artifacts/corpus_proposals/a_real/README.md",
+    data_files: [{ name: "a.jsonl", bytes: 100, sha256: "0123456789abcdefdeadbeef" }],
+    audit: { generated: "2026-07-23", source_sha256: ["aa", "bb", "cc"] } },
+  { name: "b_syn", classification: "HONEST-SYNTHETIC", data_files: [], audit: {} },
+  { name: "c_place", classification: "PLACEHOLDER", data_files: [], audit: {} },
+  { name: "d_unmarked", data_files: [], audit: {} },  // no classification
+  { name: "", classification: "REAL" },               // malformed: no name -> skipped
+  null,                                               // malformed -> skipped
+] };
+const hub = parseHubRegistry(hubDoc);
+check("hub registry parses valid records, skips malformed", hub?.count === 4);
+check("REAL -> real badge", hub.datasets[0].badge.label === "REAL" && hub.datasets[0].badge.cls === "real");
+check("HONEST-SYNTHETIC -> synthetic badge",
+  hub.datasets[1].badge.cls === "synthetic" && hub.datasets[1].badge.label === "HONEST-SYNTHETIC");
+check("PLACEHOLDER -> placeholder badge", hub.datasets[2].badge.cls === "placeholder");
+check("unmarked dataset -> UNCLASSIFIED, never guessed as REAL",
+  hub.datasets[3].classification === null && hub.datasets[3].badge.label === "UNCLASSIFIED" &&
+  hub.datasets[3].badge.cls === "unknown");
+check("integrity: sha256 shortened to 12, source-sha count, bytes",
+  hub.datasets[0].integrity.sha256short === "0123456789ab" &&
+  hub.datasets[0].integrity.sourceCount === 3 && hub.datasets[0].integrity.bytes === 100);
+check("prettyName falls back to name when absent", hub.datasets[1].prettyName === "b_syn");
+check("badge objects are not shared references (fresh per record)",
+  hub.datasets[0].badge !== hub.datasets[1].badge);
+check("bad registry shapes -> null, no throw",
+  parseHubRegistry(null) === null && parseHubRegistry({}) === null &&
+  parseHubRegistry({ datasets: "nope" }) === null);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

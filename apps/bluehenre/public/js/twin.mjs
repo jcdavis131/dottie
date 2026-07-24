@@ -459,6 +459,56 @@ export function parseLiveEvents(live) {
   return out;
 }
 
+// ---- Hub Artifact Registry (the Dottie site — Pillar 2 "HUB") --------------
+// Parse the static hub_registry.json (built by scripts/build_hub_registry.mjs
+// from the corpus_proposals dataset cards) into the Hub card's display model.
+// Every dataset carries its provenance-classification badge; a card with no
+// classification renders "UNCLASSIFIED" (honest — never guessed as REAL).
+// Malformed records are skipped, not faked. The differentiator lives here.
+
+const _BADGE = {
+  "REAL": { label: "REAL", cls: "real" },
+  "HONEST-SYNTHETIC": { label: "HONEST-SYNTHETIC", cls: "synthetic" },
+  "PLACEHOLDER": { label: "PLACEHOLDER", cls: "placeholder" },
+};
+const _UNCLASSIFIED = { label: "UNCLASSIFIED", cls: "unknown" };
+
+/** hub_registry.json doc -> { count, datasets:[{…, badge}] } or null. */
+export function parseHubRegistry(doc) {
+  const rows = Array.isArray(doc?.datasets) ? doc.datasets : null;
+  if (!rows) return null;
+  const str = (v) => (typeof v === "string" && v ? v : null);
+  const arr = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
+  const num = (v) => (Number.isFinite(v) ? v : null);
+  const datasets = [];
+  for (const d of rows) {
+    if (!d || typeof d !== "object" || !str(d.name)) continue; // skip malformed
+    const cls = str(d.classification);
+    const badge = { ...((cls && _BADGE[cls]) || _UNCLASSIFIED) };
+    const files = Array.isArray(d.data_files) ? d.data_files : [];
+    const f0 = files[0] && typeof files[0] === "object" ? files[0] : null;
+    const sha = str(f0?.sha256);
+    const audit = d.audit && typeof d.audit === "object" ? d.audit : {};
+    datasets.push({
+      name: str(d.name), prettyName: str(d.pretty_name) || str(d.name),
+      kind: str(d.kind) || "dataset",
+      classification: cls, badge,
+      license: str(d.license), taskCategories: arr(d.task_categories), tags: arr(d.tags),
+      sizeCategory: str(d.size_category),
+      rows: num(d.rows), nFields: num(d.n_fields),
+      summary: str(d.summary),
+      cardPath: str(d.card_path), // repo-relative; caller builds any link (link guard)
+      integrity: {
+        file: str(f0?.name), bytes: num(f0?.bytes),
+        sha256short: sha ? sha.slice(0, 12) : null,
+        sourceCount: Array.isArray(audit.source_sha256) ? audit.source_sha256.length : 0,
+      },
+      generated: str(audit.generated),
+    });
+  }
+  return { count: datasets.length, datasets };
+}
+
 /** One-line board rendering of a twin status. Numbers ONLY when source is
  * "local"; every other source renders as an honest offline line. */
 export function twinLine(status) {

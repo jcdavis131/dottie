@@ -17,12 +17,16 @@ public deploy is the operator's gated step.
       Contract suite green (76/76); JS syntax-clean. NOT deployed.
 
 ## Now — Phase 1: HUB Artifact Registry (first slice, additive/static)
-- [ ] `apps/bluehenre/scripts/build_hub_registry.mjs` — read-only exporter:
-      corpus_proposals card frontmatter + audit sidecars → `public/hub_registry.json`.
-- [ ] `parseHubRegistry(json)` in `twin.mjs` + contract-test rows (badge from
-      frontmatter, unclassified fallback, link guard).
+- [x] `apps/bluehenre/scripts/build_hub_registry.mjs` — read-only exporter:
+      corpus_proposals card frontmatter + audit sidecars + data-file sha256 →
+      `public/hub_registry.json` (2 datasets: gridiron_forecast_rows=REAL,
+      repair_transcripts=HONEST-SYNTHETIC). Deterministic, no network.
+- [x] `parseHubRegistry(doc)` in `twin.mjs` + 9 contract-test rows (badge from
+      classification, UNCLASSIFIED fallback never-guessed, integrity/sha, bad-shape
+      guards). Suite 76→85 green.
 - [ ] `renderHubRegistry()` card in `org.html`/`org.mjs` — REAL/HONEST-SYNTHETIC/
       PLACEHOLDER badges, reusing existing line/table/chip/led/offline helpers.
+      Client fetches the static `/hub_registry.json`. ← next
 - [ ] Gate: contract suite green; card renders both cards with correct badges.
       Then operator deploy + re-alias.
 

@@ -1,0 +1,93 @@
+{
+  "generated_by": "build_hub_registry.mjs",
+  "count": 2,
+  "datasets": [
+    {
+      "name": "gridiron_forecast_rows",
+      "kind": "dataset",
+      "pretty_name": "Gridiron Forecast/Actual Rows (NFL 2025 backtest)",
+      "classification": "REAL",
+      "license": "mit",
+      "task_categories": [
+        "tabular-regression",
+        "time-series-forecasting"
+      ],
+      "tags": [
+        "nfl",
+        "fantasy-football",
+        "forecasting",
+        "calibration",
+        "dottie"
+      ],
+      "size_category": "1K<n<10K",
+      "rows": 5412,
+      "splits": [
+        {
+          "name": "train",
+          "num_examples": 5412
+        }
+      ],
+      "n_fields": 12,
+      "summary": "As-of forecasts vs. realized outcomes for NFL fantasy scoring — the exact input population of vector-gridiron's walk-forward backtest (season 2025, weeks 2–18, positions QB/RB/WR/TE). Each row pairs two as-of baseline forecasts with the realized PPR points and the scoring mask, for **prediction/calibration** training …",
+      "card_path": "tasks/artifacts/corpus_proposals/gridiron_forecast_rows/README.md",
+      "data_files": [
+        {
+          "name": "gridiron_forecast_rows.jsonl",
+          "bytes": 1429722,
+          "sha256": "42504913eb5ab860bc282c65f4fdee1f827aaeb958068ef082e656dd070aa959"
+        }
+      ],
+      "audit": {
+        "generated": "2026-07-23",
+        "source_sha256": [
+          "687af17bfac3a0813b782f24c8b120dc0f3e74af4a3e9af0f481686a3248b824",
+          "67ed8d6054974ec3166994ff4d7aff4f9ba4f06244b016ead1e1f1a46a7b3448",
+          "4092d5e4ba30a24d1f92f42c86764ba18c6267b38ec45bb2a741905b9970bbe1"
+        ],
+        "sidecar_path": "tasks/artifacts/corpus_proposals/gridiron_forecast_rows/gridiron_forecast_rows_audit.md"
+      }
+    },
+    {
+      "name": "repair_transcripts",
+      "kind": "dataset",
+      "pretty_name": "Dottie Repair Transcripts",
+      "classification": "HONEST-SYNTHETIC",
+      "license": "mit",
+      "task_categories": [
+        "text-generation"
+      ],
+      "tags": [
+        "code",
+        "self-correction",
+        "code-repair",
+        "agentic",
+        "dottie"
+      ],
+      "size_category": "n<1K",
+      "rows": 12,
+      "splits": [
+        {
+          "name": "train",
+          "num_examples": 12
+        }
+      ],
+      "n_fields": 16,
+      "summary": "Failure → hint → corrected-code repair pairs mined from the Dottie research loop's validation ledger. Each row records a candidate neural-block that failed the 6-stage validator, the diagnostic hint for that failure class, and the final validated code that recovered from it — training data for **self-correction**. Str…",
+      "card_path": "tasks/artifacts/corpus_proposals/repair_transcripts/README.md",
+      "data_files": [
+        {
+          "name": "repair_transcripts.jsonl",
+          "bytes": 40731,
+          "sha256": "e6cadb84f9ec048c458790641aba60013df493a8a927eb2bac49bcb5937ea556"
+        }
+      ],
+      "audit": {
+        "generated": "2026-07-23",
+        "source_sha256": [
+          "5150bdf0c9bfc12d8a1fc277cb92d02f739847c883f0421b686ea98f10b489c4"
+        ],
+        "sidecar_path": "tasks/artifacts/corpus_proposals/repair_transcripts/repair_transcripts_audit.md"
+      }
+    }
+  ]
+}
