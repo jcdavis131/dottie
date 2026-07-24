@@ -14,13 +14,13 @@ cannot share code. This module is the unification: pure adapters map each
 rollout's persisted records INTO ``Trajectory``, and one ``to_sft_records``
 consumer reads any of them the same way.
 
-THIS FILE: the schema + the three adapters over data we own end-to-end
-(``from_codeact_trace``, ``from_validation_history``, ``from_repair_rows``) +
-``to_sft_records`` + round-trip serialization. The agent-eval adapter
-(``from_agent_eval_events``, deferred — its per-step event schema lives in the
-separate agent-eval repo) and collapsing the two live exporters onto
-``to_sft_records`` are the proposed follow-up migration (kept additive here —
-nothing existing is rewired yet).
+THIS FILE: the schema + all FOUR rollout adapters (``from_codeact_trace``,
+``from_validation_history``, ``from_repair_rows``, ``from_agent_eval_events``) +
+``to_sft_records`` + round-trip serialization. Everything is ADDITIVE — the four
+live emitters are NOT rewired. The remaining migration (collapsing the two live
+exporters, ``export_repair_transcripts.py`` and agent-eval's
+``export_sft_corpus.py``, onto ``to_sft_records`` so one consumer reads every
+source) touches working code and is the proposed follow-up.
 
 Honesty guards (deliberate, from the design note):
 - ``feedback`` stays polymorphic (a dict): CodeAct carries stdout/error, validation
@@ -242,6 +242,50 @@ def from_repair_rows(rows: list[dict[str, Any]]) -> Trajectory:
             "status": "repaired" if ordered else "empty",
             "reward": None,  # a recovered-code corpus, not a graded reward
             "verified_by": first.get("corrected_code_role"),
+        },
+    )
+
+
+def from_agent_eval_events(result: dict[str, Any]) -> Trajectory:
+    """An agent-eval run result (run_eval.py:150) -> Trajectory.
+
+    agent-eval lives in a separate repo and its per-step events are produced by an
+    external agent runner, so the only GUARANTEED event contract is the one
+    agent-eval itself relies on: a step event has ``type=="step"`` with ``tool``
+    and ``args`` (run_eval.py:117,139). This adapter uses exactly that and passes
+    any OTHER event fields through as ``feedback`` verbatim — no schema-guessing,
+    so it stays correct as the runner's event shape evolves. ``outcome`` carries
+    agent-eval's pass/fail verdict fields; ``reward`` is None (a gate, not graded).
+    """
+    events = result.get("events") or []
+    prompt = result.get("prompt", "") or ""
+    steps: list[Step] = []
+    for ev in events:
+        if ev.get("type") != "step":
+            continue
+        tool = ev.get("tool")
+        args = ev.get("args") or {}
+        # honest passthrough: whatever the runner recorded beyond the action contract
+        feedback = {k: v for k, v in ev.items() if k not in ("type", "tool", "args")}
+        steps.append(
+            Step(
+                state=prompt,
+                action={"kind": "tool", "tool": tool},
+                tool_calls=[{"tool": tool, "args": args}],
+                feedback=feedback,
+            )
+        )
+    return Trajectory(
+        trajectory_id=f"agent_eval:{result.get('task_id', 'unknown')}:{result.get('model', '?')}",
+        source="agent_eval",
+        task_ref={"task_id": result.get("task_id"), "category": result.get("category")},
+        steps=steps,
+        outcome={
+            "status": result.get("status"),
+            "success": result.get("success"),
+            "trajectory_ok": result.get("trajectory_ok"),  # None = task declares no trajectory
+            "reward": None,
+            "verified_by": result.get("check_detail"),
         },
     )
 

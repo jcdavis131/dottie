@@ -142,13 +142,46 @@ def test_from_repair_rows_empty_is_honest():
     assert t.steps == [] and t.outcome["status"] == "empty"
 
 
+# ---- adapter: agent-eval -----------------------------------------------------
+
+_AGENT_EVAL_RESULT = {
+    "task_id": "grounded-todays-date", "category": "grounding", "model": "ava:nano",
+    "prompt": "What is today's date? Use the clock tool.",
+    "status": "completed", "success": False, "check_detail": "pattern not matched",
+    "trajectory_ok": False,
+    "events": [
+        {"type": "thought", "text": "I should call the clock"},          # not a step
+        {"type": "step", "tool": "get_clock", "args": {}, "result": "2026-07-24", "ok": True},
+        {"type": "step", "tool": "emit", "args": {"text": "the 24th"}, "ok": True},
+    ],
+}
+
+
+def test_from_agent_eval_uses_step_contract_and_passes_feedback_through():
+    t = ts.from_agent_eval_events(_AGENT_EVAL_RESULT)
+    assert t.source == "agent_eval" and t.task_ref["task_id"] == "grounded-todays-date"
+    assert len(t.steps) == 2                       # non-step 'thought' event skipped
+    s0 = t.steps[0]
+    assert s0.action == {"kind": "tool", "tool": "get_clock"}
+    assert s0.tool_calls == [{"tool": "get_clock", "args": {}}]
+    assert s0.feedback == {"result": "2026-07-24", "ok": True}   # honest passthrough, no guessing
+    assert t.outcome["success"] is False and t.outcome["trajectory_ok"] is False
+    assert t.outcome["reward"] is None
+
+
+def test_from_agent_eval_no_events_is_honest():
+    t = ts.from_agent_eval_events({"task_id": "x"})
+    assert t.steps == [] and t.outcome["status"] is None
+
+
 # ---- learning consumer: source-agnostic -------------------------------------
 
 def test_to_sft_records_attaches_outcome_to_last_step_only():
-    # source-agnostic: one consumer reads codeact, validation, and repair identically
+    # source-agnostic: one consumer reads all four rollout sources identically
     trajectories = [ts.from_codeact_trace(_CODEACT_REC),
                     ts.from_validation_history(_VALIDATION_EXP),
-                    ts.from_repair_rows(_REPAIR_ROWS)]
+                    ts.from_repair_rows(_REPAIR_ROWS),
+                    ts.from_agent_eval_events(_AGENT_EVAL_RESULT)]
     for t in trajectories:
         recs = ts.to_sft_records(t)
         assert len(recs) == len(t.steps) >= 2
