@@ -2,7 +2,7 @@
 // org from a phone — run status, fleet, alerts, Dottie chat, sites. Same data
 // spine and provenance doctrine as everything else: numbers render only from
 // source:"local" feeds; everything else says offline, honestly.
-import { twinLine, parseHub, nextActions, parseHubRegistry, provenanceSummary } from "./twin.mjs";
+import { twinLine, parseHub, nextActions, parseHubRegistry, provenanceSummary, filterRegistry } from "./twin.mjs";
 
 const $ = (id) => document.getElementById(id);
 const esc = (el, text) => { el.textContent = text; return el; };
@@ -376,6 +376,7 @@ $("askform").addEventListener("submit", async (e) => {
 // /hub_registry.json the org console uses; loaded once (not polled).
 const ART_REPO = "https://github.com/jcdavis131/dottie/blob/main/";
 let artifacts = null;
+let artFilter = "all"; // provenance-class filter (mobile Hub)
 function artRow(prettyName, cardPath, badge) {
   const row = document.createElement("div");
   row.className = "artline";
@@ -423,9 +424,25 @@ function renderArtifacts() {
     el.append(esc(Object.assign(document.createElement("p"), { className: "dimtxt" }),
       `${ps.total} artifacts · ${ps.caveatsNamed} model caveats named · ${ps.research} research sha-pinned · provenance-honest`));
   }
-  if (artifacts.datasets.length) {
+  // provenance-class filter chips (only classes present)
+  const fbar = document.createElement("div");
+  fbar.className = "hubfilter";
+  for (const [cls, label] of [["all", "all"], ["real", "REAL"], ["synthetic", "SYNTH"],
+                              ["placeholder", "PLACEHOLD"], ["unknown", "UNCLASS"]]) {
+    if (cls !== "all" && !(ps && ps.byClass[cls] > 0)) continue;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "fchip" + (artFilter === cls ? " on" : "");
+    b.textContent = label;
+    b.addEventListener("click", () => { artFilter = cls; renderArtifacts(); });
+    fbar.append(b);
+  }
+  el.append(fbar);
+  const view = filterRegistry(artifacts, artFilter) || { datasets: [], models: [], research: [] };
+
+  if (view.datasets.length) {
     el.append(sec("datasets"));
-    for (const d of artifacts.datasets) {
+    for (const d of view.datasets) {
       el.append(artRow(d.prettyName, d.cardPath, d.badge));
       const bits = [];
       if (Number.isFinite(d.rows)) bits.push(`${d.rows.toLocaleString()} rows`);
@@ -433,9 +450,9 @@ function renderArtifacts() {
       if (bits.length) el.append(line(d.taskCategories?.[0] ?? "", bits.join(" · ")));
     }
   }
-  if (artifacts.models.length) {
+  if (view.models.length) {
     el.append(sec("models"));
-    for (const m of artifacts.models) {
+    for (const m of view.models) {
       el.append(artRow(m.prettyName, m.cardPath, m.badge));
       if (Number.isFinite(m.eval.value)) el.append(line(m.eval.metric ?? "eval", m.eval.value.toLocaleString()));
       // the differentiator, on mobile too: a retracted number is named, not dropped
@@ -443,9 +460,9 @@ function renderArtifacts() {
         { className: "retracted" }), `⚠ retracted: ${m.eval.retracted}`));
     }
   }
-  if (artifacts.research?.length) {
+  if (view.research?.length) {
     el.append(sec("research"));
-    for (const r of artifacts.research) {
+    for (const r of view.research) {
       const row = document.createElement("div");
       row.className = "artline";
       const nm = document.createElement("span");

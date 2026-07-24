@@ -69,6 +69,11 @@
   .badge.unknown { color: var(--dim); border-color: var(--dim); }
   .provsum { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px;
              padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  .hubfilter { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+  .hubfilter .fchip { font: inherit; font-size: 10px; letter-spacing: .3px; padding: 2px 9px;
+           border-radius: 10px; border: 1px solid var(--line); background: transparent;
+           color: var(--dim); cursor: pointer; }
+  .hubfilter .fchip.on { background: var(--cyan); color: var(--bg); border-color: var(--cyan); }
   .hubsec { color: var(--dim); font-size: 10px; font-weight: 700; letter-spacing: .6px;
             text-transform: uppercase; margin: 8px 0 2px; border-bottom: 1px solid var(--line);
             padding-bottom: 2px; }
