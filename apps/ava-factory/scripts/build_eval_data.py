@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import sys
 from pathlib import Path
@@ -25,19 +24,24 @@ from evals.probe_items_gen import generate_probe_items
 
 _REPO_ROOT = _REPO
 SEED = 1234
+# Held-out MUST be disjoint from training. The collector generates synthetic docs
+# with seed `1234 + epoch` (collector.py:155 "same seed => same corpus"), all
+# labeled split="train"; it never excludes a test split. So held-out docs built
+# with SEED=1234 were BYTE-IDENTICAL to the collector's epoch-0 training docs and
+# the perplexity "eval" was measuring memorization (provenance audit 2026-07-24).
+# Generating held-out from a seed astronomically outside the epoch range (a run is
+# thousands of steps, not ~1e9 epochs) yields fresh draws from the SAME generators
+# and distribution that training provably never saw — a real held-out.
+HELDOUT_SEED = SEED + 1_000_000_000
 
 
-def _bucket(doc_id: str) -> int:
-    return int(hashlib.sha1(doc_id.encode()).hexdigest(), 16) % 100
-
-
-def _collect_docs(target_bytes: int = 500_000) -> list[dict]:
+def _collect_docs(target_bytes: int = 500_000, seed: int = SEED) -> list[dict]:
     gens = [
-        LogicGenerator(SEED),
-        MathGenerator(SEED + 1),
-        EncyclopediaGenerator(SEED + 2),
-        CodeGenGenerator(SEED + 3),
-        ChatSafetyGenerator(SEED + 4),
+        LogicGenerator(seed),
+        MathGenerator(seed + 1),
+        EncyclopediaGenerator(seed + 2),
+        CodeGenGenerator(seed + 3),
+        ChatSafetyGenerator(seed + 4),
     ]
     docs: list[dict] = []
     seen = 0
@@ -81,21 +85,22 @@ def build(
     generate_probe_items()
 
     lt = load_tokenizer(tok_path)
-    docs = _collect_docs(target_bytes)
+    # Disjointness comes from HELDOUT_SEED (a generation training never runs), so
+    # every doc here is valid held-out — no sub-bucket needed, and the old 2% hash
+    # bucket (sha1%100<2) was uncorrelated with the training split anyway.
+    docs = _collect_docs(target_bytes, seed=HELDOUT_SEED)
     heldout_budget = int(cfg.data.get("heldout_tokens_per_phase", 200_000))
 
     for phase_idx in range(len(cfg.phases)):
         phase_key = f"p{phase_idx}"
-        held_docs = []
-        for d in docs:
-            if not d["phase"].startswith(phase_key):
-                continue
-            if _bucket(d["doc_id"]) >= 2:  # ~2% heldout (test bucket)
-                continue
-            held_docs.append(d)
+        held_docs = [d for d in docs if d["phase"].startswith(phase_key)]
         if not held_docs:
-            # fallback: any concept-tagged docs for soccer_rugby test
-            held_docs = [d for d in docs if d.get("concept")][:50]
+            # A phase with no held-out docs is a real gap — report it, never
+            # backfill with non-held-out (training) docs (the old fallback did,
+            # re-contaminating the bin; provenance audit 2026-07-24).
+            print(f"heldout phase {phase_idx}: NO disjoint docs for {phase_key} "
+                  f"— bin skipped (raise --target-bytes)")
+            continue
 
         arr, idx = pack_docs(held_docs, lt)
         # Truncate to heldout budget
