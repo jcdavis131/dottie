@@ -1,0 +1,23 @@
+name: certmon
+version: 0.7.0
+description: SSL Labs/TrackSSL-class TLS certificate monitoring, fully local (openswap #9 — stdlib ssl handshake + expiry/host/chain analysis on the shared uptime ledger)
+capabilities:
+  network:
+    enabled: true
+    # The monitored fleet ONLY (host exact-or-dot-suffix match) — the SAME
+    # domain allowlist as the uptime plugin, since certmon watches the certs of
+    # the same https hosts. Adding a monitored host to a check requires adding
+    # its domain here too — default-deny is the point.
+    domains:
+      - dumbmodel.com
+      - jcamd.com
+      - arxiviq.com
+      - bhenre.com
+      - bluehenre-campus.vercel.app
+      - localhost
+      - 127.0.0.1
+  filesystem:
+    write: true
+    paths: [".scout"]
+  secrets:
+    allow: []

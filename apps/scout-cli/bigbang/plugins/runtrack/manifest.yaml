@@ -1,0 +1,16 @@
+name: runtrack
+version: 0.7.0
+description: Weights & Biases-class experiment tracking, fully local (openswap #10 — stdlib sqlite run/metric store, no server, zero egress)
+capabilities:
+  network:
+    # ZERO egress by design: this adapter is pure local storage. W&B's value is
+    # a hosted service; deleting the service IS the product, so the network axis
+    # is fully disabled — "no run ever left the box" is architectural, nothing
+    # to audit.
+    enabled: false
+    domains: []
+  filesystem:
+    write: true
+    paths: [".scout"]
+  secrets:
+    allow: []
