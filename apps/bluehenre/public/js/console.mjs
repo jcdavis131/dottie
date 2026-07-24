@@ -2,7 +2,7 @@
 // org from a phone — run status, fleet, alerts, Dottie chat, sites. Same data
 // spine and provenance doctrine as everything else: numbers render only from
 // source:"local" feeds; everything else says offline, honestly.
-import { twinLine, parseHub, nextActions, parseHubRegistry, provenanceSummary, filterRegistry, fmtEvalValue } from "./twin.mjs";
+import { twinLine, parseHub, nextActions, parseHubRegistry, provenanceSummary, filterRegistry, fmtEvalValue, parseRuns } from "./twin.mjs";
 
 const $ = (id) => document.getElementById(id);
 const esc = (el, text) => { el.textContent = text; return el; };
@@ -490,7 +490,51 @@ async function loadArtifacts() {
   renderArtifacts();
 }
 
-refreshTwin(); refreshFleet(); loadArtifacts();
+// Monitor — eval-run comparison from the committed eval reports (static readout,
+// same source as the org console). History, not live telemetry: the RUN card above
+// carries the live feed. The comparison shows WHY one number is trustworthy.
+let runsReadout = null;
+function renderRuns() {
+  const el = $("runs");
+  if (!el) return;
+  el.replaceChildren();
+  if (!runsReadout || !runsReadout.count) {
+    el.append(esc(document.createElement("p"), "no measured eval runs yet"));
+    return;
+  }
+  const h = runsReadout.headline;
+  if (h && Number.isFinite(h.weightedPpl)) {
+    el.append(line("trustworthy ppl", fmtEvalValue(h.weightedPpl) +
+      (Number.isFinite(h.tokens) ? ` · ${(h.tokens / 1e6).toFixed(2)}M tok` : "")));
+    if (h.retracted.length)
+      el.append(esc(Object.assign(document.createElement("p"), { className: "retracted" }),
+        `⚠ retracted: ${h.retracted.map(fmtEvalValue).join(" / ")} (contaminated bins)`));
+  }
+  for (const r of runsReadout.runs) {
+    const row = document.createElement("div");
+    row.className = "artline";
+    const nm = document.createElement("span");
+    nm.textContent = r.name;
+    const b = document.createElement("span");
+    b.className = `badge ${r.badge.cls}`;
+    b.textContent = r.badge.label === "CONTAMINATED" ? "CONTAM" : r.badge.label;
+    row.append(nm, b);
+    el.append(row);
+    el.append(line("", `ppl ${fmtEvalValue(r.weightedPpl)} · ` +
+      `${Number.isFinite(r.tokens) ? r.tokens.toLocaleString() : "—"} tok · ` +
+      `${Number.isFinite(r.phaseCount) ? r.phaseCount : "—"} phases`));
+  }
+  el.append(esc(Object.assign(document.createElement("p"), { className: "dimtxt" }),
+    "recomputed from committed eval reports; each run's bin provenance recorded"));
+}
+async function loadRuns() {
+  const el = $("runs");
+  try { runsReadout = parseRuns(await (await fetch("/runs_readout.json", { cache: "no-cache" })).json()); }
+  catch { if (el) el.replaceChildren(esc(document.createElement("p"), "runs readout not built")); return; }
+  renderRuns();
+}
+
+refreshTwin(); refreshFleet(); loadArtifacts(); loadRuns();
 setInterval(refreshTwin, 15_000);
 setInterval(refreshFleet, 10_000);
 // hub artifacts are static committed cards — load once, no poll.
