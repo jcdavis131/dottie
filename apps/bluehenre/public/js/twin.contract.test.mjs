@@ -1,7 +1,7 @@
 // Contract: the twin never fabricates the real model's state.
 import { parseMetricsTail, safeParseJson, parseEvalSummary, twinLine,
          parseTrainerTail, parseDashboard, parseLiveEvents, liveAgeS, parseHub,
-         parseHubRegistry, nextActions } from "./twin.mjs";
+         parseHubRegistry, nextActions, provenanceSummary } from "./twin.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = "") => {
@@ -435,6 +435,30 @@ check("no steer cmd invented without a named trainer container",
   nextActions(guideLive, null).actions.find((a) => a.severity === "high")?.steerCmd == null);
 check("unreachable research is not counted",
   nextActions({ pipeline: {}, research: { unreachable: true } }).count === 0);
+
+// ---- Provenance summary: the honesty accounting the Provenance card headlines --
+const provReg = parseHubRegistry({
+  datasets: [
+    { name: "a", classification: "REAL" }, { name: "b", classification: "REAL" },
+    { name: "c", classification: "HONEST-SYNTHETIC" },
+  ],
+  models: [
+    { name: "m1", classification: "REAL", eval: { value: 1, retracted: "275.95 (contaminated)" } },
+    { name: "m2", classification: "PLACEHOLDER", eval: { value: 2, retracted: "2200 placeholder rows" } },
+    { name: "m3", classification: "REAL", eval: { value: 3 } }, // no caveat
+  ],
+  research: [{ name: "r1", integrity: { sha256: "aa" } }, { name: "r2", integrity: { sha256: "bb" } }],
+});
+const ps = provenanceSummary(provReg);
+check("provenance summary: totals across datasets+models+research",
+  ps.total === 8 && ps.datasets === 3 && ps.models === 3 && ps.research === 2);
+check("provenance summary: byClass counts datasets+models",
+  ps.byClass.real === 4 && ps.byClass.synthetic === 1 && ps.byClass.placeholder === 1 && ps.byClass.unknown === 0);
+check("provenance summary: caveatsNamed = models that name a retracted/contamination note",
+  ps.caveatsNamed === 2);
+check("provenance summary: bad input -> null, empty -> zeros",
+  provenanceSummary(null) === null &&
+  provenanceSummary({ datasets: [], models: [], research: [] }).total === 0);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

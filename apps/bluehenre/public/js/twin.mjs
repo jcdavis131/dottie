@@ -551,6 +551,29 @@ export function parseHubRegistry(doc) {
   return { count: datasets.length + models.length + research.length, datasets, models, research };
 }
 
+/** Roll a parsed hub registry into the honesty accounting the Provenance card
+ * headlines — the site's whole differentiator, glanceable. Counts datasets+models
+ * by provenance class, the models that NAME a retracted/contamination caveat
+ * (never hidden), and the sha-pinned research. null on bad input. */
+export function provenanceSummary(hubReg) {
+  if (!hubReg || typeof hubReg !== "object") return null;
+  const datasets = Array.isArray(hubReg.datasets) ? hubReg.datasets : [];
+  const models = Array.isArray(hubReg.models) ? hubReg.models : [];
+  const research = Array.isArray(hubReg.research) ? hubReg.research : [];
+  const byClass = { real: 0, synthetic: 0, placeholder: 0, unknown: 0 };
+  for (const a of [...datasets, ...models]) {
+    const cls = a?.badge?.cls;
+    if (cls && byClass[cls] !== undefined) byClass[cls] += 1;
+  }
+  return {
+    total: datasets.length + models.length + research.length,
+    datasets: datasets.length, models: models.length, research: research.length,
+    byClass,
+    // models that name a retracted/contamination caveat rather than hiding it
+    caveatsNamed: models.filter((m) => m?.eval && m.eval.retracted).length,
+  };
+}
+
 // ---- Guide: "what should I do next" digest (the Dottie site — Pillar 1) ----
 // A deterministic, engine-independent ranking of the org's REAL open items: the
 // alert list (parseLiveEvents), the research review queue, and fleet health.

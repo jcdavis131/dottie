@@ -1,7 +1,7 @@
 // Blue Hen RE org console (www.bhenre.com): every little aspect of the org,
 // rendered from real telemetry only. Same provenance doctrine as everything
 // else: source:"local" or it says offline; absences render as absences.
-import { twinLine, parseHub, parseHubRegistry, nextActions } from "./twin.mjs";
+import { twinLine, parseHub, parseHubRegistry, nextActions, provenanceSummary } from "./twin.mjs";
 
 const $ = (id) => document.getElementById(id);
 const P = (text, cls = "") => {
@@ -490,6 +490,28 @@ function renderHubRegistry() {
   const el = $("hubreg");
   el.replaceChildren();
   if (!hubReg || !hubReg.count) return offline(el, "no artifacts in the registry yet");
+
+  // Provenance headline — the honesty accounting, glanceable (the differentiator)
+  const ps = provenanceSummary(hubReg);
+  if (ps) {
+    const bar = document.createElement("div");
+    bar.className = "provsum";
+    const tally = (n, cls, label) => {
+      if (!n) return;
+      const s = document.createElement("span");
+      s.className = `badge ${cls}`;
+      s.textContent = `${n} ${label}`;
+      bar.append(s);
+    };
+    tally(ps.byClass.real, "real", "REAL");
+    tally(ps.byClass.synthetic, "synthetic", "HONEST-SYNTHETIC");
+    tally(ps.byClass.placeholder, "placeholder", "PLACEHOLDER");
+    tally(ps.byClass.unknown, "unknown", "UNCLASSIFIED");
+    el.append(bar);
+    el.append(P(`${ps.total} artifacts · ${ps.caveatsNamed} model eval` +
+      `${ps.caveatsNamed === 1 ? "" : "s"} name a retracted/contamination caveat (never hidden) · ` +
+      `${ps.research} research reports sha-pinned — provenance-honest by construction`, "note"));
+  }
 
   if (hubReg.datasets.length) {
     el.append(P("Datasets", "hubsec"));
