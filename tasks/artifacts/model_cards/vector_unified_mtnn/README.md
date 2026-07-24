@@ -80,11 +80,13 @@ than claimed as a pass. See `data_provenance_SOP.md`.
 
 ## Considerations / next stages
 
-- **Stage 1 + market + cultural-text trained** (this session). The remaining
-  stage is **Stage 2** (`train_stage2.py`) — it unfreezes the per-sport encoders
-  to attack G2 sport-invariance structurally; a `unified_stage2_best.pt` exists
-  from a prior run but wasn't retrained/evaluated here (the Stage-1 eval can't
-  load its structure).
+- **Stage 1 + market + cultural-text trained** (this session). **Stage 2
+  (`train_stage2.py`, the structural G2 fix that unfreezes the per-sport encoders)
+  is BLOCKED**: it loads the live hoops encoder, but the committed hoops MTNN
+  checkpoint no longer matches current hoops code (`strict=True` fails — an
+  `injury` tower was added, `towers.career` input 10→30, fusion 556→588). It needs
+  the hoops encoder re-exported from current code in the hoops repo first. So G2
+  remains unresolved by encoder-unfreeze until that upstream drift is fixed.
 - Covers hoops/gridiron/pitch (the sports in `unified_matrix.npz`); golf/tennis
   are not yet in the unified matrix.
 - G2 remains the open gate: enrichment heads raise sport-recoverability; only
