@@ -22,6 +22,28 @@
 
 
 **Newest first (post-run arc, all committed):**
+- **DATA PROVENANCE AUDIT + fixes (2026-07-24, operator directive "garbage in,
+  garbage out")** — `tasks/artifacts/provenance_audit_MASTER.md` + 3 pipeline
+  reports + `data_provenance_SOP.md` (the standing rule). Verdict: TRAINING data
+  is CLEAN (honest-synthetic + real sources, real decontam, sha-pinned tokenizer).
+  - **⚠ EVAL NUMBERS CORRECTION**: the held-out ppl bins were NOT disjoint from
+    training (build_eval_data.py used SEED=1234 = the collector's epoch-0 docs).
+    So the earlier **275.95 / 2341 / 4103 A/B numbers are UNRELIABLE** (tiny 30k
+    bins AND contaminated). FIXED (commit 6ba0ac5): held-out now generated from
+    HELDOUT_SEED (disjoint). First trustworthy number: **weighted ppl 2,268**
+    over 6.36M honest tokens (tool_final@2861; all 6 phases now scorable). For a
+    real baseline A/B, re-run step-1487 on the honest bins.
+  - **Public fabrications REMOVED + LIVE** (verified 200 + fabrication gone):
+    vector-pitch (957e377 — fake LLM/KV dashboard stack), vector-equities
+    (23de1dc — Math.random projection table on a finance site + np.random skills
+    + hardcoded metrics; redone against CURRENT origin after a stale-checkout
+    divergence), vector-hoops (52a1501 — transductive strip relabeled).
+  - Scoreboard errored-run laundering fixed (agent-eval fb758dc, local-only repo).
+  - **OPERATOR CALLS (not done, deliberately):** rotate the committed HF_TOKEN in
+    ava-factory .env (live secret); #7 baseline-provenance gate (evaluate.py code
+    defers it to operator); equities needs a committed checkpoint to regen assets
+    (KPI card + skills radar still synthetic-flagged); ~66% synthetic curriculum
+    mix; stale config labels (frozen path); dead train_1b_deepspeed.py path.
 - **GLM-5.2 / Slime unified trajectory schema BUILT** (`apps/dottie/dottie/
   trajectory_schema.py`, commits 734fb1c → d8955f2 → 30168e8). One
   `Trajectory{steps:[Step{state,action,tool_calls,feedback}], outcome}` + ALL
