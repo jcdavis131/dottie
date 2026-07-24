@@ -2,7 +2,36 @@
 
 **Paste-able brief for any agent continuing this work. Everything below is live and verified.**
 
-## CURRENT STATE (evening 07-23): RUN COMPLETE — waiting on the compact window
+## CURRENT STATE (late evening 07-23): RUN COMPLETE — compact window still pending
+
+**Newest first (post-run arc, all committed):**
+- **openswap adapter family SHIPPED** — 10 native offline replacements for paid
+  SaaS in scout-cli (prose/harper, uptime, seo, links, smoke, heartbeat, leaks,
+  glitch, certmon, runtrack), stdlib-only, zero new deps. Suite 137→**377**.
+  Commits 1328268 (1–8), f5b3920 (9–10). Ranked-50 in
+  `tasks/artifacts/openswap_rankings.md`. That family is now a QUALITY BAR.
+- **Proof-obligation tracking baked into the validator** (a55e99b, Emira/
+  LemmaScript pattern): 15 named obligations across the 6 stages; as_feedback
+  names the DISCHARGE-NEXT property; ledger history gains per-attempt
+  obligations. Inert until the daemon's next restart. Leg-2 verification-trace
+  corpus addendum in CURRICULUM_EXPANSION.md.
+- **GOAT (Carmack/Bellard) audit done + 6 hygiene commits**: reports in
+  `tasks/artifacts/goat_audit_{monorepo,sites}.md`. Fixed: resolver marker
+  (3c84164), dead deps/code across scout-cli/ava-skills/ava-open-harness/
+  graphify, and ALL bare `except:` in non-frozen code (graphify+scout-cli;
+  dottio was already clean). VERIFIED FINDING: the ~36 dottie engine-test
+  failures are a two-`dottie`-package namespace collision (`import dottie.rl`
+  resolves to the research pkg, real code in apps/ava-factory/dottie/rl), NOT
+  an AVA_FACTORY_ROOT problem and NOT a missing file — the real fix is package
+  unification. HELD (need operator): pitch/equities public-data fabrications
+  (propose-first), bluehenre package.json (Vercel build risk), ava-factory
+  requirements prune (container images), big scoped deletions.
+- **Long-bin discriminator RESOLVED the Leg-1 init question**: on a fresh 20MB
+  bin build, step-1487 beats step-2861 on 5 of 6 bins INCLUDING the p4 long-doc
+  bin (125.9 vs 1,398.7) — seq-4096 training bought only a 3.4-ppl p5-anneal
+  template fit. **Init Leg-1 from step-1487 (`tool_final_ext1.pt`)** (steer
+  6273012; leg1 doc @e3af093). Bins stashed at
+  `apps/ava-factory/data/mini/bins_10x_stash/` (the 275.95-comparable set).
 
 - **Training run FINISHED**: exit 0 at step 2861, 2.4997B tokens, final train
   lm 0.060. New `tool_final.pt` written (old baseline preserved as
