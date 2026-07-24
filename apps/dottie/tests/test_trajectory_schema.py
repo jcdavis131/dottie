@@ -107,16 +107,54 @@ def test_from_validation_accepts_nested_validation_dict():
     assert len(t.steps) == 2
 
 
+# ---- adapter: repair ---------------------------------------------------------
+
+_REPAIR_ROWS = [
+    {"experiment_id": "e9", "module_name": "MyBlock", "failure_seq": 1, "attempt": 0,
+     "level": "dry_run", "status": "fail", "failure_detail": "shape mismatch",
+     "repair_hint": "SHAPE ALGEBRA: ...", "corrected_code": "class MyBlock: ...",
+     "validated_detail": "", "corrected_code_role": "final_validated_code"},
+    {"experiment_id": "e9", "module_name": "MyBlock", "failure_seq": 2, "attempt": 1,
+     "level": "dry_run", "status": "fail", "failure_detail": "still wrong",
+     "repair_hint": "GATHER/TOPK: ...", "corrected_code": "class MyBlock: ...",
+     "validated_detail": "", "corrected_code_role": "final_validated_code"},
+]
+
+
+def test_from_repair_rows_failures_then_terminal_fix():
+    t = ts.from_repair_rows(_REPAIR_ROWS)
+    assert t.source == "repair" and t.task_ref["experiment_id"] == "e9"
+    assert len(t.steps) == 3                      # 2 failures + 1 terminal correction
+    assert t.steps[0].feedback["ok"] is False and t.steps[0].feedback["repair_hint"]
+    assert t.steps[-1].state == "corrected"
+    assert t.steps[-1].action == {"kind": "rewrite", "payload": "class MyBlock: ..."}
+    assert t.steps[-1].feedback["ok"] is True
+    assert t.outcome["status"] == "repaired" and t.outcome["reward"] is None
+
+
+def test_from_repair_rows_sorts_by_failure_seq():
+    t = ts.from_repair_rows(list(reversed(_REPAIR_ROWS)))   # unordered input
+    assert t.steps[0].feedback["detail"] == "shape mismatch"  # seq 1 first
+
+
+def test_from_repair_rows_empty_is_honest():
+    t = ts.from_repair_rows([])
+    assert t.steps == [] and t.outcome["status"] == "empty"
+
+
 # ---- learning consumer: source-agnostic -------------------------------------
 
 def test_to_sft_records_attaches_outcome_to_last_step_only():
-    for adapter, rec in ((ts.from_codeact_trace, _CODEACT_REC),
-                         (ts.from_validation_history, _VALIDATION_EXP)):
-        recs = ts.to_sft_records(adapter(rec))
-        assert len(recs) == 2
+    # source-agnostic: one consumer reads codeact, validation, and repair identically
+    trajectories = [ts.from_codeact_trace(_CODEACT_REC),
+                    ts.from_validation_history(_VALIDATION_EXP),
+                    ts.from_repair_rows(_REPAIR_ROWS)]
+    for t in trajectories:
+        recs = ts.to_sft_records(t)
+        assert len(recs) == len(t.steps) >= 2
         assert recs[0]["outcome"] is None
         assert recs[-1]["outcome"] is not None
-        # every record carries the same source-agnostic keys
+        # every record carries the same source-agnostic keys regardless of source
         assert set(recs[0]) == {"trajectory_id", "source", "task_ref", "step",
                                 "state", "action", "tool_calls", "feedback",
                                 "outcome", "schema_version"}

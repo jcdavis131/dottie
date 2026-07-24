@@ -14,11 +14,13 @@ cannot share code. This module is the unification: pure adapters map each
 rollout's persisted records INTO ``Trajectory``, and one ``to_sft_records``
 consumer reads any of them the same way.
 
-FIRST SLICE (this file): the schema + the two adapters we own end-to-end
-(``from_codeact_trace``, ``from_validation_history``) + ``to_sft_records`` +
-round-trip serialization. The agent-eval and repair adapters, and collapsing the
-two live exporters onto ``to_sft_records``, are the proposed follow-up migration
-(kept additive here — nothing existing is rewired yet).
+THIS FILE: the schema + the three adapters over data we own end-to-end
+(``from_codeact_trace``, ``from_validation_history``, ``from_repair_rows``) +
+``to_sft_records`` + round-trip serialization. The agent-eval adapter
+(``from_agent_eval_events``, deferred — its per-step event schema lives in the
+separate agent-eval repo) and collapsing the two live exporters onto
+``to_sft_records`` are the proposed follow-up migration (kept additive here —
+nothing existing is rewired yet).
 
 Honesty guards (deliberate, from the design note):
 - ``feedback`` stays polymorphic (a dict): CodeAct carries stdout/error, validation
@@ -186,6 +188,60 @@ def from_validation_history(exp: dict[str, Any]) -> Trajectory:
             "status": "ok" if final.get("ok") else "failed",
             "reward": None,  # validation is a gate, not a graded reward — keep it None honestly
             "verified_by": "validate.py 6-stage",
+        },
+    )
+
+
+def from_repair_rows(rows: list[dict[str, Any]]) -> Trajectory:
+    """One experiment's repair rows (export_repair_transcripts.py:84) -> Trajectory.
+
+    Pass the rows for a SINGLE experiment (same ``experiment_id``); the exporter
+    emits one row per failed attempt that the experiment later recovered from, all
+    sharing the final ``corrected_code``. Modelled like the validation trajectory:
+    each failure is a step, then one terminal correction step carrying the
+    validated code — the failure->fix sequence Slime treats as one trajectory.
+    Empty ``rows`` yields a trajectory with no steps (honest), not a crash.
+    """
+    ordered = sorted(rows, key=lambda r: r.get("failure_seq", 0))
+    first = ordered[0] if ordered else {}
+    steps: list[Step] = []
+    for r in ordered:
+        attempt = r.get("attempt", 0)
+        steps.append(
+            Step(
+                state=f"stage:{r.get('level')}",
+                action={"kind": "rewrite" if attempt else "submit", "attempt": attempt},
+                tool_calls=[],
+                feedback={
+                    "ok": False,
+                    "status": r.get("status"),
+                    "detail": r.get("failure_detail"),
+                    "repair_hint": r.get("repair_hint"),
+                },
+            )
+        )
+    if ordered:
+        # terminal step: the validated correction shared by all rows
+        steps.append(
+            Step(
+                state="corrected",
+                action={"kind": "rewrite", "payload": first.get("corrected_code")},
+                tool_calls=[],
+                feedback={"ok": True, "detail": first.get("validated_detail")},
+            )
+        )
+    return Trajectory(
+        trajectory_id=f"repair:{first.get('experiment_id', 'unknown')}",
+        source="repair",
+        task_ref={
+            "experiment_id": first.get("experiment_id"),
+            "module_name": first.get("module_name"),
+        },
+        steps=steps,
+        outcome={
+            "status": "repaired" if ordered else "empty",
+            "reward": None,  # a recovered-code corpus, not a graded reward
+            "verified_by": first.get("corrected_code_role"),
         },
     )
 
