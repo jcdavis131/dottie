@@ -1,7 +1,7 @@
 // Blue Hen RE org console (www.bhenre.com): every little aspect of the org,
 // rendered from real telemetry only. Same provenance doctrine as everything
 // else: source:"local" or it says offline; absences render as absences.
-import { twinLine, parseHub, parseHubRegistry, nextActions, provenanceSummary, filterRegistry, fmtEvalValue } from "./twin.mjs";
+import { twinLine, parseHub, parseHubRegistry, nextActions, provenanceSummary, filterRegistry, fmtEvalValue, parseRuns } from "./twin.mjs";
 
 const $ = (id) => document.getElementById(id);
 const P = (text, cls = "") => {
@@ -614,6 +614,45 @@ function renderHubRegistry() {
     "stand-in); retracted numbers are named, never dropped — no card renders without provenance", "note"));
 }
 
+// Monitor — eval-run comparison from the factory's committed eval reports (static
+// runs_readout.json, built by scripts/build_runs_readout.mjs). History, not live
+// telemetry: the current-run cards above carry the live feed. The comparison is
+// the point — it shows WHY one number is trustworthy and the others were retracted.
+let runsReadout = null;
+async function loadRuns() {
+  const el = $("runs");
+  if (!el) return;
+  try { runsReadout = parseRuns(await (await fetch("/runs_readout.json", { cache: "no-cache" })).json()); }
+  catch { return offline(el, "runs readout not built — run scripts/build_runs_readout.mjs"); }
+  renderRuns();
+}
+function renderRuns() {
+  const el = $("runs");
+  if (!el) return;
+  el.replaceChildren();
+  if (!runsReadout || !runsReadout.count) return offline(el, "no measured eval runs yet");
+  const h = runsReadout.headline;
+  if (h && Number.isFinite(h.weightedPpl)) {
+    const tok = Number.isFinite(h.tokens) ? ` over ${(h.tokens / 1e6).toFixed(2)}M disjoint tokens` : "";
+    el.append(line("trustworthy held-out ppl", `${fmtEvalValue(h.weightedPpl)}${tok}`));
+    if (h.retracted.length)
+      el.append(P(`⚠ retracted (do not cite): ${h.retracted.map(fmtEvalValue).join(" / ")} — measured on ` +
+        "contaminated held-out bins that overlapped training", "retracted"));
+  }
+  el.append(table(["run", "bins", "held-out ppl|r", "tokens|r", "phases|r"],
+    runsReadout.runs.map((r) => {
+      const b = document.createElement("span");
+      b.className = `badge ${r.badge.cls}`; b.textContent = r.badge.label;
+      return [r.name, b, fmtEvalValue(r.weightedPpl),
+        Number.isFinite(r.tokens) ? r.tokens.toLocaleString() : "—",
+        Number.isFinite(r.phaseCount) ? String(r.phaseCount) : "—"];
+    })));
+  el.append(P(runsReadout.metric ?? "", "note"));
+  el.append(P("recomputed from committed eval reports (token-weighted geometric mean of the " +
+    "per-phase held-out ppl); each run's bin provenance is recorded, so the retracted numbers " +
+    "stay visible next to the honest one", "note"));
+}
+
 function renderSites(h) {
   const el = $("sites");
   el.replaceChildren();
@@ -792,7 +831,7 @@ $("askform").addEventListener("submit", async (e) => {
   } catch { log.prepend(P("dottie [offline]: unreachable")); }
 });
 
-refreshTwin(); refreshFleet(); loadHubRegistry();
+refreshTwin(); refreshFleet(); loadHubRegistry(); loadRuns();
 setInterval(refreshTwin, 15_000);
 setInterval(refreshFleet, 10_000);
 // hub registry is a static committed artifact — load once, no poll.

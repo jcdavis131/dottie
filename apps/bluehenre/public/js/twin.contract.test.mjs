@@ -2,7 +2,7 @@
 import { parseMetricsTail, safeParseJson, parseEvalSummary, twinLine,
          parseTrainerTail, parseDashboard, parseLiveEvents, liveAgeS, parseHub,
          parseHubRegistry, nextActions, provenanceSummary, filterRegistry,
-         fmtEvalValue } from "./twin.mjs";
+         fmtEvalValue, parseRuns } from "./twin.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = "") => {
@@ -482,6 +482,34 @@ check("fmtEvalValue: sub-1 rounds (0.3633 -> 0.363, 0.7639 -> 0.764)",
   fmtEvalValue(0.3633) === "0.363" && fmtEvalValue(0.7639) === "0.764");
 check("fmtEvalValue: large non-integer rounds (2268.7 -> 2,269)", fmtEvalValue(2268.7) === "2,269");
 check("fmtEvalValue: non-finite -> null", fmtEvalValue(NaN) === null && fmtEvalValue("x") === null);
+
+// ---- Monitor: eval-run comparison ------------------------------------------
+const runsDoc = {
+  metric: "weighted held-out perplexity",
+  headline: { weighted_ppl: 2268.2, tokens: 6359040, run: "step-2861 (disjoint bins)", retracted: [275.9, 4103.1] },
+  runs: [
+    { name: "step-1487", bins: "CONTAMINATED", note: "retracted", weighted_ppl: 275.9, tokens: 30208,
+      phase_count: 4, phases: [{ phase: "0", ppl: 100.5, tokens: 7552 }], source_sha256short: "abc123456789" },
+    { name: "step-2861 (disjoint bins)", bins: "DISJOINT", weighted_ppl: 2268.2, tokens: 6359040,
+      phase_count: 6, phases: [{ phase: "5", ppl: 4.9, tokens: 1000 }] },
+    { name: "no-ppl run", bins: "DISJOINT" },        // no weighted_ppl -> skipped
+    { name: "", bins: "DISJOINT", weighted_ppl: 1 }, // no name -> skipped
+  ],
+};
+const rr = parseRuns(runsDoc);
+check("parseRuns: skips runs with no name or no measured ppl", rr?.count === 2);
+check("parseRuns: DISJOINT -> real badge, CONTAMINATED -> placeholder badge",
+  rr.runs[0].badge.cls === "placeholder" && rr.runs[0].badge.label === "CONTAMINATED" &&
+  rr.runs[1].badge.cls === "real" && rr.runs[1].badge.label === "DISJOINT");
+check("parseRuns: headline carries the honest number AND the retracted values verbatim",
+  rr.headline.weightedPpl === 2268.2 && rr.headline.tokens === 6359040 &&
+  rr.headline.retracted.length === 2 && rr.headline.retracted[0] === 275.9);
+check("parseRuns: per-phase breakdown + integrity sha pass through",
+  rr.runs[0].phases[0].ppl === 100.5 && rr.runs[0].sha256short === "abc123456789" &&
+  rr.runs[1].phaseCount === 6);
+check("parseRuns: unknown bin label -> UNCLASSIFIED, never assumed honest",
+  parseRuns({ runs: [{ name: "x", bins: "WHATEVER", weighted_ppl: 5 }] }).runs[0].badge.label === "UNCLASSIFIED");
+check("parseRuns: bad input -> null", parseRuns(null) === null && parseRuns({}) === null);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

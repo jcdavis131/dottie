@@ -1,0 +1,122 @@
+{
+  "generated_by": "build_runs_readout.mjs",
+  "metric": "weighted held-out perplexity (token-weighted geometric mean over measured phases)",
+  "count": 3,
+  "headline": {
+    "weighted_ppl": 2268.2,
+    "tokens": 6359040,
+    "run": "step-2861 (disjoint bins)",
+    "retracted": [
+      275.9,
+      4103.1
+    ]
+  },
+  "runs": [
+    {
+      "name": "step-1487 (tool_final_ext1)",
+      "bins": "CONTAMINATED",
+      "note": "the retracted 275.95 — tiny bins that overlapped training",
+      "weighted_ppl": 275.9,
+      "tokens": 30208,
+      "phase_count": 4,
+      "phases": [
+        {
+          "phase": "0",
+          "ppl": 114.3,
+          "tokens": 6144
+        },
+        {
+          "phase": "1",
+          "ppl": 161.9,
+          "tokens": 9728
+        },
+        {
+          "phase": "2",
+          "ppl": 630.5,
+          "tokens": 12288
+        },
+        {
+          "phase": "3",
+          "ppl": 343.3,
+          "tokens": 2048
+        }
+      ],
+      "source_path": "apps/ava-factory/reports/branch_eval_results_ext1_baseline.json",
+      "source_sha256short": "07ae987b08e9"
+    },
+    {
+      "name": "step-2861 (contaminated bins)",
+      "bins": "CONTAMINATED",
+      "note": "the retracted 4,103 — same contaminated 30k-token bins",
+      "weighted_ppl": 4103.1,
+      "tokens": 30208,
+      "phase_count": 4,
+      "phases": [
+        {
+          "phase": "0",
+          "ppl": 2601,
+          "tokens": 6144
+        },
+        {
+          "phase": "1",
+          "ppl": 617.2,
+          "tokens": 9728
+        },
+        {
+          "phase": "2",
+          "ppl": 24160,
+          "tokens": 12288
+        },
+        {
+          "phase": "3",
+          "ppl": 3125.6,
+          "tokens": 2048
+        }
+      ],
+      "source_path": "apps/ava-factory/reports/branch_eval_results_final2861_CONTAMINATED.json",
+      "source_sha256short": "c40e4eb1e8df"
+    },
+    {
+      "name": "step-2861 (disjoint bins)",
+      "bins": "DISJOINT",
+      "note": "the first reliable number: 6.36M disjoint tokens, all 6 phases",
+      "weighted_ppl": 2268.2,
+      "tokens": 6359040,
+      "phase_count": 6,
+      "phases": [
+        {
+          "phase": "0",
+          "ppl": 3506.5,
+          "tokens": 1375744
+        },
+        {
+          "phase": "1",
+          "ppl": 997.3,
+          "tokens": 1099264
+        },
+        {
+          "phase": "2",
+          "ppl": 22440.4,
+          "tokens": 1999872
+        },
+        {
+          "phase": "3",
+          "ppl": 2133.8,
+          "tokens": 729088
+        },
+        {
+          "phase": "4",
+          "ppl": 334.6,
+          "tokens": 675840
+        },
+        {
+          "phase": "5",
+          "ppl": 4.9,
+          "tokens": 479232
+        }
+      ],
+      "source_path": "apps/ava-factory/reports/branch_eval_results_final2861_DISJOINT.json",
+      "source_sha256short": "a3d70e15e028"
+    }
+  ]
+}

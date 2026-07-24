@@ -551,6 +551,50 @@ export function parseHubRegistry(doc) {
   return { count: datasets.length + models.length + research.length, datasets, models, research };
 }
 
+// ---- Monitor: eval-run comparison (the Dottie site — Pillar 3) -------------
+// Parse the static runs_readout.json (built by scripts/build_runs_readout.mjs
+// from the factory's committed eval reports) into the Monitor card's model. Each
+// run carries its BIN PROVENANCE — DISJOINT (honest) vs CONTAMINATED (the
+// retracted era) — so the comparison itself shows why one number is trustworthy.
+// Malformed runs are skipped, never fabricated.
+
+const _BIN_BADGE = {
+  DISJOINT: { label: "DISJOINT", cls: "real" },
+  CONTAMINATED: { label: "CONTAMINATED", cls: "placeholder" },
+};
+
+/** runs_readout.json -> { count, metric, headline, runs:[{…, badge}] } or null. */
+export function parseRuns(doc) {
+  const rows = Array.isArray(doc?.runs) ? doc.runs : null;
+  if (!rows) return null;
+  const runs = [];
+  for (const r of rows) {
+    if (!r || typeof r !== "object" || !_str(r.name) || !_num(r.weighted_ppl)) continue;
+    const bins = _str(r.bins);
+    runs.push({
+      name: _str(r.name), bins,
+      badge: { ...(_BIN_BADGE[bins] || _UNCLASSIFIED) },
+      note: _str(r.note),
+      weightedPpl: _num(r.weighted_ppl), tokens: _num(r.tokens),
+      phaseCount: _num(r.phase_count),
+      phases: (Array.isArray(r.phases) ? r.phases : [])
+        .filter((p) => p && _num(p.ppl))
+        .map((p) => ({ phase: _str(p.phase), ppl: _num(p.ppl), tokens: _num(p.tokens) })),
+      sourcePath: _str(r.source_path), sha256short: _str(r.source_sha256short),
+    });
+  }
+  const h = doc.headline && typeof doc.headline === "object" ? doc.headline : null;
+  return {
+    count: runs.length, metric: _str(doc.metric),
+    headline: h ? {
+      weightedPpl: _num(h.weighted_ppl), tokens: _num(h.tokens), run: _str(h.run),
+      // retracted values are carried verbatim — the differentiator, never dropped
+      retracted: (Array.isArray(h.retracted) ? h.retracted : []).filter(Number.isFinite),
+    } : null,
+    runs,
+  };
+}
+
 /** Format a model eval value for display: integers/large get thousands commas,
  * sub-1 values get 3 decimals (0.6899 -> "0.690"), mid values 2. null passes null. */
 export function fmtEvalValue(v) {

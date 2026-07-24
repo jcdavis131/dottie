@@ -65,6 +65,8 @@ jobs:
         run: node apps/bluehenre/scripts/build_hub_registry.test.mjs
       - name: Hub registry freshness (rendered matches source)
         run: node apps/bluehenre/scripts/build_hub_registry.mjs --check
+      - name: Monitor runs readout freshness (matches the eval reports)
+        run: node apps/bluehenre/scripts/build_runs_readout.mjs --check
       - name: JS syntax check (server + front-end)
         run: |
           for f in apps/bluehenre/server.mjs apps/bluehenre/api/assistant-chat.mjs \
