@@ -41,6 +41,7 @@ if str(_APP_ROOT) not in sys.path:
     sys.path.insert(0, str(_APP_ROOT))
 
 from dottie.research.validate import diagnose_failure  # noqa: E402
+from dottie.trajectory_schema import from_repair_rows, to_sft_records  # noqa: E402
 
 HINT_SOURCE = ("diagnose_failure recomputed at export time; hints shipped "
                "2026-07-22, so history rows from before that never showed the "
@@ -102,11 +103,35 @@ def extract_rows(db_path: Path) -> List[Dict[str, Any]]:
     return rows
 
 
+def sft_records_from_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Route the repair rows through the unified trajectory schema.
+
+    Groups by experiment_id, maps each group to a Trajectory (from_repair_rows),
+    and flattens with to_sft_records — the SAME learning consumer the codeact and
+    validation sources use, so downstream training code reads one shape regardless
+    of rollout. The rich native rows (--out) still carry the repair-specific
+    provenance (hint_source, dry_run_contract) that the generic schema drops; this
+    is the additional unified view, not a replacement.
+    """
+    by_exp: Dict[Any, List[Dict[str, Any]]] = {}
+    for r in rows:
+        by_exp.setdefault(r["experiment_id"], []).append(r)
+    out: List[Dict[str, Any]] = []
+    for exp_rows in by_exp.values():
+        out.extend(to_sft_records(from_repair_rows(exp_rows)))
+    return out
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--db", type=Path, required=True,
                     help="ledger COPY (never the live daemon DB)")
-    ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--out", type=Path, required=True,
+                    help="rich native repair rows (repair-specific provenance)")
+    ap.add_argument("--sft-out", type=Path, default=None,
+                    help="ALSO emit unified trajectory-schema SFT records "
+                         "(dottie.trajectory_schema.to_sft_records) — the same "
+                         "shape codeact/validation sources produce")
     args = ap.parse_args(argv)
 
     rows = extract_rows(args.db)
@@ -122,6 +147,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     print(f"wrote {args.out}: {len(rows)} rows from {len(exps)} recovered "
           f"experiments {exps}")
     print(f"levels: {dict(levels)} | rows with a (recomputed) hint: {hinted}/{len(rows)}")
+
+    if args.sft_out is not None:
+        sft = sft_records_from_rows(rows)
+        args.sft_out.parent.mkdir(parents=True, exist_ok=True)
+        with open(args.sft_out, "w", encoding="utf-8", newline="\n") as f:
+            for r in sft:
+                f.write(json.dumps(r, ensure_ascii=False) + "\n")
+        print(f"wrote {args.sft_out}: {len(sft)} unified SFT records "
+              f"(trajectory_schema.to_sft_records)")
     return 0
 
 
