@@ -36,8 +36,12 @@
     provenance-sensitive; awaiting explicit operator greenlight.
   - **OAPEN OAI-PMH harvester** (`pull_oapen_oai.py`) — uncaps the ~600 REST ceiling
     to the full ~57k catalog; corpus 19 → **48 unique CC-BY(-SA) books, ~10.1M tokens**.
-- **AWAITING OPERATOR:** redeploy to push the updated Hub live (Universal eval 0.7639,
-  OAPEN 48 — committed, NOT live); the Stage-2 hoops-encoder re-export (to resolve G2).
+- **REDEPLOYED (operator: "go")** — updated Hub LIVE on www.bhenre.com (deployment
+  bluehenre-campus-7qupwunj6, aliased, pin updated). Live-verified: org.html 200,
+  18 artifacts incl. Universal MTNN eval 0.7639 + OAPEN 48 books.
+- **AWAITING OPERATOR:** the Stage-2 hoops-encoder re-export (re-train + re-export
+  the vector-hoops MTNN so train_stage2.py can load it) to resolve G2 — provenance-
+  sensitive; needs an explicit greenlight for that specific upstream retrain.
 
 ## SESSION COMPLETE STATE (2026-07-24) — Dottie site built, tested, CI-enforced, DEPLOY-READY
 
