@@ -70,6 +70,19 @@ public deploy is the operator's gated step.
       box-side tokenizer. See the card's Decontamination section.
 - [ ] Future clean expansions: broaden Gutenberg, Standard Ebooks, PMC-OA, Wikisource.
 
+## Adversarial code review (2026-07-24) — findings addressed
+- [x] **License-gate false-positive FIXED** (pull_oapen_books.py) — the gate read
+      only the FIRST `dc.rights`; a book carrying CC-BY *and* an ND license would
+      have been wrongly included. Now `gate_rights()` evaluates ALL values,
+      most-restrictive wins, ANY ND/unverifiable value excludes. 9 edge-case tests.
+- [x] **Exporter latent parser bugs FIXED + regression-tested** (build_hub_registry
+      .mjs): `num_bytes:` between name/num_examples broke splits (rows null +
+      inflated n_fields); nested struct sub-fields inflated n_fields; flow-style
+      lists dropped; frontmatter needed a trailing newline. Parser helpers now
+      exported + `build_hub_registry.test.mjs` (9 tests). Real registry byte-identical.
+- [ ] Deferred (latent, no current card hits them): multiple-config `dataset_info`
+      (sums across configs) + quoted/glob `path:` values. Fix when a card needs them.
+
 ## Gated / dependency-blocked (Phase 4)
 - [ ] **HF publish** (Hub ↔ real HuggingFace) — BLOCKED on `HF_TOKEN` rotation
       (provenance audit #6). Show an honest "mirror: awaiting token rotation"

@@ -85,6 +85,36 @@ def is_safe(code: str | None, allow_nc: bool) -> tuple[bool, str]:
     return False, f"unrecognized license ({code})"
 
 
+# restrictiveness order — the GOVERNING license when a book carries more than one
+# (more restrictive wins for recording; the gate below excludes on ANY failure)
+_RESTRICTIVENESS = ["CC0", "CC-BY", "CC-BY-SA", "CC-BY-NC", "CC-BY-NC-SA"]
+
+
+def gate_rights(rights_values: list[str] | None, allow_nc: bool) -> tuple[bool, str | None, str | None, str]:
+    """Evaluate ALL of a book's dc.rights values, not just the first.
+
+    A provenance gate must be conservative: a book is included only if EVERY
+    recorded license value is training-safe (most-restrictive wins). If ANY value
+    is unverifiable or fails the policy (an ND license, or NC without
+    --allow-nc), the whole book is excluded — a permissive value cannot rescue a
+    co-present restrictive one. Returns (included, governing_code, governing_url,
+    reason).
+    """
+    vals = [v for v in (rights_values or []) if v and str(v).strip()]
+    if not vals:
+        return False, None, None, "no verifiable open license"
+    pairs = [(v, license_code(v)) for v in vals]
+    for url, code in pairs:
+        ok, reason = is_safe(code, allow_nc)
+        if not ok:
+            return False, code, url, reason  # any failing value excludes the book
+    # every value is safe — record the most restrictive as the governing license
+    def rank(c: str | None) -> int:
+        return _RESTRICTIVENESS.index(c) if c in _RESTRICTIVENESS else -1
+    url, code = max(pairs, key=lambda p: rank(p[1]))
+    return True, code, url, "permissive"
+
+
 def _md(item: dict) -> dict[str, list[str]]:
     """OAPEN metadata list -> {key: [values]} (a key may repeat, e.g. subjects)."""
     out: dict[str, list[str]] = {}
@@ -155,16 +185,15 @@ def main() -> int:
                 continue
             seen.add(handle)
             md = _md(item)
-            code = license_code(_first(md, "dc.rights"))
-            ok, reason = is_safe(code, args.allow_nc)
-            if not ok:
+            included, code, license_url, reason = gate_rights(md.get("dc.rights"), args.allow_nc)
+            if not included:
                 excluded[reason] = excluded.get(reason, 0) + 1
                 continue
             try:
                 text, txt_link = fetch_text(item)
             except Exception as e:  # noqa: BLE001
-                excluded[f"text fetch failed: {type(e).__name__}"] = \
-                    excluded.get("text fetch failed", 0) + 1
+                key = f"text fetch failed: {type(e).__name__}"
+                excluded[key] = excluded.get(key, 0) + 1
                 continue
             if not text or not text.strip():
                 excluded["no .pdf.txt bitstream"] = excluded.get("no .pdf.txt bitstream", 0) + 1
@@ -180,7 +209,7 @@ def main() -> int:
                 "title": _first(md, "dc.title"),
                 "language": _first(md, "dc.language"),
                 "license": code,
-                "license_url": _first(md, "dc.rights"),
+                "license_url": license_url,
                 "nc": code in NC,
                 "publisher": _first(md, "publisher.name") or _first(md, "oapen.imprint"),
                 "subjects": md.get("dc.subject.other") or md.get("dc.subject.classification") or [],

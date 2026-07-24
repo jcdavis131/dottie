@@ -24,7 +24,8 @@ const CLASSES = new Set(["REAL", "HONEST-SYNTHETIC", "PLACEHOLDER"]);
 
 /** The `---`-delimited YAML frontmatter block of a markdown card, or "". */
 function frontmatter(md) {
-  const m = String(md).match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
+  // tolerate a closing `---` with no trailing newline (last line of the file)
+  const m = String(md).match(/^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/);
   return m ? m[1] : "";
 }
 
@@ -36,16 +37,19 @@ function scalar(block, key) {
   return m ? m[1].trim() : null;
 }
 
-/** The `- item` list immediately under `key:` (until a non-list, non-blank
- * line at the same or lower indent). Returns [] when absent. */
+/** The list under `key:` — block style (`- item` lines) or flow style
+ * (`key: [a, b]`). Quotes are stripped. Returns [] when absent. */
 function list(block, key) {
   const lines = block.split(/\r?\n/);
-  const at = lines.findIndex((l) => new RegExp(`^${key}:[ \\t]*$`).test(l));
+  const at = lines.findIndex((l) => new RegExp(`^[ \\t]*${key}:`).test(l));
   if (at < 0) return [];
+  const unquote = (s) => s.trim().replace(/^['"]|['"]$/g, "");
+  const flow = lines[at].match(new RegExp(`^[ \\t]*${key}:[ \\t]*\\[(.*)\\][ \\t]*$`));
+  if (flow) return flow[1].split(",").map(unquote).filter(Boolean);
   const out = [];
   for (let i = at + 1; i < lines.length; i++) {
     const m = lines[i].match(/^[ \t]*-[ \t]+(.+?)[ \t]*$/);
-    if (m) out.push(m[1].trim());
+    if (m) out.push(unquote(m[1]));
     else if (lines[i].trim() === "") continue;
     else break; // next key at this level
   }
@@ -58,13 +62,49 @@ function datasetInfoBlock(fm) {
   return m ? m[1] : "";
 }
 
-/** Sum of `num_examples:` under splits, plus the per-split rows. */
-function splits(diBlock) {
+/** The indented sub-block under `key:` within a block (lines more-indented than
+ * the `key:` line, stopping at the next same-or-shallower key). For splits: /
+ * features:. */
+function subBlock(block, key) {
+  const lines = block.split(/\r?\n/);
+  const at = lines.findIndex((l) => new RegExp(`^[ \\t]*${key}:[ \\t]*$`).test(l));
+  if (at < 0) return "";
+  const base = lines[at].match(/^[ \t]*/)[0].length;
   const out = [];
-  const re = /-[ \t]*name:[ \t]*(.+?)[ \t]*\r?\n[ \t]*num_examples:[ \t]*(\d+)/g;
-  let m;
-  while ((m = re.exec(diBlock))) out.push({ name: m[1].trim(), num_examples: Number(m[2]) });
+  for (let i = at + 1; i < lines.length; i++) {
+    const l = lines[i];
+    if (l.trim() === "") { out.push(l); continue; }
+    const ind = l.match(/^[ \t]*/)[0].length;
+    // a block-sequence may sit at the SAME indent as its key (valid YAML), so
+    // keep same-indent list items; stop only at a non-list key at base or shallower
+    if (ind > base || (ind === base && /^[ \t]*-/.test(l))) { out.push(l); continue; }
+    break;
+  }
+  return out.join("\n");
+}
+
+/** Splits under dataset_info: one {name, num_examples} per `- name:` entry,
+ * tolerant of an intervening `num_bytes:` (the HF-standard push_to_hub shape).
+ * Scoped to the splits: sub-block so feature `- name:` lines never leak in. */
+function splits(diBlock) {
+  const block = subBlock(diBlock, "splits");
+  const out = [];
+  for (const entry of block.split(/\r?\n(?=[ \t]*-[ \t]*name:)/).filter((e) => /-[ \t]*name:/.test(e))) {
+    const name = entry.match(/-[ \t]*name:[ \t]*(.+?)[ \t]*(?:\r?\n|$)/)?.[1];
+    const ne = entry.match(/num_examples:[ \t]*(\d+)/)?.[1];
+    if (name && ne !== undefined) out.push({ name: name.trim(), num_examples: Number(ne) });
+  }
   return out;
+}
+
+/** Count TOP-LEVEL features under dataset_info. Nested struct/sequence
+ * sub-fields (their own deeper `- name:`) do NOT inflate the count. */
+function countTopLevelFeatures(diBlock) {
+  const nameLines = subBlock(diBlock, "features").split(/\r?\n/)
+    .filter((l) => /-[ \t]*name:[ \t]*\S/.test(l));
+  if (!nameLines.length) return 0;
+  const min = Math.min(...nameLines.map((l) => l.match(/^[ \t]*/)[0].length));
+  return nameLines.filter((l) => l.match(/^[ \t]*/)[0].length === min).length;
 }
 
 /** The first paragraph under `## Dataset Summary`, whitespace-collapsed. */
@@ -108,10 +148,11 @@ function buildRecord(dir, name) {
   const fm = frontmatter(md);
   if (!fm) return null;
   const di = datasetInfoBlock(fm);
-  const cls = scalar(di, "provenance_classification") || scalar(fm, "provenance_classification");
+  const clsRaw = scalar(di, "provenance_classification") || scalar(fm, "provenance_classification");
+  const cls = clsRaw ? clsRaw.toUpperCase() : null; // normalize case; still never a guess
   const classification = cls && CLASSES.has(cls) ? cls : null;
   const sp = splits(di);
-  const nFields = (di.match(/-[ \t]*name:[ \t]*\S/g) ?? []).length - sp.length; // features minus splits
+  const nFields = countTopLevelFeatures(di); // top-level only; nested structs don't inflate
   return {
     name,
     kind: "dataset",
@@ -150,4 +191,9 @@ function main() {
     `(${records.map((r) => `${r.name}=${r.classification ?? "unclassified"}`).join(", ")})`);
 }
 
-main();
+// pure parser helpers, exported for the regression test (bare-node)
+export { frontmatter, scalar, list, datasetInfoBlock, subBlock, splits, countTopLevelFeatures };
+
+// run main() only when executed directly, never on import (the test imports the
+// helpers and must NOT trigger a real registry write)
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
