@@ -1,6 +1,34 @@
-# BLUEHENRE / Dottie — agent handoff (2026-07-23)
+# BLUEHENRE / Dottie — agent handoff (2026-07-24)
 
 **Paste-able brief for any agent continuing this work. Everything below is live and verified.**
+
+## CURRENT STATE (2026-07-24): VISION RE-ALIGNED to the Dottie site (Guide/Hub/Monitor)
+
+- **Operator `/goal` (2026-07-24):** the Dottie site = **a Manus/OpenClaw/Hermes
+  agentic assistant (GUIDE) + a HuggingFace datasets/models/research hub (HUB) +
+  a Weights&Biases real-time dev monitor (MONITOR)** — one product, three faces,
+  differentiated by **provenance-honesty by construction**, built additively on
+  the `apps/bluehenre` console. Directive: "UPDATE README, SPEC, TODO … Remove all
+  old bits about the open-world game."
+- **DONE this session (docs + de-game, committed; NOT deployed):**
+  - `apps/bluehenre/SPEC.md` rewritten as the single **spec of record** (three
+    faces); the transitional `SPEC_dottie_site.md` was consolidated in and removed.
+  - READMEs (root + bluehenre) + root `SPEC.md` realigned to the vision; stale
+    `arxiviq.com` console pointers → www.bhenre.com.
+  - `tasks/todo.md` created (clean board); `tasks/dottie_site_plan.md` is the
+    phased plan (first slice = **Hub Artifact Registry**, substrate already exists).
+  - **Open-world-game framing removed from the console code:** the campus/NPC/
+    persona metaphor is gone — `fleetRole`/event maps now use functional team
+    labels (training/data/curation/ops/serving/research/services) instead of
+    campus buildings (labs/servers/archives/finance/hall/proving/gardens); the
+    dead game-character fields `persona`/`action` deleted; `/api/npc-chat` →
+    `/api/assistant-chat` across `server.mjs`, the Vercel fn (`api/npc-chat.mjs`
+    → `api/assistant-chat.mjs`), and both front-ends (drops the `npc`/`dept`
+    body params). Contract suite **76/76 green**; all edited JS `node --check`
+    clean. **A deploy is pending the operator** (public surface = gated step).
+- **NOT started (held for the build phase):** the three pillars themselves. First
+  slice when greenlit = Phase 1 Hub Artifact Registry (additive/static/Vercel-safe;
+  no server change). See `tasks/dottie_site_plan.md` + `tasks/todo.md`.
 
 ## CURRENT STATE (late evening 07-23): RUN COMPLETE — fleet RESTORED, compact deferred
 

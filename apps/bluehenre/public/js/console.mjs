@@ -315,9 +315,9 @@ $("askform").addEventListener("submit", async (e) => {
   you.textContent = `you: ${text}`;
   log.prepend(you);
   try {
-    const r = await fetch("/api/npc-chat", { method: "POST",
+    const r = await fetch("/api/assistant-chat", { method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ npc: "dottie:app", dept: "org", prompt: text }) });
+      body: JSON.stringify({ prompt: text }) });
     const d = await r.json();
     const re = document.createElement("p");
     const src = document.createElement("span");

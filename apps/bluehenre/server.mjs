@@ -48,8 +48,8 @@ const MIME = {
   ".svg": "image/svg+xml",
 };
 
-async function npcChat(body) {
-  const { npc = "?", dept = "?", prompt = "" } = body ?? {};
+async function assistantChat(body) {
+  const { prompt = "" } = body ?? {};
   if (!DOTTIE_CHAT_URL) {
     return {
       source: "offline",
@@ -61,7 +61,7 @@ async function npcChat(body) {
     const r = await fetch(DOTTIE_CHAT_URL, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ message: `[BLUEHENRE npc=${npc} dept=${dept}] ${prompt}` }),
+      body: JSON.stringify({ message: `[dottie-site] ${prompt}` }),
       signal: AbortSignal.timeout(20_000),
     });
     if (!r.ok) return { source: "offline", reply: `engine HTTP ${r.status} — reply withheld` };
@@ -81,7 +81,7 @@ const server = createServer(async (req, res) => {
     res.end(data);
   };
   try {
-    if (req.method === "POST" && req.url === "/api/npc-chat") {
+    if (req.method === "POST" && req.url === "/api/assistant-chat") {
       const chunks = [];
       for await (const c of req) chunks.push(c);
       let body = null;
@@ -90,11 +90,11 @@ const server = createServer(async (req, res) => {
       } catch {
         return send(400, MIME[".json"], JSON.stringify({ source: "error", reply: "bad JSON" }));
       }
-      return send(200, MIME[".json"], JSON.stringify(await npcChat(body)));
+      return send(200, MIME[".json"], JSON.stringify(await assistantChat(body)));
     }
     if (req.method === "GET" && (req.url || "").split("?")[0] === "/api/fleet") {
-      // The REAL docker fleet (operator 2026-07-22: NPCs are the containers).
-      // docker's own numbers via the CLI, cached 10s; honest offline on error.
+      // The REAL docker fleet the org runs — docker's own numbers via the CLI,
+      // cached 10s; honest offline on error.
       const now = Date.now();
       if (!fleetCache.at || now - fleetCache.at > 10_000) {
         try {

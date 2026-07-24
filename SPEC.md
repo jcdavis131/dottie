@@ -22,7 +22,7 @@ retraining — solo, on public/free-tier only.
 | 5 | **Eval gate** — anti-mock frontier rubric harness | `packages/ava-open-harness` | Green (30). |
 | 6 | **Skills** — J-Space skill registry (memory-mint, jspace-context-engine, …) | `packages/ava-skills` | Green (80 via bare `pytest`). |
 | 7 | **Graphify** — personal knowledge graph | `packages/personal-graphify` | Green (64), Windows-safe as of this session. |
-| — | **Console** | `apps/ava-factory/dottie/webapp` (`/app`), live at arxiviq.com | Webapp contracts green (35 Node). Provenance-honest: unreachable sources render as explicit "unreachable", never stale numbers. |
+| — | **The Dottie site** — the operator's console: Guide (agentic assistant) + Hub (provenance-honest artifact registry) + Monitor (real-time dev) | `apps/bluehenre`, live at www.bhenre.com | Contract suite green (76 Node). Provenance-honest by construction; see `apps/bluehenre/SPEC.md`. The factory-internal webapp `apps/ava-factory/dottie/webapp` (`/app`) also stays provenance-honest (35 Node). |
 
 ## Invariants the platform must not violate (learned, enforced by tests)
 
@@ -43,7 +43,7 @@ The platform is "closing the loop" when, unattended:
 2. `scout` serves that checkpoint and runs a task end-to-end, emitting a real trace.
 3. The research loop proposes a block change, and a **genuine** (cross-seed, capacity-fair)
    improvement promotes — moving `real wins` off zero for the first time.
-4. The console at arxiviq.com shows all of the above with honest provenance.
+4. The Dottie site (www.bhenre.com) shows all of the above with honest provenance.
 
 ## Build priorities  *(the ordered path; detail + commands live in TODOS.md "DECISION QUEUE")*
 

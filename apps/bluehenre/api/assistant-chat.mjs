@@ -1,9 +1,10 @@
-// Vercel serverless twin of server.mjs's /api/npc-chat — same provenance doctrine.
-// The hosted build has no reachable Dottie engine unless DOTTIE_CHAT_URL is set in
-// the project env; without one every NPC says so instead of pretending to think.
+// Vercel serverless twin of server.mjs's /api/assistant-chat — same provenance
+// doctrine. The hosted build has no reachable Dottie engine unless DOTTIE_CHAT_URL
+// is set in the project env; without one the assistant says so instead of
+// pretending to think.
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ source: "error", reply: "POST only" });
-  const { npc = "?", dept = "?", prompt = "" } = req.body ?? {};
+  const { prompt = "" } = req.body ?? {};
   const url = process.env.DOTTIE_CHAT_URL || "";
   if (!url) {
     return res.status(200).json({
@@ -17,7 +18,7 @@ export default async function handler(req, res) {
     const r = await fetch(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ message: `[BLUEHENRE npc=${npc} dept=${dept}] ${prompt}` }),
+      body: JSON.stringify({ message: `[dottie-site] ${prompt}` }),
       signal: AbortSignal.timeout(20_000),
     });
     if (!r.ok) return res.status(200).json({ source: "offline", reply: `engine HTTP ${r.status} — reply withheld` });

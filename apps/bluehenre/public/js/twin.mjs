@@ -1,6 +1,6 @@
-// Twin telemetry (BLUEHENRE SPEC "the Dottie digital twin").
-// Pure logic shared by the local server and the game: parse the REAL factory's
-// metrics/eval artifacts into the display model. Provenance doctrine applies:
+// Twin telemetry (the Dottie site — the org's live digital twin).
+// Pure logic shared by the local server and the console: parse the REAL
+// factory's metrics/eval artifacts into the display model. Provenance doctrine:
 // only a `source:"local"` status may show numbers; anything else is offline and
 // says so — the twin never fabricates the state of the real model.
 
@@ -76,9 +76,9 @@ export function parseTrainerTail(live) {
            tokens: Number.isFinite(d.tokens) ? d.tokens : null };
 }
 
-/** The dashboard board model: everything the in-game command console renders
- * of the REAL run (operator directive 2026-07-22: bring the :8000 dashboard
- * to life in the game). Missing pieces come back null — drawn as absent. */
+/** The dashboard board model: everything the command console renders of the
+ * REAL run (the :8000 dashboard, surfaced live in the Monitor face). Missing
+ * pieces come back null — drawn as absent. */
 export function parseDashboard(live) {
   const p = pipelineOf(live);
   if (!p || typeof p !== "object") return null;
@@ -121,7 +121,7 @@ export function parseDashboard(live) {
   return { mode, run, phase, timing, gates, funnel, ckptAgeS, spark };
 }
 
-/** Hub panels (operator 2026-07-22: ALL of the :8000 hub, in-world). Input is
+/** Hub panels (ALL of the :8000 hub, surfaced in the Hub face). Input is
  * a status/feed object carrying `hub` (+ `research`) as published by
  * publish_live_status.py. Returns per-department display models, null when a
  * block is missing or {"unreachable"} — panels render an honest offline line.
@@ -237,22 +237,22 @@ export function parseHub(feed) {
   return { network, ecosystem, evals, research: researchOut, sites, sample, deploys, sitePerf };
 }
 
-// ---- fleet (operator 2026-07-22: NPCs ARE the docker containers) -----------
+// ---- fleet (the docker containers the org runs) ----------------------------
 // Parse `docker stats --no-stream --format "{{json .}}"` line output into the
-// game's fleet model. Every number is docker's own; nothing is invented.
+// fleet model. Every number is docker's own; nothing is invented.
 
-/** Which campus department a container reports to, by its role in the org. */
+/** Which functional team a container reports to, by its role in the org. */
 export function fleetRole(name) {
   const n = String(name).toLowerCase();
   const short = n.replace(/^dottie-factory-/, "").replace(/^dottie-/, "");
   const pick = (role, dept) => ({ role, dept, short });
-  if (n.includes("trainer")) return pick("foundation trainer", "labs");
-  if (n.includes("collector")) return pick("data collector", "servers");
-  if (n.includes("curator")) return pick("data curator", "archives");
-  if (n.includes("janitor")) return pick("fleet janitor", "finance");
-  if (n.includes("server")) return pick("hub server", "hall");
-  if (n.includes("dottie")) return pick("research daemon", "proving");
-  return pick("service", "gardens");
+  if (n.includes("trainer")) return pick("foundation trainer", "training");
+  if (n.includes("collector")) return pick("data collector", "data");
+  if (n.includes("curator")) return pick("data curator", "curation");
+  if (n.includes("janitor")) return pick("fleet janitor", "ops");
+  if (n.includes("server")) return pick("hub server", "serving");
+  if (n.includes("dottie")) return pick("research daemon", "research");
+  return pick("service", "services");
 }
 
 /** docker-stats JSONL -> [{name, short, role, dept, cpuPct, mem, memPct}].
@@ -413,18 +413,18 @@ export function parseOrg(live) {
            research, evalCatalog, signals, fullCurve, jspace };
 }
 
-// which department (and consultant hat) owns each REAL problem kind
+// which functional team owns each REAL problem kind
 const MODE_EVENTS = {
-  stale: { dept: "labs", persona: "cipher", action: "decode" },
-  error: { dept: "labs", persona: "cipher", action: "decode" },
-  starved: { dept: "servers", persona: "auditor", action: "interview" },
+  stale: { dept: "training" },
+  error: { dept: "training" },
+  starved: { dept: "data" },
 };
 const GATE_EVENTS = {
-  D1: { dept: "finance", persona: "architect", action: "replan" },  // host disk
-  D2: { dept: "archives", persona: "architect", action: "replan" }, // token runway
-  D3: { dept: "servers", persona: "auditor", action: "interview" }, // collectors
-  D4: { dept: "servers", persona: "auditor", action: "interview" }, // raw headroom
-  D5: { dept: "archives", persona: "cipher", action: "decode" },    // fail rate
+  D1: { dept: "ops" },       // host disk
+  D2: { dept: "curation" },  // token runway
+  D3: { dept: "data" },      // collectors
+  D4: { dept: "data" },      // raw headroom
+  D5: { dept: "curation" },  // fail rate
 };
 const clip = (s, n = 140) => (String(s).length > n ? String(s).slice(0, n - 1) + "…" : String(s));
 

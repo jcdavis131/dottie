@@ -1,0 +1,64 @@
+# TODO — the Dottie site (Guide / Hub / Monitor)
+
+Vision: `apps/bluehenre/SPEC.md`. Phased plan: `tasks/dottie_site_plan.md`.
+One product, three faces, differentiated by provenance-honesty by construction,
+built additively on the bluehenre console. Static-first (local == Vercel); the
+public deploy is the operator's gated step.
+
+## Done (2026-07-24)
+- [x] SPEC of record rewritten to the three-face vision; `SPEC_dottie_site.md`
+      consolidated into `apps/bluehenre/SPEC.md`.
+- [x] README (root + bluehenre) + root SPEC realigned to the vision.
+- [x] Old open-world-game framing removed: the campus/NPC/persona metaphor is
+      gone from the console code — functional team labels (training/data/
+      curation/ops/serving/research/services) replace the campus buildings; the
+      dead `persona`/`action` game-character fields deleted; `/api/npc-chat`
+      renamed `/api/assistant-chat` (server + Vercel fn + both front-ends).
+      Contract suite green (76/76); JS syntax-clean. NOT deployed.
+
+## Now — Phase 1: HUB Artifact Registry (first slice, additive/static)
+- [ ] `apps/bluehenre/scripts/build_hub_registry.mjs` — read-only exporter:
+      corpus_proposals card frontmatter + audit sidecars → `public/hub_registry.json`.
+- [ ] `parseHubRegistry(json)` in `twin.mjs` + contract-test rows (badge from
+      frontmatter, unclassified fallback, link guard).
+- [ ] `renderHubRegistry()` card in `org.html`/`org.mjs` — REAL/HONEST-SYNTHETIC/
+      PLACEHOLDER badges, reusing existing line/table/chip/led/offline helpers.
+- [ ] Gate: contract suite green; card renders both cards with correct badges.
+      Then operator deploy + re-alias.
+
+## Next — Phase 2: GUIDE digest + agent tiles
+- [ ] `nextActions(status)` in `twin.mjs` (rank alerts + research counts + fleet
+      health; each carries its steer command) + contract test.
+- [ ] `renderGuide()` — ranked next-action list + three autonomous-agent activity
+      tiles from live telemetry.
+
+## Then — Phase 3: MONITOR runtrack readout
+- [ ] Bridge `runtrack` (scout-cli openswap, pure-sqlite) to the live
+      trainer/research metrics + the ledger.
+- [ ] Monitor card: live training curve(s), research experiments/promotions, fleet
+      stats, run comparison. Real-measured; stale/offline honest.
+
+## Gated / dependency-blocked (Phase 4)
+- [ ] **HF publish** (Hub ↔ real HuggingFace) — BLOCKED on `HF_TOKEN` rotation
+      (provenance audit #6). Show an honest "mirror: awaiting token rotation"
+      until rotated; then wire the authed push (operator runs the token step).
+- [ ] **Engine ReAct trace** (Guide chat) — needs the factory hub `/assistant` to
+      expose a stable `steps[]`; verify the engine field first, pass through
+      `server.mjs` verbatim.
+- [ ] **Model cards** — checkpoints (honest 2,268 ppl) + vector MTNNs as Hub model
+      cards (extends Phase 1's registry to models).
+
+## Operator calls (from the provenance audit — deliberately not auto-done)
+- [ ] Rotate the previously-committed `HF_TOKEN` and place the new value in the
+      gitignored `apps/ava-factory/.env` (I cannot write the secret).
+- [ ] #7 baseline-provenance gate in `evaluate.py` (code defers it to operator).
+- [ ] Equities checkpoint for real asset regen (KPI card + skills radar still
+      synthetic-flagged); ~66% synthetic curriculum mix; stale config labels
+      (frozen path); dead `train_1b_deepspeed.py` path.
+
+## Notes / follow-ups
+- `org.html` still links "terminal view" → `bluehenre-campus.vercel.app` (the
+  deployed Vercel project's own subdomain; renaming the project is operator infra
+  and would move the alias — left as-is).
+- Each public deploy: `vercel deploy --prod --yes` → re-alias www.bhenre.com →
+  update `apps/bluehenre/data/last_good_deployment.txt` (alias-guard pin).

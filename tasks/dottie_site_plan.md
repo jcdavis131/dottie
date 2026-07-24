@@ -1,6 +1,6 @@
 # Dottie Site — phased build plan (2026-07-24)
 
-Spec: `apps/bluehenre/SPEC_dottie_site.md`. Everything ADDITIVE to the existing
+Spec: `apps/bluehenre/SPEC.md`. Everything ADDITIVE to the existing
 bluehenre console, static-first (local == Vercel), zero frozen-path edits, every
 surface provenance-honest. Each phase ships a verifiable slice; I stay in the
 loop between phases (operator reviews, points at the next).

@@ -86,9 +86,9 @@ check("dashboard of nothing -> null", parseDashboard(null) === null && parseDash
 
 // REAL events: a stale trainer is an event; a benign full-runway pause is not
 const events = parseLiveEvents(wrapped);
-check("stale trainer raises a labs event with the feed's own words",
-  events.some((e) => e.kind === "mode_stale" && e.dept === "labs" &&
-    e.persona === "cipher" && e.label.includes("38906s")));
+check("stale trainer raises a training event with the feed's own words",
+  events.some((e) => e.kind === "mode_stale" && e.dept === "training" &&
+    e.label.includes("38906s")));
 check("full-runway collector pause is NOT an event (healthy backpressure)",
   !events.some((e) => e.kind === "gate_D3"));
 const angry = JSON.parse(JSON.stringify(pipelineObj));
@@ -98,8 +98,8 @@ angry.flow.collector_pause = { paused: true, reason: "disk pressure" };
 angry.disk.below_low_water = true;
 const angryEvents = parseLiveEvents(angry);
 check("healthy mode raises no mode event", !angryEvents.some((e) => e.kind.startsWith("mode_")));
-check("data STARVED -> servers event", angryEvents.some((e) => e.kind === "data_starved" && e.dept === "servers"));
-check("disk low -> finance event", angryEvents.some((e) => e.kind === "disk_low" && e.dept === "finance"));
+check("data STARVED -> data event", angryEvents.some((e) => e.kind === "data_starved" && e.dept === "data"));
+check("disk low -> ops event", angryEvents.some((e) => e.kind === "disk_low" && e.dept === "ops"));
 check("non-benign collector pause -> gate event", angryEvents.some((e) => e.kind === "gate_D3"));
 check("no feed -> no events, no throw", parseLiveEvents(null).length === 0);
 
@@ -192,11 +192,11 @@ const fleetText = [
 ].join("\n");
 const fl = parseFleet(fleetText);
 check("fleet parses docker rows, skips garbage", fl.length === 3);
-check("trainer maps to labs with real numbers",
-  fl[0].dept === "labs" && fl[0].short === "trainer-1" && fl[0].cpuPct === 100.16 && fl[0].mem === "2.39GiB");
-check("collector maps to servers", fl[1].dept === "servers" && fl[1].role === "data collector");
-check("research daemon maps to proving", fl[2].dept === "proving" && fl[2].short === "dottie-1");
-check("unknown role lands in gardens", fleetRole("mystery-svc-1").dept === "gardens");
+check("trainer maps to training with real numbers",
+  fl[0].dept === "training" && fl[0].short === "trainer-1" && fl[0].cpuPct === 100.16 && fl[0].mem === "2.39GiB");
+check("collector maps to data", fl[1].dept === "data" && fl[1].role === "data collector");
+check("research daemon maps to research", fl[2].dept === "research" && fl[2].short === "dottie-1");
+check("unknown role lands in services", fleetRole("mystery-svc-1").dept === "services");
 check("empty fleet -> []", parseFleet("").length === 0 && parseFleet(null).length === 0);
 
 // comprehensive org model (bhenre console): lifts every feed aspect honestly
@@ -289,19 +289,19 @@ check("route_probs of wrong arity -> jspace null, labels never misaligned",
 // disk critical outranks disk low (else-if precedence)
 const critEvents = parseLiveEvents({ pipeline: { disk: { free_gb: 4.2, low_water_gb: 12,
   critical_gb: 6, below_low_water: true, below_critical: true } } });
-check("disk critical -> finance event and suppresses disk_low",
-  critEvents.some((e) => e.kind === "disk_critical" && e.dept === "finance" && e.label.includes("4.2")) &&
+check("disk critical -> ops event and suppresses disk_low",
+  critEvents.some((e) => e.kind === "disk_critical" && e.dept === "ops" && e.label.includes("4.2")) &&
   !critEvents.some((e) => e.kind === "disk_low"));
 
-// every failing gate maps to its OWN department (only D3 was covered)
+// every failing gate maps to its OWN team (only D3 was covered)
 const gateEvents = (id) => parseLiveEvents({ pipeline: { flow: { gates: [
   { id, name: "g", ok: false, value: "v", target: "t" }] } } });
-check("gates D1/D2/D4/D5 map to their departments",
-  gateEvents("D1")[0]?.dept === "finance" && gateEvents("D2")[0]?.dept === "archives" &&
-  gateEvents("D4")[0]?.dept === "servers" && gateEvents("D5")[0]?.dept === "archives");
-check("mode error raises labs cipher event",
+check("gates D1/D2/D4/D5 map to their teams",
+  gateEvents("D1")[0]?.dept === "ops" && gateEvents("D2")[0]?.dept === "curation" &&
+  gateEvents("D4")[0]?.dept === "data" && gateEvents("D5")[0]?.dept === "curation");
+check("mode error raises a training event",
   parseLiveEvents({ pipeline: { mode: { id: "error", label: "Trainer error", detail: "boom" } } })
-    .some((e) => e.kind === "mode_error" && e.dept === "labs" && e.persona === "cipher"));
+    .some((e) => e.kind === "mode_error" && e.dept === "training"));
 
 // clipping: batch text at 700 verbatim chars, event labels at 140 with ellipsis
 const clippedHub = parseHub({ hub: { batch_sample: { text: "x".repeat(900) } } });

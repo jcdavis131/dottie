@@ -10,7 +10,13 @@ Dottie is a closed-loop LLM factory run as one monorepo: data pipeline → train
 
 > Solo personal project, no connection to employer, built with public/free-tier only (R2/Workers/Supabase/HF ZeroGPU, ONNX WASM, public pip).
 
-**Live console:** https://arxiviq.com (fetches status published from `apps/ava-factory/`)
+**The Dottie site** (`apps/bluehenre`, live at https://www.bhenre.com) is the
+operator's window into and steering wheel for this loop — one product with three
+faces: a **Guide** (Manus/OpenClaw/Hermes-style agentic assistant), a **Hub**
+(HuggingFace-style datasets/models/research registry), and a **Monitor**
+(Weights&Biases-style real-time view of the local development the org runs) —
+differentiated by provenance-honesty by construction. See
+`apps/bluehenre/SPEC.md`.
 
 ## Monorepo layout
 
@@ -20,7 +26,7 @@ Dottie is a closed-loop LLM factory run as one monorepo: data pipeline → train
 | `apps/scout-cli` | scout-cli | The `scout` CLI (ex-BigBang) — 20+ capability-declared plugins plus the forge engine |
 | `apps/scout-rtx` | scout-rtx | Windows RTX hill-climb runner (torch cu128 hard-pin; excluded from the uv workspace) |
 | `apps/dottie` | — | Agent OS: engine, flywheel, policy guardrails, demand queue, task inbox |
-| `apps/bluehenre` | — | Blue Hen RE web surfaces deployed from the monorepo |
+| `apps/bluehenre` | — | The Dottie site: agentic-assistant Guide + provenance-honest artifact Hub + real-time dev Monitor (SPEC.md) |
 | `packages/ava-skills` | ava-skills | Skill system (memory-router, memory-mint, code-bench, safety-scanner, …) |
 | `packages/ava-open-harness` | ava-open-harness | Eval gate: J-Space tests, 11-category rubric, anti-mock guard |
 | `packages/personal-graphify` | personal-graphify | Code knowledge-graph CLI/library (Ollama-first) |
