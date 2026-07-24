@@ -457,53 +457,92 @@ async function loadHubRegistry() {
   hubReg = parseHubRegistry(doc);
   renderHubRegistry();
 }
+// shared hub-card bits (datasets + models both carry a provenance badge)
+const hubBadge = (b) => {
+  const s = document.createElement("span");
+  s.className = `badge ${b.cls}`; s.textContent = b.label;
+  return s;
+};
+const hubHead = (prettyName, cardPath, badge) => {
+  const h = document.createElement("div");
+  h.className = "dshead";
+  const nm = document.createElement("span");
+  nm.className = "nm";
+  if (cardPath) {
+    const a = document.createElement("a");
+    a.href = REPO_BASE + cardPath; a.target = "_blank"; a.rel = "noopener";
+    a.textContent = prettyName;
+    nm.append(a);
+  } else nm.textContent = prettyName;
+  h.append(nm, hubBadge(badge));
+  return h;
+};
+const hubChips = (tags) => {
+  const tg = document.createElement("div");
+  for (const t of tags) {
+    const c = document.createElement("span");
+    c.className = "chip"; c.textContent = t;
+    tg.append(c);
+  }
+  return tg;
+};
 function renderHubRegistry() {
   const el = $("hubreg");
   el.replaceChildren();
-  if (!hubReg || !hubReg.datasets.length) return offline(el, "no datasets in the registry yet");
-  for (const d of hubReg.datasets) {
-    const block = document.createElement("div");
-    block.className = "dsblock";
-    const head = document.createElement("div");
-    head.className = "dshead";
-    const nm = document.createElement("span");
-    nm.className = "nm";
-    if (d.cardPath) {
-      const a = document.createElement("a");
-      a.href = REPO_BASE + d.cardPath; a.target = "_blank"; a.rel = "noopener";
-      a.textContent = d.prettyName;
-      nm.append(a);
-    } else nm.textContent = d.prettyName;
-    const badge = document.createElement("span");
-    badge.className = `badge ${d.badge.cls}`;
-    badge.textContent = d.badge.label;
-    head.append(nm, badge);
-    block.append(head);
-    const stats = [];
-    if (Number.isFinite(d.rows)) stats.push(`${d.rows.toLocaleString()} rows`);
-    if (Number.isFinite(d.nFields)) stats.push(`${d.nFields} fields`);
-    if (d.sizeCategory) stats.push(d.sizeCategory);
-    if (d.license) stats.push(d.license.toUpperCase());
-    block.append(line(d.taskCategories[0] ?? d.kind, stats.join(" · ") || "—"));
-    if (d.integrity.sha256short) {
-      const src = d.integrity.sourceCount ? ` · ${d.integrity.sourceCount} source sha` : "";
-      block.append(line("integrity", `sha256 ${d.integrity.sha256short}…${src}`));
-    }
-    if (d.tags.length) {
-      const tg = document.createElement("div");
-      for (const t of d.tags) {
-        const c = document.createElement("span");
-        c.className = "chip"; c.textContent = t;
-        tg.append(c);
+  if (!hubReg || !hubReg.count) return offline(el, "no artifacts in the registry yet");
+
+  if (hubReg.datasets.length) {
+    el.append(P("Datasets", "hubsec"));
+    for (const d of hubReg.datasets) {
+      const block = document.createElement("div");
+      block.className = "dsblock";
+      block.append(hubHead(d.prettyName, d.cardPath, d.badge));
+      const stats = [];
+      if (Number.isFinite(d.rows)) stats.push(`${d.rows.toLocaleString()} rows`);
+      if (Number.isFinite(d.nFields)) stats.push(`${d.nFields} fields`);
+      if (d.sizeCategory) stats.push(d.sizeCategory);
+      if (d.license) stats.push(d.license.toUpperCase());
+      block.append(line(d.taskCategories[0] ?? d.kind, stats.join(" · ") || "—"));
+      if (d.integrity.sha256short) {
+        const src = d.integrity.sourceCount ? ` · ${d.integrity.sourceCount} source sha` : "";
+        block.append(line("integrity", `sha256 ${d.integrity.sha256short}…${src}`));
       }
-      block.append(tg);
+      if (d.tags.length) block.append(hubChips(d.tags));
+      if (d.summary) block.append(P(d.summary, "note"));
+      el.append(block);
     }
-    if (d.summary) block.append(P(d.summary, "note"));
-    el.append(block);
   }
-  el.append(P(`${hubReg.count} dataset card${hubReg.count === 1 ? "" : "s"} · ` +
-    "badge = provenance class per data_provenance_SOP.md (REAL measured · " +
-    "HONEST-SYNTHETIC labelled · PLACEHOLDER stand-in) — no card renders without one", "note"));
+
+  if (hubReg.models.length) {
+    el.append(P("Models", "hubsec"));
+    for (const m of hubReg.models) {
+      const block = document.createElement("div");
+      block.className = "dsblock";
+      block.append(hubHead(m.prettyName, m.cardPath, m.badge));
+      const a = m.arch;
+      const ab = [];
+      if (Number.isFinite(a.dModel)) ab.push(`${a.dModel}d`);
+      if (Number.isFinite(a.nLayers)) ab.push(`${a.nLayers}L`);
+      if (a.jspaceSplit) ab.push(`(${a.jspaceSplit})`);
+      if (a.mlp) ab.push(a.mlp);
+      block.append(line(a.preset ? `arch · ${a.preset}` : "arch", ab.join(" · ") || "—"));
+      if (a.paramsNote) block.append(line("params", a.paramsNote));
+      if (Number.isFinite(m.eval.value)) {
+        const tok = Number.isFinite(m.eval.tokens) ? ` · ${(m.eval.tokens / 1e6).toFixed(2)}M tok` : "";
+        block.append(line(m.eval.metric ?? "eval", `${m.eval.value.toLocaleString()}${tok}`));
+      }
+      // the differentiator: a retracted number is shown, named, never dropped
+      if (m.eval.retracted) block.append(P(`⚠ retracted (do not cite): ${m.eval.retracted}`, "retracted"));
+      if (m.license) block.append(line("license", m.license.toUpperCase()));
+      if (m.tags.length) block.append(hubChips(m.tags));
+      if (m.summary) block.append(P(m.summary, "note"));
+      el.append(block);
+    }
+  }
+
+  el.append(P(`${hubReg.count} artifact${hubReg.count === 1 ? "" : "s"} · badge = provenance class ` +
+    "per data_provenance_SOP.md (REAL measured · HONEST-SYNTHETIC labelled · PLACEHOLDER " +
+    "stand-in); retracted numbers are named, never dropped — no card renders without provenance", "note"));
 }
 
 function renderSites(h) {

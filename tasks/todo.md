@@ -96,8 +96,11 @@ public deploy is the operator's gated step.
       differentiator). Exporter scans `model_cards/` → registry `models[]`;
       `parseHubRegistry` returns models with badge + arch + eval. Suite 92→97,
       exporter test 9. Registry now {datasets:3, models:1}.
-  - [ ] Model cards UI — render a "Hub — Models" section (org + mobile) showing the
-        badge, arch, honest eval, and the retracted-number note. ← next
+  - [x] Model cards UI — the Hub card ("Hub — Artifacts") now renders Datasets +
+        Models sections: model badge, arch line, honest eval, and the RETRACTED
+        number as a distinct rust-colored "do not cite" note (the differentiator,
+        visible). org console. Suite 97; classes verified; pixels unconfirmed
+        (Chrome extension down).
   - [ ] Vector MTNN model cards (gridiron/hoops/pitch/equities) — needs cross-repo
         eval sourcing; same card pattern.
 
