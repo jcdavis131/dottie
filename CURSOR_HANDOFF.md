@@ -2,6 +2,51 @@
 
 **Paste-able brief for any agent continuing this work. Everything below is live and verified.**
 
+## SESSION COMPLETE STATE (2026-07-24) — Dottie site built, tested, CI-enforced, DEPLOY-READY
+
+The whole `/goal` arc is committed and green; the one remaining high-leverage
+action is the **operator's deploy**. Full detail in the dated blocks below.
+
+**Built + verified this session (all committed, NOT deployed):**
+- **Vision realigned + de-gamed** — SPEC of record (three faces), READMEs, TODO;
+  the open-world-game metaphor (NPC/campus/persona, `/api/npc-chat`) removed.
+- **Hub pillar COMPLETE** — a HuggingFace-style registry of the org's own
+  **datasets (3) + models (1) + research (10)**, one static `hub_registry.json`
+  rebuilt by a read-only exporter, each card provenance-badged
+  (REAL/HONEST-SYNTHETIC/PLACEHOLDER/UNCLASSIFIED). The ava-mini model card shows
+  the honest **2,268** ppl and NAMES the retracted 275.95/4103 (never dropped).
+  Rendered on org console AND mobile.
+- **Guide pillar (buildable half)** — the "what to do next" digest (`nextActions`)
+  on org + mobile. ReAct chat trace = Phase 4 (engine-dependent).
+- **OAPEN data pipeline** — `pull_oapen_books.py`, `dc.rights`-gated (CC-BY/SA/CC0
+  only; ND + NC + unlicensed excluded), 10 CC-BY books, HF-standard card = REAL.
+  Adversarially reviewed; a license-gate false-positive (multi-value `dc.rights`)
+  was found + FIXED.
+- **Deploy safety** — `build_hub_registry.mjs --check` fails if the committed
+  registry is stale (a stale registry = rendered ≠ source = a provenance
+  violation); a new CI job `bluehenre-checks` enforces the two suites + `--check`
+  + JS syntax on every push. Server hardened (generic 500, no `e.message` leak;
+  path traversal verified safe).
+
+**Pre-deploy verification (all green now):**
+```
+node apps/bluehenre/public/js/twin.contract.test.mjs        # 100 checks
+node apps/bluehenre/scripts/build_hub_registry.test.mjs     # 9 checks
+node apps/bluehenre/scripts/build_hub_registry.mjs --check  # registry fresh
+```
+**Deploy (operator):** `cd apps/bluehenre && vercel deploy --prod --yes` →
+`vercel alias set <url> www.bhenre.com` → update `data/last_good_deployment.txt`.
+Deploying also resolves the one standing caveat — every UI slice is verified at
+logic/class/syntax level, but pixels are unconfirmed (Chrome extension was down
+all session).
+
+**Queued / externally-blocked (nothing else is autonomously buildable):**
+vector MTNN model cards (cross-repo eval sourcing — do WITH operator, those repos
+had fabrications cleaned earlier); OAPEN scale-up (`--full` + the frozen
+`sources.yaml` entry); Phase 3 Monitor runtrack bridge (box-side); Guide ReAct
+trace (engine field). Two latent exporter bugs intentionally NOT fixed
+(multi-config `dataset_info`, quoted/glob `path:`) — no card triggers them.
+
 ## CURRENT STATE (2026-07-24): VISION RE-ALIGNED to the Dottie site (Guide/Hub/Monitor)
 
 - **Operator `/goal` (2026-07-24):** the Dottie site = **a Manus/OpenClaw/Hermes
