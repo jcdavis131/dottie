@@ -39,9 +39,14 @@
 - **REDEPLOYED (operator: "go")** — updated Hub LIVE on www.bhenre.com (deployment
   bluehenre-campus-7qupwunj6, aliased, pin updated). Live-verified: org.html 200,
   18 artifacts incl. Universal MTNN eval 0.7639 + OAPEN 48 books.
-- **AWAITING OPERATOR:** the Stage-2 hoops-encoder re-export (re-train + re-export
-  the vector-hoops MTNN so train_stage2.py can load it) to resolve G2 — provenance-
-  sensitive; needs an explicit greenlight for that specific upstream retrain.
+- **AWAITING OPERATOR:** the Stage-2 hoops-encoder re-export to resolve G2.
+  FEASIBILITY (read-only checked): vector-hoops has the training scripts
+  (`pipeline/bootstrap_train_matrix.py`, `mtnn_hp_sweep.py`, `export_mtnn_*.py`) +
+  fresh data (`embedding_v3.npz`, `mtnn_centroids.npz`, dated today) + the current
+  `pipeline/data/mtnn_best.pt`. The fix = re-train the hoops MTNN with current code
+  so `mtnn_best.pt` matches (the drift: injury tower added, career dim 10→30,
+  fusion 556→588), then re-run `train_stage2.py`. Provenance-sensitive (that repo
+  had fabrications cleaned earlier) — needs an explicit greenlight for the retrain.
 
 ## SESSION COMPLETE STATE (2026-07-24) — Dottie site built, tested, CI-enforced, DEPLOY-READY
 
