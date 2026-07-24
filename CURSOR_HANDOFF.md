@@ -39,14 +39,20 @@
 - **REDEPLOYED (operator: "go")** — updated Hub LIVE on www.bhenre.com (deployment
   bluehenre-campus-7qupwunj6, aliased, pin updated). Live-verified: org.html 200,
   18 artifacts incl. Universal MTNN eval 0.7639 + OAPEN 48 books.
-- **AWAITING OPERATOR:** the Stage-2 hoops-encoder re-export to resolve G2.
-  FEASIBILITY (read-only checked): vector-hoops has the training scripts
-  (`pipeline/bootstrap_train_matrix.py`, `mtnn_hp_sweep.py`, `export_mtnn_*.py`) +
-  fresh data (`embedding_v3.npz`, `mtnn_centroids.npz`, dated today) + the current
-  `pipeline/data/mtnn_best.pt`. The fix = re-train the hoops MTNN with current code
-  so `mtnn_best.pt` matches (the drift: injury tower added, career dim 10→30,
-  fusion 556→588), then re-run `train_stage2.py`. Provenance-sensitive (that repo
-  had fabrications cleaned earlier) — needs an explicit greenlight for the retrain.
+- **Stage-2 hoops re-export ATTEMPTED (operator: "do the hoops re-export") —
+  REAL ROOT CAUSE FOUND, needs operator:** a hoops retrain does NOT fix G2. The
+  actual blocker is that `vector-unified/pipeline/load_live_encoders.py` holds a
+  STALE hoops MTNN architecture (`towers.injury`) vs current hoops code
+  (`durability_head`) — so no hoops ckpt loads. Fix = sync `load_live_encoders.py`
+  to the current hoops MTNN class (delicate multi-repo code change). ALSO: my
+  naive `train_mtnn.py --epochs 40` re-export failed the hoops recall floor
+  (0.000<0.980 — wrong invocation) and OVERWROTE the gitignored
+  `vector-hoops/pipeline/data/embedding_v3.npz` + `mtnn_centroids.npz` with bad
+  outputs (regenerable by a CORRECT hoops run; no tracked/committed files or the
+  deployed site were touched — eval_scoreboard.json intact). Restored
+  `mtnn_best.pt` from backup. RECOMMEND the operator does the hoops work (correct
+  training invocation + the loader sync) — provenance-sensitive + needs the repo's
+  own conventions.
 
 ## SESSION COMPLETE STATE (2026-07-24) — Dottie site built, tested, CI-enforced, DEPLOY-READY
 

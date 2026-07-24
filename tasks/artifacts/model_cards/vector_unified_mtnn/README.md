@@ -81,12 +81,17 @@ than claimed as a pass. See `data_provenance_SOP.md`.
 ## Considerations / next stages
 
 - **Stage 1 + market + cultural-text trained** (this session). **Stage 2
-  (`train_stage2.py`, the structural G2 fix that unfreezes the per-sport encoders)
-  is BLOCKED**: it loads the live hoops encoder, but the committed hoops MTNN
-  checkpoint no longer matches current hoops code (`strict=True` fails — an
-  `injury` tower was added, `towers.career` input 10→30, fusion 556→588). It needs
-  the hoops encoder re-exported from current code in the hoops repo first. So G2
-  remains unresolved by encoder-unfreeze until that upstream drift is fixed.
+  (`train_stage2.py`, the structural G2 fix) is BLOCKED — root cause found
+  2026-07-24:** it loads the hoops encoder via `vector-unified/pipeline/
+  load_live_encoders.py`, whose copy of the hoops MTNN architecture is STALE
+  (expects `towers.injury`) relative to current hoops code (which uses
+  `durability_head`). A hoops re-train does NOT fix it — the retrained ckpt has
+  `durability_head` and still fails the loader's `strict=True`. The real fix is a
+  **code change in `load_live_encoders.py`** to match the current hoops MTNN class
+  (delicate multi-repo arch-sync). (A naive `train_mtnn.py --epochs 40` re-export
+  attempt also failed its own recall floor — the hoops trainer needs its correct
+  phase/selection invocation, known in the hoops repo.) G2 stays deferred until the
+  loader is synced.
 - Covers hoops/gridiron/pitch (the sports in `unified_matrix.npz`); golf/tennis
   are not yet in the unified matrix.
 - G2 remains the open gate: enrichment heads raise sport-recoverability; only
