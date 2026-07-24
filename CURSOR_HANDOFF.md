@@ -2,7 +2,24 @@
 
 **Paste-able brief for any agent continuing this work. Everything below is live and verified.**
 
-## CURRENT STATE (late evening 07-23): RUN COMPLETE — compact window still pending
+## CURRENT STATE (late evening 07-23): RUN COMPLETE — fleet RESTORED, compact deferred
+
+- **07-24 ~01:46 UTC: fleet RESTORED** at operator's "restore the fleet" directive.
+  Docker Desktop relaunched, 14 containers up (trainer stays down — schedule
+  complete), :8000 feed live (200), publisher fired clean, console API back to
+  `source: local`, www.bhenre.com/org.html 200. Research daemon RAM-blocked
+  again (normal — fleet re-consumed the RAM).
+- **vhdx compact NOT done** — operator chose to restore rather than run the
+  elevated diskpart. vhdx still 363 GB; C: 37 GB (non-critical). The window is
+  cheap to re-open: stop fleet + quit Docker Desktop + wsl --shutdown → vhdx
+  frees → operator runs `diskpart /s <compact_vhdx.txt>` in an ELEVATED
+  terminal (this session is NOT admin — verified — so the diskpart step is
+  always the operator's). I did the fleet-teardown cleanly last time; the only
+  blocker is the UAC/elevation for diskpart itself.
+- GOAT audit follow-through this session: namespace-collision design note
+  (4b43d9e), bare-except sweep complete across non-frozen code, dead-dep
+  cleanup. GLM-5.2 learnings analysis running (→ tasks/artifacts/glm52_learnings.md).
+
 
 **Newest first (post-run arc, all committed):**
 - **openswap adapter family SHIPPED** — 10 native offline replacements for paid
