@@ -51,8 +51,19 @@ def _factory_candidates() -> list[Path]:
 
 
 def _has_factory_code(root: Path) -> bool:
-    """Marker: the CodeAct substrate Dottie imports is present."""
-    return (root / "ava" / "rl" / "codeact_loop.py").is_file()
+    """Marker: the CodeAct substrate Dottie imports is present.
+
+    The source of truth is ``dottie/rl/codeact_loop.py`` — the ``ava/`` tree is
+    an import-time meta-path shim (ava.* aliases dottie.*), so the file was
+    never materialized under ``ava/rl/`` and checking that path failed on every
+    clean monorepo checkout (the "~36-40 tests need an external checkout"
+    defect). The legacy ``ava/`` path stays as a fallback for old checkouts that
+    still carry the physical file.
+    """
+    return (
+        (root / "dottie" / "rl" / "codeact_loop.py").is_file()
+        or (root / "ava" / "rl" / "codeact_loop.py").is_file()
+    )
 
 
 def factory_code_root() -> Path:
@@ -80,7 +91,7 @@ def factory_code_root() -> Path:
             " before running tests or the trainer by hand."
         )
     raise DottieResolutionError(
-        "ava-factory code (ava/rl/codeact_loop.py) not found. Probed: "
+        "ava-factory code (dottie/rl/codeact_loop.py) not found. Probed: "
         + ", ".join(str(c) for c in cands)
         + ". Set AVA_FACTORY_ROOT or DOTTIE_ROOT to a checkout that has it."
         + hint

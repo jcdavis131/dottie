@@ -812,7 +812,8 @@ def validate(code: str, *, class_name: Optional[str] = None,
              init_kwargs: Optional[Dict[str, Any]] = None,
              input_shape: Optional[List[int]] = None,
              workdir: Optional[str | Path] = None) -> ValidationResult:
-    """Run L1->L4 fail-fast. Returns the first failure, or the (passing) dry-run result."""
+    """Run L1->L6 fail-fast (syntax, contract, static, dry_run, integration_width,
+    residual_stream). Returns the first failure, or the (passing) dry-run result."""
     per_level: Dict[str, Dict[str, str]] = {}
 
     def record(r: ValidationResult) -> ValidationResult:
