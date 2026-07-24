@@ -294,7 +294,10 @@ function main() {
       console.error(`STALE: ${rel(OUT)} does not exist — run without --check to build it`);
       process.exit(1);
     }
-    if (readFileSync(OUT, "utf-8") === fresh) {
+    // normalize line endings: a Windows autocrlf checkout may store the committed
+    // file as CRLF in the working tree while the exporter emits LF — compare content
+    const committed = readFileSync(OUT, "utf-8").replace(/\r\n/g, "\n");
+    if (committed === fresh) {
       console.log(`fresh: ${rel(OUT)} matches the cards (${summary})`);
       process.exit(0);
     }

@@ -51,3 +51,24 @@ jobs:
         run: |
           if git ls-files | grep -E "dottie_live_status|dottie_telemetry|STATUS.json|results.tsv" ; then echo "Telemetry still tracked!"; exit 1; fi
           echo "Telemetry clean ✓"
+
+  bluehenre-checks:
+    # The Dottie site (apps/bluehenre) — zero-dep, bare-node. Enforces the
+    # provenance guarantees: pure parsers, the Hub exporter parser, and that the
+    # committed hub_registry.json still matches its source cards (never stale).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Twin contract suite (pure parsers)
+        run: node apps/bluehenre/public/js/twin.contract.test.mjs
+      - name: Hub registry exporter parser regression
+        run: node apps/bluehenre/scripts/build_hub_registry.test.mjs
+      - name: Hub registry freshness (rendered matches source)
+        run: node apps/bluehenre/scripts/build_hub_registry.mjs --check
+      - name: JS syntax check (server + front-end)
+        run: |
+          for f in apps/bluehenre/server.mjs apps/bluehenre/api/assistant-chat.mjs \
+                   apps/bluehenre/public/js/twin.mjs apps/bluehenre/public/js/org.mjs \
+                   apps/bluehenre/public/js/console.mjs apps/bluehenre/scripts/build_hub_registry.mjs; do
+            node --check "$f"
+          done

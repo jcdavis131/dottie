@@ -115,7 +115,12 @@ public deploy is the operator's gated step.
       committed `hub_registry.json` no longer matches the cards (a stale registry =
       the Hub rendering data that doesn't match its source = a provenance violation).
       Pre-deploy verification sequence documented in the bluehenre README. Verified:
-      fresh→0, mutated→1, byte-identical refactor.
+      fresh→0, mutated→1, byte-identical refactor. `--check` normalizes CRLF/LF so it
+      is correct on a Windows checkout too.
+- [x] **CI enforces the site guarantees** — new `bluehenre-checks` job in ci.yml runs
+      the twin contract suite + exporter regression test + registry `--check` +
+      JS syntax on every push/PR. A stale registry or broken parser now fails CI
+      (the provenance guarantees are automated, not just documented). Zero-dep bare-node.
 
 ## Operator calls (from the provenance audit — deliberately not auto-done)
 - [ ] Rotate the previously-committed `HF_TOKEN` and place the new value in the
