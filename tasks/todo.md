@@ -63,8 +63,11 @@ public deploy is the operator's gated step.
       `dc.rights`-gated: CC-BY/SA/CC0 only, ND + NC + unlicensed excluded). Sample:
       10 CC-BY scholarly books, license-verified + sha256-pinned, HF-standard card,
       auto-rendered in the Hub registry (now 3 datasets). Excluded 29/39 by license.
-- [ ] Scale OAPEN (`--full` + higher `--target`) + decontaminate vs eval stems;
-      then the operator lands the `sources.yaml` entry (frozen config).
+- [ ] Scale OAPEN (`--full` + higher `--target`), then the operator lands the
+      `sources.yaml` entry (frozen config). Decon note: OAPEN can't overlap the
+      CURRENT held-out (not a generator); `HELDOUT_SEED` disjointness applies
+      automatically once registered — a raw-text 13-gram cross-check needs the
+      box-side tokenizer. See the card's Decontamination section.
 - [ ] Future clean expansions: broaden Gutenberg, Standard Ebooks, PMC-OA, Wikisource.
 
 ## Gated / dependency-blocked (Phase 4)
