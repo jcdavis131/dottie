@@ -314,7 +314,7 @@
     {
       "name": "vector_unified_mtnn",
       "kind": "model",
-      "pretty_name": "Universal MTNN (vector-unified trunk, Stage 1)",
+      "pretty_name": "Universal MTNN (vector-unified trunk)",
       "classification": "REAL",
       "license": "mit",
       "tags": [
@@ -326,7 +326,7 @@
         "dottie"
       ],
       "arch": {
-        "preset": "unified trunk (Stage 1, frozen encoders)",
+        "preset": "unified trunk (frozen encoders; Stage 1 + market + cultural-text heads)",
         "dModel": null,
         "nLayers": null,
         "nHeads": null,
@@ -338,10 +338,10 @@
       },
       "eval": {
         "metric": "cross-sport archetype silhouette (Stage-1 unified eval, G3)",
-        "value": 0.7095,
+        "value": 0.7639,
         "tokens": null,
-        "method": "20,721 players → shared 64-dim z. G1 per-sport non-inferiority PASS (z vs frozen e_s kNN-5 — hoops 0.998, gridiron 0.991, pitch 0.996); G3 silhouette 0.7095 PASS (within-cos 0.767 > between-cos -0.138); collapse-detector PASS",
-        "retracted": "G2 sport-invariance is DEFERRED (acc 0.717 vs chance 0.333; the literal>32 rank test fails, the non-degenerate>12 passes — needs a no-GRL baseline to conclude) — not a clean pass, stated honestly"
+        "method": "20,721 players → shared 64-dim z. Trained through Stage 1 → +market ($/prestige) → +cultural-text (Wikipedia MiniLM). G1 per-sport non-inferiority PASS throughout; G3 cross-sport silhouette rises 0.7095→0.7424→0.7639 with each stage. Headline is the cultural stage (all heads). collapse-detector PASS.",
+        "retracted": "G2 sport-invariance stays DEFERRED across all stages and WORSENS (acc 0.717→0.778→0.891) as sport-correlated market/cultural signal is added — Stage 2 (unfreeze encoders, unified_stage2_best.pt) is the structural fix, not these heads. Stated honestly, not a clean pass."
       },
       "summary": null,
       "card_path": "tasks/artifacts/model_cards/vector_unified_mtnn/README.md",

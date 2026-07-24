@@ -70,6 +70,13 @@ public deploy is the operator's gated step.
       CURRENT held-out (not a generator); `HELDOUT_SEED` disjointness applies
       automatically once registered — a raw-text 13-gram cross-check needs the
       box-side tokenizer. See the card's Decontamination section.
+- [x] **OAPEN OAI-PMH harvester BUILT** (operator: "green light… larger OAPEN pull").
+      `apps/dottie/scripts/pull_oapen_oai.py` — harvests the FULL ~57k-record catalog
+      via OAI-PMH `dim` (uncaps the ~600 REST-search ceiling), which carries per-record
+      license (CC URL) + language; filters English + training-safe CC (reuses the vetted
+      gate), fetches `.pdf.txt` per handle, dedups by content sha, writes incrementally
+      (checkpoint-safe). Yield ~1.1% CC-BY-English (most records are non-English or
+      non-CC-licensed). A 100-book harvest is running; the full corpus is gitignored.
 - [ ] Future clean expansions: broaden Gutenberg, Standard Ebooks, PMC-OA, Wikisource.
 
 ## Adversarial code review (2026-07-24) — findings addressed
@@ -113,14 +120,17 @@ public deploy is the operator's gated step.
         + overall 0.6899 — correcting the earlier "baselines only" read. pitch has no
         standalone eval artifact but is covered by the unified trunk; golf/tennis have
         no trained MTNN eval yet.)
-  - [x] **Universal MTNN TRAINED** (operator: "start training the universal MTNN to
-        connect them all"). `vector-unified/pipeline/train_unified.py --epochs 60`,
-        Stage 1, 60 epochs in 162s on the free RTX 4080 → `unified_best.pt`. Eval
-        (`eval_unified.py`): 20,721 players in a shared 64-dim space across
-        hoops/gridiron/pitch; G1 per-sport non-inferiority PASS, G3 cross-sport
-        silhouette 0.7095 PASS, G2 sport-invariance DEFERRED (honest), collapse PASS.
-        Carded REAL in the Hub. Next stages (--finetune / --market / --cultural-text)
-        warm-start from this trunk.
+  - [x] **Universal MTNN TRAINED — Stage 1 + market + cultural-text** (operator:
+        "start training…" → "green light all optional next steps"). Stage 1
+        (`train_unified.py --epochs 60`) → `--market` ($/prestige heads) →
+        `--cultural-text` (Wikipedia MiniLM). 20,721 players in a shared 64-dim
+        space across hoops/gridiron/pitch. G1 non-inferiority PASS every stage; G3
+        cross-sport silhouette rises **0.7095 → 0.7424 → 0.7639** (the enrichment
+        heads add real cross-sport structure). G2 sport-invariance DEFERRED and
+        worsens (0.717→0.891) as sport-correlated signal is added — Stage 2
+        (`train_stage2.py`, encoder unfreeze) is the structural fix (ckpt exists,
+        not retrained/eval'd here — eval can't load its structure). Universal MTNN
+        card updated to REAL with the full honest progression; Hub eval now 0.7639.
 - [x] **Mobile Hub parity** — the phone terminal view now has a HUB//ARTIFACTS card
       (datasets + models, provenance-badged in the amber palette, retracted number
       named). Reuses the tested `parseHubRegistry`; loaded once, not polled. Suite 97.
