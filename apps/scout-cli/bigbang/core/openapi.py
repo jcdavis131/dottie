@@ -465,7 +465,7 @@ def generate_typer_plugin(tool_name: str, spec: dict, url: str) -> list[str]:
                 f'    resp=httpx.request("{method.upper()}", url, params=params or None, headers=_auth_headers() or None, timeout=10, follow_redirects=True)'
             )
             lines.append("    try: data=resp.json()")
-            lines.append("    except: data=resp.text[:4000]")
+            lines.append("    except ValueError: data=resp.text[:4000]")
             lines.append(
                 f'    emit({{"url": url, "data": data, "status": resp.status_code}}, command="{safe_tool_name} {cmd_name}")'
             )
