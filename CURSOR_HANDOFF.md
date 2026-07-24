@@ -25,8 +25,19 @@
   (deployment `bluehenre-campus-7rcs5fjz1`, aliased, pin updated). Live-verified:
   org.html 200, /hub_registry.json serving all 18 artifacts incl. the 4 vector +
   Universal MTNN cards with correct classifications/evals.
-- **AWAITING OPERATOR (optional next):** further MTNN stages (--finetune/--market/
-  --cultural-text); the G2 no-GRL baseline; the larger OAPEN pull (OAI-PMH/DOAB).
+- **"green light all optional next steps" — DONE** (commits 43977ef, 764db61, d2f4a18):
+  - Universal MTNN **market** (`unified_market.pt`, G3 0.7424) + **cultural-text**
+    (`unified_cultural.pt`, G3 0.7639) stages trained + eval'd; card REAL with the
+    honest progression (G3 rises, G1 holds, G2 worsens as sport-signal is added).
+  - **Stage 2 (the G2 fix) BLOCKED**: `train_stage2.py` can't load the live hoops
+    encoder — the committed hoops MTNN ckpt drifted from current hoops code
+    (`strict` fails: injury tower added, career dim 10→30, fusion 556→588). Needs
+    the hoops encoder re-exported in the vector-hoops repo (re-train + re-export) —
+    provenance-sensitive; awaiting explicit operator greenlight.
+  - **OAPEN OAI-PMH harvester** (`pull_oapen_oai.py`) — uncaps the ~600 REST ceiling
+    to the full ~57k catalog; corpus 19 → **48 unique CC-BY(-SA) books, ~10.1M tokens**.
+- **AWAITING OPERATOR:** redeploy to push the updated Hub live (Universal eval 0.7639,
+  OAPEN 48 — committed, NOT live); the Stage-2 hoops-encoder re-export (to resolve G2).
 
 ## SESSION COMPLETE STATE (2026-07-24) — Dottie site built, tested, CI-enforced, DEPLOY-READY
 
