@@ -2,7 +2,7 @@
 // org from a phone — run status, fleet, alerts, Dottie chat, sites. Same data
 // spine and provenance doctrine as everything else: numbers render only from
 // source:"local" feeds; everything else says offline, honestly.
-import { twinLine, parseHub } from "./twin.mjs";
+import { twinLine, parseHub, nextActions } from "./twin.mjs";
 
 const $ = (id) => document.getElementById(id);
 const esc = (el, text) => { el.textContent = text; return el; };
@@ -284,6 +284,46 @@ function renderSites() {
   el.append(wrap);
 }
 
+// Guide — "what should I do next" on the phone: the deterministic digest
+// (nextActions) that ranks the org's REAL open items (alerts + research queue +
+// fleet health), each with its team and, where unambiguous, a steer command
+// (copy + open STEER — the same owner-gated write path as fleet control). This
+// is the assistant's guidance surface for the operator steering from anywhere.
+function renderGuide() {
+  const el = $("guide");
+  if (!el) return;
+  el.replaceChildren();
+  const na = nextActions(twin, Array.isArray(lastFleet?.containers) ? lastFleet.containers : null);
+  el.append(line("what to do next", na.count ? `${na.count} open` : "org unblocked"));
+  if (!na.count) {
+    el.append(esc(Object.assign(document.createElement("p"), { className: "ok-line" }),
+      "● nothing queued — no real alerts, no pending reviews"));
+    return;
+  }
+  for (const a of na.actions) {
+    const row = document.createElement("div");
+    row.className = "alert";
+    const who = document.createElement("div");
+    who.className = "who";
+    who.textContent = `${a.severity.toUpperCase()} · ${a.team} team`;
+    row.append(who, esc(document.createElement("div"), a.label));
+    if (a.steerCmd) {
+      const bar2 = document.createElement("div");
+      bar2.className = "fleetact";
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = "copy + STEER";
+      b.addEventListener("click", async () => {
+        try { await navigator.clipboard.writeText(a.steerCmd); } catch { /* gist still opens */ }
+        open(STEER_URL, "_blank", "noopener");
+      });
+      bar2.append(esc(document.createElement("span"), `${a.steerCmd} →`), b);
+      row.append(bar2);
+    }
+    el.append(row);
+  }
+}
+
 async function refreshTwin() {
   try {
     const r = await fetch("/api/twin-status");
@@ -296,12 +336,13 @@ async function refreshTwin() {
   $("chathint").textContent = twin.source === "local" && twin.via === "pipeline-endpoint"
     ? "wired to the local Dottie engine when configured — replies are source-stamped"
     : "replies are source-stamped [dottie] or [offline] — never fabricated";
-  renderRun(); renderBatch(); renderAlerts(); renderHub(); renderSites();
+  renderRun(); renderBatch(); renderAlerts(); renderHub(); renderSites(); renderGuide();
 }
 async function refreshFleet() {
   let f = null;
   try { f = await (await fetch("/api/fleet")).json(); } catch { f = { source: "offline" }; }
   renderFleet(f);
+  renderGuide(); // fleet health feeds the digest
 }
 
 $("askform").addEventListener("submit", async (e) => {

@@ -38,11 +38,17 @@ public deploy is the operator's gated step.
 
 **Phase 1 (Hub Artifact Registry) is code-complete — pending the operator deploy.**
 
-## Next — Phase 2: GUIDE digest + agent tiles
-- [ ] `nextActions(status)` in `twin.mjs` (rank alerts + research counts + fleet
-      health; each carries its steer command) + contract test.
-- [ ] `renderGuide()` — ranked next-action list + three autonomous-agent activity
-      tiles from live telemetry.
+## Phase 2: GUIDE digest + agent tiles
+- [x] `nextActions(live, fleetRows)` in `twin.mjs` (ranks alerts + research queue
+      + fleet health critical→high→normal; steer command where unambiguous) + 7
+      contract tests (suite → 92).
+- [x] `renderGuide()` — ranked next-action list in the assistant card, each
+      steer-carrying action reusing the copy+open-STEER write path. On BOTH the
+      org console (`org.mjs`) AND the mobile terminal view (`console.mjs`/
+      `index.html`) — the operator's phone is the primary steering surface.
+      Visual render unconfirmed (Chrome extension down); endpoints serve 200.
+- [ ] Agent-activity tiles (research loop / fleet / trainer) — deferred; the
+      digest is the higher-value half and shipped first.
 
 ## Then — Phase 3: MONITOR runtrack readout
 - [ ] Bridge `runtrack` (scout-cli openswap, pure-sqlite) to the live
