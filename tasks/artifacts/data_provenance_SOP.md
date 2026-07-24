@@ -90,4 +90,28 @@ either exclude them or carry the contamination block stating the bias direction.
 - Public metrics get a provenance line in review; a number with no traceable
   computation is a blocker.
 
+## Dataset card structure (HF-standard) — every custom dataset we build
+
+Model the structure on The Stack v3
+(https://huggingface.co/datasets/HuggingFaceCode/stack-v3-train). Each dataset
+we build ships as its own directory: `README.md` (the card) + the data file(s),
+co-located and HF-loadable. The card is:
+
+1. **YAML frontmatter** — machine-readable metadata: `pretty_name`, `license`,
+   `task_categories`, `language`, `tags`, `size_categories`, `configs`
+   (`config_name` + `data_files` with split→path), and `dataset_info` with typed
+   `features` (name + dtype for every column) and `splits` (name + num_examples).
+   ADD `provenance_classification: REAL | HONEST-SYNTHETIC | PLACEHOLDER` under
+   `dataset_info` — the SOP field on the card itself.
+2. **Sections**, in order: Dataset Summary → Data Structure/Fields (typed schema
+   table) → Splits (row counts) → Dataset Creation (Source data, Integrity or
+   reproducibility, **Provenance classification**, Personal/sensitive info) →
+   Considerations for Using the Data (the honest limitations/contamination) →
+   Licensing → Citation (with the exact regenerate command).
+
+Reference exemplars in this repo:
+`tasks/artifacts/corpus_proposals/repair_transcripts/README.md` (HONEST-SYNTHETIC)
+and `.../gridiron_forecast_rows/README.md` (REAL). A dataset without this card
+does not ship — the card IS the provenance metadata block for datasets.
+
 *This SOP is the standing rule; the audit findings below drive the remediation.*
