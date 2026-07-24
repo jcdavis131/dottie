@@ -53,3 +53,16 @@ most honest components. hoops/pitch/gridiron DATA and game logic are real.
 Internal integrity first (1, 5, 7 — no public/destructive risk), then the public
 fabrications worst-first (2, 3, 4, 8), then the operator-only/decision items
 (6 secret, 9 delete, 10 labels, 11 curriculum mix).
+
+## UPDATE (2026-07-24): honest eval measured after fix #1
+
+Rebuilt the held-out bins with the disjoint seed and re-ran tool_final@2861:
+- **Honest (disjoint, 6.36M tokens): weighted ppl 2,268** (p0 3506 / p1 997 /
+  p2 22440 / p3 2134 / p4 335 / p5 4.9 — all six phases now scorable).
+- Old contaminated bins (30,208 tokens, overlapped training): 4,103.
+- The delta is CONFOUNDED (contamination + tiny-sample together), so it is NOT a
+  clean "memorization = X" measurement — honest came out LOWER, opposite the naive
+  memorization prediction. Conclusion: the prior bins were untrustworthy in both
+  size and provenance; **2,268 is the first reliable perplexity number**, and this
+  session's 275.95→4,103 A/B should be treated as unreliable (re-run the step-1487
+  baseline on the honest bins for a real comparison).
