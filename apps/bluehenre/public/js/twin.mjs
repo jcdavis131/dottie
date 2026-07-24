@@ -551,6 +551,21 @@ export function parseHubRegistry(doc) {
   return { count: datasets.length + models.length + research.length, datasets, models, research };
 }
 
+/** Filter a parsed hub registry by provenance class for the Hub's class filter.
+ * cls: "all" | "real" | "synthetic" | "placeholder" | "unknown". Datasets+models
+ * are filtered by badge.cls; research (no provenance class) shows only under "all".
+ * Returns a registry-shaped {datasets, models, research}; null on bad input. */
+export function filterRegistry(hubReg, cls) {
+  if (!hubReg || typeof hubReg !== "object") return null;
+  const all = !cls || cls === "all";
+  const keep = (a) => all || a?.badge?.cls === cls;
+  return {
+    datasets: (Array.isArray(hubReg.datasets) ? hubReg.datasets : []).filter(keep),
+    models: (Array.isArray(hubReg.models) ? hubReg.models : []).filter(keep),
+    research: all ? (Array.isArray(hubReg.research) ? hubReg.research : []) : [],
+  };
+}
+
 /** Roll a parsed hub registry into the honesty accounting the Provenance card
  * headlines — the site's whole differentiator, glanceable. Counts datasets+models
  * by provenance class, the models that NAME a retracted/contamination caveat

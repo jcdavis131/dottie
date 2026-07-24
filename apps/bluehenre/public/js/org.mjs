@@ -1,7 +1,7 @@
 // Blue Hen RE org console (www.bhenre.com): every little aspect of the org,
 // rendered from real telemetry only. Same provenance doctrine as everything
 // else: source:"local" or it says offline; absences render as absences.
-import { twinLine, parseHub, parseHubRegistry, nextActions, provenanceSummary } from "./twin.mjs";
+import { twinLine, parseHub, parseHubRegistry, nextActions, provenanceSummary, filterRegistry } from "./twin.mjs";
 
 const $ = (id) => document.getElementById(id);
 const P = (text, cls = "") => {
@@ -449,6 +449,7 @@ function renderEco(h) {
 // live-telemetry gate. Card links go to the public repo blob (real URL).
 const REPO_BASE = "https://github.com/jcdavis131/dottie/blob/main/";
 let hubReg = null;
+let hubFilter = "all"; // provenance-class filter for the Hub
 async function loadHubRegistry() {
   const el = $("hubreg");
   let doc = null;
@@ -513,9 +514,26 @@ function renderHubRegistry() {
       `${ps.research} research reports sha-pinned — provenance-honest by construction`, "note"));
   }
 
-  if (hubReg.datasets.length) {
+  // provenance-class filter chips (only classes that exist)
+  const fbar = document.createElement("div");
+  fbar.className = "hubfilter";
+  for (const [cls, label] of [["all", "all"], ["real", "REAL"], ["synthetic", "HONEST-SYNTHETIC"],
+                              ["placeholder", "PLACEHOLDER"], ["unknown", "UNCLASSIFIED"]]) {
+    if (cls !== "all" && !(ps && ps.byClass[cls] > 0)) continue;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "fchip" + (hubFilter === cls ? " on" : "");
+    b.textContent = label;
+    b.addEventListener("click", () => { hubFilter = cls; renderHubRegistry(); });
+    fbar.append(b);
+  }
+  el.append(fbar);
+
+  const view = filterRegistry(hubReg, hubFilter) || { datasets: [], models: [], research: [] };
+
+  if (view.datasets.length) {
     el.append(P("Datasets", "hubsec"));
-    for (const d of hubReg.datasets) {
+    for (const d of view.datasets) {
       const block = document.createElement("div");
       block.className = "dsblock";
       block.append(hubHead(d.prettyName, d.cardPath, d.badge));
@@ -535,9 +553,9 @@ function renderHubRegistry() {
     }
   }
 
-  if (hubReg.models.length) {
+  if (view.models.length) {
     el.append(P("Models", "hubsec"));
-    for (const m of hubReg.models) {
+    for (const m of view.models) {
       const block = document.createElement("div");
       block.className = "dsblock";
       block.append(hubHead(m.prettyName, m.cardPath, m.badge));
@@ -562,9 +580,9 @@ function renderHubRegistry() {
     }
   }
 
-  if (hubReg.research?.length) {
+  if (view.research?.length) {
     el.append(P("Research", "hubsec"));
-    for (const r of hubReg.research) {
+    for (const r of view.research) {
       const block = document.createElement("div");
       block.className = "dsblock";
       const head = document.createElement("div");
@@ -587,8 +605,10 @@ function renderHubRegistry() {
     }
   }
 
-  el.append(P(`${hubReg.count} artifact${hubReg.count === 1 ? "" : "s"} · badge = provenance class ` +
-    "per data_provenance_SOP.md (REAL measured · HONEST-SYNTHETIC labelled · PLACEHOLDER " +
+  const shown = view.datasets.length + view.models.length + view.research.length;
+  const filterNote = hubFilter === "all" ? "" : ` · showing ${shown} of ${hubReg.count} (filter: ${hubFilter})`;
+  el.append(P(`${hubReg.count} artifact${hubReg.count === 1 ? "" : "s"}${filterNote} · badge = provenance ` +
+    "class per data_provenance_SOP.md (REAL measured · HONEST-SYNTHETIC labelled · PLACEHOLDER " +
     "stand-in); retracted numbers are named, never dropped — no card renders without provenance", "note"));
 }
 

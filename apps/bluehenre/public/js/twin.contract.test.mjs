@@ -1,7 +1,7 @@
 // Contract: the twin never fabricates the real model's state.
 import { parseMetricsTail, safeParseJson, parseEvalSummary, twinLine,
          parseTrainerTail, parseDashboard, parseLiveEvents, liveAgeS, parseHub,
-         parseHubRegistry, nextActions, provenanceSummary } from "./twin.mjs";
+         parseHubRegistry, nextActions, provenanceSummary, filterRegistry } from "./twin.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = "") => {
@@ -459,6 +459,20 @@ check("provenance summary: caveatsNamed = models that name a retracted/contamina
 check("provenance summary: bad input -> null, empty -> zeros",
   provenanceSummary(null) === null &&
   provenanceSummary({ datasets: [], models: [], research: [] }).total === 0);
+
+// ---- Hub class filter -------------------------------------------------------
+const fReg = parseHubRegistry({
+  datasets: [{ name: "d1", classification: "REAL" }, { name: "d2", classification: "HONEST-SYNTHETIC" }],
+  models: [{ name: "m1", classification: "REAL", eval: {} }, { name: "m2", classification: "PLACEHOLDER", eval: {} }],
+  research: [{ name: "r1", integrity: { sha256: "aa" } }],
+});
+check("filter 'all' returns everything incl. research",
+  (() => { const f = filterRegistry(fReg, "all"); return f.datasets.length === 2 && f.models.length === 2 && f.research.length === 1; })());
+check("filter 'real' keeps only REAL datasets+models, drops research",
+  (() => { const f = filterRegistry(fReg, "real"); return f.datasets.length === 1 && f.models.length === 1 && f.research.length === 0 && f.datasets[0].name === "d1"; })());
+check("filter 'placeholder' keeps only the PLACEHOLDER model",
+  (() => { const f = filterRegistry(fReg, "placeholder"); return f.datasets.length === 0 && f.models.length === 1 && f.models[0].name === "m2"; })());
+check("filter bad input -> null", filterRegistry(null, "real") === null);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

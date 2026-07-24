@@ -97,6 +97,12 @@
   .provsum { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px;
              padding-bottom: 8px; border-bottom: 1px solid var(--bh-border-strong); }
   .provsum .badge { font-size: 11px; padding: 2px 10px; }
+  .hubfilter { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .fchip { font-family: var(--bh-font-mono); font-size: 10.5px; letter-spacing: .3px;
+           padding: 2px 10px; border-radius: 11px; border: 1px solid var(--bh-border-strong);
+           background: transparent; color: var(--bh-secondary); cursor: pointer; }
+  .fchip:hover { border-color: var(--bh-hen-blue); }
+  .fchip.on { background: var(--bh-hen-blue); color: #fff; border-color: var(--bh-hen-blue); }
   .dsblock { padding: 8px 0; border-bottom: 1px dotted var(--bh-border); }
   .dsblock:last-child { border-bottom: 0; }
   .dshead { display: flex; justify-content: space-between; align-items: center;
