@@ -101,8 +101,15 @@ public deploy is the operator's gated step.
         number as a distinct rust-colored "do not cite" note (the differentiator,
         visible). org console. Suite 97; classes verified; pixels unconfirmed
         (Chrome extension down).
-  - [ ] Vector MTNN model cards (gridiron/hoops/pitch/equities) — needs cross-repo
-        eval sourcing; same card pattern.
+  - [ ] Vector MTNN model cards (gridiron/hoops/pitch/equities). FEASIBILITY (checked
+        2026-07-24): the vector-* repos exist at ~/vector-* and carry committed,
+        git-tracked eval artifacts (e.g. vector-gridiron `assets/eval_backtest.json`,
+        already sha-cited by the gridiron dataset card). BUT that artifact holds the
+        BASELINE forecaster Spearman, not the trained MTNN's eval (per the gridiron
+        audit, MTNN predictions are recomputed in-memory, not persisted). So: honest
+        cards for the simple baselines are sourceable from committed artifacts now;
+        genuine MTNN-eval cards need a persisted model eval (compute/box) — do WITH
+        the operator (those repos had fabrications cleaned earlier; provenance-delicate).
 - [x] **Mobile Hub parity** — the phone terminal view now has a HUB//ARTIFACTS card
       (datasets + models, provenance-badged in the amber palette, retracted number
       named). Reuses the tested `parseHubRegistry`; loaded once, not polled. Suite 97.
