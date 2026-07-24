@@ -56,7 +56,7 @@ dataset_info:
     dtype: string
   splits:
   - name: train
-    num_examples: 10
+    num_examples: 19
   provenance_classification: REAL
 ---
 
@@ -74,9 +74,16 @@ the gap left by `pes2o` (papers, not books). Structure modelled on
 governance per `tasks/artifacts/data_provenance_SOP.md` and the clean-source
 allowlist in `external_book_sources.md`.
 
-This is a **10-book CC-BY sample** proving the pipeline + license discipline; the
-puller scales to the full corpus. **Nothing auto-ingests this file** — audited
-proposal artifact.
+Scaled pull (2026-07-24): **19 unique CC-BY English books, 11.2M chars ≈ 2.8M
+tokens** of full text (the training corpus lives gitignored at
+`apps/ava-factory/data/oapen_books/`; THIS committed file is a bounded 12k-char
+excerpt per book, ~257 KB, for audit). 19 is the ceiling of the simple
+`dc.rights:*creativecommons*` wildcard search: it returns ~600 records total, of
+which 542 were non-English, 11 NoDerivatives, 22 NonCommercial, and **6 were
+content duplicates** (OAPEN serves the same book under multiple handles — the
+puller now dedups by text sha256, not just handle). A much larger pull (thousands
+of books) needs OAPEN's OAI-PMH feed or the DOAB metadata dump — a tracked
+follow-up. **Nothing auto-ingests this file** — audited proposal artifact.
 
 ## Data Structure / Fields
 
@@ -105,7 +112,7 @@ One JSON object per line (JSONL). Row = one open-access book.
 
 | split | rows | coverage |
 |---|---|---|
-| train | 10 | English CC-BY scholarly books; 39 records scanned, 29 excluded by license |
+| train | 19 | unique English CC-BY books; 600 scanned, 581 excluded (542 non-English, 11 ND, 22 NC, 6 dup) |
 
 ## Dataset Creation
 
@@ -113,16 +120,18 @@ One JSON object per line (JSONL). Row = one open-access book.
 OAPEN public REST API (`library.oapen.org/rest`), read-only, via
 `apps/dottie/scripts/pull_oapen_books.py` (stdlib-only). Text is OAPEN's own
 pre-extracted `.pdf.txt` bitstream per book (no PDF parsing). Query:
-`dc.rights:*creativecommons* AND dc.language:English`.
+`dc.rights:*creativecommons*` with English filtered client-side (the server-side
+`AND dc.language:English` clause silently capped results at ~58 records; rights-only
+paginates the full ~600-record CC result set).
 
 ### License verification (the provenance gate)
 Every book's `dc.rights` is parsed and gated. Included: **CC-BY / CC-BY-SA / CC0**
 (permissive, derivatives allowed). **Always excluded: any `*-ND`** (NoDerivatives
 — training a model is a derivative use) and books with **no `dc.rights`**
 (gratis OA is not an open license). **NonCommercial (`*-NC`)** is excluded by
-default (opt-in via `--allow-nc`, flagged `nc=true`). In this pull, 10 of 39
-scanned passed — all CC-BY; 10 were ND and 19 were NC. Per-book license + full
-text sha256 in `oapen_open_books_audit.md`.
+default (opt-in via `--allow-nc`, flagged `nc=true`). In this pull, 19 unique of 600
+scanned passed — all CC-BY; 542 non-English, 11 ND, 22 NC, 6 duplicate-content. Per-book license +
+full text sha256 in `oapen_open_books_audit.md`.
 
 ### Provenance classification
 **REAL** — real, peer-reviewed, openly-licensed books from a real public

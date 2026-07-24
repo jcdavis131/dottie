@@ -66,11 +66,11 @@
         "dottie"
       ],
       "size_category": "n<1K",
-      "rows": 10,
+      "rows": 19,
       "splits": [
         {
           "name": "train",
-          "num_examples": 10
+          "num_examples": 19
         }
       ],
       "n_fields": 16,
@@ -79,23 +79,32 @@
       "data_files": [
         {
           "name": "oapen_open_books.jsonl",
-          "bytes": 134493,
-          "sha256": "baceb5965433316a6eb87edfde0734fcd4d289698f1a1731683ad85218a18d6c"
+          "bytes": 257100,
+          "sha256": "242f8af6118aab2d5b66e1e172fe60cbba35c9847f3be41e3b684f01a885a253"
         }
       ],
       "audit": {
-        "generated": "2026-07-24",
+        "generated": null,
         "source_sha256": [
           "2e4bcfa49dbcec564157ec56d220850bb3de2144ca29dd9dd52478c1a056fa34",
           "af3eb54301e758e1b22d5a75a872246234c8e90655c54970c530b2e9490038fd",
           "178a2740c940f5843c6d2d63d1976938c5dfb35756b0ccbc46bf0bf52f304701",
+          "0145ffad6db393e4f3f2891b2e06ea0302fac54c0a502c0911c4b76d1258019f",
           "668fa644b4bb2b027d8bcefce45a37356b0de49a5d0d93c76a2cdc5f4b4dfd40",
           "9116107b3d41db11c41e4b6fa853da8e5e3924b64610de029086d83e58a75005",
           "305cf190bb98c3988d28c9e0453db3bfeb85a8fefde10277ac92f33eca9d7a56",
           "58cc993614744338ebd63bed0c76748b080d8815102c51dbb09b70f13b3f2c09",
           "68adfd6a45dba3c797cc5eea83b1362bbb7e3817b1f9e2eb1677cd1ed400f192",
           "3847c839e7b2a05329b99b290033f386d27799438b567e1a0f525c04108fcc78",
-          "edad82d71a2941715759f647076346fdadf346a4afc1ff9a7f1510e05955272c"
+          "edad82d71a2941715759f647076346fdadf346a4afc1ff9a7f1510e05955272c",
+          "ad1d5f748be6ee3fb9ba820d44e6f37351be42a0184723b9215b392a5765ef21",
+          "084f5c638b7b9633c5b2fd05000f7b0d444a8d4ca7a922c645a709d8b3a7fb5c",
+          "5018fa37cb5d399a055e2e1fdc5573d2f0fcdb0b849531bc27eb1de94b0c7b4f",
+          "b942a52b966946ea8506757d92885122d98baf45a6883437cf069d8a78bc4a45",
+          "35c67367b56fc99ee3019dfad845da73a46623a776586d0907eb57a16db1dba3",
+          "d926d3199028d810467b3f463beb1329fd942719d3c37a5d2a720293129b5d11",
+          "73ffcd60f3446a89ad75fd5ad1aa1bced6dd6aa1b32fbb8b7b1ef184427f4676",
+          "079934fd0dc91c9304727aa0de7fb2edb280bf273fc7ec8c6f590bdbd3618d40"
         ],
         "sidecar_path": "tasks/artifacts/corpus_proposals/oapen_open_books/oapen_open_books_audit.md"
       }

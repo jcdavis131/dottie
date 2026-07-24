@@ -128,8 +128,21 @@ def _first(md: dict, key: str) -> str | None:
     return v[0] if v else None
 
 
+# Query on rights only, filter language CLIENT-SIDE. The server-side
+# `AND dc.language:English` clause caps the result set at ~58 records (offset 150
+# returns nothing), while the rights-only query paginates deep (offset 500+ still
+# returns) — so the AND was silently starving the scale-up.
+_SEARCH_QUERY = "dc.rights:*creativecommons*"
+
+
+def is_english(md: dict) -> bool:
+    """True if any dc.language value is English (client-side language filter)."""
+    langs = [str(v).strip().lower() for v in (md.get("dc.language") or [])]
+    return any(l in ("english", "en", "eng") for l in langs)
+
+
 def search_page(offset: int, limit: int) -> list[dict]:
-    q = urllib.parse.quote("dc.rights:*creativecommons* AND dc.language:English")
+    q = urllib.parse.quote(_SEARCH_QUERY)
     url = (f"{OAPEN}/rest/search?query={q}&limit={limit}&offset={offset}"
            "&expand=metadata,bitstreams")
     res = _get(url)
@@ -161,7 +174,8 @@ def main() -> int:
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
     rows: list[dict] = []
-    seen: set[str] = set()
+    seen: set[str] = set()       # by handle
+    seen_sha: set[str] = set()   # by content — OAPEN serves the same book under multiple handles
     license_hist: dict[str, int] = {}
     excluded: dict[str, int] = {}
     scanned = 0
@@ -185,6 +199,9 @@ def main() -> int:
                 continue
             seen.add(handle)
             md = _md(item)
+            if not is_english(md):  # client-side language filter (see _SEARCH_QUERY)
+                excluded["non-English"] = excluded.get("non-English", 0) + 1
+                continue
             included, code, license_url, reason = gate_rights(md.get("dc.rights"), args.allow_nc)
             if not included:
                 excluded[reason] = excluded.get(reason, 0) + 1
@@ -200,6 +217,11 @@ def main() -> int:
                 continue
             text = text.strip()
             sha = hashlib.sha256(text.encode("utf-8")).hexdigest()
+            if sha in seen_sha:  # same book under a different handle — skip the duplicate
+                excluded["duplicate content (other handle)"] = \
+                    excluded.get("duplicate content (other handle)", 0) + 1
+                continue
+            seen_sha.add(sha)
             stored = text if args.full else text[: args.max_chars]
             rows.append({
                 "handle": handle,
@@ -231,7 +253,7 @@ def main() -> int:
 
     manifest = {
         "source": "OAPEN (library.oapen.org) — the content host behind DOAB",
-        "query": "dc.rights:*creativecommons* AND dc.language:English",
+        "query": f"{_SEARCH_QUERY} (English filtered client-side)",
         "classification": "REAL",
         "policy": {
             "included_licenses": sorted(SAFE) + (sorted(NC) if args.allow_nc else []),
