@@ -20,22 +20,25 @@ Nothing auto-ingests; audited artifact per the honesty doctrine. Scaled pull
 
 ## Scale + license gate (the provenance gate)
 
-Scanned **600** records → **19 unique CC-BY English books** (11.2M chars ≈ 2.8M
-tokens full text). Excluded 581:
+**48 unique English books (47 CC-BY, 1 CC-BY-SA), 40.5M chars ≈ 10.1M tokens**,
+via two paths deduped by content sha256:
 
-- **non-English: 542** — OAPEN's catalog is heavily multilingual.
-- **NoDerivatives (`*-ND`): 11** — ND forbids derivative works, and training a
-  model is a derivative use. Never included.
-- **NonCommercial (`*-NC`): 22** — excluded by default (revenue mission);
-  `--allow-nc` to opt in, flagged `nc=true`.
-- **duplicate content: 6** — OAPEN serves the same book under multiple handles.
-  Caught by deduping on `text_sha256` (the puller now dedups by content hash, not
-  just handle) — a real defect avoided (dupes would double-weight books in training).
+1. **REST wildcard** (`pull_oapen_books.py`): scanned 600 → 19 books. Excluded
+   542 non-English, 11 ND, 22 NC, 6 duplicate-content. The `dc.rights:*creativecommons*`
+   search caps at ~600 records.
+2. **OAI-PMH harvester** (`pull_oapen_oai.py`, `metadataPrefix=dim`): enumerates
+   the full ~57k-record catalog (uncaps the ceiling), carrying per-record CC
+   license URL + language. Yielded 33 new books (4 overlapped the REST set).
+   Yield ~1% CC-BY-English — the catalog is heavily multilingual and much of it
+   is "openAccess" without an explicit CC license (excluded: no verifiable license).
 
-600 is the ceiling of this wildcard query; a larger corpus (thousands of books)
-needs OAPEN's OAI-PMH feed or the DOAB metadata dump (tracked follow-up).
+The same license gate runs in both. Both exclude any `*-ND` (training is a
+derivative use), NonCommercial by default, and dedup by content sha256 (OAPEN
+serves the same book under multiple handles — a real defect avoided). A larger
+corpus just runs the OAI harvester longer. Per-book text sha256 for all 48 is in
+the committed `oapen_open_books.jsonl` (`text_sha256` per row) + the manifest.
 
-## Per-book provenance (each full text hash-pinned)
+## Per-book provenance (the 19 REST-path books; all 48 sha-pinned in the jsonl)
 
 | title | license | full chars | sha256 |
 |---|---|---|---|

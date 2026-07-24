@@ -66,11 +66,11 @@
         "dottie"
       ],
       "size_category": "n<1K",
-      "rows": 19,
+      "rows": 48,
       "splits": [
         {
           "name": "train",
-          "num_examples": 19
+          "num_examples": 48
         }
       ],
       "n_fields": 16,
@@ -79,8 +79,8 @@
       "data_files": [
         {
           "name": "oapen_open_books.jsonl",
-          "bytes": 257100,
-          "sha256": "242f8af6118aab2d5b66e1e172fe60cbba35c9847f3be41e3b684f01a885a253"
+          "bytes": 633553,
+          "sha256": "79fee2dce970f9807ffd487c55d402d6f0e2edb248cfa4f8248439ed3759128c"
         }
       ],
       "audit": {

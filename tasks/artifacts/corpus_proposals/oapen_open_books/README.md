@@ -56,7 +56,7 @@ dataset_info:
     dtype: string
   splits:
   - name: train
-    num_examples: 19
+    num_examples: 48
   provenance_classification: REAL
 ---
 
@@ -74,16 +74,18 @@ the gap left by `pes2o` (papers, not books). Structure modelled on
 governance per `tasks/artifacts/data_provenance_SOP.md` and the clean-source
 allowlist in `external_book_sources.md`.
 
-Scaled pull (2026-07-24): **19 unique CC-BY English books, 11.2M chars ≈ 2.8M
-tokens** of full text (the training corpus lives gitignored at
+Scaled pull (2026-07-24): **48 unique English books (47 CC-BY + 1 CC-BY-SA),
+40.5M chars ≈ 10.1M tokens** of full text, via TWO paths deduped by content
+sha256: the REST wildcard search (`pull_oapen_books.py`, 19 books — capped at
+~600 records, mostly non-English/non-CC) and the **OAI-PMH harvester**
+(`pull_oapen_oai.py`, 33 new books, 4 overlapping) which enumerates the full
+~57k-record catalog via `metadataPrefix=dim` (carries per-record CC license URL +
+language). The training corpus lives gitignored at
 `apps/ava-factory/data/oapen_books/`; THIS committed file is a bounded 12k-char
-excerpt per book, ~257 KB, for audit). 19 is the ceiling of the simple
-`dc.rights:*creativecommons*` wildcard search: it returns ~600 records total, of
-which 542 were non-English, 11 NoDerivatives, 22 NonCommercial, and **6 were
-content duplicates** (OAPEN serves the same book under multiple handles — the
-puller now dedups by text sha256, not just handle). A much larger pull (thousands
-of books) needs OAPEN's OAI-PMH feed or the DOAB metadata dump — a tracked
-follow-up. **Nothing auto-ingests this file** — audited proposal artifact.
+excerpt per book (~634 KB) for audit. A much larger pull (thousands) just runs the
+OAI harvester longer (yield ~1% CC-BY-English; the catalog is heavily multilingual
+and much of it lacks an explicit CC license). **Nothing auto-ingests this file** —
+audited proposal artifact.
 
 ## Data Structure / Fields
 
@@ -112,7 +114,7 @@ One JSON object per line (JSONL). Row = one open-access book.
 
 | split | rows | coverage |
 |---|---|---|
-| train | 19 | unique English CC-BY books; 600 scanned, 581 excluded (542 non-English, 11 ND, 22 NC, 6 dup) |
+| train | 48 | unique English books (47 CC-BY, 1 CC-BY-SA); via REST wildcard (19) + OAI-PMH harvest (33, 4 overlap) |
 
 ## Dataset Creation
 
@@ -129,9 +131,10 @@ Every book's `dc.rights` is parsed and gated. Included: **CC-BY / CC-BY-SA / CC0
 (permissive, derivatives allowed). **Always excluded: any `*-ND`** (NoDerivatives
 — training a model is a derivative use) and books with **no `dc.rights`**
 (gratis OA is not an open license). **NonCommercial (`*-NC`)** is excluded by
-default (opt-in via `--allow-nc`, flagged `nc=true`). In this pull, 19 unique of 600
-scanned passed — all CC-BY; 542 non-English, 11 ND, 22 NC, 6 duplicate-content. Per-book license +
-full text sha256 in `oapen_open_books_audit.md`.
+default (opt-in via `--allow-nc`, flagged `nc=true`). The same gate runs in both
+the REST puller and the OAI harvester; combined, 48 unique books passed (47 CC-BY,
+1 CC-BY-SA), deduped across both paths by content sha256. Per-book license + full
+text sha256 in `oapen_open_books_audit.md`.
 
 ### Provenance classification
 **REAL** — real, peer-reviewed, openly-licensed books from a real public
@@ -172,6 +175,8 @@ derived table are MIT. Solo personal project, no connection to employer, built
 with public/free-tier only.
 
 ## Citation
-OAPEN / DOAB open-access books, pulled 2026-07-24 (read-only). Regenerate:
-`python apps/dottie/scripts/pull_oapen_books.py --target 10 --out <dir>`
-(add `--full` for complete texts, `--allow-nc` to include NonCommercial).
+OAPEN / DOAB open-access books, pulled 2026-07-24 (read-only). Regenerate (two
+paths, deduped by content sha256):
+`python apps/dottie/scripts/pull_oapen_books.py --full --target 300 --out <dir>` (REST)
+and `python apps/dottie/scripts/pull_oapen_oai.py --full --target 300 --out <dir>` (OAI-PMH,
+uncaps the ~600 REST ceiling to the full ~57k catalog).
