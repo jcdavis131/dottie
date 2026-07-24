@@ -179,7 +179,7 @@ const server = createServer(async (req, res) => {
     // sibling directory whose name extends ROOT's ("public_backup"), the classic
     // latent traversal footgun. No such sibling exists today; keep it that way.
     if (path !== ROOT && !path.startsWith(ROOT + sep)) return send(403, "text/plain", "forbidden");
-    const data = await readFile(path.endsWith(ROOT) ? join(ROOT, "index.html") : path);
+    const data = await readFile(path);
     return send(200, MIME[extname(path)] || "application/octet-stream", data);
   } catch (e) {
     if (e.code === "ENOENT" || e.code === "EISDIR") {
@@ -188,7 +188,10 @@ const server = createServer(async (req, res) => {
         return send(200, MIME[".html"], await readFile(join(ROOT, "index.html")));
       return send(404, "text/plain", "not found");
     }
-    return send(500, "text/plain", `server error: ${e.message}`);
+    // log the detail server-side; never echo e.message to the client (it can
+    // carry filesystem paths / internals — e.g. a null-byte request)
+    console.error("server error:", e);
+    return send(500, "text/plain", "internal server error");
   }
 });
 
