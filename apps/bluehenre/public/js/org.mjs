@@ -524,6 +524,8 @@ function renderHubRegistry() {
     b.type = "button";
     b.className = "fchip" + (hubFilter === cls ? " on" : "");
     b.textContent = label;
+    b.setAttribute("aria-pressed", String(hubFilter === cls));
+    b.setAttribute("aria-label", `filter Hub by ${label}`);
     b.addEventListener("click", () => { hubFilter = cls; renderHubRegistry(); });
     fbar.append(b);
   }

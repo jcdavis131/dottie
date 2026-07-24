@@ -434,6 +434,8 @@ function renderArtifacts() {
     b.type = "button";
     b.className = "fchip" + (artFilter === cls ? " on" : "");
     b.textContent = label;
+    b.setAttribute("aria-pressed", String(artFilter === cls));
+    b.setAttribute("aria-label", `filter by ${label}`);
     b.addEventListener("click", () => { artFilter = cls; renderArtifacts(); });
     fbar.append(b);
   }
