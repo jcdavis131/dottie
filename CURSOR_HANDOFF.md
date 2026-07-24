@@ -2,6 +2,21 @@
 
 **Paste-able brief for any agent continuing this work. Everything below is live and verified.**
 
+## HILLCLIMB (2026-07-24, latest — operator: "continue hillclimbing org.html")
+
+All LIVE on www.bhenre.com, TDD + deployed:
+- **Provenance summary headline** (org + mobile) — the honesty accounting glanceable
+  atop the Hub: class tallies + "N artifacts · N model caveats named · N research
+  sha-pinned · provenance-honest by construction". `provenanceSummary()` in twin.mjs.
+- **Hub class filter** (org + mobile) — chips (all/REAL/HONEST-SYNTHETIC/PLACEHOLDER/
+  UNCLASSIFIED, only classes present) to focus the registry. `filterRegistry()` +
+  4 tests each. Suite 100→108.
+- Commits 8bf9d2c, (mobile), 5zycbtwfi-deploy, jn8yzbll1-deploy.
+- **Diminishing returns on quick Hub wins.** The next SUBSTANTIVE hillclimb is the
+  **Monitor pillar** (W&B-style run/experiment history + comparison) — needs the
+  box-side runtrack bridge (scout-cli openswap runtrack → live metrics). Smaller
+  candidates: cleaner eval-metric labels; registry sort by class.
+
 ## LATEST (2026-07-24, later) — DEPLOYED + vector cards + Universal MTNN trained
 
 - **Dottie site DEPLOYED to www.bhenre.com** (operator: "deploy") — live-verified
