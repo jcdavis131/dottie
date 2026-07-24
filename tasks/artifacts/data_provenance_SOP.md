@@ -31,7 +31,14 @@ Tag each dataset/asset with one of:
   `placeholder_contamination` block is the reference pattern.
 - **FORBIDDEN** — `np.random`/`random` values used as features or labels,
   hardcoded metric literals, copy-pasted numbers from another repo, `i % len`
-  fake assignments, or any value invented to look like signal. These never ship.
+  fake assignments, or any value invented to look like signal. **Also FORBIDDEN
+  as *sources*: shadow libraries / unlicensed copyright aggregators** (Memory of
+  the World, LibGen, Sci-Hub, Z-Library, Anna's Archive, Books3, and the like) —
+  their works are copyrighted and unlicensed for redistribution/training, so they
+  can never be classified REAL and are legal + credibility liability. A book/PDF
+  ships only with a verifiable public-domain or open license recorded on its
+  card. See `external_book_sources.md` for the vetted clean-source allowlist.
+  These never ship.
 
 ## Required provenance metadata (on every dataset/asset)
 
