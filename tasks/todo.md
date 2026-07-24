@@ -50,6 +50,17 @@ public deploy is the operator's gated step.
 - [ ] Monitor card: live training curve(s), research experiments/promotions, fleet
       stats, run comparison. Real-measured; stale/offline honest.
 
+## External data expansion (operator directive — validated sources)
+- [x] Rejected the shadow library (library.memoryoftheworld.org); SOP updated to
+      forbid shadow-library sources. `external_book_sources.md`.
+- [x] **DOAB/OAPEN open-access books piloted** — `pull_oapen_books.py` (read-only,
+      `dc.rights`-gated: CC-BY/SA/CC0 only, ND + NC + unlicensed excluded). Sample:
+      10 CC-BY scholarly books, license-verified + sha256-pinned, HF-standard card,
+      auto-rendered in the Hub registry (now 3 datasets). Excluded 29/39 by license.
+- [ ] Scale OAPEN (`--full` + higher `--target`) + decontaminate vs eval stems;
+      then the operator lands the `sources.yaml` entry (frozen config).
+- [ ] Future clean expansions: broaden Gutenberg, Standard Ebooks, PMC-OA, Wikisource.
+
 ## Gated / dependency-blocked (Phase 4)
 - [ ] **HF publish** (Hub ↔ real HuggingFace) — BLOCKED on `HF_TOKEN` rotation
       (provenance audit #6). Show an honest "mirror: awaiting token rotation"

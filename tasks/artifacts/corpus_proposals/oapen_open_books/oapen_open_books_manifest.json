@@ -1,0 +1,26 @@
+{
+  "source": "OAPEN (library.oapen.org) — the content host behind DOAB",
+  "query": "dc.rights:*creativecommons* AND dc.language:English",
+  "classification": "REAL",
+  "policy": {
+    "included_licenses": [
+      "CC-BY",
+      "CC-BY-SA",
+      "CC0"
+    ],
+    "always_excluded": "any *-ND (NoDerivatives); books with no dc.rights",
+    "full_text": false,
+    "max_chars": 12000
+  },
+  "counts": {
+    "books_included": 10,
+    "records_scanned": 39,
+    "by_license": {
+      "CC-BY": 10
+    },
+    "excluded": {
+      "NoDerivatives (training is a derivative use)": 10,
+      "NonCommercial": 19
+    }
+  }
+}

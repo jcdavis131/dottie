@@ -93,14 +93,24 @@ discipline:
 5. **Gate**: no PLACEHOLDER rows in any published metric; the card is present and
    REAL before the source trains.
 
-## Recommendation + the decision needed
+## Recommendation + status
 
-- **Do not** ingest Memory of the World (or any shadow library).
-- **Recommended first expansion:** **DOAB/OAPEN open-access books** — it fills
-  the real gap (validated *books*, not just papers), is CC-licensed, and matches
-  "external validated sources" precisely. Second: broaden Gutenberg for
-  public-domain long-form.
-- **Operator decision:** which clean source to pilot first (DOAB/OAPEN books, or
-  broaden Gutenberg, or PMC-OA)? On your pick, I'll build the read-only sample
-  puller + the HF-standard dataset card + the `sources.yaml` proposal (I won't
-  touch the frozen config directly, and nothing auto-ingests).
+- **Do not** ingest Memory of the World (or any shadow library). Unchanged.
+- **DOAB/OAPEN — PILOTED (2026-07-24, operator: "go with DOAB/OAPEN").** ✅
+  `apps/dottie/scripts/pull_oapen_books.py` pulls openly-licensed books from
+  OAPEN (the DOAB content host) read-only, gating on `dc.rights`. First sample:
+  `tasks/artifacts/corpus_proposals/oapen_open_books/` — **10 CC-BY scholarly
+  books**, each license-verified + full-text sha256-pinned, with an HF-standard
+  card (classification REAL) that now renders in the Hub registry. The license
+  gate excluded 29 of 39 scanned (**10 NoDerivatives + 19 NonCommercial**) —
+  proof the "verified" discipline is real. Next: `--full` for complete texts +
+  scale the target, then decontaminate vs the eval stems before training.
+- **Still open (future clean expansions):** broaden Gutenberg (public-domain
+  long-form), Standard Ebooks, PMC-OA, Wikisource — same puller pattern + card.
+
+### Proposed `sources.yaml` integration (frozen config — operator applies)
+The OAPEN corpus is pulled locally to a full-text JSONL (not on HF). Adding it to
+the curriculum is a frozen-config change for the operator: register a source
+reading the pulled `*.jsonl` (`text` field) into a foundation/long-context phase,
+with a modest weight, `gated: false`. Nothing auto-ingests until that entry lands
+and the decontamination gate passes.

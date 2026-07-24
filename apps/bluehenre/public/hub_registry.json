@@ -1,6 +1,6 @@
 {
   "generated_by": "build_hub_registry.mjs",
-  "count": 2,
+  "count": 3,
   "datasets": [
     {
       "name": "gridiron_forecast_rows",
@@ -45,6 +45,59 @@
           "4092d5e4ba30a24d1f92f42c86764ba18c6267b38ec45bb2a741905b9970bbe1"
         ],
         "sidecar_path": "tasks/artifacts/corpus_proposals/gridiron_forecast_rows/gridiron_forecast_rows_audit.md"
+      }
+    },
+    {
+      "name": "oapen_open_books",
+      "kind": "dataset",
+      "pretty_name": "OAPEN Open-Access Books (CC-BY sample)",
+      "classification": "REAL",
+      "license": "cc-by-4.0",
+      "task_categories": [
+        "text-generation"
+      ],
+      "tags": [
+        "books",
+        "open-access",
+        "scholarly",
+        "long-context",
+        "oapen",
+        "doab",
+        "dottie"
+      ],
+      "size_category": "n<1K",
+      "rows": 10,
+      "splits": [
+        {
+          "name": "train",
+          "num_examples": 10
+        }
+      ],
+      "n_fields": 16,
+      "summary": "Peer-reviewed, openly-licensed scholarly **books** pulled from [OAPEN](https://library.oapen.org) — the open-access content host behind the [Directory of Open Access Books (DOAB)](https://directory.doabooks.org). This is the operator's \"external validated sources\" expansion (2026-07-24): real, peer-reviewed, CC-licens…",
+      "card_path": "tasks/artifacts/corpus_proposals/oapen_open_books/README.md",
+      "data_files": [
+        {
+          "name": "oapen_open_books.jsonl",
+          "bytes": 134493,
+          "sha256": "baceb5965433316a6eb87edfde0734fcd4d289698f1a1731683ad85218a18d6c"
+        }
+      ],
+      "audit": {
+        "generated": "2026-07-24",
+        "source_sha256": [
+          "2e4bcfa49dbcec564157ec56d220850bb3de2144ca29dd9dd52478c1a056fa34",
+          "af3eb54301e758e1b22d5a75a872246234c8e90655c54970c530b2e9490038fd",
+          "178a2740c940f5843c6d2d63d1976938c5dfb35756b0ccbc46bf0bf52f304701",
+          "668fa644b4bb2b027d8bcefce45a37356b0de49a5d0d93c76a2cdc5f4b4dfd40",
+          "9116107b3d41db11c41e4b6fa853da8e5e3924b64610de029086d83e58a75005",
+          "305cf190bb98c3988d28c9e0453db3bfeb85a8fefde10277ac92f33eca9d7a56",
+          "58cc993614744338ebd63bed0c76748b080d8815102c51dbb09b70f13b3f2c09",
+          "68adfd6a45dba3c797cc5eea83b1362bbb7e3817b1f9e2eb1677cd1ed400f192",
+          "3847c839e7b2a05329b99b290033f386d27799438b567e1a0f525c04108fcc78",
+          "edad82d71a2941715759f647076346fdadf346a4afc1ff9a7f1510e05955272c"
+        ],
+        "sidecar_path": "tasks/artifacts/corpus_proposals/oapen_open_books/oapen_open_books_audit.md"
       }
     },
     {
