@@ -2,8 +2,8 @@
 
 Solo personal project, no connection to employer, built with public/free-tier only
 
-**Branch:** autoresearch/jul19-workforce-ai-2604.258
-**Date:** 2026-07-19
+**Branch:** autoresearch/jul24-workforce-ai-2604.258
+**Date:** 2026-07-24
 **Paper:** https://arxiv.org/abs/2604.25834v2 / PDF https://arxiv.org/pdf/2604.25834v2
 **Topic:** workforce-ai — Workforce Turnover + Retention Prediction (importance medium)
 **Ecosystem:** 02_Passive_Lab/ + Turnover Shield MVP
@@ -27,7 +27,7 @@ Based on "Action-Aware Generative Sequence Modeling for Short Video Recommendati
 **Fixed time budget:** 5 minutes wall clock (Karpathy style) — metric val_bpb lower is better, or cap preservation 0.983
 
 **Steps:**
-1. git checkout -b autoresearch/jul19-workforce-ai-2604.258 from master in 02_Passive_Lab
+1. git checkout -b autoresearch/jul24-workforce-ai-2604.258 from master in 02_Passive_Lab
 2. Read paper PDF + graphify_source/2604.25834v2.md
 3. Modify ONE file — cite paper in comment: "# From arxiv:2604.25834v2 — trying X"
 4. git commit -m "exp: workforce-ai 2604.25834v2 — Action-Aware Generative Sequence Modeling for Shor"
@@ -45,4 +45,4 @@ Simpler is better — weigh complexity cost vs improvement magnitude.
 Deletion that maintains or improves is great win.
 
 ---
-Generated 2026-07-19 by autoresearch-runner cron
+Generated 2026-07-24 by autoresearch-runner cron
