@@ -21,8 +21,11 @@
     non-inferiority PASS, G3 silhouette 0.7095 PASS, G2 sport-invariance DEFERRED
     (needs no-GRL baseline), collapse PASS.
   - Hub registry now **3 datasets + 5 models + 10 research**. Suite 100, --check fresh.
-- **AWAITING OPERATOR:** redeploy to make the 5-model Hub live (the deployed site
-  still shows the pre-vector-card registry); further MTNN stages (--finetune/--market/
+- **REDEPLOYED (operator: "redeploy")** — the 5-model Hub is LIVE on www.bhenre.com
+  (deployment `bluehenre-campus-7rcs5fjz1`, aliased, pin updated). Live-verified:
+  org.html 200, /hub_registry.json serving all 18 artifacts incl. the 4 vector +
+  Universal MTNN cards with correct classifications/evals.
+- **AWAITING OPERATOR (optional next):** further MTNN stages (--finetune/--market/
   --cultural-text); the G2 no-GRL baseline; the larger OAPEN pull (OAI-PMH/DOAB).
 
 ## SESSION COMPLETE STATE (2026-07-24) — Dottie site built, tested, CI-enforced, DEPLOY-READY
