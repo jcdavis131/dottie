@@ -5,6 +5,16 @@
 # Prefer author-maintained CC / GFDL books with rights-holder downloads.
 # status: verified_pdf = direct PDF tested; listed = page known, PDF TBD;
 #         html_source = HTML/GitHub primary (extract later).
+#
+# LICENSE GATE (tasks/artifacts/data_provenance_SOP.md) — this catalog is a
+# DISCOVERY list, not an ingest allowlist. Before any title trains:
+#   * any *-ND  -> NEVER ingest. Training a model is a derivative use, which a
+#     NoDerivatives licence forbids. Entries are marked `sop_gate: FORBIDDEN-ND`.
+#   * any *-NC  -> operator call only (the org has a revenue mission; the OAPEN
+#     puller excludes NonCommercial by default). Most entries here are NC.
+#   * CC-BY / CC-BY-SA / CC0 -> ingestable; SA is copyleft, so preserve terms.
+#   * GFDL -> copyleft with its own conditions; review before ingest.
+# Same gate as apps/dottie/scripts/pull_oapen_books.py (gate_rights).
 
 version: 1
 openstax_subject: https://openstax.org/subjects/math
@@ -243,6 +253,7 @@ equivalents:
       - id: book-of-proof
         title: Book of Proof (Hammack)
         license: cc-by-nd
+        sop_gate: FORBIDDEN-ND  # NoDerivatives: never ingest for training (see header)
         source_url: https://richardhammack.github.io/BookOfProof/
         pdf_url: https://richardhammack.github.io/BookOfProof/Main.pdf
         status: verified_pdf

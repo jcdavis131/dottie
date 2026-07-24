@@ -169,7 +169,7 @@ def main() -> int:
             "keep mixture weight at 0 until fixed.",
             file=sys.stderr,
         )
-    print(f"manifest → {man_path} ({len(manifest)} docs)")
+    print(f"manifest -> {man_path} ({len(manifest)} docs)")
     return 0
 
 
