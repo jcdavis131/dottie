@@ -1,0 +1,14 @@
+name: dev_loop
+version: 0.7.1
+description: Automate dev loop git status -> pytest -q -> add -> commit -> push (toil >22/week)
+capabilities:
+  network:
+    enabled: false
+    domains: []
+  filesystem:
+    write: true
+    paths: ["~/workspace/dottie"]
+  secrets:
+    allow: []
+tags: [dev, toil, git, automation]
+# Solo personal project, no connection to employer, built with public/free-tier only

@@ -1,0 +1,14 @@
+name: todos
+version: 0.7.1
+description: Summarize TODO/FIXME/HACK markers across scout-cli and dottie monorepo with grouping by plugin/type
+capabilities:
+  network:
+    enabled: false
+    domains: []
+  filesystem:
+    write: false
+    paths: []
+  secrets:
+    allow: []
+tags: [dev, todos, scan]
+# Solo personal project, no connection to employer, built with public/free-tier only
