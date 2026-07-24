@@ -408,7 +408,7 @@ def explain_node(G: nx.MultiDiGraph, query: str, include_code_snippet: bool = Fa
                         start = max(0, line-5)
                         end = min(len(lines), line+15)
                         snippet = "\n".join(lines[start:end])
-                except:
+                except OSError:
                     pass
 
     return {

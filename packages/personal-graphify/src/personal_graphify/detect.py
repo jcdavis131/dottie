@@ -149,7 +149,7 @@ def collect_files(root: Path, max_files: int = 10000) -> list[Path]:
             try:
                 if fpath.stat().st_size > 5 * 1024 * 1024:
                     continue
-            except:
+            except OSError:
                 continue
             files.append(fpath)
             if len(files) >= max_files:
