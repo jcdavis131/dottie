@@ -2,7 +2,57 @@
 
 **Paste-able brief for any agent continuing this work. Everything below is live and verified.**
 
-## HILLCLIMB (2026-07-24, latest — operator: "continue hillclimbing org.html")
+## CURRENT (2026-07-24, newest) — ALL 3 PILLARS LIVE + repo tied up
+
+**Gate before any deploy (all currently green):**
+```
+node apps/bluehenre/public/js/twin.contract.test.mjs        # 119
+node apps/bluehenre/scripts/build_hub_registry.test.mjs     # 9
+node apps/bluehenre/scripts/build_hub_registry.mjs --check   # fresh
+node apps/bluehenre/scripts/build_runs_readout.mjs --check   # fresh
+```
+Deploy: `cd apps/bluehenre && vercel deploy --prod --yes` → `vercel alias set <url>
+www.bhenre.com` → update `data/last_good_deployment.txt`. CI job `bluehenre-checks`
+runs all four gates on every push.
+
+- **MONITOR pillar (Pillar 3) SHIPPED — org + mobile.** `build_runs_readout.mjs`
+  (read-only, `--check` guarded) recomputes each eval run's token-weighted ppl from
+  the factory's COMMITTED reports and records its bin provenance → static
+  `runs_readout.json`; `parseRuns()` + 6 tests; Monitor card on both surfaces.
+  The comparison IS the honesty story: CONTAMINATED step-1487 275.9 / step-2861
+  4103.1 (both 30,208 tok, 4 phases) vs **DISJOINT step-2861 2268.2 (6.36M tok, 6
+  phases)**. Dedup PROVED final2861==CONTAMINATED and real==DISJOINT. The 3 source
+  reports are committed for reproducibility. Live current-run telemetry stays on the
+  feed — this card is history, labelled as such. Commits b10cee3, 416cf28.
+- **All three pillars now on BOTH surfaces**: Guide (next-action digest), Hub
+  (datasets/models/research + provenance summary + class filter + a11y), Monitor.
+- **REPO TIED UP (operator: "clean these branches up")** — `main` is the ONLY branch,
+  zero open PRs. `feat/scout-plugin-todos` deleted (PR #1 merged); caveman branch's
+  anti-mock seed-variance guard SALVAGED onto main then deleted (7 other commits
+  recoverable via closed PR #3); PR #4 closed+deleted; **PR #5 merged after a
+  provenance review** that found + fixed (a) a CC-BY-**ND** entry in the OER catalog
+  (ND = never ingest; training is a derivative use) now flagged `sop_gate:
+  FORBIDDEN-ND` with the full license gate documented in the catalog header, and
+  (b) a U+2192 print that crashed cp1252 consoles and failed the PR's own test
+  (now 9 passed). Its `sources.yaml` additions are STAGED at weight 0.0 — zero
+  training impact until activated. Commits bc5efd5, 9105374.
+- **ROOT CAUSE of "nothing tied up": 80 commits were unpushed.** Merged origin's
+  PR #6 (`dev_loop`) and pushed; origin/main is current. `toil_finder` (which
+  likely spawned the branch clutter) is **NOT armed** — verified: no workflow, and
+  the scheduled-task query sees the 3 real Dottie tasks but no toil job.
+- **AWAITING OPERATOR (nothing else is autonomously buildable):**
+  1. Live cross-run training curves → box-side runtrack bridge (needs a
+     `publish_live_status.py` change; committing training telemetry would violate
+     the honesty doctrine, so it must flow through the feed).
+  2. Stage 2 / G2 → sync `vector-unified/pipeline/load_live_encoders.py` to the
+     CURRENT hoops MTNN arch (it expects `towers.injury`; hoops now has
+     `durability_head`, so no ckpt loads — a retrain does NOT fix it), plus the
+     correct hoops training invocation to regenerate the gitignored
+     `embedding_v3.npz`/`mtnn_centroids.npz` an earlier wrong invocation overwrote.
+  3. Whether to arm `toil_finder`.
+  4. Activate the staged OAPEN / research sources in `sources.yaml` (weight 0.0 now).
+
+## HILLCLIMB (2026-07-24 — operator: "continue hillclimbing org.html")
 
 All LIVE on www.bhenre.com, TDD + deployed:
 - **Provenance summary headline** (org + mobile) — the honesty accounting glanceable
