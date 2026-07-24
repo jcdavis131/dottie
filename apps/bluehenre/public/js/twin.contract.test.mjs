@@ -1,7 +1,7 @@
 // Contract: the twin never fabricates the real model's state.
 import { parseMetricsTail, safeParseJson, parseEvalSummary, twinLine,
          parseTrainerTail, parseDashboard, parseLiveEvents, liveAgeS, parseHub,
-         parseHubRegistry } from "./twin.mjs";
+         parseHubRegistry, nextActions } from "./twin.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = "") => {
@@ -374,6 +374,30 @@ check("badge objects are not shared references (fresh per record)",
 check("bad registry shapes -> null, no throw",
   parseHubRegistry(null) === null && parseHubRegistry({}) === null &&
   parseHubRegistry({ datasets: "nope" }) === null);
+
+// ---- Guide digest: nextActions ranks the org's real open items -------------
+const guideLive = { pipeline: {
+  mode: { id: "stale", label: "Trainer stale", detail: "no step in 38906s" },
+  disk: { free_gb: 4.2, low_water_gb: 12, critical_gb: 6, below_low_water: true, below_critical: true },
+}, research: { counts: { pending: 3, sota: 1, rejected: 5 } } };
+const guideFleet = [{ short: "trainer-1", dept: "training" }, { short: "collector-1", dept: "data" }];
+const na = nextActions(guideLive, guideFleet);
+check("nextActions surfaces disk-critical first (severity order)",
+  na.actions[0].severity === "critical" && na.actions[0].label.includes("4.2"));
+check("nextActions includes the stale-trainer alert with a restart steer cmd",
+  na.actions.some((a) => a.severity === "high" && a.steerCmd === "fleet: restart trainer-1"));
+check("nextActions appends the research queue as normal severity, ranked last",
+  na.actions.at(-1).severity === "normal" && na.actions.at(-1).team === "research" &&
+  na.actions.at(-1).label.includes("3 experiments pending"));
+check("healthy org -> no actions",
+  nextActions({ pipeline: { flow: { data_state: "READY" } }, research: { counts: { pending: 0 } } }).count === 0);
+check("empty fleet array -> fleet-down action; null fleet -> no fleet signal",
+  nextActions({ pipeline: {} }, []).actions.some((a) => a.label.includes("fleet is down")) &&
+  nextActions({ pipeline: {} }, null).count === 0);
+check("no steer cmd invented without a named trainer container",
+  nextActions(guideLive, null).actions.find((a) => a.severity === "high")?.steerCmd == null);
+check("unreachable research is not counted",
+  nextActions({ pipeline: {}, research: { unreachable: true } }).count === 0);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

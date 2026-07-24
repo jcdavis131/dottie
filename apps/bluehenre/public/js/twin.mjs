@@ -509,6 +509,42 @@ export function parseHubRegistry(doc) {
   return { count: datasets.length, datasets };
 }
 
+// ---- Guide: "what should I do next" digest (the Dottie site — Pillar 1) ----
+// A deterministic, engine-independent ranking of the org's REAL open items: the
+// alert list (parseLiveEvents), the research review queue, and fleet health.
+// Each action names its owning team and, when there is an unambiguous one, a
+// steer command. Nothing is invented — a healthy org returns []. This is the
+// assistant's guidance surface that ships WITHOUT the chat engine.
+
+const _SEV = { critical: 0, high: 1, normal: 2 };
+
+/** (live, fleetRows?) -> { count, actions:[{severity, label, team, steerCmd}] }.
+ * Sorted critical→high→normal, stable (insertion order) within a tier. */
+export function nextActions(live, fleetRows = null) {
+  const actions = [];
+  for (const ev of parseLiveEvents(live)) {
+    let steerCmd = null; // an unambiguous fix only for a named-container trainer fault
+    if ((ev.kind === "mode_stale" || ev.kind === "mode_error") && Array.isArray(fleetRows)) {
+      const trainer = fleetRows.find((c) => /trainer/.test(c?.short ?? "") || c?.dept === "training");
+      if (trainer?.short) steerCmd = `fleet: restart ${trainer.short}`;
+    }
+    actions.push({ severity: ev.kind === "disk_critical" ? "critical" : "high",
+                   label: ev.label, team: ev.dept, steerCmd });
+  }
+  // research review queue (only when the feed is reachable and carries a count)
+  const rc = live?.research && !live.research.unreachable ? live.research.counts : null;
+  if (rc && Number.isFinite(rc.pending) && rc.pending > 0)
+    actions.push({ severity: "normal", team: "research", steerCmd: null,
+                   label: `${rc.pending} experiment${rc.pending === 1 ? "" : "s"} pending review` });
+  // fleet entirely down is an unambiguous, actionable signal (only when we KNOW
+  // it's empty — an explicit [] — not merely unprovided)
+  if (Array.isArray(fleetRows) && fleetRows.length === 0)
+    actions.push({ severity: "high", team: "ops", steerCmd: null,
+                   label: "fleet is down — 0 containers running" });
+  actions.sort((a, b) => _SEV[a.severity] - _SEV[b.severity]);
+  return { count: actions.length, actions };
+}
+
 /** One-line board rendering of a twin status. Numbers ONLY when source is
  * "local"; every other source renders as an honest offline line. */
 export function twinLine(status) {

@@ -1,7 +1,7 @@
 // Blue Hen RE org console (www.bhenre.com): every little aspect of the org,
 // rendered from real telemetry only. Same provenance doctrine as everything
 // else: source:"local" or it says offline; absences render as absences.
-import { twinLine, parseHub, parseHubRegistry } from "./twin.mjs";
+import { twinLine, parseHub, parseHubRegistry, nextActions } from "./twin.mjs";
 
 const $ = (id) => document.getElementById(id);
 const P = (text, cls = "") => {
@@ -72,6 +72,7 @@ const gb = (n) => (Number.isFinite(n) ? `${(n / 1e9).toFixed(2)}B` : "?");
 const offline = (el, detail) => { el.replaceChildren(P(detail ?? "feed offline — no fabricated numbers", "note")); };
 
 let twin = null;
+let fleet = null; // last /api/fleet response (shared with the Guide digest)
 
 // Shared series renderer (the :8000 dashboard's visual idiom): supersampled
 // hard-pixel marks in a brand hue, x mapped by real step value (restart gaps
@@ -597,6 +598,50 @@ function renderFleet(f) {
   if (f.via === "gist-feed") el.append(P(`snapshot from the box's published feed (${fmtDur(f.ageS)} old)`, "note"));
 }
 
+// Guide — "what should I do next": the deterministic digest (nextActions) that
+// ranks the org's REAL open items (alerts + research queue + fleet health) into
+// the assistant card, each with its owning team and, where unambiguous, a steer
+// command (copy + open STEER, the same owner-gated write path as fleet control).
+// Renders from twin + fleet; a healthy org honestly shows "unblocked".
+function renderGuide() {
+  const el = $("guide");
+  if (!el) return;
+  el.replaceChildren();
+  const na = nextActions(twin, Array.isArray(fleet?.containers) ? fleet.containers : null);
+  const head = document.createElement("div");
+  head.className = "rowline";
+  const k = document.createElement("span"); k.className = "k"; k.textContent = "what to do next";
+  const v = document.createElement("span"); v.className = "v";
+  v.textContent = na.count ? `${na.count} open` : "org unblocked";
+  head.append(k, v);
+  el.append(head);
+  if (!na.count) return void el.append(P("nothing queued — no real alerts, no pending reviews", "note"));
+  for (const a of na.actions) {
+    const row = document.createElement("div");
+    row.className = "alert";
+    const who = document.createElement("div");
+    who.className = "who";
+    who.append(led(a.severity === "normal" ? null : false),
+      document.createTextNode(` ${a.severity.toUpperCase()} · ${a.team} team`));
+    row.append(who, P(a.label));
+    if (a.steerCmd) {
+      const barEl = document.createElement("div");
+      barEl.className = "fleetact";
+      const code = document.createElement("span");
+      code.className = "mono"; code.textContent = a.steerCmd;
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = "copy + STEER";
+      b.addEventListener("click", async () => {
+        try { await navigator.clipboard.writeText(a.steerCmd); } catch { /* gist still opens */ }
+        open(STEER_URL, "_blank", "noopener");
+      });
+      barEl.append(code, b);
+      row.append(barEl);
+    }
+    el.append(row);
+  }
+}
+
 async function refreshTwin() {
   try { twin = await (await fetch("/api/twin-status")).json(); }
   catch { twin = { source: "offline", detail: "console cannot reach its own API" }; }
@@ -609,11 +654,12 @@ async function refreshTwin() {
   renderCurriculum(); renderFlow(); renderManifest();
   renderCkpts(); renderCompute(); renderNetwork(h); renderWatch(); renderJspace();
   renderResearch(h); renderEvals(h); renderEco(h); renderSites(h); renderDeploys(h); renderDemand();
+  renderGuide();
 }
 async function refreshFleet() {
-  let f = null;
-  try { f = await (await fetch("/api/fleet")).json(); } catch { f = { source: "offline" }; }
-  renderFleet(f);
+  try { fleet = await (await fetch("/api/fleet")).json(); } catch { fleet = { source: "offline" }; }
+  renderFleet(fleet);
+  renderGuide(); // fleet health feeds the digest
 }
 
 $("askform").addEventListener("submit", async (e) => {
