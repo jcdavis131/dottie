@@ -24,11 +24,19 @@ public deploy is the operator's gated step.
 - [x] `parseHubRegistry(doc)` in `twin.mjs` + 9 contract-test rows (badge from
       classification, UNCLASSIFIED fallback never-guessed, integrity/sha, bad-shape
       guards). Suite 76→85 green.
-- [ ] `renderHubRegistry()` card in `org.html`/`org.mjs` — REAL/HONEST-SYNTHETIC/
-      PLACEHOLDER badges, reusing existing line/table/chip/led/offline helpers.
-      Client fetches the static `/hub_registry.json`. ← next
-- [ ] Gate: contract suite green; card renders both cards with correct badges.
-      Then operator deploy + re-alias.
+- [x] `renderHubRegistry()` card in `org.html`/`org.mjs` — "Hub — Datasets" wide
+      card with REAL/HONEST-SYNTHETIC/PLACEHOLDER/UNCLASSIFIED badges (colored),
+      per-dataset stats/integrity/tags/summary, card links to the public repo
+      blob (link-guarded). Fetches the static `/hub_registry.json` once at init.
+- [x] Gate: contract suite green (85); `parseHubRegistry` verified end-to-end
+      against the real `hub_registry.json`; server serves it (200); all edited JS
+      `node --check` clean. NOTE: live *visual* render not yet confirmed (Chrome
+      extension was disconnected) — confirm on deploy or next browser session.
+- [ ] **Operator: deploy** — `cd apps/bluehenre && vercel deploy --prod --yes`
+      → re-alias www.bhenre.com → update `data/last_good_deployment.txt`. This
+      is the first visible face of the realigned vision.
+
+**Phase 1 (Hub Artifact Registry) is code-complete — pending the operator deploy.**
 
 ## Next — Phase 2: GUIDE digest + agent tiles
 - [ ] `nextActions(status)` in `twin.mjs` (rank alerts + research counts + fleet

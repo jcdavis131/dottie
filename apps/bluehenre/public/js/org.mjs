@@ -1,7 +1,7 @@
 // Blue Hen RE org console (www.bhenre.com): every little aspect of the org,
 // rendered from real telemetry only. Same provenance doctrine as everything
 // else: source:"local" or it says offline; absences render as absences.
-import { twinLine, parseHub } from "./twin.mjs";
+import { twinLine, parseHub, parseHubRegistry } from "./twin.mjs";
 
 const $ = (id) => document.getElementById(id);
 const P = (text, cls = "") => {
@@ -441,6 +441,70 @@ function renderEco(h) {
     el.append(line(r.model, `${r.success}/${r.tasks} tasks ok`));
 }
 
+// Hub — the org's OWN datasets, each stamped with its provenance class (the
+// Dottie-site differentiator). Fed by the static /hub_registry.json (built by
+// scripts/build_hub_registry.mjs from the corpus_proposals cards); these are
+// committed, sha-verified artifacts, so the card renders independent of the
+// live-telemetry gate. Card links go to the public repo blob (real URL).
+const REPO_BASE = "https://github.com/jcdavis131/dottie/blob/main/";
+let hubReg = null;
+async function loadHubRegistry() {
+  const el = $("hubreg");
+  let doc = null;
+  try { doc = await (await fetch("/hub_registry.json", { cache: "no-cache" })).json(); }
+  catch { return offline(el, "hub registry not built — run scripts/build_hub_registry.mjs"); }
+  hubReg = parseHubRegistry(doc);
+  renderHubRegistry();
+}
+function renderHubRegistry() {
+  const el = $("hubreg");
+  el.replaceChildren();
+  if (!hubReg || !hubReg.datasets.length) return offline(el, "no datasets in the registry yet");
+  for (const d of hubReg.datasets) {
+    const block = document.createElement("div");
+    block.className = "dsblock";
+    const head = document.createElement("div");
+    head.className = "dshead";
+    const nm = document.createElement("span");
+    nm.className = "nm";
+    if (d.cardPath) {
+      const a = document.createElement("a");
+      a.href = REPO_BASE + d.cardPath; a.target = "_blank"; a.rel = "noopener";
+      a.textContent = d.prettyName;
+      nm.append(a);
+    } else nm.textContent = d.prettyName;
+    const badge = document.createElement("span");
+    badge.className = `badge ${d.badge.cls}`;
+    badge.textContent = d.badge.label;
+    head.append(nm, badge);
+    block.append(head);
+    const stats = [];
+    if (Number.isFinite(d.rows)) stats.push(`${d.rows.toLocaleString()} rows`);
+    if (Number.isFinite(d.nFields)) stats.push(`${d.nFields} fields`);
+    if (d.sizeCategory) stats.push(d.sizeCategory);
+    if (d.license) stats.push(d.license.toUpperCase());
+    block.append(line(d.taskCategories[0] ?? d.kind, stats.join(" · ") || "—"));
+    if (d.integrity.sha256short) {
+      const src = d.integrity.sourceCount ? ` · ${d.integrity.sourceCount} source sha` : "";
+      block.append(line("integrity", `sha256 ${d.integrity.sha256short}…${src}`));
+    }
+    if (d.tags.length) {
+      const tg = document.createElement("div");
+      for (const t of d.tags) {
+        const c = document.createElement("span");
+        c.className = "chip"; c.textContent = t;
+        tg.append(c);
+      }
+      block.append(tg);
+    }
+    if (d.summary) block.append(P(d.summary, "note"));
+    el.append(block);
+  }
+  el.append(P(`${hubReg.count} dataset card${hubReg.count === 1 ? "" : "s"} · ` +
+    "badge = provenance class per data_provenance_SOP.md (REAL measured · " +
+    "HONEST-SYNTHETIC labelled · PLACEHOLDER stand-in) — no card renders without one", "note"));
+}
+
 function renderSites(h) {
   const el = $("sites");
   el.replaceChildren();
@@ -574,6 +638,7 @@ $("askform").addEventListener("submit", async (e) => {
   } catch { log.prepend(P("dottie [offline]: unreachable")); }
 });
 
-refreshTwin(); refreshFleet();
+refreshTwin(); refreshFleet(); loadHubRegistry();
 setInterval(refreshTwin, 15_000);
 setInterval(refreshFleet, 10_000);
+// hub registry is a static committed artifact — load once, no poll.
