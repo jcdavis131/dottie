@@ -222,7 +222,7 @@ def cmd_cost(args):
         print("\n---RAW JSON---")
         try:
             print(Path(cost_path).read_text(encoding="utf-8")[:12000])
-        except:
+        except OSError:
             pass
 
 def cmd_hook(args):
@@ -270,7 +270,7 @@ def cmd_hook(args):
         try:
             out = subprocess.check_output(["git","config","--get","merge.union.driver"], cwd=root, stderr=subprocess.STDOUT, text=True)
             print(f"  git config merge.union.driver: {out.strip()}")
-        except:
+        except (subprocess.CalledProcessError, FileNotFoundError):
             print(f"  git config merge.union.driver: not set (union is built-in, may still work)")
         return
 
