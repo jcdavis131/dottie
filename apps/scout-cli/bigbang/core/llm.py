@@ -496,19 +496,24 @@ def chat_with_metrics(
                 meta["error"] = "koboldcpp not reachable — launch it on :5001 or set KOBOLDCPP_BASE"
                 return meta
             meta["base"] = b
-            t0 = time.time()
+            # perf_counter, not time(): this is an INTERVAL. time() is wall-clock
+            # (an NTP step mid-request can make elapsed 0 or negative) and on
+            # Windows it ticks at ~15.6ms, so a fast completion measures exactly
+            # 0.0 and the `elapsed > 0` guard below drops tok_per_s -- the metric
+            # would vanish precisely when the backend is at its fastest.
+            t0 = time.perf_counter()
             res = openai_chat(model, messages, b, json_mode=json_mode,
                               timeout=timeout, max_tokens=max_tokens)
-            elapsed = time.time() - t0
+            elapsed = time.perf_counter() - t0
         elif backend == "ollama":
             b = base or get_ollama_base(timeout=timeout)
             if not b:
                 meta["error"] = "ollama not reachable — is it running on :11434?"
                 return meta
             meta["base"] = b
-            t0 = time.time()
+            t0 = time.perf_counter()  # interval clock -- see the koboldcpp branch
             res = _ollama_generate(model, messages, b, json_mode=json_mode, timeout=timeout)
-            elapsed = time.time() - t0
+            elapsed = time.perf_counter() - t0
             server_seconds = res.get("server_seconds") if res else None
         else:
             meta["error"] = f"unknown backend {backend!r} — use ollama|koboldcpp"
