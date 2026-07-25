@@ -1,7 +1,7 @@
 // Blue Hen RE org console (www.bhenre.com): every little aspect of the org,
 // rendered from real telemetry only. Same provenance doctrine as everything
 // else: source:"local" or it says offline; absences render as absences.
-import { twinLine, parseHub, parseHubRegistry, nextActions, provenanceSummary, filterRegistry, fmtEvalValue, parseRuns } from "./twin.mjs";
+import { twinLine, parseHub, parseHubRegistry, nextActions, provenanceSummary, filterRegistry, fmtEvalValue, parseRuns, parseTrainingRuns } from "./twin.mjs";
 
 const $ = (id) => document.getElementById(id);
 const P = (text, cls = "") => {
@@ -619,11 +619,15 @@ function renderHubRegistry() {
 // telemetry: the current-run cards above carry the live feed. The comparison is
 // the point — it shows WHY one number is trustworthy and the others were retracted.
 let runsReadout = null;
+let trainingRuns = null;   // cross-leg training history (runtrack readout)
 async function loadRuns() {
   const el = $("runs");
   if (!el) return;
   try { runsReadout = parseRuns(await (await fetch("/runs_readout.json", { cache: "no-cache" })).json()); }
   catch { return offline(el, "runs readout not built — run scripts/build_runs_readout.mjs"); }
+  // training-leg history is additive: its absence must not blank the eval table
+  try { trainingRuns = parseTrainingRuns(await (await fetch("/training_runs.json", { cache: "no-cache" })).json()); }
+  catch { trainingRuns = null; }
   renderRuns();
 }
 function renderRuns() {
@@ -651,6 +655,24 @@ function renderRuns() {
   el.append(P("recomputed from committed eval reports (token-weighted geometric mean of the " +
     "per-phase held-out ppl); each run's bin provenance is recorded, so the retracted numbers " +
     "stay visible next to the honest one", "note"));
+
+  // cross-leg training history (runtrack). Newest last; the live leg is included
+  // even when young. Absent readout simply omits the section.
+  if (trainingRuns?.count) {
+    el.append(P("Training legs", "hubsec"));
+    el.append(table(["leg", "steps|r", "lm first → last|r", "best lm|r", "phases|r"],
+      trainingRuns.legs.map((l) => [
+        l.name.replace(/^leg \d+ · /, ""),
+        Number.isFinite(l.measuredSteps) ? String(l.measuredSteps) : "—",
+        `${fmtEvalValue(l.lmFirst)} → ${fmtEvalValue(l.lmLast)}`,
+        fmtEvalValue(l.lmMin),
+        l.phases.length ? l.phases.map((p) => `P${p}`).join(" ") : "—",
+      ])));
+    if (trainingRuns.segmentation) el.append(P(trainingRuns.segmentation, "note"));
+    el.append(P("legs are the trainer's own measured steps between its resume/done events, " +
+      "logged into the local runtrack store — history, not live telemetry (the RUN card above " +
+      "carries the live feed)", "note"));
+  }
 }
 
 function renderSites(h) {

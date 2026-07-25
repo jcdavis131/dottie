@@ -2,7 +2,7 @@
 import { parseMetricsTail, safeParseJson, parseEvalSummary, twinLine,
          parseTrainerTail, parseDashboard, parseLiveEvents, liveAgeS, parseHub,
          parseHubRegistry, nextActions, provenanceSummary, filterRegistry,
-         fmtEvalValue, parseRuns } from "./twin.mjs";
+         fmtEvalValue, parseRuns, parseTrainingRuns } from "./twin.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, ok, extra = "") => {
@@ -510,6 +510,32 @@ check("parseRuns: per-phase breakdown + integrity sha pass through",
 check("parseRuns: unknown bin label -> UNCLASSIFIED, never assumed honest",
   parseRuns({ runs: [{ name: "x", bins: "WHATEVER", weighted_ppl: 5 }] }).runs[0].badge.label === "UNCLASSIFIED");
 check("parseRuns: bad input -> null", parseRuns(null) === null && parseRuns({}) === null);
+
+// ---- Monitor: cross-leg training history (runtrack readout) -----------------
+const trDoc = {
+  metric: "lm loss per logged training step",
+  segmentation: "3 restart fragments dropped; showing 2 of 2",
+  legs: [
+    { name: "leg 7 · steps 2570-2860", first_step: 2570, last_step: 2860, measured_steps: 30,
+      lm_first: 0.028, lm_last: 0.0601, lm_min: 0.0244, phases: [5],
+      curve: [{ step: 2570, lm: 0.028 }, { step: 2860, lm: 0.0601 }] },
+    { name: "leg 8 · steps 2870-2910", first_step: 2870, last_step: 2910, measured_steps: 5,
+      lm_first: 4.746, lm_last: 3.012, lm_min: 3.012, phases: [3], curve: [{ step: 2870, lm: 4.746 }] },
+    { name: "no-loss leg", first_step: 1 },   // no lm_last -> skipped
+    { name: "", lm_last: 1 },                  // no name -> skipped
+  ],
+};
+const tr = parseTrainingRuns(trDoc);
+check("parseTrainingRuns: skips legs with no name or no measured loss", tr?.count === 2);
+check("parseTrainingRuns: keeps the LIVE (newest, short) leg",
+  tr.legs.at(-1).name.includes("2870-2910") && tr.legs.at(-1).measuredSteps === 5);
+check("parseTrainingRuns: loss + step range + phases pass through",
+  tr.legs[0].lmFirst === 0.028 && tr.legs[0].lmMin === 0.0244 &&
+  tr.legs[1].lmFirst === 4.746 && tr.legs[1].phases[0] === 3 && tr.legs[0].lastStep === 2860);
+check("parseTrainingRuns: segmentation note preserved (filtering stays visible)",
+  tr.segmentation.includes("fragments dropped"));
+check("parseTrainingRuns: curve points parsed; bad input -> null",
+  tr.legs[0].curve.length === 2 && parseTrainingRuns(null) === null && parseTrainingRuns({}) === null);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

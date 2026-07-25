@@ -595,6 +595,30 @@ export function parseRuns(doc) {
   };
 }
 
+/** training_runs.json -> { count, metric, segmentation, legs:[…] } or null.
+ * Cross-leg training history from runtrack (build_training_runs.py). Each leg is
+ * the trainer's own measured steps; the `segmentation` note (which restart
+ * fragments were dropped) is passed through so the filtering stays visible. */
+export function parseTrainingRuns(doc) {
+  const rows = Array.isArray(doc?.legs) ? doc.legs : null;
+  if (!rows) return null;
+  const legs = [];
+  for (const l of rows) {
+    if (!l || typeof l !== "object" || !_str(l.name) || !_num(l.lm_last)) continue;
+    legs.push({
+      name: _str(l.name),
+      firstStep: _num(l.first_step), lastStep: _num(l.last_step),
+      measuredSteps: _num(l.measured_steps),
+      lmFirst: _num(l.lm_first), lmLast: _num(l.lm_last), lmMin: _num(l.lm_min),
+      phases: (Array.isArray(l.phases) ? l.phases : []).filter(Number.isFinite),
+      curve: (Array.isArray(l.curve) ? l.curve : [])
+        .filter((p) => p && _num(p.step) && _num(p.lm))
+        .map((p) => ({ step: p.step, lm: p.lm })),
+    });
+  }
+  return { count: legs.length, metric: _str(doc.metric), segmentation: _str(doc.segmentation), legs };
+}
+
 /** Format a model eval value for display: integers/large get thousands commas,
  * sub-1 values get 3 decimals (0.6899 -> "0.690"), mid values 2. null passes null. */
 export function fmtEvalValue(v) {
