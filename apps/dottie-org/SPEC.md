@@ -1,129 +1,124 @@
 # Dottie Org — spec of record
 
-**Status: SPEC-ONLY. No code exists yet.** This file records the operator's objective and
-the decisions it forces, so that whoever implements it does not have to re-derive them.
-Sequenced *after* Dottie passes testing at bhenre.com — see root `SPEC.md`.
+> **Corrected 2026-07-25.** The first version of this file, written earlier the same day,
+> opened with "**Status: SPEC-ONLY. No code exists yet.**" That was **wrong**. It was written
+> from the operator's objective without searching the machine for prior art. The objective is
+> substantially built: four domain models with real commit histories, a detailed joint-embedding
+> architecture document, and a binder trainer. What follows replaces it.
 
-## Operator objective (2026-07-25, verbatim intent)
+## What this file is now
 
-> Train individual multi-tower → multi-task deep neural networks for each domain
-> (NBA / NFL / College Football / Baseball / Hockey / Soccer / Equities public+private) so we
-> get embedding vectors for each domain, then train a downstream model using a similar
-> architecture to ImageBind to generate the universal model binding the domain models
-> together into a universal model.
+The design of record for the joint embedding is **not here**. It is
+`~/vector-unified/docs/UNIFIED_ARCHITECTURE.md` (dated 2026-07-10), which is more specific
+and better grounded than anything this file proposed. This file's job is to (a) map the
+estate, (b) record what alignment work was done, and (c) name what is genuinely missing —
+not to re-design something already designed.
 
-Reference: <https://github.com/facebookresearch/imagebind>
+## The estate — measured 2026-07-25, not assumed
 
-Dottie Org is also named as the creator of **dumbmodel.com** and **vector games** — both
-currently undefined here; they need their own one-liners before they can be built.
+| project | domain | commits | remote | state |
+|---|---|---|---|---|
+| `~/vector-hoops` | NBA | **318** | `jcdavis131/vector-hoops` | 48-d, 17 ResidualMLP towers (160→32), concat fusion, MTNN v4/v5 |
+| `~/vector-gridiron` | NFL | 20 | `jcdavis131/vector-gridiron` | 32-d, 13 ResidualTowers (→24), gated attention, MTNN v2, **temporal split** |
+| `~/vector-pitch` | Soccer (WC) | 14 | `jcdavis131/vector-pitch` | 16-d z-scored, PCA(3), k-means(8) — **no neural net** |
+| `~/vector-equities` | Equities | 12 | `jcdavis131/vector-equities` | published embedding space + sector-coherence eval; has CI, ruff, pre-commit |
+| `~/vector-unified` | **the binder** | 1 (new) | none | 28 py / 5,397 lines, `train_unified.py`, `eval_unified.py` |
+| `~/vector-hub` | — | 3 | none | landing page for **dumbmodel.com** (not a model) |
+| `~/vector-tennis`, `~/vector-golf` | — | 0 | none | empty scaffolds |
 
-## Shape
+**Domains in the operator's objective with no project yet: College Football, Baseball,
+Hockey.** Equities-private also has no project — see the hard gate below.
 
-```
-per domain d ∈ {NBA, NFL, CFB, MLB, NHL, Soccer, Equities-public, Equities-private}:
-    multi-tower encoder  →  shared trunk  →  multi-task heads
-                                │
-                                └─→  z_d  (domain embedding vector)
+## Design of record — summarised, authority is the source doc
 
-then:  {z_d}  →  ImageBind-style contrastive binder  →  universal embedding space
-```
+From `~/vector-unified/docs/UNIFIED_ARCHITECTURE.md`:
 
-## The one architectural fact that decides everything
+> Treat each **sport** as a **modality**, treat **abstract role archetypes** as the **shared
+> semantics**, and learn a single **64-d L2-normalized** space in which a player's location
+> encodes *what role they play* regardless of *which sport they play it in* — while every
+> per-sport task the live games depend on keeps working at least as well as today.
 
-ImageBind does **not** train all-pairs. Each modality is trained contrastively against
-**one anchor modality** (images), using only (anchor, modality) pairs; alignment between
-modality pairs never trained together then appears *emergently*. That is the whole trick —
-it turns an O(n²) data problem into O(n).
+Two properties of that design worth restating because they are easy to lose:
 
-**So the binder needs an anchor, and the anchor choice is the central open decision.** Two
-things make this harder here than in the paper, and they must not be glossed:
+1. **It is additive.** The unified model must not regress any per-sport model. The live games
+   depend on those.
+2. **It already picked an anchor, and it is not the one this file previously proposed.** An
+   earlier draft here argued for **text** as the ImageBind anchor, reasoning that the domains
+   do not co-occur so the anchor cannot be another sport. The existing design instead uses
+   **abstract role archetypes** as the shared semantics. Both solve the same problem —
+   ImageBind needs one shared thing every modality pairs with — and **the existing choice is
+   the one in force.** Role archetypes have the advantage of already existing in the per-sport
+   models (8 archetype heads in hoops, k-means(8) in pitch). Text remains a plausible *second*
+   bridge if role archetypes prove too coarse, and is the natural one if the Dottie foundation
+   LLM is ever brought in as an encoder — but that is a future option, not the plan.
 
-1. **These domains do not co-occur.** ImageBind's pairs are genuinely simultaneous
-   observations of one event (the audio and the video of the same clip). An NBA game and an
-   NFL game are not two views of one thing. There is no natural (NBA, NFL) pair to learn
-   from, so the anchor cannot be another sport.
-2. **Therefore the anchor must be something every domain independently pairs with.** The
-   strongest candidate is **natural-language text** — every domain has dense independent
-   textual coverage (game reports, box-score narratives, injury notes; filings, earnings
-   calls, news). Each domain then trains as (text ↔ z_d), and cross-domain comparability
-   emerges through text.
+**Prior art that already exists and should not be rebuilt:** hoops already trains **InfoNCE
+career pairs**, so contrastive learning is in the codebase, not a new capability. Gridiron
+already z-scores **on train only with a temporal split**, and its HEAD commit is literally
+"Add walk-forward weekly rank backtest" — the temporal-split invariant this file wanted to
+introduce is already practice there. Pitch is the outlier: PCA + k-means, no network.
 
-**That makes Dottie's own foundation LLM the anchor encoder, which is why the two halves of
-the roadmap are one project rather than two.** The foundation model is not just a product —
-it is the binder's shared coordinate system.
+## Alignment performed 2026-07-25
 
-⚠ **Unverified:** the ImageBind mechanics above are stated from the paper's design as
-understood, not from reading the linked repo — outbound HTTPS from the dev box is currently
-failing (curl exit 35, urllib WinError 10054, WebFetch ECONNRESET on three separate
-attempts). **Verify against the repo before building.** Specifically confirm: the loss
-(InfoNCE with learnable temperature), whether the anchor encoder is frozen or co-trained,
-and how modality-specific heads are dimensioned.
+**Three `vector-hoops` checkouts existed at three different commits**, all sharing the same
+remote — the same hazard class as the stale `__editable__.scout_cli-0.7.0.pth` that shadowed
+`bigbang` and produced eight phantom failures.
 
-## Open decisions — operator's, not the implementer's
+| checkout | commits | last commit | dirty | verdict |
+|---|---|---|---|---|
+| `~/vector-hoops` | 318 | 2026-07-25 09:56 | 0 | **CANONICAL** — 0 ahead / 0 behind origin |
+| `~/workspace/vector-hoops` | 171 | 2026-07-16 | 72 untracked | stale clone |
+| `~/Documents/projects/vector-hoops` | 8 | 2026-07-05 | 0 | stale clone |
 
-| # | Decision | Why it cannot be defaulted |
-|---|---|---|
-| 1 | **The anchor modality.** Text (recommended above) or a constructed entity-time key? | Determines the entire data-pairing effort. Getting it wrong is a full restart, not a tuning pass. |
-| 2 | **What "multi-task" means per domain** — enumerate the heads (win probability? spread? totals? player-level props? return forecast? volatility?). | "Multi-task" currently names a shape with no tasks in it. Heads define the labels, and labels define the data collection. |
-| 3 | **What the towers are** per domain (e.g. team / player / context / market). | Tower decomposition is domain modelling, not architecture. |
-| 4 | **Whether the universal model has a task at all**, or is only a shared embedding space to be probed. | Changes whether success is measurable by a metric or only by downstream transfer. |
-| 5 | **Equities-private scope.** | See the hard gate below — this one has legal consequences, not just technical ones. |
+Nothing is stranded: canonical is fully synced with origin, and the 72 dirty files in the
+stale copy are all **untracked** debug artifacts (`arena-*.png`, `_bump_cache.py`,
+`assets/arena_topo/`). Neither stale copy was deleted — that is the operator's call, and
+deleting a checkout to tidy up is how genuinely unpushed work disappears.
 
-## Invariants — inherited from the platform, plus two this domain forces
+⚠ A claim in the previous turn's report — that `~/Documents/projects/vector-hoops` was "the
+only one with `train_towers.py`" — was **wrong**, caused by a `head -5` truncating an
+alphabetical listing before it reached that filename. All three have it.
 
-Carried over from root `SPEC.md` (these are not optional):
+**`~/vector-unified` had no version control at all** and now does (`e44774c`, 37 files, 7,053
+lines). Excluded deliberately: generated artifacts (`assets/unified.json`, 16.7 MB), acquired
+`data/` (27 MB), and `pipeline/cache/` (~30 MB of scraped HTML). That last one was caught by
+inspecting `git diff --cached` *before* committing — staging had initially ballooned to
+581,566 lines. **The commit is local only**; a remote is the operator's call.
 
-- **Provenance travels with every number.** A metric renders only from a real source; an
-  unreachable source is labelled, never faked. Stale is "history, not telemetry".
-- **Nothing auto-ingests into training.** A discovered dataset is a candidate, not an input.
-- **License gate is deny-by-default.** Any `-nd` component is denied outright (training is a
-  derivative use); any `-nc` component is denied (revenue mission); unverified is not
-  permissive. Enforced by `apps/ava-factory/scripts/dataset_discovery.py::gate_license`.
-- **Shadow libraries are forbidden ingestion sources** regardless of licence field.
+## What is genuinely missing
 
-New, and specific to sports/finance modelling:
+1. **A remote for `vector-unified`.** Local git survives an accidental `rm`; it does not
+   survive disk failure. Every sibling has a GitHub remote; this one does not.
+2. **Three domains with no project**: College Football, Baseball, Hockey.
+3. **Pitch has no neural encoder** — PCA + k-means. Binding a 16-d PCA space to two learned
+   spaces is not the same problem as binding two learned spaces, and the architecture doc
+   should say which it intends.
+4. **A pre-registered test of emergent cross-domain alignment.** The ImageBind claim is that
+   alignment appears between pairs never trained together. That is a *falsifiable* claim and
+   it needs its metric written down **before** it is measured, or a null result gets
+   reinterpreted as a win. The platform's history makes this non-optional: all three recorded
+   research `sota` rows to date were artifacts.
+5. **Entity resolution across domains** — stable identity for players and tickers across
+   trades, renames, relocations and ticker changes. Identity drift silently degrades a shared
+   space.
 
-- **TEMPORAL SPLITS ONLY — no random splits, ever.** Walk-forward / strictly time-ordered
-  evaluation. A random split leaks the future into training and is *the* reason
-  sports and finance models look excellent offline and fail live. This is the single most
-  likely way this project produces a fake win, and the platform already has a hard lesson
-  about fake wins: all three recorded research `sota` rows to date were artifacts. Any
-  eval harness for Dottie Org must make a random split impossible to express, not merely
-  discouraged.
-- **Entity resolution is a first-class component, not glue.** Cross-domain binding requires
-  stable identity for teams, players, and tickers across sources and across time (trades,
-  renames, relocations, ticker changes, corporate actions). Identity drift silently
-  destroys a shared embedding space.
+## Hard gates — unchanged
 
-## Hard gate — Equities private data
+- **Equities private data: do not ingest** until the operator confirms in writing the source
+  and the terms permitting training use. Non-public data carries contractual redistribution
+  and derived-work limits that no licence tag expresses.
+- **Licence gate is deny-by-default** (`apps/ava-factory/scripts/dataset_discovery.py`): any
+  `-nd` denied outright (training is a derivative use), any `-nc` denied, unverified is not
+  permissive, and every asserted licence on a record must pass.
+- **Model-output provenance is a second dimension** a licence cannot express — a dataset can
+  be MIT-tagged while its content was generated under terms forbidding competitor training.
+- **Shadow libraries are forbidden** ingestion sources regardless of licence field.
+- If any downstream use involves wagering, jurisdiction rules apply. Flagging, not advising.
 
-**Do not ingest any non-public equities data until the operator has confirmed, in writing,
-the source and the terms under which it may be used for model training.** Non-public data
-routinely carries contractual redistribution and derived-work restrictions that a licence
-tag cannot express, and material non-public information carries obligations beyond the
-project's own rules. This is deliberately a stop, matching the existing doctrine that an
-unverified licence is not a permissive one — the same reason the `stack-v3` ingestion is
-still blocked rather than assumed.
+## Relationship to Dottie
 
-Separately: if any downstream use involves wagering, the applicable rules vary by
-jurisdiction. Flagging, not advising — that determination is the operator's.
-
-## Reusable today
-
-| Asset | Path | Use here |
-|---|---|---|
-| Trainer + data pipeline | `apps/ava-factory` | per-domain tower training |
-| Eval-gate doctrine (anti-mock, provenance-honest) | `packages/ava-open-harness` | keeps a fake win from scoring |
-| Licence gate (deny-by-default) | `apps/ava-factory/scripts/dataset_discovery.py` | every domain corpus passes it first |
-| Agent CLI | `apps/scout-cli` | the assistant that builds this |
-| Site / console | `apps/bluehenre` → bhenre.com | where results get shown, honestly |
-
-## Definition of done (v0 — operator to confirm or redirect)
-
-1. One domain end-to-end (recommend **NBA**: densest public play-by-play, cleanest entity
-   resolution) — towers → heads → `z_d`, evaluated walk-forward.
-2. A second domain reusing the same code with only config changes, proving the shape
-   generalises before any binder work starts.
-3. The binder trained on (text ↔ z_d) for those two domains, with a stated,
-   pre-registered test of *emergent* cross-domain alignment — i.e. the metric is written
-   down before it is measured, so a null result cannot be reinterpreted as a win.
+Dottie (`apps/ava-factory`) trains a **nano language model** — `factory_lm_loss = 5.73733`.
+It is not training an embedding model and, as of 2026-07-25, is not training at all
+(`pipeline: TimeoutError`). The vector estate is a **separate, more advanced** line of work.
+The two meet only if the foundation LLM is later used as a text encoder for the anchor — an
+option, per the design-of-record note above, not the plan.
