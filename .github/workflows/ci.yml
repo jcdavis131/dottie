@@ -43,6 +43,14 @@ jobs:
         working-directory: apps/scout-cli
         run: uv run pytest tests -q
 
+      # ava-skills is GREEN, so it gates. It was previously lumped in with the
+      # harness behind one `|| true`, which is how a passing suite ends up carrying
+      # a broken one's exemption. Measured 2026-07-24 with THIS exact command, and
+      # also as `python -m pytest` from the repo root and from packages/ava-skills:
+      # 80 passed, ~15s, all three agreeing.
+      - name: Pytest ava-skills (hard gate)
+        run: uv run pytest packages/ava-skills -q
+
       # NON-BLOCKING ON PURPOSE, with the reason named instead of hidden behind a
       # bare `|| true` that reads as "these pass". ava-open-harness fails 5 tests in
       # tests/test_dottie_assistant.py because TWO importable packages are named
@@ -52,14 +60,10 @@ jobs:
       # NO sys.path order satisfies it and this cannot be fixed by an env var or a
       # CI tweak -- renaming a bind-mounted training package is an operator call.
       # Measured 2026-07-24 on the dev box: 5 failed, 38 passed, 5 skipped.
-      # ava-skills is grouped here as PRE-EXISTING, NOT-YET-MEASURED debt; do not
-      # read its inclusion as a claim about why it is red.
-      # Flip each line to a hard gate as it goes green -- one at a time, so the
-      # green ones start protecting immediately instead of waiting for the worst.
-      - name: Pytest skills + harness (non-blocking — dottie name collision, see comment)
-        run: |
-          uv run pytest packages/ava-skills -q || true
-          uv run pytest packages/ava-open-harness -q || true
+      # This is now the LAST non-blocking pytest step. When the rename lands, delete
+      # the `|| true` and this comment with it.
+      - name: Pytest ava-open-harness (non-blocking — dottie name collision, see comment)
+        run: uv run pytest packages/ava-open-harness -q || true
       - name: GOAT audit (Carmack/Bellard) — regressions only
         # Mechanized slice of tasks/artifacts/goat_audit_monorepo.md, run on every
         # push so NEW plugins are held to the family's bar. --check fails only on a
