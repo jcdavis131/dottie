@@ -251,6 +251,16 @@ def test_corpus_terms_ranked_by_weight_then_alphabetically():
     assert tied == sorted(tied)
     assert len(contentgap.corpus_terms(_model(), limit=2)) == 2
     assert contentgap.corpus_terms(_model(), limit=0) == []
+    # A NEGATIVE limit must also yield nothing. limit=0 above cannot pin this:
+    # `rows[:0]` is [] with or without the `max(0, limit)` guard, so the guard was
+    # untested and a mutation dropping it survived the whole suite. It is reachable —
+    # `--top` is a plain int typer Option with no min=, so `--top -3` reaches here,
+    # and `rows[:-3]` would silently return all-but-the-last-three ranked terms.
+    assert contentgap.corpus_terms(_model(), limit=-3) == []
+    # same guard, same blind spot, at the second site (draft_counts is a Counter/dict
+    # of term -> count; the term must be absent from the corpus model to produce a row)
+    assert contentgap.draft_only_terms({"notacorpusterm": 3}, _model(), limit=-3) == []
+    assert contentgap.draft_only_terms({"notacorpusterm": 3}, _model(), limit=1) != []
 
 
 # ---- readings: a value or a reason, never both, never neither ---------------
@@ -272,6 +282,13 @@ def test_expected_count_is_density_normalized():
     assert contentgap.expected_count(0.05, 400) == 20.0
     assert contentgap.expected_count(0.05, 40) == 2.0  # short draft, small ask
     assert contentgap.expected_count(0.05, 0) == 0.0
+    # Negative token counts clamp to 0 rather than producing a negative expectation.
+    # token_count() cannot go negative, so this guard is unreachable via the normal
+    # flow — but expected_count is a PUBLIC function taking a plain int, so its
+    # contract is worth stating. Pinning it beats deleting a correct guard just to
+    # satisfy a mutation score. (limit=0 above cannot distinguish it: 0.05 * 0 and
+    # 0.05 * max(0, 0) are both 0.0.)
+    assert contentgap.expected_count(0.05, -100) == 0.0
 
 
 def test_minimum_count_never_drops_below_one():
