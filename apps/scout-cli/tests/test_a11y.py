@@ -233,9 +233,10 @@ def test_iter_rules_tracks_at_depth_and_strips_comments():
     by_selector = [(sel.strip(), depth) for sel, _body, depth in rules]
     assert ("body", 0) in by_selector
     assert ("body", 1) in by_selector  # the @media copy is marked conditional
-    assert ("\n    .card", 0) in by_selector or (".card", 0) in [
-        (s.strip(), d) for s, d in by_selector
-    ]
+    # the first disjunct was DEAD: by_selector is built with sel.strip() above, so a
+    # leading-whitespace key can never be in it, and the second disjunct re-stripped
+    # already-stripped values. Assert the one reachable claim.
+    assert (".card", 0) in by_selector
     assert a11y.iter_rules("") == []
     assert a11y.iter_rules("body { color: #111") == [("body", " color: #111", 0)]  # unclosed
 

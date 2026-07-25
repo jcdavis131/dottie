@@ -139,7 +139,11 @@ def test_decode_document_sniffs_encoding_instead_of_assuming_utf8():
 def test_looks_binary_flags_blobs_but_not_wide_text():
     # NUL-riddled AND valid UTF-8 — the case a decode-only check would admit
     blob = bytes([0, 1, 2, 3]) * 500
-    assert blob.decode("utf-8") is not None
+    # was `blob.decode("utf-8") is not None`: max byte is 3, so the blob is pure
+    # ASCII, decode() cannot raise, and it returns str — the assertion was a
+    # tautology twice over. The point of the fixture is that the blob IS valid
+    # UTF-8, which is what makes a decode-only check admit it; pin that directly.
+    assert len(blob.decode("utf-8")) == len(blob)  # 1 byte per char = valid ASCII/UTF-8
     assert dupes.looks_binary(blob) is True
     assert dupes.looks_binary(ORIGINAL.encode("utf-16")) is False  # NULs are structural
     assert dupes.looks_binary(ORIGINAL.encode("utf-8")) is False

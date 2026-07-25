@@ -718,7 +718,12 @@ def test_to_diagnostics_maps_latency_bands_errors_and_gaps():
     assert by_rule["apm:critical-latency"][0]["severity"] == "error"
     assert by_rule["apm:critical-latency"][0]["path"] == "apm://demo/critical"
     assert by_rule["apm:slow"][0]["severity"] == "warning"
-    assert "apm:slow" not in {d["rule"] for d in by_rule["apm:critical-latency"]}
+    # was `"apm:slow" not in {d["rule"] for d in by_rule["apm:critical-latency"]}`,
+    # which cannot fail: the bucket is KEYED by d["rule"], so every member already
+    # has rule == "apm:critical-latency". The property actually worth pinning is that
+    # the two rules are mutually exclusive PER PATH — a span over the critical bar is
+    # reported as critical and NOT also as merely slow.
+    assert "apm://demo/critical" not in {d["path"] for d in by_rule.get("apm:slow", [])}
     assert by_rule["apm:errors"][0]["severity"] == "error"  # 100% of measured calls
     assert by_rule["apm:unmeasured"][0]["severity"] == "warning"
     assert "process exited" in by_rule["apm:unmeasured"][0]["message"]

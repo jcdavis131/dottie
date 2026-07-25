@@ -471,7 +471,11 @@ def test_manifest_carries_everything_the_client_needs():
 
 def test_client_js_is_a_constant_and_matches_the_manifest_filename():
     text = searchindex.client_js().decode("ascii")
-    assert searchindex.client_js() == searchindex.client_js()
+    # was `client_js() == client_js()`, a tautology over a module constant that no
+    # mutation could break. The non-vacuous claim is that it is NON-EMPTY ascii
+    # bytes: emptying the constant now fails here, and the .decode("ascii") above
+    # already fails on any non-ascii byte.
+    assert searchindex.client_js() and isinstance(searchindex.client_js(), bytes)
     # the client hardcodes ONE filename; it must be the one we write
     assert f'INDEX_NAME = "{searchindex.INDEX_NAME}"' in text
     # every tunable is read from the manifest, so nothing is duplicated in JS
