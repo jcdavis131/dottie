@@ -14,7 +14,26 @@ Workflow `wfm14ajm8` / run `wf_bdde5063-194` finished: 13 agents, 0 errors, ~2.6
 | `later` (Pocket) | ✅ holds | `claims_overstated` — same shape |
 | `digest` (Mailchimp) | ❌ **fails bar** | read its verifier `findings` before touching it |
 | `cite` (Zotero) | ❌ **fails bar** | ditto |
-| `coverage` (Codecov) | ❌ **fails bar** | ditto |
+| `coverage` (Codecov) | ❌ **fails bar** | **fix list already derived — see below** |
+
+**`coverage`'s fix is fully specified, no re-derivation needed.** Its verifier found NO vacuous test
+and NO fabricated metric; it fails because **7 fresh mutations in the reporting/disclosure code ALL
+survived the 86-test suite**. The rendered HTML's honesty disclosures are simply unasserted — the
+module promises to show WHY a number is missing and nothing checks the reason reaches the page. Two
+contradict documented invariants (the schema condition), notably `cli.py:23-25` "a module with no
+data renders as UNKNOWN with the reason, never as 0%". Each surviving mutation IS the assertion to
+add — write one test per line:
+| mutation that survived | assert instead |
+|---|---|
+| X1 `_pct_cell` drops the `unknown_reason` title | the reason text appears on the row |
+| X2 `render_html` drops the whole Notes section | Notes section present with its content |
+| X3 `DELTA_EPSILON` 0.005 -> 0.4 | a delta just over 0.005 is reported, just under is not |
+| X4 `_delta_cell` drops the `delta_reason` title | the delta reason appears |
+| X5 footer drops `SCOPE_LIMITS` | the scope-limits text is in the footer |
+| X6 the "per-FILE deltas are not stored" sentence deleted | that disclosure is present |
+| X7 the "Unmeasured" per-file list dropped | unmeasured files are listed |
+This is the same shape as batch 4's `dupes` gap: the CODE is right, the tests cannot notice if it
+stops being right. Verify each new test by re-applying its mutation and confirming a failure.
 
 **Zero new dependencies in any of the six** (verified by import audit against pyproject, transitively).
 `claims_hold=false` means exactly one of: an unreproducible number, a new dependency, a vacuous
