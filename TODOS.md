@@ -353,6 +353,66 @@ afterwards — the first run was discarded because it was started before the edi
   so it is safe on the disk-limited VM. Not done here because the flag may have been chosen
   for a reason not recorded in the doc — confirm intent first.
 
+### 🔓 2026-07-25 — stack-v3 UNBLOCKED: licence is `odc-by`. Adapter built + tested; needs ONE frozen edit to activate
+
+Operator: *"use stack-v3 use everything available stop blocking yourself."* Retried the
+API and it answered first try (733 KB) — **the block was the flaky network, not policy.**
+
+| field | value |
+|---|---|
+| licence | **`odc-by`** (Open Data Commons Attribution) — not NC, not ND |
+| gated / private / disabled | `False` / `False` / `False` |
+| config / split | `default` / `train` |
+| downloads / likes | 35,376 / 138 · lastModified 2026-07-24 |
+
+It passes the existing gate unchanged: `gate_license(["odc-by"]) -> (True, 'permissive:
+odc-by')`, provenance flag clean. **No override was needed.**
+
+**But `odc-by` is the licence of the COLLECTION, not of the code.** The schema is
+repo-level — one row is `{repo_path, repo_id, commit_id, github_metadata, num_files,
+files:[...]}` — and every element of `files` carries its own `content`, `language`,
+`is_vendor`, `license_type` and **`detected_licenses` (a LIST)**. Training on the
+dataset tag alone would ingest files whose own terms forbid it. So the per-record gate
+predicted earlier is both necessary and *available*, and `gate_license` already handles
+multi-value correctly (deny if ANY value denies).
+
+Built, non-frozen, fully tested: **`scripts/stackv3_adapt.py`** — repo row → one training
+text, per-file gate, drops vendored/empty, returns `None` if nothing survives, and carries
+`_stackv3_files_kept` / `_stackv3_files_dropped` so provenance travels with the record.
+`gate_license` is **imported, never re-implemented** (a second allowlist copy is the
+drifting-constant bug class that has already produced real bugs here); a test asserts the
+adapter declares no licence literals of its own. **27 adapter tests, 8/8 mutations killed**
+(including "skip the per-file gate", "license_type wins over detected", "emit when nothing
+kept").
+
+- [ ] **ACTIVATION — needs the operator's word, because both files are FROZEN**
+  (bind-mounted into the live trainer; docker CLI is 500ing so I could not confirm whether
+  a run is in flight, and my own note says "the tool cannot reach it" ≠ "it is not
+  running"). Two edits:
+  1. `dottie/datagen/adapters.py` — move `scripts/stackv3_adapt.py` to
+     `dottie/datagen/stackv3_adapt.py` (drop the importlib shim, plain
+     `from dottie.datagen.dataset_license import gate_license` once the gate is shared),
+     then `from dottie.datagen.stackv3_adapt import adapt_record as stackv3` and add
+     `"stackv3": stackv3` to `ADAPTERS`.
+  2. `configs/sources.yaml` — add:
+     ```yaml
+     - name: stack_v3_code
+       kind: hf
+       dataset: HuggingFaceCode/stack-v3-train
+       config: default
+       split: train
+       text_field: text          # produced by the adapter, not present in the raw row
+       adapter: stackv3
+       phases: [2, 3]
+       weight: {2: 0.00, 3: 0.00}   # start at ZERO and re-balance deliberately —
+                                    # every phase's weights must sum to ~1.0
+       license: odc-by
+       gated: false
+     ```
+  ⚠ Weights are the trap: `sources.yaml` requires each phase's weights to sum to ~1.0, so
+  adding a source at a non-zero weight without lowering others makes the collector spin.
+  Add at 0.00, then rebalance in one deliberate edit.
+
 ### NEW 2026-07-25 — 21 factory tests CANNOT RUN: httpx 0.28 removed `Client(app=...)`
 
 - [ ] **`apps/ava-factory/tests/test_server_endpoints.py` — all 21 tests ERROR at setup**
