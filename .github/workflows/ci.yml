@@ -19,13 +19,29 @@ jobs:
         run: uv python install 3.11
       - name: Sync workspace (light packages)
         run: uv sync --all-groups --frozen || uv sync
-      - name: Ruff lint
+      # NON-BLOCKING, and the size of the debt is stated so `|| true` cannot be
+      # mistaken for "lint is clean". Measured 2026-07-24: 334 findings total --
+      # apps/scout-cli 95, packages/ava-open-harness 79, packages/personal-graphify
+      # 141, packages/ava-skills 19 (each package carries its own [tool.ruff], and
+      # the per-package counts sum exactly to the combined run, so this is real debt
+      # and not a config-discovery artifact). ~194 are --fix-able.
+      # Flip to a hard gate per package as each reaches 0, the same ratchet the
+      # pytest steps below use. Do NOT flip all four at once.
+      - name: Ruff lint (non-blocking — 334 known findings, see comment)
         run: uv run ruff check packages/ava-skills packages/ava-open-harness packages/personal-graphify apps/scout-cli --exclude apps/scout-cli/.venv || true
       # scout-cli is a HARD gate. It holds the openswap family, its board is green,
       # and a `|| true` here would mean the GOAT audit's test-honesty dimension
       # scores suites that CI is contractually unable to fail. No `|| true`.
+      # working-directory is load-bearing, not tidiness. Run from the repo root and
+      # `import bigbang` can resolve to a DIFFERENT scout-cli checkout: on the dev
+      # box an `__editable__.scout_cli-0.7.0.pth` finder points at ~/scout-cli, so a
+      # root-level run silently tested stale 0.7.0 code and reported 8 failures that
+      # do not exist in this tree. Running from apps/scout-cli puts cwd first, which
+      # is the invocation measured green (1156 passed), so the gate asserts what was
+      # actually verified rather than whatever the resolver happens to pick.
       - name: Pytest scout-cli (hard gate)
-        run: uv run pytest apps/scout-cli/tests -q
+        working-directory: apps/scout-cli
+        run: uv run pytest tests -q
 
       # NON-BLOCKING ON PURPOSE, with the reason named instead of hidden behind a
       # bare `|| true` that reads as "these pass". ava-open-harness fails 5 tests in
