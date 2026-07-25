@@ -14,7 +14,7 @@ Workflow `wfm14ajm8` / run `wf_bdde5063-194` finished: 13 agents, 0 errors, ~2.6
 | `later` (Pocket) | ✅ holds | `claims_overstated` — same shape |
 | `digest` (Mailchimp) | ❌ was failing | **security gap ALREADY FIXED in the working tree — see below** |
 | `cite` (Zotero) | ❌ **fails bar — worst of the three** | two independent grounds, see below |
-| `coverage` (Codecov) | ❌ **fails bar** | **fix list already derived — see below** |
+| `coverage` (Codecov) | ❌ was failing | ✅ **ALL 7 mutations closed in-tree** — see below; re-verify before committing |
 
 **`cite` is the one to treat with most suspicion — it fails on TWO independent grounds.**
 (1) A surviving mutant (its verifier's E1/E4) reveals behavior contradicting a documented invariant.
@@ -78,8 +78,8 @@ add — write one test per line:
 | ~~X3 `DELTA_EPSILON` 0.005 -> 0.4~~ | ✅ **DONE in-tree** — `test_the_unchanged_dead_zone_is_narrow_and_its_boundary_is_pinned`; verified: X3 gives 1 failed / 87 passed on `assert 0.4 <= 0.01` |
 | ~~X4 `_delta_cell` drops the `delta_reason` title~~ | ✅ **DONE in-tree** — same test also pins `_delta_cell`'s reason and its measured-value path |
 | ~~X5 footer drops `SCOPE_LIMITS`~~ | ✅ **DONE in-tree** — same test; verified separately: X5 gives 1 failed / 88 passed on the `Scope:` assertion |
-| X6 the "per-FILE deltas are not stored" sentence deleted | that disclosure is present |
-| X7 the "Unmeasured" per-file list dropped | unmeasured files are listed |
+| ~~X6 the "per-FILE deltas are not stored" sentence deleted~~ | ✅ **DONE in-tree** — `test_the_page_discloses_why_no_per_file_delta_and_lists_unmeasured_files`; verified: 1 failed / 89 passed |
+| ~~X7 the "Unmeasured" per-file list dropped~~ | ✅ **DONE in-tree** — same test, verified separately: 1 failed / 89 passed |
 This is the same shape as batch 4's `dupes` gap: the CODE is right, the tests cannot notice if it
 stops being right. Verify each new test by re-applying its mutation and confirming a failure.
 
