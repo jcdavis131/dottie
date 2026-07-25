@@ -103,13 +103,28 @@ the 14 below. When reviewgraph's gate is wired it should pass `base=--root`.
 
 ## The larger hole this does NOT close
 
-**14 of 47 write-capable plugins never call the gate at all** — the plugin loader does
+**16 of 47 write-capable plugins never call the gate at all** — the plugin loader does
 not enforce it, and these call sites do not either:
 
 ```
-auth  ava  brain  dev_loop  herd  lab  mcp  reviewgraph  rtx  secrets  skill  system
-tennis  write
+auth  ava  brain  dev_loop  herd  lab  mcp  quality  reviewgraph  rtx  secrets  skill
+system  tennis  tools  write
 ```
+
+⚠ **Correction to my own earlier figure: this is 16, not the 14 I first reported** (and
+the 14 went out in commit `2669066`'s message before I caught it). The miscount came from
+grepping for `enforce_or_raise`, which counts prose:
+
+- `quality` names it **only in a comment** — *"The inverse of an enforce_or_raise call
+  site"* — and never calls it. It does write: `DEFAULT_DB = Path(".scout")/"quality.db"`,
+  opened inside `bigbang.core.quality`, so the write lives outside the plugin file.
+- `tools` imports it and calls it exactly once, with `"network"` — never on a write.
+
+Counting `ast.Call` nodes instead of matching text gives 16. That is the **third** time in
+this one change that a grep confused code with prose about code (the others: a drift-guard
+regex flagging `fs_wrile` from `policy.py`'s own comment, and `ruff` reading a rationale
+comment that began with the word *noqa* as a real directive). The fix each time was the
+parser.
 
 That list is the inverse of reassuring: `auth` writes `auth.json`/`secrets.json`,
 `secrets` writes `~/.local/share/bigbang/`, `brain` writes `~/MEMORY.md` and `~/memory/`,
@@ -117,6 +132,12 @@ That list is the inverse of reassuring: `auth` writes `auth.json`/`secrets.json`
 matters most, and for them `paths` remains documentation. **Enforcing `check_permission`
 cannot fix this**; the gate has to be invoked. That is the highest-value follow-up, and
 it is larger than this change.
+
+Pinned by `TestUngatedWriteCapablePluginsAreTracked`, which guards **both** directions —
+a new write-capable plugin cannot join the set silently, and a plugin that gets its gate
+wired must be removed from the list so the remaining count stays truthful. Plus a floor
+assertion, because "set minus anything is empty" makes both directions pass vacuously if
+the walker ever breaks.
 
 ## What the matcher guarantees
 

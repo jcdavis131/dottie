@@ -280,7 +280,9 @@ def check_permission(
     plugins that write under a runtime-discovered root — see _norm_path. It does
     not widen anything: the bound is still "resource inside a declared entry",
     and a plugin that wanted to escape could simply not call this gate, which is
-    already true of 14 write-capable plugins today."""
+    already true of 16 write-capable plugins today (counted with ast — a grep for
+    "enforce_or_raise" says 14, because `quality` names it only in a comment and
+    `tools` calls it only with "network")."""
     if action not in KNOWN_ACTIONS:
         return False, (
             f"unknown policy action {action!r} — fail closed; expected one of "

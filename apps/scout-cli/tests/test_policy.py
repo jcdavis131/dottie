@@ -462,6 +462,95 @@ class TestFsWritePathAllowlist:
         assert not ok
 
 
+class TestUngatedWriteCapablePluginsAreTracked:
+    """The hole enforcement does NOT close, pinned so it cannot grow in silence.
+
+    These plugins declare `write: true` and never call the gate on any filesystem
+    action, so their `capabilities.filesystem.paths` is documentation rather than
+    a bound. Enforcing check_permission cannot fix that — the gate has to be
+    *invoked* — and the list is the inverse of reassuring: `auth` writes
+    auth.json/secrets.json, `secrets` writes ~/.local/share/bigbang/, `brain`
+    writes ~/MEMORY.md and ~/memory/, `skill` writes ~/.claude/skills/.
+
+    Counted with ast, not grep. A grep for "enforce_or_raise" reports `quality`
+    and `tools` as gated and gives 14: quality mentions it only in prose ("The
+    inverse of an enforce_or_raise call site") and tools imports it but only ever
+    calls it with "network". Neither gates a write. The real number is 16."""
+
+    KNOWN_UNGATED = frozenset(
+        {
+            "auth", "ava", "brain", "dev_loop", "herd", "lab", "mcp", "quality",
+            "reviewgraph", "rtx", "secrets", "skill", "system", "tennis",
+            "tools", "write",
+        }
+    )
+
+    def _ungated(self):
+        fs_actions = set(policy.FS_WRITE_ACTIONS)
+        out = set()
+        for mdir in sorted(Path("bigbang/plugins").iterdir()):
+            if not (mdir / "manifest.yaml").exists():
+                continue
+            fs = (policy.load_manifest(mdir).get("capabilities") or {}).get(
+                "filesystem"
+            ) or {}
+            if fs.get("write") is not True:
+                continue
+            gated = False
+            for f in mdir.rglob("*.py"):
+                if "__pycache__" in f.parts:
+                    continue
+                try:
+                    tree = ast.parse(f.read_text(encoding="utf-8", errors="replace"))
+                except Exception:
+                    continue
+                for node in ast.walk(tree):
+                    if not isinstance(node, ast.Call) or len(node.args) < 2:
+                        continue
+                    fn = node.func
+                    name = (
+                        fn.attr
+                        if isinstance(fn, ast.Attribute)
+                        else getattr(fn, "id", "")
+                    )
+                    if name not in ("enforce_or_raise", "check_permission"):
+                        continue
+                    arg = node.args[1]
+                    if isinstance(arg, ast.Constant) and arg.value in fs_actions:
+                        gated = True
+            if not gated:
+                out.add(mdir.name)
+        return out
+
+    def test_no_new_plugin_joins_the_ungated_set(self):
+        new = self._ungated() - self.KNOWN_UNGATED
+        assert new == set(), (
+            f"new write-capable plugin(s) with NO fs_write gate: {sorted(new)} — "
+            "call enforce_or_raise at the write, or add it here deliberately"
+        )
+
+    def test_plugins_that_got_gated_are_removed_from_the_list(self):
+        """Guards the other direction, so the list stays honest as gates land."""
+        stale = self.KNOWN_UNGATED - self._ungated()
+        assert stale == set(), (
+            f"{sorted(stale)} now gate their writes — delete them from "
+            "KNOWN_UNGATED so the remaining count stays truthful"
+        )
+
+    def test_the_gated_majority_is_still_the_majority(self):
+        """Floor guard: if the walker breaks, both tests above pass vacuously
+        (empty set minus anything is empty)."""
+        write_capable = [
+            m.name
+            for m in sorted(Path("bigbang/plugins").iterdir())
+            if (m / "manifest.yaml").exists()
+            and ((policy.load_manifest(m).get("capabilities") or {}).get("filesystem")
+                 or {}).get("write") is True
+        ]
+        assert len(write_capable) >= 45, f"only {len(write_capable)} write-capable found"
+        assert len(self._ungated()) < len(write_capable), "walker found nothing gated"
+
+
 class TestFsWriteArgAction:
     """`fs_write_arg` is for destinations the OPERATOR named on the command line.
     It checks the write flag and stops: no allowlist can enumerate every

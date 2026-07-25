@@ -238,13 +238,21 @@ found exactly 42, matching the subagent's count by a different method.
    freely while *reading like an enforced gate*. `KNOWN_ACTIONS` now fails closed
    (verified: every caller passes a literal, no dynamic actions anywhere).
 
-- [ ] **FOLLOW-UP, and this is the bigger hole: 14 of 47 write-capable plugins never call
-  the gate at all.** `auth ava brain dev_loop herd lab mcp reviewgraph rtx secrets skill
-  system tennis write`. That list is the inverse of reassuring — `auth` writes
+- [ ] **FOLLOW-UP, and this is the bigger hole: 16 of 47 write-capable plugins never call
+  the gate at all.** `auth ava brain dev_loop herd lab mcp quality reviewgraph rtx secrets
+  skill system tennis tools write`. That list is the inverse of reassuring — `auth` writes
   `auth.json`/`secrets.json`, `secrets` writes `~/.local/share/bigbang/`, `brain` writes
   `~/MEMORY.md` and `~/memory/`, `skill` writes `~/.claude/skills/`. For these, `paths`
   remains documentation. Enforcing `check_permission` **cannot** fix this; the gate has to
   be invoked. Highest-value next step on this axis.
+  ⚠ **Correction: 16, not the 14 stated in commit `2669066`'s message.** Grepping for
+  `enforce_or_raise` counts prose — `quality` names it only in a comment ("The inverse of
+  an enforce_or_raise call site") yet does write `.scout/quality.db` via
+  `bigbang.core.quality`, and `tools` calls it only with `"network"`. Counting `ast.Call`
+  nodes gives 16. Now pinned in BOTH directions by
+  `TestUngatedWriteCapablePluginsAreTracked` (a new plugin cannot join silently; a
+  newly-gated one must be removed so the count stays truthful) plus a floor assertion,
+  since "set minus anything is empty" would otherwise pass vacuously if the walker broke.
 
 - [ ] **FOLLOW-UP: the allowlist cannot express a dynamically-discovered root.** Defects 1
   and 2 share this cause — reviewgraph tried to spell it `<root>`, tasks hardcoded one
