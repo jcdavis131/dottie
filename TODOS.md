@@ -73,6 +73,41 @@ Re-check with:
   reveals behavior that contradicts a documented invariant; overstated-but-honest mutation counts
   get a separate `claims_overstated` flag instead of failing the plugin.
 
+### NEW 2026-07-24 — batch-4 `apm`: one vacuous assertion (code and metrics all hold)
+
+- [ ] **tests/test_apm.py:721 cannot fail.**
+  `assert "apm:slow" not in {d["rule"] for d in by_rule["apm:critical-latency"]}` — the bucket is
+  KEYED by `d["rule"]`, so every element in it already has `rule == "apm:critical-latency"`;
+  `"apm:slow"` can never be present. Structurally guaranteed, not merely unlikely. Replace with
+  the rule-separation property it was meant to pin (presumably: a slow-but-not-critical span
+  lands in `apm:slow` and NOT in `apm:critical-latency`, which requires two spans at different
+  latencies, not one bucket inspected against itself).
+- Everything else on `apm` reproduced: 50 passed, GOAT 10.00 (D1-D6 all 10), stdlib-only
+  confirmed by import audit, ruff clean. The verifier's own hygiene is the standard to copy —
+  every mutation reverted with an asserted `read_bytes() == ORIGINAL`, harness file deleted,
+  `git diff` verified empty afterwards.
+- Credit: the `apm` BUILD agent separately found and fixed a real defect while chasing a survivor
+  of its own — a >512-deep call chain was being reported as a CYCLE and its spans force-detached
+  to the tree root ("a fabricated diagnosis plus a lie about the call structure"). It split
+  `cycle` / `truncated` / `orphan` rather than weakening the test. Surviving mutants are symptoms
+  worth investigating, not scores to fix.
+
+### 2026-07-24 — BATCH-4 HEADLINE: 5 of 5 verifiers found something the builder missed
+
+- [ ] **Every single independent verifier found a real gap, and 3 of 5 found an assertion that
+  cannot fail.** flows ✅ · a11y ✅ (2 survivors, judged minor) · contentgap ⚠️ (2 survivors +
+  overlap claim stale) · dupes ⚠️ (17th surviving mutant + 1 vacuous test) · apm ⚠️ (1 vacuous
+  test). Every builder had reported a green suite AND a GOAT mean of 10.00 — both true, neither
+  sufficient.
+  **The systematic blind spot is vacuous assertions.** A test that cannot fail passes every run,
+  raises the assert count that `goat_audit.py` rewards, and survives every mutation the author
+  thinks to try — because the author wrote the tautology believing it tested something. It is
+  invisible from the inside by construction. An adversary reading the assertion cold sees it
+  immediately.
+  **Do not drop the verify stage to save tokens.** It cost one extra agent per plugin and was the
+  only thing that found any of this; `goat_audit --run-tests` cannot, since a vacuous test is a
+  passing test.
+
 ### NEW 2026-07-24 — batch-4 `contentgap`: 2 low-severity mutation survivors
 
 - [ ] Verifier refuted "15/15 caught, survivors: none": (a) `expected_count()`
