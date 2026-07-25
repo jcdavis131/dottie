@@ -973,7 +973,16 @@ def render_files(index: dict[str, Any], *, now: float | None = None) -> dict[str
 
 
 def _idf(doc_count: int, df: int) -> float:
-    """BM25 inverse document frequency. A term in every page ranks nothing."""
+    """BM25 inverse document frequency. A term in every page ranks nothing.
+
+    NOT the same function as `contentgap.idf`, and the two must NOT be merged. That
+    one is the smoothed sklearn-style form -- log((N+1)/(df+1)) + 1 -- where a term
+    on every comparison page still weighs 1.0, because for COVERAGE analysis the
+    consensus vocabulary is the most important thing a draft can be missing. Here,
+    for RANKING, that same term should contribute nothing. Opposite intent, so
+    unifying them would silently change one plugin's output; the argument orders are
+    mirrored too (`doc_count, df` here vs `doc_freq, n_docs` there).
+    """
     return math.log(1 + (doc_count - df + 0.5) / (df + 0.5))
 
 

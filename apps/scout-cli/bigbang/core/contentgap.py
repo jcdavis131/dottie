@@ -275,6 +275,16 @@ def tf_weight(count: int) -> float:
 def idf(doc_freq: int, n_docs: int) -> float:
     """Smoothed inverse document frequency: log((N+1)/(df+1)) + 1.
 
+    NOT the same function as `searchindex._idf`, and the two must NOT be merged.
+    That one is BM25 -- log(1 + (N - df + 0.5)/(df + 0.5)) -- tuned for RANKING
+    retrieval hits, where the consensus vocabulary should sink. This one is the
+    smoothed sklearn-style form tuned for COVERAGE, where a term on every
+    comparison page is the most important thing a draft can be missing, so it must
+    still weigh 1.0 instead of 0.0 (see below). Unifying them would silently change
+    one plugin's output, and note the argument orders are also mirrored
+    (`doc_freq, n_docs` here vs `doc_count, df` there), so a shared two-int helper
+    would invite callers to swap them.
+
     The +1s are why a term present in EVERY comparison page still weighs 1.0
     rather than 0.0. Plain idf would zero out the consensus vocabulary — the
     single most important signal for "what must this draft cover".
