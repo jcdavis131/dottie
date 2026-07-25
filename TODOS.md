@@ -417,8 +417,17 @@ THE NIGHT'S HEADLINES — read these before anything below:
 2. **§2.1 fleet rebuild DONE + verified**: 13/13 healthy on reconciled images,
    30-source registry live; collectors correctly paused on full runway. §2.2 blocked
    only on the next-run decision.
-3. **Research loop: BOTH "SOTA" entries are artifacts (§5.3.R0) — honest count of real
-   architectural wins is ZERO.** The older one beat a hand-seeded placeholder baseline
+3. **Research loop: ALL THREE "SOTA" entries are artifacts (§5.3.R0) — honest count of real
+   architectural wins is ZERO.** ⚠ This said "BOTH" (2) until 2026-07-24; the ledger has
+   **3** `sota` rows. Authoritative read 2026-07-24 22:55 from
+   `apps/dottie/data/research/ledger.sqlite3` (100 experiments): **70 failed_validation,
+   20 rejected, 6 failed_training, 3 sota, 1 pending** — every count in this file below was
+   stale (54 / 10 / 3 / 2). Current baseline row: `factory_lm_loss = 5.73733` (nano),
+   **`experiment_id = NULL`**, `metric_sem_n = 3`. The NULL owner plus a value HIGHER (worse)
+   than the 5.54404 previously recorded is the fingerprint of the third SOTA being retracted
+   and its ratchet unwound — i.e. the defenses worked. Real wins still ZERO.
+   **Never quote these counts from prose; re-read the ledger.** The older artifact beat a
+   hand-seeded placeholder baseline
    (4.5) on an explicitly-not-capability synthetic task; the newer one (MLBR) is the
    noise+degenerate case below. The machinery works end-to-end; the results were
    mislabeled, and tonight's gates now block both failure modes. Original note: MLBR
@@ -713,7 +722,9 @@ THE NIGHT'S HEADLINES — read these before anything below:
 six validation stages catching **5 of 5** stored integration failures in ~106 ms instead of
 after a full model build; a contamination detector on the baseline; a real two-sample
 significance test; and a mutation audit (8/8) that caught a hollow test in my own work.
-**Real wins remain ZERO** — both recorded SOTAs are artifacts. The gates stop false wins;
+**Real wins remain ZERO** — all THREE recorded SOTAs are artifacts (ledger, 2026-07-24: 3
+`sota` rows, not 2; the third was retracted by paired-seed testing and the baseline reverted
+to 5.73733 with a NULL owner). The gates stop false wins;
 item 8 is what would produce a true one.
 
 ---
