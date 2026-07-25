@@ -353,6 +353,51 @@ afterwards — the first run was discarded because it was started before the edi
   so it is safe on the disk-limited VM. Not done here because the flag may have been chosen
   for a reason not recorded in the doc — confirm intent first.
 
+### ✅ 2026-07-25 — REDEPLOYED. The sha256 drift on www.bhenre.com is fixed (gate now PASSES)
+
+Operator: *"redeploy."* Deployment `bluehenre-campus-8jlgr3038-...`, alias moved, pin
+updated. **G3 SMOKE against www.bhenre.com now exits 0**, with
+`registry: registry matches (18851 bytes)` where it previously reported 4 drifted fields.
+Verified independently of the gate: apex, www and the committed file all hash to
+`00a4b5b3...` (apex 307s to www; the first comparison I ran did not follow the redirect and
+so compared a "Redirecting..." body against real JSON — corrected).
+
+**Root cause was a stale deployment, not code.** `--pre` passed on the committed tree
+throughout; the live build simply predated the `.gitattributes` line-ending fix, so it was
+serving sha256 hashes computed on CRLF copies while the repo holds LF. The arithmetic
+confirms it: `+36` bytes on a 36-line file and `+48` on a 48-line file — exactly one byte
+per line. `.research[3]` was `ledger_retroflag`, 2344→2380, the *same file and byte pair*
+that defeated per-extension `-text` before `tasks/artifacts/** -text` fixed it.
+
+- [ ] **GAP: G3-before-G4 was DEFEATED on this deploy and silently degraded to
+  promote-then-verify.** `vercel deploy --prod --skip-domain` built into the production
+  environment without moving the alias — correct — but the unaliased URL is behind **Vercel
+  SSO Deployment Protection** and 302s to `vercel.com/sso-api`. The smoke therefore read a
+  484,037-byte SSO interstitial as `org.html` (production is 14,192), got HTTP 401 on the
+  assistant, and reported the registry as "not valid JSON". The gate **correctly refused to
+  promote**, but for an access reason, not a content one — so the pre-promotion check is
+  currently unusable and the real sequence was alias-then-smoke, with rollback available via
+  the recorded pin rather than never-go-live.
+  Fix: set a protection bypass secret and have the smoke send
+  `x-vercel-protection-bypass`. **Not done here** — that is a project security setting, and
+  changing one unprompted while deploying is exactly the kind of thing that should be its
+  own decision. Until then, note honestly that the pipeline's headline property ("a bad
+  build never becomes www.bhenre.com") is NOT yet in force.
+  Distinguishing signal for next time: a smoke failure whose `org.html` byte count is wildly
+  larger than production is protection, not a bad build.
+
+- [ ] **GAP: the alias-guard pin is NOT version-controlled**, which weakens the rollback
+  story above. `apps/bluehenre/.gitignore:1` ignores `data/`, so
+  `data/last_good_deployment.txt` is untracked — `git ls-files` does not know it. I updated
+  it to `bluehenre-campus-8jlgr3038-...` on this box, but the previous good deployment id
+  exists **only here**: from a fresh clone or another machine there is no record of what to
+  roll back to, and the README's third deploy step writes to a file git will never carry.
+  The fork already noted the pin "records intent rather than verification"; it also records
+  it nowhere durable. Decide deliberately: either track this one file (`!data/
+  last_good_deployment.txt` negation) or move the pin somewhere already tracked. Not changed
+  here because `data/` also holds `workflows.jsonl`, and un-ignoring a directory that
+  carries runtime state is a convention call, not a cleanup.
+
 ### 🔓 2026-07-25 — stack-v3 UNBLOCKED: licence is `odc-by`. Adapter built + tested; needs ONE frozen edit to activate
 
 Operator: *"use stack-v3 use everything available stop blocking yourself."* Retried the
