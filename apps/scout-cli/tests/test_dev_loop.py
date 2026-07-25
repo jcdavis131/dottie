@@ -52,10 +52,76 @@ def test_dev_loop_uses_ok_err_and_no_secrets():
     assert "sk-" not in text
     assert "make_plugin_app" in text
 
-def test_dev_loop_ship_dry_run_no_push():
-    # dry run: should work with --yes and --no-push and --no-tests to avoid recursion
-    r = _run(["--json", "dev_loop", "ship", "--path", str(ROOT), "--message", "test: dry-run check", "--yes", "--no-push", "--no-tests"], timeout=20)
-    # may succeed or say nothing to commit, both ok
+def _git(args, cwd):
+    return subprocess.run(
+        ["git", *args], cwd=str(cwd), capture_output=True, text=True,
+        encoding="utf-8", errors="replace",
+    )
+
+
+def _throwaway_repo(tmp_path: Path) -> Path:
+    """A real git repo that is NOT this one.
+
+    This exists because the previous version of the ship test ran against ROOT --
+    the actual scout-cli checkout -- with `--yes` and without `--no-add-all`, so
+    every run performed a real `git add -A` + `git commit` and swallowed whatever
+    happened to be uncommitted at the time. It was named "dry_run" and was not one;
+    `--no-push` was the only reason the damage stayed local. A test must not commit
+    to the tree it lives in.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(["init", "-q"], repo)
+    # a fresh repo inherits no identity, and commit fails without one
+    _git(["config", "user.email", "test@example.invalid"], repo)
+    _git(["config", "user.name", "dev_loop test"], repo)
+    (repo / "seed.txt").write_text("seed\n", encoding="utf-8")
+    _git(["add", "-A"], repo)
+    _git(["commit", "-q", "-m", "seed"], repo)
+    return repo
+
+
+def test_dev_loop_ship_commits_in_an_isolated_repo(tmp_path):
+    """ship stages, commits, and honors --no-push -- proven, not assumed.
+
+    The old assertion was `ok is True` with the comment "may succeed or say nothing
+    to commit, both ok", which passes even when ship does nothing at all.
+    """
+    repo = _throwaway_repo(tmp_path)
+    (repo / "change.txt").write_text("new work\n", encoding="utf-8")
+    before = _git(["rev-parse", "HEAD"], repo).stdout.strip()
+
+    r = _run(["--json", "dev_loop", "ship", "--path", str(repo), "--message",
+              "test: isolated ship", "--yes", "--no-push", "--no-tests"], timeout=60)
     assert r.returncode == 0, r.stderr + r.stdout
     data = json.loads(r.stdout)
     assert data.get("ok") is True
+    inner = data.get("data") or {}
+
+    # a REAL commit, not the "Nothing to commit" branch -- the old test took either
+    assert inner.get("committed") is True
+    assert inner.get("pushed") is False  # --no-push honored
+    assert inner.get("message") == "test: isolated ship"
+
+    after = _git(["rev-parse", "HEAD"], repo).stdout.strip()
+    assert after != before  # HEAD actually advanced
+    assert inner.get("sha") and after.startswith(inner["sha"])
+    assert _git(["log", "-1", "--pretty=%s"], repo).stdout.strip() == "test: isolated ship"
+    # add -A swept the untracked file in, so nothing is left behind
+    assert _git(["status", "--porcelain"], repo).stdout.strip() == ""
+
+
+def test_dev_loop_ship_reports_nothing_to_commit_on_a_clean_tree(tmp_path):
+    """The clean-tree branch must be distinguishable from a successful commit.
+
+    These two outcomes were indistinguishable to the old test, which is what let a
+    do-nothing ship read as a pass.
+    """
+    repo = _throwaway_repo(tmp_path)  # seeded and clean
+    r = _run(["--json", "dev_loop", "ship", "--path", str(repo), "--message",
+              "test: should not commit", "--yes", "--no-push", "--no-tests"], timeout=60)
+    assert r.returncode == 0, r.stderr + r.stdout
+    inner = (json.loads(r.stdout).get("data")) or {}
+    assert "committed" not in inner  # no commit was made
+    assert "Nothing to commit" in (inner.get("message") or "")
+    assert _git(["log", "-1", "--pretty=%s"], repo).stdout.strip() == "seed"

@@ -36,10 +36,21 @@ packages measured as 5 in one package; and a first correction of mine was ALSO w
 `importlib.import_module`). **Mechanism-level findings keep surviving; impact-level ones
 keep not.** When checking whether something is unused, grep the bare name too.
 
-**4. `dev_loop` auto-commits the whole tree as "test: dry-run check"** — 4 fires on
-2026-07-24, one mid-test-run. Local-only, so `git reset --soft HEAD~1` is safe; review
-the diff and re-split, since peer work gets swept in. Check `git log -1` before AND
-after every long op. **Open operator decision: branch it, gate it, or remove it.**
+**4. "test: dry-run check" commits — SOLVED, not an operator decision.** These were NOT a
+daemon. `tests/test_dev_loop.py` invoked `scout dev_loop ship --path <the real checkout>
+--yes --no-push --no-tests`, and `ship` legitimately does `git add -A` + `git commit`:
+`--yes` bypassed its confirm prompt and `--no-add-all` was never passed. Nothing in it
+was a dry run despite the name — `--no-push` was the only reason the commits stayed
+local. Five "fires" in one session were five full-board runs; the commit *was* a test.
+Fixed by pointing it at a throwaway `git init` repo under `tmp_path`, which also let it
+assert something real (HEAD advanced, sha matches, clean-tree branch distinguishable)
+instead of an `ok is True` that passed even when ship did nothing. The plugin was never
+at fault — it prompts, and `--add-all`/`--run-tests` are opt-out.
+⚠ **Two diagnostic lessons worth keeping.** (a) The message was always byte-identical and
+the commits always unpushed — signatures of a hardcoded string in a test, which I misread
+as "a daemon on a schedule" for hours. **Grep the exact commit message first.** (b) Verify
+a "no side effects now" fix against a **DIRTY** tree: on a clean tree the broken and fixed
+versions are indistinguishable, because both correctly do nothing.
 
 ## (2026-07-25) — TRAINING RESTARTED (Leg 1) + Monitor bridge live
 
