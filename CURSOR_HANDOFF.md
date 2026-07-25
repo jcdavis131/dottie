@@ -2,7 +2,46 @@
 
 **Paste-able brief for any agent continuing this work. Everything below is live and verified.**
 
-## NEWEST (2026-07-25) — TRAINING RESTARTED (Leg 1) + Monitor bridge live
+## NEWEST (2026-07-24) — TWO IMPORT SHADOWS; audit impact-claims NOT trustworthy
+
+**Read this before trusting any local test result or the GOAT audit's priorities.**
+
+**1. `import bigbang` resolves to a STALE CHECKOUT from the repo root.** site-packages
+holds `__editable__.scout_cli-0.7.0.pth`, an import finder pointing at the standalone
+pre-monorepo `~/scout-cli` (**0.7.0**; this tree is **0.7.1**). From `apps/scout-cli`
+cwd wins → correct code. From the repo root the finder wins → stale code.
+Measured: `pytest apps/scout-cli/tests/test_llm_backends.py` from the root = **8 failed**
+(`llm has no attribute 'chat_with_metrics'` — a function that exists here); the same
+suite from `apps/scout-cli` = **8 passed**. Check with
+`python -c "import bigbang.core.llm as m; print(m.__file__)"`.
+**Always run scout-cli tests from `apps/scout-cli`.** Loud failures, silent cause — a
+wrong-cwd result can hide real breakage as easily as invent it.
+Optional cleanup (NOT done, may have other consumers): uninstall the 0.7.0 editable.
+
+**2. Two importable packages are named `dottie`, needing submodules from BOTH.**
+`dottie.rl` exists ONLY in `apps/ava-factory/dottie/` (**FROZEN**, bind-mounted into the
+live trainer); `dottie.engine/policy/tasks/resolve` exist ONLY in `apps/dottie/dottie/`.
+`harness/evals/dottie_assistant.py` needs both, so **no `sys.path` order satisfies it**.
+Measured: `cd packages/ava-open-harness && pytest -q` → **5 failed, 38 passed, 5 skipped**.
+Not fixable by env var or CI tweak; renaming a bind-mounted training package is an
+**OPERATOR decision**. Note `AVA_FACTORY_ROOT` is a red herring — `harness/common.py:68`
+returns it verbatim even when missing, because the anti-mock tests point it at a
+nonexistent path deliberately, so setting it globally in CI breaks those tests.
+
+**3. Treat the GOAT audit's IMPACT claims as hypotheses.** Its 15 verification agents ran
+while the safety classifier was unavailable. Three load-bearing claims checked, three
+wrong: the mock trainer was not at the cited path; P1's ~44 red tests across three
+packages measured as 5 in one package; and a first correction of mine was ALSO wrong
+(I "disproved" the collision with a static-import grep that cannot see
+`importlib.import_module`). **Mechanism-level findings keep surviving; impact-level ones
+keep not.** When checking whether something is unused, grep the bare name too.
+
+**4. `dev_loop` auto-commits the whole tree as "test: dry-run check"** — 4 fires on
+2026-07-24, one mid-test-run. Local-only, so `git reset --soft HEAD~1` is safe; review
+the diff and re-split, since peer work gets swept in. Check `git log -1` before AND
+after every long op. **Open operator decision: branch it, gate it, or remove it.**
+
+## (2026-07-25) — TRAINING RESTARTED (Leg 1) + Monitor bridge live
 
 **Training is UP.** Tool branch resumed from step 2861 into **phase 3** on the
 extended **Leg-1 schedule (2.5B → 3.4B)**; container confirms `tokens_total:
@@ -16,14 +55,19 @@ extended **Leg-1 schedule (2.5B → 3.4B)**; container confirms `tokens_total:
   1.1B, p5 **doubled** to 400M, NO p4/p5 replay), exactly what the completion eval
   invalidated (275.95→4,103). Corrected + banner-disarmed (4204ccf). Do not apply
   its output over configs/mini.yaml.
-- ⚠ **LOSS PLATEAU — the open question.** Resume spike 4.746 (step 2870) fell to
-  ~3.05 by 2890 then **oscillates ~3.0–3.4 through step 2920** — it is NOT tracking
-  the prior leg (5.44→2.91 by +30, then ~0.16). Likely the *measured* p0–p3
-  competence loss from the anneal showing up as slow re-learning. No crash, no NaN,
-  ~6k tok/s. **Do not panic-revert** (runbook). Verdict comes from the held-out eval
-  at leg end. **If still ~3 at step ~3000–3100**, the honest call is to re-init from
-  **step-1487 (`tool_final_ext1.pt`, present in-container)** per the Leg-1 doc's own
-  recommendation — that is an OPERATOR decision.
+- ✅ **LOSS PLATEAU — RESOLVED, DO NOT ACT ON THE OLD RECOMMENDATION.** The plateau
+  recovered on its own. Measured: **step 2960 lm 0.208 → 2970 lm 0.194 → step 3000
+  lm 0.1849** (phase 3, 2.54B/3.4B tokens, ~4.5k tok/s). Read the live value, never
+  this line:
+  `docker exec dottie-factory-trainer-1 sh -c "grep -a '\"event\": \"step\"' /reports/metrics_mini.jsonl | tail -1"`
+  ⚠ **`grep` WITHOUT `-a` LIES HERE.** The metrics log trips ripgrep/grep's binary
+  detection, and a plain `grep | tail` silently returned a step-2280 line that
+  predated the true tail by ~44 hours. The log is also **not monotonic in step**
+  across legs, so a naive `tail` can hand you an older leg's numbers.
+  ⚠ The superseded advice was: "if still ~3 at step 3000–3100, re-init from
+  step-1487 (`tool_final_ext1.pt`)". **That is now wrong and destructive** — it would
+  discard ~1,500 steps of healthy progress. The earlier pessimistic read (possible
+  permanent anneal damage) was simply incorrect; the tripwire is moot.
 - **Config drift FIXED durably** (ac30c79): the trainer bind-mounts host configs but
   the server had none, so it served the image's baked 2.5B → run_progress published
   `frac 1.0`, a "100% complete" run mid-training. Added `./configs → /app/configs`
