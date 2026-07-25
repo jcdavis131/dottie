@@ -123,7 +123,7 @@ def _open(path: Path, command: str):
     """Open the index, turning a missing FTS5 into an honest, actionable error."""
     try:
         return search.open_index(path)
-    except search.Fts5Unavailable as exc:
+    except search.Fts5UnavailableError as exc:
         fail_agent(
             str(exc),
             command=command,

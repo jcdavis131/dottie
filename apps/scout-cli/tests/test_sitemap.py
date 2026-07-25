@@ -384,7 +384,7 @@ def test_urlset_xml_is_namespaced_escaped_and_ordered():
     assert xml.startswith('<?xml version="1.0" encoding="UTF-8"?>\n<urlset')
     assert xml.endswith("\n")
     assert "&amp;q=2" in xml and "&q=2" not in xml.replace("&amp;q=2", "")
-    root = ET.fromstring(xml)
+    root = ET.fromstring(xml)  # noqa: S314 — a string this test just generated
     ns = {"s": sitemap.SITEMAP_NS}
     urls = root.findall("s:url", ns)
     assert len(urls) == 2
@@ -464,6 +464,17 @@ def test_parse_sitemap_reads_foreign_and_namespaceless_files():
         sitemap.parse_sitemap("<html><body>not a sitemap</body></html>")
     with pytest.raises(ValueError):
         sitemap.parse_sitemap("<urlset><url>")  # malformed XML
+
+
+def test_parse_sitemap_refuses_a_doctype_entity_bomb():
+    bomb = (
+        '<?xml version="1.0"?>\n'
+        '<!DOCTYPE urlset [<!ENTITY a "AAAAAAAAAA">'
+        '<!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">]>\n'
+        "<urlset><url><loc>https://x.com/&b;</loc></url></urlset>"
+    )
+    with pytest.raises(ValueError, match="DOCTYPE"):
+        sitemap.parse_sitemap(bomb)
 
 
 # ---- write + diff (the deploy gate) ----------------------------------------
@@ -702,6 +713,33 @@ def test_cli_rejects_ambiguous_and_missing_sources(tmp_path):
               "--lastmod", "hourly"])
     assert r.returncode == 1
     assert "--lastmod must be one of" in json.loads(r.stdout)["error"]
+
+
+def test_cli_gen_from_the_seo_crawl_store(tmp_path):
+    """The #3 store as a source, end to end: fill it offline, then generate."""
+    page = (
+        "<html><head><title>Scout sitemap fixture page with a real title</title>"
+        '</head><body><h1>H</h1><a href="/about">a</a></body></html>'
+    )
+    pages = {"https://site.test/": page, "https://site.test/about": page}
+
+    def fetch(url):
+        body = pages.get(url, "")
+        return {"status": 200 if body else 404, "final_url": url, "redirects": [],
+                "content_type": "text/html", "headers": {}, "body": body, "error": None}
+
+    db = tmp_path / "seo.db"
+    conn = seo.open_store(db)
+    seo.crawl(conn, "https://site.test/", fetch, ts=1.0)
+    conn.close()
+    out = tmp_path / "sitemap.xml"
+    r = _cli(["sitemap", "gen", "--from-crawl", "https://site.test/",
+              "--db", str(db), "--out", str(out)])
+    assert r.returncode == 0, r.stderr + r.stdout
+    data = json.loads(r.stdout)["data"]
+    assert data["source"] == "crawl" and data["base"] == "https://site.test/"
+    locs = [e["loc"] for e in sitemap.parse_sitemap(out.read_text(encoding="utf-8"))["entries"]]
+    assert locs == ["https://site.test/", "https://site.test/about"]
 
 
 def test_cli_from_crawl_without_a_store_fails_actionably(tmp_path):

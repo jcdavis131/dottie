@@ -79,7 +79,7 @@ def test_broken_fts5_support_fails_honestly_and_writes_nothing(monkeypatch, tmp_
     available, reason = search.fts5_available()
     assert available is False and reason == report["error"]
     db = tmp_path / "nested" / "index.db"
-    with pytest.raises(search.Fts5Unavailable) as exc:
+    with pytest.raises(search.Fts5UnavailableError) as exc:
         search.open_index(db)
     assert "no_such_tokenizer" in str(exc.value)
     assert not db.exists(), "a failed probe must not leave a half-built index"
@@ -128,7 +128,13 @@ def test_norm_path_is_posix_and_stable():
 
 def test_iter_files_prunes_vendor_dirs_and_honors_globs(corpus):
     found = [p for p, _real in search.iter_files([corpus], include=["*.md"])]
-    assert [Path(p).name for p in found] == ["dense.md", "noise.md", "nested.md", "sparse.md"] or True
+    # sorted by stored path, so the nested file lands after the top-level ones
+    assert [Path(p).name for p in found] == [
+        "dense.md",
+        "noise.md",
+        "sparse.md",
+        "nested.md",
+    ]
     assert not any("/.git/" in p for p in found), ".git must be pruned by default"
     assert not any(p.endswith(".rst") for p in found), "include glob must filter"
     assert found == sorted(found), "discovery order must be deterministic"
@@ -165,7 +171,7 @@ def test_read_document_strips_a_utf8_bom(tmp_path):
     # PowerShell writes a BOM by default on this box; left in, it glues itself to
     # the first token and shows up in every snippet of that file.
     bom = tmp_path / "bom.md"
-    bom.write_bytes("﻿BM25 ranking".encode())
+    bom.write_bytes(b"\xef\xbb\xbfBM25 ranking")
     text, skip, _meta = search.read_document(bom)
     assert skip is None and text.startswith("BM25")
 
@@ -339,15 +345,21 @@ def test_snippet_highlights_matches_and_markers_are_configurable(tmp_path):
     _write(root / "b.md", "no needle at all here\n", mtime=1000.0)
     conn = _mem()
     search.index_paths(conn, [root], include=["*.md"], now=1.0)
-    hit = search.query(conn, "needle", snippet_tokens=8)["hits"][0]
+    def _long_hit(result: dict) -> dict:
+        # the long document, whichever way BM25 ranked it (b.md is shorter and
+        # therefore scores higher — that is BM25 doing its job, not a snippet fact)
+        return next(h for h in result["hits"] if h["path"].endswith("a.md"))
+
+    hit = _long_hit(search.query(conn, "needle", snippet_tokens=8))
     assert "[needle]" in hit["snippet"]
     assert len(hit["snippet"]) < hit["chars"], "a snippet is an excerpt, not the doc"
-    assert search.ELLIPSIS.strip() in hit["snippet"]
-    custom = search.query(conn, "needle", mark=("<b>", "</b>"), ellipsis="~")["hits"][0]
+    assert search.ELLIPSIS.strip() in hit["snippet"], "elided text must be marked"
+    custom = _long_hit(search.query(conn, "needle", mark=("<b>", "</b>"), ellipsis="~"))
     assert "<b>needle</b>" in custom["snippet"] and "[needle]" not in custom["snippet"]
+    assert "~" in custom["snippet"] and search.ELLIPSIS.strip() not in custom["snippet"]
 
 
-def test_fts5_syntax_is_available_and_literal_disarms_it(corpus, tmp_path):
+def test_fts5_syntax_is_available_and_literal_disarms_it(tmp_path):
     root = tmp_path / "c"
     _write(root / "phrase-a.md", "alpha beta gamma\n", mtime=1000.0)
     _write(root / "phrase-b.md", "beta alpha gamma\n", mtime=1000.0)
