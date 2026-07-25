@@ -83,7 +83,7 @@ def sort_diagnostics(diags: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def summarize(diags: list[dict[str, Any]]) -> dict[str, Any]:
     """Counts by severity/rule — the stable contract for pre-publish gates."""
-    by_severity = {s: 0 for s in SEVERITIES}
+    by_severity = dict.fromkeys(SEVERITIES, 0)
     by_rule: dict[str, int] = {}
     files: set[str] = set()
     for d in diags:

@@ -156,6 +156,7 @@ def test_context_shift_is_recorded_telemetry(monkeypatch):
 
 def test_ava_infer_command_exits_nonzero_and_honest_on_backend_down(monkeypatch):
     from typer.testing import CliRunner
+
     from bigbang.core import output
     from bigbang.plugins.ava.cli import app
 

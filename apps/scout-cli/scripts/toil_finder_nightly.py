@@ -6,10 +6,11 @@ writes toil_report.md, scaffolds scout-cli plugin if new, opens PR.
 
 Solo personal project, no connection to employer, built with public/free-tier only
 """
-import re, json, time, datetime, subprocess, os
-from pathlib import Path
+import datetime
+import json
+import re
 from collections import Counter
-from typing import List, Tuple
+from pathlib import Path
 
 HOME = Path.home()
 ZSH = HOME / ".zsh_history"
@@ -43,7 +44,7 @@ def parse_zsh_line(line: str):
     if line.startswith("#"): return None
     return line
 
-def load_history() -> List[str]:
+def load_history() -> list[str]:
     cmds=[]
     for p in [ZSH, BASH]:
         if p.exists():
@@ -72,7 +73,7 @@ def load_history() -> List[str]:
         except: pass
     return cmds
 
-def cluster_ngrams(cmds: List[str], ns=(2,3,4,5)) -> Counter:
+def cluster_ngrams(cmds: list[str], ns=(2,3,4,5)) -> Counter:
     cnt=Counter()
     for n in ns:
         for i in range(len(cmds)-n+1):
@@ -80,7 +81,7 @@ def cluster_ngrams(cmds: List[str], ns=(2,3,4,5)) -> Counter:
             cnt[seq]+=1
     return cnt
 
-def pick_top_candidate(ngram_counts: Counter) -> Tuple[Tuple[str,...], int]:
+def pick_top_candidate(ngram_counts: Counter) -> tuple[tuple[str,...], int]:
     # Prefer sequences with >3 steps, containing git and pytest, or high frequency
     # Sort by steps desc then count desc
     candidates = [(seq,c) for seq,c in ngram_counts.items() if len(seq)>=3]
@@ -122,7 +123,7 @@ def main():
     savings = estimate_savings(per_week, steps)
 
     # Write report
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     report = f"""# Toil Report — Scout Plugin Automation
 Date: {now.isoformat()} UTC
 Repo: {SCOUT_ROOT}

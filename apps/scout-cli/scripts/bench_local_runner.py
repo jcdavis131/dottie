@@ -33,7 +33,7 @@ from pathlib import Path
 
 # Make `bigbang` importable when this file is run directly from anywhere.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from bigbang.core.llm import (  # noqa: E402
+from bigbang.core.llm import (
     chat_with_metrics,
     get_ollama_base,
     koboldcpp_available,
@@ -153,7 +153,7 @@ def main() -> int:
     for backend, r in results.items():
         print(f"{backend:<11} {r['n']:>3} {r['wall_tok_per_s_median']:>13} "
               f"{r['wall_tok_per_s_stdev']:>7} "
-              f"{str(r['server_tok_per_s_median']):>13} {str(r['peak_vram_used_mb']):>14}")
+              f"{r['server_tok_per_s_median']!s:>13} {r['peak_vram_used_mb']!s:>14}")
     if baseline is not None:
         for backend, r in results.items():
             if r["peak_vram_used_mb"] is not None:

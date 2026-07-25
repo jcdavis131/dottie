@@ -8,7 +8,6 @@ import pytest
 
 from bigbang.core import policy, reach
 
-
 # ---- normalize / naming ----------------------------------------------------
 
 @pytest.mark.parametrize("inp,expected", [

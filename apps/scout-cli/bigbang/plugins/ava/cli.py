@@ -1,16 +1,18 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
-import typer
-from bigbang.core.output import emit, is_json
-from bigbang.core.registry import list_tools
-from pathlib import Path
 import json
+import os
 import re
-import time
 import socket
 import threading
-import os
+import time
+from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
-from typing import Optional, List, Dict, Any
+
+import typer
+
+from bigbang.core.output import emit, is_json
+from bigbang.core.registry import list_tools
 
 app = typer.Typer(name="ava", help="🧠 Ava AGI Factory — brain of BigBang, local CUDA + Frontier eval", no_args_is_help=True)
 
@@ -46,12 +48,12 @@ def _is_resolvable_fast(host: str, timeout: float = 0.8) -> bool:
         allow = os.environ.get("OLLAMA_ALLOW_DOCKER_HOST") or os.environ.get("BIGBANG_USE_DOCKER_HOST") or os.environ.get("OLLAMA_BASE", "")
         if "host.docker.internal" not in allow:
             try:
-                with open("/etc/hosts", "r", encoding="utf-8", errors="ignore") as f:
+                with open("/etc/hosts", encoding="utf-8", errors="ignore") as f:
                     if "host.docker.internal" not in f.read():
                         return False
             except Exception:
                 return False
-    result: List[bool] = []
+    result: list[bool] = []
     def _do():
         try:
             socket.getaddrinfo(host, None)
@@ -66,15 +68,29 @@ def _is_resolvable_fast(host: str, timeout: float = 0.8) -> bool:
 # Try to import reusable llm helpers, but keep local fallback so no hard dep
 try:
     from bigbang.core.llm import (
-        get_ollama_base as _core_get_base,
-        ollama_chat as _core_ollama_chat,
-        list_ollama_models as _core_list_models,
-        get_best_model as _core_best_model,
-        extract_json_from_text as _extract_json,
-        chat_with_metrics as _core_chat_metrics,
-        koboldcpp_available as _core_kobold_available,
         OLLAMA_URLS,
         PREFERRED_MODELS,
+    )
+    from bigbang.core.llm import (
+        chat_with_metrics as _core_chat_metrics,
+    )
+    from bigbang.core.llm import (
+        extract_json_from_text as _extract_json,
+    )
+    from bigbang.core.llm import (
+        get_best_model as _core_best_model,
+    )
+    from bigbang.core.llm import (
+        get_ollama_base as _core_get_base,
+    )
+    from bigbang.core.llm import (
+        koboldcpp_available as _core_kobold_available,
+    )
+    from bigbang.core.llm import (
+        list_ollama_models as _core_list_models,
+    )
+    from bigbang.core.llm import (
+        ollama_chat as _core_ollama_chat,
     )
     _HAS_CORE_LLM = True
 except Exception:
@@ -127,7 +143,7 @@ except Exception:
         return None
 
 # ---------- Caching for fast fallback ----------
-_AVA_CACHED_BASE: Optional[str] = None
+_AVA_CACHED_BASE: str | None = None
 _AVA_CACHED_AT: float = 0.0
 _AVA_CACHE_TTL: float = 30.0
 
@@ -157,7 +173,7 @@ def _httpx_client_local(timeout: float = 2.0):
 
 # ---------- Ollama helpers (spec requires these names) ----------
 
-def _ollama_available() -> Optional[str]:
+def _ollama_available() -> str | None:
     """
     Tries http://localhost:11434/api/tags and http://host.docker.internal:11434/api/tags
     with httpx 2s timeout, return url base that works or None
@@ -219,7 +235,7 @@ def _ollama_available() -> Optional[str]:
     return found
 
 
-def _ollama_list_models_local(base: str) -> List[str]:
+def _ollama_list_models_local(base: str) -> list[str]:
     if not base:
         return []
     try:
@@ -262,7 +278,7 @@ def _ollama_list_models_local(base: str) -> List[str]:
             pass
 
 
-def _heuristic_route(task: str) -> Dict[str, Any]:
+def _heuristic_route(task: str) -> dict[str, Any]:
     """Fallback keyword router, no Ollama required — v0.6 with write/lab/brain/rtx/graphify"""
     q = task.lower()
     tools = list_tools()
@@ -476,7 +492,7 @@ def _heuristic_route(task: str) -> Dict[str, Any]:
     }
 
 
-def _route_with_ollama(task: str) -> Dict[str, Any]:
+def _route_with_ollama(task: str) -> dict[str, Any]:
     """Try real Ollama routing, raise if not available"""
     base = _ollama_available()
     if not base:
@@ -640,7 +656,7 @@ def infer(
             except Exception:
                 mdl = "qwen3:8b"
 
-    messages: List[Dict[str, str]] = []
+    messages: list[dict[str, str]] = []
     if system:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
@@ -730,8 +746,8 @@ def _stream_in_factory(argv: list, yes: bool, command: str, description: str):
     env = dict(os.environ)
     env["PYTHONUNBUFFERED"] = "1"          # the child must not sit on its own stdout
     json_mode = is_json()
-    events: List[Dict[str, Any]] = []
-    tail: List[str] = []
+    events: list[dict[str, Any]] = []
+    tail: list[str] = []
     try:
         proc = subprocess.Popen(
             argv, cwd=str(FACTORY), env=env, text=True, bufsize=1,
@@ -847,7 +863,7 @@ def eval_cmd(
 @app.command("route")
 def route(task: str = typer.Argument(..., help="task to route via Ava")):
     base = _ollama_available()
-    result: Dict[str, Any]
+    result: dict[str, Any]
     try:
         if base:
             result = _route_with_ollama(task)

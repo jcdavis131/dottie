@@ -16,7 +16,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -40,7 +39,7 @@ app = make_plugin_app(
 
 console = Console()
 
-def _resolve_repo(path: Optional[str]) -> Path:
+def _resolve_repo(path: str | None) -> Path:
     if path:
         p = Path(os.path.expanduser(os.path.expandvars(path))).resolve()
         if p.exists():
@@ -75,7 +74,7 @@ def _run(cmd: list[str], cwd: Path, check: bool = False) -> subprocess.Completed
         errors="replace",
     )
 
-def _is_truthy_env(val: Optional[str]) -> bool:
+def _is_truthy_env(val: str | None) -> bool:
     return bool(val and val.strip().lower() in {"1","true","yes","y","on"})
 
 @app.command(
@@ -83,7 +82,7 @@ def _is_truthy_env(val: Optional[str]) -> bool:
     epilog=examples_epilog(["scout dev_loop status", "scout --json dev_loop status --path ."]),
 )
 def status_cmd(
-    path: Optional[str] = typer.Option(None, "--path", "-p", help="Repo path"),
+    path: str | None = typer.Option(None, "--path", "-p", help="Repo path"),
 ):
     """git status — first step of the dev loop."""
     repo = _resolve_repo(path)
@@ -113,8 +112,8 @@ def status_cmd(
     epilog=examples_epilog(["scout dev_loop test", "scout dev_loop test --path apps/scout-cli -- -k todos"]),
 )
 def test_cmd(
-    path: Optional[str] = typer.Option(None, "--path", "-p", help="Repo path"),
-    pytest_args: Optional[str] = typer.Option(None, "--args", "-a", help="Extra pytest args string, e.g. '-k todos'"),
+    path: str | None = typer.Option(None, "--path", "-p", help="Repo path"),
+    pytest_args: str | None = typer.Option(None, "--args", "-a", help="Extra pytest args string, e.g. '-k todos'"),
     quiet: bool = typer.Option(True, "--quiet", "-q", help="Use -q"),
 ):
     """pytest -q — second step, test-gated."""
@@ -156,7 +155,7 @@ def test_cmd(
     ]),
 )
 def ship_cmd(
-    path: Optional[str] = typer.Option(None, "--path", "-p", help="Repo path"),
+    path: str | None = typer.Option(None, "--path", "-p", help="Repo path"),
     message: str = typer.Option(..., "--message", "-m", help="Commit message"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation (also env SCOUT_YES=1)"),
     no_push: bool = typer.Option(False, "--no-push", help="Do not push"),
@@ -320,7 +319,7 @@ def ship_cmd(
     epilog=examples_epilog(["scout dev_loop run --message 'feat: quick ship' --yes"]),
 )
 def run_cmd(
-    path: Optional[str] = typer.Option(None, "--path", "-p", help="Repo path"),
+    path: str | None = typer.Option(None, "--path", "-p", help="Repo path"),
     message: str = typer.Option("chore: dev loop auto-ship", "--message", "-m", help="Commit message"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirm"),
     no_push: bool = typer.Option(False, "--no-push", help="Do not push"),

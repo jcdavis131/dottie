@@ -100,7 +100,7 @@ def _run_tests(name: str) -> tuple[bool, str]:
     try:
         p = subprocess.run([sys.executable, "-m", "pytest", str(tf), "-q", "--no-header"],
                            cwd=str(SC), capture_output=True, text=True, timeout=600)
-    except Exception as e:  # noqa: BLE001 — report, never mask
+    except Exception as e:
         return False, f"could not run pytest: {type(e).__name__}"
     tail = (p.stdout or "").strip().split("\n")[-1][:120]
     return p.returncode == 0, tail
@@ -222,8 +222,7 @@ def audit_plugin(name: str, run_tests: bool = False) -> dict:
     if not cli.exists() or loc == 0:
         findings.insert(0, "INCOMPLETE: no cli.py implementation (scaffolding only) — "
                            "scored 0; absence of findings is not quality")
-        scores = {k: 0 for k in ("d1_dependency", "d2_dead_code", "d3_self_contained",
-                                 "d4_test_honesty", "d5_hot_path", "d6_honest_notes")}
+        scores = dict.fromkeys(("d1_dependency", "d2_dead_code", "d3_self_contained", "d4_test_honesty", "d5_hot_path", "d6_honest_notes"), 0)
         return {"plugin": name, "has_cli": cli.exists(),
                 "has_manifest": (pdir / "manifest.yaml").exists(), "loc": loc,
                 "scores": scores, "mean": 0.0, "incomplete": True,

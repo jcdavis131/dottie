@@ -17,8 +17,6 @@ the exact next command, never fail-open, never fabricate a capability.
 
 from __future__ import annotations
 
-import json as _json
-
 import httpx
 import typer
 
