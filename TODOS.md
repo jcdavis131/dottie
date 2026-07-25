@@ -1575,7 +1575,19 @@ most valuable catch so far:
   breaking my own methodology note would be worse than the confound.
 ### 5.3.R9 — the daemon restart is OPERATOR-ONLY (attempted 07:47, classifier-denied)
 
-- [ ] **SEVEN tested fixes are committed and NOT LIVE.** The daemon (pid 7092) has been
+- [x] **RESOLVED BY RESTART — verified 2026-07-24 22:40.** This entry described pid 7092 as
+  pinning stale code, and it read as an active crisis for four days. It is not one: **no pid
+  7092 exists.** The oldest python processes on this box started 2026-07-24 13:40:53 (four
+  workers, same-second start = a restarted fleet), and the research code's most recent commit
+  is `3c84164` (2026-07-23), which PREDATES that restart — so the seven fixes are live.
+  ⚠ **Generalise this, do not just tick it.** This file records live pids and "NOT LIVE"
+  warnings that expire silently when a process restarts, leaving an urgent-sounding blocker
+  that is merely old. Several of the other 103 open items are likely in the same state. Same
+  failure mode as the step-1487 re-init recommendation retracted from CURSOR_HANDOFF.md today:
+  **a stale runbook entry reads as a decision someone already reasoned through.** Before acting
+  on any pid/daemon claim here, re-verify the process actually exists.
+  - Original text, kept for the record: *"SEVEN tested fixes are committed and NOT LIVE. The
+  daemon (pid 7092) has been*
   running since 06:21:54 on code from before all of tonight's work, and it never reloads.
   I attempted the restart this tick and **the permission classifier denied process
   termination / scheduled-task control**. I did not route around it. Verified afterwards
