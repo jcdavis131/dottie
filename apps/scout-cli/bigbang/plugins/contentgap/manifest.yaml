@@ -1,0 +1,26 @@
+name: contentgap
+version: 0.7.0
+description: Clearscope/Surfer/MarketMuse-class TF-IDF content optimizer, fully local (openswap #24 — stdlib tokenizer + Counter term weighting of a draft against a cached on-disk corpus of comparison pages, zero egress)
+capabilities:
+  network:
+    # ZERO egress by design, and it is the whole point of this adapter. What you
+    # pay Clearscope for is a crawl of the pages already ranking for your topic
+    # — which is also the step that ships your UNPUBLISHED draft to someone
+    # else's box. Deleting the fetch IS the product: the comparison corpus is
+    # files already on disk, so no domain allowlist is needed because no domain
+    # is reachable, not even loopback. "The draft never left the machine" is
+    # architectural here, not a promise in a ToS.
+    enabled: false
+    domains: []
+  filesystem:
+    # Writes are confined to the brief artifact under .scout (`contentgap brief`,
+    # gated by enforce_or_raise at the call site). The draft and every corpus
+    # page are READ ONLY — this plugin never rewrites the text it measures, and
+    # the paths it reads come from --corpus/the draft argument at call time,
+    # never from this manifest.
+    write: true
+    paths: [".scout"]
+  secrets:
+    allow: []
+tags: [content, seo, tfidf, openswap]
+# Solo personal project, no connection to employer, built with public/free-tier only

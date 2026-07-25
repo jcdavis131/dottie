@@ -1,0 +1,26 @@
+name: dupes
+version: 0.7.0
+description: Copyscape-class duplicate-content detection, fully local (openswap #28 — k-shingling + blake2b fingerprints, Jaccard/containment near-duplicate clusters over local pages and drafts, zero egress)
+capabilities:
+  network:
+    # ZERO egress by design, and this axis is the whole product. A plagiarism
+    # SaaS works by UPLOADING the page you have not published yet to someone
+    # else's index, per query — deleting that upload IS the replacement. The
+    # axis is therefore fully disabled: no ingest endpoint, no corpus API, not
+    # even a loopback socket. "The unpublished draft never left the box" is
+    # architectural, nothing to audit, and no domain allowlist is needed
+    # because no domain is reachable. `scout dupes detect` proves it by running
+    # check_permission against copyscape.com and printing the denial.
+    enabled: false
+    domains: []
+  filesystem:
+    # NO writes at all: this adapter only reads. Corpus files are read-only
+    # (read_bytes, never truncate/rewrite/rename) and the report goes to stdout,
+    # so there is no store to declare and nothing to gate. The paths read are
+    # the ones named on the command line at call time, never a manifest
+    # allowlist widened to match them.
+    write: false
+    paths: []
+  secrets:
+    allow: []
+tags: [content, seo, prose, openswap]

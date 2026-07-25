@@ -1,0 +1,23 @@
+name: apm
+version: 0.7.0
+description: New Relic APM-class application performance tracing, fully local (openswap #26 — perf_counter + contextvars span recorder, sqlite span store, static waterfall/flame report)
+capabilities:
+  network:
+    # ZERO egress by design: New Relic's product IS the hosted collector, so
+    # deleting the ingest endpoint is the entire point of this adapter. A trace
+    # names your internal functions, their arguments-as-attributes and their
+    # failure messages — the last thing that should be shipped off-box. Nothing
+    # here opens a socket, not even a loopback one, so the network axis is fully
+    # disabled and no domain allowlist is needed because no domain is reachable.
+    enabled: false
+    domains: []
+  filesystem:
+    # Writes are confined to .scout: the sqlite span store, the optional spans
+    # JSONL and the static HTML report. Ingested JSONL files are READ ONLY —
+    # their paths come from the command line at call time, never from here.
+    write: true
+    paths: [".scout"]
+  secrets:
+    allow: []
+tags: [apm, tracing, observability, openswap]
+# Solo personal project, no connection to employer, built with public/free-tier only

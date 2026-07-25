@@ -1,0 +1,38 @@
+name: flows
+version: 0.7.0
+# quoted: an unquoted " #" would start a YAML comment and silently truncate this
+description: "Zapier/Make/n8n-Cloud-class workflow automation, fully local (openswap #27 — JSON trigger->transform->action graphs run by a bounded-step runner: hard shared step cap, cycles refused, bounded sub-flow recursion, default-deny action allowlist, zero egress)"
+capabilities:
+  network:
+    # ZERO egress by design, and this is the whole point of the swap. A hosted
+    # automation runner's architecture is "your trigger, your payload and your
+    # credentials execute on someone else's box"; deleting that hop IS the
+    # product. So the network axis is fully disabled — not even a loopback
+    # socket — and there is deliberately NO http/webhook action in the catalog
+    # (bigbang/core/flows.py ACTIONS): an action that could POST anywhere would
+    # re-create the egress this adapter exists to remove. "No payload ever left
+    # the box" is therefore architectural, needs no domain allowlist because no
+    # domain is reachable, and nothing here has to be audited to believe it.
+    enabled: false
+    domains: []
+  filesystem:
+    # Two writers, both gated by enforce_or_raise("fs_write") at the call site:
+    # the run ledger (.scout/flows.db — its own sqlite file, so a flow firing
+    # every minute never contends with the #2 uptime ledger's write lock) and
+    # the file actions' output directory (default .scout/flows-out).
+    #
+    # `paths` is documentary — check_permission only enforces the boolean — so
+    # the REAL containment for action output is core resolve_output_path(), which
+    # refuses absolute paths, drive/UNC-qualified paths and any '..' segment and
+    # then structurally confirms the target is inside --out-dir. A --out-dir
+    # elsewhere is the operator's explicit choice at the call site, not a
+    # widening a flow file can perform on its own.
+    write: true
+    paths: [".scout"]
+  secrets:
+    # Default-deny and empty on purpose: no action reads os.environ, no
+    # transform interpolates a secret, and there is no credential store to
+    # connect — a flow cannot leak what it cannot name. Adding an action that
+    # needs a token means naming that variable here, explicitly.
+    allow: []
+tags: [flows, automation, workflow, openswap]

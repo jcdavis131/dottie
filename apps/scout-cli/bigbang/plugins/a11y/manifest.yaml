@@ -1,0 +1,26 @@
+name: a11y
+version: 0.7.0
+description: Siteimprove-class static accessibility checker, fully local (openswap #25 — html.parser fact extraction + WCAG 2.x contrast arithmetic over local HTML, zero egress)
+capabilities:
+  network:
+    # ZERO egress by design, and this is the whole product. Siteimprove's
+    # architecture IS "our crawler fetches your pages and keeps the findings on
+    # our servers"; deleting the crawler is the replacement. The axis is fully
+    # disabled with an EMPTY domain list — there is no host to allowlist, no
+    # probe to make and no SaaS to feed, so "no page ever left the box" is
+    # architectural rather than a ToS promise. `check` and `detect` re-read this
+    # section and REFUSE to run if it was ever widened (see _egress_guard in
+    # cli.py), so the guarantee is enforced rather than merely documented.
+    enabled: false
+    domains: []
+  filesystem:
+    # READ ONLY. Nothing here writes: no sqlite store, no report artifact, no
+    # cache, no .scout directory. The HTML paths audited come from the --path
+    # arguments at call time, never from this manifest, and they are only ever
+    # opened for reading.
+    write: false
+    paths: []
+  secrets:
+    allow: []
+tags: [a11y, accessibility, wcag, openswap]
+# Solo personal project, no connection to employer, built with public/free-tier only

@@ -1,0 +1,30 @@
+name: searchindex
+version: 0.7.1
+# quoted on purpose: an unquoted YAML scalar treats " #23" as a comment, which
+# silently truncates the description at "(openswap"
+description: "Algolia DocSearch-class build-time site search, unhosted (openswap #23 — tokenizer + stopwords + light stemmer, first-character-routed JSON shards and a dependency-free JS client, zero egress)"
+capabilities:
+  network:
+    # ZERO egress by design, and that IS the product. Algolia's architecture is
+    # "upload every page to someone else's cluster, hold an API key, and let
+    # their CDN see every keystroke your visitors type". This adapter never gets
+    # a socket: it reads local pages and writes local files, so "no page and no
+    # query ever left the box" is auditable rather than promised. --base-url is
+    # a STRING used to compose result URLs — nothing is fetched from it, which is
+    # why no domain needs allowlisting here.
+    enabled: false
+    domains: []
+  filesystem:
+    # The one genuine need: writing the artifact directory the caller names with
+    # --out (a deploy dir like public/search, NOT .scout — these bytes ship with
+    # the site, so confining them to the ledger directory would be wrong). Corpus
+    # pages are READ ONLY; the plugin never writes to a path it was not handed on
+    # the command line. Note honestly: core/policy.check_permission gates fs_write
+    # on the boolean below and does not currently match `paths`, so this list
+    # documents the intended scope rather than enforcing it.
+    write: true
+    paths: ["."]
+  secrets:
+    allow: []
+tags: [search, site, static, openswap]
+# Solo personal project, no connection to employer, built with public/free-tier only
