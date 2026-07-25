@@ -66,10 +66,30 @@ extended **Leg-1 schedule (2.5B → 3.4B)**; container confirms `tokens_total:
   1.1B, p5 **doubled** to 400M, NO p4/p5 replay), exactly what the completion eval
   invalidated (275.95→4,103). Corrected + banner-disarmed (4204ccf). Do not apply
   its output over configs/mini.yaml.
-- ✅ **LOSS PLATEAU — RESOLVED, DO NOT ACT ON THE OLD RECOMMENDATION.** The plateau
-  recovered on its own. Measured: **step 2960 lm 0.208 → 2970 lm 0.194 → step 3000
-  lm 0.1849** (phase 3, 2.54B/3.4B tokens, ~4.5k tok/s). Read the live value, never
-  this line:
+- ⚠ **UPDATE 2026-07-24 23:48 — A SUSTAINED LEVEL SHIFT AT STEP 3100, and a caveat on how the
+  earlier low numbers were read.** Measured trend: 3080 lm 0.194 · 3090 lm 0.188 · **3100 lm
+  3.288** · 3110 3.236 · 3120 2.112 · 3130 3.072 · 3140 lm 3.077. Five consecutive points in the
+  2.1-3.3 band, so it is a step change, NOT a transient spike. Same phase (3), same lr (0.0006),
+  grad_norm healthy (0.05-0.63, no explosion), tok_s ~4.8k, no NaN, no crash.
+  **The trainer detected it itself** — `demand_published` at 3110/3120/3130 carries
+  `reasons: ['lm_trend=+3.03 -> examples']` (its steering asking for more examples), then
+  step 3140 reports `'runway healthy -> maintain mixture'`. Checkpoints every ~8 steps
+  (3104/3112/3120/3128/3136), so recovery points exist either way.
+  ⚠ **Read the OLD low numbers skeptically, including in this file.** lm 0.19 is perplexity
+  ~1.2 — implausibly good for general LM training at this scale, which is the signature of
+  highly repetitive or already-memorised data, not of a strong model. lm ~3.1 is ppl ~22, a
+  *plausible* real LM loss. So the most likely story is that the mixture moved onto genuinely
+  new/harder data and the earlier "healthy 0.19" was partly memorisation. **Do not treat the
+  rise as automatically bad, or the old low as automatically good.** The verdict comes from the
+  held-out eval, not the training curve.
+  ⚠ **My own reporting error, recorded so it is not repeated:** I quoted "healthy, lm 0.193" in
+  ~10 consecutive status reports without re-measuring, and it had been stale for 60 steps. Same
+  failure this file was full of. Re-read the trainer's log every time:
+  `docker exec dottie-factory-trainer-1 sh -c "grep -a '\"event\": \"step\"' /reports/metrics_mini.jsonl | tail -8"`
+- ✅ **LOSS PLATEAU (the earlier 2870-2960 one) — RESOLVED, DO NOT ACT ON THE OLD
+  RECOMMENDATION.** That plateau recovered on its own. Measured: **step 2960 lm 0.208 → 2970
+  lm 0.194 → step 3000 lm 0.1849** (phase 3, 2.54B/3.4B tokens, ~4.5k tok/s). Read the live
+  value, never this line:
   `docker exec dottie-factory-trainer-1 sh -c "grep -a '\"event\": \"step\"' /reports/metrics_mini.jsonl | tail -1"`
   ⚠ **`grep` WITHOUT `-a` LIES HERE.** The metrics log trips ripgrep/grep's binary
   detection, and a plain `grep | tail` silently returned a step-2280 line that
