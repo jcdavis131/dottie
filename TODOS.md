@@ -41,6 +41,37 @@ before suspecting the code.
 Re-check with:
 `(Get-Counter '\Memory\Available MBytes').CounterSamples[0].CookedValue`
 
+### NEW 2026-07-24 — ORCHESTRATION FLAW: concurrent build agents cannot see each other
+
+- [ ] **My batch-4 workflow told each of 6 agents to overlap-check against the existing 47
+  plugins — and nothing about its 5 concurrent siblings.** So duplicate functionality between
+  simultaneously-built plugins is structurally invisible, and each agent's overlap evidence is
+  honest but against a stale snapshot.
+  Caught by the `contentgap` verifier: contentgap claimed "Nothing computes tf-idf or
+  draft-vs-corpus coverage anywhere in the tree" and enumerated 5 neighbours (seo/search/prose/
+  feeds/extract). Meanwhile `bigbang/core/searchindex.py:975` — built in the SAME batch — defines
+  `_idf(doc_count, df) = math.log(1 + (doc_count - df + 0.5)/(df + 0.5))`, a real BM25 idf, with
+  postings carrying per-document tf. Neither agent could have known about the other.
+  **Not necessarily duplication to undo** (contentgap does idf for coverage-gap weighting,
+  searchindex for search ranking) but it IS a shared primitive living in two places. Decide
+  whether to hoist idf into one module.
+  **Fix the pattern, not just this instance:** future batches should either (a) build in
+  dependency order with each agent told what its predecessors created, or (b) add a final
+  cross-batch dedup agent that reads all N new modules together and reports shared primitives.
+  Option (b) is cheaper and catches what (a) misses when two capabilities are genuinely
+  independent yet converge on the same maths.
+
+### NEW 2026-07-24 — batch-4 `contentgap`: 2 low-severity mutation survivors
+
+- [ ] Verifier refuted "15/15 caught, survivors: none": (a) `expected_count()`
+  `round(rate * max(0, draft_tokens), 2)` -> `round(rate * draft_tokens, 2)` survives, but
+  `token_count()` can never be negative so the guard is unreachable either way; (b)
+  `rows[: max(0, limit)]` -> `rows[:limit]` survives at both `corpus_terms()` and
+  `draft_only_terms()` — a negative limit would truncate from the end instead of returning `[]`,
+  and is untested. Low severity, honestly graded by the verifier itself; the claim was
+  overstated as an absolute, not fabricated. Fix = pin the negative-limit behavior or drop the
+  dead guard, whichever the code actually means.
+
 ### NEW 2026-07-24 — batch-4 `dupes`: two TEST defects to fix before it ships (code is fine)
 
 - [ ] **The adversarial verifier refuted the build's "16/16 mutations caught, survivors: none".
