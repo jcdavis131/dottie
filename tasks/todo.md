@@ -52,6 +52,60 @@ public deploy is the operator's gated step.
 - [ ] Agent-activity tiles (research loop / fleet / trainer) — deferred; the
       digest is the higher-value half and shipped first.
 
+## NOW — Production workflow (2026-07-25): deployed ≠ productionised
+
+Plan of record: **`tasks/production_workflow.md`**. The site is deployed and
+answering (measured 2026-07-25: `/org.html` 200 in 0.14 s, `/hub_registry.json`
+200, `/` → 307 as configured). What is missing is not features — it is the
+release discipline that makes a deploy repeatable and a regression loud.
+
+The gap, from this board's own words: Phase 1 shipped with *"live visual render
+not yet confirmed"* and Phase 2 with *"visual render unconfirmed"*. **Two
+features are in production that nobody has verified render.** Pre-deploy is
+three commands a human must remember (README:64); post-deploy is nothing; the
+alias-guard pin is hand-edited, so it records intent rather than verification.
+
+Pipeline: `G0 SOURCE → G1 PRE → G2 BUILD → G3 SMOKE → G4 PROMOTE → G5 WATCH`.
+The load-bearing change is **G3 before G4** — smoke the deployment URL *before*
+the alias moves, so a bad build never becomes www.bhenre.com and rollback is
+"don't move the alias" instead of "deploy again under pressure".
+
+- [x] **S1 `release_gate.mjs --pre`** — the README's three commands as one
+      exit-coded command (contract suite + exporter test + registry freshness +
+      JS syntax across the shipped modules).
+- [x] **S2 `release_gate.mjs --post <url>`** — the smoke, asserting the
+      **honesty contract** rather than liveness. This app's promise is
+      provenance-honesty, so `{source:"offline", reply:"…withheld"}` is CORRECT
+      production behaviour; a liveness smoke would fail on it and get disabled
+      within a week. Asserts instead: served registry byte-identical to the
+      committed one · every assistant reply stamped from `{dottie, offline}` ·
+      the retracted **275.95** appears only beside a retraction marker, never as
+      a live metric · an offline reply is well-formed and carries no fabricated
+      number.
+- [ ] **S3** wire `--pre` into the existing `bluehenre-checks` CI job.
+- [ ] **S4** G4 writes `data/last_good_deployment.txt` (pin becomes an output of
+      a passed gate, not a hand-edited input); deploy runbook becomes gate-driven.
+- [ ] **S7** G5 watch loop — scheduled liveness + freshness probe. Stale WARNS,
+      never fails: stale is a documented honest state, and a gate that fires on a
+      legitimate state gets disabled (the `lint.yml` permanently-red lesson).
+
+- [ ] **OPERATOR FORK — the assistant has no brain in production, and no amount
+      of code changes that.** `api/assistant-chat.mjs` returns `source:"offline"`
+      unless `DOTTIE_CHAT_URL` is set, and it is unset in prod because the box is
+      deliberately unexposed. The deterministic `nextActions` digest already
+      ships real guidance engine-free (right call, it works), but *conversation*
+      does not exist for a visitor. Three genuinely different products:
+      (1) **tunnel to the box** — cheapest `[dottie]`, but puts a 16 GB laptop
+      with a live trainer, flaky Docker and documented memory pressure on a
+      public site's critical path; (2) **hosted model API as a second tier**
+      grounded in the published gist — `[dottie]` → `[claude]` → `[offline]`,
+      always-on, box unexposed, honesty preserved by extending the stamp set;
+      (3) **serve the org's own checkpoint** — most faithful to the mission and
+      the largest build. Not exclusive: (2) can be the fallback tier for (3).
+      Whichever is picked ships **dormant + honest** until the operator supplies
+      the credential, exactly as the HF mirror does — entering credentials is
+      the operator's own action per SPEC.
+
 ## Then — Phase 3: MONITOR runtrack readout
 - [ ] Bridge `runtrack` (scout-cli openswap, pure-sqlite) to the live
       trainer/research metrics + the ledger.
