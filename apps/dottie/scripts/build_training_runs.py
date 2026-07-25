@@ -76,8 +76,14 @@ def segment_legs(path: Path) -> list[dict]:
 
 
 def leg_name(idx: int, lg: dict) -> str:
-    s = lg["steps"]
-    return f"leg {idx + 1} · steps {s[0]['step']}-{s[-1]['step']}"
+    """STABLE identity for a leg: keyed on its FIRST step only.
+
+    Deliberately excludes the last step: the live leg grows on every ingest, and a
+    range-based name ("steps 2870-2910") would mint a NEW runtrack run each time,
+    duplicating history. Keyed on the start, re-ingesting the same leg resolves to
+    the same run and only its new steps are appended.
+    """
+    return f"leg from step {lg['steps'][0]['step']}"
 
 
 def main() -> int:
@@ -122,17 +128,26 @@ def main() -> int:
     for i, lg in enumerate(legs):
         steps = lg["steps"]
         name = leg_name(i, lg)
-        # one runtrack run per leg; config records how the leg began (provenance)
-        run = runtrack.start_run(conn, name, config={
-            "start_event": lg["start_event"],
-            "first_step": steps[0]["step"], "last_step": steps[-1]["step"],
-        }, ts=steps[0].get("ts"))
+        # IDEMPOTENT + INCREMENTAL: reuse the existing run for this leg and append
+        # only steps we have not logged yet. Re-running the ingest as training
+        # advances must extend history, never duplicate it.
+        existing = [r for r in runtrack.list_runs(conn, name=name, limit=1)]
+        if existing:
+            run_id = int(existing[0]["id"])
+            logged = {p["step"] for p in runtrack.run_history(conn, run_id, key="lm")}
+        else:
+            run = runtrack.start_run(conn, name, config={
+                "start_event": lg["start_event"], "first_step": steps[0]["step"],
+            }, ts=steps[0].get("ts"))
+            run_id, logged = int(run["id"]), set()
         for s in steps:
+            if s["step"] in logged:
+                continue
             metrics = {"lm": s["lm"]}
             if isinstance(s.get("tok_s"), (int, float)):
                 metrics["tok_s"] = float(s["tok_s"])
-            runtrack.log_metrics(conn, int(run["id"]), metrics, step=s["step"], ts=s.get("ts"))
-        runtrack.finish_run(conn, int(run["id"]), ts=steps[-1].get("ts"))
+            runtrack.log_metrics(conn, run_id, metrics, step=s["step"], ts=s.get("ts"))
+        runtrack.finish_run(conn, run_id, ts=steps[-1].get("ts"))
 
         lms = [s["lm"] for s in steps]
         stride = max(1, len(steps) // max(1, args.curve_points))

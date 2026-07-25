@@ -5,7 +5,7 @@
   "count": 8,
   "legs": [
     {
-      "name": "leg 1 \u00b7 steps 1-460",
+      "name": "leg from step 1",
       "start_event": "branch_forked",
       "first_step": 1,
       "last_step": 460,
@@ -209,7 +209,7 @@
       ]
     },
     {
-      "name": "leg 2 \u00b7 steps 1-270",
+      "name": "leg from step 1",
       "start_event": "branch_forked",
       "first_step": 1,
       "last_step": 270,
@@ -337,7 +337,7 @@
       ]
     },
     {
-      "name": "leg 3 \u00b7 steps 810-1020",
+      "name": "leg from step 810",
       "start_event": "resumed",
       "first_step": 810,
       "last_step": 1020,
@@ -441,7 +441,7 @@
       ]
     },
     {
-      "name": "leg 4 \u00b7 steps 1150-1480",
+      "name": "leg from step 1150",
       "start_event": "resumed",
       "first_step": 1150,
       "last_step": 1480,
@@ -593,7 +593,7 @@
       ]
     },
     {
-      "name": "leg 5 \u00b7 steps 1560-1790",
+      "name": "leg from step 1560",
       "start_event": "resumed",
       "first_step": 1560,
       "last_step": 1790,
@@ -705,7 +705,7 @@
       ]
     },
     {
-      "name": "leg 6 \u00b7 steps 1910-2510",
+      "name": "leg from step 1910",
       "start_event": "resumed",
       "first_step": 1910,
       "last_step": 2510,
@@ -966,7 +966,7 @@
       ]
     },
     {
-      "name": "leg 7 \u00b7 steps 2570-2860",
+      "name": "leg from step 2570",
       "start_event": "resumed",
       "first_step": 2570,
       "last_step": 2860,
@@ -1102,7 +1102,7 @@
       ]
     },
     {
-      "name": "leg 8 \u00b7 steps 2870-2910",
+      "name": "leg from step 2870",
       "start_event": "resumed",
       "first_step": 2870,
       "last_step": 2910,
