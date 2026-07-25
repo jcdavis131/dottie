@@ -41,6 +41,33 @@ before suspecting the code.
 Re-check with:
 `(Get-Counter '\Memory\Available MBytes').CounterSamples[0].CookedValue`
 
+### NEW 2026-07-24 — batch-4 `dupes`: two TEST defects to fix before it ships (code is fine)
+
+- [ ] **The adversarial verifier refuted the build's "16/16 mutations caught, survivors: none".
+  There is a 17th that survives all 40 tests.** `bigbang/core/dupes.py:539`
+  `both = bool(set_a) and bool(set_b)` -> `or` survives, and it is NOT an equivalent mutant.
+  **Be precise about what this means: the SHIPPED CODE IS CORRECT.** I verified the asymmetric
+  case directly (72-token doc vs 3-token doc) — it returns `similarity=None, containment=None,
+  shared=None, union=None` with `error="no shingle sets to compare — draft.md: too-short: 3
+  tokens < min_tokens 40"`. The module's headline invariant at `dupes.py:61-63` (a doc too short
+  to shingle "is NEVER compared and NEVER reported as 0.0 similar") holds in production. The
+  MUTANT would report `similarity=0.0, shared=0, union=9, error=None` — an invented number —
+  which is why the gap matters even though nothing is broken today.
+  Root cause: `test_compare_rows_never_invents_a_similarity_for_unshingleable_docs`
+  (tests/test_dupes.py:382) exercises only the SYMMETRIC case where BOTH docs are too short, and
+  there `and` and `or` are indistinguishable. Reachable from shipped code:
+  `scout dupes compare published.md tiny-draft.md` -> `compare_rows` via
+  `plugins/dupes/cli.py:390`. **Fix = add the asymmetric case**, not touch the code.
+- [ ] **One vacuous assertion, tests/test_dupes.py:142.**
+  `blob = bytes([0,1,2,3]) * 500; assert blob.decode("utf-8") is not None` — max byte is 3, so
+  the blob is pure ASCII and `decode()` cannot raise; `decode()` returns `str`, so
+  `is not None` is a tautology. The assertion cannot fail. Replace with the encoding behavior it
+  was presumably meant to pin.
+- **Lesson worth keeping: self-reported mutation scores are not evidence.** The build agent ran
+  16 mutations honestly and reported 16/16 — true, and incomplete, because it chose the
+  mutations. An independent adversary picking its own targets found the hole in one pass. Keep
+  the verify stage on every future batch.
+
 ### NEW 2026-07-24 — `apps/scout-cli/docs/OPENSWAP.md` has a real NUL byte at offset 18278
 
 - [ ] **Small docs bug, queued behind batch 4 (the file is modified by a live agent — do not
