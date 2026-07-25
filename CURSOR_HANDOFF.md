@@ -249,6 +249,18 @@ extended **Leg-1 schedule (2.5B → 3.4B)**; container confirms `tokens_total:
   new/harder data and the earlier "healthy 0.19" was partly memorisation. **Do not treat the
   rise as automatically bad, or the old low as automatically good.** The verdict comes from the
   held-out eval, not the training curve.
+  ✅ **UPDATE 2026-07-25 04:15 — the excursion ENDED and returned to the prior level. Measured:**
+  <=3090 lm ~0.19 (grad 0.05-0.10) · **3100-3320 lm 2.5-3.3 (grad 0.23-0.63)** · **3330-3460 lm
+  0.183-0.195 over 14 consecutive points (grad 0.04-0.12)**. Same phase 3, same lr 0.0006
+  throughout; grad_norm tracked the loss up and back down. So it was a **bounded ~230-step
+  excursion**, not instability and not a permanent regime change.
+  ⚠ **This STRENGTHENS the "0.19 is the suspicious number" reading, it does not refute it.** If the
+  model had LEARNED the harder data over those 230 steps, the high-loss level would have declined
+  toward the low one. It did not — the two levels stayed distinct and the transition was abrupt in
+  BOTH directions, which is the signature of the data changing rather than the model improving. The
+  honest description is two data regimes of very different difficulty, with lm ~0.185 (ppl ~1.2)
+  reflecting the easy/repetitive one. Do not report the low number as health; the held-out eval is
+  still the only verdict.
   ⚠ **My own reporting error, recorded so it is not repeated:** I quoted "healthy, lm 0.193" in
   ~10 consecutive status reports without re-measuring, and it had been stale for 60 steps. Same
   failure this file was full of. Re-read the trainer's log every time:
