@@ -519,6 +519,25 @@ def validate(
                     source="sitemap",
                 )
             )
+        if e.get("lastmod"):
+            try:
+                check_lastmod(e["lastmod"])
+            except ValueError as exc:
+                # unreachable for entries built by make_entry (it validates on
+                # construction) — this catches sitemaps written by someone else,
+                # which is exactly what `lint` is pointed at.
+                diags.append(
+                    openswap.diagnostic(
+                        path=loc,
+                        line=1,
+                        rule="sitemap:bad-lastmod",
+                        severity="warning",
+                        message=str(exc),
+                        suggestion="use YYYY-MM-DD (search engines drop the whole "
+                        "<url> element on an unparseable lastmod)",
+                        source="sitemap",
+                    )
+                )
         if len(loc) > MAX_LOC_LENGTH:
             diags.append(
                 openswap.diagnostic(

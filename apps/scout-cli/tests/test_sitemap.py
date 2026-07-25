@@ -110,6 +110,12 @@ def test_entry_validation_and_priority_formatting():
     for bad in (1.5, -0.1, "high"):
         with pytest.raises(ValueError):
             sitemap.make_entry("https://x.com/a", priority=bad)
+    # a lastmod search engines cannot parse costs the whole <url> element
+    for bad in ("yesterday", "2026/03/04", "04-03-2026", "2026-03-04 05:06"):
+        with pytest.raises(ValueError):
+            sitemap.make_entry("https://x.com/a", lastmod=bad)
+    for good in ("2026-03-04", "2026-03-04T05:06:07+00:00", "2026-03-04T05:06Z"):
+        assert sitemap.make_entry("https://x.com/a", lastmod=good)["lastmod"] == good
 
 
 # ---- exclusion --------------------------------------------------------------
@@ -218,9 +224,17 @@ not a url
     assert stamps["https://x.com/c/d"] == "2026-01-02"
     assert stamps["https://x.com/e"] == "2026-02-03"
     assert stamps["https://x.com/a"] is None
-    # "not a url" is 2 whitespace fields -> the first is a bad loc, reported not fatal
+    # "not a url" is 3 fields -> reported, not silently turned into /not
     assert len(res["skipped"]) == 1
     assert res["skipped"][0]["path"] == "line 7"
+    assert "3 fields" in res["skipped"][0]["reason"]
+
+
+def test_parse_url_list_rejects_an_unparseable_lastmod():
+    res = sitemap.parse_url_list("/a yesterday\n/b 2026-01-02\n", "https://x.com")
+    assert [e["loc"] for e in res["entries"]] == ["https://x.com/b"]
+    assert res["skipped"][0]["path"] == "line 1"
+    assert "W3C datetime" in res["skipped"][0]["reason"]
 
 
 def test_parse_url_list_without_base_reports_relative_lines():
@@ -334,6 +348,18 @@ def test_validate_sharding_is_info_and_diagnostics_match_family_schema():
                           "suggestion", "source"}
         assert d["severity"] in openswap.SEVERITIES
         assert d["source"] == "sitemap"
+
+
+def test_validate_flags_a_foreign_sitemaps_bad_lastmod():
+    # entries straight out of parse_sitemap bypass make_entry's construction
+    # check — this is the path `lint` takes over a file someone else wrote.
+    parsed = sitemap.parse_sitemap(
+        "<urlset><url><loc>https://x.com/a</loc><lastmod>03/04/2026</lastmod>"
+        "</url></urlset>"
+    )
+    diags = sitemap.validate(parsed["entries"], "https://x.com/")
+    assert [d["rule"] for d in diags] == ["sitemap:bad-lastmod"]
+    assert diags[0]["severity"] == "warning" and diags[0]["path"] == "https://x.com/a"
 
 
 def test_validate_files_flags_the_50mb_limit():
