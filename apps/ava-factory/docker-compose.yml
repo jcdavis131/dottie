@@ -183,6 +183,15 @@ services:
         source: ./ava
         target: /app/ava
         read_only: true
+      # Live configs (2026-07-24): without this the server served the IMAGE's
+      # baked mini.yaml while the trainer read the host file, so a schedule
+      # change (Leg 1: tokens_total 2.5B -> 3.4B) left run_progress computing
+      # against the stale total and reporting frac 1.0 — a "100% complete" run
+      # during active training. Read-only: the server never writes configs.
+      - type: bind
+        source: ./configs
+        target: /app/configs
+        read_only: true
       - type: bind
         source: ./server.py
         target: /app/server.py
