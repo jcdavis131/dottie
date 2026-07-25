@@ -1,0 +1,36 @@
+name: alerts
+version: 0.7.0
+description: PagerDuty/Opsgenie-class alert routing, fully local (openswap #19 — severity rules + (target,severity) dedup windows over the shared uptime/certmon/heartbeat ledger, delivered by smtplib/urllib from this box)
+capabilities:
+  network:
+    # OUTBOUND delivery only, and default-deny: both senders check this list
+    # against the CONFIGURED endpoint (webhook URL, SMTP host) before opening a
+    # socket, so pointing a channel at a new host means editing this file —
+    # the same doctrine as uptime/certmon's monitored fleet. A denied endpoint
+    # is reported as a failed delivery, never a silent skip.
+    #
+    # Loopback covers the sane default: a local SMTP relay or a self-hosted
+    # webhook receiver on this box. The org domains are here because a receiver
+    # already lives behind them; nothing else is reachable, and notably NO
+    # third-party pager/chat SaaS is listed — routing to one would just be
+    # PagerDuty with extra steps.
+    enabled: true
+    domains:
+      - localhost
+      - 127.0.0.1
+      - dumbmodel.com
+      - jcamd.com
+      - bhenre.com
+      - bluehenre-campus.vercel.app
+  filesystem:
+    # the alert ledger: one `alerts` table on the SHARED monitoring sqlite file
+    # (.scout/uptime.db). uptime's own tables are read, never written.
+    write: true
+    paths: [".scout"]
+  secrets:
+    # An SMTP relay that needs a password reads it from THIS env var and no
+    # other: the channel config names the variable, and _smtp_password() only
+    # reads it if the name appears here (default-deny by name). The value is
+    # never written to the ledger or the JSON envelope.
+    allow:
+      - SCOUT_ALERTS_SMTP_PASSWORD

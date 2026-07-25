@@ -1,0 +1,23 @@
+name: headers
+version: 0.7.0
+description: Detectify/Burp Pro(surface)-class secure-header + exposed-surface auditor, fully local (openswap #22 — stdlib urllib GET, CSP/HSTS/cookie/mixed-content analysis on the shared seo crawl store)
+capabilities:
+  network:
+    enabled: true
+    # The crawlable public fleet ONLY (host exact-or-dot-suffix match) — the SAME
+    # domain allowlist as the seo plugin, because `headers scan` audits the very
+    # sites `seo crawl` fetches and shares its .scout/seo.db store. A named site
+    # scan is gated here; an ad-hoc --url scan is gated by the persisted USER
+    # allowlist instead, never by widening this file to match the target.
+    # `audit` and `status` read the store and make no network calls at all.
+    domains:
+      - dumbmodel.com
+      - jcamd.com
+      - arxiviq.com
+      - bhenre.com
+  filesystem:
+    # the one genuine need: the shared crawl store the scan history lands in
+    write: true
+    paths: [".scout"]
+  secrets:
+    allow: []

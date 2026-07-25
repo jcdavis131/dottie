@@ -18,9 +18,12 @@ Extension points:
 - Per-surface rule profiles: keep one rules JSON per surface (README vs steer
   digest vs site copy) and select it with `scout prose lint --rules`; nothing
   here hardcodes a surface.
-- Readability scorer (openswap table #21): append a `(lines, rules, path) ->
-  [diagnostics]` function to CHECKS; it inherits extraction and the normalized
-  openswap schema for free.
+- Readability scorer (openswap table #21): DONE, and the template for the next
+  one — bigbang/core/readability.py owns the Flesch/fog arithmetic, reuses the
+  extraction and `passive_pattern` below instead of copying them, and plugs in
+  as one `(lines, rules, path) -> [diagnostics]` entry in CHECKS. Its knobs live
+  in `readability.DEFAULT_CONFIG` and are injected into `load_rules` output, so
+  `scout prose rules --rules x.json` tunes it like any other rule.
 - Pre-publish gate: `openswap.summarize(diags)["by_severity"]` plus
   `scout prose lint --fail-on <severity>` is the stable gate contract for all
   8 sites' copy.
@@ -215,6 +218,13 @@ def load_rules(path: str | None = None) -> dict[str, Any]:
     to convert into a fail_agent envelope.
     """
     rules = copy.deepcopy(DEFAULT_RULES)
+    # Readability (#21) owns its own thresholds; injected here so it appears in
+    # `prose rules`, accepts the same JSON overlay as every other rule, and is
+    # never duplicated in two policy tables. Local import: readability imports
+    # this module for extraction, so a module-level import would be a cycle.
+    from bigbang.core import readability
+
+    rules["readability"] = copy.deepcopy(readability.DEFAULT_CONFIG)
     if not path:
         return rules
     raw = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -326,7 +336,8 @@ def detect_format(path: str) -> str:
 
 # ---- checks -----------------------------------------------------------------
 
-_WORD_RE = re.compile(r"\b\w[\w'-]*\b")
+# public: the readability scorer (#21) tokenizes with the SAME word definition
+WORD_RE = re.compile(r"\b\w[\w'-]*\b")
 _DOUBLE_RE = re.compile(r"\b([A-Za-z]+)[ \t]+\1\b", re.IGNORECASE)
 _ARTICLE_RE = re.compile(r"\b(a|an)\s+([A-Za-z][A-Za-z'-]*)", re.IGNORECASE)
 _DOUBLE_SPACE_RE = re.compile(r"(?<=\S) {2,}(?=\S)")
@@ -386,17 +397,27 @@ def _check_a_an(lines: list[str], rules: dict, path: str) -> list[dict]:
     return out
 
 
+def passive_pattern(cfg: dict[str, Any]) -> re.Pattern[str]:
+    """Compiled "be + past participle" matcher for a passive_voice rule config.
+
+    Public because the readability scorer (#21) reports a passive RATIO over the
+    same constructions this rule flags: two regexes would eventually disagree,
+    and then one of the two numbers would be wrong with no way to tell which.
+    """
+    parts = [r"[A-Za-z]{2,}ed"]
+    parts.extend(re.escape(w) for w in cfg.get("irregular_participles", []))
+    return re.compile(
+        r"\b(?:am|is|are|was|were|be|been|being)\s+(" + "|".join(parts) + r")\b",
+        re.IGNORECASE,
+    )
+
+
 def _check_passive_voice(lines: list[str], rules: dict, path: str) -> list[dict]:
     cfg = rules.get("passive_voice", {})
     if not cfg.get("enabled"):
         return []
     not_participles = {w.lower() for w in cfg.get("not_participles", [])}
-    parts = [r"[A-Za-z]{2,}ed"]
-    parts.extend(re.escape(w) for w in cfg.get("irregular_participles", []))
-    pat = re.compile(
-        r"\b(?:am|is|are|was|were|be|been|being)\s+(" + "|".join(parts) + r")\b",
-        re.IGNORECASE,
-    )
+    pat = passive_pattern(cfg)
     out = []
     for i, line in enumerate(lines, 1):
         for m in pat.finditer(line):
@@ -410,7 +431,13 @@ def _check_passive_voice(lines: list[str], rules: dict, path: str) -> list[dict]
     return out
 
 
-def _paragraphs(lines: list[str]):
+def paragraphs(lines: list[str]):
+    """Blank-line-separated paragraphs as (first_line_number, joined_text).
+
+    Public: the readability scorer (#21) needs the identical paragraph boundaries
+    so a per-paragraph grade and a sentence_length finding can never point at
+    different text.
+    """
     start, buf = None, []
     for i, line in enumerate(lines, 1):
         if line.strip():
@@ -431,9 +458,9 @@ def _check_sentence_length(lines: list[str], rules: dict, path: str) -> list[dic
         return []
     limit = int(cfg.get("max_words", 35))
     out = []
-    for start, text in _paragraphs(lines):
+    for start, text in paragraphs(lines):
         for sent in re.split(r"(?<=[.!?])\s+", text):
-            n = len(_WORD_RE.findall(sent))
+            n = len(WORD_RE.findall(sent))
             if n > limit:
                 out.append(openswap.diagnostic(
                     path=path, line=start, col=1, rule="sentence_length",
@@ -559,7 +586,22 @@ def _check_spellcheck(lines: list[str], rules: dict, path: str) -> list[dict]:
     return out
 
 
-# Ordered check registry — the readability scorer (openswap #21) appends here.
+def _check_readability(lines: list[str], rules: dict, path: str) -> list[dict]:
+    """Readability (#21) as a lint rule — grade over target, hard sentences, budgets.
+
+    A thin adapter on purpose: the arithmetic lives in core/readability.py, and
+    the import is LOCAL because that module imports this one for extraction. It
+    is registered in CHECKS below rather than appended by whoever happens to
+    import readability first — an import-order-dependent rule would silently
+    vanish from `prose lint`, which is the one failure mode a linter must not have.
+    """
+    from bigbang.core import readability
+
+    return readability.readability_check(lines, rules, path)
+
+
+# Ordered check registry. Adding a rule = one `(lines, rules, path) ->
+# [diagnostics]` function plus its entry here (see _check_readability).
 CHECKS = [
     _check_doubled_word,
     _check_a_an,
@@ -569,6 +611,7 @@ CHECKS = [
     _check_hygiene,
     _check_misspelling,
     _check_spellcheck,
+    _check_readability,
 ]
 
 

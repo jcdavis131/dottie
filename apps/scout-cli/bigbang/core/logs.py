@@ -1042,9 +1042,10 @@ def collect_file(
 
     result["lines"] = len(lines)
     result["ingested"] = len(rows)
-    # min() is a no-op in every normal pass (we never read past EOF); it guards
-    # the pathological file that is SHORTER than its own BOM, which would
-    # otherwise store offset > size and look rotated on every subsequent pass
+    # min() is a no-op in every normal pass (we never read past EOF). It guards
+    # the case where realigning a misaligned stored offset rounds UP past an
+    # end-of-file that is not itself on a code-unit boundary: storing
+    # offset > size would read as a rotation next pass and re-ingest the file.
     result["offset"] = min(start + consumed, chunk["size"])
     if record:
         record_entries(conn, rows)

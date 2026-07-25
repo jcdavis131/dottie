@@ -1,12 +1,21 @@
 name: prose
-version: 0.7.0
-description: Grammarly-class prose linting, fully local (openswap #1 — harper-cli native tier + pure-stdlib heuristic core)
+version: 0.8.0
+description: Grammarly-class prose linting + Hemingway-class readability scoring, fully local (openswap #1 — harper-cli native tier + pure-stdlib heuristic core; openswap #21 — the readability scorer ships as this plugin's `score`/`report`, not a second plugin)
 capabilities:
   network:
+    # ZERO egress on every tier. Linting and scoring are arithmetic over local
+    # files, so there is no host to allowlist and no probe to make: the privacy
+    # guarantee ("your draft never leaves the box") is architectural rather than
+    # a ToS promise, which is the whole point of replacing Grammarly Premium and
+    # Hemingway Editor Plus. Nothing in this plugin opens a socket.
     enabled: false
     domains: []
   filesystem:
-    write: false
-    paths: []
+    # ONE writer: `prose report` renders the per-paragraph difficulty page (#21,
+    # the Hemingway artifact) as a self-contained HTML file. Declared here and
+    # enforced at the call site with enforce_or_raise, so the write is auditable
+    # instead of implicit. `lint`, `score`, `rules` and `detect` only read.
+    write: true
+    paths: [".scout"]
   secrets:
     allow: []

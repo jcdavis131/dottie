@@ -1,0 +1,23 @@
+name: metrics
+version: 0.7.0
+description: Datadog Infrastructure Monitoring-class host metrics, fully local (openswap #15 — shutil.disk_usage + ctypes GlobalMemoryStatusEx/procfs + typeperf/Get-Counter into an append-only JSONL log and sqlite min/max/mean rollups, provenance-stamped)
+capabilities:
+  network:
+    # ZERO egress by design, and that is the whole point of replacing Datadog:
+    # the paid product is an agent that ships your host telemetry to a vendor
+    # intake endpoint. This adapter has no intake, no API key and no exporter,
+    # so there is no domain to allowlist — the axis is disabled outright and the
+    # guarantee is falsifiable (grep the plugin and core for a socket) rather
+    # than a retention promise. If a future edit wants to push metrics anywhere,
+    # it has to come here first and name the host, in review.
+    enabled: false
+    domains: []
+  filesystem:
+    # the genuine need: appending the JSONL record and writing the sqlite
+    # rollups. Both live under .scout/ beside the family's other ledgers, and
+    # `collect --no-record` measures without touching either.
+    write: true
+    paths: [".scout"]
+  secrets:
+    # host metrics need no credential; an empty allowlist is default-deny.
+    allow: []

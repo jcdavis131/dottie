@@ -1,0 +1,31 @@
+name: ollama
+version: 0.7.0
+description: ChatGPT Plus/hosted-LLM-API-class inference, fully local (openswap #17 — stdlib urllib to a loopback ollama daemon, honest template degradation when it is absent, sqlite usage ledger that stores no prompts)
+capabilities:
+  network:
+    enabled: true
+    # LOOPBACK ONLY — this is the whole privacy claim, and it is falsifiable:
+    # every base the CLI touches is gated against this list before the socket
+    # opens (plugins/ollama/cli.py::_gate). An off-box endpoint would be a
+    # hosted LLM API wearing ollama's URL shape, i.e. the exact thing #17
+    # deletes, so it is denied here AND has to clear the operator's own
+    # persisted allowlist (core/policy.enforce_user_url_or_raise, the certmon
+    # ad-hoc-host doctrine) before it could ever be reached. Widening this list
+    # is a deliberate, auditable edit — never something a flag can do.
+    domains:
+      - 127.0.0.1
+      - localhost
+      - "::1"
+  filesystem:
+    # the one genuine need: the usage ledger (.scout/ollama.db). Its OWN file,
+    # never the #2 uptime ledger — completions are bursty and must not contend
+    # with the monitoring probe loop's write lock.
+    write: true
+    paths: [".scout"]
+  secrets:
+    # EMPTY BY CONSTRUCTION, and that is the product: a local daemon needs no
+    # API key, so there is no OPENAI_API_KEY / ANTHROPIC_API_KEY for this
+    # adapter to read, leak, or bill against. Default-deny here means a future
+    # edit that reaches for a hosted key fails loudly instead of quietly
+    # re-subscribing.
+    allow: []

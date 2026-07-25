@@ -1,0 +1,23 @@
+name: charts
+version: 0.7.0
+description: Grafana Cloud/Tableau-class charting, fully local (openswap #16 — deterministic static SVG rendered from sqlite ledgers or JSON/CSV; no chart library, no dashboard server, no egress)
+capabilities:
+  network:
+    # ZERO egress AND zero ingress by design. A chart here is a pure function of
+    # data that is ALREADY on this box: there is nothing to fetch, and shipping
+    # the numbers to a hosted dashboard is precisely the paid tier this adapter
+    # deletes. The axis is disabled outright so "no datapoint left the box" is
+    # architectural rather than a promise — and note that the SVG itself carries
+    # no <script>, no <image>, no @import and no webfont, so OPENING a rendered
+    # chart cannot make a request either.
+    enabled: false
+    domains: []
+  filesystem:
+    # the one genuine need: writing the rendered .svg. Data sources are opened
+    # read-only — sqlite with mode=ro (see core/charts.open_readonly), csv/json
+    # with an 'r' handle — so charting the shared uptime/runtrack ledgers can
+    # neither modify them nor contend for the write lock their daemons hold.
+    write: true
+    paths: [".scout"]
+  secrets:
+    allow: []

@@ -55,10 +55,10 @@ app = make_plugin_app(
     "Full-text search (Elastic Cloud-class), fully local: sqlite3 FTS5 index "
     "with BM25 ranking and snippet highlighting, zero egress",
     examples=[
-        'scout --json search index docs README.md --glob "*.md"',
+        "scout --json search index docs README.md --ext md",
         'scout --json search query "fts5 ranking"',
-        'scout --json search query "bm25" --path "docs/*" --limit 5',
-        "scout --json search stats",
+        'scout --json search query "bm25" --path docs --limit 5',
+        "scout --json search stats --fail-on warning",
         "scout --json search detect",
     ],
 )
@@ -113,7 +113,7 @@ def _open_existing(db: str | None, command: str):
         fail_agent(
             f"no search index at {path} — index a corpus first",
             command=command,
-            example='scout --json search index docs --glob "*.md"',
+            example="scout --json search index docs --ext md",
             discover="scout search detect",
         )
     return _open(path, command), path
@@ -180,7 +180,7 @@ def hello():
         ok(
             {"ready": True, "plugin": "search"},
             command="search hello",
-            example='scout --json search index docs --glob "*.md"',
+            example="scout --json search index docs --ext md",
             discover="scout search detect",
         ),
         command="search hello",
@@ -194,7 +194,7 @@ def detect():
         ok(
             _capability(),
             command="search detect",
-            example='scout --json search index docs --glob "*.md"',
+            example="scout --json search index docs --ext md",
             discover="scout search stats",
         ),
         command="search detect",
@@ -308,7 +308,7 @@ def index(
         fail_agent(
             str(exc),
             command="search index",
-            example='scout --json search index docs --glob "*.md"',
+            example="scout --json search index docs --ext md",
         )
     diags = search.to_diagnostics(result)
     emit(
@@ -453,7 +453,7 @@ def stats(
              "summary": openswap.summarize(diags)},
             command="search stats",
             example='scout --json search query "your terms"',
-            discover='scout --json search index <root> --glob "*.md"',
+            discover="scout --json search index <root> --ext md",
         ),
         command="search stats",
     )
