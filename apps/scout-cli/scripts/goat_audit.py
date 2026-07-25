@@ -183,6 +183,21 @@ def audit_plugin(name: str) -> dict:
         findings.append("D6: cli.py has no module docstring stating what it replaces / why")
     d6 = _clamp(10 - 0.7 * len(notes) - (3 if not has_doc else 0))
 
+    # A MISSING implementation must never read as a clean one. Absence of
+    # problems is not quality: an empty/absent cli.py trivially has no bad
+    # imports, no dead code and no long functions, which floated a hollow
+    # `feeds` plugin to 7.83 and would have passed a --min-mean 7.0 gate.
+    # Incomplete scaffolding scores 0 across the board and says why.
+    if not cli.exists() or loc == 0:
+        findings.insert(0, "INCOMPLETE: no cli.py implementation (scaffolding only) — "
+                           "scored 0; absence of findings is not quality")
+        scores = {k: 0 for k in ("d1_dependency", "d2_dead_code", "d3_self_contained",
+                                 "d4_test_honesty", "d5_hot_path", "d6_honest_notes")}
+        return {"plugin": name, "has_cli": cli.exists(),
+                "has_manifest": (pdir / "manifest.yaml").exists(), "loc": loc,
+                "scores": scores, "mean": 0.0, "incomplete": True,
+                "third_party": [], "tests": tinfo, "findings": findings}
+
     scores = {"d1_dependency": d1, "d2_dead_code": d2, "d3_self_contained": d3,
               "d4_test_honesty": d4, "d5_hot_path": d5, "d6_honest_notes": d6}
     return {
