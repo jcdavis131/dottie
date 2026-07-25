@@ -69,7 +69,9 @@ def _declared_deps() -> set[str]:
         return names
     reqs = (data.get("project") or {}).get("dependencies") or []
     for r in reqs:
-        base = re.split(r"[<>=!~\[; ]", str(r).strip(), 1)[0].strip().lower()
+        # maxsplit by keyword: Python 3.13 deprecates passing it positionally to
+        # re.split, and this file is the audit -- it should not itself rot.
+        base = re.split(r"[<>=!~\[; ]", str(r).strip(), maxsplit=1)[0].strip().lower()
         if base:
             names.add(base.replace("-", "_"))
     return names
