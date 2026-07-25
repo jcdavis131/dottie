@@ -2,7 +2,27 @@
 
 **Paste-able brief for any agent continuing this work. Everything below is live and verified.**
 
-## NEWEST (2026-07-25) — CI WAS RED ON EVERY PUSH; 3 of 4 jobs fixed, 1 needs YOU
+## IN FLIGHT (2026-07-25 ~06:00) — openswap batch 5 is RUNNING. Do not relaunch it.
+
+Workflow `wfm14ajm8` (run `wf_bdde5063-194`) is building **ranks 29-34** into `apps/scout-cli`:
+`cve` (Snyk/Dependabot) · `quality` (SonarQube) · `coverage` (Codecov) · `digest` (Mailchimp) ·
+`cite` (Zotero) · `later` (Pocket). 13 agents: 6 build -> 6 adversarial verify -> 1 cross-batch
+dedup. Takes 50-85 min based on batches 3 and 4.
+
+**If you find unexplained new files under `bigbang/core/`, `bigbang/plugins/` or `tests/` matching
+those six names, that is this workflow — not a stray edit.** Do not commit them until its verifiers
+report; batch 4 had 7 findings across 6 plugins and 4 of 6 shipped an assertion that could not fail.
+Check progress: the journal at
+`.claude/projects/C--Users-jcdav-dottie/<session>/subagents/workflows/wf_bdde5063-194/journal.jsonl`
+(one `{"type":"result"...}` line per finished agent).
+
+Two orchestration fixes went into this batch, both from batch-4 failures: a **cross-batch dedup
+agent** (batch 4's six agents were structurally blind to each other, so `contentgap` truthfully
+claimed "nothing computes tf-idf" while `searchindex` was writing a BM25 idf), and a **defined
+`claims_hold` bar** (batch 4's was undefined, so two verifiers returned opposite verdicts on the
+same evidence shape). Vacuous-assertion hunting is now a first-class gate on both sides.
+
+## (2026-07-25) — CI WAS RED ON EVERY PUSH; 3 of 4 jobs fixed, 1 needs YOU
 
 **Check CI before believing a local board.** Twice today local green did not mean CI green.
 `gh run list --workflow CI --limit 3` and `gh run view <id> --json jobs -q '.jobs[]|"\(.conclusion)  \(.name)"'`.
