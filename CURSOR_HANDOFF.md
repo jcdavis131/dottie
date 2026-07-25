@@ -13,8 +13,22 @@ Workflow `wfm14ajm8` / run `wf_bdde5063-194` finished: 13 agents, 0 errors, ~2.6
 | `quality` (SonarQube) | ✅ holds | GOAT **10.00**, but `claims_overstated` — a survivor its builder did not claim |
 | `later` (Pocket) | ✅ holds | `claims_overstated` — same shape |
 | `digest` (Mailchimp) | ❌ was failing | **security gap ALREADY FIXED in the working tree — see below** |
-| `cite` (Zotero) | ❌ **fails bar** | ditto |
+| `cite` (Zotero) | ❌ **fails bar — worst of the three** | two independent grounds, see below |
 | `coverage` (Codecov) | ❌ **fails bar** | **fix list already derived — see below** |
+
+**`cite` is the one to treat with most suspicion — it fails on TWO independent grounds.**
+(1) A surviving mutant (its verifier's E1/E4) reveals behavior contradicting a documented invariant.
+(2) **A stated number is unreproducible:** the builder reported "42 readings" over a
+"7-entry x 6-style matrix"; the verifier measured **36 over 6x6**. The builder's own arithmetic was
+wrong (7x6=42 asserted, 6 entries present), which means a headline figure in its report was never
+actually measured. Root cause of (1) per the verifier: a MIS-SCOPED test at `tests/test_cite.py:526`
+(`test_roundtrip_marks_a_key_or_type_change_when_the_key_is_unemittable`) that never reaches the
+key/type-change path it names — fix is to add a test that actually reaches it.
+Note the verifier reasoned from the SCHEMA rather than its own taste, which is what batch 4 lacked:
+*"claims_overstated = FALSE only because the schema reserves that flag for the honest-but-incomplete
+case WITHOUT any contradicted invariant — and there IS a contradicted invariant here. This is the
+worse category, not the milder one."* Do not read `claims_overstated=false` as "milder than quality
+and later"; it is the opposite.
 
 **`digest`'s trigger is FIXED in the working tree (uncommitted, verified by mutation).** Its
 `claims_hold=false` was one surviving mutant contradicting a documented invariant:
