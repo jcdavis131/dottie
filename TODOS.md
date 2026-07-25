@@ -41,6 +41,41 @@ before suspecting the code.
 Re-check with:
 `(Get-Counter '\Memory\Available MBytes').CounterSamples[0].CookedValue`
 
+### NEW 2026-07-25 — `.github/workflows/lint.yml` is a HARD gate that has been RED on every push
+
+- [ ] **OPERATOR DECISION — a second ruff workflow contradicts the one in ci.yml, and it fails
+  every time.** `gh run list --workflow "Ruff Lint"` -> **failure on 8 of the last 8 pushes**,
+  including commits that predate today's work. A permanently-red required check is worse than an
+  honest soft one: it trains everyone to ignore the X, so the next REAL breakage looks identical
+  to the noise.
+  What it runs (no `|| true` on either step):
+  ```
+  pip install ruff==0.8.6
+  ruff check . --statistics      # repo-wide, NO --exclude
+  ruff format --check .          # repo-wide format enforcement
+  ```
+  Three separate problems:
+  1. **Scope.** `ruff check .` from the repo root lints EVERYTHING, including
+     `apps/ava-factory/**` (FROZEN, bind-mounted into the live trainer) — code nobody may edit to
+     satisfy a linter. `ci.yml`'s ruff step deliberately scopes to 4 packages.
+     Measured locally: **1,397 findings repo-wide** (646 auto-fixable) versus the 334 across the
+     four packages ci.yml checks. So ci.yml's documented "334 known findings" describes a
+     DIFFERENT invocation than the one actually gating.
+  2. **Version skew makes local verification impossible.** CI pins **ruff 0.8.6**; this box has
+     **0.15.22**. Different rule sets and defaults, so "ruff clean locally" does not predict this
+     gate. Every batch-4 agent verified against 0.15.22.
+  3. **`ruff format --check .`** is a far stricter gate than `ruff check` and nothing in the repo
+     satisfies it. This alone can never pass without a repo-wide reformat.
+  **Options, in the order I would recommend them:** (a) scope `lint.yml` to the same 4 packages as
+  `ci.yml`, pin the SAME ruff version both places, drop `--format --check` until a deliberate
+  reformat happens, and keep it non-blocking with the count stated — i.e. make it agree with
+  ci.yml; (b) delete `lint.yml` as redundant, accepting the loss of repo-wide scope and the format
+  check; (c) leave it red. Not (c).
+  ⚠ I did NOT change or delete a CI workflow unilaterally — that is a policy call about what this
+  repo requires, and "make the red X go away" is exactly the move that deserves a human. But note
+  the ci.yml ruff comment I wrote today (334 findings) is scoped to ci.yml's invocation and should
+  cross-reference this once resolved.
+
 ### NEW 2026-07-24 — ORCHESTRATION FLAW: concurrent build agents cannot see each other
 
 - [ ] **My batch-4 workflow told each of 6 agents to overlap-check against the existing 47
