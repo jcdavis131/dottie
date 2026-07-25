@@ -3347,7 +3347,24 @@ most valuable catch so far:
   it is the operator's uncommitted work, and restoring it into a tree with 90+ new commits
   could produce conflicts only they can adjudicate. `dottie/jobs.py` does not exist in HEAD,
   so nothing here is a duplicate.
-- [ ] **OPERATOR — this is a decision, not a task.** To inspect: `git stash show -p
+- [ ] **OPERATOR — still live, and here is the data the decision needs (re-measured
+  2026-07-24 23:10, nothing applied/popped/dropped).** `stash@{0}: On main: pre-teleport`,
+  created **2026-07-19**, base `8641fb9`, now **501 commits behind HEAD** (the earlier note
+  said "90+" — it is 501).
+  ⚠ **`git stash show --name-only` UNDERSTATES this stash: it lists only `api.py`.** With
+  `--include-untracked` it is **four** entries:
+  `apps/dottie/dottie/api.py` · `apps/dottie/dottie/jobs.py` · `apps/dottie/tests/test_jobs.py`
+  · **`apps/dottie/.scout/reviewgraph.db`**. Anyone inspecting with the obvious command sees one
+  file and concludes it is a small safe change.
+  Risk, per entry: `jobs.py` and `test_jobs.py` are **new files** — `jobs.py` is still absent
+  from HEAD, so no conflict. `api.py` is the only real conflict candidate: **1 commit touched it
+  since the base, +185/-92 lines**. `reviewgraph.db` is **untracked/ignored**, so applying the
+  stash would **overwrite a live database on disk** — that is the part to decide about, not the
+  Python.
+  (Method note: my first `git merge-tree` probe reported conflicts; that was my own bad syntax
+  — `--write-tree` takes two commits, not three. git 2.40.1 supports it and the base merges
+  cleanly. A tooling error that looks like a finding is worse than no probe.)
+  To inspect: `git stash show -p
   stash@{0}`. To restore: `git stash pop` (expect to resolve `api.py` against tonight's
   changes; the two files it adds are new, so they cannot conflict). To keep deferring: do
   nothing — but **it is now recorded, so it cannot be lost by accident.**
