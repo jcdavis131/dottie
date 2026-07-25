@@ -164,7 +164,7 @@ def _db_path(db: str | None) -> Path:
 def _open_new(db: str | None):
     path = _db_path(db)
     # call-site enforcement: the plugin loader does not check fs_write for us
-    enforce_or_raise(_manifest(), "fs_write", str(path))
+    enforce_or_raise(_manifest(), "fs_write_arg", str(path))
     return cite.open_store(path), path
 
 
@@ -702,7 +702,7 @@ def forget_cmd(
             command="cite forget",
         )
         return
-    enforce_or_raise(_manifest(), "fs_write", str(path))
+    enforce_or_raise(_manifest(), "fs_write_arg", str(path))
     result = cite.delete_entries(conn, keys)
     emit(
         ok(

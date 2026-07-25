@@ -353,7 +353,7 @@ def render(
     )
     out_path = Path(out or statuspage.PAGE_REL)
     # call-site enforcement: the plugin loader does not check fs_write for us
-    enforce_or_raise(_manifest(), "fs_write", str(out_path))
+    enforce_or_raise(_manifest(), "fs_write_arg", str(out_path))
     page = statuspage.render_html(snap, title=title)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(page, encoding="utf-8")

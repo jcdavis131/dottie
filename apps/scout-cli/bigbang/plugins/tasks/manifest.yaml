@@ -8,7 +8,24 @@ capabilities:
   filesystem:
     enabled: true
     write: true
-    paths: ["~/workspace/bigbang-cli/docs/llm-wiki/", "~/.local/share/bigbang/"]
+    # `export` writes _repo_root()/docs/llm-wiki/tasks-<list>.json, where
+    # _repo_root() walks UP FROM __file__ for pyproject.toml (cli.py:346).
+    # This used to declare "~/workspace/bigbang-cli/docs/llm-wiki/" — an
+    # absolute path baked in from a machine where the checkout happened to sit
+    # at ~/workspace/bigbang-cli. On this box the package resolves to
+    # .../dottie/apps/scout-cli, so the declared path matched nothing and the
+    # write was denied outright once capabilities.filesystem.paths began being
+    # enforced. Unlike the operator-redirectable writes elsewhere, `export`
+    # takes no destination flag (--tasklist only names the FILE), so it stays on
+    # the paths-enforcing "fs_write" action.
+    #
+    # The relative entry below is anchored by the CALL SITE, which passes
+    # base=_repo_root() to enforce_or_raise. A static list cannot name a root
+    # discovered at runtime, and a "<repo>" token could not either — tasks' own
+    # test monkeypatches _repo_root to a temp dir, so only the caller knows the
+    # real value. reviewgraph hit the identical wall and tried to spell it
+    # "<root>/.scout/"; when its gate is wired it should pass base=--root.
+    paths: ["docs/llm-wiki", "~/.local/share/bigbang/"]
   secrets:
     allow: []  # auth via Hatch managed wrapper, no vault secret needed
 tags: [productivity, google, tasks, gws]

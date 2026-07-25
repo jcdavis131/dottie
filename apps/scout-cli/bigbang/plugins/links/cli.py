@@ -316,7 +316,7 @@ def check_cmd(
         }
     diags = links.to_diagnostics(survey, ext_results)
     ldb = _links_db(links_db)
-    enforce_or_raise(_manifest(), "fs_write", str(ldb))
+    enforce_or_raise(_manifest(), "fs_write_arg", str(ldb))
     lconn = links.open_store(ldb)
     run_id = links.record_run(lconn, key, survey, ext_results)
     cap = _capability()
@@ -478,7 +478,7 @@ def graph_cmd(
         "orphans": survey["orphans"],
     }
     if dot:
-        enforce_or_raise(_manifest(), "fs_write", dot)
+        enforce_or_raise(_manifest(), "fs_write_arg", dot)
         lines = ["digraph links {"]
         for src, targets in sorted(graph.items()):
             for t in targets:

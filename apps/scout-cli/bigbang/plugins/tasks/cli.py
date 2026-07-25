@@ -370,9 +370,15 @@ def export_tasks(
             ),
         ]
     )
-    out_path = _repo_root() / "docs" / "llm-wiki" / f"tasks-{tasklist}.json"
+    root = _repo_root()
+    out_path = root / "docs" / "llm-wiki" / f"tasks-{tasklist}.json"
     manifest = load_manifest(Path(__file__).resolve().parent)
-    enforce_or_raise(manifest, "fs_write", str(out_path))
+    # Stays on the paths-enforcing "fs_write" action: --tasklist names the FILE,
+    # so no flag can redirect this write. `base=root` anchors the manifest's
+    # relative "docs/llm-wiki" entry to the root resolved above rather than the
+    # process CWD — the two diverge whenever the command is invoked from
+    # anywhere but the checkout.
+    enforce_or_raise(manifest, "fs_write", str(out_path), base=str(root))
     try:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(res, indent=2))

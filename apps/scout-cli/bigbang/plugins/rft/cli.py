@@ -37,7 +37,7 @@ def export(
     from bigbang.core.policy import enforce_or_raise, load_manifest
 
     manifest = load_manifest(Path(__file__).resolve().parent)
-    enforce_or_raise(manifest, "fs_write", str(out))
+    enforce_or_raise(manifest, "fs_write_arg", str(out))
     summary = export_dataset(
         audit_file, out, gap_seconds=gap_seconds, min_steps=min_steps
     )

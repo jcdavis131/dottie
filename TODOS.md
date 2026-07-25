@@ -207,7 +207,57 @@ Re-check with:
 
 ### NEW 2026-07-24 — openswap manifests promise filesystem containment that is NOT enforced
 
-- [ ] **`policy.check_permission`'s `fs_write` branch ignores `capabilities.filesystem.paths`
+#### ✅ DONE 2026-07-25 — enforced, and enforcing it found three defects + a bigger hole
+
+Full write-up: `tasks/artifacts/filesystem_paths_enforcement_2026-07-25.md`. Summary:
+
+**Re-measured, because the figures below drifted:** 56 manifests, **47** declare
+`write: true`, and **every one of those 47 also declares `filesystem.paths`** (zero
+exceptions), so hard default-deny cost nothing.
+
+**The item as scoped ("mirror the `secret` branch") was wrong, and only measurement showed
+it.** A subagent traced all 44 gated call sites: **ARG=42, AMB=2**. Every store helper
+funnels through `_db_path(db) -> Path(db or $SCOUT_*_DB or DB_REL)` and in every case some
+caller passes `--db`, so `.scout/x.db` is only the *default* and the operator can redirect
+it. Enforcing `paths` there either denies every legitimate redirect or pushes authors to
+declare `paths: ["/"]` — a gate that protects nothing while reading as enforced.
+Resolution: two actions. `fs_write` (plugin chose the path) enforces `paths`;
+`fs_write_arg` (operator named it via `--out`/`--db`/`--csv`) checks only the write flag,
+because typing the path IS the authorization. 42 call sites moved; an independent regex
+found exactly 42, matching the subagent's count by a different method.
+
+**Three defects the check exposed:**
+1. `reviewgraph` declared the literal `"<root>/.scout/"` — a prose placeholder that leaked
+   into the allowlist and was never substituted. Inert unenforced; denies everything once
+   enforced. → `.scout`.
+2. `tasks` declared `"~/workspace/bigbang-cli/docs/llm-wiki/"` while `export` writes
+   `_repo_root()/docs/llm-wiki/` (walks up from `__file__` for `pyproject.toml`). Baked in
+   from a machine where the checkout sat there; matched nothing here.
+3. **An unknown action FAILED OPEN.** Every branch is `if action == ...`, so
+   `enforce_or_raise(mf, "fs_wrile", path)` fell through to `return True, "ok"` — writing
+   freely while *reading like an enforced gate*. `KNOWN_ACTIONS` now fails closed
+   (verified: every caller passes a literal, no dynamic actions anywhere).
+
+- [ ] **FOLLOW-UP, and this is the bigger hole: 14 of 47 write-capable plugins never call
+  the gate at all.** `auth ava brain dev_loop herd lab mcp reviewgraph rtx secrets skill
+  system tennis write`. That list is the inverse of reassuring — `auth` writes
+  `auth.json`/`secrets.json`, `secrets` writes `~/.local/share/bigbang/`, `brain` writes
+  `~/MEMORY.md` and `~/memory/`, `skill` writes `~/.claude/skills/`. For these, `paths`
+  remains documentation. Enforcing `check_permission` **cannot** fix this; the gate has to
+  be invoked. Highest-value next step on this axis.
+
+- [ ] **FOLLOW-UP: the allowlist cannot express a dynamically-discovered root.** Defects 1
+  and 2 share this cause — reviewgraph tried to spell it `<root>`, tasks hardcoded one
+  machine's answer. `.scout` only works because it is CWD-relative and `abspath` resolves
+  it against the process CWD. Two independent sites already want a repo-relative token.
+
+- [ ] **KNOWN GAP, stated not papered over:** a **symlink** inside an allowed directory
+  pointing outside it still escapes `_path_matches`. Blocking it needs `realpath` on an
+  existing tree, which the not-yet-created-write case rules out.
+
+<details><summary>Original entry (2026-07-24) — kept for the reasoning</summary>
+
+- [x] **`policy.check_permission`'s `fs_write` branch ignores `capabilities.filesystem.paths`
   entirely — and ignores its own `resource` argument.** It checks only the boolean
   `caps.filesystem.write`. Surfaced by a batch-4 build agent as a "known limit" and then
   verified independently at `apps/scout-cli/bigbang/core/policy.py:189-194`.
@@ -231,6 +281,8 @@ Re-check with:
   deny-all to match the docstring (or as "unscoped" only if that is a deliberate, documented
   choice). Land it with the ruff/pytest gates green, then delete the "documentary" caveats from
   the manifests that carry them.
+
+</details>
 
 **Memory budget for this box (16 GB) — the constraint that actually bit:** fleet + WSL VM
 ≈ 3–4 GB · desktop apps ≈ 2–3 GB **(now ~7.5 GB — Chrome/Cursor/Claude sessions have
@@ -906,6 +958,48 @@ THE NIGHT'S HEADLINES — read these before anything below:
    - Scope: the 36 are the engine / flywheel / verified-engine / skill-tools tests — every
      test that reaches the CodeAct substrate. The research loop's own 87 tests pass, so
      **tonight's daemon work is unaffected** and the loop runs fine.
+
+   #### ✅ OPERATOR ANSWERED 2026-07-25: `dottie_org` — plan measured, NOT yet executed
+
+   The answer resolves the collision **without touching the frozen factory**: rename the
+   *assistant* package `apps/dottie/dottie` → `apps/dottie/dottie_org`, leaving
+   `apps/ava-factory/dottie` as the only top-level `dottie`. (`apps/ava-factory/dottie/**`
+   is FROZEN and bind-mounted into the live trainer, so the options above that renamed
+   *it* were never available.)
+
+   ⚠ **Do not inherit the retracted benefit claim.** The rename buys removal of a real
+   latent hazard — `ensure_factory_on_path()` inserting a colliding root at `sys.path[0]`
+   could shadow Dottie's own package, and today only a stale marker prevents it, plus both
+   packages become importable in one process. It does **NOT** clear the 36 failures: those
+   were false failures from an unset `AVA_FACTORY_ROOT` (retracted above, and recorded in
+   memory as "AVA_FACTORY_ROOT or 36 false failures"). Measure `apps/dottie` with that var
+   SET, before and after.
+
+   **Measured scope (2026-07-25, re-counted — not the older estimate):** 32 package files ·
+   **138** absolute `dottie.*` import lines (70 in the package, 65 in `tests/`, 3 in
+   `scripts/`; `research_orchestration/` has none) · 15 dynamic/string references · 3
+   non-Python files.
+
+   **The distinction that makes this dangerous to sed:** `dottie` as a **Python module
+   path** must change; `dottie` as a **directory / image / volume / CLI command / brand**
+   must not. Specifically:
+
+   | Must change | Must NOT change |
+   |---|---|
+   | `from dottie.x import` / `import dottie.x` (138) | `engine.data_dir / "dottie.sqlite3"` — a **DB filename**; renaming it orphans existing data (`dottie/api.py:257`) |
+   | `pyproject.toml:34` `packages = ["dottie"]` | `DOTTIE_ROOT=/dottie` — a directory |
+   | `pyproject.toml:25` `dottie = "dottie.__main__:main"` — the **target**, not the command name | `image: dottie/dottie:latest`, `dottie_data` volume |
+   | `pyproject.toml:54` `known-first-party` | `WORKDIR /dottie`, `COPY apps/dottie` |
+   | `Dockerfile:41` `CMD [... "-m", "dottie", ...]` | the `dottie` console-script NAME users type |
+   | `dottie/__main__.py:98` `uvicorn.run("dottie.api:app")` | |
+   | `harness/evals/dottie_assistant.py` — 4 module names + 5 dict lookups | |
+   | `packages/ava-open-harness/tests/test_dottie_assistant.py` — 2 lookups | |
+   | docstring refs: `kg/__init__.py:2`, `kg/ingest.py:337` | |
+
+   Gate: `apps/dottie` suite with `AVA_FACTORY_ROOT` set, plus `packages/ava-open-harness`
+   (30 passed / 10 skipped at last measure) — both green before AND after. The harness can
+   become a hard gate in `ci.yml` only once its 5 collision-caused failures are gone; that
+   is a separate verification, not an assumption.
    - **Correction to the previous version of this item:** it said "50% dying in validation".
      That was one overnight window. **Lifetime is 77.9%** (53 genuine failures of 68, after
      separating 7 infrastructure deaths). Different samples; not interchangeable (§5.3.R4).

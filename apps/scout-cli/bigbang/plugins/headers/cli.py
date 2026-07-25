@@ -123,7 +123,7 @@ def _db_path(db: str | None) -> Path:
 def _open_store(db: str | None) -> tuple:
     path = _db_path(db)
     # call-site enforcement: the plugin loader does not check fs_write for us
-    enforce_or_raise(_manifest(), "fs_write", str(path))
+    enforce_or_raise(_manifest(), "fs_write_arg", str(path))
     return hdr.open_headers_store(path), path
 
 

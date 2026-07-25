@@ -234,7 +234,7 @@ def _options(num_predict: int | None) -> dict | None:
 
 def _record(rec: dict, path: Path) -> None:
     """Persist one usage row — fs_write is enforced here, at the call site."""
-    enforce_or_raise(_manifest(), "fs_write", str(path))
+    enforce_or_raise(_manifest(), "fs_write_arg", str(path))
     conn = ollama.open_ledger(path)
     rec["ledger_id"] = ollama.record_completion(conn, rec)
     conn.close()

@@ -108,7 +108,7 @@ def _db_path(db: str | None) -> Path:
 def _open_store(db: str | None) -> tuple:
     path = _db_path(db)
     # call-site enforcement: the plugin loader does not check fs_write for us
-    enforce_or_raise(_manifest(), "fs_write", str(path))
+    enforce_or_raise(_manifest(), "fs_write_arg", str(path))
     return feeds.open_store(path), path
 
 
@@ -504,7 +504,7 @@ def digest_cmd(
     if fmt == "text":
         data["text"] = feeds.render_digest(dg)
     if out:
-        enforce_or_raise(_manifest(), "fs_write", out)
+        enforce_or_raise(_manifest(), "fs_write_arg", out)
         out_path = Path(out)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(data["text"], encoding="utf-8")

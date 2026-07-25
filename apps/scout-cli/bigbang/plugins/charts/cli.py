@@ -152,7 +152,7 @@ def _chart(
     ds = _dataset_or_fail(kind, command, **spec)
     out_path = Path(out or charts.OUT_REL)
     # call-site enforcement: the plugin loader does not check fs_write for us
-    enforce_or_raise(_manifest(), "fs_write", str(out_path))
+    enforce_or_raise(_manifest(), "fs_write_arg", str(out_path))
     try:
         svg = charts.render_svg(ds, title=title, width=width, height=height)
     except charts.ChartError as exc:

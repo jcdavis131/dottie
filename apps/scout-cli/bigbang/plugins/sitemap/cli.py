@@ -419,7 +419,7 @@ def gen(
     written: list[str] = []
     if write:
         # call-site enforcement: the plugin loader does not check fs_write for us
-        enforce_or_raise(_manifest(), "fs_write", str(out_path))
+        enforce_or_raise(_manifest(), "fs_write_arg", str(out_path))
         try:
             written = sitemap.write_files(files, out_path.parent)
         except OSError as exc:

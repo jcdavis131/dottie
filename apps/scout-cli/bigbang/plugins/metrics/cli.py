@@ -175,7 +175,7 @@ def _persist(rows: list[dict], log_path: Path, db_path: Path) -> dict:
     never a measurement. fs_write is enforced here because the plugin loader does
     not check capabilities at the call site for us.
     """
-    enforce_or_raise(_manifest(), "fs_write", str(log_path))
+    enforce_or_raise(_manifest(), "fs_write_arg", str(log_path))
     written = metrics.append_jsonl(log_path, rows)
     conn = metrics.open_ledger(db_path)
     try:
@@ -366,7 +366,7 @@ def rollup(
         )
     conn, path = _open_existing(db, "metrics rollup")
     if persist:
-        enforce_or_raise(_manifest(), "fs_write", str(path))
+        enforce_or_raise(_manifest(), "fs_write_arg", str(path))
     res = metrics.rollup(
         conn, window_s=window, since=since, until=until, persist=persist
     )

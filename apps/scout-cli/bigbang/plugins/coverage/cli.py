@@ -229,7 +229,7 @@ def _open_history(db: str | None, *, record: bool) -> tuple[object | None, Path]
     """
     path = _db_path(db)
     if record:
-        enforce_or_raise(_manifest(), "fs_write", str(path))
+        enforce_or_raise(_manifest(), "fs_write_arg", str(path))
         return coverage.open_store(path), path
     if path.exists():
         return coverage.open_store(path), path  # baseline read; nothing is inserted
@@ -290,7 +290,7 @@ def _gate_or_exit(diags: list[dict], fail_on: str | None) -> None:
 def _write_html(target: str, report: dict, title: str | None, command: str) -> dict:
     """Write the page as BYTES so the file is identical on every platform."""
     path = Path(target)
-    enforce_or_raise(_manifest(), "fs_write", str(path))
+    enforce_or_raise(_manifest(), "fs_write_arg", str(path))
     payload = coverage.render_html(report, title=title).encode("utf-8")
     try:
         path.parent.mkdir(parents=True, exist_ok=True)

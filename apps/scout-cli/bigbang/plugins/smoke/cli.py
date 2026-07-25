@@ -117,7 +117,7 @@ def _checks_or_fail(manifest_file: str, command: str) -> dict:
 def _ledger(db: str | None) -> tuple:
     path = Path(db or os.environ.get("SCOUT_UPTIME_DB") or uptime.DB_REL)
     # call-site enforcement: the plugin loader does not check fs_write for us
-    enforce_or_raise(_manifest(), "fs_write", str(path))
+    enforce_or_raise(_manifest(), "fs_write_arg", str(path))
     return uptime.open_ledger(path), path
 
 

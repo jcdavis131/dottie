@@ -113,7 +113,7 @@ def _db_path(db: str | None) -> Path:
 def _open_store(db: str | None) -> tuple:
     path = _db_path(db)
     # call-site enforcement: the plugin loader does not check fs_write for us
-    enforce_or_raise(_manifest(), "fs_write", str(path))
+    enforce_or_raise(_manifest(), "fs_write_arg", str(path))
     return flows.open_store(path), path
 
 
@@ -430,7 +430,7 @@ def run(
     registry = _registry_or_fail(sub, "flows run")
     event = _payload_or_fail(payload, "flows run")
     out = Path(out_dir or flows.OUT_REL)
-    enforce_or_raise(_manifest(), "fs_write", str(out))
+    enforce_or_raise(_manifest(), "fs_write_arg", str(out))
     conn, path, last_run = _ledger_for(db, record, str(graph.get("name") or ""))
     res = flows.run_flow(
         graph,

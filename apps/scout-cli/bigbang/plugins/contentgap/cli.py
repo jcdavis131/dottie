@@ -422,7 +422,7 @@ def brief(
     )
     out_path = Path(out or contentgap.BRIEF_REL)
     # call-site enforcement: the plugin loader does not check fs_write for us
-    enforce_or_raise(_manifest(), "fs_write", str(out_path))
+    enforce_or_raise(_manifest(), "fs_write_arg", str(out_path))
     page = contentgap.render_brief(report, title=title)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     # write_bytes, not write_text: write_text would translate every \n to \r\n on

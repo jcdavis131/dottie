@@ -101,7 +101,7 @@ def _db_path(db: str | None) -> Path:
 def _open_store(db: str | None) -> tuple:
     path = _db_path(db)
     # call-site enforcement: the plugin loader does not check fs_write for us
-    enforce_or_raise(_manifest(), "fs_write", str(path))
+    enforce_or_raise(_manifest(), "fs_write_arg", str(path))
     return seo.open_store(path), path
 
 
@@ -443,7 +443,7 @@ def audit_cmd(
     if cap["tier"] != openswap.TIER_NATIVE:
         data["scope_note"] = FALLBACK_SCOPE
     if csv_path:
-        enforce_or_raise(_manifest(), "fs_write", csv_path)
+        enforce_or_raise(_manifest(), "fs_write_arg", csv_path)
         n = seo.export_csv(conn, key, csv_path, config=cfg)
         data["csv"] = {"path": csv_path, "rows": n}
     emit(

@@ -103,7 +103,7 @@ def _db_path(db: str | None) -> Path:
 def _open_new(db: str | None, command: str):
     path = _db_path(db)
     # call-site enforcement: the plugin loader does not check fs_write for us
-    enforce_or_raise(_manifest(), "fs_write", str(path))
+    enforce_or_raise(_manifest(), "fs_write_arg", str(path))
     return _open(path, command), path
 
 

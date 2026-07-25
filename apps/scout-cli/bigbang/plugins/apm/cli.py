@@ -116,7 +116,7 @@ def _db_path(db: str | None) -> Path:
 def _open_new(db: str | None) -> tuple:
     path = _db_path(db)
     # call-site enforcement: the plugin loader does not check fs_write for us
-    enforce_or_raise(_manifest(), "fs_write", str(path))
+    enforce_or_raise(_manifest(), "fs_write_arg", str(path))
     return apm.open_store(path), path
 
 
@@ -221,7 +221,7 @@ def probe(
     out_path = None
     if jsonl_out:
         out_path = Path(jsonl_out)
-        enforce_or_raise(_manifest(), "fs_write", str(out_path))
+        enforce_or_raise(_manifest(), "fs_write_arg", str(out_path))
         out_path.parent.mkdir(parents=True, exist_ok=True)
         # write_bytes with explicit LF: write_text would emit CRLF on Windows and
         # the same spans would diff against themselves between platforms
@@ -428,7 +428,7 @@ def report(
     ids = apm.recent_trace_ids(conn, limit=max_traces)
     spans = [s for tid in ids for s in apm.load_spans(conn, trace_id=tid, limit=limit)]
     out_path = Path(out or REPORT_REL)
-    enforce_or_raise(_manifest(), "fs_write", str(out_path))
+    enforce_or_raise(_manifest(), "fs_write_arg", str(out_path))
     page = apm.render_html(
         spans,
         generated_ts=time.time() if stamp else None,

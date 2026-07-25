@@ -373,7 +373,7 @@ def _emit_build(
 
 def _write_artifact(out_dir: Path, files: dict[str, bytes]) -> list[str]:
     """The one write: every artifact file, byte-exact. Policy-gated at call site."""
-    enforce_or_raise(_manifest(), "fs_write", str(out_dir))
+    enforce_or_raise(_manifest(), "fs_write_arg", str(out_dir))
     out_dir.mkdir(parents=True, exist_ok=True)
     for name, data in sorted(files.items()):
         (out_dir / name).write_bytes(data)

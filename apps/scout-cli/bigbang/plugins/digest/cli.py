@@ -204,7 +204,7 @@ def _open_send_ledger(db: str | None, *, writable: bool) -> tuple[sqlite3.Connec
     """The send ledger. On a dry run it is NEVER created — a rehearsal writes nothing."""
     path = _db_path(db)
     if writable:
-        enforce_or_raise(_manifest(), "fs_write", str(path))
+        enforce_or_raise(_manifest(), "fs_write_arg", str(path))
         return digest.open_ledger(path), path, "open"
     if not path.exists():
         return None, path, "absent — no send history on this box yet"

@@ -136,7 +136,7 @@ def _open_ledger(db: str | None, command: str) -> tuple:
     """
     path = _db_path(db)
     # call-site enforcement: the plugin loader does not check fs_write for us
-    enforce_or_raise(_manifest(), "fs_write", str(path))
+    enforce_or_raise(_manifest(), "fs_write_arg", str(path))
     try:
         return alerts.open_alert_ledger(path), path
     except sqlite3.DatabaseError as e:

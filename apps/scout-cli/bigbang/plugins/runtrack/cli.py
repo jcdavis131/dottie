@@ -92,7 +92,7 @@ def _db_path(db: str | None) -> Path:
 def _open_new(db: str | None) -> tuple:
     path = _db_path(db)
     # call-site enforcement: the plugin loader does not check fs_write for us
-    enforce_or_raise(_manifest(), "fs_write", str(path))
+    enforce_or_raise(_manifest(), "fs_write_arg", str(path))
     return runtrack.open_store(path), path
 
 
@@ -105,7 +105,7 @@ def _open_existing(db: str | None, command: str, *, write: bool = False) -> tupl
             example="scout --json runtrack start my-run",
         )
     if write:
-        enforce_or_raise(_manifest(), "fs_write", str(path))
+        enforce_or_raise(_manifest(), "fs_write_arg", str(path))
     return runtrack.open_store(path), path
 
 

@@ -472,7 +472,7 @@ def report(
     reports, diags = _score_files(files, rules)
     out_path = Path(out or readability.PAGE_REL)
     # call-site enforcement: the plugin loader does not check fs_write for us
-    enforce_or_raise(_manifest(), "fs_write", str(out_path))
+    enforce_or_raise(_manifest(), "fs_write_arg", str(out_path))
     page = readability.render_html(reports, title=title)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(page, encoding="utf-8")

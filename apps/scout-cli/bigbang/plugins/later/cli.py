@@ -122,7 +122,7 @@ def _db_path(db: str | None) -> Path:
 def _open_store(db: str | None):
     path = _db_path(db)
     # call-site enforcement: the plugin loader does not check fs_write for us
-    enforce_or_raise(_manifest(), "fs_write", str(path))
+    enforce_or_raise(_manifest(), "fs_write_arg", str(path))
     return later.open_store(path), path
 
 
@@ -619,7 +619,7 @@ def fetch_cmd(
     corpus_path: Path | None = None
     if ingest:
         corpus_path = Path(corpus_db or os.environ.get("SCOUT_EXTRACT_DB") or extract.DB_REL)
-        enforce_or_raise(_manifest(), "fs_write", str(corpus_path))
+        enforce_or_raise(_manifest(), "fs_write_arg", str(corpus_path))
         corpus = extract.open_store(corpus_path)
     run = later.run_fetch(
         conn,
