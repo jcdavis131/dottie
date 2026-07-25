@@ -397,8 +397,8 @@
       "summary": "2 of 3 historical 'sota' promotions were within-run-SEM-only artifacts. Real wins = zero; the promotion gate now demands paired-seed evidence.",
       "card_path": "tasks/artifacts/ledger_retroflag.md",
       "integrity": {
-        "bytes": 2380,
-        "sha256": "23d62daaf7b290b97b8be3589242e5a6c0afe2e819a589b0d63e1e32ee90a4ac"
+        "bytes": 2344,
+        "sha256": "32de559798351e7e89576e09b98095bf3320939a45f0257c655b88604f2a09e4"
       }
     },
     {

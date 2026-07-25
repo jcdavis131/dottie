@@ -20,6 +20,13 @@
 *.jsonl  -text
 *.ndjson -text
 
+# EVERYTHING the Hub registry hashes. Scoping this per-extension was my first attempt
+# and it was wrong: `*.jsonl -text` fixed oapen_open_books.jsonl and CI stayed STALE,
+# because tasks/artifacts/ledger_retroflag.md (a .md) also gets hashed — 2380 bytes
+# with CRLF here vs 2344 in HEAD. The invariant is "the exporter hashes this tree",
+# not "these file types", so scope it by tree.
+tasks/artifacts/** -text
+
 # Generated artifacts that are diffed or hashed byte-for-byte.
 *.xml    -text
 hub_registry.json  -text
