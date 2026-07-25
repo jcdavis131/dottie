@@ -254,6 +254,23 @@ found exactly 42, matching the subagent's count by a different method.
   newly-gated one must be removed so the count stays truthful) plus a floor assertion,
   since "set minus anything is empty" would otherwise pass vacuously if the walker broke.
 
+  **Why this is a project and not 16 one-line edits — measured on the easiest case.**
+  `auth` looks ideal: ONE write site (`_save_auth`, cli.py:70), a fixed plugin-chosen
+  path `REG = Path.home()/".local"/"share"/"bigbang"/"auth.json"` (no flag redirects it,
+  so `fs_write` is the correct action), and a manifest declaring exactly
+  `~/.local/share/bigbang/auth.json`. It is still not a one-liner: the existing test
+  `tests/test_core_extra.py:71 test_load_save_auth_roundtrip` does
+  `monkeypatch.setattr(auth_cli, "REG", tmp_path / "auth.json")` and then calls
+  `_save_auth`, so the gate would deny the relocated path and turn a green test red.
+  `base=` does not rescue it either — the declared entry is absolute, and absolute
+  entries ignore `base` by design.
+  **The generalisable point:** a plugin-chosen path that tests must relocate is
+  *effectively parameterised*, and the gate belongs where provenance is known — at the
+  CLI boundary, not inside a storage helper that both production and tests call with
+  different roots. So each of the 16 needs a per-plugin decision (move the gate up to
+  the command, or give the helper an explicit path parameter), not a blanket edit.
+  Do them one at a time, each with the full board green before and after.
+
 - [ ] **FOLLOW-UP: the allowlist cannot express a dynamically-discovered root.** Defects 1
   and 2 share this cause — reviewgraph tried to spell it `<root>`, tasks hardcoded one
   machine's answer. `.scout` only works because it is CWD-relative and `abspath` resolves
