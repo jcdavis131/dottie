@@ -1,0 +1,27 @@
+# ORDER MATTERS: the LAST matching pattern wins, so the catch-all comes FIRST and
+# specific overrides after it. Verify with `git check-attr text -- <path>`, never by
+# reading this file — I first wrote it with the catch-all last and check-attr still
+# reported `auto`.
+#
+# Why this file exists, measured rather than assumed. The Hub registry exporter
+# records `bytes` and `sha256` for every data file a dataset card declares, hashing
+# WORKING-TREE bytes. With core.autocrlf=true, this box checked out
+# tasks/artifacts/corpus_proposals/oapen_open_books/oapen_open_books.jsonl as
+# 633553 bytes / 48 CRLF / sha 79fee2dc, while HEAD stores 633505 / 0 CRLF /
+# sha 5f2a0c2c. The committed hub_registry.json therefore recorded the Windows
+# figures, matched `--check` locally, and was STALE on every Linux CI run.
+# A published content hash is only reproducible if the content is byte-identical
+# everywhere, so files whose bytes are hashed must never be translated.
+
+# Default: normalise to LF in the repo, check out natively.
+* text=auto
+
+# Corpus/telemetry data whose BYTES are hashed and published. Never translate.
+*.jsonl  -text
+*.ndjson -text
+
+# Generated artifacts that are diffed or hashed byte-for-byte.
+*.xml    -text
+hub_registry.json  -text
+runs_readout.json  -text
+training_runs.json -text
