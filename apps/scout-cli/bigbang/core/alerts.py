@@ -74,7 +74,6 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
-import sqlite3
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -82,6 +81,7 @@ from typing import TYPE_CHECKING, Any
 from bigbang.core import openswap, uptime
 
 if TYPE_CHECKING:
+    import sqlite3
     from collections.abc import Callable
 
 # the SHARED monitoring ledger (#2) — owned by uptime, extended with one table
@@ -217,6 +217,14 @@ def _validate_channel(name: str, cfg: dict[str, Any]) -> None:
             f" got {kind!r}"
         )
     _positive(cfg, "timeout_s", f"channel {name!r}", DEFAULT_TIMEOUT_S)
+    if kind == "webhook":
+        url = cfg.get("url")
+        # http(s) only, checked HERE so the sender never has to defend against a
+        # file:/// or gopher:// "webhook" (same guard as uptime.load_targets)
+        if url is not None and not (
+            isinstance(url, str) and url.startswith(("http://", "https://"))
+        ):
+            raise ValueError(f"channel {name!r}: url must be http(s), got {url!r}")
     if kind == "email":
         to = cfg.setdefault("to", [])
         if not isinstance(to, list) or any(not isinstance(a, str) for a in to):
@@ -284,6 +292,7 @@ CREATE TABLE IF NOT EXISTS alerts(
     message TEXT NOT NULL,
     channels TEXT NOT NULL,
     status TEXT NOT NULL,
+    delivered INTEGER NOT NULL,
     detail TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_alerts_fingerprint_ts ON alerts(fingerprint, ts);
@@ -320,14 +329,22 @@ def fingerprint(target: str | None, severity: str) -> str:
 
 
 def record_alert(conn: sqlite3.Connection, alert: dict[str, Any], *, ts: float) -> int:
-    """Append one delivery record; returns the row id."""
+    """Append one delivery record; returns the row id.
+
+    `delivered` materializes the DEDUP_STATUSES predicate at WRITE time, which is
+    what lets last_dispatch_ts() stay a single static, indexable query instead of
+    an interpolated IN-list (statuspage's auditable-SQL rule). Historical rows
+    keep the verdict they were written with, which is the honest behaviour if the
+    tuple is ever tuned.
+    """
     detail = json.dumps(
         {"channels": alert.get("results") or {}, "also": alert.get("also") or []},
         default=str,
     )
     cur = conn.execute(
         "INSERT INTO alerts(ts, fingerprint, rule, signal, severity, target, message,"
-        " channels, status, detail) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " channels, status, delivered, detail)"
+        " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             ts,
             alert["fingerprint"],
@@ -338,6 +355,7 @@ def record_alert(conn: sqlite3.Connection, alert: dict[str, Any], *, ts: float) 
             alert["message"],
             json.dumps(alert.get("channels") or []),
             alert["status"],
+            int(alert["status"] in DEDUP_STATUSES),
             detail,
         ),
     )
@@ -347,10 +365,9 @@ def record_alert(conn: sqlite3.Connection, alert: dict[str, Any], *, ts: float) 
 
 def last_dispatch_ts(conn: sqlite3.Connection, fp: str) -> float | None:
     """When this fingerprint was last actually DELIVERED (see DEDUP_STATUSES)."""
-    marks = ",".join("?" for _ in DEDUP_STATUSES)
     row = conn.execute(
-        f"SELECT MAX(ts) AS ts FROM alerts WHERE fingerprint = ? AND status IN ({marks})",
-        (fp, *DEDUP_STATUSES),
+        "SELECT MAX(ts) AS ts FROM alerts WHERE fingerprint = ? AND delivered = 1",
+        (fp,),
     ).fetchone()
     return None if row is None or row["ts"] is None else float(row["ts"])
 
@@ -720,6 +737,7 @@ def route(
 def _decode(row: sqlite3.Row) -> dict[str, Any]:
     d = dict(row)
     d["channels"] = json.loads(d["channels"] or "[]")
+    d["delivered"] = bool(d.get("delivered"))
     detail = json.loads(d.pop("detail", None) or "{}")
     d["results"] = detail.get("channels") or {}
     d["also"] = detail.get("also") or []
@@ -828,9 +846,11 @@ def source_summary(
             "by_kind": dict(sorted(kinds.items())),
         },
     }
-    for name, plugin, rank, table in (
-        ("certmon", "certmon", "#9", "certs"),
-        ("heartbeat", "heartbeat", "#6", "beats"),
+    # every count query is a STATIC string (no interpolated table name) so the
+    # read path stays auditable — the same rule statuspage's sources() follows
+    for name, plugin, rank, table, query in (
+        ("certmon", "certmon", "#9", "certs", "SELECT COUNT(*) AS n FROM certs"),
+        ("heartbeat", "heartbeat", "#6", "beats", "SELECT COUNT(*) AS n FROM beats"),
     ):
         entry: dict[str, Any] = {
             "plugin": plugin, "openswap": rank, "table": table,
@@ -838,9 +858,7 @@ def source_summary(
         }
         if _has_table(conn, table):
             entry["table_present"] = True
-            entry["rows"] = int(
-                conn.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()["n"]
-            )
+            entry["rows"] = int(conn.execute(query).fetchone()["n"])
         entry["present"] = entry["rows"] > 0
         out[name] = entry
     return out

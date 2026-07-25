@@ -480,7 +480,11 @@ def report(
         ok(
             {
                 "out": str(out_path),
-                "bytes": len(page),
+                # on-disk size, not len(page): Windows newline translation makes
+                # those differ, and a field called "bytes" should be checkable
+                # against the file the user actually got
+                "bytes": out_path.stat().st_size,
+                "chars": len(page),
                 "files": [str(f) for f in files],
                 "target_grade": rules["readability"]["max_grade"],
                 "grades": {

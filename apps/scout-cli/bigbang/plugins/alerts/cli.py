@@ -43,6 +43,7 @@ from __future__ import annotations
 import json
 import os
 import smtplib
+import sqlite3
 import time
 import urllib.error
 import urllib.request
@@ -127,11 +128,24 @@ def _db_path(db: str | None) -> Path:
     return Path(db or os.environ.get("SCOUT_UPTIME_DB") or alerts.LEDGER_REL)
 
 
-def _open_ledger(db: str | None) -> tuple:
+def _open_ledger(db: str | None, command: str) -> tuple:
+    """Open (creating if needed) the shared ledger + the router's alerts table.
+
+    A --db that exists but is not sqlite is a wrong flag, not a crash: it gets an
+    actionable envelope instead of a DatabaseError traceback.
+    """
     path = _db_path(db)
     # call-site enforcement: the plugin loader does not check fs_write for us
     enforce_or_raise(_manifest(), "fs_write", str(path))
-    return alerts.open_alert_ledger(path), path
+    try:
+        return alerts.open_alert_ledger(path), path
+    except sqlite3.DatabaseError as e:
+        fail_agent(
+            f"{path} exists but is not a readable sqlite ledger: {e}",
+            command=command,
+            example="scout --json alerts route --db .scout/uptime.db",
+            discover="scout alerts status",
+        )
 
 
 def _config(path: str | None, command: str) -> dict:
@@ -147,13 +161,15 @@ def _config(path: str | None, command: str) -> dict:
         )
 
 
-def _validate(severity: str | None, fail_on: str | None, command: str) -> None:
-    for flag, value in (("--severity", severity), ("--fail-on", fail_on)):
+def _validate(command: str, **flags: str | None) -> None:
+    """Every severity-shaped flag, checked against the family severity ladder."""
+    for name, value in flags.items():
         if value is not None and value not in openswap.SEVERITIES:
+            flag = "--" + name.replace("_", "-")
             fail_agent(
                 f"{flag} must be one of {'|'.join(openswap.SEVERITIES)}, got {value!r}",
                 command=command,
-                example=f"scout --json alerts route {flag} error",
+                example=f"scout --json {command} {flag} error",
             )
 
 
@@ -175,14 +191,16 @@ def _send_webhook(cfg: dict, alert: dict) -> dict:
     if denied:
         return {"ok": False, "detail": denied}
     body = json.dumps(alerts.wire_payload(alert)).encode("utf-8")
-    req = urllib.request.Request(
+    # S310 (file:/custom schemes): closed upstream — load_config admits http(s)
+    # only, and the URL is policy-gated against the manifest just above
+    req = urllib.request.Request(  # noqa: S310
         url,
         data=body,
         method="POST",
         headers={"Content-Type": "application/json", "User-Agent": "scout-alerts"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=float(cfg["timeout_s"])) as r:
+        with urllib.request.urlopen(req, timeout=float(cfg["timeout_s"])) as r:  # noqa: S310
             code = int(getattr(r, "status", 0) or 0)
             return {"ok": 200 <= code < 400, "detail": f"http {code} {url}"}
     except urllib.error.HTTPError as e:
@@ -362,7 +380,7 @@ def route(
     window is also the re-notify cadence, so a still-open incident pages again
     once its window lapses.
     """
-    _validate(min_severity, fail_on, "alerts route")
+    _validate("alerts route", min_severity=min_severity, fail_on=fail_on)
     if lookback <= 0:
         fail_agent(
             f"--lookback must be > 0, got {lookback}",
@@ -370,7 +388,7 @@ def route(
             example="scout --json alerts route --lookback 3600",
         )
     cfg = _config(config, "alerts route")
-    conn, path = _open_ledger(db)
+    conn, path = _open_ledger(db, "alerts route")
     result = alerts.route(
         conn,
         cfg,
@@ -422,7 +440,7 @@ def status(
     window in effect per (target, severity) and the seconds left on it.
     """
     cfg = _config(config, "alerts status")
-    conn, path = _open_ledger(db)
+    conn, path = _open_ledger(db, "alerts status")
     now = time.time()
     payload = {
         "db": str(path),
@@ -473,7 +491,7 @@ def test(
     a quiet success. The drill's sentinel target keeps it out of every real
     alert's dedup window.
     """
-    _validate(severity, None, "alerts test")
+    _validate("alerts test", severity=severity)
     cfg = _config(config, "alerts test")
     if channel is not None and channel not in cfg["channels"]:
         fail_agent(
@@ -483,7 +501,7 @@ def test(
             discover="scout --json alerts rules",
         )
     names = [channel] if channel else sorted(cfg["channels"])
-    conn, path = _open_ledger(db)
+    conn, path = _open_ledger(db, "alerts test")
     now = time.time()
     alert = alerts.probe_alert(severity=severity, channels=names, ts=now, note=note)
     if dry_run:

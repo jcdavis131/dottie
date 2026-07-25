@@ -232,6 +232,43 @@ def _options(num_predict: int | None) -> dict | None:
     return {"num_predict": int(num_predict)} if num_predict else None
 
 
+def _record(rec: dict, path: Path) -> None:
+    """Persist one usage row — fs_write is enforced here, at the call site."""
+    enforce_or_raise(_manifest(), "fs_write", str(path))
+    conn = ollama.open_ledger(path)
+    rec["ledger_id"] = ollama.record_completion(conn, rec)
+    conn.close()
+
+
+def _answer_payload(
+    rec: dict, *, why: str, loaded: list[dict], recorded: str | None, diags: list[dict]
+) -> dict:
+    """The `run` envelope: provenance first, then the text, then the receipts.
+
+    source/degraded lead deliberately — an agent reading this must not have to
+    infer from the prose whether a model was involved.
+    """
+    return {
+        "source": rec["source"],
+        "degraded": rec["degraded"],
+        "text": rec["text"],
+        "model": rec["model"],
+        "base": rec["base"],
+        "selection_reason": why,
+        "resident": loaded,
+        "tokens": {
+            "prompt": rec["prompt_tokens"],
+            "eval": rec["eval_tokens"],
+            "tok_per_s": rec["tok_per_s"],
+        },
+        "elapsed_s": rec["elapsed_s"],
+        "recorded": recorded,
+        "prompt_sha256": rec["prompt_sha256"],
+        "diagnostics": diags,
+        "summary": openswap.summarize(diags),
+    }
+
+
 def _severity_gate(fail_on: str | None, command: str) -> int | None:
     """Validate --fail-on BEFORE any work; returns the rank to gate on, or None.
 
@@ -428,32 +465,17 @@ def run_cmd(
     )
     path = _db_path(db)
     if record:
-        enforce_or_raise(_manifest(), "fs_write", str(path))
-        conn = ollama.open_ledger(path)
-        rec["ledger_id"] = ollama.record_completion(conn, rec)
-        conn.close()
+        _record(rec, path)
     diags = ollama.to_diagnostics([rec])
     emit(
         ok(
-            {
-                "source": rec["source"],
-                "degraded": rec["degraded"],
-                "text": rec["text"],
-                "model": rec["model"],
-                "base": rec["base"],
-                "selection_reason": why,
-                "resident": loaded,
-                "tokens": {
-                    "prompt": rec["prompt_tokens"],
-                    "eval": rec["eval_tokens"],
-                    "tok_per_s": rec["tok_per_s"],
-                },
-                "elapsed_s": rec["elapsed_s"],
-                "recorded": str(path) if record else None,
-                "prompt_sha256": rec["prompt_sha256"],
-                "diagnostics": diags,
-                "summary": openswap.summarize(diags),
-            },
+            _answer_payload(
+                rec,
+                why=why,
+                loaded=loaded,
+                recorded=str(path) if record else None,
+                diags=diags,
+            ),
             command="ollama run",
             example="scout --json ollama usage",
             discover="scout ollama models",

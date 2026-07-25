@@ -713,9 +713,14 @@ def worst_severity(reasons: list[dict[str, Any]]) -> str:
 def grade(reasons: list[dict[str, Any]]) -> str:
     """securityheaders.com-style A+..F from the finalized reasons.
 
-    Errors dominate, warnings decide the middle, suggestions cost the plus, and
-    INFO findings never move the grade — a version banner is worth reporting but
-    is not a header failure. Deterministic and total, so a grade is comparable
+    Error-dominated by design: three errors is an F, one caps the page at D. With
+    no errors the warning count decides, and a pile of missing headers can still
+    reach D on its own (five is a page with no security headers at all) so a
+    warning-only site is never flattered by the letter. Suggestions cost only the
+    plus, and INFO findings never move the grade — a version banner is worth
+    reporting but is not a header failure. The letter is a headline: the reason
+    list, not the grade, is the actionable output, and `--fail-on` reads
+    severities, never grades. Deterministic and total, so grades are comparable
     across scans and across sites.
     """
     errors = sum(1 for r in reasons if r["severity"] == SEV_ERROR)
@@ -725,7 +730,7 @@ def grade(reasons: list[dict[str, Any]]) -> str:
         return "F"
     if errors == 2:
         return "E"
-    if errors == 1:
+    if errors == 1 or warnings >= 5:
         return "D"
     if warnings >= 3:
         return "C"

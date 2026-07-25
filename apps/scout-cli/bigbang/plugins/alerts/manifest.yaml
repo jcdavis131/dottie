@@ -1,6 +1,7 @@
 name: alerts
 version: 0.7.0
-description: PagerDuty/Opsgenie-class alert routing, fully local (openswap #19 — severity rules + (target,severity) dedup windows over the shared uptime/certmon/heartbeat ledger, delivered by smtplib/urllib from this box)
+# quoted: an unquoted " #" would start a YAML comment and silently truncate this
+description: "PagerDuty/Opsgenie-class alert routing, fully local (openswap #19 — severity rules + (target,severity) dedup windows over the shared uptime/certmon/heartbeat ledger, delivered by smtplib/urllib from this box)"
 capabilities:
   network:
     # OUTBOUND delivery only, and default-deny: both senders check this list

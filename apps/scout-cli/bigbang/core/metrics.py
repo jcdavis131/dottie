@@ -110,6 +110,9 @@ MEM_WARN_PCT = 90.0
 MEM_ERROR_PCT = 97.0
 
 _FLOAT_RE = re.compile(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
+# a digit-comma-digit run means the box printed in a locale this parser does not
+# claim to read; refusing beats silently truncating 51,74 to 51
+_LOCALE_COMMA_RE = re.compile(r"\d,\d")
 _MEMINFO_RE = re.compile(r"^(?P<key>[A-Za-z_()]+):\s+(?P<val>\d+)(?:\s+(?P<unit>kB))?$")
 
 
@@ -204,7 +207,9 @@ def sample_disk(paths: Sequence[str], *, ts: float) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for raw in paths:
         scope = str(raw)
-        how = f"shutil.disk_usage({scope!r})"
+        # NOT repr(): on Windows that doubles every backslash, so the recorded
+        # provenance stops matching the path a human would paste back in
+        how = f"shutil.disk_usage({scope})"
         try:
             du = shutil.disk_usage(scope)
         except OSError as e:
@@ -477,12 +482,18 @@ def parse_typeperf(text: str) -> float | None:
 def parse_cooked_value(text: str) -> float | None:
     """First float in Get-Counter's output. None when nothing numeric came back.
 
-    Deliberately lenient about surrounding whitespace/newlines, deliberately
-    NOT lenient about locale: a comma decimal separator parses as no value
-    rather than as a wrong one.
+    Deliberately lenient about surrounding whitespace and error chatter,
+    deliberately NOT lenient about locale: "51,74" is refused outright rather
+    than truncated to 51, because a plausible-looking wrong number in a metrics
+    store is worse than a gap that says it could not be read.
     """
     for line in text.splitlines():
-        m = _FLOAT_RE.search(line.strip())
+        s = line.strip()
+        if not s:
+            continue
+        if _LOCALE_COMMA_RE.search(s):
+            return None
+        m = _FLOAT_RE.search(s)
         if m:
             try:
                 return float(m.group(0))

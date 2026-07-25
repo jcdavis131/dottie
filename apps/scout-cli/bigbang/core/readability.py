@@ -126,6 +126,14 @@ BAND_VERY_HARD = "very_hard"
 
 _VOWELS = "aeiouy"
 _NON_ALPHA_RE = re.compile(r"[^a-z]")
+# markdown table rows: tabular data, not prose (the same test prose's hygiene
+# rule uses to stop counting column padding as double spaces)
+_TABLE_ROW_RE = re.compile(r"^\s*\|")
+# prose.extract_* replaces code spans and URLs with a NUL sentinel of equal
+# length to keep columns honest; readability reports no columns, so it collapses
+# them instead of carrying NULs into JSON and HTML
+_SENTINEL_RE = re.compile(r"\x00+")
+_RUN_RE = re.compile(r"\s{2,}")
 _HAS_LETTER_RE = re.compile(r"[A-Za-z]")
 _LY_RE = re.compile(r"^[a-z]{3,}ly$")
 # sibilants keep the extra -es syllable ("houses", "prices"); stops do not ("makes")
@@ -216,6 +224,27 @@ def split_sentences(text: str) -> list[str]:
     if rest:
         out.append(rest)
     return out
+
+
+def strip_tables(lines: list[str]) -> list[str]:
+    """Blank markdown table rows, keeping every line number intact.
+
+    Measured need, not a guess: scoring this repo's own README with tables
+    included produced a "112-word sentence" at grade 48 out of a status table,
+    because a row of cells has no terminator and reads as one enormous
+    sentence. Cells are data; grading them says nothing about the prose. The
+    count of dropped rows is reported so the omission is visible.
+    """
+    return ["" if _TABLE_ROW_RE.match(line) else line for line in lines]
+
+
+def clean_text(text: str) -> str:
+    """Display/scoring text: sentinels collapsed to a space, runs squeezed.
+
+    Neither substitution changes a count — the NUL sentinel is not a word
+    character and whitespace is not a letter — so this is presentation only.
+    """
+    return _RUN_RE.sub(" ", _SENTINEL_RE.sub(" ", text)).strip()
 
 
 def is_complex(word: str) -> bool:
@@ -402,10 +431,12 @@ def score_lines(
     already blanked upstream, so no README's shell snippet lands in a grade.
     """
     cfg = _config(rules)
+    tables = sum(1 for line in lines if _TABLE_ROW_RE.match(line))
     paragraphs: list[dict[str, Any]] = []
     sentence_rows: list[dict[str, Any]] = []
     body_parts: list[str] = []
-    for idx, (line, text) in enumerate(prose.paragraphs(lines), 1):
+    for idx, (line, raw) in enumerate(prose.paragraphs(strip_tables(lines)), 1):
+        text = clean_text(raw)
         sentences = split_sentences(text)
         m = _metrics(text, sentences=len(sentences))
         rows = _sentence_rows(idx, line, sentences, cfg)
@@ -436,6 +467,7 @@ def score_lines(
             "letters": doc["letters"],
             "complex_words": doc["complex_words"],
             "numeric_excluded": doc["numeric_excluded"],
+            "table_rows_skipped": tables,
         },
         "averages": {
             "words_per_sentence": _round(doc["words"] / doc["sentences"])
@@ -512,7 +544,11 @@ def _notes(words: int, cfg: dict[str, Any]) -> list[str]:
         "coleman_liau uses letters only and is the syllable-free cross-check",
         "gunning_fog omits the proper-noun/compound exclusion — spelling alone "
         "cannot identify those reliably",
-        "pure numerals are excluded from every count (counts.numeric_excluded)",
+        "pure numerals and markdown table rows are excluded from every count "
+        "(counts.numeric_excluded, counts.table_rows_skipped)",
+        "the passive count uses prose's matcher, which needs the participle to "
+        "follow the auxiliary directly: 'was subsequently approved' is missed, so "
+        "read the passive ratio as a floor, not a total",
     ]
     if words < int(cfg["min_words"]):
         notes.append(
@@ -575,6 +611,19 @@ def to_diagnostics(
             message=(
                 f"{'very hard' if very else 'hard'} sentence "
                 f"(grade {row['grade']}, {row['words']} words): {row['text'][:80]}"
+            ),
+        ))
+    shown = len(report["sentences"]["worst"])
+    banded = report["sentences"]["hard"] + report["sentences"]["very_hard"]
+    if banded > shown:
+        # the `examples` cap must not read as "that was all of them"
+        out.append(openswap.diagnostic(
+            path=path, line=1, rule="readability:sentences", severity="info",
+            message=(
+                f"{banded} sentences over the difficulty threshold "
+                f"({report['sentences']['very_hard']} very hard, "
+                f"{report['sentences']['hard']} hard); the {shown} worst are "
+                "listed above — `scout prose score` reports every one"
             ),
         ))
     adv = report["flags"]["adverbs"]

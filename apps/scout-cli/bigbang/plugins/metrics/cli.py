@@ -169,6 +169,44 @@ def _budgets(warn_pct: float | None, error_pct: float | None) -> dict:
     return out
 
 
+def _persist(rows: list[dict], log_path: Path, db_path: Path) -> dict:
+    """Append to the JSONL record FIRST, then derive the sqlite ledger from it.
+
+    The order is the durability story: the log is the evidence, the ledger is a
+    query surface built from it, so a crash between the two costs a rollup and
+    never a measurement. fs_write is enforced here because the plugin loader does
+    not check capabilities at the call site for us.
+    """
+    enforce_or_raise(_manifest(), "fs_write", str(log_path))
+    written = metrics.append_jsonl(log_path, rows)
+    conn = metrics.open_ledger(db_path)
+    try:
+        metrics.record_samples(conn, rows)
+    finally:
+        conn.close()
+    return written
+
+
+def _history(conn, metric: str, scope: str | None, limit: int) -> list[dict]:
+    """Raw samples for one series, or an actionable failure — never an empty board.
+
+    A `show --metric` that silently returned nothing would read as "measured and
+    fine"; the empty case is a typo'd metric name or a box that never collected,
+    and both deserve to be said out loud.
+    """
+    rows = metrics.series(conn, metric, scope=scope, limit=limit)
+    if not rows:
+        conn.close()
+        fail_agent(
+            f"no samples recorded for metric {metric!r}"
+            + (f" scope {scope!r}" if scope else ""),
+            command="metrics show",
+            example="scout --json metrics collect",
+            discover="scout --json metrics show",
+        )
+    return rows
+
+
 def _validate_fail_on(fail_on: str | None, command: str) -> None:
     if fail_on is not None and fail_on not in openswap.SEVERITIES:
         fail_agent(
@@ -262,19 +300,10 @@ def collect(
     loses a query surface, never a measurement.
     """
     _validate_fail_on(fail_on, "metrics collect")
-    paths = list(path) if path else None
-    pass_ = metrics.sample_host(runner=_run_counter, paths=paths)
+    pass_ = metrics.sample_host(runner=_run_counter, paths=list(path) if path else None)
     rows = pass_["readings"]
-    log_path = _log_path(log)
-    db_path = _db_path(db)
-    written: dict | None = None
-    if record:
-        # call-site enforcement: the plugin loader does not check fs_write for us
-        enforce_or_raise(_manifest(), "fs_write", str(log_path))
-        written = metrics.append_jsonl(log_path, rows)
-        conn = metrics.open_ledger(db_path)
-        metrics.record_samples(conn, rows)
-        conn.close()
+    log_path, db_path = _log_path(log), _db_path(db)
+    written = _persist(rows, log_path, db_path) if record else None
     diags = metrics.to_diagnostics(rows, **_budgets(warn_pct, error_pct))
     emit(
         ok(
@@ -421,17 +450,8 @@ def show(
             conn, metric=metric, window_s=window, limit=limit
         )
     elif metric and history > 0:
-        rows = metrics.series(conn, metric, scope=scope, limit=history)
-        if not rows:
-            conn.close()
-            fail_agent(
-                f"no samples recorded for metric {metric!r}"
-                + (f" scope {scope!r}" if scope else ""),
-                command="metrics show",
-                example="scout --json metrics collect",
-                discover="scout --json metrics show",
-            )
-        data["metric"], data["history"] = metric, rows
+        data["metric"] = metric
+        data["history"] = _history(conn, metric, scope, history)
     else:
         board = metrics.latest(conn, metric=metric)[:limit]
         diags = metrics.to_diagnostics(board, **_budgets(warn_pct, error_pct))

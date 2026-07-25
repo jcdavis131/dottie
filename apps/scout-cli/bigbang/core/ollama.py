@@ -107,6 +107,7 @@ DEGRADED_BANNER = (
 NOT_ANSWERED = "NOT ANSWERED."
 
 PROMPT_ECHO_CHARS = 400
+MAX_TERM_CHARS = 40
 
 
 # ---- endpoints ---------------------------------------------------------------
@@ -121,12 +122,14 @@ def normalize_base(value: str) -> str:
     port becomes 11434. Raises ValueError when there is no host at all, so a
     typo can never silently become a default that happens to answer.
     """
-    raw = str(value or "").strip().rstrip("/")
+    raw = str(value or "").strip()
     if not raw:
         raise ValueError("empty ollama endpoint")
+    # scheme detection happens BEFORE trailing slashes are trimmed: strip first
+    # and bare "http://" collapses to the host "http" on port 11434
     if "://" not in raw:
         raw = f"http://{raw}"
-    parts = urlsplit(raw)
+    parts = urlsplit(raw.rstrip("/"))
     if parts.scheme not in ("http", "https"):
         raise ValueError(f"ollama endpoint must be http(s), got {value!r}")
     host = parts.hostname
@@ -389,14 +392,44 @@ def pick_model(
 # ---- completion -------------------------------------------------------------
 
 
+def telemetry(payload: Any) -> dict[str, Any]:
+    """Token/timing fields from ANY /api/generate payload, answer or not.
+
+    Separated from parse_completion because a 200 with no answer text can still
+    have burned real compute (a thinking model that hit its cap): the ledger has
+    to show the tokens were spent, or "degraded" reads as "nothing happened".
+    tok_per_s uses ollama's OWN eval_duration (nanoseconds) so it measures
+    generation rather than our network and queue time, and it is omitted rather
+    than guessed when the server does not report both numbers.
+    """
+    if not isinstance(payload, dict):
+        return {
+            "prompt_tokens": None,
+            "eval_tokens": None,
+            "eval_seconds": None,
+            "tok_per_s": None,
+        }
+    eval_count = _int_or_none(payload.get("eval_count"))
+    eval_ns = _int_or_none(payload.get("eval_duration"))
+    tok_per_s = None
+    if eval_count and eval_ns and eval_ns > 0:
+        tok_per_s = round(eval_count / (eval_ns / 1e9), 2)
+    return {
+        "prompt_tokens": _int_or_none(payload.get("prompt_eval_count")),
+        "eval_tokens": eval_count,
+        "eval_seconds": round(eval_ns / 1e9, 4) if eval_ns else None,
+        "tok_per_s": tok_per_s,
+    }
+
+
 def parse_completion(payload: Any) -> dict[str, Any] | None:
     """/api/generate|/api/chat (stream=false) -> normalized fields, or None.
 
-    None means "there is no completion in this payload" — never an empty string
+    None means "there is no ANSWER in this payload" — never an empty string
     dressed up as an answer, which is how a broken backend starts looking like a
-    laconic model. tok_per_s uses ollama's OWN eval_duration (nanoseconds) so it
-    measures generation rather than our network and queue time, and it is
-    omitted rather than guessed when the server does not report both numbers.
+    laconic model. Ollama 0.31+ returns reasoning in a separate `thinking` field
+    and it is deliberately NOT accepted as the answer: reasoning is not a reply,
+    and no_answer_reason() explains that case instead.
     """
     if not isinstance(payload, dict):
         return None
@@ -406,21 +439,42 @@ def parse_completion(payload: Any) -> dict[str, Any] | None:
         text = msg.get("content") if isinstance(msg, dict) else None
     if not isinstance(text, str) or not text.strip():
         return None
-    eval_count = _int_or_none(payload.get("eval_count"))
-    eval_ns = _int_or_none(payload.get("eval_duration"))
-    tok_per_s = None
-    if eval_count and eval_ns and eval_ns > 0:
-        tok_per_s = round(eval_count / (eval_ns / 1e9), 2)
     model = payload.get("model")
     return {
         "text": text,
         "model": model if isinstance(model, str) else None,
         "done_reason": payload.get("done_reason"),
-        "prompt_tokens": _int_or_none(payload.get("prompt_eval_count")),
-        "eval_tokens": eval_count,
-        "eval_seconds": round(eval_ns / 1e9, 4) if eval_ns else None,
-        "tok_per_s": tok_per_s,
+        **telemetry(payload),
     }
+
+
+def no_answer_reason(payload: Any) -> str | None:
+    """Why a 200 carried no answer — the operator's fix differs by cause.
+
+    Measured on this box (ollama 0.31.1 + qwen3:8b, NUM_GPU=0): a thinking model
+    given --num-predict 24 returns done_reason "length", eval_count 24, a full
+    `thinking` string and response "". That is not a broken daemon, and reporting
+    it as one would send the operator restarting a service that is working
+    perfectly when what they need is a bigger token budget.
+    """
+    if not isinstance(payload, dict):
+        return None
+    thinking = payload.get("thinking")
+    thought = isinstance(thinking, str) and bool(thinking.strip())
+    if payload.get("done_reason") == "length":
+        spent = payload.get("eval_count")
+        if thought:
+            return (
+                f"the model spent its whole token budget reasoning and emitted no "
+                f"answer ({spent} tokens, done_reason=length) — raise --num-predict"
+            )
+        return (
+            f"generation hit the token cap before any answer text ({spent} tokens) "
+            "— raise --num-predict"
+        )
+    if thought:
+        return "the model returned reasoning but no answer text"
+    return None
 
 
 # ---- honest degradation: template assembly ----------------------------------
@@ -479,11 +533,15 @@ def salient_terms(prompt: str, *, limit: int = 8) -> list[str]:
     a degraded answer that changes between runs would look like a model. Every
     returned term is a substring of the prompt by construction: the scaffold
     introduces no vocabulary of its own about the subject.
+
+    Tokens longer than MAX_TERM_CHARS are not words (base64 blobs, minified
+    lines, an unbroken wall of characters) and are dropped: echoing one whole
+    into the header would also defeat the PROMPT_ECHO_CHARS truncation guard.
     """
     counts: dict[str, int] = {}
     for raw in _WORD_RE.findall(str(prompt or "")):
         w = raw.strip(".-_").lower()
-        if len(w) < 3 or w in _STOPWORDS:
+        if len(w) < 3 or len(w) > MAX_TERM_CHARS or w in _STOPWORDS:
             continue
         counts[w] = counts.get(w, 0) + 1
     ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
@@ -609,10 +667,16 @@ def complete(
                 tok_per_s=parsed["tok_per_s"],
             )
             return rec
-        detail = res.get("error") or (
-            f"HTTP {res['status']} with no completion"
-            if res.get("status")
-            else "no response"
+        # tokens the attempt really burned, even with nothing to show for them
+        rec.update(telemetry(res.get("json")))
+        detail = (
+            res.get("error")
+            or no_answer_reason(res.get("json"))
+            or (
+                f"HTTP {res['status']} with no completion"
+                if res.get("status")
+                else "no response"
+            )
         )
         rec["reason"] = f"{model} at {base} did not complete: {detail}"
     assembled = assemble_template(prompt, reason=rec["reason"], model_hint=model)
@@ -738,9 +802,13 @@ def usage(conn: sqlite3.Connection, *, since: float | None = None) -> dict[str, 
     """The honesty audit: what share of answers actually came from a model.
 
     model_share_pct is None — not 0.0, not 100.0 — when nothing has been
-    recorded, because an empty ledger is not evidence of anything. tok/s
-    percentiles cover model rows only; a template has no tokens and averaging it
-    in would flatter the number.
+    recorded, because an empty ledger is not evidence of anything.
+
+    Token and tok/s figures cover EVERY row, not just the answered ones: an
+    attempt that burned 24 tokens reasoning and returned nothing still spent this
+    box's compute, and hiding it under "degraded" would understate the cost. The
+    model-vs-template split is what separates answers from scaffolds; by_model
+    stays answers-only because a scaffold has no model.
     """
     sql = "SELECT * FROM completions"
     params: list[Any] = []
@@ -755,12 +823,12 @@ def usage(conn: sqlite3.Connection, *, since: float | None = None) -> dict[str, 
     for r in rows:
         src = r.get("source") or SOURCE_TEMPLATE
         by_source[src] = by_source.get(src, 0) + 1
+        tokens += int(r.get("eval_tokens") or 0)
+        if r.get("tok_per_s"):
+            rates.append(float(r["tok_per_s"]))
         if src == SOURCE_MODEL:
             name = r.get("model") or "(unnamed)"
             by_model[name] = by_model.get(name, 0) + 1
-            tokens += int(r.get("eval_tokens") or 0)
-            if r.get("tok_per_s"):
-                rates.append(float(r["tok_per_s"]))
     total = len(rows)
     return {
         "total": total,
