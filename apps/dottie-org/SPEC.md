@@ -54,9 +54,63 @@ Two properties of that design worth restating because they are easy to lose:
 
 **Prior art that already exists and should not be rebuilt:** hoops already trains **InfoNCE
 career pairs**, so contrastive learning is in the codebase, not a new capability. Gridiron
-already z-scores **on train only with a temporal split**, and its HEAD commit is literally
-"Add walk-forward weekly rank backtest" — the temporal-split invariant this file wanted to
-introduce is already practice there. Pitch is the outlier: PCA + k-means, no network.
+z-scores **on train only with a temporal split**, and its HEAD commit is literally "Add
+walk-forward weekly rank backtest". Pitch is the outlier: PCA + k-means, no network.
+
+### Verified against the code 2026-07-25 — three numbers in the design doc are stale
+
+An independent read of `~/vector-hoops` (every claim `file:line`-checked) contradicts the
+summary table above, which was itself copied from `UNIFIED_ARCHITECTURE.md`. **Cite these,
+not the doc:**
+
+| | `UNIFIED_ARCHITECTURE.md` / README say | the code and artifacts say |
+|---|---|---|
+| embedding dim | 48-d | **64-d** — `pipeline/data/mtnn_report.json → "dim": 64`; `assets/mtnn_embeddings.f32` is 3,319,296 B = 12,966 × 64 × 4 |
+| features / families | 120 in 17 families | **130 in 18 families**; `injury` is dropped unconditionally (`train_mtnn.py:1349`) → **126 features across 17 towers** |
+| fusion | concat 544+season → 48 | concat **556 → 256 → 64**, then L2-norm (`ConcatFusion`, `train_mtnn.py:338-370`); season is a learned `nn.Embedding(n_seasons, 12)`, concatenated not added |
+
+**The shipped model is NOT held out.** `--phase final-refit` sets `fit_rows="all"`
+(`train_mtnn.py:1478-1479`) and `train.sh:161` passes exactly that, so the published
+embedding is trained transductively on all 12,966 rows while the reported metrics come from
+an earlier selection run. `assets/manifest.json` says so outright:
+`"mtnn_eval_protocol": "transductive (atlas) — trained on all rows; NOT held-out"`. So the
+temporal-split discipline is real **in model selection** and absent **in the shipped
+artifact** — do not read "walk-forward exists" as "the shipped numbers are held out".
+
+**Two disagreeing splits, two different numbers, both published.** `train_mtnn.py:846-853`
+splits temporally (train ≤2021 / val ≤2023 / test ≥2024) and reports **test recall@10 =
+0.846**. `pipeline/leakfree.py:42-71` splits by **md5 hash of player name** and is the source
+of the README's **0.977** — but that run carries only 5 loss terms (`ablate_v5.py:80-86`), not
+the shipping trainer's 16 heads. `leakfree.py`'s own docstring says it "measures
+generalization to an UNSEEN PLAYER, not temporal forecasting". A third boundary again in
+`train_career_mtnn.py:36-42`. Any spec quoting a hoops number must say **which protocol**.
+
+**Dead code, so nobody builds on it:** `train_towers.py` is the v2 ancestor — writes
+`embedding_v2.npz`, nothing reads it. `train_mtnn_v6.py` is a 31-line stub that
+`sys.exit()`s and tells you to use `train_mtnn.py --era-align/--robust-scaling`; two docs
+still instruct you to run it. `train_mtnn.py` is the only real trainer.
+
+### Why the binder is genuinely new work, not an extension
+
+The contrastive machinery in hoops is **intra-modal**. Both InfoNCE views are rows of *the
+same tabular matrix* — a feature-dropout augmentation and the same player's adjacent season
+(`train_mtnn.py:1556-1562`). The 17 "towers" are **feature-group MLPs over one table, not
+modality encoders**, and they are combined by flatten-concat through one linear layer, which
+is structurally the opposite of a binding architecture. A repo-wide search for
+`ImageBind|cross.?modal|cross.?domain|CLIP|multimodal` returns zero substantive hits
+(`overflow-x: clip`, `np.clip`, `clip_grad_norm_`), and `pyproject.toml` declares only
+`numpy` and `torch`.
+
+**So: the contrastive *loss* is reusable; the cross-domain *architecture* has to be built.**
+Anyone reading "hoops already does InfoNCE" as "the binder is nearly done" will be wrong.
+
+⚠ **Provenance flag on the shipped hoops artifact.** `mtnn_report.json → promote` is
+`{"ok": false, "reason": "CQS 78.11 < promote bar 82.62"}`, yet the 64-d artifact shipped
+the same day. `composite_score.py:88-95` records that it was promoted "not by clearing the
+CQS bar, which it does not", justified on a manual held-out top-5 comparison (0.363 → 0.757)
+that **no artifact in the repo records**. A number that cleared no gate is exactly the shape
+of the three research `sota` rows that turned out to be artifacts. Re-derive it or retract it
+before it anchors anything.
 
 ## Alignment performed 2026-07-25
 
