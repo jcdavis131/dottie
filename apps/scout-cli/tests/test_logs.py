@@ -1067,3 +1067,114 @@ def test_cli_logs_bad_sources_file_fails_actionably(tmp_path):
                 "--sources", str(bad), "--root", str(tmp_path)])
     assert res.returncode == 1
     assert "unknown parser" in json.loads(res.stdout)["error"]
+
+
+# ---- gap closers: verified to kill mutants that the suite currently survives --
+
+
+def test_collect_file_counts_unparseable_lines_as_unparsed(tmp_path):
+    """A declared parser that MISSES must split the counters, not inflate `parsed`.
+
+    The suite asserts `unparsed == 0` on all-clean fixtures, which a collector
+    that never increments `unparsed` also satisfies. This pins the positive case:
+    malformed lines are ingested, kept verbatim, and counted as misses.
+    """
+    conn = _mem()
+    cfg = {"path": "app.log", "parser": "iso"}  # iso is DECLARED...
+    f = _write(
+        tmp_path / "app.log",
+        "2026-07-19 13:45:01 INFO real iso line\n"
+        "this line has no iso timestamp at all\n"
+        "neither does this one\n",
+    )
+    res = logs.collect_file(conn, "app", f, cfg, root=tmp_path, now=900.0)
+    assert res["ingested"] == 3  # nothing is dropped for failing to parse
+    assert res["parsed"] == 1  # ...exactly one line actually MATCHED iso
+    assert res["unparsed"] == 2  # ...and the misses are counted as misses
+    assert res["parsed"] + res["unparsed"] == res["ingested"]
+    assert res["dated"] == 1  # only the matching line carried a timestamp
+    rows = sorted(logs.query(conn, limit=5), key=lambda r: r["line_no"])
+    assert [r["parsed"] for r in rows] == [1, 0, 0]
+    assert [r["parser"] for r in rows] == ["iso"] * 3  # declared, never swapped
+    # an unparsed line still lands, verbatim, at ingest time and says so
+    assert rows[1]["raw"] == "this line has no iso timestamp at all"
+    assert rows[1]["message"] == "this line has no iso timestamp at all"
+    assert rows[1]["ts"] == 900.0 and rows[1]["dated"] == 0
+
+
+def test_collect_file_applies_the_sources_declared_default_level(tmp_path):
+    """`level` on a source is the floor for lines that carry none (policy-as-config)."""
+    conn = _mem()
+    f = _write(tmp_path / "d.log", "no level word here\n")
+    cfg = {"path": "d.log", "parser": "plain", "level": "debug"}
+    res = logs.collect_file(conn, "d", f, cfg, root=tmp_path, now=5.0)
+    assert res["by_level"] == {"debug": 1}  # NOT the global 'info' default
+    assert res["level_from"] == {"default": 1}
+    assert logs.query(conn, limit=1)[0]["level"] == "debug"
+    assert logs.DEFAULT_LEVEL == "info"  # so the assertion above is a real contrast
+    # ...and a declared default never overrides a level the line does carry
+    f2 = _write(tmp_path / "e.log", "ERROR exploded\n")
+    res2 = logs.collect_file(
+        conn, "e", f2, {"path": "e.log", "parser": "plain", "level": "debug"},
+        root=tmp_path, now=6.0,
+    )
+    assert res2["by_level"] == {"error": 1} and res2["level_from"] == {"sniff": 1}
+
+
+def test_normalize_level_maps_the_whole_syslog_priority_table():
+    """All 8 priorities, not just a spot check.
+
+    3->error / 4->warning is the boundary an off-by-one hides in, and it is the
+    one that decides whether `--fail-on error` fires.
+    """
+    assert [logs.normalize_level(p) for p in range(8)] == [
+        "critical", "critical", "critical", "error",
+        "warning", "info", "info", "debug",
+    ]
+    # outside 0..7 is not a syslog priority and must not be invented into one
+    assert logs.normalize_level(8) is None and logs.normalize_level(-1) is None
+
+
+def test_offsets_ingested_counter_is_cumulative_across_passes(tmp_path):
+    """`lines`/`ingested` on the offset row are LIFETIME totals, not per-pass.
+
+    A single-pass fixture cannot tell the two apart (both read 2), so this takes
+    a second pass — which is where a per-pass overwrite becomes visible.
+    """
+    conn = _mem()
+    cfg = {"path": "app.log", "parser": "plain"}
+    f = _write(tmp_path / "app.log", "one\ntwo\n")
+    logs.collect_file(conn, "app", f, cfg, root=tmp_path, now=1.0)
+    first = logs.get_offset(conn, "app", "app.log")
+    assert first["ingested"] == 2 and first["lines"] == 2
+    with f.open("a", encoding="utf-8") as fh:
+        fh.write("three\n")
+    second = logs.collect_file(conn, "app", f, cfg, root=tmp_path, now=2.0)
+    assert second["ingested"] == 1  # the PASS ingested one new line...
+    row = logs.get_offset(conn, "app", "app.log")
+    assert row["ingested"] == 3  # ...while the STORE tracks all three
+    assert row["lines"] == 3 and row["rotations"] == 0
+    # and the lifetime figure is what the operator board surfaces
+    board = logs.source_status(conn, {"app": cfg}, root=tmp_path)
+    assert board[0]["files"][0]["ingested"] == 3
+
+
+def test_split_complete_lines_include_partial_stays_unit_aligned():
+    """--include-partial must still consume WHOLE code units.
+
+    A UTF-16 file whose final character is half-written would otherwise leave the
+    stored offset on an odd byte and desync every later pass.
+    """
+    raw = "a\r\nbc".encode("utf-16-le")[:-1]  # 10 bytes, last char cut in half
+    assert len(raw) == 9
+    lines, consumed = logs.split_complete_lines(
+        raw, encoding="utf-16-le", unit=2, include_partial=True
+    )
+    assert consumed == 8 and consumed % 2 == 0  # never lands mid code unit
+    assert lines == ["a", "b"]  # the half character is left for the next pass
+    # the aligned tail is still consumed when it IS complete
+    whole = "a\r\nbc".encode("utf-16-le")
+    lines2, consumed2 = logs.split_complete_lines(
+        whole, encoding="utf-16-le", unit=2, include_partial=True
+    )
+    assert consumed2 == 10 and lines2 == ["a", "bc"]
