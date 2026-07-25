@@ -41,6 +41,33 @@ before suspecting the code.
 Re-check with:
 `(Get-Counter '\Memory\Available MBytes').CounterSamples[0].CookedValue`
 
+### NEW 2026-07-24 — openswap manifests promise filesystem containment that is NOT enforced
+
+- [ ] **`policy.check_permission`'s `fs_write` branch ignores `capabilities.filesystem.paths`
+  entirely — and ignores its own `resource` argument.** It checks only the boolean
+  `caps.filesystem.write`. Surfaced by a batch-4 build agent as a "known limit" and then
+  verified independently at `apps/scout-cli/bigbang/core/policy.py:189-194`.
+  **Scale: 47 manifests declare `paths:`, 42 declare `write: true`.** So 47 plugins make a
+  containment claim the code does not keep. `bigbang/plugins/logs/manifest.yaml` states it in
+  prose — *"Writes are confined to the sqlite store under .scout"* — which makes it a documented
+  guarantee, not merely an unused field.
+  **The asymmetry is the tell:** the other two axes DO enforce resource-level allowlists —
+  `network` checks `enabled` + `domains` + a per-resource match, `secret` checks `allow` +
+  `resource not in allowed`. Only `fs_write` stops at the boolean. The function's own docstring
+  says *"Default-deny: empty allowlists deny everything"*, and this branch has no allowlist at
+  all. There is even a comment in the `secret` branch recording that this EXACT bug class was
+  found and fixed there ("silently allowed EVERY secret when the list was empty — the opposite
+  of this function's own docstring"); `fs_write`'s `paths` were simply never implemented.
+  **NOT fixed yet, deliberately.** Enforcing it is a behavior change across 42 write-enabled
+  plugins — any that write outside their declared paths begin failing — so it needs its own
+  verification pass against the full board, and six agents were mid-build when it was found.
+  `policy.py` is NOT frozen, so this is mine to do on the operator's word.
+  Sketch: mirror the `secret` branch — resolve `resource` and each declared path to absolute
+  form, require the resource to be inside one of them, and treat an EMPTY `paths` list as
+  deny-all to match the docstring (or as "unscoped" only if that is a deliberate, documented
+  choice). Land it with the ruff/pytest gates green, then delete the "documentary" caveats from
+  the manifests that carry them.
+
 **Memory budget for this box (16 GB) — the constraint that actually bit:** fleet + WSL VM
 ≈ 3–4 GB · desktop apps ≈ 2–3 GB **(now ~7.5 GB — Chrome/Cursor/Claude sessions have
 accumulated)** · Ollama `qwen3:8b` ≈ 5–6 GB · `qwen3:14b` ≈ **7 GB** (does NOT fit —
