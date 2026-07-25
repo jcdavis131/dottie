@@ -207,6 +207,146 @@ class TestDownloadManifestNeverListsAnUngatedDataset:
         )
 
 
+class TestSyntheticProvenanceFlag:
+    """Second gate dimension. A licence tag states what the UPLOADER grants, not
+    whether the content was permitted to exist — most frontier-model terms forbid
+    training a competing model on their outputs, so an MIT-tagged dump of another
+    model's completions is still unusable. Same structure as the shadow-library
+    rule: the licence field is not the binding constraint.
+
+    Ids below are the real ones from the operator's HuggingFace list.
+    """
+
+    flag = staticmethod(dataset_discovery.flag_synthetic_provenance)
+
+    @pytest.mark.parametrize(
+        "dataset_id,expect_marker",
+        [
+            ("Manusagents/GPT-5.5-Gemini-3.1-Pro-Grok-4-Claude-Fables", "claude"),
+            ("r0b0tlab/qwen3.8-max-distillation", "qwen"),
+            ("ianncity/GLM-5.2-Conversation", "glm"),
+            ("greghavens/kimi-k3-coding-and-debugging-traces", "kimi"),
+            ("Glint-Research/Fable-5-traces", "traces"),
+            ("nvidia/Open-SWE-Traces", "traces"),
+        ],
+    )
+    def test_model_output_datasets_are_flagged(self, dataset_id, expect_marker):
+        flagged, markers = self.flag(dataset_id)
+        assert flagged, f"{dataset_id} not flagged"
+        assert expect_marker in markers, f"{dataset_id}: {markers}"
+
+    @pytest.mark.parametrize(
+        "dataset_id",
+        [
+            "HuggingFaceCode/stack-v3-train",
+            "wikimedia/wikipedia",
+            "HuggingFaceFW/fineweb",
+            "roneneldan/TinyStories",
+            "openbmb/UltraX-Preview",
+            "FlyRank/internship-warehouse",
+        ],
+    )
+    def test_ordinary_corpora_are_not_flagged(self, dataset_id):
+        flagged, markers = self.flag(dataset_id)
+        assert not flagged, f"{dataset_id} falsely flagged: {markers}"
+
+    @pytest.mark.parametrize(
+        "dataset_id,not_marker",
+        [
+            ("some/orcadian-tide-tables", "orca"),
+            ("some/yield-curve-data", "yi"),
+            ("some/commandments-corpus", "command"),
+            ("some/palmyra-inscriptions", "palm"),
+        ],
+    )
+    def test_family_name_does_not_match_inside_a_longer_word(
+        self, dataset_id, not_marker
+    ):
+        """A marker matches a token equal to it, or one continuing with a DIGIT
+        (so "qwen" catches "qwen3.8"). It must not match a token that merely
+        starts with the same letters."""
+        flagged, markers = self.flag(dataset_id)
+        assert not_marker not in markers, f"{dataset_id} matched {not_marker}"
+        assert not flagged
+
+    def test_version_digits_do_not_fabricate_a_marker(self):
+        """Regression on my own first cut: markers were versioned ("gpt-4") and
+        matched when all hyphen-parts appeared ANYWHERE, so
+        "GPT-5.5-...-Grok-4-..." was reported as matching "gpt-4" — the 4 came
+        from Grok-4. A real flag with invented evidence is still invented."""
+        _, markers = self.flag("Manusagents/GPT-5.5-Gemini-3.1-Pro-Grok-4-Claude")
+        assert "gpt" in markers
+        assert not any(m[-1].isdigit() for m in markers), (
+            f"markers must name families, not versions: {markers}"
+        )
+
+    def test_tags_and_description_are_searched_too(self):
+        flagged, markers = self.flag(
+            "neutral/name", tags=["generated-with:claude"], description=""
+        )
+        assert flagged and "claude" in markers
+        flagged2, markers2 = self.flag(
+            "neutral/name", tags=[], description="Distillation of a larger teacher."
+        )
+        assert flagged2 and "distillation" in markers2
+
+    def test_empty_inputs_do_not_flag_or_crash(self):
+        for args in [("",), (None,), ("x", None, None)]:
+            flagged, markers = self.flag(*args)
+            assert not flagged and markers == []
+
+    @pytest.mark.parametrize(
+        "dataset_id,expect_flag",
+        [
+            ("r0b0tlab/qwen3.8-max-distillation", True),
+            ("wikimedia/wikipedia", False),
+        ],
+    )
+    def test_the_flag_is_actually_attached_to_each_candidate(
+        self, dataset_id, expect_flag
+    ):
+        """Tests the WIRING, not the primitive. Found by mutation: stubbing the
+        assignment in search_hf_datasets_free to (False, []) left every other test
+        green, because they all called flag_synthetic_provenance directly or read
+        the manifest source. A flag that is computed and never attached protects
+        nothing."""
+        cands = dataset_discovery.search_hf_datasets_free(
+            "code", [dataset_id], ["mit"], dry_run=True
+        )
+        # Assert on the candidate we ASKED about. The first version of this test
+        # looped over every candidate, so it tripped on the domain's built-in
+        # list (openai_humaneval flags on "openai") rather than on the id under
+        # test — a test bug that read like a code bug.
+        mine = [c for c in cands if c["name"] == dataset_id]
+        assert mine, f"{dataset_id} not among candidates: {[c['name'] for c in cands]}"
+        for c in mine:
+            assert "provenance_review" in c, "candidate is missing the flag entirely"
+            assert c["provenance_review"] is expect_flag, (
+                f"{dataset_id}: got {c['provenance_review']}, "
+                f"markers={c.get('provenance_markers')}"
+            )
+
+    def test_known_false_positive_is_a_flag_not_a_denial(self):
+        """openai_humaneval is human-written and MIT — flagging it on the token
+        "openai" is a FALSE POSITIVE in substance. Recorded deliberately: it is
+        the cost of a recall-first heuristic, and it is survivable precisely
+        because a flag means "read the card", not "denied". If this ever becomes
+        an auto-deny, this test is the reminder that it would be wrong."""
+        flagged, markers = self.flag("openai_humaneval")
+        assert flagged and markers == ["openai"]
+        # ...and the truly synthetic sibling in the same built-in list
+        assert self.flag("code_alpaca")[0]
+
+    def test_manifest_refuses_a_flagged_dataset_even_when_licence_passes(self):
+        """The manifest is executable and feeds ingest_hf.py, so a permissive
+        licence alone must not be enough to auto-fetch model output."""
+        src = (
+            Path(__file__).resolve().parents[1] / "scripts" / "dataset_discovery.py"
+        ).read_text(encoding="utf-8")
+        assert 'if cand.get("provenance_review"):' in src
+        assert "REVIEW-REQUIRED" in src
+
+
 class TestDenyTokensAreDeclaredNotHardcoded:
     def test_nd_and_nc_are_both_declared(self):
         assert set(dataset_discovery.LICENSE_DENY_TOKENS) >= {"nd", "nc"}

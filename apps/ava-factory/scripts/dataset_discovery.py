@@ -85,6 +85,95 @@ LICENSE_ALLOW = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Second gate dimension: SYNTHETIC PROVENANCE (model-output terms).
+#
+# A licence tag describes what the UPLOADER grants. It says nothing about
+# whether the CONTENT was permitted to exist. Most frontier-model terms of
+# service forbid using model outputs to train a competing model, so a dump of
+# another model's completions can be tagged `mit` by its uploader and still be
+# unusable here. The HF trending list is currently dominated by exactly this
+# shape — distillation dumps and agent traces named after the model that
+# produced them.
+#
+# This is the same structure as the shadow-library rule: FORBIDDEN regardless of
+# the licence field, because the licence field is not the binding constraint.
+#
+# Deliberately a FLAG, not an auto-deny. Distinguishing "outputs of a model whose
+# terms forbid this" from "openly licensed synthetic data released by its own
+# trainer" is a judgement about a specific ToS, and that belongs to the operator.
+# Names are matched on word-ish boundaries, not bare substrings — see the
+# licence gate above for why substring matching on identifiers is a trap.
+# ---------------------------------------------------------------------------
+
+# Model FAMILY names and process words only — deliberately NO version numbers.
+# The first cut listed versioned markers ("gpt-4", "glm-5") and matched a marker
+# when all of its hyphen-separated parts appeared anywhere in the text. Run
+# against the operator's real HuggingFace list that was wrong three ways:
+#   * "GPT-5.5-Gemini-3.1-Pro-Grok-4-Claude-Fables" was reported as matching
+#     "gpt-4" — "gpt" and "4" both appear, but the 4 came from "Grok-4".
+#     Fabricated evidence for a real flag is still fabricated evidence.
+#   * "GLM-5.2-Conversation" was MISSED: marker "glm-5" needs the token "5", but
+#     the token is "5.2".
+#   * "qwen3.8-max-distillation" matched only "distillation": "qwen" was missed
+#     because the token is "qwen3.8".
+# Version numbers fuse with family names, so match the FAMILY by token prefix.
+MODEL_OUTPUT_MARKERS = (
+    # frontier / hosted model families whose terms typically restrict using
+    # outputs to train a competing model
+    "gpt", "chatgpt", "openai", "claude", "anthropic", "gemini", "bard",
+    "palm", "grok", "llama", "mistral", "qwen", "deepseek", "glm", "kimi",
+    "ernie", "yi", "command",
+    # process words that say "these are model outputs" whatever produced them
+    "distill", "distillation", "sharegpt", "alpaca", "wizardlm", "orca",
+    "ultrachat", "openhermes", "selfinstruct", "synthetic", "traces",
+)
+
+
+def _tokens(text):
+    """Alphanumeric-and-dot tokens, lowercased. '.' is kept so a version stays
+    attached to its family ('qwen3.8'), which is what makes prefix matching
+    work."""
+    out, token = set(), ""
+    for ch in str(text).lower():
+        if ch.isalnum() or ch == ".":
+            token += ch
+        else:
+            if token:
+                out.add(token)
+            token = ""
+    if token:
+        out.add(token)
+    return out
+
+
+def flag_synthetic_provenance(dataset_id, tags=None, description=""):
+    """(needs_review, markers). Heuristic — it flags, it does not decide.
+
+    A hit means "a human must read this dataset's card AND the terms of whatever
+    produced the content before any ingestion". It does NOT mean denied: openly
+    licensed synthetic data released by the party that trained the model is fine,
+    and telling that apart from a ToS-violating dump is a judgement about a
+    specific ToS, which is the operator's to make.
+
+    A marker matches a token that either equals it, or begins with it followed by
+    a DIGIT — so "qwen" matches "qwen3.8" while "orca" does not match
+    "orcadian".
+    """
+    words = _tokens(
+        " ".join([str(dataset_id or ""), " ".join(tags or []), str(description or "")])
+    )
+    hits = set()
+    for marker in MODEL_OUTPUT_MARKERS:
+        for word in words:
+            if word == marker or (
+                word.startswith(marker) and word[len(marker) :][:1].isdigit()
+            ):
+                hits.add(marker)
+                break
+    return (bool(hits), sorted(hits))
+
+
 def _license_values(raw):
     """Flatten a license field into every individual value it asserts.
 
@@ -438,6 +527,14 @@ def search_hf_datasets_free(domain, query_list, license_pref, dry_run=False):
                 "without --dry-run before treating any candidate as usable."
             )
             meta["dry_run"] = True
+        # Second gate dimension, applied in BOTH branches: the licence field
+        # cannot express whether the content was permitted to exist. Runs offline
+        # off the id/tags, so --dry-run gets it too.
+        meta["provenance_review"], meta["provenance_markers"] = (
+            flag_synthetic_provenance(
+                ds_name, meta.get("tags"), meta.get("description", "")
+            )
+        )
         candidates.append(meta)
     return candidates
 
@@ -729,6 +826,21 @@ def main():
             reason = cand.get("license_reason") or "not permissive"
             lines.append(
                 f"# SKIP {cand['name']} — license {cand['license']}: {reason}"
+            )
+            continue
+        if cand.get("provenance_review"):
+            # A permissive licence is not sufficient here. This manifest is
+            # EXECUTABLE and feeds ingest_hf.py, so an automated path must not
+            # fetch content whose terms of production are unresolved. The
+            # operator can still download it by hand after reading the card and
+            # the source model's terms — that is a decision, not a default.
+            lines.append(
+                f"# REVIEW-REQUIRED {cand['name']} — looks like model output "
+                f"({', '.join(cand['provenance_markers'])}). A licence tag states "
+                "what the UPLOADER grants, not whether the content was permitted "
+                "to exist; most frontier-model terms forbid training a competing "
+                "model on their outputs. Read the card + those terms, then ingest "
+                "manually if cleared."
             )
             continue
         lines.append(
