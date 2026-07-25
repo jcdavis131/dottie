@@ -642,7 +642,7 @@ def nice_axis(lo: float, hi: float, *, count: int = DEFAULT_TICKS) -> dict[str, 
     step = _nice_step((hi - lo) / count)
     nlo = math.floor(lo / step) * step
     nhi = math.ceil(hi / step) * step
-    n = int(round((nhi - nlo) / step))
+    n = round((nhi - nlo) / step)
     n = max(1, min(n, MAX_TICKS))
     ticks = [round(nlo + i * step, 12) for i in range(n + 1)]
     return {"lo": round(nlo, 12), "hi": round(ticks[-1], 12), "step": step,

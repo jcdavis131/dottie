@@ -84,7 +84,29 @@ def _clamp(v: float) -> int:
     return max(0, min(10, int(round(v))))
 
 
-def audit_plugin(name: str) -> dict:
+def _run_tests(name: str) -> tuple[bool, str]:
+    """Actually EXECUTE a plugin's suite. Returns (passed, detail).
+
+    Without this, D4 measured only the PRESENCE and density of assertions, never
+    their outcome — so a plugin whose tests fail could score a perfect 10.00.
+    That was a real hole: CI's pytest step ends in `|| true`, so a broken plugin
+    passed on both paths. Caught on `charts` (10.00 while 1 test was red).
+    Opt-in because each suite takes ~45-90s; the CI gate scopes it to --plugin.
+    """
+    import subprocess
+    tf = TESTS / f"test_{name}.py"
+    if not tf.exists():
+        return False, "no test file"
+    try:
+        p = subprocess.run([sys.executable, "-m", "pytest", str(tf), "-q", "--no-header"],
+                           cwd=str(SC), capture_output=True, text=True, timeout=600)
+    except Exception as e:  # noqa: BLE001 — report, never mask
+        return False, f"could not run pytest: {type(e).__name__}"
+    tail = (p.stdout or "").strip().split("\n")[-1][:120]
+    return p.returncode == 0, tail
+
+
+def audit_plugin(name: str, run_tests: bool = False) -> dict:
     """Score one plugin on the mechanizable slice of the rubric."""
     pdir = PLUGINS / name
     cli = pdir / "cli.py"
@@ -158,6 +180,15 @@ def audit_plugin(name: str) -> dict:
                     - (2 if test_fns and asserts / max(1, test_fns) < 1 else 0))
         tinfo = {"exists": True, "test_fns": test_fns, "asserts": asserts,
                  "references_plugin": imports_plugin}
+        # Assertions that FAIL are not test honesty — they are a broken plugin.
+        if run_tests:
+            ok, detail = _run_tests(name)
+            tinfo["suite_passed"] = ok
+            tinfo["suite_detail"] = detail
+            if not ok:
+                findings.append(f"D4: TESTS FAIL ({detail}) — scored 0; a passing "
+                                f"assertion count means nothing if the suite is red")
+                d4 = 0
     else:
         findings.append(f"D4: NO test file (expected tests/test_{name}.py)")
         d4, tinfo = 0, {"exists": False, "test_fns": 0, "asserts": 0, "references_plugin": False}
@@ -226,12 +257,14 @@ def main() -> int:
     ap.add_argument("--json", action="store_true", help="machine-readable output")
     ap.add_argument("--baseline", action="store_true", help="write the current state as the accepted baseline")
     ap.add_argument("--check", action="store_true", help="exit 1 only if a plugin REGRESSED vs the baseline")
+    ap.add_argument("--run-tests", action="store_true",
+                    help="EXECUTE each plugin's suite; D4 scores 0 if it fails (slow, ~45-90s each)")
     ap.add_argument("--min-mean", type=float, default=None,
                     help="also fail if any audited plugin's mean is below this (new builds only)")
     args = ap.parse_args()
 
     names = args.plugin or discover()
-    reports = [audit_plugin(n) for n in names]
+    reports = [audit_plugin(n, run_tests=args.run_tests) for n in names]
     doc = {"tool": "goat_audit.py", "rubric": "Carmack/Bellard 1-10 (heuristic, mechanizable subset)",
            "count": len(reports), "plugins": reports}
 

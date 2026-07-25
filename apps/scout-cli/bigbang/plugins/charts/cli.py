@@ -162,13 +162,20 @@ def _chart(
             example=f"scout charts {kind} --csv m.csv --x t --y v --width 820",
         )
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(svg, encoding="utf-8")
+    # newline="\n" is load-bearing, not tidiness: the default translates \n to
+    # \r\n on Windows, which would make the same chart a DIFFERENT file on
+    # Windows than on Linux and break the byte-identical claim (and the reported
+    # sha256, which is taken over the string) the moment the repo is shared.
+    out_path.write_text(svg, encoding="utf-8", newline="\n")
     diags = charts.to_diagnostics(ds)
     emit(
         ok(
             {
                 "out": str(out_path),
-                "bytes": len(svg),
+                # the file's real size, not len(str): the footer's separators are
+                # multi-byte, so character count would overstate nothing and
+                # understate the file by ~60 bytes
+                "bytes": len(svg.encode("utf-8")),
                 "sha256": charts.fingerprint(svg),
                 "kind": ds["kind"],
                 "source": ds["source"],

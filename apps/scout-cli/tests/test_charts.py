@@ -68,7 +68,10 @@ def _seed_metrics(path, *, steps=(0, 1, 2)):
 
 def _tree(svg):
     """Parse the SVG — proof it is well-formed XML, not just a string that looks it."""
-    return ET.fromstring(svg)
+    # S314 waived: the input is markup this repo just generated, not untrusted
+    # XML, and parsing it IS the assertion — a hostile series label that broke
+    # out of its escaping would fail here rather than silently ship.
+    return ET.fromstring(svg)  # noqa: S314
 
 
 def _tags(svg, tag):
@@ -369,7 +372,8 @@ def test_grouped_bars_keep_one_shared_category_axis():
     assert ds["series"][1]["values"] == [None, 3.0]
     assert ds["series"][1]["n"] == 1
     svg = charts.render_svg(ds)
-    assert len(_tags(svg, "rect")) == 3 + 2  # background + frame + 3 bars
+    # background + frame + 3 bars + 2 legend swatches (two series)
+    assert len(_tags(svg, "rect")) == 2 + 3 + 2
 
 
 # ---- read_dataset: exactly one input ----------------------------------------
@@ -464,9 +468,12 @@ def test_render_svg_is_well_formed_and_self_contained():
     assert root.get("viewBox") == f"0 0 {charts.DEFAULT_WIDTH} {charts.DEFAULT_HEIGHT}"
     assert root.get("role") == "img" and "Training loss" in root.get("aria-label")
     assert "<style>" in svg  # CSS is inline
-    for forbidden in ("<script", "<image", "<link", "@import", "url(", "http://",
-                      "https://", "xlink:href", "font-face"):
+    for forbidden in ("<script", "<image", "<link", "@import", "url(",
+                      "xlink:href", "font-face", "<use", "<foreignObject"):
         assert forbidden not in svg, forbidden
+    # the ONLY URL in the whole file is the SVG namespace declaration itself
+    assert svg.count("http") == 1
+    assert svg.count('xmlns="http://www.w3.org/2000/svg"') == 1
     assert "Training loss" in svg
     assert len(_tags(svg, "polyline")) == 1
 
@@ -498,7 +505,9 @@ def test_render_svg_carries_the_provenance_footer(tmp_path):
     assert "runtrack.db#metrics" in svg  # the source table, named
     assert "3 rows read" in svg and "3 points" in svg  # the row count
     assert "x=step" in svg and "y=value" in svg and "series=key" in svg
-    assert "where=key = &#x27;loss&#x27;" in svg or "where=key = " in svg
+    # the predicate is echoed, escaped: the footer states the filter behind the
+    # numbers, so a chart of a SUBSET can never be mistaken for the whole table
+    assert "where=key = &#x27;loss&#x27;" in svg
     assert "(sqlite)" in svg
     assert "no generation timestamp" in svg
     assert "openswap #16" in svg
@@ -736,7 +745,7 @@ def test_cli_hello_and_kinds_envelopes():
 
 
 def test_cli_inspect_reports_provenance_without_writing_a_file(tmp_path):
-    p = _csv(tmp_path, "step,loss\n0,2.5\n1,1.75\nbad,x\n")
+    p = _csv(tmp_path, "step,loss\n0,2.5\n1,1.75\n2,skipped\n")
     r = _cli(["charts", "inspect", "--csv", str(p), "--x", "step", "--y", "loss"])
     assert r.returncode == 0, r.stderr + r.stdout
     data = json.loads(r.stdout)["data"]
@@ -761,12 +770,17 @@ def test_cli_line_writes_a_deterministic_svg(tmp_path):
     assert data["out"] == str(out) and data["bytes"] > 0
     assert data["kind"] == "line" and data["points"] == 3
     assert data["deterministic"] is True
-    svg = out.read_text(encoding="utf-8")
-    assert len(svg) == data["bytes"]
+    raw = out.read_bytes()
+    svg = raw.decode("utf-8")
+    # the reported size is the FILE's size, not a character count
+    assert len(raw) == data["bytes"] > len(svg)
+    # LF on every platform: CRLF translation would make the same chart a
+    # different file on Windows than on Linux, and the sha256 a lie
+    assert b"\r\n" not in raw
     assert charts.fingerprint(svg) == data["sha256"]
     assert "<h1" not in svg and "<script" not in svg
     assert "Training loss" in svg and "3 rows read" in svg
-    ET.fromstring(svg)
+    ET.fromstring(svg)  # noqa: S314 - our own output; parsing it is the assertion
     # a second process must produce the same bytes — this is the whole premise
     first = out.read_bytes()
     r2 = _cli(args)
