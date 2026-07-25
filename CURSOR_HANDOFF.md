@@ -2,7 +2,29 @@
 
 **Paste-able brief for any agent continuing this work. Everything below is live and verified.**
 
-## NEWEST (2026-07-24) — TWO IMPORT SHADOWS; audit impact-claims NOT trustworthy
+## NEWEST (2026-07-25) — CI WAS RED ON EVERY PUSH; 3 of 4 jobs fixed, 1 needs YOU
+
+**Check CI before believing a local board.** Twice today local green did not mean CI green.
+`gh run list --workflow CI --limit 3` and `gh run view <id> --json jobs -q '.jobs[]|"\(.conclusion)  \(.name)"'`.
+
+| job | was failing because | state |
+|---|---|---|
+| `lint-and-test` | 2 help-text tests asserted on raw `--help` stdout; rich wraps to TERMINAL WIDTH and injects ANSI, so they passed here and split in CI | **fixed 72791cd — CI success, first green run of the new hard gates (1525 + 80)** |
+| `bluehenre-checks` | hub_registry.json embedded `bytes`/`sha256` of WINDOWS CRLF bytes (633553/48 CRLF) while HEAD stores LF (633505). `--check` compared like-with-like locally and passed | **fixed ecfec65** — `.gitattributes` `-text` on hashed artifacts + regenerated |
+| `dottie-factory-smoke` | 109KB telemetry (`dottie_live_status_next_dryrun.json`) was TRACKED — swept in by a dev_loop auto-commit; ignore listed EXACT names, missed the variant | **fixed 2457688** — untracked + glob `reports/dottie_live_status*.json` |
+| **`Ruff Lint` (`lint.yml`)** | separate HARD workflow: `ruff check .` repo-wide (incl. FROZEN ava-factory) on pinned ruff **0.8.6** vs local **0.15.22**, plus `ruff format --check .` which nothing satisfies. **1,397 findings repo-wide** vs the 334 ci.yml scopes to | ⛔ **RED ON EVERY PUSH — OPERATOR DECISION.** Options in TODOS. A permanently-red required check trains everyone to ignore the X. |
+
+⚠ **Reproduce a CI failure locally BEFORE fixing it.** The help-text fix needed
+`TERM=xterm COLUMNS=70` to reproduce (`COLUMNS=80` alone did NOT); the registry one needed
+re-checking-out the file so `--check` went STALE here with CI's exact message. Both fixes would
+otherwise have been guesses that pass locally either way — which is what made the bugs invisible.
+⚠ **Verify git attributes with `git check-attr`, never by reading `.gitattributes`.** Later
+patterns win: a catch-all `* text=auto` placed LAST silently overrides every rule above it.
+⚠ **Never diagnose from an index you just rewrote.** I ran `git add --renormalize`, then compared
+`git show :path` to the worktree, concluded "line endings are not the cause", and abandoned the
+correct hypothesis. Compare against `HEAD:` instead.
+
+## (2026-07-24) — TWO IMPORT SHADOWS; audit impact-claims NOT trustworthy
 
 **Read this before trusting any local test result or the GOAT audit's priorities.**
 
