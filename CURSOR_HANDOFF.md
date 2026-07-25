@@ -74,10 +74,10 @@ add — write one test per line:
 | mutation that survived | assert instead |
 |---|---|
 | ~~X1 `_pct_cell` drops the `unknown_reason` title~~ | ✅ **DONE in-tree** — `test_unknown_cells_carry_their_reason_as_a_title`, verified: re-applying X1 gives 1 failed / 86 passed, the sole failure being that test |
-| X2 `render_html` drops the whole Notes section | Notes section present with its content |
+| ~~X2 `render_html` drops the whole Notes section~~ | ✅ **DONE in-tree** — `test_the_page_carries_its_notes_and_its_scope_limits`; verified: X2 gives 1 failed / 88 passed |
 | ~~X3 `DELTA_EPSILON` 0.005 -> 0.4~~ | ✅ **DONE in-tree** — `test_the_unchanged_dead_zone_is_narrow_and_its_boundary_is_pinned`; verified: X3 gives 1 failed / 87 passed on `assert 0.4 <= 0.01` |
 | ~~X4 `_delta_cell` drops the `delta_reason` title~~ | ✅ **DONE in-tree** — same test also pins `_delta_cell`'s reason and its measured-value path |
-| X5 footer drops `SCOPE_LIMITS` | the scope-limits text is in the footer |
+| ~~X5 footer drops `SCOPE_LIMITS`~~ | ✅ **DONE in-tree** — same test; verified separately: X5 gives 1 failed / 88 passed on the `Scope:` assertion |
 | X6 the "per-FILE deltas are not stored" sentence deleted | that disclosure is present |
 | X7 the "Unmeasured" per-file list dropped | unmeasured files are listed |
 This is the same shape as batch 4's `dupes` gap: the CODE is right, the tests cannot notice if it
