@@ -19,7 +19,9 @@ venv/
 
 # Live telemetry — generated, not committed
 STATUS.json
-reports/dottie_live_status.json
+# glob, not exact names: the *_next_dryrun.json variant slipped past an exact
+# pattern and got committed by a `git add -A`, breaking CI's telemetry guard
+reports/dottie_live_status*.json
 reports/ava_live_status.json
 reports/dottie_telemetry.jsonl
 reports/ava_telemetry.jsonl
