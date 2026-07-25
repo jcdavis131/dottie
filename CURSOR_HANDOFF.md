@@ -13,7 +13,7 @@ Workflow `wfm14ajm8` / run `wf_bdde5063-194` finished: 13 agents, 0 errors, ~2.6
 | `quality` (SonarQube) | ✅ holds | GOAT **10.00**, but `claims_overstated` — a survivor its builder did not claim |
 | `later` (Pocket) | ✅ holds | `claims_overstated` — same shape |
 | `digest` (Mailchimp) | ❌ was failing | **security gap ALREADY FIXED in the working tree — see below** |
-| `cite` (Zotero) | ❌ **fails bar — worst of the three** | two independent grounds, see below |
+| `cite` (Zotero) | ❌ was failing | ✅ **E1 branch now pinned in-tree** (it WAS reachable) — see below; the bad "42 readings" count is a report artifact, nothing to fix in code |
 | `coverage` (Codecov) | ❌ was failing | ✅ **ALL 7 mutations closed in-tree** — see below; re-verify before committing |
 
 **`cite` is the one to treat with most suspicion — it fails on TWO independent grounds.**
@@ -35,6 +35,7 @@ forcing a test for it is impossible and the honest fix is to (a) rename this tes
 pins (an unemittable key is refused, with an error) and (b) say at the `identical` site which
 conjuncts are forward-guards rather than covered behavior — exactly the note the sibling test already
 makes. Determine reachability FIRST; do not manufacture a test for a branch no input can reach.
+✅ **RESOLVED 2026-07-25 — the branch IS reachable, so the fix was a test after all.** Measured: `roundtrip_report` on `{'type': 'Article'}` returns `error=None, reparsed=True, type_preserved=False, identical=False` — the parser normalizes the entry type to lower case, so a mixed-case type round-trips SUCCESSFULLY and still comes back changed. That is the exact branch the mis-scoped test claimed and never reached. Added `test_a_type_the_parser_normalizes_is_reported_as_a_key_or_type_change` (with an all-lowercase control so the assertions are a contrast, not a property of every input). Verified: dropping the `type_preserved` conjunct from `identical` gives 1 failed / 152 passed on `assert True is False`; cite.py restored byte-identical; suite 152 -> 153. Note this is NOT the same as `changed_fields`, which the module documents as genuinely unreachable while the emitter stays verbatim — I checked them separately rather than assuming both conjuncts shared a fate.
 Note the verifier reasoned from the SCHEMA rather than its own taste, which is what batch 4 lacked:
 *"claims_overstated = FALSE only because the schema reserves that flag for the honest-but-incomplete
 case WITHOUT any contradicted invariant — and there IS a contradicted invariant here. This is the
