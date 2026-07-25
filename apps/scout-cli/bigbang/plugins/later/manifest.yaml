@@ -1,0 +1,32 @@
+name: later
+version: 0.7.0
+description: Pocket/Raindrop-class read-later queue, fully local (openswap #34 — RFC 3986 url canonicalisation + tracking-param stripping + order-independent sqlite dedupe, feeding the #11 extract corpus through an injected, policy-gated fetch)
+capabilities:
+  network:
+    enabled: true
+    # DELIBERATELY LOOPBACK ONLY (host exact-or-dot-suffix match). A read-later
+    # inbox holds arbitrary user-chosen urls, so a manifest allowlist naming
+    # them would be a rubber stamp that grows to match whatever was saved last.
+    # The local capture/mirror server is the only host this adapter trusts
+    # without being asked; EVERY other url is checked per item at fetch time
+    # against the PERSISTED USER allowlist (~/.config/bigbang/policy.yaml,
+    # default-deny: `scout reach allow <host>` to widen it). A url in neither
+    # list is recorded fetch_state "denied" and NO socket is opened for it, so
+    # one off-allowlist link cannot kill the pass.
+    #
+    # Only `fetch` has a network code path at all. add / import / pull / canon /
+    # list / mark / board cannot reach the network — there is nothing to gate.
+    domains:
+      - localhost
+      - 127.0.0.1
+  filesystem:
+    # two sqlite stores under .scout: the queue itself (.scout/later.db) and,
+    # when --ingest is on, the #11 corpus ledger (.scout/extract.db) that the
+    # fetched bodies are parsed into. Nothing else is written: no page mirror,
+    # no rendered archive, no cache directory.
+    write: true
+    paths: [".scout"]
+  secrets:
+    allow: []
+tags: [later, read-later, bookmarks, queue, dedupe, openswap]
+# Solo personal project, no connection to employer, built with public/free-tier only

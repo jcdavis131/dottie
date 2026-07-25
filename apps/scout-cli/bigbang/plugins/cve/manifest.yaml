@@ -1,0 +1,29 @@
+name: cve
+version: 0.7.0
+description: Snyk/Dependabot-class dependency CVE auditor, fully offline (openswap #29 — manifest/lockfile parsing + PEP 440/SemVer range matching + CVSS v3 scoring against a CACHED OSV snapshot file, zero egress)
+capabilities:
+  network:
+    # ZERO egress by design, and this is the whole product. Snyk and Dependabot
+    # are architecturally "upload your dependency graph and we will tell you";
+    # deleting that upload is the replacement. The vulnerability database is a
+    # JSON FILE placed on disk out of band and read at audit time, so there is
+    # no host to allowlist, no advisory API to call and no manifest to ship.
+    # The axis is fully disabled with an EMPTY domain list, and every command
+    # re-reads this section and REFUSES to run if it was ever widened (see
+    # _egress_guard in cli.py) — a database that could be fetched mid-audit is
+    # a different product with a different privacy story.
+    enabled: false
+    domains: []
+  filesystem:
+    # READ ONLY. Nothing here writes: no sqlite store, no report artifact, no
+    # snapshot download, no cache directory. The manifests audited and the
+    # snapshot path come from the arguments/env at call time, never from this
+    # manifest, and both are only ever opened for reading.
+    write: false
+    paths: []
+  secrets:
+    # A private registry token would be the one credential a dependency scanner
+    # might want. This adapter never contacts a registry, so it needs none.
+    allow: []
+tags: [cve, osv, dependencies, security, supply-chain, openswap]
+# Solo personal project, no connection to employer, built with public/free-tier only

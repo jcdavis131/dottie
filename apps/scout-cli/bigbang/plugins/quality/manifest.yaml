@@ -1,0 +1,30 @@
+name: quality
+version: 0.7.0
+description: SonarQube/CodeClimate-class code-quality metrics, fully local (openswap #30 — per-function cyclomatic complexity with a published weight table, function size/nesting/params, unused imports, tokenize-based marker density, and a sqlite run history with per-unit regression comparison)
+capabilities:
+  network:
+    # ZERO egress by design, and this is the whole product. SonarCloud and
+    # CodeClimate are hosted analyzers that need your source uploaded, and
+    # sonar-scanner is only a client for a SonarQube SERVER — deleting the server
+    # IS the replacement. The axis is fully disabled with an EMPTY domain list:
+    # there is no host to allowlist, no scanner token to hold and no project key,
+    # so "no source ever left the box" is architectural rather than a ToS
+    # promise. `scan` and `detect` re-read this section and REFUSE to run if it
+    # was ever widened (see _egress_guard in cli.py), so the guarantee is
+    # enforced rather than merely documented.
+    enabled: false
+    domains: []
+  filesystem:
+    # the genuine need, and the only one: the sqlite trend store, which is what
+    # replaces the vendor's hosted history. It lives under .scout/ beside the
+    # family's other ledgers, `scan --no-record` measures without touching it,
+    # and every other path this plugin touches is opened READ-ONLY and comes
+    # from the command-line arguments at call time, never from this manifest.
+    write: true
+    paths: [".scout"]
+  secrets:
+    # a local analyzer needs no credential; an empty allowlist is default-deny.
+    # This is also the line SonarCloud cannot hold: its scanner needs a token.
+    allow: []
+tags: [quality, complexity, metrics, static-analysis, openswap]
+# Solo personal project, no connection to employer, built with public/free-tier only
