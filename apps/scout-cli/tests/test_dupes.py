@@ -401,6 +401,35 @@ def test_compare_rows_never_invents_a_similarity_for_unshingleable_docs():
     assert pair2["kind"] is None  # no hash on the unreadable row, so not exact
 
 
+def test_compare_rows_refuses_when_only_one_doc_is_unshingleable():
+    """The ASYMMETRIC case — one doc shingles, the other is too short.
+
+    The symmetric test above cannot distinguish `bool(a) and bool(b)` from
+    `bool(a) or bool(b)` in the both-sets guard: when NEITHER doc shingles both
+    expressions are False, so a mutation from `and` to `or` survives it. This pair
+    separates them, and it is the pair a user actually hits --
+    `scout dupes compare published.md tiny-draft.md`. Under the `or` mutant this
+    reports similarity=0.0 / shared=0 / union=9 with error=None: an invented number
+    for a comparison that never happened, which is the one thing this module's
+    docstring promises never to do.
+    """
+    cfg = dupes.merge_config()  # min_tokens 40
+    long_doc = dupes.fingerprint("published.md", ORIGINAL, config=cfg)
+    short_doc = dupes.fingerprint("draft.md", "three word draft", config=cfg)
+    # pin the PREMISE, so this can never silently decay into the symmetric case
+    assert long_doc["shingles"], "fixture must shingle for this to test anything"
+    assert not short_doc["shingles"], "fixture must be too short to shingle"
+
+    pair = dupes.compare_rows(long_doc, short_doc, config=cfg)
+    assert pair["similarity"] is None and pair["containment"] is None
+    assert pair["shared"] is None and pair["union"] is None
+    assert "no shingle sets to compare" in pair["error"]
+    assert "draft.md:" in pair["error"] and "too-short" in pair["error"]
+    # and the reverse argument order must behave identically
+    flipped = dupes.compare_rows(short_doc, long_doc, config=cfg)
+    assert flipped["similarity"] is None and flipped["error"] == pair["error"]
+
+
 def test_find_pairs_applies_gates_and_deterministic_order():
     cfg = _cfg(threshold=0.4, containment_threshold=0.95)
     rows = [
