@@ -557,7 +557,16 @@ def aggregate_live_status() -> dict[str, Any]:
                 if not last_expansion:
                     last_expansion = ev
 
-    training_monitor = latest_per_mode.get("train", latest_per_mode.get("training", {}))
+    # The event log's mode is literally "training_monitor" — measured 2026-07-25,
+    # latest_per_mode.keys() == ['training_monitor'] — so looking up only "train"/"training"
+    # could never hit, and `health.last_loss` was therefore ALWAYS None while training was
+    # live. The variable name asserted it monitored training; the lookup did not.
+    training_monitor = (
+        latest_per_mode.get("training_monitor")
+        or latest_per_mode.get("train")
+        or latest_per_mode.get("training")
+        or {}
+    )
 
     # Canonical sample from spec — preserve for dash when no newer real data
     CANONICAL_TS = "2026-07-16T15:56:01.603296+00:00"
