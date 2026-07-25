@@ -28,6 +28,107 @@ DISCLAIMER = (
     "Solo personal project, no connection to employer, built with public/free-tier only"
 )
 
+# ---------------------------------------------------------------------------
+# License gate — deny by default.
+#
+# The previous gate was `any(lp in lic_lower for lp in [..., "cc-by"])`, i.e. a
+# SUBSTRING test, and "cc-by" is a substring of "cc-by-nc-4.0",
+# "cc-by-nd-4.0" and "cc-by-nc-nd-4.0". Measured 2026-07-25: all three were
+# ADMITTED. That breaks the two standing rules outright — NoDerivatives is
+# always excluded because training a model on a work is a derivative use, and
+# NonCommercial is excluded by default because this project has a revenue
+# mission. It is the same bypass shape as the substring domain matcher fixed in
+# scout-cli's policy engine: match COMPONENTS, never substrings.
+#
+# Three further defects in that gate, all fixed here:
+#   * `any(license_pref) or any(<blanket list>)` made every per-domain
+#     license_pref decorative — a domain narrowed to ["mit","apache-2.0"] still
+#     admitted every cc-by* variant via the blanket half.
+#   * a LIST-valued license was str()'d, so "['cc-by-4.0', 'cc-by-nd-4.0']"
+#     matched on the permissive element and admitted the record even though ND
+#     also applies. pull_oapen_books.py::gate_rights already had to learn this:
+#     evaluate EVERY value, deny if ANY value denies.
+#   * --dry-run set license_ok=True for math/code/reasoning domains with the
+#     license string "assumed permissive" — a cleared verdict from zero
+#     evidence. A code corpus is not permissive because it is code.
+#
+# Tokens are compared component-wise after splitting on "-", so "nd" cannot
+# match inside an unrelated word and "cc-by" cannot swallow "cc-by-nc-nd".
+# ---------------------------------------------------------------------------
+
+# Denied outright wherever they appear, whatever else a record also claims.
+LICENSE_DENY_TOKENS = {
+    "nd": "NoDerivatives — training a model on the work is a derivative use",
+    "nc": "NonCommercial — incompatible with a revenue mission",
+}
+
+# Exact HF/SPDX-style ids that clear the gate. An id absent from this set is
+# DENIED, including "unknown", "other" and a missing license field: an
+# unverified license is not a permissive one.
+LICENSE_ALLOW = {
+    "mit",
+    "apache-2.0",
+    "bsd-2-clause",
+    "bsd-3-clause",
+    "isc",
+    "cc0-1.0",
+    "cc-by-2.0",
+    "cc-by-3.0",
+    "cc-by-4.0",
+    "cc-by-sa-3.0",  # ShareAlike carries obligations but is not ND/NC
+    "cc-by-sa-4.0",
+    "odc-by-1.0",
+    "odc-by",
+    "pddl-1.0",
+    "unlicense",
+    "openrail",
+}
+
+
+def _license_values(raw):
+    """Flatten a license field into every individual value it asserts.
+
+    HF returns a str, a list, or (via cardData) something nested. Anything that
+    is not a str/list is stringified as ONE value rather than iterated, so a
+    dict never silently decomposes into its keys.
+    """
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        return [raw]
+    if isinstance(raw, (list, tuple, set)):
+        out = []
+        for item in raw:
+            out.extend(_license_values(item))
+        return out
+    return [str(raw)]
+
+
+def gate_license(raw) -> tuple[bool, str]:
+    """(allowed, reason). Deny by default; EVERY asserted license must pass.
+
+    A record claiming both CC-BY-4.0 and CC-BY-ND-4.0 is denied — the most
+    restrictive term governs what may be done with the work.
+    """
+    values = _license_values(raw)
+    if not values:
+        return False, "no license stated — deny by default (unverified is not permissive)"
+    for value in values:
+        ident = str(value).strip().lower()
+        if not ident:
+            return False, "empty license value — deny by default"
+        parts = ident.split("-")
+        for token, why in LICENSE_DENY_TOKENS.items():
+            if token in parts:
+                return False, f"{ident}: {why}"
+        if ident not in LICENSE_ALLOW:
+            return False, (
+                f"{ident} is not in the permissive allowlist — deny by default; "
+                "add it to LICENSE_ALLOW deliberately if it really is permissive"
+            )
+    joined = ", ".join(sorted({str(v).strip().lower() for v in values}))
+    return True, f"permissive: {joined}"
+
 # Mapping weak domains -> HF dataset search queries and data needs
 DOMAIN_TO_DATASET_QUERIES = {
     "finance": {
@@ -314,25 +415,27 @@ def search_hf_datasets_free(domain, query_list, license_pref, dry_run=False):
                         meta["license"] = lic if isinstance(lic, str) else str(lic)
                         meta["downloads"] = j.get("downloads", 0)
                         meta["likes"] = j.get("likes", 0)
-                        lic_lower = str(meta["license"]).lower()
-                        meta["license_ok"] = any(
-                            lp in lic_lower for lp in license_pref
-                        ) or any(
-                            lp in lic_lower for lp in ["mit", "apache", "cc0", "cc-by"]
-                        )
+                        # Gate on the RAW value, not meta["license"] — that one is
+                        # already str()'d for display, which is exactly how a
+                        # ['cc-by-4.0', 'cc-by-nd-4.0'] pair used to pass.
+                        meta["license_ok"], meta["license_reason"] = gate_license(lic)
                         if meta["license_ok"]:
                             meta["relevance_score"] += 0.15
                             meta["relevance_score"] = min(1.0, meta["relevance_score"])
             except Exception as e:
                 meta["api_error"] = str(e)[:200]
         else:
-            meta["license"] = (
-                "assumed permissive"
-                if domain in ["math", "code", "logic"]
-                else "needs check"
-            )
-            meta["license_ok"] = (
-                True if domain in ["math", "code", "reasoning"] else False
+            # --dry-run makes no network call, so it has NO evidence about the
+            # license and must not manufacture a verdict. This previously set
+            # license_ok=True for math/code/reasoning with the license string
+            # "assumed permissive" — a cleared gate from nothing, and precisely
+            # the "it is a code corpus, code corpora are permissive" inference
+            # the gate exists to refuse.
+            meta["license"] = "unchecked (--dry-run makes no API call)"
+            meta["license_ok"] = False
+            meta["license_reason"] = (
+                "not checked: --dry-run performs no license lookup. Re-run "
+                "without --dry-run before treating any candidate as usable."
             )
             meta["dry_run"] = True
         candidates.append(meta)
@@ -535,7 +638,23 @@ def main():
         "weak_domains": [{"domain": d, "score": s, "reasons": r} for d, s, r in agg],
         "candidates": all_candidates,
         "total_candidates": len(all_candidates),
-        "license_note": "Only MIT, Apache-2.0, CC0, CC-BY are safe for commercial training. Avoid CC-BY-NC, CC-BY-SA-NC.",
+        # This note used to say "Only MIT, Apache-2.0, CC0, CC-BY are safe ...
+        # Avoid CC-BY-NC, CC-BY-SA-NC" — which never mentioned NoDerivatives at
+        # all, and writing the family bare as "CC-BY" is what invited the
+        # substring gate that admitted cc-by-nd-4.0. Enumerate versioned ids.
+        "license_note": (
+            "Gate is deny-by-default (gate_license). ANY -nd component is denied "
+            "outright: training on a work is a derivative use. ANY -nc component "
+            "is denied: revenue mission. A record asserting several licenses must "
+            "pass on EVERY one — CC-BY-4.0 plus CC-BY-ND-4.0 is denied. 'unknown' "
+            "and 'other' are denied: unverified is not permissive. Allowed ids are "
+            "enumerated in LICENSE_ALLOW (mit, apache-2.0, cc0-1.0, cc-by-4.0, "
+            "cc-by-sa-4.0, odc-by, ...) — never a bare family prefix."
+        ),
+        "license_shadow_libraries": (
+            "FORBIDDEN as ingestion sources regardless of license field: Memory of "
+            "the World, LibGen, Sci-Hub, Z-Library, Anna's Archive, Books3."
+        ),
         "usage": "Review candidates_{date}.json, pick top 2 per domain with license_ok=True, then run download manifest on Alienware (not Hatch VM due disk)",
     }
     cand_out_path.write_text(json.dumps(candidates_payload, indent=2))
@@ -591,12 +710,25 @@ def main():
         "mkdir -p data/raw",
         "",
     ]
-    for cand in sorted(
-        all_candidates, key=lambda x: x["relevance_score"], reverse=True
-    )[:12]:
-        if not cand.get("license_ok", False) and not args.dry_run:
+    ranked = sorted(all_candidates, key=lambda x: x["relevance_score"], reverse=True)
+    if len(ranked) > 12:
+        # Never truncate silently: a manifest that lists 12 of 40 reads as
+        # "these are the candidates" unless it says otherwise.
+        lines.append(f"# NOTE: {len(ranked)} candidates found; only the top 12 by")
+        lines.append("# relevance_score are listed here. Re-run to see the rest.")
+        lines.append("")
+    for cand in ranked[:12]:
+        # The guard used to be `... and not args.dry_run`, which DISABLED the
+        # license skip in dry-run mode — and --dry-run is exactly what
+        # docs/crons/dataset-discovery-daily.md tells the daily cron to use. The
+        # result was an executable download manifest listing every top-12
+        # candidate with no license filtering whatsoever, feeding
+        # scripts/ingest_hf.py. The license gate has to bite hardest on the path
+        # that actually fetches data, so license_ok is now the ONLY condition.
+        if not cand.get("license_ok", False):
+            reason = cand.get("license_reason") or "not permissive"
             lines.append(
-                f"# SKIP {cand['name']} license {cand['license']} not permissive — review manually"
+                f"# SKIP {cand['name']} — license {cand['license']}: {reason}"
             )
             continue
         lines.append(

@@ -309,6 +309,86 @@ found exactly 42, matching the subagent's count by a different method.
 
 </details>
 
+### ✅ DONE 2026-07-25 — the dataset licence gate ADMITTED NC and ND (and was bypassed entirely on the ingest path)
+
+Prompted by "make sure we are using all the best datasets available to us" — before adding
+sources, the gate that decides which sources are *usable* had to be sound. It was not.
+`apps/ava-factory/scripts/dataset_discovery.py` (**not** frozen — only `dottie/**` and
+`configs/**` are). Four compounding defects, all measured, all fixed:
+
+1. **Substring allowlist admitted NC and ND.** The gate was
+   `any(lp in lic_lower for lp in [..., "cc-by"])`, and `"cc-by"` is a substring of
+   `cc-by-nc-4.0`, `cc-by-nd-4.0` and `cc-by-nc-nd-4.0`. **All three were ADMITTED**
+   (reproduced directly). That breaks both standing rules: ND is *always* excluded because
+   training on a work is a derivative use, and NC is excluded by default for the revenue
+   mission. Same bypass shape as scout-cli's legacy substring domain matcher. Now
+   component-wise on `-`, so `"cc-by"` cannot swallow the restricted members of its family.
+2. **Per-domain `license_pref` was decorative.** `any(license_pref) or any(<blanket>)` meant
+   a domain narrowed to `["mit","apache-2.0"]` still admitted every `cc-by*` variant.
+3. **Multi-licence records admitted on ANY match.** A list value was `str()`'d, so
+   `"['cc-by-4.0','cc-by-nd-4.0']"` passed on the permissive element — the identical bug
+   `pull_oapen_books.py::gate_rights` already had to learn. Now **every** value must pass;
+   the most restrictive term governs.
+4. **Worst — the gate was disabled on the path that actually fetches data.** The
+   download-manifest skip read
+   `if not cand.get("license_ok", False) and not args.dry_run:` so under `--dry-run` the
+   licence skip **never fired** and every top-12 candidate was written into an *executable*
+   `download_candidates_*.sh` feeding `ingest_hf.py`. And `--dry-run` is exactly what
+   `docs/crons/dataset-discovery-daily.md` prescribes for the daily cron. Compounded by
+   `--dry-run` setting `license_ok=True` for math/code/reasoning with the licence string
+   `"assumed permissive"` — a cleared verdict from zero evidence, and precisely the "it is a
+   code corpus, code corpora are permissive" inference the gate exists to refuse. `license_ok`
+   is now the sole condition, `--dry-run` clears nothing, and the manifest states when it has
+   truncated to 12 of N instead of implying 12 is all of them.
+
+Verified: `tests/test_dataset_license_gate.py` **41 tests**, mutation tested **8/8 killed**
+(substring-instead-of-component, drop-ND, drop-NC, first-value-only, allowlist-unenforced,
+empty-licence-allowed, dry-run-clears, no-normalisation). Full factory board re-run clean
+afterwards — the first run was discarded because it was started before the edits landed.
+
+- [ ] **FOLLOW-UP: `docs/crons/dataset-discovery-daily.md:21` still prescribes `--dry-run`.**
+  With the gate fixed that cron is now correctly a no-op for candidate selection (fail
+  closed), which means it produces nothing usable. Drop `--dry-run` from the documented cron:
+  the non-dry-run path only makes a small `/api/datasets/<id>` metadata call, NOT a download,
+  so it is safe on the disk-limited VM. Not done here because the flag may have been chosen
+  for a reason not recorded in the doc — confirm intent first.
+
+### NEW 2026-07-25 — 21 factory tests CANNOT RUN: httpx 0.28 removed `Client(app=...)`
+
+- [ ] **`apps/ava-factory/tests/test_server_endpoints.py` — all 21 tests ERROR at setup**
+  with `TypeError: Client.__init__() got an unexpected keyword argument 'app'`. Installed
+  **httpx 0.28.1**; the `app=` shortcut was removed in 0.28, and starlette's
+  `fastapi.testclient.TestClient` (used at line 121, `with TestClient(app) as c:`) passes it
+  internally. **Pre-existing and unrelated to the licence-gate work** — the file is byte
+  identical to HEAD and never references `dataset_discovery`; the cause is a library API
+  removal. Verified by running the chunk both before and after.
+  **Why it matters:** these are the server-endpoint regressions — health schema, the
+  intervene 403 gates, the research proxy's clean 502, the webapp shell. That is exactly the
+  surface that has to be trustworthy before hosting at bhenre.com, and right now **none of it
+  is being tested** while the board still reads green-ish because they are *errors*, not
+  failures, and a `-q` tail can be skimmed as "119 passed".
+  Fix is a dependency decision, not a code edit: either upgrade starlette/fastapi so
+  TestClient uses `httpx.ASGITransport`, or pin `httpx<0.28`. **Not done here** — this box
+  runs the live trainer, and a dependency change is exactly the kind of thing that should not
+  be slipped in beside an unrelated fix. Verify with:
+  `AVA_FACTORY_ROOT="$PWD" python -m pytest tests/test_server_endpoints.py -q` → expect 21
+  passed once fixed.
+
+### NEW 2026-07-25 — Dottie Org objective recorded as a spec
+
+`apps/dottie-org/SPEC.md` (spec-only, no code). The load-bearing finding: **ImageBind does
+not train all-pairs** — each modality trains against ONE anchor and cross-pair alignment
+emerges. These domains **do not co-occur**, so the anchor cannot be another sport; the
+candidate is **text**, which makes Dottie's own foundation LLM the anchor encoder and the two
+halves of the roadmap one project. Five open decisions are flagged as the operator's
+(anchor choice, what "multi-task" means per domain, tower decomposition, whether the
+universal model has a task, equities-private scope). Two new invariants: **temporal splits
+only** (a random split is the most likely way this produces a fake win, and all three
+recorded research `sota` rows to date were artifacts) and **entity resolution as a component,
+not glue**. Equities-private is a hard stop pending written confirmation of source + terms.
+⚠ ImageBind mechanics are stated from the paper's design, **unverified against the repo** —
+outbound HTTPS failed on all three methods (curl 35, urllib 10054, WebFetch ECONNRESET).
+
 **Memory budget for this box (16 GB) — the constraint that actually bit:** fleet + WSL VM
 ≈ 3–4 GB · desktop apps ≈ 2–3 GB **(now ~7.5 GB — Chrome/Cursor/Claude sessions have
 accumulated)** · Ollama `qwen3:8b` ≈ 5–6 GB · `qwen3:14b` ≈ **7 GB** (does NOT fit —
