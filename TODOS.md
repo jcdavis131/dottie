@@ -3703,7 +3703,31 @@ most valuable catch so far:
   kick the data builder). The fork was right to decline it: with the daemon disabled and the
   fleet down, `data_starved` reflects training being OFF, not a data-builder hiccup — kicking
   it starts nothing. Both a side-effectful action and the fork's to own.
-- [ ] **OPERATOR (low urgency, real defect — after the git reconciliation, since the fix is in
+- [ ] ⚠ **RE-VERIFIED LIVE 2026-07-24 23:19 — NOT low urgency any more, and NOT fixed. It was
+  RENAMED.** `telemetry.py:598` now reads `training_monitor.get("metrics",{}).get("loss")`,
+  which looks fixed until you follow it: line 560 defines
+  `training_monitor = latest_per_mode.get("train", latest_per_mode.get("training", {}))` —
+  the exact source this item flagged. The refactor gave it a name that *asserts* it monitors
+  training while it still reads the agent-task log.
+  **Measured, from `apps/ava-factory/reports/dottie_live_status.json` published 59 seconds
+  before the check (so this is live, not an artifact):**
+  - `latest_per_mode` keys = `['training_monitor']` — **the only key**. The lookup tries
+    `"train"` then `"training"`, and never `"training_monitor"`, so it can never hit.
+  - `health` = **null** — no training verdict is published at all.
+  - `last_train` = `steps 1200, loss 2.31, tok_per_sec 0`, timestamped **2026-07-21T03:49:18**
+    (3 days stale, evidently the "canonical sample … preserve for dash" fallback near line 563).
+  - Ground truth at that moment: **step 3080, lm 0.193** (from the trainer's own
+    `metrics_mini.jsonl`). So a file written one minute ago renders a loss **12x worse than
+    reality** as current, unmarked.
+  **This is the honesty doctrine's exact failure mode** — a stale preserved sample presented as
+  telemetry — and it is the third instance of "the name claims a measurement the code does not
+  take" found in this file.
+  🔒 `apps/ava-factory/dottie/**` is FROZEN (bind-mounted into the live trainer), so this is
+  reported, not edited. Cheapest correct fix is one line: make the lookup include
+  `"training_monitor"`, or better, key health off the trainer's `metrics_mini.jsonl` (the only
+  source that actually contains training steps) and drop the preserved-sample fallback so an
+  absent measurement renders as absent.
+  Original text: **OPERATOR (low urgency, real defect — after the git reconciliation, since the fix is in
   the diverged `apps/ava-factory` tree):** point the training monitor at a real training-step
   source (the factory trainer's own step events / checkpoints), OR make it distinguish
   "training not running" from "training stalled." As-is it cries wolf, and a monitor that fires
