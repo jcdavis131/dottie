@@ -2,7 +2,51 @@
 
 **Paste-able brief for any agent continuing this work. Everything below is live and verified.**
 
-## IN FLIGHT (2026-07-25 ~06:00) — openswap batch 5 is RUNNING. Do not relaunch it.
+## BATCH 5 DONE, UNCOMMITTED (2026-07-25 ~02:45) — 3 of 6 pass, 3 need fixes. DO NOT commit all six.
+
+Workflow `wfm14ajm8` / run `wf_bdde5063-194` finished: 13 agents, 0 errors, ~2.6M subagent tokens.
+**The six plugins are in the working tree and NOT committed.** Ranks 29-34.
+
+| plugin | verdict | note |
+|---|---|---|
+| `cve` (Snyk/Dependabot) | ✅ holds | 104 tests, GOAT **9.83**, verifier measured everything itself |
+| `quality` (SonarQube) | ✅ holds | GOAT **10.00**, but `claims_overstated` — a survivor its builder did not claim |
+| `later` (Pocket) | ✅ holds | `claims_overstated` — same shape |
+| `digest` (Mailchimp) | ❌ **fails bar** | read its verifier `findings` before touching it |
+| `cite` (Zotero) | ❌ **fails bar** | ditto |
+| `coverage` (Codecov) | ❌ **fails bar** | ditto |
+
+**Zero new dependencies in any of the six** (verified by import audit against pyproject, transitively).
+`claims_hold=false` means exactly one of: an unreproducible number, a new dependency, a vacuous
+test, or a survivor contradicting a documented invariant. `claims_overstated` is separate and does
+NOT block — that split is the fix for batch 4, where an undefined bar made two verifiers return
+opposite verdicts on identical evidence.
+
+**Next session, in this order:**
+1. Read the six verifier results in the journal (see path below). **6 of 6 verifiers found something
+   again**, matching batch 4 — a green suite plus a 10.00 GOAT was true for every plugin and
+   sufficient for none.
+2. Fix `digest` / `cite` / `coverage` per their named findings. Do not commit them first.
+3. Read the **dedup agent's** report (13th result). `cve`'s builder specifically flagged that
+   `coverage` and `quality` may have written their own `tomllib` reader or version comparator,
+   duplicating `cve.parse_pyproject` / `cve.parse_pep440`. If so they should import from
+   `bigbang.core.cve` rather than keep two copies — parser drift between core modules is a known
+   bug class here (`a11y.HTML_EXTS` is derived from `seo` for exactly that reason). But compare the
+   EXPRESSIONS first: last batch two idf functions looked duplicated and were deliberately
+   different, and merging them would have silently changed one plugin's output.
+4. Run the board in **three foreground chunks** (see the CI section below), then
+   `python scripts/goat_audit.py --baseline` to pin the new plugins — but run `--check` FIRST, since
+   `--baseline` accepts current state wholesale and would bake in any existing regression.
+
+⭐ **`cve` found and fixed two real fabricated-verdict bugs while building** (both now have named
+regression tests): an unparseable range boundary was dropped, leaving `introduced` unclosed and
+therefore UNBOUNDED, so every later release was reported vulnerable; and a WITHDRAWN advisory still
+matched and was counted while its own message claimed it was not. Both are the invented-finding
+failure this family exists to prevent.
+
+Journal: `.claude/projects/C--Users-jcdav-dottie/<session>/subagents/workflows/wf_bdde5063-194/journal.jsonl`
+
+## (superseded) IN FLIGHT — openswap batch 5 is RUNNING. Do not relaunch it.
 
 Workflow `wfm14ajm8` (run `wf_bdde5063-194`) is building **ranks 29-34** into `apps/scout-cli`:
 `cve` (Snyk/Dependabot) · `quality` (SonarQube) · `coverage` (Codecov) · `digest` (Mailchimp) ·
