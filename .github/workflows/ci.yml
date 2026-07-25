@@ -26,6 +26,14 @@ jobs:
           uv run pytest packages/ava-skills -q || true
           uv run pytest packages/ava-open-harness -q || true
           uv run pytest apps/scout-cli/tests -q || true
+      - name: GOAT audit (Carmack/Bellard) — regressions only
+        # Mechanized slice of tasks/artifacts/goat_audit_monorepo.md, run on every
+        # push so NEW plugins are held to the family's bar. --check fails only on a
+        # REGRESSION vs .goat_baseline.json, so pre-existing debt does not block CI
+        # (that is how a lint gets disabled). --min-mean holds new plugins to 7.0.
+        run: |
+          cd apps/scout-cli
+          python scripts/goat_audit.py --check --min-mean 7.0
       - name: Forge smoke test (single CLI doctrine)
         run: |
           cd apps/scout-cli
