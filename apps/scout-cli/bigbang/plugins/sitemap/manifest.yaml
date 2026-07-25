@@ -1,0 +1,24 @@
+name: sitemap
+version: 0.7.0
+description: XML-Sitemaps.com Pro-class sitemap generation, fully local (openswap rank 10 — xml.etree writer over a sorted public/ walk, an explicit URL list, or the #3 seo crawl store; deterministic and diffable)
+capabilities:
+  network:
+    # ZERO egress by design. XML-Sitemaps.com Pro's product IS the remote crawl;
+    # on a static fleet the build output is a strictly better source than
+    # fetching the deployed site back, so this adapter reads the filesystem (or
+    # the #3 seo crawl store the seo plugin already filled) and opens no socket
+    # at all. Nothing to allowlist — the axis is off, which makes "no URL of
+    # mine was ever sent anywhere" architectural rather than a promise.
+    enabled: false
+    domains: []
+  filesystem:
+    # Needed ONLY to emit the sitemap: the --out file plus its `-1..-N` shard
+    # siblings, all inside --out's own parent directory (the CLI derives shard
+    # paths from --out, never from user input). The policy engine gates the
+    # write AXIS, not the path, so this list is the documented intent: a site's
+    # own public/ build dir, plus .scout for anything the family stores. Reads
+    # (--root walks, the seo store, `lint`) need no capability.
+    write: true
+    paths: [".scout", "public"]
+  secrets:
+    allow: []

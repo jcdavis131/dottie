@@ -1,0 +1,24 @@
+name: feeds
+version: 0.7.0
+description: Feedly Pro-class RSS/Atom reader, fully local (openswap #12 — xml.etree parser + conditional GET on sqlite-stored ETag/Last-Modified + dedupe/keyword scoring + digest emitter)
+capabilities:
+  network:
+    enabled: true
+    # The seed research sources ONLY (host exact-or-dot-suffix match): the
+    # DEFAULT_FEEDS map in bigbang/core/feeds.py. Adding a default feed means
+    # adding its domain here too — default-deny is the point. A feed the USER
+    # types (`scout feeds add x --url ...`) is deliberately NOT covered here:
+    # it is gated by the persisted user allowlist instead (the links #4 / seo #3
+    # doctrine), so this manifest never gets widened to match whatever URL was
+    # typed last. A URL neither list covers is recorded state "denied" and no
+    # socket is ever opened for it.
+    domains:
+      - rss.arxiv.org
+      - arxiv.org
+      - huggingface.co
+      - simonwillison.net
+  filesystem:
+    write: true
+    paths: [".scout"]
+  secrets:
+    allow: []

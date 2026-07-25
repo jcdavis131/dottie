@@ -1,0 +1,23 @@
+name: logs
+version: 0.7.0
+description: Papertrail/Splunk/Loggly-class log pipeline, fully local (openswap #14 — tailing collectors with per-file byte offsets, per-source parsers, indexed sqlite3 store, zero egress)
+capabilities:
+  network:
+    # ZERO egress by design: a hosted log service's whole architecture is "ship
+    # every line to someone else's box". Deleting the ingest endpoint IS the
+    # product, so the network axis is fully disabled — not even a loopback
+    # socket. "No log line ever left the box" is architectural, nothing to
+    # audit, and no domain allowlist is needed because no domain is reachable.
+    enabled: false
+    domains: []
+  filesystem:
+    # Writes are confined to the sqlite store under .scout (the entries index +
+    # the per-file byte offsets). Log files themselves are READ ONLY — the
+    # collector never truncates, rotates or rewrites a source, and the paths it
+    # reads come from --root/--sources at call time, never from this manifest.
+    write: true
+    paths: [".scout"]
+  secrets:
+    allow: []
+tags: [logs, observability, openswap]
+# Solo personal project, no connection to employer, built with public/free-tier only

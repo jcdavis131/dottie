@@ -1,0 +1,24 @@
+name: extract
+version: 0.7.0
+description: Diffbot/Mercury Parser-class article extraction, fully local (openswap #11 — html.parser text-vs-link-density scoring + title/byline/date heuristics into a sqlite corpus ledger)
+capabilities:
+  network:
+    enabled: true
+    # Research ingestion reads arbitrary user-chosen pages, so a manifest
+    # allowlist naming them all would be a rubber stamp. This list is therefore
+    # deliberately LOOPBACK ONLY (host exact-or-dot-suffix match) — the local
+    # capture/mirror server and ollama are the only hosts this adapter trusts
+    # without being asked. Every OTHER URL is gated at call time against the
+    # PERSISTED USER allowlist (~/.config/bigbang/policy.yaml, default-deny:
+    # `scout reach allow <host>` to widen it). File and stdin input make zero
+    # network calls, which is the intended batch path.
+    domains:
+      - localhost
+      - 127.0.0.1
+  filesystem:
+    # the corpus ledger only (.scout/extract.db) — batch dedupes by content
+    # hash, so re-ingesting an unchanged page must be able to record a hit
+    write: true
+    paths: [".scout"]
+  secrets:
+    allow: []

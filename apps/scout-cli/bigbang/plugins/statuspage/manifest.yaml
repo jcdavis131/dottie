@@ -1,0 +1,23 @@
+name: statuspage
+version: 0.7.0
+description: StatusPage.io/Atlassian-class status page, fully local (openswap #18 — static self-contained HTML rendered READ-ONLY from the shared uptime/certmon/heartbeat ledger; collects nothing)
+capabilities:
+  network:
+    # ZERO egress AND zero ingress by design. This adapter collects nothing —
+    # it only reads ledgers that uptime (#2), certmon (#9) and heartbeat (#6)
+    # already wrote — so it has no probe to allowlist and no host to reach.
+    # StatusPage.io's value is a hosted page plus a wire protocol you feed;
+    # publishing to that SaaS would be the forbidden network tier, so the axis
+    # is disabled outright and the guarantee is falsifiable rather than a
+    # promise. `render` writes a file; whoever publishes it does so with their
+    # own deploy tool, not with this plugin's credentials.
+    enabled: false
+    domains: []
+  filesystem:
+    # the one genuine need: writing the generated HTML page. The ledger itself
+    # is opened with sqlite mode=ro (see core/statuspage.open_readonly), so no
+    # write capability is used or usable on the monitoring substrate.
+    write: true
+    paths: [".scout"]
+  secrets:
+    allow: []

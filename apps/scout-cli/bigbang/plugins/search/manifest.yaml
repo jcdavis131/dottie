@@ -1,0 +1,16 @@
+name: search
+version: 0.7.0
+description: Elastic Cloud/Algolia-class full-text search, fully local (openswap #20 — sqlite3 FTS5 index with BM25 ranking + snippet highlighting, no cluster, zero egress)
+capabilities:
+  network:
+    # ZERO egress by design: the corpus is your notes, docs and source. Elastic
+    # Cloud's architecture is "ship every document to someone else's cluster and
+    # hold an API key" — this adapter does not get a socket at all, so "no
+    # document left the box" is auditable rather than promised.
+    enabled: false
+    domains: []
+  filesystem:
+    write: true
+    paths: [".scout"]
+  secrets:
+    allow: []
