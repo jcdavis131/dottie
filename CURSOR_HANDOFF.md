@@ -43,9 +43,15 @@ Verified both directions: 110 passed with the guard intact; with NUL removed, **
 passed** and the sole failure is that test (`DID NOT RAISE DigestError`). digest.py restored
 byte-identical. ⚠ The test edit is deliberately NOT committed on its own — `test_digest.py` without
 `core/digest.py` would fail at import in CI. Commit it WITH the plugin.
-Its verifier also reported **two unfalsifiable conjuncts at tests/test_digest.py:285-289**
-(`test_every_shipped_section_survives_its_own_validator`) which both the builder's AST scan and its
-hand-audit missed — still to fix.
+✅ **Its second item is ALSO fixed in-tree**: the two unfalsifiable conjuncts at
+`tests/test_digest.py` (`test_every_shipped_section_survives_its_own_validator`), which both the
+builder's AST scan and its hand-audit missed. The vacuity was structural rather than a bad
+assertion — `set(x) >= set()` is True for every `x`, so an empty `REQUIRED_ROLES` would make the
+cols check meaningless, and an empty `DEFAULT_SECTIONS` would skip the loop entirely and still pass.
+Fixed by pinning both PREMISES (`REQUIRED_ROLES` non-empty, `DEFAULT_SECTIONS` >= 4) ahead of the
+loop. Verified the guard bites: emptying `REQUIRED_ROLES` makes exactly that test fail; digest.py
+restored byte-identical; 110 passed intact. **`digest` should now clear the bar on a re-verify** —
+both grounds addressed — but re-run its verifier rather than taking my word for it.
 
 **`coverage`'s fix is fully specified, no re-derivation needed.** Its verifier found NO vacuous test
 and NO fabricated metric; it fails because **7 fresh mutations in the reporting/disclosure code ALL
