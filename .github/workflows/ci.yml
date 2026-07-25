@@ -48,6 +48,13 @@ jobs:
       # a broken one's exemption. Measured 2026-07-24 with THIS exact command, and
       # also as `python -m pytest` from the repo root and from packages/ava-skills:
       # 80 passed, ~15s, all three agreeing.
+      #
+      # DO NOT "tidy" this into `pytest packages/ava-skills/tests`. That collects 66,
+      # not 80 -- ava-skills declares testpaths = ["skills","tests"] and half its
+      # suite lives under skills/, so narrowing to tests/ silently drops 14 tests and
+      # still exits 0. Measured both ways today: `pytest tests` = 66, this form = 80.
+      # Passing the package DIRECTORY (or running bare from inside it) is what keeps
+      # skills/ in scope.
       - name: Pytest ava-skills (hard gate)
         run: uv run pytest packages/ava-skills -q
 
