@@ -127,3 +127,15 @@ jobs:
                    apps/bluehenre/public/js/console.mjs apps/bluehenre/scripts/build_hub_registry.mjs; do
             node --check "$f"
           done
+      # Release gate (tasks/production_workflow.md). The unit tests lock the
+      # HONESTY contract the G3 smoke asserts against a deployed URL: registry
+      # drift named to the exact field path, assistant replies stamped from
+      # {dottie, offline}, and the retracted 275.95 ppl allowed ONLY beside a
+      # retraction marker. --pre re-runs the release checks as one exit-coded
+      # command so a deploy needs no remembered sequence. The G3 smoke itself is
+      # NOT run here: it needs a deployed URL, and CI must not depend on
+      # www.bhenre.com being up to pass.
+      - name: Release gate assertions (honesty contract)
+        run: node apps/bluehenre/scripts/release_gate.test.mjs
+      - name: Release gate --pre (the documented pre-deploy sequence, one command)
+        run: node apps/bluehenre/scripts/release_gate.mjs --pre

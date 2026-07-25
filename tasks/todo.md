@@ -82,7 +82,35 @@ the alias moves, so a bad build never becomes www.bhenre.com and rollback is
       the retracted **275.95** appears only beside a retraction marker, never as
       a live metric · an offline reply is well-formed and carries no fabricated
       number.
-- [ ] **S3** wire `--pre` into the existing `bluehenre-checks` CI job.
+- [x] **S3** wired into `bluehenre-checks`: `release_gate.test.mjs` (48 assertions)
+      + `release_gate.mjs --pre`. The G3 smoke is deliberately NOT in CI — it
+      needs a deployed URL, and CI must not fail because www.bhenre.com is down.
+
+### 🔴 THE GATE'S FIRST RUN FOUND A LIVE PROVENANCE DEFECT
+
+`--post https://www.bhenre.com` fails **today**, on 4 fields, and it is not a
+false positive:
+
+```
+.datasets[1].data_files[0].bytes    served=633553  committed=633505   (+48)
+.datasets[1].data_files[0].sha256   served=79fee2…  committed=5f2a0c…
+.research[3].integrity.bytes        served=2380    committed=2344     (+36)
+.research[3].integrity.sha256       served=23d62d…  committed=32de55…
+```
+
+`research[3]` is **`ledger_retroflag`**, and 2380-vs-2344 is the exact file and
+byte pair from the `.gitattributes` line-ending incident. The deltas are pure
+CRLF↔LF: **production is serving sha256 integrity hashes computed on CRLF copies
+while the repo now holds LF.** The Hub card advertises "integrity (sha256
+cross-check)", so bhenre.com is currently displaying integrity hashes that do not
+match their source files — a provenance violation of exactly the kind
+`build_hub_registry.mjs --check` prevents locally. `--check` passes; the
+*deployment* predates the fix. Every count matches (18 artifacts, 3/5/10), which
+is why nothing caught it: the drift is four fields deep.
+
+- [ ] **Fix = redeploy** (G2, the operator's gated step per the plan — I did not
+      deploy). After deploying, `--post` must go green before the alias moves.
+
 - [ ] **S4** G4 writes `data/last_good_deployment.txt` (pin becomes an output of
       a passed gate, not a hand-edited input); deploy runbook becomes gate-driven.
 - [ ] **S7** G5 watch loop — scheduled liveness + freshness probe. Stale WARNS,
