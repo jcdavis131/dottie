@@ -1,40 +1,40 @@
 {
   "meta": {
     "preset": "mini",
-    "base_ckpt": "/ckpt/tool/tool_final.pt",
+    "base_ckpt": "/ckpt/tool/tool_final_ext1.pt",
     "chat_ckpt": "none",
     "device": "cuda",
     "probe_n": 200,
     "git_sha": "unknown",
     "torch": "2.4.0+cu124",
-    "wall_s": 1818.31
+    "wall_s": 604.09
   },
   "base": {
-    "ckpt": "/ckpt/tool/tool_final.pt",
+    "ckpt": "/ckpt/tool/tool_final_ext1.pt",
     "perplexity": {
       "0": {
-        "ppl": 3506.53756177502,
-        "tokens": 1375744
+        "ppl": 141.76797942556104,
+        "tokens": 26112
       },
       "1": {
-        "ppl": 997.3443119101249,
-        "tokens": 1099264
+        "ppl": 163.78216011981166,
+        "tokens": 34304
       },
       "2": {
-        "ppl": 22440.4188517355,
-        "tokens": 1999872
+        "ppl": 676.1274776069046,
+        "tokens": 46080
       },
       "3": {
-        "ppl": 2133.8230808534913,
-        "tokens": 729088
+        "ppl": 298.2233425494659,
+        "tokens": 12288
       },
       "4": {
-        "ppl": 334.6245580699632,
-        "tokens": 675840
+        "ppl": 125.94327940572634,
+        "tokens": 4096
       },
       "5": {
-        "ppl": 4.895457649129967,
-        "tokens": 479232
+        "ppl": 247.3588651488001,
+        "tokens": 8192
       }
     },
     "probes": {
@@ -44,8 +44,8 @@
         "total": 200
       },
       "modus_ponens": {
-        "accuracy": 0.05,
-        "correct": 10,
+        "accuracy": 0.0,
+        "correct": 0,
         "total": 200
       },
       "facts": {
@@ -73,11 +73,11 @@
       {
         "test": "spider_ant",
         "measured": {
-          "logP_base_8": -17.066864013671875,
-          "logP_base_6": -14.960726737976074,
-          "logP_int_8": -17.06676483154297,
-          "logP_int_6": -14.960640907287598,
-          "causal_effect": -1.33514404296875e-05,
+          "logP_base_8": -10.036322593688965,
+          "logP_base_6": -9.48291015625,
+          "logP_int_8": -10.03630542755127,
+          "logP_int_6": -9.482933044433594,
+          "causal_effect": -4.00543212890625e-05,
           "s2_has_spider_top8": false
         },
         "pass": false,
@@ -86,41 +86,41 @@
       {
         "test": "france_china",
         "measured": {
-          "flips": 2,
+          "flips": 0,
           "details": [
             {
               "prompt": "The capital of France is",
-              "baseline_greedy": "a palindrome when written",
-              "intervened_greedy": "a palindrome when written",
+              "baseline_greedy": "the more recent instruction. T",
+              "intervened_greedy": "the more recent instruction. T",
               "flipped": false
             },
             {
               "prompt": "The official language of France is",
-              "baseline_greedy": "a stakeholder unless and is",
-              "intervened_greedy": "a stakeholder unless and is",
-              "flipped": true
+              "baseline_greedy": "the more recent instruction. T",
+              "intervened_greedy": "the more recent instruction. T",
+              "flipped": false
             },
             {
               "prompt": "France is located on the continent of",
-              "baseline_greedy": "code.\n\nReason",
-              "intervened_greedy": "code.\n\nReason",
+              "baseline_greedy": "the continenting system that continent",
+              "intervened_greedy": "the continenting system that continent",
               "flipped": false
             },
             {
               "prompt": "The currency of France is the",
-              "baseline_greedy": "defense of an honest secret secret",
-              "intervened_greedy": "defense of an honest secret secret",
-              "flipped": true
+              "baseline_greedy": "more recent instruction. Tie",
+              "intervened_greedy": "more recent instruction. Tie",
+              "flipped": false
             }
           ]
         },
-        "pass": true,
+        "pass": false,
         "bar": ">=2/4 flip"
       },
       {
         "test": "soccer_rugby",
         "measured": {
-          "mean_verbalizable_mass": 0.2018878102078452,
+          "mean_verbalizable_mass": 0.24840562299272279,
           "report_acc": 0.0,
           "n_docs": 100
         },
@@ -130,9 +130,9 @@
       {
         "test": "spanish_french",
         "measured": {
-          "auto_cos": 0.9999999761581421,
-          "deliberate_cos": 0.9999999523162841,
-          "delta": 2.384185793236071e-08
+          "auto_cos": 1.000000011920929,
+          "deliberate_cos": 1.0,
+          "delta": 1.1920928910669204e-08
         },
         "pass": false,
         "bar": "auto_cos - deliberate_cos > 0.05"
@@ -177,28 +177,28 @@
     "ckpt": "random-init",
     "perplexity": {
       "0": {
-        "ppl": 37428.43109748441,
-        "tokens": 1375744
+        "ppl": 37149.69282001217,
+        "tokens": 26112
       },
       "1": {
-        "ppl": 38009.95554199607,
-        "tokens": 1099264
+        "ppl": 37917.26573778633,
+        "tokens": 34304
       },
       "2": {
-        "ppl": 35403.712719484036,
-        "tokens": 1999872
+        "ppl": 35210.25838601976,
+        "tokens": 46080
       },
       "3": {
-        "ppl": 37303.50143946954,
-        "tokens": 729088
+        "ppl": 36862.03360733306,
+        "tokens": 12288
       },
       "4": {
-        "ppl": 36705.766669138415,
-        "tokens": 675840
+        "ppl": 40001.79821657564,
+        "tokens": 4096
       },
       "5": {
-        "ppl": 37720.79703319445,
-        "tokens": 479232
+        "ppl": 36886.03427803066,
+        "tokens": 8192
       }
     },
     "probes": {
@@ -284,7 +284,7 @@
       {
         "test": "soccer_rugby",
         "measured": {
-          "mean_verbalizable_mass": 0.0003189349436433986,
+          "mean_verbalizable_mass": 0.0003187888644606573,
           "report_acc": 0.0,
           "n_docs": 100
         },

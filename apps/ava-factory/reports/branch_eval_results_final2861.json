@@ -7,34 +7,36 @@
     "probe_n": 200,
     "git_sha": "unknown",
     "torch": "2.4.0+cu124",
-    "wall_s": 1818.31
+    "wall_s": 572.72
   },
   "base": {
     "ckpt": "/ckpt/tool/tool_final.pt",
     "perplexity": {
       "0": {
-        "ppl": 3506.53756177502,
-        "tokens": 1375744
+        "ppl": 2601.019767269918,
+        "tokens": 6144
       },
       "1": {
-        "ppl": 997.3443119101249,
-        "tokens": 1099264
+        "ppl": 617.1583270868028,
+        "tokens": 9728
       },
       "2": {
-        "ppl": 22440.4188517355,
-        "tokens": 1999872
+        "ppl": 24160.0447993501,
+        "tokens": 12288
       },
       "3": {
-        "ppl": 2133.8230808534913,
-        "tokens": 729088
+        "ppl": 3125.6263813943137,
+        "tokens": 2048
       },
       "4": {
-        "ppl": 334.6245580699632,
-        "tokens": 675840
+        "ppl": NaN,
+        "tokens": 3970,
+        "error": "too short"
       },
       "5": {
-        "ppl": 4.895457649129967,
-        "tokens": 479232
+        "ppl": NaN,
+        "tokens": 2910,
+        "error": "too short"
       }
     },
     "probes": {
@@ -120,7 +122,7 @@
       {
         "test": "soccer_rugby",
         "measured": {
-          "mean_verbalizable_mass": 0.2018878102078452,
+          "mean_verbalizable_mass": 0.1811314814403886,
           "report_acc": 0.0,
           "n_docs": 100
         },
@@ -177,28 +179,30 @@
     "ckpt": "random-init",
     "perplexity": {
       "0": {
-        "ppl": 37428.43109748441,
-        "tokens": 1375744
+        "ppl": 38048.04684492004,
+        "tokens": 6144
       },
       "1": {
-        "ppl": 38009.95554199607,
-        "tokens": 1099264
+        "ppl": 38507.84789343576,
+        "tokens": 9728
       },
       "2": {
-        "ppl": 35403.712719484036,
-        "tokens": 1999872
+        "ppl": 34996.45765254376,
+        "tokens": 12288
       },
       "3": {
-        "ppl": 37303.50143946954,
-        "tokens": 729088
+        "ppl": 37110.034545042654,
+        "tokens": 2048
       },
       "4": {
-        "ppl": 36705.766669138415,
-        "tokens": 675840
+        "ppl": NaN,
+        "tokens": 3970,
+        "error": "too short"
       },
       "5": {
-        "ppl": 37720.79703319445,
-        "tokens": 479232
+        "ppl": NaN,
+        "tokens": 2910,
+        "error": "too short"
       }
     },
     "probes": {
@@ -284,7 +288,7 @@
       {
         "test": "soccer_rugby",
         "measured": {
-          "mean_verbalizable_mass": 0.0003189349436433986,
+          "mean_verbalizable_mass": 0.00031815878734050787,
           "report_acc": 0.0,
           "n_docs": 100
         },
