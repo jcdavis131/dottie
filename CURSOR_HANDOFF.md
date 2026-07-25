@@ -23,7 +23,18 @@ Workflow `wfm14ajm8` / run `wf_bdde5063-194` finished: 13 agents, 0 errors, ~2.6
 wrong (7x6=42 asserted, 6 entries present), which means a headline figure in its report was never
 actually measured. Root cause of (1) per the verifier: a MIS-SCOPED test at `tests/test_cite.py:526`
 (`test_roundtrip_marks_a_key_or_type_change_when_the_key_is_unemittable`) that never reaches the
-key/type-change path it names — fix is to add a test that actually reaches it.
+key/type-change path it names — but **read the site before writing a test, because the fix may not be
+a test.** I inspected it: the test sets `key = "has space"`, which makes the entry UNEMITTABLE, so
+`roundtrip_report` returns early with `error is not None`. It then asserts only
+`identical is False and error is not None` — which EVERY failure mode satisfies, so the key/type
+comparison is never reached. Meanwhile the very next test's own docstring
+(`test_the_emitter_is_verbatim_so_no_value_can_change_across_a_round_trip`) states plainly that "the
+`changed_fields` conjunct of `identical` is a guard against a future normalizing emitter and is not
+reachable today." If the key/type branch is likewise unreachable while the emitter is verbatim, then
+forcing a test for it is impossible and the honest fix is to (a) rename this test to what it actually
+pins (an unemittable key is refused, with an error) and (b) say at the `identical` site which
+conjuncts are forward-guards rather than covered behavior — exactly the note the sibling test already
+makes. Determine reachability FIRST; do not manufacture a test for a branch no input can reach.
 Note the verifier reasoned from the SCHEMA rather than its own taste, which is what batch 4 lacked:
 *"claims_overstated = FALSE only because the schema reserves that flag for the honest-but-incomplete
 case WITHOUT any contradicted invariant — and there IS a contradicted invariant here. This is the
