@@ -54,7 +54,11 @@ training:
                                    # leave false on live mini; try on mini_overtrain smoke first.                   # NOT WIRED: ava/train.py never calls torch.compile, so
                                    # `true` here only misled perf estimates (6-10k tok/s assumed
                                    # compiled; eager reality at P2 is ~3k). Wire it before enabling.
-  tokens_total: 2_500_000_000
+  # Leg 1 (docs/CURRICULUM_EXPANSION.md): 2.5B + 0.9B = 3.4B -- TPP ~20 on the
+  # 171M-param basis the doc's own "TPP 12.5" figure uses.
+  # HAZARD: cfg.total_steps() for a BASE-preset boot grows with this value; do
+  # NOT boot the base compose service after applying (see Risks #1).
+  tokens_total: 3_400_000_000
   tokens_per_step: 262_144         # e.g. micro 16 x seq 1024 x accum 16
   # Telemetry verdict (2026-07-14, torch_peak_alloc_mb): steady-state peak
   # 12,486MB on the 12,282MB card -- every P2 step runs ~1.7GB into WDDM
@@ -71,17 +75,22 @@ training:
   # change the running trainer until a new run / recreate.
   tokens_per_param_target: 40.0
 
-phases:                            # same 6-phase shape, 2.5B budget
+phases:                            # same 6-phase shape, 3.4B budget (Leg 1)
   - {name: p0_logic,      tokens: 400_000_000, seq: 512,  rope_base: 10000,  ntk: 1.0, mix: {logic: 1.0}}
   - {name: p1_math,       tokens: 500_000_000, seq: 512,  rope_base: 10000,  ntk: 1.0, mix: {math: 0.85, logic: 0.15}}
   # tool_use = agentic workflows / harness skills (react_tools generator):
   # foundation vocabulary in P2, multi-step tool workflows in P3, and
   # grounding-heavy (notfound/cite) anneal in P5.
   - {name: p2_foundation, tokens: 850_000_000, seq: 1024, rope_base: 10000,  ntk: 1.0, mix: {encyclopedia: 0.30, code: 0.20, tool_use: 0.15, math: 0.15, logic: 0.10, chat: 0.10}}
-  - {name: p3_reasoning,  tokens: 400_000_000, seq: 2048, rope_base: 50000,  ntk: 1.0, mix: {math_reasoning: 0.30, tool_use: 0.30, logic: 0.15, temporal: 0.15, code: 0.10}}
+  # Leg 1 depth: +700M in p3, probe-facing axes up (weights still sum to 1.0).
+  # phase_for_step() puts the resumed branch (tokens_done 2.5B) back in p3
+  # until 2.85B: 350M fresh tail at this mix, then p4 unchanged, then anneal.
+  - {name: p3_reasoning,  tokens: 1_300_000_000, seq: 2048, rope_base: 50000,  ntk: 1.0, mix: {math_reasoning: 0.35, tool_use: 0.35, logic: 0.10, temporal: 0.10, code: 0.10}}
   # tool_use in P4 = long-context search/cite (tool_curriculum L2/L3 + p4_search_cite).
-  - {name: p4_long,       tokens: 150_000_000, seq: 4096, rope_base: 100000, ntk: 1.2, mix: {long_docs: 0.55, needle: 0.25, tool_use: 0.20}}
-  - {name: p5_anneal,     tokens: 200_000_000, seq: 4096, rope_base: 100000, ntk: 1.2, mix: {tool_use: 0.25, proofs_verified: 0.20, chat: 0.20, safety: 0.20, math_reasoning: 0.15}}
+  - {name: p4_long,       tokens: 150_000_000, seq: 4096, rope_base: 100000, ntk: 1.2, mix: {long_docs: 0.40, needle: 0.20, tool_use: 0.20, encyclopedia: 0.10, math: 0.10}}
+  # Anneal tail kept LAST and doubled; tool_use .25->.30 (proofs_verified
+  # gives back the .05). chat/safety retention weights untouched.
+  - {name: p5_anneal,     tokens: 200_000_000, seq: 4096, rope_base: 100000, ntk: 1.2, mix: {tool_use: 0.30, proofs_verified: 0.10, chat: 0.15, safety: 0.20, math_reasoning: 0.15, logic: 0.05, math: 0.05}}
 
 # Tool/chat forks from mini base_final (T9.3 gate before base1b).
 # --branch tool --init /ckpt/base_final.pt --run /ckpt/tool  (no --resume)
@@ -89,20 +98,23 @@ phases:                            # same 6-phase shape, 2.5B budget
 branches:
   tool:
     init: /ckpt/base_final.pt
-    tokens: 750_000_000            # extended 2026-07-22 (was 390M/1487 steps, done): ~2861
-                                   # steps @ 262144 tok/step. Completes the FULL curriculum:
-                                   # p3 tail (2.14->2.15B) then p4_long + p5_anneal to 2.5B.
-                                   # p4/p5 seq-4096 is proven on this GPU in bf16 (base run's
-                                   # stable_p4 exists); AVA_MAX_MICRO_BATCH is the relief valve.
-                                   # Operator 2026-07-22: "get training up and running" for the
-                                   # live dashboard + game twin. Prior leg (390M) logged below.
-                                   # was: 300M->390M 2026-07-21, +343 steps within p3 for the
-                                   # scout_cli (tool_use) + zk_math (math_reasoning) curriculum.
+    tokens: 1_650_000_000          # Leg 1 (was 750M/2861 steps, done): +0.9B to 3.4B cum
+                                   # = ~6294 steps @ 262144 tok/step. WSD horizon
+                                   # re-extends: plateau to step ~5790 (0.92), then
+                                   # decay -- the same move as the 390M->750M
+                                   # extension that took weighted heldout ppl
+                                   # 7,814 -> 276. ~1-1.3 GPU-days at ~10.5k tok/s;
+                                   # AVA_MAX_MICRO_BATCH stays the p4/p5 seq-4096
+                                   # relief valve.
+                                   # was: 750M 2026-07-22 (full curriculum to 2.5B);
+                                   # 390M 2026-07-21 (+343 steps within p3).
     start_tokens: 1_750_000_000    # cum through p0+p1+p2 → enter p3
     freeze: [system1, system2]
     finetune: [critic, planner, router, arbitration]
     router_bias: [0.10, 0.35, 0.10, 0.45]   # tool_selection prior
-    mix: {math_reasoning: 0.30, tool_use: 0.30, logic: 0.15, temporal: 0.15, code: 0.10}
+    # descriptive only -- train.py never reads branch mix; the sampler follows
+    # phases[] via phase_for_step(). Mirrors the new p3 mix.
+    mix: {math_reasoning: 0.35, tool_use: 0.35, logic: 0.10, temporal: 0.10, code: 0.10}
 
 branch_chat:
   init: /ckpt/base_final.pt
