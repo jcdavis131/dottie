@@ -2,7 +2,51 @@
 
 **Paste-able brief for any agent continuing this work. Everything below is live and verified.**
 
-## CURRENT (2026-07-24, newest) — ALL 3 PILLARS LIVE + repo tied up
+## NEWEST (2026-07-25) — TRAINING RESTARTED (Leg 1) + Monitor bridge live
+
+**Training is UP.** Tool branch resumed from step 2861 into **phase 3** on the
+extended **Leg-1 schedule (2.5B → 3.4B)**; container confirms `tokens_total:
+3_400_000_000` from its bind mount. Watch it with:
+`docker exec dottie-factory-trainer-1 sh -c "tail -3 /reports/metrics_mini.jsonl"`
+
+- **Leg-1 schedule applied** (commit 92baf4b): p3 400M→**1.3B**, p4 mix + replay
+  (encyclopedia .10 / math .10), p5 stays **200M** + replay (logic .05 / math .05).
+  Verified tokens_total == phase sum == 3.4B, every mix sums to 1.0.
+  ⚠ **`leg1_diffgen.py` was STALE** — it regenerated the PRE-REVISION draft (p3
+  1.1B, p5 **doubled** to 400M, NO p4/p5 replay), exactly what the completion eval
+  invalidated (275.95→4,103). Corrected + banner-disarmed (4204ccf). Do not apply
+  its output over configs/mini.yaml.
+- ⚠ **LOSS PLATEAU — the open question.** Resume spike 4.746 (step 2870) fell to
+  ~3.05 by 2890 then **oscillates ~3.0–3.4 through step 2920** — it is NOT tracking
+  the prior leg (5.44→2.91 by +30, then ~0.16). Likely the *measured* p0–p3
+  competence loss from the anneal showing up as slow re-learning. No crash, no NaN,
+  ~6k tok/s. **Do not panic-revert** (runbook). Verdict comes from the held-out eval
+  at leg end. **If still ~3 at step ~3000–3100**, the honest call is to re-init from
+  **step-1487 (`tool_final_ext1.pt`, present in-container)** per the Leg-1 doc's own
+  recommendation — that is an OPERATOR decision.
+- **Config drift FIXED durably** (ac30c79): the trainer bind-mounts host configs but
+  the server had none, so it served the image's baked 2.5B → run_progress published
+  `frac 1.0`, a "100% complete" run mid-training. Added `./configs → /app/configs`
+  read-only to the server service. Proved by recreating the container (which
+  discarded an earlier ephemeral `docker cp`) → reads 3.4B, site honest at 73.8%.
+- **Monitor runtrack bridge SHIPPED** (f3a7e39, 3593bcc, 6c610b5):
+  `apps/dottie/scripts/build_training_runs.py` segments the metrics log on the
+  trainer's own resume/done events, logs legs into the local `runtrack.db`
+  (gitignored), exports static `training_runs.json`; Monitor card renders a
+  "Training legs" table. `parseTrainingRuns()` + 5 tests → **suite 124**.
+  Refresh anytime (now safe to re-run):
+  `docker exec dottie-factory-trainer-1 sh -c "cat /reports/metrics_mini.jsonl" > m.jsonl`
+  then `python apps/dottie/scripts/build_training_runs.py --metrics m.jsonl --db
+  apps/dottie/data/runtrack.db --out apps/bluehenre/public/training_runs.json`
+  Fixed two defects found by verifying: 91 phantom legs (restart fragments — now
+  min-steps + containment-dedup, drop count stated in the readout) and a
+  non-idempotent ingest that duplicated every leg on re-run (now keyed on first
+  step + incremental via run_history; 3 ingests → 0 duplicates).
+- **Still NOT done (operator):** continuous live training-history would need the
+  publisher integration (edits the live 10-min feed — explicit go required); the
+  readout is static until re-run.
+
+## CURRENT (2026-07-24) — ALL 3 PILLARS LIVE + repo tied up
 
 **Gate before any deploy (all currently green):**
 ```
