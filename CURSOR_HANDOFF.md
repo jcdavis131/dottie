@@ -12,9 +12,26 @@ Workflow `wfm14ajm8` / run `wf_bdde5063-194` finished: 13 agents, 0 errors, ~2.6
 | `cve` (Snyk/Dependabot) | ✅ holds | 104 tests, GOAT **9.83**, verifier measured everything itself |
 | `quality` (SonarQube) | ✅ holds | GOAT **10.00**, but `claims_overstated` — a survivor its builder did not claim |
 | `later` (Pocket) | ✅ holds | `claims_overstated` — same shape |
-| `digest` (Mailchimp) | ❌ **fails bar** | read its verifier `findings` before touching it |
+| `digest` (Mailchimp) | ❌ was failing | **security gap ALREADY FIXED in the working tree — see below** |
 | `cite` (Zotero) | ❌ **fails bar** | ditto |
 | `coverage` (Codecov) | ❌ **fails bar** | **fix list already derived — see below** |
+
+**`digest`'s trigger is FIXED in the working tree (uncommitted, verified by mutation).** Its
+`claims_hold=false` was one surviving mutant contradicting a documented invariant:
+`bigbang/core/digest.py:915` screens `"\r\n\0"`, and narrowing it to `"\r\n"` survived all 110 tests.
+`safe_header`'s docstring promises *"Reject CR/LF/NUL … Header injection, closed"*, and NUL is the
+character a template can carry out of ledger text without looking like a newline — measured:
+`safe_header("Weekly\x00Bcc: evil@x")` refuses on the pristine module and is ACCEPTED under the
+mutant, reaching `Header()`. Root cause was test coverage, not code:
+`test_build_message_refuses_a_header_with_a_newline_in_it` exercised only `\n` and `\r\n`, so the NUL
+branch of the same guard was never asserted. I added two `\x00` cases to that test's table.
+Verified both directions: 110 passed with the guard intact; with NUL removed, **1 failed / 109
+passed** and the sole failure is that test (`DID NOT RAISE DigestError`). digest.py restored
+byte-identical. ⚠ The test edit is deliberately NOT committed on its own — `test_digest.py` without
+`core/digest.py` would fail at import in CI. Commit it WITH the plugin.
+Its verifier also reported **two unfalsifiable conjuncts at tests/test_digest.py:285-289**
+(`test_every_shipped_section_survives_its_own_validator`) which both the builder's AST scan and its
+hand-audit missed — still to fix.
 
 **`coverage`'s fix is fully specified, no re-derivation needed.** Its verifier found NO vacuous test
 and NO fabricated metric; it fails because **7 fresh mutations in the reporting/disclosure code ALL
