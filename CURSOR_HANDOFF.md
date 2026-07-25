@@ -37,6 +37,19 @@ opposite verdicts on identical evidence.
 4. Run the board in **three foreground chunks** (see the CI section below), then
    `python scripts/goat_audit.py --baseline` to pin the new plugins — but run `--check` FIRST, since
    `--baseline` accepts current state wholesale and would bake in any existing regression.
+   ⚠ **DO NOT run `--baseline` until all six are COMMITTED.** goat_audit scans the working tree, so
+   it already scores the three uncommitted plugins (measured: cite 10.00, digest 10.00,
+   coverage 9.67). Pinning now would write baseline entries for plugins absent from a fresh clone,
+   and CI's `--check` runs against the checkout. `cve`/`quality`/`later` are therefore still
+   UNPROTECTED — that is the same gap that left 16 of 52 plugins unpinned earlier today.
+
+⭐ **The sharpest evidence in this whole arc, measured 2026-07-25:** `cite` scores **10.00 across
+all six GOAT dimensions** and `digest` scores **10.00**, and BOTH returned `claims_hold=false` from
+independent adversarial verification. A perfect audit score plus a green suite is not evidence that
+a plugin is correct. `goat_audit.py` counts asserts and cannot tell a thorough suite from an
+over-fitted one, and a vacuous test is a PASSING test — so the audit is structurally incapable of
+catching the most common defect these batches produce. Never let a 10.00 substitute for the verify
+stage, and never let "the tests pass" substitute for reading what they assert.
 
 ⭐ **`cve` found and fixed two real fabricated-verdict bugs while building** (both now have named
 regression tests): an unparseable range boundary was dropped, leaving `introduced` unclosed and
