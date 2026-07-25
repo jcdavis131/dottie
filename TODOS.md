@@ -52,9 +52,18 @@ Re-check with:
   feeds/extract). Meanwhile `bigbang/core/searchindex.py:975` — built in the SAME batch — defines
   `_idf(doc_count, df) = math.log(1 + (doc_count - df + 0.5)/(df + 0.5))`, a real BM25 idf, with
   postings carrying per-document tf. Neither agent could have known about the other.
-  **Not necessarily duplication to undo** (contentgap does idf for coverage-gap weighting,
-  searchindex for search ranking) but it IS a shared primitive living in two places. Decide
-  whether to hoist idf into one module.
+  ✅ **RESOLVED on inspection 2026-07-24 — do NOT hoist these. They are different formulas.**
+  I wrote "one primitive in two places, decide whether to hoist" before reading them. Read:
+  - `searchindex._idf(doc_count, df)` = `log(1 + (N - df + 0.5)/(df + 0.5))` — **BM25**
+    probabilistic idf, for ranking retrieval results.
+  - `contentgap.idf(doc_freq, n_docs)` = `log((N + 1)/(df + 1)) + 1.0` — **smoothed
+    sklearn-style** idf, for coverage weighting.
+  Different weighting schemes chosen for different jobs, and the argument orders are even
+  reversed (`doc_count, df` vs `doc_freq, n_docs`). Unifying them would force one formula on both
+  and silently change one plugin's output; a shared helper would also invite callers to pass the
+  two ints backwards. **The real finding was the stale OVERLAP CLAIM, not duplicated code** —
+  contentgap's write-up asserts "nothing computes tf-idf anywhere in the tree", which is now
+  false and should be corrected to name searchindex and say why they differ.
   **Fix the pattern, not just this instance:** future batches should either (a) build in
   dependency order with each agent told what its predecessors created, or (b) add a final
   cross-batch dedup agent that reads all N new modules together and reports shared primitives.
