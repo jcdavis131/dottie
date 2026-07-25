@@ -1465,10 +1465,47 @@ def test_the_module_ROW_carries_the_unknown_reason_not_only_the_unmeasured_list(
     page = coverage.render_html(report)
     reason = "no measurable statements were recorded"
     # the row AND the list, so a call site passing None is visible as a drop to 1
-    assert page.count(reason) >= 2, (
-        "the reason must reach the module ROW, not only the Unmeasured list"
+    # EXACTLY 2, not >=2: the pristine page mentions the reason twice (row + list), so a
+    # `>=` bound sits on the boundary — a future third mention (a totals banner reusing
+    # the string) would create slack and let a row-drop pass at 2. == is strictly tighter
+    # and fails loudly if the page starts repeating itself, which is the moment to
+    # re-scope this assertion rather than widen it.
+    assert page.count(reason) == 2, (
+        "the reason must reach the module ROW and the Unmeasured list, exactly once each"
     )
     # NOT asserting `title="no data"` is absent: that fallback legitimately appears in
     # the BASELINE column of a report with no baseline run, so the absence check failed
     # on the pristine module. Counting the real reason is the assertion that isolates a
     # caller passing None.
+
+
+def test_the_baseline_column_carries_its_own_reason_too():
+    """The OTHER _pct_cell call site — the one round 3 found still unpinned.
+
+    coverage.py:1444 (the module's own percentage) is pinned by
+    test_the_module_ROW_carries_the_unknown_reason_not_only_the_unmeasured_list. Line
+    1447 renders the BASELINE column through the same primitive, and mutating it to
+    `_pct_cell(d.get("baseline_pct"), None)` passed the whole suite: the baseline cell's
+    tooltip silently degraded to "no data" while a real delta_reason existed. Same class
+    as X1, one column over — which is exactly why a per-call-site assertion is needed
+    rather than trusting the primitive's unit test.
+    """
+    # baseline record shape is {"id", "ts", "modules"} — a full report dict has no
+    # run_id and render_html would raise on int(None), which my first fixture did.
+    baseline = {"id": 9, "ts": 1699999999.0, "modules": [_mod("a", 90.0)]}
+    cur = _report(
+        _xml(_cls("a/x.py", _line(1, 1)) + _cls("b/new.py", _line(1, 1))),
+        baseline=baseline,
+    )
+    rows = cur["comparison"]["modules"]
+    unknown = [r for r in rows if r.get("baseline_pct") is None and r.get("delta_reason")]
+    assert unknown, "fixture must produce a row whose BASELINE percentage is unknown"
+    page = coverage.render_html(cur)
+    reason = unknown[0]["delta_reason"]
+    # COUNT, do not use `in`: the same delta_reason is also rendered by _delta_cell in
+    # the delta column, so `reason in page` still passes with the baseline column's copy
+    # removed — verified: that mutation survived an `in` assertion. A substring assertion
+    # against a whole page cannot say WHERE the substring came from.
+    assert page.count(reason) == 2, (
+        "the reason must appear in BOTH the baseline column and the delta column"
+    )
