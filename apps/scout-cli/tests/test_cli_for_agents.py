@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import time
@@ -26,19 +27,37 @@ def _run(args, *, input_text=None, timeout=8, env=None):
     )
 
 
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def _plain(text: str) -> str:
+    """Help output with rich's styling and line wrapping normalised away.
+
+    Rich wraps help text to the TERMINAL WIDTH and interleaves ANSI style codes, so
+    a substring assertion against raw stdout is environment-dependent: these two
+    tests passed on this box and failed in CI, where a narrower width split
+    "scout --json tools list" across a line. Stripping the escapes and collapsing
+    every whitespace run recovers the phrase at any width, so the assertion tests
+    the help TEXT rather than the terminal geometry that rendered it.
+    """
+    return " ".join(_ANSI_RE.sub("", text).split())
+
+
 def test_root_help_has_examples():
     r = _run(["--help"])
     assert r.returncode == 0
-    assert "Examples:" in r.stdout
-    assert "scout --json tools list" in r.stdout
+    out = _plain(r.stdout)
+    assert "Examples:" in out
+    assert "scout --json tools list" in out
 
 
 def test_secrets_help_has_examples():
     r = _run(["secrets", "set", "--help"])
     assert r.returncode == 0
-    assert "Examples:" in r.stdout
-    assert "--stdin" in r.stdout
-    assert "--value" in r.stdout
+    out = _plain(r.stdout)
+    assert "Examples:" in out
+    assert "--stdin" in out
+    assert "--value" in out
 
 
 def test_secrets_set_via_stdin_and_get_json():
