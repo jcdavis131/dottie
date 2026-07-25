@@ -73,10 +73,10 @@ data renders as UNKNOWN with the reason, never as 0%". Each surviving mutation I
 add — write one test per line:
 | mutation that survived | assert instead |
 |---|---|
-| X1 `_pct_cell` drops the `unknown_reason` title | the reason text appears on the row |
+| ~~X1 `_pct_cell` drops the `unknown_reason` title~~ | ✅ **DONE in-tree** — `test_unknown_cells_carry_their_reason_as_a_title`, verified: re-applying X1 gives 1 failed / 86 passed, the sole failure being that test |
 | X2 `render_html` drops the whole Notes section | Notes section present with its content |
 | X3 `DELTA_EPSILON` 0.005 -> 0.4 | a delta just over 0.005 is reported, just under is not |
-| X4 `_delta_cell` drops the `delta_reason` title | the delta reason appears |
+| ~~X4 `_delta_cell` drops the `delta_reason` title~~ | ✅ **DONE in-tree** — same test also pins `_delta_cell`'s reason and its measured-value path |
 | X5 footer drops `SCOPE_LIMITS` | the scope-limits text is in the footer |
 | X6 the "per-FILE deltas are not stored" sentence deleted | that disclosure is present |
 | X7 the "Unmeasured" per-file list dropped | unmeasured files are listed |
