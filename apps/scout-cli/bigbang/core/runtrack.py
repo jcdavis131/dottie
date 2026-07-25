@@ -357,7 +357,11 @@ def compare_runs(
     keys: dict[str, Any] = {}
     for key in all_keys:
 
-        def pick(rid: int, field: str) -> float | None:
+        # `key=key` binds this iteration's key at definition time. Every call below
+        # happens inside this iteration, so late binding does not bite today -- but
+        # it would the moment a caller deferred pick() (stored it, mapped it, made it
+        # lazy), and it would silently report the LAST key's numbers for every row.
+        def pick(rid: int, field: str, key: str = key) -> float | None:
             s = summaries[rid].get(key)
             return None if s is None else s[field]
 

@@ -45,7 +45,7 @@ def _mem():
 
 def _boom() -> BaseException:
     try:
-        1 / 0
+        1 / 0  # noqa: B018 -- raising IS the point; the value is never wanted
     except ZeroDivisionError as exc:
         return exc
 
@@ -171,7 +171,7 @@ def test_handler_captures_errors_groups_templates(tmp_path):
         logger.error("step %s failed", 99)  # same template -> same issue
         logger.warning("below handler level")  # ERROR default: not captured
         try:
-            1 / 0
+            1 / 0  # noqa: B018 -- raising IS the point; the value is never wanted
         except ZeroDivisionError:
             logger.exception("crashed")  # exc_info -> frame grouping
     finally:
