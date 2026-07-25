@@ -426,7 +426,12 @@ THE NIGHT'S HEADLINES — read these before anything below:
    **`experiment_id = NULL`**, `metric_sem_n = 3`. The NULL owner plus a value HIGHER (worse)
    than the 5.54404 previously recorded is the fingerprint of the third SOTA being retracted
    and its ratchet unwound — i.e. the defenses worked. Real wins still ZERO.
-   **Never quote these counts from prose; re-read the ledger.** The older artifact beat a
+   **Never quote these counts from prose; re-read the ledger.** (Correction to my own commit
+   26cbd9d, which said my notes carried the stale 5.54404: they did not — they recorded 5.73733
+   as live and 5.54404 as superseded. What misled me was a one-line *index summary* that ended a
+   value progression at 5.54404, so the last number read as the current one. A summary that
+   compresses history into an arrow will be misread as state; the detailed note was correct.)
+   The older artifact beat a
    hand-seeded placeholder baseline
    (4.5) on an explicitly-not-capability synthetic task; the newer one (MLBR) is the
    noise+degenerate case below. The machinery works end-to-end; the results were
