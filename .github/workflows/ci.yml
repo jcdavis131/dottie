@@ -21,11 +21,29 @@ jobs:
         run: uv sync --all-groups --frozen || uv sync
       - name: Ruff lint
         run: uv run ruff check packages/ava-skills packages/ava-open-harness packages/personal-graphify apps/scout-cli --exclude apps/scout-cli/.venv || true
-      - name: Pytest skills + harness
+      # scout-cli is a HARD gate. It holds the openswap family, its board is green,
+      # and a `|| true` here would mean the GOAT audit's test-honesty dimension
+      # scores suites that CI is contractually unable to fail. No `|| true`.
+      - name: Pytest scout-cli (hard gate)
+        run: uv run pytest apps/scout-cli/tests -q
+
+      # NON-BLOCKING ON PURPOSE, with the reason named instead of hidden behind a
+      # bare `|| true` that reads as "these pass". ava-open-harness fails 5 tests in
+      # tests/test_dottie_assistant.py because TWO importable packages are named
+      # `dottie`: `dottie.rl` exists only in apps/ava-factory/dottie (FROZEN --
+      # bind-mounted into the live trainer) while dottie.engine/policy/tasks/resolve
+      # exist only in apps/dottie/dottie. The harness needs submodules from both, so
+      # NO sys.path order satisfies it and this cannot be fixed by an env var or a
+      # CI tweak -- renaming a bind-mounted training package is an operator call.
+      # Measured 2026-07-24 on the dev box: 5 failed, 38 passed, 5 skipped.
+      # ava-skills is grouped here as PRE-EXISTING, NOT-YET-MEASURED debt; do not
+      # read its inclusion as a claim about why it is red.
+      # Flip each line to a hard gate as it goes green -- one at a time, so the
+      # green ones start protecting immediately instead of waiting for the worst.
+      - name: Pytest skills + harness (non-blocking — dottie name collision, see comment)
         run: |
           uv run pytest packages/ava-skills -q || true
           uv run pytest packages/ava-open-harness -q || true
-          uv run pytest apps/scout-cli/tests -q || true
       - name: GOAT audit (Carmack/Bellard) — regressions only
         # Mechanized slice of tasks/artifacts/goat_audit_monorepo.md, run on every
         # push so NEW plugins are held to the family's bar. --check fails only on a
