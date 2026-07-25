@@ -1276,8 +1276,10 @@ most valuable catch so far:
   corrector's exception is surfaced in the failure text ("STOPPED EARLY, the corrector
   itself failed: …") and returned as `corrector_error`. Regression test verified red
   before / green after (`test_corrector_failure_is_distinguished_from_a_bad_candidate`).
-- [ ] **NOT YET LIVE.** The running daemon (pid 7092) started 06:21:54; the fix landed
-  06:41, so the in-flight process still has the old `implementation.py` imported. There is
+- [x] **LIVE since the 2026-07-24 13:40:53 fleet restart** (verified 22:45; pid 7092 no longer
+  exists — see the note at §5.3 on expired pid claims). Original text follows.
+  ~~**NOT YET LIVE.** The running daemon (pid 7092) started 06:21:54; the fix landed
+  06:41, so the in-flight process still has the old `implementation.py` imported.~~ There is
   no natural restart on this box — the runner is a forever-daemon, so nothing recycles it
   on its own (the trap I walked into four times last night). A restart now is NOT free:
   per the recovery script's step 1b, `Stop-ScheduledTask` kills the wrapper but not its
@@ -2364,8 +2366,9 @@ most valuable catch so far:
     auxiliary losses as a constraint — *"improve load balancing WITHOUT an auxiliary-loss
     penalty"* is correct and must not be flagged. Verified the old space fails the test on
     both counts (the loss domain, and only 3 fences). Suite 175 passed.
-- [ ] **NOT live** — daemon is on `e8cc5b7`; this joins R24/R28/R29 awaiting the next
-  restart. It also **supersedes part of decision-queue item 8**: the `--bottleneck` change
+- [x] **LIVE — verified 2026-07-24 22:45.** `e8cc5b7` is an ancestor of HEAD with 38 later
+  commits to `research/`, and the fleet restarted 13:40:53, so it is running all of them.
+  It also **supersedes part of decision-queue item 8**: the `--bottleneck` change
   is still worth making, but this was the larger and more mechanical cause, and it is fixed
   in code rather than needing operator config.
 ### 5.3.R36 — read the prompt END TO END; found a THIRD contradiction and a typo
@@ -2394,7 +2397,7 @@ most valuable catch so far:
   three ticks of targeted patching had missed** — and the same shape of blindness produced
   §5.3.R31/R32/R33 (artifacts written by code, read by a human, executed by nobody).
   Render it and read it, at least once.
-- [ ] NOT live — daemon on `e8cc5b7`; joins R24/R28/R29/R35 for the next restart.
+- [x] LIVE — verified 2026-07-24 22:45 (e8cc5b7 is an ancestor of HEAD; fleet restarted 13:40:53).
 ### 5.3.R37 — a FOURTH contradiction, with a measurable fingerprint in the generated code
 
 - [x] **Read the IMPLEMENTATION prompt end to end (10:05), same method as §5.3.R36.** Its
@@ -2427,7 +2430,7 @@ most valuable catch so far:
   R36 (rigor section), R37 (codebase context) — plus the bottleneck framing in R12. Every
   section read fine alone. The count is the argument: **prompts are programs, and nobody was
   reading this one whole.**
-- [ ] NOT live — daemon on `e8cc5b7`; joins R24/R28/R29/R35/R36.
+- [x] LIVE — verified 2026-07-24 22:45 (e8cc5b7 is an ancestor of HEAD; fleet restarted 13:40:53).
 ### 5.3.R38 — the corrector was running with none of the constraints
 
 - [x] **Read the CORRECTION prompt end to end (10:10) — the third and last prompt.** It sent
@@ -2457,7 +2460,7 @@ most valuable catch so far:
   contradicted or undercut the others: §5.3.R35 search space, R36 rigor section, R37
   codebase context, R38 missing constraints on retry. **Four of four.** Not one was visible
   from reading the section being edited.
-- [ ] NOT live — daemon on `e8cc5b7`; joins R24/R28/R29/R35/R36/R37.
+- [x] LIVE — verified 2026-07-24 22:45 (e8cc5b7 is an ancestor of HEAD; fleet restarted 13:40:53).
 ### 5.3.R40 — the scheduler has a battery kill-switch nobody looked at
 
 - [x] **Read the scheduled-task definition end to end (10:15) — the fifth artifact this
