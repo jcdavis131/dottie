@@ -36,6 +36,14 @@ comes only from /api/ps's size_vram, and placement() maps a MISSING key to
 own a 4080 while ollama is loading into system RAM is exactly the lie this
 family exists to kill.
 
+Reasoning is not a reply. Ollama 0.31+ returns a thinking model's chain of
+thought in a separate `thinking` field, so a qwen3 run whose num_predict budget
+expires mid-reasoning comes back HTTP 200 with response "" (measured on this box
+at --num-predict 24 AND 220). parse_completion refuses to promote that text to
+the answer, and no_answer_reason() names the actual cause so the operator raises
+the token budget instead of restarting a daemon that is working. The tokens it
+burned are still recorded — degraded is not the same as free.
+
 Honest degradation is the load-bearing behavior. When no endpoint answers,
 assemble_template() produces a scaffold built ONLY from the caller's own words
 (verbatim echo, keyword intent match, stopword-filtered salient terms) whose
@@ -794,7 +802,7 @@ def _percentile(values: list[float], q: float) -> float | None:
     if not values:
         return None
     ordered = sorted(values)
-    idx = min(len(ordered) - 1, max(0, int(round((len(ordered) - 1) * q))))
+    idx = min(len(ordered) - 1, max(0, round((len(ordered) - 1) * q)))
     return round(ordered[idx], 2)
 
 

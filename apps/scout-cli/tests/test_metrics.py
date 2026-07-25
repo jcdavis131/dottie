@@ -95,6 +95,13 @@ def _row(metric, value, *, ts=T0, scope=metrics.SCOPE_HOST, unit=metrics.UNIT_PE
     )
 
 
+def _pick(rows, metric):
+    """The one reading for a metric — proves there is exactly one, then returns it."""
+    got = [r for r in rows if r["metric"] == metric]
+    assert len(got) == 1, f"expected exactly one {metric} reading, got {len(got)}"
+    return got[0]
+
+
 def _ledger(tmp_path, rows=()):
     conn = metrics.open_ledger(tmp_path / "metrics.db")
     if rows:
@@ -391,10 +398,10 @@ def test_sample_cpu_falls_through_to_the_next_backend(tmp_path):
         _ok(COOKED_OUT),
     ])
     rows = metrics.sample_cpu(ts=T0, runner=run, plan=_plan("typeperf", "get-counter"))
-    busy = [r for r in rows if r["metric"] == "cpu.busy_pct"]
-    assert len(busy) == 1  # exactly one reading per series, not one per attempt
-    assert busy[0]["value"] == 51.741 and busy[0]["error"] is None
-    assert "Get-Counter" in busy[0]["how"]  # provenance names the WINNING backend
+    # _pick asserts uniqueness: one reading per series, not one per attempt
+    busy = _pick(rows, "cpu.busy_pct")
+    assert busy["value"] == 51.741 and busy["error"] is None
+    assert "Get-Counter" in busy["how"]  # provenance names the WINNING backend
     assert len(run.calls) == 2 and run.calls[0][0] == "typeperf"
 
 
@@ -404,7 +411,7 @@ def test_sample_cpu_keeps_the_error_when_every_backend_fails():
         _ok("Get-Counter : The specified object was not found\n"),
     ])
     rows = metrics.sample_cpu(ts=T0, runner=run, plan=_plan("typeperf", "get-counter"))
-    busy = [r for r in rows if r["metric"] == "cpu.busy_pct"][0]
+    busy = _pick(rows, "cpu.busy_pct")
     assert busy["value"] is None, "an unmeasured CPU must not read as 0% busy"
     assert busy["source"] == metrics.SRC_COUNTER
     assert "exit 1" in busy["error"] and "no counters" in busy["error"]
@@ -415,24 +422,24 @@ def test_sample_cpu_keeps_the_error_when_every_backend_fails():
 def test_sample_cpu_treats_a_runner_explosion_as_data():
     run = _runner([FileNotFoundError("typeperf missing"), _ok(COOKED_OUT)])
     rows = metrics.sample_cpu(ts=T0, runner=run, plan=_plan("typeperf", "get-counter"))
-    busy = [r for r in rows if r["metric"] == "cpu.busy_pct"][0]
+    busy = _pick(rows, "cpu.busy_pct")
     assert busy["value"] == 51.741  # recovered on the second backend
     run2 = _runner([TimeoutError("wedged perf subsystem")])
     rows2 = metrics.sample_cpu(ts=T0, runner=run2, plan=_plan("typeperf"))
-    busy2 = [r for r in rows2 if r["metric"] == "cpu.busy_pct"][0]
+    busy2 = _pick(rows2, "cpu.busy_pct")
     assert busy2["value"] is None and "TimeoutError" in busy2["error"]
 
 
 def test_sample_cpu_on_a_box_with_no_counter_backend_never_runs_anything():
     run = _runner([_ok(TYPEPERF_OUT)])
     rows = metrics.sample_cpu(ts=T0, runner=run, plan=[])
-    busy = [r for r in rows if r["metric"] == "cpu.busy_pct"][0]
+    busy = _pick(rows, "cpu.busy_pct")
     assert run.calls == []  # nothing was executed
     assert busy["value"] is None and busy["source"] == metrics.SRC_UNSUPPORTED
     assert "no performance-counter backend" in busy["error"]
     assert "typeperf" in busy["how"] and "Get-Counter" in busy["how"]
     # cpu.logical still collects — the stdlib half is platform-independent
-    assert [r for r in rows if r["metric"] == "cpu.logical"][0]["value"] > 0
+    assert _pick(rows, "cpu.logical")["value"] > 0
 
 
 # ---- one full pass ----------------------------------------------------------
@@ -477,7 +484,7 @@ def test_sample_host_surfaces_what_it_could_not_measure(tmp_path):
 
 def test_sample_host_defaults_to_the_volume_this_process_runs_on():
     got = metrics.sample_host(runner=_runner([]), ts=T0, host=HOST, plan=[])
-    disk = [r for r in got["readings"] if r["metric"] == "disk.total_bytes"][0]
+    disk = _pick(got["readings"], "disk.total_bytes")
     assert disk["scope"] == metrics.default_disk_paths()[0]
     assert disk["value"] > 0
 
@@ -860,6 +867,12 @@ def test_capability_report_is_honest_about_the_counter_tier():
         assert cap["install_hint"]
 
 
+def test_metrics_is_discovered_as_a_plugin():
+    from bigbang.core.plugin_loader import list_plugin_names
+
+    assert "metrics" in list_plugin_names()
+
+
 def test_manifest_declares_zero_egress_and_a_scoped_write():
     from bigbang.core.policy import check_permission, load_manifest
 
@@ -927,7 +940,7 @@ def test_cli_collect_measures_records_and_rolls_up(tmp_path):
         assert row["how"], "a recorded reading with no provenance"
         assert row["source"] in metrics.SOURCES
         assert (row["value"] is None) != (row["error"] is None)
-    disk = [x for x in data["readings"] if x["metric"] == "disk.used_pct"][0]
+    disk = _pick(data["readings"], "disk.used_pct")
     assert disk["scope"] == str(tmp_path) and 0.0 <= disk["value"] <= 100.0
     assert sum(data["by_source"].values()) == len(data["readings"])
 

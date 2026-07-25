@@ -217,14 +217,14 @@ def _prompt_text(prompt: str | None, command: str) -> str:
         return prompt
     try:
         return read_stdin_text()
-    except Exception as e:
+    except Exception as e:  # empty stdin, closed pipe, decode failure
         fail_agent(
             f"no prompt: pass --prompt or pipe text on stdin ({e})",
             command=command,
             example='scout --json ollama run --prompt "why is step time 35 min"',
             discover="scout ollama models",
         )
-        raise  # unreachable; fail_agent exits
+        raise typer.Exit(code=1) from e  # fail_agent already exited
 
 
 def _options(num_predict: int | None) -> dict | None:

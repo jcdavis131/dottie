@@ -686,12 +686,12 @@ def test_the_ledger_has_no_column_that_could_hold_a_transcript(tmp_path):
 
 def test_recorded_rows_contain_neither_the_prompt_nor_the_answer(tmp_path):
     db = tmp_path / "o.db"
-    secret = "the codeword is bluehenre and the price is 4.2 million"
+    confidential = "the codeword is bluehenre and the price is 4.2 million"
     answer = "Acknowledged: bluehenre-at-four-point-two."
     conn = ollama.open_ledger(db)
     rec = ollama.complete(
         _poster(_ok({"model": "qwen3:8b", "response": answer, "eval_count": 9, "eval_duration": 3_000_000_000})),
-        secret,
+        confidential,
         model="qwen3:8b",
         base=BASE,
         now=1000.0,
@@ -700,14 +700,14 @@ def test_recorded_rows_contain_neither_the_prompt_nor_the_answer(tmp_path):
     conn.close()
     assert rid == 1
     raw = db.read_bytes()
-    assert secret.encode() not in raw
+    assert confidential.encode() not in raw
     assert b"bluehenre" not in raw
     assert answer.encode() not in raw
     # ...but the correlation handle and the measurements are there
-    assert ollama.prompt_fingerprint(secret).encode() in raw
+    assert ollama.prompt_fingerprint(confidential).encode() in raw
     conn2 = ollama.open_ledger(db)
     row = ollama.history(conn2)[0]
-    assert row["prompt_chars"] == len(secret) and row["text_chars"] == len(answer)
+    assert row["prompt_chars"] == len(confidential) and row["text_chars"] == len(answer)
     assert row["source"] == ollama.SOURCE_MODEL and row["degraded"] == 0
     assert row["eval_tokens"] == 9 and row["tok_per_s"] == 3.0
     conn2.close()

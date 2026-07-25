@@ -810,6 +810,19 @@ def test_render_html_flags_a_sample_too_small_to_gate():
     assert "no finding is raised" in page
 
 
+def test_render_html_of_a_file_with_no_prose_says_so():
+    page = readability.render_html([readability.score_text("```\ncode()\n```\n", path="d.md")])
+    assert "No prose paragraphs." in page
+    assert "Sample too small to gate" in page
+
+
+def test_render_html_never_emits_the_extraction_sentinel():
+    rep = readability.score_text("Use `inline code` and https://example.com here.", path="d.md")
+    page = readability.render_html([rep])
+    assert "\x00" not in page
+    assert "example.com" not in page
+
+
 def test_render_html_shows_the_flag_counts():
     page = readability.render_html([readability.score_text(HARD_TEXT, path="h.md")])
     assert "Adverbs 2" in page

@@ -35,10 +35,12 @@ Honesty about the numbers, because a readability score is easy to fake:
   suppressed below `min_words` and per-sentence bands below
   `min_sentence_words`; the scores are still reported, with a note.
 
-Extension points: thresholds are policy-as-config in DEFAULT_CONFIG (overlaid
-by `scout prose lint --rules`, like every other prose rule); add a metric by
-appending to `_score_row` and it flows into JSON, the HTML report and the
-consensus median for free.
+Extension points: thresholds are policy-as-config in DEFAULT_CONFIG (overlaid by
+`scout prose lint --rules`, like every other prose rule). A new formula is one
+function plus one line in `_metrics`, and it then flows into the JSON, the HTML
+metrics table and — if it returns a grade — the consensus median. A new finding
+is one block in `to_diagnostics`; the severity gate, summary and `--fail-on`
+plumbing are already shared with #1.
 """
 
 from __future__ import annotations
@@ -725,7 +727,7 @@ def _histogram_table(report: dict[str, Any], e: Any) -> str:
     rows = []
     peak = max((row["count"] for row in report["histogram"]), default=0) or 1
     for row in report["histogram"]:
-        width = int(round(100.0 * row["count"] / peak))
+        width = round(100.0 * row["count"] / peak)
         rows.append(
             f'<tr><td class="mono">{e(row["bucket"])}</td>'
             f'<td>{row["count"]}</td><td>{e(str(row["pct"]))}%</td>'

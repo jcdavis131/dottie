@@ -109,6 +109,12 @@ DEFAULT_LOOKBACK_S = 3600.0
 DEFAULT_DEDUP_S = 1800.0
 DEFAULT_TIMEOUT_S = 10.0
 
+# Read cap per source per pass. 200 simultaneously-open incidents (or 200 events
+# inside one lookback window) is already a catastrophe, and paging on the newest
+# 200 of them beats an unbounded read of a ledger that has been collecting for a
+# year — the cap is stated here rather than hidden in a call.
+_READ_LIMIT = 200
+
 # Severity + fan-out + window per ledger signal. Policy-as-config: overlay a
 # JSON file, don't tune code. Channels are NAMED here even though they ship
 # unconfigured — see the module docstring on why an undeliverable default is
@@ -457,7 +463,7 @@ def candidates(
             return
         routable.append(_candidate(rid, rule, **kw))
 
-    for inc in uptime.list_incidents(conn, open_only=True, limit=200):
+    for inc in uptime.list_incidents(conn, open_only=True, limit=_READ_LIMIT):
         opened = float(inc["opened_ts"])
         resolve(
             f"{SIGNAL_INCIDENT}:{inc['state']}",
@@ -470,7 +476,7 @@ def candidates(
             ),
             key=f"incident:{inc['id']}",
         )
-    for ev in uptime.recent_events(conn, limit=200):
+    for ev in uptime.recent_events(conn, limit=_READ_LIMIT):
         ts = float(ev["ts"])
         if ts < now - float(lookback_s):
             continue

@@ -33,6 +33,7 @@ call.
 
 from __future__ import annotations
 
+import os
 import platform
 import subprocess
 from pathlib import Path
@@ -109,14 +110,11 @@ def _capability() -> dict:
 
 
 def _db_path(db: str | None) -> Path:
-    import os
-
+    # relative default beside the family's other ledgers; env override for cron
     return Path(db or os.environ.get("SCOUT_METRICS_DB") or metrics.DB_REL)
 
 
 def _log_path(log: str | None) -> Path:
-    import os
-
     return Path(log or os.environ.get("SCOUT_METRICS_JSONL") or metrics.SAMPLES_REL)
 
 
