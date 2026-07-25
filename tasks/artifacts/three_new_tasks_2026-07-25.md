@@ -54,11 +54,39 @@ Rearrange the HF dataset into cookbook-style recipe format. **Target structure (
 12. Cross-Validation and Model Evaluation Techniques
 13. Deploying Scikit-Learn Models in Production
 
-⚠ **AMBIGUITY TO RESOLVE FIRST:** "open stack v3" is not an exact HF dataset id I can confirm.
-Candidates: `bigcode/the-stack-v2` (v3 not published as of this writing), an OpenStack-related corpus,
-or something else. **Confirm the exact dataset id with the operator before ingesting anything** — and
-note the standing license gate: any `*-ND` license is excluded (training is a derivative use) and
-`*-NC` is excluded by default for the revenue mission. Shadow-library sources remain FORBIDDEN.
+✅ **DATASET CONFIRMED by operator: `HuggingFaceCode/stack-v3-train`**
+(https://huggingface.co/datasets/HuggingFaceCode/stack-v3-train)
+
+What I established 2026-07-25:
+- The API endpoint returns **HTTP 200 both WITH and WITHOUT a token**, so the dataset exists and is
+  publicly readable — it is **not gated** behind a terms click, unlike some Stack releases.
+- ⛔ **LICENSE NOT VERIFIED — this is a HARD BLOCKER before any ingestion.** I could not retrieve the
+  card body: this box's outbound TLS is intermittently failing right now (curl exit 35 SSL connect
+  error, urllib `WinError 10054` connection reset, and the Docker CLI is simultaneously returning 500
+  on every route). Plain connectivity works (huggingface.co returned HTTP 200 in 0.13s), so this is
+  flaky rather than blocked — retry later.
+- **Do NOT skip the gate on the assumption that a code corpus is permissive.** The standing rules are
+  absolute: any `*-ND` license is excluded because training is a derivative use, `*-NC` is excluded by
+  default for the revenue mission, and shadow-library provenance is FORBIDDEN. The Stack family
+  additionally carries a per-file license column and an opt-out mechanism, so the gate is per-record,
+  not per-dataset — model this on `apps/dottie/scripts/pull_oapen_books.py::gate_rights`, which
+  evaluates EVERY license value on a record rather than the first (that exact bug was caught in review:
+  a book with CC-BY *and* ND would otherwise have been wrongly admitted).
+
+Verify with, once the network settles:
+  curl -s https://huggingface.co/api/datasets/HuggingFaceCode/stack-v3-train | python -c "import json,sys; d=json.load(sys.stdin); print(d.get('cardData',{}).get('license'), d.get('gated'))"
+
+**Design sketch for the cookbook mapping** (the part that needs no network): The Stack is a CODE
+corpus; the cookbook TOC is ML-TOPIC structured. So the job is not a reshuffle but a CLASSIFICATION:
+select Python files that exercise each topic, then emit recipe-shaped records
+(problem statement -> minimal code -> what it demonstrates). Two things to decide early:
+(a) the topic classifier — import-based signals are cheap and honest (`sklearn.decomposition` ->
+    Dimensionality Reduction, `sklearn.svm` -> SVMs/Kernel Methods, `sklearn.cluster` -> Clustering,
+    `sklearn.ensemble`/`tree` -> Tree-Based, `sklearn.model_selection` -> Cross-Validation), and they
+    map almost 1:1 onto 8 of the 13 sections;
+(b) sections 1 (Conventions/API), 2 (Pre-Model Workflow) and 13 (Deploying to Production) have NO
+    clean import signal and will need either heuristics or exclusion — say which, rather than emitting
+    a thin bucket and implying coverage.
 
 ## #3 — Review our first/second-order derivative usage against the cheat sheet
 
