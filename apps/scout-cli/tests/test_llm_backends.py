@@ -6,6 +6,8 @@ computes tokens/sec, and on ANY failure returns ok=False with content=None — i
 never fabricates a completion. All network is faked; no live runner required."""
 from __future__ import annotations
 
+import time
+
 import bigbang.core.llm as llm
 
 
@@ -48,7 +50,36 @@ def _patch(monkeypatch, routes) -> _FakeClient:
     return client
 
 
+def _pin_clock(monkeypatch, elapsed: float = 0.5) -> float:
+    """Pin the interval clock so a rate assertion is arithmetic, not a race.
+
+    A faked backend can return faster than the clock can resolve, so asserting
+    `tok_per_s > 0` against the real clock silently depends on the call being slow
+    enough to register (perf_counter reads 0.0 for a trivial interval often enough
+    to matter). First read is t0, every later read is t0 + elapsed.
+    """
+    reads = {"n": 0}
+
+    def clock() -> float:
+        reads["n"] += 1
+        return 0.0 if reads["n"] == 1 else elapsed
+
+    monkeypatch.setattr(llm, "_clock", clock)
+    return elapsed
+
+
+def test_interval_clock_is_monotonic_not_wall_clock():
+    """Pins the clock CHOICE, not just its effect.
+
+    Reverting to time.time() would still leave `tok_per_s > 0` passing whenever a
+    call happened to take a measurable moment, so the guard has to name the clock.
+    """
+    assert llm._clock is time.perf_counter
+    assert llm._clock is not time.time
+
+
 def test_koboldcpp_routes_to_openai_v1_and_computes_tps(monkeypatch):
+    elapsed = _pin_clock(monkeypatch, 0.5)
     client = _patch(monkeypatch, {
         "/v1/models": (200, {"data": [{"id": "loaded.gguf"}]}),
         "/v1/chat/completions": (200, {
@@ -60,7 +91,9 @@ def test_koboldcpp_routes_to_openai_v1_and_computes_tps(monkeypatch):
     assert res["ok"] is True
     assert res["content"] == "a merkle proof"
     assert res["completion_tokens"] == 12
-    assert res["tok_per_s"] is not None and res["tok_per_s"] > 0
+    # exact, not just >0: 12 tokens over a pinned 0.5s is 24.0 t/s
+    assert res["tok_per_s"] == round(12 / elapsed, 2) == 24.0
+    assert res["elapsed_s"] == round(elapsed, 4)
     # it auto-detected via /v1/models, then hit the OpenAI chat endpoint
     assert any("/v1/models" in c[1] for c in client.calls)
     assert any(c[0] == "POST" and "/v1/chat/completions" in c[1] for c in client.calls)
