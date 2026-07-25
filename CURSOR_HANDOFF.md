@@ -110,6 +110,38 @@ node apps/bluehenre/scripts/build_hub_registry.test.mjs     # 9
 node apps/bluehenre/scripts/build_hub_registry.mjs --check   # fresh
 node apps/bluehenre/scripts/build_runs_readout.mjs --check   # fresh
 ```
+
+**CI pytest/lint gates as of 2026-07-24 (93c4ad8, 661c424) — `|| true` is no longer blanket:**
+| step | state | why |
+|---|---|---|
+| `apps/scout-cli` | **HARD GATE** | 1158 passed / 1 skipped. Pinned `working-directory: apps/scout-cli` — from the repo root a stale `~/scout-cli` editable install shadows `bigbang` and invents failures. |
+| `packages/ava-skills` | **HARD GATE** | 80 passed. Was sharing the harness's `\|\| true`, so a green suite carried a broken one's exemption. **Never narrow to `pytest .../tests`** — that collects 66, silently dropping 14, and still exits 0. |
+| `packages/ava-open-harness` | non-blocking | 5 failed / 38 passed. Blocked ONLY on the two-`dottie`-packages collision. Delete the `\|\| true` when that lands. |
+| ruff (4 packages) | non-blocking | 334 findings (scout-cli 95→**46**, personal-graphify 141, ava-open-harness 79, ava-skills 19). Flip per package as each reaches 0, never all at once. |
+
+⚠ **RUNNING THE scout-cli BOARD: use foreground chunks, not one background run.** Two
+background full-board runs were KILLED partway (24%, 80%) on this 16 GB box; a killed run
+proves nothing. Working method — three chunks, ~170/266/158s, from `apps/scout-cli`:
+```
+python -m pytest $(ls tests/test_*.py | awk 'NR%3==1') -q   # 318 passed
+python -m pytest $(ls tests/test_*.py | awk 'NR%3==2') -q   # 594 passed, 1 skipped
+python -m pytest $(ls tests/test_*.py | awk 'NR%3==0') -q   # 246 passed
+```
+If `test_forge_loop` fails with "csvstat_loop_test already exists — stale cleanup?", that is
+residue from a killed run, not a regression; it passes on a clean slate.
+
+**Reconciling stale claims in TODOS.md — the method that worked** (104→98 open items,
+b7bd531/aa26303/a258424/26cbd9d/f10b29a). Do not trust prose about live state:
+- pid / "NOT LIVE" claims: check the process still exists. Five were phantoms; the daemon
+  restarted 2026-07-24 13:40:53 and `git merge-base --is-ancestor <sha> HEAD` proved the
+  "pending" commits were already shipped (+38 later ones).
+- counts and baselines: **re-read the ledger**, never the write-up. `TODOS.md` said 54/10/3/2;
+  `apps/dottie/data/research/ledger.sqlite3` says **70 failed_validation / 20 rejected /
+  6 failed_training / 3 sota / 1 pending**, baseline `factory_lm_loss = 5.73733` (nano),
+  `experiment_id = NULL`. Real architectural wins remain **ZERO** — all THREE sota rows are
+  artifacts (the doc said "both", which read as "one might be real").
+- Staleness drifts in BOTH directions: the fleet banner overstated danger while the pid items
+  overstated blockage. "Looks alarming" and "looks resolved" are equally unreliable unchecked.
 Deploy: `cd apps/bluehenre && vercel deploy --prod --yes` → `vercel alias set <url>
 www.bhenre.com` → update `data/last_good_deployment.txt`. CI job `bluehenre-checks`
 runs all four gates on every push.
