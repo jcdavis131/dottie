@@ -1,0 +1,31 @@
+name: coverage
+version: 0.7.0
+description: Codecov-class coverage renderer, fully local (openswap #31 — Cobertura XML + coverage.py .coverage sqlite parsed on this box, per-module deltas vs the last run, static HTML, zero upload)
+capabilities:
+  network:
+    # ZERO egress by design, and this is the whole product. Codecov IS an
+    # uploader plus a hosted web app: deleting the upload is the replacement.
+    # The axis is fully disabled with an EMPTY domain list — there is no host to
+    # allowlist, no token to hold and no SaaS to feed, so "no coverage report
+    # left the box" is architectural rather than a ToS promise. That matters
+    # more here than for most adapters: a coverage report enumerates every
+    # source file in the repository and exactly which lines are untested.
+    # `parse`, `report` and `detect` re-read this section and REFUSE to run if
+    # it was ever widened (see _egress_guard in cli.py), so the guarantee is
+    # enforced rather than merely documented.
+    enabled: false
+    domains: []
+  filesystem:
+    # Writes are confined to the sqlite run history under .scout, plus the ONE
+    # HTML file you name with --html at call time (never a path from this
+    # manifest). The coverage artifacts themselves are READ ONLY: coverage.xml
+    # is opened with read_bytes and the .coverage sqlite with mode=ro, so a
+    # coverage run that still owns that file cannot be corrupted by a report.
+    write: true
+    paths: [".scout"]
+  secrets:
+    # No CODECOV_TOKEN, no upload credential, nothing to hold. The absence of a
+    # secret here is the point of the adapter.
+    allow: []
+tags: [coverage, testing, ci, openswap]
+# Solo personal project, no connection to employer, built with public/free-tier only

@@ -1,0 +1,30 @@
+name: cite
+version: 0.7.0
+description: Zotero-storage-class citation manager, fully local (openswap #33 — brace-aware BibTeX/CSL-JSON parser, sqlite reference library, five deterministic styles, measured round-trip fidelity, zero egress)
+capabilities:
+  network:
+    # ZERO egress by design, and it is the whole product. What is being replaced
+    # is not the free local reader — it is the STORAGE/SYNC tier: your library,
+    # your unpublished reading list and your draft bibliography sitting in
+    # someone else's database, metered by gigabyte. Deleting the sync endpoint IS
+    # the replacement, so the axis is fully disabled with an EMPTY domain list:
+    # there is no host to allowlist and no DOI/ISBN resolver to call. A `doi`
+    # field is SHAPE-checked and never resolved, which is why no domain is
+    # needed. `import`, `format`, `list` and `roundtrip` all call _egress_guard
+    # first, which re-reads this section and REFUSES to run if it was ever
+    # widened — the guarantee is enforced, not merely documented.
+    enabled: false
+    domains: []
+  filesystem:
+    # Writes are confined to the sqlite library under .scout. The .bib/.csl-json
+    # files handed to --file / import are READ ONLY: this plugin never rewrites,
+    # reformats or "cleans up" someone's bibliography file, and the paths come
+    # from the arguments at call time, never from this manifest. Exporting is
+    # `format --style bibtex` on stdout precisely so that an arbitrary output
+    # path never has to be allowed here.
+    write: true
+    paths: [".scout"]
+  secrets:
+    allow: []
+tags: [cite, bibtex, csl, references, bibliography, openswap]
+# Solo personal project, no connection to employer, built with public/free-tier only

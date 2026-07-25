@@ -1,0 +1,43 @@
+name: digest
+version: 0.7.0
+# quoted: an unquoted " #" would start a YAML comment and silently truncate this
+description: "Mailchimp-class digest mailer, fully local (openswap #32 — templated text+HTML digests assembled from the uptime/logs/glitch/feeds sqlite ledgers, dry-run by default, delivered by smtplib to ONE relay you already run; no tracking pixel, no link rewriting)"
+capabilities:
+  network:
+    # OUTBOUND SMTP only, and default-deny: _send_message checks this list
+    # against the CONFIGURED relay host before opening a socket, so pointing the
+    # digest at a new relay means editing this file — the alerts #19 doctrine.
+    # A denied host is reported as a failed delivery, never a silent skip.
+    #
+    # Loopback is the sane default (a local relay on this box). NO third-party
+    # ESP is listed and none should be: smtp.mailchimp.com / sendgrid / mailgun
+    # in this list would make the adapter a thin client for the SaaS it deletes,
+    # and would hand the roster to it. `detect` proves the denial by running
+    # check_permission against smtp.mailchimp.com and printing the reason.
+    #
+    # The rendered mail itself loads nothing: `preview`/`send` run
+    # digest.tracking_findings() over the HTML part and fail the gate on any
+    # remote resource, so there is no read-receipt egress from the READER's box
+    # either — which is the half a manifest cannot police.
+    enabled: true
+    domains:
+      - localhost
+      - 127.0.0.1
+      - jcamd.com
+      - dumbmodel.com
+  filesystem:
+    # Writes are confined to this adapter's OWN send ledger under .scout
+    # (.scout/digest.db). The four ledgers it reads — uptime, logs, glitch,
+    # feeds — are opened with sqlite's read-only URI mode and their paths come
+    # from --config / the section table at call time, never from this manifest.
+    write: true
+    paths: [".scout"]
+  secrets:
+    # A relay that needs a password reads it from THIS env var and no other: the
+    # mail config names the variable and _relay_password() only reads it if the
+    # name appears here (default-deny by NAME). The value never reaches the send
+    # ledger, the message body or the JSON envelope.
+    allow:
+      - SCOUT_DIGEST_SMTP_PASSWORD
+tags: [digest, email, newsletter, mail, openswap]
+# Solo personal project, no connection to employer, built with public/free-tier only
