@@ -2811,7 +2811,14 @@ most valuable catch so far:
   | docker engine | **down** — `dockerd` never started inside the VM |
   **Training is stopped.** The recovery script disables the task by design (its step 1), and
   the subtask was then classifier-blocked from both `wsl --shutdown` and re-enabling.
-- [ ] ⛔ **OPERATOR — two commands to restore, in this order:**
+- [x] ✅ **ALREADY RESTORED — verified 2026-07-24 23:05. Do NOT run these commands.** Both
+  conditions this item waits on are met: `docker ps` shows **13 containers up** (so the Docker
+  engine is healthy and `wsl --shutdown` is unnecessary — running it would tear down the LIVE
+  trainer at step 3080 for no reason), and `Get-ScheduledTask 'Dottie Research runner'` reports
+  **State = Running** (so Enable/Start are no-ops). ⚠ Note the memory line below is stale in the
+  unsafe direction: it says 3,695 MB free, but four samples today measured **483–1035 MB** —
+  see the headroom warning in the §"WHY THE FLEET DIED" block. Original text follows.
+  ~~⛔ **OPERATOR — two commands to restore, in this order:**~~
   ```powershell
   wsl --shutdown                                             # engine back in ~2 min
   docker ps --format "{{.Names}}`t{{.Status}}"                # expect 13-14 containers
