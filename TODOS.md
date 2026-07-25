@@ -60,6 +60,18 @@ Re-check with:
   cross-batch dedup agent that reads all N new modules together and reports shared primitives.
   Option (b) is cheaper and catches what (a) misses when two capabilities are genuinely
   independent yet converge on the same maths.
+- [ ] **Second flaw in the same rubric: I never defined what `claims_hold` means, so verifiers
+  applied their own thresholds and the boolean is NOT comparable across plugins.** `a11y`'s
+  verifier found **2 mutation survivors and returned `claims_hold: true`**; `contentgap`'s found
+  2 survivors it graded low-severity and returned **`false`**. Same evidence shape, opposite
+  verdict. Neither is wrong — I asked for a boolean without a bar.
+  Consequence for reading batch 4: **do not treat True/False as a gate.** Read each verifier's
+  `findings` and decide per plugin (which is what I did — `a11y` and `flows` ship, `dupes` and
+  `contentgap` are held on their specific gaps).
+  Fix for future batches: define the bar in the prompt — e.g. `claims_hold=false` iff a stated
+  number is unreproducible, a NEW dependency exists, a vacuous test is found, or a survivor
+  reveals behavior that contradicts a documented invariant; overstated-but-honest mutation counts
+  get a separate `claims_overstated` flag instead of failing the plugin.
 
 ### NEW 2026-07-24 — batch-4 `contentgap`: 2 low-severity mutation survivors
 
