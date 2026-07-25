@@ -22,8 +22,24 @@ a re-enable check (want >9 GB available). Also killed 4 orphaned worker processe
 (see the §5 root-cause entry) — though those held *commit*, not resident RAM, so they were
 not the cause; I corrected that claim rather than leave it standing.
 
-**The VM still needs its restart** — memory alone does not revive it. Run the command
-below; it should now actually succeed, where an hour ago it would have hit the same wall.
+**✅ RESOLVED — the VM restart happened; do not act on this section.** Verified 2026-07-24
+22:50: **13 containers up**, `dottie-factory-trainer-1` and `dottie-factory-server-1`
+healthy, training live at step 3080 (`lm 0.193`). The outage below is history, not telemetry.
+
+⚠ **BUT the headroom warning is LIVE again, and this is the real current risk.** Measured
+2026-07-24 22:50 across four samples: available memory **483 / 548 / 695 / 1035 MB**, and
+`vmmemWSL` alone is **4.2 GB**. The 2026-07-20 death happened at **281 MB** — so we are
+operating in the same band that killed it, without the llama-server that caused it
+(`/api/ps` -> `{"models":[]}`, nothing resident, so the documented 7.5 GB unload remedy
+does NOT apply here — there is no easy win to take).
+Consumers today: vmmemWSL 4200 MB · claude sessions ~1900 MB · chrome ~560 MB · Memory
+Compression 262 MB · 12 python processes.
+**Observed consequence, not a hypothetical:** two full-suite background test runs were
+KILLED partway through (at 24% and 80%) on this box today. Verification had to be split
+into three foreground chunks to complete. If background jobs start dying, suspect this
+before suspecting the code.
+Re-check with:
+`(Get-Counter '\Memory\Available MBytes').CounterSamples[0].CookedValue`
 
 **Memory budget for this box (16 GB) — the constraint that actually bit:** fleet + WSL VM
 ≈ 3–4 GB · desktop apps ≈ 2–3 GB **(now ~7.5 GB — Chrome/Cursor/Claude sessions have
