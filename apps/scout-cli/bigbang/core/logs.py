@@ -1131,6 +1131,14 @@ def collect(
 # ---- query ------------------------------------------------------------------
 
 
+_ROLLUP_WHERE = (
+    " WHERE (? IS NULL OR source = ?)"
+    " AND (? IS NULL OR level_rank <= ?)"
+    " AND (? IS NULL OR ts >= ?)"
+    " AND (? IS NULL OR ts <= ?)"
+)
+
+
 def query(
     conn: sqlite3.Connection,
     *,
@@ -1152,9 +1160,11 @@ def query(
     against the effective `ts` (see collect_file).
     """
     rank = None if level is None else level_rank(level)
+    # every FILTER value is a bound parameter; the only interpolation is the sort
+    # direction, and it comes from a bool, never from caller text
     order = "DESC" if newest_first else "ASC"
     sql = (
-        "SELECT id, source, path, line_no, ts, dated, ingest_ts, level,"
+        "SELECT id, source, path, line_no, ts, dated, ingest_ts, level,"  # noqa: S608
         " level_rank, message, raw, parser, parsed FROM entries"
         " WHERE (? IS NULL OR source = ?)"
         " AND (? IS NULL OR level_rank <= ?)"
@@ -1203,34 +1213,35 @@ def rollup(
     if bucket_seconds <= 0:
         raise ValueError("bucket_seconds must be > 0")
     rank = None if level is None else level_rank(level)
-    where = (
-        " WHERE (? IS NULL OR source = ?)"
-        " AND (? IS NULL OR level_rank <= ?)"
-        " AND (? IS NULL OR ts >= ?)"
-        " AND (? IS NULL OR ts <= ?)"
-    )
+    # one WHERE clause, four aggregations. It is a module-level constant of bound
+    # placeholders — no caller text is ever interpolated into a statement.
+    where = _ROLLUP_WHERE
     params = (source, source, rank, rank, since, since, until, until)
     by_level = {
         r["level"]: r["n"]
         for r in conn.execute(
-            "SELECT level, COUNT(*) AS n FROM entries" + where + " GROUP BY level",
+            "SELECT level, COUNT(*) AS n FROM entries"  # noqa: S608 - all bound
+            + where
+            + " GROUP BY level",
             params,
         ).fetchall()
     }
     by_source = {
         r["source"]: r["n"]
         for r in conn.execute(
-            "SELECT source, COUNT(*) AS n FROM entries" + where + " GROUP BY source",
+            "SELECT source, COUNT(*) AS n FROM entries"  # noqa: S608 - all bound
+            + where
+            + " GROUP BY source",
             params,
         ).fetchall()
     }
     span = conn.execute(
-        "SELECT COUNT(*) AS n, MIN(ts) AS first_ts, MAX(ts) AS last_ts,"
+        "SELECT COUNT(*) AS n, MIN(ts) AS first_ts, MAX(ts) AS last_ts,"  # noqa: S608
         " SUM(dated) AS dated, SUM(parsed) AS parsed FROM entries" + where,
         params,
     ).fetchone()
     bucket_rows = conn.execute(
-        "SELECT CAST(ts / ? AS INTEGER) * ? AS bucket, level, COUNT(*) AS n"
+        "SELECT CAST(ts / ? AS INTEGER) * ? AS bucket, level, COUNT(*) AS n"  # noqa: S608
         " FROM entries" + where + " GROUP BY bucket, level ORDER BY bucket ASC",
         (bucket_seconds, bucket_seconds, *params),
     ).fetchall()

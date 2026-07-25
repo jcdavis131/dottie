@@ -74,6 +74,7 @@ _LASTMOD_RE = re.compile(
     r"^\d{4}-\d{2}-\d{2}"
     r"([Tt]\d{2}:\d{2}(:\d{2}(\.\d+)?)?([Zz]|[+-]\d{2}:\d{2})?)?$"
 )
+_DOCTYPE_RE = re.compile(r"<!DOCTYPE", re.IGNORECASE)
 
 # One source of truth for the page-extension set: the HTML list comes from
 # bigbang/core/seo.py, because extension-list drift between two adapters that
@@ -150,7 +151,7 @@ def url_for(
         if rel:
             rel += "/"
     elif clean_urls:
-        stem, dot, ext = name.rpartition(".")
+        stem, dot, _ext = name.rpartition(".")
         if dot and stem:
             parts[-1] = stem
             rel = "/".join(parts)
@@ -700,9 +701,19 @@ def parse_sitemap(text: str) -> dict[str, Any]:
 
     Namespaces are stripped rather than matched, so a sitemap written by any
     other generator (or a namespace-less one) still lints.
+
+    A DOCTYPE is REFUSED before parsing (same doctrine as feeds.parse_feed):
+    stdlib ElementTree never fetches external DTDs, but an internal <!ENTITY>
+    chain is still an expansion bomb, and no real sitemap carries a DOCTYPE — so
+    refusing one closes the xml.etree attack surface without taking a defusedxml
+    dependency (this family is stdlib-only).
     """
+    if _DOCTYPE_RE.search(text[:4096]):
+        raise ValueError("refusing a DOCTYPE declaration (entity-expansion risk)")
     try:
-        root = ET.fromstring(text)
+        # S314: the DOCTYPE refusal above removes the entity-expansion vector,
+        # which is the only xml.etree exposure defusedxml would add here.
+        root = ET.fromstring(text)  # noqa: S314
     except ET.ParseError as exc:
         raise ValueError(f"not parseable XML: {exc}") from exc
     tag = root.tag.rsplit("}", 1)[-1]

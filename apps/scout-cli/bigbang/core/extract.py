@@ -100,47 +100,17 @@ RAW_TAGS = frozenset(
 )
 # page chrome: dropped from the content tree, but their text IS kept in the
 # node so metadata capture (a byline inside <header>) still works
-CHROME_TAGS = frozenset(
-    {
-        "nav",
-        "footer",
-        "header",
-        "aside",
-        "form",
-        "menu",
-        "dialog",
-        "fieldset",
-        "select",
-        "textarea",
-        "button",
-        "iframe",
-        "object",
-        "embed",
-        "video",
-        "audio",
-        "map",
-    }
-)
+CHROME_TAGS = frozenset({
+    "nav", "footer", "header", "aside", "form", "menu", "dialog", "fieldset",
+    "select", "textarea", "button", "iframe", "object", "embed", "video",
+    "audio", "map",
+})
 DROP_TAGS = RAW_TAGS | CHROME_TAGS
 
-VOID_TAGS = frozenset(
-    {
-        "area",
-        "base",
-        "br",
-        "col",
-        "embed",
-        "hr",
-        "img",
-        "input",
-        "link",
-        "meta",
-        "param",
-        "source",
-        "track",
-        "wbr",
-    }
-)
+VOID_TAGS = frozenset({
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta",
+    "param", "source", "track", "wbr",
+})
 # the only void elements that mean anything to a text renderer; the rest
 # (meta/link/input/...) are never linked into the content tree, so a `<div>`
 # holding one still counts as a paragraph container
@@ -157,76 +127,26 @@ _IMPLICIT_CLOSE = {
     "option": frozenset({"option"}),
 }
 
-INLINE_TAGS = frozenset(
-    {
-        "a",
-        "abbr",
-        "b",
-        "bdi",
-        "bdo",
-        "big",
-        "br",
-        "cite",
-        "code",
-        "data",
-        "del",
-        "dfn",
-        "em",
-        "font",
-        "i",
-        "img",
-        "ins",
-        "kbd",
-        "label",
-        "mark",
-        "nobr",
-        "q",
-        "rp",
-        "rt",
-        "ruby",
-        "s",
-        "samp",
-        "small",
-        "span",
-        "strong",
-        "sub",
-        "sup",
-        "time",
-        "tt",
-        "u",
-        "var",
-        "wbr",
-    }
-)
+INLINE_TAGS = frozenset({
+    "a", "abbr", "b", "bdi", "bdo", "big", "br", "cite", "code", "data", "del",
+    "dfn", "em", "font", "i", "img", "ins", "kbd", "label", "mark", "nobr", "q",
+    "rp", "rt", "ruby", "s", "samp", "small", "span", "strong", "sub", "sup",
+    "time", "tt", "u", "var", "wbr",
+})
 
 # nodes scored as "a paragraph of prose"
 PARA_TAGS = frozenset({"p", "pre", "td", "blockquote", "figcaption", "dd", "li"})
 # containers that count as a paragraph when they hold only inline children
 PARA_CONTAINERS = frozenset({"div", "section", "article", "main"})
 
-# Readability's per-tag base score for a candidate container
+# Readability's per-tag base score for a candidate container: semantic
+# containers start ahead, list/heading wrappers start behind
 _BASE_SCORE = {
-    "article": 8.0,
-    "main": 8.0,
-    "section": 5.0,
-    "div": 5.0,
-    "pre": 3.0,
-    "td": 3.0,
-    "blockquote": 3.0,
-    "address": -3.0,
-    "ol": -3.0,
-    "ul": -3.0,
-    "dl": -3.0,
-    "dd": -3.0,
-    "dt": -3.0,
-    "li": -3.0,
-    "form": -3.0,
-    "h1": -5.0,
-    "h2": -5.0,
-    "h3": -5.0,
-    "h4": -5.0,
-    "h5": -5.0,
-    "h6": -5.0,
+    "article": 8.0, "main": 8.0, "section": 5.0, "div": 5.0,
+    "pre": 3.0, "td": 3.0, "blockquote": 3.0,
+    "address": -3.0, "ol": -3.0, "ul": -3.0, "dl": -3.0, "dd": -3.0,
+    "dt": -3.0, "li": -3.0, "form": -3.0,
+    "h1": -5.0, "h2": -5.0, "h3": -5.0, "h4": -5.0, "h5": -5.0, "h6": -5.0,
     "th": -5.0,
 }
 
@@ -255,54 +175,23 @@ _NEVER_PRUNE = frozenset({"body", "article", "main", "[document]"})
 
 # ---- metadata keys ----------------------------------------------------------
 
-_TITLE_META = (
-    "og:title",
-    "twitter:title",
-    "dc.title",
-    "citation_title",
-    "title",
-)
+# priority order, most trustworthy first — extend these, not the pickers
+_TITLE_META = ("og:title", "twitter:title", "dc.title", "citation_title", "title")
 _BYLINE_META = (
-    "author",
-    "article:author",
-    "og:article:author",
-    "byl",
-    "dc.creator",
-    "citation_author",
-    "parsely-author",
-    "twitter:creator",
+    "author", "article:author", "og:article:author", "byl", "dc.creator",
+    "citation_author", "parsely-author", "twitter:creator",
 )
 _DATE_META = (
-    "article:published_time",
-    "article:published",
-    "og:article:published_time",
-    "datepublished",
-    "date",
-    "pubdate",
-    "publishdate",
-    "publish-date",
-    "publication_date",
-    "dc.date",
-    "dc.date.issued",
-    "citation_publication_date",
-    "citation_date",
-    "parsely-pub-date",
-    "sailthru.date",
-    "article.published",
+    "article:published_time", "article:published", "og:article:published_time",
+    "datepublished", "date", "pubdate", "publishdate", "publish-date",
+    "publication_date", "dc.date", "dc.date.issued", "citation_publication_date",
+    "citation_date", "parsely-pub-date", "sailthru.date", "article.published",
     "timestamp",
 )
-_LD_ARTICLE_TYPES = frozenset(
-    {
-        "article",
-        "newsarticle",
-        "blogposting",
-        "report",
-        "scholarlyarticle",
-        "techarticle",
-        "liveblogposting",
-        "webpage",
-    }
-)
+_LD_ARTICLE_TYPES = frozenset({
+    "article", "newsarticle", "blogposting", "report", "scholarlyarticle",
+    "techarticle", "liveblogposting", "webpage",
+})
 
 _BYLINE_ATTR_RE = re.compile(
     r"byline|by-line|byl\b|author|writtenby|written-by|dc-creator|contributor",
@@ -411,7 +300,7 @@ class _Node:
     document order, which is what lets the renderer emit loose text sitting
     between two `<p>`s without reordering the article."""
 
-    __slots__ = ("attrs", "final", "items", "line", "parent", "score", "tag", "_tc")
+    __slots__ = ("_tc", "attrs", "final", "items", "line", "parent", "score", "tag")
 
     def __init__(self, tag: str, attrs: dict[str, str], parent: _Node | None,
                  line: int = 0) -> None:
@@ -619,7 +508,9 @@ class _Document(HTMLParser):
             return  # css/js text is never content and is not worth storing
         self.stack[-1].items.append(("text", data))
 
-    def close(self) -> None:  # noqa: D102 - HTMLParser hook
+    def close(self) -> None:
+        """Finish the feed, then finalize every element left open (a truncated
+        page must still yield its captured h1/byline/time)."""
         super().close()
         if self._ld_parts is not None:
             self._flush_ld()
@@ -1318,18 +1209,21 @@ def cached_document(conn: sqlite3.Connection, hash_hex: str) -> dict[str, Any] |
 
 def recent_documents(conn: sqlite3.Connection, *, limit: int = 20,
                      source: str | None = None) -> list[dict[str, Any]]:
-    """Newest-first corpus rows WITHOUT the text bodies (a listing, not a dump)."""
-    cols = ", ".join(_DOC_COLUMNS)
+    """Newest-first corpus rows WITHOUT the text bodies (a listing, not a dump).
+
+    The body is dropped in Python rather than by naming columns in the SQL, so
+    the query stays a constant string with bound parameters only.
+    """
     if source:
         rows = conn.execute(
-            f"SELECT {cols} FROM documents WHERE source = ? ORDER BY id DESC LIMIT ?",
+            "SELECT * FROM documents WHERE source = ? ORDER BY id DESC LIMIT ?",
             (source, int(limit)),
         ).fetchall()
     else:
         rows = conn.execute(
-            f"SELECT {cols} FROM documents ORDER BY id DESC LIMIT ?", (int(limit),)
+            "SELECT * FROM documents ORDER BY id DESC LIMIT ?", (int(limit),)
         ).fetchall()
-    return [dict(r) for r in rows]
+    return [{k: r[k] for k in _DOC_COLUMNS} for r in rows]
 
 
 def document_text(conn: sqlite3.Connection, doc_id: int) -> dict[str, Any] | None:

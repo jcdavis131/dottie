@@ -308,11 +308,18 @@ def test_index_paths_rejects_bad_arguments(tmp_path):
 # ---- query: ranking, snippets, filters, pagination --------------------------
 
 
-def test_bm25_ranks_a_dense_short_document_above_a_diluted_one(corpus):
+def test_bm25_ranks_a_dense_short_document_above_a_diluted_one(tmp_path):
+    # File names deliberately contradict the expected order: alphabetically
+    # a-diluted sorts first, so this test can only pass if BM25 decides the order
+    # (dropping `ORDER BY bm25` was verified to turn it red).
+    root = tmp_path / "c"
+    _write(root / "a-diluted.md", "ranking " + ("filler word here " * 60) + "\n", mtime=1000.0)
+    _write(root / "z-dense.md", "ranking ranking ranking\n", mtime=1000.0)
+    _write(root / "m-noise.md", "nothing relevant at all\n", mtime=1000.0)
     conn = _mem()
-    search.index_paths(conn, [corpus], include=["*.md"], now=1.0)
+    search.index_paths(conn, [root], include=["*.md"], now=1.0)
     res = search.query(conn, "ranking")
-    assert _names(res) == ["dense.md", "sparse.md"]
+    assert _names(res) == ["z-dense.md", "a-diluted.md"]
     assert res["total"] == 2 and res["returned"] == 2
     assert res["hits"][0]["rank"] == 1 and res["hits"][1]["rank"] == 2
     # score is -bm25 (bigger is better) and the raw engine number is kept

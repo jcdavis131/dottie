@@ -26,6 +26,13 @@ callable and, when it denies, records state "denied" and NEVER calls fetch —
 one off-allowlist feed must not kill the whole poll (the links #4 doctrine of
 default-deny recorded as a report row rather than raised).
 
+Dedupe is per SUBSCRIPTION (UNIQUE(feed, key)), which is what a reader wants:
+unsubscribing drops that feed's rows and nothing else. The visible consequence
+is that a cross-listed item — an arXiv paper announced in both cs.LG and cs.CL,
+observed live on the first real poll — appears once per feed in a digest. A
+digest-level collapse on `link` is the natural next step and belongs in digest(),
+not in the store.
+
 Extension points:
 - Keyword profiles: load_keywords() overlays a JSON {keyword: weight} file onto
   DEFAULT_KEYWORDS (pure config, uptime.load_targets merge semantics), so

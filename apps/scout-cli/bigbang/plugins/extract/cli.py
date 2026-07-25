@@ -228,7 +228,7 @@ def prefetch(sources: list[str], loader, *, jobs: int = 1) -> dict[str, dict]:
     urls = [s for s in sources if is_url(s)]
     if jobs > 1 and len(urls) > 1:
         with ThreadPoolExecutor(max_workers=min(jobs, len(urls))) as pool:
-            fetched = dict(zip(urls, pool.map(loader, urls)))
+            fetched = dict(zip(urls, pool.map(loader, urls), strict=True))
     else:
         fetched = {s: loader(s) for s in urls}
     for src in sources:

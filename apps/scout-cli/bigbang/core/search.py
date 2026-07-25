@@ -13,7 +13,7 @@ superset of this core to prefer).
 FTS5 is a compile-time option, so its availability is PROBED, never assumed:
 fts5_probe() builds a throwaway in-memory table, inserts a row, and demands that
 our tokenizer, bm25() and snippet() all work end to end. open_index() raises
-Fts5Unavailable when that probe fails, so a build without FTS5 fails loudly at
+Fts5UnavailableError when that probe fails, so a build without FTS5 fails loudly at
 open time instead of silently indexing nothing (the whole point of [B] in the
 family contract: never a silent no-op).
 
@@ -166,7 +166,16 @@ CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
 
-class Fts5Unavailable(RuntimeError):
+# The probe's own query. S608 is suppressed because the only interpolation is our
+# own int constant (snippet()'s column index) and no caller input reaches it.
+_PROBE_SQL = f"""
+SELECT bm25(probe, 2.0, 1.0),
+       snippet(probe, {_BODY_COLUMN}, '[', ']', '...', 4)
+FROM probe WHERE probe MATCH 'quick'
+"""  # noqa: S608
+
+
+class Fts5UnavailableError(RuntimeError):
     """This sqlite3 build cannot do FTS5 — fail honestly, never degrade silently."""
 
 
@@ -194,11 +203,7 @@ def fts5_probe() -> dict[str, Any]:
                 f"CREATE VIRTUAL TABLE probe USING fts5(a, b, tokenize='{TOKENIZER}')"
             )
             conn.execute("INSERT INTO probe(a, b) VALUES('p', 'the quick brown fox')")
-            row = conn.execute(
-                "SELECT bm25(probe, 2.0, 1.0), "
-                f"snippet(probe, {_BODY_COLUMN}, '[', ']', '...', 4) "
-                "FROM probe WHERE probe MATCH 'quick'"
-            ).fetchone()
+            row = conn.execute(_PROBE_SQL).fetchone()
         finally:
             conn.close()
     except sqlite3.Error as exc:  # no FTS5, or a tokenizer this build rejects
@@ -226,13 +231,13 @@ def fts5_available() -> tuple[bool, str]:
 def open_index(path: str | Path) -> sqlite3.Connection:
     """Open (creating if needed) the search index — its OWN sqlite file.
 
-    Raises Fts5Unavailable when this interpreter's sqlite3 cannot do FTS5, so the
+    Raises Fts5UnavailableError when this interpreter's sqlite3 cannot do FTS5, so the
     failure lands at open time with the real sqlite error attached instead of
     surfacing later as an index that silently matches nothing.
     """
     available, reason = fts5_available()
     if not available:
-        raise Fts5Unavailable(
+        raise Fts5UnavailableError(
             "this interpreter's sqlite3 cannot do FTS5 as this adapter needs it "
             f"(sqlite {sqlite3.sqlite_version}, tokenizer {TOKENIZER!r}): {reason}"
         )
@@ -576,6 +581,9 @@ WHERE docs MATCH :match
        OR (:pathexact IS NOT NULL AND lower(files.path) = :pathexact))
 """
 
+# S608 is suppressed on both of these: the only interpolation is _WHERE, a module
+# constant. Every value a caller can influence (match text, path filter, weights,
+# snippet markers, limit/offset) is a bound :parameter — see `query`.
 _HIT_SQL = f"""
 SELECT files.id AS id, files.path AS path, files.mtime AS mtime,
        files.size AS size, files.chars AS chars, files.indexed_ts AS indexed_ts,
@@ -585,12 +593,12 @@ FROM docs JOIN files ON files.id = docs.rowid
 {_WHERE}
 ORDER BY bm25 ASC, files.path ASC
 LIMIT :limit OFFSET :offset
-"""
+"""  # noqa: S608
 
 _COUNT_SQL = f"""
 SELECT count(*) FROM docs JOIN files ON files.id = docs.rowid
 {_WHERE}
-"""
+"""  # noqa: S608
 
 
 def path_filter(path_glob: str | None) -> tuple[str | None, str | None]:

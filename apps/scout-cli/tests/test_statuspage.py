@@ -481,10 +481,14 @@ def test_detection_fallback_is_expected_steady_state(monkeypatch):
     assert cap["extras"]["statping"]["found"] is False
 
 
+def _plugin_dir() -> Path:
+    return ROOT / "bigbang" / "plugins" / "statuspage"
+
+
 def test_manifest_denies_the_network_axis():
     from bigbang.core.policy import check_permission, load_manifest
 
-    mf = load_manifest(Path(statuspage_plugin_dir()))
+    mf = load_manifest(_plugin_dir())
     assert mf["name"] == "statuspage"
     assert mf["capabilities"]["network"]["enabled"] is False
     assert mf["capabilities"]["secrets"]["allow"] == []
@@ -493,10 +497,6 @@ def test_manifest_denies_the_network_axis():
     assert allowed is False and "network disabled" in reason
     # the one capability it does need
     assert check_permission(mf, "fs_write", ".scout/status.html")[0] is True
-
-
-def statuspage_plugin_dir() -> Path:
-    return ROOT / "bigbang" / "plugins" / "statuspage"
 
 
 def test_plugin_is_discoverable():
