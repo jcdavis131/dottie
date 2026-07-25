@@ -95,3 +95,6 @@ your_files/
 .dolma/
 .jupyter/
 .venv-test/
+
+# Cygwin/MSYS crash dumps — an artifact of a tool crashing, never source
+*.stackdump
