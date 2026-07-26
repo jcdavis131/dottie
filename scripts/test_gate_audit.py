@@ -170,7 +170,7 @@ def _weight_for(k):
 # ---------------------------------------------------------------------------
 # Suppressed-check detection, and the prose exclusion.
 # ---------------------------------------------------------------------------
-import tempfile  # noqa: E402
+import tempfile
 
 with tempfile.TemporaryDirectory() as td:
     p = Path(td) / "ci.yml"

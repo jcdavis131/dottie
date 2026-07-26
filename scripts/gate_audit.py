@@ -78,7 +78,7 @@ def iter_files(base: Path, suffixes):
 def _src(node, lines):
     try:
         return lines[node.lineno - 1].strip()
-    except Exception:  # noqa: BLE001
+    except Exception:
         return ""
 
 
@@ -169,7 +169,7 @@ def find_suppressed_checks(path: Path, rel: str):
     out = []
     try:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    except Exception:  # noqa: BLE001
+    except Exception:
         return out
     for i, line in enumerate(lines, 1):
         stripped = line.strip()
@@ -197,7 +197,7 @@ def audit(base: Path):
         try:
             text = p.read_text(encoding="utf-8", errors="replace")
             tree = ast.parse(text)
-        except Exception:  # noqa: BLE001 - unparseable is not a finding
+        except Exception:
             continue
         scanned["py"] += 1
         lines = text.splitlines()
