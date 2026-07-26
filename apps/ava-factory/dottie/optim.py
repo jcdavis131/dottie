@@ -1,276 +1,239 @@
-"""Muon: momentum-orthogonalized optimizer for the hidden matrices.
+"""
+Dottie — Unified optimizer factory: AdamW, Muon, SOAP/KL-SOAP, MOP/REKLS, layer-wise
+Solo personal project, no connection to employer, built with public/free-tier only
+HOME-only.
 
-Jordan et al. 2024 (github.com/KellerJordan/Muon) with the Moonlight scaling
-recipe (arXiv 2502.16982): SGD-momentum orthogonalized by a Newton-Schulz
-iteration, updates rescaled by 0.2*sqrt(max(A, B)) so their RMS (~0.2)
-matches AdamW's typical update RMS, plus decoupled weight decay. With that
-RMS matching, Muon DIRECTLY REUSES the AdamW-tuned learning rate and weight
-decay -- verified verbatim against the paper ("with this adjustment, Muon
-can directly reuse the learning rate and weight decay tuned for AdamW"), so
-the WSD schedule drives both optimizers at the same magnitude and there is
-no second LR to tune.
+Paper: 2607.20548 SOAP, Muon, and Beyond (Khona et al)
+Repo: NVIDIA-NeMo/Emerging-Optimizers (Apache-2.0) — implements KL-Shampoo, REKLS, etc.
 
-Two properties matter at Ava's scale:
-
-* **Half the optimizer memory of AdamW for matrices.** One momentum buffer
-  per matrix instead of Adam's (m, v) pair -- on mini that is ~0.6GB back on
-  a 12GB GPU that crash-looped at 97% VRAM.
-* **Validated step-efficiency, honestly sized**: 1.35x token-efficiency at
-  124M (NanoGPT speedrun record) and ~25% compute reduction at 1.5B. The
-  circulated "~2x" figure is the vendor's own scaling-law fit and did not
-  survive independent benchmarking -- do not plan around it.
-
-Muon applies ONLY to 2D hidden weights. Embeddings, tied heads, norms,
-biases, and the J-space decay logits keep AdamW (the split every source --
-Jordan, Moonlight, Essential AI -- lands on independently). `build_hybrid`
-wires the split behind a single optimizer-shaped object so ava/train.py's
-checkpoint and LR plumbing does not care. Presets opt in with
-optimizer.name: "muon".
+Features per 2607.20548:
+- Muon Newton-Schulz orthogonalization (5 steps default) with Moonlight RMS matching 0.2*sqrt(max)
+- SOAP with per-step QR orth fix (precondition_freq=1) — eliminates loss spikes at large-batch (Sec 5.4)
+- KL covariance option (KL-Shampoo Sec 5.4) — integrates KL-divergence correction
+- update-RMS matching factor 0.2*sqrt((1-beta)/(1+beta)) for fair LR transfer (Sec 5.2)
+- sqrt batch scaling eta' = eta sqrt(B'/B) (Sec 3)
+- layer-wise distributed optimizer pattern (Sec 6, Megatron-Core compatible)
+- CPU fallback, offline-first, free-tier friendly
 """
 
 from __future__ import annotations
 
+import math
+from typing import Tuple
+
 import torch
 
-_NS_COEFFS = (3.4445, -4.7750, 2.0315)
+# Muon core — import from dottie.muon (full version with Hyperball etc)
+try:
+    from dottie.muon import (
+        Muon,
+        MuonVS,
+        HybridOptimizer,
+        Hyperball,
+        build_hybrid as build_hybrid_muon,
+        is_muon_param,
+        newton_schulz_orthogonalize,
+    )
+except ImportError as e:
+    # fallback minimal (if running as script)
+    from muon import (  # type: ignore
+        Muon,
+        MuonVS,
+        HybridOptimizer,
+        Hyperball,
+        build_hybrid as build_hybrid_muon,
+        is_muon_param,
+        newton_schulz_orthogonalize,
+    )
+
+# SOAP core
+try:
+    from dottie.soap import (
+        SOAP,
+        HybridSOAPAdamW,
+        LayerWiseDistributedOptimizer,
+        build_hybrid_soap,
+        init_kronecker_factors,
+        is_soap_param,
+        precondition,
+        sqrt_batch_scaled_lr,
+        unprecondition,
+        update_eigenbasis_and_exp_avgs,
+        update_kronecker_factors,
+        update_kronecker_factors_kl_shampoo,
+        update_rms_match_factor,
+    )
+except ImportError:
+    # if soap missing, create stubs so adamw/muon still works offline
+    SOAP = None  # type: ignore
+    HybridSOAPAdamW = None  # type: ignore
+    LayerWiseDistributedOptimizer = None  # type: ignore
+    build_hybrid_soap = None  # type: ignore
+    init_kronecker_factors = None  # type: ignore
+    is_soap_param = None  # type: ignore
+    precondition = None  # type: ignore
+    unprecondition = None  # type: ignore
+    update_eigenbasis_and_exp_avgs = None  # type: ignore
+    update_kronecker_factors = None  # type: ignore
+    update_kronecker_factors_kl_shampoo = None  # type: ignore
+
+    def update_rms_match_factor(beta: float = 0.9, base_scale: float = 0.2) -> float:
+        if not (0 <= beta < 1):
+            return base_scale
+        return base_scale * math.sqrt((1.0 - beta) / (1.0 + beta))
+
+    def sqrt_batch_scaled_lr(base_lr: float, base_batch_tokens: int, new_batch_tokens: int) -> float:
+        if base_batch_tokens <= 0 or new_batch_tokens <= 0:
+            return base_lr
+        return base_lr * math.sqrt(new_batch_tokens / base_batch_tokens)
 
 
-@torch.no_grad()
-def newton_schulz_orthogonalize(g: torch.Tensor, steps: int = 5) -> torch.Tensor:
-    """Approximate UV^T (the orthogonal factor of g's SVD) via the quintic
-    Newton-Schulz iteration of the Muon reference implementation. Runs in
-    bf16 on CUDA for speed; exact orthogonality is not required -- the
-    iteration only has to crush the spread of singular values."""
-    assert g.ndim == 2
-    a, b, c = _NS_COEFFS
-    x = g.to(torch.bfloat16 if g.is_cuda else torch.float32)
-    transposed = x.shape[0] > x.shape[1]
-    if transposed:
-        x = x.mT
-    x = x / (x.norm() + 1e-7)
-    for _ in range(steps):
-        s = x @ x.mT
-        x = a * x + (b * s + c * (s @ s)) @ x
-    if transposed:
-        x = x.mT
-    return x.to(g.dtype)
+__all__ = [
+    # Muon
+    "Muon",
+    "MuonVS",
+    "HybridOptimizer",
+    "Hyperball",
+    "build_hybrid_muon",
+    "is_muon_param",
+    "newton_schulz_orthogonalize",
+    # SOAP
+    "SOAP",
+    "HybridSOAPAdamW",
+    "LayerWiseDistributedOptimizer",
+    "build_hybrid_soap",
+    "init_kronecker_factors",
+    "is_soap_param",
+    "precondition",
+    "unprecondition",
+    "update_kronecker_factors",
+    "update_kronecker_factors_kl_shampoo",
+    "update_eigenbasis_and_exp_avgs",
+    # transfer / scaling
+    "update_rms_match_factor",
+    "sqrt_batch_scaled_lr",
+    "build_optim",
+    "build_hybrid",
+]
 
 
-class Muon(torch.optim.Optimizer):
-    def __init__(
-        self,
-        params,
-        lr: float = 0.02,
-        momentum: float = 0.95,
-        nesterov: bool = True,
-        ns_steps: int = 5,
-        weight_decay: float = 0.0,
-    ):
-        defaults = {
-            "lr": lr,
-            "momentum": momentum,
-            "nesterov": nesterov,
-            "ns_steps": ns_steps,
-            "weight_decay": weight_decay,
-            "lr_scale": 1.0,
-        }
-        super().__init__(params, defaults)
-
-    @torch.no_grad()
-    def step(self, closure=None):
-        loss = closure() if closure is not None else None
-        for group in self.param_groups:
-            # group["lr"] is the FINAL lr: when the train loop drives the WSD
-            # schedule it already folds lr_scale in (train.py); standalone use
-            # just takes the constructor lr. lr_scale is metadata, not a
-            # factor here -- multiplying twice was the first bug this file had.
-            lr = group["lr"]
-            mom, nesterov = group["momentum"], group["nesterov"]
-            for p in group["params"]:
-                if p.grad is None:
-                    continue
-                g = p.grad
-                state = self.state[p]
-                if "momentum_buffer" not in state:
-                    state["momentum_buffer"] = torch.zeros_like(g)
-                buf = state["momentum_buffer"]
-                buf.mul_(mom).add_(g)
-                upd = g.add(buf, alpha=mom) if nesterov else buf
-                flat = upd.reshape(upd.shape[0], -1)
-                ortho = newton_schulz_orthogonalize(flat, group["ns_steps"])
-                # Moonlight RMS matching (arXiv 2502.16982 eq. 1): an
-                # orthogonalized [m, n] update has RMS ~= 1/sqrt(max(m, n));
-                # scaling by 0.2*sqrt(max(m, n)) puts update RMS at ~0.2,
-                # AdamW's empirical range -- which is exactly what lets Muon
-                # ride the SAME learning rate the WSD schedule computes.
-                scale = 0.2 * max(flat.shape) ** 0.5
-                if group["weight_decay"]:
-                    p.mul_(1.0 - lr * group["weight_decay"])
-                p.add_(ortho.view_as(p), alpha=-lr * scale)
-        return loss
-
-
-class HybridOptimizer:
-    """Muon for hidden matrices + AdamW for everything else, presented as one
-    optimizer: the interface subset ava/train.py actually uses."""
-
-    def __init__(self, muon: Muon, adamw: torch.optim.AdamW):
-        self.muon = muon
-        self.adamw = adamw
-
-    @property
-    def param_groups(self):
-        return list(self.muon.param_groups) + list(self.adamw.param_groups)
-
-    def step(self):
-        self.muon.step()
-        self.adamw.step()
-
-    def zero_grad(self, set_to_none: bool = True):
-        self.muon.zero_grad(set_to_none=set_to_none)
-        self.adamw.zero_grad(set_to_none=set_to_none)
-
-    def state_dict(self):
-        return {"muon": self.muon.state_dict(), "adamw": self.adamw.state_dict()}
-
-    def load_state_dict(self, sd):
-        self.muon.load_state_dict(sd["muon"])
-        self.adamw.load_state_dict(sd["adamw"])
-
-
-_ADAMW_NAME_MARKERS = ("embed", "lm_head", "verbalizer", "decay_logit")
-
-
-def is_muon_param(name: str, p: torch.nn.Parameter) -> bool:
-    """Hidden matrices only: 2D+, not embeddings/heads/logits/norms."""
-    if p.ndim < 2:
-        return False
-    return not any(m in name for m in _ADAMW_NAME_MARKERS)
-
-
-class MuonVS(Muon):
-    """Variance-Scaled Muon (Muon-VS lite): attenuate momentum when grad RMS is high.
-
-    Research Muon-VS applies NSR modulation before Newton-Schulz. This lite path
-    scales the buffered momentum by ``1 / (1 + grad_rms)`` so high-variance
-    steps shrink before orthogonalization. Opt-in via ``optimizer.name: muon_vs``.
-    """
-
-    @torch.no_grad()
-    def step(self, closure=None):
-        loss = closure() if closure is not None else None
-        for group in self.param_groups:
-            lr = group["lr"]
-            mom, nesterov = group["momentum"], group["nesterov"]
-            for p in group["params"]:
-                if p.grad is None:
-                    continue
-                g = p.grad
-                state = self.state[p]
-                if "momentum_buffer" not in state:
-                    state["momentum_buffer"] = torch.zeros_like(g)
-                buf = state["momentum_buffer"]
-                buf.mul_(mom).add_(g)
-                upd = g.add(buf, alpha=mom) if nesterov else buf
-                grad_rms = g.pow(2).mean().sqrt().clamp_min(1e-8)
-                upd = upd / (1.0 + grad_rms)
-                flat = upd.reshape(upd.shape[0], -1)
-                ortho = newton_schulz_orthogonalize(flat, group["ns_steps"])
-                scale = 0.2 * max(flat.shape) ** 0.5
-                if group["weight_decay"]:
-                    p.mul_(1.0 - lr * group["weight_decay"])
-                p.add_(ortho.view_as(p), alpha=-lr * scale)
-        return loss
-
-
-class Hyperball:
-    """Frobenius-norm constraint wrapper (Hyperball lite).
-
-    After each wrapped step, rescale selected 2D matrices so
-    ``||W||_F == radius``. Prefer ``matrix_params`` (Muon matrices only).
-    """
-
-    def __init__(
-        self,
-        inner,
-        *,
-        radius: float = 1.0,
-        matrix_params: list[torch.nn.Parameter] | None = None,
-    ):
-        self.inner = inner
-        self.radius = float(radius)
-        self.matrix_params = list(matrix_params) if matrix_params is not None else None
-
-    @property
-    def param_groups(self):
-        return self.inner.param_groups
-
-    def zero_grad(self, set_to_none: bool = True):
-        return self.inner.zero_grad(set_to_none=set_to_none)
-
-    def state_dict(self):
-        return {"inner": self.inner.state_dict(), "radius": self.radius}
-
-    def load_state_dict(self, sd):
-        self.inner.load_state_dict(sd["inner"])
-        self.radius = float(sd.get("radius", self.radius))
-
-    @torch.no_grad()
-    def step(self, closure=None):
-        if closure is not None:
-            loss = self.inner.step(closure)
-        else:
-            loss = self.inner.step()
-        targets = self.matrix_params
-        if targets is None:
-            targets = [p for g in self.param_groups for p in g["params"] if p.ndim >= 2]
-        for p in targets:
-            if p.ndim < 2:
-                continue
-            n = p.norm()
-            if float(n) > 1e-8:
-                p.mul_(self.radius / n)
-        return loss
-
-
-def build_hybrid(
+def build_optim(
     model: torch.nn.Module,
     *,
-    adamw_lr: float,
-    betas: tuple[float, float],
-    weight_decay: float,
+    name: str = "adamw",
+    adamw_lr: float = 3e-4,
+    betas: Tuple[float, float] = (0.9, 0.95),
+    weight_decay: float = 0.01,
+    shampoo_beta: float = 0.95,
+    precondition_freq: int = 1,
+    use_kl_shampoo: bool = False,
+    use_eigh: bool = False,
+    power_iter_steps: int = 1,
     momentum: float = 0.95,
     ns_steps: int = 5,
-    variant: str = "muon",
+    layer_wise: bool = False,
+    num_ranks: int = 1,
+    # LR transfer / batch scaling (Sec 5.2 & Sec 3)
+    update_rms_match: bool = False,
+    rms_beta: float = 0.9,
+    sqrt_batch_scaling: bool = False,
+    base_batch_tokens: int = 1_048_576,
+    new_batch_tokens: int = 1_048_576,
+    base_lr_for_scaling: float | None = None,
     hyperball_radius: float | None = None,
-) -> HybridOptimizer | Hyperball:
-    muon_params, decay, no_decay = [], [], []
-    for n, p in model.named_parameters():
-        if not p.requires_grad:
-            continue
-        if is_muon_param(n, p):
-            muon_params.append(p)
-        elif p.ndim < 2 or "decay_logit" in n:
-            no_decay.append(p)
-        else:
-            decay.append(p)
-    muon_cls = MuonVS if variant in ("muon_vs", "muon-nsr", "muon_nsr") else Muon
-    muon = muon_cls(
-        muon_params,
-        lr=adamw_lr,
-        momentum=momentum,
-        ns_steps=ns_steps,
-        weight_decay=weight_decay,
-    )
-    adamw = torch.optim.AdamW(
-        [
-            {"params": decay, "weight_decay": weight_decay},
-            {"params": no_decay, "weight_decay": 0.0},
-        ],
-        lr=adamw_lr,
-        betas=betas,
-    )
-    hybrid = HybridOptimizer(muon, adamw)
-    if hyperball_radius is not None:
-        return Hyperball(hybrid, radius=hyperball_radius, matrix_params=muon_params)
-    return hybrid
+) -> torch.optim.Optimizer | HybridOptimizer | HybridSOAPAdamW | LayerWiseDistributedOptimizer | Hyperball:
+    """
+    Unified factory called by dottie/train.py and train_1b_deepspeed.py.
+
+    name choices:
+      adamw       - vanilla AdamW
+      muon        - Muon for matrices + AdamW rest (HybridOptimizer)
+      muon_vs     - Variance-scaled Muon
+      muonh       - Muon + Hyperball (Frobenius radius)
+      soap        - SOAP with per-step QR fix (paper 2607.20548 Sec 5.4)
+      kl_soap     - SOAP + KL-Shampoo covariance (paper Sec 5.4)
+      mop         - Momentum Orthogonalized by Polar (MOP) — same as Muon but polar decomp alias
+      rekls       - REKLS = SOAP + eigen basis per step + KL (advanced variant per NVIDIA blog)
+
+    Returns an optimizer-like object with .param_groups, .step(), .zero_grad(), .state_dict().
+    Offline-first, CPU fallback, free-tier.
+    """
+    n = name.lower()
+
+    # handle LR scaling helpers before building
+    effective_lr = adamw_lr
+    if update_rms_match:
+        factor = update_rms_match_factor(beta=rms_beta)
+        # paper says factor ~0.2 sqrt((1-beta)/(1+beta)) for LR transfer
+        effective_lr = effective_lr * factor
+    if sqrt_batch_scaling and base_lr_for_scaling is not None:
+        effective_lr = sqrt_batch_scaled_lr(base_lr_for_scaling, base_batch_tokens, new_batch_tokens)
+    elif sqrt_batch_scaling:
+        effective_lr = sqrt_batch_scaled_lr(adamw_lr, base_batch_tokens, new_batch_tokens)
+
+    if n in ("adamw", "adamw8bit"):
+        decay, no_decay = [], []
+        for mod_n, p in model.named_parameters():
+            if not p.requires_grad:
+                continue
+            (no_decay if p.ndim < 2 or "decay_logit" in mod_n else decay).append(p)
+        if n == "adamw8bit":
+            try:
+                import bitsandbytes as bnb
+
+                return bnb.optim.AdamW8bit(
+                    [{"params": decay, "weight_decay": weight_decay}, {"params": no_decay, "weight_decay": 0.0}],
+                    lr=effective_lr,
+                    betas=betas,
+                )
+            except ImportError:
+                pass
+        return torch.optim.AdamW(
+            [{"params": decay, "weight_decay": weight_decay}, {"params": no_decay, "weight_decay": 0.0}],
+            lr=effective_lr,
+            betas=betas,
+        )
+
+    if n in ("muon", "muon_vs", "muon-nsr", "muon_nsr", "muonh", "mop"):
+        variant = "muon_vs" if n in ("muon_vs", "muon-nsr", "muon_nsr") else "muon"
+        radius = hyperball_radius if hyperball_radius is not None else (1.0 if n == "muonh" else None)
+        if n == "mop":
+            variant = "muon"  # MOP alias = Muon with polar factor, same NS path
+        return build_hybrid_muon(
+            model,
+            adamw_lr=effective_lr,
+            betas=betas,
+            weight_decay=weight_decay,
+            momentum=momentum,
+            ns_steps=ns_steps,
+            variant=variant,
+            hyperball_radius=radius,
+        )
+
+    if n in ("soap", "kl_soap", "rekls"):
+        if build_hybrid_soap is None or SOAP is None:
+            raise ImportError("dottie.soap module missing — cannot build SOAP; install or restore soap.py")
+        use_kl = n in ("kl_soap", "rekls") or use_kl_shampoo
+        use_eigh_flag = use_eigh or (n == "rekls")
+        precond_freq = precondition_freq
+        if n == "rekls":
+            precond_freq = 1  # per-step required for stability Sec 5.4
+        return build_hybrid_soap(
+            model,
+            adamw_lr=effective_lr,
+            betas=betas,
+            weight_decay=weight_decay,
+            shampoo_beta=shampoo_beta,
+            precondition_freq=precond_freq,
+            use_kl_shampoo=use_kl,
+            use_eigh=use_eigh_flag,
+            power_iter_steps=power_iter_steps,
+            num_ranks=num_ranks,
+            layer_wise=layer_wise,
+        )
+
+    raise ValueError(f"Unknown optimizer name {name!r}; expected adamw|muon|muon_vs|soap|kl_soap|mop|rekls")
+
+
+def build_hybrid(*args, **kwargs):
+    return build_hybrid_muon(*args, **kwargs)

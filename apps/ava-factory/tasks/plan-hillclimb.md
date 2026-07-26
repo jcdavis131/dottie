@@ -31,6 +31,20 @@ Initial weights (normalize later): `w = (1.0, 1.0, 0.5, 0.3, 2.0, 2.0)`.
 5. Log delta in `tasks/hillclimb-log.md` (append one line).  
 6. Stop hard only for: irreversible destroy, secrets, base1b GO/NO-GO, budget blowup.
 
+Public eval only on fast ticks — cheap judge (probes J-Space PPL). Hidden eval off fast path; run nightly / T9.3 / Spec 11 gate. See benchbenchbench audit integration.
+
+## Eval audit (benchbenchbench-style)
+
+Every 5m tick uses public Score for selection. Separately:
+
+- Nightly cron / T9.3 GO/NO-GO / Spec 11 arch candidate: compute hidden_score on `evals/hidden_faults/` (<100 items, never in `EVAL_SETS`, git-ignored, decontaminated but not public).
+- Track decision-level metrics: Spearman rho, pairwise accuracy, regret@8, utility recovery = (top_public_hidden - mean_hidden)/(max_hidden-mean_hidden).
+- Log to `reports/branch_eval_results_real.json` under `"audit"` and to `reports/REPORT_REAL.md` section "Decision-level holdout audit".
+- Alert `bench_audit_degraded` in `dottie_telemetry.jsonl` when rho <0.58 or utility_recovery <0.93 (benchbenchbench hidden-only baselines 0.58/93.1%).
+- Gate: arch candidates T11.2 DeltaNet / T11.4 MatFormer require rho>=0.55 and recovery>=0.93 before adoption — prevents cheap-judge overfit at large batch (matches 2607.20548v1 batch-scaling concern).
+
+Full spec: `docs/BENCHBENCHBENCH_AUDIT_INTEGRATION.md`
+
 ## Data gates (must be green before arch work)
 
 | Gate | Math | Target |

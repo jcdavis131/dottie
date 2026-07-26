@@ -132,3 +132,18 @@ long-context target exists. T11.4 is independent and gated on writing `12_matfor
 is a non-task, kept for the record. T11.6 and T11.7 are not forward-pass work and don't compete with
 T11.1-T11.4 for the same causality-gated review slot: T11.6 waits on a serve path worth the k=4 cost,
 T11.7 waits on T9.3/T9.5 same as the rest of branch fine-tuning.
+
+## Decision-level holdout gate (benchbenchbench-style)
+
+All T11.1-T11.4 candidates are arch/optim candidates that claim to beat AdamW at scale — exactly the class benchbenchbench warns cheap judges overfit to.
+
+**Reference:** https://github.com/emollick/benchbenchbench — Spearman rho / Pairwise acc / Regret@8 / Utility recovery for holdout faults.
+
+**Rule:** No T11.x candidate ships to `AvaConfig` / `configs/*.yaml` unless it passes nightly hidden audit:
+- Hidden set = `evals/hidden_faults/` (git-ignored, <100 items, EVAL_SEED+1, not in `EVAL_SETS`, decontaminated).
+- Metrics computed in `evals/run_harness.py` extension `audit`: Spearman rho >=0.55, pairwise >=70%, utility_recovery >=0.93, regret@8 <=5.5 (benchbenchbench hidden-only baselines: rho 0.58, pairwise 73.3%, regret 5.35, utility 93.1%).
+- Public judge stays cheap (<20min CPU); hidden runs only on candidate promotion gates (nightly, T9.3, T11 adoption).
+
+See `docs/BENCHBENCHBENCH_AUDIT_INTEGRATION.md` for stdlib-only implementation sketch.
+
+Relevance to optimizer work (SOAP/Muon per 2607.20548): large-batch stability claims must be validated on hidden faults that were never used for LR transfer / update-RMS matching / preconditioner freshness tuning — otherwise we repeat the vendor-card error benchbenchbench audits.

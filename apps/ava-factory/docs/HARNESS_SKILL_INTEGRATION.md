@@ -106,10 +106,25 @@ run_skill("openwiki-sync", ckpt="ava_stable_736k.pt", mode="real")
 # gate
 results = run_harness(eval_names="jspace_all,frontier_rubric", mode="real", ckpt="ava_stable_736k.pt")
 if results["meta"]["passed"] < 3:
-raise RuntimeError("Harness gate failed")
+    raise RuntimeError("Harness gate failed")
 ```
+
+## Decision-level holdout audit (benchbenchbench)
+
+**Ref:** https://github.com/emollick/benchbenchbench, `docs/BENCHBENCHBENCH_AUDIT_INTEGRATION.md`, Spec 06 extension, `tasks/plan-hillclimb.md` audit section.
+
+Flow:
+
+1. Public judge = `harness/evals/jspace_tests.py` + `frontier_rubric.py` + probes (cheap, <20m CPU). Used for hill-climb selection.
+2. Hidden faults = `evals/hidden_faults/` (git-ignored, <100 items, off-limits to training, never published). Decontaminated but not in EVAL_SETS.
+3. Audit = runs only nightly / T9.3 / Spec 11 adoption: compute `public_score(c)` vs `hidden_score(c)` across candidates, log Spearman rho / pairwise acc / regret@8 / utility recovery into `reports/branch_eval_results_real.json` `audit` key and `REPORT_REAL.md` holdout section.
+4. Alert `bench_audit_degraded` in `dottie_telemetry.jsonl` when rho<0.58 or utility<0.93 (benchbenchbench hidden-only thresholds: Composite 0.945/90.8%/0.93/98.9% vs Hidden-only 0.58/73.3%/5.35/93.1%).
+5. Gate: Spec 11 arch/T11.x optim (SOAP/Muon) candidates require rho>=0.55 and recovery>=0.93 before base1b wiring — avoids large-batch stability claims passing cheap judge but failing true faults (paper 2607.20548 concern).
+
+Skill `eval-harness-runner` wraps this: `--mode real` runs public, `--audit` adds hidden (local only, never uploads).
 
 ## Next
 
 - [] Run `openwiki code --init` in all three repos
 - [] Add Family Brain WikiTab build to production bundle
+- [] Seed `evals/hidden_faults/` (git-ignored) and wire `evals/audit_metrics.py` stdlib-only audit calc

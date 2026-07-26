@@ -167,6 +167,29 @@ The mock harness's giveaway literals (verified in eval_branch_harness.py): `0.82
    docs/blueprint/ with a MOCK header, branch_eval_results.json stays at root with a top-level
    "disclaimer" field, and eval_branch_harness.py `--mode real` now refuses to run.)
 
+## Extension: Decision-level holdout audit (benchbenchbench-style)
+
+**Source:** https://github.com/emollick/benchbenchbench — public score should select authors that still win on held-out faults.
+
+**Public judge:** Keep cheap — `evals/probe_items/` + J-Space canonical 5 + PPL. This is what hill-climb Score optimizes.
+
+**Hidden faults:** New local-only set `evals/hidden_faults/` (git-ignored, <100 items, seeded EVAL_SEED+1, same surface-form style as `eval_sets.py` commentary, >=5 words, never added to `EVAL_SETS`). Must also be decontaminated via `ava.pipeline.decontaminate` but not via public registry. Run only nightly / T9.3 / Spec 11 adoption gates.
+
+**Audit metrics (stdlib-only, no scipy):**
+- `spearman_rho` — rank correlation between public_score order and hidden_score order across candidates C_t.
+- `pairwise_accuracy` — fraction of candidate pairs with agreeing order.
+- `regret@k` — `max_hidden - max_hidden among top-k public`. k=8 default matching benchbenchbench paper.
+- `utility_recovery` — `(top_public_hidden - mean_hidden)/(max_hidden - mean_hidden)`. Flag if <0.93 (benchbenchbench hidden-only baseline).
+
+**Reporting:**
+- `reports/branch_eval_results_real.json` adds key `"audit": {spearman_rho, pairwise_acc, regret@8, utility_recovery, public_rank, hidden_rank}`.
+- `reports/REPORT_REAL.md` adds section "## Decision-level holdout audit (benchbenchbench-style)" with 4 numbers.
+- `dottie_telemetry.jsonl` logs `bench_audit_degraded` when recovery <0.93 or rho <0.58 (benchbenchbench hidden-only thresholds).
+
+**Gate rule:** Arch candidate (Spec 11 T11.2 / T11.4) must show rho >=0.55 and utility_recovery >=0.93 on hidden audit before base1b adoption. Prevents optimizing cheap judge while failing true utility.
+
+See `docs/BENCHBENCHBENCH_AUDIT_INTEGRATION.md` for full wiring checklist and pseudocode.
+
 ## Out of scope
 - Training or fine-tuning (spec 05). server.py (separate spec). code/math branches (chat only for now).
 - External eval suites (lm-eval-harness, HF datasets — network blocked). sklearn/scipy dependencies.
