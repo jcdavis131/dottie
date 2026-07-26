@@ -676,23 +676,54 @@ does not exist, so it SKIPPED silently — a dead guard, caught and fixed. 49 te
   intra-cluster true Jaccard **0.7143** (`feeds/cli.py::_open_store` vs
   `flows/cli.py::_open_store`) against an advertised 0.8, and 1 of 126 drops is below
   threshold. Nothing tests drop-vs-survivor similarity.
-- [ ] **minhash: `docs[key] = seg` silently overwrites same-named defs in one file.**
+Five entries below were **STALE** — all already fixed in the source, still marked open.
+Re-verified against live code 2026-07-26, each with the named test that pins it. Closing a
+stale entry matters: a wrong TODO cost real time today when
+`empty_result_count`'s recorded residual turned out to be false.
+
+- [x] **minhash: `docs[key] = seg` silently overwrites same-named defs in one file.**
   Concrete: `bigbang/plugins/mcp/cli.py` defines `_check_sdk` twice under try/except — one
   returns `True`, the other raises. **They are opposites, not duplicates**, and only the
-  second survives. scout-cli yields 4,567 (name, source) pairs but 4,566 unique keys, so the
-  loss is invisible in the reported corpus size. Needs a disambiguated key + a `collisions`
-  counter.
-- [ ] **minhash: unreadable files counted as scanned.** `files += 1` precedes `read_text`;
-  `except OSError: continue` skips without incrementing `unparseable`.
-- [ ] **minhash: `cluster_documents` returns whole-corpus `shingle_sets` + `signatures`**
-  that `main()` never reads — pins 4,566×128 ints for the result's lifetime, which defeats
-  the stated Phase-8 target of a larger corpus.
-- [ ] **hard_negatives: `class_of` reads only the innermost class**, so `Outer.Inner.run` and
+  second survives. scout-cli yielded 4,567 (name, source) pairs but 4,566 unique keys, so the
+  loss was invisible in the reported corpus size. **FIXED**: `_insert_document` returns a
+  collision flag, keys disambiguate to `m.py::_check_sdk#L<lineno>`, and `collisions` is in
+  the stats dict for both units. Pinned by
+  `TestAgainstThePluginTree::test_the_real_key_collision_is_recovered_not_overwritten` and
+  `TestCollection::test_a_collision_free_corpus_reports_zero_collisions` (the latter itself
+  hardened today — it used to pass vacuously on an empty scan).
+- [x] **minhash: unreadable files counted as scanned.** **FIXED**: `except OSError` now does
+  `unreadable += 1; continue` and `files += 1` comes AFTER the successful `read_text`, so a
+  path that never opened is not reported as scanned. `unreadable` is its own stat rather than
+  being folded into `unparseable`. Pinned by
+  `TestCollection::test_an_unreadable_path_is_not_counted_as_scanned` and
+  `::test_an_unreadable_path_is_reported_by_the_cli`.
+- [x] **minhash: `cluster_documents` returns whole-corpus `shingle_sets` + `signatures`**
+  that `main()` never reads — pinned 4,566×128 ints for the result's lifetime. **FIXED**:
+  `return_vectors: bool = False`, so they are attached only on request. Pinned by
+  `TestClustering::test_the_corpus_vectors_are_not_returned_unless_asked_for` and
+  `::test_the_corpus_vectors_are_returned_on_request_and_are_real` — two-sided, so neither
+  "always returns them" nor "never returns them" passes.
+- [x] **minhash: 1 of 126 drops is below threshold; nothing tests drop-vs-survivor
+  similarity.** **FIXED**: gate 2 re-verifies on exact Jaccard via `_star_partition`, so the
+  estimate can group but never authorise a drop. The specific pair is now a regression
+  fixture — `feeds/cli.py::_open_store` vs `flows/cli.py::_open_store`, est **0.8125**, true
+  **0.7143**, an error of 0.0982 exceeding the nominal 1/sqrt(128) = 0.0884 envelope. Whole
+  `TestDropVsSurvivor` class (7 tests) plus
+  `TestAgainstThePluginTree::test_gate_1_alone_would_have_authorised_a_wrong_drop`.
+- [x] **hard_negatives: `class_of` reads only the innermost class**, so `Outer.Inner.run` and
   `Other.Inner.run` collide and a record can list its own `(path, symbol)` as a negative.
-  Latent (0 occurrences today) but ordinary Python triggers it.
-- [ ] **hard_negatives: docstring claims order-independent output; it is not.** Records are
-  appended in input order, so `--out` JSONL is not reproducible across walk orders. Fix the
-  claim or the code.
+  **FIXED**: `mine_sibling_negatives` skips on `_ident` equality, not index, so a colliding
+  pair is never its own negative — reproduced on a 12-line fixture, 0 records name
+  themselves. The outer class is genuinely unrecoverable from `symbol`, so it is not guessed.
+  The half that is deliberately NOT collapsed is now **reported** by `identity_collisions()`
+  (see the entry above). `TestCollidingSymbolsAreOneDocument` (3 tests) +
+  `TestIdentityCollisionsAreReported` (4 tests).
+- [x] **hard_negatives: docstring claims order-independent output; it is not.** **FIXED**:
+  `out.sort(key=_record_key)` at `hard_negatives.py:311` emits records in a content-only
+  order, so `--out` JSONL is byte-identical across walk orders — not merely each negative
+  list, which was the original false claim. `TestDeterminism` compares two walks
+  byte-for-byte rather than re-sorting both sides first, a comparison that could not see the
+  bug it existed to catch.
 - [x] **Several real-repo test floors are far looser than claimed** (`same_package` 1000 vs
   3,760 measured = 27%), so a 73% regression would pass green. Raised to 80% earlier;
   **re-cut and made self-checking 2026-07-26**. 72 tests, 4/4 mutations killed.
