@@ -32,6 +32,54 @@ that no one has done.
 6. **Then step 5 of the embedding sequence** — ONE encoder + LoRA adapters, hard
    negatives, pre-registered target beating **NDCG@10 0.622**.
 
+### ✅ 2026-07-26 — defect sweep done; the task-shaped bar is MUCH lower than the commit-shaped one
+
+**THE RESULT THAT CHANGES THE PLAN.** `scripts/task_eval_slice.py` mines TODO.md itself for
+task-shaped queries (item text → the files it names, with those paths STRIPPED from the query
+so it cannot contain its own answer):
+
+| slice | queries | median words | NDCG@10 |
+|---|---|---|---|
+| commit messages (`retrieval_eval.py`) | 209 | short, identifier-dense | **0.622** |
+| **task descriptions (`task_eval_slice.py`)** | **87** | **36** | **0.429** |
+
+Path-stripping is load-bearing: leaving them in scores **0.526**, a ~0.10 inflation.
+
+So the earlier warning is now measured rather than asserted: **0.622 flattered lexical
+retrieval.** On the query distribution Option C named as the real consumer, the bar an
+embedding model must beat is **0.429**. That is a materially easier target and it strengthens
+the case for training one.
+
+All three defect sets fixed and adversarially verified — `fixes_hold: true`, **0 new defects
+introduced** in all three. 255 tests (minhash 76→104, hard-negatives 49→59, task-eval 92).
+minhash: min drop-vs-survivor true Jaccard **0.7143 → 0.8000**, drops below the advertised
+threshold **1 → 0**, one document rescued from the key collision (4566 → 4567), collisions now
+reported. hard-negatives: every real-repo floor raised to ≥80% of measured (e.g. same_package
+1000 → 3014 against 3768 measured), and the order-independence claim fixed in the CODE rather
+than downgraded in the docstring.
+
+Residuals the verifiers found that the builders did not report — worth closing, none blocking:
+
+- [ ] `scripts/task_eval_slice.py` — `main()` has **zero behavioural coverage**; no test calls
+  it or invokes it as a subprocess.
+- [ ] `scripts/test_task_eval_slice.py:71` — `FLOOR_STRIP_INFLATION=0.18` against 0.2268
+  measured is **79.4%**, just under the file's own ≥80% rule. Ironic given the rule.
+- [ ] `scripts/task_eval_slice.py:185-195` — `strip_spans` mishandles **partially overlapping**
+  spans.
+- [ ] `scripts/task_eval_slice.py:68-79` — `_load_retrieval_eval` reuses
+  `sys.modules['retrieval_eval']` **by name with no path check**, so a same-named module
+  loaded first wins. That is the import-shadow class that cost 8 phantom failures here before.
+- [ ] `scripts/task_eval_slice.py:330-332` — `empty_result_count` mutating to `return 0`
+  passes 92/92.
+- [ ] `tests/test_minhash_dedup.py:1027` — passes for the wrong reason on a checkout without
+  `apps/scout-cli`: `ast_pairs.walk` returns nothing for a missing path **without raising**, so
+  `collect_documents(<nonexistent>)` yields `files: 0, collisions: 0` and the assertion holds
+  vacuously while its `skipif`'d siblings correctly skip.
+- [ ] `tests/test_minhash_dedup.py:1317` — `assert res["components"] > len(...) or rescued == 0`
+  is dead: line 1312 already asserts `rescued >= 1`.
+- [ ] `hard_negatives.py` — a dead guard remains in source B; the D1 identity collapse is
+  applied only to the self-negative half.
+
 ### Waiting on the operator (not on an assistant)
 - The 2 FROZEN edits to activate stack-v3 (`odc-by` verified; adapter + 27 tests ready;
   source enters at weight `0.00` or the collector spins).

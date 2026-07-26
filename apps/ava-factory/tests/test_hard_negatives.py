@@ -11,8 +11,35 @@ be artifacts.
 
 It is not hypothetical here either. Measured on this tree 2026-07-26: 351 extracted
 pairs share a docstring with a sibling in the same file or package, and disabling the
-filter emits 1,245 negatives that are real positives, across 330 of 2,940 queries.
+filter emits 1,245 negatives that are real positives, across 330 of 2,985 queries.
 ``TestNeverAPositive`` is therefore the centre of this file, not a footnote.
+
+WHAT ADVERSARIAL REVIEW BROKE IN THE PREVIOUS VERSION OF THIS FILE, because the same
+mistakes are easy to make again:
+
+  * Four ordering tests passed with ``cands.sort()`` DELETED, because the fixture's
+    insertion order happened to equal its sorted order. The fixture is now written
+    deliberately out of order — module-level functions above ``class Store``, and
+    ``widen_ids`` arriving before the methods it sorts after — so every ordering
+    assertion inverts under that deletion.
+  * The centrepiece "never its own negative" test could not be killed by ANY single
+    mutation: two redundant guards each covered for the other. It is now split, and
+    each half is pinned with the other half deliberately disabled.
+  * Three determinism tests were ``f(x) == f(x)``. Determinism is now checked across
+    PROCESSES (different PYTHONHASHSEED) and across real input permutations.
+  * Two fleet tests rebuilt their forbidden index with ``hn._norm_query`` — the same
+    function the implementation uses — so they could only ever detect the gate being
+    BYPASSED, never its relevance notion being too NARROW. A difflib-based audit that
+    shares no code with the implementation now covers the second failure, and it
+    found a real one (see ``test_no_mined_negative_answers_a_paraphrase_of_its_own``).
+  * The text report test asserted six literal strings and no number at all, so
+    hard-coding ``n``, ``window`` or ``mine_pairs(50)`` inside ``main()`` passed it.
+    Every number in the report is now parsed and compared to an in-process run.
+
+Real-repo floors are set at >=80% of the measured value, and both numbers are stated
+at each assertion. A floor comfortably below the truth is how fabricated numbers pass
+on this platform; a floor at 27-42% of actual (what these were) let same_package
+collapse by 73% without a red test.
 
 Run:
     cd apps/ava-factory && AVA_FACTORY_ROOT="$PWD" python -m pytest \
@@ -21,8 +48,13 @@ Run:
 
 from __future__ import annotations
 
+import difflib
+import hashlib
 import importlib.util
+import itertools
 import json
+import os
+import random
 import subprocess
 import sys
 from pathlib import Path
@@ -31,6 +63,7 @@ import pytest
 
 _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "hard_negatives.py"
 _ROOT = Path(__file__).resolve().parents[3]
+_SUBTREE = _ROOT / "apps" / "ava-factory" / "scripts"
 
 _SPEC = importlib.util.spec_from_file_location("hard_negatives", _SCRIPT)
 hn = importlib.util.module_from_spec(_SPEC)
@@ -56,8 +89,25 @@ def build(src: str, path: str, expect: int):
     return pairs
 
 
+# DELIBERATELY OUT OF SORTED ORDER, and that is load-bearing. ast_pairs walks the
+# file top down, so the pairs arrive [normalise_ids, widen_ids, Store.load,
+# Store.save]: a same_FILE candidate arrives before a same_CLASS one (so scope
+# precedence cannot come for free from arrival order), and `widen_ids` arrives before
+# `Store.load`/`Store.save` while sorting after both (so the lexicographic tiebreak
+# cannot either). The previous fixture put `class Store` first and every ordering
+# test below passed with `cands.sort()` deleted outright.
 STORE_SRC = '''
 import json
+
+def normalise_ids(items):
+    """Normalise a sequence of identifiers into a sorted unique tuple of strings."""
+    cleaned = [str(i).strip() for i in items if i]
+    return tuple(sorted(set(cleaned)))
+
+def widen_ids(items):
+    """Pad every identifier out to the fixed width the legacy export format wants."""
+    padded = [str(i).rjust(12, "0") for i in items if i]
+    return tuple(padded)
 
 class Store:
     def load(self, key):
@@ -69,11 +119,6 @@ class Store:
         """Write a configuration value into the backing store as JSON text."""
         self._backend.put(key, json.dumps(value))
         return True
-
-def normalise_ids(items):
-    """Normalise a sequence of identifiers into a sorted unique tuple of strings."""
-    cleaned = [str(i).strip() for i in items if i]
-    return tuple(sorted(set(cleaned)))
 '''
 
 HELPERS_SRC = '''
@@ -91,99 +136,9 @@ def lonely(value):
     return value
 '''
 
-
-def fixture_pairs():
-    """Three files: pkg/store.py (class + module fn), pkg/helpers.py (package
-    sibling), solo/only.py (a package of one function)."""
-    return (
-        build(STORE_SRC, "pkg/store.py", 3)
-        + build(HELPERS_SRC, "pkg/helpers.py", 1)
-        + build(SOLO_SRC, "solo/only.py", 1)
-    )
-
-
-def by_symbol(records):
-    return {r["symbol"]: r for r in records}
-
-
-def scopes(record):
-    return [n["scope"] for n in record["negatives"]]
-
-
-def symbols(record):
-    return [n["symbol"] for n in record["negatives"]]
-
-
-# ---------------------------------------------------------------------------
-# Source A — ordering
-# ---------------------------------------------------------------------------
-class TestSiblingOrdering:
-    def test_same_class_is_mined_before_same_file(self):
-        """The whole point: the closest thing in scope is the hardest negative."""
-        rec = by_symbol(hn.mine_sibling_negatives(fixture_pairs()))["Store.load"]
-        assert scopes(rec)[:2] == ["same_class", "same_file"], scopes(rec)
-        assert symbols(rec)[0] == "Store.save", (
-            f"a same-file function outranked a same-class method: {symbols(rec)}"
-        )
-
-    def test_same_file_is_mined_before_same_package(self):
-        rec = by_symbol(hn.mine_sibling_negatives(fixture_pairs()))["Store.load"]
-        assert scopes(rec) == ["same_class", "same_file", "same_package"], scopes(rec)
-        assert symbols(rec) == ["Store.save", "normalise_ids", "format_report"]
-
-    def test_a_module_level_function_has_no_same_class_negatives(self):
-        """`normalise_ids` is not in a class, so nothing can be same_class for it —
-        and the two Store methods must NOT be promoted to that scope."""
-        rec = by_symbol(hn.mine_sibling_negatives(fixture_pairs()))["normalise_ids"]
-        assert "same_class" not in scopes(rec), scopes(rec)
-        assert scopes(rec) == ["same_file", "same_file", "same_package"]
-
-    def test_package_siblings_reach_across_files_but_not_across_packages(self):
-        recs = by_symbol(hn.mine_sibling_negatives(fixture_pairs()))
-        assert "format_report" in symbols(recs["Store.load"])
-        assert "lonely" not in symbols(recs["Store.load"]), (
-            "solo/only.py is a different package and must not be reachable"
-        )
-
-    def test_n_caps_the_list_and_keeps_the_closest(self):
-        rec = by_symbol(hn.mine_sibling_negatives(fixture_pairs(), n=1))["Store.load"]
-        assert len(rec["negatives"]) == 1
-        assert rec["negatives"][0]["symbol"] == "Store.save"
-
-    def test_n_zero_yields_no_negatives_but_still_yields_records(self):
-        recs = hn.mine_sibling_negatives(fixture_pairs(), n=0)
-        assert len(recs) == 5
-        assert all(r["negatives"] == [] for r in recs)
-
-
-# ---------------------------------------------------------------------------
-# THE correctness rule
-# ---------------------------------------------------------------------------
-class TestNeverAPositive:
-    def test_the_positive_is_never_its_own_negative(self):
-        for rec in hn.mine_sibling_negatives(fixture_pairs()):
-            texts = [n["text"] for n in rec["negatives"]]
-            assert rec["positive"] not in texts, (
-                f"{rec['symbol']} was returned as its own negative"
-            )
-            assert (rec["path"], rec["symbol"]) not in [
-                (n["path"], n["symbol"]) for n in rec["negatives"]
-            ]
-
-    def test_the_text_gate_alone_rejects_the_pair_itself(self):
-        """Self-exclusion is guaranteed twice — by the `j == i` skip in the caller
-        AND by the text gate. Deleting the index skip breaks nothing, which is the
-        point of the redundancy, but it also means no end-to-end test can pin the
-        gate's half of it. So the gate is exercised directly."""
-        pair = build(SOLO_SRC, "solo/only.py", 1)[0]
-        assert hn._candidate(pair, {pair["positive"]}, hn.SCOPE_SAME_FILE) is None
-        assert hn._candidate(pair, set(), hn.SCOPE_SAME_FILE) is not None
-
-    def test_a_sibling_sharing_the_docstring_is_dropped(self):
-        """Copy-pasted docstrings are everywhere in real code. If two functions
-        carry the same docstring, each one is a genuine positive for the other's
-        query and must never be mined as a negative for it."""
-        src = '''
+# Two functions carrying the SAME docstring, plus one that does not. Used by both
+# halves of the split self-exclusion test, so the two halves cannot drift apart.
+TWIN_SRC = '''
 def encode_payload(data):
     """Serialise the supplied payload into the wire format used by the client."""
     body = str(data).strip()
@@ -199,12 +154,274 @@ def decode_payload(raw):
     text = raw.decode("utf-8", errors="replace")
     return text.strip() or None
 '''
-        pairs = build(src, "wire/codec.py", 3)
-        recs = by_symbol(hn.mine_sibling_negatives(pairs))
-        rec = recs["encode_payload"]
+
+# Two same-named NESTED classes in one file. ast_pairs keeps only the innermost
+# class, so both methods arrive as symbol "Inner.run" — the D1 collision.
+NESTED_DUP_SRC = '''
+class Outer:
+    class Inner:
+        def run(self, cfg):
+            """Execute the outer pipeline and report how many stages actually ran."""
+            steps = [s for s in cfg if s]
+            return len(steps), tuple(steps)
+
+class Other:
+    class Inner:
+        def run(self, cfg):
+            """Validate the supplied configuration mapping before anything else runs."""
+            bad = [s for s in cfg if not s]
+            return not bad, tuple(bad)
+'''
+
+EXTRA_TOP_LEVEL_SRC = '''
+def top_level(cfg):
+    """Return the number of configured stages without validating any of them."""
+    return len([s for s in cfg if s is not None])
+'''
+
+
+def fixture_pairs():
+    """Three files: pkg/store.py (two module fns + a class), pkg/helpers.py (package
+    sibling), solo/only.py (a package of one function). Six pairs."""
+    return (
+        build(STORE_SRC, "pkg/store.py", 4)
+        + build(HELPERS_SRC, "pkg/helpers.py", 1)
+        + build(SOLO_SRC, "solo/only.py", 1)
+    )
+
+
+def by_symbol(records):
+    return {r["symbol"]: r for r in records}
+
+
+def records_for(records, symbol):
+    """Every record with this symbol — plural on purpose: the collision fixture
+    produces two records that share one symbol, and by_symbol() would hide one."""
+    return [r for r in records if r["symbol"] == symbol]
+
+
+def scopes(record):
+    return [n["scope"] for n in record["negatives"]]
+
+
+def symbols(record):
+    return [n["symbol"] for n in record["negatives"]]
+
+
+def _digest(records) -> str:
+    """The byte-level identity claim, as 64 characters instead of 27 MB."""
+    return hashlib.sha256(json.dumps(records).encode("utf-8")).hexdigest()
+
+
+def _first_difference(a, b) -> str:
+    """Where two record lists diverge, in one short line — "" when they agree.
+
+    NOT cosmetic. A plain `assert forward == backward` over 2,985 records holding
+    27 MB of packed code makes pytest's assertion introspection render a diff of the
+    entire structure: the mutation run that deleted `out.sort` sat for five minutes
+    inside pytest instead of reporting in seconds, and printed nothing usable. A test
+    whose failure costs minutes is a test people stop running.
+    """
+    if len(a) != len(b):
+        return f"record count differs: {len(a)} vs {len(b)}"
+    for i, (x, y) in enumerate(zip(a, b, strict=True)):
+        if x == y:
+            continue
+        if (x["path"], x["symbol"]) != (y["path"], y["symbol"]):
+            return (f"record {i} is a different document: "
+                    f"{(x['path'], x['symbol'])} vs {(y['path'], y['symbol'])}")
+        return (f"record {i} {(x['path'], x['symbol'])} has different negatives: "
+                f"{[n['symbol'] for n in x['negatives']]} vs "
+                f"{[n['symbol'] for n in y['negatives']]}")
+    return ""
+
+
+def _mine_with_the_text_gate_bypassed(pairs, **kw):
+    """mine_sibling_negatives with the CONTENT gate neutralised, so the only thing
+    left keeping a pair out of its own negative list is the identity skip in the
+    caller.
+
+    Self-exclusion is guaranteed twice by design, which is precisely why the old
+    centrepiece test could not be killed by any single mutation: each guard covered
+    for the other. Disabling one on purpose is what makes the other one testable.
+    """
+    original = hn._candidate
+    try:
+        hn._candidate = lambda pair, forbidden, scope: original(pair, set(), scope)
+        return hn.mine_sibling_negatives(pairs, **kw)
+    finally:
+        hn._candidate = original
+
+
+# ---------------------------------------------------------------------------
+# Source A — ordering
+# ---------------------------------------------------------------------------
+class TestSiblingOrdering:
+    def test_same_class_is_mined_before_same_file(self):
+        """The whole point: the closest thing in scope is the hardest negative.
+        `normalise_ids` (same_file) ARRIVES first, so this inverts if the sort goes."""
+        rec = by_symbol(hn.mine_sibling_negatives(fixture_pairs()))["Store.load"]
+        assert scopes(rec)[:2] == ["same_class", "same_file"], scopes(rec)
+        assert symbols(rec)[0] == "Store.save", (
+            f"a same-file function outranked a same-class method: {symbols(rec)}"
+        )
+
+    def test_same_file_is_mined_before_same_package(self):
+        rec = by_symbol(hn.mine_sibling_negatives(fixture_pairs()))["Store.load"]
+        assert scopes(rec) == [
+            "same_class", "same_file", "same_file", "same_package"
+        ], scopes(rec)
+        assert symbols(rec) == [
+            "Store.save", "normalise_ids", "widen_ids", "format_report"
+        ], symbols(rec)
+
+    def test_ties_inside_one_scope_break_lexicographically_not_by_arrival(self):
+        """All three file candidates for `normalise_ids` are same_file, so scope
+        cannot order them and only the (path, symbol) tiebreak can. `widen_ids`
+        arrives FIRST and must come LAST."""
+        rec = by_symbol(hn.mine_sibling_negatives(fixture_pairs()))["normalise_ids"]
+        assert symbols(rec) == [
+            "Store.load", "Store.save", "widen_ids", "format_report"
+        ], symbols(rec)
+
+    def test_a_module_level_function_has_no_same_class_negatives(self):
+        """`normalise_ids` is not in a class, so nothing can be same_class for it —
+        and `widen_ids`, which is also module-level, must NOT be promoted there. That
+        is what dropping the `cls is not None` guard would do: class_of() returns
+        None for both, and None == None would read as "same class"."""
+        rec = by_symbol(hn.mine_sibling_negatives(fixture_pairs()))["normalise_ids"]
+        assert "same_class" not in scopes(rec), scopes(rec)
+        assert scopes(rec) == [
+            "same_file", "same_file", "same_file", "same_package"
+        ], scopes(rec)
+
+    def test_package_siblings_reach_across_files_but_not_across_packages(self):
+        recs = by_symbol(hn.mine_sibling_negatives(fixture_pairs()))
+        assert "format_report" in symbols(recs["Store.load"])
+        assert "lonely" not in symbols(recs["Store.load"]), (
+            "solo/only.py is a different package and must not be reachable"
+        )
+
+    def test_n_caps_the_list_and_keeps_the_closest(self):
+        """n=1 keeps the single hardest candidate, which is the one that ARRIVES
+        LAST — so a cap applied before the sort would keep `normalise_ids` instead."""
+        rec = by_symbol(hn.mine_sibling_negatives(fixture_pairs(), n=1))["Store.load"]
+        assert len(rec["negatives"]) == 1
+        assert rec["negatives"][0]["symbol"] == "Store.save"
+
+    def test_n_zero_yields_no_negatives_but_still_yields_records(self):
+        recs = hn.mine_sibling_negatives(fixture_pairs(), n=0)
+        assert len(recs) == 6
+        assert all(r["negatives"] == [] for r in recs)
+
+
+# ---------------------------------------------------------------------------
+# Source A — the (path, symbol) collision adversarial review reproduced
+# ---------------------------------------------------------------------------
+class TestCollidingSymbolsAreOneDocument:
+    """ast_pairs stores only the INNERMOST class, so `Outer.Inner.run` and
+    `Other.Inner.run` in one file both arrive as symbol `Inner.run`. Reproduced on a
+    12-line file: the miner emitted `Inner.run -> [(Inner.run, same_class)]`, a record
+    naming ITSELF as its negative — the module's headline invariant broken, and the
+    worst output it can produce.
+
+    The text gate cannot catch this one: the two bodies differ, so the packed texts
+    differ. Only the identity skip can, which makes this class the sole test in the
+    file that pins that guard on its own. Zero occurrences in the tree today, so this
+    fixture is the only thing between the fix and a silent regression.
+    """
+
+    def test_two_same_named_nested_classes_really_do_collide_on_symbol(self):
+        """The precondition. If ast_pairs ever qualifies symbols fully, this fails
+        FIRST and says why, instead of the guard below quietly going dead."""
+        pairs = build(NESTED_DUP_SRC, "nest/dup.py", 2)
+        assert [p["symbol"] for p in pairs] == ["Inner.run", "Inner.run"]
+        assert hn._ident(pairs[0]) == hn._ident(pairs[1])
+        assert pairs[0]["positive"] != pairs[1]["positive"], (
+            "the two packed texts must DIFFER, or the content gate would catch this "
+            "and the identity skip would not be exercised at all"
+        )
+        assert pairs[0]["query"] != pairs[1]["query"], (
+            "the two queries must differ, or the query-keyed index would catch it"
+        )
+
+    def test_a_colliding_pair_is_never_returned_as_its_own_negative(self):
+        pairs = build(NESTED_DUP_SRC, "nest/dup.py", 2)
+        recs = hn.mine_sibling_negatives(pairs)
+        assert len(recs) == 2
+        for rec in recs:
+            listed = [(n["path"], n["symbol"]) for n in rec["negatives"]]
+            assert (rec["path"], rec["symbol"]) not in listed, (
+                f"{rec['symbol']} was returned as its own negative: {listed}"
+            )
+        assert all(r["negatives"] == [] for r in recs), (
+            "the only other pair in the file is indistinguishable from this one "
+            "downstream, so nothing may survive"
+        )
+
+    def test_the_drop_is_scoped_to_the_colliding_identity_not_to_the_file(self):
+        """A blunt fix — bail out of the whole file on any collision — would also
+        pass the test above. This one fails for it."""
+        pairs = build(NESTED_DUP_SRC + EXTRA_TOP_LEVEL_SRC, "nest/dup.py", 3)
+        recs = hn.mine_sibling_negatives(pairs)
+        inner = records_for(recs, "Inner.run")
+        assert len(inner) == 2
+        for rec in inner:
+            assert symbols(rec) == ["top_level"], symbols(rec)
+        top = records_for(recs, "top_level")[0]
+        assert symbols(top) == ["Inner.run", "Inner.run"], symbols(top)
+        assert scopes(top) == ["same_file", "same_file"], scopes(top)
+
+
+# ---------------------------------------------------------------------------
+# THE correctness rule
+# ---------------------------------------------------------------------------
+class TestNeverAPositive:
+    def test_the_identity_skip_holds_when_the_content_gate_is_bypassed(self):
+        """Guard 1 of 2, pinned with guard 2 switched off. Deleting the identity skip
+        then puts every pair straight into its own negative list.
+
+        Non-vacuity is asserted, not assumed: the bypass MUST let the
+        duplicate-docstring twin through, or it bypassed nothing and this test would
+        pass for the wrong reason."""
+        pairs = build(TWIN_SRC, "wire/codec.py", 3)
+        recs = _mine_with_the_text_gate_bypassed(pairs)
+        assert "encode_payload_v2" in symbols(by_symbol(recs)["encode_payload"]), (
+            "the bypass did not bypass the content gate, so nothing is being tested"
+        )
+        for rec in recs:
+            assert rec["positive"] not in [n["text"] for n in rec["negatives"]], (
+                f"{rec['symbol']} was returned as its own negative"
+            )
+            assert (rec["path"], rec["symbol"]) not in [
+                (n["path"], n["symbol"]) for n in rec["negatives"]
+            ], f"{rec['symbol']} listed its own (path, symbol)"
+
+    def test_the_content_gate_holds_where_the_identity_skip_cannot_help(self):
+        """Guard 2 of 2, on the case only it can catch: a twin at a DIFFERENT
+        (path, symbol) carrying the same docstring. Same content, different identity —
+        the identity skip is blind to it.
+
+        Copy-pasted docstrings are everywhere in real code. If two functions carry the
+        same docstring, each is a genuine positive for the other's query.
+        """
+        pairs = build(TWIN_SRC, "wire/codec.py", 3)
+        rec = by_symbol(hn.mine_sibling_negatives(pairs))["encode_payload"]
         assert symbols(rec) == ["decode_payload"], (
             f"the duplicate-docstring twin leaked in as a negative: {symbols(rec)}"
         )
+        bypassed = by_symbol(_mine_with_the_text_gate_bypassed(pairs))["encode_payload"]
+        assert symbols(bypassed) == ["decode_payload", "encode_payload_v2"], (
+            f"the twin must reappear once the gate is off, proving it is the GATE "
+            f"removing it and not something incidental: {symbols(bypassed)}"
+        )
+
+    def test_the_content_gate_alone_rejects_the_pair_itself(self):
+        """The gate's own half of the redundancy, unit-tested directly: `forbidden`
+        always contains the query's own positive, so a self-match dies here too."""
+        pair = build(SOLO_SRC, "solo/only.py", 1)[0]
+        assert hn._candidate(pair, {pair["positive"]}, hn.SCOPE_SAME_FILE) is None
+        assert hn._candidate(pair, set(), hn.SCOPE_SAME_FILE) is not None
 
     def test_identical_code_with_a_different_docstring_is_dropped(self):
         """A package sibling whose PACKED TEXT equals the positive. The queries
@@ -267,9 +484,12 @@ def run(cfg):
                 f"the other commit with the identical message leaked in: {got}"
             )
 
-    def test_case_and_whitespace_do_not_defeat_the_query_key(self):
-        """A re-wrapped or re-cased docstring is the same query. If the key were
-        exact-match, the twin would slip straight through the filter."""
+    def test_case_alone_does_not_defeat_the_query_key(self):
+        """CASE only, and that limit is the point: ast_pairs collapses whitespace when
+        it builds `query`, so NO fixture routed through it can exercise the whitespace
+        half of _norm_query. Adversarial review deleted the join/split and all 45
+        tests still passed. The whitespace half is covered by the next test, on input
+        that has not been pre-normalised."""
         src = '''
 def emit_alpha(rows):
     """Publish the collected rows to the downstream telemetry sink."""
@@ -284,10 +504,45 @@ def emit_beta(rows):
 '''
         pairs = build(src, "sink/emit.py", 2)
         assert pairs[0]["query"] != pairs[1]["query"], "fixture must differ literally"
+        assert pairs[0]["query"].casefold() == pairs[1]["query"].casefold(), (
+            "ast_pairs has already collapsed the whitespace, so CASE is the only "
+            "thing this fixture can test"
+        )
         recs = hn.mine_sibling_negatives(pairs)
         assert all(r["negatives"] == [] for r in recs), (
-            f"re-wrapped duplicate slipped through: "
-            f"{[symbols(r) for r in recs]}"
+            f"re-cased duplicate slipped through: {[symbols(r) for r in recs]}"
+        )
+        pairs[1]["query"] = "Count how many rows the caller supplied before sending."
+        assert any(r["negatives"] for r in hn.mine_sibling_negatives(pairs)), (
+            "control: with genuinely different queries these two MUST be mined, or "
+            "the assertion above passes because the miner emits nothing at all"
+        )
+
+    def test_whitespace_alone_does_not_defeat_the_query_key(self):
+        """Hand-built pairs, because ast_pairs' own normalisation hides the property
+        under test. mine_sibling_negatives is a public function over dicts, so
+        un-collapsed whitespace is a real input rather than a contrivance."""
+        doc_a = "Publish the collected rows to the downstream telemetry sink."
+        doc_b = "Publish the collected rows\n    to the downstream  telemetry sink."
+        assert doc_a != doc_b and doc_a.casefold() != doc_b.casefold(), (
+            "fixture must differ under BOTH an exact and a case-only key, or the "
+            "test passes for the wrong reason"
+        )
+        assert hn._norm_query(doc_a) == hn._norm_query(doc_b)
+        pairs = [
+            {"query": doc_a, "path": "sink/emit.py", "symbol": "emit_alpha",
+             "positive": "def emit_alpha(rows):\n    return [dict(r) for r in rows]"},
+            {"query": doc_b, "path": "sink/emit.py", "symbol": "emit_beta",
+             "positive": "def emit_beta(rows):\n    return [tuple(r) for r in rows]"},
+        ]
+        recs = hn.mine_sibling_negatives(pairs)
+        assert len(recs) == 2
+        assert all(r["negatives"] == [] for r in recs), (
+            f"whitespace defeated the query key: {[symbols(r) for r in recs]}"
+        )
+        pairs[1]["query"] = "Count how many rows the caller supplied before sending."
+        assert any(r["negatives"] for r in hn.mine_sibling_negatives(pairs)), (
+            "control: with genuinely different queries these two MUST be mined"
         )
 
 
@@ -364,11 +619,37 @@ class TestAdjacentOrdering:
         assert first == ["m/f02.py", "m/f03.py", "m/f04.py"], first
         assert last == ["m/f08.py", "m/f07.py", "m/f06.py"], last
 
-    def test_n_caps_the_adjacent_list_too(self):
+    def test_n_caps_the_adjacent_list_across_neighbours(self):
+        """The per-OFFSET quota break: every commit here carries one file, so the
+        quota can only ever be reached between neighbours, never inside one."""
         rec = hn.mine_adjacent_negatives(_linear_golden(), window=4, n=3)[4]
         assert [n["path"] for n in rec["negatives"]] == [
             "m/f04.py", "m/f06.py", "m/f03.py"
         ]
+
+    def test_n_caps_the_adjacent_list_inside_a_single_neighbour(self):
+        """The per-NEIGHBOUR quota break, which the test above cannot reach: one
+        neighbour carries five files and the quota is three, so the break has to fire
+        in the middle of one commit's file list. Adversarial review deleted that inner
+        `if len(negatives) >= n: break` and all 45 tests still passed, because no
+        fixture ever gave a single neighbour more files than the remaining quota."""
+        golden = [
+            {"query": "alpha change landing ahead of the wide commit",
+             "date": "2026-06-01T00:00:00+00:00", "relevant": ["q/one.py"]},
+            {"query": "the wide commit that touches five modules at once",
+             "date": "2026-06-02T00:00:00+00:00",
+             "relevant": ["w/b1.py", "w/b2.py", "w/b3.py", "w/b4.py", "w/b5.py"]},
+            {"query": "omega change landing after the wide commit",
+             "date": "2026-06-03T00:00:00+00:00", "relevant": ["q/three.py"]},
+        ]
+        rec = hn.mine_adjacent_negatives(golden, window=2, n=3)[2]
+        assert rec["query"].startswith("omega"), rec["query"]
+        got = [n["path"] for n in rec["negatives"]]
+        assert len(got) == 3, (
+            f"the quota was overshot INSIDE one neighbour's file list ({len(got)} of "
+            f"n=3); the inner break is the only thing that can stop it there: {got}"
+        )
+        assert got == ["w/b1.py", "w/b2.py", "w/b3.py"], got
 
     def test_a_file_touched_by_two_neighbours_appears_once(self):
         golden = [
@@ -390,49 +671,88 @@ class TestAdjacentOrdering:
 
 
 # ---------------------------------------------------------------------------
-# Determinism
+# Determinism. Every test here used to be f(x) == f(x) in one process, which
+# cannot see either of the two things that actually break reproducibility:
+# per-process string hashing, and record order that follows the input.
 # ---------------------------------------------------------------------------
 class TestDeterminism:
-    def test_two_sibling_runs_are_byte_identical(self):
-        a = hn.mine_sibling_negatives(fixture_pairs())
-        b = hn.mine_sibling_negatives(fixture_pairs())
-        assert json.dumps(a) == json.dumps(b)
+    def test_the_written_file_is_identical_across_processes_and_hash_seeds(self, tmp_path):
+        """The real question the docstring's byte-identical claim raises. Every index
+        in this module is a dict or set keyed on strings, and str hashing is
+        randomised per process, so one-process f(x)==f(x) proves nothing about it."""
+        blobs = []
+        for seed in ("0", "1", "12345"):
+            out = tmp_path / f"seed{seed}.jsonl"
+            proc = subprocess.run(
+                [sys.executable, str(_SCRIPT), "--path", str(_SUBTREE),
+                 "--no-git", "--json", "--out", str(out)],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                env=dict(os.environ, PYTHONHASHSEED=seed),
+            )
+            assert proc.returncode == 0, proc.stderr
+            blobs.append(out.read_bytes())
+        # measured 2026-07-26 on apps/ava-factory/scripts: 93 records; floor 80%
+        assert len(blobs[0].splitlines()) >= 74, len(blobs[0].splitlines())
+        seen = {hashlib.sha256(b).hexdigest() for b in blobs}
+        assert len(seen) == 1, f"the JSONL differs across hash seeds: {sorted(seen)}"
 
-    def test_two_adjacent_runs_are_byte_identical(self):
-        golden = _linear_golden()
-        a = hn.mine_adjacent_negatives(golden, window=3)
-        b = hn.mine_adjacent_negatives(golden, window=3)
-        assert json.dumps(a) == json.dumps(b)
+    def test_sibling_output_is_byte_identical_under_a_reversed_walk(self):
+        """A re-walk of the tree in a different filesystem order must produce the same
+        FILE, not merely the same negatives. The old version of this test sorted BOTH
+        sides by a content key before comparing, which is a comparison that cannot see
+        the bug adversarial review found: the negative lists were order-independent,
+        the emitted record order was not.
 
-    def test_sibling_output_does_not_depend_on_input_pair_order(self):
-        """A re-walk of the tree in a different filesystem order must produce the
-        same negatives. The first cut of this test used the 5-pair fixture, where no
-        query has more candidates than the cap — so `cands = cands[:n]` BEFORE the
-        sort (a real, plausible bug: it would silently swap ranked negatives for
-        arbitrary ones) passed it. It has to run where the cap actually bites.
-
-        Measured 2026-07-26: 2407 of 2940 real queries saturate n=8, and 1629 pairs
-        live in a file with more than 8 documented functions.
+        It also has to run where the cap actually bites. Measured 2026-07-26: 2452 of
+        2985 real queries saturate n=8; floor at 80%.
         """
         pairs = real_pairs()
         forward = hn.mine_sibling_negatives(pairs)
         backward = hn.mine_sibling_negatives(list(reversed(pairs)))
         saturated = sum(1 for r in forward if len(r["negatives"]) == hn.DEFAULT_N)
-        assert saturated >= 1200, (
+        assert saturated >= 1961, (
             f"only {saturated} queries hit the n={hn.DEFAULT_N} cap, so truncation "
             f"order is barely exercised and this test proves little"
         )
+        assert _first_difference(forward, backward) == ""
+        assert _digest(forward) == _digest(backward)
 
-        def key(rec):
-            return (rec["path"], rec["symbol"], rec["query"], rec["positive"])
-
-        assert sorted(forward, key=key) == sorted(backward, key=key)
-
-    def test_two_runs_over_the_real_repo_are_byte_identical(self):
+    def test_sibling_output_is_byte_identical_under_shuffled_walks(self):
+        """Reversal is one permutation, and a suspiciously symmetric one. The old test
+        in this slot compared mine(pairs) with mine(list(pairs)) — a shallow copy in
+        the SAME order, i.e. f(x) == f(x)."""
         pairs = real_pairs()
-        a = hn.mine_sibling_negatives(pairs)
-        b = hn.mine_sibling_negatives(list(pairs))
-        assert json.dumps(a) == json.dumps(b)
+        base = hn.mine_sibling_negatives(pairs)
+        base_digest = _digest(base)
+        for seed in (0, 1, 1337):
+            shuffled = list(pairs)
+            random.Random(seed).shuffle(shuffled)
+            assert shuffled != pairs, f"seed {seed} did not shuffle anything"
+            got = hn.mine_sibling_negatives(shuffled)
+            assert _first_difference(base, got) == "", f"walk order seed={seed}"
+            assert _digest(got) == base_digest, f"walk order seed={seed}"
+
+    def test_commits_sharing_a_timestamp_do_not_inherit_the_input_order(self):
+        """The case the compound sort key exists for. With that key reduced to
+        `g["date"]`, sorted() is stable and the output becomes whatever order the
+        caller happened to pass — which is git's order, i.e. not a property of the
+        data at all."""
+        same_date = "2026-07-01T12:00:00+00:00"
+        golden = [
+            {"query": f"{name} commit sharing one timestamp with the others",
+             "date": same_date, "relevant": [f"t/{name}.py"]}
+            for name in ("alpha", "bravo", "charlie", "delta")
+        ]
+        base = json.dumps(hn.mine_adjacent_negatives(golden, window=3))
+        assert sum(len(r["negatives"]) for r in json.loads(base)) == 12, (
+            "each of the 4 commits must see the other 3, or the permutations below "
+            "have nothing to disagree about"
+        )
+        seen = 0
+        for perm in itertools.permutations(golden):
+            seen += 1
+            assert json.dumps(hn.mine_adjacent_negatives(list(perm), window=3)) == base
+        assert seen == 24
 
 
 # ---------------------------------------------------------------------------
@@ -441,26 +761,28 @@ class TestDeterminism:
 class TestSummarise:
     def test_average_is_over_all_queries_including_the_barren_ones(self):
         s = hn.summarise(hn.mine_sibling_negatives(fixture_pairs()), [])["sibling"]
-        # store.load 3, store.save 3, normalise_ids 3, format_report 3, lonely 0
-        assert s["queries"] == 5
-        assert s["negatives"] == 12
-        assert s["avg_per_query"] == 2.4, (
-            f"got {s['avg_per_query']} — 12/4 = 3.0 would mean the barren query was "
+        # 4 each for Store.load, Store.save, normalise_ids, widen_ids, format_report;
+        # 0 for lonely
+        assert s["queries"] == 6
+        assert s["negatives"] == 20
+        assert s["avg_per_query"] == 3.333, (
+            f"got {s['avg_per_query']} — 20/5 = 4.0 would mean the barren query was "
             f"dropped from the denominator, which hides coverage collapse"
         )
-        assert s["queries_with_negatives"] == 4
-        assert s["coverage"] == 0.8
+        assert s["queries_with_negatives"] == 5
+        assert s["coverage"] == 0.8333
 
     def test_scope_counts_add_up_to_the_total(self):
         recs = hn.mine_sibling_negatives(fixture_pairs())
         s = hn.summarise(recs, [])["sibling"]
         assert sum(s["by_scope"].values()) == s["negatives"]
-        # Store.load  -> save(class) normalise_ids(file) format_report(pkg)
-        # Store.save  -> load(class) normalise_ids(file) format_report(pkg)
-        # normalise_ids -> load(file) save(file) format_report(pkg)
-        # format_report -> load(pkg) save(pkg) normalise_ids(pkg)
-        # lonely      -> nothing
-        assert s["by_scope"] == {"same_class": 2, "same_file": 4, "same_package": 6}
+        # Store.load    -> save(class) normalise_ids(file) widen_ids(file) report(pkg)
+        # Store.save    -> load(class) normalise_ids(file) widen_ids(file) report(pkg)
+        # normalise_ids -> load(file) save(file) widen_ids(file) report(pkg)
+        # widen_ids     -> load(file) save(file) normalise_ids(file) report(pkg)
+        # format_report -> load(pkg) save(pkg) normalise_ids(pkg) widen_ids(pkg)
+        # lonely        -> nothing
+        assert s["by_scope"] == {"same_class": 2, "same_file": 10, "same_package": 8}
 
     def test_distance_counts_add_up_to_the_total(self):
         recs = hn.mine_adjacent_negatives(_linear_golden(), window=2)
@@ -472,8 +794,8 @@ class TestSummarise:
         sib = hn.mine_sibling_negatives(fixture_pairs())
         adj = hn.mine_adjacent_negatives(_linear_golden(), window=1)
         t = hn.summarise(sib, adj)["total"]
-        assert t["queries"] == 5 + 9
-        assert t["negatives"] == 12 + 16  # 7 interior commits x2, 2 edges x1
+        assert t["queries"] == 6 + 9
+        assert t["negatives"] == 20 + 16  # 7 interior commits x2, 2 edges x1
 
 
 # ---------------------------------------------------------------------------
@@ -485,18 +807,27 @@ class TestSymbolFormatContract:
         class name would be a duplicated source of truth (that bug class has landed
         twice here); parsing it means this test is the only thing standing between a
         format change and every same_class negative silently becoming same_file."""
-        pairs = build(STORE_SRC, "pkg/store.py", 3)
+        pairs = build(STORE_SRC, "pkg/store.py", 4)
         got = {p["symbol"]: hn.class_of(p) for p in pairs}
         assert got == {
             "Store.load": "Store",
             "Store.save": "Store",
             "normalise_ids": None,
+            "widen_ids": None,
         }
 
     def test_package_of(self):
         assert hn.package_of("a/b/c.py") == "a/b"
         assert hn.package_of("top.py") == ""
         assert hn.package_of("a\\b\\c.py") == "a/b", "windows separators normalise"
+
+    def test_norm_path_is_the_only_separator_rule_in_the_module(self):
+        """_norm_path was re-implemented inline in pairs_from_tree, three functions
+        below its own definition — the duplicated-source bug class this repo has hit
+        twice. Both callers must agree, on the same input."""
+        assert hn._norm_path("a\\b\\c.py") == "a/b/c.py"
+        assert hn._norm_path("") == "" and hn._norm_path(None) == ""
+        assert all("\\" not in p["path"] for p in real_pairs())
 
     def test_pairs_from_tree_returns_posix_relative_paths(self):
         pairs = real_pairs()
@@ -505,9 +836,14 @@ class TestSymbolFormatContract:
 
 
 # ---------------------------------------------------------------------------
-# The real repo. Measured 2026-07-26; floors are set below the measurement so a
-# growing tree never breaks them, and far enough above zero to catch a miner
-# that quietly stops mining.
+# The real repo. Every floor is >=80% of the value measured 2026-07-26, and both
+# numbers are stated. The previous floors sat at 27-42% of actual, which let
+# same_package collapse by 73% with every test still green.
+#
+# NOTE ON DRIFT: this tree was being edited by another agent while these numbers
+# were taken (minhash_dedup.py and its tests grew ~900 lines mid-session). Each
+# floor below was checked to still hold with those files excluded, so a revert of
+# that work does not turn this suite red.
 # ---------------------------------------------------------------------------
 _CACHE: dict = {}
 
@@ -533,31 +869,55 @@ def real_golden():
     return _CACHE["golden"]
 
 
+# --- the independent, deliberately BROADER relevance notion -----------------
+# The fleet tests below used to rebuild their forbidden index with hn._norm_query,
+# the very function the implementation uses. Circular: they can detect the gate
+# being BYPASSED, never its relevance notion being too NARROW — and too narrow is
+# the failure that poisons training. difflib shares no code with the module.
+_NEAR = 0.90
+_NEAR_MISS = 0.75
+
+
+def _similarity(a: str, b: str) -> float:
+    """0.0 for anything obviously unrelated (cheap length and quick_ratio gates
+    first: the audits below run over ~21k mined negatives)."""
+    a, b = a or "", b or ""
+    if abs(len(a) - len(b)) > 0.25 * max(len(a), len(b), 1):
+        return 0.0
+    sm = difflib.SequenceMatcher(None, a, b)
+    if sm.quick_ratio() < 0.70:
+        return 0.0
+    return sm.ratio()
+
+
 class TestAgainstTheRealRepo:
     def test_extraction_floor(self):
-        # measured 2026-07-26: 2940 pairs
-        assert len(real_pairs()) >= 2000, len(real_pairs())
+        # measured 2026-07-26: 2985 pairs; floor 80%
+        assert len(real_pairs()) >= 2388, len(real_pairs())
 
     def test_sibling_negatives_floor(self):
         s = hn.summarise(real_sibling(), [])["sibling"]
-        # measured 2026-07-26: 2940 queries / 20520 negatives / avg 6.980 / cov 90.6%
-        assert s["queries"] >= 2000, s
-        assert s["negatives"] >= 12000, s
-        assert s["avg_per_query"] >= 4.0, s
-        assert s["coverage"] >= 0.75, s
+        # measured 2026-07-26: 2985 queries / 20880 negatives / avg 6.995 / cov 90.7%
+        assert s["queries"] >= 2388, s
+        assert s["negatives"] >= 16704, s
+        assert s["avg_per_query"] >= 5.59, s
+        assert s["coverage"] >= 0.725, s
 
     def test_every_scope_is_actually_reached(self):
         """A fleet number that only ever reaches one scope would still look large.
-        measured 2026-07-26: same_class 720, same_file 16040, same_package 3760."""
+        measured 2026-07-26: same_class 828, same_file 16284, same_package 3768."""
         by_scope = hn.summarise(real_sibling(), [])["sibling"]["by_scope"]
-        assert by_scope["same_class"] >= 300, by_scope
-        assert by_scope["same_file"] >= 9000, by_scope
-        assert by_scope["same_package"] >= 1000, by_scope
+        # same_class floor is 80% of the 720 measured by adversarial review rather
+        # than of today's 828: ~170 of today's count come from another agent's
+        # in-flight test file, and 662 would go red the moment that is reverted.
+        assert by_scope["same_class"] >= 576, by_scope
+        assert by_scope["same_file"] >= 13027, by_scope
+        assert by_scope["same_package"] >= 3014, by_scope
 
     def test_the_correctness_rule_has_real_work_to_do_here(self):
-        """Measured: 351 extracted pairs share a docstring with a sibling in the
-        same file or package. If this floor ever fails, the filter tests above have
-        stopped exercising anything real."""
+        """Measured 2026-07-26: 351 extracted pairs share a docstring with a sibling
+        in the same file or package; floor 280 (80%). If this floor ever fails, the
+        filter tests above have stopped exercising anything real."""
         pairs = real_pairs()
         by_query: dict = {}
         for p in pairs:
@@ -576,12 +936,15 @@ class TestAgainstTheRealRepo:
                     for b in group
                 ):
                     risky += 1
-        assert risky >= 100, (
+        assert risky >= 280, (
             f"only {risky} sibling-scoped duplicate docstrings in the tree"
         )
 
-    def test_no_mined_negative_is_a_positive_anywhere_in_the_tree(self):
-        """The fleet-wide version of the rule, over every mined negative."""
+    def test_no_mined_negative_is_a_positive_under_the_modules_own_key(self):
+        """The fleet-wide rule, over every mined negative. STATED LIMIT: this uses
+        hn._norm_query, so it can only catch the gate being BYPASSED — a negative
+        that is a positive under the module's own notion of "same query". It cannot
+        see that notion being too narrow; the next test exists for that."""
         positives: dict = {}
         for p in real_pairs():
             positives.setdefault(hn._norm_query(p["query"]), set()).add(p["positive"])
@@ -592,81 +955,198 @@ class TestAgainstTheRealRepo:
                 checked += 1
                 if neg["text"] in allowed:
                     violations.append((rec["symbol"], neg["symbol"]))
-        assert checked >= 12000, f"only {checked} negatives checked — floor is 12000"
+        # measured 2026-07-26: 20880 negatives checked; floor 80%
+        assert checked >= 16704, f"only {checked} negatives checked — floor is 16704"
         assert not violations, f"{len(violations)} false negatives: {violations[:5]}"
 
+    def test_no_mined_negative_answers_a_paraphrase_of_its_own_query(self):
+        """The NON-circular half: a negative whose own docstring is a paraphrase of
+        the record's is a positive in all but bytes, and hn._norm_query cannot see it.
+        difflib is the notion here, and it shares nothing with the implementation.
+
+        Measured 2026-07-26 over 20,880 mined negatives: 85 land in the near-miss band
+        [0.75, 0.90) — so the 0.90 gate is genuinely approached, not idle — and
+        exactly ONE crosses it: `_scripted_probe` vs `_scripted` in the scout-cli
+        tests, "Probe fake that replays canned results in order (offline invariant)."
+        against "Probe fake replaying canned results in order (the offline
+        invariant).".
+
+        That one is a REAL, un-fixed narrowness of the filter, recorded as a tight
+        ceiling rather than hidden: paraphrase detection is a similarity claim this
+        module deliberately does not make (see its docstring), so the honest thing is
+        to bound the leak at what it is and notice when it moves.
+        """
+        query_of = {(p["path"], p["symbol"]): p["query"] for p in real_pairs()}
+        near_misses, leaks, checked, unresolved, same_key = 0, [], 0, 0, 0
+        for rec in real_sibling():
+            key = hn._norm_query(rec["query"])
+            for neg in rec["negatives"]:
+                checked += 1
+                nq = query_of.get((neg["path"], neg["symbol"]))
+                if nq is None:
+                    unresolved += 1
+                    continue
+                if hn._norm_query(nq) == key:
+                    same_key += 1
+                    continue
+                ratio = _similarity(rec["query"], nq)
+                if ratio >= _NEAR:
+                    leaks.append((rec["symbol"], neg["symbol"], round(ratio, 3)))
+                elif ratio >= _NEAR_MISS:
+                    near_misses += 1
+        assert checked >= 16704, f"only {checked} negatives checked"
+        assert unresolved == 0, (
+            f"{unresolved} negatives could not be resolved back to a pair — the "
+            f"(path, symbol) identity in the output no longer identifies a document"
+        )
+        assert same_key == 0, (
+            f"{same_key} negatives answer a query byte-equal to the record's under "
+            f"the module's own key; that is the previous test's failure, not this one"
+        )
+        # measured 85 near misses; floor 68 (80%). Without this the ceiling below is
+        # free: a threshold nothing ever approaches cannot catch anything either.
+        assert near_misses >= 68, (
+            f"only {near_misses} mined negatives come within {_NEAR_MISS} of the "
+            f"paraphrase threshold, so the ceiling below is not being exercised"
+        )
+        assert len(leaks) <= 1, (
+            f"{len(leaks)} paraphrase leaks, ceiling is the 1 known case "
+            f"(_scripted_probe/_scripted): {leaks[:5]}"
+        )
+
     def test_disabling_the_filter_would_actually_poison_the_data(self):
-        """Proves the rule is load-bearing rather than decorative. Measured: 1245
-        false negatives across 330 queries when the filter is bypassed."""
+        """Proves the rule is load-bearing rather than decorative. Measured
+        2026-07-26: 1245 false negatives across 330 queries when the filter is
+        bypassed; floors 996 and 264 (80%). The previous floor of 400 was 32% of
+        actual."""
         positives: dict = {}
         for p in real_pairs():
             positives.setdefault(hn._norm_query(p["query"]), set()).add(p["positive"])
-        original = hn._candidate
-        try:
-            hn._candidate = lambda pair, forbidden, scope: original(pair, set(), scope)
-            unfiltered = hn.mine_sibling_negatives(real_pairs())
-        finally:
-            hn._candidate = original
+        unfiltered = _mine_with_the_text_gate_bypassed(real_pairs())
         bad = sum(
             1
             for rec in unfiltered
             for neg in rec["negatives"]
             if neg["text"] in positives[hn._norm_query(rec["query"])]
         )
-        assert bad >= 400, (
+        queries_hit = sum(
+            1
+            for rec in unfiltered
+            if any(neg["text"] in positives[hn._norm_query(rec["query"])]
+                   for neg in rec["negatives"])
+        )
+        assert bad >= 996, (
             f"only {bad} false negatives without the filter — either the tree "
             f"changed shape or the bypass no longer bypasses anything"
         )
-        assert hn.mine_sibling_negatives(real_pairs()) == real_sibling(), (
+        assert queries_hit >= 264, queries_hit
+        assert _first_difference(hn.mine_sibling_negatives(real_pairs()),
+                                real_sibling()) == "", (
             "restoring _candidate did not restore the filtered result"
         )
 
     def test_adjacent_negatives_floor(self):
         recs = hn.mine_adjacent_negatives(real_golden(), window=hn.DEFAULT_WINDOW)
         a = hn.summarise([], recs)["adjacent"]
-        # measured 2026-07-26 over 1500 commits (819 exist): 698 queries / 4461
-        # negatives / avg 6.391 / coverage 97.6%
-        assert a["queries"] >= 400, a
-        assert a["negatives"] >= 2500, a
-        assert a["avg_per_query"] >= 3.0, a
-        assert a["coverage"] >= 0.80, a
-        assert a["by_distance"].get("1", 0) >= 1000, a["by_distance"]
+        # measured 2026-07-26 over 1500 commits (826 exist): 702 queries / 4487
+        # negatives / avg 6.392 / coverage 97.6% / distance-1 1983. Floors 80%.
+        assert a["queries"] >= 561, a
+        assert a["negatives"] >= 3589, a
+        assert a["avg_per_query"] >= 5.11, a
+        assert a["coverage"] >= 0.78, a
+        assert a["by_distance"].get("1", 0) >= 1586, a["by_distance"]
 
-    def test_no_adjacent_negative_is_relevant_to_its_own_query(self):
+    def test_no_adjacent_negative_is_relevant_under_the_modules_own_key(self):
+        """Same stated limit as its source-A counterpart: hn._norm_query is the notion,
+        so this catches a bypass and not a too-narrow notion. It does add one check
+        that needs no normalisation at all — a negative must never appear in the
+        record's OWN relevant list."""
         golden = real_golden()
         relevant: dict = {}
         for g in golden:
             relevant.setdefault(hn._norm_query(g["query"]), set()).update(g["relevant"])
         recs = hn.mine_adjacent_negatives(golden, window=hn.DEFAULT_WINDOW)
-        checked, violations = 0, []
+        checked, violations, own = 0, [], []
         for rec in recs:
             allowed = relevant[hn._norm_query(rec["query"])]
             for neg in rec["negatives"]:
                 checked += 1
                 if neg["path"] in allowed:
                     violations.append((rec["query"][:40], neg["path"]))
-        assert checked >= 2500, f"only {checked} negatives checked — floor is 2500"
+                if neg["path"] in set(rec["relevant"]):
+                    own.append((rec["query"][:40], neg["path"]))
+        # measured 2026-07-26: 4487 negatives checked; floor 80%
+        assert checked >= 3589, f"only {checked} negatives checked — floor is 3589"
         assert not violations, f"{len(violations)} false negatives: {violations[:5]}"
+        assert not own, f"{len(own)} negatives sit in the record's own file list: {own[:5]}"
+
+    def test_no_adjacent_negative_comes_from_a_paraphrased_commit_message(self):
+        """The non-circular half for source B. Each negative carries `from_query`, so
+        no index has to be rebuilt at all: if the neighbouring commit's message is a
+        paraphrase of this one's, its files are relevant to this query and must not be
+        mined against it.
+
+        Measured 2026-07-26 over 4,487 negatives: 3 neighbour messages land in the
+        near-miss band [0.75, 0.90) — the run of "docs(handoff): coverage x1/x4 ..."
+        vs "... x2 + x5 ..." commits — and none crosses it.
+        """
+        recs = hn.mine_adjacent_negatives(real_golden(), window=hn.DEFAULT_WINDOW)
+        near_misses, leaks, checked = 0, [], 0
+        for rec in recs:
+            key = hn._norm_query(rec["query"])
+            for neg in rec["negatives"]:
+                checked += 1
+                nq = neg["from_query"] or ""
+                assert nq, "a negative arrived with no from_query to audit"
+                if hn._norm_query(nq) == key:
+                    continue
+                ratio = _similarity(rec["query"], nq)
+                if ratio >= _NEAR:
+                    leaks.append((rec["query"][:50], nq[:50], neg["path"]))
+                elif ratio >= _NEAR_MISS:
+                    near_misses += 1
+        assert checked >= 3589, checked
+        # measured 3 near misses; floor 2 (80%)
+        assert near_misses >= 2, (
+            f"only {near_misses} neighbour messages come within {_NEAR_MISS} of the "
+            f"paraphrase threshold, so the assertion below is free"
+        )
+        assert leaks == [], f"{len(leaks)} paraphrase-message leaks: {leaks[:5]}"
 
 
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+def _run_cli(*args):
+    proc = subprocess.run(
+        [sys.executable, str(_SCRIPT), *args],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    assert proc.returncode == 0, proc.stderr
+    return proc.stdout
+
+
+def _labelled(section: str, label: str) -> str:
+    """The value printed against `label` in the text report. Parsed, so the report's
+    numbers can be compared with the miner's instead of merely existing."""
+    for line in section.splitlines():
+        head, sep, tail = line.partition(":")
+        if sep and head.strip() == label:
+            return tail.strip()
+    raise AssertionError(f"{label!r} is not in the report section:\n{section}")
+
+
 class TestCLI:
     def test_json_report_on_a_real_subtree(self, tmp_path):
         out = tmp_path / "negatives.jsonl"
-        proc = subprocess.run(
-            [sys.executable, str(_SCRIPT), "--path", str(_ROOT / "apps" / "ava-factory"
-                                                          / "scripts"),
-             "--no-git", "--json", "--out", str(out)],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
-        )
-        assert proc.returncode == 0, proc.stderr
-        summary = json.loads(proc.stdout)
-        # measured 2026-07-26 on apps/ava-factory/scripts: 89 queries, 712 negatives,
-        # avg 8.0 (every query saturates the default n=8), coverage 100%
-        assert summary["sibling"]["queries"] >= 60, summary
-        assert summary["sibling"]["negatives"] >= 450, summary
+        stdout = _run_cli("--path", str(_SUBTREE), "--no-git", "--json",
+                          "--out", str(out))
+        summary = json.loads(stdout)
+        # measured 2026-07-26 on apps/ava-factory/scripts: 93 queries, 744 negatives,
+        # avg 8.0 (every query saturates the default n=8), coverage 100%. Floors 80%.
+        assert summary["sibling"]["queries"] >= 74, summary
+        assert summary["sibling"]["negatives"] >= 595, summary
+        assert summary["sibling"]["avg_per_query"] >= 6.4, summary
         assert summary["adjacent"] == {
             "queries": 0, "negatives": 0, "avg_per_query": 0.0,
             "queries_with_negatives": 0, "coverage": 0.0, "by_distance": {},
@@ -675,17 +1155,61 @@ class TestCLI:
         assert len(lines) == summary["sibling"]["queries"]
         assert all(json.loads(ln)["source"] == "sibling" for ln in lines)
 
-    def test_text_report_names_both_sources_and_the_average(self):
-        proc = subprocess.run(
-            [sys.executable, str(_SCRIPT), "--path", str(_ROOT / "apps" / "ava-factory"
-                                                          / "scripts"),
-             "--no-git", "--n", "4"],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
+    def test_the_text_report_prints_the_numbers_the_miner_computed(self):
+        """The old test asserted that six literal strings appeared in stdout and
+        checked no number whatsoever, so hard-coding n=8 inside main() passed it.
+        Every number in the report is now parsed and compared against an in-process
+        run with the SAME arguments."""
+        stdout = _run_cli("--path", str(_SUBTREE), "--no-git", "--n", "4")
+        head, sep, tail = stdout.partition("SOURCE B")
+        assert sep, f"the report no longer has a SOURCE B section:\n{stdout}"
+        assert "SOURCE A" in head
+
+        expected = hn.summarise(
+            hn.mine_sibling_negatives(hn.pairs_from_tree(_SUBTREE), n=4), [])
+        s, t = expected["sibling"], expected["total"]
+        # measured 2026-07-26 at --n 4: 93 queries / 372 negatives; floors 80%
+        assert s["queries"] >= 74 and s["negatives"] >= 297, s
+        assert s["negatives"] != s["queries"] * hn.DEFAULT_N, (
+            "--n 4 must not produce the default-n count, or this test cannot tell a "
+            "hard-coded n from an honoured one"
         )
-        assert proc.returncode == 0, proc.stderr
-        for token in ("SOURCE A", "SOURCE B", "avg per query", "same_class",
-                      "negatives mined", "TOTAL"):
-            assert token in proc.stdout, f"{token!r} missing from the report"
+        assert _labelled(head, "queries") == str(s["queries"])
+        assert _labelled(head, "negatives mined") == str(s["negatives"])
+        assert _labelled(head, "avg per query") == f"{s['avg_per_query']:.3f}"
+        assert _labelled(head, "queries with >=1") == (
+            f"{s['queries_with_negatives']} ({s['coverage']:.1%})"
+        )
+        for name, count in s["by_scope"].items():
+            assert [name, str(count)] in [ln.split() for ln in head.splitlines()], (
+                f"scope line for {name}={count} missing from:\n{head}"
+            )
+        assert _labelled(tail, "queries") == "0", "--no-git must print zero for B"
+        assert _labelled(tail, "TOTAL") == (
+            f"{t['negatives']} negatives over {t['queries']} queries  "
+            f"(avg {t['avg_per_query']:.3f})"
+        )
+
+    def test_the_cli_honours_max_commits_and_window_for_source_b(self):
+        """Kills a hard-coded mine_pairs(50), window=5 or n=8 inside main(): source B
+        is recomputed in-process from the SAME arguments and compared exactly."""
+        golden = hn.retrieval_eval.mine_pairs(60)
+        # measured 2026-07-26: 60 commits -> 57 golden queries, 50 -> 47. The two must
+        # differ or this test cannot see a hard-coded depth at all.
+        assert len(golden) >= 45, len(golden)
+        assert len(hn.retrieval_eval.mine_pairs(50)) != len(golden), (
+            "50 and 60 commits yield the same golden count here, so a hard-coded "
+            "mine_pairs(50) would be indistinguishable from --max-commits 60"
+        )
+        expected = hn.summarise(
+            [], hn.mine_adjacent_negatives(golden, window=1, n=2))["adjacent"]
+        assert expected["negatives"] > 0, expected
+        assert list(expected["by_distance"]) == ["1"], (
+            "window=1 must reach distance 1 only, or --window is not being tested"
+        )
+        stdout = _run_cli("--path", str(_SUBTREE), "--max-commits", "60",
+                          "--window", "1", "--n", "2", "--json")
+        assert json.loads(stdout)["adjacent"] == expected
 
 
 class TestQueryNamedFilesAreNotNegatives:
@@ -737,7 +1261,9 @@ class TestQueryNamedFilesAreNotNegatives:
         assert golden, "git history unavailable — this guard must not skip silently"
         out = hn.mine_adjacent_negatives(golden, n=8, window=5)
         total = sum(len(r["negatives"]) for r in out)
-        assert total > 1000, f"non-vacuity: only {total} negatives mined"
+        # measured 2026-07-26: 4487 negatives; floor 80%. The previous floor of 1000
+        # was 22% of actual.
+        assert total >= 3589, f"non-vacuity: only {total} negatives mined"
         bad = [
             (r["query"][:60], n["path"])
             for r in out

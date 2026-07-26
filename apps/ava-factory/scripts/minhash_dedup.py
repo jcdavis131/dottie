@@ -29,6 +29,28 @@ which directories to skip (.git, __pycache__, .venv, node_modules, ...). A secon
 copy of that set is exactly the drift bug this repo has been bitten by twice, so
 `ast_pairs.py` is loaded by path and its `walk` is called directly.
 
+WHAT A DROP ACTUALLY GUARANTEES. Two gates, and they measure different things:
+
+  GATE 1, estimated Jaccard >= threshold, decides who is even a CANDIDATE GROUP.
+    Cheap (128 integer compares) and it runs over LSH's candidate pairs.
+    Union-find over those pairs is SINGLE-LINKAGE: a~b and b~c put a and c in one
+    component even when a and c are nothing like each other. On top of that the
+    estimate has real error -- MEASURED on apps/scout-cli, the pair
+    feeds/cli.py::_open_store / flows/cli.py::_open_store estimated 0.8125 and is
+    truly 0.7143. Either route alone will delete a document in favour of a
+    "duplicate" that is not one.
+  GATE 2, EXACT Jaccard >= threshold, decides who is DROPPED. Each component is
+    re-partitioned by star (leader) clustering against the survivor itself, so
+    the guarantee `_star_partition` provides is precise:
+        for every dropped document d, true_jaccard(d, survivor(d)) >= threshold.
+    Not "some chain of pairs led here", not "the estimate said so". Before gate 2
+    existed, apps/scout-cli dropped 126 documents and one of them scored 0.7143
+    against the survivor that replaced it, under an advertised 0.8.
+  It is NOT complete-linkage: two documents in the same cluster need not be
+  within threshold of EACH OTHER, only of the survivor. Measured on
+  apps/scout-cli: worst intra-cluster 0.7353, worst drop-vs-survivor 0.8000. Only
+  the second number decides what gets deleted, which is why only it is enforced.
+
 STATED LIMITS.
   * Python only, same honest scope as `ast_pairs.py`. A file that does not parse
     is still hashed, but only whitespace-collapsed -- its comments survive, so
@@ -37,6 +59,10 @@ STATED LIMITS.
   * MinHash estimates Jaccard over *token shingles*. It finds near-duplicate
     TEXT. A function reimplemented with different identifiers is a semantic
     duplicate that this will not catch, and no amount of tuning changes that.
+  * Exact Jaccard in gate 2 needs the shingle sets, so they are held for the
+    duration of a run. They are NOT returned unless `return_vectors=True`:
+    handing back every shingle set plus 4,566x128 signature ints pinned the whole
+    corpus for the lifetime of the result, and no caller read either key.
 
 Usage:
     python scripts/minhash_dedup.py --path apps/scout-cli
@@ -319,6 +345,39 @@ class UnionFind:
 # --------------------------------------------------------------------------
 # pipeline
 # --------------------------------------------------------------------------
+def _star_partition(sets: dict, component: list, threshold: float) -> list[list]:
+    """Split one single-linkage component into survivor-anchored groups.
+
+    THIS IS THE STEP THAT MAKES A DROP DEFENSIBLE, and it is scored on EXACT
+    Jaccard, never on the estimate that produced the component.
+
+    The lexicographically first member is the survivor. It keeps every remaining
+    member whose true Jaccard TO THE SURVIVOR ITSELF reaches `threshold`.
+    Whatever it does not keep is partitioned again, gets its own survivor, and is
+    therefore not deleted by a document it does not resemble. A member that
+    matches nobody ends up alone in a one-element group, which the caller reports
+    as a singleton to keep rather than as a duplicate.
+
+    Members are scanned in sorted order and the survivor is always the smallest
+    key still pending, so `group[0]` IS the survivor and the partition is
+    deterministic -- both relied on by `cluster_documents`.
+    """
+    groups: list[list] = []
+    pending = list(component)  # UnionFind.components() already sorted these
+    while pending:
+        survivor, rest = pending[0], pending[1:]
+        group, left = [survivor], []
+        for m in rest:
+            # The one branch that decides deletion. Exact, not estimated.
+            if true_jaccard(sets[survivor], sets[m]) >= threshold:
+                group.append(m)
+            else:
+                left.append(m)
+        groups.append(group)
+        pending = left
+    return groups
+
+
 def cluster_documents(
     docs: dict,
     *,
@@ -327,13 +386,19 @@ def cluster_documents(
     bands: int = BANDS,
     rows: int = ROWS,
     threshold: float = THRESHOLD,
+    return_vectors: bool = False,
 ) -> dict:
     """{key: raw_text} -> clusters, keep-set, and the counts behind them.
 
-    LSH produces CANDIDATES, not answers. Every candidate pair is re-scored with
-    `jaccard_estimate` and dropped below `threshold`; without that step a single
-    unlucky band collision chains two unrelated files into one cluster through
-    union-find, and the cluster count is then a fiction.
+    LSH produces CANDIDATES, not answers, and neither does re-scoring them with
+    `jaccard_estimate`: that only says the pair is worth grouping. `_star_partition`
+    then re-checks every would-be drop against the survivor on exact Jaccard, so
+    a document cannot be deleted in favour of one it is not within `threshold` of.
+    `rescued` counts the documents that second gate saved from single-linkage.
+
+    `return_vectors` adds the shingle sets and signatures to the result. Off by
+    default: they are the whole corpus by another name, and holding them defeats
+    scaling to a bigger tree.
     """
     check_banding(num_perm, bands, rows)
     sigs = {}
@@ -350,34 +415,50 @@ def cluster_documents(
     verified = []
     for a, b in sorted(cands):
         est = jaccard_estimate(sigs[a], sigs[b])
-        if est >= threshold:
+        if est >= threshold:  # gate 1: estimated, inclusive, groups candidates
             uf.union(a, b)
             verified.append((a, b, round(est, 4)))
 
-    clusters = [c for c in uf.components() if len(c) > 1]
+    components = [c for c in uf.components() if len(c) > 1]
+    partitions = [_star_partition(sets, c, threshold) for c in components]
+    groups = [g for p in partitions for g in p]
+    clusters = sorted((g for g in groups if len(g) > 1), key=lambda g: (-len(g), g))
+    # Every extra group is an extra survivor, i.e. one document single-linkage
+    # would have deleted and gate 2 kept.
+    rescued = len(groups) - len(components)
     clustered = {m for c in clusters for m in c}
-    # One survivor per cluster (lexicographically first, so it is reproducible)
-    # plus everything that was never a duplicate.
+    # One survivor per cluster (group[0], so it is reproducible) plus everything
+    # that was never a duplicate.
     keep = sorted([c[0] for c in clusters] + [k_ for k_ in sigs if k_ not in clustered])
-    return {
+    survivor_of = {m: c[0] for c in clusters for m in c[1:]}
+    out = {
         "documents": len(sigs),
         "skipped_empty": len(docs) - len(sigs),
         "candidate_pairs": len(cands),
         "verified_pairs": len(verified),
+        "components": len(components),
+        "rescued": rescued,
         "clusters": clusters,
         "keep": keep,
-        "dropped": sorted(clustered - set(keep)),
+        "dropped": sorted(survivor_of),
+        "survivor_of": survivor_of,
         "pairs": verified,
-        "shingle_sets": sets,
-        "signatures": sigs,
     }
+    if return_vectors:
+        out["shingle_sets"] = sets
+        out["signatures"] = sigs
+    return out
 
 
 # --------------------------------------------------------------------------
 # corpus collection
 # --------------------------------------------------------------------------
 def iter_functions(source: str, path: str):
-    """(qualified_name, source_segment) for every def/async def in a file."""
+    """(qualified_name, source_segment, lineno) for every def/async def in a file.
+
+    `lineno` is emitted because the qualified name is NOT unique -- see
+    `_insert_document`, which needs something to disambiguate with.
+    """
     try:
         tree = ast.parse(source)
     except (SyntaxError, ValueError, RecursionError):
@@ -392,7 +473,7 @@ def iter_functions(source: str, path: str):
                     seg = ast.unparse(child)
                 except (AttributeError, ValueError, RecursionError):  # pragma: no cover
                     continue
-                yield f"{path}::{prefix}{child.name}", seg
+                yield f"{path}::{prefix}{child.name}", seg, child.lineno
                 yield from visit(child, prefix + child.name + ".")
             else:
                 yield from visit(child, prefix)
@@ -400,26 +481,73 @@ def iter_functions(source: str, path: str):
     yield from visit(tree)
 
 
+def _insert_document(docs: dict, key: str, text: str, lineno: int) -> bool:
+    """Store `text` under `key`; True if the key had to be disambiguated.
+
+    A plain `docs[key] = text` silently overwrote. A qualified name is unique per
+    file only if you assume one def per name, and Python does not. MEASURED on
+    apps/scout-cli: 4567 (name, source) pairs collapse into 4566 keys, and the one
+    collision is not a duplicate at all -- bigbang/plugins/mcp/cli.py defines
+    _check_sdk twice under an import try/except, one returning True and one
+    raising RuntimeError. They are opposites, and the dict kept only the second.
+    Silently losing a document also understates the corpus the CLI reports.
+
+    The first occurrence keeps the clean key so ordinary keys stay stable and
+    readable; later ones get `#L<lineno>` appended, which is deterministic (AST
+    order) and points at the actual def.
+    """
+    if key not in docs:
+        docs[key] = text
+        return False
+    alt = f"{key}#L{lineno}"
+    n = 2
+    while alt in docs:  # two defs cannot share a line, so this is belt-and-braces
+        alt = f"{key}#L{lineno}#{n}"
+        n += 1
+    docs[alt] = text
+    return True
+
+
 def collect_documents(base: Path, unit: str = "function") -> tuple[dict, dict]:
-    """Build {key: text} for the corpus. Returns (docs, stats)."""
+    """Build {key: text} for the corpus. Returns (docs, stats).
+
+    `files` counts files whose text was actually read, `unreadable` the rest, and
+    `collisions` the keys that had to be disambiguated. All three are surfaced by
+    the CLI: a count that quietly includes files it failed to open is a lie about
+    corpus coverage, and this repo has paid for that shape of lie before.
+    """
     docs: dict[str, str] = {}
     files = 0
+    unreadable = 0
     unparseable = 0
+    collisions = 0
     for p in walk(base):
-        files += 1
         try:
             src = p.read_text(encoding="utf-8", errors="replace")
         except OSError:
+            # Do NOT count this as scanned. `walk` yields directories named
+            # *.py too, and an unreadable path contributed no documents.
+            unreadable += 1
             continue
+        files += 1
         rel = p.relative_to(base).as_posix()
         if canonical_python(src) is None:
             unparseable += 1
         if unit == "file":
-            docs[rel] = src
+            # Distinct paths give distinct keys, so this cannot collide -- it
+            # goes through the same insert so `collisions` is never a stat that
+            # only one unit bothers to maintain.
+            collisions += _insert_document(docs, rel, src, 1)
         else:
-            for key, seg in iter_functions(src, rel):
-                docs[key] = seg
-    return docs, {"files": files, "unparseable": unparseable, "unit": unit}
+            for key, seg, lineno in iter_functions(src, rel):
+                collisions += _insert_document(docs, key, seg, lineno)
+    return docs, {
+        "files": files,
+        "unreadable": unreadable,
+        "unparseable": unparseable,
+        "collisions": collisions,
+        "unit": unit,
+    }
 
 
 # --------------------------------------------------------------------------
@@ -435,7 +563,8 @@ def main(argv=None) -> int:
     ap.add_argument("--bands", type=int, default=BANDS)
     ap.add_argument("--rows", type=int, default=ROWS)
     ap.add_argument("--threshold", type=float, default=THRESHOLD,
-                    help="estimated Jaccard a candidate pair must reach to count")
+                    help="Jaccard a pair must reach, inclusive, at both gates: "
+                         "estimated to be grouped, exact to be dropped")
     ap.add_argument("--keep-set", help="write the deduplicated key list here as JSON")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--show", type=int, default=3, help="how many clusters to print")
@@ -464,11 +593,15 @@ def main(argv=None) -> int:
         "path": str(base),
         "unit": stats["unit"],
         "files_scanned": stats["files"],
+        "files_unreadable": stats["unreadable"],
         "files_unparseable": stats["unparseable"],
+        "key_collisions": stats["collisions"],
         "corpus_size": res["documents"],
         "skipped_empty": res["skipped_empty"],
         "candidate_pairs": res["candidate_pairs"],
         "verified_pairs": res["verified_pairs"],
+        "components": res["components"],
+        "rescued_by_exact_gate": res["rescued"],
         "clusters": len(clusters),
         "duplicate_documents": len(res["dropped"]),
         "largest_cluster_size": len(largest),
@@ -494,12 +627,15 @@ def main(argv=None) -> int:
     print(f"path            : {base}")
     print(f"unit            : {stats['unit']}")
     print(f"files scanned   : {stats['files']}  ({stats['unparseable']} unparseable, "
-          f"whitespace-collapse fallback)")
+          f"whitespace-collapse fallback; {stats['unreadable']} unreadable, skipped)")
     print(f"corpus size     : {res['documents']} documents  "
-          f"({res['skipped_empty']} skipped: no tokens after normalisation)")
+          f"({res['skipped_empty']} skipped: no tokens after normalisation, "
+          f"{stats['collisions']} duplicate keys disambiguated)")
     print(f"candidate pairs : {res['candidate_pairs']}  (LSH {args.bands}x{args.rows})")
     print(f"verified pairs  : {res['verified_pairs']}  (est. Jaccard >= {args.threshold})")
-    print(f"clusters        : {len(clusters)}")
+    print(f"components      : {res['components']}  (single-linkage, before the exact gate)")
+    print(f"clusters        : {len(clusters)}  ({res['rescued']} document(s) rescued from "
+          f"single-linkage by exact Jaccard >= {args.threshold})")
     print(f"duplicates      : {len(res['dropped'])} documents drop out of "
           f"{res['documents']}  ({len(res['dropped']) / max(res['documents'], 1):.1%})")
     print(f"keep set        : {len(res['keep'])}")

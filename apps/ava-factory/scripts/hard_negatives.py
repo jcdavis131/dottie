@@ -43,8 +43,15 @@ and ties inside a scope are broken lexicographically by (path, symbol). That
 tiebreak is a deterministic total order, NOT a similarity ranking. A real "hardest
 first" ordering needs an encoder to score candidates; approximating it with token
 overlap would be a quality claim this module cannot support, so it is not made.
+
 Ordering is independent of the order the input pairs arrive in, so a re-walk of the
-tree in a different filesystem order produces byte-identical output.
+tree in a different filesystem order produces byte-identical output. That claim was
+FALSE when adversarial review first checked it: each negative LIST was
+order-independent, but the records themselves were appended as the pairs arrived, so
+the --out JSONL was a different file for a different walk order. Records are now
+emitted in ``_record_key`` order — content only, never an index — and
+``TestDeterminism`` compares two walks byte-for-byte rather than re-sorting both
+sides first, which is a comparison that cannot see the bug it is supposed to catch.
 
 STDLIB ONLY — no datasketch, no numpy, no faiss. Same doctrine as the rest of the
 tree.
@@ -124,9 +131,47 @@ def class_of(pair: dict) -> str | None:
     has bitten this repo twice. ``TestSymbolFormatContract`` pins the two together
     so a change to ast_pairs' symbol format fails loudly instead of silently
     turning every same_class negative into a same_file one.
+
+    LIMIT OF THE FORMAT, stated because it has a consequence below. ast_pairs stores
+    only the INNERMOST class, so ``Outer.Inner.run`` and ``Other.Inner.run`` in one
+    file both arrive as symbol ``Inner.run`` and both answer "Inner" here. Adversarial
+    review reproduced the consequence on a 12-line file: the two pairs are then
+    indistinguishable in the emitted record, and each was returned as its OWN
+    (path, symbol) negative — the one output this module must never produce. The
+    outer class is simply not recoverable from ``symbol``, so it is not guessed;
+    ``_ident`` treats colliding pairs as one document and ``mine_sibling_negatives``
+    drops them instead of emitting a negative that names the record itself. Zero
+    occurrences in this tree today (measured 2026-07-26), so the drop costs nothing
+    here, but ordinary Python triggers it.
+
+    What is NOT claimed: two DIFFERENT methods of two same-named nested classes
+    (``Outer.Inner.run`` vs ``Other.Inner.save``) still score as same_class rather
+    than same_file. That mis-RANKS a candidate that is nonetheless a genuine
+    negative, and the information needed to tell them apart does not exist in the
+    input, so no correctness claim is made about it.
     """
     symbol = pair.get("symbol") or ""
     return symbol.split(".", 1)[0] if "." in symbol else None
+
+
+def _ident(pair: dict) -> tuple[str, str]:
+    """(path, symbol) — how a document is named in the output, and therefore the
+    only identity a consumer of the JSONL can resolve. Two pairs sharing it cannot
+    be told apart downstream (see ``class_of``), so the miner treats them as one
+    document rather than as each other's negatives."""
+    return (_norm_path(pair.get("path", "")), pair.get("symbol", "") or "")
+
+
+def _record_key(record: dict) -> tuple[str, str, str, str]:
+    """Total, content-only order over emitted records. Content-only is the whole
+    point: it is what makes the --out JSONL byte-identical across filesystem walk
+    orders rather than merely internally consistent."""
+    return (
+        record["path"],
+        record["symbol"],
+        record["query"],
+        record["positive"],
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -140,11 +185,15 @@ def _candidate(pair, forbidden, scope):
     a self-match and a copy-pasted-docstring sibling are both rejected here.
 
     Self-exclusion is therefore guaranteed TWICE: by this text gate, and by the
-    ``j == i`` skip in the caller. That redundancy is deliberate, not leftover —
+    ``_ident`` skip in the caller. That redundancy is deliberate, not leftover —
     mutating either one alone leaves the other holding, and a pair returned as its
-    own negative is the single worst output this module could produce. The gate is
-    the one that also catches the cases the index check cannot see (a twin in
-    another file with the same docstring, or with byte-identical packed text).
+    own negative is the single worst output this module could produce. The two are
+    not interchangeable, and each has a case only IT catches, so each is pinned by
+    a test of its own:
+      * only this gate catches a twin in another file with the same docstring, or
+        one with byte-identical packed text (different identity, same content);
+      * only the ``_ident`` skip catches a symbol collision (different content,
+        same identity) — see ``class_of``.
 
     Every element of the returned key is CONTENT, never the candidate's index in
     the input list. That is what makes the output independent of the order the
@@ -168,10 +217,15 @@ def mine_sibling_negatives(pairs, n: int = DEFAULT_N):
         ties inside a scope: lexicographic by (path, symbol)
 
     A candidate is dropped if its packed text is a genuine positive for this
-    query (see the module docstring). One record is emitted per input pair, in
-    input order, INCLUDING pairs for which no sibling survives — those carry
-    ``"negatives": []`` rather than being silently dropped, so the caller can see
-    coverage instead of inferring it from a shrunken count.
+    query (see the module docstring), or if it shares this pair's (path, symbol)
+    identity (see ``class_of``). One record is emitted per input pair, INCLUDING
+    pairs for which no sibling survives — those carry ``"negatives": []`` rather
+    than being silently dropped, so the caller can see coverage instead of
+    inferring it from a shrunken count.
+
+    Records come out in ``_record_key`` order, NOT input order. That is what makes
+    the emitted file, and not merely each negative list, independent of the order
+    the tree was walked in.
 
     Returns a list of dicts:
         {query, positive, path, symbol, source: "sibling", negatives: [
@@ -198,11 +252,16 @@ def mine_sibling_negatives(pairs, n: int = DEFAULT_N):
     for i, p in enumerate(pairs):
         path = _norm_path(p.get("path", ""))
         cls = class_of(p)
+        self_id = _ident(p)
         forbidden = positives_by_query.get(_norm_query(p.get("query", "")), set())
 
         cands = []
         for j in by_file.get(path, ()):
-            if j == i:
+            # Identity, not index. `j == i` is the common case and is covered, but a
+            # symbol collision (class_of's stated limit) makes a DIFFERENT pair
+            # indistinguishable from this one in the output, and an index test lets
+            # that one through: reproduced as `Inner.run -> [(Inner.run, same_class)]`.
+            if _ident(pairs[j]) == self_id:
                 continue
             c = _candidate(pairs[j], forbidden, scope=(
                 SCOPE_SAME_CLASS
@@ -217,7 +276,10 @@ def mine_sibling_negatives(pairs, n: int = DEFAULT_N):
         # an approximation — and it keeps the whole-repo run linear in practice.
         if len(cands) < n:
             for j in by_package.get(package_of(path), ()):
-                if j == i or _norm_path(pairs[j].get("path", "")) == path:
+                # Same-path candidates belong to the file scan above, which already
+                # owns the identity skip; that includes j == i, so a separate index
+                # test here could never be the deciding condition.
+                if _norm_path(pairs[j].get("path", "")) == path:
                     continue
                 c = _candidate(pairs[j], forbidden, scope=SCOPE_SAME_PACKAGE)
                 if c is not None:
@@ -242,6 +304,11 @@ def mine_sibling_negatives(pairs, n: int = DEFAULT_N):
                 ],
             }
         )
+    # The negative LISTS were already order-independent; the file was not, because
+    # records were appended as the pairs arrived. Sorting closes that gap, which is
+    # what lets TestDeterminism compare two walks byte-for-byte instead of comparing
+    # them only after re-sorting both sides (a comparison that cannot see this bug).
+    out.sort(key=_record_key)
     return out
 
 
@@ -403,7 +470,7 @@ def pairs_from_tree(base: Path):
             src = p.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        rel = str(p.relative_to(base)).replace("\\", "/")
+        rel = _norm_path(str(p.relative_to(base)))
         got, _ = ast_pairs.extract_file(src, rel)
         pairs += got
     return pairs
