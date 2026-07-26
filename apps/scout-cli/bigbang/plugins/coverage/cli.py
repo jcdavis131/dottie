@@ -205,9 +205,7 @@ def _read_sources(
     return parsed, bad
 
 
-def _combine(
-    parsed: list[dict], depth: int, strip: list[str], command: str
-) -> dict:
+def _combine(parsed: list[dict], depth: int, strip: list[str], command: str) -> dict:
     try:
         return coverage.combine(parsed, depth=depth, strip_prefixes=tuple(strip))
     except ValueError as e:
@@ -245,7 +243,9 @@ def _baseline_for(conn: object | None, run_id: int | None):
     """
     if conn is None:
         return None
-    base = coverage.latest_run(conn) if run_id is None else coverage.get_run(conn, run_id)
+    base = (
+        coverage.latest_run(conn) if run_id is None else coverage.get_run(conn, run_id)
+    )
     if run_id is not None and base is None:
         ids = [r["id"] for r in coverage.list_runs(conn, limit=10)]
         fail_agent(
@@ -380,13 +380,17 @@ def parse_cmd(
         [], "--xml", help="Cobertura coverage.xml (repeatable; reports are merged)"
     ),
     data: str | None = typer.Option(
-        None, "--data", help="coverage.py .coverage sqlite (executed lines, no denominator)"
+        None,
+        "--data",
+        help="coverage.py .coverage sqlite (executed lines, no denominator)",
     ),
     context: str | None = typer.Option(
         None, "--context", help="only this measurement context from --data"
     ),
     depth: int = typer.Option(
-        coverage.DEFAULT_DEPTH, "--depth", help="directory components a module name keeps"
+        coverage.DEFAULT_DEPTH,
+        "--depth",
+        help="directory components a module name keeps",
     ),
     strip: list[str] = typer.Option(
         [],
@@ -442,27 +446,39 @@ def report_cmd(
         [], "--xml", help="Cobertura coverage.xml (repeatable; reports are merged)"
     ),
     data: str | None = typer.Option(
-        None, "--data", help="coverage.py .coverage sqlite (executed lines, no denominator)"
+        None,
+        "--data",
+        help="coverage.py .coverage sqlite (executed lines, no denominator)",
     ),
     context: str | None = typer.Option(
         None, "--context", help="only this measurement context from --data"
     ),
     depth: int = typer.Option(
-        coverage.DEFAULT_DEPTH, "--depth", help="directory components a module name keeps"
+        coverage.DEFAULT_DEPTH,
+        "--depth",
+        help="directory components a module name keeps",
     ),
     strip: list[str] = typer.Option(
-        [], "--strip-prefix", help="path root to remove so .coverage and XML paths match"
+        [],
+        "--strip-prefix",
+        help="path root to remove so .coverage and XML paths match",
     ),
     db: str | None = typer.Option(
-        None, "--db", help=f"history store (default {coverage.DB_REL} or $SCOUT_COVERAGE_DB)"
+        None,
+        "--db",
+        help=f"history store (default {coverage.DB_REL} or $SCOUT_COVERAGE_DB)",
     ),
     baseline: int | None = typer.Option(
-        None, "--baseline", help="compare against this recorded run id (default: the latest)"
+        None,
+        "--baseline",
+        help="compare against this recorded run id (default: the latest)",
     ),
     record: bool = typer.Option(
         False, "--record/--no-record", help="store this run as the next baseline"
     ),
-    label: str | None = typer.Option(None, "--label", help="label for the recorded run"),
+    label: str | None = typer.Option(
+        None, "--label", help="label for the recorded run"
+    ),
     html_out: str | None = typer.Option(
         None, "--html", help="write the static self-contained HTML report here"
     ),
@@ -489,7 +505,9 @@ def report_cmd(
         False, "--files/--no-files", help="include every per-file reading"
     ),
     max_findings: int = typer.Option(
-        200, "--max-findings", help="cap emitted diagnostics (the summary stays complete)"
+        200,
+        "--max-findings",
+        help="cap emitted diagnostics (the summary stays complete)",
     ),
 ):
     """Parse, delta against the last run, render, gate. Opens no socket on any path."""
@@ -512,7 +530,9 @@ def report_cmd(
     diags = coverage.to_diagnostics(
         report, min_pct=min_pct, max_drop=max_drop, rules=rules
     )
-    html_info = _write_html(html_out, report, title, "coverage report") if html_out else None
+    html_info = (
+        _write_html(html_out, report, title, "coverage report") if html_out else None
+    )
     # recorded LAST, after the comparison above read the previous run: recording
     # first would make every run its own baseline and every delta 0.0
     run_id = (

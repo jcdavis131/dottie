@@ -237,9 +237,10 @@ def test_excerpt_cuts_on_a_word_boundary():
 def test_url_for_rel_never_invents_a_domain():
     assert searchindex.url_for_rel("docs/a.html") == ("/docs/a.html", "relative")
     assert searchindex.url_for_rel("index.html") == ("/", "relative")
-    assert searchindex.url_for_rel(
-        "docs/a.html", base_url="https://x.example/"
-    ) == ("https://x.example/docs/a.html", "absolute")
+    assert searchindex.url_for_rel("docs/a.html", base_url="https://x.example/") == (
+        "https://x.example/docs/a.html",
+        "absolute",
+    )
     assert searchindex.url_for_rel(
         "docs/a.html", base_url="https://x.example/", clean_urls=True
     ) == ("https://x.example/docs/a", "absolute")
@@ -393,10 +394,20 @@ def test_build_index_flags_duplicate_urls_and_unsupported_characters():
 
 
 def test_postings_are_sorted_by_score_then_doc_id():
-    strong = {"path": "s.html", "title": "widget widget", "headings": ["widget"],
-              "description": "", "body": "widget"}
-    weak = {"path": "w.html", "title": "", "headings": [], "description": "",
-            "body": "widget"}
+    strong = {
+        "path": "s.html",
+        "title": "widget widget",
+        "headings": ["widget"],
+        "description": "",
+        "body": "widget",
+    }
+    weak = {
+        "path": "w.html",
+        "title": "",
+        "headings": [],
+        "description": "",
+        "body": "widget",
+    }
     index = searchindex.build_index([weak, strong], shards=1)
     postings = index["shards"][0]["widget"]
     assert postings == [[1, 21], [0, 1]]  # doc 1 outscores doc 0 and comes first
@@ -430,7 +441,9 @@ def test_render_files_emits_every_artifact_file_with_hashes():
     for shard in manifest["shards"]:
         assert shard["sha256"] == searchindex.sha256_bytes(files[shard["name"]])
         assert shard["bytes"] == len(files[shard["name"]])
-    assert manifest["client_sha256"] == searchindex.sha256_bytes(files["searchindex.js"])
+    assert manifest["client_sha256"] == searchindex.sha256_bytes(
+        files["searchindex.js"]
+    )
     assert manifest["generated_utc"] == "2027-01-15T08:00:00Z"
     assert rendered["sizes"]["total"] == sum(len(v) for v in files.values())
     # a visitor's first query costs the manifest plus ONE shard, not the index
@@ -449,7 +462,9 @@ def test_fingerprint_ignores_the_build_time_but_not_the_content():
     later = searchindex.render_files(index, now=NOW + 7200)
     assert early["manifest"]["fingerprint"] == later["manifest"]["fingerprint"]
     assert early["manifest"]["generated_utc"] != later["manifest"]["generated_utc"]
-    assert early["files"][searchindex.INDEX_NAME] != later["files"][searchindex.INDEX_NAME]
+    assert (
+        early["files"][searchindex.INDEX_NAME] != later["files"][searchindex.INDEX_NAME]
+    )
     changed = searchindex.render_files(_index(shards=1), now=NOW)
     assert changed["manifest"]["fingerprint"] != early["manifest"]["fingerprint"]
 
@@ -458,9 +473,21 @@ def test_manifest_carries_everything_the_client_needs():
     _index_obj, rendered = _rendered()
     manifest = rendered["manifest"]
     for key in (
-        "routes", "shards", "docs", "doc_count", "avg_terms", "k1", "b",
-        "prefix_limit", "min_len", "max_len", "stemming", "default_limit",
-        "weights", "fingerprint", "url_kind",
+        "routes",
+        "shards",
+        "docs",
+        "doc_count",
+        "avg_terms",
+        "k1",
+        "b",
+        "prefix_limit",
+        "min_len",
+        "max_len",
+        "stemming",
+        "default_limit",
+        "weights",
+        "fingerprint",
+        "url_kind",
     ):
         assert key in manifest, key
     assert manifest["stopwords"]["words"], "the client must filter what the build did"
@@ -524,10 +551,24 @@ def test_rank_finds_the_page_and_reports_what_it_read():
 
 def test_rank_scores_a_title_hit_above_a_body_hit():
     docs = [
-        {"path": "body.html", "title": "Other", "headings": [], "description": "",
-         "body": "widget appears once here", "url": "/body.html", "excerpt": ""},
-        {"path": "title.html", "title": "Widget", "headings": [], "description": "",
-         "body": "unrelated text", "url": "/title.html", "excerpt": ""},
+        {
+            "path": "body.html",
+            "title": "Other",
+            "headings": [],
+            "description": "",
+            "body": "widget appears once here",
+            "url": "/body.html",
+            "excerpt": "",
+        },
+        {
+            "path": "title.html",
+            "title": "Widget",
+            "headings": [],
+            "description": "",
+            "body": "unrelated text",
+            "url": "/title.html",
+            "excerpt": "",
+        },
     ]
     index = searchindex.build_index(docs, shards=1)
     rendered = searchindex.render_files(index, now=NOW)
@@ -617,8 +658,17 @@ def test_rank_takes_the_best_expansion_not_the_sum():
         "max_len": 32,
         "routes": {"s": 0},
         "shards": [{"name": "searchindex-000.json"}],
-        "docs": [{"id": 0, "path": "a.html", "url": "/a", "title": "A",
-                  "excerpt": "", "terms": 4, "kind": "html"}],
+        "docs": [
+            {
+                "id": 0,
+                "path": "a.html",
+                "url": "/a",
+                "title": "A",
+                "excerpt": "",
+                "terms": 4,
+                "kind": "html",
+            }
+        ],
     }
     expanded = searchindex.rank(manifest, lambda _n: table, "ship")
     single = searchindex.rank(manifest, lambda _n: {"ship": [[0, 4]]}, "ship")
@@ -626,11 +676,25 @@ def test_rank_takes_the_best_expansion_not_the_sum():
 
 
 def test_rank_length_normalization_favours_the_focused_page():
-    short = {"path": "short.html", "title": "", "headings": [], "description": "",
-             "body": "widget", "url": "/short", "excerpt": ""}
+    short = {
+        "path": "short.html",
+        "title": "",
+        "headings": [],
+        "description": "",
+        "body": "widget",
+        "url": "/short",
+        "excerpt": "",
+    }
     long_body = " ".join(["filler"] * 60)
-    long_page = {"path": "long.html", "title": "", "headings": [], "description": "",
-                 "body": f"widget {long_body}", "url": "/long", "excerpt": ""}
+    long_page = {
+        "path": "long.html",
+        "title": "",
+        "headings": [],
+        "description": "",
+        "body": f"widget {long_body}",
+        "url": "/long",
+        "excerpt": "",
+    }
     index = searchindex.build_index([long_page, short], shards=1)
     rendered = searchindex.render_files(index, now=NOW)
     result = searchindex.rank(
@@ -699,16 +763,16 @@ def test_verify_refuses_a_foreign_manifest_without_pretending_to_check():
 def test_verify_reports_orphans_and_oversized_files():
     _index_obj, rendered = _rendered()
     listing = [*rendered["files"], "searchindex-099.json", "unrelated.txt"]
-    report = searchindex.verify(rendered["manifest"], rendered["files"], listing=listing)
+    report = searchindex.verify(
+        rendered["manifest"], rendered["files"], listing=listing
+    )
     assert report["orphans"] == ["searchindex-099.json"]  # not unrelated.txt
     fat = {**rendered["manifest"]}
     fat["shards"] = [
         {**s, "bytes": searchindex.SHARD_BYTE_BUDGET + 1} for s in fat["shards"]
     ]
     over = searchindex.verify(fat, rendered["files"])
-    assert [o["name"] for o in over["oversized"]] == [
-        s["name"] for s in fat["shards"]
-    ]
+    assert [o["name"] for o in over["oversized"]] == [s["name"] for s in fat["shards"]]
     assert {d["rule"] for d in searchindex.to_diagnostics(over)} >= {
         "searchindex:oversized"
     }
@@ -732,8 +796,16 @@ def test_empty_index_is_an_error_not_a_cheerful_zero():
     assert diags[0]["severity"] == "error"
     # pages present but no terms at all is also an error
     blank = searchindex.build_index(
-        [{"path": "a.html", "title": "", "headings": [], "description": "",
-          "body": "", "url": "/a"}],
+        [
+            {
+                "path": "a.html",
+                "title": "",
+                "headings": [],
+                "description": "",
+                "body": "",
+                "url": "/a",
+            }
+        ],
         shards=1,
     )["report"]
     rules = {(d["rule"], d["severity"]) for d in searchindex.to_diagnostics(blank)}
@@ -840,8 +912,17 @@ def test_cli_searchindex_hello_envelope():
 def test_cli_build_query_verify_round_trip(tmp_path):
     site, out = _site(tmp_path), tmp_path / "out"
     build = _cli(
-        ["searchindex", "build", str(site), "--out", str(out),
-         "--base-url", "https://widget.example.com/", "--shards", "2"]
+        [
+            "searchindex",
+            "build",
+            str(site),
+            "--out",
+            str(out),
+            "--base-url",
+            "https://widget.example.com/",
+            "--shards",
+            "2",
+        ]
     )
     assert build.returncode == 0, build.stderr + build.stdout
     built = json.loads(build.stdout)["data"]
@@ -850,8 +931,9 @@ def test_cli_build_query_verify_round_trip(tmp_path):
     assert (out / searchindex.CLIENT_NAME).exists()
     # the files on disk are byte-identical to what the manifest recorded
     for shard in built["shards"]:
-        assert searchindex.sha256_bytes((out / shard["name"]).read_bytes()) == (
-            shard["sha256"]
+        assert (
+            searchindex.sha256_bytes((out / shard["name"]).read_bytes())
+            == (shard["sha256"])
         )
     query = _cli(["searchindex", "query", "tokenizer", "--out", str(out)])
     assert query.returncode == 0, query.stderr + query.stdout
@@ -886,8 +968,15 @@ def test_cli_dry_run_writes_nothing(tmp_path):
 
 def test_cli_build_over_a_missing_root_is_an_error_not_a_quiet_zero(tmp_path):
     r = _cli(
-        ["searchindex", "build", str(tmp_path / "nope"), "--out",
-         str(tmp_path / "out"), "--fail-on", "error"]
+        [
+            "searchindex",
+            "build",
+            str(tmp_path / "nope"),
+            "--out",
+            str(tmp_path / "out"),
+            "--fail-on",
+            "error",
+        ]
     )
     assert r.returncode == 1
     data = json.loads(r.stdout)["data"]
@@ -910,7 +999,9 @@ def test_cli_query_without_an_artifact_fails_actionably(tmp_path):
 def test_cli_query_fail_empty_is_the_ci_assertion(tmp_path):
     site, out = _site(tmp_path), tmp_path / "out"
     assert _cli(["searchindex", "build", str(site), "--out", str(out)]).returncode == 0
-    ok_query = _cli(["searchindex", "query", "widget", "--out", str(out), "--fail-empty"])
+    ok_query = _cli(
+        ["searchindex", "query", "widget", "--out", str(out), "--fail-empty"]
+    )
     assert ok_query.returncode == 0
     missing = _cli(
         ["searchindex", "query", "kryptonite", "--out", str(out), "--fail-empty"]
@@ -940,20 +1031,41 @@ def test_cli_verify_gates_on_a_deleted_shard(tmp_path):
 def test_cli_rejects_a_bad_fail_on_and_a_bad_weight(tmp_path):
     site = _site(tmp_path)
     bad_gate = _cli(
-        ["searchindex", "build", str(site), "--out", str(tmp_path / "o"),
-         "--fail-on", "loud"]
+        [
+            "searchindex",
+            "build",
+            str(site),
+            "--out",
+            str(tmp_path / "o"),
+            "--fail-on",
+            "loud",
+        ]
     )
     assert bad_gate.returncode == 1
     assert "--fail-on must be one of" in json.loads(bad_gate.stdout)["error"]
     bad_weight = _cli(
-        ["searchindex", "build", str(site), "--out", str(tmp_path / "o"),
-         "--weight", "title"]
+        [
+            "searchindex",
+            "build",
+            str(site),
+            "--out",
+            str(tmp_path / "o"),
+            "--weight",
+            "title",
+        ]
     )
     assert bad_weight.returncode == 1
     assert "--weight wants field=INT" in json.loads(bad_weight.stdout)["error"]
     bad_field = _cli(
-        ["searchindex", "build", str(site), "--out", str(tmp_path / "o"),
-         "--weight", "titel=4"]
+        [
+            "searchindex",
+            "build",
+            str(site),
+            "--out",
+            str(tmp_path / "o"),
+            "--weight",
+            "titel=4",
+        ]
     )
     assert bad_field.returncode == 1
     assert "unknown field" in json.loads(bad_field.stdout)["error"]
@@ -1017,9 +1129,16 @@ def test_generated_client_agrees_with_rank_under_node(tmp_path):
         (tmp_path / name).write_bytes(data)
     (tmp_path / "parity.js").write_text(_PARITY_JS, encoding="utf-8")
     proc = subprocess.run(
-        ["node", str(tmp_path / "parity.js"), tmp_path.as_posix(),
-         json.dumps(_PARITY_QUERIES)],
-        capture_output=True, text=True, encoding="utf-8", timeout=120,
+        [
+            "node",
+            str(tmp_path / "parity.js"),
+            tmp_path.as_posix(),
+            json.dumps(_PARITY_QUERIES),
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=120,
     )
     assert proc.returncode == 0, proc.stderr
     from_js = json.loads(proc.stdout)
@@ -1096,7 +1215,10 @@ def test_generated_client_attaches_renders_and_cache_busts_under_node(tmp_path):
     (tmp_path / "browser.js").write_text(_BROWSER_JS, encoding="utf-8")
     proc = subprocess.run(
         ["node", str(tmp_path / "browser.js"), tmp_path.as_posix()],
-        capture_output=True, text=True, encoding="utf-8", timeout=120,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=120,
     )
     assert proc.returncode == 0, proc.stderr
     out = json.loads(proc.stdout)

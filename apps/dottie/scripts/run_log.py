@@ -19,6 +19,7 @@ The daemon prints a `boot` record with `git_sha` and `prompts_sha256` at start (
 §5.3.R9), so "which code produced this?" is answerable from the log rather than from
 process-creation times that vanish when the process dies.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -26,12 +27,12 @@ import datetime
 import json
 import statistics
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 DEFAULT = Path(__file__).resolve().parents[1] / "data" / "research" / "logs" / "run.log"
 
 
-def read_lines(path: Path) -> List[str]:
+def read_lines(path: Path) -> list[str]:
     raw = path.read_bytes()
     for enc in ("utf-16", "utf-8"):
         try:
@@ -41,10 +42,10 @@ def read_lines(path: Path) -> List[str]:
     return [ln for ln in raw.decode("utf-8", "replace").splitlines() if ln.strip()]
 
 
-def parse(lines: List[str]) -> Tuple[List[Dict[str, Any]], List[str]]:
+def parse(lines: list[str]) -> tuple[list[dict[str, Any]], list[str]]:
     """(json records, non-json noise) — preserving order within each."""
-    records: List[Dict[str, Any]] = []
-    noise: List[str] = []
+    records: list[dict[str, Any]] = []
+    noise: list[str] = []
     for ln in lines:
         if ln.lstrip().startswith("{"):
             try:
@@ -56,7 +57,7 @@ def parse(lines: List[str]) -> Tuple[List[Dict[str, Any]], List[str]]:
     return records, noise
 
 
-def since_boot(lines: List[str]) -> List[str]:
+def since_boot(lines: list[str]) -> list[str]:
     """Lines from the LAST boot record onward, by position — not by timestamp."""
     idx = None
     for i, ln in enumerate(lines):
@@ -69,12 +70,12 @@ def since_boot(lines: List[str]) -> List[str]:
     return lines if idx is None else lines[idx:]
 
 
-def fmt(rec: Dict[str, Any]) -> str:
+def fmt(rec: dict[str, Any]) -> str:
     ts = datetime.datetime.fromtimestamp(rec["ts"]).strftime("%H:%M:%S")
     result = json.dumps(rec.get("result", "")) if rec.get("result") else ""
     dur = f" dur={rec['dur_s']}s" if rec.get("dur_s") else ""
     phase = f" {rec['phase']}" if rec.get("phase") else ""
-    return f"{ts} {rec.get('action','?')}{phase} {result[:90]}{dur}"
+    return f"{ts} {rec.get('action', '?')}{phase} {result[:90]}{dur}"
 
 
 def main() -> int:
@@ -90,23 +91,32 @@ def main() -> int:
     records, noise = parse(scoped)
 
     if args.durations:
-        durs = [r["dur_s"] for r in records
-                if r.get("action") == args.durations and r.get("dur_s")]
+        durs = [
+            r["dur_s"]
+            for r in records
+            if r.get("action") == args.durations and r.get("dur_s")
+        ]
         if not durs:
             print(f"no completed {args.durations!r} records in scope")
             return 0
-        print(f"{args.durations}: n={len(durs)}  min={min(durs):.0f}s  "
-              f"median={statistics.median(durs):.0f}s  max={max(durs):.0f}s")
+        print(
+            f"{args.durations}: n={len(durs)}  min={min(durs):.0f}s  "
+            f"median={statistics.median(durs):.0f}s  max={max(durs):.0f}s"
+        )
         return 0
 
     boot = next((r for r in records if r.get("action") == "boot"), None)
     if boot:
-        print(f"boot: pid={boot.get('pid')} git_sha={boot.get('git_sha')} "
-              f"prompts={boot.get('prompts_sha256')} "
-              f"at {datetime.datetime.fromtimestamp(boot['ts']):%H:%M:%S}")
-    print(f"scope: {len(records)} records, {len(noise)} non-JSON lines "
-          f"({'since last boot' if args.since_boot else 'whole file'})")
-    for r in records[-args.n:]:
+        print(
+            f"boot: pid={boot.get('pid')} git_sha={boot.get('git_sha')} "
+            f"prompts={boot.get('prompts_sha256')} "
+            f"at {datetime.datetime.fromtimestamp(boot['ts']):%H:%M:%S}"
+        )
+    print(
+        f"scope: {len(records)} records, {len(noise)} non-JSON lines "
+        f"({'since last boot' if args.since_boot else 'whole file'})"
+    )
+    for r in records[-args.n :]:
         print("  " + fmt(r))
     if records:
         last = records[-1]

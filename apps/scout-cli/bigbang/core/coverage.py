@@ -242,7 +242,9 @@ def check_measurement(m: dict[str, Any]) -> dict[str, Any]:
             f"reason it has none, got pct={pct!r} reason={reason!r}"
         )
     if reason is not None and not str(reason).strip():
-        raise ValueError(f"{m.get('path')!r}: unknown_reason must say why, got {reason!r}")
+        raise ValueError(
+            f"{m.get('path')!r}: unknown_reason must say why, got {reason!r}"
+        )
     if pct is not None:
         if not 0.0 <= float(pct) <= 100.0:
             raise ValueError(f"{m.get('path')!r}: pct {pct!r} is outside 0..100")
@@ -287,7 +289,9 @@ def measurement(
             "module": None,  # filled in by rollup_modules, which owns the depth
             "statements": statements,
             "covered": covered,
-            "missing": (statements - covered) if (statements is not None and missing is None) else missing,
+            "missing": (statements - covered)
+            if (statements is not None and missing is None)
+            else missing,
             "pct": pct,
             "unknown_reason": reason,
             "branches": branches,
@@ -324,7 +328,9 @@ def _find_all(root: ET.Element, name: str) -> list[ET.Element]:
     return [el for el in root.iter() if local(el.tag) == name]
 
 
-def parse_cobertura(document: str | bytes, *, label: str = "coverage.xml") -> dict[str, Any]:
+def parse_cobertura(
+    document: str | bytes, *, label: str = "coverage.xml"
+) -> dict[str, Any]:
     """Cobertura XML -> per-file line sets + declared totals. Pure, string-in.
 
     A DOCTYPE is REFUSED before parsing: stdlib ElementTree never fetches an
@@ -340,11 +346,17 @@ def parse_cobertura(document: str | bytes, *, label: str = "coverage.xml") -> di
     rounded summaries, and a disagreement with the counted lines is reported as
     a note rather than silently preferred.
     """
-    raw = document.encode("utf-8", "replace") if isinstance(document, str) else bytes(document)
+    raw = (
+        document.encode("utf-8", "replace")
+        if isinstance(document, str)
+        else bytes(document)
+    )
     if not raw.strip():
         raise CoverageError(f"{label}: empty document")
     if _DOCTYPE_RE.search(raw[:4096]):
-        raise CoverageError(f"{label}: refusing a DOCTYPE declaration (entity-expansion risk)")
+        raise CoverageError(
+            f"{label}: refusing a DOCTYPE declaration (entity-expansion risk)"
+        )
     try:
         # S314: the DOCTYPE refusal above removes the entity-expansion vector,
         # which is the only xml.etree exposure defusedxml would add here.
@@ -365,7 +377,9 @@ def parse_cobertura(document: str | bytes, *, label: str = "coverage.xml") -> di
 
     notes: list[str] = []
     sources = [
-        normalize_path(el.text or "") for el in _find_all(root, "source") if (el.text or "").strip()
+        normalize_path(el.text or "")
+        for el in _find_all(root, "source")
+        if (el.text or "").strip()
     ]
     files: dict[str, dict[str, Any]] = {}
     classes = 0
@@ -379,8 +393,13 @@ def parse_cobertura(document: str | bytes, *, label: str = "coverage.xml") -> di
         key = normalize_path(filename)
         rec = files.setdefault(
             key,
-            {"statements": set(), "hits": set(), "branches": 0, "branches_covered": 0,
-             "branch_lines_undeclared": 0},
+            {
+                "statements": set(),
+                "hits": set(),
+                "branches": 0,
+                "branches_covered": 0,
+                "branch_lines_undeclared": 0,
+            },
         )
         for line in _find_all(cls, "line"):
             number = _int_attr(line, "number")
@@ -449,7 +468,9 @@ def declared_vs_counted(parsed: dict[str, Any]) -> dict[str, Any]:
         "note": None,
     }
     if declared.get("lines_valid") is None or declared.get("lines_covered") is None:
-        out["note"] = "the report declares no lines-valid/lines-covered totals to compare"
+        out["note"] = (
+            "the report declares no lines-valid/lines-covered totals to compare"
+        )
         return out
     out["agrees"] = (
         declared["lines_valid"] == counted_statements
@@ -638,7 +659,9 @@ def read_coverage_sqlite(
         }
 
         def sink(raw_path: str) -> set[int]:
-            return files.setdefault(normalize_path(raw_path), {"executed": set()})["executed"]
+            return files.setdefault(normalize_path(raw_path), {"executed": set()})[
+                "executed"
+            ]
 
         bits_rows = 0
         for row in conn.execute(bits_sql, params):
@@ -808,7 +831,9 @@ def combine(
     return {
         "depth": depth,
         "executed_outside_inventory": outside_total,
-        "strip_prefixes": sorted({normalize_path(p) for p in prefixes if normalize_path(p)}),
+        "strip_prefixes": sorted(
+            {normalize_path(p) for p in prefixes if normalize_path(p)}
+        ),
         "sources": [
             {
                 "label": s["label"],
@@ -958,11 +983,15 @@ def delta_of(
         return row
     if current.get("statements") is not None and baseline.get("statements") is not None:
         row["statements_delta"] = current["statements"] - baseline["statements"]
-        row["covered_delta"] = (current.get("covered") or 0) - (baseline.get("covered") or 0)
+        row["covered_delta"] = (current.get("covered") or 0) - (
+            baseline.get("covered") or 0
+        )
     if current.get("pct") is None or baseline.get("pct") is None:
         which = []
         if current.get("pct") is None:
-            which.append(f"this run has no percentage ({current.get('unknown_reason')})")
+            which.append(
+                f"this run has no percentage ({current.get('unknown_reason')})"
+            )
         if baseline.get("pct") is None:
             which.append(
                 f"the baseline has no percentage ({baseline.get('unknown_reason')})"
@@ -994,7 +1023,9 @@ def compare_modules(
     rows = [delta_of(c, base_by_name.get(c["module"])) for c in current]
     seen = {c["module"] for c in current}
     rows.extend(
-        delta_of(None, b) for name, b in sorted(base_by_name.items()) if name not in seen
+        delta_of(None, b)
+        for name, b in sorted(base_by_name.items())
+        if name not in seen
     )
     rows.sort(key=lambda r: str(r["module"]))
     counts = dict.fromkeys(STATUSES, 0)
@@ -1005,7 +1036,9 @@ def compare_modules(
         "modules": rows,
         "counts": counts,
         "worst": min(
-            (r for r in rows if r["delta"] is not None), key=lambda r: r["delta"], default=None
+            (r for r in rows if r["delta"] is not None),
+            key=lambda r: r["delta"],
+            default=None,
         ),
     }
 
@@ -1102,7 +1135,9 @@ def to_diagnostics(
     rs = rules or load_rules()
     diags: list[dict[str, Any]] = []
 
-    def add(rule: str, path: str, message: str, *, suggestion: str | None = None) -> None:
+    def add(
+        rule: str, path: str, message: str, *, suggestion: str | None = None
+    ) -> None:
         cfg = rs.get(rule) or {}
         if not cfg.get("enabled", True):
             return
@@ -1252,7 +1287,11 @@ def open_store(path: str | Path) -> sqlite3.Connection:
 
 
 def record_run(
-    conn: sqlite3.Connection, report: dict[str, Any], *, ts: float, label: str | None = None
+    conn: sqlite3.Connection,
+    report: dict[str, Any],
+    *,
+    ts: float,
+    label: str | None = None,
 ) -> int:
     """Persist one run's module rows; returns the new run id.
 
@@ -1436,11 +1475,13 @@ def _modules_table(report: dict[str, Any]) -> str:
     for mod in report["modules"]:
         d = by_name.get(mod["module"], {})
         status = str(d.get("status") or STATUS_UNKNOWN)
-        unknown_note = f" ({mod['files_unknown']} unknown)" if mod["files_unknown"] else ""
+        unknown_note = (
+            f" ({mod['files_unknown']} unknown)" if mod["files_unknown"] else ""
+        )
         rows.append(
             "<tr>"
             f'<td class="mono">{html.escape(str(mod["module"]))}</td>'
-            f'<td>{_bar(mod["pct"])}</td>'
+            f"<td>{_bar(mod['pct'])}</td>"
             f'<td class="num">{_pct_cell(mod["pct"], mod["unknown_reason"])}</td>'
             f'<td class="num">{"" if mod["statements"] is None else mod["covered"]}</td>'
             f'<td class="num">{"" if mod["statements"] is None else mod["statements"]}</td>'
@@ -1458,7 +1499,7 @@ def _modules_table(report: dict[str, Any]) -> str:
         rows.append(
             "<tr>"
             f'<td class="mono">{html.escape(str(row["module"]))}</td>'
-            f'<td>{_bar(None)}</td>'
+            f"<td>{_bar(None)}</td>"
             f'<td class="num">{_pct_cell(None, row["delta_reason"])}</td>'
             '<td class="num"></td><td class="num"></td>'
             f'<td class="num">{_pct_cell(row["baseline_pct"], row["delta_reason"])}</td>'
@@ -1497,15 +1538,15 @@ def render_html(report: dict[str, Any], *, title: str | None = None) -> str:
             "statements)</span></div>"
         )
     src_bits = ", ".join(
-        f'{e(str(s["label"]))} [{e(str(s["format"]))}, {int(s["files"])} file(s)]'
+        f"{e(str(s['label']))} [{e(str(s['format']))}, {int(s['files'])} file(s)]"
         for s in report.get("sources") or []
     )
     base = report.get("baseline")
     parts.append(
         f'<p class="note">Rendered {e(_iso(report.get("generated_ts")))} from '
-        f'{src_bits or "no source"}. Baseline: '
+        f"{src_bits or 'no source'}. Baseline: "
         + (
-            f'run {int(base["run_id"])} recorded {e(_iso(base.get("ts")))}'
+            f"run {int(base['run_id'])} recorded {e(_iso(base.get('ts')))}"
             if base
             else "none recorded yet, so every module reads as new"
         )
@@ -1515,7 +1556,7 @@ def render_html(report: dict[str, Any], *, title: str | None = None) -> str:
     if totals.get("files_unknown"):
         parts.append(
             f'<p class="note">{int(totals["files_unknown"])} of '
-            f'{int(totals["files"])} file(s) have no percentage of their own (no '
+            f"{int(totals['files'])} file(s) have no percentage of their own (no "
             "statement inventory, or nothing measurable recorded in them). They are "
             "listed as UNKNOWN below, never as 0%.</p>"
         )
@@ -1534,7 +1575,7 @@ def render_html(report: dict[str, Any], *, title: str | None = None) -> str:
     if unknown_files:
         items = "\n".join(
             f'<li><span class="mono">{e(str(f["path"]))}</span> — '
-            f'{e(str(f["unknown_reason"]))} (executed lines seen: {int(f["covered"])})</li>'
+            f"{e(str(f['unknown_reason']))} (executed lines seen: {int(f['covered'])})</li>"
             for f in unknown_files
         )
         parts.append(f"<ul>\n{items}\n</ul>")
@@ -1546,7 +1587,7 @@ def render_html(report: dict[str, Any], *, title: str | None = None) -> str:
     if report.get("unparsable"):
         items = "\n".join(
             f'<li><span class="mono">{e(str(b.get("path")))}</span> — '
-            f'{e(str(b.get("error")))}</li>'
+            f"{e(str(b.get('error')))}</li>"
             for b in report["unparsable"]
         )
         parts.append(f"<h2>Not parsed</h2>\n<ul>\n{items}\n</ul>")

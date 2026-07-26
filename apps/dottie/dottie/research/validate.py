@@ -34,16 +34,17 @@ from __future__ import annotations
 
 import ast
 import difflib
+import inspect
 import re
 import shutil as _shutil  # for which() only; generated code may not import shutil
-import inspect
 import subprocess
 import tempfile
 import traceback
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 # Imports a generated training module must never contain (untrusted code hygiene, per spec).
 ILLEGAL_IMPORTS = frozenset({"os", "subprocess", "shutil", "sys", "socket", "ctypes"})
@@ -51,8 +52,14 @@ ILLEGAL_CALLS = frozenset({"eval", "exec", "__import__", "compile", "open"})
 
 #: Ordered stages. Keep in step with `validate()` — anything iterating this to
 #: report coverage silently under-reports when a stage is added and not listed.
-LEVELS = ("syntax", "contract", "static", "dry_run", "integration_width",
-          "residual_stream")
+LEVELS = (
+    "syntax",
+    "contract",
+    "static",
+    "dry_run",
+    "integration_width",
+    "residual_stream",
+)
 
 
 @dataclass
@@ -60,10 +67,10 @@ class ValidationResult:
     """Outcome of a validation pass. ``ok`` iff every runnable level passed."""
 
     ok: bool
-    level: str                       # the level that failed, or "dry_run" when all passed
-    status: str                      # pass | fail | skipped
+    level: str  # the level that failed, or "dry_run" when all passed
+    status: str  # pass | fail | skipped
     detail: str = ""
-    per_level: Dict[str, Dict[str, str]] = field(default_factory=dict)
+    per_level: dict[str, dict[str, str]] = field(default_factory=dict)
 
     def as_feedback(self) -> str:
         """The exact message handed back to the implementation LLM for self-correction.
@@ -78,8 +85,10 @@ class ValidationResult:
         blocked behind the failure — so the corrector is aimed at a specific
         obligation, not just shown a traceback. Additive: the base text and the
         hint are byte-for-byte what they were before obligations existed."""
-        base = (f"Validation failed at level '{self.level}' ({self.status}). "
-                f"Detail:\n{self.detail}")
+        base = (
+            f"Validation failed at level '{self.level}' ({self.status}). "
+            f"Detail:\n{self.detail}"
+        )
         hint = diagnose_failure(self.level, self.detail)
         parts = [base]
         if hint:
@@ -89,7 +98,7 @@ class ValidationResult:
             parts.append(obl)
         return "\n\n".join(parts)
 
-    def obligations(self) -> List[Dict[str, str]]:
+    def obligations(self) -> list[dict[str, str]]:
         """Machine-readable proof-obligation ledger for this validation pass.
 
         One entry per named property in ``OBLIGATIONS``:
@@ -111,8 +120,9 @@ class ValidationResult:
         implies everything before it ran clean; a raw traceback implies
         nothing, so its stage-mates stay unchecked."""
         per = self.per_level or {
-            self.level: {"status": self.status, "detail": self.detail}}
-        out: List[Dict[str, str]] = []
+            self.level: {"status": self.status, "detail": self.detail}
+        }
+        out: list[dict[str, str]] = []
         for oid, stage, prop in OBLIGATIONS:
             rec = per.get(stage)
             entry = {"obligation_id": oid, "property": prop, "stage": stage}
@@ -124,7 +134,8 @@ class ValidationResult:
                 entry["status"] = "skipped"
             else:  # this stage failed — attribute the failure within it
                 failed, attributed = _classify_stage_failure(
-                    stage, rec.get("detail", ""))
+                    stage, rec.get("detail", "")
+                )
                 stage_ids = [o for o, s, _ in OBLIGATIONS if s == stage]
                 if oid in failed:
                     entry["status"] = "failed"
@@ -135,10 +146,12 @@ class ValidationResult:
                     # (not fail-fast within the stage), so an unmatched
                     # contract obligation really was checked and held.
                     entry["status"] = "discharged"
-                elif (stage == "dry_run"
-                      and any(f in _POST_FORWARD_LITERALS for f in failed)
-                      and stage_ids.index(oid)
-                      < min(stage_ids.index(f) for f in failed if f in stage_ids)):
+                elif (
+                    stage == "dry_run"
+                    and any(f in _POST_FORWARD_LITERALS for f in failed)
+                    and stage_ids.index(oid)
+                    < min(stage_ids.index(f) for f in failed if f in stage_ids)
+                ):
                     entry["status"] = "discharged"
                 else:
                     entry["status"] = "unchecked"
@@ -163,79 +176,105 @@ class ValidationResult:
 # Before the expansion, 103/358 attempts (28.8%) got no hint at all, and every
 # syntax/static/contract failure was in that set.
 _HINTS: tuple = (
-    (r"einsum\(\)",
-     "EINSUM REPAIR: the equation does not match the operands. Do not fiddle "
-     "with the letters — REPLACE the einsum with explicit ops: reshape/view "
-     "to split dims, torch.matmul for contractions, .transpose(-2, -1) to "
-     "align. One op per line, and add `assert x.shape == (...)` after each."),
-    (r"must match the size of tensor|Expected size for first two dimensions|mat1 and mat2 shapes|is invalid for input of size",
-     "SHAPE-ALGEBRA REPAIR: track the shape symbolically through every line "
-     "starting from [batch, seq, hidden]. This error means an op changed a "
-     "dim you later treat as unchanged (usually a head split never merged "
-     "back, or a matmul on unaligned dims). Add a shape assert after each "
-     "reshape/matmul and merge heads back to [batch, seq, hidden] before the "
-     "residual add."),
-    (r"missing \d+ required positional argument",
-     "CONSTRUCTOR CONTRACT: the module must be instantiable from the declared "
-     "init_kwargs alone. Give EVERY extra __init__ parameter a default "
-     "derived from the width (e.g. `d_k=None` then "
-     "`self.d_k = d_k or d_model // n_heads`)."),
-    (r"has no attribute '\w+'",
-     "ATTRIBUTE REPAIR: forward() reads a `self.<name>` that __init__ never "
-     "assigned (or the torch API does not exist). Assign every attribute in "
-     "__init__ before use — submodules must be constructed there so their "
-     "parameters register — and use only standard documented torch.nn "
-     "modules (Linear, LayerNorm, GELU, Dropout, MultiheadAttention)."),
-    (r"NameError: name",
-     "UNDEFINED NAME: define it or import it (only torch / torch.nn / math "
-     "style imports are permitted; no os/sys/subprocess)."),
-    (r"NaN/Inf",
-     "STABILITY REPAIR: add a small eps inside every sqrt/log/division, "
-     "clamp attention logits (e.g. `logits.clamp(-30, 30)`) before softmax."),
-    (r"degenerate block|RANK COLLAPSE|rank collapse",
-     "CAPACITY REPAIR: the block must hold learnable parameters whose output "
-     "varies per position AND per feature. Put at least one nn.Linear over "
-     "the hidden dim in the main path — a scalar/bias offset cannot pass."),
-    (r"the SAME \[batch, seq, hidden\] shape",
-     "OUTPUT CONTRACT: return exactly one tensor with the input's shape. "
-     "Project back to hidden size with a final nn.Linear; do not return "
-     "tuples or attention maps."),
+    (
+        r"einsum\(\)",
+        "EINSUM REPAIR: the equation does not match the operands. Do not fiddle "
+        "with the letters — REPLACE the einsum with explicit ops: reshape/view "
+        "to split dims, torch.matmul for contractions, .transpose(-2, -1) to "
+        "align. One op per line, and add `assert x.shape == (...)` after each.",
+    ),
+    (
+        r"must match the size of tensor|Expected size for first two dimensions|mat1 and mat2 shapes|is invalid for input of size",
+        "SHAPE-ALGEBRA REPAIR: track the shape symbolically through every line "
+        "starting from [batch, seq, hidden]. This error means an op changed a "
+        "dim you later treat as unchanged (usually a head split never merged "
+        "back, or a matmul on unaligned dims). Add a shape assert after each "
+        "reshape/matmul and merge heads back to [batch, seq, hidden] before the "
+        "residual add.",
+    ),
+    (
+        r"missing \d+ required positional argument",
+        "CONSTRUCTOR CONTRACT: the module must be instantiable from the declared "
+        "init_kwargs alone. Give EVERY extra __init__ parameter a default "
+        "derived from the width (e.g. `d_k=None` then "
+        "`self.d_k = d_k or d_model // n_heads`).",
+    ),
+    (
+        r"has no attribute '\w+'",
+        "ATTRIBUTE REPAIR: forward() reads a `self.<name>` that __init__ never "
+        "assigned (or the torch API does not exist). Assign every attribute in "
+        "__init__ before use — submodules must be constructed there so their "
+        "parameters register — and use only standard documented torch.nn "
+        "modules (Linear, LayerNorm, GELU, Dropout, MultiheadAttention).",
+    ),
+    (
+        r"NameError: name",
+        "UNDEFINED NAME: define it or import it (only torch / torch.nn / math "
+        "style imports are permitted; no os/sys/subprocess).",
+    ),
+    (
+        r"NaN/Inf",
+        "STABILITY REPAIR: add a small eps inside every sqrt/log/division, "
+        "clamp attention logits (e.g. `logits.clamp(-30, 30)`) before softmax.",
+    ),
+    (
+        r"degenerate block|RANK COLLAPSE|rank collapse",
+        "CAPACITY REPAIR: the block must hold learnable parameters whose output "
+        "varies per position AND per feature. Put at least one nn.Linear over "
+        "the hidden dim in the main path — a scalar/bias offset cannot pass.",
+    ),
+    (
+        r"the SAME \[batch, seq, hidden\] shape",
+        "OUTPUT CONTRACT: return exactly one tensor with the input's shape. "
+        "Project back to hidden size with a final nn.Linear; do not return "
+        "tuples or attention maps.",
+    ),
     # --- 2026-07-23 expansion: runtime-level classes, ordered by measured
     # attempt count (30/8/7/6 of 358). The bare `AssertionError:` catch-all is
     # LAST on purpose so every more specific class above it wins first.
-    (r"does not require grad and does not have a grad_fn|"
-     r"cannot register a hook on a tensor that doesn't require gradient|"
-     r"grad can be implicitly created only for scalar outputs|"
-     r"unexpected keyword argument 'retain_grad'",
-     "NO-AUTOGRAD-IN-FORWARD: you called torch.autograd.grad/backward/"
-     "register_hook on the input inside forward(). Validation runs under "
-     "no_grad and a residual-stream block does not own a loss, so these "
-     "calls can never succeed. Delete the autograd machinery and express "
-     "the idea with quantities computable in forward: activation statistics "
-     "(mean/std/norm of x), learnable nn.Parameter gates, or detached "
-     "proxies."),
-    (r"t\(\) expects a tensor with <= 2 dimensions",
-     "BATCHED TRANSPOSE: .t() only works on 2-D matrices; your tensors are "
-     "[batch, seq, hidden]. Use .transpose(-2, -1) (or .mT) for the last "
-     "two dims; torch.matmul already broadcasts over batch."),
-    (r"ImportError: cannot import name|ModuleNotFoundError: No module named",
-     "IMPORT REALITY: einsum and logsumexp live at torch top level "
-     "(torch.einsum, torch.logsumexp), NOT in torch.nn.functional; and no "
-     "custom/third-party module exists in the sandbox. Only torch, "
-     "torch.nn, torch.nn.functional and math are importable."),
-    (r"Index tensor must have the same number of dimensions|"
-     r"only integer tensors of a single element|"
-     r"is out of bounds for dimension|selected index k out of range",
-     "GATHER/TOPK REPAIR: gather needs an index tensor with the SAME ndim "
-     "as the input (unsqueeze/expand it), topk k must not exceed the size "
-     "of that dim (k = min(k, x.size(dim))), and boolean/float tensors "
-     "cannot index — use long indices from topk/argmax."),
-    (r"AssertionError:",
-     "YOUR OWN ASSERT FIRED: the assertion text is yours. The validator "
-     "instantiates from the declared init_kwargs and feeds a harness-chosen "
-     "[batch, seq, hidden] input; derive every dimension from x.shape at "
-     "forward time (b, s, h = x.shape) and delete asserts that encode a "
-     "fixed batch/seq/hidden or constructor constants."),
+    (
+        r"does not require grad and does not have a grad_fn|"
+        r"cannot register a hook on a tensor that doesn't require gradient|"
+        r"grad can be implicitly created only for scalar outputs|"
+        r"unexpected keyword argument 'retain_grad'",
+        "NO-AUTOGRAD-IN-FORWARD: you called torch.autograd.grad/backward/"
+        "register_hook on the input inside forward(). Validation runs under "
+        "no_grad and a residual-stream block does not own a loss, so these "
+        "calls can never succeed. Delete the autograd machinery and express "
+        "the idea with quantities computable in forward: activation statistics "
+        "(mean/std/norm of x), learnable nn.Parameter gates, or detached "
+        "proxies.",
+    ),
+    (
+        r"t\(\) expects a tensor with <= 2 dimensions",
+        "BATCHED TRANSPOSE: .t() only works on 2-D matrices; your tensors are "
+        "[batch, seq, hidden]. Use .transpose(-2, -1) (or .mT) for the last "
+        "two dims; torch.matmul already broadcasts over batch.",
+    ),
+    (
+        r"ImportError: cannot import name|ModuleNotFoundError: No module named",
+        "IMPORT REALITY: einsum and logsumexp live at torch top level "
+        "(torch.einsum, torch.logsumexp), NOT in torch.nn.functional; and no "
+        "custom/third-party module exists in the sandbox. Only torch, "
+        "torch.nn, torch.nn.functional and math are importable.",
+    ),
+    (
+        r"Index tensor must have the same number of dimensions|"
+        r"only integer tensors of a single element|"
+        r"is out of bounds for dimension|selected index k out of range",
+        "GATHER/TOPK REPAIR: gather needs an index tensor with the SAME ndim "
+        "as the input (unsqueeze/expand it), topk k must not exceed the size "
+        "of that dim (k = min(k, x.size(dim))), and boolean/float tensors "
+        "cannot index — use long indices from topk/argmax.",
+    ),
+    (
+        r"AssertionError:",
+        "YOUR OWN ASSERT FIRED: the assertion text is yours. The validator "
+        "instantiates from the declared init_kwargs and feeds a harness-chosen "
+        "[batch, seq, hidden] input; derive every dimension from x.shape at "
+        "forward time (b, s, h = x.shape) and delete asserts that encode a "
+        "fixed batch/seq/hidden or constructor constants.",
+    ),
 )
 
 # Level-scoped patterns, tried BEFORE the generic _HINTS. Two reasons this is
@@ -247,55 +286,65 @@ _HINTS: tuple = (
 # level's checker actually emits. Deliberately NO unconditional per-level
 # fallback — an unknown failure still gets no hint rather than a wrong one
 # (that contract is test-encoded in test_validate_hints.py).
-_LEVEL_HINTS: Dict[str, tuple] = {
+_LEVEL_HINTS: dict[str, tuple] = {
     # ruff runs --select=F821,E9; the ledger's static failures are 100% F821
     # (43 of 43 attempts, 2026-07-23 mining — the single biggest hint-less class).
     "static": (
-        (r"F821 Undefined name",
-         "UNDEFINED NAME (static): ruff flagged a name that does not exist at "
-         "that line. Three real causes in this loop: (1) missing import — add "
-         "`import torch.nn as nn` / `import torch.nn.functional as F` / "
-         "`from typing import Dict`; (2) typo or renamed variable — make the "
-         "assignment and the use match exactly; (3) your previous output was "
-         "TRUNCATED mid-identifier — rewrite the whole file, shorter, and "
-         "finish every line."),
+        (
+            r"F821 Undefined name",
+            "UNDEFINED NAME (static): ruff flagged a name that does not exist at "
+            "that line. Three real causes in this loop: (1) missing import — add "
+            "`import torch.nn as nn` / `import torch.nn.functional as F` / "
+            "`from typing import Dict`; (2) typo or renamed variable — make the "
+            "assignment and the use match exactly; (3) your previous output was "
+            "TRUNCATED mid-identifier — rewrite the whole file, shorter, and "
+            "finish every line.",
+        ),
     ),
     # Every syntax-level message observed in the ledger (23/23 attempts), not
     # just the corruption cluster: the repair action — regenerate, don't patch —
     # is the same for all of them.
     "syntax": (
-        (r"unexpected character after line continuation character|"
-         r"was never closed|unterminated string literal|unmatched '|"
-         r"invalid syntax|unexpected indent|"
-         r"positional argument follows keyword argument|"
-         r"expression cannot contain assignment|f-string: expecting",
-         "MALFORMED SOURCE: the emitted file is corrupted — literal \\n text "
-         "instead of real newlines, a line cut off mid-expression (unclosed "
-         "bracket/string), or stray indentation. Do not patch the reported "
-         "line: regenerate the ENTIRE file from scratch, shorter and simpler, "
-         "with real newlines, ending on a complete line."),
+        (
+            r"unexpected character after line continuation character|"
+            r"was never closed|unterminated string literal|unmatched '|"
+            r"invalid syntax|unexpected indent|"
+            r"positional argument follows keyword argument|"
+            r"expression cannot contain assignment|f-string: expecting",
+            "MALFORMED SOURCE: the emitted file is corrupted — literal \\n text "
+            "instead of real newlines, a line cut off mid-expression (unclosed "
+            "bracket/string), or stray indentation. Do not patch the reported "
+            "line: regenerate the ENTIRE file from scratch, shorter and simpler, "
+            "with real newlines, ending on a complete line.",
+        ),
     ),
     # check_contract emits exactly four problem shapes; the ledger's contract
     # failures are 25x skeleton + 12x loss-shaped (37/37 attempts).
     "contract": (
-        (r"no 'forward' method found on any class|no class defined",
-         "MODULE SKELETON: your rewrite lost the required structure. Emit "
-         "exactly one `class <Name>(nn.Module):` with `def __init__` and "
-         "`def forward(self, x)` taking ONE [batch, seq, hidden] tensor and "
-         "returning one same-shape tensor. All logic inside methods; no bare "
-         "functions, no top-level code."),
-        (r"requires extra argument\(s\)",
-         "LOSS-VS-BLOCK: your forward wants targets (or another extra input) "
-         "— that makes it a LOSS, and a residual-stream block never sees "
-         "labels. Re-express the idea as a transform of the hidden states "
-         "alone: replace target-dependent terms with self-supervised proxies "
-         "(statistics of x, activation-norm gates); any extra forward arg "
-         "must have a default and never be required."),
-        (r"illegal imports|illegal calls",
-         "SANDBOX POLICY: generated code may not import os/subprocess/shutil/"
-         "sys/socket/ctypes or call eval/exec/__import__/compile/open. Delete "
-         "them — a residual-stream block needs only torch, torch.nn, "
-         "torch.nn.functional and math."),
+        (
+            r"no 'forward' method found on any class|no class defined",
+            "MODULE SKELETON: your rewrite lost the required structure. Emit "
+            "exactly one `class <Name>(nn.Module):` with `def __init__` and "
+            "`def forward(self, x)` taking ONE [batch, seq, hidden] tensor and "
+            "returning one same-shape tensor. All logic inside methods; no bare "
+            "functions, no top-level code.",
+        ),
+        (
+            r"requires extra argument\(s\)",
+            "LOSS-VS-BLOCK: your forward wants targets (or another extra input) "
+            "— that makes it a LOSS, and a residual-stream block never sees "
+            "labels. Re-express the idea as a transform of the hidden states "
+            "alone: replace target-dependent terms with self-supervised proxies "
+            "(statistics of x, activation-norm gates); any extra forward arg "
+            "must have a default and never be required.",
+        ),
+        (
+            r"illegal imports|illegal calls",
+            "SANDBOX POLICY: generated code may not import os/subprocess/shutil/"
+            "sys/socket/ctypes or call eval/exec/__import__/compile/open. Delete "
+            "them — a residual-stream block needs only torch, torch.nn, "
+            "torch.nn.functional and math.",
+        ),
     ),
 }
 
@@ -321,52 +370,87 @@ _LEVEL_HINTS: Dict[str, tuple] = {
 #: stage without naming its obligations fails the suite instead of silently
 #: under-reporting.
 OBLIGATIONS: tuple = (
-    ("parses", "syntax",
-     "source parses to a valid Python AST"),
-    ("module_skeleton", "contract",
-     "defines an nn.Module-style class with a forward method"),
-    ("block_signature", "contract",
-     "forward accepts exactly one [batch, seq, hidden] tensor (no required extras)"),
-    ("sandbox_policy", "contract",
-     "no illegal imports (os/subprocess/...) and no eval/exec/__import__/open"),
-    ("names_resolve", "static",
-     "every name is defined or imported (ruff F821/E9 clean)"),
-    ("constructible", "dry_run",
-     "module imports and the class instantiates from the declared init_kwargs alone"),
-    ("executes", "dry_run",
-     "one CPU forward pass completes without raising"),
-    ("output_contract", "dry_run",
-     "forward returns a tensor (not a scalar/tuple-only/None)"),
-    ("shape_conservation", "dry_run",
-     "output shape equals the input [batch, seq, hidden] shape"),
-    ("finite_output", "dry_run",
-     "output is finite — no NaN/Inf"),
-    ("non_degeneracy", "dry_run",
-     "not a constant-offset block — the transform is input-dependent or parameterised"),
-    ("rank_health", "dry_run",
-     "output varies across the hidden dim — no rank collapse to a broadcast scalar"),
-    ("param_capacity", "dry_run",
-     "at least one learnable parameter (gradient-flow has somewhere to go)"),
-    ("width_generalization", "integration_width",
-     "also runs at the real integration shape [batch, seq=256, hidden=256]"),
-    ("gradient_flow", "residual_stream",
-     "runs on a grad-carrying NON-LEAF input — no .grad reads off the input"),
+    ("parses", "syntax", "source parses to a valid Python AST"),
+    (
+        "module_skeleton",
+        "contract",
+        "defines an nn.Module-style class with a forward method",
+    ),
+    (
+        "block_signature",
+        "contract",
+        "forward accepts exactly one [batch, seq, hidden] tensor (no required extras)",
+    ),
+    (
+        "sandbox_policy",
+        "contract",
+        "no illegal imports (os/subprocess/...) and no eval/exec/__import__/open",
+    ),
+    (
+        "names_resolve",
+        "static",
+        "every name is defined or imported (ruff F821/E9 clean)",
+    ),
+    (
+        "constructible",
+        "dry_run",
+        "module imports and the class instantiates from the declared init_kwargs alone",
+    ),
+    ("executes", "dry_run", "one CPU forward pass completes without raising"),
+    (
+        "output_contract",
+        "dry_run",
+        "forward returns a tensor (not a scalar/tuple-only/None)",
+    ),
+    (
+        "shape_conservation",
+        "dry_run",
+        "output shape equals the input [batch, seq, hidden] shape",
+    ),
+    ("finite_output", "dry_run", "output is finite — no NaN/Inf"),
+    (
+        "non_degeneracy",
+        "dry_run",
+        "not a constant-offset block — the transform is input-dependent or parameterised",
+    ),
+    (
+        "rank_health",
+        "dry_run",
+        "output varies across the hidden dim — no rank collapse to a broadcast scalar",
+    ),
+    (
+        "param_capacity",
+        "dry_run",
+        "at least one learnable parameter (gradient-flow has somewhere to go)",
+    ),
+    (
+        "width_generalization",
+        "integration_width",
+        "also runs at the real integration shape [batch, seq=256, hidden=256]",
+    ),
+    (
+        "gradient_flow",
+        "residual_stream",
+        "runs on a grad-carrying NON-LEAF input — no .grad reads off the input",
+    ),
 )
 
 #: Stage-scoped failure→obligation patterns, same philosophy as _LEVEL_HINTS:
 #: each pattern fires only on text its own stage's checker actually emits.
 #: Stages absent here carry exactly one obligation, attributed via
 #: _STAGE_FALLBACK_OBLIGATION.
-_OBLIGATION_PATTERNS: Dict[str, tuple] = {
+_OBLIGATION_PATTERNS: dict[str, tuple] = {
     "contract": (
         ("module_skeleton", r"no class defined|no 'forward' method"),
         ("block_signature", r"requires extra argument"),
         ("sandbox_policy", r"illegal imports|illegal calls"),
     ),
     "dry_run": (
-        ("constructible",
-         r"missing \d+ required positional argument|cannot load module|"
-         r"not found in generated module|no nn\.Module subclass found"),
+        (
+            "constructible",
+            r"missing \d+ required positional argument|cannot load module|"
+            r"not found in generated module|no nn\.Module subclass found",
+        ),
         ("output_contract", r"forward returned \w+, not a tensor"),
         ("shape_conservation", r"the SAME \[batch, seq, hidden\] shape"),
         ("finite_output", r"NaN/Inf"),
@@ -379,7 +463,7 @@ _OBLIGATION_PATTERNS: Dict[str, tuple] = {
 #: Where an unclassifiable failure detail lands: the stage's execution-shaped
 #: obligation — a wrong specific attribution is worse than a broad honest one
 #: (the diagnose_failure philosophy, applied to obligations).
-_STAGE_FALLBACK_OBLIGATION: Dict[str, str] = {
+_STAGE_FALLBACK_OBLIGATION: dict[str, str] = {
     "syntax": "parses",
     "contract": "module_skeleton",
     "static": "names_resolve",
@@ -392,9 +476,16 @@ _STAGE_FALLBACK_OBLIGATION: Dict[str, str] = {
 #: emitted only AFTER the forward pass completed — matching one PROVES every
 #: earlier dry_run obligation was discharged on the way there. Tracebacks
 #: (constructible / the executes fallback) prove nothing about stage-mates.
-_POST_FORWARD_LITERALS = frozenset({
-    "output_contract", "shape_conservation", "finite_output",
-    "non_degeneracy", "rank_health", "param_capacity"})
+_POST_FORWARD_LITERALS = frozenset(
+    {
+        "output_contract",
+        "shape_conservation",
+        "finite_output",
+        "non_degeneracy",
+        "rank_health",
+        "param_capacity",
+    }
+)
 
 
 def _classify_stage_failure(level: str, detail: str) -> tuple:
@@ -402,22 +493,25 @@ def _classify_stage_failure(level: str, detail: str) -> tuple:
 
     ``attributed`` is False when only the fallback fired — callers must then
     refuse to mark stage-mates discharged, because nothing was proven."""
-    hits = [oid for oid, pat in _OBLIGATION_PATTERNS.get(level, ())
-            if re.search(pat, detail or "")]
+    hits = [
+        oid
+        for oid, pat in _OBLIGATION_PATTERNS.get(level, ())
+        if re.search(pat, detail or "")
+    ]
     if hits:
         return hits, True
     fb = _STAGE_FALLBACK_OBLIGATION.get(level)
     return ([fb] if fb else []), False
 
 
-def failed_obligations(level: str, detail: str) -> List[str]:
+def failed_obligations(level: str, detail: str) -> list[str]:
     """Obligation ids a failing ``level``'s detail attributes the failure to
     (possibly several: check_contract reports every violated property at once).
     An unknown level yields [] rather than a wrong attribution."""
     return _classify_stage_failure(level, detail)[0]
 
 
-def format_obligations(obls: List[Dict[str, str]]) -> str:
+def format_obligations(obls: list[dict[str, str]]) -> str:
     """The human/LLM-facing obligation ledger appended to as_feedback().
 
     Empty string when nothing is attributed as failed (a passing result, or a
@@ -431,15 +525,15 @@ def format_obligations(obls: List[Dict[str, str]]) -> str:
     for o in failed:
         lines.append(f"  DISCHARGE NEXT -> {o['obligation_id']}: {o['property']}")
     if discharged:
-        lines.append("  already discharged (do not break these): "
-                     + ", ".join(discharged))
+        lines.append(
+            "  already discharged (do not break these): " + ", ".join(discharged)
+        )
     if blocked:
-        lines.append("  blocked behind the failure (unchecked): "
-                     + ", ".join(blocked))
+        lines.append("  blocked behind the failure (unchecked): " + ", ".join(blocked))
     return "\n".join(lines)
 
 
-def check_self_attributes(code: str) -> List[str]:
+def check_self_attributes(code: str) -> list[str]:
     """Static warnings: ``self.<name>`` read in a method but never assigned in
     the class and not a method/class attribute. Advisory ONLY — dynamic
     assignment patterns exist, so this must never gate; it annotates the
@@ -449,13 +543,13 @@ def check_self_attributes(code: str) -> List[str]:
         tree = ast.parse(code)
     except SyntaxError:
         return []
-    warnings: List[str] = []
+    warnings: list[str] = []
     # attributes nn.Module provides that generated code legitimately reads
     module_builtins = {"training"}
     for cls in (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)):
         assigned: set = set()
         methods: set = set()
-        reads: Dict[str, str] = {}
+        reads: dict[str, str] = {}
         for item in cls.body:
             if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 methods.add(item.name)
@@ -466,24 +560,35 @@ def check_self_attributes(code: str) -> List[str]:
             elif isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name):
                 assigned.add(item.target.id)
         for node in ast.walk(cls):
-            if (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
-                    and node.value.id == "self"):
+            if (
+                isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Name)
+                and node.value.id == "self"
+            ):
                 if isinstance(node.ctx, ast.Store):  # covers Assign + AugAssign targets
                     assigned.add(node.attr)
                 elif isinstance(node.ctx, ast.Load):
                     reads.setdefault(node.attr, cls.name)
         # setattr(self, ...) makes static analysis unreliable — detect and stay silent:
         for node in ast.walk(cls):
-            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-                    and node.func.id == "setattr"):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "setattr"
+            ):
                 assigned.add("*dynamic*")
         if "*dynamic*" in assigned:
             continue  # setattr present — analysis unreliable for this class, stay silent
         for attr, cname in reads.items():
-            if attr not in assigned and attr not in methods and attr not in module_builtins:
+            if (
+                attr not in assigned
+                and attr not in methods
+                and attr not in module_builtins
+            ):
                 warnings.append(
                     f"{cname}: reads `self.{attr}` but never assigns it — "
-                    f"set `self.{attr}` in __init__ before use")
+                    f"set `self.{attr}` in __init__ before use"
+                )
     return warnings
 
 
@@ -497,16 +602,19 @@ def diagnose_failure(level: str, detail: str) -> str:
         if re.search(pattern, detail):
             return hint
     if level == "dry_run" and "Traceback" in detail:
-        return ("GENERAL DRY-RUN REPAIR: mentally reproduce the validator — "
-                "import the module, instantiate with ONLY the declared "
-                "kwargs, run one [4, 16, 64] forward. Simplify until that "
-                "passes: standard nn modules, explicit shapes, no exotic ops.")
+        return (
+            "GENERAL DRY-RUN REPAIR: mentally reproduce the validator — "
+            "import the module, instantiate with ONLY the declared "
+            "kwargs, run one [4, 16, 64] forward. Simplify until that "
+            "passes: standard nn modules, explicit shapes, no exotic ops."
+        )
     return ""
 
 
 # ---------------------------------------------------------------------------
 # L1 — syntax
 # ---------------------------------------------------------------------------
+
 
 def check_syntax(code: str) -> ValidationResult:
     try:
@@ -521,11 +629,16 @@ def check_syntax(code: str) -> ValidationResult:
 # L2 — AST contract
 # ---------------------------------------------------------------------------
 
-def _extra_required_forward_args(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> List[str]:
+
+def _extra_required_forward_args(
+    fn: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> list[str]:
     """Required arguments of a ``forward`` def beyond ``self`` and the single input tensor."""
     a = fn.args
     positional = list(a.posonlyargs) + list(a.args)
-    required = positional[:len(positional) - len(a.defaults)] if a.defaults else positional
+    required = (
+        positional[: len(positional) - len(a.defaults)] if a.defaults else positional
+    )
     extra = [arg.arg for arg in required[2:]]  # beyond (self, hidden_states)
     extra += [k.arg for k, d in zip(a.kwonlyargs, a.kw_defaults) if d is None]
     return extra
@@ -535,9 +648,11 @@ class _ContractChecker(ast.NodeVisitor):
     def __init__(self) -> None:
         self.has_class = False
         self.has_forward = False
-        self.forward_extra: Dict[str, List[str]] = {}   # class name -> extra required args
-        self.illegal_imports: List[str] = []
-        self.illegal_calls: List[str] = []
+        self.forward_extra: dict[
+            str, list[str]
+        ] = {}  # class name -> extra required args
+        self.illegal_imports: list[str] = []
+        self.illegal_calls: list[str] = []
 
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
@@ -555,7 +670,10 @@ class _ContractChecker(ast.NodeVisitor):
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         self.has_class = True
         for item in node.body:
-            if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name == "forward":
+            if (
+                isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and item.name == "forward"
+            ):
                 self.has_forward = True
                 self.forward_extra[node.name] = _extra_required_forward_args(item)
         self.generic_visit(node)
@@ -567,14 +685,14 @@ class _ContractChecker(ast.NodeVisitor):
         self.generic_visit(node)
 
 
-def check_contract(code: str, *, class_name: Optional[str] = None) -> ValidationResult:
+def check_contract(code: str, *, class_name: str | None = None) -> ValidationResult:
     try:
         tree = ast.parse(code)
     except SyntaxError as e:  # pragma: no cover - L1 should have caught it
         return ValidationResult(False, "contract", "fail", f"unparseable: {e}")
     ck = _ContractChecker()
     ck.visit(tree)
-    problems: List[str] = []
+    problems: list[str] = []
     if not ck.has_class:
         problems.append("no class defined (expected an nn.Module subclass)")
     if not ck.has_forward:
@@ -597,11 +715,16 @@ def check_contract(code: str, *, class_name: Optional[str] = None) -> Validation
         problems.append(
             f"forward() of {class_name} requires extra argument(s) {extra} beyond the single "
             "hidden-states tensor — a drop-in block's forward must accept exactly one "
-            "[batch, seq, hidden] input; give them defaults or restructure the idea as a block")
+            "[batch, seq, hidden] input; give them defaults or restructure the idea as a block"
+        )
     if ck.illegal_imports:
-        problems.append(f"illegal imports (untrusted-code policy): {sorted(set(ck.illegal_imports))}")
+        problems.append(
+            f"illegal imports (untrusted-code policy): {sorted(set(ck.illegal_imports))}"
+        )
     if ck.illegal_calls:
-        problems.append(f"illegal calls (untrusted-code policy): {sorted(set(ck.illegal_calls))}")
+        problems.append(
+            f"illegal calls (untrusted-code policy): {sorted(set(ck.illegal_calls))}"
+        )
     if problems:
         return ValidationResult(False, "contract", "fail", "; ".join(problems))
     return ValidationResult(True, "contract", "pass")
@@ -611,21 +734,42 @@ def check_contract(code: str, *, class_name: Optional[str] = None) -> Validation
 # L3 — static analysis (ruff)
 # ---------------------------------------------------------------------------
 
+
 def run_linter(file_path: str | Path) -> ValidationResult:
     ruff = _shutil.which("ruff")
     if ruff is None:
-        return ValidationResult(True, "static", "skipped",
-                                "ruff not installed — static analysis skipped (not a pass)")
+        return ValidationResult(
+            True,
+            "static",
+            "skipped",
+            "ruff not installed — static analysis skipped (not a pass)",
+        )
     try:
         proc = subprocess.run(
-            [ruff, "check", str(file_path), "--select=F821,E9", "--no-cache", "--quiet"],
-            capture_output=True, text=True, timeout=60,
+            [
+                ruff,
+                "check",
+                str(file_path),
+                "--select=F821,E9",
+                "--no-cache",
+                "--quiet",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
         )
-    except (subprocess.TimeoutExpired, OSError) as e:  # pragma: no cover - env dependent
+    except (
+        subprocess.TimeoutExpired,
+        OSError,
+    ) as e:  # pragma: no cover - env dependent
         return ValidationResult(True, "static", "skipped", f"ruff could not run: {e}")
     if proc.returncode != 0:
-        return ValidationResult(False, "static", "fail",
-                                (proc.stdout or proc.stderr or "ruff reported issues").strip())
+        return ValidationResult(
+            False,
+            "static",
+            "fail",
+            (proc.stdout or proc.stderr or "ruff reported issues").strip(),
+        )
     return ValidationResult(True, "static", "pass")
 
 
@@ -633,15 +777,17 @@ def run_linter(file_path: str | Path) -> ValidationResult:
 # L4 — CPU dry-run
 # ---------------------------------------------------------------------------
 
+
 def _find_torch():
     try:
-        import torch  # noqa: F401
+        import torch
+
         return torch
     except Exception:
         return None
 
 
-def _select_class(module: Any, class_name: Optional[str], torch) -> Any:
+def _select_class(module: Any, class_name: str | None, torch) -> Any:
     if class_name is not None:
         cls = getattr(module, class_name, None)
         if cls is None:
@@ -649,18 +795,25 @@ def _select_class(module: Any, class_name: Optional[str], torch) -> Any:
         return cls
     # Fall back to the first nn.Module subclass defined in the module.
     candidates = [
-        v for v in vars(module).values()
-        if isinstance(v, type) and issubclass(v, torch.nn.Module) and v is not torch.nn.Module
+        v
+        for v in vars(module).values()
+        if isinstance(v, type)
+        and issubclass(v, torch.nn.Module)
+        and v is not torch.nn.Module
     ]
     if not candidates:
         raise LookupError("no nn.Module subclass found in generated module")
     return candidates[0]
 
 
-def dry_run_module(file_path: str | Path, *, class_name: Optional[str] = None,
-                   init_kwargs: Optional[Dict[str, Any]] = None,
-                   input_shape: Optional[List[int]] = None,
-                   width: Optional[int] = None) -> ValidationResult:
+def dry_run_module(
+    file_path: str | Path,
+    *,
+    class_name: str | None = None,
+    init_kwargs: dict[str, Any] | None = None,
+    input_shape: list[int] | None = None,
+    width: int | None = None,
+) -> ValidationResult:
     """Import + instantiate + one CPU forward pass, asserting a finite output.
 
     ``init_kwargs`` and ``input_shape`` come from the experiment's declared dry-run spec; both
@@ -668,20 +821,33 @@ def dry_run_module(file_path: str | Path, *, class_name: Optional[str] = None,
     constructor args is a real defect and fails here (drop-in modules must be instantiable)."""
     torch = _find_torch()
     if torch is None:
-        return ValidationResult(True, "dry_run", "skipped",
-                                "torch not installed — CPU dry-run skipped (not a pass)")
+        return ValidationResult(
+            True,
+            "dry_run",
+            "skipped",
+            "torch not installed — CPU dry-run skipped (not a pass)",
+        )
     import importlib.util
+
     init_kwargs = dict(init_kwargs or {})
     # The declared shape is untrusted model output ([-1, -1, 8] observed live): a junk dim
     # would fail torch.randn no matter how good the code is, so fall back per-dimension.
-    raw = list(input_shape) if input_shape and len(list(input_shape)) == 3 else [4, 16, 64]
-    shape = [d if isinstance(d, int) and not isinstance(d, bool) and d > 0 else dflt
-             for d, dflt in zip(raw, (4, 16, 64))]
+    raw = (
+        list(input_shape)
+        if input_shape and len(list(input_shape)) == 3
+        else [4, 16, 64]
+    )
+    shape = [
+        d if isinstance(d, int) and not isinstance(d, bool) and d > 0 else dflt
+        for d, dflt in zip(raw, (4, 16, 64))
+    ]
     mod_name = f"dottie_research_candidate_{uuid.uuid4().hex[:8]}"
     try:
         spec = importlib.util.spec_from_file_location(mod_name, str(file_path))
         if spec is None or spec.loader is None:
-            return ValidationResult(False, "dry_run", "fail", f"cannot load module {file_path}")
+            return ValidationResult(
+                False, "dry_run", "fail", f"cannot load module {file_path}"
+            )
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)  # import-time errors surface here
         cls = _select_class(module, class_name, torch)
@@ -707,20 +873,31 @@ def dry_run_module(file_path: str | Path, *, class_name: Optional[str] = None,
             output = layer(dummy)
         out_t = output[0] if isinstance(output, (tuple, list)) else output
         if not torch.is_tensor(out_t):
-            return ValidationResult(False, "dry_run", "fail",
-                                    f"forward returned {type(out_t).__name__}, not a tensor")
+            return ValidationResult(
+                False,
+                "dry_run",
+                "fail",
+                f"forward returned {type(out_t).__name__}, not a tensor",
+            )
         if tuple(out_t.shape) != tuple(dummy.shape):
             # The integration contract (see the ideation prompt): a drop-in sequence block maps
             # [batch, seq, hidden] -> [batch, seq, hidden]. Catching it here gives the
             # correction pass a crisp message instead of a downstream integration traceback.
             return ValidationResult(
-                False, "dry_run", "fail",
+                False,
+                "dry_run",
+                "fail",
                 f"forward returned shape {tuple(out_t.shape)} for input {tuple(dummy.shape)} — "
                 "the integration contract requires a drop-in sequence block whose output has "
-                "the SAME [batch, seq, hidden] shape as its input")
+                "the SAME [batch, seq, hidden] shape as its input",
+            )
         if torch.isnan(out_t).any() or torch.isinf(out_t).any():
-            return ValidationResult(False, "dry_run", "fail",
-                                    "forward produced NaN/Inf — add clamping or an eps term")
+            return ValidationResult(
+                False,
+                "dry_run",
+                "fail",
+                "forward produced NaN/Inf — add clamping or an eps term",
+            )
 
         # Degeneracy gate (added 2026-07-20 after the MLBR post-mortem, TODOS §5.3.R).
         # MLBR passed all four levels that existed at the time (there are six stages now)
@@ -740,12 +917,15 @@ def dry_run_module(file_path: str | Path, *, class_name: Optional[str] = None,
         const_tol = max(1e-6, 1e-4 * abs(float(delta.mean())))
         if n_params == 0 and delta_std <= const_tol:
             return ValidationResult(
-                False, "dry_run", "fail",
+                False,
+                "dry_run",
+                "fail",
                 f"degenerate block: {n_params} learnable parameters and output differs from "
                 f"input by a CONSTANT (std of (out-in) = {delta_std:.3g}). This is a bias, not "
                 "an architecture — it cannot express or learn anything, and swapping it in for "
                 "a real block only removes capacity. Give the module learnable parameters or "
-                "make its transform input-dependent.")
+                "make its transform input-dependent.",
+            )
 
         # Rank collapse across the hidden dim. A block can return the CORRECT shape and
         # still have destroyed everything in it: `x.sum(-1).unsqueeze(-1).expand_as(x)`
@@ -764,14 +944,17 @@ def dry_run_module(file_path: str | Path, *, class_name: Optional[str] = None,
         out_spread = float(out_t.std(dim=-1).mean())
         if in_spread > 1e-6 and out_spread <= 1e-6:
             return ValidationResult(
-                False, "dry_run", "fail",
+                False,
+                "dry_run",
+                "fail",
                 f"rank collapse: the output has the right shape but is CONSTANT along the "
                 f"hidden dimension (mean std across hidden = {out_spread:.3g}, input was "
                 f"{in_spread:.3g}). Every feature position holds the same value, so the "
                 "block has erased the residual stream it was handed — a scalar broadcast "
                 "back to [batch, seq, hidden] is not a block. If the idea is a loss or a "
                 "regulariser, it is not a drop-in block; express it as a transform of the "
-                "hidden states that preserves per-feature information.")
+                "hidden states that preserves per-feature information.",
+            )
 
         # A block with NO learnable parameters is a fixed function. It replaces a real
         # ~787 K-parameter block in the residual stream, so at fixed steps it can "win" by
@@ -788,7 +971,9 @@ def dry_run_module(file_path: str | Path, *, class_name: Optional[str] = None,
         # parameters to learn.
         if n_params == 0:
             return ValidationResult(
-                False, "dry_run", "fail",
+                False,
+                "dry_run",
+                "fail",
                 "no learnable parameters: this block is a FIXED function, so it cannot "
                 "learn anything from training. It also replaces a real parameterised block "
                 "in the residual stream, which means any apparent win at fixed steps may "
@@ -796,25 +981,35 @@ def dry_run_module(file_path: str | Path, *, class_name: Optional[str] = None,
                 "one false SOTA. Keep the idea and give it capacity: make the quantities "
                 "you compute (scales, gates, thresholds, mixing weights) into "
                 "nn.Parameter/nn.Linear that the LM loss can train, instead of fixed "
-                "floats.")
+                "floats.",
+            )
     except Exception:
         return ValidationResult(False, "dry_run", "fail", traceback.format_exc())
-    return ValidationResult(True, "dry_run", "pass",
-                            f"forward ok on input {shape} -> {tuple(out_t.shape)}; "
-                            f"learnable_params={n_params}, delta_std={delta_std:.4g}")
+    return ValidationResult(
+        True,
+        "dry_run",
+        "pass",
+        f"forward ok on input {shape} -> {tuple(out_t.shape)}; "
+        f"learnable_params={n_params}, delta_std={delta_std:.4g}",
+    )
 
 
 # ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
 
-def validate(code: str, *, class_name: Optional[str] = None,
-             init_kwargs: Optional[Dict[str, Any]] = None,
-             input_shape: Optional[List[int]] = None,
-             workdir: Optional[str | Path] = None) -> ValidationResult:
+
+def validate(
+    code: str,
+    *,
+    class_name: str | None = None,
+    init_kwargs: dict[str, Any] | None = None,
+    input_shape: list[int] | None = None,
+    workdir: str | Path | None = None,
+) -> ValidationResult:
     """Run L1->L6 fail-fast (syntax, contract, static, dry_run, integration_width,
     residual_stream). Returns the first failure, or the (passing) dry-run result."""
-    per_level: Dict[str, Dict[str, str]] = {}
+    per_level: dict[str, dict[str, str]] = {}
 
     def record(r: ValidationResult) -> ValidationResult:
         per_level[r.level] = {"status": r.status, "detail": r.detail}
@@ -828,7 +1023,9 @@ def validate(code: str, *, class_name: Optional[str] = None,
     if not r.ok:
         return r
 
-    tmp = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="dottie_validate_"))
+    tmp = (
+        Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="dottie_validate_"))
+    )
     tmp.mkdir(parents=True, exist_ok=True)
     candidate = tmp / f"candidate_{uuid.uuid4().hex[:8]}.py"
     candidate.write_text(code, encoding="utf-8")
@@ -836,22 +1033,38 @@ def validate(code: str, *, class_name: Optional[str] = None,
     r = record(run_linter(candidate))
     if not r.ok:
         return r
-    r = record(dry_run_module(candidate, class_name=class_name, init_kwargs=init_kwargs,
-                              input_shape=input_shape))
+    r = record(
+        dry_run_module(
+            candidate,
+            class_name=class_name,
+            init_kwargs=init_kwargs,
+            input_shape=input_shape,
+        )
+    )
     if not r.ok:
         return r
     # The width probe only changes the verdict when it FAILS. On success keep the declared
     # dry-run as the canonical result so its detail (learnable_params, delta_std — what the
     # degeneracy gate and the write-ups read) survives; the probe is still recorded in
     # per_level, so a reader can see it ran.
-    wide = record(dry_run_at_integration_width(candidate, class_name=class_name,
-                                               init_kwargs=init_kwargs,
-                                               input_shape=input_shape))
+    wide = record(
+        dry_run_at_integration_width(
+            candidate,
+            class_name=class_name,
+            init_kwargs=init_kwargs,
+            input_shape=input_shape,
+        )
+    )
     if not wide.ok:
         return wide
-    stream = record(dry_run_in_residual_stream(candidate, class_name=class_name,
-                                               init_kwargs=init_kwargs,
-                                               input_shape=input_shape))
+    stream = record(
+        dry_run_in_residual_stream(
+            candidate,
+            class_name=class_name,
+            init_kwargs=init_kwargs,
+            input_shape=input_shape,
+        )
+    )
     return r if stream.ok else stream
 
 
@@ -866,7 +1079,7 @@ class CorrectionOutcome:
     code: str
     attempts: int
     result: ValidationResult
-    history: List[Dict[str, Any]] = field(default_factory=list)
+    history: list[dict[str, Any]] = field(default_factory=list)
 
 
 #: Hidden width the candidate is actually swapped in at (``model.d_model`` for the factory
@@ -887,15 +1100,29 @@ INTEGRATION_SEQ = 256
 #: Constructor kwargs that mean "hidden width", kept in step with factory_trainer's
 #: ``_DIM_KWARGS``. Duplicated rather than imported: validate.py is deliberately free of
 #: factory imports so it stays runnable without the factory checkout present.
-_DIM_KWARGS = ("d_model", "dim", "hidden", "hidden_dim", "hidden_size", "embed_dim",
-                "input_dim", "n_embd", "channels", "width")
+_DIM_KWARGS = (
+    "d_model",
+    "dim",
+    "hidden",
+    "hidden_dim",
+    "hidden_size",
+    "embed_dim",
+    "input_dim",
+    "n_embd",
+    "channels",
+    "width",
+)
 
 
-def dry_run_at_integration_width(file_path: str | Path, *, class_name: Optional[str] = None,
-                                 init_kwargs: Optional[Dict[str, Any]] = None,
-                                 input_shape: Optional[List[int]] = None,
-                                 width: int = INTEGRATION_WIDTH,
-                                 seq: int = INTEGRATION_SEQ) -> ValidationResult:
+def dry_run_at_integration_width(
+    file_path: str | Path,
+    *,
+    class_name: str | None = None,
+    init_kwargs: dict[str, Any] | None = None,
+    input_shape: list[int] | None = None,
+    width: int = INTEGRATION_WIDTH,
+    seq: int = INTEGRATION_SEQ,
+) -> ValidationResult:
     """Re-run the dry run at the width the factory will actually use.
 
     Measured 2026-07-20 (TODOS §5.3.R8): validation ran at the model's self-declared
@@ -914,48 +1141,76 @@ def dry_run_at_integration_width(file_path: str | Path, *, class_name: Optional[
     # "batch" show up in real records, so this must never assume they are ints. (Caught by
     # replaying stored candidates: `int('hidden')` raised straight out of validate() and
     # would have broken the level for every candidate declaring a symbolic shape.)
-    if len(shape) != 3 or not all(isinstance(d, int) or (isinstance(d, str) and d.isdigit())
-                                  for d in shape):
-        return ValidationResult(True, "integration_width", "skipped",
-                                f"declared input_shape {shape} is not a numeric "
-                                "[batch, seq, hidden] — cannot re-probe at the integration width")
+    if len(shape) != 3 or not all(
+        isinstance(d, int) or (isinstance(d, str) and d.isdigit()) for d in shape
+    ):
+        return ValidationResult(
+            True,
+            "integration_width",
+            "skipped",
+            f"declared input_shape {shape} is not a numeric "
+            "[batch, seq, hidden] — cannot re-probe at the integration width",
+        )
     shape = [int(d) for d in shape]
     # Probe the real INTEGRATION SHAPE: the model's own seq is typically 16 while training
     # runs at 256, so a seq-sized parameter (learned positional table, attention bias,
     # fixed-length buffer) is built at the wrong length and only fails once training starts.
     target = [shape[0], int(seq), int(width)]
     if shape == target:
-        return ValidationResult(True, "integration_width", "skipped",
-                                f"declared shape already matches the integration shape "
-                                f"{target}")
-    r = dry_run_module(file_path, class_name=class_name, init_kwargs=dict(init_kwargs or {}),
-                       input_shape=target, width=int(width))
+        return ValidationResult(
+            True,
+            "integration_width",
+            "skipped",
+            f"declared shape already matches the integration shape {target}",
+        )
+    r = dry_run_module(
+        file_path,
+        class_name=class_name,
+        init_kwargs=dict(init_kwargs or {}),
+        input_shape=target,
+        width=int(width),
+    )
     if r.status == "skipped":
         # Inherit "skipped", never launder it into "pass". The inner result's own detail
         # says "(not a pass)" — reporting status="pass" over the top of that was a direct
         # self-contradiction, and the same false-clean bug as §5.3.R14 in a second place.
         # A stage that could not run must say so, or the per_level record overstates
         # coverage exactly where coverage is missing.
-        return ValidationResult(True, "integration_width", "skipped",
-                                f"integration-width probe could not run: {r.detail}")
+        return ValidationResult(
+            True,
+            "integration_width",
+            "skipped",
+            f"integration-width probe could not run: {r.detail}",
+        )
     if r.ok:
-        return ValidationResult(True, "integration_width", "pass",
-                                f"also runs at the integration width {width}: {r.detail}")
+        return ValidationResult(
+            True,
+            "integration_width",
+            "pass",
+            f"also runs at the integration width {width}: {r.detail}",
+        )
     return ValidationResult(
-        False, "integration_width", "fail",
+        False,
+        "integration_width",
+        "fail",
         f"passes at the declared shape {shape} but FAILS at the real integration shape "
         f"{target}: [batch, seq={seq}, hidden={width}] is what this block is actually "
         f"swapped in at. Do not size anything to the dry-run shape — derive the hidden dim "
         f"from x.shape[-1] and the sequence length from x.shape[-2] at FORWARD time. In "
         f"particular a parameter shaped to a fixed sequence length (a learned positional "
         f"table, an attention bias, a preallocated buffer) cannot work here: make it "
-        f"length-agnostic, or slice/interpolate it to the input length.\n{r.detail}")
+        f"length-agnostic, or slice/interpolate it to the input length.\n{r.detail}",
+    )
 
 
-def dry_run_in_residual_stream(file_path: str | Path, *, class_name: Optional[str] = None,
-                               init_kwargs: Optional[Dict[str, Any]] = None,
-                               input_shape: Optional[List[int]] = None,
-                               width: int = INTEGRATION_WIDTH) -> ValidationResult:
+def dry_run_in_residual_stream(
+    file_path: str | Path,
+    *,
+    class_name: str | None = None,
+    init_kwargs: dict[str, Any] | None = None,
+    input_shape: list[int] | None = None,
+    width: int = INTEGRATION_WIDTH,
+) -> ValidationResult:
     """Probe with an input shaped like a real mid-network activation, not a fresh tensor.
 
     The standard dry run feeds a **leaf** tensor with ``requires_grad=False`` under
@@ -973,23 +1228,35 @@ def dry_run_in_residual_stream(file_path: str | Path, *, class_name: Optional[st
     this is not an exotic corner: it is the shape of the search space."""
     torch = _find_torch()
     if torch is None:
-        return ValidationResult(True, "residual_stream", "skipped",
-                                "torch not installed — residual-stream probe skipped")
+        return ValidationResult(
+            True,
+            "residual_stream",
+            "skipped",
+            "torch not installed — residual-stream probe skipped",
+        )
     # Same sanitation as dry_run_module: the declared shape is untrusted model output, and
     # junk dims ([-1, -1, 8] observed live) must fall back per-dimension rather than blow up
     # torch.randn. Only the batch/seq dims are taken from it; the width is ours.
-    raw = list(input_shape) if input_shape and len(list(input_shape)) == 3 else [4, 16, 64]
-    shape = [d if isinstance(d, int) and not isinstance(d, bool) and d > 0 else dflt
-             for d, dflt in zip(raw, (4, 16, 64))]
+    raw = (
+        list(input_shape)
+        if input_shape and len(list(input_shape)) == 3
+        else [4, 16, 64]
+    )
+    shape = [
+        d if isinstance(d, int) and not isinstance(d, bool) and d > 0 else dflt
+        for d, dflt in zip(raw, (4, 16, 64))
+    ]
     shape = [int(shape[0]), int(shape[1]), int(width)]
     import importlib.util
+
     kwargs = dict(init_kwargs or {})
     mod_name = f"dottie_research_stream_{uuid.uuid4().hex[:8]}"
     try:
         spec = importlib.util.spec_from_file_location(mod_name, str(file_path))
         if spec is None or spec.loader is None:
-            return ValidationResult(False, "residual_stream", "fail",
-                                    f"cannot load module {file_path}")
+            return ValidationResult(
+                False, "residual_stream", "fail", f"cannot load module {file_path}"
+            )
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         cls = _select_class(module, class_name, torch)
@@ -1003,31 +1270,46 @@ def dry_run_in_residual_stream(file_path: str | Path, *, class_name: Optional[st
         layer = cls(**kwargs)
         # requires_grad=True makes it grad-carrying; the arithmetic makes it NON-leaf, which
         # is what actually empties `.grad`. Both halves matter.
-        base = torch.randn(*shape, generator=torch.Generator().manual_seed(1234),
-                           requires_grad=True)
+        base = torch.randn(
+            *shape, generator=torch.Generator().manual_seed(1234), requires_grad=True
+        )
         x = base * 1.0
         out = layer(x)
         out = out[0] if isinstance(out, (tuple, list)) else out
         if tuple(out.shape) != tuple(x.shape):
             return ValidationResult(
-                False, "residual_stream", "fail",
+                False,
+                "residual_stream",
+                "fail",
                 f"in the residual stream the block returned {tuple(out.shape)} for input "
                 f"{tuple(x.shape)} — a drop-in block must return the SAME "
-                "[batch, seq, hidden] shape")
+                "[batch, seq, hidden] shape",
+            )
         if not bool(torch.isfinite(out).all()):
-            return ValidationResult(False, "residual_stream", "fail",
-                                    "non-finite (NaN/Inf) output on a grad-carrying input")
+            return ValidationResult(
+                False,
+                "residual_stream",
+                "fail",
+                "non-finite (NaN/Inf) output on a grad-carrying input",
+            )
     except Exception:
         return ValidationResult(
-            False, "residual_stream", "fail",
+            False,
+            "residual_stream",
+            "fail",
             "fails when handed a REAL residual-stream activation (a non-leaf tensor that "
             "requires grad), though it passes on a plain leaf tensor. In the model your "
             "input is mid-network: `x.grad` is None there, and any op assuming otherwise "
             "breaks. Do not read `.grad` off the input — if you need gradient information, "
             "compute it inside forward with torch.autograd.grad on a tensor you created.\n"
-            + traceback.format_exc()[-900:])
-    return ValidationResult(True, "residual_stream", "pass",
-                            f"runs on a grad-carrying non-leaf input at width {width}")
+            + traceback.format_exc()[-900:],
+        )
+    return ValidationResult(
+        True,
+        "residual_stream",
+        "pass",
+        f"runs on a grad-carrying non-leaf input at width {width}",
+    )
 
 
 def _attempt_diff(before: str, after: str, *, max_lines: int = 60) -> str:
@@ -1038,36 +1320,62 @@ def _attempt_diff(before: str, after: str, *, max_lines: int = 60) -> str:
     edit. Showing the edit itself is the cheapest way to break that. Bounded so a full
     rewrite cannot flood the prompt; empty string when nothing changed (caller says so
     explicitly, which is a stronger signal than a silent no-op diff)."""
-    lines = list(difflib.unified_diff(
-        before.splitlines(), after.splitlines(),
-        fromfile="previous_attempt", tofile="current_attempt", lineterm="", n=2))
+    lines = list(
+        difflib.unified_diff(
+            before.splitlines(),
+            after.splitlines(),
+            fromfile="previous_attempt",
+            tofile="current_attempt",
+            lineterm="",
+            n=2,
+        )
+    )
     if not lines:
         return ""
     if len(lines) > max_lines:
-        lines = lines[:max_lines] + [f"... ({len(lines) - max_lines} more diff lines omitted)"]
+        lines = lines[:max_lines] + [
+            f"... ({len(lines) - max_lines} more diff lines omitted)"
+        ]
     return "\n".join(lines)
 
 
-def validate_with_correction(code: str, corrector: Corrector, *, max_retries: int = 3,
-                             class_name: Optional[str] = None,
-                             init_kwargs: Optional[Dict[str, Any]] = None,
-                             input_shape: Optional[List[int]] = None,
-                             workdir: Optional[str | Path] = None) -> CorrectionOutcome:
+def validate_with_correction(
+    code: str,
+    corrector: Corrector,
+    *,
+    max_retries: int = 3,
+    class_name: str | None = None,
+    init_kwargs: dict[str, Any] | None = None,
+    input_shape: list[int] | None = None,
+    workdir: str | Path | None = None,
+) -> CorrectionOutcome:
     """Validate, and on failure hand the traceback back to ``corrector`` for up to ``max_retries``
     self-correction passes. Returns the first passing code, or the last failure honestly."""
-    history: List[Dict[str, Any]] = []
+    history: list[dict[str, Any]] = []
     current = code
     attempts = 0
-    result = validate(current, class_name=class_name, init_kwargs=init_kwargs,
-                      input_shape=input_shape, workdir=workdir)
+    result = validate(
+        current,
+        class_name=class_name,
+        init_kwargs=init_kwargs,
+        input_shape=input_shape,
+        workdir=workdir,
+    )
     # Each attempt's obligation ledger rides in history (additive, 2026-07-23):
     # per-attempt {obligation_id, property, stage, status} — the KG and the
     # repair-transcript exporter mine failed→discharged transitions from it.
-    history.append({"attempt": attempts, "ok": result.ok, "level": result.level,
-                    "status": result.status, "detail": result.detail[:2000],
-                    "obligations": result.obligations()})
-    prev_failure: Optional[tuple] = None
-    prev_attempt_code: Optional[str] = None
+    history.append(
+        {
+            "attempt": attempts,
+            "ok": result.ok,
+            "level": result.level,
+            "status": result.status,
+            "detail": result.detail[:2000],
+            "obligations": result.obligations(),
+        }
+    )
+    prev_failure: tuple | None = None
+    prev_attempt_code: str | None = None
     while not result.ok and attempts < max_retries:
         attempts += 1
         feedback = result.as_feedback()
@@ -1076,35 +1384,55 @@ def validate_with_correction(code: str, corrector: Corrector, *, max_retries: in
         # them one dry-run death at a time (never a gate — see the docstring).
         attr_warnings = check_self_attributes(current)
         if attr_warnings:
-            feedback += ("\n\nSTATIC WARNINGS (fix these in the same rewrite):\n- "
-                         + "\n- ".join(attr_warnings[:6]))
+            feedback += (
+                "\n\nSTATIC WARNINGS (fix these in the same rewrite):\n- "
+                + "\n- ".join(attr_warnings[:6])
+            )
         # Near-greedy sampling can regenerate the same broken fix forever (observed live,
         # f9256ee7c029: identical wrong output shape four times). When a correction lands on
         # EXACTLY the same failure, say so — a materially different prompt breaks the loop.
         if prev_failure == (result.level, result.detail):
-            feedback += ("\n\nNOTE: your previous rewrite produced EXACTLY this same failure — "
-                         "that approach does not fix it. Restructure the forward pass "
-                         "differently this time; do not resubmit the same code.")
+            feedback += (
+                "\n\nNOTE: your previous rewrite produced EXACTLY this same failure — "
+                "that approach does not fix it. Restructure the forward pass "
+                "differently this time; do not resubmit the same code."
+            )
         # Show the model its own last edit (§5.2.c): the traceback says what broke, the diff
         # says what it just tried, and those are different questions.
         if prev_attempt_code is not None:
             d = _attempt_diff(prev_attempt_code, current)
             feedback += (
                 f"\n\nYOUR PREVIOUS EDIT (unified diff) did NOT resolve the failure:\n{d}"
-                if d else
-                "\n\nNOTE: your previous rewrite was BYTE-IDENTICAL to the code before it — "
-                "you did not change anything. Make a real, different change this time.")
+                if d
+                else "\n\nNOTE: your previous rewrite was BYTE-IDENTICAL to the code before it — "
+                "you did not change anything. Make a real, different change this time."
+            )
         prev_failure = (result.level, result.detail)
         prev_attempt_code = current
         try:
             current = corrector(current, feedback)
-        except Exception as e:  # corrector itself failed (e.g. LLM unreachable) — stop honestly
+        except (
+            Exception
+        ) as e:  # corrector itself failed (e.g. LLM unreachable) — stop honestly
             history.append({"attempt": attempts, "corrector_error": repr(e)})
             break
-        result = validate(current, class_name=class_name, init_kwargs=init_kwargs,
-                          input_shape=input_shape, workdir=workdir)
-        history.append({"attempt": attempts, "ok": result.ok, "level": result.level,
-                        "status": result.status, "detail": result.detail[:2000],
-                        "obligations": result.obligations()})
-    return CorrectionOutcome(ok=result.ok, code=current, attempts=attempts, result=result,
-                             history=history)
+        result = validate(
+            current,
+            class_name=class_name,
+            init_kwargs=init_kwargs,
+            input_shape=input_shape,
+            workdir=workdir,
+        )
+        history.append(
+            {
+                "attempt": attempts,
+                "ok": result.ok,
+                "level": result.level,
+                "status": result.status,
+                "detail": result.detail[:2000],
+                "obligations": result.obligations(),
+            }
+        )
+    return CorrectionOutcome(
+        ok=result.ok, code=current, attempts=attempts, result=result, history=history
+    )

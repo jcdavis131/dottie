@@ -253,8 +253,12 @@ def add(
     name: str | None = typer.Argument(
         None, help="feed name ([a-z0-9][a-z0-9._-]*); omit with --seed"
     ),
-    url: str | None = typer.Option(None, "--url", help="feed document URL (http/https)"),
-    note: str | None = typer.Option(None, "--note", help="why this feed is worth reading"),
+    url: str | None = typer.Option(
+        None, "--url", help="feed document URL (http/https)"
+    ),
+    note: str | None = typer.Option(
+        None, "--note", help="why this feed is worth reading"
+    ),
     seed: bool = typer.Option(
         False, "--seed", help="register the built-in research feeds (idempotent)"
     ),
@@ -279,7 +283,11 @@ def add(
         )
     conn, path = _open_store(db)
     try:
-        added = feeds.seed_feeds(conn) if seed else [feeds.add_feed(conn, name, url, note=note)]
+        added = (
+            feeds.seed_feeds(conn)
+            if seed
+            else [feeds.add_feed(conn, name, url, note=note)]
+        )
     except ValueError as e:
         fail_agent(
             str(e),
@@ -353,7 +361,9 @@ def list_cmd(
 )
 def fetch_cmd(
     feed: list[str] = typer.Option(
-        None, "--feed", help="poll only these feeds (repeatable); default: all registered"
+        None,
+        "--feed",
+        help="poll only these feeds (repeatable); default: all registered",
     ),
     db: str | None = typer.Option(None, "--db", help="feed store path"),
     timeout: float = typer.Option(

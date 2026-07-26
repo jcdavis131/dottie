@@ -205,9 +205,7 @@ def test_read_sqlite_rows_supports_where_and_limit(tmp_path):
     assert src["kind"] == "sqlite" and src["read_only"] is True
     assert src["table"] == "metrics" and src["where"] == "key = 'loss'"
     assert src["label"] == db.as_posix() + "#metrics"
-    capped, _ = charts.read_sqlite_rows(
-        db, table="metrics", columns=["step"], limit=2
-    )
+    capped, _ = charts.read_sqlite_rows(db, table="metrics", columns=["step"], limit=2)
     assert len(capped) == 2
 
 
@@ -468,8 +466,17 @@ def test_render_svg_is_well_formed_and_self_contained():
     assert root.get("viewBox") == f"0 0 {charts.DEFAULT_WIDTH} {charts.DEFAULT_HEIGHT}"
     assert root.get("role") == "img" and "Training loss" in root.get("aria-label")
     assert "<style>" in svg  # CSS is inline
-    for forbidden in ("<script", "<image", "<link", "@import", "url(",
-                      "xlink:href", "font-face", "<use", "<foreignObject"):
+    for forbidden in (
+        "<script",
+        "<image",
+        "<link",
+        "@import",
+        "url(",
+        "xlink:href",
+        "font-face",
+        "<use",
+        "<foreignObject",
+    ):
         assert forbidden not in svg, forbidden
     # the ONLY URL in the whole file is the SVG namespace declaration itself
     assert svg.count("http") == 1
@@ -481,7 +488,10 @@ def test_render_svg_is_well_formed_and_self_contained():
 def test_render_svg_escapes_hostile_labels_and_titles():
     rows = [
         {"c": "<script>alert(1)</script>", "v": 1},
-        {"c": "b", "v": 2, },
+        {
+            "c": "b",
+            "v": 2,
+        },
     ]
     ds = charts.dataset(rows, kind="bar", x="c", y="v", series="c")
     svg = charts.render_svg(ds, title='"><script>x</script>')
@@ -498,7 +508,12 @@ def test_render_svg_carries_the_provenance_footer(tmp_path):
     db = tmp_path / "runtrack.db"
     _seed_metrics(db)
     ds = charts.read_dataset(
-        kind="line", x="step", y="value", series="key", db=db, table="metrics",
+        kind="line",
+        x="step",
+        y="value",
+        series="key",
+        db=db,
+        table="metrics",
         where="key = 'loss'",
     )
     svg = charts.render_svg(ds, title="loss")
@@ -536,9 +551,13 @@ def test_two_renders_are_byte_identical_and_share_a_fingerprint():
     # a changed datapoint MUST change the digest, or the fingerprint is theatre
     moved = charts.dataset(
         [{"step": 0, "loss": 2.5}, {"step": 1, "loss": 1.75}, {"step": 2, "loss": 9}],
-        kind="line", x="step", y="loss",
+        kind="line",
+        x="step",
+        y="loss",
     )
-    assert charts.fingerprint(charts.render_svg(moved, title="loss")) != charts.fingerprint(first)
+    assert charts.fingerprint(
+        charts.render_svg(moved, title="loss")
+    ) != charts.fingerprint(first)
 
 
 def test_no_generation_timestamp_leaks_into_a_non_time_chart():
@@ -654,8 +673,16 @@ def test_to_diagnostics_normalize_into_the_family_schema():
     empty = charts.to_diagnostics(charts.dataset([], kind="line", x="a", y="b"))
     assert [d["rule"] for d in empty] == ["charts:no-rows"]
     assert empty[0]["severity"] == "warning" and empty[0]["source"] == "charts"
-    assert set(empty[0]) == {"path", "line", "col", "rule", "severity", "message",
-                             "suggestion", "source"}
+    assert set(empty[0]) == {
+        "path",
+        "line",
+        "col",
+        "rule",
+        "severity",
+        "message",
+        "suggestion",
+        "source",
+    }
     assert openswap.summarize(empty)["by_severity"]["warning"] == 1
     partial = charts.dataset(
         [{"x": 0, "y": 1}, {"x": 1, "y": "?"}], kind="line", x="x", y="y"
@@ -762,8 +789,20 @@ def test_cli_inspect_reports_provenance_without_writing_a_file(tmp_path):
 def test_cli_line_writes_a_deterministic_svg(tmp_path):
     p = _csv(tmp_path, "step,loss\n0,2.5\n1,1.75\n2,1.25\n")
     out = tmp_path / "charts" / "loss.svg"
-    args = ["charts", "line", "--csv", str(p), "--x", "step", "--y", "loss",
-            "--out", str(out), "--title", "Training loss"]
+    args = [
+        "charts",
+        "line",
+        "--csv",
+        str(p),
+        "--x",
+        "step",
+        "--y",
+        "loss",
+        "--out",
+        str(out),
+        "--title",
+        "Training loss",
+    ]
     r = _cli(args)
     assert r.returncode == 0, r.stderr + r.stdout
     data = json.loads(r.stdout)["data"]
@@ -792,8 +831,22 @@ def test_cli_line_writes_a_deterministic_svg(tmp_path):
 def test_cli_bar_and_scatter_over_the_same_source(tmp_path):
     p = _csv(tmp_path, "src,n\ntrainer,3\ntrainer,4\nloop,5\n")
     bar = tmp_path / "bar.svg"
-    r = _cli(["charts", "bar", "--csv", str(p), "--x", "src", "--y", "n",
-              "--sort", "-value", "--out", str(bar)])
+    r = _cli(
+        [
+            "charts",
+            "bar",
+            "--csv",
+            str(p),
+            "--x",
+            "src",
+            "--y",
+            "n",
+            "--sort",
+            "-value",
+            "--out",
+            str(bar),
+        ]
+    )
     assert r.returncode == 0, r.stderr + r.stdout
     data = json.loads(r.stdout)["data"]
     assert data["categories"] == ["trainer", "loop"]
@@ -802,8 +855,9 @@ def test_cli_bar_and_scatter_over_the_same_source(tmp_path):
     assert "trainer" in bar.read_text(encoding="utf-8")
 
     sc = tmp_path / "scatter.svg"
-    r = _cli(["charts", "scatter", "--csv", str(p), "--x", "n", "--y", "n",
-              "--out", str(sc)])
+    r = _cli(
+        ["charts", "scatter", "--csv", str(p), "--x", "n", "--y", "n", "--out", str(sc)]
+    )
     assert r.returncode == 0, r.stderr + r.stdout
     assert json.loads(r.stdout)["data"]["points"] == 3
     svg = sc.read_text(encoding="utf-8")
@@ -815,9 +869,26 @@ def test_cli_charts_a_real_ledger_read_only(tmp_path):
     _seed_metrics(db)
     before = db.read_bytes()
     out = tmp_path / "loss.svg"
-    r = _cli(["charts", "line", "--db", str(db), "--table", "metrics",
-              "--x", "step", "--y", "value", "--series", "key",
-              "--where", "key = 'loss'", "--out", str(out)])
+    r = _cli(
+        [
+            "charts",
+            "line",
+            "--db",
+            str(db),
+            "--table",
+            "metrics",
+            "--x",
+            "step",
+            "--y",
+            "value",
+            "--series",
+            "key",
+            "--where",
+            "key = 'loss'",
+            "--out",
+            str(out),
+        ]
+    )
     assert r.returncode == 0, r.stderr + r.stdout
     data = json.loads(r.stdout)["data"]
     assert data["source"]["read_only"] is True
@@ -831,12 +902,28 @@ def test_cli_charts_a_real_ledger_read_only(tmp_path):
 
 
 def test_cli_json_records_path_charts_this_cli_own_envelope(tmp_path):
-    doc = {"ok": True, "data": {"history": [
-        {"step": 0, "value": 1.0}, {"step": 1, "value": 0.5}]}}
+    doc = {
+        "ok": True,
+        "data": {"history": [{"step": 0, "value": 1.0}, {"step": 1, "value": 0.5}]},
+    }
     p = _json(tmp_path, doc, name="run.json")
     out = tmp_path / "run.svg"
-    r = _cli(["charts", "line", "--json-file", str(p), "--records", "data.history",
-              "--x", "step", "--y", "value", "--out", str(out)])
+    r = _cli(
+        [
+            "charts",
+            "line",
+            "--json-file",
+            str(p),
+            "--records",
+            "data.history",
+            "--x",
+            "step",
+            "--y",
+            "value",
+            "--out",
+            str(out),
+        ]
+    )
     assert r.returncode == 0, r.stderr + r.stdout
     data = json.loads(r.stdout)["data"]
     assert data["points"] == 2
@@ -847,8 +934,22 @@ def test_cli_json_records_path_charts_this_cli_own_envelope(tmp_path):
 def test_cli_gate_fires_when_a_panel_goes_empty(tmp_path):
     p = _csv(tmp_path, "step,loss\n", name="silent.csv")
     out = tmp_path / "empty.svg"
-    r = _cli(["charts", "line", "--csv", str(p), "--x", "step", "--y", "loss",
-              "--out", str(out), "--fail-on", "warning"])
+    r = _cli(
+        [
+            "charts",
+            "line",
+            "--csv",
+            str(p),
+            "--x",
+            "step",
+            "--y",
+            "loss",
+            "--out",
+            str(out),
+            "--fail-on",
+            "warning",
+        ]
+    )
     # the file is still written (the empty state is the honest report) but the
     # gate fires, so cron notices the dashboard went blind
     assert r.returncode == 1
@@ -859,22 +960,62 @@ def test_cli_gate_fires_when_a_panel_goes_empty(tmp_path):
     assert "no data to plot" in svg
     assert re.search(r"\d{4}-\d{2}-\d{2}", svg) is None
     # ...and the same chart without the gate exits 0
-    r2 = _cli(["charts", "line", "--csv", str(p), "--x", "step", "--y", "loss",
-               "--out", str(out)])
+    r2 = _cli(
+        [
+            "charts",
+            "line",
+            "--csv",
+            str(p),
+            "--x",
+            "step",
+            "--y",
+            "loss",
+            "--out",
+            str(out),
+        ]
+    )
     assert r2.returncode == 0, r2.stderr + r2.stdout
 
 
 def test_cli_gate_ignores_info_only_findings(tmp_path):
     p = _csv(tmp_path, "step,loss\n0,1\n1,skip\n")
     out = tmp_path / "part.svg"
-    r = _cli(["charts", "line", "--csv", str(p), "--x", "step", "--y", "loss",
-              "--out", str(out), "--fail-on", "warning"])
+    r = _cli(
+        [
+            "charts",
+            "line",
+            "--csv",
+            str(p),
+            "--x",
+            "step",
+            "--y",
+            "loss",
+            "--out",
+            str(out),
+            "--fail-on",
+            "warning",
+        ]
+    )
     assert r.returncode == 0, r.stderr + r.stdout
     data = json.loads(r.stdout)["data"]
     assert data["summary"]["by_severity"]["info"] == 1
     assert data["summary"]["by_severity"]["warning"] == 0
-    r2 = _cli(["charts", "line", "--csv", str(p), "--x", "step", "--y", "loss",
-               "--out", str(out), "--fail-on", "info"])
+    r2 = _cli(
+        [
+            "charts",
+            "line",
+            "--csv",
+            str(p),
+            "--x",
+            "step",
+            "--y",
+            "loss",
+            "--out",
+            str(out),
+            "--fail-on",
+            "info",
+        ]
+    )
     assert r2.returncode == 1
 
 
@@ -889,23 +1030,71 @@ def test_cli_rejects_bad_inputs_with_actionable_errors(tmp_path):
 
     db = tmp_path / "runtrack.db"
     _seed_metrics(db)
-    r = _cli(["charts", "line", "--db", str(db), "--table", "metrics",
-              "--x", "step", "--y", "ghost"])
+    r = _cli(
+        [
+            "charts",
+            "line",
+            "--db",
+            str(db),
+            "--table",
+            "metrics",
+            "--x",
+            "step",
+            "--y",
+            "ghost",
+        ]
+    )
     assert r.returncode == 1
     err = json.loads(r.stdout)["error"]
     assert "no column(s) ['ghost']" in err and "value" in err
-    r = _cli(["charts", "line", "--db", str(db), "--table", "nope",
-              "--x", "step", "--y", "value"])
+    r = _cli(
+        [
+            "charts",
+            "line",
+            "--db",
+            str(db),
+            "--table",
+            "nope",
+            "--x",
+            "step",
+            "--y",
+            "value",
+        ]
+    )
     assert r.returncode == 1
     assert "no table or view 'nope'" in json.loads(r.stdout)["error"]
     r = _cli(["charts", "line", "--db", str(db), "--x", "step", "--y", "value"])
     assert r.returncode == 1
     assert "--db needs --table" in json.loads(r.stdout)["error"]
-    r = _cli(["charts", "line", "--csv", str(p), "--x", "step", "--y", "loss",
-              "--fail-on", "loud"])
+    r = _cli(
+        [
+            "charts",
+            "line",
+            "--csv",
+            str(p),
+            "--x",
+            "step",
+            "--y",
+            "loss",
+            "--fail-on",
+            "loud",
+        ]
+    )
     assert r.returncode == 1
     assert "--fail-on must be one of" in json.loads(r.stdout)["error"]
-    r = _cli(["charts", "line", "--csv", str(p), "--x", "step", "--y", "loss",
-              "--width", "12"])
+    r = _cli(
+        [
+            "charts",
+            "line",
+            "--csv",
+            str(p),
+            "--x",
+            "step",
+            "--y",
+            "loss",
+            "--width",
+            "12",
+        ]
+    )
     assert r.returncode == 1
     assert "--width must be" in json.loads(r.stdout)["error"]
