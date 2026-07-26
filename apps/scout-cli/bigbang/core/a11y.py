@@ -215,7 +215,9 @@ def channel_luminance(component: float) -> float:
     return ((c + 0.055) / 1.055) ** 2.4
 
 
-def relative_luminance(rgb: tuple[int, int, int] | tuple[int, int, int, float]) -> float:
+def relative_luminance(
+    rgb: tuple[int, int, int] | tuple[int, int, int, float],
+) -> float:
     """WCAG relative luminance of an opaque sRGB triple."""
     r, g, b = rgb[0], rgb[1], rgb[2]
     return (
@@ -309,9 +311,13 @@ def contrast_reading(
     fg_rgb = parse_color(fg)
     bg_rgb = parse_color(bg)
     if fg_rgb is None or bg_rgb is None:  # _color_problem proved both resolvable
-        reading["error"] = "color resolution disagreed with validation, so no ratio is reported"
+        reading["error"] = (
+            "color resolution disagreed with validation, so no ratio is reported"
+        )
         return reading
-    ratio = contrast_ratio((fg_rgb[0], fg_rgb[1], fg_rgb[2]), (bg_rgb[0], bg_rgb[1], bg_rgb[2]))
+    ratio = contrast_ratio(
+        (fg_rgb[0], fg_rgb[1], fg_rgb[2]), (bg_rgb[0], bg_rgb[1], bg_rgb[2])
+    )
     reading["ratio"] = round(ratio, 2)
     reading["passes_aa"] = ratio + _EPSILON >= reading["required_aa"]
     reading["passes_aaa"] = ratio + _EPSILON >= reading["required_aaa"]
@@ -424,7 +430,14 @@ _ABSOLUTE_SIZES = {
     "x-large": 24.0,
     "xx-large": 32.0,
 }
-_UNIT_PX = {"px": 1.0, "pt": 4.0 / 3.0, "pc": 16.0, "in": 96.0, "cm": 96.0 / 2.54, "mm": 96.0 / 25.4}
+_UNIT_PX = {
+    "px": 1.0,
+    "pt": 4.0 / 3.0,
+    "pc": 16.0,
+    "in": 96.0,
+    "cm": 96.0 / 2.54,
+    "mm": 96.0 / 25.4,
+}
 
 
 def parse_font_size(
@@ -486,8 +499,20 @@ def _background_declaration(decls: dict[str, str]) -> str | None:
 
 VOID_TAGS = frozenset(
     {
-        "area", "base", "br", "col", "embed", "hr", "img", "input",
-        "link", "meta", "param", "source", "track", "wbr",
+        "area",
+        "base",
+        "br",
+        "col",
+        "embed",
+        "hr",
+        "img",
+        "input",
+        "link",
+        "meta",
+        "param",
+        "source",
+        "track",
+        "wbr",
     }
 )
 HEADING_TAGS = ("h1", "h2", "h3", "h4", "h5", "h6")
@@ -504,9 +529,20 @@ LANDMARK_TAGS = {
 }
 NAMED_LANDMARK_TAGS = {"section": "region", "form": "form"}
 LANDMARK_ROLES = frozenset(
-    {"main", "navigation", "banner", "contentinfo", "complementary", "search", "form", "region"}
+    {
+        "main",
+        "navigation",
+        "banner",
+        "contentinfo",
+        "complementary",
+        "search",
+        "form",
+        "region",
+    }
 )
-LABELABLE_TAGS = frozenset({"input", "select", "textarea", "button", "meter", "progress"})
+LABELABLE_TAGS = frozenset(
+    {"input", "select", "textarea", "button", "meter", "progress"}
+)
 # UA-supplied labels: a submit/reset button reads as "Submit"/"Reset" with no
 # author markup at all, so demanding a label would be a false positive.
 UA_LABELED_INPUT_TYPES = frozenset({"submit", "reset"})
@@ -514,8 +550,21 @@ PRESENTATIONAL_ROLES = frozenset({"presentation", "none"})
 _NON_TEXT_TAGS = frozenset({"script", "style", "title", "template", "noscript", "head"})
 _TEXT_CAPTURE_TAGS = frozenset({*HEADING_TAGS, "label", "button"})
 _GENERIC_ALT = frozenset(
-    {"image", "images", "photo", "picture", "graphic", "icon", "logo", "img", "spacer",
-     "untitled", "alt", "thumbnail", "banner"}
+    {
+        "image",
+        "images",
+        "photo",
+        "picture",
+        "graphic",
+        "icon",
+        "logo",
+        "img",
+        "spacer",
+        "untitled",
+        "alt",
+        "thumbnail",
+        "banner",
+    }
 )
 _IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".avif")
 
@@ -568,9 +617,16 @@ class _DocParser(HTMLParser):
         self.landmarks: list[dict[str, Any]] = []
         self.ids: dict[str, list[int]] = {}
         self.runs: dict[tuple, dict[str, Any]] = {}
-        self.hidden_skipped = {"images": 0, "controls": 0, "headings": 0, "text_runs": 0}
+        self.hidden_skipped = {
+            "images": 0,
+            "controls": 0,
+            "headings": 0,
+            "text_runs": 0,
+        }
         self._root_px = ROOT_FONT_PX
-        self._root_ctx = self._apply(_initial_context(), rs.get("declarations") or {}, tag=None)
+        self._root_ctx = self._apply(
+            _initial_context(), rs.get("declarations") or {}, tag=None
+        )
         self._root_px = self._root_ctx["font_px"] or ROOT_FONT_PX
         self._stack: list[dict[str, Any]] = []
         self._capturing: list[dict[str, Any]] = []
@@ -578,7 +634,9 @@ class _DocParser(HTMLParser):
 
     # -- context -------------------------------------------------------------
 
-    def _apply(self, ctx: dict[str, Any], decls: dict[str, str], *, tag: str | None) -> dict[str, Any]:
+    def _apply(
+        self, ctx: dict[str, Any], decls: dict[str, str], *, tag: str | None
+    ) -> dict[str, Any]:
         """Fold UA defaults then inline declarations onto an inherited context."""
         parent_px = ctx["font_px"]
         if tag in _UA_FONT_EM:
@@ -671,7 +729,9 @@ class _DocParser(HTMLParser):
         the text capture should fill in (None when the element has no name)."""
         role = (a.get("role") or "").strip().lower()
         sink: dict[str, Any] | None = None
-        if tag == "img" or (tag == "input" and (a.get("type") or "").lower() == "image"):
+        if tag == "img" or (
+            tag == "input" and (a.get("type") or "").lower() == "image"
+        ):
             self._record_image(tag, a, ctx, line, col, role)
         if tag in LABELABLE_TAGS:
             sink = self._record_control(tag, a, ctx, line, col)
@@ -702,7 +762,13 @@ class _DocParser(HTMLParser):
         return sink
 
     def _record_image(
-        self, tag: str, a: dict[str, str], ctx: dict[str, Any], line: int, col: int, role: str
+        self,
+        tag: str,
+        a: dict[str, str],
+        ctx: dict[str, Any],
+        line: int,
+        col: int,
+        role: str,
     ) -> None:
         if ctx["hidden"]:
             self.hidden_skipped["images"] += 1
@@ -807,7 +873,13 @@ class _DocParser(HTMLParser):
             return
         if ctx["color"] is None and ctx["background"] is None:
             return  # no authored color anywhere in the chain: nothing to audit
-        key = (ctx["color"], ctx["background"], ctx["font_px"], ctx["bold"], ctx["font_source"])
+        key = (
+            ctx["color"],
+            ctx["background"],
+            ctx["font_px"],
+            ctx["bold"],
+            ctx["font_source"],
+        )
         line, offset = self.getpos()
         run = self.runs.get(key)
         if run is None:
@@ -871,15 +943,35 @@ RULES: dict[str, dict[str, Any]] = {
     "a11y:img-alt-missing": {"enabled": True, "severity": "error", "wcag": "1.1.1"},
     "a11y:img-alt-generic": {"enabled": True, "severity": "warning", "wcag": "1.1.1"},
     "a11y:control-unlabeled": {"enabled": True, "severity": "error", "wcag": "4.1.2"},
-    "a11y:control-placeholder-only": {"enabled": True, "severity": "warning", "wcag": "3.3.2"},
+    "a11y:control-placeholder-only": {
+        "enabled": True,
+        "severity": "warning",
+        "wcag": "3.3.2",
+    },
     "a11y:label-orphan": {"enabled": True, "severity": "warning", "wcag": "1.3.1"},
     "a11y:duplicate-id": {"enabled": True, "severity": "warning", "wcag": "4.1.1"},
     "a11y:heading-empty": {"enabled": True, "severity": "warning", "wcag": "1.3.1"},
-    "a11y:heading-first-not-h1": {"enabled": True, "severity": "warning", "wcag": "1.3.1"},
-    "a11y:heading-skipped-level": {"enabled": True, "severity": "warning", "wcag": "1.3.1"},
+    "a11y:heading-first-not-h1": {
+        "enabled": True,
+        "severity": "warning",
+        "wcag": "1.3.1",
+    },
+    "a11y:heading-skipped-level": {
+        "enabled": True,
+        "severity": "warning",
+        "wcag": "1.3.1",
+    },
     "a11y:heading-none": {"enabled": True, "severity": "suggestion", "wcag": "1.3.1"},
-    "a11y:landmark-main-missing": {"enabled": True, "severity": "warning", "wcag": "1.3.6"},
-    "a11y:landmark-main-multiple": {"enabled": True, "severity": "warning", "wcag": "1.3.6"},
+    "a11y:landmark-main-missing": {
+        "enabled": True,
+        "severity": "warning",
+        "wcag": "1.3.6",
+    },
+    "a11y:landmark-main-multiple": {
+        "enabled": True,
+        "severity": "warning",
+        "wcag": "1.3.6",
+    },
     "a11y:contrast-aa": {"enabled": True, "severity": "error", "wcag": "1.4.3"},
     "a11y:contrast-aaa": {"enabled": True, "severity": "suggestion", "wcag": "1.4.6"},
     "a11y:contrast-unknown": {"enabled": True, "severity": "info", "wcag": "1.4.3"},
@@ -928,13 +1020,20 @@ def contrast_readings(facts: dict[str, Any]) -> list[dict[str, Any]]:
             font_source=run["font_source"],
         )
         reading.update(
-            {"line": run["line"], "col": run["col"], "sample": run["sample"], "runs": run["count"]}
+            {
+                "line": run["line"],
+                "col": run["col"],
+                "sample": run["sample"],
+                "runs": run["count"],
+            }
         )
         out.append(reading)
     return out
 
 
-def _accessible_name(control: dict[str, Any], label_ids: set[str], ids: set[str]) -> tuple[str | None, str | None]:
+def _accessible_name(
+    control: dict[str, Any], label_ids: set[str], ids: set[str]
+) -> tuple[str | None, str | None]:
     """(source of the control's name, why the candidate source failed) — either
     the first component is a source name or the second explains the absence."""
     if control["aria_label"]:
@@ -978,7 +1077,14 @@ def audit_document(
     rs = rules or load_rules()
     diags: list[dict[str, Any]] = []
 
-    def add(rule: str, message: str, *, line: int = 0, col: int = 1, suggestion: str | None = None) -> None:
+    def add(
+        rule: str,
+        message: str,
+        *,
+        line: int = 0,
+        col: int = 1,
+        suggestion: str | None = None,
+    ) -> None:
         cfg = rs.get(rule) or {}
         if not cfg.get("enabled", True):
             return
@@ -1147,7 +1253,11 @@ def _audit_forms(facts: dict[str, Any], add: Any) -> None:
 
 
 def _audit_contrast(facts: dict[str, Any], add: Any) -> None:
-    conditional = [p for p in facts.get("root_conditional") or [] if "background" in p or "color" in p]
+    conditional = [
+        p
+        for p in facts.get("root_conditional") or []
+        if "background" in p or "color" in p
+    ]
     for reading in contrast_readings(facts):
         where = f"{reading['fg'] or '<inherited>'} on {reading['bg'] or '<undeclared>'}"
         scale = "large" if reading["large"] else "normal"
@@ -1209,7 +1319,9 @@ def page_report(
         )
     for kind, count in facts["hidden_skipped"].items():
         if count:
-            skipped.append(f"{count} hidden {kind} not audited (not exposed to assistive tech)")
+            skipped.append(
+                f"{count} hidden {kind} not audited (not exposed to assistive tech)"
+            )
     if facts["root_conditional"]:
         skipped.append(
             "root style properties declared inside @media/@supports and left"

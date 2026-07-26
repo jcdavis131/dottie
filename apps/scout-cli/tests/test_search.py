@@ -49,11 +49,15 @@ def corpus(tmp_path: Path) -> Path:
     """A small, rank-meaningful corpus: 4 docs mention 'ranking', 6 do not."""
     root = tmp_path / "corpus"
     _write(root / "dense.md", "ranking ranking ranking\n", mtime=1000.0)
-    _write(root / "sparse.md", "ranking " + ("filler word here " * 60) + "\n", mtime=1000.0)
+    _write(
+        root / "sparse.md", "ranking " + ("filler word here " * 60) + "\n", mtime=1000.0
+    )
     _write(root / "sub" / "nested.md", "nested notes about tokenizers\n", mtime=1000.0)
     _write(root / "noise.md", "nothing relevant at all\n", mtime=1000.0)
     _write(root / "notes.rst", "restructured text mentions ranking too\n", mtime=1000.0)
-    _write(root / ".git" / "hidden.md", "ranking inside a pruned vcs dir\n", mtime=1000.0)
+    _write(
+        root / ".git" / "hidden.md", "ranking inside a pruned vcs dir\n", mtime=1000.0
+    )
     return root
 
 
@@ -139,11 +143,16 @@ def test_iter_files_prunes_vendor_dirs_and_honors_globs(corpus):
     assert not any(p.endswith(".rst") for p in found), "include glob must filter"
     assert found == sorted(found), "discovery order must be deterministic"
     # excludes win over includes
-    kept = [p for p, _ in search.iter_files([corpus], include=["*.md"], exclude=["dense.md"])]
+    kept = [
+        p
+        for p, _ in search.iter_files([corpus], include=["*.md"], exclude=["dense.md"])
+    ]
     assert not any(p.endswith("dense.md") for p in kept)
     assert len(kept) == len(found) - 1
     # opting .git back in proves the prune list is the only thing hiding it
-    with_git = [p for p, _ in search.iter_files([corpus], include=["*.md"], exclude_dirs=[])]
+    with_git = [
+        p for p, _ in search.iter_files([corpus], include=["*.md"], exclude_dirs=[])
+    ]
     assert any("/.git/" in p for p in with_git)
 
 
@@ -206,7 +215,9 @@ def test_reindex_is_incremental_by_mtime(corpus):
     assert search.query(conn, "kittens")["total"] == 1
     assert _names(search.query(conn, "ranking")) == ["sparse.md"]
     # --force reindexes everything regardless
-    forced = search.index_paths(conn, [corpus], include=["*.md"], force=True, now=2300.0)
+    forced = search.index_paths(
+        conn, [corpus], include=["*.md"], force=True, now=2300.0
+    )
     assert forced["updated"] == 4 and forced["unchanged"] == 0
 
 
@@ -313,7 +324,11 @@ def test_bm25_ranks_a_dense_short_document_above_a_diluted_one(tmp_path):
     # a-diluted sorts first, so this test can only pass if BM25 decides the order
     # (dropping `ORDER BY bm25` was verified to turn it red).
     root = tmp_path / "c"
-    _write(root / "a-diluted.md", "ranking " + ("filler word here " * 60) + "\n", mtime=1000.0)
+    _write(
+        root / "a-diluted.md",
+        "ranking " + ("filler word here " * 60) + "\n",
+        mtime=1000.0,
+    )
     _write(root / "z-dense.md", "ranking ranking ranking\n", mtime=1000.0)
     _write(root / "m-noise.md", "nothing relevant at all\n", mtime=1000.0)
     conn = _mem()
@@ -329,8 +344,12 @@ def test_bm25_ranks_a_dense_short_document_above_a_diluted_one(tmp_path):
 
 def test_column_weights_decide_path_matches_versus_body_matches(tmp_path):
     root = tmp_path / "c"
-    _write(root / "tokenizer-guide.md", "scoring notes and other content\n", mtime=1000.0)
-    _write(root / "body.md", "the tokenizer is described here in one place\n", mtime=1000.0)
+    _write(
+        root / "tokenizer-guide.md", "scoring notes and other content\n", mtime=1000.0
+    )
+    _write(
+        root / "body.md", "the tokenizer is described here in one place\n", mtime=1000.0
+    )
     for i in range(4):  # distractors so the term is not in every document
         _write(root / f"noise{i}.md", "unrelated filler\n", mtime=1000.0)
     conn = _mem()
@@ -352,6 +371,7 @@ def test_snippet_highlights_matches_and_markers_are_configurable(tmp_path):
     _write(root / "b.md", "no needle at all here\n", mtime=1000.0)
     conn = _mem()
     search.index_paths(conn, [root], include=["*.md"], now=1.0)
+
     def _long_hit(result: dict) -> dict:
         # the long document, whichever way BM25 ranked it (b.md is shorter and
         # therefore scores higher — that is BM25 doing its job, not a snippet fact)
@@ -466,7 +486,9 @@ def test_stats_rolls_up_the_corpus_and_audits_freshness(corpus):
     assert audited["missing"] == [search.norm_path(corpus / "noise.md")]
     # --no-check skips the audit entirely (and says so)
     quiet = search.stats(conn, check=False)
-    assert quiet["checked"] is False and quiet["stale"] == [] and quiet["stale_count"] == 0
+    assert (
+        quiet["checked"] is False and quiet["stale"] == [] and quiet["stale_count"] == 0
+    )
     assert quiet["documents"] == 4
 
 
@@ -501,7 +523,9 @@ def test_to_diagnostics_maps_the_family_schema(tmp_path):
     assert all(d["source"] == "search" for d in diags)
     summary = openswap.summarize(diags)
     assert summary["total"] == 5
-    assert summary["by_severity"]["warning"] == 3 and summary["by_severity"]["info"] == 2
+    assert (
+        summary["by_severity"]["warning"] == 3 and summary["by_severity"]["info"] == 2
+    )
     assert search.to_diagnostics({}) == []  # a clean report emits nothing
 
 
@@ -567,7 +591,10 @@ def test_cli_index_query_stats_roundtrip(tmp_path, corpus):
 
 def test_cli_query_fail_empty_is_the_ci_assertion_hook(tmp_path, corpus):
     db = str(tmp_path / "search.db")
-    assert _cli(["search", "index", str(corpus), "--ext", "md", "--db", db]).returncode == 0
+    assert (
+        _cli(["search", "index", str(corpus), "--ext", "md", "--db", db]).returncode
+        == 0
+    )
     hit = _cli(["search", "query", "ranking", "--db", db, "--fail-empty"])
     assert hit.returncode == 0
     miss = _cli(["search", "query", "nonexistentterm", "--db", db, "--fail-empty"])
@@ -577,7 +604,10 @@ def test_cli_query_fail_empty_is_the_ci_assertion_hook(tmp_path, corpus):
 
 def test_cli_stats_fail_on_gates_a_stale_index(tmp_path, corpus):
     db = str(tmp_path / "search.db")
-    assert _cli(["search", "index", str(corpus), "--ext", "md", "--db", db]).returncode == 0
+    assert (
+        _cli(["search", "index", str(corpus), "--ext", "md", "--db", db]).returncode
+        == 0
+    )
     assert _cli(["search", "stats", "--db", db, "--fail-on", "warning"]).returncode == 0
     (corpus / "dense.md").unlink()
     gated = _cli(["search", "stats", "--db", db, "--fail-on", "warning"])
@@ -596,7 +626,9 @@ def test_cli_index_fail_on_gates_skipped_files(tmp_path):
     assert r.returncode == 0
     data = json.loads(r.stdout)["data"]
     assert data["added"] == 1 and data["skipped"] == {"binary": 1}
-    gated = _cli(["search", "index", str(root), "--ext", "md", "--db", db, "--fail-on", "info"])
+    gated = _cli(
+        ["search", "index", str(root), "--ext", "md", "--db", db, "--fail-on", "info"]
+    )
     assert gated.returncode == 1
     assert json.loads(gated.stdout)["data"]["summary"]["by_severity"]["info"] == 1
 
@@ -610,7 +642,10 @@ def test_cli_query_without_an_index_fails_actionably(tmp_path):
 
 def test_cli_bad_query_syntax_fails_actionably_and_literal_recovers(tmp_path, corpus):
     db = str(tmp_path / "search.db")
-    assert _cli(["search", "index", str(corpus), "--ext", "md", "--db", db]).returncode == 0
+    assert (
+        _cli(["search", "index", str(corpus), "--ext", "md", "--db", db]).returncode
+        == 0
+    )
     bad = _cli(["search", "query", "ranking AND", "--db", db])
     assert bad.returncode == 1
     assert "fts5" in json.loads(bad.stdout)["error"]
@@ -620,7 +655,9 @@ def test_cli_bad_query_syntax_fails_actionably_and_literal_recovers(tmp_path, co
 
 
 def test_cli_index_refuses_a_root_that_does_not_exist(tmp_path):
-    r = _cli(["search", "index", str(tmp_path / "nope"), "--db", str(tmp_path / "s.db")])
+    r = _cli(
+        ["search", "index", str(tmp_path / "nope"), "--db", str(tmp_path / "s.db")]
+    )
     assert r.returncode == 1
     assert "none of these roots exist" in json.loads(r.stdout)["error"]
     assert not (tmp_path / "s.db").exists(), "a refused index must write nothing"
@@ -631,4 +668,6 @@ def test_cli_bad_mode_and_bad_fail_on_are_rejected(tmp_path, corpus):
     bad_mode = _cli(["search", "index", str(corpus), "--db", db, "--mode", "magic"])
     assert bad_mode.returncode == 1 and "--mode" in json.loads(bad_mode.stdout)["error"]
     bad_gate = _cli(["search", "index", str(corpus), "--db", db, "--fail-on", "loud"])
-    assert bad_gate.returncode == 1 and "--fail-on" in json.loads(bad_gate.stdout)["error"]
+    assert (
+        bad_gate.returncode == 1 and "--fail-on" in json.loads(bad_gate.stdout)["error"]
+    )

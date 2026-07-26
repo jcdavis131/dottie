@@ -10,22 +10,36 @@ con.row_factory = sqlite3.Row
 
 NEW = [
     ("f821", r"F821 Undefined name"),
-    ("autograd", r"does not require grad and does not have a grad_fn|cannot register a hook on a tensor that doesn't require gradient|grad can be implicitly created only for scalar outputs|unexpected keyword argument 'retain_grad'"),
+    (
+        "autograd",
+        r"does not require grad and does not have a grad_fn|cannot register a hook on a tensor that doesn't require gradient|grad can be implicitly created only for scalar outputs|unexpected keyword argument 'retain_grad'",
+    ),
     ("skeleton", r"no 'forward' method found on any class|no class defined"),
-    ("malformed", r"unexpected character after line continuation character|was never closed|unterminated string literal|unmatched '"),
+    (
+        "malformed",
+        r"unexpected character after line continuation character|was never closed|unterminated string literal|unmatched '",
+    ),
     ("loss_vs_block", r"requires extra argument\(s\)"),
     ("own_assert", r"AssertionError:"),
     ("batched_t", r"t\(\) expects a tensor with <= 2 dimensions"),
-    ("imports", r"ImportError: cannot import name|ModuleNotFoundError: No module named"),
-    ("gather_topk", r"Index tensor must have the same number of dimensions|only integer tensors of a single element|is out of bounds for dimension|selected index k out of range"),
+    (
+        "imports",
+        r"ImportError: cannot import name|ModuleNotFoundError: No module named",
+    ),
+    (
+        "gather_topk",
+        r"Index tensor must have the same number of dimensions|only integer tensors of a single element|is out of bounds for dimension|selected index k out of range",
+    ),
     ("invalid_for_size", r"is invalid for input of size"),
 ]
 
 buckets = defaultdict(list)
 syntax_lines = defaultdict(int)
 static_lines = defaultdict(int)
-rows = con.execute("SELECT id, implementation FROM experiments "
-                   "WHERE implementation IS NOT NULL ORDER BY created_ts").fetchall()
+rows = con.execute(
+    "SELECT id, implementation FROM experiments "
+    "WHERE implementation IS NOT NULL ORDER BY created_ts"
+).fetchall()
 for r in rows:
     impl = json.loads(r["implementation"])
     for h in (impl.get("validation") or {}).get("history") or []:
@@ -37,7 +51,13 @@ for r in rows:
                     buckets[name].append((r["id"], lvl, det))
                     break
             if lvl == "syntax":
-                syntax_lines[re.sub(r"\d+", "N", det.strip().splitlines()[0][:110] if det.strip() else "(empty)")] += 1
+                syntax_lines[
+                    re.sub(
+                        r"\d+",
+                        "N",
+                        det.strip().splitlines()[0][:110] if det.strip() else "(empty)",
+                    )
+                ] += 1
             if lvl == "static":
                 for ln in det.splitlines():
                     m = re.search(r"\b([A-Z]\d{3})\b", ln)

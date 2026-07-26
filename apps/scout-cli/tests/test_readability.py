@@ -62,16 +62,16 @@ def _rule_ids(diags):
 @pytest.mark.parametrize(
     ("word", "expected"),
     [
-        ("cat", 1),          # <=3 letters short-circuit
+        ("cat", 1),  # <=3 letters short-circuit
         ("the", 1),
-        ("apple", 2),        # -le keeps its syllable
+        ("apple", 2),  # -le keeps its syllable
         ("syllable", 3),
         ("readability", 5),
-        ("make", 1),         # silent final -e dropped
-        ("walked", 1),       # silent -ed
-        ("wanted", 2),       # -ed after t is spoken
-        ("makes", 1),        # silent -es
-        ("houses", 2),       # -es after a sibilant is spoken
+        ("make", 1),  # silent final -e dropped
+        ("walked", 1),  # silent -ed
+        ("wanted", 2),  # -ed after t is spoken
+        ("makes", 1),  # silent -es
+        ("houses", 2),  # -es after a sibilant is spoken
         ("prices", 2),
         ("immediately", 5),
         ("utilize", 3),
@@ -81,7 +81,7 @@ def _rule_ids(diags):
         ("readable", 3),
         ("quickly", 2),
         ("really", 2),
-        ("coffee", 2),       # -ee is not a silent e
+        ("coffee", 2),  # -ee is not a silent e
     ],
 )
 def test_syllable_heuristic_matches_hand_counts(word, expected):
@@ -122,7 +122,12 @@ def test_numerals_have_no_syllables_and_words_have_at_least_one():
 def test_words_exclude_pure_numerals_and_numerals_are_reported():
     text = "We shipped 3 builds in 2026 without regressions."
     assert readability.words_of(text) == [
-        "We", "shipped", "builds", "in", "without", "regressions",
+        "We",
+        "shipped",
+        "builds",
+        "in",
+        "without",
+        "regressions",
     ]
     assert readability.numeric_tokens(text) == ["3", "2026"]
 
@@ -197,7 +202,7 @@ def test_abbreviation_guard_changes_the_grade():
         ("beautiful", True),
         ("cat", False),
         ("houses", False),
-        ("created", False),    # 3 syllables only because of -ed
+        ("created", False),  # 3 syllables only because of -ed
         ("processes", False),  # 3 syllables only because of -es
     ],
 )
@@ -308,7 +313,9 @@ def test_document_counts_and_scores_are_exact():
     fog   = 0.4*(5 + 100*0/10)             =   2.00
     cl    = 0.0588*300 - 0.296*20 - 15.8   =  -4.08
     """
-    rep = readability.score_text("The cat sat on the mat. The dog ran fast.", path="d.md")
+    rep = readability.score_text(
+        "The cat sat on the mat. The dog ran fast.", path="d.md"
+    )
     c = rep["counts"]
     assert c["words"] == 10
     assert c["sentences"] == 2
@@ -366,7 +373,9 @@ def test_hard_text_is_over_target_and_plain_text_is_not():
 
 
 def test_target_grade_is_config_not_hardcoded():
-    strict = readability.score_text(PLAIN_TEXT, path="p.md", rules=_rules(max_grade=-5.0))
+    strict = readability.score_text(
+        PLAIN_TEXT, path="p.md", rules=_rules(max_grade=-5.0)
+    )
     assert strict["target_grade"] == -5.0
     assert strict["over_target"] is True
 
@@ -395,17 +404,24 @@ def test_notes_always_declare_the_heuristics():
 def test_histogram_covers_every_bucket_and_sums_to_the_sentence_count():
     rep = readability.score_text(PLAIN_TEXT, path="p.md")
     hist = rep["histogram"]
-    assert [row["bucket"] for row in hist] == [b[0] for b in readability.HISTOGRAM_BUCKETS]
+    assert [row["bucket"] for row in hist] == [
+        b[0] for b in readability.HISTOGRAM_BUCKETS
+    ]
     assert sum(row["count"] for row in hist) == rep["counts"]["sentences"] == 8
     counts = {row["bucket"]: row["count"] for row in hist}
     assert counts["1-5"] == 4  # "The dog ran fast." x4
     assert counts["6-10"] == 4  # "The cat sat on the mat." x4
     assert {row["pct"] for row in hist if row["count"]} == {50.0}
-    assert all(row["count"] == 0 for row in hist if row["bucket"] not in ("1-5", "6-10"))
+    assert all(
+        row["count"] == 0 for row in hist if row["bucket"] not in ("1-5", "6-10")
+    )
 
 
 def test_histogram_bucket_boundaries():
-    counts = {row["bucket"]: row["count"] for row in readability.histogram([1, 5, 6, 10, 41, 200])}
+    counts = {
+        row["bucket"]: row["count"]
+        for row in readability.histogram([1, 5, 6, 10, 41, 200])
+    }
     assert counts["1-5"] == 2
     assert counts["6-10"] == 2
     assert counts["41+"] == 2
@@ -531,7 +547,9 @@ def test_plain_text_is_inside_both_budgets():
 
 def test_budgets_are_config():
     flags = readability.score_text(
-        HARD_TEXT, path="h.md", rules=_rules(adverbs_per_100_words=50.0, passive_pct=100.0)
+        HARD_TEXT,
+        path="h.md",
+        rules=_rules(adverbs_per_100_words=50.0, passive_pct=100.0),
     )["flags"]
     assert flags["adverbs"]["budget_per_100_words"] == 50.0
     assert flags["adverbs"]["over_budget"] is False
@@ -595,7 +613,9 @@ def test_strip_tables_keeps_line_numbers():
 
 
 def test_blanked_code_sentinels_never_reach_the_output():
-    rep = readability.score_text("Run `scout prose lint README.md` now please.", path="d.md")
+    rep = readability.score_text(
+        "Run `scout prose lint README.md` now please.", path="d.md"
+    )
     text = rep["paragraphs"][0]["text"]
     assert "\x00" not in text
     assert text == "Run now please."
@@ -603,7 +623,9 @@ def test_blanked_code_sentinels_never_reach_the_output():
 
 
 def test_html_script_is_not_scored():
-    text = "<p>Hello there world.</p>\n<script>utilize documentation immediately</script>"
+    text = (
+        "<p>Hello there world.</p>\n<script>utilize documentation immediately</script>"
+    )
     rep = readability.score_text(text, path="d.html", fmt="html")
     assert rep["counts"]["words"] == 3
     assert rep["format"] == "html"
@@ -636,7 +658,9 @@ def test_capped_example_list_says_so():
     assert rep["sentences"]["very_hard"] == 6
     assert len(rep["sentences"]["worst"]) == 5
     note = next(
-        d for d in readability.to_diagnostics(rep) if d["rule"] == "readability:sentences"
+        d
+        for d in readability.to_diagnostics(rep)
+        if d["rule"] == "readability:sentences"
     )
     assert "6 sentences over the difficulty threshold" in note["message"]
     assert "6 very hard, 0 hard" in note["message"]
@@ -648,7 +672,9 @@ def test_no_cap_note_when_everything_is_shown():
     rep = readability.score_text(HARD_TEXT, path="h.md")
     assert rep["sentences"]["very_hard"] == 1
     assert [
-        d for d in readability.to_diagnostics(rep) if d["rule"] == "readability:sentences"
+        d
+        for d in readability.to_diagnostics(rep)
+        if d["rule"] == "readability:sentences"
     ] == []
 
 
@@ -660,7 +686,9 @@ def test_plain_text_produces_no_diagnostics():
 def test_unreliable_sample_raises_no_document_finding():
     rep = readability.score_text("Utilize documentation immediately.", path="d.md")
     assert rep["reliable"] is False
-    assert [d for d in readability.to_diagnostics(rep) if d["rule"] == "readability:grade"] == []
+    assert [
+        d for d in readability.to_diagnostics(rep) if d["rule"] == "readability:grade"
+    ] == []
 
 
 def test_sentence_diagnostic_anchors_to_its_paragraph_line():
@@ -716,18 +744,25 @@ def test_load_rules_injects_readability_defaults_as_a_copy():
 
 def test_rules_overlay_tunes_readability_without_losing_defaults(tmp_path):
     overlay = tmp_path / "org.json"
-    overlay.write_text(json.dumps({"readability": {"max_grade": 4.0}}), encoding="utf-8")
+    overlay.write_text(
+        json.dumps({"readability": {"max_grade": 4.0}}), encoding="utf-8"
+    )
     rules = prose.load_rules(str(overlay))
     assert rules["readability"]["max_grade"] == 4.0
-    assert rules["readability"]["hard_grade"] == readability.DEFAULT_CONFIG["hard_grade"]
+    assert (
+        rules["readability"]["hard_grade"] == readability.DEFAULT_CONFIG["hard_grade"]
+    )
     # the overlaid target reaches the scorer, not just the rules dump
     grade = next(
-        d for d in prose.lint_text(HARD_TEXT, rules=rules) if d["rule"] == "readability:grade"
+        d
+        for d in prose.lint_text(HARD_TEXT, rules=rules)
+        if d["rule"] == "readability:grade"
     )
     assert "above target 4.0" in grade["message"]
     # MEDIUM_TEXT is over 4.0 but under the shipped 12.0 default
     assert any(
-        d["rule"] == "readability:grade" for d in prose.lint_text(MEDIUM_TEXT, rules=rules)
+        d["rule"] == "readability:grade"
+        for d in prose.lint_text(MEDIUM_TEXT, rules=rules)
     )
     assert not any(
         d["rule"] == "readability:grade" for d in prose.lint_text(MEDIUM_TEXT)
@@ -749,7 +784,9 @@ def test_readability_check_signature_matches_the_registry():
     diags = readability.readability_check(lines, prose.load_rules(None), "h.md")
     assert diags and all(d["rule"].startswith("readability:") for d in diags)
     assert readability.readability_check([], prose.load_rules(None), "h.md") == []
-    assert readability.readability_check(["   ", ""], prose.load_rules(None), "h.md") == []
+    assert (
+        readability.readability_check(["   ", ""], prose.load_rules(None), "h.md") == []
+    )
 
 
 def test_paragraph_boundaries_are_shared_with_prose():
@@ -791,7 +828,9 @@ def test_render_html_carries_every_paragraph_with_its_band():
 
 
 def test_render_html_escapes_prose_that_contains_markup():
-    rep = readability.score_text("<b>bold</b> & <i>italic</i> words here.", path="d.txt", fmt="text")
+    rep = readability.score_text(
+        "<b>bold</b> & <i>italic</i> words here.", path="d.txt", fmt="text"
+    )
     page = readability.render_html([rep])
     assert "&lt;b&gt;bold&lt;/b&gt;" in page
     assert "<b>bold</b>" not in page
@@ -805,19 +844,25 @@ def test_render_html_states_the_no_data_case():
 
 
 def test_render_html_flags_a_sample_too_small_to_gate():
-    page = readability.render_html([readability.score_text("Short doc here.", path="d.md")])
+    page = readability.render_html(
+        [readability.score_text("Short doc here.", path="d.md")]
+    )
     assert "Sample too small to gate" in page
     assert "no finding is raised" in page
 
 
 def test_render_html_of_a_file_with_no_prose_says_so():
-    page = readability.render_html([readability.score_text("```\ncode()\n```\n", path="d.md")])
+    page = readability.render_html(
+        [readability.score_text("```\ncode()\n```\n", path="d.md")]
+    )
     assert "No prose paragraphs." in page
     assert "Sample too small to gate" in page
 
 
 def test_render_html_never_emits_the_extraction_sentinel():
-    rep = readability.score_text("Use `inline code` and https://example.com here.", path="d.md")
+    rep = readability.score_text(
+        "Use `inline code` and https://example.com here.", path="d.md"
+    )
     page = readability.render_html([rep])
     assert "\x00" not in page
     assert "example.com" not in page
@@ -834,7 +879,9 @@ def test_render_html_shows_the_flag_counts():
 
 def test_manifest_denies_network_and_declares_only_the_report_write():
     mf = yaml.safe_load(
-        (ROOT / "bigbang" / "plugins" / "prose" / "manifest.yaml").read_text(encoding="utf-8")
+        (ROOT / "bigbang" / "plugins" / "prose" / "manifest.yaml").read_text(
+            encoding="utf-8"
+        )
     )
     caps = mf["capabilities"]
     assert caps["network"]["enabled"] is False
@@ -862,8 +909,12 @@ def test_report_write_is_capability_gated(monkeypatch, tmp_path):
     )
     with pytest.raises(typer.Exit) as exc:
         prose_cli.report(
-            [str(src)], out=str(out), title="x", rules_file=None,
-            target_grade=None, fail_on=None,
+            [str(src)],
+            out=str(out),
+            title="x",
+            rules_file=None,
+            target_grade=None,
+            fail_on=None,
         )
     assert exc.value.exit_code == 1
     assert not out.exists()
@@ -938,9 +989,9 @@ def test_cli_score_target_grade_flips_the_gate(tmp_path):
     assert loose.returncode == 0, loose.stdout
     grade = json.loads(loose.stdout)["data"]["reports"][0]["scores"]["consensus_grade"]
     assert 5.0 < grade < 12.0
-    tight = _cli([
-        "prose", "score", str(doc), "--target-grade", "5", "--fail-on", "suggestion"
-    ])
+    tight = _cli(
+        ["prose", "score", str(doc), "--target-grade", "5", "--fail-on", "suggestion"]
+    )
     assert tight.returncode == 1
     assert json.loads(tight.stdout)["data"]["target_grade"] == 5.0
 
@@ -961,7 +1012,9 @@ def test_cli_score_rejects_bad_flags(tmp_path):
 def test_cli_score_caps_paragraph_rows(tmp_path):
     body = "\n\n".join([f"Paragraph number {i} sits here." for i in range(6)])
     doc = _doc(tmp_path, "many.md", body + "\n")
-    data = json.loads(_cli(["prose", "score", str(doc), "--max-paragraphs", "2"]).stdout)
+    data = json.loads(
+        _cli(["prose", "score", str(doc), "--max-paragraphs", "2"]).stdout
+    )
     report = data["data"]["reports"][0]
     assert len(report["paragraphs"]) == 2
     assert report["paragraphs_truncated"] is True
@@ -991,7 +1044,9 @@ def test_cli_report_writes_a_page(tmp_path):
 def test_cli_report_gate_runs_after_the_write(tmp_path):
     doc = _doc(tmp_path, "hard.md", HARD_TEXT + "\n")
     out = tmp_path / "gated.html"
-    r = _cli(["prose", "report", str(doc), "--out", str(out), "--fail-on", "suggestion"])
+    r = _cli(
+        ["prose", "report", str(doc), "--out", str(out), "--fail-on", "suggestion"]
+    )
     assert r.returncode == 1
     assert out.is_file(), "the page must be written before the gate fires"
 
