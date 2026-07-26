@@ -798,6 +798,107 @@ class TestSummarise:
         assert t["negatives"] == 20 + 16  # 7 interior commits x2, 2 edges x1
 
 
+class TestIdentityCollisionsAreReported:
+    """The half of the collision that is NOT collapsed, and why it is counted.
+
+    `mine_sibling_negatives` collapses colliding identities for self-exclusion only —
+    that half is a correctness bug (a record naming itself). It deliberately leaves
+    the other half alone: two records still share one `(path, symbol)`, and
+    `TestCollidingSymbolsAreOneDocument` asserts that ONE record's negatives list
+    holding two entries with the same `(path, symbol)` is intended. That is right for
+    training, because `text` — the actual signal — stays distinct, and collapsing
+    them would discard a genuine negative to tidy a label.
+
+    What was missing is that nothing SAID so. A consumer keying on `(path, symbol)`
+    silently keeps one and loses the other: the same silent-overwrite shape
+    minhash_dedup surfaces as `collisions`. Now reported.
+
+    Two-sided on purpose. A counter checked only against a real tree that measures 0
+    is satisfied by a counter that is dead — `empty_result_count` shipped exactly that
+    shape and a `int(any(...))` mutant survived 99 tests.
+    """
+
+    def test_it_fires_on_the_colliding_fixture(self):
+        pairs = build(NESTED_DUP_SRC + EXTRA_TOP_LEVEL_SRC, "nest/dup.py", 3)
+        recs = hn.mine_sibling_negatives(pairs)
+        ic = hn.identity_collisions(recs)
+        # Inner.run is emitted twice with one identity -> 1 record beyond the first.
+        assert ic["records"] == 1, f"{ic} — two Inner.run records share one identity"
+        # top_level lists both Inner.run functions -> 1 entry beyond the first.
+        assert ic["negative_entries"] == 1, (
+            f"{ic} — top_level's negatives are {symbols(records_for(recs, 'top_level')[0])}"
+        )
+
+    def test_it_does_not_fire_on_a_clean_fixture(self):
+        """Anti-vacuity for the other direction: a counter that always returns 1 is
+        as useless as one that always returns 0."""
+        recs = hn.mine_sibling_negatives(fixture_pairs())
+        assert hn.identity_collisions(recs) == {"records": 0, "negative_entries": 0}
+
+    def test_a_negative_shared_by_two_different_records_is_not_a_collision(self):
+        """The count is per record. `normalise_ids` appears in several records'
+        negative lists — that is two queries sharing a negative, not an
+        indistinguishable pair, and pooling them would report a fictional collision
+        on every healthy corpus."""
+        recs = hn.mine_sibling_negatives(fixture_pairs())
+        pooled = [(n["path"], n["symbol"]) for r in recs for n in r["negatives"]]
+        assert len(pooled) != len(set(pooled)), (
+            "fixture no longer shares any negative across records, so this test "
+            "cannot distinguish per-record from pooled counting"
+        )
+        assert hn.identity_collisions(recs)["negative_entries"] == 0
+
+    def test_summarise_carries_it_and_the_real_tree_measures_zero(self):
+        s = hn.summarise(hn.mine_sibling_negatives(fixture_pairs()), [])["sibling"]
+        assert set(s["identity_collisions"]) == {"records", "negative_entries"}
+        real = hn.identity_collisions(real_sibling())
+        assert real == {"records": 0, "negative_entries": 0}, (
+            f"{real} — measured 0 of both on this tree 2026-07-26. Not a regression "
+            "in the miner: it means ordinary nested-class shadowing has appeared in "
+            "the source, and the report now says so instead of hiding it"
+        )
+
+
+class TestAdjacentOffsetsNeverIncludeZero:
+    """Pins the premise that makes removing `j == i` from source B safe.
+
+    That guard could never fire: `offsets` is built from `range(1, window + 1)` as
+    (-d, +d), so 0 is not in it. It was removed rather than left as reassuring noise.
+    If a 0 offset is ever added, this test fails and says the guard has to come back —
+    which is the difference between a deleted dead check and a forgotten one.
+    """
+
+    @pytest.mark.parametrize("window", [0, 1, 2, 5, 50])
+    def test_zero_is_never_an_offset(self, window):
+        """Reads hn._offsets. The first version of this test REBUILT the loop, and a
+        mutation putting `range(0, ...)` into the source passed it untouched — the
+        test was a second copy of the rule it was guarding. Verified: with the read,
+        that same mutation now fails here."""
+        offsets = hn._offsets(window)
+        assert 0 not in offsets
+        assert len(offsets) == 2 * window
+
+    def test_offsets_are_distance_ascending_earlier_first(self):
+        assert hn._offsets(3) == [-1, 1, -2, 2, -3, 3]
+        assert hn._offsets(0) == []
+        assert hn._offsets(-4) == [], "a negative window must not invert the range"
+
+    def test_no_record_lists_a_file_of_its_own_commit(self, ):
+        """The behavioural consequence, measured rather than reasoned: with the guard
+        gone, a record must still never carry one of its own relevant files."""
+        golden = _linear_golden(9)
+        for rec in hn.mine_adjacent_negatives(golden, window=3):
+            own = set(rec["relevant"])
+            listed = {n["path"] for n in rec["negatives"]}
+            assert not (own & listed), f"{rec['query']} lists its own {own & listed}"
+
+    def test_every_negative_comes_from_a_nonzero_distance(self):
+        for rec in hn.mine_adjacent_negatives(_linear_golden(9), window=3):
+            for neg in rec["negatives"]:
+                assert neg["distance"] >= 1, neg
+                assert neg["direction"] in ("before", "after"), neg
+
+
 # ---------------------------------------------------------------------------
 # The contract with ast_pairs
 # ---------------------------------------------------------------------------

@@ -315,6 +315,22 @@ def mine_sibling_negatives(pairs, n: int = DEFAULT_N):
 # ---------------------------------------------------------------------------
 # Source B — adjacent-commit negatives
 # ---------------------------------------------------------------------------
+def _offsets(window: int) -> list[int]:
+    """Neighbour offsets, |distance| ascending, EARLIER first on a tie: -1,+1,-2,+2,...
+
+    A named function rather than an inline loop, so the test pinning "0 is never an
+    offset" can READ the rule instead of rebuilding it. The first version of that test
+    re-implemented this loop, and a mutation putting 0 back into the source passed it
+    untouched — a second copy of a rule is the duplicated-source bug class this
+    module's own docstring warns about, and it landed inside the test that existed to
+    guard the rule. 0 being absent is what makes the removed `j == i` check dead.
+    """
+    out: list[int] = []
+    for d in range(1, max(int(window), 0) + 1):
+        out.extend((-d, d))
+    return out
+
+
 def mine_adjacent_negatives(golden_pairs, window: int = DEFAULT_WINDOW, n: int = DEFAULT_N):
     """Negatives from commits temporally adjacent to each golden pair's commit.
 
@@ -352,9 +368,7 @@ def mine_adjacent_negatives(golden_pairs, window: int = DEFAULT_WINDOW, n: int =
             _norm_path(f) for f in g.get("relevant", ())
         )
 
-    offsets = []
-    for d in range(1, window + 1):
-        offsets.extend((-d, d))
+    offsets = _offsets(window)
 
     out = []
     for i, g in enumerate(items):
@@ -364,7 +378,14 @@ def mine_adjacent_negatives(golden_pairs, window: int = DEFAULT_WINDOW, n: int =
             if len(negatives) >= n:
                 break
             j = i + off
-            if j < 0 or j >= len(items) or j == i:
+            # `j == i` was here and was DEAD: `offsets` is built from
+            # `range(1, window + 1)` as (-d, +d), so it never contains 0 and j can
+            # never equal i. Removed rather than left as reassuring noise — a guard
+            # that cannot fire reads as protection that does not exist.
+            # `TestAdjacentOffsetsNeverIncludeZero` pins the premise, so if a 0
+            # offset is ever added this comes back with a failing test attached
+            # instead of silently mattering again.
+            if j < 0 or j >= len(items):
                 continue
             neighbour = items[j]
             for f in neighbour.get("relevant", ()):
@@ -431,9 +452,52 @@ def _base_stats(records):
     }
 
 
+def identity_collisions(sibling_records):
+    """(path, symbol) pairs a downstream consumer cannot tell apart. Counted, not fixed.
+
+    ``class_of`` documents why the collision exists: ast_pairs stores only the
+    INNERMOST class, so ``Outer.Inner.run`` and ``Other.Inner.run`` both arrive as
+    ``Inner.run``, and the outer class is not recoverable from ``symbol``. The
+    identity collapse in ``mine_sibling_negatives`` handles the half that would be a
+    correctness bug — a record naming ITSELF as a negative — and stops there. It
+    deliberately does NOT collapse the other half:
+
+      * two records still come out sharing one ``(path, symbol)``;
+      * one record's negatives list still holds two entries sharing one, which
+        ``TestCollidingSymbolsAreOneDocument`` asserts as intended behaviour.
+
+    That is the right call for TRAINING: the two functions are genuinely different
+    negatives and the ``text`` field — the actual training signal — stays distinct.
+    Collapsing them would throw away real signal to tidy a label. But a consumer that
+    keys on ``(path, symbol)`` silently keeps one and loses the other, which is the
+    same silent-overwrite shape ``minhash_dedup.collect_documents`` surfaces as
+    ``collisions``. So it is REPORTED rather than left to be inferred from a count
+    that does not add up. Measured on this tree 2026-07-26: 0 of both.
+
+    Returns {"records": n, "negative_entries": n} — the number of entries beyond the
+    first in each colliding group, i.e. exactly how many a keyed consumer would drop.
+    """
+    def _extra(idents):
+        counts: dict[tuple, int] = {}
+        for k in idents:
+            counts[k] = counts.get(k, 0) + 1
+        return sum(c - 1 for c in counts.values() if c > 1)
+
+    return {
+        "records": _extra([(r["path"], r["symbol"]) for r in sibling_records]),
+        # Per record, not pooled: the same symbol appearing in two DIFFERENT records'
+        # negative lists is not a collision, it is two queries sharing a negative.
+        "negative_entries": sum(
+            _extra([(n["path"], n["symbol"]) for n in r["negatives"]])
+            for r in sibling_records
+        ),
+    }
+
+
 def summarise(sibling_records, adjacent_records):
     """Per-source counts and the average per query. Pure, so it is testable."""
     sib = _base_stats(sibling_records)
+    sib["identity_collisions"] = identity_collisions(sibling_records)
     sib["by_scope"] = {
         name: sum(
             1 for r in sibling_records for neg in r["negatives"] if neg["scope"] == name
@@ -487,6 +551,16 @@ def _print_report(summary):
     print(f"    queries with >=1      : {s['queries_with_negatives']} ({s['coverage']:.1%})")
     for name, count in s["by_scope"].items():
         print(f"        {name:<14}    {count}")
+    ic = s["identity_collisions"]
+    print(f"    (path, symbol) collisions: {ic['records']} record(s), "
+          f"{ic['negative_entries']} negative entr(ies)")
+    if ic["records"] or ic["negative_entries"]:
+        print("        ^ ast_pairs stores only the innermost class, so these are "
+              "indistinguishable")
+        print("          downstream. The `text` differs, so training is unaffected; a "
+              "consumer")
+        print("          keying on (path, symbol) would silently keep one and lose the "
+              "other.")
     print()
     print("  SOURCE B - adjacent commits (temporal neighbours, own files removed)")
     print(f"    queries               : {a['queries']}")

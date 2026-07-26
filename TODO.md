@@ -118,8 +118,32 @@ Residuals the verifiers found that the builders did not report — worth closing
   groups 20** on `bigbang/plugins` — the one split fully DISSOLVED a 2-member component into
   two singletons. Mutation-verified 4/4 (scan-10-files; `rescued = 0`; `rescued` sign-flipped;
   `clusters` keeping singletons), baseline green over byte-verified restored source.
-- [ ] `hard_negatives.py` — a dead guard remains in source B; the D1 identity collapse is
-  applied only to the self-negative half.
+- [x] `hard_negatives.py` — both halves closed 2026-07-26. **71 tests** (was 59), 4/4
+  mutations killed, ruff clean.
+  - **Dead guard, confirmed dead then removed.** `mine_adjacent_negatives` tested
+    `j == i`, but `offsets` is built from `range(1, window + 1)` as `(-d, +d)` and so
+    never contains 0 — measured for window 0/1/5/50. It could not fire. Removed rather
+    than left as reassuring noise. Doubly dead, in fact: even with a 0 offset the
+    neighbour's own files are all in `forbidden`, so nothing would be emitted anyway.
+  - **The identity collapse really is half-applied, and that half is correct.**
+    Reproduced on a 12-line file: `Outer.Inner.run` and `Other.Inner.run` both arrive
+    as symbol `Inner.run`, so 2 records emit sharing 1 `(path, symbol)` (1 distinct of
+    2) and one record's negatives list holds 2 indistinguishable entries. Self-exclusion
+    is collapsed — 0 records name themselves — and the rest is deliberately NOT, because
+    `text` is the training signal and stays distinct; collapsing would discard a genuine
+    negative to tidy a label. The defect was that **nothing said so**: a consumer keying
+    on `(path, symbol)` silently keeps one and loses the other, the same silent-overwrite
+    shape `minhash_dedup` surfaces as `collisions`. Now reported by
+    `identity_collisions()` → `{"records": n, "negative_entries": n}`, printed in the
+    report, counted **per record** (a negative shared by two different records is two
+    queries sharing a negative, not a collision). Measured **0 of both** on this tree;
+    727 queries / 5,766 negatives on `apps/ava-factory`.
+  - **My first premise test was circular and a mutation proved it.** It rebuilt the
+    offset loop inside the test, so putting `range(0, ...)` back in the source passed it
+    untouched — a second copy of the rule, inside the test written to guard the rule,
+    which is the duplicated-source class this module's own docstring warns about.
+    Extracted `_offsets(window)`; the test now READS it and the same mutation kills 6
+    tests.
 
 ### ✅ 2026-07-26 — FROZEN PATHS UNFROZEN; stack-v3 is ACTIVATED (dormant at weight 0.0)
 
