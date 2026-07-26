@@ -15,7 +15,9 @@ import json
 import sqlite3
 from pathlib import Path
 
-_SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "export_repair_transcripts.py"
+_SCRIPT = (
+    Path(__file__).resolve().parents[1] / "scripts" / "export_repair_transcripts.py"
+)
 _spec = importlib.util.spec_from_file_location("export_repair_transcripts", _SCRIPT)
 ert = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(ert)
@@ -45,18 +47,25 @@ _F821_DETAIL = "F821 Undefined name `attn`\n  --> candidate.py:33:24"
 
 
 def _impl(history, code="import torch\n", dry_run=None):
-    return json.dumps({
-        "module_name": "TestBlock",
-        "target_file": "candidate.py",
-        "code": code,
-        "shape_assertions": [],
-        "dry_run": dry_run or {"class_name": "TestBlock",
-                               "init_kwargs": {"hidden": 64},
-                               "input_shape": [4, 16, 64]},
-        "validation": {"ok": bool(history and history[-1].get("ok")),
-                       "attempts": len(history) - 1,
-                       "history": history},
-    })
+    return json.dumps(
+        {
+            "module_name": "TestBlock",
+            "target_file": "candidate.py",
+            "code": code,
+            "shape_assertions": [],
+            "dry_run": dry_run
+            or {
+                "class_name": "TestBlock",
+                "init_kwargs": {"hidden": 64},
+                "input_shape": [4, 16, 64],
+            },
+            "validation": {
+                "ok": bool(history and history[-1].get("ok")),
+                "attempts": len(history) - 1,
+                "history": history,
+            },
+        }
+    )
 
 
 def _hyp(name="Test Hypothesis"):
@@ -69,36 +78,94 @@ def _mkdb(tmp_path):
     con.execute(_DDL)
     rows = [
         # Recovered: two fails then ok — yields one row PER failed attempt.
-        ("recov1", "rejected", 1.0, _hyp("Recovered One"), _impl([
-            {"attempt": 0, "ok": False, "level": "static", "status": "fail",
-             "detail": _F821_DETAIL},
-            {"attempt": 1, "ok": False, "level": "dry_run", "status": "fail",
-             "detail": _EINSUM_DETAIL},
-            {"attempt": 2, "ok": True, "level": "dry_run", "status": "pass",
-             "detail": "forward ok on input [4, 16, 64] -> (4, 16, 64)"},
-        ], code="FIXED_CODE")),
+        (
+            "recov1",
+            "rejected",
+            1.0,
+            _hyp("Recovered One"),
+            _impl(
+                [
+                    {
+                        "attempt": 0,
+                        "ok": False,
+                        "level": "static",
+                        "status": "fail",
+                        "detail": _F821_DETAIL,
+                    },
+                    {
+                        "attempt": 1,
+                        "ok": False,
+                        "level": "dry_run",
+                        "status": "fail",
+                        "detail": _EINSUM_DETAIL,
+                    },
+                    {
+                        "attempt": 2,
+                        "ok": True,
+                        "level": "dry_run",
+                        "status": "pass",
+                        "detail": "forward ok on input [4, 16, 64] -> (4, 16, 64)",
+                    },
+                ],
+                code="FIXED_CODE",
+            ),
+        ),
         # Never recovered: no code in the ledger fixes these failures -> 0 rows.
-        ("failonly", "failed_validation", 2.0, _hyp(), _impl([
-            {"attempt": 0, "ok": False, "level": "dry_run", "status": "fail",
-             "detail": _EINSUM_DETAIL},
-            {"attempt": 1, "ok": False, "level": "dry_run", "status": "fail",
-             "detail": _EINSUM_DETAIL},
-        ])),
+        (
+            "failonly",
+            "failed_validation",
+            2.0,
+            _hyp(),
+            _impl(
+                [
+                    {
+                        "attempt": 0,
+                        "ok": False,
+                        "level": "dry_run",
+                        "status": "fail",
+                        "detail": _EINSUM_DETAIL,
+                    },
+                    {
+                        "attempt": 1,
+                        "ok": False,
+                        "level": "dry_run",
+                        "status": "fail",
+                        "detail": _EINSUM_DETAIL,
+                    },
+                ]
+            ),
+        ),
         # Passed first try: no failure to pair -> 0 rows.
-        ("cleanpass", "sota", 3.0, _hyp(), _impl([
-            {"attempt": 0, "ok": True, "level": "dry_run", "status": "pass",
-             "detail": "forward ok"},
-        ])),
+        (
+            "cleanpass",
+            "sota",
+            3.0,
+            _hyp(),
+            _impl(
+                [
+                    {
+                        "attempt": 0,
+                        "ok": True,
+                        "level": "dry_run",
+                        "status": "pass",
+                        "detail": "forward ok",
+                    },
+                ]
+            ),
+        ),
     ]
     for rid, state, ts, hyp, impl in rows:
         con.execute(
             "INSERT INTO experiments (id, state, created_ts, updated_ts, hypothesis, "
             "implementation) VALUES (?, ?, ?, ?, ?, ?)",
-            (rid, state, ts, ts, hyp, impl))
+            (rid, state, ts, ts, hyp, impl),
+        )
     # No implementation at all — must be skipped, not crash.
     con.execute(
         "INSERT INTO experiments (id, state, created_ts, updated_ts, hypothesis) "
-        "VALUES ('noimpl', 'pending', 4.0, 4.0, ?)", (_hyp(),))
+        "VALUES ('noimpl', 'pending', 4.0, 4.0, ?)",
+        (_hyp(),),
+    )
     con.commit()
     con.close()
     return db
@@ -114,11 +181,24 @@ def test_row_schema_and_verbatim_detail(tmp_path):
     rows = ert.extract_rows(_mkdb(tmp_path))
     r0, r1 = rows
     for r in rows:
-        for key in ("experiment_id", "experiment_state", "hypothesis_name",
-                    "module_name", "dry_run_contract", "attempt", "failure_seq",
-                    "n_failed_attempts", "level", "status", "failure_detail",
-                    "repair_hint", "hint_source", "corrected_code",
-                    "corrected_code_role", "validated_detail"):
+        for key in (
+            "experiment_id",
+            "experiment_state",
+            "hypothesis_name",
+            "module_name",
+            "dry_run_contract",
+            "attempt",
+            "failure_seq",
+            "n_failed_attempts",
+            "level",
+            "status",
+            "failure_detail",
+            "repair_hint",
+            "hint_source",
+            "corrected_code",
+            "corrected_code_role",
+            "validated_detail",
+        ):
             assert key in r, f"missing {key}"
         # corrected code is the FINAL validated code, marked as such
         assert r["corrected_code"] == "FIXED_CODE"

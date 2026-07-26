@@ -207,7 +207,9 @@ def token_segments(text: str, *, fmt: str = FORMAT_TEXT) -> list[list[str]]:
     """
     out: list[list[str]] = []
     for segment in plain_segments(text, fmt=fmt):
-        toks = [t for t in (normalize_token(m) for m in _TOKEN_RE.findall(segment)) if t]
+        toks = [
+            t for t in (normalize_token(m) for m in _TOKEN_RE.findall(segment)) if t
+        ]
         if toks:
             out.append(toks)
     return out
@@ -425,7 +427,11 @@ def classify(
         return STATUS_MISSING, 0.0
     if draft_count < floor:
         return STATUS_THIN, round(draft_count / floor, 4)
-    if over_ratio > 0 and draft_count >= over_floor and draft_count > expected * over_ratio:
+    if (
+        over_ratio > 0
+        and draft_count >= over_floor
+        and draft_count > expected * over_ratio
+    ):
         return STATUS_OVERUSED, 1.0
     return STATUS_COVERED, 1.0
 
@@ -464,7 +470,10 @@ def _target_row(
 
 
 def draft_only_terms(
-    draft_counts: Counter[str], model: dict[str, Any], *, limit: int = DEFAULT_DRAFT_ONLY
+    draft_counts: Counter[str],
+    model: dict[str, Any],
+    *,
+    limit: int = DEFAULT_DRAFT_ONLY,
 ) -> list[dict[str, Any]]:
     """Draft terms NO comparison page uses — the inverse gap.
 
@@ -557,9 +566,8 @@ def _no_corpus_reason(model: dict[str, Any]) -> str:
     """Why a score could not be computed — never a silent 0.0."""
     if model["n_docs"] == 0:
         skipped = "; ".join(f"{s['name']}: {s['error']}" for s in model["skipped"])
-        return (
-            "no usable corpus document"
-            + (f" ({len(model['skipped'])} skipped — {skipped})" if skipped else "")
+        return "no usable corpus document" + (
+            f" ({len(model['skipped'])} skipped — {skipped})" if skipped else ""
         )
     return (
         f"{model['n_docs']} corpus document(s) yielded no scorable term "
@@ -727,7 +735,5 @@ def _brief_lists(report: dict[str, Any]) -> list[str]:
         )
     if report["draft_only"]:
         out.extend(["", "## In the draft, in no comparison page", ""])
-        out.extend(
-            f"- {r['term']} ({r['draft_count']}x)" for r in report["draft_only"]
-        )
+        out.extend(f"- {r['term']} ({r['draft_count']}x)" for r in report["draft_only"])
     return out

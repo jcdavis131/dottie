@@ -101,9 +101,7 @@ def open_store(path: str | Path) -> sqlite3.Connection:
     conn = sqlite3.connect(str(p))
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
-    conn.execute(
-        "INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', '1')"
-    )
+    conn.execute("INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', '1')")
     conn.commit()
     return conn
 
@@ -159,7 +157,9 @@ def start_run(
     if config is not None and not isinstance(config, dict):
         raise ValueError("config must be a JSON object (dict) or None")
     if status not in START_STATUSES:
-        raise ValueError(f"start status must be one of {START_STATUSES}, got {status!r}")
+        raise ValueError(
+            f"start status must be one of {START_STATUSES}, got {status!r}"
+        )
     ts = time.time() if ts is None else float(ts)
     cur = conn.execute(
         "INSERT INTO runs(name, config, status, created_ts) VALUES(?, ?, ?, ?)",
@@ -167,7 +167,9 @@ def start_run(
     )
     conn.commit()
     return _row_to_run(
-        conn.execute("SELECT * FROM runs WHERE id = ?", (int(cur.lastrowid),)).fetchone()
+        conn.execute(
+            "SELECT * FROM runs WHERE id = ?", (int(cur.lastrowid),)
+        ).fetchone()
     )
 
 
@@ -356,7 +358,6 @@ def compare_runs(
     all_keys = sorted({k for s in summaries.values() for k in s})
     keys: dict[str, Any] = {}
     for key in all_keys:
-
         # `key=key` binds this iteration's key at definition time. Every call below
         # happens inside this iteration, so late binding does not bite today -- but
         # it would the moment a caller deferred pick() (stored it, mapped it, made it

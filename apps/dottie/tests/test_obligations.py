@@ -14,9 +14,15 @@ which never touch the filesystem or a subprocess.
 
 import json
 
-from dottie.research.validate import (LEVELS, OBLIGATIONS, ValidationResult,
-                                      failed_obligations, format_obligations,
-                                      validate, validate_with_correction)
+from dottie.research.validate import (
+    LEVELS,
+    OBLIGATIONS,
+    ValidationResult,
+    failed_obligations,
+    format_obligations,
+    validate,
+    validate_with_correction,
+)
 
 
 def _by_id(obls):
@@ -76,10 +82,10 @@ def test_contract_reports_every_violated_obligation_and_clears_the_rest():
     assert not r.ok and r.level == "contract"
     st = _by_id(r.obligations())
     assert st["parses"] == "discharged"
-    assert st["block_signature"] == "failed"        # requires extra ['targets']
-    assert st["sandbox_policy"] == "failed"         # illegal import: os
-    assert st["module_skeleton"] == "discharged"    # class + forward exist
-    assert st["names_resolve"] == "unchecked"       # fail-fast never got there
+    assert st["block_signature"] == "failed"  # requires extra ['targets']
+    assert st["sandbox_policy"] == "failed"  # illegal import: os
+    assert st["module_skeleton"] == "discharged"  # class + forward exist
+    assert st["names_resolve"] == "unchecked"  # fail-fast never got there
     assert st["gradient_flow"] == "unchecked"
 
 
@@ -90,7 +96,8 @@ RANK_COLLAPSE = (
     "rank collapse: the output has the right shape but is CONSTANT along the "
     "hidden dimension (mean std across hidden = 0.0, input was 0.998). Every "
     "feature position holds the same value, so the block has erased the "
-    "residual stream it was handed")
+    "residual stream it was handed"
+)
 
 
 def test_post_forward_literal_discharges_everything_provably_before_it():
@@ -102,10 +109,16 @@ def test_post_forward_literal_discharges_everything_provably_before_it():
     r = ValidationResult(False, "dry_run", "fail", RANK_COLLAPSE, per)
     st = _by_id(r.obligations())
     assert st["rank_health"] == "failed"
-    for oid in ("constructible", "executes", "output_contract",
-                "shape_conservation", "finite_output", "non_degeneracy"):
+    for oid in (
+        "constructible",
+        "executes",
+        "output_contract",
+        "shape_conservation",
+        "finite_output",
+        "non_degeneracy",
+    ):
         assert st[oid] == "discharged", oid
-    assert st["param_capacity"] == "unchecked"      # checked AFTER rank health
+    assert st["param_capacity"] == "unchecked"  # checked AFTER rank health
     assert st["width_generalization"] == "unchecked"
     assert st["gradient_flow"] == "unchecked"
 
@@ -114,34 +127,39 @@ def test_raw_traceback_does_not_overclaim_stage_mates():
     """An einsum traceback attributes only `executes` (the honest fallback);
     `constructible` is NOT declared discharged, because a traceback proves
     nothing about where in the stage execution died."""
-    detail = ("Traceback (most recent call last):\n  ...\nRuntimeError: "
-              "einsum(): output subscript n does not appear in the equation "
-              "for any input operand")                       # real fragment
+    detail = (
+        "Traceback (most recent call last):\n  ...\nRuntimeError: "
+        "einsum(): output subscript n does not appear in the equation "
+        "for any input operand"
+    )  # real fragment
     per = _passing("syntax", "contract", "static")
     per["dry_run"] = {"status": "fail", "detail": detail}
-    st = _by_id(ValidationResult(False, "dry_run", "fail", detail, per)
-                .obligations())
+    st = _by_id(ValidationResult(False, "dry_run", "fail", detail, per).obligations())
     assert st["executes"] == "failed"
     assert st["constructible"] == "unchecked"
     assert st["shape_conservation"] == "unchecked"
 
 
 def test_ctor_missing_arg_attributes_constructible():
-    detail = ("TypeError: HierarchicalAttention.__init__() missing 1 required "
-              "positional argument: 'd_k'")                  # real fragment
+    detail = (
+        "TypeError: HierarchicalAttention.__init__() missing 1 required "
+        "positional argument: 'd_k'"
+    )  # real fragment
     assert failed_obligations("dry_run", detail) == ["constructible"]
 
 
 def test_residual_stream_failure_is_gradient_flow_with_dry_run_discharged():
     """The §5.3.R10 shape: passes every dry-run obligation, dies only on a
     grad-carrying non-leaf input ('NoneType' object has no attribute 'abs')."""
-    detail = ("fails when handed a REAL residual-stream activation ...\n"
-              "AttributeError: 'NoneType' object has no attribute 'abs'")
-    per = _passing("syntax", "contract", "static", "dry_run",
-                   "integration_width")
+    detail = (
+        "fails when handed a REAL residual-stream activation ...\n"
+        "AttributeError: 'NoneType' object has no attribute 'abs'"
+    )
+    per = _passing("syntax", "contract", "static", "dry_run", "integration_width")
     per["residual_stream"] = {"status": "fail", "detail": detail}
-    st = _by_id(ValidationResult(False, "residual_stream", "fail", detail, per)
-                .obligations())
+    st = _by_id(
+        ValidationResult(False, "residual_stream", "fail", detail, per).obligations()
+    )
     assert st["gradient_flow"] == "failed"
     assert st["rank_health"] == "discharged"
     assert st["width_generalization"] == "discharged"
@@ -149,11 +167,11 @@ def test_residual_stream_failure_is_gradient_flow_with_dry_run_discharged():
 
 def test_skipped_stage_reports_skipped_never_discharged():
     per = _passing("syntax", "contract", "static")
-    per["dry_run"] = {"status": "skipped",
-                      "detail": "torch not installed — CPU dry-run skipped "
-                                "(not a pass)"}              # validator-literal
-    r = ValidationResult(True, "dry_run", "skipped", per["dry_run"]["detail"],
-                         per)
+    per["dry_run"] = {
+        "status": "skipped",
+        "detail": "torch not installed — CPU dry-run skipped (not a pass)",
+    }  # validator-literal
+    r = ValidationResult(True, "dry_run", "skipped", per["dry_run"]["detail"], per)
     st = _by_id(r.obligations())
     assert st["parses"] == "discharged"
     assert st["shape_conservation"] == "skipped"
@@ -185,8 +203,7 @@ def test_as_feedback_names_the_obligation_and_keeps_the_hint():
     obligation ledger rides after it, naming what to discharge next."""
     per = _passing("syntax", "contract", "static")
     per["dry_run"] = {"status": "fail", "detail": RANK_COLLAPSE}
-    fb = ValidationResult(False, "dry_run", "fail", RANK_COLLAPSE,
-                          per).as_feedback()
+    fb = ValidationResult(False, "dry_run", "fail", RANK_COLLAPSE, per).as_feedback()
     assert fb.startswith("Validation failed at level 'dry_run'")
     assert "REPAIR HINT:" in fb and "CAPACITY REPAIR" in fb  # unchanged hint
     # 5 from syntax+contract+static, 6 provably clean before rank_health
@@ -197,10 +214,11 @@ def test_as_feedback_names_the_obligation_and_keeps_the_hint():
 
 
 def test_as_feedback_without_hint_still_names_the_obligation():
-    fb = ValidationResult(False, "syntax", "fail",
-                          "SyntaxError on line 3: bad").as_feedback()
-    assert "REPAIR HINT:" not in fb                 # unknown class: no hint...
-    assert "DISCHARGE NEXT -> parses:" in fb        # ...but a named obligation
+    fb = ValidationResult(
+        False, "syntax", "fail", "SyntaxError on line 3: bad"
+    ).as_feedback()
+    assert "REPAIR HINT:" not in fb  # unknown class: no hint...
+    assert "DISCHARGE NEXT -> parses:" in fb  # ...but a named obligation
 
 
 # ---- the discharge trace in validation.history -------------------------------
@@ -214,7 +232,7 @@ def test_correction_history_carries_the_obligation_discharge_trace():
 
     def corrector(code, feedback):
         seen_feedback.append(feedback)
-        return "x = 1\n"                            # parses; no class at all
+        return "x = 1\n"  # parses; no class at all
 
     outcome = validate_with_correction("def broken(:", corrector, max_retries=1)
     assert not outcome.ok and outcome.attempts == 1
@@ -222,6 +240,6 @@ def test_correction_history_carries_the_obligation_discharge_trace():
     h0, h1 = outcome.history
     assert _by_id(h0["obligations"])["parses"] == "failed"
     st1 = _by_id(h1["obligations"])
-    assert st1["parses"] == "discharged"            # obligation discharged...
-    assert st1["module_skeleton"] == "failed"       # ...next one now named
+    assert st1["parses"] == "discharged"  # obligation discharged...
+    assert st1["module_skeleton"] == "failed"  # ...next one now named
     assert json.loads(json.dumps(outcome.history))  # ledger-safe

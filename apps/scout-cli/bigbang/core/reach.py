@@ -73,14 +73,18 @@ def derive_tool_name(url: str) -> str:
 
 
 def _looks_like_openapi(body: Any) -> bool:
-    return isinstance(body, dict) and (
-        "openapi" in body or "swagger" in body
-    ) and isinstance(body.get("paths", {}), dict)
+    return (
+        isinstance(body, dict)
+        and ("openapi" in body or "swagger" in body)
+        and isinstance(body.get("paths", {}), dict)
+    )
 
 
 def _looks_like_graphql_introspection(body: Any) -> bool:
-    return isinstance(body, dict) and isinstance(body.get("data"), dict) and (
-        "__schema" in body["data"]
+    return (
+        isinstance(body, dict)
+        and isinstance(body.get("data"), dict)
+        and ("__schema" in body["data"])
     )
 
 
@@ -103,21 +107,36 @@ def classify(
     signals: list[str] = []
 
     if error:
-        return {"kind": "error", "confidence": 1.0, "signals": [f"transport:{error}"],
-                "detail": error}
+        return {
+            "kind": "error",
+            "confidence": 1.0,
+            "signals": [f"transport:{error}"],
+            "detail": error,
+        }
     if status is not None and status in (401, 403):
-        return {"kind": "auth", "confidence": 1.0,
-                "signals": [f"http:{status}"], "detail": "authentication required"}
+        return {
+            "kind": "auth",
+            "confidence": 1.0,
+            "signals": [f"http:{status}"],
+            "detail": "authentication required",
+        }
 
     if _looks_like_openapi(json_body):
         v = json_body.get("openapi") or json_body.get("swagger")
         n = len(json_body.get("paths", {}))
-        return {"kind": "openapi", "confidence": 1.0,
-                "signals": [f"openapi:{v}", f"paths:{n}"],
-                "detail": f"OpenAPI {v} with {n} paths"}
+        return {
+            "kind": "openapi",
+            "confidence": 1.0,
+            "signals": [f"openapi:{v}", f"paths:{n}"],
+            "detail": f"OpenAPI {v} with {n} paths",
+        }
     if _looks_like_graphql_introspection(json_body):
-        return {"kind": "graphql", "confidence": 0.9, "signals": ["graphql:__schema"],
-                "detail": "GraphQL endpoint (introspection responded)"}
+        return {
+            "kind": "graphql",
+            "confidence": 0.9,
+            "signals": ["graphql:__schema"],
+            "detail": "GraphQL endpoint (introspection responded)",
+        }
 
     # MCP servers answer JSON-RPC; a JSON-RPC envelope or an SSE stream at an
     # /mcp-ish path is the tell.
@@ -131,22 +150,42 @@ def classify(
             signals.append("sse")
         if path in MCP_WELL_KNOWN:
             signals.append(f"path:{path}")
-        return {"kind": "mcp", "confidence": conf, "signals": signals,
-                "detail": "likely MCP server"}
+        return {
+            "kind": "mcp",
+            "confidence": conf,
+            "signals": signals,
+            "detail": "likely MCP server",
+        }
 
     if "json" in ct or json_body is not None:
-        return {"kind": "json_api", "confidence": 0.7, "signals": [f"content-type:{ct or 'json'}"],
-                "detail": "JSON API (no self-describing spec at this URL)"}
+        return {
+            "kind": "json_api",
+            "confidence": 0.7,
+            "signals": [f"content-type:{ct or 'json'}"],
+            "detail": "JSON API (no self-describing spec at this URL)",
+        }
 
     body = body_text or ""
     if not body.strip():
-        return {"kind": "empty", "confidence": 0.6, "signals": [f"http:{status}"],
-                "detail": "reachable but empty/opaque body"}
+        return {
+            "kind": "empty",
+            "confidence": 0.6,
+            "signals": [f"http:{status}"],
+            "detail": "reachable but empty/opaque body",
+        }
     if "html" in ct or re.search(r"<html|<!doctype html", body[:512], re.I):
-        return {"kind": "html", "confidence": 0.8, "signals": ["html"],
-                "detail": "HTML page (scrapeable, not a structured API)"}
-    return {"kind": "empty", "confidence": 0.3, "signals": [f"content-type:{ct or 'unknown'}"],
-            "detail": "unrecognized body"}
+        return {
+            "kind": "html",
+            "confidence": 0.8,
+            "signals": ["html"],
+            "detail": "HTML page (scrapeable, not a structured API)",
+        }
+    return {
+        "kind": "empty",
+        "confidence": 0.3,
+        "signals": [f"content-type:{ct or 'unknown'}"],
+        "detail": "unrecognized body",
+    }
 
 
 def candidate_spec_urls(target: str) -> list[str]:
@@ -185,70 +224,86 @@ def plan_unblock(probe: dict[str, Any]) -> list[dict[str, str]]:
     steps: list[dict[str, str]] = []
 
     if probe.get("policy_denied"):
-        steps.append({
-            "blocker": "policy-denied",
-            "fix": f"scout reach allow {host}",
-            "why": f"{host} is not in the network allowlist (default-deny); "
-                   "allow it, then re-run the reach",
-        })
+        steps.append(
+            {
+                "blocker": "policy-denied",
+                "fix": f"scout reach allow {host}",
+                "why": f"{host} is not in the network allowlist (default-deny); "
+                "allow it, then re-run the reach",
+            }
+        )
         return steps  # nothing else is knowable until the call is permitted
 
     if kind == "auth":
         token_var = f"{name.upper()}_TOKEN"
-        steps.append({
-            "blocker": "auth-required",
-            "fix": f"scout secrets set {token_var} --stdin",
-            "why": f"target returned {probe.get('status')} — vault a credential as "
-                   f"{token_var}, then retry (scout sends matching *_TOKEN headers)",
-        })
-        steps.append({
-            "blocker": "auth-required",
-            "fix": f"scout reach {url} --register",
-            "why": "re-reach after the secret is set to complete registration",
-        })
+        steps.append(
+            {
+                "blocker": "auth-required",
+                "fix": f"scout secrets set {token_var} --stdin",
+                "why": f"target returned {probe.get('status')} — vault a credential as "
+                f"{token_var}, then retry (scout sends matching *_TOKEN headers)",
+            }
+        )
+        steps.append(
+            {
+                "blocker": "auth-required",
+                "fix": f"scout reach {url} --register",
+                "why": "re-reach after the secret is set to complete registration",
+            }
+        )
         return steps
 
     if kind in ("error", "empty") and probe.get("tried_well_known") is not True:
-        steps.append({
-            "blocker": "no-spec-at-url",
-            "fix": f"scout reach diagnose {url}",
-            "why": "no spec at the given URL — probe well-known OpenAPI/MCP "
-                   "locations before treating it as unreachable",
-        })
+        steps.append(
+            {
+                "blocker": "no-spec-at-url",
+                "fix": f"scout reach diagnose {url}",
+                "why": "no spec at the given URL — probe well-known OpenAPI/MCP "
+                "locations before treating it as unreachable",
+            }
+        )
         return steps
 
     if kind == "html":
-        steps.append({
-            "blocker": "unstructured-source",
-            "fix": f"scout forge new {name} --from-scrape {url}",
-            "why": "target is an HTML page, not an API — generate a scraper tool "
-                   "so the data becomes callable",
-        })
+        steps.append(
+            {
+                "blocker": "unstructured-source",
+                "fix": f"scout forge new {name} --from-scrape {url}",
+                "why": "target is an HTML page, not an API — generate a scraper tool "
+                "so the data becomes callable",
+            }
+        )
         return steps
 
     if kind == "json_api":
-        steps.append({
-            "blocker": "no-openapi-spec",
-            "fix": f"scout reach diagnose {url}",
-            "why": "responds with JSON but exposes no spec here — check well-known "
-                   "spec locations; if none, treat as a raw endpoint",
-        })
+        steps.append(
+            {
+                "blocker": "no-openapi-spec",
+                "fix": f"scout reach diagnose {url}",
+                "why": "responds with JSON but exposes no spec here — check well-known "
+                "spec locations; if none, treat as a raw endpoint",
+            }
+        )
         return steps
 
     if kind == "mcp":
-        steps.append({
-            "blocker": "mcp-not-registered",
-            "fix": f"scout forge from-mcp {name} {url}",
-            "why": "looks like an MCP server — generate a proxy plugin exposing "
-                   "its tools",
-        })
+        steps.append(
+            {
+                "blocker": "mcp-not-registered",
+                "fix": f"scout forge from-mcp {name} {url}",
+                "why": "looks like an MCP server — generate a proxy plugin exposing "
+                "its tools",
+            }
+        )
         return steps
 
     if kind == "openapi" and not probe.get("registered"):
-        steps.append({
-            "blocker": "not-registered",
-            "fix": f"scout reach {url} --register",
-            "why": "valid OpenAPI spec found — register it to make its operations "
-                   "callable via scout tools call",
-        })
+        steps.append(
+            {
+                "blocker": "not-registered",
+                "fix": f"scout reach {url} --register",
+                "why": "valid OpenAPI spec found — register it to make its operations "
+                "callable via scout tools call",
+            }
+        )
     return steps

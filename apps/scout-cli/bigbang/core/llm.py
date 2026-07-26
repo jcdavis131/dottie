@@ -356,8 +356,11 @@ def koboldcpp_available(base: str | None = None, timeout: float = 2.0) -> str | 
     """Return a reachable KoboldCpp OpenAI base (no trailing slash), or None.
     Never raises; honours KOBOLDCPP_BASE / OPENAI_BASE_URL env overrides."""
     env_base = os.environ.get("KOBOLDCPP_BASE") or os.environ.get("OPENAI_BASE_URL")
-    urls = ([base.rstrip("/")] if base else []) \
-        + ([env_base.rstrip("/")] if env_base else []) + KOBOLDCPP_URLS
+    urls = (
+        ([base.rstrip("/")] if base else [])
+        + ([env_base.rstrip("/")] if env_base else [])
+        + KOBOLDCPP_URLS
+    )
     client = _httpx_client(timeout=timeout)
     if client is None:
         return None
@@ -365,7 +368,9 @@ def koboldcpp_available(base: str | None = None, timeout: float = 2.0) -> str | 
         for b in urls:
             b = b.rstrip("/")
             host = urlparse(b).hostname or ""
-            if host not in ("localhost", "127.0.0.1", "::1", "") and not _is_resolvable(host, 0.8):
+            if host not in ("localhost", "127.0.0.1", "::1", "") and not _is_resolvable(
+                host, 0.8
+            ):
                 continue
             try:
                 r = client.get(f"{b}/v1/models")
@@ -397,7 +402,11 @@ def openai_chat(
     if client is None:
         return None
     try:
-        payload: dict[str, Any] = {"model": model, "messages": messages, "stream": False}
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+        }
         if max_tokens:
             payload["max_tokens"] = max_tokens
         if json_mode:
@@ -438,7 +447,11 @@ def _ollama_generate(
     if client is None:
         return None
     try:
-        payload: dict[str, Any] = {"model": model, "messages": messages, "stream": False}
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+        }
         if json_mode:
             payload["format"] = "json"
         r = client.post(f"{base.rstrip('/')}/api/chat", json=payload)
@@ -494,22 +507,37 @@ def chat_with_metrics(
     not detected per-request (it is a KoboldCpp startup flag)."""
     backend = (backend or "ollama").lower()
     meta: dict[str, Any] = {
-        "ok": False, "backend": backend, "model": model, "base": base,
-        "content": None, "completion_tokens": None, "elapsed_s": None,
-        "tok_per_s": None, "server_tok_per_s": None,
-        "context_shift": context_shift, "error": None,
+        "ok": False,
+        "backend": backend,
+        "model": model,
+        "base": base,
+        "content": None,
+        "completion_tokens": None,
+        "elapsed_s": None,
+        "tok_per_s": None,
+        "server_tok_per_s": None,
+        "context_shift": context_shift,
+        "error": None,
     }
     try:
         server_seconds: float | None = None
         if backend in ("kobold", "koboldcpp", "openai"):
             b = base or koboldcpp_available(timeout=timeout)
             if not b:
-                meta["error"] = "koboldcpp not reachable — launch it on :5001 or set KOBOLDCPP_BASE"
+                meta["error"] = (
+                    "koboldcpp not reachable — launch it on :5001 or set KOBOLDCPP_BASE"
+                )
                 return meta
             meta["base"] = b
             t0 = _clock()
-            res = openai_chat(model, messages, b, json_mode=json_mode,
-                              timeout=timeout, max_tokens=max_tokens)
+            res = openai_chat(
+                model,
+                messages,
+                b,
+                json_mode=json_mode,
+                timeout=timeout,
+                max_tokens=max_tokens,
+            )
             elapsed = _clock() - t0
         elif backend == "ollama":
             b = base or get_ollama_base(timeout=timeout)
@@ -518,7 +546,9 @@ def chat_with_metrics(
                 return meta
             meta["base"] = b
             t0 = _clock()
-            res = _ollama_generate(model, messages, b, json_mode=json_mode, timeout=timeout)
+            res = _ollama_generate(
+                model, messages, b, json_mode=json_mode, timeout=timeout
+            )
             elapsed = _clock() - t0
             server_seconds = res.get("server_seconds") if res else None
         else:

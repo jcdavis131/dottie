@@ -272,7 +272,9 @@ def index(
     ),
 ):
     """Index (or incrementally reindex) a corpus into the local FTS5 index."""
-    _check_fail_on(fail_on, "search index", "scout --json search index docs --fail-on warning")
+    _check_fail_on(
+        fail_on, "search index", "scout --json search index docs --fail-on warning"
+    )
     if mode not in search.REINDEX_MODES:
         fail_agent(
             f"--mode must be one of {'|'.join(search.REINDEX_MODES)}, got {mode!r}",
@@ -313,13 +315,16 @@ def index(
     diags = search.to_diagnostics(result)
     emit(
         ok(
-            {"db": str(path),
-             # what was ACTUALLY applied — provenance beats assuming the shell
-             # handed us the patterns we typed
-             "include": include or list(search.default_include()),
-             "exclude": list(exclude or []),
-             **result, "diagnostics": diags,
-             "summary": openswap.summarize(diags)},
+            {
+                "db": str(path),
+                # what was ACTUALLY applied — provenance beats assuming the shell
+                # handed us the patterns we typed
+                "include": include or list(search.default_include()),
+                "exclude": list(exclude or []),
+                **result,
+                "diagnostics": diags,
+                "summary": openswap.summarize(diags),
+            },
             command="search index",
             example='scout --json search query "your terms"',
             discover="scout search stats",
@@ -344,7 +349,7 @@ def index(
 def query(
     text: str = typer.Argument(
         ...,
-        help="FTS5 query: bare terms, \"a phrase\", term*, AND/OR/NOT, "
+        help='FTS5 query: bare terms, "a phrase", term*, AND/OR/NOT, '
         "path: term — or pass --literal to search the string itself",
     ),
     db: str | None = typer.Option(None, "--db", help="index path"),
@@ -357,10 +362,12 @@ def query(
         None,
         "--path",
         help="restrict to a glob (sqlite GLOB) — or, wildcard-free, to that "
-        'path/subtree: --path docs means docs and everything under it',
+        "path/subtree: --path docs means docs and everything under it",
     ),
     snippet_tokens: int = typer.Option(
-        search.DEFAULT_SNIPPET_TOKENS, "--snippet-tokens", help="snippet width in tokens"
+        search.DEFAULT_SNIPPET_TOKENS,
+        "--snippet-tokens",
+        help="snippet width in tokens",
     ),
     mark_open: str = typer.Option(
         search.MARK_OPEN, "--mark-open", help="text before each matched term"
@@ -372,13 +379,19 @@ def query(
         search.ELLIPSIS, "--ellipsis", help="marker for elided snippet text"
     ),
     path_weight: float = typer.Option(
-        search.DEFAULT_PATH_WEIGHT, "--path-weight", help="BM25 weight of the path column"
+        search.DEFAULT_PATH_WEIGHT,
+        "--path-weight",
+        help="BM25 weight of the path column",
     ),
     body_weight: float = typer.Option(
-        search.DEFAULT_BODY_WEIGHT, "--body-weight", help="BM25 weight of the body column"
+        search.DEFAULT_BODY_WEIGHT,
+        "--body-weight",
+        help="BM25 weight of the body column",
     ),
     fail_empty: bool = typer.Option(
-        False, "--fail-empty", help="exit 1 when nothing matched — the CI assertion hook"
+        False,
+        "--fail-empty",
+        help="exit 1 when nothing matched — the CI assertion hook",
     ),
 ):
     """Rank the index against a query: BM25 order + highlighted snippets."""
@@ -443,14 +456,20 @@ def stats(
     ),
 ):
     """Corpus rollup + freshness audit — read-only, no bodies read, no network."""
-    _check_fail_on(fail_on, "search stats", "scout --json search stats --fail-on warning")
+    _check_fail_on(
+        fail_on, "search stats", "scout --json search stats --fail-on warning"
+    )
     conn, path = _open_existing(db, "search stats")
     report = search.stats(conn, check=check, limit=limit)
     diags = search.to_diagnostics(report)
     emit(
         ok(
-            {"db": str(path), **report, "diagnostics": diags,
-             "summary": openswap.summarize(diags)},
+            {
+                "db": str(path),
+                **report,
+                "diagnostics": diags,
+                "summary": openswap.summarize(diags),
+            },
             command="search stats",
             example='scout --json search query "your terms"',
             discover="scout --json search index <root> --ext md",

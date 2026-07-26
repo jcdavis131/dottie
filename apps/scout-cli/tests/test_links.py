@@ -18,12 +18,19 @@ from bigbang.core import links, openswap, seo
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _row(url, *, status=200, depth=1, facts=None, redirects=None, error=None,
-         final_url=None):
+def _row(
+    url, *, status=200, depth=1, facts=None, redirects=None, error=None, final_url=None
+):
     """One seo.site_rows()-shaped row (the store contract this adapter rides)."""
-    return {"url": url, "status": status, "depth": depth, "facts": facts,
-            "redirects": redirects or [], "error": error,
-            "final_url": final_url or url}
+    return {
+        "url": url,
+        "status": status,
+        "depth": depth,
+        "facts": facts,
+        "redirects": redirects or [],
+        "error": error,
+        "final_url": final_url or url,
+    }
 
 
 def _facts(internal=(), external=()):
@@ -31,19 +38,29 @@ def _facts(internal=(), external=()):
 
 
 def _survey_rows():
-    root_links = ["https://s.t/ok", "https://s.t/gone", "https://s.t/moved",
-                  "https://s.t/later", "https://s.t/down"]
+    root_links = [
+        "https://s.t/ok",
+        "https://s.t/gone",
+        "https://s.t/moved",
+        "https://s.t/later",
+        "https://s.t/down",
+    ]
     return [
-        _row("https://s.t/", depth=0,
-             facts=_facts(internal=root_links,
-                          external=["https://ext.example/a"])),
-        _row("https://s.t/ok",
-             facts=_facts(internal=["https://s.t/"],
-                          external=["https://ext.example/a"])),
+        _row(
+            "https://s.t/",
+            depth=0,
+            facts=_facts(internal=root_links, external=["https://ext.example/a"]),
+        ),
+        _row(
+            "https://s.t/ok",
+            facts=_facts(internal=["https://s.t/"], external=["https://ext.example/a"]),
+        ),
         _row("https://s.t/gone", status=404),
-        _row("https://s.t/moved",
-             redirects=[{"code": 301, "to": "https://s.t/new"}],
-             final_url="https://s.t/new"),
+        _row(
+            "https://s.t/moved",
+            redirects=[{"code": 301, "to": "https://s.t/new"}],
+            final_url="https://s.t/new",
+        ),
         _row("https://s.t/down", status=None, error="TimeoutError: x"),
         _row("https://s.t/island", depth=2, facts=_facts()),
     ]
@@ -105,28 +122,39 @@ def test_link_survey_states_graph_and_orphans():
     assert survey["internal"]["https://s.t/later"]["detail"] == "pending"
     # facts-bearing pages are the graph nodes; adjacency is sorted
     assert set(survey["graph"]) == {
-        "https://s.t/", "https://s.t/ok", "https://s.t/island"
+        "https://s.t/",
+        "https://s.t/ok",
+        "https://s.t/island",
     }
     assert survey["graph"]["https://s.t/ok"] == ["https://s.t/"]
     # external refs aggregate across pages
     assert survey["external"]["https://ext.example/a"]["refs"] == [
-        "https://s.t/", "https://s.t/ok"
+        "https://s.t/",
+        "https://s.t/ok",
     ]
     # depth>0, zero inbound links -> orphan; the seed never is
     assert survey["orphans"] == ["https://s.t/island"]
 
 
 def test_survey_rides_the_real_seo_store():
-    page = ('<html><head><title>a fixture title long enough for the window'
-            '</title></head><body><a href="/missing">m</a></body></html>')
+    page = (
+        "<html><head><title>a fixture title long enough for the window"
+        '</title></head><body><a href="/missing">m</a></body></html>'
+    )
     fetch_pages = {"https://s.t/": page}
 
     def fetch(url):
         body = fetch_pages.get(url)
         status = 200 if body else 404
-        return {"status": status, "final_url": url, "redirects": [],
-                "content_type": "text/html", "headers": {},
-                "body": body or "nope", "error": None}
+        return {
+            "status": status,
+            "final_url": url,
+            "redirects": [],
+            "content_type": "text/html",
+            "headers": {},
+            "body": body or "nope",
+            "error": None,
+        }
 
     conn = seo.open_store(":memory:")
     seo.crawl(conn, "https://s.t/", fetch, ts=1.0)
@@ -140,19 +168,31 @@ def test_diagnostics_are_actionable_and_family_shaped():
         _survey_rows(), frontier={"https://s.t/later": "pending"}
     )
     ext = {
-        "https://ext.example/a": {"state": "broken", "status": 410,
-                                  "method": "GET", "detail": "http 410",
-                                  "attempts": 2},
-        "https://ext.example/b": {"state": "unverified", "status": None,
-                                  "method": None, "detail": "off", "attempts": 0},
+        "https://ext.example/a": {
+            "state": "broken",
+            "status": 410,
+            "method": "GET",
+            "detail": "http 410",
+            "attempts": 2,
+        },
+        "https://ext.example/b": {
+            "state": "unverified",
+            "status": None,
+            "method": None,
+            "detail": "off",
+            "attempts": 0,
+        },
     }
     diags = links.to_diagnostics(survey, ext)
     rules = {d["rule"] for d in diags}
     # ok/unverified stay counts, not noise
     assert rules == {
-        "links:internal-broken", "links:internal-redirect",
-        "links:internal-uncrawled", "links:internal-unreachable",
-        "links:external-broken", "links:orphan-page",
+        "links:internal-broken",
+        "links:internal-redirect",
+        "links:internal-uncrawled",
+        "links:internal-unreachable",
+        "links:external-broken",
+        "links:orphan-page",
     }
     by_rule = {d["rule"]: d for d in diags}
     assert by_rule["links:internal-broken"]["severity"] == "error"
@@ -162,12 +202,25 @@ def test_diagnostics_are_actionable_and_family_shaped():
         "https://ext.example/a http 410"
     )
     for d in diags:
-        assert set(d) == {"path", "line", "col", "rule", "severity", "message",
-                          "suggestion", "source"}
+        assert set(d) == {
+            "path",
+            "line",
+            "col",
+            "rule",
+            "severity",
+            "message",
+            "suggestion",
+            "source",
+        }
         assert d["severity"] in openswap.SEVERITIES
     counts = links.state_counts(survey, ext)
-    assert counts["internal"] == {"broken": 1, "ok": 2, "redirect": 1,
-                                  "unreachable": 1, "uncrawled": 1}
+    assert counts["internal"] == {
+        "broken": 1,
+        "ok": 2,
+        "redirect": 1,
+        "unreachable": 1,
+        "uncrawled": 1,
+    }
     assert counts["external"] == {"broken": 1, "unverified": 1}
 
 
@@ -176,71 +229,103 @@ def test_diagnostics_are_actionable_and_family_shaped():
 
 def test_verify_external_head_then_get_fallback():
     t = _FakeTime()
-    probe, calls = _fake_probe({
-        ("https://a.x/1", "HEAD"): [{"status": 405, "error": None}],
-        ("https://a.x/1", "GET"): [{"status": 200, "error": None}],
-        ("https://b.x/2", "HEAD"): [{"status": 200, "error": None}],
-        ("https://c.x/3", "HEAD"): [{"status": 404, "error": None}],
-        ("https://c.x/3", "GET"): [{"status": 404, "error": None}],
-    })
+    probe, calls = _fake_probe(
+        {
+            ("https://a.x/1", "HEAD"): [{"status": 405, "error": None}],
+            ("https://a.x/1", "GET"): [{"status": 200, "error": None}],
+            ("https://b.x/2", "HEAD"): [{"status": 200, "error": None}],
+            ("https://c.x/3", "HEAD"): [{"status": 404, "error": None}],
+            ("https://c.x/3", "GET"): [{"status": 404, "error": None}],
+        }
+    )
     out = links.verify_external(
-        ["https://a.x/1", "https://b.x/2", "https://c.x/3"], probe,
-        config=_cfg(per_domain_delay_s=0.0), sleep=t.sleep, clock=t.clock,
+        ["https://a.x/1", "https://b.x/2", "https://c.x/3"],
+        probe,
+        config=_cfg(per_domain_delay_s=0.0),
+        sleep=t.sleep,
+        clock=t.clock,
     )
     # HEAD lied (405) -> GET is the authority
-    assert out["https://a.x/1"] == {"state": "ok", "status": 200,
-                                    "method": "GET", "detail": None, "attempts": 2}
+    assert out["https://a.x/1"] == {
+        "state": "ok",
+        "status": 200,
+        "method": "GET",
+        "detail": None,
+        "attempts": 2,
+    }
     # a clean HEAD answer never spends a GET
     assert out["https://b.x/2"]["method"] == "HEAD"
     assert ("https://b.x/2", "GET") not in calls
     # a plain 4xx is an answer — no retries burned
-    assert out["https://c.x/3"] == {"state": "broken", "status": 404,
-                                    "method": "GET", "detail": "http 404",
-                                    "attempts": 2}
+    assert out["https://c.x/3"] == {
+        "state": "broken",
+        "status": 404,
+        "method": "GET",
+        "detail": "http 404",
+        "attempts": 2,
+    }
     assert t.sleeps == []
 
 
 def test_verify_external_retries_backoff_and_transport_errors():
     t = _FakeTime()
     boom = {"status": None, "error": "URLError: dns"}
-    probe, _calls = _fake_probe({
-        ("https://d.x/", "HEAD"): [{"status": 503, "error": None},
-                                   {"status": 200, "error": None}],
-        ("https://d.x/", "GET"): [{"status": 503, "error": None}],
-        ("https://e.x/", "HEAD"): [boom],
-        ("https://e.x/", "GET"): [boom],
-    })
+    probe, _calls = _fake_probe(
+        {
+            ("https://d.x/", "HEAD"): [
+                {"status": 503, "error": None},
+                {"status": 200, "error": None},
+            ],
+            ("https://d.x/", "GET"): [{"status": 503, "error": None}],
+            ("https://e.x/", "HEAD"): [boom],
+            ("https://e.x/", "GET"): [boom],
+        }
+    )
     out = links.verify_external(
-        ["https://d.x/", "https://e.x/"], probe,
-        config=_cfg(per_domain_delay_s=0.0, retry_attempts=2,
-                    retry_backoff_s=0.25),
-        sleep=t.sleep, clock=t.clock,
+        ["https://d.x/", "https://e.x/"],
+        probe,
+        config=_cfg(per_domain_delay_s=0.0, retry_attempts=2, retry_backoff_s=0.25),
+        sleep=t.sleep,
+        clock=t.clock,
     )
     # 503 retried with doubling backoff, then the 200 wins
     assert out["https://d.x/"]["state"] == "ok"
     assert out["https://d.x/"]["attempts"] == 3
     # transport failure exhausts retries -> unreachable, error class visible
-    assert out["https://e.x/"] == {"state": "unreachable", "status": None,
-                                   "method": "GET", "detail": "URLError: dns",
-                                   "attempts": 6}
+    assert out["https://e.x/"] == {
+        "state": "unreachable",
+        "status": None,
+        "method": "GET",
+        "detail": "URLError: dns",
+        "attempts": 6,
+    }
     assert t.sleeps == [0.25, 0.25, 0.5]
 
 
 def test_verify_external_allowlist_rate_limit_and_budget():
     t = _FakeTime()
     ok200 = {"status": 200, "error": None}
-    probe, calls = _fake_probe({
-        ("https://h.x/1", "HEAD"): [ok200],
-        ("https://h.x/2", "HEAD"): [ok200],
-        ("https://h.x/3", "HEAD"): [ok200],
-    })
+    probe, calls = _fake_probe(
+        {
+            ("https://h.x/1", "HEAD"): [ok200],
+            ("https://h.x/2", "HEAD"): [ok200],
+            ("https://h.x/3", "HEAD"): [ok200],
+        }
+    )
     out = links.verify_external(
-        ["https://cdn.trusted/lib.js", "https://sub.cdn.trusted/x",
-         "https://h.x/1", "https://h.x/2", "https://h.x/3"],
+        [
+            "https://cdn.trusted/lib.js",
+            "https://sub.cdn.trusted/x",
+            "https://h.x/1",
+            "https://h.x/2",
+            "https://h.x/3",
+        ],
         probe,
-        config=_cfg(external_allow=["cdn.trusted"], per_domain_delay_s=3.0,
-                    budget_s=2.0),
-        sleep=t.sleep, clock=t.clock,
+        config=_cfg(
+            external_allow=["cdn.trusted"], per_domain_delay_s=3.0, budget_s=2.0
+        ),
+        sleep=t.sleep,
+        clock=t.clock,
     )
     # exact host and dot-suffix both trust without a probe
     assert out["https://cdn.trusted/lib.js"]["state"] == "allowlisted"
@@ -296,8 +381,12 @@ def test_parse_doc_html_refs_and_ids():
     doc = links.parse_doc(html, ".html")
     assert doc["ids"] == {"top", "legacy"}
     targets = {(r["target"], r["tag"]) for r in doc["refs"]}
-    assert targets == {("page.html#sec", "a"), ("art.png", "img"),
-                       ("app.js", "script"), ("style.css", "link")}
+    assert targets == {
+        ("page.html#sec", "a"),
+        ("art.png", "img"),
+        ("app.js", "script"),
+        ("style.css", "link"),
+    }
     img = next(r for r in doc["refs"] if r["tag"] == "img")
     assert img["line"] == 2 and img["col"] >= 1
 
@@ -349,29 +438,47 @@ def test_check_files_docs_tree(tmp_path):
     frag_msgs = sorted(d["message"] for d in by_rule["links:fragment-missing"])
     assert len(frag_msgs) == 2  # cross-file #zzz and same-file #zzz-local
     assert any("#zzz not in b.md" in m for m in frag_msgs)
-    assert stats == {"files": 1, "external_refs": 1, "skipped_schemes": 1,
-                     "root_relative_skipped": 1, "checked_refs": 6}
+    assert stats == {
+        "files": 1,
+        "external_refs": 1,
+        "skipped_schemes": 1,
+        "root_relative_skipped": 1,
+        "checked_refs": 6,
+    }
     # with --root the root-absolute ref resolves and passes
     diags2, stats2 = links.check_files([a], root=tmp_path)
     assert stats2["root_relative_skipped"] == 0
-    assert {d["rule"] for d in diags2} == {"links:file-missing",
-                                           "links:fragment-missing"}
+    assert {d["rule"] for d in diags2} == {
+        "links:file-missing",
+        "links:fragment-missing",
+    }
     for d in diags2:
-        assert set(d) == {"path", "line", "col", "rule", "severity", "message",
-                          "suggestion", "source"}
+        assert set(d) == {
+            "path",
+            "line",
+            "col",
+            "rule",
+            "severity",
+            "message",
+            "suggestion",
+            "source",
+        }
 
 
 # ---- the diffable status store ----------------------------------------------
 
 
 def _mini_survey(internal, external=None):
-    return {"internal": internal, "external": external or {}, "graph": {},
-            "orphans": []}
+    return {
+        "internal": internal,
+        "external": external or {},
+        "graph": {},
+        "orphans": [],
+    }
 
 
 def _rec(state, refs=("https://s.t/",), status=None, detail=None):
-    return {"state": state, "status": status, "detail": detail,
-            "refs": list(refs)}
+    return {"state": state, "status": status, "detail": detail, "refs": list(refs)}
 
 
 def test_record_run_and_diff_runs():
@@ -379,20 +486,32 @@ def test_record_run_and_diff_runs():
     with pytest.raises(ValueError):
         links.diff_runs(conn, "https://s.t/")
     run1 = links.record_run(
-        conn, "https://s.t/",
+        conn,
+        "https://s.t/",
         _mini_survey(
             {"u1": _rec("ok", status=200), "u2": _rec("broken", detail="http 404")},
             {"e1": _rec("?")},
         ),
-        {"e1": {"state": "unreachable", "status": None, "method": "GET",
-                "detail": "URLError: dns", "attempts": 6}},
+        {
+            "e1": {
+                "state": "unreachable",
+                "status": None,
+                "method": "GET",
+                "detail": "URLError: dns",
+                "attempts": 6,
+            }
+        },
         ts=1.0,
     )
     run2 = links.record_run(
-        conn, "https://s.t/",
+        conn,
+        "https://s.t/",
         _mini_survey(
-            {"u1": _rec("broken", detail="http 500"), "u2": _rec("ok", status=200),
-             "u3": _rec("broken", detail="http 404")},
+            {
+                "u1": _rec("broken", detail="http 500"),
+                "u2": _rec("ok", status=200),
+                "u3": _rec("broken", detail="http 404"),
+            },
         ),
         ts=2.0,
     )

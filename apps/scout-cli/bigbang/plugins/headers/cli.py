@@ -412,8 +412,12 @@ def scan(
         ok(
             _report(
                 res["results"],
-                extra={"db": str(path) if path else None, "recorded": record,
-                       "probed_dirs": dirs, "delay_s": max(delay, 0.0)},
+                extra={
+                    "db": str(path) if path else None,
+                    "recorded": record,
+                    "probed_dirs": dirs,
+                    "delay_s": max(delay, 0.0),
+                },
             ),
             command="headers scan",
             example="scout --json headers status",
@@ -484,7 +488,8 @@ def audit_cmd(
                 },
             ),
             command="headers audit",
-            example="scout --json headers scan " + (site if named else f"--url {start}"),
+            example="scout --json headers scan "
+            + (site if named else f"--url {start}"),
             discover="scout headers status",
         ),
         command="headers audit",

@@ -15,10 +15,18 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
-from dottie.policy import OllamaPolicy, DottiePolicyUnavailable
-from dottie.research import evaluate, ideation, implementation, logger, paths, prompts, train
+from dottie.policy import DottiePolicyUnavailable, OllamaPolicy
+from dottie.research import (
+    evaluate,
+    ideation,
+    implementation,
+    logger,
+    paths,
+    prompts,
+    train,
+)
 from dottie.research.ledger import Baseline, Ledger
 
 
@@ -30,7 +38,7 @@ def _promotions_root(args) -> Path:
     return paths.workspace_root(args.data_dir).parent / "promotions"
 
 
-def _evaluate(led: Ledger, args) -> Optional[Dict[str, Any]]:
+def _evaluate(led: Ledger, args) -> dict[str, Any] | None:
     """run_evaluation with the REAL A/B runner wired in.
 
     The wiring lives here, not as a library default, on purpose: an unwired
@@ -39,8 +47,11 @@ def _evaluate(led: Ledger, args) -> Optional[Dict[str, Any]]:
     training runs hand it the subprocess runner. On a box that cannot train (no
     torch/GPU) the run fails and the gate refuses with that reason — demanded evidence,
     never assumed."""
-    return evaluate.run_evaluation(led, ab_runner=evaluate.subprocess_ab_runner,
-                                   promotions_root=_promotions_root(args))
+    return evaluate.run_evaluation(
+        led,
+        ab_runner=evaluate.subprocess_ab_runner,
+        promotions_root=_promotions_root(args),
+    )
 
 
 def _emit(obj: Any) -> None:
@@ -50,35 +61,56 @@ def _emit(obj: Any) -> None:
 def _refresh_status(led: Ledger, args) -> None:
     try:
         logger.write_status(led, data_dir=args.data_dir)
-    except Exception:  # status is a convenience mirror; never let it mask the real result
+    except (
+        Exception
+    ):  # status is a convenience mirror; never let it mask the real result
         pass
 
 
 def cmd_seed_baseline(args) -> int:
     led = _ledger(args)
-    b = Baseline(metric_name=args.metric, metric_value=args.value,
-                 higher_is_better=args.higher_is_better, architecture=args.architecture,
-                 experiment_id=None, updated_ts=__import__("time").time(), notes=args.notes)
+    b = Baseline(
+        metric_name=args.metric,
+        metric_value=args.value,
+        higher_is_better=args.higher_is_better,
+        architecture=args.architecture,
+        experiment_id=None,
+        updated_ts=__import__("time").time(),
+        notes=args.notes,
+    )
     eff = led.seed_baseline(b, overwrite=args.overwrite)
     _refresh_status(led, args)
-    _emit({"baseline": {"metric_name": eff.metric_name, "metric_value": eff.metric_value,
-                        "higher_is_better": eff.higher_is_better,
-                        "architecture": eff.architecture, "notes": eff.notes}})
+    _emit(
+        {
+            "baseline": {
+                "metric_name": eff.metric_name,
+                "metric_value": eff.metric_value,
+                "higher_is_better": eff.higher_is_better,
+                "architecture": eff.architecture,
+                "notes": eff.notes,
+            }
+        }
+    )
     return 0
 
 
 def _policy(args, *, temperature: float = prompts.IMPLEMENTATION_TEMPERATURE):
     """Research workers get a plain JSON-completion callable, not the CodeAct agent protocol."""
     pol = OllamaPolicy()  # reads DOTTIE_OLLAMA_URL / DOTTIE_OLLAMA_MODEL from the env
-    return lambda prompt: pol.complete(prompt, system=prompts.RESEARCH_SYSTEM_PROMPT,
-                                       temperature=temperature)
+    return lambda prompt: pol.complete(
+        prompt, system=prompts.RESEARCH_SYSTEM_PROMPT, temperature=temperature
+    )
 
 
 def cmd_ideate(args) -> int:
     led = _ledger(args)
     try:
-        out = ideation.run_ideation(led, _policy(args, temperature=prompts.IDEATION_TEMPERATURE),
-                                    bottleneck=args.bottleneck, n_ideas=args.n)
+        out = ideation.run_ideation(
+            led,
+            _policy(args, temperature=prompts.IDEATION_TEMPERATURE),
+            bottleneck=args.bottleneck,
+            n_ideas=args.n,
+        )
     except DottiePolicyUnavailable as e:
         _emit({"error": "ollama_unavailable", "detail": str(e)})
         return 3
@@ -93,9 +125,12 @@ def cmd_ideate(args) -> int:
 def cmd_implement(args) -> int:
     led = _ledger(args)
     try:
-        out = implementation.run_implementation(led, _policy(args),
-                                                workspace_root=paths.workspace_root(args.data_dir),
-                                                max_retries=args.max_retries)
+        out = implementation.run_implementation(
+            led,
+            _policy(args),
+            workspace_root=paths.workspace_root(args.data_dir),
+            max_retries=args.max_retries,
+        )
     except DottiePolicyUnavailable as e:
         _emit({"error": "ollama_unavailable", "detail": str(e)})
         return 3
@@ -111,13 +146,14 @@ def _trainer(args):
     """None -> the default proxy micro-benchmark; 'factory' -> the real-Ava factory trainer."""
     if getattr(args, "trainer", "proxy") == "factory":
         from dottie.research.factory_trainer import factory_nano_trainer
+
         return factory_nano_trainer
     return None
 
 
 def cmd_train(args) -> int:
     led = _ledger(args)
-    cfg: Dict[str, Any] = {"steps": args.steps}
+    cfg: dict[str, Any] = {"steps": args.steps}
     if getattr(args, "device", None):
         cfg["device"] = args.device
     if args.seeds:
@@ -142,12 +178,16 @@ def cmd_calibrate_baseline(args) -> int:
     is not the baseline; it is one draw from it. Recording the cross-seed SEM makes the very
     next candidate get an honest two-sample test."""
     import statistics
+
     from dottie.research.factory_trainer import FACTORY_METRIC, run_baseline_calibration
+
     led = _ledger(args)
     try:
         seeds = [int(s) for s in str(args.seeds).split(",") if s.strip() != ""]
     except ValueError:
-        _emit({"error": "bad_seeds", "detail": f"could not parse --seeds {args.seeds!r}"})
+        _emit(
+            {"error": "bad_seeds", "detail": f"could not parse --seeds {args.seeds!r}"}
+        )
         return 2
     if not seeds:
         _emit({"error": "bad_seeds", "detail": "--seeds resolved to no seeds"})
@@ -167,28 +207,56 @@ def cmd_calibrate_baseline(args) -> int:
     mean = round(statistics.fmean(values), 5)
     # Cross-seed SEM — spread of the RUNS, not batches within one run. None at n=1, which is
     # honest: one seed genuinely has no spread, and inventing one would be the R93 mistake.
-    sem = round(statistics.stdev(values) / len(values) ** 0.5, 6) if len(values) > 1 else None
+    sem = (
+        round(statistics.stdev(values) / len(values) ** 0.5, 6)
+        if len(values) > 1
+        else None
+    )
     m0 = runs[0]
-    b = Baseline(metric_name=FACTORY_METRIC, metric_value=mean,
-                 higher_is_better=False, architecture=m0["preset"],
-                 experiment_id=None, updated_ts=__import__("time").time(),
-                 notes=(f"measured baseline calibration: steps={m0['steps']} seq={m0['seq_len']} "
-                        f"batch={m0['batch']} lr={m0['lr']} device={m0['device']} "
-                        f"seeds={seeds} per_seed={[round(v, 5) for v in values]}"),
-                 metric_sem=sem, metric_sem_n=len(values),
-                 # structured copy of the notes' per_seed: the evaluator pairs against THIS
-                 per_seed=[round(v, 5) for v in values])
+    b = Baseline(
+        metric_name=FACTORY_METRIC,
+        metric_value=mean,
+        higher_is_better=False,
+        architecture=m0["preset"],
+        experiment_id=None,
+        updated_ts=__import__("time").time(),
+        notes=(
+            f"measured baseline calibration: steps={m0['steps']} seq={m0['seq_len']} "
+            f"batch={m0['batch']} lr={m0['lr']} device={m0['device']} "
+            f"seeds={seeds} per_seed={[round(v, 5) for v in values]}"
+        ),
+        metric_sem=sem,
+        metric_sem_n=len(values),
+        # structured copy of the notes' per_seed: the evaluator pairs against THIS
+        per_seed=[round(v, 5) for v in values],
+    )
     eff = led.seed_baseline(b, overwrite=args.overwrite)
     _refresh_status(led, args)
-    _emit({"measured": {"seeds": seeds, "per_seed": [round(v, 5) for v in values],
-                        "mean": mean, "cross_seed_sem": sem, "n": len(values),
-                        "steps": m0["steps"]},
-           "baseline": {"metric_name": eff.metric_name, "metric_value": eff.metric_value,
-                        "architecture": eff.architecture, "notes": eff.notes,
-                        "metric_sem": eff.metric_sem, "metric_sem_n": eff.metric_sem_n},
-           "note": ("baseline updated from this real cross-seed measurement" if args.overwrite
-                    or eff.metric_value == mean
-                    else "existing baseline kept (pass --overwrite to replace)")})
+    _emit(
+        {
+            "measured": {
+                "seeds": seeds,
+                "per_seed": [round(v, 5) for v in values],
+                "mean": mean,
+                "cross_seed_sem": sem,
+                "n": len(values),
+                "steps": m0["steps"],
+            },
+            "baseline": {
+                "metric_name": eff.metric_name,
+                "metric_value": eff.metric_value,
+                "architecture": eff.architecture,
+                "notes": eff.notes,
+                "metric_sem": eff.metric_sem,
+                "metric_sem_n": eff.metric_sem_n,
+            },
+            "note": (
+                "baseline updated from this real cross-seed measurement"
+                if args.overwrite or eff.metric_value == mean
+                else "existing baseline kept (pass --overwrite to replace)"
+            ),
+        }
+    )
     return 0
 
 
@@ -206,20 +274,26 @@ def cmd_evaluate(args) -> int:
 def cmd_loop(args) -> int:
     """One full pass: ideate -> implement -> train -> evaluate. Ollama gaps degrade honestly."""
     led = _ledger(args)
-    steps: Dict[str, Any] = {}
+    steps: dict[str, Any] = {}
     try:
         steps["ideate"] = ideation.run_ideation(
-            led, _policy(args, temperature=prompts.IDEATION_TEMPERATURE),
-            bottleneck=args.bottleneck, n_ideas=args.n)
+            led,
+            _policy(args, temperature=prompts.IDEATION_TEMPERATURE),
+            bottleneck=args.bottleneck,
+            n_ideas=args.n,
+        )
     except (DottiePolicyUnavailable, ValueError) as e:
         steps["ideate"] = {"skipped": str(e)}
     try:
         steps["implement"] = implementation.run_implementation(
-            led, _policy(args), workspace_root=paths.workspace_root(args.data_dir),
-            max_retries=args.max_retries)
+            led,
+            _policy(args),
+            workspace_root=paths.workspace_root(args.data_dir),
+            max_retries=args.max_retries,
+        )
     except DottiePolicyUnavailable as e:
         steps["implement"] = {"skipped": str(e)}
-    tcfg: Dict[str, Any] = {"steps": args.steps}
+    tcfg: dict[str, Any] = {"steps": args.steps}
     if getattr(args, "device", None):
         tcfg["device"] = args.device
     steps["train"] = train.run_training(led, trainer=_trainer(args), config=tcfg)
@@ -231,10 +305,13 @@ def cmd_loop(args) -> int:
 
 def cmd_promote(args) -> int:
     from dottie.research import promote
+
     led = _ledger(args)
     out = promote.build_pending_promotions(
-        led, out_root=_promotions_root(args),
-        rebuild=bool(getattr(args, "rebuild", False)))
+        led,
+        out_root=_promotions_root(args),
+        rebuild=bool(getattr(args, "rebuild", False)),
+    )
     _emit(out)
     return 0
 
@@ -247,8 +324,14 @@ def cmd_status(args) -> int:
 
 # --------------------------------------------------------------------------- continuous runner
 
-def _choose_action(counts: Dict[str, int], *, now: float, last_ideate_ts: float,
-                   ideate_cooldown_s: float) -> str:
+
+def _choose_action(
+    counts: dict[str, int],
+    *,
+    now: float,
+    last_ideate_ts: float,
+    ideate_cooldown_s: float,
+) -> str:
     """Pure stage-selection policy for the continuous runner (testable without
     Ollama/GPU). Drain order: evaluate (instant, finalizes verdicts) -> train
     (~seconds on GPU) -> implement (Ollama minutes) -> ideate (only on an empty
@@ -264,7 +347,7 @@ def _choose_action(counts: Dict[str, int], *, now: float, last_ideate_ts: float,
     return "idle"
 
 
-def _boot_provenance() -> Dict[str, Any]:
+def _boot_provenance() -> dict[str, Any]:
     """What code is actually running, recorded at start.
 
     This daemon never live-reloads: a module edited while it runs takes effect only at
@@ -277,13 +360,20 @@ def _boot_provenance() -> Dict[str, Any]:
     against the log instead of reconstructed from process tables."""
     import hashlib
     import subprocess
-    info: Dict[str, Any] = {}
+
+    info: dict[str, Any] = {}
     try:
-        info["git_sha"] = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True,
-            timeout=10, cwd=str(Path(__file__).resolve().parent),
-        ).stdout.strip() or None
-    except Exception:                                  # git absent / not a checkout
+        info["git_sha"] = (
+            subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                cwd=str(Path(__file__).resolve().parent),
+            ).stdout.strip()
+            or None
+        )
+    except Exception:  # git absent / not a checkout
         info["git_sha"] = None
     try:
         src = Path(prompts.__file__).read_bytes()
@@ -306,8 +396,8 @@ _MIN_FREE_MB_DEFAULT = 1200
 _LLM_ACTIONS = frozenset({"ideate", "implement"})
 
 
-def _available_mb() -> Optional[int]:
-    """Physical RAM available right now, or None if it cannot be determined.
+def _available_mb() -> int | None:
+    r"""Physical RAM available right now, or None if it cannot be determined.
 
     None means UNKNOWN, and the caller proceeds — a guard that blocks on an unreadable
     reading would be worse than no guard. psutil is not installed on this box, so the
@@ -315,7 +405,8 @@ def _available_mb() -> Optional[int]:
     `\Memory\Available MBytes`, which is the counter that actually reflects what a new
     allocation can get; `FreePhysicalMemory` excludes standby and misleads)."""
     try:
-        import psutil                                  # optional, not a dependency
+        import psutil  # optional, not a dependency
+
         return int(psutil.virtual_memory().available / 1024 / 1024)
     except Exception:
         pass
@@ -323,13 +414,17 @@ def _available_mb() -> Optional[int]:
         import ctypes
 
         class _MS(ctypes.Structure):
-            _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
-                        ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
-                        ("ullTotalPageFile", ctypes.c_ulonglong),
-                        ("ullAvailPageFile", ctypes.c_ulonglong),
-                        ("ullTotalVirtual", ctypes.c_ulonglong),
-                        ("ullAvailVirtual", ctypes.c_ulonglong),
-                        ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+            _fields_ = [
+                ("dwLength", ctypes.c_ulong),
+                ("dwMemoryLoad", ctypes.c_ulong),
+                ("ullTotalPhys", ctypes.c_ulonglong),
+                ("ullAvailPhys", ctypes.c_ulonglong),
+                ("ullTotalPageFile", ctypes.c_ulonglong),
+                ("ullAvailPageFile", ctypes.c_ulonglong),
+                ("ullTotalVirtual", ctypes.c_ulonglong),
+                ("ullAvailVirtual", ctypes.c_ulonglong),
+                ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+            ]
 
         m = _MS()
         m.dwLength = ctypes.sizeof(_MS)
@@ -340,7 +435,7 @@ def _available_mb() -> Optional[int]:
         return None
 
 
-def _model_load_cost_mb() -> tuple[Optional[int], Optional[str]]:
+def _model_load_cost_mb() -> tuple[int | None, str | None]:
     """``(MB an LLM stage will ADD, model name)`` — ``(None, …)`` when it cannot be known.
 
     Returns ``0`` when the configured model is already resident, because Ollama reuses it and
@@ -359,7 +454,7 @@ def _model_load_cost_mb() -> tuple[Optional[int], Optional[str]]:
     try:
         import httpx
 
-        pol = OllamaPolicy()                        # constructor is pure: env only, no I/O
+        pol = OllamaPolicy()  # constructor is pure: env only, no I/O
         want = pol.model
         timeout = httpx.Timeout(connect=2.0, read=3.0, write=3.0, pool=2.0)
         with httpx.Client(timeout=timeout) as client:
@@ -372,12 +467,12 @@ def _model_load_cost_mb() -> tuple[Optional[int], Optional[str]]:
                 if want in (m.get("name"), m.get("model")):
                     size = int(m.get("size") or 0)
                     return (int(size / 1024 / 1024) or None), want
-        return None, want                           # model not pulled; `ollama pull` will say so
+        return None, want  # model not pulled; `ollama pull` will say so
     except Exception:
         return None, None
 
 
-def _memory_refusal(action: str) -> Optional[Dict[str, Any]]:
+def _memory_refusal(action: str) -> dict[str, Any] | None:
     """A refusal record when RAM is too low to start ``action``, else None.
 
     Measured 2026-07-20 (TODOS 5.3.R51): the daemon died mid-`implement` with **110 MB**
@@ -408,12 +503,19 @@ def _memory_refusal(action: str) -> Optional[Dict[str, Any]]:
             required = floor + model_mb
     if avail >= required:
         return None
-    rec = {"error": "insufficient_memory", "action": action,
-           "available_mb": avail, "required_mb": required, "floor_mb": floor,
-           "detail": (f"refusing to start '{action}': {avail} MB free, need {required} MB. "
-                      "A torch stage here would be OOM-killed mid-run with no traceback "
-                      "(see TODOS 5.3.R51). Free memory or lower "
-                      "DOTTIE_RESEARCH_MIN_FREE_MB.")}
+    rec = {
+        "error": "insufficient_memory",
+        "action": action,
+        "available_mb": avail,
+        "required_mb": required,
+        "floor_mb": floor,
+        "detail": (
+            f"refusing to start '{action}': {avail} MB free, need {required} MB. "
+            "A torch stage here would be OOM-killed mid-run with no traceback "
+            "(see TODOS 5.3.R51). Free memory or lower "
+            "DOTTIE_RESEARCH_MIN_FREE_MB."
+        ),
+    }
     if model_mb:
         rec["model_load_mb"] = model_mb
         rec["model"] = model
@@ -422,7 +524,8 @@ def _memory_refusal(action: str) -> Optional[Dict[str, Any]]:
             f"({floor} MB headroom + {model_mb} MB to load '{model}', which is not resident "
             "and goes to SYSTEM RAM at NUM_GPU=0). Loading it here would run the box to zero "
             "and take the WSL fleet with it (TODOS 5.3.R77). Free memory, or pre-load the "
-            "model while the box is quiet.")
+            "model while the box is quiet."
+        )
     return rec
 
 
@@ -432,11 +535,21 @@ def cmd_run(args) -> int:
     ideation) back off exponentially instead of spinning; five CONSECUTIVE
     unexpected errors exit non-zero so the scheduler heartbeat can restart clean."""
     import time
+
     led = _ledger(args)
-    print(json.dumps({"ts": time.time(), "action": "boot", "pid": os.getpid(),
-                      "trainer": getattr(args, "trainer", None),
-                      "max_retries": getattr(args, "max_retries", None),
-                      **_boot_provenance()}), flush=True)
+    print(
+        json.dumps(
+            {
+                "ts": time.time(),
+                "action": "boot",
+                "pid": os.getpid(),
+                "trainer": getattr(args, "trainer", None),
+                "max_retries": getattr(args, "max_retries", None),
+                **_boot_provenance(),
+            }
+        ),
+        flush=True,
+    )
     last_ideate = 0.0
     backoff = float(args.idle_seconds)
     consecutive_errors = 0
@@ -444,9 +557,13 @@ def cmd_run(args) -> int:
     idle_passes = 0
     while args.max_actions == 0 or actions < args.max_actions:
         actions += 1
-        action = _choose_action(led.counts(), now=time.time(), last_ideate_ts=last_ideate,
-                                ideate_cooldown_s=args.ideate_cooldown)
-        rec: Dict[str, Any] = {"ts": time.time(), "action": action}
+        action = _choose_action(
+            led.counts(),
+            now=time.time(),
+            last_ideate_ts=last_ideate,
+            ideate_cooldown_s=args.ideate_cooldown,
+        )
+        rec: dict[str, Any] = {"ts": time.time(), "action": action}
         try:
             if action == "idle":
                 # Heartbeat every ~5 min of idling. Without this an idle daemon is
@@ -455,9 +572,17 @@ def cmd_run(args) -> int:
                 # stdout was never the problem, every print already flushes.)
                 idle_passes += 1
                 if idle_passes % max(1, int(300 / max(args.idle_seconds, 1))) == 0:
-                    print(json.dumps({"ts": time.time(), "action": "idle",
-                                      "idle_s": round(idle_passes * args.idle_seconds),
-                                      "counts": led.counts()}), flush=True)
+                    print(
+                        json.dumps(
+                            {
+                                "ts": time.time(),
+                                "action": "idle",
+                                "idle_s": round(idle_passes * args.idle_seconds),
+                                "counts": led.counts(),
+                            }
+                        ),
+                        flush=True,
+                    )
                 time.sleep(float(args.idle_seconds))
                 continue
             idle_passes = 0
@@ -474,8 +599,10 @@ def cmd_run(args) -> int:
             # A start line makes a BLOCKED action visible: a "start" with no matching
             # completion is the signature of the stall this loop hit tonight (an Ollama
             # generate that never returned inside the 1800 s read timeout).
-            print(json.dumps({"ts": time.time(), "action": action, "phase": "start"}),
-                  flush=True)
+            print(
+                json.dumps({"ts": time.time(), "action": action, "phase": "start"}),
+                flush=True,
+            )
             if action == "evaluate":
                 # _evaluate wires the subprocess ab_runner: a within-run-only "win" now
                 # auto-runs its bundle's ab_nano.py right here, and refuses on a loss or
@@ -483,25 +610,38 @@ def cmd_run(args) -> int:
                 rec["result"] = _evaluate(led, args)
                 if rec["result"] and rec["result"].get("state") == "sota":
                     from dottie.research import promote
+
                     rec["promotion"] = promote.build_promotion(
-                        led, rec["result"]["experiment"],
-                        out_root=_promotions_root(args))
+                        led,
+                        rec["result"]["experiment"],
+                        out_root=_promotions_root(args),
+                    )
             elif action == "train":
-                tcfg: Dict[str, Any] = {"steps": args.steps}
+                tcfg: dict[str, Any] = {"steps": args.steps}
                 if getattr(args, "device", None):
                     tcfg["device"] = args.device
                 if getattr(args, "seeds", ""):
-                    tcfg["seeds"] = [int(s) for s in str(args.seeds).split(",") if s.strip() != ""]
-                rec["result"] = train.run_training(led, trainer=_trainer(args), config=tcfg)
+                    tcfg["seeds"] = [
+                        int(s) for s in str(args.seeds).split(",") if s.strip() != ""
+                    ]
+                rec["result"] = train.run_training(
+                    led, trainer=_trainer(args), config=tcfg
+                )
             elif action == "implement":
                 rec["result"] = implementation.run_implementation(
-                    led, _policy(args), workspace_root=paths.workspace_root(args.data_dir),
-                    max_retries=args.max_retries)
+                    led,
+                    _policy(args),
+                    workspace_root=paths.workspace_root(args.data_dir),
+                    max_retries=args.max_retries,
+                )
             else:  # ideate
                 last_ideate = time.time()
                 rec["result"] = ideation.run_ideation(
-                    led, _policy(args, temperature=prompts.IDEATION_TEMPERATURE),
-                    bottleneck=args.bottleneck, n_ideas=args.n)
+                    led,
+                    _policy(args, temperature=prompts.IDEATION_TEMPERATURE),
+                    bottleneck=args.bottleneck,
+                    n_ideas=args.n,
+                )
             consecutive_errors = 0
             backoff = float(args.idle_seconds)
             _refresh_status(led, args)
@@ -522,8 +662,15 @@ def cmd_run(args) -> int:
             rec["error"] = f"{type(e).__name__}: {e}"[:300]
             print(json.dumps(rec, default=str), flush=True)
             if consecutive_errors >= 5:
-                print(json.dumps({"fatal": "5 consecutive unexpected errors — exiting "
-                                           "for a clean scheduler restart"}), flush=True)
+                print(
+                    json.dumps(
+                        {
+                            "fatal": "5 consecutive unexpected errors — exiting "
+                            "for a clean scheduler restart"
+                        }
+                    ),
+                    flush=True,
+                )
                 return 5
             time.sleep(backoff)
             backoff = min(backoff * 2, 900.0)
@@ -532,7 +679,9 @@ def cmd_run(args) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="python -m dottie.research", description=__doc__)
-    p.add_argument("--data-dir", default=None, help="Dottie data dir (default: DOTTIE_DATA_DIR)")
+    p.add_argument(
+        "--data-dir", default=None, help="Dottie data dir (default: DOTTIE_DATA_DIR)"
+    )
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sb = sub.add_parser("seed-baseline", help="install/overwrite the global baseline")
@@ -550,8 +699,12 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--n", type=int, default=1)
         sp.add_argument("--steps", type=int, default=60)
         sp.add_argument("--max-retries", type=int, default=3)
-        sp.add_argument("--trainer", choices=["proxy", "factory"], default="proxy",
-                        help="proxy micro-benchmark, or the real factory nano model")
+        sp.add_argument(
+            "--trainer",
+            choices=["proxy", "factory"],
+            default="proxy",
+            help="proxy micro-benchmark, or the real factory nano model",
+        )
         sp.add_argument("--device", default=None, choices=[None, "cpu", "cuda"])
         sp.set_defaults(func=fn)
 
@@ -562,51 +715,82 @@ def build_parser() -> argparse.ArgumentParser:
     tr = sub.add_parser("train", help="training worker")
     tr.add_argument("--steps", type=int, default=60)
     tr.add_argument("--seeds", default="")
-    tr.add_argument("--device", default=None, choices=[None, "cpu", "cuda"],
-                    help="cpu keeps the research trainer off a GPU another run owns")
-    tr.add_argument("--trainer", choices=["proxy", "factory"], default="proxy",
-                    help="proxy micro-benchmark, or the real factory nano model")
+    tr.add_argument(
+        "--device",
+        default=None,
+        choices=[None, "cpu", "cuda"],
+        help="cpu keeps the research trainer off a GPU another run owns",
+    )
+    tr.add_argument(
+        "--trainer",
+        choices=["proxy", "factory"],
+        default="proxy",
+        help="proxy micro-benchmark, or the real factory nano model",
+    )
     tr.set_defaults(func=cmd_train)
 
-    cb = sub.add_parser("calibrate-baseline",
-                        help="measure the UNMODIFIED factory model over several seeds and "
-                             "seed the baseline from the cross-seed mean + spread")
+    cb = sub.add_parser(
+        "calibrate-baseline",
+        help="measure the UNMODIFIED factory model over several seeds and "
+        "seed the baseline from the cross-seed mean + spread",
+    )
     cb.add_argument("--steps", type=int, default=150)
-    cb.add_argument("--seeds", default="0,1,2",
-                    help="comma-separated seeds; multi-seed records the cross-seed SEM the "
-                         "significance gate needs (default 0,1,2). Use a single seed only to "
-                         "reproduce the old point-baseline behaviour.")
+    cb.add_argument(
+        "--seeds",
+        default="0,1,2",
+        help="comma-separated seeds; multi-seed records the cross-seed SEM the "
+        "significance gate needs (default 0,1,2). Use a single seed only to "
+        "reproduce the old point-baseline behaviour.",
+    )
     cb.add_argument("--overwrite", action="store_true")
     cb.set_defaults(func=cmd_calibrate_baseline)
 
     ev = sub.add_parser("evaluate", help="evaluator & hill-climber")
     ev.set_defaults(func=cmd_evaluate)
 
-    rn = sub.add_parser("run", help="continuous chained runner (replaces hourly cadence)")
+    rn = sub.add_parser(
+        "run", help="continuous chained runner (replaces hourly cadence)"
+    )
     rn.add_argument("--bottleneck", default="loss spikes during early pre-training")
-    rn.add_argument("--n", type=int, default=3, help="ideas per refill when the queue empties")
+    rn.add_argument(
+        "--n", type=int, default=3, help="ideas per refill when the queue empties"
+    )
     rn.add_argument("--steps", type=int, default=60)
     rn.add_argument("--max-retries", type=int, default=3)
     rn.add_argument("--trainer", choices=["proxy", "factory"], default="proxy")
-    rn.add_argument("--device", default=None, choices=[None, "cpu", "cuda"],
-                    help="cpu keeps the research trainer off a GPU another run owns")
-    rn.add_argument("--seeds", default="0,1,2",
-                    help="comma-separated seeds the factory trainer measures each candidate "
-                         "at, recording per_seed so promotions are paired cross-seed against "
-                         "the baseline (SPEC #3). One seed = the old single-seed behaviour; "
-                         "the default 0,1,2 matches calibrate-baseline. ~2 min/candidate/extra "
-                         "seed at nano scale (proxy trainer ignores it).")
+    rn.add_argument(
+        "--device",
+        default=None,
+        choices=[None, "cpu", "cuda"],
+        help="cpu keeps the research trainer off a GPU another run owns",
+    )
+    rn.add_argument(
+        "--seeds",
+        default="0,1,2",
+        help="comma-separated seeds the factory trainer measures each candidate "
+        "at, recording per_seed so promotions are paired cross-seed against "
+        "the baseline (SPEC #3). One seed = the old single-seed behaviour; "
+        "the default 0,1,2 matches calibrate-baseline. ~2 min/candidate/extra "
+        "seed at nano scale (proxy trainer ignores it).",
+    )
     rn.add_argument("--idle-seconds", type=float, default=30.0)
-    rn.add_argument("--ideate-cooldown", type=float, default=600.0,
-                    help="min seconds between ideations on an empty pipeline — dedup "
-                         "regenerates mostly dupes faster than this")
+    rn.add_argument(
+        "--ideate-cooldown",
+        type=float,
+        default=600.0,
+        help="min seconds between ideations on an empty pipeline — dedup "
+        "regenerates mostly dupes faster than this",
+    )
     rn.add_argument("--max-actions", type=int, default=0, help="0 = run forever")
     rn.set_defaults(func=cmd_run)
 
     pr = sub.add_parser("promote", help="build review bundles for sota experiments")
-    pr.add_argument("--rebuild", action="store_true",
-                    help="regenerate bundles that already exist (bundle-format fixes do "
-                         "NOT reach existing bundles otherwise)")
+    pr.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="regenerate bundles that already exist (bundle-format fixes do "
+        "NOT reach existing bundles otherwise)",
+    )
     pr.set_defaults(func=cmd_promote)
 
     st = sub.add_parser("status", help="print the research status snapshot")
@@ -614,7 +798,7 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def main(argv: Optional[list] = None) -> int:
+def main(argv: list | None = None) -> int:
     args = build_parser().parse_args(argv)
     return args.func(args)
 

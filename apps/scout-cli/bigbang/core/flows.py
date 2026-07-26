@@ -283,7 +283,9 @@ def pick_fields(data: dict[str, Any], fields: Sequence[Any]) -> dict[str, Any]:
     for field in fields:
         key = split_path(field)[-1]
         if key in out:
-            raise ValueError(f"field {field!r} collides with an earlier pick on {key!r}")
+            raise ValueError(
+                f"field {field!r} collides with an earlier pick on {key!r}"
+            )
         out[key] = copy.deepcopy(require_field(data, field))
     return out
 
@@ -480,9 +482,7 @@ def check_op_shape(spec: Any) -> str | None:
     return None
 
 
-def apply_transform(
-    ops: Any, data: dict[str, Any]
-) -> tuple[dict[str, Any], list[str]]:
+def apply_transform(ops: Any, data: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     """Apply an `ops` list to a COPY of the payload -> (new payload, notes).
 
     Notes are the audit line for the step ('set totals.n', 'remove x (absent)')
@@ -519,7 +519,9 @@ def apply_transform(
         elif name == OP_PICK:
             picked = pick_fields(out, spec.get("fields"))
             out = set_path(out, path, picked) if path is not None else picked
-            notes.append(f"pick {len(picked)} field(s)" + (f" -> {path}" if path else ""))
+            notes.append(
+                f"pick {len(picked)} field(s)" + (f" -> {path}" if path else "")
+            )
         elif name == OP_COUNT:
             _src, size = _op_count(out, spec)
             out = set_path(out, path, size)
@@ -676,14 +678,22 @@ def _validate_node(
         if edge not in nodes:
             out.append(
                 _problem(
-                    "dangling-edge", SEV_ERROR, f"edge points at missing node {edge!r}", node_id
+                    "dangling-edge",
+                    SEV_ERROR,
+                    f"edge points at missing node {edge!r}",
+                    node_id,
                 )
             )
     if kind == KIND_TRANSFORM:
         ops = node.get("ops")
         if not isinstance(ops, list) or not ops:
             out.append(
-                _problem("bad-transform", SEV_ERROR, "transform needs a non-empty `ops` list", node_id)
+                _problem(
+                    "bad-transform",
+                    SEV_ERROR,
+                    "transform needs a non-empty `ops` list",
+                    node_id,
+                )
             )
         else:
             out += [
@@ -697,7 +707,9 @@ def _validate_node(
         except ValueError as exc:
             out.append(_problem("bad-condition", SEV_ERROR, str(exc), node_id))
         if kind == KIND_BRANCH and not node.get("then"):
-            out.append(_problem("bad-branch", SEV_ERROR, "branch needs a `then`", node_id))
+            out.append(
+                _problem("bad-branch", SEV_ERROR, "branch needs a `then`", node_id)
+            )
     elif kind == KIND_ACTION:
         out += _validate_action(node_id, node)
     elif node.get("uses") not in registry:  # KIND_FLOW
@@ -713,7 +725,9 @@ def _validate_node(
     return out
 
 
-def validate(flow: Any, *, registry: dict[str, Any] | None = None) -> list[dict[str, str]]:
+def validate(
+    flow: Any, *, registry: dict[str, Any] | None = None
+) -> list[dict[str, str]]:
     """Every structural problem in one flow, worst-first. [] means runnable.
 
     Errors are fail-closed: run_flow refuses a flow with any error BEFORE
@@ -738,12 +752,16 @@ def validate(flow: Any, *, registry: dict[str, Any] | None = None) -> list[dict[
         )
     nodes = flow.get("nodes")
     if not isinstance(nodes, dict) or not nodes:
-        out.append(_problem("no-nodes", SEV_ERROR, "flow needs a non-empty `nodes` object"))
+        out.append(
+            _problem("no-nodes", SEV_ERROR, "flow needs a non-empty `nodes` object")
+        )
         return out
     start = flow.get("start")
     if start not in nodes:
         out.append(
-            _problem("bad-start", SEV_ERROR, f"`start` {start!r} is not one of the nodes")
+            _problem(
+                "bad-start", SEV_ERROR, f"`start` {start!r} is not one of the nodes"
+            )
         )
     for node_id in sorted(nodes):
         out += _validate_node(str(node_id), nodes[node_id], nodes, registry)
@@ -760,9 +778,16 @@ def validate(flow: Any, *, registry: dict[str, Any] | None = None) -> list[dict[
     reachable = set(walk_order(flow))
     for node_id in sorted(set(nodes) - reachable):
         out.append(
-            _problem("unreachable", SEV_WARNING, "node cannot be reached from `start`", str(node_id))
+            _problem(
+                "unreachable",
+                SEV_WARNING,
+                "node cannot be reached from `start`",
+                str(node_id),
+            )
         )
-    return sorted(out, key=lambda p: (openswap.severity_rank(p["severity"]), p["node"], p["code"]))
+    return sorted(
+        out, key=lambda p: (openswap.severity_rank(p["severity"]), p["node"], p["code"])
+    )
 
 
 def preflight(flow: Any, allow: Iterable[str]) -> dict[str, Any]:
@@ -781,7 +806,8 @@ def preflight(flow: Any, allow: Iterable[str]) -> dict[str, Any]:
         "allowed": [a for a in known if a in allowed],
         "refused": [a for a in known if a not in allowed],
         "unknown": [a for a in requested if a not in ACTIONS],
-        "runnable": all(a in allowed for a in requested) and len(known) == len(requested),
+        "runnable": all(a in allowed for a in requested)
+        and len(known) == len(requested),
     }
 
 
@@ -828,7 +854,10 @@ def trigger_check(
             return True, "schedule trigger: no prior run recorded"
         remaining = round(float(last_run) + every - now, 2)
         if remaining > 0:
-            return False, f"schedule trigger not due for {remaining}s (every {every:g}s)"
+            return (
+                False,
+                f"schedule trigger not due for {remaining}s (every {every:g}s)",
+            )
         return True, f"schedule trigger due ({-remaining}s past every {every:g}s)"
     return False, f"unknown trigger type {ttype!r}"
 
@@ -922,7 +951,8 @@ def _run_action(
     effector = effectors.get(str(uses))
     if effector is None:
         return _refuse(
-            R_NO_EFFECTOR, f"action {uses!r} is allowlisted but no effector was supplied"
+            R_NO_EFFECTOR,
+            f"action {uses!r} is allowlisted but no effector was supplied",
         )
     try:
         result = effector(node.get("with") or {}, data)
@@ -937,7 +967,9 @@ def _run_action(
                 error=f"{type(exc).__name__}: {exc}",
             ),
             data,
-            _problem("action-failed", SEV_ERROR, f"{type(exc).__name__}: {exc}", node_id),
+            _problem(
+                "action-failed", SEV_ERROR, f"{type(exc).__name__}: {exc}", node_id
+            ),
         )
     if result is None:
         return (
@@ -950,7 +982,12 @@ def _run_action(
                 error=f"action {uses!r} returned no result",
             ),
             data,
-            _problem("action-failed", SEV_ERROR, f"action {uses!r} returned no result", node_id),
+            _problem(
+                "action-failed",
+                SEV_ERROR,
+                f"action {uses!r} returned no result",
+                node_id,
+            ),
         )
     into = node.get("into")
     if into:
@@ -1038,15 +1075,33 @@ def run_flow(
                 f"step cap {budget['cap']} reached at node {node_id!r} — "
                 f"{len(run['steps'])} step(s) ran in this flow"
             )
-            return _finish(run, budget, OUTCOME_REFUSED, msg, [_problem(R_STEP_CAP, SEV_ERROR, msg, node_id)])
+            return _finish(
+                run,
+                budget,
+                OUTCOME_REFUSED,
+                msg,
+                [_problem(R_STEP_CAP, SEV_ERROR, msg, node_id)],
+            )
         node = nodes.get(node_id)
         if not isinstance(node, dict):
             msg = f"node {node_id!r} does not exist"
-            return _finish(run, budget, OUTCOME_REFUSED, msg, [_problem(R_UNKNOWN_NODE, SEV_ERROR, msg, node_id)])
+            return _finish(
+                run,
+                budget,
+                OUTCOME_REFUSED,
+                msg,
+                [_problem(R_UNKNOWN_NODE, SEV_ERROR, msg, node_id)],
+            )
         visits[node_id] = visits.get(node_id, 0) + 1
         if visits[node_id] > max_visits:
             msg = f"node {node_id!r} would run a {visits[node_id]}th time (visit cap {max_visits})"
-            return _finish(run, budget, OUTCOME_REFUSED, msg, [_problem(R_VISIT_CAP, SEV_ERROR, msg, node_id)])
+            return _finish(
+                run,
+                budget,
+                OUTCOME_REFUSED,
+                msg,
+                [_problem(R_VISIT_CAP, SEV_ERROR, msg, node_id)],
+            )
         budget["used"] += 1
         seq = budget["used"]
         kind = node.get("kind")
@@ -1057,32 +1112,60 @@ def run_flow(
                 run["data"], notes = apply_transform(node.get("ops"), run["data"])
             except ValueError as exc:
                 run["steps"].append(
-                    _step(seq=seq, node=node_id, kind=kind, outcome=OUTCOME_FAILED, error=str(exc))
+                    _step(
+                        seq=seq,
+                        node=node_id,
+                        kind=kind,
+                        outcome=OUTCOME_FAILED,
+                        error=str(exc),
+                    )
                 )
                 return _finish(
-                    run, budget, OUTCOME_FAILED, str(exc),
+                    run,
+                    budget,
+                    OUTCOME_FAILED,
+                    str(exc),
                     [_problem("transform-failed", SEV_ERROR, str(exc), node_id)],
                 )
             run["steps"].append(
-                _step(seq=seq, node=node_id, kind=kind, outcome=OUTCOME_OK, output={"applied": notes})
+                _step(
+                    seq=seq,
+                    node=node_id,
+                    kind=kind,
+                    outcome=OUTCOME_OK,
+                    output={"applied": notes},
+                )
             )
         elif kind in (KIND_FILTER, KIND_BRANCH):
             try:
                 passed = evaluate(node.get("when"), run["data"])
             except ValueError as exc:
                 run["steps"].append(
-                    _step(seq=seq, node=node_id, kind=kind, outcome=OUTCOME_FAILED, error=str(exc))
+                    _step(
+                        seq=seq,
+                        node=node_id,
+                        kind=kind,
+                        outcome=OUTCOME_FAILED,
+                        error=str(exc),
+                    )
                 )
                 return _finish(
-                    run, budget, OUTCOME_FAILED, str(exc),
+                    run,
+                    budget,
+                    OUTCOME_FAILED,
+                    str(exc),
                     [_problem("condition-failed", SEV_ERROR, str(exc), node_id)],
                 )
             if kind == KIND_BRANCH:
                 next_id = node.get("then") if passed else node.get("else")
             run["steps"].append(
                 _step(
-                    seq=seq, node=node_id, kind=kind,
-                    outcome=OUTCOME_OK if (passed or kind == KIND_BRANCH) else OUTCOME_FILTERED,
+                    seq=seq,
+                    node=node_id,
+                    kind=kind,
+                    outcome=OUTCOME_OK
+                    if (passed or kind == KIND_BRANCH)
+                    else OUTCOME_FILTERED,
                     output={"passed": passed, "next": next_id},
                 )
             )
@@ -1092,7 +1175,12 @@ def run_flow(
                 )
         elif kind == KIND_ACTION:
             step, run["data"], refusal = _run_action(
-                str(node_id), node, run["data"], seq=seq, allowed=allowed, effectors=effectors
+                str(node_id),
+                node,
+                run["data"],
+                seq=seq,
+                allowed=allowed,
+                effectors=effectors,
             )
             run["steps"].append(step)
             if refusal is not None:
@@ -1103,36 +1191,80 @@ def run_flow(
             if depth + 1 > max_depth:
                 msg = f"sub-flow {name!r} refused: depth cap {max_depth} reached"
                 run["steps"].append(
-                    _step(seq=seq, node=node_id, kind=kind, uses=name, outcome=OUTCOME_REFUSED, error=msg)
+                    _step(
+                        seq=seq,
+                        node=node_id,
+                        kind=kind,
+                        uses=name,
+                        outcome=OUTCOME_REFUSED,
+                        error=msg,
+                    )
                 )
-                return _finish(run, budget, OUTCOME_REFUSED, msg, [_problem(R_DEPTH_CAP, SEV_ERROR, msg, node_id)])
+                return _finish(
+                    run,
+                    budget,
+                    OUTCOME_REFUSED,
+                    msg,
+                    [_problem(R_DEPTH_CAP, SEV_ERROR, msg, node_id)],
+                )
             sub = registry.get(name)
             if not isinstance(sub, dict):
                 msg = f"sub-flow {name!r} is not in the registry"
                 run["steps"].append(
-                    _step(seq=seq, node=node_id, kind=kind, uses=name, outcome=OUTCOME_REFUSED, error=msg)
+                    _step(
+                        seq=seq,
+                        node=node_id,
+                        kind=kind,
+                        uses=name,
+                        outcome=OUTCOME_REFUSED,
+                        error=msg,
+                    )
                 )
-                return _finish(run, budget, OUTCOME_REFUSED, msg, [_problem(R_SUBFLOW_MISSING, SEV_ERROR, msg, node_id)])
+                return _finish(
+                    run,
+                    budget,
+                    OUTCOME_REFUSED,
+                    msg,
+                    [_problem(R_SUBFLOW_MISSING, SEV_ERROR, msg, node_id)],
+                )
             sub_run = run_flow(
-                sub, run["data"], allow=allowed, effectors=effectors, registry=registry,
-                max_depth=max_depth, max_visits=max_visits, now=now, budget=budget, depth=depth + 1,
+                sub,
+                run["data"],
+                allow=allowed,
+                effectors=effectors,
+                registry=registry,
+                max_depth=max_depth,
+                max_visits=max_visits,
+                now=now,
+                budget=budget,
+                depth=depth + 1,
             )
             run["data"] = sub_run["data"]
             run["actions_run"] += sub_run["actions_run"]
-            run["problems"] += [{**p, "node": f"{node_id}/{p['node']}"} for p in sub_run["problems"]]
+            run["problems"] += [
+                {**p, "node": f"{node_id}/{p['node']}"} for p in sub_run["problems"]
+            ]
             run["steps"].append(
                 _step(
-                    seq=seq, node=node_id, kind=kind, uses=name, outcome=sub_run["outcome"],
+                    seq=seq,
+                    node=node_id,
+                    kind=kind,
+                    uses=name,
+                    outcome=sub_run["outcome"],
                     output={
-                        "flow": sub_run["flow"], "outcome": sub_run["outcome"],
-                        "reason": sub_run["reason"], "steps": len(sub_run["steps"]),
+                        "flow": sub_run["flow"],
+                        "outcome": sub_run["outcome"],
+                        "reason": sub_run["reason"],
+                        "steps": len(sub_run["steps"]),
                         "depth": sub_run["depth"],
                     },
                 )
             )
             if sub_run["outcome"] != OUTCOME_OK:
                 return _finish(
-                    run, budget, sub_run["outcome"],
+                    run,
+                    budget,
+                    sub_run["outcome"],
                     f"sub-flow {name!r} ended {sub_run['outcome']}: {sub_run['reason']}",
                 )
         node_id = next_id
@@ -1169,7 +1301,9 @@ def resolve_output_path(out_dir: str | Path, rel: Any) -> Path:
 # ---- family diagnostics -----------------------------------------------------
 
 
-def to_diagnostics(source: str, problems: Iterable[dict[str, str]]) -> list[dict[str, Any]]:
+def to_diagnostics(
+    source: str, problems: Iterable[dict[str, str]]
+) -> list[dict[str, Any]]:
     """Validation problems AND run refusals -> the family diagnostic schema.
 
     One diagnostic per problem, `flows:<code>` as the rule, the node id carried
@@ -1183,7 +1317,8 @@ def to_diagnostics(source: str, problems: Iterable[dict[str, str]]) -> list[dict
             col=0,
             rule=f"flows:{p.get('code', '?')}",
             severity=p.get("severity", SEV_WARNING),
-            message=(f"[{p['node']}] " if p.get("node") else "") + str(p.get("message", "")),
+            message=(f"[{p['node']}] " if p.get("node") else "")
+            + str(p.get("message", "")),
         )
         for p in problems
     ]
@@ -1291,7 +1426,9 @@ def record_run(
                 s.get("kind"),
                 s.get("uses"),
                 s["outcome"],
-                None if s.get("output") is None else json.dumps(s["output"], sort_keys=True, default=str),
+                None
+                if s.get("output") is None
+                else json.dumps(s["output"], sort_keys=True, default=str),
                 s.get("error"),
             )
             for s in run.get("steps") or []
@@ -1326,7 +1463,8 @@ def run_detail(conn: sqlite3.Connection, run_id: int) -> dict[str, Any] | None:
     out["steps"] = [
         dict(r)
         for r in conn.execute(
-            "SELECT * FROM steps WHERE run_id = ? ORDER BY seq ASC, id ASC", (int(run_id),)
+            "SELECT * FROM steps WHERE run_id = ? ORDER BY seq ASC, id ASC",
+            (int(run_id),),
         )
     ]
     return out
@@ -1347,7 +1485,9 @@ def last_run_ts(conn: sqlite3.Connection, flow: str) -> float | None:
     return float(row["ts"])
 
 
-def outcome_counts(conn: sqlite3.Connection, *, flow: str | None = None) -> dict[str, int]:
+def outcome_counts(
+    conn: sqlite3.Connection, *, flow: str | None = None
+) -> dict[str, int]:
     """Runs per outcome — the 'is my automation actually working' roll-up."""
     rows = conn.execute(
         "SELECT outcome, COUNT(*) AS n FROM runs WHERE (? IS NULL OR flow = ?)"
@@ -1379,7 +1519,11 @@ EXAMPLE_FLOW: dict[str, Any] = {
             "kind": "transform",
             "ops": [
                 {"op": "count", "from": "hosts", "path": "host_count"},
-                {"op": "template", "path": "line", "text": "{host_count} host(s) at {severity}: {hosts}"},
+                {
+                    "op": "template",
+                    "path": "line",
+                    "text": "{host_count} host(s) at {severity}: {hosts}",
+                },
             ],
             "next": "any",
         },

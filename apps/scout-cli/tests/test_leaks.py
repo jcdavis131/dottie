@@ -40,6 +40,7 @@ def _rules_of(diags):
 
 # ---- specific signatures ----------------------------------------------------
 
+
 def test_aws_access_key_id_hit_and_position():
     diags = leaks.scan_text(f"x {AWS_KEY} y")
     assert _rules_of(diags) == ["leaks:aws-access-key-id"]
@@ -64,7 +65,8 @@ def test_specific_rule_wins_over_entropy_catchall():
 def test_slack_and_stripe_live_hits():
     diags = leaks.scan_text(f"a {SLACK} b {STRIPE_LIVE} c")
     assert sorted(_rules_of(diags)) == [
-        "leaks:slack-token", "leaks:stripe-live-key",
+        "leaks:slack-token",
+        "leaks:stripe-live-key",
     ]
     assert all(d["severity"] == "error" for d in diags)
 
@@ -98,6 +100,7 @@ def test_redaction_fingerprint_entropy():
 
 # ---- generic + entropy gates ------------------------------------------------
 
+
 def test_generic_keyword_entropy_gate():
     diags = leaks.scan_text(f'api_key = "{VALUE}"')
     assert _rules_of(diags) == ["leaks:generic-api-key"]
@@ -129,6 +132,7 @@ def test_per_ext_entropy_override():
 
 # ---- allowlist escape hatches -----------------------------------------------
 
+
 def test_allowlist_fingerprint_rule_path_pattern():
     text = f"leaked {AWS_KEY} here"
     fp = leaks.scan_text(text)[0]["fingerprint"]
@@ -159,13 +163,19 @@ def test_disable_builtin_signature():
 
 # ---- config is policy-as-config ---------------------------------------------
 
+
 def test_load_config_overlay_and_unknown_key(tmp_path):
     overlay = tmp_path / "leaks.json"
-    overlay.write_text(json.dumps({
-        "allow": {"rules": ["jwt"]},
-        "entropy": {"hex": 3.4},
-        "disable": ["sendgrid-key"],
-    }), encoding="utf-8")
+    overlay.write_text(
+        json.dumps(
+            {
+                "allow": {"rules": ["jwt"]},
+                "entropy": {"hex": 3.4},
+                "disable": ["sendgrid-key"],
+            }
+        ),
+        encoding="utf-8",
+    )
     cfg = leaks.load_config(str(overlay))
     assert "jwt" in cfg["allow"]["rules"]
     assert cfg["entropy"]["hex"] == 3.4
@@ -183,14 +193,21 @@ def test_load_config_overlay_and_unknown_key(tmp_path):
 
 def test_extra_signature_from_config(tmp_path):
     overlay = tmp_path / "org.json"
-    overlay.write_text(json.dumps({
-        "extra_signatures": [{
-            "id": "dottie-token",
-            "pattern": r"\bdtk_[a-z0-9]{10}\b",
-            "severity": "error",
-            "description": "Dottie internal token",
-        }],
-    }), encoding="utf-8")
+    overlay.write_text(
+        json.dumps(
+            {
+                "extra_signatures": [
+                    {
+                        "id": "dottie-token",
+                        "pattern": r"\bdtk_[a-z0-9]{10}\b",
+                        "severity": "error",
+                        "description": "Dottie internal token",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
     cfg = leaks.load_config(str(overlay))
     diags = leaks.scan_text("x dtk_abc123def4 y", config=cfg)
     assert _rules_of(diags) == ["leaks:dottie-token"]
@@ -239,7 +256,9 @@ index 2222222..0000000
 def test_parse_patch_added_lines_and_resets():
     entries = leaks.parse_patch(PATCH)
     assert [(e["path"], e["line"]) for e in entries] == [
-        ("config.py", 11), ("config.py", 12), ("config.py", 23),
+        ("config.py", 11),
+        ("config.py", 12),
+        ("config.py", 23),
     ]
     assert entries[0]["content"] == f'api_key = "{VALUE}"'
     assert all(e["commit"] == SHA for e in entries)
@@ -258,15 +277,17 @@ def test_scan_patch_attaches_commit_and_skips_messages():
 
 
 def test_scan_patch_staged_shape_no_commit():
-    staged = "\n".join([
-        "diff --git a/x.env b/x.env",
-        "index 0000000..1111111 100644",
-        "--- a/x.env",
-        "+++ b/x.env",
-        "@@ -0,0 +1 @@",
-        f"+leaked {AWS_KEY} here",
-        "",
-    ])
+    staged = "\n".join(
+        [
+            "diff --git a/x.env b/x.env",
+            "index 0000000..1111111 100644",
+            "--- a/x.env",
+            "+++ b/x.env",
+            "@@ -0,0 +1 @@",
+            f"+leaked {AWS_KEY} here",
+            "",
+        ]
+    )
     diags, stats = leaks.scan_patch(staged)
     assert len(diags) == 1
     assert diags[0]["path"] == "x.env" and diags[0]["line"] == 1
@@ -275,6 +296,7 @@ def test_scan_patch_staged_shape_no_commit():
 
 
 # ---- tree walking -----------------------------------------------------------
+
 
 def test_scan_tree_prunes_skips_counts(tmp_path):
     (tmp_path / "src").mkdir()
@@ -298,6 +320,7 @@ def test_scan_tree_prunes_skips_counts(tmp_path):
 
 # ---- capability detection: probed, never executed ---------------------------
 
+
 def test_capability_fallback_when_binaries_absent(monkeypatch):
     monkeypatch.setattr(openswap.shutil, "which", lambda _b: None)
     cap = leaks_cli._capability()
@@ -309,6 +332,7 @@ def test_capability_fallback_when_binaries_absent(monkeypatch):
 
 
 # ---- the real CLI in a subprocess -------------------------------------------
+
 
 def _cli(args, cwd=None):
     return subprocess.run(

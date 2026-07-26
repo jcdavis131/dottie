@@ -101,7 +101,9 @@ def _seed_certs(path, hosts, *, now=NOW):
 def _seed_beats(path, *, beat_ts=T0, sweep_now=T0 + 30.0, grace_s=60.0):
     conn = heartbeat.open_registry(path)
     heartbeat.beat(conn, "trainer", ts=beat_ts, note="training step loop")
-    heartbeat.sweep(conn, {"trainer": {"kind": "beat", "grace_s": grace_s}}, now=sweep_now)
+    heartbeat.sweep(
+        conn, {"trainer": {"kind": "beat", "grace_s": grace_s}}, now=sweep_now
+    )
     conn.close()
 
 
@@ -589,7 +591,18 @@ def test_cli_renders_a_no_data_page_instead_of_failing(tmp_path):
     assert "No monitoring ledger" in page
     assert re.search(r"\d+\.\d{2}%", page) is None
     # ...but it is still gate-able, so cron notices the page went blind
-    r = _cli(["statuspage", "render", "--db", str(db), "--out", str(out), "--fail-on", "warning"])
+    r = _cli(
+        [
+            "statuspage",
+            "render",
+            "--db",
+            str(db),
+            "--out",
+            str(out),
+            "--fail-on",
+            "warning",
+        ]
+    )
     assert r.returncode == 1
     assert json.loads(r.stdout)["data"]["summary"]["by_severity"]["warning"] == 1
 
