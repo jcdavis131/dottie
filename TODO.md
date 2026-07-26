@@ -117,6 +117,37 @@ Verified rather than assumed:
   dormant until then. Must be one deliberate edit that lowers other phase-2/3 sources by
   the same total, or the collector spins.
 
+### ⚠ 2026-07-26 — "remove fabricated data" is NOT done in vector-equities: 17 pipeline files still use np.random
+
+Operator asked for the fabricated data removed. The reconciliation is done; **the removal is
+not**, and that is the finding.
+
+**Reconciliation (done).** `vector-equities` had 3 local vs 5 remote commits overlapping on
+four files, including two independent commits that both claimed to remove fabricated data:
+
+```
+local  b624c88  fix(equities): remove fabricated data from shipped assets and generator
+remote 23de1dc  Remove fabricated data: random projection card, np.random skills, ...
+```
+
+Neither is a superset. Remote also cleaned `real_data_flat.json` / `real_data_latest.json`;
+local also added a 57-line `assets/manifest.json` block. Resolved without discarding
+anything: the 3 local commits are preserved AND PUSHED on
+`preserve/local-fabrication-removal-2026-07-26`, `main` fast-forwarded to remote, and only
+the conflict-free `.gitignore` commit was cherry-picked on top. `main` is 0 ahead / 0 dirty.
+
+- [ ] **THE ACTUAL WORK: 17 pipeline files still contain `np.random`.** Both "removal"
+  commits only cleaned the *shipped assets* and `export_v6_real_assets.py` — the generators
+  behind them still fabricate. Files include `build_demo.py`, `build_demo_v2.py`,
+  `build_demo_v3.py`, `build_real.py`, `build_real_v4_exec.py`,
+  `build_real_v6_towers_real.py`. A file named `build_real*.py` calling `np.random` is the
+  exact shape this repo's honesty doctrine exists to prevent, and cleaning the output while
+  leaving the generator means the next regeneration re-introduces it. Audit each: some uses
+  are legitimate (seeded shuffles, dropout), some fabricate data presented as measured. They
+  are not distinguishable by grep — that is why this is a task and not a sed.
+- [ ] **Decide the fate of `preserve/local-fabrication-removal-2026-07-26`.** Its unique
+  contribution is the `manifest.json` block; cherry-pick that onto main or drop the branch.
+
 ### Waiting on the operator (not on an assistant)
 - ~~The 2 FROZEN edits to activate stack-v3~~ — **DONE 2026-07-26**, see the unfreeze block above. Superseded text: (`odc-by` verified; adapter + 27 tests ready;
   source enters at weight `0.00` or the collector spins).

@@ -20,7 +20,7 @@ not to re-design something already designed.
 |---|---|---|---|---|
 | `~/vector-hoops` | NBA | **318** | `jcdavis131/vector-hoops` | **64-d** (was documented 48-d; corrected 2026-07-26), 17 ResidualMLP towers (160→32), concat 556→256→64, MTNN v5 |
 | `~/vector-gridiron` | NFL | 20 | `jcdavis131/vector-gridiron` | 32-d, 13 ResidualTowers (→24), gated attention, MTNN v2, **temporal split** |
-| `~/vector-pitch` | Soccer (WC) | 14 | `jcdavis131/vector-pitch` | 16-d z-scored, PCA(3), k-means(8) — **no neural net** |
+| `~/vector-pitch` | Soccer (WC) | 14 | `jcdavis131/vector-pitch` | **24-d MTNN (SupCon v1.1)** — `pipeline/train_mtnn.py` + `assets/pitch_mtnn_embeddings.json`. The live daily board still runs PCA(3)+k-means until the UI swaps. Corrected 2026-07-26 |
 | `~/vector-equities` | Equities | 12 | `jcdavis131/vector-equities` | published embedding space + sector-coherence eval; has CI, ruff, pre-commit |
 | `~/vector-unified` | **the binder** | 1 | **private** (2026-07-26) | 28 py / 5,397 lines, `train_unified.py`, `eval_unified.py` |
 | `~/vector-hub` | — | 3 | none | landing page for **dumbmodel.com** (not a model) |
@@ -51,6 +51,32 @@ Two properties of that design worth restating because they are easy to lose:
    models (8 archetype heads in hoops, k-means(8) in pitch). Text remains a plausible *second*
    bridge if role archetypes prove too coarse, and is the natural one if the Dottie foundation
    LLM is ever brought in as an encoder — but that is a future option, not the plan.
+
+### ⚠ CORRECTED 2026-07-26 — the binder EXISTS and is trained; Pitch HAS a neural net
+
+Two claims below were wrong, and wrong the same way: both came from a repo-wide search
+scoped to `~/vector-hoops` **alone**, while the cross-sport work lives in `~/vector-unified`.
+
+`~/vector-unified/assets/unified.json` (16,754,114 bytes, built 2026-07-10) is a **trained
+joint embedding**, verified field by field:
+
+| field | value |
+|---|---|
+| `model` | `UnifiedTrunk Stage 1 (frozen encoders; d_emb=64, L2)` |
+| `d_emb` | **64** |
+| `n_players` | **20,721** |
+| `sports` | hoops `d_native 48` n=12,966 · gridiron `32` n=5,325 · pitch **`24`** n=2,430 |
+| `normalization` | per-sport frozen `e_s` → shared trunk (adapter+era) → 64-d L2; **cross-sport archetype contrastive (SupCon) + CORAL + GRL** |
+
+12,966 + 5,325 + 2,430 = **20,721**, so the counts close independently. The anchor is the
+**role-archetype** one `UNIFIED_ARCHITECTURE.md` specified, not the text anchor an earlier
+draft of this file proposed — and GRL is present while sport-invariance is NOT achieved,
+which is why the public copy on dumbmodel.com says **G2 sport-invariance deferred** rather
+than claiming invariance. Live on dumbmodel.com as of 2026-07-26, served bytes sha256-
+identical to the repo.
+
+So **Stage 1 is built**. What remains is Stage 2 (sport-invariance) and the pre-registered
+emergent-alignment test below — not the architecture itself.
 
 **Prior art that already exists and should not be rebuilt:** hoops already trains **InfoNCE
 career pairs**, so contrastive learning is in the codebase, not a new capability. Gridiron
@@ -101,8 +127,10 @@ is structurally the opposite of a binding architecture. A repo-wide search for
 (`overflow-x: clip`, `np.clip`, `clip_grad_norm_`), and `pyproject.toml` declares only
 `numpy` and `torch`.
 
-**So: the contrastive *loss* is reusable; the cross-domain *architecture* has to be built.**
-Anyone reading "hoops already does InfoNCE" as "the binder is nearly done" will be wrong.
+~~**So: the contrastive *loss* is reusable; the cross-domain *architecture* has to be
+built.**~~ **RETRACTED 2026-07-26** — true of `vector-hoops` in isolation, false of the
+estate. The cross-domain architecture is built and trained in `~/vector-unified` (see the
+correction above). The scoping error was mine: a repo-wide grep is only repo-wide.
 
 ⚠ **Provenance flag on the shipped hoops artifact.** `mtnn_report.json → promote` is
 `{"ok": false, "reason": "CQS 78.11 < promote bar 82.62"}`, yet the 64-d artifact shipped
@@ -143,9 +171,9 @@ inspecting `git diff --cached` *before* committing — staging had initially bal
 
 1. ~~A remote for `vector-unified`~~ — **DONE 2026-07-26**: private remote created and pushed, so it is no longer the one repo in the estate without off-disk protection.
 2. **Three domains with no project**: College Football, Baseball, Hockey.
-3. **Pitch has no neural encoder** — PCA + k-means. Binding a 16-d PCA space to two learned
-   spaces is not the same problem as binding two learned spaces, and the architecture doc
-   should say which it intends.
+3. ~~Pitch has no neural encoder~~ — **RESOLVED**: Pitch ships a 24-d MTNN (SupCon v1.1) and
+   enters the joint space at `d_native 24`, n=2,430. The concern is answered rather than
+   deferred: the binder joins three *learned* spaces, not two learned and one PCA.
 4. **A pre-registered test of emergent cross-domain alignment.** The ImageBind claim is that
    alignment appears between pairs never trained together. That is a *falsifiable* claim and
    it needs its metric written down **before** it is measured, or a null result gets
