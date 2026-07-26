@@ -1,43 +1,35 @@
-"""auto-generated test gap mapper for trainer_agent - coverage <80%"""
 
-import json
-import pathlib
-import pytest
+"""Tests for trainer_agent — load_phases and wait_for_ready logic"""
+import importlib.util, pathlib, json, time
+MOD_PATH = "/home/hatch/workspace/dottie/apps/ava-factory/trainer_agent.py"
+spec = importlib.util.spec_from_file_location("trainer_agent", MOD_PATH)
+mod = importlib.util.module_from_spec(spec)
+import sys
+sys.modules[spec.name] = mod
+spec.loader.exec_module(mod)
 
-try:
-    import apps.ava-factory.trainer_agent as target_module
-except Exception:
-    try:
-        from importlib import import_module
-        target_module = import_module("apps.ava-factory.trainer_agent")
-    except Exception:
-        target_module = None
+def test_load_phases_fallback():
+    # without dolma_config.yaml in /tmp
+    phases = mod.load_phases()
+    assert isinstance(phases, list)
+    assert len(phases) >=1
+    assert isinstance(phases[0], tuple)
 
-@pytest.fixture
-def sample_data():
-    return {"module": "trainer_agent", "input": 1, "repo": "dottie"}
+def test_wait_for_ready_finds_shards(tmp_path):
+    data_root = tmp_path / "data"
+    data_root.mkdir()
+    # create 2 shards
+    (data_root / "shard_00000.jsonl.gz").write_text("dummy")
+    (data_root / "shard_00001.jsonl.gz").write_text("dummy")
+    # should quickly return True
+    res = mod.wait_for_ready(data_root, "phase0_logic", poll_interval=1, timeout=2)
+    assert res is True
 
-@pytest.fixture
-def tmp_output(tmp_path):
-    return tmp_path
-
-@pytest.mark.parametrize("value", [0, 1, 2])
-def test_trainer_agent_basic_parametrized(value, sample_data):
-    if target_module is None:
-        pytest.skip(f"{ip} not importable - TODO: fix import")
-    pytest.skip("TODO: fill assert - auto-generated gap mapper for trainer_agent")
-
-def test_trainer_agent_edge_cases():
-    assert False, "TODO: implement edge case - trainer_agent"
-
-@pytest.mark.parametrize("bad_input", ["", None, {}])
-def test_trainer_agent_invalid_inputs(bad_input, tmp_output):
-    if target_module is None:
-        pytest.skip(f"{ip} not importable")
-    pytest.skip("TODO: implement invalid-input handling - trainer_agent")
-
-def test_trainer_agent_integration(sample_data, tmp_output):
-    p = tmp_output / "trainer_agent_sample.json"
-    p.write_text(json.dumps(sample_data))
-    assert p.exists()
-    pytest.skip("TODO: implement integration - trainer_agent")
+def test_wait_for_ready_timeout_when_empty(tmp_path):
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    start = time.time()
+    res = mod.wait_for_ready(empty, "phaseX", poll_interval=1, timeout=1)
+    elapsed = time.time() - start
+    assert res is False
+    assert elapsed >=1 and elapsed <3

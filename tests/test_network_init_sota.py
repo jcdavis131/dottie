@@ -1,43 +1,51 @@
-"""auto-generated test gap mapper for network_init_sota - coverage <80%"""
 
-import json
-import pathlib
-import pytest
+"""Tests for network_init_sota — AutoInit"""
+import importlib.util, math
+MOD_PATH = "/home/hatch/workspace/dottie/apps/ava-factory/network_init_sota.py"
+spec = importlib.util.spec_from_file_location("network_init_sota", MOD_PATH)
+mod = importlib.util.module_from_spec(spec)
+import sys
+sys.modules[spec.name] = mod
+spec.loader.exec_module(mod)
 
-try:
-    import apps.ava-factory.network_init_sota as target_module
-except Exception:
-    try:
-        from importlib import import_module
-        target_module = import_module("apps.ava-factory.network_init_sota")
-    except Exception:
-        target_module = None
+def test_auto_init_model_exists():
+    assert hasattr(mod, "auto_init_model")
+    assert callable(mod.auto_init_model)
 
-@pytest.fixture
-def sample_data():
-    return {"module": "network_init_sota", "input": 1, "repo": "dottie"}
+def test_auto_init_runs_on_simple_model():
+    import torch, torch.nn as nn
+    class Tiny(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.emb = nn.Embedding(10,8)
+            self.lin = nn.Linear(8,8)
+            self.lin._layer_idx = 2
+            self.norm = nn.LayerNorm(8)
+            self.norm.weight = nn.Parameter(torch.ones(8))
+            self.lm_head = nn.Linear(8,10, bias=False)
+            self.d_model = 8
+        def forward(self, x): return x
+    m = Tiny()
+    # Capture old weight
+    old_w = m.lin.weight.clone()
+    mod.auto_init_model(m, std_base=0.02)
+    # weight should have changed (normal init)
+    assert not torch.equal(old_w, m.lin.weight)
+    # norm weight should be 1
+    assert torch.allclose(m.norm.weight, torch.ones(8))
+    # lm_head scaled
+    # Just ensure no crash and weight is finite
+    assert torch.isfinite(m.lm_head.weight).all()
 
-@pytest.fixture
-def tmp_output(tmp_path):
-    return tmp_path
-
-@pytest.mark.parametrize("value", [0, 1, 2])
-def test_network_init_sota_basic_parametrized(value, sample_data):
-    if target_module is None:
-        pytest.skip(f"{ip} not importable - TODO: fix import")
-    pytest.skip("TODO: fill assert - auto-generated gap mapper for network_init_sota")
-
-def test_network_init_sota_edge_cases():
-    assert False, "TODO: implement edge case - network_init_sota"
-
-@pytest.mark.parametrize("bad_input", ["", None, {}])
-def test_network_init_sota_invalid_inputs(bad_input, tmp_output):
-    if target_module is None:
-        pytest.skip(f"{ip} not importable")
-    pytest.skip("TODO: implement invalid-input handling - network_init_sota")
-
-def test_network_init_sota_integration(sample_data, tmp_output):
-    p = tmp_output / "network_init_sota_sample.json"
-    p.write_text(json.dumps(sample_data))
-    assert p.exists()
-    pytest.skip("TODO: implement integration - network_init_sota")
+def test_auto_init_zero_bias():
+    import torch.nn as nn, torch
+    class M(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc = nn.Linear(4,4)
+            self.fc._layer_idx = 1
+            self.d_model=4
+    model = M()
+    model.fc.bias.data.fill_(5.0)
+    mod.auto_init_model(model)
+    assert torch.allclose(model.fc.bias, torch.zeros(4))

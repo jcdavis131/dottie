@@ -1,43 +1,41 @@
-"""auto-generated test gap mapper for audit - coverage <80%"""
 
-import json
-import pathlib
-import pytest
+"""Tests for audit — log_event and tail"""
+import importlib.util, pathlib, json, sys, os
+MOD_PATH = "/home/hatch/workspace/dottie/apps/scout-cli/bigbang/core/audit.py"
+spec = importlib.util.spec_from_file_location("audit", MOD_PATH)
+mod = importlib.util.module_from_spec(spec)
+import sys
+sys.modules[spec.name] = mod
+spec.loader.exec_module(mod)
 
-try:
-    import apps.scout-cli.bigbang.core.audit as target_module
-except Exception:
-    try:
-        from importlib import import_module
-        target_module = import_module("apps.scout-cli.bigbang.core.audit")
-    except Exception:
-        target_module = None
+def test_log_event_creates_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "AUDIT_DIR", tmp_path)
+    monkeypatch.setattr(mod, "AUDIT_FILE", tmp_path / "audit.jsonl")
+    mod.log_event("test_cmd", {"arg":1}, status="ok", duration_ms=123)
+    f = tmp_path / "audit.jsonl"
+    assert f.exists()
+    line = f.read_text().strip().split("\n")[-1]
+    entry = json.loads(line)
+    assert entry["command"] == "test_cmd"
+    assert entry["args"]["arg"] == 1
+    assert entry["status"] == "ok"
 
-@pytest.fixture
-def sample_data():
-    return {"module": "audit", "input": 1, "repo": "dottie"}
+def test_tail_events_returns_list(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "AUDIT_DIR", tmp_path)
+    monkeypatch.setattr(mod, "AUDIT_FILE", tmp_path / "audit.jsonl")
+    # empty file case
+    if (tmp_path / "audit.jsonl").exists():
+        (tmp_path / "audit.jsonl").unlink()
+    assert mod.tail_events(5) == []
+    mod.log_event("cmd1", {}, status="ok")
+    mod.log_event("cmd2", {}, status="ok")
+    tail = mod.tail_events(n=1)
+    assert len(tail) == 1
+    assert tail[0]["command"] == "cmd2"
 
-@pytest.fixture
-def tmp_output(tmp_path):
-    return tmp_path
-
-@pytest.mark.parametrize("value", [0, 1, 2])
-def test_audit_basic_parametrized(value, sample_data):
-    if target_module is None:
-        pytest.skip(f"{ip} not importable - TODO: fix import")
-    pytest.skip("TODO: fill assert - auto-generated gap mapper for audit")
-
-def test_audit_edge_cases():
-    assert False, "TODO: implement edge case - audit"
-
-@pytest.mark.parametrize("bad_input", ["", None, {}])
-def test_audit_invalid_inputs(bad_input, tmp_output):
-    if target_module is None:
-        pytest.skip(f"{ip} not importable")
-    pytest.skip("TODO: implement invalid-input handling - audit")
-
-def test_audit_integration(sample_data, tmp_output):
-    p = tmp_output / "audit_sample.json"
-    p.write_text(json.dumps(sample_data))
-    assert p.exists()
-    pytest.skip("TODO: implement integration - audit")
+def test_log_event_handles_unserializable_args_gracefully(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "AUDIT_DIR", tmp_path)
+    monkeypatch.setattr(mod, "AUDIT_FILE", tmp_path / "audit.jsonl")
+    # default=str should handle non-serializable
+    mod.log_event("cmd", {"obj": set([1,2])})
+    assert (tmp_path / "audit.jsonl").exists()

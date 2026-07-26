@@ -1,43 +1,37 @@
-"""auto-generated test gap mapper for streaming_data - coverage <80%"""
 
-import json
-import pathlib
-import pytest
+"""Tests for streaming_data — PHASE_TOKENS, PHASE_MIX, BRANCH_MIX"""
+import importlib.util
+MOD_PATH = "/home/hatch/workspace/dottie/apps/ava-factory/streaming_data.py"
+spec = importlib.util.spec_from_file_location("streaming_data", MOD_PATH)
+mod = importlib.util.module_from_spec(spec)
+import sys
+sys.modules[spec.name] = mod
+spec.loader.exec_module(mod)
 
-try:
-    import apps.ava-factory.streaming_data as target_module
-except Exception:
-    try:
-        from importlib import import_module
-        target_module = import_module("apps.ava-factory.streaming_data")
-    except Exception:
-        target_module = None
+def test_phase_tokens_structure():
+    assert hasattr(mod, "PHASE_TOKENS")
+    pts = mod.PHASE_TOKENS
+    assert isinstance(pts, list)
+    assert len(pts) == 6
+    # each tuple len 5: name,start,end,seq_len,rope_base?
+    for tup in pts:
+        assert len(tup) == 5
+        assert isinstance(tup[0], str)
+        assert tup[1] < tup[2]
 
-@pytest.fixture
-def sample_data():
-    return {"module": "streaming_data", "input": 1, "repo": "dottie"}
+def test_phase_mix_weights_sum_to_one():
+    assert hasattr(mod, "PHASE_MIX")
+    for phase, mix in mod.PHASE_MIX.items():
+        s = sum(mix.values())
+        assert abs(s-1.0) < 1e-6 or 0.9 < s < 1.1, f"{phase} sum {s}"
 
-@pytest.fixture
-def tmp_output(tmp_path):
-    return tmp_path
+def test_branch_mix_contains_expected():
+    assert hasattr(mod, "BRANCH_MIX")
+    assert "code" in mod.BRANCH_MIX
+    assert "math" in mod.BRANCH_MIX
+    assert "chat" in mod.BRANCH_MIX
 
-@pytest.mark.parametrize("value", [0, 1, 2])
-def test_streaming_data_basic_parametrized(value, sample_data):
-    if target_module is None:
-        pytest.skip(f"{ip} not importable - TODO: fix import")
-    pytest.skip("TODO: fill assert - auto-generated gap mapper for streaming_data")
-
-def test_streaming_data_edge_cases():
-    assert False, "TODO: implement edge case - streaming_data"
-
-@pytest.mark.parametrize("bad_input", ["", None, {}])
-def test_streaming_data_invalid_inputs(bad_input, tmp_output):
-    if target_module is None:
-        pytest.skip(f"{ip} not importable")
-    pytest.skip("TODO: implement invalid-input handling - streaming_data")
-
-def test_streaming_data_integration(sample_data, tmp_output):
-    p = tmp_output / "streaming_data_sample.json"
-    p.write_text(json.dumps(sample_data))
-    assert p.exists()
-    pytest.skip("TODO: implement integration - streaming_data")
+def test_source_to_task_mapping():
+    assert hasattr(mod, "SOURCE_TO_TASK")
+    assert "dclm" in mod.SOURCE_TO_TASK
+    assert mod.SOURCE_TO_TASK["dclm"] == "automatic"

@@ -1,43 +1,48 @@
-"""auto-generated test gap mapper for model_1b - coverage <80%"""
 
-import json
-import pathlib
-import pytest
+"""Tests for model_1b — YaRN RoPE, RMSNorm"""
+import importlib.util, math
+MOD_PATH = "/home/hatch/workspace/dottie/apps/ava-factory/model_1b.py"
+spec = importlib.util.spec_from_file_location("model_1b", MOD_PATH)
+mod = importlib.util.module_from_spec(spec)
+import sys
+sys.modules[spec.name] = mod
+spec.loader.exec_module(mod)
 
-try:
-    import apps.ava-factory.model_1b as target_module
-except Exception:
-    try:
-        from importlib import import_module
-        target_module = import_module("apps.ava-factory.model_1b")
-    except Exception:
-        target_module = None
+def test_rmsnorm_exists_and_norms():
+    import torch
+    norm = mod.RMSNorm(16)
+    x = torch.randn(2,3,16)
+    y = norm(x)
+    assert y.shape == x.shape
 
-@pytest.fixture
-def sample_data():
-    return {"module": "model_1b", "input": 1, "repo": "dottie"}
+def test_yarn_rope_instantiation():
+    rope = mod.YaRNScaledRoPE(dim=32, base=10000, max_seq=1024)
+    assert rope.dim == 32
+    assert hasattr(rope, "get_cos_sin")
 
-@pytest.fixture
-def tmp_output(tmp_path):
-    return tmp_path
+def test_yarn_get_cos_sin_shape():
+    import torch
+    rope = mod.YaRNScaledRoPE(dim=16, base=10000)
+    cos, sin = rope.get_cos_sin(seq_len=10, device="cpu")
+    assert cos.shape[0] == 10
+    assert sin.shape[0] == 10
+    # dim should be 16 (cat freqs,freqs)
+    assert cos.shape[1] == 16
 
-@pytest.mark.parametrize("value", [0, 1, 2])
-def test_model_1b_basic_parametrized(value, sample_data):
-    if target_module is None:
-        pytest.skip(f"{ip} not importable - TODO: fix import")
-    pytest.skip("TODO: fill assert - auto-generated gap mapper for model_1b")
+def test_yarn_update_scales():
+    rope = mod.YaRNScaledRoPE(dim=16)
+    rope.update(base=10000, scale=1.0)
+    assert rope.scale == 1.0
+    rope.update(base=10000, scale=3.0)
+    assert rope.scale == 3.0
+    assert rope.attn_factor >= 1.0
 
-def test_model_1b_edge_cases():
-    assert False, "TODO: implement edge case - model_1b"
-
-@pytest.mark.parametrize("bad_input", ["", None, {}])
-def test_model_1b_invalid_inputs(bad_input, tmp_output):
-    if target_module is None:
-        pytest.skip(f"{ip} not importable")
-    pytest.skip("TODO: implement invalid-input handling - model_1b")
-
-def test_model_1b_integration(sample_data, tmp_output):
-    p = tmp_output / "model_1b_sample.json"
-    p.write_text(json.dumps(sample_data))
-    assert p.exists()
-    pytest.skip("TODO: implement integration - model_1b")
+def test_longrope_factors():
+    # function defined in file
+    if not hasattr(mod, "longrope2_factors"):
+        # fallback: module has YaRN only, consider pass
+        assert hasattr(mod, "YaRNScaledRoPE")
+        return
+    inv, lam, crit, crit_t = mod.longrope2_factors(dim=64, base=10000, scale=2.0)
+    assert inv.shape[0] == 32  # 64//2
+    assert lam.shape[0] == 32

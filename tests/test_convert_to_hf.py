@@ -1,43 +1,52 @@
-"""auto-generated test gap mapper for convert_to_hf - coverage <80%"""
 
-import json
-import pathlib
-import pytest
+"""Tests for convert_to_hf — verifies config.json and README creation"""
+import importlib.util, pathlib, json, sys, pytest
 
-try:
-    import apps.ava-factory.convert_to_hf as target_module
-except Exception:
+MOD_PATH = "/home/hatch/workspace/dottie/apps/ava-factory/convert_to_hf.py"
+spec = importlib.util.spec_from_file_location("convert_to_hf", MOD_PATH)
+mod = importlib.util.module_from_spec(spec)
+import sys
+sys.modules[spec.name] = mod
+spec.loader.exec_module(mod)
+
+def test_main_exists():
+    assert hasattr(mod, "main") and callable(mod.main)
+
+def test_convert_creates_config(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    ckpt = tmp_path / "dummy.pt"
+    ckpt.write_text("ckpt")
+    out = tmp_path / "hf_out"
+    sys_argv_old = sys.argv
+    sys.argv = ["convert_to_hf.py","--ckpt", str(ckpt),"--out", str(out)]
     try:
-        from importlib import import_module
-        target_module = import_module("apps.ava-factory.convert_to_hf")
-    except Exception:
-        target_module = None
+        mod.main()
+    finally:
+        sys.argv = sys_argv_old
+    cfg = out / "config.json"
+    assert cfg.exists()
+    data = json.loads(cfg.read_text())
+    assert data["hidden_size"] == 2048
+    assert data["num_layers"] == 48
+    assert data["model_type"] == "ava"
+    readme = out / "README.md"
+    assert readme.exists()
+    assert str(ckpt) in readme.read_text() or "Converted" in readme.read_text()
 
-@pytest.fixture
-def sample_data():
-    return {"module": "convert_to_hf", "input": 1, "repo": "dottie"}
+def test_convert_default_out(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    ckpt = tmp_path / "ckpt.pt"
+    ckpt.write_text("x")
+    sys.argv = ["convert_to_hf.py","--ckpt", str(ckpt)]
+    mod.main()
+    default_out = tmp_path / "hf_model"
+    assert default_out.exists()
+    assert (default_out / "config.json").exists()
 
-@pytest.fixture
-def tmp_output(tmp_path):
-    return tmp_path
-
-@pytest.mark.parametrize("value", [0, 1, 2])
-def test_convert_to_hf_basic_parametrized(value, sample_data):
-    if target_module is None:
-        pytest.skip(f"{ip} not importable - TODO: fix import")
-    pytest.skip("TODO: fill assert - auto-generated gap mapper for convert_to_hf")
-
-def test_convert_to_hf_edge_cases():
-    assert False, "TODO: implement edge case - convert_to_hf"
-
-@pytest.mark.parametrize("bad_input", ["", None, {}])
-def test_convert_to_hf_invalid_inputs(bad_input, tmp_output):
-    if target_module is None:
-        pytest.skip(f"{ip} not importable")
-    pytest.skip("TODO: implement invalid-input handling - convert_to_hf")
-
-def test_convert_to_hf_integration(sample_data, tmp_output):
-    p = tmp_output / "convert_to_hf_sample.json"
-    p.write_text(json.dumps(sample_data))
-    assert p.exists()
-    pytest.skip("TODO: implement integration - convert_to_hf")
+def test_config_json_valid_json_structure(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    sys.argv = ["convert_to_hf.py","--ckpt","a.pt","--out", str(tmp_path/"o2")]
+    mod.main()
+    data = json.loads((tmp_path/"o2"/"config.json").read_text())
+    assert isinstance(data, dict)
+    assert "hidden_size" in data

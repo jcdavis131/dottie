@@ -1,43 +1,27 @@
-"""auto-generated test gap mapper for wandb_dashboard - coverage <80%"""
 
-import json
-import pathlib
-import pytest
+"""Tests for wandb_dashboard — chart definitions"""
+import importlib.util
+MOD_PATH = "/home/hatch/workspace/dottie/apps/ava-factory/wandb_dashboard.py"
+spec = importlib.util.spec_from_file_location("wandb_dashboard", MOD_PATH)
+mod = importlib.util.module_from_spec(spec)
+import sys
+sys.modules[spec.name] = mod
+spec.loader.exec_module(mod)
 
-try:
-    import apps.ava-factory.wandb_dashboard as target_module
-except Exception:
-    try:
-        from importlib import import_module
-        target_module = import_module("apps.ava-factory.wandb_dashboard")
-    except Exception:
-        target_module = None
+def test_define_charts_returns_list():
+    charts = mod.define_charts()
+    assert isinstance(charts, list)
+    assert len(charts) >= 5
+    assert any("S1" in c for c in charts)
 
-@pytest.fixture
-def sample_data():
-    return {"module": "wandb_dashboard", "input": 1, "repo": "dottie"}
+def test_charts_contain_expected_keys():
+    charts = mod.define_charts()
+    joined = " ".join(charts)
+    assert "half_life" in joined
+    assert "routing" in joined or "jspace" in joined
+    assert "broadcast" in joined
 
-@pytest.fixture
-def tmp_output(tmp_path):
-    return tmp_path
-
-@pytest.mark.parametrize("value", [0, 1, 2])
-def test_wandb_dashboard_basic_parametrized(value, sample_data):
-    if target_module is None:
-        pytest.skip(f"{ip} not importable - TODO: fix import")
-    pytest.skip("TODO: fill assert - auto-generated gap mapper for wandb_dashboard")
-
-def test_wandb_dashboard_edge_cases():
-    assert False, "TODO: implement edge case - wandb_dashboard"
-
-@pytest.mark.parametrize("bad_input", ["", None, {}])
-def test_wandb_dashboard_invalid_inputs(bad_input, tmp_output):
-    if target_module is None:
-        pytest.skip(f"{ip} not importable")
-    pytest.skip("TODO: implement invalid-input handling - wandb_dashboard")
-
-def test_wandb_dashboard_integration(sample_data, tmp_output):
-    p = tmp_output / "wandb_dashboard_sample.json"
-    p.write_text(json.dumps(sample_data))
-    assert p.exists()
-    pytest.skip("TODO: implement integration - wandb_dashboard")
+def test_define_charts_prints(capsys):
+    mod.define_charts()
+    cap = capsys.readouterr()
+    assert "W&B" in cap.out or "charts" in cap.out

@@ -1,43 +1,45 @@
-"""auto-generated test gap mapper for j_space_module - coverage <80%"""
 
-import json
-import pathlib
-import pytest
-
+"""Tests for j_space_module — JacobianLens and GlobalWorkspace"""
+import importlib.util, pytest
+MOD_PATH = "/home/hatch/workspace/dottie/apps/ava-factory/j_space_module.py"
+spec = importlib.util.spec_from_file_location("j_space_module", MOD_PATH)
+mod = importlib.util.module_from_spec(spec)
+import sys
+sys.modules[spec.name] = mod
 try:
-    import apps.ava-factory.j_space_module as target_module
-except Exception:
-    try:
-        from importlib import import_module
-        target_module = import_module("apps.ava-factory.j_space_module")
-    except Exception:
-        target_module = None
+    spec.loader.exec_module(mod)
+except Exception as e:
+    # If torch missing, module failed earlier but torch is present per env
+    raise
 
-@pytest.fixture
-def sample_data():
-    return {"module": "j_space_module", "input": 1, "repo": "dottie"}
+def test_jacobian_lens_instantiation():
+    lens = mod.JacobianLens(d_model=32, vocab_size=100)
+    assert lens.d_model == 32
+    assert lens.vocab_size == 100
 
-@pytest.fixture
-def tmp_output(tmp_path):
-    return tmp_path
+def test_concept_vector_deterministic_norm():
+    import torch
+    lens = mod.JacobianLens(d_model=16, vocab_size=200)
+    vec1, tid1 = lens.concept_vector("spider")
+    vec2, tid2 = lens.concept_vector("spider")
+    assert tid1 == tid2
+    # normalized vector norm ~1
+    assert abs(float(vec1.norm()) - 1.0) < 1e-3
 
-@pytest.mark.parametrize("value", [0, 1, 2])
-def test_j_space_module_basic_parametrized(value, sample_data):
-    if target_module is None:
-        pytest.skip(f"{ip} not importable - TODO: fix import")
-    pytest.skip("TODO: fill assert - auto-generated gap mapper for j_space_module")
+def test_global_workspace_forward():
+    import torch
+    ws = mod.GlobalWorkspace(d_model=32, slots=4, vocab_size=100)
+    B,L,D = 2,5,32
+    fused = torch.randn(B,L,D)
+    out, metrics = ws.forward(fused)
+    assert out.shape == (B,L,D)
+    assert "verbalizable_mass" in metrics
+    assert "broadcast_strength" in metrics
+    assert "half_life" in metrics
 
-def test_j_space_module_edge_cases():
-    assert False, "TODO: implement edge case - j_space_module"
-
-@pytest.mark.parametrize("bad_input", ["", None, {}])
-def test_j_space_module_invalid_inputs(bad_input, tmp_output):
-    if target_module is None:
-        pytest.skip(f"{ip} not importable")
-    pytest.skip("TODO: implement invalid-input handling - j_space_module")
-
-def test_j_space_module_integration(sample_data, tmp_output):
-    p = tmp_output / "j_space_module_sample.json"
-    p.write_text(json.dumps(sample_data))
-    assert p.exists()
-    pytest.skip("TODO: implement integration - j_space_module")
+def test_half_life_property():
+    import torch
+    ws = mod.GlobalWorkspace(d_model=16, slots=2, vocab_size=50)
+    hl = ws.half_life
+    assert isinstance(hl, float)
+    assert hl > 0

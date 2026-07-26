@@ -1,43 +1,39 @@
-"""auto-generated test gap mapper for logic_textbook_pipeline - coverage <80%"""
 
-import json
-import pathlib
-import pytest
+"""Tests for logic_textbook_pipeline — gen_textbook and quality filter"""
+import importlib.util, json, gzip
+MOD_PATH = "/home/hatch/workspace/dottie/apps/ava-factory/logic_textbook_pipeline.py"
+spec = importlib.util.spec_from_file_location("logic_textbook_pipeline", MOD_PATH)
+mod = importlib.util.module_from_spec(spec)
+import sys
+sys.modules[spec.name] = mod
+spec.loader.exec_module(mod)
 
-try:
-    import apps.ava-factory.logic_textbook_pipeline as target_module
-except Exception:
-    try:
-        from importlib import import_module
-        target_module = import_module("apps.ava-factory.logic_textbook_pipeline")
-    except Exception:
-        target_module = None
+def test_gen_textbook_contains_topic():
+    txt = mod.gen_textbook("induction")
+    assert "induction" in txt.lower()
+    assert "Definition" in txt or "Theorem" in txt
 
-@pytest.fixture
-def sample_data():
-    return {"module": "logic_textbook_pipeline", "input": 1, "repo": "dottie"}
+def test_heuristic_quality_score_deterministic():
+    s1 = mod.heuristic_quality_score("Theorem Definition Proof Example " + "word "*10)
+    s2 = mod.heuristic_quality_score("Theorem Definition Proof Example " + "word "*10)
+    assert s1 == s2
+    assert 0 <= s1 <= 1
 
-@pytest.fixture
-def tmp_output(tmp_path):
-    return tmp_path
+def test_heuristic_quality_score_penalizes_short():
+    short = "hi"
+    long_good = "Theorem Definition Proof Example " + "unique words "*20
+    assert mod.heuristic_quality_score(long_good) >= mod.heuristic_quality_score(short)
 
-@pytest.mark.parametrize("value", [0, 1, 2])
-def test_logic_textbook_pipeline_basic_parametrized(value, sample_data):
-    if target_module is None:
-        pytest.skip(f"{ip} not importable - TODO: fix import")
-    pytest.skip("TODO: fill assert - auto-generated gap mapper for logic_textbook_pipeline")
+def test_gen_jsonl_example_structure():
+    ex = mod.gen_jsonl_example("propositional logic")
+    assert "text" in ex
+    assert "source" in ex
+    assert "task_type" in ex
+    assert "reward_heuristic" in ex
+    assert 0 <= ex["reward_heuristic"] <= 1
 
-def test_logic_textbook_pipeline_edge_cases():
-    assert False, "TODO: implement edge case - logic_textbook_pipeline"
-
-@pytest.mark.parametrize("bad_input", ["", None, {}])
-def test_logic_textbook_pipeline_invalid_inputs(bad_input, tmp_output):
-    if target_module is None:
-        pytest.skip(f"{ip} not importable")
-    pytest.skip("TODO: implement invalid-input handling - logic_textbook_pipeline")
-
-def test_logic_textbook_pipeline_integration(sample_data, tmp_output):
-    p = tmp_output / "logic_textbook_pipeline_sample.json"
-    p.write_text(json.dumps(sample_data))
-    assert p.exists()
-    pytest.skip("TODO: implement integration - logic_textbook_pipeline")
+def test_topics_constants():
+    assert hasattr(mod, "TOPICS_LOGIC")
+    assert hasattr(mod, "TOPICS_MATH")
+    assert len(mod.TOPICS_LOGIC) >= 3
+    assert len(mod.TOPICS_MATH) >= 3

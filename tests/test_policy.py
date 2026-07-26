@@ -1,43 +1,46 @@
-"""auto-generated test gap mapper for policy - coverage <80%"""
 
-import json
-import pathlib
-import pytest
+"""Tests for policy — capability based default-deny"""
+import importlib.util, pathlib
+MOD_PATH = "/home/hatch/workspace/dottie/apps/scout-cli/bigbang/core/policy.py"
+spec = importlib.util.spec_from_file_location("policy_module", MOD_PATH)
+mod = importlib.util.module_from_spec(spec)
+import sys
+sys.modules[spec.name] = mod
+spec.loader.exec_module(mod)
 
-try:
-    import apps.dottie.dottie.policy as target_module
-except Exception:
-    try:
-        from importlib import import_module
-        target_module = import_module("apps.dottie.dottie.policy")
-    except Exception:
-        target_module = None
+def test_default_policy_structure():
+    assert hasattr(mod, "DEFAULT_POLICY")
+    dp = mod.DEFAULT_POLICY
+    assert "allow_network" in dp
+    assert dp["allow_network"] is False
 
-@pytest.fixture
-def sample_data():
-    return {"module": "policy", "input": 1, "repo": "dottie"}
+def test_domain_matches_exact_and_subdomain():
+    assert mod._domain_matches("example.com", "https://example.com/path")
+    assert mod._domain_matches("example.com", "https://sub.example.com/x")
+    assert not mod._domain_matches("example.com", "https://evil.com")
+    assert not mod._domain_matches("example.com", "https://evil.com/example.com")
+    # localhost substring attack fixed
+    assert not mod._domain_matches("localhost", "http://evil.com/localhost")
 
-@pytest.fixture
-def tmp_output(tmp_path):
-    return tmp_path
+def test_host_of_extraction():
+    assert mod._host_of("https://example.com/foo") == "example.com"
+    assert mod._host_of("127.0.0.1") == "127.0.0.1"
+    assert mod._host_of("example.com") == "example.com"
 
-@pytest.mark.parametrize("value", [0, 1, 2])
-def test_policy_basic_parametrized(value, sample_data):
-    if target_module is None:
-        pytest.skip(f"{ip} not importable - TODO: fix import")
-    pytest.skip("TODO: fill assert - auto-generated gap mapper for policy")
+def test_user_policy_file_override(monkeypatch):
+    import os
+    monkeypatch.setenv("BIGBANG_POLICY_FILE", "/tmp/custom_policy.yaml")
+    p = mod.user_policy_file()
+    assert str(p) == "/tmp/custom_policy.yaml"
+    monkeypatch.delenv("BIGBANG_POLICY_FILE", raising=False)
+    # default path contains bigbang/policy.yaml
+    p2 = mod.user_policy_file()
+    assert "bigbang" in str(p2) and "policy.yaml" in str(p2)
 
-def test_policy_edge_cases():
-    assert False, "TODO: implement edge case - policy"
-
-@pytest.mark.parametrize("bad_input", ["", None, {}])
-def test_policy_invalid_inputs(bad_input, tmp_output):
-    if target_module is None:
-        pytest.skip(f"{ip} not importable")
-    pytest.skip("TODO: implement invalid-input handling - policy")
-
-def test_policy_integration(sample_data, tmp_output):
-    p = tmp_output / "policy_sample.json"
-    p.write_text(json.dumps(sample_data))
-    assert p.exists()
-    pytest.skip("TODO: implement integration - policy")
+def test_load_user_policy_creates_default(tmp_path, monkeypatch):
+    fp = tmp_path / "policy.yaml"
+    monkeypatch.setattr(mod, "user_policy_file", lambda: fp)
+    data = mod.load_user_policy()
+    assert isinstance(data, dict)
+    assert fp.exists()
+    assert "network" in data

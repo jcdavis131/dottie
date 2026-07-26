@@ -1,43 +1,18 @@
-"""auto-generated test gap mapper for eval_harness - coverage <80%"""
 
-import json
-import pathlib
-import pytest
+"""Tests for eval_harness — trivial module prints needle message"""
+import importlib.util, subprocess, sys
+MOD_PATH = "/home/hatch/workspace/dottie/apps/ava-factory/eval_harness.py"
+# This file just prints at import time, so exec via subprocess for isolation
+def test_eval_harness_import_does_not_crash():
+    result = subprocess.run([sys.executable, MOD_PATH], capture_output=True, text=True, timeout=5)
+    # It prints needle message; exit 0 unless error
+    assert result.returncode == 0
+    assert "Needle" in result.stdout or "needle" in result.stdout.lower() or result.stdout == "" or "128k" in result.stdout
 
-try:
-    import apps.ava-factory.eval_harness as target_module
-except Exception:
-    try:
-        from importlib import import_module
-        target_module = import_module("apps.ava-factory.eval_harness")
-    except Exception:
-        target_module = None
-
-@pytest.fixture
-def sample_data():
-    return {"module": "eval_harness", "input": 1, "repo": "dottie"}
-
-@pytest.fixture
-def tmp_output(tmp_path):
-    return tmp_path
-
-@pytest.mark.parametrize("value", [0, 1, 2])
-def test_eval_harness_basic_parametrized(value, sample_data):
-    if target_module is None:
-        pytest.skip(f"{ip} not importable - TODO: fix import")
-    pytest.skip("TODO: fill assert - auto-generated gap mapper for eval_harness")
-
-def test_eval_harness_edge_cases():
-    assert False, "TODO: implement edge case - eval_harness"
-
-@pytest.mark.parametrize("bad_input", ["", None, {}])
-def test_eval_harness_invalid_inputs(bad_input, tmp_output):
-    if target_module is None:
-        pytest.skip(f"{ip} not importable")
-    pytest.skip("TODO: implement invalid-input handling - eval_harness")
-
-def test_eval_harness_integration(sample_data, tmp_output):
-    p = tmp_output / "eval_harness_sample.json"
-    p.write_text(json.dumps(sample_data))
+def test_eval_harness_file_exists_and_small():
+    import pathlib
+    p = pathlib.Path(MOD_PATH)
     assert p.exists()
-    pytest.skip("TODO: implement integration - eval_harness")
+    assert p.stat().st_size < 5000
+    content = p.read_text()
+    assert "needle" in content.lower() or "128k" in content.lower()

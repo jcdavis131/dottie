@@ -1,43 +1,38 @@
-"""auto-generated test gap mapper for j_space_eval - coverage <80%"""
 
-import json
-import pathlib
-import pytest
+"""Tests for j_space_eval — 5 property tests"""
+import importlib.util
+MOD_PATH = "/home/hatch/workspace/dottie/apps/ava-factory/j_space_eval.py"
+spec = importlib.util.spec_from_file_location("j_space_eval", MOD_PATH)
+mod = importlib.util.module_from_spec(spec)
+import sys
+sys.modules[spec.name] = mod
+spec.loader.exec_module(mod)
 
-try:
-    import apps.ava-factory.j_space_eval as target_module
-except Exception:
-    try:
-        from importlib import import_module
-        target_module = import_module("apps.ava-factory.j_space_eval")
-    except Exception:
-        target_module = None
+def test_all_property_funcs_exist():
+    for name in ["test_verbal_report","test_modulation","test_internal_reasoning","test_broadcast","test_selectivity","test_safety"]:
+        assert hasattr(mod, name)
+        assert callable(getattr(mod, name))
 
-@pytest.fixture
-def sample_data():
-    return {"module": "j_space_eval", "input": 1, "repo": "dottie"}
+def test_verbal_report_structure():
+    res = mod.test_verbal_report()
+    assert isinstance(res, dict)
+    assert res["pass"] is True
+    assert "mass" in res
+    assert 0 < res["mass"] < 1
 
-@pytest.fixture
-def tmp_output(tmp_path):
-    return tmp_path
+def test_modulation_structure():
+    res = mod.test_modulation()
+    assert res["pass"] is True
+    assert "test" in res
 
-@pytest.mark.parametrize("value", [0, 1, 2])
-def test_j_space_eval_basic_parametrized(value, sample_data):
-    if target_module is None:
-        pytest.skip(f"{ip} not importable - TODO: fix import")
-    pytest.skip("TODO: fill assert - auto-generated gap mapper for j_space_eval")
+def test_broadcast_and_selectivity():
+    b = mod.test_broadcast()
+    s = mod.test_selectivity()
+    assert b["pass"] is True
+    assert s["pass"] is True
+    assert "test" in b
 
-def test_j_space_eval_edge_cases():
-    assert False, "TODO: implement edge case - j_space_eval"
-
-@pytest.mark.parametrize("bad_input", ["", None, {}])
-def test_j_space_eval_invalid_inputs(bad_input, tmp_output):
-    if target_module is None:
-        pytest.skip(f"{ip} not importable")
-    pytest.skip("TODO: implement invalid-input handling - j_space_eval")
-
-def test_j_space_eval_integration(sample_data, tmp_output):
-    p = tmp_output / "j_space_eval_sample.json"
-    p.write_text(json.dumps(sample_data))
-    assert p.exists()
-    pytest.skip("TODO: implement integration - j_space_eval")
+def test_safety():
+    res = mod.test_safety()
+    assert res["pass"] is True
+    assert "leverage" in res["test"] or "Safety" in res["name"]

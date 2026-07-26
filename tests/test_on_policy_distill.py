@@ -1,43 +1,35 @@
-"""auto-generated test gap mapper for on_policy_distill - coverage <80%"""
 
-import json
-import pathlib
-import pytest
+"""Tests for on_policy_distill — configs and constants"""
+import importlib.util
+MOD_PATH = "/home/hatch/workspace/dottie/apps/ava-factory/on_policy_distill.py"
+spec = importlib.util.spec_from_file_location("on_policy_distill", MOD_PATH)
+mod = importlib.util.module_from_spec(spec)
+import sys
+sys.modules[spec.name] = mod
+spec.loader.exec_module(mod)
 
-try:
-    import apps.ava-factory.on_policy_distill as target_module
-except Exception:
-    try:
-        from importlib import import_module
-        target_module = import_module("apps.ava-factory.on_policy_distill")
-    except Exception:
-        target_module = None
+def test_wsd_config_structure():
+    assert hasattr(mod, "WSD_CONFIG")
+    cfg = mod.WSD_CONFIG
+    assert "warmup" in cfg and "stable_steps" in cfg
+    assert cfg["warmup"] == 2000
+    assert cfg["stable_steps"] == 736000
 
-@pytest.fixture
-def sample_data():
-    return {"module": "on_policy_distill", "input": 1, "repo": "dottie"}
+def test_rope_schedule_list():
+    assert hasattr(mod, "ROPE_SCHEDULE")
+    sched = mod.ROPE_SCHEDULE
+    assert isinstance(sched, list)
+    assert len(sched) >= 3
+    assert all("base" in s and "ctx" in s for s in sched)
 
-@pytest.fixture
-def tmp_output(tmp_path):
-    return tmp_path
+def test_branch_router_targets():
+    assert hasattr(mod, "BRANCH_ROUTER_TARGETS")
+    br = mod.BRANCH_ROUTER_TARGETS
+    assert "code" in br and "math" in br and "chat" in br
+    for k,v in br.items():
+        assert isinstance(v, list) and len(v)==4
+        assert abs(sum(v)-1.0) < 1e-6
 
-@pytest.mark.parametrize("value", [0, 1, 2])
-def test_on_policy_distill_basic_parametrized(value, sample_data):
-    if target_module is None:
-        pytest.skip(f"{ip} not importable - TODO: fix import")
-    pytest.skip("TODO: fill assert - auto-generated gap mapper for on_policy_distill")
-
-def test_on_policy_distill_edge_cases():
-    assert False, "TODO: implement edge case - on_policy_distill"
-
-@pytest.mark.parametrize("bad_input", ["", None, {}])
-def test_on_policy_distill_invalid_inputs(bad_input, tmp_output):
-    if target_module is None:
-        pytest.skip(f"{ip} not importable")
-    pytest.skip("TODO: implement invalid-input handling - on_policy_distill")
-
-def test_on_policy_distill_integration(sample_data, tmp_output):
-    p = tmp_output / "on_policy_distill_sample.json"
-    p.write_text(json.dumps(sample_data))
-    assert p.exists()
-    pytest.skip("TODO: implement integration - on_policy_distill")
+def test_has_torch_flag():
+    assert hasattr(mod, "HAS_TORCH")
+    assert isinstance(mod.HAS_TORCH, bool)
