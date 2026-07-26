@@ -151,7 +151,9 @@ def test_parse_rss2_normalizes_entries():
     assert first["summary"] == "We study curriculum learning for pretraining."
     assert first["author"] == "A. Researcher"  # dc:creator via the shim
     assert first["tags"] == ["cs.LG"]
-    assert first["published_ts"] == feeds.parse_entry_time("Mon, 20 Jul 2026 10:00:00 GMT")
+    assert first["published_ts"] == feeds.parse_entry_time(
+        "Mon, 20 Jul 2026 10:00:00 GMT"
+    )
     # second item has no guid at all — link becomes the identity
     assert parsed["entries"][1]["guid"] is None
     assert parsed["entries"][1]["link"] == "https://arxiv.org/abs/2607.00002"
@@ -194,8 +196,13 @@ def test_parse_honors_encoding_declaration_on_bytes():
 
 
 def test_parse_rejects_junk_and_non_feeds():
-    for bad in ("", "   ", "not xml at all", "<html><body>hi</body></html>",
-                "<rss><channel><title>unclosed"):
+    for bad in (
+        "",
+        "   ",
+        "not xml at all",
+        "<html><body>hi</body></html>",
+        "<rss><channel><title>unclosed",
+    ):
         with pytest.raises(feeds.FeedError):
             feeds.parse_feed(bad)
 
@@ -205,7 +212,7 @@ def test_parse_refuses_doctype_entity_bomb():
         '<?xml version="1.0"?>'
         '<!DOCTYPE rss [<!ENTITY a "aaaaaaaaaa">'
         '<!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">]>'
-        "<rss version=\"2.0\"><channel><title>&b;</title></channel></rss>"
+        '<rss version="2.0"><channel><title>&b;</title></channel></rss>'
     )
     with pytest.raises(feeds.FeedError) as e:
         feeds.parse_feed(bomb)
@@ -245,7 +252,9 @@ def test_fmt_ts_is_utc_and_total():
 
 def test_strip_html_collapses_and_caps():
     assert feeds.strip_html("<p>a  <b>b</b>\n c</p>") == "a b c"
-    assert feeds.strip_html("&amp;lt;tag&amp;gt;") == "&lt;tag&gt;"  # one decode, not two
+    assert (
+        feeds.strip_html("&amp;lt;tag&amp;gt;") == "&lt;tag&gt;"
+    )  # one decode, not two
     long = feeds.strip_html("x" * 50, cap=10)
     assert long == "x" * 10 + "…"
     assert feeds.strip_html(None) == "" and feeds.strip_html("") == ""
@@ -258,16 +267,18 @@ def test_entry_key_prefers_id_then_link_then_title_date():
     with_id = {"guid": "urn:1", "link": "https://a/1", "title": "t"}
     assert feeds.entry_key(with_id) == feeds.entry_key({"guid": "urn:1"})
     # a moved link keeps the identity as long as the id is stable
-    assert feeds.entry_key({"guid": "urn:1", "link": "https://moved/1"}) == feeds.entry_key(
-        with_id
-    )
+    assert feeds.entry_key(
+        {"guid": "urn:1", "link": "https://moved/1"}
+    ) == feeds.entry_key(with_id)
     link_only = {"guid": None, "link": "https://a/1", "title": "t"}
     assert feeds.entry_key(link_only) != feeds.entry_key(with_id)
     assert feeds.entry_key(link_only) == feeds.entry_key({"link": "https://a/1"})
     # no id and no link: title+date is the last resort, and it is stable
     bare = {"title": "same", "published_ts": 1.0}
     assert feeds.entry_key(bare) == feeds.entry_key(dict(bare))
-    assert feeds.entry_key(bare) != feeds.entry_key({"title": "same", "published_ts": 2.0})
+    assert feeds.entry_key(bare) != feeds.entry_key(
+        {"title": "same", "published_ts": 2.0}
+    )
 
 
 # ---- keyword scoring --------------------------------------------------------
@@ -288,7 +299,10 @@ def test_score_entry_title_outweighs_body_and_counts_once():
 def test_score_entry_word_boundaries_phrases_and_tags():
     kw = {"muon": 3.0, "curriculum learning": 2.0}
     # substring hits must NOT count ("muonic" is not "muon")
-    assert feeds.score_entry({"title": "muonic hydrogen", "summary": ""}, kw)["score"] == 0.0
+    assert (
+        feeds.score_entry({"title": "muonic hydrogen", "summary": ""}, kw)["score"]
+        == 0.0
+    )
     # a phrase matches across any whitespace run (feeds wrap where they like)
     wrapped = {"title": "", "summary": "on curriculum\n  learning schedules"}
     assert feeds.score_entry(wrapped, kw)["matched"] == ["curriculum learning"]
@@ -312,7 +326,7 @@ def test_load_keywords_overlay_and_validation(tmp_path):
     assert kw["novel term"] == 1.5  # added
     assert kw["tokenizer"] == feeds.DEFAULT_KEYWORDS["tokenizer"]  # untouched
     assert feeds.load_keywords() == feeds.DEFAULT_KEYWORDS
-    for bad in ('[1]', '{"muon": true}', '{"muon": "3"}', '{"muon": -1}', '{"": 2}'):
+    for bad in ("[1]", '{"muon": true}', '{"muon": "3"}', '{"muon": -1}', '{"": 2}'):
         f.write_text(bad, "utf-8")
         with pytest.raises(ValueError):
             feeds.load_keywords(str(f))
@@ -323,9 +337,13 @@ def test_load_keywords_overlay_and_validation(tmp_path):
 
 def test_add_feed_idempotent_and_validated():
     conn = _store()
-    first = feeds.add_feed(conn, "arxiv-cs-lg", "https://rss.arxiv.org/rss/cs.LG", ts=T0)
+    first = feeds.add_feed(
+        conn, "arxiv-cs-lg", "https://rss.arxiv.org/rss/cs.LG", ts=T0
+    )
     assert first["created"] is True
-    again = feeds.add_feed(conn, "arxiv-cs-lg", "https://rss.arxiv.org/rss/cs.LG", ts=T0)
+    again = feeds.add_feed(
+        conn, "arxiv-cs-lg", "https://rss.arxiv.org/rss/cs.LG", ts=T0
+    )
     assert again["created"] is False and again["repointed"] is False
     assert len(feeds.list_feeds(conn)) == 1
     for name, url in (
@@ -340,11 +358,18 @@ def test_add_feed_idempotent_and_validated():
 def test_repointing_a_feed_clears_stale_validators():
     conn = _registered()
     feeds.record_fetch(
-        conn, "arxiv-cs-lg", ts=T0, status=200, etag='W/"old"',
-        last_modified="Mon, 20 Jul 2026 10:00:00 GMT", replace_validators=True,
+        conn,
+        "arxiv-cs-lg",
+        ts=T0,
+        status=200,
+        etag='W/"old"',
+        last_modified="Mon, 20 Jul 2026 10:00:00 GMT",
+        replace_validators=True,
     )
     assert feeds.conditional_headers(feeds.get_feed(conn, "arxiv-cs-lg"))
-    moved = feeds.add_feed(conn, "arxiv-cs-lg", "https://rss.arxiv.org/rss/cs.CL", ts=T0)
+    moved = feeds.add_feed(
+        conn, "arxiv-cs-lg", "https://rss.arxiv.org/rss/cs.CL", ts=T0
+    )
     assert moved["repointed"] is True and moved["previous_url"].endswith("cs.LG")
     # validators belonged to the OLD url — replaying them would invite a bogus 304
     assert feeds.conditional_headers(feeds.get_feed(conn, "arxiv-cs-lg")) == {}
@@ -518,12 +543,24 @@ def test_run_fetch_name_filter_and_unknown_name():
 def test_to_diagnostics_normalizes_into_family_schema():
     results = [
         {"feed": "ok", "url": "https://a/1", "state": feeds.STATE_OK, "error": None},
-        {"feed": "fresh", "url": "https://a/2", "state": feeds.STATE_NOT_MODIFIED,
-         "error": None},
-        {"feed": "dead", "url": "https://a/3", "state": feeds.STATE_ERROR,
-         "error": "URLError: refused"},
-        {"feed": "denied", "url": "https://a/4", "state": feeds.STATE_DENIED,
-         "error": "policy-denied: nope"},
+        {
+            "feed": "fresh",
+            "url": "https://a/2",
+            "state": feeds.STATE_NOT_MODIFIED,
+            "error": None,
+        },
+        {
+            "feed": "dead",
+            "url": "https://a/3",
+            "state": feeds.STATE_ERROR,
+            "error": "URLError: refused",
+        },
+        {
+            "feed": "denied",
+            "url": "https://a/4",
+            "state": feeds.STATE_DENIED,
+            "error": "policy-denied: nope",
+        },
     ]
     diags = feeds.to_diagnostics(results)
     assert len(diags) == 2  # ok and not-modified emit nothing
@@ -543,10 +580,16 @@ def _seeded_digest_store():
     """Three scored entries with known scores and dates (one across two feeds)."""
     conn = _store()
     feeds.add_feed(conn, "arxiv-cs-lg", "https://rss.arxiv.org/rss/cs.LG", ts=T0)
-    feeds.add_feed(conn, "simonwillison", "https://simonwillison.net/atom/everything/", ts=T0)
+    feeds.add_feed(
+        conn, "simonwillison", "https://simonwillison.net/atom/everything/", ts=T0
+    )
     kw = {"muon": 3.0, "quantization": 1.0, "curriculum learning": 2.0}
-    feeds.ingest(conn, "arxiv-cs-lg", feeds.parse_feed(RSS2)["entries"], ts=T0, keywords=kw)
-    feeds.ingest(conn, "simonwillison", feeds.parse_feed(ATOM)["entries"], ts=T0, keywords=kw)
+    feeds.ingest(
+        conn, "arxiv-cs-lg", feeds.parse_feed(RSS2)["entries"], ts=T0, keywords=kw
+    )
+    feeds.ingest(
+        conn, "simonwillison", feeds.parse_feed(ATOM)["entries"], ts=T0, keywords=kw
+    )
     return conn
 
 
@@ -570,7 +613,10 @@ def test_digest_ranks_by_score_then_recency():
 
 def test_digest_filters_by_score_feed_window_and_limit():
     conn = _seeded_digest_store()
-    assert [i["score"] for i in feeds.digest(conn, min_score=2.0)["items"]] == [8.0, 2.0]
+    assert [i["score"] for i in feeds.digest(conn, min_score=2.0)["items"]] == [
+        8.0,
+        2.0,
+    ]
     assert feeds.digest(conn, feed="simonwillison")["feeds"] == ["simonwillison"]
     assert feeds.digest(conn, limit=1)["count"] == 1
     assert feeds.digest(conn, limit=0)["count"] == 3  # 0 = unlimited
@@ -622,7 +668,8 @@ def test_store_survives_reopen_and_is_its_own_file(tmp_path):
     assert feeds.get_feed(reopened, "arxiv-cs-lg")["etag"] == 'W/"v1"'
     assert feeds.digest(reopened, now=T0)["count"] == 2
     tables = {
-        r[0] for r in reopened.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        r[0]
+        for r in reopened.execute("SELECT name FROM sqlite_master WHERE type='table'")
     }
     assert {"feeds", "entries", "meta"} <= tables
     # never the shared #2 monitoring ledger's tables — this is its own store
@@ -715,8 +762,15 @@ def test_cli_add_list_digest_round_trip_offline(tmp_path):
     assert all(row["fetchable"] for row in added["added"])
 
     hand = _cli(
-        ["feeds", "add", "sketchy", "--url", "https://not-allowed.example.com/f.xml",
-         "--db", str(db)],
+        [
+            "feeds",
+            "add",
+            "sketchy",
+            "--url",
+            "https://not-allowed.example.com/f.xml",
+            "--db",
+            str(db),
+        ],
         env=env,
     )
     assert hand.returncode == 0, hand.stderr + hand.stdout
@@ -740,13 +794,16 @@ def test_cli_add_list_digest_round_trip_offline(tmp_path):
 def test_cli_add_rejects_bad_input(tmp_path):
     db = tmp_path / "feeds.db"
     env = _tmp_env(tmp_path)
-    both = _cli(["feeds", "add", "x", "--url", "https://a/f.xml", "--seed",
-                 "--db", str(db)], env=env)
+    both = _cli(
+        ["feeds", "add", "x", "--url", "https://a/f.xml", "--seed", "--db", str(db)],
+        env=env,
+    )
     assert both.returncode == 1 and "not both" in json.loads(both.stdout)["error"]
     naked = _cli(["feeds", "add", "x", "--db", str(db)], env=env)
     assert naked.returncode == 1 and "--url" in json.loads(naked.stdout)["error"]
-    bad = _cli(["feeds", "add", "UPPER", "--url", "https://a/f.xml", "--db", str(db)],
-               env=env)
+    bad = _cli(
+        ["feeds", "add", "UPPER", "--url", "https://a/f.xml", "--db", str(db)], env=env
+    )
     assert bad.returncode == 1 and "feed name" in json.loads(bad.stdout)["error"]
 
 
@@ -761,8 +818,15 @@ def test_cli_fetch_denied_feed_records_instead_of_reaching_the_network(tmp_path)
     db = tmp_path / "feeds.db"
     env = _tmp_env(tmp_path)
     add = _cli(
-        ["feeds", "add", "sketchy", "--url", "https://not-allowed.example.com/f.xml",
-         "--db", str(db)],
+        [
+            "feeds",
+            "add",
+            "sketchy",
+            "--url",
+            "https://not-allowed.example.com/f.xml",
+            "--db",
+            str(db),
+        ],
         env=env,
     )
     assert add.returncode == 0, add.stderr + add.stdout
@@ -803,8 +867,19 @@ def test_cli_digest_writes_a_text_file(tmp_path):
     )
     conn.close()
     r = _cli(
-        ["feeds", "digest", "--db", str(db), "--hours", "0", "--format", "text",
-         "--out", str(out), "--mark"],
+        [
+            "feeds",
+            "digest",
+            "--db",
+            str(db),
+            "--hours",
+            "0",
+            "--format",
+            "text",
+            "--out",
+            str(out),
+            "--mark",
+        ],
         env=env,
     )
     assert r.returncode == 0, r.stderr + r.stdout

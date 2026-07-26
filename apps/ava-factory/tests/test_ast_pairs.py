@@ -162,7 +162,9 @@ async def fetch_all(urls):
     def test_import_packing_is_bounded(self):
         # Body must clear MIN_CODE_CHARS — the first version of this fixture had a
         # 30-char body and extracted nothing, so the assertion never ran.
-        src = "\n".join(f"import mod{i}" for i in range(60)) + '''
+        src = (
+            "\n".join(f"import mod{i}" for i in range(60))
+            + '''
 
 def f(x):
     """Do a genuinely described thing with the supplied argument value."""
@@ -170,6 +172,7 @@ def f(x):
     adjusted = scaled - (x % 3)
     return max(adjusted, 0)
 '''
+        )
         pairs, rej = ap.extract_file(src)
         assert pairs, f"fixture extracted nothing: {rej}"
         assert pairs[0]["positive"].count("import mod") <= ap.MAX_IMPORTS_PACKED

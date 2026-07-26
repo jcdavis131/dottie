@@ -197,9 +197,7 @@ def read_sqlite_rows(
         have = table_columns(conn, table)
         missing = [c for c in columns if c not in have]
         if missing:
-            raise ChartError(
-                f"{table} has no column(s) {missing} — available: {have}"
-            )
+            raise ChartError(f"{table} has no column(s) {missing} — available: {have}")
         cols = ", ".join(_ident(c) for c in columns)
         sql = f"SELECT {cols} FROM {_ident(table)}"  # noqa: S608 - idents validated
         if where:
@@ -356,9 +354,7 @@ def _series_label(row: dict[str, Any], column: str | None, default: str) -> str:
     return default if raw is None or str(raw) == "" else str(raw)
 
 
-def _sorted_categories(
-    totals: dict[str, float], sort: str
-) -> list[str]:
+def _sorted_categories(totals: dict[str, float], sort: str) -> list[str]:
     """Bar category order — deterministic under every sort, ties broken by label."""
     if sort == SORT_VALUE:
         return sorted(totals, key=lambda c: (totals[c], c))
@@ -499,8 +495,8 @@ def dataset(
         "skipped": skipped,
         "folded": folded,
         "bounds": bounds,
-        "source": source or {"kind": "rows", "path": None, "table": None,
-                             "label": "in-memory rows"},
+        "source": source
+        or {"kind": "rows", "path": None, "table": None, "label": "in-memory rows"},
     }
 
 
@@ -521,8 +517,11 @@ def read_dataset(
     sort: str = SORT_LABEL,
 ) -> dict[str, Any]:
     """Resolve exactly one input source, read it, and build the dataset."""
-    chosen = [n for n, v in (("--csv", csv_path), ("--json-file", json_path),
-                             ("--db", db)) if v]
+    chosen = [
+        n
+        for n, v in (("--csv", csv_path), ("--json-file", json_path), ("--db", db))
+        if v
+    ]
     if len(chosen) != 1:
         raise ChartError(
             "name exactly one input: --csv FILE, --json-file FILE, or "
@@ -533,7 +532,10 @@ def read_dataset(
             raise ChartError("--db needs --table (the table or view to read)")
         cols = [c for c in (x, y, series) if c]
         rows, source = read_sqlite_rows(
-            db, table=table, columns=list(dict.fromkeys(cols)), where=where,
+            db,
+            table=table,
+            columns=list(dict.fromkeys(cols)),
+            where=where,
             limit=limit,
         )
     elif csv_path:
@@ -541,7 +543,13 @@ def read_dataset(
     else:
         rows, source = read_json_rows(json_path, records=records, limit=limit)
     return dataset(
-        rows, kind=kind, x=x, y=y, series=series, source=source, time_x=time_x,
+        rows,
+        kind=kind,
+        x=x,
+        y=y,
+        series=series,
+        source=source,
+        time_x=time_x,
         sort=sort,
     )
 
@@ -564,16 +572,24 @@ def to_diagnostics(ds: dict[str, Any]) -> list[dict[str, Any]]:
     if not ds.get("rows_read"):
         diags.append(
             openswap.diagnostic(
-                path=where, line=0, col=0, rule="charts:no-rows",
-                severity="warning", source="charts",
+                path=where,
+                line=0,
+                col=0,
+                rule="charts:no-rows",
+                severity="warning",
+                source="charts",
                 message="source returned no rows — the chart is empty, not flat",
             )
         )
     elif not ds.get("points"):
         diags.append(
             openswap.diagnostic(
-                path=where, line=0, col=0, rule="charts:nothing-plottable",
-                severity="warning", source="charts",
+                path=where,
+                line=0,
+                col=0,
+                rule="charts:nothing-plottable",
+                severity="warning",
+                source="charts",
                 message=(
                     f"{ds['rows_read']} row(s) read but none plottable with "
                     f"x={cols.get('x')!r} y={cols.get('y')!r} — check the column "
@@ -586,8 +602,12 @@ def to_diagnostics(ds: dict[str, Any]) -> list[dict[str, Any]]:
     if total_skipped and ds.get("points"):
         diags.append(
             openswap.diagnostic(
-                path=where, line=0, col=0, rule="charts:skipped-rows",
-                severity="info", source="charts",
+                path=where,
+                line=0,
+                col=0,
+                rule="charts:skipped-rows",
+                severity="info",
+                source="charts",
                 message=(
                     f"{total_skipped} of {ds['rows_read']} row(s) skipped "
                     f"({skipped}) — omitted from the chart, never coerced to 0"
@@ -597,8 +617,12 @@ def to_diagnostics(ds: dict[str, Any]) -> list[dict[str, Any]]:
     if ds.get("folded"):
         diags.append(
             openswap.diagnostic(
-                path=where, line=0, col=0, rule="charts:folded-categories",
-                severity="info", source="charts",
+                path=where,
+                line=0,
+                col=0,
+                rule="charts:folded-categories",
+                severity="info",
+                source="charts",
                 message=(
                     f"{ds['folded']} row(s) summed into an existing bar "
                     "category — the footer states the fold"
@@ -645,8 +669,12 @@ def nice_axis(lo: float, hi: float, *, count: int = DEFAULT_TICKS) -> dict[str, 
     n = round((nhi - nlo) / step)
     n = max(1, min(n, MAX_TICKS))
     ticks = [round(nlo + i * step, 12) for i in range(n + 1)]
-    return {"lo": round(nlo, 12), "hi": round(ticks[-1], 12), "step": step,
-            "ticks": ticks}
+    return {
+        "lo": round(nlo, 12),
+        "hi": round(ticks[-1], 12),
+        "step": step,
+        "ticks": ticks,
+    }
 
 
 # ---- formatting -------------------------------------------------------------

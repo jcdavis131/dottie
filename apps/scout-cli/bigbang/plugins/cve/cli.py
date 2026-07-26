@@ -61,9 +61,21 @@ SNAPSHOT_ENV = "SCOUT_CVE_SNAPSHOT"
 # thousands of vendored manifests that are not what this project declares.
 SKIP_DIRS = frozenset(
     {
-        "node_modules", ".venv", "venv", "env", ".git", "__pycache__",
-        "site-packages", "dist", "build", ".tox", ".mypy_cache", ".ruff_cache",
-        ".pytest_cache", "vendor", ".next",
+        "node_modules",
+        ".venv",
+        "venv",
+        "env",
+        ".git",
+        "__pycache__",
+        "site-packages",
+        "dist",
+        "build",
+        ".tox",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".pytest_cache",
+        "vendor",
+        ".next",
     }
 )
 DEFAULT_MAX_AGE_DAYS = 30.0
@@ -401,7 +413,9 @@ def rules_cmd(
 )
 def snapshot_cmd(
     snapshot_file: str | None = typer.Option(
-        None, "--snapshot", help=f"cached OSV JSON (default {SNAPSHOT_REL}, env {SNAPSHOT_ENV})"
+        None,
+        "--snapshot",
+        help=f"cached OSV JSON (default {SNAPSHOT_REL}, env {SNAPSHOT_ENV})",
     ),
     max_age_days: float | None = typer.Option(
         DEFAULT_MAX_AGE_DAYS, "--max-age-days", help="report staleness past this age"
@@ -460,7 +474,9 @@ def match_cmd(
     ecosystem: str = typer.Option(
         cve.ECO_PYPI, "--ecosystem", help=f"one of {'|'.join(cve.ECOSYSTEMS)}"
     ),
-    snapshot_file: str | None = typer.Option(None, "--snapshot", help="cached OSV JSON"),
+    snapshot_file: str | None = typer.Option(
+        None, "--snapshot", help="cached OSV JSON"
+    ),
     rules_file: str | None = typer.Option(None, "--rules", help="JSON rules overlay"),
     fail_on: str | None = typer.Option(
         None, "--fail-on", help="exit 1 if findings reach this severity"
@@ -487,7 +503,13 @@ def match_cmd(
         pin_reason=reason,
         field="--package",
     )
-    parsed = {"kind": "cli", "ecosystem": eco, "dependencies": [dep], "notes": [], "error": None}
+    parsed = {
+        "kind": "cli",
+        "ecosystem": eco,
+        "dependencies": [dep],
+        "notes": [],
+        "error": None,
+    }
     report = cve.audit_manifest(parsed, snapshot, path=f"{eco}:{package}", rules=rules)
     age = _age_of(snapshot)
     diags = report["diagnostics"] + cve.snapshot_diagnostics(
@@ -496,7 +518,11 @@ def match_cmd(
     emit(
         ok(
             {
-                "snapshot": {"path": str(path), "age": age, "counts": snapshot["counts"]},
+                "snapshot": {
+                    "path": str(path),
+                    "age": age,
+                    "counts": snapshot["counts"],
+                },
                 "dependency": report["dependencies"][0],
                 "counts": report["counts"],
                 "diagnostics": openswap.sort_diagnostics(diags),
@@ -524,11 +550,15 @@ def match_cmd(
 )
 def audit(
     paths: list[str] = typer.Argument(
-        ..., help="files or directories (dirs walked for requirements*.txt, "
-        + ", ".join(cve.MANIFEST_NAMES) + ")"
+        ...,
+        help="files or directories (dirs walked for requirements*.txt, "
+        + ", ".join(cve.MANIFEST_NAMES)
+        + ")",
     ),
     snapshot_file: str | None = typer.Option(
-        None, "--snapshot", help=f"cached OSV JSON (default {SNAPSHOT_REL}, env {SNAPSHOT_ENV})"
+        None,
+        "--snapshot",
+        help=f"cached OSV JSON (default {SNAPSHOT_REL}, env {SNAPSHOT_ENV})",
     ),
     rules_file: str | None = typer.Option(
         None, "--rules", help="JSON rules overlay (org policy, policy-as-config)"

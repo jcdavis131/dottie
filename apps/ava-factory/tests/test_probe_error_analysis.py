@@ -50,11 +50,19 @@ def test_inventory_from_menu_and_golds():
         },
         # numeric gold must NOT enter the inventory; "no tool" must not either
         {"set": "arithmetic", "prompt": "1 + 1 =", "answer": "2", "generation": ""},
-        {"set": "tool_selection", "prompt": "no menu here", "answer": "no tool",
-         "generation": ""},
+        {
+            "set": "tool_selection",
+            "prompt": "no menu here",
+            "answer": "no tool",
+            "generation": "",
+        },
         # identifier-shaped golds of NON-tool sets must stay out (facts' Paris)
-        {"set": "facts", "prompt": "The capital of France is", "answer": "Paris",
-         "generation": ""},
+        {
+            "set": "facts",
+            "prompt": "The capital of France is",
+            "answer": "Paris",
+            "generation": "",
+        },
     ]
     inv = pea.build_inventory(rows)
     assert inv == {"add", "weather", "translate"}

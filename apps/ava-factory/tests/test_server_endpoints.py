@@ -425,30 +425,46 @@ def test_status_endpoints_are_threadpooled_not_async(client):
     # more drifted past it, including /generate and /chat, which run model inference on the
     # loop (TODOS 5.3.R62). A guard whose docstring outruns its implementation is how the
     # drift happened; scanning every route is the only version that cannot rot.
-    SYNC_HEAVY = {"get_engine", "collect_status", "collect_ecosystem_status", "stats",
-                  "generate", "read_text"}
-    tree = ast.parse((_p.Path(__file__).resolve().parents[1] / "server.py")
-                     .read_text(encoding="utf-8"))
+    SYNC_HEAVY = {
+        "get_engine",
+        "collect_status",
+        "collect_ecosystem_status",
+        "stats",
+        "generate",
+        "read_text",
+    }
+    tree = ast.parse(
+        (_p.Path(__file__).resolve().parents[1] / "server.py").read_text(
+            encoding="utf-8"
+        )
+    )
     offenders = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.AsyncFunctionDef):
             continue
-        routed = any(isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute)
-                     and d.func.attr in ("get", "post", "put", "delete")
-                     for d in node.decorator_list)
+        routed = any(
+            isinstance(d, ast.Call)
+            and isinstance(d.func, ast.Attribute)
+            and d.func.attr in ("get", "post", "put", "delete")
+            for d in node.decorator_list
+        )
         if not routed:
             continue
         # An `await` means the handler yields the loop -- that is the legitimate async path
         # (/network/status uses asyncio.to_thread, which is how this class was first spotted).
         if any(isinstance(n, ast.Await) for n in ast.walk(node)):
             continue
-        called = {getattr(c.func, "attr", getattr(c.func, "id", ""))
-                  for c in ast.walk(node) if isinstance(c, ast.Call)}
+        called = {
+            getattr(c.func, "attr", getattr(c.func, "id", ""))
+            for c in ast.walk(node)
+            if isinstance(c, ast.Call)
+        }
         if called & SYNC_HEAVY:
             offenders.append((node.name, sorted(called & SYNC_HEAVY)))
     assert not offenders, (
         "async def route handlers doing synchronous heavy work with no await -- each blocks "
-        f"the event loop for every concurrent request: {offenders}")
+        f"the event loop for every concurrent request: {offenders}"
+    )
 
 
 def test_status_endpoints_actually_respond(client):

@@ -56,7 +56,7 @@ from bigbang.core.policy import load_manifest
 FALLBACK_SCOPE = (
     "pure-stdlib html.parser + WCAG 2.x arithmetic is the complete product for "
     "this adapter: img alt presence (honouring role=presentation, aria-hidden "
-    "and decorative alt=\"\"), label/control association (label[for], wrapping "
+    'and decorative alt=""), label/control association (label[for], wrapping '
     "label, aria-label, aria-labelledby, title, button text), heading order and "
     "empty headings, landmark presence, duplicate ids, html lang, and contrast "
     "ratios from hex/rgb/keyword colors with the large-text rule; tier "
@@ -270,10 +270,16 @@ def rules_cmd(
     ),
 )
 def contrast_cmd(
-    fg: str = typer.Option(..., "--fg", help="foreground color: hex, rgb()/rgba() or keyword"),
-    bg: str = typer.Option(..., "--bg", help="background color: hex, rgb()/rgba() or keyword"),
+    fg: str = typer.Option(
+        ..., "--fg", help="foreground color: hex, rgb()/rgba() or keyword"
+    ),
+    bg: str = typer.Option(
+        ..., "--bg", help="background color: hex, rgb()/rgba() or keyword"
+    ),
     font_px: float | None = typer.Option(
-        None, "--font-px", help=f"text size in px (>= {a11y.LARGE_PX:g}, or >= {a11y.LARGE_BOLD_PX:g} bold, is WCAG large)"
+        None,
+        "--font-px",
+        help=f"text size in px (>= {a11y.LARGE_PX:g}, or >= {a11y.LARGE_BOLD_PX:g} bold, is WCAG large)",
     ),
     bold: bool = typer.Option(False, "--bold/--no-bold", help="treat the text as bold"),
     fail_below: str | None = typer.Option(
@@ -287,7 +293,9 @@ def contrast_cmd(
             command="a11y contrast",
             example="scout --json a11y contrast --fg '#777' --bg white --fail-below AA",
         )
-    reading = a11y.contrast_reading(fg, bg, font_px=font_px, bold=bold, font_source="cli")
+    reading = a11y.contrast_reading(
+        fg, bg, font_px=font_px, bold=bold, font_source="cli"
+    )
     emit(
         ok(
             reading,
@@ -315,7 +323,8 @@ def contrast_cmd(
 )
 def check(
     paths: list[str] = typer.Argument(
-        ..., help="files or directories (dirs walked for " + ", ".join(a11y.HTML_EXTS) + ")"
+        ...,
+        help="files or directories (dirs walked for " + ", ".join(a11y.HTML_EXTS) + ")",
     ),
     rules_file: str | None = typer.Option(
         None, "--rules", help="JSON rules overlay (org policy, policy-as-config)"
@@ -330,7 +339,9 @@ def check(
         200, "--max-findings", help="cap emitted diagnostics (summary stays complete)"
     ),
     show_contrast: bool = typer.Option(
-        False, "--contrast/--no-contrast", help="include every per-style contrast reading"
+        False,
+        "--contrast/--no-contrast",
+        help="include every per-style contrast reading",
     ),
 ):
     """Audit local HTML files. Reads files; opens no socket on any path."""

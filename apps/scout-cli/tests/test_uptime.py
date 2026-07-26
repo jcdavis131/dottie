@@ -84,9 +84,21 @@ def test_incident_opens_after_damping_and_closes_on_recovery():
 
 def test_expect_string_miss_is_degraded():
     conn = _mem()
-    targets = {"api": {"url": "https://bluehenre-campus.vercel.app/x", "expect": '"sites"'}}
-    bad = {"http": 200, "latency_ms": 40.0, "error": None, "body_head": "<html>err</html>"}
-    good = {"http": 200, "latency_ms": 40.0, "error": None, "body_head": '{"sites": []}'}
+    targets = {
+        "api": {"url": "https://bluehenre-campus.vercel.app/x", "expect": '"sites"'}
+    }
+    bad = {
+        "http": 200,
+        "latency_ms": 40.0,
+        "error": None,
+        "body_head": "<html>err</html>",
+    }
+    good = {
+        "http": 200,
+        "latency_ms": 40.0,
+        "error": None,
+        "body_head": '{"sites": []}',
+    }
     row = uptime.run_pass(conn, targets, _scripted_probe([bad]), ts=1.0)["results"][0]
     assert row["expect_ok"] is False and row["observed"] == "degraded"
     row2 = uptime.run_pass(conn, targets, _scripted_probe([good]), ts=2.0)["results"][0]
@@ -107,7 +119,9 @@ def test_board_reports_unknown_then_confirmed():
 
 def test_deploy_marker_events_on_timeline():
     conn = _mem()
-    uptime.record_event(conn, kind="deploy", message="bhenre 4009c52", target="bhenre", ts=5.0)
+    uptime.record_event(
+        conn, kind="deploy", message="bhenre 4009c52", target="bhenre", ts=5.0
+    )
     uptime.record_event(conn, kind="note", message="global note", ts=6.0)
     uptime.record_event(conn, kind="deploy", message="other", target="hub", ts=7.0)
     evs = uptime.recent_events(conn, target="bhenre")
@@ -123,7 +137,13 @@ def test_rollup_percentiles_and_up_pct():
     conn = _mem()
     for i, ms in enumerate([100.0] * 98 + [900.0, 1000.0], 1):
         uptime.record_check(
-            conn, target="svc", url="u", ts=float(i), state="up", http=200, latency_ms=ms
+            conn,
+            target="svc",
+            url="u",
+            ts=float(i),
+            state="up",
+            http=200,
+            latency_ms=ms,
         )
     uptime.record_check(
         conn, target="svc", url="u", ts=101.0, state="down", error="boom"

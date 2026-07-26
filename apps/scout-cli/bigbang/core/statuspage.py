@@ -293,8 +293,7 @@ def cert_rows(conn: sqlite3.Connection, *, now: float) -> list[dict[str, Any]]:
     if not table_present(conn, "certs"):
         return []
     hosts = [
-        r["host"]
-        for r in conn.execute("SELECT DISTINCT host FROM certs ORDER BY host")
+        r["host"] for r in conn.execute("SELECT DISTINCT host FROM certs ORDER BY host")
     ]
     rows = certmon.board(conn, hosts, now=now)
     for row in rows:
@@ -615,13 +614,13 @@ def _services_table(snap: dict[str, Any], e: Any) -> str:
         flag = ' <span class="flag">stale</span>' if s.get("stale") else ""
         rows.append(
             "<tr>"
-            f'<td><b>{e(str(s["target"]))}</b>'
+            f"<td><b>{e(str(s['target']))}</b>"
             f'<div class="mono">{e(str(s.get("url") or "—"))}</div></td>'
             f'<td><span class="pill s-{e(str(s["state"]))}">'
-            f'{e(str(s["state"]))}</span>{flag}</td>'
-            f'<td>{e(_pct(s.get("uptime_pct")))}'
+            f"{e(str(s['state']))}</span>{flag}</td>"
+            f"<td>{e(_pct(s.get('uptime_pct')))}"
             f'<div class="mono">{e(mix)}</div></td>'
-            f'<td>{e(_ago(s.get("age_s")))}'
+            f"<td>{e(_ago(s.get('age_s')))}"
             f'<div class="mono">{e(_iso((s.get("last_check") or {}).get("ts")))}'
             "</div></td>"
             f'<td class="mono">{e(_incident_text(s.get("last_incident")))}</td>'
@@ -630,7 +629,7 @@ def _services_table(snap: dict[str, Any], e: Any) -> str:
     body = "\n".join(rows)
     return (
         "<table><tr><th>service</th><th>state</th>"
-        f'<th>uptime · {e(str(snap["window_hours"]))}h</th>'
+        f"<th>uptime · {e(str(snap['window_hours']))}h</th>"
         f"<th>last check</th><th>last incident</th></tr>\n{body}\n</table>"
     )
 
@@ -644,8 +643,8 @@ def _certs_table(snap: dict[str, Any], e: Any) -> str:
             "<tr>"
             f'<td class="mono">{e(str(c["host"]))}</td>'
             f'<td><span class="pill s-{e(str(c.get("status")))}">'
-            f'{e(str(c.get("status")))}</span></td>'
-            f'<td>{"—" if days is None else e(f"{float(days):.1f} d")}'
+            f"{e(str(c.get('status')))}</span></td>"
+            f"<td>{'—' if days is None else e(f'{float(days):.1f} d')}"
             f'<div class="mono">{e(_iso(c.get("not_after")))}</div></td>'
             f'<td class="mono">{e(str(c.get("protocol") or "—"))}</td>'
             f'<td class="mono">{e(reasons)}</td>'
@@ -662,13 +661,13 @@ def _daemons_table(snap: dict[str, Any], e: Any) -> str:
     for d in snap["daemons"]:
         rows.append(
             "<tr>"
-            f'<td><b>{e(str(d["daemon"]))}</b>'
+            f"<td><b>{e(str(d['daemon']))}</b>"
             f'<div class="mono">{e(str(d.get("note") or "—"))}</div></td>'
             f'<td><span class="pill s-{e(str(d.get("state")))}">'
-            f'{e(str(d.get("state")))}</span></td>'
-            f'<td>{e(_ago(d.get("age_s")))}'
+            f"{e(str(d.get('state')))}</span></td>"
+            f"<td>{e(_ago(d.get('age_s')))}"
             f'<div class="mono">{e(_iso(d.get("last_ts")))}</div></td>'
-            f'<td>{d["beats"]}</td>'
+            f"<td>{d['beats']}</td>"
             "</tr>"
         )
     return (
@@ -687,7 +686,7 @@ def _sources_table(snap: dict[str, Any], e: Any) -> str:
             f'<td class="mono">{e(name)} {e(rank)}</td>'
             f'<td class="mono">{e(table)}</td>'
             f"<td>{seen}</td>"
-            f'<td>{int(src.get("rows") or 0)}</td>'
+            f"<td>{int(src.get('rows') or 0)}</td>"
             f'<td class="mono">{e(_iso(src.get("newest_ts")))}</td>'
             "</tr>"
         )
@@ -720,8 +719,8 @@ def render_html(snap: dict[str, Any], *, title: str | None = None) -> str:
         f'<div class="banner ov-{e(overall)}">{e(_OVERALL_TEXT.get(overall, overall))}'
         f"</div>",
         f'<p class="note">Generated {e(_iso(snap.get("generated_ts")))} · window '
-        f'{e(str(snap.get("window_hours")))}h · read-only over '
-        f"<span class=\"mono\">{e(ledger_path)}</span>. This page collects nothing: "
+        f"{e(str(snap.get('window_hours')))}h · read-only over "
+        f'<span class="mono">{e(ledger_path)}</span>. This page collects nothing: '
         "every figure was recorded by uptime (#2), certmon (#9) or heartbeat (#6) "
         "and is read back with sqlite mode=ro.</p>",
     ]
@@ -731,7 +730,7 @@ def render_html(snap: dict[str, Any], *, title: str | None = None) -> str:
             '<div class="nodata"><b>No monitoring ledger.</b> Nothing has been '
             f'recorded at <span class="mono">{e(ledger_path)}</span> on this box, so '
             "there is no uptime to report — this page shows no percentages rather "
-            "than inventing them. Run <span class=\"mono\">scout uptime check</span> "
+            'than inventing them. Run <span class="mono">scout uptime check</span> '
             "to start collecting.</div>"
         )
     elif not snap.get("services"):
@@ -747,7 +746,7 @@ def render_html(snap: dict[str, Any], *, title: str | None = None) -> str:
         if counts.get("stale"):
             parts.append(
                 f'<p class="note flag">{int(counts["stale"])} row(s) are stale — '
-                f'newest check older than {e(str(snap.get("stale_after_s")))}s. Those '
+                f"newest check older than {e(str(snap.get('stale_after_s')))}s. Those "
                 "states describe the past, not right now.</p>"
             )
 
@@ -777,9 +776,9 @@ def render_html(snap: dict[str, Any], *, title: str | None = None) -> str:
     if snap.get("events"):
         items = "\n".join(
             f'<li><span class="pill s-{e(_EVENT_CLASS.get(str(ev.get("kind")), "info"))}">'
-            f'{e(str(ev.get("kind")))}</span> {e(str(ev.get("message") or ""))}'
+            f"{e(str(ev.get('kind')))}</span> {e(str(ev.get('message') or ''))}"
             f' <span class="mono">{e(_iso(ev.get("ts")))} · {e(_ago(ev.get("age_s")))}'
-            f'{"" if ev.get("target") is None else " · " + e(str(ev["target"]))}'
+            f"{'' if ev.get('target') is None else ' · ' + e(str(ev['target']))}"
             "</span></li>"
             for ev in snap["events"]
         )
@@ -790,7 +789,7 @@ def render_html(snap: dict[str, Any], *, title: str | None = None) -> str:
     parts.append("<h2>Where these numbers come from</h2>")
     parts.append(_sources_table(snap, e))
     parts.append(
-        "<footer>Static page, generated by <span class=\"mono\">scout statuspage "
+        '<footer>Static page, generated by <span class="mono">scout statuspage '
         "render</span> (openswap #18 — StatusPage.io replaced by a file). No "
         "JavaScript, no external assets, no telemetry: nothing on this page ever "
         "left the box.</footer>"

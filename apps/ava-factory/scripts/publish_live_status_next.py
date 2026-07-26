@@ -93,8 +93,17 @@ SITES = [
 def _probe_sites() -> list:
     if OFFLINE:
         # keep the list shape (_site_history iterates it); rows are honest skips
-        return [{"name": name, "url": url, "http": None, "ms": 0, "up": False,
-                 "err": "offline (--dry-run)"} for name, url in SITES]
+        return [
+            {
+                "name": name,
+                "url": url,
+                "http": None,
+                "ms": 0,
+                "up": False,
+                "err": "offline (--dry-run)",
+            }
+            for name, url in SITES
+        ]
     out = []
     for name, url in SITES:
         t0 = time.time()
@@ -109,9 +118,13 @@ def _probe_sites() -> list:
             code = None
             err = type(e).__name__  # additive: DNS vs TLS vs timeout visible in trends
             _breadcrumb(f"_probe_sites {name} {url}: {type(e).__name__}: {e}")
-        row = {"name": name, "url": url, "http": code,
-               "ms": round((time.time() - t0) * 1000),
-               "up": bool(code and 200 <= code < 400)}
+        row = {
+            "name": name,
+            "url": url,
+            "http": code,
+            "ms": round((time.time() - t0) * 1000),
+            "up": bool(code and 200 <= code < 400),
+        }
         if err:
             row["err"] = err
         out.append(row)
@@ -155,14 +168,24 @@ def _batch_sample() -> dict:
         return {"unreachable": "offline (--dry-run): docker exec skipped"}
     try:
         p = subprocess.run(
-            ["docker", "exec", "dottie-factory-trainer-1", "python", "-c", _SAMPLE_SCRIPT],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            [
+                "docker",
+                "exec",
+                "dottie-factory-trainer-1",
+                "python",
+                "-c",
+                _SAMPLE_SCRIPT,
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=45,
         )
         if p.returncode != 0:
             return {"unreachable": (p.stderr or "sample exec failed")[:200]}
         return json.loads(p.stdout.strip().splitlines()[-1])
-    except Exception as e:  # noqa: BLE001 - publisher must never crash on a probe
+    except Exception as e:
         _breadcrumb(f"_batch_sample: {type(e).__name__}: {e}")
         return {"unreachable": f"{type(e).__name__}: {e}"}
 
@@ -171,12 +194,17 @@ def _site_history(existing_hub, probes: list) -> dict:
     """Rolling 24h of real probe results per site (steer directive 2026-07-22:
     'the console shows trends, not just now'). Carried through the existing
     file across publishes; pruned by wall clock; capped defensively."""
-    prev = existing_hub.get("site_history", {}) if isinstance(existing_hub, dict) else {}
+    prev = (
+        existing_hub.get("site_history", {}) if isinstance(existing_hub, dict) else {}
+    )
     now = time.time()
     hist = {}
     for p in probes:
-        rows = [r for r in prev.get(p["name"], [])
-                if isinstance(r, dict) and now - r.get("t", 0) < 86400]
+        rows = [
+            r
+            for r in prev.get(p["name"], [])
+            if isinstance(r, dict) and now - r.get("t", 0) < 86400
+        ]
         rows.append({"t": round(now), "up": p["up"], "ms": p["ms"]})
         hist[p["name"]] = rows[-160:]
     return hist
@@ -191,6 +219,7 @@ def _deploys_snapshot() -> dict:
     honest unreachable on any failure."""
     global _ANSI_RE
     import re as _re
+
     if _ANSI_RE is None:
         _ANSI_RE = _re.compile(r"\x1b\[[0-9;]*m")
     if OFFLINE:
@@ -199,7 +228,10 @@ def _deploys_snapshot() -> dict:
         vercel_bin = "vercel.cmd" if os.name == "nt" else "vercel"
         p = subprocess.run(
             [vercel_bin, "projects", "ls", "--scope", "cams-projects-c5c4c5f6"],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=60,
         )
         if p.returncode != 0:
@@ -210,10 +242,11 @@ def _deploys_snapshot() -> dict:
             clean = _ANSI_RE.sub("", line)
             m = _re.match(r"^\s{2}(\S+)\s+(https://\S+)\s+(\S+)", clean)
             if m and m.group(1) != "Project":
-                projects.append({"name": m.group(1), "url": m.group(2),
-                                 "updated": m.group(3)})
+                projects.append(
+                    {"name": m.group(1), "url": m.group(2), "updated": m.group(3)}
+                )
         return {"projects": projects} if projects else {"unreachable": "no rows parsed"}
-    except Exception as e:  # noqa: BLE001 - publisher must never crash on a probe
+    except Exception as e:
         _breadcrumb(f"_deploys_snapshot: {type(e).__name__}: {e}")
         return {"unreachable": f"{type(e).__name__}: {e}"}
 
@@ -225,7 +258,10 @@ def _site_perf(existing_hub) -> dict:
     honest failures; regressions compare against the PREVIOUS measurement."""
     prev = existing_hub.get("site_perf", {}) if isinstance(existing_hub, dict) else {}
     now = time.time()
-    if isinstance(prev.get("measured_at"), (int, float)) and now - prev["measured_at"] < 6 * 86400:
+    if (
+        isinstance(prev.get("measured_at"), (int, float))
+        and now - prev["measured_at"] < 6 * 86400
+    ):
         carried = dict(prev)
         # stale markers (additive): the weekly carry is by-design, but label it
         # so consumers can tell a reused block from a fresh measurement
@@ -251,12 +287,16 @@ def _site_perf(existing_hub) -> dict:
                 if p and isinstance(p.get(metric), (int, float)) and p[metric] > 0:
                     ratio = row[metric] / p[metric]
                     if ratio > 1.2:
-                        regressions.append({
-                            "name": name, "metric": metric,
-                            "label": f"{name} {label} regressed {round((ratio - 1) * 100)}% "
-                                     f"({p[metric]} -> {row[metric]})"})
+                        regressions.append(
+                            {
+                                "name": name,
+                                "metric": metric,
+                                "label": f"{name} {label} regressed {round((ratio - 1) * 100)}% "
+                                f"({p[metric]} -> {row[metric]})",
+                            }
+                        )
             rows.append(row)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             _breadcrumb(f"_site_perf {name} {url}: {type(e).__name__}: {e}")
             rows.append({"name": name, "error": f"{type(e).__name__}"[:60]})
     return {"measured_at": round(now), "rows": rows, "regressions": regressions}
@@ -270,7 +310,10 @@ def _fleet_snapshot() -> dict:
     try:
         p = subprocess.run(
             ["docker", "stats", "--no-stream", "--format", "{{json .}}"],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=30,
         )
         if p.returncode != 0:
@@ -285,14 +328,16 @@ def _fleet_snapshot() -> dict:
             except json.JSONDecodeError as e:
                 _breadcrumb(f"_fleet_snapshot unparseable stats row {line[:80]!r}: {e}")
                 continue
-            containers.append({
-                "Name": d.get("Name") or d.get("Container"),
-                "CPUPerc": d.get("CPUPerc"),
-                "MemPerc": d.get("MemPerc"),
-                "MemUsage": d.get("MemUsage"),
-            })
+            containers.append(
+                {
+                    "Name": d.get("Name") or d.get("Container"),
+                    "CPUPerc": d.get("CPUPerc"),
+                    "MemPerc": d.get("MemPerc"),
+                    "MemUsage": d.get("MemUsage"),
+                }
+            )
         return {"containers": containers}
-    except Exception as e:  # noqa: BLE001 - publisher must never crash on a probe
+    except Exception as e:
         _breadcrumb(f"_fleet_snapshot: {type(e).__name__}: {e}")
         return {"unreachable": f"{type(e).__name__}: {e}"}
 
@@ -342,14 +387,21 @@ def compose() -> dict:
     # keys (updated_at/run_id/counts/...) alive under a fresh published_utc;
     # list them so consumers can tell carried from fresh. Recomputed each run.
     snapshot.pop("carried_from_previous", None)
-    fresh_keys = {"schema", "published_utc", "source", "pipeline", "research",
-                  "hub", "carried_from_previous"}
+    fresh_keys = {
+        "schema",
+        "published_utc",
+        "source",
+        "pipeline",
+        "research",
+        "hub",
+        "carried_from_previous",
+    }
     carried_keys = sorted(k for k in existing if k not in fresh_keys)
     if carried_keys:
         snapshot["carried_from_previous"] = {
             "keys": carried_keys,
             "note": "top-level fields carried unchanged from the prior snapshot, "
-                    "not refreshed this run",
+            "not refreshed this run",
         }
     return snapshot
 
@@ -374,7 +426,7 @@ def _push_gist(gist_id: str) -> dict:
             if p.returncode == 0:
                 return {"published": True, "attempts": attempt}
             last_err = (p.stderr or p.stdout)[:300]
-        except Exception as e:  # noqa: BLE001 - a failed push must not crash the run
+        except Exception as e:
             last_err = f"{type(e).__name__}: {e}"[:300]
         _breadcrumb(f"gist push attempt {attempt}/{GIST_ATTEMPTS} failed: {last_err}")
         if attempt < GIST_ATTEMPTS:
@@ -392,11 +444,12 @@ def main(argv=None) -> int:
         help="gist id to update (omit to only write the local file)",
     )
     ap.add_argument(
-        "--dry-run", "--offline",
+        "--dry-run",
+        "--offline",
         action="store_true",
         dest="dry_run",
         help="build the full payload with no network/subprocess calls, write "
-             "dottie_live_status_next_dryrun.json, never push the gist",
+        "dottie_live_status_next_dryrun.json, never push the gist",
     )
     args = ap.parse_args(argv)
     OFFLINE = args.dry_run

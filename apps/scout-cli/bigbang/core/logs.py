@@ -684,7 +684,9 @@ def load_sources(path: str | None = None) -> dict[str, dict[str, Any]]:
                 f"(choose from {'|'.join(LEVELS)})"
             )
         tz = cfg.get("tz_offset")
-        if tz is not None and (isinstance(tz, bool) or not isinstance(tz, (int, float))):
+        if tz is not None and (
+            isinstance(tz, bool) or not isinstance(tz, (int, float))
+        ):
             raise ValueError(f"source {name!r}: tz_offset must be a number of seconds")
     return sources
 
@@ -1249,7 +1251,8 @@ def rollup(
     buckets: dict[float, dict[str, Any]] = {}
     for r in bucket_rows:
         b = buckets.setdefault(
-            float(r["bucket"]), {"start": float(r["bucket"]), "count": 0, "by_level": {}}
+            float(r["bucket"]),
+            {"start": float(r["bucket"]), "count": 0, "by_level": {}},
         )
         b["count"] += int(r["n"])
         b["by_level"][r["level"]] = int(r["n"])

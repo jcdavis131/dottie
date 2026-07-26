@@ -186,7 +186,9 @@ def normalize_recipient(raw: Any) -> dict[str, Any]:
     if isinstance(raw, str):
         raw = {"email": raw}
     if not isinstance(raw, dict):
-        raise DigestError(ERR_BAD_CONFIG, f"recipient must be a string or object, got {raw!r}")
+        raise DigestError(
+            ERR_BAD_CONFIG, f"recipient must be a string or object, got {raw!r}"
+        )
     email = raw.get("email")
     state = str(raw.get("state") or STATE_SUBSCRIBED)
     if state not in RECIPIENT_STATES:
@@ -216,15 +218,33 @@ def deliverable(recipients: list[dict[str, Any]]) -> tuple[list[dict], list[dict
         entry = normalize_recipient(r)
         email = entry["email"]
         if not valid_address(email):
-            skipped.append({**entry, "reason": ERR_BAD_ADDRESS, "detail": f"not a mailable address: {email!r}"})
+            skipped.append(
+                {
+                    **entry,
+                    "reason": ERR_BAD_ADDRESS,
+                    "detail": f"not a mailable address: {email!r}",
+                }
+            )
             continue
         key = email.lower()
         if key in seen:
-            skipped.append({**entry, "reason": ERR_BAD_ADDRESS, "detail": "duplicate address in roster"})
+            skipped.append(
+                {
+                    **entry,
+                    "reason": ERR_BAD_ADDRESS,
+                    "detail": "duplicate address in roster",
+                }
+            )
             continue
         seen.add(key)
         if entry["state"] != STATE_SUBSCRIBED:
-            skipped.append({**entry, "reason": ERR_UNSUBSCRIBED, "detail": f"state is {entry['state']}"})
+            skipped.append(
+                {
+                    **entry,
+                    "reason": ERR_UNSUBSCRIBED,
+                    "detail": f"state is {entry['state']}",
+                }
+            )
             continue
         mailable.append(entry)
     return mailable, skipped
@@ -281,7 +301,12 @@ DEFAULT_SECTIONS: dict[str, dict[str, Any]] = {
         "title": "Open issues",
         "db": glitch.DB_REL.as_posix(),
         "table": "issues",
-        "cols": {"ts": "last_seen", "title": "message", "tag": "level", "body": "culprit"},
+        "cols": {
+            "ts": "last_seen",
+            "title": "message",
+            "tag": "level",
+            "body": "culprit",
+        },
         "filter": {"col": "status", "op": "=", "value": glitch.STATUS_OPEN},
         "enabled": True,
     },
@@ -321,14 +346,18 @@ FILTER_OPS: dict[str, tuple[str, bool]] = {
 def _ident(value: Any, *, what: str) -> str:
     """A bare SQL identifier or a refusal. The first of two injection gates."""
     if not isinstance(value, str) or not _IDENT_RE.match(value):
-        raise DigestError(ERR_BAD_IDENTIFIER, f"{what} must be a plain identifier, got {value!r}")
+        raise DigestError(
+            ERR_BAD_IDENTIFIER, f"{what} must be a plain identifier, got {value!r}"
+        )
     return value
 
 
 def validate_section(name: str, spec: dict[str, Any]) -> dict[str, Any]:
     """Check one section spec hard enough that `read_section` can trust it."""
     if not isinstance(spec, dict):
-        raise DigestError(ERR_BAD_CONFIG, f"section {name!r}: config must be an object or false")
+        raise DigestError(
+            ERR_BAD_CONFIG, f"section {name!r}: config must be an object or false"
+        )
     out = dict(spec)
     db = out.get("db")
     if not isinstance(db, str) or not db.strip():
@@ -336,20 +365,30 @@ def validate_section(name: str, spec: dict[str, Any]) -> dict[str, Any]:
     out["table"] = _ident(out.get("table"), what=f"section {name!r} table")
     cols = out.get("cols")
     if not isinstance(cols, dict):
-        raise DigestError(ERR_BAD_CONFIG, f"section {name!r}: `cols` must be an object of role->column")
+        raise DigestError(
+            ERR_BAD_CONFIG,
+            f"section {name!r}: `cols` must be an object of role->column",
+        )
     unknown = sorted(set(cols) - set(ROLES))
     if unknown:
         raise DigestError(
-            ERR_BAD_CONFIG, f"section {name!r}: unknown col role(s) {unknown} (roles: {list(ROLES)})"
+            ERR_BAD_CONFIG,
+            f"section {name!r}: unknown col role(s) {unknown} (roles: {list(ROLES)})",
         )
     for role in REQUIRED_ROLES:
         if not cols.get(role):
-            raise DigestError(ERR_BAD_CONFIG, f"section {name!r}: cols.{role} is required")
-    out["cols"] = {r: _ident(c, what=f"section {name!r} cols.{r}") for r, c in cols.items() if c}
+            raise DigestError(
+                ERR_BAD_CONFIG, f"section {name!r}: cols.{role} is required"
+            )
+    out["cols"] = {
+        r: _ident(c, what=f"section {name!r} cols.{r}") for r, c in cols.items() if c
+    }
     flt = out.get("filter")
     if flt is not None:
         if not isinstance(flt, dict):
-            raise DigestError(ERR_BAD_CONFIG, f"section {name!r}: `filter` must be an object")
+            raise DigestError(
+                ERR_BAD_CONFIG, f"section {name!r}: `filter` must be an object"
+            )
         op = flt.get("op")
         if op not in FILTER_OPS:
             raise DigestError(
@@ -396,10 +435,15 @@ def load_config(path: str | None = None) -> dict[str, Any]:
                 raise DigestError(ERR_BAD_CONFIG, "`recipients` must be a list")
             cfg["recipients"] = list(raw["recipients"])
         for name, spec in (raw.get("sections") or {}).items():
-            if spec is False or (isinstance(spec, dict) and spec.get("enabled") is False):
+            if spec is False or (
+                isinstance(spec, dict) and spec.get("enabled") is False
+            ):
                 cfg["sections"].pop(name, None)
                 continue
-            merged = {**cfg["sections"].get(name, {}), **(spec if isinstance(spec, dict) else {})}
+            merged = {
+                **cfg["sections"].get(name, {}),
+                **(spec if isinstance(spec, dict) else {}),
+            }
             cfg["sections"][name] = merged if isinstance(spec, dict) else spec
     cfg["sections"] = {n: validate_section(n, s) for n, s in cfg["sections"].items()}
     cfg["recipients"] = [normalize_recipient(r) for r in cfg["recipients"]]
@@ -407,7 +451,9 @@ def load_config(path: str | None = None) -> dict[str, Any]:
     dg = cfg["digest"]
     for key in ("window_days", "body_chars", "section_limit"):
         if float(dg.get(key) or 0) <= 0:
-            raise DigestError(ERR_BAD_CONFIG, f"digest.{key} must be > 0, got {dg.get(key)!r}")
+            raise DigestError(
+                ERR_BAD_CONFIG, f"digest.{key} must be > 0, got {dg.get(key)!r}"
+            )
     return cfg
 
 
@@ -415,12 +461,16 @@ def _validate_mail(mail: dict[str, Any]) -> None:
     """A configured-but-wrong relay is worse than an unconfigured one: refuse."""
     sender = mail.get("from")
     if sender is not None and not valid_address(sender):
-        raise DigestError(ERR_BAD_ADDRESS, f"mail.from is not a mailable address: {sender!r}")
+        raise DigestError(
+            ERR_BAD_ADDRESS, f"mail.from is not a mailable address: {sender!r}"
+        )
     port = mail.get("port")
     if not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65535:
         raise DigestError(ERR_BAD_CONFIG, f"mail.port must be 1..65535, got {port!r}")
     if float(mail.get("timeout_s") or 0) <= 0:
-        raise DigestError(ERR_BAD_CONFIG, f"mail.timeout_s must be > 0, got {mail.get('timeout_s')!r}")
+        raise DigestError(
+            ERR_BAD_CONFIG, f"mail.timeout_s must be > 0, got {mail.get('timeout_s')!r}"
+        )
 
 
 # ---- reading the ledgers ----------------------------------------------------
@@ -476,16 +526,26 @@ def read_section(
             "SELECT name FROM sqlite_master WHERE type IN ('table','view') AND name = ?",
             (table,),
         ).fetchone()
-        known = {r[1] for r in conn.execute("SELECT * FROM pragma_table_info(?)", (table,))}
+        known = {
+            r[1] for r in conn.execute("SELECT * FROM pragma_table_info(?)", (table,))
+        }
     except sqlite3.DatabaseError as e:
-        return _section_error(spec, ERR_SOURCE_UNREADABLE, f"{spec['db']}: {type(e).__name__}: {e}")
+        return _section_error(
+            spec, ERR_SOURCE_UNREADABLE, f"{spec['db']}: {type(e).__name__}: {e}"
+        )
     if not present:
-        return _section_error(spec, ERR_SCHEMA_DRIFT, f"table {table!r} is not in {spec['db']}")
-    wanted = set(cols.values()) | ({spec["filter"]["col"]} if spec.get("filter") else set())
+        return _section_error(
+            spec, ERR_SCHEMA_DRIFT, f"table {table!r} is not in {spec['db']}"
+        )
+    wanted = set(cols.values()) | (
+        {spec["filter"]["col"]} if spec.get("filter") else set()
+    )
     missing = sorted(wanted - known)
     if missing:
         return _section_error(
-            spec, ERR_SCHEMA_DRIFT, f"{table!r} has no column(s) {missing} — ledger schema moved"
+            spec,
+            ERR_SCHEMA_DRIFT,
+            f"{table!r} has no column(s) {missing} — ledger schema moved",
         )
     ts_col = cols["ts"]
     where, params = ["1 = 1"], []
@@ -573,13 +633,19 @@ def assemble(
     """
     generated = time.time() if now is None else float(now)
     out: list[dict[str, Any]] = []
-    for name, spec in sorted(sections.items(), key=lambda kv: (kv[1].get("order", 100), kv[0])):
+    for name, spec in sorted(
+        sections.items(), key=lambda kv: (kv[1].get("order", 100), kv[0])
+    ):
         if not spec.get("enabled", True):
             continue
         spec = {**spec, "name": name}
         conn, error = open_conn(spec["db"])
         if conn is None:
-            out.append(_section_error(spec, ERR_SOURCE_UNREADABLE, error or "source unavailable"))
+            out.append(
+                _section_error(
+                    spec, ERR_SOURCE_UNREADABLE, error or "source unavailable"
+                )
+            )
             continue
         out.append(
             read_section(
@@ -622,7 +688,10 @@ def campaign_id(dg: dict[str, Any]) -> str:
             {
                 "name": s["name"],
                 "error": s["error_rule"],
-                "items": [[i["ts"], i["title"], i["body"], i["link"], i["tag"]] for i in s["items"]],
+                "items": [
+                    [i["ts"], i["title"], i["body"], i["link"], i["tag"]]
+                    for i in s["items"]
+                ],
             }
             for s in dg.get("sections", [])
         ],
@@ -636,7 +705,17 @@ def campaign_id(dg: dict[str, Any]) -> str:
 TAG_RE = re.compile(r"\{\{\s*([a-z][a-z0-9_]*)\s*\}\}")
 
 # Every tag the shipped templates and subjects may use.
-TAGS = ("title", "period", "generated", "count", "body", "name", "email", "unsubscribe", "campaign")
+TAGS = (
+    "title",
+    "period",
+    "generated",
+    "count",
+    "body",
+    "name",
+    "email",
+    "unsubscribe",
+    "campaign",
+)
 # Tags that only exist once a specific recipient is known — `preview` reports
 # these as pending rather than pretending they resolved to "".
 RECIPIENT_TAGS = ("name", "email", "unsubscribe")
@@ -743,7 +822,7 @@ def safe_link(url: Any) -> str | None:
     if not isinstance(url, str):
         return None
     clean = url.strip()
-    if not clean or any(c in clean for c in "\r\n\t <>\""):
+    if not clean or any(c in clean for c in '\r\n\t <>"'):
         return None
     return clean if clean.lower().startswith(_SAFE_SCHEMES) else None
 
@@ -764,17 +843,21 @@ def render_html(dg: dict[str, Any]) -> str:
             out.append('<p style="margin:0;color:#555">(nothing in this window)</p>')
         out.append('<ul style="margin:0;padding-left:20px">')
         for it in s["items"]:
-            tag = f'<strong>[{esc(str(it["tag"]))}]</strong> ' if it.get("tag") else ""
-            out.append(f'<li style="margin:0 0 8px">{tag}{esc(it.get("title") or "(untitled)")}')
+            tag = f"<strong>[{esc(str(it['tag']))}]</strong> " if it.get("tag") else ""
+            out.append(
+                f'<li style="margin:0 0 8px">{tag}{esc(it.get("title") or "(untitled)")}'
+            )
             stamp = esc(feeds.fmt_ts(it.get("ts")) or "(undated)")
             out.append(f'<br><span style="color:#555;font-size:12px">{stamp}</span>')
             if it.get("body"):
-                out.append(f'<br>{esc(str(it["body"]))}')
+                out.append(f"<br>{esc(str(it['body']))}")
             link = safe_link(it.get("link"))
             if link:
                 out.append(f'<br><a href="{esc(link)}">{esc(link)}</a>')
             elif it.get("link"):
-                out.append(f'<br><span style="color:#a00">{esc(str(it["link"]))}</span>')
+                out.append(
+                    f'<br><span style="color:#a00">{esc(str(it["link"]))}</span>'
+                )
             out.append("</li>")
         out.append("</ul>")
         if s.get("undated_rows"):
@@ -785,7 +868,9 @@ def render_html(dg: dict[str, Any]) -> str:
     return "\n".join(out)
 
 
-def digest_values(dg: dict[str, Any], cfg: dict[str, Any], *, html: bool) -> dict[str, Any]:
+def digest_values(
+    dg: dict[str, Any], cfg: dict[str, Any], *, html: bool
+) -> dict[str, Any]:
     """The non-recipient merge values, in the right form for text or HTML.
 
     `body` is the ONE pre-formatted value: on the HTML path it is markup and
@@ -804,7 +889,9 @@ def digest_values(dg: dict[str, Any], cfg: dict[str, Any], *, html: bool) -> dic
     return values
 
 
-def recipient_values(recipient: dict[str, Any], mail: dict[str, Any], *, html: bool) -> dict[str, Any]:
+def recipient_values(
+    recipient: dict[str, Any], mail: dict[str, Any], *, html: bool
+) -> dict[str, Any]:
     """name/email/unsubscribe for one person. Escaped on the HTML path.
 
     The unsubscribe instruction is a mailto:, never a URL: a click-to-unsubscribe
@@ -913,7 +1000,9 @@ def safe_header(value: str, *, what: str = "header") -> str:
     intend to send.
     """
     if any(c in value for c in "\r\n\0"):
-        raise DigestError(ERR_HEADER_INJECTION, f"{what} contains a newline or NUL: {value!r}")
+        raise DigestError(
+            ERR_HEADER_INJECTION, f"{what} contains a newline or NUL: {value!r}"
+        )
     return value
 
 
@@ -953,7 +1042,9 @@ def build_message(
         raise DigestError(ERR_BAD_ADDRESS, f"not a mailable recipient: {recipient!r}")
     msg = MIMEMultipart("alternative")
     msg["Subject"] = Header(safe_header(subject, what="subject"), "utf-8")
-    msg["From"] = formataddr((safe_header(sender_name, what="from_name"), sender), charset="utf-8")
+    msg["From"] = formataddr(
+        (safe_header(sender_name, what="from_name"), sender), charset="utf-8"
+    )
     msg["To"] = recipient
     msg["Date"] = formatdate(float(date_ts), usegmt=True)
     msg["Message-ID"] = msg_id
@@ -977,8 +1068,14 @@ def personalize(
 ) -> dict[str, Any]:
     """Render one person's copy: subject, text, html, and what did not resolve."""
     mail = cfg["mail"]
-    text_values = {**digest_values(dg, cfg, html=False), **recipient_values(recipient, mail, html=False)}
-    html_values = {**digest_values(dg, cfg, html=True), **recipient_values(recipient, mail, html=True)}
+    text_values = {
+        **digest_values(dg, cfg, html=False),
+        **recipient_values(recipient, mail, html=False),
+    }
+    html_values = {
+        **digest_values(dg, cfg, html=True),
+        **recipient_values(recipient, mail, html=True),
+    }
     text, missing_text = merge(template_text, text_values)
     html, missing_html = merge(template_html, html_values)
     subject, missing_subject = merge(str(cfg["digest"]["subject"]), text_values)
@@ -986,7 +1083,9 @@ def personalize(
         "subject": " ".join(subject.split()),
         "text": text,
         "html": html,
-        "unresolved": sorted(set(missing_text) | set(missing_html) | set(missing_subject)),
+        "unresolved": sorted(
+            set(missing_text) | set(missing_html) | set(missing_subject)
+        ),
         "tracking": tracking_findings(html),
     }
 
@@ -1082,7 +1181,9 @@ def deliver(
         already = bool(sent_lookup(campaign, person["email"])) if sent_lookup else False
         if already and not force:
             row["status"] = STATUS_DUPLICATE
-            row["detail"] = f"campaign {campaign} already sent to this address (--force to repeat)"
+            row["detail"] = (
+                f"campaign {campaign} already sent to this address (--force to repeat)"
+            )
         elif send:
             ok, detail = send_fn(msg, person["email"])
             row["status"] = STATUS_SENT if ok else STATUS_FAILED
@@ -1137,13 +1238,16 @@ def open_ledger(path: str | Path) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
     conn.execute(
-        "INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', ?)", (SCHEMA_VERSION,)
+        "INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', ?)",
+        (SCHEMA_VERSION,),
     )
     conn.commit()
     return conn
 
 
-def record_send(conn: sqlite3.Connection, campaign: str, row: dict[str, Any], *, ts: float) -> None:
+def record_send(
+    conn: sqlite3.Connection, campaign: str, row: dict[str, Any], *, ts: float
+) -> None:
     """Persist one delivery outcome. REPLACE so a retry overwrites its failure."""
     conn.execute(
         "INSERT OR REPLACE INTO sends(campaign_id, recipient, ts, status, detail, subject, message_id)"
@@ -1186,7 +1290,9 @@ def history(conn: sqlite3.Connection, *, limit: int = 25) -> list[dict[str, Any]
 _SECTION_SEVERITY = {ERR_SOURCE_UNREADABLE: "warning", ERR_SCHEMA_DRIFT: "error"}
 
 
-def to_diagnostics(dg: dict[str, Any], result: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+def to_diagnostics(
+    dg: dict[str, Any], result: dict[str, Any] | None = None
+) -> list[dict[str, Any]]:
     """Map a digest pass onto the openswap schema so --fail-on gates it.
 
     Severity reasoning: a schema drift is an ERROR (the section will report

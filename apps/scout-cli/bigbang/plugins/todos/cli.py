@@ -142,7 +142,11 @@ def _should_skip_file(p: Path) -> bool:
 def _derive_plugin(file_path: Path, root: Path) -> str:
     """Derive plugin name if file lives under bigbang/plugins/<name>/"""
     try:
-        parts = file_path.relative_to(root).parts if file_path.is_relative_to(root) else file_path.parts
+        parts = (
+            file_path.relative_to(root).parts
+            if file_path.is_relative_to(root)
+            else file_path.parts
+        )
     except Exception:
         parts = file_path.parts
     # look for .../plugins/<name>/...
@@ -157,12 +161,12 @@ def _derive_plugin(file_path: Path, root: Path) -> str:
     if "apps" in parts:
         idx = parts.index("apps")
         if idx + 1 < len(parts):
-            return f"apps/{parts[idx+1]}"
+            return f"apps/{parts[idx + 1]}"
     # packages
     if "packages" in parts:
         idx = parts.index("packages")
         if idx + 1 < len(parts):
-            return f"packages/{parts[idx+1]}"
+            return f"packages/{parts[idx + 1]}"
     return "core"
 
 
@@ -256,7 +260,9 @@ def _scan_markers(
         allowed_types = {t.strip().upper() for t in type_filter.split(",") if t.strip()}
 
     # walk
-    for dirpath, dirnames, filenames in os.walk(scan_root, topdown=True, followlinks=False):
+    for dirpath, dirnames, filenames in os.walk(
+        scan_root, topdown=True, followlinks=False
+    ):
         # modify dirnames in-place to skip ignored dirs
         dirpath_p = Path(dirpath)
         # prune
@@ -299,7 +305,13 @@ def _scan_markers(
                 continue
 
             # quick pre-check
-            if "TODO" not in text and "FIXME" not in text and "HACK" not in text and "XXX" not in text and "BUG" not in text:
+            if (
+                "TODO" not in text
+                and "FIXME" not in text
+                and "HACK" not in text
+                and "XXX" not in text
+                and "BUG" not in text
+            ):
                 # also check lowercase
                 low = text.lower()
                 if "todo" not in low and "fixme" not in low and "hack" not in low:
@@ -382,6 +394,7 @@ def _scan_markers(
 # CLI commands
 # ------------------------------------------------------------------ #
 
+
 def _confirm_if_needed(
     root: Path,
     target: Path,
@@ -417,7 +430,9 @@ def _confirm_if_needed(
         )
         raise typer.Exit(1)
     # interactive: prompt
-    confirmed = typer.confirm(f"Scan outside scout-cli root: {target} ? This may be large. Continue?")
+    confirmed = typer.confirm(
+        f"Scan outside scout-cli root: {target} ? This may be large. Continue?"
+    )
     if not confirmed:
         emit(
             ok(
@@ -486,7 +501,9 @@ def _todos_root(
     # confirmation gate for outside scans
     _confirm_if_needed(root, target_path, yes)
 
-    result = _scan_markers(root, path_filter=path, type_filter=type_filter, max_items=max_items)
+    result = _scan_markers(
+        root, path_filter=path, type_filter=type_filter, max_items=max_items
+    )
     if "error" in result:
         emit(
             err(
@@ -566,10 +583,16 @@ def list_cmd(
 
     _confirm_if_needed(root, target_path, yes)
 
-    result = _scan_markers(root, path_filter=path, type_filter=type_filter, max_items=max_items)
+    result = _scan_markers(
+        root, path_filter=path, type_filter=type_filter, max_items=max_items
+    )
     if "error" in result:
         emit(
-            err(result["error"], command="todos list", example="scout todos list --path bigbang/plugins"),
+            err(
+                result["error"],
+                command="todos list",
+                example="scout todos list --path bigbang/plugins",
+            ),
             command="todos list",
         )
         raise typer.Exit(1)
@@ -595,8 +618,12 @@ def list_cmd(
     ),
 )
 def summary_cmd(
-    path: str | None = typer.Option(None, "--path", "-p", help="Root path or substring filter"),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation", envvar="SCOUT_YES"),
+    path: str | None = typer.Option(
+        None, "--path", "-p", help="Root path or substring filter"
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="Skip confirmation", envvar="SCOUT_YES"
+    ),
 ):
     """Compact summary (counts only) grouped by type and plugin."""
     root = _resolve_root()
