@@ -384,6 +384,64 @@ promoting it and Option C cancels that.
   the model only against the query distribution least favourable to it would be a rigged
   comparison in the *other* direction.
 
+### ⚠ 2026-07-26 — MinHash + hard-negatives landed, but BOTH failed adversarial review
+
+Built by an ultracode workflow (2 builders, 2 adversarial verifiers, 459k subagent tokens).
+121 tests pass and ruff is clean on all four files — **and both verdicts came back
+`claims_hold: false, claims_overstated: true`.** The verifiers ran 57 mutations against
+hard-negatives alone and killed 52, so the suites are genuinely strong; they still found
+defects that produce wrong data. Committed anyway, with the defects listed here, because the
+tools are useful and the alternative — 2,478 lines rotting uncommitted — is worse. **Do not
+treat either as production-ready until the items below are closed.**
+
+**✅ FIXED before commit — hard_negatives emitted TRUE POSITIVES as negatives.**
+`forbidden` covered only files relevant to a *byte-identical* commit message, so a file the
+query itself NAMED was mined as a hard negative. Measured: **62 of 4,461 (1.4%)** on the live
+repo — e.g. query `docs(arxiviq): CodeAct roadmap … (specs/13_codeact.md)` → negative
+`specs/13_codeact.md`. That is training the model against the truth, the one rule the
+module's own docstring calls decisive. The predicate already existed **loaded and never
+called**: `retrieval_eval.leaks_filename`. Now wired, with 4 regression tests; the real-repo
+one measures **62 → 0**. (That test initially guarded on `hasattr(hn, "real_golden")`, which
+does not exist, so it SKIPPED silently — a dead guard, caught and fixed. 49 tests, 0 skips.)
+
+- [ ] **minhash: single-linkage clustering deletes documents below the advertised
+  threshold.** `uf.union(a, b)` chains, so a doc can be dropped in favour of a survivor it is
+  *not* near-duplicate to. Measured on the 44-cluster / 126-drop scout-cli run: worst
+  intra-cluster true Jaccard **0.7143** (`feeds/cli.py::_open_store` vs
+  `flows/cli.py::_open_store`) against an advertised 0.8, and 1 of 126 drops is below
+  threshold. Nothing tests drop-vs-survivor similarity.
+- [ ] **minhash: `docs[key] = seg` silently overwrites same-named defs in one file.**
+  Concrete: `bigbang/plugins/mcp/cli.py` defines `_check_sdk` twice under try/except — one
+  returns `True`, the other raises. **They are opposites, not duplicates**, and only the
+  second survives. scout-cli yields 4,567 (name, source) pairs but 4,566 unique keys, so the
+  loss is invisible in the reported corpus size. Needs a disambiguated key + a `collisions`
+  counter.
+- [ ] **minhash: unreadable files counted as scanned.** `files += 1` precedes `read_text`;
+  `except OSError: continue` skips without incrementing `unparseable`.
+- [ ] **minhash: `cluster_documents` returns whole-corpus `shingle_sets` + `signatures`**
+  that `main()` never reads — pins 4,566×128 ints for the result's lifetime, which defeats
+  the stated Phase-8 target of a larger corpus.
+- [ ] **hard_negatives: `class_of` reads only the innermost class**, so `Outer.Inner.run` and
+  `Other.Inner.run` collide and a record can list its own `(path, symbol)` as a negative.
+  Latent (0 occurrences today) but ordinary Python triggers it.
+- [ ] **hard_negatives: docstring claims order-independent output; it is not.** Records are
+  appended in input order, so `--out` JSONL is not reproducible across walk orders. Fix the
+  claim or the code.
+- [ ] **Several real-repo test floors are far looser than claimed** (`same_package` 1000 vs
+  3,760 measured = 27%), so a 73% regression would pass green.
+
+**Honesty note on the build itself:** the minhash builder disclosed that it had written two
+figures as "measured" *before measuring them* — `91` and `33`, true values **68** and **51**
+— and corrected them only on a self-check. The tests passed with the wrong numbers because
+the floors sat below both. Exactly why the floors need to be near the measurement.
+
+**Genuinely useful output, verified independently by the reviewer:** 4,566 functions in
+scout-cli → **44 duplicate clusters, 126 dropped (2.8%)**, largest cluster **32 copies of
+`_manifest`** across 32 plugin `cli.py` files. `apm.py::open_store` and `cite.py::open_store`
+are **byte-identical after normalisation** — two different docstring queries pointing at one
+identical positive, which is precisely the false-negative shape that caps contrastive
+training.
+
 ### 🔬 2026-07-25 — THE RECURRING DEFECT CLASS: *a gate whose verdict nothing consumes*
 
 Five instances found in one day, across three codebases. Each was diagnosed on its own
