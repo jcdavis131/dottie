@@ -45,8 +45,16 @@ for r in rows:
     if fails and oks and impl.get("code"):
         print("\n=== sample recovered:", r["id"], r["state"])
         for h in hist:
-            print("  attempt", h.get("attempt"), "ok:", h.get("ok"), "level:", h.get("level"),
-                  "detail[:120]:", (h.get("detail") or "")[:120].replace("\n", " | "))
+            print(
+                "  attempt",
+                h.get("attempt"),
+                "ok:",
+                h.get("ok"),
+                "level:",
+                h.get("level"),
+                "detail[:120]:",
+                (h.get("detail") or "")[:120].replace("\n", " | "),
+            )
         print("  final code first 300 chars:")
         print(impl["code"][:300])
         break

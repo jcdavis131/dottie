@@ -163,10 +163,22 @@ def test_evaluate_equality_and_membership():
     data = {"sev": "error", "hosts": ["a.com"], "msg": "cert expired", "n": 3}
     assert flows.evaluate({"path": "sev", "op": "eq", "value": "error"}, data) is True
     assert flows.evaluate({"path": "sev", "op": "ne", "value": "error"}, data) is False
-    assert flows.evaluate({"path": "msg", "op": "contains", "value": "expired"}, data) is True
-    assert flows.evaluate({"path": "msg", "op": "contains", "value": "fine"}, data) is False
-    assert flows.evaluate({"path": "hosts", "op": "contains", "value": "a.com"}, data) is True
-    assert flows.evaluate({"path": "sev", "op": "in", "value": ["error", "warning"]}, data) is True
+    assert (
+        flows.evaluate({"path": "msg", "op": "contains", "value": "expired"}, data)
+        is True
+    )
+    assert (
+        flows.evaluate({"path": "msg", "op": "contains", "value": "fine"}, data)
+        is False
+    )
+    assert (
+        flows.evaluate({"path": "hosts", "op": "contains", "value": "a.com"}, data)
+        is True
+    )
+    assert (
+        flows.evaluate({"path": "sev", "op": "in", "value": ["error", "warning"]}, data)
+        is True
+    )
     assert flows.evaluate({"path": "sev", "op": "in", "value": ["info"]}, data) is False
     assert flows.evaluate({"path": "n", "op": "truthy"}, data) is True
     assert flows.evaluate({"path": "n", "op": "contains", "value": 1}, data) is False
@@ -261,7 +273,12 @@ def test_apply_transform_refuses_bad_specs_and_missing_sources():
         flows.apply_transform([{"op": "count", "from": "gone", "path": "x"}], {})
     with pytest.raises(ValueError, match="count needs"):
         flows.apply_transform([{"op": "count", "from": "n", "path": "x"}], {"n": 5})
-    assert flows.apply_transform([{"op": "count", "from": "s", "path": "x"}], {"s": "abc"})[0]["x"] == 3
+    assert (
+        flows.apply_transform(
+            [{"op": "count", "from": "s", "path": "x"}], {"s": "abc"}
+        )[0]["x"]
+        == 3
+    )
 
 
 def test_check_op_shape_catches_typos_without_a_payload():
@@ -290,7 +307,10 @@ def test_successors_and_walk_order():
     branch = {"kind": "branch", "when": {}, "then": "y", "else": "n"}
     assert flows.successors(branch) == ["y", "n"]
     assert flows.walk_order(flow) == ["n1", "n2", "n3"]
-    flow["nodes"]["orphan"] = {"kind": "transform", "ops": [{"op": "set", "path": "o", "value": 1}]}
+    flow["nodes"]["orphan"] = {
+        "kind": "transform",
+        "ops": [{"op": "set", "path": "o", "value": 1}],
+    }
     assert "orphan" not in flows.walk_order(flow)  # reachability, not enumeration
     assert flows.walk_order({"nodes": {}, "start": "nope"}) == []
 
@@ -306,7 +326,12 @@ def test_has_cycle_finds_loops_and_stays_quiet_on_dags():
     assert flows.has_cycle(selfloop) == ["n1", "n1"]
     # a cycle only reachable through a branch is still found
     br = _linear(2)
-    br["nodes"]["n1"] = {"kind": "branch", "when": {"path": "x", "op": "exists"}, "then": "n2", "else": "n2"}
+    br["nodes"]["n1"] = {
+        "kind": "branch",
+        "when": {"path": "x", "op": "exists"},
+        "then": "n2",
+        "else": "n2",
+    }
     br["nodes"]["n2"]["next"] = "n1"
     assert flows.has_cycle(br) != []
 
@@ -368,7 +393,10 @@ def test_validate_checks_action_names_and_parameters():
 
 def test_validate_reports_unreachable_and_unresolved_subflows_as_warnings():
     flow = _linear(2)
-    flow["nodes"]["ghost"] = {"kind": "transform", "ops": [{"op": "set", "path": "g", "value": 1}]}
+    flow["nodes"]["ghost"] = {
+        "kind": "transform",
+        "ops": [{"op": "set", "path": "g", "value": 1}],
+    }
     problems = flows.validate(flow)
     assert [p["code"] for p in problems] == ["unreachable"]
     assert problems[0]["severity"] == "warning" and problems[0]["node"] == "ghost"
@@ -401,7 +429,9 @@ def test_trigger_manual_and_event_matching():
     assert flows.trigger_check(manual, {}, now=1.0) == (True, "manual trigger")
     fired, why = flows.trigger_check(flows.EXAMPLE_FLOW, {"severity": "error"}, now=1.0)
     assert fired is True and "matched" in why
-    fired2, why2 = flows.trigger_check(flows.EXAMPLE_FLOW, {"severity": "info"}, now=1.0)
+    fired2, why2 = flows.trigger_check(
+        flows.EXAMPLE_FLOW, {"severity": "info"}, now=1.0
+    )
     assert fired2 is False and "did not match" in why2
     open_event = {"name": "x", "trigger": {"type": "event"}, "start": "a", "nodes": {}}
     assert flows.trigger_check(open_event, {}, now=1.0)[0] is True
@@ -422,7 +452,9 @@ def test_trigger_schedule_decides_from_a_recorded_last_run():
         False,
         "schedule trigger needs a positive `every_seconds`, got 0",
     )
-    assert flows.trigger_check({"trigger": {"type": "carrier"}}, {}, now=1.0)[0] is False
+    assert (
+        flows.trigger_check({"trigger": {"type": "carrier"}}, {}, now=1.0)[0] is False
+    )
 
 
 # ---- the bounded runner -----------------------------------------------------
@@ -432,7 +464,12 @@ def test_run_happy_path_records_every_step_and_action():
     eff, seen = _recorder()
     flow = _linear(2)
     flow["nodes"]["n2"]["next"] = "act"
-    flow["nodes"]["act"] = {"kind": "action", "uses": "emit", "with": {"fields": ["step1"]}, "into": "res"}
+    flow["nodes"]["act"] = {
+        "kind": "action",
+        "uses": "emit",
+        "with": {"fields": ["step1"]},
+        "into": "res",
+    }
     run = flows.run_flow(flow, {"in": 1}, allow=["emit"], effectors=eff, now=42.0)
     assert run["outcome"] == "ok" and run["refusals"] == []
     assert [s["node"] for s in run["steps"]] == ["n1", "n2", "act"]
@@ -445,7 +482,9 @@ def test_run_happy_path_records_every_step_and_action():
 
 def test_every_step_records_either_an_output_or_an_error():
     with pytest.raises(ValueError):
-        flows._step(seq=1, node="a", kind="action", outcome="ok", output={"a": 1}, error="boom")
+        flows._step(
+            seq=1, node="a", kind="action", outcome="ok", output={"a": 1}, error="boom"
+        )
     with pytest.raises(ValueError):
         flows._step(seq=1, node="a", kind="action", outcome="ok")
     eff, _ = _recorder()
@@ -468,7 +507,9 @@ def test_run_refuses_an_action_that_is_not_allowlisted():
     assert run["steps"][-1]["outcome"] == "refused" and run["steps"][-1]["error"]
     assert run["actions_run"] == []
     # allowlisting a DIFFERENT action does not open this one
-    other = flows.run_flow(_with_action(), {}, allow=["write_file"], effectors=eff, now=1.0)
+    other = flows.run_flow(
+        _with_action(), {}, allow=["write_file"], effectors=eff, now=1.0
+    )
     assert other["outcome"] == "refused" and seen == []
 
 
@@ -476,7 +517,10 @@ def test_run_refusal_stops_the_graph_instead_of_skipping_the_node():
     eff, _ = _recorder()
     flow = _with_action()
     flow["nodes"]["act"]["next"] = "after"
-    flow["nodes"]["after"] = {"kind": "transform", "ops": [{"op": "set", "path": "after", "value": 1}]}
+    flow["nodes"]["after"] = {
+        "kind": "transform",
+        "ops": [{"op": "set", "path": "after", "value": 1}],
+    }
     run = flows.run_flow(flow, {}, allow=[], effectors=eff, now=1.0)
     assert run["outcome"] == "refused"
     assert [s["node"] for s in run["steps"]] == ["act"]  # downstream never ran
@@ -485,12 +529,16 @@ def test_run_refusal_stops_the_graph_instead_of_skipping_the_node():
 
 def test_run_refuses_an_unknown_action_and_a_missing_effector():
     # not in the catalog at all -> refused by validation before any step
-    unknown = flows.run_flow(_with_action("post_webhook"), {}, allow=["post_webhook"], now=1.0)
+    unknown = flows.run_flow(
+        _with_action("post_webhook"), {}, allow=["post_webhook"], now=1.0
+    )
     assert unknown["outcome"] == "refused" and unknown["steps"] == []
     assert {"invalid-flow"} <= {p["code"] for p in unknown["refusals"]}
     assert any(p["code"] == "unknown-action" for p in unknown["problems"])
     # allowlisted, catalogued, but this surface injected no effector for it
-    none_supplied = flows.run_flow(_with_action(), {}, allow=["emit"], effectors={}, now=1.0)
+    none_supplied = flows.run_flow(
+        _with_action(), {}, allow=["emit"], effectors={}, now=1.0
+    )
     assert [p["code"] for p in none_supplied["refusals"]] == ["effector-missing"]
     assert none_supplied["outcome"] == "refused"
 
@@ -499,7 +547,9 @@ def test_run_action_failure_is_failed_not_refused_and_keeps_the_reason():
     def _boom(params: dict, data: dict) -> dict:
         raise OSError("disk on fire")
 
-    run = flows.run_flow(_with_action(), {}, allow=["emit"], effectors={"emit": _boom}, now=1.0)
+    run = flows.run_flow(
+        _with_action(), {}, allow=["emit"], effectors={"emit": _boom}, now=1.0
+    )
     assert run["outcome"] == "failed" and run["refusals"] == []
     assert "OSError: disk on fire" in run["steps"][-1]["error"]
     assert [p["code"] for p in run["problems"]] == ["action-failed"]
@@ -507,7 +557,11 @@ def test_run_action_failure_is_failed_not_refused_and_keeps_the_reason():
 
 def test_run_action_returning_nothing_is_an_error_not_an_empty_success():
     run = flows.run_flow(
-        _with_action(), {}, allow=["emit"], effectors={"emit": lambda p, d: None}, now=1.0
+        _with_action(),
+        {},
+        allow=["emit"],
+        effectors={"emit": lambda p, d: None},
+        now=1.0,
     )
     assert run["outcome"] == "failed"
     assert "returned no result" in run["steps"][-1]["error"]
@@ -547,7 +601,11 @@ def test_filter_that_does_not_pass_ends_the_run_as_filtered():
         "trigger": {"type": "manual"},
         "start": "gate",
         "nodes": {
-            "gate": {"kind": "filter", "when": {"path": "n", "op": "gt", "value": 0}, "next": "act"},
+            "gate": {
+                "kind": "filter",
+                "when": {"path": "n", "op": "gt", "value": 0},
+                "next": "act",
+            },
             "act": {"kind": "action", "uses": "emit", "with": {}},
         },
     }
@@ -573,8 +631,14 @@ def test_branch_takes_then_or_else_and_records_which():
                 "then": "hot",
                 "else": "cold",
             },
-            "hot": {"kind": "transform", "ops": [{"op": "set", "path": "took", "value": "hot"}]},
-            "cold": {"kind": "transform", "ops": [{"op": "set", "path": "took", "value": "cold"}]},
+            "hot": {
+                "kind": "transform",
+                "ops": [{"op": "set", "path": "took", "value": "hot"}],
+            },
+            "cold": {
+                "kind": "transform",
+                "ops": [{"op": "set", "path": "took", "value": "cold"}],
+            },
         },
     }
     hot = flows.run_flow(flow, {"sev": "error"}, now=1.0)
@@ -591,7 +655,9 @@ def test_branch_takes_then_or_else_and_records_which():
 
 
 def test_a_trigger_that_does_not_fire_says_why_and_runs_nothing():
-    run = flows.run_flow(flows.EXAMPLE_FLOW, {"severity": "info"}, allow=["append_jsonl"], now=1.0)
+    run = flows.run_flow(
+        flows.EXAMPLE_FLOW, {"severity": "info"}, allow=["append_jsonl"], now=1.0
+    )
     assert run["outcome"] == "not-triggered" and run["steps"] == []
     assert "did not match" in run["reason"] and run["steps_used"] == 0
     sched = dict(_linear(1), trigger={"type": "schedule", "every_seconds": 3600})
@@ -612,7 +678,10 @@ def test_an_invalid_flow_is_refused_before_a_single_step_runs():
     assert "refused before any step ran" in run["reason"]
     # warnings alone do NOT block a run
     warned = _linear(1)
-    warned["nodes"]["ghost"] = {"kind": "transform", "ops": [{"op": "set", "path": "g", "value": 1}]}
+    warned["nodes"]["ghost"] = {
+        "kind": "transform",
+        "ops": [{"op": "set", "path": "g", "value": 1}],
+    }
     assert flows.run_flow(warned, {}, now=1.0)["outcome"] == "ok"
 
 
@@ -627,7 +696,10 @@ def test_transform_failure_is_a_failed_run_with_the_reason_on_the_step():
 
 def test_condition_failure_is_a_failed_run_not_a_silent_false():
     flow = _linear(1)
-    flow["nodes"]["n1"] = {"kind": "filter", "when": {"path": "s", "op": "gt", "value": 1}}
+    flow["nodes"]["n1"] = {
+        "kind": "filter",
+        "when": {"path": "s", "op": "gt", "value": 1},
+    }
     run = flows.run_flow(flow, {"s": "not a number"}, now=1.0)
     assert run["outcome"] == "failed"
     assert "needs two numbers" in run["steps"][0]["error"]
@@ -641,8 +713,13 @@ def _parent(child_name: str = "child") -> dict:
         "name": "parent",
         "trigger": {"type": "manual"},
         "start": "call",
-        "nodes": {"call": {"kind": "flow", "uses": child_name, "next": "done"},
-                  "done": {"kind": "transform", "ops": [{"op": "set", "path": "done", "value": True}]}},
+        "nodes": {
+            "call": {"kind": "flow", "uses": child_name, "next": "done"},
+            "done": {
+                "kind": "transform",
+                "ops": [{"op": "set", "path": "done", "value": True}],
+            },
+        },
     }
 
 
@@ -651,12 +728,18 @@ def test_a_subflow_runs_inline_and_spends_the_same_step_budget():
     child["name"] = "child"
     run = flows.run_flow(_parent(), {"in": 1}, registry={"child": child}, now=1.0)
     assert run["outcome"] == "ok"
-    assert run["data"]["step1"] == 1 and run["data"]["step2"] == 2 and run["data"]["done"] is True
+    assert (
+        run["data"]["step1"] == 1
+        and run["data"]["step2"] == 2
+        and run["data"]["done"] is True
+    )
     # 1 (call) + 2 (child) + 1 (done) — nesting bought no extra steps
     assert run["steps_used"] == 4
     assert run["steps"][0]["output"]["flow"] == "child"
     assert run["steps"][0]["output"]["steps"] == 2
-    capped = flows.run_flow(_parent(), {}, registry={"child": child}, max_steps=2, now=1.0)
+    capped = flows.run_flow(
+        _parent(), {}, registry={"child": child}, max_steps=2, now=1.0
+    )
     assert capped["outcome"] == "refused"
     assert [p["code"] for p in capped["refusals"]] == ["step-cap"]
 
@@ -668,12 +751,16 @@ def test_subflow_recursion_is_bounded_and_the_refusal_names_the_depth():
         "start": "again",
         "nodes": {"again": {"kind": "flow", "uses": "rec"}},
     }
-    run = flows.run_flow(rec, {}, registry={"rec": rec}, max_steps=99, max_depth=2, now=1.0)
+    run = flows.run_flow(
+        rec, {}, registry={"rec": rec}, max_steps=99, max_depth=2, now=1.0
+    )
     assert run["outcome"] == "refused"
     assert [p["code"] for p in run["problems"]] == ["depth-cap"]
     assert run["problems"][0]["node"] == "again/again/again"  # the nesting path
     assert run["steps_used"] == 3  # depth 0, 1, 2 ran; depth 3 refused
-    deeper = flows.run_flow(rec, {}, registry={"rec": rec}, max_steps=99, max_depth=4, now=1.0)
+    deeper = flows.run_flow(
+        rec, {}, registry={"rec": rec}, max_steps=99, max_depth=4, now=1.0
+    )
     assert deeper["steps_used"] == 5 and deeper["outcome"] == "refused"
 
 
@@ -688,8 +775,14 @@ def test_a_missing_subflow_is_refused_by_name_never_skipped():
 def test_a_refusal_inside_a_subflow_propagates_with_a_prefixed_node():
     child = _with_action()
     child["name"] = "child"
-    run = flows.run_flow(_parent(), {}, allow=[], effectors=_recorder()[0],
-                         registry={"child": child}, now=1.0)
+    run = flows.run_flow(
+        _parent(),
+        {},
+        allow=[],
+        effectors=_recorder()[0],
+        registry={"child": child},
+        now=1.0,
+    )
     assert run["outcome"] == "refused"
     assert [p["node"] for p in run["refusals"]] == ["call/act"]
     assert run["refusals"][0]["code"] == "action-not-allowlisted"
@@ -701,11 +794,25 @@ def test_a_refusal_inside_a_subflow_propagates_with_a_prefixed_node():
 def test_resolve_output_path_confines_writes_to_the_output_directory(tmp_path):
     out = tmp_path / "flows-out"
     assert flows.resolve_output_path(out, "digest.jsonl") == out / "digest.jsonl"
-    assert flows.resolve_output_path(out, "sub/dir/d.txt") == out / "sub" / "dir" / "d.txt"
+    assert (
+        flows.resolve_output_path(out, "sub/dir/d.txt") == out / "sub" / "dir" / "d.txt"
+    )
     assert flows.resolve_output_path(out, "./a/b.txt") == out / "a" / "b.txt"
-    assert flows.resolve_output_path(out, "back\\slash.txt") == out / "back" / "slash.txt"
-    for escape in ("../evil.txt", "a/../../evil.txt", "/etc/passwd", "C:/Windows/x",
-                   "\\\\server\\share\\x", "", "   ", "..", None, 7):
+    assert (
+        flows.resolve_output_path(out, "back\\slash.txt") == out / "back" / "slash.txt"
+    )
+    for escape in (
+        "../evil.txt",
+        "a/../../evil.txt",
+        "/etc/passwd",
+        "C:/Windows/x",
+        "\\\\server\\share\\x",
+        "",
+        "   ",
+        "..",
+        None,
+        7,
+    ):
         with pytest.raises(ValueError):
             flows.resolve_output_path(out, escape)
 
@@ -714,7 +821,9 @@ def test_resolve_output_path_confines_writes_to_the_output_directory(tmp_path):
 
 
 def test_to_diagnostics_maps_problems_into_the_family_schema():
-    run = flows.run_flow(_with_action(), {}, allow=[], effectors=_recorder()[0], now=1.0)
+    run = flows.run_flow(
+        _with_action(), {}, allow=[], effectors=_recorder()[0], now=1.0
+    )
     diags = flows.to_diagnostics("my-flow.json", run["problems"])
     assert len(diags) == 1
     assert diags[0]["rule"] == "flows:action-not-allowlisted"
@@ -724,9 +833,24 @@ def test_to_diagnostics_maps_problems_into_the_family_schema():
     assert "[act]" in diags[0]["message"]
     summary = openswap.summarize(diags)
     assert summary["by_severity"]["error"] == 1
-    warn = flows.to_diagnostics("f.json", flows.validate(_linear(1) | {"nodes": {
-        "n1": {"kind": "transform", "ops": [{"op": "set", "path": "a", "value": 1}]},
-        "ghost": {"kind": "transform", "ops": [{"op": "set", "path": "g", "value": 1}]}}}))
+    warn = flows.to_diagnostics(
+        "f.json",
+        flows.validate(
+            _linear(1)
+            | {
+                "nodes": {
+                    "n1": {
+                        "kind": "transform",
+                        "ops": [{"op": "set", "path": "a", "value": 1}],
+                    },
+                    "ghost": {
+                        "kind": "transform",
+                        "ops": [{"op": "set", "path": "g", "value": 1}],
+                    },
+                }
+            }
+        ),
+    )
     assert [d["severity"] for d in warn] == ["warning"]
     assert flows.to_diagnostics("f.json", []) == []
 
@@ -735,7 +859,9 @@ def test_to_diagnostics_maps_problems_into_the_family_schema():
 
 
 def _tables(conn):
-    return {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    return {
+        r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
 
 
 def test_store_schema_and_idempotent_reopen(tmp_path):
@@ -753,8 +879,12 @@ def test_store_schema_and_idempotent_reopen(tmp_path):
 def test_record_run_keeps_the_either_or_invariant_in_the_ledger():
     conn = _mem()
     eff, _ = _recorder()
-    ok_run = flows.run_flow(_with_action(), {"a": 1}, allow=["emit"], effectors=eff, now=10.0)
-    bad_run = flows.run_flow(_with_action(), {"a": 1}, allow=[], effectors=eff, now=11.0)
+    ok_run = flows.run_flow(
+        _with_action(), {"a": 1}, allow=["emit"], effectors=eff, now=10.0
+    )
+    bad_run = flows.run_flow(
+        _with_action(), {"a": 1}, allow=[], effectors=eff, now=11.0
+    )
     rid_ok = flows.record_run(conn, ok_run, source="a.json")
     rid_bad = flows.record_run(conn, bad_run)
     for rid in (rid_ok, rid_bad):
@@ -821,11 +951,15 @@ def test_manifest_denies_the_network_axis():
     assert manifest["capabilities"]["network"]["enabled"] is False
     assert manifest["capabilities"]["network"]["domains"] == []
     assert manifest["capabilities"]["secrets"]["allow"] == []
-    allowed, reason = check_permission(manifest, "network", "https://hooks.zapier.com/x")
+    allowed, reason = check_permission(
+        manifest, "network", "https://hooks.zapier.com/x"
+    )
     assert allowed is False and "network disabled" in reason
     assert check_permission(manifest, "fs_write", ".scout/flows.db")[0] is True
     # no action can reach the network: there is no http/webhook effect at all
-    assert all(spec["effects"] in ("none", "filesystem") for spec in flows.ACTIONS.values())
+    assert all(
+        spec["effects"] in ("none", "filesystem") for spec in flows.ACTIONS.values()
+    )
 
 
 # ---- the real CLI in a subprocess -------------------------------------------
@@ -883,7 +1017,9 @@ def test_cli_flows_plan_needs_a_flow_and_gates_on_severity(tmp_path):
     assert missing.returncode == 1
     assert "--flow" in json.loads(missing.stdout)["error"]
     bad = tmp_path / "bad.json"
-    bad.write_text(json.dumps({"name": "b", "trigger": {"type": "manual"}}), encoding="utf-8")
+    bad.write_text(
+        json.dumps({"name": "b", "trigger": {"type": "manual"}}), encoding="utf-8"
+    )
     gated = _cli(["flows", "plan", "--flow", str(bad), "--fail-on", "error"])
     assert gated.returncode == 1  # invalid flow trips the CI gate
     assert json.loads(gated.stdout)["data"]["valid"] is False
@@ -892,8 +1028,19 @@ def test_cli_flows_plan_needs_a_flow_and_gates_on_severity(tmp_path):
 def test_cli_flows_run_example_writes_a_real_file_and_records_the_run(tmp_path):
     out, db = tmp_path / "out", tmp_path / "flows.db"
     r = _cli(
-        ["flows", "run", "--example", "--allow", "append_jsonl", "--out-dir", str(out),
-         "--db", str(db), "--payload", '{"severity":"error","hosts":["a.com","b.com"]}'],
+        [
+            "flows",
+            "run",
+            "--example",
+            "--allow",
+            "append_jsonl",
+            "--out-dir",
+            str(out),
+            "--db",
+            str(db),
+            "--payload",
+            '{"severity":"error","hosts":["a.com","b.com"]}',
+        ],
     )
     assert r.returncode == 0, r.stderr + r.stdout
     payload = json.loads(r.stdout)["data"]
@@ -916,8 +1063,19 @@ def test_cli_flows_run_example_writes_a_real_file_and_records_the_run(tmp_path):
 def test_cli_flows_run_refuses_an_unallowlisted_action_and_writes_nothing(tmp_path):
     out, db = tmp_path / "out", tmp_path / "flows.db"
     r = _cli(
-        ["flows", "run", "--example", "--out-dir", str(out), "--db", str(db),
-         "--fail-on", "error", "--payload", '{"severity":"error","hosts":["a.com"]}'],
+        [
+            "flows",
+            "run",
+            "--example",
+            "--out-dir",
+            str(out),
+            "--db",
+            str(db),
+            "--fail-on",
+            "error",
+            "--payload",
+            '{"severity":"error","hosts":["a.com"]}',
+        ],
     )
     assert r.returncode == 1  # the gate fired on the refusal
     payload = json.loads(r.stdout)["data"]
@@ -949,8 +1107,20 @@ def test_cli_flows_run_refuses_a_path_escape_at_runtime(tmp_path):
         encoding="utf-8",
     )
     r = _cli(
-        ["flows", "run", "--flow", str(flow), "--allow", "write_file", "--out-dir", str(out),
-         "--db", str(db), "--payload", '{"body":"pwned"}'],
+        [
+            "flows",
+            "run",
+            "--flow",
+            str(flow),
+            "--allow",
+            "write_file",
+            "--out-dir",
+            str(out),
+            "--db",
+            str(db),
+            "--payload",
+            '{"body":"pwned"}',
+        ],
     )
     assert r.returncode == 0  # reported, not crashed
     payload = json.loads(r.stdout)["data"]

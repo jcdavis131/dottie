@@ -17,7 +17,7 @@ Curriculum placement: phases (2, 3, 5).
 
 from __future__ import annotations
 
-from typing import Iterator
+from collections.abc import Iterator
 
 from dottie.datagen.base import Generator, run_cli
 
@@ -158,12 +158,10 @@ def _confounder_doc(rng) -> tuple[str, str, str, dict]:
     for z in z_levels:
         for t in (0, 1):
             n, y = cells[(z, t)]
-            lines.append(f"  Z={z} T={t}: n={n}, y={y}, risk={y/n:.4f}")
+            lines.append(f"  Z={z} T={t}: n={n}, y={y}, risk={y / n:.4f}")
     lines.append("")
     lines.append(f"Crude risk difference RD = P(Y=1|T=1)-P(Y=1|T=0) = {crude_rd:.4f}")
-    lines.append(
-        f"Standardized RD (adjust Z) = {std_rd:.4f}"
-    )
+    lines.append(f"Standardized RD (adjust Z) = {std_rd:.4f}")
     delta = abs(crude_rd - std_rd)
     lines.append(
         f"|crude - standardized| = {delta:.4f}. "

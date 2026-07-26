@@ -282,9 +282,19 @@ _REQ_RE = re.compile(
 _INCLUDE_OPTS = ("-r", "--requirement", "-c", "--constraint")
 # Options that configure pip itself and carry no dependency information.
 _IGNORED_OPTS = (
-    "-i", "--index-url", "--extra-index-url", "--find-links", "-f",
-    "--trusted-host", "--no-binary", "--only-binary", "--pre",
-    "--prefer-binary", "--use-pep517", "--no-deps", "--require-hashes",
+    "-i",
+    "--index-url",
+    "--extra-index-url",
+    "--find-links",
+    "-f",
+    "--trusted-host",
+    "--no-binary",
+    "--only-binary",
+    "--pre",
+    "--prefer-binary",
+    "--use-pep517",
+    "--no-deps",
+    "--require-hashes",
 )
 
 
@@ -533,9 +543,11 @@ def parse_pyproject(text: str) -> dict[str, Any]:
     for spec in project.get("dependencies") or []:
         _append_pep508(deps, notes, str(spec), "project.dependencies")
     optional = project.get("optional-dependencies")
-    for group, specs in (optional.items() if isinstance(optional, dict) else []):
+    for group, specs in optional.items() if isinstance(optional, dict) else []:
         for spec in specs or []:
-            _append_pep508(deps, notes, str(spec), f"project.optional-dependencies.{group}")
+            _append_pep508(
+                deps, notes, str(spec), f"project.optional-dependencies.{group}"
+            )
     tool = data.get("tool") if isinstance(data.get("tool"), dict) else {}
     poetry = tool.get("poetry")
     if isinstance(poetry, dict):
@@ -585,7 +597,7 @@ def _poetry_deps(
 ) -> None:
     """Poetry declares deps as name -> constraint (or a table with `version`)."""
     table = poetry.get("dependencies")
-    for name, raw in (table.items() if isinstance(table, dict) else []):
+    for name, raw in table.items() if isinstance(table, dict) else []:
         if name.lower() == "python":
             continue  # the interpreter constraint is not a PyPI package
         if isinstance(raw, dict):
@@ -716,7 +728,9 @@ def parse_package_lock(text: str) -> dict[str, Any]:
     data, error = _load_json(text)
     if not isinstance(data, dict):
         return _empty(
-            "package-lock.json", ECO_NPM, error or "package-lock.json is not a JSON object"
+            "package-lock.json",
+            ECO_NPM,
+            error or "package-lock.json is not a JSON object",
         )
     deps: list[dict[str, Any]] = []
     notes: list[dict[str, Any]] = []
@@ -938,7 +952,9 @@ def cvss_rating(score: float) -> str:
 def _reading(value: Any, error: str | None, **extra: Any) -> dict[str, Any]:
     """One measurement: EITHER `value` OR `error`, never both, never neither."""
     if (value is None) == (error is None):
-        raise ValueError(f"reading needs exactly one of value/error: {value!r} {error!r}")
+        raise ValueError(
+            f"reading needs exactly one of value/error: {value!r} {error!r}"
+        )
     return {"value": value, "error": error, **extra}
 
 
@@ -967,8 +983,13 @@ def advisory_severity(record: dict[str, Any]) -> dict[str, Any]:
             if vectors
             else "advisory declares no severity vector"
         )
-        score = _reading(None, f"no CVSS v3 base score computable: {detail}", source=None, vector=None)
-    declared = ((record.get("database_specific") or {}).get("severity") or "")
+        score = _reading(
+            None,
+            f"no CVSS v3 base score computable: {detail}",
+            source=None,
+            vector=None,
+        )
+    declared = (record.get("database_specific") or {}).get("severity") or ""
     if score["value"] is not None:
         rating = _reading(
             cvss_rating(score["value"]), None, source="computed from the CVSS v3 vector"
@@ -1133,7 +1154,9 @@ def snapshot_age(meta: dict[str, Any], now_ts: float) -> dict[str, Any]:
 _EVENT_RANK = {"introduced": 0, "fixed": 1, "last_affected": 1}
 
 
-def range_intervals(rng: dict[str, Any], ecosystem: str) -> tuple[list[dict], list[str]]:
+def range_intervals(
+    rng: dict[str, Any], ecosystem: str
+) -> tuple[list[dict], list[str]]:
     """OSV events -> affected intervals, plus every reason they are incomplete.
 
     Events are sorted by version, with `introduced` ranked before a boundary at
@@ -1151,7 +1174,9 @@ def range_intervals(rng: dict[str, Any], ecosystem: str) -> tuple[list[dict], li
         for kind, raw in event.items():
             text = str(raw).strip()
             if kind not in _EVENT_RANK:
-                problems.append(f"event kind {kind!r} (={text!r}) is not supported here")
+                problems.append(
+                    f"event kind {kind!r} (={text!r}) is not supported here"
+                )
                 continue
             if kind == "introduced" and text == "0":
                 parsed.append((_MIN_KEY, 0, kind, text))
@@ -1215,10 +1240,14 @@ def evaluate_block(
             f"{VERSION_SCHEMES.get(ecosystem, ecosystem)} version",
             evidence=None,
         )
-    listed = [str(v) for v in (block.get("versions") or []) if isinstance(v, (str, int))]
+    listed = [
+        str(v) for v in (block.get("versions") or []) if isinstance(v, (str, int))
+    ]
     for candidate in listed:
         if version_key(candidate, ecosystem) == key:
-            return _reading(True, None, evidence=f"listed in affected.versions as {candidate!r}")
+            return _reading(
+                True, None, evidence=f"listed in affected.versions as {candidate!r}"
+            )
     ranges = [r for r in (block.get("ranges") or []) if isinstance(r, dict)]
     usable = [r for r in ranges if canonical_range_type(r, ecosystem)]
     if not ranges and not listed:
@@ -1271,9 +1300,13 @@ def evaluate_block(
         )
     if usable:
         return _reading(
-            False, None, evidence=f"outside all {len(usable)} declared affected range(s)"
+            False,
+            None,
+            evidence=f"outside all {len(usable)} declared affected range(s)",
         )
-    return _reading(False, None, evidence=f"not among the {len(listed)} listed version(s)")
+    return _reading(
+        False, None, evidence=f"not among the {len(listed)} listed version(s)"
+    )
 
 
 def canonical_range_type(rng: dict[str, Any], ecosystem: str) -> bool:
@@ -1309,7 +1342,8 @@ def evaluate_advisory(
         for b in (record.get("affected") or [])
         if isinstance(b, dict)
         and canonical_ecosystem((b.get("package") or {}).get("ecosystem")) == ecosystem
-        and normalize_name(str((b.get("package") or {}).get("name") or ""), ecosystem) == name
+        and normalize_name(str((b.get("package") or {}).get("name") or ""), ecosystem)
+        == name
     ]
     result: dict[str, Any] = {
         "id": str(record.get("id") or "?"),
@@ -1353,7 +1387,9 @@ def evaluate_advisory(
     return result
 
 
-def advisories_for(snapshot: dict[str, Any], dep: dict[str, Any]) -> list[dict[str, Any]]:
+def advisories_for(
+    snapshot: dict[str, Any], dep: dict[str, Any]
+) -> list[dict[str, Any]]:
     """Every indexed advisory for this dependency's (ecosystem, normalized name)."""
     if not dep.get("ecosystem"):
         return []
@@ -1574,8 +1610,10 @@ def _report_advisory(
         rating = verdict["severity"]["rating"]["value"]
         severity, why = emitter.severity_for("cve:vulnerable", rating)
         score = verdict["severity"]["score"]["value"]
-        band = f"CVSS {score} ({rating})" if score is not None else (
-            f"severity {rating}" if rating else "no severity declared"
+        band = (
+            f"CVSS {score} ({rating})"
+            if score is not None
+            else (f"severity {rating}" if rating else "no severity declared")
         )
         emitter.add(
             "cve:vulnerable",

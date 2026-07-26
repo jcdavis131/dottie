@@ -183,5 +183,7 @@ class TestLightenDottieFragments:
         # regression guard for the fix above: a legitimate title segment ending in a
         # dotted suffix ("Node.js") must NOT be mistaken for a file path. A generic
         # `\.\w+$` extension match would wrongly truncate it to "concept:Overview".
-        assert sanitize.sanitize_id(
-            r"concept:Overview:Node.js:C:\Users\jcdav\dottie\x.md") == "concept:Overview:Node.js"
+        assert (
+            sanitize.sanitize_id(r"concept:Overview:Node.js:C:\Users\jcdav\dottie\x.md")
+            == "concept:Overview:Node.js"
+        )
