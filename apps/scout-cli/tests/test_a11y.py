@@ -72,7 +72,16 @@ def test_parse_color_hex_forms():
 
 
 def test_parse_color_hex_rejects_bad_lengths_and_digits():
-    for bad in ("#", "#f", "#ff", "#fffff", "#fffffff", "#ffffffffff", "#gggggg", "#12 34 56"):
+    for bad in (
+        "#",
+        "#f",
+        "#ff",
+        "#fffff",
+        "#fffffff",
+        "#ffffffffff",
+        "#gggggg",
+        "#12 34 56",
+    ):
         assert a11y.parse_color(bad) is None, bad
 
 
@@ -88,8 +97,20 @@ def test_parse_color_rgb_functional_forms():
 
 
 def test_parse_color_rgb_rejects_malformed():
-    for bad in ("rgb(1,2)", "rgb(1,2,3,4,5)", "rgb(a,b,c)", "rgb(1,2,3", "hsl(0,0%,0%)",
-                "var(--brand)", "currentColor", "", "   ", None, 12345, "url(x.png)"):
+    for bad in (
+        "rgb(1,2)",
+        "rgb(1,2,3,4,5)",
+        "rgb(a,b,c)",
+        "rgb(1,2,3",
+        "hsl(0,0%,0%)",
+        "var(--brand)",
+        "currentColor",
+        "",
+        "   ",
+        None,
+        12345,
+        "url(x.png)",
+    ):
         assert a11y.parse_color(bad) is None, bad
 
 
@@ -132,9 +153,13 @@ def test_channel_luminance_uses_both_branches_at_the_threshold():
     low = a11y.SRGB_THRESHOLD * 255.0 - 0.01
     high = a11y.SRGB_THRESHOLD * 255.0 + 0.01
     assert a11y.channel_luminance(low) == pytest.approx((low / 255.0) / 12.92)
-    assert a11y.channel_luminance(high) == pytest.approx(((high / 255.0 + 0.055) / 1.055) ** 2.4)
+    assert a11y.channel_luminance(high) == pytest.approx(
+        ((high / 255.0 + 0.055) / 1.055) ** 2.4
+    )
     # the two branches meet, so the curve has no step at the join
-    assert a11y.channel_luminance(high) == pytest.approx(a11y.channel_luminance(low), abs=1e-4)
+    assert a11y.channel_luminance(high) == pytest.approx(
+        a11y.channel_luminance(low), abs=1e-4
+    )
     assert a11y.channel_luminance(0.0) == 0.0
     assert a11y.channel_luminance(255.0) == pytest.approx(1.0)
 
@@ -145,7 +170,9 @@ def test_is_large_text_boundaries():
     assert a11y.is_large_text(18.66, True) is True
     assert a11y.is_large_text(18.65, True) is False
     assert a11y.is_large_text(20.0, False) is False  # 20px normal weight is not large
-    assert a11y.is_large_text(None, True) is False  # undeclared judged at the strict bar
+    assert (
+        a11y.is_large_text(None, True) is False
+    )  # undeclared judged at the strict bar
 
 
 def test_required_ratio_matrix_and_unknown_level():
@@ -162,12 +189,21 @@ def test_required_ratio_matrix_and_unknown_level():
 
 def test_every_reading_is_value_xor_error():
     cases = [
-        ("#000", "#fff"), ("#fff", "#fff"), ("white", "black"),
-        ("rgb(1,2,3)", "rgb(4,5,6)"), (None, "#fff"), ("#fff", None),
-        ("", ""), ("var(--x)", "#fff"), ("#fff", "var(--x)"),
-        ("rgba(0,0,0,0.5)", "#fff"), ("#000", "rgba(255,255,255,0.2)"),
-        ("transparent", "#fff"), ("#000", "transparent"),
-        ("#000", "url(bg.png) no-repeat"), ("hotpink", "#fff"),
+        ("#000", "#fff"),
+        ("#fff", "#fff"),
+        ("white", "black"),
+        ("rgb(1,2,3)", "rgb(4,5,6)"),
+        (None, "#fff"),
+        ("#fff", None),
+        ("", ""),
+        ("var(--x)", "#fff"),
+        ("#fff", "var(--x)"),
+        ("rgba(0,0,0,0.5)", "#fff"),
+        ("#000", "rgba(255,255,255,0.2)"),
+        ("transparent", "#fff"),
+        ("#000", "transparent"),
+        ("#000", "url(bg.png) no-repeat"),
+        ("hotpink", "#fff"),
     ]
     for fg, bg in cases:
         r = a11y.contrast_reading(fg, bg)
@@ -177,7 +213,9 @@ def test_every_reading_is_value_xor_error():
         if has_error:  # a failed measurement never carries a verdict
             assert r["passes_aa"] is None and r["passes_aaa"] is None
         else:
-            assert isinstance(r["passes_aa"], bool) and isinstance(r["passes_aaa"], bool)
+            assert isinstance(r["passes_aa"], bool) and isinstance(
+                r["passes_aaa"], bool
+            )
 
 
 def test_display_rounding_never_creates_a_pass():
@@ -208,7 +246,9 @@ def test_unknown_colors_report_why_and_never_a_number():
     assert missing["ratio"] is None and "not declared" in missing["error"]
     junk = a11y.contrast_reading("#000", "chartreuse")
     assert junk["ratio"] is None and "not a hex/rgb/keyword color" in junk["error"]
-    assert a11y.contrast_reading("transparent", "#fff")["error"].endswith("fully transparent")
+    assert a11y.contrast_reading("transparent", "#fff")["error"].endswith(
+        "fully transparent"
+    )
 
 
 # ---- the (deliberately tiny) CSS resolver -----------------------------------
@@ -220,7 +260,9 @@ def test_parse_declarations():
     assert a11y.parse_declarations("background:url(http://x/y.png)") == {
         "background": "url(http://x/y.png)"  # only the FIRST colon splits
     }
-    assert a11y.parse_declarations("color:red;color:blue")["color"] == "blue"  # last wins
+    assert (
+        a11y.parse_declarations("color:red;color:blue")["color"] == "blue"
+    )  # last wins
     assert a11y.parse_declarations("no-colon-here") == {}
     assert a11y.parse_declarations(None) == {}
 
@@ -238,7 +280,9 @@ def test_iter_rules_tracks_at_depth_and_strips_comments():
     # already-stripped values. Assert the one reachable claim.
     assert (".card", 0) in by_selector
     assert a11y.iter_rules("") == []
-    assert a11y.iter_rules("body { color: #111") == [("body", " color: #111", 0)]  # unclosed
+    assert a11y.iter_rules("body { color: #111") == [
+        ("body", " color: #111", 0)
+    ]  # unclosed
 
 
 def test_root_style_applies_the_base_rule_and_flags_conditional_props():
@@ -277,7 +321,9 @@ def test_parse_font_weight():
     assert a11y.parse_font_weight("normal") is False
     assert a11y.parse_font_weight("lighter") is False
     assert a11y.parse_font_weight("bolder") is True
-    assert a11y.parse_font_weight("heavy") is None and a11y.parse_font_weight(None) is None
+    assert (
+        a11y.parse_font_weight("heavy") is None and a11y.parse_font_weight(None) is None
+    )
 
 
 # ---- fact extraction --------------------------------------------------------
@@ -351,7 +397,9 @@ def test_image_alt_states_are_distinguished():
     alts = {i["src"]: i["alt"] for i in facts["images"]}
     assert alts["a.png"] is None and alts["b.png"] == "" and alts["c.png"] == "A cat"
     assert [i["src"] for i in facts["images"] if i["presentational"]] == ["e.png"]
-    assert any(i["tag"] == "input" for i in facts["images"])  # input type=image needs alt too
+    assert any(
+        i["tag"] == "input" for i in facts["images"]
+    )  # input type=image needs alt too
 
 
 def test_alt_is_generic_detection():
@@ -407,7 +455,9 @@ def test_wrapping_label_counts_and_orphans_are_reported():
     facts = a11y.parse_document(html)
     assert [lb["wraps"] for lb in facts["labels"]] == [0, 1, 0]
     messages = [
-        d["message"] for d in _report(html)["diagnostics"] if d["rule"] == "a11y:label-orphan"
+        d["message"]
+        for d in _report(html)["diagnostics"]
+        if d["rule"] == "a11y:label-orphan"
     ]
     assert len(messages) == 2  # the for-mismatch and the lonely one, not the wrapper
     assert any("matches no element id" in m for m in messages)
@@ -422,15 +472,23 @@ def test_landmarks_implicit_explicit_and_named():
     facts = a11y.parse_document(html)
     roles = sorted(lm["role"] for lm in facts["landmarks"])
     assert roles == [
-        "banner", "complementary", "contentinfo", "form", "main", "navigation",
-        "region", "search",
+        "banner",
+        "complementary",
+        "contentinfo",
+        "form",
+        "main",
+        "navigation",
+        "region",
+        "search",
     ]
     # a bare <section>/<form> without a name is NOT a landmark, and is not counted
     assert sum(1 for lm in facts["landmarks"] if lm["tag"] == "section") == 1
 
 
 def test_duplicate_ids_and_document_language():
-    facts = a11y.parse_document("<html lang='en-GB'><p id='x'></p><p id='x'></p><p id='y'></p>")
+    facts = a11y.parse_document(
+        "<html lang='en-GB'><p id='x'></p><p id='x'></p><p id='y'></p>"
+    )
     assert facts["lang"] == "en-GB" and facts["html_seen"] is True
     assert facts["ids"]["x"] == [1, 1] and facts["ids"]["y"] == [1]
     assert a11y.parse_document("<html><body></body></html>")["lang"] is None
@@ -439,8 +497,14 @@ def test_duplicate_ids_and_document_language():
 
 def test_parser_tolerates_malformed_soup():
     for junk in (
-        "", "<<<>>>", "<html><body><p>unclosed", "<img src=", "<div><span></div></span>",
-        "<h1>a<h2>b", "<!-- comment only -->", "<style>body{color:</style>",
+        "",
+        "<<<>>>",
+        "<html><body><p>unclosed",
+        "<img src=",
+        "<div><span></div></span>",
+        "<h1>a<h2>b",
+        "<!-- comment only -->",
+        "<style>body{color:</style>",
         "<html lang=en><body style=color:#fff>x",
     ):
         facts = a11y.parse_document(junk)
@@ -510,11 +574,19 @@ def test_presentational_and_decorative_images_are_exempt():
 
 def test_diagnostics_carry_the_wcag_criterion_and_family_schema():
     diag = next(
-        d for d in _report("<img src='a.png'>")["diagnostics"]
+        d
+        for d in _report("<img src='a.png'>")["diagnostics"]
         if d["rule"] == "a11y:img-alt-missing"
     )
     assert set(diag) == {
-        "path", "line", "col", "rule", "severity", "message", "suggestion", "source"
+        "path",
+        "line",
+        "col",
+        "rule",
+        "severity",
+        "message",
+        "suggestion",
+        "source",
     }
     assert diag["path"] == "p.html" and diag["severity"] == "error"
     assert "WCAG 1.1.1" in diag["message"] and diag["suggestion"]
@@ -543,7 +615,9 @@ def test_rules_overlay_can_disable_and_change_severity(tmp_path):
     by_rule = {d["rule"]: d["severity"] for d in diags}
     assert by_rule["a11y:img-alt-missing"] == "warning"  # downgraded by policy
     assert "a11y:heading-none" not in by_rule  # disabled by policy
-    assert a11y.load_rules()["a11y:img-alt-missing"]["severity"] == "error"  # defaults intact
+    assert (
+        a11y.load_rules()["a11y:img-alt-missing"]["severity"] == "error"
+    )  # defaults intact
 
 
 def test_load_rules_rejects_typos_and_bad_severity(tmp_path):
@@ -552,7 +626,9 @@ def test_load_rules_rejects_typos_and_bad_severity(tmp_path):
     with pytest.raises(ValueError, match="unknown rule id"):
         a11y.load_rules(bad_id)
     bad_sev = tmp_path / "b.json"
-    bad_sev.write_text('{"a11y:img-alt-missing": {"severity": "critical"}}', encoding="utf-8")
+    bad_sev.write_text(
+        '{"a11y:img-alt-missing": {"severity": "critical"}}', encoding="utf-8"
+    )
     with pytest.raises(ValueError, match="severity"):
         a11y.load_rules(bad_sev)
     not_object = tmp_path / "c.json"
@@ -570,7 +646,9 @@ def test_conditional_root_background_is_named_in_the_unknown_message():
         "<html><head><style>@media print { body { background:#fff } }</style></head>"
         "<body><p style='color:#999'>x</p></body></html>"
     )
-    diags = [d for d in _report(html)["diagnostics"] if d["rule"] == "a11y:contrast-unknown"]
+    diags = [
+        d for d in _report(html)["diagnostics"] if d["rule"] == "a11y:contrast-unknown"
+    ]
     assert len(diags) == 1
     assert "@media/@supports block" in diags[0]["message"]
 
@@ -586,7 +664,10 @@ def test_page_report_counts_match_the_facts():
     assert counts["controls"] == 2 and counts["labels"] == 1
     assert counts["stylesheet_bytes"] > 0
     assert report["lang"] == "en" and report["unreadable"] is None
-    assert counts["text_styles"] == counts["contrast_measured"] + counts["contrast_unknown"]
+    assert (
+        counts["text_styles"]
+        == counts["contrast_measured"] + counts["contrast_unknown"]
+    )
 
 
 def test_unreadable_report_has_no_counts_and_one_error():
@@ -602,7 +683,9 @@ def test_aggregate_separates_unread_pages_from_clean_ones():
     good = _report(CLEAN_PAGE, path="a.html")
     bad = a11y.unreadable_report("b.html", "OSError: nope")
     agg = a11y.aggregate([good, bad, good])
-    assert agg["pages"] == 3 and agg["pages_audited"] == 2 and agg["pages_unreadable"] == 1
+    assert (
+        agg["pages"] == 3 and agg["pages_audited"] == 2 and agg["pages_unreadable"] == 1
+    )
     assert agg["totals"]["images"] == 4  # summed over the audited pages only
     assert a11y.aggregate([])["totals"]["images"] == 0
 
@@ -628,7 +711,9 @@ def test_manifest_is_zero_egress_and_read_only():
     import yaml
 
     mf = yaml.safe_load(
-        (ROOT / "bigbang" / "plugins" / "a11y" / "manifest.yaml").read_text(encoding="utf-8")
+        (ROOT / "bigbang" / "plugins" / "a11y" / "manifest.yaml").read_text(
+            encoding="utf-8"
+        )
     )
     caps = mf["capabilities"]
     assert mf["name"] == "a11y"
@@ -667,7 +752,9 @@ def test_read_html_reports_why_instead_of_raising(tmp_path):
 
 
 def test_core_imports_are_stdlib_only():
-    tree = ast.parse((ROOT / "bigbang" / "core" / "a11y.py").read_text(encoding="utf-8"))
+    tree = ast.parse(
+        (ROOT / "bigbang" / "core" / "a11y.py").read_text(encoding="utf-8")
+    )
     roots: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -745,14 +832,18 @@ def test_cli_a11y_check_finds_real_defects_and_gates(tmp_path):
         tmp_path,
         "bad.html",
         '<html><body><h2>Late</h2><img src="a.png">'
-        "<p style=\"color:#999;background:#fff\">low</p>"
+        '<p style="color:#999;background:#fff">low</p>'
         "<input name='q' placeholder='q'></body></html>",
     )
     r = _cli(["a11y", "check", str(page), "--fail-on", "error"])
     assert r.returncode == 1  # the gate fires on the errors below
     data = json.loads(r.stdout)["data"]
     fired = {d["rule"] for d in data["diagnostics"]}
-    assert {"a11y:img-alt-missing", "a11y:contrast-aa", "a11y:control-unlabeled"} <= fired
+    assert {
+        "a11y:img-alt-missing",
+        "a11y:contrast-aa",
+        "a11y:control-unlabeled",
+    } <= fired
     assert data["summary"]["by_severity"]["error"] >= 3
     assert data["aggregate"]["pages_audited"] == 1
     assert data["tier"] == "fallback" and data["native_used"] is False
@@ -803,11 +894,24 @@ def test_cli_a11y_check_rejects_a_bad_fail_on(tmp_path):
 
 
 def test_cli_a11y_contrast_gate_fails_on_an_unknown_reading():
-    r = _cli(["a11y", "contrast", "--fg", "var(--brand)", "--bg", "#fff", "--fail-below", "AA"])
+    r = _cli(
+        [
+            "a11y",
+            "contrast",
+            "--fg",
+            "var(--brand)",
+            "--bg",
+            "#fff",
+            "--fail-below",
+            "AA",
+        ]
+    )
     assert r.returncode == 1  # unknown must never pass a gate
     data = json.loads(r.stdout)["data"]
     assert data["ratio"] is None and data["error"]
-    passing = _cli(["a11y", "contrast", "--fg", "#000", "--bg", "#fff", "--fail-below", "AAA"])
+    passing = _cli(
+        ["a11y", "contrast", "--fg", "#000", "--bg", "#fff", "--fail-below", "AAA"]
+    )
     assert passing.returncode == 0
     assert json.loads(passing.stdout)["data"]["ratio"] == 21.0
 

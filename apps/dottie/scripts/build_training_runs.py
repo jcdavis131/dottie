@@ -19,6 +19,7 @@ Usage (metrics live in the ava_reports docker volume, so extract first):
   python build_training_runs.py --metrics m.jsonl \
       --db apps/dottie/data/runtrack.db --out apps/bluehenre/public/training_runs.json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -28,7 +29,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO / "apps" / "scout-cli"))
-from bigbang.core import runtrack  # noqa: E402  (path set above)
+from bigbang.core import runtrack
 
 # events that begin a new training leg / end one
 _LEG_START = ("branch_forked", "resumed")
@@ -67,11 +68,16 @@ def segment_legs(path: Path) -> list[dict]:
         if cur is None:  # steps before any start event = the original leg
             cur = {"start_event": "initial", "steps": []}
             legs.append(cur)
-        cur["steps"].append({
-            "step": step, "lm": float(lm),
-            "tok_s": d.get("tok_s"), "phase": d.get("phase"),
-            "tokens": d.get("tokens"), "ts": d.get("ts"),
-        })
+        cur["steps"].append(
+            {
+                "step": step,
+                "lm": float(lm),
+                "tok_s": d.get("tok_s"),
+                "phase": d.get("phase"),
+                "tokens": d.get("tokens"),
+                "ts": d.get("ts"),
+            }
+        )
     return [lg for lg in legs if lg["steps"]]  # a leg with no measurement is dropped
 
 
@@ -87,19 +93,31 @@ def leg_name(idx: int, lg: dict) -> str:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Ingest trainer legs into runtrack + export a readout.")
+    ap = argparse.ArgumentParser(
+        description="Ingest trainer legs into runtrack + export a readout."
+    )
     ap.add_argument("--metrics", required=True, help="trainer metrics jsonl")
-    ap.add_argument("--db", required=True, help="runtrack sqlite db (created if absent)")
+    ap.add_argument(
+        "--db", required=True, help="runtrack sqlite db (created if absent)"
+    )
     ap.add_argument("--out", help="static readout json to write (optional)")
-    ap.add_argument("--curve-points", type=int, default=60, help="max curve points per leg")
+    ap.add_argument(
+        "--curve-points", type=int, default=60, help="max curve points per leg"
+    )
     # The metrics log is append-only across this factory's WHOLE history and a
     # `resumed` event fires on every container restart, so raw segmentation yields
     # dozens of 1-10 step fragments with overlapping ranges. These two filters keep
     # the readout to substantive, non-duplicated legs; both are reported in the
     # readout so the drop is visible rather than silent.
-    ap.add_argument("--min-steps", type=int, default=20,
-                    help="drop legs with fewer measured steps (restart fragments)")
-    ap.add_argument("--last", type=int, default=8, help="keep only the N most recent legs")
+    ap.add_argument(
+        "--min-steps",
+        type=int,
+        default=20,
+        help="drop legs with fewer measured steps (restart fragments)",
+    )
+    ap.add_argument(
+        "--last", type=int, default=8, help="keep only the N most recent legs"
+    )
     args = ap.parse_args()
 
     all_legs = segment_legs(Path(args.metrics))
@@ -108,8 +126,12 @@ def main() -> int:
     deduped = []
     for i, lg in enumerate(substantive):
         lo, hi = lg["steps"][0]["step"], lg["steps"][-1]["step"]
-        if any(o["steps"][0]["step"] <= lo and o["steps"][-1]["step"] >= hi
-               and len(o["steps"]) > len(lg["steps"]) for o in substantive[i + 1:]):
+        if any(
+            o["steps"][0]["step"] <= lo
+            and o["steps"][-1]["step"] >= hi
+            and len(o["steps"]) > len(lg["steps"])
+            for o in substantive[i + 1 :]
+        ):
             continue
         deduped.append(lg)
     # ALWAYS keep the newest leg even if it is still short: it is the run training
@@ -118,7 +140,7 @@ def main() -> int:
     if all_legs and all_legs[-1] not in deduped:
         deduped.append(all_legs[-1])
     dropped = len(all_legs) - len(deduped)
-    legs = deduped[-args.last:] if args.last > 0 else deduped
+    legs = deduped[-args.last :] if args.last > 0 else deduped
     if not legs:
         print("no measured steps found — nothing ingested", file=sys.stderr)
         return 1
@@ -136,9 +158,15 @@ def main() -> int:
             run_id = int(existing[0]["id"])
             logged = {p["step"] for p in runtrack.run_history(conn, run_id, key="lm")}
         else:
-            run = runtrack.start_run(conn, name, config={
-                "start_event": lg["start_event"], "first_step": steps[0]["step"],
-            }, ts=steps[0].get("ts"))
+            run = runtrack.start_run(
+                conn,
+                name,
+                config={
+                    "start_event": lg["start_event"],
+                    "first_step": steps[0]["step"],
+                },
+                ts=steps[0].get("ts"),
+            )
             run_id, logged = int(run["id"]), set()
         for s in steps:
             if s["step"] in logged:
@@ -151,22 +179,36 @@ def main() -> int:
 
         lms = [s["lm"] for s in steps]
         stride = max(1, len(steps) // max(1, args.curve_points))
-        curve = [{"step": s["step"], "lm": round(s["lm"], 4)}
-                 for j, s in enumerate(steps) if j % stride == 0 or j == len(steps) - 1]
-        out_legs.append({
-            "name": name, "start_event": lg["start_event"],
-            "first_step": steps[0]["step"], "last_step": steps[-1]["step"],
-            "measured_steps": len(steps),
-            "lm_first": round(lms[0], 4), "lm_last": round(lms[-1], 4),
-            "lm_min": round(min(lms), 4),
-            "tokens_last": steps[-1].get("tokens"),
-            "phases": sorted({s["phase"] for s in steps if isinstance(s.get("phase"), int)}),
-            "curve": curve,
-        })
+        curve = [
+            {"step": s["step"], "lm": round(s["lm"], 4)}
+            for j, s in enumerate(steps)
+            if j % stride == 0 or j == len(steps) - 1
+        ]
+        out_legs.append(
+            {
+                "name": name,
+                "start_event": lg["start_event"],
+                "first_step": steps[0]["step"],
+                "last_step": steps[-1]["step"],
+                "measured_steps": len(steps),
+                "lm_first": round(lms[0], 4),
+                "lm_last": round(lms[-1], 4),
+                "lm_min": round(min(lms), 4),
+                "tokens_last": steps[-1].get("tokens"),
+                "phases": sorted(
+                    {s["phase"] for s in steps if isinstance(s.get("phase"), int)}
+                ),
+                "curve": curve,
+            }
+        )
 
-    print(f"ingested {len(out_legs)} legs into {args.db}: " +
-          ", ".join(f"{l['name']} (lm {l['lm_first']}->{l['lm_last']})" for l in out_legs),
-          file=sys.stderr)
+    print(
+        f"ingested {len(out_legs)} legs into {args.db}: "
+        + ", ".join(
+            f"{l['name']} (lm {l['lm_first']}->{l['lm_last']})" for l in out_legs
+        ),
+        file=sys.stderr,
+    )
 
     if args.out:
         doc = {
@@ -174,11 +216,14 @@ def main() -> int:
             "metric": "lm loss per logged training step (trainer's own measurement)",
             # the drop is stated, never silent: the log spans the factory's whole
             # history and every container restart emits a `resumed` fragment
-            "segmentation": (f"legs delimited by the trainer's own branch_forked/resumed/done "
-                             f"events; {dropped} restart fragments below {args.min_steps} "
-                             f"measured steps (or fully replayed by a later leg) dropped; "
-                             f"showing the {len(out_legs)} most recent of {len(deduped)}"),
-            "count": len(out_legs), "legs": out_legs,
+            "segmentation": (
+                f"legs delimited by the trainer's own branch_forked/resumed/done "
+                f"events; {dropped} restart fragments below {args.min_steps} "
+                f"measured steps (or fully replayed by a later leg) dropped; "
+                f"showing the {len(out_legs)} most recent of {len(deduped)}"
+            ),
+            "count": len(out_legs),
+            "legs": out_legs,
         }
         Path(args.out).write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
         print(f"wrote {args.out}", file=sys.stderr)

@@ -244,7 +244,9 @@ def unreachable_reason(resolution: dict[str, Any]) -> str:
     """One actionable line naming every endpoint tried and how each failed."""
     parts = []
     for t in resolution.get("tried", []):
-        detail = t.get("error") or (f"HTTP {t['status']}" if t.get("status") else "no answer")
+        detail = t.get("error") or (
+            f"HTTP {t['status']}" if t.get("status") else "no answer"
+        )
         parts.append(f"{t['base']} ({detail})")
     tried = "; ".join(parts) or "no candidate endpoints"
     return f"no ollama endpoint answered {resolution.get('path', '')}: {tried}"
@@ -589,7 +591,9 @@ def assemble_template(
     ]
     lines += [f"- {slot}" for slot in _INTENT_SLOTS[intent]]
     if model_hint:
-        lines.append(f"- rerun with: scout ollama run --model {model_hint} --prompt ...")
+        lines.append(
+            f"- rerun with: scout ollama run --model {model_hint} --prompt ..."
+        )
     return {
         "text": "\n".join(lines) + "\n",
         "intent": intent,

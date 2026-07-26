@@ -222,7 +222,10 @@ def test_resolve_stops_at_the_first_answer_and_records_the_attempts():
     assert "ConnectionRefused" in res["tried"][0]["error"]
     assert res["tried"][1]["ok"] is True and res["tried"][1]["status"] == 200
     # it stopped: nothing was probed after the answer
-    assert probe.calls == [("http://box:11434", ollama.VERSION_PATH), (BASE, ollama.VERSION_PATH)]
+    assert probe.calls == [
+        ("http://box:11434", ollama.VERSION_PATH),
+        (BASE, ollama.VERSION_PATH),
+    ]
 
 
 def test_resolve_treats_non_200_and_bodyless_200_as_no_answer():
@@ -231,7 +234,9 @@ def test_resolve_treats_non_200_and_bodyless_200_as_no_answer():
         {"status": 500, "json": None, "error": "HTTP 500"},
         {"status": 200, "json": None, "error": None},  # a proxy's HTML login page
     ):
-        res = ollama.resolve(_prober({(BASE, ollama.TAGS_PATH): bad}), [BASE], path=ollama.TAGS_PATH)
+        res = ollama.resolve(
+            _prober({(BASE, ollama.TAGS_PATH): bad}), [BASE], path=ollama.TAGS_PATH
+        )
         assert res["reachable"] is False and res["base"] is None
         assert res["payload"] is None
         assert res["tried"][0]["ok"] is False
@@ -239,7 +244,9 @@ def test_resolve_treats_non_200_and_bodyless_200_as_no_answer():
 
 def test_unreachable_reason_names_every_endpoint_and_how_it_failed():
     res = ollama.resolve(
-        _prober({(BASE, ollama.TAGS_PATH): {"status": 503, "json": None, "error": None}}),
+        _prober(
+            {(BASE, ollama.TAGS_PATH): {"status": 503, "json": None, "error": None}}
+        ),
         ["http://box:11434", BASE],
         path=ollama.TAGS_PATH,
     )
@@ -322,7 +329,12 @@ def test_parse_loaded_handles_absent_vram_key_and_junk():
     assert ollama.parse_loaded(None) == []
     assert ollama.parse_loaded({"models": [{}, 7, "x"]}) == []
     two = ollama.parse_loaded(
-        {"models": [{"name": "b:1", "size": 2, "size_vram": 2}, {"name": "a:1", "size": 2, "size_vram": 0}]}
+        {
+            "models": [
+                {"name": "b:1", "size": 2, "size_vram": 2},
+                {"name": "a:1", "size": 2, "size_vram": 0},
+            ]
+        }
     )
     assert [r["name"] for r in two] == ["a:1", "b:1"]
     assert two[0]["placement"] == ollama.PLACEMENT_CPU
@@ -358,7 +370,9 @@ def test_explicit_request_wins_exactly_or_by_unique_prefix():
     assert name == "gemma3:4b" and "unique prefix" in why
     # explicit beats residency
     assert (
-        ollama.pick_model(catalog, want="gemma3:4b", loaded=ollama.parse_loaded(PS_CPU))[0]
+        ollama.pick_model(
+            catalog, want="gemma3:4b", loaded=ollama.parse_loaded(PS_CPU)
+        )[0]
         == "gemma3:4b"
     )
 
@@ -419,16 +433,22 @@ def test_parse_completion_returns_none_rather_than_an_empty_answer():
 
 
 def test_tok_per_s_is_omitted_rather_than_guessed():
-    assert ollama.parse_completion({"response": "x", "eval_count": 10})["tok_per_s"] is None
     assert (
-        ollama.parse_completion({"response": "x", "eval_duration": 0, "eval_count": 10})[
+        ollama.parse_completion({"response": "x", "eval_count": 10})["tok_per_s"]
+        is None
+    )
+    assert (
+        ollama.parse_completion(
+            {"response": "x", "eval_duration": 0, "eval_count": 10}
+        )["tok_per_s"]
+        is None
+    )
+    assert (
+        ollama.parse_completion({"response": "x", "eval_count": 0, "eval_duration": 1})[
             "tok_per_s"
         ]
         is None
     )
-    assert ollama.parse_completion({"response": "x", "eval_count": 0, "eval_duration": 1})[
-        "tok_per_s"
-    ] is None
 
 
 def test_reasoning_is_never_accepted_as_an_answer():
@@ -465,11 +485,17 @@ def test_telemetry_is_read_from_any_payload_answer_or_not():
 
 def test_a_thinking_only_attempt_is_degraded_but_its_cost_is_recorded():
     rec = ollama.complete(
-        _poster(_ok(THINKING_ONLY)), "is this box using its GPU?", model="qwen3:8b", base=BASE, now=1.0
+        _poster(_ok(THINKING_ONLY)),
+        "is this box using its GPU?",
+        model="qwen3:8b",
+        base=BASE,
+        now=1.0,
     )
     assert rec["degraded"] is True and rec["source"] == ollama.SOURCE_TEMPLATE
     assert rec["text"].startswith(ollama.DEGRADED_BANNER)
-    assert THINKING_ONLY["thinking"] not in rec["text"]  # reasoning is not shown as an answer
+    assert (
+        THINKING_ONLY["thinking"] not in rec["text"]
+    )  # reasoning is not shown as an answer
     assert "raise --num-predict" in rec["reason"]
     assert rec["http_status"] == 200
     # the compute really happened, so the record must say so
@@ -481,7 +507,9 @@ def test_a_thinking_only_attempt_is_degraded_but_its_cost_is_recorded():
 
 
 def test_template_is_banner_led_and_says_it_did_not_answer():
-    out = ollama.assemble_template("summarize the ratchet decision", reason="daemon down")
+    out = ollama.assemble_template(
+        "summarize the ratchet decision", reason="daemon down"
+    )
     lines = out["text"].splitlines()
     assert lines[0] == ollama.DEGRADED_BANNER
     assert "TEMPLATE ASSEMBLY" in lines[0] and "not inference" in lines[0]
@@ -510,7 +538,9 @@ def test_a_long_prompt_is_truncated_and_flagged():
     # whole prompt back in through the salient-terms line
     assert out["terms"] == []
     assert ollama.salient_terms("y" * (ollama.MAX_TERM_CHARS + 1)) == []
-    assert ollama.salient_terms("y" * ollama.MAX_TERM_CHARS) == ["y" * ollama.MAX_TERM_CHARS]
+    assert ollama.salient_terms("y" * ollama.MAX_TERM_CHARS) == [
+        "y" * ollama.MAX_TERM_CHARS
+    ]
 
 
 def test_template_is_byte_identical_across_runs():
@@ -612,7 +642,10 @@ def test_complete_degrades_and_quotes_the_failure_for_every_bad_answer():
     prompt = "summarize the checkpoint cadence change"
     for result, expect in (
         (REFUSED, "ConnectionRefusedError"),
-        ({"status": 404, "json": {"error": "model not found"}, "error": "HTTP 404"}, "HTTP 404"),
+        (
+            {"status": 404, "json": {"error": "model not found"}, "error": "HTTP 404"},
+            "HTTP 404",
+        ),
         ({"status": 200, "json": {"response": ""}, "error": None}, "HTTP 200"),
         ({"status": 500, "json": None, "error": None}, "HTTP 500"),
     ):
@@ -644,7 +677,9 @@ def test_complete_attempts_nothing_when_there_is_no_base_or_no_model():
 
 
 def test_complete_records_provenance_without_the_prompt():
-    rec = ollama.complete(_poster(REFUSED), "secret plan alpha", model="m:1", base=BASE, now=2.0)
+    rec = ollama.complete(
+        _poster(REFUSED), "secret plan alpha", model="m:1", base=BASE, now=2.0
+    )
     assert rec["prompt_sha256"] == ollama.prompt_fingerprint("secret plan alpha")
     assert len(rec["prompt_sha256"]) == 16
     assert rec["prompt_chars"] == len("secret plan alpha")
@@ -666,7 +701,10 @@ def test_open_ledger_creates_its_own_file_and_is_idempotent(tmp_path):
     cols = {r[1] for r in conn.execute("PRAGMA table_info(completions)")}
     assert db.exists()
     assert {"ts", "source", "degraded", "model", "prompt_sha256", "tok_per_s"} <= cols
-    assert conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0] == "1"
+    assert (
+        conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0]
+        == "1"
+    )
     conn.close()
     again = ollama.open_ledger(db)  # re-open must not wipe or fail
     assert again.execute("SELECT COUNT(*) FROM completions").fetchone()[0] == 0
@@ -690,7 +728,16 @@ def test_recorded_rows_contain_neither_the_prompt_nor_the_answer(tmp_path):
     answer = "Acknowledged: bluehenre-at-four-point-two."
     conn = ollama.open_ledger(db)
     rec = ollama.complete(
-        _poster(_ok({"model": "qwen3:8b", "response": answer, "eval_count": 9, "eval_duration": 3_000_000_000})),
+        _poster(
+            _ok(
+                {
+                    "model": "qwen3:8b",
+                    "response": answer,
+                    "eval_count": 9,
+                    "eval_duration": 3_000_000_000,
+                }
+            )
+        ),
         confidential,
         model="qwen3:8b",
         base=BASE,
@@ -848,13 +895,17 @@ def test_cpu_placement_is_info_and_never_silent():
     assert "do not assume GPU" in diags[0]["message"]
     assert "cpu" in diags[0]["message"]
     # a genuinely GPU-resident model produces no placement finding at all
-    gpu = ollama.parse_loaded({"models": [{"name": "q:1", "size": 10, "size_vram": 10}]})
+    gpu = ollama.parse_loaded(
+        {"models": [{"name": "q:1", "size": 10, "size_vram": 10}]}
+    )
     assert ollama.endpoint_diagnostics(res, loaded=gpu) == []
 
 
 def test_no_models_is_only_claimed_when_we_actually_asked():
     live = ollama.resolve(
-        _prober({(BASE, ollama.TAGS_PATH): _ok({"models": []})}), [BASE], path=ollama.TAGS_PATH
+        _prober({(BASE, ollama.TAGS_PATH): _ok({"models": []})}),
+        [BASE],
+        path=ollama.TAGS_PATH,
     )
     diags = ollama.endpoint_diagnostics(live, models=[])
     assert [d["rule"] for d in diags] == ["ollama:no-models"]
@@ -868,7 +919,9 @@ def test_no_models_is_only_claimed_when_we_actually_asked():
 
 
 def test_a_degraded_answer_is_a_warning_and_a_real_one_is_silent():
-    good = ollama.complete(_poster(_ok(GENERATED)), "p", model="m:1", base=BASE, now=1.0)
+    good = ollama.complete(
+        _poster(_ok(GENERATED)), "p", model="m:1", base=BASE, now=1.0
+    )
     bad = ollama.complete(_poster(REFUSED), "p", model="m:1", base=BASE, now=1.0)
     assert ollama.to_diagnostics([good]) == []
     diags = ollama.to_diagnostics([bad])
@@ -892,7 +945,9 @@ def test_detection_reports_native_when_the_binary_is_on_path(monkeypatch):
     monkeypatch.setattr(
         openswap.subprocess,
         "run",
-        lambda *a, **k: type("R", (), {"returncode": 0, "stdout": "ollama version 0.6.2", "stderr": ""})(),
+        lambda *a, **k: type(
+            "R", (), {"returncode": 0, "stdout": "ollama version 0.6.2", "stderr": ""}
+        )(),
     )
     cap = ollama_cli._capability()
     assert cap["adapter"] == "ollama"
@@ -1002,7 +1057,9 @@ def test_cli_detect_against_a_closed_port_is_honest_and_gateable():
     assert data["summary"]["by_severity"]["warning"] == 1
     assert "uptime (#2)" in data["monitoring"]
 
-    gated = _cli(["ollama", "detect", "--base", DEAD, "--timeout", "2", "--fail-on", "warning"])
+    gated = _cli(
+        ["ollama", "detect", "--base", DEAD, "--timeout", "2", "--fail-on", "warning"]
+    )
     assert gated.returncode == 1
     assert json.loads(gated.stdout)["data"]["endpoint"]["reachable"] is False
 
@@ -1028,7 +1085,15 @@ def test_cli_rejects_an_unparseable_base():
 def test_cli_denies_an_off_loopback_endpoint_before_any_socket(tmp_path):
     """An off-box 'ollama' URL is a hosted API in disguise — denied by policy."""
     r = _cli(
-        ["ollama", "run", "--prompt", "hi", "--base", "http://10.0.0.5:11434", "--no-record"],
+        [
+            "ollama",
+            "run",
+            "--prompt",
+            "hi",
+            "--base",
+            "http://10.0.0.5:11434",
+            "--no-record",
+        ],
         env={"BIGBANG_POLICY_FILE": str(tmp_path / "policy.yaml")},
     )
     assert r.returncode == 1
@@ -1052,7 +1117,18 @@ def test_cli_run_degrades_honestly_and_records_it(tmp_path):
     db = tmp_path / "ollama.db"
     prompt = "summarize why the checkpoint cadence moved 25 to 15"
     r = _cli(
-        ["ollama", "run", "--prompt", prompt, "--base", DEAD, "--timeout", "2", "--db", str(db)]
+        [
+            "ollama",
+            "run",
+            "--prompt",
+            prompt,
+            "--base",
+            DEAD,
+            "--timeout",
+            "2",
+            "--db",
+            str(db),
+        ]
     )
     assert r.returncode == 0, r.stderr + r.stdout  # degrading is not an error
     data = json.loads(r.stdout)["data"]
@@ -1082,8 +1158,17 @@ def test_cli_run_degrades_honestly_and_records_it(tmp_path):
     # the CI/cron hook: same run, nonzero exit, same honest payload
     gated = _cli(
         [
-            "ollama", "run", "--prompt", prompt, "--base", DEAD, "--timeout", "2",
-            "--db", str(db), "--fail-on-degraded",
+            "ollama",
+            "run",
+            "--prompt",
+            prompt,
+            "--base",
+            DEAD,
+            "--timeout",
+            "2",
+            "--db",
+            str(db),
+            "--fail-on-degraded",
         ]
     )
     assert gated.returncode == 1
@@ -1115,7 +1200,18 @@ def test_cli_usage_reports_the_model_share_and_stores_no_prompts(tmp_path):
     db = tmp_path / "ollama.db"
     for prompt in ("first question about clocks", "second question about clocks"):
         run = _cli(
-            ["ollama", "run", "--prompt", prompt, "--base", DEAD, "--timeout", "2", "--db", str(db)]
+            [
+                "ollama",
+                "run",
+                "--prompt",
+                prompt,
+                "--base",
+                DEAD,
+                "--timeout",
+                "2",
+                "--db",
+                str(db),
+            ]
         )
         assert run.returncode == 0, run.stderr + run.stdout
     r = _cli(["ollama", "usage", "--db", str(db)])

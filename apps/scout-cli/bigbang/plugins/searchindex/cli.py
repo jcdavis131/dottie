@@ -264,27 +264,79 @@ def detect():
     ),
 )
 def build(
-    roots: list[str] = typer.Argument(..., help="page directories and/or files to index (no implicit default)"),
-    out: str | None = typer.Option(None, "--out", help="artifact directory (default $SCOUT_SEARCHINDEX_OUT or ./searchindex-out)"),
-    ext: list[str] = typer.Option(None, "--ext", help=f"only index this extension, repeatable (html / .html / *.html all mean *.html; default {', '.join(searchindex.PAGE_EXTS)}) — wildcard-free, so prefer it over --glob on Windows"),
-    glob: list[str] = typer.Option(None, "--glob", help="include glob, repeatable (Windows: click may expand a bare *.html against the CWD first)"),
-    exclude: list[str] = typer.Option(None, "--exclude", help="exclude glob, repeatable (wins over --glob)"),
-    exclude_dir: list[str] = typer.Option(None, "--exclude-dir", help="directory names to prune (default: the shared vendor/VCS set)"),
-    base_url: str | None = typer.Option(None, "--base-url", help="absolute site base; without it result URLs are root-relative and labelled url_kind=relative (no domain is invented)"),
-    shards: int = typer.Option(searchindex.DEFAULT_SHARDS, "--shards", help="target shard count (capped by the number of distinct first characters)"),
+    roots: list[str] = typer.Argument(
+        ..., help="page directories and/or files to index (no implicit default)"
+    ),
+    out: str | None = typer.Option(
+        None,
+        "--out",
+        help="artifact directory (default $SCOUT_SEARCHINDEX_OUT or ./searchindex-out)",
+    ),
+    ext: list[str] = typer.Option(
+        None,
+        "--ext",
+        help=f"only index this extension, repeatable (html / .html / *.html all mean *.html; default {', '.join(searchindex.PAGE_EXTS)}) — wildcard-free, so prefer it over --glob on Windows",
+    ),
+    glob: list[str] = typer.Option(
+        None,
+        "--glob",
+        help="include glob, repeatable (Windows: click may expand a bare *.html against the CWD first)",
+    ),
+    exclude: list[str] = typer.Option(
+        None, "--exclude", help="exclude glob, repeatable (wins over --glob)"
+    ),
+    exclude_dir: list[str] = typer.Option(
+        None,
+        "--exclude-dir",
+        help="directory names to prune (default: the shared vendor/VCS set)",
+    ),
+    base_url: str | None = typer.Option(
+        None,
+        "--base-url",
+        help="absolute site base; without it result URLs are root-relative and labelled url_kind=relative (no domain is invented)",
+    ),
+    shards: int = typer.Option(
+        searchindex.DEFAULT_SHARDS,
+        "--shards",
+        help="target shard count (capped by the number of distinct first characters)",
+    ),
     max_kb: int = typer.Option(1024, "--max-kb", help="skip pages larger than this"),
-    weight: list[str] = typer.Option(None, "--weight", help="field=INT, repeatable (title/heading/description/path/body; defaults 8/4/3/2/1)"),
-    stemming: bool = typer.Option(True, "--stem/--no-stem", help="light stemming (plurals, -ing/-ed)"),
-    keep_stopwords: bool = typer.Option(False, "--keep-stopwords", help="index function words too (bigger shards, exact phrases reachable)"),
-    keep_boilerplate: bool = typer.Option(False, "--keep-nav", help="index <nav>/<footer> text (it repeats on every page)"),
-    clean_urls: bool = typer.Option(False, "--clean-urls", help="drop .html from result URLs (Vercel/Netlify style)"),
-    strip_index: bool = typer.Option(True, "--strip-index/--keep-index", help="index.html -> its directory URL"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="build and report, write nothing"),
-    fail_on: str | None = typer.Option(None, "--fail-on", help="exit 1 if any finding is at/above this severity (empty index / missing root = error) — the pre-deploy gate hook"),
+    weight: list[str] = typer.Option(
+        None,
+        "--weight",
+        help="field=INT, repeatable (title/heading/description/path/body; defaults 8/4/3/2/1)",
+    ),
+    stemming: bool = typer.Option(
+        True, "--stem/--no-stem", help="light stemming (plurals, -ing/-ed)"
+    ),
+    keep_stopwords: bool = typer.Option(
+        False,
+        "--keep-stopwords",
+        help="index function words too (bigger shards, exact phrases reachable)",
+    ),
+    keep_boilerplate: bool = typer.Option(
+        False, "--keep-nav", help="index <nav>/<footer> text (it repeats on every page)"
+    ),
+    clean_urls: bool = typer.Option(
+        False, "--clean-urls", help="drop .html from result URLs (Vercel/Netlify style)"
+    ),
+    strip_index: bool = typer.Option(
+        True, "--strip-index/--keep-index", help="index.html -> its directory URL"
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="build and report, write nothing"
+    ),
+    fail_on: str | None = typer.Option(
+        None,
+        "--fail-on",
+        help="exit 1 if any finding is at/above this severity (empty index / missing root = error) — the pre-deploy gate hook",
+    ),
 ):
     """Build the deployable index: read the pages, write manifest + shards + client."""
     _check_fail_on(
-        fail_on, "searchindex build", "scout --json searchindex build p --out o --fail-on error"
+        fail_on,
+        "searchindex build",
+        "scout --json searchindex build p --out o --fail-on error",
     )
     out_dir = _out_dir(out)
     include = [*searchindex.ext_globs(ext), *(glob or [])] or None
@@ -480,7 +532,9 @@ def verify(
     ),
 ):
     """Re-hash the artifact on disk against its manifest. Read-only, no network."""
-    _check_fail_on(fail_on, "searchindex verify", "scout --json searchindex verify --fail-on error")
+    _check_fail_on(
+        fail_on, "searchindex verify", "scout --json searchindex verify --fail-on error"
+    )
     out_dir = _out_dir(out)
     manifest, files = _load_artifact(out_dir, "searchindex verify")
     report = searchindex.verify(manifest, files, listing=sorted(files))

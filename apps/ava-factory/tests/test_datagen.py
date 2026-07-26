@@ -11,7 +11,6 @@ and never contradicted.
 from __future__ import annotations
 
 import hashlib
-import io
 import itertools
 import json
 import random
@@ -19,7 +18,6 @@ import re
 from fractions import Fraction
 
 import pytest
-
 from ava.datagen.base import (
     DOC_KEYS,
     VALID_PHASES,
@@ -27,68 +25,68 @@ from ava.datagen.base import (
     make_doc_id,
     validate_doc,
 )
+from ava.datagen.chat_safety import _SCENARIO_TEMPLATES, ChatSafetyGenerator
+from ava.datagen.code_gen import SAFE_BUILTINS, CodeGenGenerator, run_sandboxed
+from ava.datagen.compress_trace import (
+    CompressTraceGenerator,
+    _arith_eiw_doc,
+    _deflate_doc,
+    _delta_varint_doc,
+    _huffman_doc,
+    _lz77_doc,
+    _prune_doc,
+    _quant_int8_doc,
+    _rle_doc,
+)
+from ava.datagen.db_trace import (
+    DBTraceGenerator,
+    _btree_insert_doc,
+    _btree_point_doc,
+    _btree_range_doc,
+    _doc_filter_doc,
+    _graph_doc,
+    _hnsw_doc,
+    _kv_hash_doc,
+    _lsm_doc,
+    _ts_agg_doc,
+    _vector_cosine_doc,
+    _vector_knn_doc,
+    _wal_doc,
+    _wide_column_doc,
+)
+from ava.datagen.encyclopedia import EncyclopediaGenerator
 from ava.datagen.logic import LogicGenerator
 from ava.datagen.math_gen import MathGenerator
-from ava.datagen.encyclopedia import EncyclopediaGenerator
-from ava.datagen.code_gen import CodeGenGenerator, SAFE_BUILTINS, run_sandboxed
-from ava.datagen.chat_safety import ChatSafetyGenerator, _SCENARIO_TEMPLATES
 from ava.datagen.react_tools import ASSISTANT, USER, ReactToolsGenerator
 from ava.datagen.scout_cli import ScoutCliGenerator
-from ava.datagen.zk_math import (
-    ZkMathGenerator,
-    _modexp_doc,
-    _modinv_doc,
-    _schnorr_doc,
-    _pedersen_doc,
-    _fiat_shamir_doc,
-    _merkle_doc,
-    _shamir_doc,
-    _challenge,
-    _h16,
-    _inv,
-)
-from ava.datagen.workflow_jobbench import (
-    WorkflowJobBenchGenerator,
-    _duplicate_doc,
-    _units_doc,
-    _stale_doc,
-    _slug,
-    _fmt_val,
-    _OCCUPATIONS,
-)
 from ava.datagen.workflow_gaia2 import (
     WorkflowGaia2Generator,
     _adaptability_doc,
     _ambiguity_doc,
-    _deadline_doc,
     _collaboration_doc,
+    _deadline_doc,
 )
-from ava.datagen.db_trace import (
-    DBTraceGenerator,
-    _btree_point_doc,
-    _btree_range_doc,
-    _btree_insert_doc,
-    _doc_filter_doc,
-    _kv_hash_doc,
-    _wide_column_doc,
-    _graph_doc,
-    _ts_agg_doc,
-    _vector_knn_doc,
-    _hnsw_doc,
-    _lsm_doc,
-    _wal_doc,
-    _vector_cosine_doc,
+from ava.datagen.workflow_jobbench import (
+    _OCCUPATIONS,
+    WorkflowJobBenchGenerator,
+    _duplicate_doc,
+    _fmt_val,
+    _slug,
+    _stale_doc,
+    _units_doc,
 )
-from ava.datagen.compress_trace import (
-    CompressTraceGenerator,
-    _rle_doc,
-    _lz77_doc,
-    _huffman_doc,
-    _delta_varint_doc,
-    _quant_int8_doc,
-    _arith_eiw_doc,
-    _deflate_doc,
-    _prune_doc,
+from ava.datagen.zk_math import (
+    ZkMathGenerator,
+    _challenge,
+    _fiat_shamir_doc,
+    _h16,
+    _inv,
+    _merkle_doc,
+    _modexp_doc,
+    _modinv_doc,
+    _pedersen_doc,
+    _schnorr_doc,
+    _shamir_doc,
 )
 
 ALL_GENERATORS = [
@@ -129,6 +127,7 @@ def _sha(docs) -> str:
 # Determinism
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize("gen_cls", ALL_GENERATORS, ids=lambda c: c.name)
 def test_determinism_same_seed(gen_cls):
     a = _collect(gen_cls, seed=1234)
@@ -141,12 +140,15 @@ def test_determinism_same_seed(gen_cls):
 def test_determinism_different_seed(gen_cls):
     a = _collect(gen_cls, seed=1234)
     c = _collect(gen_cls, seed=4321)
-    assert _sha(a) != _sha(c), f"{gen_cls.name}: different seeds produced identical output"
+    assert _sha(a) != _sha(c), (
+        f"{gen_cls.name}: different seeds produced identical output"
+    )
 
 
 # ---------------------------------------------------------------------------
 # Schema
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize("gen_cls", ALL_GENERATORS, ids=lambda c: c.name)
 def test_schema(gen_cls):
@@ -155,7 +157,9 @@ def test_schema(gen_cls):
     for d in docs:
         assert set(d.keys()) == DOC_KEYS
         for k in DOC_KEYS:
-            assert isinstance(d[k], str) and d[k], f"{gen_cls.name}: empty/non-str key {k}"
+            assert isinstance(d[k], str) and d[k], (
+                f"{gen_cls.name}: empty/non-str key {k}"
+            )
         assert d["task_type"] in VALID_TASK_TYPES
         assert d["phase"] in VALID_PHASES
         assert d["concept"].strip(), "concept must be non-empty"
@@ -176,7 +180,9 @@ def test_task_types_are_accurate_per_generator():
     assert "deliberate" in logic_tt
 
     ency_tt = {d["task_type"] for d in _collect(EncyclopediaGenerator)}
-    assert ency_tt == {"automatic"}, f"encyclopedia must be all automatic, got {ency_tt}"
+    assert ency_tt == {"automatic"}, (
+        f"encyclopedia must be all automatic, got {ency_tt}"
+    )
 
     code_tt = {d["task_type"] for d in _collect(CodeGenGenerator)}
     assert code_tt == {"deliberate"}, f"code_gen must be all deliberate, got {code_tt}"
@@ -189,7 +195,7 @@ def test_task_types_are_accurate_per_generator():
 
     react_tt = {d["task_type"] for d in _collect(ReactToolsGenerator)}
     assert {"deliberate", "temporal"} <= react_tt
-    
+
     jobbench_tt = {d["task_type"] for d in _collect(WorkflowJobBenchGenerator)}
     assert {"deliberate", "temporal"} <= jobbench_tt
 
@@ -200,6 +206,7 @@ def test_task_types_are_accurate_per_generator():
 # ---------------------------------------------------------------------------
 # logic.py: independently verify proofs are valid by construction
 # ---------------------------------------------------------------------------
+
 
 def _eval_prop(formula, assign):
     """Independent re-implementation of propositional evaluation for the test
@@ -226,7 +233,6 @@ def test_natded_proofs_are_semantically_valid():
     assignment over the atoms -- that the conclusion is a logical consequence
     of the premises. If the generator ever emitted an invalid derivation,
     this catches it."""
-    from ava.datagen import logic as L
 
     checked = 0
     gen = LogicGenerator(seed=2024)
@@ -255,7 +261,11 @@ def test_natded_proofs_are_semantically_valid():
                 derived.append((formula, is_sub, rule))
 
         assert premises, f"no premises parsed from:\n{text}"
-        atoms = sorted(_atoms_of_all([f for f in premises] + [f for f, _, _ in derived] + assumptions))
+        atoms = sorted(
+            _atoms_of_all(
+                [f for f in premises] + [f for f, _, _ in derived] + assumptions
+            )
+        )
 
         # The top-level conclusion is the last NON-subproof derived line
         # (subproof lines are only valid under their assumption).
@@ -305,7 +315,9 @@ def _parse_formula(s):
     tokens = _tokenize(s)
     parser = _Parser(tokens)
     result = parser.parse_iff()
-    assert parser.pos == len(tokens), f"trailing tokens parsing {s!r}: {tokens[parser.pos:]}"
+    assert parser.pos == len(tokens), (
+        f"trailing tokens parsing {s!r}: {tokens[parser.pos :]}"
+    )
     return result
 
 
@@ -383,7 +395,9 @@ class _Parser:
             assert self.peek() == ")", "expected )"
             self.pos += 1
             return inner
-        assert tok is not None and re.match(r"^[A-Za-z]\w*$", tok), f"expected atom, got {tok!r}"
+        assert tok is not None and re.match(r"^[A-Za-z]\w*$", tok), (
+            f"expected atom, got {tok!r}"
+        )
         self.pos += 1
         return ("ATOM", tok)
 
@@ -399,8 +413,10 @@ def test_logic_truth_table_verdicts():
         m = re.search(r"formula: (.+)", text)
         formula = _parse_formula(m.group(1))
         atoms = sorted(_atoms_of_all([formula]))
-        results = [_eval_prop(formula, dict(zip(atoms, combo)))
-                   for combo in itertools.product([True, False], repeat=len(atoms))]
+        results = [
+            _eval_prop(formula, dict(zip(atoms, combo)))
+            for combo in itertools.product([True, False], repeat=len(atoms))
+        ]
         if all(results):
             expected = "TAUTOLOGY"
         elif not any(results):
@@ -417,6 +433,7 @@ def test_logic_truth_table_verdicts():
 # ---------------------------------------------------------------------------
 # math_gen.py: recompute stated answers
 # ---------------------------------------------------------------------------
+
 
 def _parse_num(s):
     s = s.strip()
@@ -449,8 +466,13 @@ def test_math_answers_are_correct():
             assert ans == a * b
             verified += 1
         elif concept == "linear_equation":
-            a, b, c = map(int, re.search(r"Solve for x: (-?\d+)x \+ (-?\d+) = (-?\d+)", text).groups())
-            ans = _parse_num(re.search(r"Final answer: x = (-?\d+(?:/\d+)?)", text).group(1))
+            a, b, c = map(
+                int,
+                re.search(r"Solve for x: (-?\d+)x \+ (-?\d+) = (-?\d+)", text).groups(),
+            )
+            ans = _parse_num(
+                re.search(r"Final answer: x = (-?\d+(?:/\d+)?)", text).group(1)
+            )
             assert a * ans + b == c
             verified += 1
         elif concept == "modular_arithmetic" and "Compute" in text:
@@ -460,7 +482,12 @@ def test_math_answers_are_correct():
             verified += 1
         elif concept == "unit_conversion":
             m = re.search(r"Convert (\d+) (\w+) to (\w+), then add (\d+)", text)
-            amount, _, _, extra = int(m.group(1)), m.group(2), m.group(3), int(m.group(4))
+            amount, _, _, extra = (
+                int(m.group(1)),
+                m.group(2),
+                m.group(3),
+                int(m.group(4)),
+            )
             factor = int(re.search(r"1 \w+ = (\d+) \w+", text).group(1))
             ans = int(re.search(r"Final answer: (\d+)", text).group(1))
             assert ans == amount * factor + extra
@@ -485,6 +512,7 @@ def test_math_temporal_docs_present():
 # ---------------------------------------------------------------------------
 # code_gen.py: re-exec snippets, and verify sandbox rejects dangerous ops
 # ---------------------------------------------------------------------------
+
 
 def _exec_and_check_doctest(code_text):
     """Extract the function/class body (drop the docstring) and the doctest
@@ -518,9 +546,17 @@ def _exec_and_check_doctest(code_text):
                 src = stripped[4:]
                 is_expr = "=" not in src.split("(")[0] or src.startswith(("print(",))
                 # heuristic: a bare assignment 'x = ...' is a statement
-                is_assignment = bool(re.match(r"^[A-Za-z_]\w*\s*=", src)) and not src.startswith("==")
+                is_assignment = bool(
+                    re.match(r"^[A-Za-z_]\w*\s*=", src)
+                ) and not src.startswith("==")
                 steps.append([src, None, not is_assignment])
-            elif steps and steps[-1][1] is None and steps[-1][2] and not stripped.startswith(">>>") and stripped:
+            elif (
+                steps
+                and steps[-1][1] is None
+                and steps[-1][2]
+                and not stripped.startswith(">>>")
+                and stripped
+            ):
                 steps[-1][1] = stripped
             continue
         code_lines.append(line)
@@ -532,7 +568,9 @@ def _exec_and_check_doctest(code_text):
     assert result is not None, f"snippet failed to execute in sandbox:\n{code_text}"
     for (src, expected, is_expr), (rsrc, got) in zip(steps, result):
         if is_expr and expected is not None:
-            assert got == expected, f"doctest mismatch for {src}: expected {expected!r} got {got!r}"
+            assert got == expected, (
+                f"doctest mismatch for {src}: expected {expected!r} got {got!r}"
+            )
     return len([s for s in steps if s[2] and s[1] is not None])
 
 
@@ -554,18 +592,36 @@ def test_sandbox_rejects_open():
 
 def test_sandbox_rejects_import():
     assert run_sandboxed("import os\ndef f():\n    return 1\n", [("f()", True)]) is None
-    assert run_sandboxed("def f():\n    return __import__('os')\n", [("f()", True)]) is None
+    assert (
+        run_sandboxed("def f():\n    return __import__('os')\n", [("f()", True)])
+        is None
+    )
 
 
 def test_sandbox_rejects_eval_exec_compile():
     assert run_sandboxed("def f():\n    return eval('1+1')\n", [("f()", True)]) is None
     assert run_sandboxed("def f():\n    return exec('x=1')\n", [("f()", True)]) is None
-    assert run_sandboxed("def f():\n    return compile('1', '<s>', 'eval')\n", [("f()", True)]) is None
+    assert (
+        run_sandboxed(
+            "def f():\n    return compile('1', '<s>', 'eval')\n", [("f()", True)]
+        )
+        is None
+    )
 
 
 def test_sandbox_whitelist_excludes_dangerous_builtins():
-    for forbidden in ("open", "__import__", "eval", "exec", "compile", "input", "globals"):
-        assert forbidden not in SAFE_BUILTINS, f"{forbidden} must not be in the sandbox whitelist"
+    for forbidden in (
+        "open",
+        "__import__",
+        "eval",
+        "exec",
+        "compile",
+        "input",
+        "globals",
+    ):
+        assert forbidden not in SAFE_BUILTINS, (
+            f"{forbidden} must not be in the sandbox whitelist"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -594,7 +650,9 @@ def test_encyclopedia_canonical_leg_counts_consistent():
                 for wrong in wrong_list:
                     # a wrong leg-count sentence naming this entity is a contradiction
                     pattern = rf"(a |an |the |every |{entity}[^.]*?){wrong}"
-                    for mobj in re.finditer(rf"[^.]*\b{entity}\b[^.]*legs[^.]*", text, re.IGNORECASE):
+                    for mobj in re.finditer(
+                        rf"[^.]*\b{entity}\b[^.]*legs[^.]*", text, re.IGNORECASE
+                    ):
                         seg = mobj.group(0)
                         # skip segments that are about a different animal in a compendium
                         if re.search(rf"\b{entity}\b", seg, re.IGNORECASE):
@@ -612,23 +670,45 @@ def test_encyclopedia_paraphrase_coverage():
     """Each canonical entity must appear with >=40 DISTINCT paraphrase
     sentences across the corpus."""
     gen = EncyclopediaGenerator(seed=1234)
-    entity_sentences = {e: set() for e in ["spider", "ant", "france", "china", "soccer", "rugby", "spanish", "french"]}
+    entity_sentences = {
+        e: set()
+        for e in [
+            "spider",
+            "ant",
+            "france",
+            "china",
+            "soccer",
+            "rugby",
+            "spanish",
+            "french",
+        ]
+    }
     for d in gen.generate(6_000_000):
         concept = d["concept"]
         if concept in entity_sentences:
             for line in d["text"].splitlines():
                 line = line.strip()
-                if line and not line.startswith("--") and ":" not in line[:20] or "ES:" in line:
+                if (
+                    line and not line.startswith("--") and ":" not in line[:20]
+                ) or "ES:" in line:
                     entity_sentences[concept].add(line)
         if all(len(v) >= 60 for v in entity_sentences.values()):
             break
     for entity, sents in entity_sentences.items():
-        assert len(sents) >= 40, f"{entity}: only {len(sents)} distinct paraphrases (need >=40)"
+        assert len(sents) >= 40, (
+            f"{entity}: only {len(sents)} distinct paraphrases (need >=40)"
+        )
 
 
 def test_encyclopedia_canonical_country_facts():
     gen = EncyclopediaGenerator(seed=1234)
-    facts_seen = {"Paris": False, "Beijing": False, "Mandarin": False, "Yuan": False, "Euro": False}
+    facts_seen = {
+        "Paris": False,
+        "Beijing": False,
+        "Mandarin": False,
+        "Yuan": False,
+        "Euro": False,
+    }
     france_concept_doc = False
     for d in gen.generate(3_000_000):
         for token in facts_seen:
@@ -638,7 +718,9 @@ def test_encyclopedia_canonical_country_facts():
             france_concept_doc = True
         if all(facts_seen.values()) and france_concept_doc:
             break
-    assert all(facts_seen.values()), f"missing canonical tokens: {[k for k,v in facts_seen.items() if not v]}"
+    assert all(facts_seen.values()), (
+        f"missing canonical tokens: {[k for k, v in facts_seen.items() if not v]}"
+    )
     assert france_concept_doc
 
 
@@ -722,6 +804,7 @@ def test_chat_markers_and_phases():
 # confirm the doc states exactly that corrected figure.
 # ---------------------------------------------------------------------------
 
+
 def _csv_block_values(text: str, idx: int = 0) -> list[int]:
     """Pull integer values out of the Nth fenced ```...``` CSV block."""
     blocks = re.findall(r"```\n(.*?)\n```", text, re.S)
@@ -741,7 +824,9 @@ def test_jobbench_duplicate_math_is_correct():
         values = _csv_block_values(text)
         assert len(values) == n + 1, "table must have n rows plus the planted duplicate"
         dup_value = values[-1]
-        assert values[:-1].count(dup_value) >= 1, "last row must exactly duplicate an earlier row"
+        assert values[:-1].count(dup_value) >= 1, (
+            "last row must exactly duplicate an earlier row"
+        )
         true_sum = sum(values) - dup_value
         assert f"Corrected total to report: {_fmt_val(true_sum, unit)}." in text
 
@@ -760,7 +845,10 @@ def test_jobbench_units_math_is_correct():
         true_sum = sum(values)
         multiplier = 1000 if unit == "$" else 100
         implied = true_sum * multiplier
-        assert f"Correct total: {_fmt_val(true_sum, unit)}, not {_fmt_val(implied, unit)}." in text
+        assert (
+            f"Correct total: {_fmt_val(true_sum, unit)}, not {_fmt_val(implied, unit)}."
+            in text
+        )
 
 
 def test_jobbench_stale_math_is_correct():
@@ -786,7 +874,9 @@ def test_jobbench_phase4_docs_are_long():
     p4 = [d for d in docs if d["phase"] == "p4"]
     assert p4, "no phase-4 docs produced at this target size"
     for d in p4:
-        assert 6000 <= len(d["text"]) <= 12000, f"phase4 doc length {len(d['text'])} out of band"
+        assert 6000 <= len(d["text"]) <= 12000, (
+            f"phase4 doc length {len(d['text'])} out of band"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -812,9 +902,13 @@ def test_gaia2_adaptability_resolution_is_correct():
     for _ in range(40):
         text, concept = _adaptability_doc(rng)
         assert concept == "adaptability"
-        slots = _parse_slots(re.search(r"Initial candidate slots: (.+)\.\n", text).group(1))
+        slots = _parse_slots(
+            re.search(r"Initial candidate slots: (.+)\.\n", text).group(1)
+        )
         deadline = _parse_slot(re.search(rf"before ({_SLOT})", text).group(1))
-        declined = _parse_slot(re.search(rf"declines the proposed slot ({_SLOT})", text).group(1))
+        declined = _parse_slot(
+            re.search(rf"declines the proposed slot ({_SLOT})", text).group(1)
+        )
         remaining = [s for s in slots if s != declined]
         candidates = [s for s in remaining if s <= deadline]
         if candidates:
@@ -835,7 +929,9 @@ def test_gaia2_ambiguity_prefers_explicit_recent_time():
     for _ in range(60):
         text, concept = _ambiguity_doc(rng)
         assert concept == "ambiguity"
-        explicit = _parse_slot(re.search(rf"lock in ({_SLOT}) specifically", text).group(1))
+        explicit = _parse_slot(
+            re.search(rf"lock in ({_SLOT}) specifically", text).group(1)
+        )
         deadline = _parse_slot(re.search(rf"before ({_SLOT})", text).group(1))
         if explicit <= deadline:
             m = re.search(rf"Book ({_SLOT})\.", text)
@@ -844,7 +940,9 @@ def test_gaia2_ambiguity_prefers_explicit_recent_time():
         else:
             # The tie-break rule never substitutes an unrelated slot when the
             # named one misses the deadline -- it must flag, not rebook.
-            assert "flag the conflict" in text and "rather than silently rebooking" in text
+            assert (
+                "flag the conflict" in text and "rather than silently rebooking" in text
+            )
             assert "Book " not in text
             saw_flag = True
     assert saw_flag, "test seed never exercised the past-deadline flag branch"
@@ -855,9 +953,15 @@ def test_gaia2_deadline_constraint_removes_blocked_slots():
     for _ in range(40):
         text, concept = _deadline_doc(rng)
         assert concept == "deadline"
-        slots = _parse_slots(re.search(r"Initial candidate slots: (.+)\.\n", text).group(1))
-        day = int(re.search(r"unavailable from \d{2}:00 onward on day (\d+)", text).group(1))
-        blocked_from = int(re.search(r"unavailable from (\d{2}):00 onward", text).group(1))
+        slots = _parse_slots(
+            re.search(r"Initial candidate slots: (.+)\.\n", text).group(1)
+        )
+        day = int(
+            re.search(r"unavailable from \d{2}:00 onward on day (\d+)", text).group(1)
+        )
+        blocked_from = int(
+            re.search(r"unavailable from (\d{2}):00 onward", text).group(1)
+        )
         remaining = [s for s in slots if not (s[0] == day and s[1] >= blocked_from)]
         deadline = _parse_slot(re.search(rf"before ({_SLOT})", text).group(1))
         candidates = [s for s in remaining if s <= deadline]
@@ -875,7 +979,9 @@ def test_gaia2_collaboration_accepts_or_flags_by_deadline():
     for _ in range(40):
         text, concept = _collaboration_doc(rng)
         assert concept == "collaboration"
-        booked = _parse_slot(re.search(rf"already booked ({_SLOT}) for the room", text).group(1))
+        booked = _parse_slot(
+            re.search(rf"already booked ({_SLOT}) for the room", text).group(1)
+        )
         deadline = _parse_slot(re.search(rf"before ({_SLOT})", text).group(1))
         if booked <= deadline:
             assert "accept" in text and "duplicate it" in text
@@ -889,24 +995,30 @@ def test_gaia2_phase4_docs_are_long():
     p4 = [d for d in docs if d["phase"] == "p4"]
     assert p4, "no phase-4 docs produced at this target size"
     for d in p4:
-        assert 6000 <= len(d["text"]) <= 13000, f"phase4 doc length {len(d['text'])} out of band"
+        assert 6000 <= len(d["text"]) <= 13000, (
+            f"phase4 doc length {len(d['text'])} out of band"
+        )
 
 
 # ---------------------------------------------------------------------------
 # Phase coverage across all generators
 # ---------------------------------------------------------------------------
 
+
 def test_phase_coverage_union():
     seen = set()
     for gen_cls in ALL_GENERATORS:
         for d in _collect(gen_cls, target=1_000_000):
             seen.add(d["phase"])
-    assert {"p0", "p1", "p2", "p3", "p4", "p5"} <= seen, f"missing phases: {sorted({'p0','p1','p2','p3','p4','p5'} - seen)}"
+    assert {"p0", "p1", "p2", "p3", "p4", "p5"} <= seen, (
+        f"missing phases: {sorted({'p0', 'p1', 'p2', 'p3', 'p4', 'p5'} - seen)}"
+    )
 
 
 # ---------------------------------------------------------------------------
 # write_shards round-trip determinism (file level)
 # ---------------------------------------------------------------------------
+
 
 def test_write_shards_deterministic(tmp_path):
     from ava.datagen.base import write_shards
@@ -921,6 +1033,7 @@ def test_write_shards_deterministic(tmp_path):
 # react_tools.py: independently verify tool-math answers and that grounding
 # docs never fabricate behavior for the function they were told doesn't exist
 # ---------------------------------------------------------------------------
+
 
 def test_react_math_answers_are_correct():
     gen = ReactToolsGenerator(seed=1234)
@@ -939,7 +1052,9 @@ def test_react_grounding_notfound_never_fabricates():
     matches)', the final answer must say the thing doesn't exist — never
     describe plausible-sounding behavior for it."""
     gen = ReactToolsGenerator(seed=1234)
-    docs = [d for d in gen.generate(300_000) if d["concept"] == "tool_grounding_notfound"]
+    docs = [
+        d for d in gen.generate(300_000) if d["concept"] == "tool_grounding_notfound"
+    ]
     assert docs, "no tool_grounding_notfound docs produced"
     fabrication_markers = ("returns", "computes", "performs", "handles the case")
     for d in docs:
@@ -948,7 +1063,9 @@ def test_react_grounding_notfound_never_fabricates():
         assert not any(m in final_turn.lower() for m in fabrication_markers), (
             f"final turn looks like it fabricated behavior: {final_turn!r}"
         )
-        assert re.search(r"(doesn't exist|does not exist|isn't there|no function called)", final_turn)
+        assert re.search(
+            r"(doesn't exist|does not exist|isn't there|no function called)", final_turn
+        )
 
 
 def test_react_tools_parse_with_ava_bridge():
@@ -967,14 +1084,20 @@ def test_react_tools_parse_with_ava_bridge():
     import ava_bridge
 
     gen = ReactToolsGenerator(seed=1234)
-    docs = [d for d in gen.generate(300_000) if d["concept"] in
-            {"tool_math", "tool_date", "tool_grounding_notfound", "tool_read_cite"}]
+    docs = [
+        d
+        for d in gen.generate(300_000)
+        if d["concept"]
+        in {"tool_math", "tool_date", "tool_grounding_notfound", "tool_read_cite"}
+    ]
     assert docs
     for d in docs:
         # First assistant turn is the one with the Action: line.
         first_assistant = d["text"].split(USER, 2)[1].split(ASSISTANT, 1)[-1]
         parsed = ava_bridge.parse_react_response(first_assistant)
-        assert "tool_calls" in parsed, f"ava_bridge failed to parse a real Action: line: {d['text']!r}"
+        assert "tool_calls" in parsed, (
+            f"ava_bridge failed to parse a real Action: line: {d['text']!r}"
+        )
         assert parsed["tool_calls"][0]["function"]["name"], "empty tool name parsed"
 
 
@@ -1014,12 +1137,14 @@ def test_scout_cli_grounding_never_fabricates():
     fabrication = ("returns the", "would return", "computes the", "the result is ")
     for d in docs:
         final = d["text"].rsplit("Answer:", 1)[-1].lower()
-        assert not any(f in final for f in fabrication), f"grounding doc fabricates:\n{d['text']}"
+        assert not any(f in final for f in fabrication), (
+            f"grounding doc fabricates:\n{d['text']}"
+        )
         # a partial-success (doctor) doc must NAME a down check, not claim all green
         if "doctor ran fine" in d["text"]:
             assert re.search(r"(is|are) down", d["text"])
         # an empty-result doc must say so
-        if "results\": []" in d["text"] or "results': []" in d["text"]:
+        if 'results": []' in d["text"] or "results': []" in d["text"]:
             assert "no matches" in final
 
 
@@ -1033,7 +1158,9 @@ def test_scout_cli_build_docs_are_contract_complete():
         t = d["text"]
         assert "make_plugin_app(" in t, "missing make_plugin_app"
         assert "emit(" in t and "ok(" in t, "missing emit(ok(...))"
-        assert "def register(root):" in t and "root.add_typer(" in t, "missing register()"
+        assert "def register(root):" in t and "root.add_typer(" in t, (
+            "missing register()"
+        )
         # default-deny manifest
         assert "enabled: false" in t and "write: false" in t and "allow: []" in t
 
@@ -1050,19 +1177,27 @@ def test_scout_cli_task_types_present():
 # whose stated proof did not actually verify would fail here.
 # ---------------------------------------------------------------------------
 
+
 def test_zk_schnorr_and_fiat_shamir_equations_hold():
     rng = random.Random(3)
     for _ in range(60):
         _t, tt, concept, m = _schnorr_doc(rng)
         assert tt == "deliberate" and concept == "schnorr"
         assert m["y"] == pow(m["g"], m["x"], m["p"]), "public key is not g^x"
-        assert pow(m["g"], m["s"], m["p"]) == (m["t"] * pow(m["y"], m["c"], m["p"])) % m["p"], \
-            "Schnorr verification g^s == t*y^c failed"
+        assert (
+            pow(m["g"], m["s"], m["p"])
+            == (m["t"] * pow(m["y"], m["c"], m["p"])) % m["p"]
+        ), "Schnorr verification g^s == t*y^c failed"
         _t, tt, concept, m = _fiat_shamir_doc(rng)
         assert concept == "fiat_shamir"
         # the challenge must be the hash of the transcript prefix, not arbitrary
-        assert m["c"] == _challenge(m["preimage"], m["q"]), "Fiat-Shamir challenge not H(transcript)"
-        assert pow(m["g"], m["s"], m["p"]) == (m["t"] * pow(m["y"], m["c"], m["p"])) % m["p"]
+        assert m["c"] == _challenge(m["preimage"], m["q"]), (
+            "Fiat-Shamir challenge not H(transcript)"
+        )
+        assert (
+            pow(m["g"], m["s"], m["p"])
+            == (m["t"] * pow(m["y"], m["c"], m["p"])) % m["p"]
+        )
 
 
 def test_zk_pedersen_opening_verifies():
@@ -1070,7 +1205,10 @@ def test_zk_pedersen_opening_verifies():
     for _ in range(60):
         _t, _tt, concept, m = _pedersen_doc(rng)
         assert concept == "pedersen"
-        assert m["C"] == (pow(m["g"], m["m"], m["p"]) * pow(m["h"], m["r"], m["p"])) % m["p"]
+        assert (
+            m["C"]
+            == (pow(m["g"], m["m"], m["p"]) * pow(m["h"], m["r"], m["p"])) % m["p"]
+        )
 
 
 def test_zk_merkle_proof_recomputes_root():
@@ -1081,7 +1219,9 @@ def test_zk_merkle_proof_recomputes_root():
         acc = m["leaf_hashes"][m["index"]]
         for side, sib in m["proof"]:  # independent fold using the doc's own hash
             acc = _h16(acc + sib) if side == "R" else _h16(sib + acc)
-        assert acc == m["root"], "Merkle inclusion proof does not recompute the committed root"
+        assert acc == m["root"], (
+            "Merkle inclusion proof does not recompute the committed root"
+        )
 
 
 def test_zk_shamir_reconstructs_secret():
@@ -1129,7 +1269,9 @@ def test_zk_safe_primes_are_actually_safe():
 
     for p in _SAFE_PRIMES:
         assert is_prime(p), f"{p} is not prime"
-        assert is_prime((p - 1) // 2), f"(p-1)/2 for {p} is not prime -> not a safe prime"
+        assert is_prime((p - 1) // 2), (
+            f"(p-1)/2 for {p} is not prime -> not a safe prime"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1138,7 +1280,7 @@ def test_zk_safe_primes_are_actually_safe():
 # recompute FNV-1a, ...) -- never trusted from generator internals.
 # ---------------------------------------------------------------------------
 
-_NO_ELIDE = 10 ** 9
+_NO_ELIDE = 10**9
 
 
 def _rng(seed=4242):
@@ -1154,7 +1296,12 @@ def test_etcot_docs_have_think_answer_structure():
             assert t.startswith("### Task:"), f"{d['source']} missing task header"
             for tag in ("<think>", "</think>", "<answer>", "</answer>"):
                 assert t.count(tag) == 1, f"{d['source']} bad tag count for {tag}"
-            assert t.index("<think>") < t.index("</think>") < t.index("<answer>") < t.index("</answer>")
+            assert (
+                t.index("<think>")
+                < t.index("</think>")
+                < t.index("<answer>")
+                < t.index("</answer>")
+            )
             assert "[step 1]" in t, f"{d['source']} trace has no step markers"
 
 
@@ -1173,7 +1320,8 @@ def test_etcot_phase4_docs_are_long():
         assert p4, f"{gen_cls.__name__}: no phase-4 docs at this target size"
         for d in p4:
             assert 6000 <= len(d["text"]) <= 12000, (
-                f"{d['source']} phase4 doc length {len(d['text'])} out of band")
+                f"{d['source']} phase4 doc length {len(d['text'])} out of band"
+            )
 
 
 def test_etcot_p3_elision_emits_true_checkpoints():
@@ -1188,6 +1336,7 @@ def test_etcot_p3_elision_emits_true_checkpoints():
 
 
 # ---- relational / B-tree ---------------------------------------------------
+
 
 def test_btree_point_query_answers_correct():
     rng = _rng()
@@ -1209,7 +1358,7 @@ def test_btree_range_scan_answers_correct():
         expect = [k for k in meta["keys"] if meta["lo"] <= k <= meta["hi"]]
         assert meta["got"] == expect
         assert sum(meta["rows"][k][1] for k in expect) == meta["total"]
-        assert f"SUM(qty)" in text and str(meta["total"]) in text
+        assert "SUM(qty)" in text and str(meta["total"]) in text
 
 
 def test_btree_insert_keeps_tree_ordered():
@@ -1221,12 +1370,16 @@ def test_btree_insert_keeps_tree_ordered():
 
 # ---- document / key-value / wide-column ------------------------------------
 
+
 def test_docstore_filter_projection_correct():
     rng = _rng(11)
     for _ in range(25):
         text, tt, concept, meta = _doc_filter_doc(rng, rng.randint(4, 20), _NO_ELIDE)
-        expect = [d["user"]["name"] for d in meta["docs"]
-                  if d["user"]["age"] >= meta["min_age"] and meta["tag"] in d["tags"]]
+        expect = [
+            d["user"]["name"]
+            for d in meta["docs"]
+            if d["user"]["age"] >= meta["min_age"] and meta["tag"] in d["tags"]
+        ]
         assert meta["names"] == expect
         assert str(expect) in text
 
@@ -1235,7 +1388,7 @@ def test_kv_hash_placement_matches_independent_simulation():
     def fnv1a(s):  # independent re-implementation
         h = 2166136261
         for ch in s:
-            h = ((h ^ ord(ch)) * 16777619) % 2 ** 32
+            h = ((h ^ ord(ch)) * 16777619) % 2**32
         return h
 
     rng = _rng(13)
@@ -1249,7 +1402,10 @@ def test_kv_hash_placement_matches_independent_simulation():
                 b = (b + 1) % m
             slots[b] = k
             assert meta["placed"][k] == b
-        assert f"-> {meta['values'][meta['target']]} (slot {meta['placed'][meta['target']]}" in text
+        assert (
+            f"-> {meta['values'][meta['target']]} (slot {meta['placed'][meta['target']]}"
+            in text
+        )
 
 
 def test_wide_column_sum_correct():
@@ -1261,6 +1417,7 @@ def test_wide_column_sum_correct():
 
 
 # ---- graph / time-series / vector ------------------------------------------
+
 
 def test_graph_traversal_matches_independent_replay():
     rng = _rng(19)
@@ -1314,7 +1471,7 @@ def test_vector_knn_topk_correct():
         text, tt, concept, meta = _vector_knn_doc(rng, rng.randint(4, 25), _NO_ELIDE)
         q = meta["q"]
         d2 = [sum((a - b) ** 2 for a, b in zip(q, v)) for v in meta["vecs"]]
-        expect = sorted(range(len(d2)), key=lambda i: (d2[i], i))[:meta["k"]]
+        expect = sorted(range(len(d2)), key=lambda i: (d2[i], i))[: meta["k"]]
         assert [i for i, _ in meta["topk"]] == expect
         assert all(dd == d2[i] for i, dd in meta["topk"])
 
@@ -1344,6 +1501,7 @@ def test_hnsw_greedy_is_honest_about_local_minima():
 
 
 # ---- compression -------------------------------------------------------------
+
 
 def test_rle_runs_correct():
     rng = _rng(37)
@@ -1412,7 +1570,9 @@ def test_quant_int8_math_correct():
         amax = max(abs(v) for v in meta["vals"])
         scale = amax / 127.0
         assert meta["scale"] == scale
-        assert meta["q"] == [max(-127, min(127, round(v / scale))) for v in meta["vals"]]
+        assert meta["q"] == [
+            max(-127, min(127, round(v / scale))) for v in meta["vals"]
+        ]
         assert all(-127 <= qi <= 127 for qi in meta["q"])
 
 
@@ -1427,7 +1587,7 @@ def test_arith_eiw_windows_decode_independently():
         decoded = []
         for syms, bits, code in meta["windows"]:
             assert len(code) == bits
-            v = Fraction(int(code, 2), 2 ** bits)  # independent decoder
+            v = Fraction(int(code, 2), 2**bits)  # independent decoder
             low, width, used, out = Fraction(0), Fraction(1), 0, ""
             while used < bits:
                 for s in "ABC":
@@ -1451,6 +1611,7 @@ def test_arith_eiw_windows_decode_independently():
 # round-2 families: LSM / WAL / cosine / DEFLATE / pruning -- each replayed
 # independently from the builder's meta inputs.
 # ---------------------------------------------------------------------------
+
 
 def test_lsm_matches_last_write_wins_dict():
     rng = _rng(61)
@@ -1524,8 +1685,8 @@ def test_deflate_two_stage_independent_decode():
         inv = {v: k for k, v in codes.items()}
         triples, i = [], 0
         while i < len(bits):
-            off = int(bits[i: i + 5], 2)
-            length = int(bits[i + 5: i + 9], 2)
+            off = int(bits[i : i + 5], 2)
+            length = int(bits[i + 5 : i + 9], 2)
             i += 9
             cur = ""
             while cur not in inv:
@@ -1562,6 +1723,7 @@ def test_prune_zeroes_exactly_the_k_smallest_magnitudes():
 # SFT rendering: trace_common.to_chat + sft_sota_2025's ET-CoT chat component
 # ---------------------------------------------------------------------------
 
+
 def test_to_chat_rendering_structure():
     from ava.datagen.trace_common import CHAT_ASSISTANT, CHAT_USER, to_chat
 
@@ -1571,7 +1733,13 @@ def test_to_chat_rendering_structure():
             assert chat.count(CHAT_USER) == 1 and chat.count(CHAT_ASSISTANT) == 1
             assert chat.startswith(f"{CHAT_USER}\n### Task:")
             u, a = chat.index(CHAT_USER), chat.index(CHAT_ASSISTANT)
-            assert u < a < chat.index("<think>") < chat.index("</think>") < chat.index("<answer>")
+            assert (
+                u
+                < a
+                < chat.index("<think>")
+                < chat.index("</think>")
+                < chat.index("<answer>")
+            )
             # the user turn holds the task only; trace + answer live in the
             # assistant turn, byte-identical to the pretraining rendering
             assert "<think>" not in chat[:a]

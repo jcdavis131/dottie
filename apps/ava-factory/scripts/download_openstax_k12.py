@@ -74,7 +74,7 @@ def head_length(url: str) -> int | None:
         with urllib.request.urlopen(req, timeout=60) as resp:
             cl = resp.headers.get("Content-Length")
             return int(cl) if cl else None
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None
 
 
@@ -106,7 +106,7 @@ def download_one(book: dict, out_root: Path, force: bool = False) -> dict:
                     break
                 f.write(chunk)
         tmp.replace(dest)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         if tmp.exists():
             tmp.unlink(missing_ok=True)
         return {"slug": book["slug"], "status": "error", "error": str(exc)}
@@ -126,7 +126,9 @@ def _write_meta(meta_path: Path, book: dict, dest: Path) -> None:
     url = (book.get("license_url") or "").lower()
     name = license_name.lower()
     if "noncommercial" in name or "by-nc" in url:
-        lic = "cc-by-nc-sa-4.0" if "sharealike" in name or "sa" in url else "cc-by-nc-4.0"
+        lic = (
+            "cc-by-nc-sa-4.0" if "sharealike" in name or "sa" in url else "cc-by-nc-4.0"
+        )
     elif "sharealike" in name or "by-sa" in url:
         lic = "cc-by-sa-4.0"
     elif "attribution" in name or "by/" in url:
@@ -151,7 +153,9 @@ def _write_meta(meta_path: Path, book: dict, dest: Path) -> None:
             "Downloaded from the OpenStax CDN for personal OER training use."
         ),
     }
-    meta_path.write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    meta_path.write_text(
+        json.dumps(meta, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
 
 def main() -> int:
@@ -212,7 +216,7 @@ def main() -> int:
     )
     print(
         f"done: downloaded={summary['downloaded']} exists={summary['exists']} "
-        f"errors={len(summary['errors'])} bytes={summary['bytes']/1e9:.2f}GB"
+        f"errors={len(summary['errors'])} bytes={summary['bytes'] / 1e9:.2f}GB"
     )
     if summary["errors"]:
         for e in summary["errors"]:

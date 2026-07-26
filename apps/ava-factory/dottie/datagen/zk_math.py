@@ -33,24 +33,62 @@ Curriculum placement: phases (1, 3, 5).
 Determinism: private random.Random only; SHA-256 via hashlib is pure; no
 wall-clock, no network, no global random; sorted structures throughout.
 """
+
 from __future__ import annotations
 
 import hashlib
 import random
-from typing import Dict, Iterator, List, Tuple
+from collections.abc import Iterator
 
 from dottie.datagen.base import Generator, run_cli
 
 # Safe primes p = 2q+1 (q prime). The order-q subgroup of (Z/pZ)* is where the
 # discrete-log problems live; a generator of it is any quadratic residue != 1.
 _SAFE_PRIMES = [
-    23, 47, 59, 83, 107, 167, 179, 227, 263, 347, 359, 383, 467, 479, 503,
-    563, 587, 719, 839, 863, 887, 983, 1019, 1187, 1283, 1307, 1319, 1367,
-    1439, 1487, 1523, 1619, 1823, 1907, 2039, 2063, 2099, 2207, 2447, 2459,
+    23,
+    47,
+    59,
+    83,
+    107,
+    167,
+    179,
+    227,
+    263,
+    347,
+    359,
+    383,
+    467,
+    479,
+    503,
+    563,
+    587,
+    719,
+    839,
+    863,
+    887,
+    983,
+    1019,
+    1187,
+    1283,
+    1307,
+    1319,
+    1367,
+    1439,
+    1487,
+    1523,
+    1619,
+    1823,
+    1907,
+    2039,
+    2063,
+    2099,
+    2207,
+    2447,
+    2459,
 ]
 
 
-def _subgroup(p: int) -> Tuple[int, int]:
+def _subgroup(p: int) -> tuple[int, int]:
     """Return (q, g): q = (p-1)/2 and the smallest generator g of the order-q
     subgroup (smallest quadratic residue != 1). q is prime for a safe prime, so
     any such g has order exactly q."""
@@ -61,7 +99,7 @@ def _subgroup(p: int) -> Tuple[int, int]:
     return q, g
 
 
-def _egcd(a: int, b: int) -> Tuple[int, int, int]:
+def _egcd(a: int, b: int) -> tuple[int, int, int]:
     """Extended Euclid: return (gcd, s, t) with a*s + b*t = gcd."""
     old_r, r = a, b
     old_s, s = 1, 0
@@ -93,7 +131,8 @@ def _challenge(preimage: str, q: int) -> int:
 # p1 drills
 # ---------------------------------------------------------------------------
 
-def _modexp_doc(rng: random.Random) -> Tuple[str, str, str, dict]:
+
+def _modexp_doc(rng: random.Random) -> tuple[str, str, str, dict]:
     p = rng.choice(_SAFE_PRIMES)
     g = rng.randint(2, p - 2)
     x = rng.randint(2, p - 2)
@@ -129,7 +168,7 @@ Source: zk_math/modexp -- p1 automatic, the primitive under Schnorr/ElGamal.
     return text, "automatic", "modexp", meta
 
 
-def _modinv_doc(rng: random.Random) -> Tuple[str, str, str, dict]:
+def _modinv_doc(rng: random.Random) -> tuple[str, str, str, dict]:
     p = rng.choice(_SAFE_PRIMES)
     a = rng.randint(2, p - 2)
     inv = _inv(a, p)
@@ -160,15 +199,16 @@ Source: zk_math/modinv -- p1 automatic, field arithmetic for ZK.
 # p3 protocols
 # ---------------------------------------------------------------------------
 
-def _schnorr_doc(rng: random.Random) -> Tuple[str, str, str, dict]:
+
+def _schnorr_doc(rng: random.Random) -> tuple[str, str, str, dict]:
     p = rng.choice([pp for pp in _SAFE_PRIMES if pp >= 47])
     q, g = _subgroup(p)
-    x = rng.randint(2, q - 1)          # the secret (a discrete log)
-    y = pow(g, x, p)                    # public key y = g^x
-    r = rng.randint(2, q - 1)          # nonce
-    t = pow(g, r, p)                    # commitment
-    c = rng.randint(1, q - 1)          # verifier's challenge
-    s = (r + c * x) % q                # response
+    x = rng.randint(2, q - 1)  # the secret (a discrete log)
+    y = pow(g, x, p)  # public key y = g^x
+    r = rng.randint(2, q - 1)  # nonce
+    t = pow(g, r, p)  # commitment
+    c = rng.randint(1, q - 1)  # verifier's challenge
+    s = (r + c * x) % q  # response
     lhs = pow(g, s, p)
     rhs = (t * pow(y, c, p)) % p
     assert lhs == rhs
@@ -200,13 +240,13 @@ Source: zk_math/schnorr -- p3 deliberate, the canonical Sigma protocol.
     return text, "deliberate", "schnorr", meta
 
 
-def _pedersen_doc(rng: random.Random) -> Tuple[str, str, str, dict]:
+def _pedersen_doc(rng: random.Random) -> tuple[str, str, str, dict]:
     p = rng.choice([pp for pp in _SAFE_PRIMES if pp >= 47])
     q, g = _subgroup(p)
     a = rng.randint(2, q - 1)
-    h = pow(g, a, p)                    # second generator h = g^a (dlog unknown to prover)
-    m = rng.randint(1, q - 1)          # committed message
-    r = rng.randint(1, q - 1)          # blinding factor
+    h = pow(g, a, p)  # second generator h = g^a (dlog unknown to prover)
+    m = rng.randint(1, q - 1)  # committed message
+    r = rng.randint(1, q - 1)  # blinding factor
     C = (pow(g, m, p) * pow(h, r, p)) % p
     assert C == (pow(g, m, p) * pow(h, r, p)) % p
     meta = {"p": p, "q": q, "g": g, "h": h, "m": m, "r": r, "C": C}
@@ -232,7 +272,7 @@ Source: zk_math/pedersen -- p3 deliberate, hiding+binding commitment.
     return text, "deliberate", "pedersen", meta
 
 
-def _fiat_shamir_doc(rng: random.Random) -> Tuple[str, str, str, dict]:
+def _fiat_shamir_doc(rng: random.Random) -> tuple[str, str, str, dict]:
     p = rng.choice([pp for pp in _SAFE_PRIMES if pp >= 47])
     q, g = _subgroup(p)
     x = rng.randint(2, q - 1)
@@ -240,13 +280,23 @@ def _fiat_shamir_doc(rng: random.Random) -> Tuple[str, str, str, dict]:
     r = rng.randint(2, q - 1)
     t = pow(g, r, p)
     preimage = f"{g}|{y}|{t}"
-    c = _challenge(preimage, q)        # non-interactive challenge from the transcript
+    c = _challenge(preimage, q)  # non-interactive challenge from the transcript
     s = (r + c * x) % q
     lhs = pow(g, s, p)
     rhs = (t * pow(y, c, p)) % p
     assert lhs == rhs
-    meta = {"p": p, "q": q, "g": g, "x": x, "y": y, "r": r, "t": t,
-            "c": c, "s": s, "preimage": preimage}
+    meta = {
+        "p": p,
+        "q": q,
+        "g": g,
+        "x": x,
+        "y": y,
+        "r": r,
+        "t": t,
+        "c": c,
+        "s": s,
+        "preimage": preimage,
+    }
     text = f"""### Task: make the Schnorr proof non-interactive with Fiat-Shamir.
 
 The interactive proof needs a live verifier to supply a random challenge. The
@@ -272,9 +322,9 @@ Source: zk_math/fiat_shamir -- deliberate, interactive -> non-interactive (NIZK)
     return text, "deliberate", "fiat_shamir", meta
 
 
-def _merkle_doc(rng: random.Random) -> Tuple[str, str, str, dict]:
+def _merkle_doc(rng: random.Random) -> tuple[str, str, str, dict]:
     depth = rng.choice([2, 3])
-    n = 2 ** depth
+    n = 2**depth
     leaves = [f"tx{rng.randint(0, 999):03d}" for _ in range(n)]
     leaf_h = [_h16("leaf:" + v) for v in leaves]
     # build the tree bottom-up; record levels for the proof path
@@ -297,10 +347,17 @@ def _merkle_doc(rng: random.Random) -> Tuple[str, str, str, dict]:
     for side, sib in proof:
         acc = _h16(acc + sib) if side == "R" else _h16(sib + acc)
     assert acc == root
-    meta = {"leaves": leaves, "leaf_hashes": leaf_h, "root": root,
-            "index": idx, "proof": proof}
-    proof_str = "\n".join(f"  level {i}: sibling on the {('right' if s=='R' else 'left')} = {h}"
-                          for i, (s, h) in enumerate(proof))
+    meta = {
+        "leaves": leaves,
+        "leaf_hashes": leaf_h,
+        "root": root,
+        "index": idx,
+        "proof": proof,
+    }
+    proof_str = "\n".join(
+        f"  level {i}: sibling on the {('right' if s == 'R' else 'left')} = {h}"
+        for i, (s, h) in enumerate(proof)
+    )
     text = f"""### Task: verify a Merkle inclusion proof.
 
 A Merkle tree commits to a whole list with one hash (the root); an inclusion
@@ -309,7 +366,7 @@ commitment backbone of STARKs, Certificate Transparency, and every rollup.
 
 Leaves (n = {n}): {leaves}
 Leaf hashes h(leaf) = SHA-256("leaf:"+value)[:16]:
-{chr(10).join(f'  {i}: {h}' for i, h in enumerate(leaf_h))}
+{chr(10).join(f"  {i}: {h}" for i, h in enumerate(leaf_h))}
 Parent = SHA-256(left_child + right_child)[:16], up to the root = {root}.
 
 Prove leaf #{idx} ("{leaves[idx]}", hash {leaf_h[idx]}) is included. Path:
@@ -325,10 +382,10 @@ Source: zk_math/merkle -- deliberate, log-size commitment/opening.
     return text, "deliberate", "merkle", meta
 
 
-def _shamir_doc(rng: random.Random) -> Tuple[str, str, str, dict]:
+def _shamir_doc(rng: random.Random) -> tuple[str, str, str, dict]:
     p = rng.choice([pp for pp in _SAFE_PRIMES if pp >= 227])
-    t = rng.choice([2, 3])             # threshold
-    n = t + rng.choice([1, 2])         # number of shares
+    t = rng.choice([2, 3])  # threshold
+    n = t + rng.choice([1, 2])  # number of shares
     secret = rng.randint(1, p - 1)
     coeffs = [secret] + [rng.randint(0, p - 1) for _ in range(t - 1)]
 
@@ -336,7 +393,7 @@ def _shamir_doc(rng: random.Random) -> Tuple[str, str, str, dict]:
         return sum(co * pow(xv, k, p) for k, co in enumerate(coeffs)) % p
 
     shares = [(i, f(i)) for i in range(1, n + 1)]
-    used = shares[:t]                  # any t shares reconstruct
+    used = shares[:t]  # any t shares reconstruct
     # Lagrange interpolation at x = 0 over GF(p)
     rec = 0
     for j, (xj, yj) in enumerate(used):
@@ -348,8 +405,16 @@ def _shamir_doc(rng: random.Random) -> Tuple[str, str, str, dict]:
             den = (den * (xj - xm)) % p
         rec = (rec + yj * num * _inv(den % p, p)) % p
     assert rec == secret
-    meta = {"p": p, "t": t, "n": n, "secret": secret, "coeffs": coeffs,
-            "shares": shares, "used": used, "recovered": rec}
+    meta = {
+        "p": p,
+        "t": t,
+        "n": n,
+        "secret": secret,
+        "coeffs": coeffs,
+        "shares": shares,
+        "used": used,
+        "recovered": rec,
+    }
     share_str = ", ".join(f"({i}, {v})" for i, v in shares)
     used_str = ", ".join(f"({i}, {v})" for i, v in used)
     text = f"""### Task: reconstruct a Shamir-shared secret over GF({p}).
@@ -359,7 +424,7 @@ degree-{t - 1} polynomial over GF({p}); any {t} of the {n} shares recover it,
 any {t - 1} learn nothing. This polynomial-over-a-field idea is the seed of MPC
 and of polynomial-commitment SNARKs (PLONK/KZG).
 
-Secret s = f(0) = {secret}. Polynomial f(x) = {' + '.join(f'{c}*x^{k}' for k, c in enumerate(coeffs))} mod {p}.
+Secret s = f(0) = {secret}. Polynomial f(x) = {" + ".join(f"{c}*x^{k}" for k, c in enumerate(coeffs))} mod {p}.
 Shares (x, f(x)): {share_str}
 
 Reconstruct from the first {t} shares [{used_str}] by Lagrange interpolation at
@@ -396,8 +461,13 @@ class ZkMathGenerator(Generator):
             text, task_type, concept, _meta = builder(self.rng)
             idx += 1
             bytes_so_far += len(text.encode("utf-8")) + 200
-            yield self.doc(text=text, task_type=task_type, concept=concept,
-                           phase=phase, source=f"zk_math/{concept}")
+            yield self.doc(
+                text=text,
+                task_type=task_type,
+                concept=concept,
+                phase=phase,
+                source=f"zk_math/{concept}",
+            )
 
 
 if __name__ == "__main__":

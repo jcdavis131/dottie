@@ -70,7 +70,7 @@ COBERTURA = """<?xml version="1.0" ?>
 def _xml(classes: str, *, attrs: str = "") -> str:
     return (
         f'<?xml version="1.0" ?>\n<coverage {attrs}>'
-        f"<packages><package name=\"p\"><classes>{classes}</classes></package></packages>"
+        f'<packages><package name="p"><classes>{classes}</classes></package></packages>'
         "</coverage>"
     )
 
@@ -115,7 +115,8 @@ def _data_file(
         conn.execute("INSERT INTO coverage_schema(version) VALUES(?)", (schema,))
     if "meta" not in drop_tables:
         conn.execute(
-            "INSERT INTO meta(key, value) VALUES('has_arcs', ?)", ("1" if has_arcs else "0")
+            "INSERT INTO meta(key, value) VALUES('has_arcs', ?)",
+            ("1" if has_arcs else "0"),
         )
     for i, f in enumerate(files, start=1):
         conn.execute("INSERT INTO file(id, path) VALUES(?, ?)", (i, f))
@@ -206,9 +207,21 @@ def test_check_measurement_rejects_both_neither_and_impossible_readings():
         coverage.check_measurement({"path": "a", "pct": 101.0, "unknown_reason": None})
     with pytest.raises(ValueError, match="exceeds statements"):
         coverage.check_measurement(
-            {"path": "a", "pct": 50.0, "unknown_reason": None, "statements": 3, "covered": 4}
+            {
+                "path": "a",
+                "pct": 50.0,
+                "unknown_reason": None,
+                "statements": 3,
+                "covered": 4,
+            }
         )
-    good = {"path": "a", "pct": 50.0, "unknown_reason": None, "statements": 4, "covered": 2}
+    good = {
+        "path": "a",
+        "pct": 50.0,
+        "unknown_reason": None,
+        "statements": 4,
+        "covered": 2,
+    }
     assert coverage.check_measurement(good) is good
 
 
@@ -281,7 +294,8 @@ def test_parse_cobertura_refuses_junk_instead_of_measuring_nothing():
 
 def test_parse_cobertura_merges_a_file_listed_twice_without_double_counting():
     doc = _xml(
-        _cls("a.py", _line(1, 1) + _line(2, 0)) + _cls("a.py", _line(2, 3) + _line(3, 0))
+        _cls("a.py", _line(1, 1) + _line(2, 0))
+        + _cls("a.py", _line(2, 3) + _line(3, 0))
     )
     p = coverage.parse_cobertura(doc)
     rec = p["files"]["a.py"]
@@ -341,7 +355,9 @@ def test_declared_totals_are_reported_not_trusted():
     assert check["agrees"] is False and "disagree" in check["note"]
     # the measurement uses the counted lines, never the declared ones
     assert coverage.combine([lying])["totals"]["statements"] == 1
-    silent = coverage.declared_vs_counted(coverage.parse_cobertura(_xml(_cls("a.py", ""))))
+    silent = coverage.declared_vs_counted(
+        coverage.parse_cobertura(_xml(_cls("a.py", "")))
+    )
     assert silent["agrees"] is None and "declares no" in silent["note"]
 
 
@@ -383,9 +399,16 @@ def test_read_coverage_sqlite_filters_by_context_and_refuses_a_typo(tmp_path):
         contexts=("", "test_login"),
         line_bits=((1, 1, (1, 2)), (1, 2, (7,))),
     )
-    assert coverage.read_coverage_sqlite(db)["files"]["/repo/a.py"]["executed"] == {1, 2, 7}
+    assert coverage.read_coverage_sqlite(db)["files"]["/repo/a.py"]["executed"] == {
+        1,
+        2,
+        7,
+    }
     only = coverage.read_coverage_sqlite(db, context="test_login")
-    assert only["files"]["/repo/a.py"]["executed"] == {7} and only["context"] == "test_login"
+    assert (
+        only["files"]["/repo/a.py"]["executed"] == {7}
+        and only["context"] == "test_login"
+    )
     with pytest.raises(coverage.CoverageError, match="no measurement context named"):
         coverage.read_coverage_sqlite(db, context="test_logn")
     with pytest.raises(coverage.CoverageError, match="refusing to report zero"):
@@ -477,16 +500,20 @@ def test_combine_never_counts_an_executed_line_outside_the_inventory(tmp_path):
 
 def test_combine_matches_absolute_data_paths_via_the_xml_source_root(tmp_path):
     xml = coverage.parse_cobertura(
-        '<coverage><sources><source>/repo/root</source></sources><packages><package '
+        "<coverage><sources><source>/repo/root</source></sources><packages><package "
         'name="p"><classes>' + _cls("pkg/a.py", _line(1, 0)) + "</classes></package>"
         "</packages></coverage>"
     )
     db = _data_file(
-        tmp_path / ".coverage", files=("/repo/root/pkg/a.py",), line_bits=((1, 1, (1,)),)
+        tmp_path / ".coverage",
+        files=("/repo/root/pkg/a.py",),
+        line_bits=((1, 1, (1,)),),
     )
     merged = coverage.combine([xml, coverage.read_coverage_sqlite(db)])
     assert len(merged["files"]) == 1, "the source root should have made the paths match"
-    assert merged["files"][0]["path"] == "pkg/a.py" and merged["files"][0]["pct"] == 100.0
+    assert (
+        merged["files"][0]["path"] == "pkg/a.py" and merged["files"][0]["pct"] == 100.0
+    )
     # without the root the two paths are two different files, and the extra one is
     # honestly UNKNOWN rather than silently folded in
     split = coverage.combine(
@@ -502,7 +529,9 @@ def test_combine_matches_absolute_data_paths_via_the_xml_source_root(tmp_path):
 
 def test_combine_honours_an_explicit_strip_prefix(tmp_path):
     db = _data_file(
-        tmp_path / ".coverage", files=("/build/tmp/pkg/a.py",), line_bits=((1, 1, (1,)),)
+        tmp_path / ".coverage",
+        files=("/build/tmp/pkg/a.py",),
+        line_bits=((1, 1, (1,)),),
     )
     parsed = [coverage.read_coverage_sqlite(db)]
     assert coverage.combine(parsed)["files"][0]["path"] == "/build/tmp/pkg/a.py"
@@ -538,7 +567,9 @@ def test_module_percentage_sums_counts_instead_of_averaging_percentages():
     ]
     module = coverage.rollup_modules(files, depth=1)[0]
     # the mean of 100% and 1% is 50.5; the honest answer is 2/101
-    assert module["pct"] == 1.98 and module["statements"] == 101 and module["covered"] == 2
+    assert (
+        module["pct"] == 1.98 and module["statements"] == 101 and module["covered"] == 2
+    )
     assert module["files"] == 2 and module["files_measured"] == 2
     assert coverage.totals_of(files)["pct"] == 1.98
 
@@ -624,13 +655,17 @@ def test_delta_is_none_with_a_reason_whenever_it_cannot_be_a_number():
     assert blind["delta"] is None and blind["status"] == "unknown"
     assert "this run has no percentage" in blind["delta_reason"]
     was_blind = coverage.delta_of(_mod("m", 80.0), _mod("m", None, reason="was empty"))
-    assert was_blind["delta"] is None and "baseline has no percentage" in was_blind["delta_reason"]
+    assert (
+        was_blind["delta"] is None
+        and "baseline has no percentage" in was_blind["delta_reason"]
+    )
     assert "was empty" in was_blind["delta_reason"]
 
 
 def test_delta_reports_statement_movement_even_when_both_sides_are_known():
     row = coverage.delta_of(
-        _mod("m", 50.0, statements=20, covered=10), _mod("m", 60.0, statements=10, covered=6)
+        _mod("m", 50.0, statements=20, covered=10),
+        _mod("m", 60.0, statements=10, covered=6),
     )
     assert row["statements_delta"] == 10 and row["covered_delta"] == 4
     assert row["status"] == "regressed"  # more code, proportionally less covered
@@ -682,7 +717,10 @@ def test_load_rules_overlay_is_policy_as_config_and_typos_are_fatal(tmp_path):
     for bad, match in (
         ({"coverage:nope": {}}, "unknown rule id"),
         ({"coverage:regressed": "warning"}, "must be a JSON object"),
-        ({"coverage:regressed": {"severity": "catastrophe"}}, "severity must be one of"),
+        (
+            {"coverage:regressed": {"severity": "catastrophe"}},
+            "severity must be one of",
+        ),
         ([], "must be a JSON object"),
     ):
         overlay.write_text(json.dumps(bad), encoding="utf-8")
@@ -702,18 +740,25 @@ def test_thresholds_fire_on_the_total_and_on_each_module():
     assert "50.00%" in fired["coverage:below-threshold"]["message"]
     assert not [d for d in diags if d["path"] == "b"]
     # with no threshold asked for, neither rule may fire on its own
-    assert {d["rule"] for d in coverage.to_diagnostics(report)} == {"coverage:no-baseline"}
+    assert {d["rule"] for d in coverage.to_diagnostics(report)} == {
+        "coverage:no-baseline"
+    }
 
 
 def test_an_unmeasurable_report_can_never_satisfy_a_threshold(tmp_path):
-    db = _data_file(tmp_path / ".coverage", files=("a/x.py",), line_bits=((1, 1, (1, 2)),))
+    db = _data_file(
+        tmp_path / ".coverage", files=("a/x.py",), line_bits=((1, 1, (1, 2)),)
+    )
     combined = coverage.combine([coverage.read_coverage_sqlite(db)], depth=1)
     report = coverage.build_report(combined, generated_ts=0.0)
     rules = {d["rule"] for d in coverage.to_diagnostics(report, min_pct=1)}
     assert "coverage:total-unmeasured" in rules and "coverage:no-data" in rules
-    assert "coverage:total-below-threshold" not in rules  # there is no number to compare
+    assert (
+        "coverage:total-below-threshold" not in rules
+    )  # there is no number to compare
     severities = {
-        d["severity"] for d in coverage.to_diagnostics(report, min_pct=1)
+        d["severity"]
+        for d in coverage.to_diagnostics(report, min_pct=1)
         if d["rule"] == "coverage:total-unmeasured"
     }
     assert severities == {"error"}  # an unknown must fail a gate, not pass it
@@ -728,7 +773,9 @@ def test_regression_rule_respects_max_drop_and_needs_a_baseline():
     lenient = {d["rule"] for d in coverage.to_diagnostics(report, max_drop=50)}
     assert "coverage:regressed" not in lenient  # a dropped 40 points, allowance is 50
     strict = [
-        d for d in coverage.to_diagnostics(report, max_drop=0) if d["rule"] == "coverage:regressed"
+        d
+        for d in coverage.to_diagnostics(report, max_drop=0)
+        if d["rule"] == "coverage:regressed"
     ]
     assert len(strict) == 1 and strict[0]["path"] == "a"
     assert "90.00% -> 50.00%" in strict[0]["message"]
@@ -738,7 +785,9 @@ def test_regression_rule_respects_max_drop_and_needs_a_baseline():
 
 
 def test_missing_baseline_and_partial_modules_are_reported_not_hidden():
-    report = _report(_xml(_cls("a/x.py", _line(1, 1)) + _cls("a/e.py", "")), db="cov.db")
+    report = _report(
+        _xml(_cls("a/x.py", _line(1, 1)) + _cls("a/e.py", "")), db="cov.db"
+    )
     diags = {d["rule"]: d for d in coverage.to_diagnostics(report)}
     assert diags["coverage:no-baseline"]["path"] == "cov.db"
     assert diags["coverage:no-baseline"]["severity"] == "info"
@@ -749,9 +798,15 @@ def test_missing_baseline_and_partial_modules_are_reported_not_hidden():
 def test_unparsable_sources_ride_the_diagnostic_schema():
     report = _report(
         _xml(_cls("a/x.py", _line(1, 1))),
-        unparsable=[{"path": "broken.xml", "error": "CoverageError: not well-formed XML"}],
+        unparsable=[
+            {"path": "broken.xml", "error": "CoverageError: not well-formed XML"}
+        ],
     )
-    hit = [d for d in coverage.to_diagnostics(report) if d["rule"] == "coverage:source-unparsable"]
+    hit = [
+        d
+        for d in coverage.to_diagnostics(report)
+        if d["rule"] == "coverage:source-unparsable"
+    ]
     assert len(hit) == 1 and hit[0]["severity"] == "error"
     assert hit[0]["path"] == "broken.xml" and "not well-formed" in hit[0]["message"]
 
@@ -768,7 +823,9 @@ def test_a_disabled_rule_stays_quiet_and_a_clean_report_has_no_errors():
 
 def test_outside_inventory_findings_come_from_the_count_not_a_string_match(tmp_path):
     xml = coverage.parse_cobertura(_xml(_cls("a/x.py", _line(1, 1))))
-    db = _data_file(tmp_path / ".coverage", files=("a/x.py",), line_bits=((1, 1, (1, 99)),))
+    db = _data_file(
+        tmp_path / ".coverage", files=("a/x.py",), line_bits=((1, 1, (1, 99)),)
+    )
     combined = coverage.combine([xml, coverage.read_coverage_sqlite(db)], depth=1)
     report = coverage.build_report(combined, generated_ts=0.0)
     hit = [
@@ -784,7 +841,9 @@ def test_outside_inventory_findings_come_from_the_count_not_a_string_match(tmp_p
 
 def test_store_round_trips_a_run_including_its_unknown_modules(tmp_path):
     conn = coverage.open_store(tmp_path / "hist.db")
-    report = _report(_xml(_cls("a/x.py", _line(1, 1) + _line(2, 0)) + _cls("b/e.py", "")))
+    report = _report(
+        _xml(_cls("a/x.py", _line(1, 1) + _line(2, 0)) + _cls("b/e.py", ""))
+    )
     run_id = coverage.record_run(conn, report, ts=1700000000.5, label="ci #7")
     assert run_id == 1
     stored = coverage.get_run(conn, run_id)
@@ -851,7 +910,9 @@ def test_the_store_is_its_own_file_and_can_hold_a_missing_measurement():
     from bigbang.core import runtrack
 
     assert "value REAL NOT NULL" in runtrack._SCHEMA
-    assert "pct REAL" in coverage._SCHEMA and "pct REAL NOT NULL" not in coverage._SCHEMA
+    assert (
+        "pct REAL" in coverage._SCHEMA and "pct REAL NOT NULL" not in coverage._SCHEMA
+    )
     assert coverage.DB_REL != runtrack.DB_REL
     assert coverage.DB_REL.parent == Path(".scout")
 
@@ -876,14 +937,18 @@ def test_a_missing_timestamp_renders_as_unrecorded_not_as_1970():
     # fabricated date is the same defect class as a fabricated zero.
     assert coverage._iso(1700000000.0) == "2023-11-14T22:13:20Z"
     assert coverage._iso(0) == "unrecorded" and coverage._iso(None) == "unrecorded"
-    page = coverage.render_html(_report(_xml(_cls("a/x.py", _line(1, 1))), generated_ts=0.0))
+    page = coverage.render_html(
+        _report(_xml(_cls("a/x.py", _line(1, 1))), generated_ts=0.0)
+    )
     assert "unrecorded" in page and "1970" not in page
 
 
 def test_render_names_how_many_files_the_headline_excludes():
     # also a mutation survivor: deleting this note left a 75% headline with no
     # statement anywhere on the page that it covers only half the files.
-    report = _report(_xml(_cls("m/a.py", _line(1, 1) + _line(2, 0)) + _cls("m/e.py", "")))
+    report = _report(
+        _xml(_cls("m/a.py", _line(1, 1) + _line(2, 0)) + _cls("m/e.py", ""))
+    )
     page = coverage.render_html(report)
     assert "1 of 2 file(s) have no percentage of their own" in page
     assert "never as 0%" in page
@@ -909,7 +974,9 @@ def test_render_draws_no_bar_and_no_percentage_for_an_unknown_module():
 def test_render_says_unknown_in_the_banner_instead_of_zero(tmp_path):
     import re
 
-    db = _data_file(tmp_path / ".coverage", files=("a/x.py",), line_bits=((1, 1, (1,)),))
+    db = _data_file(
+        tmp_path / ".coverage", files=("a/x.py",), line_bits=((1, 1, (1,)),)
+    )
     combined = coverage.combine([coverage.read_coverage_sqlite(db)], depth=1)
     page = coverage.render_html(coverage.build_report(combined, generated_ts=0.0))
     figures = page.split("<h1>", 1)[1].split("</table>", 1)[0]
@@ -919,7 +986,11 @@ def test_render_says_unknown_in_the_banner_instead_of_zero(tmp_path):
 
 
 def test_render_shows_deltas_and_keeps_a_removed_module_visible():
-    baseline = {"id": 4, "ts": 1699999999.0, "modules": [_mod("a", 90.0), _mod("gone", 70.0)]}
+    baseline = {
+        "id": 4,
+        "ts": 1699999999.0,
+        "modules": [_mod("a", 90.0), _mod("gone", 70.0)],
+    }
     report = _report(_xml(_cls("a/x.py", _line(1, 1) + _line(2, 0))), baseline=baseline)
     page = coverage.render_html(report, title="Repo coverage")
     assert "<title>Repo coverage</title>" in page and "run 4 recorded" in page
@@ -958,10 +1029,14 @@ def test_render_reads_no_clock_so_the_page_is_reproducible(monkeypatch):
 def test_render_reports_an_unreadable_source_on_the_page():
     report = _report(
         _xml(_cls("a/x.py", _line(1, 1))),
-        unparsable=[{"path": "broken.xml", "error": "CoverageError: refusing a DOCTYPE"}],
+        unparsable=[
+            {"path": "broken.xml", "error": "CoverageError: refusing a DOCTYPE"}
+        ],
     )
     page = coverage.render_html(report)
-    assert "Not parsed" in page and "broken.xml" in page and "refusing a DOCTYPE" in page
+    assert (
+        "Not parsed" in page and "broken.xml" in page and "refusing a DOCTYPE" in page
+    )
 
 
 # ---- stdlib-only invariant (the whole point of the openswap family) ----------
@@ -1024,7 +1099,9 @@ def test_manifest_is_zero_egress_with_writes_confined_to_the_store():
     caps = mf["capabilities"]
     assert mf["name"] == "coverage"
     assert caps["network"]["enabled"] is False and caps["network"]["domains"] == []
-    assert caps["filesystem"]["write"] is True and caps["filesystem"]["paths"] == [".scout"]
+    assert caps["filesystem"]["write"] is True and caps["filesystem"]["paths"] == [
+        ".scout"
+    ]
     assert caps["secrets"]["allow"] == []  # no CODECOV_TOKEN to hold
 
 
@@ -1104,7 +1181,9 @@ def test_cli_detect_reports_zero_egress_and_never_uses_the_binary():
     assert data["tier"] == expected
     assert data["native"]["found"] is (expected == "native")
     # the tier says nothing about what was USED, so the scope has to be stated
-    assert "UNKNOWN percentage" in data["scope_limits"] and "LCOV" in data["scope_limits"]
+    assert (
+        "UNKNOWN percentage" in data["scope_limits"] and "LCOV" in data["scope_limits"]
+    )
     assert "NEVER executed" in data["native_never_executed"]
 
 
@@ -1113,7 +1192,10 @@ def test_cli_parse_measures_a_real_report(repo):
     assert r.returncode == 0, r.stderr + r.stdout
     data = json.loads(r.stdout)["data"]
     assert data["totals"]["pct"] == 69.23 and data["totals"]["files_unknown"] == 1
-    assert [(m["module"], m["pct"]) for m in data["modules"]] == [("pkg", 62.5), ("util", 80.0)]
+    assert [(m["module"], m["pct"]) for m in data["modules"]] == [
+        ("pkg", 62.5),
+        ("util", 80.0),
+    ]
     assert data["declared_vs_counted"][0]["agrees"] is True
     assert data["unparsable"] == [] and "files" not in data
     assert data["native_used"] is False
@@ -1122,10 +1204,15 @@ def test_cli_parse_measures_a_real_report(repo):
 def test_cli_parse_merges_the_data_file_through_the_source_root(repo):
     r = _cli(
         [
-            "coverage", "parse",
-            "--xml", str(repo / "coverage.xml"),
-            "--data", str(repo / ".coverage"),
-            "--depth", "1", "--files",
+            "coverage",
+            "parse",
+            "--xml",
+            str(repo / "coverage.xml"),
+            "--data",
+            str(repo / ".coverage"),
+            "--depth",
+            "1",
+            "--files",
         ]
     )
     assert r.returncode == 0, r.stderr + r.stdout
@@ -1164,8 +1251,19 @@ def test_cli_parse_rejects_a_depth_that_cannot_name_a_module(repo):
 def test_cli_report_records_a_baseline_then_finds_the_regression(repo, tmp_path):
     db = tmp_path / "hist.db"
     first = _cli(
-        ["coverage", "report", "--xml", str(repo / "coverage.xml"), "--depth", "1",
-         "--db", str(db), "--record", "--label", "run one"]
+        [
+            "coverage",
+            "report",
+            "--xml",
+            str(repo / "coverage.xml"),
+            "--depth",
+            "1",
+            "--db",
+            str(db),
+            "--record",
+            "--label",
+            "run one",
+        ]
     )
     assert first.returncode == 0, first.stderr + first.stdout
     one = json.loads(first.stdout)["data"]
@@ -1174,11 +1272,26 @@ def test_cli_report_records_a_baseline_then_finds_the_regression(repo, tmp_path)
     assert {d["rule"] for d in one["diagnostics"]} >= {"coverage:no-baseline"}
 
     # the same repo with pkg/calc.py losing one covered line
-    worse = COBERTURA.replace('<line number="9" hits="1"/>', '<line number="9" hits="0"/>')
+    worse = COBERTURA.replace(
+        '<line number="9" hits="1"/>', '<line number="9" hits="0"/>'
+    )
     (repo / "coverage.xml").write_text(worse, encoding="utf-8")
     second = _cli(
-        ["coverage", "report", "--xml", str(repo / "coverage.xml"), "--depth", "1",
-         "--db", str(db), "--record", "--max-drop", "0", "--fail-on", "error"]
+        [
+            "coverage",
+            "report",
+            "--xml",
+            str(repo / "coverage.xml"),
+            "--depth",
+            "1",
+            "--db",
+            str(db),
+            "--record",
+            "--max-drop",
+            "0",
+            "--fail-on",
+            "error",
+        ]
     )
     assert second.returncode == 1  # the gate fired on the regression
     two = json.loads(second.stdout)["data"]
@@ -1195,8 +1308,20 @@ def test_cli_report_records_a_baseline_then_finds_the_regression(repo, tmp_path)
 def test_cli_report_writes_a_self_contained_page(repo, tmp_path):
     out = tmp_path / "pages" / "cov.html"
     r = _cli(
-        ["coverage", "report", "--xml", str(repo / "coverage.xml"), "--depth", "1",
-         "--db", str(tmp_path / "h.db"), "--html", str(out), "--title", "My Repo"]
+        [
+            "coverage",
+            "report",
+            "--xml",
+            str(repo / "coverage.xml"),
+            "--depth",
+            "1",
+            "--db",
+            str(tmp_path / "h.db"),
+            "--html",
+            str(out),
+            "--title",
+            "My Repo",
+        ]
     )
     assert r.returncode == 0, r.stderr + r.stdout
     info = json.loads(r.stdout)["data"]["html"]
@@ -1205,13 +1330,23 @@ def test_cli_report_writes_a_self_contained_page(repo, tmp_path):
     text = page.decode("utf-8")
     assert "<title>My Repo</title>" in text and "69.23%" in text
     assert "UNKNOWN" in text  # the empty pkg/__init__.py
-    assert "<script" not in text.lower() and "http" not in text.replace("http-equiv", "")
+    assert "<script" not in text.lower() and "http" not in text.replace(
+        "http-equiv", ""
+    )
     assert b"\r\n" not in page  # write_bytes: no newline translation
 
 
 def test_cli_report_gate_fails_on_a_threshold_and_passes_when_met(repo, tmp_path):
-    args = ["coverage", "report", "--xml", str(repo / "coverage.xml"), "--depth", "1",
-            "--db", str(tmp_path / "h.db")]
+    args = [
+        "coverage",
+        "report",
+        "--xml",
+        str(repo / "coverage.xml"),
+        "--depth",
+        "1",
+        "--db",
+        str(tmp_path / "h.db"),
+    ]
     strict = _cli([*args, "--min-pct", "80", "--fail-on", "error"])
     assert strict.returncode == 1
     fired = {d["rule"] for d in json.loads(strict.stdout)["data"]["diagnostics"]}
@@ -1225,8 +1360,20 @@ def test_cli_report_gate_fails_on_a_threshold_and_passes_when_met(repo, tmp_path
 
 def test_cli_report_data_only_cannot_pass_a_threshold(repo, tmp_path):
     r = _cli(
-        ["coverage", "report", "--data", str(repo / ".coverage"), "--depth", "1",
-         "--db", str(tmp_path / "h.db"), "--min-pct", "1", "--fail-on", "error"]
+        [
+            "coverage",
+            "report",
+            "--data",
+            str(repo / ".coverage"),
+            "--depth",
+            "1",
+            "--db",
+            str(tmp_path / "h.db"),
+            "--min-pct",
+            "1",
+            "--fail-on",
+            "error",
+        ]
     )
     assert r.returncode == 1  # UNKNOWN never passes a gate
     data = json.loads(r.stdout)["data"]
@@ -1236,15 +1383,40 @@ def test_cli_report_data_only_cannot_pass_a_threshold(repo, tmp_path):
 
 def test_cli_report_rejects_a_bad_gate_and_a_missing_baseline(repo, tmp_path):
     bad = _cli(
-        ["coverage", "report", "--xml", str(repo / "coverage.xml"), "--fail-on", "whenever"]
+        [
+            "coverage",
+            "report",
+            "--xml",
+            str(repo / "coverage.xml"),
+            "--fail-on",
+            "whenever",
+        ]
     )
     assert bad.returncode == 1
     assert "--fail-on must be one of" in json.loads(bad.stdout)["error"]
     db = tmp_path / "h.db"
-    _cli(["coverage", "report", "--xml", str(repo / "coverage.xml"), "--db", str(db), "--record"])
+    _cli(
+        [
+            "coverage",
+            "report",
+            "--xml",
+            str(repo / "coverage.xml"),
+            "--db",
+            str(db),
+            "--record",
+        ]
+    )
     ghost = _cli(
-        ["coverage", "report", "--xml", str(repo / "coverage.xml"), "--db", str(db),
-         "--baseline", "77"]
+        [
+            "coverage",
+            "report",
+            "--xml",
+            str(repo / "coverage.xml"),
+            "--db",
+            str(db),
+            "--baseline",
+            "77",
+        ]
     )
     assert ghost.returncode == 1
     assert "no recorded run with id 77" in json.loads(ghost.stdout)["error"]
@@ -1253,8 +1425,15 @@ def test_cli_report_rejects_a_bad_gate_and_a_missing_baseline(repo, tmp_path):
 def test_cli_report_without_record_leaves_no_store(repo, tmp_path):
     db = tmp_path / "absent.db"
     r = _cli(
-        ["coverage", "report", "--xml", str(repo / "coverage.xml"), "--db", str(db),
-         "--no-record"]
+        [
+            "coverage",
+            "report",
+            "--xml",
+            str(repo / "coverage.xml"),
+            "--db",
+            str(db),
+            "--no-record",
+        ]
     )
     assert r.returncode == 0, r.stderr + r.stdout
     assert not db.exists()  # a read-only report creates nothing
@@ -1264,9 +1443,25 @@ def test_cli_report_without_record_leaves_no_store(repo, tmp_path):
 def test_cli_runs_lists_history_and_one_run(repo, tmp_path):
     db = tmp_path / "hist.db"
     empty = _cli(["coverage", "runs", "--db", str(db)])
-    assert empty.returncode == 1 and "no coverage history" in json.loads(empty.stdout)["error"]
-    _cli(["coverage", "report", "--xml", str(repo / "coverage.xml"), "--depth", "1",
-          "--db", str(db), "--record", "--label", "ci"])
+    assert (
+        empty.returncode == 1
+        and "no coverage history" in json.loads(empty.stdout)["error"]
+    )
+    _cli(
+        [
+            "coverage",
+            "report",
+            "--xml",
+            str(repo / "coverage.xml"),
+            "--depth",
+            "1",
+            "--db",
+            str(db),
+            "--record",
+            "--label",
+            "ci",
+        ]
+    )
     listed = _cli(["coverage", "runs", "--db", str(db)])
     assert listed.returncode == 0, listed.stderr + listed.stdout
     data = json.loads(listed.stdout)["data"]
@@ -1298,10 +1493,23 @@ def test_cli_rules_publishes_the_table_and_rejects_a_bad_overlay(tmp_path):
 def test_cli_rules_overlay_changes_a_real_gate(repo, tmp_path):
     overlay = tmp_path / "org.json"
     overlay.write_text(
-        json.dumps({"coverage:total-below-threshold": {"enabled": False}}), encoding="utf-8"
+        json.dumps({"coverage:total-below-threshold": {"enabled": False}}),
+        encoding="utf-8",
     )
-    args = ["coverage", "report", "--xml", str(repo / "coverage.xml"), "--depth", "1",
-            "--db", str(tmp_path / "h.db"), "--min-pct", "80", "--fail-on", "error"]
+    args = [
+        "coverage",
+        "report",
+        "--xml",
+        str(repo / "coverage.xml"),
+        "--depth",
+        "1",
+        "--db",
+        str(tmp_path / "h.db"),
+        "--min-pct",
+        "80",
+        "--fail-on",
+        "error",
+    ]
     assert _cli(args).returncode == 1
     relaxed = _cli([*args, "--rules", str(overlay)])
     assert relaxed.returncode == 1  # the per-MODULE rule still fires
@@ -1316,7 +1524,9 @@ def test_cli_context_typo_is_refused_instead_of_reporting_zero(repo, tmp_path):
     )
     assert r.returncode == 1
     error = json.loads(r.stdout)["error"]
-    assert "no measurement context named" in error and "refusing to report zero" in error
+    assert (
+        "no measurement context named" in error and "refusing to report zero" in error
+    )
 
 
 def test_unknown_cells_carry_their_reason_as_a_title():
@@ -1352,6 +1562,7 @@ def test_the_unchanged_dead_zone_is_narrow_and_its_boundary_is_pinned():
     `regressed` or silently as `unchanged`, and delta_of's own docstring says
     "unchanged" and "we have nothing to compare" are different facts.
     """
+
     def status(cur_pct, base_pct):
         return coverage.delta_of(
             {"module": "m", "pct": cur_pct, "unknown_reason": None},
@@ -1498,7 +1709,9 @@ def test_the_baseline_column_carries_its_own_reason_too():
         baseline=baseline,
     )
     rows = cur["comparison"]["modules"]
-    unknown = [r for r in rows if r.get("baseline_pct") is None and r.get("delta_reason")]
+    unknown = [
+        r for r in rows if r.get("baseline_pct") is None and r.get("delta_reason")
+    ]
     assert unknown, "fixture must produce a row whose BASELINE percentage is unknown"
     page = coverage.render_html(cur)
     reason = unknown[0]["delta_reason"]

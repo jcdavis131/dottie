@@ -86,7 +86,9 @@ class TestManifestNetworkMatrix:
         # "/srv/x". That was the hole: it encoded "declaring write grants the
         # whole filesystem" as the contract. Now default-deny, like every other
         # axis.
-        ok, reason = policy.check_permission(_manifest(fs_write=True), "fs_write", "/srv/x")
+        ok, reason = policy.check_permission(
+            _manifest(fs_write=True), "fs_write", "/srv/x"
+        )
         assert not ok
         assert "default-deny" in reason
 
@@ -160,7 +162,9 @@ class TestFsWriteEnforcementWired:
     @pytest.mark.parametrize("plugin,target", GRANTED)
     def test_declared_subtree_is_granted(self, plugin, target):
         mf = policy.load_manifest(Path("bigbang/plugins") / plugin)
-        ok, reason = policy.check_permission(mf, "fs_write", str(Path(target).expanduser()))
+        ok, reason = policy.check_permission(
+            mf, "fs_write", str(Path(target).expanduser())
+        )
         assert ok, f"{plugin}: {reason}"
 
     @pytest.mark.parametrize("plugin,_target", GRANTED)
@@ -237,7 +241,9 @@ class TestDefaultStorePathsStayInsideTheirAllowlist:
     # 2 from 23; this one can.
     MIN_RESOLVERS = 20
 
-    def test_every_default_store_path_is_inside_its_manifest_allowlist(self, monkeypatch):
+    def test_every_default_store_path_is_inside_its_manifest_allowlist(
+        self, monkeypatch
+    ):
         import importlib
         import inspect
 
@@ -321,7 +327,9 @@ class TestFsWritePathAllowlist:
         return _manifest(fs_write=True, fs_paths=paths)
 
     def test_file_inside_declared_directory_allowed(self):
-        assert policy.check_permission(self._mf([".scout"]), "fs_write", ".scout/x.db")[0]
+        assert policy.check_permission(self._mf([".scout"]), "fs_write", ".scout/x.db")[
+            0
+        ]
 
     def test_declared_directory_itself_allowed(self):
         assert policy.check_permission(self._mf([".scout"]), "fs_write", ".scout")[0]
@@ -333,7 +341,9 @@ class TestFsWritePathAllowlist:
         assert ok
 
     def test_sibling_directory_denied(self):
-        ok, reason = policy.check_permission(self._mf([".scout"]), "fs_write", "public/x")
+        ok, reason = policy.check_permission(
+            self._mf([".scout"]), "fs_write", "public/x"
+        )
         assert not ok
         assert "not in allowlist" in reason
 
@@ -368,7 +378,9 @@ class TestFsWritePathAllowlist:
             mf, "fs_write", str(Path("~/.local/share/bigbang/auth.json").expanduser())
         )[0]
         ok, _ = policy.check_permission(
-            mf, "fs_write", str(Path("~/.local/share/bigbang/secrets.json").expanduser())
+            mf,
+            "fs_write",
+            str(Path("~/.local/share/bigbang/secrets.json").expanduser()),
         )
         assert not ok, "a file entry must not grant its whole directory"
 
@@ -376,7 +388,9 @@ class TestFsWritePathAllowlist:
         # real manifests write both "~/memory/" and ".scout"
         for decl in ("~/memory/", "~/memory"):
             ok, _ = policy.check_permission(
-                self._mf([decl]), "fs_write", str(Path("~/memory/notes.md").expanduser())
+                self._mf([decl]),
+                "fs_write",
+                str(Path("~/memory/notes.md").expanduser()),
             )
             assert ok, f"declared {decl!r} should grant ~/memory/notes.md"
 
@@ -427,7 +441,9 @@ class TestFsWritePathAllowlist:
         # CHARACTER and deny everything, which is safe but inexplicable.
         ok, _ = policy.check_permission(self._mf(".scout"), "fs_write", ".scout/x.db")
         assert ok
-        assert not policy.check_permission(self._mf(".scout"), "fs_write", "elsewhere/x")[0]
+        assert not policy.check_permission(
+            self._mf(".scout"), "fs_write", "elsewhere/x"
+        )[0]
 
     def test_empty_list_denies_and_says_default_deny(self):
         ok, reason = policy.check_permission(self._mf([]), "fs_write", ".scout/x")
@@ -448,7 +464,9 @@ class TestFsWritePathAllowlist:
         assert "disabled" in reason
 
     def test_reason_names_the_offending_path_and_the_allowlist(self):
-        ok, reason = policy.check_permission(self._mf([".scout"]), "fs_write", "/etc/passwd")
+        ok, reason = policy.check_permission(
+            self._mf([".scout"]), "fs_write", "/etc/passwd"
+        )
         assert not ok
         assert "/etc/passwd" in reason and ".scout" in reason
 
@@ -479,9 +497,22 @@ class TestUngatedWriteCapablePluginsAreTracked:
 
     KNOWN_UNGATED = frozenset(
         {
-            "auth", "ava", "brain", "dev_loop", "herd", "lab", "mcp", "quality",
-            "reviewgraph", "rtx", "secrets", "skill", "system", "tennis",
-            "tools", "write",
+            "auth",
+            "ava",
+            "brain",
+            "dev_loop",
+            "herd",
+            "lab",
+            "mcp",
+            "quality",
+            "reviewgraph",
+            "rtx",
+            "secrets",
+            "skill",
+            "system",
+            "tennis",
+            "tools",
+            "write",
         }
     )
 
@@ -544,10 +575,15 @@ class TestUngatedWriteCapablePluginsAreTracked:
             m.name
             for m in sorted(Path("bigbang/plugins").iterdir())
             if (m / "manifest.yaml").exists()
-            and ((policy.load_manifest(m).get("capabilities") or {}).get("filesystem")
-                 or {}).get("write") is True
+            and (
+                (policy.load_manifest(m).get("capabilities") or {}).get("filesystem")
+                or {}
+            ).get("write")
+            is True
         ]
-        assert len(write_capable) >= 45, f"only {len(write_capable)} write-capable found"
+        assert len(write_capable) >= 45, (
+            f"only {len(write_capable)} write-capable found"
+        )
         assert len(self._ungated()) < len(write_capable), "walker found nothing gated"
 
 
@@ -722,7 +758,9 @@ class TestUnknownActionFailsClosed:
                 if not isinstance(node, ast.Call) or len(node.args) < 2:
                     continue
                 fn = node.func
-                name = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", "")
+                name = (
+                    fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", "")
+                )
                 if name not in ("enforce_or_raise", "check_permission"):
                     continue
                 arg = node.args[1]
@@ -761,13 +799,21 @@ class TestDomainMatchBypasses:
         self.fp.write_text("network:\n  allowed_domains: [example.com]\n")
         assert policy.check_user_url("https://example.com/x")[0]
         assert policy.check_user_url("https://api.example.com/x")[0]
-        assert not policy.check_user_url("https://notexample.com/x")[0]  # no suffix trick
+        assert not policy.check_user_url("https://notexample.com/x")[
+            0
+        ]  # no suffix trick
 
     def test_legacy_full_url_manifest_entry_matches_by_host_only(self):
-        m = {"name": "t", "capabilities": {"network": {
-            "enabled": True, "domains": ["https://api.github.com"]}}}
+        m = {
+            "name": "t",
+            "capabilities": {
+                "network": {"enabled": True, "domains": ["https://api.github.com"]}
+            },
+        }
         assert policy.check_permission(m, "network", "https://api.github.com/repos")[0]
-        assert not policy.check_permission(m, "network", "https://evil.com/https://api.github.com")[0]
+        assert not policy.check_permission(
+            m, "network", "https://evil.com/https://api.github.com"
+        )[0]
 
 
 class TestSecretsDefaultDeny:
@@ -781,7 +827,9 @@ class TestSecretsDefaultDeny:
         assert "default-deny" in reason
 
     def test_missing_secrets_block_denies(self):
-        ok, _ = policy.check_permission({"name": "t", "capabilities": {}}, "secret", "ANY")
+        ok, _ = policy.check_permission(
+            {"name": "t", "capabilities": {}}, "secret", "ANY"
+        )
         assert not ok
 
     def test_named_secret_allowed_others_denied(self):

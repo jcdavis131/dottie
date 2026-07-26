@@ -38,7 +38,9 @@ DAY = 86400.0
 # ---- helpers ----------------------------------------------------------------
 
 
-def _conn(schema: str, rows: list[tuple] = (), *, insert: str = "") -> sqlite3.Connection:
+def _conn(
+    schema: str, rows: list[tuple] = (), *, insert: str = ""
+) -> sqlite3.Connection:
     """An in-memory ledger with the schema under test. No fixture files."""
     c = sqlite3.connect(":memory:")
     c.row_factory = sqlite3.Row
@@ -110,7 +112,13 @@ def _dg(items: list[dict], *, since=T0 - DAY, until=T0, error=None, undated=0) -
 
 
 def _item(**over) -> dict:
-    base = {"ts": T0 - 60, "title": "a thing happened", "body": None, "link": None, "tag": None}
+    base = {
+        "ts": T0 - 60,
+        "title": "a thing happened",
+        "body": None,
+        "link": None,
+        "tag": None,
+    }
     base.update(over)
     return base
 
@@ -119,7 +127,12 @@ def _item(**over) -> dict:
 
 
 def test_valid_address_accepts_real_shapes():
-    for good in ("jc@box", "digest@jcamd.com", "a.b+tag@sub.example.co.uk", "x@127.0.0.1"):
+    for good in (
+        "jc@box",
+        "digest@jcamd.com",
+        "a.b+tag@sub.example.co.uk",
+        "x@127.0.0.1",
+    ):
         assert digest.valid_address(good) is True, good
 
 
@@ -171,7 +184,10 @@ def test_deliverable_labels_every_exclusion_and_keeps_order():
             {"email": "not an address"},
         ]
     )
-    assert [r["email"] for r in mailable] == ["b@box", "a@box"]  # roster order, not sorted
+    assert [r["email"] for r in mailable] == [
+        "b@box",
+        "a@box",
+    ]  # roster order, not sorted
     assert [(s["email"], s["reason"]) for s in skipped] == [
         ("old@box", digest.ERR_UNSUBSCRIBED),
         ("gone@box", digest.ERR_UNSUBSCRIBED),
@@ -209,7 +225,9 @@ def test_error_threshold_is_read_from_the_logs_level_ladder():
     """A renamed/reordered level must not silently change what the digest reports."""
     want = logs.LEVELS.index(logs.LEVEL_ERROR)
     assert digest.DEFAULT_SECTIONS["errors"]["filter"]["value"] == want
-    assert logs.LEVELS.index(logs.LEVEL_CRITICAL) <= want, "critical must pass an <= error filter"
+    assert logs.LEVELS.index(logs.LEVEL_CRITICAL) <= want, (
+        "critical must pass an <= error filter"
+    )
 
 
 def test_config_overlay_merges_dicts_and_drops_a_section_with_false(tmp_path):
@@ -220,7 +238,9 @@ def test_config_overlay_merges_dicts_and_drops_a_section_with_false(tmp_path):
     )
     assert "reading" not in cfg["sections"] and "incidents" in cfg["sections"]
     assert cfg["digest"]["title"] == "Mine"
-    assert cfg["digest"]["window_days"] == digest.DEFAULT_DIGEST["window_days"]  # untouched key
+    assert (
+        cfg["digest"]["window_days"] == digest.DEFAULT_DIGEST["window_days"]
+    )  # untouched key
 
 
 def test_config_replaces_the_recipient_list_wholesale(tmp_path):
@@ -253,13 +273,22 @@ def test_config_rejects_a_non_object_file(tmp_path):
 def test_section_validation_refuses_sql_in_an_identifier():
     for value in ("entries; DROP TABLE entries", "a b", '"t"', "1t", "", None):
         with pytest.raises(digest.DigestError) as e:
-            digest.validate_section("s", {"db": "d", "table": value, "cols": {"ts": "ts", "title": "x"}})
+            digest.validate_section(
+                "s", {"db": "d", "table": value, "cols": {"ts": "ts", "title": "x"}}
+            )
         assert e.value.rule == digest.ERR_BAD_IDENTIFIER, value
 
 
 def test_section_validation_refuses_a_bad_column_role_or_a_missing_required_one():
     with pytest.raises(digest.DigestError) as e:
-        digest.validate_section("s", {"db": "d", "table": "t", "cols": {"ts": "ts", "title": "x", "author": "a"}})
+        digest.validate_section(
+            "s",
+            {
+                "db": "d",
+                "table": "t",
+                "cols": {"ts": "ts", "title": "x", "author": "a"},
+            },
+        )
     assert e.value.rule == digest.ERR_BAD_CONFIG and "author" in e.value.message
     for cols in ({"title": "x"}, {"ts": "ts"}, {}):
         with pytest.raises(digest.DigestError) as e:
@@ -288,8 +317,12 @@ def test_every_shipped_section_survives_its_own_validator():
     # the cols check vacuous; and an empty DEFAULT_SECTIONS would skip the loop
     # entirely and still pass. Both are currently non-empty (('ts','title') and 4
     # sections) — these two lines are what keeps that true.
-    assert digest.REQUIRED_ROLES, "empty REQUIRED_ROLES makes the cols assertion vacuous"
-    assert len(digest.DEFAULT_SECTIONS) >= 4, "an empty mapping would skip the loop and pass"
+    assert digest.REQUIRED_ROLES, (
+        "empty REQUIRED_ROLES makes the cols assertion vacuous"
+    )
+    assert len(digest.DEFAULT_SECTIONS) >= 4, (
+        "an empty mapping would skip the loop and pass"
+    )
     for name, spec in digest.DEFAULT_SECTIONS.items():
         out = digest.validate_section(name, spec)
         assert out["enabled"] is True and out["title"]
@@ -298,7 +331,9 @@ def test_every_shipped_section_survives_its_own_validator():
 
 # ---- reading the ledgers -----------------------------------------------------
 
-_T_SCHEMA = "CREATE TABLE t(ts REAL, title TEXT, body TEXT, link TEXT, tag TEXT, lvl INTEGER)"
+_T_SCHEMA = (
+    "CREATE TABLE t(ts REAL, title TEXT, body TEXT, link TEXT, tag TEXT, lvl INTEGER)"
+)
 _T_INSERT = "INSERT INTO t(ts, title, body, link, tag, lvl) VALUES(?,?,?,?,?,?)"
 
 
@@ -348,7 +383,11 @@ def test_read_section_window_bounds_are_inclusive_and_exclude_the_outside():
 def test_read_section_limit_caps_the_rows_read():
     c = _rows(*[(T0 - i, f"row {i}", None, None, None, 0) for i in range(10)])
     out = digest.read_section(c, _spec(), limit=3)
-    assert out["count"] == 3 and [i["title"] for i in out["items"]] == ["row 0", "row 1", "row 2"]
+    assert out["count"] == 3 and [i["title"] for i in out["items"]] == [
+        "row 0",
+        "row 1",
+        "row 2",
+    ]
 
 
 def test_read_section_applies_a_declarative_filter():
@@ -357,8 +396,14 @@ def test_read_section_applies_a_declarative_filter():
         (T0 - 1, "error", None, None, None, 1),
         (T0 - 2, "info", None, None, None, 3),
     )
-    spec = _spec(cols={"ts": "ts", "title": "title"}, filter={"col": "lvl", "op": "<=", "value": 1})
-    assert [i["title"] for i in digest.read_section(c, spec)["items"]] == ["critical", "error"]
+    spec = _spec(
+        cols={"ts": "ts", "title": "title"},
+        filter={"col": "lvl", "op": "<=", "value": 1},
+    )
+    assert [i["title"] for i in digest.read_section(c, spec)["items"]] == [
+        "critical",
+        "error",
+    ]
     null_spec = _spec(filter={"col": "tag", "op": "isnull"})
     assert digest.read_section(c, null_spec)["count"] == 3
 
@@ -384,7 +429,9 @@ def test_read_section_reports_a_vanished_column_and_names_it():
     out = digest.read_section(_rows(), _spec(cols={"ts": "ts", "title": "headline"}))
     assert out["count"] is None and out["error_rule"] == digest.ERR_SCHEMA_DRIFT
     assert "headline" in out["error"]
-    flt = digest.read_section(_rows(), _spec(filter={"col": "nope", "op": "=", "value": 1}))
+    flt = digest.read_section(
+        _rows(), _spec(filter={"col": "nope", "op": "=", "value": 1})
+    )
     assert flt["count"] is None and "nope" in flt["error"]
 
 
@@ -394,9 +441,14 @@ def test_a_reading_has_either_a_value_or_a_reason_never_both_never_neither():
     for out in (good, bad):
         assert (out["error"] is None) != (out["count"] is None), out
         if out["error"] is None:
-            assert isinstance(out["count"], int) and isinstance(out["undated_rows"], int)
+            assert isinstance(out["count"], int) and isinstance(
+                out["undated_rows"], int
+            )
         else:
-            assert out["error_rule"] in (digest.ERR_SCHEMA_DRIFT, digest.ERR_SOURCE_UNREADABLE)
+            assert out["error_rule"] in (
+                digest.ERR_SCHEMA_DRIFT,
+                digest.ERR_SOURCE_UNREADABLE,
+            )
             assert out["undated_rows"] is None
 
 
@@ -412,7 +464,9 @@ def test_read_section_quotes_identifiers_so_a_keyword_column_still_works():
 
 def test_read_section_collapses_whitespace_and_truncates_the_body():
     c = _rows((T0, "  a\n  spread   title ", "x" * 300, None, None, 0))
-    out = digest.read_section(c, _spec(cols={"ts": "ts", "title": "title", "body": "body"}), body_chars=50)
+    out = digest.read_section(
+        c, _spec(cols={"ts": "ts", "title": "title", "body": "body"}), body_chars=50
+    )
     item = out["items"][0]
     assert item["title"] == "a spread title"
     assert len(item["body"]) == 50 and item["body"].endswith("…")
@@ -420,7 +474,10 @@ def test_read_section_collapses_whitespace_and_truncates_the_body():
 
 def test_truncate_never_exceeds_the_limit_and_leaves_short_text_alone():
     assert digest.truncate("abcde", 5) == "abcde"
-    assert digest.truncate("abcdef", 5) == "abcd…" and len(digest.truncate("abcdef", 5)) == 5
+    assert (
+        digest.truncate("abcdef", 5) == "abcd…"
+        and len(digest.truncate("abcdef", 5)) == 5
+    )
     assert digest.truncate("hello world again", 12) == "hello world…"
     assert digest.truncate("x", 0) == "x"  # limit <= 0 disables the clip
 
@@ -456,25 +513,60 @@ def _real_ledgers(root: Path, *, base: float = T0) -> Path:
         lg.execute(
             "INSERT INTO entries(source, path, line_no, ts, dated, ingest_ts, level, level_rank,"
             " message, raw, parser, parsed) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-            ("trainer", "train.log", i, base - 600, 1, base, level, logs.LEVELS.index(level),
-             msg, msg, "jsonl", 1),
+            (
+                "trainer",
+                "train.log",
+                i,
+                base - 600,
+                1,
+                base,
+                level,
+                logs.LEVELS.index(level),
+                msg,
+                msg,
+                "jsonl",
+                1,
+            ),
         )
     lg.commit()
     gl = glitch.open_store(scout / "glitch.db")
-    for status, msg in ((glitch.STATUS_OPEN, "KeyError: tokenizer"), (glitch.STATUS_RESOLVED, "old")):
+    for status, msg in (
+        (glitch.STATUS_OPEN, "KeyError: tokenizer"),
+        (glitch.STATUS_RESOLVED, "old"),
+    ):
         gl.execute(
             "INSERT INTO issues(project, fingerprint, kind, message, culprit, file, line, level,"
             " status, first_seen, last_seen, count) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-            ("dottie", msg, "KeyError", msg, "eval.py:88", "eval.py", 88, "error", status,
-             base - 9000, base - 900, 4),
+            (
+                "dottie",
+                msg,
+                "KeyError",
+                msg,
+                "eval.py:88",
+                "eval.py",
+                88,
+                "error",
+                status,
+                base - 9000,
+                base - 900,
+                4,
+            ),
         )
     gl.commit()
     fd = feeds.open_store(scout / "feeds.db")
     fd.execute(
         "INSERT INTO entries(feed, key, link, title, summary, published_ts, first_seen_ts, score)"
         " VALUES(?,?,?,?,?,?,?,?)",
-        ("arxiv", "k1", "https://arxiv.org/abs/1", "Muon at scale", "holds up",
-         base - 1200, base - 1200, 3.0),
+        (
+            "arxiv",
+            "k1",
+            "https://arxiv.org/abs/1",
+            "Muon at scale",
+            "holds up",
+            base - 1200,
+            base - 1200,
+            3.0,
+        ),
     )
     fd.commit()
     for conn in (up, lg, gl, fd):
@@ -495,13 +587,17 @@ def test_every_shipped_section_reads_the_real_schema_its_adapter_writes(tmp_path
         c.row_factory = sqlite3.Row
         return c, None
 
-    dg = digest.assemble(open_conn, digest.load_config()["sections"], since=T0 - DAY, until=T0)
+    dg = digest.assemble(
+        open_conn, digest.load_config()["sections"], since=T0 - DAY, until=T0
+    )
     by_name = {s["name"]: s for s in dg["sections"]}
     assert sorted(opened) == sorted(s["db"] for s in digest.DEFAULT_SECTIONS.values())
     assert [s["error"] for s in dg["sections"]] == [None, None, None, None], by_name
     assert by_name["incidents"]["count"] == 1
     assert by_name["errors"]["count"] == 1, "the level filter must drop the info line"
-    assert by_name["issues"]["count"] == 1, "the status filter must drop the resolved issue"
+    assert by_name["issues"]["count"] == 1, (
+        "the status filter must drop the resolved issue"
+    )
     assert by_name["reading"]["count"] == 1
     assert dg["totals"]["items"] == 4 and dg["empty"] is False
     assert by_name["reading"]["items"][0]["link"] == "https://arxiv.org/abs/1"
@@ -519,9 +615,14 @@ def test_a_missing_ledger_is_a_labelled_reason_and_the_rest_still_read(tmp_path)
         c.row_factory = sqlite3.Row
         return c, None
 
-    dg = digest.assemble(open_conn, digest.load_config()["sections"], since=T0 - DAY, until=T0)
+    dg = digest.assemble(
+        open_conn, digest.load_config()["sections"], since=T0 - DAY, until=T0
+    )
     reading = next(s for s in dg["sections"] if s["name"] == "reading")
-    assert reading["count"] is None and reading["error_rule"] == digest.ERR_SOURCE_UNREADABLE
+    assert (
+        reading["count"] is None
+        and reading["error_rule"] == digest.ERR_SOURCE_UNREADABLE
+    )
     assert "nothing has written it yet" in reading["error"]
     assert dg["totals"]["sections_failed"] == 1 and dg["totals"]["sections_read"] == 3
     assert dg["totals"]["items"] == 3, "a failed section must not poison the item count"
@@ -588,7 +689,9 @@ def test_campaign_id_is_stable_across_processes():
     src = "import json,sys;sys.path.insert(0,sys.argv[1]);from bigbang.core import digest;print(digest.campaign_id(json.loads(sys.argv[2])))"
     out = subprocess.run(
         [sys.executable, "-c", src, str(ROOT), json.dumps(dg)],
-        capture_output=True, text=True, timeout=120,
+        capture_output=True,
+        text=True,
+        timeout=120,
         env={**os.environ, "PYTHONHASHSEED": "7"},
     )
     assert out.returncode == 0, out.stderr
@@ -599,7 +702,9 @@ def test_campaign_id_is_stable_across_processes():
 
 
 def test_merge_leaves_an_unknown_tag_verbatim_and_names_it():
-    out, missing = digest.merge("Hi {{name}}, see {{nmae}} and {{count}}", {"name": "JC", "count": 3})
+    out, missing = digest.merge(
+        "Hi {{name}}, see {{nmae}} and {{count}}", {"name": "JC", "count": 3}
+    )
     assert out == "Hi JC, see {{nmae}} and 3"
     assert missing == ["nmae"], "a typo'd tag must be reported, never blanked"
 
@@ -626,8 +731,9 @@ def test_every_shipped_template_tag_resolves_for_a_real_recipient(tmp_path):
     cfg = _cfg(tmp_path)
     dg = _dg([_item(title="x")])
     template = " ".join("{{" + t + "}}" for t in digest.TAGS)
-    rendered = digest.personalize(dg, cfg, cfg["recipients"][0], template_text=template,
-                                 template_html=template)
+    rendered = digest.personalize(
+        dg, cfg, cfg["recipients"][0], template_text=template, template_html=template
+    )
     assert rendered["unresolved"] == []
     assert "{{" not in rendered["text"] and "{{" not in rendered["html"]
     assert set(digest.RECIPIENT_TAGS) <= set(digest.TAGS)
@@ -641,8 +747,12 @@ def test_the_shipped_templates_only_use_declared_tags():
 
 
 def test_render_text_shows_sections_counts_errors_and_the_undated_note():
-    body = digest.render_text(_dg([_item(title="a thing", tag="down", body="detail",
-                                        link="https://x/1")], undated=2))
+    body = digest.render_text(
+        _dg(
+            [_item(title="a thing", tag="down", body="detail", link="https://x/1")],
+            undated=2,
+        )
+    )
     assert "Section (1)" in body and "1. [down] a thing" in body
     assert "detail" in body and "https://x/1" in body
     assert "2 row(s) carry no timestamp" in body
@@ -668,14 +778,18 @@ def test_render_text_does_not_embed_the_generation_time():
 
 
 def test_render_html_escapes_hostile_ledger_content():
-    hostile = "<script>alert(1)</script> & \"quoted\""
+    hostile = '<script>alert(1)</script> & "quoted"'
     html = digest.render_html(_dg([_item(title=hostile, body=hostile, tag=hostile)]))
     assert "<script>" not in html and "&lt;script&gt;" in html
     assert html.count("&amp;") >= 1
 
 
 def test_render_html_refuses_to_make_a_hostile_link_clickable_but_still_shows_it():
-    for hostile in ("javascript:alert(1)", "data:text/html,<script>x</script>", "file:///etc/passwd"):
+    for hostile in (
+        "javascript:alert(1)",
+        "data:text/html,<script>x</script>",
+        "file:///etc/passwd",
+    ):
         html = digest.render_html(_dg([_item(title="t", link=hostile)]))
         assert 'href="' not in html, hostile
         assert digest.safe_link(hostile) is None
@@ -687,7 +801,14 @@ def test_safe_link_accepts_only_http_https_mailto_and_rejects_smuggled_whitespac
     assert digest.safe_link("https://x/1") == "https://x/1"
     assert digest.safe_link(" http://x/1 ") == "http://x/1"
     assert digest.safe_link("mailto:jc@box") == "mailto:jc@box"
-    for bad in ("//x/1", "https://x/1\nSet-Cookie: a", 'https://x/"onload=x', "", None, 5):
+    for bad in (
+        "//x/1",
+        "https://x/1\nSet-Cookie: a",
+        'https://x/"onload=x',
+        "",
+        None,
+        5,
+    ):
         assert digest.safe_link(bad) is None, bad
 
 
@@ -703,15 +824,23 @@ def test_digest_values_body_is_markup_on_the_html_path_and_plain_otherwise(tmp_p
     dg = _dg([_item(title="a thing")])
     html_body = digest.digest_values(dg, cfg, html=True)["body"]
     text_body = digest.digest_values(dg, cfg, html=False)["body"]
-    assert "<h2" in html_body and "&lt;h2" not in html_body, "the body must not be double-escaped"
+    assert "<h2" in html_body and "&lt;h2" not in html_body, (
+        "the body must not be double-escaped"
+    )
     assert "<h2" not in text_body and "a thing" in text_body
 
 
 def test_recipient_values_escape_a_hostile_display_name_on_the_html_path():
-    person = {"email": "jc@box", "name": "<img src=x>", "state": digest.STATE_SUBSCRIBED}
+    person = {
+        "email": "jc@box",
+        "name": "<img src=x>",
+        "state": digest.STATE_SUBSCRIBED,
+    }
     mail = {"from": "digest@box"}
     assert digest.recipient_values(person, mail, html=False)["name"] == "<img src=x>"
-    assert digest.recipient_values(person, mail, html=True)["name"] == "&lt;img src=x&gt;"
+    assert (
+        digest.recipient_values(person, mail, html=True)["name"] == "&lt;img src=x&gt;"
+    )
 
 
 def test_recipient_values_fall_back_to_the_local_part_and_name_the_unsubscribe_route():
@@ -722,7 +851,9 @@ def test_recipient_values_fall_back_to_the_local_part_and_name_the_unsubscribe_r
     )
     assert values["name"] == "jc"
     assert "digest@box" in values["unsubscribe"] and "jc@box" in values["unsubscribe"]
-    assert "http" not in values["unsubscribe"], "unsubscribing must not need a web request"
+    assert "http" not in values["unsubscribe"], (
+        "unsubscribing must not need a web request"
+    )
 
 
 # ---- the no-tracking audit ---------------------------------------------------
@@ -731,7 +862,11 @@ def test_recipient_values_fall_back_to_the_local_part_and_name_the_unsubscribe_r
 def test_this_adapters_own_html_loads_nothing_remote():
     hostile = _dg(
         [
-            _item(title='<img src="https://track.example/o.gif">', body="x", link="https://ok/1"),
+            _item(
+                title='<img src="https://track.example/o.gif">',
+                body="x",
+                link="https://ok/1",
+            ),
             _item(title="second", body='<script src="https://evil/x.js"></script>'),
         ]
     )
@@ -739,9 +874,15 @@ def test_this_adapters_own_html_loads_nothing_remote():
 
 
 def test_a_pasted_tracking_pixel_is_found_and_located():
-    found = digest.tracking_findings('<p>hi</p><img src="https://track.example/o.gif?u=1" width="1">')
+    found = digest.tracking_findings(
+        '<p>hi</p><img src="https://track.example/o.gif?u=1" width="1">'
+    )
     assert len(found) == 1
-    assert found[0] == {"tag": "img", "attr": "src", "url": "https://track.example/o.gif?u=1"}
+    assert found[0] == {
+        "tag": "img",
+        "attr": "src",
+        "url": "https://track.example/o.gif?u=1",
+    }
 
 
 def test_the_audit_covers_every_auto_loading_shape_this_family_cares_about():
@@ -766,7 +907,15 @@ def test_the_audit_covers_every_auto_loading_shape_this_family_cares_about():
         "https://s/1x.png",
         "https://s/2x.png",
     }
-    assert {f["tag"] for f in digest.tracking_findings(html)} >= {"link", "iframe", "body", "td", "style", "video", "img"}
+    assert {f["tag"] for f in digest.tracking_findings(html)} >= {
+        "link",
+        "iframe",
+        "body",
+        "td",
+        "style",
+        "video",
+        "img",
+    }
 
 
 def test_the_audit_does_not_cry_wolf_on_a_link_or_a_local_or_data_resource():
@@ -781,7 +930,11 @@ def test_the_audit_does_not_cry_wolf_on_a_link_or_a_local_or_data_resource():
 def test_tracking_findings_are_sorted_so_the_report_diffs_clean():
     html = '<img src="https://b/2.gif"><img src="https://a/1.gif"><script src="https://a/0.js"></script>'
     found = digest.tracking_findings(html)
-    assert [f["url"] for f in found] == ["https://a/1.gif", "https://b/2.gif", "https://a/0.js"]
+    assert [f["url"] for f in found] == [
+        "https://a/1.gif",
+        "https://b/2.gif",
+        "https://a/0.js",
+    ]
 
 
 # ---- the message -------------------------------------------------------------
@@ -822,14 +975,18 @@ def test_build_message_addresses_exactly_one_person_and_carries_no_bcc():
 def test_build_message_dates_in_gmt_so_the_local_zone_never_leaks():
     msg = _msg(date_ts=T0)
     assert parsedate_to_datetime(msg["Date"]).timestamp() == T0
-    assert msg["Date"].endswith("GMT"), "usegmt=True is what keeps the host TZ out of the header"
+    assert msg["Date"].endswith("GMT"), (
+        "usegmt=True is what keeps the host TZ out of the header"
+    )
 
 
 def test_build_message_survives_a_non_ascii_subject_through_the_wire():
     subject = "Résumé — 5.54404 → 5.60506"
     parsed = email.message_from_bytes(_msg(subject=subject).as_bytes())
     assert str(make_header(decode_header(parsed["Subject"]))) == subject
-    assert "Résumé" not in parsed["Subject"], "the header must be RFC 2047 encoded on the wire"
+    assert "Résumé" not in parsed["Subject"], (
+        "the header must be RFC 2047 encoded on the wire"
+    )
 
 
 def test_build_message_refuses_a_header_with_a_newline_in_it():
@@ -896,14 +1053,20 @@ def test_deliver_refuses_to_invent_a_sender_or_a_recipient(tmp_path):
         digest.deliver(dg, _cfg(tmp_path, recipients=[]))
     assert e.value.rule == digest.ERR_NO_RECIPIENTS
     with pytest.raises(digest.DigestError) as e:
-        digest.deliver(dg, _cfg(tmp_path, recipients=[{"email": "x@box", "state": "unsubscribed"}]))
+        digest.deliver(
+            dg, _cfg(tmp_path, recipients=[{"email": "x@box", "state": "unsubscribed"}])
+        )
     assert e.value.rule == digest.ERR_NO_RECIPIENTS
 
 
 def test_deliver_refuses_a_send_with_no_relay_configured(tmp_path):
     with pytest.raises(digest.DigestError) as e:
-        digest.deliver(_dg([_item()]), _cfg(tmp_path, mail={"host": None}), send=True,
-                       send_fn=_Relay())
+        digest.deliver(
+            _dg([_item()]),
+            _cfg(tmp_path, mail={"host": None}),
+            send=True,
+            send_fn=_Relay(),
+        )
     assert e.value.rule == digest.ERR_NO_RELAY
 
 
@@ -912,7 +1075,9 @@ def test_deliver_refuses_an_empty_issue_unless_told_otherwise(tmp_path):
     with pytest.raises(digest.DigestError) as e:
         digest.deliver(empty, _cfg(tmp_path))
     assert e.value.rule == digest.ERR_EMPTY
-    out = digest.deliver(empty, _cfg(tmp_path, digest={"send_when_empty": True}), now=T0)
+    out = digest.deliver(
+        empty, _cfg(tmp_path, digest={"send_when_empty": True}), now=T0
+    )
     assert out["totals"]["recipients"] == 1
 
 
@@ -932,8 +1097,12 @@ def test_every_refusal_fires_identically_on_the_dry_run_path(tmp_path):
 def test_a_dry_run_opens_nothing_and_records_nothing(tmp_path):
     relay, recorded = _Relay(), []
     out = digest.deliver(
-        _dg([_item()]), _cfg(tmp_path), send=False, send_fn=relay,
-        record_fn=recorded.append, now=T0,
+        _dg([_item()]),
+        _cfg(tmp_path),
+        send=False,
+        send_fn=relay,
+        record_fn=recorded.append,
+        now=T0,
     )
     assert relay.sent == [] and recorded == []
     assert out["dry_run"] is True
@@ -954,7 +1123,9 @@ def test_the_dry_run_builds_the_same_bytes_the_real_send_would(tmp_path):
 
 
 def test_deliver_sends_one_message_per_person_each_addressed_only_to_them(tmp_path):
-    cfg = _cfg(tmp_path, recipients=[{"email": "a@box", "name": "A"}, {"email": "b@box"}])
+    cfg = _cfg(
+        tmp_path, recipients=[{"email": "a@box", "name": "A"}, {"email": "b@box"}]
+    )
     relay = _Relay()
     out = digest.deliver(_dg([_item()]), cfg, send=True, send_fn=relay, now=T0)
     assert [r for r, _ in relay.sent] == ["a@box", "b@box"]
@@ -962,7 +1133,10 @@ def test_deliver_sends_one_message_per_person_each_addressed_only_to_them(tmp_pa
     assert tos == ["a@box", "b@box"], "a shared To: would publish the roster to itself"
     ids = {r["message_id"] for r in out["results"]}
     assert len(ids) == 2
-    bodies = [m.get_payload()[0].get_payload(decode=True).decode("utf-8") for _, m in relay.sent]
+    bodies = [
+        m.get_payload()[0].get_payload(decode=True).decode("utf-8")
+        for _, m in relay.sent
+    ]
     assert "Hello A." in bodies[0] and "Hello b." in bodies[1]
     assert out["totals"][digest.STATUS_SENT] == 2
 
@@ -970,10 +1144,19 @@ def test_deliver_sends_one_message_per_person_each_addressed_only_to_them(tmp_pa
 def test_a_relay_failure_is_a_failed_row_not_a_crash(tmp_path):
     relay = _Relay(ok=False, detail="ConnectionRefusedError: nope")
     recorded = []
-    out = digest.deliver(_dg([_item()]), _cfg(tmp_path), send=True, send_fn=relay,
-                         record_fn=recorded.append, now=T0)
+    out = digest.deliver(
+        _dg([_item()]),
+        _cfg(tmp_path),
+        send=True,
+        send_fn=relay,
+        record_fn=recorded.append,
+        now=T0,
+    )
     row = out["results"][0]
-    assert row["status"] == digest.STATUS_FAILED and row["detail"] == "ConnectionRefusedError: nope"
+    assert (
+        row["status"] == digest.STATUS_FAILED
+        and row["detail"] == "ConnectionRefusedError: nope"
+    )
     assert out["totals"][digest.STATUS_FAILED] == 1
     assert len(recorded) == 1, "a failure must be recorded so it can be seen"
 
@@ -996,25 +1179,35 @@ def test_an_already_sent_campaign_is_skipped_and_force_overrides_it(tmp_path):
     out = digest.deliver(dg, cfg, send=True, send_fn=relay, sent_lookup=lookup, now=T0)
     assert out["results"][0]["status"] == digest.STATUS_DUPLICATE
     assert relay.sent == [] and asked == [(dg["campaign_id"], "jc@box")]
-    forced = digest.deliver(dg, cfg, send=True, send_fn=relay, sent_lookup=lookup,
-                            force=True, now=T0)
+    forced = digest.deliver(
+        dg, cfg, send=True, send_fn=relay, sent_lookup=lookup, force=True, now=T0
+    )
     assert forced["results"][0]["status"] == digest.STATUS_SENT and len(relay.sent) == 1
 
 
 def test_deliver_reports_the_skipped_roster_entries_alongside_the_sends(tmp_path):
     cfg = _cfg(
         tmp_path,
-        recipients=[{"email": "a@box"}, {"email": "old@box", "state": "bounced"}, {"email": "junk"}],
+        recipients=[
+            {"email": "a@box"},
+            {"email": "old@box", "state": "bounced"},
+            {"email": "junk"},
+        ],
     )
     out = digest.deliver(_dg([_item()]), cfg, now=T0)
     assert out["totals"]["recipients"] == 1 and out["totals"]["skipped"] == 2
-    assert {s["reason"] for s in out["skipped"]} == {digest.ERR_UNSUBSCRIBED, digest.ERR_BAD_ADDRESS}
+    assert {s["reason"] for s in out["skipped"]} == {
+        digest.ERR_UNSUBSCRIBED,
+        digest.ERR_BAD_ADDRESS,
+    }
 
 
 def test_deliver_surfaces_a_beacon_and_an_unresolved_tag_per_recipient(tmp_path):
     cfg = _cfg(tmp_path)
     out = digest.deliver(
-        _dg([_item()]), cfg, now=T0,
+        _dg([_item()]),
+        cfg,
+        now=T0,
         template_text="{{body}} {{typo}}",
         template_html='<img src="https://track/o.gif">{{body}}',
     )
@@ -1032,10 +1225,17 @@ def _ledger():
 
 def test_only_a_successful_send_suppresses_the_next_one():
     c = _ledger()
-    row = {"email": "jc@box", "status": digest.STATUS_FAILED, "detail": "relay down",
-           "subject": "s", "message_id": "<m>"}
+    row = {
+        "email": "jc@box",
+        "status": digest.STATUS_FAILED,
+        "detail": "relay down",
+        "subject": "s",
+        "message_id": "<m>",
+    }
     digest.record_send(c, "cafe", row, ts=T0)
-    assert digest.already_sent(c, "cafe", "jc@box") is False, "a failure must retry next pass"
+    assert digest.already_sent(c, "cafe", "jc@box") is False, (
+        "a failure must retry next pass"
+    )
     digest.record_send(c, "cafe", {**row, "status": digest.STATUS_SENT}, ts=T0 + 1)
     assert digest.already_sent(c, "cafe", "jc@box") is True
     assert digest.SENT_STATUSES == (digest.STATUS_SENT,)
@@ -1043,8 +1243,18 @@ def test_only_a_successful_send_suppresses_the_next_one():
 
 def test_the_repeat_guard_is_scoped_to_this_campaign_and_this_address():
     c = _ledger()
-    digest.record_send(c, "cafe", {"email": "jc@box", "status": digest.STATUS_SENT,
-                                   "detail": "d", "subject": "s", "message_id": "<m>"}, ts=T0)
+    digest.record_send(
+        c,
+        "cafe",
+        {
+            "email": "jc@box",
+            "status": digest.STATUS_SENT,
+            "detail": "d",
+            "subject": "s",
+            "message_id": "<m>",
+        },
+        ts=T0,
+    )
     assert digest.already_sent(c, "cafe", "jc@box") is True
     assert digest.already_sent(c, "cafe", "other@box") is False
     assert digest.already_sent(c, "beef", "jc@box") is False
@@ -1053,8 +1263,18 @@ def test_the_repeat_guard_is_scoped_to_this_campaign_and_this_address():
 def test_a_retry_replaces_the_earlier_outcome_rather_than_duplicating_it():
     c = _ledger()
     for status in (digest.STATUS_FAILED, digest.STATUS_SENT):
-        digest.record_send(c, "cafe", {"email": "jc@box", "status": status, "detail": status,
-                                       "subject": "s", "message_id": "<m>"}, ts=T0)
+        digest.record_send(
+            c,
+            "cafe",
+            {
+                "email": "jc@box",
+                "status": status,
+                "detail": status,
+                "subject": "s",
+                "message_id": "<m>",
+            },
+            ts=T0,
+        )
     rows = digest.history(c)
     assert len(rows) == 1 and rows[0]["status"] == digest.STATUS_SENT
 
@@ -1062,8 +1282,18 @@ def test_a_retry_replaces_the_earlier_outcome_rather_than_duplicating_it():
 def test_history_is_newest_first_with_a_readable_stamp():
     c = _ledger()
     for i, who in enumerate(["a@box", "b@box", "c@box"]):
-        digest.record_send(c, "cafe", {"email": who, "status": digest.STATUS_SENT, "detail": "d",
-                                       "subject": "s", "message_id": f"<{i}>"}, ts=T0 + i)
+        digest.record_send(
+            c,
+            "cafe",
+            {
+                "email": who,
+                "status": digest.STATUS_SENT,
+                "detail": "d",
+                "subject": "s",
+                "message_id": f"<{i}>",
+            },
+            ts=T0 + i,
+        )
     rows = digest.history(c, limit=2)
     assert [r["recipient"] for r in rows] == ["c@box", "b@box"]
     assert rows[0]["when"] == feeds.fmt_ts(T0 + 2)
@@ -1072,9 +1302,14 @@ def test_history_is_newest_first_with_a_readable_stamp():
 def test_the_ledger_lives_in_its_own_file_not_on_a_monitored_one():
     assert digest.DB_REL != uptime.DB_REL and digest.DB_REL.parent.name == ".scout"
     c = _ledger()
-    tables = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    tables = {
+        r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
     assert tables == {"sends", "meta"}
-    assert c.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0] == digest.SCHEMA_VERSION
+    assert (
+        c.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0]
+        == digest.SCHEMA_VERSION
+    )
 
 
 # ---- diagnostics -------------------------------------------------------------
@@ -1095,18 +1330,28 @@ def test_diagnostics_report_undated_rows_and_an_empty_issue():
     undated = next(d for d in diags if d["rule"] == digest.ERR_UNDATED)
     assert undated["severity"] == "info" and "3 row(s)" in undated["message"]
     empty = digest.to_diagnostics(_dg([]))
-    assert next(d for d in empty if d["rule"] == digest.ERR_EMPTY)["severity"] == "suggestion"
+    assert (
+        next(d for d in empty if d["rule"] == digest.ERR_EMPTY)["severity"]
+        == "suggestion"
+    )
     assert digest.ERR_EMPTY not in [d["rule"] for d in diags]
 
 
 def test_delivery_diagnostics_gate_a_failure_a_beacon_and_a_typo_as_errors(tmp_path):
     result = {
         "results": [
-            {"email": "jc@box", "status": digest.STATUS_FAILED, "detail": "relay down",
-             "unresolved": ["nmae"], "tracking": [{"tag": "img", "attr": "src", "url": "https://t/o.gif"}]}
+            {
+                "email": "jc@box",
+                "status": digest.STATUS_FAILED,
+                "detail": "relay down",
+                "unresolved": ["nmae"],
+                "tracking": [{"tag": "img", "attr": "src", "url": "https://t/o.gif"}],
+            }
         ],
-        "skipped": [{"email": "junk", "reason": digest.ERR_BAD_ADDRESS, "detail": "bad"},
-                    {"email": "old@box", "reason": digest.ERR_UNSUBSCRIBED, "detail": "state"}],
+        "skipped": [
+            {"email": "junk", "reason": digest.ERR_BAD_ADDRESS, "detail": "bad"},
+            {"email": "old@box", "reason": digest.ERR_UNSUBSCRIBED, "detail": "state"},
+        ],
     }
     diags = digest.to_diagnostics(_dg([_item()]), result)
     sev = {d["rule"]: d["severity"] for d in diags}
@@ -1128,8 +1373,20 @@ def test_a_clean_pass_emits_no_diagnostics(tmp_path):
 def test_diagnostics_are_sorted_for_a_clean_diff():
     result = {
         "results": [
-            {"email": "z@box", "status": digest.STATUS_FAILED, "detail": "x", "unresolved": [], "tracking": []},
-            {"email": "a@box", "status": digest.STATUS_FAILED, "detail": "x", "unresolved": [], "tracking": []},
+            {
+                "email": "z@box",
+                "status": digest.STATUS_FAILED,
+                "detail": "x",
+                "unresolved": [],
+                "tracking": [],
+            },
+            {
+                "email": "a@box",
+                "status": digest.STATUS_FAILED,
+                "detail": "x",
+                "unresolved": [],
+                "tracking": [],
+            },
         ],
         "skipped": [],
     }
@@ -1166,14 +1423,18 @@ def test_the_manifest_allows_exactly_one_secret_and_only_the_scout_dir():
     from bigbang.core.policy import check_permission, load_manifest
 
     manifest = load_manifest(_plugin_dir())
-    assert manifest["capabilities"]["secrets"]["allow"] == ["SCOUT_DIGEST_SMTP_PASSWORD"]
+    assert manifest["capabilities"]["secrets"]["allow"] == [
+        "SCOUT_DIGEST_SMTP_PASSWORD"
+    ]
     assert check_permission(manifest, "secret", "AWS_SECRET_ACCESS_KEY")[0] is False
     assert check_permission(manifest, "secret", "SCOUT_DIGEST_SMTP_PASSWORD")[0] is True
     assert check_permission(manifest, "fs_write", ".scout/digest.db")[0] is True
 
 
 def test_the_core_imports_nothing_outside_the_stdlib():
-    tree = ast.parse((ROOT / "bigbang" / "core" / "digest.py").read_text(encoding="utf-8"))
+    tree = ast.parse(
+        (ROOT / "bigbang" / "core" / "digest.py").read_text(encoding="utf-8")
+    )
     roots = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -1181,7 +1442,9 @@ def test_the_core_imports_nothing_outside_the_stdlib():
         elif isinstance(node, ast.ImportFrom) and not node.level:
             roots.add((node.module or "").split(".")[0])
     assert roots, "the AST walk must actually find imports"
-    assert roots <= set(sys.stdlib_module_names) | {"bigbang"}, sorted(roots - set(sys.stdlib_module_names))
+    assert roots <= set(sys.stdlib_module_names) | {"bigbang"}, sorted(
+        roots - set(sys.stdlib_module_names)
+    )
 
 
 def _fake_smtp(box, *, explode=None):
@@ -1212,8 +1475,14 @@ def _fake_smtp(box, *, explode=None):
 
 
 def _mail(**over) -> dict:
-    base = {"host": "127.0.0.1", "port": 25, "timeout_s": 10.0, "starttls": False,
-            "user": None, "password_env": None}
+    base = {
+        "host": "127.0.0.1",
+        "port": 25,
+        "timeout_s": 10.0,
+        "starttls": False,
+        "user": None,
+        "password_env": None,
+    }
     base.update(over)
     return base
 
@@ -1246,7 +1515,8 @@ def test_a_secret_outside_the_manifest_is_never_read(monkeypatch):
     ok, detail = cli._send_message(
         # S106: an env var NAME, not a secret — the point is that it is never read
         _mail(user="scout", password_env="AWS_SECRET_ACCESS_KEY"),  # noqa: S106
-        _msg(), "jc@box",
+        _msg(),
+        "jc@box",
     )
     assert ok is False and "AWS_SECRET_ACCESS_KEY" in detail
     assert box == []
@@ -1260,7 +1530,8 @@ def test_an_allowlisted_secret_is_used_for_starttls_login_and_never_echoed(monke
     ok, detail = cli._send_message(
         # S106: an env var NAME; the value comes from the environment below
         _mail(starttls=True, user="scout", password_env="SCOUT_DIGEST_SMTP_PASSWORD"),  # noqa: S106
-        _msg(), "jc@box",
+        _msg(),
+        "jc@box",
     )
     assert ok is True and box[0].starttls_called is True
     assert box[0].login_args == ("scout", "hunter2")
@@ -1270,7 +1541,9 @@ def test_an_allowlisted_secret_is_used_for_starttls_login_and_never_echoed(monke
 
 def test_a_dead_relay_is_a_failed_delivery_not_a_traceback(monkeypatch):
     cli = _cli_mod()
-    monkeypatch.setattr(cli.smtplib, "SMTP", _fake_smtp([], explode=TimeoutError("relay down")))
+    monkeypatch.setattr(
+        cli.smtplib, "SMTP", _fake_smtp([], explode=TimeoutError("relay down"))
+    )
     ok, detail = cli._send_message(_mail(), _msg(), "jc@box")
     assert ok is False and "TimeoutError: relay down" in detail
 
@@ -1304,7 +1577,10 @@ def test_a_corrupt_ledger_costs_one_section_not_the_whole_digest(tmp_path):
     spec = _spec(db=str(junk), table="entries", cols={"ts": "ts", "title": "message"})
     dg = digest.assemble(cli._open_reader, {"s": spec})
     section = dg["sections"][0]
-    assert section["count"] is None and section["error_rule"] == digest.ERR_SOURCE_UNREADABLE
+    assert (
+        section["count"] is None
+        and section["error_rule"] == digest.ERR_SOURCE_UNREADABLE
+    )
     assert "DatabaseError" in section["error"]
     assert dg["totals"]["sections_failed"] == 1
 
@@ -1316,8 +1592,13 @@ def _run(args, cwd=None):
     env = {**os.environ, "PYTHONPATH": str(ROOT), "PYTHONIOENCODING": "utf-8"}
     return subprocess.run(
         [sys.executable, "-m", "bigbang.cli", "--json", *args],
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
-        timeout=180, cwd=str(cwd or ROOT), env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=180,
+        cwd=str(cwd or ROOT),
+        env=env,
     )
 
 
@@ -1325,10 +1606,17 @@ def _scenario(tmp_path: Path, **over) -> Path:
     # stamped against the real clock: the CLI windows against time.time()
     _real_ledgers(tmp_path, base=time.time())
     body = {
-        "mail": {"from": "digest@jcamd.com", "from_name": "Dottie", "host": "127.0.0.1", "port": 25},
+        "mail": {
+            "from": "digest@jcamd.com",
+            "from_name": "Dottie",
+            "host": "127.0.0.1",
+            "port": 25,
+        },
         "digest": {"title": "Dottie weekly"},
-        "recipients": [{"email": "jc@jcamd.com", "name": "JC"},
-                       {"email": "old@jcamd.com", "state": "unsubscribed"}],
+        "recipients": [
+            {"email": "jc@jcamd.com", "name": "JC"},
+            {"email": "old@jcamd.com", "state": "unsubscribed"},
+        ],
     }
     for k, v in over.items():
         body[k] = {**body.get(k, {}), **v} if isinstance(v, dict) else v
@@ -1360,7 +1648,11 @@ def test_cli_config_names_every_blocker_on_a_fresh_box():
     assert r.returncode == 0, r.stderr + r.stdout
     data = json.loads(r.stdout)["data"]
     assert data["ready"] is False
-    assert data["blockers"] == [digest.ERR_NO_SENDER, digest.ERR_NO_RELAY, digest.ERR_NO_RECIPIENTS]
+    assert data["blockers"] == [
+        digest.ERR_NO_SENDER,
+        digest.ERR_NO_RELAY,
+        digest.ERR_NO_RECIPIENTS,
+    ]
     assert data["recipients"]["mailable"] == []
 
 
@@ -1414,7 +1706,9 @@ def test_cli_send_defaults_to_a_dry_run_that_writes_no_ledger(tmp_path):
     assert data["dry_run"] is True
     assert data["results"][0]["status"] == digest.STATUS_DRY_RUN
     assert data["results"][0]["bytes"] > 1000
-    assert not (tmp_path / ".scout" / "digest.db").exists(), "a rehearsal writes nothing"
+    assert not (tmp_path / ".scout" / "digest.db").exists(), (
+        "a rehearsal writes nothing"
+    )
     assert data["ledger"]["state"].startswith("absent")
 
 
@@ -1429,8 +1723,10 @@ def test_cli_send_is_reproducible_across_runs(tmp_path):
 
 
 def test_cli_send_refuses_an_unconfigured_sender_and_roster_by_name(tmp_path):
-    for over, rule in [({"mail": {"from": None}}, digest.ERR_NO_SENDER),
-                       ({"recipients": []}, digest.ERR_NO_RECIPIENTS)]:
+    for over, rule in [
+        ({"mail": {"from": None}}, digest.ERR_NO_SENDER),
+        ({"recipients": []}, digest.ERR_NO_RECIPIENTS),
+    ]:
         cfg = _scenario(tmp_path, **over)
         r = _run(["digest", "send", "--config", str(cfg)], cwd=tmp_path)
         assert r.returncode == 1, r.stdout
@@ -1440,8 +1736,13 @@ def test_cli_send_refuses_an_unconfigured_sender_and_roster_by_name(tmp_path):
 def test_cli_send_refuses_a_section_with_sql_in_its_table_name(tmp_path):
     cfg = _scenario(
         tmp_path,
-        sections={"evil": {"db": ".scout/logs.db", "table": "entries; DROP TABLE entries",
-                           "cols": {"ts": "ts", "title": "message"}}},
+        sections={
+            "evil": {
+                "db": ".scout/logs.db",
+                "table": "entries; DROP TABLE entries",
+                "cols": {"ts": "ts", "title": "message"},
+            }
+        },
     )
     r = _run(["digest", "send", "--config", str(cfg)], cwd=tmp_path)
     assert r.returncode == 1

@@ -60,10 +60,9 @@ def _has_factory_code(root: Path) -> bool:
     defect). The legacy ``ava/`` path stays as a fallback for old checkouts that
     still carry the physical file.
     """
-    return (
-        (root / "dottie" / "rl" / "codeact_loop.py").is_file()
-        or (root / "ava" / "rl" / "codeact_loop.py").is_file()
-    )
+    return (root / "dottie" / "rl" / "codeact_loop.py").is_file() or (
+        root / "ava" / "rl" / "codeact_loop.py"
+    ).is_file()
 
 
 def factory_code_root() -> Path:

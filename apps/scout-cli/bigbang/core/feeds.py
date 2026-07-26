@@ -829,9 +829,7 @@ def run_fetch(
                 res["error"] = f"unparseable: {e}"
                 record_fetch(conn, name, ts=ts, status=int(status), error=res["error"])
             else:
-                ing = ingest(
-                    conn, name, parsed["entries"], ts=ts, keywords=keywords
-                )
+                ing = ingest(conn, name, parsed["entries"], ts=ts, keywords=keywords)
                 res.update(
                     state=STATE_OK,
                     format=parsed["format"],
@@ -1003,8 +1001,10 @@ def render_digest(dg: dict[str, Any]) -> str:
     if not dg["items"]:
         lines.append("(no entries matched — poll first, or widen the filters)")
     for i, it in enumerate(dg["items"], 1):
-        lines.append(f"{i:>2}. [{float(it.get('score') or 0.0):.1f}] "
-                     f"{it.get('title') or '(untitled)'}")
+        lines.append(
+            f"{i:>2}. [{float(it.get('score') or 0.0):.1f}] "
+            f"{it.get('title') or '(untitled)'}"
+        )
         meta = " · ".join(
             part
             for part in (
