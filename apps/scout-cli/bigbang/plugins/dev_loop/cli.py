@@ -333,4 +333,4 @@ def run_cmd(
 def register(root):
     root.add_typer(app, name="dev_loop")
 
-# TODO: review toil PR https://github.com/jcdavis131/dottie/pull/6 — 41.9/week dev_loop plugin review (scout todos verification)
+# TODO: review toil PR https://github.com/jcdavis131/dottie/pull/9 — 41.9/week dev_loop plugin review (scout todos verification)
