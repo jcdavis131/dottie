@@ -599,3 +599,38 @@ sources:
     filters: {min_chars: 1}
     license: mixed-open          # per-file sidecar; keep weight 0 until licenses clean
     gated: false
+
+  # ---- stack-v3 code corpus (activated 2026-07-26) ---------------------------
+  # HuggingFaceCode/stack-v3-train. Verified against the HF API 2026-07-26:
+  # license "odc-by", gated false, private false, config "default", split "train",
+  # 35,376 downloads. It clears gate_license() unchanged — no override was added.
+  #
+  # WHY IT NEEDS AN ADAPTER RATHER THAN A text_field. Rows are REPOSITORIES, not
+  # files: {repo_path, repo_id, commit_id, github_metadata, num_files, files:[...]}
+  # and every element of `files` carries its own content, language, is_vendor,
+  # license_type and detected_licenses (a LIST). There is no single string field
+  # holding training text.
+  #
+  # AND WHY THE PER-FILE GATE IS MANDATORY: odc-by licenses the COLLECTION, not the
+  # code. Individual files carry whatever their authors chose, which is why the
+  # schema ships detected_licenses per file. The adapter gates EVERY file through
+  # gate_license (imported, never re-implemented) and returns None when nothing
+  # survives — same lesson pull_oapen_books.py::gate_rights had to learn, where
+  # reading only the first licence value admitted a work that was CC-BY *and* ND.
+  #
+  # WEIGHT 0.0 ON PURPOSE, matching synth_research_pdf above. Every phase's weights
+  # must sum to ~1.0 or the collector spins, so this enters dormant and gets
+  # rebalanced in one deliberate edit against the other phase-2/3 sources.
+  - name: stack_v3_code
+    kind: hf
+    dataset: HuggingFaceCode/stack-v3-train
+    config: default
+    split: train
+    text_field: text             # produced by the adapter; absent from the raw row
+    adapter: stackv3
+    phases: [2, 3]
+    weight: {2: 0.0, 3: 0.0}
+    task_type: automatic
+    filters: {min_chars: 200}
+    license: odc-by              # collection licence; per-FILE gate in the adapter
+    gated: false

@@ -14,7 +14,7 @@ import pytest
 
 _SPEC = importlib.util.spec_from_file_location(
     "stackv3_adapt",
-    Path(__file__).resolve().parents[1] / "scripts" / "stackv3_adapt.py",
+    Path(__file__).resolve().parents[1] / "dottie" / "datagen" / "stackv3_adapt.py",
 )
 stackv3 = importlib.util.module_from_spec(_SPEC)
 sys.modules["stackv3_adapt"] = stackv3
@@ -167,7 +167,7 @@ class TestGateIsImportedNotDuplicated:
 
     def test_no_second_allowlist_literal_in_the_adapter(self):
         src = (
-            Path(__file__).resolve().parents[1] / "scripts" / "stackv3_adapt.py"
+            Path(__file__).resolve().parents[1] / "dottie" / "datagen" / "stackv3_adapt.py"
         ).read_text(encoding="utf-8")
         assert "LICENSE_ALLOW" not in src, "adapter must not re-declare the allowlist"
         assert "cc-by-4.0" not in src, "adapter must not hardcode licence ids"

@@ -34,7 +34,10 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
-_DD = Path(__file__).resolve().parent / "dataset_discovery.py"
+# Factory root is parents[2] from dottie/datagen/. This module moved here from
+# scripts/ on 2026-07-26 to be importable as dottie.datagen.stackv3_adapt; the
+# gate still lives in scripts/, loaded by absolute path so cwd cannot matter.
+_DD = Path(__file__).resolve().parents[2] / "scripts" / "dataset_discovery.py"
 
 
 def _load_gate():

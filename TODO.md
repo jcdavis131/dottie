@@ -80,6 +80,37 @@ Residuals the verifiers found that the builders did not report — worth closing
 - [ ] `hard_negatives.py` — a dead guard remains in source B; the D1 identity collapse is
   applied only to the self-negative half.
 
+### ✅ 2026-07-26 — FROZEN PATHS UNFROZEN; stack-v3 is ACTIVATED (dormant at weight 0.0)
+
+Operator said unfreeze. Verified the freeze was safe to lift before touching anything —
+the freeze existed to protect a **live** trainer, and there is no live trainer:
+**GPU 0 MiB used / 12,282 total, 0% utilisation, zero compute processes**, vmmemWSL
+110 MB. No training run occupies 0 MiB of VRAM. (A broken docker CLI would NOT have
+been sufficient evidence — "the tool cannot reach it" is not "it is not running" — but
+GPU occupancy is a different and stronger signal.)
+
+Two frozen edits made:
+1. `dottie/datagen/stackv3_adapt.py` — moved from `scripts/` so it is importable as
+   `dottie.datagen.stackv3_adapt`; its `_DD` path re-anchored to `parents[2]/scripts/`
+   so `gate_license` still loads by absolute path and cwd cannot matter.
+2. `dottie/datagen/adapters.py` — `"stackv3"` registered in `ADAPTERS`.
+3. `configs/sources.yaml` — `stack_v3_code` added, **weight 0.0 on both phases**.
+
+Verified rather than assumed:
+- **Every phase still sums to exactly 1.0** (0:1.0 1:1.0 2:1.0 3:1.0 4:1.0 5:1.0), 38
+  sources. That was the documented collector-spin trap.
+- **Wiring works end to end**: `apply_adapter('stackv3', rec)` on a repo with one MIT
+  and one ND file keeps the MIT file, excludes the ND file from the training text, and
+  returns `None` for an all-ND repo.
+- 242 passed / 1 skipped across the adapter, licence gate, manifest, datagen, all three
+  sibling adapters and the collector.
+- Weight 0.0 follows existing precedent: `synth_research_pdf` sits at 0.0 with the note
+  "per-file sidecar; keep weight 0 until licenses clean" — the identical situation.
+
+- [ ] **Rebalance the phase-2/3 weights to give stack_v3_code a non-zero share.** It is
+  dormant until then. Must be one deliberate edit that lowers other phase-2/3 sources by
+  the same total, or the collector spins.
+
 ### Waiting on the operator (not on an assistant)
 - The 2 FROZEN edits to activate stack-v3 (`odc-by` verified; adapter + 27 tests ready;
   source enters at weight `0.00` or the collector spins).
