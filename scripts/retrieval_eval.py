@@ -1,0 +1,256 @@
+#!/usr/bin/env python3
+"""Golden retrieval set from git history + the lexical baseline it must beat.
+
+Steps 1 and 2 of the embedding sequence (tasks/artifacts/embedding_strategy_review_
+2026-07-26.md). Neither needs a GPU or a decision. Both must exist before any
+embedding model can be said to have helped, because right now nothing in this tree
+measures retrieval at all.
+
+THE SET. Each commit is a (query -> relevant documents) pair: the message is the
+query, the changed files are the relevant documents. Free, domain-specific by
+construction, and — critically — **temporally splittable**. Given that the shipped
+vector-hoops embedding turned out to be trained transductively ("NOT held-out"),
+the split here is walk-forward by commit date and a random split is not offered as
+an option.
+
+STATED LIMIT, not discovered later: a commit's changed files are *sufficient*
+relevance, not *complete* relevance. Other files may be equally relevant and simply
+were not touched. So absolute recall is under-measured. The set remains valid for
+COMPARING two retrievers on identical queries, which is the only question being
+asked of it.
+
+THE LEAK CONTROL. Commit messages frequently name the file they touch
+("fix(gate): ... gate_audit" -> scripts/gate_audit.py). A lexical retriever gets
+that for free, and reporting only the headline number would overstate BM25 and
+therefore understate whatever must beat it. Every metric is reported twice: over
+all queries, and over the LEAK-FREE subset where no target filename stem appears in
+the query.
+
+BASELINE. sqlite3 FTS5 with bm25() ranking — stdlib, and the same technology
+scout-cli already ships in bigbang/core/search.py and searchindex.py.
+
+Usage:
+    python scripts/retrieval_eval.py                     # mine, index, score
+    python scripts/retrieval_eval.py --max-commits 2000
+    python scripts/retrieval_eval.py --json
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import re
+import sqlite3
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+MIN_QUERY_WORDS = 5
+MAX_FILES_PER_COMMIT = 8
+K = 10
+INDEXABLE = {".py", ".md", ".mjs", ".js", ".ts", ".yml", ".yaml", ".sh", ".json", ".html"}
+SKIP_PARTS = {".git", "__pycache__", ".venv", "node_modules", ".ruff_cache",
+              ".pytest_cache", "site-packages", "dist", "build"}
+MAX_DOC_CHARS = 60_000
+
+
+def mine_pairs(max_commits: int):
+    """(query, [files], iso_date) per usable commit, newest first."""
+    out = subprocess.run(
+        ["git", "log", f"-n{max_commits}", "--pretty=format:@@@%cI%x09%s", "--name-only"],
+        cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace",
+    ).stdout
+    pairs, date, msg, files = [], None, None, []
+
+    def flush():
+        if msg is None:
+            return
+        if len(msg.split()) < MIN_QUERY_WORDS:
+            return
+        keep = [f for f in files if Path(f).suffix in INDEXABLE]
+        if not (1 <= len(keep) <= MAX_FILES_PER_COMMIT):
+            return
+        pairs.append({"query": msg, "relevant": keep, "date": date})
+
+    for line in out.splitlines():
+        if line.startswith("@@@"):
+            flush()
+            rest = line[3:]
+            date, _, msg = rest.partition("\t")
+            files = []
+        elif line.strip():
+            files.append(line.strip())
+    flush()
+    return pairs
+
+
+def build_index(con: sqlite3.Connection):
+    """FTS5 over the tree at HEAD. Returns the number of documents indexed."""
+    con.execute("CREATE VIRTUAL TABLE docs USING fts5(path, body, tokenize='porter unicode61')")
+    n = 0
+    for p in ROOT.rglob("*"):
+        if not p.is_file() or p.suffix not in INDEXABLE:
+            continue
+        if SKIP_PARTS & set(p.parts):
+            continue
+        rel = p.relative_to(ROOT).as_posix()
+        try:
+            body = p.read_text(encoding="utf-8", errors="replace")[:MAX_DOC_CHARS]
+        except OSError:
+            continue
+        # The path is indexed as a field of its own so a query naming a file can
+        # match it — that is realistic, and the leak control below measures it.
+        con.execute("INSERT INTO docs(path, body) VALUES (?, ?)", (rel, body))
+        n += 1
+    con.commit()
+    return n
+
+
+_TOK = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
+
+
+def fts_query(con, query: str, k: int):
+    """FTS5 MATCH with bm25 ranking. Terms OR'd; FTS5 syntax neutralised."""
+    terms = _TOK.findall(query)
+    if not terms:
+        return []
+    expr = " OR ".join(f'"{t}"' for t in dict.fromkeys(terms))
+    try:
+        rows = con.execute(
+            "SELECT path FROM docs WHERE docs MATCH ? ORDER BY bm25(docs) LIMIT ?",
+            (expr, k),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    return [r[0] for r in rows]
+
+
+def ndcg_at_k(ranked, relevant, k=K):
+    rel = set(relevant)
+    dcg = sum(1.0 / math.log2(i + 2) for i, p in enumerate(ranked[:k]) if p in rel)
+    ideal = sum(1.0 / math.log2(i + 2) for i in range(min(len(rel), k)))
+    return dcg / ideal if ideal else 0.0
+
+
+def rr(ranked, relevant):
+    rel = set(relevant)
+    for i, p in enumerate(ranked):
+        if p in rel:
+            return 1.0 / (i + 1)
+    return 0.0
+
+
+def recall_at_k(ranked, relevant, k=K):
+    rel = set(relevant)
+    return len(rel & set(ranked[:k])) / len(rel) if rel else 0.0
+
+
+def leaks_filename(query: str, relevant) -> bool:
+    """Does the query contain a target filename stem? Then lexical gets it free."""
+    q = {t.lower() for t in _TOK.findall(query)}
+    for f in relevant:
+        stem = Path(f).stem.lower()
+        if stem in q:
+            return True
+        # snake_case stems also leak via their parts ("gate_audit" -> "gate","audit")
+        parts = [s for s in stem.split("_") if len(s) > 2]
+        if parts and all(s in q for s in parts):
+            return True
+    return False
+
+
+def score(con, pairs, k=K):
+    rows = []
+    for p in pairs:
+        ranked = fts_query(con, p["query"], k)
+        rows.append(
+            {
+                "ndcg": ndcg_at_k(ranked, p["relevant"], k),
+                "mrr": rr(ranked, p["relevant"]),
+                "recall": recall_at_k(ranked, p["relevant"], k),
+                "leak": leaks_filename(p["query"], p["relevant"]),
+                "hit": bool(set(ranked[:k]) & set(p["relevant"])),
+            }
+        )
+    return rows
+
+
+def summarise(rows):
+    def avg(key, subset):
+        vals = [r[key] for r in subset]
+        return sum(vals) / len(vals) if vals else 0.0
+
+    leak_free = [r for r in rows if not r["leak"]]
+    return {
+        "n": len(rows),
+        "n_leak_free": len(leak_free),
+        "all": {m: round(avg(m, rows), 4) for m in ("ndcg", "mrr", "recall")},
+        "leak_free": {m: round(avg(m, leak_free), 4) for m in ("ndcg", "mrr", "recall")},
+        "hit_rate_all": round(sum(r["hit"] for r in rows) / max(len(rows), 1), 4),
+    }
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--max-commits", type=int, default=4000)
+    ap.add_argument("--split-frac", type=float, default=0.7,
+                    help="fraction of commits (oldest first) that form the TRAIN half")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--out", help="write the golden set as JSONL")
+    args = ap.parse_args()
+
+    pairs = mine_pairs(args.max_commits)
+    pairs.sort(key=lambda p: p["date"])  # oldest first for a walk-forward boundary
+    cut = int(len(pairs) * args.split_frac)
+    train, test = pairs[:cut], pairs[cut:]
+    boundary = test[0]["date"][:10] if test else "n/a"
+
+    con = sqlite3.connect(":memory:")
+    n_docs = build_index(con)
+
+    test_rows = score(con, test)
+    summary = {
+        "golden_set": {
+            "pairs_total": len(pairs),
+            "train": len(train),
+            "test": len(test),
+            "split": "walk-forward by commit date (NEVER random)",
+            "boundary_date": boundary,
+        },
+        "index": {"documents": n_docs, "engine": "sqlite3 FTS5 + bm25()"},
+        "baseline_on_test": summarise(test_rows),
+    }
+
+    if args.out:
+        with Path(args.out).open("w", encoding="utf-8", newline="\n") as fh:
+            for p in pairs:
+                fh.write(json.dumps(p, ensure_ascii=False) + "\n")
+
+    if args.json:
+        print(json.dumps(summary, indent=2))
+        return 0
+
+    g, b = summary["golden_set"], summary["baseline_on_test"]
+    print("GOLDEN SET (from git history)")
+    print(f"  pairs           : {g['pairs_total']}  (train {g['train']} / test {g['test']})")
+    print(f"  split           : {g['split']}")
+    print(f"  boundary        : {g['boundary_date']}")
+    print(f"  indexed docs    : {n_docs}")
+    print()
+    print(f"LEXICAL BASELINE — sqlite3 FTS5 + bm25(), scored on the {g['test']} TEST queries")
+    print(f"  {'':22}{'NDCG@10':>9}{'MRR':>9}{'recall@10':>11}")
+    print(f"  {'all queries':22}{b['all']['ndcg']:>9.3f}{b['all']['mrr']:>9.3f}"
+          f"{b['all']['recall']:>11.3f}   (n={b['n']})")
+    print(f"  {'leak-free subset':22}{b['leak_free']['ndcg']:>9.3f}{b['leak_free']['mrr']:>9.3f}"
+          f"{b['leak_free']['recall']:>11.3f}   (n={b['n_leak_free']})")
+    print()
+    print("  leak-free = the query does NOT contain a target filename stem, so the")
+    print("  retriever cannot match the path directly. That subset is the honest bar.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
