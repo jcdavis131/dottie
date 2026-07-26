@@ -352,7 +352,9 @@ def check_permission(
     return True, "ok"
 
 
-def enforce_or_raise(manifest: dict, action: str, resource: str, base: str | None = None):
+def enforce_or_raise(
+    manifest: dict, action: str, resource: str, base: str | None = None
+):
     ok, reason = check_permission(manifest, action, resource, base)
     if not ok:
         import typer

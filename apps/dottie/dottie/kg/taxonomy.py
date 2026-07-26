@@ -12,38 +12,61 @@ one source of truth. Until then this mirror is the drift risk, stated plainly.
 from __future__ import annotations
 
 import re
-from typing import List, Tuple
 
 #: (class_id, regex, one-line summary of the repair hint that fires for it).
 #: Order matters: first match wins for the primary class, exactly like
 #: validate.diagnose_failure walks its _HINTS tuple.
-FAILURE_CLASSES: Tuple[Tuple[str, str, str], ...] = (
-    ("einsum", r"einsum\(\)",
-     "replace einsum with explicit reshape/matmul/transpose ops + shape asserts"),
-    ("shape_algebra",
-     r"must match the size of tensor|Expected size for first two dimensions|mat1 and mat2 shapes",
-     "track shapes symbolically from [batch, seq, hidden]; assert after each reshape/matmul"),
-    ("ctor_missing_arg", r"missing \d+ required positional argument",
-     "every extra __init__ parameter needs a width-derived default"),
-    ("no_attribute", r"has no attribute '\w+'",
-     "assign every self.<attr> in __init__; use only documented torch.nn modules"),
-    ("name_error", r"NameError: name",
-     "define or import the name (torch/torch.nn/math only)"),
-    ("nan_inf", r"NaN/Inf",
-     "eps inside sqrt/log/division; clamp attention logits before softmax"),
-    ("degenerate", r"degenerate block|RANK COLLAPSE|rank collapse",
-     "the block needs learnable parameters whose output varies per position and feature"),
-    ("output_shape_contract", r"the SAME \[batch, seq, hidden\] shape",
-     "return exactly one tensor with the input's shape; project back with a final Linear"),
+FAILURE_CLASSES: tuple[tuple[str, str, str], ...] = (
+    (
+        "einsum",
+        r"einsum\(\)",
+        "replace einsum with explicit reshape/matmul/transpose ops + shape asserts",
+    ),
+    (
+        "shape_algebra",
+        r"must match the size of tensor|Expected size for first two dimensions|mat1 and mat2 shapes",
+        "track shapes symbolically from [batch, seq, hidden]; assert after each reshape/matmul",
+    ),
+    (
+        "ctor_missing_arg",
+        r"missing \d+ required positional argument",
+        "every extra __init__ parameter needs a width-derived default",
+    ),
+    (
+        "no_attribute",
+        r"has no attribute '\w+'",
+        "assign every self.<attr> in __init__; use only documented torch.nn modules",
+    ),
+    (
+        "name_error",
+        r"NameError: name",
+        "define or import the name (torch/torch.nn/math only)",
+    ),
+    (
+        "nan_inf",
+        r"NaN/Inf",
+        "eps inside sqrt/log/division; clamp attention logits before softmax",
+    ),
+    (
+        "degenerate",
+        r"degenerate block|RANK COLLAPSE|rank collapse",
+        "the block needs learnable parameters whose output varies per position and feature",
+    ),
+    (
+        "output_shape_contract",
+        r"the SAME \[batch, seq, hidden\] shape",
+        "return exactly one tensor with the input's shape; project back with a final Linear",
+    ),
 )
 
 _LEVEL_RE = re.compile(r"validation failed at '(\w+)'")
 _ERRORISH_RE = re.compile(
     r"^\w+(\.\w+)*(Error|Exception|Warning)\b|^AssertionError|Error:"
-    r"|^[EFW]\d{3}\b")  # last alternative: ruff codes (F821, E999, ...)
+    r"|^[EFW]\d{3}\b"
+)  # last alternative: ruff codes (F821, E999, ...)
 
 
-def classify(detail: str) -> List[str]:
+def classify(detail: str) -> list[str]:
     """All failure classes whose signature appears in ``detail`` (may be [])."""
     return [cid for cid, pat, _ in FAILURE_CLASSES if re.search(pat, detail or "")]
 

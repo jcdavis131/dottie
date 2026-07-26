@@ -274,8 +274,15 @@ def test_check_span_rejects_every_fabricated_shape():
     bad_rows = [
         ({**base, "duration_ms": None}, "requires duration_ms"),
         ({**base, "status": apm.STATUS_UNFINISHED}, "must not carry a duration_ms"),
-        ({**base, "duration_ms": None, "status": apm.STATUS_UNFINISHED, "error": None},
-         "must name WHY"),
+        (
+            {
+                **base,
+                "duration_ms": None,
+                "status": apm.STATUS_UNFINISHED,
+                "error": None,
+            },
+            "must name WHY",
+        ),
         ({**base, "error": "leftover"}, "must not also carry an error"),
         ({**base, "status": apm.STATUS_ERROR, "error": None}, "must name the failure"),
         ({**base, "status": "green"}, "status must be one of"),
@@ -316,8 +323,13 @@ def test_check_span_normalizes_and_accepts_both_honest_shapes():
     assert measured["attrs"] == {} and measured["wall_start"] is None
     assert list(measured) == list(apm.SPAN_FIELDS)  # stable key order
     unmeasured = apm.check_span(
-        {"trace_id": "t9", "span_id": 5, "name": "gone", "status": "unfinished",
-         "error": "process exited"}
+        {
+            "trace_id": "t9",
+            "span_id": 5,
+            "name": "gone",
+            "status": "unfinished",
+            "error": "process exited",
+        }
     )
     assert unmeasured["duration_ms"] is None and unmeasured["error"] == "process exited"
 
@@ -358,13 +370,21 @@ def test_operation_stats_percentiles_errors_and_slowest_first_ordering():
         _span("fast", span_id=1, duration=1.0),
         _span("fast", span_id=2, duration=3.0),
         _span("slow", span_id=3, duration=100.0),
-        _span("slow", span_id=4, duration=300.0, status=apm.STATUS_ERROR, error="TimeoutError: x"),
+        _span(
+            "slow",
+            span_id=4,
+            duration=300.0,
+            status=apm.STATUS_ERROR,
+            error="TimeoutError: x",
+        ),
     ]
     rows = apm.operation_stats(spans)
     assert [r["name"] for r in rows] == ["slow", "fast"]  # biggest total first
     slow, fast = rows
     assert slow["calls"] == 2 and slow["measured"] == 2 and slow["errors"] == 1
-    assert slow["p50_ms"] == 100.0 and slow["p95_ms"] == 300.0 and slow["max_ms"] == 300.0
+    assert (
+        slow["p50_ms"] == 100.0 and slow["p95_ms"] == 300.0 and slow["max_ms"] == 300.0
+    )
     assert slow["mean_ms"] == 200.0 and slow["total_ms"] == 400.0
     assert slow["error_rate"] == 0.5
     assert fast["error_rate"] == 0.0 and fast["unmeasured_reason"] is None
@@ -388,8 +408,15 @@ def test_operation_stats_never_averages_over_an_unmeasured_span():
 def test_operation_stats_with_nothing_measured_reports_why_not_zeros():
     spans = [_span("dark", span_id=1, duration=None, error="clock broke")]
     row = apm.operation_stats(spans)[0]
-    for field in ("p50_ms", "p95_ms", "p99_ms", "max_ms", "mean_ms", "total_ms",
-                  "error_rate"):
+    for field in (
+        "p50_ms",
+        "p95_ms",
+        "p99_ms",
+        "max_ms",
+        "mean_ms",
+        "total_ms",
+        "error_rate",
+    ):
         assert row[field] is None, field
     assert "none of 1 calls carried a duration" in row["unmeasured_reason"]
     assert "clock broke" in row["unmeasured_reason"]
@@ -409,12 +436,18 @@ def test_operation_stats_separates_services_with_the_same_name():
 
 def test_apdex_bands_count_errors_as_frustrated():
     spans = [
-        _span("t", trace_id="a", span_id=1, duration=50.0),    # <= T -> satisfied
-        _span("t", trace_id="b", span_id=1, duration=100.0),   # == T -> satisfied
-        _span("t", trace_id="c", span_id=1, duration=250.0),   # <= 4T -> tolerating
-        _span("t", trace_id="d", span_id=1, duration=401.0),   # > 4T -> frustrated
-        _span("t", trace_id="e", span_id=1, duration=1.0,
-              status=apm.STATUS_ERROR, error="ValueError: x"),  # fast but failed
+        _span("t", trace_id="a", span_id=1, duration=50.0),  # <= T -> satisfied
+        _span("t", trace_id="b", span_id=1, duration=100.0),  # == T -> satisfied
+        _span("t", trace_id="c", span_id=1, duration=250.0),  # <= 4T -> tolerating
+        _span("t", trace_id="d", span_id=1, duration=401.0),  # > 4T -> frustrated
+        _span(
+            "t",
+            trace_id="e",
+            span_id=1,
+            duration=1.0,
+            status=apm.STATUS_ERROR,
+            error="ValueError: x",
+        ),  # fast but failed
     ]
     score = apm.apdex(spans, t_ms=100.0)
     assert (score["satisfied"], score["tolerating"], score["frustrated"]) == (2, 1, 2)
@@ -470,7 +503,9 @@ def test_trace_rollup_prefers_the_root_measurement_and_labels_fallbacks():
     rows = apm.trace_rollup(
         [
             _span("root", trace_id="t1", span_id=1, duration=40.0, wall=WALL),
-            _span("kid", trace_id="t1", span_id=2, parent_id=1, offset=5.0, duration=10.0),
+            _span(
+                "kid", trace_id="t1", span_id=2, parent_id=1, offset=5.0, duration=10.0
+            ),
         ]
     )
     assert rows[0]["duration_ms"] == 40.0 and rows[0]["duration_from"] == "root-span"
@@ -494,10 +529,24 @@ def test_trace_rollup_orders_newest_first_and_counts_problems():
         [
             _span("old", trace_id="old", span_id=1, duration=1.0, wall=WALL),
             _span("new", trace_id="new", span_id=1, duration=1.0, wall=WALL + 60),
-            _span("kid", trace_id="new", span_id=2, parent_id=1, duration=None,
-                  wall=WALL + 60),
-            _span("bad", trace_id="new", span_id=3, parent_id=1, duration=2.0,
-                  status=apm.STATUS_ERROR, error="OSError: x", wall=WALL + 60),
+            _span(
+                "kid",
+                trace_id="new",
+                span_id=2,
+                parent_id=1,
+                duration=None,
+                wall=WALL + 60,
+            ),
+            _span(
+                "bad",
+                trace_id="new",
+                span_id=3,
+                parent_id=1,
+                duration=2.0,
+                status=apm.STATUS_ERROR,
+                error="OSError: x",
+                wall=WALL + 60,
+            ),
         ]
     )
     assert [r["trace_id"] for r in rows] == ["new", "old"]
@@ -544,9 +593,7 @@ def test_a_legally_deep_chain_is_labelled_truncated_not_a_cycle():
     depth_limit = apm._MAX_ANCESTRY
     spans = [_span("f0", span_id=1, duration=1.0)]
     for i in range(1, depth_limit + 90):
-        spans.append(
-            _span(f"f{i}", span_id=i + 1, parent_id=i, depth=i, duration=1.0)
-        )
+        spans.append(_span(f"f{i}", span_id=i + 1, parent_id=i, depth=i, duration=1.0))
     roots = apm.trace_tree(spans, "t1")
     assert [r["name"] for r in roots] == ["f0"]  # still ONE root: nothing detached
     deep = {s["span_id"]: s for s in spans}
@@ -605,8 +652,10 @@ def test_flame_layout_with_no_measured_span_reports_the_reason():
     assert "no measured span to scale" in layout["layout_error"]
     assert "crashed" in layout["layout_error"]
     unmeasured = apm.flame_layout(
-        [_span("x", span_id=1, duration=5.0), _span("y", span_id=2, parent_id=1,
-                                                    duration=None)]
+        [
+            _span("x", span_id=1, duration=5.0),
+            _span("y", span_id=2, parent_id=1, duration=None),
+        ]
     )
     kid = next(b for b in unmeasured["blocks"] if b["path"] == ["x", "y"])
     assert kid["unmeasured"] == 1 and kid["measured"] == 0 and kid["total_ms"] == 0.0
@@ -650,12 +699,27 @@ def test_load_spans_filters_and_never_ranks_an_unmeasured_span_as_fast():
         conn,
         [
             _span("fast", trace_id="t1", span_id=1, duration=1.0, wall=WALL),
-            _span("slow", trace_id="t1", span_id=2, parent_id=1, duration=900.0,
-                  wall=WALL),
-            _span("gone", trace_id="t2", span_id=1, duration=None, error="exited",
-                  wall=WALL + 100),
-            _span("boom", trace_id="t2", span_id=2, parent_id=1, duration=2.0,
-                  status=apm.STATUS_ERROR, error="OSError: x", wall=WALL + 100),
+            _span(
+                "slow", trace_id="t1", span_id=2, parent_id=1, duration=900.0, wall=WALL
+            ),
+            _span(
+                "gone",
+                trace_id="t2",
+                span_id=1,
+                duration=None,
+                error="exited",
+                wall=WALL + 100,
+            ),
+            _span(
+                "boom",
+                trace_id="t2",
+                span_id=2,
+                parent_id=1,
+                duration=2.0,
+                status=apm.STATUS_ERROR,
+                error="OSError: x",
+                wall=WALL + 100,
+            ),
         ],
         ingest_ts=WALL,
     )
@@ -665,7 +729,9 @@ def test_load_spans_filters_and_never_ranks_an_unmeasured_span_as_fast():
     # min_ms compares against duration_ms, so NULL durations can never satisfy it
     assert [s["name"] for s in apm.load_spans(conn, min_ms=100.0)] == ["slow"]
     assert [s["name"] for s in apm.load_spans(conn, min_ms=0.0)] == [
-        "fast", "slow", "boom",
+        "fast",
+        "slow",
+        "boom",
     ]
     assert {s["trace_id"] for s in apm.load_spans(conn, since=WALL + 50)} == {"t2"}
     assert len(apm.load_spans(conn, limit=1)) == 1
@@ -693,9 +759,12 @@ def test_open_store_is_idempotent_on_a_real_file(tmp_path):
     conn.close()
     conn2 = apm.open_store(db)  # re-open: no error, prior rows survive
     assert [s["name"] for s in apm.load_spans(conn2)] == ["a"]
-    assert conn2.execute(
-        "SELECT value FROM meta WHERE key = 'schema_version'"
-    ).fetchone()[0] == apm.SCHEMA_VERSION
+    assert (
+        conn2.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[
+            0
+        ]
+        == apm.SCHEMA_VERSION
+    )
 
 
 # ---- family diagnostics -----------------------------------------------------
@@ -706,8 +775,13 @@ def test_to_diagnostics_maps_latency_bands_errors_and_gaps():
         _span("critical", span_id=1, duration=5000.0),
         _span("slowish", span_id=2, duration=800.0),
         _span("quick", span_id=3, duration=1.0),
-        _span("flaky", span_id=4, duration=2.0, status=apm.STATUS_ERROR,
-              error="ValueError: x"),
+        _span(
+            "flaky",
+            span_id=4,
+            duration=2.0,
+            status=apm.STATUS_ERROR,
+            error="ValueError: x",
+        ),
         _span("holey", span_id=5, duration=1.0),
         _span("holey", span_id=6, duration=None, error="process exited"),
     ]
@@ -745,7 +819,9 @@ def test_to_diagnostics_budgets_are_configurable():
 def test_to_diagnostics_error_rate_severity_is_configurable():
     spans = [_span("op", span_id=i, duration=1.0) for i in range(1, 20)]
     spans.append(
-        _span("op", span_id=99, duration=1.0, status=apm.STATUS_ERROR, error="OSError: x")
+        _span(
+            "op", span_id=99, duration=1.0, status=apm.STATUS_ERROR, error="OSError: x"
+        )
     )
     stats = apm.operation_stats(spans)
     assert stats[0]["error_rate"] == 0.05
@@ -761,8 +837,14 @@ def test_render_html_is_deterministic_escapes_and_never_shows_a_fake_zero():
     spans = [
         _span("<script>alert(1)</script>", span_id=1, duration=100.0),
         _span("kid", span_id=2, parent_id=1, offset=50.0, duration=25.0),
-        _span("gone", span_id=3, parent_id=1, offset=90.0, duration=None,
-              error="process exited mid-span"),
+        _span(
+            "gone",
+            span_id=3,
+            parent_id=1,
+            offset=90.0,
+            duration=None,
+            error="process exited mid-span",
+        ),
     ]
     page = apm.render_html(spans)
     assert page == apm.render_html(spans)  # byte-identical for identical input
@@ -790,8 +872,15 @@ def test_render_html_survives_an_empty_store_without_inventing_numbers():
 
 def test_render_html_marks_errored_bars_and_caps_traces():
     spans = [
-        _span("a", trace_id="t1", span_id=1, duration=10.0, status=apm.STATUS_ERROR,
-              error="RuntimeError: boom", wall=WALL + 10),
+        _span(
+            "a",
+            trace_id="t1",
+            span_id=1,
+            duration=10.0,
+            status=apm.STATUS_ERROR,
+            error="RuntimeError: boom",
+            wall=WALL + 10,
+        ),
         _span("b", trace_id="t2", span_id=1, duration=10.0, wall=WALL),
     ]
     page = apm.render_html(spans, max_traces=1)
@@ -876,8 +965,12 @@ def test_cli_apm_probe_then_stats_traces_report(tmp_path):
     assert probe["clock"] == "time.perf_counter"
     assert probe["recorded"]["inserted"] == len(probe["spans"]) == 4
     names = [s["name"] for s in probe["spans"]]
-    assert names == ["apm.probe", "store.open", "store.read",
-                     "aggregate.operation_stats"]
+    assert names == [
+        "apm.probe",
+        "store.open",
+        "store.read",
+        "aggregate.operation_stats",
+    ]
     for s in probe["spans"]:
         assert s["status"] == "ok"
         assert s["duration_ms"] is not None and s["duration_ms"] > 0.0  # real I/O
@@ -912,9 +1005,9 @@ def test_cli_apm_ingest_reports_a_fabricated_line_and_never_stores_it(tmp_path):
     fake = {**good, "span_id": 2, "name": "fabricated", "duration_ms": None}
     src = tmp_path / "spans.jsonl"
     src.write_bytes(
-        ("\n".join([json.dumps(good), json.dumps(fake), "", "{not json"]) + "\n").encode(
-            "utf-8"
-        )
+        (
+            "\n".join([json.dumps(good), json.dumps(fake), "", "{not json"]) + "\n"
+        ).encode("utf-8")
     )
     db = tmp_path / "apm.db"
     r = _cli(["apm", "ingest", str(src), "--db", str(db)])
@@ -950,4 +1043,7 @@ def test_cli_apm_stats_fail_on_gates_and_validates(tmp_path):
     assert tripped.returncode == 1
     assert json.loads(tripped.stdout)["data"]["summary"]["by_severity"]["warning"] > 0
     bad = _cli(["apm", "stats", "--db", str(db), "--fail-on", "nope"])
-    assert bad.returncode == 1 and "--fail-on must be one of" in json.loads(bad.stdout)["error"]
+    assert (
+        bad.returncode == 1
+        and "--fail-on must be one of" in json.loads(bad.stdout)["error"]
+    )

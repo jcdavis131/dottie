@@ -147,7 +147,9 @@ def _read_hsts(ss: ssl.SSLSocket, host: str, timeout: float) -> bool | None:
         return None
 
 
-def _fetch(host: str, *, port: int = certmon.DEFAULT_PORT, timeout: float = 10.0) -> dict:
+def _fetch(
+    host: str, *, port: int = certmon.DEFAULT_PORT, timeout: float = 10.0
+) -> dict:
     """One real TLS handshake -> the observation dict the core analyzes.
 
     Verified first (create_default_context validates chain + hostname). On a
@@ -157,7 +159,13 @@ def _fetch(host: str, *, port: int = certmon.DEFAULT_PORT, timeout: float = 10.0
     Any hard failure returns cert=None with the exception class visible so
     DNS vs TLS vs timeout stays distinguishable in the history.
     """
-    obs = {"cert": None, "protocol": None, "hsts": None, "error": None, "verified": None}
+    obs = {
+        "cert": None,
+        "protocol": None,
+        "hsts": None,
+        "error": None,
+        "verified": None,
+    }
     ctx = ssl.create_default_context()
     try:
         with socket.create_connection((host, port), timeout=timeout) as sock:
@@ -282,7 +290,10 @@ def check(
     if record:
         conn, path = _open_ledger(db)
     else:
-        conn, path = certmon.open_cert_ledger(":memory:"), None  # dry-run, same pipeline
+        conn, path = (
+            certmon.open_cert_ledger(":memory:"),
+            None,
+        )  # dry-run, same pipeline
 
     def fetch(h: str) -> dict:
         return _fetch(h, port=port, timeout=timeout)

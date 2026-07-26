@@ -65,9 +65,15 @@ def _probe_sites() -> list:
             code = e.code
         except Exception:
             code = None
-        out.append({"name": name, "url": url, "http": code,
-                    "ms": round((time.time() - t0) * 1000),
-                    "up": bool(code and 200 <= code < 400)})
+        out.append(
+            {
+                "name": name,
+                "url": url,
+                "http": code,
+                "ms": round((time.time() - t0) * 1000),
+                "up": bool(code and 200 <= code < 400),
+            }
+        )
     return out
 
 
@@ -106,14 +112,24 @@ print(json.dumps({
 def _batch_sample() -> dict:
     try:
         p = subprocess.run(
-            ["docker", "exec", "dottie-factory-trainer-1", "python", "-c", _SAMPLE_SCRIPT],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            [
+                "docker",
+                "exec",
+                "dottie-factory-trainer-1",
+                "python",
+                "-c",
+                _SAMPLE_SCRIPT,
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=45,
         )
         if p.returncode != 0:
             return {"unreachable": (p.stderr or "sample exec failed")[:200]}
         return json.loads(p.stdout.strip().splitlines()[-1])
-    except Exception as e:  # noqa: BLE001 - publisher must never crash on a probe
+    except Exception as e:
         return {"unreachable": f"{type(e).__name__}: {e}"}
 
 
@@ -121,12 +137,17 @@ def _site_history(existing_hub, probes: list) -> dict:
     """Rolling 24h of real probe results per site (steer directive 2026-07-22:
     'the console shows trends, not just now'). Carried through the existing
     file across publishes; pruned by wall clock; capped defensively."""
-    prev = existing_hub.get("site_history", {}) if isinstance(existing_hub, dict) else {}
+    prev = (
+        existing_hub.get("site_history", {}) if isinstance(existing_hub, dict) else {}
+    )
     now = time.time()
     hist = {}
     for p in probes:
-        rows = [r for r in prev.get(p["name"], [])
-                if isinstance(r, dict) and now - r.get("t", 0) < 86400]
+        rows = [
+            r
+            for r in prev.get(p["name"], [])
+            if isinstance(r, dict) and now - r.get("t", 0) < 86400
+        ]
         rows.append({"t": round(now), "up": p["up"], "ms": p["ms"]})
         hist[p["name"]] = rows[-160:]
     return hist
@@ -141,13 +162,17 @@ def _deploys_snapshot() -> dict:
     honest unreachable on any failure."""
     global _ANSI_RE
     import re as _re
+
     if _ANSI_RE is None:
         _ANSI_RE = _re.compile(r"\x1b\[[0-9;]*m")
     try:
         vercel_bin = "vercel.cmd" if os.name == "nt" else "vercel"
         p = subprocess.run(
             [vercel_bin, "projects", "ls", "--scope", "cams-projects-c5c4c5f6"],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=60,
         )
         if p.returncode != 0:
@@ -158,10 +183,11 @@ def _deploys_snapshot() -> dict:
             clean = _ANSI_RE.sub("", line)
             m = _re.match(r"^\s{2}(\S+)\s+(https://\S+)\s+(\S+)", clean)
             if m and m.group(1) != "Project":
-                projects.append({"name": m.group(1), "url": m.group(2),
-                                 "updated": m.group(3)})
+                projects.append(
+                    {"name": m.group(1), "url": m.group(2), "updated": m.group(3)}
+                )
         return {"projects": projects} if projects else {"unreachable": "no rows parsed"}
-    except Exception as e:  # noqa: BLE001 - publisher must never crash on a probe
+    except Exception as e:
         return {"unreachable": f"{type(e).__name__}: {e}"}
 
 
@@ -172,7 +198,10 @@ def _site_perf(existing_hub) -> dict:
     honest failures; regressions compare against the PREVIOUS measurement."""
     prev = existing_hub.get("site_perf", {}) if isinstance(existing_hub, dict) else {}
     now = time.time()
-    if isinstance(prev.get("measured_at"), (int, float)) and now - prev["measured_at"] < 6 * 86400:
+    if (
+        isinstance(prev.get("measured_at"), (int, float))
+        and now - prev["measured_at"] < 6 * 86400
+    ):
         return prev
     rows = []
     regressions = []
@@ -191,12 +220,16 @@ def _site_perf(existing_hub) -> dict:
                 if p and isinstance(p.get(metric), (int, float)) and p[metric] > 0:
                     ratio = row[metric] / p[metric]
                     if ratio > 1.2:
-                        regressions.append({
-                            "name": name, "metric": metric,
-                            "label": f"{name} {label} regressed {round((ratio - 1) * 100)}% "
-                                     f"({p[metric]} -> {row[metric]})"})
+                        regressions.append(
+                            {
+                                "name": name,
+                                "metric": metric,
+                                "label": f"{name} {label} regressed {round((ratio - 1) * 100)}% "
+                                f"({p[metric]} -> {row[metric]})",
+                            }
+                        )
             rows.append(row)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             rows.append({"name": name, "error": f"{type(e).__name__}"[:60]})
     return {"measured_at": round(now), "rows": rows, "regressions": regressions}
 
@@ -207,7 +240,10 @@ def _fleet_snapshot() -> dict:
     try:
         p = subprocess.run(
             ["docker", "stats", "--no-stream", "--format", "{{json .}}"],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=30,
         )
         if p.returncode != 0:
@@ -221,14 +257,16 @@ def _fleet_snapshot() -> dict:
                 d = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            containers.append({
-                "Name": d.get("Name") or d.get("Container"),
-                "CPUPerc": d.get("CPUPerc"),
-                "MemPerc": d.get("MemPerc"),
-                "MemUsage": d.get("MemUsage"),
-            })
+            containers.append(
+                {
+                    "Name": d.get("Name") or d.get("Container"),
+                    "CPUPerc": d.get("CPUPerc"),
+                    "MemPerc": d.get("MemPerc"),
+                    "MemUsage": d.get("MemUsage"),
+                }
+            )
         return {"containers": containers}
-    except Exception as e:  # noqa: BLE001 - publisher must never crash on a probe
+    except Exception as e:
         return {"unreachable": f"{type(e).__name__}: {e}"}
 
 

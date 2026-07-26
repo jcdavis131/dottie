@@ -291,29 +291,58 @@ def kinds_cmd():
 def inspect_cmd(
     csv_path: str | None = typer.Option(None, "--csv", help="CSV input (header row)"),
     json_file: str | None = typer.Option(
-        None, "--json-file", help="JSON array input (named so it cannot clash with the global --json output flag)"
+        None,
+        "--json-file",
+        help="JSON array input (named so it cannot clash with the global --json output flag)",
     ),
     records: str | None = typer.Option(
         None, "--records", help="dotted path to the array inside a JSON document"
     ),
     db: str | None = typer.Option(None, "--db", help="sqlite ledger (opened mode=ro)"),
     table: str | None = typer.Option(None, "--table", help="table or view to read"),
-    where: str | None = typer.Option(None, "--where", help="SQL predicate (read-only connection)"),
+    where: str | None = typer.Option(
+        None, "--where", help="SQL predicate (read-only connection)"
+    ),
     limit: int | None = typer.Option(None, "--limit", help="max rows read"),
     x: str = typer.Option(..., "--x", help="x column (category column for bar)"),
     y: str = typer.Option(..., "--y", help="y column (must hold numbers)"),
-    series: str | None = typer.Option(None, "--series", help="column to split series by"),
-    kind: str = typer.Option(charts.KIND_LINE, "--kind", help=f"shape to validate for ({'|'.join(charts.KINDS)})"),
-    time_x: bool = typer.Option(False, "--time-x", help="read x as timestamps (epoch or ISO-8601)"),
-    sort: str = typer.Option(charts.SORT_LABEL, "--sort", help=f"bar category order ({'|'.join(charts.SORTS)})"),
-    fail_on: str | None = typer.Option(None, "--fail-on", help="exit 1 at/above this severity — the cron/CI gate hook"),
+    series: str | None = typer.Option(
+        None, "--series", help="column to split series by"
+    ),
+    kind: str = typer.Option(
+        charts.KIND_LINE,
+        "--kind",
+        help=f"shape to validate for ({'|'.join(charts.KINDS)})",
+    ),
+    time_x: bool = typer.Option(
+        False, "--time-x", help="read x as timestamps (epoch or ISO-8601)"
+    ),
+    sort: str = typer.Option(
+        charts.SORT_LABEL,
+        "--sort",
+        help=f"bar category order ({'|'.join(charts.SORTS)})",
+    ),
+    fail_on: str | None = typer.Option(
+        None, "--fail-on", help="exit 1 at/above this severity — the cron/CI gate hook"
+    ),
 ):
     """Provenance before publication: what the source holds, writing no file."""
     _fail_on_or_fail(fail_on, "charts inspect")
     ds = _dataset_or_fail(
-        kind, "charts inspect", x=x, y=y, series=series, csv_path=csv_path,
-        json_path=json_file, records=records, db=db, table=table, where=where,
-        limit=limit, time_x=time_x, sort=sort,
+        kind,
+        "charts inspect",
+        x=x,
+        y=y,
+        series=series,
+        csv_path=csv_path,
+        json_path=json_file,
+        records=records,
+        db=db,
+        table=table,
+        where=where,
+        limit=limit,
+        time_x=time_x,
+        sort=sort,
     )
     diags = charts.to_diagnostics(ds)
     emit(
@@ -365,27 +394,58 @@ def inspect_cmd(
 def line_cmd(
     csv_path: str | None = typer.Option(None, "--csv", help="CSV input (header row)"),
     json_file: str | None = typer.Option(None, "--json-file", help="JSON array input"),
-    records: str | None = typer.Option(None, "--records", help="dotted path to the array inside a JSON document"),
+    records: str | None = typer.Option(
+        None, "--records", help="dotted path to the array inside a JSON document"
+    ),
     db: str | None = typer.Option(None, "--db", help="sqlite ledger (opened mode=ro)"),
     table: str | None = typer.Option(None, "--table", help="table or view to read"),
-    where: str | None = typer.Option(None, "--where", help="SQL predicate (read-only connection)"),
+    where: str | None = typer.Option(
+        None, "--where", help="SQL predicate (read-only connection)"
+    ),
     limit: int | None = typer.Option(None, "--limit", help="max rows read"),
-    x: str = typer.Option(..., "--x", help="x column (numeric, or timestamps with --time-x)"),
+    x: str = typer.Option(
+        ..., "--x", help="x column (numeric, or timestamps with --time-x)"
+    ),
     y: str = typer.Option(..., "--y", help="y column (must hold numbers)"),
-    series: str | None = typer.Option(None, "--series", help="column to split series by"),
-    time_x: bool = typer.Option(False, "--time-x", help="read x as timestamps (epoch or ISO-8601)"),
-    out: str | None = typer.Option(None, "--out", help=f"SVG output path (default {charts.OUT_REL})"),
+    series: str | None = typer.Option(
+        None, "--series", help="column to split series by"
+    ),
+    time_x: bool = typer.Option(
+        False, "--time-x", help="read x as timestamps (epoch or ISO-8601)"
+    ),
+    out: str | None = typer.Option(
+        None, "--out", help=f"SVG output path (default {charts.OUT_REL})"
+    ),
     title: str | None = typer.Option(None, "--title", help="chart heading"),
     width: int = typer.Option(charts.DEFAULT_WIDTH, "--width", help="SVG width in px"),
-    height: int = typer.Option(charts.DEFAULT_HEIGHT, "--height", help="SVG height in px"),
-    fail_on: str | None = typer.Option(None, "--fail-on", help="exit 1 at/above this severity — fires when a panel goes empty"),
+    height: int = typer.Option(
+        charts.DEFAULT_HEIGHT, "--height", help="SVG height in px"
+    ),
+    fail_on: str | None = typer.Option(
+        None,
+        "--fail-on",
+        help="exit 1 at/above this severity — fires when a panel goes empty",
+    ),
 ):
     """Line chart — points sorted by x, so an unordered SELECT still renders once."""
     _chart(
-        charts.KIND_LINE, out=out, title=title, width=width, height=height,
-        fail_on=fail_on, x=x, y=y, series=series, csv_path=csv_path,
-        json_path=json_file, records=records, db=db, table=table, where=where,
-        limit=limit, time_x=time_x,
+        charts.KIND_LINE,
+        out=out,
+        title=title,
+        width=width,
+        height=height,
+        fail_on=fail_on,
+        x=x,
+        y=y,
+        series=series,
+        csv_path=csv_path,
+        json_path=json_file,
+        records=records,
+        db=db,
+        table=table,
+        where=where,
+        limit=limit,
+        time_x=time_x,
     )
 
 
@@ -402,27 +462,56 @@ def line_cmd(
 def bar_cmd(
     csv_path: str | None = typer.Option(None, "--csv", help="CSV input (header row)"),
     json_file: str | None = typer.Option(None, "--json-file", help="JSON array input"),
-    records: str | None = typer.Option(None, "--records", help="dotted path to the array inside a JSON document"),
+    records: str | None = typer.Option(
+        None, "--records", help="dotted path to the array inside a JSON document"
+    ),
     db: str | None = typer.Option(None, "--db", help="sqlite ledger (opened mode=ro)"),
     table: str | None = typer.Option(None, "--table", help="table or view to read"),
-    where: str | None = typer.Option(None, "--where", help="SQL predicate (read-only connection)"),
+    where: str | None = typer.Option(
+        None, "--where", help="SQL predicate (read-only connection)"
+    ),
     limit: int | None = typer.Option(None, "--limit", help="max rows read"),
     x: str = typer.Option(..., "--x", help="category column (duplicates are summed)"),
     y: str = typer.Option(..., "--y", help="value column (must hold numbers)"),
-    series: str | None = typer.Option(None, "--series", help="column to split grouped bars by"),
-    sort: str = typer.Option(charts.SORT_LABEL, "--sort", help=f"category order ({'|'.join(charts.SORTS)})"),
-    out: str | None = typer.Option(None, "--out", help=f"SVG output path (default {charts.OUT_REL})"),
+    series: str | None = typer.Option(
+        None, "--series", help="column to split grouped bars by"
+    ),
+    sort: str = typer.Option(
+        charts.SORT_LABEL, "--sort", help=f"category order ({'|'.join(charts.SORTS)})"
+    ),
+    out: str | None = typer.Option(
+        None, "--out", help=f"SVG output path (default {charts.OUT_REL})"
+    ),
     title: str | None = typer.Option(None, "--title", help="chart heading"),
     width: int = typer.Option(charts.DEFAULT_WIDTH, "--width", help="SVG width in px"),
-    height: int = typer.Option(charts.DEFAULT_HEIGHT, "--height", help="SVG height in px"),
-    fail_on: str | None = typer.Option(None, "--fail-on", help="exit 1 at/above this severity — fires when a panel goes empty"),
+    height: int = typer.Option(
+        charts.DEFAULT_HEIGHT, "--height", help="SVG height in px"
+    ),
+    fail_on: str | None = typer.Option(
+        None,
+        "--fail-on",
+        help="exit 1 at/above this severity — fires when a panel goes empty",
+    ),
 ):
     """Bar chart — duplicate categories summed (and the fold is stated in the footer)."""
     _chart(
-        charts.KIND_BAR, out=out, title=title, width=width, height=height,
-        fail_on=fail_on, x=x, y=y, series=series, csv_path=csv_path,
-        json_path=json_file, records=records, db=db, table=table, where=where,
-        limit=limit, sort=sort,
+        charts.KIND_BAR,
+        out=out,
+        title=title,
+        width=width,
+        height=height,
+        fail_on=fail_on,
+        x=x,
+        y=y,
+        series=series,
+        csv_path=csv_path,
+        json_path=json_file,
+        records=records,
+        db=db,
+        table=table,
+        where=where,
+        limit=limit,
+        sort=sort,
     )
 
 
@@ -439,27 +528,58 @@ def bar_cmd(
 def scatter_cmd(
     csv_path: str | None = typer.Option(None, "--csv", help="CSV input (header row)"),
     json_file: str | None = typer.Option(None, "--json-file", help="JSON array input"),
-    records: str | None = typer.Option(None, "--records", help="dotted path to the array inside a JSON document"),
+    records: str | None = typer.Option(
+        None, "--records", help="dotted path to the array inside a JSON document"
+    ),
     db: str | None = typer.Option(None, "--db", help="sqlite ledger (opened mode=ro)"),
     table: str | None = typer.Option(None, "--table", help="table or view to read"),
-    where: str | None = typer.Option(None, "--where", help="SQL predicate (read-only connection)"),
+    where: str | None = typer.Option(
+        None, "--where", help="SQL predicate (read-only connection)"
+    ),
     limit: int | None = typer.Option(None, "--limit", help="max rows read"),
-    x: str = typer.Option(..., "--x", help="x column (numeric, or timestamps with --time-x)"),
+    x: str = typer.Option(
+        ..., "--x", help="x column (numeric, or timestamps with --time-x)"
+    ),
     y: str = typer.Option(..., "--y", help="y column (must hold numbers)"),
-    series: str | None = typer.Option(None, "--series", help="column to split series by"),
-    time_x: bool = typer.Option(False, "--time-x", help="read x as timestamps (epoch or ISO-8601)"),
-    out: str | None = typer.Option(None, "--out", help=f"SVG output path (default {charts.OUT_REL})"),
+    series: str | None = typer.Option(
+        None, "--series", help="column to split series by"
+    ),
+    time_x: bool = typer.Option(
+        False, "--time-x", help="read x as timestamps (epoch or ISO-8601)"
+    ),
+    out: str | None = typer.Option(
+        None, "--out", help=f"SVG output path (default {charts.OUT_REL})"
+    ),
     title: str | None = typer.Option(None, "--title", help="chart heading"),
     width: int = typer.Option(charts.DEFAULT_WIDTH, "--width", help="SVG width in px"),
-    height: int = typer.Option(charts.DEFAULT_HEIGHT, "--height", help="SVG height in px"),
-    fail_on: str | None = typer.Option(None, "--fail-on", help="exit 1 at/above this severity — fires when a panel goes empty"),
+    height: int = typer.Option(
+        charts.DEFAULT_HEIGHT, "--height", help="SVG height in px"
+    ),
+    fail_on: str | None = typer.Option(
+        None,
+        "--fail-on",
+        help="exit 1 at/above this severity — fires when a panel goes empty",
+    ),
 ):
     """Scatter chart — one dot per row, no line implying an order that is not there."""
     _chart(
-        charts.KIND_SCATTER, out=out, title=title, width=width, height=height,
-        fail_on=fail_on, x=x, y=y, series=series, csv_path=csv_path,
-        json_path=json_file, records=records, db=db, table=table, where=where,
-        limit=limit, time_x=time_x,
+        charts.KIND_SCATTER,
+        out=out,
+        title=title,
+        width=width,
+        height=height,
+        fail_on=fail_on,
+        x=x,
+        y=y,
+        series=series,
+        csv_path=csv_path,
+        json_path=json_file,
+        records=records,
+        db=db,
+        table=table,
+        where=where,
+        limit=limit,
+        time_x=time_x,
     )
 
 
