@@ -1024,9 +1024,32 @@ class TestCollection:
         assert any("RuntimeError" in b for b in bodies), "the raising def was lost"
         assert any("return True" in b for b in bodies), "the returning def was lost"
 
+    @pytest.mark.skipif(
+        not SCOUT_CORE.exists(), reason=f"scout-cli absent at {SCOUT_CORE}"
+    )
     def test_a_collision_free_corpus_reports_zero_collisions(self):
-        """The counter must not fire on ordinary input, or it means nothing."""
-        _, stats = md.collect_documents(SCOUT_CORE, "function")
+        """The counter must not fire on ordinary input, or it means nothing.
+
+        ANTI-VACUITY, and it was needed. Without the skipif and the floors below,
+        this test PASSED on a checkout with no `apps/scout-cli`: `ast_pairs.walk`
+        yields nothing for a missing path **without raising**, so
+        `collect_documents(<nonexistent>)` returns `{}` with `collisions: 0` and
+        `0 == 0` holds — the assertion was satisfied by never scanning anything,
+        while its `skipif`'d siblings in TestAgainstTheRealTree correctly skipped.
+        "Zero collisions in an empty corpus" is not evidence about the counter.
+
+        Floors are set NEAR the measurement (51 files, 1177 functions on
+        2026-07-26) rather than at `> 0`, so a corpus that silently shrinks also
+        fails instead of quietly proving less than it claims.
+        """
+        docs, stats = md.collect_documents(SCOUT_CORE, "function")
+        assert stats["files"] >= 48, (
+            f"scanned {stats['files']} files; measured 51. Too few to say anything "
+            "about collisions"
+        )
+        assert len(docs) >= 1100, (
+            f"corpus is {len(docs)} functions; measured 1177"
+        )
         assert stats["collisions"] == 0, (
             f"bigbang/core reported {stats['collisions']} collisions; measured 0"
         )
@@ -1314,7 +1337,42 @@ class TestAgainstThePluginTree:
             f"clusters={len(res['clusters'])}); measured 1 rescued document on "
             f"2026-07-26. The drop-vs-survivor floor is now vacuous here"
         )
-        assert res["components"] > len(res["clusters"]) or res["rescued"] == 0
+        # WAS: `res["components"] > len(res["clusters"]) or res["rescued"] == 0`.
+        # The `or` was DEAD — the assert directly above already establishes
+        # rescued >= 1, so the right operand could never be reached and the line
+        # silently reduced to its left operand. Worse, that left operand is NOT an
+        # invariant of the algorithm: it happens to hold here and would fail on a
+        # different split shape. Split the claim into the part that is always true
+        # and the part that is an observation about this corpus.
+        #
+        # ALWAYS TRUE by construction (minhash_dedup.py:422-428): each component
+        # yields at least one group, splitting adds `rescued` more, and `clusters`
+        # keeps only the multi-member groups. So the singleton-group count is
+        # exactly components + rescued - len(clusters), and cannot be negative.
+        singleton_groups = (
+            res["components"] + res["rescued"] - len(res["clusters"])
+        )
+        assert singleton_groups >= 0, (
+            f"components={res['components']} + rescued={res['rescued']} < "
+            f"clusters={len(res['clusters'])}: more multi-member clusters than "
+            "groups exist, so the rescued accounting is wrong"
+        )
+        # MEASURED ON THIS CORPUS 2026-07-26, an observation and not an invariant:
+        # components 19, clusters 18, rescued 1, groups 20. The one split fully
+        # DISSOLVED a 2-member component into two singletons, which is why the
+        # multi-member cluster count fell BELOW the component count. Had a
+        # 3-member component split into a pair plus a singleton, rescued would
+        # still be 1 and len(clusters) would still be 19 — so asserting this as a
+        # general law is what made the old line misleading.
+        assert len(res["clusters"]) < res["components"], (
+            f"clusters={len(res['clusters'])} vs components={res['components']}; "
+            "measured 18 vs 19. Not a regression on its own — it means the split "
+            "on this tree no longer dissolves a 2-member component, so re-measure "
+            "and re-state what plugins/ now contains"
+        )
+        assert singleton_groups == 2, (
+            f"{singleton_groups} singleton groups; measured 2 (the dissolved pair)"
+        )
 
     def test_gate_1_alone_would_have_authorised_a_wrong_drop(self, plugins_result):
         """Why gate 2 cannot also be the estimate. Measured, not argued.

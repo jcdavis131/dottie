@@ -99,12 +99,25 @@ Residuals the verifiers found that the builders did not report — worth closing
   under `scripts/`) and the unmatchable query matched this very file, failing 3 tests. Token
   is now assembled from fragments, with a test asserting the joined form appears nowhere in
   the file. Any literal in a test file under an indexed tree is a document.
-- [ ] `tests/test_minhash_dedup.py:1027` — passes for the wrong reason on a checkout without
-  `apps/scout-cli`: `ast_pairs.walk` returns nothing for a missing path **without raising**, so
-  `collect_documents(<nonexistent>)` yields `files: 0, collisions: 0` and the assertion holds
-  vacuously while its `skipif`'d siblings correctly skip.
-- [ ] `tests/test_minhash_dedup.py:1317` — `assert res["components"] > len(...) or rescued == 0`
-  is dead: line 1312 already asserts `rescued >= 1`.
+- [x] `apps/ava-factory/tests/test_minhash_dedup.py:1027` — passed for the wrong reason on a
+  checkout without `apps/scout-cli`: `ast_pairs.walk` returns nothing for a missing path
+  **without raising**, so `collect_documents(<nonexistent>)` yields `files: 0, collisions: 0`
+  and `0 == 0` held vacuously while its `skipif`'d siblings correctly skipped. Closed
+  2026-07-26: `skipif` on the test (absent → visible skip, never a false pass) plus floors
+  near the measurement — `files >= 48` (measured 51) and `len(docs) >= 1100` (measured 1177).
+  **Proven, not argued**: mutating `collect_documents` to scan only the first 10 files, the
+  version at HEAD still PASSED; the new version FAILS.
+- [x] `apps/ava-factory/tests/test_minhash_dedup.py:1317` — `assert res["components"] >
+  len(...) or rescued == 0` was dead: the assert directly above already establishes
+  `rescued >= 1`, so the right operand was unreachable and the line silently reduced to its
+  left operand. Worse, that operand is **not an invariant** — a 3-member component splitting
+  into a pair plus a singleton leaves `rescued == 1` and the cluster count unchanged, so it
+  would fail on a different split shape while reading as a general law. Split into (a) the
+  always-true accounting identity `components + rescued - len(clusters) >= 0`, and (b) the
+  corpus-specific measurement, labelled as such: **components 19, clusters 18, rescued 1,
+  groups 20** on `bigbang/plugins` — the one split fully DISSOLVED a 2-member component into
+  two singletons. Mutation-verified 4/4 (scan-10-files; `rescued = 0`; `rescued` sign-flipped;
+  `clusters` keeping singletons), baseline green over byte-verified restored source.
 - [ ] `hard_negatives.py` — a dead guard remains in source B; the D1 identity collapse is
   applied only to the self-negative half.
 
