@@ -1,3 +1,7 @@
+<!-- SUPERSEDED 2026-07-26. Its 15 open items were extracted into the root
+     TODO.md along with TODOS.md's 126. Kept for its completed history and context.
+     Do not add new open items here — add them to TODO.md. -->
+
 # TODO — the Dottie site (Guide / Hub / Monitor)
 
 Vision: `apps/bluehenre/SPEC.md`. Phased plan: `tasks/dottie_site_plan.md`.

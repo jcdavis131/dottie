@@ -1,3 +1,15 @@
+<!-- ============================================================================
+CONSOLIDATED 2026-07-26. This file is now the REASONING ARCHIVE, not the board.
+
+  Open work  -> TODO.md          (all 141 open items, mechanically extracted)
+  Handoff    -> HANDOFF.md       (the single handoff; CURSOR_HANDOFF.md merged in)
+
+Nothing here was deleted. 5,772 lines / 421 completed items / 446 KB of why-we-did-it
+is the valuable part of this file and the reason it stays: every entry records the
+measurement and the retraction, not just the outcome. Keep appending reasoning here;
+keep the checkbox list in TODO.md.
+============================================================================= -->
+
 # TODOS — the road to the Agentic Assistant platform at arxiviq.com
 
 > Unified execution roadmap, reconciled 2026-07-19. One rule inherited from everything
