@@ -1,16 +1,19 @@
 import json
 import sqlite3
-from collections import Counter
 
 con = sqlite3.connect(r"C:\Users\jcdav\dottie\tasks\artifacts\ledger_copy.sqlite3")
 con.row_factory = sqlite3.Row
 
 print("--- state distribution ---")
-for row in con.execute("SELECT state, COUNT(*) c FROM experiments GROUP BY state ORDER BY c DESC"):
+for row in con.execute(
+    "SELECT state, COUNT(*) c FROM experiments GROUP BY state ORDER BY c DESC"
+):
     print(f"{row['state']}: {row['c']}")
 
 print("\n--- failure column non-null by state ---")
-for row in con.execute("SELECT state, COUNT(failure) c FROM experiments WHERE failure IS NOT NULL GROUP BY state"):
+for row in con.execute(
+    "SELECT state, COUNT(failure) c FROM experiments WHERE failure IS NOT NULL GROUP BY state"
+):
     print(f"{row['state']}: {row['c']}")
 
 print("\n--- sample failure values (first 400 chars) per state ---")
@@ -24,7 +27,9 @@ for state in [r[0] for r in con.execute("SELECT DISTINCT state FROM experiments"
         print((r["failure"] or "")[:400].replace("\n", " | "))
 
 print("\n--- implementation JSON keys of one row ---")
-r = con.execute("SELECT implementation FROM experiments WHERE implementation IS NOT NULL LIMIT 1").fetchone()
+r = con.execute(
+    "SELECT implementation FROM experiments WHERE implementation IS NOT NULL LIMIT 1"
+).fetchone()
 if r:
     d = json.loads(r["implementation"])
     print(list(d.keys()))

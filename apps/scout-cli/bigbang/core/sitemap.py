@@ -324,9 +324,7 @@ def walk_entries(
                 stamp = format_lastmod((here / fname).stat().st_mtime, lastmod)
             entries.append(
                 make_entry(
-                    url_for(
-                        rel, base, strip_index=strip_index, clean_urls=clean_urls
-                    ),
+                    url_for(rel, base, strip_index=strip_index, clean_urls=clean_urls),
                     lastmod=stamp,
                     changefreq=changefreq,
                     priority=priority,
@@ -470,7 +468,11 @@ def dedupe(entries: list[dict[str, Any]]) -> dict[str, Any]:
         )
         best[loc] = keep
         duplicates.append(
-            {"loc": loc, "kept_source": keep["source"], "dropped_source": drop["source"]}
+            {
+                "loc": loc,
+                "kept_source": keep["source"],
+                "dropped_source": drop["source"],
+            }
         )
     return {
         "entries": [best[k] for k in sorted(best)],
@@ -675,21 +677,39 @@ def render_files(
     """
     shards = shard_entries(entries, max_urls) or [[]]
     if len(shards) == 1:
-        files = [{"name": out_name, "kind": "urlset", "urls": len(shards[0]),
-                  "xml": render(build_urlset(shards[0]))}]
+        files = [
+            {
+                "name": out_name,
+                "kind": "urlset",
+                "urls": len(shards[0]),
+                "xml": render(build_urlset(shards[0])),
+            }
+        ]
     else:
         files = []
         refs = []
         for i, chunk in enumerate(shards, start=1):
             name = shard_name(out_name, i)
-            files.append({"name": name, "kind": "urlset", "urls": len(chunk),
-                          "xml": render(build_urlset(chunk))})
+            files.append(
+                {
+                    "name": name,
+                    "kind": "urlset",
+                    "urls": len(chunk),
+                    "xml": render(build_urlset(chunk)),
+                }
+            )
             stamps = [e["lastmod"] for e in chunk if e.get("lastmod")]
-            refs.append({"loc": base + name, "lastmod": max(stamps) if stamps else None})
+            refs.append(
+                {"loc": base + name, "lastmod": max(stamps) if stamps else None}
+            )
         files.insert(
             0,
-            {"name": out_name, "kind": "sitemapindex", "urls": 0,
-             "xml": render(build_index(refs))},
+            {
+                "name": out_name,
+                "kind": "sitemapindex",
+                "urls": 0,
+                "xml": render(build_index(refs)),
+            },
         )
     for f in files:
         f["bytes"] = len(f["xml"].encode("utf-8"))
@@ -718,14 +738,21 @@ def parse_sitemap(text: str) -> dict[str, Any]:
         raise ValueError(f"not parseable XML: {exc}") from exc
     tag = root.tag.rsplit("}", 1)[-1]
     if tag not in ("urlset", "sitemapindex"):
-        raise ValueError(f"root element is <{tag}>, expected <urlset> or <sitemapindex>")
+        raise ValueError(
+            f"root element is <{tag}>, expected <urlset> or <sitemapindex>"
+        )
     child_tag = "url" if tag == "urlset" else "sitemap"
     entries = []
     for node in root:
         if node.tag.rsplit("}", 1)[-1] != child_tag:
             continue
-        got: dict[str, Any] = {"loc": "", "lastmod": None, "changefreq": None,
-                               "priority": None, "source": child_tag}
+        got: dict[str, Any] = {
+            "loc": "",
+            "lastmod": None,
+            "changefreq": None,
+            "priority": None,
+            "source": child_tag,
+        }
         for field in node:
             key = field.tag.rsplit("}", 1)[-1]
             if key in got:
@@ -807,7 +834,12 @@ def summarize_files(files: list[dict[str, Any]]) -> dict[str, Any]:
     """Compact file-set report for the JSON envelope."""
     return {
         "files": [
-            {"name": f["name"], "kind": f["kind"], "urls": f["urls"], "bytes": f["bytes"]}
+            {
+                "name": f["name"],
+                "kind": f["kind"],
+                "urls": f["urls"],
+                "bytes": f["bytes"],
+            }
             for f in files
         ],
         "file_count": len(files),

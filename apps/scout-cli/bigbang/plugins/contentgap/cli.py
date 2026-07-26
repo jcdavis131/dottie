@@ -286,12 +286,24 @@ def detect():
 )
 def terms(
     corpus: list[str] = typer.Option(
-        None, "--corpus", help=f"corpus file or directory, repeatable (default {contentgap.CORPUS_REL})"
+        None,
+        "--corpus",
+        help=f"corpus file or directory, repeatable (default {contentgap.CORPUS_REL})",
     ),
-    top: int = typer.Option(contentgap.DEFAULT_TOP, "--top", help="how many ranked terms to emit"),
-    phrases: bool = typer.Option(True, "--phrases/--no-phrases", help="include adjacent two-word phrases"),
-    min_length: int = typer.Option(contentgap.MIN_TERM_LENGTH, "--min-length", help="shortest token that can be a term"),
-    max_kb: int = typer.Option(contentgap.DEFAULT_MAX_KB, "--max-kb", help="skip corpus files larger than this"),
+    top: int = typer.Option(
+        contentgap.DEFAULT_TOP, "--top", help="how many ranked terms to emit"
+    ),
+    phrases: bool = typer.Option(
+        True, "--phrases/--no-phrases", help="include adjacent two-word phrases"
+    ),
+    min_length: int = typer.Option(
+        contentgap.MIN_TERM_LENGTH,
+        "--min-length",
+        help="shortest token that can be a term",
+    ),
+    max_kb: int = typer.Option(
+        contentgap.DEFAULT_MAX_KB, "--max-kb", help="skip corpus files larger than this"
+    ),
 ):
     """Rank what the local comparison corpus emphasises. Reads files only."""
     model = _model(
@@ -336,18 +348,48 @@ def terms(
     ),
 )
 def audit(
-    draft: str = typer.Argument(..., help=f"draft file, or {STDIN_DRAFT} to read stdin"),
-    corpus: list[str] = typer.Option(
-        None, "--corpus", help=f"corpus file or directory, repeatable (default {contentgap.CORPUS_REL})"
+    draft: str = typer.Argument(
+        ..., help=f"draft file, or {STDIN_DRAFT} to read stdin"
     ),
-    top: int = typer.Option(contentgap.DEFAULT_TOP, "--top", help="how many top corpus terms to require"),
-    phrases: bool = typer.Option(True, "--phrases/--no-phrases", help="include adjacent two-word phrases"),
-    min_length: int = typer.Option(contentgap.MIN_TERM_LENGTH, "--min-length", help="shortest token that can be a term"),
-    max_kb: int = typer.Option(contentgap.DEFAULT_MAX_KB, "--max-kb", help="skip corpus files larger than this"),
-    thin_ratio: float = typer.Option(contentgap.DEFAULT_THIN_RATIO, "--thin-ratio", help="fraction of the expected count that still counts as covered"),
-    over_ratio: float = typer.Option(contentgap.DEFAULT_OVER_RATIO, "--over-ratio", help="multiple of expected that reads as over-optimization"),
-    target_score: float = typer.Option(contentgap.DEFAULT_TARGET_SCORE, "--target-score", help="coverage score below this is a finding"),
-    fail_on: str | None = typer.Option(None, "--fail-on", help="exit 1 if findings at/above this severity (error|warning|suggestion|info) — the pre-publish gate"),
+    corpus: list[str] = typer.Option(
+        None,
+        "--corpus",
+        help=f"corpus file or directory, repeatable (default {contentgap.CORPUS_REL})",
+    ),
+    top: int = typer.Option(
+        contentgap.DEFAULT_TOP, "--top", help="how many top corpus terms to require"
+    ),
+    phrases: bool = typer.Option(
+        True, "--phrases/--no-phrases", help="include adjacent two-word phrases"
+    ),
+    min_length: int = typer.Option(
+        contentgap.MIN_TERM_LENGTH,
+        "--min-length",
+        help="shortest token that can be a term",
+    ),
+    max_kb: int = typer.Option(
+        contentgap.DEFAULT_MAX_KB, "--max-kb", help="skip corpus files larger than this"
+    ),
+    thin_ratio: float = typer.Option(
+        contentgap.DEFAULT_THIN_RATIO,
+        "--thin-ratio",
+        help="fraction of the expected count that still counts as covered",
+    ),
+    over_ratio: float = typer.Option(
+        contentgap.DEFAULT_OVER_RATIO,
+        "--over-ratio",
+        help="multiple of expected that reads as over-optimization",
+    ),
+    target_score: float = typer.Option(
+        contentgap.DEFAULT_TARGET_SCORE,
+        "--target-score",
+        help="coverage score below this is a finding",
+    ),
+    fail_on: str | None = typer.Option(
+        None,
+        "--fail-on",
+        help="exit 1 if findings at/above this severity (error|warning|suggestion|info) — the pre-publish gate",
+    ),
 ):
     """Score a draft against the corpus and report its coverage gaps."""
     report, diags = _audit(
@@ -391,20 +433,52 @@ def audit(
     ),
 )
 def brief(
-    draft: str = typer.Argument(..., help=f"draft file, or {STDIN_DRAFT} to read stdin"),
-    corpus: list[str] = typer.Option(
-        None, "--corpus", help=f"corpus file or directory, repeatable (default {contentgap.CORPUS_REL})"
+    draft: str = typer.Argument(
+        ..., help=f"draft file, or {STDIN_DRAFT} to read stdin"
     ),
-    out: str | None = typer.Option(None, "--out", help=f"markdown output path (default {contentgap.BRIEF_REL})"),
+    corpus: list[str] = typer.Option(
+        None,
+        "--corpus",
+        help=f"corpus file or directory, repeatable (default {contentgap.CORPUS_REL})",
+    ),
+    out: str | None = typer.Option(
+        None, "--out", help=f"markdown output path (default {contentgap.BRIEF_REL})"
+    ),
     title: str = typer.Option("Content brief", "--title", help="brief heading"),
-    top: int = typer.Option(contentgap.DEFAULT_TOP, "--top", help="how many top corpus terms to require"),
-    phrases: bool = typer.Option(True, "--phrases/--no-phrases", help="include adjacent two-word phrases"),
-    min_length: int = typer.Option(contentgap.MIN_TERM_LENGTH, "--min-length", help="shortest token that can be a term"),
-    max_kb: int = typer.Option(contentgap.DEFAULT_MAX_KB, "--max-kb", help="skip corpus files larger than this"),
-    thin_ratio: float = typer.Option(contentgap.DEFAULT_THIN_RATIO, "--thin-ratio", help="fraction of the expected count that still counts as covered"),
-    over_ratio: float = typer.Option(contentgap.DEFAULT_OVER_RATIO, "--over-ratio", help="multiple of expected that reads as over-optimization"),
-    target_score: float = typer.Option(contentgap.DEFAULT_TARGET_SCORE, "--target-score", help="coverage score below this is a finding"),
-    fail_on: str | None = typer.Option(None, "--fail-on", help="exit 1 AFTER writing if findings at/above this severity"),
+    top: int = typer.Option(
+        contentgap.DEFAULT_TOP, "--top", help="how many top corpus terms to require"
+    ),
+    phrases: bool = typer.Option(
+        True, "--phrases/--no-phrases", help="include adjacent two-word phrases"
+    ),
+    min_length: int = typer.Option(
+        contentgap.MIN_TERM_LENGTH,
+        "--min-length",
+        help="shortest token that can be a term",
+    ),
+    max_kb: int = typer.Option(
+        contentgap.DEFAULT_MAX_KB, "--max-kb", help="skip corpus files larger than this"
+    ),
+    thin_ratio: float = typer.Option(
+        contentgap.DEFAULT_THIN_RATIO,
+        "--thin-ratio",
+        help="fraction of the expected count that still counts as covered",
+    ),
+    over_ratio: float = typer.Option(
+        contentgap.DEFAULT_OVER_RATIO,
+        "--over-ratio",
+        help="multiple of expected that reads as over-optimization",
+    ),
+    target_score: float = typer.Option(
+        contentgap.DEFAULT_TARGET_SCORE,
+        "--target-score",
+        help="coverage score below this is a finding",
+    ),
+    fail_on: str | None = typer.Option(
+        None,
+        "--fail-on",
+        help="exit 1 AFTER writing if findings at/above this severity",
+    ),
 ):
     """Write the content brief — Clearscope's deliverable, as a committable file."""
     report, diags = _audit(

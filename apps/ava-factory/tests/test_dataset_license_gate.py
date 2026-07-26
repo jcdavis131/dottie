@@ -101,7 +101,8 @@ class TestPermissiveStillPasses:
 
 class TestUnverifiedIsNotPermissive:
     @pytest.mark.parametrize(
-        "raw", [None, "", "   ", "unknown", "other", "proprietary", [], "assumed permissive"]
+        "raw",
+        [None, "", "   ", "unknown", "other", "proprietary", [], "assumed permissive"],
     )
     def test_denied(self, raw):
         ok, reason = gate_license(raw)
@@ -138,7 +139,9 @@ class TestDryRunManufacturesNoVerdict:
     exactly the "code corpora are permissive" inference the gate exists to
     refuse."""
 
-    @pytest.mark.parametrize("domain", ["math", "code", "reasoning", "logic", "finance"])
+    @pytest.mark.parametrize(
+        "domain", ["math", "code", "reasoning", "logic", "finance"]
+    )
     def test_dry_run_never_clears_a_candidate(self, domain):
         cands = dataset_discovery.search_hf_datasets_free(
             domain, ["some-dataset"], ["mit"], dry_run=True
@@ -169,7 +172,7 @@ class TestDownloadManifestNeverListsAnUngatedDataset:
             if not cand.get("license_ok", False):
                 lines.append(f"# SKIP {cand['name']}")
                 continue
-            lines.append(f"echo \"Downloading {cand['name']}\"")
+            lines.append(f'echo "Downloading {cand["name"]}"')
         return lines
 
     def _cand(self, name, license_ok, score=0.9):

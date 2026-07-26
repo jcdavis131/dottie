@@ -16,6 +16,7 @@ Two jobs, both deliberate:
 Subcommands are discovered live from ``scout --json forge list`` rather than hardcoded, so
 a tool forged five minutes ago is in the next prompt without anyone editing this file.
 """
+
 from __future__ import annotations
 
 import json
@@ -23,10 +24,10 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
-def describe() -> Dict[str, Any]:
+def describe() -> dict[str, Any]:
     """Routing metadata read from SKILL.md frontmatter — the single source of truth."""
     here = Path(__file__).resolve().parent
     try:
@@ -35,19 +36,20 @@ def describe() -> Dict[str, Any]:
         import importlib.util
 
         spec = importlib.util.spec_from_file_location(
-            "_ava_skills_loader", here.parent / "loader.py")
+            "_ava_skills_loader", here.parent / "loader.py"
+        )
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         describe_from_manifest = mod.describe_from_manifest
     return describe_from_manifest(here)
 
 
-def _scout_bin() -> Optional[str]:
+def _scout_bin() -> str | None:
     """Resolve the scout entry point, or None when it is not installed."""
     return shutil.which("scout")
 
 
-def fetch_forged(timeout: float = 20.0) -> Dict[str, Any]:
+def fetch_forged(timeout: float = 20.0) -> dict[str, Any]:
     """Live subcommand inventory via ``scout --json forge list``.
 
     Returns ``{"tools": [...], "source": ..., "error": ...}``. A failure here is REPORTED,
@@ -57,24 +59,35 @@ def fetch_forged(timeout: float = 20.0) -> Dict[str, Any]:
     """
     scout = _scout_bin()
     if scout is None:
-        return {"tools": [], "source": None,
-                "error": "scout not on PATH — cannot enumerate forged subcommands"}
+        return {
+            "tools": [],
+            "source": None,
+            "error": "scout not on PATH — cannot enumerate forged subcommands",
+        }
     try:
         proc = subprocess.run(
             [scout, "--json", "forge", "list"],
-            capture_output=True, text=True, timeout=timeout,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
             cwd=os.environ.get("DOTTIE_ROOT") or None,
         )
     except (OSError, subprocess.TimeoutExpired) as e:
         return {"tools": [], "source": scout, "error": f"{type(e).__name__}: {e}"}
     if proc.returncode != 0:
-        return {"tools": [], "source": scout,
-                "error": f"scout forge list exited {proc.returncode}: {proc.stderr[-300:]}"}
+        return {
+            "tools": [],
+            "source": scout,
+            "error": f"scout forge list exited {proc.returncode}: {proc.stderr[-300:]}",
+        }
     try:
         payload = json.loads(proc.stdout)
     except json.JSONDecodeError as e:
-        return {"tools": [], "source": scout,
-                "error": f"unparseable JSON from scout forge list: {e}"}
+        return {
+            "tools": [],
+            "source": scout,
+            "error": f"unparseable JSON from scout forge list: {e}",
+        }
 
     # Verified against the live CLI 2026-07-20: the envelope is
     #   {"ok": true, "command": "forge list", "data": {"plugins": [{name, forged_by, ...}]}}
@@ -94,12 +107,15 @@ def fetch_forged(timeout: float = 20.0) -> Dict[str, Any]:
     if isinstance(payload, list):
         return {"tools": payload, "source": scout, "error": None}
     keys = list(payload)[:6] if isinstance(payload, dict) else type(payload).__name__
-    return {"tools": [], "source": scout,
-            "error": f"unrecognised payload shape: keys={keys}"}
+    return {
+        "tools": [],
+        "source": scout,
+        "error": f"unrecognised payload shape: keys={keys}",
+    }
 
 
-def _tool_names(tools: List[Any]) -> List[str]:
-    names: List[str] = []
+def _tool_names(tools: list[Any]) -> list[str]:
+    names: list[str] = []
     for t in tools:
         if isinstance(t, str):
             names.append(t)
@@ -123,7 +139,7 @@ def missing_tool_guidance(want: str) -> str:
     )
 
 
-def build_manifest(tools: List[Any], error: Optional[str] = None) -> str:
+def build_manifest(tools: list[Any], error: str | None = None) -> str:
     """The structural text manifest injected as the system prompt."""
     names = _tool_names(tools)
     lines = [
@@ -152,7 +168,9 @@ def build_manifest(tools: List[Any], error: Optional[str] = None) -> str:
     elif names:
         lines += [f"  - scout {n}" for n in sorted(names)]
     else:
-        lines += ["  (none forged yet — the base subcommands from `scout --help` still apply)"]
+        lines += [
+            "  (none forged yet — the base subcommands from `scout --help` still apply)"
+        ]
     lines += [
         "",
         "# EXPANSION (the only self-evolution path)",
@@ -165,9 +183,9 @@ def build_manifest(tools: List[Any], error: Optional[str] = None) -> str:
     return "\n".join(lines)
 
 
-def build_context(tools: Optional[List[Any]] = None,
-                  error: Optional[str] = None,
-                  fetch: bool = True) -> Dict[str, Any]:
+def build_context(
+    tools: list[Any] | None = None, error: str | None = None, fetch: bool = True
+) -> dict[str, Any]:
     """The payload handed to a local engine: an empty tool registry plus the manifest."""
     if tools is None and fetch:
         found = fetch_forged()
@@ -180,11 +198,11 @@ def build_context(tools: Optional[List[Any]] = None,
         "forged_count": len(_tool_names(tools)),
         "inventory_error": error,
         "disclaimer": "Solo personal project, no connection to employer, "
-                      "built with public/free-tier only",
+        "built with public/free-tier only",
     }
 
 
-def run(mode: str = "real", want: Optional[str] = None, **kw) -> Dict[str, Any]:
+def run(mode: str = "real", want: str | None = None, **kw) -> dict[str, Any]:
     """Skill entry point.
 
     ``mode="mock"`` builds the payload from a fixed inventory so the shape can be asserted
@@ -197,8 +215,11 @@ def run(mode: str = "real", want: Optional[str] = None, **kw) -> Dict[str, Any]:
         ctx = build_context()
     ctx["mode"] = mode
     if want:
-        have = set(_tool_names(
-            ["weather", "linear"] if mode == "mock" else fetch_forged()["tools"]))
+        have = set(
+            _tool_names(
+                ["weather", "linear"] if mode == "mock" else fetch_forged()["tools"]
+            )
+        )
         ctx["requested"] = want
         ctx["available"] = want in have
         if want not in have:

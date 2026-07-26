@@ -146,9 +146,13 @@ def reading(
     if not how or not str(how).strip():
         raise ValueError(f"reading {metric!r} must record how it was measured")
     if source not in SOURCES:
-        raise ValueError(f"reading {metric!r}: source must be one of {SOURCES}, got {source!r}")
+        raise ValueError(
+            f"reading {metric!r}: source must be one of {SOURCES}, got {source!r}"
+        )
     if unit not in UNITS:
-        raise ValueError(f"reading {metric!r}: unit must be one of {UNITS}, got {unit!r}")
+        raise ValueError(
+            f"reading {metric!r}: unit must be one of {UNITS}, got {unit!r}"
+        )
     if value is None and error is None:
         raise ValueError(f"reading {metric!r}: needs a value or an error, got neither")
     if value is not None and error is not None:
@@ -308,7 +312,9 @@ def memory_windows() -> dict[str, Any]:
     buf = MEMORYSTATUSEX()
     buf.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
     if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(buf)):
-        raise OSError(f"GlobalMemoryStatusEx failed, GetLastError={ctypes.get_last_error()}")
+        raise OSError(
+            f"GlobalMemoryStatusEx failed, GetLastError={ctypes.get_last_error()}"
+        )
     return {
         "total_bytes": float(buf.ullTotalPhys),
         "available_bytes": float(buf.ullAvailPhys),
@@ -399,7 +405,13 @@ def sample_memory(
         err = f"{type(e).__name__}: {e}"
         return [
             reading(
-                ts=ts, metric=m, scope=SCOPE_HOST, unit=u, how=how, source=src, error=err
+                ts=ts,
+                metric=m,
+                scope=SCOPE_HOST,
+                unit=u,
+                how=how,
+                source=src,
+                error=err,
             )
             for m, u in (
                 (METRIC_MEM_USED_PCT, UNIT_PERCENT),
@@ -442,12 +454,16 @@ def sample_memory(
 # ---- cpu: performance counters through an injected subprocess runner --------
 
 
-def typeperf_argv(counter: str, *, path: str = "typeperf", samples: int = 1) -> list[str]:
+def typeperf_argv(
+    counter: str, *, path: str = "typeperf", samples: int = 1
+) -> list[str]:
     """`typeperf <counter> -sc N` — one CSV sample per second, then exit."""
     return [path, counter, "-sc", str(int(samples))]
 
 
-def powershell_argv(counter: str, *, path: str = "powershell", samples: int = 1) -> list[str]:
+def powershell_argv(
+    counter: str, *, path: str = "powershell", samples: int = 1
+) -> list[str]:
     """Get-Counter reduced to a bare CookedValue, with no profile loaded.
 
     -NoProfile/-NonInteractive matter for a metrics probe: a user profile could
@@ -582,7 +598,9 @@ def sample_cpu(
         out = got.get("stdout") or ""
         if rc != 0:
             tail = (got.get("stderr") or out or "").strip().splitlines()
-            problems.append(f"{step['kind']}: exit {rc} {tail[0] if tail else ''}".strip())
+            problems.append(
+                f"{step['kind']}: exit {rc} {tail[0] if tail else ''}".strip()
+            )
             continue
         val = _PARSERS[step["kind"]](out)
         if val is None:

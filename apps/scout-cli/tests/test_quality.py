@@ -88,7 +88,9 @@ def test_loops_and_handlers_each_add_one_and_finally_adds_nothing():
 def test_async_for_and_async_def_are_measured_like_their_sync_forms():
     unit = _units("async def f(xs):\n    async for x in xs:\n        pass\n")["f"]
     assert unit["complexity"] == 2 and unit["is_async"] is True
-    assert _units("def g(xs):\n    for x in xs:\n        pass\n")["g"]["is_async"] is False
+    assert (
+        _units("def g(xs):\n    for x in xs:\n        pass\n")["g"]["is_async"] is False
+    )
 
 
 def test_boolean_operators_count_per_extra_operand():
@@ -156,7 +158,9 @@ def test_a_nested_def_is_its_own_unit_and_never_inflates_its_parent():
     units = _units(src)
     assert units["outer"]["complexity"] == 2  # NOT 3: inner's branch is inner's
     assert units["outer.inner"]["complexity"] == 2
-    assert units["outer"]["statements"] == 4  # def+if+return, plus the return; not inner's body
+    assert (
+        units["outer"]["statements"] == 4
+    )  # def+if+return, plus the return; not inner's body
     assert set(units) == {"outer", "outer.inner"}
 
 
@@ -341,9 +345,9 @@ def test_a_future_import_is_never_reported_unused():
     src = "from __future__ import annotations\n\nx = 1\n"
     result = quality.unused_imports(_tree(src), src.splitlines())
     assert result["unused"] == []  # a compiler directive is not a referenced name
-    assert [b["name"] for b in quality.import_bindings(_tree(src), src.splitlines())] == [
-        "annotations"
-    ]
+    assert [
+        b["name"] for b in quality.import_bindings(_tree(src), src.splitlines())
+    ] == ["annotations"]
 
 
 def test_noqa_suppresses_only_when_it_covers_the_unused_import_code():
@@ -353,14 +357,19 @@ def test_noqa_suppresses_only_when_it_covers_the_unused_import_code():
     other = "import os  # noqa: E501\n"
     for src in (bare, coded, multi):
         assert quality.unused_imports(_tree(src), src.splitlines())["unused"] == [], src
-    assert [b["name"] for b in quality.unused_imports(_tree(other), other.splitlines())["unused"]] == ["os"]
+    assert [
+        b["name"]
+        for b in quality.unused_imports(_tree(other), other.splitlines())["unused"]
+    ] == ["os"]
 
 
 def test_exporting_a_name_in_dunder_all_counts_as_using_it():
     src = 'from json import dumps\n\n__all__ = ["dumps"]\n'
     assert quality.unused_imports(_tree(src), src.splitlines())["unused"] == []
     without = "from json import dumps\n"
-    assert len(quality.unused_imports(_tree(without), without.splitlines())["unused"]) == 1
+    assert (
+        len(quality.unused_imports(_tree(without), without.splitlines())["unused"]) == 1
+    )
 
 
 def test_a_name_used_only_inside_a_quoted_annotation_counts_as_used():
@@ -384,9 +393,10 @@ def test_a_name_used_only_in_a_typing_cast_string_counts_as_used():
 
 def test_rebinding_an_imported_name_is_not_using_it():
     src = "import os\nos = None\n"
-    assert [b["name"] for b in quality.unused_imports(_tree(src), src.splitlines())["unused"]] == [
-        "os"
-    ]
+    assert [
+        b["name"]
+        for b in quality.unused_imports(_tree(src), src.splitlines())["unused"]
+    ] == ["os"]
     used = "import os\ndel os\n"
     assert quality.unused_imports(_tree(used), used.splitlines())["unused"] == []
 
@@ -400,10 +410,7 @@ def test_a_star_import_is_reported_as_unanalyzable_not_as_unused():
 
 
 def test_attribute_access_and_decorators_count_as_uses():
-    src = (
-        "import functools\nimport os\n"
-        "@functools.cache\ndef f():\n    return os.sep\n"
-    )
+    src = "import functools\nimport os\n@functools.cache\ndef f():\n    return os.sep\n"
     assert quality.unused_imports(_tree(src), src.splitlines())["unused"] == []
 
 
@@ -445,7 +452,10 @@ def test_markers_come_from_comments_and_string_hits_are_reported_separately():
 def test_marker_matching_is_case_sensitive_so_ordinary_prose_does_not_count():
     src = "# works around a bug in json, todo later\nx = 1\n"
     assert quality.source_metrics(src)["markers"] == []
-    assert quality.source_metrics("# BUG in json\nx = 1\n")["markers"][0]["marker"] == "BUG"
+    assert (
+        quality.source_metrics("# BUG in json\nx = 1\n")["markers"][0]["marker"]
+        == "BUG"
+    )
 
 
 def test_a_marker_inside_a_longer_word_is_not_a_marker():
@@ -457,7 +467,9 @@ def test_source_metrics_reports_why_instead_of_returning_zeros():
     m = quality.source_metrics("x = '''unterminated\n")
     assert m["error"] and "TokenError" in m["error"]
     # EITHER numbers OR an error: no half-measured row
-    assert m["sloc"] is None and m["markers"] is None and m["markers_in_strings"] is None
+    assert (
+        m["sloc"] is None and m["markers"] is None and m["markers_in_strings"] is None
+    )
 
 
 def test_todo_density_is_per_100_sloc_and_is_none_when_unmeasurable():
@@ -502,7 +514,9 @@ def test_a_file_with_no_functions_has_no_per_file_mean_either():
     assert counts["functions"] == 0 and counts["complexity_total"] == 0
     assert counts["complexity_mean"] is None  # not 0.0: nothing was averaged
     assert counts["complexity_max"] is None
-    assert _report(CLEAN_SOURCE)["counts"]["complexity_mean"] == 1.0  # and a real one is real
+    assert (
+        _report(CLEAN_SOURCE)["counts"]["complexity_mean"] == 1.0
+    )  # and a real one is real
 
 
 def test_an_unparsable_file_is_unmeasured_and_never_looks_clean():
@@ -556,15 +570,21 @@ def test_a_tokenize_failure_leaves_the_density_unknown_and_says_so(monkeypatch):
 
 
 def test_complexity_rules_escalate_from_warning_to_error():
-    warn = "def f(a):\n" + "".join(f"    if a == {i}:\n        return {i}\n" for i in range(9))
-    error = "def f(a):\n" + "".join(f"    if a == {i}:\n        return {i}\n" for i in range(20))
+    warn = "def f(a):\n" + "".join(
+        f"    if a == {i}:\n        return {i}\n" for i in range(9)
+    )
+    error = "def f(a):\n" + "".join(
+        f"    if a == {i}:\n        return {i}\n" for i in range(20)
+    )
     assert _cx(warn) == 10 and _cx(error) == 21
     assert "quality:complexity-warn" in _rules_fired(warn)
     assert "quality:complexity-error" not in _rules_fired(warn)
     fired = _rules_fired(error)
     assert "quality:complexity-error" in fired
     assert "quality:complexity-warn" not in fired  # escalated, not doubled up
-    under = "def f(a):\n" + "".join(f"    if a == {i}:\n        return {i}\n" for i in range(8))
+    under = "def f(a):\n" + "".join(
+        f"    if a == {i}:\n        return {i}\n" for i in range(8)
+    )
     assert _cx(under) == 9 and "quality:complexity-warn" not in _rules_fired(under)
 
 
@@ -572,8 +592,12 @@ def test_both_complexity_thresholds_are_inclusive_at_the_exact_boundary():
     """A score landing EXACTLY on a threshold must trip it. Found by mutation:
     the error rule was only ever tested at 21, so `>=` -> `>` survived."""
     thresholds = quality.DEFAULT_CONFIG["thresholds"]
-    on_warn = "def f(a):\n" + "".join(f"    if a == {i}:\n        return {i}\n" for i in range(9))
-    on_error = "def f(a):\n" + "".join(f"    if a == {i}:\n        return {i}\n" for i in range(19))
+    on_warn = "def f(a):\n" + "".join(
+        f"    if a == {i}:\n        return {i}\n" for i in range(9)
+    )
+    on_error = "def f(a):\n" + "".join(
+        f"    if a == {i}:\n        return {i}\n" for i in range(19)
+    )
     assert _cx(on_warn) == thresholds["complexity_warn"] == 10
     assert _cx(on_error) == thresholds["complexity_error"] == 20
     assert "quality:complexity-warn" in _rules_fired(on_warn)
@@ -593,9 +617,12 @@ def test_the_size_rules_fire_independently_of_complexity():
     many = "def f():\n" + "".join(f"    x{i} = {i}\n" for i in range(51))
     assert _units(many)["f"]["statements"] == 51
     assert _rules_fired(many) == {"quality:function-statements"}
-    deep = "def f(a):\n" + "".join(
-        f"{'    ' * (i + 1)}if a:\n" for i in range(5)
-    ) + "    " * 6 + "return 1\n"
+    deep = (
+        "def f(a):\n"
+        + "".join(f"{'    ' * (i + 1)}if a:\n" for i in range(5))
+        + "    " * 6
+        + "return 1\n"
+    )
     assert _units(deep)["f"]["max_depth"] == 5
     assert "quality:function-deep" in _rules_fired(deep)
     wide = "def f(a, b, c, d, e, g, h):\n    return 0\n"
@@ -611,13 +638,20 @@ def test_the_size_and_density_thresholds_are_exclusive_at_the_exact_boundary():
     over = 'def f():\n    """\n' + "\n" * 58 + '    """\n'
     assert _units(at_limit)["f"]["lines"] == thresholds["function_lines"] == 60
     assert _units(over)["f"]["lines"] == 61
-    assert _rules_fired(at_limit) == set() and _rules_fired(over) == {"quality:function-long"}
+    assert _rules_fired(at_limit) == set() and _rules_fired(over) == {
+        "quality:function-long"
+    }
 
     fifty = "def f():\n" + "".join(f"    x{i} = {i}\n" for i in range(50))
     assert _units(fifty)["f"]["statements"] == thresholds["function_statements"] == 50
     assert _rules_fired(fifty) == set()
 
-    depth4 = "def f(a):\n" + "".join(f"{'    ' * (i + 1)}if a:\n" for i in range(4)) + "    " * 5 + "a = 1\n"
+    depth4 = (
+        "def f(a):\n"
+        + "".join(f"{'    ' * (i + 1)}if a:\n" for i in range(4))
+        + "    " * 5
+        + "a = 1\n"
+    )
     assert _units(depth4)["f"]["max_depth"] == thresholds["max_depth"] == 4
     assert _rules_fired(depth4) == set()
 
@@ -637,9 +671,17 @@ def test_the_size_and_density_thresholds_are_exclusive_at_the_exact_boundary():
 
 def test_module_complexity_shares_the_warn_threshold_inclusively():
     thresholds = quality.DEFAULT_CONFIG["thresholds"]
-    at_limit = "import sys\n" + "".join(f"if sys.argv == ['{i}']:\n    X = {i}\n" for i in range(9))
-    below = "import sys\n" + "".join(f"if sys.argv == ['{i}']:\n    X = {i}\n" for i in range(8))
-    assert _report(at_limit)["counts"]["module_complexity"] == thresholds["complexity_warn"] == 10
+    at_limit = "import sys\n" + "".join(
+        f"if sys.argv == ['{i}']:\n    X = {i}\n" for i in range(9)
+    )
+    below = "import sys\n" + "".join(
+        f"if sys.argv == ['{i}']:\n    X = {i}\n" for i in range(8)
+    )
+    assert (
+        _report(at_limit)["counts"]["module_complexity"]
+        == thresholds["complexity_warn"]
+        == 10
+    )
     assert _report(below)["counts"]["module_complexity"] == 9
     assert "quality:module-complexity" in _rules_fired(at_limit)
     assert "quality:module-complexity" not in _rules_fired(below)
@@ -666,7 +708,10 @@ def test_the_density_rule_fires_and_points_at_the_listing_tool():
     assert diag[0]["line"] == 1
     # under the threshold it stays quiet
     quiet = "# TODO one\n" + "".join(f"x{i} = {i}\n" for i in range(60))
-    assert quality.todo_density(1, 60) < quality.DEFAULT_CONFIG["thresholds"]["todo_density"]
+    assert (
+        quality.todo_density(1, 60)
+        < quality.DEFAULT_CONFIG["thresholds"]["todo_density"]
+    )
     assert "quality:todo-density" not in _rules_fired(quiet)
 
 
@@ -689,7 +734,16 @@ def test_every_diagnostic_uses_the_family_schema_and_a_valid_severity():
         "quality:function-params",
     ]
     for d in diags:
-        assert set(d) == {"path", "line", "col", "rule", "severity", "message", "suggestion", "source"}
+        assert set(d) == {
+            "path",
+            "line",
+            "col",
+            "rule",
+            "severity",
+            "message",
+            "suggestion",
+            "source",
+        }
         assert d["severity"] in openswap.SEVERITIES
         assert d["path"] == "m.py" and d["rule"].startswith("quality:")
 
@@ -710,7 +764,9 @@ def test_disabling_a_rule_silences_it_without_silencing_the_others():
 
 
 def test_raising_a_threshold_changes_the_verdict_on_the_same_code():
-    src = "def f(a):\n" + "".join(f"    if a == {i}:\n        return {i}\n" for i in range(9))
+    src = "def f(a):\n" + "".join(
+        f"    if a == {i}:\n        return {i}\n" for i in range(9)
+    )
     cfg = quality.default_config()
     cfg["thresholds"]["complexity_warn"] = 11
     assert "quality:complexity-warn" in _rules_fired(src)
@@ -739,8 +795,13 @@ def test_default_config_is_a_copy_a_caller_may_mutate():
 def test_load_config_merges_an_overlay(tmp_path):
     overlay = tmp_path / "org.json"
     overlay.write_text(
-        json.dumps({"thresholds": {"params": 3}, "weights": {"Assert": 0},
-                    "rules": {"quality:import-star": {"severity": "error"}}}),
+        json.dumps(
+            {
+                "thresholds": {"params": 3},
+                "weights": {"Assert": 0},
+                "rules": {"quality:import-star": {"severity": "error"}},
+            }
+        ),
         encoding="utf-8",
     )
     cfg = quality.load_config(overlay)
@@ -785,17 +846,25 @@ def test_weights_fingerprint_tracks_the_table_and_ignores_key_order():
 
 
 def test_scan_report_totals_and_keeps_unmeasured_files_out_of_the_numbers():
-    good = _report("def f(a):\n    if a:\n        return 1\n    return 2\n", path="a.py")
+    good = _report(
+        "def f(a):\n    if a:\n        return 1\n    return 2\n", path="a.py"
+    )
     other = _report("def g():\n    return 1\n", path="b.py")
     bad = quality.unreadable_report("c.py", "OSError: nope")
     result = quality.scan_report([good, other, bad])
-    assert result["files"] == 3 and result["files_measured"] == 2 and result["files_failed"] == 1
+    assert (
+        result["files"] == 3
+        and result["files_measured"] == 2
+        and result["files_failed"] == 1
+    )
     assert result["totals"]["functions"] == 2
     assert result["totals"]["complexity_total"] == 3
     assert result["complexity_max"] == 2
     assert result["complexity_mean"] == 1.5  # 2 functions, not 3 files
     assert result["unmeasured"] == [{"path": "c.py", "error": "OSError: nope"}]
-    assert result["findings"] == 1 and result["summary"]["by_rule"] == {"quality:file-unreadable": 1}
+    assert result["findings"] == 1 and result["summary"]["by_rule"] == {
+        "quality:file-unreadable": 1
+    }
 
 
 def test_scan_report_has_no_mean_when_there_is_nothing_to_average():
@@ -805,7 +874,9 @@ def test_scan_report_has_no_mean_when_there_is_nothing_to_average():
     assert result["files_measured"] == 1 and result["totals"]["functions"] == 0
 
 
-def test_scan_report_names_a_partially_measured_file_instead_of_summing_a_none(monkeypatch):
+def test_scan_report_names_a_partially_measured_file_instead_of_summing_a_none(
+    monkeypatch,
+):
     report = _report("def f():\n    return 1\n", path="a.py")
     report["counts"]["todo_markers"] = None  # as a tokenize failure would leave it
     result = quality.scan_report([report])
@@ -816,7 +887,8 @@ def test_scan_report_names_a_partially_measured_file_instead_of_summing_a_none(m
 def test_hottest_is_ranked_and_capped():
     reports = [
         _report(
-            "def f(a):\n" + "".join(f"    if a == {i}:\n        return {i}\n" for i in range(3)),
+            "def f(a):\n"
+            + "".join(f"    if a == {i}:\n        return {i}\n" for i in range(3)),
             path="a.py",
         ),
         _report("def g():\n    return 1\n", path="b.py"),
@@ -833,7 +905,9 @@ def _store():
     return quality.open_store(":memory:")
 
 
-def _record(conn, src: str, *, label: str, path: str = "a.py", cfg=None, ts: float = 1.0) -> int:
+def _record(
+    conn, src: str, *, label: str, path: str = "a.py", cfg=None, ts: float = 1.0
+) -> int:
     cfg = cfg or quality.default_config()
     reports = [quality.file_report(src, path=path, config=cfg)]
     return quality.record_run(
@@ -851,9 +925,14 @@ def test_open_store_creates_the_schema_and_stamps_its_version(tmp_path):
     db = tmp_path / "nested" / "quality.db"
     conn = quality.open_store(db)
     try:
-        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        tables = {
+            r[0]
+            for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
         assert {"runs", "units", "file_rows", "meta"} <= tables
-        version = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0]
+        version = conn.execute(
+            "SELECT value FROM meta WHERE key='schema_version'"
+        ).fetchone()[0]
         assert version == quality.SCHEMA_VERSION
     finally:
         conn.close()
@@ -863,13 +942,19 @@ def test_open_store_creates_the_schema_and_stamps_its_version(tmp_path):
 def test_record_run_stores_the_run_its_units_and_its_files():
     conn = _store()
     try:
-        run_id = _record(conn, "def f(a):\n    if a:\n        return 1\n    return 2\n", label="one")
+        run_id = _record(
+            conn, "def f(a):\n    if a:\n        return 1\n    return 2\n", label="one"
+        )
         run = quality.list_runs(conn)[0]
         assert run["id"] == run_id and run["label"] == "one"
         assert run["complexity_total"] == 2 and run["functions"] == 1
-        units = conn.execute("SELECT qualname, complexity FROM units WHERE run_id=?", (run_id,)).fetchall()
+        units = conn.execute(
+            "SELECT qualname, complexity FROM units WHERE run_id=?", (run_id,)
+        ).fetchall()
         assert [tuple(u) for u in units] == [("f", 2)]
-        files = conn.execute("SELECT path, sloc, error FROM file_rows WHERE run_id=?", (run_id,)).fetchall()
+        files = conn.execute(
+            "SELECT path, sloc, error FROM file_rows WHERE run_id=?", (run_id,)
+        ).fetchall()
         assert [tuple(f) for f in files] == [("a.py", 4, None)]
     finally:
         conn.close()
@@ -888,7 +973,8 @@ def test_record_run_keeps_an_unmeasured_file_as_null_metrics_plus_its_error():
             weights=quality.DEFAULT_CONFIG["weights"],
         )
         row = conn.execute(
-            "SELECT sloc, complexity_total, error FROM file_rows WHERE run_id=?", (run_id,)
+            "SELECT sloc, complexity_total, error FROM file_rows WHERE run_id=?",
+            (run_id,),
         ).fetchone()
         assert row["sloc"] is None and row["complexity_total"] is None
         assert row["error"] == "OSError: nope"
@@ -933,7 +1019,12 @@ def test_trend_reads_oldest_first_and_reports_the_delta():
     conn = _store()
     try:
         _record(conn, "def f():\n    return 1\n", label="a", ts=1.0)
-        _record(conn, "def f(x):\n    if x:\n        return 1\n    return 2\n", label="b", ts=2.0)
+        _record(
+            conn,
+            "def f(x):\n    if x:\n        return 1\n    return 2\n",
+            label="b",
+            ts=2.0,
+        )
         series = quality.trend(conn, "complexity_total")
         assert [p["label"] for p in series["series"]] == ["a", "b"]
         assert series["first"] == 1 and series["last"] == 2
@@ -977,7 +1068,13 @@ def test_trend_flags_a_window_that_spans_two_weight_tables():
         retuned = quality.default_config()
         retuned["weights"]["If"] = 5
         _record(conn, "def f(a):\n    if a:\n        return 1\n", label="a", ts=1.0)
-        _record(conn, "def f(a):\n    if a:\n        return 1\n", label="b", cfg=retuned, ts=2.0)
+        _record(
+            conn,
+            "def f(a):\n    if a:\n        return 1\n",
+            label="b",
+            cfg=retuned,
+            ts=2.0,
+        )
         series = quality.trend(conn, "complexity_total")
         assert series["delta"] == 4  # 1+1 became 1+5: the line moved
         assert series["comparable"] is False
@@ -989,7 +1086,9 @@ def test_trend_flags_a_window_that_spans_two_weight_tables():
 def test_compare_runs_names_the_function_that_got_worse():
     conn = _store()
     try:
-        base = _record(conn, "def f(a):\n    if a:\n        return 1\n", label="before", ts=1.0)
+        base = _record(
+            conn, "def f(a):\n    if a:\n        return 1\n", label="before", ts=1.0
+        )
         head = _record(
             conn,
             "def f(a):\n    if a and a > 1:\n        for x in range(a):\n            return x\n",
@@ -999,11 +1098,28 @@ def test_compare_runs_names_the_function_that_got_worse():
         result = quality.compare_runs(conn, base, head)
         assert result["comparable"] is True and result["note"] is None
         assert result["regressions"] == [
-            {"path": "a.py", "qualname": "f", "lineno": 1, "base": 2, "head": 4, "delta": 2}
+            {
+                "path": "a.py",
+                "qualname": "f",
+                "lineno": 1,
+                "base": 2,
+                "head": 4,
+                "delta": 2,
+            }
         ]
-        assert result["improvements"] == [] and result["added"] == [] and result["removed"] == []
-        assert result["totals"]["complexity_total"] == {"base": 2, "head": 4, "delta": 2}
-        assert result["base"]["label"] == "before" and result["head"]["label"] == "after"
+        assert (
+            result["improvements"] == []
+            and result["added"] == []
+            and result["removed"] == []
+        )
+        assert result["totals"]["complexity_total"] == {
+            "base": 2,
+            "head": 4,
+            "delta": 2,
+        }
+        assert (
+            result["base"]["label"] == "before" and result["head"]["label"] == "after"
+        )
     finally:
         conn.close()
 
@@ -1018,15 +1134,29 @@ def test_compare_runs_reports_improvements_additions_and_removals():
             ts=1.0,
         )
         head = _record(
-            conn, "def f(a):\n    return a\ndef fresh(a):\n    if a:\n        return 1\n", label="after", ts=2.0
+            conn,
+            "def f(a):\n    return a\ndef fresh(a):\n    if a:\n        return 1\n",
+            label="after",
+            ts=2.0,
         )
         result = quality.compare_runs(conn, base, head)
         assert result["regressions"] == []
         assert result["improvements"] == [
-            {"path": "a.py", "qualname": "f", "lineno": 1, "base": 2, "head": 1, "delta": -1}
+            {
+                "path": "a.py",
+                "qualname": "f",
+                "lineno": 1,
+                "base": 2,
+                "head": 1,
+                "delta": -1,
+            }
         ]
-        assert result["added"] == [{"path": "a.py", "qualname": "fresh", "complexity": 2}]
-        assert result["removed"] == [{"path": "a.py", "qualname": "gone", "complexity": 1}]
+        assert result["added"] == [
+            {"path": "a.py", "qualname": "fresh", "complexity": 2}
+        ]
+        assert result["removed"] == [
+            {"path": "a.py", "qualname": "gone", "complexity": 1}
+        ]
     finally:
         conn.close()
 
@@ -1045,7 +1175,11 @@ def test_compare_runs_refuses_to_call_a_retune_a_regression():
         assert result["improvements"] == []
         assert "different weight tables" in result["note"]
         # the totals still show the movement, labelled as incomparable
-        assert result["totals"]["complexity_total"] == {"base": 2, "head": 10, "delta": 8}
+        assert result["totals"]["complexity_total"] == {
+            "base": 2,
+            "head": 10,
+            "delta": 8,
+        }
     finally:
         conn.close()
 
@@ -1086,7 +1220,9 @@ def test_marker_word_set_matches_the_todos_plugin_and_covers_goat_audit():
     assert listed == set(quality.MARKERS)
     goat = (ROOT / "scripts" / "goat_audit.py").read_text(encoding="utf-8")
     note_re = re.search(r"NOTE_RE = re\.compile\(r\"(?P<body>[^\"]+)\"\)", goat)
-    assert note_re, "goat_audit.py no longer declares NOTE_RE the way this guard reads it"
+    assert note_re, (
+        "goat_audit.py no longer declares NOTE_RE the way this guard reads it"
+    )
     assert set(re.findall(r"[A-Z]{3,}", note_re.group("body"))) <= set(quality.MARKERS)
 
 
@@ -1141,7 +1277,9 @@ def test_manifest_declares_zero_egress_and_only_the_store_as_writable():
     import yaml
 
     manifest = yaml.safe_load(
-        (ROOT / "bigbang" / "plugins" / "quality" / "manifest.yaml").read_text(encoding="utf-8")
+        (ROOT / "bigbang" / "plugins" / "quality" / "manifest.yaml").read_text(
+            encoding="utf-8"
+        )
     )
     caps = manifest["capabilities"]
     assert caps["network"]["enabled"] is False and caps["network"]["domains"] == []
@@ -1246,7 +1384,17 @@ def test_cli_quality_scan_finds_real_defects_and_gates(tmp_path):
     src = "import os\n# TODO fix\ndef f(a, b, c, d, e, g, h):\n"
     src += "".join(f"    if a == {i}:\n        return {i}\n" for i in range(20))
     target = _py(tmp_path, "hot.py", src)
-    r = _cli(["quality", "scan", str(target), "--db", str(tmp_path / "h.db"), "--fail-on", "error"])
+    r = _cli(
+        [
+            "quality",
+            "scan",
+            str(target),
+            "--db",
+            str(tmp_path / "h.db"),
+            "--fail-on",
+            "error",
+        ]
+    )
     assert r.returncode == 1  # the gate fires on the complexity error below
     data = json.loads(r.stdout)["data"]
     fired = {d["rule"] for d in data["diagnostics"]}
@@ -1267,12 +1415,23 @@ def test_cli_quality_scan_finds_real_defects_and_gates(tmp_path):
 def test_cli_quality_scan_clean_file_exits_zero_and_reports_nothing(tmp_path):
     target = _py(tmp_path, "clean.py", CLEAN_SOURCE)
     r = _cli(
-        ["quality", "scan", str(target), "--db", str(tmp_path / "h.db"), "--fail-on", "info", "--units"]
+        [
+            "quality",
+            "scan",
+            str(target),
+            "--db",
+            str(tmp_path / "h.db"),
+            "--fail-on",
+            "info",
+            "--units",
+        ]
     )
     assert r.returncode == 0, r.stdout + r.stderr
     data = json.loads(r.stdout)["data"]
     assert data["diagnostics"] == [] and data["summary"]["total"] == 0
-    assert data["files"][0]["units"][0]["qualname"] == "head"  # --units surfaced the table
+    assert (
+        data["files"][0]["units"][0]["qualname"] == "head"
+    )  # --units surfaced the table
     assert data["aggregate"]["totals"]["functions"] == 1
 
 
@@ -1299,10 +1458,23 @@ def test_cli_quality_scan_walks_a_directory_and_skips_non_python(tmp_path):
 
 def test_cli_quality_scan_counts_an_unparsable_file_as_unmeasured(tmp_path):
     _py(tmp_path, "broken.py", "def f(:\n")
-    r = _cli(["quality", "scan", str(tmp_path), "--db", str(tmp_path / "h.db"), "--fail-on", "error"])
+    r = _cli(
+        [
+            "quality",
+            "scan",
+            str(tmp_path),
+            "--db",
+            str(tmp_path / "h.db"),
+            "--fail-on",
+            "error",
+        ]
+    )
     assert r.returncode == 1  # unmeasured must never pass a gate
     data = json.loads(r.stdout)["data"]
-    assert data["aggregate"]["files_failed"] == 1 and data["aggregate"]["files_measured"] == 0
+    assert (
+        data["aggregate"]["files_failed"] == 1
+        and data["aggregate"]["files_measured"] == 0
+    )
     assert data["aggregate"]["complexity_mean"] is None
     assert [d["rule"] for d in data["diagnostics"]] == ["quality:file-unparsed"]
 
@@ -1346,7 +1518,9 @@ def test_cli_quality_compare_needs_two_runs(tmp_path):
 
 def test_cli_quality_trend_and_compare_span_two_real_runs(tmp_path):
     db = tmp_path / "h.db"
-    target = _py(tmp_path, "app.py", "def f(a):\n    if a:\n        return 1\n    return 2\n")
+    target = _py(
+        tmp_path, "app.py", "def f(a):\n    if a:\n        return 1\n    return 2\n"
+    )
     first = _cli(["quality", "scan", str(target), "--db", str(db), "--label", "before"])
     assert first.returncode == 0, first.stdout + first.stderr
     target.write_text(
@@ -1365,16 +1539,25 @@ def test_cli_quality_trend_and_compare_span_two_real_runs(tmp_path):
     assert r.returncode == 1  # a function got more complex
     data = json.loads(r.stdout)["data"]
     assert data["comparable"] is True
-    assert [(x["qualname"], x["base"], x["head"]) for x in data["regressions"]] == [("f", 2, 4)]
+    assert [(x["qualname"], x["base"], x["head"]) for x in data["regressions"]] == [
+        ("f", 2, 4)
+    ]
     assert data["head"]["label"] == "after" and data["base"]["label"] == "before"
 
 
 def test_cli_quality_compare_will_not_gate_across_two_weight_tables(tmp_path):
     db = tmp_path / "h.db"
-    target = _py(tmp_path, "app.py", "def f(a):\n    if a:\n        return 1\n    return 2\n")
+    target = _py(
+        tmp_path, "app.py", "def f(a):\n    if a:\n        return 1\n    return 2\n"
+    )
     cfg = _py(tmp_path, "cfg.json", '{"weights": {"If": 7}}')
     assert _cli(["quality", "scan", str(target), "--db", str(db)]).returncode == 0
-    assert _cli(["quality", "scan", str(target), "--db", str(db), "--config", str(cfg)]).returncode == 0
+    assert (
+        _cli(
+            ["quality", "scan", str(target), "--db", str(db), "--config", str(cfg)]
+        ).returncode
+        == 0
+    )
     r = _cli(["quality", "compare", "--db", str(db), "--fail-on-regression"])
     assert r.returncode == 1  # "cannot determine" must not pass a gate
     data = json.loads(r.stdout)["data"]
@@ -1388,7 +1571,9 @@ def test_cli_quality_scan_dogfoods_this_plugins_own_core(tmp_path):
     """The scanner is run against the module it lives in — if the measurement were
     broken, the numbers below could not be reproduced from the file on disk."""
     core = ROOT / "bigbang" / "core" / "quality.py"
-    r = _cli(["quality", "scan", str(core), "--db", str(tmp_path / "h.db"), "--no-record"])
+    r = _cli(
+        ["quality", "scan", str(core), "--db", str(tmp_path / "h.db"), "--no-record"]
+    )
     assert r.returncode == 0, r.stdout + r.stderr
     data = json.loads(r.stdout)["data"]
     expected = quality.file_report(core.read_text(encoding="utf-8"), path=str(core))

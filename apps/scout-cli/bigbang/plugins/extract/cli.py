@@ -202,8 +202,9 @@ def _read_file(source: str) -> dict:
         return {"html": "", "url": None, "error": f"{type(e).__name__}: {e}"}
 
 
-def load_source(source: str, *, timeout: float = 15.0,
-                max_bytes: int = extract.MAX_FETCH_BYTES) -> dict:
+def load_source(
+    source: str, *, timeout: float = 15.0, max_bytes: int = extract.MAX_FETCH_BYTES
+) -> dict:
     """The one I/O boundary: source id -> {html, url, error}. Never raises.
 
     Tests inject their own callable of this shape into extract.run_batch, which
@@ -295,9 +296,7 @@ def detect():
     ),
 )
 def read(
-    source: str = typer.Argument(
-        ..., help="file path, http(s) URL, or - for stdin"
-    ),
+    source: str = typer.Argument(..., help="file path, http(s) URL, or - for stdin"),
     text_out: bool = typer.Option(
         False,
         "--text",
@@ -320,8 +319,9 @@ def read(
         False, "--record/--no-record", help="persist into the corpus ledger"
     ),
     db: str | None = typer.Option(
-        None, "--db", help=f"corpus ledger path (default {extract.DB_REL} "
-        "or $SCOUT_EXTRACT_DB)"
+        None,
+        "--db",
+        help=f"corpus ledger path (default {extract.DB_REL} or $SCOUT_EXTRACT_DB)",
     ),
     fail_on: str | None = typer.Option(
         None,

@@ -177,8 +177,12 @@ def link_survey(
         for u, r in by_url.items()
         if r.get("facts") and int(r.get("depth") or 0) > 0 and inbound.get(u, 0) == 0
     )
-    return {"graph": graph, "internal": internal, "external": external,
-            "orphans": orphans}
+    return {
+        "graph": graph,
+        "internal": internal,
+        "external": external,
+        "orphans": orphans,
+    }
 
 
 # ---- external verification: HEAD-then-GET under politeness ------------------
@@ -225,12 +229,22 @@ def verify_external(
     for url in urls:
         host = (urlsplit(url).hostname or "").lower()
         if host_allowed(host, allow):
-            out[url] = {"state": "allowlisted", "status": None, "method": None,
-                        "detail": "config external_allow", "attempts": 0}
+            out[url] = {
+                "state": "allowlisted",
+                "status": None,
+                "method": None,
+                "detail": "config external_allow",
+                "attempts": 0,
+            }
             continue
         if clock() - start > budget:
-            out[url] = {"state": "unverified", "status": None, "method": None,
-                        "detail": f"budget {budget:g}s exhausted", "attempts": 0}
+            out[url] = {
+                "state": "unverified",
+                "status": None,
+                "method": None,
+                "detail": f"budget {budget:g}s exhausted",
+                "attempts": 0,
+            }
             continue
         n = 0
         r: dict[str, Any] = {"status": None, "error": "no probe ran"}
@@ -256,8 +270,13 @@ def verify_external(
             state, detail = "broken", f"http {s}"
         else:
             state, detail = "ok", None
-        out[url] = {"state": state, "status": s, "method": method,
-                    "detail": detail, "attempts": n}
+        out[url] = {
+            "state": state,
+            "status": s,
+            "method": method,
+            "detail": detail,
+            "attempts": n,
+        }
     return out
 
 
@@ -299,7 +318,11 @@ def to_diagnostics(
             suggestion = "raise --max-pages/--max-depth and re-crawl"
         diags.append(
             openswap.diagnostic(
-                path=rec["refs"][0], line=0, col=0, rule=rule, severity=sev,
+                path=rec["refs"][0],
+                line=0,
+                col=0,
+                rule=rule,
+                severity=sev,
                 message=f"{target} {rec['detail']}{refs_note(rec['refs'])}",
                 suggestion=suggestion,
             )
@@ -312,7 +335,11 @@ def to_diagnostics(
         refs = (survey["external"].get(url) or {}).get("refs") or ["?"]
         diags.append(
             openswap.diagnostic(
-                path=refs[0], line=0, col=0, rule=rule, severity=sev,
+                path=refs[0],
+                line=0,
+                col=0,
+                rule=rule,
+                severity=sev,
                 message=f"{url} {res.get('detail')}{refs_note(refs)}",
                 suggestion=f"verified via {res.get('method')}"
                 f" after {res.get('attempts')} probe(s)",
@@ -321,7 +348,10 @@ def to_diagnostics(
     for url in survey["orphans"]:
         diags.append(
             openswap.diagnostic(
-                path=url, line=0, col=0, rule="links:orphan-page",
+                path=url,
+                line=0,
+                col=0,
+                rule="links:orphan-page",
                 severity="suggestion",
                 message="no inbound internal links in the crawl graph",
                 suggestion="link it from a crawled page or retire it",
@@ -341,15 +371,25 @@ def state_counts(
     for res in (external_results or {}).values():
         st = res.get("state") or "?"
         external[st] = external.get(st, 0) + 1
-    return {"internal": dict(sorted(internal.items())),
-            "external": dict(sorted(external.items()))}
+    return {
+        "internal": dict(sorted(internal.items())),
+        "external": dict(sorted(external.items())),
+    }
 
 
 # ---- local docs: href/src + anchors, fully offline --------------------------
 
 # elements whose reference attribute a docs tree must keep resolvable
-_REF_ATTRS = {"a": "href", "link": "href", "img": "src", "script": "src",
-              "iframe": "src", "source": "src", "video": "src", "audio": "src"}
+_REF_ATTRS = {
+    "a": "href",
+    "link": "href",
+    "img": "src",
+    "script": "src",
+    "iframe": "src",
+    "source": "src",
+    "video": "src",
+    "audio": "src",
+}
 _MD_HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*#*\s*$")
 _MD_LINK = re.compile(r"!?\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 _MD_REF_DEF = re.compile(r"^\s*\[[^\]]+\]:\s+(\S+)")
@@ -414,12 +454,24 @@ def parse_doc(text: str, suffix: str) -> dict[str, Any]:
             slug_seen[slug] = n + 1
             ids.add(slug if n == 0 else f"{slug}-{n}")
         for lm in _MD_LINK.finditer(ln):
-            refs.append({"target": lm.group(1), "tag": "md",
-                         "line": lineno, "col": lm.start() + 1})
+            refs.append(
+                {
+                    "target": lm.group(1),
+                    "tag": "md",
+                    "line": lineno,
+                    "col": lm.start() + 1,
+                }
+            )
         rm = _MD_REF_DEF.match(ln)
         if rm:
-            refs.append({"target": rm.group(1), "tag": "md-ref",
-                         "line": lineno, "col": rm.start(1) + 1})
+            refs.append(
+                {
+                    "target": rm.group(1),
+                    "tag": "md-ref",
+                    "line": lineno,
+                    "col": rm.start(1) + 1,
+                }
+            )
         for im in _HTML_ID.finditer(ln):
             ids.add(im.group(1).strip())
     return {"refs": refs, "ids": ids}
@@ -442,18 +494,23 @@ def check_files(
     docs: dict[Path, dict[str, Any]] = {}
     for f in files:
         p = Path(f).resolve()
-        docs[p] = parse_doc(p.read_text(encoding="utf-8", errors="replace"),
-                            p.suffix)
+        docs[p] = parse_doc(p.read_text(encoding="utf-8", errors="replace"), p.suffix)
 
     def doc_for(p: Path) -> dict[str, Any] | None:
         if p not in docs and p.suffix.lower() in DOC_EXTS and p.is_file():
-            docs[p] = parse_doc(p.read_text(encoding="utf-8", errors="replace"),
-                                p.suffix)
+            docs[p] = parse_doc(
+                p.read_text(encoding="utf-8", errors="replace"), p.suffix
+            )
         return docs.get(p)
 
     diags: list[dict[str, Any]] = []
-    stats = {"files": len(files), "external_refs": 0, "skipped_schemes": 0,
-             "root_relative_skipped": 0, "checked_refs": 0}
+    stats = {
+        "files": len(files),
+        "external_refs": 0,
+        "skipped_schemes": 0,
+        "root_relative_skipped": 0,
+        "checked_refs": 0,
+    }
     for f in sorted({Path(x).resolve() for x in files}):
         info = docs[f]
         seen: set[str] = set()
@@ -472,12 +529,17 @@ def check_files(
             if t.startswith("#"):
                 frag = unquote(t[1:])
                 if frag and frag not in info["ids"]:
-                    diags.append(openswap.diagnostic(
-                        path=str(f), line=ref["line"], col=ref["col"],
-                        rule="links:fragment-missing", severity="warning",
-                        message=f"#{frag} not found in {f.name}",
-                        suggestion="add the anchor or fix the fragment",
-                    ))
+                    diags.append(
+                        openswap.diagnostic(
+                            path=str(f),
+                            line=ref["line"],
+                            col=ref["col"],
+                            rule="links:fragment-missing",
+                            severity="warning",
+                            message=f"#{frag} not found in {f.name}",
+                            suggestion="add the anchor or fix the fragment",
+                        )
+                    )
                 continue
             path_part, _, frag = t.partition("#")
             path_part = unquote(path_part.split("?", 1)[0])
@@ -489,22 +551,32 @@ def check_files(
             else:
                 target = (f.parent / path_part).resolve()
             if not target.exists():
-                diags.append(openswap.diagnostic(
-                    path=str(f), line=ref["line"], col=ref["col"],
-                    rule="links:file-missing", severity="error",
-                    message=f"{t} -> {target} does not exist",
-                    suggestion="fix the path or restore the file",
-                ))
+                diags.append(
+                    openswap.diagnostic(
+                        path=str(f),
+                        line=ref["line"],
+                        col=ref["col"],
+                        rule="links:file-missing",
+                        severity="error",
+                        message=f"{t} -> {target} does not exist",
+                        suggestion="fix the path or restore the file",
+                    )
+                )
                 continue
             if frag:
                 tdoc = doc_for(target)
                 if tdoc is not None and unquote(frag) not in tdoc["ids"]:
-                    diags.append(openswap.diagnostic(
-                        path=str(f), line=ref["line"], col=ref["col"],
-                        rule="links:fragment-missing", severity="warning",
-                        message=f"{t}: #{unquote(frag)} not in {target.name}",
-                        suggestion="add the anchor or fix the fragment",
-                    ))
+                    diags.append(
+                        openswap.diagnostic(
+                            path=str(f),
+                            line=ref["line"],
+                            col=ref["col"],
+                            rule="links:fragment-missing",
+                            severity="warning",
+                            message=f"{t}: #{unquote(frag)} not in {target.name}",
+                            suggestion="add the anchor or fix the fragment",
+                        )
+                    )
     return openswap.sort_diagnostics(diags), stats
 
 
@@ -562,25 +634,47 @@ def record_run(
     ext = external_results or {}
     cur = conn.execute(
         "INSERT INTO runs(site, ts, external_checked) VALUES(?, ?, ?)",
-        (site, time.time() if ts is None else ts,
-         int(any(r.get("method") for r in ext.values()))),
+        (
+            site,
+            time.time() if ts is None else ts,
+            int(any(r.get("method") for r in ext.values())),
+        ),
     )
     run_id = int(cur.lastrowid)
     for url, rec in survey["internal"].items():
         conn.execute(
             "INSERT OR REPLACE INTO link_status(run_id, url, kind, state,"
             " status, detail, ref_count, first_ref) VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
-            (run_id, url, "internal", rec["state"], rec["status"],
-             rec["detail"], len(rec["refs"]), rec["refs"][0]),
+            (
+                run_id,
+                url,
+                "internal",
+                rec["state"],
+                rec["status"],
+                rec["detail"],
+                len(rec["refs"]),
+                rec["refs"][0],
+            ),
         )
     for url, rec in survey["external"].items():
-        res = ext.get(url) or {"state": "unverified", "status": None,
-                               "detail": "external verification off"}
+        res = ext.get(url) or {
+            "state": "unverified",
+            "status": None,
+            "detail": "external verification off",
+        }
         conn.execute(
             "INSERT OR REPLACE INTO link_status(run_id, url, kind, state,"
             " status, detail, ref_count, first_ref) VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
-            (run_id, url, "external", res.get("state"), res.get("status"),
-             res.get("detail"), len(rec["refs"]), rec["refs"][0]),
+            (
+                run_id,
+                url,
+                "external",
+                res.get("state"),
+                res.get("status"),
+                res.get("detail"),
+                len(rec["refs"]),
+                rec["refs"][0],
+            ),
         )
     conn.commit()
     return run_id

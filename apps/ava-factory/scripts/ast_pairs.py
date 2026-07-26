@@ -55,7 +55,9 @@ MAX_IMPORTS_PACKED = 20
 
 _REJECT = re.compile(r"(?i)\b(todo|fixme|xxx|hack|deprecated)\b")
 # Sphinx/epydoc field lines — self-contained, one line each.
-_FIELD_LINE = re.compile(r"^\s*(:param|:return|:rtype|:raises|:type|@param|@return|@throws)", re.I)
+_FIELD_LINE = re.compile(
+    r"^\s*(:param|:return|:rtype|:raises|:type|@param|@return|@throws)", re.I
+)
 # Google/NumPy section HEADERS. Everything indented beneath one belongs to it.
 _SECTION_HEADER = re.compile(
     r"^\s*(Args|Arguments|Returns|Yields|Raises|Attributes|Parameters|Examples?|Note|Notes)\s*:\s*$",
@@ -207,8 +209,18 @@ def extract_file(source: str, path: str = "<memory>"):
 
 
 def walk(base: Path):
-    skip = {".git", "__pycache__", ".venv", "venv", "node_modules", ".ruff_cache",
-            ".pytest_cache", "site-packages", "build", "dist"}
+    skip = {
+        ".git",
+        "__pycache__",
+        ".venv",
+        "venv",
+        "node_modules",
+        ".ruff_cache",
+        ".pytest_cache",
+        "site-packages",
+        "build",
+        "dist",
+    }
     for p in base.rglob("*.py"):
         if skip & set(p.parts):
             continue
