@@ -7,6 +7,93 @@ state, runbooks and standing orders).**
 
 ---
 
+## 📌 Session continuation — 2026-07-26 (supersedes every block below for live state)
+
+Caveman brief. Short lines. Numbers exact.
+
+### Live state — measured, not remembered
+
+| thing | value | when |
+|---|---|---|
+| HEAD | `ca91bac`, pushed, tree clean | 2026-07-26 |
+| CI on main | green (`da5f717`, both jobs) | 2026-07-25 |
+| www.bhenre.com | G3 smoke **PASSES**, exit 0 | after redeploy `8jlgr3038` |
+| scout-cli board | **2226 passed / 1 skipped / 0 failed** | full run, 11m13s |
+| factory board | **553 passed / 33 skipped / 21 errors** | 3 foreground chunks |
+| factory 21 errors | PRE-EXISTING. httpx 0.28.1 killed `Client(app=...)`. `test_server_endpoints.py` cannot run. NOT our code | |
+| retrieval bar (new) | **NDCG@10 0.622 · MRR 0.619 · recall@10 0.791** leak-free, 209 walk-forward queries, 2,024 docs | 2026-07-26 |
+| training | **NOT running.** `pipeline: TimeoutError`. Docker CLI 500s | |
+| research loop | ALIVE. baseline `factory_lm_loss = 5.73733`. **real wins = ZERO** (3 sota rows all artifacts) | |
+| box | 1,896 MB RAM free · 23.6 GB disk · RTX 4080 12 GB **idle** | |
+
+### Vector estate — separate repos, NOT in this monorepo
+
+| repo | domain | commits | remote |
+|---|---|---|---|
+| `~/vector-hoops` | NBA | **318** CANONICAL | yes |
+| `~/vector-gridiron` | NFL | 20 | yes |
+| `~/vector-pitch` | Soccer | 14 | yes |
+| `~/vector-equities` | Equities | 12 | yes |
+| `~/vector-unified` | **the binder** | 1 | ⚠ **NO REMOTE** |
+| `~/vector-hub` | dumbmodel.com landing page | 3 | no |
+
+⚠ Two STALE `vector-hoops` clones exist (`~/workspace`, `~/Documents/projects`). Use `~/vector-hoops`.
+⚠ `~/vector-unified` is local-only. Local git survives `rm`, NOT disk failure. Needs a remote.
+
+### Gate commands — run these, do not trust memory
+
+```bash
+# scout-cli (11 min)
+cd apps/scout-cli && python -m pytest tests -q ; echo "EXIT=$?"
+
+# factory — THREE FOREGROUND CHUNKS. background runs get KILLED by memory pressure
+cd apps/ava-factory && AVA_FACTORY_ROOT="$PWD" python -m pytest tests -q
+
+# site, before and after deploy
+cd apps/bluehenre && node scripts/release_gate.mjs --pre
+cd apps/bluehenre && node scripts/release_gate.mjs --post https://www.bhenre.com
+
+# the retrieval bar an embedding model must beat
+python scripts/retrieval_eval.py
+
+# find gates whose verdict nothing consumes
+python scripts/gate_audit.py --path apps/scout-cli
+
+# hoops: 4 surfaces claim 48-d, artifact is 64-d (exits 1 today, correctly)
+cd ~/vector-hoops && python pipeline/provenance_gate.py
+```
+
+### Doctrines that WILL bite you
+
+- **`AVA_FACTORY_ROOT` unset → 36 false failures.** Always set it.
+- **Background full-suite runs get KILLED.** 3 killed on 2026-07-25. Use foreground chunks.
+- **`| tail` masks pytest's exit code.** Bit me 5× in one day. Use `echo "EXIT=${PIPESTATUS[0]}"`.
+- **FROZEN: `apps/ava-factory/dottie/**` + `apps/ava-factory/configs/**`.** Bind-mounted into the live trainer. `scripts/` is NOT frozen.
+- **Parse with `ast`, never grep.** This repo's comments quote the code they discuss. Grep-counting-prose gave 3 wrong answers in one day.
+- **`subprocess.run([sys.executable, ...])`.** Bare `'python'` resolves a different interpreter here and every mutation "kill" becomes a fake.
+- **Never edit source while a suite runs.** CLI tests spawn subprocesses that re-read from disk.
+- **Test floors must sit NEAR the measurement.** A floor below the truth passes with fabricated numbers. Happened 2026-07-26.
+- **Run scout tests from `apps/scout-cli`.** A stale `.pth` shadows `bigbang` from the repo root → 8 phantom failures.
+- **Licence gate is deny-by-default.** Any `-nd` denied (training is derivative use). Any `-nc` denied. Unverified ≠ permissive. Shadow libraries forbidden regardless of tag.
+
+### The one lens that found the most bugs
+
+**"A gate whose verdict nothing consumes."** 5 instances in one day: fail-open action dispatch; 47 manifests declaring `paths` enforced by 0; a licence skip disabled by `and not args.dry_run`; `promote {"ok": false}` shipping anyway; `|| true` on a lint gate. Ask of any gate: *which line reads this verdict, and what does it do differently?* If the answer is "writes it to a report", it is not a gate. Detector: `scripts/gate_audit.py`.
+
+### NEXT STEPS — ordered
+
+1. **Fix the 2 defects that produce wrong data** (`TODOS.md`, 2026-07-26 block).
+   `minhash_dedup.py` single-linkage drops docs below its own 0.8 threshold (worst true J **0.7143**); `docs[key] = seg` silently overwrites same-named defs — `mcp/cli.py::_check_sdk` exists twice, one returns `True`, one raises, **opposites**, only the second survives.
+2. **Task-shaped eval slice.** Golden-set queries are commit messages. Agent-tier queries are task descriptions — longer, less identifier-dense, **harder for BM25, easier for embeddings**. 0.622 probably flatters lexical. Judging a model only on commit messages is rigged the other way.
+3. **Remote for `~/vector-unified`.** 5,397 lines, one disk.
+4. **Decide the authoritative surface for hoops 48-vs-64**, then fix the other three. Gate does not autofix on purpose: a stale artifact with fresh docs is the same failure inverted.
+5. **Re-derive or retract the hoops promote justification.** `0.363 → 0.757` lives in a comment and in no artifact. Same shape as the 3 artifact sota rows.
+6. **Then step 5 of the embedding sequence** — ONE encoder + LoRA adapters, hard negatives, pre-registered target beating 0.622.
+
+**Waiting on operator:** the 2 frozen edits to activate stack-v3 (`odc-by`, verified; adapter + 27 tests ready, source enters at weight `0.00`); Docker Desktop restart to verify the telemetry fix; whether to delete the 2 stale hoops clones.
+
+---
+
 ## 📌 Session continuation — 2026-07-22 ~11:35 CDT (supersedes the 00:09 block)
 
 **The product PIVOTED twice today on operator directives — current truth:**
