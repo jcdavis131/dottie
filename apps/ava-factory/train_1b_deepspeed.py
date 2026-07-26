@@ -466,7 +466,98 @@ def main():
         default=0.15,
         help="MOJO mask ratio — 15% best per paper",
     )
+    # ── 2607.20548 SOAP/Muon optimizers ───────────────────────────────────────
+    parser.add_argument(
+        "--optimizer",
+        default="adamw",
+        choices=["adamw", "adamw8bit", "muon", "muon_vs", "muonh", "soap", "kl_soap", "mop", "rekls"],
+        help="Optimizer: adamw | muon (Muon hybrid) | muon_vs (variance-scaled) | soap (per-step QR fix) | kl_soap (KL-Shampoo) | mop | rekls (eigen+KL advanced) — 2607.20548",
+    )
+    parser.add_argument(
+        "--muon_ns_steps",
+        type=int,
+        default=5,
+        help="Muon Newton-Schulz iterations (paper Sec 5.2: 5 steps PolarExpress, Kimi K2 used 5)",
+    )
+    parser.add_argument("--muon_momentum", type=float, default=0.95, help="Muon momentum beta (Table 4 0.95)")
+    parser.add_argument("--shampoo_beta", type=float, default=0.95, help="SOAP Shampoo beta EMA for L,R (Table 6 0.95)")
+    parser.add_argument(
+        "--soap_precond_freq",
+        type=int,
+        default=1,
+        help="SOAP precondition freq: 1=per-step QR orth (fixes large-batch instability Sec 5.4), higher = delayed unstable",
+    )
+    parser.add_argument(
+        "--soap_kl",
+        action="store_true",
+        default=False,
+        help="Enable KL covariance (KL-Shampoo) — paper Sec 5.4 eliminates loss spikes",
+    )
+    parser.add_argument(
+        "--soap_eigh",
+        action="store_true",
+        default=False,
+        help="Use full eigendecomp vs QR power iter (expensive, more stable, REKLS mode)",
+    )
+    parser.add_argument(
+        "--soap_power_iter",
+        type=int,
+        default=1,
+        help="Power iter steps before QR (1 enough per paper Sec 5.4.2)",
+    )
+    parser.add_argument(
+        "--layer_wise",
+        action="store_true",
+        default=False,
+        help="Layer-wise distributed optimizer (Megatron-Core pattern) — whole layers per rank, avoids slicing 2D preconditioner Sec 6",
+    )
+    parser.add_argument("--num_ranks", type=int, default=1, help="DP ranks for layer-wise distributed")
+    parser.add_argument(
+        "--update_rms_match",
+        action="store_true",
+        default=False,
+        help="Enable update-RMS matching factor 0.2*sqrt((1-beta)/(1+beta)) for fair LR transfer AdamW/Muon/SOAP Sec 5.2",
+    )
+    parser.add_argument("--rms_beta", type=float, default=0.9, help="beta for RMS match factor (0.9=>0.0459, 0.95=>0.032)")
+    parser.add_argument(
+        "--sqrt_batch_scaling",
+        action="store_true",
+        default=False,
+        help="Enable sqrt batch scaling eta' = eta sqrt(B'/B) (paper Sec 3, large-batch MoE)",
+    )
+    parser.add_argument("--base_batch_tokens", type=int, default=1048576, help="Base batch tokens for sqrt scaling (1M)")
+    parser.add_argument("--new_batch_tokens", type=int, default=1048576, help="New batch tokens for sqrt scaling")
+    parser.add_argument(
+        "--cpu_fallback",
+        action="store_true",
+        default=True,
+        help="Offline-first CPU fallback for optimizer (no CUDA needed) — free-tier friendly",
+    )
     args = parser.parse_args()
+
+    # ── derived scaling display for 2607.20548 ──────────────────────────────
+    if args.update_rms_match or args.sqrt_batch_scaling or args.optimizer != "adamw":
+        import math
+
+        rms_factor = 0.2 * math.sqrt((1 - args.rms_beta) / (1 + args.rms_beta)) if args.update_rms_match else 1.0
+        batch_factor = math.sqrt(args.new_batch_tokens / args.base_batch_tokens) if args.sqrt_batch_scaling else 1.0
+        print(
+            f"[2607.20548] optimizer={args.optimizer} ns_steps={args.muon_ns_steps} shampoo_beta={args.shampoo_beta} "
+            f"precond_freq={args.soap_precond_freq} kl={args.soap_kl} eigh={args.soap_eigh} layer_wise={args.layer_wise} "
+            f"rms_match={args.update_rms_match} rms_factor={rms_factor:.4f} batch_scale={args.sqrt_batch_scaling} batch_factor={batch_factor:.3f}"
+        )
+        if args.optimizer in ("soap", "kl_soap", "rekls"):
+            print(
+                f"[SOAP FIX] per-step QR orth + KL covariance={args.soap_kl} — fixes lagging preconditioner/eigenbasis instability at large-batch (Sec 5.4)"
+            )
+        if args.optimizer in ("muon", "muon_vs", "mop", "muonh"):
+            print(
+                f"[MUON] Newton-Schulz orthogonalization {args.muon_ns_steps} steps, Moonlight RMS 0.2*sqrt(max) — LR transfer direct reuse AdamW LR (Sec 5.2)"
+            )
+        if args.layer_wise:
+            print(
+                f"[LAYER-WISE] Distributed optimizer pattern Sec 6 — whole layers per rank, round-robin assignment, variable all_gatherv, comm hiding"
+            )
 
     print(
         "Solo personal project, no connection to employer, built with public/free-tier only"
@@ -671,7 +762,36 @@ def main():
             f"[ROPE] type={args.rope} sinks={args.n_sinks} peri_ln={args.use_peri_ln}"
         )
         jlosses = MultiJSpaceLosses()
-        optimizer = torch.optim.AdamW(model.parameters(), lr=bcfg["lr"])
+        # ── 2607.20548 optimizer factory (Muon/SOAP/KL-SOAP/MOP/REKLS + RMS match + sqrt batch + layer-wise) ──
+        try:
+            from dottie.optim import build_optim
+
+            optimizer = build_optim(
+                model,
+                name=args.optimizer,
+                adamw_lr=bcfg["lr"],
+                betas=(0.9, 0.95),
+                weight_decay=0.1,
+                shampoo_beta=args.shampoo_beta,
+                precondition_freq=args.soap_precond_freq,
+                use_kl_shampoo=args.soap_kl or args.optimizer in ("kl_soap", "rekls"),
+                use_eigh=args.soap_eigh,
+                power_iter_steps=args.soap_power_iter,
+                momentum=args.muon_momentum,
+                ns_steps=args.muon_ns_steps,
+                layer_wise=args.layer_wise,
+                num_ranks=args.num_ranks,
+                update_rms_match=args.update_rms_match,
+                rms_beta=args.rms_beta,
+                sqrt_batch_scaling=args.sqrt_batch_scaling,
+                base_batch_tokens=args.base_batch_tokens,
+                new_batch_tokens=args.new_batch_tokens,
+                base_lr_for_scaling=None,
+            )
+            print(f"[OPTIM] Built {args.optimizer} via dottie.optim.build_optim — layer_wise={args.layer_wise} cpu_fallback={args.cpu_fallback}")
+        except Exception as e:
+            print(f"[OPTIM fallback] build_optim failed ({e}), using AdamW")
+            optimizer = torch.optim.AdamW(model.parameters(), lr=bcfg["lr"])
 
         # WSM merger if --schedule wsm
         wsm_merger = None
