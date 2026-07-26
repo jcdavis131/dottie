@@ -1,3 +1,8 @@
+<!-- SNAPSHOT NOTE (added 2026-07-26): this is a COPY of ~/vector-hoops/README.md,
+     not the source of truth. Upstream was corrected on 2026-07-26 — the embedding is
+     64-d, not 48-d, and the feature count is 130, not 120. The '48-d cosine' below is
+     therefore stale here. Re-copy from upstream rather than hand-patching this file. -->
+
 # Vector Hoops
 
 Daily NBA chimera puzzle over an era-honest player embedding space.

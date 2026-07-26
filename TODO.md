@@ -22,9 +22,15 @@ that no one has done.
 2. **Add a task-shaped eval slice** before any embedding model is judged. The golden
    set's queries are commit messages, which flatter BM25; the agent tier's real queries
    are task descriptions. Judging a model only on commit messages is rigged the other way.
-3. **Give `~/vector-unified` a remote.** 5,397 lines, one disk. Local git survives `rm`,
+3. ~~Give `~/vector-unified` a remote~~ — **DONE 2026-07-26**: private remote `jcdavis131/vector-unified`, pushed. Verified before pushing (one-way): 37 tracked files, no secrets, no `.env`/credential/`.pem`/`.key`, largest blob 44 KB. Superseded text: 5,397 lines, one disk; local git survives `rm`,
    not disk failure.
-4. **Decide the authoritative surface for hoops 48-vs-64**, then fix the other three.
+4. ~~Decide the authoritative surface for hoops 48-vs-64~~ — **DONE 2026-07-26** (`72a69d4`).
+   The ARTIFACT won, on arithmetic not preference: `mtnn_embeddings.f32` is 3,319,296 B =
+   12,966 × 64 × 4. All four surfaces corrected; the provenance gate now PASSES. Drift was
+   deeper than dim — README said 120 features (real 130), methods.html said MTNN **v4** and
+   `556→128→48` (real v5, `556→256→64`), `mtnn.js` had a dead `||48` fallback.
+   `mtnn_arch.json` is GENERATED and stale three ways, so only `dEmb` was corrected and the
+   rest DECLARED stale in a `_stale` block rather than laundered. Superseded text:
    `cd ~/vector-hoops && python pipeline/provenance_gate.py` exits 1 today, correctly.
 5. **Re-derive or retract the hoops promote justification.** `0.363 → 0.757` lives in a
    comment (`composite_score.py:88-95`) and in no artifact. Same shape as the three
@@ -112,7 +118,7 @@ Verified rather than assumed:
   the same total, or the collector spins.
 
 ### Waiting on the operator (not on an assistant)
-- The 2 FROZEN edits to activate stack-v3 (`odc-by` verified; adapter + 27 tests ready;
+- ~~The 2 FROZEN edits to activate stack-v3~~ — **DONE 2026-07-26**, see the unfreeze block above. Superseded text: (`odc-by` verified; adapter + 27 tests ready;
   source enters at weight `0.00` or the collector spins).
 - Docker Desktop restart → verifies the telemetry fix, unblocks training.
 - Delete the 2 stale `vector-hoops` clones? Nothing was deleted.

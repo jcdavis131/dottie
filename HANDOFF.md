@@ -34,11 +34,11 @@ Caveman brief. Short lines. Numbers exact.
 | `~/vector-gridiron` | NFL | 20 | yes |
 | `~/vector-pitch` | Soccer | 14 | yes |
 | `~/vector-equities` | Equities | 12 | yes |
-| `~/vector-unified` | **the binder** | 1 | ⚠ **NO REMOTE** |
+| `~/vector-unified` | **the binder** | 1 | **private** `jcdavis131/vector-unified` (created 2026-07-26) |
 | `~/vector-hub` | dumbmodel.com landing page | 3 | no |
 
 ⚠ Two STALE `vector-hoops` clones exist (`~/workspace`, `~/Documents/projects`). Use `~/vector-hoops`.
-⚠ `~/vector-unified` is local-only. Local git survives `rm`, NOT disk failure. Needs a remote.
+✅ `~/vector-unified` now has a **private** remote and is pushed — 5,397 lines are no longer on one disk. Private, not public: it protects unreleased research, and private→public is reversible while public→private does not un-publish.
 
 ### Gate commands — run these, do not trust memory
 
@@ -59,7 +59,7 @@ python scripts/retrieval_eval.py
 # find gates whose verdict nothing consumes
 python scripts/gate_audit.py --path apps/scout-cli
 
-# hoops: 4 surfaces claim 48-d, artifact is 64-d (exits 1 today, correctly)
+# hoops provenance: PASSES as of 2026-07-26 (all four surfaces corrected to 64-d)
 cd ~/vector-hoops && python pipeline/provenance_gate.py
 ```
 
@@ -85,12 +85,12 @@ cd ~/vector-hoops && python pipeline/provenance_gate.py
 1. **Fix the 2 defects that produce wrong data** (the reasoning log (below), 2026-07-26 block).
    `minhash_dedup.py` single-linkage drops docs below its own 0.8 threshold (worst true J **0.7143**); `docs[key] = seg` silently overwrites same-named defs — `mcp/cli.py::_check_sdk` exists twice, one returns `True`, one raises, **opposites**, only the second survives.
 2. **Task-shaped eval slice.** Golden-set queries are commit messages. Agent-tier queries are task descriptions — longer, less identifier-dense, **harder for BM25, easier for embeddings**. 0.622 probably flatters lexical. Judging a model only on commit messages is rigged the other way.
-3. **Remote for `~/vector-unified`.** 5,397 lines, one disk.
-4. **Decide the authoritative surface for hoops 48-vs-64**, then fix the other three. Gate does not autofix on purpose: a stale artifact with fresh docs is the same failure inverted.
+3. ~~Remote for `~/vector-unified`~~ — **DONE 2026-07-26**, private remote pushed.
+4. ~~Decide the authoritative surface for hoops 48-vs-64~~ — **DONE 2026-07-26** (`72a69d4`). The ARTIFACT won, on arithmetic not preference: `mtnn_embeddings.f32` is 3,319,296 B = 12,966 × 64 × 4. Drift was deeper than dim — README said 120 features (real 130), methods.html said MTNN **v4** and `556→128→48` (real v5, `556→256→64`), and `mtnn.js` carried a dead `||48` fallback. `mtnn_arch.json` is GENERATED and stale three ways, so only `dEmb` was corrected and the rest DECLARED stale in a `_stale` block rather than laundered.
 5. **Re-derive or retract the hoops promote justification.** `0.363 → 0.757` lives in a comment and in no artifact. Same shape as the 3 artifact sota rows.
 6. **Then step 5 of the embedding sequence** — ONE encoder + LoRA adapters, hard negatives, pre-registered target beating 0.622.
 
-**Waiting on operator:** the 2 frozen edits to activate stack-v3 (`odc-by`, verified; adapter + 27 tests ready, source enters at weight `0.00`); Docker Desktop restart to verify the telemetry fix; whether to delete the 2 stale hoops clones.
+**Waiting on operator:** whether to delete the 2 stale `vector-hoops` clones (nothing deleted), and a Docker Desktop restart to verify the telemetry fix. **stack-v3 is ACTIVATED** as of 2026-07-26 — frozen paths were unfrozen after verifying no live trainer (GPU **0 MiB used, 0% util, zero compute procs**), the adapter is registered in `ADAPTERS`, and `stack_v3_code` sits in `sources.yaml` at **weight 0.0** with every phase still summing to exactly 1.0. Giving it a real share is the one remaining curriculum edit.
 
 ---
 

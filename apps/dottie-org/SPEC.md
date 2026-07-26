@@ -18,11 +18,11 @@ not to re-design something already designed.
 
 | project | domain | commits | remote | state |
 |---|---|---|---|---|
-| `~/vector-hoops` | NBA | **318** | `jcdavis131/vector-hoops` | 48-d, 17 ResidualMLP towers (160→32), concat fusion, MTNN v4/v5 |
+| `~/vector-hoops` | NBA | **318** | `jcdavis131/vector-hoops` | **64-d** (was documented 48-d; corrected 2026-07-26), 17 ResidualMLP towers (160→32), concat 556→256→64, MTNN v5 |
 | `~/vector-gridiron` | NFL | 20 | `jcdavis131/vector-gridiron` | 32-d, 13 ResidualTowers (→24), gated attention, MTNN v2, **temporal split** |
 | `~/vector-pitch` | Soccer (WC) | 14 | `jcdavis131/vector-pitch` | 16-d z-scored, PCA(3), k-means(8) — **no neural net** |
 | `~/vector-equities` | Equities | 12 | `jcdavis131/vector-equities` | published embedding space + sector-coherence eval; has CI, ruff, pre-commit |
-| `~/vector-unified` | **the binder** | 1 (new) | none | 28 py / 5,397 lines, `train_unified.py`, `eval_unified.py` |
+| `~/vector-unified` | **the binder** | 1 | **private** (2026-07-26) | 28 py / 5,397 lines, `train_unified.py`, `eval_unified.py` |
 | `~/vector-hub` | — | 3 | none | landing page for **dumbmodel.com** (not a model) |
 | `~/vector-tennis`, `~/vector-golf` | — | 0 | none | empty scaffolds |
 
@@ -141,8 +141,7 @@ inspecting `git diff --cached` *before* committing — staging had initially bal
 
 ## What is genuinely missing
 
-1. **A remote for `vector-unified`.** Local git survives an accidental `rm`; it does not
-   survive disk failure. Every sibling has a GitHub remote; this one does not.
+1. ~~A remote for `vector-unified`~~ — **DONE 2026-07-26**: private remote created and pushed, so it is no longer the one repo in the estate without off-disk protection.
 2. **Three domains with no project**: College Football, Baseball, Hockey.
 3. **Pitch has no neural encoder** — PCA + k-means. Binding a 16-d PCA space to two learned
    spaces is not the same problem as binding two learned spaces, and the architecture doc
