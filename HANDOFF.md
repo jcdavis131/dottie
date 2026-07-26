@@ -3,8 +3,7 @@
 **THE single handoff file.** For any assistant (or the operator) resuming Dottie
 work: start at the top block, then the durable brief. Consolidated 2026-07-26 —
 `CURSOR_HANDOFF.md` was merged in and archived, so there is no second handoff to
-reconcile against. Open work lives in [`TODO.md`](TODO.md); the 5,772-line reasoning
-archive is [`TODOS.md`](TODOS.md).
+reconcile against. All open work AND the full reasoning log live in one file: [`TODO.md`](TODO.md).
 
 ---
 
@@ -83,7 +82,7 @@ cd ~/vector-hoops && python pipeline/provenance_gate.py
 
 ### NEXT STEPS — ordered
 
-1. **Fix the 2 defects that produce wrong data** (`TODOS.md`, 2026-07-26 block).
+1. **Fix the 2 defects that produce wrong data** (the reasoning log (below), 2026-07-26 block).
    `minhash_dedup.py` single-linkage drops docs below its own 0.8 threshold (worst true J **0.7143**); `docs[key] = seg` silently overwrites same-named defs — `mcp/cli.py::_check_sdk` exists twice, one returns `True`, one raises, **opposites**, only the second survives.
 2. **Task-shaped eval slice.** Golden-set queries are commit messages. Agent-tier queries are task descriptions — longer, less identifier-dense, **harder for BM25, easier for embeddings**. 0.622 probably flatters lexical. Judging a model only on commit messages is rigged the other way.
 3. **Remote for `~/vector-unified`.** 5,397 lines, one disk.
@@ -397,9 +396,9 @@ git reconcile (#0), the coupled gates (10+11), and the memory-gated deploy (#9) 
 
 ---
 
-The living source of truth is [`TODOS.md`](./TODOS.md) — read its **"YOUR DECISION QUEUE"**
+The living source of truth is [the reasoning log (below)](./the reasoning log (below)) — read its **"YOUR DECISION QUEUE"**
 section (search that header) and the **§5.3.R98–R100** entries at the top of the R-log. This
-file is just the entry point; `TODOS.md` has the detail and stays current.
+file is just the entry point; the reasoning log (below) has the detail and stays current.
 
 ## Execute the queue TOP-DOWN — each item is a precondition for the ones below it
 
@@ -438,7 +437,7 @@ Without it, `apps/dottie` reports ~36 failures that look like a broken repo and 
 
 - **`git fetch` before your FIRST commit** — parallel sessions push here (this is exactly how
   the divergence above happened).
-- **`python scripts/check_todos_timestamps.py`** before committing any `TODOS.md` edit — it
+- **`python scripts/check_todos_timestamps.py`** before committing any the reasoning log (below) edit — it
   rejects fabricated clock times.
 - **Read [`scripts/README.md`](./scripts/README.md)** before writing a new script — the
   operational tooling (restart/recovery, run-log reader, mutation audit, and the per-promotion
@@ -447,6 +446,6 @@ Without it, `apps/dottie` reports ~36 failures that look like a broken repo and 
 
 ## Status note
 
-This file and `TODOS.md` are **local-only until item 00 is done** — `origin/main` does not yet
+This file and the reasoning log (below) are **local-only until item 00 is done** — `origin/main` does not yet
 contain this session's work. After the git reconciliation pushes, this handoff becomes visible
 to anyone with the repo. Until then, "pick up" means on this machine.
