@@ -562,6 +562,178 @@ _t("floor: FLOOR_STRIP_INFLATION is >=80% of the measured 0.2268",
    FLOOR_STRIP_INFLATION >= 0.2268 * 0.80,
    f"{FLOOR_STRIP_INFLATION} is {FLOOR_STRIP_INFLATION / 0.2268:.1%} of measured")
 
+
+# ---------------------------------------------------------------------------
+# empty_result_count — a counter needs a two-sided test.
+#
+# The only prior check was `empty_result_count(con, pairs) <= CEIL_EMPTY_RESULTS`
+# with CEIL = 2. A body of `return 0` satisfies that and passed 99/99. A ONE-SIDED
+# bound on a counter is not coverage of the counter: it proves the real repo is
+# healthy, never that the function can report ill-health at all. The number is
+# printed as "queries FTS5 answers with nothing", so a silently-zero counter
+# would read as "every query retrieved something" — the swallowed failure the
+# docstring promises not to do.
+# ---------------------------------------------------------------------------
+# ASSEMBLED FROM FRAGMENTS, and it has to be. This test file is itself a .py under
+# scripts/, so build_index indexes it — writing the nonsense token as one literal
+# put it IN the corpus and the "unmatchable" query matched this very file. FTS5
+# tokenises on non-alphanumerics, so `"zzqq" + "xx"` leaves the halves in the
+# document and the joined token in none of them. The corpus under test contains
+# the tests: any literal here is a document.
+_UNMATCHABLE = " ".join(("zzqq" + "xx", "wobble" + "frotz", "nurble" + "glop"))
+_NO_TOKENS = "!!! ???"                            # _TOK finds nothing: the other [] path
+_ANSWERABLE = "empty_result_count"                # this identifier is in the indexed corpus
+
+_t("harness: the unmatchable token is not spelled out anywhere in this file",
+   _UNMATCHABLE not in Path(__file__).read_text(encoding="utf-8"),
+   "inlining it as one literal indexes it and the query stops being unmatchable")
+
+# Anti-vacuity: if the control term were NOT retrievable, the ==0 test below would
+# pass for the wrong reason and prove nothing.
+_t("empty_result_count: precondition - the control term IS retrievable",
+   len(re_.fts_query(con, _ANSWERABLE, re_.K)) > 0,
+   f"{_ANSWERABLE!r} retrieved nothing; the negative test would be vacuous")
+_t("empty_result_count: precondition - the unmatchable term is NOT retrievable",
+   re_.fts_query(con, _UNMATCHABLE, re_.K) == [],
+   f"{_UNMATCHABLE!r} unexpectedly matched something")
+
+_t("empty_result_count: an unmatchable query is COUNTED",
+   tes.empty_result_count(con, [{"query": _UNMATCHABLE}]) == 1,
+   f"got {tes.empty_result_count(con, [{'query': _UNMATCHABLE}])}, expected 1")
+_t("empty_result_count: a query the index answers is NOT counted",
+   tes.empty_result_count(con, [{"query": _ANSWERABLE}]) == 0,
+   f"got {tes.empty_result_count(con, [{'query': _ANSWERABLE}])}, expected 0")
+_t("empty_result_count: a query with no searchable tokens is counted too",
+   tes.empty_result_count(con, [{"query": _NO_TOKENS}]) == 1)
+_t("empty_result_count: counts EVERY empty query, not just their presence",
+   tes.empty_result_count(con, [{"query": _UNMATCHABLE}, {"query": _ANSWERABLE},
+                                {"query": _NO_TOKENS}]) == 2,
+   "a sum() that collapses to a bool would report 1")
+_t("empty_result_count: no pairs gives 0, not an error",
+   tes.empty_result_count(con, []) == 0)
+
+
+# ---------------------------------------------------------------------------
+# main() — behavioural coverage. Previously ZERO: no test called it and no test
+# invoked it as a subprocess, so ~180 lines including the entire human-readable
+# report path were unexecuted. A KeyError in one f-string would have shipped.
+#
+# `guarded_by` above proves the two ABORT branches EXIST in the ast. That is not
+# the same as proving the code reaches them and returns the code — structure and
+# behaviour are different claims, and this session's recurring defect is exactly
+# a verdict that is computed and then not consumed.
+#
+# --max-commits 200 (not the 4000 default) keeps each run near 10s. The commit
+# slice is then too small to reproduce the recorded bar; main() must still exit 0
+# and SAY it does not reproduce, which is itself the honest behaviour under test.
+# ---------------------------------------------------------------------------
+import json as _json
+import re as _re
+import shutil as _shutil
+import subprocess
+import tempfile as _tempfile
+
+_SCRIPT = str(SCRIPTS / "task_eval_slice.py")
+_tmpdir = Path(_tempfile.mkdtemp(prefix="tes_main_"))
+try:
+    _outfile = _tmpdir / "pairs.jsonl"
+    # sys.executable, never bare "python": a bare name in a subprocess resolved to
+    # the WRONG interpreter here before and produced 6 false mutation kills.
+    _cli = subprocess.run(
+        [sys.executable, _SCRIPT, "--json", "--max-commits", "200",
+         "--out", str(_outfile)],
+        capture_output=True, text=True, cwd=str(SCRIPTS.parent),
+    )
+    _t("main: --json exits 0", _cli.returncode == 0,
+       f"rc={_cli.returncode}, stderr={_cli.stderr[-400:]!r}")
+
+    try:
+        _summary = _json.loads(_cli.stdout)
+    except (ValueError, TypeError) as _e:
+        _summary = None
+        _t("main: --json emits parseable JSON on stdout", False, str(_e))
+    else:
+        _t("main: --json emits parseable JSON on stdout", True)
+
+    if _summary:
+        _t("main: the summary carries every top-level block",
+           set(_summary) == {"index", "task_slice", "commit_slice", "recorded_bar",
+                             "verdict"},
+           f"got {sorted(_summary)}")
+        _cli_stats = _summary["task_slice"]["mined"]
+        _t("main: the CLI mines the same pair count as the library call",
+           _cli_stats["kept"] == stats["kept"],
+           f"CLI {_cli_stats['kept']} vs in-process {stats['kept']}")
+        _t("main: the CLI's own accounting balances",
+           tes.accounting_balances(_cli_stats),
+           f"total {_cli_stats['items_total']} != kept {_cli_stats['kept']} + drops")
+        # Cross-check against the INDEPENDENT prune done at section 9: same declared
+        # docs, and the same number actually removed from a freshly built index.
+        _t("main: the CLI prunes the query-source documents it found",
+           set(_summary["index"]["pruned"]) <= set(tes.QUERY_SOURCE_DOCS)
+           and len(_summary["index"]["pruned"]) == n_docs - len(indexed),
+           f"pruned {_summary['index']['pruned']}, local prune removed "
+           f"{n_docs - len(indexed)}")
+        _t("main: documents_scored is the index minus exactly the pruned docs",
+           _summary["index"]["documents_scored"]
+           == _summary["index"]["documents"] - len(_summary["index"]["pruned"]))
+        _t("main: the verdict block scores all three metrics and states a sign",
+           all(m in _summary["verdict"] for m in ("ndcg", "mrr", "recall"))
+           and isinstance(_summary["verdict"]["hypothesis_held"], bool))
+        _t("main: a 200-commit slice does NOT silently claim the recorded bar",
+           isinstance(_summary["recorded_bar"]["reproduces"], bool)
+           and set(_summary["recorded_bar"]["rel_gap_vs_fresh"])
+           == {"ndcg", "mrr", "recall"})
+
+    # --out is the artifact a later trainer consumes; an unreadable or
+    # answer-leaking file would poison it silently.
+    _t("main: --out writes the slice as JSONL", _outfile.is_file())
+    _recs = [_json.loads(ln) for ln in
+             _outfile.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    _t("main: --out holds one record per kept pair",
+       len(_recs) == stats["kept"], f"{len(_recs)} records vs {stats['kept']} kept")
+    _t("main: every --out record carries the full pair schema",
+       bool(_recs) and all(
+           set(r) == {"query", "relevant", "line", "done", "raw"} for r in _recs))
+    _leaky = [r for r in _recs
+              if any(f in r["query"] for f in r["relevant"])]
+    _t("main: no --out record hands its own answer to the query",
+       not _leaky,
+       f"{len(_leaky)} of {len(_recs)} leak, first: {_leaky[0]['query'][:70]!r}"
+       if _leaky else "")
+
+    # The human report: ~70 lines of f-strings that nothing had ever executed.
+    _txt = subprocess.run(
+        [sys.executable, _SCRIPT, "--max-commits", "200"],
+        capture_output=True, text=True, cwd=str(SCRIPTS.parent),
+    )
+    _t("main: the text report exits 0", _txt.returncode == 0,
+       f"rc={_txt.returncode}, stderr={_txt.stderr[-400:]!r}")
+    _t("main: the text report raises nothing",
+       "Traceback" not in _txt.stdout + _txt.stderr,
+       (_txt.stdout + _txt.stderr)[-400:])
+    _missing = [h for h in ("TASK-SHAPED SLICE", "QUERY SHAPE", "ANSWER-IN-THE-QUERY",
+                            "HYPOTHESIS", "RECORDED BAR")
+                if h not in _txt.stdout]
+    _t("main: the text report prints every section", not _missing, f"missing {_missing}")
+    _m = _re.search(r"yielded a pair\s*:\s*(\d+)", _txt.stdout)
+    _t("main: the text and --json paths report the SAME pair count",
+       bool(_m) and int(_m.group(1)) == stats["kept"],
+       f"text said {_m.group(1) if _m else 'nothing'}, json/library {stats['kept']}")
+finally:
+    _shutil.rmtree(_tmpdir, ignore_errors=True)
+
+# The ABORT is reached and its code is returned — not merely present in the ast.
+_saved_balances, _saved_argv = tes.accounting_balances, sys.argv
+tes.accounting_balances = lambda _stats: False
+sys.argv = ["task_eval_slice.py", "--json", "--max-commits", "50"]
+try:
+    _rc = tes.main()
+finally:
+    tes.accounting_balances, sys.argv = _saved_balances, _saved_argv
+_t("main: refuses to report, rc=3, when item accounting does not balance",
+   _rc == 3, f"returned {_rc}; a fall-through would report unaccounted-for items")
+
 print()
 print(f"{len(PASS)} passed, {len(FAIL)} failed")
 sys.exit(1 if FAIL else 0)

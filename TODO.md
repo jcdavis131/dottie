@@ -66,17 +66,39 @@ than downgraded in the docstring.
 
 Residuals the verifiers found that the builders did not report — worth closing, none blocking:
 
-- [ ] `scripts/task_eval_slice.py` — `main()` has **zero behavioural coverage**; no test calls
-  it or invokes it as a subprocess.
-- [ ] `scripts/test_task_eval_slice.py:71` — `FLOOR_STRIP_INFLATION=0.18` against 0.2268
-  measured is **79.4%**, just under the file's own ≥80% rule. Ironic given the rule.
-- [ ] `scripts/task_eval_slice.py:185-195` — `strip_spans` mishandles **partially overlapping**
-  spans.
-- [ ] `scripts/task_eval_slice.py:68-79` — `_load_retrieval_eval` reuses
-  `sys.modules['retrieval_eval']` **by name with no path check**, so a same-named module
-  loaded first wins. That is the import-shadow class that cost 8 phantom failures here before.
-- [ ] `scripts/task_eval_slice.py:330-332` — `empty_result_count` mutating to `return 0`
-  passes 92/92.
+- [x] `scripts/task_eval_slice.py` — `main()` had **zero behavioural coverage**. Closed
+  2026-07-26: 18 tests now drive it as a subprocess (`--json`, `--out`, text report) plus one
+  in-process call. Mutation-verified — the text path printing `items_total` where it means
+  `kept` is killed, and so is `--out` truncating the slice. `--max-commits 200` keeps each
+  run ~10s; the commit slice is then too small to reproduce the recorded bar, and main() must
+  still exit 0 while SAYING it does not reproduce, which is the honest behaviour under test.
+- [x] `scripts/test_task_eval_slice.py:71` — `FLOOR_STRIP_INFLATION` 0.18 (**79.4%** of the
+  0.2268 measured) broke the file's own ≥80% rule. Now 0.1859 = 82.0%, with a test asserting
+  the rule holds. Fixed `5eefc90`.
+- [x] `scripts/task_eval_slice.py:185-195` — `strip_spans` mishandled **partially overlapping**
+  spans, leaving the span's TAIL in the query: `(0,5)`+`(3,10)` left chars 5..9, i.e. a path
+  fragment survived into the query the strip exists to clean. `continue` → `last = max(last,
+  end)`. Fixed `5eefc90`.
+- [x] `scripts/task_eval_slice.py:68-79` — `_load_retrieval_eval` reused
+  `sys.modules['retrieval_eval']` **by name with no path check**. Now verifies `__file__` and
+  loads under the private alias `_tes_retrieval_eval` so this module can never itself become
+  the shadow the check exists to detect. Fixed `5eefc90`.
+- [x] `scripts/task_eval_slice.py:344-346` — `empty_result_count`. **The recorded claim was
+  wrong and is retracted**: `return 0` did NOT pass 92/92. Measured 2026-07-26 against the
+  actual 99-test suite at HEAD, it was killed by two PRE-EXISTING structural tests, because
+  that line is the only `RE_EVAL.fts_query` call site and deleting it trips "the borrowed
+  scorer is called through RE_EVAL". Inverting the `not` was killed too. A **real** survivor
+  exists and was found by probing rather than by trusting the note: collapsing the sum to
+  `int(any(...))` passes the old suite 99/0, because the only check was
+  `<= CEIL_EMPTY_RESULTS = 2` and a bool satisfies a ceiling. Six two-sided tests added,
+  including both anti-vacuity preconditions; the survivor is now killed. **Lesson: a
+  one-sided bound on a counter is not coverage of the counter** — it proves the repo is
+  healthy, never that the function can report ill-health at all.
+- [x] `scripts/test_task_eval_slice.py` — the corpus under test **contains the tests**.
+  Writing the nonsense "unmatchable" token as one literal indexed it (the file is a `.py`
+  under `scripts/`) and the unmatchable query matched this very file, failing 3 tests. Token
+  is now assembled from fragments, with a test asserting the joined form appears nowhere in
+  the file. Any literal in a test file under an indexed tree is a document.
 - [ ] `tests/test_minhash_dedup.py:1027` — passes for the wrong reason on a checkout without
   `apps/scout-cli`: `ast_pairs.walk` returns nothing for a missing path **without raising**, so
   `collect_documents(<nonexistent>)` yields `files: 0, collisions: 0` and the assertion holds
