@@ -68,7 +68,7 @@ app = make_plugin_app(
     examples=[
         "scout --json flows actions",
         "scout --json flows plan --example",
-        "scout --json flows run --example --payload '{\"severity\":\"error\",\"hosts\":[\"a.com\"]}'",
+        'scout --json flows run --example --payload \'{"severity":"error","hosts":["a.com"]}\'',
         "scout --json flows run --flow my-flow.json --allow append_jsonl",
         "scout --json flows runs --limit 5",
     ],
@@ -123,7 +123,7 @@ def _open_existing(db: str | None, command: str) -> tuple:
         fail_agent(
             f"no flow ledger at {path} — run a flow first",
             command=command,
-            example="scout --json flows run --example --payload '{\"severity\":\"error\"}'",
+            example='scout --json flows run --example --payload \'{"severity":"error"}\'',
         )
     return flows.open_store(path), path
 
@@ -224,7 +224,9 @@ def _effectors(out_dir: Path) -> dict:
 
     def _write_file(params: dict, data: dict) -> dict:
         target = flows.resolve_output_path(out_dir, params.get("file"))
-        blob = flows.as_text(flows.require_field(data, params.get("from"))).encode("utf-8")
+        blob = flows.as_text(flows.require_field(data, params.get("from"))).encode(
+            "utf-8"
+        )
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(blob)
         return {"file": target.as_posix(), "bytes": len(blob)}
@@ -338,7 +340,9 @@ def actions_cmd():
 )
 def plan(
     flow: str | None = typer.Option(None, "--flow", help="workflow graph JSON file"),
-    example: bool = typer.Option(False, "--example", help="use the built-in example graph"),
+    example: bool = typer.Option(
+        False, "--example", help="use the built-in example graph"
+    ),
     allow: list[str] = typer.Option(
         None, "--allow", help="action to permit, repeatable (default: nothing)"
     ),
@@ -373,7 +377,7 @@ def plan(
                 "summary": openswap.summarize(diags),
             },
             command="flows plan",
-            example="scout --json flows run --example --payload '{\"severity\":\"error\"}'",
+            example='scout --json flows run --example --payload \'{"severity":"error"}\'',
             discover="scout flows actions",
         ),
         command="flows plan",
@@ -385,7 +389,7 @@ def plan(
     "run",
     epilog=examples_epilog(
         [
-            "scout --json flows run --example --payload '{\"severity\":\"error\",\"hosts\":[\"a.com\"]}'",
+            'scout --json flows run --example --payload \'{"severity":"error","hosts":["a.com"]}\'',
             "scout --json flows run --example --payload @event.json --allow append_jsonl",
             "scout --json flows run --flow main.json --sub child.json --max-steps 20",
             "scout --json flows run --flow main.json --allow emit --fail-on error",
@@ -394,34 +398,46 @@ def plan(
 )
 def run(
     flow: str | None = typer.Option(None, "--flow", help="workflow graph JSON file"),
-    example: bool = typer.Option(False, "--example", help="use the built-in example graph"),
+    example: bool = typer.Option(
+        False, "--example", help="use the built-in example graph"
+    ),
     payload: str | None = typer.Option(
         None, "--payload", help="event payload: inline JSON or @file.json"
     ),
     allow: list[str] = typer.Option(
-        None, "--allow", help="action to permit, repeatable — DEFAULT-DENY: with "
+        None,
+        "--allow",
+        help="action to permit, repeatable — DEFAULT-DENY: with "
         "none passed, every action node is refused and reported",
     ),
     sub: list[str] = typer.Option(
         None, "--sub", help="sub-flow JSON file, repeatable (registered by its `name`)"
     ),
     out_dir: str | None = typer.Option(
-        None, "--out-dir", help=f"where file actions may write (default {flows.OUT_REL})"
+        None,
+        "--out-dir",
+        help=f"where file actions may write (default {flows.OUT_REL})",
     ),
     db: str | None = typer.Option(
         None, "--db", help=f"run ledger (default {flows.DB_REL} or $SCOUT_FLOWS_DB)"
     ),
     max_steps: int = typer.Option(
-        flows.DEFAULT_MAX_STEPS, "--max-steps", help="hard step cap, shared with sub-flows"
+        flows.DEFAULT_MAX_STEPS,
+        "--max-steps",
+        help="hard step cap, shared with sub-flows",
     ),
     max_depth: int = typer.Option(
         flows.DEFAULT_MAX_DEPTH, "--max-depth", help="hard sub-flow recursion cap"
     ),
     record: bool = typer.Option(
-        True, "--record/--no-record", help="persist the run (off = execute and report only)"
+        True,
+        "--record/--no-record",
+        help="persist the run (off = execute and report only)",
     ),
     fail_on: str | None = typer.Option(
-        None, "--fail-on", help="exit 1 if any refusal/failure is at/above this severity"
+        None,
+        "--fail-on",
+        help="exit 1 if any refusal/failure is at/above this severity",
     ),
 ):
     """Execute one flow under hard bounds. Real effects, only allowlisted ones."""
@@ -476,8 +492,12 @@ def run(
 )
 def runs_cmd(
     flow: str | None = typer.Option(None, "--flow", help="filter to one flow name"),
-    outcome: str | None = typer.Option(None, "--outcome", help=f"filter: {'|'.join(flows.OUTCOMES)}"),
-    run_id: int | None = typer.Option(None, "--run", help="one run with its ordered steps"),
+    outcome: str | None = typer.Option(
+        None, "--outcome", help=f"filter: {'|'.join(flows.OUTCOMES)}"
+    ),
+    run_id: int | None = typer.Option(
+        None, "--run", help="one run with its ordered steps"
+    ),
     limit: int = typer.Option(20, "--limit", help="max runs returned"),
     db: str | None = typer.Option(None, "--db", help="run ledger path"),
 ):

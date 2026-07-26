@@ -28,6 +28,6 @@ strictly read-only over its sources; the graph is written to
 apps/dottie/data/kg/ (gitignored, derived, rebuildable).
 """
 
-from dottie.kg.store import GraphStore  # noqa: F401
+from dottie.kg.store import GraphStore
 
 __all__ = ["GraphStore"]

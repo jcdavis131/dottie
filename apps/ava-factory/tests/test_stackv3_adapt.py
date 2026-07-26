@@ -64,9 +64,7 @@ class TestPerFileLicenceGate:
         assert not ok, f"{licences} kept: {reason}"
 
     def test_file_with_no_detected_licence_is_dropped(self):
-        ok, reason = keep_file(
-            _file(detected_licenses=[], license_type=None)
-        )
+        ok, reason = keep_file(_file(detected_licenses=[], license_type=None))
         assert not ok
         assert "unverified" in reason
 

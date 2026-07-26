@@ -109,6 +109,7 @@ def test_run_task_channel_env_override(engine, tmp_path, monkeypatch):
     rec = engine.run_task("conftest echo task", backend="echo")
     assert rec["jspace_state"]["channel"] == "arxiviq"
     from dottie import jspace_state
+
     snap = jspace_state.session_context("xsurface2")
     assert "arxiviq" in snap and "last_task" in snap["arxiviq"]
 

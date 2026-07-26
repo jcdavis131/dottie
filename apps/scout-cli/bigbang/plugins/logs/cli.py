@@ -477,9 +477,7 @@ def query_cmd(
 )
 def rollup_cmd(
     source: str | None = typer.Option(None, "--source", help="filter to one source"),
-    level: str | None = typer.Option(
-        None, "--level", help="minimum severity counted"
-    ),
+    level: str | None = typer.Option(None, "--level", help="minimum severity counted"),
     hours: float | None = typer.Option(
         None, "--hours", help="window ending now (ignored when --since is given)"
     ),

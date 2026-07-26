@@ -20,47 +20,84 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
-import os
-import pathlib
 import shutil
 import subprocess
 import sys
 import time
-import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
-DISCLAIMER = "Solo personal project, no connection to employer, built with public/free-tier only"
+DISCLAIMER = (
+    "Solo personal project, no connection to employer, built with public/free-tier only"
+)
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT))
 
 try:
-    from dottie.telemetry import log_event, log_expansion, log_train, log_eval, log_ecosystem, log_error
+    from dottie.telemetry import (
+        log_ecosystem,
+        log_error,
+        log_eval,
+        log_event,
+        log_expansion,
+        log_train,
+    )
 except ImportError:
     try:
-        from ava.telemetry import log_event, log_expansion, log_train, log_eval, log_ecosystem, log_error
+        from ava.telemetry import (
+            log_ecosystem,
+            log_error,
+            log_eval,
+            log_event,
+            log_expansion,
+            log_train,
+        )
     except Exception:
+
         def log_event(source, event_type, message, metrics=None, level="info", **kw):
             print(f"[{source}:{event_type}] {message} {metrics}")
             return {}
+
         def log_expansion(tokens, docs, shards=None, extra_metrics=None):
-            return log_event("data", "expansion", f"{tokens}/{docs}", {"tokens": tokens, "docs": docs})
+            return log_event(
+                "data",
+                "expansion",
+                f"{tokens}/{docs}",
+                {"tokens": tokens, "docs": docs},
+            )
+
         def log_train(preset, steps, loss, tok_per_sec=0, checkpoint="", extra=None):
-            return log_event("train", "progress", f"{preset} {steps}", {"preset": preset, "loss": loss})
+            return log_event(
+                "train",
+                "progress",
+                f"{preset} {steps}",
+                {"preset": preset, "loss": loss},
+            )
+
         def log_eval(branch, score, mode="mock", extra=None):
-            return log_event("eval", "eval_result", f"{branch} {score}", {"branch": branch, "score": score})
+            return log_event(
+                "eval",
+                "eval_result",
+                f"{branch} {score}",
+                {"branch": branch, "score": score},
+            )
+
         def log_ecosystem(action, message="", metrics=None):
             return log_event("ecosystem", action, message, metrics)
+
         def log_error(source, message, metrics=None):
             return log_event(source, "error", message, metrics, level="error")
+
 
 _REPORTS = _REPO_ROOT / "reports"
 _DATA_DAILY = _REPO_ROOT / "data" / "daily_expanded"
 _LOGS = _REPO_ROOT / "logs"
 _LOGS.mkdir(parents=True, exist_ok=True)
 _REPORTS.mkdir(parents=True, exist_ok=True)
+
 
 def parse_tokens(s: str) -> int:
     s = s.strip().upper().replace(",", "")
@@ -74,6 +111,7 @@ def parse_tokens(s: str) -> int:
         return int(float(s[:-1]) * 1e3)
     return int(float(s))
 
+
 def get_disk_pct() -> int:
     try:
         usage = shutil.disk_usage(str(_REPO_ROOT))
@@ -81,22 +119,44 @@ def get_disk_pct() -> int:
     except Exception:
         return 0
 
-def run_cmd(cmd: list[str], cwd: Optional[Path] = None, timeout: int = 3600) -> tuple[int, str, str]:
+
+def run_cmd(
+    cmd: list[str], cwd: Path | None = None, timeout: int = 3600
+) -> tuple[int, str, str]:
     try:
         cwd = cwd or _REPO_ROOT
-        proc = subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, timeout=timeout)
+        proc = subprocess.run(
+            cmd, cwd=str(cwd), capture_output=True, text=True, timeout=timeout
+        )
         return proc.returncode, proc.stdout[-5000:], proc.stderr[-5000:]
     except subprocess.TimeoutExpired as e:
-        return 124, (e.stdout or "")[-5000:] if e.stdout else "", f"timeout after {timeout}s"
+        return (
+            124,
+            (e.stdout or "")[-5000:] if e.stdout else "",
+            f"timeout after {timeout}s",
+        )
     except Exception as e:
         return 1, "", str(e)
 
-def mode_data(args: argparse.Namespace) -> Dict[str, Any]:
+
+def mode_data(args: argparse.Namespace) -> dict[str, Any]:
     start = time.time()
     token_str = args.tokens
-    target = parse_tokens(token_str) if token_str else (10_000_000 if args.full else 500_000)
+    target = (
+        parse_tokens(token_str) if token_str else (10_000_000 if args.full else 500_000)
+    )
 
-    log_event(source="data", event_type="start", message=f"Data expansion start target={token_str} ({target}) full={args.full} dry_run={args.dry_run}", metrics={"target_tokens": target, "full": args.full, "dry_run": args.dry_run, "disk_pct": get_disk_pct()})
+    log_event(
+        source="data",
+        event_type="start",
+        message=f"Data expansion start target={token_str} ({target}) full={args.full} dry_run={args.dry_run}",
+        metrics={
+            "target_tokens": target,
+            "full": args.full,
+            "dry_run": args.dry_run,
+            "disk_pct": get_disk_pct(),
+        },
+    )
 
     disk_pct = get_disk_pct()
     if disk_pct >= 85 and not args.dry_run:
@@ -111,7 +171,12 @@ def mode_data(args: argparse.Namespace) -> Dict[str, Any]:
             log_error("data", "dataset_expansion script not found")
             return {"status": "error", "reason": "script not found"}
 
-    cmd = [sys.executable, str(script), "--tokens", token_str or ("10M" if args.full else "500K")]
+    cmd = [
+        sys.executable,
+        str(script),
+        "--tokens",
+        token_str or ("10M" if args.full else "500K"),
+    ]
     if hasattr(args, "phases") and args.phases:
         cmd.extend(["--phases"] + args.phases)
 
@@ -120,7 +185,12 @@ def mode_data(args: argparse.Namespace) -> Dict[str, Any]:
         time.sleep(0.5)
         sim_tokens = min(target, 1000)
         sim_docs = max(1, sim_tokens // 200)
-        log_expansion(sim_tokens, sim_docs, shards=["dry_run_shard.gz"], extra_metrics={"dry_run": True, "duration_s": 0.5, "disk_pct": disk_pct})
+        log_expansion(
+            sim_tokens,
+            sim_docs,
+            shards=["dry_run_shard.gz"],
+            extra_metrics={"dry_run": True, "duration_s": 0.5, "disk_pct": disk_pct},
+        )
         return {"status": "dry_run", "tokens": sim_tokens, "docs": sim_docs}
 
     print(f"[data] Running: {' '.join(cmd)}")
@@ -143,6 +213,7 @@ def mode_data(args: argparse.Namespace) -> Dict[str, Any]:
 
     if tokens == 0:
         import re
+
         m = re.search(r"(\d+)\s+tokens.*?(\d+)\s+docs", out, re.I)
         if m:
             try:
@@ -152,49 +223,113 @@ def mode_data(args: argparse.Namespace) -> Dict[str, Any]:
                 pass
 
     if code == 0:
-        log_expansion(tokens or target, docs or (target // 200), shards, extra_metrics={"duration_s": duration, "disk_pct": get_disk_pct(), "stdout_tail": out[-1000:]})
-        log_event(source="data", event_type="finish", message=f"Expansion done {tokens} tokens {docs} docs {duration}s", metrics={"tokens": tokens, "docs": docs, "duration_s": duration, "disk_pct": get_disk_pct()}, level="info")
+        log_expansion(
+            tokens or target,
+            docs or (target // 200),
+            shards,
+            extra_metrics={
+                "duration_s": duration,
+                "disk_pct": get_disk_pct(),
+                "stdout_tail": out[-1000:],
+            },
+        )
+        log_event(
+            source="data",
+            event_type="finish",
+            message=f"Expansion done {tokens} tokens {docs} docs {duration}s",
+            metrics={
+                "tokens": tokens,
+                "docs": docs,
+                "duration_s": duration,
+                "disk_pct": get_disk_pct(),
+            },
+            level="info",
+        )
         return {"status": "ok", "tokens": tokens, "docs": docs, "duration_s": duration}
     else:
-        log_error("data", f"Expansion failed code={code} err={err[-500:]} out={out[-500:]}", metrics={"code": code, "duration_s": duration, "disk_pct": get_disk_pct()})
+        log_error(
+            "data",
+            f"Expansion failed code={code} err={err[-500:]} out={out[-500:]}",
+            metrics={"code": code, "duration_s": duration, "disk_pct": get_disk_pct()},
+        )
         return {"status": "error", "code": code, "out": out, "err": err}
 
-def mode_train(args: argparse.Namespace) -> Dict[str, Any]:
+
+def mode_train(args: argparse.Namespace) -> dict[str, Any]:
     start = time.time()
     preset = args.preset or "nano"
     steps = args.steps or 0
 
-    log_event(source="train", event_type="start", message=f"Train start preset={preset} steps={steps} dry_run={args.dry_run}", metrics={"preset": preset, "steps": steps, "dry_run": args.dry_run})
+    log_event(
+        source="train",
+        event_type="start",
+        message=f"Train start preset={preset} steps={steps} dry_run={args.dry_run}",
+        metrics={"preset": preset, "steps": steps, "dry_run": args.dry_run},
+    )
 
     data_count = 0
     if _DATA_DAILY.exists():
         data_count = len(list(_DATA_DAILY.glob("*.jsonl.gz")))
 
     if data_count == 0 and not args.dry_run and not args.force:
-        log_event(source="train", event_type="skip", message=f"No new data in {_DATA_DAILY} — skipping train", metrics={"data_shards": data_count}, level="info")
+        log_event(
+            source="train",
+            event_type="skip",
+            message=f"No new data in {_DATA_DAILY} — skipping train",
+            metrics={"data_shards": data_count},
+            level="info",
+        )
         return {"status": "skipped_no_data", "shards": data_count}
 
     if args.dry_run:
         print(f"[dry-run] Would train preset={preset} with {data_count} shards")
-        log_train(preset, steps or 10, loss=3.5, tok_per_sec=1200, checkpoint=f"dottie_{preset}_dry_run.pt")
+        log_train(
+            preset,
+            steps or 10,
+            loss=3.5,
+            tok_per_sec=1200,
+            checkpoint=f"dottie_{preset}_dry_run.pt",
+        )
         return {"status": "dry_run"}
 
     try:
-        import torch
         has_torch = True
     except Exception:
         has_torch = False
 
     if not has_torch:
-        log_event(source="train", event_type="skip", message="No torch in VM — skipping real train, logging mock", metrics={"preset": preset}, level="warn")
-        log_train(preset, steps or 100, loss=3.2, tok_per_sec=0, checkpoint=f"dottie_{preset}_mock.pt", extra={"mock": True, "reason": "no torch in VM"})
+        log_event(
+            source="train",
+            event_type="skip",
+            message="No torch in VM — skipping real train, logging mock",
+            metrics={"preset": preset},
+            level="warn",
+        )
+        log_train(
+            preset,
+            steps or 100,
+            loss=3.2,
+            tok_per_sec=0,
+            checkpoint=f"dottie_{preset}_mock.pt",
+            extra={"mock": True, "reason": "no torch in VM"},
+        )
         return {"status": "mock_no_torch"}
 
     train_script = _REPO_ROOT / "train_1b_deepspeed.py"
     if not train_script.exists():
         train_script = _REPO_ROOT / "dottie" / "train.py"
 
-    cmd = [sys.executable, "-m", "torch", "distributed", "run", "--nproc_per_node=1", str(train_script), "--preset", preset]
+    cmd = [
+        sys.executable,
+        "-m",
+        "torch",
+        "distributed",
+        "run",
+        "--nproc_per_node=1",
+        str(train_script),
+        "--preset",
+        preset,
+    ]
     if args.tokens_total:
         cmd.extend(["--tokens_total", str(args.tokens_total)])
     if args.steps:
@@ -213,6 +348,7 @@ def mode_train(args: argparse.Namespace) -> Dict[str, Any]:
     tok_s = 0
     try:
         import re
+
         m_loss = re.findall(r"loss\s*[=:]\s*([0-9.]+)", out, re.I)
         if m_loss:
             loss = float(m_loss[-1])
@@ -225,21 +361,48 @@ def mode_train(args: argparse.Namespace) -> Dict[str, Any]:
     ckpt_name = f"dottie_{preset}_step{steps or 0}.pt"
 
     if code == 0:
-        log_train(preset, steps or 100, loss or 2.5, tok_per_sec=tok_s, checkpoint=ckpt_name, extra={"duration_s": duration, "out_tail": out[-1000:]})
-        return {"status": "ok", "loss": loss, "tok_per_sec": tok_s, "duration_s": duration}
+        log_train(
+            preset,
+            steps or 100,
+            loss or 2.5,
+            tok_per_sec=tok_s,
+            checkpoint=ckpt_name,
+            extra={"duration_s": duration, "out_tail": out[-1000:]},
+        )
+        return {
+            "status": "ok",
+            "loss": loss,
+            "tok_per_sec": tok_s,
+            "duration_s": duration,
+        }
     else:
-        log_error("train", f"Train failed code={code} err={err[-500:]}", metrics={"code": code, "preset": preset, "duration_s": duration})
+        log_error(
+            "train",
+            f"Train failed code={code} err={err[-500:]}",
+            metrics={"code": code, "preset": preset, "duration_s": duration},
+        )
         return {"status": "error", "code": code}
 
-def mode_eval(args: argparse.Namespace) -> Dict[str, Any]:
+
+def mode_eval(args: argparse.Namespace) -> dict[str, Any]:
     start = time.time()
     branch = args.branch or "all"
     mode = args.eval_mode or ("mock" if not args.full else "real")
 
-    log_event(source="eval", event_type="start", message=f"Eval start branch={branch} mode={mode} dry_run={args.dry_run}", metrics={"branch": branch, "mode": mode, "dry_run": args.dry_run})
+    log_event(
+        source="eval",
+        event_type="start",
+        message=f"Eval start branch={branch} mode={mode} dry_run={args.dry_run}",
+        metrics={"branch": branch, "mode": mode, "dry_run": args.dry_run},
+    )
 
     if args.dry_run:
-        log_eval(branch, score=0.983, mode="mock", extra={"dry_run": True, "cap_score": 0.983})
+        log_eval(
+            branch,
+            score=0.983,
+            mode="mock",
+            extra={"dry_run": True, "cap_score": 0.983},
+        )
         return {"status": "dry_run", "score": 0.983}
 
     script = _REPO_ROOT / "eval_branch_harness.py"
@@ -257,11 +420,18 @@ def mode_eval(args: argparse.Namespace) -> Dict[str, Any]:
 
     score = 0.0
     try:
-        import re, json as js
+        import json as js
+        import re
+
         fe_path = _REPO_ROOT / "frontier_eval_results.json"
         if fe_path.exists():
             fe = js.loads(fe_path.read_text()[:50000])
-            score = fe.get("cap_score") or fe.get("score") or fe.get("effort_curve", {}).get("0.8", 0) or 0.0
+            score = (
+                fe.get("cap_score")
+                or fe.get("score")
+                or fe.get("effort_curve", {}).get("0.8", 0)
+                or 0.0
+            )
         m = re.findall(r"cap_score\s*([0-9.]+)|score\s*[:=]\s*([0-9.]+)", out, re.I)
         if m and score == 0:
             for g in m[-1]:
@@ -273,19 +443,42 @@ def mode_eval(args: argparse.Namespace) -> Dict[str, Any]:
 
     if code == 0:
         final_score = score or 0.983
-        log_eval(branch, final_score, mode=mode, extra={"duration_s": duration, "out_tail": out[-500:]})
-        log_event(source="eval", event_type="finish", message=f"Eval done {branch} {final_score:.3f} {duration}s", metrics={"branch": branch, "score": final_score, "duration_s": duration}, level="info")
+        log_eval(
+            branch,
+            final_score,
+            mode=mode,
+            extra={"duration_s": duration, "out_tail": out[-500:]},
+        )
+        log_event(
+            source="eval",
+            event_type="finish",
+            message=f"Eval done {branch} {final_score:.3f} {duration}s",
+            metrics={"branch": branch, "score": final_score, "duration_s": duration},
+            level="info",
+        )
         return {"status": "ok", "score": final_score, "duration_s": duration}
     else:
-        log_error("eval", f"Eval failed code={code}", metrics={"code": code, "branch": branch, "duration_s": duration})
+        log_error(
+            "eval",
+            f"Eval failed code={code}",
+            metrics={"code": code, "branch": branch, "duration_s": duration},
+        )
         return {"status": "error", "code": code}
 
-def mode_ecosystem(args: argparse.Namespace) -> Dict[str, Any]:
+
+def mode_ecosystem(args: argparse.Namespace) -> dict[str, Any]:
     start = time.time()
-    log_event(source="ecosystem", event_type="start", message=f"Ecosystem start dry_run={args.dry_run}", metrics={"dry_run": args.dry_run})
+    log_event(
+        source="ecosystem",
+        event_type="start",
+        message=f"Ecosystem start dry_run={args.dry_run}",
+        metrics={"dry_run": args.dry_run},
+    )
 
     if args.dry_run:
-        log_ecosystem("dry_run", "Ecosystem dry-run check", metrics={"keep_days": args.keep_days})
+        log_ecosystem(
+            "dry_run", "Ecosystem dry-run check", metrics={"keep_days": args.keep_days}
+        )
         return {"status": "dry_run"}
 
     try:
@@ -293,32 +486,37 @@ def mode_ecosystem(args: argparse.Namespace) -> Dict[str, Any]:
             from dottie.ecosystem_updater import run_all
         except ImportError:
             from dottie import ecosystem_updater
+
             run_all = ecosystem_updater.run_all
 
         result = run_all()
         result["duration_s"] = round(time.time() - start, 2)
-        log_event(source="ecosystem", event_type="finish", message=f"Ecosystem done {result['duration_s']}s", metrics=result)
+        log_event(
+            source="ecosystem",
+            event_type="finish",
+            message=f"Ecosystem done {result['duration_s']}s",
+            metrics=result,
+        )
         return result
     except Exception as e:
         log_error("ecosystem", f"Ecosystem failed: {e}", metrics={"error": str(e)})
         return {"status": "error", "error": str(e)}
 
 
-def mode_monitor(args: argparse.Namespace) -> Dict[str, Any]:
+def mode_monitor(args: argparse.Namespace) -> dict[str, Any]:
     """Training monitor — polls live pipeline + falls back to STATUS.json"""
     start = time.time()
-    from pathlib import Path as _Path
     disclaimer = DISCLAIMER
     _repo = _REPO_ROOT
     steps = 0
     loss = None
     stale = False
     fallback = False
-    training_seen = False   # True only when real trainer telemetry is observed
+    training_seen = False  # True only when real trainer telemetry is observed
     tokens = 0
     docs = 0
     eval_score = None
-    detail: Dict[str, Any] = {}
+    detail: dict[str, Any] = {}
     status_str = "ok"
 
     try:
@@ -342,10 +540,17 @@ def mode_monitor(args: argparse.Namespace) -> Dict[str, Any]:
         if pipeline_status and isinstance(pipeline_status, dict):
             trainer = pipeline_status.get("trainer", {})
             last = trainer.get("last") or {}
-            training_seen = bool(last)   # a non-empty trainer row = real training telemetry
+            training_seen = bool(
+                last
+            )  # a non-empty trainer row = real training telemetry
             # steps from various keys
             try:
-                steps = int(last.get("step") or last.get("steps") or trainer.get("n_points") or 0)
+                steps = int(
+                    last.get("step")
+                    or last.get("steps")
+                    or trainer.get("n_points")
+                    or 0
+                )
             except Exception:
                 steps = 0
             # loss extraction
@@ -374,20 +579,26 @@ def mode_monitor(args: argparse.Namespace) -> Dict[str, Any]:
             else:
                 stale = bool(stale_flag)
 
-            detail.update({
-                "trainer_age_s": age_s,
-                "stale_after_s": stale_after,
-                "data_starved": trainer.get("data_starved", False),
-                "mode": pipeline_status.get("mode", {}).get("label") or pipeline_status.get("mode", {}).get("id") if isinstance(pipeline_status.get("mode"), dict) else str(pipeline_status.get("mode","")),
-                "preset": pipeline_status.get("preset"),
-                "last_event_ts": str(last.get("ts")) if last.get("ts") else None,
-            })
+            detail.update(
+                {
+                    "trainer_age_s": age_s,
+                    "stale_after_s": stale_after,
+                    "data_starved": trainer.get("data_starved", False),
+                    "mode": pipeline_status.get("mode", {}).get("label")
+                    or pipeline_status.get("mode", {}).get("id")
+                    if isinstance(pipeline_status.get("mode"), dict)
+                    else str(pipeline_status.get("mode", "")),
+                    "preset": pipeline_status.get("preset"),
+                    "last_event_ts": str(last.get("ts")) if last.get("ts") else None,
+                }
+            )
             # tokens fallback from manifest? Not needed
             # eval score if present
             try:
                 eval_path = _repo / "branch_eval_results.json"
                 if eval_path.exists():
                     import json as _js
+
                     ev = _js.loads(eval_path.read_text()[:100000])
                     eval_score = ev.get("cap_score") or ev.get("score")
             except Exception:
@@ -398,6 +609,7 @@ def mode_monitor(args: argparse.Namespace) -> Dict[str, Any]:
             fallback = True
             try:
                 import json as _js
+
                 status_json = _repo / "STATUS.json"
                 if status_json.exists():
                     st = _js.loads(status_json.read_text()[:500000])
@@ -425,6 +637,7 @@ def mode_monitor(args: argparse.Namespace) -> Dict[str, Any]:
     if "builder_tokens" not in detail:
         try:
             import json as _js
+
             status_json = _repo / "STATUS.json"
             if status_json.exists():
                 st = _js.loads(status_json.read_text()[:500000])
@@ -444,7 +657,9 @@ def mode_monitor(args: argparse.Namespace) -> Dict[str, Any]:
     # false "stale 15.4h" alarm when training had simply never run (R102).
     if fallback and "builder_last_expansion_ts" not in detail:
         try:
-            import json as _js, datetime as _dt
+            import datetime as _dt
+            import json as _js
+
             st_path = _repo / "STATUS.json"
             if st_path.exists():
                 st = _js.loads(st_path.read_text()[:500000])
@@ -453,7 +668,7 @@ def mode_monitor(args: argparse.Namespace) -> Dict[str, Any]:
                 if ts_str:
                     try:
                         dt = _dt.datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
-                        age = (_dt.datetime.now(_dt.timezone.utc) - dt).total_seconds()
+                        age = (_dt.datetime.now(_dt.UTC) - dt).total_seconds()
                         detail["builder_age_s"] = round(age, 1)
                         detail["builder_last_expansion_ts"] = ts_str
                     except Exception:
@@ -479,7 +694,7 @@ def mode_monitor(args: argparse.Namespace) -> Dict[str, Any]:
     try:
         log_event(
             source="training_monitor",
-            event_type=status_str if status_str in ("ok","warn","error") else "info",
+            event_type=status_str if status_str in ("ok", "warn", "error") else "info",
             message=f"training_monitor {status_str} steps={steps} loss={loss} stale={stale} fallback={fallback}",
             metrics={
                 "steps": steps,
@@ -490,10 +705,16 @@ def mode_monitor(args: argparse.Namespace) -> Dict[str, Any]:
                 "tokens": tokens,
                 "docs": docs,
                 "eval_score": eval_score,
-                **{k:v for k,v in detail.items() if isinstance(v,(int,float,bool,str)) or v is None}
+                **{
+                    k: v
+                    for k, v in detail.items()
+                    if isinstance(v, (int, float, bool, str)) or v is None
+                },
             },
-            level=status_str if status_str in ("ok","warn","error","info") else "info",
-            extra={"detail": detail, "disclaimer": disclaimer}
+            level=status_str
+            if status_str in ("ok", "warn", "error", "info")
+            else "info",
+            extra={"detail": detail, "disclaimer": disclaimer},
         )
     except Exception as e:
         print(f"[telemetry log failed] {e}", file=sys.stderr)
@@ -510,62 +731,125 @@ def mode_monitor(args: argparse.Namespace) -> Dict[str, Any]:
         "docs": docs,
         "detail": detail,
     }
-    print(f"[Dottie:monitor] Starting at {datetime.datetime.now(datetime.timezone.utc).isoformat()}")
+    print(f"[Dottie:monitor] Starting at {datetime.datetime.now(_dt.UTC).isoformat()}")
     print(f"[monitor] result={json.dumps(result, indent=2)}")
     return result
 
 
-
-def mode_aggregate(args: argparse.Namespace) -> Dict[str, Any]:
+def mode_aggregate(args: argparse.Namespace) -> dict[str, Any]:
     """Telemetry aggregator — for control dash live status"""
     start = time.time()
     disclaimer = DISCLAIMER
     try:
         from dottie.telemetry import aggregate_live_status, log_event
     except ImportError:
+
         def log_event(source, event_type, message, metrics=None, level="info", **kw):
             print(f"[{source}:{event_type}] {message} {metrics}")
             return {}
+
         from dottie.telemetry import aggregate_live_status
-    log_event(source="telemetry_aggregator", event_type="start", message=f"Aggregate start dry_run={args.dry_run}", metrics={"dry_run": args.dry_run})
+    log_event(
+        source="telemetry_aggregator",
+        event_type="start",
+        message=f"Aggregate start dry_run={args.dry_run}",
+        metrics={"dry_run": args.dry_run},
+    )
     try:
         live = aggregate_live_status()
         duration = round(time.time() - start, 3)
         updated = live.get("updated") or live.get("updated_at") or ""
-        modes = len(live.get("latest_per_mode", {}) or live.get("by_mode_counts", {}) or {})
+        modes = len(
+            live.get("latest_per_mode", {}) or live.get("by_mode_counts", {}) or {}
+        )
         tokens = (live.get("totals_last_1000") or {}).get("tokens", 0)
         docs = (live.get("totals_last_1000") or {}).get("docs", 0)
-        log_event(source="telemetry_aggregator", event_type="finish", message=f"Aggregate ok {tokens} tokens {docs} docs", metrics={"duration_s": duration, "tokens": tokens, "docs": docs, "modes": modes, "updated": updated}, level="info")
-        return {"status": "ok", "tokens": tokens, "docs": docs, "modes": modes, "updated": updated, "duration_s": duration, "disclaimer": disclaimer}
+        log_event(
+            source="telemetry_aggregator",
+            event_type="finish",
+            message=f"Aggregate ok {tokens} tokens {docs} docs",
+            metrics={
+                "duration_s": duration,
+                "tokens": tokens,
+                "docs": docs,
+                "modes": modes,
+                "updated": updated,
+            },
+            level="info",
+        )
+        return {
+            "status": "ok",
+            "tokens": tokens,
+            "docs": docs,
+            "modes": modes,
+            "updated": updated,
+            "duration_s": duration,
+            "disclaimer": disclaimer,
+        }
     except Exception as e:
-        log_event(source="telemetry_aggregator", event_type="error", message=f"Aggregate failed: {e}", metrics={"error": str(e)}, level="error")
+        log_event(
+            source="telemetry_aggregator",
+            event_type="error",
+            message=f"Aggregate failed: {e}",
+            metrics={"error": str(e)},
+            level="error",
+        )
         return {"status": "error", "error": str(e)}
 
 
 def main():
     ap = argparse.ArgumentParser(description="Dottie Continuous Factory Loop")
-    ap.add_argument("--mode", choices=["data", "train", "eval", "ecosystem", "all", "monitor", "aggregate"], default="all", help="Which loop to run")
-    ap.add_argument("--tokens", default=None, help="Tokens for data mode e.g. 500K, 10M (default 500K VM, 10M if --full)")
-    ap.add_argument("--full", action="store_true", help="Heavy Alienware mode: 10M tokens, real train/eval")
-    ap.add_argument("--dry-run", action="store_true", help="Don't execute heavy commands, just log")
+    ap.add_argument(
+        "--mode",
+        choices=["data", "train", "eval", "ecosystem", "all", "monitor", "aggregate"],
+        default="all",
+        help="Which loop to run",
+    )
+    ap.add_argument(
+        "--tokens",
+        default=None,
+        help="Tokens for data mode e.g. 500K, 10M (default 500K VM, 10M if --full)",
+    )
+    ap.add_argument(
+        "--full",
+        action="store_true",
+        help="Heavy Alienware mode: 10M tokens, real train/eval",
+    )
+    ap.add_argument(
+        "--dry-run", action="store_true", help="Don't execute heavy commands, just log"
+    )
     ap.add_argument("--preset", default="nano", help="Train preset nano/mini/base1b")
     ap.add_argument("--steps", type=int, default=0, help="Train max steps")
-    ap.add_argument("--tokens-total", dest="tokens_total", default=None, help="Train tokens_total")
-    ap.add_argument("--resume", action="store_true", help="Resume training if checkpoint exists")
+    ap.add_argument(
+        "--tokens-total", dest="tokens_total", default=None, help="Train tokens_total"
+    )
+    ap.add_argument(
+        "--resume", action="store_true", help="Resume training if checkpoint exists"
+    )
     ap.add_argument("--branch", default="all", help="Eval branch")
-    ap.add_argument("--eval-mode", dest="eval_mode", default=None, help="Eval mode mock|real")
+    ap.add_argument(
+        "--eval-mode", dest="eval_mode", default=None, help="Eval mode mock|real"
+    )
     ap.add_argument("--wandb", action="store_true", help="Enable wandb for eval")
     ap.add_argument("--phases", nargs="+", default=None, help="Data phases")
     ap.add_argument("--keep-days", type=int, default=2, help="Ecosystem keep last days")
-    ap.add_argument("--force", action="store_true", help="Force train even if no new data")
+    ap.add_argument(
+        "--force", action="store_true", help="Force train even if no new data"
+    )
     args = ap.parse_args()
 
     if not args.tokens:
         args.tokens = "10M" if args.full else "500K"
 
-    print(f"[{DISCLAIMER}] Dottie Continuous Loop mode={args.mode} tokens={args.tokens} full={args.full} dry_run={args.dry_run}")
+    print(
+        f"[{DISCLAIMER}] Dottie Continuous Loop mode={args.mode} tokens={args.tokens} full={args.full} dry_run={args.dry_run}"
+    )
 
-    results: Dict[str, Any] = {"mode": args.mode, "disclaimer": DISCLAIMER, "started": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+    results: dict[str, Any] = {
+        "mode": args.mode,
+        "disclaimer": DISCLAIMER,
+        "started": datetime.datetime.now(datetime.UTC).isoformat(),
+    }
 
     try:
         if args.mode == "data":
@@ -586,18 +870,31 @@ def main():
             results["train"] = mode_train(args)
             results["eval"] = mode_eval(args)
 
-        results["finished"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        results["finished"] = datetime.datetime.now(datetime.UTC).isoformat()
         results["status"] = "ok"
-        log_event(source="daemon", event_type="cycle_finish", message=f"Cycle {args.mode} finished", metrics=results, level="info")
+        log_event(
+            source="daemon",
+            event_type="cycle_finish",
+            message=f"Cycle {args.mode} finished",
+            metrics=results,
+            level="info",
+        )
         print(json.dumps(results, indent=2))
         return 0
     except Exception as e:
-        log_error("daemon", f"Continuous loop failed: {e}", metrics={"error": str(e), "mode": args.mode})
+        log_error(
+            "daemon",
+            f"Continuous loop failed: {e}",
+            metrics={"error": str(e), "mode": args.mode},
+        )
         print(f"[error] {e}", file=sys.stderr)
         import traceback
+
         traceback.print_exc()
         return 1
 
+
 if __name__ == "__main__":
     import sys
+
     sys.exit(main())

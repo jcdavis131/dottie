@@ -20,11 +20,11 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from dottie.research.ledger import SOTA, Ledger, LedgerError
 
-_AB_TEMPLATE = '''# Auto-generated A/B re-verification for research promotion {exp_id}.
+_AB_TEMPLATE = """# Auto-generated A/B re-verification for research promotion {exp_id}.
 #
 # Runs the SAME factory nano recipe on the unmodified model and on the candidate, over
 # several seeds, and applies the SAME noise standard the loop's own evaluation gate uses.
@@ -74,8 +74,7 @@ if len(diffs) > 1 and abs(mean_d) >= 2.0 * sem_d:
 else:
     print("VERDICT: WITHIN NOISE - this run does not distinguish the candidate from the "
           "unmodified model. Do not promote on it.")
-'''
-
+"""
 
 
 def write_ab_script(ledger: Ledger, exp_id: str, *, out_root: str | Path) -> Path:
@@ -91,8 +90,11 @@ def write_ab_script(ledger: Ledger, exp_id: str, *, out_root: str | Path) -> Pat
     except LedgerError as e:
         raise ValueError(f"unknown experiment {exp_id!r}") from e
     metrics = exp.train_metrics or {}
-    steps = int((metrics.get("config") or {}).get("steps", 150)) if isinstance(
-        metrics.get("config"), dict) else 150
+    steps = (
+        int((metrics.get("config") or {}).get("steps", 150))
+        if isinstance(metrics.get("config"), dict)
+        else 150
+    )
     out = Path(out_root) / exp_id
     out.mkdir(parents=True, exist_ok=True)
     script = out / "ab_nano.py"
@@ -101,13 +103,15 @@ def write_ab_script(ledger: Ledger, exp_id: str, *, out_root: str | Path) -> Pat
         # .implementation and .workspace off it). The old template passed the module path as
         # that argument, so every generated ab_nano.py raised AttributeError on its first
         # candidate call — the re-verification step had never actually run (§5.3.R32).
-        _AB_TEMPLATE.format(exp_id=exp_id, steps=steps,
-                            ledger_path=str(Path(ledger.path).resolve())),
-        encoding="utf-8")
+        _AB_TEMPLATE.format(
+            exp_id=exp_id, steps=steps, ledger_path=str(Path(ledger.path).resolve())
+        ),
+        encoding="utf-8",
+    )
     return script
 
 
-def _caveat_block(verdict: Dict[str, Any]) -> List[str]:
+def _caveat_block(verdict: dict[str, Any]) -> list[str]:
     """Everything qualifying this result, ABOVE the numbers rather than inside a JSON dump.
 
     The bundle is the artifact a human reads to decide whether to promote. It already
@@ -120,40 +124,50 @@ def _caveat_block(verdict: Dict[str, Any]) -> List[str]:
 
     Returns [] when a verdict is genuinely clean, so an honest result is not padded with
     reassurance it did not earn."""
-    lines: List[str] = []
+    lines: list[str] = []
     prov = verdict.get("baseline_provenance")
     caveat = verdict.get("baseline_caveat")
     if caveat or (prov and prov != "promoted"):
-        lines.append(f"> **BASELINE CAVEAT** (provenance: `{prov}`) — "
-                     f"{(caveat or 'no detail recorded').strip()}")
+        lines.append(
+            f"> **BASELINE CAVEAT** (provenance: `{prov}`) — "
+            f"{(caveat or 'no detail recorded').strip()}"
+        )
     if verdict.get("significant") is None:
-        lines.append("> **SIGNIFICANCE UNMEASURABLE** — no per-batch series was recorded, so "
-                     "this delta was never tested against noise.")
+        lines.append(
+            "> **SIGNIFICANCE UNMEASURABLE** — no per-batch series was recorded, so "
+            "this delta was never tested against noise."
+        )
     elif verdict.get("significant") is False:
         lines.append(f"> **WITHIN NOISE** — {verdict.get('significance', '')}")
     if verdict.get("capacity_caveat"):
         lines.append(f"> **CAPACITY CHANGE** — {verdict['capacity_caveat']}")
     sig = verdict.get("significance") or ""
     if "candidate-only SEM" in sig:
-        lines.append("> **WEAK SIGNIFICANCE TEST** — the baseline records no spread, so it "
-                     "was treated as an exact point; the real bar is higher than it looks.")
+        lines.append(
+            "> **WEAK SIGNIFICANCE TEST** — the baseline records no spread, so it "
+            "was treated as an exact point; the real bar is higher than it looks."
+        )
     # The R93 miss surfaced here, not just in the significance prose. A verdict whose spread
     # came from a SINGLE run's batches cannot see run-to-run variance — the variance that
     # actually decides these calls. Keyed off the structured field, not the prose, so a
     # reworded significance string can never silently drop this warning.
     from dottie.research.evaluate import _WITHIN_RUN_SERIES
+
     if verdict.get("sem_series") in _WITHIN_RUN_SERIES:
-        lines.append("> **WITHIN-RUN SPREAD ONLY** — significance rests on one run's "
-                     "batch-to-batch noise, which is BLIND to run-to-run variance (TODOS "
-                     "§5.3.R93: a candidate cleared this bar at 4.4 SEM and was then worse at "
-                     "every seed). Run `ab_nano.py` in this bundle before promoting.")
+        lines.append(
+            "> **WITHIN-RUN SPREAD ONLY** — significance rests on one run's "
+            "batch-to-batch noise, which is BLIND to run-to-run variance (TODOS "
+            "§5.3.R93: a candidate cleared this bar at 4.4 SEM and was then worse at "
+            "every seed). Run `ab_nano.py` in this bundle before promoting."
+        )
     if not lines:
         return []
     return ["> ### Read this before promoting", *lines, ""]
 
 
-def build_promotion(ledger: Ledger, exp_id: str, *, out_root: str | Path,
-                    ts: Optional[float] = None) -> Dict[str, Any]:
+def build_promotion(
+    ledger: Ledger, exp_id: str, *, out_root: str | Path, ts: float | None = None
+) -> dict[str, Any]:
     """Write the bundle for a sota experiment. Raises ValueError on a non-sota
     experiment or a missing workspace module (honest refusals, not empty bundles)."""
     # Ledger.get() RAISES LedgerError for an unknown id — it never returns None, so the
@@ -164,8 +178,10 @@ def build_promotion(ledger: Ledger, exp_id: str, *, out_root: str | Path,
     except LedgerError as e:
         raise ValueError(f"unknown experiment {exp_id!r}") from e
     if exp.state != SOTA:
-        raise ValueError(f"experiment {exp_id} is {exp.state!r}, not sota — only proven "
-                         "winners get promotion bundles")
+        raise ValueError(
+            f"experiment {exp_id} is {exp.state!r}, not sota — only proven "
+            "winners get promotion bundles"
+        )
     impl = exp.implementation or {}
     code = impl.get("code")
     if not code:
@@ -194,9 +210,13 @@ def build_promotion(ledger: Ledger, exp_id: str, *, out_root: str | Path,
         str(hyp.get("theoretical_intuition", "(none recorded)")),
         "",
         "## Measured",
-        "```json", json.dumps(metrics, indent=2, default=str), "```",
+        "```json",
+        json.dumps(metrics, indent=2, default=str),
+        "```",
         "## Verdict",
-        "```json", json.dumps(exp.eval_verdict or {}, indent=2, default=str), "```",
+        "```json",
+        json.dumps(exp.eval_verdict or {}, indent=2, default=str),
+        "```",
         "",
         "## Next steps (HUMAN-GATED — nothing here is auto-applied)",
         f"1. Re-verify: `python {out.name}/ab_nano.py` (factory checkout + packed corpus).",
@@ -206,12 +226,16 @@ def build_promotion(ledger: Ledger, exp_id: str, *, out_root: str | Path,
     ]
     (out / "PROMOTION.md").write_text("\n".join(md), encoding="utf-8")
     write_ab_script(ledger, exp_id, out_root=out_root)
-    return {"experiment": exp_id, "bundle": str(out),
-            "files": ["candidate.py", "PROMOTION.md", "ab_nano.py"]}
+    return {
+        "experiment": exp_id,
+        "bundle": str(out),
+        "files": ["candidate.py", "PROMOTION.md", "ab_nano.py"],
+    }
 
 
-def build_pending_promotions(ledger: Ledger, *, out_root: str | Path,
-                             rebuild: bool = False) -> Dict[str, Any]:
+def build_pending_promotions(
+    ledger: Ledger, *, out_root: str | Path, rebuild: bool = False
+) -> dict[str, Any]:
     """Bundle every sota experiment that has no bundle yet. Returns a summary.
 
     ``rebuild=True`` regenerates bundles that already exist. Without it, a bundle written

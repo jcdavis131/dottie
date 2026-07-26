@@ -79,9 +79,7 @@ def test_template_grouping_for_stackless_events():
     c = glitch.log_event("step 12 failed", template="step N failed", logger="other")
     assert c["fingerprint"] != a["fingerprint"]  # logger is part of the key
     # no template at all: the message is all there is to group on
-    assert (
-        glitch.log_event("x")["fingerprint"] != glitch.log_event("y")["fingerprint"]
-    )
+    assert glitch.log_event("x")["fingerprint"] != glitch.log_event("y")["fingerprint"]
 
 
 # ---- normalization ----------------------------------------------------------
@@ -184,9 +182,7 @@ def test_handler_captures_errors_groups_templates(tmp_path):
     assert issues["ZeroDivisionError"]["project"] == "worker"
 
 
-def test_excepthook_records_chains_and_skips_keyboardinterrupt(
-    tmp_path, monkeypatch
-):
+def test_excepthook_records_chains_and_skips_keyboardinterrupt(tmp_path, monkeypatch):
     db = tmp_path / "g.db"
     calls = []
     monkeypatch.setattr(sys, "excepthook", lambda *a: calls.append(a))
@@ -244,8 +240,13 @@ def test_load_retention_defaults_overlay_and_rejects(tmp_path):
     r = glitch.load_retention(str(overlay))
     assert r["trainer"] == {"max_age_s": 86400} and r["noisy"] is False
     assert r["*"]["keep_last"] == 200  # defaults kept
-    for bad in ("[1]", '{"x": 3}', '{"x": {"max_age_s": -1}}',
-                '{"x": {"keep_last": true}}', '{"x": {"keep_last": -2}}'):
+    for bad in (
+        "[1]",
+        '{"x": 3}',
+        '{"x": {"max_age_s": -1}}',
+        '{"x": {"keep_last": true}}',
+        '{"x": {"keep_last": -2}}',
+    ):
         overlay.write_text(bad, encoding="utf-8")
         with pytest.raises(ValueError):
             glitch.load_retention(str(overlay))

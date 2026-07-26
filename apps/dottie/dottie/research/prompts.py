@@ -16,7 +16,7 @@ from __future__ import annotations
 import ast
 import json
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from dottie.research.ledger import Baseline
 
@@ -80,13 +80,13 @@ IDEATION_SCHEMA = {
     # class this same file's 5.3.R50 rule was written against, introduced by the fix for the
     # zero-parameter problem. Angle-bracket placeholders cannot be pasted through.
     "learnable_parameters": "every nn.Parameter / nn.Linear tensor this block will TRAIN, "
-                            "named and shaped, in the form "
-                            "'<your_name>: nn.Parameter(<shape>)' or "
-                            "'<your_name>: nn.Linear(<in>, <out>)', semicolon-separated — "
-                            "use YOUR names and YOUR shapes, derived from the mechanism you "
-                            "are proposing. A block with none is a fixed function and will "
-                            "be rejected: it cannot learn, and replacing a parameterised "
-                            "block with it shrinks the model.",
+    "named and shaped, in the form "
+    "'<your_name>: nn.Parameter(<shape>)' or "
+    "'<your_name>: nn.Linear(<in>, <out>)', semicolon-separated — "
+    "use YOUR names and YOUR shapes, derived from the mechanism you "
+    "are proposing. A block with none is a fixed function and will "
+    "be rejected: it cannot learn, and replacing a parameterised "
+    "block with it shrinks the model.",
 }
 
 IMPLEMENTATION_SCHEMA = {
@@ -97,15 +97,15 @@ IMPLEMENTATION_SCHEMA = {
     # [4, 16, 64], derived seq_len=16 from it, sized a positional table to 16, and crashed
     # at the real seq of 256. Describe the value; do not hand over a fillable one.
     "target_file": "repo-relative path naming THIS module, derived from module_name "
-                   "(e.g. ava/models/<your_module_name_lowercased>.py)",
+    "(e.g. ava/models/<your_module_name_lowercased>.py)",
     "code": "complete syntax-valid Python, with imports; a drop-in module",
     "init_kwargs": "JSON object of constructor kwargs to instantiate the module for the dry-run "
-                   "(use small dims; {} if none)",
+    "(use small dims; {} if none)",
     "input_shape": "list[int] [batch, seq, hidden] for the CPU dry-run, chosen for YOUR "
-                   "module and small enough to be fast. NOTE: this is only a probe shape. "
-                   "In training the block runs at seq=256, hidden=256, and it is re-validated "
-                   "at that shape — so nothing in your module may be sized to the numbers you "
-                   "put here. Derive every dimension from x.shape at forward time.",
+    "module and small enough to be fast. NOTE: this is only a probe shape. "
+    "In training the block runs at seq=256, hidden=256, and it is re-validated "
+    "at that shape — so nothing in your module may be sized to the numbers you "
+    "put here. Derive every dimension from x.shape at forward time.",
     "shape_assertions": "how the output shape was kept compatible with the baseline",
 }
 
@@ -162,24 +162,44 @@ _ENGINEERING_CONSTRAINTS = """1. Shape integrity: document expected input/output
      default, so the module is correct at ANY declared `input_shape`."""
 
 
-def _baseline_block(baseline: Optional[Baseline], bottleneck: str) -> str:
+def _baseline_block(baseline: Baseline | None, bottleneck: str) -> str:
     if baseline is None:
         arch, metric = "(unset — no baseline seeded)", "(unset)"
     else:
-        direction = "higher is better" if baseline.higher_is_better else "lower is better"
+        direction = (
+            "higher is better" if baseline.higher_is_better else "lower is better"
+        )
         arch = baseline.architecture
         metric = f"{baseline.metric_name} = {baseline.metric_value:.6g} ({direction})"
-    return (f"- Architecture: {arch}\n"
-            f"- Current baseline metric: {metric}\n"
-            f"- Key bottleneck: {bottleneck}")
+    return (
+        f"- Architecture: {arch}\n"
+        f"- Current baseline metric: {metric}\n"
+        f"- Key bottleneck: {bottleneck}"
+    )
 
 
 #: Words too generic to count as a search direction when tallying overused vocabulary.
-_STOPWORDS = frozenset({"with", "from", "this", "that", "using", "based", "time", "via",
-                        "and", "for", "the", "aware", "driven", "guided"})
+_STOPWORDS = frozenset(
+    {
+        "with",
+        "from",
+        "this",
+        "that",
+        "using",
+        "based",
+        "time",
+        "via",
+        "and",
+        "for",
+        "the",
+        "aware",
+        "driven",
+        "guided",
+    }
+)
 
 
-def _failed_block(failed_names: List[str], *, show: int = 20) -> str:
+def _failed_block(failed_names: list[str], *, show: int = 20) -> str:
     """Dead ends, plus an explicit tally of the vocabulary they keep reusing.
 
     Measured 2026-07-20 (TODOS §5.3.R24) on the live list of 20: "attention" appeared in
@@ -194,31 +214,40 @@ def _failed_block(failed_names: List[str], *, show: int = 20) -> str:
         return "(none yet)"
     shown = failed_names[:show]
     listing = "\n".join(f"- {n}" for n in shown)
-    counts: Dict[str, int] = {}
+    counts: dict[str, int] = {}
     for name in shown:
         for word in set(re.findall(r"[a-z]+", name.lower())):
             if len(word) > 3 and word not in _STOPWORDS:
                 counts[word] = counts.get(word, 0) + 1
-    hot = [(w, c) for w, c in sorted(counts.items(), key=lambda kv: -kv[1])
-           if c >= max(3, len(shown) // 4)][:6]
+    hot = [
+        (w, c)
+        for w, c in sorted(counts.items(), key=lambda kv: -kv[1])
+        if c >= max(3, len(shown) // 4)
+    ][:6]
     if not hot:
         return listing
     terms = ", ".join(f"`{w}` ({c}/{len(shown)})" for w, c in hot)
-    return (f"{listing}\n\n"
-            f"OVERUSED TERMS in the failures above: {terms}. That is the region this search "
-            f"has already exhausted — the names above are anti-examples, NOT a vocabulary to "
-            f"draw from. Your proposals must avoid those words *and the mechanisms they "
-            f"stand for*; a new name built from the same terms is the same dead end with a "
-            f"new label. Go somewhere the list above does not reach.")
+    return (
+        f"{listing}\n\n"
+        f"OVERUSED TERMS in the failures above: {terms}. That is the region this search "
+        f"has already exhausted — the names above are anti-examples, NOT a vocabulary to "
+        f"draw from. Your proposals must avoid those words *and the mechanisms they "
+        f"stand for*; a new name built from the same terms is the same dead end with a "
+        f"new label. Go somewhere the list above does not reach."
+    )
 
 
-def ideation_prompt(baseline: Optional[Baseline], *, bottleneck: str,
-                    search_space: Optional[List[str]] = None,
-                    failed_hypotheses: Optional[List[str]] = None,
-                    n_ideas: int = 1) -> str:
+def ideation_prompt(
+    baseline: Baseline | None,
+    *,
+    bottleneck: str,
+    search_space: list[str] | None = None,
+    failed_hypotheses: list[str] | None = None,
+    n_ideas: int = 1,
+) -> str:
     """The rigidly-structured ideation system prompt, grounded in the real baseline."""
     space = search_space or DEFAULT_SEARCH_SPACE
-    fenced = "\n".join(f"{i+1}. {s}" for i, s in enumerate(space))
+    fenced = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(space))
     schema = json.dumps(IDEATION_SCHEMA, indent=2)
     # "hypothesis" + "s" produced "hypothesiss" in the very first instruction of every
     # ideation call (TODOS 5.3.R36). English, not string concatenation.
@@ -296,8 +325,9 @@ schema. EVERY key is REQUIRED and must be non-empty. No markdown, no prose outsi
 # failure. The replacement text deliberately does NOT quote the old wording: this string is
 # rendered INTO the prompt, so an explanatory "we used to say X" would still show the model
 # X. Historical notes go here, in code, where the model never sees them.
-def implementation_prompt(hypothesis: Dict[str, Any], *,
-                          codebase_note: str = "") -> str:
+def implementation_prompt(
+    hypothesis: dict[str, Any], *, codebase_note: str = ""
+) -> str:
     """The senior-engineer implementation prompt that turns a hypothesis into drop-in PyTorch."""
     schema = json.dumps(IMPLEMENTATION_SCHEMA, indent=2)
     constraints = _ENGINEERING_CONSTRAINTS
@@ -381,7 +411,7 @@ def _salvage_truncated_array(s: str) -> Any:
         if end <= 0:
             return None
         try:
-            return json.loads(s[:end + 1] + "]")
+            return json.loads(s[: end + 1] + "]")
         except json.JSONDecodeError:
             continue
     return None
@@ -397,7 +427,7 @@ def extract_json(text: str) -> Any:
     if s.startswith("```"):
         first_nl = s.find("\n")
         if first_nl != -1:
-            s = s[first_nl + 1:]
+            s = s[first_nl + 1 :]
         if s.rstrip().endswith("```"):
             s = s.rstrip()[:-3]
     s = s.strip()
@@ -441,34 +471,49 @@ def extract_json(text: str) -> Any:
                 depth -= 1
                 if depth == 0:
                     try:
-                        return json.loads(s[start:i + 1])
+                        return json.loads(s[start : i + 1])
                     except json.JSONDecodeError:
                         break
     raise ValueError("no parseable JSON object found in model response")
 
 
-def parse_hypotheses(text: str) -> List[Dict[str, Any]]:
+def parse_hypotheses(text: str) -> list[dict[str, Any]]:
     """Parse ideation output into a list of hypothesis dicts (validating required keys)."""
     obj = extract_json(text)
-    required = {"hypothesis_name", "theoretical_intuition", "mathematical_formulation",
-                "pytorch_implementation_strategy", "expected_outcome"}
+    required = {
+        "hypothesis_name",
+        "theoretical_intuition",
+        "mathematical_formulation",
+        "pytorch_implementation_strategy",
+        "expected_outcome",
+    }
     if isinstance(obj, dict) and not (required & set(obj)):
         # Models sometimes wrap the list ({"hypotheses": [...]}) — observed live on qwen3:14b.
         # Unwrap the first list-of-dicts value; anything else still fails honestly below.
-        wrapped = next((v for v in obj.values()
-                        if isinstance(v, list) and v and all(isinstance(x, dict) for x in v)),
-                       None)
+        wrapped = next(
+            (
+                v
+                for v in obj.values()
+                if isinstance(v, list) and v and all(isinstance(x, dict) for x in v)
+            ),
+            None,
+        )
         if wrapped is not None:
             obj = wrapped
     items = obj if isinstance(obj, list) else [obj]
     # Per-item wrappers ({"hypothesis": {...}}) — a single-key dict whose value is a dict
     # is unwrapped (observed live on qwen3:8b after the list-level fix; models invent one
     # nesting level at a time). Anything else still fails honestly below.
-    items = [next(iter(it.values()))
-             if isinstance(it, dict) and len(it) == 1 and not (required & set(it))
-             and isinstance(next(iter(it.values())), dict) else it
-             for it in items]
-    out: List[Dict[str, Any]] = []
+    items = [
+        next(iter(it.values()))
+        if isinstance(it, dict)
+        and len(it) == 1
+        and not (required & set(it))
+        and isinstance(next(iter(it.values())), dict)
+        else it
+        for it in items
+    ]
+    out: list[dict[str, Any]] = []
     for it in items:
         if not isinstance(it, dict):
             continue
@@ -511,7 +556,7 @@ def _unescape_flat_code(code: str) -> str:
     code; unrepairable code passes through unchanged and fails at ``syntax`` honestly."""
     if "\\n" not in code or _parses(code):
         return code
-    candidates: List[str] = []
+    candidates: list[str] = []
     # JSON string semantics first (also fixes \" and \\). Raises harmlessly when the code has
     # real newlines (raw control chars in a JSON string) or JSON-invalid escapes like \d.
     try:
@@ -526,14 +571,18 @@ def _unescape_flat_code(code: str) -> str:
     return code
 
 
-def parse_implementation(text: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+def parse_implementation(text: str) -> tuple[dict[str, Any], dict[str, Any]]:
     """Parse implementation output. Returns (implementation_record, dry_run_spec).
 
     dry_run_spec = {class_name, init_kwargs, input_shape} for the validator."""
     obj = extract_json(text)
     if isinstance(obj, list):
         obj = obj[0] if obj else {}
-    if not isinstance(obj, dict) or "code" not in obj or not str(obj.get("code", "")).strip():
+    if (
+        not isinstance(obj, dict)
+        or "code" not in obj
+        or not str(obj.get("code", "")).strip()
+    ):
         raise ValueError("implementation missing non-empty 'code'")
     obj["code"] = _unescape_flat_code(str(obj["code"]))
     module_name = obj.get("module_name")

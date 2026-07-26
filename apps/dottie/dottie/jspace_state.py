@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Any, Dict, Optional
+from typing import Any
 
 from dottie import resolve
 
@@ -45,9 +45,14 @@ def shared_store():
         return None
 
 
-def record_task(session_id: str, task: str, outcome: str, *,
-                trace: Optional[Dict[str, Any]] = None,
-                channel: Optional[str] = None) -> Dict[str, Any]:
+def record_task(
+    session_id: str,
+    task: str,
+    outcome: str,
+    *,
+    trace: dict[str, Any] | None = None,
+    channel: str | None = None,
+) -> dict[str, Any]:
     """Log the run + update cross-channel re-entry state. Returns what happened.
 
     The channel names the SURFACE the task ran on (see KNOWN_CHANNELS): explicit
@@ -64,7 +69,7 @@ def record_task(session_id: str, task: str, outcome: str, *,
     return {"persistence": "on", "channel": ch}
 
 
-def session_context(session_id: str) -> Optional[Dict[str, Any]]:
+def session_context(session_id: str) -> dict[str, Any] | None:
     """All channels' persisted state for a session (what an OpenClaw loop re-enters
     with) — None when the store is unavailable."""
     store = shared_store()
