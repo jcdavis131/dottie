@@ -110,7 +110,9 @@ def load_config(path: str | None = None) -> dict[str, Any]:
         if not (isinstance(lo, int) and isinstance(hi, int) and 0 <= lo <= hi):
             raise ValueError(f"config {key!r}: needs int 0 <= min <= max, got {win!r}")
     for key in ("og_required", "twitter_required"):
-        if not (isinstance(cfg[key], list) and all(isinstance(x, str) for x in cfg[key])):
+        if not (
+            isinstance(cfg[key], list) and all(isinstance(x, str) for x in cfg[key])
+        ):
             raise ValueError(f"config {key!r}: must be a list of property names")
     return cfg
 
@@ -146,7 +148,9 @@ def resolve_link(href: str, base: str) -> str | None:
     return _ensure_root_path(absu)
 
 
-def robots_parser(start_url: str, robots_text: str) -> urllib.robotparser.RobotFileParser:
+def robots_parser(
+    start_url: str, robots_text: str
+) -> urllib.robotparser.RobotFileParser:
     """Build a RobotFileParser from already-fetched robots.txt text (core stays
     pure — the CLI does the one fetch and passes the body in)."""
     rp = urllib.robotparser.RobotFileParser()
@@ -360,8 +364,13 @@ def audit_page(
     def add(rule, message, *, severity="warning", line=0, col=0, suggestion=None):
         diags.append(
             openswap.diagnostic(
-                path=url, line=line, col=col, rule=rule, severity=severity,
-                message=message, suggestion=suggestion,
+                path=url,
+                line=line,
+                col=col,
+                rule=rule,
+                severity=severity,
+                message=message,
+                suggestion=suggestion,
             )
         )
 
@@ -373,8 +382,11 @@ def audit_page(
         else:
             add("seo:redirect", f"redirects to {chain}", severity="suggestion")
     if status is None:
-        add("seo:unreachable", f"fetch failed — {error or 'no answer'}",
-            severity="error")
+        add(
+            "seo:unreachable",
+            f"fetch failed — {error or 'no answer'}",
+            severity="error",
+        )
         return diags
     if status >= 400:
         add("seo:http-error", f"http {status}", severity="error")
@@ -428,13 +440,19 @@ def audit_page(
     og = facts.get("og") or {}
     missing_og = [k for k in cfg["og_required"] if not (og.get(k) or "").strip()]
     if missing_og:
-        add("seo:og-incomplete", "missing " + ", ".join(missing_og),
-            severity="suggestion")
+        add(
+            "seo:og-incomplete",
+            "missing " + ", ".join(missing_og),
+            severity="suggestion",
+        )
     tw = facts.get("twitter") or {}
     missing_tw = [k for k in cfg["twitter_required"] if not (tw.get(k) or "").strip()]
     if missing_tw:
-        add("seo:twitter-incomplete", "missing " + ", ".join(missing_tw),
-            severity="suggestion")
+        add(
+            "seo:twitter-incomplete",
+            "missing " + ", ".join(missing_tw),
+            severity="suggestion",
+        )
     images = facts.get("images") or {}
     missing_alt = images.get("missing_alt") or []
     if missing_alt:

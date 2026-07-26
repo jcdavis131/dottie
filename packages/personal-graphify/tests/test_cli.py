@@ -1,6 +1,7 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
 """CLI wiring: build --cluster passthrough, hook install/uninstall round-trip,
 install --platform/--project branches, live graph stats interpolation."""
+
 import json
 import sys
 
@@ -16,7 +17,9 @@ def _mini_repo(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "a.py").write_text("def f():\n    return 1\n", encoding="utf-8")
-    (repo / "b.py").write_text("from a import f\n\ndef g():\n    return f()\n", encoding="utf-8")
+    (repo / "b.py").write_text(
+        "from a import f\n\ndef g():\n    return f()\n", encoding="utf-8"
+    )
     return repo
 
 
@@ -33,7 +36,10 @@ class TestBuildClusterFlag:
         monkeypatch.setattr(cli, "assign_communities", spy)
         repo = _mini_repo(tmp_path)
         out = tmp_path / "out"
-        _run_cli(monkeypatch, ["build", str(repo), "--out", str(out), "--cluster", "spectral"])
+        _run_cli(
+            monkeypatch,
+            ["build", str(repo), "--out", str(out), "--cluster", "spectral"],
+        )
         assert seen["method"] == "spectral"
         assert (out / "graph.json").exists()
 
@@ -132,7 +138,8 @@ class TestInstallPlatforms:
         (root / "graphify-out").mkdir(parents=True)
         (root / "graphify-out" / "graph.json").write_text(
             json.dumps({"nodes": [], "edges": [], "meta": {"nodes": 42, "edges": 99}}),
-            encoding="utf-8")
+            encoding="utf-8",
+        )
         _run_cli(monkeypatch, ["install", str(root)])
         content = (root / self.CURSOR).read_text(encoding="utf-8")
         assert "42 nodes 99 edges (live at install)" in content
@@ -145,4 +152,6 @@ class TestInstallPlatforms:
         content = (root / self.CURSOR).read_text(encoding="utf-8")
         assert "{{GRAPH_STATS}}" not in content
         assert "464 nodes" not in content  # old stale hardcoded count
-        assert "nodes" not in content.splitlines()[8]  # intro line carries no fabricated count
+        assert (
+            "nodes" not in content.splitlines()[8]
+        )  # intro line carries no fabricated count

@@ -64,9 +64,12 @@ def test_detect_encoding_bomless_utf16_and_fallbacks():
     got = logs.detect_encoding(bomless)
     assert got["encoding"] == "utf-16-le" and got["bom_len"] == 0
     assert got["via"] == "nul-pattern"  # no BOM to go on — the NULs gave it away
-    assert logs.detect_encoding(("2026-07-19 INFO up\n" * 4).encode("utf-16-be"))[
-        "encoding"
-    ] == "utf-16-be"
+    assert (
+        logs.detect_encoding(("2026-07-19 INFO up\n" * 4).encode("utf-16-be"))[
+            "encoding"
+        ]
+        == "utf-16-be"
+    )
     plain = logs.detect_encoding(b"plain ascii line\n")
     assert plain["encoding"] == "utf-8" and plain["via"] == "utf-8"
     # invalid UTF-8 that is not UTF-16 either: latin-1 never raises, so ingest
@@ -234,8 +237,13 @@ def test_parse_line_syslog_shape_takes_the_year_and_sniffs_the_level():
 
 def test_parse_line_jsonl_reads_the_usual_key_spellings():
     got = logs.parse_line(
-        json.dumps({"timestamp": "2026-07-19T13:45:01Z", "severity": "warn",
-                    "msg": "grad clip hit"}),
+        json.dumps(
+            {
+                "timestamp": "2026-07-19T13:45:01Z",
+                "severity": "warn",
+                "msg": "grad clip hit",
+            }
+        ),
         parser="jsonl",
     )
     assert got["parsed"] is True and got["ts"] == TS_1345
@@ -398,7 +406,9 @@ def test_collect_file_waits_for_a_partial_line_to_finish(tmp_path):
     conn = _mem()
     cfg = {"path": "app.log", "parser": "plain"}
     f = _write(tmp_path / "app.log", "complete line\n")
-    assert logs.collect_file(conn, "app", f, cfg, root=tmp_path, now=1.0)["ingested"] == 1
+    assert (
+        logs.collect_file(conn, "app", f, cfg, root=tmp_path, now=1.0)["ingested"] == 1
+    )
     with f.open("a", encoding="utf-8") as fh:
         fh.write("half a li")  # the writer is mid-flush
     mid = logs.collect_file(conn, "app", f, cfg, root=tmp_path, now=2.0)
@@ -517,7 +527,9 @@ def test_collect_pass_covers_every_source_and_reports_empty_ones(tmp_path):
     (tmp_path / "svc").mkdir()
     _write(tmp_path / "svc" / "a.log", "2026-07-19 13:45:01 INFO a\n")
     _write(tmp_path / "svc" / "b.log", "2026-07-19 13:45:02 ERROR b\n")
-    _write(tmp_path / "flat.jsonl", '{"ts": 1784468701.0, "level": "warn", "msg": "w"}\n')
+    _write(
+        tmp_path / "flat.jsonl", '{"ts": 1784468701.0, "level": "warn", "msg": "w"}\n'
+    )
     sources = {
         "svc": {"path": "svc/*.log", "parser": "iso"},
         "flat": {"path": "flat.jsonl", "parser": "jsonl"},
@@ -591,7 +603,10 @@ def test_query_level_is_a_floor_not_an_equality_test():
         "error",
         "warning",
     ]
-    assert [e["level"] for e in logs.query(conn, level="error")] == ["critical", "error"]
+    assert [e["level"] for e in logs.query(conn, level="error")] == [
+        "critical",
+        "error",
+    ]
     assert len(logs.query(conn, level="trace")) == 5  # the floor of the floor
     assert [e["source"] for e in logs.query(conn, source="b")] == ["b", "b"]
 
@@ -695,16 +710,46 @@ def test_list_offsets_and_source_status_expose_how_far_behind_we_are(tmp_path):
 
 def test_to_diagnostics_maps_only_findings_and_sorts_them():
     entries = [
-        {"source": "a", "path": "a.log", "line_no": 9, "level": "info",
-         "message": "fine", "parser": "iso"},
-        {"source": "a", "path": "a.log", "line_no": 4, "level": "warning",
-         "message": "slow", "parser": "iso"},
-        {"source": "a", "path": "a.log", "line_no": 7, "level": "error",
-         "message": "boom", "parser": "iso"},
-        {"source": "a", "path": "a.log", "line_no": 1, "level": "critical",
-         "message": "dead", "parser": "iso"},
-        {"source": "a", "path": "a.log", "line_no": 2, "level": "debug",
-         "message": "noise", "parser": "iso"},
+        {
+            "source": "a",
+            "path": "a.log",
+            "line_no": 9,
+            "level": "info",
+            "message": "fine",
+            "parser": "iso",
+        },
+        {
+            "source": "a",
+            "path": "a.log",
+            "line_no": 4,
+            "level": "warning",
+            "message": "slow",
+            "parser": "iso",
+        },
+        {
+            "source": "a",
+            "path": "a.log",
+            "line_no": 7,
+            "level": "error",
+            "message": "boom",
+            "parser": "iso",
+        },
+        {
+            "source": "a",
+            "path": "a.log",
+            "line_no": 1,
+            "level": "critical",
+            "message": "dead",
+            "parser": "iso",
+        },
+        {
+            "source": "a",
+            "path": "a.log",
+            "line_no": 2,
+            "level": "debug",
+            "message": "noise",
+            "parser": "iso",
+        },
     ]
     diags = logs.to_diagnostics(entries)
     assert len(diags) == 3  # info/debug emit nothing
@@ -929,8 +974,15 @@ def test_cli_logs_collect_query_rollup_loop(tmp_path):
     }
     data = _data(
         _cli(
-            ["logs", "query", "--db", db, "--since", "2026-07-19T14:00:00Z",
-             "--oldest-first"]
+            [
+                "logs",
+                "query",
+                "--db",
+                db,
+                "--since",
+                "2026-07-19T14:00:00Z",
+                "--oldest-first",
+            ]
         )
     )
     assert [e["message"] for e in data["entries"]] == ["retry budget low"]
@@ -946,8 +998,18 @@ def test_cli_logs_collect_query_rollup_loop(tmp_path):
 
     # sources board shows the tails are caught up
     data = _data(
-        _cli(["logs", "sources", "--db", db, "--sources", str(srcs),
-              "--root", str(tmp_path)])
+        _cli(
+            [
+                "logs",
+                "sources",
+                "--db",
+                db,
+                "--sources",
+                str(srcs),
+                "--root",
+                str(tmp_path),
+            ]
+        )
     )
     assert data["count"] == 2 and data["tracked_files"] == 2
     assert all(f["behind_bytes"] == 0 for s in data["sources"] for f in s["files"])
@@ -975,8 +1037,18 @@ def test_cli_logs_collect_reads_utf16_end_to_end(tmp_path):
         encoding="utf-8",
     )
     data = _data(
-        _cli(["logs", "collect", "--db", db, "--sources", str(srcs),
-              "--root", str(tmp_path)])
+        _cli(
+            [
+                "logs",
+                "collect",
+                "--db",
+                db,
+                "--sources",
+                str(srcs),
+                "--root",
+                str(tmp_path),
+            ]
+        )
     )
     assert data["ingested"] == 2 and data["unparsed"] == 0
     assert data["files"][0]["encoding"] == "utf-16-le"
@@ -1039,15 +1111,30 @@ def test_cli_logs_rejects_bad_arguments(tmp_path):
     srcs = tmp_path / "srcs.json"
     srcs.write_text(
         json.dumps(
-            {"research-loop": False, "trainer": False, "telemetry": False,
-             "a": {"path": "a.log", "parser": "plain"}}
+            {
+                "research-loop": False,
+                "trainer": False,
+                "telemetry": False,
+                "a": {"path": "a.log", "parser": "plain"},
+            }
         ),
         encoding="utf-8",
     )
-    assert _cli(
-        ["logs", "collect", "--db", db, "--sources", str(srcs),
-         "--root", str(tmp_path)]
-    ).returncode == 0
+    assert (
+        _cli(
+            [
+                "logs",
+                "collect",
+                "--db",
+                db,
+                "--sources",
+                str(srcs),
+                "--root",
+                str(tmp_path),
+            ]
+        ).returncode
+        == 0
+    )
     for args, needle in (
         (["logs", "query", "--db", db, "--level", "loud"], "--level must be one of"),
         (["logs", "query", "--db", db, "--since", "yesterday"], "--since must be"),
@@ -1061,10 +1148,21 @@ def test_cli_logs_rejects_bad_arguments(tmp_path):
 
 def test_cli_logs_bad_sources_file_fails_actionably(tmp_path):
     bad = tmp_path / "bad.json"
-    bad.write_text(json.dumps({"x": {"path": "a.log", "parser": "logstash"}}),
-                   encoding="utf-8")
-    res = _cli(["logs", "collect", "--db", str(tmp_path / "l.db"),
-                "--sources", str(bad), "--root", str(tmp_path)])
+    bad.write_text(
+        json.dumps({"x": {"path": "a.log", "parser": "logstash"}}), encoding="utf-8"
+    )
+    res = _cli(
+        [
+            "logs",
+            "collect",
+            "--db",
+            str(tmp_path / "l.db"),
+            "--sources",
+            str(bad),
+            "--root",
+            str(tmp_path),
+        ]
+    )
     assert res.returncode == 1
     assert "unknown parser" in json.loads(res.stdout)["error"]
 
@@ -1115,8 +1213,12 @@ def test_collect_file_applies_the_sources_declared_default_level(tmp_path):
     # ...and a declared default never overrides a level the line does carry
     f2 = _write(tmp_path / "e.log", "ERROR exploded\n")
     res2 = logs.collect_file(
-        conn, "e", f2, {"path": "e.log", "parser": "plain", "level": "debug"},
-        root=tmp_path, now=6.0,
+        conn,
+        "e",
+        f2,
+        {"path": "e.log", "parser": "plain", "level": "debug"},
+        root=tmp_path,
+        now=6.0,
     )
     assert res2["by_level"] == {"error": 1} and res2["level_from"] == {"sniff": 1}
 
@@ -1128,8 +1230,14 @@ def test_normalize_level_maps_the_whole_syslog_priority_table():
     one that decides whether `--fail-on error` fires.
     """
     assert [logs.normalize_level(p) for p in range(8)] == [
-        "critical", "critical", "critical", "error",
-        "warning", "info", "info", "debug",
+        "critical",
+        "critical",
+        "critical",
+        "error",
+        "warning",
+        "info",
+        "info",
+        "debug",
     ]
     # outside 0..7 is not a syslog priority and must not be invented into one
     assert logs.normalize_level(8) is None and logs.normalize_level(-1) is None

@@ -80,7 +80,14 @@ def test_every_series_is_index_aligned_with_step():
         # the 2nd, lr only on the last. This is the shape that breaks index pairing if
         # anything ever "helpfully" drops the empties.
         {"event": "step", "step": 1, "lm": 9.0, "phase": 0},
-        {"event": "step", "step": 2, "lm": 8.0, "tok_s": 100, "grad_norm": 0.5, "phase": 0},
+        {
+            "event": "step",
+            "step": 2,
+            "lm": 8.0,
+            "tok_s": 100,
+            "grad_norm": 0.5,
+            "phase": 0,
+        },
         {"event": "step", "step": 3, "lm": 7.0, "phase": 0},
         {"event": "step", "step": 4, "lm": 6.0, "tok_s": 120, "lr": 1e-4, "phase": 0},
     ]

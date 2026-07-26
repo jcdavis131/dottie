@@ -323,9 +323,7 @@ def test_an_open_incident_is_a_candidate_and_a_closed_one_is_not(tmp_path):
     db = tmp_path / "uptime.db"
     _seed_uptime(db)
     conn = _open(db)
-    routable, unrouted = alerts.candidates(
-        conn, alerts.DEFAULT_RULES, now=T0 + 300.0
-    )
+    routable, unrouted = alerts.candidates(conn, alerts.DEFAULT_RULES, now=T0 + 300.0)
     assert unrouted == []
     assert len(routable) == 1
     c = routable[0]
@@ -355,9 +353,9 @@ def test_lookback_bounds_events_but_never_an_open_incident(tmp_path):
     # the event fell out of the window; the still-open outage did NOT
     assert rules_hit == {"incident:down"}
     assert "open 10.0d" in fresh[0]["message"]
-    wide = alerts.candidates(
-        conn, alerts.DEFAULT_RULES, now=now, lookback_s=11 * DAY
-    )[0]
+    wide = alerts.candidates(conn, alerts.DEFAULT_RULES, now=now, lookback_s=11 * DAY)[
+        0
+    ]
     assert {c["rule"] for c in wide} == {"incident:down", "event:alert"}
     conn.close()
 
@@ -456,10 +454,20 @@ def test_collapse_keeps_the_worst_severity_and_separates_other_severities():
 def test_two_flapping_messages_in_one_pass_are_one_page(tmp_path):
     """The message carries a changing age; fingerprinting it would defeat dedup."""
     db = tmp_path / "uptime.db"
-    _event(db, kind="alert", message="trainer stale — 600.0s since beat",
-           target="hb:trainer", ts=T0)
-    _event(db, kind="alert", message="trainer stale — 1200.0s since beat",
-           target="hb:trainer", ts=T0 + 600.0)
+    _event(
+        db,
+        kind="alert",
+        message="trainer stale — 600.0s since beat",
+        target="hb:trainer",
+        ts=T0,
+    )
+    _event(
+        db,
+        kind="alert",
+        message="trainer stale — 1200.0s since beat",
+        target="hb:trainer",
+        ts=T0 + 600.0,
+    )
     conn = _open(db)
     routable, _ = alerts.candidates(conn, alerts.DEFAULT_RULES, now=T0 + 700.0)
     conn.close()
@@ -516,15 +524,21 @@ def test_route_dispatches_then_suppresses_then_nags_again(tmp_path):
 
 def test_a_later_flap_with_a_new_message_is_still_suppressed(tmp_path):
     db = tmp_path / "uptime.db"
-    _event(db, kind="alert", message="trainer stale — 600.0s", target="hb:trainer",
-           ts=T0)
+    _event(
+        db, kind="alert", message="trainer stale — 600.0s", target="hb:trainer", ts=T0
+    )
     cfg = _wired(tmp_path)
     conn = _open(db)
     d = _recorder()
     assert alerts.route(conn, cfg, d, now=T0 + 5.0)["alerts"][0]["status"] == "sent"
     conn.close()
-    _event(db, kind="alert", message="trainer stale — 1800.0s", target="hb:trainer",
-           ts=T0 + 60.0)
+    _event(
+        db,
+        kind="alert",
+        message="trainer stale — 1800.0s",
+        target="hb:trainer",
+        ts=T0 + 60.0,
+    )
     conn = _open(db)
     again = alerts.route(conn, cfg, d, now=T0 + 65.0)
     conn.close()
@@ -674,7 +688,9 @@ def test_probe_alert_cannot_collide_with_a_real_alerts_window(tmp_path):
     cfg = _wired(tmp_path)
     conn = _open(db)
     d = _recorder()
-    drill = alerts.probe_alert(severity="error", channels=["email"], ts=T0, note="drill")
+    drill = alerts.probe_alert(
+        severity="error", channels=["email"], ts=T0, note="drill"
+    )
     sent = alerts.send_one(conn, drill, cfg["channels"], d, ts=T0)
     assert sent["status"] == alerts.STATUS_SENT and sent["alert_id"] == 1
     assert drill["target"] == "alerts:test" and drill["message"] == "drill"
@@ -723,18 +739,32 @@ def test_history_filters_by_fingerprint_newest_first(tmp_path):
         alerts.record_alert(
             conn,
             {
-                "fingerprint": fp, "rule": "incident:down", "signal": "incident",
-                "severity": "error", "target": "zeta", "message": f"pass {i}",
-                "channels": ["email"], "status": status, "results": {}, "also": [],
+                "fingerprint": fp,
+                "rule": "incident:down",
+                "signal": "incident",
+                "severity": "error",
+                "target": "zeta",
+                "message": f"pass {i}",
+                "channels": ["email"],
+                "status": status,
+                "results": {},
+                "also": [],
             },
             ts=T0 + i,
         )
     alerts.record_alert(
         conn,
         {
-            "fingerprint": "other", "rule": "event:cert", "signal": "event",
-            "severity": "warning", "target": "www.bhenre.com", "message": "cert",
-            "channels": [], "status": alerts.STATUS_RECORDED, "results": {}, "also": [],
+            "fingerprint": "other",
+            "rule": "event:cert",
+            "signal": "event",
+            "severity": "warning",
+            "target": "www.bhenre.com",
+            "message": "cert",
+            "channels": [],
+            "status": alerts.STATUS_RECORDED,
+            "results": {},
+            "also": [],
         },
         ts=T0 + 9,
     )
@@ -832,8 +862,9 @@ def test_wire_payload_is_the_stable_machine_view():
 
 
 def test_email_subject_and_body_carry_the_provenance():
-    alert = alerts.probe_alert(severity="error", channels=["email"], ts=T0,
-                              note="zeta down since forever")
+    alert = alerts.probe_alert(
+        severity="error", channels=["email"], ts=T0, note="zeta down since forever"
+    )
     alert["also"] = ["hb:trainer down since 2025-10-09"]
     subject = alerts.email_subject(alert)
     assert subject.startswith("[error] alerts:test — ")
@@ -849,8 +880,9 @@ def test_email_subject_and_body_carry_the_provenance():
 
 
 def test_email_subject_survives_a_multiline_message():
-    alert = alerts.probe_alert(severity="info", channels=[], ts=T0,
-                              note="line one\nline two")
+    alert = alerts.probe_alert(
+        severity="info", channels=[], ts=T0, note="line one\nline two"
+    )
     assert "\n" not in alerts.email_subject(alert)
     assert "line one" in alerts.email_subject(alert)
     assert "line two" in alerts.email_body(alert)
@@ -888,7 +920,10 @@ def test_diagnostics_map_the_pass_onto_the_family_schema(tmp_path):
     summary = openswap.summarize(diags)
     assert summary["total"] == 3
     assert summary["by_severity"] == {
-        "error": 1, "warning": 1, "suggestion": 0, "info": 1
+        "error": 1,
+        "warning": 1,
+        "suggestion": 0,
+        "info": 1,
     }
     assert summary["by_rule"] == {"alerts:fired": 2, "alerts:unrouted": 1}
 
@@ -1005,7 +1040,9 @@ def test_webhook_reports_http_and_transport_failures(tmp_path, monkeypatch):
     assert r["ok"] is False and "OSError: connection refused" in r["detail"]
 
 
-def test_a_webhook_host_outside_the_manifest_never_opens_a_socket(tmp_path, monkeypatch):
+def test_a_webhook_host_outside_the_manifest_never_opens_a_socket(
+    tmp_path, monkeypatch
+):
     cli = _cli()
     cfg = _wired(tmp_path, channels={"webhook": {"url": "https://evil.example.com/x"}})
     alert = alerts.probe_alert(severity="error", channels=["webhook"], ts=T0)

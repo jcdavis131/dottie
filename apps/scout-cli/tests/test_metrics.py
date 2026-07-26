@@ -87,11 +87,26 @@ def _plan(*kinds, counter=metrics.CPU_COUNTER):
     return [{"kind": k, "argv": argv[k]()} for k in kinds]
 
 
-def _row(metric, value, *, ts=T0, scope=metrics.SCOPE_HOST, unit=metrics.UNIT_PERCENT,
-         error=None, source=metrics.SRC_STDLIB, how="test"):
+def _row(
+    metric,
+    value,
+    *,
+    ts=T0,
+    scope=metrics.SCOPE_HOST,
+    unit=metrics.UNIT_PERCENT,
+    error=None,
+    source=metrics.SRC_STDLIB,
+    how="test",
+):
     return metrics.reading(
-        ts=ts, metric=metric, scope=scope, unit=unit, how=how, source=source,
-        value=value, error=error,
+        ts=ts,
+        metric=metric,
+        scope=scope,
+        unit=unit,
+        how=how,
+        source=source,
+        value=value,
+        error=error,
     )
 
 
@@ -114,44 +129,83 @@ def _ledger(tmp_path, rows=()):
 
 def test_reading_carries_the_full_provenance_shape():
     r = metrics.reading(
-        ts=T0, metric="disk.used_pct", scope="C:\\", unit=metrics.UNIT_PERCENT,
-        how="shutil.disk_usage('C:\\\\')", source=metrics.SRC_STDLIB, value=41.5,
+        ts=T0,
+        metric="disk.used_pct",
+        scope="C:\\",
+        unit=metrics.UNIT_PERCENT,
+        how="shutil.disk_usage('C:\\\\')",
+        source=metrics.SRC_STDLIB,
+        value=41.5,
     )
     assert r["ts"] == T0 and r["metric"] == "disk.used_pct"
     assert r["scope"] == "C:\\" and r["unit"] == "percent"
     assert r["value"] == 41.5 and r["error"] is None
     assert r["source"] == "stdlib" and "shutil.disk_usage" in r["how"]
-    assert set(r) == {"ts", "metric", "scope", "value", "unit", "how", "source", "error"}
+    assert set(r) == {
+        "ts",
+        "metric",
+        "scope",
+        "value",
+        "unit",
+        "how",
+        "source",
+        "error",
+    }
 
 
 def test_reading_refuses_a_row_that_does_not_say_how_it_was_measured():
     with pytest.raises(ValueError, match="how it was measured"):
         metrics.reading(
-            ts=T0, metric="cpu.busy_pct", scope="host", unit=metrics.UNIT_PERCENT,
-            how="", source=metrics.SRC_COUNTER, value=1.0,
+            ts=T0,
+            metric="cpu.busy_pct",
+            scope="host",
+            unit=metrics.UNIT_PERCENT,
+            how="",
+            source=metrics.SRC_COUNTER,
+            value=1.0,
         )
     with pytest.raises(ValueError, match="how it was measured"):
         metrics.reading(
-            ts=T0, metric="cpu.busy_pct", scope="host", unit=metrics.UNIT_PERCENT,
-            how="   ", source=metrics.SRC_COUNTER, value=1.0,
+            ts=T0,
+            metric="cpu.busy_pct",
+            scope="host",
+            unit=metrics.UNIT_PERCENT,
+            how="   ",
+            source=metrics.SRC_COUNTER,
+            value=1.0,
         )
 
 
 def test_reading_rejects_free_text_provenance_and_unknown_units():
     with pytest.raises(ValueError, match="source must be one of"):
         metrics.reading(
-            ts=T0, metric="cpu.busy_pct", scope="host", unit=metrics.UNIT_PERCENT,
-            how="magic", source="vibes", value=1.0,
+            ts=T0,
+            metric="cpu.busy_pct",
+            scope="host",
+            unit=metrics.UNIT_PERCENT,
+            how="magic",
+            source="vibes",
+            value=1.0,
         )
     with pytest.raises(ValueError, match="unit must be one of"):
         metrics.reading(
-            ts=T0, metric="cpu.busy_pct", scope="host", unit="jiffies",
-            how="os.times()", source=metrics.SRC_STDLIB, value=1.0,
+            ts=T0,
+            metric="cpu.busy_pct",
+            scope="host",
+            unit="jiffies",
+            how="os.times()",
+            source=metrics.SRC_STDLIB,
+            value=1.0,
         )
     with pytest.raises(ValueError, match="needs a metric name"):
         metrics.reading(
-            ts=T0, metric="  ", scope="host", unit=metrics.UNIT_COUNT,
-            how="os.cpu_count()", source=metrics.SRC_STDLIB, value=1.0,
+            ts=T0,
+            metric="  ",
+            scope="host",
+            unit=metrics.UNIT_COUNT,
+            how="os.cpu_count()",
+            source=metrics.SRC_STDLIB,
+            value=1.0,
         )
     assert "vibes" not in metrics.SOURCES and "jiffies" not in metrics.UNITS
 
@@ -160,14 +214,23 @@ def test_reading_forbids_a_value_and_an_error_on_the_same_row():
     """A failed measurement carrying a number is how a monitor starts lying."""
     with pytest.raises(ValueError, match="both a value and an error"):
         metrics.reading(
-            ts=T0, metric="mem.used_pct", scope="host", unit=metrics.UNIT_PERCENT,
-            how=metrics.HOW_PROCFS_MEM, source=metrics.SRC_PROCFS, value=0.0,
+            ts=T0,
+            metric="mem.used_pct",
+            scope="host",
+            unit=metrics.UNIT_PERCENT,
+            how=metrics.HOW_PROCFS_MEM,
+            source=metrics.SRC_PROCFS,
+            value=0.0,
             error="OSError: boom",
         )
     with pytest.raises(ValueError, match="needs a value or an error"):
         metrics.reading(
-            ts=T0, metric="mem.used_pct", scope="host", unit=metrics.UNIT_PERCENT,
-            how=metrics.HOW_PROCFS_MEM, source=metrics.SRC_PROCFS,
+            ts=T0,
+            metric="mem.used_pct",
+            scope="host",
+            unit=metrics.UNIT_PERCENT,
+            how=metrics.HOW_PROCFS_MEM,
+            source=metrics.SRC_PROCFS,
         )
 
 
@@ -211,7 +274,9 @@ def test_sample_disk_records_an_unreadable_path_as_errors_not_zeros(tmp_path):
         assert r["error"].split(":")[0].endswith("Error")
         assert r["how"].startswith("shutil.disk_usage(")  # still says what it tried
     assert {r["metric"] for r in rows} == {
-        "disk.used_pct", "disk.free_bytes", "disk.total_bytes"
+        "disk.used_pct",
+        "disk.free_bytes",
+        "disk.total_bytes",
     }
 
 
@@ -261,7 +326,9 @@ def test_sample_memory_linux_branch_records_procfs_provenance():
     )
     by_metric = {r["metric"]: r for r in rows}
     assert sorted(by_metric) == [
-        "mem.available_bytes", "mem.total_bytes", "mem.used_pct"
+        "mem.available_bytes",
+        "mem.total_bytes",
+        "mem.used_pct",
     ]
     assert by_metric["mem.used_pct"]["value"] == 75.0
     assert by_metric["mem.total_bytes"]["value"] == 16384000 * 1024.0
@@ -309,7 +376,9 @@ def test_sample_memory_dispatches_by_platform_name():
     assert "Darwin" in rows[0]["error"]
 
 
-@pytest.mark.skipif(platform.system() != "Windows", reason="ctypes windll is Windows-only")
+@pytest.mark.skipif(
+    platform.system() != "Windows", reason="ctypes windll is Windows-only"
+)
 def test_memory_windows_reads_the_real_kernel_struct():
     got = metrics.memory_windows()
     assert got["total_bytes"] > 0
@@ -369,7 +438,9 @@ def test_counter_plan_prefers_typeperf_and_reports_an_empty_box():
     both = metrics.counter_plan(which=lambda b: f"/usr/bin/{b}")
     assert [s["kind"] for s in both] == ["typeperf", "get-counter"]
     assert both[0]["argv"][0] == "/usr/bin/typeperf"
-    only_ps = metrics.counter_plan(which=lambda b: None if b == "typeperf" else "ps.exe")
+    only_ps = metrics.counter_plan(
+        which=lambda b: None if b == "typeperf" else "ps.exe"
+    )
     assert [s["kind"] for s in only_ps] == ["get-counter"]
     assert metrics.counter_plan(which=lambda b: None) == []
 
@@ -393,10 +464,12 @@ def test_sample_cpu_records_the_backend_that_answered():
 
 
 def test_sample_cpu_falls_through_to_the_next_backend(tmp_path):
-    run = _runner([
-        {"returncode": 1, "stdout": "", "stderr": "Error: counter not found"},
-        _ok(COOKED_OUT),
-    ])
+    run = _runner(
+        [
+            {"returncode": 1, "stdout": "", "stderr": "Error: counter not found"},
+            _ok(COOKED_OUT),
+        ]
+    )
     rows = metrics.sample_cpu(ts=T0, runner=run, plan=_plan("typeperf", "get-counter"))
     # _pick asserts uniqueness: one reading per series, not one per attempt
     busy = _pick(rows, "cpu.busy_pct")
@@ -406,10 +479,12 @@ def test_sample_cpu_falls_through_to_the_next_backend(tmp_path):
 
 
 def test_sample_cpu_keeps_the_error_when_every_backend_fails():
-    run = _runner([
-        {"returncode": 1, "stdout": "", "stderr": "typeperf: no counters"},
-        _ok("Get-Counter : The specified object was not found\n"),
-    ])
+    run = _runner(
+        [
+            {"returncode": 1, "stdout": "", "stderr": "typeperf: no counters"},
+            _ok("Get-Counter : The specified object was not found\n"),
+        ]
+    )
     rows = metrics.sample_cpu(ts=T0, runner=run, plan=_plan("typeperf", "get-counter"))
     busy = _pick(rows, "cpu.busy_pct")
     assert busy["value"] is None, "an unmeasured CPU must not read as 0% busy"
@@ -463,16 +538,25 @@ def test_sample_host_stamps_every_row_and_censuses_provenance(tmp_path):
     assert got["by_source"] == {"counter": 1, "procfs": 3, "stdlib": 4}
     assert got["errors"] == []
     assert {r["metric"] for r in rows} == {
-        "disk.used_pct", "disk.free_bytes", "disk.total_bytes",
-        "mem.used_pct", "mem.available_bytes", "mem.total_bytes",
-        "cpu.logical", "cpu.busy_pct",
+        "disk.used_pct",
+        "disk.free_bytes",
+        "disk.total_bytes",
+        "mem.used_pct",
+        "mem.available_bytes",
+        "mem.total_bytes",
+        "cpu.logical",
+        "cpu.busy_pct",
     }
 
 
 def test_sample_host_surfaces_what_it_could_not_measure(tmp_path):
     got = metrics.sample_host(
-        runner=_runner([]), ts=T0, paths=[str(tmp_path / "gone")], host=HOST,
-        system="Plan9", plan=[],
+        runner=_runner([]),
+        ts=T0,
+        paths=[str(tmp_path / "gone")],
+        host=HOST,
+        system="Plan9",
+        plan=[],
     )
     errs = {(e["metric"], bool(e["error"])) for e in got["errors"]}
     assert len(got["errors"]) == 7  # 3 disk + 3 memory + cpu.busy_pct
@@ -498,10 +582,13 @@ def test_append_jsonl_is_append_only_and_creates_its_directory(tmp_path):
     assert log.exists() and first["rows"] == 1
     assert first["bytes_before"] == 0 and first["bytes"] > 0
     second = metrics.append_jsonl(
-        log, [_row("cpu.busy_pct", 2.0, ts=T0 + 1), _row("cpu.busy_pct", 3.0, ts=T0 + 2)]
+        log,
+        [_row("cpu.busy_pct", 2.0, ts=T0 + 1), _row("cpu.busy_pct", 3.0, ts=T0 + 2)],
     )
     assert second["rows"] == 2
-    assert second["bytes_before"] == first["bytes"], "the log was rewritten, not appended"
+    assert second["bytes_before"] == first["bytes"], (
+        "the log was rewritten, not appended"
+    )
     assert second["bytes"] > first["bytes"]
     lines = log.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 3
@@ -564,7 +651,9 @@ def test_open_ledger_creates_the_schema_and_is_reopenable(tmp_path):
         for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
     }
     assert {"samples", "rollups", "meta"} <= tables
-    version = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+    version = conn.execute(
+        "SELECT value FROM meta WHERE key='schema_version'"
+    ).fetchone()
     assert version["value"] == metrics.SCHEMA_VERSION
     conn.close()
     again = metrics.open_ledger(db)  # idempotent, no duplicate meta row
@@ -576,8 +665,13 @@ def test_record_samples_stores_provenance_verbatim(tmp_path):
     rows = metrics.stamp_host(
         [
             _row("disk.used_pct", 42.0, scope="C:\\", how="shutil.disk_usage('C:')"),
-            _row("cpu.busy_pct", None, error="exit 1", source=metrics.SRC_COUNTER,
-                 how="typeperf -sc 1"),
+            _row(
+                "cpu.busy_pct",
+                None,
+                error="exit 1",
+                source=metrics.SRC_COUNTER,
+                how="typeperf -sc 1",
+            ),
         ],
         HOST,
     )
@@ -599,7 +693,9 @@ def test_record_samples_rejects_rows_that_lost_their_provenance(tmp_path):
     laundered = metrics.stamp_host([_row("cpu.busy_pct", 1.0)], HOST)[0] | {"how": ""}
     with pytest.raises(ValueError, match="no valid provenance"):
         metrics.record_samples(conn, [laundered])
-    forged = metrics.stamp_host([_row("cpu.busy_pct", 1.0)], HOST)[0] | {"source": "guess"}
+    forged = metrics.stamp_host([_row("cpu.busy_pct", 1.0)], HOST)[0] | {
+        "source": "guess"
+    }
     with pytest.raises(ValueError, match="no valid provenance"):
         metrics.record_samples(conn, [forged])
     both = metrics.stamp_host([_row("cpu.busy_pct", 1.0)], HOST)[0] | {"error": "boom"}
@@ -633,8 +729,14 @@ def test_rollup_excludes_errors_from_the_statistics_but_counts_them(tmp_path):
     rows = [
         _row("cpu.busy_pct", 20.0, ts=T0),
         _row("cpu.busy_pct", 40.0, ts=T0 + 10),
-        _row("cpu.busy_pct", None, ts=T0 + 20, error="exit 1",
-             source=metrics.SRC_COUNTER, how="typeperf -sc 1"),
+        _row(
+            "cpu.busy_pct",
+            None,
+            ts=T0 + 20,
+            error="exit 1",
+            source=metrics.SRC_COUNTER,
+            how="typeperf -sc 1",
+        ),
     ]
     w = metrics.rollup(_ledger(tmp_path, rows), window_s=300.0)["windows"][0]
     assert w["n"] == 2 and w["errors"] == 1
@@ -644,10 +746,22 @@ def test_rollup_excludes_errors_from_the_statistics_but_counts_them(tmp_path):
 
 def test_rollup_that_measured_nothing_reports_no_statistics(tmp_path):
     rows = [
-        _row("cpu.busy_pct", None, ts=T0, error="exit 1",
-             source=metrics.SRC_COUNTER, how="typeperf"),
-        _row("cpu.busy_pct", None, ts=T0 + 5, error="exit 1",
-             source=metrics.SRC_COUNTER, how="typeperf"),
+        _row(
+            "cpu.busy_pct",
+            None,
+            ts=T0,
+            error="exit 1",
+            source=metrics.SRC_COUNTER,
+            how="typeperf",
+        ),
+        _row(
+            "cpu.busy_pct",
+            None,
+            ts=T0 + 5,
+            error="exit 1",
+            source=metrics.SRC_COUNTER,
+            how="typeperf",
+        ),
     ]
     w = metrics.rollup(_ledger(tmp_path, rows), window_s=300.0)["windows"][0]
     assert w["n"] == 0 and w["errors"] == 2
@@ -656,12 +770,27 @@ def test_rollup_that_measured_nothing_reports_no_statistics(tmp_path):
 
 def test_rollup_windows_keep_the_provenance_of_their_inputs(tmp_path):
     rows = [
-        _row("cpu.busy_pct", 10.0, ts=T0, how="typeperf -sc 1",
-             source=metrics.SRC_COUNTER),
-        _row("cpu.busy_pct", 20.0, ts=T0 + 5, how="powershell Get-Counter",
-             source=metrics.SRC_COUNTER),
-        _row("cpu.busy_pct", 30.0, ts=T0 + 10, how="typeperf -sc 1",
-             source=metrics.SRC_COUNTER),
+        _row(
+            "cpu.busy_pct",
+            10.0,
+            ts=T0,
+            how="typeperf -sc 1",
+            source=metrics.SRC_COUNTER,
+        ),
+        _row(
+            "cpu.busy_pct",
+            20.0,
+            ts=T0 + 5,
+            how="powershell Get-Counter",
+            source=metrics.SRC_COUNTER,
+        ),
+        _row(
+            "cpu.busy_pct",
+            30.0,
+            ts=T0 + 10,
+            how="typeperf -sc 1",
+            source=metrics.SRC_COUNTER,
+        ),
     ]
     w = metrics.rollup(_ledger(tmp_path, rows), window_s=300.0)["windows"][0]
     assert w["sources"] == ["powershell Get-Counter", "typeperf -sc 1"]
@@ -685,8 +814,12 @@ def test_rollup_is_idempotent_and_updates_in_place(tmp_path):
 
 def test_rollup_never_merges_two_hosts_into_one_number(tmp_path):
     conn = metrics.open_ledger(tmp_path / "m.db")
-    metrics.record_samples(conn, metrics.stamp_host([_row("cpu.busy_pct", 10.0, ts=T0)], "a"))
-    metrics.record_samples(conn, metrics.stamp_host([_row("cpu.busy_pct", 90.0, ts=T0)], "b"))
+    metrics.record_samples(
+        conn, metrics.stamp_host([_row("cpu.busy_pct", 10.0, ts=T0)], "a")
+    )
+    metrics.record_samples(
+        conn, metrics.stamp_host([_row("cpu.busy_pct", 90.0, ts=T0)], "b")
+    )
     ws = metrics.rollup(conn, window_s=300.0)["windows"]
     assert len(ws) == 2
     assert {w["host"]: w["mean"] for w in ws} == {"a": 10.0, "b": 90.0}
@@ -729,8 +862,14 @@ def test_latest_is_newest_per_series_with_failures_first(tmp_path):
         _row("cpu.busy_pct", 5.0, ts=T0),
         _row("cpu.busy_pct", 95.0, ts=T0 + 60),
         _row("disk.used_pct", 99.0, ts=T0, scope="C:\\"),
-        _row("mem.used_pct", None, ts=T0, error="GlobalMemoryStatusEx failed",
-             source=metrics.SRC_CTYPES, how=metrics.HOW_WINDOWS_MEM),
+        _row(
+            "mem.used_pct",
+            None,
+            ts=T0,
+            error="GlobalMemoryStatusEx failed",
+            source=metrics.SRC_CTYPES,
+            how=metrics.HOW_WINDOWS_MEM,
+        ),
     ]
     conn = _ledger(tmp_path, rows)
     board = metrics.latest(conn, now=T0 + 90)
@@ -787,9 +926,16 @@ def test_to_diagnostics_gates_disk_pressure_on_its_budget():
 
 def test_to_diagnostics_gives_memory_its_own_looser_budget():
     at_88 = _row("mem.used_pct", 88.0)
-    assert metrics.to_diagnostics([at_88]) == [], "88% memory is normal, 88% disk is not"
-    assert metrics.to_diagnostics([_row("disk.used_pct", 88.0)])[0]["severity"] == "warning"
-    assert metrics.to_diagnostics([_row("mem.used_pct", 91.0)])[0]["severity"] == "warning"
+    assert metrics.to_diagnostics([at_88]) == [], (
+        "88% memory is normal, 88% disk is not"
+    )
+    assert (
+        metrics.to_diagnostics([_row("disk.used_pct", 88.0)])[0]["severity"]
+        == "warning"
+    )
+    assert (
+        metrics.to_diagnostics([_row("mem.used_pct", 91.0)])[0]["severity"] == "warning"
+    )
     hot = metrics.to_diagnostics([_row("mem.used_pct", 99.0)])
     assert hot[0]["severity"] == "error" and hot[0]["rule"] == "metrics:mem-pressure"
 
@@ -806,16 +952,28 @@ def test_to_diagnostics_thresholds_are_parameters():
 
 
 def test_to_diagnostics_separates_unmeasured_from_unsupported():
-    failed = _row("cpu.busy_pct", None, error="exit 1: typeperf: no counters",
-                  source=metrics.SRC_COUNTER, how="typeperf -sc 1")
-    unsupported = _row("cpu.busy_pct", None, error="no counter backend on PATH",
-                       source=metrics.SRC_UNSUPPORTED, how="typeperf | Get-Counter")
+    failed = _row(
+        "cpu.busy_pct",
+        None,
+        error="exit 1: typeperf: no counters",
+        source=metrics.SRC_COUNTER,
+        how="typeperf -sc 1",
+    )
+    unsupported = _row(
+        "cpu.busy_pct",
+        None,
+        error="no counter backend on PATH",
+        source=metrics.SRC_UNSUPPORTED,
+        how="typeperf | Get-Counter",
+    )
     d1 = metrics.to_diagnostics([failed])[0]
     assert d1["severity"] == "warning" and d1["rule"] == "metrics:unmeasured"
     assert "no counters" in d1["message"] and "typeperf -sc 1" in d1["suggestion"]
     assert d1["source"] == "counter"
     d2 = metrics.to_diagnostics([unsupported])[0]
-    assert d2["severity"] == "info", "a platform that never had the mechanism is not a page"
+    assert d2["severity"] == "info", (
+        "a platform that never had the mechanism is not a page"
+    )
     assert d2["rule"] == "metrics:unsupported" and d2["suggestion"] is None
     assert d2["source"] == "unsupported"
 
@@ -833,8 +991,13 @@ def test_to_diagnostics_feeds_the_family_summary():
     rows = [
         _row("disk.used_pct", 99.0, scope="C:\\"),
         _row("mem.used_pct", 92.0),
-        _row("cpu.busy_pct", None, error="exit 1", source=metrics.SRC_COUNTER,
-             how="typeperf"),
+        _row(
+            "cpu.busy_pct",
+            None,
+            error="exit 1",
+            source=metrics.SRC_COUNTER,
+            how="typeperf",
+        ),
     ]
     diags = metrics.to_diagnostics(rows)
     summary = openswap.summarize(diags)
@@ -842,7 +1005,9 @@ def test_to_diagnostics_feeds_the_family_summary():
     assert summary["by_severity"]["error"] == 1
     assert summary["by_severity"]["warning"] == 2
     assert set(summary["by_rule"]) == {
-        "metrics:disk-pressure", "metrics:mem-pressure", "metrics:unmeasured"
+        "metrics:disk-pressure",
+        "metrics:mem-pressure",
+        "metrics:unmeasured",
     }
     assert diags == openswap.sort_diagnostics(diags)  # stable order for gates
 
@@ -927,15 +1092,32 @@ def test_cli_detect_reports_a_tier():
 def test_cli_collect_measures_records_and_rolls_up(tmp_path):
     """One real end-to-end pass: measure this box, persist, aggregate, read back."""
     db, log = tmp_path / "m.db", tmp_path / "m.jsonl"
-    r = _cli(["metrics", "collect", "--path", str(tmp_path), "--db", str(db),
-              "--log", str(log)])
+    r = _cli(
+        [
+            "metrics",
+            "collect",
+            "--path",
+            str(tmp_path),
+            "--db",
+            str(db),
+            "--log",
+            str(log),
+        ]
+    )
     assert r.returncode == 0, r.stderr + r.stdout
     data = json.loads(r.stdout)["data"]
     assert data["recorded"] is True and data["db"] == str(db)
-    assert data["log"]["path"] == str(log) and data["log"]["rows"] == len(data["readings"])
+    assert data["log"]["path"] == str(log) and data["log"]["rows"] == len(
+        data["readings"]
+    )
     assert data["host"] and data["ts"] > 0
     metrics_seen = {x["metric"] for x in data["readings"]}
-    assert {"disk.used_pct", "disk.free_bytes", "mem.used_pct", "cpu.logical"} <= metrics_seen
+    assert {
+        "disk.used_pct",
+        "disk.free_bytes",
+        "mem.used_pct",
+        "cpu.logical",
+    } <= metrics_seen
     for row in data["readings"]:
         assert row["how"], "a recorded reading with no provenance"
         assert row["source"] in metrics.SOURCES
@@ -950,8 +1132,18 @@ def test_cli_collect_measures_records_and_rolls_up(tmp_path):
     assert json.loads(lines[0])["host"] == data["host"]
 
     # a second pass appends rather than replacing
-    r2 = _cli(["metrics", "collect", "--path", str(tmp_path), "--db", str(db),
-               "--log", str(log)])
+    r2 = _cli(
+        [
+            "metrics",
+            "collect",
+            "--path",
+            str(tmp_path),
+            "--db",
+            str(db),
+            "--log",
+            str(log),
+        ]
+    )
     assert r2.returncode == 0, r2.stderr + r2.stdout
     assert len(log.read_text(encoding="utf-8").splitlines()) == 2 * len(lines)
     conn = sqlite3.connect(str(db))
@@ -962,14 +1154,21 @@ def test_cli_collect_measures_records_and_rolls_up(tmp_path):
     r3 = _cli(["metrics", "rollup", "--db", str(db), "--window", "3600"])
     assert r3.returncode == 0, r3.stderr + r3.stdout
     roll = json.loads(r3.stdout)["data"]
-    assert roll["samples"] == 2 * len(lines) and roll["persisted"] == roll["windows_total"]
+    assert (
+        roll["samples"] == 2 * len(lines) and roll["persisted"] == roll["windows_total"]
+    )
     assert roll["window_s"] == 3600.0
     first_window = roll["windows"][0]
     assert first_window["sources"] and first_window["n"] + first_window["errors"] >= 1
-    again = json.loads(_cli(["metrics", "rollup", "--db", str(db), "--window", "3600"]).stdout)
+    again = json.loads(
+        _cli(["metrics", "rollup", "--db", str(db), "--window", "3600"]).stdout
+    )
     assert again["data"]["windows_total"] == roll["windows_total"]
     conn = sqlite3.connect(str(db))
-    assert conn.execute("SELECT COUNT(*) FROM rollups").fetchone()[0] == roll["windows_total"]
+    assert (
+        conn.execute("SELECT COUNT(*) FROM rollups").fetchone()[0]
+        == roll["windows_total"]
+    )
     conn.close()
 
     # show reads it back with the log's provenance beside the numbers
@@ -988,8 +1187,18 @@ def test_cli_collect_measures_records_and_rolls_up(tmp_path):
     assert json.loads(r5.stdout)["data"]["windows"], "rollups did not persist"
 
     # one metric's raw history
-    r6 = _cli(["metrics", "show", "--db", str(db), "--metric", "disk.used_pct",
-               "--history", "5"])
+    r6 = _cli(
+        [
+            "metrics",
+            "show",
+            "--db",
+            str(db),
+            "--metric",
+            "disk.used_pct",
+            "--history",
+            "5",
+        ]
+    )
     hist = json.loads(r6.stdout)["data"]["history"]
     assert len(hist) == 2 and all(h["metric"] == "disk.used_pct" for h in hist)
     assert hist[0]["ts"] >= hist[1]["ts"]
@@ -997,8 +1206,19 @@ def test_cli_collect_measures_records_and_rolls_up(tmp_path):
 
 def test_cli_no_record_measures_without_touching_disk(tmp_path):
     db, log = tmp_path / "m.db", tmp_path / "m.jsonl"
-    r = _cli(["metrics", "collect", "--no-record", "--path", str(tmp_path),
-              "--db", str(db), "--log", str(log)])
+    r = _cli(
+        [
+            "metrics",
+            "collect",
+            "--no-record",
+            "--path",
+            str(tmp_path),
+            "--db",
+            str(db),
+            "--log",
+            str(log),
+        ]
+    )
     assert r.returncode == 0, r.stderr + r.stdout
     data = json.loads(r.stdout)["data"]
     assert data["recorded"] is False and data["db"] is None
@@ -1008,16 +1228,40 @@ def test_cli_no_record_measures_without_touching_disk(tmp_path):
 
 def test_cli_gate_fires_on_a_budget_the_host_must_exceed(tmp_path):
     """Host-independent gate proof: a 0% warn budget must always trip."""
-    r = _cli(["metrics", "collect", "--no-record", "--path", str(tmp_path),
-              "--warn-pct", "0", "--error-pct", "200", "--fail-on", "warning"])
+    r = _cli(
+        [
+            "metrics",
+            "collect",
+            "--no-record",
+            "--path",
+            str(tmp_path),
+            "--warn-pct",
+            "0",
+            "--error-pct",
+            "200",
+            "--fail-on",
+            "warning",
+        ]
+    )
     assert r.returncode == 1
     data = json.loads(r.stdout)["data"]
     assert data["summary"]["by_severity"]["warning"] >= 1
     assert data["summary"]["by_severity"]["error"] == 0
     assert any(d["rule"] == "metrics:disk-pressure" for d in data["diagnostics"])
     # the same readings under a budget nothing can exceed raise no pressure at all
-    loose = _cli(["metrics", "collect", "--no-record", "--path", str(tmp_path),
-                  "--warn-pct", "100.1", "--error-pct", "200"])
+    loose = _cli(
+        [
+            "metrics",
+            "collect",
+            "--no-record",
+            "--path",
+            str(tmp_path),
+            "--warn-pct",
+            "100.1",
+            "--error-pct",
+            "200",
+        ]
+    )
     assert loose.returncode == 0, loose.stderr + loose.stdout
     loose_diags = json.loads(loose.stdout)["data"]["diagnostics"]
     assert not any(d["rule"].endswith("-pressure") for d in loose_diags)
@@ -1042,7 +1286,17 @@ def test_cli_show_refuses_to_invent_a_board_without_a_ledger(tmp_path):
     assert "no metrics ledger" in doc["error"] and "collect" in doc["example"]
     db = tmp_path / "m.db"
     metrics.open_ledger(db).close()
-    r2 = _cli(["metrics", "show", "--db", str(db), "--metric", "disk.used_pct",
-               "--history", "5"])
+    r2 = _cli(
+        [
+            "metrics",
+            "show",
+            "--db",
+            str(db),
+            "--metric",
+            "disk.used_pct",
+            "--history",
+            "5",
+        ]
+    )
     assert r2.returncode == 1
     assert "no samples recorded" in json.loads(r2.stdout)["error"]

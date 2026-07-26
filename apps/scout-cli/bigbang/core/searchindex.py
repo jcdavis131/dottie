@@ -167,7 +167,9 @@ _MARKS_STRIPPED = "combining marks dropped"
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _ASCII_TOKEN = re.compile(r"^[a-z0-9]+$")
 _FRONTMATTER_RE = re.compile(r"\A---\r?\n.*?\r?\n---[ \t]*\r?\n", re.DOTALL)
-_MD_HEADING_RE = re.compile(r"^[ \t]{0,3}(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$", re.MULTILINE)
+_MD_HEADING_RE = re.compile(
+    r"^[ \t]{0,3}(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$", re.MULTILINE
+)
 _MD_FENCE_RE = re.compile(r"^[ \t]{0,3}(?:```|~~~).*?$", re.MULTILINE)
 _MD_NOISE_RE = re.compile(r"[*_`>\[\]()!|]+")
 _WS_RE = re.compile(r"\s+")
@@ -343,7 +345,9 @@ class _BodyText(HTMLParser):
         self.skipped_subtrees = 0
         self._skip_depth = 0
         self._skip_tag: str | None = None
-        self._drop = set(SKIP_TAGS) | (set() if keep_boilerplate else set(BOILERPLATE_TAGS))
+        self._drop = set(SKIP_TAGS) | (
+            set() if keep_boilerplate else set(BOILERPLATE_TAGS)
+        )
 
     def handle_starttag(self, tag: str, attrs: list) -> None:
         if self._skip_tag is not None:
@@ -375,7 +379,9 @@ class _BodyText(HTMLParser):
         return _WS_RE.sub(" ", "".join(self.parts)).strip()
 
 
-def html_body_text(html_text: str, *, keep_boilerplate: bool = False) -> tuple[str, int]:
+def html_body_text(
+    html_text: str, *, keep_boilerplate: bool = False
+) -> tuple[str, int]:
     """HTML -> (visible text, skipped subtree count). Never raises."""
     parser = _BodyText(keep_boilerplate=keep_boilerplate)
     try:
@@ -532,9 +538,7 @@ def url_for_rel(
             ),
             "absolute",
         )
-    relative = sitemap.url_for(
-        rel, "/", strip_index=strip_index, clean_urls=clean_urls
-    )
+    relative = sitemap.url_for(rel, "/", strip_index=strip_index, clean_urls=clean_urls)
     return relative, "relative"
 
 
@@ -1215,9 +1219,7 @@ def verify(
     known = {INDEX_NAME, *(s["name"] for s in manifest.get("shards") or [])}
     known.add(str(manifest.get("client") or CLIENT_NAME))
     report["orphans"] = sorted(
-        name
-        for name in (listing or ())
-        if is_artifact_name(name) and name not in known
+        name for name in (listing or ()) if is_artifact_name(name) and name not in known
     )
     report["fingerprint"]["match"] = (
         report["fingerprint"]["stored"] == report["fingerprint"]["recomputed"]

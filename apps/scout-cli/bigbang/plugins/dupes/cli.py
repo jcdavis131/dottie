@@ -159,9 +159,7 @@ def _collect(paths: list[str], command: str, example: str) -> list[Path]:
             for ext in dupes.DOC_EXTS:
                 files.extend(pth.rglob(f"*{ext}"))
         else:
-            fail_agent(
-                f"path not found: {raw}", command=command, example=example
-            )
+            fail_agent(f"path not found: {raw}", command=command, example=example)
     return sorted(set(files))
 
 
@@ -282,7 +280,8 @@ def config_cmd(
 )
 def scan(
     paths: list[str] = typer.Argument(
-        ..., help="files or directories (dirs walked for " + ", ".join(dupes.DOC_EXTS) + ")"
+        ...,
+        help="files or directories (dirs walked for " + ", ".join(dupes.DOC_EXTS) + ")",
     ),
     root: str | None = typer.Option(
         None, "--root", help="relativize document ids to this dir (default: cwd)"
@@ -325,7 +324,9 @@ def scan(
     )
     base = Path(root) if root else None
     if base is not None and not base.is_dir():
-        fail_agent(f"--root is not a directory: {root}", command="dupes scan", example=example)
+        fail_agent(
+            f"--root is not a directory: {root}", command="dupes scan", example=example
+        )
     files = _collect(paths, "dupes scan", example)
     if not files:
         fail_agent(

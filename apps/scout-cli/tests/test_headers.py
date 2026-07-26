@@ -27,8 +27,10 @@ HTTP_URL = "http://example.com/"
 
 # A response that should score a clean A+ — every check's happy path at once.
 CLEAN: list[list[str]] = [
-    ["Content-Security-Policy",
-     "default-src 'self'; script-src 'self'; object-src 'none'; frame-ancestors 'none'"],
+    [
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self'; object-src 'none'; frame-ancestors 'none'",
+    ],
     ["Strict-Transport-Security", "max-age=31536000; includeSubDomains"],
     ["X-Frame-Options", "DENY"],
     ["X-Content-Type-Options", "nosniff"],
@@ -79,7 +81,9 @@ def _mem():
 
 
 def test_normalize_headers_accepts_pairs_dicts_and_dict_of_lists():
-    pairs = headers.normalize_headers([["Content-Type", " text/html "], ("Set-Cookie", "a=1")])
+    pairs = headers.normalize_headers(
+        [["Content-Type", " text/html "], ("Set-Cookie", "a=1")]
+    )
     assert pairs == {"content-type": ["text/html"], "set-cookie": ["a=1"]}
     assert headers.normalize_headers({"X-Frame-Options": "DENY"}) == {
         "x-frame-options": ["DENY"]
@@ -124,7 +128,9 @@ def test_effective_sources_falls_back_to_default_src():
     csp = headers.parse_csp("default-src 'self'; img-src *")
     assert headers.effective_sources(csp, "img-src") == ["*"]
     assert headers.effective_sources(csp, "script-src") == ["'self'"]  # fallback
-    assert headers.effective_sources(headers.parse_csp("img-src *"), "script-src") is None
+    assert (
+        headers.effective_sources(headers.parse_csp("img-src *"), "script-src") is None
+    )
 
 
 # ---- HSTS parsing -----------------------------------------------------------
@@ -163,11 +169,15 @@ def test_parse_cookie_reads_name_flags_and_attributes():
 
 
 def test_directory_listing_recognizes_each_server_flavor():
-    assert headers.directory_listing("<html><title>Index of /assets</title>") == "index-of"
+    assert (
+        headers.directory_listing("<html><title>Index of /assets</title>") == "index-of"
+    )
     assert headers.directory_listing("<h1>Index of /pub/</h1>") == "index-of"
     assert headers.directory_listing("<h1>Directory Listing For /docs</h1>") == "tomcat"
     assert headers.directory_listing("<a href='/'>[To Parent Directory]</a>") == "iis"
-    assert headers.directory_listing("<html><title>Home</title><h1>Welcome</h1>") is None
+    assert (
+        headers.directory_listing("<html><title>Home</title><h1>Welcome</h1>") is None
+    )
     assert headers.directory_listing("") is None
     assert headers.directory_listing(None) is None  # no body != a clean body
 
@@ -225,7 +235,9 @@ def test_mixed_content_only_for_https_pages_and_only_http_subresources():
 
 
 def test_form_action_and_object_data_count_as_active_surface():
-    body = '<form action="http://example.com/post"></form><object data="http://x/y.swf">'
+    body = (
+        '<form action="http://example.com/post"></form><object data="http://x/y.swf">'
+    )
     mixed = headers.mixed_content(URL, body)
     assert [m["attr"] for m in mixed] == ["action", "data"]
     assert all(m["active"] for m in mixed)
@@ -247,15 +259,19 @@ def test_analyze_clean_response_is_ok_and_a_plus():
 
 
 def test_analyze_csp_missing_and_report_only():
-    missing = headers.analyze(URL, _obs(headers_=_with(drop=["Content-Security-Policy"])))
+    missing = headers.analyze(
+        URL, _obs(headers_=_with(drop=["Content-Security-Policy"]))
+    )
     assert "csp-missing" in _codes(missing)
     assert _sev(missing, "csp-missing") == "warning"
     ro = headers.analyze(
         URL,
-        _obs(headers_=_with(
-            ["Content-Security-Policy-Report-Only", "default-src 'self'"],
-            drop=["Content-Security-Policy"],
-        )),
+        _obs(
+            headers_=_with(
+                ["Content-Security-Policy-Report-Only", "default-src 'self'"],
+                drop=["Content-Security-Policy"],
+            )
+        ),
     )
     assert "csp-report-only" in _codes(ro) and "csp-missing" not in _codes(ro)
 
@@ -263,12 +279,16 @@ def test_analyze_csp_missing_and_report_only():
 def test_analyze_csp_unsafe_sources_and_wildcards():
     unsafe = headers.analyze(
         URL,
-        _obs(headers_=_with(
-            ["Content-Security-Policy",
-             "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' *; "
-             "object-src 'none'; frame-ancestors 'none'"],
-            drop=["Content-Security-Policy"],
-        )),
+        _obs(
+            headers_=_with(
+                [
+                    "Content-Security-Policy",
+                    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' *; "
+                    "object-src 'none'; frame-ancestors 'none'",
+                ],
+                drop=["Content-Security-Policy"],
+            )
+        ),
     )
     codes = _codes(unsafe)
     assert "csp-unsafe-inline" in codes and _sev(unsafe, "csp-unsafe-inline") == "error"
@@ -280,19 +300,27 @@ def test_analyze_csp_unsafe_sources_and_wildcards():
 def test_analyze_csp_inherits_script_restrictions_from_default_src():
     inherited = headers.analyze(
         URL,
-        _obs(headers_=_with(
-            ["Content-Security-Policy",
-             "default-src 'unsafe-inline'; object-src 'none'; frame-ancestors 'none'"],
-            drop=["Content-Security-Policy"],
-        )),
+        _obs(
+            headers_=_with(
+                [
+                    "Content-Security-Policy",
+                    "default-src 'unsafe-inline'; object-src 'none'; frame-ancestors 'none'",
+                ],
+                drop=["Content-Security-Policy"],
+            )
+        ),
     )
     # no script-src at all, but default-src carries it — a browser would too
     assert "csp-unsafe-inline" in _codes(inherited)
     assert "csp-no-script-src" not in _codes(inherited)
     naked = headers.analyze(
         URL,
-        _obs(headers_=_with(["Content-Security-Policy", "img-src *"],
-                            drop=["Content-Security-Policy"])),
+        _obs(
+            headers_=_with(
+                ["Content-Security-Policy", "img-src *"],
+                drop=["Content-Security-Policy"],
+            )
+        ),
     )
     assert "csp-no-script-src" in _codes(naked)
 
@@ -300,8 +328,12 @@ def test_analyze_csp_inherits_script_restrictions_from_default_src():
 def test_analyze_csp_hygiene_suggestions_and_duplicate_policies():
     thin = headers.analyze(
         URL,
-        _obs(headers_=_with(["Content-Security-Policy", "default-src 'self'"],
-                            drop=["Content-Security-Policy"])),
+        _obs(
+            headers_=_with(
+                ["Content-Security-Policy", "default-src 'self'"],
+                drop=["Content-Security-Policy"],
+            )
+        ),
     )
     assert "csp-no-frame-ancestors" in _codes(thin)  # default-src never fills this in
     assert "csp-no-object-src" in _codes(thin)
@@ -319,40 +351,60 @@ def test_analyze_csp_hygiene_suggestions_and_duplicate_policies():
 
 
 def test_analyze_hsts_windows_and_flags():
-    absent = headers.analyze(URL, _obs(headers_=_with(drop=["Strict-Transport-Security"])))
+    absent = headers.analyze(
+        URL, _obs(headers_=_with(drop=["Strict-Transport-Security"]))
+    )
     assert "hsts-missing" in _codes(absent)
     assert _sev(absent, "hsts-missing") == "warning"  # same opinion as certmon's
     zero = headers.analyze(
         URL,
-        _obs(headers_=_with(["Strict-Transport-Security", "max-age=0"],
-                            drop=["Strict-Transport-Security"])),
+        _obs(
+            headers_=_with(
+                ["Strict-Transport-Security", "max-age=0"],
+                drop=["Strict-Transport-Security"],
+            )
+        ),
     )
     assert "hsts-disabled" in _codes(zero) and _sev(zero, "hsts-disabled") == "error"
     short = headers.analyze(
         URL,
-        _obs(headers_=_with(["Strict-Transport-Security", "max-age=600; includeSubDomains"],
-                            drop=["Strict-Transport-Security"])),
+        _obs(
+            headers_=_with(
+                ["Strict-Transport-Security", "max-age=600; includeSubDomains"],
+                drop=["Strict-Transport-Security"],
+            )
+        ),
     )
     assert "hsts-short" in _codes(short) and "hsts-no-subdomains" not in _codes(short)
     bare = headers.analyze(
         URL,
-        _obs(headers_=_with(["Strict-Transport-Security", "max-age=31536000"],
-                            drop=["Strict-Transport-Security"])),
+        _obs(
+            headers_=_with(
+                ["Strict-Transport-Security", "max-age=31536000"],
+                drop=["Strict-Transport-Security"],
+            )
+        ),
     )
     assert _codes(bare) == ["hsts-no-subdomains"]
     broken = headers.analyze(
         URL,
-        _obs(headers_=_with(["Strict-Transport-Security", "includeSubDomains"],
-                            drop=["Strict-Transport-Security"])),
+        _obs(
+            headers_=_with(
+                ["Strict-Transport-Security", "includeSubDomains"],
+                drop=["Strict-Transport-Security"],
+            )
+        ),
     )
     assert "hsts-no-max-age" in _codes(broken)
 
 
 def test_analyze_hsts_floor_and_preload_are_config():
-    obs = _obs(headers_=_with(
-        ["Strict-Transport-Security", "max-age=600; includeSubDomains"],
-        drop=["Strict-Transport-Security"],
-    ))
+    obs = _obs(
+        headers_=_with(
+            ["Strict-Transport-Security", "max-age=600; includeSubDomains"],
+            drop=["Strict-Transport-Security"],
+        )
+    )
     lenient = headers.load_config()
     lenient["hsts_min_age"] = 100
     assert "hsts-short" not in _codes(headers.analyze(URL, obs, config=lenient))
@@ -380,16 +432,22 @@ def test_analyze_framing_uses_csp_frame_ancestors_as_the_substitute():
     assert "xfo-missing" not in _codes(no_xfo)  # frame-ancestors 'none' covers it
     neither = headers.analyze(
         URL,
-        _obs(headers_=_with(
-            ["Content-Security-Policy", "default-src 'self'; object-src 'none'"],
-            drop=["X-Frame-Options", "Content-Security-Policy"],
-        )),
+        _obs(
+            headers_=_with(
+                ["Content-Security-Policy", "default-src 'self'; object-src 'none'"],
+                drop=["X-Frame-Options", "Content-Security-Policy"],
+            )
+        ),
     )
     assert "xfo-missing" in _codes(neither)
     allow_from = headers.analyze(
         URL,
-        _obs(headers_=_with(["X-Frame-Options", "ALLOW-FROM https://friend.example"],
-                            drop=["X-Frame-Options"])),
+        _obs(
+            headers_=_with(
+                ["X-Frame-Options", "ALLOW-FROM https://friend.example"],
+                drop=["X-Frame-Options"],
+            )
+        ),
     )
     assert "xfo-allow-from" in _codes(allow_from)
     junk = headers.analyze(
@@ -398,7 +456,9 @@ def test_analyze_framing_uses_csp_frame_ancestors_as_the_substitute():
     assert "xfo-invalid" in _codes(junk)
     same_origin = headers.analyze(
         URL,
-        _obs(headers_=_with(["X-Frame-Options", "sameorigin"], drop=["X-Frame-Options"])),
+        _obs(
+            headers_=_with(["X-Frame-Options", "sameorigin"], drop=["X-Frame-Options"])
+        ),
     )
     assert not [c for c in _codes(same_origin) if c.startswith("xfo-")]
 
@@ -408,22 +468,33 @@ def test_analyze_nosniff_and_referrer_policy():
     assert "xcto-missing" in _codes(absent)
     wrong = headers.analyze(
         URL,
-        _obs(headers_=_with(["X-Content-Type-Options", "sniff"],
-                            drop=["X-Content-Type-Options"])),
+        _obs(
+            headers_=_with(
+                ["X-Content-Type-Options", "sniff"], drop=["X-Content-Type-Options"]
+            )
+        ),
     )
     assert "xcto-invalid" in _codes(wrong)
     no_ref = headers.analyze(URL, _obs(headers_=_with(drop=["Referrer-Policy"])))
     assert "referrer-missing" in _codes(no_ref)
     weak = headers.analyze(
         URL,
-        _obs(headers_=_with(["Referrer-Policy", "no-referrer-when-downgrade, unsafe-url"],
-                            drop=["Referrer-Policy"])),
+        _obs(
+            headers_=_with(
+                ["Referrer-Policy", "no-referrer-when-downgrade, unsafe-url"],
+                drop=["Referrer-Policy"],
+            )
+        ),
     )
     assert "referrer-weak" in _codes(weak)
     ok_list = headers.analyze(
         URL,
-        _obs(headers_=_with(["Referrer-Policy", "no-referrer, strict-origin"],
-                            drop=["Referrer-Policy"])),
+        _obs(
+            headers_=_with(
+                ["Referrer-Policy", "no-referrer, strict-origin"],
+                drop=["Referrer-Policy"],
+            )
+        ),
     )
     assert not [c for c in _codes(ok_list) if c.startswith("referrer-")]
 
@@ -434,36 +505,51 @@ def test_analyze_permissions_policy_accepts_the_legacy_header_and_is_config():
     assert _sev(absent, "permissions-policy-missing") == "suggestion"
     legacy = headers.analyze(
         URL,
-        _obs(headers_=_with(["Feature-Policy", "geolocation 'none'"],
-                            drop=["Permissions-Policy"])),
+        _obs(
+            headers_=_with(
+                ["Feature-Policy", "geolocation 'none'"], drop=["Permissions-Policy"]
+            )
+        ),
     )
     assert _codes(legacy) == []
     off = headers.load_config()
     off["require_permissions_policy"] = False
-    assert headers.analyze(URL, _obs(headers_=_with(drop=["Permissions-Policy"])),
-                           config=off)["reasons"] == []
+    assert (
+        headers.analyze(
+            URL, _obs(headers_=_with(drop=["Permissions-Policy"])), config=off
+        )["reasons"]
+        == []
+    )
 
 
 def test_analyze_cors_wildcard_escalates_with_credentials():
-    wild = headers.analyze(URL, _obs(headers_=_with(["Access-Control-Allow-Origin", "*"])))
+    wild = headers.analyze(
+        URL, _obs(headers_=_with(["Access-Control-Allow-Origin", "*"]))
+    )
     assert _codes(wild) == ["cors-wildcard"]
     assert _sev(wild, "cors-wildcard") == "suggestion"
     creds = headers.analyze(
         URL,
-        _obs(headers_=_with(["Access-Control-Allow-Origin", "*"],
-                            ["Access-Control-Allow-Credentials", "true"])),
+        _obs(
+            headers_=_with(
+                ["Access-Control-Allow-Origin", "*"],
+                ["Access-Control-Allow-Credentials", "true"],
+            )
+        ),
     )
     assert _codes(creds) == ["cors-wildcard-credentials"]
     assert creds["severity"] == "error"
     named = headers.analyze(
-        URL, _obs(headers_=_with(["Access-Control-Allow-Origin", "https://friend.example"]))
+        URL,
+        _obs(headers_=_with(["Access-Control-Allow-Origin", "https://friend.example"])),
     )
     assert _codes(named) == []
 
 
 def test_analyze_flags_version_banners_as_info_only():
     v = headers.analyze(
-        URL, _obs(headers_=_with(["Server", "nginx/1.25.3"], ["X-Powered-By", "PHP/8.2"]))
+        URL,
+        _obs(headers_=_with(["Server", "nginx/1.25.3"], ["X-Powered-By", "PHP/8.2"])),
     )
     assert _codes(v) == ["server-banner", "server-banner"]
     assert v["severity"] == "info"
@@ -478,10 +564,12 @@ def test_analyze_flags_version_banners_as_info_only():
 def test_analyze_grades_every_cookie_not_just_the_last():
     v = headers.analyze(
         URL,
-        _obs(headers_=_with(
-            ["Set-Cookie", "sid=1; Secure; HttpOnly; SameSite=Lax"],
-            ["Set-Cookie", "tracker=2"],
-        )),
+        _obs(
+            headers_=_with(
+                ["Set-Cookie", "sid=1; Secure; HttpOnly; SameSite=Lax"],
+                ["Set-Cookie", "tracker=2"],
+            )
+        ),
     )
     codes = _codes(v)
     assert codes.count("cookie-insecure") == 1  # only the second cookie
@@ -494,8 +582,10 @@ def test_analyze_grades_every_cookie_not_just_the_last():
 def test_analyze_cookie_secure_is_only_required_over_https():
     plain = headers.analyze(
         HTTP_URL,
-        _obs(final_url=HTTP_URL,
-             headers_=_with(["Set-Cookie", "sid=1; HttpOnly; SameSite=Lax"])),
+        _obs(
+            final_url=HTTP_URL,
+            headers_=_with(["Set-Cookie", "sid=1; HttpOnly; SameSite=Lax"]),
+        ),
     )
     # the transport itself is the finding; Secure would not save this cookie
     assert "cookie-insecure" not in _codes(plain)
@@ -519,22 +609,32 @@ def test_analyze_samesite_none_requires_secure():
 def test_analyze_enforces_cookie_name_prefix_contracts():
     host_ok = headers.analyze(
         URL,
-        _obs(headers_=_with(
-            ["Set-Cookie", "__Host-sid=1; Secure; HttpOnly; SameSite=Lax; Path=/"])),
+        _obs(
+            headers_=_with(
+                ["Set-Cookie", "__Host-sid=1; Secure; HttpOnly; SameSite=Lax; Path=/"]
+            )
+        ),
     )
     assert _codes(host_ok) == []
     host_bad = headers.analyze(
         URL,
-        _obs(headers_=_with(
-            ["Set-Cookie",
-             "__Host-sid=1; Secure; HttpOnly; SameSite=Lax; Path=/; Domain=example.com"])),
+        _obs(
+            headers_=_with(
+                [
+                    "Set-Cookie",
+                    "__Host-sid=1; Secure; HttpOnly; SameSite=Lax; Path=/; Domain=example.com",
+                ]
+            )
+        ),
     )
     assert _codes(host_bad) == ["cookie-prefix-violation"]
     assert host_bad["severity"] == "error"
     secure_bad = headers.analyze(
         HTTP_URL,
-        _obs(final_url=HTTP_URL,
-             headers_=_with(["Set-Cookie", "__Secure-sid=1; HttpOnly; SameSite=Lax"])),
+        _obs(
+            final_url=HTTP_URL,
+            headers_=_with(["Set-Cookie", "__Secure-sid=1; HttpOnly; SameSite=Lax"]),
+        ),
     )
     assert "cookie-prefix-violation" in _codes(secure_bad)
 
@@ -545,7 +645,9 @@ def test_analyze_enforces_cookie_name_prefix_contracts():
 def test_analyze_reports_directory_listing_and_mixed_content_from_the_body():
     v = headers.analyze(URL, _obs(body=MIXED_BODY))
     codes = _codes(v)
-    assert "mixed-content-active" in codes and _sev(v, "mixed-content-active") == "error"
+    assert (
+        "mixed-content-active" in codes and _sev(v, "mixed-content-active") == "error"
+    )
     assert "mixed-content-passive" in codes
     assert len(v["mixed_content"]) == 5
     active = next(r for r in v["reasons"] if r["code"] == "mixed-content-active")
@@ -588,8 +690,14 @@ def test_analyze_notes_a_non_2xx_grade_and_an_http_to_https_upgrade():
 def test_analyze_missing_everything_names_every_missing_header():
     v = headers.analyze(HTTP_URL, _obs(final_url=HTTP_URL, headers_=[]))
     codes = set(_codes(v))
-    assert {"no-https", "csp-missing", "xfo-missing", "xcto-missing",
-            "referrer-missing", "permissions-policy-missing"} <= codes
+    assert {
+        "no-https",
+        "csp-missing",
+        "xfo-missing",
+        "xcto-missing",
+        "referrer-missing",
+        "permissions-policy-missing",
+    } <= codes
     assert "hsts-missing" not in codes  # plaintext: no-https is the finding
     assert v["severity"] == "error"
     assert v["grade"] == "D"  # one error caps it; the reason list is the payload
@@ -639,8 +747,15 @@ def test_grade_table_is_total_and_ignores_info():
     ladder = ["A+", "A", "B", "C", "D", "E", "F"]
     grades = [
         headers.grade(g)
-        for g in ([], reasons(suggestion=1), reasons(warning=1), reasons(warning=3),
-                  reasons(error=1), reasons(error=2), reasons(error=3))
+        for g in (
+            [],
+            reasons(suggestion=1),
+            reasons(warning=1),
+            reasons(warning=3),
+            reasons(error=1),
+            reasons(error=2),
+            reasons(error=3),
+        )
     ]
     assert grades == ladder
 
@@ -648,21 +763,26 @@ def test_grade_table_is_total_and_ignores_info():
 def test_worst_severity_ranks_the_family_scale():
     assert headers.worst_severity([]) == "ok"
     assert headers.worst_severity([{"severity": "info"}]) == "info"
-    assert headers.worst_severity([{"severity": "suggestion"}, {"severity": "info"}]) == (
-        "suggestion"
-    )
     assert headers.worst_severity(
-        [{"severity": "warning"}, {"severity": "error"}, {"severity": "info"}]
-    ) == "error"
+        [{"severity": "suggestion"}, {"severity": "info"}]
+    ) == ("suggestion")
+    assert (
+        headers.worst_severity(
+            [{"severity": "warning"}, {"severity": "error"}, {"severity": "info"}]
+        )
+        == "error"
+    )
 
 
 def test_config_can_ignore_a_rule_and_override_a_severity(tmp_path):
     cfg_file = tmp_path / "headers.json"
     cfg_file.write_text(
-        json.dumps({
-            "ignore_rules": ["permissions-policy-missing"],
-            "severity": {"csp-missing": "error"},
-        }),
+        json.dumps(
+            {
+                "ignore_rules": ["permissions-policy-missing"],
+                "severity": {"csp-missing": "error"},
+            }
+        ),
         encoding="utf-8",
     )
     cfg = headers.load_config(str(cfg_file))
@@ -691,15 +811,15 @@ def test_load_config_defaults_and_rejects_typos(tmp_path):
         return str(p)
 
     for payload in (
-        {"hsts_minage": 1},                       # unknown key
-        {"hsts_min_age": -1},                     # bad value
-        {"hsts_min_age": "long"},                 # bad type
-        {"ignore_rules": ["no-such-rule"]},       # typo'd rule silently disabling
-        {"ignore_rules": "csp-missing"},          # wrong shape
+        {"hsts_minage": 1},  # unknown key
+        {"hsts_min_age": -1},  # bad value
+        {"hsts_min_age": "long"},  # bad type
+        {"ignore_rules": ["no-such-rule"]},  # typo'd rule silently disabling
+        {"ignore_rules": "csp-missing"},  # wrong shape
         {"severity": {"csp-missing": "critical"}},  # not a family severity
-        {"severity": {"nope": "error"}},          # unknown rule
-        {"severity": ["csp-missing"]},            # wrong shape
-        {"dir_probe_paths": [1, 2]},              # wrong element type
+        {"severity": {"nope": "error"}},  # unknown rule
+        {"severity": ["csp-missing"]},  # wrong shape
+        {"dir_probe_paths": [1, 2]},  # wrong element type
     ):
         with pytest.raises(ValueError):
             headers.load_config(write(payload))
@@ -715,8 +835,10 @@ def test_to_diagnostics_emits_one_finding_per_reason_with_a_remedy():
         headers.analyze(URL, _obs()),  # clean: contributes nothing
         headers.analyze(
             "https://example.com/b",
-            _obs(final_url="https://example.com/b",
-                 headers_=_with(drop=["X-Content-Type-Options", "Referrer-Policy"])),
+            _obs(
+                final_url="https://example.com/b",
+                headers_=_with(drop=["X-Content-Type-Options", "Referrer-Policy"]),
+            ),
         ),
     ]
     diags = headers.to_diagnostics(results)
@@ -729,14 +851,21 @@ def test_to_diagnostics_emits_one_finding_per_reason_with_a_remedy():
     summary = openswap.summarize(diags)
     assert summary["total"] == 2
     assert summary["by_severity"]["warning"] == 2
-    assert summary["by_rule"] == {"headers:referrer-missing": 1, "headers:xcto-missing": 1}
+    assert summary["by_rule"] == {
+        "headers:referrer-missing": 1,
+        "headers:xcto-missing": 1,
+    }
 
 
 def test_to_diagnostics_counts_the_same_rule_across_pages():
     results = [
-        headers.analyze(f"https://example.com/{n}",
-                        _obs(final_url=f"https://example.com/{n}",
-                             headers_=_with(drop=["X-Content-Type-Options"])))
+        headers.analyze(
+            f"https://example.com/{n}",
+            _obs(
+                final_url=f"https://example.com/{n}",
+                headers_=_with(drop=["X-Content-Type-Options"]),
+            ),
+        )
         for n in range(3)
     ]
     summary = openswap.summarize(headers.to_diagnostics(results))
@@ -756,7 +885,9 @@ def test_default_sites_derive_from_the_seo_fleet_and_are_a_copy():
 
 
 def test_probe_urls_are_same_origin_rooted_and_deduplicated():
-    urls = headers.probe_urls("https://example.com", ["/assets/", "static/", "/assets/"])
+    urls = headers.probe_urls(
+        "https://example.com", ["/assets/", "static/", "/assets/"]
+    )
     assert urls == [
         "https://example.com/",
         "https://example.com/assets/",
@@ -781,9 +912,12 @@ def test_store_reuses_the_seo_crawl_tables_and_adds_header_scans():
     conn = _mem()
     assert {"frontier", "pages", "meta", "header_scans"} <= _tables(conn)
     # the crawler's substrate stays functional (no parallel store, no shadowing)
-    assert conn.execute(
-        "SELECT value FROM meta WHERE key = 'schema_version'"
-    ).fetchone()["value"] == seo.SCHEMA_VERSION
+    assert (
+        conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[
+            "value"
+        ]
+        == seo.SCHEMA_VERSION
+    )
 
 
 def test_open_headers_store_is_idempotent(tmp_path):
@@ -813,7 +947,9 @@ def test_record_scan_persists_grade_codes_and_surface_counts():
 
 def test_record_scan_keeps_an_unreachable_observation(tmp_path):
     conn = headers.open_headers_store(tmp_path / "seo.db")
-    dead = headers.analyze(URL, _obs(status=None, error="socket.gaierror: nope", body=None))
+    dead = headers.analyze(
+        URL, _obs(status=None, error="socket.gaierror: nope", body=None)
+    )
     headers.record_scan(conn, dead, ts=7.0)
     row = headers.latest_scan(conn, URL)
     assert row["status"] is None and row["grade"] is None
@@ -849,7 +985,9 @@ def test_run_pass_honors_the_injected_config():
     cfg = headers.load_config()
     cfg["severity"] = {"permissions-policy-missing": "error"}
     obs = _obs(headers_=_with(drop=["Permissions-Policy"]))
-    res = headers.run_pass(conn, [URL], lambda _u: obs, now=1.0, record=False, config=cfg)
+    res = headers.run_pass(
+        conn, [URL], lambda _u: obs, now=1.0, record=False, config=cfg
+    )
     assert res["results"][0]["severity"] == "error"
     assert res["problems"]  # the override reached the verdict, not just the config
 
@@ -892,6 +1030,7 @@ def test_board_reports_unknown_for_never_scanned_urls():
 
 def _crawl_one(conn, url, response_headers, *, body="<html><title>t</title></html>"):
     """Write a real pages row by running seo.crawl with an injected fetcher."""
+
     def fetch(u):
         return {
             "status": 200,
@@ -931,12 +1070,18 @@ def test_audit_rows_sees_headers_the_crawler_stored_and_honors_config():
     cfg["severity"] = {"csp-no-object-src": "error"}
     cfg["ignore_rules"] = ["csp-no-frame-ancestors"]
     conn2 = _mem()
-    _crawl_one(conn2, URL, {"Content-Security-Policy": "default-src 'self'",
-                            "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
-                            "X-Frame-Options": "DENY",
-                            "X-Content-Type-Options": "nosniff",
-                            "Referrer-Policy": "strict-origin",
-                            "Permissions-Policy": "geolocation=()"})
+    _crawl_one(
+        conn2,
+        URL,
+        {
+            "Content-Security-Policy": "default-src 'self'",
+            "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+            "X-Frame-Options": "DENY",
+            "X-Content-Type-Options": "nosniff",
+            "Referrer-Policy": "strict-origin",
+            "Permissions-Policy": "geolocation=()",
+        },
+    )
     tuned = headers.audit_rows(conn2, seo.site_key(URL), config=cfg)[0]
     assert _codes(tuned) == ["csp-no-object-src"]
     assert tuned["severity"] == "error"
@@ -964,11 +1109,14 @@ def test_manifest_is_default_deny_on_the_seo_fleet():
     mf = policy.load_manifest(ROOT / "bigbang" / "plugins" / "headers")
     assert mf["name"] == "headers"
     assert policy.check_permission(mf, "network", "https://www.bhenre.com/")[0] is True
-    assert policy.check_permission(mf, "network", "https://evil.example.com/")[0] is False
+    assert (
+        policy.check_permission(mf, "network", "https://evil.example.com/")[0] is False
+    )
     # the classic bypass shapes stay denied (host match, never substring)
-    assert policy.check_permission(
-        mf, "network", "https://evil.com/bhenre.com"
-    )[0] is False
+    assert (
+        policy.check_permission(mf, "network", "https://evil.com/bhenre.com")[0]
+        is False
+    )
     assert policy.check_permission(mf, "fs_write", ".scout/seo.db")[0] is True
     assert policy.check_permission(mf, "secret", "GITHUB_TOKEN")[0] is False
 
@@ -994,8 +1142,10 @@ def test_scan_report_shape_summarizes_grades(monkeypatch):
 
     results = [
         headers.analyze(URL, _obs()),
-        headers.analyze("https://example.com/b",
-                        _obs(final_url="https://example.com/b", headers_=NASTY)),
+        headers.analyze(
+            "https://example.com/b",
+            _obs(final_url="https://example.com/b", headers_=NASTY),
+        ),
     ]
     payload = headers_cli._report(results, extra={"db": None})
     assert payload["urls"] == 2
@@ -1084,10 +1234,17 @@ def test_cli_headers_audit_reports_the_store_caveats_and_gates(tmp_path):
     assert data["urls"] == 1 and data["by_grade"] == {"D": 1}
     assert any("undercount" in c for c in data["caveats"])
     assert any("SKIPPED" in c for c in data["caveats"])
-    assert data["results"][0]["checks_skipped"] == ["mixed-content", "directory-listing"]
-    gated = _cli(["headers", "audit", "bhenre", "--db", str(db), "--fail-on", "warning"])
+    assert data["results"][0]["checks_skipped"] == [
+        "mixed-content",
+        "directory-listing",
+    ]
+    gated = _cli(
+        ["headers", "audit", "bhenre", "--db", str(db), "--fail-on", "warning"]
+    )
     assert gated.returncode == 1  # findings at/above warning exist -> nonzero exit
-    clean_gate = _cli(["headers", "audit", "bhenre", "--db", str(db), "--fail-on", "nope"])
+    clean_gate = _cli(
+        ["headers", "audit", "bhenre", "--db", str(db), "--fail-on", "nope"]
+    )
     assert clean_gate.returncode == 1
     assert "--fail-on must be one of" in json.loads(clean_gate.stdout)["error"]
 
