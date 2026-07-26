@@ -353,6 +353,79 @@ afterwards — the first run was discarded because it was started before the edi
   so it is safe on the disk-limited VM. Not done here because the flag may have been chosen
   for a reason not recorded in the doc — confirm intent first.
 
+### 🔬 2026-07-25 — THE RECURRING DEFECT CLASS: *a gate whose verdict nothing consumes*
+
+Five instances found in one day, across three codebases. Each was diagnosed on its own
+merits before the pattern was visible; naming it is the second-order finding.
+
+| # | gate | verdict produced | what consumed it |
+|---|---|---|---|
+| 1 | `check_permission` unknown action | every branch is `if action == …` | **nothing** — fell through to `return True, "ok"`, so `"fs_wrile"` wrote freely while *reading* like an enforced gate |
+| 2 | `capabilities.filesystem.paths` | declared by **47 of 56** manifests | **nothing** — `write: true` alone granted the whole filesystem |
+| 3 | `dataset_discovery` download manifest | `license_ok` computed per candidate | **disabled in `--dry-run`** by `and not args.dry_run` — and `--dry-run` is what the daily cron doc prescribes |
+| 4 | `mtnn_report.json → promote` | `{"ok": false, "reason": "CQS 78.11 < bar 82.62"}` | **nothing** — the 64-d artifact shipped the same day |
+| 5 | `ci.yml` ruff step | 286 findings, exit code produced | **`\|\| true`** — reads as a lint gate, cannot fail |
+
+A sixth near-instance the same day: bluehenre's G3 smoke *did* refuse to promote, but the
+sequence degraded to alias-then-smoke because the unaliased URL sits behind SSO, so its
+refusal changed nothing either.
+
+**The unifying property:** the verdict is computed and *recorded* — in a report, a log line,
+an f-string, a manifest field — but **no control flow branches on it**. The gate becomes
+documentation of intent that reads, at the call site, exactly like enforcement. That is worse
+than no gate, because it buys confidence it has not earned.
+
+**Why it recurs here specifically:** this estate writes unusually good provenance *records*
+(reports, manifests, registries, `_stackv3_files_dropped` counters). Recording a verdict
+feels like enforcing it. The site half of the estate enforces by construction
+(`release_gate.mjs` exits 1, `--check` fails the build); the model and policy halves largely
+record. The doctrine exists in one half and not the other.
+
+**Detection heuristic — the reusable part.** For any gate, ask one question: *which line
+reads this verdict, and what does it do differently?* If the answer is "it is written to a
+report" or "it is printed", it is not a gate. Concretely, grep for:
+- a verdict variable used **only** inside an f-string or a dict literal;
+- any safety condition combined with `and not <mode>` / `and not args.<flag>` — a
+  mode-conditional escape;
+- `|| true`, `except: pass`, `-ErrorAction SilentlyContinue` wrapped around a check;
+- a function whose every branch is `if x == …` with no final `else: deny` (fail-open on typo).
+
+- [ ] **Sweep the estate with that heuristic.** Instances 1–3 and 5 are fixed or documented;
+  **#4 is open and lives in `~/vector-hoops`** — see the provenance-gate entry below.
+- [ ] **Port the site's enforce-by-construction doctrine into the model repos.** The asymmetry
+  above is the root cause, not any individual bug.
+
+### 🔬 2026-07-25 — `~/vector-hoops`: four published surfaces describe a model that is not shipped
+
+Built `pipeline/provenance_gate.py` + 15 tests (commit `442edbf`, **local only, not pushed**).
+It exits 1 today:
+
+```
+arch   dim=48   assets/mtnn_arch.json          <- disagrees
+meta   dim=64   assets/mtnn_meta.json
+report dim=64   pipeline/data/mtnn_report.json
+bytes  3319296  (= 12,966 x 64 x 4)
+prose  README.md / assets/mtnn.js / methods.html  all advertise 48-d
+```
+
+**The check that does NOT work, recorded so nobody "simplifies" the gate back into it.** The
+obvious invariant is `filesize == rows * dim * 4`. On this artifact **3,319,296 divides by
+both 48×4 (17,288 rows) and 64×4 (12,966 rows)** — a size check alone is *degenerate*, it
+passes for the wrong dimension. I nearly built exactly that before testing it on the real
+bytes. It becomes decisive only when crossed with a row count from an independent source, so
+the gate checks agreement *between* sources. `test_provenance_gate.py` pins the degeneracy
+directly: a wrong-but-self-consistent `(dim=48, rows=17288)` pair must produce no size
+complaint, so collapsing the gate to a size check fails a test that explains why.
+
+- [ ] **Decide which surface is authoritative and fix the other three.** The gate deliberately
+  does not autofix: the artifact is *usually* right and the docs stale, but a stale artifact
+  with fresh docs is the same failure wearing the other hat.
+- [ ] **Re-derive or retract the promote justification (instance #4 above).**
+  `composite_score.py:88-95` records the artifact was promoted "not by clearing the CQS bar,
+  which it does not", justified on a manual held-out top-5 comparison (0.363 → 0.757) that
+  **no artifact in the repo records**. A number that cleared no gate is the same shape as the
+  three research `sota` rows that all turned out to be artifacts.
+
 ### ✅ 2026-07-25 — REDEPLOYED. The sha256 drift on www.bhenre.com is fixed (gate now PASSES)
 
 Operator: *"redeploy."* Deployment `bluehenre-campus-8jlgr3038-...`, alias moved, pin
