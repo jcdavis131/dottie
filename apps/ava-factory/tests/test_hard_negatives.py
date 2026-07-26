@@ -53,6 +53,7 @@ import hashlib
 import importlib.util
 import itertools
 import json
+import math
 import os
 import random
 import subprocess
@@ -937,16 +938,51 @@ class TestSymbolFormatContract:
 
 
 # ---------------------------------------------------------------------------
-# The real repo. Every floor is >=80% of the value measured 2026-07-26, and both
-# numbers are stated. The previous floors sat at 27-42% of actual, which let
-# same_package collapse by 73% with every test still green.
+# The real repo. Floors are DERIVED as 80% of a stated measurement, never written
+# by hand. The original floors sat at 27-42% of actual, which let same_package
+# collapse by 73% with every test still green.
 #
-# NOTE ON DRIFT: this tree was being edited by another agent while these numbers
-# were taken (minhash_dedup.py and its tests grew ~900 lines mid-session). Each
-# floor below was checked to still hold with those files excluded, so a revert of
-# that work does not turn this suite red.
+# WHY DERIVED. Writing the floor out is how one of them drifted off the rule: the
+# header used to claim "every floor is >=80% of measured" while same_class sat at
+# 576 against 828 measured = 69.6%. That was defensible at the time and was
+# disclosed — 576 is 80% of the 720 an adversarial review measured, and ~170 of the
+# 828 came from another agent's IN-FLIGHT test file that a revert would have taken
+# away. That caveat has now EXPIRED: minhash_dedup.py and test_minhash_dedup.py are
+# both tracked in git (last touched by b82abf0), so the count is permanent. Floors
+# re-cut against a fresh measurement, and `_floor()` now makes a hand-written floor
+# that violates the rule impossible to write.
+#
+# WHY A STALENESS TEST. A floor is 80% of a measurement taken ON A DATE. The corpus
+# grows, so that same floor tolerates a larger regression every week. Measured
+# 2026-07-26 after the identity_collisions work landed: the floors had drifted to
+# 63.0%-80.0% of actual, worst on same_class (828 -> 914 as class-based tests were
+# added the same day). Prose cannot notice that. A test can.
 # ---------------------------------------------------------------------------
 _CACHE: dict = {}
+
+# Measured 2026-07-26 on the whole repo, AFTER the identity_collisions work landed.
+# Counts grow with the tree; the staleness test below fails when they have grown
+# enough to make a floor toothless, and prints the numbers to paste in here.
+MEASURED_REAL = {
+    "pairs": 3014,
+    "queries": 3014,
+    "negatives": 21112,
+    "same_class": 914,
+    "same_file": 16430,
+    "same_package": 3768,
+}
+FLOOR_FRACTION = 0.80
+# Ratios, not counts: these do not inflate as the corpus grows, so they are held at
+# the same 80% convention but are not part of the staleness sweep.
+MEASURED_AVG_PER_QUERY = 7.005
+MEASURED_COVERAGE = 0.9081
+# A floor below this share of a FRESH measurement has stopped being a floor.
+STALENESS_LIMIT = 0.70
+
+
+def _floor(metric: str) -> int:
+    """80% of the measurement, derived. Never write a floor out by hand."""
+    return math.floor(MEASURED_REAL[metric] * FLOOR_FRACTION)
 
 
 def real_pairs():
@@ -993,27 +1029,49 @@ def _similarity(a: str, b: str) -> float:
 
 class TestAgainstTheRealRepo:
     def test_extraction_floor(self):
-        # measured 2026-07-26: 2985 pairs; floor 80%
-        assert len(real_pairs()) >= 2388, len(real_pairs())
+        assert len(real_pairs()) >= _floor("pairs"), len(real_pairs())
 
     def test_sibling_negatives_floor(self):
         s = hn.summarise(real_sibling(), [])["sibling"]
-        # measured 2026-07-26: 2985 queries / 20880 negatives / avg 6.995 / cov 90.7%
-        assert s["queries"] >= 2388, s
-        assert s["negatives"] >= 16704, s
-        assert s["avg_per_query"] >= 5.59, s
-        assert s["coverage"] >= 0.725, s
+        assert s["queries"] >= _floor("queries"), s
+        assert s["negatives"] >= _floor("negatives"), s
+        assert s["avg_per_query"] >= MEASURED_AVG_PER_QUERY * FLOOR_FRACTION, s
+        assert s["coverage"] >= MEASURED_COVERAGE * FLOOR_FRACTION, s
 
     def test_every_scope_is_actually_reached(self):
-        """A fleet number that only ever reaches one scope would still look large.
-        measured 2026-07-26: same_class 828, same_file 16284, same_package 3768."""
+        """A fleet number that only ever reaches one scope would still look large."""
         by_scope = hn.summarise(real_sibling(), [])["sibling"]["by_scope"]
-        # same_class floor is 80% of the 720 measured by adversarial review rather
-        # than of today's 828: ~170 of today's count come from another agent's
-        # in-flight test file, and 662 would go red the moment that is reverted.
-        assert by_scope["same_class"] >= 576, by_scope
-        assert by_scope["same_file"] >= 13027, by_scope
-        assert by_scope["same_package"] >= 3014, by_scope
+        for scope in ("same_class", "same_file", "same_package"):
+            assert by_scope[scope] >= _floor(scope), (scope, by_scope)
+
+    def test_no_floor_has_gone_stale_against_a_fresh_measurement(self):
+        """The header's rule, enforced instead of asserted in prose.
+
+        Two-sided, because each direction catches a different failure:
+          * floor > fresh  -> the floor is unreachable; the suite is red for a reason
+            that has nothing to do with the miner.
+          * floor < STALENESS_LIMIT x fresh -> the corpus outgrew the floor and it now
+            tolerates a regression nobody agreed to. This is the one that actually
+            happened: floors had drifted to 63.0%-80.0% of actual.
+        The failure message carries the fresh numbers, so re-cutting MEASURED_REAL is
+        a paste rather than a re-derivation.
+        """
+        s = hn.summarise(real_sibling(), [])["sibling"]
+        fresh = {"pairs": len(real_pairs()), "queries": s["queries"],
+                 "negatives": s["negatives"], **s["by_scope"]}
+        assert set(fresh) == set(MEASURED_REAL), (
+            f"metrics moved: measuring {sorted(fresh)}, recorded {sorted(MEASURED_REAL)}"
+        )
+        report = {m: (_floor(m), fresh[m], round(_floor(m) / fresh[m], 4))
+                  for m in fresh if fresh[m]}
+        too_high = {m: v for m, v in report.items() if v[2] > 1.0}
+        assert not too_high, f"floor above the fresh measurement: {too_high}"
+        stale = {m: v for m, v in report.items() if v[2] < STALENESS_LIMIT}
+        assert not stale, (
+            f"floors have gone stale (floor, fresh, floor/fresh): {stale}\n"
+            f"re-cut MEASURED_REAL to: "
+            f"{ {m: fresh[m] for m in sorted(fresh)} }"
+        )
 
     def test_the_correctness_rule_has_real_work_to_do_here(self):
         """Measured 2026-07-26: 351 extracted pairs share a docstring with a sibling

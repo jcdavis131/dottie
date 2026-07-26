@@ -693,8 +693,28 @@ does not exist, so it SKIPPED silently — a dead guard, caught and fixed. 49 te
 - [ ] **hard_negatives: docstring claims order-independent output; it is not.** Records are
   appended in input order, so `--out` JSONL is not reproducible across walk orders. Fix the
   claim or the code.
-- [ ] **Several real-repo test floors are far looser than claimed** (`same_package` 1000 vs
-  3,760 measured = 27%), so a 73% regression would pass green.
+- [x] **Several real-repo test floors are far looser than claimed** (`same_package` 1000 vs
+  3,760 measured = 27%), so a 73% regression would pass green. Raised to 80% earlier;
+  **re-cut and made self-checking 2026-07-26**. 72 tests, 4/4 mutations killed.
+  - The 80% raise had already landed, but the header's claim "every floor is >=80% of
+    measured" was **not true of `same_class`**: 576 against 828 = **69.6%**. Defensible and
+    disclosed at the time — 576 is 80% of the 720 an adversarial review measured, because
+    ~170 of the 828 came from another agent's **in-flight** test file a revert would have
+    removed. That caveat has **expired**: `minhash_dedup.py` and `test_minhash_dedup.py` are
+    both tracked in git, last touched by `b82abf0`.
+  - **Floors had silently drifted, measured**: 63.0%–80.0% of actual, worst on `same_class`
+    (828 → 914 as class-based tests were added the same day). A floor is 80% of a
+    measurement taken *on a date*; the corpus grows, so the same floor tolerates a larger
+    regression every week, and prose cannot notice.
+  - Floors are now **derived** — `_floor(m) = floor(MEASURED_REAL[m] * 0.80)` — so a
+    hand-written floor that breaks the rule cannot be written. Re-cut against a fresh
+    measurement: pairs/queries **3014**, negatives **21112**, same_class **914**, same_file
+    **16430**, same_package **3768**, avg/query 7.005, coverage 0.9081.
+  - New `test_no_floor_has_gone_stale_against_a_fresh_measurement` enforces the rule in both
+    directions (floor above fresh = unreachable; floor below 70% of fresh = toothless) and
+    prints the fresh numbers so re-cutting is a paste. **It is the only test that kills
+    `_floor` → `return 0`** — without it, every floor in the file can go vacuous with the
+    suite still green.
 
 **Honesty note on the build itself:** the minhash builder disclosed that it had written two
 figures as "measured" *before measuring them* — `91` and `33`, true values **68** and **51**
