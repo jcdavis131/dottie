@@ -5,13 +5,20 @@ import pathlib
 import pytest
 
 try:
-    import apps.ava-factory.on_policy_distill as target_module
+    from importlib import import_module
+    # auto-generated test gap mapper for on_policy_distill - coverage <80%
+    # Original target: apps.ava-factory.on_policy_distill
+    target_module = import_module("apps.ava-factory.on_policy_distill")
 except Exception:
     try:
         from importlib import import_module
-        target_module = import_module("apps.ava-factory.on_policy_distill")
+        target_module = import_module("on_policy_distill")
     except Exception:
-        target_module = None
+        try:
+            target_module = import_module("pipeline.on_policy_distill")
+        except Exception:
+            target_module = None
+
 
 @pytest.fixture
 def sample_data():

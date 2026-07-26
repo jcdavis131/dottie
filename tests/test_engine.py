@@ -5,13 +5,20 @@ import pathlib
 import pytest
 
 try:
-    import apps.dottie.dottie.engine as target_module
+    from importlib import import_module
+    # auto-generated test gap mapper for engine - coverage <80%
+    # Original target: apps.ava-factory.engine
+    target_module = import_module("apps.ava-factory.engine")
 except Exception:
     try:
         from importlib import import_module
-        target_module = import_module("apps.dottie.dottie.engine")
+        target_module = import_module("engine")
     except Exception:
-        target_module = None
+        try:
+            target_module = import_module("pipeline.engine")
+        except Exception:
+            target_module = None
+
 
 @pytest.fixture
 def sample_data():

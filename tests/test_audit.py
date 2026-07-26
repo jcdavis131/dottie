@@ -5,13 +5,20 @@ import pathlib
 import pytest
 
 try:
-    import apps.scout-cli.bigbang.core.audit as target_module
+    from importlib import import_module
+    # auto-generated test gap mapper for audit - coverage <80%
+    # Original target: apps.ava-factory.audit
+    target_module = import_module("apps.ava-factory.audit")
 except Exception:
     try:
         from importlib import import_module
-        target_module = import_module("apps.scout-cli.bigbang.core.audit")
+        target_module = import_module("audit")
     except Exception:
-        target_module = None
+        try:
+            target_module = import_module("pipeline.audit")
+        except Exception:
+            target_module = None
+
 
 @pytest.fixture
 def sample_data():

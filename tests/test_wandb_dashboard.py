@@ -5,13 +5,20 @@ import pathlib
 import pytest
 
 try:
-    import apps.ava-factory.wandb_dashboard as target_module
+    from importlib import import_module
+    # auto-generated test gap mapper for wandb_dashboard - coverage <80%
+    # Original target: apps.ava-factory.wandb_dashboard
+    target_module = import_module("apps.ava-factory.wandb_dashboard")
 except Exception:
     try:
         from importlib import import_module
-        target_module = import_module("apps.ava-factory.wandb_dashboard")
+        target_module = import_module("wandb_dashboard")
     except Exception:
-        target_module = None
+        try:
+            target_module = import_module("pipeline.wandb_dashboard")
+        except Exception:
+            target_module = None
+
 
 @pytest.fixture
 def sample_data():

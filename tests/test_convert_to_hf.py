@@ -5,13 +5,20 @@ import pathlib
 import pytest
 
 try:
-    import apps.ava-factory.convert_to_hf as target_module
+    from importlib import import_module
+    # auto-generated test gap mapper for convert_to_hf - coverage <80%
+    # Original target: apps.ava-factory.convert_to_hf
+    target_module = import_module("apps.ava-factory.convert_to_hf")
 except Exception:
     try:
         from importlib import import_module
-        target_module = import_module("apps.ava-factory.convert_to_hf")
+        target_module = import_module("convert_to_hf")
     except Exception:
-        target_module = None
+        try:
+            target_module = import_module("pipeline.convert_to_hf")
+        except Exception:
+            target_module = None
+
 
 @pytest.fixture
 def sample_data():

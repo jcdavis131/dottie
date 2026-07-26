@@ -5,13 +5,20 @@ import pathlib
 import pytest
 
 try:
-    import apps.ava-factory.efficiency_gain as target_module
+    from importlib import import_module
+    # auto-generated test gap mapper for efficiency_gain - coverage <80%
+    # Original target: apps.ava-factory.efficiency_gain
+    target_module = import_module("apps.ava-factory.efficiency_gain")
 except Exception:
     try:
         from importlib import import_module
-        target_module = import_module("apps.ava-factory.efficiency_gain")
+        target_module = import_module("efficiency_gain")
     except Exception:
-        target_module = None
+        try:
+            target_module = import_module("pipeline.efficiency_gain")
+        except Exception:
+            target_module = None
+
 
 @pytest.fixture
 def sample_data():

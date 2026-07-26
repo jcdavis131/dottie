@@ -5,13 +5,20 @@ import pathlib
 import pytest
 
 try:
-    import apps.ava-factory.multi_jspace_module as target_module
+    from importlib import import_module
+    # auto-generated test gap mapper for multi_jspace_module - coverage <80%
+    # Original target: apps.ava-factory.multi_jspace_module
+    target_module = import_module("apps.ava-factory.multi_jspace_module")
 except Exception:
     try:
         from importlib import import_module
-        target_module = import_module("apps.ava-factory.multi_jspace_module")
+        target_module = import_module("multi_jspace_module")
     except Exception:
-        target_module = None
+        try:
+            target_module = import_module("pipeline.multi_jspace_module")
+        except Exception:
+            target_module = None
+
 
 @pytest.fixture
 def sample_data():

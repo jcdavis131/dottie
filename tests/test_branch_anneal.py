@@ -5,13 +5,20 @@ import pathlib
 import pytest
 
 try:
-    import apps.ava-factory.branch_anneal as target_module
+    from importlib import import_module
+    # auto-generated test gap mapper for branch_anneal - coverage <80%
+    # Original target: apps.ava-factory.branch_anneal
+    target_module = import_module("apps.ava-factory.branch_anneal")
 except Exception:
     try:
         from importlib import import_module
-        target_module = import_module("apps.ava-factory.branch_anneal")
+        target_module = import_module("branch_anneal")
     except Exception:
-        target_module = None
+        try:
+            target_module = import_module("pipeline.branch_anneal")
+        except Exception:
+            target_module = None
+
 
 @pytest.fixture
 def sample_data():

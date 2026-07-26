@@ -5,13 +5,16 @@ import pathlib
 import pytest
 
 try:
-    import packages.personal-graphify.src.personal_graphify.serve as target_module
+    from importlib import import_module
+    # auto-generated test gap mapper for serve - coverage <80%
+    # Original target may contain hyphen, using import_module
+    target_module = import_module("serve")
 except Exception:
     try:
-        from importlib import import_module
-        target_module = import_module("packages.personal-graphify.src.personal_graphify.serve")
+        target_module = import_module("pipeline.serve")
     except Exception:
         target_module = None
+
 
 @pytest.fixture
 def sample_data():

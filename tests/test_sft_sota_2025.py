@@ -5,13 +5,20 @@ import pathlib
 import pytest
 
 try:
-    import apps.ava-factory.sft_sota_2025 as target_module
+    from importlib import import_module
+    # auto-generated test gap mapper for sft_sota_2025 - coverage <80%
+    # Original target: apps.ava-factory.sft_sota_2025
+    target_module = import_module("apps.ava-factory.sft_sota_2025")
 except Exception:
     try:
         from importlib import import_module
-        target_module = import_module("apps.ava-factory.sft_sota_2025")
+        target_module = import_module("sft_sota_2025")
     except Exception:
-        target_module = None
+        try:
+            target_module = import_module("pipeline.sft_sota_2025")
+        except Exception:
+            target_module = None
+
 
 @pytest.fixture
 def sample_data():

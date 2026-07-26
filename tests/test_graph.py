@@ -5,13 +5,20 @@ import pathlib
 import pytest
 
 try:
-    import apps.scout-cli.bigbang.plugins.reviewgraph.graph as target_module
+    from importlib import import_module
+    # auto-generated test gap mapper for graph - coverage <80%
+    # Original target: apps.ava-factory.graph
+    target_module = import_module("apps.ava-factory.graph")
 except Exception:
     try:
         from importlib import import_module
-        target_module = import_module("apps.scout-cli.bigbang.plugins.reviewgraph.graph")
+        target_module = import_module("graph")
     except Exception:
-        target_module = None
+        try:
+            target_module = import_module("pipeline.graph")
+        except Exception:
+            target_module = None
+
 
 @pytest.fixture
 def sample_data():

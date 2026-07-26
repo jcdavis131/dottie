@@ -5,13 +5,20 @@ import pathlib
 import pytest
 
 try:
-    import apps.ava-factory.train_1b_deepspeed as target_module
+    from importlib import import_module
+    # auto-generated test gap mapper for train_1b_deepspeed - coverage <80%
+    # Original target: apps.ava-factory.train_1b_deepspeed
+    target_module = import_module("apps.ava-factory.train_1b_deepspeed")
 except Exception:
     try:
         from importlib import import_module
-        target_module = import_module("apps.ava-factory.train_1b_deepspeed")
+        target_module = import_module("train_1b_deepspeed")
     except Exception:
-        target_module = None
+        try:
+            target_module = import_module("pipeline.train_1b_deepspeed")
+        except Exception:
+            target_module = None
+
 
 @pytest.fixture
 def sample_data():

@@ -5,13 +5,20 @@ import pathlib
 import pytest
 
 try:
-    import apps.ava-factory.logic_textbook_pipeline as target_module
+    from importlib import import_module
+    # auto-generated test gap mapper for logic_textbook_pipeline - coverage <80%
+    # Original target: apps.ava-factory.logic_textbook_pipeline
+    target_module = import_module("apps.ava-factory.logic_textbook_pipeline")
 except Exception:
     try:
         from importlib import import_module
-        target_module = import_module("apps.ava-factory.logic_textbook_pipeline")
+        target_module = import_module("logic_textbook_pipeline")
     except Exception:
-        target_module = None
+        try:
+            target_module = import_module("pipeline.logic_textbook_pipeline")
+        except Exception:
+            target_module = None
+
 
 @pytest.fixture
 def sample_data():

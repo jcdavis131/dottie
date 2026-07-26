@@ -5,13 +5,20 @@ import pathlib
 import pytest
 
 try:
-    import apps.scout-cli.bigbang.core.registry as target_module
+    from importlib import import_module
+    # auto-generated test gap mapper for registry - coverage <80%
+    # Original target: apps.ava-factory.registry
+    target_module = import_module("apps.ava-factory.registry")
 except Exception:
     try:
         from importlib import import_module
-        target_module = import_module("apps.scout-cli.bigbang.core.registry")
+        target_module = import_module("registry")
     except Exception:
-        target_module = None
+        try:
+            target_module = import_module("pipeline.registry")
+        except Exception:
+            target_module = None
+
 
 @pytest.fixture
 def sample_data():
