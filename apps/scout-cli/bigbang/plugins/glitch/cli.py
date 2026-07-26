@@ -484,8 +484,10 @@ def report(
 )
 def prune_cmd(
     retention_file: str | None = typer.Option(
-        None, "--retention", help="JSON per-project retention overlay "
-        "(policy-as-config; false exempts a project)"
+        None,
+        "--retention",
+        help="JSON per-project retention overlay "
+        "(policy-as-config; false exempts a project)",
     ),
     db: str | None = typer.Option(None, "--db", help="issue store path"),
 ):

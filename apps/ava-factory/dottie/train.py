@@ -671,8 +671,10 @@ def main(argv=None) -> int:
                 _rot_min = int(os.environ.get("AVA_CKPT_ROTATE_MIN", "0"))
                 if _rot_min > 0:
                     _n = _rotate_step_ckpts(
-                        ckpt_dir, keep=int(os.environ.get("AVA_CKPT_KEEP", "3")),
-                        min_step=_rot_min)
+                        ckpt_dir,
+                        keep=int(os.environ.get("AVA_CKPT_KEEP", "3")),
+                        min_step=_rot_min,
+                    )
                     if _n:
                         log("ckpt_rotated", removed=_n, keep_floor=_rot_min, step=step)
                 heartbeat(step, phase)

@@ -28,8 +28,14 @@ from dottie.kg.store import GraphStore
 def metrics_file(tmp_path: Path) -> Path:
     lines = [
         {"ts": 1.0, "event": "model_built", "preset": "nano", "params": 138},
-        {"ts": 2.0, "event": "phase_enter", "preset": "nano", "phase": 0,
-         "name": "p0_logic", "seq": 256},
+        {
+            "ts": 2.0,
+            "event": "phase_enter",
+            "preset": "nano",
+            "phase": 0,
+            "name": "p0_logic",
+            "seq": 256,
+        },
         {"ts": 3.0, "event": "step", "step": 1, "lm": 9.0},
         {"ts": 4.0, "event": "step", "step": 2, "lm": 8.5},
         {"ts": 5.0, "event": "checkpoint", "step": 15},
@@ -49,60 +55,143 @@ def ledger_file(tmp_path: Path) -> Path:
         " created_ts REAL NOT NULL, updated_ts REAL NOT NULL,"
         " hypothesis TEXT NOT NULL, implementation TEXT, workspace TEXT,"
         " train_metrics TEXT, eval_verdict TEXT, writeup TEXT, failure TEXT,"
-        " attempts INTEGER NOT NULL DEFAULT 0)")
+        " attempts INTEGER NOT NULL DEFAULT 0)"
+    )
     con.execute(
         "CREATE TABLE baseline (singleton INTEGER PRIMARY KEY,"
         " metric_name TEXT NOT NULL, metric_value REAL NOT NULL,"
         " higher_is_better INTEGER NOT NULL, architecture TEXT NOT NULL,"
         " experiment_id TEXT, updated_ts REAL NOT NULL,"
         " notes TEXT NOT NULL DEFAULT '', metric_sem REAL, metric_sem_n INTEGER,"
-        " per_seed TEXT)")
+        " per_seed TEXT)"
+    )
     con.execute(
         "INSERT INTO experiments VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-        ("exp1", "failed_validation", 1.0, 2.0,
-         json.dumps({"hypothesis_name": "E1", "search_domain": "attention"}),
-         json.dumps({"module_name": "M1", "validation": {
-             "ok": False, "level": "dry_run", "attempts": 5,
-             "per_level": {"dry_run": {
-                 "status": "fail",
-                 "detail": "RuntimeError: einsum(): output subscript n bad"}},
-             "history": [
-                 {"attempt": 0, "ok": False, "level": "dry_run",
-                  "status": "fail",
-                  "detail": "RuntimeError: einsum(): output subscript n bad"},
-                 {"attempt": 1, "ok": False, "level": "dry_run",
-                  "status": "fail",
-                  "detail": "RuntimeError: einsum(): still bad"}]}}),
-         None, None, None, None,
-         "validation failed at 'dry_run' after 5 self-correction attempt(s): "
-         "...[head truncated]... tail without the class signature", 5))
+        (
+            "exp1",
+            "failed_validation",
+            1.0,
+            2.0,
+            json.dumps({"hypothesis_name": "E1", "search_domain": "attention"}),
+            json.dumps(
+                {
+                    "module_name": "M1",
+                    "validation": {
+                        "ok": False,
+                        "level": "dry_run",
+                        "attempts": 5,
+                        "per_level": {
+                            "dry_run": {
+                                "status": "fail",
+                                "detail": "RuntimeError: einsum(): output subscript n bad",
+                            }
+                        },
+                        "history": [
+                            {
+                                "attempt": 0,
+                                "ok": False,
+                                "level": "dry_run",
+                                "status": "fail",
+                                "detail": "RuntimeError: einsum(): output subscript n bad",
+                            },
+                            {
+                                "attempt": 1,
+                                "ok": False,
+                                "level": "dry_run",
+                                "status": "fail",
+                                "detail": "RuntimeError: einsum(): still bad",
+                            },
+                        ],
+                    },
+                }
+            ),
+            None,
+            None,
+            None,
+            None,
+            "validation failed at 'dry_run' after 5 self-correction attempt(s): "
+            "...[head truncated]... tail without the class signature",
+            5,
+        ),
+    )
     con.execute(
         "INSERT INTO experiments VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-        ("exp2", "rejected", 1.0, 2.0,
-         json.dumps({"hypothesis_name": "E2"}),
-         json.dumps({"module_name": "M2",
-                     "validation": {"ok": True, "attempts": 2, "history": [
-                         {"attempt": 0, "ok": False, "level": "dry_run",
-                          "status": "fail",
-                          "detail": "RuntimeError: einsum(): wrong operands"},
-                         {"attempt": 1, "ok": False, "level": "static",
-                          "status": "fail",
-                          "detail": "F821 Undefined name `attn`"},
-                         {"attempt": 2, "ok": True, "level": "dry_run",
-                          "status": "pass", "detail": "forward ok"}]}}),
-         None, None,
-         json.dumps({"promote": False, "metric": "proxy_loss",
-                     "baseline_value": 1.0, "new_value": 1.2, "delta": 0.2}),
-         None, None, 2))
+        (
+            "exp2",
+            "rejected",
+            1.0,
+            2.0,
+            json.dumps({"hypothesis_name": "E2"}),
+            json.dumps(
+                {
+                    "module_name": "M2",
+                    "validation": {
+                        "ok": True,
+                        "attempts": 2,
+                        "history": [
+                            {
+                                "attempt": 0,
+                                "ok": False,
+                                "level": "dry_run",
+                                "status": "fail",
+                                "detail": "RuntimeError: einsum(): wrong operands",
+                            },
+                            {
+                                "attempt": 1,
+                                "ok": False,
+                                "level": "static",
+                                "status": "fail",
+                                "detail": "F821 Undefined name `attn`",
+                            },
+                            {
+                                "attempt": 2,
+                                "ok": True,
+                                "level": "dry_run",
+                                "status": "pass",
+                                "detail": "forward ok",
+                            },
+                        ],
+                    },
+                }
+            ),
+            None,
+            None,
+            json.dumps(
+                {
+                    "promote": False,
+                    "metric": "proxy_loss",
+                    "baseline_value": 1.0,
+                    "new_value": 1.2,
+                    "delta": 0.2,
+                }
+            ),
+            None,
+            None,
+            2,
+        ),
+    )
     con.execute(
         "INSERT INTO experiments VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-        ("exp3", "failed_training", 1.0, 2.0,
-         json.dumps({"hypothesis_name": "E3"}), None, None, None, None, None,
-         "candidate not integrable: The size of tensor a "
-         "must match the size of tensor b", 0))
+        (
+            "exp3",
+            "failed_training",
+            1.0,
+            2.0,
+            json.dumps({"hypothesis_name": "E3"}),
+            None,
+            None,
+            None,
+            None,
+            None,
+            "candidate not integrable: The size of tensor a "
+            "must match the size of tensor b",
+            0,
+        ),
+    )
     con.execute(
         "INSERT INTO baseline VALUES (1,'proxy_loss',5.7,0,'nano',NULL,1.0,"
-        "'fixture',0.1,3,NULL)")
+        "'fixture',0.1,3,NULL)"
+    )
     con.commit()
     con.close()
     return p
@@ -111,36 +200,76 @@ def ledger_file(tmp_path: Path) -> Path:
 @pytest.fixture()
 def live_status_file(tmp_path: Path) -> Path:
     doc = {
-        "published_utc": "2026-07-23T00:00:00Z", "source": "local",
+        "published_utc": "2026-07-23T00:00:00Z",
+        "source": "local",
         "hostname": "testbox",
-        "pipeline": {"preset": "mini", "mode": "train", "disk_free_gb": 5.0,
-                     "trainer": {"metrics_path": "/reports/x.jsonl",
-                                 "n_points": 6,
-                                 "last": {"preset": "mini", "step": 50,
-                                          "phase": 5, "lm_loss": 0.14,
-                                          "tok_s": 4000},
-                                 "series": {
-                                     "step": [10, 20, 30, 40, 50, 50],
-                                     "lm_loss": [0.5, 0.2, 0.15, 0.14, 0.14,
-                                                 5.0]}}},
+        "pipeline": {
+            "preset": "mini",
+            "mode": "train",
+            "disk_free_gb": 5.0,
+            "trainer": {
+                "metrics_path": "/reports/x.jsonl",
+                "n_points": 6,
+                "last": {
+                    "preset": "mini",
+                    "step": 50,
+                    "phase": 5,
+                    "lm_loss": 0.14,
+                    "tok_s": 4000,
+                },
+                "series": {
+                    "step": [10, 20, 30, 40, 50, 50],
+                    "lm_loss": [0.5, 0.2, 0.15, 0.14, 0.14, 5.0],
+                },
+            },
+        },
         "hub": {
-            "sites": [{"name": "hub", "url": "https://example.invalid",
-                       "http": 200, "ms": 100, "up": True}],
-            "site_history": {"hub": [{"t": 1, "up": True, "ms": 100},
-                                     {"t": 2, "up": True, "ms": 300}]},
-            "fleet": {"containers": [
-                {"Name": "dottie-factory-trainer-1", "CPUPerc": "98%",
-                 "MemPerc": "13%"}]},
+            "sites": [
+                {
+                    "name": "hub",
+                    "url": "https://example.invalid",
+                    "http": 200,
+                    "ms": 100,
+                    "up": True,
+                }
+            ],
+            "site_history": {
+                "hub": [
+                    {"t": 1, "up": True, "ms": 100},
+                    {"t": 2, "up": True, "ms": 300},
+                ]
+            },
+            "fleet": {
+                "containers": [
+                    {
+                        "Name": "dottie-factory-trainer-1",
+                        "CPUPerc": "98%",
+                        "MemPerc": "13%",
+                    }
+                ]
+            },
         },
         "recent_events": [
             {"event_type": "ok", "message": "trainer ok", "level": "ok"},
-            {"event_type": "warn", "message": "trainer stale", "level": "warn"}],
+            {"event_type": "warn", "message": "trainer stale", "level": "warn"},
+        ],
         "research": {
-            "baseline": {"metric_name": "factory_lm_loss",
-                         "metric_value": 5.73733, "metric_sem": 0.099},
-            "sota_history": [{"id": "exp2", "name": "E2 promoted", "metric": 5.6,
-                              "metric_name": "factory_lm_loss",
-                              "baseline_value": 5.7, "updated_ts": 3.0}]},
+            "baseline": {
+                "metric_name": "factory_lm_loss",
+                "metric_value": 5.73733,
+                "metric_sem": 0.099,
+            },
+            "sota_history": [
+                {
+                    "id": "exp2",
+                    "name": "E2 promoted",
+                    "metric": 5.6,
+                    "metric_name": "factory_lm_loss",
+                    "baseline_value": 5.7,
+                    "updated_ts": 3.0,
+                }
+            ],
+        },
     }
     p = tmp_path / "live_status_fixture.json"
     p.write_text(json.dumps(doc), encoding="utf-8")
@@ -151,12 +280,19 @@ def live_status_file(tmp_path: Path) -> Path:
 def steer_file(tmp_path: Path) -> Path:
     lines = [
         {"id": "c1", "body": "fleet: restart dottie-factory-trainer-1", "ts": 1},
-        {"id": "c2", "type": "ack", "ack_of": "c1",
-         "body": "\U0001f916 ack c1: done", "status": "done", "ts": 2},
+        {
+            "id": "c2",
+            "type": "ack",
+            "ack_of": "c1",
+            "body": "\U0001f916 ack c1: done",
+            "status": "done",
+            "ts": 2,
+        },
     ]
     p = tmp_path / "steer_audit_fixture.jsonl"
-    p.write_text("\n".join(json.dumps(x, ensure_ascii=False) for x in lines),
-                 encoding="utf-8")
+    p.write_text(
+        "\n".join(json.dumps(x, ensure_ascii=False) for x in lines), encoding="utf-8"
+    )
     return p
 
 
@@ -167,22 +303,42 @@ def incidents_fixture(tmp_path: Path) -> tuple[Path, Path]:
     (docs_root / "DOC.md").write_text(
         "# handoff\n"
         "the trainer fell over at step 42 because\n"
-        "disk vanished under it; parked safely.\n", encoding="utf-8")
+        "disk vanished under it; parked safely.\n",
+        encoding="utf-8",
+    )
     seed = {
         "incidents": [
-            {"key": "t1", "title": "trainer fell over", "class": "disk",
-             "severity": "critical", "doc": "DOC.md",
-             "anchor": "fell over at step 42 because disk vanished",
-             "container": "dottie-factory-trainer-1", "phase": "p4_long",
-             "checkpoint": "step_42", "resolution": "parked safely"},
-            {"key": "t2", "title": "phantom", "class": "disk",
-             "severity": "minor", "doc": "DOC.md",
-             "anchor": "this text is nowhere in the doc"},
+            {
+                "key": "t1",
+                "title": "trainer fell over",
+                "class": "disk",
+                "severity": "critical",
+                "doc": "DOC.md",
+                "anchor": "fell over at step 42 because disk vanished",
+                "container": "dottie-factory-trainer-1",
+                "phase": "p4_long",
+                "checkpoint": "step_42",
+                "resolution": "parked safely",
+            },
+            {
+                "key": "t2",
+                "title": "phantom",
+                "class": "disk",
+                "severity": "minor",
+                "doc": "DOC.md",
+                "anchor": "this text is nowhere in the doc",
+            },
         ],
         "policies": [
-            {"key": "pol1", "title": "hold on crash", "doc": "DOC.md",
-             "anchor": "parked safely", "rule": "hold",
-             "governs": ["phase:p9"]}],
+            {
+                "key": "pol1",
+                "title": "hold on crash",
+                "doc": "DOC.md",
+                "anchor": "parked safely",
+                "rule": "hold",
+                "governs": ["phase:p9"],
+            }
+        ],
     }
     seed_path = tmp_path / "seed.json"
     seed_path.write_text(json.dumps(seed), encoding="utf-8")
@@ -190,14 +346,25 @@ def incidents_fixture(tmp_path: Path) -> tuple[Path, Path]:
 
 
 @pytest.fixture()
-def built(tmp_path: Path, metrics_file: Path, ledger_file: Path,
-          live_status_file: Path, steer_file: Path,
-          incidents_fixture: tuple[Path, Path]):
+def built(
+    tmp_path: Path,
+    metrics_file: Path,
+    ledger_file: Path,
+    live_status_file: Path,
+    steer_file: Path,
+    incidents_fixture: tuple[Path, Path],
+):
     seed_path, docs_root = incidents_fixture
     out = tmp_path / "graph.sqlite3"
-    report = build_graph(out=out, ledger=ledger_file, metrics=[metrics_file],
-                         live_status=live_status_file, steer=steer_file,
-                         incidents_seed=seed_path, docs_root=docs_root)
+    report = build_graph(
+        out=out,
+        ledger=ledger_file,
+        metrics=[metrics_file],
+        live_status=live_status_file,
+        steer=steer_file,
+        incidents_seed=seed_path,
+        docs_root=docs_root,
+    )
     store = GraphStore(out, readonly=True)
     yield report, store
     store.close()
@@ -207,18 +374,23 @@ def built(tmp_path: Path, metrics_file: Path, ledger_file: Path,
 # taxonomy
 # ---------------------------------------------------------------------------
 
+
 def test_taxonomy_classify() -> None:
     assert taxonomy.primary_class("RuntimeError: einsum(): bad eq") == "einsum"
-    assert taxonomy.primary_class(
-        "The size of tensor a must match the size of tensor b") == "shape_algebra"
+    assert (
+        taxonomy.primary_class("The size of tensor a must match the size of tensor b")
+        == "shape_algebra"
+    )
     assert taxonomy.primary_class("something entirely novel") == "unclassified"
     both = taxonomy.classify("einsum() and NameError: name 'x'")
     assert both == ["einsum", "name_error"]
 
 
 def test_failing_level() -> None:
-    assert taxonomy.failing_level(
-        "validation failed at 'dry_run' after 5 attempts") == "dry_run"
+    assert (
+        taxonomy.failing_level("validation failed at 'dry_run' after 5 attempts")
+        == "dry_run"
+    )
     assert taxonomy.failing_level("candidate not integrable: boom") == "training"
     assert taxonomy.failing_level("???") == "unknown"
 
@@ -226,6 +398,7 @@ def test_failing_level() -> None:
 # ---------------------------------------------------------------------------
 # safety guard
 # ---------------------------------------------------------------------------
+
 
 def test_refuse_live_ledger(tmp_path: Path) -> None:
     # The guard must fire on the live ledger PATH IDENTITY without opening it.
@@ -238,6 +411,7 @@ def test_refuse_live_ledger(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # ingesters (via one full offline build)
 # ---------------------------------------------------------------------------
+
 
 def test_build_counts(built) -> None:
     report, store = built
@@ -255,8 +429,9 @@ def test_build_counts(built) -> None:
 
 def test_trainer_event_chain(built) -> None:
     _, store = built
-    done = [n for n in store.nodes_by_type("event")
-            if n["props"].get("event") == "done"]
+    done = [
+        n for n in store.nodes_by_type("event") if n["props"].get("event") == "done"
+    ]
     assert len(done) == 1
     chain = store.chain_back(done[0]["id"], limit=5)
     kinds = [n["props"].get("event") for n in chain]
@@ -266,8 +441,11 @@ def test_trainer_event_chain(built) -> None:
 
 def test_series_anomalies_mined(built) -> None:
     _, store = built
-    kinds = {n["props"].get("kind") for n in store.nodes_by_type("event")
-             if ":series_" in n["id"]}
+    kinds = {
+        n["props"].get("kind")
+        for n in store.nodes_by_type("event")
+        if ":series_" in n["id"]
+    }
     assert kinds == {"step_reemitted", "loss_spike"}
 
 
@@ -293,8 +471,7 @@ def test_promotion_joins_ledger_experiment(built) -> None:
     # the ledger ingester created — the cross-source join is the point.
     _, store = built
     edges = store.edges_from("promotion:exp2")
-    assert any(e["dst"] == "experiment:exp2" and e["type"] == "promoted"
-               for e in edges)
+    assert any(e["dst"] == "experiment:exp2" and e["type"] == "promoted" for e in edges)
     assert store.node("experiment:exp2")["props"]["state"] == "rejected"
 
 
@@ -305,18 +482,21 @@ def test_incident_anchor_verification(built) -> None:
     assert ok["props"]["anchor_verified"] is True
     assert ok["source_ref"] == "DOC.md:L2"  # anchor starts on line 2
     assert bad["props"]["anchor_verified"] is False
-    assert bad["source_ref"] == "DOC.md"    # cited to the doc, no line claim
+    assert bad["source_ref"] == "DOC.md"  # cited to the doc, no line claim
     # linked context
     dsts = {e["dst"] for e in store.edges_from("incident:t1")}
-    assert {"container:dottie-factory-trainer-1", "phase:p4_long",
-            "checkpoint:step_42", "fix:t1"} <= dsts
+    assert {
+        "container:dottie-factory-trainer-1",
+        "phase:p4_long",
+        "checkpoint:step_42",
+        "fix:t1",
+    } <= dsts
 
 
 def test_steer_ack_links_directive(built) -> None:
     _, store = built
     edges = store.edges_from("steer_ack:c2")
-    assert any(e["dst"] == "steer_directive:c1" and e["type"] == "acks"
-               for e in edges)
+    assert any(e["dst"] == "steer_directive:c1" and e["type"] == "acks" for e in edges)
 
 
 def test_steer_missing_is_honest(tmp_path: Path) -> None:
@@ -338,6 +518,7 @@ def test_find_anchor_wraps_lines() -> None:
 # query layer
 # ---------------------------------------------------------------------------
 
+
 def test_hint_efficacy_query(built) -> None:
     _, store = built
     out = hint_efficacy(store, "einsum")
@@ -355,25 +536,31 @@ def test_hint_efficacy_query(built) -> None:
 def test_struggled_with_trajectories(built) -> None:
     _, store = built
     # exp1: einsum twice, never cleared (final ok False, no later other class)
-    e1 = [e for e in store.edges_from("experiment:exp1")
-          if e["type"] == "struggled_with"]
+    e1 = [
+        e for e in store.edges_from("experiment:exp1") if e["type"] == "struggled_with"
+    ]
     assert len(e1) == 1
     assert e1[0]["dst"] == "failure_class:einsum"
     assert e1[0]["props"]["cleared"] is False
     assert e1[0]["props"]["attempt_indices"] == [0, 1]
     # exp2: einsum cleared (trajectory ends ok=True); F821 lands unclassified
-    e2 = {e["dst"]: e["props"] for e in store.edges_from("experiment:exp2")
-          if e["type"] == "struggled_with"}
+    e2 = {
+        e["dst"]: e["props"]
+        for e in store.edges_from("experiment:exp2")
+        if e["type"] == "struggled_with"
+    }
     assert e2["failure_class:einsum"]["cleared"] is True
     assert e2["failure_class:unclassified"]["cleared"] is True
 
 
 def test_refine_candidates(built) -> None:
     from dottie.kg.query import refine_candidates
+
     _, store = built
     cands = refine_candidates(store, min_count=1)
     # the F821 cluster from exp2's history must surface as a proposal candidate
-    assert any("FN Undefined name" in c["signature"] or "F821" in c["signature"]
-               for c in cands)
+    assert any(
+        "FN Undefined name" in c["signature"] or "F821" in c["signature"] for c in cands
+    )
     for c in cands:
         assert c["confidence"] in ("HIGH", "MEDIUM", "LOW")

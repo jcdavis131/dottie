@@ -208,7 +208,9 @@ def _resident(base: str | None, *, timeout: float) -> list[dict]:
     """Resident models per /api/ps — the ONLY source of placement truth."""
     if not base:
         return []
-    return ollama.parse_loaded(_request(base, ollama.PS_PATH, timeout=timeout).get("json"))
+    return ollama.parse_loaded(
+        _request(base, ollama.PS_PATH, timeout=timeout).get("json")
+    )
 
 
 def _prompt_text(prompt: str | None, command: str) -> str:
@@ -319,7 +321,9 @@ def hello():
 )
 def detect(
     base: str | None = typer.Option(
-        None, "--base", help=f"endpoint (default {ollama.DEFAULT_BASES[0]} or $OLLAMA_HOST)"
+        None,
+        "--base",
+        help=f"endpoint (default {ollama.DEFAULT_BASES[0]} or $OLLAMA_HOST)",
     ),
     timeout: float = typer.Option(5.0, "--timeout", help="probe timeout, seconds"),
     fail_on: str | None = typer.Option(
@@ -328,7 +332,9 @@ def detect(
 ):
     """Capability tier AND whether the daemon answers — two different facts."""
     rank = _severity_gate(fail_on, "ollama detect")
-    res = _resolve(base, timeout=timeout, path=ollama.VERSION_PATH, command="ollama detect")
+    res = _resolve(
+        base, timeout=timeout, path=ollama.VERSION_PATH, command="ollama detect"
+    )
     loaded = _resident(res["base"], timeout=timeout)
     diags = ollama.endpoint_diagnostics(res, loaded=loaded)
     emit(
@@ -375,7 +381,9 @@ def models_cmd(
 ):
     """Installed models, what is resident (and where), and what `run` would pick."""
     rank = _severity_gate(fail_on, "ollama models")
-    res = _resolve(base, timeout=timeout, path=ollama.TAGS_PATH, command="ollama models")
+    res = _resolve(
+        base, timeout=timeout, path=ollama.TAGS_PATH, command="ollama models"
+    )
     catalog = ollama.parse_models(res["payload"])
     loaded = _resident(res["base"], timeout=timeout)
     if res["reachable"]:
@@ -420,9 +428,13 @@ def models_cmd(
     ),
 )
 def run_cmd(
-    prompt: str | None = typer.Option(None, "--prompt", help="prompt (omit to read stdin)"),
+    prompt: str | None = typer.Option(
+        None, "--prompt", help="prompt (omit to read stdin)"
+    ),
     model: str | None = typer.Option(
-        None, "--model", help="exact tag or unique prefix; default is chosen AND explained"
+        None,
+        "--model",
+        help="exact tag or unique prefix; default is chosen AND explained",
     ),
     system: str | None = typer.Option(None, "--system", help="system preamble"),
     base: str | None = typer.Option(None, "--base", help="endpoint override"),
@@ -435,7 +447,9 @@ def run_cmd(
     db: str | None = typer.Option(
         None, "--db", help=f"usage ledger (default {ollama.DB_REL})"
     ),
-    record: bool = typer.Option(True, "--record/--no-record", help="persist the usage row"),
+    record: bool = typer.Option(
+        True, "--record/--no-record", help="persist the usage row"
+    ),
     fail_on_degraded: bool = typer.Option(
         False, "--fail-on-degraded", help="exit 1 when the answer was template assembly"
     ),

@@ -58,33 +58,109 @@ DEFAULT_RULES: dict[str, Any] = {
         "severity": "warning",
         # vowel-letter words that still take "a" (consonant sound)
         "use_a": [
-            "one", "once", "unicorn", "uniform", "union", "unique", "unit",
-            "united", "university", "url", "usb", "usable", "user", "utility",
-            "uuid", "european", "ui",
+            "one",
+            "once",
+            "unicorn",
+            "uniform",
+            "union",
+            "unique",
+            "unit",
+            "united",
+            "university",
+            "url",
+            "usb",
+            "usable",
+            "user",
+            "utility",
+            "uuid",
+            "european",
+            "ui",
         ],
         # consonant-letter words that take "an" (vowel sound / silent h)
         "use_an": [
-            "heir", "herb", "honest", "honor", "hour", "html", "http", "faq",
-            "mba", "rss", "sql", "xml",
+            "heir",
+            "herb",
+            "honest",
+            "honor",
+            "hour",
+            "html",
+            "http",
+            "faq",
+            "mba",
+            "rss",
+            "sql",
+            "xml",
         ],
     },
     "passive_voice": {
         "enabled": True,
         "severity": "suggestion",
         "irregular_participles": [
-            "begun", "broken", "brought", "bought", "built", "caught", "chosen",
-            "done", "drawn", "driven", "eaten", "fallen", "felt", "forgotten",
-            "found", "frozen", "given", "gotten", "grown", "held", "hidden",
-            "kept", "known", "led", "left", "lost", "made", "meant", "paid",
-            "put", "read", "run", "said", "seen", "sent", "set", "shown",
-            "spoken", "stolen", "taken", "taught", "thought", "told",
-            "understood", "worn", "written",
+            "begun",
+            "broken",
+            "brought",
+            "bought",
+            "built",
+            "caught",
+            "chosen",
+            "done",
+            "drawn",
+            "driven",
+            "eaten",
+            "fallen",
+            "felt",
+            "forgotten",
+            "found",
+            "frozen",
+            "given",
+            "gotten",
+            "grown",
+            "held",
+            "hidden",
+            "kept",
+            "known",
+            "led",
+            "left",
+            "lost",
+            "made",
+            "meant",
+            "paid",
+            "put",
+            "read",
+            "run",
+            "said",
+            "seen",
+            "sent",
+            "set",
+            "shown",
+            "spoken",
+            "stolen",
+            "taken",
+            "taught",
+            "thought",
+            "told",
+            "understood",
+            "worn",
+            "written",
         ],
         # -ed words that are not participles (adjectives/nouns) — never flag
         "not_participles": [
-            "red", "bed", "fed", "led", "wed", "shed", "need", "speed",
-            "indeed", "exceed", "proceed", "succeed", "hundred", "sacred",
-            "wicked", "naked",
+            "red",
+            "bed",
+            "fed",
+            "led",
+            "wed",
+            "shed",
+            "need",
+            "speed",
+            "indeed",
+            "exceed",
+            "proceed",
+            "succeed",
+            "hundred",
+            "sacred",
+            "wicked",
+            "naked",
         ],
     },
     "sentence_length": {"enabled": True, "severity": "info", "max_words": 35},
@@ -179,30 +255,130 @@ DEFAULT_RULES: dict[str, Any] = {
         # on purpose: candidates come only FROM this list, so a small list
         # keeps precision high (unknown jargon simply matches nothing).
         "wordlist": [
-            "address", "argument", "because", "beginning", "believe",
-            "business", "calendar", "committed", "company", "complete",
-            "conscious", "consider", "continue", "default", "definitely",
-            "dependent", "develop", "different", "document", "environment",
-            "example", "existence", "experience", "familiar", "feature",
-            "finally", "foreign", "function", "general", "government",
-            "however", "important", "include", "independent", "information",
-            "install", "interest", "knowledge", "language", "library",
-            "maintenance", "manage", "message", "module", "necessary",
-            "network", "noticeable", "number", "occasion", "occurred",
-            "option", "output", "package", "people", "performance",
-            "platform", "possible", "present", "problem", "process",
-            "produce", "product", "program", "project", "provide", "public",
-            "publicly", "purpose", "question", "really", "receive",
-            "recommend", "referred", "release", "relevant", "remember",
-            "replace", "request", "require", "research", "response",
-            "result", "return", "review", "schedule", "science", "section",
-            "security", "separate", "service", "session", "setting",
-            "should", "similar", "simple", "source", "special", "specific",
-            "standard", "statement", "structure", "success", "successful",
-            "suggest", "support", "surface", "surprise", "system",
-            "technical", "template", "thought", "through", "together",
-            "tomorrow", "understand", "update", "upgrade", "validate",
-            "value", "version", "warning", "website", "without", "workflow",
+            "address",
+            "argument",
+            "because",
+            "beginning",
+            "believe",
+            "business",
+            "calendar",
+            "committed",
+            "company",
+            "complete",
+            "conscious",
+            "consider",
+            "continue",
+            "default",
+            "definitely",
+            "dependent",
+            "develop",
+            "different",
+            "document",
+            "environment",
+            "example",
+            "existence",
+            "experience",
+            "familiar",
+            "feature",
+            "finally",
+            "foreign",
+            "function",
+            "general",
+            "government",
+            "however",
+            "important",
+            "include",
+            "independent",
+            "information",
+            "install",
+            "interest",
+            "knowledge",
+            "language",
+            "library",
+            "maintenance",
+            "manage",
+            "message",
+            "module",
+            "necessary",
+            "network",
+            "noticeable",
+            "number",
+            "occasion",
+            "occurred",
+            "option",
+            "output",
+            "package",
+            "people",
+            "performance",
+            "platform",
+            "possible",
+            "present",
+            "problem",
+            "process",
+            "produce",
+            "product",
+            "program",
+            "project",
+            "provide",
+            "public",
+            "publicly",
+            "purpose",
+            "question",
+            "really",
+            "receive",
+            "recommend",
+            "referred",
+            "release",
+            "relevant",
+            "remember",
+            "replace",
+            "request",
+            "require",
+            "research",
+            "response",
+            "result",
+            "return",
+            "review",
+            "schedule",
+            "science",
+            "section",
+            "security",
+            "separate",
+            "service",
+            "session",
+            "setting",
+            "should",
+            "similar",
+            "simple",
+            "source",
+            "special",
+            "specific",
+            "standard",
+            "statement",
+            "structure",
+            "success",
+            "successful",
+            "suggest",
+            "support",
+            "surface",
+            "surprise",
+            "system",
+            "technical",
+            "template",
+            "thought",
+            "through",
+            "together",
+            "tomorrow",
+            "understand",
+            "update",
+            "upgrade",
+            "validate",
+            "value",
+            "version",
+            "warning",
+            "website",
+            "without",
+            "workflow",
             "writing",
         ],
     },
@@ -358,11 +534,17 @@ def _check_doubled_word(lines: list[str], rules: dict, path: str) -> list[dict]:
             word = m.group(1)
             if word.lower() in allowed:
                 continue
-            out.append(openswap.diagnostic(
-                path=path, line=i, col=m.start() + 1, rule="doubled_word",
-                severity=cfg.get("severity", "warning"),
-                message=f"doubled word '{word}'", suggestion=word,
-            ))
+            out.append(
+                openswap.diagnostic(
+                    path=path,
+                    line=i,
+                    col=m.start() + 1,
+                    rule="doubled_word",
+                    severity=cfg.get("severity", "warning"),
+                    message=f"doubled word '{word}'",
+                    suggestion=word,
+                )
+            )
     return out
 
 
@@ -389,11 +571,17 @@ def _check_a_an(lines: list[str], rules: dict, path: str) -> list[dict]:
                 expected = "an" if wl[0] in "aeiou" else "a"
             if art.lower() != expected:
                 fix = expected.capitalize() if art[0].isupper() else expected
-                out.append(openswap.diagnostic(
-                    path=path, line=i, col=m.start(1) + 1, rule="a_an",
-                    severity=cfg.get("severity", "warning"),
-                    message=f"'{art} {word}' — use '{fix}'", suggestion=fix,
-                ))
+                out.append(
+                    openswap.diagnostic(
+                        path=path,
+                        line=i,
+                        col=m.start(1) + 1,
+                        rule="a_an",
+                        severity=cfg.get("severity", "warning"),
+                        message=f"'{art} {word}' — use '{fix}'",
+                        suggestion=fix,
+                    )
+                )
     return out
 
 
@@ -423,11 +611,16 @@ def _check_passive_voice(lines: list[str], rules: dict, path: str) -> list[dict]
         for m in pat.finditer(line):
             if m.group(1).lower() in not_participles:
                 continue
-            out.append(openswap.diagnostic(
-                path=path, line=i, col=m.start() + 1, rule="passive_voice",
-                severity=cfg.get("severity", "suggestion"),
-                message=f"passive voice: '{m.group(0)}' — prefer an active subject",
-            ))
+            out.append(
+                openswap.diagnostic(
+                    path=path,
+                    line=i,
+                    col=m.start() + 1,
+                    rule="passive_voice",
+                    severity=cfg.get("severity", "suggestion"),
+                    message=f"passive voice: '{m.group(0)}' — prefer an active subject",
+                )
+            )
     return out
 
 
@@ -462,11 +655,16 @@ def _check_sentence_length(lines: list[str], rules: dict, path: str) -> list[dic
         for sent in re.split(r"(?<=[.!?])\s+", text):
             n = len(WORD_RE.findall(sent))
             if n > limit:
-                out.append(openswap.diagnostic(
-                    path=path, line=start, col=1, rule="sentence_length",
-                    severity=cfg.get("severity", "info"),
-                    message=f"{n}-word sentence (limit {limit}) — consider splitting",
-                ))
+                out.append(
+                    openswap.diagnostic(
+                        path=path,
+                        line=start,
+                        col=1,
+                        rule="sentence_length",
+                        severity=cfg.get("severity", "info"),
+                        message=f"{n}-word sentence (limit {limit}) — consider splitting",
+                    )
+                )
     return out
 
 
@@ -483,11 +681,17 @@ def _check_wordiness(lines: list[str], rules: dict, path: str) -> list[dict]:
         for phrase, repl, pat in compiled:
             for m in pat.finditer(line):
                 tail = f" -> '{repl}'" if repl else " — usually deletable"
-                out.append(openswap.diagnostic(
-                    path=path, line=i, col=m.start() + 1, rule="wordiness",
-                    severity=cfg.get("severity", "suggestion"),
-                    message=f"wordy: '{phrase}'{tail}", suggestion=repl or None,
-                ))
+                out.append(
+                    openswap.diagnostic(
+                        path=path,
+                        line=i,
+                        col=m.start() + 1,
+                        rule="wordiness",
+                        severity=cfg.get("severity", "suggestion"),
+                        message=f"wordy: '{phrase}'{tail}",
+                        suggestion=repl or None,
+                    )
+                )
     return out
 
 
@@ -501,20 +705,38 @@ def _check_hygiene(lines: list[str], rules: dict, path: str) -> list[dict]:
         # markdown table rows legitimately align with runs of spaces
         if not line.lstrip().startswith("|"):
             for m in _DOUBLE_SPACE_RE.finditer(line):
-                out.append(openswap.diagnostic(
-                    path=path, line=i, col=m.start() + 1, rule="hygiene",
-                    severity=sev, message="multiple consecutive spaces",
-                ))
+                out.append(
+                    openswap.diagnostic(
+                        path=path,
+                        line=i,
+                        col=m.start() + 1,
+                        rule="hygiene",
+                        severity=sev,
+                        message="multiple consecutive spaces",
+                    )
+                )
         if _NBSP in line:
-            out.append(openswap.diagnostic(
-                path=path, line=i, col=line.index(_NBSP) + 1, rule="hygiene",
-                severity=sev, message="non-breaking space (U+00A0) in prose",
-            ))
+            out.append(
+                openswap.diagnostic(
+                    path=path,
+                    line=i,
+                    col=line.index(_NBSP) + 1,
+                    rule="hygiene",
+                    severity=sev,
+                    message="non-breaking space (U+00A0) in prose",
+                )
+            )
         if '"' in line and ("“" in line or "”" in line):
-            out.append(openswap.diagnostic(
-                path=path, line=i, col=1, rule="hygiene", severity=sev,
-                message="mixed straight and curly double quotes on one line",
-            ))
+            out.append(
+                openswap.diagnostic(
+                    path=path,
+                    line=i,
+                    col=1,
+                    rule="hygiene",
+                    severity=sev,
+                    message="mixed straight and curly double quotes on one line",
+                )
+            )
     return out
 
 
@@ -535,11 +757,17 @@ def _check_misspelling(lines: list[str], rules: dict, path: str) -> list[dict]:
                         hit = mapping[tl[: -len(suf)]]
                         break
             if hit:
-                out.append(openswap.diagnostic(
-                    path=path, line=i, col=m.start() + 1, rule="misspelling",
-                    severity=cfg.get("severity", "warning"),
-                    message=f"'{tok}' -> '{hit}'", suggestion=hit,
-                ))
+                out.append(
+                    openswap.diagnostic(
+                        path=path,
+                        line=i,
+                        col=m.start() + 1,
+                        rule="misspelling",
+                        severity=cfg.get("severity", "warning"),
+                        message=f"'{tok}' -> '{hit}'",
+                        suggestion=hit,
+                    )
+                )
     return out
 
 
@@ -577,12 +805,17 @@ def _check_spellcheck(lines: list[str], rules: dict, path: str) -> list[dict]:
             cand = difflib.get_close_matches(tok, words, n=1, cutoff=cutoff)
             # same-first-letter guard: classic precision constraint for typos
             if cand and cand[0] != tok and cand[0][0] == tok[0]:
-                out.append(openswap.diagnostic(
-                    path=path, line=i, col=m.start() + 1, rule="spellcheck",
-                    severity=cfg.get("severity", "suggestion"),
-                    message=f"'{tok}' — did you mean '{cand[0]}'?",
-                    suggestion=cand[0],
-                ))
+                out.append(
+                    openswap.diagnostic(
+                        path=path,
+                        line=i,
+                        col=m.start() + 1,
+                        rule="spellcheck",
+                        severity=cfg.get("severity", "suggestion"),
+                        message=f"'{tok}' — did you mean '{cand[0]}'?",
+                        suggestion=cand[0],
+                    )
+                )
     return out
 
 
@@ -661,18 +894,27 @@ def parse_harper_output(raw: str, *, path: str) -> list[dict[str, Any]]:
             continue
         try:
             span = it.get("span") if isinstance(it.get("span"), dict) else {}
-            line = int(it.get("line") or it.get("start_line")
-                       or span.get("start_line") or 1)
+            line = int(
+                it.get("line") or it.get("start_line") or span.get("start_line") or 1
+            )
             col = int(it.get("col") or it.get("column") or 1)
-            rule = str(it.get("lint_kind") or it.get("kind")
-                       or it.get("rule") or "lint").lower()
+            rule = str(
+                it.get("lint_kind") or it.get("kind") or it.get("rule") or "lint"
+            ).lower()
             sugg = it.get("suggestions")
             suggestion = str(sugg[0]) if isinstance(sugg, list) and sugg else None
-            out.append(openswap.diagnostic(
-                path=path, line=line, col=col, rule=f"harper:{rule}",
-                severity="warning", message=str(msg), suggestion=suggestion,
-                source="harper",
-            ))
+            out.append(
+                openswap.diagnostic(
+                    path=path,
+                    line=line,
+                    col=col,
+                    rule=f"harper:{rule}",
+                    severity="warning",
+                    message=str(msg),
+                    suggestion=suggestion,
+                    source="harper",
+                )
+            )
         except Exception:
             continue
     return out

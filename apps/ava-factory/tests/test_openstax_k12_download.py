@@ -31,7 +31,9 @@ def test_fetch_catalog_has_k12_math_and_pdfs():
 
 
 def test_catalog_json_fixture_shape_if_present():
-    root = Path(__file__).resolve().parents[1] / "data" / "research_inbox" / "openstax-k12"
+    root = (
+        Path(__file__).resolve().parents[1] / "data" / "research_inbox" / "openstax-k12"
+    )
     cat = root / "catalog.json"
     if not cat.exists():
         pytest.skip("openstax k12 not downloaded on this machine")

@@ -224,9 +224,19 @@ def _fetch_page(url: str, *, timeout: float, max_bytes: int) -> dict:
                 "error": None,
             }
     except urllib.error.HTTPError as e:
-        return {"status": int(e.code), "html": "", "url": url, "error": f"http {e.code}"}
+        return {
+            "status": int(e.code),
+            "html": "",
+            "url": url,
+            "error": f"http {e.code}",
+        }
     except Exception as e:
-        return {"status": None, "html": "", "url": url, "error": f"{type(e).__name__}: {e}"}
+        return {
+            "status": None,
+            "html": "",
+            "url": url,
+            "error": f"{type(e).__name__}: {e}",
+        }
 
 
 def _make_ingest(corpus, *, ts: float | None):
@@ -239,8 +249,14 @@ def _make_ingest(corpus, *, ts: float | None):
     def ingest(html: str, url: str, item: dict) -> dict:
         try:
             res = extract.extract(html, url=url, source=f"later:{item['id']}")
-            doc_id = None if corpus is None else extract.record_document(corpus, res, ts=ts)
-            return {"doc_id": doc_id, "words": res.get("word_count"), "title": res.get("title")}
+            doc_id = (
+                None if corpus is None else extract.record_document(corpus, res, ts=ts)
+            )
+            return {
+                "doc_id": doc_id,
+                "words": res.get("word_count"),
+                "title": res.get("title"),
+            }
         except Exception as e:  # a bad page is one row, not a dead pass
             return {"error": f"{type(e).__name__}: {e}"}
 
@@ -270,7 +286,15 @@ def detect():
         "network_enabled": bool(net.get("enabled")),
         "manifest_domains": list(net.get("domains") or []),
         "user_allowlist_required": "every non-loopback url, checked per item at fetch time",
-        "commands_with_zero_egress": ["add", "import", "pull", "canon", "list", "mark", "board"],
+        "commands_with_zero_egress": [
+            "add",
+            "import",
+            "pull",
+            "canon",
+            "list",
+            "mark",
+            "board",
+        ],
     }
     emit(
         ok(
@@ -286,14 +310,21 @@ def detect():
 @app.command(
     "policy",
     epilog=examples_epilog(
-        ["scout --json later policy", "scout --json later policy --policy later-policy.json"]
+        [
+            "scout --json later policy",
+            "scout --json later policy --policy later-policy.json",
+        ]
     ),
 )
 def policy_cmd(
     policy_file: str | None = typer.Option(
-        None, "--policy", help="JSON overlay of canonicalisation rules (policy-as-config)"
+        None,
+        "--policy",
+        help="JSON overlay of canonicalisation rules (policy-as-config)",
     ),
-    rules_file: str | None = typer.Option(None, "--rules", help="JSON overlay of diagnostic rules"),
+    rules_file: str | None = typer.Option(
+        None, "--rules", help="JSON overlay of diagnostic rules"
+    ),
 ):
     """Publish the effective canonicalisation policy and diagnostic rule table."""
     pol = _policy_or_fail(policy_file, "later policy")
@@ -330,8 +361,12 @@ def policy_cmd(
     ),
 )
 def canon(
-    urls: list[str] = typer.Argument(..., help="urls to canonicalise (no database, no network)"),
-    policy_file: str | None = typer.Option(None, "--policy", help="JSON canonicalisation overlay"),
+    urls: list[str] = typer.Argument(
+        ..., help="urls to canonicalise (no database, no network)"
+    ),
+    policy_file: str | None = typer.Option(
+        None, "--policy", help="JSON canonicalisation overlay"
+    ),
 ):
     """Show the canonical form, key and applied rules for urls. Pure function."""
     pol = _policy_or_fail(policy_file, "later canon")
@@ -346,7 +381,11 @@ def canon(
                 "readings": readings,
                 "distinct": len(groups),
                 "collapsed": [
-                    {"key": k, "url": next(r["url"] for r in readings if r["key"] == k), "inputs": v}
+                    {
+                        "key": k,
+                        "url": next(r["url"] for r in readings if r["key"] == k),
+                        "inputs": v,
+                    }
                     for k, v in sorted(groups.items())
                     if len(v) > 1
                 ],
@@ -394,12 +433,22 @@ def _report_add(result: dict, path: Path, command: str, example: str) -> None:
     ),
 )
 def add(
-    urls: list[str] = typer.Argument(..., help="urls to queue (canonicalised, then deduped)"),
-    tag: list[str] = typer.Option([], "--tag", help="tag (repeatable); tags of a duplicate merge"),
-    title: str | None = typer.Option(None, "--title", help="title, when the page has none yet"),
+    urls: list[str] = typer.Argument(
+        ..., help="urls to queue (canonicalised, then deduped)"
+    ),
+    tag: list[str] = typer.Option(
+        [], "--tag", help="tag (repeatable); tags of a duplicate merge"
+    ),
+    title: str | None = typer.Option(
+        None, "--title", help="title, when the page has none yet"
+    ),
     note: str | None = typer.Option(None, "--note", help="why you saved it"),
-    db: str | None = typer.Option(None, "--db", help=f"queue path (default {later.DB_REL})"),
-    policy_file: str | None = typer.Option(None, "--policy", help="JSON canonicalisation overlay"),
+    db: str | None = typer.Option(
+        None, "--db", help=f"queue path (default {later.DB_REL})"
+    ),
+    policy_file: str | None = typer.Option(
+        None, "--policy", help="JSON canonicalisation overlay"
+    ),
 ):
     """Queue urls. No network on this path — canonicalise, dedupe, store."""
     pol = _policy_or_fail(policy_file, "later add")
@@ -425,12 +474,20 @@ def add(
     ),
 )
 def import_cmd(
-    source: str = typer.Argument(..., help="Pocket/Raindrop/browser export (.html or .csv)"),
-    folder_tags: bool = typer.Option(
-        True, "--folder-tags/--no-folder-tags", help="turn export folders/collections into tags"
+    source: str = typer.Argument(
+        ..., help="Pocket/Raindrop/browser export (.html or .csv)"
     ),
-    db: str | None = typer.Option(None, "--db", help=f"queue path (default {later.DB_REL})"),
-    policy_file: str | None = typer.Option(None, "--policy", help="JSON canonicalisation overlay"),
+    folder_tags: bool = typer.Option(
+        True,
+        "--folder-tags/--no-folder-tags",
+        help="turn export folders/collections into tags",
+    ),
+    db: str | None = typer.Option(
+        None, "--db", help=f"queue path (default {later.DB_REL})"
+    ),
+    policy_file: str | None = typer.Option(
+        None, "--policy", help="JSON canonicalisation overlay"
+    ),
 ):
     """Import a bookmark export. Reads one local file; opens no socket."""
     pol = _policy_or_fail(policy_file, "later import")
@@ -467,19 +524,32 @@ def import_cmd(
 @app.command(
     "pull",
     epilog=examples_epilog(
-        ["scout --json later pull", "scout --json later pull --min-score 2 --limit 20 --mark"]
+        [
+            "scout --json later pull",
+            "scout --json later pull --min-score 2 --limit 20 --mark",
+        ]
     ),
 )
 def pull(
-    min_score: float = typer.Option(0.0, "--min-score", help="only entries scoring at least this"),
+    min_score: float = typer.Option(
+        0.0, "--min-score", help="only entries scoring at least this"
+    ),
     limit: int = typer.Option(25, "--limit", help="most ranked entries to take"),
-    new_only: bool = typer.Option(True, "--new/--all", help="only entries not yet digested"),
+    new_only: bool = typer.Option(
+        True, "--new/--all", help="only entries not yet digested"
+    ),
     mark_digested: bool = typer.Option(
         False, "--mark/--no-mark", help="stamp the pulled feed entries as digested"
     ),
-    feeds_db: str | None = typer.Option(None, "--feeds-db", help=f"reader path ({feeds.DB_REL})"),
-    db: str | None = typer.Option(None, "--db", help=f"queue path (default {later.DB_REL})"),
-    policy_file: str | None = typer.Option(None, "--policy", help="JSON canonicalisation overlay"),
+    feeds_db: str | None = typer.Option(
+        None, "--feeds-db", help=f"reader path ({feeds.DB_REL})"
+    ),
+    db: str | None = typer.Option(
+        None, "--db", help=f"queue path (default {later.DB_REL})"
+    ),
+    policy_file: str | None = typer.Option(
+        None, "--policy", help="JSON canonicalisation overlay"
+    ),
 ):
     """Pull ranked #12 feeds entries into the queue. Reads two local dbs, no network."""
     pol = _policy_or_fail(policy_file, "later pull")
@@ -511,26 +581,41 @@ def pull(
     ),
 )
 def list_cmd(
-    state: str | None = typer.Option(None, "--state", help=f"filter: {'|'.join(later.STATES)}"),
+    state: str | None = typer.Option(
+        None, "--state", help=f"filter: {'|'.join(later.STATES)}"
+    ),
     tag: str | None = typer.Option(None, "--tag", help="filter by one tag"),
-    unfetched: bool = typer.Option(False, "--unfetched", help="only items never fetched"),
+    unfetched: bool = typer.Option(
+        False, "--unfetched", help="only items never fetched"
+    ),
     limit: int = typer.Option(later.DEFAULT_LIST_LIMIT, "--limit", help="cap rows"),
-    db: str | None = typer.Option(None, "--db", help=f"queue path (default {later.DB_REL})"),
+    db: str | None = typer.Option(
+        None, "--db", help=f"queue path (default {later.DB_REL})"
+    ),
 ):
     """List queued items, oldest save first. Reads the queue; no network."""
     conn, path = _open_existing(db, "later list")
     try:
-        items = later.list_items(conn, state=state, tag=tag, unfetched=unfetched, limit=limit)
+        items = later.list_items(
+            conn, state=state, tag=tag, unfetched=unfetched, limit=limit
+        )
     except ValueError as e:
         fail_agent(
-            str(e), command="later list", example="scout --json later list --state unread"
+            str(e),
+            command="later list",
+            example="scout --json later list --state unread",
         )
         raise  # unreachable: fail_agent exits
     emit(
         ok(
             {
                 "db": str(path),
-                "filters": {"state": state, "tag": tag, "unfetched": unfetched, "limit": limit},
+                "filters": {
+                    "state": state,
+                    "tag": tag,
+                    "unfetched": unfetched,
+                    "limit": limit,
+                },
                 "count": len(items),
                 "items": items,
                 "fingerprint": later.queue_fingerprint(conn),
@@ -554,9 +639,15 @@ def list_cmd(
 )
 def mark_cmd(
     idents: list[str] = typer.Argument(..., help="item ids, or urls in ANY spelling"),
-    state: str = typer.Option(..., "--state", help=f"new state: {'|'.join(later.STATES)}"),
-    db: str | None = typer.Option(None, "--db", help=f"queue path (default {later.DB_REL})"),
-    policy_file: str | None = typer.Option(None, "--policy", help="JSON canonicalisation overlay"),
+    state: str = typer.Option(
+        ..., "--state", help=f"new state: {'|'.join(later.STATES)}"
+    ),
+    db: str | None = typer.Option(
+        None, "--db", help=f"queue path (default {later.DB_REL})"
+    ),
+    policy_file: str | None = typer.Option(
+        None, "--policy", help="JSON canonicalisation overlay"
+    ),
 ):
     """Move items through the lifecycle. A url is matched by its canonical key."""
     pol = _policy_or_fail(policy_file, "later mark")
@@ -598,18 +689,32 @@ def mark_cmd(
     ),
 )
 def fetch_cmd(
-    limit: int = typer.Option(later.DEFAULT_FETCH_LIMIT, "--limit", help="most items to try"),
-    retry: bool = typer.Option(False, "--retry", help="also retry items whose last fetch failed"),
+    limit: int = typer.Option(
+        later.DEFAULT_FETCH_LIMIT, "--limit", help="most items to try"
+    ),
+    retry: bool = typer.Option(
+        False, "--retry", help="also retry items whose last fetch failed"
+    ),
     ingest: bool = typer.Option(
         True, "--ingest/--no-ingest", help="hand each body to the #11 extract corpus"
     ),
-    timeout: float = typer.Option(15.0, "--timeout", help="per-request timeout in seconds"),
-    fail_on: str | None = typer.Option(
-        None, "--fail-on", help="exit 1 on findings at/above this severity (the cron hook)"
+    timeout: float = typer.Option(
+        15.0, "--timeout", help="per-request timeout in seconds"
     ),
-    db: str | None = typer.Option(None, "--db", help=f"queue path (default {later.DB_REL})"),
-    corpus_db: str | None = typer.Option(None, "--corpus-db", help=f"#11 ledger ({extract.DB_REL})"),
-    rules_file: str | None = typer.Option(None, "--rules", help="JSON overlay of diagnostic rules"),
+    fail_on: str | None = typer.Option(
+        None,
+        "--fail-on",
+        help="exit 1 on findings at/above this severity (the cron hook)",
+    ),
+    db: str | None = typer.Option(
+        None, "--db", help=f"queue path (default {later.DB_REL})"
+    ),
+    corpus_db: str | None = typer.Option(
+        None, "--corpus-db", help=f"#11 ledger ({extract.DB_REL})"
+    ),
+    rules_file: str | None = typer.Option(
+        None, "--rules", help="JSON overlay of diagnostic rules"
+    ),
 ):
     """Fetch the head of the queue into the corpus. The ONE networked command."""
     _fail_on_or_die(fail_on, "later fetch")
@@ -618,12 +723,16 @@ def fetch_cmd(
     corpus = None
     corpus_path: Path | None = None
     if ingest:
-        corpus_path = Path(corpus_db or os.environ.get("SCOUT_EXTRACT_DB") or extract.DB_REL)
+        corpus_path = Path(
+            corpus_db or os.environ.get("SCOUT_EXTRACT_DB") or extract.DB_REL
+        )
         enforce_or_raise(_manifest(), "fs_write_arg", str(corpus_path))
         corpus = extract.open_store(corpus_path)
     run = later.run_fetch(
         conn,
-        lambda url: _fetch_page(url, timeout=timeout, max_bytes=extract.MAX_FETCH_BYTES),
+        lambda url: _fetch_page(
+            url, timeout=timeout, max_bytes=extract.MAX_FETCH_BYTES
+        ),
         limit=limit,
         gate=_gate,
         ingest=_make_ingest(corpus, ts=None) if ingest else None,
@@ -656,7 +765,10 @@ def fetch_cmd(
 @app.command(
     "board",
     epilog=examples_epilog(
-        ["scout --json later board", "scout --json later board --stale-days 7 --fail-on warning"]
+        [
+            "scout --json later board",
+            "scout --json later board --stale-days 7 --fail-on warning",
+        ]
     ),
 )
 def board_cmd(
@@ -666,8 +778,12 @@ def board_cmd(
     fail_on: str | None = typer.Option(
         None, "--fail-on", help="exit 1 on findings at/above this severity"
     ),
-    db: str | None = typer.Option(None, "--db", help=f"queue path (default {later.DB_REL})"),
-    rules_file: str | None = typer.Option(None, "--rules", help="JSON overlay of diagnostic rules"),
+    db: str | None = typer.Option(
+        None, "--db", help=f"queue path (default {later.DB_REL})"
+    ),
+    rules_file: str | None = typer.Option(
+        None, "--rules", help="JSON overlay of diagnostic rules"
+    ),
 ):
     """Queue rollup: states, staleness, duplicate bodies, dedupe savings."""
     _fail_on_or_die(fail_on, "later board")

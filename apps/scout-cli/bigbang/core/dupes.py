@@ -260,7 +260,9 @@ def shingle_digest(gram: list[str], *, digest_bits: int = 64) -> str:
     ["ab","c"] and ["a","bc"] fingerprint differently.
     """
     if digest_bits % 8 or not 32 <= digest_bits <= 512:
-        raise ValueError(f"digest_bits must be a multiple of 8 in 32..512, got {digest_bits}")
+        raise ValueError(
+            f"digest_bits must be a multiple of 8 in 32..512, got {digest_bits}"
+        )
     payload = _GRAM_SEP.join(t.encode("utf-8") for t in gram)
     return hashlib.blake2b(payload, digest_size=digest_bits // 8).hexdigest()
 
@@ -328,7 +330,9 @@ def fingerprint(
     }
     digest = content_hash(tokens)
     if digest is None:
-        row["errors"]["content_sha256"] = f"no-tokens: no words extracted from {len(text)} chars"
+        row["errors"]["content_sha256"] = (
+            f"no-tokens: no words extracted from {len(text)} chars"
+        )
     else:
         row["content_sha256"] = digest
     if len(tokens) < cfg["min_tokens"]:
@@ -502,7 +506,11 @@ def exact_groups(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def classify(
-    similarity: float | None, containment: float | None, *, exact: bool, config: dict[str, Any]
+    similarity: float | None,
+    containment: float | None,
+    *,
+    exact: bool,
+    config: dict[str, Any],
 ) -> str | None:
     """(similarity, containment, exact) -> "exact" | "near" | "partial" | None.
 
@@ -538,8 +546,7 @@ def compare_rows(
     set_a, set_b = set(a.get("shingles", ())), set(b.get("shingles", ()))
     both = bool(set_a) and bool(set_b)
     exact = bool(
-        a.get("content_sha256")
-        and a.get("content_sha256") == b.get("content_sha256")
+        a.get("content_sha256") and a.get("content_sha256") == b.get("content_sha256")
     )
     pair: dict[str, Any] = {
         "a": a["id"],
@@ -640,7 +647,9 @@ def cluster_pairs(pairs: list[dict[str, Any]]) -> list[dict[str, Any]]:
         grouped.setdefault(_root(parent, pair["a"]), []).append(pair)
     clusters = []
     for members_pairs in grouped.values():
-        members = sorted({p["a"] for p in members_pairs} | {p["b"] for p in members_pairs})
+        members = sorted(
+            {p["a"] for p in members_pairs} | {p["b"] for p in members_pairs}
+        )
         sims = [p["similarity"] for p in members_pairs if p["similarity"] is not None]
         clusters.append(
             {

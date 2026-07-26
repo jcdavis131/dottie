@@ -63,14 +63,22 @@ def _fake_site(pages):
         body = pages.get(url)
         if body is None:
             return {
-                "status": 404, "final_url": url, "redirects": [],
-                "content_type": "text/html", "headers": {}, "body": "nope",
+                "status": 404,
+                "final_url": url,
+                "redirects": [],
+                "content_type": "text/html",
+                "headers": {},
+                "body": "nope",
                 "error": None,
             }
         return {
-            "status": 200, "final_url": url, "redirects": [],
-            "content_type": "text/html; charset=utf-8", "headers": {"Server": "t"},
-            "body": body, "error": None,
+            "status": 200,
+            "final_url": url,
+            "redirects": [],
+            "content_type": "text/html; charset=utf-8",
+            "headers": {"Server": "t"},
+            "body": body,
+            "error": None,
         }
 
     return fetch, calls
@@ -126,9 +134,15 @@ def test_audit_flags_the_on_page_matrix():
     diags = seo.audit_page("https://site.test/x", status=200, facts=facts)
     by_rule = {d["rule"]: d for d in diags}
     assert set(by_rule) == {
-        "seo:title-missing", "seo:description-missing", "seo:canonical-missing",
-        "seo:noindex", "seo:h1-multiple", "seo:og-incomplete",
-        "seo:twitter-incomplete", "seo:img-alt", "seo:jsonld-invalid",
+        "seo:title-missing",
+        "seo:description-missing",
+        "seo:canonical-missing",
+        "seo:noindex",
+        "seo:h1-multiple",
+        "seo:og-incomplete",
+        "seo:twitter-incomplete",
+        "seo:img-alt",
+        "seo:jsonld-invalid",
     }
     assert by_rule["seo:title-missing"]["severity"] == "error"
     assert by_rule["seo:jsonld-invalid"]["severity"] == "error"
@@ -148,14 +162,18 @@ def test_audit_reachability_gates_on_page_checks():
     gone = seo.audit_page("https://site.test/", status=404, facts=facts)
     assert [d["rule"] for d in gone] == ["seo:http-error"]
     one_hop = seo.audit_page(
-        "https://site.test/", status=200, facts=facts,
+        "https://site.test/",
+        status=200,
+        facts=facts,
         redirects=[{"code": 301, "to": "https://site.test/new"}],
     )
     assert [(d["rule"], d["severity"]) for d in one_hop] == [
         ("seo:redirect", "suggestion")
     ]
     chain = seo.audit_page(
-        "https://site.test/", status=200, facts=facts,
+        "https://site.test/",
+        status=200,
+        facts=facts,
         redirects=[{"code": 301, "to": "u1"}, {"code": 302, "to": "u2"}],
     )
     assert [(d["rule"], d["severity"]) for d in chain] == [
@@ -178,7 +196,9 @@ def test_duplicate_titles_hash_normalized():
 
 def test_load_config_overlay_changes_the_verdict(tmp_path):
     facts = seo.parse_page(_linked(title="Hi"), "https://site.test/")
-    rules = {d["rule"] for d in seo.audit_page("https://site.test/", status=200, facts=facts)}
+    rules = {
+        d["rule"] for d in seo.audit_page("https://site.test/", status=200, facts=facts)
+    }
     assert "seo:title-length" in rules  # 2 chars misses the default 30-60 window
     overlay = tmp_path / "seo.json"
     overlay.write_text(json.dumps({"title": {"min": 1, "max": 60}}), encoding="utf-8")
@@ -187,7 +207,9 @@ def test_load_config_overlay_changes_the_verdict(tmp_path):
     assert cfg["description"] == seo.DEFAULT_CONFIG["description"]  # defaults kept
     relaxed = {
         d["rule"]
-        for d in seo.audit_page("https://site.test/", status=200, facts=facts, config=cfg)
+        for d in seo.audit_page(
+            "https://site.test/", status=200, facts=facts, config=cfg
+        )
     }
     assert "seo:title-length" not in relaxed
 
@@ -234,7 +256,9 @@ def test_crawl_stays_same_host_and_honors_robots():
 def test_crawl_budget_bounds_and_frontier_resumes():
     pages = {"https://site.test/": _linked("/p1", "/p2", "/p3", "/p4")}
     for i in range(1, 5):
-        pages[f"https://site.test/p{i}"] = _linked(title=f"page p{i} title padded to fit window")
+        pages[f"https://site.test/p{i}"] = _linked(
+            title=f"page p{i} title padded to fit window"
+        )
     conn = seo.open_store(":memory:")
     fetch1, _ = _fake_site(pages)
     res1 = seo.crawl(conn, "https://site.test/", fetch1, max_pages=2, ts=1.0)
@@ -296,8 +320,14 @@ def test_diagnostics_use_the_family_schema():
     diags = seo.audit_page("https://site.test/x", status=200, facts=facts)
     for d in diags:
         assert set(d) == {
-            "path", "line", "col", "rule", "severity", "message",
-            "suggestion", "source",
+            "path",
+            "line",
+            "col",
+            "rule",
+            "severity",
+            "message",
+            "suggestion",
+            "source",
         }
         assert d["severity"] in openswap.SEVERITIES
 

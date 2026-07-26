@@ -6,6 +6,7 @@ writes toil_report.md, scaffolds scout-cli plugin if new, opens PR.
 
 Solo personal project, no connection to employer, built with public/free-tier only
 """
+
 import datetime
 import json
 import re
@@ -16,7 +17,10 @@ HOME = Path.home()
 ZSH = HOME / ".zsh_history"
 BASH = HOME / ".bash_history"
 AUDIT = HOME / ".local/share/bigbang/audit.jsonl"
-REPORT_DIR = HOME / "workspace/.jarvis/idea-executions/8483d09b-da09-4743-b7b0-0d254993e216/scratch"
+REPORT_DIR = (
+    HOME
+    / "workspace/.jarvis/idea-executions/8483d09b-da09-4743-b7b0-0d254993e216/scratch"
+)
 REPORT_DIR.mkdir(parents=True, exist_ok=True)
 REPORT = REPORT_DIR / "toil_report.md"
 SCOUT_ROOT = HOME / "workspace/dottie/apps/scout-cli"
@@ -30,30 +34,35 @@ SECRET_RE = [
     re.compile(r"(api[_-]?key|token|password)\s*[:=]\s*\S+", re.I),
 ]
 
+
 def redact(s: str) -> str:
     for pat in SECRET_RE:
         s = pat.sub("[REDACTED]", s)
     return s
 
+
 def parse_zsh_line(line: str):
-    line=line.strip()
-    if not line: return None
+    line = line.strip()
+    if not line:
+        return None
     m = re.match(r":\s*\d+:0;(.+)", line)
     if m:
         return m.group(1).strip()
-    if line.startswith("#"): return None
+    if line.startswith("#"):
+        return None
     return line
 
+
 def load_history() -> list[str]:
-    cmds=[]
+    cmds = []
     for p in [ZSH, BASH]:
         if p.exists():
             try:
                 with p.open(errors="ignore") as f:
                     for line in f:
-                        c=parse_zsh_line(line)
+                        c = parse_zsh_line(line)
                         if c:
-                            c=redact(c)
+                            c = redact(c)
                             # skip empty and pure whitespace
                             if c:
                                 cmds.append(c)
@@ -65,29 +74,34 @@ def load_history() -> list[str]:
             with AUDIT.open() as f:
                 for line in f:
                     try:
-                        j=json.loads(line)
-                        cmd=j.get("command","")
-                        if cmd and cmd!="unknown":
+                        j = json.loads(line)
+                        cmd = j.get("command", "")
+                        if cmd and cmd != "unknown":
                             cmds.append(redact(f"scout {cmd}"))
-                    except: continue
-        except: pass
+                    except:
+                        continue
+        except:
+            pass
     return cmds
 
-def cluster_ngrams(cmds: list[str], ns=(2,3,4,5)) -> Counter:
-    cnt=Counter()
+
+def cluster_ngrams(cmds: list[str], ns=(2, 3, 4, 5)) -> Counter:
+    cnt = Counter()
     for n in ns:
-        for i in range(len(cmds)-n+1):
-            seq=tuple(cmds[i:i+n])
-            cnt[seq]+=1
+        for i in range(len(cmds) - n + 1):
+            seq = tuple(cmds[i : i + n])
+            cnt[seq] += 1
     return cnt
 
-def pick_top_candidate(ngram_counts: Counter) -> tuple[tuple[str,...], int]:
+
+def pick_top_candidate(ngram_counts: Counter) -> tuple[tuple[str, ...], int]:
     # Prefer sequences with >3 steps, containing git and pytest, or high frequency
     # Sort by steps desc then count desc
-    candidates = [(seq,c) for seq,c in ngram_counts.items() if len(seq)>=3]
+    candidates = [(seq, c) for seq, c in ngram_counts.items() if len(seq) >= 3]
+
     # Boost dev_loop pattern
     def score(item):
-        seq,c = item
+        seq, c = item
         boost = 0
         seq_str = " ".join(seq)
         if "git status" in seq_str and "pytest" in seq_str:
@@ -95,17 +109,20 @@ def pick_top_candidate(ngram_counts: Counter) -> tuple[tuple[str,...], int]:
         if "git add" in seq_str and "git commit" in seq_str:
             boost += 500
         return (boost, len(seq), c)
+
     candidates.sort(key=score, reverse=True)
     if candidates:
         return candidates[0]
     # fallback
     if ngram_counts:
         return ngram_counts.most_common(1)[0]
-    return ((),0)
+    return ((), 0)
+
 
 def estimate_savings(per_week: float, steps: int):
     # 2 min per step
     return per_week * steps * 2
+
 
 def main():
     print("Toil Finder Nightly — 02:00 America/Chicago")
@@ -130,9 +147,9 @@ Repo: {SCOUT_ROOT}
 Mode: Home Scout — Single CLI Doctrine
 
 ## History Sources
-- ~/.zsh_history — {'found' if ZSH.exists() else 'missing'} {ZSH.stat().st_size if ZSH.exists() else 0} bytes
-- ~/.bash_history — {'found' if BASH.exists() else 'missing'} {BASH.stat().st_size if BASH.exists() else 0} bytes
-- Audit log — {'found' if AUDIT.exists() else 'missing'}
+- ~/.zsh_history — {"found" if ZSH.exists() else "missing"} {ZSH.stat().st_size if ZSH.exists() else 0} bytes
+- ~/.bash_history — {"found" if BASH.exists() else "missing"} {BASH.stat().st_size if BASH.exists() else 0} bytes
+- Audit log — {"found" if AUDIT.exists() else "missing"}
 
 ## Stats
 - Total commands: {len(cmds)}
@@ -143,16 +160,16 @@ Mode: Home Scout — Single CLI Doctrine
     for c, cnt in cmd_counter.most_common(15):
         report += f"- {c[:100]} — {cnt}x\n"
     report += "\n## Top N-Grams\n"
-    for seq,c in ngram_counts.most_common(10):
+    for seq, c in ngram_counts.most_common(10):
         report += f"- {' -> '.join(seq)} : {c}x\n"
 
     report += f"""
 ## Selected Toil Candidate
-- Sequence: {' -> '.join(top_seq)}
+- Sequence: {" -> ".join(top_seq)}
 - Total: {top_cnt}
-- Per week: {per_week:.1f} (threshold >5/week: {'✅' if per_week>5 else '❌'})
-- Steps: {steps} (threshold >3: {'✅' if steps>3 else '❌'})
-- Savings: ~{savings:.0f} min/week ({savings/60:.1f} hrs)
+- Per week: {per_week:.1f} (threshold >5/week: {"✅" if per_week > 5 else "❌"})
+- Steps: {steps} (threshold >3: {"✅" if steps > 3 else "❌"})
+- Savings: ~{savings:.0f} min/week ({savings / 60:.1f} hrs)
 - Proposed plugin: dev_loop (git status -> pytest -q -> git add -A -> git commit -m -> git push)
 
 ## Safety
@@ -174,6 +191,7 @@ Mode: Home Scout — Single CLI Doctrine
         # For now, just log
     else:
         print("No candidate meets threshold")
+
 
 if __name__ == "__main__":
     main()

@@ -1,10 +1,11 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
 """serve.py — JSON-RPC notification handling and graph-path containment."""
+
 import json
 
 import pytest
 
-from personal_graphify.serve import handle_stdio_line, load_graph, handle_tool_call
+from personal_graphify.serve import handle_stdio_line, handle_tool_call, load_graph
 
 
 class TestStdioNotifications:
@@ -17,7 +18,9 @@ class TestStdioNotifications:
         assert handle_stdio_line(line) is None
 
     def test_initialize_with_id_replies(self):
-        line = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        line = json.dumps(
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
+        )
         resp = handle_stdio_line(line)
         assert resp["id"] == 1
         assert resp["result"]["serverInfo"]["name"] == "personal-graphify"
@@ -40,7 +43,9 @@ class TestStdioNotifications:
     def test_simulated_session_through_loop_handler(self):
         """A realistic MCP handshake: initialize → notifications/initialized → tools/list."""
         session = [
-            json.dumps({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {}}),
+            json.dumps(
+                {"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {}}
+            ),
             json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}),
             json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}),
         ]
@@ -65,7 +70,10 @@ class TestGraphContainment:
         root = tmp_path / "root"
         root.mkdir()
         gpath = root / "graph.json"
-        gpath.write_text(json.dumps({"nodes": [{"id": "n1", "label": "n1"}], "edges": []}), encoding="utf-8")
+        gpath.write_text(
+            json.dumps({"nodes": [{"id": "n1", "label": "n1"}], "edges": []}),
+            encoding="utf-8",
+        )
         G, resolved = load_graph(str(gpath), allowed_root=root)
         assert G.number_of_nodes() == 1
 
@@ -74,7 +82,10 @@ class TestGraphContainment:
         root.mkdir()
         outside = tmp_path / "secret.json"
         outside.write_text(json.dumps({"nodes": [], "edges": []}), encoding="utf-8")
-        result = handle_tool_call("graphify_query", {"question": "x", "graph": str(outside)},
-                                  allowed_root=root)
+        result = handle_tool_call(
+            "graphify_query",
+            {"question": "x", "graph": str(outside)},
+            allowed_root=root,
+        )
         assert "error" in result
         assert "escapes root" in result["error"]

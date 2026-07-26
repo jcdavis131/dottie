@@ -213,7 +213,9 @@ def load_rules(path: str | Path | None = None) -> dict[str, dict[str, Any]]:
         raise ValueError("rules file must be a JSON object of {rule_id: overlay}")
     for rule, over in raw.items():
         if rule not in merged:
-            raise ValueError(f"unknown rule {rule!r} (choose from {', '.join(sorted(merged))})")
+            raise ValueError(
+                f"unknown rule {rule!r} (choose from {', '.join(sorted(merged))})"
+            )
         if not isinstance(over, dict):
             raise ValueError(f"rule {rule!r}: overlay must be an object")
         if "severity" in over:
@@ -298,10 +300,30 @@ _CONTAINER_FIELDS = ("journal", "journaltitle", "booktitle", "series")
 _PUBLISHER_FIELDS = ("publisher", "institution", "school", "organization")
 
 MONTHS = {
-    "jan": 1, "january": 1, "feb": 2, "february": 2, "mar": 3, "march": 3,
-    "apr": 4, "april": 4, "may": 5, "jun": 6, "june": 6, "jul": 7, "july": 7,
-    "aug": 8, "august": 8, "sep": 9, "sept": 9, "september": 9, "oct": 10,
-    "october": 10, "nov": 11, "november": 11, "dec": 12, "december": 12,
+    "jan": 1,
+    "january": 1,
+    "feb": 2,
+    "february": 2,
+    "mar": 3,
+    "march": 3,
+    "apr": 4,
+    "april": 4,
+    "may": 5,
+    "jun": 6,
+    "june": 6,
+    "jul": 7,
+    "july": 7,
+    "aug": 8,
+    "august": 8,
+    "sep": 9,
+    "sept": 9,
+    "september": 9,
+    "oct": 10,
+    "october": 10,
+    "nov": 11,
+    "november": 11,
+    "dec": 12,
+    "december": 12,
 }
 
 
@@ -332,9 +354,19 @@ _ACCENTS = {
     "k": "̨",  # ogonek
 }
 _LIGATURES = {
-    r"\ss": "ß", r"\aa": "å", r"\AA": "Å", r"\ae": "æ",
-    r"\AE": "Æ", r"\oe": "œ", r"\OE": "Œ", r"\o": "ø",
-    r"\O": "Ø", r"\l": "ł", r"\L": "Ł", r"\i": "i", r"\j": "j",
+    r"\ss": "ß",
+    r"\aa": "å",
+    r"\AA": "Å",
+    r"\ae": "æ",
+    r"\AE": "Æ",
+    r"\oe": "œ",
+    r"\OE": "Œ",
+    r"\o": "ø",
+    r"\O": "Ø",
+    r"\l": "ł",
+    r"\L": "Ł",
+    r"\i": "i",
+    r"\j": "j",
 }
 _ACCENT_RE = re.compile(
     r"\\([`'^\"~=.]|[cvuHrdbk])\s*(?:\{\s*(\\i|\\j|[A-Za-z])\s*\}|(\\i|\\j|[A-Za-z]))"
@@ -603,7 +635,9 @@ def _parse_entry_body(
             unresolved = [m for m in used if m.lower() not in strings]
             if unresolved:
                 unresolved_macros[name] = unresolved
-            strings_used.update({m: strings[m.lower()] for m in used if m.lower() in strings})
+            strings_used.update(
+                {m: strings[m.lower()] for m in used if m.lower() in strings}
+            )
     if any(p["rule"] in REJECTING_RULES for p in problems):
         return None, problems
     entry = {
@@ -741,7 +775,13 @@ def parse_bibtex(
                 }
             )
             rejected.append(
-                {"key": None, "type": etype, "line": line, "rule": "cite:unterminated-entry", "raw": src[at : at + 200]}
+                {
+                    "key": None,
+                    "type": etype,
+                    "line": line,
+                    "rule": "cite:unterminated-entry",
+                    "raw": src[at : at + 200],
+                }
             )
             counts["truncated"] = True
             break
@@ -768,7 +808,11 @@ def parse_bibtex(
                     "key": (elements[0].strip() or None) if elements else None,
                     "type": etype,
                     "line": line,
-                    "rule": next(p["rule"] for p in entry_problems if p["rule"] in REJECTING_RULES),
+                    "rule": next(
+                        p["rule"]
+                        for p in entry_problems
+                        if p["rule"] in REJECTING_RULES
+                    ),
                     "raw": raw,
                 }
             )
@@ -783,7 +827,13 @@ def parse_bibtex(
                 }
             )
             rejected.append(
-                {"key": entry["key"], "type": etype, "line": line, "rule": "cite:duplicate-key", "raw": raw}
+                {
+                    "key": entry["key"],
+                    "type": etype,
+                    "line": line,
+                    "rule": "cite:duplicate-key",
+                    "raw": raw,
+                }
             )
             continue
         seen[entry["key"]] = line
@@ -903,7 +953,9 @@ def roundtrip_report(entry: dict[str, Any]) -> dict[str, Any]:
     parsed = parse_bibtex(emitted, path="<roundtrip>")
     if len(parsed["entries"]) != 1:
         rules = sorted({r["rule"] for r in parsed["rejected"]}) or ["cite:no-entry"]
-        report["error"] = f"re-parse produced {len(parsed['entries'])} entries ({', '.join(rules)})"
+        report["error"] = (
+            f"re-parse produced {len(parsed['entries'])} entries ({', '.join(rules)})"
+        )
         return report
     back = parsed["entries"][0]
     report["reparsed"] = True
@@ -924,7 +976,9 @@ def roundtrip_report(entry: dict[str, Any]) -> dict[str, Any]:
         for n in sorted(set(before) & set(after))
         if before[n] != after[n]
     ]
-    report["type_preserved"] = back["type"] == entry["type"] and back["key"] == entry["key"]
+    report["type_preserved"] = (
+        back["type"] == entry["type"] and back["key"] == entry["key"]
+    )
     report["order_preserved"] = back["field_order"] == ordered_fields(entry)
     report["identical"] = (
         not report["lost_fields"]
@@ -1013,7 +1067,7 @@ def _first_alpha_lower(token: str) -> bool:
 
 
 def _split_von(chunk: str) -> tuple[list[str], list[str]]:
-    """"von Last" -> (von tokens, family tokens). The last token is never von."""
+    """ "von Last" -> (von tokens, family tokens). The last token is never von."""
     tokens = _split_ws_top(chunk)
     i = 0
     while i < len(tokens) - 1 and _first_alpha_lower(tokens[i]):
@@ -1022,7 +1076,7 @@ def _split_von(chunk: str) -> tuple[list[str], list[str]]:
 
 
 def _first_von_last(chunk: str) -> tuple[list[str], list[str], list[str]]:
-    """"First von Last" -> (given, von, family) by the BibTeX lowercase rule."""
+    """ "First von Last" -> (given, von, family) by the BibTeX lowercase rule."""
     tokens = _split_ws_top(chunk)
     if len(tokens) <= 1:
         return [], [], tokens
@@ -1043,7 +1097,14 @@ def parse_name(raw: str) -> dict[str, Any]:
     s = raw.strip()
     if s.startswith("{") and s.endswith("}") and balanced(s) and balanced(s[1:-1]):
         inner = s[1:-1].strip()
-        return {"given": "", "von": "", "family": inner, "jr": "", "literal": inner, "corporate": True}
+        return {
+            "given": "",
+            "von": "",
+            "family": inner,
+            "jr": "",
+            "literal": inner,
+            "corporate": True,
+        }
     parts = [p.strip() for p in split_top(s, ",")]
     if len(parts) >= 3:
         von, family = _split_von(parts[0])
@@ -1077,7 +1138,7 @@ def entry_names(entry: dict[str, Any]) -> tuple[list[dict[str, Any]], str | None
 
 
 def initials(given: str) -> str:
-    """"John Ronald" -> "J. R."; "Jean-Robert" -> "J.-R.". Empty stays empty."""
+    """ "John Ronald" -> "J. R."; "Jean-Robert" -> "J.-R.". Empty stays empty."""
     chunks = []
     for token in _split_ws_top(delatex(given)):
         pieces = [p for p in token.split("-") if p]
@@ -1157,7 +1218,13 @@ def normalize_doi(value: str) -> str | None:
     a SHAPE check and the docstring for cite:bad-doi says so.
     """
     v = (value or "").strip().lower()
-    for prefix in ("https://doi.org/", "http://doi.org/", "https://dx.doi.org/", "http://dx.doi.org/", "doi:"):
+    for prefix in (
+        "https://doi.org/",
+        "http://doi.org/",
+        "https://dx.doi.org/",
+        "http://dx.doi.org/",
+        "doi:",
+    ):
         if v.startswith(prefix):
             v = v[len(prefix) :].strip()
     return v if _DOI_RE.match(v) else None
@@ -1197,9 +1264,17 @@ NO_DATE = "n.d."
 def _apa(entry: dict[str, Any], names: list[dict[str, Any]], year: int | None) -> str:
     authors = _join([display_name(n, "family-initials") for n in names], last=", & ")
     title = delatex(_field(entry, "title"))
-    bits = [f"{authors} ({year if year else NO_DATE}). {title}." if authors else f"{title}. ({year if year else NO_DATE})."]
+    bits = [
+        f"{authors} ({year if year else NO_DATE}). {title}."
+        if authors
+        else f"{title}. ({year if year else NO_DATE})."
+    ]
     container = delatex(_field(entry, *_CONTAINER_FIELDS))
-    vol, num, pages = _field(entry, "volume"), _field(entry, "number", "issue"), delatex(_field(entry, "pages"))
+    vol, num, pages = (
+        _field(entry, "volume"),
+        _field(entry, "number", "issue"),
+        delatex(_field(entry, "pages")),
+    )
     if container:
         seg = container
         if vol:
@@ -1221,9 +1296,12 @@ def _apa(entry: dict[str, Any], names: list[dict[str, Any]], year: int | None) -
 
 
 def _mla(entry: dict[str, Any], names: list[dict[str, Any]], year: int | None) -> str:
-    shown = [display_name(names[0], "family-given")] + [
-        display_name(n, "given-family") for n in names[1:]
-    ] if names else []
+    shown = (
+        [display_name(names[0], "family-given")]
+        + [display_name(n, "given-family") for n in names[1:]]
+        if names
+        else []
+    )
     # MLA 9 uses ", and " before the final name at every list length; the "et al."
     # short form is NOT applied here (a truncation rule differs per edition and a
     # wrong one is a fabricated citation — see SCOPE_LIMITS).
@@ -1252,10 +1330,15 @@ def _mla(entry: dict[str, Any], names: list[dict[str, Any]], year: int | None) -
     return " ".join(bits)
 
 
-def _chicago(entry: dict[str, Any], names: list[dict[str, Any]], year: int | None) -> str:
-    shown = [display_name(names[0], "family-given")] + [
-        display_name(n, "given-family") for n in names[1:]
-    ] if names else []
+def _chicago(
+    entry: dict[str, Any], names: list[dict[str, Any]], year: int | None
+) -> str:
+    shown = (
+        [display_name(names[0], "family-given")]
+        + [display_name(n, "given-family") for n in names[1:]]
+        if names
+        else []
+    )
     bits = []
     if shown:
         bits.append(_join(shown, last=", and ") + ".")
@@ -1278,7 +1361,10 @@ def _chicago(entry: dict[str, Any], names: list[dict[str, Any]], year: int | Non
 
 
 def _ieee(entry: dict[str, Any], names: list[dict[str, Any]], year: int | None) -> str:
-    authors = _join([display_name(n, "initials-family") for n in names], last=", and " if len(names) > 2 else " and ")
+    authors = _join(
+        [display_name(n, "initials-family") for n in names],
+        last=", and " if len(names) > 2 else " and ",
+    )
     bits = []
     if authors:
         bits.append(authors + ",")
@@ -1291,7 +1377,9 @@ def _ieee(entry: dict[str, Any], names: list[dict[str, Any]], year: int | None) 
         tail.append(f"vol. {_field(entry, 'volume')}")
     if _field(entry, "number", "issue"):
         tail.append(f"no. {_field(entry, 'number', 'issue')}")
-    if _field(entry, *_PUBLISHER_FIELDS):  # required for @book/@techreport — must render
+    if _field(
+        entry, *_PUBLISHER_FIELDS
+    ):  # required for @book/@techreport — must render
         tail.append(delatex(_field(entry, *_PUBLISHER_FIELDS)))
     if _field(entry, "pages"):
         tail.append(f"pp. {delatex(_field(entry, 'pages'))}")
@@ -1312,7 +1400,11 @@ def in_text(entry: dict[str, Any], style: str, *, index: int | None = None) -> s
     # The von particle belongs in the in-text marker: APA cites "de la Fontaine",
     # not "Fontaine", and dropping it would print a name nobody can look up.
     families = [
-        delatex(n["literal"] if n.get("corporate") else " ".join(p for p in (n["von"], n["family"]) if p))
+        delatex(
+            n["literal"]
+            if n.get("corporate")
+            else " ".join(p for p in (n["von"], n["family"]) if p)
+        )
         for n in names
     ] or [entry["key"]]
     if style == "apa":
@@ -1323,7 +1415,9 @@ def in_text(entry: dict[str, Any], style: str, *, index: int | None = None) -> s
     return f"({_join(families, last=' and ')} {year if year else NO_DATE})"
 
 
-def render(entry: dict[str, Any], style: str, *, index: int | None = None) -> dict[str, Any]:
+def render(
+    entry: dict[str, Any], style: str, *, index: int | None = None
+) -> dict[str, Any]:
     """One reference in one style. EITHER `text` OR `error`, never both/neither.
 
     A missing required field is an error naming the fields, because a reference
@@ -1376,7 +1470,9 @@ def render(entry: dict[str, Any], style: str, *, index: int | None = None) -> di
 SORT_KEYS = ("key", "author", "year", "type")
 
 
-def sort_entries(entries: list[dict[str, Any]], by: str = "key") -> list[dict[str, Any]]:
+def sort_entries(
+    entries: list[dict[str, Any]], by: str = "key"
+) -> list[dict[str, Any]]:
     """Deterministic ordering. Ties always fall through to the key.
 
     Lowercase compare, not locale collation (SCOPE_LIMITS says so): a collation
@@ -1475,7 +1571,16 @@ _CSL_FIELDS = {
     "language": "language",
 }
 _CSL_HANDLED = frozenset(
-    {*_CSL_FIELDS, *_AUTHOR_FIELDS, *_CONTAINER_FIELDS, *_PUBLISHER_FIELDS, "doi", "year", "date", "month"}
+    {
+        *_CSL_FIELDS,
+        *_AUTHOR_FIELDS,
+        *_CONTAINER_FIELDS,
+        *_PUBLISHER_FIELDS,
+        "doi",
+        "year",
+        "date",
+        "month",
+    }
 )
 
 
@@ -1491,7 +1596,10 @@ def to_csl(entry: dict[str, Any]) -> dict[str, Any]:
         item["editor" if role == "editor" else "author"] = [
             {"literal": delatex(str(n["literal"]))}
             if n.get("corporate")
-            else {"family": delatex(" ".join(p for p in (n["von"], n["family"]) if p)), "given": delatex(n["given"])}
+            else {
+                "family": delatex(" ".join(p for p in (n["von"], n["family"]) if p)),
+                "given": delatex(n["given"]),
+            }
             for n in names
         ]
     for bib, csl in _CSL_FIELDS.items():
@@ -1546,7 +1654,15 @@ def parse_csl_json(text: str, *, path: str = "<csl-json>") -> dict[str, Any]:
                     "suggestion": 'give every item an "id"',
                 }
             )
-            rejected.append({"key": None, "type": None, "line": pos, "rule": "cite:csl-missing-id", "raw": json.dumps(item)[:200]})
+            rejected.append(
+                {
+                    "key": None,
+                    "type": None,
+                    "line": pos,
+                    "rule": "cite:csl-missing-id",
+                    "raw": json.dumps(item)[:200],
+                }
+            )
             continue
         key = str(item["id"]).strip()
         entry = _entry_from_csl(key, item)
@@ -1560,7 +1676,15 @@ def parse_csl_json(text: str, *, path: str = "<csl-json>") -> dict[str, Any]:
                     "suggestion": "make every id unique",
                 }
             )
-            rejected.append({"key": key, "type": entry["type"], "line": pos, "rule": "cite:duplicate-key", "raw": json.dumps(item)[:200]})
+            rejected.append(
+                {
+                    "key": key,
+                    "type": entry["type"],
+                    "line": pos,
+                    "rule": "cite:duplicate-key",
+                    "raw": json.dumps(item)[:200],
+                }
+            )
             continue
         seen.add(key)
         entry["line"] = pos
@@ -1603,21 +1727,44 @@ def _entry_from_csl(key: str, item: dict[str, Any]) -> dict[str, Any]:
     for role in ("author", "editor"):
         people = item.get(role)
         if isinstance(people, list) and people:
-            _put(role, " and ".join(_csl_name_to_bibtex(p) for p in people if isinstance(p, dict)))
+            _put(
+                role,
+                " and ".join(
+                    _csl_name_to_bibtex(p) for p in people if isinstance(p, dict)
+                ),
+            )
     _put("title", item.get("title") or "")
-    _put("journal" if btype == "article" else "booktitle", item.get("container-title") or "")
+    _put(
+        "journal" if btype == "article" else "booktitle",
+        item.get("container-title") or "",
+    )
     _put("publisher", item.get("publisher") or "")
     parts = ((item.get("issued") or {}).get("date-parts") or [[]])[0]
     if parts:
         _put("year", parts[0])
         if len(parts) > 1:
             _put("month", parts[1])
-    for csl_key, bib in (("volume", "volume"), ("issue", "number"), ("page", "pages"),
-                         ("DOI", "doi"), ("URL", "url"), ("edition", "edition"),
-                         ("ISBN", "isbn"), ("ISSN", "issn"), ("abstract", "abstract"),
-                         ("note", "note"), ("language", "language")):
+    for csl_key, bib in (
+        ("volume", "volume"),
+        ("issue", "number"),
+        ("page", "pages"),
+        ("DOI", "doi"),
+        ("URL", "url"),
+        ("edition", "edition"),
+        ("ISBN", "isbn"),
+        ("ISSN", "issn"),
+        ("abstract", "abstract"),
+        ("note", "note"),
+        ("language", "language"),
+    ):
         _put(bib, item.get(csl_key) or "")
-    raw = {"key": key, "type": btype, "fields": fields, "field_order": order, "macros": {}}
+    raw = {
+        "key": key,
+        "type": btype,
+        "fields": fields,
+        "field_order": order,
+        "macros": {},
+    }
     raw["raw"] = to_bibtex(raw)
     return raw
 
@@ -1679,7 +1826,9 @@ def open_store(path: str | Path) -> sqlite3.Connection:
     return conn
 
 
-def _write_entry(conn: sqlite3.Connection, entry: dict[str, Any], *, source: str | None, now: float) -> None:
+def _write_entry(
+    conn: sqlite3.Connection, entry: dict[str, Any], *, source: str | None, now: float
+) -> None:
     conn.execute("DELETE FROM fields WHERE key = ?", (entry["key"],))
     conn.execute(
         "INSERT OR REPLACE INTO entries(key, type, raw, source, line, added_ts, strings)"
@@ -1696,7 +1845,10 @@ def _write_entry(conn: sqlite3.Connection, entry: dict[str, Any], *, source: str
     )
     conn.executemany(
         "INSERT INTO fields(key, name, value, pos) VALUES(?, ?, ?, ?)",
-        [(entry["key"], n, (entry["fields"] or {})[n], i) for i, n in enumerate(ordered_fields(entry))],
+        [
+            (entry["key"], n, (entry["fields"] or {})[n], i)
+            for i, n in enumerate(ordered_fields(entry))
+        ],
     )
 
 
@@ -1717,7 +1869,9 @@ def import_entries(
     reports exactly what would happen and leaves the file untouched.
     """
     if on_conflict not in CONFLICT_POLICIES:
-        raise ValueError(f"on_conflict must be one of {'|'.join(CONFLICT_POLICIES)}, got {on_conflict!r}")
+        raise ValueError(
+            f"on_conflict must be one of {'|'.join(CONFLICT_POLICIES)}, got {on_conflict!r}"
+        )
     stamp = time.time() if now is None else float(now)
     existing = {r["key"] for r in conn.execute("SELECT key FROM entries").fetchall()}
     conflicts = [e["key"] for e in entries if e["key"] in existing]
@@ -1875,7 +2029,12 @@ def query(
             continue
         if author_contains:
             names, _ = entry_names(entry)
-            hay = " ".join(delatex(f"{n.get('given','')} {n.get('von','')} {n.get('family','')}") for n in names).lower()
+            hay = " ".join(
+                delatex(
+                    f"{n.get('given', '')} {n.get('von', '')} {n.get('family', '')}"
+                )
+                for n in names
+            ).lower()
             if author_contains.lower() not in hay:
                 continue
         year = entry_year(entry)
@@ -1883,7 +2042,10 @@ def query(
             continue
         if year_max is not None and (year is None or year > year_max):
             continue
-        if wanted_doi is not None and normalize_doi(entry["fields"].get("doi", "")) != wanted_doi:
+        if (
+            wanted_doi is not None
+            and normalize_doi(entry["fields"].get("doi", "")) != wanted_doi
+        ):
             continue
         out.append(entry)
     return out[offset : offset + limit] if limit >= 0 else out[offset:]
@@ -1905,7 +2067,9 @@ def library_stats(conn: sqlite3.Connection) -> dict[str, Any]:
         y
         for y in (
             entry_year({"fields": {"year": r["value"]}})
-            for r in conn.execute("SELECT value FROM fields WHERE name IN ('year','date')").fetchall()
+            for r in conn.execute(
+                "SELECT value FROM fields WHERE name IN ('year','date')"
+            ).fetchall()
         )
         if y is not None
     ]
@@ -1919,7 +2083,9 @@ def library_stats(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
-def store_roundtrip(conn: sqlite3.Connection, keys: list[str] | None = None) -> dict[str, Any]:
+def store_roundtrip(
+    conn: sqlite3.Connection, keys: list[str] | None = None
+) -> dict[str, Any]:
     """Round-trip every stored entry AND diff it against the original .bib text.
 
     Two experiments per entry, because they can fail independently:
@@ -1927,14 +2093,26 @@ def store_roundtrip(conn: sqlite3.Connection, keys: list[str] | None = None) -> 
     text that was imported (did the STORE drop anything?), and the emit/reparse
     report catches an emitter that cannot write what it read.
     """
-    target = keys if keys is not None else [
-        r["key"] for r in conn.execute("SELECT key FROM entries ORDER BY key ASC").fetchall()
-    ]
+    target = (
+        keys
+        if keys is not None
+        else [
+            r["key"]
+            for r in conn.execute("SELECT key FROM entries ORDER BY key ASC").fetchall()
+        ]
+    )
     reports = []
     for key in target:
         entry = load_entry(conn, key)
         if entry is None:
-            reports.append({"key": key, "identical": False, "error": "not in the library", "store_faithful": None})
+            reports.append(
+                {
+                    "key": key,
+                    "identical": False,
+                    "error": "not in the library",
+                    "store_faithful": None,
+                }
+            )
             continue
         report = roundtrip_report(entry)
         report["store_faithful"], report["store_diff"] = _store_faithful(entry)
@@ -1958,15 +2136,21 @@ def _store_faithful(entry: dict[str, Any]) -> tuple[bool | None, dict[str, Any] 
     "the journal changed in the store" would be a fabricated finding.
     """
     raw = entry.get("raw") or ""
-    parsed = parse_bibtex(raw, path="<stored-raw>", strings=entry.get("strings_used") or {})
+    parsed = parse_bibtex(
+        raw, path="<stored-raw>", strings=entry.get("strings_used") or {}
+    )
     if len(parsed["entries"]) != 1:
-        return None, {"reason": "stored raw text does not re-parse to exactly one entry"}
+        return None, {
+            "reason": "stored raw text does not re-parse to exactly one entry"
+        }
     original = parsed["entries"][0]["fields"]
     stored = entry.get("fields") or {}
     diff = {
         "missing_from_store": sorted(set(original) - set(stored)),
         "extra_in_store": sorted(set(stored) - set(original)),
-        "changed": sorted(n for n in set(original) & set(stored) if original[n] != stored[n]),
+        "changed": sorted(
+            n for n in set(original) & set(stored) if original[n] != stored[n]
+        ),
     }
     return (not any(diff.values())), diff
 
@@ -1974,7 +2158,8 @@ def _store_faithful(entry: dict[str, Any]) -> tuple[bool | None, dict[str, Any] 
 def delete_entries(conn: sqlite3.Connection, keys: list[str]) -> dict[str, Any]:
     """Remove keys; report which were actually present rather than claiming N."""
     present = {
-        r["key"] for r in conn.execute("SELECT key FROM entries ORDER BY key ASC").fetchall()
+        r["key"]
+        for r in conn.execute("SELECT key FROM entries ORDER BY key ASC").fetchall()
     }
     hit = sorted(k for k in keys if k in present)
     miss = sorted(k for k in keys if k not in present)

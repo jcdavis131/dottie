@@ -1,5 +1,4 @@
 import json
-import re
 import sqlite3
 
 DB = r"C:\Users\jcdav\dottie\tasks\artifacts\ledger_copy.sqlite3"
@@ -20,7 +19,9 @@ v = impl.get("validation", {})
 print("validation keys:", list(v.keys()))
 pl = v.get("per_level", {})
 for lvl, d in pl.items():
-    print(f"  per_level[{lvl}]: status={d.get('status')} detail_len={len(d.get('detail',''))}")
+    print(
+        f"  per_level[{lvl}]: status={d.get('status')} detail_len={len(d.get('detail', ''))}"
+    )
 
 print("\n--- tails of 8 dry_run failures (last 500 chars) ---")
 n = 0

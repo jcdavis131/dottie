@@ -39,7 +39,7 @@ import hashlib
 import json
 from collections import Counter
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -66,12 +66,12 @@ def _rankdata(a: np.ndarray) -> np.ndarray:
         j = i
         while j + 1 < len(a) and sa[j + 1] == sa[i]:
             j += 1
-        ranks[order[i:j + 1]] = 0.5 * (i + j)
+        ranks[order[i : j + 1]] = 0.5 * (i + j)
         i = j + 1
     return ranks
 
 
-def spearman(x: np.ndarray, y: np.ndarray) -> Optional[float]:
+def spearman(x: np.ndarray, y: np.ndarray) -> float | None:
     if len(x) < 3:
         return None
     rx, ry = _rankdata(np.asarray(x, np.float64)), _rankdata(np.asarray(y, np.float64))
@@ -80,25 +80,33 @@ def spearman(x: np.ndarray, y: np.ndarray) -> Optional[float]:
     return float(np.corrcoef(rx, ry)[0, 1])
 
 
-def _crosscheck(rows: List[Dict[str, Any]], artifact: Dict[str, Any]) -> Dict[str, Any]:
+def _crosscheck(rows: list[dict[str, Any]], artifact: dict[str, Any]) -> dict[str, Any]:
     """Recompute mean per-week baseline Spearman from the exported rows and put
     the artifact's numbers alongside; scored-group rows only, like the backtest."""
     scored = [r for r in rows if r["in_scored_group"]]
-    out: Dict[str, Any] = {}
+    out: dict[str, Any] = {}
     for g in list(SKILL) + ["ALL"]:
         grp = scored if g == "ALL" else [r for r in scored if r["pos"] == g]
         rhos_l4, rhos_std = [], []
         for w in sorted({r["week"] for r in grp}):
             wk = [r for r in grp if r["week"] == w]
-            l4 = spearman(np.array([r["forecast_last4_ppr"] for r in wk]),
-                          np.array([r["actual_fpts_ppr"] for r in wk]))
-            st = spearman(np.array([r["forecast_std_ppr"] for r in wk]),
-                          np.array([r["actual_fpts_ppr"] for r in wk]))
+            l4 = spearman(
+                np.array([r["forecast_last4_ppr"] for r in wk]),
+                np.array([r["actual_fpts_ppr"] for r in wk]),
+            )
+            st = spearman(
+                np.array([r["forecast_std_ppr"] for r in wk]),
+                np.array([r["actual_fpts_ppr"] for r in wk]),
+            )
             if l4 is not None:
                 rhos_l4.append(l4)
             if st is not None:
                 rhos_std.append(st)
-        art = artifact["overall"] if g == "ALL" else artifact.get("positions", {}).get(g, {})
+        art = (
+            artifact["overall"]
+            if g == "ALL"
+            else artifact.get("positions", {}).get(g, {})
+        )
         out[g] = {
             "recomputed_last4": round(float(np.mean(rhos_l4)), 4) if rhos_l4 else None,
             "artifact_last4": art.get("baseline_last4"),
@@ -110,13 +118,13 @@ def _crosscheck(rows: List[Dict[str, Any]], artifact: Dict[str, Any]) -> Dict[st
     return out
 
 
-def export_rows(root: Path) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+def export_rows(root: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     artifact = json.loads((root / "assets" / "eval_backtest.json").read_text("utf-8"))
     data = root / "pipeline" / "data"
     manifest = json.loads((data / "feature_manifest.json").read_text("utf-8"))
     npz = np.load(data / "train_matrix.npz", allow_pickle=True)
 
-    feats: List[str] = list(manifest["features"])
+    feats: list[str] = list(manifest["features"])
     i_l4, i_std = feats.index("f_fpts_ppr"), feats.index("std_ppr")
     i_y = list(manifest["targets"]).index("fpts_ppr")
     test_season = int(artifact["season"])
@@ -133,26 +141,32 @@ def export_rows(root: Path) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     group_n = Counter((int(week[i]), pos[i]) for i in idx)
 
     Z, M, Y = npz["Z"], npz["mask"], npz["Y"]
-    name, gsis, team = npz["name"].astype(str), npz["gsis"].astype(str), npz["team"].astype(str)
+    name, gsis, team = (
+        npz["name"].astype(str),
+        npz["gsis"].astype(str),
+        npz["team"].astype(str),
+    )
 
-    rows: List[Dict[str, Any]] = []
+    rows: list[dict[str, Any]] = []
     for i in idx:
         w, p = int(week[i]), pos[i]
         y = float(Y[i, i_y])
-        rows.append({
-            "season": test_season,
-            "week": w,
-            "gsis": gsis[i],
-            "name": name[i],
-            "pos": p,
-            "team": team[i],
-            "forecast_last4_ppr": round(float(Z[i, i_l4]), 4),
-            "forecast_std_ppr": round(float(Z[i, i_std]), 4),
-            "forecast_last4_present": int(M[i, i_l4]),
-            "forecast_std_present": int(M[i, i_std]),
-            "actual_fpts_ppr": None if np.isnan(y) else round(y, 4),
-            "in_scored_group": group_n[(w, p)] >= min_group,
-        })
+        rows.append(
+            {
+                "season": test_season,
+                "week": w,
+                "gsis": gsis[i],
+                "name": name[i],
+                "pos": p,
+                "team": team[i],
+                "forecast_last4_ppr": round(float(Z[i, i_l4]), 4),
+                "forecast_std_ppr": round(float(Z[i, i_std]), 4),
+                "forecast_last4_present": int(M[i, i_l4]),
+                "forecast_std_present": int(M[i, i_std]),
+                "actual_fpts_ppr": None if np.isnan(y) else round(y, 4),
+                "in_scored_group": group_n[(w, p)] >= min_group,
+            }
+        )
     rows.sort(key=lambda r: (r["week"], r["pos"], r["gsis"]))
 
     summary = {
@@ -166,10 +180,14 @@ def export_rows(root: Path) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     return rows, summary
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--gridiron-root", type=Path, required=True,
-                    help="vector-gridiron checkout (read-only)")
+    ap.add_argument(
+        "--gridiron-root",
+        type=Path,
+        required=True,
+        help="vector-gridiron checkout (read-only)",
+    )
     ap.add_argument("--out", type=Path, required=True)
     args = ap.parse_args(argv)
 
@@ -180,17 +198,24 @@ def main(argv: Optional[List[str]] = None) -> int:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
     data = args.gridiron_root / "pipeline" / "data"
-    for p in (args.gridiron_root / "assets" / "eval_backtest.json",
-              data / "feature_manifest.json", data / "train_matrix.npz"):
+    for p in (
+        args.gridiron_root / "assets" / "eval_backtest.json",
+        data / "feature_manifest.json",
+        data / "train_matrix.npz",
+    ):
         print(f"input: {p.name} sha256={_sha256(p)}")
-    print(f"wrote {args.out}: {summary['n_rows']} rows, season {summary['test_season']}, "
-          f"weeks {summary['weeks'][0]}-{summary['weeks'][-1]}, "
-          f"nan_actuals={summary['nan_actuals']}")
+    print(
+        f"wrote {args.out}: {summary['n_rows']} rows, season {summary['test_season']}, "
+        f"weeks {summary['weeks'][0]}-{summary['weeks'][-1]}, "
+        f"nan_actuals={summary['nan_actuals']}"
+    )
     print("cross-check (recomputed from exported rows vs published artifact):")
     for g, c in summary["crosscheck"].items():
-        print(f"  {g:>3} last4 {c['recomputed_last4']} vs {c['artifact_last4']} | "
-              f"std {c['recomputed_std']} vs {c['artifact_std']} | "
-              f"n {c['n_rows']} vs artifact {c['artifact_n_rows']}")
+        print(
+            f"  {g:>3} last4 {c['recomputed_last4']} vs {c['artifact_last4']} | "
+            f"std {c['recomputed_std']} vs {c['artifact_std']} | "
+            f"n {c['n_rows']} vs artifact {c['artifact_n_rows']}"
+        )
     return 0
 
 
