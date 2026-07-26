@@ -52,8 +52,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 SKIP_PARTS = {
-    ".git", "__pycache__", ".venv", "venv", "node_modules", ".ruff_cache",
-    ".pytest_cache", "site-packages", "dist", "build",
+    ".git",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "node_modules",
+    ".ruff_cache",
+    ".pytest_cache",
+    "site-packages",
+    "dist",
+    "build",
 }
 
 # Words that make a condition look like a SAFETY check rather than business logic.
@@ -63,7 +71,9 @@ SAFETY_WORDS = re.compile(
     re.I,
 )
 # Names that indicate a run-mode rather than a fact about the thing being checked.
-MODE_WORDS = re.compile(r"(dry_run|dryrun|debug|skip|force|no_verify|test_mode|offline)", re.I)
+MODE_WORDS = re.compile(
+    r"(dry_run|dryrun|debug|skip|force|no_verify|test_mode|offline)", re.I
+)
 
 
 def iter_files(base: Path, suffixes):
@@ -103,7 +113,7 @@ def find_mode_escapes(tree, lines, rel):
                     "line": node.lineno,
                     "code": _src(node, lines)[:160],
                     "why": "a safety condition is disabled by a run-mode flag; the gate "
-                           "stops firing in exactly that mode",
+                    "stops firing in exactly that mode",
                 }
             )
     return out
@@ -149,9 +159,9 @@ def find_fail_open_dispatch(tree, lines, rel):
                         "file": rel,
                         "line": fn.lineno,
                         "code": f"def {fn.name}(...)  dispatches on {param!r} "
-                                f"across {len(ifs)} `==` branches",
+                        f"across {len(ifs)} `==` branches",
                         "why": "no else / membership guard, so an unrecognised value "
-                               "falls through to whatever the function returns last",
+                        "falls through to whatever the function returns last",
                     }
                 )
     return out
@@ -159,7 +169,10 @@ def find_fail_open_dispatch(tree, lines, rel):
 
 SUPPRESS_PATTERNS = [
     (re.compile(r"\|\|\s*true\b"), "`|| true` discards the exit code"),
-    (re.compile(r"continue-on-error:\s*true"), "continue-on-error:true — step cannot fail the job"),
+    (
+        re.compile(r"continue-on-error:\s*true"),
+        "continue-on-error:true — step cannot fail the job",
+    ),
     (re.compile(r"-ErrorAction\s+SilentlyContinue"), "PowerShell error suppression"),
 ]
 
@@ -211,7 +224,9 @@ def audit(base: Path):
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Find gates whose verdict nothing consumes.")
+    ap = argparse.ArgumentParser(
+        description="Find gates whose verdict nothing consumes."
+    )
     ap.add_argument("--path", default=".", help="subtree to audit (default: repo root)")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
@@ -224,7 +239,9 @@ def main() -> int:
         return 0
 
     print("GATE AUDIT — gates whose verdict nothing consumes")
-    print(f"scanned {scanned['py']} python + {scanned['other']} script/CI files under {args.path}")
+    print(
+        f"scanned {scanned['py']} python + {scanned['other']} script/CI files under {args.path}"
+    )
     print("-" * 72)
     if not findings:
         print("no candidates found (this is a heuristic — absence is not proof)")

@@ -69,14 +69,43 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "extra_signatures": [],
     "max_file_kb": 1024,
     "exclude_dirs": [
-        ".git", ".hg", ".svn", ".venv", "venv", "node_modules", "__pycache__",
-        ".scout", ".pytest_cache", ".ruff_cache", ".mypy_cache", "dist",
-        "build", ".next",
+        ".git",
+        ".hg",
+        ".svn",
+        ".venv",
+        "venv",
+        "node_modules",
+        "__pycache__",
+        ".scout",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".mypy_cache",
+        "dist",
+        "build",
+        ".next",
     ],
     "exclude_exts": [
-        ".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip", ".gz",
-        ".tar", ".whl", ".exe", ".dll", ".so", ".pyd", ".woff", ".woff2",
-        ".ttf", ".mp3", ".mp4", ".sqlite3", ".db",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".ico",
+        ".pdf",
+        ".zip",
+        ".gz",
+        ".tar",
+        ".whl",
+        ".exe",
+        ".dll",
+        ".so",
+        ".pyd",
+        ".woff",
+        ".woff2",
+        ".ttf",
+        ".mp3",
+        ".mp4",
+        ".sqlite3",
+        ".db",
     ],
 }
 
@@ -275,16 +304,21 @@ def _validate_config(cfg: dict[str, Any]) -> None:
     def _num(v: Any) -> bool:
         return isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0
 
-    if not (isinstance(cfg["entropy"], dict) and all(
-        isinstance(k, str) and _num(v) for k, v in cfg["entropy"].items()
-    )):
+    if not (
+        isinstance(cfg["entropy"], dict)
+        and all(isinstance(k, str) and _num(v) for k, v in cfg["entropy"].items())
+    ):
         raise ValueError("config 'entropy': must map names to numbers >= 0")
     ebe = cfg["entropy_by_ext"]
-    if not (isinstance(ebe, dict) and all(
-        isinstance(k, str) and isinstance(v, dict)
-        and all(isinstance(k2, str) and _num(v2) for k2, v2 in v.items())
-        for k, v in ebe.items()
-    )):
+    if not (
+        isinstance(ebe, dict)
+        and all(
+            isinstance(k, str)
+            and isinstance(v, dict)
+            and all(isinstance(k2, str) and _num(v2) for k2, v2 in v.items())
+            for k, v in ebe.items()
+        )
+    ):
         raise ValueError(
             "config 'entropy_by_ext': must map extensions to threshold objects"
         )
@@ -327,15 +361,17 @@ def build_signatures(config: dict[str, Any] | None = None) -> list[dict[str, Any
             compiled = re.compile(raw["pattern"])
         except re.error as e:
             raise ValueError(f"signature {raw['id']!r}: bad regex: {e}") from None
-        sigs.append({
-            "id": raw["id"],
-            "description": raw.get("description", raw["id"]),
-            "severity": raw.get("severity", "warning"),
-            "re": compiled,
-            "group": int(raw.get("group", 0)),
-            "entropy_key": raw.get("entropy_key"),
-            "entropy": raw.get("entropy"),
-        })
+        sigs.append(
+            {
+                "id": raw["id"],
+                "description": raw.get("description", raw["id"]),
+                "severity": raw.get("severity", "warning"),
+                "re": compiled,
+                "group": int(raw.get("group", 0)),
+                "entropy_key": raw.get("entropy_key"),
+                "entropy": raw.get("entropy"),
+            }
+        )
     return sigs
 
 
@@ -398,11 +434,13 @@ def scan_lines(
                 if _allowed(sig["id"], posix, secret, fp, allow):
                     continue
                 d = openswap.diagnostic(
-                    path=path, line=lineno, col=s0 + 1,
-                    rule=f"leaks:{sig['id']}", severity=sig["severity"],
+                    path=path,
+                    line=lineno,
+                    col=s0 + 1,
+                    rule=f"leaks:{sig['id']}",
+                    severity=sig["severity"],
                     message=(
-                        f"{sig['description']}: '{redact(secret)}'"
-                        f" (entropy {ent:.2f})"
+                        f"{sig['description']}: '{redact(secret)}' (entropy {ent:.2f})"
                     ),
                     suggestion=(
                         "rotate the credential and move it to a secret store "
@@ -472,9 +510,7 @@ def scan_tree(
     for dirpath, dirnames, filenames in os.walk(Path(root)):
         dirnames[:] = sorted(d for d in dirnames if d not in exclude)
         for name in sorted(filenames):
-            diags, skip = scan_file(
-                Path(dirpath) / name, config=cfg, signatures=sigs
-            )
+            diags, skip = scan_file(Path(dirpath) / name, config=cfg, signatures=sigs)
             if skip:
                 stats["skipped"][skip] = stats["skipped"].get(skip, 0) + 1
                 continue
@@ -527,8 +563,7 @@ def parse_patch(text: str) -> list[dict[str, Any]]:
             continue
         if raw.startswith("+"):
             entries.append(
-                {"path": path, "line": new_line, "content": raw[1:],
-                 "commit": commit}
+                {"path": path, "line": new_line, "content": raw[1:], "commit": commit}
             )
             new_line += 1
         elif raw.startswith(("-", "\\")):

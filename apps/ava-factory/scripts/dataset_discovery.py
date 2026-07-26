@@ -121,12 +121,36 @@ LICENSE_ALLOW = {
 MODEL_OUTPUT_MARKERS = (
     # frontier / hosted model families whose terms typically restrict using
     # outputs to train a competing model
-    "gpt", "chatgpt", "openai", "claude", "anthropic", "gemini", "bard",
-    "palm", "grok", "llama", "mistral", "qwen", "deepseek", "glm", "kimi",
-    "ernie", "yi", "command",
+    "gpt",
+    "chatgpt",
+    "openai",
+    "claude",
+    "anthropic",
+    "gemini",
+    "bard",
+    "palm",
+    "grok",
+    "llama",
+    "mistral",
+    "qwen",
+    "deepseek",
+    "glm",
+    "kimi",
+    "ernie",
+    "yi",
+    "command",
     # process words that say "these are model outputs" whatever produced them
-    "distill", "distillation", "sharegpt", "alpaca", "wizardlm", "orca",
-    "ultrachat", "openhermes", "selfinstruct", "synthetic", "traces",
+    "distill",
+    "distillation",
+    "sharegpt",
+    "alpaca",
+    "wizardlm",
+    "orca",
+    "ultrachat",
+    "openhermes",
+    "selfinstruct",
+    "synthetic",
+    "traces",
 )
 
 
@@ -201,7 +225,10 @@ def gate_license(raw) -> tuple[bool, str]:
     """
     values = _license_values(raw)
     if not values:
-        return False, "no license stated — deny by default (unverified is not permissive)"
+        return (
+            False,
+            "no license stated — deny by default (unverified is not permissive)",
+        )
     for value in values:
         ident = str(value).strip().lower()
         if not ident:
@@ -217,6 +244,7 @@ def gate_license(raw) -> tuple[bool, str]:
             )
     joined = ", ".join(sorted({str(v).strip().lower() for v in values}))
     return True, f"permissive: {joined}"
+
 
 # Mapping weak domains -> HF dataset search queries and data needs
 DOMAIN_TO_DATASET_QUERIES = {
@@ -824,9 +852,7 @@ def main():
         # that actually fetches data, so license_ok is now the ONLY condition.
         if not cand.get("license_ok", False):
             reason = cand.get("license_reason") or "not permissive"
-            lines.append(
-                f"# SKIP {cand['name']} — license {cand['license']}: {reason}"
-            )
+            lines.append(f"# SKIP {cand['name']} — license {cand['license']}: {reason}")
             continue
         if cand.get("provenance_review"):
             # A permissive licence is not sufficient here. This manifest is

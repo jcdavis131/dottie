@@ -49,7 +49,7 @@ def pytest_ignore_collect(collection_path, config):
     return bool(_missing(reqs))
 
 
-def pytest_report_header(config):  # noqa: ARG001
+def pytest_report_header(config):
     """Say OUT LOUD which modules this image is skipping, and why.
 
     ``pytest_ignore_collect`` is invisible: an ignored module produces no skip line, no
@@ -73,7 +73,9 @@ def pytest_report_header(config):  # noqa: ARG001
     if not lines:
         return "image deps: complete (no test modules ignored)"
     return "\n".join(
-        [f"image deps: IGNORING {len(lines)} test module(s) - these tests DO NOT RUN here:"]
+        [
+            f"image deps: IGNORING {len(lines)} test module(s) - these tests DO NOT RUN here:"
+        ]
         + lines
         + ["  (run the other image too; see the module docstring)"]
     )

@@ -126,14 +126,15 @@ def _gate(diags: list[dict], fail_on: str | None) -> None:
 def _git_patch(repo: str, args: list[str], command: str, example: str) -> str:
     """Read-only git invocation; any failure becomes an actionable envelope."""
     if not Path(repo).is_dir():
-        fail_agent(
-            f"repo path not found: {repo}", command=command, example=example
-        )
+        fail_agent(f"repo path not found: {repo}", command=command, example=example)
     try:
         r = subprocess.run(
             ["git", "--no-pager", "-C", repo, *args],
-            capture_output=True, text=True, timeout=120,
-            encoding="utf-8", errors="replace",
+            capture_output=True,
+            text=True,
+            timeout=120,
+            encoding="utf-8",
+            errors="replace",
         )
     except FileNotFoundError:
         fail_agent(
@@ -185,13 +186,19 @@ def detect():
     )
 
 
-@app.command("signatures", epilog=examples_epilog([
-    "scout --json leaks signatures",
-    "scout --json leaks signatures --config leaks.json",
-]))
+@app.command(
+    "signatures",
+    epilog=examples_epilog(
+        [
+            "scout --json leaks signatures",
+            "scout --json leaks signatures --config leaks.json",
+        ]
+    ),
+)
 def signatures_cmd(
     config_file: str | None = typer.Option(
-        None, "--config",
+        None,
+        "--config",
         help="JSON config overlay (allowlist, extra signatures, thresholds)",
     ),
 ):
@@ -202,7 +209,8 @@ def signatures_cmd(
         {
             "id": s["id"],
             "severity": s["severity"],
-            "entropy_gate": s["entropy"] if s["entropy"] is not None
+            "entropy_gate": s["entropy"]
+            if s["entropy"] is not None
             else s["entropy_key"],
             "description": s["description"],
         }
@@ -227,21 +235,28 @@ def signatures_cmd(
     )
 
 
-@app.command("scan", epilog=examples_epilog([
-    "scout --json leaks scan . --fail-on error",
-    "scout --json leaks scan src tests --config leaks.json",
-    "scout --json leaks scan deploy.env --fail-on warning",
-]))
+@app.command(
+    "scan",
+    epilog=examples_epilog(
+        [
+            "scout --json leaks scan . --fail-on error",
+            "scout --json leaks scan src tests --config leaks.json",
+            "scout --json leaks scan deploy.env --fail-on warning",
+        ]
+    ),
+)
 def scan(
     paths: list[str] = typer.Argument(
         ..., help="files or directories (dirs pruned of vendor/VCS noise)"
     ),
     config_file: str | None = typer.Option(
-        None, "--config",
+        None,
+        "--config",
         help="JSON config overlay (allowlist, extra signatures, thresholds)",
     ),
     fail_on: str | None = typer.Option(
-        None, "--fail-on",
+        None,
+        "--fail-on",
         help="exit 1 if findings at/above this severity (error|warning|suggestion|info) — the security-audit gate hook",
     ),
     max_findings: int = typer.Option(
@@ -271,9 +286,7 @@ def scan(
             for reason, count in tree_stats["skipped"].items():
                 stats["skipped"][reason] = stats["skipped"].get(reason, 0) + count
         else:
-            fail_agent(
-                f"path not found: {p}", command="leaks scan", example=example
-            )
+            fail_agent(f"path not found: {p}", command="leaks scan", example=example)
     diags = openswap.sort_diagnostics(diags)
     summary = openswap.summarize(diags)
     emit(
@@ -296,18 +309,25 @@ def scan(
     _gate(diags, fail_on)
 
 
-@app.command("staged", epilog=examples_epilog([
-    "scout --json leaks staged --fail-on warning",
-    "scout --json leaks staged --repo ../sites --fail-on error",
-]))
+@app.command(
+    "staged",
+    epilog=examples_epilog(
+        [
+            "scout --json leaks staged --fail-on warning",
+            "scout --json leaks staged --repo ../sites --fail-on error",
+        ]
+    ),
+)
 def staged(
     repo: str = typer.Option(".", "--repo", help="git repository to inspect"),
     config_file: str | None = typer.Option(
-        None, "--config",
+        None,
+        "--config",
         help="JSON config overlay (allowlist, extra signatures, thresholds)",
     ),
     fail_on: str | None = typer.Option(
-        None, "--fail-on",
+        None,
+        "--fail-on",
         help="exit 1 if findings at/above this severity — the pre-commit hook",
     ),
     max_findings: int = typer.Option(
@@ -320,8 +340,10 @@ def staged(
     cfg = _config_or_fail(config_file, "leaks staged")
     sigs = _sigs_or_fail(cfg, "leaks staged")
     patch = _git_patch(
-        repo, ["diff", "--cached", "--no-color", "--unified=0"],
-        "leaks staged", example,
+        repo,
+        ["diff", "--cached", "--no-color", "--unified=0"],
+        "leaks staged",
+        example,
     )
     diags, stats = leaks.scan_patch(patch, config=cfg, signatures=sigs)
     data = {
@@ -347,21 +369,28 @@ def staged(
     _gate(diags, fail_on)
 
 
-@app.command("history", epilog=examples_epilog([
-    "scout --json leaks history --max-commits 100",
-    "scout --json leaks history --repo ../sites --fail-on error",
-]))
+@app.command(
+    "history",
+    epilog=examples_epilog(
+        [
+            "scout --json leaks history --max-commits 100",
+            "scout --json leaks history --repo ../sites --fail-on error",
+        ]
+    ),
+)
 def history(
     repo: str = typer.Option(".", "--repo", help="git repository to inspect"),
     max_commits: int = typer.Option(
         50, "--max-commits", help="how far back to sweep (0 = full history)"
     ),
     config_file: str | None = typer.Option(
-        None, "--config",
+        None,
+        "--config",
         help="JSON config overlay (allowlist, extra signatures, thresholds)",
     ),
     fail_on: str | None = typer.Option(
-        None, "--fail-on",
+        None,
+        "--fail-on",
         help="exit 1 if findings at/above this severity — the audit gate hook",
     ),
     max_findings: int = typer.Option(

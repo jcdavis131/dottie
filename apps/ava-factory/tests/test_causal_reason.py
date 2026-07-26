@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import random
+
 from dottie.datagen.base import validate_doc
 from dottie.datagen.causal_reason import (
     CausalReasonGenerator,
     _confounder_doc,
     _intervention_doc,
 )
-import random
 
 
 def test_generator_emits_valid_docs_and_hits_phases():
@@ -21,7 +22,11 @@ def test_generator_emits_valid_docs_and_hits_phases():
     for d in docs:
         validate_doc(d, allowed_phases=gen.phases)
         assert d["source"] == "causal_reason"
-        assert "Causal" in d["text"] or "Causal drill" in d["text"] or "Structural" in d["text"]
+        assert (
+            "Causal" in d["text"]
+            or "Causal drill" in d["text"]
+            or "Structural" in d["text"]
+        )
 
 
 def test_confounder_numbers_recompute():
@@ -30,6 +35,7 @@ def test_confounder_numbers_recompute():
     assert task == "deliberate"
     assert concept == "confounding_adjustment"
     cells = meta["cells"]
+
     # recompute crude RD
     def risk(t: int) -> float:
         ys = sum(cells[f"{z}|{t}"][1] for z in ("low_sleep", "high_sleep"))

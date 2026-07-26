@@ -1,4 +1,3 @@
-import json
 import re
 import sqlite3
 from collections import Counter, defaultdict
@@ -9,7 +8,10 @@ con.row_factory = sqlite3.Row
 
 HINTS = [
     ("einsum", r"einsum\(\)"),
-    ("shape_algebra", r"must match the size of tensor|Expected size for first two dimensions|mat1 and mat2 shapes"),
+    (
+        "shape_algebra",
+        r"must match the size of tensor|Expected size for first two dimensions|mat1 and mat2 shapes",
+    ),
     ("ctor_missing_arg", r"missing \d+ required positional argument"),
     ("no_attribute", r"has no attribute '\w+'"),
     ("name_error", r"NameError: name"),
@@ -18,12 +20,14 @@ HINTS = [
     ("output_shape_contract", r"the SAME \[batch, seq, hidden\] shape"),
 ]
 
+
 def classify(detail):
     hits = []
     for name, pat in HINTS:
         if re.search(pat, detail):
             hits.append(name)
     return hits
+
 
 rows = con.execute(
     "SELECT id, state, failure, implementation, attempts FROM experiments "
@@ -55,14 +59,20 @@ for k, v in covered.most_common():
 print(f"  TOTAL covered: {sum(covered.values())}")
 print(f"  TOTAL uncovered: {len(uncovered)}")
 
+
 # cluster uncovered by salient error line
 def salient(detail):
     # last exception-ish line
     lines = [l.strip() for l in detail.splitlines() if l.strip()]
     for l in reversed(lines):
-        if re.match(r"^\w+(\.\w+)*(Error|Exception|Warning)\b", l) or l.startswith("AssertionError") or "Error:" in l:
+        if (
+            re.match(r"^\w+(\.\w+)*(Error|Exception|Warning)\b", l)
+            or l.startswith("AssertionError")
+            or "Error:" in l
+        ):
             return l[:160]
     return (lines[-1] if lines else "")[:160]
+
 
 clusters = defaultdict(list)
 for id_, state, level, detail in uncovered:

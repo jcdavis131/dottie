@@ -7,6 +7,7 @@ perfect separation. A constant-output classifier (zero discrimination) then repo
 AUC 1.0 instead of 0.5 — the opposite of what an anti-mock, honest-eval harness must do,
 and a real hazard here because freshly-trained checkpoints often emit near-constant scores.
 """
+
 import random
 
 from harness.common import auc_trapezoid
@@ -28,10 +29,10 @@ def test_constant_scores_are_auc_half_not_one():
 
 def test_matches_exact_auc_on_tie_and_no_tie_cases():
     cases = [
-        ([1, 0, 1, 0], [0.9, 0.9, 0.1, 0.1]),   # tie blocks
-        ([1, 0, 1, 0], [0.9, 0.8, 0.7, 0.6]),   # no ties
-        ([1, 1, 0, 0], [0.9, 0.8, 0.7, 0.6]),   # perfect separation
-        ([1, 0, 0, 1], [0.7, 0.7, 0.3, 0.9]),   # mixed ties
+        ([1, 0, 1, 0], [0.9, 0.9, 0.1, 0.1]),  # tie blocks
+        ([1, 0, 1, 0], [0.9, 0.8, 0.7, 0.6]),  # no ties
+        ([1, 1, 0, 0], [0.9, 0.8, 0.7, 0.6]),  # perfect separation
+        ([1, 0, 0, 1], [0.7, 0.7, 0.3, 0.9]),  # mixed ties
     ]
     for yt, ys in cases:
         assert abs(auc_trapezoid(yt, ys) - _exact_auc(yt, ys)) < 1e-9, (yt, ys)
