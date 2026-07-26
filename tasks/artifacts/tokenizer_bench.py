@@ -117,7 +117,11 @@ def _find_shard(root: Path, explicit: str | None) -> Path:
     if raw_dir.is_dir():
         candidates = sorted(raw_dir.rglob("*.jsonl*"))
     if not candidates:
-        candidates = sorted((root / "data").rglob("*.jsonl*")) if (root / "data").is_dir() else []
+        candidates = (
+            sorted((root / "data").rglob("*.jsonl*"))
+            if (root / "data").is_dir()
+            else []
+        )
     candidates = [c for c in candidates if c.suffix in (".jsonl", ".zst")]
     if not candidates:
         raise FileNotFoundError(
@@ -148,7 +152,9 @@ def variant_b_batch(tok, eod_id: int, texts: list[str]) -> list[int]:
     return stream
 
 
-def variant_c_pyword_cache(tok, eod_id: int, texts: list[str], cache: dict) -> list[int]:
+def variant_c_pyword_cache(
+    tok, eod_id: int, texts: list[str], cache: dict
+) -> list[int]:
     """REJECTED design, measured to validate the rejection (see module doc).
 
     Whitespace-word dict cache above the FFI boundary. NOT id-equivalent to
@@ -181,7 +187,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--tokenizer", default=None)
     ap.add_argument("--shard", default=None, help="raw .jsonl[.zst] to sample")
     ap.add_argument("--max-docs", type=int, default=2000)
-    ap.add_argument("--repeats", type=int, default=3, help="interleaved repeats; best-of-N")
+    ap.add_argument(
+        "--repeats", type=int, default=3, help="interleaved repeats; best-of-N"
+    )
     ap.add_argument("--include-pyword-cache", action="store_true")
     ap.add_argument("--out", default=None, help="JSON report path")
     args = ap.parse_args(argv)
@@ -200,7 +208,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     sys.path.insert(0, str(root))
 
-    from dottie.pipeline.pack import load_tokenizer  # noqa: E402  (repo import)
+    from dottie.pipeline.pack import load_tokenizer
 
     tok_path = _resolve_tokenizer(root, args.preset, args.tokenizer)
     lt = load_tokenizer(tok_path)
@@ -259,7 +267,11 @@ def main(argv: list[str] | None = None) -> int:
             "tokenizers_parallelism_env": os.environ.get("TOKENIZERS_PARALLELISM"),
             "rayon_num_threads_env": os.environ.get("RAYON_NUM_THREADS"),
         },
-        "tokenizer": {"path": str(tok_path), "sha256": lt.sha256, "vocab": lt.vocab_size},
+        "tokenizer": {
+            "path": str(tok_path),
+            "sha256": lt.sha256,
+            "vocab": lt.vocab_size,
+        },
         "sample": {
             "shard": str(shard),
             "docs": len(texts),
@@ -290,7 +302,11 @@ def main(argv: list[str] | None = None) -> int:
             "safe to apply; investigate before quoting any speedup."
         )
 
-    out = Path(args.out) if args.out else Path(__file__).with_name("tokenizer_bench_results.json")
+    out = (
+        Path(args.out)
+        if args.out
+        else Path(__file__).with_name("tokenizer_bench_results.json")
+    )
     out.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report["results"], indent=2))
     print(f"a_b_ids_identical={equivalent}")

@@ -46,7 +46,7 @@ _REPO = Path(__file__).resolve().parent.parent
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
-from evals.probe_items_gen import norm_answer  # noqa: E402
+from evals.probe_items_gen import norm_answer
 
 _FIXTURE_DIR = _REPO / "scripts" / "fixtures" / "probe_error_analysis"
 
@@ -133,7 +133,7 @@ def classify(row: dict, inventory: set[str]) -> tuple[str, str]:
     call = _CALL_RE.search(gen)
     if call:
         name = call.group(1).lower()
-        if ")" not in gen[call.end():]:
+        if ")" not in gen[call.end() :]:
             return "malformed_call", f"unclosed call to {name!r}"
         if name not in inventory:
             return "malformed_call", f"hallucinated callable {name!r}"
@@ -159,7 +159,7 @@ def analyze(rows: list[dict]) -> dict:
         name = str(row.get("set", "?"))
         bucket = sets.setdefault(
             name,
-            {"total": 0, "counts": {"correct": 0, **{m: 0 for m in FAILURE_MODES}}},
+            {"total": 0, "counts": {"correct": 0, **dict.fromkeys(FAILURE_MODES, 0)}},
         )
         bucket["total"] += 1
         bucket["counts"][label] += 1
@@ -184,8 +184,10 @@ def print_report_aggregates(report: dict, log=print) -> None:
 
 
 def print_analysis(analysis: dict, max_dump: int, log=print) -> None:
-    log(f"tool inventory ({len(analysis['inventory'])}): "
-        + ", ".join(analysis["inventory"]))
+    log(
+        f"tool inventory ({len(analysis['inventory'])}): "
+        + ", ".join(analysis["inventory"])
+    )
     log("")
     log("per-set failure modes:")
     header = f"  {'set':<16}{'total':>6}{'correct':>9}" + "".join(
@@ -207,27 +209,49 @@ def print_analysis(analysis: dict, max_dump: int, log=print) -> None:
             continue
         shown[name] = shown.get(name, 0) + 1
         gen = str(row.get("generation", "")).replace("\n", "\\n")
-        log(f"  [{name}] {row['class']:<15} gold={row.get('answer', '')!r:<20}"
-            f" gen={gen[:80]!r}  ({row['detail']})")
+        log(
+            f"  [{name}] {row['class']:<15} gold={row.get('answer', '')!r:<20}"
+            f" gen={gen[:80]!r}  ({row['detail']})"
+        )
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
-        prog="probe_error_analysis", description=__doc__,
+        prog="probe_error_analysis",
+        description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    ap.add_argument("--generations", type=Path, default=None,
-                    help="per-probe generations JSONL (set/prompt/answer/generation)")
-    ap.add_argument("--report", type=Path, default=None,
-                    help="run_harness JSON (branch_eval_results_real.json shape) "
-                         "for aggregate context")
-    ap.add_argument("--out", type=Path, default=None,
-                    help="write the full classified analysis as JSON here")
-    ap.add_argument("--max-dump", type=int, default=25,
-                    help="per-set cap on dumped generations (default 25)")
-    ap.add_argument("--dry-run", action="store_true",
-                    help="run against the bundled fixture; verify classifier "
-                         "against each row's 'expect'; never write")
+    ap.add_argument(
+        "--generations",
+        type=Path,
+        default=None,
+        help="per-probe generations JSONL (set/prompt/answer/generation)",
+    )
+    ap.add_argument(
+        "--report",
+        type=Path,
+        default=None,
+        help="run_harness JSON (branch_eval_results_real.json shape) "
+        "for aggregate context",
+    )
+    ap.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="write the full classified analysis as JSON here",
+    )
+    ap.add_argument(
+        "--max-dump",
+        type=int,
+        default=25,
+        help="per-set cap on dumped generations (default 25)",
+    )
+    ap.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="run against the bundled fixture; verify classifier "
+        "against each row's 'expect'; never write",
+    )
     args = ap.parse_args(argv)
 
     if args.dry_run:

@@ -98,8 +98,10 @@ def build(
             # A phase with no held-out docs is a real gap — report it, never
             # backfill with non-held-out (training) docs (the old fallback did,
             # re-contaminating the bin; provenance audit 2026-07-24).
-            print(f"heldout phase {phase_idx}: NO disjoint docs for {phase_key} "
-                  f"— bin skipped (raise --target-bytes)")
+            print(
+                f"heldout phase {phase_idx}: NO disjoint docs for {phase_key} "
+                f"— bin skipped (raise --target-bytes)"
+            )
             continue
 
         arr, idx = pack_docs(held_docs, lt)
@@ -132,14 +134,19 @@ def main() -> int:
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--preset", default="nano")
-    ap.add_argument("--force", action="store_true", help="rewrite existing heldout bins")
     ap.add_argument(
-        "--target-bytes", type=int, default=500_000,
+        "--force", action="store_true", help="rewrite existing heldout bins"
+    )
+    ap.add_argument(
+        "--target-bytes",
+        type=int,
+        default=500_000,
         help="doc bytes to collect; raise so sparse phases (p3/p5) clear the eval's "
         "minimum-token floor (500k left mini p3 at 447 tokens -> 'too short')",
     )
     ap.add_argument(
-        "--rebuild-tokenizer", action="store_true",
+        "--rebuild-tokenizer",
+        action="store_true",
         help="retrain the tokenizer even if one exists — NEVER for a preset whose "
         "tokenizer is the frozen pipeline artifact (e.g. mini's ava_bpe_32k.json)",
     )

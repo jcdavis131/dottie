@@ -85,7 +85,9 @@ def test_url_for_index_stripping_clean_urls_and_encoding():
     assert sitemap.url_for("blog\\a b.html", base) == "https://x.com/blog/a%20b.html"
     assert sitemap.url_for("café.html", base) == "https://x.com/caf%C3%A9.html"
     # a path prefix in the base survives
-    assert sitemap.url_for("a.html", "https://x.com/docs/") == "https://x.com/docs/a.html"
+    assert (
+        sitemap.url_for("a.html", "https://x.com/docs/") == "https://x.com/docs/a.html"
+    )
 
 
 def test_format_lastmod_is_utc_and_two_precisions():
@@ -249,8 +251,11 @@ def test_parse_url_list_without_base_reports_relative_lines():
 def test_entries_from_crawl_rows_honors_seo_indexability():
     rows = [
         {"Address": "https://x.com/", "Indexability": "Indexable", "Status Code": 200},
-        {"Address": "https://x.com/gone", "Indexability": "Non-Indexable",
-         "Status Code": 404},
+        {
+            "Address": "https://x.com/gone",
+            "Indexability": "Non-Indexable",
+            "Status Code": 404,
+        },
         {"Address": "", "Indexability": "Indexable", "Status Code": 200},
     ]
     res = sitemap.entries_from_crawl_rows(rows, changefreq="weekly")
@@ -278,11 +283,24 @@ def test_crawl_store_roundtrip_excludes_noindex_pages():
 
     def fetch(url):
         if url in pages:
-            return {"status": 200, "final_url": url, "redirects": [],
-                    "content_type": "text/html", "headers": {}, "body": pages[url],
-                    "error": None}
-        return {"status": 404, "final_url": url, "redirects": [],
-                "content_type": "text/html", "headers": {}, "body": "", "error": None}
+            return {
+                "status": 200,
+                "final_url": url,
+                "redirects": [],
+                "content_type": "text/html",
+                "headers": {},
+                "body": pages[url],
+                "error": None,
+            }
+        return {
+            "status": 404,
+            "final_url": url,
+            "redirects": [],
+            "content_type": "text/html",
+            "headers": {},
+            "body": "",
+            "error": None,
+        }
 
     conn = seo.open_store(":memory:")
     seo.crawl(conn, "https://site.test/", fetch, ts=1.0)
@@ -306,7 +324,9 @@ def test_dedupe_sorts_and_keeps_the_newest_lastmod():
     ]
     res = sitemap.dedupe(entries)
     assert [e["loc"] for e in res["entries"]] == [
-        "https://x.com/a", "https://x.com/b", "https://x.com/c"
+        "https://x.com/a",
+        "https://x.com/b",
+        "https://x.com/c",
     ]
     kept = {e["loc"]: e for e in res["entries"]}
     assert kept["https://x.com/a"]["lastmod"] == "2026-05-05"  # newest wins
@@ -326,7 +346,11 @@ def test_validate_flags_offbase_long_duplicate_and_empty():
     dupes = [{"loc": base, "kept_source": "a", "dropped_source": "b"}]
     diags = sitemap.validate(entries, base, duplicates=dupes)
     rules = {d["rule"] for d in diags}
-    assert rules == {"sitemap:off-base", "sitemap:loc-too-long", "sitemap:duplicate-loc"}
+    assert rules == {
+        "sitemap:off-base",
+        "sitemap:loc-too-long",
+        "sitemap:duplicate-loc",
+    }
     by_rule = {d["rule"]: d for d in diags}
     assert by_rule["sitemap:off-base"]["severity"] == "error"
     assert by_rule["sitemap:off-base"]["path"] == "https://other.test/a"
@@ -344,8 +368,16 @@ def test_validate_sharding_is_info_and_diagnostics_match_family_schema():
     assert [d["rule"] for d in diags] == ["sitemap:sharded"]
     assert diags[0]["severity"] == "info"
     for d in sitemap.validate(entries + [sitemap.make_entry("https://o.test/x")], base):
-        assert set(d) == {"path", "line", "col", "rule", "severity", "message",
-                          "suggestion", "source"}
+        assert set(d) == {
+            "path",
+            "line",
+            "col",
+            "rule",
+            "severity",
+            "message",
+            "suggestion",
+            "source",
+        }
         assert d["severity"] in openswap.SEVERITIES
         assert d["source"] == "sitemap"
 
@@ -376,8 +408,12 @@ def test_validate_files_flags_the_50mb_limit():
 
 def test_urlset_xml_is_namespaced_escaped_and_ordered():
     entries = [
-        sitemap.make_entry("https://x.com/a?p=1&q=2", lastmod="2026-03-04",
-                           changefreq="daily", priority=0.5),
+        sitemap.make_entry(
+            "https://x.com/a?p=1&q=2",
+            lastmod="2026-03-04",
+            changefreq="daily",
+            priority=0.5,
+        ),
         sitemap.make_entry("https://x.com/b"),
     ]
     xml = sitemap.render(sitemap.build_urlset(entries))
@@ -414,7 +450,10 @@ def test_render_files_shards_into_a_sitemapindex():
     ]
     files = sitemap.render_files(entries, "sitemap.xml", "https://x.com/", max_urls=2)
     assert [f["name"] for f in files] == [
-        "sitemap.xml", "sitemap-1.xml", "sitemap-2.xml", "sitemap-3.xml"
+        "sitemap.xml",
+        "sitemap-1.xml",
+        "sitemap-2.xml",
+        "sitemap-3.xml",
     ]
     assert files[0]["kind"] == "sitemapindex"  # the canonical name stays the entrypoint
     assert [f["urls"] for f in files[1:]] == [2, 2, 1]
@@ -427,7 +466,9 @@ def test_render_files_shards_into_a_sitemapindex():
     ]
     # each shard ref carries the newest lastmod inside that shard
     assert [e["lastmod"] for e in idx["entries"]] == [
-        "2026-01-02", "2026-01-04", "2026-01-05"
+        "2026-01-02",
+        "2026-01-04",
+        "2026-01-05",
     ]
     # no URL is lost or duplicated by sharding
     got = []
@@ -439,8 +480,12 @@ def test_render_files_shards_into_a_sitemapindex():
 def test_default_shard_threshold_is_the_protocol_limit():
     assert sitemap.MAX_URLS_PER_FILE == 50_000
     base = "https://x.com/"
-    entries = [sitemap.make_entry(f"{base}p{i}") for i in range(sitemap.MAX_URLS_PER_FILE)]
-    assert len(sitemap.render_files(entries, "sitemap.xml", base)) == 1  # exactly at cap
+    entries = [
+        sitemap.make_entry(f"{base}p{i}") for i in range(sitemap.MAX_URLS_PER_FILE)
+    ]
+    assert (
+        len(sitemap.render_files(entries, "sitemap.xml", base)) == 1
+    )  # exactly at cap
     entries.append(sitemap.make_entry(f"{base}p50000"))
     files = sitemap.render_files(entries, "sitemap.xml", base)  # one over
     assert [f["kind"] for f in files] == ["sitemapindex", "urlset", "urlset"]
@@ -574,8 +619,20 @@ def test_cli_sitemap_hello_envelope():
 def test_cli_gen_writes_a_deterministic_sitemap(tmp_path):
     root = _tree(tmp_path)
     out = tmp_path / "out" / "sitemap.xml"
-    args = ["sitemap", "gen", "--root", str(root), "--base-url", "https://x.com",
-            "--out", str(out), "--exclude", "drafts/*", "--exclude", "404.html"]
+    args = [
+        "sitemap",
+        "gen",
+        "--root",
+        str(root),
+        "--base-url",
+        "https://x.com",
+        "--out",
+        str(out),
+        "--exclude",
+        "drafts/*",
+        "--exclude",
+        "404.html",
+    ]
     r = _cli(args)
     assert r.returncode == 0, r.stderr + r.stdout
     data = json.loads(r.stdout)["data"]
@@ -596,8 +653,19 @@ def test_cli_gen_writes_a_deterministic_sitemap(tmp_path):
 def test_cli_gen_dry_run_writes_nothing(tmp_path):
     root = _tree(tmp_path)
     out = tmp_path / "sitemap.xml"
-    r = _cli(["sitemap", "gen", "--root", str(root), "--base-url", "https://x.com",
-              "--out", str(out), "--dry-run"])
+    r = _cli(
+        [
+            "sitemap",
+            "gen",
+            "--root",
+            str(root),
+            "--base-url",
+            "https://x.com",
+            "--out",
+            str(out),
+            "--dry-run",
+        ]
+    )
     assert r.returncode == 0, r.stderr + r.stdout
     data = json.loads(r.stdout)["data"]
     assert data["wrote"] is False and data["written"] == [] and data["urls"] == 7
@@ -607,8 +675,20 @@ def test_cli_gen_dry_run_writes_nothing(tmp_path):
 def test_cli_gen_shards_over_max_urls(tmp_path):
     root = _tree(tmp_path)
     out = tmp_path / "sitemap.xml"
-    r = _cli(["sitemap", "gen", "--root", str(root), "--base-url", "https://x.com",
-              "--out", str(out), "--max-urls", "3"])
+    r = _cli(
+        [
+            "sitemap",
+            "gen",
+            "--root",
+            str(root),
+            "--base-url",
+            "https://x.com",
+            "--out",
+            str(out),
+            "--max-urls",
+            "3",
+        ]
+    )
     assert r.returncode == 0, r.stderr + r.stdout
     data = json.loads(r.stdout)["data"]
     assert data["sharded"] is True and data["file_count"] == 4
@@ -626,8 +706,16 @@ def test_cli_gen_from_url_list_and_fail_on_gate(tmp_path):
         "# hand-curated\n/a\n/b 2026-01-02\nhttps://other.test/x\n", encoding="utf-8"
     )
     out = tmp_path / "sitemap.xml"
-    args = ["sitemap", "gen", "--urls", str(routes), "--base-url", "https://x.com",
-            "--out", str(out)]
+    args = [
+        "sitemap",
+        "gen",
+        "--urls",
+        str(routes),
+        "--base-url",
+        "https://x.com",
+        "--out",
+        str(out),
+    ]
     r = _cli(args)
     assert r.returncode == 0, r.stderr + r.stdout
     data = json.loads(r.stdout)["data"]
@@ -699,8 +787,18 @@ def test_cli_rejects_ambiguous_and_missing_sources(tmp_path):
     r = _cli(["sitemap", "gen", "--base-url", "https://x.com"])
     assert r.returncode == 1
     assert "exactly one URL source" in json.loads(r.stdout)["error"]
-    r = _cli(["sitemap", "gen", "--root", str(root), "--urls", "x.txt",
-              "--base-url", "https://x.com"])
+    r = _cli(
+        [
+            "sitemap",
+            "gen",
+            "--root",
+            str(root),
+            "--urls",
+            "x.txt",
+            "--base-url",
+            "https://x.com",
+        ]
+    )
     assert r.returncode == 1
     assert "exactly one URL source" in json.loads(r.stdout)["error"]
     r = _cli(["sitemap", "gen", "--root", str(root)])
@@ -709,8 +807,18 @@ def test_cli_rejects_ambiguous_and_missing_sources(tmp_path):
     r = _cli(["sitemap", "gen", "--root", str(root), "--base-url", "x.com"])
     assert r.returncode == 1
     assert "base URL must be absolute" in json.loads(r.stdout)["error"]
-    r = _cli(["sitemap", "gen", "--root", str(root), "--base-url", "https://x.com",
-              "--lastmod", "hourly"])
+    r = _cli(
+        [
+            "sitemap",
+            "gen",
+            "--root",
+            str(root),
+            "--base-url",
+            "https://x.com",
+            "--lastmod",
+            "hourly",
+        ]
+    )
     assert r.returncode == 1
     assert "--lastmod must be one of" in json.loads(r.stdout)["error"]
 
@@ -725,26 +833,56 @@ def test_cli_gen_from_the_seo_crawl_store(tmp_path):
 
     def fetch(url):
         body = pages.get(url, "")
-        return {"status": 200 if body else 404, "final_url": url, "redirects": [],
-                "content_type": "text/html", "headers": {}, "body": body, "error": None}
+        return {
+            "status": 200 if body else 404,
+            "final_url": url,
+            "redirects": [],
+            "content_type": "text/html",
+            "headers": {},
+            "body": body,
+            "error": None,
+        }
 
     db = tmp_path / "seo.db"
     conn = seo.open_store(db)
     seo.crawl(conn, "https://site.test/", fetch, ts=1.0)
     conn.close()
     out = tmp_path / "sitemap.xml"
-    r = _cli(["sitemap", "gen", "--from-crawl", "https://site.test/",
-              "--db", str(db), "--out", str(out)])
+    r = _cli(
+        [
+            "sitemap",
+            "gen",
+            "--from-crawl",
+            "https://site.test/",
+            "--db",
+            str(db),
+            "--out",
+            str(out),
+        ]
+    )
     assert r.returncode == 0, r.stderr + r.stdout
     data = json.loads(r.stdout)["data"]
     assert data["source"] == "crawl" and data["base"] == "https://site.test/"
-    locs = [e["loc"] for e in sitemap.parse_sitemap(out.read_text(encoding="utf-8"))["entries"]]
+    locs = [
+        e["loc"]
+        for e in sitemap.parse_sitemap(out.read_text(encoding="utf-8"))["entries"]
+    ]
     assert locs == ["https://site.test/", "https://site.test/about"]
 
 
 def test_cli_from_crawl_without_a_store_fails_actionably(tmp_path):
-    r = _cli(["sitemap", "gen", "--from-crawl", "bhenre",
-              "--db", str(tmp_path / "none.db"), "--out", str(tmp_path / "s.xml")])
+    r = _cli(
+        [
+            "sitemap",
+            "gen",
+            "--from-crawl",
+            "bhenre",
+            "--db",
+            str(tmp_path / "none.db"),
+            "--out",
+            str(tmp_path / "s.xml"),
+        ]
+    )
     assert r.returncode == 1
     data = json.loads(r.stdout)
     assert "no seo crawl store" in data["error"]

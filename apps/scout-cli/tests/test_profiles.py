@@ -96,7 +96,7 @@ def test_openclaw_after_run_updates_context_across_steps(tmp_path, monkeypatch):
     monkeypatch.setenv("DOTTIE_STATE_DB", str(tmp_path / "state.sqlite3"))
     r1 = after_run(PROFILES["openclaw"], session_id="s2", task="step one", outcome="ok")
     after_run(PROFILES["openclaw"], session_id="s2", task="step two", outcome="planned")
-    assert r1["channel"] == "cli"   # scout is the "cli" surface (TODOS 6.2)
+    assert r1["channel"] == "cli"  # scout is the "cli" surface (TODOS 6.2)
     with skills_store.JSpaceStateStore() as st:
         assert st.get_context("s2", "last_task", channel="cli") == "step two"
         assert st.get_context("s2", "last_outcome", channel="cli") == "planned"

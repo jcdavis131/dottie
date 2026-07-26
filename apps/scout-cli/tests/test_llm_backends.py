@@ -4,6 +4,7 @@
 The contract under test: chat_with_metrics dispatches to the right endpoint,
 computes tokens/sec, and on ANY failure returns ok=False with content=None — it
 never fabricates a completion. All network is faked; no live runner required."""
+
 from __future__ import annotations
 
 import time
@@ -22,6 +23,7 @@ class _FakeResp:
 
 class _FakeClient:
     """Routes a request to the first payload whose key is a substring of the URL."""
+
     def __init__(self, routes: dict):
         self.routes = routes
         self.calls: list = []
@@ -80,13 +82,19 @@ def test_interval_clock_is_monotonic_not_wall_clock():
 
 def test_koboldcpp_routes_to_openai_v1_and_computes_tps(monkeypatch):
     elapsed = _pin_clock(monkeypatch, 0.5)
-    client = _patch(monkeypatch, {
-        "/v1/models": (200, {"data": [{"id": "loaded.gguf"}]}),
-        "/v1/chat/completions": (200, {
-            "choices": [{"message": {"content": "a merkle proof"}}],
-            "usage": {"completion_tokens": 12},
-        }),
-    })
+    client = _patch(
+        monkeypatch,
+        {
+            "/v1/models": (200, {"data": [{"id": "loaded.gguf"}]}),
+            "/v1/chat/completions": (
+                200,
+                {
+                    "choices": [{"message": {"content": "a merkle proof"}}],
+                    "usage": {"completion_tokens": 12},
+                },
+            ),
+        },
+    )
     res = llm.chat_with_metrics("koboldcpp", "any", [{"role": "user", "content": "hi"}])
     assert res["ok"] is True
     assert res["content"] == "a merkle proof"
@@ -100,15 +108,23 @@ def test_koboldcpp_routes_to_openai_v1_and_computes_tps(monkeypatch):
 
 
 def test_ollama_routes_to_api_chat_and_uses_server_timing(monkeypatch):
-    client = _patch(monkeypatch, {
-        "/api/tags": (200, {"models": [{"name": "qwen3:8b"}]}),
-        "/api/chat": (200, {
-            "message": {"content": "yo"},
-            "eval_count": 20,
-            "eval_duration": 1_000_000_000,  # 1.0s in ns -> 20 tok/s server-side
-        }),
-    })
-    res = llm.chat_with_metrics("ollama", "qwen3:8b", [{"role": "user", "content": "hi"}])
+    client = _patch(
+        monkeypatch,
+        {
+            "/api/tags": (200, {"models": [{"name": "qwen3:8b"}]}),
+            "/api/chat": (
+                200,
+                {
+                    "message": {"content": "yo"},
+                    "eval_count": 20,
+                    "eval_duration": 1_000_000_000,  # 1.0s in ns -> 20 tok/s server-side
+                },
+            ),
+        },
+    )
+    res = llm.chat_with_metrics(
+        "ollama", "qwen3:8b", [{"role": "user", "content": "hi"}]
+    )
     assert res["ok"] is True and res["content"] == "yo"
     assert res["completion_tokens"] == 20
     assert res["server_tok_per_s"] == 20.0
@@ -117,12 +133,19 @@ def test_ollama_routes_to_api_chat_and_uses_server_timing(monkeypatch):
 
 def test_failure_never_fabricates_a_completion(monkeypatch):
     # server up for detection but the generation call 500s
-    _patch(monkeypatch, {
-        "/v1/models": (200, {"data": []}),
-        "/v1/chat/completions": (500, {}),
-    })
-    res = llm.chat_with_metrics("koboldcpp", "x", [{"role": "user", "content": "hi"}],
-                                base="http://localhost:5001")
+    _patch(
+        monkeypatch,
+        {
+            "/v1/models": (200, {"data": []}),
+            "/v1/chat/completions": (500, {}),
+        },
+    )
+    res = llm.chat_with_metrics(
+        "koboldcpp",
+        "x",
+        [{"role": "user", "content": "hi"}],
+        base="http://localhost:5001",
+    )
     assert res["ok"] is False
     assert res["content"] is None
     assert res["error"]
@@ -137,20 +160,32 @@ def test_unreachable_backend_is_honest(monkeypatch):
 
 def test_unknown_backend_rejected(monkeypatch):
     _patch(monkeypatch, {})
-    res = llm.chat_with_metrics("banana", "x", [{"role": "user", "content": "hi"}],
-                                base="http://localhost:1")
+    res = llm.chat_with_metrics(
+        "banana", "x", [{"role": "user", "content": "hi"}], base="http://localhost:1"
+    )
     assert res["ok"] is False and "unknown backend" in res["error"]
 
 
 def test_context_shift_is_recorded_telemetry(monkeypatch):
-    _patch(monkeypatch, {
-        "/v1/chat/completions": (200, {
-            "choices": [{"message": {"content": "ok"}}],
-            "usage": {"completion_tokens": 3},
-        }),
-    })
-    res = llm.chat_with_metrics("koboldcpp", "x", [{"role": "user", "content": "hi"}],
-                                base="http://localhost:5001", context_shift=True)
+    _patch(
+        monkeypatch,
+        {
+            "/v1/chat/completions": (
+                200,
+                {
+                    "choices": [{"message": {"content": "ok"}}],
+                    "usage": {"completion_tokens": 3},
+                },
+            ),
+        },
+    )
+    res = llm.chat_with_metrics(
+        "koboldcpp",
+        "x",
+        [{"role": "user", "content": "hi"}],
+        base="http://localhost:5001",
+        context_shift=True,
+    )
     assert res["ok"] is True and res["context_shift"] is True
 
 

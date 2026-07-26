@@ -10,12 +10,16 @@ Only code that passes every runnable level is written to an experiment workspace
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any
 
 from dottie.research import prompts, validate
 from dottie.research.ledger import (
-    Ledger, PENDING, READY_FOR_TRAINING, FAILED_VALIDATION,
+    FAILED_VALIDATION,
+    PENDING,
+    READY_FOR_TRAINING,
+    Ledger,
 )
 
 Policy = Callable[[str], str]
@@ -27,7 +31,7 @@ Policy = Callable[[str], str]
 _PARSE_RETRY_BUDGET = 3
 
 
-def _corrector_error(outcome) -> Optional[str]:
+def _corrector_error(outcome) -> str | None:
     """The corrector's own exception, if the retry loop stopped because of one.
 
     `validate_with_correction` breaks out early when the CORRECTOR raises (Ollama
@@ -62,16 +66,21 @@ def _keep_tail(detail: str, limit: int = 800) -> str:
     return "...[head truncated]... " + detail[-limit:]
 
 
-def _safe_basename(target_file: Optional[str], fallback: str) -> str:
+def _safe_basename(target_file: str | None, fallback: str) -> str:
     name = Path(str(target_file or "")).name
     if not name.endswith(".py") or not name[:-3].isidentifier():
         name = f"{fallback}.py"
     return name
 
 
-def run_implementation(ledger: Ledger, policy: Policy, *, workspace_root: str | Path,
-                       max_retries: int = 3, ts: Optional[float] = None
-                       ) -> Optional[Dict[str, Any]]:
+def run_implementation(
+    ledger: Ledger,
+    policy: Policy,
+    *,
+    workspace_root: str | Path,
+    max_retries: int = 3,
+    ts: float | None = None,
+) -> dict[str, Any] | None:
     """Implement the oldest pending hypothesis. Returns a summary, or None if none pending.
 
     Raises ``DottiePolicyUnavailable`` if the model is unreachable on the FIRST call (nothing to
@@ -80,7 +89,9 @@ def run_implementation(ledger: Ledger, policy: Policy, *, workspace_root: str | 
     if exp is None:
         return None
 
-    text = policy(prompts.implementation_prompt(exp.hypothesis))  # unavailability propagates
+    text = policy(
+        prompts.implementation_prompt(exp.hypothesis)
+    )  # unavailability propagates
     impl = dry = None
     parse_attempts = 0
     while True:
@@ -94,15 +105,25 @@ def run_implementation(ledger: Ledger, policy: Policy, *, workspace_root: str | 
             parse_attempts += 1
             if parse_attempts > max_retries:
                 ledger.transition(
-                    exp.id, FAILED_VALIDATION, attempts=parse_attempts,
+                    exp.id,
+                    FAILED_VALIDATION,
+                    attempts=parse_attempts,
                     failure=f"implementation output unparseable after {parse_attempts} "
-                            f"attempt(s): {e}", ts=ts)
-                return {"experiment": exp.id, "state": FAILED_VALIDATION,
-                        "level": "parse", "attempts": parse_attempts}
-            feedback = (f"Validation failed at level 'parse' (fail). Detail:\n{e}\n"
-                        "Your entire response must be ONE JSON object matching the "
-                        "implementation schema — no markdown fences, no prose, and every "
-                        "string field valid JSON (escape backslashes and newlines).")
+                    f"attempt(s): {e}",
+                    ts=ts,
+                )
+                return {
+                    "experiment": exp.id,
+                    "state": FAILED_VALIDATION,
+                    "level": "parse",
+                    "attempts": parse_attempts,
+                }
+            feedback = (
+                f"Validation failed at level 'parse' (fail). Detail:\n{e}\n"
+                "Your entire response must be ONE JSON object matching the "
+                "implementation schema — no markdown fences, no prose, and every "
+                "string field valid JSON (escape backslashes and newlines)."
+            )
             text = policy(prompts.correction_prompt(text, feedback))
 
     # Holder tracks the latest parsed impl/dry as the corrector re-calls the model, so the final
@@ -142,7 +163,8 @@ def run_implementation(ledger: Ledger, policy: Policy, *, workspace_root: str | 
                     f"{feedback}\n\nYour previous reply could not be parsed: {e}\n"
                     "Your entire response must be ONE JSON object matching the "
                     "implementation schema — no markdown fences, no prose, and every "
-                    "string field valid JSON (escape backslashes and newlines).")
+                    "string field valid JSON (escape backslashes and newlines)."
+                )
                 continue
             latest["impl"], latest["dry"] = new_impl, new_dry
             return new_impl["code"]
@@ -150,9 +172,13 @@ def run_implementation(ledger: Ledger, policy: Policy, *, workspace_root: str | 
     ws = Path(workspace_root) / exp.id
     ws.mkdir(parents=True, exist_ok=True)
     outcome = validate.validate_with_correction(
-        impl["code"], corrector, max_retries=max_retries,
-        class_name=dry["class_name"], init_kwargs=dry["init_kwargs"],
-        input_shape=dry["input_shape"], workdir=ws,
+        impl["code"],
+        corrector,
+        max_retries=max_retries,
+        class_name=dry["class_name"],
+        init_kwargs=dry["init_kwargs"],
+        input_shape=dry["input_shape"],
+        workdir=ws,
     )
 
     final_impl = dict(latest["impl"])
@@ -160,9 +186,12 @@ def run_implementation(ledger: Ledger, policy: Policy, *, workspace_root: str | 
     final_impl["code"] = outcome.code  # authoritative final code
     final_impl["dry_run"] = final_dry
     final_impl["validation"] = {
-        "ok": outcome.ok, "attempts": outcome.attempts,
-        "level": outcome.result.level, "status": outcome.result.status,
-        "per_level": outcome.result.per_level, "history": outcome.history,
+        "ok": outcome.ok,
+        "attempts": outcome.attempts,
+        "level": outcome.result.level,
+        "status": outcome.result.status,
+        "per_level": outcome.result.per_level,
+        "history": outcome.history,
         # Additive (2026-07-23): the FINAL attempt's obligation ledger — named
         # {obligation_id, property, stage, status} rows. Each history entry
         # above carries its own per-attempt copy, so downstream (KG ingest,
@@ -174,18 +203,38 @@ def run_implementation(ledger: Ledger, policy: Policy, *, workspace_root: str | 
     if outcome.ok:
         module_path = ws / _safe_basename(final_impl.get("target_file"), exp.id)
         module_path.write_text(outcome.code, encoding="utf-8")
-        ledger.transition(exp.id, READY_FOR_TRAINING, implementation=final_impl,
-                          workspace=str(ws), attempts=outcome.attempts, ts=ts)
-        return {"experiment": exp.id, "state": READY_FOR_TRAINING,
-                "module": final_impl.get("module_name"), "attempts": outcome.attempts,
-                "module_path": str(module_path)}
+        ledger.transition(
+            exp.id,
+            READY_FOR_TRAINING,
+            implementation=final_impl,
+            workspace=str(ws),
+            attempts=outcome.attempts,
+            ts=ts,
+        )
+        return {
+            "experiment": exp.id,
+            "state": READY_FOR_TRAINING,
+            "module": final_impl.get("module_name"),
+            "attempts": outcome.attempts,
+            "module_path": str(module_path),
+        }
 
-    ledger.transition(exp.id, FAILED_VALIDATION, implementation=final_impl, workspace=str(ws),
-                      attempts=outcome.attempts,
-                      failure=f"validation failed at '{outcome.result.level}' after "
-                              f"{outcome.attempts} self-correction attempt(s)"
-                              f"{_corrector_note(outcome)}: "
-                              f"{_keep_tail(outcome.result.detail)}", ts=ts)
-    return {"experiment": exp.id, "state": FAILED_VALIDATION,
-            "level": outcome.result.level, "attempts": outcome.attempts,
-            "corrector_error": _corrector_error(outcome)}
+    ledger.transition(
+        exp.id,
+        FAILED_VALIDATION,
+        implementation=final_impl,
+        workspace=str(ws),
+        attempts=outcome.attempts,
+        failure=f"validation failed at '{outcome.result.level}' after "
+        f"{outcome.attempts} self-correction attempt(s)"
+        f"{_corrector_note(outcome)}: "
+        f"{_keep_tail(outcome.result.detail)}",
+        ts=ts,
+    )
+    return {
+        "experiment": exp.id,
+        "state": FAILED_VALIDATION,
+        "level": outcome.result.level,
+        "attempts": outcome.attempts,
+        "corrector_error": _corrector_error(outcome),
+    }

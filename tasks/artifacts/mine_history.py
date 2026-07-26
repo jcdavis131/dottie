@@ -9,7 +9,10 @@ con.row_factory = sqlite3.Row
 
 HINTS = [
     ("einsum", r"einsum\(\)"),
-    ("shape_algebra", r"must match the size of tensor|Expected size for first two dimensions|mat1 and mat2 shapes"),
+    (
+        "shape_algebra",
+        r"must match the size of tensor|Expected size for first two dimensions|mat1 and mat2 shapes",
+    ),
     ("ctor_missing_arg", r"missing \d+ required positional argument"),
     ("no_attribute", r"has no attribute '\w+'"),
     ("name_error", r"NameError: name"),
@@ -18,19 +21,24 @@ HINTS = [
     ("output_shape_contract", r"the SAME \[batch, seq, hidden\] shape"),
 ]
 
+
 def classify(detail):
     for name, pat in HINTS:
         if re.search(pat, detail):
             return name
     return None
 
+
 ERR_RE = re.compile(
     r"^(?:[A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception|Warning)|AssertionError|KeyboardInterrupt)\b.*",
-    re.M)
+    re.M,
+)
+
 
 def err_line(detail):
     hits = ERR_RE.findall(detail)
     return hits[-1].strip()[:200] if hits else None
+
 
 rows = con.execute(
     "SELECT id, state, failure, implementation, attempts, created_ts FROM experiments "
@@ -39,12 +47,14 @@ rows = con.execute(
 
 # ---- Terminal-failure taxonomy over EVERY failed attempt in history (the corrector
 # sees each one, so each is a hint opportunity), plus terminal failures.
-attempt_counter = Counter()      # class of every failed history entry
-terminal_counter = Counter()     # class of final failure per failed_validation exp
-uncovered_attempts = defaultdict(list)   # cluster -> [(exp_id, attempt, level, errline, detail)]
+attempt_counter = Counter()  # class of every failed history entry
+terminal_counter = Counter()  # class of final failure per failed_validation exp
+uncovered_attempts = defaultdict(
+    list
+)  # cluster -> [(exp_id, attempt, level, errline, detail)]
 
 n_hist_fail = 0
-recoveries = []   # experiments with fail -> later ok in history
+recoveries = []  # experiments with fail -> later ok in history
 
 for r in rows:
     impl = json.loads(r["implementation"])
@@ -58,13 +68,16 @@ for r in rows:
         if c:
             attempt_counter[c] += 1
         else:
-            e = err_line(det) or (det.strip().splitlines()[0] if det.strip() else "(empty)")
+            e = err_line(det) or (
+                det.strip().splitlines()[0] if det.strip() else "(empty)"
+            )
             key = re.sub(r"\d+", "N", e)
             key = re.sub(r"'[^']*'", "'X'", key)
             key = re.sub(r"\([^)]*\)", "(..)", key)[:120]
             attempt_counter["UNCOVERED"] += 1
             uncovered_attempts[(h.get("level"), key)].append(
-                (r["id"], h.get("attempt"), e, det))
+                (r["id"], h.get("attempt"), e, det)
+            )
     # terminal failure for failed_validation
     if r["state"] == "failed_validation" and fails:
         det = fails[-1].get("detail") or ""

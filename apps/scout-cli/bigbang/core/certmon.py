@@ -318,12 +318,12 @@ def analyze(
             _reason("bad-cert", SEV_ERROR, "certificate has no valid notAfter")
         )
     elif days < 0:
-        reasons.append(
-            _reason("expired", SEV_ERROR, f"expired {abs(days)}d ago")
-        )
+        reasons.append(_reason("expired", SEV_ERROR, f"expired {abs(days)}d ago"))
     elif days < error_days:
         reasons.append(
-            _reason("expiring-soon", SEV_ERROR, f"expires in {days}d (< {error_days:g})")
+            _reason(
+                "expiring-soon", SEV_ERROR, f"expires in {days}d (< {error_days:g})"
+            )
         )
     elif days < warn_days:
         reasons.append(
