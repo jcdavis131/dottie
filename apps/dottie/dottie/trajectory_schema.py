@@ -83,7 +83,9 @@ def to_dict(t: Trajectory) -> dict[str, Any]:
 def from_dict(d: dict[str, Any]) -> Trajectory:
     """Plain dict -> Trajectory. Unknown top-level keys are ignored (forward-compat)."""
     steps = [
-        s if isinstance(s, Step) else Step(
+        s
+        if isinstance(s, Step)
+        else Step(
             state=s.get("state", ""),
             action=s.get("action") or {},
             tool_calls=s.get("tool_calls") or [],
@@ -283,7 +285,9 @@ def from_agent_eval_events(result: dict[str, Any]) -> Trajectory:
         outcome={
             "status": result.get("status"),
             "success": result.get("success"),
-            "trajectory_ok": result.get("trajectory_ok"),  # None = task declares no trajectory
+            "trajectory_ok": result.get(
+                "trajectory_ok"
+            ),  # None = task declares no trajectory
             "reward": None,
             "verified_by": result.get("check_detail"),
         },

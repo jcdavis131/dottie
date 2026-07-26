@@ -104,8 +104,11 @@ def main() -> int:
     after = before
     for old, new in REPLACEMENTS:
         if after.count(old) != 1:
-            print(f"ABORT: expected exactly 1 occurrence, found {after.count(old)}:"
-                  f"\n{old!r}", file=sys.stderr)
+            print(
+                f"ABORT: expected exactly 1 occurrence, found {after.count(old)}:"
+                f"\n{old!r}",
+                file=sys.stderr,
+            )
             return 1
         after = after.replace(old, new)
     diff = "".join(

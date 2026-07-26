@@ -78,8 +78,13 @@ def test_parse_cert_time_locale_independent():
 
 
 def test_parse_cert_time_rejects_junk():
-    for bad in ("not a date", "Aug 1 2026", "Xyz  1 00:00:00 2026 GMT",
-                "Aug  1 00:00:00 2026 PST", 12345):
+    for bad in (
+        "not a date",
+        "Aug 1 2026",
+        "Xyz  1 00:00:00 2026 GMT",
+        "Aug  1 00:00:00 2026 PST",
+        12345,
+    ):
         with pytest.raises(ValueError):
             certmon.parse_cert_time(bad)
 
@@ -165,9 +170,7 @@ def test_analyze_identity_and_integrity_errors():
     ss = certmon.analyze("x.com", _obs(_cert(host="x.com", issuer_cn="x.com")), now=now)
     assert [r["code"] for r in ss["reasons"]] == ["self-signed"]
     assert ss["severity"] == "error"
-    weak = certmon.analyze(
-        "example.com", _obs(_cert(), protocol="TLSv1"), now=now
-    )
+    weak = certmon.analyze("example.com", _obs(_cert(), protocol="TLSv1"), now=now)
     assert [r["code"] for r in weak["reasons"]] == ["weak-protocol"]
     assert weak["severity"] == "error"
 
@@ -180,9 +183,7 @@ def test_analyze_warning_conditions():
     # hsts unknown (None) is NOT a warning — we only flag a confirmed absence
     unknown = certmon.analyze("example.com", _obs(_cert(), hsts=None), now=now)
     assert unknown["severity"] == "ok"
-    chainless = certmon.analyze(
-        "example.com", _obs(_cert(issuer_cn=None)), now=now
-    )
+    chainless = certmon.analyze("example.com", _obs(_cert(issuer_cn=None)), now=now)
     assert [r["code"] for r in chainless["reasons"]] == ["no-chain"]
     assert chainless["severity"] == "warning"
 
@@ -210,9 +211,14 @@ def test_analyze_unreachable_and_malformed_never_crash():
     assert certmon.analyze("example.com", _obs({}), now=NA_EPOCH)["severity"] == "error"
     # a cert dict with no notAfter is malformed -> bad-cert error, not a crash
     bad = certmon.analyze(
-        "example.com", _obs({"subject": ((("commonName", "example.com"),),),
-                             "issuer": ((("commonName", "CA"),),),
-                             "subjectAltName": (("DNS", "example.com"),)}),
+        "example.com",
+        _obs(
+            {
+                "subject": ((("commonName", "example.com"),),),
+                "issuer": ((("commonName", "CA"),),),
+                "subjectAltName": (("DNS", "example.com"),),
+            }
+        ),
         now=NA_EPOCH,
     )
     assert any(r["code"] == "bad-cert" for r in bad["reasons"])
@@ -308,7 +314,9 @@ def test_record_cert_writes_history_and_events_only_on_problems():
     evs = uptime.recent_events(conn)
     assert len(evs) == 1 and evs[0]["kind"] == "cert" and evs[0]["target"] == "bad.com"
     row = certmon.latest_cert(conn, "bad.com")
-    assert row["severity"] == "error" and json.loads(row["reasons"]) == ["host-mismatch"]
+    assert row["severity"] == "error" and json.loads(row["reasons"]) == [
+        "host-mismatch"
+    ]
     assert row["host_match"] == 0  # bool stored as int
 
 
@@ -328,7 +336,9 @@ def test_run_pass_records_and_boards():
     assert len(res["problems"]) == 1
     assert len(certmon.cert_history(conn, "dead.com")) == 1
     # board recomputes days-to-expiry against a *later* now, unknown for unseen
-    board = {b["host"]: b for b in certmon.board(conn, ["good.com", "never.com"], now=now)}
+    board = {
+        b["host"]: b for b in certmon.board(conn, ["good.com", "never.com"], now=now)
+    }
     assert board["good.com"]["days_to_expiry"] == 60.0
     assert board["good.com"]["status"] == "ok"
     assert board["never.com"]["status"] == "unknown"
@@ -337,7 +347,9 @@ def test_run_pass_records_and_boards():
 def test_run_pass_no_record_leaves_ledger_empty():
     conn = _mem()
     obs = _obs(_cert(host="x.com"))
-    certmon.run_pass(conn, ["x.com"], lambda h: obs, now=NA_EPOCH - 60 * DAY, record=False)
+    certmon.run_pass(
+        conn, ["x.com"], lambda h: obs, now=NA_EPOCH - 60 * DAY, record=False
+    )
     assert certmon.cert_history(conn, "x.com") == []
 
 

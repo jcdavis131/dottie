@@ -182,7 +182,8 @@ def _urlprobe(timeout: float):
         # every url here is manifest/user-allowlist gated AND http(s)-only by
         # construction (seo.resolve_link drops every other scheme)
         req = urllib.request.Request(
-            url, method=method,
+            url,
+            method=method,
             headers={"User-Agent": links.USER_AGENT, "Accept": "*/*"},
         )
         try:
@@ -300,7 +301,9 @@ def check_cmd(
             else:
                 policy_denied.append(u)
                 ext_results[u] = {
-                    "state": "unverified", "status": None, "method": None,
+                    "state": "unverified",
+                    "status": None,
+                    "method": None,
                     "detail": "policy-denied (manifest + user allowlist)",
                     "attempts": 0,
                 }
@@ -309,9 +312,13 @@ def check_cmd(
         )
     else:
         ext_results = {
-            u: {"state": "unverified", "status": None, "method": None,
+            u: {
+                "state": "unverified",
+                "status": None,
+                "method": None,
                 "detail": "external verification off — pass --external",
-                "attempts": 0}
+                "attempts": 0,
+            }
             for u in ext_urls
         }
     diags = links.to_diagnostics(survey, ext_results)
@@ -472,9 +479,7 @@ def graph_cmd(
         "nodes": len(graph),
         "edges": sum(len(v) for v in graph.values()),
         "adjacency": graph,
-        "inbound_top": sorted(
-            inbound.items(), key=lambda kv: (-kv[1], kv[0])
-        )[:10],
+        "inbound_top": sorted(inbound.items(), key=lambda kv: (-kv[1], kv[0]))[:10],
         "orphans": survey["orphans"],
     }
     if dot:

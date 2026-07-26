@@ -44,8 +44,12 @@ app = make_plugin_app(
 def _fetch(url: str, timeout: float) -> dict:
     """One real probe. Returns a normalized dict; never raises to the caller."""
     try:
-        r = httpx.get(url, timeout=timeout, follow_redirects=True,
-                      headers={"accept": "application/json, text/html;q=0.9, */*;q=0.5"})
+        r = httpx.get(
+            url,
+            timeout=timeout,
+            follow_redirects=True,
+            headers={"accept": "application/json, text/html;q=0.9, */*;q=0.5"},
+        )
         ct = r.headers.get("content-type", "")
         jb = None
         if "json" in ct.lower():
@@ -53,11 +57,21 @@ def _fetch(url: str, timeout: float) -> dict:
                 jb = r.json()
             except Exception:
                 jb = None
-        return {"status": r.status_code, "content_type": ct,
-                "body_text": r.text[:2048], "json_body": jb, "error": None}
+        return {
+            "status": r.status_code,
+            "content_type": ct,
+            "body_text": r.text[:2048],
+            "json_body": jb,
+            "error": None,
+        }
     except Exception as e:  # DNS, TLS, timeout, refused — all transport failures
-        return {"status": None, "content_type": "", "body_text": "",
-                "json_body": None, "error": f"{type(e).__name__}: {e}"}
+        return {
+            "status": None,
+            "content_type": "",
+            "body_text": "",
+            "json_body": None,
+            "error": f"{type(e).__name__}: {e}",
+        }
 
 
 def _probe(target: str, timeout: float, *, tried_well_known: bool = False) -> dict:
@@ -65,22 +79,39 @@ def _probe(target: str, timeout: float, *, tried_well_known: bool = False) -> di
     url = R.normalize_target(target)
     allowed, reason = check_user_url(url)
     if not allowed:
-        return {"url": url, "kind": "blocked", "policy_denied": True,
-                "detail": reason, "suggested_name": R.derive_tool_name(url)}
+        return {
+            "url": url,
+            "kind": "blocked",
+            "policy_denied": True,
+            "detail": reason,
+            "suggested_name": R.derive_tool_name(url),
+        }
     raw = _fetch(url, timeout)
     cls = R.classify(url=url, **raw)
-    return {"url": url, "status": raw["status"], "content_type": raw["content_type"],
-            "suggested_name": R.derive_tool_name(url), "tried_well_known": tried_well_known,
-            **cls, "_json_body": raw["json_body"]}
+    return {
+        "url": url,
+        "status": raw["status"],
+        "content_type": raw["content_type"],
+        "suggested_name": R.derive_tool_name(url),
+        "tried_well_known": tried_well_known,
+        **cls,
+        "_json_body": raw["json_body"],
+    }
 
 
 @app.command(
     epilog=None,
 )
 def probe(
-    target: str = typer.Argument(..., help="url, host, or host:port — anything digital"),
-    register: bool = typer.Option(False, "--register", help="auto-register a discovered OpenAPI/MCP tool"),
-    name: str | None = typer.Option(None, "--name", help="registry name (default: derived from host)"),
+    target: str = typer.Argument(
+        ..., help="url, host, or host:port — anything digital"
+    ),
+    register: bool = typer.Option(
+        False, "--register", help="auto-register a discovered OpenAPI/MCP tool"
+    ),
+    name: str | None = typer.Option(
+        None, "--name", help="registry name (default: derived from host)"
+    ),
     timeout: float = typer.Option(10.0, "--timeout", help="probe timeout seconds"),
 ):
     """Reach a target: classify it, and (with --register) make it callable."""
@@ -97,21 +128,34 @@ def probe(
             ops = len(parse_operations(jb))
         except Exception:
             ops = 0
-        register_tool(tool_name, {
-            "type": "openapi", "url": p["url"],
-            "description": (jb.get("info", {}) or {}).get("title", tool_name),
-            "capabilities": {"network": {"enabled": True, "domains": [R.host_of(p["url"])]}},
-            "operations": ops, "source": "scout reach",
-        })
+        register_tool(
+            tool_name,
+            {
+                "type": "openapi",
+                "url": p["url"],
+                "description": (jb.get("info", {}) or {}).get("title", tool_name),
+                "capabilities": {
+                    "network": {"enabled": True, "domains": [R.host_of(p["url"])]}
+                },
+                "operations": ops,
+                "source": "scout reach",
+            },
+        )
         registered = True
     p["registered"] = registered
 
     plan = R.plan_unblock(p)
     payload = ok(
-        {"target": p["url"], "kind": p["kind"], "confidence": p.get("confidence"),
-         "detail": p.get("detail"), "signals": p.get("signals", []),
-         "registered": registered, "tool_name": tool_name if registered else None,
-         "unblock": plan},
+        {
+            "target": p["url"],
+            "kind": p["kind"],
+            "confidence": p.get("confidence"),
+            "detail": p.get("detail"),
+            "signals": p.get("signals", []),
+            "registered": registered,
+            "tool_name": tool_name if registered else None,
+            "unblock": plan,
+        },
         command="reach",
         example=(plan[0]["fix"] if plan else f"scout tools call {tool_name} <action>"),
     )
@@ -122,31 +166,56 @@ def probe(
 
 @app.command()
 def allow(
-    host: str = typer.Argument(..., help="host to add to the network allowlist, e.g. api.github.com"),
+    host: str = typer.Argument(
+        ..., help="host to add to the network allowlist, e.g. api.github.com"
+    ),
 ):
     """Self-unblock the network axis: persist a host into the user allowlist."""
     changed, msg = add_allowed_domain(host)
-    emit(ok({"host": R.host_of(R.normalize_target(host)) or host, "changed": changed, "message": msg},
+    emit(
+        ok(
+            {
+                "host": R.host_of(R.normalize_target(host)) or host,
+                "changed": changed,
+                "message": msg,
+            },
             command="reach allow",
-            example=f"scout reach {host}"),
-         command="reach allow")
+            example=f"scout reach {host}",
+        ),
+        command="reach allow",
+    )
 
 
 @app.command()
 def diagnose(
     target: str = typer.Argument(..., help="url or host to deep-probe"),
-    timeout: float = typer.Option(6.0, "--timeout", help="per-candidate timeout seconds"),
+    timeout: float = typer.Option(
+        6.0, "--timeout", help="per-candidate timeout seconds"
+    ),
 ):
     """When a plain reach finds no spec, walk well-known OpenAPI/MCP locations."""
     base = R.normalize_target(target)
     allowed, reason = check_user_url(base)
     if not allowed:
-        p = {"url": base, "kind": "blocked", "policy_denied": True,
-             "suggested_name": R.derive_tool_name(base)}
-        emit(ok({"target": base, "kind": "blocked", "detail": reason,
-                 "unblock": R.plan_unblock(p), "next": f"scout reach allow {R.host_of(base)}"},
-                command="reach diagnose"),
-             command="reach diagnose")
+        p = {
+            "url": base,
+            "kind": "blocked",
+            "policy_denied": True,
+            "suggested_name": R.derive_tool_name(base),
+        }
+        emit(
+            ok(
+                {
+                    "target": base,
+                    "kind": "blocked",
+                    "detail": reason,
+                    "unblock": R.plan_unblock(p),
+                    "next": f"scout reach allow {R.host_of(base)}",
+                },
+                command="reach diagnose",
+            ),
+            command="reach diagnose",
+        )
         return
 
     tried: list[dict] = []
@@ -167,15 +236,29 @@ def diagnose(
                 found = {"url": cand, **cls}
                 break
 
-    result = {"target": base, "found": found, "tried": tried,
-              "suggested_name": R.derive_tool_name(base)}
-    probe_like = {"url": (found or {}).get("url", base),
-                  "kind": (found or {}).get("kind", "empty"),
-                  "suggested_name": result["suggested_name"], "tried_well_known": True,
-                  "registered": False}
+    result = {
+        "target": base,
+        "found": found,
+        "tried": tried,
+        "suggested_name": R.derive_tool_name(base),
+    }
+    probe_like = {
+        "url": (found or {}).get("url", base),
+        "kind": (found or {}).get("kind", "empty"),
+        "suggested_name": result["suggested_name"],
+        "tried_well_known": True,
+        "registered": False,
+    }
     plan = R.plan_unblock(probe_like)
-    payload = ok(result, command="reach diagnose",
-                 example=(plan[0]["fix"] if plan else f"scout reach {(found or {}).get('url', base)} --register"))
+    payload = ok(
+        result,
+        command="reach diagnose",
+        example=(
+            plan[0]["fix"]
+            if plan
+            else f"scout reach {(found or {}).get('url', base)} --register"
+        ),
+    )
     if plan:
         payload["next"] = plan[0]["fix"]
     emit(payload, command="reach diagnose")
@@ -191,11 +274,19 @@ def plan(
     p.pop("_json_body", None)
     p["registered"] = get_tool(p["suggested_name"]) is not None
     steps = R.plan_unblock(p)
-    emit(ok({"target": p["url"], "kind": p["kind"], "unblock": steps,
-             "next": steps[0]["fix"] if steps else None},
+    emit(
+        ok(
+            {
+                "target": p["url"],
+                "kind": p["kind"],
+                "unblock": steps,
+                "next": steps[0]["fix"] if steps else None,
+            },
             command="reach plan",
-            example=steps[0]["fix"] if steps else f"scout reach {target} --register"),
-         command="reach plan")
+            example=steps[0]["fix"] if steps else f"scout reach {target} --register",
+        ),
+        command="reach plan",
+    )
 
 
 def register(root: typer.Typer):

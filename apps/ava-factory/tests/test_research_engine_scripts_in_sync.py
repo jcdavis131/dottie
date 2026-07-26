@@ -57,7 +57,9 @@ def test_the_duplicate_set_is_still_what_we_measured():
     names = _duplicated_names()
     if not _RE_SCRIPTS.is_dir():
         pytest.skip("research-engine/scripts/ is gone — the duplication was resolved")
-    assert names, "research-engine/scripts/ exists but duplicates nothing — re-read this test"
+    assert names, (
+        "research-engine/scripts/ exists but duplicates nothing — re-read this test"
+    )
     assert len(names) == 7, (
         f"the duplicate set changed: {len(names)} pairs now, 7 when this was written "
         f"({names}). Update the count deliberately, having checked WHY it changed."

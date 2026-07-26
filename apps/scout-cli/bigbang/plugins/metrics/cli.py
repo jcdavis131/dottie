@@ -95,7 +95,8 @@ def _capability() -> dict:
     native = openswap.probe_binary("typeperf", probe_args=("-?",))
     extras = {
         "powershell": openswap.probe_binary(
-            "powershell", probe_args=("-NoProfile", "-Command", "$PSVersionTable.PSEdition")
+            "powershell",
+            probe_args=("-NoProfile", "-Command", "$PSVersionTable.PSEdition"),
         ),
         "netdata": openswap.probe_binary("netdata", probe_args=("-v",)),
         "telegraf": openswap.probe_binary("telegraf", probe_args=("--version",)),
@@ -268,7 +269,9 @@ def collect(
         help="filesystem to measure (repeatable; default = the volume this cwd is on)",
     ),
     db: str | None = typer.Option(
-        None, "--db", help=f"sqlite ledger (default {metrics.DB_REL} or $SCOUT_METRICS_DB)"
+        None,
+        "--db",
+        help=f"sqlite ledger (default {metrics.DB_REL} or $SCOUT_METRICS_DB)",
     ),
     log: str | None = typer.Option(
         None,
@@ -411,7 +414,9 @@ def show(
         None, "--scope", help="with --metric: one scope (a mount path, or 'host')"
     ),
     history: int = typer.Option(
-        0, "--history", help="with --metric: N raw samples newest-first instead of the board"
+        0,
+        "--history",
+        help="with --metric: N raw samples newest-first instead of the board",
     ),
     show_windows: bool = typer.Option(
         False, "--windows", help="read persisted rollup windows instead of raw samples"

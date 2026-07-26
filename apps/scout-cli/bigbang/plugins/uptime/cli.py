@@ -487,7 +487,9 @@ def history(
     ),
 )
 def mark(
-    message: str = typer.Argument(..., help="what happened (e.g. deploy sha, ops note)"),
+    message: str = typer.Argument(
+        ..., help="what happened (e.g. deploy sha, ops note)"
+    ),
     kind: str = typer.Option("deploy", "--kind", help="event kind (deploy|note|...)"),
     target: str | None = typer.Option(
         None, "--target", help="scope to one target (default: global)"
