@@ -56,9 +56,18 @@ QUOTED_RE = re.compile(r"[\"“].*?[\"”]", re.S)
 
 def head_datetime() -> datetime:
     """HEAD's author time -- the ceiling. Nothing recorded can postdate the last commit."""
-    out = subprocess.run(["git", "log", "-1", "--format=%ad", "--date=format:%Y-%m-%d %H:%M"],
-                         cwd=REPO, capture_output=True, text=True,
-                         encoding="utf-8", errors="replace", timeout=30).stdout or ""
+    out = (
+        subprocess.run(
+            ["git", "log", "-1", "--format=%ad", "--date=format:%Y-%m-%d %H:%M"],
+            cwd=REPO,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        ).stdout
+        or ""
+    )
     return datetime.strptime(out.strip(), "%Y-%m-%d %H:%M")
 
 
@@ -71,10 +80,14 @@ def commit_times_by_entry() -> dict[str, tuple[str, str, str]]:
     # stray byte degrades one character instead of killing an integrity check.
     proc = subprocess.run(
         ["git", "log", "--format=%h%x09%ad%x09%s", "--date=format:%Y-%m-%d %H:%M"],
-        cwd=REPO, capture_output=True, text=True,
-        encoding="utf-8", errors="replace", timeout=60,
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=60,
     )
-    out = proc.stdout or ""      # never None: a git failure must not become AttributeError
+    out = proc.stdout or ""  # never None: a git failure must not become AttributeError
     found: dict[str, tuple[str, str, str]] = {}
     for line in out.splitlines():
         parts = line.split("\t", 2)
@@ -84,7 +97,9 @@ def commit_times_by_entry() -> dict[str, tuple[str, str, str]]:
         day, when = stamp.split(" ", 1)
         for m in re.finditer(r"\bR(\d+)\b", subject):
             key = "R" + m.group(1)
-            found.setdefault(key, (when, sha, day))   # first hit = newest commit for that entry
+            found.setdefault(
+                key, (when, sha, day)
+            )  # first hit = newest commit for that entry
     return found
 
 
@@ -125,27 +140,39 @@ def main() -> int:
         body = QUOTED_RE.sub("", STRUCK_RE.sub("", body))
         claimed = {f"{int(h):02d}:{m}" for h, m in TIME_RE.findall(body)}
         if show_all:
-            print(f"{name:<6} commit {sha} {day} {when}  claims: {sorted(claimed) or '-'}")
+            print(
+                f"{name:<6} commit {sha} {day} {when}  claims: {sorted(claimed) or '-'}"
+            )
         for t in sorted(claimed):
             checked += 1
             stamp = datetime.strptime(f"{day} {t}", "%Y-%m-%d %H:%M")
             if stamp > head:
                 violations.append((name, t, day, sha, when))
 
-    print(f"\nchecked {checked} claimed time(s) across "
-          f"{len(entries()) - len(skipped)} entries with a matching commit")
+    print(
+        f"\nchecked {checked} claimed time(s) across "
+        f"{len(entries()) - len(skipped)} entries with a matching commit"
+    )
     if skipped:
-        print(f"{len(skipped)} entries have no commit naming them and were NOT checked "
-              f"(they predate the R-numbered commit convention)")
+        print(
+            f"{len(skipped)} entries have no commit naming them and were NOT checked "
+            f"(they predate the R-numbered commit convention)"
+        )
 
     if violations:
-        print(f"\n{len(violations)} IMPOSSIBLE TIMESTAMP(S) -- in the future relative to "
-              f"HEAD ({head:%Y-%m-%d %H:%M}):\n")
+        print(
+            f"\n{len(violations)} IMPOSSIBLE TIMESTAMP(S) -- in the future relative to "
+            f"HEAD ({head:%Y-%m-%d %H:%M}):\n"
+        )
         for name, t, day, sha, when in violations:
-            print(f"  {name}: claims {day} {t}, but HEAD is {head:%H:%M} "
-                  f"(entry committed {sha} at {when})")
+            print(
+                f"  {name}: claims {day} {t}, but HEAD is {head:%H:%M} "
+                f"(entry committed {sha} at {when})"
+            )
         print("\nA time that has not happened yet was not read from a clock.")
-        print("Fix: git log --date=format:'%H:%M' -- use that, or write the sha instead.")
+        print(
+            "Fix: git log --date=format:'%H:%M' -- use that, or write the sha instead."
+        )
         return 1
 
     print(f"OK -- no claimed time is in the future (HEAD {head:%Y-%m-%d %H:%M}).")

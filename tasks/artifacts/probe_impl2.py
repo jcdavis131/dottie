@@ -26,5 +26,12 @@ for row in rows:
     fails = [h for h in hist if h.get("ok") is False and "detail" in h]
     oks = [h for h in hist if h.get("ok") is True]
     if fails and oks:
-        print("RECOVERED", row["id"], row["state"], "fails:", len(fails),
-              "levels:", [h.get("level") for h in fails])
+        print(
+            "RECOVERED",
+            row["id"],
+            row["state"],
+            "fails:",
+            len(fails),
+            "levels:",
+            [h.get("level") for h in fails],
+        )

@@ -412,8 +412,14 @@ def _dur(seconds: float | None) -> str:
 
 
 def _candidate(
-    rid: str, rule: dict[str, Any], *, signal: str, target: str | None,
-    ts: float, message: str, key: str,
+    rid: str,
+    rule: dict[str, Any],
+    *,
+    signal: str,
+    target: str | None,
+    ts: float,
+    message: str,
+    key: str,
 ) -> dict[str, Any]:
     sev = rule["severity"]
     return {
@@ -455,8 +461,13 @@ def candidates(
         rule = rules.get(rid)
         if rule is None:
             unrouted.append(
-                {"rule": rid, "target": kw["target"], "ts": kw["ts"],
-                 "message": kw["message"], "reason": "no rule matches this signal"}
+                {
+                    "rule": rid,
+                    "target": kw["target"],
+                    "ts": kw["ts"],
+                    "message": kw["message"],
+                    "reason": "no rule matches this signal",
+                }
             )
             return
         if not rule.get("route", True):
@@ -710,9 +721,7 @@ def route(
             alert["results"] = {}
             out.append(alert)
             continue
-        out.append(
-            send_one(conn, alert, config["channels"], dispatch, ts=now)
-        )
+        out.append(send_one(conn, alert, config["channels"], dispatch, ts=now))
     by_status: dict[str, int] = {}
     by_severity: dict[str, int] = {}
     for a in out:
@@ -803,9 +812,7 @@ def board(
                 "last_delivered_ts": delivered,
                 "dedup_s": dedup_s,
                 "suppressed": muted,
-                "retry_in_s": (
-                    round(dedup_s - (now - delivered), 3) if muted else 0.0
-                ),
+                "retry_in_s": (round(dedup_s - (now - delivered), 3) if muted else 0.0),
             }
         )
     return out
@@ -844,7 +851,11 @@ def source_summary(
         )
     }
     out: dict[str, Any] = {
-        "uptime": {"plugin": "uptime", "openswap": "#2", "open_incidents": int(open_inc)},
+        "uptime": {
+            "plugin": "uptime",
+            "openswap": "#2",
+            "open_incidents": int(open_inc),
+        },
         "events": {
             "window_s": float(lookback_s),
             "rows": int(ev["n"] or 0),
@@ -859,8 +870,11 @@ def source_summary(
         ("heartbeat", "heartbeat", "#6", "beats", "SELECT COUNT(*) AS n FROM beats"),
     ):
         entry: dict[str, Any] = {
-            "plugin": plugin, "openswap": rank, "table": table,
-            "table_present": False, "rows": 0,
+            "plugin": plugin,
+            "openswap": rank,
+            "table": table,
+            "table_present": False,
+            "rows": 0,
         }
         if _has_table(conn, table):
             entry["table_present"] = True
