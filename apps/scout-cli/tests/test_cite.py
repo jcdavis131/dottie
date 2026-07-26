@@ -116,7 +116,15 @@ def test_parse_keeps_every_field_including_ones_no_style_renders():
     doe = res["entries"][0]
     assert doe["key"] == "doe2020" and doe["type"] == "article"
     assert set(doe["fields"]) == {
-        "author", "title", "journal", "year", "volume", "number", "pages", "doi", "keywords",
+        "author",
+        "title",
+        "journal",
+        "year",
+        "volume",
+        "number",
+        "pages",
+        "doi",
+        "keywords",
     }
     assert doe["fields"]["keywords"] == "meta, review"  # no style uses it; kept anyway
     assert res["rejected"] == []
@@ -125,7 +133,15 @@ def test_parse_keeps_every_field_including_ones_no_style_renders():
 def test_parse_preserves_source_field_order_rather_than_sorting():
     res = _parse(RICH_BIB)
     assert res["entries"][0]["field_order"] == [
-        "author", "title", "journal", "year", "volume", "number", "pages", "doi", "keywords",
+        "author",
+        "title",
+        "journal",
+        "year",
+        "volume",
+        "number",
+        "pages",
+        "doi",
+        "keywords",
     ]
     # the source order is NOT alphabetical, so this would break if order tracking
     # were dropped and the emitter fell back to sorted()
@@ -146,7 +162,9 @@ def test_parse_expands_a_string_macro_and_records_which_one():
 def test_parse_seeded_macro_table_resolves_an_entry_lifted_out_of_its_file():
     lone = "@article{a,\n journal = jcp,\n title = {T}\n}"
     without = _parse(lone)["entries"][0]
-    with_table = cite.parse_bibtex(lone, path="t.bib", strings={"jcp": "J. Chem. Phys."})["entries"][0]
+    with_table = cite.parse_bibtex(
+        lone, path="t.bib", strings={"jcp": "J. Chem. Phys."}
+    )["entries"][0]
     assert without["fields"]["journal"] == "jcp"  # literal token kept, not emptied
     assert with_table["fields"]["journal"] == "J. Chem. Phys."
 
@@ -161,7 +179,9 @@ def test_parse_undefined_macro_keeps_the_literal_and_warns():
 
 
 def test_parse_handles_hash_concatenation():
-    res = _parse('@string{a = {Jour}}\n@article{x, journal = a # " of " # {Things}, title={T}}')
+    res = _parse(
+        '@string{a = {Jour}}\n@article{x, journal = a # " of " # {Things}, title={T}}'
+    )
     assert res["entries"][0]["fields"]["journal"] == "Jour of Things"
 
 
@@ -171,7 +191,9 @@ def test_parse_handles_a_paren_delimited_body():
 
 
 def test_parse_preserves_nested_and_case_protection_braces_verbatim():
-    res = _parse("@book{b, title = {Nested {BibTeX} Braces}, publisher={P}, author={A, B}, year={2001}}")
+    res = _parse(
+        "@book{b, title = {Nested {BibTeX} Braces}, publisher={P}, author={A, B}, year={2001}}"
+    )
     assert res["entries"][0]["fields"]["title"] == "Nested {BibTeX} Braces"
     assert cite.delatex(res["entries"][0]["fields"]["title"]) == "Nested BibTeX Braces"
 
@@ -191,7 +213,10 @@ def test_parse_trailing_comma_is_legal_not_a_finding():
     assert res["problems"] == [] and len(res["entries"]) == 1
     assert res["entries"][0]["field_order"] == ["title", "year"]
     # and the same body WITHOUT the trailing comma parses identically
-    assert _parse("@misc{a, title = {T}, year = {2001}}")["entries"][0]["fields"] == res["entries"][0]["fields"]
+    assert (
+        _parse("@misc{a, title = {T}, year = {2001}}")["entries"][0]["fields"]
+        == res["entries"][0]["fields"]
+    )
 
 
 def test_parse_records_line_numbers_for_findings():
@@ -275,7 +300,9 @@ def test_unknown_entry_type_is_kept_verbatim_not_coerced_to_misc():
 
 
 def test_empty_and_bad_doi_and_crossref_are_warned_about_not_fixed():
-    res = _parse("@article{a, title={T}, note={}, doi={not-a-doi}, crossref={parent}, author={A, B}, journal={J}, year={2001}}")
+    res = _parse(
+        "@article{a, title={T}, note={}, doi={not-a-doi}, crossref={parent}, author={A, B}, journal={J}, year={2001}}"
+    )
     fired = _rules_fired(res)
     assert {"cite:empty-value", "cite:bad-doi", "cite:crossref-unresolved"} <= fired
     assert res["entries"][0]["fields"]["doi"] == "not-a-doi"  # kept, not repaired
@@ -321,7 +348,9 @@ def test_delatex_keeps_an_escaped_brace_and_strips_case_protection():
 
 def test_delatex_is_a_view_and_never_edits_the_stored_value():
     raw = "Sch" + BS + '"onherr'
-    res = _parse("@article{a, author = {" + raw + "}, title={T}, journal={J}, year={2001}}")
+    res = _parse(
+        "@article{a, author = {" + raw + "}, title={T}, journal={J}, year={2001}}"
+    )
     # the STORE keeps the backslash; only the rendering decodes it
     assert res["entries"][0]["fields"]["author"] == raw
     assert cite.render(res["entries"][0], "apa")["text"].startswith("Schönherr")
@@ -346,7 +375,12 @@ def test_split_names_on_a_single_name_and_on_empty():
 
 def test_parse_name_first_von_last():
     n = cite.parse_name("Ludwig van Beethoven")
-    assert (n["given"], n["von"], n["family"], n["jr"]) == ("Ludwig", "van", "Beethoven", "")
+    assert (n["given"], n["von"], n["family"], n["jr"]) == (
+        "Ludwig",
+        "van",
+        "Beethoven",
+        "",
+    )
     n2 = cite.parse_name("Jean de la Fontaine")
     assert (n2["given"], n2["von"], n2["family"]) == ("Jean", "de la", "Fontaine")
 
@@ -374,7 +408,12 @@ def test_parse_name_last_token_is_never_a_von_particle():
 
 def test_parse_name_single_token_and_plain_two_token():
     assert cite.parse_name("Plato") == {
-        "given": "", "von": "", "family": "Plato", "jr": "", "literal": None, "corporate": False,
+        "given": "",
+        "von": "",
+        "family": "Plato",
+        "jr": "",
+        "literal": None,
+        "corporate": False,
     }
     n = cite.parse_name("John Doe")
     assert (n["given"], n["von"], n["family"]) == ("John", "", "Doe")
@@ -425,7 +464,9 @@ def test_display_name_appends_a_suffix():
 def test_entry_names_falls_back_to_editor_and_says_which_field():
     names, role = cite.entry_names(_entry(editor="Ed, Edna", title="T"))
     assert role == "editor" and [n["family"] for n in names] == ["Ed"]
-    names2, role2 = cite.entry_names(_entry(author="Au, Ann", editor="Ed, Edna", title="T"))
+    names2, role2 = cite.entry_names(
+        _entry(author="Au, Ann", editor="Ed, Edna", title="T")
+    )
     assert role2 == "author" and [n["family"] for n in names2] == ["Au"]
     assert cite.entry_names(_entry(title="T")) == ([], None)
 
@@ -469,13 +510,20 @@ def test_missing_required_uses_the_per_type_table():
 
 
 def test_missing_required_accepts_editor_for_author_and_institution_for_publisher():
-    book = _entry(_type="book", editor="Ed, Edna", title="T", institution="Inst", year="2001")
+    book = _entry(
+        _type="book", editor="Ed, Edna", title="T", institution="Inst", year="2001"
+    )
     assert cite.missing_required(book) == []
-    assert cite.missing_required(_entry(_type="book", title="T", year="2001")) == ["author", "publisher"]
+    assert cite.missing_required(_entry(_type="book", title="T", year="2001")) == [
+        "author",
+        "publisher",
+    ]
 
 
 def test_missing_required_treats_whitespace_as_absent():
-    assert "title" in cite.missing_required(_entry(title="   ", author="A, B", journal="J", year="2001"))
+    assert "title" in cite.missing_required(
+        _entry(title="   ", author="A, B", journal="J", year="2001")
+    )
 
 
 # ---- emission and round-trip ------------------------------------------------
@@ -488,7 +536,12 @@ def test_to_bibtex_emits_parse_order_then_late_fields_alphabetically():
     assert cite.ordered_fields(entry) == ["title", "author", "alpha", "zeta"]
     text = cite.to_bibtex(entry)
     assert text.startswith("@article{k1,\n")
-    assert text.index("title") < text.index("author") < text.index("alpha") < text.index("zeta")
+    assert (
+        text.index("title")
+        < text.index("author")
+        < text.index("alpha")
+        < text.index("zeta")
+    )
 
 
 def test_to_bibtex_refuses_an_unbalanced_value_instead_of_writing_a_broken_file():
@@ -500,7 +553,11 @@ def test_roundtrip_is_identical_for_a_rich_entry():
     entry = _parse(RICH_BIB)["entries"][0]
     rep = cite.roundtrip_report(entry)
     assert rep["identical"] is True
-    assert rep["lost_fields"] == [] and rep["added_fields"] == [] and rep["changed_fields"] == []
+    assert (
+        rep["lost_fields"] == []
+        and rep["added_fields"] == []
+        and rep["changed_fields"] == []
+    )
     assert rep["type_preserved"] is True and rep["order_preserved"] is True
     assert rep["error"] is None and rep["reparsed"] is True
 
@@ -541,7 +598,15 @@ def test_the_emitter_is_verbatim_so_no_value_can_change_across_a_round_trip():
     Noted honestly: this means the `changed_fields` conjunct of `identical` is a
     guard against a future normalizing emitter and is not reachable today.
     """
-    for value in ("a # b", 'say "hi"', "{Nested {Deep}}", "  padded  ", "@article{x}", "", "1--5"):
+    for value in (
+        "a # b",
+        'say "hi"',
+        "{Nested {Deep}}",
+        "  padded  ",
+        "@article{x}",
+        "",
+        "1--5",
+    ):
         entry = _entry(title="T", note=value)
         rep = cite.roundtrip_report(entry)
         assert rep["changed_fields"] == [], value
@@ -564,15 +629,26 @@ def test_missing_required_is_reported_at_parse_time_not_only_at_format_time():
     missing = [p for p in res["problems"] if p["rule"] == "cite:missing-required"]
     assert len(missing) == 1
     assert "missing author, journal, year" in missing[0]["message"]
-    complete = _parse("@article{full, author={A, B}, title={T}, journal={J}, year={2001}}")
-    assert [p for p in complete["problems"] if p["rule"] == "cite:missing-required"] == []
+    complete = _parse(
+        "@article{full, author={A, B}, title={T}, journal={J}, year={2001}}"
+    )
+    assert [
+        p for p in complete["problems"] if p["rule"] == "cite:missing-required"
+    ] == []
 
 
 def test_render_bibtex_document_holds_every_entry():
     entries = _parse(RICH_BIB)["entries"]
     doc = cite.render_bibtex(entries)
     assert doc.count("@") == 2
-    assert len(cite.parse_bibtex(doc, path="x.bib", strings={"jcp": "J. Chem. Phys."})["entries"]) == 2
+    assert (
+        len(
+            cite.parse_bibtex(doc, path="x.bib", strings={"jcp": "J. Chem. Phys."})[
+                "entries"
+            ]
+        )
+        == 2
+    )
 
 
 # ---- styles -----------------------------------------------------------------
@@ -621,7 +697,9 @@ def test_a_book_renders_its_publisher_in_every_prose_style():
 
 
 def test_ieee_joins_three_authors_with_a_final_and():
-    e = _entry(author="A, Ann and B, Bob and C, Cid", title="T", journal="J", year="2001")
+    e = _entry(
+        author="A, Ann and B, Bob and C, Cid", title="T", journal="J", year="2001"
+    )
     assert cite.render(e, "ieee")["text"].startswith('A. A, B. B, and C. C, "T,"')
 
 
@@ -639,7 +717,13 @@ def test_every_rendering_has_either_text_or_error_never_both_never_neither():
         *_parse(RICH_BIB)["entries"],
         _entry(title="thin"),
         _entry(_type="misc", title="Untitled thing"),
-        _entry(_type="book", author="{A Corporation}", title="T", publisher="P", year="1900"),
+        _entry(
+            _type="book",
+            author="{A Corporation}",
+            title="T",
+            publisher="P",
+            year="1900",
+        ),
         _entry(title="a} broken {value", author="A, B", journal="J", year="2001"),
     ]
     for entry in entries:
@@ -672,8 +756,13 @@ def test_bibtex_style_returns_the_re_emitted_entry():
     r = cite.render(entry, "bibtex")
     assert r["error"] is None
     assert r["text"].startswith("@article{doe2020,\n")
-    assert "journal" in r["text"] and "J. Chem. Phys." in r["text"]  # the macro is expanded
-    assert cite.parse_bibtex(r["text"], path="x.bib")["entries"][0]["fields"] == entry["fields"]
+    assert (
+        "journal" in r["text"] and "J. Chem. Phys." in r["text"]
+    )  # the macro is expanded
+    assert (
+        cite.parse_bibtex(r["text"], path="x.bib")["entries"][0]["fields"]
+        == entry["fields"]
+    )
 
 
 def test_csl_style_returns_parseable_json():
@@ -691,7 +780,10 @@ def test_in_text_keeps_the_von_particle():
 
 
 def test_in_text_falls_back_to_the_key_when_there_is_no_author():
-    assert cite.in_text(_entry(_key="anon2001", title="T", year="2001"), "apa") == "(anon2001, 2001)"
+    assert (
+        cite.in_text(_entry(_key="anon2001", title="T", year="2001"), "apa")
+        == "(anon2001, 2001)"
+    )
 
 
 def test_sort_entries_orders_by_each_key_and_breaks_ties_on_the_key():
@@ -702,7 +794,11 @@ def test_sort_entries_orders_by_each_key_and_breaks_ties_on_the_key():
     assert [e["key"] for e in cite.sort_entries(entries, "key")] == ["aa", "mm", "zz"]
     assert [e["key"] for e in cite.sort_entries(entries, "year")] == ["zz", "aa", "mm"]
     # same family AND same year -> the key decides, so the order is total
-    assert [e["key"] for e in cite.sort_entries(entries, "author")] == ["aa", "mm", "zz"]
+    assert [e["key"] for e in cite.sort_entries(entries, "author")] == [
+        "aa",
+        "mm",
+        "zz",
+    ]
 
 
 def test_sort_entries_rejects_an_unknown_sort_key():
@@ -741,7 +837,11 @@ def test_to_csl_maps_the_fields_it_knows_and_names_the_rest():
         {"family": "Roe", "given": "Richard"},
     ]
     assert item["container-title"] == "J. Chem. Phys."
-    assert item["DOI"] == "10.1000/xyz123" and item["issue"] == "3" and item["page"] == "45–67"
+    assert (
+        item["DOI"] == "10.1000/xyz123"
+        and item["issue"] == "3"
+        and item["page"] == "45–67"
+    )
     assert item["issued"] == {"date-parts": [[2020]]}
     assert out["unmapped"] == ["keywords"]  # not dropped in silence
 
@@ -752,24 +852,28 @@ def test_to_csl_includes_the_month_when_there_is_one():
 
 
 def test_to_csl_uses_editor_and_literal_names():
-    e = _entry(_type="book", editor="{A Consortium}", title="T", publisher="P", year="2001")
+    e = _entry(
+        _type="book", editor="{A Consortium}", title="T", publisher="P", year="2001"
+    )
     item = cite.to_csl(e)["item"]
     assert item["editor"] == [{"literal": "A Consortium"}] and "author" not in item
 
 
 def test_parse_csl_json_builds_entries_with_a_stable_field_order():
-    text = json.dumps([
-        {
-            "id": "x1",
-            "type": "article-journal",
-            "author": [{"family": "Doe", "given": "Jane"}],
-            "title": "A CSL title",
-            "container-title": "J. Csl",
-            "issued": {"date-parts": [[2019, 4]]},
-            "page": "1-9",
-            "DOI": "10.1000/csl",
-        }
-    ])
+    text = json.dumps(
+        [
+            {
+                "id": "x1",
+                "type": "article-journal",
+                "author": [{"family": "Doe", "given": "Jane"}],
+                "title": "A CSL title",
+                "container-title": "J. Csl",
+                "issued": {"date-parts": [[2019, 4]]},
+                "page": "1-9",
+                "DOI": "10.1000/csl",
+            }
+        ]
+    )
     res = cite.parse_csl_json(text, path="lib.json")
     entry = res["entries"][0]
     assert entry["type"] == "article" and entry["key"] == "x1"
@@ -781,20 +885,26 @@ def test_parse_csl_json_builds_entries_with_a_stable_field_order():
 
 
 def test_parse_csl_json_refuses_an_item_with_no_id():
-    res = cite.parse_csl_json(json.dumps([{"title": "no id"}, {"id": "", "title": "blank"}]))
+    res = cite.parse_csl_json(
+        json.dumps([{"title": "no id"}, {"id": "", "title": "blank"}])
+    )
     assert res["entries"] == []
     assert [r["rule"] for r in res["rejected"]] == ["cite:csl-missing-id"] * 2
     assert res["counts"]["rejected"] == 2
 
 
 def test_parse_csl_json_refuses_a_duplicate_id():
-    res = cite.parse_csl_json(json.dumps([{"id": "d", "title": "one"}, {"id": "d", "title": "two"}]))
+    res = cite.parse_csl_json(
+        json.dumps([{"id": "d", "title": "one"}, {"id": "d", "title": "two"}])
+    )
     assert [e["fields"]["title"] for e in res["entries"]] == ["one"]
     assert [r["rule"] for r in res["rejected"]] == ["cite:duplicate-key"]
 
 
 def test_parse_csl_json_accepts_a_single_object_and_maps_unknown_types_to_misc():
-    res = cite.parse_csl_json(json.dumps({"id": "solo", "type": "interpretive-dance", "title": "T"}))
+    res = cite.parse_csl_json(
+        json.dumps({"id": "solo", "type": "interpretive-dance", "title": "T"})
+    )
     assert res["entries"][0]["type"] == "misc"
 
 
@@ -802,7 +912,16 @@ def test_bibtex_to_csl_to_bibtex_preserves_every_mapped_field():
     entry = _parse(RICH_BIB)["entries"][0]
     item = cite.to_csl(entry)["item"]
     back = cite.parse_csl_json(json.dumps([item]))["entries"][0]
-    for field in ("author", "title", "journal", "year", "volume", "number", "pages", "doi"):
+    for field in (
+        "author",
+        "title",
+        "journal",
+        "year",
+        "volume",
+        "number",
+        "pages",
+        "doi",
+    ):
         assert field in back["fields"], field
     assert back["fields"]["title"] == entry["fields"]["title"]
     assert back["fields"]["number"] == entry["fields"]["number"]
@@ -814,7 +933,9 @@ def test_bibtex_to_csl_to_bibtex_preserves_every_mapped_field():
 
 
 def test_rejecting_rules_is_derived_from_the_table_not_retyped():
-    assert cite.REJECTING_RULES == frozenset(r for r, s in cite.RULES.items() if s["rejects"])
+    assert cite.REJECTING_RULES == frozenset(
+        r for r, s in cite.RULES.items() if s["rejects"]
+    )
     assert "cite:duplicate-field" in cite.REJECTING_RULES
     assert "cite:missing-required" not in cite.REJECTING_RULES
 
@@ -832,21 +953,29 @@ def test_load_rules_default_enables_everything():
 
 def test_load_rules_overlay_retunes_severity(tmp_path):
     f = tmp_path / "over.json"
-    f.write_text(json.dumps({"cite:missing-required": {"severity": "error"}}), encoding="utf-8")
+    f.write_text(
+        json.dumps({"cite:missing-required": {"severity": "error"}}), encoding="utf-8"
+    )
     table = cite.load_rules(f)
     assert table["cite:missing-required"]["severity"] == "error"
-    assert cite.RULES["cite:missing-required"]["severity"] == "warning"  # table not mutated
+    assert (
+        cite.RULES["cite:missing-required"]["severity"] == "warning"
+    )  # table not mutated
 
 
 def test_load_rules_can_disable_a_non_rejecting_rule(tmp_path):
     f = tmp_path / "over.json"
-    f.write_text(json.dumps({"cite:unknown-type": {"enabled": False}}), encoding="utf-8")
+    f.write_text(
+        json.dumps({"cite:unknown-type": {"enabled": False}}), encoding="utf-8"
+    )
     assert cite.load_rules(f)["cite:unknown-type"]["enabled"] is False
 
 
 def test_load_rules_refuses_to_disable_a_rejecting_rule(tmp_path):
     f = tmp_path / "over.json"
-    f.write_text(json.dumps({"cite:duplicate-field": {"enabled": False}}), encoding="utf-8")
+    f.write_text(
+        json.dumps({"cite:duplicate-field": {"enabled": False}}), encoding="utf-8"
+    )
     with pytest.raises(ValueError, match="cannot be disabled"):
         cite.load_rules(f)
 
@@ -857,7 +986,9 @@ def test_load_rules_rejects_an_unknown_rule_and_a_bad_severity(tmp_path):
     with pytest.raises(ValueError, match="unknown rule"):
         cite.load_rules(bad_rule)
     bad_sev = tmp_path / "b.json"
-    bad_sev.write_text(json.dumps({"cite:bad-doi": {"severity": "catastrophe"}}), encoding="utf-8")
+    bad_sev.write_text(
+        json.dumps({"cite:bad-doi": {"severity": "catastrophe"}}), encoding="utf-8"
+    )
     with pytest.raises(ValueError, match="severity must be one of"):
         cite.load_rules(bad_sev)
 
@@ -875,7 +1006,9 @@ def test_diagnostics_from_uses_the_table_severity_and_honours_disabled(tmp_path)
     assert [d["rule"] for d in on] == ["cite:unknown-type"]
     assert on[0]["severity"] == "warning" and on[0]["source"] == "cite"
     f = tmp_path / "off.json"
-    f.write_text(json.dumps({"cite:unknown-type": {"enabled": False}}), encoding="utf-8")
+    f.write_text(
+        json.dumps({"cite:unknown-type": {"enabled": False}}), encoding="utf-8"
+    )
     off = cite.diagnostics_from(res["problems"], path="t.bib", rules=cite.load_rules(f))
     assert off == []
 
@@ -887,7 +1020,9 @@ def test_diagnostics_are_sorted_and_summarizable():
     diags = cite.diagnostics_from(res["problems"], path="t.bib")
     assert [d["line"] for d in diags] == sorted(d["line"] for d in diags)
     summary = openswap.summarize(diags)
-    assert summary["by_severity"]["error"] == 2 and summary["by_severity"]["warning"] == 1
+    assert (
+        summary["by_severity"]["error"] == 2 and summary["by_severity"]["warning"] == 1
+    )
 
 
 # ---- store ------------------------------------------------------------------
@@ -899,7 +1034,9 @@ def store():
 
 
 def test_open_store_records_the_schema_version(store):
-    row = store.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
+    row = store.execute(
+        "SELECT value FROM meta WHERE key = 'schema_version'"
+    ).fetchone()
     assert row["value"] == cite.SCHEMA_VERSION
 
 
@@ -919,8 +1056,12 @@ def test_load_entry_returns_none_for_an_absent_key(store):
 
 
 def test_import_skip_leaves_the_original_and_reports_the_conflict(store):
-    first = _parse("@article{k, title = {First}, author={A, B}, journal={J}, year={2001}}")["entries"]
-    second = _parse("@article{k, title = {Second}, author={C, D}, journal={J}, year={2002}}")["entries"]
+    first = _parse(
+        "@article{k, title = {First}, author={A, B}, journal={J}, year={2001}}"
+    )["entries"]
+    second = _parse(
+        "@article{k, title = {Second}, author={C, D}, journal={J}, year={2002}}"
+    )["entries"]
     cite.import_entries(store, first, now=1.0)
     res = cite.import_entries(store, second, on_conflict="skip", now=2.0)
     assert res["skipped"] == ["k"] and res["imported"] == []
@@ -929,9 +1070,14 @@ def test_import_skip_leaves_the_original_and_reports_the_conflict(store):
 
 
 def test_import_replace_overwrites_and_drops_the_old_fields(store):
-    cite.import_entries(store, _parse("@article{k, title={First}, extra={gone}}")["entries"], now=1.0)
+    cite.import_entries(
+        store, _parse("@article{k, title={First}, extra={gone}}")["entries"], now=1.0
+    )
     res = cite.import_entries(
-        store, _parse("@article{k, title={Second}}")["entries"], on_conflict="replace", now=2.0
+        store,
+        _parse("@article{k, title={Second}}")["entries"],
+        on_conflict="replace",
+        now=2.0,
     )
     assert res["replaced"] == ["k"]
     back = cite.load_entry(store, "k")
@@ -941,7 +1087,9 @@ def test_import_replace_overwrites_and_drops_the_old_fields(store):
 
 def test_import_fail_writes_nothing_at_all(store):
     cite.import_entries(store, _parse("@article{k, title={First}}")["entries"], now=1.0)
-    incoming = _parse("@article{k, title={Second}}\n@article{fresh, title={New}}")["entries"]
+    incoming = _parse("@article{k, title={Second}}\n@article{fresh, title={New}}")[
+        "entries"
+    ]
     with pytest.raises(ValueError, match="already in the library"):
         cite.import_entries(store, incoming, on_conflict="fail", now=2.0)
     assert cite.load_entry(store, "k")["fields"]["title"] == "First"
@@ -975,12 +1123,16 @@ def test_duplicate_doi_under_two_keys_is_reported(store):
 def test_duplicate_doi_is_also_found_against_an_earlier_import(store):
     cite.import_entries(
         store,
-        _parse("@article{old, title={T}, doi={10.1000/x}, author={A, B}, journal={J}, year={2001}}")["entries"],
+        _parse(
+            "@article{old, title={T}, doi={10.1000/x}, author={A, B}, journal={J}, year={2001}}"
+        )["entries"],
         now=1.0,
     )
     res = cite.import_entries(
         store,
-        _parse("@article{new, title={U}, doi={10.1000/x}, author={C, D}, journal={J}, year={2002}}")["entries"],
+        _parse(
+            "@article{new, title={U}, doi={10.1000/x}, author={C, D}, journal={J}, year={2002}}"
+        )["entries"],
         now=2.0,
     )
     dupes = [p for p in res["problems"] if p["rule"] == "cite:duplicate-doi"]
@@ -1003,10 +1155,18 @@ def test_query_filters_by_type_key_author_and_doi(store):
         "@book{berg2005, author={van der Berg, Jan}, title={C}, publisher={P}, year={2005}}"
     )
     cite.import_entries(store, _parse(bib)["entries"], now=1.0)
-    assert [e["key"] for e in cite.query(store, entry_type="book")] == ["berg2005", "roe1990"]
-    assert [e["key"] for e in cite.query(store, key_contains="20")] == ["berg2005", "doe2020"]
+    assert [e["key"] for e in cite.query(store, entry_type="book")] == [
+        "berg2005",
+        "roe1990",
+    ]
+    assert [e["key"] for e in cite.query(store, key_contains="20")] == [
+        "berg2005",
+        "doe2020",
+    ]
     assert [e["key"] for e in cite.query(store, author_contains="berg")] == ["berg2005"]
-    assert [e["key"] for e in cite.query(store, doi="https://doi.org/10.1000/X")] == ["doe2020"]
+    assert [e["key"] for e in cite.query(store, doi="https://doi.org/10.1000/X")] == [
+        "doe2020"
+    ]
     assert cite.query(store, doi="10.9999/nope") == []
 
 
@@ -1029,7 +1189,9 @@ def test_query_year_bounds_are_inclusive_and_exclude_undated(store):
     cite.import_entries(store, _parse(bib)["entries"], now=1.0)
     assert [e["key"] for e in cite.query(store, year_min=2000)] == ["y2000", "y2010"]
     assert [e["key"] for e in cite.query(store, year_max=2000)] == ["y1990", "y2000"]
-    assert [e["key"] for e in cite.query(store, year_min=2000, year_max=2000)] == ["y2000"]
+    assert [e["key"] for e in cite.query(store, year_min=2000, year_max=2000)] == [
+        "y2000"
+    ]
     assert "undated" not in {e["key"] for e in cite.query(store, year_min=1)}
 
 
@@ -1038,7 +1200,13 @@ def test_query_limit_and_offset_walk_a_stable_order(store):
     cite.import_entries(store, _parse(bib)["entries"], now=1.0)
     assert [e["key"] for e in cite.query(store, limit=2)] == ["k0", "k1"]
     assert [e["key"] for e in cite.query(store, limit=2, offset=2)] == ["k2", "k3"]
-    assert [e["key"] for e in cite.query(store, limit=-1)] == ["k0", "k1", "k2", "k3", "k4"]
+    assert [e["key"] for e in cite.query(store, limit=-1)] == [
+        "k0",
+        "k1",
+        "k2",
+        "k3",
+        "k4",
+    ]
     assert cite.query(store, limit=2, offset=99) == []
 
 
@@ -1057,7 +1225,12 @@ def test_delete_entries_separates_hits_from_misses(store):
     res = cite.delete_entries(store, ["doe2020", "nosuchkey"])
     assert res == {"deleted": ["doe2020"], "not_found": ["nosuchkey"]}
     assert cite.load_entry(store, "doe2020") is None
-    assert store.execute("SELECT COUNT(*) AS n FROM fields WHERE key='doe2020'").fetchone()["n"] == 0
+    assert (
+        store.execute(
+            "SELECT COUNT(*) AS n FROM fields WHERE key='doe2020'"
+        ).fetchone()["n"]
+        == 0
+    )
     assert cite.load_entry(store, "fontaine2015") is not None
 
 
@@ -1066,7 +1239,9 @@ def test_store_roundtrip_is_clean_and_keeps_the_macro_table(store):
     res = cite.store_roundtrip(store)
     assert res["checked"] == 2 and res["identical"] == 2 and res["store_faithful"] == 2
     assert res["lost_fields"] == []
-    assert cite.load_entry(store, "doe2020")["strings_used"] == {"jcp": "J. Chem. Phys."}
+    assert cite.load_entry(store, "doe2020")["strings_used"] == {
+        "jcp": "J. Chem. Phys."
+    }
 
 
 def test_store_roundtrip_would_flag_a_macro_whose_definition_was_not_kept(store):
@@ -1120,7 +1295,9 @@ def test_capability_reports_fallback_and_never_claims_a_native_run():
     assert cap["adapter"] == "cite"
     assert cap["native_used"] is False
     # the tier must follow the probe, and the probe must be honest about PATH
-    assert cap["tier"] == (openswap.TIER_NATIVE if cap["native"]["found"] else openswap.TIER_FALLBACK)
+    assert cap["tier"] == (
+        openswap.TIER_NATIVE if cap["native"]["found"] else openswap.TIER_FALLBACK
+    )
     assert set(cap["extras"]) == {"pandoc", "biber", "bibtool"}
     assert "never executed" in cap["native_never_executed"].lower()
     assert cap["styles"] == list(cite.STYLES)
@@ -1130,12 +1307,16 @@ def test_manifest_is_zero_egress_and_writes_only_under_scout():
     import yaml
 
     mf = yaml.safe_load(
-        (ROOT / "bigbang" / "plugins" / "cite" / "manifest.yaml").read_text(encoding="utf-8")
+        (ROOT / "bigbang" / "plugins" / "cite" / "manifest.yaml").read_text(
+            encoding="utf-8"
+        )
     )
     caps = mf["capabilities"]
     assert mf["name"] == "cite"
     assert caps["network"]["enabled"] is False and caps["network"]["domains"] == []
-    assert caps["filesystem"]["write"] is True and caps["filesystem"]["paths"] == [".scout"]
+    assert caps["filesystem"]["write"] is True and caps["filesystem"]["paths"] == [
+        ".scout"
+    ]
     assert caps["secrets"]["allow"] == []
 
 
@@ -1147,7 +1328,11 @@ def test_egress_guard_refuses_a_widened_manifest(monkeypatch):
     assert cite_cli._egress_guard("test")["network_enabled"] is False
     for widened in (
         {"capabilities": {"network": {"enabled": True, "domains": []}}},
-        {"capabilities": {"network": {"enabled": False, "domains": ["api.crossref.org"]}}},
+        {
+            "capabilities": {
+                "network": {"enabled": False, "domains": ["api.crossref.org"]}
+            }
+        },
     ):
         monkeypatch.setattr(cite_cli, "_MANIFEST", widened)
         with pytest.raises(typer.Exit):
@@ -1157,7 +1342,9 @@ def test_egress_guard_refuses_a_widened_manifest(monkeypatch):
 def test_format_resolution_prefers_the_extension_then_sniffs(tmp_path):
     from bigbang.plugins.cite import cli as cite_cli
 
-    assert cite_cli._resolve_format("csl", Path("x.bib"), "@article{}") == "csl"  # explicit wins
+    assert (
+        cite_cli._resolve_format("csl", Path("x.bib"), "@article{}") == "csl"
+    )  # explicit wins
     assert cite_cli._resolve_format("auto", Path("x.bib"), "[]") == "bibtex"
     assert cite_cli._resolve_format("auto", Path("x.json"), "@article{}") == "csl"
     assert cite_cli._resolve_format("auto", Path("refs"), "  [ {} ]") == "csl"
@@ -1192,7 +1379,10 @@ def test_plugin_cli_adds_no_dependency_beyond_typer():
 
 def test_no_network_module_is_reachable_from_the_core():
     roots = _import_roots(ROOT / "bigbang" / "core" / "cite.py")
-    assert roots & {"socket", "urllib", "http", "ssl", "ftplib", "requests", "httpx"} == set()
+    assert (
+        roots & {"socket", "urllib", "http", "ssl", "ftplib", "requests", "httpx"}
+        == set()
+    )
 
 
 # ---- the real CLI in a subprocess (offline on every path) --------------------
@@ -1254,13 +1444,18 @@ def test_cli_rules_publishes_the_table_and_the_required_fields():
 
 
 def test_cli_import_stores_the_good_and_refuses_the_bad(tmp_path):
-    body = RICH_BIB + "\n@article{broken, title={A}, title={B}}\n@article{, title={C}}\n"
+    body = (
+        RICH_BIB + "\n@article{broken, title={A}, title={B}}\n@article{, title={C}}\n"
+    )
     bib = _bib(tmp_path, body=body)
     r = _cli(["cite", "import", str(bib), "--db", _db(tmp_path)])
     assert r.returncode == 0, r.stderr + r.stdout
     data = json.loads(r.stdout)["data"]
     assert data["imported"] == ["doe2020", "fontaine2015"]
-    assert {x["rule"] for x in data["rejected"]} == {"cite:duplicate-field", "cite:missing-key"}
+    assert {x["rule"] for x in data["rejected"]} == {
+        "cite:duplicate-field",
+        "cite:missing-key",
+    }
     assert data["counts"]["entries"] == 2 and data["counts"]["rejected"] == 2
     assert data["macros_defined"] == ["jcp"]
     assert data["summary"]["by_severity"]["error"] == 2
@@ -1366,7 +1561,18 @@ def test_cli_format_renders_the_library_in_apa(tmp_path):
 
 def test_cli_format_from_a_file_needs_no_library(tmp_path):
     bib = _bib(tmp_path)
-    r = _cli(["cite", "format", "--file", str(bib), "--style", "ieee", "--db", str(tmp_path / "absent.db")])
+    r = _cli(
+        [
+            "cite",
+            "format",
+            "--file",
+            str(bib),
+            "--style",
+            "ieee",
+            "--db",
+            str(tmp_path / "absent.db"),
+        ]
+    )
     assert r.returncode == 0, r.stderr + r.stdout
     data = json.loads(r.stdout)["data"]
     assert data["formatted"] == 2 and data["source"].endswith("refs.bib")
@@ -1374,7 +1580,9 @@ def test_cli_format_from_a_file_needs_no_library(tmp_path):
 
 
 def test_cli_format_strict_exits_one_when_an_entry_cannot_render(tmp_path):
-    bib = _bib(tmp_path, body="@article{thin, title = {No author, no journal}, year={2022}}")
+    bib = _bib(
+        tmp_path, body="@article{thin, title = {No author, no journal}, year={2022}}"
+    )
     r = _cli(["cite", "format", "--file", str(bib), "--style", "apa", "--strict"])
     assert r.returncode == 1, r.stdout
     data = json.loads(r.stdout)["data"]
@@ -1387,9 +1595,13 @@ def test_cli_format_strict_exits_one_when_an_entry_cannot_render(tmp_path):
 def test_cli_format_rejects_a_bad_style_and_sort(tmp_path):
     bib = _bib(tmp_path)
     r = _cli(["cite", "format", "--file", str(bib), "--style", "harvard"])
-    assert r.returncode == 1 and "--style must be one of" in json.loads(r.stdout)["error"]
+    assert (
+        r.returncode == 1 and "--style must be one of" in json.loads(r.stdout)["error"]
+    )
     r2 = _cli(["cite", "format", "--file", str(bib), "--sort", "vibes"])
-    assert r2.returncode == 1 and "--sort must be one of" in json.loads(r2.stdout)["error"]
+    assert (
+        r2.returncode == 1 and "--sort must be one of" in json.loads(r2.stdout)["error"]
+    )
 
 
 def test_cli_format_unknown_key_fails_actionably(tmp_path):
@@ -1403,7 +1615,11 @@ def test_cli_format_unknown_key_fails_actionably(tmp_path):
 
 def test_cli_commands_need_a_library_and_say_so(tmp_path):
     absent = str(tmp_path / "absent.db")
-    for args in (["cite", "list"], ["cite", "roundtrip"], ["cite", "forget", "--key", "x"]):
+    for args in (
+        ["cite", "list"],
+        ["cite", "roundtrip"],
+        ["cite", "forget", "--key", "x"],
+    ):
         r = _cli([*args, "--db", absent])
         assert r.returncode == 1, args
         assert "no citation library" in json.loads(r.stdout)["error"]
@@ -1418,7 +1634,9 @@ def test_cli_list_filters_and_reports_library_stats(tmp_path):
     data = json.loads(r.stdout)["data"]
     assert data["count"] == 1
     row = data["entries"][0]
-    assert row["key"] == "fontaine2015" and row["first_author"] == "de la Fontaine, Jean"
+    assert (
+        row["key"] == "fontaine2015" and row["first_author"] == "de la Fontaine, Jean"
+    )
     assert row["title"] == "Nested BibTeX Braces" and row["missing_required"] == []
     assert data["library"]["entries"] == 2
     empty = _cli(["cite", "list", "--year-min", "3000", "--db", db])
@@ -1435,7 +1653,9 @@ def test_cli_roundtrip_is_clean_on_a_real_library(tmp_path):
     r = _cli(["cite", "roundtrip", "--db", db, "--fail-on", "error"])
     assert r.returncode == 0, r.stderr + r.stdout
     data = json.loads(r.stdout)["data"]
-    assert data["checked"] == 2 and data["identical"] == 2 and data["store_faithful"] == 2
+    assert (
+        data["checked"] == 2 and data["identical"] == 2 and data["store_faithful"] == 2
+    )
     assert data["lost_fields"] == [] and data["diagnostics"] == []
 
 
@@ -1445,7 +1665,9 @@ def test_cli_roundtrip_on_a_file_does_not_claim_a_store_measurement(tmp_path):
     assert r.returncode == 0, r.stderr + r.stdout
     data = json.loads(r.stdout)["data"]
     assert data["checked"] == 2 and data["identical"] == 2
-    assert data["store_faithful"] is None  # no store was involved, so nothing is claimed
+    assert (
+        data["store_faithful"] is None
+    )  # no store was involved, so nothing is claimed
 
 
 def test_cli_forget_needs_yes_then_deletes(tmp_path):
@@ -1456,7 +1678,9 @@ def test_cli_forget_needs_yes_then_deletes(tmp_path):
     assert dry.returncode == 0
     dry_data = json.loads(dry.stdout)["data"]
     assert dry_data["dry_run"] is True
-    assert dry_data["would_delete"] == ["doe2020"] and dry_data["not_found"] == ["ghost"]
+    assert dry_data["would_delete"] == ["doe2020"] and dry_data["not_found"] == [
+        "ghost"
+    ]
     assert json.loads(_cli(["cite", "list", "--db", db]).stdout)["data"]["count"] == 2
     real = _cli(["cite", "forget", "--key", "doe2020", "--yes", "--db", db])
     assert json.loads(real.stdout)["data"]["deleted"] == ["doe2020"]
@@ -1465,7 +1689,9 @@ def test_cli_forget_needs_yes_then_deletes(tmp_path):
 
 def test_cli_rules_overlay_that_disables_a_rejecting_rule_is_refused(tmp_path):
     bad = tmp_path / "over.json"
-    bad.write_text(json.dumps({"cite:missing-key": {"enabled": False}}), encoding="utf-8")
+    bad.write_text(
+        json.dumps({"cite:missing-key": {"enabled": False}}), encoding="utf-8"
+    )
     r = _cli(["cite", "rules", "--rules", str(bad)])
     assert r.returncode == 1
     assert "bad rules overlay" in json.loads(r.stdout)["error"]
@@ -1490,7 +1716,9 @@ def test_a_type_the_parser_normalizes_is_reported_as_a_key_or_type_change():
         rep = cite.roundtrip_report(
             {"key": "k1", "type": declared, "fields": {"title": "T", "year": "2020"}}
         )
-        assert rep["error"] is None, "the round trip must SUCCEED, or the branch is skipped"
+        assert rep["error"] is None, (
+            "the round trip must SUCCEED, or the branch is skipped"
+        )
         assert rep["reparsed"] is True
         assert rep["type_preserved"] is False, declared
         assert rep["identical"] is False

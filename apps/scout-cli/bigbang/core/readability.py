@@ -81,11 +81,28 @@ DEFAULT_CONFIG: dict[str, Any] = {
 # Words where vowel-group counting is KNOWN wrong. Data, not code: each entry is
 # a hand-checked English syllable count, not a guess.
 SYLLABLE_EXCEPTIONS: dict[str, int] = {
-    "area": 3, "areas": 3, "business": 2, "businesses": 3,
-    "create": 2, "created": 3, "creates": 2, "creating": 3,
-    "diet": 2, "fluid": 2, "genuine": 3, "idea": 3, "ideas": 3,
-    "poem": 2, "poems": 2, "quiet": 2, "ruin": 2, "science": 2,
-    "sciences": 2, "being": 2, "someone": 2, "everyone": 3,
+    "area": 3,
+    "areas": 3,
+    "business": 2,
+    "businesses": 3,
+    "create": 2,
+    "created": 3,
+    "creates": 2,
+    "creating": 3,
+    "diet": 2,
+    "fluid": 2,
+    "genuine": 3,
+    "idea": 3,
+    "ideas": 3,
+    "poem": 2,
+    "poems": 2,
+    "quiet": 2,
+    "ruin": 2,
+    "science": 2,
+    "sciences": 2,
+    "being": 2,
+    "someone": 2,
+    "everyone": 3,
 }
 
 # -ly words that are not adverbs. Every entry here is >= 5 chars because the
@@ -93,11 +110,30 @@ SYLLABLE_EXCEPTIONS: dict[str, int] = {
 # "ugly", "holy", "rely", "ally", "july") are excluded by the length floor, so
 # listing them again would be dead data. 5 is the floor rather than 6 so real
 # short adverbs ("badly", "sadly") still get flagged.
-NON_ADVERB_LY = frozenset({
-    "anomaly", "apply", "assembly", "belly", "bully", "comply", "family",
-    "folly", "imply", "italy", "jelly", "melancholy", "monopoly", "multiply",
-    "panoply", "rally", "reply", "silly", "supply", "tally",
-})
+NON_ADVERB_LY = frozenset(
+    {
+        "anomaly",
+        "apply",
+        "assembly",
+        "belly",
+        "bully",
+        "comply",
+        "family",
+        "folly",
+        "imply",
+        "italy",
+        "jelly",
+        "melancholy",
+        "monopoly",
+        "multiply",
+        "panoply",
+        "rally",
+        "reply",
+        "silly",
+        "supply",
+        "tally",
+    }
+)
 
 # Flesch reading-ease bands (the published table).
 _EASE_BANDS = (
@@ -145,12 +181,46 @@ _ED_KEEP = frozenset("td")
 _SENT_SPLIT_RE = re.compile(r"([.!?]+[\"'”’)\]]*)(\s+|$)")
 _TRAILING_WORD_RE = re.compile(r"([A-Za-z]+)\W*$")
 # abbreviations whose period is not a sentence end
-ABBREVIATIONS = frozenset({
-    "al", "approx", "apr", "aug", "ca", "cf", "co", "dec", "dept", "dr", "eg",
-    "est", "etc", "feb", "fig", "ie", "inc", "jan", "jr", "jul", "jun", "ltd",
-    "mr", "mrs", "ms", "mt", "no", "nov", "oct", "prof", "sep", "sept", "sr",
-    "st", "vol", "vs",
-})
+ABBREVIATIONS = frozenset(
+    {
+        "al",
+        "approx",
+        "apr",
+        "aug",
+        "ca",
+        "cf",
+        "co",
+        "dec",
+        "dept",
+        "dr",
+        "eg",
+        "est",
+        "etc",
+        "feb",
+        "fig",
+        "ie",
+        "inc",
+        "jan",
+        "jr",
+        "jul",
+        "jun",
+        "ltd",
+        "mr",
+        "mrs",
+        "ms",
+        "mt",
+        "no",
+        "nov",
+        "oct",
+        "prof",
+        "sep",
+        "sept",
+        "sr",
+        "st",
+        "vol",
+        "vs",
+    }
+)
 
 
 # ---- tokenizing -------------------------------------------------------------
@@ -211,12 +281,12 @@ def split_sentences(text: str) -> list[str]:
     out: list[str] = []
     start = 0
     for m in _SENT_SPLIT_RE.finditer(text):
-        head = text[start:m.end(1)]
-        prev = _TRAILING_WORD_RE.search(text[start:m.start(1)])
+        head = text[start : m.end(1)]
+        prev = _TRAILING_WORD_RE.search(text[start : m.start(1)])
         token = prev.group(1).lower() if prev else ""
         if m.group(1) == "." and (token in ABBREVIATIONS or len(token) == 1):
             continue
-        tail = text[m.end():].lstrip()
+        tail = text[m.end() :].lstrip()
         if tail[:1].islower():
             continue
         if head.strip():
@@ -265,7 +335,8 @@ def is_complex(word: str) -> bool:
 def adverbs_of(text: str) -> list[str]:
     """-ly adverbs, minus the known non-adverb -ly words."""
     return [
-        w for w in words_of(text)
+        w
+        for w in words_of(text)
         if _LY_RE.match(w.lower()) and w.lower() not in NON_ADVERB_LY
     ]
 
@@ -394,11 +465,13 @@ def histogram(sentence_words: list[int]) -> list[dict[str, Any]]:
     rows = []
     for label, lo, hi in HISTOGRAM_BUCKETS:
         n = sum(1 for w in sentence_words if lo <= w <= hi)
-        rows.append({
-            "bucket": label,
-            "count": n,
-            "pct": round(100.0 * n / total, 1) if total else 0.0,
-        })
+        rows.append(
+            {
+                "bucket": label,
+                "count": n,
+                "pct": round(100.0 * n / total, 1) if total else 0.0,
+            }
+        )
     return rows
 
 
@@ -411,15 +484,19 @@ def _sentence_rows(
     for text in sentences:
         m = _metrics(text, sentences=1)
         graded = m["words"] >= floor
-        rows.append({
-            "paragraph": paragraph_index,
-            "line": line,
-            "words": m["words"],
-            "grade": m["scores"]["flesch_kincaid_grade"],
-            "band": _band(m["scores"]["flesch_kincaid_grade"], cfg) if graded else BAND_PLAIN,
-            "graded": graded,
-            "text": text if len(text) <= 160 else text[:157] + "...",
-        })
+        rows.append(
+            {
+                "paragraph": paragraph_index,
+                "line": line,
+                "words": m["words"],
+                "grade": m["scores"]["flesch_kincaid_grade"],
+                "band": _band(m["scores"]["flesch_kincaid_grade"], cfg)
+                if graded
+                else BAND_PLAIN,
+                "graded": graded,
+                "text": text if len(text) <= 160 else text[:157] + "...",
+            }
+        )
     return rows
 
 
@@ -444,19 +521,22 @@ def score_lines(
         rows = _sentence_rows(idx, line, sentences, cfg)
         sentence_rows.extend(rows)
         body_parts.append(text)
-        paragraphs.append({
-            "index": idx,
-            "line": line,
-            "words": m["words"],
-            "sentences": m["sentences"],
-            "grade": m["scores"]["flesch_kincaid_grade"],
-            "reading_ease": m["scores"]["flesch_reading_ease"],
-            "band": _band(m["scores"]["flesch_kincaid_grade"], cfg)
-            if m["words"] >= int(cfg["min_sentence_words"]) else BAND_PLAIN,
-            "hard": sum(1 for r in rows if r["band"] == BAND_HARD),
-            "very_hard": sum(1 for r in rows if r["band"] == BAND_VERY_HARD),
-            "text": text if len(text) <= 240 else text[:237] + "...",
-        })
+        paragraphs.append(
+            {
+                "index": idx,
+                "line": line,
+                "words": m["words"],
+                "sentences": m["sentences"],
+                "grade": m["scores"]["flesch_kincaid_grade"],
+                "reading_ease": m["scores"]["flesch_reading_ease"],
+                "band": _band(m["scores"]["flesch_kincaid_grade"], cfg)
+                if m["words"] >= int(cfg["min_sentence_words"])
+                else BAND_PLAIN,
+                "hard": sum(1 for r in rows if r["band"] == BAND_HARD),
+                "very_hard": sum(1 for r in rows if r["band"] == BAND_VERY_HARD),
+                "text": text if len(text) <= 240 else text[:237] + "...",
+            }
+        )
     body = " ".join(body_parts)
     doc = _metrics(body, sentences=len(sentence_rows))
     report: dict[str, Any] = {
@@ -473,11 +553,14 @@ def score_lines(
         },
         "averages": {
             "words_per_sentence": _round(doc["words"] / doc["sentences"])
-            if doc["sentences"] else None,
+            if doc["sentences"]
+            else None,
             "syllables_per_word": _round(doc["syllables"] / doc["words"])
-            if doc["words"] else None,
+            if doc["words"]
+            else None,
             "letters_per_word": _round(doc["letters"] / doc["words"])
-            if doc["words"] else None,
+            if doc["words"]
+            else None,
         },
         "scores": doc["scores"],
         "ease_label": ease_label(doc["scores"]["flesch_reading_ease"]),
@@ -597,57 +680,81 @@ def to_diagnostics(
     out: list[dict[str, Any]] = []
     if report.get("reliable") and report.get("over_target"):
         grade = report["scores"]["consensus_grade"]
-        out.append(openswap.diagnostic(
-            path=path, line=1, rule="readability:grade", severity=sev,
-            message=(
-                f"consensus grade {grade} above target {report['target_grade']} "
-                f"(flesch ease {report['scores']['flesch_reading_ease']} = "
-                f"{report['ease_label']})"
-            ),
-        ))
+        out.append(
+            openswap.diagnostic(
+                path=path,
+                line=1,
+                rule="readability:grade",
+                severity=sev,
+                message=(
+                    f"consensus grade {grade} above target {report['target_grade']} "
+                    f"(flesch ease {report['scores']['flesch_reading_ease']} = "
+                    f"{report['ease_label']})"
+                ),
+            )
+        )
     for row in report["sentences"]["worst"]:
         very = row["band"] == BAND_VERY_HARD
-        out.append(openswap.diagnostic(
-            path=path, line=row["line"], rule=f"readability:{row['band']}-sentence",
-            severity=sev if very else "info",
-            message=(
-                f"{'very hard' if very else 'hard'} sentence "
-                f"(grade {row['grade']}, {row['words']} words): {row['text'][:80]}"
-            ),
-        ))
+        out.append(
+            openswap.diagnostic(
+                path=path,
+                line=row["line"],
+                rule=f"readability:{row['band']}-sentence",
+                severity=sev if very else "info",
+                message=(
+                    f"{'very hard' if very else 'hard'} sentence "
+                    f"(grade {row['grade']}, {row['words']} words): {row['text'][:80]}"
+                ),
+            )
+        )
     shown = len(report["sentences"]["worst"])
     banded = report["sentences"]["hard"] + report["sentences"]["very_hard"]
     if banded > shown:
         # the `examples` cap must not read as "that was all of them"
-        out.append(openswap.diagnostic(
-            path=path, line=1, rule="readability:sentences", severity="info",
-            message=(
-                f"{banded} sentences over the difficulty threshold "
-                f"({report['sentences']['very_hard']} very hard, "
-                f"{report['sentences']['hard']} hard); the {shown} worst are "
-                "listed above — `scout prose score` reports every one"
-            ),
-        ))
+        out.append(
+            openswap.diagnostic(
+                path=path,
+                line=1,
+                rule="readability:sentences",
+                severity="info",
+                message=(
+                    f"{banded} sentences over the difficulty threshold "
+                    f"({report['sentences']['very_hard']} very hard, "
+                    f"{report['sentences']['hard']} hard); the {shown} worst are "
+                    "listed above — `scout prose score` reports every one"
+                ),
+            )
+        )
     adv = report["flags"]["adverbs"]
     if report.get("reliable") and adv["over_budget"]:
-        out.append(openswap.diagnostic(
-            path=path, line=1, rule="readability:adverbs", severity="info",
-            message=(
-                f"{adv['count']} -ly adverbs = {adv['per_100_words']} per 100 words "
-                f"(budget {adv['budget_per_100_words']}): "
-                f"{', '.join(adv['examples']) or 'none'}"
-            ),
-        ))
+        out.append(
+            openswap.diagnostic(
+                path=path,
+                line=1,
+                rule="readability:adverbs",
+                severity="info",
+                message=(
+                    f"{adv['count']} -ly adverbs = {adv['per_100_words']} per 100 words "
+                    f"(budget {adv['budget_per_100_words']}): "
+                    f"{', '.join(adv['examples']) or 'none'}"
+                ),
+            )
+        )
     pas = report["flags"]["passive"]
     if report.get("reliable") and pas["over_budget"]:
-        out.append(openswap.diagnostic(
-            path=path, line=1, rule="readability:passive", severity="info",
-            message=(
-                f"{pas['count']} passive constructions in "
-                f"{report['counts']['sentences']} sentences = "
-                f"{pas['pct_of_sentences']}% (budget {pas['budget_pct']}%)"
-            ),
-        ))
+        out.append(
+            openswap.diagnostic(
+                path=path,
+                line=1,
+                rule="readability:passive",
+                severity="info",
+                message=(
+                    f"{pas['count']} passive constructions in "
+                    f"{report['counts']['sentences']} sentences = "
+                    f"{pas['pct_of_sentences']}% (budget {pas['budget_pct']}%)"
+                ),
+            )
+        )
     return out
 
 
@@ -720,7 +827,9 @@ def _metrics_table(report: dict[str, Any], e: Any) -> str:
         f'<td class="mono">{e(str(note))}</td></tr>'
         for label, val, note in rows
     )
-    return f"<table><tr><th>metric</th><th>value</th><th>note</th></tr>\n{body}\n</table>"
+    return (
+        f"<table><tr><th>metric</th><th>value</th><th>note</th></tr>\n{body}\n</table>"
+    )
 
 
 def _histogram_table(report: dict[str, Any], e: Any) -> str:
@@ -730,7 +839,7 @@ def _histogram_table(report: dict[str, Any], e: Any) -> str:
         width = round(100.0 * row["count"] / peak)
         rows.append(
             f'<tr><td class="mono">{e(row["bucket"])}</td>'
-            f'<td>{row["count"]}</td><td>{e(str(row["pct"]))}%</td>'
+            f"<td>{row['count']}</td><td>{e(str(row['pct']))}%</td>"
             f'<td><div class="bar"><span style="width:{width}%"></span></div></td></tr>'
         )
     return (
@@ -747,9 +856,9 @@ def _paragraph_blocks(report: dict[str, Any], e: Any) -> str:
             f'<div class="para b-{e(p["band"])}">'
             f'<span class="pill b-{e(p["band"])}">{e(p["band"].replace("_", " "))}</span>'
             f' <span class="mono">line {p["line"]} · grade {e(grade)} · '
-            f'{p["words"]} words · {p["sentences"]} sentences · '
-            f'{p["hard"]} hard / {p["very_hard"]} very hard</span>'
-            f'<p>{e(p["text"])}</p></div>'
+            f"{p['words']} words · {p['sentences']} sentences · "
+            f"{p['hard']} hard / {p['very_hard']} very hard</span>"
+            f"<p>{e(p['text'])}</p></div>"
         )
     return "\n".join(blocks)
 
@@ -781,7 +890,7 @@ def render_html(reports: list[dict[str, Any]], *, title: str = "Readability") ->
         if not report.get("reliable"):
             parts.append(
                 f'<div class="nodata"><b>Sample too small to gate.</b> '
-                f'{report["counts"]["words"]} words — the scores below are '
+                f"{report['counts']['words']} words — the scores below are "
                 "reported but no finding is raised from them.</div>"
             )
         parts.append(_metrics_table(report, e))
@@ -790,14 +899,16 @@ def render_html(reports: list[dict[str, Any]], *, title: str = "Readability") ->
         flags = report["flags"]
         parts.append(
             f'<p class="note">Adverbs {flags["adverbs"]["count"]} '
-            f'({flags["adverbs"]["per_100_words"]} per 100 words, budget '
-            f'{flags["adverbs"]["budget_per_100_words"]}) · passive '
-            f'{flags["passive"]["count"]} '
-            f'({flags["passive"]["pct_of_sentences"]}% of sentences, budget '
-            f'{flags["passive"]["budget_pct"]}%)</p>'
+            f"({flags['adverbs']['per_100_words']} per 100 words, budget "
+            f"{flags['adverbs']['budget_per_100_words']}) · passive "
+            f"{flags['passive']['count']} "
+            f"({flags['passive']['pct_of_sentences']}% of sentences, budget "
+            f"{flags['passive']['budget_pct']}%)</p>"
         )
         parts.append("<h2>Per-paragraph difficulty</h2>")
-        parts.append(_paragraph_blocks(report, e) or '<p class="note">No prose paragraphs.</p>')
+        parts.append(
+            _paragraph_blocks(report, e) or '<p class="note">No prose paragraphs.</p>'
+        )
         parts.append(
             '<p class="note">'
             + "<br>".join(e(n) for n in report.get("notes", []))

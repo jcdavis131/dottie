@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
 import urllib.request
 from pathlib import Path
@@ -43,7 +42,11 @@ def iter_verified(catalog: dict) -> list[dict]:
             seen.add(aid)
             out.append(alt)
     for alt in catalog.get("extras") or []:
-        if alt.get("status") == "verified_pdf" and alt.get("pdf_url") and alt["id"] not in seen:
+        if (
+            alt.get("status") == "verified_pdf"
+            and alt.get("pdf_url")
+            and alt["id"] not in seen
+        ):
             out.append(alt)
             seen.add(alt["id"])
     return out
@@ -78,7 +81,7 @@ def download(url: str, dest: Path) -> dict:
                     break
                 f.write(chunk)
         tmp.replace(dest)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         tmp.unlink(missing_ok=True)
         return {"status": "error", "error": str(exc)}
     return {"status": "downloaded", "bytes": dest.stat().st_size}
@@ -105,7 +108,9 @@ def coverage_report(catalog: dict) -> dict:
     rows = []
     for row in catalog.get("equivalents") or []:
         alts = row.get("alternatives") or []
-        has_pdf = any(a.get("status") == "verified_pdf" and a.get("pdf_url") for a in alts)
+        has_pdf = any(
+            a.get("status") == "verified_pdf" and a.get("pdf_url") for a in alts
+        )
         has_any = bool(alts)
         rows.append(
             {

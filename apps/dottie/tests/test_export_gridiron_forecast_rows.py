@@ -17,8 +17,9 @@ from pathlib import Path
 
 import numpy as np
 
-_SCRIPT = (Path(__file__).resolve().parents[1] / "scripts"
-           / "export_gridiron_forecast_rows.py")
+_SCRIPT = (
+    Path(__file__).resolve().parents[1] / "scripts" / "export_gridiron_forecast_rows.py"
+)
 _spec = importlib.util.spec_from_file_location("export_gridiron_forecast_rows", _SCRIPT)
 egf = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(egf)
@@ -32,19 +33,29 @@ def _mkroot(tmp_path):
     data = root / "pipeline" / "data"
     data.mkdir(parents=True)
 
-    (root / "assets" / "eval_backtest.json").write_text(json.dumps({
-        "computed_at": "2026-01-01 00:00:00",
-        "season": 2025,
-        "weeks": [2],
-        "min_group": 3,
-        "positions": {"QB": {"baseline_last4": 1.0, "baseline_std": 1.0}},
-        "overall": {"baseline_last4": 1.0, "baseline_std": 1.0, "n_rows": 5},
-    }), encoding="utf-8")
+    (root / "assets" / "eval_backtest.json").write_text(
+        json.dumps(
+            {
+                "computed_at": "2026-01-01 00:00:00",
+                "season": 2025,
+                "weeks": [2],
+                "min_group": 3,
+                "positions": {"QB": {"baseline_last4": 1.0, "baseline_std": 1.0}},
+                "overall": {"baseline_last4": 1.0, "baseline_std": 1.0, "n_rows": 5},
+            }
+        ),
+        encoding="utf-8",
+    )
 
-    (data / "feature_manifest.json").write_text(json.dumps({
-        "features": ["f_fpts_ppr", "std_ppr"],
-        "targets": ["fpts_ppr"],
-    }), encoding="utf-8")
+    (data / "feature_manifest.json").write_text(
+        json.dumps(
+            {
+                "features": ["f_fpts_ppr", "std_ppr"],
+                "targets": ["fpts_ppr"],
+            }
+        ),
+        encoding="utf-8",
+    )
 
     #                 season week pos   last4 std   actual
     rows = [
@@ -53,7 +64,7 @@ def _mkroot(tmp_path):
         (2025, 2, "QB", "C", 10.0, 11.0, 9.0),
         (2025, 2, "TE", "D", 8.0, 7.0, 10.0),
         (2025, 2, "TE", "E", 5.0, 6.0, 4.0),
-        (2025, 2, "K", "F", 9.0, 9.0, 9.0),    # not a SKILL pos -> excluded
+        (2025, 2, "K", "F", 9.0, 9.0, 9.0),  # not a SKILL pos -> excluded
         (2024, 2, "QB", "G", 20.0, 19.0, 25.0),  # not the test season -> excluded
     ]
     Z = np.array([[r[4], r[5]] for r in rows], dtype=np.float64)
@@ -62,7 +73,9 @@ def _mkroot(tmp_path):
     Y = np.array([[r[6]] for r in rows], dtype=np.float64)
     np.savez_compressed(
         data / "train_matrix.npz",
-        Z=Z, mask=mask, Y=Y,
+        Z=Z,
+        mask=mask,
+        Y=Y,
         season=np.array([r[0] for r in rows], dtype=np.int32),
         week=np.array([r[1] for r in rows], dtype=np.int32),
         pos=np.array([r[2] for r in rows]),
@@ -94,15 +107,25 @@ def test_filters_to_test_season_skill_positions(tmp_path):
 def test_row_schema_and_scored_group_flag(tmp_path):
     rows, summary = egf.export_rows(_mkroot(tmp_path))
     for r in rows:
-        for key in ("season", "week", "gsis", "name", "pos", "team",
-                    "forecast_last4_ppr", "forecast_std_ppr",
-                    "forecast_last4_present", "forecast_std_present",
-                    "actual_fpts_ppr", "in_scored_group"):
+        for key in (
+            "season",
+            "week",
+            "gsis",
+            "name",
+            "pos",
+            "team",
+            "forecast_last4_ppr",
+            "forecast_std_ppr",
+            "forecast_last4_present",
+            "forecast_std_present",
+            "actual_fpts_ppr",
+            "in_scored_group",
+        ):
             assert key in r, f"missing {key}"
     by_name = {r["name"]: r for r in rows}
-    assert by_name["A"]["in_scored_group"] is True       # QB group n=3 >= min_group 3
-    assert by_name["D"]["in_scored_group"] is False      # TE group n=2 < 3
-    assert by_name["D"]["forecast_std_present"] == 0     # masked feature surfaced
+    assert by_name["A"]["in_scored_group"] is True  # QB group n=3 >= min_group 3
+    assert by_name["D"]["in_scored_group"] is False  # TE group n=2 < 3
+    assert by_name["D"]["forecast_std_present"] == 0  # masked feature surfaced
     assert by_name["A"]["forecast_last4_ppr"] == 20.0
     assert by_name["A"]["actual_fpts_ppr"] == 25.0
 

@@ -94,8 +94,11 @@ def _capability() -> dict:
         "style": openswap.probe_binary("style", probe_args=("--version",)),
     }
     return openswap.capability_report(
-        "prose", native=native, extras=extras,
-        fallback_scope=FALLBACK_SCOPE, install_hint=INSTALL_HINT,
+        "prose",
+        native=native,
+        extras=extras,
+        fallback_scope=FALLBACK_SCOPE,
+        install_hint=INSTALL_HINT,
     )
 
 
@@ -128,8 +131,11 @@ def _run_harper(harper_path: str, file: Path, timeout: float = 20.0):
     try:
         r = subprocess.run(
             [harper_path, "lint", "--format", "json", str(file)],
-            capture_output=True, text=True, timeout=timeout,
-            encoding="utf-8", errors="replace",
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            encoding="utf-8",
+            errors="replace",
         )
         diags = prose.parse_harper_output(r.stdout or "", path=str(file))
         if diags:
@@ -169,10 +175,15 @@ def detect():
     )
 
 
-@app.command("rules", epilog=examples_epilog([
-    "scout --json prose rules",
-    "scout --json prose rules --rules org-style.json",
-]))
+@app.command(
+    "rules",
+    epilog=examples_epilog(
+        [
+            "scout --json prose rules",
+            "scout --json prose rules --rules org-style.json",
+        ]
+    ),
+)
 def rules_cmd(
     rules_file: str | None = typer.Option(
         None, "--rules", help="JSON rules overlay (org style, policy-as-config)"
@@ -185,7 +196,7 @@ def rules_cmd(
         fail_agent(
             f"bad rules file: {e}",
             command="prose rules",
-            example='scout --json prose rules --rules org-style.json',
+            example="scout --json prose rules --rules org-style.json",
         )
     summary = {}
     for rid, cfg in merged.items():
@@ -208,24 +219,34 @@ def rules_cmd(
     )
 
 
-@app.command("lint", epilog=examples_epilog([
-    "scout --json prose lint README.md",
-    "scout --json prose lint docs --fail-on warning",
-    "scout --json prose lint README.md --rules org-style.json --no-native",
-]))
+@app.command(
+    "lint",
+    epilog=examples_epilog(
+        [
+            "scout --json prose lint README.md",
+            "scout --json prose lint docs --fail-on warning",
+            "scout --json prose lint README.md --rules org-style.json --no-native",
+        ]
+    ),
+)
 def lint(
     paths: list[str] = typer.Argument(
-        ..., help="files or directories (dirs walked for " + ", ".join(prose.PROSE_EXTS) + ")"
+        ...,
+        help="files or directories (dirs walked for "
+        + ", ".join(prose.PROSE_EXTS)
+        + ")",
     ),
     rules_file: str | None = typer.Option(
         None, "--rules", help="JSON rules overlay (org style, policy-as-config)"
     ),
     native: bool = typer.Option(
-        True, "--native/--no-native",
+        True,
+        "--native/--no-native",
         help="use harper-cli when on PATH (merged under the same schema)",
     ),
     fail_on: str | None = typer.Option(
-        None, "--fail-on",
+        None,
+        "--fail-on",
         help="exit 1 if findings at/above this severity (error|warning|suggestion|info) — the pre-publish gate hook",
     ),
     max_findings: int = typer.Option(
@@ -250,8 +271,7 @@ def lint(
     files = _collect_files(paths)
     if not files:
         fail_agent(
-            "no lintable files found "
-            f"(looking for {', '.join(prose.PROSE_EXTS)})",
+            f"no lintable files found (looking for {', '.join(prose.PROSE_EXTS)})",
             command="prose lint",
             example="scout --json prose lint README.md",
         )
@@ -262,7 +282,9 @@ def lint(
     for f in files:
         text = f.read_text(encoding="utf-8", errors="replace")
         diags.extend(
-            prose.lint_text(text, path=str(f), fmt=prose.detect_format(str(f)), rules=rules)
+            prose.lint_text(
+                text, path=str(f), fmt=prose.detect_format(str(f)), rules=rules
+            )
         )
         if use_native:
             harper_diags, note = _run_harper(cap["native"]["path"], f)
@@ -362,27 +384,39 @@ def _gate(diags: list[dict], fail_on: str | None) -> None:
         raise typer.Exit(code=1)
 
 
-@app.command("score", epilog=examples_epilog([
-    "scout --json prose score README.md",
-    "scout --json prose score docs --target-grade 10 --fail-on suggestion",
-    "scout --json prose score README.md --max-paragraphs 5",
-]))
+@app.command(
+    "score",
+    epilog=examples_epilog(
+        [
+            "scout --json prose score README.md",
+            "scout --json prose score docs --target-grade 10 --fail-on suggestion",
+            "scout --json prose score README.md --max-paragraphs 5",
+        ]
+    ),
+)
 def score(
     paths: list[str] = typer.Argument(
-        ..., help="files or directories (dirs walked for " + ", ".join(prose.PROSE_EXTS) + ")"
+        ...,
+        help="files or directories (dirs walked for "
+        + ", ".join(prose.PROSE_EXTS)
+        + ")",
     ),
     rules_file: str | None = typer.Option(
         None, "--rules", help="JSON rules overlay (readability thresholds included)"
     ),
     target_grade: float | None = typer.Option(
-        None, "--target-grade",
+        None,
+        "--target-grade",
         help="override readability.max_grade — grade above this is a finding",
     ),
     max_paragraphs: int = typer.Option(
-        30, "--max-paragraphs", help="cap per-paragraph rows per file (counts stay complete)"
+        30,
+        "--max-paragraphs",
+        help="cap per-paragraph rows per file (counts stay complete)",
     ),
     fail_on: str | None = typer.Option(
-        None, "--fail-on",
+        None,
+        "--fail-on",
         help="exit 1 if findings at/above this severity (error|warning|suggestion|info) — the pre-publish gate",
     ),
 ):
@@ -393,7 +427,11 @@ def score(
     their median — a wide spread is the signal that the syllable counter, not
     the prose, is being measured.
     """
-    _check_fail_on(fail_on, "prose score", "scout --json prose score README.md --fail-on suggestion")
+    _check_fail_on(
+        fail_on,
+        "prose score",
+        "scout --json prose score README.md --fail-on suggestion",
+    )
     rules = _readability_rules(rules_file, target_grade, "prose score")
     files = _collect_files(paths)
     if not files:
@@ -418,7 +456,9 @@ def score(
                 "tier": _capability()["tier"],
                 "files": [str(f) for f in files],
                 "target_grade": rules["readability"]["max_grade"],
-                "hardest": None if hardest is None else {
+                "hardest": None
+                if hardest is None
+                else {
                     "path": hardest["path"],
                     "consensus_grade": hardest["scores"]["consensus_grade"],
                     "ease_label": hardest["ease_label"],
@@ -436,11 +476,16 @@ def score(
     _gate(diags, fail_on)
 
 
-@app.command("report", epilog=examples_epilog([
-    "scout prose report README.md",
-    "scout prose report docs --out .scout/readability.html --title 'digest draft'",
-    "scout --json prose report README.md --target-grade 10 --fail-on suggestion",
-]))
+@app.command(
+    "report",
+    epilog=examples_epilog(
+        [
+            "scout prose report README.md",
+            "scout prose report docs --out .scout/readability.html --title 'digest draft'",
+            "scout --json prose report README.md --target-grade 10 --fail-on suggestion",
+        ]
+    ),
+)
 def report(
     paths: list[str] = typer.Argument(..., help="files or directories to score"),
     out: str | None = typer.Option(
@@ -452,7 +497,9 @@ def report(
         None, "--target-grade", help="override readability.max_grade"
     ),
     fail_on: str | None = typer.Option(
-        None, "--fail-on", help="exit 1 after writing if findings at/above this severity"
+        None,
+        "--fail-on",
+        help="exit 1 after writing if findings at/above this severity",
     ),
 ):
     """Write the per-paragraph difficulty page — Hemingway's highlighting, as a file.
@@ -460,7 +507,9 @@ def report(
     One self-contained HTML file: inline CSS, zero JavaScript, zero external
     assets, so it opens from file:// and can be published with any of the sites.
     """
-    _check_fail_on(fail_on, "prose report", "scout prose report README.md --fail-on suggestion")
+    _check_fail_on(
+        fail_on, "prose report", "scout prose report README.md --fail-on suggestion"
+    )
     rules = _readability_rules(rules_file, target_grade, "prose report")
     files = _collect_files(paths)
     if not files:
@@ -487,9 +536,7 @@ def report(
                 "chars": len(page),
                 "files": [str(f) for f in files],
                 "target_grade": rules["readability"]["max_grade"],
-                "grades": {
-                    r["path"]: r["scores"]["consensus_grade"] for r in reports
-                },
+                "grades": {r["path"]: r["scores"]["consensus_grade"] for r in reports},
                 "diagnostics": diags,
                 "summary": openswap.summarize(diags),
             },

@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CLI = [sys.executable, "-m", "bigbang.cli"]
 
+
 def _run(args, *, timeout=60, env=None):
     return subprocess.run(
         CLI + args,
@@ -22,10 +23,13 @@ def _run(args, *, timeout=60, env=None):
         env=env,
     )
 
+
 def test_dev_loop_plugin_discovered():
     from bigbang.core.plugin_loader import list_plugin_names
+
     names = list_plugin_names()
     assert "dev_loop" in names, f"dev_loop not in {names}"
+
 
 def test_dev_loop_help():
     r = _run(["dev_loop", "--help"])
@@ -34,6 +38,7 @@ def test_dev_loop_help():
     assert "dev_loop" in out or "dev loop" in out
     assert "status" in out or "ship" in out
 
+
 def test_dev_loop_status_json():
     r = _run(["--json", "dev_loop", "status", "--path", str(ROOT)], timeout=20)
     assert r.returncode == 0, r.stderr + r.stdout
@@ -41,6 +46,7 @@ def test_dev_loop_status_json():
     assert data.get("ok") is True
     inner = data.get("data") or {}
     assert "repo" in inner
+
 
 def test_dev_loop_uses_ok_err_and_no_secrets():
     cli_path = ROOT / "bigbang" / "plugins" / "dev_loop" / "cli.py"
@@ -52,10 +58,15 @@ def test_dev_loop_uses_ok_err_and_no_secrets():
     assert "sk-" not in text
     assert "make_plugin_app" in text
 
+
 def _git(args, cwd):
     return subprocess.run(
-        ["git", *args], cwd=str(cwd), capture_output=True, text=True,
-        encoding="utf-8", errors="replace",
+        ["git", *args],
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
 
@@ -91,8 +102,21 @@ def test_dev_loop_ship_commits_in_an_isolated_repo(tmp_path):
     (repo / "change.txt").write_text("new work\n", encoding="utf-8")
     before = _git(["rev-parse", "HEAD"], repo).stdout.strip()
 
-    r = _run(["--json", "dev_loop", "ship", "--path", str(repo), "--message",
-              "test: isolated ship", "--yes", "--no-push", "--no-tests"], timeout=60)
+    r = _run(
+        [
+            "--json",
+            "dev_loop",
+            "ship",
+            "--path",
+            str(repo),
+            "--message",
+            "test: isolated ship",
+            "--yes",
+            "--no-push",
+            "--no-tests",
+        ],
+        timeout=60,
+    )
     assert r.returncode == 0, r.stderr + r.stdout
     data = json.loads(r.stdout)
     assert data.get("ok") is True
@@ -106,7 +130,9 @@ def test_dev_loop_ship_commits_in_an_isolated_repo(tmp_path):
     after = _git(["rev-parse", "HEAD"], repo).stdout.strip()
     assert after != before  # HEAD actually advanced
     assert inner.get("sha") and after.startswith(inner["sha"])
-    assert _git(["log", "-1", "--pretty=%s"], repo).stdout.strip() == "test: isolated ship"
+    assert (
+        _git(["log", "-1", "--pretty=%s"], repo).stdout.strip() == "test: isolated ship"
+    )
     # add -A swept the untracked file in, so nothing is left behind
     assert _git(["status", "--porcelain"], repo).stdout.strip() == ""
 
@@ -118,8 +144,21 @@ def test_dev_loop_ship_reports_nothing_to_commit_on_a_clean_tree(tmp_path):
     do-nothing ship read as a pass.
     """
     repo = _throwaway_repo(tmp_path)  # seeded and clean
-    r = _run(["--json", "dev_loop", "ship", "--path", str(repo), "--message",
-              "test: should not commit", "--yes", "--no-push", "--no-tests"], timeout=60)
+    r = _run(
+        [
+            "--json",
+            "dev_loop",
+            "ship",
+            "--path",
+            str(repo),
+            "--message",
+            "test: should not commit",
+            "--yes",
+            "--no-push",
+            "--no-tests",
+        ],
+        timeout=60,
+    )
     assert r.returncode == 0, r.stderr + r.stdout
     inner = (json.loads(r.stdout).get("data")) or {}
     assert "committed" not in inner  # no commit was made

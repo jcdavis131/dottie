@@ -93,7 +93,14 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "require_hsts_preload": False,
     "require_permissions_policy": True,
     # opt-in extra GETs for `scan --dirs`; paths only, joined onto the origin
-    "dir_probe_paths": ["/assets/", "/static/", "/images/", "/css/", "/js/", "/uploads/"],
+    "dir_probe_paths": [
+        "/assets/",
+        "/static/",
+        "/images/",
+        "/css/",
+        "/js/",
+        "/uploads/",
+    ],
     "ignore_rules": [],
     "severity": {},
 }
@@ -106,7 +113,10 @@ RULES: dict[str, tuple[str, str]] = {
         "the URL did not answer — fix reachability before reading anything into a grade",
     ),
     "no-https": (SEV_ERROR, "serve over TLS and redirect http:// to https://"),
-    "http-upgraded": (SEV_INFO, "no action — the plain-http request redirected to https"),
+    "http-upgraded": (
+        SEV_INFO,
+        "no action — the plain-http request redirected to https",
+    ),
     "graded-non-2xx": (
         SEV_INFO,
         "the graded response was not 2xx; error pages often omit the app's headers",
@@ -174,7 +184,10 @@ RULES: dict[str, tuple[str, str]] = {
     ),
     "xfo-invalid": (SEV_WARNING, "X-Frame-Options accepts only DENY or SAMEORIGIN"),
     "xcto-missing": (SEV_WARNING, "add X-Content-Type-Options: nosniff"),
-    "xcto-invalid": (SEV_WARNING, "the only valid X-Content-Type-Options value is nosniff"),
+    "xcto-invalid": (
+        SEV_WARNING,
+        "the only valid X-Content-Type-Options value is nosniff",
+    ),
     "referrer-missing": (
         SEV_WARNING,
         "add Referrer-Policy: strict-origin-when-cross-origin",
@@ -207,7 +220,10 @@ RULES: dict[str, tuple[str, str]] = {
         SEV_ERROR,
         "add the Secure attribute — without it the cookie can ride a plaintext request",
     ),
-    "cookie-no-httponly": (SEV_WARNING, "add HttpOnly so script cannot read the cookie"),
+    "cookie-no-httponly": (
+        SEV_WARNING,
+        "add HttpOnly so script cannot read the cookie",
+    ),
     "cookie-no-samesite": (SEV_WARNING, "add SameSite=Lax (or Strict) to blunt CSRF"),
     "cookie-samesite-none-insecure": (SEV_ERROR, "SameSite=None requires Secure"),
     "cookie-prefix-violation": (
@@ -263,9 +279,13 @@ def load_config(path: str | None = None) -> dict[str, Any]:
                 cfg[key] = val
     age = cfg["hsts_min_age"]
     if not (isinstance(age, int) and not isinstance(age, bool) and age >= 0):
-        raise ValueError(f"config 'hsts_min_age': needs a non-negative int, got {age!r}")
+        raise ValueError(
+            f"config 'hsts_min_age': needs a non-negative int, got {age!r}"
+        )
     for key in ("ignore_rules", "dir_probe_paths"):
-        if not (isinstance(cfg[key], list) and all(isinstance(x, str) for x in cfg[key])):
+        if not (
+            isinstance(cfg[key], list) and all(isinstance(x, str) for x in cfg[key])
+        ):
             raise ValueError(f"config {key!r}: must be a list of strings")
     for code in cfg["ignore_rules"]:
         if code not in RULES:
@@ -321,7 +341,7 @@ def header_value(hmap: dict[str, list[str]], name: str) -> str | None:
 
 
 def parse_csp(value: str) -> dict[str, list[str]]:
-    """"default-src 'self'; script-src a b" -> {"default-src": ["'self'"], ...}.
+    """ "default-src 'self'; script-src a b" -> {"default-src": ["'self'"], ...}.
 
     A repeated directive inside ONE policy is ignored after the first, which is
     what the CSP spec says browsers must do.
@@ -365,12 +385,17 @@ def _csp_reasons(hmap: dict[str, list[str]]) -> list[dict[str, Any]]:
     policies = hmap.get("content-security-policy") or []
     if len(set(policies)) > 1:
         reasons.append(
-            _r("csp-duplicate", f"{len(policies)} differing CSP headers on one response")
+            _r(
+                "csp-duplicate",
+                f"{len(policies)} differing CSP headers on one response",
+            )
         )
     csp = parse_csp(enforced)
     script = effective_sources(csp, "script-src")
     if script is None:
-        reasons.append(_r("csp-no-script-src", "CSP sets neither script-src nor default-src"))
+        reasons.append(
+            _r("csp-no-script-src", "CSP sets neither script-src nor default-src")
+        )
     else:
         low = [s.lower() for s in script]
         if "'unsafe-inline'" in low:
@@ -383,7 +408,9 @@ def _csp_reasons(hmap: dict[str, list[str]]) -> list[dict[str, Any]]:
                 _r("csp-wildcard-script", f"script-src allows {', '.join(wide)}")
             )
     if "frame-ancestors" not in csp:
-        reasons.append(_r("csp-no-frame-ancestors", "CSP has no frame-ancestors directive"))
+        reasons.append(
+            _r("csp-no-frame-ancestors", "CSP has no frame-ancestors directive")
+        )
     obj = effective_sources(csp, "object-src")
     if obj is None or [s.lower() for s in obj] != ["'none'"]:
         reasons.append(_r("csp-no-object-src", "object-src is not 'none'"))
@@ -412,7 +439,9 @@ def parse_hsts(value: str) -> dict[str, Any]:
     }
 
 
-def _hsts_reasons(hmap: dict[str, list[str]], cfg: dict[str, Any]) -> list[dict[str, Any]]:
+def _hsts_reasons(
+    hmap: dict[str, list[str]], cfg: dict[str, Any]
+) -> list[dict[str, Any]]:
     raw = header_value(hmap, "strict-transport-security")
     if not raw:
         # deliberately the same severity certmon gives its missing-hsts reason:
@@ -445,13 +474,17 @@ def _framing_reasons(
     reasons: list[dict[str, Any]] = []
     if xfo is None:
         if "frame-ancestors" not in csp:
-            reasons.append(_r("xfo-missing", "no X-Frame-Options and no CSP frame-ancestors"))
+            reasons.append(
+                _r("xfo-missing", "no X-Frame-Options and no CSP frame-ancestors")
+            )
         return reasons
     value = xfo.strip().upper()
     if value.startswith("ALLOW-FROM"):
         reasons.append(_r("xfo-allow-from", f"X-Frame-Options: {xfo} is a dead form"))
     elif value not in VALID_XFO:
-        reasons.append(_r("xfo-invalid", f"X-Frame-Options: {xfo!r} is not DENY/SAMEORIGIN"))
+        reasons.append(
+            _r("xfo-invalid", f"X-Frame-Options: {xfo!r} is not DENY/SAMEORIGIN")
+        )
     return reasons
 
 
@@ -618,7 +651,9 @@ class _SubresourceParser(HTMLParser):
         if not raw:
             return
         line, _off = self.getpos()
-        self.found.append({"tag": tag, "attr": attr, "raw": raw, "active": active, "line": line})
+        self.found.append(
+            {"tag": tag, "attr": attr, "raw": raw, "active": active, "line": line}
+        )
 
     def handle_startendtag(self, tag: str, attrs: list) -> None:
         self.handle_starttag(tag, attrs)
@@ -642,7 +677,11 @@ def subresources(body: str | None, base_url: str) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for item in parser.found:
         raw = item["raw"]
-        if raw.startswith("#") or urlsplit(raw).scheme in ("data", "mailto", "javascript"):
+        if raw.startswith("#") or urlsplit(raw).scheme in (
+            "data",
+            "mailto",
+            "javascript",
+        ):
             continue
         url = urljoin(base_url, raw)
         if urlsplit(url).scheme not in ("http", "https"):
@@ -655,23 +694,38 @@ def mixed_content(page_url: str, body: str | None) -> list[dict[str, Any]]:
     """http:// subresources on an https page. Empty for http pages (all plaintext)."""
     if urlsplit(page_url).scheme != "https":
         return []
-    return [s for s in subresources(body, page_url) if urlsplit(s["url"]).scheme == "http"]
+    return [
+        s for s in subresources(body, page_url) if urlsplit(s["url"]).scheme == "http"
+    ]
 
 
-def _surface_reasons(url: str, body: str | None) -> tuple[list[dict[str, Any]], Any, list]:
+def _surface_reasons(
+    url: str, body: str | None
+) -> tuple[list[dict[str, Any]], Any, list]:
     """(reasons, directory-listing flavor, mixed-content items) for one body."""
     reasons: list[dict[str, Any]] = []
     flavor = directory_listing(body)
     if flavor:
-        reasons.append(_r("directory-listing", f"server-generated index page ({flavor})"))
+        reasons.append(
+            _r("directory-listing", f"server-generated index page ({flavor})")
+        )
     mixed = mixed_content(url, body)
-    for active, code in ((True, "mixed-content-active"), (False, "mixed-content-passive")):
+    for active, code in (
+        (True, "mixed-content-active"),
+        (False, "mixed-content-passive"),
+    ):
         hits = [m for m in mixed if m["active"] is active]
         if not hits:
             continue
         shown = ", ".join(f"<{h['tag']}> {h['url']}" for h in hits[:3])
         more = f" (+{len(hits) - 3} more)" if len(hits) > 3 else ""
-        reasons.append(_r(code, f"{len(hits)} http:// subresource(s): {shown}{more}", line=hits[0]["line"]))
+        reasons.append(
+            _r(
+                code,
+                f"{len(hits)} http:// subresource(s): {shown}{more}",
+                line=hits[0]["line"],
+            )
+        )
     return reasons, flavor, mixed
 
 
@@ -683,7 +737,9 @@ def _r(code: str, message: str, line: int = 0) -> dict[str, Any]:
     return {"code": code, "message": message, "line": int(line)}
 
 
-def _finalize(reasons: list[dict[str, Any]], cfg: dict[str, Any]) -> list[dict[str, Any]]:
+def _finalize(
+    reasons: list[dict[str, Any]], cfg: dict[str, Any]
+) -> list[dict[str, Any]]:
     """Attach severity + remedy from RULES (config may override), drop ignored.
 
     One place decides severity for every check, so `severity` overrides and
@@ -697,7 +753,9 @@ def _finalize(reasons: list[dict[str, Any]], cfg: dict[str, Any]) -> list[dict[s
         if code in ignore:
             continue
         severity, remedy = RULES[code]
-        out.append({**reason, "severity": overrides.get(code, severity), "remedy": remedy})
+        out.append(
+            {**reason, "severity": overrides.get(code, severity), "remedy": remedy}
+        )
     return out
 
 
@@ -766,7 +824,9 @@ def analyze(
         "error": observation.get("error"),
         "headers_seen": sorted(hmap),
         "body_available": body is not None,
-        "checks_skipped": [] if body is not None else ["mixed-content", "directory-listing"],
+        "checks_skipped": []
+        if body is not None
+        else ["mixed-content", "directory-listing"],
         "cookies": [],
         "mixed_content": [],
         "directory_listing": None,
@@ -1030,7 +1090,9 @@ def board(conn: sqlite3.Connection, urls: list[str]) -> list[dict[str, Any]]:
     for url in urls:
         last = latest_scan(conn, url)
         if last is None:
-            out.append({"url": url, "grade": "unknown", "severity": "unknown", "last": None})
+            out.append(
+                {"url": url, "grade": "unknown", "severity": "unknown", "last": None}
+            )
             continue
         out.append(
             {
