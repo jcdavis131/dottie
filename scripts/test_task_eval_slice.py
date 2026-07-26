@@ -539,6 +539,7 @@ _t("strip_spans: a real path fragment cannot survive an overlap",
 
 # loader: a same-NAMED module from a DIFFERENT file must not be reused
 import types as _types
+
 _fake = _types.ModuleType("retrieval_eval")
 _fake.__file__ = str(Path(__file__).resolve().parent / "NOT_retrieval_eval.py")
 _fake.SENTINEL_WRONG_MODULE = True
