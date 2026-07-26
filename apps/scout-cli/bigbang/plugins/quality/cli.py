@@ -251,12 +251,17 @@ def detect():
 @app.command(
     "rules",
     epilog=examples_epilog(
-        ["scout --json quality rules", "scout --json quality rules --config org-quality.json"]
+        [
+            "scout --json quality rules",
+            "scout --json quality rules --config org-quality.json",
+        ]
     ),
 )
 def rules_cmd(
     config_file: str | None = typer.Option(
-        None, "--config", help="JSON overlay of weights/thresholds/rules (policy-as-config)"
+        None,
+        "--config",
+        help="JSON overlay of weights/thresholds/rules (policy-as-config)",
     ),
 ):
     """Publish the effective policy: decision-point weights, thresholds, rules."""
@@ -298,7 +303,10 @@ def rules_cmd(
 )
 def scan(
     paths: list[str] = typer.Argument(
-        ..., help="files or directories (dirs walked for " + ", ".join(quality.PY_EXTS) + ")"
+        ...,
+        help="files or directories (dirs walked for "
+        + ", ".join(quality.PY_EXTS)
+        + ")",
     ),
     config_file: str | None = typer.Option(
         None, "--config", help="JSON overlay of weights/thresholds/rules"
@@ -312,14 +320,20 @@ def scan(
     record: bool = typer.Option(
         True, "--record/--no-record", help="append this run to the sqlite trend store"
     ),
-    db: str | None = typer.Option(None, "--db", help=f"trend store path (default {DEFAULT_DB})"),
-    label: str | None = typer.Option(None, "--label", help="name this run in the history"),
+    db: str | None = typer.Option(
+        None, "--db", help=f"trend store path (default {DEFAULT_DB})"
+    ),
+    label: str | None = typer.Option(
+        None, "--label", help="name this run in the history"
+    ),
     top: int = typer.Option(10, "--top", help="how many hottest functions to include"),
     max_findings: int = typer.Option(
         200, "--max-findings", help="cap emitted diagnostics (summary stays complete)"
     ),
     units: bool = typer.Option(
-        False, "--units/--no-units", help="include the full per-function measurement table"
+        False,
+        "--units/--no-units",
+        help="include the full per-function measurement table",
     ),
 ):
     """Measure Python files. Reads source and the local store; opens no socket."""
@@ -391,7 +405,9 @@ def _thin(report: dict, units: bool) -> dict:
     return row
 
 
-def _record(reports: list[dict], result: dict, cfg: dict, *, db: str | None, label: str | None) -> int:
+def _record(
+    reports: list[dict], result: dict, cfg: dict, *, db: str | None, label: str | None
+) -> int:
     """Append this run to the trend store. Failures are loud, never silent."""
     conn = _store_or_fail(db, "quality scan")
     try:
@@ -427,10 +443,14 @@ def _record(reports: list[dict], result: dict, cfg: dict, *, db: str | None, lab
 )
 def trend_cmd(
     metric: str = typer.Option(
-        "complexity_total", "--metric", help="one of: " + ", ".join(quality.TREND_METRICS)
+        "complexity_total",
+        "--metric",
+        help="one of: " + ", ".join(quality.TREND_METRICS),
     ),
     limit: int = typer.Option(20, "--limit", help="how many recent runs to include"),
-    db: str | None = typer.Option(None, "--db", help=f"trend store path (default {DEFAULT_DB})"),
+    db: str | None = typer.Option(
+        None, "--db", help=f"trend store path (default {DEFAULT_DB})"
+    ),
 ):
     """One metric across recorded runs, oldest first. Reads the local store only."""
     conn = _store_or_fail(db, "quality trend")
@@ -469,9 +489,15 @@ def trend_cmd(
     ),
 )
 def compare_cmd(
-    base: int | None = typer.Option(None, "--base", help="baseline run id (default: previous run)"),
-    head: int | None = typer.Option(None, "--head", help="run id to judge (default: latest run)"),
-    db: str | None = typer.Option(None, "--db", help=f"trend store path (default {DEFAULT_DB})"),
+    base: int | None = typer.Option(
+        None, "--base", help="baseline run id (default: previous run)"
+    ),
+    head: int | None = typer.Option(
+        None, "--head", help="run id to judge (default: latest run)"
+    ),
+    db: str | None = typer.Option(
+        None, "--db", help=f"trend store path (default {DEFAULT_DB})"
+    ),
     fail_on_regression: bool = typer.Option(
         False,
         "--fail-on-regression/--no-fail-on-regression",

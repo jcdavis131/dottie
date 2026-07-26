@@ -85,7 +85,9 @@ def test_token_count_includes_stopwords_because_it_is_the_document_length():
 
 
 def test_markdown_code_fences_and_urls_never_become_terms():
-    text = "# Real heading\n\n```\nsecretsauce gpu\n```\n\nSee https://example.com/gpu now"
+    text = (
+        "# Real heading\n\n```\nsecretsauce gpu\n```\n\nSee https://example.com/gpu now"
+    )
     segs = contentgap.token_segments(text, fmt=contentgap.FORMAT_MARKDOWN)
     flat = [t for seg in segs for t in seg]
     assert "secretsauce" not in flat
@@ -99,7 +101,9 @@ def test_html_script_and_style_never_become_terms():
         "<body><p>Visible prose here</p><script>var stolen = 1;</script></body></html>"
     )
     flat = [
-        t for seg in contentgap.token_segments(html, fmt=contentgap.FORMAT_HTML) for t in seg
+        t
+        for seg in contentgap.token_segments(html, fmt=contentgap.FORMAT_HTML)
+        for t in seg
     ]
     assert flat == ["visible", "prose", "here"]
     assert "stolen" not in flat and "color" not in flat
@@ -148,7 +152,10 @@ def test_phrase_terms_need_two_adjacent_terms_and_never_bridge_a_stopword():
 def test_phrases_never_span_a_segment_boundary():
     counts = contentgap.term_counts(contentgap.token_segments("alpha\nbeta"))
     assert "alpha beta" not in counts
-    assert contentgap.term_counts(contentgap.token_segments("alpha beta"))["alpha beta"] == 1
+    assert (
+        contentgap.term_counts(contentgap.token_segments("alpha beta"))["alpha beta"]
+        == 1
+    )
 
 
 def test_term_counts_phrase_toggle_and_frequencies():
@@ -268,7 +275,10 @@ def test_corpus_terms_ranked_by_weight_then_alphabetically():
 
 def test_reading_demands_exactly_one_of_value_or_error():
     assert contentgap.reading(4.5) == {"value": 4.5, "error": None}
-    assert contentgap.reading(error="no corpus") == {"value": None, "error": "no corpus"}
+    assert contentgap.reading(error="no corpus") == {
+        "value": None,
+        "error": "no corpus",
+    }
     with pytest.raises(ValueError):
         contentgap.reading(4.5, error="also broken")
     with pytest.raises(ValueError):
@@ -310,7 +320,9 @@ def test_an_empty_draft_still_gets_actionable_minimums():
     assert all(row["minimum"] == 1 for row in report["targets"])
     assert report["coverage_score"]["value"] == 0.0
     missing = [
-        d for d in contentgap.to_diagnostics(report) if d["rule"] == "contentgap:missing"
+        d
+        for d in contentgap.to_diagnostics(report)
+        if d["rule"] == "contentgap:missing"
     ]
     assert len(missing) == 6
     assert all("1+ mentions" in d["suggestion"] for d in missing)
@@ -483,7 +495,9 @@ def test_to_diagnostics_turns_an_unmeasurable_score_into_an_error():
 def test_gap_messages_carry_the_numbers_a_writer_needs():
     report = contentgap.analyze("alpha beta", _model(), path="d.md", top=6)
     missing = [
-        d for d in contentgap.to_diagnostics(report) if d["rule"] == "contentgap:missing"
+        d
+        for d in contentgap.to_diagnostics(report)
+        if d["rule"] == "contentgap:missing"
     ]
     msg = next(d["message"] for d in missing if "'gamma'" in d["message"])
     assert "comparison page(s)" in msg and "expected" in msg
@@ -514,7 +528,9 @@ def test_render_brief_states_when_a_score_was_not_measured():
 
 
 def test_render_brief_lists_skipped_corpus_files_and_draft_only_terms():
-    model = _model(DOC_A, DOC_B, {"name": "x.md", "text": None, "error": "too-large: 1 KB"})
+    model = _model(
+        DOC_A, DOC_B, {"name": "x.md", "text": None, "error": "too-large: 1 KB"}
+    )
     page = contentgap.render_brief(contentgap.analyze("alpha pixiedust", model, top=6))
     assert "## Corpus files skipped (not counted)" in page
     assert "`x.md` — too-large: 1 KB" in page
@@ -647,8 +663,15 @@ def test_cli_contentgap_audit_labels_an_unmeasurable_corpus(tmp_path):
     # --max-kb 0 makes every page too large: the pass must report WHY, not 0.0
     res = _cli(
         [
-            "contentgap", "audit", str(draft), "--corpus", str(corpus),
-            "--max-kb", "0", "--fail-on", "error",
+            "contentgap",
+            "audit",
+            str(draft),
+            "--corpus",
+            str(corpus),
+            "--max-kb",
+            "0",
+            "--fail-on",
+            "error",
         ]
     )
     assert res.returncode == 1
@@ -671,8 +694,17 @@ def test_cli_contentgap_brief_writes_lf_exact_markdown(tmp_path):
     data = _data(
         _cli(
             [
-                "contentgap", "brief", str(draft), "--corpus", str(corpus),
-                "--out", str(out), "--title", "RAG brief", "--top", "5",
+                "contentgap",
+                "brief",
+                str(draft),
+                "--corpus",
+                str(corpus),
+                "--out",
+                str(out),
+                "--title",
+                "RAG brief",
+                "--top",
+                "5",
             ]
         )
     )
@@ -688,8 +720,17 @@ def test_cli_contentgap_brief_writes_lf_exact_markdown(tmp_path):
     _data(
         _cli(
             [
-                "contentgap", "brief", str(draft), "--corpus", str(corpus),
-                "--out", str(out), "--title", "RAG brief", "--top", "5",
+                "contentgap",
+                "brief",
+                str(draft),
+                "--corpus",
+                str(corpus),
+                "--out",
+                str(out),
+                "--title",
+                "RAG brief",
+                "--top",
+                "5",
             ]
         )
     )

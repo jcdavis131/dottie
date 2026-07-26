@@ -116,8 +116,14 @@ def test_boilerplate_never_reaches_the_article():
     res = _extract(ARTICLE, url="https://example.com/ratchet")
     text = res["text"]
     assert P1 in text and P2 in text
-    for chrome in ("Archive", "Subscribe to our newsletter", "Tweet this",
-                   "window.track", "display: none", "Related"):
+    for chrome in (
+        "Archive",
+        "Subscribe to our newsletter",
+        "Tweet this",
+        "window.track",
+        "display: none",
+        "Related",
+    ):
         assert chrome not in text, f"boilerplate leaked: {chrome}"
     assert res["candidate"] == "div#main.post-content"
     assert res["removed"]["nav"] == 1
@@ -140,8 +146,9 @@ def test_script_and_style_text_is_not_even_stored():
 
 def test_pre_blocks_stay_verbatim():
     res = _extract(ARTICLE)
-    assert "python evaluate.py --paired-seeds 5\npython promote.py --dry-run" in (
-        res["text"]
+    assert (
+        "python evaluate.py --paired-seeds 5\npython promote.py --dry-run"
+        in (res["text"])
     )
 
 
@@ -195,9 +202,7 @@ def test_class_weight_and_base_score_are_the_documented_priors():
         "<div class='article-body'></div><div class='sidebar-widget'></div>"
         "<div class='plain'></div>"
     )
-    weights = {
-        n.describe(): extract._class_weight(n) for n in extract._walk(doc.root)
-    }
+    weights = {n.describe(): extract._class_weight(n) for n in extract._walk(doc.root)}
     assert weights["div.article-body"] == 25.0
     assert weights["div.sidebar-widget"] == -25.0
     assert weights["div.plain"] == 0.0
@@ -217,13 +222,17 @@ def test_short_runs_are_not_scored_as_paragraphs():
     assert "div#chrome" not in cands  # every run is under MIN_PARAGRAPH_CHARS
     # the floor is config, not code: lower it and the chrome starts scoring
     doc = extract.parse_document(html)
-    low = {c.describe() for c in extract.score_document(doc.root, min_paragraph_chars=4)}
+    low = {
+        c.describe() for c in extract.score_document(doc.root, min_paragraph_chars=4)
+    }
     assert "div#chrome" in low
 
 
 def test_unlikely_class_is_pruned_unless_a_content_token_rescues_it():
     def body(cls: str) -> str:
-        return f"<html><body><div class='{cls}'><p>{P1}</p><p>{P2}</p></div></body></html>"
+        return (
+            f"<html><body><div class='{cls}'><p>{P1}</p><p>{P2}</p></div></body></html>"
+        )
 
     assert _extract(body("sidebar"))["removed"].get("unlikely-class") == 1
     # "comment-content" carries a content token -> Readability's okMaybe rescue
@@ -271,17 +280,19 @@ def test_clean_title_splits_on_the_separator_the_readability_way():
 
 
 def test_clean_title_strips_the_site_name_and_honors_a_matching_h1():
-    assert extract.clean_title(
-        "Headline Here – Dottie Lab", site_name="Dottie Lab"
-    ) == "Headline Here"
+    assert (
+        extract.clean_title("Headline Here – Dottie Lab", site_name="Dottie Lab")
+        == "Headline Here"
+    )
     # the h1 reproduces part of a title the separator split could not clean
     assert extract.clean_title("A B | Site", h1="A B") == "A B"
     # ...but a shorter h1 never beats a good split
     assert extract.clean_title("Foo Bar Baz | Site", h1="Foo Bar") == "Foo Bar Baz"
     # an unrelated h1 is ignored
-    assert extract.clean_title(
-        "Long Headline About Things | Site", h1="Newsletter signup"
-    ) == "Long Headline About Things"
+    assert (
+        extract.clean_title("Long Headline About Things | Site", h1="Newsletter signup")
+        == "Long Headline About Things"
+    )
 
 
 def test_title_priority_chain_reports_its_provenance():
@@ -289,9 +300,9 @@ def test_title_priority_chain_reports_its_provenance():
     assert res["title"] == "The Ratchet Problem"
     assert res["title_source"] == "title-tag"
     with_og = ARTICLE.replace(
-        "<meta property=\"og:site_name\"",
-        "<meta property=\"og:title\" content=\"OG Headline Wins | Dottie Lab\">"
-        "\n  <meta property=\"og:site_name\"",
+        '<meta property="og:site_name"',
+        '<meta property="og:title" content="OG Headline Wins | Dottie Lab">'
+        '\n  <meta property="og:site_name"',
     )
     res2 = _extract(with_og)
     assert res2["title"] == "OG Headline Wins"  # site suffix stripped
@@ -309,7 +320,9 @@ def test_svg_title_is_a_tooltip_not_the_page_title():
     res = _extract(html)
     assert res["title"] == "Real Page Headline Here"
     # and with a real <title>, the separator split still cleans the site suffix
-    res2 = _extract(html.replace("<head>", "<head><title>Real Page Title | Site</title>"))
+    res2 = _extract(
+        html.replace("<head>", "<head><title>Real Page Title | Site</title>")
+    )
     assert res2["title"] == "Real Page Title"
 
 
@@ -362,8 +375,17 @@ def test_normalize_date_is_locale_independent_and_day_granular():
 
 
 def test_normalize_date_rejects_junk_and_impossible_dates():
-    for bad in (None, "", "   ", "not a date", "2026", "2026-13-05", "2026-02-31",
-                "Xyz 5, 2026", "x" * 80):
+    for bad in (
+        None,
+        "",
+        "   ",
+        "not a date",
+        "2026",
+        "2026-13-05",
+        "2026-02-31",
+        "Xyz 5, 2026",
+        "x" * 80,
+    ):
         assert extract.normalize_date(bad) is None, bad
 
 
@@ -400,7 +422,8 @@ def test_json_ld_article_facts_beat_a_sitewide_organization_block():
     </script></head><body><div class="content"><p>{P1}</p></div></body></html>"""
     res = _extract(html)
     assert (res["title"], res["title_source"]) == (
-        "Ledgers Beat Notes", "json-ld:headline"
+        "Ledgers Beat Notes",
+        "json-ld:headline",
     )
     assert res["byline"] == "Cameron Davis, Ada Lovelace"
     assert res["byline_source"] == "json-ld:author"
@@ -477,8 +500,9 @@ def test_implicit_close_keeps_sibling_paragraphs_apart():
 
 
 def test_empty_page_yields_zero_words_not_an_exception():
-    res = _extract("<html><head><title>Nothing Here At All</title></head><body>"
-                   "</body></html>")
+    res = _extract(
+        "<html><head><title>Nothing Here At All</title></head><body></body></html>"
+    )
     assert res["word_count"] == 0
     assert res["text"] == ""
     assert res["title"] == "Nothing Here At All"
@@ -522,8 +546,11 @@ def test_thin_words_threshold_is_config_not_code():
 
 def test_link_heavy_result_is_flagged():
     res = {
-        "source": "rail.html", "word_count": 500, "link_density": 0.91,
-        "title": "T", "date": "2026-01-01",
+        "source": "rail.html",
+        "word_count": 500,
+        "link_density": 0.91,
+        "title": "T",
+        "date": "2026-01-01",
     }
     rules = {d["rule"] for d in extract.to_diagnostics([res])}
     assert rules == {"extract:link-heavy"}
@@ -577,8 +604,10 @@ def test_recent_documents_lists_without_bodies_and_filters_by_source():
     extract.record_document(conn, _extract(ARTICLE, source="a.html"), ts=100.0)
     extract.record_document(
         conn,
-        _extract(f"<html><body><div class=content><p>{P2}</p></div></body></html>",
-                 source="b.html"),
+        _extract(
+            f"<html><body><div class=content><p>{P2}</p></div></body></html>",
+            source="b.html",
+        ),
         ts=200.0,
     )
     rows = extract.recent_documents(conn, limit=10)
@@ -694,8 +723,13 @@ def test_is_url_only_accepts_http_and_https():
 
     assert extract_cli.is_url("https://example.com/x") is True
     assert extract_cli.is_url("http://localhost:8000/x") is True
-    for other in ("file:///c:/x.html", "page.html", "-", "C:\\tmp\\page.html",
-                  "ftp://example.com/x"):
+    for other in (
+        "file:///c:/x.html",
+        "page.html",
+        "-",
+        "C:\\tmp\\page.html",
+        "ftp://example.com/x",
+    ):
         assert extract_cli.is_url(other) is False
 
 
@@ -866,8 +900,17 @@ def test_cli_batch_ingests_a_directory_then_serves_the_cache(tmp_path):
     _page(tmp_path, "dup.html")  # byte-identical to a.html
     db = tmp_path / "corpus.db"
     r = _cli(
-        ["--json", "extract", "batch", "--glob", "*.html", "--root", str(tmp_path),
-         "--db", str(db)]
+        [
+            "--json",
+            "extract",
+            "batch",
+            "--glob",
+            "*.html",
+            "--root",
+            str(tmp_path),
+            "--db",
+            str(db),
+        ]
     )
     assert r.returncode == 0, r.stderr + r.stdout
     data = json.loads(r.stdout)["data"]
@@ -876,8 +919,17 @@ def test_cli_batch_ingests_a_directory_then_serves_the_cache(tmp_path):
     assert data["failed"] == 0
     assert all("text" not in row for row in data["results"])  # bodies stay out
     r2 = _cli(
-        ["--json", "extract", "batch", "--glob", "*.html", "--root", str(tmp_path),
-         "--db", str(db)]
+        [
+            "--json",
+            "extract",
+            "batch",
+            "--glob",
+            "*.html",
+            "--root",
+            str(tmp_path),
+            "--db",
+            str(db),
+        ]
     )
     second = json.loads(r2.stdout)["data"]
     assert second["cached"] == 3 and second["extracted"] == 0
@@ -896,8 +948,15 @@ def test_cli_batch_list_file_and_failures(tmp_path):
         f"# research queue\n{good}\n\n{tmp_path / 'ghost.html'}\n", encoding="utf-8"
     )
     r = _cli(
-        ["--json", "extract", "batch", "--list", str(listing),
-         "--db", str(tmp_path / "c.db")]
+        [
+            "--json",
+            "extract",
+            "batch",
+            "--list",
+            str(listing),
+            "--db",
+            str(tmp_path / "c.db"),
+        ]
     )
     assert r.returncode == 0, r.stderr + r.stdout
     data = json.loads(r.stdout)["data"]
@@ -916,8 +975,18 @@ def test_cli_batch_no_record_writes_nothing(tmp_path):
     _page(tmp_path)
     db = tmp_path / "corpus.db"
     r = _cli(
-        ["--json", "extract", "batch", "--glob", "*.html", "--root", str(tmp_path),
-         "--db", str(db), "--no-record"]
+        [
+            "--json",
+            "extract",
+            "batch",
+            "--glob",
+            "*.html",
+            "--root",
+            str(tmp_path),
+            "--db",
+            str(db),
+            "--no-record",
+        ]
     )
     assert r.returncode == 0, r.stderr + r.stdout
     data = json.loads(r.stdout)["data"]

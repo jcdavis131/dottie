@@ -31,9 +31,9 @@ def test_resolution_order_provider_then_model_then_overrides():
     mp.register_model("ollama:qwen3:8b", temperature=0.7, num_ctx=8192)
     r = mp.resolve("ollama:qwen3:8b", temperature=0.9)
     assert r["provider"] == "ollama" and r["model"] == "qwen3:8b"
-    assert r["params"]["temperature"] == 0.9   # call-site wins
-    assert r["params"]["num_ctx"] == 8192      # model level survives
-    assert r["params"]["num_gpu"] == 0         # provider level survives
+    assert r["params"]["temperature"] == 0.9  # call-site wins
+    assert r["params"]["num_ctx"] == 8192  # model level survives
+    assert r["params"]["num_gpu"] == 0  # provider level survives
 
 
 def test_none_overrides_do_not_erase():
@@ -49,10 +49,15 @@ def test_unregistered_spec_resolves_empty_params():
 
 def test_load_profiles_from_json(tmp_path):
     f = tmp_path / "profiles.json"
-    f.write_text(json.dumps({
-        "providers": {"koboldcpp": {"max_length": 512}},
-        "models": {"ollama:qwen3:8b": {"num_ctx": 16384}},
-    }), encoding="utf-8")
+    f.write_text(
+        json.dumps(
+            {
+                "providers": {"koboldcpp": {"max_length": 512}},
+                "models": {"ollama:qwen3:8b": {"num_ctx": 16384}},
+            }
+        ),
+        encoding="utf-8",
+    )
     assert mp.load_profiles(f) == 2
     assert mp.resolve("koboldcpp:x")["params"]["max_length"] == 512
     assert mp.resolve("qwen3:8b")["params"]["num_ctx"] == 16384

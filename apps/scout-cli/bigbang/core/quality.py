@@ -109,7 +109,9 @@ _MARKER_RE = re.compile(r"\b(" + "|".join(MARKERS) + r")\b")
 # matches it. F401 is the unused-import code; a bare directive with no code list
 # suppresses everything. (Spelled apart in this comment on purpose: written out
 # in full it is a directive ruff would try to apply to this very line.)
-_NOQA_RE = re.compile(r"#\s*noqa(?::\s*(?P<codes>[A-Za-z]+[0-9]+(?:[,\s]+[A-Za-z]+[0-9]+)*))?", re.I)
+_NOQA_RE = re.compile(
+    r"#\s*noqa(?::\s*(?P<codes>[A-Za-z]+[0-9]+(?:[,\s]+[A-Za-z]+[0-9]+)*))?", re.I
+)
 _UNUSED_IMPORT_CODE = "F401"
 
 # Tokens that are not code for SLOC purposes. Everything else contributes every
@@ -169,25 +171,77 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "todo_density": 2.0,  # markers per 100 SLOC
     },
     "rules": {
-        "quality:complexity-error": {"enabled": True, "severity": "error", "threshold": "complexity_error"},
-        "quality:complexity-warn": {"enabled": True, "severity": "warning", "threshold": "complexity_warn"},
-        "quality:module-complexity": {"enabled": True, "severity": "warning", "threshold": "complexity_warn"},
-        "quality:function-long": {"enabled": True, "severity": "warning", "threshold": "function_lines"},
-        "quality:function-statements": {"enabled": True, "severity": "suggestion", "threshold": "function_statements"},
-        "quality:function-deep": {"enabled": True, "severity": "warning", "threshold": "max_depth"},
-        "quality:function-params": {"enabled": True, "severity": "suggestion", "threshold": "params"},
-        "quality:import-unused": {"enabled": True, "severity": "warning", "threshold": None},
+        "quality:complexity-error": {
+            "enabled": True,
+            "severity": "error",
+            "threshold": "complexity_error",
+        },
+        "quality:complexity-warn": {
+            "enabled": True,
+            "severity": "warning",
+            "threshold": "complexity_warn",
+        },
+        "quality:module-complexity": {
+            "enabled": True,
+            "severity": "warning",
+            "threshold": "complexity_warn",
+        },
+        "quality:function-long": {
+            "enabled": True,
+            "severity": "warning",
+            "threshold": "function_lines",
+        },
+        "quality:function-statements": {
+            "enabled": True,
+            "severity": "suggestion",
+            "threshold": "function_statements",
+        },
+        "quality:function-deep": {
+            "enabled": True,
+            "severity": "warning",
+            "threshold": "max_depth",
+        },
+        "quality:function-params": {
+            "enabled": True,
+            "severity": "suggestion",
+            "threshold": "params",
+        },
+        "quality:import-unused": {
+            "enabled": True,
+            "severity": "warning",
+            "threshold": None,
+        },
         # __init__.py re-exports a name by importing it, so an unreferenced
         # import there is a convention rather than a defect. Reported at a lower
         # severity under its own id instead of being hidden.
-        "quality:import-unused-init": {"enabled": True, "severity": "suggestion", "threshold": None},
+        "quality:import-unused-init": {
+            "enabled": True,
+            "severity": "suggestion",
+            "threshold": None,
+        },
         "quality:import-star": {"enabled": True, "severity": "info", "threshold": None},
-        "quality:todo-density": {"enabled": True, "severity": "suggestion", "threshold": "todo_density"},
+        "quality:todo-density": {
+            "enabled": True,
+            "severity": "suggestion",
+            "threshold": "todo_density",
+        },
         # Neither of these is a code-quality opinion: a file that was not
         # measured must never leave a gate looking clean.
-        "quality:file-unparsed": {"enabled": True, "severity": "error", "threshold": None},
-        "quality:file-unreadable": {"enabled": True, "severity": "error", "threshold": None},
-        "quality:tokenize-failed": {"enabled": True, "severity": "info", "threshold": None},
+        "quality:file-unparsed": {
+            "enabled": True,
+            "severity": "error",
+            "threshold": None,
+        },
+        "quality:file-unreadable": {
+            "enabled": True,
+            "severity": "error",
+            "threshold": None,
+        },
+        "quality:tokenize-failed": {
+            "enabled": True,
+            "severity": "info",
+            "threshold": None,
+        },
     },
 }
 
@@ -241,10 +295,14 @@ def load_config(path: str | Path | None = None) -> dict[str, Any]:
         return cfg
     raw = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
-        raise ValueError("config overlay must be a JSON object with weights/thresholds/rules")
+        raise ValueError(
+            "config overlay must be a JSON object with weights/thresholds/rules"
+        )
     unknown_sections = sorted(set(raw) - set(cfg))
     if unknown_sections:
-        raise ValueError(f"unknown config section(s) {unknown_sections}; expected {sorted(cfg)}")
+        raise ValueError(
+            f"unknown config section(s) {unknown_sections}; expected {sorted(cfg)}"
+        )
     _merge_numbers(cfg, raw, "weights")
     _merge_numbers(cfg, raw, "thresholds")
     _merge_rules(cfg, raw)
@@ -255,7 +313,9 @@ def _merge_numbers(cfg: dict[str, Any], raw: dict[str, Any], section: str) -> No
     """Overlay one numeric section, rejecting unknown keys and non-numbers."""
     for key, value in (raw.get(section) or {}).items():
         if key not in cfg[section]:
-            raise ValueError(f"unknown {section} key {key!r} (see: scout quality rules)")
+            raise ValueError(
+                f"unknown {section} key {key!r} (see: scout quality rules)"
+            )
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ValueError(f"{section}.{key} must be a number, got {value!r}")
         if value < 0:
@@ -290,7 +350,9 @@ def weights_fingerprint(weights: dict[str, Any]) -> str:
     what lets `compare_runs` say so instead of reporting the retune as a
     regression in the code.
     """
-    canonical = json.dumps({k: weights[k] for k in sorted(weights)}, separators=(",", ":"))
+    canonical = json.dumps(
+        {k: weights[k] for k in sorted(weights)}, separators=(",", ":")
+    )
     return hashlib.blake2b(canonical.encode("utf-8"), digest_size=8).hexdigest()
 
 
@@ -311,7 +373,11 @@ def _node_weight(node: ast.AST, weights: dict[str, Any]) -> int:
             weights.get("comprehension_if", 0)
         ) * len(node.ifs)
     if isinstance(node, ast.match_case):
-        total = 0 if _is_wildcard_pattern(node.pattern) else int(weights.get("match_case", 0))
+        total = (
+            0
+            if _is_wildcard_pattern(node.pattern)
+            else int(weights.get("match_case", 0))
+        )
         if node.guard is not None:
             total += int(weights.get("match_guard", 0))
         return total
@@ -337,7 +403,9 @@ def count_decisions(body: list[ast.stmt], weights: dict[str, Any]) -> dict[str, 
     return counts
 
 
-def complexity_of(body: list[ast.stmt], weights: dict[str, Any]) -> tuple[int, dict[str, int]]:
+def complexity_of(
+    body: list[ast.stmt], weights: dict[str, Any]
+) -> tuple[int, dict[str, int]]:
     """McCabe: 1 + decision points. Returns (score, breakdown-by-node-type)."""
     counts = count_decisions(body, weights)
     return 1 + sum(counts.values()), dict(sorted(counts.items()))
@@ -426,7 +494,9 @@ def function_units(tree: ast.AST, weights: dict[str, Any]) -> list[dict[str, Any
     return rows
 
 
-def module_complexity(tree: ast.Module, weights: dict[str, Any]) -> tuple[int, dict[str, int]]:
+def module_complexity(
+    tree: ast.Module, weights: dict[str, Any]
+) -> tuple[int, dict[str, int]]:
     """The same formula applied to the code that runs at IMPORT time.
 
     Without this a 300-line script with no def in it would score perfectly clean
@@ -503,7 +573,9 @@ def import_bindings(tree: ast.Module, lines: list[str]) -> list[dict[str, Any]]:
     return out
 
 
-def _signature_annotations(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.AST]:
+def _signature_annotations(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> list[ast.AST]:
     """Parameter and return annotations of one def, absent ones dropped."""
     args = node.args
     every = [*args.posonlyargs, *args.args, *args.kwonlyargs, args.vararg, args.kwarg]
@@ -525,7 +597,11 @@ def _annotation_expressions(tree: ast.Module) -> list[ast.AST]:
             # typing.cast("Foo", x) — the only call form where a string argument
             # is an annotation by contract rather than by convention
             target = node.func
-            name = target.attr if isinstance(target, ast.Attribute) else getattr(target, "id", "")
+            name = (
+                target.attr
+                if isinstance(target, ast.Attribute)
+                else getattr(target, "id", "")
+            )
             if name == "cast" and node.args:
                 found.append(node.args[0])
     return found
@@ -582,9 +658,7 @@ def _forward_ref_names(tree: ast.Module) -> set[str]:
                 inner = ast.parse(text, mode="eval")
             except SyntaxError:
                 continue  # not a forward reference, just a string in a Literal[]
-            names.update(
-                sub.id for sub in ast.walk(inner) if isinstance(sub, ast.Name)
-            )
+            names.update(sub.id for sub in ast.walk(inner) if isinstance(sub, ast.Name))
     return names
 
 
@@ -704,7 +778,9 @@ def todo_density(markers: int | None, sloc: int | None) -> float | None:
 # ---- per-file report --------------------------------------------------------
 
 
-def file_report(text: str, *, path: str, config: dict[str, Any] | None = None) -> dict[str, Any]:
+def file_report(
+    text: str, *, path: str, config: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """One Python file -> measurements + diagnostics. Pure; never raises.
 
     A SyntaxError produces `counts: None` and an `error`, so an unparsed file is
@@ -761,7 +837,9 @@ def file_report(text: str, *, path: str, config: dict[str, Any] | None = None) -
     return report
 
 
-def _unmeasured(path: str, error: str, rule: str, cfg: dict[str, Any]) -> dict[str, Any]:
+def _unmeasured(
+    path: str, error: str, rule: str, cfg: dict[str, Any]
+) -> dict[str, Any]:
     """A file that was not measured, shaped like one that was — minus the numbers."""
     settings = cfg["rules"].get(rule) or {}
     diags = []
@@ -795,7 +873,9 @@ def unreadable_report(
     path: str, error: str, *, config: dict[str, Any] | None = None
 ) -> dict[str, Any]:
     """A file that could not be READ is not a file that passed."""
-    return _unmeasured(path, error, "quality:file-unreadable", config or default_config())
+    return _unmeasured(
+        path, error, "quality:file-unreadable", config or default_config()
+    )
 
 
 def _audit_file(report: dict[str, Any], cfg: dict[str, Any]) -> list[dict[str, Any]]:
@@ -804,7 +884,14 @@ def _audit_file(report: dict[str, Any], cfg: dict[str, Any]) -> list[dict[str, A
     path = report["path"]
     thresholds = cfg["thresholds"]
 
-    def add(rule: str, message: str, *, line: int, col: int = 1, suggestion: str | None = None) -> None:
+    def add(
+        rule: str,
+        message: str,
+        *,
+        line: int,
+        col: int = 1,
+        suggestion: str | None = None,
+    ) -> None:
         settings = cfg["rules"].get(rule) or {}
         if not settings.get("enabled", True):
             return
@@ -834,7 +921,11 @@ def _audit_file(report: dict[str, Any], cfg: dict[str, Any]) -> list[dict[str, A
     init = Path(path).name == "__init__.py"
     rule = "quality:import-unused-init" if init else "quality:import-unused"
     for binding in report["unused"]:
-        extra = " (a package __init__ may be re-exporting it; add __all__ to say so)" if init else ""
+        extra = (
+            " (a package __init__ may be re-exporting it; add __all__ to say so)"
+            if init
+            else ""
+        )
         add(
             rule,
             f"`{binding['statement']}` binds {binding['name']!r}, which this module"
@@ -870,7 +961,9 @@ def _audit_file(report: dict[str, Any], cfg: dict[str, Any]) -> list[dict[str, A
 def _audit_unit(unit: dict[str, Any], thresholds: dict[str, Any], add: Any) -> None:
     """The four per-function size/shape rules for ONE unit."""
     where = unit["qualname"]
-    breakdown = ", ".join(f"{k}={v}" for k, v in unit["decisions"].items()) or "no branches"
+    breakdown = (
+        ", ".join(f"{k}={v}" for k, v in unit["decisions"].items()) or "no branches"
+    )
     if unit["complexity"] >= thresholds["complexity_error"]:
         add(
             "quality:complexity-error",
@@ -958,7 +1051,9 @@ def scan_report(reports: list[dict[str, Any]], *, top: int = 10) -> dict[str, An
         for unit in report["units"]:
             scores.append(unit["complexity"])
             units.append({**unit, "path": report["path"]})
-    hottest = sorted(units, key=lambda u: (-u["complexity"], u["path"], u["qualname"]))[:top]
+    hottest = sorted(units, key=lambda u: (-u["complexity"], u["path"], u["qualname"]))[
+        :top
+    ]
     return {
         "files": len(reports),
         "files_measured": measured,
@@ -1040,7 +1135,8 @@ def open_store(path: str | Path) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
     conn.execute(
-        "INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', ?)", (SCHEMA_VERSION,)
+        "INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', ?)",
+        (SCHEMA_VERSION,),
     )
     conn.commit()
     return conn
@@ -1137,7 +1233,9 @@ def record_run(
 
 def list_runs(conn: sqlite3.Connection, *, limit: int = 20) -> list[dict[str, Any]]:
     """Recorded runs, newest first."""
-    rows = conn.execute("SELECT * FROM runs ORDER BY id DESC LIMIT ?", (int(limit),)).fetchall()
+    rows = conn.execute(
+        "SELECT * FROM runs ORDER BY id DESC LIMIT ?", (int(limit),)
+    ).fetchall()
     return [dict(row) for row in rows]
 
 
@@ -1149,11 +1247,15 @@ def trend(conn: sqlite3.Connection, metric: str, *, limit: int = 20) -> dict[str
     imply continuity that the data does not have.
     """
     if metric not in TREND_METRICS:
-        raise ValueError(f"unknown metric {metric!r}; expected one of {', '.join(TREND_METRICS)}")
+        raise ValueError(
+            f"unknown metric {metric!r}; expected one of {', '.join(TREND_METRICS)}"
+        )
     # The metric name is picked from the row in Python rather than interpolated
     # into the SQL: every name in TREND_METRICS is a literal column, but building
     # a query by concatenation is a habit worth not having.
-    rows = conn.execute("SELECT * FROM runs ORDER BY id DESC LIMIT ?", (int(limit),)).fetchall()
+    rows = conn.execute(
+        "SELECT * FROM runs ORDER BY id DESC LIMIT ?", (int(limit),)
+    ).fetchall()
     series = [
         {
             "id": row["id"],
@@ -1184,7 +1286,9 @@ def trend(conn: sqlite3.Connection, metric: str, *, limit: int = 20) -> dict[str
     }
 
 
-def _units_of(conn: sqlite3.Connection, run_id: int) -> dict[tuple[str, str], dict[str, Any]]:
+def _units_of(
+    conn: sqlite3.Connection, run_id: int
+) -> dict[tuple[str, str], dict[str, Any]]:
     rows = conn.execute(
         "SELECT path, qualname, lineno, complexity, lines, statements, max_depth, params"
         " FROM units WHERE run_id = ?",
@@ -1198,7 +1302,9 @@ def _run_row(conn: sqlite3.Connection, run_id: int) -> dict[str, Any] | None:
     return dict(row) if row else None
 
 
-def compare_runs(conn: sqlite3.Connection, base_id: int, head_id: int) -> dict[str, Any]:
+def compare_runs(
+    conn: sqlite3.Connection, base_id: int, head_id: int
+) -> dict[str, Any]:
     """Per-unit deltas between two runs, and whether they may be compared at all.
 
     `comparable` is False when the two runs were measured under different weight
@@ -1209,7 +1315,11 @@ def compare_runs(conn: sqlite3.Connection, base_id: int, head_id: int) -> dict[s
     """
     base_run = _run_row(conn, base_id)
     head_run = _run_row(conn, head_id)
-    missing = [str(rid) for rid, row in ((base_id, base_run), (head_id, head_run)) if row is None]
+    missing = [
+        str(rid)
+        for rid, row in ((base_id, base_run), (head_id, head_run))
+        if row is None
+    ]
     if missing:
         raise ValueError(f"no such run id(s): {', '.join(missing)}")
     comparable = base_run["weights_fp"] == head_run["weights_fp"]
@@ -1247,8 +1357,16 @@ def compare_runs(conn: sqlite3.Connection, base_id: int, head_id: int) -> dict[s
         for metric in TREND_METRICS
     }
     return {
-        "base": {"id": base_run["id"], "ts": base_run["ts"], "label": base_run["label"]},
-        "head": {"id": head_run["id"], "ts": head_run["ts"], "label": head_run["label"]},
+        "base": {
+            "id": base_run["id"],
+            "ts": base_run["ts"],
+            "label": base_run["label"],
+        },
+        "head": {
+            "id": head_run["id"],
+            "ts": head_run["ts"],
+            "label": head_run["label"],
+        },
         "comparable": comparable,
         "note": None
         if comparable

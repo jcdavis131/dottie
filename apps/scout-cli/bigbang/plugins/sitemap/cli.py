@@ -161,8 +161,11 @@ def _collect(
     make the output depend on invocation history, and this generator's contract
     is that the same inputs give the same bytes.
     """
-    chosen = [n for n, v in (("--root", root), ("--urls", urls),
-                             ("--from-crawl", from_crawl)) if v]
+    chosen = [
+        n
+        for n, v in (("--root", root), ("--urls", urls), ("--from-crawl", from_crawl))
+        if v
+    ]
     if len(chosen) != 1:
         fail_agent(
             f"give exactly one URL source (--root, --urls or --from-crawl), got "
@@ -307,7 +310,7 @@ def detect():
     epilog=examples_epilog(
         [
             "scout --json sitemap gen --root public --base-url https://dumbmodel.com",
-            'scout --json sitemap gen --root public --base-url https://dumbmodel.com '
+            "scout --json sitemap gen --root public --base-url https://dumbmodel.com "
             '--exclude "drafts/*" --clean-urls',
             "scout --json sitemap gen --urls routes.txt --base-url https://arxiviq.com",
             "scout --json sitemap gen --from-crawl bhenre --out public/sitemap.xml",
@@ -462,30 +465,44 @@ def gen(
     ),
 )
 def check(
-    root: str | None = typer.Option(None, "--root", help="built site directory to walk"),
-    urls: str | None = typer.Option(None, "--urls", help="file of `loc [lastmod]` lines"),
+    root: str | None = typer.Option(
+        None, "--root", help="built site directory to walk"
+    ),
+    urls: str | None = typer.Option(
+        None, "--urls", help="file of `loc [lastmod]` lines"
+    ),
     from_crawl: str | None = typer.Option(
         None, "--from-crawl", help="site name or start URL (the #3 seo crawl store)"
     ),
-    base_url: str | None = typer.Option(None, "--base-url", help="site origin for locs"),
+    base_url: str | None = typer.Option(
+        None, "--base-url", help="site origin for locs"
+    ),
     out: str | None = typer.Option(
         None, "--out", help="sitemap to compare against (default <root>/sitemap.xml)"
     ),
-    exclude: list[str] = typer.Option(None, "--exclude", help="glob to skip, repeatable"),
-    ext: list[str] = typer.Option(None, "--ext", help="extensions to include, repeatable"),
+    exclude: list[str] = typer.Option(
+        None, "--exclude", help="glob to skip, repeatable"
+    ),
+    ext: list[str] = typer.Option(
+        None, "--ext", help="extensions to include, repeatable"
+    ),
     lastmod: str = typer.Option(
         "date", "--lastmod", help=f"lastmod precision: {'|'.join(LASTMOD_CHOICES)}"
     ),
     changefreq: str | None = typer.Option(None, "--changefreq", help="protocol hint"),
     priority: float | None = typer.Option(None, "--priority", help="0.0-1.0"),
-    strip_index: bool = typer.Option(True, "--strip-index/--keep-index", help="see gen"),
+    strip_index: bool = typer.Option(
+        True, "--strip-index/--keep-index", help="see gen"
+    ),
     clean_urls: bool = typer.Option(
         False, "--clean-urls/--no-clean-urls", help="see gen"
     ),
     max_urls: int = typer.Option(
         sitemap.MAX_URLS_PER_FILE, "--max-urls", help="URLs per file"
     ),
-    db: str | None = typer.Option(None, "--db", help="seo crawl store for --from-crawl"),
+    db: str | None = typer.Option(
+        None, "--db", help="seo crawl store for --from-crawl"
+    ),
     context: int = typer.Option(3, "--context", help="unified-diff context lines"),
 ):
     """Is the committed sitemap current? Regenerate, diff, exit 1 on drift.
@@ -594,9 +611,7 @@ def lint(
     collapsed = sitemap.dedupe(parsed["entries"])
     size = p.stat().st_size
     diags = openswap.sort_diagnostics(
-        sitemap.validate(
-            collapsed["entries"], base, duplicates=collapsed["duplicates"]
-        )
+        sitemap.validate(collapsed["entries"], base, duplicates=collapsed["duplicates"])
         + sitemap.validate_files([{"name": p.name, "bytes": size}])
     )
     emit(

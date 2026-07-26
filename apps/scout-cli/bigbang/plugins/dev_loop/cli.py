@@ -1,4 +1,3 @@
-
 # Solo personal project, no connection to employer, built with public/free-tier only
 """
 dev_loop plugin — auto-generated from shell history toil.
@@ -10,6 +9,7 @@ Steps: 5
 
 Maps shell args to flags, no secrets, redacted.
 """
+
 from __future__ import annotations
 
 import os
@@ -39,6 +39,7 @@ app = make_plugin_app(
 
 console = Console()
 
+
 def _resolve_repo(path: str | None) -> Path:
     if path:
         p = Path(os.path.expanduser(os.path.expandvars(path))).resolve()
@@ -64,6 +65,7 @@ def _resolve_repo(path: str | None) -> Path:
         pass
     return Path.cwd()
 
+
 def _run(cmd: list[str], cwd: Path, check: bool = False) -> subprocess.CompletedProcess:
     return subprocess.run(
         cmd,
@@ -74,12 +76,16 @@ def _run(cmd: list[str], cwd: Path, check: bool = False) -> subprocess.Completed
         errors="replace",
     )
 
+
 def _is_truthy_env(val: str | None) -> bool:
-    return bool(val and val.strip().lower() in {"1","true","yes","y","on"})
+    return bool(val and val.strip().lower() in {"1", "true", "yes", "y", "on"})
+
 
 @app.command(
     "status",
-    epilog=examples_epilog(["scout dev_loop status", "scout --json dev_loop status --path ."]),
+    epilog=examples_epilog(
+        ["scout dev_loop status", "scout --json dev_loop status --path ."]
+    ),
 )
 def status_cmd(
     path: str | None = typer.Option(None, "--path", "-p", help="Repo path"),
@@ -107,13 +113,18 @@ def status_cmd(
         command="dev_loop status",
     )
 
+
 @app.command(
     "test",
-    epilog=examples_epilog(["scout dev_loop test", "scout dev_loop test --path apps/scout-cli -- -k todos"]),
+    epilog=examples_epilog(
+        ["scout dev_loop test", "scout dev_loop test --path apps/scout-cli -- -k todos"]
+    ),
 )
 def test_cmd(
     path: str | None = typer.Option(None, "--path", "-p", help="Repo path"),
-    pytest_args: str | None = typer.Option(None, "--args", "-a", help="Extra pytest args string, e.g. '-k todos'"),
+    pytest_args: str | None = typer.Option(
+        None, "--args", "-a", help="Extra pytest args string, e.g. '-k todos'"
+    ),
     quiet: bool = typer.Option(True, "--quiet", "-q", help="Use -q"),
 ):
     """pytest -q — second step, test-gated."""
@@ -146,20 +157,27 @@ def test_cmd(
         command="dev_loop test",
     )
 
+
 @app.command(
     "ship",
-    epilog=examples_epilog([
-        "scout dev_loop ship --message 'feat: update' --yes",
-        "scout dev_loop ship --path apps/scout-cli --message 'fix: thing' --no-push",
-        "scout --json dev_loop ship --message 'chore: nightly' --yes",
-    ]),
+    epilog=examples_epilog(
+        [
+            "scout dev_loop ship --message 'feat: update' --yes",
+            "scout dev_loop ship --path apps/scout-cli --message 'fix: thing' --no-push",
+            "scout --json dev_loop ship --message 'chore: nightly' --yes",
+        ]
+    ),
 )
 def ship_cmd(
     path: str | None = typer.Option(None, "--path", "-p", help="Repo path"),
     message: str = typer.Option(..., "--message", "-m", help="Commit message"),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation (also env SCOUT_YES=1)"),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="Skip confirmation (also env SCOUT_YES=1)"
+    ),
     no_push: bool = typer.Option(False, "--no-push", help="Do not push"),
-    run_tests: bool = typer.Option(True, "--run-tests/--no-tests", help="Run pytest -q before commit"),
+    run_tests: bool = typer.Option(
+        True, "--run-tests/--no-tests", help="Run pytest -q before commit"
+    ),
     add_all: bool = typer.Option(True, "--add-all/--no-add-all", help="git add -A"),
 ):
     """Full dev loop: status → optional test → add → commit → push.
@@ -214,10 +232,16 @@ def ship_cmd(
         if is_tty:
             console.print(f"[bold]Repo:[/bold] {repo}")
             console.print(f"[bold]Message:[/bold] {message}")
-            console.print(f"[bold]Status:[/bold]\n{status_res.stdout[:2000] or '(clean)'}")
+            console.print(
+                f"[bold]Status:[/bold]\n{status_res.stdout[:2000] or '(clean)'}"
+            )
             if not typer.confirm("Proceed with add/commit/push?"):
                 emit(
-                    ok({"cancelled": True, "repo": str(repo)}, command="dev_loop ship", example="scout dev_loop ship --message 'feat: x' --yes"),
+                    ok(
+                        {"cancelled": True, "repo": str(repo)},
+                        command="dev_loop ship",
+                        example="scout dev_loop ship --message 'feat: x' --yes",
+                    ),
                     command="dev_loop ship",
                 )
                 raise typer.Exit(0)
@@ -238,7 +262,11 @@ def ship_cmd(
         add_res = _run(["git", "add", "-A"], cwd=repo)
         if add_res.returncode != 0:
             emit(
-                err(f"git add -A failed: {add_res.stderr[:1000]}", command="dev_loop ship", example="scout dev_loop ship --message 'fix' --yes"),
+                err(
+                    f"git add -A failed: {add_res.stderr[:1000]}",
+                    command="dev_loop ship",
+                    example="scout dev_loop ship --message 'fix' --yes",
+                ),
                 command="dev_loop ship",
             )
             raise typer.Exit(1)
@@ -250,7 +278,11 @@ def ship_cmd(
         # nothing staged
         emit(
             ok(
-                {"repo": str(repo), "message": "Nothing to commit, working tree clean", "pushed": False},
+                {
+                    "repo": str(repo),
+                    "message": "Nothing to commit, working tree clean",
+                    "pushed": False,
+                },
                 command="dev_loop ship",
                 example="scout dev_loop status",
                 discover="scout dev_loop status",
@@ -262,7 +294,11 @@ def ship_cmd(
     commit_res = _run(["git", "commit", "-m", message], cwd=repo)
     if commit_res.returncode != 0:
         emit(
-            err(f"git commit failed: {commit_res.stderr[:1000]} {commit_res.stdout[:1000]}", command="dev_loop ship", example="scout dev_loop ship --message 'feat: x' --yes"),
+            err(
+                f"git commit failed: {commit_res.stderr[:1000]} {commit_res.stdout[:1000]}",
+                command="dev_loop ship",
+                example="scout dev_loop ship --message 'feat: x' --yes",
+            ),
             command="dev_loop ship",
         )
         raise typer.Exit(1)
@@ -314,13 +350,16 @@ def ship_cmd(
         command="dev_loop ship",
     )
 
+
 @app.command(
     "run",
     epilog=examples_epilog(["scout dev_loop run --message 'feat: quick ship' --yes"]),
 )
 def run_cmd(
     path: str | None = typer.Option(None, "--path", "-p", help="Repo path"),
-    message: str = typer.Option("chore: dev loop auto-ship", "--message", "-m", help="Commit message"),
+    message: str = typer.Option(
+        "chore: dev loop auto-ship", "--message", "-m", help="Commit message"
+    ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirm"),
     no_push: bool = typer.Option(False, "--no-push", help="Do not push"),
 ):
@@ -328,9 +367,18 @@ def run_cmd(
     # delegate to ship_cmd via typer context would be messy, so duplicate logic via direct call
     # We'll just call ship logic inline by invoking underlying function
     # Using same parameters, but allow default message
-    ship_cmd(path=path, message=message, yes=yes, no_push=no_push, run_tests=True, add_all=True)
+    ship_cmd(
+        path=path,
+        message=message,
+        yes=yes,
+        no_push=no_push,
+        run_tests=True,
+        add_all=True,
+    )
+
 
 def register(root):
     root.add_typer(app, name="dev_loop")
+
 
 # TODO: review toil PR https://github.com/jcdavis131/dottie/pull/6 — 41.9/week dev_loop plugin review (scout todos verification)

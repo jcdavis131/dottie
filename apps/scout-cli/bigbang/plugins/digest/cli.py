@@ -141,7 +141,9 @@ def _policy_proof() -> dict:
         "esp_probe": _REPLACED_RELAY,
         "esp_allowed": allowed,
         "esp_reason": reason,
-        "allowlist": ((_manifest().get("capabilities") or {}).get("network") or {}).get("domains")
+        "allowlist": ((_manifest().get("capabilities") or {}).get("network") or {}).get(
+            "domains"
+        )
         or [],
         "reader_egress": "none — the HTML part loads no remote resource (audited every run)",
     }
@@ -200,7 +202,9 @@ def _db_path(db: str | None) -> Path:
     return Path(db or os.environ.get("SCOUT_DIGEST_DB") or digest.DB_REL)
 
 
-def _open_send_ledger(db: str | None, *, writable: bool) -> tuple[sqlite3.Connection | None, Path, str]:
+def _open_send_ledger(
+    db: str | None, *, writable: bool
+) -> tuple[sqlite3.Connection | None, Path, str]:
     """The send ledger. On a dry run it is NEVER created — a rehearsal writes nothing."""
     path = _db_path(db)
     if writable:
@@ -319,7 +323,9 @@ def _preview_diagnostics(dg: dict, tracking: list[dict]) -> list[dict]:
     return openswap.sort_diagnostics(diags)
 
 
-def _send_payload(dg: dict, result: dict, ledger: tuple[Path, str], diags: list[dict]) -> dict:
+def _send_payload(
+    dg: dict, result: dict, ledger: tuple[Path, str], diags: list[dict]
+) -> dict:
     """The send envelope. Totals merge the assembly counts with the delivery ones."""
     return {
         "dry_run": result["dry_run"],
@@ -350,7 +356,11 @@ def hello():
     """Smoke check — is the digest surface alive?"""
     emit(
         ok(
-            {"ready": True, "plugin": "digest", "sections": sorted(digest.DEFAULT_SECTIONS)},
+            {
+                "ready": True,
+                "plugin": "digest",
+                "sections": sorted(digest.DEFAULT_SECTIONS),
+            },
             command="digest hello",
             example="scout --json digest preview",
             discover="scout digest config",
@@ -378,7 +388,10 @@ def detect():
 @app.command(
     "config",
     epilog=examples_epilog(
-        ["scout --json digest config", "scout --json digest config --config .scout/digest.json"]
+        [
+            "scout --json digest config",
+            "scout --json digest config --config .scout/digest.json",
+        ]
     ),
 )
 def config_cmd(
@@ -450,10 +463,16 @@ def config_cmd(
 )
 def preview(
     config: str | None = typer.Option(None, "--config", help="JSON config overlay"),
-    days: float = typer.Option(0, "--days", help="window size (0 = digest.window_days)"),
-    show_html: bool = typer.Option(False, "--html/--no-html", help="include the HTML part"),
+    days: float = typer.Option(
+        0, "--days", help="window size (0 = digest.window_days)"
+    ),
+    show_html: bool = typer.Option(
+        False, "--html/--no-html", help="include the HTML part"
+    ),
     fail_on: str | None = typer.Option(
-        None, "--fail-on", help="exit 1 if findings at/above this severity (error|warning|suggestion|info)"
+        None,
+        "--fail-on",
+        help="exit 1 if findings at/above this severity (error|warning|suggestion|info)",
     ),
 ):
     """Assemble and render WITHOUT a roster. Needs no sender; opens no socket.
@@ -513,7 +532,9 @@ def preview(
 )
 def send_cmd(
     config: str | None = typer.Option(None, "--config", help="JSON config overlay"),
-    days: float = typer.Option(0, "--days", help="window size (0 = digest.window_days)"),
+    days: float = typer.Option(
+        0, "--days", help="window size (0 = digest.window_days)"
+    ),
     dry_run: bool = typer.Option(
         True,
         "--dry-run/--send",
@@ -521,11 +542,17 @@ def send_cmd(
         "explicit opt-in that opens a socket",
     ),
     force: bool = typer.Option(
-        False, "--force", help="mail a campaign that was already delivered to this address"
+        False,
+        "--force",
+        help="mail a campaign that was already delivered to this address",
     ),
-    db: str | None = typer.Option(None, "--db", help="send ledger (default .scout/digest.db)"),
+    db: str | None = typer.Option(
+        None, "--db", help="send ledger (default .scout/digest.db)"
+    ),
     fail_on: str | None = typer.Option(
-        None, "--fail-on", help="exit 1 if findings at/above this severity — the cron gate"
+        None,
+        "--fail-on",
+        help="exit 1 if findings at/above this severity — the cron gate",
     ),
 ):
     """Render per recipient; send only with --send. Refuses to invent From or To."""
@@ -583,7 +610,9 @@ def send_cmd(
     ),
 )
 def status(
-    db: str | None = typer.Option(None, "--db", help="send ledger (default .scout/digest.db)"),
+    db: str | None = typer.Option(
+        None, "--db", help="send ledger (default .scout/digest.db)"
+    ),
     limit: int = typer.Option(25, "--limit", help="how many deliveries to show"),
 ):
     """What this box actually mailed: campaign, address, outcome, Message-ID."""
