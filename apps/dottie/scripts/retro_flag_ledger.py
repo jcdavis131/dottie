@@ -25,15 +25,15 @@ from __future__ import annotations
 
 import argparse
 import json
-import sqlite3
 import shutil
+import sqlite3
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
-APP = Path(__file__).resolve().parents[1]                 # apps/dottie
-REPO = APP.parents[1]                                     # the dottie repo root
-LIVE_DB = APP / "data" / "research" / "ledger.sqlite3"    # NEVER opened, only file-copied
+APP = Path(__file__).resolve().parents[1]  # apps/dottie
+REPO = APP.parents[1]  # the dottie repo root
+LIVE_DB = APP / "data" / "research" / "ledger.sqlite3"  # NEVER opened, only file-copied
 COPY_DB = REPO / "tasks" / "artifacts" / "ledger_copy.sqlite3"
 OUT_MD = REPO / "tasks" / "artifacts" / "ledger_retroflag.md"
 
@@ -61,7 +61,7 @@ def ensure_copy(live: Path, copy: Path) -> bool:
     return True
 
 
-def _loads(raw: Optional[str]) -> Dict[str, Any]:
+def _loads(raw: str | None) -> dict[str, Any]:
     if not raw:
         return {}
     try:
@@ -71,7 +71,7 @@ def _loads(raw: Optional[str]) -> Dict[str, Any]:
     return out if isinstance(out, dict) else {}
 
 
-def classify(verdict: Dict[str, Any], metrics: Dict[str, Any]) -> Tuple[str, str]:
+def classify(verdict: dict[str, Any], metrics: dict[str, Any]) -> tuple[str, str]:
     """(evidence_class, detail) for one experiment's promotion evidence.
 
     Classes: ``cross_seed`` (spread includes run-to-run variance — NOT flagged),
@@ -89,34 +89,43 @@ def classify(verdict: Dict[str, Any], metrics: Dict[str, Any]) -> Tuple[str, str
         return "cross_seed", f"eval_verdict.sem_series={series!r} (n={n})"
     ps = metrics.get("per_seed")
     if isinstance(ps, list) and len(ps) >= 2:
-        return "cross_seed", f"train_metrics.per_seed (n={len(ps)}; verdict predates sem_series)"
+        return (
+            "cross_seed",
+            f"train_metrics.per_seed (n={len(ps)}; verdict predates sem_series)",
+        )
     for key in WITHIN_RUN_SERIES:
         raw = metrics.get(key)
         if isinstance(raw, list) and len(raw) >= 2:
-            return "within_run_only", (f"train_metrics.{key} (n={len(raw)}) and NO per_seed; "
-                                       "verdict predates sem_series")
-    return "no_series", "no spread series recorded anywhere — never tested against noise"
+            return "within_run_only", (
+                f"train_metrics.{key} (n={len(raw)}) and NO per_seed; "
+                "verdict predates sem_series"
+            )
+    return (
+        "no_series",
+        "no spread series recorded anywhere — never tested against noise",
+    )
 
 
-def _utc(ts: Optional[float]) -> str:
+def _utc(ts: float | None) -> str:
     if not isinstance(ts, (int, float)):
         return "n/a"
     return time.strftime("%Y-%m-%d %H:%M:%SZ", time.gmtime(ts))
 
 
 def build_report(copy: Path, *, copied_now: bool) -> str:
-    conn = sqlite3.connect(copy)                 # the COPY — SELECTs only, see module doc
+    conn = sqlite3.connect(copy)  # the COPY — SELECTs only, see module doc
     conn.row_factory = sqlite3.Row
     try:
         rows = conn.execute(
             "SELECT id, state, updated_ts, hypothesis, train_metrics, eval_verdict "
-            "FROM experiments WHERE state = 'sota' ORDER BY updated_ts ASC").fetchall()
+            "FROM experiments WHERE state = 'sota' ORDER BY updated_ts ASC"
+        ).fetchall()
         b = conn.execute("SELECT * FROM baseline WHERE singleton = 1").fetchone()
     finally:
         conn.close()
 
     flagged, clean = [], []
-    by_id: Dict[str, Tuple[str, str]] = {}
+    by_id: dict[str, tuple[str, str]] = {}
     for row in rows:
         verdict = _loads(row["eval_verdict"])
         metrics = _loads(row["train_metrics"])
@@ -129,7 +138,8 @@ def build_report(copy: Path, *, copied_now: bool) -> str:
             "metric": verdict.get("metric"),
             "value": verdict.get("new_value"),
             "delta": verdict.get("delta"),
-            "class": cls, "detail": detail,
+            "class": cls,
+            "detail": detail,
         }
         (clean if cls == "cross_seed" else flagged).append(item)
 
@@ -138,8 +148,11 @@ def build_report(copy: Path, *, copied_now: bool) -> str:
         "",
         f"- generated: {_utc(time.time())}  ·  report ONLY, no ledger was mutated",
         f"- source: ledger COPY `{copy}`"
-        + (" (copied from the live db this run)" if copied_now
-           else " (pre-existing copy; NOT refreshed — delete it and rerun to re-snapshot)"),
+        + (
+            " (copied from the live db this run)"
+            if copied_now
+            else " (pre-existing copy; NOT refreshed — delete it and rerun to re-snapshot)"
+        ),
         f"- live db (never opened by this script): `{LIVE_DB}`",
         "",
         "Criterion (operator order B0, applied retroactively): a promotion is flagged when",
@@ -155,25 +168,34 @@ def build_report(copy: Path, *, copied_now: bool) -> str:
         "",
     ]
     if flagged:
-        lines += ["| id | name | promoted (UTC) | metric | value | delta | evidence |",
-                  "|---|---|---|---|---|---|---|"]
+        lines += [
+            "| id | name | promoted (UTC) | metric | value | delta | evidence |",
+            "|---|---|---|---|---|---|---|",
+        ]
         for it in flagged:
             lines.append(
                 f"| `{it['id']}` | {it['name']} | {it['updated']} | {it['metric'] or 'n/a'} "
                 f"| {it['value'] if it['value'] is not None else 'n/a'} "
                 f"| {it['delta'] if it['delta'] is not None else 'n/a'} "
-                f"| **{it['class']}** — {it['detail']} |")
+                f"| **{it['class']}** — {it['detail']} |"
+            )
     else:
         lines.append("(none — every sota row carries cross-seed evidence)")
 
-    lines += ["", f"## Promotions with cross-seed evidence ({len(clean)})", "",
-              "Not flagged by THIS criterion — which classifies evidence class only. A row",
-              "here can still be an artifact for other reasons (hand-seeded baseline it was",
-              "measured against, capacity confound); see the promotion bundle's caveat block.",
-              ""]
+    lines += [
+        "",
+        f"## Promotions with cross-seed evidence ({len(clean)})",
+        "",
+        "Not flagged by THIS criterion — which classifies evidence class only. A row",
+        "here can still be an artifact for other reasons (hand-seeded baseline it was",
+        "measured against, capacity confound); see the promotion bundle's caveat block.",
+        "",
+    ]
     if clean:
         for it in clean:
-            lines.append(f"- `{it['id']}` {it['name']} ({it['updated']}) — {it['detail']}")
+            lines.append(
+                f"- `{it['id']}` {it['name']} ({it['updated']}) — {it['detail']}"
+            )
     else:
         lines.append("(none)")
 
@@ -183,41 +205,69 @@ def build_report(copy: Path, *, copied_now: bool) -> str:
     else:
         keys = b.keys()
         exp_id = b["experiment_id"]
-        lines.append(f"- `{b['metric_name']}` = {b['metric_value']}  ·  set by: "
-                     f"{'`' + exp_id + '`' if exp_id else '(no experiment — seeded/calibrated)'}")
+        lines.append(
+            f"- `{b['metric_name']}` = {b['metric_value']}  ·  set by: "
+            f"{'`' + exp_id + '`' if exp_id else '(no experiment — seeded/calibrated)'}"
+        )
         notes = (b["notes"] or "").strip()
         if notes:
             lines.append(f"- notes: {notes[:300]}")
         base_ps = b["per_seed"] if "per_seed" in keys else None
         if exp_id and exp_id in by_id:
             cls, detail = by_id[exp_id]
-            mark = ("**FLAGGED — the current bar itself rests on within-run-SEM-only "
-                    "evidence**" if cls != "cross_seed" else "cross-seed evidence")
+            mark = (
+                "**FLAGGED — the current bar itself rests on within-run-SEM-only "
+                "evidence**"
+                if cls != "cross_seed"
+                else "cross-seed evidence"
+            )
             lines.append(f"- evidence of the run that set it: {mark} ({detail})")
         elif exp_id:
-            lines.append(f"- **FLAGGED — set by `{exp_id}`, which is not a sota row in this "
-                         "copy; its evidence cannot be classified from here**")
+            lines.append(
+                f"- **FLAGGED — set by `{exp_id}`, which is not a sota row in this "
+                "copy; its evidence cannot be classified from here**"
+            )
         elif notes.lower().startswith("measured baseline calibration"):
-            lines.append("- calibrated baseline"
-                         + (f"; cross-seed per_seed recorded ({base_ps})" if base_ps
-                            else " — single-seed (no cross-seed spread recorded)"))
+            lines.append(
+                "- calibrated baseline"
+                + (
+                    f"; cross-seed per_seed recorded ({base_ps})"
+                    if base_ps
+                    else " — single-seed (no cross-seed spread recorded)"
+                )
+            )
         else:
-            lines.append("- hand-seeded placeholder — no measurement behind it at all "
-                         "(see `_baseline_provenance`)")
+            lines.append(
+                "- hand-seeded placeholder — no measurement behind it at all "
+                "(see `_baseline_provenance`)"
+            )
 
-    lines += ["",
-              f"Summary: {len(flagged)} of {len(flagged) + len(clean)} sota promotions "
-              "flagged.", ""]
+    lines += [
+        "",
+        f"Summary: {len(flagged)} of {len(flagged) + len(clean)} sota promotions "
+        "flagged.",
+        "",
+    ]
     return "\n".join(lines)
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[1])
-    ap.add_argument("--copy", type=Path, default=COPY_DB,
-                    help="ledger COPY to read (created from --live only when absent)")
-    ap.add_argument("--live", type=Path, default=LIVE_DB,
-                    help="live ledger to file-copy IF the copy is absent (never opened)")
-    ap.add_argument("--out", type=Path, default=OUT_MD, help="markdown report destination")
+    ap.add_argument(
+        "--copy",
+        type=Path,
+        default=COPY_DB,
+        help="ledger COPY to read (created from --live only when absent)",
+    )
+    ap.add_argument(
+        "--live",
+        type=Path,
+        default=LIVE_DB,
+        help="live ledger to file-copy IF the copy is absent (never opened)",
+    )
+    ap.add_argument(
+        "--out", type=Path, default=OUT_MD, help="markdown report destination"
+    )
     args = ap.parse_args()
 
     copied_now = ensure_copy(args.live, args.copy)

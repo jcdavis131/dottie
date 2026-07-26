@@ -25,6 +25,7 @@ def _only(diags, rule):
 
 # ---- core checks ------------------------------------------------------------
 
+
 def test_doubled_word_position():
     diags = _only(prose.lint_text("This is is a test."), "doubled_word")
     assert len(diags) == 1
@@ -56,7 +57,9 @@ def test_wordiness_phrase_suggests_replacement():
 
 
 def test_passive_voice_irregular_participle():
-    diags = _only(prose.lint_text("The report was written by the team."), "passive_voice")
+    diags = _only(
+        prose.lint_text("The report was written by the team."), "passive_voice"
+    )
     assert len(diags) == 1
     assert diags[0]["severity"] == "suggestion"
 
@@ -109,14 +112,17 @@ def test_hygiene_skips_markdown_table_alignment():
 
 # ---- extraction keeps real line numbers, drops code -------------------------
 
+
 def test_markdown_fence_excluded_line_numbers_kept():
-    text = "\n".join([
-        "Intro line.",
-        "```",
-        "teh teh = definately_code",
-        "```",
-        "This word is definately prose.",
-    ])
+    text = "\n".join(
+        [
+            "Intro line.",
+            "```",
+            "teh teh = definately_code",
+            "```",
+            "This word is definately prose.",
+        ]
+    )
     diags = prose.lint_text(text)
     assert all(d["line"] != 3 for d in diags)  # nothing from inside the fence
     miss = _only(diags, "misspelling")
@@ -128,12 +134,14 @@ def test_markdown_inline_code_excluded():
 
 
 def test_html_extraction_skips_script_keeps_lines():
-    text = "\n".join([
-        "<html><body>",
-        "<p>Hello hello world.</p>",
-        "<script>var teh = teh;</script>",
-        "</body></html>",
-    ])
+    text = "\n".join(
+        [
+            "<html><body>",
+            "<p>Hello hello world.</p>",
+            "<script>var teh = teh;</script>",
+            "</body></html>",
+        ]
+    )
     diags = prose.lint_text(text, fmt="html")
     doubled = _only(diags, "doubled_word")
     assert len(doubled) == 1 and doubled[0]["line"] == 2
@@ -146,13 +154,19 @@ def test_empty_text_no_diags():
 
 # ---- rules are policy-as-config ---------------------------------------------
 
+
 def test_load_rules_overlay_merges_extends_disables(tmp_path):
     overlay = tmp_path / "org.json"
-    overlay.write_text(json.dumps({
-        "passive_voice": False,
-        "wordiness": {"phrases": {"circle back": "follow up"}},
-        "misspelling": {"map": {"dottie": "Dottie"}},
-    }), encoding="utf-8")
+    overlay.write_text(
+        json.dumps(
+            {
+                "passive_voice": False,
+                "wordiness": {"phrases": {"circle back": "follow up"}},
+                "misspelling": {"map": {"dottie": "Dottie"}},
+            }
+        ),
+        encoding="utf-8",
+    )
     rules = prose.load_rules(str(overlay))
     assert rules["passive_voice"]["enabled"] is False
     assert rules["wordiness"]["phrases"]["circle back"] == "follow up"
@@ -177,6 +191,7 @@ def test_load_rules_rejects_non_object(tmp_path):
 
 # ---- openswap family base ---------------------------------------------------
 
+
 def test_diagnostic_normalizes_unknown_severity():
     d = openswap.diagnostic(path="x", line=1, rule="r", message="m", severity="wat")
     assert d["severity"] == "warning"
@@ -184,9 +199,15 @@ def test_diagnostic_normalizes_unknown_severity():
 
 def test_sort_and_summarize():
     diags = [
-        openswap.diagnostic(path="b.md", line=1, rule="r2", message="m", severity="info"),
-        openswap.diagnostic(path="a.md", line=9, rule="r1", message="m", severity="error"),
-        openswap.diagnostic(path="a.md", line=2, rule="r1", message="m", severity="warning"),
+        openswap.diagnostic(
+            path="b.md", line=1, rule="r2", message="m", severity="info"
+        ),
+        openswap.diagnostic(
+            path="a.md", line=9, rule="r1", message="m", severity="error"
+        ),
+        openswap.diagnostic(
+            path="a.md", line=2, rule="r1", message="m", severity="warning"
+        ),
     ]
     s = openswap.sort_diagnostics(diags)
     assert [d["path"] for d in s] == ["a.md", "a.md", "b.md"]
@@ -203,7 +224,9 @@ def test_detection_fallback_when_binary_absent(monkeypatch):
     native = openswap.probe_binary("harper-cli", probe_args=("core-version",))
     assert native["found"] is False and native["version"] is None
     cap = openswap.capability_report(
-        "prose", native=native, fallback_scope="stdlib heuristics",
+        "prose",
+        native=native,
+        fallback_scope="stdlib heuristics",
         install_hint="install harper-cli",
     )
     assert cap["tier"] == openswap.TIER_FALLBACK
@@ -237,14 +260,21 @@ def test_detection_unavailable_without_fallback():
 
 # ---- harper output normalizes into the same schema --------------------------
 
+
 def test_parse_harper_output_normalizes():
-    raw = json.dumps([
-        {"lint_kind": "Spelling", "message": "Did you mean 'the'?",
-         "line": 3, "suggestions": ["the"]},
-        {"kind": "Grammar", "message": "Doubled word.", "span": {"start_line": 7}},
-        "not-a-dict",
-        {"no_message": True},
-    ])
+    raw = json.dumps(
+        [
+            {
+                "lint_kind": "Spelling",
+                "message": "Did you mean 'the'?",
+                "line": 3,
+                "suggestions": ["the"],
+            },
+            {"kind": "Grammar", "message": "Doubled word.", "span": {"start_line": 7}},
+            "not-a-dict",
+            {"no_message": True},
+        ]
+    )
     diags = prose.parse_harper_output(raw, path="doc.md")
     assert len(diags) == 2
     assert diags[0]["rule"] == "harper:spelling"
@@ -259,6 +289,7 @@ def test_parse_harper_output_garbage_degrades_to_empty():
 
 
 # ---- the real CLI in a subprocess -------------------------------------------
+
 
 def _cli(args, cwd=None):
     return subprocess.run(

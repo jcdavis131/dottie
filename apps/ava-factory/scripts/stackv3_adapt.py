@@ -107,7 +107,9 @@ def adapt_record(rec: dict) -> dict | None:
             dropped += 1
             continue
         path = str(f.get("file_path") or "").strip()
-        kept.append(f"# {path}\n{f['content'].rstrip()}" if path else f["content"].rstrip())
+        kept.append(
+            f"# {path}\n{f['content'].rstrip()}" if path else f["content"].rstrip()
+        )
     if not kept:
         return None
     header = f"# repository: {repo}\n" if repo else ""

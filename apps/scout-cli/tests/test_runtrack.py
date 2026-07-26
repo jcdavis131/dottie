@@ -94,8 +94,12 @@ def test_log_metrics_validation_is_all_or_nothing():
         runtrack.log_metrics(conn, 999, {"loss": 0.1})  # unknown run
     with pytest.raises(ValueError):
         runtrack.log_metrics(conn, 1, {})  # empty
-    for bad in ({"loss": "high"}, {"loss": True}, {"loss": float("nan")},
-                {"loss": float("inf")}):
+    for bad in (
+        {"loss": "high"},
+        {"loss": True},
+        {"loss": float("nan")},
+        {"loss": float("inf")},
+    ):
         with pytest.raises(ValueError):
             runtrack.log_metrics(conn, 1, bad)
     # a call that raised on a bad value wrote nothing (validate before insert)
@@ -220,8 +224,19 @@ def test_cli_runtrack_start_log_finish_compare_loop(tmp_path):
     assert r.returncode == 0, r.stderr + r.stdout
     assert json.loads(r.stdout)["data"]["run"]["id"] == 1
     for loss, acc in (("0.5", "0.7"), ("0.3", "0.9")):
-        r = _cli(["runtrack", "log", "1", "--metric", f"loss={loss}",
-                  "--metric", f"acc={acc}", "--db", db])
+        r = _cli(
+            [
+                "runtrack",
+                "log",
+                "1",
+                "--metric",
+                f"loss={loss}",
+                "--metric",
+                f"acc={acc}",
+                "--db",
+                db,
+            ]
+        )
         assert r.returncode == 0, r.stderr + r.stdout
     r = _cli(["runtrack", "finish", "1", "--db", db])
     assert r.returncode == 0, r.stderr + r.stdout
@@ -235,7 +250,9 @@ def test_cli_runtrack_start_log_finish_compare_loop(tmp_path):
     # show run 1: summary reflects the two logged steps
     r = _cli(["runtrack", "show", "1", "--db", db])
     data = json.loads(r.stdout)["data"]
-    assert data["summary"]["loss"]["last"] == 0.3 and data["summary"]["loss"]["min"] == 0.3
+    assert (
+        data["summary"]["loss"]["last"] == 0.3 and data["summary"]["loss"]["min"] == 0.3
+    )
     # compare the two runs
     r = _cli(["runtrack", "compare", "1", "2", "--metric", "min", "--db", db])
     assert r.returncode == 0, r.stderr + r.stdout

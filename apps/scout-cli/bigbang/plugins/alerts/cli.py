@@ -270,7 +270,11 @@ def hello():
     """Smoke check — is the alerts surface alive?"""
     emit(
         ok(
-            {"ready": True, "plugin": "alerts", "channel_kinds": list(alerts.CHANNEL_KINDS)},
+            {
+                "ready": True,
+                "plugin": "alerts",
+                "channel_kinds": list(alerts.CHANNEL_KINDS),
+            },
             command="alerts hello",
             example="scout --json alerts route --dry-run",
             discover="scout alerts rules",
@@ -304,7 +308,9 @@ def detect():
 )
 def rules(
     config: str | None = typer.Option(
-        None, "--config", help="JSON overlay of {rules, channels} (e.g. .scout/alerts.json)"
+        None,
+        "--config",
+        help="JSON overlay of {rules, channels} (e.g. .scout/alerts.json)",
     ),
 ):
     """The effective ruleset and channel readiness — what WOULD page, and how."""
@@ -353,7 +359,9 @@ def route(
         "--db",
         help=f"shared ledger path (default {alerts.LEDGER_REL} or $SCOUT_UPTIME_DB)",
     ),
-    config: str | None = typer.Option(None, "--config", help="JSON rules/channels overlay"),
+    config: str | None = typer.Option(
+        None, "--config", help="JSON rules/channels overlay"
+    ),
     lookback: float = typer.Option(
         alerts.DEFAULT_LOOKBACK_S,
         "--lookback",
@@ -428,10 +436,14 @@ def route(
 )
 def status(
     db: str | None = typer.Option(None, "--db", help="shared ledger path"),
-    config: str | None = typer.Option(None, "--config", help="JSON rules/channels overlay"),
+    config: str | None = typer.Option(
+        None, "--config", help="JSON rules/channels overlay"
+    ),
     limit: int = typer.Option(20, "--limit", help="delivery records to include"),
     lookback: float = typer.Option(
-        alerts.DEFAULT_LOOKBACK_S, "--lookback", help="event window for the source counts"
+        alerts.DEFAULT_LOOKBACK_S,
+        "--lookback",
+        help="event window for the source counts",
     ),
 ):
     """Delivery history + what is muted right now + what the router can see.
@@ -475,11 +487,17 @@ def status(
 )
 def test(
     db: str | None = typer.Option(None, "--db", help="shared ledger path"),
-    config: str | None = typer.Option(None, "--config", help="JSON rules/channels overlay"),
-    channel: str | None = typer.Option(
-        None, "--channel", help="one channel by name (default: every configured channel)"
+    config: str | None = typer.Option(
+        None, "--config", help="JSON rules/channels overlay"
     ),
-    severity: str = typer.Option("info", "--severity", help="severity to stamp on the drill"),
+    channel: str | None = typer.Option(
+        None,
+        "--channel",
+        help="one channel by name (default: every configured channel)",
+    ),
+    severity: str = typer.Option(
+        "info", "--severity", help="severity to stamp on the drill"
+    ),
     note: str | None = typer.Option(None, "--note", help="message body override"),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="show what would be sent, send nothing, write nothing"

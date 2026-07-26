@@ -37,7 +37,7 @@ def extract_text(pdf_path: Path) -> str:
         text = "\n".join(parts)
         if len(text.strip()) > 100:
             return text
-    except Exception as exc:  # noqa: BLE001 — best-effort chain
+    except Exception as exc:
         print(f"fitz failed: {exc}", file=sys.stderr)
     try:
         from pdfminer.high_level import extract_text as pdfminer_extract
@@ -45,7 +45,7 @@ def extract_text(pdf_path: Path) -> str:
         text = pdfminer_extract(str(pdf_path))
         if len(text.strip()) > 100:
             return text
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         print(f"pdfminer failed: {exc}", file=sys.stderr)
     try:
         result = subprocess.run(
@@ -56,7 +56,7 @@ def extract_text(pdf_path: Path) -> str:
         )
         if result.returncode == 0 and len(result.stdout) > 100:
             return result.stdout
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         print(f"pdftotext failed: {exc}", file=sys.stderr)
     return text
 
@@ -99,7 +99,11 @@ def ingest_one(path: Path, out_domain: Path, manifest: list[dict]) -> None:
         print(f"skip (too short): {path}", file=sys.stderr)
         return
     slug = slugify(meta.get("title") or path.stem)
-    digest = sha256_file(path) if path.suffix.lower() == ".pdf" else hashlib.sha256(body.encode()).hexdigest()
+    digest = (
+        sha256_file(path)
+        if path.suffix.lower() == ".pdf"
+        else hashlib.sha256(body.encode()).hexdigest()
+    )
     out_path = out_domain / f"{slug}.md"
     title = meta.get("title") or path.stem
     license_ = meta.get("license") or "unknown"
@@ -129,7 +133,9 @@ def ingest_one(path: Path, out_domain: Path, manifest: list[dict]) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--inbox", type=Path, required=True, help="dir of PDFs/MD (+ optional sidecars)")
+    ap.add_argument(
+        "--inbox", type=Path, required=True, help="dir of PDFs/MD (+ optional sidecars)"
+    )
     ap.add_argument("--out", type=Path, required=True, help="research_corpus root")
     ap.add_argument(
         "--domain",

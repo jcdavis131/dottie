@@ -37,7 +37,9 @@ def _rng(*events, kind: str = "ECOSYSTEM") -> dict:
 def _osv(vid: str, eco: str, name: str, *ranges, **extra) -> dict:
     record = {
         "id": vid,
-        "affected": [{"package": {"ecosystem": eco, "name": name}, "ranges": list(ranges)}],
+        "affected": [
+            {"package": {"ecosystem": eco, "name": name}, "ranges": list(ranges)}
+        ],
     }
     record.update(extra)
     return record
@@ -57,7 +59,9 @@ REQUESTS_ADVISORY = _osv(
     _rng(("introduced", "2.3.0"), ("fixed", "2.31.0")),
     aliases=["CVE-2023-32681"],
     summary="Proxy-Authorization leak",
-    severity=[{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N"}],
+    severity=[
+        {"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N"}
+    ],
 )
 LODASH_ADVISORY = _osv(
     "GHSA-lodash-1",
@@ -78,7 +82,9 @@ def _report(text: str, filename: str, snapshot: dict | None = None, rules=None) 
     )
 
 
-def _rules_fired(text: str, filename: str, snapshot: dict | None = None, rules=None) -> set[str]:
+def _rules_fired(
+    text: str, filename: str, snapshot: dict | None = None, rules=None
+) -> set[str]:
     return {d["rule"] for d in _report(text, filename, snapshot, rules)["diagnostics"]}
 
 
@@ -86,12 +92,19 @@ def _rules_fired(text: str, filename: str, snapshot: dict | None = None, rules=N
 
 
 def test_pypi_names_collapse_per_pep503_and_npm_names_only_lowercase():
-    same = {cve.normalize_name(n, cve.ECO_PYPI) for n in ("Flask_Login", "flask.login", "FLASK--LOGIN")}
+    same = {
+        cve.normalize_name(n, cve.ECO_PYPI)
+        for n in ("Flask_Login", "flask.login", "FLASK--LOGIN")
+    }
     assert same == {"flask-login"}  # every spelling reaches ONE lookup key
-    assert cve.normalize_name("flask", cve.ECO_PYPI) != cve.normalize_name("flask-login", cve.ECO_PYPI)
+    assert cve.normalize_name("flask", cve.ECO_PYPI) != cve.normalize_name(
+        "flask-login", cve.ECO_PYPI
+    )
     assert cve.normalize_name("@babel/Core", cve.ECO_NPM) == "@babel/core"  # scope kept
     # npm does NOT collapse separators: left-pad and left_pad are different packages
-    assert cve.normalize_name("left_pad", cve.ECO_NPM) != cve.normalize_name("left-pad", cve.ECO_NPM)
+    assert cve.normalize_name("left_pad", cve.ECO_NPM) != cve.normalize_name(
+        "left-pad", cve.ECO_NPM
+    )
 
 
 def test_canonical_ecosystem_maps_osv_spellings_and_refuses_the_rest():
@@ -105,8 +118,18 @@ def test_canonical_ecosystem_maps_osv_spellings_and_refuses_the_rest():
 # ---- PEP 440 ordering -------------------------------------------------------
 
 PEP440_ASCENDING = (
-    "1.0.dev1", "1.0a1", "1.0a2", "1.0b1", "1.0rc1", "1.0", "1.0+local",
-    "1.0.post1", "1.0.1", "1.1", "2!0.1", "2!1.0",
+    "1.0.dev1",
+    "1.0a1",
+    "1.0a2",
+    "1.0b1",
+    "1.0rc1",
+    "1.0",
+    "1.0+local",
+    "1.0.post1",
+    "1.0.1",
+    "1.1",
+    "2!0.1",
+    "2!1.0",
 )
 
 
@@ -133,8 +156,21 @@ def test_pep440_equivalences_and_dev_post_interaction():
 
 
 def test_pep440_rejects_non_versions():
-    for bad in ("", "   ", "abc", "1..2", "1.0.x", "next", "latest", "1.0-beta-gamma",
-                "==1.0", ">=1.0", None, 12, "1.0 2.0"):
+    for bad in (
+        "",
+        "   ",
+        "abc",
+        "1..2",
+        "1.0.x",
+        "next",
+        "latest",
+        "1.0-beta-gamma",
+        "==1.0",
+        ">=1.0",
+        None,
+        12,
+        "1.0 2.0",
+    ):
         assert cve.parse_pep440(bad) is None, bad
 
 
@@ -142,8 +178,17 @@ def test_pep440_rejects_non_versions():
 
 # The precedence example printed in the SemVer 2.0.0 specification itself.
 SEMVER_ASCENDING = (
-    "1.0.0-alpha", "1.0.0-alpha.1", "1.0.0-alpha.beta", "1.0.0-beta",
-    "1.0.0-beta.2", "1.0.0-beta.11", "1.0.0-rc.1", "1.0.0", "1.0.1", "1.1.0", "2.0.0",
+    "1.0.0-alpha",
+    "1.0.0-alpha.1",
+    "1.0.0-alpha.beta",
+    "1.0.0-beta",
+    "1.0.0-beta.2",
+    "1.0.0-beta.11",
+    "1.0.0-rc.1",
+    "1.0.0",
+    "1.0.1",
+    "1.1.0",
+    "2.0.0",
 )
 
 
@@ -163,7 +208,18 @@ def test_semver_orders_the_specs_own_precedence_example():
 def test_semver_discards_build_metadata_and_rejects_non_semver():
     assert cve.parse_semver("1.0.0+build.1") == cve.parse_semver("1.0.0+build.2")
     assert cve.parse_semver("1.0.0+build.1") == cve.parse_semver("1.0.0")
-    for bad in ("1.2", "0", "01.2.3", "1.2.3.4", "v", "x", "", None, "^1.2.3", "1.2.3-"):
+    for bad in (
+        "1.2",
+        "0",
+        "01.2.3",
+        "1.2.3.4",
+        "v",
+        "x",
+        "",
+        None,
+        "^1.2.3",
+        "1.2.3-",
+    ):
         assert cve.parse_semver(bad) is None, bad
 
 
@@ -209,7 +265,9 @@ def test_cvss_scope_change_raises_the_score_for_identical_impact():
     changed = cve.parse_cvss_vector("CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H")
     assert cve.cvss_base_score(changed) > cve.cvss_base_score(unchanged)
     # zero impact short-circuits to 0.0 whatever the exploitability metrics say
-    easy_no_impact = cve.parse_cvss_vector("CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N")
+    easy_no_impact = cve.parse_cvss_vector(
+        "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N"
+    )
     assert cve.cvss_base_score(easy_no_impact) == 0.0
 
 
@@ -230,14 +288,16 @@ def test_cvss_rating_bands_are_the_v31_scale():
 
 def test_parse_cvss_vector_refuses_what_it_cannot_score():
     for bad in (
-        "AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",           # no version prefix
-        "CVSS:2.0/AV:N/AC:L/Au:N/C:P/I:P/A:P",           # v2 uses different weights
+        "AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",  # no version prefix
+        "CVSS:2.0/AV:N/AC:L/Au:N/C:P/I:P/A:P",  # v2 uses different weights
         "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H",  # v4 has a new formula
-        "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H",      # A missing
+        "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H",  # A missing
         "CVSS:3.1/AV:X/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",  # AV:X is not a metric value
         "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:X/C:H/I:H/A:H",  # bad scope
         "CVSS:3.1/AV:N/AC:L/PR:X/UI:N/S:U/C:H/I:H/A:H",  # bad privileges
-        "", None, 3,
+        "",
+        None,
+        3,
     ):
         assert cve.parse_cvss_vector(bad) is None, bad
 
@@ -297,13 +357,19 @@ def test_every_severity_reading_is_value_xor_error():
         {"id": "c", "severity": [{"type": "CVSS_V3", "score": "garbage"}]},
         {"id": "d", "database_specific": {"severity": "nonsense"}},
         {"id": "e", "database_specific": {"severity": "CRITICAL"}},
-        {"id": "f", "severity": [{"type": "CVSS_V2", "score": "AV:N/AC:L/Au:N/C:P/I:P/A:P"}]},
+        {
+            "id": "f",
+            "severity": [{"type": "CVSS_V2", "score": "AV:N/AC:L/Au:N/C:P/I:P/A:P"}],
+        },
     ]
     for record in records:
         sev = cve.advisory_severity(record)
         for kind in ("score", "rating"):
             reading = sev[kind]
-            assert (reading["value"] is None) != (reading["error"] is None), (record, kind)
+            assert (reading["value"] is None) != (reading["error"] is None), (
+                record,
+                kind,
+            )
 
 
 # ---- pinning: version XOR pin_reason ----------------------------------------
@@ -325,14 +391,34 @@ def test_npm_pin_only_accepts_an_exact_semver():
     assert cve.npm_pin("4.17.20") == ("4.17.20", None)
     assert cve.npm_pin("=4.17.20")[0] == "4.17.20"
     assert cve.npm_pin("1.0.0-rc.1")[0] == "1.0.0-rc.1"
-    for ranged in ("^1.3.0", "~1.3.0", ">=1.0.0", "<2.0.0", "1.x", "*", "latest", "next",
-                   "1.0.0 - 2.0.0", "1.0.0 || 2.0.0", "", "1.2"):
+    for ranged in (
+        "^1.3.0",
+        "~1.3.0",
+        ">=1.0.0",
+        "<2.0.0",
+        "1.x",
+        "*",
+        "latest",
+        "next",
+        "1.0.0 - 2.0.0",
+        "1.0.0 || 2.0.0",
+        "",
+        "1.2",
+    ):
         version, reason = cve.npm_pin(ranged)
         assert version is None and reason, ranged
-    for protocol in ("file:../a", "git+https://example.invalid/x.git", "workspace:*",
-                     "npm:other@1.0.0", "link:../b", "https://example.invalid/x.tgz"):
+    for protocol in (
+        "file:../a",
+        "git+https://example.invalid/x.git",
+        "workspace:*",
+        "npm:other@1.0.0",
+        "link:../b",
+        "https://example.invalid/x.tgz",
+    ):
         version, reason = cve.npm_pin(protocol)
-        assert version is None and "reference, not a registry version" in reason, protocol
+        assert version is None and "reference, not a registry version" in reason, (
+            protocol
+        )
 
 
 def test_pin_reasons_name_the_construct_that_made_the_version_unknown():
@@ -349,22 +435,42 @@ def test_exact_pin_routes_through_the_ecosystems_own_rule():
     assert cve.exact_pin("2.*", cve.ECO_PYPI)[0] is None
     assert cve.exact_pin("^1.0.0", cve.ECO_NPM)[0] is None
     assert cve.exact_pin("", cve.ECO_PYPI)[0] is None
-    assert cve.exact_pin("1.0", "Maven") == (None, "ecosystem 'Maven' has no pin rule in this core")
+    assert cve.exact_pin("1.0", "Maven") == (
+        None,
+        "ecosystem 'Maven' has no pin rule in this core",
+    )
 
 
 def test_dependency_requires_exactly_one_of_version_and_pin_reason():
     good = cve.dependency(
-        name="Flask_Login", ecosystem=cve.ECO_PYPI, specifier="==1.0",
-        version="1.0", pin_reason=None, field="requirements", line=3,
+        name="Flask_Login",
+        ecosystem=cve.ECO_PYPI,
+        specifier="==1.0",
+        version="1.0",
+        pin_reason=None,
+        field="requirements",
+        line=3,
     )
     assert good["key"] == "flask-login" and good["name"] == "Flask_Login"
     assert good["line"] == 3 and good["version"] == "1.0"
     with pytest.raises(ValueError, match="exactly one"):
-        cve.dependency(name="x", ecosystem=cve.ECO_PYPI, specifier="", version="1.0",
-                       pin_reason="also a reason", field="f")
+        cve.dependency(
+            name="x",
+            ecosystem=cve.ECO_PYPI,
+            specifier="",
+            version="1.0",
+            pin_reason="also a reason",
+            field="f",
+        )
     with pytest.raises(ValueError, match="exactly one"):
-        cve.dependency(name="x", ecosystem=cve.ECO_PYPI, specifier="", version=None,
-                       pin_reason=None, field="f")
+        cve.dependency(
+            name="x",
+            ecosystem=cve.ECO_PYPI,
+            specifier="",
+            version=None,
+            pin_reason=None,
+            field="f",
+        )
 
 
 # ---- requirements.txt -------------------------------------------------------
@@ -389,10 +495,15 @@ pinned-with-hashes==1.0 --hash=sha256:aaa \
 def test_parse_requirements_reads_specifiers_extras_markers_and_line_numbers():
     parsed = cve.parse_requirements(REQUIREMENTS)
     by_name = {d["name"]: d for d in parsed["dependencies"]}
-    assert by_name["requests"]["version"] == "2.30.0" and by_name["requests"]["line"] == 2
+    assert (
+        by_name["requests"]["version"] == "2.30.0" and by_name["requests"]["line"] == 2
+    )
     assert by_name["flask"]["version"] is None and by_name["flask"]["line"] == 3
     assert "range, not a pin" in by_name["flask"]["pin_reason"]
-    assert by_name["Django"]["version"] == "4.2.1" and by_name["Django"]["extras"] == "bcrypt"
+    assert (
+        by_name["Django"]["version"] == "4.2.1"
+        and by_name["Django"]["extras"] == "bcrypt"
+    )
     assert by_name["Django"]["marker"] == 'python_version >= "3.8"'
     # a line continuation keeps the FIRST physical line number and drops the hashes
     assert by_name["pinned-with-hashes"]["version"] == "1.0"
@@ -403,8 +514,12 @@ def test_parse_requirements_reads_specifiers_extras_markers_and_line_numbers():
 def test_parse_requirements_labels_every_line_it_did_not_audit():
     parsed = cve.parse_requirements(REQUIREMENTS)
     notes = {n["kind"] for n in parsed["notes"]}
-    assert notes == {"unresolved-include", "ecosystem-unsupported", "option-ignored",
-                     "unparsed-line"}
+    assert notes == {
+        "unresolved-include",
+        "ecosystem-unsupported",
+        "option-ignored",
+        "unparsed-line",
+    }
     includes = [n for n in parsed["notes"] if n["kind"] == "unresolved-include"]
     assert {n["line"] for n in includes} == {5, 6}  # -r AND --constraint both counted
     assert all("NOT audited" in n["detail"] for n in includes)
@@ -412,7 +527,9 @@ def test_parse_requirements_labels_every_line_it_did_not_audit():
     assert [n["line"] for n in unknown] == [9]  # only the unknown option says so
     # a direct URL reference is a dependency with no auditable version
     url_dep = next(d for d in parsed["dependencies"] if d["name"] == "urllib3")
-    assert url_dep["version"] is None and "direct URL reference" in url_dep["pin_reason"]
+    assert (
+        url_dep["version"] is None and "direct URL reference" in url_dep["pin_reason"]
+    )
 
 
 def test_parse_requirements_keeps_a_hash_inside_a_url_fragment():
@@ -603,7 +720,14 @@ def test_manifest_kind_dispatches_on_the_file_name_only():
         "PACKAGE.JSON": "package.json",
     }
     assert {n: cve.manifest_kind(n) for n in expected} == expected
-    for unknown in ("notes.md", "Cargo.toml", "go.mod", "yarn.lock", "", "requirements"):
+    for unknown in (
+        "notes.md",
+        "Cargo.toml",
+        "go.mod",
+        "yarn.lock",
+        "",
+        "requirements",
+    ):
         assert cve.manifest_kind(unknown) is None, unknown
 
 
@@ -698,13 +822,19 @@ def test_parse_timestamp_handles_rfc3339_forms_and_refuses_the_rest():
 
 def test_snapshot_age_is_days_xor_error():
     fresh = cve.snapshot_age({"generated": FRESH}, NOW)
-    assert fresh["age_days"] == 1.0 and fresh["error"] is None and fresh["key"] == "generated"
+    assert (
+        fresh["age_days"] == 1.0
+        and fresh["error"] is None
+        and fresh["key"] == "generated"
+    )
     old = cve.snapshot_age({"generated": OLD}, NOW)
     assert old["age_days"] > 900 and old["error"] is None
     undated = cve.snapshot_age({}, NOW)
     assert undated["age_days"] is None and "age is unknown" in undated["error"]
     garbage = cve.snapshot_age({"generated": "soon"}, NOW)
-    assert garbage["age_days"] is None and "not an RFC3339 timestamp" in garbage["error"]
+    assert (
+        garbage["age_days"] is None and "not an RFC3339 timestamp" in garbage["error"]
+    )
     assert garbage["generated"] == "soon"  # the unusable value is still reported
     # any of the accepted keys works, and the reading names which one it used
     alt = cve.snapshot_age({"snapshot_date": FRESH}, NOW)
@@ -713,7 +843,9 @@ def test_snapshot_age_is_days_xor_error():
 
 def test_snapshot_diagnostics_gate_stale_and_undated_but_stay_quiet_when_fresh():
     fresh = cve.snapshot_age({"generated": FRESH}, NOW)
-    assert cve.snapshot_diagnostics(fresh, snapshot_path="s.json", max_age_days=30) == []
+    assert (
+        cve.snapshot_diagnostics(fresh, snapshot_path="s.json", max_age_days=30) == []
+    )
     stale = cve.snapshot_diagnostics(fresh, snapshot_path="s.json", max_age_days=0.5)
     assert [d["rule"] for d in stale] == ["cve:snapshot-stale"]
     assert stale[0]["severity"] == "error" and "1.0 days old" in stale[0]["message"]
@@ -722,7 +854,9 @@ def test_snapshot_diagnostics_gate_stale_and_undated_but_stay_quiet_when_fresh()
     )
     assert [d["rule"] for d in undated] == ["cve:snapshot-undated"]
     # max_age_days=None disables the staleness bound but NOT the undated warning
-    assert cve.snapshot_diagnostics(fresh, snapshot_path="s.json", max_age_days=None) == []
+    assert (
+        cve.snapshot_diagnostics(fresh, snapshot_path="s.json", max_age_days=None) == []
+    )
     assert cve.snapshot_diagnostics(
         cve.snapshot_age({}, NOW), snapshot_path="s.json", max_age_days=None
     )
@@ -790,7 +924,9 @@ def test_the_tie_break_holds_when_a_boundary_is_declared_before_its_introduced()
     """
     reversed_events = {"ranges": [_rng(("fixed", "1.2"), ("introduced", "1.2"))]}
     for version in ("1.1", "1.2", "1.3"):
-        assert cve.evaluate_block(reversed_events, version, cve.ECO_PYPI)["value"] is False
+        assert (
+            cve.evaluate_block(reversed_events, version, cve.ECO_PYPI)["value"] is False
+        )
     forward = {"ranges": [_rng(("introduced", "1.2"), ("fixed", "1.2"))]}
     for version in ("1.1", "1.2", "1.3"):
         assert (
@@ -800,6 +936,7 @@ def test_the_tie_break_holds_when_a_boundary_is_declared_before_its_introduced()
     # the rank itself is what makes the two declaration orders agree
     assert cve._EVENT_RANK["introduced"] < cve._EVENT_RANK["fixed"]
     assert cve._EVENT_RANK["introduced"] < cve._EVENT_RANK["last_affected"]
+
 
 def test_range_intervals_reports_every_boundary_it_could_not_order():
     intervals, problems = cve.range_intervals(
@@ -864,7 +1001,9 @@ def test_evaluate_block_refuses_an_entry_with_nothing_to_match_on():
 
 def test_evaluate_block_refuses_an_unorderable_installed_version():
     reading = cve.evaluate_block({"versions": ["1.0"]}, "not-a-version", cve.ECO_PYPI)
-    assert reading["value"] is None and "not a valid PEP 440 version" in reading["error"]
+    assert (
+        reading["value"] is None and "not a valid PEP 440 version" in reading["error"]
+    )
 
 
 # ---- advisory-level evaluation ----------------------------------------------
@@ -889,7 +1028,9 @@ def test_evaluate_advisory_reports_the_fix_and_the_evidence():
 
 def test_a_withdrawn_advisory_gives_no_verdict_at_all():
     """Regression: a retracted record must not report affected true."""
-    withdrawn = _osv("WD-1", "PyPI", "requests", _rng(("introduced", "0")), withdrawn=OLD)
+    withdrawn = _osv(
+        "WD-1", "PyPI", "requests", _rng(("introduced", "0")), withdrawn=OLD
+    )
     verdict = cve.evaluate_advisory(
         withdrawn, name="requests", version="2.30.0", ecosystem=cve.ECO_PYPI
     )
@@ -924,7 +1065,9 @@ def test_a_definite_hit_outranks_an_undecidable_sibling_entry():
             },
         ],
     }
-    hit = cve.evaluate_advisory(record, name="requests", version="1.5", ecosystem=cve.ECO_PYPI)
+    hit = cve.evaluate_advisory(
+        record, name="requests", version="1.5", ecosystem=cve.ECO_PYPI
+    )
     assert hit["affected"] is True
     # but with no hit, the undecidable entry blocks a "clean" verdict
     unknown = cve.evaluate_advisory(
@@ -939,14 +1082,18 @@ def test_every_advisory_evaluation_is_affected_xor_error():
         LODASH_ADVISORY,
         _osv("A", "PyPI", "requests", _rng(("introduced", "0"))),
         _osv("B", "PyPI", "requests", _rng(("introduced", "1.0"), ("fixed", "nope"))),
-        _osv("C", "PyPI", "requests", {"type": "GIT", "events": [{"introduced": "abc"}]}),
+        _osv(
+            "C", "PyPI", "requests", {"type": "GIT", "events": [{"introduced": "abc"}]}
+        ),
         _osv("D", "PyPI", "requests"),
         _osv("E", "PyPI", "requests", withdrawn=OLD),
         {
             "id": "F",
             "affected": [
-                {"package": {"ecosystem": "PyPI", "name": "requests"},
-                 "versions": ["2.30.0"]}
+                {
+                    "package": {"ecosystem": "PyPI", "name": "requests"},
+                    "versions": ["2.30.0"],
+                }
             ],
         },
         {"id": "G"},
@@ -957,7 +1104,10 @@ def test_every_advisory_evaluation_is_affected_xor_error():
             verdict = cve.evaluate_advisory(
                 record, name="requests", version=version, ecosystem=cve.ECO_PYPI
             )
-            assert (verdict["affected"] is None) != (verdict["error"] is None), (record, version)
+            assert (verdict["affected"] is None) != (verdict["error"] is None), (
+                record,
+                version,
+            )
             if verdict["affected"] is None:
                 assert verdict["error"].strip(), record
             else:
@@ -967,13 +1117,21 @@ def test_every_advisory_evaluation_is_affected_xor_error():
 def test_advisories_for_looks_up_by_the_normalized_key():
     snap = _snap([REQUESTS_ADVISORY])
     dep = cve.dependency(
-        name="ReQuests", ecosystem=cve.ECO_PYPI, specifier="==2.30.0",
-        version="2.30.0", pin_reason=None, field="f",
+        name="ReQuests",
+        ecosystem=cve.ECO_PYPI,
+        specifier="==2.30.0",
+        version="2.30.0",
+        pin_reason=None,
+        field="f",
     )
     assert [r["id"] for r in cve.advisories_for(snap, dep)] == ["GHSA-requests-1"]
     other = cve.dependency(
-        name="requests", ecosystem=cve.ECO_NPM, specifier="2.30.0",
-        version="2.30.0", pin_reason=None, field="f",
+        name="requests",
+        ecosystem=cve.ECO_NPM,
+        specifier="2.30.0",
+        version="2.30.0",
+        pin_reason=None,
+        field="f",
     )
     assert cve.advisories_for(snap, other) == []  # right name, wrong ecosystem
 
@@ -995,12 +1153,20 @@ def test_a_clean_manifest_produces_no_findings():
 
 def test_every_rule_fires_on_its_own_minimal_case():
     unpinned = _snap([REQUESTS_ADVISORY])
-    broken = _snap([_osv("BR-1", "PyPI", "requests", _rng(("introduced", "1.0"), ("fixed", "x")))])
-    dropped = _snap([_osv("WD-1", "PyPI", "requests", _rng(("introduced", "0")), withdrawn=OLD)])
+    broken = _snap(
+        [_osv("BR-1", "PyPI", "requests", _rng(("introduced", "1.0"), ("fixed", "x")))]
+    )
+    dropped = _snap(
+        [_osv("WD-1", "PyPI", "requests", _rng(("introduced", "0")), withdrawn=OLD)]
+    )
     cases = {
         "cve:vulnerable": ("requests==2.30.0\n", "requirements.txt", SNAPSHOT),
         "cve:version-unpinned": ("requests>=2.0\n", "requirements.txt", unpinned),
-        "cve:version-unparseable": ("requests==not-a-version\n", "requirements.txt", unpinned),
+        "cve:version-unparseable": (
+            "requests==not-a-version\n",
+            "requirements.txt",
+            unpinned,
+        ),
         "cve:advisory-unevaluable": ("requests==1.5\n", "requirements.txt", broken),
         "cve:advisory-withdrawn": ("requests==2.30.0\n", "requirements.txt", dropped),
         "cve:unresolved-include": ("-r other.txt\n", "requirements.txt", SNAPSHOT),
@@ -1008,7 +1174,9 @@ def test_every_rule_fires_on_its_own_minimal_case():
         "cve:manifest-unparseable": ("{", "package.json", SNAPSHOT),
     }
     for rule, (text, name, snap) in cases.items():
-        assert rule in _rules_fired(text, name, snapshot=snap), f"{rule} did not fire on {text!r}"
+        assert rule in _rules_fired(text, name, snapshot=snap), (
+            f"{rule} did not fire on {text!r}"
+        )
 
 
 def test_rules_that_must_stay_quiet():
@@ -1022,7 +1190,9 @@ def test_rules_that_must_stay_quiet():
         "cve:package-not-in-snapshot": "totally-unknown-pkg==1.0\n",  # default OFF
     }
     for rule, text in quiet.items():
-        assert rule not in _rules_fired(text, "requirements.txt"), f"{rule} false-positived"
+        assert rule not in _rules_fired(text, "requirements.txt"), (
+            f"{rule} false-positived"
+        )
 
 
 def test_package_not_in_snapshot_is_opt_in_and_says_absence_is_not_safety():
@@ -1043,17 +1213,28 @@ def test_findings_carry_the_family_schema_and_a_real_position():
         if d["rule"] == "cve:vulnerable"
     )
     assert set(diag) == {
-        "path", "line", "col", "rule", "severity", "message", "suggestion", "source"
+        "path",
+        "line",
+        "col",
+        "rule",
+        "severity",
+        "message",
+        "suggestion",
+        "source",
     }
     assert diag["path"] == "requirements.txt" and diag["line"] == 2
     assert diag["severity"] in openswap.SEVERITIES
-    assert "GHSA-requests-1" in diag["message"] and "CVSS 5.9 (medium)" in diag["message"]
+    assert (
+        "GHSA-requests-1" in diag["message"] and "CVSS 5.9 (medium)" in diag["message"]
+    )
     assert diag["suggestion"] == "upgrade to 2.31.0 or later"
 
 
 def test_a_vulnerable_finding_with_no_fix_says_so_instead_of_inventing_one():
     unfixed = _snap([_osv("NF-1", "PyPI", "requests", _rng(("introduced", "0")))])
-    diag = _report("requests==2.30.0\n", "requirements.txt", snapshot=unfixed)["diagnostics"][0]
+    diag = _report("requests==2.30.0\n", "requirements.txt", snapshot=unfixed)[
+        "diagnostics"
+    ][0]
     assert diag["rule"] == "cve:vulnerable"
     assert "no fixed version is declared" in diag["suggestion"]
     assert "unbounded" in diag["message"]
@@ -1063,21 +1244,26 @@ def test_severity_comes_from_the_advisory_cvss_band_when_one_exists():
     # requests -> CVSS 5.9 medium -> warning; lodash -> declared HIGH -> error
     py = _report("requests==2.30.0\n", "requirements.txt")["diagnostics"][0]
     assert py["severity"] == "warning"
-    npm = _report(
-        '{"dependencies": {"lodash": "4.17.20"}}', "package.json"
-    )["diagnostics"][0]
+    npm = _report('{"dependencies": {"lodash": "4.17.20"}}', "package.json")[
+        "diagnostics"
+    ][0]
     assert npm["severity"] == "error"
     # no rating at all falls back to the rule table default, and says which band
     silent = _snap([_osv("S-1", "PyPI", "requests", _rng(("introduced", "0")))])
     fallback = _report("requests==2.30.0\n", "requirements.txt", snapshot=silent)
-    assert fallback["diagnostics"][0]["severity"] == cve.RULES["cve:vulnerable"]["severity"]
+    assert (
+        fallback["diagnostics"][0]["severity"]
+        == cve.RULES["cve:vulnerable"]["severity"]
+    )
     assert "no severity declared" in fallback["diagnostics"][0]["message"]
 
 
 def test_map_rating_off_pins_the_severity_to_policy():
     rules = cve.load_rules()
     rules["cve:vulnerable"].update({"map_rating": False, "severity": "suggestion"})
-    diag = _report("requests==2.30.0\n", "requirements.txt", rules=rules)["diagnostics"][0]
+    diag = _report("requests==2.30.0\n", "requirements.txt", rules=rules)[
+        "diagnostics"
+    ][0]
     assert diag["severity"] == "suggestion"  # NOT the medium->warning mapping
     assert cve.RATING_SEVERITY["critical"] == "error"
     assert cve.RATING_SEVERITY["low"] == "suggestion"
@@ -1109,11 +1295,15 @@ def test_rules_overlay_can_disable_and_change_severity(tmp_path):
         encoding="utf-8",
     )
     rules = cve.load_rules(overlay)
-    diags = _report("flask>=2.0\n-r more.txt\n", "requirements.txt", rules=rules)["diagnostics"]
+    diags = _report("flask>=2.0\n-r more.txt\n", "requirements.txt", rules=rules)[
+        "diagnostics"
+    ]
     by_rule = {d["rule"]: d["severity"] for d in diags}
     assert by_rule["cve:version-unpinned"] == "error"  # escalated by policy
     assert "cve:unresolved-include" not in by_rule  # disabled by policy
-    assert cve.load_rules()["cve:version-unpinned"]["severity"] == "warning"  # defaults intact
+    assert (
+        cve.load_rules()["cve:version-unpinned"]["severity"] == "warning"
+    )  # defaults intact
 
 
 def test_load_rules_rejects_typos_and_bad_severity(tmp_path):
@@ -1122,7 +1312,9 @@ def test_load_rules_rejects_typos_and_bad_severity(tmp_path):
     with pytest.raises(ValueError, match="unknown rule id"):
         cve.load_rules(bad_id)
     bad_sev = tmp_path / "b.json"
-    bad_sev.write_text('{"cve:vulnerable": {"severity": "catastrophic"}}', encoding="utf-8")
+    bad_sev.write_text(
+        '{"cve:vulnerable": {"severity": "catastrophic"}}', encoding="utf-8"
+    )
     with pytest.raises(ValueError, match="severity"):
         cve.load_rules(bad_sev)
     not_object = tmp_path / "c.json"
@@ -1145,7 +1337,9 @@ def test_audit_counts_bucket_every_advisory_row_exactly_once():
             REQUESTS_ADVISORY,
             _osv("BR-1", "PyPI", "requests", _rng(("introduced", "0"), ("fixed", "x"))),
             _osv("WD-1", "PyPI", "requests", _rng(("introduced", "0")), withdrawn=OLD),
-            _osv("CL-1", "PyPI", "requests", _rng(("introduced", "0"), ("fixed", "0.1"))),
+            _osv(
+                "CL-1", "PyPI", "requests", _rng(("introduced", "0"), ("fixed", "0.1"))
+            ),
         ]
     )
     report = _report("requests==2.30.0\n", "requirements.txt", snapshot=snap)
@@ -1154,7 +1348,9 @@ def test_audit_counts_bucket_every_advisory_row_exactly_once():
     assert len(rows) == 4
     assert counts["vulnerable"] == 1 and counts["unevaluable"] == 1
     assert counts["withdrawn"] == 1
-    clean = len(rows) - counts["vulnerable"] - counts["unevaluable"] - counts["withdrawn"]
+    clean = (
+        len(rows) - counts["vulnerable"] - counts["unevaluable"] - counts["withdrawn"]
+    )
     assert clean == 1  # every row landed in exactly one bucket
 
 
@@ -1162,7 +1358,11 @@ def test_audit_counts_split_the_reasons_a_dependency_was_not_checked():
     body = "requests==2.30.0\nflask>=2.0\nbroken==not-a-version\n-e .\n"
     counts = _report(body, "requirements.txt")["counts"]
     assert counts["dependencies"] == 3  # the editable line is a note, not a dependency
-    assert counts["checked"] == 1 and counts["unpinned"] == 1 and counts["unparseable"] == 1
+    assert (
+        counts["checked"] == 1
+        and counts["unpinned"] == 1
+        and counts["unparseable"] == 1
+    )
     assert counts["unsupported"] == 0
     assert counts["checked"] + counts["unpinned"] + counts["unparseable"] == 3
 
@@ -1224,7 +1424,9 @@ def test_a_present_native_binary_still_never_produces_a_finding(monkeypatch):
 
     monkeypatch.setattr(openswap.shutil, "which", lambda b: f"/fake/{b}")
     monkeypatch.setattr(
-        openswap.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(OSError("blocked"))
+        openswap.subprocess,
+        "run",
+        lambda *a, **k: (_ for _ in ()).throw(OSError("blocked")),
     )
     cap = cve_cli._capability()
     assert cap["tier"] == openswap.TIER_NATIVE and cap["native"]["found"] is True
@@ -1235,7 +1437,9 @@ def test_manifest_is_zero_egress_and_read_only():
     import yaml
 
     mf = yaml.safe_load(
-        (ROOT / "bigbang" / "plugins" / "cve" / "manifest.yaml").read_text(encoding="utf-8")
+        (ROOT / "bigbang" / "plugins" / "cve" / "manifest.yaml").read_text(
+            encoding="utf-8"
+        )
     )
     caps = mf["capabilities"]
     assert mf["name"] == "cve"
@@ -1339,11 +1543,25 @@ def test_plugin_cli_adds_no_dependency_beyond_typer():
 def test_core_opens_no_socket_and_no_url_on_any_path():
     """The architectural claim, asserted against the source rather than promised."""
     source = (ROOT / "bigbang" / "core" / "cve.py").read_text(encoding="utf-8")
-    for forbidden in ("import socket", "urllib.request", "http.client", "httpx",
-                      "requests.get", "urlopen"):
+    for forbidden in (
+        "import socket",
+        "urllib.request",
+        "http.client",
+        "httpx",
+        "requests.get",
+        "urlopen",
+    ):
         assert forbidden not in source, forbidden
-    cli_source = (ROOT / "bigbang" / "plugins" / "cve" / "cli.py").read_text(encoding="utf-8")
-    for forbidden in ("import socket", "urllib.request", "http.client", "httpx", "urlopen"):
+    cli_source = (ROOT / "bigbang" / "plugins" / "cve" / "cli.py").read_text(
+        encoding="utf-8"
+    )
+    for forbidden in (
+        "import socket",
+        "urllib.request",
+        "http.client",
+        "httpx",
+        "urlopen",
+    ):
         assert forbidden not in cli_source, forbidden
 
 
@@ -1363,8 +1581,11 @@ def _cli(args, cwd=None):
 
 
 def _write_snapshot(tmp_path: Path, records=None, generated: str | None = None) -> Path:
-    payload: dict = {"advisories": records if records is not None else
-                     [REQUESTS_ADVISORY, LODASH_ADVISORY]}
+    payload: dict = {
+        "advisories": records
+        if records is not None
+        else [REQUESTS_ADVISORY, LODASH_ADVISORY]
+    }
     if generated is not None:
         payload["generated"] = generated
     path = tmp_path / "osv.json"
@@ -1410,7 +1631,10 @@ def test_cli_cve_audit_without_a_snapshot_fails_instead_of_reporting_clean(tmp_p
 def test_cli_cve_audit_rejects_an_unusable_snapshot(tmp_path):
     req = tmp_path / "requirements.txt"
     req.write_text("requests==2.30.0\n", encoding="utf-8")
-    for body, needle in (("not json", "JSONDecodeError"), ('{"foo": 1}', "SnapshotError")):
+    for body, needle in (
+        ("not json", "JSONDecodeError"),
+        ('{"foo": 1}', "SnapshotError"),
+    ):
         snap = tmp_path / "bad.json"
         snap.write_text(body, encoding="utf-8")
         r = _cli(["cve", "audit", str(req), "--snapshot", str(snap)])
@@ -1426,8 +1650,19 @@ def test_cli_cve_audit_finds_real_defects_and_gates(tmp_path):
         '{"dependencies": {"lodash": "4.17.20"}}', encoding="utf-8"
     )
     snap = _write_snapshot(tmp_path, generated=FRESH)
-    r = _cli(["cve", "audit", str(tmp_path), "--snapshot", str(snap),
-              "--max-age-days", "36500", "--fail-on", "error"])
+    r = _cli(
+        [
+            "cve",
+            "audit",
+            str(tmp_path),
+            "--snapshot",
+            str(snap),
+            "--max-age-days",
+            "36500",
+            "--fail-on",
+            "error",
+        ]
+    )
     assert r.returncode == 1, r.stdout  # the lodash HIGH finding is an error
     data = json.loads(r.stdout)["data"]
     fired = {d["rule"] for d in data["diagnostics"]}
@@ -1445,21 +1680,46 @@ def test_cli_cve_audit_finds_real_defects_and_gates(tmp_path):
 def test_cli_cve_audit_clean_tree_exits_zero(tmp_path):
     (tmp_path / "requirements.txt").write_text("requests==2.31.0\n", encoding="utf-8")
     snap = _write_snapshot(tmp_path, generated=FRESH)
-    r = _cli(["cve", "audit", str(tmp_path / "requirements.txt"), "--snapshot", str(snap),
-              "--max-age-days", "36500", "--fail-on", "info", "--deps"])
+    r = _cli(
+        [
+            "cve",
+            "audit",
+            str(tmp_path / "requirements.txt"),
+            "--snapshot",
+            str(snap),
+            "--max-age-days",
+            "36500",
+            "--fail-on",
+            "info",
+            "--deps",
+        ]
+    )
     assert r.returncode == 0, r.stdout + r.stderr
     data = json.loads(r.stdout)["data"]
     assert data["diagnostics"] == [] and data["summary"]["total"] == 0
     rows = data["manifests"][0]["dependencies"]
     assert [row["name"] for row in rows] == ["requests"]
-    assert rows[0]["advisories"][0]["affected"] is False  # really evaluated, not skipped
+    assert (
+        rows[0]["advisories"][0]["affected"] is False
+    )  # really evaluated, not skipped
 
 
 def test_cli_cve_audit_gates_on_a_stale_snapshot_even_with_a_clean_tree(tmp_path):
     (tmp_path / "requirements.txt").write_text("requests==2.31.0\n", encoding="utf-8")
     snap = _write_snapshot(tmp_path, generated=OLD)
-    r = _cli(["cve", "audit", str(tmp_path / "requirements.txt"), "--snapshot", str(snap),
-              "--max-age-days", "30", "--fail-on", "error"])
+    r = _cli(
+        [
+            "cve",
+            "audit",
+            str(tmp_path / "requirements.txt"),
+            "--snapshot",
+            str(snap),
+            "--max-age-days",
+            "30",
+            "--fail-on",
+            "error",
+        ]
+    )
     assert r.returncode == 1, r.stdout
     data = json.loads(r.stdout)["data"]
     assert [d["rule"] for d in data["diagnostics"]] == ["cve:snapshot-stale"]
@@ -1470,8 +1730,17 @@ def test_cli_cve_audit_gates_on_a_stale_snapshot_even_with_a_clean_tree(tmp_path
 def test_cli_cve_audit_undated_snapshot_is_a_warning_not_a_pass(tmp_path):
     (tmp_path / "requirements.txt").write_text("requests==2.31.0\n", encoding="utf-8")
     snap = _write_snapshot(tmp_path, generated=None)
-    r = _cli(["cve", "audit", str(tmp_path / "requirements.txt"), "--snapshot", str(snap),
-              "--fail-on", "warning"])
+    r = _cli(
+        [
+            "cve",
+            "audit",
+            str(tmp_path / "requirements.txt"),
+            "--snapshot",
+            str(snap),
+            "--fail-on",
+            "warning",
+        ]
+    )
     assert r.returncode == 1, r.stdout
     data = json.loads(r.stdout)["data"]
     assert [d["rule"] for d in data["diagnostics"]] == ["cve:snapshot-undated"]
@@ -1488,8 +1757,17 @@ def test_cli_cve_audit_missing_path_and_empty_directory_fail_actionably(tmp_path
     empty = _cli(["cve", "audit", str(tmp_path / "empty"), "--snapshot", str(snap)])
     assert empty.returncode == 1
     assert "no dependency manifests found" in json.loads(empty.stdout)["error"]
-    bad_gate = _cli(["cve", "audit", str(tmp_path), "--snapshot", str(snap),
-                     "--fail-on", "catastrophe"])
+    bad_gate = _cli(
+        [
+            "cve",
+            "audit",
+            str(tmp_path),
+            "--snapshot",
+            str(snap),
+            "--fail-on",
+            "catastrophe",
+        ]
+    )
     assert bad_gate.returncode == 1
     assert "--fail-on must be one of" in json.loads(bad_gate.stdout)["error"]
 
@@ -1508,23 +1786,77 @@ def test_cli_cve_snapshot_reports_the_cache_it_read(tmp_path):
 
 def test_cli_cve_match_one_package_and_gates(tmp_path):
     snap = _write_snapshot(tmp_path, generated=FRESH)
-    hit = _cli(["cve", "match", "--package", "ReQuests", "--version", "2.30.0",
-                "--snapshot", str(snap), "--fail-on", "warning"])
+    hit = _cli(
+        [
+            "cve",
+            "match",
+            "--package",
+            "ReQuests",
+            "--version",
+            "2.30.0",
+            "--snapshot",
+            str(snap),
+            "--fail-on",
+            "warning",
+        ]
+    )
     assert hit.returncode == 1, hit.stdout
     data = json.loads(hit.stdout)["data"]
     advisory = data["dependency"]["advisories"][0]
     assert advisory["id"] == "GHSA-requests-1" and advisory["affected"] is True
     assert advisory["severity"]["score"]["value"] == 5.9
-    clean = _cli(["cve", "match", "--package", "requests", "--version", "2.31.0",
-                  "--snapshot", str(snap), "--fail-on", "warning"])
+    clean = _cli(
+        [
+            "cve",
+            "match",
+            "--package",
+            "requests",
+            "--version",
+            "2.31.0",
+            "--snapshot",
+            str(snap),
+            "--fail-on",
+            "warning",
+        ]
+    )
     assert clean.returncode == 0, clean.stdout
-    assert json.loads(clean.stdout)["data"]["dependency"]["advisories"][0]["affected"] is False
-    npm = _cli(["cve", "match", "--package", "lodash", "--version", "4.17.20",
-                "--ecosystem", "npm", "--snapshot", str(snap)])
+    assert (
+        json.loads(clean.stdout)["data"]["dependency"]["advisories"][0]["affected"]
+        is False
+    )
+    npm = _cli(
+        [
+            "cve",
+            "match",
+            "--package",
+            "lodash",
+            "--version",
+            "4.17.20",
+            "--ecosystem",
+            "npm",
+            "--snapshot",
+            str(snap),
+        ]
+    )
     assert npm.returncode == 0
-    assert json.loads(npm.stdout)["data"]["dependency"]["advisories"][0]["affected"] is True
-    bad = _cli(["cve", "match", "--package", "x", "--version", "1", "--ecosystem", "Maven",
-                "--snapshot", str(snap)])
+    assert (
+        json.loads(npm.stdout)["data"]["dependency"]["advisories"][0]["affected"]
+        is True
+    )
+    bad = _cli(
+        [
+            "cve",
+            "match",
+            "--package",
+            "x",
+            "--version",
+            "1",
+            "--ecosystem",
+            "Maven",
+            "--snapshot",
+            str(snap),
+        ]
+    )
     assert bad.returncode == 1
     assert "--ecosystem must be one of" in json.loads(bad.stdout)["error"]
 

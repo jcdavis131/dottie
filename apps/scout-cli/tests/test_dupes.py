@@ -167,7 +167,9 @@ def test_tokenize_strips_markdown_code_and_urls():
 
 
 def test_tokenize_html_skips_script_and_tags_and_casefolds():
-    html = "<html><body><p>Hello There</p><script>var stolen = 1;</script></body></html>"
+    html = (
+        "<html><body><p>Hello There</p><script>var stolen = 1;</script></body></html>"
+    )
     toks = dupes.tokenize(html, "html")
     assert toks == ["hello", "there"]
     assert "stolen" not in toks and "script" not in toks and "body" not in toks
@@ -222,7 +224,11 @@ def test_fingerprints_are_stable_across_processes_not_hash_seeded():
         env = dict(os.environ, PYTHONHASHSEED=seed)
         r = subprocess.run(
             [sys.executable, "-c", code],
-            capture_output=True, text=True, timeout=60, cwd=str(ROOT), env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=str(ROOT),
+            env=env,
         )
         assert r.returncode == 0, r.stderr
         seen.add(r.stdout.strip())
@@ -264,9 +270,13 @@ def test_fingerprint_reading_invariant_holds_for_every_case():
     ]
     for row in rows:
         has_hash = row["content_sha256"] is not None
-        assert has_hash is not ("content_sha256" in row["errors"] or "read" in row["errors"])
+        assert has_hash is not (
+            "content_sha256" in row["errors"] or "read" in row["errors"]
+        )
         has_shingles = bool(row["shingles"])
-        assert has_shingles is not ("shingles" in row["errors"] or "read" in row["errors"])
+        assert has_shingles is not (
+            "shingles" in row["errors"] or "read" in row["errors"]
+        )
     empty = rows[2]
     assert "no-tokens" in empty["errors"]["content_sha256"]
     assert empty["content_sha256"] is None
@@ -454,7 +464,9 @@ def test_find_pairs_applies_gates_and_deterministic_order():
     assert len(ids) == len(set(ids))  # each pair reported once
     assert pairs == dupes.find_pairs(list(reversed(rows)), config=cfg)
     # raising the gate above the measured similarity drops the near pair
-    strict = dupes.find_pairs(rows, config=_cfg(threshold=0.99, containment_threshold=1.0))
+    strict = dupes.find_pairs(
+        rows, config=_cfg(threshold=0.99, containment_threshold=1.0)
+    )
     assert [p["kind"] for p in strict] == ["exact"]
 
 
@@ -512,7 +524,9 @@ def test_to_diagnostics_maps_severities_and_surfaces_unmeasured():
     cfg = _cfg()
     rows = [_row("orig.md", ORIGINAL), _row("copy.md", ORIGINAL.upper())]
     short = dupes.fingerprint("tiny.md", "hi", config=dupes.merge_config())
-    diags = dupes.to_diagnostics(dupes.find_pairs(rows, config=cfg), [short], config=cfg)
+    diags = dupes.to_diagnostics(
+        dupes.find_pairs(rows, config=cfg), [short], config=cfg
+    )
     by_rule = {d["rule"]: d for d in diags}
     assert by_rule["dupes:exact-duplicate"]["severity"] == "error"
     assert by_rule["dupes:exact-duplicate"]["path"] == "orig.md"  # the second id
@@ -526,7 +540,9 @@ def test_to_diagnostics_maps_severities_and_surfaces_unmeasured():
     assert summary["by_severity"]["error"] == 1 and summary["by_severity"]["info"] == 1
     # severities are config, not code
     loud = dupes.to_diagnostics(
-        dupes.find_pairs(rows, config=cfg), [short], config=_cfg(severity={"unmeasured": "error"})
+        dupes.find_pairs(rows, config=cfg),
+        [short],
+        config=_cfg(severity={"unmeasured": "error"}),
     )
     assert {d["severity"] for d in loud if "unmeasured" in d["rule"]} == {"error"}
 
@@ -587,9 +603,9 @@ def test_document_view_hides_digests_unless_asked():
     assert "shingles" not in lean[0] and lean[0]["shingle_count"] > 0
     full = dupes.document_view(rows, include_shingles=True)
     assert full[0]["shingles"] == rows[0]["shingles"]
-    assert dupes.analyze(_corpus()[:2], config=_cfg(), include_shingles=True)["documents"][0][
-        "shingles"
-    ]
+    assert dupes.analyze(_corpus()[:2], config=_cfg(), include_shingles=True)[
+        "documents"
+    ][0]["shingles"]
 
 
 def test_doc_exts_are_derived_from_prose_not_relisted():
@@ -632,8 +648,12 @@ def test_manifest_is_default_deny_on_every_axis():
 def _cli(args, cwd=None):
     return subprocess.run(
         [sys.executable, "-m", "bigbang.cli", "--json", *args],
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
-        timeout=120, cwd=str(cwd or ROOT),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=120,
+        cwd=str(cwd or ROOT),
     )
 
 
@@ -690,8 +710,17 @@ def test_cli_dupes_scan_fail_on_is_the_gate(tmp_path):
     (clean / "a.md").write_bytes(ORIGINAL.encode("utf-8"))
     (clean / "b.md").write_bytes(UNRELATED.encode("utf-8"))
     r = _cli(
-        ["dupes", "scan", str(clean), "--root", str(clean), "--min-tokens", "10",
-         "--fail-on", "error"]
+        [
+            "dupes",
+            "scan",
+            str(clean),
+            "--root",
+            str(clean),
+            "--min-tokens",
+            "10",
+            "--fail-on",
+            "error",
+        ]
     )
     assert r.returncode == 0, r.stdout
     assert json.loads(r.stdout)["data"]["pairs"] == []
@@ -716,8 +745,14 @@ def test_cli_dupes_scan_missing_path_and_bad_flags_fail_actionably(tmp_path):
 def test_cli_dupes_compare_two_files(tmp_path):
     base = _write_corpus(tmp_path)
     r = _cli(
-        ["dupes", "compare", str(base / "orig.md"), str(base / "drafts" / "reword.md"),
-         "--min-tokens", "10"]
+        [
+            "dupes",
+            "compare",
+            str(base / "orig.md"),
+            str(base / "drafts" / "reword.md"),
+            "--min-tokens",
+            "10",
+        ]
     )
     assert r.returncode == 0, r.stderr + r.stdout
     pair = json.loads(r.stdout)["data"]["pair"]

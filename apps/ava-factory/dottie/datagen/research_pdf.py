@@ -15,8 +15,8 @@ operator must populate the inbox (so weight-0 wiring stays testable offline).
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 from dottie.datagen.base import Generator, run_cli
 
@@ -146,7 +146,11 @@ class ResearchPdfGenerator(Generator):
             for i, chunk in enumerate(chunk_text(raw)):
                 if produced >= target_bytes:
                     return
-                use_phase = 4 if (len(chunk) > 1200 and phase in (2, 3) and i % 3 == 0) else phase
+                use_phase = (
+                    4
+                    if (len(chunk) > 1200 and phase in (2, 3) and i % 3 == 0)
+                    else phase
+                )
                 if use_phase not in self.phases:
                     use_phase = phase
                 header = f"[source_file={path.name} domain={domain}]\n"

@@ -180,7 +180,9 @@ def _dry_or_real(db: str | None, record: bool):
     if record:
         return _open_new(db)
     path = _db_path(db)
-    return (cite.open_store(path) if path.exists() else cite.open_store(":memory:")), path
+    return (
+        cite.open_store(path) if path.exists() else cite.open_store(":memory:")
+    ), path
 
 
 def _open_existing(db: str | None, command: str):
@@ -377,7 +379,9 @@ def rules_cmd(
                 "styles": list(cite.STYLES),
                 "sort_keys": list(cite.SORT_KEYS),
                 "conflict_policies": list(cite.CONFLICT_POLICIES),
-                "required_fields": {t: list(f) for t, f in sorted(cite.REQUIRED.items())},
+                "required_fields": {
+                    t: list(f) for t, f in sorted(cite.REQUIRED.items())
+                },
                 "no_date_marker": cite.NO_DATE,
                 "scope_limits": cite.SCOPE_LIMITS,
             },
@@ -400,9 +404,19 @@ def rules_cmd(
     ),
 )
 def import_cmd(
-    source: str = typer.Argument(..., help="a .bib or CSL-JSON file (read only, never rewritten)"),
-    fmt: str = typer.Option("auto", "--format", help="bibtex|csl|auto (extension, then a first-character sniff)"),
-    db: str | None = typer.Option(None, "--db", help=f"library path (default {cite.DB_REL.as_posix()} or $SCOUT_CITE_DB)"),
+    source: str = typer.Argument(
+        ..., help="a .bib or CSL-JSON file (read only, never rewritten)"
+    ),
+    fmt: str = typer.Option(
+        "auto",
+        "--format",
+        help="bibtex|csl|auto (extension, then a first-character sniff)",
+    ),
+    db: str | None = typer.Option(
+        None,
+        "--db",
+        help=f"library path (default {cite.DB_REL.as_posix()} or $SCOUT_CITE_DB)",
+    ),
     on_conflict: str = typer.Option(
         "skip",
         "--on-conflict",
@@ -415,7 +429,9 @@ def import_cmd(
     ),
     rules_file: str | None = typer.Option(None, "--rules", help="JSON rules overlay"),
     fail_on: str | None = typer.Option(
-        None, "--fail-on", help="exit 1 on findings at/above this severity — the CI gate hook"
+        None,
+        "--fail-on",
+        help="exit 1 on findings at/above this severity — the CI gate hook",
     ),
 ):
     """Parse a .bib / CSL-JSON file into the library. Malformed entries are refused."""
@@ -426,7 +442,11 @@ def import_cmd(
     conn, path = _dry_or_real(db, record)
     try:
         result = cite.import_entries(
-            conn, parsed["entries"], source=parsed["source"], on_conflict=on_conflict, record=record
+            conn,
+            parsed["entries"],
+            source=parsed["source"],
+            on_conflict=on_conflict,
+            record=record,
         )
     except ValueError as exc:
         fail_agent(
@@ -473,13 +493,27 @@ def import_cmd(
 )
 def list_cmd(
     key: str | None = typer.Option(None, "--key", help="substring of the citation key"),
-    entry_type: str | None = typer.Option(None, "--type", help="exact entry type (article, book, ...)"),
-    author: str | None = typer.Option(None, "--author", help="substring of any contributor name (accents decoded)"),
-    year_min: int | None = typer.Option(None, "--year-min", help="inclusive lower bound; an undated entry never matches"),
-    year_max: int | None = typer.Option(None, "--year-max", help="inclusive upper bound; an undated entry never matches"),
-    doi: str | None = typer.Option(None, "--doi", help="exact DOI after normalization (bare, doi: or https://doi.org/ all work)"),
+    entry_type: str | None = typer.Option(
+        None, "--type", help="exact entry type (article, book, ...)"
+    ),
+    author: str | None = typer.Option(
+        None, "--author", help="substring of any contributor name (accents decoded)"
+    ),
+    year_min: int | None = typer.Option(
+        None, "--year-min", help="inclusive lower bound; an undated entry never matches"
+    ),
+    year_max: int | None = typer.Option(
+        None, "--year-max", help="inclusive upper bound; an undated entry never matches"
+    ),
+    doi: str | None = typer.Option(
+        None,
+        "--doi",
+        help="exact DOI after normalization (bare, doi: or https://doi.org/ all work)",
+    ),
     limit: int = typer.Option(50, "--limit", help="max entries returned"),
-    offset: int = typer.Option(0, "--offset", help="skip this many matches (stable key order)"),
+    offset: int = typer.Option(
+        0, "--offset", help="skip this many matches (stable key order)"
+    ),
     db: str | None = typer.Option(None, "--db", help="library path"),
 ):
     """Field filters over the library. Read-only; full-text ranking is searchindex #20."""
@@ -544,12 +578,24 @@ def list_cmd(
 )
 def format_cmd(
     style: str = typer.Option("apa", "--style", help=f"{'|'.join(cite.STYLES)}"),
-    keys: list[str] = typer.Option([], "--key", help="format only these keys (repeatable)"),
-    file: str | None = typer.Option(None, "--file", help="format straight from a .bib/CSL file, no library needed"),
-    sort: str = typer.Option("key", "--sort", help=f"{'|'.join(cite.SORT_KEYS)} (ties always fall through to the key)"),
-    fmt: str = typer.Option("auto", "--format", help="input format when --file is used: bibtex|csl|auto"),
+    keys: list[str] = typer.Option(
+        [], "--key", help="format only these keys (repeatable)"
+    ),
+    file: str | None = typer.Option(
+        None, "--file", help="format straight from a .bib/CSL file, no library needed"
+    ),
+    sort: str = typer.Option(
+        "key",
+        "--sort",
+        help=f"{'|'.join(cite.SORT_KEYS)} (ties always fall through to the key)",
+    ),
+    fmt: str = typer.Option(
+        "auto", "--format", help="input format when --file is used: bibtex|csl|auto"
+    ),
     strict: bool = typer.Option(
-        False, "--strict", help="exit 1 if any entry could not be rendered (missing required fields)"
+        False,
+        "--strict",
+        help="exit 1 if any entry could not be rendered (missing required fields)",
     ),
     db: str | None = typer.Option(None, "--db", help="library path"),
 ):
@@ -564,10 +610,18 @@ def format_cmd(
     _egress_guard("cite format")
     if file is not None:
         parsed = _read_source(file, fmt, "cite format")
-        entries, origin, rejected = parsed["entries"], parsed["source"], parsed["rejected"]
+        entries, origin, rejected = (
+            parsed["entries"],
+            parsed["source"],
+            parsed["rejected"],
+        )
     else:
         conn, path = _open_existing(db, "cite format")
-        entries = [e for e in (cite.load_entry(conn, k) for k in keys) if e] if keys else cite.query(conn, limit=-1)
+        entries = (
+            [e for e in (cite.load_entry(conn, k) for k in keys) if e]
+            if keys
+            else cite.query(conn, limit=-1)
+        )
         origin, rejected = str(path), []
         missing = sorted(set(keys) - {e["key"] for e in entries})
         if missing:
@@ -614,12 +668,20 @@ def format_cmd(
     ),
 )
 def roundtrip_cmd(
-    keys: list[str] = typer.Option([], "--key", help="check only these keys (repeatable)"),
-    file: str | None = typer.Option(None, "--file", help="check a .bib/CSL file directly, no library needed"),
-    fmt: str = typer.Option("auto", "--format", help="input format when --file is used: bibtex|csl|auto"),
+    keys: list[str] = typer.Option(
+        [], "--key", help="check only these keys (repeatable)"
+    ),
+    file: str | None = typer.Option(
+        None, "--file", help="check a .bib/CSL file directly, no library needed"
+    ),
+    fmt: str = typer.Option(
+        "auto", "--format", help="input format when --file is used: bibtex|csl|auto"
+    ),
     rules_file: str | None = typer.Option(None, "--rules", help="JSON rules overlay"),
     fail_on: str | None = typer.Option(
-        None, "--fail-on", help="exit 1 on findings at/above this severity — the CI gate hook"
+        None,
+        "--fail-on",
+        help="exit 1 on findings at/above this severity — the CI gate hook",
     ),
     db: str | None = typer.Option(None, "--db", help="library path"),
 ):
@@ -649,7 +711,10 @@ def roundtrip_cmd(
             "path": origin,
             "message": (
                 f"{r['key']}: "
-                + (r["error"] or f"lost {', '.join(r['lost_fields']) or '-'}; changed {len(r['changed_fields'])} field(s)")
+                + (
+                    r["error"]
+                    or f"lost {', '.join(r['lost_fields']) or '-'}; changed {len(r['changed_fields'])} field(s)"
+                )
             ),
             "suggestion": "open the entry in the source .bib — a field value likely has unbalanced braces",
         }
@@ -659,7 +724,12 @@ def roundtrip_cmd(
     diags = cite.diagnostics_from(problems, path=origin, rules=rules)
     emit(
         ok(
-            {"source": origin, **result, "diagnostics": diags, "summary": openswap.summarize(diags)},
+            {
+                "source": origin,
+                **result,
+                "diagnostics": diags,
+                "summary": openswap.summarize(diags),
+            },
             command="cite roundtrip",
             example="scout --json cite format --style apa",
             discover="scout cite list",
@@ -672,13 +742,22 @@ def roundtrip_cmd(
 @app.command(
     "forget",
     epilog=examples_epilog(
-        ["scout --json cite forget --key doe2020 --yes", "scout --json cite forget --key a --key b --dry-run"]
+        [
+            "scout --json cite forget --key doe2020 --yes",
+            "scout --json cite forget --key a --key b --dry-run",
+        ]
     ),
 )
 def forget_cmd(
-    keys: list[str] = typer.Option(..., "--key", help="citation key to remove (repeatable)"),
-    yes: bool = typer.Option(False, "--yes", help="required to actually delete (no prompt, ever)"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="report what would go, delete nothing"),
+    keys: list[str] = typer.Option(
+        ..., "--key", help="citation key to remove (repeatable)"
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", help="required to actually delete (no prompt, ever)"
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="report what would go, delete nothing"
+    ),
     db: str | None = typer.Option(None, "--db", help="library path"),
 ):
     """Remove keys from the library. Reports which were actually present."""

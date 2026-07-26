@@ -30,8 +30,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-APP = Path(__file__).resolve().parents[1]                 # apps/dottie
-REPO = APP.parents[1]                                     # the dottie repo root
+APP = Path(__file__).resolve().parents[1]  # apps/dottie
+REPO = APP.parents[1]  # the dottie repo root
 COPY_DB = REPO / "tasks" / "artifacts" / "ledger_copy.sqlite3"
 
 sys.path.insert(0, str(APP))  # importable when run from anywhere, venv install or not
@@ -46,26 +46,38 @@ def iter_failed_attempts(db: Path) -> Iterator[tuple[str, str, str]]:
     try:
         rows = con.execute(
             "SELECT id, implementation FROM experiments "
-            "WHERE implementation IS NOT NULL ORDER BY created_ts").fetchall()
+            "WHERE implementation IS NOT NULL ORDER BY created_ts"
+        ).fetchall()
         for r in rows:
             impl = json.loads(r["implementation"])
             history = (impl.get("validation") or {}).get("history") or []
             for h in history:
                 if h.get("ok") is False and "detail" in h:
-                    yield r["id"], str(h.get("level") or "?"), str(h.get("detail") or "")
+                    yield (
+                        r["id"],
+                        str(h.get("level") or "?"),
+                        str(h.get("detail") or ""),
+                    )
     finally:
         con.close()
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(
-        description="hint coverage over the ledger copy's failed validation attempts")
-    ap.add_argument("--db", type=Path, default=COPY_DB,
-                    help="ledger COPY to replay (never point this at the live db)")
+        description="hint coverage over the ledger copy's failed validation attempts"
+    )
+    ap.add_argument(
+        "--db",
+        type=Path,
+        default=COPY_DB,
+        help="ledger COPY to replay (never point this at the live db)",
+    )
     args = ap.parse_args()
     if not args.db.exists():
-        raise SystemExit(f"no ledger copy at {args.db} — create it with a plain file "
-                         "copy first (see scripts/retro_flag_ledger.py)")
+        raise SystemExit(
+            f"no ledger copy at {args.db} — create it with a plain file "
+            "copy first (see scripts/retro_flag_ledger.py)"
+        )
     total = 0
     hinted = 0
     per_level: Counter = Counter()

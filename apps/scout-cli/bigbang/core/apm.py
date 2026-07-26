@@ -247,7 +247,11 @@ class Tracer:
         return span
 
     def end(
-        self, span: dict[str, Any], *, status: str | None = None, error: str | None = None
+        self,
+        span: dict[str, Any],
+        *,
+        status: str | None = None,
+        error: str | None = None,
     ) -> dict[str, Any]:
         """Close a span with a real measured duration (or a labelled reason)."""
         now = float(self._clock())
@@ -367,7 +371,11 @@ def _int_field(
 
 
 def _float_field(
-    row: dict[str, Any], key: str, *, required: bool = True, minimum: float | None = None
+    row: dict[str, Any],
+    key: str,
+    *,
+    required: bool = True,
+    minimum: float | None = None,
 ) -> float | None:
     raw = row.get(key)
     if raw is None:
@@ -412,7 +420,9 @@ def check_span(row: dict[str, Any]) -> dict[str, Any]:
     if parent_id is None and depth != 0:
         raise ValueError(f"span {name!r}: a root span (no parent_id) must have depth 0")
     if parent_id is not None and depth < 1:
-        raise ValueError(f"span {name!r}: a child span (parent {parent_id}) needs depth >= 1")
+        raise ValueError(
+            f"span {name!r}: a child span (parent {parent_id}) needs depth >= 1"
+        )
     duration = _float_field(row, "duration_ms", required=False, minimum=0.0)
     error = row.get("error")
     error = None if error is None else str(error).strip() or None
@@ -444,7 +454,9 @@ def check_span(row: dict[str, Any]) -> dict[str, Any]:
     try:
         json.dumps(attrs)
     except (TypeError, ValueError) as exc:
-        raise ValueError(f"span {name!r}: attrs must be JSON-serializable — {exc}") from exc
+        raise ValueError(
+            f"span {name!r}: attrs must be JSON-serializable — {exc}"
+        ) from exc
     offset = _float_field(row, "start_offset_ms", required=False, minimum=0.0)
     return {
         "trace_id": _str_field(row, "trace_id"),
@@ -828,8 +840,13 @@ def trace_tree(spans: list[dict[str, Any]], trace_id: str) -> list[dict[str, Any
     rows.sort(key=lambda s: (s["start_offset_ms"], s["span_id"]))
     by_id = _index(rows)
     nodes = {
-        s["span_id"]: {**s, "children": [], "orphan": False, "cycle": False,
-                       "truncated": False}
+        s["span_id"]: {
+            **s,
+            "children": [],
+            "orphan": False,
+            "cycle": False,
+            "truncated": False,
+        }
         for s in rows
     }
     roots: list[dict[str, Any]] = []
@@ -861,7 +878,11 @@ def trace_rollup(spans: list[dict[str, Any]]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for trace_id, rows in groups.items():
         roots = [s for s in rows if s["parent_id"] is None]
-        root = min(roots, key=lambda s: (s["start_offset_ms"], s["span_id"])) if roots else None
+        root = (
+            min(roots, key=lambda s: (s["start_offset_ms"], s["span_id"]))
+            if roots
+            else None
+        )
         measured = [s for s in rows if s["duration_ms"] is not None]
         duration: float | None = None
         source = None
@@ -1156,7 +1177,7 @@ def _waterfall(spans: list[dict[str, Any]], roll: dict[str, Any]) -> str:
     out = []
     for s in rows:
         indent = "&nbsp;" * (2 * int(s["depth"]))
-        label = f'{indent}{e(s["name"])}'
+        label = f"{indent}{e(s['name'])}"
         if s["duration_ms"] is None:
             cell = f'<span class="none">{e(str(s["error"]))}</span>'
             shown = '<span class="none">unmeasured</span>'
@@ -1182,11 +1203,11 @@ def _waterfall(spans: list[dict[str, Any]], roll: dict[str, Any]) -> str:
             f'<td class="n">{shown}</td></tr>'
         )
     header = (
-        f'<h2>{e(str(roll["root"] or "(no root span)"))} '
+        f"<h2>{e(str(roll['root'] or '(no root span)'))} "
         f'<span class="mono">{e(roll["trace_id"])} · {roll["spans"]} spans · '
-        f'{_num(roll["duration_ms"], roll["duration_error"])} ms '
-        f'({e(str(roll["duration_from"] or "no measurement"))}) · '
-        f'started {e(_iso(roll["wall_start"]))}</span></h2>'
+        f"{_num(roll['duration_ms'], roll['duration_error'])} ms "
+        f"({e(str(roll['duration_from'] or 'no measurement'))}) · "
+        f"started {e(_iso(roll['wall_start']))}</span></h2>"
     )
     return (
         header
@@ -1243,9 +1264,9 @@ def render_html(
         else "generation time not recorded (deterministic render)"
     )
     apdex_cell = (
-        f'{score["score"]:.4f}'
+        f"{score['score']:.4f}"
         if score["score"] is not None
-        else f'unmeasured — {e(str(score["score_error"]))}'
+        else f"unmeasured — {e(str(score['score_error']))}"
     )
     return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">

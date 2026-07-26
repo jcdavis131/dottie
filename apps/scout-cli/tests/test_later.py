@@ -78,7 +78,9 @@ class _Boundary:
     NEVER fetched" be an assertion about behaviour instead of a comment.
     """
 
-    def __init__(self, responses: dict[str, dict] | None = None, default: dict | None = None):
+    def __init__(
+        self, responses: dict[str, dict] | None = None, default: dict | None = None
+    ):
         self.responses = dict(responses or {})
         self.default = default
         self.calls: list[str] = []
@@ -174,7 +176,10 @@ def test_canonicalise_drops_tracking_params_and_names_every_one():
     assert r["dropped_params"] == ["fbclid", "pk_campaign", "utm_medium", "utm_source"]
     assert "drop-tracking-params" in r["applied"]
     # content parameters must survive untouched
-    assert later.canonicalise("https://x.example/p?id=42")["url"] == "https://x.example/p?id=42"
+    assert (
+        later.canonicalise("https://x.example/p?id=42")["url"]
+        == "https://x.example/p?id=42"
+    )
 
 
 def test_canonicalise_sorts_the_query_so_parameter_order_cannot_split_one_url():
@@ -185,7 +190,9 @@ def test_canonicalise_sorts_the_query_so_parameter_order_cannot_split_one_url():
     # different VALUES are a different resource and must not collapse
     assert later.canonicalise("https://x.example/p?a=1&b=3")["key"] != a["key"]
     # ...and turning the rule off keeps the spellings apart
-    unsorted = later.canonicalise("https://x.example/p?b=2&a=1", policy={"sort_query": False})
+    unsorted = later.canonicalise(
+        "https://x.example/p?b=2&a=1", policy={"sort_query": False}
+    )
     assert unsorted["url"] == "https://x.example/p?b=2&a=1"
     assert unsorted["key"] != b["key"]
 
@@ -243,7 +250,9 @@ def test_canonicalise_drops_the_fragment_but_records_it():
     assert dropped["url"] == "https://x.example/p"
     assert dropped["fragment"] == "section-3"
     assert "drop-fragment" in dropped["applied"]
-    kept = later.canonicalise("https://x.example/p#section-3", policy={"drop_fragment": False})
+    kept = later.canonicalise(
+        "https://x.example/p#section-3", policy={"drop_fragment": False}
+    )
     assert kept["url"] == "https://x.example/p#section-3"
     assert kept["key"] != dropped["key"]
 
@@ -252,7 +261,9 @@ def test_canonicalise_drops_credentials_out_of_a_saved_link():
     r = later.canonicalise("https://user:secret@x.example/p")
     assert r["url"] == "https://x.example/p"
     assert "secret" not in r["url"] and "drop-userinfo" in r["applied"]
-    kept = later.canonicalise("https://user:secret@x.example/p", policy={"drop_userinfo": False})
+    kept = later.canonicalise(
+        "https://user:secret@x.example/p", policy={"drop_userinfo": False}
+    )
     assert kept["url"] == "https://user:secret@x.example/p"
 
 
@@ -266,7 +277,10 @@ def test_www_and_trailing_slash_are_opt_in_because_they_change_the_resource():
     assert collapsed["applied"] == ["strip-www", "strip-trailing-slash"]
     assert collapsed["key"] == later.canonicalise("https://x.example/p")["key"]
     # the root path is never stripped away to nothing
-    assert later.canonicalise("https://x.example/", policy=pol)["url"] == "https://x.example/"
+    assert (
+        later.canonicalise("https://x.example/", policy=pol)["url"]
+        == "https://x.example/"
+    )
 
 
 def test_split_authority_handles_userinfo_ipv6_and_junk():
@@ -276,11 +290,23 @@ def test_split_authority_handles_userinfo_ipv6_and_junk():
     assert later.split_authority("[::1]:8080") == ("", "[::1]", "8080")
     assert later.split_authority("[::1]") == ("", "[::1]", "")
     # ":" that is not a port must not be shredded into a bogus host
-    assert later.split_authority("example.com:notaport") == ("", "example.com:notaport", "")
+    assert later.split_authority("example.com:notaport") == (
+        "",
+        "example.com:notaport",
+        "",
+    )
 
 
 def test_is_tracking_param_covers_the_prefix_families():
-    for name in ("utm_source", "UTM_Campaign", "pk_kwd", "mtm_source", "hsa_grp", "fbclid", "mc_eid"):
+    for name in (
+        "utm_source",
+        "UTM_Campaign",
+        "pk_kwd",
+        "mtm_source",
+        "hsa_grp",
+        "fbclid",
+        "mc_eid",
+    ):
         assert later.is_tracking_param(name), name
     for name in ("id", "page", "q", "utm", "ref", ""):
         assert not later.is_tracking_param(name), name
@@ -318,7 +344,9 @@ def test_default_policy_is_not_mutated_by_an_overlay():
 
 def test_load_policy_reads_an_overlay_file(tmp_path):
     f = tmp_path / "pol.json"
-    f.write_text('{"strip_www": true, "extra_tracking_params": ["ref"]}', encoding="utf-8")
+    f.write_text(
+        '{"strip_www": true, "extra_tracking_params": ["ref"]}', encoding="utf-8"
+    )
     pol = later.load_policy(f)
     assert pol["strip_www"] is True
     r = later.canonicalise("https://www.x.example/p?ref=hn", policy=pol)
@@ -361,11 +389,21 @@ def test_normalize_tags_sorts_lowercases_and_deduplicates():
 
 
 OFFERS = [
-    {"url": "https://example.com/post?utm_source=x", "title": "Scaling laws", "tags": "ai",
-     "source": "manual", "added_ts": T0},
+    {
+        "url": "https://example.com/post?utm_source=x",
+        "title": "Scaling laws",
+        "tags": "ai",
+        "source": "manual",
+        "added_ts": T0,
+    },
     "https://EXAMPLE.com/post",
-    {"url": "https://example.com/post#s2", "title": "Scaling laws revisited - The Site",
-     "tags": ["scaling"], "source": "bookmarks", "added_ts": T0 - HOUR},
+    {
+        "url": "https://example.com/post#s2",
+        "title": "Scaling laws revisited - The Site",
+        "tags": ["scaling"],
+        "source": "bookmarks",
+        "added_ts": T0 - HOUR,
+    },
     "not a url at all",
     {"url": "https://other.example/y", "title": "Other"},
 ]
@@ -392,7 +430,10 @@ def test_merge_offers_collapses_spellings_into_one_row():
 
 def test_merge_offers_accounting_adds_up():
     merged = later.merge_offers(OFFERS, ts=T0)
-    assert merged["offered"] == len(merged["items"]) + len(merged["invalid"]) + merged["collapsed"]
+    assert (
+        merged["offered"]
+        == len(merged["items"]) + len(merged["invalid"]) + merged["collapsed"]
+    )
 
 
 def test_merge_offers_is_order_independent_over_every_permutation():
@@ -407,7 +448,9 @@ def test_merge_offers_is_order_independent_over_every_permutation():
 
 
 def test_merge_offers_records_whether_the_save_time_was_supplied():
-    supplied = later.merge_offers([{"url": "https://x.example/a", "added_ts": T0 - DAY}], ts=T0)
+    supplied = later.merge_offers(
+        [{"url": "https://x.example/a", "added_ts": T0 - DAY}], ts=T0
+    )
     row = next(iter(supplied["items"].values()))
     assert (row["added_ts"], row["added_ts_source"]) == (T0 - DAY, "offer")
     unknown = later.merge_offers(["https://x.example/a"], ts=T0)
@@ -434,10 +477,17 @@ def test_add_offers_dedupes_across_spellings_and_merges_metadata():
     conn = _store()
     result = later.add_offers(conn, OFFERS, ts=T0)
     assert result["counts"] == {
-        "offered": 5, "added": 2, "duplicate": 0, "invalid": 1, "collapsed": 2
+        "offered": 5,
+        "added": 2,
+        "duplicate": 0,
+        "invalid": 1,
+        "collapsed": 2,
     }
     items = later.list_items(conn)
-    assert [i["url"] for i in items] == ["https://example.com/post", "https://other.example/y"]
+    assert [i["url"] for i in items] == [
+        "https://example.com/post",
+        "https://other.example/y",
+    ]
     assert items[0]["tags"] == ["ai", "scaling"]
     assert items[0]["aliases"] == 3  # three spellings, one row
     assert items[0]["state"] == later.STATE_UNREAD
@@ -446,7 +496,9 @@ def test_add_offers_dedupes_across_spellings_and_merges_metadata():
 def test_add_offers_reports_a_second_save_as_a_duplicate_and_unions_its_tags():
     conn = _queued([{"url": "https://example.com/post", "tags": "ai", "title": "Post"}])
     again = later.add_offers(
-        conn, [{"url": "https://example.com/post?utm_source=q", "tags": "reread"}], ts=T0 + HOUR
+        conn,
+        [{"url": "https://example.com/post?utm_source=q", "tags": "reread"}],
+        ts=T0 + HOUR,
     )
     assert again["counts"]["added"] == 0 and again["counts"]["duplicate"] == 1
     assert again["duplicate"][0]["reason"] == "canonical url already queued"
@@ -494,10 +546,15 @@ def test_a_repeated_spelling_keeps_its_earliest_sighting_across_batches():
     later.add_offers(oldest_first, ["https://x.example/a"], ts=T0)
     later.add_offers(oldest_first, ["https://x.example/a"], ts=T0 + DAY)
     for conn in (newest_first, oldest_first):
-        rows = [dict(r) for r in conn.execute("SELECT raw, times, first_seen_ts FROM aliases")]
+        rows = [
+            dict(r)
+            for r in conn.execute("SELECT raw, times, first_seen_ts FROM aliases")
+        ]
         assert rows == [{"raw": "https://x.example/a", "times": 2, "first_seen_ts": T0}]
         assert later.list_items(conn)[0]["added_ts"] == T0
-    assert later.queue_fingerprint(oldest_first) == later.queue_fingerprint(newest_first)
+    assert later.queue_fingerprint(oldest_first) == later.queue_fingerprint(
+        newest_first
+    )
 
 
 def test_the_fingerprint_excludes_the_id_because_the_id_is_insertion_order():
@@ -542,10 +599,14 @@ def test_re_saving_a_dropped_url_does_not_resurrect_it():
 
 def test_mark_matches_a_url_in_any_spelling_and_refuses_the_unknown():
     conn = _queued(["https://example.com/post"])
-    moved = later.mark(conn, "https://EXAMPLE.com/post?utm_source=tw", later.STATE_ARCHIVED, ts=T0)
+    moved = later.mark(
+        conn, "https://EXAMPLE.com/post?utm_source=tw", later.STATE_ARCHIVED, ts=T0
+    )
     assert moved["matched_by"] == "canonical-url"
     assert (moved["previous_state"], moved["state"], moved["changed"]) == (
-        later.STATE_UNREAD, later.STATE_ARCHIVED, True
+        later.STATE_UNREAD,
+        later.STATE_ARCHIVED,
+        True,
     )
     again = later.mark(conn, 1, later.STATE_ARCHIVED, ts=T0)
     assert again["changed"] is False and again["matched_by"] == "id"
@@ -562,9 +623,12 @@ def test_list_items_is_oldest_first_and_filters_on_state_and_tag():
     later.add_offers(conn, [{"url": "https://b.example/2", "tags": "ai"}], ts=T0)
     later.add_offers(conn, [{"url": "https://a.example/1", "tags": "cli"}], ts=T0 - DAY)
     assert [i["url"] for i in later.list_items(conn)] == [
-        "https://a.example/1", "https://b.example/2"
+        "https://a.example/1",
+        "https://b.example/2",
     ]
-    assert [i["url"] for i in later.list_items(conn, tag="AI")] == ["https://b.example/2"]
+    assert [i["url"] for i in later.list_items(conn, tag="AI")] == [
+        "https://b.example/2"
+    ]
     assert later.list_items(conn, tag="nope") == []
     assert len(later.list_items(conn, limit=1)) == 1
     later.mark(conn, 1, later.STATE_ARCHIVED, ts=T0)
@@ -574,7 +638,9 @@ def test_list_items_is_oldest_first_and_filters_on_state_and_tag():
 
 
 def test_pending_skips_triaged_and_already_fetched_items():
-    conn = _queued(["https://a.example/1", "https://b.example/2", "https://c.example/3"])
+    conn = _queued(
+        ["https://a.example/1", "https://b.example/2", "https://c.example/3"]
+    )
     later.mark(conn, "https://b.example/2", later.STATE_ARCHIVED, ts=T0)
     later.mark(conn, "https://c.example/3", later.STATE_DROPPED, ts=T0)
     assert [i["url"] for i in later.pending(conn)] == ["https://a.example/1"]
@@ -588,9 +654,14 @@ def test_pending_skips_triaged_and_already_fetched_items():
 def test_pending_orders_by_save_time_then_key_and_honours_limit():
     conn = _store()
     later.add_offers(conn, ["https://late.example/z"], ts=T0 + DAY)
-    later.add_offers(conn, ["https://early.example/a", "https://early.example/b"], ts=T0)
+    later.add_offers(
+        conn, ["https://early.example/a", "https://early.example/b"], ts=T0
+    )
     rows = later.pending(conn, limit=2)
-    assert [r["url"] for r in rows] == ["https://early.example/a", "https://early.example/b"]
+    assert [r["url"] for r in rows] == [
+        "https://early.example/a",
+        "https://early.example/b",
+    ]
     assert [r["url"] for r in later.pending(conn)][-1] == "https://late.example/z"
 
 
@@ -635,13 +706,20 @@ def test_run_fetch_never_calls_the_fetcher_for_a_denied_url():
 
 
 def test_run_fetch_records_http_and_transport_failures_separately():
-    conn = _queued(["https://a.example/404", "https://b.example/dns", "https://c.example/boom"])
+    conn = _queued(
+        ["https://a.example/404", "https://b.example/dns", "https://c.example/boom"]
+    )
 
     def boundary(url: str) -> dict:
         if url.endswith("404"):
             return _resp(status=404, html="<html>nope</html>")
         if url.endswith("dns"):
-            return {"status": None, "html": "", "url": url, "error": "URLError: name not known"}
+            return {
+                "status": None,
+                "html": "",
+                "url": url,
+                "error": "URLError: name not known",
+            }
         raise RuntimeError("fetcher exploded")
 
     run = later.run_fetch(conn, boundary, ts=T0, ingest=_ingest())
@@ -649,7 +727,9 @@ def test_run_fetch_records_http_and_transport_failures_separately():
     by_url = {r["url"]: r for r in run["results"]}
     assert by_url["https://a.example/404"]["error"] == "http 404"
     assert by_url["https://a.example/404"]["status"] == 404
-    assert by_url["https://a.example/404"]["content_hash"] is None  # a 404 body is not the article
+    assert (
+        by_url["https://a.example/404"]["content_hash"] is None
+    )  # a 404 body is not the article
     assert "name not known" in by_url["https://b.example/dns"]["error"]
     assert "RuntimeError: fetcher exploded" in by_url["https://c.example/boom"]["error"]
     assert later.pending(conn) == [] and len(later.pending(conn, retry=True)) == 3
@@ -663,7 +743,9 @@ def test_run_fetch_distinguishes_an_empty_body_from_an_empty_article():
             "https://b.example/thin": _resp(html=ARTICLE),
         }
     )
-    run = later.run_fetch(conn, boundary, ts=T0, ingest=_ingest(words=0, doc_id=None, title=None))
+    run = later.run_fetch(
+        conn, boundary, ts=T0, ingest=_ingest(words=0, doc_id=None, title=None)
+    )
     assert run["counts"]["empty"] == 2 and run["words"] == 0
     blank = next(r for r in run["results"] if r["url"].endswith("blank"))
     thin = next(r for r in run["results"] if r["url"].endswith("thin"))
@@ -700,8 +782,12 @@ def test_run_fetch_without_an_ingest_hashes_but_reports_no_word_count():
 
 def test_every_fetch_result_obeys_the_reading_invariants():
     conn = _queued(
-        ["https://ok.example/1", "https://bad.example/2", "https://blank.example/3",
-         "https://no.example/4"]
+        [
+            "https://ok.example/1",
+            "https://bad.example/2",
+            "https://blank.example/3",
+            "https://no.example/4",
+        ]
     )
     boundary = _Boundary(
         {
@@ -709,12 +795,22 @@ def test_every_fetch_result_obeys_the_reading_invariants():
             "https://bad.example/2": _resp(status=500, html="err"),
             "https://blank.example/3": _resp(html=""),
         },
-        default={"status": None, "html": "", "url": None, "error": "TimeoutError: timed out"},
+        default={
+            "status": None,
+            "html": "",
+            "url": None,
+            "error": "TimeoutError: timed out",
+        },
     )
     run = later.run_fetch(
         conn, boundary, ts=T0, gate=lambda u: (True, "test"), ingest=_ingest()
     )
-    assert sorted(run["counts"].items()) == [("denied", 0), ("empty", 1), ("error", 2), ("ok", 1)]
+    assert sorted(run["counts"].items()) == [
+        ("denied", 0),
+        ("empty", 1),
+        ("error", 2),
+        ("ok", 1),
+    ]
     for res in run["results"]:
         assert res["state"] in later.FETCH_STATES
         has_error = res["state"] in (later.FETCH_ERROR, later.FETCH_DENIED)
@@ -750,14 +846,22 @@ def test_content_duplicates_group_identical_bodies_in_either_fetch_order():
 def test_a_refetched_item_is_never_its_own_duplicate():
     conn = _queued(["https://a.example/1"])
     later.run_fetch(conn, _Boundary(default=_resp()), ts=T0, ingest=_ingest())
-    again = later.run_fetch(conn, _Boundary(default=_resp()), ts=T0 + DAY, retry=True, ingest=_ingest())
+    again = later.run_fetch(
+        conn, _Boundary(default=_resp()), ts=T0 + DAY, retry=True, ingest=_ingest()
+    )
     assert again["attempted"] == 0  # a successful fetch is not retried
     forced = later.run_fetch(
-        conn, _Boundary(default=_resp(status=503, html="")), ts=T0 + DAY, retry=True, ingest=_ingest()
+        conn,
+        _Boundary(default=_resp(status=503, html="")),
+        ts=T0 + DAY,
+        retry=True,
+        ingest=_ingest(),
     )
     assert forced["attempted"] == 0
     conn.execute("UPDATE items SET fetch_state = 'error' WHERE id = 1")
-    retried = later.run_fetch(conn, _Boundary(default=_resp()), ts=T0 + DAY, retry=True, ingest=_ingest())
+    retried = later.run_fetch(
+        conn, _Boundary(default=_resp()), ts=T0 + DAY, retry=True, ingest=_ingest()
+    )
     assert retried["attempted"] == 1
     assert retried["results"][0]["duplicate_of"] is None
     assert later.content_duplicates(conn) == []
@@ -785,11 +889,18 @@ def test_board_counts_states_ages_tags_and_alias_savings():
         ],
         ts=T0 - 40 * DAY,
     )
-    later.add_offers(conn, [{"url": "https://new.example/2", "tags": "cli"}], ts=T0 - DAY)
+    later.add_offers(
+        conn, [{"url": "https://new.example/2", "tags": "cli"}], ts=T0 - DAY
+    )
     later.mark(conn, "https://new.example/2", later.STATE_READING, ts=T0)
     snapshot = later.board(conn, now=T0, stale_days=30)
     assert snapshot["total"] == 2
-    assert snapshot["by_state"] == {"unread": 1, "reading": 1, "archived": 0, "dropped": 0}
+    assert snapshot["by_state"] == {
+        "unread": 1,
+        "reading": 1,
+        "archived": 0,
+        "dropped": 0,
+    }
     assert snapshot["unfetched"] == 2 and snapshot["by_fetch_state"]["ok"] == 0
     assert snapshot["oldest_unread"]["url"] == "https://old.example/1"
     assert snapshot["oldest_unread"]["age_days"] == 40.0
@@ -818,7 +929,9 @@ def test_queue_diagnostics_report_staleness_and_duplicate_bodies():
 
 
 def test_fetch_diagnostics_map_every_failure_onto_the_family_schema():
-    conn = _queued(["https://a.example/404", "https://b.example/blocked", "https://c.example/thin"])
+    conn = _queued(
+        ["https://a.example/404", "https://b.example/blocked", "https://c.example/thin"]
+    )
     boundary = _Boundary(
         {
             "https://a.example/404": _resp(status=404, html="x"),
@@ -853,7 +966,9 @@ def test_load_rules_overlay_can_silence_a_rule_and_rejects_nonsense(tmp_path):
     rules = later.load_rules(off)
     conn = _queued(["https://a.example/1"], ts=T0 - 90 * DAY)
     assert later.queue_diagnostics(conn, now=T0, rules=rules) == []
-    assert len(later.queue_diagnostics(conn, now=T0)) == 1  # and it fires without the overlay
+    assert (
+        len(later.queue_diagnostics(conn, now=T0)) == 1
+    )  # and it fires without the overlay
     bad = tmp_path / "bad.json"
     bad.write_text('{"later:not-a-rule": {}}', encoding="utf-8")
     with pytest.raises(ValueError, match="unknown rule id"):
@@ -929,7 +1044,11 @@ def test_import_of_an_export_collapses_its_own_duplicates(tmp_path):
     conn = _store()
     result = later.add_offers(conn, later.parse_bookmarks(POCKET_EXPORT), ts=T0)
     assert result["counts"] == {
-        "offered": 5, "added": 2, "duplicate": 0, "invalid": 2, "collapsed": 1
+        "offered": 5,
+        "added": 2,
+        "duplicate": 0,
+        "invalid": 2,
+        "collapsed": 1,
     }
     urls = [i["url"] for i in later.list_items(conn)]
     assert urls == ["https://example.com/post", "https://other.example/y"]
@@ -962,7 +1081,8 @@ def test_offers_from_entries_collapses_a_cross_listed_feed_item():
 
 def test_offers_from_entries_keeps_a_linkless_entry_as_an_invalid_row():
     merged = later.merge_offers(
-        later.offers_from_entries([{"feed": "x", "title": "no link", "link": None}]), ts=T0
+        later.offers_from_entries([{"feed": "x", "title": "no link", "link": None}]),
+        ts=T0,
     )
     assert merged["items"] == {}
     assert merged["invalid"][0]["error"] == "empty url"
@@ -991,7 +1111,9 @@ def test_capability_report_never_claims_a_binary_ran():
     assert cap["adapter"] == "later"
     # tied to the PROBE rather than written as a disjunct: on a box with shiori
     # installed the tier must say native, and native_used must still be False
-    expected = openswap.TIER_NATIVE if cap["native"]["found"] else openswap.TIER_FALLBACK
+    expected = (
+        openswap.TIER_NATIVE if cap["native"]["found"] else openswap.TIER_FALLBACK
+    )
     assert cap["tier"] == expected
     assert cap["native_used"] is False
     assert "never executed" in cap["native_never_executed"].lower()
@@ -1044,7 +1166,14 @@ def test_cli_later_policy_publishes_the_effective_tables():
 
 def test_cli_later_canon_shows_which_spellings_collapse():
     data = _data(
-        _cli(["later", "canon", "https://Example.com/p?utm_source=nl#x", "https://example.com/p"])
+        _cli(
+            [
+                "later",
+                "canon",
+                "https://Example.com/p?utm_source=nl#x",
+                "https://example.com/p",
+            ]
+        )
     )
     assert data["distinct"] == 1
     assert data["collapsed"][0]["url"] == "https://example.com/p"
@@ -1054,13 +1183,29 @@ def test_cli_later_canon_shows_which_spellings_collapse():
 
 def test_cli_later_add_then_list_dedupes_and_fingerprints(tmp_path):
     db = str(tmp_path / "later.db")
-    first = _data(_cli(["later", "add", "https://example.com/post", "--tag", "ai", "--db", db]))
+    first = _data(
+        _cli(["later", "add", "https://example.com/post", "--tag", "ai", "--db", db])
+    )
     assert first["counts"]["added"] == 1
     second = _data(
-        _cli(["later", "add", "https://EXAMPLE.com/post?utm_source=x", "--tag", "reread", "--db", db])
+        _cli(
+            [
+                "later",
+                "add",
+                "https://EXAMPLE.com/post?utm_source=x",
+                "--tag",
+                "reread",
+                "--db",
+                db,
+            ]
+        )
     )
     assert second["counts"] == {
-        "offered": 1, "added": 0, "duplicate": 1, "invalid": 0, "collapsed": 0
+        "offered": 1,
+        "added": 0,
+        "duplicate": 1,
+        "invalid": 0,
+        "collapsed": 0,
     }
     listing = _data(_cli(["later", "list", "--db", db]))
     assert listing["count"] == 1
@@ -1074,7 +1219,13 @@ def test_cli_later_import_reports_invalid_rows_instead_of_losing_them(tmp_path):
     export.write_text(POCKET_EXPORT, encoding="utf-8")
     db = str(tmp_path / "later.db")
     data = _data(_cli(["later", "import", str(export), "--db", db]))
-    assert data["counts"] == {"offered": 5, "added": 2, "duplicate": 0, "invalid": 2, "collapsed": 1}
+    assert data["counts"] == {
+        "offered": 5,
+        "added": 2,
+        "duplicate": 0,
+        "invalid": 2,
+        "collapsed": 1,
+    }
     assert {b["error"].split(" ")[0] for b in data["invalid"]} == {"empty", "not"}
     csv_file = tmp_path / "raindrop.csv"
     csv_file.write_text(RAINDROP_CSV, encoding="utf-8")
@@ -1092,9 +1243,23 @@ def test_cli_later_import_missing_file_fails_actionably(tmp_path):
 def test_cli_later_mark_and_board_gate_on_staleness(tmp_path):
     db = str(tmp_path / "later.db")
     _cli(["later", "add", "https://example.com/post", "--db", db])
-    moved = _data(_cli(["later", "mark", "https://example.com/post/../post", "--state", "reading", "--db", db]))
+    moved = _data(
+        _cli(
+            [
+                "later",
+                "mark",
+                "https://example.com/post/../post",
+                "--state",
+                "reading",
+                "--db",
+                db,
+            ]
+        )
+    )
     assert moved["moved"][0]["state"] == "reading"
-    bad = _cli(["later", "mark", "https://never.example/x", "--state", "reading", "--db", db])
+    bad = _cli(
+        ["later", "mark", "https://never.example/x", "--state", "reading", "--db", db]
+    )
     assert bad.returncode == 1 and "no queued item" in json.loads(bad.stdout)["error"]
     board = _data(_cli(["later", "board", "--db", db]))
     assert board["board"]["by_state"]["reading"] == 1
@@ -1164,14 +1329,23 @@ def test_cli_later_pull_bridges_the_feeds_reader(tmp_path):
         "published_ts": T0,
     }
     feeds.ingest(reader, "arxiv-cs-lg", [entry], ts=T0, keywords={"curriculum": 2.0})
-    feeds.ingest(reader, "arxiv-cs-cl", [dict(entry, guid="twin")], ts=T0, keywords={"curriculum": 2.0})
+    feeds.ingest(
+        reader,
+        "arxiv-cs-cl",
+        [dict(entry, guid="twin")],
+        ts=T0,
+        keywords={"curriculum": 2.0},
+    )
     assert reader.execute("SELECT COUNT(*) FROM entries").fetchone()[0] == 2
     data = _data(
         _cli(
             [
-                "later", "pull",
-                "--feeds-db", str(tmp_path / "feeds.db"),
-                "--db", str(tmp_path / "later.db"),
+                "later",
+                "pull",
+                "--feeds-db",
+                str(tmp_path / "feeds.db"),
+                "--db",
+                str(tmp_path / "later.db"),
                 "--mark",
             ]
         )
@@ -1183,9 +1357,12 @@ def test_cli_later_pull_bridges_the_feeds_reader(tmp_path):
     again = _data(
         _cli(
             [
-                "later", "pull",
-                "--feeds-db", str(tmp_path / "feeds.db"),
-                "--db", str(tmp_path / "later.db"),
+                "later",
+                "pull",
+                "--feeds-db",
+                str(tmp_path / "feeds.db"),
+                "--db",
+                str(tmp_path / "later.db"),
             ]
         )
     )
@@ -1193,7 +1370,16 @@ def test_cli_later_pull_bridges_the_feeds_reader(tmp_path):
 
 
 def test_cli_later_pull_without_a_reader_fails_actionably(tmp_path):
-    r = _cli(["later", "pull", "--feeds-db", str(tmp_path / "nope.db"), "--db", str(tmp_path / "l.db")])
+    r = _cli(
+        [
+            "later",
+            "pull",
+            "--feeds-db",
+            str(tmp_path / "nope.db"),
+            "--db",
+            str(tmp_path / "l.db"),
+        ]
+    )
     assert r.returncode == 1
     assert "no feeds reader store" in json.loads(r.stdout)["error"]
 
