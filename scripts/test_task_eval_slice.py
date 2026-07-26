@@ -68,7 +68,9 @@ FLOOR_RESOLVED_REFS = 80   # measured 99 resolved references (16 exact + 83 suff
 FLOOR_MEDIAN_WORDS = 29    # measured 36.0 median words per stripped task query
 FLOOR_LENGTH_RATIO = 2.65  # measured 36.0 / 11.0 = 3.27x the commit-shaped median
 FLOOR_TASK_NDCG = 0.35     # measured 0.429 NDCG@10 over all task queries
-FLOOR_STRIP_INFLATION = 0.18   # measured +22.7% NDCG if paths are left in the query
+FLOOR_STRIP_INFLATION = 0.1859  # 82.0% of the 0.2268 measured; was 0.18 = 79.4%,
+# which broke this file's own >=80% rule. A floor below the truth is what let
+# fabricated numbers pass elsewhere in this repo on 2026-07-26.   # measured +22.7% NDCG if paths are left in the query
 FLOOR_UNSTRIPPED_FLAGGED = 65  # measured 81 of 87 unstripped queries flagged as leaking
 CEIL_STRIPPED_FLAGGED = 8      # measured 6 of 87 stripped queries still leak
 CEIL_EMPTY_RESULTS = 2         # measured 0 queries that FTS5 answers with nothing
@@ -508,7 +510,57 @@ ok("determinism: DocIndex suffix resolution does not depend on set iteration ord
 
 print()
 print(f"task-shaped: {stats['kept']} pairs, median {task_shape['median_words']:.0f} words, "
-      f"NDCG@10 {task_sum['all']['ndcg']:.3f} "
-      f"(unstripped would be {unstripped['all']['ndcg']:.3f})")
+      f"NDCG@10 {task_sum['all']['ndcg']:.3f} (unstripped would be {unstripped['all']['ndcg']:.3f})")
+
+
+# ---------------------------------------------------------------------------
+# Regressions for the two REAL defects adversarial review found (2026-07-26).
+# ---------------------------------------------------------------------------
+def _t(name, cond, detail=""):
+    ok(name, cond, detail)
+
+
+_t("strip_spans: a PARTIALLY overlapping span does not leak its tail",
+   tes.strip_spans("0123456789", [(0, 5), (3, 10)]).strip() == "",
+   f"got {tes.strip_spans('0123456789', [(0, 5), (3, 10)])!r} — chars 5..9 leaked")
+
+_t("strip_spans: fully-contained overlap still removes only the union",
+   tes.strip_spans("abcdefgh", [(1, 6), (2, 4)]).replace(" ", "") == "agh",
+   f"got {tes.strip_spans('abcdefgh', [(1, 6), (2, 4)])!r}")
+
+_t("strip_spans: disjoint spans unaffected by the fix",
+   tes.strip_spans("aXbYc", [(1, 2), (3, 4)]).replace(" ", "") == "abc")
+
+_t("strip_spans: a real path fragment cannot survive an overlap",
+   "task_eval_slice" not in tes.strip_spans(
+       "see scripts/task_eval_slice.py now",
+       [(4, 20), (11, 33)]),
+   "an overlapping pair left part of the path in the query")
+
+# loader: a same-NAMED module from a DIFFERENT file must not be reused
+import types as _types
+_fake = _types.ModuleType("retrieval_eval")
+_fake.__file__ = str(Path(__file__).resolve().parent / "NOT_retrieval_eval.py")
+_fake.SENTINEL_WRONG_MODULE = True
+_saved = sys.modules.get("retrieval_eval")
+sys.modules["retrieval_eval"] = _fake
+try:
+    _got = tes._load_retrieval_eval()
+    _t("loader: rejects a same-named module from a different file",
+       not getattr(_got, "SENTINEL_WRONG_MODULE", False),
+       "the shadow was reused — a name is not an identity")
+    _t("loader: returns the real harness (has ndcg_at_k)",
+       hasattr(_got, "ndcg_at_k"))
+finally:
+    if _saved is None:
+        sys.modules.pop("retrieval_eval", None)
+    else:
+        sys.modules["retrieval_eval"] = _saved
+
+_t("floor: FLOOR_STRIP_INFLATION is >=80% of the measured 0.2268",
+   FLOOR_STRIP_INFLATION >= 0.2268 * 0.80,
+   f"{FLOOR_STRIP_INFLATION} is {FLOOR_STRIP_INFLATION / 0.2268:.1%} of measured")
+
+print()
 print(f"{len(PASS)} passed, {len(FAIL)} failed")
 sys.exit(1 if FAIL else 0)

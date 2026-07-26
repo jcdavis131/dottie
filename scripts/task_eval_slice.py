@@ -67,14 +67,21 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_retrieval_eval():
     """Import the commit-shaped harness. Reuse an already-imported one if present."""
-    mod = sys.modules.get("retrieval_eval")
-    if mod is not None:
-        return mod
-    spec = importlib.util.spec_from_file_location(
-        "retrieval_eval", Path(__file__).resolve().parent / "retrieval_eval.py"
-    )
+    want = (Path(__file__).resolve().parent / "retrieval_eval.py").resolve()
+    cached = sys.modules.get("retrieval_eval")
+    if cached is not None:
+        # Reuse ONLY if it is the same FILE. Matching on the module name alone is
+        # how a shadow wins: a stale __editable__.scout_cli-0.7.0.pth pointing at
+        # ~/scout-cli already shadowed `bigbang` in this repo and produced 8
+        # phantom test failures. A name is not an identity.
+        got = getattr(cached, "__file__", None)
+        if got and Path(got).resolve() == want:
+            return cached
+    # Load under a PRIVATE alias so this module can never itself become the
+    # shadow that the check above exists to detect.
+    spec = importlib.util.spec_from_file_location("_tes_retrieval_eval", want)
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["retrieval_eval"] = mod
+    sys.modules["_tes_retrieval_eval"] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -186,7 +193,14 @@ def strip_spans(text: str, spans) -> str:
     """Cut [start, end) ranges out of text, leaving one space where each stood."""
     out, last = [], 0
     for start, end in sorted(set(spans)):
-        if start < last:  # already inside a removed range
+        if start < last:
+            # PARTIAL overlap: this span starts inside an already-removed range
+            # but may extend BEYOND it. The first version `continue`d here, which
+            # skipped the span entirely and left its TAIL in the text — spans
+            # (0,5) and (3,10) left characters 5..10 behind, i.e. a fragment of a
+            # path survived into the query the strip exists to clean. Advance the
+            # cursor instead of skipping.
+            last = max(last, end)
             continue
         out.append(text[last:start])
         out.append(" ")
