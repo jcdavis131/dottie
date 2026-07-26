@@ -98,7 +98,9 @@ def _capability() -> dict:
     extras = {
         "py-spy": openswap.probe_binary("py-spy", probe_args=("--version",)),
         "scalene": openswap.probe_binary("scalene", probe_args=("--version",)),
-        "newrelic-admin": openswap.probe_binary("newrelic-admin", probe_args=("--help",)),
+        "newrelic-admin": openswap.probe_binary(
+            "newrelic-admin", probe_args=("--help",)
+        ),
     }
     return openswap.capability_report(
         "apm",
@@ -188,7 +190,9 @@ def detect():
 )
 def probe(
     limit: int = typer.Option(200, "--limit", help="spans the traced read step loads"),
-    service: str = typer.Option("apm-probe", "--service", help="service name for the spans"),
+    service: str = typer.Option(
+        "apm-probe", "--service", help="service name for the spans"
+    ),
     db: str | None = typer.Option(
         None, "--db", help=f"span store path (default {apm.DB_REL} or $SCOUT_APM_DB)"
     ),
@@ -196,7 +200,9 @@ def probe(
         None, "--jsonl-out", help="also write the recorded spans as JSONL (byte-exact)"
     ),
     record: bool = typer.Option(
-        True, "--record/--no-record", help="persist the spans (off = measure and report)"
+        True,
+        "--record/--no-record",
+        help="persist the spans (off = measure and report)",
     ),
 ):
     """Trace a real store round-trip with the real clock. The only measured I/O.
@@ -225,7 +231,9 @@ def probe(
         out_path.parent.mkdir(parents=True, exist_ok=True)
         # write_bytes with explicit LF: write_text would emit CRLF on Windows and
         # the same spans would diff against themselves between platforms
-        out_path.write_bytes(("\n".join(apm.to_jsonl_lines(spans)) + "\n").encode("utf-8"))
+        out_path.write_bytes(
+            ("\n".join(apm.to_jsonl_lines(spans)) + "\n").encode("utf-8")
+        )
     emit(
         ok(
             {
@@ -255,8 +263,12 @@ def probe(
     ),
 )
 def ingest(
-    file: str | None = typer.Argument(None, help="spans JSONL emitted by a traced process"),
-    stdin: bool = typer.Option(False, "--stdin", help="read the JSONL from stdin instead"),
+    file: str | None = typer.Argument(
+        None, help="spans JSONL emitted by a traced process"
+    ),
+    stdin: bool = typer.Option(
+        False, "--stdin", help="read the JSONL from stdin instead"
+    ),
     db: str | None = typer.Option(None, "--db", help="span store path"),
     strict: bool = typer.Option(
         False, "--strict", help="exit 1 if any line failed validation"
@@ -269,7 +281,9 @@ def ingest(
     elif file:
         src = Path(file)
         if not src.is_file():
-            fail_agent(f"no such spans file: {src}", command="apm ingest", example=example)
+            fail_agent(
+                f"no such spans file: {src}", command="apm ingest", example=example
+            )
         text, source = src.read_text(encoding="utf-8"), str(src)
     else:
         fail_agent(
@@ -316,9 +330,13 @@ def ingest(
     ),
 )
 def stats(
-    name: str | None = typer.Option(None, "--name", help="one operation instead of all"),
+    name: str | None = typer.Option(
+        None, "--name", help="one operation instead of all"
+    ),
     limit: int = typer.Option(5000, "--limit", help="max spans read from the store"),
-    slow_ms: float = typer.Option(apm.DEFAULT_SLOW_MS, "--slow-ms", help="p95 warning budget"),
+    slow_ms: float = typer.Option(
+        apm.DEFAULT_SLOW_MS, "--slow-ms", help="p95 warning budget"
+    ),
     critical_ms: float = typer.Option(
         apm.DEFAULT_CRITICAL_MS, "--critical-ms", help="p95 error budget"
     ),
@@ -363,8 +381,12 @@ def stats(
     ),
 )
 def traces(
-    trace: str | None = typer.Option(None, "--trace", help="one trace id instead of the board"),
-    tree: bool = typer.Option(False, "--tree", help="nest the spans (waterfall structure)"),
+    trace: str | None = typer.Option(
+        None, "--trace", help="one trace id instead of the board"
+    ),
+    tree: bool = typer.Option(
+        False, "--tree", help="nest the spans (waterfall structure)"
+    ),
     limit: int = typer.Option(20, "--limit", help="traces on the board"),
     db: str | None = typer.Option(None, "--db", help="span store path"),
 ):
@@ -386,7 +408,9 @@ def traces(
         }
     else:
         ids = apm.recent_trace_ids(conn, limit=limit)
-        spans = [s for tid in ids for s in apm.load_spans(conn, trace_id=tid, limit=100000)]
+        spans = [
+            s for tid in ids for s in apm.load_spans(conn, trace_id=tid, limit=100000)
+        ]
         payload = {"db": str(path), "traces": apm.trace_rollup(spans)}
     emit(
         ok(
@@ -409,7 +433,9 @@ def traces(
     ),
 )
 def report(
-    out: str | None = typer.Option(None, "--out", help=f"HTML path (default {REPORT_REL})"),
+    out: str | None = typer.Option(
+        None, "--out", help=f"HTML path (default {REPORT_REL})"
+    ),
     limit: int = typer.Option(5000, "--limit", help="max spans read from the store"),
     max_traces: int = typer.Option(10, "--max-traces", help="waterfalls on the page"),
     apdex_t: float = typer.Option(

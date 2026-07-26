@@ -282,8 +282,10 @@ def parse_traceback_text(text: str) -> dict[str, Any] | None:
                 raw.append(ln)
             elif ln[:1].isspace() and ln.strip():
                 # source echo, ^^^ / ~~~ markers, "[Previous line repeated...]"
-                if frames and frames[-1]["code"] is None and not ln.strip().startswith(
-                    ("^", "~", "[")
+                if (
+                    frames
+                    and frames[-1]["code"] is None
+                    and not ln.strip().startswith(("^", "~", "["))
                 ):
                     frames[-1]["code"] = ln.strip()
                 raw.append(ln)
@@ -359,9 +361,7 @@ def open_store(path: str | Path) -> sqlite3.Connection:
     conn = sqlite3.connect(str(p))
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
-    conn.execute(
-        "INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', '1')"
-    )
+    conn.execute("INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', '1')")
     conn.commit()
     return conn
 
@@ -508,9 +508,7 @@ def set_status(
     """Triage verdict; raises ValueError on a bad status, None on no such issue."""
     if status not in STATUSES:
         raise ValueError(f"status must be one of {STATUSES}, got {status!r}")
-    cur = conn.execute(
-        "UPDATE issues SET status = ? WHERE id = ?", (status, issue_id)
-    )
+    cur = conn.execute("UPDATE issues SET status = ? WHERE id = ?", (status, issue_id))
     conn.commit()
     return get_issue(conn, issue_id) if cur.rowcount else None
 
@@ -769,17 +767,17 @@ def render_html(
             detail += f"<pre>context: {e(json.dumps(ctx, default=str))}</pre>"
         rows.append(
             f'<tr class="st-{e(i["status"])}">'
-            f'<td>#{i["id"]}</td>'
+            f"<td>#{i['id']}</td>"
             f'<td><span class="lv lv-{e(i["level"])}">{e(i["level"])}</span></td>'
-            f'<td><details><summary><b>{e(i["kind"])}</b> — {e(i["message"])}'
+            f"<td><details><summary><b>{e(i['kind'])}</b> — {e(i['message'])}"
             f"</summary>"
             f'<p class="mono">{e(i["culprit"] or "?")} · fp {e(i["fingerprint"][:12])}'
             f"</p>{detail}</details></td>"
-            f'<td>{i["count"]}</td>'
+            f"<td>{i['count']}</td>"
             f'<td class="mono">{e(_iso(i["first_seen"]))}</td>'
             f'<td class="mono">{e(_iso(i["last_seen"]))}</td>'
-            f'<td>{e(i["project"])}</td>'
-            f'<td>{e(i["status"])}</td></tr>'
+            f"<td>{e(i['project'])}</td>"
+            f"<td>{e(i['status'])}</td></tr>"
         )
     body = "\n".join(rows) or '<tr><td colspan="8">no issues recorded</td></tr>'
     scope = f" · project {e(project)}" if project else ""

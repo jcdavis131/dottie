@@ -1,5 +1,9 @@
 """Tests for api — mapped to personal-graphify serve MCP tools"""
-import importlib.util, pathlib, sys, types
+
+import importlib.util
+import pathlib
+import sys
+import types
 
 MOD_PATH = "/home/hatch/workspace/dottie/packages/personal-graphify/src/personal_graphify/serve.py"
 
@@ -44,23 +48,64 @@ sys.modules[spec.name] = mod
 try:
     spec.loader.exec_module(mod)
     loaded = True
-except Exception as e:
+except Exception:
     # fallback: minimal manual MCP_TOOLS definition if load fails
     loaded = False
     mod = types.SimpleNamespace(
         MCP_TOOLS=[
-            {"name":"graphify_query","description":"query","inputSchema":{"type":"object","properties":{"question":{"type":"string"}}}},
-            {"name":"graphify_path","description":"path","inputSchema":{"type":"object","properties":{"source":{"type":"string"},"target":{"type":"string"}}}},
-            {"name":"graphify_explain","description":"explain","inputSchema":{"type":"object","properties":{"node":{"type":"string"}}}},
-            {"name":"graphify_task","description":"task","inputSchema":{"type":"object","properties":{"task":{"type":"string"}}}},
-            {"name":"graphify_onboard","description":"onboard","inputSchema":{"type":"object","properties":{}}},
+            {
+                "name": "graphify_query",
+                "description": "query",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"question": {"type": "string"}},
+                },
+            },
+            {
+                "name": "graphify_path",
+                "description": "path",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "source": {"type": "string"},
+                        "target": {"type": "string"},
+                    },
+                },
+            },
+            {
+                "name": "graphify_explain",
+                "description": "explain",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"node": {"type": "string"}},
+                },
+            },
+            {
+                "name": "graphify_task",
+                "description": "task",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"task": {"type": "string"}},
+                },
+            },
+            {
+                "name": "graphify_onboard",
+                "description": "onboard",
+                "inputSchema": {"type": "object", "properties": {}},
+            },
         ],
-        load_graph=lambda graph_path, allowed_root=None: ({"nodes":[],"edges":[]}, pathlib.Path(graph_path)) if pathlib.Path(graph_path).exists() else (_ for _ in ()).throw(FileNotFoundError(graph_path))
+        load_graph=lambda graph_path, allowed_root=None: (
+            ({"nodes": [], "edges": []}, pathlib.Path(graph_path))
+            if pathlib.Path(graph_path).exists()
+            else (_ for _ in ()).throw(FileNotFoundError(graph_path))
+        ),
     )
+
 
 def test_load_graph_function_exists():
     assert hasattr(mod, "load_graph")
     assert callable(mod.load_graph)
+
 
 def test_mcp_tools_structure():
     assert hasattr(mod, "MCP_TOOLS")
@@ -70,6 +115,7 @@ def test_mcp_tools_structure():
     assert "graphify_query" in names
     assert "graphify_path" in names
 
+
 def test_mcp_tools_input_schemas():
     for tool in mod.MCP_TOOLS:
         assert "name" in tool
@@ -78,8 +124,10 @@ def test_mcp_tools_input_schemas():
         assert "properties" in tool["inputSchema"]
         assert isinstance(tool["inputSchema"]["properties"], dict)
 
+
 def test_load_graph_raises_when_missing(tmp_path):
     import pytest
+
     missing = tmp_path / "nonexist.json"
     with pytest.raises(FileNotFoundError):
         mod.load_graph(str(missing))

@@ -3,14 +3,17 @@ import json
 import re
 import sqlite3
 
-con = sqlite3.connect(r"file:C:\Users\jcdav\dottie\tasks\artifacts\ledger_copy.sqlite3?mode=ro", uri=True)
+con = sqlite3.connect(
+    r"file:C:\Users\jcdav\dottie\tasks\artifacts\ledger_copy.sqlite3?mode=ro", uri=True
+)
 con.row_factory = sqlite3.Row
 
 n_with, n_without, n_resolved_with = 0, 0, 0
 sample = None
 for row in con.execute(
-        "SELECT id, state, attempts, implementation FROM experiments "
-        "WHERE implementation IS NOT NULL"):
+    "SELECT id, state, attempts, implementation FROM experiments "
+    "WHERE implementation IS NOT NULL"
+):
     try:
         impl = json.loads(row["implementation"])
     except Exception:
@@ -19,7 +22,10 @@ for row in con.execute(
     hist = v.get("history")
     if isinstance(hist, list) and hist:
         n_with += 1
-        if row["state"] in ("rejected", "sota", "failed_training") and row["attempts"] > 0:
+        if (
+            row["state"] in ("rejected", "sota", "failed_training")
+            and row["attempts"] > 0
+        ):
             n_resolved_with += 1
             if sample is None:
                 sample = (row["id"], row["state"], hist)
@@ -35,5 +41,7 @@ if sample:
     for h in hist:
         detail = h.get("detail", "")
         has_einsum = bool(re.search(r"einsum\(\)", detail))
-        print(f"  attempt={h.get('attempt')} ok={h.get('ok')} level={h.get('level')} "
-              f"status={h.get('status')} einsum={has_einsum} detail[:80]={detail[:80]!r}")
+        print(
+            f"  attempt={h.get('attempt')} ok={h.get('ok')} level={h.get('level')} "
+            f"status={h.get('status')} einsum={has_einsum} detail[:80]={detail[:80]!r}"
+        )

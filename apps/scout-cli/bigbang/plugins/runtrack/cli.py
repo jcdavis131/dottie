@@ -50,7 +50,7 @@ app = make_plugin_app(
     "Experiment tracking (Weights & Biases-class), fully local: stdlib sqlite "
     "run/metric store with cross-run comparison, zero egress",
     examples=[
-        'scout --json runtrack start trainer --config \'{"lr": 3e-4}\'',
+        "scout --json runtrack start trainer --config '{\"lr\": 3e-4}'",
         "scout --json runtrack log 1 --metric loss=0.42 --metric acc=0.91",
         "scout --json runtrack finish 1 --status finished",
         "scout --json runtrack compare 1 2 --metric min",
@@ -119,13 +119,13 @@ def _parse_metrics(pairs: list[str] | None, blob: str | None, command: str) -> d
             fail_agent(
                 f"--metrics must be valid JSON: {exc}",
                 command=command,
-                example='scout --json runtrack log 1 --metrics \'{"loss": 0.5}\'',
+                example="scout --json runtrack log 1 --metrics '{\"loss\": 0.5}'",
             )
         if not isinstance(parsed, dict):
             fail_agent(
                 "--metrics must be a JSON object",
                 command=command,
-                example='scout --json runtrack log 1 --metrics \'{"loss": 0.5}\'',
+                example="scout --json runtrack log 1 --metrics '{\"loss\": 0.5}'",
             )
         out.update(parsed)
     for pair in pairs or []:
@@ -210,7 +210,7 @@ def start(
             fail_agent(
                 f"--config must be valid JSON: {exc}",
                 command="runtrack start",
-                example='scout --json runtrack start trainer --config \'{"lr": 3e-4}\'',
+                example="scout --json runtrack start trainer --config '{\"lr\": 3e-4}'",
             )
     conn, path = _open_new(db)
     try:
@@ -237,7 +237,7 @@ def start(
     epilog=examples_epilog(
         [
             "scout --json runtrack log 1 --metric loss=0.42 --metric acc=0.91",
-            'scout --json runtrack log 1 --metrics \'{"loss": 0.42}\' --step 100',
+            "scout --json runtrack log 1 --metrics '{\"loss\": 0.42}' --step 100",
         ]
     ),
 )

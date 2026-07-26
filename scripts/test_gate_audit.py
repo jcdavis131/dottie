@@ -47,13 +47,13 @@ def scan(src: str):
 
 # Instance #3: dataset_discovery.py — the licence skip was disabled in --dry-run,
 # the exact mode the daily cron uses.
-BUG_MODE_ESCAPE = '''
+BUG_MODE_ESCAPE = """
 def write_manifest(cands, args):
     for cand in cands:
         if not cand.get("license_ok", False) and not args.dry_run:
             continue
         emit(cand)
-'''
+"""
 hits = scan(BUG_MODE_ESCAPE)
 check(
     "catches the real --dry-run licence escape (instance #3)",
@@ -63,7 +63,7 @@ check(
 
 # Instance #1: check_permission fell through to `return True, "ok"` for an
 # unrecognised action, so a typo'd action name wrote freely.
-BUG_FAIL_OPEN = '''
+BUG_FAIL_OPEN = """
 def check_permission(manifest, action, resource):
     if action == "network":
         return False, "denied"
@@ -72,7 +72,7 @@ def check_permission(manifest, action, resource):
     if action == "secret":
         return False, "denied"
     return True, "ok"
-'''
+"""
 hits = scan(BUG_FAIL_OPEN)
 check(
     "catches the real fail-open dispatch (instance #1)",
@@ -83,16 +83,18 @@ check(
 # ---------------------------------------------------------------------------
 # The fixes must NOT be flagged, or the auditor cries wolf forever.
 # ---------------------------------------------------------------------------
-FIXED_MODE_ESCAPE = '''
+FIXED_MODE_ESCAPE = """
 def write_manifest(cands, args):
     for cand in cands:
         if not cand.get("license_ok", False):
             continue
         emit(cand)
-'''
-check("fixed escape is clean", scan(FIXED_MODE_ESCAPE) == [], str(scan(FIXED_MODE_ESCAPE)))
+"""
+check(
+    "fixed escape is clean", scan(FIXED_MODE_ESCAPE) == [], str(scan(FIXED_MODE_ESCAPE))
+)
 
-FIXED_FAIL_OPEN = '''
+FIXED_FAIL_OPEN = """
 KNOWN = ("network", "fs_write", "secret")
 def check_permission(manifest, action, resource):
     if action not in KNOWN:
@@ -104,7 +106,7 @@ def check_permission(manifest, action, resource):
     if action == "secret":
         return False, "denied"
     return True, "ok"
-'''
+"""
 check(
     "membership guard clears the dispatch finding",
     not any(h["shape"] == "fail-open-dispatch" for h in scan(FIXED_FAIL_OPEN)),
@@ -116,27 +118,31 @@ check(
 # ---------------------------------------------------------------------------
 check(
     "a mode flag with NO safety word is not flagged",
-    scan('''
+    scan("""
 def f(args):
     if verbose and not args.dry_run:
         print("x")
-''') == [],
+""")
+    == [],
     "business logic gated on a mode is normal",
 )
 
 check(
     "a single == branch is not a dispatch",
-    scan('''
+    scan("""
 def f(kind):
     if kind == "a":
         return 1
     return 2
-''') == [],
+""")
+    == [],
 )
 
 check(
     "an else on the dispatch clears it",
-    not any(h["shape"] == "fail-open-dispatch" for h in scan('''
+    not any(
+        h["shape"] == "fail-open-dispatch"
+        for h in scan("""
 def f(kind):
     if kind == "a":
         return 1
@@ -144,7 +150,8 @@ def f(kind):
         return 2
     else:
         raise ValueError(kind)
-''')),
+""")
+    ),
 )
 
 # ---------------------------------------------------------------------------
@@ -153,7 +160,9 @@ def f(kind):
 # ---------------------------------------------------------------------------
 check(
     "a formatting dispatch with a real default still trips the heuristic (KNOWN FP)",
-    any(h["shape"] == "fail-open-dispatch" for h in scan('''
+    any(
+        h["shape"] == "fail-open-dispatch"
+        for h in scan("""
 def _weight_for(k):
     if k == "phrase":
         return 3.0
@@ -162,7 +171,8 @@ def _weight_for(k):
     if k == "connector":
         return 1.2
     return 1.5
-''')),
+""")
+    ),
     "documents the heuristic's cost: an explicit trailing default is indistinguishable "
     "from a fall-through by shape alone",
 )

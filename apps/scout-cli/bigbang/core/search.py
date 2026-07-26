@@ -209,7 +209,11 @@ def fts5_probe() -> dict[str, Any]:
     except sqlite3.Error as exc:  # no FTS5, or a tokenizer this build rejects
         report["error"] = f"{type(exc).__name__}: {exc}"
         return report
-    if row is None or not isinstance(row[0], (int, float)) or "[quick]" not in (row[1] or ""):
+    if (
+        row is None
+        or not isinstance(row[0], (int, float))
+        or "[quick]" not in (row[1] or "")
+    ):
         report["error"] = (
             "FTS5 present but bm25()/snippet() did not return a usable ranked "
             f"snippet (got {row!r})"
@@ -332,7 +336,9 @@ def iter_files(
     """
     inc = tuple(include) if include else default_include()
     exc = tuple(exclude or ())
-    skip_dirs = set(exclude_dirs) if exclude_dirs is not None else set(DEFAULT_EXCLUDE_DIRS)
+    skip_dirs = (
+        set(exclude_dirs) if exclude_dirs is not None else set(DEFAULT_EXCLUDE_DIRS)
+    )
     found: dict[str, Path] = {}
 
     def _accept(stored: str, real: Path) -> None:
@@ -378,7 +384,11 @@ def read_document(
     try:
         st = p.stat()
         if st.st_size > max_kb * 1024:
-            return None, "too-large", {"size": int(st.st_size), "mtime": float(st.st_mtime)}
+            return (
+                None,
+                "too-large",
+                {"size": int(st.st_size), "mtime": float(st.st_mtime)},
+            )
         data = p.read_bytes()
     except OSError:
         return None, "unreadable", {}
@@ -396,9 +406,10 @@ def read_document(
 
 
 def _stat_matches(row: sqlite3.Row | dict[str, Any], st: os.stat_result) -> bool:
-    return int(row["size"]) == int(st.st_size) and abs(
-        float(row["mtime"]) - float(st.st_mtime)
-    ) <= MTIME_EPSILON
+    return (
+        int(row["size"]) == int(st.st_size)
+        and abs(float(row["mtime"]) - float(st.st_mtime)) <= MTIME_EPSILON
+    )
 
 
 def _under_root(stored: str, root: str) -> bool:
@@ -519,7 +530,14 @@ def index_paths(
             conn.execute(
                 "UPDATE files SET mtime = ?, size = ?, sha256 = ?, chars = ?, "
                 "indexed_ts = ? WHERE id = ?",
-                (meta["mtime"], meta["size"], meta["sha256"], len(text), now, row["id"]),
+                (
+                    meta["mtime"],
+                    meta["size"],
+                    meta["sha256"],
+                    len(text),
+                    now,
+                    row["id"],
+                ),
             )
             conn.execute("DELETE FROM docs WHERE rowid = ?", (row["id"],))
             conn.execute(
@@ -700,7 +718,9 @@ def query(
 # ---- stats + staleness ------------------------------------------------------
 
 
-def stats(conn: sqlite3.Connection, *, check: bool = True, limit: int = 20) -> dict[str, Any]:
+def stats(
+    conn: sqlite3.Connection, *, check: bool = True, limit: int = 20
+) -> dict[str, Any]:
     """Corpus rollup, plus (by default) a stat-only audit of index freshness.
 
     The audit never reads a file body: it stats every indexed path and reports

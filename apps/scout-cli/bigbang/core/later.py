@@ -122,13 +122,47 @@ SCOPE_LIMITS = (
 # and from a tweet ONE queue row.
 TRACKING_PARAMS = frozenset(
     {
-        "fbclid", "gclid", "gclsrc", "dclid", "wbraid", "gbraid", "msclkid",
-        "twclid", "igshid", "ttclid", "yclid", "s_cid", "mc_cid", "mc_eid",
-        "oly_anon_id", "oly_enc_id", "vero_conv", "vero_id", "ck_subscriber_id",
-        "_hsenc", "_hsmi", "hsctatracking", "mkt_tok", "trk", "trkcampaign",
-        "ref_src", "ref_url", "spm", "scm", "share_id", "sharetype",
-        "campaign_id", "cmpid", "ncid", "sr_share", "wt_mc", "at_medium",
-        "at_campaign", "guccounter", "guce_referrer", "guce_referrer_sig",
+        "fbclid",
+        "gclid",
+        "gclsrc",
+        "dclid",
+        "wbraid",
+        "gbraid",
+        "msclkid",
+        "twclid",
+        "igshid",
+        "ttclid",
+        "yclid",
+        "s_cid",
+        "mc_cid",
+        "mc_eid",
+        "oly_anon_id",
+        "oly_enc_id",
+        "vero_conv",
+        "vero_id",
+        "ck_subscriber_id",
+        "_hsenc",
+        "_hsmi",
+        "hsctatracking",
+        "mkt_tok",
+        "trk",
+        "trkcampaign",
+        "ref_src",
+        "ref_url",
+        "spm",
+        "scm",
+        "share_id",
+        "sharetype",
+        "campaign_id",
+        "cmpid",
+        "ncid",
+        "sr_share",
+        "wt_mc",
+        "at_medium",
+        "at_campaign",
+        "guccounter",
+        "guce_referrer",
+        "guce_referrer_sig",
     }
 )
 # Prefix families: utm_* (Google/Urchin), pk_*/mtm_* (Matomo), _ga* / ga_*,
@@ -184,7 +218,9 @@ def validate_policy(raw: Any) -> dict[str, Any]:
             raise ValueError(f"unknown policy key {key!r} (known: {sorted(merged)})")
         if key == "extra_tracking_params":
             if not (isinstance(value, list) and all(isinstance(v, str) for v in value)):
-                raise ValueError("extra_tracking_params must be a list of parameter names")
+                raise ValueError(
+                    "extra_tracking_params must be a list of parameter names"
+                )
             merged[key] = sorted({v.strip().lower() for v in value if v.strip()})
             continue
         if not isinstance(value, bool):
@@ -278,7 +314,9 @@ def url_key(canonical: str) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _authority(scheme: str, netloc: str, pol: dict[str, Any], applied: list[str]) -> tuple[str, str | None]:
+def _authority(
+    scheme: str, netloc: str, pol: dict[str, Any], applied: list[str]
+) -> tuple[str, str | None]:
     """(canonical authority, error) for one URL under `pol`."""
     userinfo, host, port = split_authority(netloc)
     if userinfo and pol["drop_userinfo"]:
@@ -309,14 +347,18 @@ def _authority(scheme: str, netloc: str, pol: dict[str, Any], applied: list[str]
     return (f"{authority}:{port}" if port else authority), None
 
 
-def _query(query: str, pol: dict[str, Any], applied: list[str], dropped: list[str]) -> str:
+def _query(
+    query: str, pol: dict[str, Any], applied: list[str], dropped: list[str]
+) -> str:
     """Canonical query string: tracking params dropped, survivors sorted."""
     # empty tokens ("a&&b", a trailing "&") carry nothing and are dropped
     tokens = [t for t in query.split("&") if t]
     kept: list[tuple[str, str]] = []
     for token in tokens:
         name = token.split("=", 1)[0]
-        if pol["drop_tracking_params"] and is_tracking_param(name, pol["extra_tracking_params"]):
+        if pol["drop_tracking_params"] and is_tracking_param(
+            name, pol["extra_tracking_params"]
+        ):
             dropped.append(name)
             continue
         text = normalize_percent(token) if pol["normalize_percent_encoding"] else token
@@ -332,7 +374,9 @@ def _query(query: str, pol: dict[str, Any], applied: list[str], dropped: list[st
     return "&".join(ordered)
 
 
-def canonicalise(raw: Any, *, base: str = "", policy: dict[str, Any] | None = None) -> dict[str, Any]:
+def canonicalise(
+    raw: Any, *, base: str = "", policy: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """One URL -> its canonical form, or an error saying why it has none.
 
     EITHER `url` + `key` OR `error` — never both, never neither. `applied` names
@@ -454,7 +498,9 @@ def _as_offer(value: Any) -> dict[str, Any]:
             source=value.get("source") or DEFAULT_SOURCE,
             added_ts=value.get("added_ts"),
         )
-    raise TypeError(f"an offer must be a url string or a dict, got {type(value).__name__}")
+    raise TypeError(
+        f"an offer must be a url string or a dict, got {type(value).__name__}"
+    )
 
 
 def merge_text(a: Any, b: Any) -> str | None:
@@ -477,9 +523,7 @@ def merge_text(a: Any, b: Any) -> str | None:
 def merge_sources(a: Any, b: Any) -> str:
     """Union of comma-separated provenance labels, sorted (a set, so commutative)."""
     parts = {
-        _clean(p)
-        for value in (a, b)
-        for p in (str(value).split(",") if value else [])
+        _clean(p) for value in (a, b) for p in (str(value).split(",") if value else [])
     }
     return ",".join(sorted(p for p in parts if p)) or DEFAULT_SOURCE
 
@@ -491,7 +535,10 @@ def merge_ts(a: float | None, b: float | None) -> float | None:
 
 
 def merge_offers(
-    offers: Iterable[Any], *, policy: dict[str, Any] | None = None, ts: float | None = None
+    offers: Iterable[Any],
+    *,
+    policy: dict[str, Any] | None = None,
+    ts: float | None = None,
 ) -> dict[str, Any]:
     """Fold a bag of offers into one row per canonical key. ORDER-INDEPENDENT.
 
@@ -596,9 +643,24 @@ CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
 _ITEM_COLUMNS = (
-    "id", "key", "url", "title", "note", "state", "source", "added_ts",
-    "added_ts_source", "state_ts", "fetch_state", "fetch_ts", "fetch_status",
-    "fetch_error", "attempts", "content_hash", "doc_id", "words",
+    "id",
+    "key",
+    "url",
+    "title",
+    "note",
+    "state",
+    "source",
+    "added_ts",
+    "added_ts_source",
+    "state_ts",
+    "fetch_state",
+    "fetch_ts",
+    "fetch_status",
+    "fetch_error",
+    "attempts",
+    "content_hash",
+    "doc_id",
+    "words",
 )
 
 
@@ -640,7 +702,9 @@ def get_by_key(conn: sqlite3.Connection, key: str) -> dict[str, Any] | None:
 
 
 def get_by_id(conn: sqlite3.Connection, item_id: int) -> dict[str, Any] | None:
-    return _row(conn.execute("SELECT * FROM items WHERE id = ?", (int(item_id),)).fetchone())
+    return _row(
+        conn.execute("SELECT * FROM items WHERE id = ?", (int(item_id),)).fetchone()
+    )
 
 
 def resolve_ident(
@@ -688,9 +752,15 @@ def add_offers(
                 "INSERT INTO items(key, url, title, note, tags, state, source,"
                 " added_ts, added_ts_source) VALUES(?,?,?,?,?,?,?,?,?)",
                 (
-                    key, row["url"], row["title"], row["note"],
-                    json.dumps(row["tags"]), STATE_UNREAD, row["source"],
-                    row["added_ts"], row["added_ts_source"],
+                    key,
+                    row["url"],
+                    row["title"],
+                    row["note"],
+                    json.dumps(row["tags"]),
+                    STATE_UNREAD,
+                    row["source"],
+                    row["added_ts"],
+                    row["added_ts_source"],
                 ),
             )
             added.append(
@@ -714,7 +784,9 @@ def add_offers(
                     json.dumps(tags),
                     merge_sources(existing["source"], row["source"]),
                     merge_ts(existing["added_ts"], row["added_ts"]),
-                    "offer" if "offer" in (existing["added_ts_source"], row["added_ts_source"]) else "run-clock",
+                    "offer"
+                    if "offer" in (existing["added_ts_source"], row["added_ts_source"])
+                    else "run-clock",
                     key,
                 ),
             )
@@ -795,7 +867,8 @@ def mark(
         raise ValueError(f"no queued item for {ident!r} ({how})")
     now = time.time() if ts is None else float(ts)
     conn.execute(
-        "UPDATE items SET state = ?, state_ts = ? WHERE id = ?", (state, now, item["id"])
+        "UPDATE items SET state = ?, state_ts = ? WHERE id = ?",
+        (state, now, item["id"]),
     )
     conn.commit()
     return {
@@ -851,7 +924,11 @@ def pending(
     conn: sqlite3.Connection, *, limit: int = DEFAULT_FETCH_LIMIT, retry: bool = False
 ) -> list[dict[str, Any]]:
     """Items a fetch pass should try, oldest-save first (deterministic order)."""
-    clause = "(fetch_state IS NULL OR fetch_state <> 'ok')" if retry else "fetch_state IS NULL"
+    clause = (
+        "(fetch_state IS NULL OR fetch_state <> 'ok')"
+        if retry
+        else "fetch_state IS NULL"
+    )
     placeholders = ",".join("?" for _ in FETCHABLE_STATES)
     rows = conn.execute(
         # S608: both fragments are fixed literals built here, values are bound
@@ -874,7 +951,9 @@ def content_duplicates(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     ).fetchall()
     groups: dict[str, list[dict[str, Any]]] = {}
     for r in rows:
-        groups.setdefault(r["content_hash"], []).append({"id": int(r["id"]), "url": r["url"]})
+        groups.setdefault(r["content_hash"], []).append(
+            {"id": int(r["id"]), "url": r["url"]}
+        )
     return [
         {"content_hash": h, "items": members}
         for h, members in sorted(groups.items())
@@ -882,7 +961,9 @@ def content_duplicates(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     ]
 
 
-def _content_duplicate_of(conn: sqlite3.Connection, hash_hex: str, item_id: int) -> int | None:
+def _content_duplicate_of(
+    conn: sqlite3.Connection, hash_hex: str, item_id: int
+) -> int | None:
     row = conn.execute(
         "SELECT MIN(id) AS first_id FROM items WHERE content_hash = ? AND id <> ?",
         (hash_hex, int(item_id)),
@@ -928,9 +1009,17 @@ def _fetch_one(
 ) -> dict[str, Any]:
     """One response -> the result row. Pure apart from the duplicate lookup."""
     res: dict[str, Any] = {
-        "id": item["id"], "url": item["url"], "state": FETCH_ERROR,
-        "status": response.get("status"), "content_hash": None, "doc_id": None,
-        "words": None, "duplicate_of": None, "error": None, "note": None, "title": None,
+        "id": item["id"],
+        "url": item["url"],
+        "state": FETCH_ERROR,
+        "status": response.get("status"),
+        "content_hash": None,
+        "doc_id": None,
+        "words": None,
+        "duplicate_of": None,
+        "error": None,
+        "note": None,
+        "title": None,
     }
     status = response.get("status")
     if response.get("error"):
@@ -993,12 +1082,21 @@ def run_fetch(
             allowed, reason = gate(item["url"])
             if not allowed:
                 res = {
-                    "id": item["id"], "url": item["url"], "state": FETCH_DENIED,
-                    "status": None, "content_hash": None, "doc_id": None,
-                    "words": None, "duplicate_of": None, "note": None, "title": None,
+                    "id": item["id"],
+                    "url": item["url"],
+                    "state": FETCH_DENIED,
+                    "status": None,
+                    "content_hash": None,
+                    "doc_id": None,
+                    "words": None,
+                    "duplicate_of": None,
+                    "note": None,
+                    "title": None,
                     "error": f"policy-denied: {reason}",
                 }
-                _record_fetch(conn, item["id"], ts=now, state=FETCH_DENIED, error=res["error"])
+                _record_fetch(
+                    conn, item["id"], ts=now, state=FETCH_DENIED, error=res["error"]
+                )
                 results.append(res)
                 continue
         try:
@@ -1035,7 +1133,10 @@ def run_fetch(
 
 
 def board(
-    conn: sqlite3.Connection, *, now: float | None = None, stale_days: float = STALE_DAYS
+    conn: sqlite3.Connection,
+    *,
+    now: float | None = None,
+    stale_days: float = STALE_DAYS,
 ) -> dict[str, Any]:
     """Queue rollup. A measurement that cannot be taken is None WITH a reason."""
     clock = time.time() if now is None else float(now)
@@ -1063,11 +1164,15 @@ def board(
         age_days = (clock - item["added_ts"]) / DAY
         if oldest is None:
             oldest = {
-                "id": item["id"], "url": item["url"], "added_ts": item["added_ts"],
+                "id": item["id"],
+                "url": item["url"],
+                "added_ts": item["added_ts"],
                 "age_days": round(age_days, 2),
             }
         if age_days >= stale_days:
-            stale.append({"id": item["id"], "url": item["url"], "age_days": round(age_days, 2)})
+            stale.append(
+                {"id": item["id"], "url": item["url"], "age_days": round(age_days, 2)}
+            )
     notes: list[str] = []
     if oldest is None:
         notes.append(
@@ -1130,7 +1235,11 @@ def load_rules(path: str | Path | None = None) -> dict[str, dict[str, Any]]:
 
 
 def _diag(
-    rules: dict[str, dict[str, Any]], rule: str, path: str, message: str, suggestion: str | None = None
+    rules: dict[str, dict[str, Any]],
+    rule: str,
+    path: str,
+    message: str,
+    suggestion: str | None = None,
 ) -> dict[str, Any] | None:
     cfg = rules.get(rule) or {}
     if not cfg.get("enabled", True):
@@ -1168,7 +1277,11 @@ def fetch_diagnostics(
         )
     for res in results:
         if res["state"] == FETCH_ERROR:
-            diags.append(_diag(rs, "later:fetch-error", res["url"], f"fetch failed: {res['error']}"))
+            diags.append(
+                _diag(
+                    rs, "later:fetch-error", res["url"], f"fetch failed: {res['error']}"
+                )
+            )
         elif res["state"] == FETCH_DENIED:
             diags.append(
                 _diag(
@@ -1180,7 +1293,14 @@ def fetch_diagnostics(
                 )
             )
         elif res["state"] == FETCH_EMPTY:
-            diags.append(_diag(rs, "later:empty-article", res["url"], f"nothing ingested: {res['note']}"))
+            diags.append(
+                _diag(
+                    rs,
+                    "later:empty-article",
+                    res["url"],
+                    f"nothing ingested: {res['note']}",
+                )
+            )
     return openswap.sort_diagnostics([d for d in diags if d is not None])
 
 
@@ -1414,7 +1534,9 @@ def offers_from_entries(entries: Iterable[dict[str, Any]]) -> list[dict[str, Any
     out: list[dict[str, Any]] = []
     for entry in entries:
         feed = _clean(entry.get("feed"))
-        tags = normalize_tags(list(entry.get("matched") or []) + list(entry.get("tags") or []))
+        tags = normalize_tags(
+            list(entry.get("matched") or []) + list(entry.get("tags") or [])
+        )
         published = entry.get("published_ts")
         first_seen = entry.get("first_seen_ts")
         out.append(

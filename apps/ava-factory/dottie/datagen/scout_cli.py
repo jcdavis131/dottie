@@ -36,21 +36,23 @@ Curriculum placement: phases (2, 3, 5).
 Byte-deterministic: private random.Random only, sorted structures, json.dumps
 with sort_keys, no wall-clock, no network, no global random.
 """
+
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Iterator, List
+from collections.abc import Iterator
+from typing import Any
 
 from dottie.datagen.base import Generator, run_cli
-
 
 # --- faithful mirror of bigbang.core.contract.{ok,err} ----------------------
 # Reproduced (not imported) so the generator stays self-contained and offline,
 # exactly as compression.py reimplements its algorithms. Kept byte-identical to
 # the real envelope so the trainee learns the true output shape.
 
-def _ok(data: Any, *, command: str, discover: str | None = None) -> Dict[str, Any]:
-    payload: Dict[str, Any] = {"ok": True, "command": command}
+
+def _ok(data: Any, *, command: str, discover: str | None = None) -> dict[str, Any]:
+    payload: dict[str, Any] = {"ok": True, "command": command}
     if data is not None:
         payload["data"] = data
     if discover:
@@ -58,14 +60,14 @@ def _ok(data: Any, *, command: str, discover: str | None = None) -> Dict[str, An
     return payload
 
 
-def _err(error: str, *, command: str, discover: str | None = None) -> Dict[str, Any]:
-    payload: Dict[str, Any] = {"ok": False, "command": command, "error": error}
+def _err(error: str, *, command: str, discover: str | None = None) -> dict[str, Any]:
+    payload: dict[str, Any] = {"ok": False, "command": command, "error": error}
     if discover:
         payload["discover"] = discover
     return payload
 
 
-def _dumps(envelope: Dict[str, Any]) -> str:
+def _dumps(envelope: dict[str, Any]) -> str:
     """How `scout --json` serializes: json.dump(..., indent=2) with NO sort_keys
     (see bigbang/core/output.py:emit), so keys print in insertion order -- ok,
     command, data -- exactly like the real envelope. The builders construct every
@@ -80,9 +82,17 @@ def _dumps(envelope: Dict[str, Any]) -> str:
 # learns a command that isn't there.
 
 _PLUGINS = [
-    ("system", "doctor", "check the local environment (git, docker, ollama, vault, audit log)"),
+    (
+        "system",
+        "doctor",
+        "check the local environment (git, docker, ollama, vault, audit log)",
+    ),
     ("system", "audit", "show the last N audited tool calls"),
-    ("system", "policy", "list each plugin's declared capabilities (network/filesystem/secrets)"),
+    (
+        "system",
+        "policy",
+        "list each plugin's declared capabilities (network/filesystem/secrets)",
+    ),
     ("skill", "show", "read what a skill teaches before invoking it"),
     ("skill", "list", "enumerate installed skills"),
     ("tasks", "add", "record a follow-up task on a list"),
@@ -94,10 +104,34 @@ _PLUGINS = [
 
 # snake_case fragments used to synthesize believable new plugin/command names
 # for the build family (deterministic, never a real collision-sensitive value).
-_BUILD_NOUNS = ["ledger", "beacon", "sifter", "harbor", "quill", "tally", "relay",
-                "warden", "lattice", "cinder", "meadow", "pylon", "drift", "ember"]
-_BUILD_VERBS = ["scan", "emit", "digest", "fetch", "index", "verify", "summarize",
-                "route", "reconcile", "snapshot"]
+_BUILD_NOUNS = [
+    "ledger",
+    "beacon",
+    "sifter",
+    "harbor",
+    "quill",
+    "tally",
+    "relay",
+    "warden",
+    "lattice",
+    "cinder",
+    "meadow",
+    "pylon",
+    "drift",
+    "ember",
+]
+_BUILD_VERBS = [
+    "scan",
+    "emit",
+    "digest",
+    "fetch",
+    "index",
+    "verify",
+    "summarize",
+    "route",
+    "reconcile",
+    "snapshot",
+]
 
 
 class ScoutCliGenerator(Generator):
@@ -128,16 +162,20 @@ class ScoutCliGenerator(Generator):
     def _family_for_phase(self, phase: int) -> str:
         if phase == 2:
             # foundation: drills + single-step use + basic build
-            return self.rng.choice(["scout_contract", "scout_contract", "scout_use", "scout_build"])
+            return self.rng.choice(
+                ["scout_contract", "scout_contract", "scout_use", "scout_build"]
+            )
         if phase == 3:
             # reasoning: multi-step use, grounding/recovery, full build
-            return self.rng.choice(["scout_use", "scout_ground", "scout_ground", "scout_build"])
+            return self.rng.choice(
+                ["scout_use", "scout_ground", "scout_ground", "scout_build"]
+            )
         # p5 anneal: highest-quality verified builds + verified trajectories
         return self.rng.choice(["scout_build", "scout_build", "scout_use"])
 
     # ---- helpers -----------------------------------------------------------
 
-    def _doctor_checks(self) -> List[Dict[str, Any]]:
+    def _doctor_checks(self) -> list[dict[str, Any]]:
         """A realistic `system doctor` check list; ollama is 'down (expected
         local)' by design (the real doctor labels a missing local ollama not-ok
         but harmless)."""
@@ -145,45 +183,93 @@ class ScoutCliGenerator(Generator):
         return [
             {"check": "python", "status": "3.13.1", "ok": True},
             {"check": "git", "status": "/usr/bin/git", "ok": True},
-            {"check": "docker", "status": "/usr/bin/docker" if docker_ok else "missing", "ok": docker_ok},
+            {
+                "check": "docker",
+                "status": "/usr/bin/docker" if docker_ok else "missing",
+                "ok": docker_ok,
+            },
             {"check": "ollama", "status": "down (expected local)", "ok": False},
-            {"check": "vault", "status": "~/.local/share/bigbang/secrets.json exists, mode 0600", "ok": True},
+            {
+                "check": "vault",
+                "status": "~/.local/share/bigbang/secrets.json exists, mode 0600",
+                "ok": True,
+            },
         ]
 
     def _payload_for(self, plugin: str, command: str) -> Any:
         """Deterministic, realistic `data` for a given real command."""
         if plugin == "system" and command == "doctor":
             checks = self._doctor_checks()
-            return {"message": "doctor complete", "checks": checks,
-                    "security": "vault 0600, policy caps, audit jsonl"}
+            return {
+                "message": "doctor complete",
+                "checks": checks,
+                "security": "vault 0600, policy caps, audit jsonl",
+            }
         if plugin == "system" and command == "audit":
             n = self.rng.randint(2, 4)
-            tail = [{"seq": i, "command": self.rng.choice(["skill show scout", "tasks list", "vector search"])}
-                    for i in range(n)]
-            return {"audit_tail": tail, "count": n,
-                    "file": "~/.local/share/bigbang/audit.jsonl"}
+            tail = [
+                {
+                    "seq": i,
+                    "command": self.rng.choice(
+                        ["skill show scout", "tasks list", "vector search"]
+                    ),
+                }
+                for i in range(n)
+            ]
+            return {
+                "audit_tail": tail,
+                "count": n,
+                "file": "~/.local/share/bigbang/audit.jsonl",
+            }
         if plugin == "system" and command == "policy":
-            return {"policies": [{"name": "system", "network": False, "filesystem_write": False}],
-                    "note": "each plugin declares capabilities; default deny"}
+            return {
+                "policies": [
+                    {"name": "system", "network": False, "filesystem_write": False}
+                ],
+                "note": "each plugin declares capabilities; default deny",
+            }
         if plugin == "skill" and command == "show":
-            return {"skill": "scout", "commands": ["system doctor", "skill list", "tasks add"],
-                    "teaches": "how to drive scout end to end"}
+            return {
+                "skill": "scout",
+                "commands": ["system doctor", "skill list", "tasks add"],
+                "teaches": "how to drive scout end to end",
+            }
         if plugin == "skill" and command == "list":
-            return {"skills": sorted(["scout", "memory-mint", "jspace-context-engine"]), "count": 3}
+            return {
+                "skills": sorted(["scout", "memory-mint", "jspace-context-engine"]),
+                "count": 3,
+            }
         if plugin == "tasks" and command == "add":
-            return {"added": "re-run the eval gate after retrain", "id": self.rng.randint(10, 99)}
+            return {
+                "added": "re-run the eval gate after retrain",
+                "id": self.rng.randint(10, 99),
+            }
         if plugin == "tasks" and command == "list":
-            return {"open": [{"id": 12, "text": "wire compression curriculum"}], "count": 1}
+            return {
+                "open": [{"id": 12, "text": "wire compression curriculum"}],
+                "count": 1,
+            }
         if plugin == "vector" and command == "search":
             k = self.rng.randint(1, 3)
-            return {"query": "how does the eval gate score a checkpoint",
-                    "results": [{"id": 100 + i, "score": round(0.9 - 0.1 * i, 3),
-                                 "text": "the harness scores per-rubric, anti-mock"} for i in range(k)]}
+            return {
+                "query": "how does the eval gate score a checkpoint",
+                "results": [
+                    {
+                        "id": 100 + i,
+                        "score": round(0.9 - 0.1 * i, 3),
+                        "text": "the harness scores per-rubric, anti-mock",
+                    }
+                    for i in range(k)
+                ],
+            }
         if plugin == "tools" and command == "list":
             return {"tools": sorted(["search", "read", "emit"]), "count": 3}
         if plugin == "tools" and command == "teach":
-            return {"tool": "search", "how": "scout --json vector search '<query>'",
-                    "returns": "ranked results with scores"}
+            return {
+                "tool": "search",
+                "how": "scout --json vector search '<query>'",
+                "returns": "ranked results with scores",
+            }
         return {"note": "ok"}
 
     # ---- families ----------------------------------------------------------
@@ -219,8 +305,11 @@ Source: scout_cli/contract doc {idx} -- P{phase} automatic, envelope literacy.
         elif which == "err_shape":
             plugin, command, _ = self.rng.choice(_PLUGINS)
             cmd = f"{plugin} bogus"
-            env = _err(f"no such command 'bogus' under '{plugin}'", command=cmd,
-                       discover=f"scout {plugin} --help")
+            env = _err(
+                f"no such command 'bogus' under '{plugin}'",
+                command=cmd,
+                discover=f"scout {plugin} --help",
+            )
             text = f"""Drill: the scout error envelope (bigbang.core.contract.err)
 
 A failure is built by `err(error, command=..., discover=...)`: `"ok": false`,
@@ -241,12 +330,14 @@ Source: scout_cli/contract doc {idx} -- P{phase} automatic, failure literacy.
             concept = "scout_err_envelope"
         else:
             # capability default-deny drill
-            manifest = ("name: mytool\n"
-                        "version: 0.7.0\n"
-                        "capabilities:\n"
-                        "  network:\n    enabled: false\n    domains: []\n"
-                        "  filesystem:\n    write: false\n    paths: []\n"
-                        "  secrets:\n    allow: []\n")
+            manifest = (
+                "name: mytool\n"
+                "version: 0.7.0\n"
+                "capabilities:\n"
+                "  network:\n    enabled: false\n    domains: []\n"
+                "  filesystem:\n    write: false\n    paths: []\n"
+                "  secrets:\n    allow: []\n"
+            )
             text = f"""Drill: scout capability posture is default-deny
 
 Every plugin ships a manifest.yaml declaring what it may touch. A freshly
@@ -264,8 +355,13 @@ each surface is permitted to do.
 Source: scout_cli/contract doc {idx} -- P{phase} automatic, security posture.
 """
             concept = "scout_capability_default_deny"
-        return self.doc(text=text, task_type="automatic", concept=concept,
-                        phase=phase, source="scout_cli/contract")
+        return self.doc(
+            text=text,
+            task_type="automatic",
+            concept=concept,
+            phase=phase,
+            source="scout_cli/contract",
+        )
 
     def _gen_use(self, idx: int, phase: int) -> dict:
         """A task -> the correct `scout --json` invocation -> observe -> act.
@@ -314,26 +410,35 @@ Why this shape: scout commands are chosen by task, not guessed. `--json` yields
 `ok`/`command`/`data`; you branch on `ok` and act on `data`. Discover more with
 `scout skill show scout`.
 
-Source: scout_cli/use doc {idx} -- P{phase} tool selection{' + multi-step' if multistep else ''}.
+Source: scout_cli/use doc {idx} -- P{phase} tool selection{" + multi-step" if multistep else ""}.
 """
         tt = "tool_selection" if not multistep else "deliberate"
-        return self.doc(text=text, task_type=tt, concept="scout_tool_use",
-                        phase=phase, source="scout_cli/use")
+        return self.doc(
+            text=text,
+            task_type=tt,
+            concept="scout_tool_use",
+            phase=phase,
+            source="scout_cli/use",
+        )
 
     def _conclude(self, plugin: str, command: str, data: Any) -> str:
         """An honest, data-derived sentence -- computed from the payload."""
         if plugin == "system" and command == "doctor":
             failed = [c["check"] for c in data["checks"] if not c["ok"]]
             if failed:
-                return (f"{len(failed)} check(s) not ok: {', '.join(sorted(failed))}; "
-                        f"the rest pass. Report exactly these, no more.")
+                return (
+                    f"{len(failed)} check(s) not ok: {', '.join(sorted(failed))}; "
+                    f"the rest pass. Report exactly these, no more."
+                )
             return "every check passed; the environment is healthy."
         if plugin == "system" and command == "audit":
             return f"the last {data['count']} tool calls are listed; nothing to fabricate beyond them."
         if plugin == "vector" and command == "search":
             n = len(data["results"])
-            return (f"{n} match(es) returned; cite them by id and score, and claim nothing "
-                    f"the results don't contain.")
+            return (
+                f"{n} match(es) returned; cite them by id and score, and claim nothing "
+                f"the results don't contain."
+            )
         if plugin == "tasks" and command == "add":
             return f"the task was recorded with id {data['id']}."
         if plugin == "skill" and command == "show":
@@ -357,10 +462,14 @@ Source: scout_cli/use doc {idx} -- P{phase} tool selection{' + multi-step' if mu
         if kind == "error":
             fake = self.rng.choice(["frobnicate", "teleport", "summon"])
             cmd = f"{fake} run"
-            env = _err(f"no such command '{fake}'", command=cmd, discover="scout --help")
-            conclusion = (f"`scout {fake}` does not exist -- the envelope says `ok: false`. "
-                          f"I will not describe what it 'would' return; I run `scout --help` "
-                          f"to find the real command.")
+            env = _err(
+                f"no such command '{fake}'", command=cmd, discover="scout --help"
+            )
+            conclusion = (
+                f"`scout {fake}` does not exist -- the envelope says `ok: false`. "
+                f"I will not describe what it 'would' return; I run `scout --help` "
+                f"to find the real command."
+            )
             body = f"""Action: scout --json {cmd}
 Observation:
 ```json
@@ -372,24 +481,34 @@ report. Next step: `scout --help` to discover the correct command."""
             concept = "scout_grounding_unknown"
         elif kind == "down":
             checks = self._doctor_checks()
-            env = _ok({"message": "doctor complete", "checks": checks}, command="system doctor")
+            env = _ok(
+                {"message": "doctor complete", "checks": checks},
+                command="system doctor",
+            )
             down = [c["check"] for c in checks if not c["ok"]]
-            conclusion = (f"the envelope is `ok: true` but the payload shows {', '.join(sorted(down))} "
-                          f"not ok. Success of the *command* is not success of every *check*. "
-                          f"I report the down checks honestly instead of claiming all green.")
+            conclusion = (
+                f"the envelope is `ok: true` but the payload shows {', '.join(sorted(down))} "
+                f"not ok. Success of the *command* is not success of every *check*. "
+                f"I report the down checks honestly instead of claiming all green."
+            )
             body = f"""Action: scout --json system doctor
 Observation:
 ```json
 {_dumps(env)}
 ```
 Thought: {conclusion}
-Answer: doctor ran fine, but {', '.join(sorted(down))} is/are down; everything
+Answer: doctor ran fine, but {", ".join(sorted(down))} is/are down; everything
 else passes. (ollama down is expected for a local box.)"""
             concept = "scout_grounding_partial"
         else:
-            env = _ok({"query": "nonexistent topic xyzzy", "results": []}, command="vector search")
-            conclusion = ("the results list is empty. There is nothing to summarize. I say 'no "
-                          "matches' rather than inventing a plausible-sounding hit.")
+            env = _ok(
+                {"query": "nonexistent topic xyzzy", "results": []},
+                command="vector search",
+            )
+            conclusion = (
+                "the results list is empty. There is nothing to summarize. I say 'no "
+                "matches' rather than inventing a plausible-sounding hit."
+            )
             body = f"""Action: scout --json vector search "nonexistent topic xyzzy"
 Observation:
 ```json
@@ -409,8 +528,13 @@ command must still be surfaced. Never narrate behavior the tool did not emit.
 
 Source: scout_cli/ground doc {idx} -- P{phase} grounding/recovery.
 """
-        return self.doc(text=text, task_type="deliberate", concept=concept,
-                        phase=phase, source="scout_cli/ground")
+        return self.doc(
+            text=text,
+            task_type="deliberate",
+            concept=concept,
+            phase=phase,
+            source="scout_cli/ground",
+        )
 
     def _gen_build(self, idx: int, phase: int) -> dict:
         """Build a foundation-shaped plugin from a spec: real template + manifest.
@@ -419,8 +543,10 @@ Source: scout_cli/ground doc {idx} -- P{phase} grounding/recovery.
         cmdname = self.rng.choice(_BUILD_VERBS)
         help_text = f"{name} plugin -- {cmdname} things, capability-declared"
         # Build a sample success envelope the new command will emit, computed.
-        sample_env = _ok({"message": f"{name} {cmdname} ran", "count": 0},
-                         command=f"{name} {cmdname}")
+        sample_env = _ok(
+            {"message": f"{name} {cmdname} ran", "count": 0},
+            command=f"{name} {cmdname}",
+        )
 
         cli_py = f'''"""{name} plugin -- foundation-shaped, capability-declared."""
 from pathlib import Path
@@ -518,8 +644,13 @@ contract any time with `scout skill show scout`.
 
 Source: scout_cli/build doc {idx} -- P{phase} deliberate, building with scout.
 """
-        return self.doc(text=text, task_type="deliberate", concept="scout_plugin_build",
-                        phase=phase, source="scout_cli/build")
+        return self.doc(
+            text=text,
+            task_type="deliberate",
+            concept="scout_plugin_build",
+            phase=phase,
+            source="scout_cli/build",
+        )
 
 
 if __name__ == "__main__":
