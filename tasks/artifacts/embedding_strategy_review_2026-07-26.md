@@ -97,6 +97,41 @@ Do **not** resolve this by building a `scout embed` that silently falls back to 
 matching when the model is absent. That is the "gate whose verdict nothing consumes" pattern
 wearing a new costume — a capability that reports success while doing something else.
 
+### ✅ DECIDED 2026-07-26 — **Option C.** scout-cli stays lexical.
+
+Operator's call. Embeddings serve the site/agent tier only; scout-cli keeps its
+zero-new-dependency doctrine intact and FTS5 remains its retrieval path. The decision is
+better-founded than it would have been an hour earlier, because the bar is now measured:
+scout-cli's existing lexical retrieval scores **NDCG@10 0.622 / MRR 0.619 / recall@10 0.791**
+on leak-free walk-forward queries. That is not a placeholder people are working around — it
+is a decent retriever, and paying a torch dependency to replace it was never obviously worth
+it.
+
+**Consequences, so they are not rediscovered later:**
+
+1. **No `scout embed`, no ONNX in scout-cli, no torch in scout-cli.** The doctrine holds
+   without an asterisk. If this is ever revisited, revisit it against a *measured* margin
+   over 0.622, not against a demo.
+2. **`ast_pairs.py` stays in the factory and does NOT become a scout-cli plugin.** I proposed
+   promoting it two turns ago; Option C cancels that. Extraction is training-data work, it
+   belongs on the factory side of the boundary, and adding a plugin whose output only the
+   factory consumes would blur the line this decision just drew. Work not done is the
+   cheapest kind.
+3. **The embedding model's consumers are now explicitly two**, and neither is scout-cli:
+   (a) factory **data curation** — the mixture-coverage measurement in §6, which is the
+   strongest argument in the whole proposal; (b) the **site/agent tier** on bhenre.com.
+4. **A gap this creates, stated now rather than discovered during eval.** The golden set's
+   queries are *commit messages*. That was the right proxy for scoring scout-cli's lexical
+   search over a code tree. The agent tier's real queries are natural-language *task
+   descriptions* ("why does the licence gate let ND through"), which are longer, less
+   identifier-dense, and therefore **harder for BM25 and easier for embeddings**. The 0.622
+   bar is honest for the set it was measured on and probably *flatters* lexical retrieval
+   relative to the tier that will actually consume embeddings. Before step 5 is judged, add
+   a second eval slice of task-shaped queries — otherwise the model gets measured against
+   the one query distribution least favourable to it.
+5. **Step 5 is unblocked.** Serving target is an endpoint, not an in-process import, which
+   also means the model can be swapped or taken offline without touching scout-cli at all.
+
 ## 6. "Foundational to a better Dottie LLM" — true, but not by the mechanism implied
 
 An embedding model does not initialise a better LLM; the objectives differ. The real

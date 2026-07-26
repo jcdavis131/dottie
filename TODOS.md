@@ -353,6 +353,37 @@ afterwards — the first run was discarded because it was started before the edi
   so it is safe on the disk-limited VM. Not done here because the flag may have been chosen
   for a reason not recorded in the doc — confirm intent first.
 
+### 🧭 2026-07-26 — EMBEDDING SEQUENCE: bar measured, Option C decided, steps 4–5 in flight
+
+Full review: `tasks/artifacts/embedding_strategy_review_2026-07-26.md`.
+
+**The bar (step 2, done).** `scripts/retrieval_eval.py` — 696 (commit message → changed
+files) pairs mined from git, split **walk-forward** at 2026-07-22 (487 train / 209 test),
+scored against 2,024 documents with sqlite3 FTS5 + `bm25()`:
+
+| subset | NDCG@10 | MRR | recall@10 | n |
+|---|---|---|---|---|
+| all queries | 0.623 | 0.627 | 0.771 | 209 |
+| **leak-free** | **0.622** | **0.619** | **0.791** | 151 |
+
+A prediction of mine the data refuted: I expected commit messages naming their own files to
+inflate BM25 and built a leak control to quantify it. It fires on 58 of 209 queries (28%),
+yet the leak-free subset scores *identically* and its recall is **higher**. No inflation.
+Both numbers ship in every run so the claim stays checkable.
+
+**✅ Step 3 DECIDED — Option C: scout-cli stays lexical.** Embeddings serve the site/agent
+tier only; zero-new-deps holds without an asterisk. Consequences recorded in the review, the
+notable one being that **`ast_pairs.py` does NOT become a scout-cli plugin** — I had proposed
+promoting it and Option C cancels that.
+
+- [ ] **Add a task-shaped eval slice before step 5 is judged.** The golden set's queries are
+  commit messages — the right proxy for scoring a code-tree search, but the agent tier's real
+  queries are natural-language task descriptions, which are longer and less identifier-dense,
+  i.e. **harder for BM25 and easier for embeddings**. The 0.622 bar is honest for its set and
+  probably flatters lexical retrieval relative to the consumer Option C just named. Measuring
+  the model only against the query distribution least favourable to it would be a rigged
+  comparison in the *other* direction.
+
 ### 🔬 2026-07-25 — THE RECURRING DEFECT CLASS: *a gate whose verdict nothing consumes*
 
 Five instances found in one day, across three codebases. Each was diagnosed on its own
