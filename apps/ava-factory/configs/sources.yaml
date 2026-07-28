@@ -243,7 +243,13 @@ sources:
     generator: think_code
     text_field: text
     phases: [3, 5]
-    weight: {3: 0.15, 5: 0.11}   # 2026-07-20: P5 0.15->0.11, freed 0.04 for synth_zk_math P5 (verified NIZK anneal)
+    weight: {3: 0.12, 5: 0.11}   # 2026-07-20: P5 0.15->0.11, freed 0.04 for synth_zk_math P5 (verified NIZK anneal)
+                                 # 2026-07-26: P3 0.15->0.12, freed 0.03 for stack_v3_code.
+                                 # P3's code content was otherwise ENTIRELY model-generated
+                                 # (this + codeact_traj 0.03); 0.03 of real permissively
+                                 # licensed source files hedges a synthetic-only code
+                                 # distribution. P5 untouched — stack_v3_code does not
+                                 # declare phase 5.
     task_type: deliberate
     filters: {min_chars: 1}
     license: synthetic
@@ -415,7 +421,12 @@ sources:
     text_field: code
     trust_remote_code: true
     phases: [2]
-    weight: {2: 0.15}
+    weight: {2: 0.09}   # 2026-07-26: P2 0.15->0.09, freed 0.06 for stack_v3_code. Same
+                        # modality, so P2's raw-code budget is UNCHANGED at 0.25
+                        # (synth_code 0.10 + github_code 0.09 + stack_v3_code 0.06). This
+                        # config is Python-mit: one language, one licence. stack-v3 is
+                        # multi-language behind an equally strict PER-FILE gate, so the
+                        # move buys language coverage without loosening licensing.
     task_type: automatic
     filters: {min_chars: 200}
     license: mit
@@ -618,9 +629,24 @@ sources:
   # survives — same lesson pull_oapen_books.py::gate_rights had to learn, where
   # reading only the first licence value admitted a work that was CC-BY *and* ND.
   #
-  # WEIGHT 0.0 ON PURPOSE, matching synth_research_pdf above. Every phase's weights
-  # must sum to ~1.0 or the collector spins, so this enters dormant and gets
-  # rebalanced in one deliberate edit against the other phase-2/3 sources.
+  # ACTIVATED 2026-07-26. It entered at 0.0 because every phase's weights must sum to
+  # ~1.0 or the collector spins, so a new source has to arrive dormant and be
+  # rebalanced in ONE deliberate edit against its phase siblings. This is that edit.
+  #
+  #   P2 0.06, taken entirely from github_code (0.15 -> 0.09). Same modality, so P2's
+  #      raw-code budget is unchanged at 0.25 = synth_code 0.10 + github_code 0.09 +
+  #      stack_v3_code 0.06. github_code's config is Python-mit — one language, one
+  #      licence — so this buys multi-language coverage behind an equally strict
+  #      per-file gate, with no licence loosening and no increase in code share.
+  #   P3 0.03, taken entirely from synth_think_code (0.15 -> 0.12). P3's code content
+  #      was otherwise entirely model-generated; 3% real permissively licensed source
+  #      is a hedge against a synthetic-only code distribution, not a bet on scale.
+  #
+  # Deliberately small. The adapter is newly wired and has never fed a real run, so
+  # the licence-gate drop rate on live rows is UNMEASURED here — the tests cover the
+  # gate's logic, not what fraction of HF rows survive it. If the drop rate turns out
+  # high the phase still fills from its siblings. Revisit with a measurement, not a
+  # guess. Both phases re-verified to sum to exactly 1.0 after this edit.
   - name: stack_v3_code
     kind: hf
     dataset: HuggingFaceCode/stack-v3-train
@@ -629,7 +655,7 @@ sources:
     text_field: text             # produced by the adapter; absent from the raw row
     adapter: stackv3
     phases: [2, 3]
-    weight: {2: 0.0, 3: 0.0}
+    weight: {2: 0.06, 3: 0.03}
     task_type: automatic
     filters: {min_chars: 200}
     license: odc-by              # collection licence; per-FILE gate in the adapter
