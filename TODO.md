@@ -195,15 +195,40 @@ anything: the 3 local commits are preserved AND PUSHED on
 `preserve/local-fabrication-removal-2026-07-26`, `main` fast-forwarded to remote, and only
 the conflict-free `.gitignore` commit was cherry-picked on top. `main` is 0 ahead / 0 dirty.
 
-- [ ] **THE ACTUAL WORK: 17 pipeline files still contain `np.random`.** Both "removal"
-  commits only cleaned the *shipped assets* and `export_v6_real_assets.py` — the generators
-  behind them still fabricate. Files include `build_demo.py`, `build_demo_v2.py`,
-  `build_demo_v3.py`, `build_real.py`, `build_real_v4_exec.py`,
-  `build_real_v6_towers_real.py`. A file named `build_real*.py` calling `np.random` is the
-  exact shape this repo's honesty doctrine exists to prevent, and cleaning the output while
-  leaving the generator means the next regeneration re-introduces it. Audit each: some uses
-  are legitimate (seeded shuffles, dropout), some fabricate data presented as measured. They
-  are not distinguishable by grep — that is why this is a task and not a sed.
+- [x] **AUDITED AND FIXED 2026-07-28. The framing "17 files still contain `np.random`" was
+  true but misleading — it counted matches, not fabrication.** Traced backward from the 11
+  committed `assets/` instead of forward from grep: only **7** files both draw random *and*
+  write a shipped asset. Verdicts:
+  - **3 fabricated, all fixed** (3 commits, local, unpushed — pushing changes what the live
+    site claims):
+    - `a090fe9` `tune_fwd_dd_head.py` — shipped `forward_calibration_isotonic.json` said
+      `"passed": true` for a fit to data manufactured to hit the targets it then "verified".
+      `is_real` was computed and written to `trained_on`; `passed` ignored it. A **tautology**:
+      `synthetic_data()` re-centres pred on `PRED_MEAN_TARGET=0.1137` exactly, so
+      `bias_before 0.0576` is just `0.1137 − 0.0561` by construction. The tell was already in
+      the artifact — `ic_before 0.87843` vs `ic_target 0.5066`. Now `bias_within_tolerance`
+      (measurement, kept) + `passed: false` + `passed_requires`. Console lied too; fixed.
+    - `cde5092` `verify_trades_v6.py` — **a verifier that manufactured its own subject**, wrote
+      it to the canonical `train_matrix_v6.npz`, then verified it and `return True`, so
+      `sys.exit(0 if all(...) else 1)` exited 0 = VERIFIED. `except Exception: return True`
+      made the failure path the pass path. Now fails loudly.
+    - `a9cb9a5` `build_real_v4_exec.py` — invented `embedding=np.random.randn(N,32)` under the
+      canonical name; `embedding.npz` is gitignored so it **never appeared in a diff**. Now
+      warns, writes nothing, records `"embedding_npz": "absent (not fabricated)"` in meta.
+  - **Legitimate:** `eval_sector_coherence.py` — seeded permutation nulls for the
+    purity/silhouette baselines. Correct statistics.
+  - **False positives, and they are the lesson:** `export_v6_real_assets.py`'s 3 hits are
+    *comments* reading "never synthesize (no np.random, no flat-50 placeholder)" — an
+    already-cleaned file describing what it no longer does. `universe_full_history.json`
+    matched on a real company, **"Synthetic Fixed-Income Securities, Inc."**
+  - 17 tests added across 3 files, all mutation-verified, all restores byte-exact (`cmp`).
+    **Parsed with `ast`, never grepped** — my first guard test used
+    `assert "np.random" not in src` and failed on the comment above its own fix. Fifth
+    instance of the prose bug here, first inside a test written to prevent it.
+  - Standing correction: the assets already carried honest field-level provenance
+    (`manifest.json`: *"Fabricated top-level metric literals removed… had no committed
+    computation behind them"*). The gap was never disclosure — it was **verdicts that did not
+    consume the disclosure**.
 - [ ] **Decide the fate of `preserve/local-fabrication-removal-2026-07-26`.** Its unique
   contribution is the `manifest.json` block; cherry-pick that onto main or drop the branch.
 
