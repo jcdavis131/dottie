@@ -159,3 +159,49 @@ class TestTheVaultScenarioThatLostThreeSecrets:
         assert vault.get_secret("A") == "1"
         assert vault.get_secret("B") == "2"
         assert json.loads(vault.VAULT_FILE.read_text()) == {"A": "1", "B": "2"}
+
+
+class TestAuthRegistryHasTheSameProtection:
+    """auth.json is the other read-modify-write store, and it holds credentials.
+
+    Its old `_load_auth` docstring said "Returns {} if missing/corrupt" -- the
+    behaviour was documented, the consequence was not. Same trap as the vault:
+    a torn auth.json read as {} and the next login wrote that back.
+    """
+
+    @pytest.fixture()
+    def auth(self, tmp_path, monkeypatch):
+        from bigbang.plugins.auth import cli as auth_cli
+
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        monkeypatch.setenv("HOME", str(tmp_path))
+        reg = tmp_path / ".local" / "share" / "bigbang" / "auth.json"
+        reg.parent.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setattr(auth_cli, "REG", reg)
+        return auth_cli
+
+    def test_a_torn_auth_registry_does_not_read_as_empty(self, auth):
+        auth._save_auth({"github": {"method": "token"}, "google": {"method": "pat"}})
+        assert sorted(auth._load_auth()) == ["github", "google"]
+        auth.REG.write_text('{"github": {"method": "tok')
+        with pytest.raises(atomic_json.CorruptStateFileError):
+            auth._load_auth()
+
+    def test_the_registry_write_is_atomic(self, auth, monkeypatch):
+        seen = []
+        real = Path.replace
+
+        def spy(self, target):
+            seen.append(Path(self).name)
+            return real(self, target)
+
+        monkeypatch.setattr(Path, "replace", spy)
+        auth._save_auth({"github": {"method": "token"}})
+        assert seen and seen[0] != "auth.json.tmp"
+        assert str(os.getpid()) in seen[0]
+
+    def test_a_healthy_registry_still_round_trips(self, auth):
+        """Anti-vacuity, and it also covers the gate added in df11ca3 -- if the
+        fs_write enforcement denied this path the write would raise, not pass."""
+        auth._save_auth({"github": {"method": "token"}})
+        assert auth._load_auth() == {"github": {"method": "token"}}

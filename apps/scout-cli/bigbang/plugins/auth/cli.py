@@ -6,8 +6,8 @@ secure vault storage, and env fallback.
 Solo personal project, no connection to employer, built with public/free-tier only
 """
 
-import json
 import os
+import stat
 import time
 import webbrowser
 from datetime import UTC, datetime
@@ -17,6 +17,7 @@ from typing import Any
 import typer
 from rich.console import Console
 
+from bigbang.core import atomic_json
 from bigbang.core.cli_ux import (
     examples_epilog,
     prompt_secret_or_fail,
@@ -55,13 +56,22 @@ REG = Path.home() / ".local" / "share" / "bigbang" / "auth.json"
 
 
 def _load_auth() -> dict[str, Any]:
-    """Load auth registry from REG. Returns {} if missing/corrupt."""
-    if REG.exists():
-        try:
-            return json.loads(REG.read_text())
-        except Exception:
-            return {}
-    return {}
+    """Auth registry from REG, or {} when there is none yet.
+
+    It used to return {} for CORRUPT as well as missing -- the old docstring said
+    so plainly ("Returns {} if missing/corrupt"), which documented the behaviour
+    without naming its consequence. Every mutation here is a read-modify-write, so
+    a torn auth.json read as {} and the next `_save_auth` wrote that back: one
+    damaged file plus one ordinary login destroyed every stored credential, with no
+    error. Measured on the identical shape in the secrets vault (fixed 3e301cb):
+
+        vault before      : ['AWS', 'HF_TOKEN', 'OPENAI_KEY']
+        after torn write  : []
+        after next set    : ['NEW_KEY']
+
+    Missing is genuinely empty. Unreadable is not.
+    """
+    return atomic_json.read_json(REG, {})
 
 
 def _save_auth(data: dict[str, Any]) -> None:
@@ -86,12 +96,10 @@ def _save_auth(data: dict[str, Any]) -> None:
 
     manifest = load_manifest(Path(__file__).resolve().parent)
     enforce_or_raise(manifest, "fs_write", str(REG))
-    REG.parent.mkdir(parents=True, exist_ok=True)
-    REG.write_text(json.dumps(data, indent=2))
-    try:
-        os.chmod(REG, 0o600)
-    except Exception:
-        pass
+    # Atomic, and 0600 lands on the TEMP before it becomes auth.json. The old code
+    # wrote the file and chmod'd it afterwards, leaving a window in which every
+    # stored credential existed at default permissions.
+    atomic_json.write_json(REG, data, mode=stat.S_IRUSR | stat.S_IWUSR)
 
 
 # Backward compat shims for old names
