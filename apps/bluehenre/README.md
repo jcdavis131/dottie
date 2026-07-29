@@ -75,7 +75,19 @@ data that doesn't match its source, a provenance-honesty violation. If it report
 STALE, run `node scripts/build_hub_registry.mjs` and commit before deploying.
 
 Deploy (operator): `vercel deploy --prod --yes` → `vercel alias set <url>
-www.bhenre.com` → update `data/last_good_deployment.txt` (the alias-guard pin).
+www.bhenre.com` → update `data/last_good_deployment.txt` (the alias-guard pin)
+**and commit it** — the pin is the rollback target, so it is worthless if it lives
+only on the machine that last deployed.
+
+`data/last_good_deployment.txt` is **force-tracked** (`git add -f`), and that is
+deliberate. Both this directory and every other `data/` in the monorepo are ignored
+by the ROOT `.gitignore:33 data/` — note it is the root rule that binds here, not
+`apps/bluehenre/.gitignore:1`. A `!data/last_good_deployment.txt` negation cannot
+rescue it: git does not descend into an excluded **directory**, so the negation is
+silently inert (verified — the pin stays ignored under both `data/` and `data/*`).
+Force-adding tracks this one file and changes no ignore rule, so `workflows.jsonl`
+and the other four `data/` directories stay ignored exactly as before. To undo:
+`git rm --cached apps/bluehenre/data/last_good_deployment.txt`.
 
 Spec of record: [SPEC.md](./SPEC.md). Phased build plan:
 [../../tasks/dottie_site_plan.md](../../tasks/dottie_site_plan.md). Live board:
