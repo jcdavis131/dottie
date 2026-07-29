@@ -535,7 +535,7 @@ Re-check with:
 
 ### NEW 2026-07-24 — `apps/scout-cli/docs/OPENSWAP.md` has a real NUL byte at offset 18278
 
-- [ ] **Small docs bug, queued behind batch 4 (the file is modified by a live agent — do not
+- [x] **Small docs bug, queued behind batch 4 (the file is modified by a live agent — do not
   clobber).** The line documenting the `logs` UTF-16 handling means to show the literal Python
   bytes-literal `b"\r\n\x00"`, but the file contains **actual CR, LF and NUL bytes** instead —
   an escape sequence got interpolated rather than written literally. It splits the rendered
@@ -547,6 +547,22 @@ Re-check with:
   `metrics_mini.jsonl` (fix: `grep -a`). Diffs and merges are unaffected.
   Fix: replace the three raw bytes with the escaped text so the doc shows what it means. Verify
   with `python -c "print(open('apps/scout-cli/docs/OPENSWAP.md','rb').read().count(0))"` -> 0.
+  **DONE 2026-07-28 (`979e162`) — NUL count 0.** The grep-vs-git correction above was right, and
+  there is a third turn of the same screw: `git diff --cached | grep` **still** reports binary
+  after the fix, because the *removed* line — the HEAD side of the diff — is where the NUL lives.
+  Use `grep -a`.
+  **The commit is 51/52 lines for a 6-byte fix, and that is line endings, not content.** HEAD blob
+  = 35086 bytes / CR 52 / LF 54 / NUL 1; staged blob = 35040 / CR 0 / LF 53 / NUL 0. HEAD stored
+  this file CRLF, and `core.autocrlf=true` + `.gitattributes text: auto` means the clean filter
+  strips every CR on `git add`, so staging renormalizes the whole file. Proof the fix is the only
+  content change: normalize CRLF→LF on *both* blobs and exactly one region differs, at byte 18230,
+  2 bytes → 8. Recorded because a whole-file diff on a one-line docs fix reads as a clobber.
+  Tooling note: the first attempt drove the replacement from a shell heredoc and the backslash
+  escapes collapsed, so the "is it already escaped?" guard compared a pattern against **itself**
+  and fired a FALSE alarm claiming the fix was already present — two different patterns both
+  reported found at the same offset, which is impossible and is what gave it away. Rewritten to
+  build every byte numerically (`bytes([13, 10, 0])`, backslash as `chr(92)`) with no backslash
+  literals anywhere in the script.
 
 ### NEW 2026-07-24 — openswap manifests promise filesystem containment that is NOT enforced
 
