@@ -1072,17 +1072,38 @@ that defeated per-extension `-text` before `tasks/artifacts/** -text` fixed it.
   Distinguishing signal for next time: a smoke failure whose `org.html` byte count is wildly
   larger than production is protection, not a bad build.
 
-- [ ] **GAP: the alias-guard pin is NOT version-controlled**, which weakens the rollback
+- [x] **GAP: the alias-guard pin is NOT version-controlled**, which weakens the rollback
   story above. `apps/bluehenre/.gitignore:1` ignores `data/`, so
   `data/last_good_deployment.txt` is untracked — `git ls-files` does not know it. I updated
   it to `bluehenre-campus-8jlgr3038-...` on this box, but the previous good deployment id
   exists **only here**: from a fresh clone or another machine there is no record of what to
   roll back to, and the README's third deploy step writes to a file git will never carry.
   The fork already noted the pin "records intent rather than verification"; it also records
-  it nowhere durable. Decide deliberately: either track this one file (`!data/
+  it nowhere durable. ~~Decide deliberately: either track this one file (`!data/
   last_good_deployment.txt` negation) or move the pin somewhere already tracked. Not changed
   here because `data/` also holds `workflows.jsonl`, and un-ignoring a directory that
-  carries runtime state is a convention call, not a cleanup.
+  carries runtime state is a convention call, not a cleanup.~~
+  **DONE 2026-07-28 (`29f5548`) — and this entry was wrong twice, both found by testing rather
+  than reading.**
+  1. **The binding rule is the ROOT `.gitignore:33 data/`, not `apps/bluehenre/.gitignore:1`.**
+     Editing bluehenre's file would have changed nothing. The root rule covers **5** `data/`
+     directories across the monorepo, so it is not a local decision either.
+  2. **The proposed `!data/last_good_deployment.txt` negation CANNOT WORK.** git does not
+     descend into an excluded **directory**, so a negation for a file inside one is silently
+     inert. Measured both forms with `check-ignore`, `.gitignore` restored byte-exact:
+     `data/` + negation → still ignored; `data/*` + negation → still ignored (root rule wins).
+     **A gitignore edit here would have looked like a fix and done nothing** — the failure mode
+     this board keeps finding.
+  Fix is `git add -f`: ignore rules apply only to **untracked** files, so it tracks exactly one
+  file and changes no ignore rule anywhere. The deferral reason — "un-ignoring a directory that
+  carries runtime state is a convention call" — does not apply, because force-adding does not
+  un-ignore the directory. Same shape as the symlink gap earlier today: **the stated blocker did
+  not apply to the obvious fix.**
+  Verified after staging: the pin is the only tracked file under `apps/bluehenre/data/`;
+  `workflows.jsonl` still ignored and untracked; no other `data/` directory changed status.
+  Content checked before tracking — a public Vercel hostname, not a secret.
+  README now records why it is force-tracked, which rule actually binds, that the negation is
+  inert, and how to undo it (`git rm --cached`).
 
 ### 🔓 2026-07-25 — stack-v3 UNBLOCKED: licence is `odc-by`. Adapter built + tested; needs ONE frozen edit to activate
 
