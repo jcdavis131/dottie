@@ -2,6 +2,7 @@
 
 import ast
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -788,3 +789,108 @@ class TestSecretsDefaultDeny:
         m = {"name": "t", "capabilities": {"secrets": {"allow": ["GH_TOKEN"]}}}
         assert policy.check_permission(m, "secret", "GH_TOKEN")[0]
         assert not policy.check_permission(m, "secret", "OPENAI_API_KEY")[0]
+
+
+def _make_dir_link(link: Path, target: Path) -> str:
+    """Create a directory link, returning the mechanism used or "" if impossible.
+
+    Path.symlink_to needs SeCreateSymbolicLinkPrivilege on Windows (admin or developer
+    mode) and raises WinError 1314 without it — measured on this box. A directory
+    JUNCTION needs no privilege and os.path.realpath resolves it the same way, so
+    it reproduces the escape faithfully.
+    """
+    try:
+        link.symlink_to(target, target_is_directory=True)
+        return "symlink"
+    except (OSError, NotImplementedError, AttributeError):
+        pass
+    if sys.platform == "win32":
+        proc = subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(link), str(target)],
+            capture_output=True, text=True, check=False,
+        )
+        if proc.returncode == 0 and link.exists():
+            return "junction"
+    return ""
+
+
+class TestSymlinkEscape:
+    """A symlink inside an allowed directory must not grant what it points at.
+
+    This was a stated KNOWN GAP, left open because blocking it supposedly "needs
+    realpath on an existing tree, which the not-yet-created-write case rules out".
+    That reason was wrong: os.path.realpath is not strict, so it resolves the
+    existing prefix and leaves the rest alone. These tests pin both the fix and
+    the fact that the lexical check alone would have let it through.
+    """
+
+    def _escape_setup(self, tmp_path):
+        allowed = tmp_path / "allowed"
+        outside = tmp_path / "outside"
+        allowed.mkdir()
+        outside.mkdir()
+        mech = _make_dir_link(allowed / "escape", outside)
+        if not mech:
+            pytest.skip("no symlink privilege and no junction support on this platform")
+        return allowed, outside, mech
+
+    def test_a_link_out_of_an_allowed_dir_is_denied(self, tmp_path):
+        allowed, _outside, _mech = self._escape_setup(tmp_path)
+        target = allowed / "escape" / "stolen.txt"
+        mf = _manifest(fs_write=True, fs_paths=[str(allowed)])
+        ok, reason = policy.check_permission(mf, "fs_write", str(target))
+        assert not ok, f"a link escaping {allowed} was allowed: {reason}"
+
+    def test_the_lexical_check_alone_would_have_allowed_it(self, tmp_path):
+        """Anti-vacuity, and the whole point. If the string comparison already
+        rejected this, the new filesystem gate would be untested decoration and
+        the test above would pass for the wrong reason."""
+        allowed, _outside, _mech = self._escape_setup(tmp_path)
+        target = allowed / "escape" / "stolen.txt"
+        root = policy._norm_path(str(allowed))
+        lexical = policy._norm_path(str(target))
+        assert lexical.startswith(root.rstrip(os.sep) + os.sep), (
+            "the lexical prefix check no longer admits this path, so it is not "
+            "the symlink gate that denies it — this test proves nothing as written"
+        )
+        assert not policy._resolves_within(root, lexical)
+
+    def test_the_link_really_points_outside(self, tmp_path):
+        """Guards the FIXTURE, not the code: if mklink silently produced a real
+        directory instead of a link, every test here would pass vacuously."""
+        allowed, outside, _mech = self._escape_setup(tmp_path)
+        resolved = Path(os.path.realpath(str(allowed / "escape" / "stolen.txt")))
+        assert resolved.parent == Path(os.path.realpath(str(outside)))
+
+    def test_an_ordinary_write_inside_the_allowed_dir_is_still_allowed(self, tmp_path):
+        """No-regression: the gate must not deny the normal case it exists to permit."""
+        allowed, _outside, _mech = self._escape_setup(tmp_path)
+        mf = _manifest(fs_write=True, fs_paths=[str(allowed)])
+        ok, reason = policy.check_permission(
+            mf, "fs_write", str(allowed / "sub" / "ok.txt")
+        )
+        assert ok, reason
+
+    def test_a_linked_root_is_still_allowed(self, tmp_path):
+        """Both sides are resolved, so an allowed directory that is ITSELF a link
+        keeps working — a symlinked /tmp or a redirected data dir must not become
+        undeclarable. Denying this would be the obvious way to get the fix wrong."""
+        real = tmp_path / "real_store"
+        real.mkdir()
+        linked = tmp_path / "declared_store"
+        if not _make_dir_link(linked, real):
+            pytest.skip("no symlink privilege and no junction support on this platform")
+        mf = _manifest(fs_write=True, fs_paths=[str(linked)])
+        ok, reason = policy.check_permission(mf, "fs_write", str(linked / "db.sqlite"))
+        assert ok, reason
+
+    def test_paths_that_do_not_exist_are_unaffected(self, tmp_path):
+        """The check is a no-op where there is nothing to resolve, which is what
+        makes it safe for the not-yet-created write that supposedly ruled it out."""
+        allowed = tmp_path / "never_created"
+        mf = _manifest(fs_write=True, fs_paths=[str(allowed)])
+        assert not allowed.exists()
+        ok, reason = policy.check_permission(mf, "fs_write", str(allowed / "new.txt"))
+        assert ok, reason
+        ok2, _ = policy.check_permission(mf, "fs_write", str(tmp_path / "elsewhere.txt"))
+        assert not ok2

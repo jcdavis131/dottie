@@ -103,10 +103,10 @@ def _norm_path(p: str, base: str | None = None) -> str:
     normcase() case-folds and unifies "/" with "\\" on Windows so the same
     resource spelled either way lands on the same string.
 
-    Caveat stated rather than papered over: a SYMLINK inside an allowed
-    directory that points outside it still escapes this check. Blocking that
-    needs realpath on an existing tree, which the not-yet-created-write case
-    rules out here."""
+    This function stays lexical. The SYMLINK escape it used to disclaim is now
+    caught by _resolves_within(), called from _path_matches() as a second,
+    filesystem-aware gate — see the note there, which corrects the reason given
+    for leaving it open."""
     # Suppressions below are deliberate: ruff's PTH rules want
     # Path.expanduser()/Path.resolve() here. expanduser is a pure swap, but
     # resolve() is NOT — it stats the tree and follows symlinks, which is
@@ -144,9 +144,49 @@ def _path_matches(declared: str, resource: str, base: str | None = None) -> bool
     # to CWD when relative — never to `base`. Anchoring both sides would let a
     # relative resource match a relative declaration by coincidence.
     target = _norm_path(resource)
-    if target == root:
+    if not (target == root or target.startswith(root.rstrip(os.sep) + os.sep)):
+        return False
+    return _resolves_within(root, target)
+
+
+def _resolves_within(root: str, target: str) -> bool:
+    """Second gate: the lexical match must survive symlink resolution.
+
+    _norm_path() is deliberately lexical, and that leaves one hole it used to
+    disclaim: a symlink (or, on Windows, a directory junction) INSIDE an allowed
+    directory pointing outside it satisfies the string comparison while writing
+    somewhere else entirely.
+
+    **The stated reason for leaving that open was wrong, and it is worth naming
+    because it blocked the fix.** The claim was that blocking it "needs realpath
+    on an existing tree, which the not-yet-created-write case rules out".
+    os.path.realpath is NOT strict — it resolves whatever prefix exists and
+    appends the rest untouched. Measured on this box, with a junction
+    allowed/escape -> outside and a target that does not exist:
+
+        lexical  target:  ...\\allowed\\escape\\not_yet_created.txt   inside? True
+        realpath target:  ...\\outside\\not_yet_created.txt           inside? False
+
+    So the not-yet-created case never ruled it out. A non-existent path is
+    simply returned normalized, which is exactly the old behaviour, so this
+    check is a no-op wherever there is nothing to resolve.
+
+    BOTH sides are resolved, which is what keeps legitimate setups working: if
+    the allowed root is ITSELF a symlink (a symlinked /tmp on macOS, a redirected
+    data dir), root and target move together and the write is still allowed. Only
+    a target that leaves the root's REAL location is denied.
+
+    Honest residual, not papered over: this is TOCTOU-checkable, not TOCTOU-proof
+    — the link can be swapped between this check and the open(). Closing that
+    needs the write to go through an fd opened with O_NOFOLLOW semantics, which
+    is a change at every call site, not here. This raises the bar from "string
+    prefix" to "must survive resolution at check time"; it does not claim more.
+    """
+    real_root = os.path.normcase(os.path.realpath(root))
+    real_target = os.path.normcase(os.path.realpath(target))
+    if real_target == real_root:
         return True
-    return target.startswith(root.rstrip(os.sep) + os.sep)
+    return real_target.startswith(real_root.rstrip(os.sep) + os.sep)
 
 
 def check_user_url(url: str) -> tuple[bool, str]:
