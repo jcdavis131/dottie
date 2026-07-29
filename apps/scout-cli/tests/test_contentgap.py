@@ -258,9 +258,23 @@ def test_corpus_terms_ranked_by_weight_then_alphabetically():
     # and `rows[:-3]` would silently return all-but-the-last-three ranked terms.
     assert contentgap.corpus_terms(_model(), limit=-3) == []
     # same guard, same blind spot, at the second site (draft_counts is a Counter/dict
-    # of term -> count; the term must be absent from the corpus model to produce a row)
-    assert contentgap.draft_only_terms({"notacorpusterm": 3}, _model(), limit=-3) == []
-    assert contentgap.draft_only_terms({"notacorpusterm": 3}, _model(), limit=1) != []
+    # of term -> count; the term must be absent from the corpus model to produce a row).
+    # FOUR draft-only terms, not one. With a single row `rows[:-3]` is ALSO [], so the
+    # mutant `rows[:limit]` was indistinguishable here and survived the whole suite even
+    # though this line was written to catch it — the assertion was right and the fixture
+    # was too small to tell the two apart. Re-verified by mutation 2026-07-28.
+    draft_only = {
+        "notacorpusterm": 4,
+        "alsoabsentterm": 3,
+        "thirdabsentterm": 2,
+        "fourthabsentterm": 1,
+    }
+    # Anti-vacuity: the guard above only bites if there are MORE rows than the negative
+    # limit slices off. Pin the count, so shrinking this fixture fails here loudly
+    # instead of quietly restoring the blind spot.
+    assert len(contentgap.draft_only_terms(draft_only, _model(), limit=99)) == 4
+    assert contentgap.draft_only_terms(draft_only, _model(), limit=-3) == []
+    assert contentgap.draft_only_terms(draft_only, _model(), limit=1) != []
 
 
 # ---- readings: a value or a reason, never both, never neither ---------------
