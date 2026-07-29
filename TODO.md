@@ -655,7 +655,7 @@ found exactly 42, matching the subagent's count by a different method.
   **KILLED** by 2 tests, `auth/cli.py` restored byte-exact; full scout-cli **2236 passed /
   1 skipped**.
 
-- [ ] **FLAKE (found 2026-07-28, NOT introduced by the auth gate):
+- [x] **FLAKE (found 2026-07-28, NOT introduced by the auth gate):
   `tests/test_herd.py::test_herd_create_start_wait_read_close` fails under load.**
   Failed once inside the 27-file chunk, then **passed on a clean re-run of the same chunk**
   (1269 passed). It passes alone with the auth changes, alone at HEAD, and paired with
@@ -693,6 +693,26 @@ found exactly 42, matching the subagent's count by a different method.
   build at random and trains readers to re-run instead of read. **Do not "fix" it by raising
   the timeout** — that would hide a real error behind a longer wait. Recorded rather than
   dismissed, because "it passed the second time" is how an intermittent bug gets ignored.
+  **ROOT-CAUSED AND FIXED 2026-07-29 (`0ae2dc6`). The unverified hypothesis was right, and
+  the mechanism is simpler than "sharing violation": `_save` wrote to a FIXED temp name**
+  `HERD_FILE.with_suffix(".tmp")` **— one `sessions.tmp` shared by every process on the box.**
+  Two `scout herd` invocations wrote the same file and one replaced it out from under another.
+  Reproduced against an isolated ledger, 4 processes polling `get_session(refresh=True)` for 6s:
+  ```
+  before   3334 errors   (calls/worker 586-625)
+  after       0 errors   (calls/worker 721-937)
+  ```
+  Throughput rose because the failures were themselves costing time.
+  Fix is two-part, because the race has two halves: a **per-process temp name** (`os.getpid()`)
+  and a **bounded retry on the replace** — `os.replace` is atomic but fails on Windows with
+  WinError 32 when the TARGET is open, and `_load` opens `sessions.json` on every read. POSIX
+  rename has no such failure, so the retry is a no-op there rather than a platform branch.
+  Three tests; `test_the_temp_name_is_unique_per_process` asserts on the file **actually
+  created** rather than re-deriving the expression, so reverting only the write still fails it.
+  Verified: `tests/test_herd.py` 7 → **10 passed**; mutation restoring the shared temp name
+  **KILLED**, `store.py` restored byte-exact; full scout-cli **2239 passed / 1 skipped**.
+  **Both earlier diagnoses above are left standing on purpose** — a wrong hypothesis that cost
+  real time is worth more to the next reader than a tidy entry that only records the answer.
 
 - [x] **FOLLOW-UP: the allowlist cannot express a dynamically-discovered root.** Defects 1
   and 2 share this cause — reviewgraph tried to spell it `<root>`, tasks hardcoded one
