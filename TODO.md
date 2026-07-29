@@ -4548,6 +4548,31 @@ most valuable catch so far:
   stash@{0}`. To restore: `git stash pop` (expect to resolve `api.py` against tonight's
   changes; the two files it adds are new, so they cannot conflict). To keep deferring: do
   nothing — but **it is now recorded, so it cannot be lost by accident.**
+
+  **RE-MEASURED 2026-07-28 (read-only; nothing applied/popped/dropped). The decisive risk in
+  this entry no longer exists, so the decision above was resting on a stale fact.**
+  - Stash intact and unchanged: `stash@{0}: On main: pre-teleport`, base `8641fb9`, created
+    2026-07-19 23:09:33 -0500. Now **601 commits behind HEAD** (entry said 501).
+  - ⚠ **`apps/dottie/.scout/reviewgraph.db` DOES NOT EXIST ON DISK.** The entry names
+    overwriting a live database as "the part to decide about, not the Python" — that risk is
+    gone. Restoring would *create* the file, not clobber one.
+  - **The single commit that touched `api.py` since the base is `ebeb299` — the repo-wide ruff
+    adoption**, i.e. a reformat, not a semantic change. The entry's "+185/-92 lines" is the
+    HEAD-vs-base delta, which is what reformatting a file looks like.
+  - **The stash's own `api.py` change is `+85/-0` — pure addition, zero deletions.** Conflict
+    resolution against a formatter run is mechanical.
+  - **The feature is NOT superseded:** `JobStore`, `run_due_jobs`, `MIN_INTERVAL_S` and any
+    `/jobs` route are **absent from HEAD**. Only stale `__pycache__/jobs.cpython-311.pyc` and
+    `test_jobs.cpython-311-pytest-9.1.1.pyc` remain — evidence it once ran on this box. The
+    stash carries `jobs.py` (155 lines), `tests/test_jobs.py` (161 lines, **10 tests**) and the
+    `api.py` wiring: recurring missions, same shape as a one-off task plus a cadence.
+  - **Still an operator decision and still not taken here.** What changed is that it is now a
+    ~400-line tested feature recoverable against a formatting-only conflict, rather than a
+    change gated on clobbering a live database.
+  ⚠ **Tooling trap, same family as the `--name-only` one already recorded above:**
+  `git stash show -p stash@{0} -- <path>` silently prints **nothing** — it does not filter, it
+  returns empty. I read that as "no changes to api.py" for one step, directly contradicting the
+  `--numstat` line right above it. Use the unfiltered `git stash show -p stash@{0}`.
 - [x] Also cleaned my own residue from the same check: `/tmp/eval.bak` and `/tmp/ledger.bak`,
   left by red-without-fix verifications. No pending stashes of mine; working tree clean.
 ### 5.3.R74 — ran the daemon itself, safely, and watched the new guard work
