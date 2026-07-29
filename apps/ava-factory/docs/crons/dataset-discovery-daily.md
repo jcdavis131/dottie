@@ -18,7 +18,17 @@ Purpose: Discover additional datasets to fill gaps identified by evals (currentl
 Steps:
 1. cd ~/workspace/ava-agi-factory-v6-4 (dottie monorepo layout: cd <dottie>/apps/ava-factory — both layouts valid while both exist)
 2. Run discovery:
-   python scripts/dataset_discovery.py --dry-run --eval-file branch_eval_results.json --out your_files/ava-agi/dataset_discovery/
+   python scripts/dataset_discovery.py --eval-file branch_eval_results.json --out your_files/ava-agi/dataset_discovery/
+   - **Do NOT add `--dry-run` here.** It was removed 2026-07-28. With the licence gate fixed to
+     fail closed, `--dry-run` makes no `/api/datasets/<id>` call, so every candidate is left
+     `license: "unchecked"` and correctly skipped — the cron runs daily and produces nothing
+     usable. The script says so itself: *"Re-run without --dry-run before treating any candidate
+     as usable."*
+   - Safe on the disk-limited VM: the non-dry-run path adds ONE HuggingFace metadata call per
+     candidate (`urllib.request.urlopen`, `timeout=5`). It downloads no dataset. The
+     `load_dataset` / `wget` lines in the output are strings written into the manifest for the
+     Alienware box to run later, never executed here — same as `CONTINUOUS_PIPELINES.md`'s
+     "No download in VM".
    - Parses eval results: if cap_score <0.9 or test pass=False, marks domain weak
    - Maps weak domains to HF dataset queries via DOMAIN_TO_DATASET_QUERIES
      - finance -> financial_phrasebank, convfinqa, finqa, fiqa, bizbench
