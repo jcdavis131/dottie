@@ -787,12 +787,36 @@ called**: `retrieval_eval.leaks_filename`. Now wired, with 4 regression tests; t
 one measures **62 → 0**. (That test initially guarded on `hasattr(hn, "real_golden")`, which
 does not exist, so it SKIPPED silently — a dead guard, caught and fixed. 49 tests, 0 skips.)
 
-- [ ] **minhash: single-linkage clustering deletes documents below the advertised
+- [x] **minhash: single-linkage clustering deletes documents below the advertised
   threshold.** `uf.union(a, b)` chains, so a doc can be dropped in favour of a survivor it is
   *not* near-duplicate to. Measured on the 44-cluster / 126-drop scout-cli run: worst
   intra-cluster true Jaccard **0.7143** (`feeds/cli.py::_open_store` vs
   `flows/cli.py::_open_store`) against an advertised 0.8, and 1 of 126 drops is below
-  threshold. Nothing tests drop-vs-survivor similarity.
+  threshold. ~~Nothing tests drop-vs-survivor similarity.~~
+  **STALE — fixed in `41afb54` (`_star_partition`), and it IS tested on the real tree.**
+  Re-measured independently 2026-07-28 on the **whole** `apps/scout-cli` (wider than either
+  test's scope), recomputing true Jaccard from the shingle sets rather than trusting anything
+  the module reports:
+  ```
+  documents             : 4576
+  dropped               : 125
+  worst drop-vs-survivor: 0.8000   (heartbeat/cli.py::_db_path <- alerts/cli.py::_db_path)
+  drops BELOW threshold : 0
+  worst intra-cluster   : 0.7353   (digest::_check_fail_on vs headers::_fail_on_or_fail)
+  ```
+  The guarantee now holds as advertised: **every dropped document clears 0.8 against the
+  survivor that replaces it.** Gate 2 re-scores each would-be drop on exact Jaccard.
+  **The 0.7353 intra-cluster figure is NOT a regression and must not be "fixed".** Members of a
+  cluster are only guaranteed near the *survivor*, never each other — that is what star
+  partitioning buys and all it buys. Deleting data is what needed the guarantee; sharing a
+  cluster label costs nothing.
+  Pinned by `test_no_document_is_dropped_for_a_survivor_it_does_not_resemble` (plugins tree,
+  floor = the threshold itself, `offenders == []`) and
+  `test_every_dropped_document_is_a_duplicate_of_its_own_survivor` (core tree), each with a
+  drop-count floor so a shrinking corpus fails instead of proving less, plus
+  `test_the_exact_gate_actually_had_to_split_a_component_here` as the anti-vacuity guard —
+  if nothing ever needed splitting, the guarantee tests would be decoration.
+  Verified: `tests/test_minhash_dedup.py` **104 passed, 0 skipped**.
 Five entries below were **STALE** — all already fixed in the source, still marked open.
 Re-verified against live code 2026-07-26, each with the named test that pins it. Closing a
 stale entry matters: a wrong TODO cost real time today when
