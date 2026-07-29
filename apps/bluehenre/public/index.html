@@ -122,6 +122,61 @@
            border-top: 1px solid var(--line); display: flex; justify-content: space-between; }
   footer a { color: var(--cyan); text-decoration: none; }
   @media (min-width: 700px) { #grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; } }
+
+  /* ── motion layer ──────────────────────────────────────────────────────
+     This is a polling readout, so the motion has one job: make a value that
+     changed legible as a change rather than a jump between frames. Kept in
+     this file because the page is deliberately self-contained.
+
+     Personality is rigid — an amber terminal should not bounce. Colour and
+     type are untouched. */
+  :root {
+    --ease-standard:   cubic-bezier(.2, 0, 0, 1);
+    --ease-emphasized: cubic-bezier(.16, 1, .3, 1);  /* expo.out */
+    --dur-quick: 90ms;
+    --dur-base:  260ms;
+    --dur-slow:  420ms;
+    --vx-stagger: 50ms;
+    --vx-rise:    12px;
+  }
+
+  /* primary — cards arrive in a short cascade on load */
+  @keyframes vx-rise {
+    from { opacity: 0; transform: translateY(var(--vx-rise)); }
+    to   { opacity: 1; transform: none; }
+  }
+  .card { animation: vx-rise var(--dur-base) var(--ease-emphasized) both; }
+  .card:nth-of-type(1) { animation-delay: 0ms; }
+  .card:nth-of-type(2) { animation-delay: calc(var(--vx-stagger) * 1); }
+  .card:nth-of-type(3) { animation-delay: calc(var(--vx-stagger) * 2); }
+  .card:nth-of-type(4) { animation-delay: calc(var(--vx-stagger) * 3); }
+  .card:nth-of-type(n+5) { animation-delay: calc(var(--vx-stagger) * 4); }
+
+  /* primary — the progress fill is the one number that moves on its own.
+     Easing its width is what separates "training is running" from "the page
+     reloaded". Slow duration because the distance is arbitrary. */
+  .bar > i { transition: width var(--dur-slow) var(--ease-standard); }
+
+  /* secondary — status colour changes settle rather than snap */
+  .mode, .badge, .rowline .v { transition: color var(--dur-base) var(--ease-standard); }
+  footer a { transition: color var(--dur-quick) var(--ease-standard); }
+
+  /* ambient — none, deliberately. A heartbeat on .led.up was the obvious
+     candidate, but console.mjs stamps that class per gate, per container and
+     per service, so a healthy system would pulse ten-plus dots at once. Past
+     roughly a third of the elements moving, ambient motion stops reading as
+     "alive" and starts reading as noise. The bar above carries the liveness. */
+
+  /* This page had no reduced-motion gate at all. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important;
+      scroll-behavior: auto !important;
+    }
+    .card { opacity: 1; transform: none; }
+  }
 </style>
 </head>
 <body>

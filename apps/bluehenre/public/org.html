@@ -148,6 +148,58 @@
            color: var(--bh-muted); font-size: 11.5px; font-family: var(--bh-font-mono);
            display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
   footer a { color: var(--bh-hen-blue); }
+
+  /* ── motion layer ──────────────────────────────────────────────────────
+     Same system as the console readout: make changed values legible as
+     changes. Rigid personality, zero overshoot. Colour and type untouched.
+     Kept in this file because the page is deliberately self-contained. */
+  :root {
+    --ease-standard:   cubic-bezier(.2, 0, 0, 1);
+    --ease-emphasized: cubic-bezier(.16, 1, .3, 1);  /* expo.out */
+    --dur-quick: 90ms;
+    --dur-base:  260ms;
+    --dur-slow:  420ms;
+    --vx-stagger: 50ms;
+    --vx-rise:    12px;
+  }
+
+  /* primary — cards arrive in a short cascade on load */
+  @keyframes vx-rise {
+    from { opacity: 0; transform: translateY(var(--vx-rise)); }
+    to   { opacity: 1; transform: none; }
+  }
+  .card { animation: vx-rise var(--dur-base) var(--ease-emphasized) both; }
+  .card:nth-of-type(1) { animation-delay: 0ms; }
+  .card:nth-of-type(2) { animation-delay: calc(var(--vx-stagger) * 1); }
+  .card:nth-of-type(3) { animation-delay: calc(var(--vx-stagger) * 2); }
+  .card:nth-of-type(4) { animation-delay: calc(var(--vx-stagger) * 3); }
+  .card:nth-of-type(n+5) { animation-delay: calc(var(--vx-stagger) * 4); }
+
+  /* primary — progress fills ease to their new width instead of jumping */
+  .bar > i { transition: width var(--dur-slow) var(--ease-standard); }
+
+  /* secondary — controls and links respond inside the 100ms feedback floor */
+  .fleetact button, .fleetact select {
+    transition: color            var(--dur-quick) var(--ease-standard),
+                border-color     var(--dur-quick) var(--ease-standard),
+                background-color var(--dur-quick) var(--ease-standard);
+  }
+  footer a { transition: color var(--dur-quick) var(--ease-standard); }
+
+  /* ambient — none, deliberately. org.mjs stamps .led.up per service, so a
+     healthy fleet would pulse many dots at once; past roughly a third of the
+     elements moving it reads as noise rather than liveness. */
+
+  /* This page had no reduced-motion gate at all. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important;
+      scroll-behavior: auto !important;
+    }
+    .card { opacity: 1; transform: none; }
+  }
 </style>
 </head>
 <body>
