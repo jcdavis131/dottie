@@ -635,9 +635,33 @@ found exactly 42, matching the subagent's count by a different method.
   machine's answer. `.scout` only works because it is CWD-relative and `abspath` resolves
   it against the process CWD. Two independent sites already want a repo-relative token.
 
-- [ ] **KNOWN GAP, stated not papered over:** a **symlink** inside an allowed directory
-  pointing outside it still escapes `_path_matches`. Blocking it needs `realpath` on an
-  existing tree, which the not-yet-created-write case rules out.
+- [x] **KNOWN GAP, stated not papered over:** a **symlink** inside an allowed directory
+  pointing outside it still escapes `_path_matches`. ~~Blocking it needs `realpath` on an
+  existing tree, which the not-yet-created-write case rules out.~~
+  **CLOSED 2026-07-28 (`5b02e15`) — and the stated blocker was simply false, which is why this
+  sat open.** `os.path.realpath` is **not strict**: it resolves whatever prefix exists and
+  appends the rest untouched. Measured with a junction `allowed/escape -> outside` and a target
+  that does not exist:
+  ```
+  lexical  target:  ...\allowed\escape\not_yet_created.txt   inside? True
+  realpath target:  ...\outside\not_yet_created.txt          inside? False
+  ```
+  The not-yet-created case never ruled it out — a path with nothing to resolve comes back
+  normalized, so the check is a no-op precisely where the objection applied. **Worth generalising:
+  the gap was guarded by a plausible technical reason that nobody re-tested. A disclaimed
+  limitation is a claim like any other and decays the same way.**
+  `_norm_path` stays lexical; new `_resolves_within()` is a second gate after the string match.
+  Both sides are resolved, so an allowed root that is *itself* a symlink (symlinked `/tmp`, a
+  redirected data dir) still works — denying that is the obvious way to get this wrong, so it has
+  its own test.
+  Residual, stated: **TOCTOU-checkable, not TOCTOU-proof.** The link can be swapped between the
+  check and the `open()`. Closing that needs `O_NOFOLLOW` semantics at every call site.
+  Verified: mutation `_resolves_within -> return True` **KILLED** by 2 tests, `policy.py` restored
+  byte-exact; `tests/test_policy.py` 74 → **80 passed**; full scout-cli **2235 passed / 1 skipped
+  / 0 failed** (2229 before, +6 = the new tests exactly).
+  Test-harness note: `Path.symlink_to` needs `SeCreateSymbolicLinkPrivilege` on Windows and raises
+  **WinError 1314** without it, so the helper falls back to `mklink /J`; `realpath` resolves a
+  junction identically, so nothing skips on this box.
 
 <details><summary>Original entry (2026-07-24) — kept for the reasoning</summary>
 
