@@ -65,7 +65,27 @@ def _load_auth() -> dict[str, Any]:
 
 
 def _save_auth(data: dict[str, Any]) -> None:
-    """Save auth registry with 0600 perms."""
+    """Save auth registry with 0600 perms.
+
+    Gated here rather than at each command. There are SEVEN `_save_auth(db)` call
+    sites in this file; the helper is the one choke point none of them can forget,
+    and `REG` is plugin-chosen -- no flag redirects it -- so `fs_write` (which
+    enforces `capabilities.filesystem.paths`) is the correct action, not the
+    operator-named `fs_write_arg`.
+
+    The TODO entry that tracked this concluded the gate had to move up to the CLI
+    boundary, because tests/test_core_extra.py relocates `REG` to a tmp_path the
+    allowlist cannot contain, and an absolute declared entry ignores `base=` by
+    design. Relocating HOME instead of REG removes that conflict: the manifest
+    declares `~/.local/share/bigbang/auth.json`, `_norm_path` expanduser()s it, and
+    a test that moves HOME moves both sides together. That is also the more faithful
+    fixture -- a different HOME is the variation that actually occurs, whereas an
+    auth.json somewhere unrelated to HOME is the thing this gate exists to refuse.
+    """
+    from bigbang.core.policy import enforce_or_raise, load_manifest
+
+    manifest = load_manifest(Path(__file__).resolve().parent)
+    enforce_or_raise(manifest, "fs_write", str(REG))
     REG.parent.mkdir(parents=True, exist_ok=True)
     REG.write_text(json.dumps(data, indent=2))
     try:

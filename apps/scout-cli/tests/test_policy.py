@@ -478,9 +478,12 @@ class TestUngatedWriteCapablePluginsAreTracked:
     inverse of an enforce_or_raise call site") and tools imports it but only ever
     calls it with "network". Neither gates a write. The real number is 16."""
 
+    # 16 on 2026-07-25, 15 on 2026-07-28: `auth` now gates in `_save_auth`, the one
+    # choke point its seven call sites share. This list shrinking is the only
+    # measure of progress on that axis, so it is edited only alongside a real gate.
     KNOWN_UNGATED = frozenset(
         {
-            "auth", "ava", "brain", "dev_loop", "herd", "lab", "mcp", "quality",
+            "ava", "brain", "dev_loop", "herd", "lab", "mcp", "quality",
             "reviewgraph", "rtx", "secrets", "skill", "system", "tennis",
             "tools", "write",
         }
