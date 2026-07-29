@@ -192,9 +192,25 @@ Verified rather than assumed:
 - Weight 0.0 follows existing precedent: `synth_research_pdf` sits at 0.0 with the note
   "per-file sidecar; keep weight 0 until licenses clean" — the identical situation.
 
-- [ ] **Rebalance the phase-2/3 weights to give stack_v3_code a non-zero share.** It is
-  dormant until then. Must be one deliberate edit that lowers other phase-2/3 sources by
-  the same total, or the collector spins.
+- [x] **Rebalance the phase-2/3 weights to give stack_v3_code a non-zero share.** Done
+  2026-07-28, `85067ad`, in one deliberate edit as required. Verified at HEAD: all 6 phases
+  sum to exactly 1.0, every source's weight keys equal its declared phases, 38 sources,
+  31 collector tests pass.
+  - **P2 0.06**, taken entirely from `github_code` (0.15 → **0.09**). Same modality, so P2's
+    raw-code budget is UNCHANGED at 0.25 = `synth_code` 0.10 + `github_code` 0.09 +
+    `stack_v3_code` 0.06. `github_code`'s config is `Python-mit` — one language, one licence —
+    so this buys multi-language coverage behind an equally strict per-file gate, with no
+    licence loosening and no increase in code share.
+  - **P3 0.03**, taken entirely from `synth_think_code` (0.15 → **0.12**). P3's code content
+    was otherwise entirely model-generated (that + `codeact_traj`); 3% real permissively
+    licensed source hedges a synthetic-only code distribution. P5 untouched — `stack_v3_code`
+    does not declare phase 5.
+  - **Deliberately small, and the reason is recorded in the config**: the adapter has never fed
+    a real run, so the licence-gate drop rate on live HF rows is **UNMEASURED** — the tests
+    cover the gate's logic, not what fraction of rows survive it. If the drop rate is high the
+    phase still fills from its siblings. Revisit with a measurement, not a guess.
+  - The live trainer never live-reloads `sources.yaml`, so nothing in flight changed; the next
+    restart picks it up.
 
 ### ⚠ 2026-07-26 — "remove fabricated data" is NOT done in vector-equities: 17 pipeline files still use np.random
 
