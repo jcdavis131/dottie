@@ -564,6 +564,40 @@ Re-check with:
   build every byte numerically (`bytes([13, 10, 0])`, backslash as `chr(92)`) with no backslash
   literals anywhere in the script.
 
+### NEW 2026-07-29 — the secrets vault could lose every secret, silently
+
+- [x] **`bigbang/core/security.py` destroyed the whole vault on one torn write, with no
+  error.** Found by sweeping for the pattern behind the herd ledger race (`0ae2dc6`) — same
+  family, higher stakes. `_save` used `VAULT_FILE.write_text(...)`, which **truncates before
+  writing**, and `_load` did `except Exception: return {}`. Every mutation is a
+  read-modify-write, so one torn file plus one ordinary `set_secret` was total loss.
+  Measured against the real module:
+  ```
+  vault before      : ['AWS', 'HF_TOKEN', 'OPENAI_KEY']
+  after torn write  : []            <- _load swallowed it
+  after next set    : ['NEW_KEY']   <- loss made permanent
+  on disk           : {"NEW_KEY": "zzz"}
+  ```
+  **The non-atomic write is the smaller half.** The fail-silent read is what turns a transient
+  problem into permanent loss — and it is the half that would survive "just make the write
+  atomic". `bigbang/core/registry.py` had the identical shape (rebuildable, so lower stakes).
+  Fixed in `3e301cb` via new `bigbang/core/atomic_json.py`: missing → default (missing IS
+  empty); **corrupt raises** and preserves the bytes as `<name>.corrupt-<ts>` first, because
+  refusing to parse must not also mean refusing to keep the only copy; per-process temp name +
+  bounded replace retry; `mode=` applied to the **temp** so `secrets.json` never exists with
+  default permissions.
+  **Null result, stated because it is a result:** the other three fixed-temp sites are NOT
+  affected — `apps/scout-rtx/train.py`, `ava-factory/dottie/train.py` and `tokenizer.py` derive
+  the temp from a per-run **output** path, so two writers never collide. herd/security/registry
+  are single shared files written by many short-lived CLI processes, which is what makes them
+  racy.
+  Verified: 12 passed / 1 skipped; mutations restoring the fail-silent read (**KILLED by 4**)
+  and the fixed temp name (**KILLED**), `atomic_json.py` restored byte-exact; full scout-cli
+  **2251 passed / 2 skipped**.
+  ⚠ **Process note:** my chunk lists were built before the new test file existed, so the first
+  "full suite" pass silently omitted it. Rebuild the list from a fresh `ls tests/test_*.py`
+  whenever a test file is added — 54 → 55 files here, and 2239 + 12 + 1 skip reconciles exactly.
+
 ### NEW 2026-07-24 — openswap manifests promise filesystem containment that is NOT enforced
 
 #### ✅ DONE 2026-07-25 — enforced, and enforcing it found three defects + a bigger hole
