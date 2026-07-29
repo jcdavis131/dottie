@@ -5323,10 +5323,27 @@ repeatedly; the measurement disagreed with me.
 - [x] **Board correction:** §5.3.R85's table lists `apps/dottie` as 159/36 ⛔. With the
   daemon's own env it is **199 passed / 1 skipped ✅**. That makes the whole repo green,
   and the real total **1,023 passing** (824 green + 199), with `scout-rtx` still unmeasured.
-- [ ] **Worth doing, small:** `resolve.py`'s error should say *"set AVA_FACTORY_ROOT — on this
+- [x] **Worth doing, small:** `resolve.py`'s error should say *"set AVA_FACTORY_ROOT — on this
   box the working value lives in `research_orchestration/research_env.local.ps1`"*. The
   message lists probed paths but never names the file that already holds the answer, which is
   precisely why the fix sat two directories away for four hours.
+  **DONE — the message shipped earlier and is better than this asked for; the TEST landed
+  2026-07-28 (`3998db4`).** `factory_code_root()` names the file *and* adds two things the entry
+  did not request: the hint is **conditional** (it only fires when `AVA_FACTORY_ROOT` is unset,
+  because "it is NOT set" is false and misdirecting when it is set), and it explains that the
+  file is gitignored/machine-local so its absence is expected rather than a second bug.
+  **Nothing tested it, which is the part that mattered.** The hint IS the fix; a later tidy-up of
+  the message drops it silently and costs the next reader the same four hours. Five tests now pin:
+  it appears when unset, it is absent when set, it ADDS to the probe list rather than replacing
+  it, and — the reason the file exists — **the path it names is real**. An error message that
+  names a path is a promise, and if the directory moves the message becomes a lie that reads like
+  help. `research_env.local.ps1` is gitignored (`apps/dottie/.gitignore:8`), so a fresh clone
+  legitimately lacks it: the test asserts the *tracked* directory and the *tracked*
+  `research_env.local.ps1.example`, and that the example still sets the variable the message
+  promises it holds.
+  Verified: 5 passed; mutation **both directions** KILLED (`if False:` → hint_appears +
+  named_env_file; `if True:` → hint_is_absent), `resolve.py` restored byte-exact. An
+  unconditional hint is as wrong as a missing one, so both directions are pinned.
 
 ### 5.3.R86 — ⚠ THERE IS A THIRD SOTA ROW, AND "REAL WINS = ZERO" IS NO LONGER TRUE
 
