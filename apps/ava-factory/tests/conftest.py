@@ -77,3 +77,74 @@ def pytest_report_header(config):  # noqa: ARG001
         + lines
         + ["  (run the other image too; see the module docstring)"]
     )
+
+
+# ---------------------------------------------------------------------------
+# httpx >= 0.28 compatibility for starlette 0.27's TestClient.
+#
+# All 21 tests in test_server_endpoints.py ERRORED at setup with
+#     TypeError: Client.__init__() got an unexpected keyword argument 'app'
+# since 2026-07-25. httpx 0.28 removed the `app=` shortcut; starlette 0.27's
+# TestClient.__init__ still passes it:
+#
+#     super().__init__(app=self.app, base_url=..., headers=..., transport=transport,
+#                      follow_redirects=True, cookies=cookies)
+#
+# WHY DROPPING `app` IS LOSSLESS, not a workaround that hides a problem. That call
+# passes BOTH `app=` and `transport=_TestClientTransport(...)`. In httpx < 0.28,
+# `app=` was only a shortcut for "build an ASGI transport for me"; when an explicit
+# `transport=` was supplied it took precedence and `app` was never used for routing.
+# starlette builds the real transport itself (verified in
+# starlette.testclient.TestClient.__init__ at 0.27.0), so the transport does all the
+# work and `app` was already dead weight before 0.28 removed it.
+#
+# WHY NOT THE TWO FIXES THE BOARD PROPOSED:
+#   * `pip install 'httpx<0.28'` -- httpx is Required-by 17 packages here, including
+#     anthropic, openai, mcp, litellm, chromadb, qdrant-client and scout-cli. This
+#     box runs the live trainer. Downgrading a shared transport library to fix a test
+#     harness is the most dangerous option on the list, not the cheapest.
+#   * upgrade fastapi/starlette -- fastapi 0.104.1 pins starlette ~0.27, so starlette
+#     cannot move alone, and moving both changes the library the live server runs on.
+# Measured 2026-07-28: httpx 0.28.1, starlette 0.27.0, fastapi 0.104.1.
+#
+# Scope: applied at conftest import, so it affects the test session only. It is a
+# no-op on httpx < 0.28 (the parameter is accepted there) and a no-op once
+# starlette/fastapi are upgraded (they stop passing it).
+try:  # pragma: no cover - import guard, httpx is optional in the cpu image
+    import httpx as _httpx
+except ImportError:  # pragma: no cover
+    _httpx = None
+
+if _httpx is not None and not getattr(_httpx.Client.__init__, "_ava_drops_app", False):
+    import inspect as _inspect
+
+    if "app" not in _inspect.signature(_httpx.Client.__init__).parameters:
+        import functools as _functools
+
+        _orig_client_init = _httpx.Client.__init__
+
+        # functools.wraps sets __wrapped__, so inspect.signature() keeps reporting
+        # httpx's REAL signature. Without it the wrapper advertises `app` as a
+        # supported parameter -- the shim would be telling every introspecting
+        # caller "yes, pass app" and then dropping it. The sentinel below, not the
+        # signature, is what makes re-import idempotent.
+        @_functools.wraps(_orig_client_init)
+        def _client_init(self, *args, app=None, **kwargs):
+            # Dropping `app` is lossless ONLY when an explicit transport= came with
+            # it -- that transport is what actually routes in-process, and starlette
+            # 0.27 always passes both. With app= alone, `app` WAS the routing, and
+            # silently discarding it makes httpx open a real socket to base_url:
+            # a test that believes it is sandboxed would hit the network instead.
+            # Refuse loudly rather than degrade quietly.
+            if app is not None and kwargs.get("transport") is None:
+                raise TypeError(
+                    "httpx.Client(app=...) without transport=: this shim only drops "
+                    "`app` when an explicit transport= is supplied alongside it. "
+                    "Dropping it here would silently turn an in-process ASGI call "
+                    "into a real network request. Wrap the app yourself: "
+                    "transport=httpx.ASGITransport(app=app)."
+                )
+            return _orig_client_init(self, *args, **kwargs)
+
+        _client_init._ava_drops_app = True
+        _httpx.Client.__init__ = _client_init
