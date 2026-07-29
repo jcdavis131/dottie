@@ -32,9 +32,29 @@ that no one has done.
    `mtnn_arch.json` is GENERATED and stale three ways, so only `dEmb` was corrected and the
    rest DECLARED stale in a `_stale` block rather than laundered. Superseded text:
    `cd ~/vector-hoops && python pipeline/provenance_gate.py` exits 1 today, correctly.
-5. **Re-derive or retract the hoops promote justification.** `0.363 → 0.757` lives in a
-   comment (`composite_score.py:88-95`) and in no artifact. Same shape as the three
-   research `sota` rows that were all artifacts.
+5. ~~**Re-derive or retract the hoops promote justification.**~~ **RETRACTED 2026-07-28 — the
+   claim "and in no artifact" was FALSE.** `0.363 → 0.757` is a protocol-matched, same-field,
+   same-artifact comparison across the promote commit `53d35ad`:
+   - `0.757` = `assets/eval_scoreboard.json` → `results.mtnn.by_split.test.top5` at HEAD
+     (n=790, dim **64**, `mtnn_v5_concat_b2_h160_t32_d64_mlp128_fus256`)
+   - `0.363` = **the same field** in the parent version (dim **48**,
+     `mtnn_v5_concat_b2_h160_t32_d48_mlp128`) —
+     `git show 53d35ad^:assets/eval_scoreboard.json`
+   - Produced by its own eval commit, `b25d73e feat(eval): held-out adjacent-season retrieval
+     scoreboard — build + gate + /model readout`
+   - The artifact is *better* than most here: sha256-pinned embeddings and vectors,
+     `computed_at 2026-07-25T14:43:37Z`, **exhaustive not sampled**, **pessimistic tie
+     handling** (ties count against the target), explicit split boundaries, and full pair
+     accounting (10,104 eligible of 12,966 rows).
+   - **What was actually true, and it is narrower:** the *baseline* is not visible at HEAD —
+     only the promoted side is. A reader at HEAD cannot check the comparison without git
+     archaeology. Worth recording the `git show` line next to the claim in
+     `composite_score.py`, but that is a discoverability fix, not a fabrication.
+   - **Why I got it wrong:** grep for `0.363` across the repo returned **11.4 MB** of matches —
+     the digits occur inside unrelated float blobs in the shipped JSON — so an earlier pass
+     concluded "no artifact" from a search that was drowning in false positives. The metric
+     name and `git log -S` found it in one shot. Same lesson as the np.random audit: search
+     for the *thing*, not the *digits*.
 6. **Then step 5 of the embedding sequence** — ONE encoder + LoRA adapters, hard
    negatives, pre-registered target beating **NDCG@10 0.622**.
 
