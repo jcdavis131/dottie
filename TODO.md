@@ -859,6 +859,55 @@ bytes  3319296  (= 12,966 x 64 x 4)
 prose  README.md / assets/mtnn.js / methods.html  all advertise 48-d
 ```
 
+**RE-MEASURED 2026-07-28 — the block above is STALE, and the situation is different (and
+worse) than it describes.** `mtnn_arch.json` now reads `dEmb: 64`; the hand-correction landed
+in `72a69d4`. Live state:
+
+| surface | dEmb | model | towerFamilies |
+| --- | --- | --- | --- |
+| `assets/mtnn_arch.json` | **64** (hand-patched) | `mtnn_v4_phase_b` | 11 |
+| `assets/mtnn_jacobian.json` | **48** | `concat` | 11 (same set) |
+| `assets/mtnn_meta.json` | 64 | `mtnn_v5_concat_b2_h160_t32_d64_mlp128_fus256` | — |
+| `pipeline/data/mtnn_report.json` | 64 | same v5 tag | — |
+| `assets/eval_scoreboard.json` | 64, rows 12966, sha256 `2574ef58…` | same v5 tag | — |
+| `assets/mtnn_embeddings.f32` | 3,319,296 bytes, sha256 `2574ef58…` | — | — |
+
+**Three artifacts, three different model identities** (`mtnn_v4_phase_b` / `concat` / v5).
+The embeddings sha256 matches the eval scoreboard's pin exactly, so **64-d v5 is
+authoritative** — confirmed independently by meta, report, scoreboard, and the byte count.
+
+**The hand-correction created a NEW inconsistency.** Before it, arch and jacobian both said
+48 and *agreed* — two jointly-stale exports passing each other's check. Patching arch to 64
+broke that agreement, which is what surfaces the problem. The `towerFamilies` check still
+passes because both files carry the identical 11-family set: **a consistency check between
+two outputs of the same stale export cannot detect a correlated error.**
+
+**THE GATE ALREADY EXISTS, ALREADY WORKS, AND IS ALREADY RED.**
+`python pipeline/verify_accuracy.py` → exit **1**:
+
+```
+FAIL: jacobian dEmb 48 != arch dEmb 64
+FAIL: mtnn_jacobian.json checkpoint stamp stale vs pipeline/data/mtnn_best.pt
+FAIL: mtnn_attr_pop.json checkpoint stamp stale vs pipeline/data/mtnn_best.pt
+ACCURACY HARNESS: 3 FAILURES - do not ship
+```
+
+So this is **not** "a gate whose verdict nothing consumes" — `verify_accuracy.py:508-526`
+consumes it properly and fails with a diff. It is the other failure mode: **a gate that is
+red and is not being run.** The site ships anyway. Wire it into CI or a pre-deploy hook, or
+the check is decoration.
+
+**Fix (needs a trainer env, changes shipped assets — not done here):** re-run
+`export_mtnn_jacobian.py` against the v5 checkpoint. That regenerates jacobian *and* arch
+together at dim 64 with the real family set, clearing all three failures at once. Note the
+shipped jacobian tensor is `12966x11x5` — the 11 families are baked into its shape, so this
+is a re-export, not a metadata edit.
+
+**Caveat on the "18 families" figure:** `mtnn_arch.json`'s own disclosure block says *"lists
+11; the live manifest has 18 families, 17 of them towers"*, but
+`pipeline/data/feature_manifest.json` enumerates **130 feature names**, not families — I could
+not confirm 18 from it. Treat 18 as unverified until the re-export prints the real count.
+
 **The check that does NOT work, recorded so nobody "simplifies" the gate back into it.** The
 obvious invariant is `filesize == rows * dim * 4`. On this artifact **3,319,296 divides by
 both 48×4 (17,288 rows) and 64×4 (12,966 rows)** — a size check alone is *degenerate*, it
