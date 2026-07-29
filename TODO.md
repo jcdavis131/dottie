@@ -446,7 +446,7 @@ Re-check with:
 
 ### NEW 2026-07-24 — batch-4 `apm`: one vacuous assertion (code and metrics all hold)
 
-- [ ] **tests/test_apm.py:721 cannot fail.**
+- [x] **tests/test_apm.py:721 cannot fail.**
   `assert "apm:slow" not in {d["rule"] for d in by_rule["apm:critical-latency"]}` — the bucket is
   KEYED by `d["rule"]`, so every element in it already has `rule == "apm:critical-latency"`;
   `"apm:slow"` can never be present. Structurally guaranteed, not merely unlikely. Replace with
@@ -465,7 +465,7 @@ Re-check with:
 
 ### 2026-07-24 — BATCH-4 HEADLINE: 5 of 5 verifiers found something the builder missed
 
-- [ ] **Every single independent verifier found a real gap, and 3 of 5 found an assertion that
+- [x] **Every single independent verifier found a real gap, and 3 of 5 found an assertion that
   cannot fail.** flows ✅ · a11y ✅ (2 survivors, judged minor) · contentgap ⚠️ (2 survivors +
   overlap claim stale) · dupes ⚠️ (17th surviving mutant + 1 vacuous test) · apm ⚠️ (1 vacuous
   test). Every builder had reported a green suite AND a GOAT mean of 10.00 — both true, neither
@@ -481,7 +481,7 @@ Re-check with:
 
 ### NEW 2026-07-24 — batch-4 `contentgap`: 2 low-severity mutation survivors
 
-- [ ] Verifier refuted "15/15 caught, survivors: none": (a) `expected_count()`
+- [x] Verifier refuted "15/15 caught, survivors: none": (a) `expected_count()`
   `round(rate * max(0, draft_tokens), 2)` -> `round(rate * draft_tokens, 2)` survives, but
   `token_count()` can never be negative so the guard is unreachable either way; (b)
   `rows[: max(0, limit)]` -> `rows[:limit]` survives at both `corpus_terms()` and
@@ -489,10 +489,26 @@ Re-check with:
   and is untested. Low severity, honestly graded by the verifier itself; the claim was
   overstated as an absolute, not fabricated. Fix = pin the negative-limit behavior or drop the
   dead guard, whichever the code actually means.
+  **CLOSED 2026-07-28 (`22f31e5`) — and re-verified independently, which is the only reason the
+  last one got caught.** `7d74557`/`e1eca6a` had already fixed (a), both `corpus_terms` sites and
+  the apm/dupes/a11y/searchindex tautologies, but the board was never ticked. Re-running the
+  mutations rather than trusting those commits' own claims — this being the block whose lesson is
+  *"self-reported mutation scores are not evidence"* — found **1 of 4 still surviving**:
+  `contentgap.py:482 rows[: max(0, limit)] -> rows[:limit]`. The assertion written to catch it
+  (`test_contentgap.py:262`) was correct; the **fixture was too small**. One draft-only row means
+  `rows[:-3]` is `[]` as well, so guarded and unguarded are indistinguishable — a negative limit
+  only truncates observably when there are more rows than it slices off. Now 4 terms + an
+  anti-vacuity assertion pinning the count. Final: **4/4 KILLED**.
+  Harness note worth keeping: `contentgap.py` is CRLF while `dupes.py` is LF, so a line-based
+  mutator splitting on `"\n"` leaves a trailing `\r` and every anchor mismatches. The
+  expected-content check reported NOT APPLIED instead of mutating a line into a syntax error and
+  scoring the collapse as a kill — a mutation harness without that check invents its own successes.
+  Verified: `tests/test_contentgap.py` 50 passed; full `apps/scout-cli` **2229 passed / 1 skipped
+  / 0 failed** (2 chunks of 27 files, `EXIT=0` both — a single run reaches only 93% in 560s).
 
 ### NEW 2026-07-24 — batch-4 `dupes`: two TEST defects to fix before it ships (code is fine)
 
-- [ ] **The adversarial verifier refuted the build's "16/16 mutations caught, survivors: none".
+- [x] **The adversarial verifier refuted the build's "16/16 mutations caught, survivors: none".
   There is a 17th that survives all 40 tests.** `bigbang/core/dupes.py:539`
   `both = bool(set_a) and bool(set_b)` -> `or` survives, and it is NOT an equivalent mutant.
   **Be precise about what this means: the SHIPPED CODE IS CORRECT.** I verified the asymmetric
@@ -507,7 +523,7 @@ Re-check with:
   there `and` and `or` are indistinguishable. Reachable from shipped code:
   `scout dupes compare published.md tiny-draft.md` -> `compare_rows` via
   `plugins/dupes/cli.py:390`. **Fix = add the asymmetric case**, not touch the code.
-- [ ] **One vacuous assertion, tests/test_dupes.py:142.**
+- [x] **One vacuous assertion, tests/test_dupes.py:142.**
   `blob = bytes([0,1,2,3]) * 500; assert blob.decode("utf-8") is not None` — max byte is 3, so
   the blob is pure ASCII and `decode()` cannot raise; `decode()` returns `str`, so
   `is not None` is a tautology. The assertion cannot fail. Replace with the encoding behavior it
