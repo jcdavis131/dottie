@@ -660,13 +660,39 @@ found exactly 42, matching the subagent's count by a different method.
   Failed once inside the 27-file chunk, then **passed on a clean re-run of the same chunk**
   (1269 passed). It passes alone with the auth changes, alone at HEAD, and paired with
   `test_core_extra.py` — so it is not an ordering interaction and not a regression.
-  Cause is timing: the test shells out and waits with a hard `--timeout 15` (`timeout=20` on
-  the subprocess call), which is not enough under full-chunk CPU contention.
+  ⚠ **My first diagnosis ("timing — the `--timeout 15` budget is too small under load") was
+  WRONG. Read the captured failure before believing it.** It is not a timeout at all — `herd
+  wait` returned a real error and exited 1:
+  ```
+  assert w.returncode == 0
+  E   AssertionError: {
+  E       "error": "<class 'OSError'> returned a result with an exception set",
+  E       "example": "scout herd wait t286 --status done --timeout 120",
+  E       "discover": "scout herd status"
+  E     }
+  ```
+  A `matched: false` timeout exits **2** with a `timeout_s` field; this exits **1** through
+  `wait_cmd`'s `except Exception` → `_emit_err`. Different failure entirely, and the
+  "it's just slow" reading would have had me raise a number and call it fixed.
+  **Second hypothesis also DISPROVEN, by measurement:** that `_pid_alive`'s `os.kill(pid, 0)`
+  terminates its target on Windows (CPython implements `os.kill` there via `OpenProcess` +
+  `TerminateProcess`). Tested directly — spawned a 10-second child, probed it, and the child
+  **survived**; `os.kill` returned normally. Not the cause.
+  **What is established:** the message shape `<class 'OSError'> returned a result with an
+  exception set` is CPython's "a call returned a value while an exception was set". The named
+  callable is the **`OSError` class itself**, i.e. it failed while *constructing* the
+  exception. `_pid_alive` cannot leak this — it catches `ProcessLookupError` /
+  `PermissionError` / `OSError` around the only `os.kill`. So it originates elsewhere under
+  `wait_status → get_session(refresh=True)`.
+  **Leading unverified hypothesis (do not treat as fact):** the ledger's atomic write
+  (`tmp.replace(HERD_FILE)`, `store.py:58`) hits a Windows sharing violation when another
+  process has the file open — `PermissionError` is an `OSError` subclass, and concurrent
+  full-chunk load is exactly when a second reader exists. Reproduce by hammering
+  `get_session(refresh=True)` from two processes before changing anything.
   **Why it matters:** `apps/scout-cli` is a HARD CI gate (93c4ad8), so this reds the whole
-  build at random and trains readers to re-run instead of read. Fix = raise the wait budget
-  or make the wait poll-until-deadline rather than a fixed sleep; do not delete the
-  assertion. Recorded rather than dismissed, since "it passed the second time" is how a real
-  intermittent bug gets ignored.
+  build at random and trains readers to re-run instead of read. **Do not "fix" it by raising
+  the timeout** — that would hide a real error behind a longer wait. Recorded rather than
+  dismissed, because "it passed the second time" is how an intermittent bug gets ignored.
 
 - [x] **FOLLOW-UP: the allowlist cannot express a dynamically-discovered root.** Defects 1
   and 2 share this cause — reviewgraph tried to spell it `<root>`, tasks hardcoded one
