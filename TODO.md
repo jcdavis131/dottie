@@ -598,6 +598,26 @@ Re-check with:
   "full suite" pass silently omitted it. Rebuild the list from a fresh `ls tests/test_*.py`
   whenever a test file is added — 54 → 55 files here, and 2239 + 12 + 1 skip reconciles exactly.
 
+- [x] **`auth.json` had the identical bug — and it holds credentials.** `38e7127`. Its
+  `_load_auth` docstring said *"Returns {} if missing/corrupt"*: behaviour documented,
+  consequence not. A torn `auth.json` read as `{}` and the next login wrote that back,
+  destroying every stored credential silently. `_save_auth` also `write_text`'d and chmod'd
+  **after**, so the file briefly existed at default permissions. Now on `atomic_json`; the
+  `fs_write` gate from `df11ca3` is unchanged and still ahead of the write.
+  **How it was found — the sweep needed narrowing to be useful.** 30 files match a
+  fail-silent `except: return {}`, which is far too many to act on and mostly harmless. It is
+  only *data loss* when the value is **written back to the same file**, so intersecting
+  "fail-silent read" with "writes JSON state" gives the real read-modify-write set. That
+  intersection is the discriminator worth reusing.
+
+- [ ] **Three more read-modify-write stores with a tolerant read, NOT yet changed.**
+  `apps/ava-factory/dottie/telemetry.py`, `apps/scout-cli/bigbang/plugins/tasks/cli.py`,
+  `packages/personal-graphify/src/personal_graphify/query.py`. Each pairs a forgiving load with
+  a JSON write, so each can in principle cement a torn file. Lower stakes than secrets and auth
+  (telemetry is regenerable; tasks and graphify are re-derivable), which is why they are queued
+  rather than swept in one edit — one at a time, board green either side, as with the ungated
+  plugins. Recorded so the sweep is not mistaken for finished.
+
 ### NEW 2026-07-24 — openswap manifests promise filesystem containment that is NOT enforced
 
 #### ✅ DONE 2026-07-25 — enforced, and enforcing it found three defects + a bigger hole
