@@ -729,12 +729,29 @@ Verified: `tests/test_dataset_license_gate.py` **41 tests**, mutation tested **8
 empty-licence-allowed, dry-run-clears, no-normalisation). Full factory board re-run clean
 afterwards — the first run was discarded because it was started before the edits landed.
 
-- [ ] **FOLLOW-UP: `docs/crons/dataset-discovery-daily.md:21` still prescribes `--dry-run`.**
+- [x] **FOLLOW-UP: `docs/crons/dataset-discovery-daily.md:21` still prescribes `--dry-run`.**
   With the gate fixed that cron is now correctly a no-op for candidate selection (fail
   closed), which means it produces nothing usable. Drop `--dry-run` from the documented cron:
   the non-dry-run path only makes a small `/api/datasets/<id>` metadata call, NOT a download,
-  so it is safe on the disk-limited VM. Not done here because the flag may have been chosen
-  for a reason not recorded in the doc — confirm intent first.
+  so it is safe on the disk-limited VM. ~~Not done here because the flag may have been chosen
+  for a reason not recorded in the doc — confirm intent first.~~
+  **DONE 2026-07-28 (`154be3e`). Intent checked three ways rather than guessed:**
+  1. The doc arrived by **subtree merge `1f547ac`**, so no rationale exists in this repo's
+     history. Note `git log -S "--dry-run" -- <doc>` returns **empty** — because `-S` skips
+     merges, not because nothing introduced the string. Another empty-output-is-not-an-answer.
+  2. **Two other docs describing the SAME daily cron omit the flag** —
+     `CONTINUOUS_PIPELINES.md:48` and `LOCAL_PICKUP.md:181`. Only this one file carried it.
+  3. **The script already prescribes removing it**: *"Re-run without `--dry-run` before treating
+     any candidate as usable."*
+  So this resolved a doc-vs-code contradiction rather than overriding a decision.
+  Safety claim verified in source, not assumed: the non-dry-run path adds **one**
+  `urllib.request.urlopen` to `huggingface.co/api/datasets/<id>`, `timeout=5`. It downloads no
+  dataset — the `load_dataset`/`wget` lines are **strings written into the manifest** for the
+  Alienware box, never executed on the VM. Matches `CONTINUOUS_PIPELINES.md:25` "No download in
+  VM".
+  Left a **DO-NOT-RE-ADD note inline with the reasoning**, because the flag reads like a safety
+  measure and would otherwise be restored by the next careful reader.
+  Verified: `tests/test_dataset_license_gate.py` **64 passed**.
 
 ### 🧭 2026-07-26 — EMBEDDING SEQUENCE: bar measured, Option C decided, steps 4–5 in flight
 
