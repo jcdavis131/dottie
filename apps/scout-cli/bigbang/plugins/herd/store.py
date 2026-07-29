@@ -20,6 +20,12 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+# Ledger-write retry budget. ~0.55s worst case (0.01+0.02+...+0.1), which is short
+# next to wait_status's 0.4s poll interval and long enough to outlast a concurrent
+# reader's open()/close() of sessions.json.
+_SAVE_RETRIES = 10
+_SAVE_BACKOFF_S = 0.01
+
 HERD_DIR = Path.home() / ".local" / "share" / "bigbang" / "herd"
 HERD_FILE = HERD_DIR / "sessions.json"
 LOG_DIR = HERD_DIR / "logs"
@@ -52,10 +58,40 @@ def _load() -> dict[str, Any]:
 
 
 def _save(data: dict[str, Any]) -> None:
+    """Write the ledger atomically, and survive concurrent writers.
+
+    The temp name is PER-PROCESS. It used to be a fixed
+    `HERD_FILE.with_suffix(".tmp")`, i.e. one `sessions.tmp` shared by every
+    process on the box, so two `scout herd` invocations wrote the same file and
+    one replaced it out from under the other. Measured before this change: 4
+    processes polling `get_session(refresh=True)` for 6 seconds produced **3334**
+    PermissionErrors --
+
+        [Errno 13] Permission denied: ...sessions.tmp
+        [WinError 32] ...sessions.tmp -> sessions.json
+
+    -- which surfaced through `herd wait` as an OSError and red the suite at
+    random. `os.getpid()` is enough: two live processes cannot share a pid.
+
+    The replace is retried because it is the OTHER half of the race. `os.replace`
+    is atomic, but on Windows it fails with WinError 32 when the TARGET is open,
+    and `_load` opens `sessions.json` on every read. POSIX rename has no such
+    failure, so the retry is a no-op there rather than a platform branch.
+    """
     _ensure_dirs()
-    tmp = HERD_FILE.with_suffix(".tmp")
+    tmp = HERD_FILE.with_suffix(f".{os.getpid()}.tmp")
     tmp.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
-    tmp.replace(HERD_FILE)
+    for attempt in range(_SAVE_RETRIES):
+        try:
+            tmp.replace(HERD_FILE)
+            return
+        except PermissionError:
+            if attempt == _SAVE_RETRIES - 1:
+                # Do not leave a per-pid temp behind on the final failure, or a
+                # crashed writer litters the directory with one file per run.
+                tmp.unlink(missing_ok=True)
+                raise
+            time.sleep(_SAVE_BACKOFF_S * (attempt + 1))
 
 
 def _pid_alive(pid: int | None) -> bool:

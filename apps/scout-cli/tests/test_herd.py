@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+import pytest
 
 CLI = [sys.executable, "-m", "bigbang.cli"]
 ROOT = Path(__file__).resolve().parents[1]
@@ -111,3 +114,84 @@ def test_herd_help_has_examples():
 
 def test_herd_skill_file_exists():
     assert Path("bigbang/skills/scout-herd.md").exists()
+
+
+# ---------------------------------------------------------------------------
+# Concurrent ledger writes — the cause of the intermittent `herd wait` OSError
+# ---------------------------------------------------------------------------
+class TestLedgerWritesSurviveConcurrency:
+    """`_save` used a FIXED temp name, so every process shared one sessions.tmp.
+
+    Two `scout herd` invocations wrote the same file and one replaced it out from
+    under the other. Measured before the fix: 4 processes polling
+    `get_session(refresh=True)` for 6s produced 3334 PermissionErrors
+    ([Errno 13] on the temp, [WinError 32] on the replace), which surfaced through
+    `herd wait` as an OSError and red the suite at random. After: 0.
+
+    These are in-process and fast. The multi-process reproduction is recorded in
+    TODO.md; running it in the suite would add seconds and a second flake source.
+    """
+
+    @pytest.fixture()
+    def isolated(self, tmp_path, monkeypatch):
+        from bigbang.plugins.herd import store
+
+        monkeypatch.setattr(store, "HERD_DIR", tmp_path)
+        monkeypatch.setattr(store, "HERD_FILE", tmp_path / "sessions.json")
+        monkeypatch.setattr(store, "LOG_DIR", tmp_path / "logs")
+        return store
+
+    def test_the_temp_name_is_unique_per_process(self, isolated, monkeypatch):
+        """The whole fix. A shared temp name is the race; the pid makes it unique.
+
+        Asserts on the file actually created, not on the expression -- a test that
+        re-derived `with_suffix(f".{os.getpid()}.tmp")` would pass against the old
+        code too if someone reverted only the write.
+        """
+        seen = []
+        real_replace = Path.replace
+
+        def spy(self, target):
+            seen.append(Path(self).name)
+            return real_replace(self, target)
+
+        monkeypatch.setattr(Path, "replace", spy)
+        isolated._save({"version": "1", "sessions": {}})
+
+        assert seen, "nothing was replaced — _save did not write atomically"
+        assert seen[0] != "sessions.tmp", (
+            "the temp name is shared by every process again; this is the race"
+        )
+        assert str(os.getpid()) in seen[0], f"temp name carries no pid: {seen[0]}"
+
+    def test_a_transient_permission_error_is_retried(self, isolated, monkeypatch):
+        """WinError 32 fires when a concurrent reader has sessions.json open. That
+        is transient by nature, so the write must retry rather than propagate."""
+        calls = {"n": 0}
+        real_replace = Path.replace
+
+        def flaky(self, target):
+            calls["n"] += 1
+            if calls["n"] <= 2:
+                raise PermissionError(32, "being used by another process")
+            return real_replace(self, target)
+
+        monkeypatch.setattr(Path, "replace", flaky)
+        isolated._save({"version": "1", "sessions": {"x": {"id": "x"}}})
+        assert calls["n"] == 3, f"expected 2 retries then success, got {calls['n']}"
+        assert isolated.HERD_FILE.exists()
+
+    def test_a_permanent_failure_still_raises_and_leaves_no_temp(
+        self, isolated, monkeypatch, tmp_path
+    ):
+        """Anti-vacuity in both directions. If the retry swallowed the error the
+        ledger would silently stop persisting; if it did not clean up, every failed
+        run would leave a per-pid temp behind and the directory would fill."""
+        def always(self, target):
+            raise PermissionError(13, "permission denied")
+
+        monkeypatch.setattr(Path, "replace", always)
+        with pytest.raises(PermissionError):
+            isolated._save({"version": "1", "sessions": {}})
+        leftovers = list(tmp_path.glob("*.tmp"))
+        assert leftovers == [], f"temp files left behind: {leftovers}"
