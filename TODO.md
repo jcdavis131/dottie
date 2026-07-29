@@ -1049,7 +1049,7 @@ kept").
 
 ### NEW 2026-07-25 — 21 factory tests CANNOT RUN: httpx 0.28 removed `Client(app=...)`
 
-- [ ] **`apps/ava-factory/tests/test_server_endpoints.py` — all 21 tests ERROR at setup**
+- [x] **`apps/ava-factory/tests/test_server_endpoints.py` — all 21 tests ERROR at setup**
   with `TypeError: Client.__init__() got an unexpected keyword argument 'app'`. Installed
   **httpx 0.28.1**; the `app=` shortcut was removed in 0.28, and starlette's
   `fastapi.testclient.TestClient` (used at line 121, `with TestClient(app) as c:`) passes it
@@ -1061,12 +1061,28 @@ kept").
   surface that has to be trustworthy before hosting at bhenre.com, and right now **none of it
   is being tested** while the board still reads green-ish because they are *errors*, not
   failures, and a `-q` tail can be skimmed as "119 passed".
-  Fix is a dependency decision, not a code edit: either upgrade starlette/fastapi so
-  TestClient uses `httpx.ASGITransport`, or pin `httpx<0.28`. **Not done here** — this box
-  runs the live trainer, and a dependency change is exactly the kind of thing that should not
-  be slipped in beside an unrelated fix. Verify with:
-  `AVA_FACTORY_ROOT="$PWD" python -m pytest tests/test_server_endpoints.py -q` → expect 21
-  passed once fixed.
+  ~~Fix is a dependency decision, not a code edit: either upgrade starlette/fastapi so
+  TestClient uses `httpx.ASGITransport`, or pin `httpx<0.28`.~~ **DONE 2026-07-28, `03b2b3c`
+  — and both proposed fixes were wrong.** `pip show httpx` → `Required-by:` **17 packages**
+  (anthropic, chromadb, composio-client, groq, langchain-mistralai, langgraph-sdk, langsmith,
+  litellm, llama-index-core, llama-index-legacy, llamaindex-py-client, mcp, mistralai, openai,
+  python-fasthtml, qdrant-client, scout-cli). Downgrading a shared transport library to fix a
+  *test harness* on the box that runs the live trainer is the most dangerous option, not the
+  cheapest. And `fastapi 0.104.1` pins `starlette ~0.27`, so starlette cannot move alone.
+  **It never needed a dependency change.** starlette 0.27's `TestClient.__init__` passes
+  **both** `app=self.app` and `transport=transport`, and the `_TestClientTransport` it built
+  is what actually routes — so `app` was already dead weight before 0.28 removed it. A shim
+  in `tests/conftest.py` drops it, gated on `"app" not in inspect.signature(...)`: no-op on
+  httpx <0.28, no-op once fastapi/starlette move, and it cannot break a passing test (any
+  call passing `app=` today already raises).
+  Two defects found in the shim *after* writing it, both by tests rather than review:
+  (a) it dropped `app` even with no `transport=`, where `app` **is** the routing — silently
+  turning a sandboxed call into a real socket to `base_url`; now a loud `TypeError` naming
+  `httpx.ASGITransport(app=app)`. (b) no `functools.wraps`, so `inspect.signature` reported
+  the *wrapper*, advertising `app` as supported and then discarding it.
+  Verified: `4 passed/21 errors in 62.22s` → **25 passed in 9.15s**; +7 shim tests = 32;
+  mutation **3/3 KILLED** by the intended tests, conftest restored byte-exact.
+  `AVA_FACTORY_ROOT="$PWD" python -m pytest tests/test_server_endpoints.py tests/test_httpx_compat_shim.py -q` → 32 passed.
 
 ### NEW 2026-07-25 — Dottie Org objective recorded as a spec
 
