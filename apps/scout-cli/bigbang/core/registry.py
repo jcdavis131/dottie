@@ -1,8 +1,9 @@
 """Universal tool registry — the heart of 'one CLI to rule them all'"""
 
-import json
 import time
 from pathlib import Path
+
+from bigbang.core import atomic_json
 
 REG_DIR = Path.home() / ".local" / "share" / "bigbang"
 REG_FILE = REG_DIR / "registry.json"
@@ -10,16 +11,17 @@ REG_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _load():
-    if not REG_FILE.exists():
-        return {"version": "0.3.0", "tools": {}}
-    try:
-        return json.loads(REG_FILE.read_text())
-    except Exception:
-        return {"version": "0.3.0", "tools": {}}
+    """Registry contents, or a fresh one when none exists.
+
+    A CORRUPT registry raises rather than reading as empty -- same read-modify-write
+    trap as the vault: silently returning a fresh registry would make the next
+    register_tool() drop every previously registered tool. See atomic_json.
+    """
+    return atomic_json.read_json(REG_FILE, {"version": "0.3.0", "tools": {}})
 
 
 def _save(data):
-    REG_FILE.write_text(json.dumps(data, indent=2))
+    atomic_json.write_json(REG_FILE, data)
 
 
 def register_tool(name: str, manifest: dict):
