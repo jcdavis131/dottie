@@ -623,12 +623,50 @@ found exactly 42, matching the subagent's count by a different method.
   `_save_auth`, so the gate would deny the relocated path and turn a green test red.
   `base=` does not rescue it either — the declared entry is absolute, and absolute
   entries ignore `base` by design.
-  **The generalisable point:** a plugin-chosen path that tests must relocate is
+  ~~**The generalisable point:** a plugin-chosen path that tests must relocate is
   *effectively parameterised*, and the gate belongs where provenance is known — at the
   CLI boundary, not inside a storage helper that both production and tests call with
-  different roots. So each of the 16 needs a per-plugin decision (move the gate up to
+  different roots.~~ So each of the 16 needs a per-plugin decision (move the gate up to
   the command, or give the helper an explicit path parameter), not a blanket edit.
   Do them one at a time, each with the full board green before and after.
+
+  **PROGRESS 2026-07-28 (`df11ca3`): `auth` gated. 16 → 15.**
+  **The generalisation above is wrong, and doing the plugin showed why.** It assumed the
+  test *must* relocate `REG`. Relocating **HOME** instead dissolves the conflict: the
+  manifest declares `~/.local/share/bigbang/auth.json`, `_norm_path` `expanduser()`s it,
+  so moving HOME moves **both sides together** and the gate stays in the helper. That is
+  also the more faithful fixture — a different HOME is the variation that actually occurs,
+  whereas an `auth.json` unrelated to HOME is precisely what the gate exists to refuse.
+  (`USERPROFILE` on Windows, `HOME` on POSIX — set both.)
+  **The helper is the better site here, not the worse one:** there are **seven**
+  `_save_auth(db)` call sites, so it is the one choke point none of them can forget, and
+  `REG` is plugin-chosen with no flag to redirect it — `fs_write` is correct, not
+  `fs_write_arg`. Revised rule: **move the gate up only when the path is genuinely
+  operator-named; if tests relocate a plugin-chosen path, relocate the ROOT they resolve
+  against instead.**
+  Also added `test_save_auth_refuses_a_path_outside_the_allowlist` — without it the
+  roundtrip keeps passing with the enforcement deleted, the "gate whose verdict nothing
+  consumes" shape again. It asserts the file **is not created**, not merely that it raised.
+  The two-directional pin earned its keep: gating `auth` turned
+  `test_plugins_that_got_gated_are_removed_from_the_list` red with *"['auth'] now gate their
+  writes"*, so `KNOWN_UNGATED` cannot silently drift. **Remaining 15:** `ava brain dev_loop
+  herd lab mcp quality reviewgraph rtx secrets skill system tennis tools write`.
+  Verified: 91 passed (policy + core_extra); mutation deleting the `enforce_or_raise` line
+  **KILLED** by 2 tests, `auth/cli.py` restored byte-exact; full scout-cli **2236 passed /
+  1 skipped**.
+
+- [ ] **FLAKE (found 2026-07-28, NOT introduced by the auth gate):
+  `tests/test_herd.py::test_herd_create_start_wait_read_close` fails under load.**
+  Failed once inside the 27-file chunk, then **passed on a clean re-run of the same chunk**
+  (1269 passed). It passes alone with the auth changes, alone at HEAD, and paired with
+  `test_core_extra.py` — so it is not an ordering interaction and not a regression.
+  Cause is timing: the test shells out and waits with a hard `--timeout 15` (`timeout=20` on
+  the subprocess call), which is not enough under full-chunk CPU contention.
+  **Why it matters:** `apps/scout-cli` is a HARD CI gate (93c4ad8), so this reds the whole
+  build at random and trains readers to re-run instead of read. Fix = raise the wait budget
+  or make the wait poll-until-deadline rather than a fixed sleep; do not delete the
+  assertion. Recorded rather than dismissed, since "it passed the second time" is how a real
+  intermittent bug gets ignored.
 
 - [x] **FOLLOW-UP: the allowlist cannot express a dynamically-discovered root.** Defects 1
   and 2 share this cause — reviewgraph tried to spell it `<root>`, tasks hardcoded one
