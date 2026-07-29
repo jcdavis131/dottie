@@ -630,10 +630,30 @@ found exactly 42, matching the subagent's count by a different method.
   the command, or give the helper an explicit path parameter), not a blanket edit.
   Do them one at a time, each with the full board green before and after.
 
-- [ ] **FOLLOW-UP: the allowlist cannot express a dynamically-discovered root.** Defects 1
+- [x] **FOLLOW-UP: the allowlist cannot express a dynamically-discovered root.** Defects 1
   and 2 share this cause — reviewgraph tried to spell it `<root>`, tasks hardcoded one
   machine's answer. `.scout` only works because it is CWD-relative and `abspath` resolves
-  it against the process CWD. Two independent sites already want a repo-relative token.
+  it against the process CWD. ~~Two independent sites already want a repo-relative token.~~
+  **RESOLVED — and the `<repo>` token this asks for is not merely unbuilt, it is IMPOSSIBLE for
+  its own use case.** Verified 2026-07-28:
+  - **`tests/test_core_extra.py:145` monkeypatches `_repo_root` to `tmp_path`.** The root is a
+    *runtime* value chosen by the caller, so no static string in a manifest can ever resolve to
+    it. A `<repo>` token would work on the developer's checkout and fail in the test that
+    already exists.
+  - **The mechanism that CAN work already shipped:** `check_permission(..., base=...)`. The
+    caller passes the root it just resolved — the only party that knows it.
+    `bigbang/plugins/tasks/cli.py:381` does exactly this:
+    `enforce_or_raise(manifest, "fs_write", str(out_path), base=str(root))`, anchoring the
+    manifest's relative `docs/llm-wiki` entry to the resolved root rather than the process CWD.
+  - **"Two independent sites" is now one.** `reviewgraph`'s `<root>` placeholder was fixed to
+    `paths: ['.scout']`, and `reviewgraph/cli.py` calls `enforce_or_raise` **nowhere** — it is
+    one of the 16 ungated write-capable plugins tracked in the entry above, so it has no
+    allowlist question to answer until it is gated. Whoever gates it should pass `base=`, not
+    invent a token.
+  Pinned by `tests/test_policy.py` — `test_base_anchors_a_relative_entry`,
+  `test_without_base_the_same_target_is_denied` (makes `base` load-bearing rather than
+  decorative), `test_base_does_not_widen_beyond_the_declared_entry`,
+  `test_traversal_out_of_a_based_entry_is_denied`, `test_absolute_and_tilde_entries_ignore_base`.
 
 - [x] **KNOWN GAP, stated not papered over:** a **symlink** inside an allowed directory
   pointing outside it still escapes `_path_matches`. ~~Blocking it needs `realpath` on an
