@@ -70,7 +70,11 @@ function renderRun() {
       s.style.marginRight = "12px";
       const led = document.createElement("i");
       led.className = `led ${gt.ok ? "up" : "down"}`;
-      s.append(led, document.createTextNode(gt.id));
+      // the led colour was the only pass/fail signal — same colour-only gap
+      // already fixed on the sites list (line ~277) and org.mjs's own gate
+      // row; the title tooltip below doesn't help on touch or without a
+      // hover, so the chip itself now says which way it went
+      s.append(led, document.createTextNode(`${gt.id} ${gt.ok ? "ok" : "fail"}`));
       s.title = `${gt.name}: ${gt.value}`;
       g.append(s);
     }

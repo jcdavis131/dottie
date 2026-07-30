@@ -192,7 +192,10 @@ function renderRun() {
       const c = document.createElement("span");
       c.className = "chip";
       c.title = `${gt.name}: ${gt.value}`;
-      c.append(led(gt.ok), document.createTextNode(gt.id));
+      // led colour was the only pass/fail signal on these chips — same
+      // colour-only gap fixed on console.mjs's gate row; title tooltip
+      // doesn't help on touch or without a hover
+      c.append(led(gt.ok), document.createTextNode(`${gt.id} ${gt.ok ? "ok" : "fail"}`));
       g.append(c);
     }
     right.append(g);
