@@ -341,7 +341,11 @@ function renderCompute() {
       el.append(bar(o.gpu.memMb / o.gpu.memTotalMb, `vram ${(o.gpu.memMb / o.gpu.memTotalMb * 100).toFixed(0)}%`, "--bh-slate"));
   }
   if (o.disk) {
-    el.append(line("host disk", `${o.disk.freeGb ?? "?"} GB free (low ${o.disk.lowGb} · crit ${o.disk.critGb})`));
+    // lowGb/critGb go through the same num() nullable guard as freeGb (right
+    // beside them on this line) but were the two left unguarded — an absent
+    // threshold printed the literal word "null" instead of "?"
+    el.append(line("host disk",
+      `${o.disk.freeGb ?? "?"} GB free (low ${o.disk.lowGb ?? "?"} · crit ${o.disk.critGb ?? "?"})`));
     el.append(bar(Math.min(1, (o.disk.freeGb ?? 0) / 100),
       `free ${o.disk.freeGb ?? "?"} GB`, o.disk.belowLow ? "--bh-rust" : "--bh-moss"));
   }
@@ -384,8 +388,12 @@ function renderWatch() {
   el.replaceChildren();
   const w = twin?.org?.watch;
   if (twin?.source !== "local" || !w) return offline(el);
+  // p is nullable (parseOrg's num() guard) — renderJspace guards the identical
+  // route.p the same way just below; this line was the one spot that multiplied
+  // it unguarded, so a missing p rendered a fabricated "0.0%" instead of "?"
   if (w.dominantRoute)
-    el.append(line("dominant route", `${w.dominantRoute.name} @ ${(w.dominantRoute.p * 100).toFixed(1)}%`));
+    el.append(line("dominant route",
+      `${w.dominantRoute.name} @ ${Number.isFinite(w.dominantRoute.p) ? (w.dominantRoute.p * 100).toFixed(1) : "?"}%`));
   if (Number.isFinite(w.routeEntropy)) el.append(line("route entropy", w.routeEntropy.toFixed(3)));
   for (const h of w.hints) el.append(P(`◦ ${h}`, "note"));
 }
@@ -844,10 +852,14 @@ $("askform").addEventListener("submit", async (e) => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ prompt: text }) });
     const d = await r.json();
+    // same guard as the console: a non-2xx or malformed body must fall through
+    // to the honest offline line, not stamp "[undefined]" and print the word
+    // "undefined" as if it were a real reply
+    if (!r.ok || typeof d?.reply !== "string") throw new Error("bad assistant-chat response");
     const re = document.createElement("p");
     const src = document.createElement("span");
     src.className = "src";
-    src.textContent = `dottie [${d.source}] `;
+    src.textContent = `dottie [${d.source ?? "offline"}] `;
     re.append(src, document.createTextNode(d.reply));
     log.prepend(re);
   } catch { log.prepend(P("dottie [offline]: unreachable")); }

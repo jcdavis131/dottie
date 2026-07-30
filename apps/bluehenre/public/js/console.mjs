@@ -234,10 +234,16 @@ function renderHub() {
   el.replaceChildren();
   const h = twin?.source === "local" ? parseHub(twin) : null;
   if (!h) { el.append(esc(document.createElement("p"), "feed offline")); return; }
-  if (h.network)
-    el.append(line("model", `${h.network.preset} · ${(h.network.params / 1e6).toFixed(1)}M · ${h.network.layers}L (${h.network.split ?? "?"})`));
+  if (h.network) {
+    const n = h.network;
+    // params/layers are nullable (parseHub: Number.isFinite guard upstream) — an
+    // absent params_analytic must render "?", not a fabricated "0.0M" from
+    // `null / 1e6`; an absent layers must not print the literal string "null"
+    el.append(line("model", `${n.preset} · ${n.params ? `${(n.params / 1e6).toFixed(1)}M` : "?"} · ${n.layers ?? "?"}L (${n.split ?? "?"})`));
+  }
   if (h.ecosystem)
-    el.append(line("skills ecosystem", `tools ${h.ecosystem.toolsBuilt}/${h.ecosystem.toolsTotal} · skills ${h.ecosystem.skillsTotal}`));
+    el.append(line("skills ecosystem",
+      `tools ${h.ecosystem.toolsBuilt ?? "?"}/${h.ecosystem.toolsTotal ?? "?"} · skills ${h.ecosystem.skillsTotal ?? "?"}`));
   if (h.evals)
     el.append(line("evals", `${h.evals.pass} PASS / ${h.evals.fail} FAIL`, h.evals.fail ? "" : "ok-line"));
   if (h.research) {
@@ -265,8 +271,11 @@ function renderSites() {
     if (s.url) { sp.href = s.url; sp.target = "_blank"; sp.rel = "noopener"; }
     const led = document.createElement("i");
     led.className = `led ${s.up ? "up" : "down"}`;
+    // up/down must carry a text backup, not colour alone (org.mjs's own sites
+    // table already says " up"/" down" next to the same led — this mobile view
+    // dropped the word, leaving a same-shape red/green dot as the only signal)
     sp.append(led, document.createTextNode(
-      `${s.name}${Number.isFinite(s.ms) ? ` ${s.ms}ms` : ""}` +
+      `${s.name} ${s.up ? "up" : "down"}${Number.isFinite(s.ms) ? ` · ${s.ms}ms` : ""}` +
       (Number.isFinite(s.up24) ? ` · ${s.up24}%/24h` : "")));
     // 24h trend strip: one tick per real probe (steer directive: trends)
     if (s.strip?.length) {
@@ -360,10 +369,14 @@ $("askform").addEventListener("submit", async (e) => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ prompt: text }) });
     const d = await r.json();
+    // an error response (non-2xx, or a body that isn't the {source, reply}
+    // shape) must fall through to the honest offline line below — never stamp
+    // "[undefined]:" and print the literal word "undefined" as a fabricated reply
+    if (!r.ok || typeof d?.reply !== "string") throw new Error("bad assistant-chat response");
     const re = document.createElement("p");
     const src = document.createElement("span");
     src.className = "src";
-    src.textContent = `dottie [${d.source}]: `;
+    src.textContent = `dottie [${d.source ?? "offline"}]: `;
     re.append(src, document.createTextNode(d.reply));
     log.prepend(re);
   } catch {
