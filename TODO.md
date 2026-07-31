@@ -13,15 +13,24 @@ that no one has done.
 
 ## ▶ NEXT — ordered, do these first
 
-1. **Fix the 2 defects producing wrong data.** `apps/ava-factory/scripts/minhash_dedup.py`:
-   single-linkage clustering drops documents below its own advertised 0.8 threshold
-   (worst intra-cluster true Jaccard **0.7143**); and `docs[key] = seg` silently
-   overwrites same-named defs in one file — `bigbang/plugins/mcp/cli.py` defines
-   `_check_sdk` twice under try/except, one returning `True` and one raising, **opposites**,
-   only the second survives (4,567 pairs → 4,566 keys, invisible in the reported total).
-2. **Add a task-shaped eval slice** before any embedding model is judged. The golden
-   set's queries are commit messages, which flatter BM25; the agent tier's real queries
-   are task descriptions. Judging a model only on commit messages is rigged the other way.
+*Re-verified 2026-07-31 against `git log` (not memory) — items 1 and 2 below were
+BOTH closed same-day by `41afb54`, five days before this correction. See
+`HANDOFF.md`'s 2026-07-31 block for the full re-audit; that staleness is exactly why
+this section now carries a re-verify note instead of being trusted at face value.*
+
+1. ~~**Fix the 2 defects producing wrong data.**~~ **DONE 2026-07-26** (`41afb54`).
+   `minhash_dedup.py` single-linkage was dropping documents below its own advertised
+   0.8 threshold (worst true Jaccard 0.7143) — fixed via star/leader partitioning
+   re-verified on exact Jaccard, 0 drops below threshold now (was 1). `docs[key] = seg`
+   silently overwrote same-named defs (`bigbang/plugins/mcp/cli.py::_check_sdk`
+   defined twice, opposite behavior, only the second survived) — key collisions no
+   longer silently overwrite, 4,566 → 4,567 documents recovered.
+2. ~~**Add a task-shaped eval slice**~~ **DONE 2026-07-26** (`41afb54`), same commit
+   as #1. **Result that changes item 6 below:** task-description queries (87, median
+   36 words, path-stripped so the query can't contain its own answer) score
+   **NDCG@10 0.429**, vs the commit-message slice's 0.622 (209 queries). 0.622
+   flattered lexical retrieval — 0.429 is the real bar, and item 6's target is
+   corrected to match.
 3. ~~Give `~/vector-unified` a remote~~ — **DONE 2026-07-26**: private remote `jcdavis131/vector-unified`, pushed. Verified before pushing (one-way): 37 tracked files, no secrets, no `.env`/credential/`.pem`/`.key`, largest blob 44 KB. Superseded text: 5,397 lines, one disk; local git survives `rm`,
    not disk failure.
 4. ~~Decide the authoritative surface for hoops 48-vs-64~~ — **DONE 2026-07-26** (`72a69d4`).
@@ -55,8 +64,14 @@ that no one has done.
      concluded "no artifact" from a search that was drowning in false positives. The metric
      name and `git log -S` found it in one shot. Same lesson as the np.random audit: search
      for the *thing*, not the *digits*.
-6. **Then step 5 of the embedding sequence** — ONE encoder + LoRA adapters, hard
-   negatives, pre-registered target beating **NDCG@10 0.622**.
+6. **Then step 5 of the embedding sequence** — ONE encoder + per-domain LoRA
+   adapters + Matryoshka (per the domain-embedding review, `42db5a0`), hard
+   negatives from sibling functions in the same class (`ast_pairs.py` already
+   tracks the enclosing class) plus adjacent-commit files, pre-registered target
+   beating **NDCG@10 0.429** (corrected 2026-07-31 — was 0.622, the commit-message
+   number item 2 above found flatters lexical retrieval; 0.429 is the real
+   task-shaped bar). **This is the only genuinely open item left in this list as
+   of 2026-07-31** — not started (no matching commits in `git log`).
 
 ### ✅ 2026-07-26 — defect sweep done; the task-shaped bar is MUCH lower than the commit-shaped one
 

@@ -5,6 +5,98 @@ work: start at the top block, then the durable brief. Consolidated 2026-07-26 �
 `CURSOR_HANDOFF.md` was merged in and archived, so there is no second handoff to
 reconcile against. All open work AND the full reasoning log live in one file: [`TODO.md`](TODO.md).
 
+⚠ **Curation is a standing discipline, not a one-time cleanup (operator, 2026-07-31):**
+this top block and TODO.md's `▶ NEXT` section must be re-verified against real git
+history each time meaningful work lands here, not just written once and left. The
+2026-07-26 block below sat unrevised through **40+ merged commits** before this
+refresh — including two items (`▶ NEXT` #1 and #2) that were fixed on the *same day*
+the list was written and never marked done. A stale "current state" block is worse
+than none, because it is trusted at face value. Verify against `git log`, not memory,
+before writing "current" anywhere in this file.
+
+---
+
+## 📌 Session continuation — 2026-07-31 (supersedes every block below)
+
+**Measured, not carried forward.** HEAD `f274be8`, pushed, tree clean, no divergence
+from `origin/main`. Docker Desktop **not running** — no active trainer, no live
+bind-mount of the FROZEN `apps/ava-factory/dottie/**` paths right now. 50 GB free on
+`C:` (932 GB, 95% used — watch this, not the WSL-volume figure the 07-26 block
+quoted, which measures something narrower).
+
+### What actually happened between 07-26 and now (40+ commits, git-verified)
+
+The 07-26 block's `▶ NEXT` items 1–2 were closed **same-day**, by one commit
+(`41afb54`, an ultracode 3-fixer/3-verifier run) that the top list was never updated
+to reflect:
+- **minhash single-linkage bug (item 1a) — fixed.** Star/leader partitioning
+  re-verified on exact Jaccard; worst drop-vs-survivor 0.7143 → 0.8000 (0 drops now
+  below the advertised 0.8 threshold, was 1).
+- **`mcp/cli.py::_check_sdk` duplicate-def bug (item 1b) — fixed.** Key-collision
+  overwrite closed; 4,566 → 4,567 documents.
+- **Task-shaped eval slice (item 2) — built, and it changes item 6's target.**
+  `task_eval_slice.py` mines TODO.md's own items as task-shaped queries (paths
+  stripped so the query can't contain its own answer): **NDCG@10 = 0.429** (87
+  queries, median 36 words) vs the commit-message slice's 0.622 (209 queries).
+  0.622 flattered lexical retrieval — **0.429 is the real bar any embedding model
+  must beat**, not 0.622. Item 6 below is corrected to match.
+
+Since then, a long, disciplined "fix + `docs(TODO): close`" pairing closed roughly
+20 more items — the honesty/no-silent-loss doctrine got applied repo-wide:
+- **Silent-total-loss bugs, same shape, three stores fixed this pass:** secrets
+  vault (`3e301cb`) → `auth.json` (`38e7127`) → **`telemetry.py` (`f274be8`, this
+  session)**. All three: a tolerant read swallowing a corrupt file, then a
+  read-modify-write callsite cementing the loss with no trace. **Two stores left,
+  same shape, still queued:** `apps/scout-cli/bigbang/plugins/tasks/cli.py`,
+  `packages/personal-graphify/src/personal_graphify/query.py`.
+- **Herd ledger race fixed** (`0ae2dc6`) — every process shared one `sessions.tmp`;
+  now per-PID temp names (the same fix telemetry's `_write_live_status` needed and
+  got, above).
+- **Symlink escape in the `fs_write` allowlist closed** (`5b02e15`).
+- **Auth gated**: 16 → 15 ungated write-capable plugins (`df11ca3`).
+- **stack_v3_code curriculum weight activated** (`85067ad`): P2 0.06 / P3 0.03,
+  taken from same-modality siblings (`github_code`), every phase still sums to
+  ~1.0. The 07-26 block's "waiting on operator" item for this is **resolved** —
+  drop it.
+- **Hoops promote justification: retracted claim was itself wrong** (`99a8104`).
+  The original worry ("`0.363 → 0.757` lives in a comment and in no artifact") was
+  false — it's a protocol-matched, same-field, sha256-pinned artifact comparison
+  across the promote commit. What's actually true and narrower: the *baseline*
+  side isn't visible at HEAD, so a reader can't check it without `git show
+  53d35ad^:assets/eval_scoreboard.json` — a discoverability gap, not fabrication.
+- **httpx 0.28 server-endpoint tests restored** (`03b2b3c`) — the 07-26 block's
+  "factory 21 errors, pre-existing httpx.Client(app=...) break" is very likely
+  fixed now; not re-run this pass to confirm the count, flagged for next session
+  rather than asserted.
+
+### What's actually next (corrected — do not use the 07-26 numbering)
+
+1. **Train the encoder** — one encoder + per-domain LoRA adapters + Matryoshka
+   (per the domain-embedding review, `42db5a0`), hard negatives from sibling
+   functions in the same class (`ast_pairs.py` already tracks the enclosing class)
+   plus adjacent-commit files, pre-registered target **beating NDCG@10 0.429**
+   (corrected — not 0.622). This is the only item from the 07-26 "NEXT" list that
+   is still genuinely open; everything else on that list is done. Not started as
+   of this pass (no matching commits in `git log`).
+2. **Two remaining read-modify-write stores** (`tasks/cli.py`,
+   `personal_graphify/query.py`) — lower stakes than telemetry, same fix shape,
+   one at a time per the existing TODO.md entry.
+3. **Re-confirm the httpx 0.28 test count** — likely already fixed (`03b2b3c`),
+   not re-run this pass.
+
+### Still open, operator decides (unchanged since 07-26 — no matching commits found)
+
+- `ava/rl/codeact_loop.py` restoration (36-40 dottie engine tests unrunnable).
+- agent-eval scoreboard.md dirt from an earlier nano-chat run, uncommitted.
+- Gridiron: two unrelated histories on one remote, repo dirty on a `claude/*` branch.
+- Hoops gate parked on RAM (edits committed-ready, pipeline suite must pass first).
+- Equities re-export post-GPU (`tasks/artifacts/equities_reexport_plan.md`).
+- Disk-watchdog task registration, permanent bhenre.com project move, monorepo CI
+  `|| true`, ckpt-promotion eval gate — all design notes ready, none actioned.
+- Revenue instrumentation proposal awaiting operator read.
+- Whether to delete the 2 stale `vector-hoops` clones (`~/workspace`,
+  `~/Documents/projects`) — nothing deleted.
+
 ---
 
 ## 📌 Session continuation — 2026-07-26 (supersedes every block below for live state)
@@ -153,6 +245,13 @@ steers from anywhere.
 4. Propose-first for revenue surfaces (dumbmodel.com, bhenre apex) and for
    curriculum changes (Leg-1 diff posts AFTER eval).
 5. Weekly STATE OF THE ORG digest on steer.
+6. **Curate HANDOFF.md's top block + TODO.md's `▶ NEXT` section every session that
+   lands meaningful work here** (operator, 2026-07-31) — not a one-time cleanup.
+   Re-verify against `git log`/`git show`, never against memory of a prior session's
+   claims: this exact drift (items closed same-day, never marked, sitting stale for
+   5 days and 40+ commits) is what triggered the rule. A "current state" block that
+   isn't re-verified is worse than none, because the next reader trusts it at face
+   value.
 
 ## Confirm-why doctrine (operator, 2026-07-22)
 **"ALWAYS CONFIRM: why it is true."** Decompose every mechanism/state claim
