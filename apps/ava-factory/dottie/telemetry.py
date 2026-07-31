@@ -80,19 +80,53 @@ def _safe_write_jsonl(path: Path, obj: dict[str, Any]) -> None:
 
 
 def _load_live_status() -> dict[str, Any]:
-    try:
-        if LIVE_STATUS_PATH.exists():
-            return json.loads(LIVE_STATUS_PATH.read_text(encoding="utf-8"))
-        if LEGACY_LIVE.exists():
-            return json.loads(LEGACY_LIVE.read_text(encoding="utf-8"))
-    except Exception:
-        pass
+    """Live status document, or {} when there is none.
+
+    Stays NON-RAISING on purpose: telemetry must never take down a training run.
+    That constraint is real, and it is why the vault's fix (raise on corrupt --
+    scout-cli 3e301cb) is the wrong answer here.
+
+    What was wrong is that a corrupt file vanished SILENTLY. Callers do
+    `live = _load_live_status()` then `if not live: live = {fresh...}` and write
+    it back (telemetry.py:255, :521), so an unreadable file reset uptime_sec and
+    every accumulated counter, and the next write made that permanent with no
+    trace. Now the bytes are preserved and the reset is announced on stderr --
+    best-effort reads are fine, best-effort reads that quietly destroy history
+    are not.
+    """
+    for path in (LIVE_STATUS_PATH, LEGACY_LIVE):
+        if not path.exists():
+            continue
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception as e:
+            backup = path.with_name(f"{path.name}.corrupt-{int(time.time())}")
+            try:
+                backup.write_bytes(path.read_bytes())
+            except OSError:
+                backup = None
+            print(
+                f"[telemetry] {path} is unreadable ({e}); live status RESETS to a "
+                + (
+                    f"fresh document. Previous bytes preserved at {backup}"
+                    if backup
+                    else "fresh document. Previous bytes could NOT be preserved"
+                ),
+                file=sys.stderr,
+            )
+            # LEGACY_LIVE is a symlink to LIVE_STATUS_PATH, so retrying it would
+            # re-read the same damaged bytes and report the same fault twice.
+            break
     return {}
 
 
 def _write_live_status(data: dict[str, Any]) -> None:
     try:
-        tmp = LIVE_STATUS_PATH.with_suffix(".tmp.json")
+        # Per-process temp name. A fixed one is shared by every writer, and this
+        # file is written by the trainer, the collector and the console at once.
+        # Measured on the same shape in scout-cli's herd ledger: 4 concurrent
+        # writers, 6 seconds, 3334 PermissionErrors (fixed there in 0ae2dc6).
+        tmp = LIVE_STATUS_PATH.with_name(f"{LIVE_STATUS_PATH.name}.{os.getpid()}.tmp")
         tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
         tmp.replace(LIVE_STATUS_PATH)
         if not LEGACY_LIVE.exists():

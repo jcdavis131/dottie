@@ -610,13 +610,21 @@ Re-check with:
   "fail-silent read" with "writes JSON state" gives the real read-modify-write set. That
   intersection is the discriminator worth reusing.
 
-- [ ] **Three more read-modify-write stores with a tolerant read, NOT yet changed.**
-  `apps/ava-factory/dottie/telemetry.py`, `apps/scout-cli/bigbang/plugins/tasks/cli.py`,
-  `packages/personal-graphify/src/personal_graphify/query.py`. Each pairs a forgiving load with
-  a JSON write, so each can in principle cement a torn file. Lower stakes than secrets and auth
-  (telemetry is regenerable; tasks and graphify are re-derivable), which is why they are queued
-  rather than swept in one edit — one at a time, board green either side, as with the ungated
-  plugins. Recorded so the sweep is not mistaken for finished.
+- [x] **`telemetry.py` fixed 2026-07-31.** `_load_live_status` no longer swallows a corrupt
+  file silently — the previous bytes are preserved to a `.corrupt-<ts>` sibling and the reset
+  is announced on stderr, rather than the read-modify-write callers (telemetry.py:255, :521)
+  cementing a lost `uptime_sec`/counter reset with no trace on the next write. Deliberately
+  NOT the vault's fix (raise on corrupt, `3e301cb`) — telemetry must never take down a training
+  run, so it stays non-raising; only the *silence* was the bug. `_write_live_status`'s shared
+  `.tmp.json` also fixed to a per-PID temp name, same class as the herd ledger's shared
+  `sessions.tmp` (`0ae2dc6`) — trainer/collector/console all write this file concurrently.
+  8 new tests (`tests/test_telemetry_state.py`), all green; full `-k telemetry` suite (8) green.
+  Verified no live trainer bind-mounts this FROZEN path right now (Docker Desktop not running).
+- [ ] **Two more read-modify-write stores with a tolerant read, NOT yet changed.**
+  `apps/scout-cli/bigbang/plugins/tasks/cli.py`, `packages/personal-graphify/src/
+  personal_graphify/query.py`. Same shape as telemetry.py above (a forgiving load paired with
+  a JSON write can cement a torn file) — re-derivable rather than regenerable-from-scratch,
+  which is why they're still queued one at a time rather than swept in one edit.
 
 ### NEW 2026-07-24 — openswap manifests promise filesystem containment that is NOT enforced
 
