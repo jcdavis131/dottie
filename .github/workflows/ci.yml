@@ -67,6 +67,15 @@ jobs:
       # consumes" -- the defect class it exists to find. stdlib only, so no uv sync dep.
       - name: Gate audit (ratchet — new fail-open patterns only)
         run: uv run python scripts/gate_audit.py --check --baseline scripts/gate_audit_baseline.json
+      # The lint-debt figure written in BOTH workflows, verified against a fresh ruff
+      # run. Added 2026-08-01 after ~15 stale numbers were corrected by hand in one
+      # session — including this very figure, which was written as 263 and went stale
+      # HOURS later when a commit closed 11 findings. Hand re-measurement demonstrably
+      # cannot keep up; a ruff count is exactly reproducible, so it is checked instead.
+      # Narrow on purpose: no prose, no test counts, no timings — a check that cries
+      # wolf gets `|| true`'d, which is instance #5 in gate_audit.py's own docstring.
+      - name: Documented counts (lint debt still reproduces)
+        run: uv run python scripts/check_documented_counts.py --check
       # scout-cli is a HARD gate. It holds the openswap family, its board is green,
       # and a `|| true` here would mean the GOAT audit's test-honesty dimension
       # scores suites that CI is contractually unable to fail. No `|| true`.
