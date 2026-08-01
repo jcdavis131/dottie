@@ -181,10 +181,28 @@ jobs:
           cd apps/scout-cli
           uv run python -m bigbang.cli --json forge list
           uv run python -m bigbang.cli --json system doctor
-      - name: Eval gate quick (nano)
-        run: |
-          # Quick J-Space sanity, no GPU
-          uv run python -m packages.ava-open-harness.cli --help 2>&1 | head -n 20 || true
+      # WAS: `- name: Eval gate quick (nano)` running
+      #   uv run python -m packages.ava-open-harness.cli --help 2>&1 | head -n 20 || true
+      # Three things wrong with that one line, flagged in the 2026-07-22 review
+      # (knowledge/reviews/docs-metadata.md) and still live ten days later:
+      #   1. `packages.ava-open-harness.cli` is not an importable module path — directory
+      #      names with hyphens are not identifiers — AND no cli.py has ever existed in
+      #      that package. The target was never real, so this is not a typo.
+      #   2. `| head -n 20` means the shell reports HEAD's status, not python's, so the
+      #      step passed even before `|| true` was reached. Same trap that invalidated an
+      #      exit-code check earlier in this repo's history.
+      #   3. `|| true` then discarded whatever was left.
+      # So a step named "Eval gate" could not fail for any reason, including the package
+      # being deleted outright. It was not a weak gate; it was a no-op wearing the name of
+      # a gate — which is why gate_audit.py now reads a step's `name:` as context.
+      #
+      # Renamed to what it actually does. `python -m harness` is the real entry point
+      # (harness/__main__.py; pyproject declares `ava-harness = "harness.runner:main"`),
+      # verified locally: exits 0 and prints the arg parser. No `|| true` — if the harness
+      # stops importing, this SHOULD go red. It is a smoke test, not an eval gate; the
+      # nano eval gate remains unimplemented in CI and is not claimed here.
+      - name: Harness CLI import smoke (not an eval gate)
+        run: uv run python -m harness --help
 
   # SMOKE ONLY, and that is a decision — stated 2026-08-01 because an undocumented
   # exclusion is indistinguishable from an oversight (the same lesson `continue-on-error`

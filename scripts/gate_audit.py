@@ -66,6 +66,7 @@ import argparse
 import ast
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -86,12 +87,57 @@ SAFETY_WORDS = re.compile(
 MODE_WORDS = re.compile(r"(dry_run|dryrun|debug|skip|force|no_verify|test_mode|offline)", re.I)
 
 
-def iter_files(base: Path, suffixes):
+def git_ignored(base: Path):
+    """Paths git ignores, or None if that cannot be determined.
+
+    WHY. Without this the auditor reads GENERATED files. On 2026-08-01 a local run
+    reported 11 unaccepted candidates against a 9-entry baseline while CI on the same
+    commit was green — not a flaky gate, a different corpus: 10 of the 11 were
+    `apps/dottie/data/research/workspaces/*/candidate_*.py`, model-written research
+    output under `apps/dottie/.gitignore`'s `data/`. CI checks out the repo, never
+    materialises them, and passes correctly.
+
+    That divergence is worse than plain noise. It makes the ratchet unreproducible — the
+    developer sees red, CI sees green, and the honest conclusion ("the tool is wrong")
+    is the one that ends in `|| true`, which is instance #5 in this file's own docstring.
+
+    IGNORED, not UNTRACKED. A file you have just written and not yet `git add`ed is
+    exactly the file most worth auditing, so it stays in scope; only files git has been
+    told to ignore are dropped. Returns None when git is unavailable, and the caller then
+    scans everything and says so rather than silently narrowing what it checked.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(base), "ls-files", "--others", "--ignored",
+             "--exclude-standard", "-z"],
+            capture_output=True, text=True, timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    out = set()
+    for rel in proc.stdout.split("\0"):
+        if rel:
+            try:
+                out.add((base / rel).resolve())
+            except OSError:
+                continue
+    return out
+
+
+def iter_files(base: Path, suffixes, ignored=None):
     for p in base.rglob("*"):
         if not p.is_file() or p.suffix not in suffixes:
             continue
         if SKIP_PARTS & set(p.parts):
             continue
+        if ignored:
+            try:
+                if p.resolve() in ignored:
+                    continue
+            except OSError:
+                pass
         yield p
 
 
@@ -240,6 +286,27 @@ SUPPRESS_PATTERNS = [
 _STEP_SCOPED = re.compile(r"continue-on-error")
 _STEP_WINDOW = 6
 
+# `- name: Eval gate quick (nano)` — a workflow step's own declaration of what it is for.
+_YAML_STEP_NAME = re.compile(r"^-?\s*name:\s*(\S.*)$")
+# How far back to look for it. A step's run block is normally a handful of lines; scanning
+# further risks attributing a NEIGHBOURING step's name and inventing a safety word that the
+# suppressed step never claimed.
+_NAME_LOOKBACK = 25
+
+
+def _enclosing_step_name(logicals, idx):
+    """The `name:` of the workflow step containing logicals[idx], or None.
+
+    Walks backward to the FIRST `name:` seen, which is the enclosing step's own, and stops
+    there — continuing would reach earlier steps and let one step's reassuring name excuse
+    a different step's suppression.
+    """
+    for back in range(idx - 1, max(-1, idx - 1 - _NAME_LOOKBACK), -1):
+        m = _YAML_STEP_NAME.match(logicals[back][1])
+        if m:
+            return m.group(1)
+    return None
+
 
 def find_suppressed_checks(path: Path, rel: str):
     """B: a check whose failure is discarded."""
@@ -249,6 +316,7 @@ def find_suppressed_checks(path: Path, rel: str):
     except Exception:
         return out
     logicals = list(_logical_lines(lines))
+    is_yaml = rel.endswith((".yml", ".yaml"))
     for idx, (start, logical) in enumerate(logicals):
         if logical.startswith("#") or logical.startswith("//"):
             continue  # a comment ABOUT suppression is not suppression
@@ -259,6 +327,20 @@ def find_suppressed_checks(path: Path, rel: str):
                 context = " ".join(
                     ln for _, ln in logicals[max(0, idx - 1): idx + _STEP_WINDOW]
                 )
+            elif is_yaml:
+                # A CI step states its PURPOSE in `name:` and its COMMAND in `run:`, so
+                # requiring the safety word on the suppressed line itself cannot see a
+                # step called "Eval gate quick" whose run line is
+                # `python -m ...cli --help | head -n 20 || true`. That exact step sat dead
+                # in ci.yml for ten days: the module path has hyphens and is unimportable,
+                # `|| true` ate the error, and this tool stayed silent because "gate" lives
+                # on the name line. Same failure as the line-continuation miss fixed in
+                # 5584570 — safety word and suppression on different lines — so the fix is
+                # the same shape: widen the context to the construct a reader would treat
+                # as one unit.
+                name = _enclosing_step_name(logicals, idx)
+                if name:
+                    context = f"{name} {logical}"
             if pat.search(logical) and SAFETY_WORDS.search(context):
                 out.append(
                     {
@@ -310,7 +392,15 @@ def _logical_lines(lines):
 
 def audit(base: Path):
     findings, scanned = [], {"py": 0, "other": 0}
-    for p in iter_files(base, {".py"}):
+    ignored = git_ignored(base)
+    if ignored is None:
+        print(
+            "note: git unavailable, so gitignored files are being audited too — expect "
+            "generated artifacts in the results and a verdict that will not match CI.",
+            file=sys.stderr,
+        )
+    scanned["ignored_skipped"] = 0 if ignored is None else len(ignored)
+    for p in iter_files(base, {".py"}, ignored):
         rel = p.relative_to(ROOT).as_posix()
         try:
             text = p.read_text(encoding="utf-8", errors="replace")
@@ -321,7 +411,7 @@ def audit(base: Path):
         lines = text.splitlines()
         findings += find_mode_escapes(tree, lines, rel)
         findings += find_fail_open_dispatch(tree, lines, rel)
-    for p in iter_files(base, {".yml", ".yaml", ".sh", ".ps1", ".mjs", ".js"}):
+    for p in iter_files(base, {".yml", ".yaml", ".sh", ".ps1", ".mjs", ".js"}, ignored):
         rel = p.relative_to(ROOT).as_posix()
         scanned["other"] += 1
         findings += find_suppressed_checks(p, rel)

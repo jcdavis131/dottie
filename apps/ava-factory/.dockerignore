@@ -8,6 +8,11 @@ venv/
 
 # large / generated — these live in named volumes, never in the image
 data/
+# ...except the tokenizer, which the root Dockerfile COPYs at build time. A COPY whose
+# source is entirely dockerignored is a hard build failure ("file does not exist"), not a
+# silent skip, so `data/` alone made that image unbuildable. Keep this negation and the
+# Dockerfile's COPY in sync.
+!data/nano/tokenizer/
 runs/
 ckpt/
 export/

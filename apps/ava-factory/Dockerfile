@@ -35,15 +35,30 @@ ENV PYTHONUNBUFFERED=1 \
     AVA_CKPT=/app/runs/chat/ava_nano_chat.pt
 WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
+# dottie/ is the real package since the Ava->Dottie rename; ava/ is the compat shim
+# (`from dottie import *`). server.py:23 does `from dottie.serve_engine import get_engine`
+# at MODULE level, so without this line the container dies at boot with
+# ModuleNotFoundError. docker/Dockerfile.gpu:28-30 carries this same COPY and the same
+# warning; this slim image simply never got it, and compose builds docker/Dockerfile.{cpu,gpu}
+# rather than this file, so nothing exercised the omission. Flagged in the 2026-07-22
+# review (knowledge/reviews/factory.md), fixed 2026-08-01.
+COPY dottie/ /app/dottie/
 COPY ava/ /app/ava/
 COPY evals/ /app/evals/
 COPY multi_jspace_module.py /app/multi_jspace_module.py
 COPY server.py /app/server.py
 COPY scripts/ /app/scripts/
 COPY configs/ /app/configs/
+# Needs the `!data/nano/tokenizer/` negation in .dockerignore: `data/` is excluded there,
+# and a COPY whose source is fully dockerignored is a hard build failure, not a skip.
 COPY data/nano/tokenizer/ /app/data/nano/tokenizer/
-# Optional eval/report assets when present at build time (compose mounts reports/).
-COPY reports/ /app/reports/
+# REMOVED 2026-08-01: `COPY reports/ /app/reports/`, commented "optional ... when present
+# at build time". It could never be present: .dockerignore excludes `reports/` outright,
+# under the heading "these live in named volumes, never in the image" — and compose does
+# mount `ava_reports:/reports`. So the line contradicted the project's own design AND broke
+# the build, while its comment implied a graceful no-op. Deleted rather than negated,
+# because the named volume is the intended source. Do not re-add without also removing the
+# .dockerignore entry and deciding which of the two is authoritative.
 RUN useradd -m -u 1000 ava \
  && mkdir -p /app/runs \
  && chown -R ava:ava /app

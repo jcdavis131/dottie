@@ -1,5 +1,5 @@
 {
-  "_doc": "Candidates already judged acceptable. `gate_audit.py --check --baseline <this file>` exits 1 only on candidates absent from this list, so a NEW fail-open dispatch fails loudly while judged ones stay quiet. Each entry SHOULD carry a judgment saying why it is acceptable \u2014 an empty judgment means nobody has actually read it yet.",
+  "_doc": "Candidates already judged acceptable. `gate_audit.py --check --baseline <this file>` exits 1 only on candidates absent from this list, so a NEW fail-open dispatch fails loudly while judged ones stay quiet. Each entry SHOULD carry a judgment saying why it is acceptable — an empty judgment means nobody has actually read it yet.",
   "accepted": [
     {
       "file": ".github/workflows/ci.yml",
@@ -11,7 +11,7 @@
       "file": ".github/workflows/lint.yml",
       "shape": "suppressed-check",
       "code": "ruff check --statistics packages/ava-open-harness packages/personal-graphify apps/scout-cli --exclude apps/scout-cli/.venv || true",
-      "judgment": "DELIBERATE soft lint with the debt STATED (263 findings: personal-graphify 141, ava-open-harness 79, scout-cli 43) and a documented per-package ratchet \u2014 flip each to a hard gate the day it reaches 0, as packages/ava-skills was on 2026-08-01. Only visible to this auditor since the line-continuation fold landed the same day; before that it was a FALSE NEGATIVE, which is how the gap was found. Keep the `|| true` until each package hits 0, then delete it for that package."
+      "judgment": "DELIBERATE soft lint with the debt STATED (263 findings: personal-graphify 141, ava-open-harness 79, scout-cli 43) and a documented per-package ratchet — flip each to a hard gate the day it reaches 0, as packages/ava-skills was on 2026-08-01. Only visible to this auditor since the line-continuation fold landed the same day; before that it was a FALSE NEGATIVE, which is how the gap was found. Keep the `|| true` until each package hits 0, then delete it for that package."
     },
     {
       "file": "apps/ava-factory/dottie/datagen/logic.py",
@@ -54,6 +54,12 @@
       "shape": "fail-open-dispatch",
       "code": "def _weight_for(...)  dispatches on 'k' across 3 `==` branches",
       "judgment": "Scoring-weight lookup (_weight_for). Unknown key falls to a default weight; affects ranking, gates nothing."
+    },
+    {
+      "file": ".github/workflows/ci.yml",
+      "shape": "suppressed-check",
+      "code": "run: uv run pytest packages/ava-open-harness -q || true",
+      "judgment": "DELIBERATE and already annotated in the workflow immediately above this step: the suite is non-blocking pending the `dottie` name collision, where apps/dottie/dottie and apps/ava-factory/dottie both claim the same top-level package. The three fixes (rename / __path__ merge / leave non-blocking) are an architectural choice across a FROZEN boundary and remain the operator's, so this stays soft until that is decided rather than being forced green. NEWLY VISIBLE 2026-08-01, not newly introduced: gate_audit only began reading a step's `name:` as context that day, and the safety word here ('non-blocking', 'collision' -> 'block') lives in the name, not the run line. Re-judge when the collision is resolved; this entry should be DELETED then, not carried."
     }
   ]
 }

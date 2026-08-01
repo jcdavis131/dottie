@@ -514,6 +514,70 @@ check("--check without --baseline is rejected",
 findings, scanned = ga.audit(ga.ROOT / "apps/scout-cli")
 check("audit() scans a real subtree", scanned["py"] > 100, f"scanned={scanned}")
 
+
+# ---------------------------------------------------------------------------
+# A CI step names its purpose in `name:` and runs its command in `run:`.
+# Requiring the safety word on the suppressed line itself missed "Eval gate quick",
+# whose run line was `python -m ...cli --help | head -n 20 || true` — dead for ten
+# days because the module path was unimportable and `|| true` ate the error.
+# ---------------------------------------------------------------------------
+def _yaml_findings(text: str):
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "w.yml"
+        p.write_text(text, encoding="utf-8")
+        return ga.find_suppressed_checks(p, "w.yml")
+
+
+_NAMED = """\
+jobs:
+  x:
+    steps:
+      - name: Eval gate quick (nano)
+        run: |
+          uv run python -m some.module --help 2>&1 | head -n 20 || true
+"""
+check("safety word in a step's name: is seen (the ten-day dead gate)",
+      len(_yaml_findings(_NAMED)) == 1, f"got {_yaml_findings(_NAMED)}")
+
+# The name must be REQUIRED, not decorative — a suppression with no safety word
+# anywhere must still stay quiet, or the widened context becomes "flag every `|| true`"
+# and the tool starts crying wolf, which is how it earns its own `|| true`.
+_UNNAMED = """\
+jobs:
+  x:
+    steps:
+      - name: Upload artifacts
+        run: |
+          cp -r out/ dist/ || true
+"""
+check("widening to name: does NOT flag a step with no safety word",
+      _yaml_findings(_UNNAMED) == [], f"got {_yaml_findings(_UNNAMED)}")
+
+# Lookback must stop at the enclosing step, or an earlier reassuring name would
+# excuse a LATER unrelated step's suppression.
+_NEIGHBOUR = """\
+jobs:
+  x:
+    steps:
+      - name: Verify signatures
+        run: ./verify.sh
+      - name: Copy build output
+        run: cp -r out/ dist/ || true
+"""
+check("a neighbouring step's name does not excuse this step's suppression",
+      _yaml_findings(_NEIGHBOUR) == [], f"got {_yaml_findings(_NEIGHBOUR)}")
+
+# git_ignored: local runs were reading generated files and disagreeing with CI.
+_ignored = ga.git_ignored(ga.ROOT)
+check("git_ignored() returns a set in a real checkout", isinstance(_ignored, set),
+      f"got {type(_ignored).__name__}")
+check("git_ignored() is non-vacuous — it actually found ignored paths",
+      bool(_ignored), "empty set would silently disable the filter")
+check("audit() reports how many ignored paths it skipped",
+      scanned.get("ignored_skipped", 0) > 0, f"scanned={scanned}")
+
 print()
 print(f"{len(PASS)} passed, {len(FAIL)} failed")
 sys.exit(1 if FAIL else 0)
