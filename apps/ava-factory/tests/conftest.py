@@ -14,6 +14,33 @@ Running the full suite therefore means running it in BOTH images:
 from __future__ import annotations
 
 import importlib.util
+import os
+import tempfile
+
+# --- keep the suite out of the REAL telemetry ------------------------------
+# Measured 2026-08-01: a full `pytest tests` run appended ~5 KB to the repo's own
+# apps/ava-factory/reports/ava_telemetry.jsonl and rewrote dottie_telemetry.jsonl and
+# dottie_live_status.json. Verified it was this suite and not a background writer, by
+# re-checking the three files over 90 idle seconds afterwards: byte-identical, untouched.
+#
+# Mechanism: dottie/telemetry.py resolves TELEMETRY_DIR ONCE AT IMPORT TIME from
+# DOTTIE_TELEMETRY_DIR / AVA_TELEMETRY_DIR, falling back to `<repo>/reports`. The suite
+# never set either, so importing the module bound every telemetry path to the operator's
+# live files and each run mixed test-generated records into real data.
+#
+# Same defect this repo already fixed in apps/scout-cli, where the suite wrote to the
+# developer's real secrets vault and herd ledger, and the same remedy: redirect at
+# conftest module scope. It MUST be here rather than in a fixture — the paths are
+# module-level constants, so by the time any fixture runs the import has already happened
+# and the constants are frozen. Set via os.environ, not monkeypatch, for the same reason
+# scout-cli needed it that way: subprocesses inherit the environment, they cannot see
+# monkeypatch.
+#
+# dottie/ is FROZEN (bind-mounted into the live trainer), so the fix goes in the test
+# harness, not in telemetry.py. Nothing about production behaviour changes.
+_TELEMETRY_TMP = tempfile.mkdtemp(prefix="ava-factory-test-telemetry-")
+os.environ["DOTTIE_TELEMETRY_DIR"] = _TELEMETRY_TMP
+os.environ["AVA_TELEMETRY_DIR"] = _TELEMETRY_TMP
 
 _MODULE_REQUIREMENTS = {
     "test_model.py": ["torch"],
