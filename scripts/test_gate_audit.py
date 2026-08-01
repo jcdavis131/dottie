@@ -189,6 +189,68 @@ with tempfile.TemporaryDirectory() as td:
     )
 
 # ---------------------------------------------------------------------------
+# FALSE NEGATIVE found 2026-08-01 by running this tool against the repo's own CI.
+#
+# ci.yml's `... ruff check ... || true` was caught; lint.yml's semantically identical
+# construct was NOT, because lint.yml writes it as a shell line-continuation, so the
+# word "check" lands on the first physical line and `|| true` on the last. The matcher
+# required both on the SAME line.
+#
+# A false NEGATIVE is the worse failure mode for this tool. A false positive gets judged
+# once and baselined; a miss means the thing you rely on to find the class silently
+# doesn't, and "absence is not proof" (the module's own words) becomes the only defence.
+# ---------------------------------------------------------------------------
+import tempfile as _tmpmod
+
+_CONT_YAML = "\n".join([
+    "jobs:",
+    "  steps:",
+    "    - run: |",
+    "        ruff check --statistics \\",
+    "          packages/foo \\",
+    "          --exclude bar || true",
+    "",
+])
+# `|| true` present but NO safety word -> joining must not manufacture a finding.
+_CLEAN_YAML = "\n".join([
+    "    - run: |",
+    "        echo hello \\",
+    "          world",
+    "    - run: cp a b || true",
+    "",
+])
+_SINGLE_YAML = "    - run: ruff check packages/foo || true\n"
+
+
+def _susp(tmpdir, text, name="probe.yml"):
+    p = Path(tmpdir) / name
+    p.write_text(text, encoding="utf-8")
+    return ga.find_suppressed_checks(p, name)
+
+
+with _tmpmod.TemporaryDirectory() as _d:
+    _f = _susp(_d, _CONT_YAML)
+    check("a check suppressed across a shell line-continuation IS caught",
+          len(_f) == 1, f"found={_f}")
+    if _f:
+        check("the finding points at the line the check STARTS on, not the tail",
+              _f[0]["line"] == 4, f"line={_f[0]['line']}")
+        check("the reported code shows the joined logical line",
+              "ruff check" in _f[0]["code"] and "|| true" in _f[0]["code"],
+              _f[0]["code"])
+    check("joining lines does not manufacture a finding without a safety word",
+          _susp(_d, _CLEAN_YAML) == [], str(_susp(_d, _CLEAN_YAML)))
+    check("the single-line form still works (no regression)",
+          len(_susp(_d, _SINGLE_YAML)) == 1)
+
+# The two real files the gap was found on.
+check("ci.yml's single-line `|| true` still detected",
+      len(ga.find_suppressed_checks(ga.ROOT / ".github/workflows/ci.yml", "ci.yml")) >= 1)
+check("lint.yml's continuation `|| true` now detected too",
+      len(ga.find_suppressed_checks(ga.ROOT / ".github/workflows/lint.yml", "lint.yml")) >= 1)
+
+
+# ---------------------------------------------------------------------------
 # Baseline / --check. Added 2026-08-01 alongside the opt-in gating mode.
 #
 # The module docstring's "exit 0 always" is a DELIBERATE decision, so the first

@@ -191,23 +191,57 @@ def find_suppressed_checks(path: Path, rel: str):
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     except Exception:
         return out
-    for i, line in enumerate(lines, 1):
-        stripped = line.strip()
-        if stripped.startswith("#") or stripped.startswith("//"):
+    for start, logical in _logical_lines(lines):
+        if logical.startswith("#") or logical.startswith("//"):
             continue  # a comment ABOUT suppression is not suppression
         for pat, why in SUPPRESS_PATTERNS:
-            if pat.search(line) and SAFETY_WORDS.search(line):
+            if pat.search(logical) and SAFETY_WORDS.search(logical):
                 out.append(
                     {
                         "shape": "suppressed-check",
                         "file": rel,
-                        "line": i,
-                        "code": stripped[:160],
+                        "line": start,
+                        "code": logical[:160],
                         "why": why,
                     }
                 )
                 break
     return out
+
+
+def _logical_lines(lines):
+    """Yield (start_line_number, joined_text), folding shell line-continuations.
+
+    Added 2026-08-01 after this tool caught ci.yml's single-line `ruff check ... ||
+    true` but MISSED lint.yml's identical construct, which is written as:
+
+        ruff check --statistics \\
+          packages/foo \\
+          --exclude bar || true
+
+    The old matcher needed the suppression pattern and a safety word on the SAME
+    physical line; here "check" is on the first and "|| true" on the last, so neither
+    line matched alone. Folding continuations first makes the two forms equivalent,
+    which is what a reader would expect them to be.
+
+    The reported line is where the logical line STARTS — that is where the check's name
+    is, so a reader lands on `ruff check ...` rather than on a bare `--exclude` tail.
+    Single lines (the common case) pass through unchanged, so existing findings keep
+    their identity and the baseline does not churn."""
+    buf, start = None, None
+    for i, raw in enumerate(lines, 1):
+        stripped = raw.strip()
+        if buf is None:
+            buf, start = stripped, i
+        else:
+            buf = f"{buf} {stripped}"
+        if buf.endswith("\\"):
+            buf = buf[:-1].rstrip()  # continues on the next physical line
+            continue
+        yield start, buf
+        buf, start = None, None
+    if buf is not None:
+        yield start, buf
 
 
 def audit(base: Path):

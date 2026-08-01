@@ -8,6 +8,12 @@
       "judgment": "DELIBERATE per-package lint ratchet, annotated in the workflow. ava-skills was flipped to a HARD gate 2026-08-01 on reaching 0; the remaining three (263 findings) stay non-blocking with the debt size stated. NOTE: this `|| true` was ALSO hiding that `uv run ruff` could not spawn ruff at all (not a workspace dep), so neither ruff step had ever run in CI -- fixed to `uvx ruff@0.15.22`, pinned to match lint.yml. Keep the `|| true` only until each package hits 0."
     },
     {
+      "file": ".github/workflows/lint.yml",
+      "shape": "suppressed-check",
+      "code": "ruff check --statistics packages/ava-open-harness packages/personal-graphify apps/scout-cli --exclude apps/scout-cli/.venv || true",
+      "judgment": "DELIBERATE soft lint with the debt STATED (263 findings: personal-graphify 141, ava-open-harness 79, scout-cli 43) and a documented per-package ratchet \u2014 flip each to a hard gate the day it reaches 0, as packages/ava-skills was on 2026-08-01. Only visible to this auditor since the line-continuation fold landed the same day; before that it was a FALSE NEGATIVE, which is how the gap was found. Keep the `|| true` until each package hits 0, then delete it for that package."
+    },
+    {
       "file": "apps/ava-factory/dottie/datagen/logic.py",
       "shape": "fail-open-dispatch",
       "code": "def _stmt_text(...)  dispatches on 't' across 3 `==` branches",
