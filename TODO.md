@@ -222,23 +222,36 @@ falls to the default RoPE"*. That is **factually wrong** — it ends in
 conclusion (leave it alone) was right; the stated reason was not. Both it and
 `policy.py::get_policy` are now correctly not-findings rather than judged-away findings.
 
-**▶ Known remaining blind spot, measured, NOT yet fixed — elif-chain dispatch.**
-Shape C only walks sequential `if` statements, so `if x == 'a': ... elif x == 'b': ...`
-— the most common Python dispatch form — is invisible. Measured cost of closing it:
-**8 new candidates** (not an explosion), and several are likely benign on inspection:
-```
-apps/scout-cli/bigbang/core/a11y.py::_close_capture, ::handle_starttag
-apps/scout-cli/bigbang/core/extract.py::_maybe_capture
-apps/scout-cli/bigbang/core/later.py::handle_endtag
-apps/scout-cli/bigbang/core/seo.py::handle_endtag, ::handle_starttag
-apps/scout-cli/bigbang/plugins/logs/cli.py::_window
-packages/personal-graphify/src/personal_graphify/cluster.py::detect_communities
-```
-The `handle_starttag`/`handle_endtag` ones are HTMLParser callbacks where ignoring an
-unrecognised tag is *correct*, not a fail-open — expect them to be judged acceptable.
-Deferred rather than rushed because it needs its own RED-first cycle plus 8 judgments,
-and the auditor is now a CI ratchet where a sloppy widening costs everyone. `match/case`
-is a second gap but has **0 occurrences** repo-wide, so it is noted, not built.
+**✅ elif-chain dispatch — CLOSED, and my own "8 candidates" estimate was WRONG.**
+Shape C could not see `if x == 'a': ... elif x == 'b': ...`, the most common Python
+dispatch form. The cause was not that elif chains went unwalked — `ast.walk` visits them
+fine, since Python encodes `elif` as a nested If inside `orelse`. They were **actively
+cleared**: `has_else = any(i.orelse for i in ifs)` saw the outer If's `orelse == [If]`
+as non-empty and mistook the next chain LINK for a terminal else. One line, and it made
+the common form invisible while the rarer sequential-`if` form was caught.
+
+**Correction, recorded rather than quietly dropped:** the previous version of this entry
+predicted **8 new candidates** from closing it, and listed them. That number came from an
+ad-hoc measuring script with looser logic than the detector actually uses, and it was
+wrong. The real answer is **0 new candidates**. Checked each supposed hit:
+- `cluster.py::detect_communities` — only **1** `==` branch on `method`, below the ≥2
+  threshold that distinguishes a dispatch from ordinary logic. My script never applied
+  that threshold.
+- `seo.py::handle_starttag` and the other HTMLParser callbacks — their chains carry
+  compound links (`elif tag == "base" and self.base_href is None and ...`), so they are
+  conditional logic that happens to test the param, not a dispatch table on it. Falling
+  through is correct there: an HTMLParser SHOULD ignore tags it does not handle.
+
+That last behaviour was initially incidental (a side effect of `_is_chain_link` only
+recognising bare `==` links) and is now **pinned by its own test**, so "compound links are
+not a pure dispatch" is a decision rather than an accident. Widening it to compound
+conditions was considered and rejected: it would flag correct parser code, and a false
+positive is the expensive kind — it teaches people to distrust the tool and baseline
+everything.
+
+Net: the repo has zero elif fail-opens today, the detector can now see them if one
+appears, and synthetic tests keep it from rotting the way `continue-on-error` did.
+`match/case` remains a gap with **0 occurrences** repo-wide — noted, not built.
 
 **Note for whoever runs this next:** every *other* skill in `packages/ava-skills` uses
 `if mode == "mock": ... else: <real>`. That is a true binary partition (1 branch, below

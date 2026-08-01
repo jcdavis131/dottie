@@ -129,6 +129,35 @@ def find_mode_escapes(tree, lines, rel):
     return out
 
 
+def _is_chain_link(if_node, param):
+    """Is this If's `orelse` merely the next `elif <param> == ...` link?
+
+    Deliberately narrow. Python cannot distinguish `elif X` from `else:` + an indented
+    `if X` — both are a lone If inside orelse — so "orelse is a single If" is NOT enough
+    to call it a chain continuation. This also requires the nested test to compare THE
+    SAME parameter, so a genuine else block that happens to open with an unrelated
+    conditional, e.g.
+
+        if kind == 'a':
+            return 1
+        else:
+            if cache_is_cold():   # unrelated to `kind`
+                warm()
+            return fallback()
+
+    still counts as a real else and clears the finding, which it should."""
+    if len(if_node.orelse) != 1 or not isinstance(if_node.orelse[0], ast.If):
+        return False
+    test = if_node.orelse[0].test
+    return (
+        isinstance(test, ast.Compare)
+        and isinstance(test.left, ast.Name)
+        and test.left.id == param
+        and len(test.ops) == 1
+        and isinstance(test.ops[0], ast.Eq)
+    )
+
+
 def find_fail_open_dispatch(tree, lines, rel):
     """C: def f(..., action, ...) whose body is all `if action == …` and no final deny."""
     out = []
@@ -154,7 +183,12 @@ def find_fail_open_dispatch(tree, lines, rel):
             if len(ifs) < 2:
                 continue  # a single branch is ordinary logic, not a dispatch
             # Does ANY of them have an else, or is there a membership guard on the param?
-            has_else = any(i.orelse for i in ifs)
+            # `i.orelse` alone is WRONG here: Python encodes `elif` as a nested If inside
+            # orelse, so for `if k=='a': ... elif k=='b': ...` the outer orelse is `[If]`
+            # — non-empty — and the next chain LINK was being mistaken for a terminal
+            # else. That single line is why the most common Python dispatch form was
+            # invisible while the rarer sequential-`if` form was caught.
+            has_else = any(i.orelse and not _is_chain_link(i, param) for i in ifs)
             # ...or does the function simply END by refusing? The docstring has always
             # said a dispatch is cleared by "no final else/raise/deny", but the `raise`
             # half was never implemented, so an honest terminator like

@@ -189,6 +189,73 @@ with tempfile.TemporaryDirectory() as td:
     )
 
 # ---------------------------------------------------------------------------
+# ELIF-CHAIN blind spot in shape C. Recorded as measured-and-deferred on 2026-08-01,
+# closed here.
+#
+# It was never a case of elif chains going unwalked — `ast.walk` visits them fine, since
+# Python encodes `elif` as a nested If inside `orelse`. They were ACTIVELY CLEARED: the
+# guard read `has_else = any(i.orelse for i in ifs)`, and for `if a: ... elif b: ...`
+# the outer If's orelse is `[If]` — non-empty — so the next chain LINK was mistaken for
+# a terminal else and the finding was suppressed.
+#
+# That is why the most common Python dispatch form was invisible while the rarer
+# sequential-`if` form was caught. The fix distinguishes "orelse that is another elif
+# link" from "orelse that is a real else block".
+# ---------------------------------------------------------------------------
+def _c(src):
+    return ga.find_fail_open_dispatch(ast.parse(src), src.splitlines(), "p.py")
+
+
+_ELIF_OPEN = (
+    "def route(k):\n"
+    "    if k == 'a':\n        return 1\n"
+    "    elif k == 'b':\n        return 2\n"
+    "    return 0\n"
+)
+_ELIF_ELSE = (
+    "def route(k):\n"
+    "    if k == 'a':\n        return 1\n"
+    "    elif k == 'b':\n        return 2\n"
+    "    else:\n        return 0\n"
+)
+_ELIF_RAISE = (
+    "def route(k):\n"
+    "    if k == 'a':\n        return 1\n"
+    "    elif k == 'b':\n        return 2\n"
+    "    raise ValueError(k)\n"
+)
+check("an elif chain with no terminal else IS flagged", len(_c(_ELIF_OPEN)) == 1,
+      str(_c(_ELIF_OPEN)))
+check("an elif chain WITH a terminal else is not flagged", _c(_ELIF_ELSE) == [],
+      "a real else is a complete partition")
+check("an elif chain ending in `raise` is not flagged", _c(_ELIF_RAISE) == [],
+      "the terminal-raise contract must still hold for elif form")
+check("the sequential-if form still works (no regression)",
+      len(_c("def route(k):\n    if k == 'a':\n        return 1\n"
+             "    if k == 'b':\n        return 2\n    return 0\n")) == 1)
+check("a single if/else on a param is not a dispatch (needs >=2 branches)",
+      _c("def route(k):\n    if k == 'a':\n        return 1\n    else:\n        return 0\n") == [])
+
+# A chain whose links carry EXTRA conditions is not a pure dispatch, and is deliberately
+# left unflagged. Found while checking why the elif fix produced 0 new candidates here:
+# apps/scout-cli/bigbang/core/seo.py::handle_starttag is
+#     if tag == "svg": ... elif tag == "base" and self.base_href is None: ...
+# i.e. conditional logic that happens to test `tag`, not a dispatch table on it. Falling
+# through is ordinary control flow there — an HTMLParser SHOULD ignore tags it does not
+# handle. Flagging it would be a false positive on correct code, which is the expensive
+# kind. Pinned so the behaviour is a decision rather than a side effect of `_is_chain_link`
+# only recognising bare `==` links.
+check(
+    "a chain with compound (`== ... and ...`) links is not treated as a pure dispatch",
+    _c("def route(k, s):\n"
+       "    if k == 'a':\n        return 1\n"
+       "    elif k == 'b' and s.ready:\n        return 2\n"
+       "    return 0\n") == [],
+    "seo.py::handle_starttag is this shape; ignoring unknown tags is correct there",
+)
+
+
+# ---------------------------------------------------------------------------
 # FALSE POSITIVE in shape C, found 2026-08-01 by probing A and C the same way B was.
 #
 # The docstring promises a dispatch is cleared by "no final else/raise/deny", but the
