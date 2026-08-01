@@ -14,17 +14,34 @@ and better grounded than anything this file proposed. This file's job is to (a) 
 estate, (b) record what alignment work was done, and (c) name what is genuinely missing —
 not to re-design something already designed.
 
-## The estate — measured 2026-07-25, not assumed
+## The estate — re-measured 2026-08-01, not assumed
+
+> **Every commit count in this table was stale.** The figures were correctly measured on
+> 2026-07-25 and simply carried; seven days later all six had moved (hoops 318→344,
+> equities 12→26, unified 1→6). Nothing was wrong when written — which is the point, and
+> why the counts now carry their previous value inline so drift is visible rather than
+> silent. Re-measure with `git -C <repo> rev-list --count HEAD` before quoting these.
+>
+> **Two rows were not merely stale but wrong.** `vector-tennis` and `vector-golf` were
+> filed together as "empty scaffolds, 0 commits". They are not empty: tennis holds **12
+> files on an unborn HEAD** (a repo where nothing has ever been committed) and golf holds
+> **15 files with no `.git` at all**. So 27 real files sit with **zero version-control
+> protection** — not off-disk, not even local history. "0 commits" was literally true of
+> tennis and read as "nothing to lose", which is exactly backwards. This is the same
+> hazard this file already flagged for `vector-unified` ("had no version control at all");
+> it was recorded there and missed here because the two projects were dismissed in one
+> line. Committing them is the operator's call, not mine — but the risk should be stated.
 
 | project | domain | commits | remote | state |
 |---|---|---|---|---|
-| `~/vector-hoops` | NBA | **318** | `jcdavis131/vector-hoops` | **64-d** (was documented 48-d; corrected 2026-07-26), 17 ResidualMLP towers (160→32), concat 556→256→64, MTNN v5 |
-| `~/vector-gridiron` | NFL | 20 | `jcdavis131/vector-gridiron` | 32-d, 13 ResidualTowers (→24), gated attention, MTNN v2, **temporal split** |
-| `~/vector-pitch` | Soccer (WC) | 14 | `jcdavis131/vector-pitch` | **24-d MTNN (SupCon v1.1)** — `pipeline/train_mtnn.py` + `assets/pitch_mtnn_embeddings.json`. The live daily board still runs PCA(3)+k-means until the UI swaps. Corrected 2026-07-26 |
-| `~/vector-equities` | Equities | 12 | `jcdavis131/vector-equities` | published embedding space + sector-coherence eval; has CI, ruff, pre-commit |
-| `~/vector-unified` | **the binder** | 1 | **private** (2026-07-26) | 28 py / 5,397 lines, `train_unified.py`, `eval_unified.py` |
-| `~/vector-hub` | — | 3 | none | landing page for **dumbmodel.com** (not a model) |
-| `~/vector-tennis`, `~/vector-golf` | — | 0 | none | empty scaffolds |
+| `~/vector-hoops` | NBA | **344** (was 318) | `jcdavis131/vector-hoops` | **64-d** (was documented 48-d; corrected 2026-07-26), 17 ResidualMLP towers (160→32), concat 556→256→64, MTNN v5 |
+| `~/vector-gridiron` | NFL | **26** (was 20) | `jcdavis131/vector-gridiron` | 32-d, 13 ResidualTowers (→24), gated attention, MTNN v2, **temporal split** |
+| `~/vector-pitch` | Soccer (WC) | **20** (was 14) | `jcdavis131/vector-pitch` | **24-d MTNN (SupCon v1.1)** — `pipeline/train_mtnn.py` + `assets/pitch_mtnn_embeddings.json`. The live daily board still runs PCA(3)+k-means until the UI swaps. Corrected 2026-07-26 |
+| `~/vector-equities` | Equities | **26** (was 12) | `jcdavis131/vector-equities` | published embedding space + sector-coherence eval; has CI, ruff, pre-commit |
+| `~/vector-unified` | **the binder** | **6** (was 1) | **private**, remote verified 2026-08-01 | 28 py / 5,397 lines, `train_unified.py`, `eval_unified.py` |
+| `~/vector-hub` | — | **6** (was 3) | none | landing page for **dumbmodel.com** (not a model) |
+| `~/vector-tennis` | — | **0 — unborn HEAD** | none | ⚠ **not "empty": 12 files, none ever committed** |
+| `~/vector-golf` | — | **n/a — no `.git`** | none | ⚠ **not "empty": 15 files, not a repo at all** |
 
 **Domains in the operator's objective with no project yet: College Football, Baseball,
 Hockey.** Equities-private also has no project — see the hard gate below.
@@ -135,10 +152,28 @@ correction above). The scoping error was mine: a repo-wide grep is only repo-wid
 ⚠ **Provenance flag on the shipped hoops artifact.** `mtnn_report.json → promote` is
 `{"ok": false, "reason": "CQS 78.11 < promote bar 82.62"}`, yet the 64-d artifact shipped
 the same day. `composite_score.py:88-95` records that it was promoted "not by clearing the
-CQS bar, which it does not", justified on a manual held-out top-5 comparison (0.363 → 0.757)
-that **no artifact in the repo records**. A number that cleared no gate is exactly the shape
-of the three research `sota` rows that turned out to be artifacts. Re-derive it or retract it
-before it anchors anything.
+CQS bar, which it does not", justified on a manual held-out top-5 comparison (0.363 → 0.757).
+
+> ~~…that **no artifact in the repo records**. Re-derive it or retract it before it anchors
+> anything.~~ **RETRACTED 2026-07-28, propagated here 2026-08-01 — the "no artifact records
+> it" clause was FALSE**, and this file went on asserting it for three days after the
+> retraction landed in `TODO.md` item 5. Both numbers are the *same field of the same
+> artifact* across the promote commit `53d35ad`: `assets/eval_scoreboard.json →
+> results.mtnn.by_split.test.top5` is **0.757** at HEAD (n=790, dim 64,
+> `mtnn_v5_concat_b2_h160_t32_d64_mlp128_fus256`) and **0.363** in the parent version
+> (dim 48). Re-verified independently on 2026-08-01 by reading that field: it returns
+> `0.757`. So the comparison is protocol-matched and recorded, not manual and unrecorded.
+
+**The part of the flag that still stands:** the artifact shipped while its own promote gate
+said `ok: false`. That is a real gate-vs-action gap and is unaffected by the retraction — the
+justification exists and checks out, but it is a *written judgement overriding a gate*, not
+the gate passing. Do not read the correction above as clearing the promotion; read it as
+narrowing the objection from "unevidenced" to "deliberately overridden".
+
+Retained as a worked example of how these go stale: the original objection was reasonable
+when written and became false when someone checked. A spec-of-record that carries a
+retracted claim is more dangerous than one that never made it, because the confident
+phrasing survives the evidence. Cross-check `TODO.md` before quoting anything here.
 
 ## Alignment performed 2026-07-25
 
