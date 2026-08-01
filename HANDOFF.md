@@ -108,7 +108,18 @@ Since then, a long, disciplined "fix + `docs(TODO): close`" pairing closed rough
   gates fresh: `pipeline/test_feature_hygiene.py` (142 features, 19 families,
   clean), `pipeline/provenance_gate.py` (PASSED, all four surfaces agree, dim=64),
   `pipeline/test_composite_gate.py` (16/16). Nothing left parked here.
-- Equities re-export post-GPU (`tasks/artifacts/equities_reexport_plan.md`).
+- ~~Equities re-export post-GPU~~ — **STALE PLAN, SUPERSEDED 2026-07-31.**
+  `tasks/artifacts/equities_reexport_plan.md` targeted the wrong (abandoned) export
+  script and a placeholder-contamination problem already fixed by a different,
+  more thorough rebuild on 07-30 (`ba50cda`+`15e2fd1` — full real SEC/market data,
+  zero synthetic rows, per the shipped artifact's own provenance block). Full
+  correction in the plan doc itself. **New, genuinely open item this surfaced:**
+  `assets/real_data.json` (vector-equities) is still the 07-30 18:56 UTC build —
+  it predates this session's `c6b5c2d` (coverage-aware fusion + DEF14A comp) and
+  has not been re-exported to pick it up. That's real standing work, but it's a
+  fresh decision (touches a live public site, standing order 6 wants propose-first
+  before any public deploy) — not something to fold into this stale plan's steps.
+  Operator call: green-light the re-export + re-eval, or leave it for now.
 - Disk-watchdog task registration, permanent bhenre.com project move, monorepo CI
   `|| true`, ckpt-promotion eval gate — all design notes ready, none actioned.
 - Revenue instrumentation proposal awaiting operator read.
