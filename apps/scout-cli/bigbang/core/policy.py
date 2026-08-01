@@ -216,7 +216,11 @@ def add_allowed_domain(host: str) -> tuple[bool, str]:
     or empty entries are refused so the allowlist can't be widened to match-all.
     """
     host = _host_of(str(host).strip())
-    if not host or host in ("*", "0.0.0.0") or "*" in host:
+    # S104 suppressed on the line below: ruff reads the literal "0.0.0.0" as a bind-to-all-interfaces. It is the
+    # exact opposite — this is the REFUSAL list, the line that stops an allowlist from
+    # being widened to match-all. Flagging a security control as the vulnerability it
+    # prevents; suppressed with the reason rather than reworded to appease the linter.
+    if not host or host in ("*", "0.0.0.0") or "*" in host:  # noqa: S104
         return False, f"refusing to allowlist {host!r} — must be a concrete host"
     policy = load_user_policy()
     net = policy.get("network")

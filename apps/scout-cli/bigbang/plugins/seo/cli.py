@@ -188,7 +188,11 @@ def _fetch(url: str, *, timeout: float = 10.0, read_cap: int = 2_000_000) -> dic
     """
     rec = _RedirectRecorder()
     opener = urllib.request.build_opener(rec)
-    req = urllib.request.Request(
+    # S310 suppressed on the line below: same as the headers plugin — per this module's Policy docstring a
+    # named site's start URL is gated by enforce_or_raise against the manifest domain
+    # allowlist (default-deny), and an ad-hoc --url crawl by the persisted user
+    # allowlist. The scheme check exists upstream, not on this line.
+    req = urllib.request.Request(  # noqa: S310
         url, headers={"User-Agent": seo.USER_AGENT, "Accept": "text/html,*/*"}
     )
     try:

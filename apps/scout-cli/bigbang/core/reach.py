@@ -52,7 +52,9 @@ def normalize_target(target: str) -> str:
     if "://" in t:
         return t
     host = t.split("/", 1)[0].split(":", 1)[0]
-    scheme = "http" if host in ("localhost", "127.0.0.1", "::1", "0.0.0.0") else "https"
+    # S104 suppressed on the line below: nothing binds here. This is a membership test picking http vs https
+    # for known-local hosts; "0.0.0.0" is being READ as a local address, not listened on.
+    scheme = "http" if host in ("localhost", "127.0.0.1", "::1", "0.0.0.0") else "https"  # noqa: S104
     return f"{scheme}://{t}"
 
 

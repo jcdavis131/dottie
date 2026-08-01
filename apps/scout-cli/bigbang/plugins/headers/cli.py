@@ -213,7 +213,12 @@ def _fetch(url: str, *, timeout: float = 10.0, read_cap: int = 1_000_000) -> dic
     """
     rec = _RedirectRecorder()
     opener = urllib.request.build_opener(rec)
-    req = urllib.request.Request(
+    # S310 suppressed on the line below: the `file:`/custom-scheme risk this rule names is already closed
+    # upstream — per this module's Policy docstring, a named site's URLs are gated by
+    # enforce_or_raise against the manifest domain allowlist (default-deny) and an
+    # ad-hoc --url is gated by enforce_user_url_or_raise. The check exists; it just
+    # is not on this line.
+    req = urllib.request.Request(  # noqa: S310
         url, headers={"User-Agent": hdr.USER_AGENT, "Accept": "text/html,*/*"}
     )
     try:

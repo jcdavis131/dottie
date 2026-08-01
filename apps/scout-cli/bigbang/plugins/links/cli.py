@@ -180,8 +180,9 @@ def _urlprobe(timeout: float):
 
     def probe(url: str, method: str) -> dict:
         # every url here is manifest/user-allowlist gated AND http(s)-only by
-        # construction (seo.resolve_link drops every other scheme)
-        req = urllib.request.Request(
+        # construction (seo.resolve_link drops every other scheme) — which is
+        # exactly the mitigation S310 asks for, hence the suppression below.
+        req = urllib.request.Request(  # noqa: S310
             url, method=method,
             headers={"User-Agent": links.USER_AGENT, "Accept": "*/*"},
         )

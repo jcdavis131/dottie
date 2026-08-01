@@ -176,7 +176,11 @@ def open_db(root: Path, *, create: bool = False) -> sqlite3.Connection:
             )
         # stale schema on re-index: wipe and rebuild from scratch
         for table in ("meta", "files", "nodes", "refs", "edges", "warnings"):
-            conn.execute(f"DELETE FROM {table}")
+            # S608 suppressed on the line below: `table` iterates a hardcoded literal tuple three lines up — no
+            # caller input reaches it. A table NAME cannot be bound as a parameter in
+            # SQL (only values can), so an f-string is the only way to express this;
+            # there is no safer rewrite to switch to.
+            conn.execute(f"DELETE FROM {table}")  # noqa: S608
         conn.commit()
     return conn
 

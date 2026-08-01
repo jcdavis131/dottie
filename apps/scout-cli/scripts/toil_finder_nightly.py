@@ -69,8 +69,14 @@ def load_history() -> list[str]:
                         cmd=j.get("command","")
                         if cmd and cmd!="unknown":
                             cmds.append(redact(f"scout {cmd}"))
-                    except: continue
-        except: pass
+                    # narrowed from a bare `except:` — that also swallowed
+                    # KeyboardInterrupt/SystemExit, so this loop could not be Ctrl-C'd
+                    # out of, and a real bug in redact()/append would read as a
+                    # malformed line and be skipped in silence
+                    except json.JSONDecodeError:
+                        continue
+        except OSError:
+            pass
     return cmds
 
 def cluster_ngrams(cmds: list[str], ns=(2,3,4,5)) -> Counter:

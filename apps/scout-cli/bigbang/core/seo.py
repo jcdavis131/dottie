@@ -461,7 +461,10 @@ def audit_page(
 def title_fingerprint(title: str) -> str:
     """Stable hash of a whitespace/case-normalized title (dup detection)."""
     norm = " ".join((title or "").lower().split())
-    return hashlib.sha1(norm.encode("utf-8")).hexdigest()[:12]
+    # usedforsecurity=False, not a `# noqa`: this is duplicate DETECTION (12 hex chars
+    # of a normalized title), never a security boundary, and saying so in the API is
+    # self-documenting where a suppression comment would only silence the linter.
+    return hashlib.sha1(norm.encode("utf-8"), usedforsecurity=False).hexdigest()[:12]
 
 
 def duplicate_titles(pages: list[tuple[str, str | None]]) -> list[dict[str, Any]]:
