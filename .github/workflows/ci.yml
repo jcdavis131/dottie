@@ -25,7 +25,8 @@ jobs:
       # non-blocking run below. 19 findings closed: 17 by `ruff --fix` (UP006/UP045
       # annotation modernisation), plus one `os.path.isdir` -> `Path.is_dir` and two
       # read-only test fixtures correctly annotated `ClassVar` rather than suppressed.
-      # 75 ava-skills tests green at 0 findings.
+      # 89 ava-skills tests green at 0 findings. (Was written as "75" — the NARROWED
+      # `pytest .../tests` count the gate comment below explicitly warns against.)
       # `uvx ruff@0.15.22`, NOT `uv run ruff`. ruff is not a workspace dependency, so
       # `uv run ruff` dies with "Failed to spawn: ruff" (exit 2) — which the old
       # `|| true` swallowed, meaning NEITHER ruff step in this workflow had ever
@@ -53,7 +54,7 @@ jobs:
         run: uvx ruff@0.15.22 check packages/ava-open-harness packages/personal-graphify apps/scout-cli --exclude apps/scout-cli/.venv || true
       # A RATCHET, not a lint. Fails only on a gate-shaped defect (fail-open dispatch,
       # mode-conditional escape, suppressed check) that is NOT already in the baseline;
-      # the 10 currently there each carry a written judgment. So this cannot go red on
+      # the 9 currently there each carry a written judgment. So this cannot go red on
       # the known false positives -- which matters, because a gate that cries wolf gets
       # `|| true`'d, and that is literally instance #5 in gate_audit.py's own docstring.
       # Plain `gate_audit.py` still exits 0 always, exactly as its docstring promises;
@@ -84,12 +85,15 @@ jobs:
       # harness behind one `|| true`, which is how a passing suite ends up carrying
       # a broken one's exemption. Measured 2026-07-24 with THIS exact command, and
       # also as `python -m pytest` from the repo root and from packages/ava-skills:
-      # 80 passed, ~15s, all three agreeing.
+      # 80 passed, ~15s, all three agreeing. Re-measured 2026-08-01: **89 passed**,
+      # ~13s (both figures drifted +9 as tests were added; the invariant below held).
       #
-      # DO NOT "tidy" this into `pytest packages/ava-skills/tests`. That collects 66,
-      # not 80 -- ava-skills declares testpaths = ["skills","tests"] and half its
-      # suite lives under skills/, so narrowing to tests/ silently drops 14 tests and
-      # still exits 0. Measured both ways today: `pytest tests` = 66, this form = 80.
+      # DO NOT "tidy" this into `pytest packages/ava-skills/tests`. That collects
+      # ~15 FEWER -- ava-skills declares testpaths = ["skills","tests"] and part of its
+      # suite lives under skills/, so narrowing to tests/ silently drops them and still
+      # exits 0. Measured both ways 2026-07-24: tests/ = 66 vs this form = 80.
+      # Re-measured 2026-08-01: tests/ = **75** vs this form = **89**. The gap is the
+      # point, not the absolute numbers.
       # Passing the package DIRECTORY (or running bare from inside it) is what keeps
       # skills/ in scope.
       - name: Pytest ava-skills (hard gate)
@@ -116,6 +120,12 @@ jobs:
       # NO sys.path order satisfies it and this cannot be fixed by an env var or a
       # CI tweak -- renaming a bind-mounted training package is an operator call.
       # Measured 2026-07-24 on the dev box: 5 failed, 38 passed, 5 skipped.
+      # Re-measured 2026-08-01: 5 failed, **39 passed, 4 skipped** — one skip became a
+      # pass. Not drift in the code: the suite is ENVIRONMENT-SENSITIVE here (ollama is
+      # installed on this dev box, so a test gated on its absence now runs), which means
+      # the pass/skip split legitimately differs between this box and a CI runner. The
+      # FAILING count is the stable part and the only part this comment should be read
+      # for: 5, unchanged, all the dottie name collision.
       # This is now the LAST non-blocking pytest step. When the rename lands, delete
       # the `|| true` and this comment with it.
       #
