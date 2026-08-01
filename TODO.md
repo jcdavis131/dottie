@@ -1108,10 +1108,53 @@ found exactly 42, matching the subagent's count by a different method.
   herd/sessions.json and ~/.dottie-claw/skills were ALL unchanged.** Previously
   audit.jsonl grew on every single run.
 
-  **SWEEP CLOSED 2026-08-01 — every suite checked empirically, scout-cli was the only
-  polluter.** Method: snapshot `(size, mtime_ns)` of all 8,510 files under `~/workspace`,
+  > ### ⚠ RE-OPENED AND RE-CLOSED 2026-08-01 — "scout-cli was the only polluter" was WRONG
+  >
+  > The verdict below is superseded. It was honestly measured and still wrong, because the
+  > **corpus** was wrong: the snapshot covered `~/workspace`, `~/.dottie-claw` and
+  > `~/.local/share/bigbang` — all HOME state. `apps/ava-factory`'s suite does not write to
+  > home. It writes to `apps/ava-factory/reports/`, which is **inside the repo and
+  > gitignored**, so neither this snapshot nor `git status` could see it. Its
+  > "0 of 8,510 files changed" answered a question nobody was asking.
+  >
+  > It had in fact been appending test records to the operator's live telemetry on every
+  > run — `ava_telemetry.jsonl` 41938 → 47183 bytes — because `dottie/telemetry.py`
+  > resolves `TELEMETRY_DIR` at import time and the suite set neither override. Fixed in
+  > `b2f0681` (conftest redirect; `dottie/**` is FROZEN so it could not go in the module).
+  > Proven by A/B, not by reading: same suite, redirect the only difference, delta 0 bytes
+  > and mtime unchanged, still 859 passed / 33 skipped.
+  >
+  > **Two polluters, not one. Both now fixed.** Re-swept with a corpus covering home AND
+  > in-repo generated state — `scripts/state_pollution_sweep.py`, written so this is
+  > repeatable rather than a one-off:
+  >
+  > | suite | verdict (corrected corpus) |
+  > |---|---|
+  > | `apps/scout-cli` | was polluting — fixed `bbdcb99` |
+  > | `apps/ava-factory` | **was polluting (in-repo telemetry) — fixed `b2f0681`, missed entirely by the corpus below** |
+  > | `apps/scout-rtx` (49) | clean |
+  > | `apps/dottie` (287) | clean |
+  > | `packages/ava-skills` (89) | clean |
+  > | `packages/personal-graphify` (72) | clean |
+  > | `packages/ava-open-harness` | clean |
+  >
+  > **Do not attribute by timestamp on this box.** Three scheduled tasks write here —
+  > "Dottie Research runner" (every 15 min, `research_worker.ps1`), "Dottie StateStore
+  > telemetry", and "Dottie Status publisher" (every 10 min). A run of `apps/dottie` showed
+  > a new `candidate_*.py`, which looked exactly like pollution; a 100-second **idle
+  > control with no suite running produced the same thing**, which is what cleared it. The
+  > sweep tool now separates scheduler-owned paths from suite-attributable ones instead of
+  > leaving each reader to re-derive that.
+  >
+  > The lesson generalises past this bug: the original sweep already warned that a clean
+  > diff after a suite that never ran proves nothing. A clean diff over the wrong
+  > directories is the same defect. Both produce a real number that answers the wrong
+  > question.
+
+  ~~**SWEEP CLOSED 2026-08-01 — every suite checked empirically, scout-cli was the only
+  polluter.**~~ Method: snapshot `(size, mtime_ns)` of all 8,510 files under `~/workspace`,
   `~/.dottie-claw` and `~/.local/share/bigbang`, run the suite, diff. Not a code read —
-  a measurement.
+  a measurement. **Corpus incomplete; see the correction above.**
 
   | suite | tests | touched real home state? |
   |---|---|---|
