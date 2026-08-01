@@ -13,6 +13,18 @@ that no one has done.
 
 ## ▶ NEXT — ordered, do these first
 
+> **⚠ THIS LIST IS EXHAUSTED as of 2026-08-01 — there is no live head.** All six items are
+> struck: 1–5 completed, and 6 executed to a *missed* target (0.265 vs 0.429). "Struck" here
+> means worked, not won — item 6 in particular is closed because re-running it blind would
+> reproduce a known miss, not because dense retrieval succeeded.
+>
+> **A next session should not read this section for work.** Pull instead from the four open
+> operator decisions in `HANDOFF.md`'s 2026-08-01 block (audit-log rotation, the `dottie`
+> name collision, the pending `queue.json` task claiming 24 GB on a 12 GB laptop, and the
+> deliberately-wrong mobile peak-FLOPS constants), or from the untriaged backlog at the
+> bottom of this file. Leaving this heading looking actionable when every item under it is
+> done is the same trap as the stale "current state" block this file already warns about.
+
 *Re-verified 2026-07-31 against `git log` (not memory) — items 1 and 2 below were
 BOTH closed same-day by `41afb54`, five days before this correction. See
 `HANDOFF.md`'s 2026-07-31 block for the full re-audit; that staleness is exactly why
@@ -64,7 +76,12 @@ this section now carries a re-verify note instead of being trusted at face value
      concluded "no artifact" from a search that was drowning in false positives. The metric
      name and `git log -S` found it in one shot. Same lesson as the np.random audit: search
      for the *thing*, not the *digits*.
-6. **Then step 5 of the embedding sequence** — ONE encoder + per-domain LoRA
+6. ~~**Then step 5 of the embedding sequence**~~ — **RUN DONE 2026-08-01. TARGET MISSED
+   (0.265 vs 0.429).** Struck because the work was *executed*, not because it succeeded —
+   full result and root cause below, read it before touching this. Whether to keep pursuing
+   dense retrieval here is an open call, not a queued task: on this corpus lexical still
+   wins by ~1.6x, so re-running the same recipe blind would burn GPU time to reproduce a
+   known miss. Original scope: ONE encoder + per-domain LoRA
    adapters + Matryoshka (per the domain-embedding review, `42db5a0`), hard
    negatives from sibling functions in the same class (`ast_pairs.py` already
    tracks the enclosing class) plus adjacent-commit files, pre-registered target
