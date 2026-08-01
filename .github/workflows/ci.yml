@@ -38,6 +38,17 @@ jobs:
       # and ava-skills 19 -> 0. Same ratchet: flip the next one the day it reaches 0.
       - name: Ruff lint (non-blocking — 263 known findings, see comment)
         run: uv run ruff check packages/ava-open-harness packages/personal-graphify apps/scout-cli --exclude apps/scout-cli/.venv || true
+      # A RATCHET, not a lint. Fails only on a gate-shaped defect (fail-open dispatch,
+      # mode-conditional escape, suppressed check) that is NOT already in the baseline;
+      # the 10 currently there each carry a written judgment. So this cannot go red on
+      # the known false positives -- which matters, because a gate that cries wolf gets
+      # `|| true`'d, and that is literally instance #5 in gate_audit.py's own docstring.
+      # Plain `gate_audit.py` still exits 0 always, exactly as its docstring promises;
+      # --check is a separate opt-in contract and this step is the thing that opts in.
+      # Without this step the auditor was itself "a gate whose verdict nothing
+      # consumes" -- the defect class it exists to find. stdlib only, so no uv sync dep.
+      - name: Gate audit (ratchet — new fail-open patterns only)
+        run: uv run python scripts/gate_audit.py --check --baseline scripts/gate_audit_baseline.json
       # scout-cli is a HARD gate. It holds the openswap family, its board is green,
       # and a `|| true` here would mean the GOAT audit's test-honesty dimension
       # scores suites that CI is contractually unable to fail. No `|| true`.
