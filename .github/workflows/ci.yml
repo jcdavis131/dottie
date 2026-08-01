@@ -118,6 +118,25 @@ jobs:
       # Measured 2026-07-24 on the dev box: 5 failed, 38 passed, 5 skipped.
       # This is now the LAST non-blocking pytest step. When the rename lands, delete
       # the `|| true` and this comment with it.
+      #
+      # CORRECTED 2026-08-01. Everything above is accurate EXCEPT the implication that
+      # a rename is the only fix. Both dirs ship an __init__.py, so they are REGULAR
+      # packages and PEP 420 namespace merging does not apply -- "no sys.path order
+      # satisfies it" holds. But extending the loaded package's __path__ does work, and
+      # was verified end to end rather than reasoned about:
+      #     import dottie                       # resolves to apps/dottie/dottie
+      #     dottie.__path__.append(".../apps/ava-factory/dottie")
+      #     import dottie.rl                    # -> OK
+      #     from ava.rl.codeact_eg_gate import RungLadder   # -> OK
+      # The real chain is one level deeper than described above: apps/dottie's
+      # climb.py:521 imports ava.rl.codeact_eg_gate, and apps/ava-factory/ava/rl/
+      # __init__.py is literally `"""Shim: ava.rl -> dottie.rl"""`. Nothing in
+      # apps/dottie or the harness imports dottie.rl directly.
+      # NOT APPLIED, deliberately: merging two packages that genuinely differ, across a
+      # FROZEN boundary, to satisfy a test is an architectural decision and not a CI
+      # one. Recorded so the next reader knows a third option exists and does not have
+      # to rediscover it -- the choice between rename, __path__ merge, and leaving it
+      # non-blocking stays the operator's.
       - name: Pytest ava-open-harness (non-blocking — dottie name collision, see comment)
         run: uv run pytest packages/ava-open-harness -q || true
       - name: GOAT audit (Carmack/Bellard) — regressions only
