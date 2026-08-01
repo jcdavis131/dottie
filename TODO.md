@@ -1013,6 +1013,38 @@ found exactly 42, matching the subagent's count by a different method.
   Proof it is the isolation and not an emptied file: recreated a 12-session stale ledger at
   the real path, re-ran — **16 passed**, and the real ledger was afterwards **byte-identical
   (2968 bytes, 12 sessions)** with no `.tmp` leakage. Before the fix the same 4 failed.
+  **SWEPT REPO-WIDE 2026-08-01 — the herd ledger was the smallest instance.**
+  Generalised rather than waiting for the next accident. `security.py` VAULT_DIR,
+  `registry.py` REG_DIR, `audit.py` AUDIT_DIR and the auth plugin's REG are ALL
+  hardcoded to `Path.home()/".local"/"share"/"bigbang"` with no env override, and ~30
+  test modules spawn subprocesses that inherit the real environment. Measured, not
+  assumed:
+  - **the suite wrote to the real SECRETS VAULT** — `secrets set`/`rm` in
+    `test_cli_for_agents.py`. The vault is a read-modify-write, and `3e301cb` already
+    measured that a torn vault plus one `set` is TOTAL loss of every secret. Empty
+    today (2 bytes) — luck, not design.
+  - same for `auth.json` (`auth set-token`) and `registry.json` (`tools add`/`rm`).
+  - **`audit.jsonl` had reached 43.4 MB / 28,778 entries with NO rotation anywhere in
+    `audit.py` (39 lines)**, and its command histogram is dominated by test traffic
+    (`coverage report` x1435, `cite import` x1051, `coverage parse` x771). A security
+    audit trail swamped by its own test suite. Largest single entry: **80,196 bytes**,
+    because `log_event` stores the full response payload in `args` (one `data` field of
+    79,926 chars). ▶ Both of those — no rotation, and payload-in-audit — are REAL and
+    still OPEN; they are product decisions about what to retain, not test bugs, so they
+    are recorded here rather than changed unilaterally.
+  - `test_forge_loop` installs scaffolded tools into `~/.dottie-claw/skills/`, beside
+    real user skills (`talk-like-a-caveman` lives there).
+  Fixed with ONE `apps/scout-cli/tests/conftest.py` that redirects HOME/USERPROFILE at
+  import time. Chosen over patching ~30 files because that is 30 chances to miss one and
+  leaves any new test file unprotected by default — this makes isolation safe-by-default
+  instead of opt-out-by-omission. Module level, not an autouse fixture, because several
+  modules read `Path.home()` (and `security.py` mkdir's VAULT_DIR) at IMPORT time, which
+  is before a fixture would run.
+  Verified by snapshotting every real state file, running the full suite, and diffing:
+  **2260 passed / 1 skipped, and secrets.json, auth.json, registry.json, audit.jsonl,
+  herd/sessions.json and ~/.dottie-claw/skills were ALL unchanged.** Previously
+  audit.jsonl grew on every single run.
+
   ⚠ **Cost, recorded because it was mine:** while probing the WinError 5 I ran a
   `tmp.replace(HERD_FILE)` reproduction that overwrote the real `sessions.json` (3798 bytes
   of live session records) with `{}`. Not recoverable — `events.jsonl` is append-only but
