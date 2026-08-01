@@ -178,10 +178,24 @@ def find_fail_open_dispatch(tree, lines, rel):
 
 
 SUPPRESS_PATTERNS = [
-    (re.compile(r"\|\|\s*true\b"), "`|| true` discards the exit code"),
+    # `:` is the shell no-op builtin, i.e. exactly `true`; `; true` is the sequential
+    # form. Both are one-keystroke rewrites of `|| true` and were previously invisible.
+    (re.compile(r"\|\|\s*(true|:)\s*(#.*)?$"), "`|| true` discards the exit code"),
+    (re.compile(r";\s*true\s*(#.*)?$"), "`; true` discards the exit code"),
     (re.compile(r"continue-on-error:\s*true"), "continue-on-error:true — step cannot fail the job"),
     (re.compile(r"-ErrorAction\s+SilentlyContinue"), "PowerShell error suppression"),
 ]
+
+# Patterns that are STEP-scoped rather than command-scoped. `continue-on-error: true`
+# sits on its own YAML line and governs the whole step, so the thing being suppressed is
+# named on a DIFFERENT line (the step's `name:`/`run:`). Requiring a safety word on the
+# key's own line made this pattern dead on arrival — it is declared, but in real Actions
+# YAML the two conditions can essentially never both hold. Found 2026-08-01 by probing
+# shape B with a set of real suppression idioms rather than waiting to trip over one.
+# The window is deliberately small and the safety-word requirement is KEPT: dropping it
+# would flag every legitimate optional or matrix step.
+_STEP_SCOPED = re.compile(r"continue-on-error")
+_STEP_WINDOW = 6
 
 
 def find_suppressed_checks(path: Path, rel: str):
@@ -191,11 +205,18 @@ def find_suppressed_checks(path: Path, rel: str):
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     except Exception:
         return out
-    for start, logical in _logical_lines(lines):
+    logicals = list(_logical_lines(lines))
+    for idx, (start, logical) in enumerate(logicals):
         if logical.startswith("#") or logical.startswith("//"):
             continue  # a comment ABOUT suppression is not suppression
         for pat, why in SUPPRESS_PATTERNS:
-            if pat.search(logical) and SAFETY_WORDS.search(logical):
+            # Step-scoped keys name what they suppress on a NEARBY line, not their own.
+            context = logical
+            if _STEP_SCOPED.search(logical):
+                context = " ".join(
+                    ln for _, ln in logicals[max(0, idx - 1): idx + _STEP_WINDOW]
+                )
+            if pat.search(logical) and SAFETY_WORDS.search(context):
                 out.append(
                     {
                         "shape": "suppressed-check",

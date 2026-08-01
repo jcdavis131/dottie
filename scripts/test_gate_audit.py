@@ -251,6 +251,52 @@ check("lint.yml's continuation `|| true` now detected too",
 
 
 # ---------------------------------------------------------------------------
+# A DECLARED pattern that could never fire, found 2026-08-01 by probing shape B with a
+# set of real suppression idioms instead of waiting to trip over another one.
+#
+# `continue-on-error: true` is one of the three SUPPRESS_PATTERNS, but the matcher also
+# required a SAFETY_WORD on the same logical line. In GitHub Actions that key sits on
+# its own line and applies to the STEP, whose name/command are different lines — so the
+# two conditions could essentially never both hold and the pattern was dead on arrival.
+# Zero occurrences in this repo today, which is exactly why it went unnoticed: a
+# detector that has never had anything to detect looks identical to one that works.
+#
+# Fix: for step-scoped keys, look for the safety word within the step's own following
+# lines rather than on the key's line. Kept narrow deliberately -- dropping the safety
+# word entirely would flag every legitimate optional/matrix step.
+# ---------------------------------------------------------------------------
+with _tmpmod.TemporaryDirectory() as _d:
+    _coe_guarded = "\n".join([
+        "    - name: License gate",
+        "      continue-on-error: true",
+        "      run: python check_licenses.py",
+        "",
+    ])
+    _f = _susp(_d, _coe_guarded)
+    check("continue-on-error on a step that DOES check something is caught",
+          len(_f) == 1, f"found={_f}")
+
+    _coe_benign = "\n".join([
+        "    - name: Upload coverage artifact",
+        "      continue-on-error: true",
+        "      run: upload-artifact ./cov.xml",
+        "",
+    ])
+    check("continue-on-error on a step with no safety word is NOT flagged",
+          _susp(_d, _coe_benign) == [], str(_susp(_d, _coe_benign)))
+
+    # `:` is the shell no-op builtin -- exactly `true`. `; true` likewise. Zero
+    # occurrences in this repo, added so the trivial rewrites of `|| true` do not
+    # silently evade the detector.
+    check("`|| :` is caught (shell no-op, identical to `|| true`)",
+          len(_susp(_d, "run: ruff check pkg || :")) == 1)
+    check("`; true` is caught",
+          len(_susp(_d, "run: ruff check pkg ; true")) == 1)
+    check("a bare `:` in unrelated text is not a finding",
+          _susp(_d, "run: echo checking: all good") == [])
+
+
+# ---------------------------------------------------------------------------
 # Baseline / --check. Added 2026-08-01 alongside the opt-in gating mode.
 #
 # The module docstring's "exit 0 always" is a DELIBERATE decision, so the first
