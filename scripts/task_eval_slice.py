@@ -361,11 +361,11 @@ def restrict_to_index(pairs, indexed):
     return out
 
 
-def unreachable_targets(pairs, indexed):
-    """(unreachable, total) relevance judgements pointing outside the index."""
-    total = sum(len(p["relevant"]) for p in pairs)
-    bad = sum(1 for p in pairs for f in p["relevant"] if f not in indexed)
-    return bad, total
+# Imported, not re-implemented. This lived here until 2026-08-01 and moved UP into
+# retrieval_eval.py, the module that produces the number it qualifies — the recorded
+# 0.622 rotted to 0.420 precisely because the upstream tool never reported it. Keeping a
+# copy here would be the duplicated-source bug class hard_negatives.py warns about.
+unreachable_targets = RE_EVAL.unreachable_targets
 
 
 def verdict(task, commit):

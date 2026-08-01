@@ -178,6 +178,29 @@ def score(con, pairs, k=K):
     return rows
 
 
+def unreachable_targets(pairs, indexed):
+    """(unreachable, total) relevance judgements naming a file absent from the index.
+
+    A judgement pointing at a file that no longer exists at HEAD — deleted or renamed
+    since its commit was mined — can NEVER be satisfied: the retriever cannot return a
+    document that is not there, so the pair scores 0 unconditionally and drags the mean
+    down. That is churn in the repo's history being measured, not retrieval quality.
+
+    This is not hypothetical. The bar recorded as NDCG@10 0.622 re-measured at 0.420 on
+    2026-08-01; 71 of 451 judgements had gone unreachable, and excluding them returned
+    0.656 from the same code. The number rotted silently for weeks because THIS module —
+    the one whose output gets quoted as "the bar" — never surfaced the count. It does
+    now (see main()).
+
+    Lived in task_eval_slice.py until 2026-08-01 and was moved here, the upstream
+    module, so the caveat sits with the number it qualifies; task_eval_slice imports it
+    rather than keeping a second copy.
+    """
+    total = sum(len(p["relevant"]) for p in pairs)
+    bad = sum(1 for p in pairs for f in p["relevant"] if f not in indexed)
+    return bad, total
+
+
 def summarise(rows):
     def avg(key, subset):
         vals = [r[key] for r in subset]
@@ -210,6 +233,10 @@ def main() -> int:
 
     con = sqlite3.connect(":memory:")
     n_docs = build_index(con)
+    # The index IS the ground truth for reachability — read the paths back from it
+    # rather than re-walking the tree, so the check cannot disagree with what was
+    # actually indexed.
+    indexed_paths = {r[0] for r in con.execute("SELECT path FROM docs")}
 
     test_rows = score(con, test)
     summary = {
@@ -249,6 +276,30 @@ def main() -> int:
     print()
     print("  leak-free = the query does NOT contain a target filename stem, so the")
     print("  retriever cannot match the path directly. That subset is the honest bar.")
+
+    # Reachability, printed UNCONDITIONALLY next to the score it qualifies. A judgement
+    # naming a file that no longer exists cannot be satisfied by any retriever, so it
+    # scores 0 and pulls the mean down — that is repo churn being measured, not
+    # retrieval. The recorded 0.622 silently became 0.420 this way; without this line
+    # nothing here said so.
+    bad, total_j = unreachable_targets(test, indexed_paths)
+    print()
+    print(f"  RELEVANCE REACHABILITY: {bad} of {total_j} judgements name a file that is")
+    print("  NOT in the index at HEAD (deleted or renamed since the commit was mined).")
+    if bad:
+        pct = 100.0 * bad / max(total_j, 1)
+        reachable = [
+            {**p, "relevant": [f for f in p["relevant"] if f in indexed_paths]}
+            for p in test
+        ]
+        reachable = [p for p in reachable if p["relevant"]]
+        rb = summarise(score(con, reachable))
+        print(f"  Those {pct:.1f}% score 0 unconditionally. Excluding them, the SAME code gives:")
+        print(f"  {'reachable only':22}{rb['leak_free']['ndcg']:>9.3f}"
+              f"{rb['leak_free']['mrr']:>9.3f}{rb['leak_free']['recall']:>11.3f}"
+              f"   (n={rb['n_leak_free']})")
+        print("  Quote whichever you like, but quote it WITH this line and a date — the")
+        print("  golden set is mined from git history, so both numbers move as commits land.")
     return 0
 
 

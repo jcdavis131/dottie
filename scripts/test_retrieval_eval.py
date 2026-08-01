@@ -158,6 +158,43 @@ ok(
 dates = sorted(p["date"] for p in pairs)
 ok("miner: dates sort into a usable boundary", dates[0] < dates[-1])
 
+# ---------------------------------------------------------------------------
+# Unreachable relevance judgements. Added 2026-08-01.
+#
+# The recorded bar (0.622) stopped reproducing and re-measured at 0.420. Retrieval did
+# not get worse: 71 of 451 relevance judgements named a file that no longer exists at
+# HEAD (deleted or renamed since the commit was mined). A file absent from the index can
+# NEVER be returned, so each scores 0 unconditionally and drags the mean down. Drop them
+# and the same code gives 0.656 — the recorded bar, back.
+#
+# task_eval_slice.py already computed this, but THIS module produces the number people
+# quote as "the bar", and it reported nothing. The caveat belongs where the number is
+# made, or it rots again in silence. The helper lives here now and task_eval_slice
+# imports it rather than keeping a copy — a second copy of a rule is the
+# duplicated-source bug class hard_negatives.py warns about.
+# ---------------------------------------------------------------------------
+_UR_PAIRS = [
+    {"query": "q1", "relevant": ["kept.py", "gone.py"], "date": "2026-01-01"},
+    {"query": "q2", "relevant": ["gone2.py"], "date": "2026-01-02"},
+]
+ok(
+    "unreachable: counts judgements pointing outside the index",
+    re_.unreachable_targets(_UR_PAIRS, {"kept.py"}) == (2, 3),
+    "2 of 3 relevance judgements name files absent from the index",
+)
+ok(
+    "unreachable: a fully reachable set reports zero",
+    re_.unreachable_targets(_UR_PAIRS, {"kept.py", "gone.py", "gone2.py"}) == (0, 3),
+)
+ok(
+    "unreachable: an empty index makes every judgement unreachable",
+    re_.unreachable_targets(_UR_PAIRS, set()) == (3, 3),
+)
+ok(
+    "unreachable: exposed for task_eval_slice to import, not re-implement",
+    callable(getattr(re_, "unreachable_targets", None)),
+)
+
 print()
 print(f"{len(PASS)} passed, {len(FAIL)} failed")
 sys.exit(1 if FAIL else 0)
