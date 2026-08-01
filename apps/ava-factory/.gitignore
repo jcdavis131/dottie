@@ -5,6 +5,7 @@ __pycache__/
 *.bin
 *.safetensors
 checkpoints/
+artifacts/
 hf_model/
 wandb/
 logs/

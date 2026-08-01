@@ -77,13 +77,13 @@ Since then, a long, disciplined "fix + `docs(TODO): close`" pairing closed rough
    plus adjacent-commit files, pre-registered target **beating NDCG@10 0.429**
    (corrected — not 0.622). This is the only item from the 07-26 "NEXT" list that
    is still genuinely open.
-   **2026-07-31: pipeline built, not the real run.** Pre-registration
-   (`tasks/artifacts/embedding_train_plan_2026-07-31.md`) + `train_encoder.py` +
-   `embed_eval.py`, `--smoke` verified end to end (whole-repo scope, 19.5s) and one
-   real tiny train->save->eval round trip run clean after fixing a peft
-   double-nesting bug found in the process. New tests + all reused modules' existing
-   tests green, ruff clean. The full-scope GPU run itself is held for an explicit
-   go-ahead — see TODO.md item 6 for the full detail.
+   **2026-08-01: real run done — MISS, not a win.** Operator go-ahead given; ran for
+   real, 2 attempts (3 epochs and 4 epochs, whole-repo scope). Best result task-shaped
+   leak-free NDCG@10 = **0.194-0.197 vs the 0.429 target** — a clear miss, and more
+   epochs moved it by less than noise, so it isn't an undertraining problem. Likely
+   ceiling: the task domain only has 574 training examples. Full numbers, the
+   diagnosis, and what a real next attempt would need: TODO.md item 6. This closes the
+   item — the encoder was trained and honestly evaluated, it just didn't beat the bar.
 2. **`personal_graphify/query.py`'s read-modify-write fixed 2026-07-31** — same shape
    as telemetry.py (corrupt `cost.json` preserved + announced on stderr, write made
    atomic), 4 new tests, full 72-test suite green. `tasks/cli.py`'s half of this item
