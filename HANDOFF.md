@@ -155,7 +155,8 @@ Caveman brief. Short lines. Numbers exact.
 | retrieval bar (new) | **NDCG@10 0.622 · MRR 0.619 · recall@10 0.791** leak-free, 209 walk-forward queries, 2,024 docs | 2026-07-26 |
 | training | **NOT running.** `pipeline: TimeoutError`. Docker CLI 500s | |
 | research loop | ALIVE. baseline `factory_lm_loss = 5.73733`. **real wins = ZERO** (3 sota rows all artifacts) | |
-| box | 1,896 MB RAM free · 23.6 GB disk · RTX 4080 12 GB **idle** | |
+| box | ~~1,896 MB RAM free · 23.6 GB disk~~ → **16.9 GB RAM total / 6.7 GB free · 59 GB disk free (94% used) · RTX 4080 12 GB idle** | re-measured 2026-08-01 |
+| box — why it matters | 16.9 GB is TOTAL RAM, not free. Any proposal needing ≥25 GB RAM or ≥500 GB disk is out on this hardware — see `tasks/artifacts/colibri_moe_streaming_review_2026-08-01.md` for a worked example | |
 
 ### Vector estate — separate repos, NOT in this monorepo
 
