@@ -19,6 +19,21 @@ Only the ruff debt figures, which are cheap and exact.
 
     python scripts/check_documented_counts.py           # report
     python scripts/check_documented_counts.py --check   # exit 1 on drift
+
+THE COST THIS IMPOSES, stated because it is real and was introduced deliberately.
+It fires in BOTH directions, so a legitimate lint CLEANUP also reds the build until the
+figure is updated — fix five findings and CI complains that 252 no longer reproduces.
+That is friction on exactly the behaviour the ratchet wants to encourage.
+
+It is kept anyway, for one reason: the number lives in the step NAME, which is what a
+human reads to decide whether lint is under control. A figure that is too LOW is as
+misleading as one that is too high, and "it only drifted in the good direction" is how
+286 -> 263 -> 252 went unnoticed three times. The remedy is a one-line edit and the
+failure message prints the exact value to paste.
+
+If the friction ever outweighs the rot, the honest reversal is to drop --check from CI
+and keep the reporting mode — NOT to add a tolerance band, which would restore the
+silent drift this exists to stop.
 """
 
 from __future__ import annotations

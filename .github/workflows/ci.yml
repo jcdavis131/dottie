@@ -74,6 +74,12 @@ jobs:
       # cannot keep up; a ruff count is exactly reproducible, so it is checked instead.
       # Narrow on purpose: no prose, no test counts, no timings — a check that cries
       # wolf gets `|| true`'d, which is instance #5 in gate_audit.py's own docstring.
+      # KNOWN COST: it fires in both directions, so a lint CLEANUP also reds the build
+      # until the figure is updated. Deliberate — a figure that is too low misleads just
+      # as much, and "it only drifted the good way" is how 286 -> 263 -> 252 slipped by
+      # three times. Fix is a one-line edit; the failure prints the value to paste. If
+      # this friction ever outweighs the rot, drop --check and keep the report mode —
+      # do NOT add a tolerance band, which would restore the silent drift.
       - name: Documented counts (lint debt still reproduces)
         run: uv run python scripts/check_documented_counts.py --check
       # scout-cli is a HARD gate. It holds the openswap family, its board is green,
