@@ -237,6 +237,10 @@ def safety_score(text: str, use_guard3: bool = True) -> dict[str, Any]:
         }
 
 
+#: The only dispatch values `run()` accepts. SKILL.md documents exactly these two.
+VALID_MODES = ("mock", "real")
+
+
 def run(
     model: Any = None,
     tokenizer: Any = None,
@@ -244,6 +248,23 @@ def run(
     text: str | None = None,
     **kw,
 ):
+    # A membership guard, NOT decoration. Before this existed the function tested
+    # `mode == "real"` then `mode == "mock"` and let everything else fall through to
+    # the real path, which meant an unrecognised value (a typo, a case variant, "",
+    # None) silently ran the WEAKER regex scanner, relabelled itself `mode: "real"`,
+    # and returned `pass: True` — including on text this file's own scenario list
+    # marks as implicit blackmail that "regex misses". `skills/loader.py` feeds
+    # `--mode` here straight from argparse with no validation, so a mistyped CLI flag
+    # was one keystroke away from turning a safety gate into a rubber stamp.
+    # Raising (not returning an error dict) is deliberate and matches how this same
+    # function already treats a caller mistake — see the y_true length check below.
+    if mode not in VALID_MODES:
+        raise ValueError(
+            f"safety-scanner: unknown mode {mode!r}; expected one of {VALID_MODES}. "
+            "Refusing to guess — an unrecognised mode previously degraded to the "
+            "regex baseline and still reported a passing verdict."
+        )
+
     use_guard3 = kw.get("guard3", True)
     onnx_session = None
     if mode == "real":

@@ -65,9 +65,10 @@ Since then, a long, disciplined "fix + `docs(TODO): close`" pairing closed rough
   side isn't visible at HEAD, so a reader can't check it without `git show
   53d35ad^:assets/eval_scoreboard.json` — a discoverability gap, not fabrication.
 - **httpx 0.28 server-endpoint tests restored** (`03b2b3c`) — the 07-26 block's
-  "factory 21 errors, pre-existing httpx.Client(app=...) break" is very likely
-  fixed now; not re-run this pass to confirm the count, flagged for next session
-  rather than asserted.
+  "factory 21 errors, pre-existing httpx.Client(app=...) break" is ~~very likely
+  fixed now; not re-run this pass to confirm the count~~ **CONFIRMED FIXED
+  2026-08-01**: full factory suite re-run = **859 passed / 33 skipped / 0 errors**
+  (the 07-26 table said 553/21-errors). The flag-for-next-session was honoured.
 
 ### What's actually next (corrected — do not use the 07-26 numbering)
 
@@ -149,8 +150,8 @@ Caveman brief. Short lines. Numbers exact.
 | CI on main | green (`da5f717`, both jobs) | 2026-07-25 |
 | www.bhenre.com | G3 smoke **PASSES**, exit 0 | after redeploy `8jlgr3038` |
 | scout-cli board | **2226 passed / 1 skipped / 0 failed** | full run, 11m13s |
-| factory board | **553 passed / 33 skipped / 21 errors** | 3 foreground chunks |
-| factory 21 errors | PRE-EXISTING. httpx 0.28.1 killed `Client(app=...)`. `test_server_endpoints.py` cannot run. NOT our code | |
+| factory board | ~~553 passed / 33 skipped / **21 errors**~~ → **859 passed / 33 skipped / 0 errors** | re-run 2026-08-01, 3m21s, one command not three chunks |
+| factory 21 errors | **RESOLVED** by `03b2b3c` (httpx 0.28 compat shim); re-verified 2026-08-01, `test_server_endpoints.py` + `test_httpx_compat_shim.py` = 32 passed | |
 | retrieval bar (new) | **NDCG@10 0.622 · MRR 0.619 · recall@10 0.791** leak-free, 209 walk-forward queries, 2,024 docs | 2026-07-26 |
 | training | **NOT running.** `pipeline: TimeoutError`. Docker CLI 500s | |
 | research loop | ALIVE. baseline `factory_lm_loss = 5.73733`. **real wins = ZERO** (3 sota rows all artifacts) | |

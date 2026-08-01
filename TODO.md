@@ -156,6 +156,52 @@ this section now carries a re-verify note instead of being trusted at face value
    a bug to route around before reporting it."* This entry says so plainly, with the
    actual root cause identified rather than just the miss reported.
 
+### ✅ 2026-08-01 — repo-wide `gate_audit.py` sweep: 12 candidates, 1 REAL defect, fixed
+
+Ran the repo's own bug-finder (`scripts/gate_audit.py`, "find gates whose verdict nothing
+consumes") across **every** app and package — the first full sweep, prior runs were
+`--path apps/scout-cli` only. 12 candidates. The audit prints "these are HEURISTICS —
+judge each one", so every one was judged; recording the verdicts here so the next sweep
+does not re-derive them.
+
+- 🔴 **REAL, FIXED — `packages/ava-skills/skills/safety-scanner/skill.py` `run()`.**
+  Dispatched on `mode` with no membership guard, so ANY unrecognised value fell through
+  to the real path. Confirmed by running it, not by reading it — `mode` in
+  `{'production', 'Real', 'rael', '', None, 0}` each returned
+  `{"mode": "real", "pass": True}` on text this file's own scenario list marks as
+  implicit blackmail that *"regex misses"*. Three defects in one: (1) silently degraded
+  to the weaker regex scanner; (2) **mislabelled itself `mode: "real"`**, so the
+  caller's actual argument vanished from the output and nothing downstream could tell;
+  (3) returned a **passing safety verdict**. `skills/loader.py:344` takes `--mode` from
+  argparse with **no validation** and passes it straight through, so a mistyped CLI flag
+  was one keystroke from turning a safety gate into a rubber stamp. Fixed with a
+  `VALID_MODES` membership guard that raises — the same shape
+  `apps/dottie/dottie/policy.py::get_policy` already uses (`BACKENDS` + `raise
+  ValueError` naming the choices), so this converged on an existing repo convention
+  rather than inventing one. 6 new tests, RED-verified before the fix (7 failing), 25
+  skill tests + 75 package tests green after.
+- ⚪ **False positive — `apps/dottie/dottie/policy.py:548 get_policy`.** Already ends in
+  `raise ValueError(f"unknown backend {backend!r}; choices: ...")`. The heuristic misses
+  a terminal raise. This is the pattern the fix above copied.
+- ⚪ **False positive — `apps/dottie/dottie/climb.py:145 policy_identity`.** Its docstring
+  documents the fall-through as *intended*: "An injected / unknown backend (e.g. a
+  test's scripted solver) is recorded as not resolvable."
+- ⚪ **Acceptable — `apps/scout-cli/bigbang/core/cite.py:1306 in_text`,
+  `plugins/write/cli.py:307 _weight_for`, `ava-factory/.../scout_cli.py:128
+  _family_for_phase`.** Formatting/weighting helpers, not gates; an unknown value
+  produces a default rendering, not a false safety or correctness verdict.
+- ⚪ **Acceptable — the 2 `|| true` suppressed checks in
+  `apps/ava-factory/scripts/e2e_test.sh`.** Same shape as the audit doc's own instance
+  #5 (`ci.yml` ruff `|| true`) but **not** the same stakes: this script is referenced by
+  no workflow and no Makefile (checked), and both lines guard genuinely optional
+  components behind `if [ -f ... ]` / `if grep -q ...`.
+
+**Note for whoever runs this next:** every *other* skill in `packages/ava-skills` uses
+`if mode == "mock": ... else: <real>`. That is a true binary partition (1 branch, below
+the audit's threshold), not a dispatch chain, and none of them is a safety gate — so
+they were deliberately NOT swept preventatively, same judgement call as the
+gridiron/pitch fusion-coverage decision. If one of them ever becomes a gate, revisit.
+
 ### ✅ 2026-07-26 — defect sweep done; the task-shaped bar is MUCH lower than the commit-shaped one
 
 **THE RESULT THAT CHANGES THE PLAN.** `scripts/task_eval_slice.py` mines TODO.md itself for
