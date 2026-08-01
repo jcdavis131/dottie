@@ -156,6 +156,32 @@ this section now carries a re-verify note instead of being trusted at face value
    a bug to route around before reporting it."* This entry says so plainly, with the
    actual root cause identified rather than just the miss reported.
 
+### ✅ 2026-08-01 — measured-floor staleness sweep, all suites, CLOSED
+
+Every floor in this repo is set at ~80% of a real measurement, on the stated rule that
+"a floor comfortably below the truth is how fabricated numbers pass". Those measurements
+are taken against corpora that GROW (TODO.md, git history, the scout-cli tree), so the
+floors rot. Swept all of them; the direction of rot decides how loud it is.
+
+| file | floors vs a drifting corpus | outcome |
+|---|---|---|
+| `scripts/test_task_eval_slice.py` | 9 | **4 were 68-75% of truth — too lax and silently passing.** Re-based; **9 meta-guards added** (only 1 of 9 had one, which is exactly why the rest drifted unseen) |
+| `apps/ava-factory/tests/test_hard_negatives.py` | 6 | **Re-cut proactively.** Its own sweep was passing but `same_class` sat at **70.2%** against a `STALENESS_LIMIT` of 0.70 — one sibling pair from a red suite for a non-reason |
+| `apps/ava-factory/tests/test_minhash_dedup.py` | 2 | **Healthy, no action.** 52 files / 1180 functions vs floors 48 / 1100 = 92.3% / 93.2%; corpus moved only +1 file, +3 functions since 07-26 |
+| `test_eval_harness.py`, `test_probe_error_analysis.py` | 0 | n/a — `measured` there is a data field, not a floor |
+| `test_dataset_license_gate.py` | 0 | n/a — its "measured 2026-07-25" is a set of FIXED fixtures (cases the old substring gate admitted), which cannot drift |
+
+**The asymmetry worth remembering:** drift runs both ways and only one direction is loud.
+A quantity that SHRINKS pushes its floor above the truth and the suite goes red every run
+(`FLOOR_STRIP_INFLATION`, caught immediately). A quantity that GROWS leaves the floor too
+lax and **nothing says anything** — it keeps passing while tolerating a regression nobody
+agreed to. The silent direction is the one that needs a test rather than a reader, which
+is why the fix was meta-guards, not new numbers.
+
+**Deliberately not gold-plated:** minhash's floors sit at 92-93% of truth, far tighter
+than the 80% convention, so an automated staleness guard there would earn little; noted
+instead of built.
+
 ### ✅ 2026-08-01 — repo-wide `gate_audit.py` sweep: 12 candidates, 1 REAL defect, fixed
 
 Ran the repo's own bug-finder (`scripts/gate_audit.py`, "find gates whose verdict nothing
