@@ -129,7 +129,7 @@ this section now carries a re-verify note instead of being trusted at face value
    across 3 base models, 2 trained configurations, an LR sweep and an epoch sweep,
    **every dense-retrieval result lands 0.19-0.27 while the plain FTS5/BM25 lexical
    baseline on the identical eval scores 0.429.** Lexical beats dense on this corpus
-   by ~1.6x, consistently, under every variation tried. That is exactly what the
+   by ~1.6x, consistently, under every variation tried. Re-measured 2026-08-01: the lexical task bar is **0.469**, not 0.429 — the golden set drifts as commits land — so the margin is **1.77x**, not 1.6x. The verdict is unchanged and slightly stronger; see the retrieval-bar rows in the status table for why the commit-shaped 0.622 no longer reproduces at all. That is exactly what the
    strategy review (`42db5a0`) predicted when it warned *"BM25 is a strong baseline
    for code because identifiers are high-signal literal tokens"* — and it is strong
    post-hoc evidence for the **Option C decision (scout-cli stays lexical)** being

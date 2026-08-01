@@ -92,7 +92,7 @@ Since then, a long, disciplined "fix + `docs(TODO): close`" pairing closed rough
    an epoch sweep, every dense result lands 0.19-0.27 while plain FTS5/BM25 scores
    **0.429 on the identical eval**. Lexical beats dense here by ~1.6x under every
    variation tried — strong measured evidence that the **Option C decision (scout-cli
-   stays lexical) was right**. Full numbers, the pre-registered decision rule and how
+   stays lexical) was right**. Re-measured 2026-08-01: the lexical task bar is **0.469**, not 0.429 — the golden set drifts as commits land — so the margin is **1.77x**, not 1.6x. The verdict is unchanged and slightly stronger; see the retrieval-bar rows in the status table for why the commit-shaped 0.622 no longer reproduces at all. Full numbers, the pre-registered decision rule and how
    it resolved, and the one untried lever: TODO.md item 6.
 2. **`personal_graphify/query.py`'s read-modify-write fixed 2026-07-31** — same shape
    as telemetry.py (corrupt `cost.json` preserved + announced on stderr, write made
@@ -146,13 +146,14 @@ Caveman brief. Short lines. Numbers exact.
 
 | thing | value | when |
 |---|---|---|
-| HEAD | `ca91bac`, pushed, tree clean | 2026-07-26 |
-| CI on main | green (`da5f717`, both jobs) | 2026-07-25 |
+| HEAD | `daa759a`, pushed, tree clean | 2026-08-01 |
+| CI on main | green — both workflows (CI + Ruff Lint) at `daa759a` | 2026-08-01 |
 | www.bhenre.com | G3 smoke **PASSES**, exit 0 | after redeploy `8jlgr3038` |
 | scout-cli board | ~~2226 passed~~ → **2260 passed / 1 skipped / 0 failed** | re-read 2026-08-01 from the CI gate's own log (7m20s), not a dev-box run |
 | factory board | ~~553 passed / 33 skipped / **21 errors**~~ → **859 passed / 33 skipped / 0 errors** | re-run 2026-08-01, 3m21s, one command not three chunks |
 | factory 21 errors | **RESOLVED** by `03b2b3c` (httpx 0.28 compat shim); re-verified 2026-08-01, `test_server_endpoints.py` + `test_httpx_compat_shim.py` = 32 passed | |
-| retrieval bar (new) | **NDCG@10 0.622 · MRR 0.619 · recall@10 0.791** leak-free, 209 walk-forward queries, 2,024 docs | 2026-07-26 |
+| retrieval bar | ~~0.622 · 0.619 · 0.791~~ **DOES NOT REPRODUCE — do not quote it.** Re-measured 2026-08-01, same code/defaults: **0.420 · 0.462 · 0.504** (n=154, 2,128 docs). `task_eval_slice.py` diagnoses the cause itself: **71 of 451 relevance judgements name a file not in the index at HEAD** (deleted/renamed since) and score 0 unconditionally. Drop those and the same code gives **0.656 · 0.704 · 0.790** — the recorded bar returns. So this is a MEASUREMENT artifact, not a retrieval regression. | re-measured 2026-08-01 |
+| retrieval bar — task-shaped | **0.469** leak-free (n=93), was recorded as 0.429. This is the bar an embedding model must beat. The step-5 verdict is UNAFFECTED and slightly stronger: best dense 0.265 vs 0.429 was 1.62x, vs 0.469 it is **1.77x** in lexical's favour. | re-measured 2026-08-01 |
 | training | **NOT running.** `pipeline: TimeoutError`. Docker CLI 500s | |
 | research loop | ALIVE. baseline `factory_lm_loss = 5.73733`. **real wins = ZERO** (3 sota rows all artifacts) | |
 | box | ~~1,896 MB RAM free · 23.6 GB disk~~ → **16.9 GB RAM total / 6.7 GB free · 59 GB disk free (94% used) · RTX 4080 12 GB idle** | re-measured 2026-08-01 |
