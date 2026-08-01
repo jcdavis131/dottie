@@ -121,9 +121,24 @@ def test_laptop_peak_flops_collides_with_desktop_KNOWN_WRONG(laptop, desktop, de
     It is PINNED RATHER THAN FIXED on purpose. Fixing it means writing real dense-BF16
     peaks for each mobile SKU, and this repo's rule is that numbers come from real
     sources — a plausible-looking TFLOPS figure typed from memory is exactly the kind of
-    fabricated constant that rule exists to keep out. The correct fix needs a measured
-    benchmark on the card itself. Until then this test makes the collision visible and
-    stops it changing silently; delete it in the same commit that adds the real figures.
+    fabricated constant that rule exists to keep out. Until then this test makes the
+    collision visible and stops it changing silently; delete it in the same commit that
+    adds the real figures.
+
+    MEASURED 2026-08-01 (`scripts/measure_bf16_ceiling.py`, rerunnable): this card sustains
+    69.6 TFLOPS on a dense BF16 matmul while drawing 85-91% of its 175 W limit at 69 C —
+    power-bound, not thermally throttled, so that is its real operating point. Against the
+    242.5 constant that caps *reportable* MFU at 0.287. A training step cannot out-run a
+    pure matmul, so no run on this machine can print an MFU above ~29%, and the 40% target
+    in docs/HARDWARE_PROFILE.md is unreachable by arithmetic rather than by tuning.
+
+    That measurement still does NOT license replacing the constant here, which is why this
+    test survives it. It bounds ACHIEVED throughput, whereas MFU's denominator is
+    conventionally THEORETICAL peak; substituting an empirical ceiling would quietly
+    redefine the metric and make every MFU figure this repo prints incomparable to any
+    published one. Which of the two the trainer should report is an operator's call, so the
+    constant stays wrong-and-flagged rather than being swapped for a number that is
+    better-founded but means something different.
 
     The concrete `desktop_flops` value is asserted as well as the equality. Comparing only
     `f(laptop) == f(desktop)` would pass VACUOUSLY if the lookup stopped matching either

@@ -64,9 +64,46 @@ substring and has no laptop rows, so this card is credited the desktop 4080's 24
 than high, which is the quiet direction: the box looks inefficient instead of mismeasured.
 Pinned by `test_laptop_peak_flops_collides_with_desktop_KNOWN_WRONG`. It is deliberately
 not "fixed" by typing in a plausible mobile TFLOPS number — that would be a fabricated
-constant, which is precisely what this repo's numbers rule forbids. It needs a measured
-benchmark on the card. **Until then, treat MFU percentages from this machine as a lower
-bound of unknown tightness, not as a number.**
+constant, which is precisely what this repo's numbers rule forbids.
+
+#### Measured 2026-08-01: the MFU ceiling on this card is ~29%
+
+That paragraph originally ended "it needs a measured benchmark on the card". The benchmark
+now exists — `scripts/measure_bf16_ceiling.py`, run it yourself — and this is what it says:
+
+```
+device                RTX 4080 Laptop GPU, 58 SMs, 11.99 GB, capability 8.9
+achieved BF16 matmul  69.6 TFLOPS   (best of 12 iters, n=12288, torch 2.11.0+cu128)
+MFU denominator       242.5 TFLOPS  (what _get_gpu_peak_flops returns for this device)
+max reportable MFU    0.287
+conditions            148-160 W of a 175 W limit, 2430 MHz, 69 C
+```
+
+Throughput is stable across five runs: 69.8 / 69.4 / 69.4 / 69.6 / 69.4 TFLOPS, ±0.3%.
+
+The power figure needs a caveat, because the tool's own sampler is unreliable for it. It
+polls `nvidia-smi` in a thread and each spawn costs ~50-100 ms, so it MISSES peaks: across
+runs it printed anything from 121 W to 158 W for the same workload. A tight shell loop
+measured **159.99 W against the 175 W limit — 91%** — at 69 C. Undersampling can only miss
+a peak, never invent one, so the true draw is at least that. The card is therefore
+**power-bound and not thermally throttled** (69 C is far from any thermal limit), which
+means 69.4-69.8 TFLOPS is its real operating point rather than a degraded one. Treat the
+wattage the tool prints as a lower bound; re-measure with a tight loop before concluding a
+run was throttled.
+
+Note `sm_count` **58**. A desktop 4080 has 76 — a 24% shortfall in SM count alone, before
+clocks or power budget enter into it.
+
+**What this licenses, stated carefully.** Achieved <= peak always, so 69.6 TFLOPS is a
+LOWER bound on the card's true peak and does not by itself prove 242.5 is wrong. Read the
+other way it is much sharper: a training step cannot out-run a pure dense matmul, so
+`69.6 / 242.5 = 0.287` is a **ceiling on reportable MFU**. No training loop on this
+machine, however well tuned, can print an MFU above ~29%.
+
+The consequence is concrete: the desktop block below recommends "batch 32 without
+checkpoint for **MFU ~40%**". On this laptop that target is **unreachable by construction**
+— not a tuning failure, an arithmetic one. Chasing it means chasing throughput that was
+never on the table. Judge runs here against ~29%, or fix the denominator.
 
 ## Custom tuning for Davis
 
