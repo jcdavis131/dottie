@@ -3,14 +3,38 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = [sys.executable, "-m", "bigbang.cli"]
+
+# A THROWAWAY HOME for every subprocess in this module.
+#
+# `test_secrets_set_via_stdin_and_get_json` and `test_secrets_rm_dry_run_and_force`
+# run `secrets set` / `secrets rm` as real subprocesses, and a child cannot see a
+# monkeypatch — so they were writing to the developer's ACTUAL vault at
+# ~/.local/share/bigbang/secrets.json. Every full-suite run mutated it twice.
+#
+# Why that is worse than it sounds: security.py's vault is a read-modify-write, and
+# this repo already measured (3e301cb) that a torn vault plus one ordinary `set` is
+# TOTAL loss of every stored secret. So the suite sat one crash away from wiping a
+# populated vault. It happens to be empty today (2 bytes, `{}`), which is luck, not
+# design — and the same class of accident destroyed the herd ledger on 2026-08-01.
+#
+# Redirecting HOME/USERPROFILE rather than adding an env override to security.py is
+# deliberate: Path.home() is the shared root of VAULT_DIR, REG_DIR, AUDIT_DIR, the
+# auth plugin's REG and the herd store, so ONE test-only change isolates all five
+# with ZERO change to security-critical production code. Verified on Windows —
+# Path.home() reads USERPROFILE, POSIX reads HOME, so both are set.
+_FAKE_HOME_TMP = tempfile.TemporaryDirectory(prefix="scout-agents-home-")
+_FAKE_HOME = _FAKE_HOME_TMP.name
+_ISOLATED_ENV = {**os.environ, "USERPROFILE": _FAKE_HOME, "HOME": _FAKE_HOME}
 
 
 def _run(args, *, input_text=None, timeout=8, env=None):
@@ -23,7 +47,7 @@ def _run(args, *, input_text=None, timeout=8, env=None):
         errors="replace",
         timeout=timeout,
         cwd=str(ROOT),
-        env=env,
+        env=env or _ISOLATED_ENV,
     )
 
 
