@@ -994,6 +994,34 @@ found exactly 42, matching the subagent's count by a different method.
   **Both earlier diagnoses above are left standing on purpose** — a wrong hypothesis that cost
   real time is worth more to the next reader than a tidy entry that only records the answer.
 
+  **SEQUEL, 2026-08-01 — a SECOND herd-ledger defect, and the reason 4 tests looked
+  permanently red on Windows.** `tests/test_herd.py` and `tests/test_planes.py` spawn the
+  real CLI via `subprocess`. A child process cannot see the `monkeypatch` the in-process
+  tests use (the `isolated` fixture), and `HERD_DIR` was a module constant off
+  `Path.home()` with **no env override** — so those subprocess tests read and REWROTE the
+  developer's actual `~/.local/share/bigbang/herd/sessions.json`.
+  Two consequences, both observed rather than theorised:
+  - running the suite **mutated real user state**;
+  - the tests were **data-dependent, not platform-dependent** — green on a fresh CI runner
+    with no ledger, red on a dev box with accumulated sessions. Four of them
+    (`test_herd_status_json`, `test_planes_*` x3, all `AssertionError: PermissionError:
+    [WinError 5]`) had been dismissed as "Windows-only" for exactly that reason. CI was
+    reporting 2260 passed / 0 failed the whole time, so the divergence never got chased.
+  Fixed with `SCOUT_HERD_DIR`, matching the store-path convention this codebase already
+  uses (`SCOUT_SEO_DB`, `SCOUT_LINKS_DB`); both test modules now point their subprocesses
+  at a module-scoped tempdir.
+  Proof it is the isolation and not an emptied file: recreated a 12-session stale ledger at
+  the real path, re-ran — **16 passed**, and the real ledger was afterwards **byte-identical
+  (2968 bytes, 12 sessions)** with no `.tmp` leakage. Before the fix the same 4 failed.
+  ⚠ **Cost, recorded because it was mine:** while probing the WinError 5 I ran a
+  `tmp.replace(HERD_FILE)` reproduction that overwrote the real `sessions.json` (3798 bytes
+  of live session records) with `{}`. Not recoverable — `events.jsonl` is append-only but
+  only 4 lines from 2026-07-17, and no `.bak` or leftover per-pid temp survived. The lost
+  rows were stale entries for long-dead pids (`logs/hs_*.log` dates run 07-20..07-29) and
+  `refresh_session` marks dead pids anyway, so practical impact is low — but it was real
+  user state destroyed by a diagnostic, and the isolation fix above is exactly what stops
+  the next person doing it.
+
 - [x] **FOLLOW-UP: the allowlist cannot express a dynamically-discovered root.** Defects 1
   and 2 share this cause — reviewgraph tried to spell it `<root>`, tasks hardcoded one
   machine's answer. `.scout` only works because it is CWD-relative and `abspath` resolves

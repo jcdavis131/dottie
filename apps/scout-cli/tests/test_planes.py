@@ -3,15 +3,25 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 CLI = [sys.executable, "-m", "bigbang.cli"]
 ROOT = Path(__file__).resolve().parents[1]
 
+# `planes status` reads the herd ledger, so these subprocesses hit the developer's
+# real ~/.local/share/bigbang/herd/sessions.json unless pointed elsewhere — same
+# defect as test_herd.py, and the reason three tests here looked like a permanent
+# Windows-only failure. They were data-dependent, not platform-dependent.
+_SESSION_HERD_TMP = tempfile.TemporaryDirectory(prefix="scout-planes-tests-")
+_SESSION_HERD_DIR = Path(_SESSION_HERD_TMP.name)
+
 
 def _run(args, timeout=20):
+    env = {**os.environ, "SCOUT_HERD_DIR": str(_SESSION_HERD_DIR)}
     return subprocess.run(
         CLI + args,
         capture_output=True,
@@ -20,6 +30,7 @@ def _run(args, timeout=20):
         errors="replace",
         timeout=timeout,
         cwd=str(ROOT),
+        env=env,
     )
 
 

@@ -26,7 +26,32 @@ if TYPE_CHECKING:
 _SAVE_RETRIES = 10
 _SAVE_BACKOFF_S = 0.01
 
-HERD_DIR = Path.home() / ".local" / "share" / "bigbang" / "herd"
+def _default_herd_dir() -> Path:
+    """State dir, overridable by SCOUT_HERD_DIR.
+
+    The override exists because the SUBPROCESS tests could not be isolated without
+    it. In-process tests monkeypatch HERD_DIR/HERD_FILE/LOG_DIR (see the `isolated`
+    fixture in tests/test_herd.py), but `_run(["--json", "herd", "status"])` spawns a
+    real CLI, and a child process cannot see a monkeypatch — so those tests read and
+    REWROTE the developer's actual ~/.local/share/bigbang/herd/sessions.json.
+
+    Two consequences, both observed rather than theorised:
+      * running the suite MUTATED real user state;
+      * the tests were data-dependent — green on a fresh CI runner with no ledger,
+        red on a dev box with accumulated sessions. That is how four of them looked
+        like a permanent Windows-only failure for so long: the platform was never
+        the variable, the leftover ledger was.
+
+    Matches the store-path convention this codebase already uses elsewhere
+    (SCOUT_SEO_DB in core/seo.py, SCOUT_LINKS_DB in the links plugin).
+    """
+    override = os.environ.get("SCOUT_HERD_DIR")
+    if override:
+        return Path(override)
+    return Path.home() / ".local" / "share" / "bigbang" / "herd"
+
+
+HERD_DIR = _default_herd_dir()
 HERD_FILE = HERD_DIR / "sessions.json"
 LOG_DIR = HERD_DIR / "logs"
 

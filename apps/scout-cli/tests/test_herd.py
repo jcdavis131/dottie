@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -14,8 +15,26 @@ import pytest
 CLI = [sys.executable, "-m", "bigbang.cli"]
 ROOT = Path(__file__).resolve().parents[1]
 
+# One throwaway herd state dir for every subprocess in this module. A module-level
+# tempdir rather than the `tmp_path` fixture because `_run` is called from plain
+# functions as well as fixtured tests, and every one of them must be pointed away
+# from the real ledger — an unisolated caller is what caused the damage this exists
+# to prevent.
+_SESSION_HERD_TMP = tempfile.TemporaryDirectory(prefix="scout-herd-tests-")
+_SESSION_HERD_DIR = Path(_SESSION_HERD_TMP.name)
 
-def _run(args, *, timeout=30):
+
+def _run(args, *, timeout=30, herd_dir=None):
+    """Spawn the real CLI with the herd state dir pointed AWAY from the developer's.
+
+    Without SCOUT_HERD_DIR these subprocess tests read and rewrote the real
+    ~/.local/share/bigbang/herd/sessions.json — a child process cannot see the
+    monkeypatch the in-process tests use. That made the suite mutate user state and,
+    worse, made results depend on whatever sessions were lying around: green on a
+    fresh CI runner, red on a dev box. Four tests here and in test_planes.py looked
+    like a permanent Windows-only failure for exactly that reason.
+    """
+    env = {**os.environ, "SCOUT_HERD_DIR": str(herd_dir or _SESSION_HERD_DIR)}
     return subprocess.run(
         CLI + args,
         capture_output=True,
@@ -24,6 +43,7 @@ def _run(args, *, timeout=30):
         errors="replace",
         timeout=timeout,
         cwd=str(ROOT),
+        env=env,
     )
 
 
