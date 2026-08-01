@@ -29,14 +29,56 @@ Tier boundaries apply a ~0.5 GB tolerance (`VRAM_TIER_TOLERANCE_GB`) because rea
 under-report total VRAM (a 16 GB card shows ~15.99 GB); so >=15.5 GB lands in the 16GB
 tier and >=23.5 GB in the 24GB+ tier.
 
-Your RTX 4080 16GB → `ada-16gb` profile: batch candidates 32,16,8,4, checkpoint modes (False,True), default False, eval cap 16. Autotune will pick 32 usually, maybe 16 if using checkpoint.
-Your RTX 4090 24GB → `ada-24gb-plus`: batch 64,32,16,8,4, checkpoint False, eval cap 16, autotune picks 64.
+A **desktop** RTX 4080 16GB → `ada-16gb`: batch candidates 32,16,8,4, checkpoint modes (False,True), default False, eval cap 16. Autotune usually picks 32, maybe 16 with checkpointing.
+A **desktop** RTX 4090 24GB → `ada-24gb-plus`: batch 64,32,16,8,4, checkpoint False, eval cap 16, autotune picks 64.
+
+### What THIS machine actually resolves to (measured 2026-08-01)
+
+The two rows above are the desktop tiers. They are **not** what the dev box gets, and this
+section used to say they were — it read "Your RTX 4080 16GB → `ada-16gb` batch 32", which
+was wrong in four places at once.
+
+`nvidia-smi` on this machine reports **`NVIDIA GeForce RTX 4080 Laptop GPU, 12282 MiB`**
+(11.99 GB). Feeding exactly that through `_resolve_gpu_profile` gives:
+
+| | doc used to claim | actually resolves |
+|---|---|---|
+| profile | `ada-16gb` | **`compatibility`** |
+| max batch | 32 | **16** |
+| default checkpointing | False | **True** |
+| supported tier | yes | **no** — `is_supported_consumer=False` |
+
+`_compatibility_warning` states the reason plainly: *"laptop GPUs are outside the supported
+desktop matrix"*. The code is right and `test_laptop_falls_to_compatibility` already pins
+it; only this document was wrong. A mobile 4080 is AD104 at a laptop power budget, not the
+desktop AD103, so the exclusion is correct behaviour rather than a limitation to work
+around — do not "fix" it by deleting the `is_laptop` check to unlock batch 32.
+
+**Plan against batch 16 with checkpointing on**, not batch 32. Any throughput target on
+this page derived from batch 32 (see the 300-500M tokens / 5 min figures below) was written
+for a desktop card and has never been measured here.
+
+**MFU on this box is measured against the wrong ceiling.** `_get_gpu_peak_flops` matches by
+substring and has no laptop rows, so this card is credited the desktop 4080's 242.5 TFLOPS
+— a peak it cannot reach. MFU is achieved/peak, so the reported figure reads LOW rather
+than high, which is the quiet direction: the box looks inefficient instead of mismeasured.
+Pinned by `test_laptop_peak_flops_collides_with_desktop_KNOWN_WRONG`. It is deliberately
+not "fixed" by typing in a plausible mobile TFLOPS number — that would be a fabricated
+constant, which is precisely what this repo's numbers rule forbids. It needs a measured
+benchmark on the card. **Until then, treat MFU percentages from this machine as a lower
+bound of unknown tightness, not as a number.**
 
 ## Custom tuning for Davis
 
-We keep upstream profile logic but pre-document optimal candidates for your box:
+We keep upstream profile logic but pre-document optimal candidates per card.
 
-### RTX 4080 16GB (Ada, 9728 cores, 16GB GDDR6X, 320W)
+> **These are DESKTOP cards.** The dev box is a 4080 *Laptop* and gets `compatibility`,
+> batch 16, checkpointing on — see "What THIS machine actually resolves to" above. The
+> recommendations below have not been measured on it. This block previously introduced
+> itself as "optimal candidates for your box", which is how a desktop spec sheet came to
+> be read as a description of the machine actually running the trainer.
+
+### RTX 4080 16GB (Ada, 9728 cores, 16GB GDDR6X, 320W) — desktop
 
 - Peak FLOPS used for MFU: `_get_gpu_peak_flops` in train.py returns 242.5e12 (242.5 TFLOPS)
   for "4080" — the dense BF16 tensor-core figure the fork's MFU math is calibrated against
@@ -50,7 +92,7 @@ We keep upstream profile logic but pre-document optimal candidates for your box:
   is left to PyTorch at runtime.
 - `PYTORCH_ALLOC_CONF=expandable_segments:True` mitigates fragmentation on Windows.
 
-### RTX 4090 24GB (Ada, 16384 cores, 24GB GDDR6X, 450W, peak BF16 ~330 TFLOPS)
+### RTX 4090 24GB (Ada, 16384 cores, 24GB GDDR6X, 450W, peak BF16 ~330 TFLOPS) — desktop
 
 - Recommended batch: 64 without checkpoint, eval batch cap 16
 - Can handle 64+32+16+8+4 candidates

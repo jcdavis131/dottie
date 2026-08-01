@@ -106,10 +106,19 @@ bb --json agent run "offload Ava research to RTX with program ava"
 
 ## Hardware tuning
 
-Your RTX 4080 16GB → ada-16gb batch 32
-Your RTX 4090 24GB → ada-24gb-plus batch 64
+Desktop RTX 4080 16GB → `ada-16gb` batch 32
+Desktop RTX 4090 24GB → `ada-24gb-plus` batch 64
 
-See `docs/HARDWARE_PROFILE.md` in custom repo for MFU expectations: 300-500M tokens / 5min.
+**This dev box is neither.** `nvidia-smi` reports `RTX 4080 Laptop GPU, 12282 MiB`, which
+`_resolve_gpu_profile` routes to `compatibility` — batch 16, checkpointing on, and
+`is_supported_consumer=False` ("laptop GPUs are outside the supported desktop matrix").
+These two lines used to begin "Your RTX 4080 16GB", asserting the desktop path for a
+machine that never takes it.
+
+See `docs/HARDWARE_PROFILE.md` for the measured breakdown. The 300-500M tokens / 5min MFU
+expectations there are desktop figures and have not been reproduced on this laptop; MFU
+here is additionally computed against the desktop 4080's peak FLOPS, so treat it as a
+lower bound of unknown tightness rather than a measurement.
 
 ## Solo disclaimer
 

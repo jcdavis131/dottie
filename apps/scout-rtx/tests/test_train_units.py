@@ -95,6 +95,46 @@ def test_get_gpu_peak_flops(name, expected):
     assert train._get_gpu_peak_flops(name) == expected
 
 
+@pytest.mark.parametrize(
+    "laptop,desktop,desktop_flops",
+    [
+        ("NVIDIA GeForce RTX 4080 Laptop GPU", "NVIDIA GeForce RTX 4080", 242.5e12),
+        ("NVIDIA GeForce RTX 4090 Laptop GPU", "NVIDIA GeForce RTX 4090", 330.3e12),
+        ("NVIDIA GeForce RTX 4070 Laptop GPU", "NVIDIA GeForce RTX 4070", 116.8e12),
+    ],
+)
+def test_laptop_peak_flops_collides_with_desktop_KNOWN_WRONG(laptop, desktop, desktop_flops):
+    """Mobile cards inherit their desktop namesake's peak. This is a DEFECT, pinned.
+
+    The lookup in `_get_gpu_peak_flops` is substring-matched and has no laptop rows, so
+    "RTX 4080 Laptop GPU" matches the "4080" entry and is credited 242.5 TFLOPS — the
+    desktop AD103 figure. A mobile 4080 is a different die (AD104) at a fraction of the
+    power budget, so it cannot reach that number.
+
+    This MATTERS because peak is the denominator of MFU, the headline metric this repo
+    reports. Too high a denominator makes MFU read LOW, so the failure is quiet: the box
+    looks inefficient rather than mismeasured, and the honest reaction to a low MFU
+    ("tune harder") is the wrong one. `_resolve_gpu_profile` already detects laptops and
+    routes them to `compatibility` — the VRAM path knows about mobile cards, the FLOPS
+    path does not.
+
+    It is PINNED RATHER THAN FIXED on purpose. Fixing it means writing real dense-BF16
+    peaks for each mobile SKU, and this repo's rule is that numbers come from real
+    sources — a plausible-looking TFLOPS figure typed from memory is exactly the kind of
+    fabricated constant that rule exists to keep out. The correct fix needs a measured
+    benchmark on the card itself. Until then this test makes the collision visible and
+    stops it changing silently; delete it in the same commit that adds the real figures.
+
+    The concrete `desktop_flops` value is asserted as well as the equality. Comparing only
+    `f(laptop) == f(desktop)` would pass VACUOUSLY if the lookup stopped matching either
+    name and returned None for both — an assertion that survives the table being deleted
+    proves nothing. That is the same tautology this repo already caught once, in the first
+    version of scripts/check_documented_counts.py.
+    """
+    assert train._get_gpu_peak_flops(desktop) == desktop_flops
+    assert train._get_gpu_peak_flops(laptop) == desktop_flops
+
+
 # --- autotune cache round-trip --------------------------------------------
 
 

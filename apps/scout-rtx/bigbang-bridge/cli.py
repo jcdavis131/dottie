@@ -146,7 +146,20 @@ def status():
         "queue_total": len(queue.get("tasks", [])),
         "results_count": len(results),
         "best": hw_profile,
-        "gpu_hint": "RTX 4080 16GB ada-16gb batch 32 or RTX 4090 24GB ada-24gb-plus batch 64, BF16 TF32 SDPA, torch 2.9.1 cu128, 5-min budget",
+        # Static text, so it describes the DESKTOP tiers only. It previously read
+        # "RTX 4080 16GB ada-16gb batch 32 or RTX 4090 24GB ada-24gb-plus batch 64"
+        # with no qualifier, which a consumer reads as a description of THIS runner —
+        # and this runner is an RTX 4080 Laptop GPU (12282 MiB) that _resolve_gpu_profile
+        # routes to `compatibility`: batch 16, checkpointing on, is_supported_consumer
+        # False. Planning batch 32 off this hint would OOM. The live per-device answer is
+        # the "best" field above, which is resolved rather than hardcoded; prefer it.
+        "gpu_hint": (
+            "DESKTOP tiers only, not necessarily this host: RTX 4080 16GB -> ada-16gb "
+            "batch 32, RTX 4090 24GB -> ada-24gb-plus batch 64. BF16 TF32 SDPA, "
+            "torch 2.9.1 cu128, 5-min budget. Laptop GPUs are outside the supported "
+            "desktop matrix and fall back to `compatibility` (batch 16, checkpointing "
+            "on) — read the resolved `best` field for what this machine actually gets."
+        ),
         "offload_guide": str(CUSTOM_ROOT / "docs" / "OFFLOAD_GUIDE.md"),
         "programs": [str(p) for p in (CUSTOM_ROOT / "programs").glob("*.md")]
         if (CUSTOM_ROOT / "programs").exists()
