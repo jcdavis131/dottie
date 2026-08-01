@@ -44,13 +44,17 @@ jobs:
         run: uvx ruff@0.15.22 check packages/ava-skills
       # NON-BLOCKING for the REMAINING three, and the size of the debt is stated so
       # `|| true` cannot be mistaken for "lint is clean". Re-measured 2026-08-01:
-      # 263 findings -- packages/personal-graphify 141, packages/ava-open-harness 79,
-      # apps/scout-cli 43 (each package carries its own [tool.ruff], and the
+      # 252 findings -- packages/personal-graphify 141, packages/ava-open-harness 79,
+      # apps/scout-cli 32 (each package carries its own [tool.ruff], and the
       # per-package counts sum exactly to the combined run, so this is real debt and
       # not a config-discovery artifact).
-      # Was 334 across four packages on 2026-07-24; scout-cli has since gone 95 -> 43
+      # Trail: 334 across four packages on 07-24 -> 263 -> 252. scout-cli 95 -> 43 -> 32
       # and ava-skills 19 -> 0. Same ratchet: flip the next one the day it reaches 0.
-      - name: Ruff lint (non-blocking — 263 known findings, see comment)
+      # The 263 -> 252 step is worth noting as a caution, not a triumph: it was written
+      # as "263" earlier the SAME DAY and went stale hours later when the scout-cli
+      # security review closed 11 findings. A number in a comment rots even inside one
+      # session — re-measure it, never carry it forward.
+      - name: Ruff lint (non-blocking — 252 known findings, see comment)
         run: uvx ruff@0.15.22 check packages/ava-open-harness packages/personal-graphify apps/scout-cli --exclude apps/scout-cli/.venv || true
       # A RATCHET, not a lint. Fails only on a gate-shaped defect (fail-open dispatch,
       # mode-conditional escape, suppressed check) that is NOT already in the baseline;

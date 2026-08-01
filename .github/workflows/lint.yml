@@ -27,10 +27,12 @@ jobs:
       # trains everyone to ignore the X and the next real breakage looks identical.
       #
       # Non-blocking with the debt STATED, matching ci.yml's ruff step. Re-measured
-      # 2026-08-01 rather than copying the previous figure: 263 findings —
-      # personal-graphify 141, ava-open-harness 79, scout-cli 43 (sums exactly to the
-      # combined run). Trail: 334 (07-24) -> 286 (07-25) -> 263 (08-01), as scout-cli
-      # fell 95 -> 47 -> 43 and ava-skills 19 -> 0.
+      # 2026-08-01 rather than copying the previous figure: 252 findings —
+      # personal-graphify 141, ava-open-harness 79, scout-cli 32 (sums exactly to the
+      # combined run). Trail: 334 (07-24) -> 286 (07-25) -> 263 -> 252 (both 08-01), as
+      # scout-cli fell 95 -> 47 -> 43 -> 32 and ava-skills 19 -> 0. The 263 was written
+      # hours before the scout-cli security review closed 11 more findings — a number in
+      # a comment can go stale inside a single session, so re-measure, never carry it.
       #
       # ava-skills REACHED ZERO on 2026-08-01 and is now a HARD gate in ci.yml, so it is
       # dropped from this soft list — leaving it here would mean a package that must be
@@ -38,9 +40,9 @@ jobs:
       # double-accounting that makes a number stop meaning anything. ci.yml owns it now;
       # this workflow owns only what is still in debt.
       # Same ratchet as before: flip the next package the day it reaches zero; do not
-      # flip all three at once. personal-graphify at 141 is furthest; scout-cli at 43 is
+      # flip all three at once. personal-graphify at 141 is furthest; scout-cli at 32 is
       # nearest.
-      - name: Ruff check (non-blocking — 263 known findings, see comment)
+      - name: Ruff check (non-blocking — 252 known findings, see comment)
         run: |
           ruff check --statistics \
             packages/ava-open-harness \
