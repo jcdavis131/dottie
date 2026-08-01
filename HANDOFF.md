@@ -86,9 +86,31 @@ did not undo it.
 
 1. **Audit-log rotation.** `audit.jsonl` is **43.4 MB / 28,778 entries** and `audit.py` (39
    lines) has no rotation at all. Retention length is a product call.
-2. **The `dottie` name collision.** Three viable fixes — rename, `__path__` merge, or leave
-   it non-blocking. `9038b30` established it *is* fixable without a rename; which one is a
-   preference.
+2. **The `dottie` name collision — now MEASURED, no longer a preference.** Three viable
+   fixes: rename, `__path__` merge, or leave it non-blocking. `9038b30` established it is
+   fixable without a rename. On 2026-08-01 the cost of *not* fixing it was measured for the
+   first time, by running `apps/dottie`'s suite the way it is meant to run (its own `.venv`,
+   which does have fastapi, plus `AVA_FACTORY_ROOT`):
+
+   | | result |
+   |---|---|
+   | today | **36 failed**, 248 passed, 3 skipped, 3 errors |
+   | with the `__path__` merge | **1 failed**, 286 passed, 3 skipped, **0 errors** |
+
+   **35 of the 36 failures are one error**: `ModuleNotFoundError: No module named
+   'dottie.rl'`. That includes the `test_api.py` failures, which only look unrelated
+   because the API returned the import error where a status was expected. So this is not a
+   scattering of debt — it is a single decision holding 35 tests down.
+
+   The merge was measured with a throwaway conftest probe that was reverted immediately;
+   the tree was verified clean afterwards. Nothing was committed.
+
+   The lone survivor is informative: `test_climb.py::test_cli_climb_smoke_and_report`
+   shells out to `python -m dottie climb`, and a conftest patch cannot reach a subprocess.
+   A real fix has to live in the package, not in test setup — which is an argument about
+   *which* option, not whether.
+
+   Note the suite is **287 tests**, not the 211 previously written down.
 3. **`apps/scout-rtx/bb-offload/queue.json`** has a task still marked `"pending"` whose
    `hardware` field claims *"fits 24GB VRAM batch64"* on a 12 GB laptop. That is queued work,
    not prose, so changing the batch size changes what runs — see `da657d9`.

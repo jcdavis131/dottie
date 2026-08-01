@@ -229,13 +229,33 @@ jobs:
   # is a heavy build. The import check below is the cheap proxy that catches the failure
   # mode CI can actually cause (a broken module graph).
   #
-  # apps/dottie's 211 tests are excluded for a DIFFERENT and harder reason: they do not
-  # collect in the workspace env at all. Measured today — `uv run pytest apps/dottie
+  # apps/dottie's suite is excluded for a DIFFERENT and harder reason: it does not collect
+  # in the workspace env at all. Re-measured 2026-08-01 — `uv run pytest apps/dottie
   # --collect-only` gives 264 collected with 3 collection ERRORS, all
-  # `ModuleNotFoundError: No module named 'fastapi'`, and per HANDOFF that suite needs
-  # its own .venv plus AVA_FACTORY_ROOT. It also sits on the `dottie` name collision
-  # documented above the ava-open-harness step. Adding it is an operator call, not a CI
-  # tweak.
+  # `ModuleNotFoundError: No module named 'fastapi'`, and that suite needs its own .venv
+  # plus AVA_FACTORY_ROOT.
+  #
+  # "211 tests" was the figure here and it was STALE; run properly the suite is 287.
+  #
+  # RUN IT PROPERLY AND THE COLLISION IS THE WHOLE STORY. With apps/dottie/.venv (which
+  # does have fastapi) and AVA_FACTORY_ROOT set:
+  #     36 failed, 248 passed, 3 skipped, 3 errors
+  # and 35 of those 36 are `ModuleNotFoundError: No module named 'dottie.rl'` — including
+  # the test_api.py assertion failures, which only look different because the API returned
+  # the import error where a status was expected
+  # (`assert 'policy_unavailable' in "ModuleNotFoundError: No module named 'dottie.rl'"`).
+  #
+  # Measured what the __path__ merge would buy, with a throwaway conftest probe appended,
+  # the suite re-run, and the probe reverted (tree verified clean afterwards):
+  #     1 failed, 286 passed, 3 skipped, 0 errors
+  # So the merge clears 35 failures and all 3 collection errors. The single survivor is
+  # test_climb.py::test_cli_climb_smoke_and_report, which shells out to `python -m dottie
+  # climb`; a conftest patch cannot reach a subprocess, so that one needs the fix to live
+  # in the package rather than in test setup — which is itself an argument about WHICH of
+  # the three options is right.
+  #
+  # Still an operator call, and still not a CI tweak. But it is no longer an abstract
+  # three-way preference: option B is worth 35 tests, and doing nothing costs them.
   dottie-factory-smoke:
     runs-on: ubuntu-latest
     steps:
