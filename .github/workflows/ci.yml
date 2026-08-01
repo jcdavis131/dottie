@@ -17,8 +17,23 @@ jobs:
           enable-cache: true
       - name: Setup Python
         run: uv python install 3.11
-      - name: Sync workspace (light packages)
-        run: uv sync --all-groups --frozen || uv sync
+      # WAS: `uv sync --all-groups --frozen || uv sync`. The `--frozen` flag exists to
+      # ASSERT that uv.lock still satisfies pyproject.toml; the fallback then discarded
+      # that assertion and re-resolved. Net effect: add a dependency, forget to re-lock,
+      # and CI goes green anyway — while testing against a dependency set that is NOT the
+      # one uv.lock pins, so "it passed CI" stops implying "it passes from the lockfile".
+      # A strict check followed by a lax retry of the same command is the strict check
+      # deleted, just spelled in a way that reads like resilience.
+      #
+      # Verified safe to harden 2026-08-01: `uv lock --check` exits 0 at this commit, so
+      # this fails today only if the lockfile genuinely drifts. When it does fail, the fix
+      # is `uv lock` and commit uv.lock — do not restore the fallback.
+      #
+      # gate_audit does not flag this: shape B matches `|| true` and `|| :`, not
+      # `|| <some other command>`, and broadening it there would flag every legitimate
+      # fallback — a detector that cries wolf is how the tool earns its own `|| true`.
+      - name: Sync workspace (light packages, lockfile must be current)
+        run: uv sync --all-groups --frozen
       # packages/ava-skills REACHED 0 on 2026-08-01, so per the ratchet plan recorded
       # here on 2026-07-24 ("Flip to a hard gate per package as each reaches 0 ... do
       # NOT flip all four at once") it is now a HARD gate and is no longer part of the
@@ -264,11 +279,39 @@ jobs:
         run: node apps/bluehenre/scripts/build_hub_registry.mjs --check
       - name: Monitor runs readout freshness (matches the eval reports)
         run: node apps/bluehenre/scripts/build_runs_readout.mjs --check
-      - name: JS syntax check (server + front-end)
+      # WAS a hardcoded list of six files. apps/bluehenre tracks THIRTEEN .mjs, and the two
+      # the list missed outright were `api/fleet.mjs` and `api/twin-status.mjs` — server
+      # handlers for a live site (www.bhenre.com). `node --check` parses ONE file and does
+      # not follow imports, so checking server.mjs never covered them. A hardcoded list
+      # does not fail when it falls behind; it just quietly checks less, which is the same
+      # rot as a hardcoded count going stale, and the rest of this repo already treats that
+      # as a defect. Enumerated from git instead, so a new .mjs is covered the day it lands.
+      #
+      # The floor is not decoration. `for f in $(...)` over an EMPTY list runs zero times
+      # and exits 0 — a step that cannot fail, which is precisely the shape this workflow
+      # was audited for on 2026-08-01. If the enumeration ever breaks, this must go red
+      # rather than silently pass having checked nothing. 10 sits below the current 13 so
+      # ordinary adds and removals do not churn it, while a collapse to a handful trips it.
+      # Verified by mutation: pointing the enumeration at a suffix that matches nothing
+      # gives n=0 and exits 1 instead of "passing" over an empty loop.
+      #
+      # The count is 13 rather than 12 because `git ls-files 'apps/bluehenre/**/*.mjs'`
+      # silently omits top-level server.mjs — `**/` requires at least one directory level.
+      # That near-miss is the argument for enumerating with a plain prefix plus a suffix
+      # filter: the clever glob was wrong in exactly the quiet direction, missing a file
+      # while looking authoritative.
+      - name: JS syntax check (every tracked .mjs, not a hardcoded list)
         run: |
-          for f in apps/bluehenre/server.mjs apps/bluehenre/api/assistant-chat.mjs \
-                   apps/bluehenre/public/js/twin.mjs apps/bluehenre/public/js/org.mjs \
-                   apps/bluehenre/public/js/console.mjs apps/bluehenre/scripts/build_hub_registry.mjs; do
+          set -euo pipefail
+          files=$(git ls-files apps/bluehenre | grep '\.mjs$')
+          n=$(printf '%s\n' "$files" | grep -c . || true)
+          if [ "$n" -lt 10 ]; then
+            echo "Expected at least 10 tracked .mjs files under apps/bluehenre, found $n."
+            echo "The enumeration broke or the app moved - fix this rather than lowering the floor."
+            exit 1
+          fi
+          echo "syntax-checking $n files"
+          for f in $files; do
             node --check "$f"
           done
       # Release gate (tasks/production_workflow.md). The unit tests lock the
