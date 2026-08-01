@@ -1,0 +1,65 @@
+{
+  "_doc": "Candidates already judged acceptable. `gate_audit.py --check --baseline <this file>` exits 1 only on candidates absent from this list, so a NEW fail-open dispatch fails loudly while judged ones stay quiet. Each entry SHOULD carry a judgment saying why it is acceptable \u2014 an empty judgment means nobody has actually read it yet.",
+  "accepted": [
+    {
+      "file": ".github/workflows/ci.yml",
+      "shape": "suppressed-check",
+      "code": "run: uv run ruff check packages/ava-open-harness packages/personal-graphify apps/scout-cli --exclude apps/scout-cli/.venv || true",
+      "judgment": "DELIBERATE, and annotated in the workflow itself: a per-package lint ratchet. ava-skills was flipped to a HARD gate on 2026-08-01 on reaching 0; the remaining three (263 findings) stay non-blocking with the debt size stated so `|| true` cannot be misread as 'lint is clean'. Flip the next package the day it hits 0."
+    },
+    {
+      "file": "apps/ava-factory/dottie/datagen/logic.py",
+      "shape": "fail-open-dispatch",
+      "code": "def _stmt_text(...)  dispatches on 't' across 3 `==` branches",
+      "judgment": "Formatting helper (_stmt_text renders a statement kind to prose). An unknown kind yields a default rendering, not a false safety or correctness verdict."
+    },
+    {
+      "file": "apps/ava-factory/dottie/datagen/scout_cli.py",
+      "shape": "fail-open-dispatch",
+      "code": "def _family_for_phase(...)  dispatches on 'phase' across 2 `==` branches",
+      "judgment": "Curriculum bucketing helper (_family_for_phase). Unknown phase falls to a default family; affects data mixture labelling, gates nothing."
+    },
+    {
+      "file": "apps/ava-factory/model_1b.py",
+      "shape": "fail-open-dispatch",
+      "code": "def _make_rope(...)  dispatches on 'rope_type' across 2 `==` branches",
+      "judgment": "Model construction (_make_rope dispatches on rope_type). Unknown type falls to the default RoPE; a wrong value surfaces immediately as a broken model, not as a silently-passed check."
+    },
+    {
+      "file": "apps/ava-factory/scripts/e2e_test.sh",
+      "shape": "suppressed-check",
+      "code": "run_step \"distill import check\" python3 -c \"import on_policy_distill; print('import ok')\" || true",
+      "judgment": "Dev script, referenced by NO workflow and NO Makefile (checked 2026-08-01). Both `|| true` lines guard genuinely optional components already behind `if [ -f ... ]` / `if grep -q ...`. Same shape as this tool's instance #5 but not the same stakes: nothing consumes this script's exit code in CI."
+    },
+    {
+      "file": "apps/ava-factory/scripts/e2e_test.sh",
+      "shape": "suppressed-check",
+      "code": "run_step \"streaming_data tokenizer mock\" python3 -c \"from streaming_data import get_tokenizer; print('import ok get_tokenizer')\" || python3 -c \"import streaming",
+      "judgment": "Dev script, referenced by NO workflow and NO Makefile (checked 2026-08-01). Both `|| true` lines guard genuinely optional components already behind `if [ -f ... ]` / `if grep -q ...`. Same shape as this tool's instance #5 but not the same stakes: nothing consumes this script's exit code in CI."
+    },
+    {
+      "file": "apps/dottie/dottie/climb.py",
+      "shape": "fail-open-dispatch",
+      "code": "def policy_identity(...)  dispatches on 'backend' across 3 `==` branches",
+      "judgment": "FALSE POSITIVE. The docstring documents the fall-through as intended: 'An injected / unknown backend (e.g. a test's scripted solver) is recorded as not resolvable.' The unknown case is the designed behaviour."
+    },
+    {
+      "file": "apps/dottie/dottie/policy.py",
+      "shape": "fail-open-dispatch",
+      "code": "def get_policy(...)  dispatches on 'backend' across 4 `==` branches",
+      "judgment": "FALSE POSITIVE. get_policy already ends in `raise ValueError(f\"unknown backend {backend!r}; choices: ...\")`. The heuristic does not see a terminal raise. This is the pattern the 2026-08-01 safety-scanner fix was modelled on."
+    },
+    {
+      "file": "apps/scout-cli/bigbang/core/cite.py",
+      "shape": "fail-open-dispatch",
+      "code": "def in_text(...)  dispatches on 'style' across 3 `==` branches",
+      "judgment": "Citation style rendering (in_text). An unrecognised style produces a default marker; a formatting fallback, not a gate."
+    },
+    {
+      "file": "apps/scout-cli/bigbang/plugins/write/cli.py",
+      "shape": "fail-open-dispatch",
+      "code": "def _weight_for(...)  dispatches on 'k' across 3 `==` branches",
+      "judgment": "Scoring-weight lookup (_weight_for). Unknown key falls to a default weight; affects ranking, gates nothing."
+    }
+  ]
+}

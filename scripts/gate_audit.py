@@ -38,6 +38,26 @@ Usage:
     python scripts/gate_audit.py --path apps/scout-cli
 Exit 0 always: this reports, it does not gate. Making the gate-auditor itself a
 blocking gate with no one reading its verdict would be the joke writing itself.
+
+THE DEFAULT ABOVE IS UNCHANGED AND DELIBERATE — do not "fix" it. But 2026-08-01
+surfaced its cost: the first repo-WIDE run (every prior run was `--path
+apps/scout-cli`) found a REAL fail-open in `packages/ava-skills/skills/
+safety-scanner`, where any unrecognised `mode` silently degraded to the weak regex
+scanner and still returned `pass: True`. The tool could always have caught it;
+nobody had run it there. A report only works if someone runs it, and for months
+nobody did — which is this file's own defect class, one level up, aimed at itself.
+
+The resolution keeps the author's reasoning intact instead of overriding it. The
+objection was to blocking "with no one reading its verdict"; a baseline is exactly
+the record of someone having read it:
+
+    python scripts/gate_audit.py --write-baseline scripts/gate_audit_baseline.json
+    python scripts/gate_audit.py --check --baseline scripts/gate_audit_baseline.json
+
+`--check` is OPT-IN and exits 1 only on candidates ABSENT from the baseline, so
+judged false positives stay quiet (they must, or the next step is `|| true` — this
+tool's own instance #5) while a NEWLY introduced fail-open fails loudly. Plain
+`gate_audit.py` behaves exactly as it always has.
 """
 
 from __future__ import annotations
@@ -210,14 +230,91 @@ def audit(base: Path):
     return findings, scanned
 
 
+def finding_key(f: dict) -> str:
+    """Identity of a candidate, for baseline matching. Line number is DELIBERATELY
+    excluded — it drifts every time anything above it is edited, and a baseline keyed
+    on it would go stale on unrelated changes and re-flag already-judged code. The
+    `code` snippet IS included: editing the dispatching line itself is exactly the
+    event that should force a re-judgement."""
+    return f"{f['file']}::{f['shape']}::{f['code'].strip()}"
+
+
+def load_baseline(path: Path) -> dict[str, str]:
+    """{finding_key: judgment}. Missing file is an error, not an empty baseline —
+    silently treating a typo'd --baseline path as 'nothing accepted' would make
+    --check pass or fail for the wrong reason, which is this file's own defect class."""
+    if not path.exists():
+        raise FileNotFoundError(
+            f"baseline {path} does not exist; run --write-baseline to create it"
+        )
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return {finding_key(e): e.get("judgment", "") for e in data.get("accepted", [])}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Find gates whose verdict nothing consumes.")
     ap.add_argument("--path", default=".", help="subtree to audit (default: repo root)")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--baseline", help="JSON file of already-judged, accepted candidates")
+    ap.add_argument("--check", action="store_true",
+                     help="exit 1 if any candidate is NOT in --baseline. OPT-IN: the "
+                          "default still exits 0 always, see the module docstring.")
+    ap.add_argument("--write-baseline", metavar="PATH",
+                     help="write the current findings out as an accepted baseline")
     args = ap.parse_args()
 
     base = (ROOT / args.path).resolve()
     findings, scanned = audit(base)
+
+    if args.write_baseline:
+        out = Path(args.write_baseline)
+        existing = {}
+        if out.exists():  # preserve judgments already written for surviving findings
+            existing = {
+                finding_key(e): e.get("judgment", "")
+                for e in json.loads(out.read_text(encoding="utf-8")).get("accepted", [])
+            }
+        payload = {
+            "_doc": (
+                "Candidates already judged acceptable. `gate_audit.py --check "
+                "--baseline <this file>` exits 1 only on candidates absent from this "
+                "list, so a NEW fail-open dispatch fails loudly while judged ones stay "
+                "quiet. Each entry SHOULD carry a judgment saying why it is acceptable "
+                "— an empty judgment means nobody has actually read it yet."
+            ),
+            "accepted": [
+                {"file": f["file"], "shape": f["shape"], "code": f["code"],
+                 "judgment": existing.get(finding_key(f), "")}
+                for f in sorted(findings, key=lambda f: (f["file"], f["shape"], f["code"]))
+            ],
+        }
+        out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        print(f"wrote {len(findings)} accepted candidates -> {out}")
+        return 0
+
+    if args.check:
+        if not args.baseline:
+            ap.error("--check requires --baseline")
+        accepted = load_baseline(Path(args.baseline))
+        seen = {finding_key(f) for f in findings}
+        new = [f for f in findings if finding_key(f) not in accepted]
+        stale = sorted(k for k in accepted if k not in seen)
+
+        for k in stale:
+            # Reported, never fatal: a vanished candidate means someone FIXED something.
+            print(f"note: baseline entry no longer present (prune it): {k}")
+        if not new:
+            print(f"gate audit: no new candidates ({len(accepted)} judged, "
+                  f"{len(stale)} stale). OK")
+            return 0
+        print(f"gate audit: {len(new)} NEW candidate(s) not in {args.baseline}")
+        for f in new:
+            print(f"  {f['file']}:{f['line']}  [{f['shape']}]")
+            print(f"      {f['code']}")
+            print(f"      -> {f['why']}")
+        print("\nJudge each. If acceptable, add it to the baseline WITH a judgment; "
+              "if not, fix it.")
+        return 1
 
     if args.json:
         print(json.dumps({"scanned": scanned, "findings": findings}, indent=2))

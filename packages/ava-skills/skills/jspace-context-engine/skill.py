@@ -23,10 +23,10 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
-def describe() -> Dict[str, Any]:
+def describe() -> dict[str, Any]:
     """Routing metadata read from SKILL.md frontmatter — the single source of truth."""
     here = Path(__file__).resolve().parent
     try:
@@ -42,12 +42,12 @@ def describe() -> Dict[str, Any]:
     return describe_from_manifest(here)
 
 
-def _scout_bin() -> Optional[str]:
+def _scout_bin() -> str | None:
     """Resolve the scout entry point, or None when it is not installed."""
     return shutil.which("scout")
 
 
-def fetch_forged(timeout: float = 20.0) -> Dict[str, Any]:
+def fetch_forged(timeout: float = 20.0) -> dict[str, Any]:
     """Live subcommand inventory via ``scout --json forge list``.
 
     Returns ``{"tools": [...], "source": ..., "error": ...}``. A failure here is REPORTED,
@@ -98,8 +98,8 @@ def fetch_forged(timeout: float = 20.0) -> Dict[str, Any]:
             "error": f"unrecognised payload shape: keys={keys}"}
 
 
-def _tool_names(tools: List[Any]) -> List[str]:
-    names: List[str] = []
+def _tool_names(tools: list[Any]) -> list[str]:
+    names: list[str] = []
     for t in tools:
         if isinstance(t, str):
             names.append(t)
@@ -123,7 +123,7 @@ def missing_tool_guidance(want: str) -> str:
     )
 
 
-def build_manifest(tools: List[Any], error: Optional[str] = None) -> str:
+def build_manifest(tools: list[Any], error: str | None = None) -> str:
     """The structural text manifest injected as the system prompt."""
     names = _tool_names(tools)
     lines = [
@@ -165,9 +165,9 @@ def build_manifest(tools: List[Any], error: Optional[str] = None) -> str:
     return "\n".join(lines)
 
 
-def build_context(tools: Optional[List[Any]] = None,
-                  error: Optional[str] = None,
-                  fetch: bool = True) -> Dict[str, Any]:
+def build_context(tools: list[Any] | None = None,
+                  error: str | None = None,
+                  fetch: bool = True) -> dict[str, Any]:
     """The payload handed to a local engine: an empty tool registry plus the manifest."""
     if tools is None and fetch:
         found = fetch_forged()
@@ -184,7 +184,7 @@ def build_context(tools: Optional[List[Any]] = None,
     }
 
 
-def run(mode: str = "real", want: Optional[str] = None, **kw) -> Dict[str, Any]:
+def run(mode: str = "real", want: str | None = None, **kw) -> dict[str, Any]:
     """Skill entry point.
 
     ``mode="mock"`` builds the payload from a fixed inventory so the shape can be asserted

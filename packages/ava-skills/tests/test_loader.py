@@ -2,6 +2,8 @@
 """loader: frontmatter parsing, topo sort (+cycle fallback), wRRF determinism,
 describe()/manifest consistency, Tier-A-first graph execution."""
 
+from typing import ClassVar
+
 from conftest import SKILLS_DIR, load_skill_module
 
 from skills.loader import SkillLoader, _parse_frontmatter, describe_from_manifest
@@ -79,7 +81,8 @@ class TestTopoSort:
 
 
 class TestWrrfRerank:
-    FIXED = {"trigger": 0.6, "hl": 0.15, "graph": 0.25}
+    # read-only fixture; callers copy it (`dict(self.FIXED)`) rather than mutate
+    FIXED: ClassVar[dict[str, float]] = {"trigger": 0.6, "hl": 0.15, "graph": 0.25}
 
     def test_deterministic_with_fixed_weights(self):
         loader = SkillLoader()

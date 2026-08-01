@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import os
 import pathlib
 import re
 from typing import Any
@@ -30,7 +29,7 @@ def describe() -> dict[str, Any]:
 
 def _scan_wiki(wiki_path: str | None) -> list[pathlib.Path]:
     candidates = []
-    if wiki_path and os.path.isdir(wiki_path):
+    if wiki_path and pathlib.Path(wiki_path).is_dir():
         candidates.append(pathlib.Path(wiki_path))
     home = pathlib.Path.home()
     candidates.extend([home / ".openwiki" / "wiki", pathlib.Path.cwd() / "openwiki"])

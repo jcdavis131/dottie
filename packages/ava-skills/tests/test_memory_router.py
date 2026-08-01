@@ -2,6 +2,8 @@
 """memory-router: ShardMemo Tier A/B/C scoping table, true KL (>=0), targets outside
 measured, surfaced recall errors."""
 
+from typing import ClassVar
+
 import pytest
 from conftest import load_skill_module
 
@@ -45,7 +47,7 @@ class TestShardMemoScoping:
 
 
 class TestKL:
-    QUERIES = [
+    QUERIES: ClassVar[list[str]] = [
         "",
         "write python code function",
         "blackmail threat expose",

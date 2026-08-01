@@ -189,6 +189,103 @@ with tempfile.TemporaryDirectory() as td:
     )
 
 # ---------------------------------------------------------------------------
+# Baseline / --check. Added 2026-08-01 alongside the opt-in gating mode.
+#
+# The module docstring's "exit 0 always" is a DELIBERATE decision, so the first
+# test here pins that the default did not change. The rest pin the ratchet: judged
+# candidates stay quiet, NEW ones fail. If a baseline could not silence a judged
+# false positive, the next move would be `|| true` on the whole step -- this tool's
+# own instance #5, recreated by the tool that hunts it.
+# ---------------------------------------------------------------------------
+import json as _json
+import subprocess as _sp
+import tempfile as _tf
+
+_GA = str(Path(__file__).resolve().parent / "gate_audit.py")
+
+
+def _run(*a):
+    return _sp.run([sys.executable, _GA, *a], capture_output=True, text=True)
+
+
+# A subtree with a KNOWN-stable candidate (cite.py's style dispatch, judged an
+# acceptable formatting helper 2026-08-01) and only ~52 files, so the subprocess
+# round-trips below stay fast. Deliberately NOT packages/ava-skills: that went to
+# zero candidates the moment the safety-scanner fail-open was fixed, which broke
+# this fixture on first run and is now pinned as its own assertion instead.
+_FIXTURE_PATH = "apps/scout-cli/bigbang/core"
+
+_fake = {"file": "a/b.py", "shape": "fail-open-dispatch", "code": "def f(...)", "why": "w"}
+
+check(
+    "finding_key ignores line number (it drifts on unrelated edits above it)",
+    ga.finding_key({**_fake, "line": 10}) == ga.finding_key({**_fake, "line": 999}),
+)
+check(
+    "finding_key separates different shapes at the same location",
+    ga.finding_key(_fake) != ga.finding_key({**_fake, "shape": "suppressed-check"}),
+)
+check(
+    "finding_key changes when the dispatching line itself is edited",
+    ga.finding_key(_fake) != ga.finding_key({**_fake, "code": "def f(x, y)"}),
+    "editing the flagged line is exactly when a re-judgement is wanted",
+)
+
+_r = _run("--path", _FIXTURE_PATH)
+check("default run still exits 0 with candidates present (documented contract)",
+      _r.returncode == 0, _r.stdout[-200:])
+
+with _tf.TemporaryDirectory() as _d:
+    _bl = Path(_d) / "baseline.json"
+
+    _r = _run("--path", _FIXTURE_PATH, "--write-baseline", str(_bl))
+    check("--write-baseline exits 0 and writes a file", _r.returncode == 0 and _bl.exists())
+    _data = _json.loads(_bl.read_text(encoding="utf-8"))
+    check("baseline records the candidates", len(_data["accepted"]) > 0, str(_data)[:200])
+    check("baseline carries a judgment field to fill in",
+          all("judgment" in e for e in _data["accepted"]))
+
+    _r = _run("--path", _FIXTURE_PATH, "--check", "--baseline", str(_bl))
+    check("--check exits 0 when every candidate is baselined", _r.returncode == 0,
+          _r.stdout[-300:])
+
+    # Drop one entry -> that candidate is now "new" -> must fail.
+    _data["accepted"] = _data["accepted"][1:]
+    _bl.write_text(_json.dumps(_data), encoding="utf-8")
+    _r = _run("--path", _FIXTURE_PATH, "--check", "--baseline", str(_bl))
+    check("--check exits 1 on a candidate absent from the baseline", _r.returncode == 1,
+          f"rc={_r.returncode} out={_r.stdout[-300:]}")
+    check("the failure names the new candidate", "NEW candidate" in _r.stdout, _r.stdout[-300:])
+
+    # A baseline entry with no live counterpart is reported, never fatal.
+    _data["accepted"].append(
+        {"file": "gone.py", "shape": "fail-open-dispatch", "code": "def x(...)",
+         "judgment": "fixed since"}
+    )
+    _bl.write_text(_json.dumps(_data), encoding="utf-8")
+    _r = _run("--path", _FIXTURE_PATH, "--check", "--baseline", str(_bl))
+    check("a stale baseline entry is reported as prunable", "prune it" in _r.stdout,
+          _r.stdout[-300:])
+
+    _r = _run("--path", "scripts", "--check", "--baseline", str(_bl))
+    check("stale entries alone do NOT fail the check (a fix is good news)",
+          _r.returncode == 0, f"rc={_r.returncode} out={_r.stdout[-300:]}")
+
+_sc_findings, _ = ga.audit(ga.ROOT / "packages/ava-skills")
+check(
+    "safety-scanner's fail-open is GONE from the auditor's view (fixed 2026-08-01)",
+    _sc_findings == [],
+    f"regression: {_sc_findings}",
+)
+
+_r = _run("--path", "scripts", "--check", "--baseline", "does/not/exist.json")
+check("a missing baseline path errors instead of silently accepting nothing",
+      _r.returncode != 0, f"rc={_r.returncode}")
+check("--check without --baseline is rejected",
+      _run("--path", "scripts", "--check").returncode != 0)
+
+
+# ---------------------------------------------------------------------------
 # Non-vacuity: the auditor must actually reach files.
 # ---------------------------------------------------------------------------
 findings, scanned = ga.audit(ga.ROOT / "apps/scout-cli")
