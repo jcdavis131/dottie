@@ -963,13 +963,25 @@ _CACHE: dict = {}
 # Measured 2026-07-26 on the whole repo, AFTER the identity_collisions work landed.
 # Counts grow with the tree; the staleness test below fails when they have grown
 # enough to make a floor toothless, and prints the numbers to paste in here.
+# RE-CUT 2026-08-01, proactively rather than after the sweep went red. The corpus grew
+# again and every floor had drifted to 70.2%-78.6% of fresh — still passing, but
+# `same_class` sat at 70.2% against a STALENESS_LIMIT of 0.70, i.e. ONE more sibling pair
+# from failing for a reason that has nothing to do with the miner. The sweep below is
+# designed to make this a paste, not a derivation; this is that paste.
+#   metric        old      new     old floor/fresh
+#   pairs        3014 -> 3168            76.1%
+#   queries      3014 -> 3168            76.1%
+#   negatives   21112 -> 21790           77.5%
+#   same_class    914 -> 1042            70.2%   <- nearest the limit
+#   same_file   16430 -> 16730           78.6%
+#   same_package 3768 -> 4018            75.0%
 MEASURED_REAL = {
-    "pairs": 3014,
-    "queries": 3014,
-    "negatives": 21112,
-    "same_class": 914,
-    "same_file": 16430,
-    "same_package": 3768,
+    "pairs": 3168,
+    "queries": 3168,
+    "negatives": 21790,
+    "same_class": 1042,
+    "same_file": 16730,
+    "same_package": 4018,
 }
 FLOOR_FRACTION = 0.80
 # Ratios, not counts: these do not inflate as the corpus grows, so they are held at
