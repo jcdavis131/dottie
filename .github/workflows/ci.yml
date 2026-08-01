@@ -26,8 +26,17 @@ jobs:
       # annotation modernisation), plus one `os.path.isdir` -> `Path.is_dir` and two
       # read-only test fixtures correctly annotated `ClassVar` rather than suppressed.
       # 75 ava-skills tests green at 0 findings.
+      # `uvx ruff@0.15.22`, NOT `uv run ruff`. ruff is not a workspace dependency, so
+      # `uv run ruff` dies with "Failed to spawn: ruff" (exit 2) — which the old
+      # `|| true` swallowed, meaning NEITHER ruff step in this workflow had ever
+      # actually executed. The "334 known findings" the comment below cited were
+      # measured on a dev box; CI was reporting on a linter it never ran. Flipping
+      # ava-skills to a hard gate on 2026-08-01 is what surfaced it, by removing the
+      # `|| true` that was hiding it. Version is PINNED and matches lint.yml, per that
+      # workflow's own hard-won note: "ONE ruff version across both workflows" — a
+      # 0.8.6/0.15.22 split there once made "ruff clean locally" not predict CI at all.
       - name: Ruff lint — packages/ava-skills (HARD gate, at 0)
-        run: uv run ruff check packages/ava-skills
+        run: uvx ruff@0.15.22 check packages/ava-skills
       # NON-BLOCKING for the REMAINING three, and the size of the debt is stated so
       # `|| true` cannot be mistaken for "lint is clean". Re-measured 2026-08-01:
       # 263 findings -- packages/personal-graphify 141, packages/ava-open-harness 79,
@@ -37,7 +46,7 @@ jobs:
       # Was 334 across four packages on 2026-07-24; scout-cli has since gone 95 -> 43
       # and ava-skills 19 -> 0. Same ratchet: flip the next one the day it reaches 0.
       - name: Ruff lint (non-blocking — 263 known findings, see comment)
-        run: uv run ruff check packages/ava-open-harness packages/personal-graphify apps/scout-cli --exclude apps/scout-cli/.venv || true
+        run: uvx ruff@0.15.22 check packages/ava-open-harness packages/personal-graphify apps/scout-cli --exclude apps/scout-cli/.venv || true
       # A RATCHET, not a lint. Fails only on a gate-shaped defect (fail-open dispatch,
       # mode-conditional escape, suppressed check) that is NOT already in the baseline;
       # the 10 currently there each carry a written judgment. So this cannot go red on

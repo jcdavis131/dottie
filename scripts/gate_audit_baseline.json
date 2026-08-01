@@ -4,8 +4,8 @@
     {
       "file": ".github/workflows/ci.yml",
       "shape": "suppressed-check",
-      "code": "run: uv run ruff check packages/ava-open-harness packages/personal-graphify apps/scout-cli --exclude apps/scout-cli/.venv || true",
-      "judgment": "DELIBERATE, and annotated in the workflow itself: a per-package lint ratchet. ava-skills was flipped to a HARD gate on 2026-08-01 on reaching 0; the remaining three (263 findings) stay non-blocking with the debt size stated so `|| true` cannot be misread as 'lint is clean'. Flip the next package the day it hits 0."
+      "code": "run: uvx ruff@0.15.22 check packages/ava-open-harness packages/personal-graphify apps/scout-cli --exclude apps/scout-cli/.venv || true",
+      "judgment": "DELIBERATE per-package lint ratchet, annotated in the workflow. ava-skills was flipped to a HARD gate 2026-08-01 on reaching 0; the remaining three (263 findings) stay non-blocking with the debt size stated. NOTE: this `|| true` was ALSO hiding that `uv run ruff` could not spawn ruff at all (not a workspace dep), so neither ruff step had ever run in CI -- fixed to `uvx ruff@0.15.22`, pinned to match lint.yml. Keep the `|| true` only until each package hits 0."
     },
     {
       "file": "apps/ava-factory/dottie/datagen/logic.py",
