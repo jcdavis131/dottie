@@ -1029,9 +1029,29 @@ found exactly 42, matching the subagent's count by a different method.
     (`coverage report` x1435, `cite import` x1051, `coverage parse` x771). A security
     audit trail swamped by its own test suite. Largest single entry: **80,196 bytes**,
     because `log_event` stores the full response payload in `args` (one `data` field of
-    79,926 chars). ▶ Both of those — no rotation, and payload-in-audit — are REAL and
-    still OPEN; they are product decisions about what to retain, not test bugs, so they
-    are recorded here rather than changed unilaterally.
+    79,926 chars).
+    ▶ **Rotation is still genuinely OPEN** — a product decision about retention, not a
+    test bug, so recorded rather than changed unilaterally.
+    ▶ **"payload-in-audit" was investigated 2026-08-01 and is NOT a defect — my earlier
+    wording here was misleading and is corrected.** Payloads pass through
+    `output._redact_for_audit` before `log_event`, and `_AUDIT_DENY_KEY_RE` covers
+    secret|key|value|token|password|passwd|credential|auth|bearer|cookie. Verified
+    against the LIVE log, not by reading the code: all 8 `secrets get` entries store
+    `value = '[REDACTED]'`. Already pinned by
+    `tests/test_audit_output.py::test_emit_redacts_secret_bearing_keys`, which uses a
+    real `command="secrets get"` payload with `sk-live-...`.
+    ⚠ **A false alarm of mine, kept because the detection error is instructive:** I
+    first concluded "8 plaintext secrets are in the audit log" from a check that
+    flagged any `value` containing no `*`. `[REDACTED]` contains no `*` — and is
+    exactly 10 chars, which matched the `value_len=10` I had seen. The heuristic
+    counted *successfully redacted* entries as leaks. Nearly reported a security
+    vulnerability that does not exist; caught it by checking the actual strings instead
+    of trusting the inference. A "secret detector" that cannot tell a redaction marker
+    from a secret is worse than none.
+    ▶ Also noted while there: a blanket key-name denylist would be the WRONG fix if one
+    were ever needed — `value` appears **3,353 times** across `metrics collect` (1376),
+    `contentgap audit` (520), `cve match` (198) and others, nearly all legitimate. Any
+    future redaction change must stay command-aware.
   - `test_forge_loop` installs scaffolded tools into `~/.dottie-claw/skills/`, beside
     real user skills (`talk-like-a-caveman` lives there).
   Fixed with ONE `apps/scout-cli/tests/conftest.py` that redirects HOME/USERPROFILE at
