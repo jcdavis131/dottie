@@ -5,6 +5,9 @@ Solo personal project, no connection to employer, built with public/free-tier on
 """
 import json
 import math
+import os
+import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
@@ -115,6 +118,15 @@ def _cost_path_for_graph(graph_path: Path) -> Path:
         return g / "cost.json"
     return g.parent / "cost.json"
 
+def _atomic_write_text(path: Path, text: str) -> None:
+    """``Path.write_text`` truncates before writing, so a process killed mid-write
+    leaves a torn file. The next ``log_query_cost`` call would then hit the corrupt
+    branch below — write to a per-process temp name and replace so a reader never
+    observes a partial file (same shape as the vault/telemetry fixes, 3e301cb/f274be8)."""
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
+
 def log_query_cost(graph_path: Path, question: str, naive: int, scoped: int, reduction_x: float, mode: str = "lexical", basis: str = ""):
     try:
         cpath = _cost_path_for_graph(Path(graph_path))
@@ -132,7 +144,22 @@ def log_query_cost(graph_path: Path, question: str, naive: int, scoped: int, red
         else:
             try:
                 data = json.loads(cpath.read_text(encoding="utf-8"))
-            except Exception:
+            except Exception as e:
+                # A torn/corrupt cost.json used to be swallowed here and silently
+                # replaced with a zeroed dict, which the write below then cemented —
+                # every prior query's logged savings lost with no trace (same bug
+                # class as telemetry.py's _load_live_status, f274be8). This function
+                # must stay non-raising (it must never break a query just to log its
+                # cost), so the fix is to stop being SILENT about it: preserve the
+                # bytes and say so on stderr, rather than raise.
+                try:
+                    backup = cpath.with_name(f"{cpath.name}.corrupt-{int(time.time())}")
+                    backup.write_bytes(cpath.read_bytes())
+                    note = f", previous bytes preserved at {backup}"
+                except OSError:
+                    note = ""
+                print(f"[personal_graphify] {cpath} is unreadable ({e}); resetting the "
+                      f"cost log{note}.", file=sys.stderr)
                 data = {"nodes":0,"edges":0,"queries":[],"total_saved_tokens":0,"total_naive":0,"total_scoped":0}
 
         entry = {
@@ -156,7 +183,7 @@ def log_query_cost(graph_path: Path, question: str, naive: int, scoped: int, red
         data["total_saved_tokens"] = data["total_naive"] - data["total_scoped"]
         data["last_query"] = entry
         # preserve nodes/edges if missing
-        cpath.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        _atomic_write_text(cpath, json.dumps(data, indent=2))
     except Exception:
         # never break query on cost log failure
         pass

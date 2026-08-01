@@ -84,9 +84,11 @@ Since then, a long, disciplined "fix + `docs(TODO): close`" pairing closed rough
    double-nesting bug found in the process. New tests + all reused modules' existing
    tests green, ruff clean. The full-scope GPU run itself is held for an explicit
    go-ahead — see TODO.md item 6 for the full detail.
-2. **Two remaining read-modify-write stores** (`tasks/cli.py`,
-   `personal_graphify/query.py`) — lower stakes than telemetry, same fix shape,
-   one at a time per the existing TODO.md entry.
+2. **`personal_graphify/query.py`'s read-modify-write fixed 2026-07-31** — same shape
+   as telemetry.py (corrupt `cost.json` preserved + announced on stderr, write made
+   atomic), 4 new tests, full 72-test suite green. `tasks/cli.py`'s half of this item
+   turned out not to reproduce — re-read whole file, no local JSON state is ever
+   read-then-written-back there. See TODO.md for the full detail either way.
 3. **Re-confirm the httpx 0.28 test count** — likely already fixed (`03b2b3c`),
    not re-run this pass.
 

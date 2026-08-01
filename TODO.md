@@ -651,11 +651,28 @@ Re-check with:
   `sessions.tmp` (`0ae2dc6`) — trainer/collector/console all write this file concurrently.
   8 new tests (`tests/test_telemetry_state.py`), all green; full `-k telemetry` suite (8) green.
   Verified no live trainer bind-mounts this FROZEN path right now (Docker Desktop not running).
-- [ ] **Two more read-modify-write stores with a tolerant read, NOT yet changed.**
-  `apps/scout-cli/bigbang/plugins/tasks/cli.py`, `packages/personal-graphify/src/
-  personal_graphify/query.py`. Same shape as telemetry.py above (a forgiving load paired with
-  a JSON write can cement a torn file) — re-derivable rather than regenerable-from-scratch,
-  which is why they're still queued one at a time rather than swept in one edit.
+- [x] **`personal_graphify/query.py`'s `log_query_cost` fixed 2026-07-31.** Same shape as
+  telemetry.py: a tolerant `except Exception: data = {...zeros}` read on `cost.json` paired
+  with a write-back to the same path silently erased every prior query's logged savings on
+  one torn file, with no trace anywhere (the outer `except Exception: pass` — "never break
+  query on cost log failure" — swallowed it completely, not even to stderr). Fix is the
+  telemetry.py shape, not the vault's (this function must stay non-raising): corrupt bytes
+  preserved to `cost.json.corrupt-<ts>`, the reset announced on stderr, and the write itself
+  made atomic (`_atomic_write_text`: per-PID temp + `Path.replace`, since `write_text`
+  truncates-before-write and was the other half of the bug). 4 new tests in
+  `test_query_cost.py`; full personal-graphify suite (72) and this file's own suite (7)
+  green; ruff clean on the touched lines (this file carries pre-existing, unrelated lint
+  debt — old-style `Dict`/`List` hints etc. — not touched).
+  **`apps/scout-cli/bigbang/plugins/tasks/cli.py` re-checked, not reproducible.** Read the
+  whole 402-line file 2026-07-31 looking for the same shape: no local JSON state is ever
+  loaded-then-written-back. `_run_gws`'s `json.loads(out)` (line 59) parses **subprocess
+  stdout each call** — transient, never persisted then reloaded — and its
+  `except json.JSONDecodeError` branch returns a diagnostic dict (`parsed_error`,
+  `stderr`), not a silently-defaulted one. The only local file write, `export_tasks`
+  (line ~384), only writes, never reads-then-writes. This queued item was two files
+  grouped under one "same shape" claim; only one of them actually had it — recorded here
+  rather than silently dropping the other half of a claim that turned out wrong, per the
+  handoff-curation discipline (verify against the code, not the prior write-up).
 
 ### NEW 2026-07-24 — openswap manifests promise filesystem containment that is NOT enforced
 
