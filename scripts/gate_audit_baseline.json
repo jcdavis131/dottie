@@ -26,12 +26,6 @@
       "judgment": "Curriculum bucketing helper (_family_for_phase). Unknown phase falls to a default family; affects data mixture labelling, gates nothing."
     },
     {
-      "file": "apps/ava-factory/model_1b.py",
-      "shape": "fail-open-dispatch",
-      "code": "def _make_rope(...)  dispatches on 'rope_type' across 2 `==` branches",
-      "judgment": "Model construction (_make_rope dispatches on rope_type). Unknown type falls to the default RoPE; a wrong value surfaces immediately as a broken model, not as a silently-passed check."
-    },
-    {
       "file": "apps/ava-factory/scripts/e2e_test.sh",
       "shape": "suppressed-check",
       "code": "run_step \"distill import check\" python3 -c \"import on_policy_distill; print('import ok')\" || true",
@@ -48,12 +42,6 @@
       "shape": "fail-open-dispatch",
       "code": "def policy_identity(...)  dispatches on 'backend' across 3 `==` branches",
       "judgment": "FALSE POSITIVE. The docstring documents the fall-through as intended: 'An injected / unknown backend (e.g. a test's scripted solver) is recorded as not resolvable.' The unknown case is the designed behaviour."
-    },
-    {
-      "file": "apps/dottie/dottie/policy.py",
-      "shape": "fail-open-dispatch",
-      "code": "def get_policy(...)  dispatches on 'backend' across 4 `==` branches",
-      "judgment": "FALSE POSITIVE. get_policy already ends in `raise ValueError(f\"unknown backend {backend!r}; choices: ...\")`. The heuristic does not see a terminal raise. This is the pattern the 2026-08-01 safety-scanner fix was modelled on."
     },
     {
       "file": "apps/scout-cli/bigbang/core/cite.py",

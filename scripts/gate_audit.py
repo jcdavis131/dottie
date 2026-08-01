@@ -155,6 +155,15 @@ def find_fail_open_dispatch(tree, lines, rel):
                 continue  # a single branch is ordinary logic, not a dispatch
             # Does ANY of them have an else, or is there a membership guard on the param?
             has_else = any(i.orelse for i in ifs)
+            # ...or does the function simply END by refusing? The docstring has always
+            # said a dispatch is cleared by "no final else/raise/deny", but the `raise`
+            # half was never implemented, so an honest terminator like
+            #     raise ValueError(f"unknown backend {backend!r}; choices: ...")
+            # was reported as a fail-open anyway. apps/dottie/dottie/policy.py::get_policy
+            # is exactly that and sat in the baseline judged a false positive. Telling a
+            # CORRECT pattern it is wrong is the expensive kind of noise: it teaches
+            # people to distrust the tool and baseline everything that comes out of it.
+            ends_in_raise = bool(fn.body) and isinstance(fn.body[-1], ast.Raise)
             guarded = any(
                 isinstance(n, ast.Compare)
                 and isinstance(n.left, ast.Name)
@@ -162,7 +171,7 @@ def find_fail_open_dispatch(tree, lines, rel):
                 and any(isinstance(o, (ast.In, ast.NotIn)) for o in n.ops)
                 for n in ast.walk(fn)
             )
-            if not has_else and not guarded:
+            if not has_else and not guarded and not ends_in_raise:
                 out.append(
                     {
                         "shape": "fail-open-dispatch",

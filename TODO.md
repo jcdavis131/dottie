@@ -196,6 +196,50 @@ does not re-derive them.
   no workflow and no Makefile (checked), and both lines guard genuinely optional
   components behind `if [ -f ... ]` / `if grep -q ...`.
 
+### 2026-08-01 follow-up — the auditor was probed and had bugs of its own
+
+Using the tool on real code kept surfacing inconsistencies it could not explain, so all
+three shapes were probed deliberately with known idioms instead of waiting to trip over
+the next one. Shape B is the only regex/line-based detector (A and C are AST-based), and
+it held most of the damage. Fixed and committed:
+
+- **`5584570`** — a suppressed check split across a shell line-continuation was
+  invisible. `ci.yml`'s `ruff check ... || true` was caught; `lint.yml`'s identical
+  construct was not, purely because of formatting.
+- **`33f6e2d`** — `continue-on-error: true` was a DECLARED pattern that could never
+  fire (it needed a safety word on its own line, but the key governs a *step* whose
+  command is on other lines). Zero occurrences here, which is why it went unnoticed:
+  *a detector that has never had anything to detect looks identical to one that works.*
+  Also closed `|| :` and `; true`, the one-keystroke rewrites of `|| true`.
+- **this commit** — shape C never implemented the `raise` half of its own documented
+  contract ("no final else/**raise**/deny"), so honest terminators were reported as
+  fail-opens. Removed **2 false positives** from the baseline.
+
+**Correction to an earlier judgment of mine, recorded rather than quietly overwritten:**
+the baseline entry for `apps/ava-factory/model_1b.py::_make_rope` read *"unknown type
+falls to the default RoPE"*. That is **factually wrong** — it ends in
+`raise ValueError(f"rope_type must be 'yarn' or 'longrope2', got {rope_type!r}")`. The
+conclusion (leave it alone) was right; the stated reason was not. Both it and
+`policy.py::get_policy` are now correctly not-findings rather than judged-away findings.
+
+**▶ Known remaining blind spot, measured, NOT yet fixed — elif-chain dispatch.**
+Shape C only walks sequential `if` statements, so `if x == 'a': ... elif x == 'b': ...`
+— the most common Python dispatch form — is invisible. Measured cost of closing it:
+**8 new candidates** (not an explosion), and several are likely benign on inspection:
+```
+apps/scout-cli/bigbang/core/a11y.py::_close_capture, ::handle_starttag
+apps/scout-cli/bigbang/core/extract.py::_maybe_capture
+apps/scout-cli/bigbang/core/later.py::handle_endtag
+apps/scout-cli/bigbang/core/seo.py::handle_endtag, ::handle_starttag
+apps/scout-cli/bigbang/plugins/logs/cli.py::_window
+packages/personal-graphify/src/personal_graphify/cluster.py::detect_communities
+```
+The `handle_starttag`/`handle_endtag` ones are HTMLParser callbacks where ignoring an
+unrecognised tag is *correct*, not a fail-open — expect them to be judged acceptable.
+Deferred rather than rushed because it needs its own RED-first cycle plus 8 judgments,
+and the auditor is now a CI ratchet where a sloppy widening costs everyone. `match/case`
+is a second gap but has **0 occurrences** repo-wide, so it is noted, not built.
+
 **Note for whoever runs this next:** every *other* skill in `packages/ava-skills` uses
 `if mode == "mock": ... else: <real>`. That is a true binary partition (1 branch, below
 the audit's threshold), not a dispatch chain, and none of them is a safety gate — so

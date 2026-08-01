@@ -189,6 +189,54 @@ with tempfile.TemporaryDirectory() as td:
     )
 
 # ---------------------------------------------------------------------------
+# FALSE POSITIVE in shape C, found 2026-08-01 by probing A and C the same way B was.
+#
+# The docstring promises a dispatch is cleared by "no final else/raise/deny", but the
+# implementation only ever checked for an else or a membership guard — the `raise` half
+# of its own contract was never implemented. So a function that DOES terminate honestly:
+#
+#     if backend == "ollama": ...
+#     if backend == "ava":    ...
+#     raise ValueError(f"unknown backend {backend!r}; choices: ...")
+#
+# was reported anyway. That is not hypothetical: apps/dottie/dottie/policy.py::get_policy
+# is exactly this and sits in the baseline judged "FALSE POSITIVE ... the heuristic does
+# not see a terminal raise". It was a fixable bug, not a limitation to be judged around.
+# A false positive here is expensive in a specific way — it is a correct pattern being
+# told it is wrong, which teaches people to distrust the tool and baseline everything.
+# ---------------------------------------------------------------------------
+_RAISE_SRC = (
+    "def route(k):\n"
+    "    if k == 'a':\n        return 1\n"
+    "    if k == 'b':\n        return 2\n"
+    "    raise ValueError(k)\n"
+)
+_NO_RAISE_SRC = (
+    "def route(k):\n"
+    "    if k == 'a':\n        return 1\n"
+    "    if k == 'b':\n        return 2\n"
+    "    return 0\n"
+)
+check(
+    "a dispatch ending in `raise` is NOT flagged (the docstring's own contract)",
+    ga.find_fail_open_dispatch(ast.parse(_RAISE_SRC), _RAISE_SRC.splitlines(), "p.py") == [],
+    "policy.py::get_policy is this exact shape",
+)
+check(
+    "the same dispatch WITHOUT the raise is still flagged (non-vacuity)",
+    len(ga.find_fail_open_dispatch(ast.parse(_NO_RAISE_SRC), _NO_RAISE_SRC.splitlines(), "p.py")) == 1,
+)
+check(
+    "the real get_policy is no longer reported",
+    ga.find_fail_open_dispatch(
+        ast.parse((ga.ROOT / "apps/dottie/dottie/policy.py").read_text(encoding="utf-8")),
+        [], "policy.py",
+    ) == [],
+    "it ends in `raise ValueError(f\"unknown backend ...\")`",
+)
+
+
+# ---------------------------------------------------------------------------
 # FALSE NEGATIVE found 2026-08-01 by running this tool against the repo's own CI.
 #
 # ci.yml's `... ruff check ... || true` was caught; lint.yml's semantically identical
