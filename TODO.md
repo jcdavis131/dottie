@@ -70,8 +70,24 @@ this section now carries a re-verify note instead of being trusted at face value
    tracks the enclosing class) plus adjacent-commit files, pre-registered target
    beating **NDCG@10 0.429** (corrected 2026-07-31 — was 0.622, the commit-message
    number item 2 above found flatters lexical retrieval; 0.429 is the real
-   task-shaped bar). **This is the only genuinely open item left in this list as
-   of 2026-07-31** — not started (no matching commits in `git log`).
+   task-shaped bar).
+   **PIPELINE BUILT, NOT YET RUN FOR REAL, 2026-07-31.** Pre-registration:
+   `tasks/artifacts/embedding_train_plan_2026-07-31.md` (base model, two domains not
+   N, LoRA target modules, dims `[384,256,128,64]`, why the run is held). New:
+   `apps/ava-factory/scripts/train_encoder.py` (trains, `--smoke` verified: whole-repo
+   scope in 19.5s, 3,065 code-domain / 562 task-domain examples mined, no code touched)
+   and `apps/ava-factory/scripts/embed_eval.py` (scores a checkpoint against the SAME
+   golden sets/protocol the 0.622/0.429 bars were measured on). One real (non-smoke,
+   tiny-scope) train -> save -> eval round trip run end to end correctly — caught and
+   fixed one real bug in the process (peft nests `save_pretrained(dir, selected_adapters=
+   [d])` under `dir/<adapter>/` itself; passing `dir/d` double-nested it, `PeftModel.
+   from_pretrained` then couldn't find `adapter_config.json`). 6 new pure-function tests,
+   103 pre-existing tests in the modules it reuses (`ast_pairs.py`, `hard_negatives.py`,
+   `retrieval_eval.py`, `task_eval_slice.py`) still green, ruff clean. **The real,
+   full-scope training run itself has NOT been kicked off** — per this repo's own higher
+   bar for retrain requests (real GPU time, unmeasured first attempt), it's held for an
+   explicit go-ahead rather than started automatically. That go-ahead is the only thing
+   left before this item can close.
 
 ### ✅ 2026-07-26 — defect sweep done; the task-shaped bar is MUCH lower than the commit-shaped one
 

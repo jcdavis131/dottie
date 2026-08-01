@@ -76,8 +76,14 @@ Since then, a long, disciplined "fix + `docs(TODO): close`" pairing closed rough
    functions in the same class (`ast_pairs.py` already tracks the enclosing class)
    plus adjacent-commit files, pre-registered target **beating NDCG@10 0.429**
    (corrected — not 0.622). This is the only item from the 07-26 "NEXT" list that
-   is still genuinely open; everything else on that list is done. Not started as
-   of this pass (no matching commits in `git log`).
+   is still genuinely open.
+   **2026-07-31: pipeline built, not the real run.** Pre-registration
+   (`tasks/artifacts/embedding_train_plan_2026-07-31.md`) + `train_encoder.py` +
+   `embed_eval.py`, `--smoke` verified end to end (whole-repo scope, 19.5s) and one
+   real tiny train->save->eval round trip run clean after fixing a peft
+   double-nesting bug found in the process. New tests + all reused modules' existing
+   tests green, ruff clean. The full-scope GPU run itself is held for an explicit
+   go-ahead — see TODO.md item 6 for the full detail.
 2. **Two remaining read-modify-write stores** (`tasks/cli.py`,
    `personal_graphify/query.py`) — lower stakes than telemetry, same fix shape,
    one at a time per the existing TODO.md entry.
