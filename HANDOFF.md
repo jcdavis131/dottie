@@ -77,15 +77,22 @@ Since then, a long, disciplined "fix + `docs(TODO): close`" pairing closed rough
    plus adjacent-commit files, pre-registered target **beating NDCG@10 0.429**
    (corrected — not 0.622). This is the only item from the 07-26 "NEXT" list that
    is still genuinely open.
-   **2026-08-01: real run done — MISS, root-caused.** Operator go-ahead given ("go
-   ahead with step 5 and beyond"); 3 configs tried (3ep, 4ep, 4ep+10x lr). All land
-   0.194-0.199 task-shaped leak-free NDCG@10 vs the **0.429 target** — a clear miss.
-   The decisive check: the UNTRAINED base model alone scores **0.186** on the same
-   eval (new `embed_eval.py --base-only` flag) — the fine-tuning is barely moving the
-   needle at all. That rules out "just needs more data/epochs" as the fix; it's a
-   (base model, corpus) ceiling, not a training-budget problem. Full numbers and what
-   a real next attempt would need: TODO.md item 6. Closed as a completed, correctly-
-   diagnosed miss.
+   **2026-08-01: run done, root-caused, base-swapped — best 0.265 vs 0.429 target.**
+   Operator go-ahead ("go ahead with step 5 and beyond"). Two rounds: (1) MiniLM with
+   3 configs (3ep / 4ep / 4ep+10x lr) all landed 0.194-0.199, and the decisive
+   diagnostic — `embed_eval.py --base-only`, new flag, scores the frozen base with
+   ZERO LoRA — showed the untrained base alone scores 0.186, i.e. fine-tuning was
+   barely contributing. That correctly identified the BASE MODEL as the binding
+   constraint. (2) Swapped it: `bge-small-en-v1.5` scores **0.235 zero-shot, beating
+   every trained MiniLM config with no training**, and **0.265 trained** — the best
+   result of the effort, +33% over the MiniLM best. Also learned bigger≠better
+   (`bge-base` 768-d scored 0.215, below its small sibling).
+   **The load-bearing conclusion:** across 3 bases, 2 trained configs, an LR sweep and
+   an epoch sweep, every dense result lands 0.19-0.27 while plain FTS5/BM25 scores
+   **0.429 on the identical eval**. Lexical beats dense here by ~1.6x under every
+   variation tried — strong measured evidence that the **Option C decision (scout-cli
+   stays lexical) was right**. Full numbers, the pre-registered decision rule and how
+   it resolved, and the one untried lever: TODO.md item 6.
 2. **`personal_graphify/query.py`'s read-modify-write fixed 2026-07-31** — same shape
    as telemetry.py (corrupt `cost.json` preserved + announced on stderr, write made
    atomic), 4 new tests, full 72-test suite green. `tasks/cli.py`'s half of this item

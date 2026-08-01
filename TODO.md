@@ -78,13 +78,18 @@ this section now carries a re-verify note instead of being trusted at face value
    whole-repo scope. `embed_eval.py` against the SAME golden sets the 0.622/0.429 bars
    came from — **task-shaped leak-free NDCG@10, dim=384 (best dim):**
    ```
-   base model, zero LoRA (no training at all): 0.1860
-   3 epochs, lr 2e-5:                          0.1968
-   4 epochs, lr 2e-5:                          0.1940
-   4 epochs, lr 2e-4 (10x):                    0.1994
+   MiniLM-L6-v2  zero-shot (no LoRA at all):   0.1860
+   MiniLM-L6-v2  3 epochs, lr 2e-5:            0.1968
+   MiniLM-L6-v2  4 epochs, lr 2e-5:            0.1940
+   MiniLM-L6-v2  4 epochs, lr 2e-4 (10x):      0.1994
+   --- base-model swap (see BASE SWAP block below) ---
+   bge-base-en-v1.5   zero-shot (768-d):       0.2150
+   bge-small-en-v1.5  zero-shot:               0.2350
+   bge-small-en-v1.5  4 epochs, lr 2e-4:       0.2650  <- best overall
    ```
-   **Target 0.429. All three trained configs land in a tight 0.194-0.199 band —
-   barely above the UNTRAINED base model's 0.186.** The decisive diagnostic:
+   **Target 0.429. Best achieved 0.265 — still a 1.6x gap.** On the original base, all
+   three trained configs landed in a tight 0.194-0.199 band —
+   barely above the UNTRAINED base model's 0.186. The decisive diagnostic:
    `embed_eval.py --base-only` (new flag, scores the frozen base with zero LoRA —
    the floor a trained checkpoint must actually beat to justify existing) shows the
    fine-tuning is contributing almost nothing. This reframes the whole diagnosis:
@@ -103,18 +108,50 @@ this section now carries a re-verify note instead of being trusted at face value
    killed both times with no checkpoint written (needed ~22 min, extrapolated from
    the 3-epoch rate) — abandoned once cheaper foreground runs already answered the
    question.
-   **What a real next attempt would need**, now correctly targeted at the base
-   model/corpus pairing rather than epoch count: either a bigger corpus (e.g. lifting
-   `task_eval_slice.py`'s deliberate "evaluation-only" restriction to also train on
-   TODO-mined pairs — that module's own docstring already names the cost of crossing
-   it) or a differently-suited base model (code/domain-pretrained rather than generic
-   sentence embedding). Not attempted — a fresh pre-registration question, not a
-   continuation of this one.
+   **BASE SWAP — the hypothesis was tested, and it was RIGHT (but not enough).**
+   Pre-registered decision rule, stated before any number was looked at: *if some
+   off-the-shelf base's zero-shot floor materially clears MiniLM's 0.186 (>0.25), the
+   base-swap path is worth training on; if they all cluster near 0.186-0.20, the
+   ceiling is the corpus/eval and step 5 is closed for good.* Result was between the
+   two — `bge-small-en-v1.5` scores **0.235 zero-shot, beating every TRAINED MiniLM
+   config with no training at all**, which confirms the base model was the binding
+   constraint, but 0.235 sits under the 0.25 line the rule named. Recording that the
+   rule did not cleanly fire rather than retroactively bending it.
+   Trained on the winner anyway (bge-small, 4ep, lr 2e-4, batch 16 — batch 32 OOMs,
+   bge-small is 12 layers vs MiniLM's 6): **0.265, the best result of the whole
+   effort, +33% relative over the 0.199 MiniLM best.** Two further findings worth
+   keeping: (a) **bigger is not better** — `bge-base-en-v1.5` (768-d) scores 0.215
+   zero-shot, BELOW its own small sibling's 0.235, so this is about model//task fit,
+   not parameter count; (b) training adds a consistent modest delta on any base
+   (+0.013 on MiniLM, +0.030 on bge-small) — real, but nowhere near enough to close
+   a 1.6x gap on its own.
+   **THE FINDING THAT ACTUALLY MATTERS, and it is a decision, not a disappointment:**
+   across 3 base models, 2 trained configurations, an LR sweep and an epoch sweep,
+   **every dense-retrieval result lands 0.19-0.27 while the plain FTS5/BM25 lexical
+   baseline on the identical eval scores 0.429.** Lexical beats dense on this corpus
+   by ~1.6x, consistently, under every variation tried. That is exactly what the
+   strategy review (`42db5a0`) predicted when it warned *"BM25 is a strong baseline
+   for code because identifiers are high-signal literal tokens"* — and it is strong
+   post-hoc evidence for the **Option C decision (scout-cli stays lexical)** being
+   correct, now backed by a measured margin rather than an argument. Anyone revisiting
+   Option C should revisit it against these numbers.
+   **Stopped here deliberately.** bge-small's task-domain training loss hit 0.207 on
+   578 examples — that is fitting-the-training-set territory, so more epochs would
+   overfit, not improve. The remaining untried lever is a bigger training corpus
+   (lifting `task_eval_slice.py`'s deliberate "evaluation-only" restriction — its own
+   docstring names the cost of crossing it), which is a fresh pre-registration
+   question, not a continuation of this one.
+   **Eval caveat, stated rather than discovered later:** the task queries are mined
+   from `TODO.md`, this very file, and the document corpus is the repo itself — so
+   editing this entry perturbs the eval slightly (indexed docs drifted 2047→2068
+   across the session; task query count held at 101). Far too small to explain a
+   0.199→0.265 move, but it means these numbers are not reproducible to 3 decimals
+   against a future HEAD.
    Checkpoints: `encoder_v1` (3ep, overwritten in place by an unrelated timing probe —
    harmless, only the numbers were load-bearing), `encoder_v2` (4ep), `encoder_v3`
-   (4ep, 10x lr). All gitignored (`apps/ava-factory/.gitignore` gained an `artifacts/`
-   rule this pass — it wasn't ignored before, model weights were showing up as
-   untracked).
+   (4ep, 10x lr), `encoder_bge` (bge-small, the best one). All gitignored
+   (`apps/ava-factory/.gitignore` gained an `artifacts/` rule this pass — it wasn't
+   ignored before, model weights were showing up as untracked).
    Per the pre-registration's own words: *"if it underperforms, that's informative, not
    a bug to route around before reporting it."* This entry says so plainly, with the
    actual root cause identified rather than just the miss reported.
