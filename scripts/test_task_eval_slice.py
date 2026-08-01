@@ -62,12 +62,19 @@ NOWHERE = Path(__file__).resolve().parent / "__no_such_root_for_tests__"
 # MEASURED FLOORS. Values in comments are what the real TODO.md gave on
 # 2026-07-26; each floor is >= 80% of it, never a token "> 0".
 # ---------------------------------------------------------------------------
-FLOOR_ITEMS = 500          # measured 562 checkbox items
-FLOOR_PAIRS = 70           # measured 87 pairs
-FLOOR_RESOLVED_REFS = 80   # measured 99 resolved references (16 exact + 83 suffix)
-FLOOR_MEDIAN_WORDS = 29    # measured 36.0 median words per stripped task query
-FLOOR_LENGTH_RATIO = 2.65  # measured 36.0 / 11.0 = 3.27x the commit-shaped median
-FLOOR_TASK_NDCG = 0.35     # measured 0.429 NDCG@10 over all task queries
+# RE-MEASURED 2026-08-01. The corpus these are derived from (TODO.md + git history)
+# grew substantially, so four floors had drifted to 68-75% of the truth — still PASSING,
+# which is the point: a floor comfortably below the measurement is exactly what this
+# file's header warns lets a real regression through unnoticed. Re-based to the >=80%
+# rule against fresh measurements. Drift direction matters and is recorded per line:
+# these went too LAX (quantity grew), unlike FLOOR_STRIP_INFLATION below which went too
+# STRICT (quantity shrank) and was failing every run.
+FLOOR_ITEMS = 500          # 86.2% of 580 measured 08-01 (was 562 on 07-26) — unchanged, still >=80%
+FLOOR_PAIRS = 81           # 80.2% of 101 measured 08-01 (was 70 = 69.3%; 87 on 07-26)
+FLOOR_RESOLVED_REFS = 92   # 80.0% of 115 measured 08-01, 24 exact + 91 suffix (was 80 = 69.6%; 99 on 07-26)
+FLOOR_MEDIAN_WORDS = 29    # 80.6% of 36 measured 08-01 — unchanged, still >=80%
+FLOOR_LENGTH_RATIO = 2.65  # 88.3% of 3.00 measured 08-01 = 36/12.0 (was 3.27 on 07-26) — unchanged
+FLOOR_TASK_NDCG = 0.375    # 80.0% of 0.4685 measured 08-01 (was 0.35 = 74.7%; 0.429 on 07-26)
 # RE-MEASURED 2026-08-01: inflation is now 0.1806 (+18.1%), not the 0.2268 (+22.7%)
 # this floor was derived from, so the old 0.1859 sat ABOVE the truth and the test was
 # failing on every run. Re-based per this file's own rule — 82% of measured — giving
@@ -85,9 +92,14 @@ FLOOR_STRIP_INFLATION = 0.1481  # 82.0% of the 0.1806 measured 2026-08-01
 # (was 0.1859 = 82.0% of 0.2268 measured 2026-07-26; before that 0.18 = 79.4%, which
 # broke this file's own >=80% rule). A floor below the truth is what let fabricated
 # numbers pass elsewhere in this repo on 2026-07-26.
-FLOOR_UNSTRIPPED_FLAGGED = 65  # measured 81 of 87 unstripped queries flagged as leaking
-CEIL_STRIPPED_FLAGGED = 8      # measured 6 of 87 stripped queries still leak
-CEIL_EMPTY_RESULTS = 2         # measured 0 queries that FTS5 answers with nothing
+FLOOR_UNSTRIPPED_FLAGGED = 76  # 80.0% of 95 of 101 measured 08-01 (was 65 = 68.4%; 81 of 87 on 07-26)
+# ⚠ CEILING SITTING EXACTLY ON THE MEASUREMENT. Residual leakage after stripping grew
+# 6 (of 87) on 07-26 -> 8 (of 101) on 08-01, so this passes only by equality and ONE more
+# leaking query turns it red. Left at 8 deliberately rather than padded: raising a
+# ceiling to buy headroom is how a real increase in leakage would get absorbed silently.
+# If it goes red, investigate the new leaker — do not raise this number reflexively.
+CEIL_STRIPPED_FLAGGED = 8      # measured 8 of 101 stripped queries still leak (08-01)
+CEIL_EMPTY_RESULTS = 2         # measured 0 queries that FTS5 answers with nothing (08-01, unchanged)
 
 
 # ===========================================================================
@@ -583,6 +595,51 @@ _t("floor: FLOOR_STRIP_INFLATION is >=80% of the measured inflation",
    f"{FLOOR_STRIP_INFLATION} is "
    f"{FLOOR_STRIP_INFLATION / MEASURED_STRIP_INFLATION:.1%} of measured "
    f"{MEASURED_STRIP_INFLATION}")
+
+
+# ---------------------------------------------------------------------------
+# THE SAME GUARD, FOR EVERY OTHER FLOOR. Added 2026-08-01.
+#
+# Until now exactly ONE floor (STRIP_INFLATION, above) was checked against its basis.
+# That is why four of the others silently drifted to 68-75% of the truth while still
+# PASSING: nothing compared them to anything. A floor comfortably below the measurement
+# is what this file's header warns lets a real regression through, and it had happened
+# here, to this file, unnoticed.
+#
+# Drift runs BOTH ways and both are caught: a quantity that GROWS leaves its floor too
+# lax (what happened to these four), and a quantity that SHRINKS leaves its floor above
+# the truth so the test fails every run (what happened to STRIP_INFLATION). The second
+# is loud; the FIRST is silent, which is why it needs a test rather than a reader.
+#
+# Update rule when one of these fires: re-measure, update BOTH the floor and the
+# MEASURED_* basis, and say why it moved. Never touch only one.
+# ---------------------------------------------------------------------------
+MEASURED = {                    # all re-measured 2026-08-01; 07-26 values in comments
+    "FLOOR_ITEMS":              (FLOOR_ITEMS,              580),    # was 562
+    "FLOOR_PAIRS":              (FLOOR_PAIRS,              101),    # was 87
+    "FLOOR_RESOLVED_REFS":      (FLOOR_RESOLVED_REFS,      115),    # was 99
+    "FLOOR_MEDIAN_WORDS":       (FLOOR_MEDIAN_WORDS,        36),    # was 36.0
+    "FLOOR_LENGTH_RATIO":       (FLOOR_LENGTH_RATIO,      3.00),    # was 3.27
+    "FLOOR_TASK_NDCG":          (FLOOR_TASK_NDCG,       0.4685),    # was 0.429
+    "FLOOR_UNSTRIPPED_FLAGGED": (FLOOR_UNSTRIPPED_FLAGGED,  95),    # was 81
+}
+for _name, (_floor, _measured) in MEASURED.items():
+    _t(f"floor: {_name} is >=80% of its recorded measurement",
+       _floor >= _measured * 0.80,
+       f"{_floor} is {_floor / _measured:.1%} of measured {_measured} — too lax to "
+       "catch a regression; re-measure and raise it")
+
+# Ceilings run the other way: a ceiling far ABOVE the measurement absorbs a real
+# increase silently. CEIL_STRIPPED_FLAGGED currently sits exactly ON its measurement (8
+# of 101), which is deliberate — see the constant's comment.
+MEASURED_CEILINGS = {
+    "CEIL_STRIPPED_FLAGGED": (CEIL_STRIPPED_FLAGGED, 8),   # was 6 of 87 on 07-26
+    "CEIL_EMPTY_RESULTS":    (CEIL_EMPTY_RESULTS,    0),   # unchanged
+}
+for _name, (_ceil, _measured) in MEASURED_CEILINGS.items():
+    _t(f"ceiling: {_name} is not padded far above its measurement",
+       _ceil <= max(_measured + 2, _measured * 1.25),
+       f"{_ceil} vs measured {_measured} — a padded ceiling hides a real increase")
 
 
 # ---------------------------------------------------------------------------
