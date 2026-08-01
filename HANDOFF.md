@@ -149,7 +149,7 @@ Caveman brief. Short lines. Numbers exact.
 | HEAD | `ca91bac`, pushed, tree clean | 2026-07-26 |
 | CI on main | green (`da5f717`, both jobs) | 2026-07-25 |
 | www.bhenre.com | G3 smoke **PASSES**, exit 0 | after redeploy `8jlgr3038` |
-| scout-cli board | **2226 passed / 1 skipped / 0 failed** | full run, 11m13s |
+| scout-cli board | ~~2226 passed~~ → **2260 passed / 1 skipped / 0 failed** | re-read 2026-08-01 from the CI gate's own log (7m20s), not a dev-box run |
 | factory board | ~~553 passed / 33 skipped / **21 errors**~~ → **859 passed / 33 skipped / 0 errors** | re-run 2026-08-01, 3m21s, one command not three chunks |
 | factory 21 errors | **RESOLVED** by `03b2b3c` (httpx 0.28 compat shim); re-verified 2026-08-01, `test_server_endpoints.py` + `test_httpx_compat_shim.py` = 32 passed | |
 | retrieval bar (new) | **NDCG@10 0.622 · MRR 0.619 · recall@10 0.791** leak-free, 209 walk-forward queries, 2,024 docs | 2026-07-26 |

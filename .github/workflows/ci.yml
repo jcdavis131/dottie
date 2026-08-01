@@ -30,7 +30,11 @@ jobs:
       # `uv run ruff` dies with "Failed to spawn: ruff" (exit 2) — which the old
       # `|| true` swallowed, meaning NEITHER ruff step in this workflow had ever
       # actually executed. The "334 known findings" the comment below cited were
-      # measured on a dev box; CI was reporting on a linter it never ran. Flipping
+      # measured on a dev box; THIS workflow was reporting on a linter it never ran.
+      # Correction to an earlier overstatement (61b922e said "CI has never once run the
+      # linter"): the SEPARATE lint.yml workflow HAS been running ruff correctly the
+      # whole time — it `pip install ruff==0.15.22` first, and its logs show a real
+      # "Found 263 errors". Only ci.yml's two steps were the silent no-op. Flipping
       # ava-skills to a hard gate on 2026-08-01 is what surfaced it, by removing the
       # `|| true` that was hiding it. Version is PINNED and matches lint.yml, per that
       # workflow's own hard-won note: "ONE ruff version across both workflows" — a
@@ -66,8 +70,12 @@ jobs:
       # box an `__editable__.scout_cli-0.7.0.pth` finder points at ~/scout-cli, so a
       # root-level run silently tested stale 0.7.0 code and reported 8 failures that
       # do not exist in this tree. Running from apps/scout-cli puts cwd first, which
-      # is the invocation measured green (1156 passed), so the gate asserts what was
-      # actually verified rather than whatever the resolver happens to pick.
+      # is the invocation measured green, so the gate asserts what was actually
+      # verified rather than whatever the resolver happens to pick.
+      # Count re-read from this gate's own CI log 2026-08-01: **2260 passed, 1 skipped**
+      # in 7m20s. The figure here previously read 1156, which was stale by roughly 2x —
+      # a load-bearing rationale loses its force when its number does not reproduce, so
+      # this one is taken from the gate's log rather than from a dev-box run.
       - name: Pytest scout-cli (hard gate)
         working-directory: apps/scout-cli
         run: uv run pytest tests -q
