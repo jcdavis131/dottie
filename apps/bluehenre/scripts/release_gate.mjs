@@ -26,7 +26,7 @@
 //      node apps/bluehenre/scripts/release_gate.mjs --all  https://www.bhenre.com
 // Exit 0 = gate passed. Exit 1 = do not promote.
 
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -165,11 +165,30 @@ export function combine(named) {
 // G1 PRE — the README's three commands, plus syntax, as one exit-coded command.
 // ---------------------------------------------------------------------------
 
-const SYNTAX_FILES = [
-  "server.mjs", "api/assistant-chat.mjs", "api/fleet.mjs", "api/twin-status.mjs",
-  "public/js/twin.mjs", "public/js/org.mjs", "public/js/console.mjs",
-  "scripts/build_hub_registry.mjs", "scripts/release_gate.mjs",
-];
+// WAS a hardcoded list of nine paths while the app ships thirteen .mjs, so
+// build_runs_readout.mjs and the three test modules were never parsed here. A hardcoded
+// list does not fail when it falls behind — it silently checks less, and reports
+// "PASS syntax (9 modules)", which reads like coverage. Discovered from disk instead so a
+// new module is covered the day it lands.
+//
+// readdir rather than `git ls-files`: this gate must work from a deploy tarball or any
+// checkout without git, and an unavailable git would otherwise turn into an empty list.
+export const SYNTAX_FLOOR = 10;
+
+export function discoverModules(root = APP) {
+  const skip = new Set(["node_modules", ".git", ".vercel", "dist", "build"]);
+  const out = [];
+  (function walk(dir, rel) {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      if (skip.has(e.name)) continue;
+      const abs = join(dir, e.name);
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) walk(abs, r);
+      else if (e.name.endsWith(".mjs")) out.push(r);
+    }
+  })(root, "");
+  return out.sort();
+}
 
 function run(label, args) {
   const r = spawnSync(process.execPath, args, { cwd: APP, encoding: "utf8" });
@@ -198,12 +217,34 @@ export function preGate() {
     else { console.log("FAIL  registry still stale after rebuild — the exporter is broken"); ok = false; }
   } else console.log("PASS  registry freshness");
 
-  const missing = SYNTAX_FILES.filter((f) => !existsSync(join(APP, f)));
+  // The Monitor readout, which CI checks and this gate did NOT — so `--pre` could print
+  // "safe to promote" over a readout that no longer matched the eval reports it renders.
+  // That is the one thing this app promises not to do, and `--pre` exists precisely so a
+  // deploy needs no remembered sequence; a step only CI knew about defeats that.
+  const readout = spawnSync(process.execPath, ["scripts/build_runs_readout.mjs", "--check"],
+    { cwd: APP, encoding: "utf8" });
+  if (readout.status === 0) console.log("PASS  runs readout freshness");
+  else {
+    const tail = ((readout.stdout || "") + (readout.stderr || "")).trim().split("\n").slice(-2).join(" | ");
+    console.log(`FAIL  runs readout stale — rendered numbers disagree with the reports  — ${tail}`);
+    ok = false;
+  }
+
+  const files = discoverModules();
+  // A zero-length discovery would make every filter below vacuous and print a cheerful
+  // PASS having parsed nothing — the exact shape this repo audited its CI for on
+  // 2026-08-01. Floor sits below the current 13 so ordinary adds/removals do not churn it.
+  if (files.length < SYNTAX_FLOOR) {
+    console.log(`FAIL  syntax: discovered only ${files.length} modules (floor ${SYNTAX_FLOOR}) — discovery is broken`);
+    ok = false;
+  }
+  const missing = files.filter((f) => !existsSync(join(APP, f)));
   if (missing.length) { console.log(`FAIL  syntax: missing ${missing.join(", ")}`); ok = false; }
-  const bad = SYNTAX_FILES.filter((f) => existsSync(join(APP, f)) &&
+  const bad = files.filter((f) => existsSync(join(APP, f)) &&
     spawnSync(process.execPath, ["--check", f], { cwd: APP, encoding: "utf8" }).status !== 0);
   if (bad.length) { console.log(`FAIL  syntax: ${bad.join(", ")}`); ok = false; }
-  else if (!missing.length) console.log(`PASS  syntax (${SYNTAX_FILES.length} modules)`);
+  else if (!missing.length && files.length >= SYNTAX_FLOOR)
+    console.log(`PASS  syntax (${files.length} modules, discovered)`);
 
   return ok;
 }

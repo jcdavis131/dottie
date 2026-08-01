@@ -5,7 +5,11 @@
 import {
   checkRegistryMatch, checkAssistantHonest, checkRetractionMarked, combine,
   diffPaths, RETRACTED_PPL, VALID_ASSISTANT_SOURCES,
+  discoverModules, SYNTAX_FLOOR,
 } from "./release_gate.mjs";
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 let pass = 0, fail = 0;
 const check = (name, ok) => { ok ? pass++ : fail++; console.log(`${ok ? "PASS" : "FAIL"}  ${name}`); };
@@ -112,6 +116,40 @@ check("combine: problems are prefixed with their part", merged.problems[0] === "
 check("combine: notes survive", merged.notes[0] === "a: fine");
 check("combine: all-pass passes", combine([["a", { ok: true, problems: [], notes: [] }]]).ok);
 check("combine: empty passes (vacuous, but must not throw)", combine([]).ok);
+
+// ---- module discovery: the syntax list used to be hardcoded ---------------
+// It named 9 paths while the app ships 13, so build_runs_readout.mjs and the three test
+// modules were never parsed — and it still reported "PASS syntax (9 modules)", which
+// reads like coverage rather than a list that had quietly fallen behind.
+const found = discoverModules();
+check("discover: finds at least the floor", found.length >= SYNTAX_FLOOR);
+check("discover: includes build_runs_readout.mjs (missed by the old hardcoded list)",
+  found.includes("scripts/build_runs_readout.mjs"));
+check("discover: includes the test modules the old list omitted",
+  found.includes("scripts/release_gate.test.mjs") &&
+  found.includes("public/js/twin.contract.test.mjs"));
+check("discover: still finds top-level server.mjs", found.includes("server.mjs"));
+check("discover: returns only .mjs", found.every((f) => f.endsWith(".mjs")));
+
+// node_modules must be skipped, or discovery would parse the whole dependency tree and
+// the floor would pass for reasons having nothing to do with this app's code.
+const sandbox = mkdtempSync(join(tmpdir(), "rg-discover-"));
+mkdirSync(join(sandbox, "node_modules", "pkg"), { recursive: true });
+writeFileSync(join(sandbox, "node_modules", "pkg", "dep.mjs"), "export const x = 1;\n");
+mkdirSync(join(sandbox, "src"), { recursive: true });
+writeFileSync(join(sandbox, "src", "own.mjs"), "export const y = 2;\n");
+writeFileSync(join(sandbox, "notes.txt"), "not a module\n");
+const sandboxed = discoverModules(sandbox);
+check("discover: skips node_modules", !sandboxed.some((f) => f.includes("node_modules")));
+check("discover: finds nested own code", sandboxed.includes("src/own.mjs"));
+check("discover: ignores non-.mjs files", sandboxed.length === 1);
+
+// The floor is what stops an empty discovery printing a cheerful PASS having parsed
+// nothing — the same shape the CI workflow was audited for on 2026-08-01.
+check("discover: an empty tree returns [] so the floor can catch it",
+  discoverModules(mkdtempSync(join(tmpdir(), "rg-empty-"))).length === 0);
+check("floor sits below the real count, so ordinary adds do not churn it",
+  SYNTAX_FLOOR < found.length);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
