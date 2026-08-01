@@ -77,13 +77,15 @@ Since then, a long, disciplined "fix + `docs(TODO): close`" pairing closed rough
    plus adjacent-commit files, pre-registered target **beating NDCG@10 0.429**
    (corrected — not 0.622). This is the only item from the 07-26 "NEXT" list that
    is still genuinely open.
-   **2026-08-01: real run done — MISS, not a win.** Operator go-ahead given; ran for
-   real, 2 attempts (3 epochs and 4 epochs, whole-repo scope). Best result task-shaped
-   leak-free NDCG@10 = **0.194-0.197 vs the 0.429 target** — a clear miss, and more
-   epochs moved it by less than noise, so it isn't an undertraining problem. Likely
-   ceiling: the task domain only has 574 training examples. Full numbers, the
-   diagnosis, and what a real next attempt would need: TODO.md item 6. This closes the
-   item — the encoder was trained and honestly evaluated, it just didn't beat the bar.
+   **2026-08-01: real run done — MISS, root-caused.** Operator go-ahead given ("go
+   ahead with step 5 and beyond"); 3 configs tried (3ep, 4ep, 4ep+10x lr). All land
+   0.194-0.199 task-shaped leak-free NDCG@10 vs the **0.429 target** — a clear miss.
+   The decisive check: the UNTRAINED base model alone scores **0.186** on the same
+   eval (new `embed_eval.py --base-only` flag) — the fine-tuning is barely moving the
+   needle at all. That rules out "just needs more data/epochs" as the fix; it's a
+   (base model, corpus) ceiling, not a training-budget problem. Full numbers and what
+   a real next attempt would need: TODO.md item 6. Closed as a completed, correctly-
+   diagnosed miss.
 2. **`personal_graphify/query.py`'s read-modify-write fixed 2026-07-31** — same shape
    as telemetry.py (corrupt `cost.json` preserved + announced on stderr, write made
    atomic), 4 new tests, full 72-test suite green. `tasks/cli.py`'s half of this item

@@ -71,39 +71,53 @@ this section now carries a re-verify note instead of being trusted at face value
    beating **NDCG@10 0.429** (corrected 2026-07-31 — was 0.622, the commit-message
    number item 2 above found flatters lexical retrieval; 0.429 is the real
    task-shaped bar).
-   **REAL RUN DONE 2026-08-01 — MISS, HONESTLY REPORTED, NOT A WIN.** Operator
-   go-ahead given; pipeline (`train_encoder.py` + `embed_eval.py`, both smoke-verified
-   2026-07-31, see `tasks/artifacts/embedding_train_plan_2026-07-31.md` for the full
-   pre-registration) ran for real, whole-repo scope, default hyperparameters.
-   `embed_eval.py` against the SAME golden sets the 0.622/0.429 bars came from —
-   **task-shaped leak-free NDCG@10, dim=384 (best dim):**
+   **REAL RUN DONE 2026-08-01 — MISS, HONESTLY REPORTED, NOT A WIN. Root-caused, not
+   just measured.** Operator go-ahead given; pipeline (`train_encoder.py` +
+   `embed_eval.py`, both smoke-verified 2026-07-31, see `tasks/artifacts/
+   embedding_train_plan_2026-07-31.md` for the full pre-registration) ran for real,
+   whole-repo scope. `embed_eval.py` against the SAME golden sets the 0.622/0.429 bars
+   came from — **task-shaped leak-free NDCG@10, dim=384 (best dim):**
    ```
-   3 epochs (263s):  0.1968
-   4 epochs (236s):  0.1940
+   base model, zero LoRA (no training at all): 0.1860
+   3 epochs, lr 2e-5:                          0.1968
+   4 epochs, lr 2e-5:                          0.1940
+   4 epochs, lr 2e-4 (10x):                    0.1994
    ```
-   **Neither beats the pre-registered target of 0.429, and going 3→4 epochs moved the
-   number by less than noise (-0.0028).** Doesn't beat the easier commit-shaped bar
-   either (0.144/0.143 vs 0.622). **Verdict: more epochs is not the fix** — a 15-epoch
-   attempt was tried first but hit the tool's 10-minute background-execution ceiling
-   twice (killed both times, no checkpoint written either time — the run needed ~22
-   min, extrapolated from the 3-epoch rate); the 4-epoch foreground result above
-   settled the question more cheaply anyway, since it already shows the plateau. The
-   task domain has only 574 mined examples (18 steps/epoch) — that is the more likely
-   ceiling than step count: an encoder can't learn much from that little data no matter
-   how many passes over it. A real next attempt would need a bigger corpus (e.g.
-   lifting task_eval_slice.py's "evaluation-only" restriction to also train on TODO-
-   mined pairs, which that module's own docstring flags as the tradeoff — "it will
-   cost something for a learned retriever" if crossed) or a different base/approach,
-   not more epochs on the same 574 examples. Not attempted this pass — a fresh
-   pre-registration question, not a continuation of this one.
-   Checkpoints: `apps/ava-factory/artifacts/encoder_v1` (3 epochs, first attempt —
-   overwritten in place by an unrelated 1-epoch timing probe, harmless since only the
-   *numbers* were load-bearing and those are recorded here), `encoder_v2` (4 epochs).
-   Both gitignored (`apps/ava-factory/.gitignore` gained an `artifacts/` rule this
-   pass — it wasn't ignored before, model weights were showing up as untracked).
+   **Target 0.429. All three trained configs land in a tight 0.194-0.199 band —
+   barely above the UNTRAINED base model's 0.186.** The decisive diagnostic:
+   `embed_eval.py --base-only` (new flag, scores the frozen base with zero LoRA —
+   the floor a trained checkpoint must actually beat to justify existing) shows the
+   fine-tuning is contributing almost nothing. This reframes the whole diagnosis:
+   the original theory ("574 task-domain examples is too little data") is NOT what's
+   binding — a real data-size problem would show the base floor far below the trained
+   runs, not within noise of them. More epochs (3→4) didn't move it; a 10x learning-
+   rate bump (testing "LoRA undertrained at conservative LR", the standard reason a
+   fine-tune barely moves off its base) moved it a little on the commit-shaped bar
+   (0.143→0.163) but barely on the target metric (0.194→0.199). Three different
+   levers pulled, three results in the same narrow band — that is a real ceiling from
+   the (base model, corpus) pair, not a hyperparameter search problem, and the gap to
+   0.429 is more than 2x. Stopped iterating on hyperparameters here rather than
+   chasing diminishing returns further.
+   **A 15-epoch attempt was tried first** (before the base-only diagnostic reframed
+   the problem) but hit the tool's 10-minute background-execution ceiling twice,
+   killed both times with no checkpoint written (needed ~22 min, extrapolated from
+   the 3-epoch rate) — abandoned once cheaper foreground runs already answered the
+   question.
+   **What a real next attempt would need**, now correctly targeted at the base
+   model/corpus pairing rather than epoch count: either a bigger corpus (e.g. lifting
+   `task_eval_slice.py`'s deliberate "evaluation-only" restriction to also train on
+   TODO-mined pairs — that module's own docstring already names the cost of crossing
+   it) or a differently-suited base model (code/domain-pretrained rather than generic
+   sentence embedding). Not attempted — a fresh pre-registration question, not a
+   continuation of this one.
+   Checkpoints: `encoder_v1` (3ep, overwritten in place by an unrelated timing probe —
+   harmless, only the numbers were load-bearing), `encoder_v2` (4ep), `encoder_v3`
+   (4ep, 10x lr). All gitignored (`apps/ava-factory/.gitignore` gained an `artifacts/`
+   rule this pass — it wasn't ignored before, model weights were showing up as
+   untracked).
    Per the pre-registration's own words: *"if it underperforms, that's informative, not
-   a bug to route around before reporting it."* This entry says so plainly rather than
-   spinning a miss as a partial win.
+   a bug to route around before reporting it."* This entry says so plainly, with the
+   actual root cause identified rather than just the miss reported.
 
 ### ✅ 2026-07-26 — defect sweep done; the task-shaped bar is MUCH lower than the commit-shaped one
 

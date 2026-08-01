@@ -76,6 +76,23 @@ def load_docs() -> dict:
 # Encoder loading (mirrors train_encoder.DomainEncoder but LOADS trained adapters)
 # ---------------------------------------------------------------------------
 
+def _mean_pool_encode(torch, model, tokenizer, device, texts, max_len: int, batch_size: int = 64):
+    if not texts:
+        return torch.zeros((0, model.config.hidden_size))
+    chunks = []
+    with torch.no_grad():
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i:i + batch_size]
+            enc = tokenizer(batch, padding=True, truncation=True,
+                             max_length=max_len, return_tensors="pt").to(device)
+            out = model(**enc)
+            mask = enc["attention_mask"].unsqueeze(-1).float()
+            summed = (out.last_hidden_state * mask).sum(1)
+            counts = mask.sum(1).clamp(min=1e-9)
+            chunks.append((summed / counts).cpu())
+    return torch.cat(chunks, dim=0)
+
+
 class LoadedEncoder:
     def __init__(self, checkpoint_dir: Path, device: str):
         import torch
@@ -100,21 +117,31 @@ class LoadedEncoder:
         self.model.set_adapter(domain)
 
     def encode(self, texts, max_len: int, batch_size: int = 64):
-        torch = self.torch
-        if not texts:
-            return torch.zeros((0, self.model.config.hidden_size))
-        chunks = []
-        with torch.no_grad():
-            for i in range(0, len(texts), batch_size):
-                batch = texts[i:i + batch_size]
-                enc = self.tokenizer(batch, padding=True, truncation=True,
-                                      max_length=max_len, return_tensors="pt").to(self.device)
-                out = self.model(**enc)
-                mask = enc["attention_mask"].unsqueeze(-1).float()
-                summed = (out.last_hidden_state * mask).sum(1)
-                counts = mask.sum(1).clamp(min=1e-9)
-                chunks.append((summed / counts).cpu())
-        return torch.cat(chunks, dim=0)
+        return _mean_pool_encode(self.torch, self.model, self.tokenizer, self.device,
+                                  texts, max_len, batch_size)
+
+
+class BaseOnlyEncoder:
+    """The frozen base model, zero LoRA — the zero-shot floor a trained checkpoint
+    must actually beat to justify its own existence. Same interface as LoadedEncoder
+    (encode/set_domain/manifest) so main() doesn't need to branch."""
+
+    def __init__(self, base_model: str, dims, device: str):
+        import torch
+        from transformers import AutoModel, AutoTokenizer
+
+        self.torch = torch
+        self.device = device
+        self.tokenizer = AutoTokenizer.from_pretrained(base_model)
+        self.model = AutoModel.from_pretrained(base_model).to(device).eval()
+        self.manifest = {"base_model": base_model, "dims": dims, "domains": ["none"]}
+
+    def set_domain(self, domain: str):
+        pass
+
+    def encode(self, texts, max_len: int, batch_size: int = 64):
+        return _mean_pool_encode(self.torch, self.model, self.tokenizer, self.device,
+                                  texts, max_len, batch_size)
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +173,11 @@ def score_pairs(pairs, ranked_lists, k: int = K):
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--checkpoint", required=True)
+    ap.add_argument("--checkpoint", default=None)
+    ap.add_argument("--base-only", action="store_true",
+                     help="skip the checkpoint, score the frozen base model with zero LoRA "
+                          "(the floor a trained checkpoint must actually beat)")
+    ap.add_argument("--base-model", default="sentence-transformers/all-MiniLM-L6-v2")
     ap.add_argument("--max-commits", type=int, default=4000)
     ap.add_argument("--split-frac", type=float, default=0.7)
     ap.add_argument("--continuation-lines", type=int, default=task_eval_slice.MAX_CONTINUATION_LINES)
@@ -155,12 +186,19 @@ def main(argv=None) -> int:
     ap.add_argument("--device", default=None)
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
+    if not args.base_only and not args.checkpoint:
+        ap.error("--checkpoint is required unless --base-only is set")
 
     import torch
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
-    checkpoint_dir = Path(args.checkpoint)
-    encoder = LoadedEncoder(checkpoint_dir, device)
-    encoder.set_domain("task")
+    if args.base_only:
+        checkpoint_dir = None
+        default_dims = [384, 256, 128, 64]
+        encoder = BaseOnlyEncoder(args.base_model, default_dims, device)
+    else:
+        checkpoint_dir = Path(args.checkpoint)
+        encoder = LoadedEncoder(checkpoint_dir, device)
+        encoder.set_domain("task")
     dims = [int(d) for d in args.dims.split(",")] if args.dims else encoder.manifest["dims"]
 
     docs = load_docs()
@@ -212,9 +250,9 @@ def main(argv=None) -> int:
         }
 
     summary = {
-        "checkpoint": str(checkpoint_dir),
+        "checkpoint": str(checkpoint_dir) if checkpoint_dir else f"BASE ONLY ({args.base_model}, zero LoRA)",
         "device": device,
-        "domain_used": "task",
+        "domain_used": "task" if checkpoint_dir else "n/a (base only)",
         "documents": {"full": len(full_paths), "task_pruned": len(task_docs),
                        "pruned_paths": sorted(pruned_paths)},
         "golden_set": {"commit_test_n": len(commit_test), "task_n": len(task_pairs),
