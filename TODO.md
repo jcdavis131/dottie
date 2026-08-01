@@ -1045,6 +1045,32 @@ found exactly 42, matching the subagent's count by a different method.
   herd/sessions.json and ~/.dottie-claw/skills were ALL unchanged.** Previously
   audit.jsonl grew on every single run.
 
+  **SWEEP CLOSED 2026-08-01 — every suite checked empirically, scout-cli was the only
+  polluter.** Method: snapshot `(size, mtime_ns)` of all 8,510 files under `~/workspace`,
+  `~/.dottie-claw` and `~/.local/share/bigbang`, run the suite, diff. Not a code read —
+  a measurement.
+
+  | suite | tests | touched real home state? |
+  |---|---|---|
+  | `apps/scout-cli` | 2260 | **YES — vault, auth, registry, audit, herd, dottie-claw.** Fixed by `tests/conftest.py` |
+  | `apps/ava-factory` | 859 | no — 0 of 8,510 files changed |
+  | `packages/ava-skills` | 89 | no |
+  | `packages/personal-graphify` | 72 | no |
+  | `packages/ava-open-harness` | 39 pass / 5 fail | no (the 5 are the documented `dottie` name collision, see the ci.yml comment) |
+
+  ⚠ **Two false results I produced and caught before reporting them**, kept because the
+  next person will hit the same two traps:
+  1. The first diff said **"8,510 of 8,510 files changed"** — total nonsense, and it was
+     my comparison: `json.dumps` turns a tuple into a list, so `[size, mtime] !=
+     (size, mtime)` for every entry. A diff that flags *everything* is a bug in the
+     differ, not a catastrophe in the data.
+  2. Two of the runs **never executed** — `uv run pytest` on ava-factory gives 11
+     collection errors (the workspace env has no torch; it needs plain `python` with
+     `AVA_FACTORY_ROOT`), and running the three package suites in ONE command gives 6
+     collection errors (ava-skills' tests import their own `conftest`). Both produced a
+     clean-looking "0 changed" diff that proved **nothing**. A green diff after a suite
+     that did not run is the same shape as a gate whose verdict nothing consumes.
+
   ⚠ **Cost, recorded because it was mine:** while probing the WinError 5 I ran a
   `tmp.replace(HERD_FILE)` reproduction that overwrote the real `sessions.json` (3798 bytes
   of live session records) with `{}`. Not recoverable — `events.jsonl` is append-only but
