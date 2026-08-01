@@ -89,15 +89,25 @@ Since then, a long, disciplined "fix + `docs(TODO): close`" pairing closed rough
    atomic), 4 new tests, full 72-test suite green. `tasks/cli.py`'s half of this item
    turned out not to reproduce — re-read whole file, no local JSON state is ever
    read-then-written-back there. See TODO.md for the full detail either way.
-3. **Re-confirm the httpx 0.28 test count** — likely already fixed (`03b2b3c`),
-   not re-run this pass.
+3. **httpx 0.28 fix re-confirmed 2026-07-31.** TODO.md's own verify command —
+   `cd apps/ava-factory && AVA_FACTORY_ROOT="$PWD" python -m pytest
+   tests/test_server_endpoints.py tests/test_httpx_compat_shim.py -q` → **32 passed**,
+   0 errors, matching the number `03b2b3c` recorded. Holds. This closes out every item
+   in this list — nothing left here that isn't either done or the step-5 go-ahead (item 1).
 
 ### Still open, operator decides (unchanged since 07-26 — no matching commits found)
 
 - `ava/rl/codeact_loop.py` restoration (36-40 dottie engine tests unrunnable).
 - agent-eval scoreboard.md dirt from an earlier nano-chat run, uncommitted.
 - Gridiron: two unrelated histories on one remote, repo dirty on a `claude/*` branch.
-- Hoops gate parked on RAM (edits committed-ready, pipeline suite must pass first).
+- ~~Hoops gate parked on RAM~~ — **STALE, RESOLVED 2026-07-31.** This tracks
+  `~/vector-hoops`, a separate repo dottie's own `git log` can't see, which is
+  exactly why it sat unverified since 07-26. Checked directly: `531fc19` (this
+  session, re-anchors the CQS promote-gate baseline on the current hustle-defense +
+  system-tags recipe) is committed and pushed, working tree clean. Re-ran all three
+  gates fresh: `pipeline/test_feature_hygiene.py` (142 features, 19 families,
+  clean), `pipeline/provenance_gate.py` (PASSED, all four surfaces agree, dim=64),
+  `pipeline/test_composite_gate.py` (16/16). Nothing left parked here.
 - Equities re-export post-GPU (`tasks/artifacts/equities_reexport_plan.md`).
 - Disk-watchdog task registration, permanent bhenre.com project move, monorepo CI
   `|| true`, ckpt-promotion eval gate — all design notes ready, none actioned.
