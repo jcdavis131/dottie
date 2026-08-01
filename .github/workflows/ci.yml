@@ -229,9 +229,21 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      # WAS: `python -c "import sys; sys.path.insert(0, 'apps/ava-factory'); print('factory
+      # importable')"` — which imported NOTHING. It adjusted sys.path and printed a string
+      # claiming success, so it passed on any tree, including one where apps/ava-factory
+      # had been deleted. Flagged 2026-07-22 (knowledge/reviews/docs-metadata.md), fixed
+      # 2026-08-01. The comment above already described this step as the cheap proxy that
+      # "catches a broken module graph"; it just never performed the import that would.
+      #
+      # `dottie` and `ava` both import with stdlib only (verified: the torch-dependent
+      # modules are deeper — dottie.serve_engine and multi_jspace_module both raise
+      # ModuleNotFoundError: torch), so this stays cheap while actually exercising the
+      # package __init__ chain, including ava/ being the `from dottie import *` shim.
+      # Do NOT reach for serve_engine here; that turns a 2-second smoke into a torch install.
       - name: Check factory imports
         run: |
-          python -c "import sys; sys.path.insert(0, 'apps/ava-factory'); print('factory importable')"
+          python -c "import sys; sys.path.insert(0, 'apps/ava-factory'); import dottie, ava; print('factory module graph OK:', dottie.__name__, ava.__name__)"
       - name: Verify no telemetry tracked
         run: |
           if git ls-files | grep -E "dottie_live_status|dottie_telemetry|STATUS.json|results.tsv" ; then echo "Telemetry still tracked!"; exit 1; fi

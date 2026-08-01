@@ -1,5 +1,38 @@
 # Monorepo review — 2026-07-22
 
+> ## ⚠ Status re-verified 2026-08-01 — read this before acting on anything below
+>
+> These five files sat untouched for ten days. Every 🔴 was re-checked against the live
+> tree rather than assumed still-true; **the body below is preserved as written and is
+> now partly historical.** Verdicts:
+>
+> | finding | status 2026-08-01 |
+> |---|---|
+> | agent-os 🔴 `_domain_matches` substring bypass | **FIXED** — both bypass URLs return `False`, reproduced live |
+> | agent-os 🔴 secrets axis default-ALLOW | **FIXED** — empty allowlist now denies, with an explanatory message |
+> | factory 🔴 slim Dockerfile never COPYs `dottie/` | **FIXED** `f41718b` — and it was worse than reported (see factory.md) |
+> | factory 🔴 `_point_latest_at` promotes unconditionally | **STILL OPEN** — FROZEN path, operator's call |
+> | docs-metadata 🔴 every pytest/ruff step ends `\|\| true` | **MOSTLY FIXED** — ruff never actually ran at all (`61b922e`); ava-skills is now a hard gate, personal-graphify gated (`21b3505`). Remaining `\|\| true` are documented soft steps, one of them baselined with a judgment |
+> | docs-metadata 🔴 `apps/dottie` in neither members nor exclude | **STILL OPEN** — unchanged after ten days |
+> | docs-metadata 🟡 "Eval gate quick" is dead | **FIXED** `f41718b` — see below, it was worse than "dead" |
+> | docs-metadata 🟡 "Check factory imports" verifies nothing | **FIXED** — it now actually imports |
+>
+> **The two dead CI steps were not merely weak — they could not fail.** "Eval gate quick"
+> invoked a module path that is unimportable *and* has never existed, through a pipe that
+> masked the exit code, then `|| true`'d the remains. "Check factory imports" adjusted
+> `sys.path` and printed a success string without importing anything, so it passed on a
+> tree with `apps/ava-factory` deleted.
+>
+> **`gate_audit.py` could not see either of them**, which is the more useful finding: shape
+> B required the safety word on the suppressed line, and a CI step puts its purpose in
+> `name:` and its command in `run:`. Fixed in `f41718b`, which immediately surfaced a
+> second suppressed step. The auditor was also reading gitignored generated files, so its
+> local verdict contradicted CI's — the precise way a ratchet earns itself a `|| true`.
+>
+> **Do not treat the "Gates run on this box" numbers below as current.** They were true on
+> 2026-07-22. `pytest apps/scout-cli` in particular now reports differently, and the
+> "CI badge is decorative" learning is no longer accurate.
+
 10-phase review loop over `jcdavis131/dottie` (4 apps, 3 packages). Lane reviews: [agent-os](agent-os.md) · [factory](factory.md) · [packages](packages.md) · [docs-metadata](docs-metadata.md).
 
 ## Top 3 actions (ranked across all lanes)

@@ -1,5 +1,13 @@
 # Agent OS review
 
+> **Status 2026-08-01:** both 🔴 findings are **FIXED** and re-verified live —
+> `_domain_matches` now matches on the parsed HOST only (`http://evil.com/localhost` and
+> `http://127.0.0.1.evil.com/x` both return `False`), and the secrets axis denies on an
+> empty allowlist with an explanatory message. policy.py cites this review in its own
+> comments. A third bypass of the same shape was fixed alongside them: declared path
+> prefixes (`.scout` no longer grants `.scoutevil/x`). The 🟡 items below are NOT
+> re-verified; treat them as of 2026-07-22.
+
 ## Findings
 - 🔴 apps/scout-cli/bigbang/core/policy.py:74 — `_domain_matches` keeps "legacy substring semantics" (`domain in resource`), so the default-deny network allowlist is bypassable: with the out-of-the-box allowlist, `http://evil.com/localhost` and `http://127.0.0.1.evil.com/x` both pass every user and manifest check (verified live).
 - 🔴 apps/scout-cli/bigbang/core/policy.py:137 — the secrets axis is default-ALLOW: `if allowed and resource not in allowed` means an empty/missing `capabilities.secrets.allow` grants every secret, contradicting the "default-deny on every axis" docstring, and tests/test_policy.py has zero secret-axis tests.

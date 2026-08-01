@@ -1,5 +1,20 @@
 # Docs & Metadata review
 
+> **Status 2026-08-01:**
+> - 🔴 `|| true` on every pytest/ruff step — **MOSTLY FIXED**. The sharper finding was that
+>   ruff *never ran at all*: `uv run ruff` could not spawn it and `|| true` hid that for
+>   months (`61b922e`). ava-skills is now a hard gate, personal-graphify is gated
+>   (`21b3505`). Remaining suppressions are deliberate, and one is baselined in
+>   `scripts/gate_audit_baseline.json` with a written judgment.
+> - 🔴 `apps/dottie` in neither workspace members nor exclude — **STILL OPEN** after ten
+>   days. `pyproject.toml:13` excludes only `apps/scout-rtx` and `apps/ava-factory`.
+> - 🟡 "Eval gate quick" is dead — **FIXED** (`f41718b`). Worse than dead: the module path
+>   is unimportable *and* no `cli.py` ever existed there, and `| head -n 20` meant the step
+>   already passed before `|| true` was reached.
+> - 🟡 "Check factory imports" verifies nothing — **FIXED**. It now imports `dottie` and
+>   `ava` (stdlib-only; the torch-dependent modules are deeper), so it can actually fail.
+> - 🟡 skills count / 🟢 serve_engine path — fixed 2026-07-22 in `b5f3dcb`, per this file.
+
 ## Findings
 - 🔴 .github/workflows/ci.yml:26-28 — every pytest step (and ruff at :23) ends `|| true`, so the CI badge at README.md:3 stays green even if all tests fail; only the forge/doctor smoke steps are real gates.
 - 🔴 README.md:75-86 — the Monorepo Layout table and pyproject.toml:5-13 both omit `apps/dottie` (the Agent OS app README itself cites at line 29): it has its own pyproject.toml yet is neither a workspace member nor in the exclude list, so it is untested and undocumented.

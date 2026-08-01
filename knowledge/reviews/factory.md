@@ -1,5 +1,19 @@
 # Factory review
 
+> **Status 2026-08-01:**
+> - 🔴 Dockerfile missing `COPY dottie/` — **FIXED** (`f41718b`), and worse than reported:
+>   `.dockerignore` excludes `data/` and `reports/` while the Dockerfile COPYs both, and a
+>   COPY whose source is fully dockerignored is a hard BUILD failure, not a skip. So the
+>   image likely could not build, let alone boot. Added a `!data/nano/tokenizer/` negation
+>   and removed the `reports/` COPY (compose mounts `ava_reports:/reports`).
+>   **Not build-verified** — Docker Desktop is down and starting it would raise the trainer
+>   stack over FROZEN paths. Verified statically; run `docker build -t ava-serve apps/ava-factory`.
+> - 🔴 `_point_latest_at` promotes every checkpoint unconditionally — **STILL OPEN**.
+>   Re-checked: `grep -c "verdict\|eg_trend" dottie/train.py` is still **0**. Unfixable
+>   here — `apps/ava-factory/dottie/**` is FROZEN and bind-mounted into the live trainer.
+>   Operator's call.
+> - 🟡 items below are NOT re-verified; treat them as of 2026-07-22.
+
 ## Findings
 - 🔴 apps/ava-factory/dottie/train.py:498 — `_point_latest_at()` repoints `ckpt/latest` unconditionally after every checkpoint save (and again at :505 for final), and the serve engine hot-reloads it within ~5s; no eval verdict (`eg_trend`, `run_harness`) is consulted anywhere in the promotion path, so every checkpoint — including regressed ones — is silently promoted to live serving; the "gate" is report-only.
 - 🔴 apps/ava-factory/Dockerfile:38 — the slim serve image COPYs `ava/` but never `dottie/`, yet server.py:22 does `from dottie.serve_engine import get_engine`, so the shipped "Stage 8 self-host package" dies with ModuleNotFoundError at boot (docker/Dockerfile.cpu:20-22 even documents this exact failure mode).
