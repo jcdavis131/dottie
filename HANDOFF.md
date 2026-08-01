@@ -16,7 +16,90 @@ before writing "current" anywhere in this file.
 
 ---
 
-## 📌 Session continuation — 2026-07-31 (supersedes every block below)
+## 📌 Session continuation — 2026-08-01 (supersedes every block below)
+
+**Measured 2026-08-01, not carried forward.** HEAD `da657d9`, branch `main`, tree clean.
+**1 commit ahead of `origin/main`, 0 behind** — `da657d9` is unpushed, everything before it
+is pushed. Docker Desktop **not running**, so no trainer is live and the FROZEN
+`apps/ava-factory/dottie/**` paths are not bind-mounted right now. `C:` has **41 GB free**
+of 932 GB (96% used) — the block below says 50 GB, which was true when written on 07-31 and
+is not now.
+
+Both workflows (`CI`, `Ruff Lint`) are green at **`3fa6848`, the last pushed commit** — *not*
+at HEAD, because `da657d9` has not been pushed and CI has never run on it. And CI would not
+validate it if it had: `da657d9` only touches `apps/scout-rtx`, which `pyproject.toml:13`
+excludes from the workspace and neither workflow runs (legitimately — it hard-pins a cu128
+torch wheel and needs a Windows GPU an ubuntu runner does not have). Its 49 tests were run
+locally instead: `cd apps/scout-rtx && python -m pytest tests/ -q` → 49 passed.
+
+The 07-31 block below recorded HEAD `f274be8`. **37 commits landed since**, so it went stale
+the same way the block above warns about — this time from my own work. That is the point of
+the standing discipline: re-measure, don't carry forward.
+
+### What actually happened in those 37 commits (git-verified)
+
+**Real defects fixed, highest stakes first:**
+- `e63954d` **safety-scanner rubber-stamped unsafe text on any unrecognised mode.** An
+  unknown `mode` silently degraded to the regex baseline *and still returned a passing
+  verdict*. Now raises instead of guessing.
+- `ef347b9` + `1120a6c` + `bbdcb99` **the scout-cli test suite wrote to the developer's real
+  secrets vault, auth store, herd ledger and audit log.** Fixed by a module-level
+  HOME/USERPROFILE redirect in `conftest.py` plus a `SCOUT_HERD_DIR` override.
+- `61b922e` **ruff never actually ran in ci.yml** — `uv run ruff` could not spawn it and
+  `|| true` hid the failure for months. Now `uvx ruff@0.15.22`.
+- `21b3505` **personal-graphify was linted but never tested**; its 72 tests now gate.
+- `e933ad7` `log_query_cost` had the same silent-total-loss read-modify-write bug as the
+  vault — the fourth instance of that pattern in this repo.
+- `5584570` / `33f6e2d` / `17cdb16` / `596b25f` **`gate_audit.py` failed to detect three of
+  its own declared shapes** (line-continuation suppression, `continue-on-error`, the `raise`
+  half of shape C, and actively-cleared `elif` chains). Now wired to CI as a ratchet
+  (`7398a46`, `e4f5ec4`).
+
+**Honesty corrections — claims that did not survive re-measurement:**
+- `a561f5d` the recorded retrieval bar **does not reproduce**: 0.622 → 0.420.
+- `03dc7fb` **4 of 9 measured floors had gone too lax**, and only 1 had a guard.
+- `23afa1b` a ruff figure I wrote (263) went stale **within hours** of writing it (→ 252),
+  which is why `bc35711` now verifies documented counts mechanically instead of by hand.
+- `6e56df1` I **retracted my own false "plaintext secrets in audit.jsonl" alarm** — the
+  redaction works; my check was wrong (`[REDACTED]` is 10 chars with no `*`).
+- `9038b30` / `24aa92e` corrected stale and overstated claims of my own, including
+  "CI has never run the linter" (lint.yml *had* been running it correctly).
+
+**Step 5 (encoder) — closed as an honest miss, not a success:** `990ed1b` real run, task-shaped
+NDCG@10 **0.194–0.197** against a **0.429** target. `3492360` root-caused it to the base model
+rather than the data; `5f5878f` base-swapped to bge-small → **0.265**, still losing to lexical
+retrieval by ~1.6x. `1a7dab5` added the tests `embed_eval.py` never had despite producing every
+reported number. **Dense retrieval does not currently beat lexical here.**
+
+`34eec6d` reviewed Colibrì (disk-streamed MoE experts) and **declined** it — real technique,
+wrong fit for this box; decision recorded in `tasks/artifacts/`.
+
+### ⚠ Damage I caused, recorded because it is not recoverable
+
+While diagnosing the herd-store issue I ran a `tmp.replace(HERD_FILE)` probe that
+**overwrote the real `~/.local/share/bigbang/herd/sessions.json` (3798 bytes) with `{}`**.
+There was no backup and `events.jsonl` held only 4 lines from 07-17, so the session history
+is **gone**. The `SCOUT_HERD_DIR` isolation in `1120a6c` exists so this cannot recur, but it
+did not undo it.
+
+### Open, needing an operator decision (not blocked on me)
+
+1. **Audit-log rotation.** `audit.jsonl` is **43.4 MB / 28,778 entries** and `audit.py` (39
+   lines) has no rotation at all. Retention length is a product call.
+2. **The `dottie` name collision.** Three viable fixes — rename, `__path__` merge, or leave
+   it non-blocking. `9038b30` established it *is* fixable without a rename; which one is a
+   preference.
+3. **`apps/scout-rtx/bb-offload/queue.json`** has a task still marked `"pending"` whose
+   `hardware` field claims *"fits 24GB VRAM batch64"* on a 12 GB laptop. That is queued work,
+   not prose, so changing the batch size changes what runs — see `da657d9`.
+4. **Mobile-GPU peak FLOPS are wrong** and deliberately left wrong. `_get_gpu_peak_flops`
+   credits every laptop card its desktop namesake's figure, which understates MFU. Fixing it
+   requires a measured benchmark on the card; inventing the constant is against the numbers
+   rule. Pinned by a KNOWN_WRONG test that fails the moment someone adds a real row.
+
+---
+
+## 📌 Session continuation — 2026-07-31 (superseded by the 2026-08-01 block above)
 
 **Measured, not carried forward.** HEAD `f274be8`, pushed, tree clean, no divergence
 from `origin/main`. Docker Desktop **not running** — no active trainer, no live
