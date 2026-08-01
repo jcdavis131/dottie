@@ -95,6 +95,18 @@ jobs:
       - name: Pytest ava-skills (hard gate)
         run: uv run pytest packages/ava-skills -q
 
+      # ADDED 2026-08-01. This package was already LINTED by the ruff steps above but
+      # its 72 tests had never run in CI -- an asymmetry with no comment anywhere
+      # explaining it, so an oversight rather than a decision. Gating rather than
+      # soft-adding, per the same rule ava-skills follows: it is GREEN, so it gates.
+      # Checked before wiring it, not after: 72 passed in 8.78s via this exact
+      # invocation from the repo root, and the suite is robust to missing extras --
+      # ollama, tree_sitter and fastapi are all ABSENT from the uv env it ran in, and
+      # the one test that needs numpy guards itself with pytest.importorskip. So a
+      # leaner CI runner cannot turn this red for a reason unrelated to the code.
+      - name: Pytest personal-graphify (hard gate)
+        run: uv run pytest packages/personal-graphify -q
+
       # NON-BLOCKING ON PURPOSE, with the reason named instead of hidden behind a
       # bare `|| true` that reads as "these pass". ava-open-harness fails 5 tests in
       # tests/test_dottie_assistant.py because TWO importable packages are named
@@ -126,6 +138,23 @@ jobs:
           # Quick J-Space sanity, no GPU
           uv run python -m packages.ava-open-harness.cli --help 2>&1 | head -n 20 || true
 
+  # SMOKE ONLY, and that is a decision — stated 2026-08-01 because an undocumented
+  # exclusion is indistinguishable from an oversight (the same lesson `continue-on-error`
+  # taught this repo: a check nobody wrote down looks exactly like one that works).
+  #
+  # apps/ava-factory has 859 passing tests, none of which run here. Its requirements.txt
+  # pulls torch + deepspeed + transformers + peft; installing that on every push to run a
+  # suite that takes 3m21s locally is not worth the minutes, and deepspeed in particular
+  # is a heavy build. The import check below is the cheap proxy that catches the failure
+  # mode CI can actually cause (a broken module graph).
+  #
+  # apps/dottie's 211 tests are excluded for a DIFFERENT and harder reason: they do not
+  # collect in the workspace env at all. Measured today — `uv run pytest apps/dottie
+  # --collect-only` gives 264 collected with 3 collection ERRORS, all
+  # `ModuleNotFoundError: No module named 'fastapi'`, and per HANDOFF that suite needs
+  # its own .venv plus AVA_FACTORY_ROOT. It also sits on the `dottie` name collision
+  # documented above the ava-open-harness step. Adding it is an operator call, not a CI
+  # tweak.
   dottie-factory-smoke:
     runs-on: ubuntu-latest
     steps:
