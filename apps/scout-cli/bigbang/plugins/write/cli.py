@@ -1,12 +1,64 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
+"""write — drafting helpers that scan text for AI-tell patterns and rewrite it.
+
+Replaces pasting a draft into a chat window and eyeballing it for the giveaways: em-dash
+runs, "delve/leverage/robust" clusters, tricolon padding. `--save` writes the result to
+disk, which is why the output path is the part of this file with a test.
+
+OUTPUT LOCATION is overridable via SCOUT_WRITE_OUT, matching the SCOUT_* convention the
+rest of the CLI uses. It used to be a hardcoded ~/workspace/your_files/write-outputs with
+no escape, so the suite could not exercise --save without writing into the operator's tree.
+"""
+
 import os
 import re
+import time
 from pathlib import Path
 from typing import Any
 
 import typer
 
 from bigbang.core.output import emit
+
+
+def _output_dir() -> Path:
+    """Where --save writes. SCOUT_WRITE_OUT, else the documented home layout.
+
+    Resolved per CALL, not at import, so a harness can redirect it — the shape that bit
+    ava-factory's telemetry _LOGS_DIR (53c5c60) and brain's `sync --out` (2556dee).
+    """
+    env = os.environ.get("SCOUT_WRITE_OUT")
+    if env:
+        return Path(env).expanduser()
+    return Path.home() / "workspace" / "your_files" / "write-outputs"
+
+
+def _next_output_path(prefix: str, suffix: str = ".md") -> Path:
+    """A path that does not already exist. NEVER overwrites.
+
+    THE BUG THIS FIXES. Both save sites built `f"{prefix}-{int(time.time())}.md"` — integer
+    SECONDS — and then called write_text on it. Two saves inside the same second produced
+    the same filename and the second silently clobbered the first. Measured on the exact
+    expression:
+
+        5 saves in a tight loop -> 1 distinct filename
+        files on disk           -> ['humanized-1785709805.md']
+        surviving content       -> "document 4"        4 of 5 documents lost
+
+    `--save` is a promise that the output is kept, so losing it silently is worse than
+    failing to write at all. Higher resolution alone would only narrow the window; the
+    existence check is what closes it, and it also covers a re-run that lands on an
+    already-populated directory.
+    """
+    out_dir = _output_dir()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = int(time.time())
+    cand = out_dir / f"{prefix}-{stamp}{suffix}"
+    n = 1
+    while cand.exists():
+        cand = out_dir / f"{prefix}-{stamp}-{n}{suffix}"
+        n += 1
+    return cand
 
 app = typer.Typer(
     name="write",
@@ -709,9 +761,7 @@ def humanize_cmd(
     scan_final = scan_text(final_text)
     out_path = None
     if save:
-        out_dir = Path.home() / "workspace" / "your_files" / "write-outputs"
-        out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / f"humanized-{int(__import__('time').time())}.md"
+        out_path = _next_output_path("humanized")
         out_path.write_text(final_text, encoding="utf-8")
     emit(
         {
@@ -799,9 +849,7 @@ def generate_cmd(
 
     out_path = None
     if save:
-        out_dir = Path.home() / "workspace" / "your_files" / "write-outputs"
-        out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / f"generated-{int(__import__('time').time())}.md"
+        out_path = _next_output_path("generated")
         out_path.write_text(
             f"{final}\n\nSources:\n"
             + "\n".join([f"- {s['title']}: {s['url']}" for s in sources]),
