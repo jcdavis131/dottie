@@ -185,6 +185,20 @@ jobs:
       # Needs the fetch-depth: 0 history above to count commits between the two shas.
       - name: HANDOFF freshness (the block a reader trusts first)
         run: uv run python scripts/check_handoff_fresh.py --check
+      # Path resolvers that guard some candidates and return a final one UNCHECKED. Three
+      # real instances on 2026-08-02, found by sweeping rather than by waiting for each:
+      #   ava/cli.py  LIVE   every `scout ava` ran against the superseded factory (0c89edd)
+      #   rtx/cli.py  LIVE   CUSTOM_ROOT pointed at a directory that does not exist (6063da7)
+      #   arxiviq     LATENT preferred the superseded factory NAME (cda982e)
+      #
+      # Baselined rather than absolute, because an unguarded fallback is not automatically a
+      # bug — returning a default the caller will create is normal. It is a bug when the
+      # fallback can be WRONG rather than merely ABSENT. That call is a human's; this only
+      # finds the candidates. --check fails on resolvers NOT in the baseline, and on
+      # baselined entries whose judgment is blank, so "it was in the baseline" cannot become
+      # the reason.
+      - name: Resolver fallbacks (unguarded final return)
+        run: uv run python scripts/check_resolver_fallbacks.py --check
       # The lint-debt figure written in BOTH workflows, verified against a fresh ruff
       # run. Added 2026-08-01 after ~15 stale numbers were corrected by hand in one
       # session — including this very figure, which was written as 263 and went stale

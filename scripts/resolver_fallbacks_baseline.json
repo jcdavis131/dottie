@@ -1,0 +1,35 @@
+{
+  "note": "Resolvers whose unguarded fallback has been JUDGED acceptable. An entry with an empty judgment is rejected by --check: 'it was in the baseline' is not a reason.",
+  "accepted": [
+    {
+      "resolver": "apps/scout-cli/arxiviq/generate_data.py::_resolve_factory",
+      "line": 65,
+      "judgment": "FIXED cda982e. Order flipped so the canonical ava-factory name outranks the superseded ava-agi-factory-v6-4; the fallback now names the canonical one. Unguarded by design \u2014 a missing factory should produce an error naming where it SHOULD be."
+    },
+    {
+      "resolver": "apps/scout-cli/bigbang/plugins/ava/cli.py::_resolve_factory_root",
+      "line": 19,
+      "judgment": "FIXED 0c89edd. Was LIVE: resolved every `scout ava` to the superseded checkout. Now walks up for <repo>/apps/ava-factory first; the final `canonical or ...` is reached only when nothing exists and deliberately names the canonical path."
+    },
+    {
+      "resolver": "apps/scout-cli/bigbang/plugins/graphify/runner.py::personal_graphify_home",
+      "line": 61,
+      "judgment": "CLEAN. The canonical droot/packages/personal-graphify IS checked and guarded first. The fallback ~/personal-graphify can only be ABSENT, never a competing wrong checkout."
+    },
+    {
+      "resolver": "apps/scout-cli/bigbang/plugins/graphify/runner.py::resolve_graph_path",
+      "line": 73,
+      "judgment": "CLEAN. Falls back to the cwd-relative graphify-out/graph.json it already probed, which is the right path to name in a 'no graph here' error."
+    },
+    {
+      "resolver": "apps/scout-cli/bigbang/plugins/rtx/cli.py::_resolve_custom_root",
+      "line": 24,
+      "judgment": "FIXED 6063da7. Was LIVE: CUSTOM_ROOT and BB_OFFLOAD pointed at a directory that does not exist. Now walks up for <repo>/apps/scout-rtx first; fallback names the canonical location rather than a legacy path that already failed."
+    },
+    {
+      "resolver": "apps/scout-rtx/bigbang-bridge/cli.py::_resolve_custom_root",
+      "line": 38,
+      "judgment": "CLEAN, and the REFERENCE implementation. Checks the checkout containing this file second, right after the env override \u2014 the step scout-cli's copy was missing. Its fallback ~/workspace/scout-rtx can only be absent."
+    }
+  ]
+}
