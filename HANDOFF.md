@@ -18,23 +18,33 @@ before writing "current" anywhere in this file.
 
 ## 📌 Session continuation — 2026-08-01 (supersedes every block below)
 
-**Measured 2026-08-01, not carried forward.** HEAD `da657d9`, branch `main`, tree clean.
-**1 commit ahead of `origin/main`, 0 behind** — `da657d9` is unpushed, everything before it
-is pushed. Docker Desktop **not running**, so no trainer is live and the FROZEN
-`apps/ava-factory/dottie/**` paths are not bind-mounted right now. `C:` has **41 GB free**
-of 932 GB (96% used) — the block below says 50 GB, which was true when written on 07-31 and
-is not now.
+**Re-measured 2026-08-01 (second refresh), not carried forward.** HEAD `8693a27`, branch
+`main`, **0 ahead / 0 behind `origin/main`** — everything pushed. Both workflows (`CI`,
+`Ruff Lint`) green at HEAD. Docker Desktop **not running**, so no trainer is live and the
+FROZEN `apps/ava-factory/dottie/**` paths are not bind-mounted. `C:` has **38 GB free** of
+932 GB (97% used) — down from the 41 GB recorded earlier today, which was itself down from
+50 GB on 07-31. That figure is dropping steadily; watch it.
 
-Both workflows (`CI`, `Ruff Lint`) are green at **`3fa6848`, the last pushed commit** — *not*
-at HEAD, because `da657d9` has not been pushed and CI has never run on it. And CI would not
-validate it if it had: `da657d9` only touches `apps/scout-rtx`, which `pyproject.toml:13`
-excludes from the workspace and neither workflow runs (legitimately — it hard-pins a cu128
-torch wheel and needs a Windows GPU an ubuntu runner does not have). Its 49 tests were run
-locally instead: `cd apps/scout-rtx && python -m pytest tests/ -q` → 49 passed.
+This block previously recorded HEAD `da657d9` with "1 commit ahead". **23 commits landed
+since**, so it went stale within the same day — the second time in this session, both times
+from my own work. The discipline is not "write it once carefully", it is "re-measure every
+time", which is why this now says how it was measured rather than just what it says.
 
-The 07-31 block below recorded HEAD `f274be8`. **37 commits landed since**, so it went stale
-the same way the block above warns about — this time from my own work. That is the point of
-the standing discipline: re-measure, don't carry forward.
+**Suite counts, verified against CI rather than assumed** (this was wrong twice before
+being measured — see the Makefile header):
+
+| suite | count | note |
+|---|---|---|
+| `apps/scout-cli` | 2276 passed, 1 skipped | **identical local (`uv run`) and CI**; ambient `python` runs 6 fewer |
+| `apps/ava-factory` | 862 passed, 33 skipped | excluded from CI; 29 of the 33 skips are item 6 below |
+| `packages/personal-graphify` | 77 passed | hard CI gate |
+| `packages/ava-skills` | 89 passed | hard CI gate, ruff at 0 |
+| `scripts/` self-tests | 241 passed | ran NOWHERE until `1a9a2a3` wired them in |
+
+Always `uv run`, never ambient `python -m pytest` — the latter silently skips all of
+`tests/test_profiles.py` and reports it as "1 skipped".
+
+The 07-31 block below recorded HEAD `f274be8`, 37 commits before that.
 
 ### What actually happened in those 37 commits (git-verified)
 
@@ -84,7 +94,7 @@ did not undo it.
 
 ### Open, needing an operator decision (not blocked on me)
 
-> **This list is the canonical one.** Six items. My turn-by-turn reports had drifted to
+> **This list is the canonical one.** Seven items. My turn-by-turn reports had drifted to
 > listing items that were never written down here, which is the same rot this file warns
 > about, aimed at my own reporting. Re-verified 2026-08-01: every figure below was
 > re-measured immediately before writing, not carried.
@@ -204,7 +214,27 @@ did not undo it.
    membership or an exclusion with a stated reason. Entangled with #2: its suite needs its
    own `.venv` plus `AVA_FACTORY_ROOT`, and 35 of its 36 failures are the collision.
 
-6. **The factory promotion gate is report-only.** `_point_latest_at` repoints `ckpt/latest`
+6. **The codeact sandbox tests run nowhere.** Measured 2026-08-01: `apps/ava-factory`'s
+   suite is 862 passed / **33 skipped**, and **29 of those 33 are POSIX-gated sandbox and
+   resource-cap tests** (20 "sandbox resource caps require POSIX", 8 "hard wall/resource
+   caps require POSIX", 1 "sandbox caps require POSIX").
+
+   That is the security boundary — `codeact_sandbox.py` enforces no-network and
+   no-outside-write by rebinding `open`/`socket` and setting rlimits, and the 2026-07-22
+   review singled it out as *structurally* enforced rather than prompt-text. rlimits are
+   POSIX-only, so they skip on this Windows box; `apps/ava-factory` is excluded from CI,
+   so they do not run there either. **Skipped here, not run there — so nowhere.**
+
+   Not fixable from this machine: the only WSL distro present is `docker-desktop` (Docker's
+   own VM, and Docker is not running), so there is no general-purpose POSIX environment to
+   fall back on. Needs Linux — a container, WSL with a real distro, or a Linux job willing
+   to install torch + deepspeed.
+
+   This does NOT argue against the CI exclusion; the cost reasoning for that still holds.
+   It argues that the exclusion's cost was never written down, and it is larger than
+   "an expensive suite we skip".
+
+7. **The factory promotion gate is report-only.** `_point_latest_at` repoints `ckpt/latest`
    after every checkpoint save and the serve engine hot-reloads within ~5 s, so a regressed
    checkpoint goes live automatically. Verified still true 2026-08-01:
    `grep -c "verdict\|eg_trend" apps/ava-factory/dottie/train.py` returns **0** — the eval

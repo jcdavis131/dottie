@@ -279,11 +279,30 @@ jobs:
   # exclusion is indistinguishable from an oversight (the same lesson `continue-on-error`
   # taught this repo: a check nobody wrote down looks exactly like one that works).
   #
-  # apps/ava-factory has 859 passing tests, none of which run here. Its requirements.txt
-  # pulls torch + deepspeed + transformers + peft; installing that on every push to run a
-  # suite that takes 3m21s locally is not worth the minutes, and deepspeed in particular
-  # is a heavy build. The import check below is the cheap proxy that catches the failure
-  # mode CI can actually cause (a broken module graph).
+  # apps/ava-factory has 862 passing tests (was 859; +3 telemetry-isolation tests in
+  # b2f0681), none of which run here. Its requirements.txt pulls torch + deepspeed +
+  # transformers + peft; installing that on every push to run a suite that takes ~2m47s
+  # locally is not worth the minutes, and deepspeed in particular is a heavy build. The
+  # import check below is the cheap proxy that catches the failure mode CI can actually
+  # cause (a broken module graph).
+  #
+  # WHAT THE EXCLUSION COSTS, measured 2026-08-01 rather than left as "some coverage".
+  # The suite also reports 33 SKIPPED, and 29 of those are one thing:
+  #     20  sandbox resource caps require POSIX
+  #      8  hard wall/resource caps require POSIX
+  #      1  sandbox caps require POSIX
+  # Those are the codeact sandbox guardrails — the no-network / no-outside-write boundary
+  # that codeact_sandbox.py enforces by rebinding open/socket and setting rlimits. They
+  # skip on the Windows dev box because rlimits are POSIX-only, and they do not run here
+  # because this whole app is excluded. So the tests for the security boundary currently
+  # execute NOWHERE automatically. That is not an argument against the exclusion — the cost
+  # reasoning above still holds — but "we skip an expensive suite" and "the sandbox tests
+  # run nowhere" are different statements, and only the first was written down.
+  #
+  # They cannot be run from this machine today: the only WSL distro present is
+  # docker-desktop (Docker's own VM, and Docker is not running), so there is no
+  # general-purpose POSIX environment to fall back to. Running them needs Linux — a
+  # container, WSL with a real distro, or a Linux job that installs the heavy deps.
   #
   # apps/dottie's suite is excluded for a DIFFERENT and harder reason: it does not collect
   # in the workspace env at all. Re-measured 2026-08-01 — `uv run pytest apps/dottie
