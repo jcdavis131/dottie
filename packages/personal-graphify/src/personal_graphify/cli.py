@@ -4,6 +4,7 @@ Solo personal project, no connection to employer, built with public/free-tier on
 """
 import argparse
 import sys
+import time
 import os
 import stat
 from pathlib import Path
@@ -109,17 +110,44 @@ def cmd_build(args):
     print(f"  {G.number_of_nodes()} nodes · {G.number_of_edges()} edges · {len(comms)} communities")
 
     # cost.json — preserve existing queries if present
+    #
+    # The `except` branch below used to do the exact opposite of that comment: on any parse
+    # failure it wrote a fresh default over the file, discarding `queries` and
+    # `total_saved_tokens` — every logged query's savings gone, with no trace. A tolerant
+    # read whose failure path writes back a default is how data disappears silently, and
+    # `cost.json` is APPEND-ONLY history, not a cache that can be rebuilt.
+    #
+    # query.py::log_query_cost writes THIS SAME FILE and had the identical bug; it was fixed
+    # 2026-07-31 in e933ad7. That sweep fixed one writer and missed this one. Same remedy
+    # here, deliberately identical so the two cannot drift: preserve the bytes to a
+    # timestamped sidecar, say so on stderr, and only then start clean.
+    _DEFAULT_COST = {
+        "nodes": 0, "edges": 0, "queries": [], "total_saved_tokens": 0,
+        "total_naive": 0, "total_scoped": 0, "mode": "ollama-first local",
+    }
     cost_path = out_dir / "cost.json"
+    data = dict(_DEFAULT_COST)
     if cost_path.exists():
         try:
-            existing = json.loads(cost_path.read_text(encoding="utf-8"))
-            existing["nodes"] = G.number_of_nodes()
-            existing["edges"] = G.number_of_edges()
-            cost_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
-        except Exception:
-            cost_path.write_text(json.dumps({"nodes": G.number_of_nodes(), "edges": G.number_of_edges(), "queries": [], "total_saved_tokens": 0, "mode": "ollama-first local"}, indent=2), encoding="utf-8")
-    else:
-        cost_path.write_text(json.dumps({"nodes": G.number_of_nodes(), "edges": G.number_of_edges(), "queries": [], "total_saved_tokens": 0, "total_naive": 0, "total_scoped": 0, "mode": "ollama-first local"}, indent=2), encoding="utf-8")
+            loaded = json.loads(cost_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                data.update(loaded)
+        except Exception as e:
+            # Never raise: a corrupt cost log must not fail a build. But never silent.
+            try:
+                backup = cost_path.with_name(f"{cost_path.name}.corrupt-{int(time.time())}")
+                backup.write_bytes(cost_path.read_bytes())
+                note = f", previous bytes preserved at {backup}"
+            except OSError:
+                note = ""
+            print(f"[personal-graphify] {cost_path} is unreadable ({e}); resetting the "
+                  f"cost log{note}.", file=sys.stderr)
+    # The two former branches disagreed on the default shape — the except path omitted
+    # total_naive/total_scoped, so a reset produced a dict query.py would then have to
+    # backfill. One dict now, so every path writes the same keys.
+    data["nodes"] = G.number_of_nodes()
+    data["edges"] = G.number_of_edges()
+    cost_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     return {"nodes": G.number_of_nodes(), "edges": G.number_of_edges(), "cache": cache_stats}
 
