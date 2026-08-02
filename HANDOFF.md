@@ -94,7 +94,7 @@ did not undo it.
 
 ### Open, needing an operator decision (not blocked on me)
 
-> **This list is the canonical one.** Nine items (one struck as resolved, one an opportunity rather than a defect). My turn-by-turn reports had drifted to
+> **This list is the canonical one.** Ten items (two struck as resolved; one is operational rather than a code defect). My turn-by-turn reports had drifted to
 > listing items that were never written down here, which is the same rot this file warns
 > about, aimed at my own reporting. Re-verified 2026-08-01: every figure below was
 > re-measured immediately before writing, not carried.
@@ -362,7 +362,38 @@ did not undo it.
    absolute numbers — 0.429, 0.469, 0.622 are all corpus-and-day specific, and none of them
    reproduce on a clean checkout.
 
-9. **The factory promotion gate is report-only.** `_point_latest_at` repoints `ckpt/latest`
+9. **OPERATIONAL: 363 GB is locked in an inert Docker disk image, on a 96%-full drive.**
+   Measured 2026-08-02 after the top block's "watch this" note about free space falling
+   50 → 41 → 38 GB. The falling number turned out not to be the interesting part.
+
+   ```
+   AppData/Local/Docker/wsl/disk/docker_data.vhdx   363.1 GB
+     last modified                                  2026-07-29  (Docker stopped since)
+   disk                                             894 GB used of 932, 38 GB free (96%)
+   -> that ONE file is 41% of everything used on the drive
+   ```
+
+   Other consumers for scale: `Documents` 29.4, `ava-agi` **9.2** (which memory records as
+   SUPERSEDED), `bluehenre` 7.0, `vector-hoops` 5.4, `.ollama` 4.9, `dottie` 4.7 (of which
+   4.5 is `apps/dottie/.venv`). **The repo's own generated output is not a factor** —
+   `apps/dottie/data` is 18 MB, the whole of `apps/ava-factory`'s generated dirs ~124 MB.
+   The research runner is a corpus problem (item 8), not a disk problem.
+
+   **Why it does not shrink on its own.** A WSL2 `.vhdx` grows to high-water mark and never
+   contracts. Deleting images and volumes frees space *inside* the VM; the host file stays
+   the size it reached. Reclaiming it needs an explicit compaction — prune, `wsl --shutdown`,
+   then `Optimize-VHD`/diskpart compact.
+
+   **Not attempted, deliberately.** Compaction wants Docker started first, and starting
+   Docker raises the trainer stack that bind-mounts the FROZEN `apps/ava-factory/dottie/**`
+   paths. That is a guarded action and it is yours.
+
+   **Honest gap:** I could not attribute the recent ~12 GB drop. The vhdx has not been
+   written since 07-29, so it is not the cause, and a full-profile scan for recently-grown
+   files timed out twice. So: the 363 GB is measured and real, the *rate* is not explained.
+   Saying which is which rather than implying I found the leak.
+
+10. **The factory promotion gate is report-only.** `_point_latest_at` repoints `ckpt/latest`
    after every checkpoint save and the serve engine hot-reloads within ~5 s, so a regressed
    checkpoint goes live automatically. Verified still true 2026-08-01:
    `grep -c "verdict\|eg_trend" apps/ava-factory/dottie/train.py` returns **0** — the eval
