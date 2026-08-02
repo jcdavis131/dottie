@@ -63,12 +63,30 @@ def _default_roots() -> Path:
 
 
 def _resolve_factory(roots: Path) -> Path:
-    """Find the factory repo under roots — standalone name first, then dottie name."""
-    for name in (FACTORY, DOTTIE_FACTORY):
+    """Find the factory repo under roots — CANONICAL dottie name first, legacy second.
+
+    The order used to be the other way round, and the old docstring said so as if it were
+    intent: "standalone name first, then dottie name". `ava-agi-factory-v6-4` is superseded
+    (HANDOFF; the canonical monorepo is this one), so preferring it means that on any root
+    holding both checkouts the stale tree wins.
+
+    LATENT HERE, NOT LIVE — checked rather than assumed. The default roots are
+    <repo>/apps, which contains only `ava-factory`, so this box resolved correctly today.
+    It fires for anyone passing --roots at a directory holding both names.
+
+    Fixed anyway because the identical preference WAS live one plugin over: ava/cli.py
+    resolved every `scout ava` command to the superseded checkout (0c89edd). Same wrong
+    order, same superseded target, found by sweeping for the shape rather than by waiting
+    for it to bite twice.
+
+    The fallback is now the canonical name too, so a missing factory produces an error
+    naming where it should be rather than where it used to be.
+    """
+    for name in (DOTTIE_FACTORY, FACTORY):
         cand = roots / name
         if cand.exists():
             return cand
-    return roots / FACTORY
+    return roots / DOTTIE_FACTORY
 
 
 SCALE_NOTES: dict[str, dict[str, Any]] = {
