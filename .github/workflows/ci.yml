@@ -429,12 +429,20 @@ jobs:
   # job because its requirements.txt pulls torch + deepspeed.
   #
   # That exclusion is still right, and this job does not undo it. The five files below need
-  # NO heavy dependencies — measured, not assumed: the whole import chain
-  # (codeact_sandbox -> datagen.codeact -> rl.codeact_loop -> evals.codeact_eval) is stdlib
-  # plus zstandard, so `uv run --no-project --with pytest --with zstandard` collects 70
-  # tests in under a second. test_codeact_policy.py is deliberately EXCLUDED: it imports
-  # torch, which is exactly the cost this job avoids, so 2 of the 29 POSIX-gated tests stay
-  # uncovered and that is stated rather than rounded away.
+  # only pytest + zstandard + numpy — no torch, no deepspeed, no workspace sync. Collects
+  # 70 tests in well under a second: sandbox 17, rewards 19, datagen 12, eval 11, loop 11.
+  # test_codeact_policy.py is deliberately EXCLUDED because it imports torch, which is the
+  # cost this job avoids, so 2 of the 29 POSIX-gated tests stay uncovered — stated rather
+  # than rounded into "the sandbox is tested now".
+  #
+  # numpy is in that list because I first shipped this WITHOUT it (bd618df) and CI failed:
+  # `ava.datagen.base` re-exports `dottie.datagen`, whose __init__ imports wiki_gen ->
+  # pxpipe -> numpy. I had "measured" the dependency set with
+  # `uv run --no-project ... ` from inside the repo, where uv still discovers the workspace
+  # .venv and numpy was silently visible. The measurement was contaminated by the very
+  # environment the job does not have. Re-measured from a directory OUTSIDE the repo, with
+  # `import numpy` confirmed to FAIL first, so the isolation was proven before the result
+  # was trusted.
   #
   # On ubuntu the POSIX gates pass, so these actually execute instead of skipping.
   codeact-sandbox:
@@ -448,7 +456,7 @@ jobs:
         working-directory: apps/ava-factory
         run: |
           set -euo pipefail
-          uv run --no-project --with pytest --with zstandard python -m pytest \
+          uv run --no-project --with pytest --with zstandard --with numpy python -m pytest \
             tests/test_codeact_sandbox.py tests/test_codeact_eval.py \
             tests/test_codeact_loop.py tests/test_codeact_datagen.py \
             tests/test_codeact_rewards.py -q -rs | tee /tmp/sandbox.txt
