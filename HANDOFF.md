@@ -388,10 +388,17 @@ did not undo it.
    Docker raises the trainer stack that bind-mounts the FROZEN `apps/ava-factory/dottie/**`
    paths. That is a guarded action and it is yours.
 
-   **Honest gap:** I could not attribute the recent ~12 GB drop. The vhdx has not been
-   written since 07-29, so it is not the cause, and a full-profile scan for recently-grown
-   files timed out twice. So: the 363 GB is measured and real, the *rate* is not explained.
-   Saying which is which rather than implying I found the leak.
+   **The recent ~12 GB drop is NOT in the user profile** — narrowed 2026-08-02 rather than
+   left open. `find` timed out twice; PowerShell scanned `AppData/Local`, `Documents`,
+   `.ollama`, `ava-agi` and `dottie` for files >300 MB modified in the last three days and
+   returned exactly **one**: a 1.46 GB Ollama update blob. Checked whether Ollama was
+   accumulating installers — `updates_v2` holds **1 item**, not a pile — and the model store
+   is a stable 4.87 GB.
+
+   So there is no active large-file growth in the profile. The remainder is outside it
+   (Windows/ProgramData/system housekeeping) or was transient, and chasing it is Windows
+   sysadmin rather than project work. **The 363 GB is the actionable number**; the rate is
+   accounted for as "not here" instead of "unknown", so nobody repeats the search.
 
 10. **The factory promotion gate is report-only.** `_point_latest_at` repoints `ckpt/latest`
    after every checkpoint save and the serve engine hot-reloads within ~5 s, so a regressed
