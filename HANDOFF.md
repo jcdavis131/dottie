@@ -84,8 +84,39 @@ did not undo it.
 
 ### Open, needing an operator decision (not blocked on me)
 
-1. **Audit-log rotation.** `audit.jsonl` is **43.4 MB / 28,778 entries** and `audit.py` (39
-   lines) has no rotation at all. Retention length is a product call.
+> **This list is the canonical one.** Six items. My turn-by-turn reports had drifted to
+> listing items that were never written down here, which is the same rot this file warns
+> about, aimed at my own reporting. Re-verified 2026-08-01: every figure below was
+> re-measured immediately before writing, not carried.
+
+1. **Audit log: rotation AND the write-side race.** Two decisions, same file.
+
+   Re-measured 2026-08-01: `~/.local/share/bigbang/audit.jsonl` is **43,429,363 bytes
+   (41.4 MiB), 28,778 entries, 3 corrupt**, spanning 2026-07-18 → 2026-08-01 over 9 active
+   days. (The "43.4 MB" previously written here was the same file in decimal MB — both are
+   right, which is its own small lesson about unit-free figures.)
+
+   **Growth is bursty, not steady.** 2026-07-25 alone is 19,503 entries — 68% of the log.
+   That is the crux of the retention choice: a time-based policy and a size-based one
+   behave completely differently under that distribution.
+
+   **There is already a house precedent**, so this need not be invented:
+   `apps/ava-factory/dottie/telemetry.py:280` rotates at **>5 MB, keeping the last 1000
+   lines**. Caveat worth knowing before copying it — that rotation is a non-atomic
+   `read_text`/`write_text` inside `except Exception: pass`, so an interrupted rotation
+   loses the log. FROZEN, so it was reported rather than fixed.
+
+   **The write-side race is real and sized.** `log_event` appends with no lock. All 3
+   corrupt records fall on 2026-07-25 — 100% of the corruption on the day carrying 68% of
+   the writes. Record sizes: median 832, p95 4442, max 80,195; **2,202 records exceed
+   PIPE_BUF (4096)**, above which appends can interleave even with `O_APPEND`. Each corrupt
+   line is an orphaned *tail* whose head is gone, which is exactly what interleaving looks
+   like. Locking touches every CLI invocation, so it is yours to call.
+
+   Already fixed and not part of this decision (`f12ab8e`, `4296506`): the tail read all
+   41.4 MB to return 20 records (154 ms → 0.3 ms), and both readers silently discarded
+   corrupt lines — `tail_events` now reports via `return_stats=True`, `agent bus` emits
+   `records_skipped`.
 2. **The `dottie` name collision — now MEASURED, no longer a preference.** Three viable
    fixes: rename, `__path__` merge, or leave it non-blocking. `9038b30` established it is
    fixable without a rename. On 2026-08-01 the cost of *not* fixing it was measured for the
@@ -143,10 +174,43 @@ did not undo it.
 3. **`apps/scout-rtx/bb-offload/queue.json`** has a task still marked `"pending"` whose
    `hardware` field claims *"fits 24GB VRAM batch64"* on a 12 GB laptop. That is queued work,
    not prose, so changing the batch size changes what runs — see `da657d9`.
-4. **Mobile-GPU peak FLOPS are wrong** and deliberately left wrong. `_get_gpu_peak_flops`
-   credits every laptop card its desktop namesake's figure, which understates MFU. Fixing it
-   requires a measured benchmark on the card; inventing the constant is against the numbers
-   rule. Pinned by a KNOWN_WRONG test that fails the moment someone adds a real row.
+4. **Mobile-GPU peak FLOPS — the benchmark now EXISTS, so this is a real choice.**
+   `_get_gpu_peak_flops` matches by substring with no laptop rows, so every mobile card is
+   credited its desktop namesake's figure. This box is an RTX 4080 **Laptop** (58 SMs;
+   desktop has 76) credited the desktop's 242.5 TFLOPS.
+
+   This item used to say "fixing it requires a measured benchmark on the card". That
+   benchmark was written and run (`apps/scout-rtx/scripts/measure_bf16_ceiling.py`,
+   commit `f39a86c`): **69.4–69.8 TFLOPS** across five runs (±0.3%), while drawing
+   **159.99 W of a 175 W limit at 69 °C** — power-bound, not thermally throttled, so that
+   is the card's real operating point.
+
+   Consequence: **reportable MFU is capped at 69.6/242.5 ≈ 29%**. The 40% target in
+   `docs/HARDWARE_PROFILE.md` is unreachable by arithmetic, not by tuning.
+
+   The remaining decision is what the denominator should be, and it is genuinely a choice,
+   not an oversight: the measurement bounds *achieved* throughput, while MFU's denominator
+   is conventionally *theoretical* peak. Substituting the empirical ceiling would make
+   every MFU figure this repo prints incomparable to any published one. So the constant
+   stays wrong-and-flagged rather than being swapped for a better-founded number that means
+   something different. Pinned by a KNOWN_WRONG test that fails the moment a real row is
+   added.
+
+5. **`apps/dottie` is in neither workspace `members` nor `exclude`.** Verified still true
+   2026-08-01: `pyproject.toml` has `exclude = ["apps/scout-rtx", "apps/ava-factory"]` and
+   no `apps/dottie` anywhere. Flagged in the 2026-07-22 review and unchanged since, so
+   nothing lints or tests it in CI. An undocumented omission is indistinguishable from an
+   oversight — the lesson `continue-on-error` already taught this repo — so it wants either
+   membership or an exclusion with a stated reason. Entangled with #2: its suite needs its
+   own `.venv` plus `AVA_FACTORY_ROOT`, and 35 of its 36 failures are the collision.
+
+6. **The factory promotion gate is report-only.** `_point_latest_at` repoints `ckpt/latest`
+   after every checkpoint save and the serve engine hot-reloads within ~5 s, so a regressed
+   checkpoint goes live automatically. Verified still true 2026-08-01:
+   `grep -c "verdict\|eg_trend" apps/ava-factory/dottie/train.py` returns **0** — the eval
+   harness runs and its verdict changes nothing. This is the repo's own named defect class
+   in its highest-stakes location. Unfixable from here: `apps/ava-factory/dottie/**` is
+   FROZEN and bind-mounted into the live trainer.
 
 ---
 
