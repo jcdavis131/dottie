@@ -78,6 +78,17 @@ def _declared_deps() -> set[str]:
 
 ABS_PATH_RE = re.compile(r"""['"](?:[A-Za-z]:[\\/]|/home/|/Users/|/mnt/[a-z]/)""")
 HOME_RE = re.compile(r"Path\.home\(\)|os\.path\.expanduser|environ\[['\"]HOME")
+
+# `expanduser` applied to a VARIABLE is expanding a path the caller supplied, which is the
+# correct way to honour `~` in user input — not a layout assumption. D3 flagged it anyway,
+# so plugins lost points for handling `--path ~/foo` properly.
+#
+# Measured across bigbang/plugins/*/cli.py 2026-08-02: 30 home-derived DEFAULTS (the real
+# signal, kept) against 5 of these (dropped). Narrow on purpose — unlike D2's prose bug this
+# was not systemic, but it concentrated: 3 of `todos`'s 4 hits were this, which is most of
+# why it scored D3 2, the lowest in the repo, while _resolve_root is in fact
+# __file__-relative with a guarded fallback.
+EXPANDS_CALLER_PATH_RE = re.compile(r"expanduser\(\s*(?:os\.path\.expandvars\()?[a-z_][a-z_0-9]*")
 NOTE_RE = re.compile(r"#.*\b(TODO|FIXME|HACK|XXX)\b")
 # A PREFILTER, not the verdict. `_is_commented_code` below decides.
 COMMENTED_CODE_RE = re.compile(r"^\s*#\s*(?:def |class |return |import |if |for |while )")
@@ -239,7 +250,11 @@ def audit_plugin(name: str, run_tests: bool = False) -> dict:
 
     # ---- D3 self-containedness ------------------------------------------
     abs_hits = [i + 1 for i, ln in enumerate(lines) if ABS_PATH_RE.search(ln)]
-    home_hits = [i + 1 for i, ln in enumerate(lines) if HOME_RE.search(ln)]
+    home_hits = [
+        i + 1
+        for i, ln in enumerate(lines)
+        if HOME_RE.search(ln) and not EXPANDS_CALLER_PATH_RE.search(ln)
+    ]
     if abs_hits:
         findings.append(f"D3: hardcoded absolute path at line(s) {abs_hits[:4]}")
     if home_hits:

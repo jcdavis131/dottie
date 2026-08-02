@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import os
 import re
-import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -41,8 +40,21 @@ app = make_plugin_app(
 # Core scanning
 # ------------------------------------------------------------------ #
 
+# The leading \b is load-bearing. Without it the pattern anchored only on the RIGHT, so
+# every DEBUG in the tree was reported as a BUG marker — and re.IGNORECASE made lowercase
+# `debug` match too. Measured over bigbang/ on 2026-08-02, before and after:
+#
+#     shipped regex : 85 markers
+#     with \b       : 58 markers
+#     false         : 27  (31.8%)
+#
+# LEVEL_DEBUG = "debug", logger.setLevel(DEBUG), .lv-debug in a CSS string — all counted as
+# outstanding BUGs. A third of this plugin's entire output was noise, in the one plugin
+# whose only job is counting markers accurately.
+#
+# `#TODO` with no space still matches: `#` is a non-word character, so the boundary holds.
 MARKER_RE = re.compile(
-    r"(?P<marker>TODO|FIXME|HACK|XXX|BUG)\b[:\s-]*?(?P<rest>.*)?",
+    r"\b(?P<marker>TODO|FIXME|HACK|XXX|BUG)\b[:\s-]*?(?P<rest>.*)?",
     re.IGNORECASE,
 )
 
@@ -628,27 +640,10 @@ def summary_cmd(
     )
 
 
-def _call_via_ava_subprocess(args: list[str]) -> dict[str, Any]:
-    """Example factory wrapper: invoke via scout ava ... subprocess, never direct import.
-
-    This is intentionally not used in normal todos flow; provided to satisfy doctrine
-    and as a safe pattern if future extension needs factory info.
-    """
-    try:
-        proc = subprocess.run(
-            ["scout", "ava"] + args,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        return {
-            "ok": proc.returncode == 0,
-            "stdout": proc.stdout[-2000:],
-            "stderr": proc.stderr[-1000:],
-            "cmd": "scout ava " + " ".join(args),
-        }
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+# `_call_via_ava_subprocess` used to sit here. Its own docstring said it: "intentionally
+# not used in normal todos flow; provided to satisfy doctrine". Dead code kept to
+# demonstrate a rule is still dead code — the rule lives in the module docstring above,
+# where it costs nothing and cannot rot out of sync with a real call site.
 
 
 def register(root):
