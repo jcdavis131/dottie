@@ -123,9 +123,56 @@ def _op_to_command_name(op: dict[str, Any]) -> str:
     return _sanitize_cmd_name(cmd)
 
 
+
+def _host_for_message(url: str) -> str:
+    """Bare host for the unblock hint. Never raises — this only formats an error."""
+    try:
+        from urllib.parse import urlsplit
+        return urlsplit(url).hostname or url
+    except Exception:
+        return url
+
+
 def fetch_spec(url: str) -> dict:
+    """Fetch an OpenAPI spec, gated by the user network allowlist.
+
+    THE GATE WAS MISSING. `scout forge from-openapi --url <anything>` reached this function
+    with an arbitrary user-supplied URL and called httpx.get on it directly. The CLI's
+    network axis is default-deny — policy.py materialises a user policy whose own comment
+    reads "Add domains under network.allowed_domains to allow outbound calls" — and this
+    path never consulted it. reach/cli.py:66 has done so all along; forge, the plugin that
+    GENERATES other plugins, did not.
+
+    Found 2026-08-02 by asking every outbound-calling plugin the same question. Of 17, six
+    referenced no gate at all; four of those only ever reach localhost:11434 (Ollama), which
+    leaves forge and rtx as real egress. This is forge's.
+
+    RESIDUAL GAP, stated rather than implied fixed: `follow_redirects=True` is kept because
+    real specs redirect, so an allowlisted host can still bounce the request to one that is
+    not. The final URL is re-checked below, which stops the RESPONSE being parsed and
+    returned, but the request to the redirect target has already been made. Closing that
+    properly means per-hop validation via an httpx event hook; it is not done here.
+    """
+    from bigbang.core.policy import check_user_url
+
+    allowed, reason = check_user_url(url)
+    if not allowed:
+        host = _host_for_message(url)
+        raise PermissionError(
+            f"network policy denied {url}: {reason}. "
+            f"Self-unblock with: scout reach allow {host}"
+        )
     sanitize_no_proxy_env()
     resp = httpx.get(url, timeout=10.0, follow_redirects=True)
+    final = str(resp.url)
+    if final != url:
+        ok_final, reason_final = check_user_url(final)
+        if not ok_final:
+            raise PermissionError(
+                f"{url} redirected to {final}, which the network policy denies: "
+                f"{reason_final}. Self-unblock with: scout reach allow "
+                f"{_host_for_message(final)}"
+            )
     resp.raise_for_status()
     try:
         return resp.json()
