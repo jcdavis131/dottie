@@ -292,15 +292,32 @@ did not undo it.
    is scanned as source. Those are written by the "Dottie Research runner" scheduled task,
    which adds one roughly every 15 minutes, so the corpus grows with machine uptime.
 
-   **Why this matters beyond a test failure.** `ast_pairs.py` is what produces the training
-   pairs and the hard negatives. Nearly half its input on this box is model-generated
-   near-duplicate code, which is exactly the shape that manufactures "sibling-scoped
-   duplicate docstrings" — the thing the failing assertion counts (280 locally, **21** on a
-   clean checkout).
+   **Why this matters beyond a test failure — sized, not asserted.** `ast_pairs.py` is what
+   produces the training pairs and the hard negatives. Measured directly by importing its
+   own `walk()` and `extract_file()` and partitioning the result:
 
-   So the mined data itself is affected, not only the floors measured from it. The floors
-   were re-cut this session (`46e0905`) on this same tree, so the re-cut inherited the
-   contamination rather than introducing it.
+   ```
+   files scanned   1,286    generated 585  (45.5%)
+   PAIRS mined     3,343    generated 557  (16.7%)
+   a clean tree would yield 2,786
+   ```
+
+   So generated output is 45% of the files but 17% of the pairs — real, and smaller than
+   the file count suggests, which is worth knowing before anyone panics or dismisses it.
+
+   **THE SHARPEST PART: the constant is not stale, it is DRIFTING.**
+   `test_hard_negatives.py:979` records `"pairs": 3168`, re-cut by `46e0905` eleven hours
+   ago (its own comment shows the previous re-cut, `3014 -> 3168`). The tree now yields
+   **3,343**:
+
+   ```
+   +175 pairs in 11h  ->  ~16/hour, ~382/day  (~12% of the total, per day)
+   ```
+
+   The research runner fires every 15 minutes, so this grows with machine uptime and
+   nothing else. Re-cutting the floor chases a target moving faster than anyone re-cuts it
+   — which is why these numbers keep needing attention, and why `3014 -> 3168` was probably
+   drift being recorded as progress rather than a real change.
 
    Excluded from the CI job with the reason inline, rather than lowering a floor to buy
    green. The decision is yours and it is a real fork: teach `ast_pairs` to skip generated
