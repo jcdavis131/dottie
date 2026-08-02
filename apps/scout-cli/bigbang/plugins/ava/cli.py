@@ -17,26 +17,73 @@ from bigbang.core.registry import list_tools
 app = typer.Typer(name="ava", help="🧠 Ava AGI Factory — brain of BigBang, local CUDA + Frontier eval", no_args_is_help=True)
 
 def _resolve_factory_root() -> Path:
-    """Resolve the Ava factory repo.
+    """Resolve the Ava factory repo. THE CHECKOUT THIS FILE LIVES IN COMES FIRST.
 
-    Probes the dottie monorepo layout first (DOTTIE_ROOT/apps/ava-factory,
-    ~/workspace/dottie/apps/ava-factory), then falls back to the standalone
-    default ~/workspace/ava-agi-factory-v6-4 even when it doesn't exist yet.
+    It did not, and on 2026-08-02 that resolved to the wrong tree on this very box:
+
+        DOTTIE_ROOT                            <unset>
+        ~/workspace/dottie/apps/ava-factory    does not exist
+        -> ~/workspace/ava-agi-factory-v6-4    EXISTS, and won                 <- superseded
+        <repo>/apps/ava-factory                EXISTS, and was never consulted <- canonical
+
+    Every `scout ava` command was therefore operating against a superseded factory while
+    the canonical one sat unchecked in the same repo as this plugin. Two things made that
+    possible: the canonical repo-relative path was not a candidate at all, and the final
+    fallback was returned WITHOUT an .exists() check while the two above it were guarded —
+    so the one path that could not be verified was the one that shipped.
+
+    Order now: this checkout, then DOTTIE_ROOT, then the home layout, then the legacy
+    standalone (guarded). `bigbang/plugins/ava/cli.py` -> parents[4] is the repo root, and
+    it is confirmed by looking for apps/ava-factory under it rather than trusting the depth
+    count. Same shape as todos._resolve_root(), which has always done this correctly.
+
+    When nothing exists the CANONICAL path is returned, not the legacy one, so an error
+    message names where the factory should be rather than where it used to be.
     """
-    candidates = []
+    candidates: list[Path] = []
+
+    # 1. The checkout this plugin is part of, found by WALKING UP rather than by counting
+    #    parents. The first version of this fix used parents[4] and was off by one —
+    #    parents[4] is `apps/`, so it built `.../apps/apps/ava-factory`, which does not
+    #    exist, so it silently fell through to the legacy tree exactly as before. The
+    #    .exists() guard caught the wrong path but could not produce the right one.
+    #    Searching for the marker is what "do not trust the depth count" actually means.
+    canonical = None
+    for parent in Path(__file__).resolve().parents:
+        cand = parent / "apps" / "ava-factory"
+        if cand.exists():
+            canonical = cand
+            break
+    if canonical is not None:
+        candidates.append(canonical)
+
+    # 2. Operator override.
     dottie = os.environ.get("DOTTIE_ROOT")
     if dottie:
         candidates.append(Path(dottie).expanduser() / "apps" / "ava-factory")
+
+    # 3. The documented home layout.
     candidates.append(Path.home() / "workspace" / "dottie" / "apps" / "ava-factory")
+
+    # 4. Legacy standalone, LAST and now guarded like the rest. Kept so a machine that
+    #    still has only the old checkout keeps working; demoted so it can never outrank a
+    #    real one again.
+    candidates.append(Path.home() / "workspace" / "ava-agi-factory-v6-4")
+
     for cand in candidates:
         try:
             if cand.exists():
                 return cand
         except OSError:
             continue
-    return Path.home() / "workspace" / "ava-agi-factory-v6-4"
+
+    return canonical or (Path.home() / "workspace" / "dottie" / "apps" / "ava-factory")
 
 
+# Bound at IMPORT time, so DOTTIE_ROOT set afterwards does not move it. That is the same
+# shape as ava-factory's telemetry _LOGS_DIR (53c5c60) and brain's `sync --out` (2556dee);
+# left as a constant here because 15 call sites read `FACTORY` directly and the resolution
+# order above is the actual bug. Call `_resolve_factory_root()` if you need it re-read.
 FACTORY = _resolve_factory_root()
 
 def _is_resolvable_fast(host: str, timeout: float = 0.8) -> bool:
