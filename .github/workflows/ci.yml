@@ -516,7 +516,7 @@ jobs:
           # continuation made uv report `invalid version '--with'` (78a198c) — the
           # working step above keeps them on one line too. Not worth diagnosing further
           # when the fix is this cheap.
-          uv run --no-project --with pytest --with zstandard --with numpy --with pyyaml --with regex --with requests python -m pytest $FILES -q --continue-on-collection-errors | tee /tmp/cheap.txt
+          uv run --no-project --with pytest --with zstandard --with numpy --with pyyaml --with regex --with requests --with tokenizers --with datasketch python -m pytest $FILES -q --continue-on-collection-errors | tee /tmp/cheap.txt
           passed=$(grep -oE '[0-9]+ passed' /tmp/cheap.txt | tail -1 | grep -oE '[0-9]+' || echo 0)
           echo "cheap ava-factory tests passed: ${passed}"
           if [ "${passed}" -lt 600 ]; then
