@@ -82,6 +82,51 @@ jobs:
       # consumes" -- the defect class it exists to find. stdlib only, so no uv sync dep.
       - name: Gate audit (ratchet — new fail-open patterns only)
         run: uv run python scripts/gate_audit.py --check --baseline scripts/gate_audit_baseline.json
+      # Companion ratchet, added the day after the checker itself (e5b84ba). Building a
+      # ratchet and running it nowhere would have made it instance #6 of the very class it
+      # detects — gate_audit sat unrun for months for exactly that reason until 7398a46.
+      #
+      # 47 plugins declare capabilities.filesystem.paths, 34 enforce it, 13 do not. Those
+      # 13 are baselined WITH judgements, so this cannot go red on known debt; it fails
+      # only when a NEW plugin declares a filesystem restriction and never calls
+      # enforce_or_raise. That 47 is the same 47 in gate_audit.py's docstring, instance #2
+      # ("declared by 47 of 56 manifests, enforced by 0") — so this closes the ratchet on a
+      # gap that went 0 -> 34 and then stalled.
+      #
+      # Needs pyyaml, which the workspace sync already provides. The checker refuses to
+      # report clean when it finds zero declaring plugins or a missing baseline, so a
+      # broken parse fails loudly instead of passing vacuously.
+      - name: Declared-capability ratchet (no new declare-without-enforce)
+        run: uv run python scripts/check_declared_capabilities.py --check --baseline scripts/declared_capabilities_baseline.json
+      # scripts/ has 222 tests that ran NOWHERE until 2026-08-01 — not in this workflow,
+      # not in a Makefile target. Found while checking whether the ratchet above would be
+      # the only unrun thing I had added; it was not, and the tests guarding the ratchets
+      # themselves were the ones missing. gate_audit exists to find gates nobody consumes,
+      # and its own 53 tests were never executed.
+      #
+      # They are SELF-RUNNING scripts (a `check()` helper, then `sys.exit(1 if FAIL)`), not
+      # pytest modules — running them under pytest gives "no tests ran" plus a SystemExit
+      # INTERNALERROR, because the module-level exit fires during collection. So each is
+      # invoked directly, and `set -e` fails the step on the first non-zero exit.
+      #
+      # EXPECT NOISE ON STDERR, and do not read it as a failure. test_task_eval_slice.py
+      # deliberately drives task_eval_slice's abort path, so the step log contains
+      # "ABORT: item accounting does not balance: {...}" while the script exits 0. That is
+      # the guard being exercised (see its own tests: "main: refuses to report, rc=3, when
+      # item accounting does not balance"), not the guard firing for real.
+      #
+      # Verified under `uv run` (this workflow's env), not just ambient python:
+      #   test_gate_audit                  53 passed
+      #   test_retrieval_eval              35 passed
+      #   test_task_eval_slice            134 passed
+      #   test_check_declared_capabilities  19 passed  (new, guards the ratchet above)
+      - name: Scripts self-tests (241 tests, 222 of which previously ran nowhere)
+        run: |
+          set -e
+          uv run python scripts/test_gate_audit.py
+          uv run python scripts/test_retrieval_eval.py
+          uv run python scripts/test_task_eval_slice.py
+          uv run python scripts/test_check_declared_capabilities.py
       # The lint-debt figure written in BOTH workflows, verified against a fresh ruff
       # run. Added 2026-08-01 after ~15 stale numbers were corrected by hand in one
       # session — including this very figure, which was written as 263 and went stale
