@@ -171,6 +171,20 @@ jobs:
       # empty scan.
       - name: TODO timestamps (no claimed time postdates HEAD)
         run: uv run python scripts/check_todos_timestamps.py
+      # HANDOFF.md's "current state" block carries a hand-written HEAD sha, and it has gone
+      # stale four times — 23, 37, 27 and 10 commits, the last INSIDE the same session as
+      # its own refresh. The file already warned about this in its own header; a warning is
+      # not a mechanism. Same reasoning as the documented-counts check above: a number a
+      # human maintains by hand rots, and only a failing check holds it.
+      #
+      # Threshold, not equality: the commit that updates HANDOFF.md changes HEAD, so
+      # requiring a match would fail on its own landing. 20 catches the 23/27/37 rot and
+      # lets ordinary sessions through — the 10-commit case passes, and that is the
+      # accepted cost of not nagging on every push.
+      #
+      # Needs the fetch-depth: 0 history above to count commits between the two shas.
+      - name: HANDOFF freshness (the block a reader trusts first)
+        run: uv run python scripts/check_handoff_fresh.py --check
       # The lint-debt figure written in BOTH workflows, verified against a fresh ruff
       # run. Added 2026-08-01 after ~15 stale numbers were corrected by hand in one
       # session — including this very figure, which was written as 263 and went stale

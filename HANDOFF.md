@@ -18,14 +18,19 @@ before writing "current" anywhere in this file.
 
 ## 📌 Session continuation — 2026-08-02 (supersedes every block below)
 
-**Re-measured 2026-08-02, not carried forward.** HEAD `d99c93d`, branch `main`,
+> **This block is now GATED, not just warned about.** `scripts/check_handoff_fresh.py`
+> fails CI when the sha below drifts more than 20 commits from HEAD. It exists because the
+> warning above did not work: this block went stale four times (23, 37, 27 and 10 commits),
+> the last one *inside the same session as its own refresh*. A warning is not a mechanism.
+
+**Re-measured 2026-08-02, not carried forward.** HEAD `2556dee`, branch `main`,
 **0 ahead / 0 behind `origin/main`** — everything pushed. Both workflows (`CI`,
 `Ruff Lint`) green at HEAD. Docker Desktop **not running**, so no trainer is live and the
-FROZEN `apps/ava-factory/dottie/**` paths are not bind-mounted. `C:` has **37 GB free** of
+FROZEN `apps/ava-factory/dottie/**` paths are not bind-mounted. `C:` has **36 GB free** of
 931 GB (96% used) — 38 GB on 08-01, 41 GB earlier that day, 50 GB on 07-31. Still
 dropping; watch it.
 
-The block this replaces recorded HEAD `8693a27`. **27 commits landed since** — stale
+The block this replaces recorded HEAD `d99c93d`. **10 commits landed since** — stale
 again, from my own work, for the third time. The discipline is not "write it once
 carefully", it is "re-measure every time", which is why this says how it was measured
 rather than only what it says.
@@ -35,7 +40,7 @@ this was wrong twice before it was measured, see the Makefile header:
 
 | suite | count | note |
 |---|---|---|
-| `apps/scout-cli` | 2316 passed, 1 skipped | **identical local (`uv run`) and CI**; ambient `python` runs 6 fewer |
+| `apps/scout-cli` | 2362 passed, 1 skipped | **identical local (`uv run`) and CI**; ambient `python` runs 6 fewer |
 | `apps/ava-factory` | ~862 collected — **pass count drifts daily, see item 8** | 730 run in CI; a same-day re-measure gave 861 passed / 1 failed with no code change |
 | `packages/personal-graphify` | 77 passed | hard CI gate |
 | `packages/ava-skills` | 89 passed | hard CI gate, ruff at 0 |
