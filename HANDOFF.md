@@ -111,6 +111,35 @@ did not undo it.
    *which* option, not whether.
 
    Note the suite is **287 tests**, not the 211 previously written down.
+
+   **Refined 2026-08-01 — WHERE the fix lives decides how much it buys.** The 5 failures in
+   `packages/ava-open-harness` (the ones its CI step is `|| true`'d for) are the SAME root
+   cause: 4 report `ModuleNotFoundError: No module named 'dottie.rl'` outright and the 5th
+   asserts on a string containing it. The mechanism is verified directly:
+
+   ```
+   dottie.__path__            ['...\apps\dottie\dottie']
+   import dottie.rl  BEFORE   ModuleNotFoundError
+   import dottie.rl  AFTER    OK          # after appending apps/ava-factory/dottie
+   ```
+
+   **Measured: 35 tests** (apps/dottie, conftest probe, reverted).
+   **Not measured: those 5.** I could not demonstrate them end-to-end from outside, because
+   the harness manipulates `sys.path` at runtime and any external pytest plugin — even in
+   `pytest_configure` — runs before that, where `dottie` is not importable at all. Stated as
+   unmeasured rather than folded into the total.
+
+   So the options separate on reach, not preference:
+
+   | fix | reach |
+   |---|---|
+   | leave non-blocking | 0 |
+   | `__path__` merge in TEST SETUP | 35 measured; misses subprocesses and the harness |
+   | `__path__` merge INSIDE the package (`apps/dottie/dottie/__init__.py`) | applies wherever `dottie` is imported — subprocesses and harness included |
+   | rename | same reach, no `__path__` trickery, larger diff |
+
+   The two subprocess/harness cases are the evidence that test-setup is the wrong home for
+   this fix. Still your call between the last two.
 3. **`apps/scout-rtx/bb-offload/queue.json`** has a task still marked `"pending"` whose
    `hardware` field claims *"fits 24GB VRAM batch64"* on a 12 GB laptop. That is queued work,
    not prose, so changing the batch size changes what runs — see `da657d9`.
