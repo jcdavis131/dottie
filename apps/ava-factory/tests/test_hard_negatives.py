@@ -975,6 +975,36 @@ _CACHE: dict = {}
 #   same_class    914 -> 1042            70.2%   <- nearest the limit
 #   same_file   16430 -> 16730           78.6%
 #   same_package 3768 -> 4018            75.0%
+# ⚠ READ BEFORE RE-CUTTING THESE. Added 2026-08-02.
+#
+# The sweep above is built to make a re-cut "a paste, not a derivation", and it works. That
+# is the problem: it makes the WRONG response frictionless. "The corpus grew again" is
+# recorded above as if it were the project accumulating code. Most of it is not.
+#
+# ast_pairs.py walks the tree skipping .venv and friends, but it has NO gitignore awareness,
+# so it mines generated output as source. Measured 2026-08-02 on this machine:
+#
+#     files scanned  1,286   of which generated  585  (45.5%)
+#     pairs mined    3,343   of which generated  557  (16.7%)
+#
+# Those are apps/dottie/data/research/workspaces/*/candidate_*.py, written by the "Dottie
+# Research runner" scheduled task — 3 files every 15 minutes, none tracked by git. So the
+# corpus grows ~382 pairs a day with machine UPTIME, not with development.
+#
+# Evidence that this is not theoretical: `pairs` was re-cut to 3168 on 2026-08-01 and
+# measured 3,343 eleven hours later. `ast_pairs.py --stats-only` now prints the untracked
+# share next to the file count, so the contamination is visible without re-deriving it.
+#
+# WHAT THIS MEANS FOR YOU, standing here about to paste a new number:
+#   * The floor did not fail because the miner regressed. It failed because the machine was
+#     on. Re-cutting makes the suite green and bakes in more generated code as "real".
+#   * A number pasted here has a shelf life of about a day on a running box, so the next
+#     re-cut is already queued behind this one.
+#   * The decision that ends this is whether generated paths belong in the corpus at all —
+#     HANDOFF item 8. It is deliberately not made here, because excluding them changes what
+#     every downstream figure means, including the encoder retrieval bars.
+#
+# If you re-cut anyway, that is a legitimate choice; write down that you knew.
 MEASURED_REAL = {
     "pairs": 3168,
     "queries": 3168,
@@ -990,6 +1020,51 @@ MEASURED_AVG_PER_QUERY = 7.005
 MEASURED_COVERAGE = 0.9081
 # A floor below this share of a FRESH measurement has stopped being a floor.
 STALENESS_LIMIT = 0.70
+
+
+
+_PROVENANCE_CACHE: dict = {}
+
+
+def _corpus_provenance() -> str:
+    """One line naming how much of the mined tree is NOT repo source.
+
+    Attached to the staleness failure because that message is what a re-cut is pasted
+    from. A floor that fails because the machine has been running is a different problem
+    from a floor that fails because the miner regressed, and only one of them is fixed by
+    a new number.
+
+    Never raises and never blocks the assertion it decorates: if git cannot answer, it
+    says so rather than reporting a reassuring zero.
+    """
+    if "line" in _PROVENANCE_CACHE:
+        return _PROVENANCE_CACHE["line"]
+    import subprocess
+    root = _ROOT
+    try:
+        out = subprocess.run(["git", "-C", str(root), "ls-files", "-z"],
+                             capture_output=True, text=True, timeout=60)
+        if out.returncode != 0:
+            raise OSError(out.returncode)
+        tracked = {x for x in out.stdout.split(chr(0)) if x}
+        scanned = list(ap.walk(root))
+        untracked = sum(
+            1 for f in scanned
+            if str(f.relative_to(root)).replace(chr(92), "/") not in tracked
+        )
+        pct = untracked / len(scanned) * 100 if scanned else 0.0
+        line = (
+            f"BEFORE YOU PASTE: {untracked} of {len(scanned)} scanned files "
+            f"({pct:.1f}%) are UNTRACKED - generated output mined as source "
+            f"(ast_pairs has no gitignore awareness). The corpus grows with machine "
+            f"uptime, not with development, so this floor will go stale again in about "
+            f"a day. See HANDOFF item 8 before re-cutting."
+        )
+    except Exception as e:
+        line = (f"BEFORE YOU PASTE: could not measure the untracked share ({e!r}); "
+                "do NOT read that as 0 - see HANDOFF item 8.")
+    _PROVENANCE_CACHE["line"] = line
+    return line
 
 
 def _floor(metric: str) -> int:
@@ -1082,7 +1157,12 @@ class TestAgainstTheRealRepo:
         assert not stale, (
             f"floors have gone stale (floor, fresh, floor/fresh): {stale}\n"
             f"re-cut MEASURED_REAL to: "
-            f"{ {m: fresh[m] for m in sorted(fresh)} }"
+            f"{ {m: fresh[m] for m in sorted(fresh)} }\n"
+            # The contamination travels WITH the paste. This message is the exact moment
+            # someone re-cuts, and re-cutting is frictionless by design — so the one fact
+            # that should change their mind belongs here, not only in a header comment
+            # they already scrolled past.
+            f"{_corpus_provenance()}"
         )
 
     def test_the_correctness_rule_has_real_work_to_do_here(self):
