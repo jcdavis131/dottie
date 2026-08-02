@@ -151,7 +151,19 @@ def rm_cmd(
             example=f"scout secrets rm {key} --force",
         )
     ok = delete_secret(key) if exists else False
-    emit({"deleted": key, "ok": ok, "existed": exists}, command="secrets rm")
+    payload = {"deleted": key, "ok": ok, "existed": exists}
+
+    # "deleted" must not be allowed to imply "no longer readable". delete_secret clears
+    # both stores it owns; BB_SECRET_* lives in the caller's process and cannot be
+    # touched from here. Anything still readable at this point is that env var.
+    if get_secret(key) is not None:
+        payload["still_readable"] = True
+        payload["note"] = (
+            f"vault entry removed, but BB_SECRET_{key.upper()} is set in this "
+            f"environment and `scout secrets get {key}` still returns a value. "
+            f"Unset it in your shell to finish."
+        )
+    emit(payload, command="secrets rm")
 
 
 def register(root):

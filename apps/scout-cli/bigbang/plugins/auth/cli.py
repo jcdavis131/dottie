@@ -1151,20 +1151,46 @@ def logout(
         try:
             from bigbang.core.security import delete_secret
 
+            # delete_secret clears BOTH stores get_secret() reads. Until 2026-08-02 it
+            # checked the file first and touched keyring only on a miss, so a token held
+            # in both was reported deleted and stayed readable.
             vault_deleted = delete_secret(vault_key)
         except Exception:
-            # Fallback: overwrite with empty? security.delete_secret handles keyring too
             vault_deleted = False
 
-    emit(
-        {
-            "service": svc,
-            "removed_from_auth_json": existed,
-            "vault_deleted": vault_deleted,
-            "auth_file": str(REG),
-        },
-        command="auth logout",
-    )
+    out: dict[str, Any] = {
+        "service": svc,
+        "removed_from_auth_json": existed,
+        "vault_deleted": vault_deleted,
+        "auth_file": str(REG),
+    }
+
+    # `logout` deletes ONE vault key. get_token() reads five key variants plus three bare
+    # env vars, so "logged out" was free to be false the moment it was printed. Report the
+    # thing the word actually promises: is a token still readable for this service?
+    if get_token(svc) is not None:
+        out["still_readable"] = True
+        env_set = [
+            n
+            for n in (
+                f"{svc.upper()}_TOKEN",
+                f"{svc.upper()}_API_KEY",
+                f"{svc.upper()}_PAT",
+            )
+            if os.environ.get(n, "").strip()
+        ]
+        out["env_vars_set"] = env_set
+        out["note"] = (
+            f"`scout auth get-token {svc}` still returns a token. "
+            + (
+                f"Unset {', '.join(env_set)} in your shell."
+                if env_set
+                else f"Another vault key matches this service; see `scout secrets list` "
+                f"for {svc.upper()}_TOKEN / _API_KEY / _PAT variants."
+            )
+        )
+
+    emit(out, command="auth logout")
 
 
 def register(root):
