@@ -324,6 +324,44 @@ did not undo it.
    paths (changes what every downstream number means, including the encoder bars), or leave
    it and treat the constants as machine-specific.
 
+   ### It reaches the retrieval bars too — a SECOND drift mechanism
+
+   `retrieval_eval.py:55` has the same skip set and the same blind spot, so the searched
+   INDEX is contaminated as well:
+
+   ```
+   indexed documents          2,288
+     from generated research    589   (25.7%)   585 of them candidate_*.py
+   a clean checkout indexes   1,699
+   ```
+
+   The golden PAIRS are mined from git commits, so they stay clean — generated files are
+   untracked and cannot be commit targets. The contamination is entirely on the corpus
+   side, which means it adds **distractors**: more documents to retrieve against, so scores
+   are pushed DOWN rather than flattered.
+
+   **This is a different mechanism from the one `a561f5d` already found.** That commit
+   correctly diagnosed 0.622 → 0.420 as 71 of 451 relevance judgements naming files no
+   longer at HEAD, and showed the bar returns to 0.656 once those are dropped. True, and
+   incomplete: the index is *also* growing underneath, and the doc counts recorded in that
+   very commit show it.
+
+   ```
+   recorded run   2,024 docs
+   a561f5d (13h ago)  2,128 docs
+   now            2,288 docs      -> +160 in 13h, ~295/day
+   ```
+
+   The research runner fires every 15 minutes with `--n 3`, so ~288 candidate files a day,
+   which matches. Even a perfectly maintained judgement set therefore scores against a
+   corpus that grows ~295 documents a day.
+
+   **What this does NOT overturn:** the step-5 verdict. Best dense (0.265) and the lexical
+   bar were measured on the same corpus on the same day, so the comparison is
+   apples-to-apples and "lexical beats dense here" stands. What does not transfer is the
+   absolute numbers — 0.429, 0.469, 0.622 are all corpus-and-day specific, and none of them
+   reproduce on a clean checkout.
+
 9. **The factory promotion gate is report-only.** `_point_latest_at` repoints `ckpt/latest`
    after every checkpoint save and the serve engine hot-reloads within ~5 s, so a regressed
    checkpoint goes live automatically. Verified still true 2026-08-01:
