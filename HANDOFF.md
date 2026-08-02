@@ -240,7 +240,14 @@ did not undo it.
    workspace `.venv`. The measuring environment was not the environment the job runs in.
    Second time this session a measurement was contaminated by its own surroundings.
 
-7. **OPPORTUNITY, not a defect: most of `apps/ava-factory` may be cheap to run in CI.**
+7. ~~**OPPORTUNITY: most of `apps/ava-factory` may be cheap to run in CI.**~~ **DONE
+   2026-08-02 (`b7370fd`).** 730 of 862 tests now run on every push — 70 sandbox + 660 rest
+   — in ~40s, with no torch and no deepspeed. Deps: zstandard, numpy, pyyaml, regex,
+   requests, tokenizers, datasketch. Coverage went from ~8% to ~85%. Four CI passes got
+   there, each naming its own next cause, and the residue I could not explain locally
+   turned out to be item 8. Original text follows.
+
+   **OPPORTUNITY, not a defect: most of `apps/ava-factory` may be cheap to run in CI.**
    Measured 2026-08-02 in a verified-clean environment (isolation proved first — `import
    torch` and `import numpy` both had to FAIL before any result was trusted):
 
@@ -267,33 +274,38 @@ did not undo it.
    itself is — to separate real dependency gaps from Windows path artifacts. That is a
    deliberate next step, not a blocker.
 
-8. **`test_hard_negatives.py`'s MEASURED_REAL floors were measured on a contaminated tree.**
-   Found 2026-08-02 by running the suite on a clean Linux checkout for the first time. Its
-   `TestAgainstTheRealRepo` assertions mine the repo tree, and the floors encode a tree that
-   **contains the local virtualenvs**:
+8. **`ast_pairs.py` mines model-generated output as if it were repo source — 45% of its
+   corpus.** This is the biggest single finding of the session and it is NOT what I first
+   wrote here. **Correction:** I initially blamed the local virtualenvs. That was wrong —
+   `ast_pairs.py:210` and `retrieval_eval.py:55` both skip `.venv` explicitly. Checking the
+   skip list instead of assuming is what found the real cause.
 
    ```
-   .venv               2,895 .py files
-   apps/dottie/.venv   7,532 .py files      -> 10,427 files CI does not have
+   files ast_pairs would scan       1,282
+     generated research output        581   (45.3%)
+     of which candidate_*.py          502   (0 tracked by git)
    ```
 
-   On a fresh clone the same assertions read:
+   `ast_pairs.walk()` skips `.git`, `__pycache__`, `.venv`, `venv`, `node_modules`,
+   `.ruff_cache`, `.pytest_cache`, `site-packages`, `build`, `dist` — and nothing else. It
+   has no gitignore awareness, so `apps/dottie/data/research/workspaces/*/candidate_*.py`
+   is scanned as source. Those are written by the "Dottie Research runner" scheduled task,
+   which adds one roughly every 15 minutes, so the corpus grows with machine uptime.
 
-   ```
-   assert risky >= 280        -> only 21
-   assert near_misses >= 68   -> only 2
-   ```
+   **Why this matters beyond a test failure.** `ast_pairs.py` is what produces the training
+   pairs and the hard negatives. Nearly half its input on this box is model-generated
+   near-duplicate code, which is exactly the shape that manufactures "sibling-scoped
+   duplicate docstrings" — the thing the failing assertion counts (280 locally, **21** on a
+   clean checkout).
 
-   **The tests are not wrong — the constants are.** They are not reproducible outside a
-   working copy that happens to have venvs in it, which is the same defect this repo
-   already fixed for documented ruff counts: a number that only holds in the environment
-   that produced it. Note these were *re-cut this session* (`46e0905`), on that same tree,
-   so the re-cut inherited the contamination rather than introducing it.
+   So the mined data itself is affected, not only the floors measured from it. The floors
+   were re-cut this session (`46e0905`) on this same tree, so the re-cut inherited the
+   contamination rather than introducing it.
 
-   Excluded from the CI job with the reason recorded inline, rather than lowering a floor
-   to buy green. Re-cutting them against a clean tree changes measured numbers, which is
-   yours to call; the alternative is teaching the mining to skip `.venv`, which changes what
-   the numbers mean.
+   Excluded from the CI job with the reason inline, rather than lowering a floor to buy
+   green. The decision is yours and it is a real fork: teach `ast_pairs` to skip generated
+   paths (changes what every downstream number means, including the encoder bars), or leave
+   it and treat the constants as machine-specific.
 
 9. **The factory promotion gate is report-only.** `_point_latest_at` repoints `ckpt/latest`
    after every checkpoint save and the serve engine hot-reloads within ~5 s, so a regressed

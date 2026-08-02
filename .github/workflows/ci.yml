@@ -511,16 +511,15 @@ jobs:
           # `apps/ava-factory/tests/x.py` and both torch files were collected anyway.
           # Letting the shell build the list removes pytest path matching from it.
           # test_hard_negatives.py is excluded, and the reason is a finding rather than
-          # a flake. Its TestAgainstTheRealRepo floors were measured on a tree that
-          # CONTAINS the local virtualenvs: .venv holds 2,895 .py files and
-          # apps/dottie/.venv another 7,532, and the miner walks the tree. A clean CI
-          # checkout has none of those 10,427 files, so the same assertions read
-          #     assert risky >= 280        -> only 21
-          #     assert near_misses >= 68   -> only 2
-          # The tests are not wrong; the CONSTANTS encode an environment artifact and are
-          # not reproducible on a fresh clone. Re-cutting them against a clean tree
-          # changes measured numbers, which is the operator's call, so this excludes them
-          # and says why instead of quietly lowering a floor to make CI green.
+          # a flake. CORRECTED 2026-08-02: I first blamed the local virtualenvs; that was
+          # wrong, ast_pairs.py:210 skips .venv explicitly. The real cause is generated
+          # output. ast_pairs.walk() has no gitignore awareness, so it scans
+          # apps/dottie/data/research/workspaces/*/candidate_*.py as source:
+          #     1,282 files scanned, 581 of them generated (45.3%), 502 candidate_*.py
+          # all written by the Dottie Research runner and none tracked by git. A clean CI
+          # checkout has zero, so the same assertion reads `risky >= 280` -> only 21.
+          # The tests are right; the constants are machine-specific. See HANDOFF item 8 —
+          # this affects the MINED TRAINING DATA too, not just these floors.
           FILES=$(ls tests/test_*.py | grep -vE 'test_codeact_policy|test_rl_smoke_wiring|test_causal_reason|test_codeact_consolidation|test_hard_negatives')
           echo "running $(echo "$FILES" | wc -l) test files"
           # All --with flags on ONE physical line. Splitting them across a shell line
