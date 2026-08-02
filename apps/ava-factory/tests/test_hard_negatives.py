@@ -1189,6 +1189,7 @@ class TestAgainstTheRealRepo:
                     risky += 1
         assert risky >= 280, (
             f"only {risky} sibling-scoped duplicate docstrings in the tree"
+        f"\n{_corpus_provenance()}"
         )
 
     def test_no_mined_negative_is_a_positive_under_the_modules_own_key(self):
@@ -1259,10 +1260,20 @@ class TestAgainstTheRealRepo:
         assert near_misses >= 68, (
             f"only {near_misses} mined negatives come within {_NEAR_MISS} of the "
             f"paraphrase threshold, so the ceiling below is not being exercised"
+        f"\n{_corpus_provenance()}"
         )
         assert len(leaks) <= 1, (
             f"{len(leaks)} paraphrase leaks, ceiling is the 1 known case "
-            f"(_scripted_probe/_scripted): {leaks[:5]}"
+            f"(_scripted_probe/_scripted): {leaks[:5]}\n"
+            # This is the assertion that is ACTUALLY failing on both machines as of
+            # 2026-08-02, so the explanation belongs here and not only on the staleness
+            # sweep. The extra leaks are four copies of
+            # StochasticTokenMixingBlock.forward, which lives in three UNTRACKED files
+            # under apps/dottie/data/research/workspaces/ — the model generated the same
+            # class into several candidate files and the miner reads them as real code.
+            # The leak list above names its own cause if you look at where those symbols
+            # come from.
+            f"{_corpus_provenance()}"
         )
 
     def test_disabling_the_filter_would_actually_poison_the_data(self):
