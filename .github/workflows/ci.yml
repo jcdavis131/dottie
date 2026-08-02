@@ -473,3 +473,42 @@ jobs:
             echo "unverified everywhere. Fix the cause rather than lowering the floor."
             exit 1
           fi
+      # THE REST OF THE CHEAP SUITE. apps/ava-factory is 862 tests; the step above runs 70.
+      # Measured 2026-08-02 that most of the rest needs no torch either — only pyyaml on top
+      # of the deps above. This runs everything that will collect, so the app goes from ~8%
+      # covered in CI to most of it, still without torch or deepspeed.
+      #
+      # EXCLUSIONS, named individually so "most of it" cannot quietly become "some of it":
+      #   test_codeact_policy.py     imports torch  — the cost this job exists to avoid
+      #   test_rl_smoke_wiring.py    imports torch  — same
+      #   test_causal_reason.py      needs the app installed, not just importable
+      #   test_codeact_consolidation.py  same
+      # The last two report `No module named 'dottie'`/`'ava'` for packages that exist,
+      # which is an import-path condition rather than a missing dependency. Excluded rather
+      # than papered over; if a future change makes them importable, drop them from the list
+      # and the floor below will rise on its own.
+      #
+      # --continue-on-collection-errors so ONE unimportable file cannot mask the result of
+      # every other file, which is what interrupted the local measurement repeatedly.
+      #
+      # The floor is again the point: these are pytest SKIPS when a gate does not pass, so a
+      # green run with everything skipped would otherwise look identical to success. 600 is
+      # under the 656 measured locally, leaving room for platform differences without
+      # letting a collapse through.
+      - name: Rest of the cheap ava-factory suite (no torch, no deepspeed)
+        working-directory: apps/ava-factory
+        run: |
+          set -euo pipefail
+          uv run --no-project --with pytest --with zstandard --with numpy --with pyyaml \
+            python -m pytest tests -q --continue-on-collection-errors \
+            --ignore=tests/test_codeact_policy.py \
+            --ignore=tests/test_rl_smoke_wiring.py \
+            --ignore=tests/test_causal_reason.py \
+            --ignore=tests/test_codeact_consolidation.py | tee /tmp/cheap.txt
+          passed=$(grep -oE '[0-9]+ passed' /tmp/cheap.txt | tail -1 | grep -oE '[0-9]+' || echo 0)
+          echo "cheap ava-factory tests passed: ${passed}"
+          if [ "${passed}" -lt 600 ]; then
+            echo "FAIL: only ${passed} passed (floor 600). Either a real regression, or"
+            echo "collection broke and most of the suite silently stopped running."
+            exit 1
+          fi
