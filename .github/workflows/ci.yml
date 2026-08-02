@@ -512,7 +512,11 @@ jobs:
           # Letting the shell build the list removes pytest path matching from it.
           FILES=$(ls tests/test_*.py | grep -vE 'test_codeact_policy|test_rl_smoke_wiring|test_causal_reason|test_codeact_consolidation')
           echo "running $(echo "$FILES" | wc -l) test files"
-          uv run --no-project --with pytest --with zstandard --with numpy --with pyyaml \n            --with regex --with requests \n            python -m pytest $FILES -q --continue-on-collection-errors | tee /tmp/cheap.txt
+          # All --with flags on ONE physical line. Splitting them across a shell line
+          # continuation made uv report `invalid version '--with'` (78a198c) — the
+          # working step above keeps them on one line too. Not worth diagnosing further
+          # when the fix is this cheap.
+          uv run --no-project --with pytest --with zstandard --with numpy --with pyyaml --with regex --with requests python -m pytest $FILES -q --continue-on-collection-errors | tee /tmp/cheap.txt
           passed=$(grep -oE '[0-9]+ passed' /tmp/cheap.txt | tail -1 | grep -oE '[0-9]+' || echo 0)
           echo "cheap ava-factory tests passed: ${passed}"
           if [ "${passed}" -lt 600 ]; then
