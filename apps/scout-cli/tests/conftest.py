@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+from pathlib import Path
 
 # Held at module scope so it lives for the whole session and is cleaned on exit.
 #
@@ -56,3 +57,34 @@ _HOME_TMP = tempfile.TemporaryDirectory(
 )
 os.environ["HOME"] = _HOME_TMP.name
 os.environ["USERPROFILE"] = _HOME_TMP.name
+
+# HOME is not the only lever, and assuming it was let a real write escape for as long as
+# this file has existed. `policy.user_policy_file()` resolves in this order:
+#
+#     BIGBANG_POLICY_FILE  ->  XDG_CONFIG_HOME  ->  Path.home() / ".config"
+#
+# so both env vars sit ABOVE the redirect. `load_user_policy()` MATERIALIZES the default
+# policy when the file is absent, so any test that consults policy writes it — and on a
+# machine where XDG_CONFIG_HOME is set, that write lands outside the throwaway home.
+#
+# Found 2026-08-02 by the state-pollution gate on its first CI run (40044b1):
+#
+#     ADDED (1): /home/runner/.config/bigbang/policy.yaml
+#     POLLUTION: 1 change(s) outside scheduler-owned paths, out of 196 watched
+#
+# It could not be seen locally: ~/.config/bigbang/policy.yaml ALREADY EXISTS on the dev
+# box, so the same suite produced no diff there. A fresh runner has an empty home, which
+# is the only environment where "was this created?" is answerable.
+#
+# HONEST LIMIT ON THIS FIX. The precedence gap above is PROVEN — with XDG_CONFIG_HOME set,
+# user_policy_file() resolves outside the redirected home, measured directly. What is NOT
+# proven is that XDG_CONFIG_HOME is what did it on the runner: the write did not reproduce
+# on Windows under a forced XDG_CONFIG_HOME across test_policy/test_reach/test_core_extra
+# (119 passed, nothing written), and subprocess envs were ruled out — every one in this
+# repo is built from os.environ.copy(). The remaining candidate is a POSIX-only path.
+#
+# So this closes a real hole and CI adjudicates whether it was THE hole. The gate stays
+# armed either way; if it fires again the step now dumps the resolved policy path and the
+# relevant env vars, so the next run answers the question instead of narrowing it.
+os.environ["XDG_CONFIG_HOME"] = str(Path(_HOME_TMP.name) / ".config")
+os.environ.pop("BIGBANG_POLICY_FILE", None)

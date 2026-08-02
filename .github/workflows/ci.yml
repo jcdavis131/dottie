@@ -221,8 +221,17 @@ jobs:
       #
       # --diff already refuses to pass on an empty snapshot ("a clean diff here would be
       # vacuous"), so this cannot go green by measuring nothing.
+      # The env dump is diagnostic, not decoration. The gate's first run (40044b1) caught
+      # the suite creating ~/.config/bigbang/policy.yaml, and narrowing WHY cost a full
+      # cycle because the runner's env was invisible from here: user_policy_file() resolves
+      # BIGBANG_POLICY_FILE -> XDG_CONFIG_HOME -> Path.home(), and only the last is what
+      # tests/conftest.py redirects. Printing the three inputs and the resolved path makes
+      # the next failure self-explaining.
       - name: State snapshot (before the suite that has polluted before)
-        run: uv run python scripts/state_pollution_sweep.py --snapshot "$RUNNER_TEMP/state-before.json"
+        run: |
+          set -e
+          echo "HOME=$HOME  XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-<unset>}  BIGBANG_POLICY_FILE=${BIGBANG_POLICY_FILE:-<unset>}"
+          uv run python scripts/state_pollution_sweep.py --snapshot "$RUNNER_TEMP/state-before.json"
       - name: Pytest scout-cli (hard gate)
         working-directory: apps/scout-cli
         run: uv run pytest tests -q
