@@ -94,7 +94,7 @@ did not undo it.
 
 ### Open, needing an operator decision (not blocked on me)
 
-> **This list is the canonical one.** Seven items. My turn-by-turn reports had drifted to
+> **This list is the canonical one.** Eight items (one struck, one an opportunity rather than a defect). My turn-by-turn reports had drifted to
 > listing items that were never written down here, which is the same rot this file warns
 > about, aimed at my own reporting. Re-verified 2026-08-01: every figure below was
 > re-measured immediately before writing, not carried.
@@ -240,7 +240,34 @@ did not undo it.
    workspace `.venv`. The measuring environment was not the environment the job runs in.
    Second time this session a measurement was contaminated by its own surroundings.
 
-7. **The factory promotion gate is report-only.** `_point_latest_at` repoints `ckpt/latest`
+7. **OPPORTUNITY, not a defect: most of `apps/ava-factory` may be cheap to run in CI.**
+   Measured 2026-08-02 in a verified-clean environment (isolation proved first — `import
+   torch` and `import numpy` both had to FAIL before any result was trusted):
+
+   ```
+   pytest + zstandard + numpy + pyyaml, NO torch, NO deepspeed, no workspace sync
+   -> 656 passed, 39 skipped, 4 failed, 4 files uncollectable, in 42s
+   ```
+
+   The `codeact-sandbox` job added in `0ed1f2a` runs **70** of those. So on the order of
+   **~580 more tests could run on every push for seconds of CI time**, without touching the
+   torch/deepspeed exclusion that made the app excluded in the first place.
+
+   **Explicitly NOT acted on, and the reason is the point.** The 4 failures and 4
+   uncollectable files could not be cleanly separated from artifacts of my measurement
+   harness: two of them report `No module named 'dottie'` / `'ava'` for packages that
+   plainly exist, which is a sys.path consequence of invoking pytest from OUTSIDE the repo
+   (necessary, because running inside it lets uv discover the workspace `.venv` and
+   contaminates the dependency set — that is exactly how `bd618df` shipped without numpy
+   and went red).
+
+   So the headline number is real and the residue is not yet understood. Wiring ~580 tests
+   into CI on a measurement I already know is fragile would repeat the mistake twice made
+   this session. What it needs is one run in a genuinely clean Linux checkout — which CI
+   itself is — to separate real dependency gaps from Windows path artifacts. That is a
+   deliberate next step, not a blocker.
+
+8. **The factory promotion gate is report-only.** `_point_latest_at` repoints `ckpt/latest`
    after every checkpoint save and the serve engine hot-reloads within ~5 s, so a regressed
    checkpoint goes live automatically. Verified still true 2026-08-01:
    `grep -c "verdict\|eg_trend" apps/ava-factory/dottie/train.py` returns **0** — the eval
