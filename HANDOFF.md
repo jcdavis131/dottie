@@ -36,7 +36,7 @@ being measured — see the Makefile header):
 | suite | count | note |
 |---|---|---|
 | `apps/scout-cli` | 2276 passed, 1 skipped | **identical local (`uv run`) and CI**; ambient `python` runs 6 fewer |
-| `apps/ava-factory` | 862 passed, 33 skipped | excluded from CI; 29 of the 33 skips are item 6 below |
+| `apps/ava-factory` | ~862 collected — **pass count drifts daily, see item 8** | 730 run in CI; a same-day re-measure gave 861 passed / 1 failed with no code change |
 | `packages/personal-graphify` | 77 passed | hard CI gate |
 | `packages/ava-skills` | 89 passed | hard CI gate, ruff at 0 |
 | `scripts/` self-tests | 241 passed | ran NOWHERE until `1a9a2a3` wired them in |

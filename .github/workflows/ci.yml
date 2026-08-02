@@ -279,12 +279,22 @@ jobs:
   # exclusion is indistinguishable from an oversight (the same lesson `continue-on-error`
   # taught this repo: a check nobody wrote down looks exactly like one that works).
   #
-  # apps/ava-factory has 862 passing tests (was 859; +3 telemetry-isolation tests in
-  # b2f0681), none of which run here. Its requirements.txt pulls torch + deepspeed +
-  # transformers + peft; installing that on every push to run a suite that takes ~2m47s
-  # locally is not worth the minutes, and deepspeed in particular is a heavy build. The
-  # import check below is the cheap proxy that catches the failure mode CI can actually
-  # cause (a broken module graph).
+  # apps/ava-factory's suite does not run in THIS job. Its requirements.txt pulls torch +
+  # deepspeed; installing that on every push is not worth the minutes, and deepspeed in
+  # particular is a heavy build. The import check below is the cheap proxy for the
+  # failure mode CI can actually cause (a broken module graph), and the codeact-sandbox
+  # job runs 730 of its tests without those deps.
+  #
+  # NO FIXED PASS COUNT IS QUOTED HERE, deliberately. This comment said "862 passing"
+  # (itself a correction of "859"), and a re-measure the next day gave 861 passed / 1
+  # FAILED — same code, same machine. The failure is
+  # test_hard_negatives.py::TestAgainstTheRealRepo, whose floors are measured from a
+  # corpus that grows ~295 documents a day because ast_pairs.py mines generated research
+  # output as source. See HANDOFF item 8.
+  #
+  # So a pass count for this suite has a shelf life of about a day on a running box.
+  # Writing one down here would be manufacturing exactly the stale figure the rest of
+  # this workflow's comments warn about. Run it and read the number; do not carry one.
   #
   # WHAT THE EXCLUSION COSTS, measured 2026-08-01 rather than left as "some coverage".
   # The suite also reports 33 SKIPPED, and 29 of those are one thing:
@@ -480,7 +490,10 @@ jobs:
             echo "unverified everywhere. Fix the cause rather than lowering the floor."
             exit 1
           fi
-      # THE REST OF THE CHEAP SUITE. apps/ava-factory is 862 tests; the step above runs 70.
+      # THE REST OF THE CHEAP SUITE. apps/ava-factory collects ~862 tests (a COLLECTION
+      # size, which is stable; do not read it as a pass count — see the note in the
+      # lint-and-test job about why no pass count is quoted for this suite). The step
+      # above runs 70 of them.
       # Measured 2026-08-02 that most of the rest needs no torch either — only pyyaml on top
       # of the deps above. This runs everything that will collect, so the app goes from ~8%
       # covered in CI to most of it, still without torch or deepspeed.
