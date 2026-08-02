@@ -214,25 +214,31 @@ did not undo it.
    membership or an exclusion with a stated reason. Entangled with #2: its suite needs its
    own `.venv` plus `AVA_FACTORY_ROOT`, and 35 of its 36 failures are the collision.
 
-6. **The codeact sandbox tests run nowhere.** Measured 2026-08-01: `apps/ava-factory`'s
-   suite is 862 passed / **33 skipped**, and **29 of those 33 are POSIX-gated sandbox and
-   resource-cap tests** (20 "sandbox resource caps require POSIX", 8 "hard wall/resource
-   caps require POSIX", 1 "sandbox caps require POSIX").
+6. ~~**The codeact sandbox tests run nowhere.**~~ **RESOLVED 2026-08-01 (`0ed1f2a`) — 27 of
+   the 29 now run on every push.** Kept here because the remaining 2 are a real, if small,
+   open item, and because the reasoning is worth not relearning.
 
-   That is the security boundary — `codeact_sandbox.py` enforces no-network and
-   no-outside-write by rebinding `open`/`socket` and setting rlimits, and the 2026-07-22
-   review singled it out as *structurally* enforced rather than prompt-text. rlimits are
-   POSIX-only, so they skip on this Windows box; `apps/ava-factory` is excluded from CI,
-   so they do not run there either. **Skipped here, not run there — so nowhere.**
+   The problem: `apps/ava-factory` is 862 passed / **33 skipped**, and 29 of those 33 were
+   POSIX-gated sandbox and resource-cap tests. That is the security boundary —
+   `codeact_sandbox.py` enforces no-network and no-outside-write by rebinding
+   `open`/`socket` and setting rlimits, which the 2026-07-22 review singled out as
+   *structurally* enforced rather than prompt-text. rlimits are POSIX-only, so they skipped
+   on this Windows box, and the app is excluded from CI, so they ran nowhere at all.
 
-   Not fixable from this machine: the only WSL distro present is `docker-desktop` (Docker's
-   own VM, and Docker is not running), so there is no general-purpose POSIX environment to
-   fall back on. Needs Linux — a container, WSL with a real distro, or a Linux job willing
-   to install torch + deepspeed.
+   The fix was not to undo the exclusion. Those five test files need only
+   pytest + zstandard + numpy — no torch, no deepspeed, no workspace sync — so a separate
+   ubuntu job runs them in **12 seconds**: **70 passed, 0 skipped**. On Linux the POSIX
+   gates pass, so the tests that skip here actually execute there.
 
-   This does NOT argue against the CI exclusion; the cost reasoning for that still holds.
-   It argues that the exclusion's cost was never written down, and it is larger than
-   "an expensive suite we skip".
+   **Still open, deliberately:** `test_codeact_policy.py`'s **2** POSIX-gated tests are not
+   covered, because that file imports torch — the exact cost the job avoids. Covering them
+   means paying for torch in CI, which is a judgement about whether 2 tests justify the
+   minutes.
+
+   A caution recorded with it: the first attempt (`bd618df`) shipped without numpy and went
+   red, because I "measured" the dependency set from inside the repo where uv discovers the
+   workspace `.venv`. The measuring environment was not the environment the job runs in.
+   Second time this session a measurement was contaminated by its own surroundings.
 
 7. **The factory promotion gate is report-only.** `_point_latest_at` repoints `ckpt/latest`
    after every checkpoint save and the serve engine hot-reloads within ~5 s, so a regressed
