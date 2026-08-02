@@ -76,15 +76,15 @@ os.environ["USERPROFILE"] = _HOME_TMP.name
 # box, so the same suite produced no diff there. A fresh runner has an empty home, which
 # is the only environment where "was this created?" is answerable.
 #
-# HONEST LIMIT ON THIS FIX. The precedence gap above is PROVEN — with XDG_CONFIG_HOME set,
-# user_policy_file() resolves outside the redirected home, measured directly. What is NOT
-# proven is that XDG_CONFIG_HOME is what did it on the runner: the write did not reproduce
-# on Windows under a forced XDG_CONFIG_HOME across test_policy/test_reach/test_core_extra
-# (119 passed, nothing written), and subprocess envs were ruled out — every one in this
-# repo is built from os.environ.copy(). The remaining candidate is a POSIX-only path.
+# CONFIRMED at 21ec0c4. This was committed with the cause still open — the precedence gap
+# was measured, but whether XDG_CONFIG_HOME is what fired on the runner was not, so the CI
+# step was made to print its own env rather than guess again. It answered immediately:
 #
-# So this closes a real hole and CI adjudicates whether it was THE hole. The gate stays
-# armed either way; if it fires again the step now dumps the resolved policy path and the
-# relevant env vars, so the next run answers the question instead of narrowing it.
+#     HOME=/home/runner  XDG_CONFIG_HOME=/home/runner/.config  BIGBANG_POLICY_FILE=<unset>
+#     CLEAN — 196 files watched, nothing the suite can be blamed for.
+#
+# GitHub's ubuntu-latest SETS XDG_CONFIG_HOME. Windows does not, which is the whole reason
+# a dev box cannot see this class: the escape hatch only exists on the platform CI runs on.
+# The env dump in ci.yml stays for the same reason it was added.
 os.environ["XDG_CONFIG_HOME"] = str(Path(_HOME_TMP.name) / ".config")
 os.environ.pop("BIGBANG_POLICY_FILE", None)
