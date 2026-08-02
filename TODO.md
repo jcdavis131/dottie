@@ -18,12 +18,17 @@ that no one has done.
 > means worked, not won — item 6 in particular is closed because re-running it blind would
 > reproduce a known miss, not because dense retrieval succeeded.
 >
-> **A next session should not read this section for work.** Pull instead from the four open
-> operator decisions in `HANDOFF.md`'s 2026-08-01 block (audit-log rotation, the `dottie`
-> name collision, the pending `queue.json` task claiming 24 GB on a 12 GB laptop, and the
-> deliberately-wrong mobile peak-FLOPS constants), or from the untriaged backlog at the
-> bottom of this file. Leaving this heading looking actionable when every item under it is
-> done is the same trap as the stale "current state" block this file already warns about.
+> **A next session should not read this section for work.** Pull instead from
+> `HANDOFF.md` → "Open, needing an operator decision", which is the canonical list, or from
+> the untriaged backlog at the bottom of this file. Leaving this heading looking actionable
+> when every item under it is done is the same trap as the stale "current state" block this
+> file already warns about.
+>
+> *Corrected 2026-08-02: this pointer said "the four open operator decisions in
+> `HANDOFF.md`'s 2026-08-01 block". Both halves had rotted — the block is now dated 08-02,
+> and the canonical list holds **ten items, two struck, so eight open**, not four. The
+> enumeration is deliberately gone from this sentence: naming a subset here creates a second
+> list to keep in sync, which is how it drifted in the first place. One pointer, one list.*
 
 *Re-verified 2026-07-31 against `git log` (not memory) — items 1 and 2 below were
 BOTH closed same-day by `41afb54`, five days before this correction. See

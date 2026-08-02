@@ -16,7 +16,7 @@ So: this file is the source. Check it first.
 | `restart_research.ps1` | Restarts the research daemon and **proves it booted** by waiting for the `boot` line in `run.log`. Refuses on low memory or orphaned processes. Measures the Ollama model's real load cost rather than assuming it. | training is off |
 | `prepare_fleet_recovery.ps1` | Prep + GO/NO-GO for bringing the Docker fleet back. **Step 1 disables the scheduled task by design** — know that before running it. | fleet is down |
 | `tune_docker_desktop.ps1` | Docker Desktop resource configuration for this box. | after a WSL/Docker reinstall |
-| `check_todos_timestamps.py` | Fails if any clock time claimed in a TODOS `5.3.R<N>` entry is in the future relative to HEAD. **Ops discipline 9.5: run it on any tick that writes TODOS.** | before committing TODOS |
+| `check_todos_timestamps.py` | Fails if any clock time claimed in a **`TODO.md`** `5.3.R<N>` entry is in the future relative to HEAD. **Now a CI step** — it pointed at a `TODOS.md` deleted by `41534f2` and died with `FileNotFoundError` for six days while this row told people to run it, so "run it manually" is no longer the enforcement. | automatic; run locally before committing TODO.md |
 | `store_symmetry_audit.py` | Finds mutations that clear one store and leave another holding the value — the shape of the `delete_secret` bug (fixed `a2ccea5`), where deletion reported success and the credential stayed readable. `--check` self-tests against the real pre-fix function first, so it cannot pass by having gone blind. | after touching anything with two stores (vault/keyring, cache/disk) |
 
 ## Research loop — `apps/dottie/scripts/`

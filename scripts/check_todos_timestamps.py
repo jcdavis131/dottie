@@ -43,7 +43,21 @@ from datetime import datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-TODOS = REPO / "TODOS.md"
+
+# TODO.md, not TODOS.md. This script was written 2026-07-20 against a root TODOS.md; on
+# 2026-07-26 `41534f2` ("TODO.md is now the single list — TODOS.md merged in, then
+# deduped") deleted that file, and this path was never updated. Every invocation since
+# died with FileNotFoundError before checking anything -- for six days, while
+# scripts/README.md advertised it as "Ops discipline 9.5: run it on any tick that writes
+# TODOS". Found 2026-08-02 by running it.
+#
+# It died SILENTLY because nothing ran it. A checker wired into no pipeline has the same
+# value as one that always passes, which is this repo's own named defect class pointed at
+# its own tooling. That is why it is now a CI step, not just a README instruction.
+#
+# The 107 `### 5.3.R<N>` entries live in TODO.md; apps/ava-factory/TODOS.md still exists
+# but has 0 of them, so it is deliberately not scanned.
+TODOS = REPO / "TODO.md"
 
 ENTRY_RE = re.compile(r"^### 5\.3\.R(\d+)\b", re.M)
 # HH:MM, but not durations like 02:16:43 and not inside a longer number.
@@ -113,6 +127,17 @@ def main() -> int:
     23:00 entry from a previous day is not flagged against a 14:34 HEAD today.
     """
     show_all = "--list" in sys.argv
+
+    # A missing list is a broken checker, not a clean bill of health. Stated explicitly
+    # because the previous failure mode was a raw FileNotFoundError traceback, which reads
+    # as "the tool is broken" rather than "the tool cannot see what it audits" -- and
+    # because an empty scan must never be able to print OK.
+    if not TODOS.exists():
+        print(f"CANNOT CHECK: {TODOS} does not exist.")
+        print("This script audits the `### 5.3.R<N>` entries; point TODOS at the file")
+        print("that holds them. It has moved once already (41534f2) and went unnoticed.")
+        return 2
+
     commits = commit_times_by_entry()
     head = head_datetime()
     violations, checked, skipped = [], 0, []
@@ -132,8 +157,17 @@ def main() -> int:
             if stamp > head:
                 violations.append((name, t, day, sha, when))
 
+    matched = len(entries()) - len(skipped)
     print(f"\nchecked {checked} claimed time(s) across "
-          f"{len(entries()) - len(skipped)} entries with a matching commit")
+          f"{matched} entries with a matching commit")
+
+    # Non-vacuity. Finding zero entries means the file moved again or the heading format
+    # changed -- both of which previously produced a confident pass over nothing.
+    if not entries():
+        print(f"\nCANNOT CHECK: no `### 5.3.R<N>` entries found in {TODOS.name}.")
+        print("Either the entries moved or the heading format changed. Refusing to")
+        print("report OK on an empty scan.")
+        return 2
     if skipped:
         print(f"{len(skipped)} entries have no commit naming them and were NOT checked "
               f"(they predate the R-numbered commit convention)")

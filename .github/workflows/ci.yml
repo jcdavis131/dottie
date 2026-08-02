@@ -157,6 +157,20 @@ jobs:
       # refactor cannot turn this green by breaking it.
       - name: Store-symmetry audit (partial deletes that report success)
         run: uv run python scripts/store_symmetry_audit.py --check
+      # No clock time claimed in a TODO.md `5.3.R<N>` entry may postdate HEAD.
+      #
+      # Wired into CI 2026-08-02 because README-only enforcement demonstrably failed. The
+      # script was written 2026-07-20 against a root TODOS.md; 41534f2 merged that file
+      # into TODO.md on 07-26 and the path was never updated, so for six days every
+      # invocation died with FileNotFoundError before checking anything — while
+      # scripts/README.md called it "Ops discipline 9.5, run it on any tick that writes
+      # TODOS". It broke silently precisely because nothing ran it.
+      #
+      # Needs the fetch-depth: 0 history above: it maps each entry to the commit that
+      # names it. Both no-file and no-entries now exit 2 rather than reporting OK on an
+      # empty scan.
+      - name: TODO timestamps (no claimed time postdates HEAD)
+        run: uv run python scripts/check_todos_timestamps.py
       # The lint-debt figure written in BOTH workflows, verified against a fresh ruff
       # run. Added 2026-08-01 after ~15 stale numbers were corrected by hand in one
       # session — including this very figure, which was written as 263 and went stale

@@ -16,30 +16,38 @@ before writing "current" anywhere in this file.
 
 ---
 
-## 📌 Session continuation — 2026-08-01 (supersedes every block below)
+## 📌 Session continuation — 2026-08-02 (supersedes every block below)
 
-**Re-measured 2026-08-01 (second refresh), not carried forward.** HEAD `8693a27`, branch
-`main`, **0 ahead / 0 behind `origin/main`** — everything pushed. Both workflows (`CI`,
+**Re-measured 2026-08-02, not carried forward.** HEAD `d99c93d`, branch `main`,
+**0 ahead / 0 behind `origin/main`** — everything pushed. Both workflows (`CI`,
 `Ruff Lint`) green at HEAD. Docker Desktop **not running**, so no trainer is live and the
-FROZEN `apps/ava-factory/dottie/**` paths are not bind-mounted. `C:` has **38 GB free** of
-932 GB (97% used) — down from the 41 GB recorded earlier today, which was itself down from
-50 GB on 07-31. That figure is dropping steadily; watch it.
+FROZEN `apps/ava-factory/dottie/**` paths are not bind-mounted. `C:` has **37 GB free** of
+931 GB (96% used) — 38 GB on 08-01, 41 GB earlier that day, 50 GB on 07-31. Still
+dropping; watch it.
 
-This block previously recorded HEAD `da657d9` with "1 commit ahead". **23 commits landed
-since**, so it went stale within the same day — the second time in this session, both times
-from my own work. The discipline is not "write it once carefully", it is "re-measure every
-time", which is why this now says how it was measured rather than just what it says.
+The block this replaces recorded HEAD `8693a27`. **27 commits landed since** — stale
+again, from my own work, for the third time. The discipline is not "write it once
+carefully", it is "re-measure every time", which is why this says how it was measured
+rather than only what it says.
 
-**Suite counts, verified against CI rather than assumed** (this was wrong twice before
-being measured — see the Makefile header):
+**Suite counts, read off the CI run for THIS HEAD** (`gh run view --log`), not assumed —
+this was wrong twice before it was measured, see the Makefile header:
 
 | suite | count | note |
 |---|---|---|
-| `apps/scout-cli` | 2276 passed, 1 skipped | **identical local (`uv run`) and CI**; ambient `python` runs 6 fewer |
+| `apps/scout-cli` | 2316 passed, 1 skipped | **identical local (`uv run`) and CI**; ambient `python` runs 6 fewer |
 | `apps/ava-factory` | ~862 collected — **pass count drifts daily, see item 8** | 730 run in CI; a same-day re-measure gave 861 passed / 1 failed with no code change |
 | `packages/personal-graphify` | 77 passed | hard CI gate |
 | `packages/ava-skills` | 89 passed | hard CI gate, ruff at 0 |
-| `scripts/` self-tests | 241 passed | ran NOWHERE until `1a9a2a3` wired them in |
+| `scripts/` self-tests | 260 passed | ran NOWHERE until `1a9a2a3` wired them in; 241 → 260 at `d99c93d` |
+
+**Landed 2026-08-02, in order:**
+
+| sha | what |
+|---|---|
+| `2a24c22` | `scout secrets get` printed the plaintext beside its own mask in human mode. JSON mode keeps `value` by design; the audit trail was never affected (`output.py` redacts before `log_event` — different surface). |
+| `a2ccea5` | **The vault's read path and write path disagreed.** `get_secret` reads keyring→env→file; `delete_secret` read file-first and touched keyring only on a miss, so a secret in both was reported deleted and stayed readable, with `list_secrets()` corroborating. `set_secret` wrote the file only, so a stale keyring entry silently defeated credential rotation. **Latent on a default install** — `keyring` is an optional extra (`security = ["keyring"]`) and is not installed here; it fires for whoever installs the extra whose purpose is safer storage. Verified with a fake backend, never the real Credential Manager. auth 6.33 → 8.00. |
+| `d99c93d` | `scripts/store_symmetry_audit.py` — makes the above a standing check. 0 hits across 1293 files, and that 0 is only meaningful because `--check` self-tests against the real pre-fix function first and exits 2 if the detector has gone blind. |
 
 Always `uv run`, never ambient `python -m pytest` — the latter silently skips all of
 `tests/test_profiles.py` and reports it as "1 skipped".
@@ -410,7 +418,7 @@ did not undo it.
 
 ---
 
-## 📌 Session continuation — 2026-07-31 (superseded by the 2026-08-01 block above)
+## 📌 Session continuation — 2026-07-31 (superseded by the 2026-08-02 block above)
 
 **Measured, not carried forward.** HEAD `f274be8`, pushed, tree clean, no divergence
 from `origin/main`. Docker Desktop **not running** — no active trainer, no live
