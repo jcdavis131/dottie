@@ -131,13 +131,32 @@ jobs:
       #   test_retrieval_eval              35 passed
       #   test_task_eval_slice            134 passed
       #   test_check_declared_capabilities  19 passed  (new, guards the ratchet above)
-      - name: Scripts self-tests (241 tests, 222 of which previously ran nowhere)
+      #   test_store_symmetry_audit         19 passed  (new, guards the audit below)
+      #
+      # test_store_symmetry_audit ALSO needs the full history that fetch-depth: 0 provides:
+      # it verifies the audit's embedded fixture is still verbatim from a2ccea5^, so an
+      # edited fixture cannot quietly turn that detector into theatre.
+      - name: Scripts self-tests (260 tests, 241 of which previously ran nowhere)
         run: |
           set -e
           uv run python scripts/test_gate_audit.py
           uv run python scripts/test_retrieval_eval.py
           uv run python scripts/test_task_eval_slice.py
           uv run python scripts/test_check_declared_capabilities.py
+          uv run python scripts/test_store_symmetry_audit.py
+      # Mutations that clear one store and leave another holding the value. Found in
+      # bigbang/core/security.py 2026-08-02 (fixed a2ccea5): delete_secret cleared the
+      # file vault and returned, so the keyring copy the READ path consults first was
+      # reached only when the file missed -- deletion reported success while the
+      # credential stayed readable.
+      #
+      # Gates without a baseline, unlike gate_audit.py. Affordable because the shape is
+      # rare: 0 hits across 1293 files when it was written, so the first hit is worth a
+      # human read rather than a triage queue. --check runs a self-test against the real
+      # pre-fix function BEFORE scanning and exits 2 if the detector has gone blind, so a
+      # refactor cannot turn this green by breaking it.
+      - name: Store-symmetry audit (partial deletes that report success)
+        run: uv run python scripts/store_symmetry_audit.py --check
       # The lint-debt figure written in BOTH workflows, verified against a fresh ruff
       # run. Added 2026-08-01 after ~15 stale numbers were corrected by hand in one
       # session — including this very figure, which was written as 263 and went stale
