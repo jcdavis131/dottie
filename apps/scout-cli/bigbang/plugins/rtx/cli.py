@@ -245,6 +245,37 @@ def programs():
     )
 
 
+
+def _asset_url_denial(url: str) -> dict | None:
+    """None if the network policy allows `url`, else the payload explaining why not.
+
+    Extracted from releases_cmd because inlining it pushed that function to 162 lines and
+    the GOAT audit flagged the regression (6.83 -> 6.5) — a gate catching a real cost of
+    the change rather than a nuisance, so it is paid down instead of baselined.
+
+    WHY THIS URL AND NOT THE OTHER TWO. The other httpx.get calls in that command target
+    GITHUB_API, built from the hardcoded GITHUB_REPO — fixed, auditable destinations.
+    This one comes out of the API RESPONSE and is fetched with follow_redirects=True, then
+    written to disk. "Observed content decides the next request" is the shape the network
+    allowlist exists to bound. Gating the hardcoded pair would only make
+    `scout rtx releases list` fail until someone allowlists api.github.com: friction with
+    no matching risk. tests/test_rtx.py pins that GITHUB_REPO is still a constant, because
+    that asymmetry is only defensible while it is.
+    """
+    from urllib.parse import urlsplit
+
+    from bigbang.core.policy import check_user_url
+
+    allowed, reason = check_user_url(url)
+    if allowed:
+        return None
+    return {
+        "error": f"release asset URL denied by network policy: {reason}",
+        "url": url,
+        "next": f"scout reach allow {urlsplit(url).hostname or url}",
+    }
+
+
 @app.command("releases")
 def releases_cmd(
     action: str = typer.Argument("list", help="list|sync"),
@@ -327,53 +358,11 @@ def releases_cmd(
                 if "results" in name and (
                     name.endswith(".tsv") or name.endswith(".jsonl")
                 ):
-                    # THIS URL COMES FROM THE RESPONSE, not from a constant. The two
-                    # httpx.get calls above target GITHUB_API, which is built from the
-                    # hardcoded GITHUB_REPO — fixed, auditable destinations. This one takes
-                    # `browser_download_url` out of the API's JSON and fetches it with
-                    # follow_redirects=True, then writes the body to disk below.
-                    #
-                    # That is "observed content decides the next request", which is exactly
-                    # the shape the network allowlist exists to bound. Over TLS to
-                    # api.github.com the response is authentic unless GitHub itself is
-                    # compromised, so this is a smaller hole than forge's arbitrary --url
-                    # (be9890d) — but it is the same shape, and it ends in a file write.
-                    #
-                    # Only THIS call is gated. The two above reach a hardcoded host and
-                    # gating them would make `scout rtx releases list` fail until someone
-                    # allowlists api.github.com, which is friction with no matching risk.
-                    # Deliberate asymmetry, written down so it does not read as an
-                    # oversight.
-                    from bigbang.core.policy import check_user_url
-
-                    dl_url = asset["browser_download_url"]
-                    dl_allowed, dl_reason = check_user_url(dl_url)
-                    if not dl_allowed:
-                        from urllib.parse import urlsplit
-
-                        host = urlsplit(dl_url).hostname or dl_url
-                        emit(
-                            {
-                                "error": f"release asset URL denied by network policy: {dl_reason}",
-                                "url": dl_url,
-                                "next": f"scout reach allow {host}",
-                            },
-                            command="rtx releases",
-                        )
-                        # `return`, NOT `raise typer.Exit(1)`. This sits inside a
-                        # `try: ... except Exception as e: emit({"error": str(e)})` block
-                        # at the end of the sync branch, which catches typer.Exit like
-                        # anything else and re-emits it as the useless `{"error": "1"}` —
-                        # the clear message above would be followed by a confusing one and
-                        # the command would carry on. Returning leaves the function
-                        # directly with nothing to swallow.
-                        #
-                        # KNOWN LIMIT: the command therefore exits 0 on a policy denial.
-                        # That matches how this branch already reports every other failure
-                        # (an {"error": ...} payload, exit 0) so it is consistent rather
-                        # than correct; fixing the exit code means restructuring that
-                        # blanket except, which is a bigger change than this gate.
+                    denial = _asset_url_denial(asset["browser_download_url"])
+                    if denial is not None:
+                        emit(denial, command="rtx releases")
                         return
+                    dl_url = asset["browser_download_url"]
                     dl = httpx.get(
                         dl_url,
                         timeout=20.0,
