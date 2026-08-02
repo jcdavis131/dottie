@@ -448,7 +448,14 @@ jobs:
   codeact-sandbox:
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 because tests/test_hard_negatives.py mines the REAL git history,
+      # exactly as scripts/test_retrieval_eval.py does in the lint-and-test job. Its own
+      # assertion says it best -- "git history unavailable, this guard must not skip
+      # silently" -- so a shallow clone fails it loudly rather than passing quietly.
+      # Eight tests depend on it.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
@@ -499,12 +506,13 @@ jobs:
         working-directory: apps/ava-factory
         run: |
           set -euo pipefail
-          uv run --no-project --with pytest --with zstandard --with numpy --with pyyaml \
-            python -m pytest tests -q --continue-on-collection-errors \
-            --ignore=tests/test_codeact_policy.py \
-            --ignore=tests/test_rl_smoke_wiring.py \
-            --ignore=tests/test_causal_reason.py \
-            --ignore=tests/test_codeact_consolidation.py | tee /tmp/cheap.txt
+          # Explicit file list, NOT --ignore. pytest resolves rootdir to the REPO ROOT
+          # (there is a pyproject.toml there), so `--ignore=tests/x.py` never matched
+          # `apps/ava-factory/tests/x.py` and both torch files were collected anyway.
+          # Letting the shell build the list removes pytest path matching from it.
+          FILES=$(ls tests/test_*.py | grep -vE 'test_codeact_policy|test_rl_smoke_wiring|test_causal_reason|test_codeact_consolidation')
+          echo "running $(echo "$FILES" | wc -l) test files"
+          uv run --no-project --with pytest --with zstandard --with numpy --with pyyaml \n            --with regex --with requests \n            python -m pytest $FILES -q --continue-on-collection-errors | tee /tmp/cheap.txt
           passed=$(grep -oE '[0-9]+ passed' /tmp/cheap.txt | tail -1 | grep -oE '[0-9]+' || echo 0)
           echo "cheap ava-factory tests passed: ${passed}"
           if [ "${passed}" -lt 600 ]; then
