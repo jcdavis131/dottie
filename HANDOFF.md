@@ -94,7 +94,7 @@ did not undo it.
 
 ### Open, needing an operator decision (not blocked on me)
 
-> **This list is the canonical one.** Eight items (one struck, one an opportunity rather than a defect). My turn-by-turn reports had drifted to
+> **This list is the canonical one.** Nine items (one struck as resolved, one an opportunity rather than a defect). My turn-by-turn reports had drifted to
 > listing items that were never written down here, which is the same rot this file warns
 > about, aimed at my own reporting. Re-verified 2026-08-01: every figure below was
 > re-measured immediately before writing, not carried.
@@ -267,7 +267,35 @@ did not undo it.
    itself is — to separate real dependency gaps from Windows path artifacts. That is a
    deliberate next step, not a blocker.
 
-8. **The factory promotion gate is report-only.** `_point_latest_at` repoints `ckpt/latest`
+8. **`test_hard_negatives.py`'s MEASURED_REAL floors were measured on a contaminated tree.**
+   Found 2026-08-02 by running the suite on a clean Linux checkout for the first time. Its
+   `TestAgainstTheRealRepo` assertions mine the repo tree, and the floors encode a tree that
+   **contains the local virtualenvs**:
+
+   ```
+   .venv               2,895 .py files
+   apps/dottie/.venv   7,532 .py files      -> 10,427 files CI does not have
+   ```
+
+   On a fresh clone the same assertions read:
+
+   ```
+   assert risky >= 280        -> only 21
+   assert near_misses >= 68   -> only 2
+   ```
+
+   **The tests are not wrong — the constants are.** They are not reproducible outside a
+   working copy that happens to have venvs in it, which is the same defect this repo
+   already fixed for documented ruff counts: a number that only holds in the environment
+   that produced it. Note these were *re-cut this session* (`46e0905`), on that same tree,
+   so the re-cut inherited the contamination rather than introducing it.
+
+   Excluded from the CI job with the reason recorded inline, rather than lowering a floor
+   to buy green. Re-cutting them against a clean tree changes measured numbers, which is
+   yours to call; the alternative is teaching the mining to skip `.venv`, which changes what
+   the numbers mean.
+
+9. **The factory promotion gate is report-only.** `_point_latest_at` repoints `ckpt/latest`
    after every checkpoint save and the serve engine hot-reloads within ~5 s, so a regressed
    checkpoint goes live automatically. Verified still true 2026-08-01:
    `grep -c "verdict\|eg_trend" apps/ava-factory/dottie/train.py` returns **0** — the eval
