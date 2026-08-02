@@ -421,3 +421,47 @@ jobs:
         run: node apps/bluehenre/scripts/release_gate.test.mjs
       - name: Release gate --pre (the documented pre-deploy sequence, one command)
         run: node apps/bluehenre/scripts/release_gate.mjs --pre
+
+  # The codeact sandbox is the security boundary: codeact_sandbox.py enforces no-network
+  # and no-outside-write by rebinding open/socket and setting rlimits. Its tests were
+  # running NOWHERE — they skip on the Windows dev box ("sandbox resource caps require
+  # POSIX", since rlimits are POSIX-only) and apps/ava-factory is excluded from the main
+  # job because its requirements.txt pulls torch + deepspeed.
+  #
+  # That exclusion is still right, and this job does not undo it. The five files below need
+  # NO heavy dependencies — measured, not assumed: the whole import chain
+  # (codeact_sandbox -> datagen.codeact -> rl.codeact_loop -> evals.codeact_eval) is stdlib
+  # plus zstandard, so `uv run --no-project --with pytest --with zstandard` collects 70
+  # tests in under a second. test_codeact_policy.py is deliberately EXCLUDED: it imports
+  # torch, which is exactly the cost this job avoids, so 2 of the 29 POSIX-gated tests stay
+  # uncovered and that is stated rather than rounded away.
+  #
+  # On ubuntu the POSIX gates pass, so these actually execute instead of skipping.
+  codeact-sandbox:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Sandbox guardrail tests (POSIX-only; skipped on the Windows dev box)
+        working-directory: apps/ava-factory
+        run: |
+          set -euo pipefail
+          uv run --no-project --with pytest --with zstandard python -m pytest \
+            tests/test_codeact_sandbox.py tests/test_codeact_eval.py \
+            tests/test_codeact_loop.py tests/test_codeact_datagen.py \
+            tests/test_codeact_rewards.py -q -rs | tee /tmp/sandbox.txt
+          # A FLOOR, because the entire point is that these RUN rather than skip. Without
+          # it a future change could make every test skip for a new reason and this job
+          # would go green having verified nothing — the vacuous-pass shape this repo keeps
+          # finding. 27 of the 29 POSIX-gated tests live in these files; 60 is a floor
+          # comfortably under the 70 collected, so ordinary edits do not churn it.
+          passed=$(grep -oE '[0-9]+ passed' /tmp/sandbox.txt | tail -1 | grep -oE '[0-9]+' || echo 0)
+          echo "sandbox tests passed: ${passed}"
+          if [ "${passed}" -lt 60 ]; then
+            echo "FAIL: only ${passed} sandbox tests ran (floor 60)."
+            echo "These are POSIX-gated; if they are skipping HERE the guardrails are"
+            echo "unverified everywhere. Fix the cause rather than lowering the floor."
+            exit 1
+          fi
