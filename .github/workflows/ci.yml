@@ -539,6 +539,28 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+      # Same state-pollution gate the lint-and-test job runs around scout-cli, now around
+      # THIS suite. ava-factory is the reason the sweep's corpus was widened in the first
+      # place: it does not write to HOME, it writes to apps/ava-factory/reports/, which is
+      # gitignored — so `git status` stayed clean while the suite appended ~5 KB of test
+      # records to the operator's live telemetry on every run. tests/conftest.py now
+      # redirects DOTTIE_TELEMETRY_DIR/AVA_TELEMETRY_DIR; this proves it stays redirected.
+      #
+      # A SECOND pair rather than one spanning both jobs: each pair names its own suite, so
+      # a failure says which one wrote. A gate that cannot name the culprit gets muted.
+      #
+      # Bare python3, no uv: the sweep is stdlib-only (verified by AST — argparse, json,
+      # sys, pathlib), so it costs this job no dependency resolution.
+      #
+      # NOTE the runner env, discovered at 21ec0c4: ubuntu-latest sets
+      # XDG_CONFIG_HOME=/home/runner/.config, which sits ABOVE Path.home() in scout-cli's
+      # policy resolution and escaped its HOME redirect. Printed here too — the same class
+      # of escape would be invisible from a Windows dev box.
+      - name: State snapshot (before the ava-factory suite)
+        run: |
+          set -euo pipefail
+          echo "HOME=$HOME  XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-<unset>}  DOTTIE_TELEMETRY_DIR=${DOTTIE_TELEMETRY_DIR:-<unset>}"
+          python3 scripts/state_pollution_sweep.py --snapshot "$RUNNER_TEMP/factory-before.json"
       - name: Sandbox guardrail tests (POSIX-only; skipped on the Windows dev box)
         working-directory: apps/ava-factory
         run: |
@@ -617,3 +639,11 @@ jobs:
             echo "collection broke and most of the suite silently stopped running."
             exit 1
           fi
+      # Closes the pair opened before the sandbox step. Covers BOTH ava-factory test steps,
+      # which is still one suite, so attribution survives. --diff refuses to pass on an
+      # empty snapshot, so this cannot go green by measuring nothing.
+      - name: State pollution (the ava-factory suite must not write real state)
+        run: |
+          set -euo pipefail
+          python3 scripts/state_pollution_sweep.py --snapshot "$RUNNER_TEMP/factory-after.json"
+          python3 scripts/state_pollution_sweep.py --diff "$RUNNER_TEMP/factory-before.json" "$RUNNER_TEMP/factory-after.json"
