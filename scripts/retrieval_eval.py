@@ -87,10 +87,47 @@ def mine_pairs(max_commits: int):
     return pairs
 
 
+def untracked_docs(paths) -> int:
+    """How many of `paths` git does not track — i.e. generated, not repo source.
+
+    Reported, never filtered. Excluding them would change every score this script
+    produces, which is a decision about what the benchmark MEASURES and not one to make
+    inside a counting helper. But a corpus size printed without this number is the silent
+    version of the problem, so the figure travels with the total.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(ROOT), "ls-files", "-z"],
+            capture_output=True, text=True, timeout=60,
+        )
+        if out.returncode != 0:
+            return -1
+    except (OSError, subprocess.SubprocessError):
+        return -1
+    tracked = {p for p in out.stdout.split("\0") if p}
+    return sum(1 for rel in paths if rel not in tracked)
+
+
 def build_index(con: sqlite3.Connection):
-    """FTS5 over the tree at HEAD. Returns the number of documents indexed."""
+    """FTS5 over the tree at HEAD. Returns (documents indexed, of those untracked).
+
+    THE UNTRACKED COUNT MATTERS AND WAS INVISIBLE. This walk skips .venv and friends but
+    has no gitignore awareness, so it indexes generated output as corpus. Measured
+    2026-08-02: 589 of 2,288 documents (25.7%) came from
+    apps/dottie/data/research/workspaces/ — model-written candidate_*.py produced by the
+    "Dottie Research runner" scheduled task, which fires every 15 minutes with `--n 3`.
+
+    They are DISTRACTORS, so they push scores down rather than flattering them, and the
+    corpus grows ~295 documents a day on a running machine. The doc counts recorded across
+    runs show it: 2,024 -> 2,128 -> 2,288. That is a second drift mechanism on top of the
+    stale-relevance-judgement one already documented in a561f5d, and it means any absolute
+    number from this script is corpus-and-day specific. Comparisons made on the same day
+    against the same corpus remain valid — the step-5 dense-vs-lexical verdict is not
+    affected.
+    """
     con.execute("CREATE VIRTUAL TABLE docs USING fts5(path, body, tokenize='porter unicode61')")
     n = 0
+    rels = []
     for p in ROOT.rglob("*"):
         if not p.is_file() or p.suffix not in INDEXABLE:
             continue
@@ -104,9 +141,10 @@ def build_index(con: sqlite3.Connection):
         # The path is indexed as a field of its own so a query naming a file can
         # match it — that is realistic, and the leak control below measures it.
         con.execute("INSERT INTO docs(path, body) VALUES (?, ?)", (rel, body))
+        rels.append(rel)
         n += 1
     con.commit()
-    return n
+    return n, untracked_docs(rels)
 
 
 _TOK = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
@@ -232,7 +270,7 @@ def main() -> int:
     boundary = test[0]["date"][:10] if test else "n/a"
 
     con = sqlite3.connect(":memory:")
-    n_docs = build_index(con)
+    n_docs, n_untracked = build_index(con)
     # The index IS the ground truth for reachability — read the paths back from it
     # rather than re-walking the tree, so the check cannot disagree with what was
     # actually indexed.
@@ -247,7 +285,8 @@ def main() -> int:
             "split": "walk-forward by commit date (NEVER random)",
             "boundary_date": boundary,
         },
-        "index": {"documents": n_docs, "engine": "sqlite3 FTS5 + bm25()"},
+        "index": {"documents": n_docs, "untracked_documents": n_untracked,
+                  "engine": "sqlite3 FTS5 + bm25()"},
         "baseline_on_test": summarise(test_rows),
     }
 
@@ -265,7 +304,10 @@ def main() -> int:
     print(f"  pairs           : {g['pairs_total']}  (train {g['train']} / test {g['test']})")
     print(f"  split           : {g['split']}")
     print(f"  boundary        : {g['boundary_date']}")
-    print(f"  indexed docs    : {n_docs}")
+    pct = (n_untracked / n_docs * 100) if n_docs and n_untracked >= 0 else 0.0
+    note = ("  (git unavailable — untracked share unknown)" if n_untracked < 0
+            else f"  ({n_untracked} untracked/generated, {pct:.1f}%)")
+    print(f"  indexed docs    : {n_docs}{note}")
     print()
     print(f"LEXICAL BASELINE — sqlite3 FTS5 + bm25(), scored on the {g['test']} TEST queries")
     print(f"  {'':22}{'NDCG@10':>9}{'MRR':>9}{'recall@10':>11}")

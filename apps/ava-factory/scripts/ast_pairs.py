@@ -215,6 +215,21 @@ def walk(base: Path):
         yield p
 
 
+
+def _untracked_count(base, rels) -> int:
+    """How many scanned paths git does not track. -1 if git cannot answer."""
+    import subprocess
+    try:
+        out = subprocess.run(["git", "-C", str(base), "ls-files", "-z"],
+                             capture_output=True, text=True, timeout=60)
+        if out.returncode != 0:
+            return -1
+    except (OSError, subprocess.SubprocessError):
+        return -1
+    tracked = {x for x in out.stdout.split(chr(0)) if x}
+    return sum(1 for r in rels if r not in tracked)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--path", default=".", help="tree to mine")
@@ -224,6 +239,7 @@ def main() -> int:
 
     base = Path(args.path).resolve()
     all_pairs, all_rej, files = [], [], 0
+    scanned_rel: list[str] = []
     for p in walk(base):
         files += 1
         try:
@@ -233,13 +249,30 @@ def main() -> int:
         pairs, rej = extract_file(src, str(p.relative_to(base)).replace("\\", "/"))
         all_pairs += pairs
         all_rej += rej
+        scanned_rel.append(str(p.relative_to(base)).replace(chr(92), "/"))
 
     reasons = {}
     for r in all_rej:
         key = re.sub(r"\d+", "N", r["reason"])
         reasons[key] = reasons.get(key, 0) + 1
 
-    print(f"files scanned : {files}")
+    # How much of the corpus is NOT repo source. This walk skips .venv and friends but
+    # has no gitignore awareness, so generated output is mined as if it were code.
+    # Measured 2026-08-02: 585 of 1,286 scanned files were model-written candidate_*.py
+    # under apps/dottie/data/research/workspaces/, contributing 557 of 3,343 pairs
+    # (16.7%). The Dottie Research runner adds 3 every 15 minutes, so this grows ~382
+    # pairs/day with machine uptime -- which is why floors measured from this output go
+    # stale in hours rather than weeks.
+    #
+    # REPORTED, NOT FILTERED. Excluding them changes what every downstream number means,
+    # including the hard-negative floors and the encoder bars; that is a decision, not a
+    # counting fix. Printing it ends the silence without making the choice.
+    n_untracked = _untracked_count(base, scanned_rel)
+    if n_untracked < 0:
+        print(f"files scanned : {files}  (git unavailable - untracked share unknown)")
+    else:
+        pct = n_untracked / files * 100 if files else 0.0
+        print(f"files scanned : {files}  ({n_untracked} untracked/generated, {pct:.1f}%)")
     print(f"pairs kept    : {len(all_pairs)}")
     print(f"rejected      : {len(all_rej)}")
     for reason, n in sorted(reasons.items(), key=lambda kv: -kv[1]):
