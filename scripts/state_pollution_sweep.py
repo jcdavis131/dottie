@@ -62,6 +62,18 @@ REPO_ROOTS = [
     ROOT / "apps" / "ava-factory" / "logs",
     ROOT / "apps" / "dottie" / "data",
     ROOT / "apps" / "scout-cli" / "data",
+    # SOURCE tree, not generated state — added 2026-08-01 after a suite wrote INTO it.
+    # Running `pytest apps/scout-cli/tests` from the repo root (which the Makefile did)
+    # made a forge test scaffold a real plugin at bigbang/plugins/gentest/ — cli.py,
+    # manifest.yaml, __init__.py — because those fixtures are CWD-relative. It showed up
+    # as +21 ruff findings and a documented-count failure before anyone looked at the
+    # directory.
+    #
+    # This is the second time this sweep's corpus was too narrow: it watched where
+    # generated state LIVES and missed a suite writing where CODE lives, exactly as the
+    # first version watched HOME and missed in-repo telemetry. Source-tree pollution is
+    # the worse of the two, since it survives into commits and lint counts.
+    ROOT / "apps" / "scout-cli" / "bigbang" / "plugins",
 ]
 
 SKIP_PARTS = {"__pycache__", ".git", ".venv", "node_modules", ".pytest_cache", ".ruff_cache"}
