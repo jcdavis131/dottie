@@ -196,13 +196,41 @@ jobs:
       # do not exist in this tree. Running from apps/scout-cli puts cwd first, which
       # is the invocation measured green, so the gate asserts what was actually
       # verified rather than whatever the resolver happens to pick.
-      # Count re-read from this gate's own CI log 2026-08-01: **2260 passed, 1 skipped**
-      # in 7m20s. The figure here previously read 1156, which was stale by roughly 2x —
-      # a load-bearing rationale loses its force when its number does not reproduce, so
-      # this one is taken from the gate's log rather than from a dev-box run.
+      # Count re-read from this gate's own CI log 2026-08-02: **2316 passed, 1 skipped**
+      # in 7m53s. This figure has now been stale twice — it read 1156 (off by ~2x), was
+      # corrected to 2260 on 08-01, and went stale again within a day. A load-bearing
+      # rationale loses its force when its number does not reproduce, so it is taken from
+      # `gh run view --log` on this gate, never from a dev-box run.
+      #
+      # The snapshot/diff pair around this step is the state-pollution gate. This suite is
+      # the one with the history: running it from the REPO ROOT (which the Makefile used
+      # to do) made a forge test scaffold a real plugin into bigbang/plugins/gentest/,
+      # which showed up as +21 ruff findings and a documented-count failure before anyone
+      # looked at the directory. Source-tree pollution survives into commits.
+      #
+      # Wrapped around ONE suite on purpose rather than around all of them. A diff spanning
+      # every suite would still fail the build but could not say which one did it, and a
+      # gate that cannot name the culprit gets muted. Snapshot is ~1.1 s over 8,329 files
+      # locally, so the placement costs nothing.
+      #
+      # Most REPO_ROOTS (reports/, runs/, ckpt/, data/) are gitignored and absent on a
+      # fresh checkout. That does NOT blind this: the sweep skips missing roots when
+      # snapshotting, so a suite CREATING one shows up as ADDED in the after-snapshot.
+      # The tracked source tree (bigbang/plugins) exists either way, which is the case
+      # that actually bit.
+      #
+      # --diff already refuses to pass on an empty snapshot ("a clean diff here would be
+      # vacuous"), so this cannot go green by measuring nothing.
+      - name: State snapshot (before the suite that has polluted before)
+        run: uv run python scripts/state_pollution_sweep.py --snapshot "$RUNNER_TEMP/state-before.json"
       - name: Pytest scout-cli (hard gate)
         working-directory: apps/scout-cli
         run: uv run pytest tests -q
+      - name: State pollution (the suite must not write real state)
+        run: |
+          set -e
+          uv run python scripts/state_pollution_sweep.py --snapshot "$RUNNER_TEMP/state-after.json"
+          uv run python scripts/state_pollution_sweep.py --diff "$RUNNER_TEMP/state-before.json" "$RUNNER_TEMP/state-after.json"
 
       # ava-skills is GREEN, so it gates. It was previously lumped in with the
       # harness behind one `|| true`, which is how a passing suite ends up carrying
