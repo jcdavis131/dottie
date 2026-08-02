@@ -10,7 +10,18 @@ jobs:
   lint-and-test:
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 because scripts/test_retrieval_eval.py mines pairs from the REAL
+      # git history. actions/checkout defaults to a depth-1 shallow clone, so on the first
+      # CI run of that suite (1a9a2a3) it found 0 pairs and died with IndexError — a
+      # genuine environment difference, not a flake.
+      #
+      # Deliberately NOT "fixed" by having the test skip when history is missing. That
+      # would make it pass in CI by checking nothing, which is the vacuous-green shape this
+      # repo keeps finding and this very suite exists to prevent. Give it real history
+      # instead. Cost is small and was measured before choosing: 926 commits, 39 MB .git.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
