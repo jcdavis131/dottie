@@ -631,16 +631,29 @@ def bus(
                 "audit_log": str(audit_file),
                 "suggestions": [],
                 "count": 0,
+                # Present on both paths so a consumer never has to test for the key.
+                "records_skipped": 0,
                 "note": "audit log not present yet — run some commands first",
             },
             command="agent bus",
         )
         return
     counts: Counter = Counter()
+    # Whole-file read is CORRECT here — this aggregates across every record rather than
+    # tailing, so unlike audit.tail_events there is nothing to bound.
+    #
+    # Unparsable lines are COUNTED, not silently skipped. `continue` alone made the report
+    # overstate its own completeness: it emits commands_seen and per-command totals with no
+    # hint that records were dropped, so counts come back quietly short and a "recurring"
+    # threshold can be missed for reasons the output never mentions. The real log has 3
+    # such lines out of 28,778 (2026-08-01) — orphaned tails from concurrent appends, since
+    # audit.log_event writes with no lock. Same shape fixed in audit.tail_events.
+    records_skipped = 0
     for line in audit_file.read_text().splitlines():
         try:
             entry = json.loads(line)
         except json.JSONDecodeError:
+            records_skipped += 1
             continue
         cmd = entry.get("command")
         if cmd and cmd != "unknown":
@@ -659,6 +672,7 @@ def bus(
             "audit_log": str(audit_file),
             "threshold": threshold,
             "commands_seen": len(counts),
+            "records_skipped": records_skipped,
             "suggestions": suggestions,
             "count": len(suggestions),
         },
