@@ -79,7 +79,90 @@ def _declared_deps() -> set[str]:
 ABS_PATH_RE = re.compile(r"""['"](?:[A-Za-z]:[\\/]|/home/|/Users/|/mnt/[a-z]/)""")
 HOME_RE = re.compile(r"Path\.home\(\)|os\.path\.expanduser|environ\[['\"]HOME")
 NOTE_RE = re.compile(r"#.*\b(TODO|FIXME|HACK|XXX)\b")
+# A PREFILTER, not the verdict. `_is_commented_code` below decides.
 COMMENTED_CODE_RE = re.compile(r"^\s*#\s*(?:def |class |return |import |if |for |while )")
+
+
+def _is_commented_code(line: str) -> bool:
+    """True only if the text after `#` actually PARSES as Python.
+
+    The regex above used to be the whole test, and English begins with "if" and "for"
+    constantly. Measured on bigbang/plugins/todos/cli.py, where all four "commented-out
+    code lines" were prose:
+
+        # if target is inside default root, no confirm
+        # if single file, narrow filter to that file name
+        # if it looks like a path containing slash or backslash
+        # if scanning outside root, relative to scan_root or absolute
+
+    That is 1.2 points off D2 for writing comments, and todos is the LOWEST-scored plugin
+    in the repo — a ranking partly produced by punishing explanation. gate_audit.py's own
+    docstring names this exact failure ("a grep counting prose as code has already produced
+    three wrong answers in one day"); this file was still doing it.
+
+    LIMIT, stated so the count is read correctly: a commented-out block OPENER (`# if x:`)
+    does not parse alone, so `pass` is appended before giving up. A commented-out
+    continuation line (`#     foo = 1` inside a removed block) still parses and counts,
+    which is the intended direction — under-counting prose beats over-counting it.
+    """
+    body = line.lstrip().lstrip("#").strip()
+    if not body:
+        return False
+    for candidate in (body, body + "\n    pass"):
+        try:
+            tree = ast.parse(candidate)
+        except SyntaxError:
+            continue
+        if not tree.body:
+            continue
+        # A bare word or literal ("# TODO", "# 42") parses but is not code.
+        only = tree.body[0]
+        if (
+            len(tree.body) == 1
+            and isinstance(only, ast.Expr)
+            and isinstance(only.value, (ast.Name, ast.Constant))
+        ):
+            return False
+        return True
+    return False
+
+
+def _dead_helpers(tree: ast.Module) -> list[str]:
+    """Underscore-prefixed module-level defs that nothing in the file refers to.
+
+    Was `src.count(name) <= 1` — a raw SUBSTRING count over the source text, wrong in both
+    directions. It counted matches inside longer identifiers and inside docstrings, so
+    `_scan` was never flagged while `_scan_markers` existed; and it counted a name in a
+    comment as a use.
+
+    It also had no idea what a decorator is. `_todos_root` is
+    `@app.callback(invoke_without_command=True)` — Typer holds the reference, so the name
+    appears exactly once in the file and was reported dead. It is the plugin's ENTRY POINT.
+    Decorated functions are registered somewhere by definition, so they are never dead by
+    this test.
+
+    References are read from the AST (Name loads and Attribute access), which is the
+    parse-don't-grep rule this repo already applies everywhere else.
+    """
+    referenced: set[str] = set()
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Name):
+            referenced.add(n.id)
+        elif isinstance(n, ast.Attribute):
+            referenced.add(n.attr)
+
+    dead = []
+    for n in tree.body:
+        if not isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if not n.name.startswith("_"):
+            continue
+        if n.decorator_list:          # registered by a framework, not by name
+            continue
+        if n.name in referenced:
+            continue
+        dead.append(n.name)
+    return dead
 
 
 def _clamp(v: float) -> int:
@@ -144,13 +227,10 @@ def audit_plugin(name: str, run_tests: bool = False) -> dict:
     d1 = 10 if not undeclared else max(2, 10 - 3 * len(undeclared))
 
     # ---- D2 dead code ----------------------------------------------------
-    dead: list[str] = []
-    if tree:
-        defs = [n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
-        for d in defs:
-            if d.startswith("_") and src.count(d) <= 1:
-                dead.append(d)
-    commented = sum(1 for ln in lines if COMMENTED_CODE_RE.match(ln))
+    dead: list[str] = _dead_helpers(tree) if tree else []
+    commented = sum(
+        1 for ln in lines if COMMENTED_CODE_RE.match(ln) and _is_commented_code(ln)
+    )
     if dead:
         findings.append(f"D2: defined-but-unreferenced helpers {dead[:5]}")
     if commented > 3:

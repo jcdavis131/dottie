@@ -102,13 +102,11 @@ def _save_auth(data: dict[str, Any]) -> None:
     atomic_json.write_json(REG, data, mode=stat.S_IRUSR | stat.S_IWUSR)
 
 
-# Backward compat shims for old names
-def _load() -> dict[str, Any]:
-    return _load_auth()
-
-
-def _save(d: dict[str, Any]) -> None:
-    return _save_auth(d)
+# The `_load` / `_save` back-compat shims that used to sit here are gone. Nothing called
+# them — verified repo-wide for exact `\b(auth|auth_cli|ac)\._(load|save)\b` uses, not just
+# in this file. They survived because GOAT's dead-code rule was a raw `src.count(name)`,
+# and "_load" is a substring of "_load_auth", so the shims looked used every time the real
+# function was mentioned. Fixed in the same commit that deleted them.
 
 
 # ---------------------------------------------------------------------------

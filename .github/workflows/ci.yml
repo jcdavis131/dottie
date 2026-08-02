@@ -314,8 +314,17 @@ jobs:
         # push so NEW plugins are held to the family's bar. --check fails only on a
         # REGRESSION vs .goat_baseline.json, so pre-existing debt does not block CI
         # (that is how a lint gets disabled). --min-mean holds new plugins to 7.0.
+        #
+        # The self-tests run FIRST. D2 was wrong in both directions until 2026-08-02 — it
+        # counted English prose beginning with "if"/"for" as commented-out code, and used a
+        # raw `src.count(name)` that made a dead `_httpx_client` look used by every mention
+        # of `_httpx_client_fallback`. This audit decides which plugin gets worked on next,
+        # so a wrong score does not merely misreport, it misdirects: `todos` was the
+        # lowest-ranked plugin in the repo partly for having explanatory comments.
         run: |
+          set -e
           cd apps/scout-cli
+          python scripts/test_goat_audit.py
           python scripts/goat_audit.py --check --min-mean 7.0
       - name: Forge smoke test (single CLI doctrine)
         run: |

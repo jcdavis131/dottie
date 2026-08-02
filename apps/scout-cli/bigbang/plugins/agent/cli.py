@@ -217,24 +217,13 @@ app = typer.Typer(
 )
 
 
-def _httpx_client(timeout: float = 2.0):
-    try:
-        import httpx
-    except ImportError:
-        return None
-    try:
-        to = httpx.Timeout(timeout, connect=min(timeout, 1.0))
-    except Exception:
-        to = timeout
-    try:
-        return httpx.Client(trust_env=False, timeout=to)
-    except TypeError:
-        try:
-            return httpx.Client(timeout=to)
-        except Exception:
-            return None
-    except Exception:
-        return None
+# A module-level `_httpx_client` used to sit here, dead. The live one is
+# `_httpx_client_fallback` (nested, ~line 83, called at ~line 154); bigbang/core/llm.py has
+# its own `_httpx_client` and that one IS used, six times. This copy was called by nothing.
+#
+# It hid because GOAT counted `src.count("_httpx_client")`, and every mention of
+# `_httpx_client_fallback` contains that substring — so the dead function looked used by
+# the live one that replaced it. Fixed in the same commit that deleted this.
 
 
 def _heuristic_plan(task: str) -> dict[str, Any]:
