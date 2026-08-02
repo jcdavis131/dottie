@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import pathlib
 import tempfile
 
 # --- keep the suite out of the REAL telemetry ------------------------------
@@ -41,6 +42,38 @@ import tempfile
 _TELEMETRY_TMP = tempfile.mkdtemp(prefix="ava-factory-test-telemetry-")
 os.environ["DOTTIE_TELEMETRY_DIR"] = _TELEMETRY_TMP
 os.environ["AVA_TELEMETRY_DIR"] = _TELEMETRY_TMP
+
+# The env redirect above covers TELEMETRY_DIR. It does NOT cover every sink telemetry.py
+# writes to, and the difference went unnoticed until a gate looked:
+#
+#     telemetry.py:44  TELEMETRY_DIR  <- DOTTIE_TELEMETRY_DIR / AVA_TELEMETRY_DIR / reports
+#     telemetry.py:61  _LOGS_DIR      <- _REPO_ROOT / "logs"      NO env escape at all
+#
+# `log_event()` appends a per-mode debug line to _LOGS_DIR/cron-dottie-<source>.log, so the
+# suite wrote into the repo's own logs/ directory on every run. Caught 2026-08-02 by the
+# state-pollution gate on its first CI run against this suite (763402e):
+#
+#     ADDED (1): .../apps/ava-factory/logs/cron-dottie-training_monitor.log
+#
+# Invisible locally for the usual reason: that file already exists on a box that has ever
+# run the trainer, so an append is not an ADD and the mtime moves under a directory nobody
+# diffs. A fresh checkout is the only place the question is answerable.
+#
+# _LOGS_DIR has no env var, so it is rebound directly. dottie/ is FROZEN (bind-mounted into
+# the live trainer), so telemetry.py itself is not touched — the sink moves for the test
+# session only and production behaviour is unchanged. Rebinding works because line 270
+# reads the module global at CALL time; the mkdir on the real logs/ at import creates an
+# empty directory, which the sweep does not count (it snapshots files, not directories).
+try:
+    import dottie.telemetry as _telemetry
+except Exception:  # pragma: no cover
+    # Not a swallow. If dottie cannot be imported here, no test can import it either, so
+    # there is no log writer to redirect. The gate stays armed and would say otherwise.
+    _telemetry = None
+
+if _telemetry is not None:
+    _telemetry._LOGS_DIR = pathlib.Path(_TELEMETRY_TMP) / "logs"
+    _telemetry._LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
 _MODULE_REQUIREMENTS = {
     "test_model.py": ["torch"],
