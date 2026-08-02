@@ -129,7 +129,16 @@ def run_doctor():
         {
             "message": "doctor complete",
             "checks": checks,
-            "security": "vault 0600, policy caps, audit jsonl",
+            # 70bfa38 corrected the per-check vault STATUS and left this summary line
+            # asserting "vault 0600" unconditionally — on the same platform where that
+            # commit had just documented the chmod is a no-op. A summary that contradicts
+            # the check below it is worse than either being wrong alone, and it was mine.
+            "security": (
+                "vault: POSIX 0600 requested; on Windows access is governed by NTFS ACLs "
+                "(see the vault check above). policy caps, audit jsonl"
+                if _os.name == "nt"
+                else "vault 0600, policy caps, audit jsonl"
+            ),
         },
         command="system doctor",
     )

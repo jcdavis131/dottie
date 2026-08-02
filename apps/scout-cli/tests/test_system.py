@@ -129,3 +129,29 @@ def test_a_missing_file_still_fails(tmp_path):
     got = sc._file_check("vault", tmp_path / "nope.json", require_mode_0600=True)
     assert got["ok"] is False
     assert "missing" in got["status"]
+
+
+def test_the_security_summary_does_not_contradict_the_vault_check(checks, capsys):
+    """70bfa38 fixed the per-check status and left the SUMMARY claiming 0600 anyway.
+
+    A report whose headline contradicts the line below it is worse than either being wrong
+    alone — a reader who skims takes the headline.
+    """
+    import json
+    import os
+
+    from bigbang.core.output import set_json_mode
+
+    set_json_mode(True)
+    try:
+        sc.doctor()
+        payload = json.loads(capsys.readouterr().out)
+    finally:
+        set_json_mode(False)
+    security = (payload.get("data") or payload)["security"]
+
+    if os.name == "nt":
+        assert "NTFS" in security or "ACL" in security, security
+        assert not security.startswith("vault 0600"), security
+    else:
+        assert "0600" in security, security
