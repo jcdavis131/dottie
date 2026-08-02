@@ -109,7 +109,7 @@ def untracked_docs(paths) -> int:
 
 
 def build_index(con: sqlite3.Connection):
-    """FTS5 over the tree at HEAD. Returns (documents indexed, of those untracked).
+    """FTS5 over the tree at HEAD. Returns the number of documents indexed.
 
     THE UNTRACKED COUNT MATTERS AND WAS INVISIBLE. This walk skips .venv and friends but
     has no gitignore awareness, so it indexes generated output as corpus. Measured
@@ -127,7 +127,6 @@ def build_index(con: sqlite3.Connection):
     """
     con.execute("CREATE VIRTUAL TABLE docs USING fts5(path, body, tokenize='porter unicode61')")
     n = 0
-    rels = []
     for p in ROOT.rglob("*"):
         if not p.is_file() or p.suffix not in INDEXABLE:
             continue
@@ -141,10 +140,24 @@ def build_index(con: sqlite3.Connection):
         # The path is indexed as a field of its own so a query naming a file can
         # match it — that is realistic, and the leak control below measures it.
         con.execute("INSERT INTO docs(path, body) VALUES (?, ?)", (rel, body))
-        rels.append(rel)
         n += 1
     con.commit()
-    return n, untracked_docs(rels)
+    return n
+
+
+
+def index_untracked(con: sqlite3.Connection) -> int:
+    """Untracked share of an already-built index. -1 if git cannot answer.
+
+    Deliberately SEPARATE from build_index rather than folded into its return value.
+    Making build_index return a tuple broke three callers that were not in this file —
+    scripts/task_eval_slice.py:399 and two of its tests — and CI caught it with
+    `TypeError: unsupported operand type(s) for -: 'tuple' and 'int'`. A widely-called
+    function's return type is a contract; adding a fact about the index does not justify
+    changing it.
+    """
+    rels = [r[0] for r in con.execute("SELECT path FROM docs")]
+    return untracked_docs(rels)
 
 
 _TOK = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
@@ -270,7 +283,8 @@ def main() -> int:
     boundary = test[0]["date"][:10] if test else "n/a"
 
     con = sqlite3.connect(":memory:")
-    n_docs, n_untracked = build_index(con)
+    n_docs = build_index(con)
+    n_untracked = index_untracked(con)
     # The index IS the ground truth for reachability — read the paths back from it
     # rather than re-walking the tree, so the check cannot disagree with what was
     # actually indexed.
