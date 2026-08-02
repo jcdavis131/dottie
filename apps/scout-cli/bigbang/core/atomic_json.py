@@ -80,6 +80,24 @@ def write_json(path: Path, data: Any, *, mode: int | None = None) -> None:
     if mode is not None:
         # Set perms on the TEMP, before it becomes the real file. Doing it after
         # the replace leaves a window where the secrets vault is world-readable.
+        #
+        # POSIX ONLY. On Windows this call succeeds and changes nothing that matters —
+        # Python's chmod there toggles only the read-only bit, so group/other bits are
+        # untouched. Measured on the live vault 2026-08-02:
+        #
+        #     mode after write   0o666
+        #     chmod(0o600)       before 0o666 -> after 0o666
+        #     icacls             SYSTEM, Administrators, owner only (inherited)
+        #
+        # The file is still private on Windows, by NTFS ACLs inherited from the user
+        # profile — but not because of this line. Callers that treat `mode=` as the
+        # security mechanism (security.py's vault, auth/cli.py's registry) are relying on
+        # something that is a no-op on half the platforms this runs on, and both now say so
+        # at their call sites. Hardening further on Windows means ACLs, not a mode argument.
+        #
+        # The except is not a swallow: chmod legitimately fails on filesystems without
+        # permission bits, and failing the whole write for that would be worse than the
+        # already-documented limitation.
         try:
             tmp.chmod(mode)
         except OSError:

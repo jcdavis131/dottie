@@ -75,7 +75,7 @@ def _load_auth() -> dict[str, Any]:
 
 
 def _save_auth(data: dict[str, Any]) -> None:
-    """Save auth registry with 0600 perms.
+    """Save auth registry atomically, requesting 0600 perms (POSIX only — see below).
 
     Gated here rather than at each command. There are SEVEN `_save_auth(db)` call
     sites in this file; the helper is the one choke point none of them can forget,
@@ -99,6 +99,13 @@ def _save_auth(data: dict[str, Any]) -> None:
     # Atomic, and 0600 lands on the TEMP before it becomes auth.json. The old code
     # wrote the file and chmod'd it afterwards, leaving a window in which every
     # stored credential existed at default permissions.
+    #
+    # ON WINDOWS THE 0600 IS A NO-OP, same as the secrets vault (see core/security.py and
+    # the measurement in core/atomic_json.py). auth.json holds no secret VALUES — only
+    # metadata and vault-key names — so the exposure here is smaller than the vault's, but
+    # the sentence above still promised a mechanism that does not operate on this platform,
+    # and an unqualified "0600 perms" in a credential path is exactly the kind of claim
+    # someone later builds on. Windows protection is the inherited NTFS ACL, not this.
     atomic_json.write_json(REG, data, mode=stat.S_IRUSR | stat.S_IWUSR)
 
 
