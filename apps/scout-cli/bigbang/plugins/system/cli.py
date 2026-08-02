@@ -1,7 +1,65 @@
+import os as _os
 import platform
 import re
 import shutil
 from pathlib import Path
+
+# Module level, not nested inside doctor(). It was a closure, which meant the vault
+# permission rule — the one security-shaped check in this plugin — could not be called or
+# monkeypatched by a test at all. A rule nothing can exercise is a rule that rots.
+
+def _file_check(name: str, path: Path, require_mode_0600: bool = False):
+    """Real check: ok only when the file exists, is readable, and (for the vault) is 0600."""
+    if not path.exists():
+        return {
+            "check": name,
+            "status": f"{path} missing (not created yet)",
+            "ok": False,
+        }
+    if not _os.access(path, _os.R_OK):
+        return {
+            "check": name,
+            "status": f"{path} exists but not readable",
+            "ok": False,
+        }
+    if require_mode_0600:
+        mode = path.stat().st_mode & 0o777
+        # POSIX mode bits are not the access control mechanism on Windows, so this
+        # check could never pass there and doctor was permanently red for a
+        # NON-exposure. Measured on this box 2026-08-02:
+        #
+        #     mode                        0o666
+        #     os.chmod(p, 0o600)          before 0o666 -> after 0o666   (no effect)
+        #     icacls secrets.json         SYSTEM:(I)(F) Administrators:(I)(F)
+        #                                 NUGATRON\jcdav:(I)(F)   <- no Users/Everyone
+        #
+        # The file IS private, via NTFS ACLs inherited from the user profile. What is
+        # not true is that chmod delivered it — security.py writes 0600 and Windows
+        # silently ignores everything but the read-only bit.
+        #
+        # A check that cannot pass on the platform it runs on trains people to skim a
+        # red doctor, which is the same failure this repo already names for CI and for
+        # tracebacks printed after a green result.
+        if _os.name == "nt":
+            return {
+                "check": name,
+                "status": (
+                    f"{path} exists; POSIX mode {oct(mode)} not enforced on Windows "
+                    "(access is governed by NTFS ACLs inherited from the user profile "
+                    "— verify with `icacls`)"
+                ),
+                "ok": True,
+                "caveat": "posix-mode-not-applicable",
+            }
+        if mode != 0o600:
+            return {
+                "check": name,
+                "status": f"{path} exists but mode is {oct(mode)} (want 0600)",
+                "ok": False,
+            }
+        return {"check": name, "status": f"{path} exists, mode 0600", "ok": True}
+    return {"check": name, "status": f"{path} exists, readable", "ok": True}
+
 
 import typer
 
@@ -44,40 +102,24 @@ def run_doctor():
         checks.append(
             {"check": "ollama", "status": "down (expected local)", "ok": False}
         )
+    # INFORMATIONAL, not a failure. ~/MEMORY.md is a personal convention, not something the
+    # CLI requires or creates — this operator's memory lives under
+    # .claude/projects/<slug>/memory/ instead, so doctor reported ok:False forever on a
+    # correctly-configured machine. A permanently-red line is how people learn to skim the
+    # whole report.
     mem = Path.home() / "MEMORY.md"
     checks.append(
         {
             "check": "MEMORY.md",
-            "status": f"{mem} {'exists' if mem.exists() else 'missing'}",
-            "ok": mem.exists(),
+            "status": (
+                f"{mem} exists"
+                if mem.exists()
+                else f"{mem} not present (optional convention, not required)"
+            ),
+            "ok": True,
+            "informational": True,
         }
     )
-    import os as _os
-
-    def _file_check(name: str, path: Path, require_mode_0600: bool = False):
-        """Real check: ok only when the file exists, is readable, and (for the vault) is 0600."""
-        if not path.exists():
-            return {
-                "check": name,
-                "status": f"{path} missing (not created yet)",
-                "ok": False,
-            }
-        if not _os.access(path, _os.R_OK):
-            return {
-                "check": name,
-                "status": f"{path} exists but not readable",
-                "ok": False,
-            }
-        if require_mode_0600:
-            mode = path.stat().st_mode & 0o777
-            if mode != 0o600:
-                return {
-                    "check": name,
-                    "status": f"{path} exists but mode is {oct(mode)} (want 0600)",
-                    "ok": False,
-                }
-            return {"check": name, "status": f"{path} exists, mode 0600", "ok": True}
-        return {"check": name, "status": f"{path} exists, readable", "ok": True}
 
     share = Path.home() / ".local" / "share" / "bigbang"
     checks.append(_file_check("vault", share / "secrets.json", require_mode_0600=True))

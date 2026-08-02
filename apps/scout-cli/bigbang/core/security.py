@@ -31,6 +31,18 @@ def _load():
 def _save(data: dict):
     # Atomic + 0600 applied to the temp BEFORE it becomes the vault, so there is
     # no window where secrets.json exists with default permissions.
+    #
+    # ON WINDOWS THE 0600 DOES NOTHING, and that is worth saying here rather than letting
+    # the line above imply a guarantee it does not deliver. Measured 2026-08-02:
+    #
+    #     mode after write            0o666
+    #     os.chmod(p, 0o600)          before 0o666 -> after 0o666   (no effect)
+    #
+    # Python's chmod on Windows only toggles the read-only bit; group/other bits are not
+    # the access control mechanism there. The vault IS still private on that platform —
+    # `icacls` shows SYSTEM, Administrators and the owning user only, inherited from the
+    # user profile — but by NTFS ACLs, not by this call. Anyone hardening this further
+    # should reach for ACLs on Windows rather than assume the mode argument covers it.
     atomic_json.write_json(
         VAULT_FILE, data, mode=stat.S_IRUSR | stat.S_IWUSR
     )
