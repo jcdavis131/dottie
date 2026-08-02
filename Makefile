@@ -23,6 +23,23 @@
 #
 # If you add a gate to ci.yml, add it here. A local "ci" that is a subset of the real one
 # is worse than no local target, because it is trusted.
+#
+# ALWAYS `uv run`, never ambient `python -m pytest`. Verified 2026-08-01 on one tree:
+#
+#     uv run   (Windows local)   2277 collected -> 2276 passed, 1 skipped
+#     uv       (Linux CI)                          2276 passed, 1 skipped   <- IDENTICAL
+#     ambient python (Windows)  2271 collected
+#
+# So `uv run` reproduces CI EXACTLY, and ambient python silently runs 6 fewer tests: all of
+# tests/test_profiles.py, which `pytest.importorskip("skills.state_store")`s because
+# ava-skills is a WORKSPACE member and is therefore absent outside the uv environment.
+# Correct behaviour with an honest reason, but it reports as "1 skipped" rather than "6
+# tests did not run", so the loss is easy to miss.
+#
+# Recorded because I got this wrong twice before measuring it: I attributed the local/CI
+# gap to the platform skipif markers in test_atomic_json.py and test_metrics.py. Those
+# markers are real, but skipif does not change COLLECTION, so they were never the
+# explanation — the interpreter was, and a stale CI figure accounted for the rest.
 
 sync:
 	uv sync --all-groups --frozen
