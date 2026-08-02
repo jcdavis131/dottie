@@ -46,6 +46,10 @@ def _extract_concepts(text: str) -> list[str]:
     return [c.strip()[:80] for c in concepts[:20] if c.strip()]
 
 
+VALID_MODES = ("mock", "real")
+SKILL_NAME = "openwiki-sync"
+
+
 def run(
     model: Any = None,
     tokenizer: Any = None,
@@ -53,6 +57,21 @@ def run(
     wiki_path: str | None = None,
     **kw,
 ) -> dict[str, Any]:
+    # A membership guard, NOT decoration. Without it this function tested `mode == "mock"`
+    # and let EVERYTHING ELSE fall through to the real path — so a typo, a case variant or
+    # "" silently ran the expensive real branch AND stamped the result `"mode": "real"`.
+    # Probed 2026-08-02: `run(mode="banana")` returned a payload labelled mode="real".
+    #
+    # That is a provenance lie in a repo whose rule is that numbers come from real sources:
+    # the one field a caller would use to tell mock from real was reporting whatever the
+    # code did, not what was asked for. Same defect class as safety-scanner's fail-open
+    # (e63954d), which is why the shape of this guard matches it deliberately.
+    if mode not in VALID_MODES:
+        raise ValueError(
+            f"{SKILL_NAME}: unknown mode {mode!r}; expected one of {VALID_MODES}. "
+            "Refusing to guess — an unrecognised mode previously ran the real path and "
+            "labelled its own output \"real\"."
+        )
     files = _scan_wiki(wiki_path)
     if mode == "mock":
         import random

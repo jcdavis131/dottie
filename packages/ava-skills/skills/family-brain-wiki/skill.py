@@ -101,7 +101,28 @@ def _gen_pages_from_state(state: dict[str, Any] | None) -> list[dict[str, str]]:
     return pages
 
 
+VALID_MODES = ("mock", "real")
+SKILL_NAME = "family-brain-wiki"
+
+
 def run(model: Any = None, tokenizer: Any = None, mode: str = "mock", **kw):
+    # A membership guard, NOT decoration. Swept 2026-08-02: every skill here branched on
+    # `mode` and let an unrecognised value fall through. `run(mode="banana")` returned:
+    #     logic-prover          mode="real",   pass=True    <- mislabelled AND passing
+    #     eval-harness-runner   mode="banana", pass=True
+    #     memory-router         mode="banana", pass=True
+    #     code-bench            mode="real",   pass=False
+    #     family-brain-wiki     mode="real",   pass=False
+    #     jspace-context-engine mode="banana"
+    # Three returned a PASSING verdict for a mode nobody implements, which is
+    # safety-scanner's fail-open (e63954d) in three more places; the rest stamped their
+    # output "real" while running on a value that was not "real", which is a provenance
+    # lie in a repo whose rule is that numbers come from real sources.
+    if mode not in VALID_MODES:
+        raise ValueError(
+            f"{SKILL_NAME}: unknown mode {mode!r}; expected one of {VALID_MODES}. "
+            "Refusing to guess."
+        )
     import random
 
     if mode != "mock":
