@@ -109,3 +109,45 @@ def test_an_allowed_asset_url_still_downloads(monkeypatch, tmp_path):
     monkeypatch.setattr(rtx.httpx, "get", fake_get)
     monkeypatch.setattr("bigbang.core.policy.check_user_url", lambda url: (True, "ok"))
     rtx.releases_cmd(action="sync", tag="v0.0.0-test")
+
+
+# --- scout-rtx root resolution (added 2026-08-02) ------------------------------------
+#
+# _resolve_custom_root() resolved to ~/workspace/autoresearch-rtx-custom, which does not
+# exist on this box, while <repo>/apps/scout-rtx does and was never a candidate. CUSTOM_ROOT
+# and the BB_OFFLOAD derived from it therefore pointed at a missing directory. Same omission
+# as ava/cli.py (0c89edd); the correct version already existed in
+# apps/scout-rtx/bigbang-bridge/cli.py, which checks the containing checkout second.
+
+
+def test_custom_root_resolves_to_an_existing_directory():
+    """The defect: it returned a legacy path that was not there."""
+    from bigbang.plugins.rtx import cli as rc
+
+    assert rc._resolve_custom_root().exists(), rc._resolve_custom_root()
+
+
+def test_custom_root_is_the_checkout_this_plugin_lives_in():
+    """Pins the ORDER. 'Resolves to something that exists' would pass on a stray checkout."""
+    from pathlib import Path
+
+    from bigbang.plugins.rtx import cli as rc
+
+    got = rc._resolve_custom_root()
+    repo = Path(rc.__file__).resolve().parents[5]
+    assert str(got).lower().startswith(str(repo).lower()), f"{got} outside {repo}"
+    assert got.name == "scout-rtx", got
+
+
+def test_bb_offload_derives_from_a_real_root():
+    from bigbang.plugins.rtx import cli as rc
+
+    assert rc.BB_OFFLOAD.exists(), rc.BB_OFFLOAD
+
+
+def test_scout_rtx_root_env_override_wins(tmp_path, monkeypatch):
+    """Non-vacuity: a resolver hardcoded to the repo path would pass the tests above."""
+    from bigbang.plugins.rtx import cli as rc
+
+    monkeypatch.setenv("SCOUT_RTX_ROOT", str(tmp_path))
+    assert rc._resolve_custom_root() == tmp_path

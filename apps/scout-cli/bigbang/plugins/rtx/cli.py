@@ -22,30 +22,65 @@ app = typer.Typer(
 
 
 def _resolve_custom_root() -> Path:
-    """Resolve the scout-rtx working copy.
+    """Resolve the scout-rtx working copy. THE CHECKOUT THIS FILE LIVES IN COMES FIRST.
 
-    Precedence: SCOUT_RTX_ROOT env override, then the dottie monorepo layout
-    (DOTTIE_ROOT/apps/scout-rtx, ~/workspace/dottie/apps/scout-rtx), then the
-    standalone checkouts (~/workspace/autoresearch-rtx-custom, ~/workspace/scout-rtx).
-    Falls back to the legacy default path when nothing exists yet.
+    It did not, and on 2026-08-02 that resolved to a path that does not exist:
+
+        SCOUT_RTX_ROOT                          <unset>
+        DOTTIE_ROOT/apps/scout-rtx              <unset>
+        ~/workspace/dottie/apps/scout-rtx       does not exist
+        ~/workspace/autoresearch-rtx-custom     does not exist
+        ~/workspace/scout-rtx                   does not exist
+        -> ~/workspace/autoresearch-rtx-custom  RETURNED ANYWAY, unguarded  <- missing
+        <repo>/apps/scout-rtx                   EXISTS, never a candidate   <- canonical
+
+    So CUSTOM_ROOT and the BB_OFFLOAD derived from it pointed at a directory that is not
+    there, while the real scout-rtx sat in the same repo as this plugin. Same omission as
+    ava/cli.py (0c89edd) and the same unguarded final return.
+
+    THE CORRECT VERSION ALREADY EXISTED. apps/scout-rtx/bigbang-bridge/cli.py has the same
+    function and checks "the checkout containing this file" second, right after the env
+    override. Two copies, one right, one wrong; this brings the wrong one into line rather
+    than inventing a third approach.
+
+    Walks up looking for apps/scout-rtx instead of counting parents — counting is what made
+    the first attempt at the ava fix land on `.../apps/apps/ava-factory`.
     """
     env = os.environ.get("SCOUT_RTX_ROOT")
     if env:
         return Path(env).expanduser()
-    candidates = []
+
+    candidates: list[Path] = []
+
+    # The checkout this plugin is part of.
+    canonical = None
+    for parent in Path(__file__).resolve().parents:
+        cand = parent / "apps" / "scout-rtx"
+        if cand.exists():
+            canonical = cand
+            break
+    if canonical is not None:
+        candidates.append(canonical)
+
     dottie = os.environ.get("DOTTIE_ROOT")
     if dottie:
         candidates.append(Path(dottie).expanduser() / "apps" / "scout-rtx")
     candidates.append(Path.home() / "workspace" / "dottie" / "apps" / "scout-rtx")
+    # Legacy standalone checkouts, kept so an old box still works, demoted so they cannot
+    # outrank a real one.
     candidates.append(Path.home() / "workspace" / "autoresearch-rtx-custom")
     candidates.append(Path.home() / "workspace" / "scout-rtx")
+
     for cand in candidates:
         try:
             if cand.exists():
                 return cand
         except OSError:
             continue
-    return Path.home() / "workspace" / "autoresearch-rtx-custom"
+
+    # Nothing exists: name the CANONICAL location so an error points at where the checkout
+    # should be, not at a legacy path that was already missing.
+    return canonical or (Path.home() / "workspace" / "dottie" / "apps" / "scout-rtx")
 
 
 CUSTOM_ROOT = _resolve_custom_root()
