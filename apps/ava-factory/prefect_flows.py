@@ -92,20 +92,61 @@ def push_to_hf_task(
         # call hf_uploader dry-run via subprocess or just log
         import subprocess
 
-        cmd = f"python3 {ROOT}/scripts/hf_uploader.py --repo {repo} --manifest '{manifest_path}' --dry-run"
+        # argv list, not a shell string. No token on this path, but `repo` and
+        # `manifest_path` were still interpolated into something handed to shell=True —
+        # the same injection surface as the real-push branch below, minus the credential.
+        # Fixed together so the two paths cannot drift into different safety properties.
+        cmd = [
+            "python3",
+            f"{ROOT}/scripts/hf_uploader.py",
+            "--repo", str(repo),
+            "--manifest", str(manifest_path),
+            "--dry-run",
+        ]
         try:
-            subprocess.run(cmd, shell=True, timeout=30)
+            subprocess.run(cmd, timeout=30)
         except Exception as e:
             _log(f"[hf] dry-run warning: {e}")
         return {"pushed": False, "reason": "no_token", "repo": repo}
     # real push
     import subprocess
 
-    cmd = f"HF_TOKEN={hf_token} python3 {ROOT}/scripts/hf_uploader.py --repo {repo} --manifest '{manifest_path}' --private --push"
-    _log(f"[hf] cmd: {cmd}")
+    # THE TOKEN USED TO BE IN THE COMMAND STRING, AND THE COMMAND STRING WAS LOGGED:
+    #
+    #     cmd = f"HF_TOKEN={hf_token} python3 ... --push"
+    #     _log(f"[hf] cmd: {cmd}")
+    #
+    # _log writes to the Prefect run logger (or stdout when there is no run context), so
+    # every real push wrote the Hugging Face token in plaintext to a persisted log. Same
+    # class as the secrets-plugin leak fixed in 2a24c22: a credential printed beside the
+    # thing that was supposed to keep it out of sight.
+    #
+    # Passing it through env= rather than a shell prefix fixes the leak and removes the
+    # shell entirely — `repo` and `manifest_path` were being interpolated into a string
+    # handed to shell=True, so a value containing a quote or a semicolon was an injection.
+    # An argv list has no shell to inject into. Both problems, one change.
+    #
+    # NO local `import os` here: the module already imports it at line 25, and a
+    # function-local import makes `os` local for the WHOLE function — so the
+    # `os.getenv("HF_TOKEN")` at the top of this task would raise UnboundLocalError and
+    # push_to_hf_task would fail on its first real line. I added that import, ruff's F823
+    # caught it, and it is recorded here because the fix looks like a deletion.
+    argv = [
+        "python3",
+        f"{ROOT}/scripts/hf_uploader.py",
+        "--repo", str(repo),
+        "--manifest", str(manifest_path),
+        "--private",
+        "--push",
+    ]
+    _log(f"[hf] cmd: {' '.join(argv)}  (HF_TOKEN passed via env, not logged)")
     try:
         res = subprocess.run(
-            cmd, shell=True, capture_output=True, text=True, timeout=300
+            argv,
+            env={**os.environ, "HF_TOKEN": hf_token},
+            capture_output=True,
+            text=True,
+            timeout=300,
         )
         _log(res.stdout[-2000:])
         if res.returncode == 0:
