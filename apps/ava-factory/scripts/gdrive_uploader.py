@@ -176,9 +176,14 @@ def get_or_create_folder(folder_name):
 
     # Create folder
     print(f"[GDrive] Creating folder {folder_name}")
-    out = run_cli(
-        f'hatch_gws_cli drive files create --json \'{{"name":"{folder_name}","mimeType":"application/vnd.google-apps.folder"}}\''
+    # shlex.quote, not hand-placed single quotes. `folder_name` comes straight from
+    # --folder, so a value containing a quote broke out of the string and ran as shell.
+    # gdrive_list above already does this correctly and calls itself a "safe wrapper";
+    # these two call sites never got the same treatment.
+    _payload = json.dumps(
+        {"name": folder_name, "mimeType": "application/vnd.google-apps.folder"}
     )
+    out = run_cli(f"hatch_gws_cli drive files create --json {shlex.quote(_payload)}")
     if out:
         try:
             data = json.loads(out)
@@ -242,9 +247,14 @@ def upload_file_with_dedup(local_path: Path, folder_id, dry_run=False):
             "parents": [folder_id],
         }
     )
-    # Need to escape single quotes in shell
-    json_payload_escaped = json_payload.replace("'", "'\"'\"'")
-    cmd = f"hatch_gws_cli drive files create --json '{json_payload_escaped}' --upload {local_path} 2>&1"
+    # Hand-rolled '"'"' escaping replaced with shlex.quote, and local_path quoted AT ALL —
+    # it was interpolated bare and comes from --upload. Two CLI flags reaching a shell=True
+    # command line was the actual exposure; the hand-rolled escape shows the risk was known
+    # and only half-handled.
+    cmd = (
+        f"hatch_gws_cli drive files create --json {shlex.quote(json_payload)} "
+        f"--upload {shlex.quote(str(local_path))} 2>&1"
+    )
     # Actually tool uses --upload <path> maybe as flag value? Check typical usage: hatch_gws_cli drive +upload ... Let's try files.create with upload
     out = run_cli(cmd, retries=3)
     if out:
