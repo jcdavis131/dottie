@@ -315,6 +315,67 @@ def _heuristic_plan(task: str) -> dict[str, Any]:
     }
 
 
+def _planner_tool_desc() -> str:
+    """The tool list the LLM planner is shown. Built from PLUGINS, not the registry.
+
+    THE DEFECT THIS REPLACES. The line here was:
+
+        tools = list_tools()
+        tool_desc = "\\n".join([... for name, m in list(tools.items())[:25]])
+
+    `list_tools()` reads `~/.local/share/bigbang/registry.json`, an OPT-IN registry that
+    `register_tool()` populates. Measured 2026-08-03 on this box: **it holds zero tools.**
+    So `tool_desc` was the empty string, and the planner's system prompt read:
+
+        You are Ava planner for BigBang CLI. Available tools:
+        <nothing>
+        You must output JSON only with a plan: ...
+
+    The planner was told it has no tools, then asked to plan with them. It hallucinates
+    `bb ...` strings; `_policy_check_step` rejects the invalid ones against
+    `list_plugin_names()` — so the damage is silent failure and wasted turns rather than
+    bad execution, but the planner has never once been shown the 58 plugins it is routing
+    to. The `[:25]` slice was a red herring: slicing an empty dict is still empty.
+
+    Same shape as every other defect in this estate's logs — a real value answering a
+    different question than the one it appears to answer.
+
+    The plugin manifests are the right source: 56 of them carry `name` + `description`,
+    they are discovered at import time, and the whole block is ~4.5 KB (~1,100 tokens),
+    which is nothing for the 32B planner. Registry tools are unioned in so an explicitly
+    registered non-plugin tool is not lost.
+    """
+    from bigbang.core.plugin_loader import list_plugin_names
+
+    lines: list[str] = []
+    seen: set[str] = set()
+    plugins_root = Path(__file__).resolve().parent.parent
+    for name in sorted(list_plugin_names()):
+        desc = ""
+        mf = plugins_root / name / "manifest.yaml"
+        if mf.is_file():
+            # Deliberately a regex, not a yaml import: this module has no yaml dependency
+            # and a planner prompt is not worth adding one for a single scalar field.
+            m = re.search(r"^description:\s*(.+)$", mf.read_text(encoding="utf-8"), re.M)
+            if m:
+                desc = m.group(1).strip().strip("\"'")
+        lines.append(f"- bb {name}: {desc[:80]}")
+        seen.add(name)
+    for name, meta in sorted(list_tools().items()):
+        if name not in seen:
+            lines.append(f"- bb {name}: {(meta.get('description') or '')[:80]}")
+
+    if not lines:
+        # REFUSE rather than send a prompt that claims there are no tools. An empty list
+        # here means plugin discovery itself failed, which is a real fault and should look
+        # like one instead of degrading into a planner that guesses.
+        raise RuntimeError(
+            "planner has no tools to offer: plugin discovery returned nothing and the "
+            "registry is empty. Run `bb system doctor`."
+        )
+    return "\n".join(lines)
+
+
 def _ollama_planner(task: str, system_prefix: str | None = None) -> dict[str, Any]:
     base = get_ollama_base(timeout=2.0)
     if not base:
@@ -324,13 +385,7 @@ def _ollama_planner(task: str, system_prefix: str | None = None) -> dict[str, An
 
     best_model = get_best_model(base=base, timeout=2.0) if _HAS_LLM else "qwen3:32b"
 
-    tools = list_tools()
-    tool_desc = "\n".join(
-        [
-            f"- bb {name}: {m.get('description', '')[:80]}"
-            for name, m in list(tools.items())[:25]
-        ]
-    )
+    tool_desc = _planner_tool_desc()
 
     # A dynamic profile (Hermes/OpenClaw, core.profiles) prepends its system role so the
     # planner operates inside that loop's doctrine.
