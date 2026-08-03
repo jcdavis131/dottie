@@ -112,6 +112,61 @@ def test_host_matches_exact_wildcard_and_cn_fallback():
     assert certmon.host_matches("cn.example.com", san_wins) is False
 
 
+def test_wildcard_rejects_partial_and_multiple_wildcards():
+    """A wildcard is the WHOLE leftmost label, and there is only one of it.
+
+    Untested before, and correct today — pinned because this is the function a
+    future 'simplification' to fnmatch or a regex would silently make permissive.
+    `a*.example.com` matching `ab.example.com` is the classic partial-label hole,
+    and fnmatch('*.example.com') would happily match 'a.b.example.com' too.
+    """
+    assert certmon._label_match("a*.example.com", "ab.example.com") is False
+    assert certmon._label_match("*b.example.com", "ab.example.com") is False
+    assert certmon._label_match("*.*.example.com", "a.b.example.com") is False
+    assert certmon._label_match("*", "anything") is False
+    assert certmon._label_match("example.*", "example.com") is False
+    # The `"*" in pattern[2:]` guard is ONLY observable when the host itself
+    # carries a literal '*': for a normal hostname the leftover '*' lands in the
+    # suffix and fails the endswith anyway, so a test using an ordinary host
+    # passes with or without the guard. Mutation testing caught that — the first
+    # version of this test asserted the multi-wildcard case above and still let
+    # the guard be deleted. `host` is CLI/config input, so this is reachable.
+    assert certmon._label_match("*.ex*mple.com", "a.ex*mple.com") is False
+    # the legitimate shape still matches, so this is not just asserting False
+    assert certmon._label_match("*.example.com", "a.example.com") is True
+
+
+def test_wildcard_handles_the_fqdn_root_label():
+    """A trailing dot is the DNS root and must not defeat the match.
+
+    'a.example.com.' is the same name as 'a.example.com'. If the trailing dot were
+    not stripped, a host that resolved as an FQDN would silently read as a
+    host-mismatch — an error on a certificate that is in fact correct.
+    """
+    assert certmon._label_match("*.example.com", "a.example.com.") is True
+    assert certmon._label_match("*.example.com.", "a.example.com") is True
+    assert certmon._label_match("example.com.", "example.com") is True
+    # and the root label does not smuggle in an extra label
+    assert certmon._label_match("*.example.com", "a.b.example.com.") is False
+
+
+def test_cert_time_rejects_a_non_utc_zone():
+    """'Aug  1 23:59:59 2026 EST' must raise, not be read as GMT.
+
+    parse_cert_time assembles with calendar.timegm, which is UTC unconditionally.
+    Accepting a zone it then ignores would shift every expiry by the offset — and
+    silently, since the result is still a plausible-looking epoch.
+    """
+    with pytest.raises(ValueError):
+        certmon.parse_cert_time("Aug  1 23:59:59 2026 EST")
+    with pytest.raises(ValueError):
+        certmon.parse_cert_time("Aug  1 23:59:59 2026 +0000")
+    # GMT and UTC are both accepted spellings of the same zone
+    assert certmon.parse_cert_time("Aug  1 23:59:59 2026 UTC") == certmon.parse_cert_time(
+        "Aug  1 23:59:59 2026 GMT"
+    )
+
+
 def test_self_signed_and_chain():
     assert certmon.is_self_signed(_cert(host="x", issuer_cn="x")) is True
     assert certmon.has_chain(_cert(host="x", issuer_cn="x")) is False
