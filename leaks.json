@@ -1,0 +1,10 @@
+{
+  "note": "Repo policy for the two CI secrets gates: `leaks scan . --config leaks.json --fail-on error` (working tree) and `leaks history --max-commits 0 --config leaks.json --fail-on error` (all commits, merges included). THREE suppressions, all by path, all test/doc fixtures rather than credentials -- verified by reading each one, not by shape. (1) knowledge/reviews/monorepo-review-2026-07-22.md quotes AWS's published documentation key while reporting that its own secrets scan came back clean; it is a dated review record, and editing what a review said in order to quiet a scanner is worse than suppressing it where the decision is visible. (2) tests/test_audit_output.py and (3) tests/test_curator.py are the PRE-MONOREPO-MOVE paths, which exist only inside git history and cannot be edited. Their present-day counterparts are apps/scout-cli/tests/test_audit_output.py and apps/ava-factory/tests/test_curator.py, deliberately NOT listed here: both were fixed at the source instead, assembling fixture credentials by concatenation so the files no longer contain a key-shaped literal for ANY scanner. That is why the historical paths are written without a leading glob -- a new secret added to today's file still fails the gate. Prefer fixing the source; reach for this list only when the bytes cannot change.",
+  "allow": {
+    "paths": [
+      "knowledge/reviews/monorepo-review-2026-07-22.md",
+      "tests/test_audit_output.py",
+      "tests/test_curator.py"
+    ]
+  }
+}

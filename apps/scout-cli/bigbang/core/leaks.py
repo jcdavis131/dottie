@@ -55,6 +55,11 @@ from typing import Any
 from bigbang.core import openswap
 
 DEFAULT_CONFIG: dict[str, Any] = {
+    # Why this config suppresses what it suppresses. JSON has no comments, so
+    # without somewhere to write the reason an allowlist becomes a place to
+    # hide things — the same failure scripts/check_shell_true.py rejects when a
+    # baselined site carries an empty judgment. Echoed by `leaks signatures`.
+    "note": "",
     # known false positives, four layered escape hatches (the harper doctrine:
     # a wrong finding must never block work)
     "allow": {"rules": [], "paths": [], "patterns": [], "fingerprints": []},
@@ -258,6 +263,8 @@ def load_config(path: str | None = None) -> dict[str, Any]:
 
 
 def _validate_config(cfg: dict[str, Any]) -> None:
+    if not isinstance(cfg["note"], str):
+        raise ValueError("config 'note': must be a string")
     allow = cfg["allow"]
     if not isinstance(allow, dict) or set(allow) != _ALLOW_KEYS:
         raise ValueError(

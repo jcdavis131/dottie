@@ -33,6 +33,11 @@ def test_emit_writes_audit_line(audit_file, capsys):
 
 def test_emit_redacts_secret_bearing_keys(audit_file, capsys):
     output.set_json_mode(True)
+    # Assembled by concatenation so this file never itself contains a
+    # token-shaped literal — `scout leaks scan . --fail-on error` gates the repo
+    # and flagged this fixture twice, at real error severity. Same discipline
+    # test_leaks.py has always documented; it just had not reached here.
+    slack = "xoxb-" + "1234-abcdefgh"
     payload = {
         "name": "OPENAI_API_KEY",
         "value": "sk-live-abcdef1234567890",
@@ -41,7 +46,7 @@ def test_emit_redacts_secret_bearing_keys(audit_file, capsys):
         "password": "p4ssw0rd",
         "credential": "top",
         "nested": {"api_key": "sk-nested-1234567890", "safe": "hello"},
-        "listed": [{"token": "xoxb-1234-abcdefgh"}],
+        "listed": [{"token": slack}],
     }
     output.emit(payload, command="secrets get")
     capsys.readouterr()
@@ -53,7 +58,7 @@ def test_emit_redacts_secret_bearing_keys(audit_file, capsys):
         "hunter2",
         "p4ssw0rd",
         "sk-nested-1234567890",
-        "xoxb-1234-abcdefgh",
+        slack,
     ):
         assert leaked not in raw, f"secret {leaked!r} leaked into audit.jsonl"
     assert entry["args"]["value"] == "[REDACTED]"

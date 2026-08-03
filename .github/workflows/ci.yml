@@ -231,6 +231,50 @@ jobs:
       # reason. --check self-tests against the pre-fix run_cli first.
       - name: shell=True sites (each needs a written reason)
         run: uv run python scripts/check_shell_true.py --check
+      # The repo's own secrets scanner, pointed at the repo. It shipped as a product
+      # surface and was never run as a gate, so nobody knew whether it passed. It did
+      # not: 5 error-severity findings, all fixture credentials in test files. Those are
+      # now assembled by concatenation at the source, so the files contain no key-shaped
+      # literal for ANY scanner; only three paths that CANNOT change are allowlisted, each
+      # with a written reason in leaks.json (a dated review record, plus two pre-monorepo
+      # -move paths that exist only inside git history).
+      #
+      # Gated at ERROR only. warning/suggestion/info are catch-alls by design — 27 warnings
+      # here are filesystem paths matching "assignment to a credential-named key", and 2998
+      # info hits are hex blobs. Gating those would cry wolf, and a check that cries wolf
+      # gets `|| true`'d, which is instance #5 in gate_audit.py's own docstring.
+      #
+      # Run from the repo root, NOT working-directory: apps/scout-cli. The allowlist matches
+      # repo-relative posix paths, so scanning `../..` would produce `../../knowledge/...`
+      # and silently match nothing — a suppression that stops suppressing is survivable, but
+      # the same mistake in reverse would make the gate scan the wrong tree.
+      - name: Secrets in the working tree (scout leaks, error severity)
+        run: |
+          uv run --project apps/scout-cli python -m bigbang.cli --json leaks scan . \
+            --config leaks.json --fail-on error > /dev/null
+      # History as well as the tree, because `scan` only ever sees the FINAL state: a secret
+      # added in one commit and removed in the next is invisible to it, and a push carries
+      # many commits. This sweep reads every commit, including merges — plain `git log -p`
+      # emits no diff for a merge at all, so until 7d93c63 every merge commit was unscanned
+      # while the mode reported a clean sweep (38 of them here, 109 lines).
+      #
+      # THE SHALLOW-CLONE GUARD IS THE POINT. actions/checkout defaults to depth 1; with a
+      # shallow clone this command sweeps ONE commit, finds nothing, and exits 0 — a green
+      # gate that checked nothing, which is this repo's most-repeated failure. fetch-depth: 0
+      # is set above for other reasons, so this asserts the property it depends on rather
+      # than trusting a setting 180 lines away to stay put.
+      - name: Secrets in git history (all commits, merges included)
+        run: |
+          set -e
+          if [ "$(git rev-parse --is-shallow-repository)" != "false" ]; then
+            echo "SHALLOW CLONE: this sweep would read 1 commit and report clean."
+            echo "Restore fetch-depth: 0 on the checkout step; failing rather than"
+            echo "reporting a sweep that never happened."
+            exit 2
+          fi
+          echo "commits to sweep: $(git rev-list --count HEAD) ($(git rev-list --count --merges HEAD) merges)"
+          uv run --project apps/scout-cli python -m bigbang.cli --json leaks history \
+            --max-commits 0 --config leaks.json --fail-on error > /dev/null
       # The lint-debt figure written in BOTH workflows, verified against a fresh ruff
       # run. Added 2026-08-01 after ~15 stale numbers were corrected by hand in one
       # session — including this very figure, which was written as 263 and went stale

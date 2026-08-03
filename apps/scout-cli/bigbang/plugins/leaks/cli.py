@@ -217,6 +217,9 @@ def signatures_cmd(
                 "entropy": cfg["entropy"],
                 "entropy_by_ext": cfg["entropy_by_ext"],
                 "allow_counts": {k: len(v) for k, v in cfg["allow"].items()},
+                # surfaced so a suppression is reviewable without opening the
+                # JSON — an unexplained allowlist is the thing to catch
+                "note": cfg["note"],
                 "overlay": config_file,
             },
             command="leaks signatures",

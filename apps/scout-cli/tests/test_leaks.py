@@ -274,6 +274,46 @@ def test_scan_patch_staged_shape_no_commit():
     assert stats["commits"] == 0
 
 
+def test_config_note_carries_the_reason_for_a_suppression(tmp_path):
+    """An allowlist you cannot annotate is where exceptions go to hide.
+
+    JSON has no comments, so `note` is the only place a suppression's reason can
+    live next to the suppression itself — the same requirement
+    scripts/check_shell_true.py enforces by rejecting a blank judgment.
+    """
+    assert leaks.load_config(None)["note"] == ""
+    p = tmp_path / "leaks.json"
+    p.write_text(
+        json.dumps({"note": "fixture, not a credential",
+                    "allow": {"paths": ["docs/*.md"]}}),
+        encoding="utf-8",
+    )
+    cfg = leaks.load_config(str(p))
+    assert cfg["note"] == "fixture, not a credential"
+    assert cfg["allow"]["paths"] == ["docs/*.md"]
+    assert cfg["allow"]["rules"] == []  # untouched keys keep their defaults
+    p.write_text(json.dumps({"note": 42}), encoding="utf-8")
+    try:
+        leaks.load_config(str(p))
+        raise AssertionError("expected ValueError for a non-string note")
+    except ValueError as e:
+        assert "note" in str(e)
+
+
+def test_repo_leaks_config_explains_every_suppression():
+    """The repo's own gate config must say WHY, not just what."""
+    cfg_path = ROOT.parents[1] / "leaks.json"
+    if not cfg_path.exists():        # scout-cli checked out on its own
+        return
+    cfg = leaks.load_config(str(cfg_path))
+    suppressed = sum(len(v) for v in cfg["allow"].values())
+    assert suppressed > 0, "config with nothing suppressed should be deleted"
+    assert len(cfg["note"]) > 200, (
+        "leaks.json suppresses findings in the CI secrets gate with no written "
+        "reason — that is how an allowlist becomes a place to hide things"
+    )
+
+
 # ---- merge commits: the combined diff `git log -p` alone never emits --------
 
 # Real `git log -p --cc` shape for a two-parent merge. Each content line carries
