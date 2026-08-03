@@ -126,15 +126,22 @@ class BaseOnlyEncoder:
     must actually beat to justify its own existence. Same interface as LoadedEncoder
     (encode/set_domain/manifest) so main() doesn't need to branch."""
 
-    def __init__(self, base_model: str, dims, device: str):
+    def __init__(self, base_model: str, dims, device: str, trust_remote_code: bool = False):
         import torch
         from transformers import AutoModel, AutoTokenizer
 
         self.torch = torch
         self.device = device
-        self.tokenizer = AutoTokenizer.from_pretrained(base_model)
-        self.model = AutoModel.from_pretrained(base_model).to(device).eval()
-        self.manifest = {"base_model": base_model, "dims": dims, "domains": ["none"]}
+        # OFF BY DEFAULT ON PURPOSE. trust_remote_code=True executes Python fetched
+        # from the Hub with this user's privileges — on a box that holds a live
+        # HF_TOKEN and runs the research daemon. Some encoders cannot be loaded any
+        # other way (LFM2.5-Encoder needs it), so the capability exists, but it is
+        # opt-in per invocation and never the default a stray copy-paste inherits.
+        kw = {"trust_remote_code": True} if trust_remote_code else {}
+        self.tokenizer = AutoTokenizer.from_pretrained(base_model, **kw)
+        self.model = AutoModel.from_pretrained(base_model, **kw).to(device).eval()
+        self.manifest = {"base_model": base_model, "dims": dims, "domains": ["none"],
+                         "trust_remote_code": trust_remote_code}
 
     def set_domain(self, domain: str):
         pass
@@ -178,6 +185,9 @@ def main(argv=None) -> int:
                      help="skip the checkpoint, score the frozen base model with zero LoRA "
                           "(the floor a trained checkpoint must actually beat)")
     ap.add_argument("--base-model", default="sentence-transformers/all-MiniLM-L6-v2")
+    ap.add_argument("--trust-remote-code", action="store_true",
+                    help="execute model code fetched from the Hub (required by some "
+                         "encoders, e.g. LFM2.5-Encoder); off by default")
     ap.add_argument("--max-commits", type=int, default=4000)
     ap.add_argument("--split-frac", type=float, default=0.7)
     ap.add_argument("--continuation-lines", type=int, default=task_eval_slice.MAX_CONTINUATION_LINES)
@@ -194,7 +204,8 @@ def main(argv=None) -> int:
     if args.base_only:
         checkpoint_dir = None
         default_dims = [384, 256, 128, 64]
-        encoder = BaseOnlyEncoder(args.base_model, default_dims, device)
+        encoder = BaseOnlyEncoder(args.base_model, default_dims, device,
+                                  trust_remote_code=args.trust_remote_code)
     else:
         checkpoint_dir = Path(args.checkpoint)
         encoder = LoadedEncoder(checkpoint_dir, device)

@@ -207,3 +207,36 @@ class TestCliContract:
             pytest.fail(f"--base-only should not require --checkpoint (SystemExit: {e})")
         except Exception:
             pass  # got past validation into real work; that is all this test claims
+
+    def test_remote_code_execution_is_off_unless_asked_for(self):
+        """--trust-remote-code executes Python fetched from the Hub with this user's
+        privileges, on a box holding a live HF_TOKEN. Some encoders (LFM2.5-Encoder)
+        cannot load without it, so the capability exists — but a default of True is
+        the kind of thing that gets inherited by copy-paste and never noticed again,
+        so pin the default rather than trusting it to stay put."""
+        captured = {}
+
+        class _Spy(ee.BaseOnlyEncoder):
+            def __init__(self, base_model, dims, device, trust_remote_code=False):
+                captured["trust"] = trust_remote_code
+                raise RuntimeError("stop before any download")
+
+        real = ee.BaseOnlyEncoder
+        ee.BaseOnlyEncoder = _Spy
+        try:
+            for argv, expected in (
+                (["--base-only", "--dims", "8", "--max-commits", "1"], False),
+                (["--base-only", "--dims", "8", "--max-commits", "1",
+                  "--trust-remote-code"], True),
+            ):
+                captured.clear()
+                try:
+                    ee.main(argv)
+                except Exception:
+                    pass
+                assert captured.get("trust") is expected, (
+                    f"argv {argv} produced trust_remote_code={captured.get('trust')!r}, "
+                    f"expected {expected}"
+                )
+        finally:
+            ee.BaseOnlyEncoder = real
