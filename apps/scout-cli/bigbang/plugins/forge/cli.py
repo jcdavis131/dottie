@@ -98,11 +98,42 @@ def _plugin_dir(name: str) -> Path:
     return candidate
 
 
+def _skill_dir(name: str) -> Path:
+    """SKILLS_ROOT/<name>, refusing anything that escapes SKILLS_ROOT.
+
+    The same guard _plugin_dir carries, for the same reason. Today the only caller of
+    _scaffold_skill_md is new_plugin, which validates at line 238 — so this is not a live
+    hole. It is here because "the caller happens to validate" is the property that failed
+    in a5c155b: _valid_name existed and guarded two commands while four others, added
+    later, used _plugin_dir directly. Putting the check next to the mkdir is what makes a
+    fifth caller safe by default rather than by review.
+    """
+    if not _valid_name(name):
+        fail_agent(
+            f"invalid skill name: {name!r}",
+            command="forge",
+            example="scout forge new mytool --desc '...'",
+            discover="names are [a-z][a-z0-9_]{1,31} — no paths, no separators",
+        )
+    candidate = SKILLS_ROOT / name
+    try:
+        resolved, root = candidate.resolve(), SKILLS_ROOT.resolve()
+    except OSError:
+        resolved, root = candidate, SKILLS_ROOT
+    if resolved != root and root not in resolved.parents:
+        fail_agent(
+            f"refusing a path outside the skills root: {resolved}",
+            command="forge",
+            example="scout forge new mytool --desc '...'",
+        )
+    return candidate
+
+
 def _scaffold_skill_md(name: str, description: str) -> Path:
     """Write bigbang/skills/<name>/SKILL.md so `scout skill install <name>` works the
     moment a tool is forged — teaching Dottie was a manual step the self-evolution
     loop always had to remember (TODOS 6.4)."""
-    sdir = SKILLS_ROOT / name
+    sdir = _skill_dir(name)
     sdir.mkdir(parents=True, exist_ok=True)
     md = sdir / "SKILL.md"
     if not md.exists():

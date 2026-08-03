@@ -103,3 +103,36 @@ def test_the_name_pattern_and_the_containment_check_are_both_present():
     src = inspect.getsource(fc._plugin_dir)
     assert "_valid_name" in src
     assert "parents" in src or "resolve" in src
+
+
+# --- skills root, same guard as the plugin root -------------------------------------
+#
+# _scaffold_skill_md's only caller (new_plugin) validates first, so this was not a live
+# hole. It is guarded anyway because "the caller happens to validate" is exactly the
+# property that failed for _plugin_dir: _valid_name guarded two commands while four
+# others, added later, used it directly.
+
+
+@pytest.mark.parametrize("name", ["../victim", "C:/Windows/Temp/x", "a/b"])
+def test_skill_dir_refuses_traversal(name, tmp_path, monkeypatch):
+    monkeypatch.setattr(fc, "SKILLS_ROOT", tmp_path / "skills")
+    with pytest.raises(typer.Exit):
+        fc._skill_dir(name)
+
+
+def test_skill_dir_allows_a_legitimate_name(tmp_path, monkeypatch):
+    """Non-vacuity: forging a real tool must still write its SKILL.md."""
+    monkeypatch.setattr(fc, "SKILLS_ROOT", tmp_path / "skills")
+    assert fc._skill_dir("mytool") == tmp_path / "skills" / "mytool"
+
+
+def test_scaffold_skill_md_cannot_write_outside_the_skills_root(tmp_path, monkeypatch):
+    """End-to-end through the writer, not just the path helper."""
+    monkeypatch.setattr(fc, "SKILLS_ROOT", tmp_path / "skills")
+    victim = tmp_path / "victim"
+    victim.mkdir()
+
+    with pytest.raises(typer.Exit):
+        fc._scaffold_skill_md("../victim", "desc")
+
+    assert not (victim / "SKILL.md").exists()
