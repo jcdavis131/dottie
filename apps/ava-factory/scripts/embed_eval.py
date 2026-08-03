@@ -126,9 +126,10 @@ class BaseOnlyEncoder:
     must actually beat to justify its own existence. Same interface as LoadedEncoder
     (encode/set_domain/manifest) so main() doesn't need to branch."""
 
-    def __init__(self, base_model: str, dims, device: str, trust_remote_code: bool = False):
+    def __init__(self, base_model: str, dims, device: str, trust_remote_code: bool = False,
+                 auto_class: str = "auto"):
         import torch
-        from transformers import AutoModel, AutoTokenizer
+        from transformers import AutoModel, AutoModelForMaskedLM, AutoTokenizer
 
         self.torch = torch
         self.device = device
@@ -139,9 +140,40 @@ class BaseOnlyEncoder:
         # opt-in per invocation and never the default a stray copy-paste inherits.
         kw = {"trust_remote_code": True} if trust_remote_code else {}
         self.tokenizer = AutoTokenizer.from_pretrained(base_model, **kw)
-        self.model = AutoModel.from_pretrained(base_model, **kw).to(device).eval()
+        loader = AutoModelForMaskedLM if auto_class == "masked-lm" else AutoModel
+        model, info = loader.from_pretrained(base_model, output_loading_info=True, **kw)
+
+        # REFUSE TO SCORE A RANDOMLY INITIALIZED MODEL.
+        #
+        # LiquidAI/LFM2.5-Encoder-350M ships architectures=['Lfm2BidirectionalForMaskedLM']
+        # and every one of its 148 checkpoint keys is prefixed `lfm2.`, but its auto_map
+        # points AutoModel at the bare body, whose keys are UNPREFIXED. So AutoModel
+        # matched nothing, transformers logged a warning nobody reads, and this harness
+        # went on to embed 2,341 documents with a model whose weights were entirely
+        # random — and would have printed a plausible NDCG for it. That number would
+        # have "confirmed" a prediction made about the real model.
+        #
+        # No tolerance, because none is needed: all-MiniLM-L6-v2, bge-small-en-v1.5,
+        # bge-base-en-v1.5 and LFM-via-AutoModelForMaskedLM all report exactly
+        # missing=0. A nonzero count here means the weights are not the ones named.
+        missing = sorted(info.get("missing_keys") or [])
+        if missing:
+            raise SystemExit(
+                f"REFUSING TO SCORE {base_model!r}: {len(missing)} weight(s) were not "
+                f"found in the checkpoint and are randomly initialized, e.g. "
+                f"{missing[:3]}.\n"
+                f"Any metric from this model would describe noise. Usually the loader "
+                f"is wrong for the checkpoint: check config.json's `architectures` and "
+                f"`auto_map`, then re-run with --auto-class masked-lm (or the class the "
+                f"checkpoint actually names)."
+            )
+
+        # A MaskedLM wrapper returns logits, not hidden states; mean-pooling needs the
+        # encoder body underneath it.
+        self.model = (model.base_model if auto_class == "masked-lm" else model)
+        self.model = self.model.to(device).eval()
         self.manifest = {"base_model": base_model, "dims": dims, "domains": ["none"],
-                         "trust_remote_code": trust_remote_code}
+                         "trust_remote_code": trust_remote_code, "auto_class": auto_class}
 
     def set_domain(self, domain: str):
         pass
@@ -185,6 +217,9 @@ def main(argv=None) -> int:
                      help="skip the checkpoint, score the frozen base model with zero LoRA "
                           "(the floor a trained checkpoint must actually beat)")
     ap.add_argument("--base-model", default="sentence-transformers/all-MiniLM-L6-v2")
+    ap.add_argument("--auto-class", choices=("auto", "masked-lm"), default="auto",
+                    help="which Auto* class loads the checkpoint; use masked-lm when "
+                         "config.json names a *ForMaskedLM architecture")
     ap.add_argument("--trust-remote-code", action="store_true",
                     help="execute model code fetched from the Hub (required by some "
                          "encoders, e.g. LFM2.5-Encoder); off by default")
@@ -205,7 +240,8 @@ def main(argv=None) -> int:
         checkpoint_dir = None
         default_dims = [384, 256, 128, 64]
         encoder = BaseOnlyEncoder(args.base_model, default_dims, device,
-                                  trust_remote_code=args.trust_remote_code)
+                                  trust_remote_code=args.trust_remote_code,
+                                  auto_class=args.auto_class)
     else:
         checkpoint_dir = Path(args.checkpoint)
         encoder = LoadedEncoder(checkpoint_dir, device)

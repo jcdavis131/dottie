@@ -208,6 +208,82 @@ class TestCliContract:
         except Exception:
             pass  # got past validation into real work; that is all this test claims
 
+    def test_it_refuses_to_score_a_randomly_initialized_model(self, monkeypatch):
+        """A loader that matches no checkpoint keys must abort, not produce a number.
+
+        LiquidAI/LFM2.5-Encoder-350M declares architectures=['Lfm2BidirectionalForMaskedLM']
+        and prefixes all 148 of its keys with `lfm2.`, while its auto_map points AutoModel
+        at the bare body whose keys are UNPREFIXED. AutoModel therefore matched nothing,
+        transformers logged a warning, and this harness embedded 2,341 documents with
+        entirely random weights — on its way to printing a plausible NDCG that would have
+        'confirmed' a prediction about the real model.
+        """
+        class _Info(dict):
+            pass
+
+        fake_model = object()
+
+        class _Loader:
+            @staticmethod
+            def from_pretrained(name, output_loading_info=False, **kw):
+                info = _Info(missing_keys={"embed_tokens.weight", "layers.0.conv.conv.weight"},
+                             unexpected_keys=set())
+                return (fake_model, info) if output_loading_info else fake_model
+
+        class _Tok:
+            @staticmethod
+            def from_pretrained(name, **kw):
+                return object()
+
+        monkeypatch.setattr(ee, "BaseOnlyEncoder", ee.BaseOnlyEncoder)
+        import transformers
+        monkeypatch.setattr(transformers, "AutoModel", _Loader)
+        monkeypatch.setattr(transformers, "AutoModelForMaskedLM", _Loader)
+        monkeypatch.setattr(transformers, "AutoTokenizer", _Tok)
+
+        with pytest.raises(SystemExit) as exc:
+            ee.BaseOnlyEncoder("some/model", [64], "cpu")
+        msg = str(exc.value)
+        assert "REFUSING TO SCORE" in msg
+        assert "randomly initialized" in msg
+        assert "auto-class" in msg, "the error must name the usual fix"
+
+    def test_a_fully_loaded_model_is_not_rejected(self, monkeypatch):
+        """The guard has no tolerance, so prove it does not fire on a clean load.
+
+        Measured before choosing that: all-MiniLM-L6-v2, bge-small-en-v1.5,
+        bge-base-en-v1.5 and LFM-via-AutoModelForMaskedLM all report missing=0.
+        """
+        class _M:
+            base_model = None
+            def to(self, _d):
+                return self
+            def eval(self):
+                return self
+
+        m = _M()
+        m.base_model = m
+
+        class _Loader:
+            @staticmethod
+            def from_pretrained(name, output_loading_info=False, **kw):
+                info = {"missing_keys": [], "unexpected_keys": []}
+                return (m, info) if output_loading_info else m
+
+        class _Tok:
+            @staticmethod
+            def from_pretrained(name, **kw):
+                return object()
+
+        import transformers
+        monkeypatch.setattr(transformers, "AutoModel", _Loader)
+        monkeypatch.setattr(transformers, "AutoModelForMaskedLM", _Loader)
+        monkeypatch.setattr(transformers, "AutoTokenizer", _Tok)
+
+        enc = ee.BaseOnlyEncoder("clean/model", [64], "cpu")
+        assert enc.model is m
+        assert enc.manifest["auto_class"] == "auto"
+
     def test_remote_code_execution_is_off_unless_asked_for(self):
         """--trust-remote-code executes Python fetched from the Hub with this user's
         privileges, on a box holding a live HF_TOKEN. Some encoders (LFM2.5-Encoder)
@@ -217,7 +293,11 @@ class TestCliContract:
         captured = {}
 
         class _Spy(ee.BaseOnlyEncoder):
-            def __init__(self, base_model, dims, device, trust_remote_code=False):
+            def __init__(self, base_model, dims, device, trust_remote_code=False, **kw):
+                # **kw so adding a parameter to BaseOnlyEncoder cannot make this spy
+                # silently stop capturing — which is exactly what happened when
+                # auto_class was added: the TypeError was swallowed by the
+                # except-Exception below and the assertion saw an empty dict.
                 captured["trust"] = trust_remote_code
                 raise RuntimeError("stop before any download")
 

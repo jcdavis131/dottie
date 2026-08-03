@@ -39,12 +39,44 @@ The block this replaces recorded HEAD `2556dee`. **22 commits landed since** —
 again, from my own work, for the *fourth* time, and the first time a mechanism rather
 than luck caught it.
 
-**NEW THIS SESSION — huggingface.co is UNREACHABLE from this box.** Measured: `github.com`
-and `pypi.org` return HTTP 200; `huggingface.co` exits 35 (SSL connect error) and
-`cdn-lfs.huggingface.co` exits 6 (cannot resolve). Identical with sandboxing disabled, so
-it is the machine, not the tooling. **`prefect_flows.py` pushes to the Hub with the live
-`HF_TOKEN` in `apps/ava-factory/.env`, so any HF pull or push fails today.** Model evals
-only ran because MiniLM/bge-small/bge-base were already in `~/.cache/huggingface/hub`.
+**huggingface.co fails over IPv6 on this box, and NOT over IPv4.** Corrected — an earlier
+line here said "UNREACHABLE", which was too strong and would have sent the next person
+looking for a firewall or a dead token. Measured:
+
+    curl -4 huggingface.co   HTTP 200  (143.204.130.38)
+    curl -6 huggingface.co   exit 35   (TLS reset right after Client hello)
+    curl -6 pypi.org         HTTP 200  -> IPv6 itself is FINE on this box
+    github.com               HTTP 200  -> but IPv4-only DNS, so it never tries v6
+
+So it is specifically CloudFront's IPv6 endpoints for huggingface.co resetting the TLS
+handshake. Which client you use decides whether you notice: **curl prefers the AAAA
+record and fails; Python/`huggingface_hub` picks IPv4 and succeeds.** Verified by
+downloading `LiquidAI/LFM2.5-Encoder-350M/config.json` with no patch at all — it worked.
+An earlier `WinError 10054` on that same download is the same reset signature, so the
+failure is real but intermittent rather than total.
+
+**The IPv6 thing is NOT what blocks model downloads. Xet is.** Small metadata files
+(`config.json`) fetch fine; large weights go through Hugging Face's Xet content-addressed
+backend, which fails here:
+
+    ConnectionError: Network error: Request middleware error: error sending request for
+    url (https://huggingface.co/api/models/.../xet-read-token/...)
+
+**Workaround, verified end to end — `HF_HUB_DISABLE_XET=1`.** With it set, a full
+`snapshot_download` of `LiquidAI/LFM2.5-Encoder-350M` completed including
+`model.safetensors`. Set it before any HF pull on this box.
+
+That diagnosis took three corrections, recorded because the wrong ones are the plausible
+ones: "huggingface.co is unreachable" (wrong — IPv4 returns 200), then "IPv6 is broken"
+(true for curl, but pypi.org works over IPv6 and Python picks IPv4 anyway), then finally
+Xet — which is the one that actually stops a model from downloading.
+
+**Do not "fix" this by pinning an IPv4 address in the hosts file** — CloudFront rotates
+those, and a stale pin fails in a much more confusing way than the current intermittency.
+
+`prefect_flows.py` pushes to the Hub with the live `HF_TOKEN` in `apps/ava-factory/.env`.
+A push uploads large files, so it is the Xet path — set `HF_HUB_DISABLE_XET=1` there
+before concluding the token or the network is at fault.
 
 **Suite counts.** `apps/scout-cli` **2425 passed, 1 skipped**, measured locally with the
 canonical `cd apps/scout-cli && uv run pytest tests -q` (was 2362 at `2556dee`; the
