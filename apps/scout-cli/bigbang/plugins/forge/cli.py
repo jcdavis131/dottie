@@ -50,7 +50,52 @@ def _valid_name(name: str):
 
 
 def _plugin_dir(name: str) -> Path:
-    return PLUGIN_ROOT / name
+    """PLUGIN_ROOT/<name>, refusing anything that escapes PLUGIN_ROOT.
+
+    THE DEFECT, proven in an isolated sandbox on 2026-08-02:
+
+        forge rm ../victim --force
+        -> {"ok": true, "removed": "../victim",
+            "dir": ".../plugins/../victim", "skill_md_removed": false}
+        victim directory: GONE
+
+    `PLUGIN_ROOT / name` follows `..` and, given an absolute path, discards PLUGIN_ROOT
+    entirely. In this repo that made `scout forge rm ../core --force` an rmtree of
+    bigbang/core — the whole core package — reported as a success.
+
+    _valid_name existed and guarded new_plugin and from_openapi. It was NOT called by the
+    four commands that take a name for an EXISTING plugin:
+
+        cat_cmd    reads   -> arbitrary file read
+        edit_cmd   writes  -> arbitrary file write
+        test_cmd   runs    -> subprocess against an arbitrary dir
+        rm_cmd     deletes -> rmtree of an arbitrary dir
+
+    The guard lives HERE rather than in those four, so a fifth caller added later cannot
+    miss it. Two checks, not one: the name pattern, and containment of the RESOLVED path.
+    The pattern alone would be enough today, but it is one loosened regex away from not
+    being — and containment is the property actually wanted.
+    """
+    if not _valid_name(name):
+        fail_agent(
+            f"invalid plugin name: {name!r}",
+            command="forge",
+            example="scout forge rm mytool --force",
+            discover="names are [a-z][a-z0-9_]{1,31} — no paths, no separators",
+        )
+    candidate = PLUGIN_ROOT / name
+    try:
+        resolved = candidate.resolve()
+        root = PLUGIN_ROOT.resolve()
+    except OSError:
+        resolved, root = candidate, PLUGIN_ROOT
+    if resolved != root and root not in resolved.parents:
+        fail_agent(
+            f"refusing a path outside the plugin root: {resolved}",
+            command="forge",
+            example="scout forge rm mytool --force",
+        )
+    return candidate
 
 
 def _scaffold_skill_md(name: str, description: str) -> Path:
