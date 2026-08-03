@@ -215,6 +215,22 @@ jobs:
       # pre-fix rm_cmd first and exits 2 if it has gone blind.
       - name: CLI path arguments (shell input reaching a path)
         run: uv run python scripts/check_cli_path_args.py --check
+      # Every shell=True carries a written reason. Two defects found by sweeping for this
+      # keyword on 2026-08-02: prefect_flows.py logged the HF token because it was built
+      # into the shell string (594a732), and gdrive_uploader.py let --folder and --upload
+      # reach a command line unquoted — demonstrated with `--folder "x'; rm -rf ~ ;'"`
+      # (f59c255).
+      #
+      # Checks the KEYWORD, not the interpolation, and that is deliberate: in gdrive the
+      # interpolation was in the CALLER while shell=True sat in a shared run_cli helper, so
+      # a function-local detector saw a safe-looking call and a caller with no subprocess
+      # in it. Flagging the keyword cannot be evaded by moving code one function away.
+      #
+      # shell=True is legitimate for pipes, redirects and builtins — the 1 baselined site
+      # needs `2>&1`. A blank judgment is rejected; "it was in the baseline" is not a
+      # reason. --check self-tests against the pre-fix run_cli first.
+      - name: shell=True sites (each needs a written reason)
+        run: uv run python scripts/check_shell_true.py --check
       # The lint-debt figure written in BOTH workflows, verified against a fresh ruff
       # run. Added 2026-08-01 after ~15 stale numbers were corrected by hand in one
       # session — including this very figure, which was written as 263 and went stale

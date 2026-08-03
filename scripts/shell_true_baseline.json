@@ -1,0 +1,10 @@
+{
+  "note": "Each shell=True site with a WRITTEN reason it is safe. An empty judgment is rejected by --check.",
+  "accepted": [
+    {
+      "site": "apps/ava-factory/scripts/gdrive_uploader.py::run",
+      "line": 39,
+      "judgment": "KEPT with shell=True because the hatch_gws_cli invocations use `2>&1` redirection, which needs a shell. Safe because ALL THREE callers now pass shlex.quote'd values: gdrive_list always did; the --folder site (line ~179) and the --upload site (line ~249) were unquoted and were fixed in f59c255 after a demonstrated injection (--folder \"x'; rm -rf ~ ;'\" closed the quote and ran rm). If a FOURTH caller is added it must quote too \u2014 this helper cannot check its own input."
+    }
+  ]
+}
