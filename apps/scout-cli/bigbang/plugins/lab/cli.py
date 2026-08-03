@@ -1,6 +1,7 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
 import json
-from datetime import datetime
+import os as _os
+from datetime import UTC, datetime
 from pathlib import Path
 
 import typer
@@ -126,15 +127,22 @@ def _load_top10():
     return [dict(item, source="builtin-default") for item in TOP10_DEFAULT]
 
 
+def _lab_root() -> Path:
+    """Base for lab's on-disk state. SCOUT_LAB_ROOT, else the documented home layout.
+
+    Added so `lab mrr` is testable at all: the ledger path was hardcoded under
+    ~/workspace/projects, so exercising the append path meant writing into the operator's
+    real revenue file. Resolved per CALL, matching brain's SCOUT_BRAIN_ROOT and the
+    SCOUT_* convention the rest of the CLI uses.
+    """
+    env = _os.environ.get("SCOUT_LAB_ROOT")
+    if env:
+        return Path(env).expanduser()
+    return Path.home() / "workspace" / "projects" / "first-1k-mo-passive"
+
+
 def _mrr_path():
-    return (
-        Path.home()
-        / "workspace"
-        / "projects"
-        / "first-1k-mo-passive"
-        / "files"
-        / "mrr.jsonl"
-    )
+    return _lab_root() / "files" / "mrr.jsonl"
 
 
 def _load_mrr():
@@ -212,7 +220,10 @@ def mrr_cmd(
     fp = _mrr_path()
     fp.parent.mkdir(parents=True, exist_ok=True)
     entry = {
-        "ts": datetime.utcnow().isoformat() + "Z",
+        # utcnow() is deprecated in 3.12 and returns a NAIVE datetime, so the appended
+        # "Z" was a claim rather than a fact — on a financial record. Same fix as brain
+        # (2556dee); now(UTC) is aware and already emits +00:00.
+        "ts": datetime.now(UTC).isoformat(),
         "trials": trials,
         "paid_users": paid,
         "mrr": mrr,
@@ -225,8 +236,21 @@ def mrr_cmd(
         with fp.open("a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
     history = _load_mrr()
-    # Current MRR is the last entry's mrr (MRR is a point-in-time figure, not a sum)
-    current = history[-1].get("mrr") if history else 0
+    # Current MRR is the last entry that actually CARRIES an mrr — not simply the last
+    # entry. The reasoning in the old comment was right ("a point-in-time figure, not a
+    # sum") and the implementation did not match it: every field is optional, so
+    # `lab mrr --trials 5 --note "..."` appends a row with mrr=None, and reading
+    # history[-1] then reported no revenue at all. Measured on the exact expression:
+    #
+    #     history  [{mrr: 420.0, ...}, {mrr: None, trials: 5, ...}]
+    #     current_mrr          None
+    #     remaining_to_1k      1000        <- was 580
+    #     customers_needed@79  13          <- was 8
+    #
+    # Logging a week of trials wiped the revenue number in a revenue tracker.
+    current = next(
+        (h.get("mrr") for h in reversed(history) if h.get("mrr") is not None), 0
+    )
     target = 1000
     remaining = max(0, target - (current or 0))
     customers_needed = round(remaining / 79) if remaining else 0
