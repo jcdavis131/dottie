@@ -112,6 +112,85 @@ def test_herd_create_start_wait_read_close():
     assert cl.returncode == 0, cl.stderr + cl.stdout
 
 
+def test_a_failing_command_is_not_reported_as_done(tmp_path):
+    """THE BUG: a command that exited 3 reported status 'done'.
+
+    `_reap_exit_code` returns None on Windows always, and on POSIX for any process
+    that is not a child of the CURRENT interpreter — and every `scout` invocation is
+    a fresh interpreter, so the spawner is always gone by the time anything asks. The
+    old mapping sent that None to "done", so `herd wait --status done` — the flow in
+    this plugin's own epilog — exited 0 and told the agent a failed command had
+    succeeded. Measured before the fix: status='done', exit_code=None, wait exit 0.
+    """
+    failer = tmp_path / "failer.py"
+    failer.write_text("import sys\nprint('about to fail')\nsys.exit(3)\n", encoding="utf-8")
+    label = "failjob"
+    assert _run(["--json", "herd", "create", "--label", label], herd_dir=tmp_path).returncode == 0
+    # posix-style paths on purpose: herd start --cmd runs shlex.split() in POSIX mode,
+    # which eats backslashes, so a native Windows path arrives mangled. as_posix() is
+    # the portable spelling; the `-- argv` form avoids the split entirely.
+    s = _run(["--json", "herd", "start", label, "--cmd",
+              f"{Path(sys.executable).as_posix()} {failer.as_posix()}"],
+             herd_dir=tmp_path)
+    assert s.returncode == 0, s.stderr + s.stdout
+
+    deadline = time.time() + 30
+    sess = None
+    while time.time() < deadline:
+        out = _run(["--json", "herd", "get", label], herd_dir=tmp_path)
+        sess = json.loads(out.stdout)["session"]
+        if not sess.get("alive"):
+            break
+        time.sleep(0.3)
+
+    assert sess is not None and sess["alive"] is False, "command never finished"
+    assert sess["exit_code"] == 3, f"real exit code lost: {sess.get('exit_code')!r}"
+    assert sess["status"] == "failed", f"a failure reported as {sess['status']!r}"
+
+    # and the agent-facing contract: waiting for 'done' must NOT succeed
+    w = _run(["--json", "herd", "wait", label, "--status", "done", "--timeout", "3"],
+             timeout=20, herd_dir=tmp_path)
+    assert w.returncode == 2, "wait --status done still claims a failed command succeeded"
+    assert json.loads(w.stdout)["matched"] is False
+
+    # stdout still reaches the log — the supervisor must be transparent to capture
+    rd = _run(["--json", "herd", "read", label, "--lines", "20"], herd_dir=tmp_path)
+    assert any("about to fail" in line for line in json.loads(rd.stdout)["lines"])
+
+
+def test_unknown_exit_code_is_unknown_not_success():
+    """The mapping in isolation. An absent exit code is not evidence of success.
+
+    Pinned separately from the end-to-end test because this is the exact expression
+    that was wrong, and it is the one a future edit is most likely to 'simplify'
+    back into `else "done"`.
+    """
+    from bigbang.plugins.herd import store
+
+    assert store._status_from_code(0) == "done"
+    assert store._status_from_code(3) == "failed"
+    assert store._status_from_code(1) == "failed"
+    assert store._status_from_code(None) == "unknown"
+
+
+def test_a_stale_exit_sentinel_is_not_read_as_this_runs_result(tmp_path):
+    """Restarting a session must clear the previous run's recorded exit code."""
+    from bigbang.plugins.herd import store
+
+    log = tmp_path / "s.log"
+    sentinel = Path(f"{log}.exit")
+    sentinel.write_text("3", encoding="utf-8")
+    sess = {"log_path": str(log), "exit_path": str(sentinel)}
+    assert store._read_exit_sentinel(sess) == 3
+
+    sentinel.unlink()
+    assert store._read_exit_sentinel(sess) is None, (
+        "a missing sentinel must read as unknown, never as 0"
+    )
+    sentinel.write_text("not-a-number", encoding="utf-8")
+    assert store._read_exit_sentinel(sess) is None
+
+
 def test_herd_wait_timeout_exit_2():
     label = f"w{int(time.time()) % 100000}"
     _run(["--json", "herd", "create", "--label", label])
