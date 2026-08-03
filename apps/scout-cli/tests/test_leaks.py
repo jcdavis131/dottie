@@ -274,6 +274,111 @@ def test_scan_patch_staged_shape_no_commit():
     assert stats["commits"] == 0
 
 
+# ---- merge commits: the combined diff `git log -p` alone never emits --------
+
+# Real `git log -p --cc` shape for a two-parent merge. Each content line carries
+# one column PER PARENT, so the discriminating cases are all present below:
+#   "- " / " -"  in one parent, absent from the merge result -> not scanned
+#   "++"         in NEITHER parent: the merge itself wrote it -> scanned
+#   "+ "         in the result and in parent 2 -> that parent's own commit
+#                carries it and is walked separately, so not scanned here
+#   "  "         unchanged context -> advances the line counter only
+CC_PATCH = f"""commit {SHA}
+Merge: aaaaaaa bbbbbbb
+Author: Dev <dev@example.com>
+Date:   Sun Aug 2 22:16:51 2026 -0500
+
+    merge: resolve conflict
+
+diff --cc conf.txt
+index 77e35bc,4744950..d8f595a
+--- a/conf.txt
++++ b/conf.txt
+@@@ -1,3 -1,3 +1,4 @@@
+- setting = gamma
+ -setting = beta
+++leaked {AWS_KEY} here
+  shared = 1
++ from_parent_two = {GH_TOKEN}
+diff --git a/after.py b/after.py
+index 0000000..1111111 100644
+--- a/after.py
++++ b/after.py
+@@ -0,0 +1 @@
++plain = "{SLACK}"
+"""
+
+
+def test_parse_patch_combined_merge_hunk_only_takes_all_plus_lines():
+    entries = leaks.parse_patch(CC_PATCH)
+    assert [(e["path"], e["line"]) for e in entries] == [
+        ("conf.txt", 1),   # "++" — written by the merge, in no parent
+        ("after.py", 1),   # parents resets, so the ordinary hunk still parses
+    ]
+    assert entries[0]["content"] == f"leaked {AWS_KEY} here"
+    # "+ from_parent_two" is in the result but came from parent 2; that parent's
+    # own commit is scanned on its own, so counting it here would double-report.
+    assert not any(GH_TOKEN in e["content"] for e in entries)
+
+
+def test_scan_patch_reports_merge_introduced_secret():
+    diags, stats = leaks.scan_patch(CC_PATCH)
+    by_rule = sorted(d["rule"] for d in diags)
+    assert by_rule == ["leaks:aws-access-key-id", "leaks:slack-token"]
+    merged = next(d for d in diags if d["path"] == "conf.txt")
+    assert merged["line"] == 1 and merged["commit"] == SHA[:12]
+    # context and parent-owned lines still advance the post-image counter
+    assert stats["added_lines"] == 2 and stats["files"] == 2
+
+
+def test_combined_hunk_line_numbers_track_the_post_image():
+    """A "++" line after context lands on the right post-image line number."""
+    patch = "\n".join([
+        "diff --cc x.txt",
+        "--- a/x.txt",
+        "+++ b/x.txt",
+        "@@@ -1,2 -1,2 +5,3 @@@",
+        "  first context",
+        "  second context",
+        f"++leaked {AWS_KEY} here",
+        "",
+    ])
+    entries = leaks.parse_patch(patch)
+    assert [(e["path"], e["line"]) for e in entries] == [("x.txt", 7)]
+
+
+def test_octopus_merge_prefix_width_follows_parent_count():
+    """Three parents -> four @s and three prefix columns."""
+    patch = "\n".join([
+        "diff --cc x.txt",
+        "--- a/x.txt",
+        "+++ b/x.txt",
+        "@@@@ -1,1 -1,1 -1,1 +1,2 @@@@",
+        f"+++leaked {AWS_KEY} here",
+        f"++ from_one_parent {GH_TOKEN}",
+        "",
+    ])
+    entries = leaks.parse_patch(patch)
+    assert [(e["path"], e["line"], e["content"]) for e in entries] == [
+        ("x.txt", 1, f"leaked {AWS_KEY} here"),
+    ]
+
+
+def test_history_passes_cc_so_merges_are_not_skipped():
+    """The flag is half the fix and would regress silently without this.
+
+    Plain `git log -p` prints a merge's header and message and no diff at all.
+    Dropping --cc puts the scanner back to reporting a clean sweep over a repo
+    whose HEAD contains the secret, so pin the argv the command builds.
+    """
+    src = Path(leaks_cli.__file__).read_text(encoding="utf-8")
+    args_line = re.search(r'args = \[(.*?)\]', src, re.S)
+    assert args_line, "history no longer builds its git argv as a list literal"
+    assert '"--cc"' in args_line.group(1), (
+        "leaks history dropped --cc; merge commits are invisible again"
+    )
+
+
 # ---- tree walking -----------------------------------------------------------
 
 def test_scan_tree_prunes_skips_counts(tmp_path):

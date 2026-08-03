@@ -487,6 +487,10 @@ def scan_tree(
 
 _COMMIT_RE = re.compile(r"^commit ([0-9a-f]{7,40})\b")
 _HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+# Combined diff — what `git log -p --cc` emits for a MERGE commit. One extra `@`
+# and one extra `-range` per parent: "@@@ -1,1 -1,1 +1,1 @@@" for two parents.
+# Matched only at 3+ `@` so an ordinary "@@" hunk can never land here.
+_CC_HUNK_RE = re.compile(r"^(@{3,}) (?:-\d+(?:,\d+)? )+\+(\d+)(?:,\d+)? @{3,}")
 
 
 def parse_patch(text: str) -> list[dict[str, Any]]:
@@ -498,20 +502,45 @@ def parse_patch(text: str) -> list[dict[str, Any]]:
     message lines can't leak in: a `commit` header resets the current file,
     and nothing is collected until the next +++/@@ pair. /dev/null targets
     (deletions) and binary diffs contribute nothing.
+
+    MERGE COMMITS need the combined format and were invisible before. Plain
+    `git log -p` prints a merge's header and message and NO diff at all, so
+    every line a merge introduced — which is exactly where a hand-written
+    conflict resolution lands — was never scanned, and `history` reported a
+    clean sweep. Demonstrated on a throwaway repo: an AWS key written into a
+    conflict resolution made `leaks scan` report one error and
+    `leaks history --max-commits 0` report zero over the same repo.
+
+    So `history` now passes `--cc` and this parses what it emits. In a combined
+    hunk each content line carries one column per parent: `-` where the line is
+    in that parent but not in the merge result, `+` where it is in the result
+    but not that parent, space where it is in both. A line with `+` in EVERY
+    column came from no parent — the merge itself wrote it. Any `-` in the
+    prefix means the line is absent from the result, so it does not advance the
+    post-image line counter.
+
+    `--cc` shows only hunks differing from ALL parents, which is the precise
+    thing plain `-p` cannot see; a secret merged in unchanged from one side
+    still sits in that side's own commit, which `git log` walks and scans
+    normally. The exception is `--max-commits N` truncating before that commit.
     """
     entries: list[dict[str, Any]] = []
     commit: str | None = None
     path: str | None = None
     new_line: int | None = None
+    parents = 1  # 1 = ordinary unified diff; >1 = inside a combined merge hunk
     for raw in (text or "").splitlines():
         m = _COMMIT_RE.match(raw)
         if m:
-            commit, path, new_line = m.group(1), None, None
+            commit, path, new_line, parents = m.group(1), None, None, 1
             continue
-        if raw.startswith("diff --git "):
-            path, new_line = None, None
+        if raw.startswith(("diff --git ", "diff --cc ", "diff --combined ")):
+            path, new_line, parents = None, None, 1
             continue
-        if raw.startswith("+++ "):
+        # Inside a combined hunk "+++ " can be CONTENT — a line both parents
+        # lack whose text begins "+ " renders with two prefix columns as
+        # "+++ ". Only treat it as a file header when we are not mid-hunk.
+        if raw.startswith("+++ ") and not (parents > 1 and new_line is not None):
             target = raw[4:].split("\t")[0].strip()
             if target == "/dev/null":
                 path = None
@@ -522,8 +551,29 @@ def parse_patch(text: str) -> list[dict[str, Any]]:
         m = _HUNK_RE.match(raw)
         if m:
             new_line = int(m.group(1)) if path else None
+            parents = 1
+            continue
+        m = _CC_HUNK_RE.match(raw)
+        if m:
+            parents = len(m.group(1)) - 1
+            new_line = int(m.group(2)) if path else None
             continue
         if path is None or new_line is None:
+            continue
+        if parents > 1:
+            if len(raw) < parents:
+                continue  # blank separator, not a content line
+            prefix, rest = raw[:parents], raw[parents:]
+            if set(prefix) - {"+", "-", " "}:
+                continue  # not a combined content line at all
+            if "-" in prefix:
+                continue  # present in a parent, absent from the merge result
+            if prefix == "+" * parents:
+                entries.append(
+                    {"path": path, "line": new_line, "content": rest,
+                     "commit": commit}
+                )
+            new_line += 1  # in the result either way (added, or context)
             continue
         if raw.startswith("+"):
             entries.append(

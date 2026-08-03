@@ -368,12 +368,18 @@ def history(
         200, "--max-findings", help="cap emitted diagnostics (summary stays complete)"
     ),
 ):
-    """Sweep read-only `git log -p` for secrets already in history."""
+    """Sweep read-only `git log -p --cc` for secrets already in history."""
     example = "scout --json leaks history --max-commits 100"
     _check_fail_on(fail_on, "leaks history", example)
     cfg = _config_or_fail(config_file, "leaks history")
     sigs = _sigs_or_fail(cfg, "leaks history")
-    args = ["log", "-p", "--no-color", "--unified=0"]
+    # --cc is load-bearing, not a flourish: plain `git log -p` emits NO diff for
+    # a merge commit, so every line a merge introduced was silently unscanned
+    # and this mode still reported a clean sweep. This repo had 38 such commits.
+    # A conflict resolution is hand-written text, which is exactly where a
+    # pasted credential lands. --cc shows only what differs from ALL parents,
+    # so nothing already covered by a parent's own commit is rescanned.
+    args = ["log", "-p", "--cc", "--no-color", "--unified=0"]
     if max_commits > 0:
         args += ["-n", str(max_commits)]
     patch = _git_patch(repo, args, "leaks history", example)
