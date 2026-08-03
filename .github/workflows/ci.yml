@@ -199,6 +199,22 @@ jobs:
       # the reason.
       - name: Resolver fallbacks (unguarded final return)
         run: uv run python scripts/check_resolver_fallbacks.py --check
+      # A shell argument reaching a filesystem path. forge took a plugin name straight from
+      # the command line and joined it onto PLUGIN_ROOT: `..` traversed, and an absolute
+      # path replaced the root entirely, so `scout forge rm ../core --force` was an rmtree
+      # of bigbang/core reported as ok: true (proven in a sandbox, fixed a5c155b).
+      #
+      # NARROW ON PURPOSE. A broad "filesystem op on a param-derived path" sweep returned
+      # 5 hits and only 2 were real — the rest took internal identifiers. This requires the
+      # parameter to be typer.Argument/Option on an @app.command function AND joined
+      # directly in the body, which is exactly the shape of the bug and nothing else.
+      #
+      # It found a hole a5c155b had missed: rm_cmd still built `SKILLS_ROOT / name`
+      # directly, safe only because an earlier _plugin_dir(name) call rejected bad names —
+      # safety by statement order. Gates without a baseline; --check self-tests against the
+      # pre-fix rm_cmd first and exits 2 if it has gone blind.
+      - name: CLI path arguments (shell input reaching a path)
+        run: uv run python scripts/check_cli_path_args.py --check
       # The lint-debt figure written in BOTH workflows, verified against a fresh ruff
       # run. Added 2026-08-01 after ~15 stale numbers were corrected by hand in one
       # session — including this very figure, which was written as 263 and went stale

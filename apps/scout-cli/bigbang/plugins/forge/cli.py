@@ -641,7 +641,12 @@ def rm_cmd(
     shutil.rmtree(pdir)
     # the scaffolded SKILL.md dies with its tool — no orphaned skills teaching a
     # capability that no longer exists
-    skill_dir = SKILLS_ROOT / name
+    #
+    # _skill_dir, not `SKILLS_ROOT / name`. The direct join was safe only because
+    # _plugin_dir(name) above rejects a traversing name first — safety by statement order,
+    # which is one reordering or one early-return away from not holding. Found by
+    # scripts/check_cli_path_args.py after a5c155b had already "fixed" this command.
+    skill_dir = _skill_dir(name)
     removed_skill = skill_dir.exists()
     if removed_skill:
         shutil.rmtree(skill_dir, ignore_errors=True)
