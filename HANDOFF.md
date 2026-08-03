@@ -23,28 +23,50 @@ before writing "current" anywhere in this file.
 > warning above did not work: this block went stale four times (23, 37, 27 and 10 commits),
 > the last one *inside the same session as its own refresh*. A warning is not a mechanism.
 
-**Re-measured 2026-08-02, not carried forward.** HEAD `2556dee`, branch `main`,
-**0 ahead / 0 behind `origin/main`** — everything pushed. Both workflows (`CI`,
-`Ruff Lint`) green at HEAD. Docker Desktop **not running**, so no trainer is live and the
-FROZEN `apps/ava-factory/dottie/**` paths are not bind-mounted. `C:` has **36 GB free** of
-931 GB (96% used) — 38 GB on 08-01, 41 GB earlier that day, 50 GB on 07-31. Still
-dropping; watch it.
+**Re-measured 2026-08-02 (late), not carried forward.** HEAD `e2a8a57`, branch `main`,
+**0 ahead / 0 behind `origin/main`** — everything pushed. Docker Desktop **not running**,
+so no trainer is live and the FROZEN `apps/ava-factory/dottie/**` paths are not
+bind-mounted. `C:` has **36 GB free** of 932 GB (97% used) — 36 on 08-02 earlier, 38 on
+08-01, 41 earlier that day, 50 on 07-31. Still dropping; watch it.
 
-The block this replaces recorded HEAD `d99c93d`. **10 commits landed since** — stale
-again, from my own work, for the third time. The discipline is not "write it once
-carefully", it is "re-measure every time", which is why this says how it was measured
-rather than only what it says.
+**CI at this HEAD: `Ruff Lint` green, `CI` RED — and it is this very block that reds it.**
+`check_handoff_fresh.py` fired at drift 22 against its budget of 20. That is the gate
+working, on its own author, one commit after the block below claimed the discipline was
+"re-measure every time". The gate caught what the resolve did not, which is the entire
+argument for having built it. Re-run it after reading this; it should pass at drift 1.
 
-**Suite counts, read off the CI run for THIS HEAD** (`gh run view --log`), not assumed —
-this was wrong twice before it was measured, see the Makefile header:
+The block this replaces recorded HEAD `2556dee`. **22 commits landed since** — stale
+again, from my own work, for the *fourth* time, and the first time a mechanism rather
+than luck caught it.
+
+**NEW THIS SESSION — huggingface.co is UNREACHABLE from this box.** Measured: `github.com`
+and `pypi.org` return HTTP 200; `huggingface.co` exits 35 (SSL connect error) and
+`cdn-lfs.huggingface.co` exits 6 (cannot resolve). Identical with sandboxing disabled, so
+it is the machine, not the tooling. **`prefect_flows.py` pushes to the Hub with the live
+`HF_TOKEN` in `apps/ava-factory/.env`, so any HF pull or push fails today.** Model evals
+only ran because MiniLM/bge-small/bge-base were already in `~/.cache/huggingface/hub`.
+
+**Suite counts.** `apps/scout-cli` **2425 passed, 1 skipped**, measured locally with the
+canonical `cd apps/scout-cli && uv run pytest tests -q` (was 2362 at `2556dee`; the
+delta is this session's new gate and leaks tests). NOTE the invocation: bare `uv run
+pytest -q` from that directory collects `scripts/test_goat_audit.py`, which calls
+`sys.exit()` at import and produces an INTERNALERROR with "no tests ran" — target `tests`
+explicitly. Other suites unchanged from the block below; re-measure before quoting them.
 
 | suite | count | note |
 |---|---|---|
-| `apps/scout-cli` | 2362 passed, 1 skipped | **identical local (`uv run`) and CI**; ambient `python` runs 6 fewer |
-| `apps/ava-factory` | ~862 collected — **pass count drifts daily, see item 8** | 730 run in CI; a same-day re-measure gave 861 passed / 1 failed with no code change |
-| `packages/personal-graphify` | 77 passed | hard CI gate |
-| `packages/ava-skills` | 89 passed | hard CI gate, ruff at 0 |
-| `scripts/` self-tests | 260 passed | ran NOWHERE until `1a9a2a3` wired them in; 241 → 260 at `d99c93d` |
+| `apps/scout-cli` | **2425 passed, 1 skipped** | local, canonical invocation, at this HEAD |
+| `apps/ava-factory` | ~862 collected — **pass count drifts daily** | `tests/test_curator.py` cannot run locally: no `zstandard` in any local env. CI installs it. |
+| `packages/personal-graphify` | 77 passed | hard CI gate; not re-measured this session |
+| `packages/ava-skills` | 89 passed | hard CI gate, ruff at 0; not re-measured this session |
+| `scripts/` self-tests | 260 passed | not re-measured this session |
+
+**Local environments — the trap that cost time this session.** There is **no local env with
+`transformers`**; the step-5 encoder work ran inside the Docker container, which is down.
+`apps/ava-factory`'s `uv` env has **no torch at all**. `apps/dottie/.venv` has torch
+2.11.0+cu128 (CUDA available) but no transformers. Do not install into `apps/dottie/.venv`
+— that is the live research daemon's env. Build a throwaway CPU venv instead; base-only
+retrieval eval at `--max-len 256` needs no GPU and CPU torch is ~200 MB against ~2.5 GB.
 
 **Landed 2026-08-02, in order:**
 
@@ -53,6 +75,17 @@ this was wrong twice before it was measured, see the Makefile header:
 | `2a24c22` | `scout secrets get` printed the plaintext beside its own mask in human mode. JSON mode keeps `value` by design; the audit trail was never affected (`output.py` redacts before `log_event` — different surface). |
 | `a2ccea5` | **The vault's read path and write path disagreed.** `get_secret` reads keyring→env→file; `delete_secret` read file-first and touched keyring only on a miss, so a secret in both was reported deleted and stayed readable, with `list_secrets()` corroborating. `set_secret` wrote the file only, so a stale keyring entry silently defeated credential rotation. **Latent on a default install** — `keyring` is an optional extra (`security = ["keyring"]`) and is not installed here; it fires for whoever installs the extra whose purpose is safer storage. Verified with a fake backend, never the real Credential Manager. auth 6.33 → 8.00. |
 | `d99c93d` | `scripts/store_symmetry_audit.py` — makes the above a standing check. 0 hits across 1293 files, and that 0 is only meaningful because `--check` self-tests against the real pre-fix function first and exits 2 if the detector has gone blind. |
+| `0c89edd` `cda982e` `6063da7` `66fe9d3` | **Three live path resolvers pointed somewhere wrong**, then ratcheted. `scout ava` ran every command against the superseded factory; `rtx` resolved `CUSTOM_ROOT` to a directory that **does not exist** while the real one sat in-repo; arxiviq preferred the superseded name. `check_resolver_fallbacks.py` now gates the shape with a judged baseline. |
+| `2ce8975` | `write --save` used `int(time.time())` as the filename — **4 of 5 documents saved in the same second were lost**. |
+| `70bfa38` `4e8bc15` `ded1bea` | `system doctor` was permanently red for two non-defects. Includes the correction that **`os.chmod(0600)` does nothing on Windows** — the claim appeared in three places and held in none. |
+| `fcbc9a6` | `lab` reported **no revenue** after a trials-only entry: `history[-1].get("mrr")` asked for the last entry, not the last entry that *has* an MRR. |
+| `a5c155b` `658cb4a` `cafa236` | **`scout forge rm ../core --force` was an `rmtree` of `bigbang/core` reported as `ok: true`.** Proven in a sandbox. `check_cli_path_args.py` gates the class and found a second hole `a5c155b` had missed. |
+| `594a732` `f59c255` `52ec23d` | **The HF token was written to the Prefect run log on every push**, and gdrive's `--folder`/`--upload` reached a `shell=True` command line unquoted (demonstrated with `--folder "x'; rm -rf ~ ;'"`). `check_shell_true.py` now demands a written reason per site. |
+| `725023e` | `scripts/README.md` told people to set `AVA_FACTORY_ROOT` to the **superseded** checkout. **OPERATOR: `apps/dottie/research_orchestration/research_env.local.ps1` still does**, so the live daemon runs against the superseded tree — deliberately not changed. |
+| `7d93c63` | **`leaks history` never scanned a single merge commit and reported clean.** `git log -p` emits no diff for a merge, so hand-written conflict resolutions — the likeliest place for a pasted credential — were invisible. Proven: same repo, `leaks scan` 1 error, `leaks history` 0. Now passes `--cc` and parses combined diffs. 38 merges here, 109 previously-unscanned lines, **no secret found in them**. |
+| `c685eb0` | **The repo's own secrets scanner had never been run against the repo.** It failed: 5 error-severity findings, all fixture credentials. Fixed at source by concatenation; 3 unfixable paths allowlisted with written reasons in `leaks.json`. Both `leaks scan` and `leaks history` now gate CI, with a shallow-clone guard so a depth-1 checkout cannot report a clean sweep it never performed. |
+| `4e66af2` | **MOLT (NVIDIA agentic-RL) reviewed and DECLINED** on arithmetic: 1×12 GB consumer GPU against "built for A100/H100/H200/B200·GB200" whose quick-start assumes 8. Reversal trigger recorded. |
+| `e2a8a57` | **LFM2.5-Encoder reviewed; base bake-off says capacity is not the lever.** Its 81.02 is GLUE/SuperGLUE *classification*, not retrieval. Measured same-session, base-only: MiniLM 0.1874, bge-small 0.2293, **bge-base (3.3× bigger) 0.2077 — no gain**. Bar is 0.429/0.469. **The base-model branch of the step-5 blocker looks closed; the corpus branch is what is left.** |
 
 Always `uv run`, never ambient `python -m pytest` — the latter silently skips all of
 `tests/test_profiles.py` and reports it as "1 skipped".
