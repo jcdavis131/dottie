@@ -456,6 +456,25 @@ def rollup(
 
     up_pct counts raw observations (pre-damping) so a flappy target scores
     honestly; latencies come from answered probes only (http NOT NULL).
+
+    `latency.n` IS THE SAMPLE SIZE THE PERCENTILES CAME FROM, and it is not
+    `checks`. A probe that times out records no latency, so failures drop out of
+    the distribution entirely — which means latency looks BEST exactly when a
+    target is most broken. Measured on a synthetic window of 98 timeouts and 2
+    fast successes:
+
+        checks 100   up_pct 2.0   latency p50/p95/p99/avg/max all 12.0 ms
+
+    Every one of those percentiles came from 2 samples, and before `n` existed
+    nothing in the payload said so — while statuspage.services() publishes
+    `checks` and `latency` side by side on the page. That row read "100 checks,
+    p99 12 ms" for a service that was down 98% of the window.
+
+    The percentiles are not wrong; they answer "how fast were the responses we
+    got", not "how fast was this target". `n` is what lets a reader tell the two
+    apart, and it is the same discipline statuspage already applies to
+    availability, where an empty window prints an em dash rather than a
+    fabricated 100%.
     """
     rows = conn.execute(
         "SELECT state, http, latency_ms FROM checks WHERE target = ? AND ts >= ?",
@@ -473,6 +492,8 @@ def rollup(
         "checks": total,
         "up_pct": None if total == 0 else round(100.0 * up / total, 2),
         "latency": {
+            # answered probes only — see the docstring; this is NOT `checks`
+            "n": len(lat),
             "p50": percentile(lat, 50),
             "p95": percentile(lat, 95),
             "p99": percentile(lat, 99),

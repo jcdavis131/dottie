@@ -138,6 +138,48 @@ def test_rollup_percentiles_and_up_pct():
     assert windowed["checks"] == 1 and windowed["up_pct"] == 0.0
 
 
+def test_latency_reports_the_sample_size_it_was_computed_over():
+    """`checks` is not the latency sample size, and the gap is worst during an outage.
+
+    A probe that times out records no latency, so failures leave the distribution
+    entirely — latency looks BEST exactly when a target is most broken. Here 98 of
+    100 probes time out and every percentile reads 12 ms off the 2 survivors.
+    statuspage.services() publishes `checks` and `latency` side by side, so that row
+    read "100 checks, p99 12 ms" for a service down 98% of the window.
+    """
+    conn = _mem()
+    for i in range(98):
+        uptime.record_check(
+            conn, target="svc", url="u", ts=float(i), state="down", error="timeout"
+        )
+    for i in range(2):
+        uptime.record_check(
+            conn, target="svc", url="u", ts=float(100 + i), state="up",
+            http=200, latency_ms=12.0,
+        )
+    roll = uptime.rollup(conn, "svc")
+    assert roll["checks"] == 100
+    assert roll["up_pct"] == 2.0
+    lat = roll["latency"]
+    assert lat["p99"] == 12.0, "survivor latency is still reported, correctly"
+    assert lat["n"] == 2, "the payload must say how many samples that came from"
+    assert lat["n"] != roll["checks"], (
+        "n that merely echoes `checks` would hide exactly the case this catches"
+    )
+
+
+def test_latency_n_is_zero_when_nothing_answered():
+    """No answered probe means no distribution — n must say 0, not go missing."""
+    conn = _mem()
+    for i in range(5):
+        uptime.record_check(
+            conn, target="svc", url="u", ts=float(i), state="down", error="timeout"
+        )
+    lat = uptime.rollup(conn, "svc")["latency"]
+    assert lat["n"] == 0
+    assert lat["p50"] is None and lat["avg"] is None and lat["max"] is None
+
+
 def test_percentile_edges():
     assert uptime.percentile([], 50) is None
     assert uptime.percentile([42.0], 99) == 42.0
