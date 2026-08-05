@@ -98,3 +98,9 @@ your_files/
 
 # Cygwin/MSYS crash dumps — an artifact of a tool crashing, never source
 *.stackdump
+
+# Night shift lane 2: Dottie pipeline checkpoints should not be committed — triple-write canonical
+apps/ava-factory/dottie/pipeline/runs/
+apps/ava-factory/bundles/ultra/runs/
+bundles/ultra/runs/
+

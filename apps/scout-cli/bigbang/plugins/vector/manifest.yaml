@@ -1,7 +1,7 @@
 name: vector
 description: dumbmodel.com vector arcade — unified MTNN pipeline hoops/pitch/gridiron/equities/unified ablation.
 capabilities:
-  network: conditional # SEC/StatsBomb fetch only if --fetch, else cache
+  network: false
   filesystem: true
   secrets: false
 version: 0.8.0

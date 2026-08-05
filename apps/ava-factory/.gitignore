@@ -50,3 +50,8 @@ runs/cpu_pilot/*
 !runs/cpu_pilot/reports/**
 
 .venv-test/
+
+# pipeline/runs triple-write local checkpoints — gitignore source of truth for dashboards
+dottie/pipeline/runs/
+bundles/ultra/runs/
+
