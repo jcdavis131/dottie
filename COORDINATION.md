@@ -24,6 +24,12 @@
 
 | Heartbeat | vector-* / coordination sweep | 02:13 CDT 2026-08-05 | Heartbeat cleared 4 stale (>4h) Scout 22:08 in-progress, verified chimera+provenance 7/7, dottie triple, sync_log fresh, watchdog alive | heartbeat | ok |
 
+
+| Scout-auto | bundles/analytics Phase0 stub | 08:28 CDT 2026-08-05 | Phase0 per brief: store.jsonl events/.gitkeep + bigbang/plugins/analytics/cli.py ingest/events/stats _egress_guard network:false manifest false | scout/analytics-phase0 | claimed |
+| Scout-auto | bundles/payments Phase0 stub | 08:28 CDT 2026-08-05 | Phase0: $0 ledger idempotent sha(email+plan) store.jsonl, secrets.allow STRIPE_API_KEY only after manifest widen | scout/payments-phase0 | claimed |
+| Scout-auto | bundles/auth Phase0 3-user | 08:28 CDT 2026-08-05 | Verify users.jsonl 3-user schema is_on cached 0.9 git-tracked flags | scout/auth-phase0 | claimed |
+| Scout-auto | ultracode Top5 build orchestrator | 08:28 CDT 2026-08-05 | Hook podcast_brief_auto_exec now enabled 90s, wiring brief → todo → lane execution: tick+flags → vec+lattice v2 → analytics+trace+ops v2 → meter | scout/ultracode-brief-exec | claimed |
+
 ## Free lanes right now
 - vector-hub / daily 5th puzzle (unified chimera) + provenance checksums
 - dottie / distilled reasoning optimizer traces→nano GRPO
