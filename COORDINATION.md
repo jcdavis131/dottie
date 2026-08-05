@@ -1,4 +1,4 @@
-# Mirrored from bundles/coordination/active-tasks.md 2026-08-05T03:49Z
+# Mirrored from ~/workspace/bundles/coordination/active-tasks.md
 # Active Tasks - Who's touching what
 
 > One file, one truth. Write your claim BEFORE you edit, clear it when done.
@@ -19,7 +19,12 @@
 4. Log even if no change ("checked, no-op") so others know you looked
 5. Clear row when done
 
-| Scout-lane1 | vector-* all 4 / honesty pass | 22:43 CDT | equities 4831×500 0.7057 lift6.32 verified fixed d80a716, hoops v6 17 towers d128 4L 4H CLS→64-d leak-free test top1 0.438→0.55 target recall@10 0.977 verified, pitch 588/633 92.9% WC-only 633 2430×11ctx verified, gridiron 32-d native 16-d compat wrapper gate NO promote MAE 8.41 synthetic vs claimed 4.268, branch scout/vector-honesty-night1 4 repos, tests 8p+13p PASS, timeline.jsonl ok | scout/vector-honesty-night1 | done 03:46 CT |
+| Scout-lane1 | vector-* all 4 / honesty pass | 22:43 CDT | equities 4831×500 0.7057 lift6.32 verified fixed d80a716, hoops v6 17 towers d128 4L 4H CLS→64-d leak-free test top1 0.438→0.55 target recall@10 0.977 verified, pitch 588/633 92.9% WC-only 633 2430×11ctx verified, gridiron 32-d native 16-d compat wrapper gate NO promote MAE 8.41 synthetic vs claimed 4.268, branch scout/vector-honesty-night1 4 repos, tests 8p+13p PASS, timeline.jsonl ok | scout/vector-honesty-night1 | done 03:46 CT — pushed 03:49-03:50Z to origin: equities new branch, gridiron main 2bab470..55aacd7, hoops master fcc606e..0c4b039, pitch master a36b48d..cb77f22 (merged Claude-Local a36b48d+bdfa4a0) |
+
+| Scout-push | vector-* honesty branches → origin push | 03:50Z UTC 2026-08-05 | Lane 1 push: 4× scout/vector-honesty-night1 → origin, 3× main/master fast-forward (no force), honest README only, no candidate→vectors promotion per gate, timeline.jsonl private left in ~/workspace/bundles/ultra/runs/night1-honesty, log bundles/research/push-log-night2.md | scout/vector-honesty-night1 | done 03:50Z UTC |
+| Scout | dottie / distilled reasoning → nano GRPO | 23:01 CDT | Audit: grpo.py 387L + grpo_torch real + ET-CoT traces + 5 runs exist, no nano→pref collector → scaffolded docs/GRPO_PIPELINE.md + grpo_collect.py numpy-only (groups SHA1, adv (R-mean)/std, chosen/max rej/min margin0.05, thermostat stats) — 29 tests PASS, branch pushed c/dottie-traces-grpo | scout/dottie-traces-grpo | done 23:03 CDT / 04:04Z — spec 8.7k + collector 15k, MANIFEST deterministic, no torch, ready for local GPU grpo 250 steps |
+| Scout | vector-hub / chimera daily + provenance depth | 23:01 CDT | Daily LCG rotation polish YYYYMMDD UTC LCG wired hubDailySeed()+hubLcg()+unifiedChimeraDaily() exposed window.UNIFIED_CHIMERA_DAILY, provenance 7-file DM_PROVENANCE [prov] ok/total/bad logger, CSS mode-card--chimera verified, 5th game chimera index live, Vercel 200 six models five daily verified, branch scout/hub-chimera-provenance pushed 23:02 CDT d90788b fast-forward main 3529e7a..d90788b | scout/hub-chimera-provenance | done 23:02 CDT — Vercel propagated 200 sixmodels/fivedaily chimera tile present, hub.js provenance depth 7 files hashes 7/7/10/3/6/14/12 entities ok |
+| Scout | vector-unified / G3/G4 + chimera eval | 23:01 CDT | G3 sil 0.683 within>>between, G4 cross-NN 0.9828 lift audit, chimera difficulty band 92.9% verify | scout/unified-g3g4-chimera | done 04:08 CT — G3 0.683 within0.746>>-0.121 sep0.867 PASS, G4 0.9828 vs0.1712 lift0.8116 PASS, pitch 588/633 92.9% median0.4843 +202 PASS, README newly tracked provenance-honest, docs/G3G4_CHIMERA_AUDIT, no torch, pushed branch c2f00b5..6a56132 + master fb4adcb |
 
 ## Free lanes right now
 - vector-hub / daily 5th puzzle (unified chimera) + provenance checksums
@@ -30,3 +35,4 @@
 | LOCAL-GPU | vector-unified / unified G2 0.685->0.64 | 22:20 CT | FULL TRAIN: GRL λ0.3→0.5 + CORAL centroid, missing caches embedding_v3.npz / mtnn_best.pt / pitch_mtnn_embeddings.json, torch OOM workaround → run train_stage2.py --smoke -> train_unified.py 60ep -> eval_unified.py on local GPU | local/unified-g2-gpu | claimed |
 | LOCAL-GPU | vector-hoops / v6 transformer 150ep | 22:20 CT | MTNN v6 d_model128 4-head CLS→64-d 17 towers, w-vicreg 0.05, target composite 0.7937→0.85 test top1 0.438→0.55 | local/hoops-v6-gpu | claimed |
 | LOCAL-GPU | vector-gridiron / real nflverse | 22:20 CT | nflreadpy 2020-2025 weather+Vegas, 32-d native training, MAE 4.268→3.8 | local/gridiron-real | claimed |
+| Orchestrator | scout-cli / harness polish | 23:02 CDT | v0.8 harness manifest fs true net false + cli.sh wrapper perms + shared lib verify, no torch | scout/scout-cli-harness-polish | done 2026-08-04 23:04 CDT / 2026-08-05T04:04Z — manifest v0.8.0 verified fs true net false, wrapper exec 896B rwxrwx---, towers.py 6404B losses.py 2745B honest, doc HARNESS_POLISH_2026-08-05.md committed a4f58f4 pushed origin |
