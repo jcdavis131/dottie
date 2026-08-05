@@ -5,10 +5,6 @@
 
 | Agent | Repo / Area | Since | What / Why | Branch | Status |
 |-------|-------------|-------|------------|--------|--------|
-| Scout | vector-hoops / MTNN v6 fusion | 22:08 CDT | Port transformer fusion + SupCon/VICReg, lift composite 0.7937→0.85 | scout/hoops-v6-fusion | in-progress |
-| Scout | vector-gridiron / training pipeline | 22:08 CDT | Bring training in-repo, fix 16-d vs 32-d vs 64-d confusion | scout/gridiron-train-in-repo | in-progress |
-| Scout | vector-unified + vector-hub | 22:08 CDT | Push G2 sport-blind 0.685→0.64, verify ablation table | scout/unified-g2-blind | in-progress |
-| Scout | dottie / nano 1k + tech debt | 22:08 CDT | First real nano 1k steps, scrub cache, unify checkpoint paths | scout/dottie-nano-1k | in-progress |
 | Scout-lane2 | dottie + scout-cli v0.8 polish | 22:43 CDT | Night shift lane 2 verify triple-write + nano smoke deterministic + 1k spec + scaffold | scout/dottie-cli-night2 | done 03:45 CT — triple verified 7-field, 15-dirs scrub 0 left, gitignored pipeline/runs, manifest v0.8.0 fs true net false, 1K spec written |
 | Claude-Local | vector-unified / LOCAL-GPU G2 push | 16:4x CDT | UNBLOCKED BY BUILDING IT. The Hatch patches were on no branch anywhere, so I implemented coral_centroid_loss (1st-moment centroid alignment on z — coral_loss only matched 2nd moments, leaving sport decodable from the MEAN, which is what G2's probe reads) + --w-coral/--w-coral-centroid/--grl-lambda-target in BOTH trainers. Stage 2 had no coral term at all. All defaults preserve old behaviour. 60ep run live. | local/unified-g2-gpu | in-progress |
 | Claude-Local | vector-pitch / verify + push (free lane) | 16:4x CDT | DONE — 13/13 green, json.tool clean, rebased + pushed to pitch master a36b48d. Handoff's 0904a39 / vectors_mtnn.json do not exist here; the seed work shipped instead. | master (ff) | done |
@@ -26,6 +22,8 @@
 | Scout | dottie / distilled reasoning → nano GRPO | 23:01 CDT | Audit: grpo.py 387L + grpo_torch real + ET-CoT traces + 5 runs exist, no nano→pref collector → scaffolded docs/GRPO_PIPELINE.md + grpo_collect.py numpy-only (groups SHA1, adv (R-mean)/std, chosen/max rej/min margin0.05, thermostat stats) — 29 tests PASS, branch pushed c/dottie-traces-grpo | scout/dottie-traces-grpo | done 23:03 CDT / 04:04Z — spec 8.7k + collector 15k, MANIFEST deterministic, no torch, ready for local GPU grpo 250 steps |
 | Scout | vector-hub / chimera daily + provenance depth | 23:01 CDT | Daily LCG rotation polish YYYYMMDD UTC LCG wired hubDailySeed()+hubLcg()+unifiedChimeraDaily() exposed window.UNIFIED_CHIMERA_DAILY, provenance 7-file DM_PROVENANCE [prov] ok/total/bad logger, CSS mode-card--chimera verified, 5th game chimera index live, Vercel 200 six models five daily verified, branch scout/hub-chimera-provenance pushed 23:02 CDT d90788b fast-forward main 3529e7a..d90788b | scout/hub-chimera-provenance | done 23:02 CDT — Vercel propagated 200 sixmodels/fivedaily chimera tile present, hub.js provenance depth 7 files hashes 7/7/10/3/6/14/12 entities ok |
 | Scout | vector-unified / G3/G4 + chimera eval | 23:01 CDT | G3 sil 0.683 within>>between, G4 cross-NN 0.9828 lift audit, chimera difficulty band 92.9% verify | scout/unified-g3g4-chimera | done 04:08 CT — G3 0.683 within0.746>>-0.121 sep0.867 PASS, G4 0.9828 vs0.1712 lift0.8116 PASS, pitch 588/633 92.9% median0.4843 +202 PASS, README newly tracked provenance-honest, docs/G3G4_CHIMERA_AUDIT, no torch, pushed branch c2f00b5..6a56132 + master fb4adcb |
+
+| Heartbeat | vector-* / coordination sweep | 02:13 CDT 2026-08-05 | Heartbeat cleared 4 stale (>4h) Scout 22:08 in-progress, verified chimera+provenance 7/7, dottie triple, sync_log fresh, watchdog alive | heartbeat | ok |
 
 ## Free lanes right now
 - vector-hub / daily 5th puzzle (unified chimera) + provenance checksums
