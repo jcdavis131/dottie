@@ -10,7 +10,7 @@
 | Scout | vector-unified + vector-hub | 22:08 CDT | Push G2 sport-blind 0.685→0.64, verify ablation table | scout/unified-g2-blind | in-progress |
 | Scout | dottie / nano 1k + tech debt | 22:08 CDT | First real nano 1k steps, scrub cache, unify checkpoint paths | scout/dottie-nano-1k | in-progress |
 | Scout-lane2 | dottie + scout-cli v0.8 polish | 22:43 CDT | Night shift lane 2 verify triple-write + nano smoke deterministic + 1k spec + scaffold | scout/dottie-cli-night2 | done 03:45 CT — triple verified 7-field, 15-dirs scrub 0 left, gitignored pipeline/runs, manifest v0.8.0 fs true net false, 1K spec written |
-| Claude-Local | vector-unified / LOCAL-GPU G2 push | 16:4x CDT | **BLOCKED — see COORDINATION_LOCAL_GPU_BLOCKER.md.** The Hatch patches the handoff depends on are not reachable from this box. | local/claim-board | blocked |
+| Claude-Local | vector-unified / LOCAL-GPU G2 push | 16:4x CDT | UNBLOCKED BY BUILDING IT. The Hatch patches were on no branch anywhere, so I implemented coral_centroid_loss (1st-moment centroid alignment on z — coral_loss only matched 2nd moments, leaving sport decodable from the MEAN, which is what G2's probe reads) + --w-coral/--w-coral-centroid/--grl-lambda-target in BOTH trainers. Stage 2 had no coral term at all. All defaults preserve old behaviour. 60ep run live. | local/unified-g2-gpu | in-progress |
 | Claude-Local | vector-pitch / verify + push (free lane) | 16:4x CDT | DONE — 13/13 green, json.tool clean, rebased + pushed to pitch master a36b48d. Handoff's 0904a39 / vectors_mtnn.json do not exist here; the seed work shipped instead. | master (ff) | done |
 
 ## How to use
