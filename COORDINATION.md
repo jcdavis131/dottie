@@ -1,4 +1,4 @@
-# Mirrored from bundles/coordination/active-tasks.md 2026-08-05T03:45Z
+# Mirrored from bundles/coordination/active-tasks.md 2026-08-05T03:49Z
 # Active Tasks - Who's touching what
 
 > One file, one truth. Write your claim BEFORE you edit, clear it when done.
@@ -10,7 +10,7 @@
 | Scout | vector-gridiron / training pipeline | 22:08 CDT | Bring training in-repo, fix 16-d vs 32-d vs 64-d confusion | scout/gridiron-train-in-repo | in-progress |
 | Scout | vector-unified + vector-hub | 22:08 CDT | Push G2 sport-blind 0.685→0.64, verify ablation table | scout/unified-g2-blind | in-progress |
 | Scout | dottie / nano 1k + tech debt | 22:08 CDT | First real nano 1k steps, scrub cache, unify checkpoint paths | scout/dottie-nano-1k | in-progress |
-| Scout-lane2 | dottie + scout-cli v0.8 polish | 22:43 CDT | Night shift lane 2 verify triple-write + nano smoke deterministic + 1k spec + scaffold | scout/dottie-cli-night2 | in-progress |
+| Scout-lane2 | dottie + scout-cli v0.8 polish | 22:43 CDT | Night shift lane 2 verify triple-write + nano smoke deterministic + 1k spec + scaffold | scout/dottie-cli-night2 | done 03:45 CT — triple verified 7-field, 15-dirs scrub 0 left, gitignored pipeline/runs, manifest v0.8.0 fs true net false, 1K spec written |
 
 ## How to use
 1. Add your row before editing
@@ -19,7 +19,7 @@
 4. Log even if no change ("checked, no-op") so others know you looked
 5. Clear row when done
 
-| Scout-lane1 | vector-* all 4 / honesty pass | 22:43 CDT | equities verified 4831×500 0.7057 lift6.32 already fixed, hoops v6 fusion 17 towers d128 4L 4H CLS→64-d leak-free 0.438 test top1, pitch 588/633 92.9% WC-only, gridiron 32-d native 16-d compat gate, README sync | scout/vector-honesty-night1 | in-progress |
+| Scout-lane1 | vector-* all 4 / honesty pass | 22:43 CDT | equities 4831×500 0.7057 lift6.32 verified fixed d80a716, hoops v6 17 towers d128 4L 4H CLS→64-d leak-free test top1 0.438→0.55 target recall@10 0.977 verified, pitch 588/633 92.9% WC-only 633 2430×11ctx verified, gridiron 32-d native 16-d compat wrapper gate NO promote MAE 8.41 synthetic vs claimed 4.268, branch scout/vector-honesty-night1 4 repos, tests 8p+13p PASS, timeline.jsonl ok | scout/vector-honesty-night1 | done 03:46 CT |
 
 ## Free lanes right now
 - vector-hub / daily 5th puzzle (unified chimera) + provenance checksums
