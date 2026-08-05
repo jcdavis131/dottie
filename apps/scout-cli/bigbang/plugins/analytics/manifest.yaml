@@ -1,0 +1,21 @@
+name: analytics
+version: 0.8.0
+description: PostHog/Mixpanel-class analytics, fully local — JSONL ledger + DAU/WAU + funnel, zero egress, TLPG Stage1 dedup (openswap # analytics local)
+capabilities:
+  network:
+    # ZERO egress by design. Analytics here is a pure function of data already
+    # on this box — no cookie banner, no PostHog key. The axis is disabled outright
+    # so "no event left the box" is architectural. Every command calls
+    # _egress_guard which re-reads the manifest and refuses if widened.
+    enabled: false
+    domains: []
+  filesystem:
+    # writes: .scout/analytics/ is the live runtime store, bundles/analytics/ is
+    # SSOT per lane 4 integration spec, bundles/analytics/events/ is daily shards.
+    write: true
+    paths:
+      - ".scout/analytics"
+      - "bundles/analytics"
+      - "bundles/analytics/events"
+  secrets:
+    allow: []
