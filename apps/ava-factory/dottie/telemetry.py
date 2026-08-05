@@ -73,6 +73,13 @@ def _utc_now_iso() -> str:
 def _safe_write_jsonl(path: Path, obj: dict[str, Any]) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
+        # Rotation: keep JSONL under 5MB by trimming to last 1000 lines before append if over size
+        try:
+            if path.exists() and path.stat().st_size > 5 * 1024 * 1024:
+                lines = path.read_text(encoding="utf-8").splitlines()[-1000:]
+                path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        except Exception:
+            pass
         with open(path, "a", encoding="utf-8") as f:
             f.write(json.dumps(obj, ensure_ascii=False) + "\n")
     except Exception as e:

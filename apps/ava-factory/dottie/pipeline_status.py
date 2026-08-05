@@ -488,7 +488,25 @@ def _current_run_rows(metrics: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _reports_dir() -> Path:
-    return Path(os.environ.get("AVA_REPORTS_DIR", "/reports"))
+    # Provenance-honest chain: Hatch VM vs Docker vs local
+    # 1) explicit AVA_REPORTS_DIR
+    # 2) DOTTIE_TELEMETRY_DIR / AVA_TELEMETRY_DIR (Dottie factory)
+    # 3) repo-root/reports (Hatch workspace)
+    env = os.environ.get("AVA_REPORTS_DIR")
+    if env and Path(env).exists():
+        return Path(env)
+    env2 = os.environ.get("DOTTIE_TELEMETRY_DIR") or os.environ.get("AVA_TELEMETRY_DIR")
+    if env2 and Path(env2).exists():
+        return Path(env2)
+    # repo-root discovery: pipeline_status is dottie/pipeline_status.py, reports is ../../reports
+    try:
+        repo_reports = Path(__file__).resolve().parents[1] / "reports"
+        if repo_reports.exists():
+            return repo_reports
+    except Exception:
+        pass
+    # fallback original (Docker default /reports)
+    return Path("/reports")
 
 
 def _state_db() -> str:

@@ -59,6 +59,39 @@ scout --json forge from-mcp --name notion --url https://mcp.notion.com/sse
 
 Every plugin declares capabilities (`network` / `filesystem` / `secrets`, default deny) in a manifest and speaks `--json`. Forge engine: `apps/scout-cli/bigbang/plugins/forge/cli.py` (shipped in `4528f85`; self-evolution loop verified end-to-end: `new demo_tool → hello → test pass → rm`).
 
+## Scout v3.3 → Dottie integration (harness + vector v0.8)
+
+Scout Execution Bundle v3.3-OODA-Agentic-MoMA-Graph-Checkpoint is the reference harness we now port into `scout` as two v0.8 plugins so any Hatch harness can call one CLI.
+
+**Single-source entry:** `bundles/cli.sh` (in Scout repo) → `python3 -m bigbang.cli "$@"` with `PYTHONPATH=~/workspace/dottie/apps/scout-cli`. Any agent/harness calls that path:
+
+```bash
+bundles/cli.sh --json harness route "compare Stripe vs Lemon Squeezy Aug 2026"
+bundles/cli.sh --json vector eval hoops
+scout --json harness verify --score 8.2 --prev 8.0
+```
+
+**Harness plugin:** `bigbang/plugins/harness/cli.py` v0.8 — MoMA-lite router + graph memory GARNet + checkpoint + recovery + pacing + verification, mapped directly:
+
+- **MoMA-lite** — 5 tiers deterministic cheap / llm medium / deep_research heavy 9K / action_operator medium-verify / agentic_epic checkpointed 13-swarm predicts capability before full LLM cost-performance optimal (router.ultra.js port)
+- **GARNet / Graph Memory** — G_workflow current DAG nodes+edges+status live in checkpoint + G_history timeline.jsonl patterns/failure types → pick (role,LLM) per MDP, MoMA profiles caps, moma history graph + workflow graph
+- **Checkpoint Manager** — LangGraph-style pause/resume days later pickup exactly, DAG version never mutates in place version++ controlled replan, required fields nodeId/agentId/attempt/latency/tokens/status/errorClass, path `~/.cache/scout/checkpoints/<runId>/checkpoint.json` or `bundles/ultra/runs/<runId>/checkpoint.json`
+- **Bounded Recovery Ladder** — FailureTaxonomy5 + SideEffectClasses READ safe / WRITE_IDEMPOTENT 1× / WRITE_DESTRUCTIVE never auto / EXTERNAL_NOTIFY never speculative + ladder retry1→patch→replan→escalate cannot skip
+- **Verification Economics** — CriticEconomics budget3 threshold8.0 PASS epic, early-exit delta<0.3 resist marginal, first retry 80% value, EvalHooks6 correctness/reliability/coherence/tool_failures/hallucination/comms_quality, SuggestibilityGuard best vs worst critique [BLOCKER] file: evidence → fix concrete single-resp, PECHamsterWheelGuard memory-is-diff epic semantic vs working 1500 chars immediate write BLOCKED/DONE/PLANNED not metrics-dance (EvalHooks 6)
+- **Communication Pacing** — HandoffEnvelope 7 required + ScoutCommsBus sub-swarm, PacingFilter Observe max3 parallel / Orient 180s / concurrency4 / tempo:13 Never:00 timing>speed, relevantAgents cap 5-6 medium, 13 only epic (CrewAI >5-6 noisy needs filtering)
+- **Stickiness Guard** — deep-research Stripe vs Lemon Squeezy Aug 2026 must recall Launched = live URL + 3 users + payments/analytics by Aug31 11:59pm CT America/Chicago locked without re-asking + sources min5 graded A/B/C freshness Aug2026 contradiction matrix
+
+Dottie uses these shapes directly: strategist L1 3-lens history-penalized, planner L2 DAG side-effect tags, executor L3 pacing-filtered swarm + OODA inner loop per node, L4 critic+forensic verification-econ.
+
+**Vector plugin:** `bigbang/plugins/vector/cli.py` v0.8 — dumbmodel.com unified MTNN pipeline, six models, four daily games, one joint cross-sport trunk — era-honest, leak-free, provenance-honest:
+
+- **Games** hoops 64-d 18 towers 12966 players Recall@10 0.977 Purity@20 0.6717 composite 0.7937 / pitch 24-d 633 WC 2018/2022 difficulty-band 40-80% solve / gridiron 32-d MAE 4.268 R2 0.39 nflverse / equities 64-d 17 towers 2700 FY 2015-2024 280 tickers sector_purity@10 0.174 text_tower 384-d MiniLM / unified 64-d sport-agnostic Stage1 ablation configs full/no_supcon/no_coral/no_grl/no_vicreg/task_only losses SupCon→G3 CORAL→G3 GRL→G2 VICReg var+cov task w=2.0 anchor G1
+- **Shared lib** `vector/shared/towers.py` ResidualTower cat([x·m,m])→96h→24d skip + L2-norm + TransformerFusion 4-layer d_model128 4 heads CLS→64-d, `losses.py` InfoNCE SupCon CORAL GRL GradReverse λ0.3 VICReg, `normalize.py` per-season z-score era-honest / per-90 tournament-z / per-ticker FY median-impute + z-score + per90
+- **Pipeline** `build_features.py → build_vectors.py → train_mtnn.py → gated test_skills.py → regen_assets.py` artifacts vectors.json mtnn_meta.json skills.json eval_scoreboard.json mtnn.onnx, provenance public data only, leak-free player-split not season-split, season-split Recall 1.0 mem bug fixed
+- **House rule** unified Stage1 v0 frozen encoders non-destructive Δ G1 per-sport recall / G2 sport invariance / G3 silhouette archetype coherence / G4 hit-rate random baseline does each alignment loss earn keep
+
+Install: `pip install --break-system-packages --no-deps -e ~/workspace/dottie/apps/scout-cli` then `scout --json harness route "…"` / `scout --json vector eval hoops` work anywhere. Manifest documents commands in `bundles/manifest.json:scout_cli_v0_8`.
+
 ## Quickstart
 
 ```bash
@@ -103,8 +136,27 @@ Checkpoints are only promoted to serving if they pass `ava-open-harness`: J-Spac
 
 ## Status
 
-- Done: monorepo cutover (six repos subtree-merged, 2026-07-18), forge self-evolution engine (`4528f85`), telemetry hygiene + CI (2026-07-19).
-- In progress: training the mini 171M on local GPU and promoting it through the eval gate to serve as the default brain; wiring `scout ava` as the single wrapper over the continuous-loop modes; closing the flywheel from site traces back into the anneal phase.
+- Done: monorepo cutover (six repos subtree-merged, 2026-07-18), forge self-evolution engine (`4528f85`), telemetry hygiene + CI (2026-07-19), scout-cli v0.8 harness+vector plugins live (single-source `bundles/cli.sh` → `python3 -m bigbang.cli`), checkpoint dual-write Dottie Hub ↔ dumbmodel Hub provenance-honest, nano smoke 100 steps deterministic + monitor Training mode fix.
+- In progress: hill-climb per proactive ultracode dynamic workflows across all repos (vector-* domain SOTA + unified + Dottie small locally-runnable reasoning base).
+
+### Hill-Climb Roadmap (2026-08-04 audit — global priorities)
+
+1. **Hoops v6 transformer fusion** — ResidualTower cat([x·m,m]) →96h→24d L2 + TransformerFusion 128d 4-head CLS→64d; probe Recall@10 0.438→0.55 leak-free player-split, era-honest per-season z-score, ensure composite 0.7937 holds.
+2. **Gridiron bring training back in-repo** — re-pin nflverse pipeline inside `dottie/apps/scout-cli/bigbang/plugins/vector/` (currently external pull), MAE 4.268 R²0.39 Vegas line feature, 32-d advertised 64-d typical — unlocks end-to-end hill-climb without external notebook.
+3. **Dottie train first real nano ckpt 1000 steps** — smoke 100 steps already shipped deterministic (`reports/dottie_nano_step100.pt` + `metrics_nano.jsonl` + telemetry), next: Alienware RTX 4080/4090 `./scripts/local_train.sh --preset nano --steps 1000` full weights, MoMA-lite cheap heartbeat→monitor parity, J-space S1/S2/Critic/Planner verbalizable_mass.
+4. **Unified push G2 0.6851→0.64 sport-blind** — sport classifier + GRL λ0.3 warmup10ep after 5ep, SupCon→G3 CORAL→G3 VICReg var+cov task w=2.0 ablation table 5 configs full/no_supcon/no_coral/no_grl/no_vicreg/task_only — measure ΔG2/G3/G4, house rule each loss must earn keep.
+5. **Pitch promote MTNN to game + telemetry** — difficulty-band 40-80% solve (24-d WC per-90 tournament-z 633 players 2018/2022) → daily puzzle generator in `vector-hub/index.html` Hub (6 models 4 puzzles), wire live telemetry to `reports/dottie_telemetry.jsonl` rolling <5MB.
+
+Run next via single-source wrapper:
+
+```bash
+bundles/cli.sh --json harness route "compare Stripe vs Lemon Squeezy Aug 2026"  # deep_research 9K heavy route
+bundles/cli.sh --json vector eval hoops   # Recall@10 0.977 Purity@20 0.6717
+bundles/cli.sh dottie train --preset nano --steps 100 --force  # smoke deterministic (no torch ok in VM)
+python -m bigbang.cli dottie monitor   # should show mode Training steps 100 loss 4.0 not not_running
+```
+
+Proactive ultracode dynamic workflows: every repo gets scout-prime→researcher→builder→communicator→operator layered graph, OODA inner-loop per node, MoMA-lite routing, checkpoint per node (required fields nodeId/agentId/attempt/latency/tokens/status/errorClass), recovery ladder retry→patch→replan→escalate, verification econ budget3 threshold8.0 earlyExit Δ<0.3.
 
 ## License
 

@@ -11,10 +11,24 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 
 _REPO = Path(__file__).resolve().parent.parent.parent
+# Primary ultra location (dashboard expects this) + local portability dir
+# _REPO is ava-factory root (parent.parent.parent from pipeline file). That yields
+# ava-factory/bundles/ultra/runs which is NOT the canonical dashboard location.
+# We keep that for legacy compat but also write to workspace root canonical.
 _RUNS = _REPO / "bundles" / "ultra" / "runs"
+_RUNS.mkdir(parents=True, exist_ok=True)
+# Workspace-root canonical for dashboard scout-ops-always-on-2
+_WORKSPACE_ROOT = Path.home() / "workspace"
+_WORKSPACE_RUNS = _WORKSPACE_ROOT / "bundles" / "ultra" / "runs"
+_WORKSPACE_RUNS.mkdir(parents=True, exist_ok=True)
 # Also support Dottie-local runs dir for portability
 _DOTTIE_RUNS = Path(__file__).resolve().parent / "runs"
 _DOTTIE_RUNS.mkdir(parents=True, exist_ok=True)
+
+# Keep trees in sync via triple-write; symlink not used (group-writable FS edge cases)
+# dashboard scout-ops-always-on-2 reads bundles/ultra/runs/<runId>/timeline.jsonl client-only (workspace canonical)
+_SECONDARY_RUNS = _RUNS  # alias for clarity
+_ALL_RUNS = [_DOTTIE_RUNS, _RUNS, _WORKSPACE_RUNS]
 
 REQUIRED_TIMELINE_FIELDS = ["nodeId","agentId","attempt","latency","tokens","status","errorClass"]
 
@@ -34,13 +48,27 @@ class DottieCheckpointManager:
         self.run_id = run_id
         self.path = _DOTTIE_RUNS / run_id / "checkpoint.json"
         self.timeline_path = _DOTTIE_RUNS / run_id / "timeline.jsonl"
+        self.ultra_path = _RUNS / run_id / "checkpoint.json"
+        self.ultra_timeline = _RUNS / run_id / "timeline.jsonl"
+        self.ws_path = _WORKSPACE_RUNS / run_id / "checkpoint.json"
+        self.ws_timeline = _WORKSPACE_RUNS / run_id / "timeline.jsonl"
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.ultra_path.parent.mkdir(parents=True, exist_ok=True)
+        self.ws_path.parent.mkdir(parents=True, exist_ok=True)
         self.checkpoint = {
             "runId": run_id,
             "version": "v0.8-scout-v3.3-parity",
             "created": datetime.now(timezone.utc).isoformat(),
             "dag_version": 1,
             "nodes": [],
+            "provenance": {
+                "dottie_hub": "dottie/pipeline/runs/<runId>",
+                "dumbmodel_hub": "vector-hub/assets/data/",
+                "link": "provenance-honest — triple-write workspace+bundles+dottie pipeline",
+                "workspace_canonical": "bundles/ultra/runs/<runId> (dashboard reads client-only)",
+                "dottie_local": "dottie/pipeline/runs/<runId>",
+                "ava_legacy": "apps/ava-factory/bundles/ultra/runs/<runId>",
+            },
             "guarantees": {
                 "structured_workflow": True,
                 "tool_safety": "schema+sandbox 30s",
@@ -52,6 +80,15 @@ class DottieCheckpointManager:
         }
 
     def _now(self): return datetime.now(timezone.utc).isoformat()
+
+    def _dual_write_timeline(self, entry: dict):
+        for p in (self.timeline_path, self.ultra_timeline, self.ws_timeline):
+            try:
+                p.parent.mkdir(parents=True, exist_ok=True)
+                with open(p, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(entry) + "\n")
+            except Exception:
+                pass
 
     def log_node(self, event: Dict[str, Any]) -> Dict[str, Any]:
         """Every node logged even no-change — ultra non-negotiable"""
@@ -73,9 +110,7 @@ class DottieCheckpointManager:
         # required fields audit
         missing = [f for f in REQUIRED_TIMELINE_FIELDS if f.lower().replace("_","") not in "".join(entry.keys()).lower() and f not in entry]
         # still write — but keep schema strict in check
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.timeline_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry) + "\n")
+        self._dual_write_timeline(entry)
         # immediate lattice write BLOCKED detection
         if entry["status"] in ("blocked","failed") and entry.get("errorClass") in FAILURE_TAXONOMY:
             self._immediate_lattice_write_blocked(entry)
@@ -83,34 +118,49 @@ class DottieCheckpointManager:
 
     def _immediate_lattice_write_blocked(self, entry: Dict[str, Any]):
         """PECHamsterWheelGuard memory-is-diff: immediate write BLOCKED not metrics-dance"""
-        lattice_path = _DOTTIE_RUNS / self.run_id / "lattice_diff.jsonl"
-        diff = {
-            "ts": self._now(),
-            "type": "BLOCKED",
-            "nodeId": entry["nodeId"],
-            "agentId": entry["agentId"],
-            "errorClass": entry["errorClass"],
-            "status": entry["status"],
-            "delta": f"{entry['nodeId']} {entry['errorClass']} vs prev run — memory is difference",
-            "1500_chars": json.dumps(entry)[:1500],
-        }
-        with open(lattice_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(diff) + "\n")
+        for base in (_DOTTIE_RUNS, _RUNS, _WORKSPACE_RUNS):
+            lattice_path = base / self.run_id / "lattice_diff.jsonl"
+            try:
+                diff = {
+                    "ts": self._now(),
+                    "type": "BLOCKED",
+                    "nodeId": entry["nodeId"],
+                    "agentId": entry["agentId"],
+                    "errorClass": entry["errorClass"],
+                    "status": entry["status"],
+                    "delta": f"{entry['nodeId']} {entry['errorClass']} vs prev run — memory is difference",
+                    "1500_chars": json.dumps(entry)[:1500],
+                }
+                lattice_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(lattice_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(diff) + "\n")
+            except Exception:
+                pass
 
     def save(self, state: Dict[str, Any]):
         merged = {**self.checkpoint, **state, "saved_at": self._now()}
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.path, "w", encoding="utf-8") as f:
-            json.dump(merged, f, indent=2)
+        for p in (self.path, self.ultra_path, self.ws_path):
+            try:
+                p.parent.mkdir(parents=True, exist_ok=True)
+                with open(p, "w", encoding="utf-8") as f:
+                    json.dump(merged, f, indent=2)
+            except Exception:
+                pass
         if state.get("nodes"):
-            with open(self.timeline_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps({"ts": self._now(), "event":"checkpoint_saved","dag_version":state.get("dag_version",1),"nodes":len(state["nodes"])})+"\n")
+            for tp in (self.timeline_path, self.ultra_timeline, self.ws_timeline):
+                try:
+                    with open(tp, "a", encoding="utf-8") as f:
+                        f.write(json.dumps({"ts": self._now(), "event":"checkpoint_saved","dag_version":state.get("dag_version",1),"nodes":len(state["nodes"])})+"\n")
+                except Exception:
+                    pass
 
     def load(self, run_id: Optional[str]=None) -> Optional[Dict[str,Any]]:
-        p = (_DOTTIE_RUNS / (run_id or self.run_id) / "checkpoint.json")
-        if p.exists():
-            try: return json.loads(p.read_text(encoding="utf-8"))
-            except: return None
+        # Try local first, then ultra, then workspace (dashboard) location — enables pause/resume days later from either hub
+        for base in (_DOTTIE_RUNS, _RUNS, _WORKSPACE_RUNS):
+            p = base / (run_id or self.run_id) / "checkpoint.json"
+            if p.exists():
+                try: return json.loads(p.read_text(encoding="utf-8"))
+                except: return None
         return None
 
     def pause(self, reason="human gate"):
