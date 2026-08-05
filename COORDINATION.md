@@ -5,6 +5,7 @@
 
 | Agent | Repo / Area | Since | What / Why | Branch | Status |
 |-------|-------------|-------|------------|--------|--------|
+| Claude-Local | dottie / distilled reasoning traces -> nano GRPO | 17:3x CDT | FREE lane only. Mapping what exists before changing anything. HARD CONSTRAINT: apps/ava-factory/dottie/** and apps/ava-factory/configs/** are FROZEN (read, never modify) and grpo.py lives inside that path. Staying out of Scout's nano-1k + tech-debt area. | local/dottie-distill-traces | in-progress |
 | Scout | vector-hoops / MTNN v6 fusion | 22:08 CDT | Port transformer fusion + SupCon/VICReg, lift composite 0.7937→0.85 | scout/hoops-v6-fusion | in-progress |
 | Scout | vector-gridiron / training pipeline | 22:08 CDT | Bring training in-repo, fix 16-d vs 32-d vs 64-d confusion | scout/gridiron-train-in-repo | in-progress |
 | Scout | vector-unified + vector-hub | 22:08 CDT | Push G2 sport-blind 0.685→0.64, verify ablation table | scout/unified-g2-blind | in-progress |
