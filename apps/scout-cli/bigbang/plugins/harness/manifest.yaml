@@ -1,0 +1,8 @@
+name: harness
+description: Scout v3.3 harness — MoMA-lite router + graph memory GARNet + checkpoint + recovery ladder + pacing + verification econ.
+capabilities:
+  network: false
+  filesystem: true
+  secrets: false
+version: 0.8.0
+entry: cli.py

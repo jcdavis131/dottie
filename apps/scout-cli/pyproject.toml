@@ -1,6 +1,6 @@
 [project]
 name = "scout-cli"
-version = "0.7.1"
+version = "0.8.0"
 description = "Scout CLI - personal control plane (ex-BigBang). Agent-native herd sessions + Ava brain + tools/MCP + authentic writing + RTX offload. HOME-only."
 readme = "README.md"
 requires-python = ">=3.10"

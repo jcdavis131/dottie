@@ -274,3 +274,55 @@ bb mytool hello --json
 ## Disclaimer
 
 Solo personal project, no connection to employer, built with public/free-tier only. Security first, local-first, free to host. MIT.
+
+## What's New in v0.8 — Harness as a CLI surface (Scout v3.3 → scout-cli)
+
+**Thesis:** Until now Scout's harness lived only in `workspace/bundles/`. Dottie, vector-hub, and any other harness each rewrote the same router / checkpoint / verification. **scout-cli v0.8 collapses 12 entrypoints into one.**
+
+```bash
+# Single-source CLI — any harness can call it
+~/workspace/bundles/cli.sh --json harness route "compare Stripe vs Lemon Squeezy Aug 2026"
+# → MoMA-lite 5 tiers deterministic cheap / llm medium / deep_research heavy 9K /
+#    action_operator medium-verify / agentic_epic 13-swarm checkpointed
+# → intent deep_research 0.96, routed 3 agents, graph_memory G_workflow+G_history+GARNet, stickiness PASS
+
+~/workspace/bundles/cli.sh --json vector eval hoops
+# → Recall@10 0.977 Purity@20 0.6717 composite 0.7937 leak-free player-split
+
+~/workspace/bundles/cli.sh --json vector unified ablation
+# → house rule Δ G1/G2/G3/G4 — does each loss earn keep?
+
+# Direct python (same entry)
+python3 -m bigbang.cli --json harness route "heartbeat tick"
+python3 -m bigbang.cli --json vector train --game equities --preset nano
+```
+
+### Scout v3.3 Integration
+
+- **MoMA-lite 5 tiers** — `bundles/router/router.ultra.js` ported to `bigbang/plugins/harness/cli.py`:
+  `deterministic` (heartbeat/monitor cheap no LLM), `llm` (medium), `deep_research` (heavy 9K 5-7 sources A/B/C), `action_operator` (medium-verify tool-chain), `agentic_epic` (checkpointed 13-swarm). Cost-performance optimal before full LLM call.
+
+- **GARNet-style Graph Memory** — `G_workflow` current DAG live in checkpoint + `G_history` past runs timeline.jsonl patterns/failures → `garnet` picks (role,LLM) per MDP MoMA profiles caps. `graph_memory` in every route output.
+
+- **Stickiness Guard** — Stripe vs Lemon Squeezy Aug 2026 must recall `Launched = live URL + 3 users + payments/analytics by Aug31 11:59pm CT` without re-asking, sources min5 graded A/B/C freshness Aug2026, forbidden re-asking Launched def. `must_recall` PASS enforced in `intent_scores`/`stickiness_guard.passed`.
+
+- **Checkpoint Manager** — `bundles/ultra/checkpoint-manager.js` LangGraph pause/resume days later `bundles/ultra/runs/<runId>/checkpoint.json` required fields `nodeId/agentId/attempt/latency/tokens/status/errorClass`. 60-epoch unified job can pause days and resume. Verified via `checkpoint list/show`.
+
+- **Bounded Recovery Ladder** — `bundles/ultra/recovery-ladder.js` FailureTaxonomy 5 `INPUT_CORRUPTION/CONTEXT_STARVATION/TOOL_FAILURE/REASONING_COLLAPSE/OUTPUT_CORRUPTION` + SideEffect 4 `READ/WRITE_IDEMPOTENT/WRITE_DESTRUCTIVE/EXTERNAL_NOTIFY` + ladder `retry1→patch→replan→escalate`. Cannot skip levels. 28→315 features via enriched schedule binary gate rather than shipping coin-flip map.
+
+- **Pacing Filter** — `bundles/ultra/communication-pacing.js` HandoffEnvelope 7 required + ScoutCommsBus sub-swarm + `max3 parallel / max4 concurrent safe`, `tempo :13 Never :00` timing over speed, sub-swarm 3-5 medium 13 only epic. CrewAI >5-6 noisy needs filtering.
+
+- **Verification Economics** — `bundles/ultra/verification-economics.js` CriticEconomics `budget3 threshold8.0 earlyExit delta<0.3` + EvalHooks6 `correctness/reliability/coherence/tool_failures/hallucination/comms_quality` + SuggestibilityGuard best vs worst critique + PECHamsterWheelGuard `Memory is difference iteration→improvement` episodic/semantic/working 1500 chars immediate lattice write BLOCKED. Stops `pos_drop 0.0` mask-as-index bug via shuffled null 0.5493.
+
+- **Dumbmodel.com Vector Hub** — `vector train/eval/export/ship/difficulty/unified` commands unify 6 models 4 daily games 20,719 player-seasons x64-d joint trunk ablation 30ep warmup5 Stage1 v0 frozen encoders non-destructive, G1 per-sport pos non-inf pos_drop/pos_baseline, G2 sport-invariance target ≤0.7258 (0.6258+0.10) majority baseline, G3 archetype silhouette 0.683 within-arch x-sport 0.746 >> between -0.121 sep 0.867, G4 cross-sport NN 0.9828 random 0.1712 +0.8116 lift curated 40 triples top-10 0.000 mean rank 2114 vs random 2067 ratio 0.978. All in `assets/data/scout_cli.json` provenance-honest.
+
+- **Dashboard** — single slug `scout-ops-always-on-2` client-only no secrets DOM, coffee steam + wave hover, sparkle on 8/8 core lit (OODA 4/4 agentic 6/6 MoMA 5 tiers Graph 2 pacing :13 checkpoint).
+
+### Test surface
+
+```bash
+pytest tests/test_harness_vector.py -q   # 9 tests — harness route stickiness, verify econ, agents, vector eval/train/ship/unified, shared lib, cli.sh wrapper
+```
+
+`bundles/cli.sh` ensures any hatch harness can call `scout` as single source without knowing pip/virtualenv details — it sets `PYTHONPATH` to `~/workspace/dottie/apps/scout-cli` and execs `python -m bigbang.cli`.
+
