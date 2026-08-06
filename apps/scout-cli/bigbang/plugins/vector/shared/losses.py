@@ -14,15 +14,19 @@ try:
     def info_nce(z, pos_mask, temp=0.07):
         # z L2-normalized (B,d), pos_mask (B,B) bool, same-ticker adjacent-FY pattern
         sim = z @ z.T / temp
-        # numerically stable log_softmax via subtract max per row done by F
-        # positive logits mean
-        exp_sim = torch.exp(sim)
-        # sum over all but self? keep self out via mask
-        denom = exp_sim.sum(dim=1, keepdim=True)
-        log_prob = sim - torch.log(denom)
-        # mean pos per row
+        # Self-exclusion. The original summed exp(sim) over the WHOLE row, so the
+        # self term exp(1/temp) (~1.6e6 at temp=0.07) sat in every denominator and a
+        # perfect positive pair bottomed out at log(2), never 0 (measured 2026-08-05).
+        eye = torch.eye(sim.size(0), dtype=torch.bool, device=sim.device)
+        sim = sim.masked_fill(eye, float("-inf"))
+        # logsumexp IS the stable log-softmax the old comment claimed to have;
+        # raw torch.exp(sim) went inf (loss nan) once sim/temp cleared ~88.
+        log_prob = sim - torch.logsumexp(sim, dim=1, keepdim=True)
+        pos_mask = pos_mask.bool() & ~eye
+        # Select, don't multiply: log_prob is -inf on the diagonal and -inf * 0 is nan.
+        contrib = torch.where(pos_mask, log_prob, torch.zeros_like(log_prob))
         pos_count = pos_mask.sum(dim=1).clamp(min=1)
-        loss = -(log_prob * pos_mask).sum(dim=1) / pos_count
+        loss = -contrib.sum(dim=1) / pos_count
         return loss.mean()
 
     def supcon_loss(features, labels, temp=0.07):

@@ -80,6 +80,20 @@ def test_harness_route_ok_envelope():
     assert "confidence" in data
 
 
+def test_harness_route_zero_keyword_goal_does_not_crash():
+    """A goal matching NO intent keywords must fall back to llm, not KeyError.
+
+    Regression: confidence read `scores[intent]` after intent was set to the
+    fallback "llm", which is not a key of INTENT_KEYWORDS — every goal outside
+    the keyword lists crashed the command (measured 2026-08-05).
+    """
+    out = _run_cli("--json", "harness", "route", "write a poem about autumn")
+    d = out["data"]
+    assert d.get("intent") == "llm"
+    assert d.get("confidence") == 0.4
+    assert d.get("ok") is True
+
+
 def test_harness_verify_threshold_and_early_exit():
     out = _run_cli("--json", "harness", "verify", "--score", "8.2", "--prev", "8.0")
     d = out["data"]
@@ -154,6 +168,59 @@ def test_shared_lib_importable_without_torch():
     assert per90(45, 90)==45.0
 
 
+class TestInfoNCEMath:
+    """The losses lib has no callers yet — these pin the math BEFORE a train path adopts it.
+
+    Two defects measured 2026-08-05 in the original:
+    - self-similarity sat in the denominator: exp(1/0.07) ~ 1.6e6 dwarfed every real
+      candidate, so a PERFECT positive pair bottomed out at log(2) ~ 0.693, never 0.
+    - the "numerically stable log_softmax" the comment claimed did not exist; raw
+      torch.exp(sim) goes inf for small temperatures and the loss turns nan/inf.
+    """
+
+    def _pairs(self, torch):
+        # Two aligned pairs (a,a,b,b), a orthogonal to b. B=4 so each row has
+        # real negatives after self-exclusion (B=2 would make the softmax trivial).
+        a = torch.tensor([1.0, 0.0])
+        b = torch.tensor([0.0, 1.0])
+        z = torch.stack([a, a, b, b])
+        pos = torch.tensor([
+            [False, True, False, False],
+            [True, False, False, False],
+            [False, False, False, True],
+            [False, False, True, False],
+        ])
+        return z, pos
+
+    def test_perfect_positive_pair_reaches_zero(self):
+        torch = pytest.importorskip("torch")
+        from bigbang.plugins.vector.shared.losses import info_nce
+
+        z, pos = self._pairs(torch)
+        loss = info_nce(z, pos, temp=0.07)
+        # Original code: 0.693 (log 2) — the self term kept the floor away from 0.
+        assert loss.item() < 1e-2, f"perfect positives should give ~0 loss, got {loss.item()}"
+
+    def test_small_temperature_stays_finite(self):
+        torch = pytest.importorskip("torch")
+        from bigbang.plugins.vector.shared.losses import info_nce
+
+        z, pos = self._pairs(torch)
+        loss = info_nce(z, pos, temp=1e-3)  # sim/temp = 1000; raw exp() is inf
+        assert torch.isfinite(loss), f"loss must stay finite at small temp, got {loss}"
+
+    def test_supcon_orthogonal_groups_near_zero(self):
+        torch = pytest.importorskip("torch")
+        from bigbang.plugins.vector.shared.losses import supcon_loss
+
+        a = torch.tensor([1.0, 0.0])
+        b = torch.tensor([0.0, 1.0])
+        z = torch.stack([a, a, b, b])
+        labels = torch.tensor([0, 0, 1, 1])
+        loss = supcon_loss(z, labels, temp=0.07)
+        assert loss.item() < 1e-2, f"separable groups should give ~0 supcon loss, got {loss.item()}"
+
+
 def test_cli_sh_wrapper_single_source():
     """bundles/cli.sh must exist and be executable and proxy to same module."""
     import subprocess, os
@@ -161,7 +228,12 @@ def test_cli_sh_wrapper_single_source():
     # also accept path via env var workspace
     if not wrapper.exists():
         wrapper = Path("/home/hatch/workspace/bundles/cli.sh")
-    assert wrapper.exists(), f"{wrapper} missing"
+    if not wrapper.exists():
+        # The wrapper lives on the Hatch VM only. On any other machine (this repo also
+        # runs on a Windows laptop) the path cannot exist, and a hard assert turned the
+        # whole suite red there for an environment fact, not a code fact. Skip with the
+        # reason attached so the Hatch run still enforces it.
+        pytest.skip(f"{wrapper} missing — Hatch VM wrapper, not present on this machine")
     r = subprocess.run(
         [str(wrapper), "--json", "harness", "route", "heartbeat tick"],
         capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10

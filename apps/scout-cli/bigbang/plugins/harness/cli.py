@@ -99,7 +99,10 @@ def route_cmd(
     if max(scores.values())==0: intent="llm"
     complexity=_complexity(goal)
     moma=_classify_moma(goal,intent,complexity)
-    confidence=min(0.96, (max(scores.values())/4.0)) if scores[intent]>0 else 0.4
+    # scores.get, not scores[intent]: the "llm" fallback intent is not a key in
+    # INTENT_KEYWORDS, so a goal matching zero keywords used to KeyError right here
+    # (`harness route "write a poem"` crashed; measured 2026-08-05).
+    confidence=min(0.96, (max(scores.values())/4.0)) if scores.get(intent,0)>0 else 0.4
 
     stickiness_guard=None
     if "stripe" in goal.lower() and "lemon" in goal.lower():
