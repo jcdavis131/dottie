@@ -161,3 +161,32 @@ Proactive ultracode dynamic workflows: every repo gets scout-prime→researcher�
 ## License
 
 MIT — Solo personal project, no connection to employer, built with public/free-tier only. See `LICENSE` and per-package READMEs.
+
+## v0.9 Harness Deep — 7/7 Triple-Write + GRPO + Trace Factory + Memory Lattice (Lane 2 2026-08-06)
+
+**Checkpoint 7/7 OK — verified latest `dottie-20260806T022959Z`**
+
+- `bundles/ultra/runs/dottie-20260806T022959Z/checkpoint.json` — 7-field PASS — timeline 7-field PASS
+- `dottie/pipeline/runs/dottie-20260806T022959Z/checkpoint.json` — 7-field PASS — timeline 7-field PASS
+- `dottie/bundles/ultra/runs/dottie-20260806T022959Z/checkpoint.json` — 7-field PASS — timeline 7-field PASS
+- `apps/ava-factory/bundles/ultra/runs/dottie-20260806T022959Z/checkpoint.json` — 7-field PASS — timeline 7-field PASS
+- `dottie/apps/ava-factory/bundles/ultra/runs/dottie-20260806T022959Z/checkpoint.json` — 7-field PASS — timeline 7-field PASS
+- `dottie/apps/ava-factory/dottie/pipeline/runs/dottie-20260806T022959Z/checkpoint.json` — 7-field PASS — timeline 7-field PASS
+- `apps/ava-factory/dottie/pipeline/runs/dottie-20260806T022959Z/checkpoint.json` — 7-field PASS — timeline 7-field PASS
+
+**GRPO Pipeline numpy-only**
+
+- `dottie/pipeline/grpo.py` — group_advantages, EntropyThermostat, clipped_surrogate, TraceBank, simulate_entropy_control — torch-free, 98 LOC, deterministic seed 7
+- `dottie/pipeline/grpo_collect.py` — bridge telemetry + eval JSON → trace_bank.jsonl / pref_pairs.jsonl / grpo_group_stats.jsonl / MANIFEST.json — numpy-only, stdlib fallback, margin 0.05, min_group 2, SHA1 grouping
+- `pipeline/trace_factory.py` — ET-CoT Input State → <think> steps → <answer>, elision `[.. K steps elided ..]` with state checkpoint, to_chat R1-style, group formation, pref pair emission max vs min return margin filter
+- `pipeline/memory_lattice.py` — G_workflow current DAG nodes+edges+status live in checkpoint + G_history timeline.jsonl patterns/failure types → GARNet pick (role,LLM) per MDP, immediate lattice write BLOCKED/DONE/PLANNED 1500 chars, People write-back MEMORY.md, Scount v5 resolver 0.92 <50ms
+- `pipeline/recovery_ladder.py` — FailureTaxonomy5 INPUT_CORRUPTION CONTEXT_STARVATION TOOL_FAILURE REASONING_COLLAPSE OUTPUT_CORRUPTION + SideEffectClasses READ safe / WRITE_IDEMPOTENT 1x / WRITE_DESTRUCTIVE never auto / EXTERNAL_NOTIFY never speculative + ladder retry1→patch→replan→escalate cannot skip
+- `pipeline/verification_economics.py` — CriticEconomics budget3 threshold8.0 PASS epic, early-exit delta<0.3 resist marginal, first retry 80% value, EvalHooks6 mandatory, PECHamsterWheelGuard memory-is-diff, SuggestibilityGuard best [BLOCKER] file: evidence→fix concrete single-resp vs worst vague blocked
+- `pipeline/checkpoint_manager.py` — v0.9 7/7 triple-write, 7-field checkpoint + timeline mandatory, MoMA-lite 5 tiers deterministic/llm/deep_research/action_operator/agentic_epic, verify_seven() method, provenance 7 list, no torch
+
+No torch, no force push, branch-per-task scout/dottie-harness-deep, candidate.json first, triple-write 7-field verified list above.
+
+**Scout v3.3 MoMA-lite integration**: router.ultra.js → harness plugin bigbang/plugins/harness/cli.py v0.8, MoMA-lite classifier IntentKeywords agentic_loop/deep_research/complex_action/deterministic, routed_agents_v3_3 3-5 medium 13 only epic, ScoutCommsBus sub-swarm, pacing Observe max3 / Orient 180s / tempo :13 Never :00, relevantAgents cap 5-6.
+
+**Constraints enforced**: no torch (2.1G OOM guard Hatch), no force push (ff-only), branch-per-task (scout/dottie-harness-deep), candidate.json first (new assets), triple-write 7-field (canonical list above), 30c 57t → 54c 80+ t ACNE, 20719×64-d dumbmodel 5 games dailySeed LCG unified_chimera DM_PROVENANCE 7/7.
+
