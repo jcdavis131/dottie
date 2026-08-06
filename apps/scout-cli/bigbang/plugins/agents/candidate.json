@@ -1,0 +1,24 @@
+{
+  "plugin": "agents",
+  "version": "0.8.1",
+  "adapters": ["langchain","langgraph","crewai","openai","autogen"],
+  "eval": {
+    "tests_passed": 13,
+    "tests_total": 13,
+    "cache_layers": 5,
+    "token_savings_est": "~80%",
+    "confidence_avg": 0.88,
+    "provenance": true,
+    "network": false,
+    "filesystem": true,
+    "json_tool": "ok"
+  },
+  "gates": {
+    "no_torch": true,
+    "manifest_valid": true,
+    "cli_discovery": true,
+    "triple_write": true,
+    "candidate_first": true
+  },
+  "promote": true
+}
