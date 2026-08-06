@@ -302,3 +302,75 @@ class TestBusySessionsSurviveEviction:
             with reg.busy(s.id):
                 raise ValueError("turn blew up")
         assert not reg.is_busy(s.id)
+
+
+class TestCrossProcessIndexSafety:
+    """Two OS processes must not clobber each other's registry writes.
+
+    self._lock is process-local: two `dottie-rlm run` invocations in separate
+    terminals both read the index, both add their session, and the second
+    write erases the first (review finding registry.py:184). The guard is an
+    O_CREAT|O_EXCL lock file around the read-modify-write.
+    """
+
+    def test_two_real_processes_both_survive_registration(self, tmp_path) -> None:
+        import subprocess
+        import sys
+        import textwrap
+
+        root = tmp_path / "sessions"
+        prog = textwrap.dedent(
+            f"""
+            import sys, time
+            sys.path.insert(0, {str(Path(__file__).resolve().parents[1])!r})
+            from dottie_rlm.registry import SessionRegistry
+
+            class K:
+                def inject(self, *a, **k): pass
+                def run(self, *a, **k): raise AssertionError("no exec in this test")
+
+            reg = SessionRegistry({str(root)!r}, kernel_factory=K)
+            for _ in range(15):
+                reg.create(role="root", model_spec="fake:")
+                time.sleep(0.005)
+            print("OK")
+            """
+        )
+        script = tmp_path / "spawn.py"
+        script.write_text(prog, encoding="utf-8")
+        procs = [
+            subprocess.Popen(
+                [sys.executable, str(script)], stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, text=True,
+            )
+            for _ in range(2)
+        ]
+        outs = [p.communicate(timeout=180) for p in procs]
+        for rc, (out, err) in zip([p.returncode for p in procs], outs, strict=True):
+            assert rc == 0, f"child failed: {err[-800:]}"
+            assert "OK" in out
+        # 2 processes x 15 sessions: every one must be in the index. Without
+        # the cross-process lock this lands well short.
+        reg = SessionRegistry(root, kernel_factory=FakeKernel)
+        assert len(reg.entries()) == 30, len(reg.entries())
+
+    def test_no_lock_file_survives_a_clean_run(self, tmp_path) -> None:
+        reg = SessionRegistry(tmp_path / "s", kernel_factory=FakeKernel)
+        reg.create(role="root", model_spec="fake:")
+        assert list((tmp_path / "s").glob("*.lock")) == []
+
+    def test_a_stale_lock_is_broken_not_deadlocked(self, tmp_path, capsys) -> None:
+        reg = SessionRegistry(tmp_path / "s", kernel_factory=FakeKernel)
+        stale = reg.index_path.with_suffix(".lock")
+        stale.write_text("99999", encoding="utf-8")  # holder that never released
+        with reg._file_lock(timeout_s=0.2):
+            pass
+        assert "breaking stale registry lock" in capsys.readouterr().err
+        assert not stale.exists()
+
+    def test_the_lock_is_reentrant_within_one_process(self, tmp_path) -> None:
+        """create() calls add(); a non-reentrant lock would break its own."""
+        reg = SessionRegistry(tmp_path / "s", kernel_factory=FakeKernel)
+        with reg._file_lock(timeout_s=1.0), reg._file_lock(timeout_s=1.0):
+            assert reg._flock_depth == 2
+        assert reg._flock_depth == 0
