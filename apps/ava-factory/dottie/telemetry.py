@@ -780,8 +780,17 @@ def get_live_status() -> dict[str, Any]:
         updated_str = data.get("updated_at") or data.get("updated")
         if updated_str:
             try:
+                from datetime import timezone as _tz
+
                 upd = datetime.fromisoformat(updated_str.replace("Z", "+00:00"))
-                now = datetime.now(datetime.timezone.utc)
+                # `datetime.now(datetime.timezone.utc)` -- an AttributeError
+                # (datetime here is the CLASS, which has no .timezone), eaten
+                # by the except below, so this staleness check NEVER fired and
+                # a stale status file was served as fresh indefinitely
+                # (measured 2026-08-06: consumers got Aug-1 data on Aug 6).
+                now = datetime.now(_tz.utc)
+                if upd.tzinfo is None:
+                    upd = upd.replace(tzinfo=_tz.utc)
                 if (now - upd).total_seconds() > 300:
                     return aggregate_live_status()
             except Exception:
