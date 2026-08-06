@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -121,6 +122,7 @@ class SessionRegistry:
         # had been building simply vanished (review finding registry.py:276).
         self._busy: set[str] = set()
         self._busy_depth: dict[str, int] = {}
+        self._flock_depth = 0
         self._lock = threading.RLock()
 
     def __repr__(self) -> str:
@@ -148,6 +150,82 @@ class SessionRegistry:
             )
         return {str(k): dict(v) for k, v in sessions.items()}
 
+    @contextmanager
+    def _file_lock(self, timeout_s: float = 10.0) -> Iterator[None]:
+        """CROSS-PROCESS mutex around the index read-modify-write.
+
+        self._lock is process-local, so two `dottie-rlm run` invocations in
+        separate terminals both read the index, both add their session, and
+        the second write erases the first (review finding registry.py:184).
+        An O_CREAT|O_EXCL lock file is the portable primitive: creation is
+        atomic on NTFS and POSIX alike.
+
+        A stale lock (holder crashed) is broken after `timeout_s` rather than
+        deadlocking forever -- announced on stderr, because silently stealing
+        a lock is how two writers end up interleaved again.
+        """
+        # Reentrant within this process: create() calls add(), and a
+        # non-reentrant lock would spin against itself and then break its own
+        # lock as "stale". The thread RLock is always held around these, so the
+        # depth counter is safe.
+        with self._lock:
+            if self._flock_depth > 0:
+                self._flock_depth += 1
+                already_held = True
+            else:
+                already_held = False
+        if already_held:
+            try:
+                yield
+            finally:
+                with self._lock:
+                    self._flock_depth -= 1
+            return
+        lock_path = self.index_path.with_suffix(".lock")
+        deadline = time.monotonic() + timeout_s
+        fd = None
+        while True:
+            try:
+                fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                break
+            except FileExistsError:
+                if time.monotonic() >= deadline:
+                    import sys
+
+                    age = "unknown"
+                    try:
+                        age = f"{time.time() - lock_path.stat().st_mtime:.0f}s old"
+                    except OSError:
+                        pass
+                    print(
+                        f"[dottie-rlm] breaking stale registry lock {lock_path} "
+                        f"({age}) after {timeout_s}s -- a previous holder likely "
+                        f"crashed.",
+                        file=sys.stderr,
+                    )
+                    try:
+                        lock_path.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+                    deadline = time.monotonic() + timeout_s
+                    continue
+                time.sleep(0.02)
+        with self._lock:
+            self._flock_depth = 1
+        try:
+            os.write(fd, str(os.getpid()).encode("ascii"))
+            yield
+        finally:
+            with self._lock:
+                self._flock_depth = 0
+            try:
+                os.close(fd)
+            finally:
+                try:
+                    lock_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+
     def _write_index(self, sessions: dict[str, dict]) -> None:
         atomic_write_json(
             self.index_path,
@@ -174,7 +252,7 @@ class SessionRegistry:
         now: datetime | str | None = None,
     ) -> Session:
         """Build a Session (registry's kernel_factory attached) and add it."""
-        with self._lock:
+        with self._lock, self._file_lock():
             if parent_id is not None and parent_id not in self._read_index():
                 raise RegistryError(
                     f"cannot create a child of unknown session {parent_id!r}"
@@ -191,7 +269,7 @@ class SessionRegistry:
 
     def add(self, session: Session, *, now: datetime | str | None = None) -> None:
         """Register a session: persist it under root, index it as live."""
-        with self._lock:
+        with self._lock, self._file_lock():
             index = self._read_index()
             if session.id in index:
                 raise RegistryError(f"session {session.id!r} is already registered")
@@ -210,7 +288,7 @@ class SessionRegistry:
     def get(self, session_id: str, *, now: datetime | str | None = None) -> Session:
         """Address a session. Live → same object; idle → reload from disk
         (fresh kernel, full history) and flip back to live; done → refuse."""
-        with self._lock:
+        with self._lock, self._file_lock():
             index = self._read_index()
             entry = self._require(index, session_id)
             if entry.get("state") == "done":
@@ -233,14 +311,14 @@ class SessionRegistry:
 
     def touch(self, session_id: str, *, now: datetime | str | None = None) -> None:
         """Update ``last_active_utc`` for a session (any state)."""
-        with self._lock:
+        with self._lock, self._file_lock():
             index = self._read_index()
             self._require(index, session_id)["last_active_utc"] = _iso(now)
             self._write_index(index)
 
     def mark_done(self, session_id: str, *, now: datetime | str | None = None) -> None:
         """Terminal state: flush + unload if in memory, index state = done."""
-        with self._lock:
+        with self._lock, self._file_lock():
             index = self._read_index()
             entry = self._require(index, session_id)
             session = self._live.pop(session_id, None)
@@ -291,7 +369,7 @@ class SessionRegistry:
         """
         cutoff = _as_dt(now) - timedelta(minutes=idle_minutes)
         evicted: list[str] = []
-        with self._lock:
+        with self._lock, self._file_lock():
             index = self._read_index()
             for sid, entry in index.items():
                 if entry.get("state") != "live":
