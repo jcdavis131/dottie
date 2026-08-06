@@ -298,16 +298,20 @@ class Runtime:
         self, session: Session, user_text: str | None, *, max_steps: int | None = None
     ) -> dict:
         """One user turn with everything wired: backend, prompt, inbox, exec."""
-        result = loop.run_turn(
-            session,
-            user_text,
-            backend=self.backend_for(session),
-            system_prompt=self.system_prompt_for(session),
-            max_steps=self.max_steps if max_steps is None else int(max_steps),
-            max_tokens=self.max_tokens,
-            inbox_drain=lambda: self.drain(session.id),
-            executor=self._executor_for(session),
-        )
+        # busy() for the WHOLE turn: touch() only fires on completion, so a
+        # turn longer than the idle window would otherwise be evicted from
+        # under itself, dropping the kernel mid-execution.
+        with self.registry.busy(session.id):
+            result = loop.run_turn(
+                session,
+                user_text,
+                backend=self.backend_for(session),
+                system_prompt=self.system_prompt_for(session),
+                max_steps=self.max_steps if max_steps is None else int(max_steps),
+                max_tokens=self.max_tokens,
+                inbox_drain=lambda: self.drain(session.id),
+                executor=self._executor_for(session),
+            )
         self.registry.touch(session.id)
         return result
 

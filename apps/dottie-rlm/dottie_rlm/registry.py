@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import os
 import threading
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -45,7 +46,7 @@ from .session import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
 __all__ = [
     "STATES",
@@ -113,6 +114,13 @@ class SessionRegistry:
         self.index_path = self.root / "registry.json"
         self._kernel_factory = kernel_factory
         self._live: dict[str, Session] = {}
+        # Sessions with a turn IN FLIGHT. evict_idle must never unload one:
+        # last_active_utc is only stamped AFTER a turn completes, so a turn
+        # slower than idle_minutes (routine with qwen3:8b on CPU) looked idle
+        # and had its kernel dropped mid-execution -- the namespace the model
+        # had been building simply vanished (review finding registry.py:276).
+        self._busy: set[str] = set()
+        self._busy_depth: dict[str, int] = {}
         self._lock = threading.RLock()
 
     def __repr__(self) -> str:
@@ -245,6 +253,31 @@ class SessionRegistry:
 
     # -- idle eviction ---------------------------------------------------------
 
+    @contextmanager
+    def busy(self, session_id: str) -> Iterator[None]:
+        """Mark a session in-flight for the duration of the block.
+
+        Re-entrant by refcount so nested turns (a child driven inside a
+        parent's step) cannot clear the flag early.
+        """
+        with self._lock:
+            self._busy_depth[session_id] = self._busy_depth.get(session_id, 0) + 1
+            self._busy.add(session_id)
+        try:
+            yield
+        finally:
+            with self._lock:
+                depth = self._busy_depth.get(session_id, 1) - 1
+                if depth <= 0:
+                    self._busy_depth.pop(session_id, None)
+                    self._busy.discard(session_id)
+                else:
+                    self._busy_depth[session_id] = depth
+
+    def is_busy(self, session_id: str) -> bool:
+        with self._lock:
+            return session_id in self._busy
+
     def evict_idle(
         self,
         now: datetime | str | None = None,
@@ -272,6 +305,10 @@ class SessionRegistry:
                         f"{raw_last!r}: {exc}"
                     ) from exc
                 if last > cutoff:
+                    continue
+                if sid in self._busy:
+                    # A turn is executing right now. Its clock is only stamped
+                    # on completion, so "idle" here would be a lie.
                     continue
                 session = self._live.pop(sid, None)
                 if session is not None:
