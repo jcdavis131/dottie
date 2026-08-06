@@ -332,3 +332,8 @@
 | Scout-top5 | Top5 vec+lattice v2 | 2026-08-06 18:12 CDT | OPEN — Top5 2: vec+lattice v2 memory graph 34 nodes 41 edges Qdrant/all-MiniLM-L6-v2-onnx reranker jina-reranker-v1-turbo-en graph_walk 2 hops, chimera provenance depth | scout/top5-vec-lattice-v2 | todo |
 | Scout-top5 | Top5 analytics+trace+ops v2 | 2026-08-06 18:12 CDT | OPEN — Top5 3/4: analytics+trace+ops v2 store.jsonl events plugin + checkpoint disk-real + heartbeat :13 pacing + Dottie traces | scout/top5-analytics-trace-ops-v2 | todo |
 | Scout-top5 | Top5 meter | 2026-08-06 18:12 CDT | OPEN — Top5 5: meter billing idempotent sha(email|plan) + usage store.jsonl DAU/WAU stats, payments enabled 2026-08-06 18:12 CDT | scout/top5-meter | todo |
+> ⚠️ stale: Scout-infra bundles/coordination / open vs closed gap since 18:26 CDT 2026-08-05 — nudge (24.0h)
+> ⚠️ stale: Scout-phase0 bundles/* Phase0 stubs verify since 18:26 CDT 2026-08-05 — nudge (24.0h)
+> ⚠️ stale: Scout-top5 Top5 tick+flags lane since 18:26 CDT 2026-08-05 — nudge (24.0h)
+> ⚠️ stale: Scout-top5 Top5 vec+lattice v2 lane since 18:26 CDT 2026-08-05 — nudge (24.0h)
+> ⚠️ stale: Scout-top5 Top5 analytics+trace+ops v2 lane since 18:26 CDT 2026-08-05 — nudge (24.0h)
