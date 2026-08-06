@@ -1,8 +1,15 @@
 name: harness
-description: Scout v3.3 harness — MoMA-lite router + graph memory GARNet + checkpoint + recovery ladder + pacing + verification econ.
+description: Scout v3.3 harness — MoMA-lite router + graph memory GARNet + checkpoint + recovery ladder + pacing + verification econ. Now with deep agents LangChain/LangGraph/CrewAI/OpenAI/AutoGen ACNE 5-layer ~80% savings.
 capabilities:
   network: false
   filesystem: true
   secrets: false
-version: 0.8.0
+version: 0.8.1
 entry: cli.py
+deep_agents:
+  adapters: [langchain, langgraph, crewai, openai, autogen]
+  cache_layers: 5
+  token_savings: ~80%
+  confidence: true
+  provenance: true
+  commands: ["scout agents langchain run|list|health", "scout agents deep list"]
