@@ -11,6 +11,7 @@ from typing import List, Dict, Any, Optional
 import typer
 from bigbang.core.contract import make_plugin_app
 from bigbang.core.output import emit, is_json
+from bigbang.core.policy import enforce_or_raise, load_manifest
 
 app = make_plugin_app(
     "harness",
@@ -164,6 +165,9 @@ def checkpoint_cmd(
     run_id: str = typer.Option("", "--run-id"),
     json_out: bool = typer.Option(False,"--json")):
     base=Path.home()/".cache"/"scout"/"checkpoints"
+    # The one filesystem mutation this plugin performs; gated so `harness` stays
+    # out of test_policy's KNOWN_UNGATED set instead of joining it at birth.
+    enforce_or_raise(load_manifest(Path(__file__).resolve().parent), "fs_write", str(base))
     base.mkdir(parents=True, exist_ok=True)
     if action=="list":
         runs=[p.name for p in base.iterdir() if p.is_dir()][:20]

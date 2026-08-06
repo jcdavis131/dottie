@@ -1,8 +1,15 @@
 name: harness
 description: Scout v3.3 harness — MoMA-lite router + graph memory GARNet + checkpoint + recovery ladder + pacing + verification econ.
-capabilities:
-  network: false
-  filesystem: true
-  secrets: false
 version: 0.8.0
 entry: cli.py
+# Schema note: capabilities.filesystem/network are NESTED objects like every other
+# plugin manifest here. The first cut of this file used bare bools
+# (`filesystem: true`), which crashed 6 policy tests with
+# "'bool' object has no attribute 'get'" (measured 2026-08-05).
+capabilities:
+  network:
+    enabled: false
+  filesystem:
+    write: true
+    paths:
+      - ~/.cache/scout/checkpoints/

@@ -1,8 +1,17 @@
 name: vector
 description: dumbmodel.com vector arcade — unified MTNN pipeline hoops/pitch/gridiron/equities/unified ablation.
-capabilities:
-  network: conditional # SEC/StatsBomb fetch only if --fetch, else cache
-  filesystem: true
-  secrets: false
 version: 0.8.0
 entry: cli.py
+# Schema note: nested capability objects, same as every other manifest — the first
+# cut used bare scalars (`filesystem: true`, `network: conditional`) which crashed
+# 6 policy tests (measured 2026-08-05).
+#
+# Declared from what cli.py DOES, not the roadmap: every command emits descriptive
+# JSON and writes nothing; no fetch code exists yet. The old `network: conditional
+# # SEC/StatsBomb fetch only if --fetch` described an aspiration — when a real fetch
+# path lands, flip enabled and list the domains then.
+capabilities:
+  network:
+    enabled: false
+  filesystem:
+    write: false
