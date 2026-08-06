@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Dottie RLM</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#140e09" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Dottie RLM" />
+<link rel="icon" href="./icon.svg" type="image/svg+xml" />
+<style>
+  /* Same amber-phosphor terminal as index.html — one console family. */
+  :root {
+    --bg: #140e09; --panel: #1b1410; --bezel: #261c13; --line: #3c2d1f;
+    --cyan: #ffb45e; --amber: #ffcf8f; --magenta: #ff7a5c; --green: #b6e07d;
+    --red: #ff5d47; --text: #efdcc4; --dim: #96805f; --white: #fff3e0;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+               font-family: "Courier New", ui-monospace, monospace; }
+  body::before { /* warm hearth vignette — barely-there amber wash */
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 98;
+    background: radial-gradient(120% 90% at 50% 0%, rgba(255,180,94,.05), transparent 60%);
+  }
+  body::after { /* CRT scanlines — faint enough to keep text crisp */
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 99;
+    background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(0,0,0,.12) 3px 4px);
+  }
+  #wrap { max-width: 760px; margin: 0 auto; padding: 10px 10px
+          calc(env(safe-area-inset-bottom, 0px) + 24px); }
+  header { display: flex; justify-content: space-between; align-items: baseline;
+           border-bottom: 2px solid var(--magenta); padding: 10px 2px 8px; }
+  header h1 { margin: 0; font-size: 18px; color: var(--cyan); letter-spacing: 1px;
+              text-shadow: 0 0 10px rgba(255,180,94,.35); }
+  header .sub { color: var(--dim); font-size: 11px; text-align: right; }
+  .card { background: var(--panel); border: 1px solid var(--line);
+          border-top: 2px solid var(--bezel); border-radius: 4px; margin-top: 12px;
+          overflow: hidden; }
+  .card > h2 { margin: 0; padding: 7px 10px; font-size: 13px; color: var(--cyan);
+               background: var(--bezel); border-bottom: 1px solid var(--magenta);
+               letter-spacing: 1px; text-shadow: 0 0 8px rgba(255,180,94,.25); }
+  .card .body { padding: 10px; font-size: 13px; line-height: 1.5; }
+  .dimtxt { color: var(--dim); font-size: 11px; }
+  table.sess { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.sess th { text-align: left; color: var(--dim); font-size: 10px;
+                  text-transform: uppercase; letter-spacing: .6px; font-weight: 700;
+                  padding: 2px 4px; border-bottom: 1px solid var(--line); }
+  table.sess td { padding: 3px 4px; border-bottom: 1px solid #241a12; }
+  table.sess td.r { text-align: right; }
+  .led { display: inline-block; width: 9px; height: 9px; margin-right: 5px; vertical-align: -1px; }
+  .led.live { background: var(--green); }
+  .led.idle { background: var(--dim); }
+  .led.done { background: var(--amber); }
+  .state { font-weight: 700; }
+  .state.live { color: var(--green); }
+  .state.idle { color: var(--dim); }
+  .state.done { color: var(--amber); }
+  .role.root { color: var(--cyan); }
+  .role.sub { color: var(--dim); }
+  .refline { padding: 4px 0; border-bottom: 1px solid #241a12; }
+  .refline:last-child { border-bottom: 0; }
+  .refline .rid { color: var(--cyan); font-weight: 700; }
+  .refline .edit { color: var(--amber); }
+  .refline .trigger { color: var(--dim); font-size: 11px; }
+  .refline .outcome { color: var(--green); font-size: 11px; }
+  .refline .rb { color: var(--red); font-weight: 700; font-size: 11px; }
+  .arch dt { color: var(--amber); font-weight: 700; margin-top: 8px; }
+  .arch dd { margin: 2px 0 0 0; color: var(--text); }
+  .arch code { color: var(--cyan); background: #221812; padding: 0 4px;
+               border: 1px solid var(--line); border-radius: 3px; font-family: inherit; }
+  /* ── history, not telemetry ─────────────────────────────────────────────
+     Same honesty convention as the org twin: numbers render live ONLY from a
+     fresh source:"local" feed. Anything else — stale snapshot, offline —
+     gets the band below, and the data (when present at all) is visibly a
+     record, not a reading: desaturated, and no LED may glow green, because a
+     "live" state in an old snapshot is not live now. */
+  .histband { border-left: 3px solid var(--red); background: #170a10;
+              padding: 6px 8px; margin-top: 12px; color: var(--amber); font-size: 12px; }
+  .histband b { color: var(--red); letter-spacing: 1px; }
+  #wrap.history #sessions, #wrap.history #ledger { opacity: .62; filter: saturate(.55); }
+  #wrap.history .led.live { background: var(--dim); }
+  #wrap.history .state.live { color: var(--dim); }
+  .ok-line { color: var(--green); }
+  footer { margin-top: 16px; padding: 10px 2px; color: var(--dim); font-size: 11px;
+           border-top: 1px solid var(--line); display: flex; justify-content: space-between;
+           gap: 10px; flex-wrap: wrap; }
+  footer a { color: var(--cyan); text-decoration: none; }
+
+  /* ── motion layer ── same rigid system as index.html: cards cascade on
+     load, colour changes settle; no ambient motion. */
+  :root {
+    --ease-standard:   cubic-bezier(.2, 0, 0, 1);
+    --ease-emphasized: cubic-bezier(.16, 1, .3, 1);
+    --dur-quick: 90ms; --dur-base: 260ms; --dur-slow: 420ms;
+    --vx-stagger: 50ms; --vx-rise: 12px;
+  }
+  @keyframes vx-rise {
+    from { opacity: 0; transform: translateY(var(--vx-rise)); }
+    to   { opacity: 1; transform: none; }
+  }
+  .card { animation: vx-rise var(--dur-base) var(--ease-emphasized) both; }
+  .card:nth-of-type(1) { animation-delay: 0ms; }
+  .card:nth-of-type(2) { animation-delay: calc(var(--vx-stagger) * 1); }
+  .card:nth-of-type(3) { animation-delay: calc(var(--vx-stagger) * 2); }
+  .state, .refline .outcome { transition: color var(--dur-base) var(--ease-standard); }
+  footer a { transition: color var(--dur-quick) var(--ease-standard); }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important;
+      scroll-behavior: auto !important;
+    }
+    .card { opacity: 1; transform: none; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <header>
+    <h1>▮ DOTTIE//RLM</h1>
+    <div class="sub" id="feedsub">connecting…</div>
+  </header>
+  <div class="dimtxt" style="padding: 6px 2px 0;">
+    one persistent kernel · sub-agents as function calls · every refinement on the ledger
+  </div>
+
+  <div class="histband" id="histband" hidden>
+    <b>HISTORY, NOT TELEMETRY</b> — <span id="histwhy"></span>
+  </div>
+
+  <section class="card"><h2>▮ SESSIONS//KERNELS</h2><div class="body" id="sessions">…</div></section>
+  <section class="card"><h2>▮ LEDGER//REFINEMENTS</h2><div class="body" id="ledger">…</div></section>
+  <section class="card"><h2>▮ ARCH//HARNESS</h2><div class="body">
+    <dl class="arch" style="margin:0;">
+      <dt style="margin-top:0;">ONE TOOL: A PERSISTENT IPYTHON KERNEL</dt>
+      <dd>The model gets exactly one tool — a persistent in-process IPython
+        kernel whose namespace survives across calls. File edits, shell,
+        messaging, compaction and sub-agents are ordinary Python functions
+        <em>inside</em> that namespace; the model calls them in code, the
+        kernel executes. The namespace is the only state the model
+        manipulates directly.</dd>
+      <dt>SUB-AGENTS AS FUNCTION CALLS</dt>
+      <dd><code>rlm(prompt)</code> spawns a child session — own kernel, own
+        history — and returns <em>at admission</em>:
+        <code>{"id": …, "state": "admitted"}</code>. It never blocks on the
+        child's answer; the child runs its own loop and its final answer
+        arrives later as a message in the parent's <code>inbox()</code>.
+        Messaging is scoped to parent, siblings and direct children — anything
+        else raises <code>ScopeError</code>.</dd>
+      <dt>H = (ρ, G, K, M)</dt>
+      <dd>The harness state: <code>ρ</code> the immutable base prompt
+        (hash-pinned — refinement is rejected if it targets ρ);
+        <code>G</code> sub-agent defaults; <code>K</code> skills;
+        <code>M</code> memory. The effective prompt is rebuilt as
+        ρ + skill listing + memory digest — never mutated in place.</dd>
+      <dt>REFINEMENT LEDGER + ROLLBACK</dt>
+      <dd>Every change to G/K/M is the smallest relevant edit, appended to an
+        append-only ledger with its trigger and (later) its outcome.
+        <code>rollback(id)</code> reverses an edit and is idempotent. The
+        ledger card above is that file, verbatim.</dd>
+      <dt>THE LOOP</dt>
+      <dd>Fenced python blocks in the model's reply execute in the kernel, in
+        order; results feed the next completion. A reply with no code block is
+        the answer. Hitting the step limit is recorded honestly in the
+        trajectory — never dressed up as an answer.</dd>
+    </dl>
+  </div></section>
+
+  <footer>
+    <span id="prov">provenance: —</span>
+    <span>every number is a real feed value or an honest absence ·
+      <a href="./index.html">console →</a></span>
+  </footer>
+</div>
+<script type="module">
+// Renders numbers ONLY from the published local status (source:"local",
+// fresh). Stale or offline renders as history / honest absence — same
+// conventions as console.mjs. All feed strings go through textContent.
+const $ = (id) => document.getElementById(id);
+const esc = (el, text) => { el.textContent = text; return el; };
+const p = (text, cls) => {
+  const el = document.createElement("p");
+  if (cls) el.className = cls;
+  el.style.margin = "4px 0";
+  return esc(el, text);
+};
+const STALE_S = 1800; // mirror of the API's freshness cap — belt and braces
+
+const fmtDur = (s) => {
+  if (!Number.isFinite(s) || s < 0) return "?";
+  if (s < 90) return `${Math.round(s)}s`;
+  if (s < 5400) return `${Math.round(s / 60)}m`;
+  if (s < 129600) return `${(s / 3600).toFixed(1)}h`;
+  return `${(s / 86400).toFixed(1)}d`;
+};
+const relUtc = (iso) => {
+  const t = Date.parse(iso ?? "");
+  return Number.isFinite(t) ? `${fmtDur((Date.now() - t) / 1000)} ago` : "—";
+};
+
+function renderSessions(st, hasData) {
+  const el = $("sessions");
+  el.replaceChildren();
+  if (!hasData) {
+    el.append(p(st.reason ?? "feed offline — this build cannot see the harness"));
+    return;
+  }
+  if (st.sessions.length === 0) {
+    el.append(p("no sessions in the registry yet", "dimtxt"));
+    return;
+  }
+  const tb = document.createElement("table");
+  tb.className = "sess";
+  const hr = document.createElement("tr");
+  for (const h of ["id", "role", "state", "turns", "last active"]) {
+    const th = document.createElement("th");
+    if (h === "turns") th.className = "r";
+    hr.append(esc(th, h));
+  }
+  tb.append(hr);
+  for (const s of st.sessions) {
+    const tr = document.createElement("tr");
+    const idTd = document.createElement("td");
+    idTd.append(esc(document.createElement("span"), String(s.id ?? "?")));
+    const roleTd = document.createElement("td");
+    const role = s.role === "root" ? "root" : "sub";
+    roleTd.append(esc(Object.assign(document.createElement("span"), { className: `role ${role}` }), String(s.role ?? "?")));
+    const stTd = document.createElement("td");
+    const state = ["live", "idle", "done"].includes(s.state) ? s.state : "idle";
+    const led = document.createElement("i");
+    led.className = `led ${state}`;
+    stTd.append(led, esc(Object.assign(document.createElement("span"), { className: `state ${state}` }), String(s.state ?? "?")));
+    const turnsTd = Object.assign(document.createElement("td"), { className: "r" });
+    esc(turnsTd, Number.isFinite(s.turns) ? String(s.turns) : "—");
+    const lastTd = document.createElement("td");
+    esc(lastTd, relUtc(s.last_active));
+    lastTd.title = String(s.last_active ?? "");
+    tr.append(idTd, roleTd, stTd, turnsTd, lastTd);
+    tb.append(tr);
+  }
+  el.append(tb);
+}
+
+function renderLedger(st, hasData) {
+  const el = $("ledger");
+  el.replaceChildren();
+  if (!hasData) {
+    el.append(p(st.reason ?? "feed offline — this build cannot see the harness"));
+    return;
+  }
+  const refs = Array.isArray(st.refinements) ? st.refinements : [];
+  if (refs.length === 0) {
+    el.append(p("ledger is empty — no refinements recorded yet", "dimtxt"));
+    return;
+  }
+  // newest first; the feed carries the tail of the append-only file
+  for (const r of [...refs].reverse()) {
+    const row = document.createElement("div");
+    row.className = "refline";
+    const head = document.createElement("div");
+    head.append(esc(Object.assign(document.createElement("span"), { className: "rid" }), String(r.id ?? "?")));
+    const e = r.edit ?? {};
+    head.append(esc(Object.assign(document.createElement("span"), { className: "edit" }),
+      `  ${e.target ?? "?"}/${e.op ?? "?"} "${e.name ?? "?"}"`));
+    if (r.rolled_back)
+      head.append(esc(Object.assign(document.createElement("span"), { className: "rb" }), "  ROLLED BACK"));
+    row.append(head);
+    if (r.trigger)
+      row.append(esc(Object.assign(document.createElement("div"), { className: "trigger" }),
+        `trigger: ${r.trigger}`));
+    if (r.outcome)
+      row.append(esc(Object.assign(document.createElement("div"), { className: "outcome" }),
+        `outcome: ${r.outcome}`));
+    el.append(row);
+  }
+}
+
+async function refresh() {
+  let st;
+  try {
+    st = await (await fetch("/api/rlm-status")).json();
+  } catch {
+    st = { source: "offline", reason: "console cannot reach its own API" };
+  }
+  // history when the source is not fresh-local, OR the age says so anyway
+  const stale = st.source !== "local" || (Number.isFinite(st.ageS) && st.ageS > STALE_S);
+  const hasData = Array.isArray(st.sessions);
+
+  $("feedsub").textContent = !stale
+    ? `LIVE · ${st.via ?? "local"}${Number.isFinite(st.ageS) ? ` · ${fmtDur(st.ageS)} old` : ""}`
+    : hasData ? "HISTORY" : "OFFLINE";
+
+  const band = $("histband");
+  if (stale && hasData) {
+    band.hidden = false;
+    document.getElementById("wrap").classList.add("history");
+    $("histwhy").textContent = st.reason ??
+      (Number.isFinite(st.ageS)
+        ? `published rlm_status is ${fmtDur(st.ageS)} old`
+        : "feed is not fresh-local");
+  } else {
+    band.hidden = true;
+    document.getElementById("wrap").classList.remove("history");
+  }
+
+  $("prov").textContent = !stale && hasData
+    ? `provenance: RLM (${st.via ?? "local"}): ${st.sessions.length} sessions · ${(st.refinements ?? []).length} refinements [local]`
+    : hasData
+      ? `provenance: RLM: history — ${st.reason ?? "stale snapshot"}`
+      : `provenance: RLM: offline — ${st.reason ?? "this build cannot see the harness"}`;
+
+  renderSessions(st, hasData);
+  renderLedger(st, hasData);
+}
+
+refresh();
+setInterval(refresh, 30_000);
+</script>
+</body>
+</html>
