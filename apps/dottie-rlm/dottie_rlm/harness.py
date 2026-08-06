@@ -41,6 +41,7 @@ __all__ = [
     "HarnessError",
     "LedgerCorruptError",
     "Refinement",
+    "RefinementOrderError",
     "RhoImmutableError",
     "UnknownRefinementError",
 ]
@@ -60,6 +61,13 @@ class RhoImmutableError(HarnessError):
 
 class UnknownRefinementError(HarnessError):
     """A refinement id was addressed that does not exist in the ledger."""
+
+
+class RefinementOrderError(HarnessError):
+    """Rolling this back would destroy a NEWER refinement to the same target.
+
+    Roll back in reverse order (newest first); the message names the blocker.
+    """
 
 
 class LedgerCorruptError(HarnessError):
@@ -476,6 +484,13 @@ class Harness:
                 {"outcome_for": refinement_id, "outcome": str(outcome), "t": _utc_now()},
             )
 
+    @staticmethod
+    def _same_target(a: dict | None, b: dict | None) -> bool:
+        """Two edits touch the same object (same target bucket AND name)."""
+        if not isinstance(a, dict) or not isinstance(b, dict):
+            return False
+        return (a.get("target"), a.get("name")) == (b.get("target"), b.get("name"))
+
     def rollback(self, refinement_id: str) -> dict:
         """Reverse the edit of ``refinement_id`` and mark it rolled back.
 
@@ -501,6 +516,28 @@ class Harness:
                     ),
                 }
             edit = entry["edit"]
+            # A LATER live refinement to the same target owns the current
+            # content. Reversing an older one on top of it destroys the newer
+            # edit: r-1 add skills/foo "A", r-2 update skills/foo "B",
+            # rollback('r-1') saw op="add" and unlinked foo.md -- taking B with
+            # it (review finding harness.py:615). Out-of-order rollback is
+            # refused, and the message names the entry that has to go first.
+            superseding = [
+                e["id"]
+                for e in self.ledger()
+                if e["id"] != refinement_id
+                and not e.get("rolled_back")
+                and self._same_target(e.get("edit"), edit)
+                and str(e["id"]) > str(refinement_id)
+            ]
+            if superseding:
+                raise RefinementOrderError(
+                    f"{refinement_id} cannot be rolled back while "
+                    f"{superseding} still apply to the same target "
+                    f"({edit.get('target')}/{edit.get('name')}). Roll back "
+                    f"{superseding[-1]} first, or the newer content would be "
+                    f"destroyed along with this one."
+                )
             self._reverse(edit)
             _append_jsonl(
                 self.ledger_path, {"rollback_of": refinement_id, "t": _utc_now()}
