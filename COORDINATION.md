@@ -294,4 +294,3 @@
 
 
 <!-- merged from outside edits 2026-08-06T21:42Z -->
-| Scout-auto | bundles/payments Phase0 stub verify | 07:30 CDT 2026-08-06 | OPEN — Phase0 <2h no-torch — $0 ledger idempotent sha(email+plan) store.jsonl events/.gitkeep, plugin 6 cmds create/check/list/stats/widen-note/idempotent-key, no dup | scout/payments-phase0 | todo — re-verify lane |
