@@ -48,12 +48,29 @@ all measured then fixed here:**
 - `apps/scout-rtx`: **49 passed in 18.64s from the repo venv — the board's "NOT
   VERIFIABLE, typer absent" is dead; typer 0.15.1 is installed now.** TODO.md corrected.
 
-**Open operator decisions: unchanged from the 08-02 block** (pre-teleport stash;
+**Open operator decisions: the four from the 08-02 block** (pre-teleport stash;
 push `vector-equities`; `verify_accuracy.py` → hoops pre-deploy; fate of
-`preserve/local-fabrication-removal-2026-07-26`). BHENRE OS brief still holding for
-file-location confirmation. One more standing fact: **two agents commit to this repo
-concurrently** — re-read TODO.md before anchor-based edits; a stale anchor already ate
-one board entry on 08-04.
+`preserve/local-fabrication-removal-2026-07-26`) **plus one NEW, surfaced by both
+agents independently:**
+
+- **Does the ast_pairs miner keep reading UNTRACKED model-generated files as repo
+  source?** The two agents wrote opposite positions into the repo: this session's board
+  note said *"fix the cause — give walk() gitignore awareness, not the floor"*;
+  the other agent's `scripts/ast_pairs.py` comment says exclusion *"is a decision, not
+  a counting fix"* and deliberately reports-not-filters. The stakes: model-written
+  `candidate_*.py` under `apps/dottie/data/research/workspaces/` contributed 557 of
+  3,343 mined pairs (16.7%, 08-02) growing ~382 pairs/day with uptime — the model's own
+  output flowing back into its training corpus. Cost of filtering: every measured floor
+  downstream (hard-negative near-miss 68, checked 16704, poison floor 996, encoder bars)
+  must be re-derived from a fresh tracked-only measurement. Until decided,
+  `test_no_mined_negative_answers_a_paraphrase_of_its_own_query` stays honestly red
+  (4 leaks vs ceiling 1 as of 08-05, all four = untracked copies of
+  `StochasticTokenMixingBlock.forward`; its sibling drift failure self-healed with
+  corpus movement — 1 failed 71 passed today, was 2 failed).
+
+BHENRE OS brief still holding for file-location confirmation. One more standing fact:
+**two agents commit to this repo concurrently** — re-read TODO.md before anchor-based
+edits; a stale anchor already ate one board entry on 08-04.
 
 ## 📌 Session continuation — 2026-08-02 (now describes `main` only — see block above)
 
