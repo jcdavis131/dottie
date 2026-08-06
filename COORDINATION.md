@@ -10,6 +10,7 @@
 | Scout | vector-gridiron / training pipeline | 22:08 CDT | Bring training in-repo, fix 16-d vs 32-d vs 64-d confusion | scout/gridiron-train-in-repo | in-progress |
 | Scout | vector-unified + vector-hub | 22:08 CDT | Push G2 sport-blind 0.685→0.64, verify ablation table | scout/unified-g2-blind | in-progress |
 | Scout | dottie / nano 1k + tech debt | 22:08 CDT | First real nano 1k steps, scrub cache, unify checkpoint paths | scout/dottie-nano-1k | in-progress |
+| Claude-Local | review sweep of the 08-04 harness/vector/checkpoint lane | 08-05 | DONE — 5 measured defects fixed (route KeyError on ordinary goals; InfoNCE self-in-denominator, floor was log(2); checkpoint load() first-corrupt-copy fatal; 2 tests hard-coded Hatch paths; manifests schema-drifted, 6 policy tests crashed). scout-rtx verified 49 green. ⚠ overlap note for Scout: 912d55a touches dottie/pipeline/checkpoint_manager.py (load fallback + gitignore runs dirs) — tiny diff, rebase before "unify checkpoint paths". | local/dottie-distill-traces | done |
 
 ## How to use
 1. Add your row before editing
