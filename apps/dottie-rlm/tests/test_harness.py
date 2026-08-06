@@ -24,6 +24,7 @@ from dottie_rlm.harness import (
     HarnessError,
     LedgerCorruptError,
     Refinement,
+    RefinementOrderError,
     RhoImmutableError,
     UnknownRefinementError,
 )
@@ -360,3 +361,63 @@ def test_no_stray_tmp_files(harness: Harness) -> None:
     harness.rollback(ref.id)
     harness.refine("t2", "derived note")
     assert list(harness.root.rglob("*.tmp")) == []
+
+
+class TestOutOfOrderRollbackIsRefused:
+    """Reversing an OLDER refinement on top of a newer one destroys the newer.
+
+    Reproduced by review (harness.py:615): r-1 adds skills/foo "A", r-2 updates
+    it to "B", rollback('r-1') saw op="add", unlinked foo.md, and took B with
+    it. Rollback is now refused out of order, naming what must go first.
+    """
+
+    def _h(self, tmp_path):
+        return Harness(tmp_path / "harness")
+
+    def test_older_rollback_is_refused_while_a_newer_edit_lives(self, tmp_path) -> None:
+        h = self._h(tmp_path)
+        r1 = h.refine("t", "add foo", edit={
+            "target": "skills", "op": "add", "name": "foo", "content": "A"})
+        r2 = h.refine("t", "update foo", edit={
+            "target": "skills", "op": "update", "name": "foo", "content": "B"})
+        with pytest.raises(RefinementOrderError) as ei:
+            h.rollback(r1.id)
+        assert r2.id in str(ei.value)
+        # The newer content survived the refusal.
+        assert "B" in (tmp_path / "harness" / "skills" / "foo.md").read_text(
+            encoding="utf-8"
+        )
+
+    def test_reverse_order_rollback_works(self, tmp_path) -> None:
+        h = self._h(tmp_path)
+        r1 = h.refine("t", "add foo", edit={
+            "target": "skills", "op": "add", "name": "foo", "content": "A"})
+        r2 = h.refine("t", "update foo", edit={
+            "target": "skills", "op": "update", "name": "foo", "content": "B"})
+        h.rollback(r2.id)  # newest first
+        assert "A" in (tmp_path / "harness" / "skills" / "foo.md").read_text(
+            encoding="utf-8"
+        )
+        h.rollback(r1.id)  # now the older one is unblocked
+        assert not (tmp_path / "harness" / "skills" / "foo.md").exists()
+
+    def test_a_different_target_does_not_block(self, tmp_path) -> None:
+        """Only the SAME target blocks — an unrelated newer edit must not."""
+        h = self._h(tmp_path)
+        r1 = h.refine("t", "add foo", edit={
+            "target": "skills", "op": "add", "name": "foo", "content": "A"})
+        h.refine("t", "add bar", edit={
+            "target": "skills", "op": "add", "name": "bar", "content": "Z"})
+        h.rollback(r1.id)  # must not raise
+        assert not (tmp_path / "harness" / "skills" / "foo.md").exists()
+        assert (tmp_path / "harness" / "skills" / "bar.md").exists()
+
+    def test_a_rolled_back_newer_edit_does_not_block(self, tmp_path) -> None:
+        h = self._h(tmp_path)
+        r1 = h.refine("t", "add foo", edit={
+            "target": "skills", "op": "add", "name": "foo", "content": "A"})
+        r2 = h.refine("t", "update foo", edit={
+            "target": "skills", "op": "update", "name": "foo", "content": "B"})
+        h.rollback(r2.id)
+        h.rollback(r1.id)  # r2 no longer applies, so r1 is free
+        assert not (tmp_path / "harness" / "skills" / "foo.md").exists()
