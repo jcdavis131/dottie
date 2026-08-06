@@ -279,3 +279,42 @@ def test_trajectory_nonempty_after_scripted_run(tmp_path: Path) -> None:
     assert traj.stat().st_size > 0
     lines = [ln for ln in traj.read_text(encoding="utf-8").splitlines() if ln.strip()]
     assert len(lines) >= 4  # user message + model + exec + answer model
+
+
+def test_stacked_compactions_keep_every_summary() -> None:
+    """A second compact() must not delete the first summary.
+
+    build_messages honored only the LAST marker, so with two compactions the
+    turns before the second window disappeared AND the digest that stood for
+    them went too -- amnesia wearing compaction's clothes (review finding
+    loop.py:161).
+    """
+    history: list[dict] = []
+    for i in range(30):
+        history.append({"kind": "model", "text": f"early-{i}"})
+    history.append(
+        {
+            "kind": "system",
+            "event": "compaction",
+            "summary": "SUMMARY-ONE",
+            "keep_last": 5,
+            "replaced_turns": 25,
+        }
+    )
+    for i in range(30):
+        history.append({"kind": "model", "text": f"late-{i}"})
+    history.append(
+        {
+            "kind": "system",
+            "event": "compaction",
+            "summary": "SUMMARY-TWO",
+            "keep_last": 5,
+            "replaced_turns": 30,
+        }
+    )
+    msgs = build_messages("SYS", history, tail=None)
+    blob = "\n".join(m["content"] for m in msgs)
+    assert "SUMMARY-TWO" in blob
+    assert "SUMMARY-ONE" in blob, "the first digest was dropped — that is data loss"
+    # ordering: the older digest is presented before the newer one
+    assert blob.index("SUMMARY-ONE") < blob.index("SUMMARY-TWO")

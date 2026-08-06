@@ -158,8 +158,28 @@ def build_messages(
             keep = max(0, int(marker.get("keep_last") or 0))
         except (TypeError, ValueError):
             keep = 0
-        visible = list(history[max(0, marker_idx - keep):marker_idx])
+        window_start = max(0, marker_idx - keep)
+        visible = list(history[window_start:marker_idx])
         visible += list(history[marker_idx + 1:])
+        # Carry EVERY earlier compaction summary, not just this one. Honoring
+        # only the LAST marker deleted the first digest along with the turns it
+        # stood for: after two compactions, everything before the second window
+        # vanished from the model's view AND the summary that represented it
+        # went too (review finding loop.py:161). Those digests are the only
+        # remaining record of the dropped turns -- losing them is the
+        # difference between compaction and amnesia.
+        for earlier in history[:window_start]:
+            if earlier.get("kind") == "system" and earlier.get("event") == "compaction":
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            f"[compaction] {earlier.get('replaced_turns', '?')} "
+                            f"earlier turns were summarized:\n"
+                            f"{earlier.get('summary', '')}"
+                        ),
+                    }
+                )
         messages.append(
             {
                 "role": "user",

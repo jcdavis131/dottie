@@ -257,3 +257,48 @@ def test_two_roots_are_strangers_not_siblings(
 def test_allowed_targets_unknown_sender_raises(registry: SessionRegistry) -> None:
     with pytest.raises(ScopeError, match="unknown sender"):
         registry.allowed_targets("deadbeef0000")
+
+
+class TestBusySessionsSurviveEviction:
+    """evict_idle must never unload a session whose turn is in flight.
+
+    last_active_utc is stamped only AFTER a turn completes, so a turn slower
+    than idle_minutes -- routine with qwen3:8b on CPU -- looked idle and had
+    its kernel dropped mid-execution, destroying the namespace the model had
+    spent the whole turn building (review finding registry.py:276).
+    """
+
+    def test_a_busy_session_is_not_evicted(self, tmp_path) -> None:
+        from datetime import UTC, datetime, timedelta
+
+        reg = SessionRegistry(tmp_path / "s", kernel_factory=FakeKernel)
+        s = reg.create(role="root", model_spec="fake:")
+        long_ago = datetime.now(UTC) - timedelta(hours=5)
+        # Backdate so it is unambiguously past the idle window.
+        with reg._lock:
+            idx = reg._read_index()
+            idx[s.id]["last_active_utc"] = long_ago.isoformat(timespec="seconds")
+            reg._write_index(idx)
+        with reg.busy(s.id):
+            assert reg.evict_idle(idle_minutes=30) == []
+            assert s.id in reg.loaded_ids()  # still in memory, kernel intact
+        # Once the turn ends it is evictable again.
+        assert reg.evict_idle(idle_minutes=30) == [s.id]
+
+    def test_busy_is_reentrant_by_refcount(self, tmp_path) -> None:
+        reg = SessionRegistry(tmp_path / "s", kernel_factory=FakeKernel)
+        s = reg.create(role="root", model_spec="fake:")
+        with reg.busy(s.id):
+            with reg.busy(s.id):
+                assert reg.is_busy(s.id)
+            # inner exit must NOT clear the flag the outer block still holds
+            assert reg.is_busy(s.id)
+        assert not reg.is_busy(s.id)
+
+    def test_busy_clears_even_when_the_turn_raises(self, tmp_path) -> None:
+        reg = SessionRegistry(tmp_path / "s", kernel_factory=FakeKernel)
+        s = reg.create(role="root", model_spec="fake:")
+        with pytest.raises(ValueError):
+            with reg.busy(s.id):
+                raise ValueError("turn blew up")
+        assert not reg.is_busy(s.id)
