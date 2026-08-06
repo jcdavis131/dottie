@@ -50,3 +50,9 @@ runs/cpu_pilot/*
 !runs/cpu_pilot/reports/**
 
 .venv-test/
+
+# checkpoint_manager.py triple-write: run state is generated output, not source.
+# Ungitignored it feeds the ast_pairs corpus-drift problem (612 untracked files
+# mined as source, measured 2026-08-02) and grows with machine uptime.
+bundles/ultra/runs/
+dottie/pipeline/runs/

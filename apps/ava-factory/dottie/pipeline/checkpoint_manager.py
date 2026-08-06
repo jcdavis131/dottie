@@ -159,8 +159,16 @@ class DottieCheckpointManager:
         for base in (_DOTTIE_RUNS, _RUNS, _WORKSPACE_RUNS):
             p = base / (run_id or self.run_id) / "checkpoint.json"
             if p.exists():
-                try: return json.loads(p.read_text(encoding="utf-8"))
-                except: return None
+                try:
+                    return json.loads(p.read_text(encoding="utf-8"))
+                except Exception:
+                    # A corrupt copy must fall through to the NEXT location — the
+                    # triple-write exists precisely so one damaged file is survivable.
+                    # This used to `return None` here, which made the first corrupt
+                    # copy fatal even when a good copy sat one directory over
+                    # (measured 2026-08-05), and resume() then reported the run as
+                    # "no checkpoint" — missing and damaged are different facts.
+                    continue
         return None
 
     def pause(self, reason="human gate"):

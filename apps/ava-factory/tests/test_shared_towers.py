@@ -2,8 +2,8 @@
 Unit test for shared ResidualTower cat([x·m,m]) mask broadcast fix
 Solo project, public pip only.
 """
-import sys
 from pathlib import Path
+
 
 def _try_torch():
     try:
@@ -17,13 +17,22 @@ def test_mask_broadcast():
     torch = _try_torch()
     if torch is None:
         return
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "dottie" / "apps" / "scout-cli"))
     # import via direct file to avoid bigbang dep
-    import importlib.util, pathlib
-    p = pathlib.Path(__file__).resolve().parents[1] / "dottie" / "apps" / "scout-cli" / "bigbang" / "plugins" / "vector" / "shared" / "towers.py"
-    # alternative path for this repo layout
-    if not p.exists():
-        p = Path("~/workspace/dottie/apps/scout-cli/bigbang/plugins/vector/shared/towers.py").expanduser()
+    import importlib.util
+    _rel = ("bigbang", "plugins", "vector", "shared", "towers.py")
+    here = Path(__file__).resolve()
+    candidates = [
+        # THIS repo: <root>/apps/ava-factory/tests/... -> <root>/apps/scout-cli/...
+        here.parents[3] / "apps" / "scout-cli" / Path(*_rel),
+        # Hatch VM layouts (original candidates; neither exists on the Windows box,
+        # which made this test FAIL here with FileNotFoundError, measured 2026-08-05)
+        here.parents[1] / "dottie" / "apps" / "scout-cli" / Path(*_rel),
+        Path("~/workspace/dottie/apps/scout-cli").expanduser() / Path(*_rel),
+    ]
+    p = next((c for c in candidates if c.exists()), None)
+    if p is None:
+        print(f"SKIP towers.py not found in any layout: {[str(c) for c in candidates]}")
+        return
     spec = importlib.util.spec_from_file_location("towers", str(p))
     towers_mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(towers_mod)
