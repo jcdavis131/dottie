@@ -141,7 +141,7 @@
 | Scout-mlops | vector-*/MLOps operator | 21:58 CDT | MLOps train/eval/export/ship Gates G1-G4 leak-free player-split candidate.json→promote only if beats + DM 7/7/0 ONNX/WASM/PCA Vercel | scout/mlops-operator | in-progress |
 | Scout-fe | vector-pitch/frontend parity | 02:52 CDT | Hoops-level parity verify 6/6 HTML + audit | scout/frontend-hoops-parity | done 03:02Z 2026-08-06 — 13 passed, manifest/sw/v66/offline/nav 8/8, css avg 9.1+, 0 TODO, audit your_files/vector-pitch-audit/hoops-parity.md, master ff 0b9b5fc+rebase |
 
-| Scout-ops | ops/deploy+vercel+heartbeat | 22:06 CDT | Deploy agents cron heartbeat Vercel provenance feed | scout/ops-deploy | in-progress |
+| Scout-ops | ops/deploy+vercel+heartbeat | 22:06 CDT | Deploy agents cron heartbeat Vercel provenance feed — VERIFIED 8.7/10 ff main 39de9c1 ops-deploy+vercel+heartbeat Vercel 200 212 lines provenance 7/7/0 (12/10/3/7/7/14/6) 5 games chimera 20719×64-d dailySeed LCG cron 30m :13 watchdog alive podcast 90s poll alive dottie triple 7/7 feed regen fallback — done | scout/ops-deploy | done 22:10 CDT |
 
 
 <!-- merged from outside edits 2026-08-06T03:07Z -->
