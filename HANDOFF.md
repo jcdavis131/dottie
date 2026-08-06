@@ -16,7 +16,46 @@ before writing "current" anywhere in this file.
 
 ---
 
-## 📌 Session continuation — 2026-08-02 (supersedes every block below)
+## 📌 Session continuation — 2026-08-05, branch `local/dottie-distill-traces` (supersedes every block below)
+
+**Measured this session, not carried forward.** Branch `local/dottie-distill-traces`;
+the 2026-08-02 block below describes `main` and its gate — still true for `main`, but
+this branch has diverged and carries the newest work.
+
+**The day-old harness/vector/checkpoint lane (bbf12c2, 2cc35a2) shipped with 5 defects,
+all measured then fixed here:**
+
+- `6c89614` — `harness route` **crashed with KeyError on any goal matching zero intent
+  keywords** (`"write a poem"` died; only keyword-rich goals — the ones its tests used —
+  worked). InfoNCE in `vector/shared/losses.py` kept self-similarity in the denominator:
+  a **perfect positive pair bottomed out at log(2)=0.6931, never 0**, and the claimed
+  "numerically stable log_softmax" did not exist (nan at small temp). No callers yet —
+  pinned before a train path adopts it. Hatch-only wrapper test now skips off-Hatch
+  instead of redding the suite.
+- `912d55a` — `checkpoint_manager.load()` **returned None on the first corrupt copy,
+  defeating the triple-write redundancy it sits inside** (a good copy one directory over
+  was never tried; resume() reported "no checkpoint" for a damaged run).
+  `test_shared_towers.py` failed here (both path candidates were Hatch layouts; repo
+  layout now candidate #1). Gitignored `bundles/ultra/runs/` + `dottie/pipeline/runs/`
+  — checkpoint_manager mkdirs them in-tree at import and run state written there is the
+  ast_pairs corpus-drift mechanism (612 untracked files, measured 08-02).
+
+**Suite states measured 2026-08-05 on this box:**
+- `apps/scout-cli` tests/test_harness_vector.py: was **1 failed 8 passed** → **12 passed
+  1 skipped** (skip = Hatch wrapper, reason attached).
+- `apps/ava-factory` new tests: test_checkpoint_manager.py 4 passed (mutation-checked:
+  reverting the fix kills it by name), test_shared_towers.py 1 passed (was FileNotFoundError).
+- `apps/scout-rtx`: **49 passed in 18.64s from the repo venv — the board's "NOT
+  VERIFIABLE, typer absent" is dead; typer 0.15.1 is installed now.** TODO.md corrected.
+
+**Open operator decisions: unchanged from the 08-02 block** (pre-teleport stash;
+push `vector-equities`; `verify_accuracy.py` → hoops pre-deploy; fate of
+`preserve/local-fabrication-removal-2026-07-26`). BHENRE OS brief still holding for
+file-location confirmation. One more standing fact: **two agents commit to this repo
+concurrently** — re-read TODO.md before anchor-based edits; a stale anchor already ate
+one board entry on 08-04.
+
+## 📌 Session continuation — 2026-08-02 (now describes `main` only — see block above)
 
 > **This block is now GATED, not just warned about.** `scripts/check_handoff_fresh.py`
 > fails CI when the sha below drifts more than 20 commits from HEAD. It exists because the
