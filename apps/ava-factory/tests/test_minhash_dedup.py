@@ -1435,19 +1435,34 @@ class TestAgainstThePluginTree:
 
         mcp/cli.py defines _check_sdk twice under an import try/except. One
         returns True, the other raises RuntimeError. Both must be in the corpus.
+
+        Measured 1 on 2026-07-26, now 3 after vector/shared/towers.py added
+        stub classes ResidualTower/TransformerFusion that mirror the torch-available
+        vs torch-missing pattern. All must be recovered, not overwritten.
         """
         res, stats = plugins_result
-        assert stats["collisions"] == 1, (
-            f"{stats['collisions']} collisions; measured exactly 1 on 2026-07-26"
+        assert stats["collisions"] == 3, (
+            f"{stats['collisions']} collisions; measured 1 on 2026-07-26, 3 now "
+            "with towers.py stubs added"
         )
         docs, _ = md.collect_documents(SCOUT_PLUGINS, "function")
         disambiguated = [k for k in docs if "#L" in k]
-        assert len(disambiguated) == 1, f"disambiguated keys: {disambiguated}"
-        base = disambiguated[0].split("#L")[0]
-        assert base in docs, f"{base} lost its first occurrence"
-        assert docs[base] != docs[disambiguated[0]], (
-            "both keys hold the same source — nothing was actually recovered"
+        assert len(disambiguated) == 3, f"disambiguated keys: {disambiguated}"
+        expected_bases = {
+            "mcp/cli.py::_check_sdk",
+            "vector/shared/towers.py::ResidualTower.__init__",
+            "vector/shared/towers.py::TransformerFusion.__init__",
+        }
+        actual_bases = {k.split("#L")[0] for k in disambiguated}
+        assert actual_bases == expected_bases, (
+            f"bases {actual_bases} vs expected {expected_bases}"
         )
+        for dk in disambiguated:
+            base = dk.split("#L")[0]
+            assert base in docs, f"{base} lost its first occurrence"
+            assert docs[base] != docs[dk], (
+                f"both keys hold same source for {base} — nothing recovered"
+            )
         assert res["documents"] == len(docs), "a collided key was dropped later"
 
 
