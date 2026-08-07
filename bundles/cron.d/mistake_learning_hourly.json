@@ -1,0 +1,11 @@
+{
+  "id": "mistake_learning_hourly",
+  "owner": "operator",
+  "schedule": "0 * * * *",
+  "command": "cd ~/workspace/dottie && python3 ~/workspace/skills/mistake-learning/bin/learn.py sweep --hours 2 && python3 ~/workspace/skills/mistake-learning/bin/learn.py apply --min-conf 0.7",
+  "description": "Always-on mistake → lesson pairing: sweep timeline failures, auto-apply high-conf lessons, log even no-change to timeline.jsonl",
+  "timezone": "America/Chicago",
+  "enabled": true,
+  "log_timeline": true,
+  "required_fields": ["nodeId","agentId","attempt","latency","tokens","status","errorClass"]
+}
