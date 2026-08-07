@@ -116,3 +116,9 @@ workspace/.scout/
 .dottie/goals.jsonl
 tmp_prime_*.json
 
+
+# next build
+.next/
+apps/arxiviq/.next/
+out/
+

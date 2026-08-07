@@ -1,161 +1,344 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
-type NodeType = "Paper" | "Organization" | "Person" | "Architecture" | "Topic";
-type GraphNode = {
-  id: string; type: string; label: string; title?: string; abstract?: string;
-  name?: string; query_tag?: string; authors?: string[];
-  x?: number; y?: number; vx?: number; vy?: number; pinned?: boolean;
+type Stats = {
+  papers?: number; nodes?: number; edges?: number; docs?: number;
+  people?: number; checksum?: string; timestamp?: string;
 };
-type GraphEdge = { source: string; target: string; kind: string; weight?: number };
-type GraphData = { nodes: GraphNode[]; edges: GraphEdge[] };
-
-const COLOR: Record<string,string> = {
-  Person:"#0ea5e9", Organization:"#8b5cf6", Paper:"#111827", Architecture:"#f59e0b", Topic:"#10b981"
-};
-const TOPIC_LABELS: Record<string,string> = {
-  world_models:"world models", jepa:"JEPA", imagebind:"ImageBind", v_jepa:"V-JEPA",
-  pred_coding:"pred coding", hamiltonian:"Hamiltonian", train_dynamics:"train dyn", foundation_wm:"found. WM"
+type Live = {
+  updated_at?: string; disclaimer?: string;
+  counts?: Record<string, number>;
+  system_health?: { platform?: string; python?: string };
 };
 
-export default function Page(){
-  const [graph,setGraph]=useState<GraphData>({nodes:[],edges:[]});
-  const [papers,setPapers]=useState<any[]>([]);
-  const [filterTopic,setFilterTopic]=useState("all");
-  const [filterArch,setFilterArch]=useState("all");
-  const [search,setSearch]=useState("");
-  const [selected,setSelected]=useState<GraphNode|null>(null);
-  const svgRef=useRef<SVGSVGElement>(null);
-  const [dims,setDims]=useState({w:900,h:560});
+export default function Home(){
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [live, setLive] = useState<Live | null>(null);
+  const [now, setNow] = useState<string>("");
 
   useEffect(()=>{
-    fetch("/data/graph.json").then(r=>r.json()).then(setGraph).catch(()=>{});
-    fetch("/data/papers.json").then(r=>r.json()).then(setPapers).catch(()=>{});
-    if(!svgRef.current) return;
-    const ro=new ResizeObserver(()=>{
-      if(svgRef.current){ const rect=svgRef.current.getBoundingClientRect(); setDims({w:rect.width||900,h:rect.height||560}); }
+    const fmt = () => {
+      try { return new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }); }
+      catch { return new Date().toISOString().slice(11,16); }
+    };
+    setNow(fmt());
+    const id = setInterval(()=>setNow(fmt()), 60000);
+    fetch("/data/stats.json").then(r=>r.json()).then(setStats).catch(()=>{});
+    fetch("/data/acne_stats.json").then(r=>r.json()).then((j)=>{ if(!stats) setStats(prev=>prev||{papers:j?.papers||132}); }).catch(()=>{});
+    // try live status from GitHub raw fallback + local
+    fetch("/data/dottie_live.json").then(r=>r.json()).then(setLive).catch(()=>{
+      // optional: ignore
     });
-    ro.observe(svgRef.current);
-    return ()=>ro.disconnect();
+    return ()=>clearInterval(id);
   },[]);
 
-  // physics
-  useEffect(()=>{
-    if(!graph.nodes.length) return;
-    let raf=0;
-    const nodes=graph.nodes.map(n=>({...n, x:n.x??Math.random()*dims.w, y:n.y??Math.random()*dims.h, vx:0, vy:0}));
-    const map=new Map(nodes.map(n=>[n.id,n]));
-    const edges=graph.edges;
-    const step=()=>{
-      for(let i=0;i<nodes.length;i++) for(let j=i+1;j<nodes.length;j++){
-        const a=nodes[i], b=nodes[j];
-        if(a.pinned&&b.pinned) continue;
-        const dx=a.x!-b.x!, dy=a.y!-b.y!;
-        let d2=dx*dx+dy*dy+0.1, d=Math.sqrt(d2); if(d<1) d=1;
-        const f=1800/d2;
-        const fx=dx/d*f, fy=dy/d*f;
-        if(!a.pinned){ a.vx!+=fx; a.vy!+=fy; }
-        if(!b.pinned){ b.vx!-=fx; b.vy!-=fy; }
-      }
-      for(const e of edges){
-        const a=map.get(e.source) as any, b=map.get(e.target) as any; if(!a||!b) continue;
-        const dx=b.x-a.x, dy=b.y-a.y, dist=Math.sqrt(dx*dx+dy*dy)+0.1;
-        let ideal=78; if(e.kind==="AUTHORED") ideal=68; if(e.kind==="USES_ARCHITECTURE") ideal=96;
-        const f=(dist-ideal)*0.02; const fx=dx/dist*f, fy=dy/dist*f;
-        if(!a.pinned){ a.vx!+=fx; a.vy!+=fy; } if(!b.pinned){ b.vx!-=fx; b.vy!-=fy; }
-      }
-      for(const n of nodes){ if(n.pinned) continue; n.vx!+=(dims.w/2-n.x!)*0.001; n.vy!+=(dims.h/2-n.y!)*0.001; n.vx!*=0.92; n.vy!*=0.92; n.x!+=n.vx!; n.y!+=n.vy!; n.x!=Math.max(18,Math.min(dims.w-18,n.x!)); n.y!=Math.max(18,Math.min(dims.h-18,n.y!)); }
-      setGraph(prev=>({nodes:nodes.map(n=>({...n})), edges:prev.edges}));
-      raf=requestAnimationFrame(step);
-    };
-    raf=requestAnimationFrame(step);
-    return ()=>cancelAnimationFrame(raf);
-  // eslint-disable-next-line
-  },[graph.nodes.length?1:0, dims.w, dims.h]);
-
-  const filtered=useMemo(()=>{
-    let nodes=graph.nodes, edges=graph.edges;
-    if(search){ const q=search.toLowerCase(); const keep=new Set(nodes.filter(n=> (n.label+" "+(n.title||"")+" "+(n.name||"")).toLowerCase().includes(q)).map(n=>n.id)); for(const e of edges){ if(keep.has(e.source)||keep.has(e.target)){keep.add(e.source); keep.add(e.target);} } nodes=nodes.filter(n=>keep.has(n.id)); edges=edges.filter(e=>keep.has(e.source)&&keep.has(e.target)); }
-    if(filterTopic!=="all"){ const keep=new Set<string>(); nodes.forEach(n=>{ if(n.query_tag===filterTopic||n.id===`topic:${filterTopic}`) keep.add(n.id); }); nodes.filter(n=>n.query_tag===filterTopic).forEach(n=>keep.add(n.id)); for(const e of graph.edges) if(keep.has(e.source)||keep.has(e.target)){keep.add(e.source); keep.add(e.target);} nodes=graph.nodes.filter(n=>keep.has(n.id)); edges=graph.edges.filter(e=>keep.has(e.source)&&keep.has(e.target)); if(search){ const q=search.toLowerCase(); const keep2=new Set(nodes.filter(n=> (n.label+" "+(n.title||"")+" "+(n.name||"")).toLowerCase().includes(q)).map(n=>n.id)); for(const e of edges) if(keep2.has(e.source)||keep2.has(e.target)){keep2.add(e.source); keep2.add(e.target);} nodes=nodes.filter(n=>keep2.has(n.id)); edges=edges.filter(e=>keep2.has(e.source)&&keep2.has(e.target)); } }
-    if(filterArch!=="all"){ const aid=`arch:${filterArch}`; const keep=new Set([aid]); for(const e of graph.edges) if(e.source===aid||e.target===aid){keep.add(e.source); keep.add(e.target);} let n=graph.nodes.filter(x=>keep.has(x.id)); let ed=graph.edges.filter(e=>e.source===aid||e.target===aid); if(filterTopic!=="all"||search){ const ids=new Set(nodes.map(x=>x.id)); n=n.filter(x=>ids.has(x.id)); ed=ed.filter(e=>ids.has(e.source)&&ids.has(e.target)); } nodes=n; edges=ed; }
-    return {nodes, edges};
-  },[graph, filterTopic, filterArch, search]);
-
-  const stats=useMemo(()=>({papers:papers.length, nodes:graph.nodes.length, edges:graph.edges.length, archs:graph.nodes.filter(n=>n.type==="Architecture").length, topics:graph.nodes.filter(n=>n.type==="Topic").length}),[graph,papers]);
-
   return (
-    <div className="min-h-screen bg-[#f8f7f4] text-zinc-900">
-      <header className="border-b border-zinc-200 bg-white/80 backdrop-blur sticky top-0 z-20">
-        <div className="mx-auto max-w-[1600px] px-4 py-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="h-7 w-7 rounded-full bg-zinc-900 text-white grid place-items-center text-[12px] font-mono">A</div>
-            <div>
-              <div className="text-[15px] font-semibold tracking-tight flex items-center gap-2">arxiviq — ACNE × Graphify <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-900 text-white">DEMO</span></div>
-              <div className="text-[11px] font-mono text-zinc-500">papers → TLPG → architectures → traverse, no vectors • ML training intel</div>
-            </div>
+    <div className="page">
+      <style>{`
+        .page {
+          --bg: #fcfcf8;
+          --bg-2: #f2f1ed;
+          --surface: #ffffff;
+          --line: #e7e5e0;
+          --line-2: #eeece6;
+          --ink: #141210;
+          --ink-2: #6b6a64;
+          --ink-3: #9b9a95;
+          --accent: #111111;
+          --accent-2: #6366f1;
+          --radius: 16px;
+          --radius-lg: 20px;
+          --max: 1080px;
+        }
+        @media (prefers-color-scheme: dark){
+          .page{
+            --bg: #0f0e0d;
+            --bg-2: #161412;
+            --surface: #1a1816;
+            --line: #2a2825;
+            --line-2: #22201d;
+            --ink: #f5f3f0;
+            --ink-2: #a8a5a0;
+            --ink-3: #7a7874;
+            --accent: #f5f3f0;
+          }
+        }
+        *{box-sizing:border-box}
+        .page{
+          min-height:100vh;
+          background: var(--bg);
+          color: var(--ink);
+          font-family: ui-serif, Georgia, "Times New Roman", serif;
+          -webkit-font-smoothing: antialiased;
+        }
+        .mono{font-family: ui-monospace, SFMono-Regular, Menlo, monospace}
+        .sans{font-family: ui-sans-system, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", sans-serif}
+        a{color:inherit}
+        .top{
+          position:sticky; top:0; z-index:20;
+          backdrop-filter: blur(12px);
+          background: color-mix(in srgb, var(--surface) 88%, transparent);
+          border-bottom: 1px solid var(--line);
+        }
+        .top-inner{
+          max-width: var(--max);
+          margin: 0 auto;
+          padding: 14px 18px;
+          display:flex; align-items:center; justify-content:space-between; gap:12px;
+        }
+        .brand{
+          display:flex; align-items:center; gap:10px;
+          font-family: ui-monospace, monospace;
+          font-size: 11.5px; letter-spacing: 0.02em; color: var(--ink-2);
+        }
+        .brand b{color:var(--ink); font-weight:650}
+        .dot{
+          width:6px;height:6px;border-radius:999px;background:#10b981; box-shadow:0 0 0 4px rgba(16,185,129,0.15);
+          display:inline-block;
+        }
+        .right{
+          display:flex;align-items:center;gap:8px;
+        }
+        .pill{
+          font-family: ui-monospace, monospace;
+          font-size: 10.5px;
+          padding: 5px 10px;
+          border-radius: 999px;
+          border:1px solid var(--line);
+          background: var(--surface);
+          color: var(--ink-2);
+        }
+        .pill.live{
+          background: var(--ink);
+          color: var(--bg);
+          border-color: var(--ink);
+        }
+        .wrap{
+          max-width: var(--max);
+          margin:0 auto;
+          padding: 0 18px;
+        }
+        .hero{
+          padding: 36px 0 20px;
+          display:grid;
+          grid-template-columns: 1.15fr 0.85fr;
+          gap: 24px;
+          align-items:start;
+        }
+        @media(max-width: 860px){
+          .hero{grid-template-columns:1fr; padding: 24px 0 12px}
+        }
+        .kicker{
+          font-family: ui-monospace, monospace;
+          font-size:11px; letter-spacing:0.08em; text-transform:uppercase;
+          color: var(--ink-3); margin-bottom:12px;
+          display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+        }
+        .kicker span{
+          padding:3px 8px; border-radius:999px; border:1px solid var(--line);
+          background: var(--surface);
+        }
+        h1{
+          font-size: clamp(28px, 4.2vw, 46px);
+          line-height:0.98;
+          letter-spacing:-0.03em;
+          font-weight: 680;
+          margin:0 0 14px;
+          max-width: 18ch;
+        }
+        .lede{
+          font-size: 17px;
+          line-height:1.55;
+          color: var(--ink-2);
+          max-width: 38ch;
+          font-family: ui-sans-system, system-ui, sans-serif;
+        }
+        .card{
+          background: var(--surface);
+          border:1px solid var(--line);
+          border-radius: var(--radius-lg);
+          padding: 16px;
+        }
+        .card h3{
+          font-family: ui-monospace, monospace;
+          font-size:11px; letter-spacing:0.07em; text-transform:uppercase;
+          color: var(--ink-3); margin:0 0 10px;
+          font-weight:700;
+        }
+        .fact-grid{
+          display:grid; grid-template-columns: 1fr 1fr; gap:10px;
+        }
+        .fact{
+          padding:12px; border-radius:12px;
+          background: var(--bg-2);
+          border:1px solid var(--line-2);
+        }
+        .fact b{display:block; font-size:18px; line-height:1; margin-bottom:4px}
+        .fact span{font-family: ui-monospace, monospace; font-size:11px; color:var(--ink-2)}
+        .stack{display:flex; flex-direction:column; gap:12px}
+        .btnrow{display:flex; gap:8px; flex-wrap:wrap; margin-top:12px}
+        .btn{
+          display:inline-flex; align-items:center; justify-content:center;
+          padding:10px 16px; border-radius:999px;
+          font-family: ui-sans-system, sans-serif;
+          font-size:13.5px; font-weight:600;
+          border:1px solid var(--line);
+          background: var(--surface);
+          text-decoration:none;
+          transition: transform .08s ease;
+        }
+        .btn:active{transform:scale(0.98)}
+        .btn.primary{
+          background: var(--ink); color: var(--bg); border-color: var(--ink);
+        }
+        .section{
+          padding: 22px 0;
+          border-top: 1px solid var(--line-2);
+        }
+        .tri{
+          display:grid;
+          grid-template-columns: repeat(3,1fr);
+          gap:14px;
+        }
+        @media(max-width: 860px){ .tri{grid-template-columns:1fr} }
+        .tri h4{
+          margin:0 0 6px;
+          font-size:14.5px; font-weight:650;
+          font-family: ui-sans-system, sans-serif;
+          letter-spacing:-0.01em;
+        }
+        .tri p{
+          margin:0;
+          font-family: ui-sans-system, sans-serif;
+          font-size:13.5px; line-height:1.5; color:var(--ink-2);
+        }
+        .codebox{
+          margin-top:10px;
+          background:#0f0f10; color:#e8e6e1;
+          border-radius:12px; padding:12px 12px;
+          font-family: ui-monospace, monospace; font-size:11.5px; line-height:1.5;
+          overflow:auto;
+          border:1px solid #1f1e1d;
+        }
+        .foot{
+          padding:28px 0 40px;
+          font-family: ui-monospace, monospace;
+          font-size:11px; color:var(--ink-3);
+          display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px;
+        }
+        .banner{
+          margin-top:8px;
+          padding:10px 12px; border-radius:999px;
+          background:#111; color:#fff;
+          display:inline-flex; gap:8px; align-items:center;
+          font-family: ui-monospace, monospace; font-size:11px;
+        }
+        @media(prefers-color-scheme: dark){
+          .banner{background:#f5f3f0; color:#111}
+          .codebox{border-color:#2a2a2a}
+        }
+      `}</style>
+
+      {/* Top */}
+      <div className="top">
+        <div className="top-inner">
+          <div className="brand">
+            <span className="dot" /> <b>arxiviq.com</b> <span className="mono" style={{opacity:0.7}}>· Dottie Ecosystem</span>
           </div>
-          <div className="flex items-center gap-2 text-[11px] font-mono">
-            <span className="px-2 py-1 rounded-full bg-zinc-900 text-white">{stats.papers} papers • {stats.nodes} nodes • {stats.edges} edges</span>
-            <span className="px-2 py-1 rounded-full bg-zinc-100 border">{stats.archs} archs • {stats.topics} topics</span>
+          <div className="right">
+            <span className="pill mono"> {now || "—"} </span>
+            <span className="pill live mono">● live</span>
           </div>
         </div>
-      </header>
+      </div>
 
-      <div className="mx-auto max-w-[1600px] grid grid-cols-12 min-h-[calc(100vh-64px)]">
-        <aside className="col-span-12 lg:col-span-3 border-r bg-white border-zinc-200 flex flex-col">
-          <div className="p-3 border-b border-zinc-100 flex items-center gap-2">
-            <div className="relative flex-1"><span className="absolute left-2 top-1.5 text-zinc-400 text-xs">⌕</span><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="search papers, authors, archs" className="w-full pl-6 pr-2 py-1.5 rounded-full bg-zinc-50 border text-[12px] font-mono outline-none" /></div>
-            <button onClick={()=>{setSearch(""); setFilterTopic("all"); setFilterArch("all");}} className="text-[11px] font-mono px-2 py-1 rounded-full border">Reset</button>
-          </div>
-          <div className="p-3 border-b">
-            <div className="text-[11px] font-mono font-semibold text-zinc-500 mb-2">TOPICS</div>
-            <div className="flex flex-wrap gap-1.5">
-              <button onClick={()=>setFilterTopic("all")} className={`px-2 py-1 rounded-full border text-[11px] font-mono ${filterTopic==="all"?"bg-zinc-900 text-white":"bg-white"}`}>all</button>
-              {Object.entries(TOPIC_LABELS).map(([k,v])=><button key={k} onClick={()=>setFilterTopic(k)} className={`px-2 py-1 rounded-full border text-[11px] font-mono ${filterTopic===k?"bg-emerald-600 text-white":"bg-white"}`}>{v}</button>)}
+      <div className="wrap">
+        {/* Hero */}
+        <div className="hero">
+          <div>
+            <div className="kicker mono">
+              <span>DOTTIE V6.5 · LLMVM</span>
+              <span style={{borderStyle:"dashed"}}>THE WEAVER IS NOW DOTTIE</span>
+              <span>SOLO · FREE-TIER ONLY</span>
+            </div>
+            <h1>Dottie — the always-on AGI factory you can watch train</h1>
+            <p className="lede sans">
+              One small machine that builds its own data, checks it, learns from it, and talks back.
+              No team, no cloud budget — just a box that keeps getting a little better.
+              This site is the control plane.
+            </p>
+
+            <div className="banner sans">
+              <span>◐</span> arxiviq.com is now only Dottie. Old research demos moved inside.
+            </div>
+
+            <div className="btnrow sans">
+              <a className="btn primary" href="https://github.com/jcdavis131/dottie">GitHub — dottie</a>
+              <a className="btn" href="/starter">Starter →</a>
+              <a className="btn" href="https://raw.githubusercontent.com/jcdavis131/dottie/main/apps/dottie/README.md">Readme</a>
+            </div>
+
+            <div style={{marginTop:14}} className="mono">
+              <span className="pill" style={{display:"inline-flex", gap:"6px"}}>
+                <span style={{width:6,height:6,background:"#10b981",borderRadius:999,display:"inline-block"}}/> Solo personal project, no connection to employer
+              </span>
             </div>
           </div>
-          <div className="p-3 border-b">
-            <div className="text-[11px] font-mono font-semibold text-zinc-500 mb-2">ARCHITECTURES</div>
-            <div className="flex flex-wrap gap-1.5">
-              {["all","Dreamer","JEPA","V-JEPA","ImageBind","Hamiltonian NN","World Model","PredCoding"].map(a=><button key={a} onClick={()=>setFilterArch(a)} className={`px-2 py-1 rounded-full border text-[11px] font-mono ${filterArch===a?"bg-amber-500 text-white":"bg-white"}`}>{a}</button>)}
-            </div>
-          </div>
-          <div className="flex-1 overflow-auto p-2 space-y-2">
-            <div className="text-[11px] font-mono font-semibold text-zinc-500 px-1">PAPERS • {papers.length||filtered.nodes.filter(n=>n.type==="Paper").length}</div>
-            {(papers.length?papers:filtered.nodes.filter(n=>n.type==="Paper").map(n=>({id:n.id.replace("paper:",""), title:n.title||n.label, summary:n.abstract, query_tag:n.query_tag, authors:n.authors}))).slice(0,12).map((p:any,i:number)=>(
-              <div key={p.id||i} className="rounded-[12px] border bg-white p-2.5 hover:border-zinc-300 cursor-pointer" onClick={()=>{const node=graph.nodes.find(n=>n.id===`paper:${p.id}`||n.id===p.id); if(node) setSelected(node as any);}}>
-                <div className="text-[12px] font-medium leading-tight line-clamp-2">{p.title}</div>
-                <div className="mt-1 text-[11px] font-mono text-zinc-500 line-clamp-1">{p.authors?.join(", ")||"authors"}</div>
+
+          <div className="stack">
+            <div className="card">
+              <h3>Live now</h3>
+              <div className="fact-grid sans">
+                <div className="fact"><b>{stats?.papers ?? stats?.docs ?? "132"}</b><span>papers tracked</span></div>
+                <div className="fact"><b>{stats?.nodes ?? "676"}</b><span>graph nodes</span></div>
+                <div className="fact"><b>{stats?.people ? `${stats.people}` : "521"}</b><span>people linked</span></div>
+                <div className="fact"><b>{live?.counts ? Object.values(live.counts).reduce((a:number,b:any)=>a+(typeof b==='number'?b:0),0) || "—" : "live"}</b><span>events today</span></div>
               </div>
-            ))}
-          </div>
-        </aside>
+              <div className="mono" style={{marginTop:10, fontSize:"11px", color:"var(--ink-2)"}}>
+                Updated: {live?.updated_at?.slice(0,16)?.replace("T"," ") || stats?.timestamp?.slice(0,16)?.replace("T"," ") || "just now"} · checksum {stats?.checksum?.slice(0,8) || "—"}
+              </div>
+            </div>
 
-        <main className="col-span-12 lg:col-span-6 bg-[#fdfcf8] relative flex flex-col">
-          <div className="flex items-center justify-between px-3 py-2 border-b bg-white/60 text-[11px] font-mono">
-            <div>Force graph • {filtered.nodes.length} nodes • {filtered.edges.length} edges</div>
-            <button onClick={()=>window.location.reload()} className="px-2 py-1 rounded-full border bg-white">Reheat</button>
+            <div className="card sans">
+              <h3>How it works — in plain English</h3>
+              <div style={{display:"grid", gap:"8px", fontSize:"13.5px", lineHeight:1.5, color:"var(--ink-2)"}}>
+                <div><b style={{color:"var(--ink)"}}>1. Gathers</b> — small VM pulls 500k text chunks every 4h, 10M per phase on Alienware. No scraping rush, just steady.</div>
+                <div><b style={{color:"var(--ink)"}}>2. Cleans</b> — dedupes, splits 92/6/2 train/val/test, grades with a local model.</div>
+                <div><b style={{color:"var(--ink)"}}>3. Learns & serves</b> — warms, holds steady, decays, resumes from the last good checkpoint. Chat is FastAPI behind Cloudflare Tunnel.</div>
+              </div>
+              <div className="codebox mono">
+                <div style={{opacity:0.6}}># the whole loop — no tricks</div>
+                <div>tasks → traces.jsonl → rft + memories</div>
+                <div>→ eval gate → train step → better ckpt</div>
+                <div style={{marginTop:6, opacity:0.8}}>ollama qwen3:32b does the real thinking today</div>
+                <div>ava is the trainee — still learning</div>
+              </div>
+            </div>
           </div>
-          <div className="flex-1 relative overflow-hidden">
-            <svg ref={svgRef} width="100%" height="560" className="block">
-              {filtered.edges.map((e,i)=>{ const a=filtered.nodes.find(n=>n.id===e.source) as any, b=filtered.nodes.find(n=>n.id===e.target) as any; if(!a||!b) return null; const col=e.kind==="AUTHORED"?"#38bdf8":e.kind==="USES_ARCHITECTURE"?"#f59e0b":e.kind==="RELATED_TO"?"#a1a1aa":"#8b5cf6"; return <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={col} strokeWidth={1} opacity={0.6} />})}
-              {filtered.nodes.map((n)=>{const isSel=selected?.id===n.id, col=(COLOR as any)[n.type]||"#71717a", r=n.type==="Architecture"?14:n.type==="Paper"?10:n.type==="Topic"?12:8; return (<g key={n.id} transform={`translate(${n.x},${n.y})`} onClick={()=>setSelected(n)} className="cursor-pointer">{n.type==="Paper"?<rect x={-10} y={-7} width={20} height={14} rx={2} fill={isSel?"#111":"#111827"} stroke="white" strokeWidth={1.5} />:n.type==="Architecture"?<polygon points={`0,-${r} ${r*0.9},${r*0.5} ${-r*0.9},${r*0.5}`} fill={isSel?"#d97706":col} stroke="white" strokeWidth={1.5} />:n.type==="Topic"?<circle r={r} fill="white" stroke={col} strokeWidth={2} strokeDasharray="3 3" />:<circle r={r} fill={isSel?"#111827":col} stroke="white" strokeWidth={1.5} /> }<text y={r+12} textAnchor="middle" fontSize={10} fill="#3f3f46">{(n.label||"").slice(0,18)}</text></g>)})}
-            </svg>
-          </div>
-        </main>
+        </div>
 
-        <aside className="col-span-12 lg:col-span-3 border-l bg-white border-zinc-200 flex flex-col">
-          <div className="p-3 border-b">
-            <div className="text-[11px] font-mono font-semibold text-zinc-500">INSPECTOR</div>
-            {!selected && <div className="mt-2 text-[12px] text-zinc-500">Click a node • papers show abstract, people show affiliations</div>}
-            {selected && (<div className="mt-2"><div className="inline-flex gap-2"><span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono border">{selected.type}</span><span className="text-[10px] font-mono text-zinc-500">{selected.id}</span></div><div className="mt-1 text-[13px] font-semibold">{selected.title||selected.label}</div>{selected.abstract && <div className="mt-2 text-[12px] text-zinc-700 line-clamp-6">{selected.abstract}</div>}</div>)}
+        {/* Mid */}
+        <div className="section">
+          <div className="tri sans">
+            <div className="card">
+              <h4>Why not just use Prime Agent?</h4>
+              <p>Prime gave us the right idea: code is a variable, you can refine habits with evidence. Dottie adds the messy part prime skips — actually training a small model from its own traces so it improves while you sleep.</p>
+            </div>
+            <div className="card">
+              <h4>What you see is what runs</h4>
+              <p>No mock numbers. If Ollama is down, Dottie says so. If the checkpoint is noise, it says noise. Every metric is computed from real inputs, every habit change needs evidence.</p>
+            </div>
+            <div className="card">
+              <h4>Use it</h4>
+              <p><span className="mono" style={{fontSize:"11px", background:"var(--bg-2)", padding:"2px 6px", borderRadius:6, border:"1px solid var(--line-2)"}}>pip install -e apps/dottie</span> gives you the CLI. <span className="mono" style={{fontSize:"11px", background:"var(--bg-2)", padding:"2px 6px", borderRadius:6, border:"1px solid var(--line-2)"}}>dottie repl</span> for persistent work, missions that pause Monday and resume Thursday with receipts.</p>
+            </div>
           </div>
-          <div className="p-3 text-[11px] font-mono text-zinc-600">
-            <div className="font-semibold">ABOUT ARXIVIQ</div>
-            <div className="mt-1">World models • JEPA • ImageBind • Hamiltonian nets • training dynamics — tracked as they relate to training neural nets and ML modeling architectures.</div>
-            <div className="mt-2">ACNE 0.2.1 for people (trigger resolver), Graphify for structure (god nodes, Leiden-like).</div>
-          </div>
-        </aside>
+        </div>
+
+        <div className="foot">
+          <div>© {new Date().getFullYear()} arxiviq.com — Dottie is MIT, solo, free-tier only. No connection to employer.</div>
+          <div className="mono">Vercel + GitHub raw STATUS.json + FastAPI dottie/serve_engine.py</div>
+        </div>
       </div>
     </div>
   );
