@@ -104,3 +104,15 @@ apps/ava-factory/dottie/pipeline/runs/
 apps/ava-factory/bundles/ultra/runs/
 bundles/ultra/runs/
 
+
+# --- Dottie SOTA sessions / harness (prime-agent edition, local-only) ---
+.dottie/
+.scout/
+workspace/.scout/
+.scout/missions/
+.dottie/harness/
+.dottie/inbox/
+.dottie/registry.json
+.dottie/goals.jsonl
+tmp_prime_*.json
+

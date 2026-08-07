@@ -1,4 +1,4 @@
-# Dottie
+# Dottie — SOTA Edition of Prime Agent
 
 ![CI](https://github.com/jcdavis131/dottie/actions/workflows/ci.yml/badge.svg)
 ![Python 3.11](https://img.shields.io/badge/python-3.11-blue)
@@ -6,13 +6,14 @@
 ![License MIT](https://img.shields.io/badge/license-MIT-green)
 ![Solo Project](https://img.shields.io/badge/solo-personal%20project%20%E2%80%94%20no%20employer%20tie-lightgrey)
 
-Dottie is a closed-loop LLM factory run as one monorepo: data pipeline → train → eval gate → serve → agent → traces → retrain. The agent's only tool is `scout`, a CLI it can extend at runtime when a task needs a new capability.
+Dottie is your personally built, SOTA edition of [PrimeIntellect's prime-agent](https://github.com/PrimeIntellect-ai/prime-agent) — RLM (prompt-as-variable + recursive `rlm(...)` subagents in a persistent REPL) + Continual Harness (durable, refineable, snapshot-able) — now closed with a real factory loop that trains its own brain, Scout v5 Prime missions that pause/resume across days, provenance-honest metrics that refuse to fake, and a single CLI (`scout`) the agent can extend at runtime via forge.
 
-> Solo personal project, no connection to employer, built with public/free-tier only (R2/Workers/Supabase/HF ZeroGPU, ONNX WASM, public pip).
+> Solo personal project, no connection to employer, built with public/free-tier only (R2/Workers/Supabase/HF ZeroGPU, ONNX WASM, public pip). See `apps/dottie/DOTTIE_PRIME_SOTA.md` for prime → Dottie comparison.
 
 **The Dottie site** (`apps/bluehenre`, live at https://www.bhenre.com) is the
 operator's window into and steering wheel for this loop — one product with three
 faces: a **Guide** (Manus/OpenClaw/Hermes-style agentic assistant), a **Hub**
+
 (HuggingFace-style datasets/models/research registry), and a **Monitor**
 (Weights&Biases-style real-time view of the local development the org runs) —
 differentiated by provenance-honesty by construction. See

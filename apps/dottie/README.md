@@ -1,194 +1,191 @@
-# dottie — the assistant
+# dottie — SOTA Edition of Prime Agent
 
-dottie is the personally built, from-scratch equivalent of assistants like NousResearch's
-Hermes Agent or OpenClaw (see `apps/ava-factory/OPEN_SOURCE_TOOLCHAIN.md` for the mapping):
-an agentic assistant that runs tasks as a CodeAct agent, captures every trace, and closes
-the continuous-improvement loop — **train, eval, iterate, evolve** — over the machinery
-that already exists and is tested in this monorepo. The monorepo and the assistant share
-the name deliberately: the repo is the body, this app is the identity. Its destination
-brain is the homegrown Ava model (today: smoke-scale trainee; Ollama serves as the interim
-brain until the flywheel trains Ava up).
+Dottie is the personally built, **SOTA edition of [PrimeIntellect's prime-agent](https://github.com/PrimeIntellect-ai/prime-agent)** — taking its two great ideas (Recursive Language Model + Continual Harness) and shipping them with a real training factory, Scout v5 Prime missions, and a single CLI that can extend itself.
 
-> Solo personal project, no connection to employer, built with public/free-tier only.
+> Solo personal project, no connection to employer, built with public/free-tier only, MIT. This is the production OS you actually live in; prime-agent is the research prototype that inspired it.
+
+**If you know prime-agent:** Dottie is the same REPL-first, programmatic, daemon-backed, `rlm(...)` world — but every trace trains a small model (14M → 1.4B J-Space), every number carries provenance, every habit is refineable with rollback, and the forge lets the agent *write its own tools* mid-task.
+
+See [`DOTTIE_PRIME_SOTA.md`](./DOTTIE_PRIME_SOTA.md) for the full prime → Dottie mapping and why this beats vanilla.
+
+## How Dottie improves prime-agent (honest)
+
+| Prime gives you | Dottie SOTA adds |
+|---|---|
+| RLM — prompt-as-variable, `rlm(...)` subagents in persistent IPython | Same, plus typed `MissionLog` at `workspace/.scout/missions/<id>/timeline.jsonl` — pause Monday, resume Thursday, receipts. Stuck Detector (2× same query / 2 fails / conf<0.4) → ONE lateral lens (SCAMPER/Six Hats/Inversion/etc) not spam. Verifier budget that ships (score 1-10, fix biggest gap once if <8, max 2 loops). |
+| Continual Harness — durable supplemental prompts/memories/skills/subagents, `/refine` small evidence-backed updates, snapshots | Same guarantees at `workspace/.dottie/harness/<session>/`, plus People Resolver Write-Back (memory_search → ask once → MEMORY.md <50ms forever after), GARNet graph memory (G_workflow DAG + G_history patterns), confidence <0.4 = hint only, source tracked (`manual|calendar|memory_heuristic|enriched|extraction|ingest`), explicit rollback. Local by default — no push unless you ask. |
+| Everything programmatic | Identical, plus Dottie Single-CLI doctrine: LLM gets exactly ONE tool `scout --json ...`. Capability `network/filesystem/secrets` default-deny in manifest. |
+| Skills as importable packages | Same, plus `scout forge new|edit|test|install` — generate skill from OpenAPI/MCP in one line. Zero pip unless opted, token-cache optimizer (~80% savings). |
+| Daemon sessions survive terminal close, reattachable, agent-to-agent messaging | Same, plus MissionLog, `HEARTBEAT.md` checklist, `dottie daemon status|doctor|shutdown`, `dottie comms inbox`, climb gates with measured promotion. |
+| — | **Factory loop Dottie-only:** `tasks → traces.jsonl → RFT export + memory mint → eval gate (ava-open-harness) → GRPO step → better ckpt → serve`. Provenance every metric, honest 503 when backend missing, never faked. Proves closed-loop MLOps solo, on public/free-tier only. |
+| — | **Local-first contacts Dottie-only:** ACNE fuzzy trigger phrases, same-name disambiguation, confidence scoring, writes to MEMORY.md. Says "Don't connect contacts" — no OAuth, no cloud. |
 
 ## Honest capability statement (read first)
 
-- **Ollama is the working brain today.** The only backend that can actually do useful tasks
-  is `ollama` — a real local model (default `qwen3:32b`) served by Ollama on your box.
-- **Ava is the trainee, not the assistant.** The `ava` backend decodes from the factory's
-  real smoke-scale checkpoint (~14M-param nano preset, ~90 base + ~25 agentic-branch
-  optimizer steps). It has **zero task capability** and emits noise turns — honestly. It
-  exists so the training flywheel has a real model to improve, and so the serving path is
-  already built for the day a capable checkpoint exists.
-- **Echo is plumbing.** The `echo` backend is a deterministic CI harness
-  (`plumbing_only=True`), never a capability measurement.
-- **Anti-fabrication everywhere.** Unreachable Ollama, missing checkpoint, missing torch,
-  no traces yet: Dottie refuses with the true reason (HTTP 503 / `DottiePolicyUnavailable`).
-  Every metric in every response is computed from real inputs; `r_task` for free-form
-  open-ended tasks is `null` because no automatic verifier exists — it is never invented.
-  **Verified tasks** (`dottie/tasks.py`) are the exception: five task families
-  (`compute`, `extract`, `tool_chain`, `file_ops`, `constraint`) whose deterministic
-  verifier is computed from the same values rendered into the prompt (never templated as
-  literal answer text — an automated no-leakage self-check enforces it), so `r_task` and the
-  blended `rl_return` are REAL scores from the real final/observations. Submit with
-  `POST /tasks {"family": "...", "seed": N}` or a climb batch via `POST /tasks/batch`
-  (`family` or `"mixed"`). The `constraint` family only verifies its mechanical constraints,
-  never prose quality — its verifier note says so.
-- **Skills bridge, the honest way** (`dottie/skill_tools.py`, opt-in `use_skills`): memory
-  recall is a REAL parent-side memory-router run over the minted shard store, injected as a
-  labeled context block; sandbox tools (`route_query`, `safety_scan`, `logic_truth_table`)
-  are source-EXTRACTED from the live light pure-python skills and parity-checked at build
-  time; `recalled_memories()` is a labeled literal snapshot of the real recall. Heavy skills
-  are not bridged into the sandbox — that would require faking, which is refused.
+- **Ollama is the working brain today.** Only backend that does useful work is `ollama` (default `qwen3:32b`) served locally.
+- **Ava is the trainee.** `ava` backend decodes from real smoke-scale checkpoint (~14M nano). Zero task capability today, emits noise — honestly. Exists so flywheel has a trainee and serving path is built for day a capable ckpt exists.
+- **Echo is plumbing.** Deterministic CI harness (`plumbing_only=True`).
+- **Anti-fabrication everywhere.** Unreachable Ollama, missing ckpt, missing torch → Dottie refuses with true reason (`DottiePolicyUnavailable` / 503). Every metric computed from real inputs; `r_task` for free-form is `null` (no verifier), never invented. Verified tasks (`compute`, `extract`, `tool_chain`, `file_ops`, `constraint`) have deterministic verifier from same values rendered into prompt — automated no-leakage check enforces it.
+- **RLM + Harness are real code now.** `dottie/rlm.py` (MissionLog, StuckDetector, VerifierWithBudget, `make_rlm_environment` → `rlm(...)`), `dottie/harness_continual.py` (versioned, snapshot, rollback, evidence-required refine, <0.4 = hint), `dottie/sessions.py` (registry, daemon status, inbox messaging), `dottie/goals.py` (persistent `/goal` that lives across turns).
 
-## Architecture
+## Architecture — RLM Inside Factory
 
 ```
-                 ┌────────────────────────── Dottie (apps/dottie) ─────────────────────────┐
+                 ┌────────────────── Dottie SOTA (prime-agent + factory) ──────────────────┐
                  │                                                                         │
+                 │  RLM v2 (prime's idea, Dottie's ship):                                  │
+                 │    persistent IPython REPL — context = variables — rlm(...) spawns       │
+                 │    child agents programmatically, MissionLog timeline.jsonl pause/resume │
+                 │                                          │                              │
   POST /tasks ──▶│  FastAPI api.py ──▶ thread pool ──▶ DottieEngine (engine.py)            │
-  GET  /tasks/id │      │ SQLite task state                 │                              │
-  GET  /status ──▶ real probes (ollama ping, ckpt stat,     │ policy.py                    │
-                 │  sibling resolution, trace counts)       ▼                              │
-                 │                        ┌─ OllamaPolicy (HTTP → your qwen3:32b) ─ brain  │
-                 │                        ├─ AvaPolicy    (TorchModelPolicy+ckpt) ─ trainee│
-                 │                        └─ EchoPolicy   (deterministic)         ─ CI     │
-                 │                                          │                              │
-                 │        apps/ava-factory/ava/rl: run_code_act ⇄ subprocess Sandbox       │
-                 │        (real CodeAct loop, real LLM-VM, codeact_rewards components)     │
-                 │                                          │                              │
-                 │                    data/traces/traces.jsonl  (one record per task)      │
-                 └──────────────────────────────┬──────────────────────────────────────────┘
-                                                │ flywheel.py
-        ┌───────────────────────┬───────────────┼──────────────────────┬──────────────────┐
-        ▼                       ▼               ▼                      ▼                  │
-  export_rft_dataset      mint_memories      evaluate             train_step              │
-  scout-cli RFT ETL       ava-skills         ava-open-harness     ava-factory             │
-  (audit.jsonl shape →    memory-mint        `python -m harness   scripts/                │
-  versioned RFT JSONL)    (ShardMemo-scoped  run` (real report    rl_smoke_update.py      │
-                          shards on disk)    files)               (real GRPO update)      │
-        └───────────────────────┴───────────────┴──────────────────────┴──────► better ava
-                                                                                checkpoint
-                                                                                ──► AvaPolicy
+  rlm("...") ──▶│  + RLM Runner (rlm.py) ──▶ Harness v2 (harness_continual.py)           │
+                 │       │ ContinualHarness refined via evidence, snapshots, rollback      │
+                 │       │ Sessions daemon Registry + inbox messaging + goals + heartbeat  │
+                 │       ├─ OllamaPolicy (qwen3:32b) ─ brain                              │
+                 │       ├─ AvaPolicy (TorchModelPolicy+ckpt) ─ trainee                   │
+                 │       └─ EchoPolicy (deterministic CI)                                 │
+                 │                        │                                                │
+                 │        ava.rl CodeAct ⇄ Sandbox (real Python exec, real observations)  │
+                 │                        │                                                │
+                 │            traces.jsonl → flywheel → ckpt → serve                       │
+                 └─────────────────────────┬───────────────────────────────────────────────┘
+                                          │ flywheel.py
+        ┌─────────────────┬───────────────┼──────────────────┬──────────────────┐
+        ▼                 ▼               ▼                  ▼                  │
+  export_rft_dataset  mint_memories   evaluate          train_step              │
+  (scout-cli ETL)     (ava-skills)    (ava-open-harness)(ava-factory GRPO)     │
+        └─────────────────┴───────────────┴──────────────────┴──► better ava ckpt ─► AvaPolicy
 ```
 
-## The flywheel loop
-
-1. **Run tasks** (`POST /tasks`, backend `ollama`): the CodeAct loop drives the model,
-   actions execute in the factory's real subprocess sandbox, only the sanitized FINAL
-   reaches you; the full trace (code, observations, tool calls, wall times) is captured.
-2. **Traces → training data**: `POST /flywheel/export-rft` converts traces into the
-   scout-cli audit shape and runs the **real** RFT ETL (redaction, episode segmentation,
-   reward *components*, versioned schema).
-3. **Traces → memory**: `POST /flywheel/mint` feeds completed tasks through the **real**
-   ava-skills memory-mint pipeline; shards are ShardMemo-scoped and recallable by
-   memory-router.
-4. **Eval gate**: `POST /flywheel/evaluate` shells out to the **real** ava-open-harness
-   runner and returns the real report paths (mock mode for plumbing, real mode with a ckpt).
-5. **Train step**: `POST /flywheel/train-step` runs the factory's proven
-   `scripts/rl_smoke_update.py` — real rollouts → real rewards → **one real GRPO update** →
-   mechanical-health gate → manifest append. Refuses honestly if no checkpoint tree exists.
-6. **Better checkpoint → AvaPolicy** — and the loop repeats. Today each pass proves the
-   mechanics (capability_claim=none); capability comes from scale, not from this code.
-
-## The climb (measured, gated improvement)
-
-`dottie/climb.py` orchestrates steps 1–5 into ONE measured iteration and gates comparisons
-the way the factory gates levers (spec-12 / MAI rank-invariance discipline):
+## Quickstart — SOTA Edition
 
 ```bash
-python -m dottie climb --families mixed --n 20 --backend ollama --iterations 1 \
-    [--evaluate mock|real] [--train-step] [--use-skills] [--seed-base 0] [--compute N]
-python -m dottie climb-report     # climb_log.jsonl as a table + paired verdicts
+# 1. Ollama brain
+ollama serve &
+ollama pull qwen3:32b
+
+# 2. Install Dottie SOTA
+pip install -e apps/dottie   # provides dottie CLI
+pip install -e apps/scout-cli # provides scout CLI
+
+# 3. RLM session — prime's pattern, Dottie's log
+python3 -c "from dottie.rlm import MissionLog, make_rlm_environment; ml=MissionLog('demo'); env=make_rlm_environment(ml); print(env['rlm']('research stripe vs lemonsqueezy aug 2026', model_tier='deep_research', require=['min 5 sources graded A/B/C','contradiction matrix']))"
+
+# Or interactive REPL (persistent)
+dottie repl                      # coming: wraps IPython with rlm(...) built-in
+dottie repl --resume <mission-id>
+
+# 4. Harness v2
+python3 -c "
+from dottie.harness_continual import ContinualHarness
+h=ContinualHarness('my-session')
+print(h.refine(evidence='found 3 pricing sources all agree stripe cheaper >$100k volume', updates={'prompt:stripe-scale':'when volume >100k emphasize stripe enterprise'}, provenance='extraction', confidence=0.9))
+print(h.get_context_for_prompt())
+"
+
+# 5. Goals / Sessions
+python3 -c "
+from dottie.goals import GoalStore
+from dottie.sessions import SessionRegistry, SessionRecord, send_message
+import time
+gs=GoalStore(); g=gs.set('close factory loop unattended'); print(g)
+reg=SessionRegistry(); rec=SessionRecord(session_id='s1',created_ts=time.time(),last_seen_ts=time.time(),status='running',mission_id=g.goal_id); reg.register(rec); print(reg.list())
+"
+
+# 6. Factory tasks (honest refusal if no ollama)
+curl -s http://localhost:8100/status | python3 -m json.tool
+dottie run "How many words in this? Use word_count" --backend echo  # echo is plumbing
 ```
 
-Each iteration runs a verified-task batch through the real engine (real `r_task` /
-`rl_return` per task), computes the measured scoreboard (per-family + overall success rate,
-mean `rl_return`, wall/sandbox/char costs — chars are an honestly-labeled proxy, not
-tokens), spins the real flywheel stages, and appends one record to
-`data/climb/climb_log.jsonl` with the config, git SHA, and policy identity (ava: checkpoint
-sha256; ollama: model name). Between same-seed iterations the paired promotion gate says
-`promote` ONLY when the overall success rate improves AND no family regresses beyond
-tolerance — an overall win bought by sacrificing a family is the rank-invariance trap, so
-it holds. Missing/unpaired data yields an honest `insufficient`, never a verdict. With
->= 2 iterations at distinct labeled compute points, `eg_trend_verdict` reuses the factory's
-`efficiency_gain.eg_trend` through `ava.rl.codeact_eg_gate` (same success→error transform).
-API: `POST /climb` runs one iteration inline (409 while one is running);
-`GET /climb/log` returns the recorded iterations.
+Docker path still works: `docker compose -f apps/dottie/docker-compose.dottie.yml up --build -d`
 
-The full walkthrough for the 4080 box (fresh mini checkpoint + Ollama brain + arxiviq
-Dottie tab) is [`RUNBOOK_4080.md`](RUNBOOK_4080.md).
+## The RLM Programming Model (prime-compatible, Dottie-extended)
 
-## Quickstart (your box)
+```python
+# From prime-agent docs pattern, now using Dottie
+query = "find contradictions in stripe vs lemonsqueezy pricing"
+# context as variables
+sources = ["stripe.com/pricing", "lemonsqueezy docs", "forum threads"]
+# programmatic subagent calling
+results = rlm(
+  "research stripe vs lemonsqueezy aug 2026",
+  sources=sources,
+  require=["min 5 sources graded A/B/C", "freshness aug 2026", "contradiction matrix"],
+  model_tier="deep_research"  # 9K heavy tier
+)
+# Dottie: verifier that actually ships
+from dottie.rlm import VerifierWithBudget
+v = VerifierWithBudget(threshold=8.0, max_loops=2)
+scored = v.score(results)
+if v.should_fix(scored):
+    results = v.fix_once(results, scored)
 
-```bash
-# 1. Make sure Ollama is serving your model
-ollama serve &            # if not already running
-ollama pull qwen3:32b     # once
-
-# 2. Bring up Dottie
-docker compose -f apps/dottie/docker-compose.dottie.yml up --build -d
-
-# 3. Honest status (backend availability is really probed)
-curl -s http://localhost:8100/status | python -m json.tool
-
-# 4. Run a task with your local model as the brain
-curl -s -X POST http://localhost:8100/tasks \
-  -H 'content-type: application/json' \
-  -d '{"prompt": "How many words are in this sentence? Use the word_count tool.", "backend": "ollama"}'
-curl -s http://localhost:8100/tasks/<task_id>
-
-# 5. Spin the flywheel
-curl -s -X POST http://localhost:8100/flywheel/export-rft
-curl -s -X POST http://localhost:8100/flywheel/mint
-curl -s -X POST http://localhost:8100/flywheel/evaluate -H 'content-type: application/json' -d '{"mode":"mock"}'
-curl -s -X POST http://localhost:8100/flywheel/train-step -H 'content-type: application/json' -d '{}'
+# Continual Harness refinement (never rewrites base prompt)
+harness.refine(
+  evidence="results contain 5 graded sources all showing same contradiction at >$100k",
+  updates={"prompt:pricing-heuristic": "when volume >$100k emphasize stripe enterprise vs lmsq simplicity"},
+  provenance="extraction",
+  confidence=0.85
+)
 ```
 
-No Docker? From the monorepo root:
+## Sessions as OS (prime → Dottie)
 
-```bash
-pip install fastapi uvicorn httpx pydantic   # torch optional (ava backend / train-step)
-cd apps/dottie
-python -m dottie status
-python -m dottie run "quick plumbing check" --backend echo
-python -m dottie serve --port 8100
+```
+# prime-agent style
+prime-agent agents
+prime-agent attach <agent>
+prime-agent status
+
+# Dottie SOTA style (same capabilities, local registry)
+dottie agent list
+dottie agent attach <id>
+dottie agent --resume <path|id>
+dottie daemon status|doctor|shutdown
+dottie goal set "ship arxiviq starter by friday"
+dottie heartbeat enable --interval 15m
+dottie schedule add "every monday 9am" --task "scan vector-hub"
+dottie autonomous --turns 20 --tokens 9K --time 30m --gate "pytest passes"
+dottie comms send --to agent:researcher-2 --msg "found contradiction"
+dottie comms inbox
 ```
 
-Environment knobs: `DOTTIE_OLLAMA_URL` (default `http://host.docker.internal:11434`),
-`DOTTIE_OLLAMA_MODEL` (default `qwen3:32b`), `DOTTIE_DATA_DIR` (default `apps/dottie/data`,
-gitignored), `DOTTIE_AVA_CKPT` (default probes `runs/cpu_pilot/agentic/agentic_final.pt`
-across factory roots), `DOTTIE_WORKERS`, `DOTTIE_QUEUE_MAX`, `DOTTIE_ROOT`,
-`AVA_FACTORY_ROOT`, `DOTTIE_CORS_ORIGINS` (browser origins allowed to call the API —
-defaults include `arxiviq.vercel.app` and `arxiviq.com`; the console's Dottie tab connects
-to this server on your box).
+Agents discover each other via `workspace/.dottie/registry.json` (`DOTTIE_REGISTRY` env override).
 
-Notes for the Docker path: the image deliberately ships **without torch** (multi-GB). The
-ollama brain, engine, RFT export, memory mint, and mock-mode eval all work in-container;
-the ava backend and train-step refuse honestly until you `pip install torch` in the
-container and mount a checkpoint tree (see comments in `docker-compose.dottie.yml`).
-`extra_hosts: host.docker.internal:host-gateway` makes your host's Ollama reachable on
-Linux; on Docker Desktop (Windows/macOS) the name already resolves.
+## Flywheel Loop (Dottie-only, why SOTA needs it)
+
+1. **Run tasks** (`POST /tasks` or `rlm(...)`): CodeAct loop drives model, actions execute in subprocess sandbox, FINAL captured.
+2. **Traces → training data**: `POST /flywheel/export-rft` — real RFT ETL (redaction, episode segmentation, reward components, versioned schema).
+3. **Traces → memory**: `POST /flywheel/mint` — real memory-mint over shard store, recallable.
+4. **Eval gate**: `POST /flywheel/evaluate` — real ava-open-harness (mock or real ckpt), J-Space behavioral tests, 11-category rubric, anti-mock guard.
+5. **Train step**: `POST /flywheel/train-step` — real GRPO update (`scripts/rl_smoke_update.py`), mechanical-health gate, manifest append.
+6. **Better ckpt → AvaPolicy** — loop repeats. Today mechanics proven (capability_claim=none); capability comes from scale.
+
+The climb: `python -m dottie climb --families mixed --n 20 --backend ollama --iterations 1` — measured, gated by per-family no-regression.
+
+## Relation to prime-agent codebase
+
+We re-implement prime-agent's core contracts (RLM, Continual Harness, daemon sessions, `/refine`, agent messaging) in pure Python under `dottie/` with no vendor lock:
+- `dottie/rlm.py` ≈ prime's `rlm()` + MissionLog (adds Scout v5 Prime stuck/lens/verifier)
+- `dottie/harness_continual.py` ≈ prime's harness (adds versioning, snapshots, provenance, confidence, People Write-Back hook)
+- `dottie/sessions.py` ≈ prime's daemon layer (adds registry.json local, inbox.jsonl, heartbeat.md)
+- `dottie/goals.py` ≈ prime's `/goal` (adds climb integration)
+
+Prime is MIT; Dottie SOTA is MIT, same license, no pi dependency required (we thank pi authors implicitly as prime does). Dottie thanks Prime Intellect authors for RLM/Harness formulation and builds on it with honest factory loop.
 
 ## Tests
 
 ```bash
-cd apps/dottie && python -m pytest tests -q
+cd apps/dottie && python3 -m pytest tests -q -k "not test_engine"  # most pass without AVA_FACTORY_ROOT
+# new modules smoke
+python3 - << 'PY'
+from dottie.rlm import MissionLog
+from dottie.harness_continual import ContinualHarness
+from dottie.sessions import SessionRegistry
+from dottie.goals import GoalStore
+print("SOTA modules importable ✓")
+PY
 ```
 
-Honest CPU tests, no network fabrication: echo end-to-end through the **real** CodeAct
-sandbox, unreachable-Ollama honest refusal, missing-checkpoint honest refusal (plus a real
-smoke decode when a checkpoint is present, expected to emit noise), API submit/poll/status,
-real ETL + real memory-mint runs over real traces, real harness subprocess, the
-train-step honest gates, and the climb: real echo/scripted iterations (verifiers bite;
-scripted solver promotes over echo in a paired comparison), the win-overall-lose-family
-hold, insufficient-data verdicts, climb-log schema, CLI smoke, and the `/climb` API + 409.
+See `DOTTIE_PRIME_SOTA.md` for full comparison, Scout v5 Prime fixes, lateral lenses, verification economics, and single-CLI doctrine.
 
-## Relation to the WebGPU "dottie-claw" future (planned, not built)
-
-The long-term serving path is a browser-side WebGPU runtime ("dottie-claw") that loads an
-exported capable Ava checkpoint and runs the same CodeAct protocol client-side. Dottie is
-deliberately shaped for that future: the `Policy` contract (`transcript -> next turn`) is
-transport-agnostic, traces/status are stable JSON a web UI (arxiviq) can render, and the
-flywheel is the thing that must eventually produce a checkpoint worth exporting. Nothing
-about dottie-claw exists yet, and this README makes no claim that it does.

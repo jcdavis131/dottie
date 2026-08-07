@@ -17,7 +17,7 @@ refuse-with-error responses, never canned fake replies or invented metrics. Toda
 exists only so the training flywheel has a trainee.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0-prime-sota"  # SOTA edition of prime-agent — RLM v2 + Continual Harness v2 + factory loop
 
 from dottie.policy import (  # noqa: F401
     AvaPolicy,
@@ -26,3 +26,13 @@ from dottie.policy import (  # noqa: F401
     OllamaPolicy,
     get_policy,
 )
+
+# SOTA edition exports (RLM + Continual Harness are first-class)
+try:
+    from dottie.rlm import MissionLog, VerifierWithBudget, StuckDetector, make_rlm_environment  # noqa: F401
+    from dottie.harness_continual import ContinualHarness  # noqa: F401
+    from dottie.sessions import SessionRegistry, send_message, read_inbox  # noqa: F401
+    from dottie.goals import GoalStore  # noqa: F401
+except Exception:
+    # tests that import only policy still work if new deps missing
+    pass
