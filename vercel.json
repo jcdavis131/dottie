@@ -1,9 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "cd apps/arxiviq && npm run build",
   "installCommand": "cd apps/arxiviq && npm install",
+  "buildCommand": "cd apps/arxiviq && npm run build",
   "outputDirectory": "apps/arxiviq/.next",
-  "framework": "nextjs",
   "headers": [
     { "source": "/data/(.*)", "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600, stale-while-revalidate=86400" }] }
   ]
