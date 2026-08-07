@@ -1,10 +1,7 @@
+import statsData from "../public/data/stats.json";
+
 export default function Home() {
-  let stats: any = {};
-  try {
-    stats = require("../public/data/stats.json");
-  } catch {
-    stats = { nodes: 676, edges: 758, docs: 132, papers: 132, people: 521, checksum: "a3f9c1e2" };
-  }
+  const stats: any = (statsData as any) || { nodes: 676, edges: 758, docs: 132, papers: 132, people: 521, checksum: "a3f9c1e2" };
 
   const papers = stats.papers ?? stats.docs ?? 132;
   const nodes = stats.nodes ?? 676;
