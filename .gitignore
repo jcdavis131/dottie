@@ -122,3 +122,16 @@ tmp_prime_*.json
 apps/arxiviq/.next/
 out/
 
+# --- tech debt guards (clean systems) ---
+pipeline/
+apps/ava-factory/bundles/
+apps/ava-factory/dottie/bundles/
+apps/ava-factory/dottie/pipeline/
+apps/ava-factory/pipeline/
+bundles/ultra/runs/
+.dottie/
+.scout/
+workspace/.scout/
+candidate.json
+*.pyc
+__pycache__/

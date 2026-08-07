@@ -1,0 +1,17 @@
+name: payments
+description: $0 ledger Phase0
+capabilities:
+  network:
+    enabled: false
+    domains: []
+  filesystem:
+    write: true
+    paths:
+      - bundles/payments/store.jsonl
+      - bundles/payments/events
+      - .scout/payments
+      - .local/share/bigbang/payments.jsonl
+  secrets:
+    allow: []
+commands: [create, check, list, stats, idempotent-key, widen-note]
+version: v0.8-scout-v3.3-parity

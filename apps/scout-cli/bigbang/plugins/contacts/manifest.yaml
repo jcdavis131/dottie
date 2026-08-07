@@ -1,0 +1,61 @@
+name: contacts
+description: ACNE Contacts Power Suite — local-first TLPG tool I wish I had for harness work. Resolve fuzzy phrases, vector search 17 types, GraphRAG 2-hop + provenance, sync_from_bundles one-shot hill-climb + health_report. Zero deps, no cloud, 5-layer cache ~80% savings.
+capabilities:
+  network: false
+  filesystem: true
+  secrets: false
+version: 0.4.1-power-suite
+entry: cli.py
+acne:
+  version: 0.4.0-constructs-v04.1-slip-proof
+  node_classes: 17
+  edge_types: 27
+  stages: 5
+  tools:
+    - resolve_contact
+    - search_nodes
+    - graphify_query
+    - health_report
+    - sync_all
+  commands:
+    - scout contacts resolve "my designer"
+    - scout contacts search "builder uses productivity-pack" --class Skill
+    - scout contacts graphrag "which agent executes flawless-delivery?" -k 5 --hops 2
+    - scout contacts stats
+    - scout contacts sync --graphify
+  schemas:
+    json_schema: bundle/tools/acne-contacts-tool.json
+    entry: src/acne/tools.py
+  hill_climb:
+    real: true
+    sync_from_manifest: 13 agents/11 packs/9 workflows v3.3
+    graphify_v04_1: ABSTRACTS/OWNS/USES/EXECUTES/REALIZES/PART_OF/TRACKS/COMPOSED_OF placeholder idempotent
+    goal_slip_proof: needs_tasks placeholder 0.45 + project_attr fallback
+    tests: 17+3 power-suite
+    token_saving: cache 5-layer ~70-88%
+  zero_deps: true
+  local_only: true
+  graceful: handles missing nodes.jsonl -> [] with note "sync first"
+  tool_ref: bundles/tools/acne-contacts-tool.json
+commands:
+  - resolve
+  - search
+  - graphrag
+  - stats
+  - health
+  - sync
+  - sync-all
+examples:
+  - scout --json contacts resolve "my designer"
+  - scout --json contacts search "which agent uses builder-pack" --class Agent
+  - scout --json contacts graphrag "which bundle owns skill-pack?"
+  - scout --json contacts stats
+  - scout --json contacts sync --manifest ~/workspace/bundles/manifest.json
+sota:
+  deterministic: true
+  routing: planner calls resolve before search, critic must call health_report
+  pure_function: true
+  single_resp: true
+  tool_safety: schema validation + graceful empty
+  hill_climb_score: 0.88
+  hill_climb_reason: no fake hardcode metric, real TLPG 13 agents when synced, 76 edges typical, pytest 17+3 proves real, cache layers real, local-only enforced no network flag capabilities

@@ -132,14 +132,26 @@ class DottieEngine:
         if backend is None:
             backend = os.environ.get("DOTTIE_POLICY", "ollama")
         resolve.ensure_factory_on_path()
-        from ava.rl.codeact_loop import run_code_act
-        from ava.rl.codeact_rewards import (
+        # --- TECH DEBT FIX: ava.rl was package-shim that broke submodule imports
+        # Try canonical ava path, then dottie local mirror, then honest error
+        try:
+            from ava.rl.codeact_loop import run_code_act
+            from ava.rl.codeact_rewards import (
             ReturnWeights,
             codeact_return,
             r_codeuse,
             r_exec,
             redundant_calls,
-        )
+            )
+        except (ModuleNotFoundError, ImportError):
+            try:
+                # local factory mirror (apps/ava-factory/dottie/rl) is on sys.path via resolve
+                from dottie.rl.codeact_loop import run_code_act  # type: ignore
+                from dottie.rl.codeact_rewards import ReturnWeights, codeact_return, r_codeuse, r_exec, redundant_calls  # type: ignore
+            except (ModuleNotFoundError, ImportError):
+                # final fallback: try ava-factory path directly via package dottie.rl.* shim we provide
+                from ava.rl.codeact_loop import run_code_act  # will raise honest
+                from ava.rl.codeact_rewards import ReturnWeights, codeact_return, r_codeuse, r_exec, redundant_calls
 
         tool_sources: dict[str, str] = dict(DEFAULT_TOOL_SOURCES)
         extra_tool_names: list[str] = []
