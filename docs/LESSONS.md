@@ -25,3 +25,11 @@ Every entry: what / cause / lesson / fixed / prevents
 - **Fixed**: deleted dupes, pruned to 100, .gitignore guards
 - **Prevents**: monthly_clean cron + .gitignore pipeline/ + bundles/ultra/runs/
 - **Confidence**: 0.88
+
+## 2026-08-07 — fleet shell mojibake still live after rebuild — client hydration broke Vercel st
+- **Where**: apps/arxiviq/app/page.tsx
+- **Cause**: 
+- **Lesson**: server component + require() fallback keeps static clean
+- **Fixed**: 
+- **Prevents**: 
+- **ID**: lsn_20260807T133853Z_2325 c=0.88
