@@ -1,10 +1,10 @@
 name: harness
-description: Scout v3.3 harness — MoMA-lite router + graph memory GARNet + checkpoint + recovery ladder + pacing + verification econ. Now with deep agents LangChain/LangGraph/CrewAI/OpenAI/AutoGen ACNE 5-layer ~80% savings.
+description: Scout v3.3 orientation engine — MoMA-lite 5-tier router classifyTier deterministic-first, memory lattice dense0.7+sparse0.3+rerank+1-2hop OODA, GARNet G_workflow+G_history MDP, checkpoint pause/resume, recovery ladder, pacing :13, verification econ. v5 Prime Mission Log Stuck Detector Verifier Budget.
 capabilities:
   network: false
   filesystem: true
   secrets: false
-version: 0.8.1
+version: 0.8.2-orientation-engine
 entry: cli.py
 deep_agents:
   adapters: [langchain, langgraph, crewai, openai, autogen]
@@ -12,4 +12,9 @@ deep_agents:
   token_savings: ~80%
   confidence: true
   provenance: true
-  commands: ["scout agents langchain run|list|health", "scout agents deep list"]
+  commands: ["scout harness route <goal> --json", "scout harness memory <query> --k 5 --json", "scout harness graph-plan <goal> --json", "scout harness agents list|health|relevant --intent", "scout harness ops health|dashboard --json", "scout harness verify --score --prev"]
+  orientation_engine:
+    router: "bundles/router/router.ultra.js classifyTier MoMA-lite + bundles/scripts/router_bridge.py python mirror + bundles/tools/router-tool.json"
+    memory: "bundles/memory/lattice.md + bundles/scripts/memory_retriever.py dense0.7 sparse0.3 + bundles/scripts/lattice_builder.py"
+    graph_planner: "bundles/ultra/graph_planner_garnet.js G_workflow+G_history GARNet MDP fallback pure JS without ONNX"
+
