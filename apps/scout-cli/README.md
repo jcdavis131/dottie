@@ -1,10 +1,21 @@
-# Scout CLI 🐾 — One CLI to Rule All Tools (ex-BigBang) v0.7.0
+# Scout CLI 🐾 — One CLI to Rule All Tools (ex-BigBang) v0.8.0
 
 > Agent-native, security-first, local-first control plane for *every* internet tool, API, and MCP server. Ava-brained + RTX offload. Now v0.7 with **herd** — a [Herdr](https://herdr.dev/)-inspired session control surface (wait/read/report) that pairs with real PTY multiplexers.
 
 **Solo personal project, no connection to employer, built with public/free-tier only.**
 
 Primary command: `scout` (aliases: `bb`, `bigbang`, `dv`, `kitty` for compat) — `scout --help` / `scout --json rtx status`
+
+## What's New in v0.8.0 — Universal Harness + Vector Unification (v5 Prime SOTA)
+
+**Thesis:** One CLI = all three worlds — Scout v3.3 harness (13 agents / 11 packs / MoMA-lite 5 tiers / GARNet G_workflow+G_history / Checkpoint 7-field / Recovery Ladder 5+4 / Pacing :13 / Verification Econ budget3 threshold8.0) + Dottie factory (closed-loop LLM one tool = scout) + dumbmodel.com vector games (4 daily + unified trunk).
+
+- **Harness plugin** (fs true, net false, zero_deps true, no torch): `scout --json harness route "compare Stripe vs Lemon Squeezy Aug 2026"` → intent deep_research 5-7 sources A/B/C, stickiness_guard Launched=live URL+3 users+payments/analytics Aug31 locked, routed_agents [deep-researcher,synthesist,forensic], graph_memory G_workflow+G_history GARNet MDP, tempo :13, max_concurrent_safe 4. Also `harness agents list/health/relevant`, `harness checkpoint list/show/pause/resume`, `harness memory <q> --k 5`, `harness graph-plan <goal>`, `harness ops health/dashboard`, `harness verify --score 8.2 --prev 8.0` → early_exit True delta<0.3 threshold 8.0.
+- **Vector plugin** (fs true, net false): `scout --json vector train hoops --preset nano`, `scout --json vector eval hoops --gate leak-free` → Recall@10 0.977 Purity@20 0.6717 composite 0.7937 player-split not season-split (season-split Recall 1.0 mem bug fixed), `scout --json vector export`, `scout --json vector ship hub`, `scout --json vector unified ablation --configs full,no_supcon,no_coral,no_grl,no_vicreg,task_only` → G1 per-sport recall, G2 sport-invariance, G3 silhouette, G4 hit-rate random baseline, house rule does each loss earn keep.
+- **Shared lib** (torch optional stub for static-site): `ResidualTower cat([x·m,m])→96h→24d skip L2-norm` 18 families hoops / 17 towers equities / 8 towers pitch / 10 families gridiron 160 feats, `TransformerFusion d_model128 4 heads 4L CLS→64-d L2-norm` (equities proven 0.7057), `normalize` era-honest per-season zscore / per-90 tournament-z / per-ticker FY, losses InfoNCE/SupCon→G3/CORAL→G3/GRL λ0.3 warmup10ep/VICReg var25 cov1 anti-collapse task w=2.0 anchor G1.
+- **Security**: every plugin manifest.yaml capabilities network false filesystem true secrets false (harness/vector), audit.jsonl, vault 0600, policy.yaml default-deny, no network egress, no secrets in repo.
+- **Determinism**: 1k spec, `--json` envelope ok:true, no pip installs, stdlib + optional local src/acne, tests green `pytest tests/test_harness_vector.py -v`.
+- **v5 Prime honesty**: early_exit after 2, fallback visibleAbandonments, noFake7of7, zero_deps true, no torch for static-site path, provenance-honest eval_scoreboard.json 7/7/0, candidate.json honest.
 
 ## What's New in v0.7.0 — Judgment plane (above Herdr, not beside it)
 

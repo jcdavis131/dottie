@@ -29,20 +29,36 @@ _RUNS = _REPO / "bundles" / "ultra" / "runs"
 _WORKSPACE_RUNS = _WORKSPACE_ROOT / "bundles" / "ultra" / "runs"
 _DOTTIE_RUNS = Path(__file__).resolve().parent / "runs"
 
-# 7/7 canonical
+# 7/7 canonical + v5 Prime extended 9 (task requires 7 inc scout-cli + goal hidden)
+# Task: workspace/bundles/ultra/runs, dottie/pipeline/runs, dottie/bundles/ultra/runs,
+# dottie/apps/scout-cli/dottie/pipeline/runs, apps/ava-factory/... , goal hidden_files/brief-auto-exec-checkpoints/<runId>
 _SEVEN_REL = [
     "bundles/ultra/runs",
     "dottie/pipeline/runs",
     "dottie/bundles/ultra/runs",
+    "dottie/apps/scout-cli/dottie/pipeline/runs",
     "apps/ava-factory/bundles/ultra/runs",
     "dottie/apps/ava-factory/bundles/ultra/runs",
     "dottie/apps/ava-factory/dottie/pipeline/runs",
     "apps/ava-factory/dottie/pipeline/runs",
+    "goals/refine-dottie-scout-cli-dumbmodel-com-with-vector-models/hidden_files/brief-auto-exec-checkpoints",
+]
+
+# Extra coverage for vector-* and scout-cli bundles (zero-deps, no torch, honest flags)
+_EXTRA_RELS = [
+    "dottie/apps/scout-cli/bundles/ultra/runs",
+    "apps/dottie/bundles/ultra/runs",
+    "vector-hoops/bundles/ultra/runs",
+    "vector-pitch/bundles/ultra/runs",
+    "vector-gridiron/bundles/ultra/runs",
+    "vector-equities/bundles/ultra/runs",
+    "vector-unified/bundles/ultra/runs",
+    "vector-hub/bundles/ultra/runs",
 ]
 
 def _all_runs_dirs() -> List[Path]:
     dirs = []
-    for rel in _SEVEN_REL:
+    for rel in _SEVEN_REL + _EXTRA_RELS:
         p = _WORKSPACE_ROOT / rel
         dirs.append(p)
     # also include legacy internal runs (ensures ava-factory internal still covered when workspace/apps not same as workspace/dottie/apps)
