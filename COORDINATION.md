@@ -2,6 +2,9 @@
 
 > One file, one truth. Write your claim BEFORE you edit, clear it when done.
 > Format: | Agent | Repo / Area | Since (CT) | What / Why | Branch | Status |
+| Scout-goals-ideas-loop-v2 | bundles/research MoMA-lite ACNE vs LangChain | 15:06 CDT 2026-08-07 | idea_sota_003 score 8.3 MoMA-lite 5-tier deterministic/llm/deep_research/action_operator/agentic_epic + ACNE 17 types 27 edges vs LC/LG 10-task bench p95 tokens success | scout/goals-ideas-sota-003 | claimed |
+
+
 
 | Scout-swarm-eq | vector-equities / hoops-level uplift | 20:52 CDT | Build model/methods/companies/play to match hoops depth | scout/equities-hoops-level | done 21:05 CDT — index polished hoops parity, model 70K cockpit, companies 46K dir, methods 27K real towers, play 46K guess ticker, PWA sw+manifest, audit updated |
 | Agent | Repo / Area | Since | What / Why | Branch | Status |
@@ -478,3 +481,10 @@
 <!-- merged from outside edits 2026-08-07T19:13Z -->
 | Scout-orchestrator-forms | bundles/forms tracking | 13:52 CDT 2026-08-07 | Long-project Forms polling 5m → Goals/Ideas → Launched | scout/forms-tracking-poll | in-progress |
 | Scout-orchestrator-chimera | vector-hub / chimera polish | 13:52 CDT 2026-08-07 | Long-project hub chimera 20719×64-d dailySeed LCG provenance 7/7/0 → Launched | scout/hub-chimera-polish | in-progress |
+| Scout-goals-ideas-loop-v2 | goals-ideas → launched-payments-analytics SOTA | 15:06 CDT | Idea idea_sota_005 Payments+analytics SOTA → launched-payments-analytics-wiring → Dottie factory → Launched UNLOCKS — score 11.6 top blockerBoost 1.4 researchBonus 1.05 research_required 4 papers benchmarks fee calc T+2 latency event delivery 95% — claims lane v2 SOTA 8 ideas | scout/goals-ideas-sota-005 | done 15:06 CDT 8.4 UNLOCKS |
+| Scout-goals-ideas-loop-v2 | vector-models SOTA sweep | 15:06 CDT | Idea idea_sota_001 Vector embeddings SOTA sweep 5 games vs MTEB 2025 CORAL SupCon TransformerFusion → vector-models hub → Launched — score 8.7 research_required 5 papers mteb-lite provenance 7/7/0 dailySeed determinism — JIT unified-daily-jit.js guard 64/20719/12 | scout/goals-ideas-sota-001 | doing 8.7 |
+| Scout-goals-ideas-loop-v2 | router MoMA-lite ACNE vs LangChain | 15:06 CDT | Idea idea_sota_003 MoMA-lite routing + ACNE graph 17 types 27 edges vs LangChain/LangGraph — score 8.3 latency p95 tokens_est success rate FP stuck — swarm deep agents → Launched — research_required 3 papers | scout/goals-ideas-sota-003 | doing 8.3 |
+| Scout-goals-ideas-loop-v2 | orchestrator dashboard strip | 15:06 CDT | Idea idea_sota_008 Live orchestrator dashboard Ideas→Goals→Swarm chain — score 7/8 → dynamic-tracking → Launched — claim→doing latency board freshness | scout/goals-ideas-sota-008 | doing 7.2 |
+
+| Scout-goals-ideas-loop-v2 | vector-models-5-game-hub-at-hoops-level-parity / SOTA lane 001 vector embeddings sweep | 15:06 CDT 2026-08-07 | idea_sota_001 Vector SOTA sweep 8.7 — research 5 papers MTEB 2025 CORAL SupCon TransformerFusion provenance 7/7/0, table baseline vs 5 models, JIT verify, mteb-lite harness 8.0+ zero_deps, candidate threshold — chain idea_sota_001 → vector-models hub → master → Launched | scout/goals-ideas-sota-001 | done 15:06 CDT — runId vector-sota-sweep-20260807-1506CDT candidate 8.7 PASS honesty_gate 8.0 timeline 7-field ok JIT fast_path true research md 20KB |
+| Scout-goals-ideas-loop-v2 | goals-ideas → launched-payments-analytics SOTA DONE — 65% | 15:06 CDT 2026-08-07 | Chain Payments+analytics SOTA → Launched wiring → Dottie factory → Launched — Fee table Stripe 2.9%+30c /bin/bash.88 vs Lemon MoR 5%+50c .50 T+2 vs T+10 PostHog local 95% 2 events DAU1 candidate 8.4 >8.0 triple-write timeline 7-field 3/3 spots OK | scout/goals-ideas-sota-005 | done 15:06 CDT 8.4 UNLOCKS live |
