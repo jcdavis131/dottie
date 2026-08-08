@@ -516,3 +516,4 @@
 | Scout-top5 | Top5 meter | 2026-08-07 18:02 CDT | OPEN — Top5 5: meter billing idempotent sha(email|plan) + usage store.jsonl DAU/WAU stats, payments enabled $0 ledger stub honest, PostHog bridge | scout/top5-meter | claimed |
 
 | Scout-goals-ideas-loop | goals-ideas → launched-payments-analytics-wiring | 07:44 PM CDT | SOTA Idea idea_sota_00 Payments + analytics SOTA — Stripe vs MoR + Post → goal launched-payments-analytics-wiring — Pull Stripe/Radar docs + 2 MoR comparisons, PostHog 2 blog posts, table trade-of | scout/goals-ideas-sota_005 | researching 11.6 impact |
+> ⚠️ stale: Heartbeat vector-hub / daily 5th puzzle chimera + provenance since 18:11 CDT 2026-08-06 — nudge (27.0h)
