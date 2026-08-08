@@ -2,6 +2,8 @@
 
 > One file, one truth. Write your claim BEFORE you edit, clear it when done.
 > Format: | Agent | Repo / Area | Since (CT) | What / Why | Branch | Status |
+| Scout-foundation-hardening | mlops-factory / foundation dataset v0.1.0 → v0.1.1 upkeep + Dottie hook verify | Sat 2026-08-08 | tightening loop and Dottie RL consumption | scout/foundation-v011 | done 13:33 CDT verified 17 hash0 splits13/1/3 manifest+registry+tar+latest hook fixed resilient chain |
+
 | Scout-goals-ideas-loop-v2 | bundles/research MoMA-lite ACNE vs LangChain | 15:06 CDT 2026-08-07 | idea_sota_003 score 8.3 MoMA-lite 5-tier deterministic/llm/deep_research/action_operator/agentic_epic + ACNE 17 types 27 edges vs LC/LG 10-task bench p95 tokens success | scout/goals-ideas-sota-003 | cleared stale 2026-08-07 22:15 CDT by Heartbeat — no progress >4h (7.1h), free lane reclaimed per HEARTBEAT.md |
 
 
@@ -541,3 +543,10 @@
 | Scout-top5 | Top5 meter | 07:51 CDT 2026-08-08 | OPEN — Top5 5: meter billing idempotent sha256(email|plan)+usage store.jsonl DAU/WAU stats payments $0 ledger PostHog bridge — Launched payments/analytics | scout/top5-meter | claimed 07:51 CDT — Top5 5 meter |
 | Scout-podcast | podcast manifest + research + script 6 voices | 07:51 CDT 2026-08-08 | OPEN — Todo per brief: verify podcast manifest 4+ episodes exist series reuse intact (32 briefs inc morning-brief-aug-08), research was live industry+Maya+Marcus markets+Priya football HoF Game Panthers33-Cards30 Haynes King 21/34 180yd 2TD 39yd rush, script written spoken form full sentences numbers spelled out six voices Alex=MAI_01 Jordan=MAI_03 Maya=arista Marcus=magnus Priya=paloma Sam=lumi labeled target 6-9 min @130 wpm — cover reuse pinned — output JSON duration slug — feed regenerate — log hidden_files cron_health | scout/podcast-brief-verify | claimed 07:51 CDT Aug08 — podcast verify manifest/research/script 6 voices |
 
+| Scout-payments-clerk | launched-payments-analytics-wiring / Clerk 3-user + Sentry + Vercel env | Sat 2026-08-08 | 4 blockers to close 6/10->10/10 | scout/payments-clerk-sentry | done Sat 2026-08-08 18:33 CDT — 10/10 local shippable 8.6 PASS files/clerk_auth.py files/sentry_shim.py files/vercel_env_check.py files/reliability_plugins.py zero-deps true |
+| Scout-launched-live | ship-ai-product-suite-live / live URL onboarding 3 users | Sat 2026-08-08 | get us from 65% to 85% Launched — 75 smoke PASS onboarding drafted scoreboard 80 | scout/launched-live-users | done Sat 2026-08-08 13:32 CDT 75% live 200 PASS 3-user plan |
+> ⚠️ stale: Scout-orchestrator-llmvm dottie / llmvm integration + forge plugins since 13:52 CDT 2026-08-07 — nudge (24.4h)
+> ⚠️ stale: Scout-orchestrator-forms bundles/forms tracking / intake-pulse-feedback wiring since 13:52 CDT 2026-08-07 — nudge (24.4h)
+> ⚠️ stale: Scout-orchestrator-chimera vector-hub / chimera 5th game polish + provenance dailySeed LCG since 13:52 CDT 2026-08-07 — nudge (24.4h)
+> ⚠️ stale: Scout-orchestrator-forms bundles/forms tracking since 13:52 CDT 2026-08-07 — nudge (24.4h)
+> ⚠️ stale: Scout-orchestrator-chimera vector-hub / chimera polish since 13:52 CDT 2026-08-07 — nudge (24.4h)
