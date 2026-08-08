@@ -2,7 +2,7 @@
 
 > One file, one truth. Write your claim BEFORE you edit, clear it when done.
 > Format: | Agent | Repo / Area | Since (CT) | What / Why | Branch | Status |
-| Scout-goals-ideas-loop-v2 | bundles/research MoMA-lite ACNE vs LangChain | 15:06 CDT 2026-08-07 | idea_sota_003 score 8.3 MoMA-lite 5-tier deterministic/llm/deep_research/action_operator/agentic_epic + ACNE 17 types 27 edges vs LC/LG 10-task bench p95 tokens success | scout/goals-ideas-sota-003 | claimed |
+| Scout-goals-ideas-loop-v2 | bundles/research MoMA-lite ACNE vs LangChain | 15:06 CDT 2026-08-07 | idea_sota_003 score 8.3 MoMA-lite 5-tier deterministic/llm/deep_research/action_operator/agentic_epic + ACNE 17 types 27 edges vs LC/LG 10-task bench p95 tokens success | scout/goals-ideas-sota-003 | cleared stale 2026-08-07 22:15 CDT by Heartbeat — no progress >4h (7.1h), free lane reclaimed per HEARTBEAT.md |
 
 
 
@@ -509,3 +509,4 @@
 
 | Scout-goals-ideas-loop | goals-ideas → launched-payments-analytics-wiring | 07:44 PM CDT | SOTA Idea idea_sota_00 Payments + analytics SOTA — Stripe vs MoR + Post → goal launched-payments-analytics-wiring — Pull Stripe/Radar docs + 2 MoR comparisons, PostHog 2 blog posts, table trade-of | scout/goals-ideas-sota_005 | researching 11.6 impact |
 > ⚠️ stale: Heartbeat vector-hub / daily 5th puzzle chimera + provenance since 18:11 CDT 2026-08-06 — nudge (27.6h)
+| Heartbeat | vector-* / coordination sweep | 22:15 CDT 2026-08-07 | Heartbeat cleared 1 stale (>4h) Scout-goals-ideas-loop-v2 15:06 CDT 7.1h OOM guard preserved 2, verified chimera+provenance 7/7 (https://dumbmodel.com/ tile chimera Game05 20719×64-d dailySeed LCG + DM_PROVENANCE 7/7/0 live), dottie triple latest verified 7/7 OK, sync_log age 26m → watchdog restart needed, no local GPU measured G2 new, podcast_brief_auto_exec enabled 90s fresh | heartbeat | ok |
