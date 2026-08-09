@@ -267,6 +267,7 @@ def run(
         query,
         limit=int(kw.get("memory_limit", 3)),
         store_dir=kw.get("memory_store_dir"),
+        tier_b_scope=shardmemo["tier_b"]["scope"],
     )
     measured["recalled_memories"] = recalled
     if recall_error is not None:
@@ -290,12 +291,17 @@ def run(
 
 
 def _recall_minted(
-    instruction: str, limit: int = 3, store_dir=None
+    instruction: str,
+    limit: int = 3,
+    store_dir=None,
+    tier_b_scope: str | None = None,
 ) -> tuple[list[dict[str, Any]], str | None]:
     """Retrieval half of the memory layer: read shards written by the memory-mint skill.
 
     Same Tier-B scoping in both directions (mint tags with our _shardmemo_scope_before_routing;
-    query re-derives the scope from the instruction), so recall only touches one shard file.
+    run() passes the scope it already computed via `tier_b_scope`, and a standalone caller
+    that omits it falls back to the store re-deriving the scope from the instruction), so
+    recall only touches one shard file.
 
     Returns (memories, error). mint-not-installed degrades silently to ([], None) —
     routing output is unchanged except for the additive key. Any OTHER failure
@@ -330,7 +336,9 @@ def _recall_minted(
                 "branch": r["branch"],
                 "tier_b_scope": r["tier_b_scope"],
             }
-            for r in store.query(instruction=instruction, limit=limit)
+            for r in store.query(
+                instruction=instruction, tier_b_scope=tier_b_scope, limit=limit
+            )
         ], None
     except ImportError:
         return (

@@ -147,6 +147,33 @@ def default_store_dir() -> Path:
     )
 
 
+_STOPWORDS = {
+    "a",
+    "an",
+    "the",
+    "to",
+    "of",
+    "and",
+    "or",
+    "in",
+    "on",
+    "for",
+    "with",
+    "is",
+    "it",
+    "this",
+    "that",
+}
+
+
+def _tokenize(text: str) -> set[str]:
+    out = set()
+    for tok in "".join(c if c.isalnum() else " " for c in (text or "").lower()).split():
+        if len(tok) > 1 and tok not in _STOPWORDS:
+            out.add(tok)
+    return out
+
+
 class ShardStore:
     """Append-only JSONL shard store. One file per Tier-B scope; dedupe by shard_id."""
 
@@ -156,6 +183,9 @@ class ShardStore:
         self.max_shards_per_scope = max_shards_per_scope
         self._lock = threading.Lock()
         self._seen_ids: dict[str, set] = {}
+        # Derived, in-memory only — never written to disk. Lazily built per scope.
+        self._inv_index: dict[str, dict[str, set[str]]] = {}  # scope -> token -> ids
+        self._rows_by_id: dict[str, dict[str, dict]] = {}  # scope -> shard_id -> row
 
     def _path(self, tier_b_scope: str) -> Path:
         safe = "".join(c if (c.isalnum() or c in "_-") else "_" for c in tier_b_scope)
@@ -174,6 +204,26 @@ class ShardStore:
             self._seen_ids[scope] = ids
         return self._seen_ids[scope]
 
+    def _ensure_index(self, scope: str) -> None:
+        """Lazily build the per-scope inverted index. Caller MUST hold self._lock."""
+        if scope in self._inv_index:
+            return
+        tokens_to_ids: dict[str, set[str]] = {}
+        rows: dict[str, dict] = {}
+        path = self._path(scope)
+        if path.exists():
+            for line in path.read_text(encoding="utf-8").splitlines():
+                try:
+                    row = json.loads(line)
+                    shard_id = row["shard_id"]
+                except (json.JSONDecodeError, KeyError):
+                    continue
+                rows[shard_id] = row
+                for tok in _tokenize(row.get("instruction", "")):
+                    tokens_to_ids.setdefault(tok, set()).add(shard_id)
+        self._rows_by_id[scope] = rows
+        self._inv_index[scope] = tokens_to_ids
+
     def append(self, shard: MemoryShard) -> bool:
         """Append if new. Returns True if written, False if deduped or scope is full."""
         with self._lock:
@@ -183,6 +233,14 @@ class ShardStore:
             with self._path(shard.tier_b_scope).open("a", encoding="utf-8") as f:
                 f.write(json.dumps(asdict(shard)) + "\n")
             ids.add(shard.shard_id)
+            if shard.tier_b_scope in self._inv_index:
+                # Index already built for this scope: update it incrementally so a
+                # reopened file is not needed. (If unbuilt, the lazy build reads disk.)
+                row = asdict(shard)
+                self._rows_by_id[shard.tier_b_scope][shard.shard_id] = row
+                inv = self._inv_index[shard.tier_b_scope]
+                for tok in _tokenize(shard.instruction):
+                    inv.setdefault(tok, set()).add(shard.shard_id)
             return True
 
     def query(
@@ -193,10 +251,14 @@ class ShardStore:
         limit: int = 5,
         only_ok: bool = True,
     ) -> list[dict[str, Any]]:
-        """Retrieve recent shards for a routing decision.
+        """Retrieve shards for a routing decision, coarse-to-fine.
 
         If `instruction` is given and no explicit scope, the SAME ShardMemo scoping used at
         mint time picks the Tier-B file to read — mint and retrieval stay symmetric.
+
+        Ranking: with a non-empty `instruction`, rows are ordered by (token-overlap
+        with the instruction, recency); with an empty instruction, recency only.
+        Filters (only_ok, branch) and result count are unchanged either way.
         """
         if tier_b_scope is None and instruction:
             tier_b_scope = str(scope_before_routing(instruction)["tier_b"]["scope"])
@@ -220,7 +282,22 @@ class ShardStore:
                 if branch and row.get("branch") != branch:
                     continue
                 rows.append(row)
-        rows.sort(key=lambda r: r.get("minted_ts", 0.0), reverse=True)
+        if instruction:
+            qtokens = _tokenize(instruction)
+            with self._lock:
+                for scope in scopes:
+                    if scope and self._path(scope).exists():
+                        self._ensure_index(scope)
+
+            def _overlap(r):
+                rt = _tokenize(r.get("instruction", ""))
+                return len(qtokens & rt) / max(1, len(qtokens))
+
+            rows.sort(
+                key=lambda r: (_overlap(r), r.get("minted_ts", 0.0)), reverse=True
+            )
+        else:
+            rows.sort(key=lambda r: r.get("minted_ts", 0.0), reverse=True)
         return rows[:limit]
 
     def counts(self) -> dict[str, int]:
