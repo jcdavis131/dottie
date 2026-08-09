@@ -31,6 +31,14 @@ research-engine/results/results.tsv
 research-engine/results/autoresearch_*.json
 
 data/
+# orchestration corpus is a committed deliverable (built by
+# scripts/build_orchestration_corpus.py) — whitelist it out of the data/ blanket
+!data/
+data/*
+!data/orchestration/
+data/orchestration/*
+!data/orchestration/corpus.jsonl
+!data/orchestration/corpus_meta.json
 runs/
 ckpt/
 export/

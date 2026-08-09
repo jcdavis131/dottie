@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "built_at": "2026-08-09T03:21:11.904954+00:00",
+  "corpus_source": "l2_corpus",
+  "trainer": "orchestrator_model",
+  "seed_offset": 0,
+  "time_budget_s": 60.0,
+  "n_records_dropped_bad_label": 0,
+  "corpus_counts": {
+    "train": 741,
+    "val": 83,
+    "test": 5,
+    "measured_holdout": 1
+  },
+  "variants": [
+    {
+      "name": "v1",
+      "config": {
+        "n_buckets": 4096,
+        "embed_dim": 16,
+        "hidden_dim": 64,
+        "lr": 0.001,
+        "beta": 1.0,
+        "reward_mode": "raw"
+      },
+      "seed": 100,
+      "n_train": 741,
+      "epochs_run": 20,
+      "stopped_early": false,
+      "train_seconds": 1.866,
+      "final_loss": 0.333748,
+      "val_tier_accuracy": 0.73494
+    },
+    {
+      "name": "v2",
+      "config": {
+        "n_buckets": 4096,
+        "embed_dim": 16,
+        "hidden_dim": 64,
+        "lr": 0.003,
+        "beta": 1.0,
+        "reward_mode": "raw"
+      },
+      "seed": 101,
+      "n_train": 741,
+      "epochs_run": 20,
+      "stopped_early": false,
+      "train_seconds": 0.971,
+      "final_loss": 0.032692,
+      "val_tier_accuracy": 0.73494
+    },
+    {
+      "name": "v3",
+      "config": {
+        "n_buckets": 4096,
+        "embed_dim": 32,
+        "hidden_dim": 64,
+        "lr": 0.001,
+        "beta": 1.0,
+        "reward_mode": "raw"
+      },
+      "seed": 102,
+      "n_train": 741,
+      "epochs_run": 20,
+      "stopped_early": false,
+      "train_seconds": 1.444,
+      "final_loss": 0.121687,
+      "val_tier_accuracy": 0.686747
+    },
+    {
+      "name": "v4",
+      "config": {
+        "n_buckets": 8192,
+        "embed_dim": 16,
+        "hidden_dim": 64,
+        "lr": 0.001,
+        "beta": 1.0,
+        "reward_mode": "raw"
+      },
+      "seed": 103,
+      "n_train": 741,
+      "epochs_run": 20,
+      "stopped_early": false,
+      "train_seconds": 0.979,
+      "final_loss": 0.269701,
+      "val_tier_accuracy": 0.939759
+    },
+    {
+      "name": "v5",
+      "config": {
+        "n_buckets": 4096,
+        "embed_dim": 16,
+        "hidden_dim": 64,
+        "lr": 0.001,
+        "beta": 0.5,
+        "reward_mode": "raw"
+      },
+      "seed": 104,
+      "n_train": 741,
+      "epochs_run": 20,
+      "stopped_early": false,
+      "train_seconds": 0.959,
+      "final_loss": 0.307831,
+      "val_tier_accuracy": 0.590361
+    },
+    {
+      "name": "v6",
+      "config": {
+        "n_buckets": 4096,
+        "embed_dim": 16,
+        "hidden_dim": 64,
+        "lr": 0.001,
+        "beta": 2.0,
+        "reward_mode": "raw"
+      },
+      "seed": 105,
+      "n_train": 741,
+      "epochs_run": 20,
+      "stopped_early": false,
+      "train_seconds": 0.963,
+      "final_loss": 0.278123,
+      "val_tier_accuracy": 0.674699
+    },
+    {
+      "name": "v7",
+      "config": {
+        "n_buckets": 4096,
+        "embed_dim": 16,
+        "hidden_dim": 64,
+        "lr": 0.001,
+        "beta": 1.0,
+        "reward_mode": "binary"
+      },
+      "seed": 106,
+      "n_train": 741,
+      "epochs_run": 20,
+      "stopped_early": false,
+      "train_seconds": 0.952,
+      "final_loss": 0.27988,
+      "val_tier_accuracy": 0.638554
+    },
+    {
+      "name": "v8",
+      "config": {
+        "n_buckets": 8192,
+        "embed_dim": 32,
+        "hidden_dim": 64,
+        "lr": 0.003,
+        "beta": 1.0,
+        "reward_mode": "raw"
+      },
+      "seed": 107,
+      "n_train": 741,
+      "epochs_run": 20,
+      "stopped_early": false,
+      "train_seconds": 1.046,
+      "final_loss": 0.027691,
+      "val_tier_accuracy": 0.73494
+    }
+  ]
+}
