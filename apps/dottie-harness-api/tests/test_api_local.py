@@ -87,6 +87,9 @@ def server(tmp_path, monkeypatch):
     flip env vars via the returned helper BEFORE their first request.
     """
     monkeypatch.setenv("DOTTIE_HARNESS_WEIGHTS", str(tmp_path / "nope" / "missing.json"))
+    # Disable the committed-weights URL fallback so degraded-mode tests
+    # actually exercise degradation (and never touch the network).
+    monkeypatch.setenv("DOTTIE_HARNESS_WEIGHTS_URL", "")
     empty_meta = tmp_path / "empty_meta"
     empty_meta.mkdir()
     monkeypatch.setenv("DOTTIE_HARNESS_META_DIR", str(empty_meta))

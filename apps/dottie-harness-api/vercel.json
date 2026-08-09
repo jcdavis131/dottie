@@ -1,3 +1,12 @@
 {
-  "rewrites": [{ "source": "/api/(.*)", "destination": "/api/index" }]
+  "routes": [
+    {
+      "src": "/.*",
+      "has": [{ "type": "host", "value": "(www\\.)?who-e\\.com" }],
+      "dest": "/who-e.html"
+    },
+    { "src": "/api/(.*)", "dest": "/api/index" },
+    { "src": "/", "dest": "/index.html" },
+    { "handle": "filesystem" }
+  ]
 }

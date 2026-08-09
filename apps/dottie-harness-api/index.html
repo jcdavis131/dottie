@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Validation Lab — Dottie harness &amp; training progress</title>
+<style>
+:root { color-scheme: light;
+  --surface: #fcfcfb; --card: #ffffff; --border: #e4e2dc;
+  --text-1: #0b0b0b; --text-2: #52514e; --text-3: #8a8880;
+  --s1: #2a78d6; --s2: #eb6834;
+  --good: #0ca30c; --serious: #ec835a; --critical: #d03b3b; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  color-scheme: dark;
+  --surface: #1a1a19; --card: #232322; --border: #3a3936;
+  --text-1: #ffffff; --text-2: #c3c2b7; --text-3: #8a8880;
+  --s1: #3987e5; --s2: #d95926; } }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface: #1a1a19; --card: #232322; --border: #3a3936;
+  --text-1: #ffffff; --text-2: #c3c2b7; --text-3: #8a8880;
+  --s1: #3987e5; --s2: #d95926; }
+* { box-sizing: border-box; margin: 0; }
+body { background: var(--surface); color: var(--text-1);
+  font: 15px/1.55 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  padding: 2rem 1rem 4rem; }
+main { max-width: 1060px; margin: 0 auto; }
+header h1 { font-size: 1.45rem; letter-spacing: -0.01em; }
+header p.sub { color: var(--text-2); margin-top: .3rem; max-width: 68ch; }
+.grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); margin-top: 1.5rem; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1.1rem 1.25rem; }
+.card.wide { grid-column: 1 / -1; }
+.card h2 { font-size: .82rem; text-transform: uppercase; letter-spacing: .07em; color: var(--text-2); margin-bottom: .75rem; }
+.hero { display: flex; flex-wrap: wrap; gap: 2rem; align-items: baseline; }
+.hero .big { font-size: 2.9rem; font-weight: 650; letter-spacing: -0.02em; }
+.hero .unit { color: var(--text-2); font-size: .95rem; }
+.badge { display: inline-flex; align-items: center; gap: .45rem; border-radius: 999px;
+  padding: .28rem .8rem; font-size: .82rem; font-weight: 600; border: 1.5px solid; }
+.badge.not-promoted { color: var(--critical); border-color: var(--critical); }
+.badge .dot { width: .6rem; height: .6rem; border-radius: 50%; background: currentColor; }
+table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+th { text-align: left; color: var(--text-2); font-weight: 600; padding: .35rem .6rem .35rem 0; border-bottom: 1px solid var(--border); }
+td { padding: .38rem .6rem .38rem 0; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+tr:last-child td { border-bottom: none; }
+.status { display: inline-flex; align-items: center; gap: .4rem; font-weight: 600; font-size: .82rem; }
+.status.fail { color: var(--critical); }
+.status.unmeasured { color: var(--text-2); }
+.status.queue-wait { color: var(--text-2); }
+.status.queue-exec { color: var(--s1); }
+.note { color: var(--text-3); font-size: .8rem; margin-top: .7rem; }
+svg text { font: 12px -apple-system, "Segoe UI", Roboto, sans-serif; }
+footer { margin-top: 2.5rem; border-top: 1px solid var(--border); padding-top: 1rem;
+  color: var(--text-3); font-size: .76rem; }
+footer code { font-size: .74rem; word-break: break-all; }
+.api-links a { color: var(--s1); text-decoration: none; margin-right: 1rem; }
+.chart-scroll { overflow-x: auto; }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>Validation Lab — Dottie harness &amp; training progress</h1>
+  <p class="sub">Read-only scorecard for the Dottie orchestration stack: the live harness
+  API and the distilled router model trained from run traces. Every number on this page
+  is recomputed from committed event logs and reports — history, not live telemetry —
+  and unmeasured quantities render as unmeasured.</p>
+</header>
+
+<div class="grid">
+  <div class="card wide">
+    <h2>Champion router model — orch-mlp-v1-v4</h2>
+    <div class="hero">
+      <div><span class="big">94.0%</span>
+        <span class="unit">held-out tier accuracy (83 validation records)</span></div>
+      <span class="badge not-promoted"><span class="dot"></span> NOT PROMOTED — insufficient measured held-out data (n=1, need &gt;=10)</span>
+    </div>
+    <p class="note">Promotion is eval-gated and fail-closed: a champion ships to routing
+    only after the gate passes on measured data. This one leads the ladder but the
+    measured hold-out is too small to certify; it is deployed for advisory scoring only.</p>
+  </div>
+
+  <div class="card wide">
+    <h2>Hill-climb ladder — 8 variants, real CPU training runs</h2>
+    <div class="chart-scroll"><svg viewBox="0 0 640 286" role="img" aria-label="Held-out tier accuracy for the eight hill-climb variants"><line x1="161.5" y1="4" x2="161.5" y2="260" stroke="var(--border)" stroke-width="1"/><text x="161.5" y="276" text-anchor="middle" fill="var(--text-3)">25%</text><line x1="271.0" y1="4" x2="271.0" y2="260" stroke="var(--border)" stroke-width="1"/><text x="271.0" y="276" text-anchor="middle" fill="var(--text-3)">50%</text><line x1="380.5" y1="4" x2="380.5" y2="260" stroke="var(--border)" stroke-width="1"/><text x="380.5" y="276" text-anchor="middle" fill="var(--text-3)">75%</text><line x1="490.0" y1="4" x2="490.0" y2="260" stroke="var(--border)" stroke-width="1"/><text x="490.0" y="276" text-anchor="middle" fill="var(--text-3)">100%</text><text x="44" y="23.0" text-anchor="end" fill="var(--text-2)">v1</text><rect x="52" y="6" width="321.9" height="20" rx="4" fill="var(--s1)"><title>v1: 73.5% held-out tier accuracy — buckets 4096, embed 16, lr 0.001, 1.87s train</title></rect><text x="44" y="55.0" text-anchor="end" fill="var(--text-2)">v2</text><rect x="52" y="38" width="321.9" height="20" rx="4" fill="var(--s1)"><title>v2: 73.5% held-out tier accuracy — buckets 4096, embed 16, lr 0.003, 0.97s train</title></rect><text x="44" y="87.0" text-anchor="end" fill="var(--text-2)">v3</text><rect x="52" y="70" width="300.8" height="20" rx="4" fill="var(--s1)"><title>v3: 68.7% held-out tier accuracy — buckets 4096, embed 32, lr 0.001, 1.44s train</title></rect><text x="44" y="119.0" text-anchor="end" fill="var(--text-2)">v4</text><rect x="52" y="102" width="411.6" height="20" rx="4" fill="var(--s1)"><title>v4: 94.0% held-out tier accuracy — buckets 8192, embed 16, lr 0.001, 0.98s train</title></rect><text x="471.614442" y="118.0" fill="var(--text-1)" font-weight="650">94.0% — champion</text><text x="44" y="151.0" text-anchor="end" fill="var(--text-2)">v5</text><rect x="52" y="134" width="258.6" height="20" rx="4" fill="var(--s1)"><title>v5: 59.0% held-out tier accuracy — buckets 4096, embed 16, lr 0.001, 0.96s train</title></rect><text x="44" y="183.0" text-anchor="end" fill="var(--text-2)">v6</text><rect x="52" y="166" width="295.5" height="20" rx="4" fill="var(--s1)"><title>v6: 67.5% held-out tier accuracy — buckets 4096, embed 16, lr 0.001, 0.96s train</title></rect><text x="44" y="215.0" text-anchor="end" fill="var(--text-2)">v7</text><rect x="52" y="198" width="279.7" height="20" rx="4" fill="var(--s1)"><title>v7: 63.9% held-out tier accuracy — buckets 4096, embed 16, lr 0.001, 0.95s train</title></rect><text x="44" y="247.0" text-anchor="end" fill="var(--text-2)">v8</text><rect x="52" y="230" width="321.9" height="20" rx="4" fill="var(--s1)"><title>v8: 73.5% held-out tier accuracy — buckets 8192, embed 32, lr 0.003, 1.05s train</title></rect></svg></div>
+    <p class="note">Advantage-weighted training on the orchestration corpus
+    (seed-pinned, ≤60s budget per variant; actual 0.95–1.87s).
+    Bars share one hue — one measure across variants; hover any bar for its config.</p>
+  </div>
+
+  <div class="card">
+    <h2>Promotion gate — fail-closed</h2>
+    <table><tbody><tr><td>Measured held-out coverage (n ≥ 10)</td><td><span class="status fail">✕ FAIL — 1 of 10 required measured held-out records</span></td></tr><tr><td>Beats frequency-prior baseline on measured hold-out</td><td><span class="status unmeasured">— UNMEASURED — insufficient measured held-out data</span></td></tr><tr><td>Beats heuristic router on measured hold-out</td><td><span class="status unmeasured">— UNMEASURED — insufficient measured held-out data</span></td></tr></tbody></table>
+    <p class="note">Unmeasured renders as unmeasured, never as pass. The gate unlocks
+    as real harness runs accumulate measured hold-out records.</p>
+  </div>
+
+  <div class="card">
+    <h2>Validation queue</h2>
+    <table>
+      <thead><tr><th>Method</th><th>Site</th><th>Status</th></tr></thead>
+      <tbody><tr><td>Barlow Twins</td><td>research</td><td><span class="status queue-wait">awaiting pilot</span></td></tr><tr><td>InfoNCE domain tune</td><td>research</td><td><span class="status queue-exec">in execution</span></td></tr></tbody>
+    </table>
+    <p class="note">Candidates advance pilot → charter → deploy; verdicts publish here
+    with their evidence references.</p>
+  </div>
+
+  <div class="card">
+    <h2>Training corpus — 829 records by provenance</h2>
+    <svg viewBox="0 0 320 26" role="img" aria-label="Corpus records by provenance" style="width:100%;height:auto"><rect x="0" y="2" width="5.4" height="22" rx="4" fill="var(--s1)"><title>measured: 14 records mined from real run timelines and workflow journals</title></rect><rect x="7.4" y="2" width="312.6" height="22" rx="4" fill="var(--s2)"><title>simulated: 815 records from the seeded synthetic battery</title></rect></svg><div style="display:flex;gap:1.2rem;margin-top:.45rem;font-size:.82rem;color:var(--text-2)"><span><span style="display:inline-block;width:.65rem;height:.65rem;border-radius:50%;background:var(--s1);margin-right:.35rem"></span>measured · 14</span><span><span style="display:inline-block;width:.65rem;height:.65rem;border-radius:50%;background:var(--s2);margin-right:.35rem"></span>simulated · 815</span></div>
+    <p class="note">Provenance is labeled per record. The measured slice grows with every
+    harness run; simulated records come from a seeded, deterministic battery
+    (seed 20260809).</p>
+  </div>
+
+  <div class="card">
+    <h2>Corpus by routing tier</h2>
+    <table><thead><tr><th>Tier</th><th>Records</th></tr></thead>
+    <tbody><tr><td>agentic_epic</td><td>297</td></tr><tr><td>deep_research</td><td>263</td></tr><tr><td>action_operator</td><td>147</td></tr><tr><td>deterministic</td><td>111</td></tr><tr><td>llm</td><td>11</td></tr></tbody></table>
+  </div>
+
+  <div class="card wide">
+    <h2>Run scoreboard — mined from committed timelines</h2>
+    <table>
+      <thead><tr><th>Agent</th><th>Runs</th><th>Events</th><th>OK rate</th><th>p50 latency</th></tr></thead>
+      <tbody><tr><td>researcher</td><td>3</td><td>3</td><td>100%</td><td>30 ms</td></tr><tr><td>scout-lc-deep</td><td>3</td><td>3</td><td>100%</td><td>55 ms</td></tr><tr><td>scout-lc-langchain</td><td>3</td><td>3</td><td>100%</td><td>45 ms</td></tr><tr><td>scout-prime-coordinator</td><td>3</td><td>3</td><td>100%</td><td>0 ms</td></tr><tr><td>strategist</td><td>3</td><td>3</td><td>100%</td><td>35 ms</td></tr></tbody>
+    </table>
+    <p class="note">All runs to date succeeded — an OK rate of 100% is this period's data,
+    not a claim; failure classes will appear here as they occur.</p>
+  </div>
+</div>
+
+<footer>
+  <div class="api-links" style="margin-bottom:.8rem">
+    Live harness API:
+    <a href="/api/health">/api/health</a>
+    <a href="/api/stats">/api/stats</a>
+    <span style="color:var(--text-3)">POST /api/route · POST /api/plan</span>
+  </div>
+  <div>Built 2026-08-09T03:21:11.904954+00:00 at commit <code>f4ef74e</code> from committed sources:</div>
+  <div><code>apps/ava-factory/reports/orchestrator/ladder_report.json</code> · <code>sha256:e4ad115184b8e30d…</code></div><div><code>apps/ava-factory/reports/orchestrator/eval_report.json</code> · <code>sha256:6b2bfaed6ce5faf9…</code></div><div><code>apps/dottie-harness-api/lib/meta/corpus_meta.json</code> · <code>sha256:cf88c2cfb9a4bb5a…</code></div><div><code>workspace/artifacts/monitor/scoreboard.json</code> · <code>sha256:48d92653c741d8b2…</code></div><div><code>docs/salvage/bd-queue.json</code> · <code>sha256:b37a9fb8f8ec3bba…</code></div>
+  <div style="margin-top:.6rem">Read-only surface — no write path. Retracted or superseded
+  numbers only ever appear beside an explicit retraction marker.</div>
+</footer>
+</main>
+</body>
+</html>

@@ -51,6 +51,35 @@ def _reset() -> None:
     _CACHE.clear()
 
 
+# Fallback for deploys that ship without the 2.5 MB weights file: fetch the
+# COMMITTED champion from the repository's raw URL once per cold start and
+# cache it in /tmp. Same committed source, lazily materialized; override with
+# DOTTIE_HARNESS_WEIGHTS_URL, disable by setting it empty.
+_DEFAULT_WEIGHTS_URL = (
+    "https://raw.githubusercontent.com/jcdavis131/dottie/"
+    "claude/longcat-2-architecture-moxdny/"
+    "apps/ava-factory/reports/orchestrator/champion_weights.json"
+)
+
+
+def _fetch_weights_to_tmp() -> str | None:
+    url = os.environ.get("DOTTIE_HARNESS_WEIGHTS_URL", _DEFAULT_WEIGHTS_URL)
+    if not url:
+        return None
+    tmp = Path("/tmp/champion_weights.json")
+    if tmp.exists() and tmp.stat().st_size > 0:
+        return str(tmp)
+    try:
+        import urllib.request
+
+        with urllib.request.urlopen(url, timeout=20) as resp:  # noqa: S310 — https URL, committed source
+            body = resp.read()
+        tmp.write_bytes(body)
+        return str(tmp)
+    except OSError:
+        return None
+
+
 def get_model() -> dict | None:
     """Load-and-cache champion weights; None when absent or invalid."""
     if "model" not in _CACHE:
@@ -58,7 +87,14 @@ def get_model() -> dict | None:
         try:
             _CACHE["model"] = orch_infer.load_weights(path)
         except (FileNotFoundError, ValueError, json.JSONDecodeError, OSError):
-            _CACHE["model"] = None
+            fetched = _fetch_weights_to_tmp()
+            if fetched is not None:
+                try:
+                    _CACHE["model"] = orch_infer.load_weights(fetched)
+                except (FileNotFoundError, ValueError, json.JSONDecodeError, OSError):
+                    _CACHE["model"] = None
+            else:
+                _CACHE["model"] = None
     return _CACHE["model"]
 
 
