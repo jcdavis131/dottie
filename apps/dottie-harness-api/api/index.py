@@ -66,7 +66,9 @@ def _fetch_weights_to_tmp() -> str | None:
     url = os.environ.get("DOTTIE_HARNESS_WEIGHTS_URL", _DEFAULT_WEIGHTS_URL)
     if not url:
         return None
-    tmp = Path("/tmp/champion_weights.json")
+    import tempfile
+
+    tmp = Path(tempfile.gettempdir()) / "champion_weights.json"
     if tmp.exists() and tmp.stat().st_size > 0:
         return str(tmp)
     try:
