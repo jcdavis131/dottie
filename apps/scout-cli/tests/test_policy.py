@@ -491,6 +491,11 @@ class TestUngatedWriteCapablePluginsAreTracked:
             # allowlists; the enforce_or_raise gates at their write sites are
             # planned work (docs/PLATFORM_IMPROVEMENT_PLAN.md P2), not landed.
             "agents", "harness",
+            # Deliberate 2026-08-09, acne go-live: the write sites live inside
+            # the installed acne package (ContactsStore/TLPGStore), not in
+            # plugin code, so there is no plugin-side path to gate — judged in
+            # scripts/declared_capabilities_baseline.json (contacts entry).
+            "contacts",
         }
     )
 
