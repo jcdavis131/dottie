@@ -4,8 +4,11 @@ harness runner — end-to-end run loop for `scout harness run`.
 Pipeline: route -> plan -> execute -> checkpoint/timeline -> critic.
 
 Everything in this module is deterministic and local: the executors are pure
-python functions over the goal text and prior artifacts — no network (the plugin
-manifest pins capabilities network:false), no external model calls, no subprocess.
+python functions over the goal text and prior artifacts — no external model
+calls, no subprocess, and no network with ONE declared exception: the
+mcp-operator executor (mcp: goals only) makes a downstream MCP tool call after
+the fail-closed gates in mcp_executor.py, including the default-deny user URL
+allowlist. The plugin manifest declares that network axis.
 Latencies in the timeline are MEASURED with time.perf_counter(); token counts are
 MEASURED as 0 — deterministic executors consume no external-model tokens, and
 artifact size is retained separately as artifact_chars per node. Provenance is
@@ -32,6 +35,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+from bigbang.plugins.harness import mcp_executor
 from bigbang.plugins.harness.cli import (
     INTENT_KEYWORDS,
     _classify_moma,
@@ -238,7 +242,20 @@ def _exec_operator(ctx: dict) -> str:
     return f"heartbeat {ctx['node']['id']} ok"
 
 
+def _exec_mcp_operator(ctx: dict) -> str:
+    """Proxied downstream MCP call. Failure signal is an exception (raise), so an
+    MCP failure flows through the SAME recovery-ladder path as every other
+    executor — no parallel failure handling."""
+    spec = ctx["mcp"]
+    res = mcp_executor.execute_mcp_action(spec["namespace"], spec["server"], spec["tool"], spec["args"])
+    if res["status"] != "ok":
+        raise RuntimeError(f"mcp {res['error_class']}: {res.get('error')}")
+    # artifact keeps the full measured result (latency_ms/tokens_est/payload)
+    return json.dumps(res, default=str, sort_keys=True)
+
+
 EXECUTORS: dict[str, Callable[[dict], str]] = {
+    "mcp-operator": _exec_mcp_operator,
     "strategist": _exec_strategist,
     "planner": _exec_planner,
     "deep-researcher": _exec_deep_researcher,
@@ -342,8 +359,21 @@ def _running_score(nodes: list[dict]) -> float:
 
 
 def run_goal(goal: str, *, max_nodes: int = 0, seed: int = 0, run_id: str = "",
-             runs_dir: Path | None = None) -> dict:
+             runs_dir: Path | None = None, mcp_namespace: str = "") -> dict:
     """Route -> plan -> execute -> checkpoint/timeline -> critic. Deterministic, local."""
+    # mcp: goals are validated BEFORE any store write (mkdir/timeline/checkpoint)
+    # so a misconfigured goal leaves no run artifacts and touches no network.
+    mcp_action: dict | None = None
+    if goal.startswith(mcp_executor.MCP_GOAL_PREFIX):
+        if not mcp_namespace:
+            return {"ok": False, "goal": goal, "command": "harness run",
+                    "error": "mcp: goal requires an --mcp-namespace (default disabled) — no network or store write attempted"}
+        parsed = mcp_executor.parse_mcp_goal(goal)
+        if parsed is None or not parsed.get("ok"):
+            return {"ok": False, "goal": goal, "command": "harness run",
+                    "error": (parsed or {}).get("error", "unparseable mcp goal")}
+        mcp_action = parsed
+
     # runs_dir default is HOME-relative (workspace canonical), never CWD-relative:
     # this environment resets CWD between shells and tests redirect HOME.
     runs_dir = Path(runs_dir) if runs_dir else Path.home() / "workspace" / "bundles" / "ultra" / "runs"
@@ -354,16 +384,39 @@ def run_goal(goal: str, *, max_nodes: int = 0, seed: int = 0, run_id: str = "",
 
     # 1. ROUTE — deterministic, in-process. Note: confidence deliberately avoids
     # route_cmd's scores['llm'] KeyError path (cli.py:99-103) on zero-keyword goals.
-    scores = {k: _score_intent(goal, k) for k in INTENT_KEYWORDS}
-    best = max(scores.values())
-    intent = max(scores, key=lambda k: scores[k]) if best > 0 else "llm"
     complexity = _complexity(goal)
-    tier = _classify_moma(goal, intent, complexity)
-    agents = _routed_agents(intent, complexity)
-    confidence = round(min(0.96, best / 4.0), 2) if best > 0 else 0.4
+    if mcp_action is not None:
+        # mcp: is an exact protocol-prefix match, not a keyword score — the
+        # route is deterministic by construction.
+        intent = "complex_action"
+        tier = "action_operator"
+        agents = _routed_agents(intent, complexity)
+        confidence = 1.0
+    else:
+        scores = {k: _score_intent(goal, k) for k in INTENT_KEYWORDS}
+        best = max(scores.values())
+        intent = max(scores, key=lambda k: scores[k]) if best > 0 else "llm"
+        tier = _classify_moma(goal, intent, complexity)
+        agents = _routed_agents(intent, complexity)
+        confidence = round(min(0.96, best / 4.0), 2) if best > 0 else 0.4
 
     # 2. PLAN
-    steps = build_plan(goal, tier)
+    if mcp_action is not None:
+        # Single-node plan. EXTERNAL_NOTIFY on purpose: a downstream MCP call is
+        # an external side effect scout cannot prove idempotent, so the recovery
+        # ladder never auto-retries it — one attempt, then escalate.
+        steps = [{
+            "id": "mcp-call",
+            "idx": 0,
+            "role": "mcp-operator",
+            "llmTier": "action_operator",
+            "rationale": f"proxied MCP call {mcp_action['server']}__{mcp_action['tool']} via namespace {mcp_namespace}",
+            "failureRisk": 0.35,  # static prior — downstream availability is unknown
+            "sideEffect": "EXTERNAL_NOTIFY",
+            "desc": f"call {mcp_action['server']}__{mcp_action['tool']}",
+        }]
+    else:
+        steps = build_plan(goal, tier)
     if max_nodes > 0:
         steps = steps[:max_nodes]
 
@@ -375,6 +428,9 @@ def run_goal(goal: str, *, max_nodes: int = 0, seed: int = 0, run_id: str = "",
 
     for step in steps:
         ctx = {"goal": goal, "node": step, "prior": dict(prior), "seed": seed, "plan": steps}
+        if mcp_action is not None:
+            ctx["mcp"] = {"namespace": mcp_namespace, "server": mcp_action["server"],
+                          "tool": mcp_action["tool"], "args": mcp_action["args"]}
 
         def _attempt(n: int, step: dict = step, ctx: dict = ctx) -> tuple:
             t0 = time.perf_counter()
@@ -461,7 +517,7 @@ def run_goal(goal: str, *, max_nodes: int = 0, seed: int = 0, run_id: str = "",
         "timeline_path": str(run_dir / "timeline.jsonl"),
         "checkpoint_path": str(checkpoint_path),
         "runs_dir": str(runs_dir),
-        "provenance": {"latency": "measured", "tokens": "estimated"},
+        "provenance": {"latency": "measured", "tokens": "measured 0"},
         "ok": True,
         "command": "harness run",
     }

@@ -513,11 +513,21 @@ def run_cmd(
     max_nodes: int = typer.Option(0, "--max-nodes", help="0 = all planned nodes"),
     seed: int = typer.Option(0, "--seed"),
     run_id: str = typer.Option("", "--run-id"),
-    runs_dir: str = typer.Option("", "--runs-dir")):
+    runs_dir: str = typer.Option("", "--runs-dir"),
+    mcp_namespace: str = typer.Option("", "--mcp-namespace", help="Meta-MCP namespace for mcp:<server>__<tool> goals ('' = mcp goals disabled)")):
     """End-to-end run loop: route -> plan -> execute -> checkpoint/timeline -> critic (deterministic local executors)."""
+    # Guard BEFORE importing/calling the runner: an mcp: goal with no namespace
+    # must fail with a clear error before any network or store write.
+    if goal.startswith("mcp:") and not mcp_namespace:
+        _emit({"ok": False, "command": "harness run", "goal": goal,
+               "error": "mcp: goal requires --mcp-namespace (default disabled) — no network or store write attempted"},
+              "harness run", json_out)
+        return
     # Lazy import on purpose: plugin discovery deletes the whole plugin on any
     # import error (plugin_loader.py:39-52), so a defect in runner.py must never
     # be able to vanish the harness plugin.
     from bigbang.plugins.harness import runner
-    res = runner.run_goal(goal, max_nodes=max_nodes, seed=seed, run_id=run_id, runs_dir=Path(runs_dir) if runs_dir else None)
+    res = runner.run_goal(goal, max_nodes=max_nodes, seed=seed, run_id=run_id,
+                          runs_dir=Path(runs_dir) if runs_dir else None,
+                          mcp_namespace=mcp_namespace)
     _emit(res, "harness run", json_out)

@@ -1,7 +1,14 @@
 name: harness
 description: Scout v3.3 orientation engine — MoMA-lite 5-tier router classifyTier deterministic-first, memory lattice dense0.7+sparse0.3+rerank+1-2hop OODA, GARNet G_workflow+G_history MDP, checkpoint pause/resume, recovery ladder, pacing :13, verification econ. v5 Prime Mission Log Stuck Detector Verifier Budget.
 capabilities:
-  network: false
+  # Network is used ONLY by the mcp: goal path (runner.py mcp-operator ->
+  # mcp_executor.execute_mcp_action): a downstream MCP tool call made through
+  # the mcp plugin's client, fail-closed behind namespace/server/enabled gates
+  # and the default-deny user URL allowlist (bigbang.core.policy.check_user_url).
+  # Every other harness path is local and deterministic.
+  network:
+    enabled: true
+    domains: ["localhost", "127.0.0.1"]
   filesystem:
     enabled: true
     write: true
