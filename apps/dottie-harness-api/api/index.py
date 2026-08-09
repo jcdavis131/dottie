@@ -57,7 +57,7 @@ def _reset() -> None:
 # DOTTIE_HARNESS_WEIGHTS_URL, disable by setting it empty.
 _DEFAULT_WEIGHTS_URL = (
     "https://raw.githubusercontent.com/jcdavis131/dottie/"
-    "claude/longcat-2-architecture-moxdny/"
+    "main/"
     "apps/ava-factory/reports/orchestrator/champion_weights.json"
 )
 
