@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "built_at": "2026-08-09T12:11:53.702705+00:00",
+  "built_at": "2026-08-09T15:19:27.431428+00:00",
   "generator": {
     "seed": 20260809,
     "battery_n": 800,
@@ -52,36 +52,51 @@
     "synthetic_battery_reward": "1.0 flat (labels are rule-derived from the same heuristic - label-match by construction), provenance simulated",
     "note": "node-scale constants fitted on latency distribution min 0 / p50 35 / p95 55 / max 55 ms and tokens max 200 - but 12/15 of those latencies are SCRIPTED constants (45/30/35/55 hardcoded at apps/scout-cli/bigbang/plugins/agents/cli.py:146,167,171,223)"
   },
+  "label_corrections": {
+    "path": "apps/ava-factory/data/orchestration/label_corrections.jsonl",
+    "n_corrections": 0,
+    "n_records_corrected": 0
+  },
   "counts": {
-    "total": 1519,
+    "total": 1556,
     "by_source": {
-      "ultra_timeline": 705,
+      "ultra_timeline": 742,
       "workflow_journal": 14,
       "synthetic_battery": 800
     },
     "by_provenance": {
-      "simulated": 815,
-      "measured": 704
+      "simulated": 834,
+      "measured": 722
     },
     "by_tier": {
       "deterministic": 251,
       "deep_research": 453,
-      "agentic_epic": 452,
-      "action_operator": 267,
-      "llm": 96
+      "llm": 115,
+      "agentic_epic": 460,
+      "action_operator": 277
     },
     "by_split": {
-      "train": 1322,
-      "val": 142,
-      "test": 55
+      "train": 1352,
+      "val": 143,
+      "test": 61
+    },
+    "by_label_tier": {
+      "simulated": 829,
+      "measured-behavior": 719,
+      "measured-outcome": 8
+    },
+    "measured_holdout_by_label_tier": {
+      "measured-behavior": 114,
+      "measured-outcome": 2,
+      "simulated": 2
     }
   },
   "sources": {
     "ultra_timeline": {
       "included": true,
       "dir": "bundles/ultra/runs",
-      "n_runs": 159,
-      "n_records": 705
+      "n_runs": 182,
+      "n_records": 742
     },
     "workflow_journal": {
       "included": true,

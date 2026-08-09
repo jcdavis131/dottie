@@ -71,9 +71,9 @@ footer code { font-size: .74rem; word-break: break-all; }
   <div class="card wide">
     <h2>Champion router model — orch-mlp-v1-v4</h2>
     <div class="hero">
-      <div><span class="big">97.9%</span>
-        <span class="unit">held-out tier accuracy (142 validation records)</span></div>
-      <span class="badge not-promoted"><span class="dot"></span> NOT PROMOTED — champion measured accuracy 0.882353 does not strictly beat both baselines (freq prior 0.196078, heuristic 1) on n=51 measured held-out records</span>
+      <div><span class="big">97.2%</span>
+        <span class="unit">held-out tier accuracy (143 validation records)</span></div>
+      <span class="badge not-promoted"><span class="dot"></span> NOT PROMOTED — champion measured accuracy 0.877193 does not strictly beat both baselines (freq prior 0.210526, heuristic 0.892857) on n=57 measured held-out records</span>
     </div>
     <p class="note">Promotion is eval-gated and fail-closed: a champion ships to routing
     only after the gate passes on measured data. Until then it serves in an advisory
@@ -82,16 +82,16 @@ footer code { font-size: .74rem; word-break: break-all; }
 
   <div class="card wide">
     <h2>Hill-climb ladder — 8 variants, real CPU training runs</h2>
-    <div class="chart-scroll"><svg viewBox="0 0 640 286" role="img" aria-label="Held-out tier accuracy for the eight hill-climb variants"><line x1="161.5" y1="4" x2="161.5" y2="260" stroke="var(--border)" stroke-width="1"/><text x="161.5" y="276" text-anchor="middle" fill="var(--text-3)">25%</text><line x1="271.0" y1="4" x2="271.0" y2="260" stroke="var(--border)" stroke-width="1"/><text x="271.0" y="276" text-anchor="middle" fill="var(--text-3)">50%</text><line x1="380.5" y1="4" x2="380.5" y2="260" stroke="var(--border)" stroke-width="1"/><text x="380.5" y="276" text-anchor="middle" fill="var(--text-3)">75%</text><line x1="490.0" y1="4" x2="490.0" y2="260" stroke="var(--border)" stroke-width="1"/><text x="490.0" y="276" text-anchor="middle" fill="var(--text-3)">100%</text><text x="44" y="23.0" text-anchor="end" fill="var(--text-2)">v1</text><rect x="52" y="6" width="370.1" height="20" rx="4" fill="var(--s1)"><title>v1: 84.5% held-out tier accuracy — buckets 4096, embed 16, lr 0.001, 28.80s train</title></rect><text x="44" y="55.0" text-anchor="end" fill="var(--text-2)">v2</text><rect x="52" y="38" width="354.7" height="20" rx="4" fill="var(--s1)"><title>v2: 81.0% held-out tier accuracy — buckets 4096, embed 16, lr 0.003, 30.97s train</title></rect><text x="44" y="87.0" text-anchor="end" fill="var(--text-2)">v3</text><rect x="52" y="70" width="354.7" height="20" rx="4" fill="var(--s1)"><title>v3: 81.0% held-out tier accuracy — buckets 4096, embed 32, lr 0.001, 51.67s train</title></rect><text x="44" y="119.0" text-anchor="end" fill="var(--text-2)">v4</text><rect x="52" y="102" width="428.7" height="20" rx="4" fill="var(--s1)"><title>v4: 97.9% held-out tier accuracy — buckets 8192, embed 16, lr 0.001, 30.77s train</title></rect><text x="488.746374" y="118.0" fill="var(--text-1)" font-weight="650">97.9% — champion</text><text x="44" y="151.0" text-anchor="end" fill="var(--text-2)">v5</text><rect x="52" y="134" width="370.1" height="20" rx="4" fill="var(--s1)"><title>v5: 84.5% held-out tier accuracy — buckets 4096, embed 16, lr 0.001, 28.51s train</title></rect><text x="44" y="183.0" text-anchor="end" fill="var(--text-2)">v6</text><rect x="52" y="166" width="394.8" height="20" rx="4" fill="var(--s1)"><title>v6: 90.1% held-out tier accuracy — buckets 4096, embed 16, lr 0.001, 28.74s train</title></rect><text x="44" y="215.0" text-anchor="end" fill="var(--text-2)">v7</text><rect x="52" y="198" width="354.7" height="20" rx="4" fill="var(--s1)"><title>v7: 81.0% held-out tier accuracy — buckets 4096, embed 16, lr 0.001, 30.46s train</title></rect><text x="44" y="247.0" text-anchor="end" fill="var(--text-2)">v8</text><rect x="52" y="230" width="354.7" height="20" rx="4" fill="var(--s1)"><title>v8: 81.0% held-out tier accuracy — buckets 8192, embed 32, lr 0.003, 34.40s train</title></rect></svg></div>
+    <div class="chart-scroll"><svg viewBox="0 0 640 286" role="img" aria-label="Held-out tier accuracy for the eight hill-climb variants"><line x1="161.5" y1="4" x2="161.5" y2="260" stroke="var(--border)" stroke-width="1"/><text x="161.5" y="276" text-anchor="middle" fill="var(--text-3)">25%</text><line x1="271.0" y1="4" x2="271.0" y2="260" stroke="var(--border)" stroke-width="1"/><text x="271.0" y="276" text-anchor="middle" fill="var(--text-3)">50%</text><line x1="380.5" y1="4" x2="380.5" y2="260" stroke="var(--border)" stroke-width="1"/><text x="380.5" y="276" text-anchor="middle" fill="var(--text-3)">75%</text><line x1="490.0" y1="4" x2="490.0" y2="260" stroke="var(--border)" stroke-width="1"/><text x="490.0" y="276" text-anchor="middle" fill="var(--text-3)">100%</text><text x="44" y="23.0" text-anchor="end" fill="var(--text-2)">v1</text><rect x="52" y="6" width="370.6" height="20" rx="4" fill="var(--s1)"><title>v1: 84.6% held-out tier accuracy — buckets 4096, embed 16, lr 0.001, 7.32s train</title></rect><text x="44" y="55.0" text-anchor="end" fill="var(--text-2)">v2</text><rect x="52" y="38" width="370.6" height="20" rx="4" fill="var(--s1)"><title>v2: 84.6% held-out tier accuracy — buckets 4096, embed 16, lr 0.003, 1.81s train</title></rect><text x="44" y="87.0" text-anchor="end" fill="var(--text-2)">v3</text><rect x="52" y="70" width="355.3" height="20" rx="4" fill="var(--s1)"><title>v3: 81.1% held-out tier accuracy — buckets 4096, embed 32, lr 0.001, 2.37s train</title></rect><text x="44" y="119.0" text-anchor="end" fill="var(--text-2)">v4</text><rect x="52" y="102" width="425.7" height="20" rx="4" fill="var(--s1)"><title>v4: 97.2% held-out tier accuracy — buckets 8192, embed 16, lr 0.001, 1.81s train</title></rect><text x="485.748264" y="118.0" fill="var(--text-1)" font-weight="650">97.2% — champion</text><text x="44" y="151.0" text-anchor="end" fill="var(--text-2)">v5</text><rect x="52" y="134" width="370.6" height="20" rx="4" fill="var(--s1)"><title>v5: 84.6% held-out tier accuracy — buckets 4096, embed 16, lr 0.001, 1.94s train</title></rect><text x="44" y="183.0" text-anchor="end" fill="var(--text-2)">v6</text><rect x="52" y="166" width="373.7" height="20" rx="4" fill="var(--s1)"><title>v6: 85.3% held-out tier accuracy — buckets 4096, embed 16, lr 0.001, 1.74s train</title></rect><text x="44" y="215.0" text-anchor="end" fill="var(--text-2)">v7</text><rect x="52" y="198" width="355.3" height="20" rx="4" fill="var(--s1)"><title>v7: 81.1% held-out tier accuracy — buckets 4096, embed 16, lr 0.001, 2.08s train</title></rect><text x="44" y="247.0" text-anchor="end" fill="var(--text-2)">v8</text><rect x="52" y="230" width="340.0" height="20" rx="4" fill="var(--s1)"><title>v8: 77.6% held-out tier accuracy — buckets 8192, embed 32, lr 0.003, 1.92s train</title></rect></svg></div>
     <p class="note">Advantage-weighted training on the orchestration corpus
-    (seed-pinned, ≤300s budget per variant; actual
-    28.5–51.7s).
+    (seed-pinned, ≤60s budget per variant; actual
+    1.7–7.3s).
     Bars share one hue — one measure across variants; hover any bar for its config.</p>
   </div>
 
   <div class="card">
     <h2>Promotion gate — fail-closed</h2>
-    <table><tbody><tr><td>Measured held-out coverage (n ≥ 10)</td><td><span class="status pass">✓ PASS — 51 of 10 required measured held-out records</span></td></tr><tr><td>Beats frequency-prior baseline on measured hold-out</td><td><span class="status pass">✓ PASS — champion 88.2% vs baseline 19.6%</span></td></tr><tr><td>Beats heuristic router on measured hold-out</td><td><span class="status fail">✕ FAIL — champion 88.2% vs baseline 100.0%</span></td></tr></tbody></table>
+    <table><tbody><tr><td>Measured held-out coverage (n ≥ 10)</td><td><span class="status pass">✓ PASS — 57 of 10 required measured held-out records</span></td></tr><tr><td>Beats frequency-prior baseline on measured hold-out</td><td><span class="status pass">✓ PASS — champion 87.7% vs baseline 21.1%</span></td></tr><tr><td>Beats heuristic router on measured hold-out</td><td><span class="status fail">✕ FAIL — champion 87.7% vs baseline 89.3%</span></td></tr></tbody></table>
     <p class="note">Unmeasured renders as unmeasured, never as pass. The gate unlocks
     as real harness runs accumulate measured hold-out records.</p>
   </div>
@@ -107,8 +107,8 @@ footer code { font-size: .74rem; word-break: break-all; }
   </div>
 
   <div class="card">
-    <h2>Training corpus — 1519 records by provenance</h2>
-    <svg viewBox="0 0 320 26" role="img" aria-label="Corpus records by provenance" style="width:100%;height:auto"><rect x="0" y="2" width="148.3" height="22" rx="4" fill="var(--s1)"><title>measured: 704 records mined from real run timelines and workflow journals</title></rect><rect x="150.3" y="2" width="169.7" height="22" rx="4" fill="var(--s2)"><title>simulated: 815 records from the seeded synthetic battery</title></rect></svg><div style="display:flex;gap:1.2rem;margin-top:.45rem;font-size:.82rem;color:var(--text-2)"><span><span style="display:inline-block;width:.65rem;height:.65rem;border-radius:50%;background:var(--s1);margin-right:.35rem"></span>measured · 704</span><span><span style="display:inline-block;width:.65rem;height:.65rem;border-radius:50%;background:var(--s2);margin-right:.35rem"></span>simulated · 815</span></div>
+    <h2>Training corpus — 1556 records by provenance</h2>
+    <svg viewBox="0 0 320 26" role="img" aria-label="Corpus records by provenance" style="width:100%;height:auto"><rect x="0" y="2" width="148.5" height="22" rx="4" fill="var(--s1)"><title>measured: 722 records mined from real run timelines and workflow journals</title></rect><rect x="150.5" y="2" width="169.5" height="22" rx="4" fill="var(--s2)"><title>simulated: 834 records from the seeded synthetic battery</title></rect></svg><div style="display:flex;gap:1.2rem;margin-top:.45rem;font-size:.82rem;color:var(--text-2)"><span><span style="display:inline-block;width:.65rem;height:.65rem;border-radius:50%;background:var(--s1);margin-right:.35rem"></span>measured · 722</span><span><span style="display:inline-block;width:.65rem;height:.65rem;border-radius:50%;background:var(--s2);margin-right:.35rem"></span>simulated · 834</span></div>
     <p class="note">Provenance is labeled per record. The measured slice grows with every
     harness run; simulated records come from a seeded, deterministic battery
     (seed 20260809).</p>
@@ -117,13 +117,13 @@ footer code { font-size: .74rem; word-break: break-all; }
   <div class="card">
     <h2>Corpus by routing tier</h2>
     <table><thead><tr><th>Tier</th><th>Records</th></tr></thead>
-    <tbody><tr><td>deep_research</td><td>453</td></tr><tr><td>agentic_epic</td><td>452</td></tr><tr><td>action_operator</td><td>267</td></tr><tr><td>deterministic</td><td>251</td></tr><tr><td>llm</td><td>96</td></tr></tbody></table>
+    <tbody><tr><td>agentic_epic</td><td>460</td></tr><tr><td>deep_research</td><td>453</td></tr><tr><td>action_operator</td><td>277</td></tr><tr><td>deterministic</td><td>251</td></tr><tr><td>llm</td><td>115</td></tr></tbody></table>
   </div>
 
   <div class="card">
     <h2>Label sources</h2>
-    <span class="status unmeasured">— UNMEASURED — corpus meta does not yet carry per-record label-source counts</span>
-    <div style="margin-top:.7rem"><span class="status unmeasured">— UNMEASURED — measured hold-out label-source breakdown not yet recorded; the gate's champion-vs-heuristic comparison only becomes meaningful once non-heuristic labels exceed zero</span></div>
+    <table><thead><tr><th>Label source</th><th>Records</th></tr></thead><tbody><tr><td>simulated</td><td>829</td></tr><tr><td>measured-behavior</td><td>719</td></tr><tr><td>measured-outcome</td><td>8</td></tr></tbody></table>
+    <div style="margin-top:.7rem"><span class="status pass">✓ 2 measured hold-out records carry labels beyond measured-behavior and simulated — the gate's champion-vs-heuristic comparison is grounded in labels the heuristic did not produce</span></div>
     <p class="note">Each record's label provenance is tracked separately from its
     feature provenance. The promotion gate's champion-vs-heuristic comparison only
     becomes meaningful when the measured hold-out contains labels the heuristic
@@ -148,8 +148,8 @@ footer code { font-size: .74rem; word-break: break-all; }
     <a href="/api/stats">/api/stats</a>
     <span style="color:var(--text-3)">POST /api/route · POST /api/plan</span>
   </div>
-  <div>Built 2026-08-09T12:18:51.886480+00:00 at commit <code>bbca936</code> from committed sources:</div>
-  <div><code>apps/ava-factory/reports/orchestrator/ladder_report.json</code> · <code>sha256:6aeb3456a3b243f1…</code></div><div><code>apps/ava-factory/reports/orchestrator/eval_report.json</code> · <code>sha256:588630bd30e13657…</code></div><div><code>apps/dottie-harness-api/lib/meta/corpus_meta.json</code> · <code>sha256:b0de3677db12ad6c…</code></div><div><code>workspace/artifacts/monitor/scoreboard.json</code> · <code>sha256:48d92653c741d8b2…</code></div><div><code>docs/salvage/bd-queue.json</code> · <code>sha256:b37a9fb8f8ec3bba…</code></div>
+  <div>Built 2026-08-09T15:20:06.413912+00:00 at commit <code>ede8c29</code> from committed sources:</div>
+  <div><code>apps/ava-factory/reports/orchestrator/ladder_report.json</code> · <code>sha256:81f057173dd8fce4…</code></div><div><code>apps/ava-factory/reports/orchestrator/eval_report.json</code> · <code>sha256:32011a064340e25a…</code></div><div><code>apps/dottie-harness-api/lib/meta/corpus_meta.json</code> · <code>sha256:dcc6a5d058e5c4d5…</code></div><div><code>workspace/artifacts/monitor/scoreboard.json</code> · <code>sha256:48d92653c741d8b2…</code></div><div><code>docs/salvage/bd-queue.json</code> · <code>sha256:b37a9fb8f8ec3bba…</code></div>
   <div style="margin-top:.6rem">Read-only surface — no write path. Retracted or superseded
   numbers only ever appear beside an explicit retraction marker.</div>
 </footer>
