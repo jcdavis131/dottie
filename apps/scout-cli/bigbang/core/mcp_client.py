@@ -1,7 +1,8 @@
 # Solo personal project, no connection to employer, built with public/free-tier only
 """
 Reusable MCP client — real SDK implementation using mcp Python SDK 1.28.1
-Uses SSE transport first, falls back to streamable HTTP.
+Transport order follows the URL: /sse endpoints try SSE first, everything
+else tries streamable HTTP first; the other transport stays as fallback.
 Exposes:
   async def list_mcp_tools(url) -> list[dict]
   async def call_mcp_tool(url, name, args) -> dict
@@ -58,17 +59,33 @@ def _mcp_http_client_factory(
     return _httpx.AsyncClient(**kw)
 
 
+def _transport_order(url: str) -> list:
+    """SSE first for /sse URLs, streamable HTTP first otherwise.
+
+    Trying SSE against a streamable-HTTP-only endpoint (e.g. servers that
+    retired /sse with a 410) can hold the connection open for the full read
+    timeout before the fallback runs — measured live against mcp.deepwiki.com
+    on 2026-08-09. The URL suffix is the strongest available signal.
+    """
+    if url.rstrip("/").endswith("/sse"):
+        return [sse_client, streamablehttp_client]
+    return [streamablehttp_client, sse_client]
+
+
 async def list_mcp_tools(url: str) -> list[dict[str, Any]]:
     _check_sdk()
     last_exc: Exception | None = None
-    for factory in [sse_client, streamablehttp_client]:
+    for factory in _transport_order(url):
         if factory is None:
             continue
         try:
-            async with factory(url, httpx_client_factory=_mcp_http_client_factory) as (
-                read,
-                write,
-            ):  # type: ignore
+            # sse_client yields (read, write); streamablehttp_client yields
+            # (read, write, get_session_id) — unpacking two from three raised
+            # inside the context manager and was swallowed by the fallback
+            # loop, so the streamable path never actually worked until the
+            # 3-tuple was handled (found live against mcp.deepwiki.com).
+            async with factory(url, httpx_client_factory=_mcp_http_client_factory) as streams:  # type: ignore
+                read, write = streams[0], streams[1]
                 async with ClientSession(read, write) as session:  # type: ignore
                     await session.initialize()
                     resp = await session.list_tools()
@@ -114,14 +131,12 @@ async def call_mcp_tool(
     _check_sdk()
     args = args or {}
     last_exc: Exception | None = None
-    for factory in [sse_client, streamablehttp_client]:
+    for factory in _transport_order(url):
         if factory is None:
             continue
         try:
-            async with factory(url, httpx_client_factory=_mcp_http_client_factory) as (
-                read,
-                write,
-            ):  # type: ignore
+            async with factory(url, httpx_client_factory=_mcp_http_client_factory) as streams:  # type: ignore
+                read, write = streams[0], streams[1]
                 async with ClientSession(read, write) as session:  # type: ignore
                     await session.initialize()
                     result = await session.call_tool(tool_name, arguments=args)
