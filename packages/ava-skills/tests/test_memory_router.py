@@ -125,3 +125,42 @@ class TestRecallErrors:
         assert r["measured"]["recalled_memories"] == []
         assert "memory_recall_error" in r["measured"]
         assert "Error" in r["measured"]["memory_recall_error"]
+
+    def test_router_recall_surfaces_topical_match(self, tmp_path):
+        import time
+
+        store = mm.ShardStore(tmp_path)
+        # Older on-topic shard, then a newer off-topic shard in the SAME Tier-B scope:
+        # recency-only recall would surface the off-topic one first.
+        store.append(
+            mm.mint_shard(
+                mm.TraceEvent(
+                    source="test",
+                    instruction="remember the python dedupe logic fact",
+                    outcome="stored on-topic",
+                    ok=True,
+                    branch="code",
+                )
+            )
+        )
+        time.sleep(0.01)
+        store.append(
+            mm.mint_shard(
+                mm.TraceEvent(
+                    source="test",
+                    instruction="remember to explain the report format",
+                    outcome="stored off-topic",
+                    ok=True,
+                    branch="code",
+                )
+            )
+        )
+        r = mr.run(
+            mode="mock",
+            instruction="remember the python dedupe logic fact",
+            memory_store_dir=str(tmp_path),
+            memory_limit=2,
+        )
+        recalled = r["measured"]["recalled_memories"]
+        assert "dedupe" in recalled[0]["instruction"]
+        assert isinstance(r["pass"], bool)

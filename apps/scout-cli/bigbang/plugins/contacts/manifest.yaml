@@ -2,9 +2,20 @@ name: contacts
 description: ACNE Contacts Power Suite — local-first TLPG tool I wish I had for harness work. Resolve fuzzy phrases, vector search 17 types, GraphRAG 2-hop + provenance, sync_from_bundles one-shot hill-climb + health_report. Zero deps, no cloud, 5-layer cache ~80% savings.
 capabilities:
   network: false
-  filesystem: true
+  filesystem:
+    enabled: true
+    # Write is REAL as of 2026-08-09: the plugin is backed by the installed
+    # acne package (acne.tools facade), whose ContactsStore/TLPGStore write
+    # under ~/.agentic-contacts/ (default base; the store mkdirs it even on
+    # read paths) and, when a workspace hub is used, under
+    # ~/workspace/bundles/memory/. The previous read-only claim described the
+    # plugin before acne was actually installed.
+    write: true
+    paths:
+      - "~/.agentic-contacts/"
+      - "~/workspace/bundles/memory/"
   secrets: false
-version: 0.4.1-power-suite
+version: 0.5.0-acne-live
 entry: cli.py
 acne:
   version: 0.4.0-constructs-v04.1-slip-proof

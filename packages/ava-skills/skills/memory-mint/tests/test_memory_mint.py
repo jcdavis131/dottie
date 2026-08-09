@@ -134,3 +134,66 @@ class TestSkillContract:
         assert isinstance(out["measured"], dict) and isinstance(out["bar"], str)
         assert all(isinstance(v, float) for v in out["measured"].values())
         assert out["pass"] is True and out["measured"]["roundtrip_score"] >= 1.0
+
+
+class TestFineRanking:
+    ON_TOPIC = "remember the fact about python dedupe logic"
+    OFF_TOPIC = "remember to explain the report format"
+    QUERY = "remember the python dedupe logic fact"
+
+    def test_on_topic_outranks_newer_off_topic(self, tmp_path):
+        # Sanity: both instructions land in the same Tier-B scope, so recency alone
+        # would put the off-topic shard first — overlap ranking must beat it.
+        scope_a = mm.scope_before_routing(self.ON_TOPIC)["tier_b"]["scope"]
+        scope_b = mm.scope_before_routing(self.OFF_TOPIC)["tier_b"]["scope"]
+        assert scope_a == scope_b == "S2_slow_300"
+        store = mm.ShardStore(tmp_path)
+        assert store.append(mm.mint_shard(make_event(1, instruction=self.ON_TOPIC)))
+        time.sleep(0.01)
+        assert store.append(mm.mint_shard(make_event(2, instruction=self.OFF_TOPIC)))
+        rows = store.query(instruction=self.QUERY, limit=5)
+        assert len(rows) == 2
+        assert "dedupe" in rows[0]["instruction"]
+
+    def test_empty_instruction_is_recency_only(self, tmp_path):
+        store = mm.ShardStore(tmp_path)
+        instructions = [
+            "remember the first fact",
+            "remember the second fact",
+            "remember the third fact",
+        ]
+        scope = mm.scope_before_routing(instructions[0])["tier_b"]["scope"]
+        for i, instr in enumerate(instructions):
+            assert store.append(mm.mint_shard(make_event(i, instruction=instr)))
+            time.sleep(0.01)
+        rows = store.query(instruction="", tier_b_scope=scope, limit=10)
+        expected = sorted(rows, key=lambda r: r["minted_ts"], reverse=True)
+        assert rows == expected
+        assert [r["instruction"] for r in rows] == list(reversed(instructions))
+
+    def test_append_then_query_sees_new_shard_without_reopen(self, tmp_path):
+        store = mm.ShardStore(tmp_path)
+        assert store.append(mm.mint_shard(make_event(1, instruction=self.OFF_TOPIC)))
+        # First query builds the scope's index lazily.
+        store.query(instruction=self.QUERY, limit=5)
+        time.sleep(0.01)
+        # Same store object: the incremental index update path must pick this up.
+        assert store.append(mm.mint_shard(make_event(2, instruction=self.ON_TOPIC)))
+        rows = store.query(instruction=self.QUERY, limit=5)
+        assert len(rows) == 2
+        assert "dedupe" in rows[0]["instruction"]
+
+    def test_result_count_parity(self, tmp_path):
+        store = mm.ShardStore(tmp_path)
+        scope = mm.scope_before_routing("remember a fact")["tier_b"]["scope"]
+        for i in range(4):
+            assert store.append(
+                mm.mint_shard(make_event(i, instruction=f"remember fact number {i}"))
+            )
+        rows = store.query(
+            instruction="completely unrelated zebra quantum",
+            tier_b_scope=scope,
+            limit=10,
+        )
+        # Recall floor: zero token overlap must never shrink the result set.
+        assert len(rows) == 4

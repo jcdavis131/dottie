@@ -1,0 +1,29 @@
+{
+  "artifacts": {
+    "dataset-card": {
+      "generated_at": "2026-08-09T03:12:23+00:00",
+      "outputs": [
+        {
+          "path": "workspace/artifacts/validation/dataset_card.md",
+          "sha256": "6cfb640ba5f6b83f8eeaf19005f0a53e16086dee6721931dd0a28faf4d9135a9"
+        }
+      ],
+      "provenance": {
+        "classification": "REAL",
+        "method": "Per-source table rendered from the committed corpus metadata JSON; absent keys render as '(not recorded)' and no value is invented."
+      },
+      "sources": [
+        {
+          "path": "apps/ava-factory/data/orchestration/corpus_meta.json",
+          "required": true,
+          "sha256": "cf88c2cfb9a4bb5a95ed66e2782b7a31aa097c0f1f1a66622e3d406ee2cac861"
+        }
+      ],
+      "status": "written"
+    }
+  },
+  "generated_by": "scripts/business/playbook.py",
+  "schema_version": 1,
+  "updated_at": "2026-08-09T03:12:23+00:00",
+  "venture": "validation"
+}

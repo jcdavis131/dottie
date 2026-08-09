@@ -1,0 +1,41 @@
+# Playbook schema v1 — parsed by scripts/business/playbook.py.
+schema_version: 1
+
+venture: ops
+
+description: >-
+  Operator records: a changelog entry derived from read-only git history
+  against a base reference, and a digest composing the monitor scoreboard,
+  the TODO list, and the repo test inventory.
+
+cadence: weekly
+
+artifacts:
+  - id: changelog
+    generator: changelog
+    # No file inputs: the changelog generator derives its content from
+    # read-only git subprocesses (the sole sanctioned exception to
+    # file-input purity), declared via params.base_ref.
+    inputs: []
+    output: workspace/artifacts/ops/changelog_entry.md
+    publish_hint: >-
+      Operator-facing record; stays in workspace/artifacts.
+    params:
+      base_ref: main
+
+  - id: ops-digest
+    generator: ops_digest
+    inputs:
+      - name: scoreboard
+        path: workspace/artifacts/monitor/scoreboard.json
+        required: false
+      - name: todo
+        path: TODO.md
+        required: true
+      - name: test_files
+        path: scripts/test_*.py
+        required: false
+    output: workspace/artifacts/ops/ops_digest.md
+    publish_hint: >-
+      Operator digest; composes the monitor scoreboard when present and
+      states its absence as a measured fact when not.

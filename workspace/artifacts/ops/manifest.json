@@ -1,0 +1,74 @@
+{
+  "artifacts": {
+    "changelog": {
+      "generated_at": "2026-08-09T03:09:18+00:00",
+      "outputs": [
+        {
+          "path": "workspace/artifacts/ops/changelog_entry.md",
+          "sha256": "5142014608753e5b5d87d7d0abda66b8e0ce3f5ffe9cc67f6346aa1be5958a20"
+        }
+      ],
+      "provenance": {
+        "classification": "REAL",
+        "method": "deterministic recomputation from committed inputs"
+      },
+      "sources": [],
+      "status": "written"
+    },
+    "ops-digest": {
+      "generated_at": "2026-08-09T03:09:05+00:00",
+      "outputs": [
+        {
+          "path": "workspace/artifacts/ops/ops_digest.md",
+          "sha256": "2857dbffb96443f7741ef55ca4bcaf662b07a10ba5ebcdbaa58829632e677455"
+        }
+      ],
+      "provenance": {
+        "classification": "REAL",
+        "method": "deterministic recomputation from committed inputs"
+      },
+      "sources": [
+        {
+          "path": "workspace/artifacts/monitor/scoreboard.json",
+          "required": false,
+          "sha256": "48d92653c741d8b22898aa882ede7ce2a92b3b151bfe857f2861c0a3764facd6"
+        },
+        {
+          "path": "TODO.md",
+          "required": true,
+          "sha256": "693727124a5126ca38f47af889c0209900c2f032401eca9aada966acda8ef524"
+        },
+        {
+          "path": "scripts/test_check_declared_capabilities.py",
+          "required": false,
+          "sha256": "8aaaeb4d874632f01bd786d2f6ffbc565fd26092bcec6fede462d55f3623c239"
+        },
+        {
+          "path": "scripts/test_gate_audit.py",
+          "required": false,
+          "sha256": "8eae419929d0833604df5caa3c769f03d3087d8f5aded0b4a489800161a602ce"
+        },
+        {
+          "path": "scripts/test_retrieval_eval.py",
+          "required": false,
+          "sha256": "81a5112eea6c3e6dc160dd192a340fb694abc322f56d3a7cd1ccb87f2cee3b2f"
+        },
+        {
+          "path": "scripts/test_store_symmetry_audit.py",
+          "required": false,
+          "sha256": "9151558bc82818f148cff41624352ba328942a5049f7901644ef7ac71d0fc376"
+        },
+        {
+          "path": "scripts/test_task_eval_slice.py",
+          "required": false,
+          "sha256": "ae6ef1293b221b32d9304333bea4a145df3395b4d82eea8117e612b07ec78e77"
+        }
+      ],
+      "status": "unchanged"
+    }
+  },
+  "generated_by": "scripts/business/playbook.py",
+  "schema_version": 1,
+  "updated_at": "2026-08-09T03:09:19+00:00",
+  "venture": "ops"
+}

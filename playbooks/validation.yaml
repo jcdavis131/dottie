@@ -1,0 +1,26 @@
+# Playbook schema v1 — parsed by scripts/business/playbook.py.
+schema_version: 1
+
+venture: validation
+
+description: >-
+  Dataset card for the validation corpus (slasso.com Validation Lab), rendered from the committed corpus
+  metadata file; reports recorded counts and fields only, nothing inferred.
+
+cadence: on-demand
+
+artifacts:
+  - id: dataset-card
+    generator: dataset_card
+    inputs:
+      # Absent today by measurement; first runs correctly report
+      # skipped-missing-input until the orchestration lane lands the file.
+      - name: corpus_meta
+        path: apps/ava-factory/data/orchestration/corpus_meta.json
+        required: true
+    output: workspace/artifacts/validation/dataset_card.md
+    publish_hint: >-
+      Publishes to the slasso.com Validation Lab surface (successor to the
+      retired bhenre.com hub — docs/CONSOLIDATION.md): dataset cards render
+      on the training-progress dashboard; cards without traceable
+      provenance do not render.

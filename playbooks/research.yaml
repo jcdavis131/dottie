@@ -1,0 +1,29 @@
+# Playbook schema v1 — parsed by scripts/business/playbook.py.
+schema_version: 1
+
+venture: research
+
+description: >-
+  Weekly research brief composed from the committed insights specification and
+  any orchestrator report files present at run time; an absent report
+  directory is stated as absent, never simulated.
+
+cadence: weekly
+
+artifacts:
+  - id: research-brief
+    generator: research_brief
+    inputs:
+      - name: spec
+        path: docs/LONGCAT2_INSIGHTS_SPEC.md
+        required: true
+      # Directory absent today by measurement; optional, so the brief still
+      # renders and records the absence as a measured fact.
+      - name: orchestrator_reports
+        path: apps/ava-factory/reports/orchestrator/*.json
+        required: false
+    output: workspace/artifacts/research/research_brief.md
+    publish_hint: >-
+      Hand-off to the research-registry lane: tasks/artifacts/
+      research_reports.json entry; the arxiviq runtime drop
+      apps/arxiviq/public/data/ is owned elsewhere.

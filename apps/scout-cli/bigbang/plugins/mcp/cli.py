@@ -96,6 +96,12 @@ def serve(
         False, "--sse", help="Serve over SSE/HTTP instead of stdio"
     ),
     port: int = typer.Option(8787, "--port", help="Port for --sse transport"),
+    namespace: str = typer.Option(
+        "",
+        "--namespace",
+        help="Meta mode: also proxy this namespace's downstream MCP tools "
+        "as <server>__<tool> (scout mcp ns list)",
+    ),
 ):
     """Serve scout-cli plugins as a real MCP server (stdio by default)."""
     try:
@@ -105,9 +111,11 @@ def serve(
             {"error": f"mcp SDK not installed ({e}). Run: pip install 'mcp>=1.28.1'"},
             command="mcp serve",
         )
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
     # Blocks until the client disconnects (stdio) or the process is stopped (sse).
-    run_server(transport="sse" if sse else "stdio", port=port)
+    run_server(
+        transport="sse" if sse else "stdio", port=port, namespace=namespace or None
+    )
 
 
 @app.command("add")
@@ -205,6 +213,225 @@ def call_tool(
             {"server": server, "tool": tool, "args": parsed, "error": str(e)},
             command="mcp call",
         )
+
+
+# ---------------------------------------------------------------------------
+# Meta-MCP namespaces — group registered servers, filter tools, serve unified.
+# ---------------------------------------------------------------------------
+
+ns_app = typer.Typer(
+    name="ns",
+    help="🗂  Meta-MCP namespaces — group servers, enable/disable tools, "
+    "then `scout mcp serve --namespace <ns>`",
+    no_args_is_help=True,
+)
+app.add_typer(ns_app, name="ns")
+
+
+def _ns_or_exit(db: dict, name: str) -> dict:
+    if name not in db:
+        emit({"error": f"namespace {name!r} not found", "have": sorted(db)})
+        raise typer.Exit(1)
+    return db[name]
+
+
+@ns_app.command("create")
+def ns_create(name: str = typer.Argument(..., help="namespace name")):
+    from bigbang.plugins.mcp import meta
+
+    if not meta.valid_name(name):
+        emit({"error": f"invalid namespace name {name!r} (alnum/_/-, no '__')"})
+        raise typer.Exit(1)
+    db = meta.load_namespaces()
+    if name in db:
+        emit({"error": f"namespace {name!r} already exists"})
+        raise typer.Exit(1)
+    db[name] = meta.new_namespace()
+    meta.save_namespaces(db)
+    emit(
+        {"created": name, "next": f"scout mcp ns add-server {name} <server>"},
+        command="mcp ns create",
+    )
+
+
+@ns_app.command("list")
+def ns_list():
+    from bigbang.plugins.mcp import meta
+
+    db = meta.load_namespaces()
+    emit({"namespaces": db, "count": len(db)}, command="mcp ns list")
+
+
+@ns_app.command("delete")
+def ns_delete(name: str = typer.Argument(...)):
+    from bigbang.plugins.mcp import meta
+
+    db = meta.load_namespaces()
+    _ns_or_exit(db, name)
+    del db[name]
+    meta.save_namespaces(db)
+    emit({"deleted": name}, command="mcp ns delete")
+
+
+@ns_app.command("add-server")
+def ns_add_server(
+    name: str = typer.Argument(..., help="namespace"),
+    server: str = typer.Argument(..., help="registered server (scout mcp list)"),
+):
+    from bigbang.plugins.mcp import meta
+
+    db = meta.load_namespaces()
+    cfg = _ns_or_exit(db, name)
+    if not meta.valid_name(server):
+        emit({"error": f"invalid server name {server!r} (alnum/_/-, no '__')"})
+        raise typer.Exit(1)
+    if server not in meta.load_servers():
+        emit({"error": f"{server!r} not registered — scout mcp add {server} <url>"})
+        raise typer.Exit(1)
+    if server in cfg["servers"]:
+        emit({"error": f"{server!r} already in namespace {name!r}"})
+        raise typer.Exit(1)
+    cfg["servers"].append(server)
+    meta.save_namespaces(db)
+    emit(
+        {"namespace": name, "added": server, "servers": cfg["servers"]},
+        command="mcp ns add-server",
+    )
+
+
+@ns_app.command("remove-server")
+def ns_remove_server(
+    name: str = typer.Argument(...), server: str = typer.Argument(...)
+):
+    from bigbang.plugins.mcp import meta
+
+    db = meta.load_namespaces()
+    cfg = _ns_or_exit(db, name)
+    if server not in cfg["servers"]:
+        emit({"error": f"{server!r} not in namespace {name!r}"})
+        raise typer.Exit(1)
+    cfg["servers"].remove(server)
+    meta.save_namespaces(db)
+    emit(
+        {"namespace": name, "removed": server, "servers": cfg["servers"]},
+        command="mcp ns remove-server",
+    )
+
+
+@ns_app.command("disable-tool")
+def ns_disable_tool(
+    name: str = typer.Argument(..., help="namespace"),
+    qualified: str = typer.Argument(..., help="<server>__<tool>"),
+):
+    from bigbang.plugins.mcp import meta
+
+    db = meta.load_namespaces()
+    cfg = _ns_or_exit(db, name)
+    if meta.split_qualified(qualified) is None:
+        emit({"error": f"{qualified!r} is not <server>{meta.SEP}<tool>"})
+        raise typer.Exit(1)
+    if qualified in cfg["disabled_tools"]:
+        emit({"error": f"{qualified!r} already disabled in {name!r}"})
+        raise typer.Exit(1)
+    cfg["disabled_tools"].append(qualified)
+    meta.save_namespaces(db)
+    emit(
+        {"namespace": name, "disabled": qualified,
+         "disabled_tools": cfg["disabled_tools"]},
+        command="mcp ns disable-tool",
+    )
+
+
+@ns_app.command("enable-tool")
+def ns_enable_tool(
+    name: str = typer.Argument(...), qualified: str = typer.Argument(...)
+):
+    from bigbang.plugins.mcp import meta
+
+    db = meta.load_namespaces()
+    cfg = _ns_or_exit(db, name)
+    if qualified not in cfg["disabled_tools"]:
+        emit({"error": f"{qualified!r} is not disabled in {name!r}"})
+        raise typer.Exit(1)
+    cfg["disabled_tools"].remove(qualified)
+    meta.save_namespaces(db)
+    emit(
+        {"namespace": name, "enabled": qualified,
+         "disabled_tools": cfg["disabled_tools"]},
+        command="mcp ns enable-tool",
+    )
+
+
+@ns_app.command("tools")
+def ns_tools(name: str = typer.Argument(..., help="namespace")):
+    """Live-aggregate tools across the namespace's servers (with enabled flags)."""
+    from bigbang.core.policy import check_user_url
+    from bigbang.plugins.mcp import meta
+
+    db = meta.load_namespaces()
+    cfg = _ns_or_exit(db, name)
+    _check_sdk()
+    agg = meta.aggregate_tools(
+        cfg, meta.load_servers(), list_mcp_tools_sync, check_user_url
+    )
+    emit(
+        {
+            "namespace": name,
+            "tools": agg["tools"],
+            "count": len(agg["tools"]),
+            "errors": agg["errors"],
+        },
+        command="mcp ns tools",
+    )
+
+
+@ns_app.command("call")
+def ns_call(
+    name: str = typer.Argument(..., help="namespace"),
+    qualified: str = typer.Argument(..., help="<server>__<tool>"),
+    args: str = typer.Option("{}", help="json args"),
+):
+    """Call a namespaced downstream tool, honoring per-namespace disables."""
+    from bigbang.plugins.mcp import meta
+
+    db = meta.load_namespaces()
+    cfg = _ns_or_exit(db, name)
+    parts = meta.split_qualified(qualified)
+    if parts is None:
+        emit({"error": f"{qualified!r} is not <server>{meta.SEP}<tool>"})
+        raise typer.Exit(1)
+    server, tool = parts
+    if server not in cfg["servers"]:
+        emit({"error": f"{server!r} not in namespace {name!r}"})
+        raise typer.Exit(1)
+    if not meta.tool_enabled(cfg, qualified):
+        emit({"error": f"{qualified!r} is disabled in {name!r} — "
+              f"scout mcp ns enable-tool {name} {qualified}"})
+        raise typer.Exit(1)
+    entry = meta.load_servers().get(server)
+    if not entry or not entry.get("url"):
+        emit({"error": f"{server!r} not registered — scout mcp add {server} <url>"})
+        raise typer.Exit(1)
+    url = entry["url"]
+    enforce_user_url_or_raise(url, context="mcp ns call")
+    try:
+        parsed = json.loads(args) if args.strip() else {}
+    except json.JSONDecodeError as e:
+        emit({"error": f"args is not valid JSON: {e}"})
+        raise typer.Exit(1) from e
+    _check_sdk()
+    try:
+        result = call_mcp_tool_sync(url, tool, parsed)
+    except Exception as e:
+        emit(
+            {"namespace": name, "tool": qualified, "args": parsed, "error": str(e)},
+            command="mcp ns call",
+        )
+        return
+    emit(
+        {"namespace": name, "tool": qualified, "args": parsed, "result": result},
+        command="mcp ns call",
+    )
 
 
 def register(root):
