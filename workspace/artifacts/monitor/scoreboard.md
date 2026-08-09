@@ -1,0 +1,40 @@
+---
+generated_by: scripts/business/generators/run_scoreboard.py
+generated_at: "2026-08-09T03:06:48+00:00"
+classification: REAL
+method: "recomputed from committed timeline.jsonl event logs; malformed lines skipped"
+measured: true
+sources:
+  - path: "bundles/ultra/runs/agents-deep-list-20260809T014113Z/timeline.jsonl"
+    sha256: "93eb5e5059e847ac3b00a54f9c699b0028ffde6c96e93c3dedefce762fc9ffdb"
+  - path: "bundles/ultra/runs/agents-deep-list-20260809T015044Z/timeline.jsonl"
+    sha256: "775ab5e670367d092a00197d949ca5e9372bed4305bc408ae0e68dbef342f31e"
+  - path: "bundles/ultra/runs/agents-deep-list-20260809T020511Z/timeline.jsonl"
+    sha256: "36db4b74cbf3eb4e9345af9e7c74db9036174431d506228f4a01c59cfd662e31"
+  - path: "bundles/ultra/runs/agents-langchain-list-20260809T014112Z/timeline.jsonl"
+    sha256: "f2b41b0fd04cbca6bff50af5c145e86f6bdbcaeab67fdd6e5aa1e3e96f2f09c1"
+  - path: "bundles/ultra/runs/agents-langchain-list-20260809T015044Z/timeline.jsonl"
+    sha256: "23bf93cbd99f6dd0012e4795cb243ac4dc5732d7cf1f8c5a11f1c3a40298e81e"
+  - path: "bundles/ultra/runs/agents-langchain-list-20260809T020510Z/timeline.jsonl"
+    sha256: "74f7c319364827543c95967b8d6273f2dc8a37a9eaf20b8d2b0c23659dab7b54"
+  - path: "bundles/ultra/runs/agents-langchain-run-db507215-014114/timeline.jsonl"
+    sha256: "62425efb79c16bc0c688d5bc6eb75c351a0675a398727790470efbb926fc43e9"
+  - path: "bundles/ultra/runs/agents-langchain-run-db507215-015045/timeline.jsonl"
+    sha256: "7d2d1ffd99a07cfb7e660abdae32c4242f6af6cff12397ae31429a4e773f163f"
+  - path: "bundles/ultra/runs/agents-langchain-run-db507215-020512/timeline.jsonl"
+    sha256: "6b97df38b8f6541ce327597c3aa2400da6d863d8f03a5888de4d32bd6c2a18c7"
+---
+
+# Run scoreboard
+
+This scoreboard is history recomputed from committed event logs, not live telemetry.
+
+| Agent | Runs | Events | OK rate | p50 latency ms |
+|---|---|---|---|---|
+| researcher | 3 | 3 | 1.0 | 30 |
+| scout-lc-deep | 3 | 3 | 1.0 | 55 |
+| scout-lc-langchain | 3 | 3 | 1.0 | 45 |
+| scout-prime-coordinator | 3 | 3 | 1.0 | 0 |
+| strategist | 3 | 3 | 1.0 | 35 |
+
+Totals: 9 file(s), 15 event(s), 0 skipped line(s).
