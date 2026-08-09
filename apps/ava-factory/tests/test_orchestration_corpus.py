@@ -18,6 +18,11 @@ import pytest
 _AVA = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_AVA / "scripts"))
 
+# The corpus builder imports the scout-cli harness heuristics (which pull in
+# typer) at module level; the codeact-sandbox CI env deliberately installs
+# neither, so skip this module there rather than erroring at collection.
+pytest.importorskip("typer", reason="corpus builder requires scout-cli harness deps")
+
 import build_orchestration_corpus as bc
 
 # ---------------------------------------------------------------- helpers
