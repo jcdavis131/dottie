@@ -27,14 +27,16 @@ jobs:
       # trains everyone to ignore the X and the next real breakage looks identical.
       #
       # Non-blocking with the debt STATED, matching ci.yml's ruff step. Re-measured
-      # 2026-08-09: 450 findings — personal-graphify 141, ava-open-harness 79,
-      # scout-cli 230 (sums exactly to the combined run). WHY it moved from 252: the
+      # 2026-08-09: 449 findings — personal-graphify 141, ava-open-harness 79,
+      # scout-cli 229 (sums exactly to the combined run). WHY it moved from 252: the
       # 08-01 figure recorded scout-cli at 32, but the tree this branch measures
       # carries the full v0.8 plugin surface (harness/vector/agents expansion) whose
       # files the 08-01 count predates; the 2026-08-09 lane additions themselves lint
-      # at 0 (verified per-file). Trail: 334 (07-24) -> 286 -> 263 -> 252 (08-01,
-      # pre-surface) -> 450 (08-09, full surface). A number in a comment can go stale
-      # inside a single session, so re-measure, never carry it.
+      # at 0 (verified per-file). 450 -> 449 same day: one pre-existing B904 in the
+      # mcp plugin's serve command fixed while extending that function for meta-MCP.
+      # Trail: 334 (07-24) -> 286 -> 263 -> 252 (08-01, pre-surface) -> 450 -> 449
+      # (08-09, full surface). A number in a comment can go stale inside a single
+      # session, so re-measure, never carry it.
       #
       # ava-skills REACHED ZERO on 2026-08-01 and is now a HARD gate in ci.yml, so it is
       # dropped from this soft list — leaving it here would mean a package that must be
@@ -42,9 +44,9 @@ jobs:
       # double-accounting that makes a number stop meaning anything. ci.yml owns it now;
       # this workflow owns only what is still in debt.
       # Same ratchet as before: flip the next package the day it reaches zero; do not
-      # flip all three at once. scout-cli at 230 is now furthest; ava-open-harness at
+      # flip all three at once. scout-cli at 229 is now furthest; ava-open-harness at
       # 79 is nearest.
-      - name: Ruff check (non-blocking — 450 known findings, see comment)
+      - name: Ruff check (non-blocking — 449 known findings, see comment)
         run: |
           ruff check --statistics \
             packages/ava-open-harness \
