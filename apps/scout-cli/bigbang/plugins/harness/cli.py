@@ -172,6 +172,14 @@ def agents_cmd(
 _RUN_ID_SAFE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
 
+def _checkpoints_base() -> Path:
+    return Path.home() / ".cache" / "scout" / "checkpoints"
+
+
+def _ultra_runs_base() -> Path:
+    return Path.home() / "workspace" / "bundles" / "ultra" / "runs"
+
+
 def _valid_run_id(run_id: str) -> bool:
     """Containment guard: a run id is a single path segment, never a path."""
     return bool(_RUN_ID_SAFE_RE.fullmatch(run_id)) and ".." not in run_id
@@ -186,7 +194,7 @@ def checkpoint_cmd(
         _emit({"ok": False, "error": f"invalid --run-id {run_id!r}: single path segment required"},
               "harness checkpoint", json_out)
         return
-    base=Path.home()/".cache"/"scout"/"checkpoints"
+    base=_checkpoints_base()
     base.mkdir(parents=True, exist_ok=True)
     if action=="list":
         runs=[p.name for p in sorted((q for q in base.iterdir() if q.is_dir()), key=lambda q: q.stat().st_mtime, reverse=True)][:20]
@@ -223,8 +231,8 @@ def _corrections_file_default() -> Path | None:
 
 def _run_exists(run_id: str) -> bool:
     stores = [
-        Path.home() / ".cache" / "scout" / "checkpoints" / run_id / "checkpoint.json",
-        Path.home() / "workspace" / "bundles" / "ultra" / "runs" / run_id / "checkpoint.json",
+        _checkpoints_base() / run_id / "checkpoint.json",
+        _ultra_runs_base() / run_id / "checkpoint.json",
     ]
     return any(p.exists() for p in stores)
 
@@ -336,7 +344,7 @@ def ops_cmd(
     Also: scout ops health (via top-level alias if installed)
     """
     from datetime import datetime
-    workspace = Path.home() / "workspace" / "bundles"
+    workspace = _ultra_runs_base().parent.parent
     obs = workspace / "observability"
     metrics_path = obs / "dashboard_metrics.json"
     ultra_path = obs / "ultra_metrics.json"
