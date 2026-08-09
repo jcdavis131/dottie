@@ -11,6 +11,7 @@ from typing import List, Dict, Any, Optional
 import typer
 from bigbang.core.contract import make_plugin_app
 from bigbang.core.output import emit, is_json
+from bigbang.plugins.harness.timeline import REQUIRED_FIELDS as TIMELINE_FIELDS, append_event, g_history_stats, g_history_summary
 
 app = make_plugin_app(
     "harness",
@@ -163,7 +164,7 @@ def checkpoint_cmd(
     base=Path.home()/".cache"/"scout"/"checkpoints"
     base.mkdir(parents=True, exist_ok=True)
     if action=="list":
-        runs=[p.name for p in base.iterdir() if p.is_dir()][:20]
+        runs=[p.name for p in sorted((q for q in base.iterdir() if q.is_dir()), key=lambda q: q.stat().st_mtime, reverse=True)][:20]
         res={"checkpoints":runs, "path":str(base), "required_fields":["nodeId","agentId","attempt","latency","tokens","status","errorClass"], "ok":True}
     elif action=="show":
         if not run_id: res={"ok":False,"error":"--run-id required"}
@@ -180,6 +181,30 @@ def checkpoint_cmd(
     else:
         res={"action":action,"run_id":run_id,"note":"pause/resume days later pickup exactly — checkpoint-manager.js pattern, DAG version never mutates in place version++ controlled replan","ok":True}
     _emit(res, f"harness checkpoint {action}", json_out)
+
+@app.command("timeline")
+def timeline_cmd(
+    action: str = typer.Argument("stats", help="append|stats"),
+    run_id: str = typer.Option("", "--run-id"),
+    node_id: str = typer.Option("", "--node-id"),
+    agent_id: str = typer.Option("", "--agent-id"),
+    attempt: int = typer.Option(1, "--attempt"),
+    latency: float = typer.Option(0.0, "--latency"),
+    tokens: int = typer.Option(0, "--tokens"),
+    status: str = typer.Option("ok", "--status"),
+    error_class: str = typer.Option("none", "--error-class"),
+    json_out: bool = typer.Option(False, "--json")):
+    """Append-only timeline.jsonl store (v3.3 schema) + offset-indexed G_history stats."""
+    if action=="append":
+        if not run_id:
+            res={"ok": False, "error": "--run-id required"}
+        else:
+            res=append_event(run_id, {"nodeId": node_id, "agentId": agent_id, "attempt": attempt, "latency": latency, "tokens": tokens, "status": status, "errorClass": error_class})
+    else:  # stats
+        res=g_history_stats()
+        res["ok"]=True
+    res["command"]=f"harness timeline {action}"
+    _emit(res, f"harness timeline {action}", json_out)
 
 @app.command("ops")
 def ops_cmd(
@@ -396,9 +421,12 @@ def graph_plan_cmd(
                 ]
 
             steps=[]
+            hist=g_history_stats()
+            role_stats=hist.get("per_role", {})
             for i,node in enumerate(dag):
                 role=node["role"]
-                risk=0.2 + (0.15 if role in ["executor","builder"] else 0)
+                mined = role_stats.get(role, {})
+                risk = min(0.9, max(0.05, mined["fail_rate"])) if mined.get("runs", 0) > 0 else 0.2 + (0.15 if role in ["executor","builder"] else 0)
                 llm_map={"strategist":tier_hint if tier_hint!="llm" else "llm","planner":"llm","deep-researcher":"deep_research","builder":"action_operator","executor":"agentic_epic" if risk>0.3 else "action_operator","operator":"deterministic","critic":"llm","synthesist":"llm","researcher":"deep_research"}
                 steps.append({
                     "id":node["id"],
@@ -415,7 +443,7 @@ def graph_plan_cmd(
                 "goal":goal,
                 "tierHint":tier_hint,
                 "moma":{"tier":tier_hint},
-                "graph_memory":{"G_workflow":f"current DAG {len(dag)} nodes","G_history":"fallback python — no timeline.jsonl parsed","garNet":"workflow+history → pick (role,LLM) per MDP"},
+                "graph_memory":{"G_workflow":f"current DAG {len(dag)} nodes","G_history":(g_history_summary(hist) or "fallback python — no timeline.jsonl parsed"),"garNet":"workflow+history → pick (role,LLM) per MDP"},
                 "steps":steps,
                 "fallback":"python",
                 "version":"3.3 fallback python port of graph_planner_garnet.js"
