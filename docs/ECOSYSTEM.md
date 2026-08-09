@@ -101,10 +101,12 @@ plausible zero.
 
 ## Honest status (2026-08-09)
 
-- 1,519-record corpus; 704 measured; champion `orch-mlp-v1-v4` at 97.9% val /
-  88.2% on the 51-record measured hold-out.
-- Gate: **not passed** — heuristic at 1.0 on behavior labels (the ceiling
-  described above). This is reported as-is on the dashboard.
+- 1,556-record corpus; 722 measured; champion `orch-mlp-v1-v4` at 97.2% val /
+  87.7% on the 57-record measured hold-out
+  (`apps/ava-factory/reports/orchestrator/eval_report.json`).
+- Gate: **not passed** — champion 87.7% vs heuristic 89.3% on the measured
+  hold-out; the heuristic is 1.0 on behavior labels by construction (the
+  ceiling described above). This is reported as-is on the dashboard.
 - CI: full pipeline green on GitHub runners as of `c151ab2`.
 - Next unlock: accumulate measured runs with non-behavior labels (real MCP
   action failures, operator corrections), then let the nightly Routine and the
