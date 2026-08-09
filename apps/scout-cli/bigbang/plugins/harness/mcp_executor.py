@@ -116,4 +116,9 @@ def execute_mcp_action(namespace: str, server: str, tool: str, args: dict[str, A
         return _result("error", "unreachable", t0, error=str(err))
     except Exception as err:
         return _result("error", "downstream_error", t0, error=str(err))
+    # The MCP protocol reports tool-level failure in-band (isError), not as a
+    # transport exception — a successful round-trip can still be a failed call.
+    if isinstance(payload, dict) and payload.get("isError"):
+        return _result("error", "downstream_error", t0,
+                       error=f"downstream reported isError: {payload.get('content')}")
     return _result("ok", None, t0, payload=payload)

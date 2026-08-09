@@ -150,6 +150,18 @@ def test_execute_downstream_error(_wire, monkeypatch):
     assert (res["status"], res["error_class"]) == ("error", "downstream_error")
 
 
+def test_execute_downstream_iserror_is_a_failure(_wire, monkeypatch):
+    # MCP reports tool-level failure in-band: transport succeeds, isError set.
+    monkeypatch.setattr(
+        mcp_client,
+        "call_mcp_tool_sync",
+        lambda url, tool, args=None: {"isError": True, "content": [{"text": "Unknown tool"}]},
+    )
+    res = mcp_executor.execute_mcp_action("ns", "srv", "echo", {})
+    assert (res["status"], res["error_class"]) == ("error", "downstream_error")
+    assert "isError" in res["error"]
+
+
 def test_execute_namespace_missing(_wire):
     res = mcp_executor.execute_mcp_action("other-ns", "srv", "echo", {})
     assert (res["status"], res["error_class"]) == ("error", "namespace_missing")
