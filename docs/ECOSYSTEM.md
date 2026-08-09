@@ -42,7 +42,7 @@ the system working, not failing.
 | **ava-agi-factory-v6-4** | Origin of the training factory (J-Space, scale ladder smoke→nano→mini→base1b) | Source of the frozen mirror at `apps/ava-factory/dottie/**`; foundation-model track (P3) continues there |
 | **ava-open-harness** | Evaluation harness — every score from a live forward pass, unmeasurable results fail structurally | Vendored at `packages/ava-open-harness` |
 | **ava-skills** | Skill contracts (SKILL.md + typed module + tests) routed to slot banks | Vendored at `packages/ava-skills`; ruff HARD gate at 0 |
-| **acne** | Local-first people memory (typed temporal property graph, trigger-phrase resolver) | Backs the `contacts` plugin surface; standalone package |
+| **acne** | Local-first people memory (typed temporal property graph, trigger-phrase resolver) | **Wired live 2026-08-09**: ships the `acne.tools` facade the `contacts` plugin imports, plus `acne mcp-serve` (SSE, real schemas) consumable as a meta-MCP downstream |
 | **bluehen** | Prior fleet monorepo (bhenre.com era) | **Deprecated** — PR #5 lands `DEPRECATED.md`; salvage staged in `docs/salvage/` |
 
 ## The tiers, and what the meta-MCP layer changed
