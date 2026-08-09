@@ -25,9 +25,27 @@ Provenance is labeled per record AND per field: a record is 'measured' only
 when all reward inputs (status + latency + tokens) are measured; everything
 else is 'simulated'. Never present simulated numbers as measured.
 
+Label provenance (provenance_fields["label_tier"], vocab LABEL_TIER_PROVENANCE):
+  simulated          — heuristic-derived label (battery, langchain rows, journal)
+  measured-behavior  — the routing decision a harness run actually executed
+  measured-outcome   — outcome-adjusted: the run's recovery ladder terminally
+                       escalated, so the executed tier is measured-insufficient
+                       and the label becomes the escalation target (agentic_epic)
+  operator-corrected — ground-truth override from label_corrections.jsonl
+
+Operator corrections (optional data/orchestration/label_corrections.jsonl,
+default <out>/label_corrections.jsonl, one JSON object per line):
+
+  {"run_id": str, "tier": str, "reason": str, "corrected_by": str, "date": str}
+
+`tier` must be in TIER_VOCAB — an unknown tier fails the build loudly (fail
+closed: corrections are ground truth and a typo must not train silently).
+A correction overrides ANY label for records whose run_id/split_key matches,
+including outcome-adjusted labels.
+
 CLI:
   python build_orchestration_corpus.py build [--out DIR] [--ultra-dir DIR]
-         [--journal-dir DIR] [--battery-n N] [--seed S]
+         [--journal-dir DIR] [--battery-n N] [--seed S] [--corrections FILE]
   python build_orchestration_corpus.py stats [--out DIR]
 """
 from __future__ import annotations
@@ -62,6 +80,9 @@ SCHEMA_VERSION = 1
 
 # FIXED ORDER — model lanes index their softmax by this vocab.
 TIER_VOCAB = ["deterministic", "llm", "deep_research", "action_operator", "agentic_epic"]
+
+# Closed vocab for provenance_fields["label_tier"] (see module docstring).
+LABEL_TIER_PROVENANCE = {"simulated", "measured-behavior", "measured-outcome", "operator-corrected"}
 
 DENSE_FEATURES = ["n_words", "n_chain_signals", "has_code_terms", "latency_ms", "tokens_est", "attempt"]
 
@@ -209,6 +230,7 @@ def make_record(*, record_id: str, source: str, provenance_fields: dict, feature
                 latency_ms: float | None, tokens_est: int | None,
                 status: str, error_class: str | None, split_key: str) -> dict:
     assert label_tier in TIER_VOCAB, label_tier
+    assert provenance_fields["label_tier"] in LABEL_TIER_PROVENANCE, provenance_fields["label_tier"]
     # Record-level provenance: 'measured' iff ALL reward inputs are measured.
     all_measured = all(provenance_fields[k] == "measured" for k in ("latency_ms", "tokens_est", "status"))
     bucket = split_bucket(split_key)
@@ -231,10 +253,90 @@ def make_record(*, record_id: str, source: str, provenance_fields: dict, feature
     }
 
 
+# ---------------------------------------------------------------- operator corrections
+
+def load_corrections(path: Path) -> dict[str, dict]:
+    """Load label_corrections.jsonl (see module docstring for the line format).
+
+    Returns {run_id: correction}. Fail closed: corrections are ground truth, so
+    malformed JSON, a missing/empty run_id, a duplicate run_id, or a tier
+    outside TIER_VOCAB raises with the offending line — a typo must not train
+    silently.
+    """
+    corrections: dict[str, dict] = {}
+    if not path.exists():
+        return corrections
+    for line_no, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except ValueError as err:
+            raise ValueError(f"{path.name} line {line_no}: invalid JSON: {line!r}") from err
+        if not isinstance(obj, dict):
+            raise ValueError(f"{path.name} line {line_no}: not a JSON object: {line!r}")
+        run_id = obj.get("run_id")
+        if not isinstance(run_id, str) or not run_id:
+            raise ValueError(f"{path.name} line {line_no}: missing run_id: {line!r}")
+        tier = obj.get("tier")
+        if tier not in TIER_VOCAB:
+            raise ValueError(
+                f"{path.name} line {line_no}: unknown tier {tier!r} "
+                f"(valid: {TIER_VOCAB}): {line!r}"
+            )
+        if run_id in corrections:
+            raise ValueError(f"{path.name} line {line_no}: duplicate run_id {run_id!r}: {line!r}")
+        corrections[run_id] = obj
+    return corrections
+
+
 # ---------------------------------------------------------------- source 1: ultra runs
 
-def mine_ultra(ultra_dir: Path) -> tuple[list[dict], dict]:
+def _run_escalated(checkpoint: dict, rows: list[dict]) -> bool:
+    """True when a harness run's recovery ladder terminally escalated a node.
+
+    The bounded ladder never auto-retries WRITE_DESTRUCTIVE/EXTERNAL_NOTIFY
+    failures — the checkpoint node summary records recovery_action "escalate"
+    and the timeline shows a lone attempt-1 failure with no retry row
+    (retryable failures always log an attempt-2 row).
+    """
+    nodes = checkpoint.get("nodes")
+    if isinstance(nodes, list) and nodes and all(
+        isinstance(n, dict) and "recovery_action" in n for n in nodes
+    ):
+        # Complete node summaries are authoritative (runner.py always writes
+        # recovery_action, and a real lone attempt-1 failure always records
+        # "escalate" there). Skipping the timeline fallback here means a torn
+        # retry row can never invent an escalation the ladder did not take.
+        return any(n.get("recovery_action") == "escalate" for n in nodes)
+    if isinstance(nodes, list):
+        for node in nodes:
+            if isinstance(node, dict) and node.get("recovery_action") == "escalate":
+                return True
+    by_node: dict[str, list[dict]] = {}
+    for row in rows:
+        node_id = row.get("nodeId")
+        if isinstance(node_id, str) and node_id:
+            by_node.setdefault(node_id, []).append(row)
+    for node_rows in by_node.values():
+        statuses = [str(r.get("status", "")).lower() for r in node_rows]
+        if not statuses or not all(s in FAILURE_STATUSES for s in statuses):
+            continue
+        attempts = []
+        for r in node_rows:
+            try:
+                attempts.append(int(r.get("attempt") or 1))
+            except (TypeError, ValueError):
+                attempts.append(1)
+        if max(attempts) == 1:
+            return True
+    return False
+
+
+def mine_ultra(ultra_dir: Path, corrections: dict[str, dict] | None = None) -> tuple[list[dict], dict]:
     """Mine bundles/ultra/runs timelines. One record per timeline row."""
+    corrections = corrections or {}
     if not ultra_dir.is_dir():
         return [], {"included": False, "reason": "ultra dir not found", "n_runs": 0, "n_records": 0}
     records: list[dict] = []
@@ -243,6 +345,22 @@ def mine_ultra(ultra_dir: Path) -> tuple[list[dict], dict]:
         timeline = run_dir / "timeline.jsonl"
         if not timeline.exists():
             continue
+        # A run whose timeline cannot be read contributes no rows; never fail
+        # the whole mining pass over one bad file.
+        try:
+            timeline_text = timeline.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        parsed_rows: list[tuple[int, dict]] = []
+        for idx, line in enumerate(timeline_text.splitlines()):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            parsed_rows.append((idx, row))
         n_runs += 1
         run_id = run_dir.name
         checkpoint: dict = {}
@@ -272,6 +390,14 @@ def mine_ultra(ultra_dir: Path) -> tuple[list[dict], dict]:
             split_key = run_id
             lat_measured = "measured" in str(cp_prov.get("latency", ""))
             tok_measured = "measured" in str(cp_prov.get("tokens", ""))
+            label_prov = "measured-behavior"
+            if _run_escalated(checkpoint, [row for _, row in parsed_rows]):
+                # Outcome adjustment (harness runs ONLY, never synthetic): the
+                # bounded ladder's terminal escalate is the harness's own
+                # measured signal that the executed tier was insufficient; the
+                # escalation target is the strongest tier.
+                tier = "agentic_epic"
+                label_prov = "measured-outcome"
         else:
             # langchain-run checkpoints carry goal_preview; list runs don't.
             goal_text = checkpoint.get("goal_preview") or ""
@@ -286,14 +412,14 @@ def mine_ultra(ultra_dir: Path) -> tuple[list[dict], dict]:
             split_key = re.sub(r"-(\d{8}T\d{6}Z|\d{6})$", "", run_id)
             lat_measured = False
             tok_measured = False
-        for idx, line in enumerate(timeline.read_text(encoding="utf-8").splitlines()):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                row = json.loads(line)
-            except ValueError:
-                continue
+            label_prov = "simulated"
+        correction = corrections.get(run_id) or corrections.get(split_key)
+        if correction is not None:
+            # Operator corrections are ground truth: they outrank both the
+            # behavior label and the outcome adjustment.
+            tier = correction["tier"]
+            label_prov = "operator-corrected"
+        for idx, row in parsed_rows:
             # Rows carry BOTH spellings; mirror harness timeline.py:71-77.
             latency_ms = float(row.get("latency_ms", row.get("latency", 0)) or 0)
             tokens_est = int(row.get("tokens_est", row.get("tokens", 0)) or 0)
@@ -308,7 +434,7 @@ def mine_ultra(ultra_dir: Path) -> tuple[list[dict], dict]:
                     "latency_ms": "measured" if lat_measured else "simulated",
                     "tokens_est": "measured" if tok_measured else "simulated",
                     "status": "measured",
-                    "label_tier": "measured-behavior",
+                    "label_tier": label_prov,
                 }
             else:
                 # Only the decide_act row's latency is wall-clock measured
@@ -319,7 +445,7 @@ def mine_ultra(ultra_dir: Path) -> tuple[list[dict], dict]:
                     "latency_ms": lat_prov,
                     "tokens_est": "simulated",
                     "status": "measured",
-                    "label_tier": "simulated",
+                    "label_tier": label_prov,
                 }
             features = base_features(goal_text)
             features.update({
@@ -630,24 +756,45 @@ def _count_records(records: list[dict]) -> dict:
     by_provenance: dict[str, int] = {}
     by_tier: dict[str, int] = {}
     by_split = {"train": 0, "val": 0, "test": 0}
+    by_label_tier: dict[str, int] = {}
+    # Measured val+test records per label provenance — the count the promotion
+    # gate's label-ceiling argument turns on (labels the heuristic did not make).
+    measured_holdout_by_label_tier: dict[str, int] = {}
     for rec in records:
         by_source[rec["source"]] = by_source.get(rec["source"], 0) + 1
         by_provenance[rec["provenance"]] = by_provenance.get(rec["provenance"], 0) + 1
         by_tier[rec["label_tier"]] = by_tier.get(rec["label_tier"], 0) + 1
         by_split[split_name(rec["split_bucket"])] += 1
+        label_prov = rec["provenance_fields"]["label_tier"]
+        by_label_tier[label_prov] = by_label_tier.get(label_prov, 0) + 1
+        if rec["provenance"] == "measured" and rec["split_bucket"] >= 8:
+            measured_holdout_by_label_tier[label_prov] = measured_holdout_by_label_tier.get(label_prov, 0) + 1
     return {
         "total": len(records),
         "by_source": by_source,
         "by_provenance": by_provenance,
         "by_tier": by_tier,
         "by_split": by_split,
+        "by_label_tier": by_label_tier,
+        "measured_holdout_by_label_tier": measured_holdout_by_label_tier,
     }
 
 
-def build(out_dir: Path, ultra_dir: Path, journal_dir: Path | None, battery_n: int, seed: int) -> dict:
-    ultra_records, ultra_meta = mine_ultra(ultra_dir)
+def build(out_dir: Path, ultra_dir: Path, journal_dir: Path | None, battery_n: int, seed: int,
+          corrections_path: Path | None = None) -> dict:
+    if corrections_path is None:
+        corrections_path = out_dir / "label_corrections.jsonl"
+    corrections = load_corrections(corrections_path)
+    ultra_records, ultra_meta = mine_ultra(ultra_dir, corrections)
     journal_records, journal_meta = mine_journal(journal_dir)
     battery_records = generate_battery(battery_n, seed)
+    # mine_ultra already applied corrections (it also matches full run ids);
+    # cover the remaining sources by split_key.
+    for rec in journal_records + battery_records:
+        correction = corrections.get(rec["split_key"])
+        if correction is not None:
+            rec["label_tier"] = correction["tier"]
+            rec["provenance_fields"]["label_tier"] = "operator-corrected"
     records = ultra_records + journal_records + battery_records
 
     record_ids = [r["record_id"] for r in records]
@@ -671,6 +818,13 @@ def build(out_dir: Path, ultra_dir: Path, journal_dir: Path | None, battery_n: i
         "tier_vocab": TIER_VOCAB,
         "dense_features": DENSE_FEATURES,
         "reward_config": REWARD_CONFIG,
+        "label_corrections": {
+            "path": _relpath(corrections_path),
+            "n_corrections": len(corrections),
+            "n_records_corrected": sum(
+                1 for r in records if r["provenance_fields"]["label_tier"] == "operator-corrected"
+            ),
+        },
         "counts": _count_records(records),
         "sources": {
             "ultra_timeline": ultra_meta,
@@ -700,7 +854,8 @@ def stats(out_dir: Path) -> dict:
     counts = _count_records(records)
     print(f"corpus: {corpus_path}")
     print(f"total: {counts['total']}")
-    for section in ("by_provenance", "by_source", "by_tier", "by_split"):
+    for section in ("by_provenance", "by_source", "by_tier", "by_split", "by_label_tier",
+                    "measured_holdout_by_label_tier"):
         pairs = ", ".join(f"{k}={v}" for k, v in sorted(counts[section].items()))
         print(f"{section}: {pairs}")
     return counts
@@ -718,13 +873,16 @@ def main(argv: list[str] | None = None) -> int:
     p_build.add_argument("--journal-dir", type=Path, default=None)
     p_build.add_argument("--battery-n", type=int, default=800)
     p_build.add_argument("--seed", type=int, default=20260809)
+    # No default here: absent, build() reads <out>/label_corrections.jsonl.
+    p_build.add_argument("--corrections", type=Path, default=None)
 
     p_stats = sub.add_parser("stats", help="print counts for an existing corpus")
     p_stats.add_argument("--out", type=Path, default=_AVA / "data" / "orchestration")
 
     args = parser.parse_args(argv)
     if args.cmd == "build":
-        meta = build(args.out, args.ultra_dir, args.journal_dir, args.battery_n, args.seed)
+        meta = build(args.out, args.ultra_dir, args.journal_dir, args.battery_n, args.seed,
+                     args.corrections)
         counts = meta["counts"]
         print(f"wrote {counts['total']} records to {args.out / 'corpus.jsonl'}")
         print(f"by_source: {counts['by_source']}")

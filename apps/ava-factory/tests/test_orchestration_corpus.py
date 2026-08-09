@@ -27,12 +27,14 @@ import build_orchestration_corpus as bc
 
 # ---------------------------------------------------------------- helpers
 
-def _build(out, ultra_dir, journal_dir=None, battery_n=5, seed=None):
+def _build(out, ultra_dir, journal_dir=None, battery_n=5, seed=None, corrections=None):
     argv = ["build", "--out", str(out), "--ultra-dir", str(ultra_dir), "--battery-n", str(battery_n)]
     if journal_dir is not None:
         argv += ["--journal-dir", str(journal_dir)]
     if seed is not None:
         argv += ["--seed", str(seed)]
+    if corrections is not None:
+        argv += ["--corrections", str(corrections)]
     assert bc.main(argv) == 0
     return _load(out / "corpus.jsonl")
 
@@ -172,7 +174,8 @@ def test_schema_all_records(tmp_path):
         assert rec["provenance"] in {"measured", "simulated"}
         pf = rec["provenance_fields"]
         assert set(pf) == {"latency_ms", "tokens_est", "status", "label_tier"}
-        assert all(v in {"measured", "simulated"} for v in pf.values())
+        assert all(pf[k] in {"measured", "simulated"} for k in ("latency_ms", "tokens_est", "status"))
+        assert pf["label_tier"] in bc.LABEL_TIER_PROVENANCE
         assert _FEATURE_KEYS <= set(rec["features"].keys())
         assert rec["label_tier"] in bc.TIER_VOCAB
         assert isinstance(rec["label_agents_n"], int) and rec["label_agents_n"] >= 1
@@ -203,6 +206,170 @@ def test_ultra_fixture_split_key_and_provenance(tmp_path):
         assert rec["provenance_fields"]["latency_ms"] == "measured"
     for rec in other:
         assert rec["provenance_fields"]["latency_ms"] == "simulated"
+
+
+# ---------------------------------------------------------------- (4b) harness runs: outcome labels + corrections
+
+def _write_harness_run_fixture(tmp_path, run_id, *, escalate=False, timeline=True):
+    """One harness-runner run dir (checkpoint version harness-run/*).
+
+    Mirrors the runner store layout: perf_counter latencies, measured-0 tokens
+    (no external model), both field spellings per timeline row. With
+    escalate=True the run ends in the ladder's terminal escalate: a lone
+    attempt-1 WRITE failure, recovery_action "escalate", never auto-retried.
+    """
+    ultra = tmp_path / "ultra-runs"
+    run_dir = ultra / run_id
+    run_dir.mkdir(parents=True)
+    nodes = [
+        {"nodeId": "plan.decompose", "status": "ok", "attempts": 1, "errorClass": None,
+         "artifact_chars": 120, "recovery_action": None},
+    ]
+    rows = [
+        {"nodeId": "plan.decompose", "agentId": "planner", "attempt": 1,
+         "latency": 3.2, "latency_ms": 3.2, "tokens": 0, "tokens_est": 0,
+         "status": "ok", "errorClass": None, "ts": "2026-08-09T00:00:00Z", "runId": run_id},
+    ]
+    if escalate:
+        nodes.append({"nodeId": "exec.write", "status": "failed", "attempts": 1,
+                      "errorClass": "TOOL_FAILURE", "artifact_chars": 0,
+                      "recovery_action": "escalate"})
+        rows.append({"nodeId": "exec.write", "agentId": "executor", "attempt": 1,
+                     "latency": 5.0, "latency_ms": 5.0, "tokens": 0, "tokens_est": 0,
+                     "status": "fail", "errorClass": "TOOL_FAILURE",
+                     "ts": "2026-08-09T00:00:01Z", "runId": run_id})
+    checkpoint = {
+        "runId": run_id, "dag_version": 1, "nodes": nodes,
+        "version": "harness-run/0.1",
+        "provenance": {"driver": "dag", "executors": ["deterministic"],
+                       "latency": "measured perf_counter",
+                       "tokens": "measured 0 — deterministic executors, no external calls",
+                       "goal": "send the invoice for latency budgets",
+                       "tier": "action_operator", "intent": "complex_action",
+                       "complexity": "medium"},
+    }
+    (run_dir / "checkpoint.json").write_text(json.dumps(checkpoint), encoding="utf-8")
+    if timeline:
+        with (run_dir / "timeline.jsonl").open("w", encoding="utf-8") as fh:
+            for row in rows:
+                fh.write(json.dumps(row) + "\n")
+    return ultra
+
+
+def test_harness_escalated_run_gets_outcome_adjusted_label(tmp_path):
+    run_id = "harness-run-20260809T000000000000Z"
+    ultra = _write_harness_run_fixture(tmp_path, run_id, escalate=True)
+    records = _build(tmp_path / "out", ultra, battery_n=5)
+    recs = [r for r in records if r["source"] == "ultra_timeline"]
+    assert len(recs) == 2
+    for rec in recs:
+        # ladder escalated -> executed tier measured-insufficient -> strongest tier
+        assert rec["label_tier"] == "agentic_epic"
+        assert rec["provenance_fields"]["label_tier"] == "measured-outcome"
+        assert rec["provenance"] == "measured"
+        assert rec["split_key"] == run_id
+    fail_row = next(r for r in recs if r["status"] == "fail")
+    assert fail_row["errorClass"] == "TOOL_FAILURE"
+    assert fail_row["reward"] < 0
+
+
+def test_harness_run_without_escalation_keeps_behavior_label(tmp_path):
+    run_id = "harness-run-20260809T000001000000Z"
+    ultra = _write_harness_run_fixture(tmp_path, run_id, escalate=False)
+    records = _build(tmp_path / "out", ultra, battery_n=5)
+    recs = [r for r in records if r["source"] == "ultra_timeline"]
+    assert len(recs) == 1
+    assert recs[0]["label_tier"] == "action_operator"  # executed routing, unchanged
+    assert recs[0]["provenance_fields"]["label_tier"] == "measured-behavior"
+    assert recs[0]["provenance"] == "measured"
+
+
+def test_harness_run_missing_timeline_never_fails_mining(tmp_path):
+    run_id = "harness-run-20260809T000002000000Z"
+    ultra = _write_harness_run_fixture(tmp_path, run_id, escalate=True, timeline=False)
+    records = _build(tmp_path / "out", ultra, battery_n=5)
+    # No timeline -> no rows to mine; the build still succeeds.
+    assert [r for r in records if r["source"] == "ultra_timeline"] == []
+    assert len(records) == 5
+
+
+def test_corrupt_timeline_does_not_invent_escalation(tmp_path):
+    # The checkpoint's complete node summary says the failure was retried
+    # ("patch", attempts 2), but the timeline lost its attempt-2 row to a torn
+    # line — the lone attempt-1 failure left in the timeline must NOT be read
+    # as a terminal escalate: the authoritative summary wins.
+    run_id = "harness-run-20260809T000005000000Z"
+    ultra = _write_harness_run_fixture(tmp_path, run_id, escalate=False)
+    run_dir = ultra / run_id
+    checkpoint = json.loads((run_dir / "checkpoint.json").read_text(encoding="utf-8"))
+    checkpoint["nodes"].append({"nodeId": "exec.retry", "status": "failed", "attempts": 2,
+                                "errorClass": "TOOL_FAILURE", "artifact_chars": 0,
+                                "recovery_action": "patch"})
+    (run_dir / "checkpoint.json").write_text(json.dumps(checkpoint), encoding="utf-8")
+    with (run_dir / "timeline.jsonl").open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"nodeId": "exec.retry", "agentId": "executor", "attempt": 1,
+                             "latency": 4.0, "latency_ms": 4.0, "tokens": 0, "tokens_est": 0,
+                             "status": "fail", "errorClass": "TOOL_FAILURE",
+                             "ts": "2026-08-09T00:00:02Z", "runId": run_id}) + "\n")
+        fh.write('{"nodeId": "exec.retry", "attempt": 2, "status"')  # torn line
+    records = _build(tmp_path / "out", ultra, battery_n=5)
+    recs = [r for r in records if r["source"] == "ultra_timeline"]
+    assert len(recs) == 2  # plan row + attempt-1 fail row; torn line dropped
+    for rec in recs:
+        assert rec["label_tier"] == "action_operator"
+        assert rec["provenance_fields"]["label_tier"] == "measured-behavior"
+
+
+def test_operator_correction_wins_over_outcome_adjustment(tmp_path):
+    run_id = "harness-run-20260809T000003000000Z"
+    ultra = _write_harness_run_fixture(tmp_path, run_id, escalate=True)
+    corr = tmp_path / "label_corrections.jsonl"
+    corr.write_text(json.dumps({
+        "run_id": run_id, "tier": "deep_research",
+        "reason": "run was a research probe, escalation was environmental",
+        "corrected_by": "operator", "date": "2026-08-09",
+    }) + "\n", encoding="utf-8")
+    records = _build(tmp_path / "out", ultra, battery_n=5, corrections=corr)
+    recs = [r for r in records if r["source"] == "ultra_timeline"]
+    assert len(recs) == 2
+    for rec in recs:
+        assert rec["label_tier"] == "deep_research"
+        assert rec["provenance_fields"]["label_tier"] == "operator-corrected"
+    meta = json.loads((tmp_path / "out" / "corpus_meta.json").read_text(encoding="utf-8"))
+    assert meta["label_corrections"]["n_corrections"] == 1
+    assert meta["label_corrections"]["n_records_corrected"] == 2
+
+
+def test_invalid_correction_tier_fails_loudly(tmp_path):
+    run_id = "harness-run-20260809T000004000000Z"
+    ultra = _write_harness_run_fixture(tmp_path, run_id, escalate=True)
+    corr = tmp_path / "label_corrections.jsonl"
+    corr.write_text(json.dumps({
+        "run_id": run_id, "tier": "mega_epic", "reason": "typo",
+        "corrected_by": "operator", "date": "2026-08-09",
+    }) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="mega_epic"):
+        bc.main(["build", "--out", str(tmp_path / "out"), "--ultra-dir", str(ultra),
+                 "--battery-n", "5", "--corrections", str(corr)])
+
+
+def test_meta_label_tier_counts(tmp_path):
+    # Pick a run id that lands in the hold-out (bucket 8/9) so the escalated
+    # run's rows count toward measured_holdout_by_label_tier.
+    run_id = None
+    for i in range(10000):
+        cand = f"harness-run-fixture-{i:05d}"
+        if bc.split_bucket(cand) >= 8:
+            run_id = cand
+            break
+    assert run_id is not None
+    ultra = _write_harness_run_fixture(tmp_path, run_id, escalate=True)
+    records = _build(tmp_path / "out", ultra, battery_n=20)
+    meta = json.loads((tmp_path / "out" / "corpus_meta.json").read_text(encoding="utf-8"))
+    counts = meta["counts"]
+    assert counts["by_label_tier"] == {"measured-outcome": 2, "simulated": 20}
+    assert counts["measured_holdout_by_label_tier"] == {"measured-outcome": 2}
+    assert sum(counts["by_label_tier"].values()) == counts["total"] == len(records)
 
 
 # ---------------------------------------------------------------- (5) reward semantics

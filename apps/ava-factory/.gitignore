@@ -39,6 +39,7 @@ data/*
 data/orchestration/*
 !data/orchestration/corpus.jsonl
 !data/orchestration/corpus_meta.json
+!data/orchestration/label_corrections.jsonl
 runs/
 ckpt/
 export/
