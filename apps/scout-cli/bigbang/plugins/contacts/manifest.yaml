@@ -2,7 +2,11 @@ name: contacts
 description: ACNE Contacts Power Suite — local-first TLPG tool I wish I had for harness work. Resolve fuzzy phrases, vector search 17 types, GraphRAG 2-hop + provenance, sync_from_bundles one-shot hill-climb + health_report. Zero deps, no cloud, 5-layer cache ~80% savings.
 capabilities:
   network: false
-  filesystem: true
+  filesystem:
+    enabled: true
+    # Read-only: the CLI emits JSON to stdout and reads workspace files; no
+    # write sites exist in cli.py, so no write grant and no paths allowlist.
+    write: false
   secrets: false
 version: 0.4.1-power-suite
 entry: cli.py

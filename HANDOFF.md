@@ -23,8 +23,10 @@ before writing "current" anywhere in this file.
 > warning above did not work: this block went stale four times (23, 37, 27 and 10 commits),
 > the last one *inside the same session as its own refresh*. A warning is not a mechanism.
 
-**Re-measured 2026-08-02 (late), not carried forward.** HEAD `e2a8a57`, branch `main`,
-**0 ahead / 0 behind `origin/main`** — everything pushed. Docker Desktop **not running**,
+**Re-measured 2026-08-09, not carried forward.** HEAD `ff15efb`, branch
+`claude/longcat-2-architecture-moxdny` (the prior recorded `e2a8a57` predates the
+squashed monorepo import and no longer exists in this history),
+**0 ahead / 0 behind origin** — everything pushed. Docker Desktop **not running**,
 so no trainer is live and the FROZEN `apps/ava-factory/dottie/**` paths are not
 bind-mounted. `C:` has **36 GB free** of 932 GB (97% used) — 36 on 08-02 earlier, 38 on
 08-01, 41 earlier that day, 50 on 07-31. Still dropping; watch it.

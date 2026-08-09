@@ -67,6 +67,13 @@ def _complexity(text: str) -> str:
     return "simple"
 
 def _routed_agents(intent: str, complexity: str) -> List[str]:
+    # Membership guards: unknown values normalize to the minimal-roster path
+    # (identical outcome to the bare fall-through, made explicit — mirrors the
+    # vendored port in apps/dottie-harness-api/lib/heuristics.py).
+    if intent not in ("deep_research", "complex_action", "agentic_loop"):
+        intent = "chat"
+    if complexity not in ("simple", "medium", "epic"):
+        complexity = "simple"
     if intent=="deep_research":
         return ["deep-researcher","synthesist","forensic-auditor"] if complexity!="epic" else ["deep-researcher","synthesist","researcher","forensic-auditor","critic"]
     if intent=="complex_action":
@@ -162,11 +169,23 @@ def agents_cmd(
         res={"intent":intent, "routed_agents":_routed_agents(intent,"medium"), "cap":"CrewAI noisy >5-6 needs filtering, sub-swarm 3-5 medium, 13 only epic", "ok":True}
     _emit(res, f"harness agents {sub}", json_out)
 
+_RUN_ID_SAFE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+
+
+def _valid_run_id(run_id: str) -> bool:
+    """Containment guard: a run id is a single path segment, never a path."""
+    return bool(_RUN_ID_SAFE_RE.fullmatch(run_id)) and ".." not in run_id
+
+
 @app.command("checkpoint")
 def checkpoint_cmd(
     action: str = typer.Argument("list", help="list|show|pause|resume"),
     run_id: str = typer.Option("", "--run-id"),
     json_out: bool = typer.Option(False,"--json")):
+    if run_id and not _valid_run_id(run_id):
+        _emit({"ok": False, "error": f"invalid --run-id {run_id!r}: single path segment required"},
+              "harness checkpoint", json_out)
+        return
     base=Path.home()/".cache"/"scout"/"checkpoints"
     base.mkdir(parents=True, exist_ok=True)
     if action=="list":

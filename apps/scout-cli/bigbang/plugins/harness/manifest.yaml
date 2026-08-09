@@ -2,7 +2,14 @@ name: harness
 description: Scout v3.3 orientation engine — MoMA-lite 5-tier router classifyTier deterministic-first, memory lattice dense0.7+sparse0.3+rerank+1-2hop OODA, GARNet G_workflow+G_history MDP, checkpoint pause/resume, recovery ladder, pacing :13, verification econ. v5 Prime Mission Log Stuck Detector Verifier Budget.
 capabilities:
   network: false
-  filesystem: true
+  filesystem:
+    enabled: true
+    write: true
+    # Real write surfaces: the timeline/checkpoint store (timeline.py:35) and
+    # the runner's canonical run dirs (runner.py run_goal default runs_dir).
+    paths:
+      - "~/.cache/scout/checkpoints/"
+      - "~/workspace/bundles/ultra/runs/"
   secrets: false
 version: 0.8.2-orientation-engine
 entry: cli.py

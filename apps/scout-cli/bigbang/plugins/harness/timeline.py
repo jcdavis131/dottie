@@ -47,7 +47,7 @@ def append_event(run_id: str, record: dict, base: Path | None = None) -> dict:
     run_dir.mkdir(parents=True, exist_ok=True)
     timeline_path = run_dir / "timeline.jsonl"
     idx_path = run_dir / "timeline.idx.jsonl"
-    with open(timeline_path, "a", encoding="utf-8") as f:
+    with timeline_path.open("a", encoding="utf-8") as f:
         f.seek(0, os.SEEK_END)
         offset = f.tell()
         f.write(json.dumps(record) + "\n")
@@ -58,7 +58,7 @@ def append_event(run_id: str, record: dict, base: Path | None = None) -> dict:
         "status": record.get("status"),
         "errorClass": record.get("errorClass"),
     }
-    with open(idx_path, "a", encoding="utf-8") as f:
+    with idx_path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(idx_line) + "\n")
     return {"ok": True, "run_id": run_id, "offset": offset, "path": str(timeline_path)}
 
@@ -98,7 +98,7 @@ def _read_events(path: Path) -> list:
         # else: shrank, or same size with a different mtime — full re-parse.
     if state is None:
         state = {"offset": 0, "events": []}
-    with open(path, "rb") as f:
+    with path.open("rb") as f:
         f.seek(state["offset"])
         tail = f.read()
     consumed = 0

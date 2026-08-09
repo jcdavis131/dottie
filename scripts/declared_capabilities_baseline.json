@@ -1,110 +1,128 @@
 {
-  "_doc": "Plugins that DECLARE capabilities.filesystem.paths and never call enforce_or_raise. Accepted means READ AND JUDGED, not approved-forever — each entry says what makes it acceptable for now. `--check` fails only on plugins absent from this list, so a NEW declare-without-enforce is loud while these stay quiet. Delete an entry when the plugin starts enforcing; the checker reports baselined plugins that now enforce as prunable.",
-  "_measured": "2026-08-01: 47 plugins declare paths, 34 enforce, 13 do not.",
-  "accepted": [
-    {
-      "plugin": "ava",
-      "declared": [
-        "~/workspace/ava-agi-factory-v6-4/",
-        "~/.cache/huggingface/"
-      ],
-      "judgment": "Declares ~/workspace/ava-agi-factory-v6-4/, a checkout the monorepo notes as SUPERSEDED, plus the HF cache. Likely stale rather than dangerous — confirm the declaration still describes anything real before wiring a guard to it."
-    },
-    {
-      "plugin": "brain",
-      "declared": [
-        "~/MEMORY.md",
-        "~/memory/",
-        "~/workspace/projects/",
-        "~/workspace/your_files/"
-      ],
-      "judgment": "Declares ~/MEMORY.md and ~/memory/. Verified 2026-08-01 that NOTHING in the tree writes ~/MEMORY.md — every reference is a read — so the declaration currently over-claims rather than under-guards. Fixing may mean narrowing the declaration, not adding a guard."
-    },
-    {
-      "plugin": "dev_loop",
-      "declared": [
-        "~/workspace/dottie"
-      ],
-      "judgment": "Declares ~/workspace/dottie — note the WORKSPACE copy, which SPEC.md records as a stale clone, not the canonical ~/dottie. The declaration may be pointing at the wrong tree entirely."
-    },
-    {
-      "plugin": "herd",
-      "declared": [
-        "~/.local/share/bigbang/herd/"
-      ],
-      "judgment": "Declares ~/.local/share/bigbang/herd/ and enforces nothing. NOT academic: that ledger (sessions.json, 3798 bytes) was destroyed by an unguarded write during the 2026-08-01 session, unrecoverable. An enforced fs_write would not have stopped that particular write (it targeted the declared directory) but the plugin having no guard at all is why nothing sat between intent and the file."
-    },
-    {
-      "plugin": "lab",
-      "declared": [
-        "~/workspace/projects/first-1k-mo-passive/",
-        "~/workspace/projects/build-a-self-sustaining-web-app-for-passive-income/",
-        "~/workspace/your_files/"
-      ],
-      "judgment": "Declares two project directories plus ~/workspace/your_files/. Same shape as rtx: real paths, no guard, low blast radius."
-    },
-    {
-      "plugin": "mcp",
-      "declared": [
-        "~/.local/share/bigbang/"
-      ],
-      "judgment": "Declares the whole of ~/.local/share/bigbang/, overlapping secrets and herd. Three plugins claiming one directory with no enforcement is a scoping question before it is an enforcement one."
-    },
-    {
-      "plugin": "reviewgraph",
-      "declared": [
-        ".scout"
-      ],
-      "judgment": "Declares the bare relative path '.scout'. policy.py's _norm_path was hardened in this repo precisely so a declared prefix cannot grant '.scoutevil/x'; that fix protects consumers of the guard, and this plugin does not call it."
-    },
-    {
-      "plugin": "rtx",
-      "declared": [
-        "~/workspace/autoresearch-rtx-custom/",
-        "~/workspace/your_files/rtx-offload/",
-        "~/workspace/projects/first-1k-mo-passive/files/"
-      ],
-      "judgment": "Declares three ~/workspace paths for GPU offload. Companion to apps/scout-rtx, which is excluded from CI and needs a Windows GPU, so this is the hardest of the thirteen to exercise and the least urgent."
-    },
-    {
-      "plugin": "secrets",
-      "declared": [
-        "~/.local/share/bigbang/"
-      ],
-      "judgment": "HIGHEST STAKES of the thirteen. Declares ~/.local/share/bigbang/ and enforces nothing, and this is the VAULT plugin. The suite was separately caught writing the developer's real vault (fixed by test isolation in bbdcb99), which is the same directory. Enforcement here is not cosmetic; review this one first."
-    },
-    {
-      "plugin": "skill",
-      "declared": [
-        "~/.dottie-claw/skills/",
-        "~/.openclaw/skills/",
-        "~/.claude/skills/",
-        "~/.cursor/skills/"
-      ],
-      "judgment": "Declares four skill directories across ~/.dottie-claw, ~/.openclaw, ~/.claude and ~/.cursor — i.e. it writes executable instructions the agent later follows. An unenforced path list on a plugin that authors skills is worth deciding deliberately."
-    },
-    {
-      "plugin": "system",
-      "declared": [
-        "~/workspace/bigbang-cli/"
-      ],
-      "judgment": "Declares ~/workspace/bigbang-cli/. system/cli.py does write files, so this is a genuine declared-not-enforced gap rather than an over-claim."
-    },
-    {
-      "plugin": "tennis",
-      "declared": [
-        "~/workspace/tennis-dinov3-serve-coach/"
-      ],
-      "judgment": "Declares ~/workspace/tennis-dinov3-serve-coach/. No such project appears in the estate table; likely a dead declaration."
-    },
-    {
-      "plugin": "write",
-      "declared": [
-        "~/workspace/your_files/write-outputs/",
-        "~/workspace/",
-        "./"
-      ],
-      "judgment": "Declares './' among its paths, which is not a restriction in any useful sense — it permits the working directory wherever the CLI is invoked. Enforcing the list as written would change almost nothing; the declaration itself needs rethinking first."
-    }
-  ]
+ "_doc": "Plugins that DECLARE capabilities.filesystem.paths and never call enforce_or_raise. Accepted means READ AND JUDGED, not approved-forever \u2014 each entry says what makes it acceptable for now. `--check` fails only on plugins absent from this list, so a NEW declare-without-enforce is loud while these stay quiet. Delete an entry when the plugin starts enforcing; the checker reports baselined plugins that now enforce as prunable.",
+ "_measured": "2026-08-01: 47 plugins declare paths, 34 enforce, 13 do not.",
+ "accepted": [
+  {
+   "plugin": "ava",
+   "declared": [
+    "~/workspace/ava-agi-factory-v6-4/",
+    "~/.cache/huggingface/"
+   ],
+   "judgment": "Declares ~/workspace/ava-agi-factory-v6-4/, a checkout the monorepo notes as SUPERSEDED, plus the HF cache. Likely stale rather than dangerous \u2014 confirm the declaration still describes anything real before wiring a guard to it."
+  },
+  {
+   "plugin": "brain",
+   "declared": [
+    "~/MEMORY.md",
+    "~/memory/",
+    "~/workspace/projects/",
+    "~/workspace/your_files/"
+   ],
+   "judgment": "Declares ~/MEMORY.md and ~/memory/. Verified 2026-08-01 that NOTHING in the tree writes ~/MEMORY.md \u2014 every reference is a read \u2014 so the declaration currently over-claims rather than under-guards. Fixing may mean narrowing the declaration, not adding a guard."
+  },
+  {
+   "plugin": "dev_loop",
+   "declared": [
+    "~/workspace/dottie"
+   ],
+   "judgment": "Declares ~/workspace/dottie \u2014 note the WORKSPACE copy, which SPEC.md records as a stale clone, not the canonical ~/dottie. The declaration may be pointing at the wrong tree entirely."
+  },
+  {
+   "plugin": "herd",
+   "declared": [
+    "~/.local/share/bigbang/herd/"
+   ],
+   "judgment": "Declares ~/.local/share/bigbang/herd/ and enforces nothing. NOT academic: that ledger (sessions.json, 3798 bytes) was destroyed by an unguarded write during the 2026-08-01 session, unrecoverable. An enforced fs_write would not have stopped that particular write (it targeted the declared directory) but the plugin having no guard at all is why nothing sat between intent and the file."
+  },
+  {
+   "plugin": "lab",
+   "declared": [
+    "~/workspace/projects/first-1k-mo-passive/",
+    "~/workspace/projects/build-a-self-sustaining-web-app-for-passive-income/",
+    "~/workspace/your_files/"
+   ],
+   "judgment": "Declares two project directories plus ~/workspace/your_files/. Same shape as rtx: real paths, no guard, low blast radius."
+  },
+  {
+   "plugin": "mcp",
+   "declared": [
+    "~/.local/share/bigbang/"
+   ],
+   "judgment": "Declares the whole of ~/.local/share/bigbang/, overlapping secrets and herd. Three plugins claiming one directory with no enforcement is a scoping question before it is an enforcement one."
+  },
+  {
+   "plugin": "reviewgraph",
+   "declared": [
+    ".scout"
+   ],
+   "judgment": "Declares the bare relative path '.scout'. policy.py's _norm_path was hardened in this repo precisely so a declared prefix cannot grant '.scoutevil/x'; that fix protects consumers of the guard, and this plugin does not call it."
+  },
+  {
+   "plugin": "rtx",
+   "declared": [
+    "~/workspace/autoresearch-rtx-custom/",
+    "~/workspace/your_files/rtx-offload/",
+    "~/workspace/projects/first-1k-mo-passive/files/"
+   ],
+   "judgment": "Declares three ~/workspace paths for GPU offload. Companion to apps/scout-rtx, which is excluded from CI and needs a Windows GPU, so this is the hardest of the thirteen to exercise and the least urgent."
+  },
+  {
+   "plugin": "secrets",
+   "declared": [
+    "~/.local/share/bigbang/"
+   ],
+   "judgment": "HIGHEST STAKES of the thirteen. Declares ~/.local/share/bigbang/ and enforces nothing, and this is the VAULT plugin. The suite was separately caught writing the developer's real vault (fixed by test isolation in bbdcb99), which is the same directory. Enforcement here is not cosmetic; review this one first."
+  },
+  {
+   "plugin": "skill",
+   "declared": [
+    "~/.dottie-claw/skills/",
+    "~/.openclaw/skills/",
+    "~/.claude/skills/",
+    "~/.cursor/skills/"
+   ],
+   "judgment": "Declares four skill directories across ~/.dottie-claw, ~/.openclaw, ~/.claude and ~/.cursor \u2014 i.e. it writes executable instructions the agent later follows. An unenforced path list on a plugin that authors skills is worth deciding deliberately."
+  },
+  {
+   "plugin": "system",
+   "declared": [
+    "~/workspace/bigbang-cli/"
+   ],
+   "judgment": "Declares ~/workspace/bigbang-cli/. system/cli.py does write files, so this is a genuine declared-not-enforced gap rather than an over-claim."
+  },
+  {
+   "plugin": "tennis",
+   "declared": [
+    "~/workspace/tennis-dinov3-serve-coach/"
+   ],
+   "judgment": "Declares ~/workspace/tennis-dinov3-serve-coach/. No such project appears in the estate table; likely a dead declaration."
+  },
+  {
+   "plugin": "write",
+   "declared": [
+    "~/workspace/your_files/write-outputs/",
+    "~/workspace/",
+    "./"
+   ],
+   "judgment": "Declares './' among its paths, which is not a restriction in any useful sense \u2014 it permits the working directory wherever the CLI is invoked. Enforcing the list as written would change almost nothing; the declaration itself needs rethinking first."
+  },
+  {
+   "plugin": "harness",
+   "declared": [
+    "~/.cache/scout/checkpoints/",
+    "~/workspace/bundles/ultra/runs/"
+   ],
+   "judgment": "Declares the real write surfaces (timeline/checkpoint store, runner run dirs) after moving off the crashing bool form 2026-08-09. Runtime enforce_or_raise gates at the write sites are planned (docs/PLATFORM_IMPROVEMENT_PLAN.md P2); until they land the declaration documents the surface honestly and checkpoint --run-id carries a containment guard."
+  },
+  {
+   "plugin": "agents",
+   "declared": [
+    "~/workspace/bundles/ultra/runs/",
+    "~/workspace/dottie/pipeline/runs/",
+    "~/workspace/dottie/bundles/ultra/runs/",
+    "~/workspace/dottie/apps/ava-factory/bundles/ultra/runs/"
+   ],
+   "judgment": "Declares the checkpoint triple-write stores its cli actually touches (cli.py:61-64), converted from the crashing bool form 2026-08-09. Same P2 plan applies: gates at write sites, then re-judge."
+  }
+ ]
 }

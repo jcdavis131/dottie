@@ -27,12 +27,14 @@ jobs:
       # trains everyone to ignore the X and the next real breakage looks identical.
       #
       # Non-blocking with the debt STATED, matching ci.yml's ruff step. Re-measured
-      # 2026-08-01 rather than copying the previous figure: 252 findings —
-      # personal-graphify 141, ava-open-harness 79, scout-cli 32 (sums exactly to the
-      # combined run). Trail: 334 (07-24) -> 286 (07-25) -> 263 -> 252 (both 08-01), as
-      # scout-cli fell 95 -> 47 -> 43 -> 32 and ava-skills 19 -> 0. The 263 was written
-      # hours before the scout-cli security review closed 11 more findings — a number in
-      # a comment can go stale inside a single session, so re-measure, never carry it.
+      # 2026-08-09: 450 findings — personal-graphify 141, ava-open-harness 79,
+      # scout-cli 230 (sums exactly to the combined run). WHY it moved from 252: the
+      # 08-01 figure recorded scout-cli at 32, but the tree this branch measures
+      # carries the full v0.8 plugin surface (harness/vector/agents expansion) whose
+      # files the 08-01 count predates; the 2026-08-09 lane additions themselves lint
+      # at 0 (verified per-file). Trail: 334 (07-24) -> 286 -> 263 -> 252 (08-01,
+      # pre-surface) -> 450 (08-09, full surface). A number in a comment can go stale
+      # inside a single session, so re-measure, never carry it.
       #
       # ava-skills REACHED ZERO on 2026-08-01 and is now a HARD gate in ci.yml, so it is
       # dropped from this soft list — leaving it here would mean a package that must be
@@ -40,9 +42,9 @@ jobs:
       # double-accounting that makes a number stop meaning anything. ci.yml owns it now;
       # this workflow owns only what is still in debt.
       # Same ratchet as before: flip the next package the day it reaches zero; do not
-      # flip all three at once. personal-graphify at 141 is furthest; scout-cli at 32 is
-      # nearest.
-      - name: Ruff check (non-blocking — 252 known findings, see comment)
+      # flip all three at once. scout-cli at 230 is now furthest; ava-open-harness at
+      # 79 is nearest.
+      - name: Ruff check (non-blocking — 450 known findings, see comment)
         run: |
           ruff check --statistics \
             packages/ava-open-harness \

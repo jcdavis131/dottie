@@ -62,6 +62,24 @@
       "judgment": "DELIBERATE and already annotated in the workflow immediately above this step: the suite is non-blocking pending the `dottie` name collision, where apps/dottie/dottie and apps/ava-factory/dottie both claim the same top-level package. The three fixes (rename / __path__ merge / leave non-blocking) are an architectural choice across a FROZEN boundary and remain the operator's, so this stays soft until that is decided rather than being forced green. NEWLY VISIBLE 2026-08-01, not newly introduced: gate_audit only began reading a step's `name:` as context that day, and the safety word here ('non-blocking', 'collision' -> 'block') lives in the name, not the run line. Re-judge when the collision is resolved; this entry should be DELETED then, not carried."
     },
     {
+      "file": "pipeline/recovery_ladder.py",
+      "shape": "fail-open-dispatch",
+      "code": "def recovery_ladder(...)  dispatches on 'attempt' across 3 `==` branches",
+      "judgment": "Fall-through target is `escalate` (attempts exhausted -> human gate), the FAIL-CLOSED terminal of the bounded recovery ladder: any unrecognised attempt value (0, negative, >3) resolves to escalation, never to a permissive action. error_class and side_effect are membership-guarded at the top of the function; `attempt` is the ladder's step counter and the trailing escalate IS its else branch. Same judgment as the runner's inline replica below, which mirrors this function line-for-line."
+    },
+    {
+      "file": "pipeline/checkpoint_manager.py",
+      "shape": "fail-open-dispatch",
+      "code": "def recovery_ladder(...)  dispatches on 'attempt' across 3 `==` branches",
+      "judgment": "Same function embedded in the checkpoint manager: fall-through is `escalate`, the fail-closed terminal. See the pipeline/recovery_ladder.py entry; the two must be re-judged together if either is restructured."
+    },
+    {
+      "file": "apps/ava-factory/dottie/pipeline/checkpoint_manager.py",
+      "shape": "fail-open-dispatch",
+      "code": "def recovery_ladder(...)  dispatches on 'attempt' across 3 `==` branches",
+      "judgment": "FROZEN-path copy of the same recovery ladder (apps/ava-factory/dottie/** is bind-mounted into the live trainer and edited only through the adopt/decline review process). Fall-through is `escalate`, fail-closed; judging it acceptable records the verdict without touching the frozen file. Re-judge when the frozen copy is next opened for review."
+    },
+    {
       "file": "apps/scout-cli/bigbang/plugins/harness/runner.py",
       "shape": "fail-open-dispatch",
       "code": "def _inline_recovery_ladder(...)  dispatches on 'attempt' across 3 `==` branches",

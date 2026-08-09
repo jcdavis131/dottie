@@ -486,6 +486,11 @@ class TestUngatedWriteCapablePluginsAreTracked:
             "ava", "brain", "dev_loop", "herd", "lab", "mcp", "quality",
             "reviewgraph", "rtx", "secrets", "skill", "system", "tennis",
             "tools", "write",
+            # Deliberate additions 2026-08-09: their manifests moved from the
+            # crashing `filesystem: true` bool to honest dict form with paths
+            # allowlists; the enforce_or_raise gates at their write sites are
+            # planned work (docs/PLATFORM_IMPROVEMENT_PLAN.md P2), not landed.
+            "agents", "harness",
         }
     )
 
