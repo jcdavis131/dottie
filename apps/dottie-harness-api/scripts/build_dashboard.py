@@ -71,6 +71,7 @@ td { padding: .38rem .6rem .38rem 0; border-bottom: 1px solid var(--border); fon
 tr:last-child td { border-bottom: none; }
 .status { display: inline-flex; align-items: center; gap: .4rem; font-weight: 600; font-size: .82rem; }
 .status.fail { color: var(--critical); }
+.status.pass { color: var(--good); }
 .status.unmeasured { color: var(--text-2); }
 .status.queue-wait { color: var(--text-2); }
 .status.queue-exec { color: var(--s1); }
@@ -179,15 +180,33 @@ def build() -> None:
     variants = sorted(ladder["variants"], key=lambda v: v["name"])
     built_at = ladder["built_at"]
 
-    gate_rows = [
-        ("Measured held-out coverage (n ≥ 10)",
-         "fail", "✕",
-         f'FAIL — {ladder["corpus_counts"]["measured_holdout"]} of 10 required measured held-out records'),
+    # Gate rows are DERIVED from the eval report, never hardcoded: a criterion
+    # renders PASS/FAIL only when its inputs are measured, else UNMEASURED.
+    n_mh = int(champ.get("n_measured_holdout") or 0)
+    cov_ok = n_mh >= 10
+    gate_rows = [(
+        "Measured held-out coverage (n ≥ 10)",
+        "pass" if cov_ok else "fail",
+        "✓" if cov_ok else "✕",
+        f'{"PASS" if cov_ok else "FAIL"} — {n_mh} of 10 required measured held-out records',
+    )]
+    champ_m = champ.get("tier_accuracy_measured")
+    bl = ev.get("baselines") or {}
+    for name, base_acc in (
         ("Beats frequency-prior baseline on measured hold-out",
-         "unmeasured", "—", "UNMEASURED — insufficient measured held-out data"),
+         (bl.get("freq_prior") or {}).get("accuracy_measured")),
         ("Beats heuristic router on measured hold-out",
-         "unmeasured", "—", "UNMEASURED — insufficient measured held-out data"),
-    ]
+         (bl.get("heuristic") or {}).get("accuracy_measured")),
+    ):
+        if not cov_ok or champ_m is None or base_acc is None:
+            gate_rows.append((name, "unmeasured", "—",
+                              "UNMEASURED — insufficient measured held-out data"))
+        elif champ_m > base_acc:
+            gate_rows.append((name, "pass", "✓",
+                              f"PASS — champion {champ_m:.1%} vs baseline {base_acc:.1%}"))
+        else:
+            gate_rows.append((name, "fail", "✕",
+                              f"FAIL — champion {champ_m:.1%} vs baseline {base_acc:.1%}"))
     gate_html = "".join(
         f'<tr><td>{esc(name)}</td><td><span class="status {cls}">{icon} {esc(text)}</span></td></tr>'
         for name, cls, icon, text in gate_rows)
@@ -236,19 +255,20 @@ def build() -> None:
     <h2>Champion router model — {esc(champ["model_version"])}</h2>
     <div class="hero">
       <div><span class="big">{champ["val_tier_accuracy"]:.1%}</span>
-        <span class="unit">held-out tier accuracy (83 validation records)</span></div>
+        <span class="unit">held-out tier accuracy ({ladder["corpus_counts"]["val"]} validation records)</span></div>
       <span class="badge not-promoted"><span class="dot"></span> NOT PROMOTED — {esc(gate.get("reason", "gate failed"))}</span>
     </div>
     <p class="note">Promotion is eval-gated and fail-closed: a champion ships to routing
-    only after the gate passes on measured data. This one leads the ladder but the
-    measured hold-out is too small to certify; it is deployed for advisory scoring only.</p>
+    only after the gate passes on measured data. Until then it serves in an advisory
+    role; the badge carries the gate's exact reason.</p>
   </div>
 
   <div class="card wide">
     <h2>Hill-climb ladder — 8 variants, real CPU training runs</h2>
     <div class="chart-scroll">{bars_svg(variants, champ["name"])}</div>
     <p class="note">Advantage-weighted training on the orchestration corpus
-    (seed-pinned, ≤{ladder["time_budget_s"]:.0f}s budget per variant; actual 0.95–1.87s).
+    (seed-pinned, ≤{ladder["time_budget_s"]:.0f}s budget per variant; actual
+    {min(v["train_seconds"] for v in variants):.1f}–{max(v["train_seconds"] for v in variants):.1f}s).
     Bars share one hue — one measure across variants; hover any bar for its config.</p>
   </div>
 
