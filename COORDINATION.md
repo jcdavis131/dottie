@@ -644,3 +644,9 @@
 <!-- cleared: | Scout-orchestrator-chimera | vector-hub / chimera 5th game polish + provenance dailySeed LCG | 13:52 CDT 2026-08-07 | Long-project: vector hub chimera 20719×64-d 12 archetypes dailySeed LCG deterministic Math.imul 2512/11804/13128 Python+Node agree, provenance 7/7/0 59 hashes live200, hub.js hubDailySeed+hubLcg+unifiedChimeraDaily+verifyProvenance, shared-map 22990B reuse, hoops-level PWA v66 — goal_a8e7c4430b96 → Launched | scout/hub-chimera-polish | in-progress | age 37.9h -->
 <!-- cleared: | Scout-orchestrator-forms | bundles/forms tracking | 13:52 CDT 2026-08-07 | Long-project Forms polling 5m → Goals/Ideas → Launched | scout/forms-tracking-poll | in-progress | age 37.9h -->
 <!-- cleared: | Scout-orchestrator-chimera | vector-hub / chimera polish | 13:52 CDT 2026-08-07 | Long-project hub chimera 20719×64-d dailySeed LCG provenance 7/7/0 → Launched | scout/hub-chimera-polish | in-progress | age 37.9h -->
+
+> ⚠️ stale: Scout-operator Launched / Ship live URL since 12:41 CDT 2026-08-07 — nudge
+
+> ⚠️ stale: Scout-operator Launched / Hook payments since 12:41 CDT 2026-08-07 — nudge
+
+> ⚠️ stale: Scout-operator Launched / Hook analytics since 12:41 CDT 2026-08-07 — nudge
