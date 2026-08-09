@@ -706,6 +706,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--variants", type=int, default=8, help="first N of the fixed grid")
     ap.add_argument("--time-budget", type=float, default=60.0, help="per-variant CPU seconds cap")
     ap.add_argument("--seed-offset", type=int, default=0)
+    ap.add_argument("--epochs", type=int, default=0,
+                    help="override per-variant epochs (0 = grid default); the "
+                         "time budget still caps wall-clock per variant")
     args = ap.parse_args(argv)
 
     heur = _load_heuristics()
@@ -756,6 +759,8 @@ def main(argv: list[str] | None = None) -> int:
                 lr=variant["lr"],
                 beta=variant["beta"],
             )
+            if args.epochs > 0:
+                cfg.epochs = args.epochs
             train_recs = [_to_train_record(r, variant["reward_mode"]) for r in train_rows]
             t0 = time.monotonic()
             net, norms, history = train_model(cfg, train_recs, time_budget_s=args.time_budget)

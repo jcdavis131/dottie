@@ -252,17 +252,40 @@ def mine_ultra(ultra_dir: Path) -> tuple[list[dict], dict]:
                 checkpoint = json.loads(cp_path.read_text(encoding="utf-8"))
             except (ValueError, OSError):
                 checkpoint = {}
-        # langchain-run checkpoints carry goal_preview; list runs don't.
-        goal_text = checkpoint.get("goal_preview") or ""
-        intent = checkpoint.get("intent")
-        if "-list-" in run_id or "-health-" in run_id:
-            tier = "deterministic"
+        cp_prov = checkpoint.get("provenance") or {}
+        # Harness-runner runs (checkpoint version "harness-run/*") carry the
+        # executed routing in provenance: goal text, tier, intent, complexity.
+        # Their latencies are wall-clock measured and their token cost is the
+        # measured 0 of deterministic executors (runner.py provenance strings),
+        # so these records are fully measured. label_tier is the routing
+        # decision actually executed — a behavior label; on these records the
+        # heuristic router reproduces its own labels by construction, which the
+        # eval notes must (and do) state.
+        is_harness_run = str(checkpoint.get("version", "")).startswith("harness-run/")
+        if is_harness_run:
+            goal_text = cp_prov.get("goal") or ""
+            intent = cp_prov.get("intent")
+            tier = cp_prov.get("tier") if cp_prov.get("tier") in TIER_VOCAB else "llm"
+            agents_n = len(_routed_agents(intent, cp_prov.get("complexity") or _complexity(goal_text)))
+            # Each harness run is a distinct goal execution: keep the full runId
+            # (timestamped, unique) as its own split group.
+            split_key = run_id
+            lat_measured = "measured" in str(cp_prov.get("latency", ""))
+            tok_measured = "measured" in str(cp_prov.get("tokens", ""))
         else:
-            tier = INTENT_TO_TIER.get(intent, "llm")
-        agents_n = len(_routed_agents(intent, _complexity(goal_text or ""))) if intent else 1
-        # Group near-duplicate re-runs (same run family, different timestamp
-        # suffix) into one split group so no train/test leakage occurs.
-        split_key = re.sub(r"-(\d{8}T\d{6}Z|\d{6})$", "", run_id)
+            # langchain-run checkpoints carry goal_preview; list runs don't.
+            goal_text = checkpoint.get("goal_preview") or ""
+            intent = checkpoint.get("intent")
+            if "-list-" in run_id or "-health-" in run_id:
+                tier = "deterministic"
+            else:
+                tier = INTENT_TO_TIER.get(intent, "llm")
+            agents_n = len(_routed_agents(intent, _complexity(goal_text or ""))) if intent else 1
+            # Group near-duplicate re-runs (same run family, different timestamp
+            # suffix) into one split group so no train/test leakage occurs.
+            split_key = re.sub(r"-(\d{8}T\d{6}Z|\d{6})$", "", run_id)
+            lat_measured = False
+            tok_measured = False
         for idx, line in enumerate(timeline.read_text(encoding="utf-8").splitlines()):
             line = line.strip()
             if not line:
@@ -278,16 +301,26 @@ def mine_ultra(ultra_dir: Path) -> tuple[list[dict], dict]:
             error_class = row.get("errorClass")
             attempt = row.get("attempt")
             node_id = row.get("nodeId")
-            # Only the decide_act row's latency is wall-clock measured
-            # (agents/cli.py:160-161,175); all other latencies and ALL token
-            # counts are scripted constants -> simulated.
-            lat_prov = "measured" if node_id == MEASURED_ULTRA_NODE else "simulated"
-            provenance_fields = {
-                "latency_ms": lat_prov,
-                "tokens_est": "simulated",
-                "status": "measured",
-                "label_tier": "simulated",
-            }
+            if is_harness_run:
+                # Runner rows: perf_counter latency, measured-0 token cost,
+                # executed-routing behavior label.
+                provenance_fields = {
+                    "latency_ms": "measured" if lat_measured else "simulated",
+                    "tokens_est": "measured" if tok_measured else "simulated",
+                    "status": "measured",
+                    "label_tier": "measured-behavior",
+                }
+            else:
+                # Only the decide_act row's latency is wall-clock measured
+                # (agents/cli.py:160-161,175); all other latencies and ALL token
+                # counts are scripted constants -> simulated.
+                lat_prov = "measured" if node_id == MEASURED_ULTRA_NODE else "simulated"
+                provenance_fields = {
+                    "latency_ms": lat_prov,
+                    "tokens_est": "simulated",
+                    "status": "measured",
+                    "label_tier": "simulated",
+                }
             features = base_features(goal_text)
             features.update({
                 "latency_ms": latency_ms,

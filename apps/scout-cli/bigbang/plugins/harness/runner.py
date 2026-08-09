@@ -7,7 +7,9 @@ Everything in this module is deterministic and local: the executors are pure
 python functions over the goal text and prior artifacts — no network (the plugin
 manifest pins capabilities network:false), no external model calls, no subprocess.
 Latencies in the timeline are MEASURED with time.perf_counter(); token counts are
-ESTIMATED as len(artifact)//4 — provenance is labeled on every record.
+MEASURED as 0 — deterministic executors consume no external-model tokens, and
+artifact size is retained separately as artifact_chars per node. Provenance is
+labeled on every record.
 
 Import order contract: this module imports routing helpers from
 bigbang.plugins.harness.cli at module level. That is safe (no cycle) because the
@@ -266,7 +268,11 @@ def _dispatch(step: dict, ctx: dict) -> str:
 
 def _log_attempt(run_id: str, step: dict, attempt: int, latency_ms: float, artifact: str,
                  status: str, error_class: str | None, runs_dir: Path) -> None:
-    tok = len(artifact) // 4
+    # MEASURED true cost: deterministic executors make no external model calls,
+    # so the run consumed exactly 0 model tokens. len(artifact)//4 was an
+    # estimate of a cost that does not exist here; artifact size stays available
+    # as artifact_chars in the node summaries.
+    tok = 0
     # Both spellings on purpose: the harness timeline store requires latency/tokens
     # (timeline.py:26) while the repo-root checkpoint contract requires
     # latency_ms/tokens_est (pipeline/checkpoint_manager.py:63).
@@ -293,7 +299,8 @@ def _log_attempt(run_id: str, step: dict, attempt: int, latency_ms: float, artif
             raise RuntimeError(f"timeline append rejected: {res.get('error')}")
 
 
-def _write_checkpoint(run_dir: Path, run_id: str, nodes: list[dict], created: str) -> Path:
+def _write_checkpoint(run_dir: Path, run_id: str, nodes: list[dict], created: str,
+                      route: dict | None = None) -> Path:
     # Deliberate non-action: DottieCheckpointManager's triple-write is NOT used
     # here — its _RUNS/_DOTTIE_RUNS constants (pipeline/checkpoint_manager.py:24-30)
     # resolve to HOME-independent absolute paths that would escape the test suite's
@@ -310,8 +317,11 @@ def _write_checkpoint(run_dir: Path, run_id: str, nodes: list[dict], created: st
             "driver": "harness run",
             "executors": "deterministic local, no network, no external model calls",
             "latency": "measured perf_counter",
-            "tokens": "estimated len(artifact)//4",
+            "tokens": "measured 0 — no external-model tokens consumed; artifact size in artifact_chars",
             "store": "single canonical write under runs_dir",
+            # Routing actually executed for this run — consumed by the
+            # orchestration corpus miner (goal text + behavior labels).
+            **(route or {}),
         },
     }
     path = run_dir / "checkpoint.json"
@@ -416,7 +426,9 @@ def run_goal(goal: str, *, max_nodes: int = 0, seed: int = 0, run_id: str = "",
             "recovery_action": recovery_action,
         })
         score_history.append(_running_score(node_summaries))
-        _write_checkpoint(run_dir, rid, node_summaries, created)
+        _write_checkpoint(run_dir, rid, node_summaries, created,
+                          route={"goal": goal, "tier": tier, "intent": intent,
+                                 "complexity": complexity})
 
     # 6. CRITIC + verification economics (constants mirror verify_cmd cli.py:458-482)
     total = len(node_summaries)
