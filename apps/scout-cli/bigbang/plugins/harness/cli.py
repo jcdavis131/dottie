@@ -207,6 +207,99 @@ def checkpoint_cmd(
         res={"action":action,"run_id":run_id,"note":"pause/resume days later pickup exactly — checkpoint-manager.js pattern, DAG version never mutates in place version++ controlled replan","ok":True}
     _emit(res, f"harness checkpoint {action}", json_out)
 
+def _corrections_file_default() -> Path | None:
+    """Locate the monorepo corrections file by walking up from this module.
+
+    Corrections feed the corpus miner's operator-corrected label channel, so
+    the default target is the repo's data file; installed layouts without the
+    monorepo must pass --file explicitly.
+    """
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "apps" / "ava-factory" / "data" / "orchestration"
+        if candidate.is_dir():
+            return candidate / "label_corrections.jsonl"
+    return None
+
+
+def _run_exists(run_id: str) -> bool:
+    stores = [
+        Path.home() / ".cache" / "scout" / "checkpoints" / run_id / "checkpoint.json",
+        Path.home() / "workspace" / "bundles" / "ultra" / "runs" / run_id / "checkpoint.json",
+    ]
+    return any(p.exists() for p in stores)
+
+
+@app.command("correct")
+def correct_cmd(
+    run_id: str = typer.Argument(..., help="harness run id (harness checkpoint list)"),
+    tier: str = typer.Argument(..., help="correct tier: " + "|".join(MOMA_TIERS)),
+    reason: str = typer.Option(..., "--reason", help="one line: why this tier is right"),
+    corrected_by: str = typer.Option("operator", "--by"),
+    file: str = typer.Option("", "--file", help="corrections jsonl (default: monorepo data/orchestration/label_corrections.jsonl)"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="validate and show the line without writing"),
+    json_out: bool = typer.Option(False, "--json")):
+    """Record an operator label correction — ground truth for the promotion gate.
+
+    Every validation here mirrors the corpus miner's fail-closed load_corrections
+    contract, so a line this command writes can never abort mining.
+    """
+    if not _valid_run_id(run_id):
+        _emit({"ok": False, "error": f"invalid run id {run_id!r}: single path segment required"},
+              "harness correct", json_out)
+        return
+    if tier not in MOMA_TIERS:
+        _emit({"ok": False, "error": f"unknown tier {tier!r} (valid: {sorted(MOMA_TIERS)})"},
+              "harness correct", json_out)
+        return
+    if not reason.strip():
+        _emit({"ok": False, "error": "--reason must be non-empty — corrections are ground truth"},
+              "harness correct", json_out)
+        return
+    if not _run_exists(run_id):
+        _emit({"ok": False, "error": f"no checkpoint found for run {run_id!r} — corrections apply to real runs only",
+               "hint": "scout harness checkpoint list"}, "harness correct", json_out)
+        return
+    target = Path(file).expanduser() if file else _corrections_file_default()
+    if target is None:
+        _emit({"ok": False, "error": "monorepo data/orchestration/ not found from this install — pass --file"},
+              "harness correct", json_out)
+        return
+    existing_ids = set()
+    if target.exists():
+        for raw in target.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                existing_ids.add(json.loads(line).get("run_id"))
+            except ValueError:
+                _emit({"ok": False, "error": f"{target} already contains invalid JSON — fix it before appending"},
+                      "harness correct", json_out)
+                return
+    if run_id in existing_ids:
+        _emit({"ok": False, "error": f"run {run_id!r} already has a correction in {target.name} — edit the file to change it"},
+              "harness correct", json_out)
+        return
+    from datetime import UTC, datetime
+    record = {
+        "run_id": run_id,
+        "tier": tier,
+        "reason": reason.strip(),
+        "corrected_by": corrected_by,
+        "date": datetime.now(UTC).date().isoformat(),
+    }
+    if dry_run:
+        _emit({"ok": True, "dry_run": True, "would_append": record, "file": str(target)},
+              "harness correct", json_out)
+        return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record) + "\n")
+    _emit({"ok": True, "appended": record, "file": str(target),
+           "next": "commit the file; the nightly retrain picks it up as an operator-corrected label"},
+          "harness correct", json_out)
+
+
 @app.command("timeline")
 def timeline_cmd(
     action: str = typer.Argument("stats", help="append|stats"),
