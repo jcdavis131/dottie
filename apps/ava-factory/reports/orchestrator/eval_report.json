@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "built_at": "2026-08-09T15:20:06.413912+00:00",
+  "built_at": "2026-08-09T23:36:10.927631+00:00",
   "corpus_source": "l2_corpus",
   "trainer": "orchestrator_model",
   "champion": {
@@ -22,21 +22,21 @@
       "deciles": [
         {
           "decile": 0,
-          "n": 58,
-          "mean_pred_risk": 0.008489660357607825,
-          "observed_failure_rate": 0.017241379310344827
+          "n": 60,
+          "mean_pred_risk": 0.011171117376489322,
+          "observed_failure_rate": 0.016666666666666666
         },
         {
           "decile": 1,
-          "n": 2,
-          "mean_pred_risk": 0.135765135848387,
-          "observed_failure_rate": 0.0
+          "n": 1,
+          "mean_pred_risk": 0.11020993829490688,
+          "observed_failure_rate": 1.0
         },
         {
           "decile": 2,
-          "n": 1,
-          "mean_pred_risk": 0.282280321644499,
-          "observed_failure_rate": 1.0
+          "n": 0,
+          "mean_pred_risk": null,
+          "observed_failure_rate": null
         },
         {
           "decile": 3,
@@ -81,7 +81,7 @@
           "observed_failure_rate": null
         }
       ],
-      "brier": 0.023808321016738986
+      "brier": 0.028355885265991327
     }
   },
   "baselines": {
