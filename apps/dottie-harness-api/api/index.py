@@ -170,13 +170,20 @@ class handler(BaseHTTPRequestHandler):  # noqa: N801 — Vercel runtime conventi
             model = get_model()
             meta = get_meta()
             corpus_meta = meta["corpus_meta"]
-            self._send(200, {
+            counts = (corpus_meta or {}).get("counts") if corpus_meta else None
+            payload = {
                 "ok": True,
                 "model_loaded": model is not None,
                 "model_version": model["model_version"] if model else None,
                 "gate_passed": model["gate_passed"] if model else None,
-                "corpus_stats": (corpus_meta or {}).get("counts") if corpus_meta else None,
-            })
+                "corpus_stats": counts,
+            }
+            # Optional field from the labeling lane; the key is omitted
+            # entirely when the synced meta does not carry it (backward
+            # compatible — degraded mode unchanged).
+            if isinstance(counts, dict) and "by_label_tier" in counts:
+                payload["by_label_tier"] = counts["by_label_tier"]
+            self._send(200, payload)
         elif path == "/api/stats":
             meta = get_meta()
             self._send(200, {

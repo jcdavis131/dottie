@@ -144,6 +144,32 @@ def test_health_without_weights(server):
     assert doc["model_version"] is None
     assert doc["gate_passed"] is None
     assert doc["corpus_stats"] is None
+    assert "by_label_tier" not in doc
+
+
+def _arm_meta_dir(tmp_path, corpus_meta: dict) -> None:
+    meta_dir = tmp_path / "meta_fixture"
+    meta_dir.mkdir()
+    (meta_dir / "corpus_meta.json").write_text(json.dumps(corpus_meta), encoding="utf-8")
+    os.environ["DOTTIE_HARNESS_META_DIR"] = str(meta_dir)
+    api._reset()
+
+
+def test_health_meta_without_by_label_tier_omits_key(server, tmp_path):
+    _arm_meta_dir(tmp_path, {"counts": {"total": 3, "by_tier": {"llm": 3}}})
+    status, doc = _get(server, "/api/health")
+    assert status == 200
+    assert doc["corpus_stats"] == {"total": 3, "by_tier": {"llm": 3}}
+    assert "by_label_tier" not in doc
+
+
+def test_health_by_label_tier_roundtrips(server, tmp_path):
+    by_label_tier = {"simulated": 4, "measured-behavior": 2, "operator-corrected": 1}
+    _arm_meta_dir(tmp_path, {"counts": {"total": 7, "by_label_tier": by_label_tier}})
+    status, doc = _get(server, "/api/health")
+    assert status == 200
+    assert doc["by_label_tier"] == by_label_tier
+    assert doc["corpus_stats"]["by_label_tier"] == by_label_tier
 
 
 def test_health_with_fixture_weights(server, tmp_path):

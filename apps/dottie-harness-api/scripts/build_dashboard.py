@@ -228,6 +228,44 @@ def build() -> None:
     tier_rows = "".join(f"<tr><td>{esc(t)}</td><td>{n}</td></tr>"
                         for t, n in sorted(tiers.items(), key=lambda kv: -kv[1]))
 
+    # Label sources — OPTIONAL counts fields (labeling lane). Absent fields
+    # render UNMEASURED, never a fabricated zero.
+    by_label = counts.get("by_label_tier")
+    by_label = by_label if isinstance(by_label, dict) else None
+    mh_label = counts.get("measured_holdout_by_label_tier")
+    mh_label = mh_label if isinstance(mh_label, dict) else None
+
+    if by_label is None:
+        label_table = ('<span class="status unmeasured">— UNMEASURED — corpus meta does not yet '
+                       "carry per-record label-source counts</span>")
+    else:
+        label_table = (
+            "<table><thead><tr><th>Label source</th><th>Records</th></tr></thead><tbody>"
+            + "".join(f"<tr><td>{esc(t)}</td><td>{n}</td></tr>"
+                      for t, n in sorted(by_label.items(), key=lambda kv: -kv[1]))
+            + "</tbody></table>")
+
+    # Gate context: labels the heuristic did not produce, in the measured
+    # hold-out. "measured-behavior" follows the executed (heuristic) routing
+    # and "simulated" is heuristic-derived, so only the remainder can ground
+    # a champion-vs-heuristic comparison. Fail-closed at zero.
+    heuristic_made = ("measured-behavior", "simulated")
+    if mh_label is None:
+        label_gate = ('<span class="status unmeasured">— UNMEASURED — measured hold-out '
+                      "label-source breakdown not yet recorded; the gate's champion-vs-heuristic "
+                      "comparison only becomes meaningful once non-heuristic labels exceed zero</span>")
+    else:
+        n_indep = sum(n for t, n in mh_label.items() if t not in heuristic_made)
+        if n_indep > 0:
+            label_gate = (f'<span class="status pass">✓ {n_indep} measured hold-out records carry '
+                          "labels beyond measured-behavior and simulated — the gate's "
+                          "champion-vs-heuristic comparison is grounded in labels the heuristic "
+                          "did not produce</span>")
+        else:
+            label_gate = ('<span class="status fail">✕ 0 measured hold-out records carry labels '
+                          "beyond measured-behavior and simulated — the gate's "
+                          "champion-vs-heuristic comparison is not yet meaningful</span>")
+
     src_rows = "".join(
         f"<div><code>{esc(p.relative_to(REPO))}</code> · <code>sha256:{shas[k][:16]}…</code></div>"
         for k, p in SOURCES.items())
@@ -301,6 +339,16 @@ def build() -> None:
     <h2>Corpus by routing tier</h2>
     <table><thead><tr><th>Tier</th><th>Records</th></tr></thead>
     <tbody>{tier_rows}</tbody></table>
+  </div>
+
+  <div class="card">
+    <h2>Label sources</h2>
+    {label_table}
+    <div style="margin-top:.7rem">{label_gate}</div>
+    <p class="note">Each record's label provenance is tracked separately from its
+    feature provenance. The promotion gate's champion-vs-heuristic comparison only
+    becomes meaningful when the measured hold-out contains labels the heuristic
+    did not make (measured-outcome or operator-corrected).</p>
   </div>
 
   <div class="card wide">
