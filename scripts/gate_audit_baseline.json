@@ -60,6 +60,12 @@
       "shape": "suppressed-check",
       "code": "run: uv run pytest packages/ava-open-harness -q || true",
       "judgment": "DELIBERATE and already annotated in the workflow immediately above this step: the suite is non-blocking pending the `dottie` name collision, where apps/dottie/dottie and apps/ava-factory/dottie both claim the same top-level package. The three fixes (rename / __path__ merge / leave non-blocking) are an architectural choice across a FROZEN boundary and remain the operator's, so this stays soft until that is decided rather than being forced green. NEWLY VISIBLE 2026-08-01, not newly introduced: gate_audit only began reading a step's `name:` as context that day, and the safety word here ('non-blocking', 'collision' -> 'block') lives in the name, not the run line. Re-judge when the collision is resolved; this entry should be DELETED then, not carried."
+    },
+    {
+      "file": "apps/scout-cli/bigbang/plugins/harness/runner.py",
+      "shape": "fail-open-dispatch",
+      "code": "def _inline_recovery_ladder(...)  dispatches on 'attempt' across 3 `==` branches",
+      "judgment": "Fall-through target is `escalate` (attempts exhausted -> human gate), the FAIL-CLOSED terminal of the bounded recovery ladder: any unrecognised attempt value (0, negative, >3) resolves to escalation, never to a permissive action. The 1/2/3 `==` shape is a deliberate line-for-line replica of pipeline/recovery_ladder.py:17-31 (pinned by the module comment: 'identical decisions'), used only when the repo-root ladder file is absent in installed layouts; restructuring the replica away from the original's shape would silently fork the two. If the original is ever restructured under its own pending judgment, mirror it here in the same change."
     }
   ]
 }

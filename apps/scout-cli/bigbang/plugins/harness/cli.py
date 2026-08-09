@@ -93,14 +93,15 @@ def _emit(result: dict, cmd: str, json_out: bool=False):
 @app.command("route")
 def route_cmd(
     goal: str = typer.Argument(..., help="User goal text to route"),
-    json_out: bool = typer.Option(False, "--json", help="Emit json")):
+    json_out: bool = typer.Option(False, "--json", help="Emit json"),
+    learned: bool = typer.Option(False, "--learned", help="Augment with learned router when champion weights are available")):
     """MoMA-lite classifier + graph memory GARNet-style routing (port of router.ultra.js)."""
     scores={k:_score_intent(goal,k) for k in INTENT_KEYWORDS}
     intent = max(scores, key=lambda k: scores[k]) if max(scores.values())>0 else "llm"
     if max(scores.values())==0: intent="llm"
     complexity=_complexity(goal)
     moma=_classify_moma(goal,intent,complexity)
-    confidence=min(0.96, (max(scores.values())/4.0)) if scores[intent]>0 else 0.4
+    confidence=min(0.96, (max(scores.values())/4.0)) if scores.get(intent,0)>0 else 0.4
 
     stickiness_guard=None
     if "stripe" in goal.lower() and "lemon" in goal.lower():
@@ -140,6 +141,11 @@ def route_cmd(
         "ok": True,
         "command": f"harness route {goal[:40]}",
     }
+    if learned:
+        from bigbang.plugins.harness.learned_router import (
+            learned_route,  # lazy: a defect here must never vanish the plugin
+        )
+        result.update(learned_route(goal, result))
     _emit(result, f"harness route", json_out)
 
 @app.command("agents")
@@ -480,3 +486,19 @@ def verify_cmd(
         "ok":True,
     }
     _emit(res, "harness verify", json_out)
+
+@app.command("run")
+def run_cmd(
+    goal: str = typer.Argument(..., help="Goal to route, plan and execute with deterministic executors"),
+    json_out: bool = typer.Option(False, "--json"),
+    max_nodes: int = typer.Option(0, "--max-nodes", help="0 = all planned nodes"),
+    seed: int = typer.Option(0, "--seed"),
+    run_id: str = typer.Option("", "--run-id"),
+    runs_dir: str = typer.Option("", "--runs-dir")):
+    """End-to-end run loop: route -> plan -> execute -> checkpoint/timeline -> critic (deterministic local executors)."""
+    # Lazy import on purpose: plugin discovery deletes the whole plugin on any
+    # import error (plugin_loader.py:39-52), so a defect in runner.py must never
+    # be able to vanish the harness plugin.
+    from bigbang.plugins.harness import runner
+    res = runner.run_goal(goal, max_nodes=max_nodes, seed=seed, run_id=run_id, runs_dir=Path(runs_dir) if runs_dir else None)
+    _emit(res, "harness run", json_out)
