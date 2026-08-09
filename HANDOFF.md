@@ -16,7 +16,33 @@ before writing "current" anywhere in this file.
 
 ---
 
-## 📌 Session continuation — 2026-08-02 (supersedes every block below)
+## 📌 Session continuation — 2026-08-09 PM (supersedes every block below)
+
+**Re-measured 2026-08-09T15:30Z at HEAD `c8db8ed`,** branch
+`claude/longcat-2-architecture-moxdny`, CI fully green at `c151ab2` (first
+complete pipeline pass on GitHub runners) and every checker green locally at
+this HEAD. PR #11 carries everything; bluehen PR #5 unchanged.
+
+**The flywheel is closed and has run one full cycle.** New since the 08-02
+block: meta-MCP layer in the mcp plugin (namespaces, per-tool disables,
+`serve --namespace` proxying `<server>__<tool>`); harness MCP action executor
+(`mcp:` goals → action_operator, fail-closed gates, failures feed the recovery
+ladder); outcome-adjusted labels + `label_corrections.jsonl` (fail-closed) in
+the corpus miner; Label-sources dashboard panel. 18 live MCP runs (8 real
+failures) → corpus 1,556 records / 722 measured / 8 measured-outcome (2 in
+measured hold-out) → retrained: champion v4 97.2% val, 87.7% measured hold-out.
+**Heuristic baseline now 0.893, not 1.0** — the gate is winnable; verdict this
+cycle honestly `not passed` (0.877 vs 0.893). See `docs/ECOSYSTEM.md` for the
+map and `docs/PLATFORM_IMPROVEMENT_PLAN.md` P1/P2 for what's next: accumulate
+non-behavior labels (more real MCP failures, operator corrections), let the
+nightly Routine (09:00 UTC) retrain, promote when the gate passes.
+
+Run-data caveat: harness run dirs live in BOTH `bundles/ultra/runs/` (repo,
+mined by default) and `~/workspace/bundles/ultra/runs/` (runner default);
+today's live runs were copied into the repo dir before mining. Runs data is
+NOT committed — corpus.jsonl is the committed artifact of record.
+
+## 📌 Session continuation — 2026-08-02 (superseded)
 
 > **This block is now GATED, not just warned about.** `scripts/check_handoff_fresh.py`
 > fails CI when the sha below drifts more than 20 commits from HEAD. It exists because the
