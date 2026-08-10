@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "built_at": "2026-08-10T11:57:06.734165+00:00",
+  "built_at": "2026-08-10T12:00:59.651753+00:00",
   "corpus_source": "l2_corpus",
   "trainer": "orchestrator_model",
   "champion": {
     "name": "v4",
     "model_version": "orch-mlp-v1-v4",
-    "val_tier_accuracy": 0.986111,
+    "val_tier_accuracy": 0.986301,
     "tier_accuracy_all": 0.8,
     "tier_accuracy_measured": 0.8571428571428571,
     "n_holdout": 60,
@@ -23,7 +23,7 @@
         {
           "decile": 0,
           "n": 56,
-          "mean_pred_risk": 4.959263878902017e-05,
+          "mean_pred_risk": 3.383492410098972e-05,
           "observed_failure_rate": 0.0
         },
         {
@@ -35,7 +35,7 @@
         {
           "decile": 2,
           "n": 1,
-          "mean_pred_risk": 0.2536660996908171,
+          "mean_pred_risk": 0.22737929431111795,
           "observed_failure_rate": 1.0
         },
         {
@@ -77,11 +77,11 @@
         {
           "decile": 9,
           "n": 3,
-          "mean_pred_risk": 0.9936452354491174,
+          "mean_pred_risk": 0.9942000671208788,
           "observed_failure_rate": 0.3333333333333333
         }
       ],
-      "brier": 0.04232652292282443
+      "brier": 0.04297330068526856
     }
   },
   "baselines": {
