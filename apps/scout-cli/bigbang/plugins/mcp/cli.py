@@ -93,6 +93,25 @@ def manifest():
 _VALID_TRANSPORTS = ("stdio", "sse", "streamable-http")
 
 
+def _resolve_transport(transport: str, sse: bool) -> str:
+    """Resolve --transport/--sse to one of _VALID_TRANSPORTS, or raise ValueError.
+
+    Exact backward compat: no flags -> "stdio" (pre-existing default); --sse
+    alone -> "sse" (pre-existing behavior). --sse is a permanent alias for
+    --transport sse, so the two may only be combined when they agree.
+    """
+    if transport and transport not in _VALID_TRANSPORTS:
+        raise ValueError(
+            f"--transport must be one of {list(_VALID_TRANSPORTS)}, got {transport!r}"
+        )
+    if transport and sse and transport != "sse":
+        raise ValueError(
+            f"--sse conflicts with --transport {transport!r} "
+            "(--sse means --transport sse) — pass just one"
+        )
+    return transport or ("sse" if sse else "stdio")
+
+
 @app.command("serve")
 def serve(
     sse: bool = typer.Option(
@@ -134,25 +153,11 @@ def serve(
         )
         raise typer.Exit(1) from e
 
-    if transport and transport not in _VALID_TRANSPORTS:
-        emit(
-            {"error": f"--transport must be one of {list(_VALID_TRANSPORTS)}, "
-                      f"got {transport!r}"},
-            command="mcp serve",
-        )
-        raise typer.Exit(1)
-    if transport and sse and transport != "sse":
-        # --sse is the pre-existing (still supported) alias for --transport sse;
-        # only reject when the two explicitly disagree.
-        emit(
-            {"error": f"--sse conflicts with --transport {transport!r} "
-                      "(--sse means --transport sse) — pass just one"},
-            command="mcp serve",
-        )
-        raise typer.Exit(1)
-    # Exact backward compat: no --transport + no --sse -> "stdio", same as
-    # before this option existed. --sse alone still resolves to "sse".
-    resolved_transport = transport or ("sse" if sse else "stdio")
+    try:
+        resolved_transport = _resolve_transport(transport, sse)
+    except ValueError as e:
+        emit({"error": str(e)}, command="mcp serve")
+        raise typer.Exit(1) from e
 
     # Blocks until the client disconnects (stdio) or the process is stopped
     # (sse/streamable-http).
