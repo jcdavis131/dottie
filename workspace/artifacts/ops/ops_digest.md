@@ -1,6 +1,6 @@
 ---
 generated_by: scripts/business/generators/ops_digest.py
-generated_at: "2026-08-09T03:06:48+00:00"
+generated_at: "2026-08-10T02:28:02+00:00"
 classification: REAL
 method: >-
   Counts and copied figures from the monitor scoreboard JSON, open-checkbox
@@ -9,7 +9,7 @@ method: >-
 measured: true
 sources:
   - path: "workspace/artifacts/monitor/scoreboard.json"
-    sha256: "48d92653c741d8b22898aa882ede7ce2a92b3b151bfe857f2861c0a3764facd6"
+    sha256: "9c7c2e015dcdaa1f588a9631fcf56db4425de1316ea59e803153f351c828d6e6"
   - path: "TODO.md"
     sha256: "693727124a5126ca38f47af889c0209900c2f032401eca9aada966acda8ef524"
 ---
@@ -18,8 +18,8 @@ sources:
 
 ## Scoreboard summary
 
-Agents recorded: 5. Total events: 15.
-OK-rate range: 1.0 (minimum) to 1.0 (maximum). Figures are copied from the scoreboard artifact; only the minimum and maximum are derived.
+Agents recorded: 11. Total events: 749.
+OK-rate range: 0.68 (minimum) to 1.0 (maximum). Figures are copied from the scoreboard artifact; only the minimum and maximum are derived.
 
 ## Open work
 

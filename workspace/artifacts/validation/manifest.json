@@ -1,11 +1,11 @@
 {
   "artifacts": {
     "dataset-card": {
-      "generated_at": "2026-08-09T03:12:23+00:00",
+      "generated_at": "2026-08-10T02:28:03+00:00",
       "outputs": [
         {
           "path": "workspace/artifacts/validation/dataset_card.md",
-          "sha256": "6cfb640ba5f6b83f8eeaf19005f0a53e16086dee6721931dd0a28faf4d9135a9"
+          "sha256": "c45b2d9449f40044e1d909d3e64e4ffb8c842bf1a93d9945b20c3910955c954c"
         }
       ],
       "provenance": {
@@ -16,7 +16,7 @@
         {
           "path": "apps/ava-factory/data/orchestration/corpus_meta.json",
           "required": true,
-          "sha256": "cf88c2cfb9a4bb5a95ed66e2782b7a31aa097c0f1f1a66622e3d406ee2cac861"
+          "sha256": "5ef0fc331ed3e0a0e9afe1f61bab540704b34c7ddea3a4dee581ed4ac3e7cd6e"
         }
       ],
       "status": "written"
@@ -24,6 +24,6 @@
   },
   "generated_by": "scripts/business/playbook.py",
   "schema_version": 1,
-  "updated_at": "2026-08-09T03:12:23+00:00",
+  "updated_at": "2026-08-10T02:28:03+00:00",
   "venture": "validation"
 }

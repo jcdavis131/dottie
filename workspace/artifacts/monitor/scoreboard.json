@@ -1,5 +1,41 @@
 {
   "agents": {
+    "builder": {
+      "events": 122,
+      "ok_rate": 1.0,
+      "p50_latency_ms": 0.02096000002893561,
+      "runs": 122
+    },
+    "critic": {
+      "events": 122,
+      "ok_rate": 1.0,
+      "p50_latency_ms": 0.10784499994542784,
+      "runs": 122
+    },
+    "executor": {
+      "events": 124,
+      "ok_rate": 1.0,
+      "p50_latency_ms": 0.04063200009341017,
+      "runs": 124
+    },
+    "mcp-operator": {
+      "events": 25,
+      "ok_rate": 0.68,
+      "p50_latency_ms": 120.91145499994127,
+      "runs": 25
+    },
+    "operator": {
+      "events": 62,
+      "ok_rate": 1.0,
+      "p50_latency_ms": 0.013480000006893533,
+      "runs": 31
+    },
+    "planner": {
+      "events": 124,
+      "ok_rate": 1.0,
+      "p50_latency_ms": 0.024464000034640776,
+      "runs": 124
+    },
     "researcher": {
       "events": 3,
       "ok_rate": 1.0,
@@ -25,13 +61,13 @@
       "runs": 3
     },
     "strategist": {
-      "events": 3,
+      "events": 158,
       "ok_rate": 1.0,
-      "p50_latency_ms": 35,
-      "runs": 3
+      "p50_latency_ms": 0.02600900000970796,
+      "runs": 158
     }
   },
-  "generated_at": "2026-08-09T03:06:48+00:00",
+  "generated_at": "2026-08-10T02:28:01+00:00",
   "generated_by": "scripts/business/generators/run_scoreboard.py",
   "provenance": {
     "classification": "REAL",
@@ -81,12 +117,912 @@
         "path": "bundles/ultra/runs/agents-langchain-run-db507215-020512/timeline.jsonl",
         "sha256": "6b97df38b8f6541ce327597c3aa2400da6d863d8f03a5888de4d32bd6c2a18c7",
         "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T030358461932Z/timeline.jsonl",
+        "sha256": "ca1ffb8ff425830d2d83b3b8e5db48471e78cb897c402949f706910f4159ca58",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T030533682882Z/timeline.jsonl",
+        "sha256": "58e6f56127902177e0d49b2232d65ad3e96dca742f6d9aaa390bd6af43f58fd9",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T030641851911Z/timeline.jsonl",
+        "sha256": "2f3bc2d4184b68bd81f8262b68288096b98d4d88e601f6d20abba6509359c388",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T034018504638Z/timeline.jsonl",
+        "sha256": "5787057cd2a165e7655cd9ccb927206383c19f9755f4198b397ae3eead6d71ef",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T034901612893Z/timeline.jsonl",
+        "sha256": "edc4ade786cefc64586de0dfaa0dbb742d0cfe9b2ac98f1557382593db90a39b",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118459150Z/timeline.jsonl",
+        "sha256": "3e21253eebc83de1ae0fc065dac9c079a30291985b485ef0d757340963f22f68",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118514438Z/timeline.jsonl",
+        "sha256": "efe6eaca2184f4b033ce2f203d6b90b4ae683ca46f6509796f38a0951569bcef",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118528042Z/timeline.jsonl",
+        "sha256": "74cb92cc2da55def5398cf4245454996ddb64a1b76a0eed7158b07791709eaad",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118568173Z/timeline.jsonl",
+        "sha256": "897063ff3e31f93a0decf82d2aac3d081e149c41e52a6518c912421dfc9667ca",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118596108Z/timeline.jsonl",
+        "sha256": "016fe3be31d81129e0a9eeb7fd70da5017acbaa5a736b59932dd27784bb923a1",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118603534Z/timeline.jsonl",
+        "sha256": "26b246700375cb9bfc7a2768d91df617f6b9fbfe8350ee658fbedaea6bf9142e",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118613402Z/timeline.jsonl",
+        "sha256": "952392cee59b58211d692a93190cd73e5a79f128d6aebe180a5a3da6f40dcb78",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118618840Z/timeline.jsonl",
+        "sha256": "398cd10eb01dc129456ef5145ff878d9e20dee9b32b69063eab162d03666dbc8",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118691452Z/timeline.jsonl",
+        "sha256": "91ebae6e8768f3165480fd864aa087e093e383ac4c0162fe741481821e8bb9ce",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118703602Z/timeline.jsonl",
+        "sha256": "de62791ad24943a339d57ad0114b34482db451f1bf94d48a592be6047b283a10",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118714530Z/timeline.jsonl",
+        "sha256": "b2ac50290988455256e3fcca067c3fb98584a4b4949823ee08fc1c95e36cff75",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118731491Z/timeline.jsonl",
+        "sha256": "fb86ff32b8ce4550cd37694bf8918c8fca1622ce4cbec943037a6165de360ac6",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118748504Z/timeline.jsonl",
+        "sha256": "f7b9a8ee1f370d4dcfdb427665df2120ab924e832d7300e011e37a0295eea88c",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118776078Z/timeline.jsonl",
+        "sha256": "109f7f9297746792068b8dc6cc39fa76164077bc89609a4b5bf4d17634d026e1",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118788706Z/timeline.jsonl",
+        "sha256": "3ef21ed9c12a3df7018063c2ab2994d88f44b9cb6e3f8e6b995926126003fe90",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118831861Z/timeline.jsonl",
+        "sha256": "63da80c0ea6e7cbc5ccb932e8e58b9174e48ce8aa1515c619aa4288c4c8f1aac",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118847674Z/timeline.jsonl",
+        "sha256": "d692acd12a0416ec96ab4c8d942ab7d48418c206349df0fc274bac32b4cf4e3c",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118872575Z/timeline.jsonl",
+        "sha256": "7d4e0b4dda2a31e9792abd4fcd76886bb615f0578f973b3ceb13dfbdbecee668",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118885519Z/timeline.jsonl",
+        "sha256": "1450b1d1520fe7dd7053dd2f024f94672f0addfde5a7a8aab2b9665306340026",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118894103Z/timeline.jsonl",
+        "sha256": "1a1f29fff44073ca1c1e495d3df569c4da7aea6c651f4115309cada1a00ced45",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118904531Z/timeline.jsonl",
+        "sha256": "93f622634eaf55db42839d915c303ea112e2e48ef4373737191a6e8d50be1061",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118914812Z/timeline.jsonl",
+        "sha256": "3ffbf293faeccb72ce91b6015ba5fed1b502ab41379e389bc385698a37c48965",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118925068Z/timeline.jsonl",
+        "sha256": "b3d58334cfabd7ccb868b86d50961bf790af7ed1af7415e2a1aa337f8c5c8e6e",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118930649Z/timeline.jsonl",
+        "sha256": "e9346587fd6ad1e5870c7d48f1cfa0c378906cdecc588bb559a97539b45c686a",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118939737Z/timeline.jsonl",
+        "sha256": "50a96106a9cd2fb080f31061129e95f53ed4973a3be62db319a84d00e86e1115",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118959364Z/timeline.jsonl",
+        "sha256": "224f3bf47df234f88533a7dc732a0a2be2f6b8bdf6d119175cde280c6c736eeb",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118965598Z/timeline.jsonl",
+        "sha256": "855c4e17b74ea9d087dc891f730e469bce8c37461084e1ecfbbf4b62d52c471f",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118972034Z/timeline.jsonl",
+        "sha256": "7a06975ef0b39017ad10e32980e0766880634a5560deee4f9d28107cb2501765",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118982829Z/timeline.jsonl",
+        "sha256": "69b50716f9f795d61f4fd3c1f2c128a8c004cd9466725614973ef328a4bcaeb3",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121118987007Z/timeline.jsonl",
+        "sha256": "981daca08d697296b9f7339d4a40290b2ef47758dc09311d701609c85e3c6cf3",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119004586Z/timeline.jsonl",
+        "sha256": "668c1c301a04f485763b52ab5e93646a513d250087199c9b43ad972956c9a267",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119013671Z/timeline.jsonl",
+        "sha256": "08bbdc1c977fe693dc43a9b99d41c95b80c759564e654e2225c817de50849b21",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119020491Z/timeline.jsonl",
+        "sha256": "a96f5b506ebd013bd5d51ef13efbf9ccb9cdc3629e4f79ab972a18fae6681a03",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119027718Z/timeline.jsonl",
+        "sha256": "226dfb7f641e41948df23fc16fe272ddf5f689ba1c86b24e1f5f31bc74e0befc",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119034652Z/timeline.jsonl",
+        "sha256": "93b5bd078ae8a80cdf3883891883f6c07d9df1888bd5979e850b80a031301838",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119044370Z/timeline.jsonl",
+        "sha256": "2bb8736dadf47f4f215611d597f3e2859d76bdfad3bffe392b17260ceaa1fa1d",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119059590Z/timeline.jsonl",
+        "sha256": "7088cfabdc37ceb3d5eb033e87ca3042f14558f882b0b57978ed480aa0d8da1a",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119069176Z/timeline.jsonl",
+        "sha256": "e8e230e869638084bd925714375da4424c4f6ccb81dff1260306d03afcd36861",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119082064Z/timeline.jsonl",
+        "sha256": "6e1222be25859b9a142323ed160da0c5a1adc2497d2c62f6c7081956be2b3589",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119089082Z/timeline.jsonl",
+        "sha256": "bfefecbc798e37b525bfeb55bf71f27aa702ed95689fd529650c23b2882a1c5c",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119099653Z/timeline.jsonl",
+        "sha256": "90881c9577b29246fb602ed0c5f730a29a8fd93cc3c64b71e9db1ff8b9b6a98e",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119112870Z/timeline.jsonl",
+        "sha256": "09396770b66f35752da125fb2eee61c5bd78a7abc3f3f61e48cde3c8e41024f1",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119140545Z/timeline.jsonl",
+        "sha256": "114b3dfc6c26fea8825d562b60800fbec0504ff8ddc000277229c4409d61c3cf",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119150714Z/timeline.jsonl",
+        "sha256": "7ae7c011cb60733afca6570fe74f059c6b5a818de292babd312e68b31d128ed5",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119162713Z/timeline.jsonl",
+        "sha256": "0cdc3a6fa09bb7a8ae5aacfc0d3223995a4f20399c22d2053d0822a3cfe49499",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119177938Z/timeline.jsonl",
+        "sha256": "f4e227d1f3022aa64f2b553deac8d29ea1ee04ecd5edd87c6999f48f339fa6bd",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119188766Z/timeline.jsonl",
+        "sha256": "e71bdc85aec30efcca44137c7a57d1ebb609eb4e9ded7c9d35bed3d9c8b36aa0",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119200090Z/timeline.jsonl",
+        "sha256": "5b45dbdc9e250a4e0c12d4f2f569ddccc1ac3afac771fd3ba6acee6837639f7e",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119206753Z/timeline.jsonl",
+        "sha256": "920daf7f9bacde45edb31d45ee577916c561967c0ef5af59be8952950e67ee86",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119216799Z/timeline.jsonl",
+        "sha256": "a249f50144080ee49594cba09965fce162e11694fb72acd4c5f00cfcf3e2a8b1",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119225891Z/timeline.jsonl",
+        "sha256": "589c5bba9c96d8f0e0297f3133ddbe93262740c60f9397b7fbf519646fbb18d2",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119241553Z/timeline.jsonl",
+        "sha256": "b52cc17964570cd17557865ca618ae4e2d775fdfa31d48e67597d4162b8ae76e",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119254421Z/timeline.jsonl",
+        "sha256": "b744a95e576f1172f697fed303027bba7509c7f641480cd11593b47f15359754",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119262512Z/timeline.jsonl",
+        "sha256": "a49ffce09638c836571a34892935e8c27e7ee0da7817da03b4d865769294cb82",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119267808Z/timeline.jsonl",
+        "sha256": "ff152c54bcaf922fbe4bb5328966920958c69665d2618b9b93a91261b3d05026",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119276001Z/timeline.jsonl",
+        "sha256": "002d8905b897787dbb238b3773bd4781b753d7e2b0987cbea0714c6e1617df85",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119282766Z/timeline.jsonl",
+        "sha256": "3152ce3c440e09d422f081295741cde6ccc9a35e8855624a31e4851592cdc7aa",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119289171Z/timeline.jsonl",
+        "sha256": "4604a04005d096492cb953ba20e758dbc2cd78f41c4b37f3496f3a38a0db9725",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119297055Z/timeline.jsonl",
+        "sha256": "f725684b079a6ebf8acf3a08c44e012dcbaca84e2e33b444de8f24ca670fa900",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119303302Z/timeline.jsonl",
+        "sha256": "dd9919103d8c64b89f65b16f1c605755cdd11356c5d96545617194f2671a20ac",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119310794Z/timeline.jsonl",
+        "sha256": "79248739c01b18aa99bffe5fc0dc859dabe355a33d2902ed0b54c45dc964e076",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119318919Z/timeline.jsonl",
+        "sha256": "a4f87f319c7189b4182ff58328c42b2d923679518f1fc37903b4418d87d1dbb0",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119354957Z/timeline.jsonl",
+        "sha256": "d580b8d5814e7e948d64e456e453a73f286ad482a2fddcbd987fcd3ee3de3020",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119384907Z/timeline.jsonl",
+        "sha256": "384fa3a0880f496785865ecad1bf21757eaf9c25066766d1404c54dea8b0767f",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119393475Z/timeline.jsonl",
+        "sha256": "03e81663f8cd5acf7ad5c5972226f50f8eb9316a174bdd5e48c68a3f552ac4fd",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119408827Z/timeline.jsonl",
+        "sha256": "d30a32bba597308af7977b518a98d4a736717046a6477b389a714bedae75ec73",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119422030Z/timeline.jsonl",
+        "sha256": "f80bbc45ef26c9757dc0dd453bc357b9783eb0a5758f98957701b2738bb69587",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119432032Z/timeline.jsonl",
+        "sha256": "9b0d0281aa80ef31f8bcb99a99f747dd0e298f5357187d4f9b9aa5ef8790cecc",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119439816Z/timeline.jsonl",
+        "sha256": "f5a741e80a2bc067ce71b562c76d314b97fb2e31797f4acf4f78c20c994bd5eb",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119445662Z/timeline.jsonl",
+        "sha256": "c0c5ea749ad2318e948eef8f5ddbb45561812d613fcb6988455279dd9d2d8b7d",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119450889Z/timeline.jsonl",
+        "sha256": "68e31ddc95ec7693cec5c5df0f9eed3915c1857fb3c7ad5e06fa08a8762862f4",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119487338Z/timeline.jsonl",
+        "sha256": "5874d9728f38b3260ae649aa8b83fadfb113778881f9a77e5d191b06b1950314",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119496552Z/timeline.jsonl",
+        "sha256": "4ba2423f3ccf93d7a2c4008516706d43c2981339e51eddb389d26df1783a6a9c",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119516346Z/timeline.jsonl",
+        "sha256": "e268759b8ba60cf557bec5a864bb7eb198bb632b3b032673fba881c419fc58f9",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119526132Z/timeline.jsonl",
+        "sha256": "74b9015ff398ec49753a4aa3f8f17bef8c73e734b0fb2e3d024e5772014644bb",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119541235Z/timeline.jsonl",
+        "sha256": "66ff33dcc38fb01d4790f8762cc950d8be21a971a7c34e66010c301f3ea15acb",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119572604Z/timeline.jsonl",
+        "sha256": "f629a16b39f693d1ce1113d702dc0ed954c54a65b270df58da8cd676ba27fc95",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119598642Z/timeline.jsonl",
+        "sha256": "2adb755aa344578c67dca8013519356d4312997fb17a9cc5b93c849b9ebd61d0",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119612498Z/timeline.jsonl",
+        "sha256": "c450e90433bc535a908c08662c02fed870b86d43cfdab52746a4f183c15b6754",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119639762Z/timeline.jsonl",
+        "sha256": "939d7d1981fb8adcc1d81a3d95351c782fe89582852a9b0baa2e456df7e23453",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119651643Z/timeline.jsonl",
+        "sha256": "fab9b4aafdaef2a30c2f73e5abfb898576dcf18399f737fa8455ba2d48312a8f",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119687644Z/timeline.jsonl",
+        "sha256": "11a042a778296227ba9c936832385c7f24a07eeebbb9eaa02ec50e87a4a960be",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119703457Z/timeline.jsonl",
+        "sha256": "68de0f1381640bc113104531383ad8bdbb9475c614335e9c91d34db8cd0b5157",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119763180Z/timeline.jsonl",
+        "sha256": "3c45cbb60f11d620adb1a2259685dc879b95bd203e2c56b657e7a0849fd1a1fc",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119785736Z/timeline.jsonl",
+        "sha256": "a631423b44f9a6ddb31110dafa457e4f151474414e375a9190db1708ca8dc422",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119837373Z/timeline.jsonl",
+        "sha256": "3e7397eaefa9b22c68b43541d19fe700f801d35562401f22f58c04a384437c76",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119865823Z/timeline.jsonl",
+        "sha256": "b4849397c09c4136734ff1a7c677e847b7f13f3ca320256115378d00455d02f9",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121119906512Z/timeline.jsonl",
+        "sha256": "77e8e233dbc8367a092cd95de47d02b285786b2cb440a9462bf5b569deba610f",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121120024124Z/timeline.jsonl",
+        "sha256": "e0ab4f9a7366c38e10ddebcbc85237dd65e54e425f1f56669fd6b2ab3e6637a8",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121120055818Z/timeline.jsonl",
+        "sha256": "c0f0cbf6d0d87622d24b77a87e86a10b82d477341f641f34e1584325873942ba",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121120091932Z/timeline.jsonl",
+        "sha256": "8722ece1f1c172302563f3fc956b5dd04ca754ef4c1a1dc531558ecd3802d8ed",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121120177874Z/timeline.jsonl",
+        "sha256": "b8ce021578cbb961fc8c435a28f4b22cc85bef634e4d05f3e68bd6ac4a91c793",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121120315605Z/timeline.jsonl",
+        "sha256": "8bb1f792ddaa69ede03eb7a61d2c3493d4ec7dd26edabae457375e9b0d98272e",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121120396551Z/timeline.jsonl",
+        "sha256": "a6d64337f600169815b35616745e39503502489e229623d6781b9b6a3b5b6919",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121120450913Z/timeline.jsonl",
+        "sha256": "682cd52ba46e1ed324b3f4c4e9a94b3eaed8d61482d898bd21a941ee4cab6217",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121120503646Z/timeline.jsonl",
+        "sha256": "b4f4d2d04eae72a247f44167284c6d22d959f5be532b3870118b196581a34ff9",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121120562622Z/timeline.jsonl",
+        "sha256": "79ca715be13e1ce46e98554441ff4803fe341e04395a7ac0e3bcb4e1aa741229",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121120592329Z/timeline.jsonl",
+        "sha256": "01f08065ea714d78ba575d96d78fed6af5140c9efaf0a7effc6c7b20b62d7a5e",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121120638453Z/timeline.jsonl",
+        "sha256": "652fa74e8a437cbdc1aa5d2032684bf90baabe0f06fd242b6ed285a35ab563b5",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121120682010Z/timeline.jsonl",
+        "sha256": "c6a9e1b9a7ce9743f0dd0aa19c7945c38f375683a45a34714271b68f4dfb964f",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121120748853Z/timeline.jsonl",
+        "sha256": "fac3b54981fd8d70c9d9e9ee27e4410a747183d43616d73816893ab71567e59e",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121120811111Z/timeline.jsonl",
+        "sha256": "bc187b044db8f428dc3f685d59ea0e1a58b033d84e36569983fc58381a53f0f5",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121120871671Z/timeline.jsonl",
+        "sha256": "c6b104319f685538d365f4d9b567cca07b57e73f2658c508d40b0a0b1e83a808",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121120912459Z/timeline.jsonl",
+        "sha256": "0e55d4d84e651e0fd9e716cb6e5a39763057b83681c08d9ead296a488d6d6aa2",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121121013973Z/timeline.jsonl",
+        "sha256": "f6657f5f5f14f0879a59bfb9d6bbdeb217d63903c11425ebb75340347da2d652",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121121086791Z/timeline.jsonl",
+        "sha256": "2cd1955f020a9bd21c439b39d10afbeda8e6552d255632dc50ffc9ad8a46edaa",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121121122751Z/timeline.jsonl",
+        "sha256": "982ab132b10a669720b4e77f244d13488d081f723c3678437a7fcae123748a39",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121121172995Z/timeline.jsonl",
+        "sha256": "46565136288ae5f68e575cca70be119f5827d22b296619fb6adef6b1ab40f578",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121121229006Z/timeline.jsonl",
+        "sha256": "3380b113dd4629954167981b492d2471f4538b333563c39f77b98b233c08cfcc",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121121410705Z/timeline.jsonl",
+        "sha256": "453b2f0205d81c8be0759dc68f014ed56dab4adac1798c3f52db02116a5040a0",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121121458571Z/timeline.jsonl",
+        "sha256": "80af374d453b51e331a389cd13c27515d103143764fa93f1e6da04476c16c373",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121121500854Z/timeline.jsonl",
+        "sha256": "485a75d5d50cdcf2cd760600f66a96902487e17fe24d9fd2adbea221b30c6ac1",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121121627732Z/timeline.jsonl",
+        "sha256": "a4872999083091cbab2c7e5419776288c32c6dd0474de9fc5effaf4d33ddad32",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121121799502Z/timeline.jsonl",
+        "sha256": "672299a020cefc0465a45776b22d9e9b008801996cd9a6e1e749dd5fbbb4ecf4",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121121996468Z/timeline.jsonl",
+        "sha256": "ef07c5013ce0bfa35959d8b6f2cd8797e645304a64bfba3b61562c9e9f77f9af",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121122043267Z/timeline.jsonl",
+        "sha256": "a4d6db501763e2ca9da9877033b25d84c4c7856559a83f3e2e378f7d197df729",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121122094258Z/timeline.jsonl",
+        "sha256": "c650248ad345e4995b6b2ac285363a870a23618eace561fb771c8c6097e57a49",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121122114836Z/timeline.jsonl",
+        "sha256": "05bfe0909bf76802261e87f49138f3f5ba2de9b762ee072145735344c01d2288",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121122182861Z/timeline.jsonl",
+        "sha256": "720f5b659e0b17f77bf13912a4ccd5578e41434e4c77646e7b91d9f4b6d236fb",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121122238884Z/timeline.jsonl",
+        "sha256": "b1ee520136bcc5106fe75c0363dab200d7010dcdb1378cae4d7b5f31cd18f49e",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121122367689Z/timeline.jsonl",
+        "sha256": "0c7cb63461882d77528bb9994bc6c8964f58f811d86b87ed25291fdcc543e1ff",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121122457012Z/timeline.jsonl",
+        "sha256": "fee0ffefcbeb9f8894aa14bf1e426be4ac454b709ac9b288d2aeef64739bc970",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121122537750Z/timeline.jsonl",
+        "sha256": "36a3c0989a56b088d56d732cc3012ae543ea26639edb0b0bee27155a04c9b17d",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121122602159Z/timeline.jsonl",
+        "sha256": "abcb25db35ae6b6304fdecc110d57b461c70183e06291881ae6248d877fd6e3a",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121122615776Z/timeline.jsonl",
+        "sha256": "0d3d6556b8f560a56bb3b4bffc32082578bfe247818e05b45cbc6b2bfd010089",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121122664262Z/timeline.jsonl",
+        "sha256": "4255691334fd8ee9bcd1c98ed6f66d13b6a18b8373e14da00840b826346ebff4",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121122707353Z/timeline.jsonl",
+        "sha256": "e24eef3587556cd13272ed907567282be54d8ede52e351b0294d26e8584c48f3",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121122775284Z/timeline.jsonl",
+        "sha256": "cafa9540dd4e189a681fa013bf09476b9b53e2c261104f496a5f98dc629836ea",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121122875492Z/timeline.jsonl",
+        "sha256": "16728de1183c78730773773bd4f8047e26b43f4f170c65131d89e2ea9219b6d8",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121122958007Z/timeline.jsonl",
+        "sha256": "134d1964c258cbdb7ba19a9a463e20aaa81243c3cbbf6c8ab23c1a9228cc9c2e",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121123092245Z/timeline.jsonl",
+        "sha256": "762aaaae3665304211fa126132ba0ce135e1956ba9f2bc27627d1bf57092188e",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121123266830Z/timeline.jsonl",
+        "sha256": "4b2df7f0f7416d0dfd15d5ce1c92413164af539a9a13f83c613a3a27205a871a",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121123332632Z/timeline.jsonl",
+        "sha256": "04c45a5236ce29efe72839bd69c88ee83d8f910a66b783232cfe38bc7c5c8fc3",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121123531122Z/timeline.jsonl",
+        "sha256": "546cb4769f46c4650e38422a2f1bac7403cb0ddcc3e615d207d815715d02249a",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121123657910Z/timeline.jsonl",
+        "sha256": "b4f74a3ba55f0dd44499905065d58df5b54352b074cee0bb6bf59dad61a811c2",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121123814494Z/timeline.jsonl",
+        "sha256": "ea17b62c8797910b2f6057cefab88b4c42a9afb159a91b5bad978c67c8720659",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121123895595Z/timeline.jsonl",
+        "sha256": "d78017502637764cedc811404230ab14b0793fe43ddbcfccae6a04bf3cb2c1a4",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121123974928Z/timeline.jsonl",
+        "sha256": "a5509f16723cb28e05cbf9d55af8fdc23002313bc621d243c419f5903a6a5d76",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121124039791Z/timeline.jsonl",
+        "sha256": "327ccd303d2dfb8ca19cd6859b5cc03f2f0bb11dc29d10abca4637e39298a9ac",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121124129921Z/timeline.jsonl",
+        "sha256": "13293ee0a49731fd0cb70b8fa16409da5f5ca27af35ed731282368b4872215d2",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121124286262Z/timeline.jsonl",
+        "sha256": "7b9f513f1b39718bbe4eaff04c2355d0b2aad3525b373298d85f1ea8e754d74b",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121124586985Z/timeline.jsonl",
+        "sha256": "09ce0352f2d24caebb8c2e7072c226bc86d16f3ad9ead31a33477af809cc0094",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121124762526Z/timeline.jsonl",
+        "sha256": "46b5ff819bc44598adeb0129611cd973f8c836326d6e872886d37023fb911221",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121124994512Z/timeline.jsonl",
+        "sha256": "33a27f46a3008bde24ddc866e6079566256e17b792ce866e14e3275bdad8e85f",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121125063636Z/timeline.jsonl",
+        "sha256": "ba59046f612aed6764d929817abf4c8dd03f8bc7c67e431da76afc6eeaa07560",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121125263071Z/timeline.jsonl",
+        "sha256": "fe010b817da5e042ac7b6e8781e81c36e157e1fe2a38d1d9a046e20b1ee6cebc",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121125316994Z/timeline.jsonl",
+        "sha256": "02962028d3af06b56d570fc6ee2e523ac209035c083da50cf5e3ea79b9cc7a57",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121125346303Z/timeline.jsonl",
+        "sha256": "650b35b1cddad610bae57b0f58d786f3313ae3dae217156d892394c853f83a9b",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121125432081Z/timeline.jsonl",
+        "sha256": "1b9bd95c55b6915cd69f606f9099540ba6c2d34965686ba43eeb447ae2370320",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T121125481066Z/timeline.jsonl",
+        "sha256": "c5f00d40c2a001c54f4d2de9422b823ea94a3498fce7a9d00c5e2d5a20d59197",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T151610689779Z/timeline.jsonl",
+        "sha256": "bffd414eb8a5d3cdd14c431113bedfcfd99add2cb958f6e7a6f9247a53dcda37",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T151629568839Z/timeline.jsonl",
+        "sha256": "76acab80cbe11af93f6af7beaf1c7bd69e0016548223137823c41b88e8655655",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T151631339254Z/timeline.jsonl",
+        "sha256": "2a1a75445cc40b2f3871f0c0cda36e2f690ef49965b0f38a88ae7d804330320a",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T151633473937Z/timeline.jsonl",
+        "sha256": "c9933dda2c764d562158afbe55a7fd9de05d6b1b493c85b99e07bc219487bf67",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T151636202047Z/timeline.jsonl",
+        "sha256": "cf56166f9c2256e5e66b260f9be5407c8a16a1065159eb5151fcec64a292d3c3",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T151638304176Z/timeline.jsonl",
+        "sha256": "ab1a5f04d0c76f66fbbe873b47914100b940675de818ac6f808c3d84b0c25fd1",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T151640053375Z/timeline.jsonl",
+        "sha256": "ec4d68df132aefb746ec3604f21473a31e008d2d72f2f1d384bedc5ca3eab8c5",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T151641862113Z/timeline.jsonl",
+        "sha256": "70bde297149537b5a6a1ffcd05a92ed4121b8b1deebae75ad37899437bfa6cc9",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T151651197470Z/timeline.jsonl",
+        "sha256": "ad6e6f21c7cf498bc0889e0beb1670d408ffccf14eb995a330de07c2bf50759a",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T151652188973Z/timeline.jsonl",
+        "sha256": "e5c09d373a4c697acda2ceed45c06ff35de2b6a81a1aee9de1cd36a60e713755",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T151653158248Z/timeline.jsonl",
+        "sha256": "3db6aa5871f9d2f1dfb77cc5a245576b9c1cab641f4678fa0224c1930e911529",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T151654168119Z/timeline.jsonl",
+        "sha256": "374b4b8a46f84961fa46fdd0017237f70f8fdb3fd0380c496decfa57cddcf964",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T151655113375Z/timeline.jsonl",
+        "sha256": "faabd41253c58928d881e0cd07813f6ff536019b50512645f782ec2c99475fc0",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T151656094886Z/timeline.jsonl",
+        "sha256": "61ec8fe7ab121de430d4d8668f4f50ade32772b55791f1ca0f7655626708660e",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T151657052375Z/timeline.jsonl",
+        "sha256": "20a8b845f6e8dd4c27bec9bf647a00ac4776a205d89290f442f2a504c69bc555",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T151658005931Z/timeline.jsonl",
+        "sha256": "b16aaf30ad6756cc1fc89093ac4375c58d6eccae15a883cea18040b2ef7dc6da",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T151758013775Z/timeline.jsonl",
+        "sha256": "19b86f4491a7c5f8672b621b1acfa607a2b071fb09c7599259d65b20047d3bc1",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T151758962794Z/timeline.jsonl",
+        "sha256": "34ba4fc2dde25da8f5bb70344dcb19893770fa2e407d5d8bc19cbeeccc2182d7",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T180256396576Z/timeline.jsonl",
+        "sha256": "21178885f43ae56186d80ba9a8c4380590a6f0f3da1d2df00463ff18f28edc46",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T180257570697Z/timeline.jsonl",
+        "sha256": "ab32dcc9a78142f5975384620e901af468a9633e2c632dfbb4d8c130958a3f05",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T180258968940Z/timeline.jsonl",
+        "sha256": "17dfd263e4ef8a0a9b394f20565dbfe6b46cbcbd27bf7edc76e91465ddb593de",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T180300096854Z/timeline.jsonl",
+        "sha256": "fc8bce8c9d7a787a249786de9ed115df40c764b0008faa4e162cacaf7610ff1c",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T224633496908Z/timeline.jsonl",
+        "sha256": "8a060406f86592bbfcd64af6ba80bbaa8b68505e0c5a87050d7e3b03425d6ad6",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T224652164360Z/timeline.jsonl",
+        "sha256": "6f32e8896129bf0f666af4965e6f48ce9e43a5893159d9d4205fac87c0674fbd",
+        "skipped_lines": 0
+      },
+      {
+        "path": "bundles/ultra/runs/harness-run-20260809T224655542516Z/timeline.jsonl",
+        "sha256": "a509f14f90d19e838b048289cc029cd354963c9a459b33df60a841fc7a8f8a40",
+        "skipped_lines": 0
       }
     ]
   },
   "totals": {
-    "events": 15,
-    "files": 9,
+    "events": 749,
+    "files": 189,
     "skipped_lines": 0
   }
 }
