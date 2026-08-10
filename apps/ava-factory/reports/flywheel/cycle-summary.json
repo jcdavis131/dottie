@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "script": "apps/ava-factory/scripts/flywheel_cycle.py",
-  "started_at": "2026-08-10T11:58:32.211592+00:00",
-  "finished_at": "2026-08-10T12:01:00.559128+00:00",
+  "started_at": "2026-08-10T12:02:17.219883+00:00",
+  "finished_at": "2026-08-10T12:04:45.689586+00:00",
   "args": {
     "journal_dir": null,
     "epochs": 200,
@@ -12,8 +12,8 @@
     {
       "name": "collect",
       "status": "ok",
-      "copied": 9,
-      "skipped": 44,
+      "copied": 8,
+      "skipped": 53,
       "source": "/root/workspace/bundles/ultra/runs",
       "dest": "/home/user/dottie/bundles/ultra/runs"
     },
@@ -30,7 +30,7 @@
       ],
       "returncode": 0,
       "status": "ok",
-      "stdout_tail": "wrote 1572 records to /home/user/dottie/apps/ava-factory/data/orchestration/corpus.jsonl\nby_source: {'ultra_timeline': 772, 'synthetic_battery': 800}\nby_provenance: {'simulated': 834, 'measured': 738}\nby_split: {'train': 1366, 'val': 146, 'test': 60}"
+      "stdout_tail": "wrote 1580 records to /home/user/dottie/apps/ava-factory/data/orchestration/corpus.jsonl\nby_source: {'ultra_timeline': 780, 'synthetic_battery': 800}\nby_provenance: {'simulated': 834, 'measured': 746}\nby_split: {'train': 1370, 'val': 147, 'test': 63}"
     },
     {
       "name": "train",
@@ -46,14 +46,14 @@
       ],
       "returncode": 0,
       "status": "ok",
-      "stdout_tail": "corpus_source=l2_corpus trainer=orchestrator_model train=1366 val=146 test=60 measured_holdout=56\n[v1] train_seconds=19.66 epochs=200 stopped_early=False val_tier_accuracy=0.849315\n[v2] train_seconds=17.29 epochs=200 stopped_early=False val_tier_accuracy=0.849315\n[v3] train_seconds=20.92 epochs=200 stopped_early=False val_tier_accuracy=0.815068\n[v4] train_seconds=16.75 epochs=200 stopped_early=False val_tier_accuracy=0.986301\n[v5] train_seconds=16.43 epochs=200 stopped_early=False val_tier_accuracy=0.849315\n[v6] train_seconds=16.74 epochs=200 stopped_early=False val_tier_accuracy=0.945205\n[v7] train_seconds=17.37 epochs=200 stopped_early=False val_tier_accuracy=0.815068\n[v8] train_seconds=18.58 epochs=200 stopped_early=False val_tier_accuracy=0.815068\nchampion=v4 val_tier_accuracy=0.986301 holdout_tier_accuracy_all=0.8 gate_passed=False reason='champion measured accuracy 0.857143 does not strictly beat both baselines (freq prior 0.214286, heuristic 0.892857) on n=56 measured held-out records'"
+      "stdout_tail": "corpus_source=l2_corpus trainer=orchestrator_model train=1370 val=147 test=63 measured_holdout=59\n[v1] train_seconds=18.95 epochs=200 stopped_early=False val_tier_accuracy=0.85034\n[v2] train_seconds=16.65 epochs=200 stopped_early=False val_tier_accuracy=0.843537\n[v3] train_seconds=21.45 epochs=200 stopped_early=False val_tier_accuracy=0.816327\n[v4] train_seconds=17.47 epochs=200 stopped_early=False val_tier_accuracy=0.986395\n[v5] train_seconds=16.95 epochs=200 stopped_early=False val_tier_accuracy=0.85034\n[v6] train_seconds=16.89 epochs=200 stopped_early=False val_tier_accuracy=0.979592\n[v7] train_seconds=17.62 epochs=200 stopped_early=False val_tier_accuracy=0.823129\n[v8] train_seconds=18.53 epochs=200 stopped_early=False val_tier_accuracy=0.816327\nchampion=v4 val_tier_accuracy=0.986395 holdout_tier_accuracy_all=0.8095238095238095 gate_passed=False reason='champion measured accuracy 0.864407 does not strictly beat both baselines (freq prior 0.237288, heuristic 0.864407) on n=59 measured held-out records'"
     },
     {
       "name": "gate",
       "status": "ok",
       "eval_report": "/home/user/dottie/apps/ava-factory/reports/orchestrator/eval_report.json",
       "gate_passed": false,
-      "reason": "champion measured accuracy 0.857143 does not strictly beat both baselines (freq prior 0.214286, heuristic 0.892857) on n=56 measured held-out records",
+      "reason": "champion measured accuracy 0.864407 does not strictly beat both baselines (freq prior 0.237288, heuristic 0.864407) on n=59 measured held-out records",
       "promoted": false
     },
     {
@@ -65,12 +65,12 @@
         "meta/corpus_meta.json": true
       },
       "meta_sha256_before": {
-        "eval_summary.json": "013e0d7783d9aa5f094775b77f4b00fc64232d7489b623ad410fcdb93c6ab8b7",
-        "corpus_meta.json": "7e24f72732a9f6b94c0a6db983efe5b45d789a1d874dbab0492efae7aa58c413"
-      },
-      "meta_sha256_after": {
         "eval_summary.json": "e4441ce9bf6436a2ba29a14d3423ae22d5e6cb2f1751532851bdcea0f78d9ca4",
         "corpus_meta.json": "6bacc92bce042e9dec095d6f64249b759183b08faca4e7f2706521a87b946e1b"
+      },
+      "meta_sha256_after": {
+        "eval_summary.json": "4a2ba61c0842b23c156c07793c67c2292a7cc0d72277d4361096cd7a4b1c6526",
+        "corpus_meta.json": "c41ce5bc5ecf5af47bda03b58af26eda2e1b4bade176aefd026fa98db6e981ee"
       },
       "meta_changed": [
         "corpus_meta.json",
@@ -86,44 +86,44 @@
       ],
       "returncode": 0,
       "status": "ok",
-      "stdout_tail": "wrote /home/user/dottie/apps/dottie-harness-api/index.html (18722 bytes) + who-e.html"
+      "stdout_tail": "wrote /home/user/dottie/apps/dottie-harness-api/index.html (18711 bytes) + who-e.html"
     }
   ],
   "gate": {
     "gate_passed": false,
-    "reason": "champion measured accuracy 0.857143 does not strictly beat both baselines (freq prior 0.214286, heuristic 0.892857) on n=56 measured held-out records"
+    "reason": "champion measured accuracy 0.864407 does not strictly beat both baselines (freq prior 0.237288, heuristic 0.864407) on n=59 measured held-out records"
   },
   "promoted": false,
   "corpus_counts": {
-    "total": 1572,
+    "total": 1580,
     "by_source": {
-      "ultra_timeline": 772,
+      "ultra_timeline": 780,
       "synthetic_battery": 800
     },
     "by_provenance": {
       "simulated": 834,
-      "measured": 738
+      "measured": 746
     },
     "by_tier": {
       "deterministic": 251,
       "deep_research": 448,
       "llm": 110,
-      "agentic_epic": 465,
-      "action_operator": 298
+      "agentic_epic": 472,
+      "action_operator": 299
     },
     "by_split": {
-      "train": 1366,
-      "val": 146,
-      "test": 60
+      "train": 1370,
+      "val": 147,
+      "test": 63
     },
     "by_label_tier": {
       "simulated": 815,
-      "measured-behavior": 741,
-      "measured-outcome": 16
+      "measured-behavior": 742,
+      "measured-outcome": 23
     },
     "measured_holdout_by_label_tier": {
-      "measured-behavior": 117,
-      "measured-outcome": 3
+      "measured-behavior": 118,
+      "measured-outcome": 6
     }
   },
   "deploy_required": true,
