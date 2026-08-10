@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
   "script": "apps/ava-factory/scripts/flywheel_cycle.py",
-  "started_at": "2026-08-10T09:06:51.140375+00:00",
-  "finished_at": "2026-08-10T09:11:24.425380+00:00",
+  "started_at": "2026-08-10T11:54:12.502298+00:00",
+  "finished_at": "2026-08-10T11:57:08.040500+00:00",
   "args": {
-    "journal_dir": "/root/.claude/projects/-home-user/30ee475f-94b3-5e06-8579-5763b3903b53/subagents/workflows/wf_2fd62a97-fe5",
+    "journal_dir": null,
     "epochs": 200,
     "skip_train": false
   },
@@ -12,7 +12,7 @@
     {
       "name": "collect",
       "status": "ok",
-      "copied": 0,
+      "copied": 14,
       "skipped": 30,
       "source": "/root/workspace/bundles/ultra/runs",
       "dest": "/home/user/dottie/bundles/ultra/runs"
@@ -26,13 +26,11 @@
         "--out",
         "/home/user/dottie/apps/ava-factory/data/orchestration",
         "--ultra-dir",
-        "/home/user/dottie/bundles/ultra/runs",
-        "--journal-dir",
-        "/root/.claude/projects/-home-user/30ee475f-94b3-5e06-8579-5763b3903b53/subagents/workflows/wf_2fd62a97-fe5"
+        "/home/user/dottie/bundles/ultra/runs"
       ],
       "returncode": 0,
       "status": "ok",
-      "stdout_tail": "wrote 1554 records to /home/user/dottie/apps/ava-factory/data/orchestration/corpus.jsonl\nby_source: {'ultra_timeline': 749, 'workflow_journal': 5, 'synthetic_battery': 800}\nby_provenance: {'simulated': 834, 'measured': 720}\nby_split: {'train': 1349, 'val': 143, 'test': 62}"
+      "stdout_tail": "wrote 1563 records to /home/user/dottie/apps/ava-factory/data/orchestration/corpus.jsonl\nby_source: {'ultra_timeline': 763, 'synthetic_battery': 800}\nby_provenance: {'simulated': 834, 'measured': 729}\nby_split: {'train': 1359, 'val': 144, 'test': 60}"
     },
     {
       "name": "train",
@@ -48,14 +46,14 @@
       ],
       "returncode": 0,
       "status": "ok",
-      "stdout_tail": "corpus_source=l2_corpus trainer=orchestrator_model train=1349 val=143 test=62 measured_holdout=58\n[v1] train_seconds=38.62 epochs=200 stopped_early=False val_tier_accuracy=0.853147\n[v2] train_seconds=28.96 epochs=200 stopped_early=False val_tier_accuracy=0.853147\n[v3] train_seconds=36.09 epochs=200 stopped_early=False val_tier_accuracy=0.818182\n[v4] train_seconds=28.40 epochs=200 stopped_early=False val_tier_accuracy=0.993007\n[v5] train_seconds=28.95 epochs=200 stopped_early=False val_tier_accuracy=0.853147\n[v6] train_seconds=27.07 epochs=200 stopped_early=False val_tier_accuracy=0.881119\n[v7] train_seconds=26.46 epochs=200 stopped_early=False val_tier_accuracy=0.818182\n[v8] train_seconds=29.38 epochs=200 stopped_early=False val_tier_accuracy=0.818182\nchampion=v4 val_tier_accuracy=0.993007 holdout_tier_accuracy_all=0.7903225806451613 gate_passed=False reason='champion measured accuracy 0.844828 does not strictly beat both baselines (freq prior 0.206897, heuristic 0.892857) on n=58 measured held-out records'"
+      "stdout_tail": "corpus_source=l2_corpus trainer=orchestrator_model train=1359 val=144 test=60 measured_holdout=56\n[v1] train_seconds=22.83 epochs=200 stopped_early=False val_tier_accuracy=0.847222\n[v2] train_seconds=17.50 epochs=200 stopped_early=False val_tier_accuracy=0.847222\n[v3] train_seconds=21.76 epochs=200 stopped_early=False val_tier_accuracy=0.8125\n[v4] train_seconds=17.10 epochs=200 stopped_early=False val_tier_accuracy=0.986111\n[v5] train_seconds=17.14 epochs=200 stopped_early=False val_tier_accuracy=0.847222\n[v6] train_seconds=16.89 epochs=200 stopped_early=False val_tier_accuracy=0.944444\n[v7] train_seconds=17.06 epochs=200 stopped_early=False val_tier_accuracy=0.8125\n[v8] train_seconds=21.49 epochs=200 stopped_early=False val_tier_accuracy=0.8125\nchampion=v4 val_tier_accuracy=0.986111 holdout_tier_accuracy_all=0.8 gate_passed=False reason='champion measured accuracy 0.857143 does not strictly beat both baselines (freq prior 0.214286, heuristic 0.892857) on n=56 measured held-out records'"
     },
     {
       "name": "gate",
       "status": "ok",
       "eval_report": "/home/user/dottie/apps/ava-factory/reports/orchestrator/eval_report.json",
       "gate_passed": false,
-      "reason": "champion measured accuracy 0.844828 does not strictly beat both baselines (freq prior 0.206897, heuristic 0.892857) on n=58 measured held-out records",
+      "reason": "champion measured accuracy 0.857143 does not strictly beat both baselines (freq prior 0.214286, heuristic 0.892857) on n=56 measured held-out records",
       "promoted": false
     },
     {
@@ -67,12 +65,12 @@
         "meta/corpus_meta.json": true
       },
       "meta_sha256_before": {
-        "eval_summary.json": "80e6bc78a2c38e13304a310133dc7b0646d72b225701fa22d424ac5a4408ac24",
-        "corpus_meta.json": "5ef0fc331ed3e0a0e9afe1f61bab540704b34c7ddea3a4dee581ed4ac3e7cd6e"
-      },
-      "meta_sha256_after": {
         "eval_summary.json": "280b6cfd8525a2970abd81856824a842a8f732e335fbdc62150d844a40731c4a",
         "corpus_meta.json": "7f324c4c1d4b871eb2e4361eecd2472a3dce8746442fa9c3d83f1dcde9e9759c"
+      },
+      "meta_sha256_after": {
+        "eval_summary.json": "013e0d7783d9aa5f094775b77f4b00fc64232d7489b623ad410fcdb93c6ab8b7",
+        "corpus_meta.json": "7e24f72732a9f6b94c0a6db983efe5b45d789a1d874dbab0492efae7aa58c413"
       },
       "meta_changed": [
         "corpus_meta.json",
@@ -88,46 +86,44 @@
       ],
       "returncode": 0,
       "status": "ok",
-      "stdout_tail": "wrote /home/user/dottie/apps/dottie-harness-api/index.html (18725 bytes) + who-e.html"
+      "stdout_tail": "wrote /home/user/dottie/apps/dottie-harness-api/index.html (18728 bytes) + who-e.html"
     }
   ],
   "gate": {
     "gate_passed": false,
-    "reason": "champion measured accuracy 0.844828 does not strictly beat both baselines (freq prior 0.206897, heuristic 0.892857) on n=58 measured held-out records"
+    "reason": "champion measured accuracy 0.857143 does not strictly beat both baselines (freq prior 0.214286, heuristic 0.892857) on n=56 measured held-out records"
   },
   "promoted": false,
   "corpus_counts": {
-    "total": 1554,
+    "total": 1563,
     "by_source": {
-      "ultra_timeline": 749,
-      "workflow_journal": 5,
+      "ultra_timeline": 763,
       "synthetic_battery": 800
     },
     "by_provenance": {
       "simulated": 834,
-      "measured": 720
+      "measured": 729
     },
     "by_tier": {
       "deterministic": 251,
       "deep_research": 448,
-      "llm": 115,
-      "agentic_epic": 457,
-      "action_operator": 283
+      "llm": 110,
+      "agentic_epic": 462,
+      "action_operator": 292
     },
     "by_split": {
-      "train": 1349,
-      "val": 143,
-      "test": 62
+      "train": 1359,
+      "val": 144,
+      "test": 60
     },
     "by_label_tier": {
-      "simulated": 820,
-      "measured-behavior": 726,
-      "measured-outcome": 8
+      "simulated": 815,
+      "measured-behavior": 735,
+      "measured-outcome": 13
     },
     "measured_holdout_by_label_tier": {
-      "measured-behavior": 114,
-      "measured-outcome": 2,
-      "simulated": 3
+      "measured-behavior": 115,
+      "measured-outcome": 3
     }
   },
   "deploy_required": true,

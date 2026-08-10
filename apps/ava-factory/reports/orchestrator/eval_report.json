@@ -1,30 +1,30 @@
 {
   "schema_version": 1,
-  "built_at": "2026-08-10T09:11:22.972165+00:00",
+  "built_at": "2026-08-10T11:57:06.734165+00:00",
   "corpus_source": "l2_corpus",
   "trainer": "orchestrator_model",
   "champion": {
     "name": "v4",
     "model_version": "orch-mlp-v1-v4",
-    "val_tier_accuracy": 0.993007,
-    "tier_accuracy_all": 0.7903225806451613,
-    "tier_accuracy_measured": 0.8448275862068966,
-    "n_holdout": 62,
-    "n_measured_holdout": 58,
+    "val_tier_accuracy": 0.986111,
+    "tier_accuracy_all": 0.8,
+    "tier_accuracy_measured": 0.8571428571428571,
+    "n_holdout": 60,
+    "n_measured_holdout": 56,
     "agreement": {
-      "agreement_rate": 0.7903225806451613,
-      "mean_reward_all": 0.9359252580645162,
-      "mean_reward_on_agreement": 0.9817879591836737,
-      "mean_reward_on_disagreement": 0.7630581538461538,
+      "agreement_rate": 0.8,
+      "mean_reward_all": 0.9402172833333335,
+      "mean_reward_on_agreement": 0.964436916666667,
+      "mean_reward_on_disagreement": 0.84333875,
       "note": "counterfactual rewards unobserved; agreement-conditional statistics reported in place of true regret"
     },
     "risk_calibration": {
       "deciles": [
         {
           "decile": 0,
-          "n": 59,
-          "mean_pred_risk": 0.00046910766551979847,
-          "observed_failure_rate": 0.01694915254237288
+          "n": 56,
+          "mean_pred_risk": 4.959263878902017e-05,
+          "observed_failure_rate": 0.0
         },
         {
           "decile": 1,
@@ -35,7 +35,7 @@
         {
           "decile": 2,
           "n": 1,
-          "mean_pred_risk": 0.22515593499259648,
+          "mean_pred_risk": 0.2536660996908171,
           "observed_failure_rate": 1.0
         },
         {
@@ -76,19 +76,19 @@
         },
         {
           "decile": 9,
-          "n": 2,
-          "mean_pred_risk": 0.9848137568979939,
-          "observed_failure_rate": 0.0
+          "n": 3,
+          "mean_pred_risk": 0.9936452354491174,
+          "observed_failure_rate": 0.3333333333333333
         }
       ],
-      "brier": 0.05658861582777924
+      "brier": 0.04232652292282443
     }
   },
   "baselines": {
     "freq_prior": {
       "tier": "agentic_epic",
-      "accuracy_all": 0.1935483870967742,
-      "accuracy_measured": 0.20689655172413793
+      "accuracy_all": 0.2,
+      "accuracy_measured": 0.21428571428571427
     },
     "heuristic": {
       "accuracy_evaluable": 0.9,
@@ -100,7 +100,7 @@
   },
   "gate": {
     "gate_passed": false,
-    "reason": "champion measured accuracy 0.844828 does not strictly beat both baselines (freq prior 0.206897, heuristic 0.892857) on n=58 measured held-out records"
+    "reason": "champion measured accuracy 0.857143 does not strictly beat both baselines (freq prior 0.214286, heuristic 0.892857) on n=56 measured held-out records"
   },
   "notes": [
     "counterfactual rewards unobserved; agreement-conditional statistics reported in place of true regret",
