@@ -147,7 +147,9 @@ def _register_namespace_tools(server_obj: FastMCP, namespace: str) -> None:
     )(meta_status)
 
 
-def build_server(port: int = 8787, namespace: str | None = None) -> FastMCP:
+def build_server(
+    port: int = 8787, namespace: str | None = None, stateless: bool = False
+) -> FastMCP:
     server = FastMCP(
         "scout-cli",
         instructions=(
@@ -158,6 +160,14 @@ def build_server(port: int = 8787, namespace: str | None = None) -> FastMCP:
             "read error.example fields. See skill 'scout' via scout_skill args='show scout'."
         ),
         port=port,
+        # stateless_http: no server-side session continuity — each streamable-HTTP
+        # request is self-contained (current MCP spec's serverless/scale-out
+        # deployment mode). Meaningless for stdio/SSE (FastMCP only reads this
+        # setting inside streamable_http_app(), never sse_app()); run_server()
+        # below rejects stateless=True paired with anything but
+        # transport="streamable-http" rather than silently ignoring it, so a
+        # caller never believes they got a stateless deployment when they didn't.
+        stateless_http=stateless,
     )
     for name in sorted(list_plugin_names()):
         fn = _make_tool(name)
@@ -177,10 +187,33 @@ def build_server(port: int = 8787, namespace: str | None = None) -> FastMCP:
 
 
 def run_server(
-    transport: str = "stdio", port: int = 8787, namespace: str | None = None
+    transport: str = "stdio",
+    port: int = 8787,
+    namespace: str | None = None,
+    stateless: bool = False,
 ) -> None:
-    build_server(port=port, namespace=namespace).run(
-        transport="sse" if transport == "sse" else "stdio"
+    # Backward compat: any transport string other than exactly "sse" or
+    # "streamable-http" falls through to "stdio" (a typo silently becomes
+    # stdio, matching the pre-existing behavior for "sse").
+    resolved = transport if transport in ("sse", "streamable-http") else "stdio"
+    if stateless and resolved != "streamable-http":
+        # stateless_http is wired into FastMCP ONLY inside streamable_http_app()
+        # (it's handed to StreamableHTTPSessionManager there) — sse_app() never
+        # reads self.settings.stateless_http at all, so on "sse" it would be
+        # every bit as silent a no-op as on "stdio" (verified by reading the
+        # installed mcp SDK: grep for "stateless_http" in fastmcp/server.py
+        # turns up exactly one use site, inside streamable_http_app()).
+        # Rejecting both is the fail-closed, "keep the CLI honest" choice: a
+        # caller who passed --stateless should never walk away believing it
+        # did something.
+        raise ValueError(
+            f"stateless=True has no effect on transport={resolved!r} "
+            "(stateless_http only applies to FastMCP's streamable-http "
+            "transport, not sse or stdio) — pass transport='streamable-http', "
+            "or drop stateless."
+        )
+    build_server(port=port, namespace=namespace, stateless=stateless).run(
+        transport=resolved
     )
 
 

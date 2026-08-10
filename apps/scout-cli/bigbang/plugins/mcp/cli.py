@@ -90,17 +90,38 @@ def manifest():
     emit(data, command="mcp manifest")
 
 
+_VALID_TRANSPORTS = ("stdio", "sse", "streamable-http")
+
+
 @app.command("serve")
 def serve(
     sse: bool = typer.Option(
-        False, "--sse", help="Serve over SSE/HTTP instead of stdio"
+        False,
+        "--sse",
+        help="(legacy alias for --transport sse) Serve over SSE/HTTP instead of stdio",
     ),
-    port: int = typer.Option(8787, "--port", help="Port for --sse transport"),
+    transport: str = typer.Option(
+        "",
+        "--transport",
+        help="Transport: stdio (default), sse, or streamable-http. "
+        "Overrides nothing on its own — combine with --sse only if they agree.",
+    ),
+    port: int = typer.Option(
+        8787, "--port", help="Port for --sse/--transport sse|streamable-http"
+    ),
     namespace: str = typer.Option(
         "",
         "--namespace",
         help="Meta mode: also proxy this namespace's downstream MCP tools "
         "as <server>__<tool> (scout mcp ns list)",
+    ),
+    stateless: bool = typer.Option(
+        False,
+        "--stateless",
+        help="Stateless streamable-HTTP mode: no server-side session "
+        "continuity, each request is self-contained (current MCP spec's "
+        "serverless/scale-out mode). Only meaningful with --transport "
+        "streamable-http.",
     ),
 ):
     """Serve scout-cli plugins as a real MCP server (stdio by default)."""
@@ -112,10 +133,43 @@ def serve(
             command="mcp serve",
         )
         raise typer.Exit(1) from e
-    # Blocks until the client disconnects (stdio) or the process is stopped (sse).
-    run_server(
-        transport="sse" if sse else "stdio", port=port, namespace=namespace or None
-    )
+
+    if transport and transport not in _VALID_TRANSPORTS:
+        emit(
+            {"error": f"--transport must be one of {list(_VALID_TRANSPORTS)}, "
+                      f"got {transport!r}"},
+            command="mcp serve",
+        )
+        raise typer.Exit(1)
+    if transport and sse and transport != "sse":
+        # --sse is the pre-existing (still supported) alias for --transport sse;
+        # only reject when the two explicitly disagree.
+        emit(
+            {"error": f"--sse conflicts with --transport {transport!r} "
+                      "(--sse means --transport sse) — pass just one"},
+            command="mcp serve",
+        )
+        raise typer.Exit(1)
+    # Exact backward compat: no --transport + no --sse -> "stdio", same as
+    # before this option existed. --sse alone still resolves to "sse".
+    resolved_transport = transport or ("sse" if sse else "stdio")
+
+    # Blocks until the client disconnects (stdio) or the process is stopped
+    # (sse/streamable-http).
+    try:
+        run_server(
+            transport=resolved_transport,
+            port=port,
+            namespace=namespace or None,
+            stateless=stateless,
+        )
+    except ValueError as e:
+        # run_server raises when --stateless is paired with any transport
+        # other than streamable-http (stdio or sse) — a nonsensical
+        # combination we reject rather than silently no-op, so the CLI stays
+        # honest about what it did.
+        emit({"error": str(e)}, command="mcp serve")
+        raise typer.Exit(1) from e
 
 
 @app.command("add")
