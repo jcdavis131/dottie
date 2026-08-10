@@ -1,28 +1,28 @@
 {
   "schema_version": 1,
-  "built_at": "2026-08-09T23:36:10.927631+00:00",
+  "built_at": "2026-08-10T09:11:22.972165+00:00",
   "corpus_source": "l2_corpus",
   "trainer": "orchestrator_model",
   "champion": {
     "name": "v4",
     "model_version": "orch-mlp-v1-v4",
-    "val_tier_accuracy": 0.972028,
-    "tier_accuracy_all": 0.819672131147541,
-    "tier_accuracy_measured": 0.8771929824561403,
-    "n_holdout": 61,
-    "n_measured_holdout": 57,
+    "val_tier_accuracy": 0.993007,
+    "tier_accuracy_all": 0.7903225806451613,
+    "tier_accuracy_measured": 0.8448275862068966,
+    "n_holdout": 62,
+    "n_measured_holdout": 58,
     "agreement": {
-      "agreement_rate": 0.819672131147541,
-      "mean_reward_all": 0.9382442786885248,
-      "mean_reward_on_agreement": 0.9776820600000004,
-      "mean_reward_on_disagreement": 0.7589816363636362,
+      "agreement_rate": 0.7903225806451613,
+      "mean_reward_all": 0.9359252580645162,
+      "mean_reward_on_agreement": 0.9817879591836737,
+      "mean_reward_on_disagreement": 0.7630581538461538,
       "note": "counterfactual rewards unobserved; agreement-conditional statistics reported in place of true regret"
     },
     "risk_calibration_note": "per-decile detail dropped at vendor time; see the full eval_report.json in apps/ava-factory/reports/orchestrator/"
   },
   "gate": {
     "gate_passed": false,
-    "reason": "champion measured accuracy 0.877193 does not strictly beat both baselines (freq prior 0.210526, heuristic 0.892857) on n=57 measured held-out records"
+    "reason": "champion measured accuracy 0.844828 does not strictly beat both baselines (freq prior 0.206897, heuristic 0.892857) on n=58 measured held-out records"
   },
   "notes": [
     "counterfactual rewards unobserved; agreement-conditional statistics reported in place of true regret",

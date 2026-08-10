@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "built_at": "2026-08-09T23:35:33.409853+00:00",
+  "built_at": "2026-08-10T09:06:53.757426+00:00",
   "generator": {
     "seed": 20260809,
     "battery_n": 800,
@@ -58,37 +58,37 @@
     "n_records_corrected": 0
   },
   "counts": {
-    "total": 1563,
+    "total": 1554,
     "by_source": {
       "ultra_timeline": 749,
-      "workflow_journal": 14,
+      "workflow_journal": 5,
       "synthetic_battery": 800
     },
     "by_provenance": {
       "simulated": 834,
-      "measured": 729
+      "measured": 720
     },
     "by_tier": {
       "deterministic": 251,
-      "deep_research": 453,
+      "deep_research": 448,
       "llm": 115,
-      "agentic_epic": 460,
-      "action_operator": 284
+      "agentic_epic": 457,
+      "action_operator": 283
     },
     "by_split": {
-      "train": 1359,
+      "train": 1349,
       "val": 143,
-      "test": 61
+      "test": 62
     },
     "by_label_tier": {
-      "simulated": 829,
+      "simulated": 820,
       "measured-behavior": 726,
       "measured-outcome": 8
     },
     "measured_holdout_by_label_tier": {
       "measured-behavior": 114,
       "measured-outcome": 2,
-      "simulated": 2
+      "simulated": 3
     }
   },
   "sources": {
@@ -100,8 +100,8 @@
     },
     "workflow_journal": {
       "included": true,
-      "dirname": "wf_e370f3be-001",
-      "n_records": 14,
+      "dirname": "wf_2fd62a97-fe5",
+      "n_records": 5,
       "note": "metadata-only extraction; no prompt/result text"
     },
     "synthetic_battery": {
