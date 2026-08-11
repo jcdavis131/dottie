@@ -20,7 +20,6 @@
 | Scout-auto-aug11-analytics | Ship AI product suite / Phase0 analytics store.jsonl+plugin | Tue 2026-08-11 07:29 CDT | Morning-brief-aug-11 auto-exec Phase0 analytics <2h no-torch — store.jsonl 20 lines DAU3 WAU3 TLPG dedup distinct_hashes 5 daily shard 2026-08-11.jsonl, plugin 5 cmds network:false filesystem allowlisted, checkpoint triple even no-change 7-field nodeId agentId attempt latency_ms tokens_est status errorClass — workflow-run-aa477d372a304ab596d4512165eae81e queued | scout/analytics-phase0-aug11 | doing 07:29 CDT — lane analytics Phase0 verify triple-write workflow queued |
 | Scout-auto-aug11-payments | Ship AI product suite / Phase0 payments idempotent | Tue 2026-08-11 07:29 CDT | Morning-brief-aug-11 auto-exec Phase0 payments <2h no-torch — idempotent sha(email|plan) lowercased+trim full hex inv_aabc1b34 style $0 ledger 1 line, duplicate returns existing, no dup users, 10/10 local shippable PARKED per user 07:04 CDT helper-only no live switch — checkpoint triple even no-change — workflow-run-ea364a72fe3240d8ae3fb8eb0dad0cc3 queued | scout/payments-phase0-aug11 | doing 07:29 CDT — lane payments Phase0 verify triple-write workflow queued — PARKED |
 | Scout-auto-aug11-auth | Ship AI product suite / Phase0 auth 3-user | Tue 2026-08-11 07:29 CDT | Morning-brief-aug-11 auto-exec Phase0 auth <2h no-torch — users.jsonl 3 lines owner pro +2 demo free magic_link/device_flow active, flags.jsonl 4 lines is_on cached 0.9 chimera on rollout1.0 kill_switch false, Clerk 3-user concept local-only cached 0.9 — checkpoint triple even no-change — workflow-run-b14a83c3c37e4394973961cb9b4ce0c8 queued | scout/auth-phase0-aug11 | doing 07:29 CDT — lane auth Phase0 verify triple-write workflow queued |
-
 ## Free lanes right now
 - 2 free as of Tue 2026-08-11 07:29 CDT (3 GPU exempt + 5 doing hillclimb+v6 + 2 DONE freed Forms 07:17 + Frontend 07:20 = 7 max non-GPU: 5 doing → 2 free, payments PARKED helper-only, finance parked, ZERO-DEPS true stdlib only). Preserved 3 LOCAL-GPU exempt OOM 57h+ unified G2/hoops v6/gridiron-real. Active Phase0 lanes 3 queued async (analytics/payments/auth) consuming free lanes via ultracode workflows triple-write even no-change. Next: infra gap open-vs-closed, Phase1 Launched 10 blockers Stripe/PostHog/Clerk/Vercel/Sentry/Cloudflare/Resend/R2/LaunchDarkly/Linear, Top5 tick+flags→vec+lattice v2→analytics+trace+ops v2→meter build order, Ideas gate 8.93 PASS 6 papers, 7/7 full pending completion of Phase0 verification.
 
@@ -36,6 +35,6 @@
 - everyday language to user — auto-exec fired ok — sparkle on delivery
 
 
-<!-- merged from outside edits 2026-08-11T12:31Z -->
+<!-- merged from outside edits 2026-08-11T12:57Z -->
 | Scout-auto | vector-hub / chimera daily + provenance 7/7 | 2026-08-11 12:28 CDT | Verify chimera daily 5th puzzle unified chimera 20719×64-d, DM_PROVENANCE 7/7/0, Vercel 200 | scout/vec-lattice-v2 | claimed (brief auto) |
 | Scout-auto | vector-unified / restore cache artifacts G2 | 2026-08-11 12:28 CDT | Ship Phase0 stubs if missing: analytics/payments/auth 3-user, flags is_on cached 0.9 — already done per board, verify tr | scout/analytics-phase0 | claimed (brief auto) |
