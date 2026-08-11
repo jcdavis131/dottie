@@ -45,5 +45,8 @@
 
 
 <!-- merged from outside edits 2026-08-11T00:14Z -->
+
+
+<!-- merged from outside edits 2026-08-11T01:14Z -->
 | Scout-hillclimb-loop-41 | Ship AI product suite / Final 100% Forms+Memory+PWA+METER TransformerFusion 192d 5+2 swarm | Mon 2026-08-10 15:07 CDT | Proactive hill 99->100% — lane 6/7 claimed reuse from stale sweep 1 stale cleared (10:37) — Goals 99% 20 rows DONE6 OPEN14 Ship99% Master97% hub20719x64-d 74426B HIT 59 hashes 7/7/0 — Ideas gate 8.93 PASS 7 papers Forms8.8 Zep9.1 CLS8.9 VICReg9.2 CORAL8.6 SupCon9.0 KaLM9.3 next 72.32 vs Qwen3 70.58 — TransformerFusion 192d 6-head RoPE RMSNorm CLS->64-d 17 towers — zero-deps true stdlib only — everyday drag map play Jordan copy link same stars LCG 20260810→1174252859 idx3534 | scout/hillclimb-final-100-v41 | doing 15:07 CDT — claimed lane 6/7 free |
 | Scout-hillclimb-loop-40 | Ship AI product suite / Final 100% Forms+Memory+PWA+METER TransformerFusion 192d 5+2 swarm | Mon 2026-08-10 14:37 CDT | Proactive hill 99->100% — lane 5/7 claimed — Goals 99% 20 rows DONE6 OPEN14 Ship99% Master97% hub20719x64-d 74426B HIT 59 hashes 7/7/0 — Ideas gate 8.93 PASS 7 papers Forms8.8 Zep9.1 CLS8.9 VICReg9.2 CORAL8.6 SupCon9.0 KaLM9.3 next 72.32 vs Qwen3 70.58 — TransformerFusion 192d 6-head RoPE RMSNorm CLS->64-d 17 towers — zero-deps true stdlib only — everyday drag map play Jordan copy link same stars LCG 20260810→1174252859 idx3534 | scout/hillclimb-final-100-v40 | doing 14:37 CDT — claimed lane 5/7 free |
