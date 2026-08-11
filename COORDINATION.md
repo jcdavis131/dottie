@@ -38,3 +38,5 @@
 <!-- merged from outside edits 2026-08-11T12:57Z -->
 | Scout-auto | vector-hub / chimera daily + provenance 7/7 | 2026-08-11 12:28 CDT | Verify chimera daily 5th puzzle unified chimera 20719×64-d, DM_PROVENANCE 7/7/0, Vercel 200 | scout/vec-lattice-v2 | claimed (brief auto) |
 | Scout-auto | vector-unified / restore cache artifacts G2 | 2026-08-11 12:28 CDT | Ship Phase0 stubs if missing: analytics/payments/auth 3-user, flags is_on cached 0.9 — already done per board, verify tr | scout/analytics-phase0 | claimed (brief auto) |
+
+| Scout-goals-ideas-loop | goals-ideas → launched-payments-analytics-wiring | 08:16 AM CDT | SOTA Idea idea_sota_00 Payments + analytics SOTA — Stripe vs MoR + Post → goal launched-payments-analytics-wiring — Pull Stripe/Radar docs + 2 MoR comparisons, PostHog 2 blog posts, table trade-of | scout/goals-ideas-sota_005 | researching 11.6 impact |
