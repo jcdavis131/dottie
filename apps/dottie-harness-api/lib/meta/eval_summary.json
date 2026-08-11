@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "built_at": "2026-08-10T12:15:51.125155+00:00",
+  "built_at": "2026-08-10T12:20:06.762128+00:00",
   "corpus_source": "l2_corpus",
   "trainer": "orchestrator_model",
   "champion": {

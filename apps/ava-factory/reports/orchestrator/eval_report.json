@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "built_at": "2026-08-10T12:15:51.125155+00:00",
+  "built_at": "2026-08-10T12:20:06.762128+00:00",
   "corpus_source": "l2_corpus",
   "trainer": "orchestrator_model",
   "champion": {
@@ -23,7 +23,7 @@
         {
           "decile": 0,
           "n": 56,
-          "mean_pred_risk": 0.00010144388620062858,
+          "mean_pred_risk": 0.0002826467643869507,
           "observed_failure_rate": 0.0
         },
         {
@@ -40,21 +40,21 @@
         },
         {
           "decile": 3,
-          "n": 1,
-          "mean_pred_risk": 0.3931725150940383,
-          "observed_failure_rate": 0.0
+          "n": 0,
+          "mean_pred_risk": null,
+          "observed_failure_rate": null
         },
         {
           "decile": 4,
-          "n": 2,
-          "mean_pred_risk": 0.42043662122662584,
+          "n": 1,
+          "mean_pred_risk": 0.4440763709330178,
           "observed_failure_rate": 1.0
         },
         {
           "decile": 5,
-          "n": 0,
-          "mean_pred_risk": null,
-          "observed_failure_rate": null
+          "n": 1,
+          "mean_pred_risk": 0.5284319885040012,
+          "observed_failure_rate": 0.0
         },
         {
           "decile": 6,
@@ -70,18 +70,18 @@
         },
         {
           "decile": 8,
-          "n": 0,
-          "mean_pred_risk": null,
-          "observed_failure_rate": null
+          "n": 1,
+          "mean_pred_risk": 0.8797050492712679,
+          "observed_failure_rate": 1.0
         },
         {
           "decile": 9,
           "n": 5,
-          "mean_pred_risk": 0.9897119520547661,
+          "mean_pred_risk": 0.9908653199652033,
           "observed_failure_rate": 0.6
         }
       ],
-      "brier": 0.043998935759284576
+      "brier": 0.040578318140045935
     }
   },
   "baselines": {

@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
-  "built_at": "2026-08-10T12:15:51.125155+00:00",
+  "built_at": "2026-08-10T12:20:06.762128+00:00",
   "corpus_source": "l2_corpus",
   "trainer": "orchestrator_model",
   "seed_offset": 0,
   "time_budget_s": 60.0,
   "n_records_dropped_bad_label": 0,
   "corpus_counts": {
-    "train": 1383,
+    "train": 1387,
     "val": 151,
     "test": 64,
     "measured_holdout": 60
@@ -24,12 +24,12 @@
         "reward_mode": "raw"
       },
       "seed": 100,
-      "n_train": 1383,
+      "n_train": 1387,
       "epochs_run": 200,
       "stopped_early": false,
-      "train_seconds": 20.158,
-      "final_loss": 0.000423,
-      "val_tier_accuracy": 0.834437
+      "train_seconds": 20.058,
+      "final_loss": 0.000328,
+      "val_tier_accuracy": 0.854305
     },
     {
       "name": "v2",
@@ -42,11 +42,11 @@
         "reward_mode": "raw"
       },
       "seed": 101,
-      "n_train": 1383,
+      "n_train": 1387,
       "epochs_run": 200,
       "stopped_early": false,
-      "train_seconds": 21.58,
-      "final_loss": 5.1e-05,
+      "train_seconds": 17.752,
+      "final_loss": 7.1e-05,
       "val_tier_accuracy": 0.84106
     },
     {
@@ -60,12 +60,12 @@
         "reward_mode": "raw"
       },
       "seed": 102,
-      "n_train": 1383,
+      "n_train": 1387,
       "epochs_run": 200,
       "stopped_early": false,
-      "train_seconds": 26.092,
-      "final_loss": 0.000262,
-      "val_tier_accuracy": 0.827815
+      "train_seconds": 21.606,
+      "final_loss": 0.000265,
+      "val_tier_accuracy": 0.821192
     },
     {
       "name": "v4",
@@ -78,11 +78,11 @@
         "reward_mode": "raw"
       },
       "seed": 103,
-      "n_train": 1383,
+      "n_train": 1387,
       "epochs_run": 200,
       "stopped_early": false,
-      "train_seconds": 18.029,
-      "final_loss": 0.000394,
+      "train_seconds": 18.691,
+      "final_loss": 0.000313,
       "val_tier_accuracy": 0.986755
     },
     {
@@ -96,11 +96,11 @@
         "reward_mode": "raw"
       },
       "seed": 104,
-      "n_train": 1383,
+      "n_train": 1387,
       "epochs_run": 200,
       "stopped_early": false,
-      "train_seconds": 17.857,
-      "final_loss": 0.000375,
+      "train_seconds": 18.005,
+      "final_loss": 0.00038,
       "val_tier_accuracy": 0.854305
     },
     {
@@ -114,12 +114,12 @@
         "reward_mode": "raw"
       },
       "seed": 105,
-      "n_train": 1383,
+      "n_train": 1387,
       "epochs_run": 200,
       "stopped_early": false,
-      "train_seconds": 18.362,
-      "final_loss": 0.000368,
-      "val_tier_accuracy": 0.940397
+      "train_seconds": 17.098,
+      "final_loss": 0.000362,
+      "val_tier_accuracy": 0.94702
     },
     {
       "name": "v7",
@@ -132,11 +132,11 @@
         "reward_mode": "binary"
       },
       "seed": 106,
-      "n_train": 1383,
+      "n_train": 1387,
       "epochs_run": 200,
       "stopped_early": false,
-      "train_seconds": 18.147,
-      "final_loss": 0.000322,
+      "train_seconds": 17.326,
+      "final_loss": 0.000338,
       "val_tier_accuracy": 0.81457
     },
     {
@@ -150,11 +150,11 @@
         "reward_mode": "raw"
       },
       "seed": 107,
-      "n_train": 1383,
+      "n_train": 1387,
       "epochs_run": 200,
       "stopped_early": false,
-      "train_seconds": 22.48,
-      "final_loss": 4.1e-05,
+      "train_seconds": 19.287,
+      "final_loss": 9.9e-05,
       "val_tier_accuracy": 0.81457
     }
   ]
