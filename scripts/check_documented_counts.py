@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify that the lint-debt numbers written in the workflows still reproduce.
+"""Verify that the lint-debt numbers written in the workflows (and Makefile) still reproduce.
 
 WHY THIS EXISTS. On 2026-08-01 a single session corrected roughly fifteen stale numbers
 across ci.yml, lint.yml, HANDOFF.md and TODO.md — 334 -> 263, 1156 -> 2260, 2226 -> 2260,
@@ -7,6 +7,13 @@ across ci.yml, lint.yml, HANDOFF.md and TODO.md — 334 -> 263, 1156 -> 2260, 22
 for automating it: the ruff figure was measured and written as **263**, and then a commit
 LATER THE SAME DAY closed 11 findings, making it 252. A number written by hand went
 stale in hours, by the same author, inside one session.
+
+UPDATE 2026-08-12: this script only ever checked ci.yml and lint.yml. `Makefile`'s `lint`
+target prints the same figure in its summary echo and was never in the DOCUMENTED list —
+it had drifted from 252 to a fresh 449 (both workflows had stayed correct in the
+meantime) with nothing to catch it. Added as a third entry below rather than assumed
+fixed for good; the next copy-paste site is exactly as likely to go unnoticed as this
+one was.
 
 Every one of those was found by someone deciding to re-measure. That is not a process,
 it is luck. This checks the subset that is MECHANICALLY reproducible — a ruff count is
@@ -55,10 +62,15 @@ SOFT_PACKAGES = [
 ]
 EXCLUDE = "apps/scout-cli/.venv"
 
-# Where the number is written for a human to read. Both files state it in the step name.
+# Where the number is written for a human to read. ci.yml/lint.yml state it in the
+# step name; Makefile states it in the `lint` target's summary echo — added after that
+# exact line was caught stale (252) against a fresh measure (449) while ci.yml/lint.yml
+# were both still correct, proving the two workflow files alone were not the full set of
+# places this figure gets copy-pasted and left to rot.
 DOCUMENTED = [
     (Path(".github/workflows/ci.yml"), re.compile(r"Ruff lint \(non-blocking — (\d+) known findings")),
     (Path(".github/workflows/lint.yml"), re.compile(r"Ruff check \(non-blocking — (\d+) known findings")),
+    (Path("Makefile"), re.compile(r"documented (\d+)-finding debt")),
 ]
 
 
@@ -75,14 +87,15 @@ def measure(packages) -> int:
 
 
 def workflow_scope(path: Path) -> list[str] | None:
-    """The packages a workflow's soft-lint step ACTUALLY passes to ruff.
+    """The packages a soft-lint invocation ACTUALLY passes to ruff (workflow step or Makefile target).
 
     Parsed rather than assumed. The first version of this script compared its own
     SOFT_PACKAGES list against a total measured from that same list — a tautology that
     could never fail, which a mutation test caught: adding a package to SOFT_PACKAGES
     changed nothing because both sides moved together. An assertion that cannot fail is
     the defect class gate_audit.py exists to find, so it is replaced by a comparison
-    against the real command line.
+    against the real command line. Generic on purpose: it matches any `ruff ... check
+    ... --exclude ...` invocation, so it works unmodified on ci.yml, lint.yml, or Makefile.
     """
     if not path.exists():
         return None
@@ -145,7 +158,7 @@ def main(argv=None) -> int:
             print(f"  {rel}: could not parse the ruff scope from its run: line")
             scope_drift.append((rel, None))
         elif actual != sorted(SOFT_PACKAGES):
-            print(f"  {rel}: SCOPE DRIFT — workflow lints {actual}, this script measures "
+            print(f"  {rel}: SCOPE DRIFT — it lints {actual}, this script measures "
                   f"{sorted(SOFT_PACKAGES)}")
             scope_drift.append((rel, actual))
     print()
@@ -168,8 +181,9 @@ def main(argv=None) -> int:
               "script's pattern changed. Fix whichever is wrong; do not delete the check.")
         return 1
     if scope_drift:
-        print("\nFAIL: this script and the workflows no longer lint the same set, so the "
-              "number it verifies is not the number they report. Reconcile SOFT_PACKAGES.")
+        print("\nFAIL: this script and one of the documented targets no longer lint the "
+              "same package set, so the number it verifies is not the number that target "
+              "reports. Reconcile SOFT_PACKAGES.")
         return 1
     if total_pkg != fresh:
         print(f"\nFAIL: per-package sum {total_pkg} != combined {fresh} — ruff is counting "
