@@ -1,6 +1,3 @@
-
-
-
 # Active Tasks - Who's touching what
 > WhoIsWho 4-line check: Scout Prime = orchestrator + Ultra host + OODA host • Strategist = 3-lens • Planner = DAG • Builder/Swarm = Act
 
