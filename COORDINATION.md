@@ -27,6 +27,7 @@
 | Scout-factory-141 | autonomous-factory / next-hills research | 20:27 CT | FACTORY research 7-paper gate 8.93 PASS beyond paper tracking | scout/factory-141-research | claimed |
 | Scout-factory-142 | autonomous-factory / cron harness 1m ultra | 20:27 CT | FACTORY crons 1m ultra pacing-1 tempo-1 swarm-more-faster | scout/factory-142-crons | claimed |
 | Scout-factory-143 | autonomous-factory / orchestrator v33 | 20:27 CT | FACTORY orchestrator v33 10 phases L0-L4 Scout Prime always-on | scout/factory-143-orchestrator | claimed |
+| Scout-hill-145 | bundles/ultra / coordination layer ScoutCommsBus max3/4 :13→:01 | 20:48 CT | HILL 145 Build ScoutCommsBus relevantAgents filter max3/4 pacing :13→:01 + HandoffEnvelope 7-req mandatory + Claude Code swarm 3 instances + timeline triple-write 7-field even no-change PWA v67 #080A0F CORE20 LCG 1233799701 idx3970 | scout/hill-145-comms | claimed |
 | Scout-brief-auto-OPEN | Top5 / build order | 18:03 CDT 2026-08-12 | OPEN: Top5 build order tick+flags → vec+lattice v2 → analytics+trace+ops v2 → meter — ultracode 5+2 swarm lite <90s, gate 8.93 PASS thr8.0, LCG 1233799701 idx3970 same-link-same-stars ?daily=20260812&n=1/3/5 | scout/top5-build-order | claimed |
 
 ## How to use
