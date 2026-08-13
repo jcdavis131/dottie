@@ -1,5 +1,5 @@
 # Toil Report — Scout Plugin Automation
-Date: 2026-07-24T00:32:04.432700+00:00 UTC
+Date: 2026-07-26T07:00:22.575641+00:00 UTC
 Repo: /home/hatch/workspace/dottie/apps/scout-cli
 Mode: Home Scout — Single CLI Doctrine
 
