@@ -18,6 +18,15 @@
 | Scout-brief-auto-OPEN | bundles/payments / Phase0 stub | 18:03 CDT 2026-08-12 | OPEN: Phase0 payments idempotent 3-user $0 ledger — store.jsonl idempotent sha(email|plan), duplicate returns existing, no Stripe live until explicit go | scout/payments-phase0 | in-progress |
 | Scout-brief-auto-OPEN | bundles/auth / Phase0 3-user | 18:03 CDT 2026-08-12 | OPEN: Phase0 auth 3-user allowlist — users.jsonl 3 active u_cameron/u_alex_demo/u_jordan_demo, flags.jsonl is_on cached 0.9, git-tracked | scout/auth-phase0 | in-progress |
 | Scout-brief-auto-OPEN | Phase1 / Launched blockers | 18:03 CDT 2026-08-12 | OPEN: Phase1 Launched blockers — Stripe 2.9%+30c, PostHog 200 events, Clerk 3-user shim, Vercel env, Sentry trace, Cloudflare R2 1M cap regex bucket, Resend outbox, LaunchDarkly flags.json, Linear mirror — all PARKED local-first per 07:04 CDT, no live keys until Cameron yes | scout/launched-phase1-blockers | claimed |
+| Scout-hillclimb-next-130 | forms-memory-v6 / 192d 6-head | 19:47 CT | NEXT HILL Forms+Memory 10.5 Impact0.65Ease0.35 chain_readable 19tok 192/6=32 RoPE RMSNorm | scout/next-hill-130-forms | claimed |
+| Scout-hillclimb-next-131 | vector-hoops / v6 192d gated full 130 | 19:47 CT | NEXT HILL Vector v6 8.7 hoops820 MAE0.2313→0.2085 130 feats 18 fams 150ep SupCon τ0.07 VICReg0.05 CORAL0.5 BLOOM8192 | scout/next-hill-131-hoops | claimed |
+| Scout-hillclimb-next-132 | vector-unified / G2 0.685→0.64 | 19:47 CT | NEXT HILL unified 920 Δ-0.0851 p0.0251 CORAL centroid0.5 GRL0.3→0.5 60ep stage2 unfrozen | scout/next-hill-132-unified | claimed |
+| Scout-hillclimb-next-133 | vector-equities / v6 money 0.7017→0.72 | 19:47 CT | NEXT HILL equities money CQS 0.7017→0.72 IC0.007→0.03 transformer 60ep 14.4k resume OneCycle 10% warmup | scout/next-hill-133-equities | claimed |
+| Scout-hillclimb-next-134 | vector-hub / PWA v67 → v68 | 19:47 CT | NEXT HILL PWA 13k→ polished inline CSS/JS base64 LCG same-link-same-stars 1 Vercel click unified 404→200 | scout/next-hill-134-hub | claimed |
+| Scout-factory-140 | autonomous-factory / core dashboard | 20:27 CT | FACTORY autonomous 5th puzzle factory core dashboard 12K inline LCG 1233799701 idx3970 | scout/factory-140-core | claimed |
+| Scout-factory-141 | autonomous-factory / next-hills research | 20:27 CT | FACTORY research 7-paper gate 8.93 PASS beyond paper tracking | scout/factory-141-research | claimed |
+| Scout-factory-142 | autonomous-factory / cron harness 1m ultra | 20:27 CT | FACTORY crons 1m ultra pacing-1 tempo-1 swarm-more-faster | scout/factory-142-crons | claimed |
+| Scout-factory-143 | autonomous-factory / orchestrator v33 | 20:27 CT | FACTORY orchestrator v33 10 phases L0-L4 Scout Prime always-on | scout/factory-143-orchestrator | claimed |
 | Scout-brief-auto-OPEN | Top5 / build order | 18:03 CDT 2026-08-12 | OPEN: Top5 build order tick+flags → vec+lattice v2 → analytics+trace+ops v2 → meter — ultracode 5+2 swarm lite <90s, gate 8.93 PASS thr8.0, LCG 1233799701 idx3970 same-link-same-stars ?daily=20260812&n=1/3/5 | scout/top5-build-order | claimed |
 
 ## How to use
