@@ -312,13 +312,17 @@ did not undo it.
    something different. Pinned by a KNOWN_WRONG test that fails the moment a real row is
    added.
 
-5. **`apps/dottie` is in neither workspace `members` nor `exclude`.** Verified still true
-   2026-08-01: `pyproject.toml` has `exclude = ["apps/scout-rtx", "apps/ava-factory"]` and
-   no `apps/dottie` anywhere. Flagged in the 2026-07-22 review and unchanged since, so
-   nothing lints or tests it in CI. An undocumented omission is indistinguishable from an
-   oversight — the lesson `continue-on-error` already taught this repo — so it wants either
-   membership or an exclusion with a stated reason. Entangled with #2: its suite needs its
-   own `.venv` plus `AVA_FACTORY_ROOT`, and 35 of its 36 failures are the collision.
+5. ~~**`apps/dottie` is in neither workspace `members` nor `exclude`.**~~ **DOCUMENTATION
+   HALF RESOLVED 2026-08-13** — added to `exclude` with a stated reason (`pyproject.toml`
+   header comment + README) so the omission reads as a decision, not an oversight. It had
+   sat unlisted since the 2026-07-22 review, unchanged through 08-01/08-02/08-09. Verified
+   `uv lock --check` is unaffected: `apps/dottie` was never resolved into `uv.lock` under
+   the old (silent-omission) state either, since `members` here is an explicit path list,
+   not a glob — so this is documentation of the actual state, not a dependency change.
+   **Membership is NOT done** and stays a real open call: it is entangled with #2, since
+   `apps/dottie`'s suite needs its own `.venv` (fastapi) plus `AVA_FACTORY_ROOT`, and 35 of
+   its 36 failures in a shared env are the `dottie.rl` collision. That decision — rename,
+   `__path__` merge, or leave the app in exclude for good — is still the operator's.
 
 6. ~~**The codeact sandbox tests run nowhere.**~~ **RESOLVED 2026-08-01 (`0ed1f2a`) — 27 of
    the 29 now run on every push.** Kept here because the remaining 2 are a real, if small,
