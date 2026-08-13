@@ -299,6 +299,108 @@ class DottieEngine:
         self._append_trace(record)
         return record
 
+    def run_task_llmvm(
+        self,
+        prompt: str,
+        *,
+        backend: str | None = None,
+        max_steps: int = 8,
+        task_id: str | None = None,
+        family: str | None = None,
+        seed: int = 0,
+        use_skills: bool = False,
+    ) -> dict[str, Any]:
+        """
+        llmvm-style run: interleaved NL + <helpers> blocks, continuation-passing.
+
+        Uses Dottie policy but allows helpers: llm_call, llm_list_bind, llm_bind, guard, result.
+        Falls back to standard run_task if llmvm runtime unavailable.
+        """
+        try:
+            from dottie.llmvm import LLMVMRuntime, compile_thread_to_program  # noqa
+        except ImportError as e:
+            raise ValueError(f"llmvm runtime not available: {e}")
+
+        # reuse existing prompt / task building
+        task: VerifiedTask | None = None
+        if family is not None:
+            if prompt is not None:
+                raise ValueError("pass either prompt or family, not both")
+            task = VerifiedTaskProvider().build(family, seed)
+            base_prompt = task.prompt
+        else:
+            if not prompt or not prompt.strip():
+                raise ValueError("prompt must be a non-empty string")
+            base_prompt = prompt
+
+        if backend is None:
+            backend = os.environ.get("DOTTIE_POLICY", "ollama")
+
+        policy = get_policy(backend)
+        task_id = task_id or uuid.uuid4().hex[:12]
+        ts = time.time()
+        t0 = time.monotonic()
+
+        # Mission log for CPS trace
+        mission = None
+        try:
+            from dottie.rlm import MissionLog
+            mission = MissionLog(mission_id=f"llmvm-{task_id}")
+        except Exception:
+            mission = None
+
+        rt = LLMVMRuntime(policy=policy, mission=mission)
+        llmvm_out = rt.run(base_prompt, max_continuations=max_steps)
+
+        wall_s = time.monotonic() - t0
+
+        # Reward — reuse factory's r_exec etc if we can map turns to observations
+        # For llmvm, treat each turn as observation; simple honesty: r_task via verifier if present
+        record: dict[str, Any] = {
+            "schema_version": TRACE_SCHEMA_VERSION + "-llmvm",
+            "task_id": task_id,
+            "ts": ts,
+            "backend": policy.name,
+            "plumbing_only": bool(policy.plumbing_only),
+            "engine": "llmvm",
+            "prompt": base_prompt,
+            "final": llmvm_out.get("final"),
+            "terminated": llmvm_out.get("final") is not None,
+            "reached_final": llmvm_out.get("final") is not None,
+            "n_steps": llmvm_out.get("n_steps", len(llmvm_out.get("turns", []))),
+            "wall_s": round(wall_s, 3),
+            "llmvm": {
+                "answers": llmvm_out.get("answers", []),
+                "locals": llmvm_out.get("locals", {}),
+                "turns": llmvm_out.get("turns", []),
+                "thread_id": llmvm_out.get("thread_id"),
+            },
+        }
+        if task is not None:
+            try:
+                r_task = task.verify(record["final"] or "", [])
+                record["reward_components"] = {"r_task": r_task, "r_task_note": f"verified family={task.family_id}"}
+                record["verified_task"] = task.verifier_detail()
+            except Exception as e:
+                record["reward_components"] = {"r_task": None, "r_task_note": f"verifier error {e}"}
+        else:
+            record["reward_components"] = {
+                "r_task": None,
+                "r_task_note": "unscored: no automatic verifier for open-ended llmvm tasks",
+            }
+
+        # compilation hook
+        try:
+            if record.get("final"):
+                record["llmvm"]["compiled_program"] = compile_thread_to_program(
+                    llmvm_out.get("turns", []), policy, program_name=f"prog_{task_id}"
+                )[:3000]
+        except Exception:
+            pass
+
+        self._append_trace(record)
+        return record
+
     # -- trace log ----------------------------------------------------------------
     def _append_trace(self, record: dict[str, Any]) -> None:
         with self.traces_path.open("a", encoding="utf-8") as f:

@@ -293,7 +293,7 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
 
     cfg = DottieConfig.load(args.preset)
-    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")  # auto: GPU on personal local (CUDA avail), CPU in Hatch VM
     ckpt_dir = Path(args.run)
     ckpt_dir.mkdir(parents=True, exist_ok=True)
     metrics_path = Path(args.reports) / f"metrics_{args.preset}.jsonl"

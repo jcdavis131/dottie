@@ -140,6 +140,83 @@ No vector DB, no embeddings API required for core. Pure traversal, local R2/Work
 
 ---
 
+## Dottie + llmvm — How Dottie Deep Diverges from Prime RLM
+
+Prime RLM is: IPython REPL + `rlm(prompt, tier)` spawns child agents. Context lives as variables.
+Great for recursive decomposition, but still bounded by single-turn context + tool list.
+
+Dottie imports https://github.com/9600dev/llmvm continuation-passing pattern and hardens it:
+
+### Prime RLM (baseline)
+- Persistent REPL, `prompt = "task"` → `rlm("research ...", tier="deep_research")`
+- MissionLog timeline.jsonl pause/resume days later
+- StuckDetector → 1 lateral lens
+- Verifier with budget that ships
+- Single tool `scout --json ...` doctrine
+
+### Dottie + llmvm Deep (v2)
+
+| Feature | Prime RLM | Dottie + llmvm Deep |
+|---------|-----------|---------------------|
+| **Execution** | Turn = LLM emits code OR final — sync | CPS: Query → NL + `<helpers>…</helpers>` interleaved → `exec` → replace block with `<helpers_result>` → continue until `result()` → summary FINAL |
+| **Helpers** | `rlm()` only | `llm_call(exprs, instr)` → Dottie `rlm()` with token est + truncation heuristic upgraded to FAISS-like chunking; `llm_list_bind` JSON/line parse dedup 80 cap; `llm_bind/var_bind` arg binding via LLM; `guard(cond, expected_type)` records hit to `state.history`; `result()` collects answer |
+| **Context buster** | Relies on LLM to chunk manually | Auto chunking when `ctx > 6k tok`: token-window 256 tok / 32 overlap sentence-aware splitter (~1100 chars), keyword-rank (jaccard + overlap ratio + jitter mimics random sample), ask LLM “need ALL?” → NO = top-N fitting window else YES = map-reduce |
+| **Map-Reduce** | N/A | If ALL needed & `enable_map_reduce` true: Map each chunk → partial via policy, Reduce via combining prompt de-dup + synthesize. Falls back to top-8 if disabled. Tracks `chunks_used`. |
+| **Forge plugins** | `scout` tool assumed available | Discovery scan `apps/scout-cli/bigbang/plugins/*/cli.py` + `manifest.yaml` description + `def` parsing → injected into `_globals` as `forge_plugins` list, `list_forge_plugins()`, `scout()` stub that mimics `scout --json <plugin> …` so LLM can call search/browser/sheets via `<helpers>` |
+| **JIT / Compile** | Not present | `compile_thread_to_program(thread_history, policy, name)` — asks LLM to parameterize, componentize into funcs, lift LLM calls, emit `guard(var, type)` specialization; returns recompile-needed dict on guard fail, feeding Dottie flywheel `apps/dottie/data/programs/<name>.py` |
+| **Pause/Resume** | MissionLog timeline durable | `resume_mission_log(mission_id, base_dir)` + `latest_mission_state()` reconstructs timeline days later preserving `thread_id` + locals snapshot + chunks_used |
+| **Background** | Heartbeat + daemon | `background_orchestrator.py`: `BackgroundOrchestrator.scan_goals()` reads `workspace/goals/*/GOAL.md`, for each spawns `LLMVMRuntime` continuation, triple-writes 7-field `nodeId,agentId,attempt,latency_ms,tokens_est,status,errorClass` entries to `missions/<id>/timeline.jsonl` + `goals/<slug>/hidden_files/cron_health.jsonl` + `_cron/timeline.jsonl` even no-change (Scout v5 Prime contract) |
+| **Zero-deps** | True | Still true: only stdlib + existing `dottie.policy.PolicyProvider`, no FAISS/tiktoken/pip/torch; ACNE optional local |
+
+#### Example — interleaved NL + helpers (what LLM emits)
+
+```python
+# Natural Language: "I will download team page and extract names"
+
+<helpers>
+var1 = download("https://ten13.vc/team")  # stubbed offline, forge provides
+var2 = llm_call([var1], "extract list of names")
+for item in llm_list_bind(var2, "list of names"):
+    var3 = llm_bind(item, "WebHelpers.search_linkedin_profile(first_name,last_name,company_name)")
+# Dottie addition: forge discovery — LLM sees tools
+print(f"forge tools: {list_forge_plugins()[:5]}")
+result(var3)
+</helpers>
+```
+
+#### Triple-write checkpoint (always-even-no-change)
+
+```python
+from dottie.background_orchestrator import BackgroundOrchestrator
+orch = BackgroundOrchestrator()  # goals_dir=~/workspace/goals, missions_dir=~/.scout/missions
+orch.sweep_all_goals(max_goals=3, max_continuations=4)
+# writes 7-field entries even no-change to 3 places:
+# 1) .scout/missions/<id>/timeline.jsonl
+# 2) goals/<slug>/hidden_files/cron_health.jsonl + llmvm_resume_<slug>.json
+# 3) .scout/missions/_cron/timeline.jsonl aggregate
+# resume days later:
+from dottie.llmvm import resume_mission_log
+mission, events = resume_mission_log("dottie-refine-dottie-20260807")
+```
+
+#### Where files live
+
+- `apps/dottie/dottie/llmvm.py` v2 — `LLMVMRuntime`, `make_llmvm_environment()`, `_chunk_text()`, `_estimate_tokens()`, `list_forge_plugins()`, `resume_mission_log()`
+- `apps/dottie/dottie/background_orchestrator.py` — `BackgroundOrchestrator`, `scan_goals()`, `_triple_write_timeline()`, `_make_7field()`
+- `apps/dottie/dottie/rlm.py` — `make_rlm_environment()` auto-wires llmvm env (graceful degrade standalone)
+- `apps/dottie/dottie/engine.py` — `run_task_llmvm()` parallel to `run_task()`, `schema_version 1.0.0-llmvm`, fields `engine=llmvm`, `llmvm.answers/locals/turns/thread_id/compiled_program`
+- `apps/dottie/tests/test_llmvm_deep.py` — 10 smoke/unit tests
+- `bundles/cron.d/background_llmvm_orchestrator.json` — interval@300s owner `goal:goal_ec4f28c2bfbf`
+- Logs: `goals/refine-dottie-*/hidden_files/cron_health.jsonl`, `hidden_files/brief-auto-exec-checkpoints/`, `.scout/missions/_cron/timeline.jsonl`
+
+#### Why Dottie wins over vanilla llmvm too
+
+- llmvm is heavy: playwright, pdf, yfinance optional imports, OpenAI-only. Dottie keeps zero_deps true, reuses `PolicyProvider` (ollama/ava/echo).
+- llmvm original uses FAISS + tiktoken hard dep. Dottie mimics chunking + keyword rank + random jitter + map-reduce decision without dep.
+- llmvm thread-to-program compiles but doesn't feed factory. Dottie feeds compiled programs to `data/programs/` → skill registry → flywheel RFT export → GRPO.
+
+---
+
 ## Quickstart (Dottie SOTA)
 
 ```bash
@@ -185,15 +262,17 @@ Every command speaks `--json` for harnesses: `dottie --json engine status`.
 
 ```
 apps/dottie/dottie/
-  rlm.py                # NEW: RLM v2 — persistent REPL + programmatic rlm(...)
-  harness_continual.py  # NEW: Continual Harness v2 — versioned, snapshot, refine
-  sessions.py           # NEW: daemon-backed sessions, registry, messaging
-  goals.py              # NEW: persistent goals + progress
-  heartbeat.py          # NEW: heartbeats/schedules
-  engine.py             # existing — CodeAct loop + trace capture
-  policy.py             # existing — Ollama/Ava/Echo
-  flywheel.py           # existing — RFT export, mint, eval, train
-  climb.py              # existing — measured hill-climb
+  rlm.py                     # RLM v2 — persistent REPL + programmatic rlm(...)
+  llmvm.py                   # NEW v2 deep: CPS + chunking + map-reduce + forge discovery + resume
+  background_orchestrator.py # NEW: autonomous loops, goal scanner, 7-field triple-write
+  harness_continual.py       # Continual Harness v2 — versioned, snapshot, refine
+  sessions.py                # daemon-backed sessions, registry, messaging
+  goals.py                   # persistent goals + progress
+  heartbeat.py               # heartbeats/schedules
+  engine.py                  # CodeAct loop + llmvm run_task_llmvm + trace capture
+  policy.py                  # Ollama/Ava/Echo
+  flywheel.py                # RFT export, mint, eval, train
+  climb.py                   # measured hill-climb
 ```
 
 `workspace/.dottie/` and `workspace/.scout/missions/` are gitignored — durable local state, like prime's `.prime/` but with Scout's timeline contract.

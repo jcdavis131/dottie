@@ -1,0 +1,18 @@
+name: comms
+description: File-based comms bus via workspace/.dottie/registry.json — scout --json comms send --to agent:X pattern, pacing filter max3/4 tempo :13, triple-write timeline 7-field
+capabilities:
+  network: false
+  filesystem: true
+  secrets: false
+version: 0.1.0-file-inbox
+entry: cli.py
+commands: ["scout --json comms send --to agent:X --msg '...' --from Y", "scout --json comms list --agent X", "scout --json comms inbox --agent X --n 20", "scout --json comms agents"]
+zero_deps: true
+no_torch: true
+pattern: workspace/.dottie/registry.json + workspace/.dottie/inbox/<agent>.jsonl JSONL HandoffEnvelope 7-field nodeId,agentId,attempt,latency_ms,tokens_est,status,errorClass
+pacing_filter:
+  max_parallel: 3
+  max_concurrent: 4
+  tempo: ":13"
+  relevantAgents: "sub-swarm capped 3-5"
+triple_write: true

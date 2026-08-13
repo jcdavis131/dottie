@@ -135,7 +135,7 @@ def main() -> int:
     args = ap.parse_args()
 
     import torch
-    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")  # auto: GPU on personal local (CUDA avail), CPU in Hatch VM
 
     docs = embed_eval.load_docs()
     # Same pruning the task slice uses: documents the queries were mined FROM cannot

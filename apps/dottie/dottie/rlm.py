@@ -199,12 +199,15 @@ class VerifierWithBudget:
         return f"{result}\n\n[FIX attempt {self.loops} addressing: {', '.join(score_report['issues'])}]"
 
 
-# REPL factory
+# REPL factory — now with llmvm helpers wired in (9600dev/llmvm)
 
-def make_rlm_environment(mission: MissionLog | None = None) -> dict[str, Any]:
+def make_rlm_environment(mission: MissionLog | None = None, policy=None) -> dict[str, Any]:
     """
     Build the vars available inside the persistent IPython REPL.
     `rlm` spawns subagents programmatically (Prime's core pattern).
+
+    Now also exposes llmvm helpers (llm_call, llm_list_bind, llm_bind, guard, result)
+    so recipes can interleave NL + code like llmvm does.
     """
 
     def rlm(prompt: str, model_tier="llm_medium", sources=None, require=None, background=False) -> dict:
@@ -239,7 +242,7 @@ def make_rlm_environment(mission: MissionLog | None = None) -> dict[str, Any]:
             mission.append(MissionEvent(ts=time.time(), type="refine", agent_id="repl", payload={"evidence": evidence, "update": small_update}))
         return {"refined": True, "evidence_len": len(evidence)}
 
-    return {
+    env = {
         "rlm": rlm,
         "mission": mission,
         "MissionLog": MissionLog,
@@ -248,3 +251,20 @@ def make_rlm_environment(mission: MissionLog | None = None) -> dict[str, Any]:
         "pick_lateral_lens": pick_lateral_lens,
         "refine_harness": refine_harness,
     }
+
+    # llmvm integration — optional but auto-wired if policy available
+    try:
+        from dottie.llmvm import make_llmvm_environment
+        llmvm_env = make_llmvm_environment(mission=mission, policy=policy)
+        # merge, rlm stays canonical
+        for k, v in llmvm_env.items():
+            if k not in env:
+                env[k] = v
+        # keep llmvm composite too
+        env["llmvm_env"] = llmvm_env
+    except Exception:
+        # graceful degrade — Dottie works standalone
+        pass
+
+    return env
+

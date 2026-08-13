@@ -313,7 +313,7 @@ def main(argv=None) -> int:
         examples = {d: ex[:32] for d, ex in examples.items()}
 
     import torch
-    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")  # auto: GPU on personal local (CUDA avail), CPU in Hatch VM
 
     encoder = DomainEncoder(args.base_model, DOMAINS, args.lora_r, args.lora_alpha,
                              args.lora_dropout, device)

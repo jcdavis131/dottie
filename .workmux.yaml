@@ -1,0 +1,35 @@
+# workmux config — one window per hill-climb loop, git worktree isolation
+# Philosophy: build on tmux + git you already use. Zero GUI.
+
+# File operations: copy .env, symlink heavy dirs so new worktrees start healthy
+file_operations:
+  - type: copy
+    source: .env.example
+    dest: .env
+    optional: true
+  - type: copy
+    source: .env
+    dest: .env
+    optional: true
+  - type: symlink
+    source: node_modules
+    dest: node_modules
+    optional: true
+
+# Hooks: install deps post-create, zero-pip in Hatch (npm only, no torch)
+hooks:
+  post_create:
+    - echo "[workmux] worktree $WORKMUX_WORKTREE_NAME at $WORKMUX_WORKTREE_PATH"
+    - ls -la || true
+
+# Tmux layout per window
+tmux:
+  layout: even-vertical
+  pane_command: |
+    echo "🐱✨ $(basename $WORKMUX_WORKTREE_PATH) ready — objective: $(cat $HOME/workspace/bundles/herd/objective.md | head -1)"
+    echo "worktree: $WORKMUX_WORKTREE_PATH branch: $WORKMUX_BRANCH"
+    echo "use: ./bundles/herd/loops/<agent>.sh  — it loops hill-climb forever"
+
+# windows config - empty default is fine, workmux add handles creation
+# we declare no preset windows; just config for file ops and hooks
+
