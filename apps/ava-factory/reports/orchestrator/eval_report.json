@@ -1,60 +1,60 @@
 {
   "schema_version": 1,
-  "built_at": "2026-08-10T12:20:06.762128+00:00",
+  "built_at": "2026-08-12T09:12:34.995323+00:00",
   "corpus_source": "l2_corpus",
   "trainer": "orchestrator_model",
   "champion": {
     "name": "v4",
     "model_version": "orch-mlp-v1-v4",
-    "val_tier_accuracy": 0.986755,
-    "tier_accuracy_all": 0.78125,
-    "tier_accuracy_measured": 0.8333333333333334,
+    "val_tier_accuracy": 0.960265,
+    "tier_accuracy_all": 0.765625,
+    "tier_accuracy_measured": 0.8166666666666667,
     "n_holdout": 64,
     "n_measured_holdout": 60,
     "agreement": {
-      "agreement_rate": 0.78125,
+      "agreement_rate": 0.765625,
       "mean_reward_all": 0.8721325312500001,
-      "mean_reward_on_agreement": 0.9078594400000002,
-      "mean_reward_on_disagreement": 0.7445364285714285,
+      "mean_reward_on_agreement": 0.9355708571428574,
+      "mean_reward_on_disagreement": 0.6649006666666666,
       "note": "counterfactual rewards unobserved; agreement-conditional statistics reported in place of true regret"
     },
     "risk_calibration": {
       "deciles": [
         {
           "decile": 0,
-          "n": 56,
-          "mean_pred_risk": 0.0002826467643869507,
+          "n": 54,
+          "mean_pred_risk": 0.013329004270698365,
           "observed_failure_rate": 0.0
         },
         {
           "decile": 1,
-          "n": 0,
-          "mean_pred_risk": null,
-          "observed_failure_rate": null
+          "n": 3,
+          "mean_pred_risk": 0.16255601197489056,
+          "observed_failure_rate": 0.3333333333333333
         },
         {
           "decile": 2,
-          "n": 0,
-          "mean_pred_risk": null,
-          "observed_failure_rate": null
+          "n": 1,
+          "mean_pred_risk": 0.29103261901747396,
+          "observed_failure_rate": 0.0
         },
         {
           "decile": 3,
-          "n": 0,
-          "mean_pred_risk": null,
-          "observed_failure_rate": null
+          "n": 4,
+          "mean_pred_risk": 0.3612754533309179,
+          "observed_failure_rate": 0.5
         },
         {
           "decile": 4,
           "n": 1,
-          "mean_pred_risk": 0.4440763709330178,
+          "mean_pred_risk": 0.4956121832651042,
           "observed_failure_rate": 1.0
         },
         {
           "decile": 5,
-          "n": 1,
-          "mean_pred_risk": 0.5284319885040012,
-          "observed_failure_rate": 0.0
+          "n": 0,
+          "mean_pred_risk": null,
+          "observed_failure_rate": null
         },
         {
           "decile": 6,
@@ -64,24 +64,24 @@
         },
         {
           "decile": 7,
+          "n": 1,
+          "mean_pred_risk": 0.7052329259728087,
+          "observed_failure_rate": 1.0
+        },
+        {
+          "decile": 8,
           "n": 0,
           "mean_pred_risk": null,
           "observed_failure_rate": null
         },
         {
-          "decile": 8,
-          "n": 1,
-          "mean_pred_risk": 0.8797050492712679,
-          "observed_failure_rate": 1.0
-        },
-        {
           "decile": 9,
-          "n": 5,
-          "mean_pred_risk": 0.9908653199652033,
-          "observed_failure_rate": 0.6
+          "n": 0,
+          "mean_pred_risk": null,
+          "observed_failure_rate": null
         }
       ],
-      "brier": 0.040578318140045935
+      "brier": 0.036062789533069
     }
   },
   "baselines": {
@@ -100,7 +100,7 @@
   },
   "gate": {
     "gate_passed": false,
-    "reason": "champion measured accuracy 0.833333 does not strictly beat both baselines (freq prior 0.25, heuristic 0.85) on n=60 measured held-out records"
+    "reason": "champion measured accuracy 0.816667 does not strictly beat both baselines (freq prior 0.25, heuristic 0.85) on n=60 measured held-out records"
   },
   "notes": [
     "counterfactual rewards unobserved; agreement-conditional statistics reported in place of true regret",
