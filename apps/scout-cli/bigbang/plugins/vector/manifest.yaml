@@ -2,7 +2,11 @@ name: vector
 description: dumbmodel.com vector arcade — unified MTNN pipeline hoops/pitch/gridiron/equities/unified ablation.
 capabilities:
   network: false
-  filesystem: true
+  filesystem:
+    enabled: true
+    # Read-only: the CLI emits JSON to stdout and reads workspace files; no
+    # write sites exist in cli.py, so no write grant and no paths allowlist.
+    write: false
   secrets: false
 version: 0.8.0
 entry: cli.py

@@ -16,15 +16,43 @@ before writing "current" anywhere in this file.
 
 ---
 
-## 📌 Session continuation — 2026-08-02 (supersedes every block below)
+## 📌 Session continuation — 2026-08-09 PM (supersedes every block below)
+
+**Re-measured 2026-08-09T15:30Z at HEAD `c8db8ed`,** branch
+`claude/longcat-2-architecture-moxdny`, CI fully green at `c151ab2` (first
+complete pipeline pass on GitHub runners) and every checker green locally at
+this HEAD. PR #11 carries everything; bluehen PR #5 unchanged.
+
+**The flywheel is closed and has run one full cycle.** New since the 08-02
+block: meta-MCP layer in the mcp plugin (namespaces, per-tool disables,
+`serve --namespace` proxying `<server>__<tool>`); harness MCP action executor
+(`mcp:` goals → action_operator, fail-closed gates, failures feed the recovery
+ladder); outcome-adjusted labels + `label_corrections.jsonl` (fail-closed) in
+the corpus miner; Label-sources dashboard panel. 18 live MCP runs (8 real
+failures) → corpus 1,556 records / 722 measured / 8 measured-outcome (2 in
+measured hold-out) → retrained: champion v4 97.2% val, 87.7% measured hold-out.
+**Heuristic baseline now 0.893, not 1.0** — the gate is winnable; verdict this
+cycle honestly `not passed` (0.877 vs 0.893). See `docs/ECOSYSTEM.md` for the
+map and `docs/PLATFORM_IMPROVEMENT_PLAN.md` P1/P2 for what's next: accumulate
+non-behavior labels (more real MCP failures, operator corrections), let the
+nightly Routine (09:00 UTC) retrain, promote when the gate passes.
+
+Run-data caveat: harness run dirs live in BOTH `bundles/ultra/runs/` (repo,
+mined by default) and `~/workspace/bundles/ultra/runs/` (runner default);
+today's live runs were copied into the repo dir before mining. Runs data is
+NOT committed — corpus.jsonl is the committed artifact of record.
+
+## 📌 Session continuation — 2026-08-02 (superseded)
 
 > **This block is now GATED, not just warned about.** `scripts/check_handoff_fresh.py`
 > fails CI when the sha below drifts more than 20 commits from HEAD. It exists because the
 > warning above did not work: this block went stale four times (23, 37, 27 and 10 commits),
 > the last one *inside the same session as its own refresh*. A warning is not a mechanism.
 
-**Re-measured 2026-08-02 (late), not carried forward.** HEAD `e2a8a57`, branch `main`,
-**0 ahead / 0 behind `origin/main`** — everything pushed. Docker Desktop **not running**,
+**Re-measured 2026-08-09, not carried forward.** HEAD `ff15efb`, branch
+`claude/longcat-2-architecture-moxdny` (the prior recorded `e2a8a57` predates the
+squashed monorepo import and no longer exists in this history),
+**0 ahead / 0 behind origin** — everything pushed. Docker Desktop **not running**,
 so no trainer is live and the FROZEN `apps/ava-factory/dottie/**` paths are not
 bind-mounted. `C:` has **36 GB free** of 932 GB (97% used) — 36 on 08-02 earlier, 38 on
 08-01, 41 earlier that day, 50 on 07-31. Still dropping; watch it.
@@ -284,13 +312,17 @@ did not undo it.
    something different. Pinned by a KNOWN_WRONG test that fails the moment a real row is
    added.
 
-5. **`apps/dottie` is in neither workspace `members` nor `exclude`.** Verified still true
-   2026-08-01: `pyproject.toml` has `exclude = ["apps/scout-rtx", "apps/ava-factory"]` and
-   no `apps/dottie` anywhere. Flagged in the 2026-07-22 review and unchanged since, so
-   nothing lints or tests it in CI. An undocumented omission is indistinguishable from an
-   oversight — the lesson `continue-on-error` already taught this repo — so it wants either
-   membership or an exclusion with a stated reason. Entangled with #2: its suite needs its
-   own `.venv` plus `AVA_FACTORY_ROOT`, and 35 of its 36 failures are the collision.
+5. ~~**`apps/dottie` is in neither workspace `members` nor `exclude`.**~~ **DOCUMENTATION
+   HALF RESOLVED 2026-08-13** — added to `exclude` with a stated reason (`pyproject.toml`
+   header comment + README) so the omission reads as a decision, not an oversight. It had
+   sat unlisted since the 2026-07-22 review, unchanged through 08-01/08-02/08-09. Verified
+   `uv lock --check` is unaffected: `apps/dottie` was never resolved into `uv.lock` under
+   the old (silent-omission) state either, since `members` here is an explicit path list,
+   not a glob — so this is documentation of the actual state, not a dependency change.
+   **Membership is NOT done** and stays a real open call: it is entangled with #2, since
+   `apps/dottie`'s suite needs its own `.venv` (fastapi) plus `AVA_FACTORY_ROOT`, and 35 of
+   its 36 failures in a shared env are the `dottie.rl` collision. That decision — rename,
+   `__path__` merge, or leave the app in exclude for good — is still the operator's.
 
 6. ~~**The codeact sandbox tests run nowhere.**~~ **RESOLVED 2026-08-01 (`0ed1f2a`) — 27 of
    the 29 now run on every push.** Kept here because the remaining 2 are a real, if small,

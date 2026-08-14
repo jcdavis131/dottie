@@ -316,13 +316,16 @@ def get_model_from_config(config_path: str = "configs/base1b.yaml", device="cpu"
             n_fusion=n_fusion,
             n_reason=n_reason,
             multi_jspace_enabled=True,
-            spike_sink_enabled=False,
+            n_heads=model_cfg.get("n_heads", 16),
+            head_dim=model_cfg.get("head_dim", 128),
+            tie_lm_head=model_cfg.get("tie_lm_head", False),
+            multimodal=model_cfg.get("multimodal", True),
         )
         print(
             f"[Distill] DottieModel1B loaded config={config_path} vocab={vocab_size} d={d_model} layers={n_text}/{n_fusion}/{n_reason}"
         )
         return model
-    except Exception as e:
+    except ImportError as e:
         print(
             f"[Distill] DottieModel1B load failed: {e}, falling back to random Linear mock"
         )

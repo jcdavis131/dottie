@@ -82,6 +82,7 @@ _MODULE_REQUIREMENTS = {
     "test_train_smoke.py": ["torch"],
     "test_eval_harness.py": ["torch"],
     "test_no_mock.py": [],
+    "test_distill_ladder.py": ["torch", "yaml"],
     # NOT "datasets": collector.py imports it LAZILY (inside the HF path, ~line 307), so the
     # test module imports and its 15 tests pass without it. Declaring it here silently
     # dropped all 15 from every full-suite run on any box without `datasets` -- including

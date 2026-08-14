@@ -1,0 +1,25 @@
+# Playbook schema v1 — parsed by scripts/business/playbook.py.
+schema_version: 1
+
+venture: monitor
+
+description: >-
+  Run scoreboard aggregated from recorded run timelines under
+  bundles/ultra/runs; a history of completed runs, not live telemetry.
+
+cadence: daily
+
+artifacts:
+  - id: run-scoreboard
+    generator: run_scoreboard
+    inputs:
+      - name: timelines
+        path: bundles/ultra/runs/*/timeline.jsonl
+        required: true
+    output:
+      - workspace/artifacts/monitor/scoreboard.json
+      - workspace/artifacts/monitor/scoreboard.md
+    publish_hint: >-
+      History, not telemetry. Promotion to the apps/bluehenre monitor face
+      (public/*.json) is owned by the console lane's exporter pattern
+      (build_runs_readout.mjs).

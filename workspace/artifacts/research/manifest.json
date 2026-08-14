@@ -1,0 +1,29 @@
+{
+  "artifacts": {
+    "research-brief": {
+      "generated_at": "2026-08-09T03:09:05+00:00",
+      "outputs": [
+        {
+          "path": "workspace/artifacts/research/research_brief.md",
+          "sha256": "94fc6810f90607019c2070af339234e262c4cd1eddfa15f8c2b0b043424ebb18"
+        }
+      ],
+      "provenance": {
+        "classification": "REAL",
+        "method": "Mechanical extraction (quote or count, no paraphrase) from the committed insights spec plus verbatim key/number listing of any orchestrator report JSON present at generation time."
+      },
+      "sources": [
+        {
+          "path": "docs/LONGCAT2_INSIGHTS_SPEC.md",
+          "required": true,
+          "sha256": "1dd25ca11150fe706a8e986ace9283e785e6d3cdc624c553447e1e2c811d4d31"
+        }
+      ],
+      "status": "unchanged"
+    }
+  },
+  "generated_by": "scripts/business/playbook.py",
+  "schema_version": 1,
+  "updated_at": "2026-08-09T03:09:05+00:00",
+  "venture": "research"
+}

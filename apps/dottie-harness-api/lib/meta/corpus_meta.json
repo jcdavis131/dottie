@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "built_at": "2026-08-09T15:19:27.431428+00:00",
+  "generator": {
+    "seed": 20260809,
+    "battery_n": 800,
+    "n_templates": 44,
+    "script": "apps/ava-factory/scripts/build_orchestration_corpus.py"
+  },
+  "tier_vocab": [
+    "deterministic",
+    "llm",
+    "deep_research",
+    "action_operator",
+    "agentic_epic"
+  ],
+  "dense_features": [
+    "n_words",
+    "n_chain_signals",
+    "has_code_terms",
+    "latency_ms",
+    "tokens_est",
+    "attempt"
+  ],
+  "reward_config": {
+    "weights": {
+      "status": 0.6,
+      "latency": 0.25,
+      "tokens": 0.15
+    },
+    "weights_rationale": "0.6 > 0.25 + 0.15: speed can never buy back a failure",
+    "failure_statuses": [
+      "error",
+      "fail",
+      "failed",
+      "timeout"
+    ],
+    "status_score": "S = -1.0 if status in failure_statuses; S = 1.0/max(1, attempt) if status == 'ok'; else 0.0",
+    "node_scale": {
+      "latency": "R_lat = clip(1 - latency_ms/100.0, 0, 1)",
+      "tokens": "R_tok = 1 - min(log(1+tokens_est)/log(1+256), 1)",
+      "latency_scale_ms": 100.0,
+      "tokens_log_cap": 256
+    },
+    "agent_scale": {
+      "latency": "R_lat = exp(-duration_s/600.0)",
+      "tokens": "R_tok = 1 - min(log(1+output_tokens)/log(1+32768), 1)",
+      "duration_tau_s": 600.0,
+      "tokens_log_cap": 32768
+    },
+    "reward": "clip(0.6*S + 0.25*R_lat + 0.15*R_tok, -1, 1)",
+    "synthetic_battery_reward": "1.0 flat (labels are rule-derived from the same heuristic - label-match by construction), provenance simulated",
+    "note": "node-scale constants fitted on latency distribution min 0 / p50 35 / p95 55 / max 55 ms and tokens max 200 - but 12/15 of those latencies are SCRIPTED constants (45/30/35/55 hardcoded at apps/scout-cli/bigbang/plugins/agents/cli.py:146,167,171,223)"
+  },
+  "label_corrections": {
+    "path": "apps/ava-factory/data/orchestration/label_corrections.jsonl",
+    "n_corrections": 0,
+    "n_records_corrected": 0
+  },
+  "counts": {
+    "total": 1556,
+    "by_source": {
+      "ultra_timeline": 742,
+      "workflow_journal": 14,
+      "synthetic_battery": 800
+    },
+    "by_provenance": {
+      "simulated": 834,
+      "measured": 722
+    },
+    "by_tier": {
+      "deterministic": 251,
+      "deep_research": 453,
+      "llm": 115,
+      "agentic_epic": 460,
+      "action_operator": 277
+    },
+    "by_split": {
+      "train": 1352,
+      "val": 143,
+      "test": 61
+    },
+    "by_label_tier": {
+      "simulated": 829,
+      "measured-behavior": 719,
+      "measured-outcome": 8
+    },
+    "measured_holdout_by_label_tier": {
+      "measured-behavior": 114,
+      "measured-outcome": 2,
+      "simulated": 2
+    }
+  },
+  "sources": {
+    "ultra_timeline": {
+      "included": true,
+      "dir": "bundles/ultra/runs",
+      "n_runs": 182,
+      "n_records": 742
+    },
+    "workflow_journal": {
+      "included": true,
+      "dirname": "wf_e370f3be-001",
+      "n_records": 14,
+      "note": "metadata-only extraction; no prompt/result text"
+    },
+    "synthetic_battery": {
+      "included": true,
+      "n_records": 800,
+      "seed": 20260809,
+      "n_templates": 44,
+      "note": "seeded template grammar; labels rule-derived from the harness heuristic; provenance simulated"
+    }
+  }
+}

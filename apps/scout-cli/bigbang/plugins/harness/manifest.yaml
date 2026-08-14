@@ -1,8 +1,22 @@
 name: harness
 description: Scout v3.3 orientation engine — MoMA-lite 5-tier router classifyTier deterministic-first, memory lattice dense0.7+sparse0.3+rerank+1-2hop OODA, GARNet G_workflow+G_history MDP, checkpoint pause/resume, recovery ladder, pacing :13, verification econ. v5 Prime Mission Log Stuck Detector Verifier Budget.
 capabilities:
-  network: false
-  filesystem: true
+  # Network is used ONLY by the mcp: goal path (runner.py mcp-operator ->
+  # mcp_executor.execute_mcp_action): a downstream MCP tool call made through
+  # the mcp plugin's client, fail-closed behind namespace/server/enabled gates
+  # and the default-deny user URL allowlist (bigbang.core.policy.check_user_url).
+  # Every other harness path is local and deterministic.
+  network:
+    enabled: true
+    domains: ["localhost", "127.0.0.1"]
+  filesystem:
+    enabled: true
+    write: true
+    # Real write surfaces: the timeline/checkpoint store (timeline.py:35) and
+    # the runner's canonical run dirs (runner.py run_goal default runs_dir).
+    paths:
+      - "~/.cache/scout/checkpoints/"
+      - "~/workspace/bundles/ultra/runs/"
   secrets: false
 version: 0.8.2-orientation-engine
 entry: cli.py
@@ -12,7 +26,7 @@ deep_agents:
   token_savings: ~80%
   confidence: true
   provenance: true
-  commands: ["scout harness route <goal> --json", "scout harness memory <query> --k 5 --json", "scout harness graph-plan <goal> --json", "scout harness agents list|health|relevant --intent", "scout harness ops health|dashboard --json", "scout harness verify --score --prev"]
+  commands: ["scout harness route <goal> --json", "scout harness memory <query> --k 5 --json", "scout harness graph-plan <goal> --json", "scout harness agents list|health|relevant --intent", "scout harness ops health|dashboard --json", "scout harness verify --score --prev", "scout harness timeline append --run-id <id> --node-id <node> --agent-id <agent> --status ok|fail --error-class <cls> --json", "scout harness timeline stats --json", "scout harness run <goal> --json --max-nodes N --seed S"]
   orientation_engine:
     router: "bundles/router/router.ultra.js classifyTier MoMA-lite + bundles/scripts/router_bridge.py python mirror + bundles/tools/router-tool.json"
     memory: "bundles/memory/lattice.md + bundles/scripts/memory_retriever.py dense0.7 sparse0.3 + bundles/scripts/lattice_builder.py"
