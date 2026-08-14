@@ -57,8 +57,16 @@ def declared_paths(manifest: Path):
         data = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
     except Exception:
         return None
-    caps = data.get("capabilities") or {}
-    fs = caps.get("filesystem") or {}
+    caps = data.get("capabilities")
+    if not isinstance(caps, dict):
+        return None
+    fs = caps.get("filesystem")
+    if not isinstance(fs, dict):
+        # A bare `filesystem: true/false` (seen in the wild: comms/manifest.yaml)
+        # names no paths to check, so it's indistinguishable from "not declared"
+        # for this script's purposes — same treatment as an unparseable manifest
+        # above, not a crash.
+        return None
     paths = fs.get("paths")
     return paths if paths else None
 

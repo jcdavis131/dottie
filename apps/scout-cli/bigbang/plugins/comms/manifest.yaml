@@ -2,7 +2,12 @@ name: comms
 description: File-based comms bus via workspace/.dottie/registry.json — scout --json comms send --to agent:X pattern, pacing filter max3/4 tempo :13, triple-write timeline 7-field
 capabilities:
   network: false
-  filesystem: true
+  filesystem:
+    write: true
+    paths:
+      - "~/workspace/.dottie/"
+      - "~/workspace/bundles/ultra/runs/"
+      - "~/workspace/.scout/missions/_cron/"
   secrets: false
 version: 0.1.0-file-inbox
 entry: cli.py

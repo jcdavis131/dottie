@@ -16,13 +16,64 @@ before writing "current" anywhere in this file.
 
 ---
 
-## 📌 Session continuation — 2026-08-10 (supersedes every block below)
+## 📌 Session continuation — 2026-08-14 (supersedes every block below)
 
-**Re-measured 2026-08-10T12:07Z at HEAD `aceb1bf`,** branch
+**Re-measured 2026-08-14T09:50Z at HEAD `18e3454`,** branch
 `claude/longcat-2-architecture-moxdny`, PR #12 (stacked on merged PR #11).
-CI green through the stateless-MCP + GOAT-fix commits; the HANDOFF-freshness
-checker itself flagged this block stale at 21-commit drift (budget 20) —
-this refresh is that fix.
+This HEAD is a merge of `origin/main` into the branch (`18e3454`, parents
+`0521f4c` + `3d6c946`) — the branch had drifted 192 commits behind `main`
+by the time this refresh landed (this file's own freshness checker caught
+it), so catching up pulled in a large amount of other agents' work
+(arxiviq conductor panel, `apps/dottie/dottie` llmvm, new scout-cli
+plugins `comms`/`pair`/`tasks`/`rft`, `packages/personal-graphify`).
+
+**Merging surfaced a real crash, fixed in this same commit.** `main`'s new
+`comms` plugin declared `capabilities.filesystem: true` — a bare bool, not
+a dict — which crashed `scripts/check_declared_capabilities.py`'s
+`declared_paths()` (`caps.get('filesystem') or {}` returns `True` unchanged
+when the left side is truthy, then `True.get('paths')` raises
+`AttributeError`). This is the *third* time this exact class of bug has
+hit this file — `harness` and `agents` were converted from the same
+crashing bool form on 2026-08-09 (see their baseline judgements below).
+Fixed both ends: `comms/manifest.yaml` now declares real paths (matching
+what `cli.py` actually writes), and `declared_paths()` now treats *any*
+non-dict `capabilities`/`filesystem` value as "nothing declared" instead
+of crashing, so a fourth occurrence degrades gracefully instead of taking
+the whole CI gate down. `comms` is baselined in
+`scripts/declared_capabilities_baseline.json` with the same judgement
+shape as `harness`/`agents`. Verified: `check_declared_capabilities.py
+--check` exits 0 (17 known gaps, all baselined), its own 19 tests pass,
+`gate_audit.py --check` OK.
+
+**Known pre-existing red, NOT introduced by this branch:** the
+`apps/scout-cli` pytest hard gate (`Pytest scout-cli (hard gate)` in
+ci.yml) currently has 20 failing tests — `test_cli.py`,
+`test_herd.py`, `test_policy.py` (mostly `TestFsWriteEnforcementWired`
+and `TestUngatedWriteCapablePluginsAreTracked`), all referencing the
+`tasks`/`rft`/`graphify` plugins that arrived via the same `main` merge.
+**Verified identical on a clean `origin/main` checkout in an isolated
+worktree** (20 failed, 91 passed, same test names) before this branch
+ever touched them — so this is base-branch debt inherited by the merge,
+not a regression from anything in this PR. Owning agent for those
+plugins' policy wiring is unclear (not the flywheel/autoresearch lane);
+flagging rather than fixing blind. `apps/ava-factory` + `dottie-harness-api`
++ scout-cli's *other* suites (2572 passed, 1 skipped outside those three
+files) are unaffected and green.
+
+**P2 flywheel automation** kept running through this drift: 8 real
+training cycles total now (cycles 5-8 landed since the last HANDOFF
+refresh, each seeded by real harness `mcp:` goals — successes and
+deliberately induced failures across self/acne/deepwiki). Current
+committed state: corpus 1,608 records / 774 measured (41 measured-outcome
+labels). champion v4, measured hold-out accuracy **0.836066 on n=61 — an
+exact tie with the heuristic baseline's 0.836066**. Gate: `not passed`
+(a tie is not a strict win) — reported honestly, not rounded in its
+favor; this has oscillated between an exact tie and slightly behind
+across cycles 5-8, real variance in a small growing hold-out set, not
+one-way progress. `lib/weights/` untouched throughout (never promoted).
+who-e/slasso.com production redeployed and smoke-tested multiple times
+this session, most recently matching corpus 1,602/768 (one cycle behind
+this commit's 1,608/774 — next deploy picks it up).
 
 **P2 flywheel automation shipped and has now run for real**, both
 autonomously (the 09:00 UTC nightly Routine, first live run) and manually
