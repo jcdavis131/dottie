@@ -1,0 +1,1 @@
+{"capabilities":{"filesystem":{"read":true,"write":true},"network":{"domains":[],"enabled":false},"secrets":{"allow":["DOTTIE_DEV_BEARER"]}},"commands":["pair create","pair verify","pair status","queue push","queue poll","queue list"],"description":"Dottie tandem pairing — local 6-char code create/verify, queue push/poll for cloud↔local tandem","name":"pair","version":"0.1.0"}

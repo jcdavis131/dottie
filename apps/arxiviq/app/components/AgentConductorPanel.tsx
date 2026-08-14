@@ -39,7 +39,7 @@ function safeGetModules() {
 type NavTab = 'Dashboard'|'Guardrails'|'Feedback'|'Scratchpad'|'Todos';
 const NAV: NavTab[] = ['Dashboard','Guardrails','Feedback','Scratchpad','Todos'];
 
-export default function AgentConductorPanel() {
+export default function AgentConductorPanel({ tandem = false, pairCode }: { tandem?: boolean; pairCode?: string } = {}) {
   const [active, setActive] = useState<NavTab>('Dashboard');
   const [snap, setSnap] = useState<any>(null);
   const [agents, setAgents] = useState<any[]>([
@@ -56,6 +56,7 @@ export default function AgentConductorPanel() {
   const [todoInput, setTodoInput] = useState('');
   const [scratchInput, setScratchInput] = useState('');
   const [feedbackMsg, setFeedbackMsg] = useState('');
+  const [tandemState, setTandemState] = useState<{ local:'online'|'offline'|'checking'; paired:boolean; code?:string }>({ local:'checking', paired:false, code: pairCode });
   const confettiRef = useRef<HTMLDivElement>(null);
 
   useEffect(()=>{
@@ -89,6 +90,25 @@ export default function AgentConductorPanel() {
     const auto = setTimeout(()=> setYubiTouched(false), 300);
     return ()=> { alive=false; clearInterval(iv); clearTimeout(auto); };
   },[]);
+
+  useEffect(()=>{
+    if (!tandem) return;
+    let alive=true;
+    const probe = async ()=>{
+      try{
+        const r = await fetch('/api/pair/status'+(pairCode?`?code=${encodeURIComponent(pairCode)}`:''), { cache:'no-store' }).then(x=> x.ok ? x.json() : null).catch(()=> null);
+        if (!alive) return;
+        if (r){
+          setTandemState(s=> ({ ...s, paired: !!r.paired || !!r.ok, code: s.code || pairCode }));
+        }
+      }catch{}
+      // also try local via cloud proxy? local check omitted for static friendly humanized UI
+    };
+    probe();
+    const iv = setInterval(probe, 8000);
+    return ()=>{ alive=false; clearInterval(iv); };
+  },[tandem, pairCode]);
+
 
   const doConfetti = useCallback((e?: React.MouseEvent)=>{
     const root = confettiRef.current;
@@ -185,6 +205,20 @@ export default function AgentConductorPanel() {
           <span style={{ fontSize:11, color:'#8BA998' }}>live</span>
         </div>
       </div>
+
+      {tandem && (
+        <div style={{ display:'flex', gap:8, alignItems:'center', padding:'8px 12px', background:'#0A1A12', borderBottom:'1px solid #1E3A2F', fontSize:11.5, flexWrap:'wrap' }}>
+          <span style={{ fontWeight:700, color:'#7CFFB2' }}>Tandem Mode</span>
+          <span style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'3px 10px', borderRadius:99, background:tandemState.paired?'#0f291e':'#1a1e12', border:'1px solid #1E3A2F', color: tandemState.paired ? '#7CFFB2' : '#8BA998' }}>
+            <span style={{ width:6, height:6, borderRadius:99, background: tandemState.paired ? '#22c55e' : '#6b7280', display:'inline-block' }} /> {tandemState.paired ? 'Paired ✓' : 'Not paired'}{tandemState.code ? ` · ${tandemState.code}` : ''}
+          </span>
+          <span style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'3px 10px', borderRadius:99, background:'#0f201e', border:'1px solid #1E3A2F', color:'#7CFFB2' }}>
+            <span style={{ width:6, height:6, borderRadius:99, background:'#22c55e', display:'inline-block' }} /> Cloud Scout live
+          </span>
+          <span style={{ color:'#8BA998' }}>One touch covers everything · tunnel stays up · same binary auto-updates</span>
+          <a href="/starter" style={{ marginLeft:'auto', fontSize:11, color:'#7CFFB2', textDecoration:'underline' }}>how to link →</a>
+        </div>
+      )}
 
       <div style={{ maxWidth:1180, margin:'0 auto', padding:'16px 12px' }}>
 

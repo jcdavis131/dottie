@@ -237,6 +237,58 @@ uv run pytest packages/ava-open-harness -q   # non-blocking in CI today (package
 - `make ci` mirrors the workflow deliberately; if a gate is added to ci.yml it
   must be added there too.
 
+## Dottie as open-source Hatch — local+Docker+website tandem you own
+
+> Dottie is the open-source Hatch you build and run from your local machine + docker and link to your website then it can work and function like a hatch agent and work in tandem with my hatch agent to build together.
+
+**One-command boot (pip/uv + Docker both work):**
+
+```bash
+git clone https://github.com/jcdavis131/dottie ~/workspace/dottie && cd dottie
+bash install.sh   # bundles/cli.sh 770 zero_deps true + uv sync --frozen + docker-compose.dottie.yml up -d
+# or: curl -fsSL https://arxiviq.com/starter/install.sh | sh
+```
+
+**What install does (production-grade extensible, not demo):**
+
+- `apps/scout-cli/install.sh` → `bundles/cli.sh` 770, `bundles/zero_deps.json` `{"zero_deps":true,"allow":"acne:./src"}`, `bundles/manifest.json` v5 Prime 13 agents/11 packs/6 ultra modules MoMA-lite 5 tiers GARNet checker 7-field
+- Docker `docker-compose.dottie.yml` services:
+  - `dottie-api` `127.0.0.1:8787` localhost-only Bearer `dm_dev_*` timingSafeEqual + 90s HMAC ephemeral 256 LRU rate20/agent 60/key 1k/IP, audit prefix-only last4, CORS dev-only no-store nosniff DENY frame, honest 503 never fake
+  - `dottie-harness` thin single daemon owns PTY/tunnel/file/ISL snapshot() every 2s → `/ws/.dottie/daemon_snapshot.json`
+  - `dottie-redis` `redis:7-alpine` optional queue (filesystem fallback `/ws/.dottie/queue`)
+
+**Link once via pairing code `scout pair create` → paste on arxiviq:**
+
+```bash
+# 1) local 6-char code (10m expiry, stored 0600 at ~/.config/dottie/pair.json):
+uv run scout pair create
+curl -X POST http://127.0.0.1:8787/api/dev/pair/create -H "Authorization: Bearer $DOTTIE_DEV_BEARER" | jq .code
+
+# 2) Open arxiviq.com/dottie and paste code → Verify
+# Production path: POST https://arxiviq.com/api/pair/verify {code} → Supabase pairings PK code exp idx + R2 pair_<code>.json
+# Demo path: in-memory ephemeral LRU 256 honests in Next lambda warm
+
+# 3) Tandem queue — cloud drops task, local picks up + streams back:
+curl -X POST http://127.0.0.1:8787/api/dev/queue/push -H "Authorization: Bearer $DOTTIE_DEV_BEARER" -d '{"task":"build PWA offsite","from":"cloud Scout"}'
+uv run scout pair status   # paired? local_api + queue_count
+uv run scout queue list
+
+# 4) Conductor shows triple green:
+# arxiviq.com/conductor?tandem=1  → Local Healthy ● + Cloud Healthy ● + Paired ✓  + 127.0.0.1:8787 dev API
+```
+
+**Composition:**
+
+- `apps/arxiviq/app/dottie/page.tsx` polished #080A0F CORE20 PWA — Generate + Copy + Verify tandem + Push/Claim/Clear queue, confetti same as conductor
+- `your_files/dottie-tandem-bridge/index.html` standalone 19kB self-contained #080A0F CORE20 PWA fallback for local dev (no Vercel needed)
+- `apps/arxiviq/app/conductor/page.tsx?type=...` reads `?tandem=1` and renders tandem bar, probes `127.0.0.1:8787/api/dev/health` + `.../pair/status` every 6s
+- `apps/arxiviq/app/api/pair/verify/route.ts` + `.../status/route.ts` Next serverless pairing — in-mem LRU honest limit, upgrade to Supabase `pairings` table in <30 lines
+- `apps/scout-cli/bigbang/plugins/pair/cli.py` `scout pair create|verify|status` + `scout queue push|poll|list` — stdlib only, pip/uv both, filesystem fallback + API fallback dual, timingSafeEqual Bearer
+
+Extensible: replace filesystem queue with `XADD dottie:queue * task A` or Supabase realtime `INSERT queue` — task schema unchanged `{id,ts,task,from,to,status}`. Bridge guarantees at-least-once idempotent consumer, Paired receipt 7-field timeline triple-write `bundles/ultra/runs/dottie-tandem/timeline.jsonl + .scout/missions/dottie-tandem/timeline.jsonl + hidden`.
+
+Only name is Dottie model + harness with Scout CLI tool — never hatch 2.0.
+
 ## License
 
 MIT — Solo personal project, no connection to employer, built with public/free-tier only. See `LICENSE` and per-package READMEs.
