@@ -1,11 +1,11 @@
 {
   "artifacts": {
     "research-brief": {
-      "generated_at": "2026-08-09T03:09:05+00:00",
+      "generated_at": "2026-08-10T02:28:02+00:00",
       "outputs": [
         {
           "path": "workspace/artifacts/research/research_brief.md",
-          "sha256": "94fc6810f90607019c2070af339234e262c4cd1eddfa15f8c2b0b043424ebb18"
+          "sha256": "c0b675c7137d170ea9898ab3b50f7d0a59ffd9d6bf8c042243bb3747dc98a9bd"
         }
       ],
       "provenance": {
@@ -17,13 +17,28 @@
           "path": "docs/LONGCAT2_INSIGHTS_SPEC.md",
           "required": true,
           "sha256": "1dd25ca11150fe706a8e986ace9283e785e6d3cdc624c553447e1e2c811d4d31"
+        },
+        {
+          "path": "apps/ava-factory/reports/orchestrator/champion_weights.json",
+          "required": false,
+          "sha256": "8d5442532482d7372921ec0465ff177b90aa87c8ded317e743ca89483fa5086e"
+        },
+        {
+          "path": "apps/ava-factory/reports/orchestrator/eval_report.json",
+          "required": false,
+          "sha256": "b3186e17e8dbdb8e4fef3370034bb4ff4ecd4a15c3020cb0241e737f85e3e015"
+        },
+        {
+          "path": "apps/ava-factory/reports/orchestrator/ladder_report.json",
+          "required": false,
+          "sha256": "6981baf6a8654a15e3ac5d947ac3761e8a4fcabc82f683aa269316daed402336"
         }
       ],
-      "status": "unchanged"
+      "status": "written"
     }
   },
   "generated_by": "scripts/business/playbook.py",
   "schema_version": 1,
-  "updated_at": "2026-08-09T03:09:05+00:00",
+  "updated_at": "2026-08-10T02:28:03+00:00",
   "venture": "research"
 }

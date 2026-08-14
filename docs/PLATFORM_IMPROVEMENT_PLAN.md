@@ -78,6 +78,20 @@ sources, in order of signal quality:
 
 ### P2 — Harness capability (2 weeks)
 
+**Status 2026-08-09: the nightly cycle is automated.**
+`apps/ava-factory/scripts/flywheel_cycle.py` runs collect → mine → train →
+gate → sync → dashboard as one fail-closed command with a machine-readable
+summary (`reports/flywheel/cycle-summary.json`); the nightly Routine invokes
+it and the session performs only the privileged deploy step when
+`deploy_required` is true. Adversarially verified (fail-closed, correctness,
+provenance lenses) and proven with a live cycle: gate evaluated honestly
+(not passed, 0.877 vs heuristic 0.893 on n=57), weights untouched, meta and
+dashboard refreshed. Design note: the live API serves the latest trained
+champion in ADVISORY mode (documented on the dashboard with the NOT PROMOTED
+badge) via the committed reports/ URL — when strict gate-gated serving is
+wanted, point the weights URL at a path only the promoted path writes
+(`apps/dottie-harness-api/lib/weights/`). Remaining P2 items below.
+
 9. **Flywheel bridges** (all sized "small" in `TRAINING_CURRICULUM_SIZING.md`):
    timeline → RFT ETL adapter; traces → telemetry bridge so GRPO builds real
    preference pairs; replace `self_distill.py`'s mock trace collector with real

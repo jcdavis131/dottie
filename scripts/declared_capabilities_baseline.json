@@ -131,6 +131,23 @@
         "~/.agentic-contacts/",
         "~/workspace/bundles/memory/"
       ]
+    },
+    {
+      "plugin": "comms",
+      "declared": [
+        "~/workspace/.dottie/",
+        "~/workspace/bundles/ultra/runs/",
+        "~/workspace/.scout/missions/_cron/"
+      ],
+      "judgment": "Declared 2026-08-14, converted from the crashing bool form (filesystem: true, same class of bug harness/agents hit 2026-08-09 — caps.get('filesystem') returning a bare scalar crashed this checker's own declared_paths(), fixed alongside this baseline entry). cli.py's send()/list_inbox() write registry.json and inbox/<agent>.jsonl under ~/workspace/.dottie/, plus a best-effort triple-write to two timeline.jsonl paths wrapped in a bare except that swallows failures. No enforce_or_raise call anywhere in the plugin; same shape as harness/agents — gate at the write sites when P2's runtime-enforcement plan reaches this plugin, then re-judge."
+    },
+    {
+      "plugin": "pair",
+      "declared": [
+        "~/.config/dottie/",
+        "~/.local/share/dottie/queue/"
+      ],
+      "judgment": "Declared 2026-08-14: pair's manifest had write:true with no paths at all (a separate gap from comms' crashing bool — this one passed check_declared_capabilities.py silently since no paths means nothing to check, but failed apps/scout-cli/tests/test_policy.py::TestFsWriteEnforcementWired::test_every_write_manifest_declares_paths, which treats write:true-with-no-paths as broken rather than lenient). Added the real paths cli.py writes: _pair_file() under ~/.config/dottie/, queue_push()'s per-task JSON under ~/.local/share/dottie/queue/. No enforce_or_raise call anywhere in the plugin; same shape as comms — gate at the write sites when P2's runtime-enforcement plan reaches this plugin, then re-judge."
     }
   ]
 }

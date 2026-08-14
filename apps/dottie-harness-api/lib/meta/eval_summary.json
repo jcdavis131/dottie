@@ -1,111 +1,34 @@
 {
   "schema_version": 1,
-  "built_at": "2026-08-09T15:20:06.413912+00:00",
+  "built_at": "2026-08-13T17:44:23.226288+00:00",
   "corpus_source": "l2_corpus",
   "trainer": "orchestrator_model",
   "champion": {
     "name": "v4",
     "model_version": "orch-mlp-v1-v4",
-    "val_tier_accuracy": 0.972028,
-    "tier_accuracy_all": 0.819672131147541,
-    "tier_accuracy_measured": 0.8771929824561403,
-    "n_holdout": 61,
-    "n_measured_holdout": 57,
+    "val_tier_accuracy": 0.986755,
+    "tier_accuracy_all": 0.7846153846153846,
+    "tier_accuracy_measured": 0.8360655737704918,
+    "n_holdout": 65,
+    "n_measured_holdout": 61,
     "agreement": {
-      "agreement_rate": 0.819672131147541,
-      "mean_reward_all": 0.9382442786885248,
-      "mean_reward_on_agreement": 0.9776820600000004,
-      "mean_reward_on_disagreement": 0.7589816363636362,
+      "agreement_rate": 0.7846153846153846,
+      "mean_reward_all": 0.8702535692307694,
+      "mean_reward_on_agreement": 0.9047641568627453,
+      "mean_reward_on_disagreement": 0.7445364285714285,
       "note": "counterfactual rewards unobserved; agreement-conditional statistics reported in place of true regret"
     },
-    "risk_calibration": {
-      "deciles": [
-        {
-          "decile": 0,
-          "n": 58,
-          "mean_pred_risk": 0.008489660357607825,
-          "observed_failure_rate": 0.017241379310344827
-        },
-        {
-          "decile": 1,
-          "n": 2,
-          "mean_pred_risk": 0.135765135848387,
-          "observed_failure_rate": 0.0
-        },
-        {
-          "decile": 2,
-          "n": 1,
-          "mean_pred_risk": 0.282280321644499,
-          "observed_failure_rate": 1.0
-        },
-        {
-          "decile": 3,
-          "n": 0,
-          "mean_pred_risk": null,
-          "observed_failure_rate": null
-        },
-        {
-          "decile": 4,
-          "n": 0,
-          "mean_pred_risk": null,
-          "observed_failure_rate": null
-        },
-        {
-          "decile": 5,
-          "n": 0,
-          "mean_pred_risk": null,
-          "observed_failure_rate": null
-        },
-        {
-          "decile": 6,
-          "n": 0,
-          "mean_pred_risk": null,
-          "observed_failure_rate": null
-        },
-        {
-          "decile": 7,
-          "n": 0,
-          "mean_pred_risk": null,
-          "observed_failure_rate": null
-        },
-        {
-          "decile": 8,
-          "n": 0,
-          "mean_pred_risk": null,
-          "observed_failure_rate": null
-        },
-        {
-          "decile": 9,
-          "n": 0,
-          "mean_pred_risk": null,
-          "observed_failure_rate": null
-        }
-      ],
-      "brier": 0.023808321016738986
-    }
-  },
-  "baselines": {
-    "freq_prior": {
-      "tier": "agentic_epic",
-      "accuracy_all": 0.19672131147540983,
-      "accuracy_measured": 0.21052631578947367
-    },
-    "heuristic": {
-      "accuracy_evaluable": 0.9,
-      "n_evaluable": 60,
-      "accuracy_measured": 0.8928571428571429,
-      "n_evaluable_measured": 56,
-      "note": "synthetic_battery labels ARE the heuristic's outputs, so heuristic accuracy is 1.0 on battery records by construction; the meaningful comparison is the measured subset"
-    }
+    "risk_calibration_note": "per-decile detail dropped at vendor time; see the full eval_report.json in apps/ava-factory/reports/orchestrator/"
   },
   "gate": {
     "gate_passed": false,
-    "reason": "champion measured accuracy 0.877193 does not strictly beat both baselines (freq prior 0.210526, heuristic 0.892857) on n=57 measured held-out records"
+    "reason": "champion measured accuracy 0.836066 does not strictly beat both baselines (freq prior 0.245902, heuristic 0.836066) on n=61 measured held-out records"
   },
   "notes": [
     "counterfactual rewards unobserved; agreement-conditional statistics reported in place of true regret",
     "synthetic_battery labels ARE the heuristic's outputs, so heuristic accuracy is 1.0 on battery records by construction; the meaningful comparison is the measured subset",
     "gate compares measured-subset accuracy only; simulated battery records share the heuristic's labeling and cannot certify the model",
     "corpus_source=l2_corpus; trainer=orchestrator_model; all metrics measured from this run"
-  ]
+  ],
+  "vendored_from": "apps/ava-factory/reports/orchestrator/eval_report.json"
 }

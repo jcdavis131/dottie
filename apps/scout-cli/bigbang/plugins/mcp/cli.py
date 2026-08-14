@@ -90,17 +90,57 @@ def manifest():
     emit(data, command="mcp manifest")
 
 
+_VALID_TRANSPORTS = ("stdio", "sse", "streamable-http")
+
+
+def _resolve_transport(transport: str, sse: bool) -> str:
+    """Resolve --transport/--sse to one of _VALID_TRANSPORTS, or raise ValueError.
+
+    Exact backward compat: no flags -> "stdio" (pre-existing default); --sse
+    alone -> "sse" (pre-existing behavior). --sse is a permanent alias for
+    --transport sse, so the two may only be combined when they agree.
+    """
+    if transport and transport not in _VALID_TRANSPORTS:
+        raise ValueError(
+            f"--transport must be one of {list(_VALID_TRANSPORTS)}, got {transport!r}"
+        )
+    if transport and sse and transport != "sse":
+        raise ValueError(
+            f"--sse conflicts with --transport {transport!r} "
+            "(--sse means --transport sse) — pass just one"
+        )
+    return transport or ("sse" if sse else "stdio")
+
+
 @app.command("serve")
 def serve(
     sse: bool = typer.Option(
-        False, "--sse", help="Serve over SSE/HTTP instead of stdio"
+        False,
+        "--sse",
+        help="(legacy alias for --transport sse) Serve over SSE/HTTP instead of stdio",
     ),
-    port: int = typer.Option(8787, "--port", help="Port for --sse transport"),
+    transport: str = typer.Option(
+        "",
+        "--transport",
+        help="Transport: stdio (default), sse, or streamable-http. "
+        "Overrides nothing on its own — combine with --sse only if they agree.",
+    ),
+    port: int = typer.Option(
+        8787, "--port", help="Port for --sse/--transport sse|streamable-http"
+    ),
     namespace: str = typer.Option(
         "",
         "--namespace",
         help="Meta mode: also proxy this namespace's downstream MCP tools "
         "as <server>__<tool> (scout mcp ns list)",
+    ),
+    stateless: bool = typer.Option(
+        False,
+        "--stateless",
+        help="Stateless streamable-HTTP mode: no server-side session "
+        "continuity, each request is self-contained (current MCP spec's "
+        "serverless/scale-out mode). Only meaningful with --transport "
+        "streamable-http.",
     ),
 ):
     """Serve scout-cli plugins as a real MCP server (stdio by default)."""
@@ -112,10 +152,29 @@ def serve(
             command="mcp serve",
         )
         raise typer.Exit(1) from e
-    # Blocks until the client disconnects (stdio) or the process is stopped (sse).
-    run_server(
-        transport="sse" if sse else "stdio", port=port, namespace=namespace or None
-    )
+
+    try:
+        resolved_transport = _resolve_transport(transport, sse)
+    except ValueError as e:
+        emit({"error": str(e)}, command="mcp serve")
+        raise typer.Exit(1) from e
+
+    # Blocks until the client disconnects (stdio) or the process is stopped
+    # (sse/streamable-http).
+    try:
+        run_server(
+            transport=resolved_transport,
+            port=port,
+            namespace=namespace or None,
+            stateless=stateless,
+        )
+    except ValueError as e:
+        # run_server raises when --stateless is paired with any transport
+        # other than streamable-http (stdio or sse) — a nonsensical
+        # combination we reject rather than silently no-op, so the CLI stays
+        # honest about what it did.
+        emit({"error": str(e)}, command="mcp serve")
+        raise typer.Exit(1) from e
 
 
 @app.command("add")

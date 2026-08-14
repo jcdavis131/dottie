@@ -28,6 +28,19 @@ SOURCES = {
     "scoreboard": REPO / "workspace/artifacts/monitor/scoreboard.json",
     "queue": REPO / "docs/salvage/bd-queue.json",
 }
+# The corpus itself (JSONL, not JSON) feeds the correction queue panel; loaded
+# separately from SOURCES but hashed into the same provenance footer.
+CORPUS_JSONL = REPO / "apps/ava-factory/data/orchestration/corpus.jsonl"
+
+# Venture artifact manifests (scripts/business/playbook.py output) — each
+# records generated_at/outputs/provenance/sources per artifact. Read
+# opportunistically: a missing venture (not yet run) is omitted, not an error.
+VENTURE_MANIFESTS = {
+    "validation": REPO / "workspace/artifacts/validation/manifest.json",
+    "research": REPO / "workspace/artifacts/research/manifest.json",
+    "ops": REPO / "workspace/artifacts/ops/manifest.json",
+    "monitor": REPO / "workspace/artifacts/monitor/manifest.json",
+}
 
 # Palette: dataviz reference instance (validated 2-slot categorical, both modes;
 # status palette fixed, never themed). Text wears text tokens, never series color.
@@ -266,9 +279,87 @@ def build() -> None:
                           "beyond measured-behavior and simulated — the gate's "
                           "champion-vs-heuristic comparison is not yet meaningful</span>")
 
+    # Correction queue — the operator's review surface. Derived from committed
+    # corpus records only (metadata: run id, tier, label source, status; goal
+    # text is deliberately not in the corpus). Each row carries the exact CLI
+    # command that records a ground-truth correction.
+    if CORPUS_JSONL.exists():
+        recent_runs: dict[str, dict] = {}
+        for raw in CORPUS_JSONL.read_text(encoding="utf-8").splitlines():
+            if not raw.strip():
+                continue
+            rec = json.loads(raw)
+            key = rec.get("split_key", "")
+            if (rec.get("source") == "ultra_timeline" and rec.get("provenance") == "measured"
+                    and key.startswith("harness-run-")):
+                # one row per run; keep the record with an errorClass if any
+                if key not in recent_runs or rec.get("errorClass") not in (None, "", "none"):
+                    recent_runs[key] = rec
+        newest = sorted(recent_runs.items(), reverse=True)[:10]
+        if newest:
+            queue_correction_rows = "".join(
+                f"<tr><td><code>{esc(rid.removeprefix('harness-run-'))}</code></td>"
+                f"<td>{esc(r.get('label_tier', '?'))}</td>"
+                f"<td>{esc((r.get('provenance_fields') or {}).get('label_tier', '?'))}</td>"
+                f"<td>{esc(r.get('status', '?'))}</td>"
+                f"<td><code>scout harness correct {esc(rid)} &lt;tier&gt; --reason \"…\"</code></td></tr>"
+                for rid, r in newest)
+            correction_html = (
+                "<table><thead><tr><th>Run</th><th>Label</th><th>Source</th><th>Status</th>"
+                "<th>Correction command</th></tr></thead><tbody>"
+                + queue_correction_rows + "</tbody></table>")
+        else:
+            correction_html = ('<span class="status unmeasured">— no measured harness runs '
+                               "in the committed corpus yet</span>")
+        shas["corpus"] = sha256(CORPUS_JSONL)
+    else:
+        correction_html = ('<span class="status unmeasured">— UNMEASURED — corpus.jsonl not '
+                           "present at build time</span>")
+
+    # Venture artifacts — playbook-generated documents (scripts/business/).
+    # Rendered from each venture's manifest.json only: generated_at,
+    # output path, classification, and the manifest's own sha256 of the
+    # output — nothing about the artifact content is re-derived or invented.
+    venture_rows = []
+    for venture, mpath in VENTURE_MANIFESTS.items():
+        if not mpath.exists():
+            continue
+        try:
+            mdata = json.loads(mpath.read_text())
+        except (json.JSONDecodeError, OSError):
+            continue
+        for artifact_id, entry in (mdata.get("artifacts") or {}).items():
+            outputs = entry.get("outputs") or []
+            prov = entry.get("provenance") or {}
+            classification = prov.get("classification", "?")
+            generated_at = entry.get("generated_at", "?")
+            for out in outputs:
+                out_path = out.get("path", "")
+                out_sha = out.get("sha256", "")
+                if not out_path:
+                    continue
+                venture_rows.append(
+                    f"<tr><td>{esc(venture)}/{esc(artifact_id)}</td>"
+                    f"<td><code>{esc(out_path)}</code></td>"
+                    f"<td>{esc(classification)}</td>"
+                    f"<td>{esc(generated_at)}</td>"
+                    f"<td><code>sha256:{esc(out_sha[:16])}…</code></td></tr>"
+                )
+    if venture_rows:
+        venture_html = (
+            "<table><thead><tr><th>Artifact</th><th>Path</th><th>Classification</th>"
+            "<th>Generated</th><th>Checksum</th></tr></thead><tbody>"
+            + "".join(venture_rows) + "</tbody></table>")
+    else:
+        venture_html = ('<span class="status unmeasured">— no venture artifacts '
+                        "committed yet (scripts/business/playbook.py run &lt;venture&gt;)</span>")
+
     src_rows = "".join(
         f"<div><code>{esc(p.relative_to(REPO))}</code> · <code>sha256:{shas[k][:16]}…</code></div>"
         for k, p in SOURCES.items())
+    if CORPUS_JSONL.exists():
+        src_rows += (f"<div><code>{esc(CORPUS_JSONL.relative_to(REPO))}</code> · "
+                     f"<code>sha256:{shas['corpus'][:16]}…</code></div>")
 
     page = f"""<!doctype html>
 <html lang="en">
@@ -352,6 +443,17 @@ def build() -> None:
   </div>
 
   <div class="card wide">
+    <h2>Correction queue — operator review</h2>
+    <div class="chart-scroll">{correction_html}</div>
+    <p class="note">The ten most recent measured harness runs from the committed corpus.
+    A correction is ground truth: run the command with the tier that should have been
+    routed (goal text via <code>scout harness checkpoint show --run-id …</code>; the
+    corpus itself carries metadata only). Corrections land in
+    <code>label_corrections.jsonl</code> and the nightly retrain consumes them as
+    operator-corrected labels — the strongest signal against the gate's label ceiling.</p>
+  </div>
+
+  <div class="card wide">
     <h2>Run scoreboard — mined from committed timelines</h2>
     <table>
       <thead><tr><th>Agent</th><th>Runs</th><th>Events</th><th>OK rate</th><th>p50 latency</th></tr></thead>
@@ -359,6 +461,15 @@ def build() -> None:
     </table>
     <p class="note">All runs to date succeeded — an OK rate of 100% is this period's data,
     not a claim; failure classes will appear here as they occur.</p>
+  </div>
+
+  <div class="card wide">
+    <h2>Venture artifacts — playbook-generated, provenance-checked</h2>
+    <div class="chart-scroll">{venture_html}</div>
+    <p class="note">Generated by <code>scripts/business/playbook.py run &lt;venture&gt;</code> from
+    committed sources only; each row's checksum is copied verbatim from the venture's own
+    manifest, never recomputed here. Documents live under <code>workspace/artifacts/</code>
+    in the dottie repository.</p>
   </div>
 </div>
 

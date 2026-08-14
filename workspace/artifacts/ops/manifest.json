@@ -1,11 +1,11 @@
 {
   "artifacts": {
     "changelog": {
-      "generated_at": "2026-08-09T03:09:18+00:00",
+      "generated_at": "2026-08-10T02:28:02+00:00",
       "outputs": [
         {
           "path": "workspace/artifacts/ops/changelog_entry.md",
-          "sha256": "5142014608753e5b5d87d7d0abda66b8e0ce3f5ffe9cc67f6346aa1be5958a20"
+          "sha256": "b00597a9b069e96b030cbdec3f2e66c64eb38a74d5d1ac3a7d8adcbe240283d6"
         }
       ],
       "provenance": {
@@ -16,11 +16,11 @@
       "status": "written"
     },
     "ops-digest": {
-      "generated_at": "2026-08-09T03:09:05+00:00",
+      "generated_at": "2026-08-10T02:28:02+00:00",
       "outputs": [
         {
           "path": "workspace/artifacts/ops/ops_digest.md",
-          "sha256": "2857dbffb96443f7741ef55ca4bcaf662b07a10ba5ebcdbaa58829632e677455"
+          "sha256": "2fefaf440f4f1f9f7dc2894b1c761df55d55ac6a80f0959cd2ebb71ae7741450"
         }
       ],
       "provenance": {
@@ -31,7 +31,7 @@
         {
           "path": "workspace/artifacts/monitor/scoreboard.json",
           "required": false,
-          "sha256": "48d92653c741d8b22898aa882ede7ce2a92b3b151bfe857f2861c0a3764facd6"
+          "sha256": "9c7c2e015dcdaa1f588a9631fcf56db4425de1316ea59e803153f351c828d6e6"
         },
         {
           "path": "TODO.md",
@@ -64,11 +64,11 @@
           "sha256": "ae6ef1293b221b32d9304333bea4a145df3395b4d82eea8117e612b07ec78e77"
         }
       ],
-      "status": "unchanged"
+      "status": "written"
     }
   },
   "generated_by": "scripts/business/playbook.py",
   "schema_version": 1,
-  "updated_at": "2026-08-09T03:09:19+00:00",
+  "updated_at": "2026-08-10T02:28:02+00:00",
   "venture": "ops"
 }

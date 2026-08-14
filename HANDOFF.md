@@ -16,31 +16,93 @@ before writing "current" anywhere in this file.
 
 ---
 
-## 📌 Session continuation — 2026-08-09 PM (supersedes every block below)
+## 📌 Session continuation — 2026-08-14 (supersedes every block below)
 
-**Re-measured 2026-08-09T15:30Z at HEAD `c8db8ed`,** branch
-`claude/longcat-2-architecture-moxdny`, CI fully green at `c151ab2` (first
-complete pipeline pass on GitHub runners) and every checker green locally at
-this HEAD. PR #11 carries everything; bluehen PR #5 unchanged.
+**Re-measured 2026-08-14T09:50Z at HEAD `18e3454`,** branch
+`claude/longcat-2-architecture-moxdny`, PR #12 (stacked on merged PR #11).
+This HEAD is a merge of `origin/main` into the branch (`18e3454`, parents
+`0521f4c` + `3d6c946`) — the branch had drifted 192 commits behind `main`
+by the time this refresh landed (this file's own freshness checker caught
+it), so catching up pulled in a large amount of other agents' work
+(arxiviq conductor panel, `apps/dottie/dottie` llmvm, new scout-cli
+plugins `comms`/`pair`/`tasks`/`rft`, `packages/personal-graphify`).
 
-**The flywheel is closed and has run one full cycle.** New since the 08-02
-block: meta-MCP layer in the mcp plugin (namespaces, per-tool disables,
-`serve --namespace` proxying `<server>__<tool>`); harness MCP action executor
-(`mcp:` goals → action_operator, fail-closed gates, failures feed the recovery
-ladder); outcome-adjusted labels + `label_corrections.jsonl` (fail-closed) in
-the corpus miner; Label-sources dashboard panel. 18 live MCP runs (8 real
-failures) → corpus 1,556 records / 722 measured / 8 measured-outcome (2 in
-measured hold-out) → retrained: champion v4 97.2% val, 87.7% measured hold-out.
-**Heuristic baseline now 0.893, not 1.0** — the gate is winnable; verdict this
-cycle honestly `not passed` (0.877 vs 0.893). See `docs/ECOSYSTEM.md` for the
-map and `docs/PLATFORM_IMPROVEMENT_PLAN.md` P1/P2 for what's next: accumulate
-non-behavior labels (more real MCP failures, operator corrections), let the
-nightly Routine (09:00 UTC) retrain, promote when the gate passes.
+**Merging surfaced a real crash, fixed in this same commit.** `main`'s new
+`comms` plugin declared `capabilities.filesystem: true` — a bare bool, not
+a dict — which crashed `scripts/check_declared_capabilities.py`'s
+`declared_paths()` (`caps.get('filesystem') or {}` returns `True` unchanged
+when the left side is truthy, then `True.get('paths')` raises
+`AttributeError`). This is the *third* time this exact class of bug has
+hit this file — `harness` and `agents` were converted from the same
+crashing bool form on 2026-08-09 (see their baseline judgements below).
+Fixed both ends: `comms/manifest.yaml` now declares real paths (matching
+what `cli.py` actually writes), and `declared_paths()` now treats *any*
+non-dict `capabilities`/`filesystem` value as "nothing declared" instead
+of crashing, so a fourth occurrence degrades gracefully instead of taking
+the whole CI gate down. `comms` is baselined in
+`scripts/declared_capabilities_baseline.json` with the same judgement
+shape as `harness`/`agents`. Verified: `check_declared_capabilities.py
+--check` exits 0 (17 known gaps, all baselined), its own 19 tests pass,
+`gate_audit.py --check` OK.
+
+**Known pre-existing red, NOT introduced by this branch:** the
+`apps/scout-cli` pytest hard gate (`Pytest scout-cli (hard gate)` in
+ci.yml) currently has 20 failing tests — `test_cli.py`,
+`test_herd.py`, `test_policy.py` (mostly `TestFsWriteEnforcementWired`
+and `TestUngatedWriteCapablePluginsAreTracked`), all referencing the
+`tasks`/`rft`/`graphify` plugins that arrived via the same `main` merge.
+**Verified identical on a clean `origin/main` checkout in an isolated
+worktree** (20 failed, 91 passed, same test names) before this branch
+ever touched them — so this is base-branch debt inherited by the merge,
+not a regression from anything in this PR. Owning agent for those
+plugins' policy wiring is unclear (not the flywheel/autoresearch lane);
+flagging rather than fixing blind. `apps/ava-factory` + `dottie-harness-api`
++ scout-cli's *other* suites (2572 passed, 1 skipped outside those three
+files) are unaffected and green.
+
+**P2 flywheel automation** kept running through this drift: 8 real
+training cycles total now (cycles 5-8 landed since the last HANDOFF
+refresh, each seeded by real harness `mcp:` goals — successes and
+deliberately induced failures across self/acne/deepwiki). Current
+committed state: corpus 1,608 records / 774 measured (41 measured-outcome
+labels). champion v4, measured hold-out accuracy **0.836066 on n=61 — an
+exact tie with the heuristic baseline's 0.836066**. Gate: `not passed`
+(a tie is not a strict win) — reported honestly, not rounded in its
+favor; this has oscillated between an exact tie and slightly behind
+across cycles 5-8, real variance in a small growing hold-out set, not
+one-way progress. `lib/weights/` untouched throughout (never promoted).
+who-e/slasso.com production redeployed and smoke-tested multiple times
+this session, most recently matching corpus 1,602/768 (one cycle behind
+this commit's 1,608/774 — next deploy picks it up).
+
+**P2 flywheel automation shipped and has now run for real**, both
+autonomously (the 09:00 UTC nightly Routine, first live run) and manually
+(this session drove five more cycles in a row to generate real training
+signal). `apps/ava-factory/scripts/flywheel_cycle.py` is the one command:
+collect → mine → train → gate → sync → dashboard, fail-closed throughout.
+Also new since the 08-09 PM block: DeepWiki as the first real external
+MCP downstream (wiring it surfaced and fixed two real transport bugs in
+`mcp_client.py`); the operator corrections queue (`scout harness correct`
++ a dashboard review panel); stateless streamable-HTTP support in the mcp
+plugin's server/client, live-proven against a real server; a Venture
+artifacts dashboard card surfacing the business playbook outputs.
+
+**The gate has never been this close.** Five retrain cycles today, each
+seeded by real harness runs (successes across self/acne/deepwiki plus
+deliberately induced real failures — dead server, disabled tool, unknown
+tool, malformed goal) pushed `measured-outcome` labels from 8 to 23 (2 to
+6 in the measured hold-out). Current committed state: corpus 1,580 records
+/ 746 measured; champion v4 98.6% val, **86.4% measured hold-out — an exact
+tie with the heuristic's 86.4%** on n=59. Gate: `not passed` (promotion
+requires *strictly* beating both baselines; a tie is not a strict win) —
+reported honestly, no rounding in its favor. One more real-failure batch
+could tip it. See `docs/ECOSYSTEM.md` for the map and
+`docs/PLATFORM_IMPROVEMENT_PLAN.md` P1/P2 for what's next.
 
 Run-data caveat: harness run dirs live in BOTH `bundles/ultra/runs/` (repo,
 mined by default) and `~/workspace/bundles/ultra/runs/` (runner default);
-today's live runs were copied into the repo dir before mining. Runs data is
-NOT committed — corpus.jsonl is the committed artifact of record.
+live runs get copied into the repo dir before mining. Runs data is NOT
+committed — corpus.jsonl is the committed artifact of record.
 
 ## 📌 Session continuation — 2026-08-02 (superseded)
 

@@ -99,15 +99,30 @@ plausible zero.
 - **Nightly Routine** — retrains at 09:00 UTC against whatever measured data
   accumulated; the gate decides what ships.
 
-## Honest status (2026-08-09)
+## Honest status (2026-08-10)
 
-- 1,556-record corpus; 722 measured; champion `orch-mlp-v1-v4` at 97.2% val /
+- 1,563-record corpus; 729 measured; champion `orch-mlp-v1-v4` at 97.2% val /
   87.7% on the 57-record measured hold-out
   (`apps/ava-factory/reports/orchestrator/eval_report.json`).
-- Gate: **not passed** — champion 87.7% vs heuristic 89.3% on the measured
-  hold-out; the heuristic is 1.0 on behavior labels by construction (the
-  ceiling described above). This is reported as-is on the dashboard.
-- CI: full pipeline green on GitHub runners as of `c151ab2`.
-- Next unlock: accumulate measured runs with non-behavior labels (real MCP
-  action failures, operator corrections), then let the nightly Routine and the
-  gate do their jobs.
+- Gate: **not passed** — champion 87.7% vs heuristic 89.3% (freq-prior 21.1%)
+  on the measured hold-out; the heuristic is 1.0 on behavior labels by
+  construction (the ceiling described above). This is reported as-is on the
+  dashboard.
+- Meta-MCP now has a real external downstream live: `mcp.deepwiki.com`
+  (free, no-auth, read-only GitHub-repo documentation Q&A), registered in the
+  `harness` namespace alongside `self` and `acne`. Wiring it surfaced and
+  fixed two real client transport defects (streamable-HTTP tuple unpacking,
+  transport-selection ordering) — the strongest kind of evidence the flywheel
+  argument predicts: real integration use finds what testing alone doesn't.
+- The full nightly cycle (collect → mine → train → gate → sync → dashboard)
+  is now one fail-closed command, `apps/ava-factory/scripts/flywheel_cycle.py`,
+  driven by the 09:00 UTC Routine. Proven live: exit 0 in 39s, gate evaluated
+  honestly, weights untouched on a not-promoted cycle.
+- Operator corrections queue is live on the dashboard: the ten most recent
+  measured runs with a ready-to-run `scout harness correct` command per row —
+  the fastest path to non-behavior labels in the measured hold-out.
+- CI: full pipeline green on GitHub runners as of `cc01c6c`.
+- Next unlock: operator-reviewed corrections via the dashboard queue, plus
+  organic accumulation of real MCP action failures (now including external
+  downstream traffic), then let the nightly Routine and the gate do their
+  jobs.

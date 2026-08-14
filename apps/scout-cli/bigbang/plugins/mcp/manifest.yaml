@@ -1,6 +1,6 @@
 name: mcp
-version: 0.5.0
-description: MCP client + server + meta — consume any MCP, serve bb as MCP, aggregate namespaces of downstream servers MetaMCP-style
+version: 0.6.0
+description: MCP client + server + meta — consume any MCP, serve bb as MCP over stdio/SSE/stateless streamable-HTTP, aggregate namespaces of downstream servers MetaMCP-style
 capabilities:
   network:
     enabled: true

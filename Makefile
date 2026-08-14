@@ -58,7 +58,7 @@ test:
 lint:
 	uvx ruff@0.15.22 check packages/ava-skills
 	uvx ruff@0.15.22 check packages/ava-open-harness packages/personal-graphify apps/scout-cli --exclude apps/scout-cli/.venv || true
-	@echo "ava-skills is the HARD gate (at 0). The rest is the documented 449-finding debt (scripts/check_documented_counts.py keeps this figure honest; re-measured 2026-08-12, was stale at 252)."
+	@echo "ava-skills is the HARD gate (at 0). The rest is the documented 511-finding debt (scripts/check_documented_counts.py keeps this figure honest; re-measured 2026-08-14 after merging origin/main added scout-cli plugins comms/pair/tasks/rft, was 449)."
 
 # `ruff format --check` is deliberately absent. It was here as `... || true`, which is a
 # suppressed check — nothing in this repo satisfies it, so it could only ever be noise or a

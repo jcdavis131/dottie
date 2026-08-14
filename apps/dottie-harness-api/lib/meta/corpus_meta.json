@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "built_at": "2026-08-09T15:19:27.431428+00:00",
+  "built_at": "2026-08-13T17:39:55.342190+00:00",
   "generator": {
     "seed": 20260809,
     "battery_n": 800,
@@ -58,51 +58,47 @@
     "n_records_corrected": 0
   },
   "counts": {
-    "total": 1556,
+    "total": 1608,
     "by_source": {
-      "ultra_timeline": 742,
-      "workflow_journal": 14,
+      "ultra_timeline": 808,
       "synthetic_battery": 800
     },
     "by_provenance": {
       "simulated": 834,
-      "measured": 722
+      "measured": 774
     },
     "by_tier": {
       "deterministic": 251,
-      "deep_research": 453,
-      "llm": 115,
-      "agentic_epic": 460,
-      "action_operator": 277
+      "deep_research": 448,
+      "llm": 110,
+      "agentic_epic": 490,
+      "action_operator": 309
     },
     "by_split": {
-      "train": 1352,
-      "val": 143,
-      "test": 61
+      "train": 1392,
+      "val": 151,
+      "test": 65
     },
     "by_label_tier": {
-      "simulated": 829,
-      "measured-behavior": 719,
-      "measured-outcome": 8
+      "simulated": 815,
+      "measured-behavior": 752,
+      "measured-outcome": 41
     },
     "measured_holdout_by_label_tier": {
-      "measured-behavior": 114,
-      "measured-outcome": 2,
-      "simulated": 2
+      "measured-behavior": 120,
+      "measured-outcome": 10
     }
   },
   "sources": {
     "ultra_timeline": {
       "included": true,
       "dir": "bundles/ultra/runs",
-      "n_runs": 182,
-      "n_records": 742
+      "n_runs": 248,
+      "n_records": 808
     },
     "workflow_journal": {
-      "included": true,
-      "dirname": "wf_e370f3be-001",
-      "n_records": 14,
-      "note": "metadata-only extraction; no prompt/result text"
+      "included": false,
+      "reason": "journal dir not provided"
     },
     "synthetic_battery": {
       "included": true,

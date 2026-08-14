@@ -496,6 +496,15 @@ class TestUngatedWriteCapablePluginsAreTracked:
             # plugin code, so there is no plugin-side path to gate — judged in
             # scripts/declared_capabilities_baseline.json (contacts entry).
             "contacts",
+            # Deliberate additions 2026-08-14 (arrived via a main merge into
+            # claude/longcat-2-architecture-moxdny, PR #12): comms writes
+            # registry.json/inbox/*.jsonl under ~/workspace/.dottie/ plus a
+            # best-effort triple-write to two timeline.jsonl paths; pair writes
+            # a pairing-code file and per-task queue JSON under its own dirs.
+            # Neither calls enforce_or_raise/check_permission anywhere. Same
+            # shape as agents/harness/contacts above — judged in
+            # scripts/declared_capabilities_baseline.json (comms entry).
+            "comms", "pair",
         }
     )
 
