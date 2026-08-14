@@ -3,6 +3,17 @@
 # Excluded BY DESIGN (see README):
 #   apps/scout-rtx    — hard-pins torch==2.9.1 + cu128 wheel index; resolved independently
 #   apps/ava-factory  — requirements.txt/Docker-driven install, no pyproject; untouched
+#   apps/dottie       — has its own pyproject.toml (name "dottie-assistant") but was
+#                        neither a member nor listed here, flagged in HANDOFF.md's
+#                        "Open, needing an operator decision" #5 as an undocumented
+#                        omission since 2026-07-22. Listed explicitly now so it reads as
+#                        a decision, not an oversight. Its suite needs its own .venv
+#                        (fastapi) plus AVA_FACTORY_ROOT and does not collect here; it
+#                        also entangles with the apps/ava-factory `dottie.rl` namespace
+#                        collision (HANDOFF.md #2, still open) that a shared env would
+#                        hit immediately. `uv lock --check` is unaffected — apps/dottie
+#                        was never resolved into uv.lock, so this is documentation of
+#                        the actual state, not a dependency change.
 [tool.uv.workspace]
 members = [
   "packages/ava-skills",
@@ -10,7 +21,7 @@ members = [
   "packages/personal-graphify",
   "apps/scout-cli",
 ]
-exclude = ["apps/scout-rtx", "apps/ava-factory"]
+exclude = ["apps/scout-rtx", "apps/ava-factory", "apps/dottie"]
 
 [dependency-groups]
 dev = ["pytest>=8"]

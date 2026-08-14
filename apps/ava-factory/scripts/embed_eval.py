@@ -235,7 +235,7 @@ def main(argv=None) -> int:
         ap.error("--checkpoint is required unless --base-only is set")
 
     import torch
-    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")  # auto: GPU on personal local (CUDA avail), CPU in Hatch VM
     if args.base_only:
         checkpoint_dir = None
         default_dims = [384, 256, 128, 64]

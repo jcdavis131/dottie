@@ -1,0 +1,1 @@
+{"zero_deps": true, "allow":"acne:./src", "note":"No pip installs, no cloud, ACNE optional local — v5 Prime zero-deps flag. Bundles use stdlib + optional local src/acne if present. LanceDB/onnx optional with fallback.", "updated":"2026-08-06T19:18 America/Chicago", "version":"5.0-prime"}

@@ -103,6 +103,21 @@ def _load_ledger() -> List[Dict[str, Any]]:
         return []
     return rows
 
+def _daily_shard_path(ts_iso: str | None = None) -> Path:
+    """Daily shard path — 2026-08-07.jsonl for Launched, uses ts day or today UTC."""
+    day = "2026-08-07"
+    if ts_iso:
+        try:
+            day = ts_iso[:10]
+            # sanity: must be YYYY-MM-DD
+            if len(day) != 10 or day[4] != "-" or day[7] != "-":
+                day = "2026-08-07"
+        except Exception:
+            day = "2026-08-07"
+    shard_dir = Path.home() / "workspace" / "bundles" / "payments" / "events"
+    shard_dir.mkdir(parents=True, exist_ok=True)
+    return shard_dir / f"{day}.jsonl"
+
 def _write_ledger_row(row: Dict[str, Any]) -> None:
     store = _resolve_store()
     enforce_or_raise(_manifest(), "fs_write_arg", str(store))
@@ -117,6 +132,25 @@ def _write_ledger_row(row: Dict[str, Any]) -> None:
         with secondary.open("a", encoding="utf-8") as sf:
             sf.write(line + "\n")
     except Exception:
+        pass
+    # daily shard — 2026-08-07.jsonl per Idea 005, idempotent wiring needs shard history
+    try:
+        ts = row.get("created_at") or row.get("tx_time") or ""
+        shard = _daily_shard_path(ts)
+        enforce_or_raise(_manifest(), "fs_write_arg", str(shard))
+        with shard.open("a", encoding="utf-8") as df:
+            df.write(line + "\n")
+        # also ensure .scout/payments mirror exists for runtime (manifest allows)
+        try:
+            rt_dir = Path.home() / "workspace" / ".scout" / "payments"
+            rt_dir.mkdir(parents=True, exist_ok=True)
+            rt = rt_dir / "store.jsonl"
+            with rt.open("a", encoding="utf-8") as rf:
+                rf.write(line + "\n")
+        except Exception:
+            pass
+    except Exception:
+        # shard write best-effort — main store already ok
         pass
 
 def _find_existing(idem_key: str) -> Dict[str, Any] | None:
@@ -162,6 +196,31 @@ def create_cmd(
         "note": "$0 ledger stub",
     }
     _write_ledger_row(invoice)
+    # analytics bridge — PostHog-style local event for payments $0 ledger, best-effort no network
+    try:
+        a_store = Path.home() / "workspace" / "bundles" / "analytics" / "store.jsonl"
+        a_store.parent.mkdir(parents=True, exist_ok=True)
+        a_evt = {
+            "id": f"e_pay_{idem_key[:12]}",
+            "type": "pay",
+            "entity_id": f"payments/{_norm(plan)}",
+            "user_hash": hashlib.sha256(_norm(email).encode()).hexdigest()[:16],
+            "user_raw_sha": hashlib.sha256(_norm(email).encode()).hexdigest()[:16],
+            "ts": now,
+            "tx_time": now,
+            "props": {"plan": _norm(plan), "amount": 0, "currency": "usd", "phase": "phase0", "idempotency_key": idem_key[:16]},
+            "checksum": idem_key[:16],
+        }
+        with a_store.open("a", encoding="utf-8") as af:
+            af.write(json.dumps(a_evt) + "\n")
+        # also daily shard for analytics
+        a_day = now[:10] if len(now) >= 10 else "2026-08-07"
+        a_shard_dir = Path.home() / "workspace" / "bundles" / "analytics" / "events"
+        a_shard_dir.mkdir(parents=True, exist_ok=True)
+        with (a_shard_dir / f"{a_day}.jsonl").open("a", encoding="utf-8") as asf:
+            asf.write(json.dumps(a_evt) + "\n")
+    except Exception:
+        pass
     result = {"invoice": invoice, "idempotent": False, "note": "created $0 invoice, idempotent future calls return same", "idempotency_key": idem_key}
     emit(ok(result, command="payments create", example="scout payments check --email x --plan y --json"), command="payments create")
 

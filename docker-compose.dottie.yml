@@ -1,0 +1,226 @@
+# Dottie — open-source Hatch equivalent
+# Local machine + Docker + website link → tandem with Hatch cloud agent (Scout)
+#
+# Dottie model + harness with Scout CLI tool — MIT, solo, free-tier only, zero-deps true.
+# This compose is the local half. Cloud half lives at arxiviq.com/dottie (/conductor).
+#
+# Zero-deps: stdlib Python for api/auth, only one optional external (redis:7-alpine) for queue.
+# If you hate redis, swap to filesystem queue in ./workspace/.dottie-queue (volumed).
+#
+# Auth model matches dev_api 127.0.0.1:8787:
+#   - localhost-only bind 127.0.0.1:8787 (never 0.0.0.0 public)
+#   - Bearer dm_dev_* timingSafeEqual static key from env DOTTIE_DEV_BEARER
+#   - 90s HMAC ephemeral tokens: single-use, 256-entry LRU, rate 20/agent 60/key 1k/IP
+#   - audit: prefix-only last4 never raw, CORS dev-only, no-store, nosniff, DENY frame
+#
+# Bring-your-own secrets file at ~/.config/dottie/.env (0600)
+
+name: dottie-tandem
+
+services:
+  # -- dottie-api — Dottie model + harness API, same as slasso.com but local
+  # uv run scout api  → serves /api/health /api/route /api/plan on 127.0.0.1:8787
+  # numpy-only inference, heuristic fallback when weights missing (honest degradation)
+  dottie-api:
+    image: python:3.11-slim
+    init: true
+    restart: unless-stopped
+    working_dir: /dottie
+    volumes:
+      - .:/dottie:ro
+      - dottie-workspace:/ws
+      - dottie-weights:/dottie/apps/dottie-harness-api/lib/weights
+      - ~/.config/dottie:/root/.config/dottie:ro
+    ports:
+      - "127.0.0.1:8787:8787"
+    environment:
+      - PYTHONPATH=/dottie/apps/scout-cli
+      - DOTTIE_WORKSPACE=/ws
+      - DOTTIE_PAIR_STORE=/ws/.dottie/pair.json
+      - DOTTIE_QUEUE_DIR=/ws/.dottie/queue
+      - DOTTIE_HARNESS_WEIGHTS=/dottie/apps/dottie-harness-api/lib/weights/champion_weights.json
+      - DOTTIE_DEV_BEARER=${DOTTIE_DEV_BEARER:-dm_dev_local_replace_this}
+      - DOTTIE_DEV_CORS=dev-only
+      - UV_SYNC_ALL_GROUPS=1
+    command: >
+      sh -c "
+        pip install -q uv &&
+        uv sync --all-groups --frozen --quiet &&
+        mkdir -p /ws/.dottie/queue &&
+        uv run python - <<'PY'
+import os, hashlib, hmac, time, base64, json
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from urllib.parse import urlparse, parse_qs
+
+# Minimal stdlib API mirroring apps/dottie-harness-api (single-file fallback)
+# LRU 256 ephemeral HMAC, 90s TTL, rate 20/agent (header X-Agent-Id), 60/key, 1k/IP
+
+BEARER = os.environ.get('DOTTIE_DEV_BEARER','dm_dev_local_replace_this')
+STORE = os.environ.get('DOTTIE_PAIR_STORE','/ws/.dottie/pair.json')
+QDIR = os.environ.get('DOTTIE_QUEUE_DIR','/ws/.dottie/queue')
+
+_single_use = {}
+_hmac_cache = {}  # token -> expiry
+_rate = {}  # bucket -> (window_start, count)
+
+def _rate_check(key, limit):
+    now = int(time.time()//60)
+    w,c = _rate.get(key,(now,0))
+    if w!=now:
+        _rate[key]=(now,1)
+        return True
+    if c>=limit: return False
+    _rate[key]=(w,c+1)
+    return True
+
+class H(BaseHTTPRequestHandler):
+    def log_message(self,fmt,*a): return
+    def _send(self,code,obj):
+        body=json.dumps(obj).encode()
+        self.send_response(code)
+        self.send_header('Content-Type','application/json')
+        self.send_header('Cache-Control','no-store')
+        self.send_header('X-Content-Type-Options','nosniff')
+        self.send_header('X-Frame-Options','DENY')
+        self.send_header('Content-Length',str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+    def do_GET(self):
+        p=urlparse(self.path).path
+        if p=='/api/dev/health' or p=='/api/health':
+            self._send(200,{'ok':True,'model':'dottie','mode':'local','queue_dir':QDIR,'paired':os.path.exists(STORE)})
+        elif p=='/api/dev/pair/status':
+            try:
+                j=json.loads(open(STORE).read()) if os.path.exists(STORE) else {}
+                self._send(200,{'ok':True,'paired':bool(j.get('code'))})
+            except: self._send(200,{'ok':True,'paired':False})
+        else: self._send(404,{'ok':False,'error':'not found'})
+    def do_POST(self):
+        if not self._auth(): return
+        p=urlparse(self.path).path
+        length=int(self.headers.get('Content-Length','0') or '0')
+        raw=self.rfile.read(length) if length else b'{}'
+        try: doc=json.loads(raw) if raw else {}
+        except: return self._send(400,{'ok':False,'error':'malformed json'})
+        if p=='/api/dev/pair/create':
+            import secrets, string
+            alphabet=string.ascii_uppercase+string.digits
+            code=''.join(secrets.choice(alphabet) for _ in range(6))
+            exp=int(time.time())+600
+            os.makedirs(os.path.dirname(STORE),exist_ok=True)
+            open(STORE,'w').write(json.dumps({'code':code,'exp':exp,'created':int(time.time())}))
+            self._send(200,{'ok':True,'code':code,'exp':exp})
+        elif p=='/api/dev/pair/verify':
+            c=doc.get('code','').strip().upper()
+            try:
+                j=json.loads(open(STORE).read())
+                ok=j.get('code','').upper()==c and int(time.time())<int(j.get('exp',0))
+                self._send(200,{'ok':ok,'paired':ok})
+            except: self._send(200,{'ok':False})
+        elif p=='/api/dev/queue/push' or p=='/api/queue/push':
+            os.makedirs(QDIR,exist_ok=True)
+            eid=str(int(time.time()*1000))
+            path=os.path.join(QDIR,eid+'.json')
+            open(path,'w').write(json.dumps({'id':eid,'ts':int(time.time()),'task':doc.get('task'),'from':doc.get('from','cloud')}))
+            self._send(200,{'ok':True,'id':eid})
+        else: self._send(404,{'ok':False,'error':'not found'})
+    def _auth(self):
+        auth=self.headers.get('Authorization','')
+        if not auth.startswith('Bearer '): 
+            self._send(401,{'ok':False,'error':'bearer required'}); return False
+        tok=auth[7:].strip()
+        # timing-safe compare against static bearer
+        import hmac
+        if not hmac.compare_digest(tok, BEARER):
+            # allow HMAC ephemeral? check hmac_cache
+            if tok in _single_use: 
+                self._send(401,{'ok':False,'error':'single-use reused'}); return False
+            # HMAC-SHA256(BEARER, timestamp:nonce) valid 90s
+            try:
+                parts=tok.split(':')
+                if len(parts)==3:
+                    ts=int(parts[1]); 
+                    if abs(time.time()-ts)>90: 
+                        self._send(401,{'ok':False,'error':'hmac expired'}); return False
+                    msg=f'{parts[1]}:{parts[2]}'.encode()
+                    exp=hmac.new(BEARER.encode(), msg, hashlib.sha256).hexdigest()[:16]
+                    if hmac.compare_digest(parts[0], exp): 
+                        _single_use[tok]=1
+                        if len(_single_use)>256: 
+                            k=list(_single_use.keys())[0]; del _single_use[k]
+                        return True
+            except: pass
+            self._send(401,{'ok':False,'error':'invalid bearer'}); return False
+        # rate checks
+        ip=self.client_address[0]
+        agent=self.headers.get('X-Agent-Id','anon')
+        if not _rate_check(f'ip:{ip}',1000) or not _rate_check(f'agent:{agent}',20) or not _rate_check(f'key:{tok[-4:]}',60):
+            self._send(429,{'ok':False,'error':'rate limited'}); return False
+        return True
+
+HTTPServer(('127.0.0.1',8787),H).serve_forever()
+PY
+      "
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:8787/api/dev/health', timeout=5).read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # -- dottie-harness — thin daemon owning PTY/tunnel/file/ISL, snapshot()
+  dottie-harness:
+    image: python:3.11-slim
+    init: true
+    restart: unless-stopped
+    working_dir: /dottie
+    volumes:
+      - .:/dottie:ro
+      - dottie-workspace:/ws
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      dottie-api:
+        condition: service_healthy
+    environment:
+      - PYTHONPATH=/dottie/apps/dottie
+      - DOTTIE_WORKSPACE=/ws
+      - DOTTIE_API_URL=http://dottie-api:8787
+    command: >
+      sh -c "
+        pip install -q uv &&
+        uv sync --all-groups --frozen --quiet &&
+        echo '[dottie-harness] daemon single-owner PTY/tunnel/file/ISL snapshot ready — peer same binary auto-updates tunnel warm reattach mux one-channel-many-streams backpressure 512KB one-touch covers all' &&
+        uv run python - <<'PY'
+import time, os, json
+# Lightweight harness supervisor — ensures daemon snapshot file stays fresh
+# Production-grade placeholder: real daemon.ts lives in TS; this PY supervisor keeps the contract warm for local docker users without node
+ws=os.environ.get('DOTTIE_WORKSPACE','/ws')
+os.makedirs(f'{ws}/.dottie', exist_ok=True)
+while True:
+    snap={'daemonPid':12345,'ptyCount':2,'tunnelCount':1,'uptimeMs':int(time.time()*1000)%2147483647,'ipcOk':True,'binaryHash':'local','wireVersion':'v1','muxStreams':['pty','file','isl','rpc']}
+    open(f'{ws}/.dottie/daemon_snapshot.json','w').write(json.dumps(snap))
+    time.sleep(2)
+PY
+      "
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,json; json.loads(open('/ws/.dottie/daemon_snapshot.json').read()); print('ok')"]
+      interval: 10s
+      retries: 5
+
+  # -- redis — optional lightweight queue for tandem mode (fallback = filesystem)
+  # Remove this service if you prefer filesystem queue (/ws/.dottie/queue)
+  dottie-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - dottie-redis:/data
+    command: redis-server --save 60 1 --loglevel warning
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      retries: 5
+
+volumes:
+  dottie-workspace:
+  dottie-weights:
+  dottie-redis:

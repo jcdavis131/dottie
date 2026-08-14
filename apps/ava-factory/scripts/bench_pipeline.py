@@ -213,7 +213,7 @@ def bench_trainer(
 
     cfg = AvaConfig.load(preset)
     if device == "cuda" and not torch.cuda.is_available():
-        device = "cpu"
+        device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")  # auto: GPU on personal local (CUDA avail), CPU in Hatch VM
         _log("WARN: CUDA requested but unavailable; falling back to cpu")
 
     model = build_model(cfg).to(device)
@@ -294,7 +294,7 @@ def main(argv: list[str] | None = None) -> int:
 
     import torch
 
-    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")  # auto: GPU on personal local (CUDA avail), CPU in Hatch VM
     tok_path = _resolve_tokenizer(args.preset)
     os.environ["AVA_TOKENIZER"] = str(tok_path)
     pipeline_cfg = _REPO / "configs" / "pipeline.yaml"
