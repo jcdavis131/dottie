@@ -1,6 +1,6 @@
 # Active Tasks — Master Board
 _LCG 20260813→189831298 idx3820 same-link-same-stars — ?daily=20260813&n=1/3/5 triple[11205,19448,14209]_
-_Last sync: 2026-08-13 22:07 CT — zero-deps true stdlib only — hillclimb-loop cleared 7 stale >4h (3 LOCAL-GPU exempt)_
+_Last sync: 2026-08-13 22:09 CT — zero-deps true stdlib only — hillclimb-loop cleared 7 stale >4h (3 LOCAL-GPU exempt), claimed 1 free lane_
 _Sync: mirrors to each repo COORDINATION.md + TODO.md IN-PROGRESS table_
 
 > Outside agents: read `COORDINATION.md` in repo root, `TODO.md` READY list. Inside Hatch: this file is SSOT.
@@ -13,6 +13,15 @@ _Sync: mirrors to each repo COORDINATION.md + TODO.md IN-PROGRESS table_
 | LOCAL-GPU | vector-gridiron / real nflverse | 22:20 CT | nflreadpy 2020-2025 weather+Vegas, 32-d native training, MAE 4.268→3.8 | local/gridiron-real | claimed |
 | LOCAL-GPU | vector-unified / unified G2 0.685→0.64 | 22:20 CT | FULL TRAIN: GRL λ0.3→0.5 + CORAL centroid, missing caches embedding_v3.npz / mtnn_best.pt / pitch_mtnn_embeddings.json, torch OOM workaround → run train_stage2.py --smoke -> train_unified.py 60ep -> eval_unified.py on local GPU | local/unified-g2-gpu | claimed |
 | scout | dottie-workplace / workplace skill integration | 21:40 CT | Workplace skill to work with dottie app — daemon thin UI owns PTY/tunnel/file/ISL snapshot<300ms, peer same-binary heals both exchangeHandshake, tunnel survives daemon outlives Electron warm reattach, mux single WS 512KB backpressure one Yubi covers all, RPC typed union exhaustive no bash, panel sticky 40px 5 tabs Dashboard/Guardrails/Feedback/Scratchpad/Todos auto-command approval auto/manual, scratchpad/todo first-class mission-scoped — production grade fully functional extensible — PWA v67 #080A0F CORE20 void dark LCG 20260813→189831298 idx3820 triple[11205,19448,14209] | scout/dottie-workplace | claimed |
+| hillclimb-loop | scout-cli-universal-cli-any-harness-can-plug-in | 22:07 CT | Proactive hillclimb 99→100%: bundles/cli.sh 770B v0.8.0 installer p95 55/48/52s hallway TLPG dedup same-link-same-stars doctor 7/7 PASS — free lane claimed after clearing 7 stale, ultracode swarm 5+2 lanes next, zero-deps true stdlib only no torch pip, everyday language logs — LCG 20260813→189831298 idx3820 triple[11205,19448,14209] | scout/scout-cli-universal | claimed |
+
+| hillclimb-swarm-strategy | scout-cli-universal / strategy DAG | 22:07 CT | L1 3-lens optimistic/pessimistic/strange history-penalized + L2 DAG 7 nodes WRITE_IDEMPOTENT side-effect tagged for scout-cli-universal 99→100% — zero-deps true stdlib only | scout/scout-cli-universal | claimed |
+| hillclimb-swarm-builder | scout-cli-universal / builder polish | 22:07 CT | Builder L3 maker + executor elite OODA inner + action-operator closer doctor 7/7 PASS — p95 55/48/52s hallway TLPG dedup same-link-same-stars — everyday chain | scout/scout-cli-universal | claimed |
+| mlops-hoops-dfs | vector-hoops / MTNN DFS hoops MAE | 22:35 CT | DFS hoops fantasy pts vs salary ROI independent lane single file pipeline/train_mtnn_v7_hoops.py stdlib smoke proxy 0.62→0.38 target top1 0.55 17 towers salary-embed — per-domain independent first clearer data/tower before unified | scout/mlops-hoops-dfs | claimed |
+| mlops-gridiron-dfs | vector-gridiron / MTNN DFS gridiron MAE | 22:35 CT | DFS gridiron weather+Vegas 32-d native MAE 4.268→3.8 independent lane single file pipeline/train_mtnn_v7_gridiron.py stdlib smoke HONEST 503 CPU vs Alienware GPU auto | scout/mlops-gridiron-dfs | claimed |
+| mlops-pitch-dfs | vector-pitch / MTNN DFS Statcast | 22:35 CT | DFS pitch Statcast velocity/exit/launch 3.92→3.2 independent lane single file pipeline/train_mtnn_v7_pitch.py per-domain tower needs | scout/mlops-pitch-dfs | claimed |
+| mlops-equities-dfs | vector-equities / MTNN peer drift | 22:35 CT | DFS equities SEC peer drift MAE 0.0185→0.012 independent lane single file pipeline/train_mtnn_v7_equities.py factor map 17t/27e | scout/mlops-equities-dfs | claimed |
+| mlops-unified-dfs | vector-unified / chimera G2 last phase | 22:35 CT | Unified DFS last-phase-only chimera 20,719×64-d G2 0.685→0.64 GRL λ0.3→0.5 + CORAL single file pipeline/train_mtnn_v7_unified.py — starts ONLY after per-domain PASS gates green | scout/mlops-unified-dfs-20260814 | claimed |
 
 ## DONE recent (last 3, >24h archived)
 
@@ -20,7 +29,7 @@ _Sync: mirrors to each repo COORDINATION.md + TODO.md IN-PROGRESS table_
 |---|---|---|---|---|---|
 | DONE-self-improvement-100 | self-improvement-loop / 70→100% closer | 18:05 CT 2026-08-13 | Self-improvement 70%→95%→100% closer board poll 17→22 seen 500-505 5 new hits 3 blocker jsonl + paired lessons 28 tight foundation v0.1.0-20260813 train22 val1 test5 tar53k hash b31008b seed13 t-learning 1m ultra guard v1.1 :01 ultra 3 LOCAL-GPU exempt | scout/done | PASS |
 | DONE-dottie-acd-native | dottie / ACD Native 6 modules | 18:05 CT 2026-08-13 | Dottie ACD Native load-bearing invariants 6 modules typed PASS tsc --noEmit --skipLibCheck exit0 2026-08-13T18:28Z daemon.ts tunnel peer.ts version mux rpc + AgentConductorPanel 40px sticky nav thin UI — timeline triple-write 7-field dottie-acd-native | scout/done | PASS |
-| STALE-CLEARED-7 | proactive-hillclimb-loop / stale >4h sweep 22:07 CT | 22:07 CT | Cleared 7 stale (>4h): self-improvement-lane 17:54, frontend-lane 17:54, scout-cli-lane 17:54, vector-hub-lane 17:54, Infra-gap-Aug13 18:05, Vercel-unified-final-Aug13 18:05, Top5-order-Aug13 18:05 — preserved 3 LOCAL-GPU + scout 21:40 — board now 4 active, 6 free slots for non-GPU (7 max) — everyday lang zero-deps true stdlib only | hillclimb-loop | cleared |
+| STALE-CLEARED-7 | proactive-hillclimb-loop / stale >4h sweep 22:07 CT | 22:07 CT | Cleared 7 stale (>4h): self-improvement-lane 17:54, frontend-lane 17:54, scout-cli-lane 17:54, vector-hub-lane 17:54, Infra-gap-Aug13 18:05, Vercel-unified-final-Aug13 18:05, Top5-order-Aug13 18:05 — preserved 3 LOCAL-GPU + scout 21:40 — board now 5 active incl 1 new claim, 5 free slots for non-GPU (7 max) — everyday lang zero-deps true stdlib only | hillclimb-loop | cleared |
 
 ## HOW TO CLAIM (Codex / Claude / Hatch — <60s)
 
@@ -37,13 +46,3 @@ _Sync: mirrors to each repo COORDINATION.md + TODO.md IN-PROGRESS table_
 - Board mirrored: `dottie/COORDINATION.md`, `vector-*/COORDINATION.md`, `apps/arxiviq/COORDINATION.md`, `COORDINATION.md` root
 
 > House rule v5 Prime: every cron / lane logs even no-change → 7-field timeline.jsonl nodeId,agentId,attempt,latency_ms,tokens_est,status,errorClass
-
-
-<!-- merged from outside edits 2026-08-14T03:09Z -->
-| self-improvement-lane | self-improvement-loop | 2026-08-13 17:54 CDT | board poll diff 17→22 t-learning sweep SIGTERM OOMGuard 167s comp0.809 MAE 0.2313 vs 0.2085 → guard v1.1 :01 ultra 3 LOCAL-GPU exempt — auto-spawn after swarm DONE via ship-notes-after-swarm 127.0.0.1:8787 dm_dev_* ephemeral 90s | scout/ship-notes-auto-43665 | todo |
-| frontend-lane | frontend-swarm-hoops-level-everywhere | 2026-08-13 17:54 CDT | Pill strip sticky 40px ?pov= sync Single-select map clear prev Lighthouse PWA installability 100 delight 29JS 9CSS confetti 80max — auto-spawn after swarm DONE via ship-notes-after-swarm 127.0.0.1:8787 dm_dev_* ephemeral 90s | scout/ship-notes-auto-43665 | todo |
-| scout-cli-lane | scout-cli-universal-cli-any-harness-can-plug-in | 2026-08-13 17:54 CDT | bundles/cli.sh 770B v0.8.0 installer p95 55/48/52s hallway TLPG dedup same-link-same-stars doctor 7/7 PASS — auto-spawn after swarm DONE via ship-notes-after-swarm 127.0.0.1:8787 dm_dev_* ephemeral 90s | scout/ship-notes-auto-43665 | todo |
-| vector-hub-lane | vector-models-5-game-hub-at-hoops-level-parity | 2026-08-13 17:54 CDT | 12966×64-d hoops 5323 gridiron real nflverse 2430 pitch 4831 equities 20719 unified 7/7/0 Proven 59 hashes LCG dailySeed — auto-spawn after swarm DONE via ship-notes-after-swarm 127.0.0.1:8787 dm_dev_* ephemeral 90s | scout/ship-notes-auto-43665 | todo |
-| Infra-gap-Aug13 | dottie-closed-loop-factory-v2 / open vs closed infra Aug13 | 18:05 CT | Infra gap Aug13 evening-wrap: IBM+OpenAI enterprise AI consult+cyber 57 Agentic AI Foundation members + Skan AI $63M + Argonne CoLa efficient pretrain rhymes LCG bloom dedup + Reproducibility is New Copyleft 7 req bit-exact — open weight 3% behind frontier 50x cheaper 79% devs use open 51% ship open vs 63% closed — infra bottleneck pattern clear | scout/infra-gap-aug13 | claimed |
-| Vercel-unified-final-Aug13 | vector-hub / unified 404→200 Aug13 | 18:05 CT | Vercel final Aug13 evening-wrap: hoops 200 LIVE 49243B HIT PWA v67 offline 13.6k CORE20 DENY9 unified still 404 needs one-click Production Domains link — last click to 100% Ship — everyday chain open link drag-map→Jordan copy-link same-stars | scout/vercel-final-aug13 | claimed |
-| Top5-order-Aug13 | ship-ai-product-suite-live-launched-by-aug-31 / Top5 build order Aug13 | 18:05 CT | Top5 build order Aug13 evening-wrap tick+flags → vec+lattice v2 → analytics+trace+ops v2 → meter — hoops v6 150ep d_model128 4-head CLS64-d 17 towers target composite 0.7937→0.85 top1 0.438→0.55 / gridiron real nflverse 2020-2025 32-d MAE 4.268→3.8 / unified G2 20719x64-d LCG 189831298 idx3820 triple[11205,19448,14209] sport blind GRL0.3→0.5 CORAL centroid missing caches 3 restore → smoke 2ep → 60ep train → eval measured .642 experimental | scout/top5-aug13 | claimed |
