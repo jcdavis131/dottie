@@ -1,4 +1,5 @@
 import statsData from "../public/data/stats.json";
+import AgentConductorPanel from "./components/AgentConductorPanel";
 
 export default function Home() {
   const stats: any = (statsData as any) || { nodes: 676, edges: 758, docs: 132, papers: 132, people: 521, checksum: "a3f9c1e2" };
@@ -48,7 +49,7 @@ export default function Home() {
       <div className="top mono">
         <div className="top-in">
           <div className="brand"><span className="dot"/> <b>arxiviq.com</b> <span style={{opacity:.7}}>· Dottie factory</span></div>
-          <div style={{display:"flex",gap:8,alignItems:"center"}}><span className="pill">solo · MIT · no employer</span><span className="pill live">● live</span></div>
+          <div style={{display:"flex",gap:10,alignItems:"center"}}><a href="/conductor" style={{fontSize:11, padding:'5px 10px', borderRadius:999, background:'#0F1A12', border:'1px solid #1E3A2F', color:'#7CFFB2', textDecoration:'none'}}>ACD /conductor →</a><span className="pill">solo · MIT · no employer</span><span className="pill live">● live</span></div>
         </div>
       </div>
       <div className="wrap">
@@ -80,6 +81,13 @@ export default function Home() {
             <div className="card"><h4>Use it</h4><p><span className="mono" style={{background:"var(--bg)",padding:"2px 6px",border:"1px solid var(--line2)",borderRadius:6,fontSize:"11px"}}>pip install -e apps/dottie</span> gives you CLI. <span className="mono" style={{background:"var(--bg)",padding:"2px 6px",border:"1px solid var(--line2)",borderRadius:6,fontSize:"11px"}}>dottie repl</span> stays warm, missions pause Monday resume Thursday with receipts. Starter at <a href="/starter">/starter</a> → 10 sec clone.</p></div>
           </div>
         </div>
+
+        {/* Agent Conductor */}
+        <div className="section" id="conductor">
+          <div className="mono" style={{fontSize:11, color:"var(--ink3)", marginBottom:12}}>Agent Conductor — one place to herd agents</div>
+          <AgentConductorPanel />
+        </div>
+
         <div className="foot mono"><div>© {new Date().getFullYear()} arxiviq.com — Dottie is MIT, solo, free-tier only. No connection to employer.</div><div>Vercel + GitHub raw + local box when on</div></div>
       </div>
     </div>
