@@ -268,6 +268,7 @@ def stats_cmd(
         "agent": "scout/payments-phase0",
         "network": "none",
         "note": "Phase1 needs interactive confirm to allow STRIPE_API_KEY + api.stripe.com domain",
+        "stores": [str(p) for p in _store_paths()],
     }
     emit(ok(result, command="payments stats"), command="payments stats")
 
