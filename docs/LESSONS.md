@@ -8033,3 +8033,163 @@ Every entry: what / cause / lesson / fixed / prevents
 - **Fixed**: reviewed ultra-20260812T2147-builder-equities-unified
 - **Prevents**: stuck-detector+verifier guard
 - **ID**: lsn_20260812T232906Z_5036 c=0.45
+
+## 2026-08-13 — board hit active-tasks.md:7:| LOCAL-GPU | vector-unified / unified G2 0.685->0.6
+- **Where**: self_improvement_board_poll
+- **Cause**: Board scan found self-improvement lane containing 'general' — line: active-tasks.md:7:| LOCAL-GPU | vector-unified / unified G2 0.685->0.64 | 22:20 CT | FULL TRAIN: GRL λ0.3→0.5 + CORAL ce
+- **Lesson**: Every blocker/mistake must spawn self-improvement task + paired lesson; auto-capture from board poll
+- **Fixed**: Created blocker jsonl under self-improvement-loop/hidden_files + triggered self_improve_tick; logged 7-field
+- **Prevents**: 3m poll + hourly mistake-learning sweep + stuck-detector hook prevents silent blocker recurrence; AGENTS.md rule 3x recurrence -> guard
+- **ID**: lsn_20260813T190814Z_5e84 c=0.65
+
+## 2026-08-13 — board hit active-tasks.md:57:| self-improvement-lane | self-improvement-loop | 2
+- **Where**: self_improvement_board_poll
+- **Cause**: Board scan found self-improvement lane containing 'stuck_loop' — line: active-tasks.md:57:| self-improvement-lane | self-improvement-loop | 2026-08-13 17:54 CDT | board poll diff 17→22 t-lear
+- **Lesson**: Every blocker/mistake must spawn self-improvement task + paired lesson; auto-capture from board poll
+- **Fixed**: Created blocker jsonl under self-improvement-loop/hidden_files + triggered self_improve_tick; logged 7-field
+- **Prevents**: 3m poll + hourly mistake-learning sweep + stuck-detector hook prevents silent blocker recurrence; AGENTS.md rule 3x recurrence -> guard
+- **ID**: lsn_20260813T190814Z_f29d c=0.65
+
+## 2026-08-13 — board hit active-tasks.md:66:<!-- cleared 2026-08-13 13:37 CDT hillclimb-loop: c
+- **Where**: self_improvement_board_poll
+- **Cause**: Board scan found self-improvement lane containing 'stuck_loop' — line: active-tasks.md:66:<!-- cleared 2026-08-13 13:37 CDT hillclimb-loop: cleared 18 stale >4h (T5-dev-api-2/4@07:42 CT 5h55m
+- **Lesson**: Every blocker/mistake must spawn self-improvement task + paired lesson; auto-capture from board poll
+- **Fixed**: Created blocker jsonl under self-improvement-loop/hidden_files + triggered self_improve_tick; logged 7-field
+- **Prevents**: 3m poll + hourly mistake-learning sweep + stuck-detector hook prevents silent blocker recurrence; AGENTS.md rule 3x recurrence -> guard
+- **ID**: lsn_20260813T190814Z_7c94 c=0.65
+
+## 2026-08-13 — board hit COORDINATION.md:7:| LOCAL-GPU | vector-unified / unified G2 0.685->0.6
+- **Where**: self_improvement_board_poll
+- **Cause**: Board scan found self-improvement lane containing 'general' — line: COORDINATION.md:7:| LOCAL-GPU | vector-unified / unified G2 0.685->0.64 | 22:20 CT | FULL TRAIN: GRL λ0.3→0.5 + CORAL ce
+- **Lesson**: Every blocker/mistake must spawn self-improvement task + paired lesson; auto-capture from board poll
+- **Fixed**: Created blocker jsonl under self-improvement-loop/hidden_files + triggered self_improve_tick; logged 7-field
+- **Prevents**: 3m poll + hourly mistake-learning sweep + stuck-detector hook prevents silent blocker recurrence; AGENTS.md rule 3x recurrence -> guard
+- **ID**: lsn_20260813T190814Z_f2fd c=0.65
+
+## 2026-08-13 — board hit COORDINATION.md:57:| self-improvement-lane | self-improvement-loop | 2
+- **Where**: self_improvement_board_poll
+- **Cause**: Board scan found self-improvement lane containing 'stuck_loop' — line: COORDINATION.md:57:| self-improvement-lane | self-improvement-loop | 2026-08-13 17:54 CDT | board poll diff 17→22 t-lear
+- **Lesson**: Every blocker/mistake must spawn self-improvement task + paired lesson; auto-capture from board poll
+- **Fixed**: Created blocker jsonl under self-improvement-loop/hidden_files + triggered self_improve_tick; logged 7-field
+- **Prevents**: 3m poll + hourly mistake-learning sweep + stuck-detector hook prevents silent blocker recurrence; AGENTS.md rule 3x recurrence -> guard
+- **ID**: lsn_20260813T190815Z_07ff c=0.65
+
+## 2026-08-13 — board hit COORDINATION.md:66:<!-- cleared 2026-08-13 13:37 CDT hillclimb-loop: c
+- **Where**: self_improvement_board_poll
+- **Cause**: Board scan found self-improvement lane containing 'stuck_loop' — line: COORDINATION.md:66:<!-- cleared 2026-08-13 13:37 CDT hillclimb-loop: cleared 18 stale >4h (T5-dev-api-2/4@07:42 CT 5h55m
+- **Lesson**: Every blocker/mistake must spawn self-improvement task + paired lesson; auto-capture from board poll
+- **Fixed**: Created blocker jsonl under self-improvement-loop/hidden_files + triggered self_improve_tick; logged 7-field
+- **Prevents**: 3m poll + hourly mistake-learning sweep + stuck-detector hook prevents silent blocker recurrence; AGENTS.md rule 3x recurrence -> guard
+- **ID**: lsn_20260813T190815Z_3451 c=0.65
+
+## 2026-08-13 — board hit COORDINATION.md:7:| LOCAL-GPU | vector-unified / unified G2 0.685->0.6
+- **Where**: self_improvement_board_poll
+- **Cause**: Board scan found self-improvement lane containing 'general' — line: COORDINATION.md:7:| LOCAL-GPU | vector-unified / unified G2 0.685->0.64 | 22:20 CT | FULL TRAIN: GRL λ0.3→0.5 + CORAL ce
+- **Lesson**: Every blocker/mistake must spawn self-improvement task + paired lesson; auto-capture from board poll
+- **Fixed**: Created blocker jsonl under self-improvement-loop/hidden_files + triggered self_improve_tick; logged 7-field
+- **Prevents**: 3m poll + hourly mistake-learning sweep + stuck-detector hook prevents silent blocker recurrence; AGENTS.md rule 3x recurrence -> guard
+- **ID**: lsn_20260813T190815Z_2d2f c=0.65
+
+## 2026-08-13 — board hit COORDINATION.md:57:| self-improvement-lane | self-improvement-loop | 2
+- **Where**: self_improvement_board_poll
+- **Cause**: Board scan found self-improvement lane containing 'stuck_loop' — line: COORDINATION.md:57:| self-improvement-lane | self-improvement-loop | 2026-08-13 17:54 CDT | board poll diff 17→22 t-lear
+- **Lesson**: Every blocker/mistake must spawn self-improvement task + paired lesson; auto-capture from board poll
+- **Fixed**: Created blocker jsonl under self-improvement-loop/hidden_files + triggered self_improve_tick; logged 7-field
+- **Prevents**: 3m poll + hourly mistake-learning sweep + stuck-detector hook prevents silent blocker recurrence; AGENTS.md rule 3x recurrence -> guard
+- **ID**: lsn_20260813T190815Z_bf71 c=0.65
+
+## 2026-08-13 — board hit COORDINATION.md:66:<!-- cleared 2026-08-13 13:37 CDT hillclimb-loop: c
+- **Where**: self_improvement_board_poll
+- **Cause**: Board scan found self-improvement lane containing 'stuck_loop' — line: COORDINATION.md:66:<!-- cleared 2026-08-13 13:37 CDT hillclimb-loop: cleared 18 stale >4h (T5-dev-api-2/4@07:42 CT 5h55m
+- **Lesson**: Every blocker/mistake must spawn self-improvement task + paired lesson; auto-capture from board poll
+- **Fixed**: Created blocker jsonl under self-improvement-loop/hidden_files + triggered self_improve_tick; logged 7-field
+- **Prevents**: 3m poll + hourly mistake-learning sweep + stuck-detector hook prevents silent blocker recurrence; AGENTS.md rule 3x recurrence -> guard
+- **ID**: lsn_20260813T190816Z_4c20 c=0.65
+
+## 2026-08-13 — board hit COORDINATION.md:7:| LOCAL-GPU | vector-unified / unified G2 0.685->0.6
+- **Where**: self_improvement_board_poll
+- **Cause**: Board scan found self-improvement lane containing 'general' — line: COORDINATION.md:7:| LOCAL-GPU | vector-unified / unified G2 0.685->0.64 | 22:20 CT | FULL TRAIN: GRL λ0.3→0.5 + CORAL ce
+- **Lesson**: Every blocker/mistake must spawn self-improvement task + paired lesson; auto-capture from board poll
+- **Fixed**: Created blocker jsonl under self-improvement-loop/hidden_files + triggered self_improve_tick; logged 7-field
+- **Prevents**: 3m poll + hourly mistake-learning sweep + stuck-detector hook prevents silent blocker recurrence; AGENTS.md rule 3x recurrence -> guard
+- **ID**: lsn_20260813T190816Z_b997 c=0.65
+
+## 2026-08-13 — board hit active-tasks.md:9:<!-- cleared 2026-08-13 15:38 CDT hillclimb-loop: cl
+- **Where**: self_improvement_board_poll
+- **Cause**: Board scan found self-improvement lane containing 'stuck_loop' — line: active-tasks.md:9:<!-- cleared 2026-08-13 15:38 CDT hillclimb-loop: cleared 18 stale >4h (Scout-hillclimb-158@06:37 CT 9
+- **Lesson**: Every blocker/mistake must spawn self-improvement task + paired lesson; auto-capture from board poll
+- **Fixed**: Created blocker jsonl under self-improvement-loop/hidden_files + triggered self_improve_tick; logged 7-field
+- **Prevents**: 3m poll + hourly mistake-learning sweep + stuck-detector hook prevents silent blocker recurrence; AGENTS.md rule 3x recurrence -> guard
+- **ID**: lsn_20260813T233500Z_0ee2 c=0.65
+
+## 2026-08-13 — board hit active-tasks.md:11:| LOCAL-GPU | vector-unified / unified G2 0.685->0.
+- **Where**: self_improvement_board_poll
+- **Cause**: Board scan found self-improvement lane containing 'general' — line: active-tasks.md:11:| LOCAL-GPU | vector-unified / unified G2 0.685->0.64 | 22:20 CT | FULL TRAIN: GRL λ0.3→0.5 + CORAL c
+- **Lesson**: Every blocker/mistake must spawn self-improvement task + paired lesson; auto-capture from board poll
+- **Fixed**: Created blocker jsonl under self-improvement-loop/hidden_files + triggered self_improve_tick; logged 7-field
+- **Prevents**: 3m poll + hourly mistake-learning sweep + stuck-detector hook prevents silent blocker recurrence; AGENTS.md rule 3x recurrence -> guard
+- **ID**: lsn_20260813T233500Z_c9fe c=0.65
+
+## 2026-08-13 — board hit active-tasks.md:23:| Phase1-Launched | ship-ai-product-suite-live-laun
+- **Where**: self_improvement_board_poll
+- **Cause**: Board scan found self-improvement lane containing 'blocker' — line: active-tasks.md:23:| Phase1-Launched | ship-ai-product-suite-live-launched-by-aug-31 / 10 blockers | 07:31 CT | Phase1 L
+- **Lesson**: Every blocker/mistake must spawn self-improvement task + paired lesson; auto-capture from board poll
+- **Fixed**: Created blocker jsonl under self-improvement-loop/hidden_files + triggered self_improve_tick; logged 7-field
+- **Prevents**: 3m poll + hourly mistake-learning sweep + stuck-detector hook prevents silent blocker recurrence; AGENTS.md rule 3x recurrence -> guard
+- **ID**: lsn_20260813T233500Z_040a c=0.65
+
+## 2026-08-13 — board hit active-tasks.md:38:| self-improvement-lane | self-improvement-loop | 2
+- **Where**: self_improvement_board_poll
+- **Cause**: Board scan found self-improvement lane containing 'stuck_loop' — line: active-tasks.md:38:| self-improvement-lane | self-improvement-loop | 2026-08-13 17:54 CDT | board poll diff 17→22 t-lear
+- **Lesson**: Every blocker/mistake must spawn self-improvement task + paired lesson; auto-capture from board poll
+- **Fixed**: Created blocker jsonl under self-improvement-loop/hidden_files + triggered self_improve_tick; logged 7-field
+- **Prevents**: 3m poll + hourly mistake-learning sweep + stuck-detector hook prevents silent blocker recurrence; AGENTS.md rule 3x recurrence -> guard
+- **ID**: lsn_20260813T233500Z_ee39 c=0.65
+
+## 2026-08-13 — board hit active-tasks.md:41:| DONE-self-improvement-100 | self-improvement-loop
+- **Where**: self_improvement_board_poll
+- **Cause**: Board scan found self-improvement lane containing 'stuck_loop' — line: active-tasks.md:41:| DONE-self-improvement-100 | self-improvement-loop / 70→100% closer | 18:05 CT | DONE 2026-08-13 eve
+- **Lesson**: Every blocker/mistake must spawn self-improvement task + paired lesson; auto-capture from board poll
+- **Fixed**: Created blocker jsonl under self-improvement-loop/hidden_files + triggered self_improve_tick; logged 7-field
+- **Prevents**: 3m poll + hourly mistake-learning sweep + stuck-detector hook prevents silent blocker recurrence; AGENTS.md rule 3x recurrence -> guard
+- **ID**: lsn_20260813T233500Z_a52e c=0.65
+
+## 2026-08-13 — board hit COORDINATION.md:9:<!-- cleared 2026-08-13 15:38 CDT hillclimb-loop: cl
+- **Where**: self_improvement_board_poll
+- **Cause**: Board scan found self-improvement lane containing 'stuck_loop' — line: COORDINATION.md:9:<!-- cleared 2026-08-13 15:38 CDT hillclimb-loop: cleared 18 stale >4h (Scout-hillclimb-158@06:37 CT 9
+- **Lesson**: Every blocker/mistake must spawn self-improvement task + paired lesson; auto-capture from board poll
+- **Fixed**: Created blocker jsonl under self-improvement-loop/hidden_files + triggered self_improve_tick; logged 7-field
+- **Prevents**: 3m poll + hourly mistake-learning sweep + stuck-detector hook prevents silent blocker recurrence; AGENTS.md rule 3x recurrence -> guard
+- **ID**: lsn_20260813T233500Z_2c7d c=0.65
+
+## 2026-08-13 — board hit COORDINATION.md:11:| LOCAL-GPU | vector-unified / unified G2 0.685->0.
+- **Where**: self_improvement_board_poll
+- **Cause**: Board scan found self-improvement lane containing 'general' — line: COORDINATION.md:11:| LOCAL-GPU | vector-unified / unified G2 0.685->0.64 | 22:20 CT | FULL TRAIN: GRL λ0.3→0.5 + CORAL c
+- **Lesson**: Every blocker/mistake must spawn self-improvement task + paired lesson; auto-capture from board poll
+- **Fixed**: Created blocker jsonl under self-improvement-loop/hidden_files + triggered self_improve_tick; logged 7-field
+- **Prevents**: 3m poll + hourly mistake-learning sweep + stuck-detector hook prevents silent blocker recurrence; AGENTS.md rule 3x recurrence -> guard
+- **ID**: lsn_20260813T233500Z_9505 c=0.65
+
+## 2026-08-13 — board hit COORDINATION.md:23:| Phase1-Launched | ship-ai-product-suite-live-laun
+- **Where**: self_improvement_board_poll
+- **Cause**: Board scan found self-improvement lane containing 'blocker' — line: COORDINATION.md:23:| Phase1-Launched | ship-ai-product-suite-live-launched-by-aug-31 / 10 blockers | 07:31 CT | Phase1 L
+- **Lesson**: Every blocker/mistake must spawn self-improvement task + paired lesson; auto-capture from board poll
+- **Fixed**: Created blocker jsonl under self-improvement-loop/hidden_files + triggered self_improve_tick; logged 7-field
+- **Prevents**: 3m poll + hourly mistake-learning sweep + stuck-detector hook prevents silent blocker recurrence; AGENTS.md rule 3x recurrence -> guard
+- **ID**: lsn_20260813T233501Z_902b c=0.65
+
+## 2026-08-13 — board hit COORDINATION.md:38:| self-improvement-lane | self-improvement-loop | 2
+- **Where**: self_improvement_board_poll
+- **Cause**: Board scan found self-improvement lane containing 'stuck_loop' — line: COORDINATION.md:38:| self-improvement-lane | self-improvement-loop | 2026-08-13 17:54 CDT | board poll diff 17→22 t-lear
+- **Lesson**: Every blocker/mistake must spawn self-improvement task + paired lesson; auto-capture from board poll
+- **Fixed**: Created blocker jsonl under self-improvement-loop/hidden_files + triggered self_improve_tick; logged 7-field
+- **Prevents**: 3m poll + hourly mistake-learning sweep + stuck-detector hook prevents silent blocker recurrence; AGENTS.md rule 3x recurrence -> guard
+- **ID**: lsn_20260813T233501Z_e0d5 c=0.65
+
+## 2026-08-13 — board hit COORDINATION.md:41:| DONE-self-improvement-100 | self-improvement-loop
+- **Where**: self_improvement_board_poll
+- **Cause**: Board scan found self-improvement lane containing 'stuck_loop' — line: COORDINATION.md:41:| DONE-self-improvement-100 | self-improvement-loop / 70→100% closer | 18:05 CT | DONE 2026-08-13 eve
+- **Lesson**: Every blocker/mistake must spawn self-improvement task + paired lesson; auto-capture from board poll
+- **Fixed**: Created blocker jsonl under self-improvement-loop/hidden_files + triggered self_improve_tick; logged 7-field
+- **Prevents**: 3m poll + hourly mistake-learning sweep + stuck-detector hook prevents silent blocker recurrence; AGENTS.md rule 3x recurrence -> guard
+- **ID**: lsn_20260813T233501Z_a000 c=0.65
