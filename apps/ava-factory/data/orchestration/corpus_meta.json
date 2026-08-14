@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "built_at": "2026-08-12T09:11:37.331619+00:00",
+  "built_at": "2026-08-13T17:39:55.342190+00:00",
   "generator": {
     "seed": 20260809,
     "battery_n": 800,
@@ -58,34 +58,34 @@
     "n_records_corrected": 0
   },
   "counts": {
-    "total": 1602,
+    "total": 1608,
     "by_source": {
-      "ultra_timeline": 802,
+      "ultra_timeline": 808,
       "synthetic_battery": 800
     },
     "by_provenance": {
       "simulated": 834,
-      "measured": 768
+      "measured": 774
     },
     "by_tier": {
       "deterministic": 251,
       "deep_research": 448,
       "llm": 110,
-      "agentic_epic": 488,
-      "action_operator": 305
+      "agentic_epic": 490,
+      "action_operator": 309
     },
     "by_split": {
-      "train": 1387,
+      "train": 1392,
       "val": 151,
-      "test": 64
+      "test": 65
     },
     "by_label_tier": {
       "simulated": 815,
-      "measured-behavior": 748,
-      "measured-outcome": 39
+      "measured-behavior": 752,
+      "measured-outcome": 41
     },
     "measured_holdout_by_label_tier": {
-      "measured-behavior": 119,
+      "measured-behavior": 120,
       "measured-outcome": 10
     }
   },
@@ -93,8 +93,8 @@
     "ultra_timeline": {
       "included": true,
       "dir": "bundles/ultra/runs",
-      "n_runs": 242,
-      "n_records": 802
+      "n_runs": 248,
+      "n_records": 808
     },
     "workflow_journal": {
       "included": false,

@@ -1,54 +1,54 @@
 {
   "schema_version": 1,
-  "built_at": "2026-08-12T09:12:34.995323+00:00",
+  "built_at": "2026-08-13T17:44:23.226288+00:00",
   "corpus_source": "l2_corpus",
   "trainer": "orchestrator_model",
   "champion": {
     "name": "v4",
     "model_version": "orch-mlp-v1-v4",
-    "val_tier_accuracy": 0.960265,
-    "tier_accuracy_all": 0.765625,
-    "tier_accuracy_measured": 0.8166666666666667,
-    "n_holdout": 64,
-    "n_measured_holdout": 60,
+    "val_tier_accuracy": 0.986755,
+    "tier_accuracy_all": 0.7846153846153846,
+    "tier_accuracy_measured": 0.8360655737704918,
+    "n_holdout": 65,
+    "n_measured_holdout": 61,
     "agreement": {
-      "agreement_rate": 0.765625,
-      "mean_reward_all": 0.8721325312500001,
-      "mean_reward_on_agreement": 0.9355708571428574,
-      "mean_reward_on_disagreement": 0.6649006666666666,
+      "agreement_rate": 0.7846153846153846,
+      "mean_reward_all": 0.8702535692307694,
+      "mean_reward_on_agreement": 0.9047641568627453,
+      "mean_reward_on_disagreement": 0.7445364285714285,
       "note": "counterfactual rewards unobserved; agreement-conditional statistics reported in place of true regret"
     },
     "risk_calibration": {
       "deciles": [
         {
           "decile": 0,
-          "n": 54,
-          "mean_pred_risk": 0.013329004270698365,
+          "n": 57,
+          "mean_pred_risk": 0.00040334263132776714,
           "observed_failure_rate": 0.0
         },
         {
           "decile": 1,
-          "n": 3,
-          "mean_pred_risk": 0.16255601197489056,
-          "observed_failure_rate": 0.3333333333333333
+          "n": 0,
+          "mean_pred_risk": null,
+          "observed_failure_rate": null
         },
         {
           "decile": 2,
           "n": 1,
-          "mean_pred_risk": 0.29103261901747396,
-          "observed_failure_rate": 0.0
+          "mean_pred_risk": 0.2565497975744694,
+          "observed_failure_rate": 1.0
         },
         {
           "decile": 3,
-          "n": 4,
-          "mean_pred_risk": 0.3612754533309179,
-          "observed_failure_rate": 0.5
+          "n": 0,
+          "mean_pred_risk": null,
+          "observed_failure_rate": null
         },
         {
           "decile": 4,
-          "n": 1,
-          "mean_pred_risk": 0.4956121832651042,
-          "observed_failure_rate": 1.0
+          "n": 0,
+          "mean_pred_risk": null,
+          "observed_failure_rate": null
         },
         {
           "decile": 5,
@@ -64,9 +64,9 @@
         },
         {
           "decile": 7,
-          "n": 1,
-          "mean_pred_risk": 0.7052329259728087,
-          "observed_failure_rate": 1.0
+          "n": 0,
+          "mean_pred_risk": null,
+          "observed_failure_rate": null
         },
         {
           "decile": 8,
@@ -76,31 +76,31 @@
         },
         {
           "decile": 9,
-          "n": 0,
-          "mean_pred_risk": null,
-          "observed_failure_rate": null
+          "n": 7,
+          "mean_pred_risk": 0.9784997656062195,
+          "observed_failure_rate": 0.5714285714285714
         }
       ],
-      "brier": 0.036062789533069
+      "brier": 0.05443365929186111
     }
   },
   "baselines": {
     "freq_prior": {
       "tier": "agentic_epic",
-      "accuracy_all": 0.234375,
-      "accuracy_measured": 0.25
+      "accuracy_all": 0.23076923076923078,
+      "accuracy_measured": 0.2459016393442623
     },
     "heuristic": {
-      "accuracy_evaluable": 0.859375,
-      "n_evaluable": 64,
-      "accuracy_measured": 0.85,
-      "n_evaluable_measured": 60,
+      "accuracy_evaluable": 0.8461538461538461,
+      "n_evaluable": 65,
+      "accuracy_measured": 0.8360655737704918,
+      "n_evaluable_measured": 61,
       "note": "synthetic_battery labels ARE the heuristic's outputs, so heuristic accuracy is 1.0 on battery records by construction; the meaningful comparison is the measured subset"
     }
   },
   "gate": {
     "gate_passed": false,
-    "reason": "champion measured accuracy 0.816667 does not strictly beat both baselines (freq prior 0.25, heuristic 0.85) on n=60 measured held-out records"
+    "reason": "champion measured accuracy 0.836066 does not strictly beat both baselines (freq prior 0.245902, heuristic 0.836066) on n=61 measured held-out records"
   },
   "notes": [
     "counterfactual rewards unobserved; agreement-conditional statistics reported in place of true regret",
