@@ -69,20 +69,22 @@ jobs:
       - name: Ruff lint — packages/ava-skills (HARD gate, at 0)
         run: uvx ruff@0.15.22 check packages/ava-skills
       # NON-BLOCKING for the REMAINING three, and the size of the debt is stated so
-      # `|| true` cannot be mistaken for "lint is clean". Re-measured 2026-08-09:
-      # 449 findings -- packages/personal-graphify 141, packages/ava-open-harness 79,
-      # apps/scout-cli 229 (each package carries its own [tool.ruff], and the
+      # `|| true` cannot be mistaken for "lint is clean". Re-measured 2026-08-14:
+      # 511 findings -- packages/personal-graphify 141, packages/ava-open-harness 79,
+      # apps/scout-cli 291 (each package carries its own [tool.ruff], and the
       # per-package counts sum exactly to the combined run, so this is real debt and
-      # not a config-discovery artifact). WHY it moved from 252: the 08-01 recount's
-      # "scout-cli 32" predates the full v0.8 plugin surface this history carries;
-      # the 2026-08-09 lane files themselves lint at 0, verified per-file.
+      # not a config-discovery artifact). WHY it moved from 449: merging origin/main
+      # into this branch (192 commits of drift) added new scout-cli plugins
+      # (comms/pair/tasks/rft) — personal-graphify and ava-open-harness are unchanged,
+      # the entire +62 is apps/scout-cli 229 -> 291.
       # Trail: 334 (07-24) -> 263 -> 252 (08-01, pre-surface) -> 450 -> 449 (08-09,
       # full surface; -1 = pre-existing B904 fixed in the mcp serve command while
-      # extending it for meta-MCP). ava-skills 19 -> 0 and HARD since 08-01. Same ratchet: flip the
+      # extending it for meta-MCP) -> 511 (08-14, main merge adds four scout-cli
+      # plugins). ava-skills 19 -> 0 and HARD since 08-01. Same ratchet: flip the
       # next one the day it reaches 0 — ava-open-harness at 79 is now nearest.
       # A number in a comment rots even inside one session — re-measure it, never
       # carry it forward.
-      - name: Ruff lint (non-blocking — 449 known findings, see comment)
+      - name: Ruff lint (non-blocking — 511 known findings, see comment)
         run: uvx ruff@0.15.22 check packages/ava-open-harness packages/personal-graphify apps/scout-cli --exclude apps/scout-cli/.venv || true
       # A RATCHET, not a lint. Fails only on a gate-shaped defect (fail-open dispatch,
       # mode-conditional escape, suppressed check) that is NOT already in the baseline;
