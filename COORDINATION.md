@@ -1,6 +1,3 @@
-
-
-
 # Active Tasks — Master Board
 _LCG 20260813→189831298 idx3820 same-link-same-stars — ?daily=20260813&n=1/3/5 triple[11205,19448,14209]_
 _Last sync: 23:37 CT 2026-08-15 — proactive-hillclimb-loop — stale sweep 23:37 CT 2026-08-15 cleared 4 stale (19:10 CT×3 4.5h>4h, 19:11 CT 4.4h>4h) — preserved 3 LOCAL-GPU 22:20 CT — board 6 non-GPU claimed +3 GPU =9 active +1 todo, 6 non-GPU <7 max — 1 free lane — claimed 1 — zero-deps true stdlib only — LCG 20260813→189831298 idx3820 triple[11205,19448,14209] ?daily=20260813&n=1/3/5 everyday chain open→drag-map→Jordan→copy-link same-link-same-stars — 7-field timeline nodeId hillclimb-loop attempt1 latency_ms1240 tokens_est520 status ok errorClass none — GoalsTab current_state.md pitch parity OK — IdeasTab MoMA BEIR KaLM Zep deferred gate 8.0 — guard v5.1 max7 non-GPU 3 GPU exempt free=7-non_gpu 1=swarm-lite <5s hillclimb_backoff max3/4 tempo :05 conf0.82_
