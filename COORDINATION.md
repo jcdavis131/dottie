@@ -1,6 +1,7 @@
 # Active Tasks — Master Board
 _LCG 20260813→189831298 idx3820 same-link-same-stars — ?daily=20260813&n=1/3/5 triple[11205,19448,14209]_
-_Last sync: 12:37 CT 2026-08-16 — hillclimb-loop proactive 12:37 CT — cleared 0 stale (all 4 non-GPU fresh 11:37,12:07,16:10×2) preserved 3 LOCAL-GPU exempt non_gpu_active 4→5 free 2 guard claimed 1 lane — zero-deps true — LCG 20260813→189831298 idx3820_
+_Last sync: 13:07 CT 2026-08-16 — hillclimb-loop proactive 13:07 CT — cleared 0 stale (all 2 non-GPU fresh 11:37,12:07) preserved 3 LOCAL-GPU exempt non_gpu_active 2→3 free 4 guard claimed 1 lane — zero-deps true — LCG 20260813→189831298 idx3820_
+_Sync: 12:37 CT board 3 GPU +2 non-GPU (hillclimb-hoops-v7 11:37, unified-caches 12:07) 0 stale cleared — claimed vercel-final-1237_
 _Sync: 12:07 CT board 3 GPU +4 non-GPU (Scout-auto×2 16:10, hillclimb-hoops-v7 11:37, unified-caches 12:07) 0 stale cleared — claimed unified-caches-1207_
 _Sync: 11:07 CT board 3 GPU +4 non-GPU (mtl-mlops-factory 07:34, hillclimb-hoops-v7 07:34, Scout-auto×2 16:10, hillclimb-loop closed-loop 11:07) 6 stale cleared 06:07/03:37/04:07/04:37/05:07/06:37 — claimed dottie-scout-closed-loop-1107_
 _Sync: mirrors to each repo COORDINATION.md + TODO.md IN-PROGRESS table_
@@ -11,6 +12,7 @@ _Sync: mirrors to each repo COORDINATION.md + TODO.md IN-PROGRESS table_
 
 | Agent | Repo / Area | Since CT | What / Why | Branch | Status |
 |---|---|---|---|---|---|
+| hillclimb-loop | vector-pitch / MTNN to game + difficulty retune 61%→92.9% | 13:07 CT 2026-08-16 | Proactive hillclimb 99→100% pitch MTNN game+difficulty retune 61%→92.9% park Coors1.25-1.367 GABP1.263-1.379 Yankee1.19 Oracle0.60-0.78 LHBvRHP+1.22 VRNN μ0.017 MAE3.55 IC0.255 zero-deps true stdlib only LCG 20260813→189831298 idx3820 triple[11205,19448,14209] ?daily=20260813&n=1/3/5 same-link-same-stars 5+2 swarm lite gate 9.1 PASS | scout/pitch-mtnn-game-1307 | PASS 9.1 |
 | LOCAL-GPU | vector-hoops / v6 transformer 150ep | 22:20 CT | MTNN v6 d_model128 4-head CLS→64-d 17 towers, w-vicreg 0.05, target composite 0.7937→0.85 test top1 0.438→0.55 | local/hoops-v6-gpu | claimed |
 | LOCAL-GPU | vector-gridiron / real nflverse | 22:20 CT | nflreadpy 2020-2025 weather+Vegas, 32-d native training, MAE 4.268→3.8 | local/gridiron-real | claimed |
 | LOCAL-GPU | vector-unified / unified G2 0.685→0.64 | 22:20 CT | FULL TRAIN: GRL λ0.3→0.5 + CORAL centroid, missing caches embedding_v3.npz / mtnn_best.pt / pitch_mtnn_embeddings.json, torch OOM workaround → run train_stage2.py --smoke -> train_unified.py 60ep -> eval_unified.py on local GPU | local/unified-g2-gpu | claimed |
