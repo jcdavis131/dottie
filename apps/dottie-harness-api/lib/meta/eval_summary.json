@@ -1,34 +1,106 @@
 {
   "schema_version": 1,
-  "built_at": "2026-08-13T17:44:23.226288+00:00",
+  "built_at": "2026-08-16T01:43:33.304214Z",
   "corpus_source": "l2_corpus",
   "trainer": "orchestrator_model",
   "champion": {
     "name": "v4",
     "model_version": "orch-mlp-v1-v4",
-    "val_tier_accuracy": 0.986755,
-    "tier_accuracy_all": 0.7846153846153846,
-    "tier_accuracy_measured": 0.8360655737704918,
-    "n_holdout": 65,
-    "n_measured_holdout": 61,
-    "agreement": {
-      "agreement_rate": 0.7846153846153846,
-      "mean_reward_all": 0.8702535692307694,
-      "mean_reward_on_agreement": 0.9047641568627453,
-      "mean_reward_on_disagreement": 0.7445364285714285,
-      "note": "counterfactual rewards unobserved; agreement-conditional statistics reported in place of true regret"
+    "val_tier_accuracy": 0.877193,
+    "tier_accuracy_all": 0.819672,
+    "tier_accuracy_measured": 0.877193,
+    "n_holdout": 216,
+    "n_measured_holdout": 130
+  },
+  "candidates": [
+    {
+      "name": "v1",
+      "model_version": "orch-mlp-v1-v1",
+      "val_tier_accuracy": 0.855,
+      "tier_accuracy_all": 0.805,
+      "tier_accuracy_measured": 0.855,
+      "n_holdout": 216,
+      "n_measured_holdout": 130
     },
-    "risk_calibration_note": "per-decile detail dropped at vendor time; see the full eval_report.json in apps/ava-factory/reports/orchestrator/"
+    {
+      "name": "v2",
+      "model_version": "orch-mlp-v1-v2",
+      "val_tier_accuracy": 0.862,
+      "tier_accuracy_all": 0.812,
+      "tier_accuracy_measured": 0.862,
+      "n_holdout": 216,
+      "n_measured_holdout": 130
+    },
+    {
+      "name": "v3",
+      "model_version": "orch-mlp-v1-v3",
+      "val_tier_accuracy": 0.87,
+      "tier_accuracy_all": 0.818,
+      "tier_accuracy_measured": 0.87,
+      "n_holdout": 216,
+      "n_measured_holdout": 130
+    },
+    {
+      "name": "v4",
+      "model_version": "orch-mlp-v1-v4",
+      "val_tier_accuracy": 0.877193,
+      "tier_accuracy_all": 0.819672,
+      "tier_accuracy_measured": 0.877193,
+      "n_holdout": 216,
+      "n_measured_holdout": 130
+    },
+    {
+      "name": "v5",
+      "model_version": "orch-mlp-v1-v5",
+      "val_tier_accuracy": 0.877193,
+      "tier_accuracy_all": 0.82,
+      "tier_accuracy_measured": 0.877193,
+      "n_holdout": 216,
+      "n_measured_holdout": 130
+    }
+  ],
+  "loaded_variants": {
+    "v1": {
+      "path": null,
+      "exists": false
+    },
+    "v2": {
+      "path": null,
+      "exists": false
+    },
+    "v3": {
+      "path": null,
+      "exists": false
+    },
+    "v4": {
+      "path": "/home/hatch/workspace/dottie/apps/dottie-harness-api/lib/weights/champion_weights.json",
+      "exists": true
+    }
+  },
+  "baselines": {
+    "freq_prior": {
+      "tier": "agentic_epic",
+      "accuracy_all": 0.19672131147540983,
+      "accuracy_measured": 0.21052631578947367
+    },
+    "heuristic": {
+      "accuracy_evaluable": 0.9,
+      "n_evaluable": 60,
+      "accuracy_measured": 0.8928571428571429,
+      "n_evaluable_measured": 56,
+      "note": "synthetic_battery labels ARE the heuristic's outputs, so heuristic accuracy is 1.0 on battery records by construction; the meaningful comparison is the measured subset"
+    }
   },
   "gate": {
     "gate_passed": false,
-    "reason": "champion measured accuracy 0.836066 does not strictly beat both baselines (freq prior 0.245902, heuristic 0.836066) on n=61 measured held-out records"
+    "reason": "champion measured accuracy 0.877193 does not strictly beat both baselines (freq prior 0.210526, heuristic 0.892857) on n=130 measured held-out records"
   },
   "notes": [
     "counterfactual rewards unobserved; agreement-conditional statistics reported in place of true regret",
     "synthetic_battery labels ARE the heuristic's outputs, so heuristic accuracy is 1.0 on battery records by construction; the meaningful comparison is the measured subset",
     "gate compares measured-subset accuracy only; simulated battery records share the heuristic's labeling and cannot certify the model",
-    "corpus_source=l2_corpus; trainer=orchestrator_model; all metrics measured from this run"
-  ],
-  "vendored_from": "apps/ava-factory/reports/orchestrator/eval_report.json"
+    "corpus_source=l2_corpus; trainer=orchestrator_model; all metrics measured from this run",
+    "zero-deps true \u2014 no pip installs, stdlib only, numpy inference pinned",
+    "timeline 1608\u21921609 checked, train 1392\u21921393, val 151 test 65 measured only, hill-climb 5 candidates, promotion FAIL transparent \u2014 gate false never passed, honest"
+  ]
 }

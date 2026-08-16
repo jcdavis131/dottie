@@ -1,0 +1,15 @@
+{
+  "id": "slasso-tick-flags",
+  "enabled": true,
+  "owner": "operator",
+  "kind": "cron",
+  "cron": "0 9 * * *",
+  "schedule": {"kind": "cron", "cron": "0 9 * * *", "timezone": "UTC"},
+  "timezone": "UTC",
+  "command": "python3 apps/dottie-harness-api/lib/corpus_builder.py --rebuild --hill-climb",
+  "description": "Nightly corpus rebuild 1608→ mining measured-behavior/outcome/operator-corrected hill-climb promotion gate strict beat heuristics",
+  "logging": {"required_fields": ["nodeId","agentId","attempt","latency_ms","tokens_est","status","errorClass"]},
+  "required_fields": ["nodeId","agentId","attempt","latency_ms","tokens_est","status","errorClass"],
+  "version": "1.0",
+  "tags": ["always-on","operator","v5 Prime"]
+}

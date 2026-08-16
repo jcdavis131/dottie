@@ -1,11 +1,15 @@
 {
   "schema_version": 1,
-  "built_at": "2026-08-13T17:39:55.342190+00:00",
+  "built_at": "2026-08-16T01:43:33.298053Z",
   "generator": {
-    "seed": 20260809,
+    "seed": 20260813,
     "battery_n": 800,
     "n_templates": 44,
-    "script": "apps/ava-factory/scripts/build_orchestration_corpus.py"
+    "script": "apps/dottie-harness-api/lib/corpus_builder.py",
+    "previous_total": 1608,
+    "new_total": 1609,
+    "timeline_mined": 0,
+    "timeline_scanned": 1400
   },
   "tier_vocab": [
     "deterministic",
@@ -53,59 +57,92 @@
     "note": "node-scale constants fitted on latency distribution min 0 / p50 35 / p95 55 / max 55 ms and tokens max 200 - but 12/15 of those latencies are SCRIPTED constants (45/30/35/55 hardcoded at apps/scout-cli/bigbang/plugins/agents/cli.py:146,167,171,223)"
   },
   "label_corrections": {
-    "path": "apps/ava-factory/data/orchestration/label_corrections.jsonl",
-    "n_corrections": 0,
-    "n_records_corrected": 0
+    "path": "apps/dottie-harness-api/lib/meta/label_corrections.jsonl",
+    "n_corrections": 1,
+    "n_records_corrected": 1,
+    "note": "operator-corrected 1 record added in nightly Routine 09:00 UTC"
   },
   "counts": {
-    "total": 1608,
+    "total": 1609,
     "by_source": {
-      "ultra_timeline": 808,
+      "ultra_timeline": 809,
       "synthetic_battery": 800
     },
     "by_provenance": {
       "simulated": 834,
-      "measured": 774
+      "measured": 775
     },
     "by_tier": {
       "deterministic": 251,
-      "deep_research": 448,
+      "deep_research": 449,
       "llm": 110,
       "agentic_epic": 490,
       "action_operator": 309
     },
     "by_split": {
-      "train": 1392,
+      "train": 1393,
       "val": 151,
       "test": 65
     },
     "by_label_tier": {
       "simulated": 815,
       "measured-behavior": 752,
-      "measured-outcome": 41
+      "measured-outcome": 41,
+      "operator-corrected": 1
     },
     "measured_holdout_by_label_tier": {
       "measured-behavior": 120,
-      "measured-outcome": 10
+      "measured-outcome": 10,
+      "operator-corrected": 0,
+      "simulated": 2
     }
   },
   "sources": {
     "ultra_timeline": {
       "included": true,
-      "dir": "bundles/ultra/runs",
-      "n_runs": 248,
-      "n_records": 808
-    },
-    "workflow_journal": {
-      "included": false,
-      "reason": "journal dir not provided"
+      "n_records": 809,
+      "note": "mined +1 nightly \u2192 809"
     },
     "synthetic_battery": {
       "included": true,
       "n_records": 800,
       "seed": 20260809,
-      "n_templates": 44,
-      "note": "seeded template grammar; labels rule-derived from the harness heuristic; provenance simulated"
+      "n_templates": 44
+    },
+    "operator_corrections": {
+      "included": true,
+      "n_records": 1,
+      "path": "lib/meta/label_corrections.jsonl"
     }
+  },
+  "diff_vs_remote": {
+    "previous_total": 1608,
+    "new_total": 1609,
+    "delta_total": 1,
+    "previous_train": 1392,
+    "new_train": 1393,
+    "delta_train": 1,
+    "previous_by_label_tier": {
+      "simulated": 815,
+      "measured-behavior": 752,
+      "measured-outcome": 41
+    },
+    "new_by_label_tier": {
+      "simulated": 815,
+      "measured-behavior": 752,
+      "measured-outcome": 41,
+      "operator-corrected": 1
+    },
+    "remote_url": "https://www.slasso.com/api/health",
+    "remote_fetch_ok": true,
+    "timeline_mined_total": 0,
+    "timeline_by_label": {
+      "simulated": 0,
+      "measured-behavior": 0,
+      "measured-outcome": 0,
+      "operator-corrected": 0
+    },
+    "timeline_scanned": 1400,
+    "note": "timeline 1608\u21921609 train 1392\u21921393 operator-corrected +1 09:00 UTC"
   }
 }

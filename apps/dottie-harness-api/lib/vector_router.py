@@ -165,69 +165,6 @@ def discover_vector_hub_root() -> Tuple[Path | None, Dict[str, Any]]:
 
 _VECTOR_HUB_PATH, _VECTOR_HUB_REPORT = discover_vector_hub_root()
 
-
-def load_hub_assets() -> Dict[str, Any]:
-    """
-    Compatibility wrapper required by lane spec:
-    def load_hub_assets handling 8/8 vector-hub/assets/data/*.json valid else LCG mock 64-d
-
-    Returns dict with hub_path, valid count, total, status, lcg_fallback flag,
-    and mock sample if needed.
-    Honest 503 never fake torch — returns mock embeddings when missing.
-    """
-    assets: Dict[str, Any] = {}
-    valid = _VECTOR_HUB_REPORT.get("valid", 0)
-    total = _VECTOR_HUB_REPORT.get("total", 8)
-    status = _VECTOR_HUB_REPORT.get("status", "MISS")
-    hub_path = _VECTOR_HUB_PATH
-
-    # If hub missing or invalid <8, prepare LCG mock 64-d float32 per entity
-    lcg_fallback = valid < 8 or hub_path is None
-    if lcg_fallback:
-        # generate 20,719 preview mock using same LCG formula
-        # reuse get_entity_embedding path via entity_seed
-        mock_sample = {}
-        for domain in ("hoops", "gridiron", "pitch", "unified"):
-            n = _DOMAIN_SIZES.get(domain, 200)
-            limit = min(n, 20)  # small sample for payload sanity
-            vocab = build_domain_vocab(domain, limit)
-            sample = {nm: get_entity_embedding(domain, nm, 64)[:4] for nm in vocab[:3]}
-            assets[f"{domain}_mock_sample_trunc4"] = sample
-        assets["lcg_formula"] = "L(s)=(s*1103515245+12345)&0x7fffffff glibc"
-        assets["fallback"] = True
-        assets["mock_dim"] = 64
-        assets["mock_n_total"] = 20719
-        assets["mock_note"] = "LCG mock 64-d float32 per entity when hub assets invalid"
-    else:
-        # try to load real json minimal meta
-        for name in _EXPECTED_JSON:
-            p = hub_path / name  # type: ignore
-            if p.exists():
-                try:
-                    doc = json.loads(p.read_text(encoding="utf-8")[:2000])
-                    assets[name] = {"exists": True, "keys_preview": list(doc.keys())[:6] if isinstance(doc, dict) else str(type(doc)), "size": p.stat().st_size}
-                except Exception as e:
-                    assets[name] = {"exists": True, "error": str(e)[:120]}
-            else:
-                assets[name] = {"exists": False}
-        assets["fallback"] = False
-
-    return {
-        "ok": status == "HIT" or valid >= 5,
-        "hub_path": str(hub_path) if hub_path else None,
-        "hub_report": _VECTOR_HUB_REPORT,
-        "valid": valid,
-        "total": total,
-        "status": status,
-        "lcg_fallback": lcg_fallback,
-        "assets": assets,
-        "lcg": {"formula": "L(s)=(s*1103515245+12345)&0x7fffffff glibc", "example_seed": 20260813, "example_a": 189831298, "example_idx": 3820, "triple": [11205,19448,14209]},
-        "unified_spec": UNIFIED_SPEC,
-        "meter_lite_hint": {"g2": G2_METRICS, "gridiron": GRIDIRON_METRICS, "pitch": PITCH_METRICS, "hoops": HOOPS_METRICS, "composite_weighted": round(0.4*HOOPS_METRICS["v6_composite"]+0.35*PITCH_METRICS["composite"]+0.25*(GRIDIRON_METRICS["sharpe"]/2.0),4)},
-        "provenance": "7/7/0 HIT 20719×64-d chimera when hub valid else LCG mock 64-d float32"
-    }
-_VECTOR_HUB_PATH, _VECTOR_HUB_REPORT = discover_vector_hub_root()
-
 # ---------- Unified MTNN spec ----------
 UNIFIED_SPEC = {
     "dims": 64,
@@ -825,66 +762,6 @@ def vector_lookup(domain: str, query: str | List[float] | None = None, k: int = 
         },
         "lcg": daily_picks()["pop_single_select"],
     }
-
-
-def search(domain: str, query: str | List[float] | None = None, k: int = 5) -> Dict[str, Any]:
-    """
-    Alias required by lane spec: POST /api/vector/{domain} logic query entityName|64-d k1..20 nearest5 cosine pure-py fallback numpy opt,
-    provenance hub_path LCG formula meter_lite dict.
-    Calls vector_lookup and enriches meter_lite.
-    Zero-deps stdlib only, honest 503 never fake torch.
-    """
-    # clamp k 1..20 per spec
-    try:
-        k = int(k)
-    except Exception:
-        k = 5
-    k = max(1, min(k, 20))
-    res = vector_lookup(domain, query, k=k)
-    if not res.get("ok"):
-        return res
-    # enrich meter_lite + composite weighted same as GET /api/meter
-    try:
-        ml = get_meter(epoch=42)
-        res["meter_lite"] = {
-            "g2_cur": ml["g2"]["current"],
-            "g2_floor": ml["g2"]["floor"],
-            "g2_delta": ml["g2_delta"],
-            "g2_pred": ml["g2"]["pred"],
-            "g2_target": ml["g2"]["target"],
-            "g2_status": ml["g2"]["status"],
-            "mae_cur": ml["mae"],
-            "mae_target": ml["mae_target"],
-            "sharpe": ml["sharpe"],
-            "pitch_pass_rate": ml["pitch"]["pass_rate"],
-            "pitch_pass_frac": ml["pitch"]["pass_frac"],
-            "pitch_median": ml["pitch"]["median"],
-            "pitch_pos_cluster": ml["pitch"]["pos_cluster"],
-            "pitch_composite": ml["pitch"]["composite"],
-            "hoops_ic": ml["hoops"]["ic"],
-            "hoops_composite": ml["hoops"]["v6_composite"],
-            "hoops_top1": ml["hoops"]["top1"],
-            "hoops_top1_target": ml["hoops"]["top1_target"],
-            "composite_weighted": ml["composite"]["weighted"],
-            "composite_formula": "0.4*hoops+0.35*pitch+0.25*Sharpe/2",
-            "closer_count": ml["dfs"]["closer_count"],
-            "closer_flagged_86": 86,
-            "kelly_fraction": ml["kelly"]["kelly_fraction"],
-            "kelly_max": ml["kelly"]["kelly_max"],
-        }
-        res["provenance"]["meter_lite"] = res["meter_lite"]
-        res["provenance"]["hub_path"] = res["provenance"].get("hub")
-        res["provenance"]["lcg_formula"] = "L(s)=(s*1103515245+12345)&0x7fffffff glibc, Math.imul JS"
-        res["provenance"]["composite_weighted"] = ml["composite"]["weighted"]
-    except Exception as e:
-        res["meter_lite_error"] = str(e)[:200]
-    return res
-
-
-def check_torch_honest() -> Dict[str, Any]:
-    if not HAS_TORCH:
-        return {"ok": False, "error": "torch unavailable — honest 503 never fake torch", "status": 503, "has_torch": False, "fallback": "LCG mock 64-d stdlib pure-py cosine"}
-    return {"ok": True, "has_torch": True}
 
 
 # Module self-test when run directly
