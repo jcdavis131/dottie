@@ -1,9 +1,6 @@
 """Serverless HTTP entrypoint for the harness orchestration router — with unified MTNN meter + vector integration (Lane 5).
 
-Vercel Python runtime convention: this module exposes a class named
-``handler`` subclassing ``http.server.BaseHTTPRequestHandler``. No web
-framework — stdlib request handling plus the vendored numpy inference in
-``lib/``.
+Vercel Python runtime convention: exposes class named handler subclassing http.server.BaseHTTPRequestHandler.
 
 Endpoints (all respond application/json):
 
@@ -21,7 +18,6 @@ Zero-deps stdlib only for vector routing, honest 503 never fake torch (if numpy 
 LCG glibc verified: 20260813→189831298 idx3820 triple[11205,19448,14209] five[11205,19448,14209,16853,15710] same-link-same-stars ?daily=20260813&n=1/3/5 open→drag-map→Jordan→copy-link equal stars DAU3/WAU3 TLPG dedup PWA v67 void #080A0F
 G2 0.627 floor 0.6258 Δ+0.0012 pred 0.642 target 0.64 MAE 3.816→3.8 Sharpe1.082 pitch 92.9% 588/633 median 0.4843 pos_cluster 0.797 closer 86 Kelly0.25
 """
-
 from __future__ import annotations
 
 import json
@@ -51,7 +47,6 @@ _DEFAULT_META_DIR = _PKG_ROOT / "lib" / "meta"
 
 _CACHE: dict = {}
 
-
 def _reset() -> None:
     _CACHE.clear()
 
@@ -62,13 +57,11 @@ _DEFAULT_WEIGHTS_URL = (
     "apps/ava-factory/reports/orchestrator/champion_weights.json"
 )
 
-
 def _fetch_weights_to_tmp() -> str | None:
     url = os.environ.get("DOTTIE_HARNESS_WEIGHTS_URL", _DEFAULT_WEIGHTS_URL)
     if not url:
         return None
     import tempfile
-
     tmp = Path(tempfile.gettempdir()) / "champion_weights.json"
     if tmp.exists() and tmp.stat().st_size > 0:
         return str(tmp)
@@ -80,7 +73,6 @@ def _fetch_weights_to_tmp() -> str | None:
         return str(tmp)
     except OSError:
         return None
-
 
 def get_model() -> dict | None:
     if "model" not in _CACHE:
@@ -98,7 +90,6 @@ def get_model() -> dict | None:
                 _CACHE["model"] = None
     return _CACHE["model"]
 
-
 def _load_meta_file(name: str) -> dict | None:
     meta_dir = Path(os.environ.get("DOTTIE_HARNESS_META_DIR") or _DEFAULT_META_DIR)
     try:
@@ -106,13 +97,9 @@ def _load_meta_file(name: str) -> dict | None:
     except (FileNotFoundError, ValueError, OSError):
         return None
 
-
 def get_meta() -> dict:
     if "meta" not in _CACHE:
-        _CACHE["meta"] = {
-            "corpus_meta": _load_meta_file("corpus_meta.json"),
-            "eval_summary": _load_meta_file("eval_summary.json"),
-        }
+        _CACHE["meta"] = {"corpus_meta": _load_meta_file("corpus_meta.json"), "eval_summary": _load_meta_file("eval_summary.json")}
     return _CACHE["meta"]
 
 
