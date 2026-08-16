@@ -410,16 +410,27 @@ class Runtime:
     def _child_worker(self, child_id: str, parent_id: str, prompt: str) -> None:
         try:
             child = self.registry.get(child_id)
-            result = loop.run_turn(
-                child,
-                prompt,
-                backend=self.backend_for(child),
-                system_prompt=self.system_prompt_for(child),
-                max_steps=self.child_max_steps,
-                max_tokens=self.max_tokens,
-                inbox_drain=lambda: self.drain(child_id),
-                executor=self._executor_for(child),
-            )
+            # busy() for the WHOLE turn, same as Runtime.run_turn's parent
+            # path: without it, evict_idle could not tell this child's turn
+            # was in flight. A child's last_active_utc is stamped only at
+            # create() and mark_done() -- there is no per-step touch() the way
+            # the parent path has -- so from the moment it is spawned it reads
+            # as idle to evict_idle for as long as its turn takes (routine
+            # with qwen3:8b on CPU, per SPEC). This worker used to call
+            # loop.run_turn directly with no busy() at all: the exact
+            # mid-turn-eviction bug 2d6de00 fixed for the parent path
+            # (registry.py:276) was unfixed for every sub-agent turn.
+            with self.registry.busy(child_id):
+                result = loop.run_turn(
+                    child,
+                    prompt,
+                    backend=self.backend_for(child),
+                    system_prompt=self.system_prompt_for(child),
+                    max_steps=self.child_max_steps,
+                    max_tokens=self.max_tokens,
+                    inbox_drain=lambda: self.drain(child_id),
+                    executor=self._executor_for(child),
+                )
             if result["stopped"] == "answer":
                 answer = result["answer"]
             else:  # honest step-limit — never disguised as a clean answer

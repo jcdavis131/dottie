@@ -179,6 +179,73 @@ def test_child_answer_enters_parent_history_on_next_turn(tmp_path: Path) -> None
     assert child_msgs[0]["sender"] != "user"
 
 
+class _EnteringGatedBackend:
+    """Like GatedBackend, but signals ``entered`` the instant complete() is
+    called -- so a test can wait for "the child has reached its turn" without
+    depending on registry.is_busy(), which is exactly what this test proves
+    is broken for children."""
+
+    def __init__(self, entered: threading.Event, gate: threading.Event, inner: Backend) -> None:
+        self.entered = entered
+        self.gate = gate
+        self.inner = inner
+
+    def complete(self, messages: list[dict], *, max_tokens: int) -> str:
+        self.entered.set()
+        if not self.gate.wait(timeout=10):
+            raise AssertionError("gate never opened; test is broken")
+        return self.inner.complete(messages, max_tokens=max_tokens)
+
+
+def test_child_turn_survives_idle_eviction(tmp_path: Path) -> None:
+    """A child (sub-agent) turn must survive evict_idle exactly like a
+    parent's turn does (TestBusySessionsSurviveEviction in test_registry.py).
+
+    _child_worker drives ``loop.run_turn`` directly, bypassing
+    ``Runtime.run_turn``'s ``with self.registry.busy(session.id):`` -- so a
+    child mid-turn has NO protection against the mid-turn-eviction bug
+    2d6de00 fixed for the parent path (registry.py:276), and children never
+    call ``touch()`` either, so their last_active_utc is stuck at creation
+    time for the whole run. Reproduced with a gated backend: the child is
+    blocked inside backend.complete() (proven via ``entered``, not timing),
+    its last_active_utc is backdated past the idle window, and evict_idle
+    runs while it is still gated.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    entered = threading.Event()
+    gate = threading.Event()
+    parent_backend = FakeBackend([SPAWN_CODE, "child admitted; parent done."])
+    child_backend = _EnteringGatedBackend(entered, gate, FakeBackend(["4"]))
+    rt = make_runtime(
+        tmp_path, {"fake:parent": parent_backend, "fake:child": child_backend}
+    )
+    parent = rt.create_root(model_spec="fake:parent")
+    result = rt.run_turn(parent, "spawn a child to add 2+2")
+    execs = [t for t in parent.history if t["kind"] == "exec"]
+    child_id = execs[0]["stdout"].split()[1]
+
+    assert entered.wait(timeout=10), "child never reached backend.complete()"
+
+    # Backdate exactly as production ends up: _child_worker never calls
+    # touch(), so a real child's last_active_utc is stuck at create() time.
+    long_ago = datetime.now(UTC) - timedelta(hours=5)
+    with rt.registry._lock:
+        idx = rt.registry._read_index()
+        idx[child_id]["last_active_utc"] = long_ago.isoformat(timespec="seconds")
+        rt.registry._write_index(idx)
+
+    evicted = rt.registry.evict_idle(idle_minutes=30)
+    gate.set()
+    assert rt.wait_children(timeout_s=10)
+    assert result["stopped"] == "answer"  # parent's own turn is unaffected
+
+    assert child_id not in evicted, (
+        f"child {child_id} was evicted mid-turn: sub-agent turns are not "
+        "protected by registry.busy() the way parent turns are"
+    )
+
+
 def test_rlm_rejects_empty_prompt_without_spawning(tmp_path: Path) -> None:
     rt = make_runtime(tmp_path, {"fake:parent": FakeBackend([])})
     parent = rt.create_root(model_spec="fake:parent")
