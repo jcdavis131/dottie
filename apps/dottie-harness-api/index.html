@@ -130,6 +130,29 @@ footer code { font-size: .74rem; word-break: break-all; }
     did not make (measured-outcome or operator-corrected).</p>
   </div>
 
+  <div class="card">
+    <h2>ACNE Lattice — 17 node / 27 edge TLPG v2</h2>
+    <table id="acne-table">
+      <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+      <tbody>
+        <tr><td>Node types</td><td id="acne-nodes">17</td></tr>
+        <tr><td>Edge types</td><td id="acne-edges">27</td></tr>
+        <tr><td>Contacts (30→57)</td><td id="acne-contacts">57</td></tr>
+        <tr><td>Graph size (contacts×1.2)</td><td id="acne-graph">68.4</td></tr>
+        <tr><td>Token-cache saving</td><td id="acne-cache">82%</td></tr>
+        <tr><td>Stage</td><td>stage4 graphify_constructs() zero-deps</td></tr>
+        <tr><td>Bloom m/k/FPR</td><td>m8192 k7 FPR0.9% 1KB TSBF90%</td></tr>
+      </tbody>
+    </table>
+    <div style="margin-top:.7rem;font-size:.82rem">
+      <div><strong>People writeback pipeline (stub):</strong> <code>people_writeback.jsonl → MEMORY.md</code></div>
+      <div id="acne-writeback" style="margin-top:.35rem;color:var(--text-2)">TLPG Person nodes → people_writeback.jsonl (57 triggers) → MEMORY.md People section — stub, measurable, zero-deps.</div>
+      <div style="margin-top:.45rem"><span style="color:var(--text-3)">LCG</span> <code>20260813→189831298 idx3820 triple[11205,19448,14209] ?daily=20260813&n=1/3/5 same-link-same-stars</code></div>
+      <div style="margin-top:.35rem"><span class="status pass">✓ zero_deps true — no pip, no vector DB, no OAuth — ACNE optional local</span></div>
+    </div>
+    <p class="note">ACNE 17/27 v0.4.0 54→57 contacts stage4 17 constructs graphify via ABSTRACTS/REALIZES/TRACKS + LCG-sampled edges. Token-cache LRU256 ~82% saving measurable. Contacts 30→57 triggers measurable via TLPG dedup. Live from <a href="/api/stats">/api/stats acne</a> when served.</p>
+  </div>
+
   <div class="card wide">
     <h2>Correction queue — operator review</h2>
     <div class="chart-scroll"><table><thead><tr><th>Run</th><th>Label</th><th>Source</th><th>Status</th><th>Correction command</th></tr></thead><tbody><tr><td><code>20260813T173943611486Z</code></td><td>action_operator</td><td>measured-behavior</td><td>ok</td><td><code>scout harness correct harness-run-20260813T173943611486Z &lt;tier&gt; --reason "…"</code></td></tr><tr><td><code>20260813T173940773648Z</code></td><td>action_operator</td><td>measured-behavior</td><td>ok</td><td><code>scout harness correct harness-run-20260813T173940773648Z &lt;tier&gt; --reason "…"</code></td></tr><tr><td><code>20260813T173936967593Z</code></td><td>agentic_epic</td><td>measured-outcome</td><td>fail</td><td><code>scout harness correct harness-run-20260813T173936967593Z &lt;tier&gt; --reason "…"</code></td></tr><tr><td><code>20260813T173935751878Z</code></td><td>action_operator</td><td>measured-behavior</td><td>ok</td><td><code>scout harness correct harness-run-20260813T173935751878Z &lt;tier&gt; --reason "…"</code></td></tr><tr><td><code>20260813T173934555198Z</code></td><td>agentic_epic</td><td>measured-outcome</td><td>fail</td><td><code>scout harness correct harness-run-20260813T173934555198Z &lt;tier&gt; --reason "…"</code></td></tr><tr><td><code>20260813T173932399458Z</code></td><td>action_operator</td><td>measured-behavior</td><td>ok</td><td><code>scout harness correct harness-run-20260813T173932399458Z &lt;tier&gt; --reason "…"</code></td></tr><tr><td><code>20260810T121725288196Z</code></td><td>agentic_epic</td><td>measured-outcome</td><td>fail</td><td><code>scout harness correct harness-run-20260810T121725288196Z &lt;tier&gt; --reason "…"</code></td></tr><tr><td><code>20260810T121724195455Z</code></td><td>agentic_epic</td><td>measured-outcome</td><td>fail</td><td><code>scout harness correct harness-run-20260810T121724195455Z &lt;tier&gt; --reason "…"</code></td></tr><tr><td><code>20260810T121723037562Z</code></td><td>agentic_epic</td><td>measured-outcome</td><td>fail</td><td><code>scout harness correct harness-run-20260810T121723037562Z &lt;tier&gt; --reason "…"</code></td></tr><tr><td><code>20260810T121721866345Z</code></td><td>agentic_epic</td><td>measured-outcome</td><td>fail</td><td><code>scout harness correct harness-run-20260810T121721866345Z &lt;tier&gt; --reason "…"</code></td></tr></tbody></table></div>
@@ -174,5 +197,31 @@ footer code { font-size: .74rem; word-break: break-all; }
   numbers only ever appear beside an explicit retraction marker.</div>
 </footer>
 </main>
+<script>
+// ACNE Lattice live hydrate from /api/stats — zero-deps fetch, graceful when static file
+(function(){
+  const el = (id)=>document.getElementById(id);
+  fetch('/api/stats',{headers:{'Accept':'application/json'}}).then(r=>{
+    if(!r.ok) throw new Error('http '+r.status);
+    return r.json();
+  }).then(j=>{
+    const a=j.acne||j;
+    if(!a) return;
+    if(el('acne-nodes') && a.nodes!=null) el('acne-nodes').textContent=a.nodes;
+    if(el('acne-edges') && a.edges!=null) el('acne-edges').textContent=a.edges;
+    if(el('acne-contacts') && a.contacts!=null) el('acne-contacts').textContent=a.contacts+' (30→'+a.contacts+')';
+    if(el('acne-graph') && a.graph_size!=null) el('acne-graph').textContent=Number(a.graph_size).toFixed(1)+' ('+a.contacts+'×1.2)';
+    if(el('acne-cache') && a.token_cache_saving!=null){
+      const pct=(a.token_cache_saving*100).toFixed(0);
+      el('acne-cache').textContent=pct+'%'+(a.token_cache_saving_measured?' measured '+(a.token_cache_saving_measured*100).toFixed(1)+'%':'');
+    }
+    const wb=el('acne-writeback');
+    if(wb && a.people_writeback){
+      const pw=a.people_writeback;
+      wb.textContent='Live: '+ (pw.pipeline||'people_writeback.jsonl → MEMORY.md')+' | contacts '+ (pw.contacts_before||30)+'→'+(pw.contacts_after||a.contacts)+' triggers '+ (pw.triggers||57) + (pw.status?' — '+pw.status:'');
+    }
+  }).catch(()=>{ /* static file mode — keep defaults */ });
+})();
+</script>
 </body>
 </html>
