@@ -491,6 +491,23 @@ class Harness:
             return False
         return (a.get("target"), a.get("name")) == (b.get("target"), b.get("name"))
 
+    @staticmethod
+    def _seq(refinement_id: str) -> int:
+        """Numeric ordering key for ``r-<n>`` ids.
+
+        String comparison is what the out-of-order-rollback guard originally
+        used, and it silently breaks past r-9: ``"r-10" > "r-2"`` is False,
+        because '1' < '2' at the second character, even though 10 is
+        numerically newer than 2. That let rollback(r-2) proceed as if r-10
+        did not exist -- reproducing the exact corruption this guard was
+        built to prevent (harness.py:615's r-1/r-2 case), just for the 10th
+        refinement to any target instead of the 2nd.
+        """
+        m = re.match(r"^r-(\d+)$", refinement_id)
+        if not m:
+            raise HarnessError(f"unrecognized refinement id format: {refinement_id!r}")
+        return int(m.group(1))
+
     def rollback(self, refinement_id: str) -> dict:
         """Reverse the edit of ``refinement_id`` and mark it rolled back.
 
@@ -522,13 +539,14 @@ class Harness:
             # rollback('r-1') saw op="add" and unlinked foo.md -- taking B with
             # it (review finding harness.py:615). Out-of-order rollback is
             # refused, and the message names the entry that has to go first.
+            target_seq = self._seq(refinement_id)
             superseding = [
                 e["id"]
                 for e in self.ledger()
                 if e["id"] != refinement_id
                 and not e.get("rolled_back")
                 and self._same_target(e.get("edit"), edit)
-                and str(e["id"]) > str(refinement_id)
+                and self._seq(e["id"]) > target_seq
             ]
             if superseding:
                 raise RefinementOrderError(

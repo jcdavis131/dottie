@@ -412,6 +412,42 @@ class TestOutOfOrderRollbackIsRefused:
         assert not (tmp_path / "harness" / "skills" / "foo.md").exists()
         assert (tmp_path / "harness" / "skills" / "bar.md").exists()
 
+    def test_older_rollback_is_refused_past_nine_refinements_same_target(
+        self, tmp_path
+    ) -> None:
+        """String comparison of ids let the guard above miss supersession once
+        a target has 10+ refinements: ``"r-10" > "r-2"`` is False as strings
+        ('1' < '2' at the second character) even though r-10 is numerically
+        the newer one. 10 refinements to ONE target -- r-1 add, r-2..r-10
+        update -- then rollback(r-2) while r-10 is live must still be
+        refused; with the bug it silently succeeds and destroys every update
+        made after r-2 (this session's finding, same class as harness.py:615
+        above)."""
+        h = self._h(tmp_path)
+        refs = [
+            h.refine(
+                "t", "add foo",
+                edit={"target": "skills", "op": "add", "name": "foo", "content": "v1"},
+            )
+        ]
+        for i in range(2, 11):  # r-2 .. r-10
+            refs.append(
+                h.refine(
+                    "t", f"update {i}",
+                    edit={
+                        "target": "skills", "op": "update", "name": "foo",
+                        "content": f"v{i}",
+                    },
+                )
+            )
+        assert [r.id for r in refs] == [f"r-{n}" for n in range(1, 11)]
+        with pytest.raises(RefinementOrderError) as ei:
+            h.rollback(refs[1].id)  # r-2, with r-3..r-10 still live
+        assert "r-10" in str(ei.value)
+        assert (tmp_path / "harness" / "skills" / "foo.md").read_text(
+            encoding="utf-8"
+        ) == "v10"  # the newest content survived the refusal
+
     def test_a_rolled_back_newer_edit_does_not_block(self, tmp_path) -> None:
         h = self._h(tmp_path)
         r1 = h.refine("t", "add foo", edit={
