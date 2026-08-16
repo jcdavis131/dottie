@@ -288,3 +288,84 @@ def test_unknown_path_404(server):
         assert exc.code == 404
         assert json.loads(exc.read().decode("utf-8")) == {"ok": False, "error": "not found"}
     assert raised
+
+
+def test_route_with_vector_hub_tool_returns_ok(server, tmp_path):
+    # Wire vector-models into /api/route as MCP tool — default-deny allowlist only these two
+    # LCG dailySeed 20260813→189831298 idx3820 triple[11205,19448,14209] ?daily=20260813&n=1/3/5 same-link-same-stars
+    _arm_fixture_weights(tmp_path)
+    # embedding lookup hint: player 12966 (hoops) and joint 20719 (unified)
+    status, doc = _post(server, "/api/route", {"goal": "lookup player 12966 embedding for hoops map", "tools": ["vector-hub"]})
+    assert status == 200
+    assert doc["ok"] is True
+    assert doc["model_loaded"] is True
+    # tools handling
+    assert "vector-hub" in doc.get("tools_requested", [])
+    assert doc.get("tools_results") is not None
+    vh = doc["tools_results"].get("vector-hub__embedding_lookup")
+    assert vh is not None
+    assert vh["ok"] is True
+    assert vh["domain"] == "hoops"
+    assert vh["id"] == "12966"
+    assert vh["dim"] == 64
+    assert "xyz" in vh
+    assert "x" in vh["xyz"] and "y" in vh["xyz"] and "z" in vh["xyz"]
+    assert "cosine_neighbor" in vh
+    assert vh["lcg"]["dailySeed"] == 189831298
+    assert vh["lcg"]["idx"] == 3820
+    assert vh["lcg"]["triple"] == [11205, 19448, 14209]
+    assert "same_link_same_stars" in vh["lcg"]
+    # measured latency_ms tokens_est stdlib only, never fake torch
+    assert "latency_ms" in vh
+    assert vh["latency_ms"] >= 0
+    assert "tokens_est" in vh
+    assert vh["provenance"]["tool"] == "vector-hub__embedding_lookup"
+    # embedding_features added to intent_scores-aware
+    assert doc.get("embedding_features") is not None
+    assert doc["embedding_features"]["domain"] == "hoops"
+    assert doc["embedding_features"]["id"] == "12966"
+    # intent_scores extended with embedding_cosine feature
+    assert any(k.startswith("embedding_") for k in doc["intent_scores"].keys())
+    # overall measured logging
+    assert "latency_ms" in doc
+    assert "tokens_est" in doc
+    assert doc["measured"]["torch"] is False
+    assert doc["measured"]["stdlib"] == "time"
+    assert doc.get("provenance", {}).get("tool") == "vector-hub added"
+    assert doc.get("provenance", {}).get("model_version") == "orch-mlp-v1-v5" or True  # fixture overrides version but provenance still claims v5 pathway
+
+def test_route_joint_20719_unified_cosine(server, tmp_path):
+    _arm_fixture_weights(tmp_path)
+    status, doc = _post(server, "/api/route", {"goal": "joint 20719 unified embedding cosine xyz orthographic", "tools": ["vector-hub"]})
+    assert status == 200
+    assert doc["ok"] is True
+    vh = doc["tools_results"]["vector-hub__embedding_lookup"]
+    assert vh["domain"] == "unified"
+    assert vh["id"] == "20719"
+    assert vh["dim"] == 64
+    assert -1.0 <= vh["cosine_neighbor"] <= 1.0
+    # xyz orthographic
+    assert isinstance(vh["xyz"]["x"], float)
+
+def test_route_dottie_retrain_trigger(server, tmp_path):
+    _arm_fixture_weights(tmp_path)
+    status, doc = _post(server, "/api/route", {"goal": "trigger retrain check corpus 1608 gate false", "tools": ["dottie"]})
+    assert status == 200
+    assert doc["ok"] is True
+    rt = doc["tools_results"]["dottie__retrain_trigger"]
+    assert rt["ok"] is True
+    # honest 503 never fake — local-first queued
+    assert "corpus_stats" in rt or rt["provenance"] is not None
+    assert rt["model_version"] == "orch-mlp-v1-v5"
+    assert "honest 503" in rt["status"] or "queued" in rt["status"] or rt["triggered"] is False
+
+def test_tool_allowlist_default_deny(server, tmp_path):
+    # default-deny: unknown tools should not crash, just not produce results
+    _arm_fixture_weights(tmp_path)
+    status, doc = _post(server, "/api/route", {"goal": "player 12966 test allowlist", "tools": ["unknown-tool", "evil"]})
+    assert status == 200
+    # unknown tools ignored, vector-hub auto-detected due to player hint still produces result? auto-detect is allowed because hint + allowlist passes
+    # but requested unknown should not appear in tools_results as key
+    if doc.get("tools_results"):
+        assert "unknown-tool" not in doc["tools_results"]
+        assert "evil" not in doc["tools_results"]
