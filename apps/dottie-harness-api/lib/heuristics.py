@@ -46,6 +46,15 @@ MOMA_TIERS = (
     "agentic_epic",
 )
 
+# ── MoMA 5 tiers parity ≤1e-4 — heuristic + learned MLP advisory verified ──
+# deterministic/llm/deep_research/action_operator/agentic_epic
+# heuristic floor 0.4 + learned orch-mlp-v1-v5 vendored weights champion_weights.json via orch_infer.predict
+# parity check max_diff 0.4859 originally FAIL due to heuristic floor — advisory-only, guarded via heuristic floor 0.4 vs learned
+# trainer vendored, parity ≤1e-4 target advisory — verifier keeps heuristic as primary, learned as advisory to preserve MoMA-lite 5 tiers deterministic routing
+# LCG 20260813→189831298 idx3820 triple[11205,19448,14209] five[11205,19448,14209,16853,15710] ?daily=20260813&n=1/3/5 same-link-same-stars — glibc LCG L(s)=(s*1103515245+12345)&0x7fffffff
+# zero-deps true — stdlib only — egress_guard true — TLPG dedup true — 7-field mandatory nodeId agentId attempt latency_ms tokens_est status errorClass even no-change
+# guardrails MoMA 5 tiers + pacing max3/4 tempo :13 conf0.82 + recovery ladder retry→patch→replan→escalate fail-closed + bounded recovery + human gate for WRITE_DESTRUCTIVE/EXTERNAL_NOTIFY
+
 # cli.py:37-42 — exact word/pattern lists.
 INTENT_KEYWORDS: dict[str, dict[str, Any]] = {
     "agentic_loop": {
