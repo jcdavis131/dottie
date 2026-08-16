@@ -23,4 +23,7 @@ _Sync: mirrors to each repo COORDINATION.md + TODO.md IN-PROGRESS table_
 
 
 <!-- merged from outside edits 2026-08-16T09:30Z -->
+
+
+<!-- merged from outside edits 2026-08-16T09:31Z -->
 | podcast-brief-auto-exec | podcast-brief-auto-exec / Top5 tick+flags v2 | 09:29 CT 2026-08-16 | Auto-exec Top5 tick+flags→vec+lattice v2→analytics+trace+ops v2→meter free 3 doing 4 board 8 — No new briefs since last checkpoint. Checked 12 todos from proactive feeds (morning_edition_feed.md 1786711520.991 / eve | scout/brief-auto-exec-20260816T0929Z | in-progress |
