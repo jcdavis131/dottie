@@ -251,29 +251,51 @@ class SessionRegistry:
         base_prompt: str = "",
         now: datetime | str | None = None,
     ) -> Session:
-        """Build a Session (registry's kernel_factory attached) and add it."""
+        """Build a Session (registry's kernel_factory attached) and add it.
+
+        The parent-exists check is a fast, pure read and is the only thing
+        this method needs the lock for -- session construction/persistence
+        happens in :meth:`add`, outside any lock (see its docstring). Once an
+        id is added it is never removed from the index (only its state
+        changes), so releasing the lock between this check and add()'s later
+        write cannot make a valid check become invalid.
+        """
         with self._lock, self._file_lock():
             if parent_id is not None and parent_id not in self._read_index():
                 raise RegistryError(
                     f"cannot create a child of unknown session {parent_id!r}"
                 )
-            session = Session(
-                role=role,
-                parent_id=parent_id,
-                model_spec=model_spec,
-                base_prompt=base_prompt,
-                kernel_factory=self._kernel_factory,
-            )
-            self.add(session, now=now)
-            return session
+        session = Session(
+            role=role,
+            parent_id=parent_id,
+            model_spec=model_spec,
+            base_prompt=base_prompt,
+            kernel_factory=self._kernel_factory,
+        )
+        self.add(session, now=now)
+        return session
 
     def add(self, session: Session, *, now: datetime | str | None = None) -> None:
-        """Register a session: persist it under root, index it as live."""
+        """Register a session: persist it under root, index it as live.
+
+        ``session.save()`` runs OUTSIDE the cross-process lock. That lock's
+        job (per :meth:`_file_lock`) is the index read-modify-write; a
+        session's own files (session.json + trajectory.jsonl) do not touch
+        registry.json, so protecting them with the SAME lock buys nothing and
+        costs real risk: session.save() is per-session disk I/O that can be
+        slow (a large trajectory), and a process waiting on this lock breaks
+        it as stale after ``timeout_s`` -- the same corruption
+        ``TestCrossProcessIndexSafety`` exists to prevent, just triggered by
+        a slow legitimate write instead of a crash. save() still happens
+        strictly BEFORE the index write in program order, so the durability
+        invariant this method promises (a session's files exist before its
+        index entry says so) is unaffected by where the lock starts.
+        """
+        session.save(self.root)
         with self._lock, self._file_lock():
             index = self._read_index()
             if session.id in index:
                 raise RegistryError(f"session {session.id!r} is already registered")
-            session.save(self.root)
             index[session.id] = {
                 "id": session.id,
                 "parent_id": session.parent_id,
@@ -317,14 +339,22 @@ class SessionRegistry:
             self._write_index(index)
 
     def mark_done(self, session_id: str, *, now: datetime | str | None = None) -> None:
-        """Terminal state: flush + unload if in memory, index state = done."""
+        """Terminal state: flush + unload if in memory, index state = done.
+
+        The flush (``session.save``) runs OUTSIDE the cross-process lock --
+        same reasoning as :meth:`add`. The unload from ``self._live`` still
+        happens under the thread lock first, so a concurrent caller racing to
+        mark the same id done gets ``None`` and skips the redundant save,
+        never a double drop_kernel().
+        """
+        with self._lock:
+            session = self._live.pop(session_id, None)
+        if session is not None:
+            session.save(self.root)
+            session.drop_kernel()
         with self._lock, self._file_lock():
             index = self._read_index()
             entry = self._require(index, session_id)
-            session = self._live.pop(session_id, None)
-            if session is not None:
-                session.save(self.root)
-                session.drop_kernel()
             entry["state"] = "done"
             entry["last_active_utc"] = _iso(now)
             self._write_index(index)
@@ -366,9 +396,24 @@ class SessionRegistry:
         Unloads the in-memory Session (turns flushed to disk FIRST, then the
         kernel is dropped and the object released); the idle state persists in
         the index. Returns the evicted ids, sorted.
+
+        The flush is a THREE-step dance, not one locked block: (1) under the
+        lock, decide which ids are eligible and pop their Session objects out
+        of ``self._live``; (2) OUTSIDE any lock, save + drop_kernel each one;
+        (3) under the lock again, flip index state for whichever are still
+        "live". Doing the saves inside step 1's lock (as this used to) means
+        a SWEEP of many idle sessions holds the cross-process lock for the
+        sum of every save -- long enough, at real disk-I/O speeds, for a
+        waiting process to mistake this legitimate sweep for a crashed holder
+        and break its lock mid-write (same corruption
+        ``TestCrossProcessIndexSafety`` exists to prevent). Step 3 re-checks
+        state rather than assuming "live": something else (mark_done, a
+        second evict_idle sweep) could have changed it in the gap after
+        step 1 released the lock, and a done session must never be
+        downgraded back to idle.
         """
         cutoff = _as_dt(now) - timedelta(minutes=idle_minutes)
-        evicted: list[str] = []
+        to_flush: dict[str, Session | None] = {}
         with self._lock, self._file_lock():
             index = self._read_index()
             for sid, entry in index.items():
@@ -388,15 +433,22 @@ class SessionRegistry:
                     # A turn is executing right now. Its clock is only stamped
                     # on completion, so "idle" here would be a lie.
                     continue
-                session = self._live.pop(sid, None)
-                if session is not None:
-                    session.save(self.root)  # nothing in memory is lost
-                    session.drop_kernel()
-                entry["state"] = "idle"
-                evicted.append(sid)
-            if evicted:
+                to_flush[sid] = self._live.pop(sid, None)
+
+        for session in to_flush.values():
+            if session is not None:
+                session.save(self.root)  # nothing in memory is lost
+                session.drop_kernel()
+
+        if to_flush:
+            with self._lock, self._file_lock():
+                index = self._read_index()
+                for sid in to_flush:
+                    entry = index.get(sid)
+                    if entry is not None and entry.get("state") == "live":
+                        entry["state"] = "idle"
                 self._write_index(index)
-        return sorted(evicted)
+        return sorted(to_flush)
 
     # -- scoping ---------------------------------------------------------------
 

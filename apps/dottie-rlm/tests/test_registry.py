@@ -304,6 +304,99 @@ class TestBusySessionsSurviveEviction:
         assert not reg.is_busy(s.id)
 
 
+class TestLockNotHeldDuringSessionIO:
+    """The cross-process lock's job is registry.json's read-modify-write.
+
+    add()/mark_done()/evict_idle() used to also do session.save() (per-session
+    disk I/O, potentially slow: a large trajectory, a busy disk) WHILE HOLDING
+    that lock. A second process waiting past ``timeout_s`` during that save
+    would conclude the holder crashed and break the lock out from under a
+    LEGITIMATE, still-running holder -- the exact "two processes clobbered the
+    index" corruption TestCrossProcessIndexSafety exists to prevent, just
+    triggered by a slow save instead of a crash (this session's finding).
+    """
+
+    def test_slow_save_does_not_hold_the_cross_process_lock(self, tmp_path) -> None:
+        import threading
+        from unittest import mock
+
+        reg = SessionRegistry(tmp_path / "s", kernel_factory=FakeKernel)
+        s = reg.create(role="root", model_spec="fake:")
+        lock_path = reg.index_path.with_suffix(".lock")
+
+        entered = threading.Event()
+        release = threading.Event()
+        real_save = Session.save
+
+        def slow_save(self, directory):
+            entered.set()
+            assert release.wait(timeout=10), "test never released the save"
+            return real_save(self, directory)
+
+        with mock.patch.object(Session, "save", slow_save):
+            t = threading.Thread(target=lambda: reg.mark_done(s.id), daemon=True)
+            t.start()
+            assert entered.wait(timeout=10), "save() was never entered"
+            # The save is now blocked mid-flight, simulating a slow disk. The
+            # OS-level lock must not be held for its duration.
+            assert not lock_path.exists(), (
+                "the cross-process lock is held during session.save(); a slow "
+                "LEGITIMATE save can be mistaken for a crashed holder and have "
+                "its lock broken out from under it"
+            )
+            release.set()
+            t.join(timeout=10)
+            assert not t.is_alive()
+        assert reg.entry(s.id)["state"] == "done"  # the mutation still landed
+
+    def test_evict_idle_batch_releases_the_lock_between_each_save(
+        self, tmp_path
+    ) -> None:
+        """A SWEEP of many idle sessions must not hold the lock for the SUM
+        of every save -- that sum is exactly what makes the race in the test
+        above easy to hit in practice (many small sessions add up the same
+        way one large one does)."""
+        import threading
+        from unittest import mock
+
+        reg = SessionRegistry(tmp_path / "s", kernel_factory=FakeKernel)
+        ids = [reg.create(role="root", model_spec="fake:").id for _ in range(3)]
+        long_ago = (datetime.now(UTC) - timedelta(hours=5)).isoformat(
+            timespec="seconds"
+        )
+        with reg._lock:
+            idx = reg._read_index()
+            for sid in ids:
+                idx[sid]["last_active_utc"] = long_ago
+            reg._write_index(idx)
+
+        lock_path = reg.index_path.with_suffix(".lock")
+        held_during_any_save = threading.Event()
+        release = threading.Event()
+        real_save = Session.save
+
+        def watching_save(self, directory):
+            if lock_path.exists():
+                held_during_any_save.set()
+            release.wait(timeout=2)  # give a concurrent waiter a chance to look
+            return real_save(self, directory)
+
+        with mock.patch.object(Session, "save", watching_save):
+            t = threading.Thread(
+                target=lambda: reg.evict_idle(idle_minutes=30), daemon=True
+            )
+            t.start()
+            release.set()
+            t.join(timeout=10)
+            assert not t.is_alive()
+        assert not held_during_any_save.is_set(), (
+            "the cross-process lock was held during at least one save() in "
+            "an eviction sweep"
+        )
+        for sid in ids:
+            assert reg.entry(sid)["state"] == "idle"
+
+
 class TestCrossProcessIndexSafety:
     """Two OS processes must not clobber each other's registry writes.
 
