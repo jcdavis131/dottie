@@ -1,3 +1,6 @@
+
+
+
 # Active Tasks — Master Board
 _LCG 20260813→189831298 idx3820 same-link-same-stars — ?daily=20260813&n=1/3/5 triple[11205,19448,14209]_
 _Last sync: 18:03 CT 2026-08-15 — auto-exec evening-wrap-aug-15-2026 — parsed DONE 5 + OPEN 6 — hillclimb-loop stale sweep 18:03 CT 2026-08-15 cleared 1 stale (10:07 CT >4h) — preserved 3 LOCAL-GPU 22:20 CT — board 8 claimed + 6 new open — zero-deps true — LCG 20260813→189831298 idx3820 triple[11205,19448,14209] ?daily=20260813&n=1/3/5 everyday chain open→drag-map→Jordan→copy-link same-link-same-stars_
@@ -22,6 +25,8 @@ _Sync: mirrors to each repo COORDINATION.md + TODO.md IN-PROGRESS table_
 | phase0-auth | dottie / auth 3-user is_on cached 0.9 | 18:03 CT 2026-08-15 | Phase0 stub <2h no-torch — auth flags.jsonl 4 flags chimera_on true rollout1.0 is_on cached0.9 users3 — triple-write verified — even no-change — spawned by evening-wrap auto-exec | scout/phase0-auth-1803 | claimed |
 | phase1-launched | dottie / Phase1 Launched blockers 10/10 | 18:03 CT 2026-08-15 | Phase1 Launched blockers 10/10: Stripe, PostHog, Clerk, Vercel, Sentry, Cloudflare, Resend, R2, LaunchDarkly, Linear — stubs honest 503 never fake, local-first per user parked finance pattern — claimed from Top5 Aug15 evening-wrap | scout/phase1-launched-1803 | todo |
 | top5-build | ship-ai-product-suite / Top5 build order Aug15 | 18:03 CT 2026-08-15 | Top5 build order Aug15 evening-wrap: 1/5 tick+flags → 2/5 vec+lattice v2 → 3/5 analytics+trace+ops v2 → 4/5 meter — guard v1.1 max7 non-GPU 3 GPU exempt hillclimb backoff conf0.82 stuck-detector+honest lens >3 loops — claimed from evening-wrap auto-exec | scout/top5-aug15-1803 | todo |
+
+| you | dottie / slasso route capacity | 19:10 CT 2026-08-15 | vector-models MCP tools embedding_lookup LCG 20260813→189831298 idx3820 triple[11205,19448,14209] ?daily=20260813&n=1/3/5 same-link-same-stars + retrain_trigger corpus_stats provenance gate eval — wire into /api/route heuristic cosine sim 64-d measured latency tokens_est stdlib only | scout/slasso-route-capacity | claimed |
 
 ## DONE recent
 
