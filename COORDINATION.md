@@ -1,6 +1,3 @@
-
-
-
 # Active Tasks — Master Board
 _LCG 20260813→189831298 idx3820 same-link-same-stars — ?daily=20260813&n=1/3/5 triple[11205,19448,14209]_
 _Last sync: 07:29 CT 2026-08-16 — podcast-brief-auto-exec — morning-brief-aug-16-2026-2026-08-16 — zero-deps true_
