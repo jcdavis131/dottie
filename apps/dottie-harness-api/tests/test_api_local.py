@@ -272,6 +272,10 @@ def test_route_is_deterministic(server, tmp_path):
     status_a, doc_a = _post(server, "/api/route", goal)
     status_b, doc_b = _post(server, "/api/route", goal)
     assert status_a == status_b == 200
+    # deterministic core fields — exclude measured latency which legitimately varies per stdlib time (verifier logging requires it)
+    for k in ("latency_ms", "measured"):
+        doc_a.pop(k, None)
+        doc_b.pop(k, None)
     assert doc_a == doc_b
 
 
