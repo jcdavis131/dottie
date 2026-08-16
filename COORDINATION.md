@@ -1,6 +1,3 @@
-
-
-
 # Active Tasks — Master Board
 _LCG 20260813→189831298 idx3820 same-link-same-stars — ?daily=20260813&n=1/3/5 triple[11205,19448,14209]_
 _Last sync: 18:03 CT 2026-08-15 — auto-exec evening-wrap-aug-15-2026 — parsed DONE 5 + OPEN 6 — hillclimb-loop stale sweep 18:03 CT 2026-08-15 cleared 1 stale (10:07 CT >4h) — preserved 3 LOCAL-GPU 22:20 CT — board 8 claimed + 6 new open — zero-deps true — LCG 20260813→189831298 idx3820 triple[11205,19448,14209] ?daily=20260813&n=1/3/5 everyday chain open→drag-map→Jordan→copy-link same-link-same-stars_
@@ -25,8 +22,11 @@ _Sync: mirrors to each repo COORDINATION.md + TODO.md IN-PROGRESS table_
 | phase0-auth | dottie / auth 3-user is_on cached 0.9 | 18:03 CT 2026-08-15 | Phase0 stub <2h no-torch — auth flags.jsonl 4 flags chimera_on true rollout1.0 is_on cached0.9 users3 — triple-write verified — even no-change — spawned by evening-wrap auto-exec | scout/phase0-auth-1803 | claimed |
 | phase1-launched | dottie / Phase1 Launched blockers 10/10 | 18:03 CT 2026-08-15 | Phase1 Launched blockers 10/10: Stripe, PostHog, Clerk, Vercel, Sentry, Cloudflare, Resend, R2, LaunchDarkly, Linear — stubs honest 503 never fake, local-first per user parked finance pattern — claimed from Top5 Aug15 evening-wrap | scout/phase1-launched-1803 | todo |
 | top5-build | ship-ai-product-suite / Top5 build order Aug15 | 18:03 CT 2026-08-15 | Top5 build order Aug15 evening-wrap: 1/5 tick+flags → 2/5 vec+lattice v2 → 3/5 analytics+trace+ops v2 → 4/5 meter — guard v1.1 max7 non-GPU 3 GPU exempt hillclimb backoff conf0.82 stuck-detector+honest lens >3 loops — claimed from evening-wrap auto-exec | scout/top5-aug15-1803 | todo |
+| you | dottie / slasso lattice v2 ACNE TLPG | 19:10 CT 2026-08-15 | ACNE 17 node types 27 edge types graphify_constructs stage4 into /api/stats | scout/slasso-lattice-v2 | claimed |
 
-| you | dottie / slasso route capacity | 19:10 CT 2026-08-15 | vector-models MCP tools embedding_lookup LCG 20260813→189831298 idx3820 triple[11205,19448,14209] ?daily=20260813&n=1/3/5 same-link-same-stars + retrain_trigger corpus_stats provenance gate eval — wire into /api/route heuristic cosine sim 64-d measured latency tokens_est stdlib only | scout/slasso-route-capacity | claimed |
+| you | dottie / slasso meter vector unified MTNN | 19:10 CT 2026-08-15 | stitch unified MTNN 25/25/1 w0.05 CORALλ0.3→0.5 GRL SupCon τ0.07 gridiron MAE Sharif DFS closers | scout/slasso-meter-vector | claimed |
+
+| you | dottie / slasso nightly corpus Routine | 19:11 CT 2026-08-15 | 09:00 UTC mining measured-behavior/outcome/operator-corrected hill-climb promotion gate strict | scout/slasso-tick-flags | claimed |
 
 ## DONE recent
 
@@ -94,3 +94,7 @@ _Sync: mirrors to each repo COORDINATION.md + TODO.md IN-PROGRESS table_
 | STALE-CLEARED-1 | proactive-hillclimb-loop / stale >4h sweep 12:27 CT | 12:27 CT | Cleared 1 stale >4h (9h 8.8m): hillclimb-loop@vector-equities / front cap hoops-level parity 03:37 CT 2026-08-15 CT 8.8h >4h — preserved 3 LOCAL-GPU 22:20 CT — board now 4 active + 3 free — zero-deps true | hillclimb-loop | cleared |
 | DONE-self-improvement-100 | self-improvement-loop / 70→100% closer | 18:05 CT 2026-08-13 | Self-improvement 70%→95%→100% closer board poll 17→22 seen 500-505 5 new hits 3 blocker jsonl + paired lessons 28 tight foundation v0.1.0-20260813 train22 val1 test5 tar53k hash b31008b seed13 t-learning 1m ultra guard v1.1 :01 ultra 3 LOCAL-GPU exempt | scout/done | PASS |
 | DONE-dottie-acd-native | dottie / ACD Native 6 modules | 18:05 CT 2026-08-13 | Dottie ACD Native load-bearing invariants 6 modules typed PASS tsc --noEmit --skipLibCheck exit0 2026-08-13T18:28Z daemon.ts tunnel peer.ts version mux rpc + AgentConductorPanel 40px sticky nav thin UI — timeline triple-write 7-field dottie-acd-native | scout/done | PASS |
+
+
+<!-- merged from outside edits 2026-08-16T00:11Z -->
+| you | dottie / slasso route capacity | 19:10 CT 2026-08-15 | vector-models MCP tools embedding_lookup LCG 20260813→189831298 idx3820 triple[11205,19448,14209] ?daily=20260813&n=1/3/5 same-link-same-stars + retrain_trigger corpus_stats provenance gate eval — wire into /api/route heuristic cosine sim 64-d measured latency tokens_est stdlib only | scout/slasso-route-capacity | claimed |
