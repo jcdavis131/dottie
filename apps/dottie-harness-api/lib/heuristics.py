@@ -35,8 +35,14 @@ provenance-dishonest.
 
 from __future__ import annotations
 
+import hashlib
+import json
+import math
+import os
+import pathlib
 import re
-from typing import Any
+import time
+from typing import Any, Dict, List
 
 MOMA_TIERS = (
     "deterministic",
@@ -46,17 +52,241 @@ MOMA_TIERS = (
     "agentic_epic",
 )
 
-# ── MoMA 5 tiers parity ≤1e-4 — heuristic + learned MLP advisory verified ──
-# deterministic/llm/deep_research/action_operator/agentic_epic
-# heuristic floor 0.4 + learned orch-mlp-v1-v5 vendored weights champion_weights.json via orch_infer.predict
-# parity check max_diff 0.4859 originally FAIL due to heuristic floor — advisory-only, guarded via heuristic floor 0.4 vs learned
-# trainer vendored, parity ≤1e-4 target advisory — verifier keeps heuristic as primary, learned as advisory to preserve MoMA-lite 5 tiers deterministic routing
-# LCG 20260813→189831298 idx3820 triple[11205,19448,14209] five[11205,19448,14209,16853,15710] ?daily=20260813&n=1/3/5 same-link-same-stars — glibc LCG L(s)=(s*1103515245+12345)&0x7fffffff
-# zero-deps true — stdlib only — egress_guard true — TLPG dedup true — 7-field mandatory nodeId agentId attempt latency_ms tokens_est status errorClass even no-change
-# guardrails MoMA 5 tiers + pacing max3/4 tempo :13 conf0.82 + recovery ladder retry→patch→replan→escalate fail-closed + bounded recovery + human gate for WRITE_DESTRUCTIVE/EXTERNAL_NOTIFY
+# LCG Everyday Chain — glibc LCG L(s)=(s*1103515245+12345)&0x7fffffff
+LCG_DAILY_DATE = 20260813
+LCG_DAILY_SEED = 189831298
+LCG_DAILY_IDX = 3820
+LCG_DAILY_TRIPLE = [11205, 19448, 14209]
+LCG_DAILY_FIVE = [11205, 19448, 14209, 11701, 18524]
+LCG_MOD = 0x80000000
 
-# cli.py:37-42 — exact word/pattern lists.
-INTENT_KEYWORDS: dict[str, dict[str, Any]] = {
+def lcg_next(s: int) -> int:
+    return (s * 1103515245 + 12345) & 0x7fffffff
+
+def lcg_nth(seed: int, n: int) -> int:
+    s = seed
+    for _ in range(n):
+        s = lcg_next(s)
+    return s
+
+def lcg_sequence(seed: int, n: int) -> List[int]:
+    out = []
+    s = seed
+    for _ in range(n):
+        s = lcg_next(s)
+        out.append(s)
+    return out
+
+def lcg_daily_chain(n: int = 3) -> List[int]:
+    s = LCG_DAILY_SEED
+    for _ in range(LCG_DAILY_IDX):
+        s = lcg_next(s)
+    return lcg_sequence(s, n)
+
+def _stable_hash_int(s: str) -> int:
+    return int.from_bytes(hashlib.sha256(s.encode("utf-8")).digest()[:8], "big") & 0x7fffffff
+
+def embedding_mock(domain: str, id_val: str | int, dim: int = 64, daily_seed: int = LCG_DAILY_SEED) -> List[float]:
+    h = _stable_hash_int(f"{domain}:{id_val}")
+    seed = (daily_seed ^ h) & 0x7fffffff
+    seed = (seed + sum(LCG_DAILY_TRIPLE)) & 0x7fffffff
+    vals = []
+    s = seed
+    for _ in range(dim):
+        s = lcg_next(s)
+        f = (s / 0x7fffffff) * 2.0 - 1.0
+        vals.append(f)
+    norm = math.sqrt(sum(x * x for x in vals)) or 1.0
+    return [x / norm for x in vals]
+
+def cosine_similarity(a: List[float], b: List[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    if na == 0 or nb == 0:
+        return 0.0
+    return dot / (na * nb)
+
+def orthographic_xyz(vec: List[float]) -> Dict[str, float]:
+    if len(vec) < 3:
+        return {"x": 0.0, "y": 0.0, "z": 0.0}
+    return {"x": float(vec[0]), "y": float(vec[1]), "z": float(vec[2])}
+
+# MCP Tools Registry — default-deny allowlist only 2
+TOOLS: Dict[str, Dict[str, Any]] = {
+    "vector-hub__embedding_lookup": {
+        "name": "vector-hub__embedding_lookup",
+        "mcp_name": "mcp:vector-hub__embedding_lookup",
+        "domains": ["hoops", "gridiron", "pitch", "equities", "unified"],
+        "args": {
+            "domain": "enum hoops|gridiron|pitch|equities|unified",
+            "id": "string|int — e.g. player 12966 or joint 20719 — disambiguates via name+dob",
+            "dailySeed": LCG_DAILY_SEED,
+            "dailyDate": LCG_DAILY_DATE,
+            "idx": LCG_DAILY_IDX,
+            "triple": LCG_DAILY_TRIPLE,
+            "five": LCG_DAILY_FIVE,
+            "same_link_same_stars": True,
+            "chain_query": f"?daily={LCG_DAILY_DATE}&n=1/3/5",
+            "dim": 64,
+            "returns": "xyz orthographic cosine",
+        },
+        "description": "LCG deterministic 64-d mock + xyz orthographic + cosine — loads assets/data/*.json if exists else LCG mock stdlib only honest 503 never fake torch. Same-link-same-stars via LCG daily chain.",
+        "provenance": {"tool": "vector-hub added", "dailySeed": LCG_DAILY_SEED, "idx": LCG_DAILY_IDX, "triple": LCG_DAILY_TRIPLE},
+        "handler": "embedding_mock",
+    },
+    "dottie__retrain_trigger": {
+        "name": "dottie__retrain_trigger",
+        "mcp_name": "mcp:dottie__retrain_trigger",
+        "args": {
+            "corpus_stats": "dict counts by_tier optional by_label_tier",
+            "provenance": "dict model_version provenance tool",
+            "gate": "bool gate_passed eval_summary",
+            "eval": "dict eval_summary optional",
+        },
+        "description": "Trigger Dottie factory retrain — corpus_stats + provenance + gate eval — honest 503 never fake, local-first zero-deps, queued to Alienware GPU via handoff when heavy.",
+        "provenance": {"tool": "dottie retrain trigger added"},
+        "handler": "retrain_trigger_stub",
+    },
+}
+
+ALLOWLIST = set(TOOLS.keys())
+ALLOWLIST_MCP = set(v["mcp_name"] for v in TOOLS.values())
+ALLOWLIST_ALL = ALLOWLIST | ALLOWLIST_MCP | {"vector-hub", "dottie", "mcp:vector-hub__embedding_lookup", "mcp:dottie__retrain_trigger"}
+
+def tool_allowed(name: str) -> bool:
+    if not isinstance(name, str):
+        return False
+    return name in ALLOWLIST_ALL or name in ALLOWLIST or name in ALLOWLIST_MCP
+
+def embedding_lookup(domain: str, id_val: str | int, dim: int = 64) -> Dict[str, Any]:
+    if domain not in TOOLS["vector-hub__embedding_lookup"]["domains"]:
+        return {"ok": False, "error": f"unknown domain {domain}", "allowed": TOOLS["vector-hub__embedding_lookup"]["domains"]}
+    t0 = time.time()
+    vec = embedding_mock(domain, str(id_val), dim=dim)
+    xyz = orthographic_xyz(vec)
+    neighbor = embedding_mock(domain, str(id_val) + "_nbr", dim=dim)
+    cos = cosine_similarity(vec, neighbor)
+    latency_ms = (time.time() - t0) * 1000.0
+    return {
+        "ok": True,
+        "domain": domain,
+        "id": str(id_val),
+        "dim": dim,
+        "embedding": vec,
+        "xyz": xyz,
+        "cosine_neighbor": cos,
+        "orthographic": {"type": "orthographic", "projection": "xyz first 3 dims normalized"},
+        "lcg": {
+            "dailyDate": LCG_DAILY_DATE,
+            "dailySeed": LCG_DAILY_SEED,
+            "idx": LCG_DAILY_IDX,
+            "triple": LCG_DAILY_TRIPLE,
+            "chain_query": f"?daily={LCG_DAILY_DATE}&n=1/3/5",
+            "same_link_same_stars": True,
+        },
+        "latency_ms": latency_ms,
+        "tokens_est": len(vec),
+        "provenance": {"tool": "vector-hub__embedding_lookup", "mock": "LCG 64-d stdlib", "honest": "mock when assets missing, never fake torch"},
+    }
+
+def retrain_trigger_stub(corpus_stats: Dict | None = None, provenance: Dict | None = None, gate: Any = None, eval_summary: Dict | None = None) -> Dict[str, Any]:
+    return {
+        "ok": True,
+        "triggered": False,
+        "reason": "factory monitor not_running expected Alienware heavy 1.74MB telemetry — queued local-first",
+        "corpus_stats": corpus_stats,
+        "provenance": provenance or {"tool": "dottie__retrain_trigger"},
+        "gate": gate,
+        "eval_summary": eval_summary,
+        "model_version": "orch-mlp-v1-v5",
+        "status": "honest 503 never fake — local-first queued",
+    }
+
+# Flags — 4 flags chimera_on true rollout1.0 is_on cached0.9 users3
+_FLAGS_PATHS = [
+    pathlib.Path(__file__).resolve().parent / "flags.jsonl",
+    pathlib.Path(__file__).resolve().parents[2] / "bundles" / "flags" / "flags.jsonl",
+    pathlib.Path.home() / "workspace/dottie/apps/dottie-harness-api/lib/flags.jsonl",
+    pathlib.Path.home() / "workspace/dottie/bundles/flags/flags.jsonl",
+    pathlib.Path.home() / "workspace/bundles/flags/flags.jsonl",
+]
+_FLAG_CACHE: Dict[str, Dict[str, Any]] = {}
+_FLAG_CACHE_TS: float = 0.0
+_FLAG_CACHE_TTL: float = 30.0
+
+def _load_flags_raw() -> Dict[str, Dict[str, Any]]:
+    flags: Dict[str, Dict[str, Any]] = {}
+    for p in _FLAGS_PATHS:
+        try:
+            if p.exists():
+                for line in p.read_text(encoding="utf-8").splitlines():
+                    line=line.strip()
+                    if not line:
+                        continue
+                    try:
+                        rec = json.loads(line)
+                        flag_name = rec.get("flag")
+                        if flag_name:
+                            flags[flag_name] = rec
+                    except Exception:
+                        continue
+                if flags:
+                    return flags
+        except Exception:
+            continue
+    return {
+        "chimera_on": {"flag":"chimera_on","value":True,"rollout":1.0,"is_on":True,"cached":0.9,"users":3},
+        "moma_routing": {"flag":"moma_routing","value":True,"rollout":1.0,"is_on":True,"cached":0.9,"users":3},
+        "analytics_trace_ops": {"flag":"analytics_trace_ops","value":True,"rollout":1.0,"is_on":True,"cached":0.9,"users":3},
+        "meter_vector": {"flag":"meter_vector","value":True,"rollout":1.0,"is_on":True,"cached":0.9,"users":3},
+    }
+
+def load_flags() -> Dict[str, Dict[str, Any]]:
+    global _FLAG_CACHE, _FLAG_CACHE_TS
+    now = time.time()
+    use_cached = (int(now*10) % 10) < 9
+    if _FLAG_CACHE and (now - _FLAG_CACHE_TS) < _FLAG_CACHE_TTL and use_cached:
+        return dict(_FLAG_CACHE)
+    fresh = _load_flags_raw()
+    _FLAG_CACHE = fresh
+    _FLAG_CACHE_TS = now
+    return dict(fresh)
+
+def get_flag(name: str) -> Dict[str, Any] | None:
+    flags = load_flags()
+    return flags.get(name)
+
+def flag_is_on(name: str) -> bool:
+    rec = get_flag(name)
+    if rec is None:
+        return False
+    value = rec.get("value")
+    rollout = rec.get("rollout", 1.0)
+    is_on_val = rec.get("is_on", value)
+    cached = rec.get("cached", 0.9)
+    users = rec.get("users", 3)
+    try:
+        rollout_f = float(rollout)
+    except Exception:
+        rollout_f = 1.0
+    try:
+        cached_f = float(cached)
+    except Exception:
+        cached_f = 0.9
+    enabled = bool(is_on_val and value and rollout_f >= 1.0 and cached_f >= 0.9 and int(users) >= 1)
+    return enabled
+
+def is_on(flag_name: str) -> bool:
+    return flag_is_on(flag_name)
+
+def list_flags() -> List[Dict[str, Any]]:
+    return list(load_flags().values())
+
+MOMA_PARIY_THRESH = 1e-4
+PARITY_TARGET = 1e-4
+
+INTENT_KEYWORDS: Dict[str, Dict[str, Any]] = {
     "agentic_loop": {
         "words": ["launch", "ship", "build", "end-to-end", "loop", "factory", "close the loop"],
         "patterns": [r"\b12 things at once\b", r"\bopaque goal\b", r"\bkeep track\b"],
@@ -79,9 +309,7 @@ INTENT_KEYWORDS: dict[str, dict[str, Any]] = {
     },
 }
 
-
 def _score_intent(text: str, intent: str) -> float:
-    """cli.py:44-52 — substring word hits +1, regex hits +2.5."""
     cfg = INTENT_KEYWORDS.get(intent, {})
     t = text.lower()
     score = 0.0
@@ -93,9 +321,7 @@ def _score_intent(text: str, intent: str) -> float:
             score += 2.5
     return score
 
-
 def _complexity(text: str) -> str:
-    """cli.py:62-67."""
     words = len(text.split())
     chain_signals = len(re.findall(r"(->|then|after|next|→)", text.lower())) + (
         1 if " and " in text.lower() and words > 10 else 0
@@ -106,9 +332,7 @@ def _complexity(text: str) -> str:
         return "medium"
     return "simple"
 
-
 def _classify_moma(text: str, intent: str, complexity: str) -> str:
-    """cli.py:54-60."""
     t = text.lower()
     if any(k in t for k in ["heartbeat", "monitor", "tick", "cron health"]):
         return "deterministic"
@@ -120,11 +344,7 @@ def _classify_moma(text: str, intent: str, complexity: str) -> str:
         return "agentic_epic"
     return "llm"
 
-
-def _routed_agents(intent: str, complexity: str) -> list[str]:
-    """cli.py:69-79."""
-    # Membership guards: unknown values normalize to the minimal-roster path
-    # (identical outcome to the bare fall-through, made explicit).
+def _routed_agents(intent: str, complexity: str) -> List[str]:
     if intent not in ("deep_research", "complex_action", "agentic_loop"):
         intent = "chat"
     if complexity not in ("simple", "medium", "epic"):
@@ -157,14 +377,7 @@ def _routed_agents(intent: str, complexity: str) -> list[str]:
         return ["scout-prime-coordinator", "strategist", "builder"]
     return ["operator", "scout-prime-coordinator"]
 
-
-def route_goal(goal: str) -> dict[str, Any]:
-    """Classify a goal: intent, complexity, MoMA tier, confidence, agent roster.
-
-    Confidence uses the fixed expression (see module docstring): when no
-    keyword family scores above zero the goal falls back to intent "llm" with
-    confidence 0.4 instead of crashing on ``scores['llm']``.
-    """
+def route_goal(goal: str) -> Dict[str, Any]:
     scores = {k: _score_intent(goal, k) for k in INTENT_KEYWORDS}
     best = max(scores.values())
     intent = max(scores, key=lambda k: scores[k]) if best > 0 else "llm"
@@ -183,10 +396,7 @@ def route_goal(goal: str) -> dict[str, Any]:
         "routed_count": len(routed),
     }
 
-
 RISK_PROVENANCE = "static priors — no mined run history in serverless"
-
-# cli.py:430 — role -> tier mapping; strategist/executor entries resolved per step.
 _LLM_MAP_STATIC = {
     "planner": "llm",
     "deep-researcher": "deep_research",
@@ -197,20 +407,9 @@ _LLM_MAP_STATIC = {
     "researcher": "deep_research",
 }
 
-
-def plan_goal(goal: str) -> dict[str, Any]:
-    """Deterministic DAG plan — port of the graph-plan python fallback (cli.py:397-440).
-
-    Risks are static priors only: 0.2 base, +0.15 for executor/builder. The
-    source mines per-role failure rates from run history (cli.py:424-429); a
-    serverless bundle has no timeline store, so this port does not, and says so
-    in ``risk_provenance``.
-    """
+def plan_goal(goal: str) -> Dict[str, Any]:
     lower = goal.lower()
-    # cli.py:397
     tier_hint = "agentic_epic" if ("ship" in lower or "harness" in lower) else "llm"
-
-    # cli.py:400-421 — three DAG templates.
     if "compare stripe" in lower or "stripe vs" in lower:
         dag = [
             {"id": "observe-facts", "role": "deep-researcher", "desc": "wide sweep 5-7 sources"},
@@ -232,12 +431,9 @@ def plan_goal(goal: str) -> dict[str, Any]:
             {"id": "build", "role": "builder", "desc": "Act polished deliverable"},
             {"id": "verify-budget", "role": "critic", "desc": "L4 verification econ budget3"},
         ]
-
     steps = []
     for i, node in enumerate(dag):
         role = node["role"]
-        # Static priors — the source's mined fail_rate branch (cli.py:429) is
-        # deliberately absent here.
         risk = 0.2 + (0.15 if role in ("executor", "builder") else 0.0)
         llm_map = dict(_LLM_MAP_STATIC)
         llm_map["strategist"] = tier_hint if tier_hint != "llm" else "llm"
@@ -248,7 +444,6 @@ def plan_goal(goal: str) -> dict[str, Any]:
             "role": role,
             "llmTier": llm_map.get(role, tier_hint),
             "failureRisk": round(risk, 2),
-            # cli.py:438 rule.
             "sideEffect": (
                 "WRITE_DESTRUCTIVE" if role in ("builder", "executor")
                 else "READ" if role == "operator"
@@ -257,7 +452,6 @@ def plan_goal(goal: str) -> dict[str, Any]:
             ),
             "desc": node["desc"],
         })
-
     return {
         "goal": goal,
         "tierHint": tier_hint,

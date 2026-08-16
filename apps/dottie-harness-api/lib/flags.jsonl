@@ -1,0 +1,4 @@
+{"flag":"chimera_on","value":true,"rollout":1.0,"is_on":true,"cached":0.9,"users":3}
+{"flag":"moma_routing","value":true,"rollout":1.0,"is_on":true,"cached":0.9,"users":3}
+{"flag":"analytics_trace_ops","value":true,"rollout":1.0,"is_on":true,"cached":0.9,"users":3}
+{"flag":"meter_vector","value":true,"rollout":1.0,"is_on":true,"cached":0.9,"users":3}
