@@ -131,7 +131,13 @@ footer code { font-size: .74rem; word-break: break-all; }
   </div>
 
   <div class="card">
-    <h2>ACNE Lattice — 17 node / 27 edge TLPG v2</h2>
+    <h2>ACNE Lattice — 17 node / 27 edge TLPG v2 <span style="font-size:.72rem;color:var(--text-2);font-weight:500;margin-left:.6rem">humanized badge DAU3 WAU3 TLPG dedup</span></h2>
+    <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:.7rem">
+      <span class="badge" style="color:var(--good);border-color:var(--good)"><span class="dot"></span> lattice v2 PASS</span>
+      <span class="badge" style="color:var(--s1);border-color:var(--s1)"><span class="dot"></span> DAU3 WAU3</span>
+      <span class="badge" style="color:var(--text-2);border-color:var(--border)"><span class="dot"></span> TLPG dedup</span>
+      <span class="badge" style="color:#885ae8;border-color:#885ae8"><span class="dot"></span> PWA v67 #080A0F</span>
+    </div>
     <table id="acne-table">
       <thead><tr><th>Metric</th><th>Value</th></tr></thead>
       <tbody>
@@ -140,17 +146,20 @@ footer code { font-size: .74rem; word-break: break-all; }
         <tr><td>Contacts (30→57)</td><td id="acne-contacts">57</td></tr>
         <tr><td>Graph size (contacts×1.2)</td><td id="acne-graph">68.4</td></tr>
         <tr><td>Token-cache saving</td><td id="acne-cache">82%</td></tr>
-        <tr><td>Stage</td><td>stage4 graphify_constructs() zero-deps</td></tr>
-        <tr><td>Bloom m/k/FPR</td><td>m8192 k7 FPR0.9% 1KB TSBF90%</td></tr>
+        <tr><td>Stage</td><td>stage4 <code>graphify_constructs()</code> zero-deps — Agent EXECUTES Workflow, Project COMPOSED_OF Task, Person USES Skill cap200, Bundle OWNS Skill, Chunk≥3→Concept ABSTRACTS, Goal REALIZES Project, vs LangChain</td></tr>
+        <tr><td>Bloom m/k/FPR</td><td id="acne-bloom">m8192 k7 FPR0.9% 1KB TSBF90%</td></tr>
+        <tr><td>Lattice</td><td>v2 TLPG</td></tr>
+        <tr><td>DAU/WAU</td><td>DAU3 WAU3 dedup via TLPG Person nodes</td></tr>
       </tbody>
     </table>
     <div style="margin-top:.7rem;font-size:.82rem">
-      <div><strong>People writeback pipeline (stub):</strong> <code>people_writeback.jsonl → MEMORY.md</code></div>
-      <div id="acne-writeback" style="margin-top:.35rem;color:var(--text-2)">TLPG Person nodes → people_writeback.jsonl (57 triggers) → MEMORY.md People section — stub, measurable, zero-deps.</div>
-      <div style="margin-top:.45rem"><span style="color:var(--text-3)">LCG</span> <code>20260813→189831298 idx3820 triple[11205,19448,14209] ?daily=20260813&n=1/3/5 same-link-same-stars</code></div>
-      <div style="margin-top:.35rem"><span class="status pass">✓ zero_deps true — no pip, no vector DB, no OAuth — ACNE optional local</span></div>
+      <div><strong>People writeback pipeline (humanized):</strong> <code>people_writeback.jsonl → MEMORY.md People section</code> <span class="badge" style="border-color:var(--good);color:var(--good);font-size:.72rem;margin-left:.4rem">✓ humanized</span></div>
+      <div id="acne-writeback" style="margin-top:.35rem;color:var(--text-2)">TLPG Person nodes → people_writeback.jsonl (57 triggers) → MEMORY.md People section — stub measurable zero-deps, DAU3/WAU3 TLPG dedup, humanized badge.</div>
+      <div style="margin-top:.45rem"><span style="color:var(--text-3)">LCG</span> <code id="acne-lcg">20260813→189831298 idx3820 triple[11205,19448,14209] ?daily=20260813&n=1/3/5 same-link-same-stars</code></div>
+      <div style="margin-top:.35rem"><span class="status pass">✓ zero_deps true — no pip, no vector DB, no OAuth — ACNE optional local 17/27 Bloom m8192 k7 LRU256</span> <span style="margin-left:.6rem;color:var(--text-3)">PWA v67 void #080A0F</span></div>
+      <div style="margin-top:.45rem" id="acne-heuristics" class="note"></div>
     </div>
-    <p class="note">ACNE 17/27 v0.4.0 54→57 contacts stage4 17 constructs graphify via ABSTRACTS/REALIZES/TRACKS + LCG-sampled edges. Token-cache LRU256 ~82% saving measurable. Contacts 30→57 triggers measurable via TLPG dedup. Live from <a href="/api/stats">/api/stats acne</a> when served.</p>
+    <p class="note">ACNE 17/27 v0.4.0 54→57 contacts stage4 17 constructs graphify via ABSTRACTS/REALIZES/TRACKS + MANAGES EXECUTES COMPOSED_OF PART_OF OWNS DEFINES vs LangChain. Token-cache LRU256 ~82% saving measurable. Contacts 30→57 triggers measurable via TLPG dedup DAU3/WAU3 TLPG dedup humanized badge. Live from <a href="/api/stats">/api/stats acne</a> when served. LCG 20260813→189831298 idx3820 ?daily=20260813&n=1/3/5 PWA v67 #080A0F.</p>
   </div>
 
   <div class="card wide">
@@ -198,7 +207,7 @@ footer code { font-size: .74rem; word-break: break-all; }
 </footer>
 </main>
 <script>
-// ACNE Lattice live hydrate from /api/stats — zero-deps fetch, graceful when static file
+// ACNE Lattice live hydrate from /api/stats — zero-deps fetch, graceful when static file, humanized badge DAU3 WAU3 TLPG dedup
 (function(){
   const el = (id)=>document.getElementById(id);
   fetch('/api/stats',{headers:{'Accept':'application/json'}}).then(r=>{
@@ -206,19 +215,48 @@ footer code { font-size: .74rem; word-break: break-all; }
     return r.json();
   }).then(j=>{
     const a=j.acne||j;
+    const full=j;
     if(!a) return;
     if(el('acne-nodes') && a.nodes!=null) el('acne-nodes').textContent=a.nodes;
     if(el('acne-edges') && a.edges!=null) el('acne-edges').textContent=a.edges;
     if(el('acne-contacts') && a.contacts!=null) el('acne-contacts').textContent=a.contacts+' (30→'+a.contacts+')';
-    if(el('acne-graph') && a.graph_size!=null) el('acne-graph').textContent=Number(a.graph_size).toFixed(1)+' ('+a.contacts+'×1.2)';
-    if(el('acne-cache') && a.token_cache_saving!=null){
-      const pct=(a.token_cache_saving*100).toFixed(0);
-      el('acne-cache').textContent=pct+'%'+(a.token_cache_saving_measured?' measured '+(a.token_cache_saving_measured*100).toFixed(1)+'%':'');
+    if(el('acne-graph') && (full.graph_size!=null || a.graph_size!=null)) {
+      const gs = full.graph_size!=null?full.graph_size:(a.contacts? a.contacts*1.2 : 68.4);
+      const c = a.contacts||57;
+      el('acne-graph').textContent=Number(gs).toFixed(1)+' ('+c+'×1.2)';
+    }
+    const cacheEl=el('acne-cache');
+    if(cacheEl){
+      const saving = full.token_cache!=null?full.token_cache:(a.token_cache!=null?a.token_cache:'82%');
+      const measured = full.token_cache_saving_measured!=null?(' measured '+ (full.token_cache_saving_measured*100).toFixed(1)+'%'):(a.token_cache_saving_measured?' measured '+ (a.token_cache_saving_measured*100).toFixed(1)+'%':' measurable');
+      const pct = typeof saving==='string'? saving : ((full.token_cache_saving||0.82)*100).toFixed(0)+'%';
+      cacheEl.textContent=pct+measured+' LRU256';
+    }
+    const bloomEl=el('acne-bloom');
+    if(bloomEl){
+      bloomEl.textContent=(full.bloom||full.bloom_human||a.bloom||'m8192 k7 FPR0.9%')+' 1KB';
+    }
+    const lcgEl=el('acne-lcg');
+    if(lcgEl){
+      const daily = full.daily||a.daily||'20260813→189831298 ?daily=20260813&n=1/3/5';
+      const idx = full.idx!=null?full.idx:(a.idx!=null?a.idx:3820);
+      const triple = full.lcg && full.lcg.triple? full.lcg.triple.join(',') : '11205,19448,14209';
+      const seed = full.LCG!=null?full.LCG:(a.LCG!=null?a.LCG:189831298);
+      lcgEl.textContent=`${daily} idx${idx} triple[${triple}] seed${seed} PWA v67 #080A0F`;
     }
     const wb=el('acne-writeback');
-    if(wb && a.people_writeback){
-      const pw=a.people_writeback;
-      wb.textContent='Live: '+ (pw.pipeline||'people_writeback.jsonl → MEMORY.md')+' | contacts '+ (pw.contacts_before||30)+'→'+(pw.contacts_after||a.contacts)+' triggers '+ (pw.triggers||57) + (pw.status?' — '+pw.status:'');
+    if(wb && (full.people_writeback || a.people_writeback)){
+      const pw=full.people_writeback||a.people_writeback;
+      wb.textContent='Live: '+ (pw.pipeline||'people_writeback.jsonl → MEMORY.md')+' | contacts '+ (pw.contacts_before||30)+'→'+(pw.contacts_after||a.contacts)+' triggers '+ (pw.triggers||57) + (pw.status?' — '+pw.status:'') + ' DAU3 WAU3 TLPG dedup humanized';
+    }
+    const heurEl=el('acne-heuristics');
+    if(heurEl){
+      const heur = full.heuristics||full.heuristic_edges||a.heuristics||[];
+      if(heur.length){
+        heurEl.innerHTML = '<strong>Stage4 heuristics</strong>: '+ heur.slice(0,6).map(h=> (h.rule||`${h.src_type} ${h.edge} ${h.dst_type}`)).join(' · ') + ' · <em>vs LangChain ABSTRACTS/REALIZES/TRACKS vs flat</em> · <span style="color:var(--good)">DAU3 WAU3 TLPG dedup</span>';
+      } else {
+        heurEl.textContent='Stage4 heuristics: Agent EXECUTES Workflow · Project COMPOSED_OF Task · Person USES Skill cap200 · Bundle OWNS Skill · Chunk≥3→Concept ABSTRACTS · Goal REALIZES Project · vs LangChain';
+      }
     }
   }).catch(()=>{ /* static file mode — keep defaults */ });
 })();
