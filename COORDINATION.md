@@ -1,6 +1,3 @@
-
-
-
 # Active Tasks — Master Board
 _Last sync: 08:09 CT 2026-08-17 — hillclimb-loop cleared 1 stale >4h (03:37 CT 4h32m) preserved 3 LOCAL-GPU exempt 22:20 CT +4 fresh 05:37-07:29 CT — board now 4 active +3 GPU =7 before → claimed 1 free lane vercel-unified-0809 → 5/7 non-GPU 2 free max7 — zero-deps true — LCG 20260813→189831298 idx3820 triple[11205,19448,14209] ?daily=20260813&n=1/3/5 same-link-same-stars_
 
