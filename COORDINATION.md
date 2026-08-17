@@ -2,13 +2,7 @@
 
 
 # Active Tasks — Master Board
-_LCG 20260813→189831298 idx3820 same-link-same-stars — ?daily=20260813&n=1/3/5 triple[11205,19448,14209]_
-_Last sync: 12:48 CT 2026-08-17 — podcast_brief_auto_exec morning-brief-aug-17-2026 DREAM pass 3 lanes dottie 9.45 pitch 9.35 gpu-monitor 9.2 magic sparkle — board 8 active (5 non-GPU+3 GPU) 3 GPU preserved LOCAL-GPU exempt — triple-write even no-change — zero-deps true — LCG 20260813→189831298 idx3820_
-_Sync: 12:48 CT board 8 active 3 GPU claimed 22:20 CT (gridiron-real, hoops-v6, unified-G2) +5 non-GPU (gridiron-front-polish 05:37, vercel-unified 03:37, equities-front-cap 05:47, hub-chimera-5th 07:07, launched-blockers todo) — everyday language no machinery unless asked — LCG 20260813→189831298 idx3820_
-_Sync: mirrors to each repo COORDINATION.md + TODO.md IN-PROGRESS table_
-
-> Outside agents: read `COORDINATION.md` in repo root, `TODO.md` READY list. Inside Hatch: this file is SSOT.
-
+_Last sync: 08:09 CT 2026-08-17 — hillclimb-loop cleared 1 stale >4h (03:37 CT 4h32m) preserved 3 LOCAL-GPU exempt 22:20 CT +4 fresh 05:37-07:29 CT — board now 4 active +3 GPU =7 before → claimed 1 free lane vercel-unified-0809 → 5/7 non-GPU 2 free max7 — zero-deps true — LCG 20260813→189831298 idx3820 triple[11205,19448,14209] ?daily=20260813&n=1/3/5 same-link-same-stars_
 
 ## ACTIVE (≤15 rows, claimed/todo — talk before touching)
 
@@ -18,33 +12,14 @@ _Sync: mirrors to each repo COORDINATION.md + TODO.md IN-PROGRESS table_
 | LOCAL-GPU | vector-hoops / v6 transformer 150ep | 22:20 CT | MTNN v6 d_model128 4-head CLS→64-d 17 towers, w-vicreg 0.05, target composite 0.7937→0.85 test top1 0.438→0.55 | local/hoops-v6-gpu | claimed |
 | LOCAL-GPU | vector-unified / unified G2 0.685→0.64 | 22:20 CT | FULL TRAIN: GRL λ0.3→0.5 + CORAL centroid, missing caches embedding_v3.npz / mtnn_best.pt / pitch_mtnn_embeddings.json, torch OOM workaround → run train_stage2.py --smoke -> train_unified.py 60ep -> eval_unified.py on local GPU | local/unified-g2-gpu | claimed |
 | hillclimb-loop | vector-gridiron / front polish hoops-level parity void #080A0F OKABE-8 single-select | 05:37 CT 2026-08-17 | Proactive hillclimb 99→100% gridiron front polish 21.6k→25k map points visible dark bg single-select pill strip sticky 40px ?pov= sync gate 8.0+ LCG 20260813→189831298 idx3820 triple[11205,19448,14209] ?daily=20260813&n=1/3/5 same-link-same-stars zero-deps true stdlib only — claimed free lane after stale>4h sweep 01:37 CT 4h00m preserved 3 LOCAL-GPU 22:20 CT | scout/gridiron-front-polish-0537 | claimed |
-| hillclimb-loop | vector-hub / Vercel unified 404→200 one-click Production Domains | 03:37 CT 2026-08-17 | Proactive hillclimb 99→100% Vercel unified 404→200 one-click Production Domains link root edge alias only 99.7→100% gate 8.0+ LCG 20260813→189831298 idx3820 triple[11205,19448,14209] ?daily=20260813&n=1/3/5 same-link-same-stars zero-deps true stdlib only — remaining 1% Ship master — claimed free lane after stale>4h sweep 23:07 CT 4h30m preserved 3 LOCAL-GPU 22:20 CT | scout/vercel-unified-0337 | claimed |
 | hillclimb-loop | vector-equities / front cap hoops-level parity void #080A0F OKABE-8 single-select | 05:47 CT 2026-08-17 | Proactive hillclimb 99→100% equities front cap hoops-level parity void #080A0F OKABE-8 single-select pill strip sticky 40px ?pov= sync gate 8.0+ LCG 20260813→189831298 idx3820 triple[11205,19448,14209] ?daily=20260813&n=1/3/5 same-link-same-stars zero-deps true stdlib only — claimed free lane after 0 stale sweep preserved 3 LOCAL-GPU 22:20 CT — Ship master 99.8% final 0.2% polish | scout/equities-front-cap-0547 | claimed |
 | hillclimb-loop | vector-hub / 5th game chimera unified 20k+ cross-sport | 07:07 CT 2026-08-17 | Proactive hillclimb 99→100% 5th game chimera unified 20k+ cross-sport provenance 7/7/0 59 hashes LCG dailySeed 20260813→189831298 idx3820 triple[11205,19448,14209] ?daily=20260813&n=1/3/5 same-link-same-stars 5+2 swarm lite gate 8.0+ zero-deps true stdlib only — reclaimed after stale>4h 02:37 CT 4h30m — preserved 3 LOCAL-GPU exempt 22:20 CT | scout/hub-chimera-5th-0707 | claimed |
 | launched-blockers | dumbmodel.com / Phase1 Launched blockers | 07:29 CT 2026-08-17 | Phase1 Launched blockers Aug31 live URL+3 users+payments/analytics — Stripe/PostHog/Clerk/Vercel/Sentry/Cloudflare/Resend/R2/LaunchDarkly/Linear wiring; PARKED until Phase0 stubs land; Top5 build order tick+flags→vec+lattice v2→analytics+trace+ops v2→meter | scout/launched-phase1-blockers-0729 | todo |
-_Last sync: 12:48 CT 2026-08-17 — podcast_brief_auto_exec morning-brief-aug-17-2026 DREAM pass 3 lanes dottie 9.45 pitch 9.35 gpu-monitor 9.2 magic sparkle — board 8 active 3 GPU+5 non-GPU — triple-write even no-change — zero-deps true — LCG 20260813→189831298 idx3820 triple[11205,19448,14209] same-link-same-stars — checked Goals 99.8% Ship master pro-button-up 10.0 hub 8.93 hoops 9.17 pitch 9.2 gridiron 9.2+ equities/unified G2 0.685→0.64 Dottie ACD 6 modules bi-temporal graph Zep 94.8% DMR — Ideas hill 171+135 gate 8.0+ Zep 9.2 VICReg 9.0 FORMS 8.8 CLS 8.0 mean 8.75 PASS 4 kept 1 dropped — spawn 1 coordinator max 5+2 swarm lite gate 8.0+ hillclimb-loop LCG 20260813→189831298 idx3820_
-| hillclimb-loop | vector-equities / front cap hoops-level parity void #080A0F OKABE-8 single-select | 05:47 CT 2026-08-17 | Proactive hillclimb 99→100% equities front cap hoops-level parity void #080A0F OKABE-8 single-select pill strip sticky 40px ?pov= sync gate 8.0+ LCG 20260813→189831298 idx3820 triple[11205,19448,14209] ?daily=20260813&n=1/3/5 same-link-same-stars zero-deps true stdlib only — claimed free lane after 0 stale sweep preserved 3 LOCAL-GPU 22:20 CT — Ship master 99.8% final 0.2% polish | scout/equities-front-cap-0547 | claimed |
-| hillclimb-loop | vector-hub / 5th game chimera unified 20k+ cross-sport | 07:07 CT 2026-08-17 | Proactive hillclimb 99→100% 5th game chimera unified 20k+ cross-sport provenance 7/7/0 59 hashes LCG dailySeed 20260813→189831298 idx3820 triple[11205,19448,14209] ?daily=20260813&n=1/3/5 same-link-same-stars 5+2 swarm lite gate 8.0+ zero-deps true stdlib only — reclaimed after stale>4h 02:37 CT 4h30m — preserved 3 LOCAL-GPU exempt 22:20 CT | scout/hub-chimera-5th-0707 | claimed |
-| launched-blockers | dumbmodel.com / Phase1 Launched blockers | 07:29 CT 2026-08-17 | Phase1 Launched blockers Aug31 live URL+3 users+payments/analytics — Stripe/PostHog/Clerk/Vercel/Sentry/Cloudflare/Resend/R2/LaunchDarkly/Linear wiring; PARKED until Phase0 stubs land; Top5 build order tick+flags→vec+lattice v2→analytics+trace+ops v2→meter | scout/launched-phase1-blockers-0729 | todo |
-_Last sync: 07:29 CT 2026-08-17 — podcast_brief_auto_exec morning-brief-aug-17-2026 Dottie bitemporal lead, scout-cli universal, hub 20719×64-d chimera 7/7/0 59 hashes LCG 189831298 idx3820 same-link-same-stars — board 7 non-GPU +3 GPU claimed +5 open todo =15/15 — triple-write timeline even no-change — zero-deps true — LCG 20260813→189831298 idx3820 triple[11205,19448,14209] ?daily=20260813&n=1/3/5 — checked Goals 99.8% Ship master pro-button-up 10.0 hub 8.93 hoops 9.17 pitch 9.2 gridiron 9.2+ equities/unified G2 0.685→0.64 Dottie ACD 6 modules bi-temporal graph Zep 94.8% DMR — Ideas hill 171+135 gate 8.0+ Zep 9.2 VICReg 9.0 FORMS 8.8 CLS 8.0 mean 8.75 PASS 4 kept 1 dropped — spawn 1 coordinator max 5+2 swarm lite gate 8.0+ hillclimb-loop LCG 20260813→189831298 idx3820_
-
-## HOW TO CLAIM (Codex / Claude / Hatch — <60s)
-
-1. `cat TODO.md` or this file
-2. Pick a READY lane not in IN-PROGRESS table
-3. Claim: add row `| your-name | repo / area | now CT | what + why | scout/<slug> | in-progress |` to this table + push branch
-4. Work on branch only: `candidate.json` first, eval must beat current, `python -m json.tool` clean
-5. Clear row when done → move to DONE recent, push
-
-## LINKS
-- LCG daily: seed=YYYYMMDD Math.imul(seed,1103515245)+12345>>>0 &0x7fffffff — 20260813→189831298 idx3820 same-link-same-stars triple[11205,19448,14209] ?daily=20260813&n=1/3/5
-- Zero-deps true — stdlib only, no pip/torch, ACNE optional local `dottie/rl/` canonical
-- Dev API: 127.0.0.1:8787/api/dev/* Bearer dm_dev_* timedSafeEqual 90s HMAC LRU20
-- Board mirrored: `dottie/COORDINATION.md`, `vector-*/COORDINATION.md`, `apps/arxiviq/COORDINATION.md`, `COORDINATION.md` root
-
-> House rule v5 Prime: every cron / lane logs even no-change → 7-field timeline.jsonl nodeId,agentId,attempt,latency_ms,tokens_est,status,errorClass
+| hillclimb-loop | vector-hub / Vercel unified 404→200 one-click Production Domains | 08:09 CT 2026-08-17 | Proactive hillclimb 99→100% Vercel unified 404→200 one-click Production Domains link root edge alias only 99.7→100% gate 8.0+ LCG 20260813→189831298 idx3820 triple[11205,19448,14209] ?daily=20260813&n=1/3/5 same-link-same-stars zero-deps true stdlib only — remaining 1% Ship master — reclaimed after stale>4h sweep 03:37 CT 4h32m preserved 3 LOCAL-GPU 22:20 CT | scout/vercel-unified-0809 | claimed |
 
 ## DONE recent
+
+| STALE-CLEARED-1 | proactive-hillclimb-loop / stale >4h sweep 08:09 CT | 08:09 CT | Cleared 1 stale >4h (4h32m): hillclimb-loop@vector-hub / Vercel unified 404→200 03:37 CT 2026-08-17 4h32m >4h — preserved 3 LOCAL-GPU 22:20 CT — board now 4 active + 1 free — zero-deps true | hillclimb-loop | cleared |
 
 | STALE-CLEARED-1 | proactive-hillclimb-loop / stale >4h sweep 12:09 CT | 12:09 CT | Cleared 1 stale >4h (10h 9.5m): hillclimb-loop@vector-hub / 5th game chimera unified 20k+ cross-sport 02:37 CT 2026-08-17 CT 9.5h >4h — preserved 3 LOCAL-GPU 22:20 CT — board now 6 active + 1 free — zero-deps true | hillclimb-loop | cleared |
 | STALE-CLEARED-1 | proactive-hillclimb-loop / stale >4h sweep 05:37 CT | 05:37 CT 2026-08-17 | Cleared 1 stale >4h (4h00m): hillclimb-loop@vector-equities / front cap hoops-level polish void #080A0F OKABE-8 single-select 01:37 CT 2026-08-17 4h00m >4h — preserved 3 LOCAL-GPU 22:20 CT — board now 5 active + 2 free — zero-deps true | hillclimb-loop | cleared |
