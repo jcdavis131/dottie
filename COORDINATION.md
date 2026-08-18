@@ -1,6 +1,6 @@
 # Active Tasks — Master Board
 _LCG 20260813→189831298 idx3820 same-link-same-stars — ?daily=20260813&n=1/3/5 triple[11205,19448,14209]_
-_Last sync: 01:08 CT 2026-08-18 — bicameral-worker right hemi — infra-gap claimed 01:08 CT — zero-deps true_
+_Last sync: 03:05 CT 2026-08-18 — bicameral-worker right hemi — Top5 DAG claimed 03:05 CT dedup todo→claimed — zero-deps true_
 _Previous: 23:05 CT 2026-08-17 — evening-wrap-aug-17-2026 auto-exec — Phase0 stubs + infra gap + Top5 DAG — zero-deps true_
 _Previous: 22:01 CT 2026-08-17 — v4 auto stale sweep 2 cleared board 4/7 — zero-deps true_
 _Previous: 12:06 CT 2026-08-17 — big-board swarm — 99.8% ship 3 free +8 queued =11 total 7 cap non-GPU +3 GPU exempt — LCG 20260813→189831298 triple[11205,19448,14209] same-link-same-stars_
@@ -9,8 +9,10 @@ _Previous: 12:06 CT 2026-08-17 — big-board swarm — 99.8% ship 3 free +8 queu
 
 ## ACTIVE (≤15 rows, claimed/todo — talk before touching)
 
+## ACTIVE (≤15 rows, claimed/todo — talk before touching)
+
 | Agent | Repo / Area | Since CT | What / Why | Branch | Status |
-|---|---|---|---|---|---
+|---|---|---|---|---|---|
 | LOCAL-GPU | vector-hoops / v6 transformer 150ep | 22:20 CT 2026-08-17 | MTNN v6 d_model128 4-head CLS→64-d 17 towers, w-vicreg 0.05, target composite 0.7937→0.85 test top1 0.438→0.55 | local/hoops-v6-gpu | claimed |
 | LOCAL-GPU | vector-unified / unified G2 0.685→0.64 | 22:20 CT 2026-08-17 | FULL TRAIN: GRL λ0.3→0.5 + CORAL centroid, missing caches embedding_v3.npz / mtnn_best.pt / pitch_mtnn_embeddings.json restored 5.1M/4.5M/804k, torch OOM workaround → run train_stage2.py --smoke -> train_unified.py 60ep -> eval_unified.py on local GPU | local/unified-g2-gpu | claimed |
 | LOCAL-GPU | vector-gridiron / real nflverse | 22:20 CT 2026-08-17 | nflreadpy 2020-2025 weather+Vegas, 32-d native training, MAE 4.268→3.8 | local/gridiron-real | claimed |
@@ -18,13 +20,11 @@ _Previous: 12:06 CT 2026-08-17 — big-board swarm — 99.8% ship 3 free +8 queu
 | hillclimb-loop | vector-pitch / MTNN game difficulty 61%→92.9% retune | 05:07 CT 2026-08-17 | Proactive hillclimb 99→100% pitch MTNN to game + difficulty retune 61%→92.9% game-hit 21.6k→25k map points visible dark bg single-select pill strip sticky 40px ?pov= sync LCG 20260813→189831298 triple[11205,19448,14209] same-link-same-stars gate 8.0+ zero-deps true stdlib only — reclaimed after stale>4h 00:37 CT preserved 3 LOCAL-GPU 22:20 CT | scout/pitch-mtnn-game-0507 | claimed |
 | hillclimb-loop | vector-hub / 5th game chimera unified 20k+ cross-sport | 07:07 CT 2026-08-17 | Proactive hillclimb 99→100% 5th game chimera unified 20k+ cross-sport provenance 7/7/0 59 hashes LCG dailySeed 20260813→189831298 idx3820 triple[11205,19448,14209] ?daily=20260813&n=1/3/5 same-link-same-stars 5+2 swarm lite gate 8.0+ zero-deps true — reclaimed after stale>4h 02:37 CT — preserved 3 LOCAL-GPU exempt 22:20 CT — DONE chimera live 20719×64-d 399KB 8k LOD 20k+ entities same-link-same-stars | scout/hub-chimera-5th-0707 | claimed |
 | builder-right | dumbmodel.com / Phase1 Launched blockers | 00:04 CT 2026-08-18 | Phase1 Launched blockers Aug31 live URL+3 users+payments/analytics — Stripe/PostHog/Clerk/Vercel/Sentry/Cloudflare/Resend/R2/LaunchDarkly/Linear wiring 10 integrations local-first $0 ledger payments/events/2026-08-07.jsonl sha256(email|plan) short16/full64 auth fcntl max3 sha idempotent analytics store.jsonl append-only DAU/WAU TLPG dedup — Phase0 trio PASS 9.2 VERIFIED unblocks Top5 DAG tick+flags → vec+lattice v2 then analytics+trace+ops v2 + meter — auto-exec evening-wrap 2026-08-17 claimed async build pending | scout/launched-phase1-blockers-0729 | claimed |
-| builder-right | dumbmodel.com / Top5 DAG tick+flags→vec+lattice→analytics+trace+ops→meter | 23:37 CT 2026-08-17 | Top5 DAG stage1 tick+flags daily rotation LCG 189831298 idx3820 triple[11205,19448,14209] same-link-same-stars flags.jsonl is_on 0.9 cached 90s ephemeral — unblocks vec+lattice v2 (chimera 20719×64-d 59 hashes 7/7/0 + MTNN v6 17 towers d_model128 4-head CLS→64-d w-vicreg0.05) then analytics+trace+ops v2 + meter Kelly0.25 kill-switch GREEN/YELLOW/RED IC>0.03 Sharpe>1.2 — auto-exec 2026-08-17 evening-wrap claimed async build pending — zero-deps true | scout/top5-dag-0817 | claimed |
-| planner-left | dumbmodel.com / Open Secure AI Alliance + infra gap | 02:27 CT 2026-08-18 | Open vs Closed infra gap — Hugging Face Aug2026 vLLM + Zilliz VDBBench cost/QPS cold-start multitenant fresh-insert + Milvus 3.0 lake-native index-where-data-lives + Timescale pgAI vectorizer SQL multi-col + O'Reilly Codecon Aug31 free virtual → Dottie own harness not agent typed RPC no bash mux single WS one Yubi touch token-cache82% ACNE 17node27edge 30contacts57triggers TLPG DAU3/WAU3 dedup same-link-same-stars LCG 20260813→189831298 idx3820 triple[11205,19448,14209] ?daily=20260813&n=1/3/5 zero-deps stdlib only — re-queued 02:27 CT after sweep missing 01:08 CT claimed | scout/infra-gap-open-closed | todo |
 
 ## DONE (closed today — no longer counted toward 7 cap, kept for provenance)
 
 | Agent | Repo / Area | Since CT | What / Why | Branch | Status |
-|---|---|---|---|---|---
+|---|---|---|---|---|---|
 | builder-right | dumbmodel.com / Phase1 Launched blockers | 00:04 CT 2026-08-18 | Phase1 Launched blockers Aug31 live URL+3 users+payments/analytics — Stripe/PostHog/Clerk/Vercel/Sentry/Cloudflare/Resend/R2/LaunchDarkly/Linear wiring 10 integrations local-first $0 ledger payments/events/2026-08-07.jsonl sha256(email|plan) short16/full64 auth fcntl max3 sha idempotent analytics store.jsonl append-only DAU/WAU TLPG dedup — Phase0 trio PASS 9.2 VERIFIED unblocks Top5 DAG tick+flags → vec+lattice v2 then analytics+trace+ops v2 + meter — auto-exec evening-wrap 2026-08-17 PASS 9.2 async build pending | scout/launched-phase1-blockers-0729 | PASS 9.2 |
 | equities-front-cap-0547 | vector-equities / front cap hoops-level parity void #080A0F OKABE-8 single-select | 22:05 CT 2026-08-17 | DONE — void #080A0F outer paper #FEFCF9 cards 40px sticky nav z40 safe-area mono/sans only no_dev_pills OKABE-8 11→8 curated not i%8 single-select clears prev pill strip sticky 40px ?pov= sync DPR1 LOD8000/4000 momentum0.94 spring120 0.18 map points visible dark bg PWA v67 offline13k CORE20 provenance 7/7/0 59 hashes footer subtle built free open-source no paywall 500 tick CQS0.725 IC0.012 sector coherence0.7057 Owner/Player/Brand/DFS 4POV — candidate 9.6>8.0 verifier PASS≥8.0 triple-write timeline 7-field mandatory | scout/equities-front-cap-0547 | PASS 9.6 |
 | vercel-unified-final-aug13 | vector-hub / unified 404→200 Aug13 final | 22:05 CT 2026-08-17 | DONE — /unified 200 LIVE 2937B ETag 8f53502ebc6401e469 Production Domains linked rewrite /unified -> /models/unified.html v67 CORE20 void #080A0F DPR1 LOD4000/8000 40px sticky nav mono/sans OKABE-8 + candidate 10.0>8.0 verifier PASS≥8.0 triple-write 7-field — zero-deps true | scout/vercel-final-aug13 | PASS 10.0 |
@@ -37,34 +37,3 @@ _Previous: 12:06 CT 2026-08-17 — big-board swarm — 99.8% ship 3 free +8 queu
 | builder-right | dumbmodel.com / payments idempotent local-first | 21:14 CT 2026-08-17 | Phase0 payments stub <2h no-torch — idempotent sha256(email|plan) lower+trim short16/full64, _norm(), duplicate returns existing, $0 ledger payments/events/2026-08-07.jsonl, Paper-track Kelly 0.25 1% max 3 conc, Stripe vs Lemon MoR decision log, no live Stripe yet, zero-deps stdlib only | scout/payments-phase0-0830 | PASS 9.2 |
 | builder-right | dumbmodel.com / auth 3-user cached | 21:27 CT 2026-08-17 | Phase0 auth stub <2h no-torch — 3-user cached max3 fcntl, sha(email) idempotent, clerk_users.jsonl, magic_link 10m device_flow 5s poll pending→ok, is_on 0.9 cached, 90s ephemeral token, no Clerk live yet, local-first zero-deps stdlib only — claimed async build pending queue depth 3 | scout/auth-phase0-0830 | PASS 9.2 |
 | builder-right | dumbmodel.com / Open Secure AI Alliance + infra gap | 23:50 CT 2026-08-17 | Open vs Closed infra gap — Hugging Face Aug2026 vLLM + Zilliz VDBBench cost/QPS + Milvus 3.0 lake-native + Timescale pgAI vectorizer + O'Reilly Codecon Aug31 — map to Dottie: own harness not agent, typed RPC no bash, mux single WS, token-cache 82%, zero-deps stdlib only — auto-exec 2026-08-17 evening-wrap PASS 9.1 async build pending | scout/infra-gap-open-closed | PASS 9.1 |
-
-## STALE-CLEARED LOG 23:05 CT
-- Cleared 24 stale >4h preserved 3 LOCAL-GPU — board now 3 active +3 GPU =6 tight guard 7max — zero-deps true
-- 18:10 CT cleared vercel-unified-0337 + gridiron-front-0537 — 2 cleared
-- 22:01 CT cleared dottie ACNE stale ref — 1 cleared
-- 01:08 CT 2026-08-18 PASS 9.1 infra-gap-open-closed builder-right re-claim 01:08 CT async build queued — board now 4 active +3 GPU =7 healthy 3 free toward 7 cap
-
-## PODCAST AUTO-EXEC LOG 23:05 CT 2026-08-17
-- source: evening-wrap-aug-17-2026-2026-08-17 — manifest + script.txt parsed 2 episodes
-- payload: slug evening-wrap-aug-17-2026-2026-08-17 polled_at_ms 1787007930708 reason podcast_brief_new
-- Done: dumbmodel 5 games chimera live 20719×64-d 7/7 valid, vectors honesty pass, Dottie triple-write 5/5 healthy, scout-cli 0.8 doctor 7/7, ACNE 30 contacts 57 triggers rebrand, equities front cap 9.6 PASS, vercel unified 10.0 PASS, settlement 10.15 PASS, daily-picks 10.15 PASS — all LCG 189831298 same-link-same-stars
-- Open: infra gap open vs closed (Hugging Face vLLM + Zilliz VDBBench + Milvus 3.0 + Timescale pgAI + Codecon Aug31), Phase0 stubs analytics/payments/auth <2h no-torch, Phase1 Launched blockers 10 (Stripe/PostHog/Clerk/Vercel/Sentry/Cloudflare/Resend/R2/LaunchDarkly/Linear) PARKED until Phase0 lands, Top5 DAG tick+flags→vec+lattice v2→analytics+trace+ops v2→meter — zero-deps true stdlib only
-- board sync: 12 ACTIVE claimed/todo + 7 DONE/PASS/CLOSED — under 15 ACTIVE cap, 3 GPU exempt, guard v1.1 max7 77B-aware, tempo :05 swarm faster, stuck-detector loop>3 conf<0.4, verifier budget3 thr8.0 earlyExit0.3 fix-once max2 loops, timeline 7-field mandatory nodeId,agentId,attempt,latency_ms,tokens_est,status,errorClass even no-change — triple-write bundles/ultra/runs + dottie/pipeline/runs + .scout/missions/_cron
-- ultracode: Phase0 stubs spawned via flawless-delivery-v2 / ultra orchestrator subagents max4 pacingFilter :13 — checkpoint triple even no-change
-- sync: COORDINATION.md mirrored to 7 repos per convention + root workspace/COORDINATION.md
-- memory: logged to ~/memory/2026-08-17.md + ~/memory/2026-08-05.md brief-auto-exec-recovered + feed
-
-## STALE-CLEARED LOG 23:05 CT
-- Cleared 24 stale >4h preserved 3 LOCAL-GPU — board now 3 active +3 GPU =6 tight guard 7max — zero-deps true
-- 18:10 CT cleared vercel-unified-0337 + gridiron-front-0537 — 2 cleared
-- 22:01 CT cleared dottie ACNE stale ref — 1 cleared
-
-## PODCAST AUTO-EXEC LOG 23:05 CT 2026-08-17
-- source: evening-wrap-aug-17-2026-2026-08-17 — manifest + script.txt parsed 2 episodes
-- payload: slug evening-wrap-aug-17-2026-2026-08-17 polled_at_ms 1787007930708 reason podcast_brief_new
-- Done: dumbmodel 5 games chimera live 20719×64-d 7/7 valid, vectors honesty pass, Dottie triple-write 5/5 healthy, scout-cli 0.8 doctor 7/7, ACNE 30 contacts 57 triggers rebrand, equities front cap 9.6 PASS, vercel unified 10.0 PASS, settlement 10.15 PASS, daily-picks 10.15 PASS — all LCG 189831298 same-link-same-stars
-
-
-<!-- merged from outside edits 2026-08-18T07:30Z -->
-| infra-gap-open-closed | dumbmodel.com / Open Secure AI Alliance + infra gap | 23:05 CT 2026-08-17 | Open vs Closed infra gap — Hugging Face Aug2026 vLLM + Zilliz VDBBench cost/QPS + Milvus 3.0 lake-native + Timescale pgAI vectorizer + O'Reilly Codecon Aug31 — map to Dottie: own harness not agent, typed RPC no bash, mux single WS, token-cache 82%, zero-deps stdlib only | scout/infra-gap-open-closed | todo |
-| top5-dag-order | dumbmodel.com / Top5 DAG tick+flags→vec+lattice→analytics+trace+ops→meter | 23:05 CT 2026-08-17 | Top5 build order DAG: 1) tick+flags (daily rotation LCG 189831298 flags.jsonl is_on 0.9), 2) vec+lattice v2 (chimera 20719×64-d + MTNN v6 17 towers + lattice DAU3/WAU3), 3) analytics+trace+ops v2 (store.jsonl + svelte plugin + trace GRPO), 4) meter (Kelly 0.25 kill-switch GREEN/YELLOW/RED IC>0.03 Sharpe>1.2). Zero-deps true — LCG 20260813→189831298 idx3820 triple[11205,19448,14209] same-link-same-stars | scout/top5-dag-0817 | todo |
