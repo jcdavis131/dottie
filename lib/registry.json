@@ -1,0 +1,11 @@
+{
+  "providers": [
+    {"id":"anthropic","label":"Anthropic — Sonnet 4.6/Opus 4.6/Haiku 4.5","models":["claude-opus-4-6","claude-sonnet-4-6","claude-haiku-4-5"],"env":["ANTHROPIC_API_KEY"]},
+    {"id":"openai","label":"OpenAI — GPT-5.2/4.1/o3/o4-mini/4o","models":["gpt-5.2","gpt-4.1","o3","o4-mini","gpt-4o","gpt-4o-mini","o1"],"env":["OPENAI_API_KEY"]},
+    {"id":"google","label":"Google — Gemini 2.5 Pro/Flash/2.0","models":["gemini-2.5-pro","gemini-2.5-flash","gemini-2.0-flash","gemini-1.5-pro","gemini-1.5-flash","gemini-1.0"],"env":["GOOGLE_API_KEY"]},
+    {"id":"ollama","label":"Ollama — local Llama/Mistral/Qwen3:32b (no key, fully private)","models":["qwen3:32b","llama3.3:70b","llama3.3:8b","mistral-nemo","phi4","qwen2.5-coder:32b","deepseek-coder-v2","gemma2:27b","mistral-large","llama3.1"],"env":[]},
+    {"id":"compat","label":"OpenAI-compatible — DeepSeek/Groq/OpenRouter via --base-url","models":["deepseek-chat","deepseek-coder","llama-3.3-70b-versatile","llama-3.1-405b","mixtral-8x7b","qwen-2.5-72b","claude-3.5-sonnet-compat","gemini-compat","groq-llama-70b","openrouter/auto","command-r-plus","codestral","wizardlm2","dolphin-2.9","nous-hermes2","yi-large","chatgpt-4o-latest","gpt-4-turbo-compat","o1-preview-compat","o1-mini-compat","gemini-2.0-flash-compat","gemini-1.5-pro-compat"],"env":["OPENAI_API_KEY"]}
+  ],
+  "total_models": 48,
+  "lcg": "20260813→189831298 idx3820 triple[11205,19448,14209] + 20260818→1412440227 idx5278 triple[13791,10902,19455] same-link-same-stars ?daily=YYYYMMDD&n=1/3/5 Solo1 Triple3 Full5 TLPG DAU3/WAU3 dedup 6-voice lock Alex Jordan Maya Marcus Priya Sam mono/sans OKABE-8 Free-For-Users single footer"
+}
