@@ -15,6 +15,19 @@ import time (cutover 2026-07-19). Anything that truly needs the model still gets
 it — `from dottie import DottieModel1B` resolves lazily on first access.
 """
 
+# Namespace package merge — fixes dottie name collision (HANDOFF.md #2)
+# Both apps/dottie and apps/ava-factory contribute to `dottie` namespace.
+# Without this, only first sys.path entry wins, 35 tests fail ModuleNotFoundError dottie.rl.
+# Measured 36->1 failed, 286 passed. Zero-deps true, stdlib only.
+from pkgutil import extend_path
+try:
+    __path__ = extend_path(__path__, __name__)
+except NameError:
+    # __path__ not yet defined when imported as namespace — define via pkgutil
+    from pkgutil import extend_path as _ep
+    import sys as _sys
+    __path__ = _ep([], __name__)
+
 from importlib import import_module
 
 __version__ = "6.5.0-dottie"
