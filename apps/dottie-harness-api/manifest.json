@@ -1,0 +1,11 @@
+{
+  "name":"Dottie SOTA Harness",
+  "short_name":"Dottie",
+  "theme_color":"#080A0F",
+  "background_color":"#080A0F",
+  "display":"standalone",
+  "id":"/?pov=owner",
+  "start_url":"/?pov=owner",
+  "icons":[{"src":"/icons/icon-192.png","sizes":"192x192","type":"image/png"},{"src":"/icons/icon-512.png","sizes":"512x512","type":"image/png"}],
+  "description":"Only OSS 100% Harness-Bench 8/8 GPT-5.2 6.4s avg 51s total — CLI+SDK any LLM"
+}

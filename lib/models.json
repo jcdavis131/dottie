@@ -1,0 +1,13 @@
+[
+  {"provider":"anthropic","id":"claude-opus-4-6","label":"Claude Opus 4.6 — deep reasoning","context":200000,"cost_in":15,"cost_out":75,"speed":"12.5s avg"},
+  {"provider":"anthropic","id":"claude-sonnet-4-6","label":"Claude Sonnet 4.6 — balanced","context":200000,"cost_in":3,"cost_out":15,"speed":"6.4s avg"},
+  {"provider":"anthropic","id":"claude-haiku-4-5","label":"Claude Haiku 4.5 — fast","context":100000,"cost_in":0.8,"cost_out":4,"speed":"1.8s tool efficiency"},
+  {"provider":"openai","id":"gpt-5.2","label":"GPT-5.2 — 100% HB","context":128000,"cost_in":5,"cost_out":15,"speed":"6.4s avg 51s total"},
+  {"provider":"openai","id":"gpt-4.1","label":"GPT-4.1 — coder","context":128000,"cost_in":2,"cost_out":8,"speed":"10.7s OpenCode baseline"},
+  {"provider":"openai","id":"o3","label":"o3 reasoning","context":200000,"cost_in":10,"cost_out":40,"speed":"14.5s"},
+  {"provider":"openai","id":"o4-mini","label":"o4-mini","context":128000,"cost_in":1.1,"cost_out":4.4,"speed":"5.6s"},
+  {"provider":"openai","id":"gpt-4o","label":"GPT-4o","context":128000,"cost_in":2.5,"cost_out":10,"speed":"11.7s error recovery"},
+  {"provider":"google","id":"gemini-2.5-pro","label":"Gemini 2.5 Pro","context":1000000,"cost_in":3.5,"cost_out":10.5,"speed":"9.7s context understand"},
+  {"provider":"google","id":"gemini-2.5-flash","label":"Gemini 2.5 Flash","context":1000000,"cost_in":0.3,"cost_out":2.5,"speed":"1.9s code analysis"},
+  {"provider":"ollama","id":"qwen3:32b","label":"Qwen3 32B — Dottie brain working","context":32000,"cost_in":0,"cost_out":0,"speed":"local privacy $0"}
+]
