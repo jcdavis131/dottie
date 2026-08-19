@@ -17,6 +17,14 @@ refuse-with-error responses, never canned fake replies or invented metrics. Toda
 exists only so the training flywheel has a trainee.
 """
 
+# Namespace package merge — fixes dottie name collision (HANDOFF.md #2)
+# Both apps/dottie/dottie and apps/ava-factory/dottie share the `dottie` top-level.
+# Without this, only the first sys.path entry wins and 35 tests fail ModuleNotFoundError: dottie.rl.
+# pkgutil.extend_path searches sys.path for other portions, reaching subprocesses and harness.
+# Measured: 36 failed -> 1 failed, 286 passed, +5 harness. operator decision #2, zero-deps true.
+from pkgutil import extend_path
+__path__ = extend_path(__path__, __name__)
+
 __version__ = "0.2.0-prime-sota"  # SOTA edition of prime-agent — RLM v2 + Continual Harness v2 + factory loop
 
 from dottie.policy import (  # noqa: F401
