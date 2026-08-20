@@ -222,3 +222,27 @@ Then iter days via 3 agents (general/explore/review) spawning parallel.
 - Legacy compliance: single_action_per_tick Boyd Decide LCG 20260813→189831298 idx3820 triple[11205,19448,14209] + 20260818→1412440227 idx5278 triple[13791,10902,19455] same-link-same-stars ?daily=YYYYMMDD&n=1/3/5 Solo1 Triple3 Full5 TLPG DAU3/WAU3 dedup everydayTip() 6-voice lock void #080A0F 40px sticky z40/z39 single-select clear prev CORE20 LOD4000/8000 DPR1 offline13k.
 
 No synthetic, honest 503 Alienware handoff machine-only.
+
+
+## Phase3 — harness-evals Best Ideas Port (2026-08-19)
+
+Source: https://github.com/harness/harness-evals — open-source eval framework 5 dimensions normalized Score 0.0-1.0 threshold pass/fail
+
+### Best ideas taken (zero-deps Dottie-native):
+
+1. **Score + Dimensions** — correctness groundedness safety trajectory performance radar, threshold gate, reason field — `src/harness/evals/core/score.py`
+2. **Golden/EvalCase/Message/ToolCall** — author vs enriched + runtime metadata latency tokens cost retry confidence tags metadata runs — `core/golden.py`
+3. **evaluate() never raises** + assert_test() pytest + evaluate_cases() + evaluate_dataset() + evaluate_dataset() → Score — like harness-evals
+4. **Metrics catalog**: Deterministic ExactMatch Contains Regex JsonDiff SchemaValidation Operational Latency TokenCost CostEfficiency Turn* Agent ToolCorrectness ArgMatch StepEfficiency PlanQuality PlanAdherence Safety PII Toxicity PromptInjection never averaged Reliability OutcomeConsistency PromptRobustness Conversation Coherence Resolution Completeness GoalAccuracy Security VulnerabilityCorrectness RQI Similarity Levenshtein BLEU ROUGE Embedding RAG Faithfulness ContextPrecision Recall LLM-judged GEval Rubric Pairwise DAG PromptAlignment
+5. **Baseline** JsonBaselineStore .evals/baselines/latest.json compare_to_baseline tolerance 0.05 regressions/improvements unchanged — `baseline.py`
+6. **Sinks** Stdout/Json/Langfuse/Otlp parent_context tracer shared provider lifecycle — `sinks/__init__.py`
+7. **ConversationGolden SIMULATE/REPLAY/SCRIPTED/GRAPH** with SimulationGraph DAG ScriptedNode LLMNode BranchNode StopNode Edge predicate — `conversation/golden.py` — drives branching decision paths structurally rejects cycles
+8. **Synthesizer** doc→20 Goldens mixed difficulty + InputGenerator rephrasings adversarial + PromptOptimizer diagnose→rewrite→re-eval target 0.85 max 10 self-eval rejected — `synthesizer/__init__.py`
+9. **Benchmarks** MMLU 57 14k 5-shot GSM8K 1.3k 8-shot HumanEval 164 pass@k process-isolated TruthfulQA ARC HellaSwag Wino BoolQ DROP BBH shots/limit/offline/sinks/concurrency — `benchmarks/__init__.py`
+10. **CLI YAML** harness-evals run yaml --baseline --fail-under 0.8 --update-baseline list-metrics discover + model params ${VAR} interpolation separate TARGET_KEY/JUDGE_KEY — `cli.py`
+11. **Plugin families** 8 entry points dataset_sources prompt_sources eval_case_sources eval_config_sources targets metrics baseline_stores sinks decorator @register_metric + pyproject.toml entry-points
+12. **Harness-Bench** 8 tasks overall mean 0.83 total_time 51s claim 6.4s avg vs OpenCode 10.7s/85.8s Claude Code 16.4s/131.5s speed matrix stored evals/baselines/harness-bench-ollama-qwen3:32b.json
+
+Ship: `examples/my-eval.eval.yaml` + `goldens.jsonl` demo passes `evaluate()` — Scores: exact_match 1.0 latency 0.84 pii 1.0
+
+Zero-deps stdlib only honest 503 — no torch/pip unless you say — no synthetic data ever

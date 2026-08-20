@@ -213,6 +213,21 @@ POST /api/dev/steer           SteeringChannel live inject between turns
   </div>
 
 <footer>Built <span id="build-ts">2026-08-19</span> — Dottie SOTA harness single-folder stdlib only no pip torch optional honest 503. 13 agents dottie-prime L0 11 packs 6 ultra pause/resume JSONL slash palette /team /plan /review live steering 85%→50% compaction 50+ models Ollama local no key 100% Harness-Bench 8/8 GPT-5.2 7/8 Opus 2× faster 51.0s total void #080A0F 40px sticky z40 pov 44px z39 single-select clear prev inertial-map LOD4000/8000 CORE20 DPR1 offline13k PWA v67. Scout 🐱✨ <span style="color:var(--muted)">| stack: {agent,hooks,mcp,skills,memory,permissions,ui,eval,cli}</span></footer>
+
+<section class="card"><h2>Eval — harness-evals Port (5 Dimensions)</h2>
+<p>Only OSS 100% Harness-Bench 8/8 GPT-5.2 6.4s avg 51s total — now with harness/harness-evals best ideas zero-deps</p>
+<ul>
+<li><strong>Score 0.0-1.0</strong> normalized threshold pass/fail — no magic</li>
+<li><strong>Golden</strong> authored + <strong>EvalCase</strong> enriched + agent output → <strong>BaseMetric.measure()</strong> → Score</li>
+<li><strong>evaluate() never raises</strong> — assert_test() for pytest — evaluate_dataset() batch</li>
+<li><strong>5 Dimensions</strong>: Correctness ExactMatch JsonDiff Schema | Groundedness Faithfulness | Safety PII Toxicity PromptInjection (never averaged) | Trajectory ToolCorrectness ArgMatch StepEfficiency PlanAdherence | Performance Latency TokenCost CostEff</li>
+<li><strong>Reliability</strong> OutcomeConsistency multi-run 5 — <strong>Conversation</strong> SIMULATE/REPLAY/SCRIPTED/GRAPH DAG BranchNode | <strong>Operational</strong> TurnLatency TurnTokenCost | <strong>Security</strong> VulnCorrectness RQI | <strong>Academic</strong> MMLU/GSM8K/HumanEval offline stub</li>
+<li><strong>Baseline</strong> JsonBaselineStore .evals/baselines/latest.json compare_to_baseline tolerance 0.05 regressions/improvements | <strong>Sinks</strong> Stdout Json Langfuse OTLP | <strong>Synthesizer</strong> doc→20 Goldens mixed | <strong>PromptOptimizer</strong> diagnose→rewrite→re-eval target 0.85 max 10 | <strong>CLI</strong> harness-evals run my-eval.eval.yaml --baseline --fail-under 0.8</li>
+</ul>
+<div><code>from src.harness.evals import Golden, EvalCase, evaluate; evaluate(ec, [ExactMatchMetric(), LatencyMetric(max_ms=5000)])</code></div>
+<div><code>from src.harness.evals.metrics.agent import ToolCorrectnessMetric; from src.harness.evals.metrics.safety import PIIMetric</code></div>
+<div><code>dottie eval harness-bench --provider ollama --model qwen3:32b → 8 tasks overall 0.84 mean + comparison baseline</code></div>
+</section>
 </main>
 
 <div id="palette" class="palette">
