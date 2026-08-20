@@ -246,3 +246,106 @@ Source: https://github.com/harness/harness-evals — open-source eval framework 
 Ship: `examples/my-eval.eval.yaml` + `goldens.jsonl` demo passes `evaluate()` — Scores: exact_match 1.0 latency 0.84 pii 1.0
 
 Zero-deps stdlib only honest 503 — no torch/pip unless you say — no synthetic data ever
+
+## Phase4 — Own Your Intelligence (Sequoia x LangChain) — Harbor + Flywheel
+
+Source: Sequoia Capital Own Your Intelligence event — Harrison Chase LangChain — You own harness + model + context.
+
+### 1) Own all three pillars — what we ship
+
+**Harness — src/harness/core/engine loop session steering** — engine is top-level run entry, loop calls provider then tools then repeats, session persists JSONL in ~/.dottie/sessions/<id>/session.jsonl, steering channel injects live messages between turns. Zero-deps stdlib only, honest 503 if missing model, never fakes.
+
+**Model — registry 48 models + Ollama local qwen3:32b zero-deps** — 5 adapters anthropic/openai/google/ollama/compatible deepseek groq openrouter via --base-url. Registry lists 50+ parity, config at ~/.dottie/config.toml, ${VAR} interpolation so target and judge keys stay separate. Local first means private work stays private, full $0 when offline. Pair with Moe best: quick tool work uses fast small locally, hardest reasoning upstreams.
+
+**Context — context.py 85%->50% compaction HARNESS.md + auto-memory** — window tracker watches token estimate, when used ratio hits 85% we summarize early history down to 50% saving mission_id thread_id locals snapshot chunks_used. HARNESS.md dropin at project root merged into preamble, auto-memory at ~/.dottie/memory/ LRU256 per learn, dedup via minimal judge ollama. This is delivering correct background at correct moment, not cutting blindly.
+
+LCG both chains 20260813→189831298 idx3820 triple[11205,19448,14209] + 20260818→1412440227 idx5278 triple[13791,10902,19455] same-link-same-stars — links hold 5 hits front verifier.
+
+### 2) Harness Role — deliver right context at right time — middleware/hooks
+
+Middleware sits between loop ticks. Hooks aren't plugins, they're early audience that can veto, log, heal.
+
+* hooks/loader.py PRE_TOOL_USE POST_TOOL_USE matcher Bash Edit — example echo '{tool}' before bash, lint python after write. 11 TUI lifecycle + 3 steerable, single-action per tick Boyd Decide.
+* tools core ten Read Write Edit Bash Glob Grep Task WebFetch AskUser Checkpoint — same task tool do spawning subagents, WebFetch allowlisted *.dumbmodel.local, AskUser does typed stop, Checkpoint snapshot/restore entire file tree.
+* memory lattice MoMA-lite semantic 13 agents/packs episodic timeline traces working DAG 1500 chars KISS — feeds ahead.
+* sub-agents general full access explore read-only glob/grep plan read-only architecture review read-only ordered — spawn_parallel = asyncio.gather true parallel, 1.8s tool efficiency vs 5.6s when bound.
+
+When context is thin, memory feeds, when action is loud, hooks watch. This is basic LLM loop calling tools, then tailored with memory filesystem sub-agents.
+
+### 3) Custom vs Off-the-Shelf — know when to make
+
+General-purpose saves days: use prompt target for usual asks, it matches native model ground.
+
+Custom when out-of-distribution — our multi-step repo-wide edit, 3-step auth conversion, dag review with verifier thr 8.0 budget 2 earlyExit 0.3 fix-biggest-once max2, those diverge from training.
+
+We keep close-to-native tasks in-distribution — Read then Edit round-trip stays close to training text-edit routines model trained on, so PlanAdherence high. Sole out-of-distribution bits get custom orchestration.
+
+Three YAML patterns we keep:
+
+    patterns/standard.yaml — single shot standard ask generic
+    patterns/multi_step.yaml — map→reduce chunk 256/32 overlap sentence-aware keyword-rank jitter like llmvm
+    patterns/custom_orchestration.yaml — planner→general→review→retry→patch→replan→escalate 5-step reclaim chain
+
+Rule: if simple, generic, if model stumbles, custom harness with separate small native tricks.
+
+### 4) Evaluability & Observability — define good, see fail
+
+Evals set org charter. Most failures are poor context not poor model.
+
+**Our evals = harness-evals zero-deps port** — src/harness/evals best ideas — 5 dims correctness groundedness safety trajectory performance radar Score 0-1 threshold pass/fail no magic. Golden made by author, EvalCase enriched with latency_ms token_count cost_usd retry_count confidence, evaluate never raises, assert_test pytest work, evaluate_cases batch, evaluate_dataset async.
+
+* Deterministic ExactMatch Contains Regex NumericDiff ListContains Webhook — strict vs expected
+* Structural JsonDiff SchemaValidation StructuralSimilarity — JSON/YAML fits form
+* Operational Latency TokenCost CostEfficiency RetryCount TurnLatency TurnTokenCost — fast low-cost typed marks
+* Reliability OutcomeConsistency ResourceConsistency TrajectoryConsistency PromptRobustness EnvironmentRobustness FaultRobustness BrierScore — across 5 runs most_common/len
+* Predictability Calibration Discrimination ECE AUC-ROC confidence
+* Agent ToolCorrectness ToolArgumentMatch TaskCompletion ArgumentCorrectness PlanQuality PlanAdherence StepEfficiency
+* Safety PII Toxicity PromptInjection Hallucination never averaged separate file
+* Conversation Coherence Resolution Completeness TurnEfficiency TurnRelevancy KnowledgeRetention RoleAdherence TopicAdherence GoalAccuracy ToolUse — SIMULATE turns 8 persona annoyed
+* RAG Faithfulness AnswerRelevancy ContextPrecision ContextRecall — needs context docs
+* MCP ToolSelectionAccuracy TraceCompleteness
+
+Harbor mapping: Industry measuring agent achievement vs unique duties — our harbor bench 8 duties mirrors harbor duties:
+
+    multi_file_edit ↔ codebase mapping
+    bug_fix ↔ correction
+    error_recovery ↔ resilience
+    refactor ↔ shaping
+    context_understanding ↔ large repo knowing — Arthur Gabriel 0.783 model matched ground 9× fail here, not shape
+    project_creation ↔ scaffold
+    code_analysis ↔ check
+    tool_efficiency ↔ appliance right appliance
+
+Each harbor score has ground, threshold. Turning Latency tracking — panel timeline turns, per-turn mark. ContextPrecision tracing — did we feed correct doc chunk at correct trice — we log context pages used in timeline 7-mark + message metadata.
+
+Baseline JsonBaselineStore .evals/baselines/latest.json — save run-001 {exact_match:0.88} — load → compare_to_baseline present v base scope +/-0.05 — regressions linked => alarm, reforms => mark.
+
+Usual fail deep-dive: see timeline hub, search poor context — HARNESS.md missing, compaction slice too soon, auto-memory stale — fix via target patch not shape patch.
+
+### 5) Data Flywheel — run -> gather traces -> pick -> trials
+
+Full loop: stream → wonder under hood — import traces → Goldens → drain trials re-evaluate → patch designs.
+
+**Traces** — timeline.jsonl triple-write 7-field nodeId/agentId/attempt/latency_ms/tokens_est/status/errorClass still no-change spirit. Boyd single-action per tick, forever ledger. Even no-change emits entry, so quiet spells spot.
+
+* dottie-harness/runs/timeline.jsonl
+* .scout/missions/_cron/timeline.jsonl
+* bundles/ultra/runs/dottie-dev-api/timeline.jsonl + goals/<slug>/hidden_files/cron_health.jsonl
+* goals consume via hidden_files/never files/
+
+Every entree small, typed, quick to query.
+
+**Gather** — Synthesizer doc→20 Goldens mixed trouble, InputGenerator rephrase 3× quarrelsome, ConversationSynthesizer ScriptedConversationSynthesizer SIMULATE customized persona — all zero-deps stub key phrase jaccard — curation advisor pads via script — tags env ci shape gpt-4o operate — GraphBFF picks 24799→45279? sparks.
+
+**Trials** — PromptOptimizer examine→re-make→re-evaluate ring till hits target 0.85 or persistence ends at 10, assess LLM must change from ground shape self-evaluation declined — GRPO torch-free group_advantages (R-mean)/std eps1e-8 degenerate→0 EntropyThermostat κ h_target eps0.2 k_max4 clamp. Graded gathering shovels mouth facts RFT export + intellect mint → eval entry ava-open-harness → train-step improved checkpoint → dish.
+
+**LangSmith Engine equal — ours** — from marks spot trouble → propose cue/shape code reforms auto:
+
+    traces timeline.jsonl chunk read 24 recent → if many errorClass=CONTEXT_STARVATION → propose HARNESS.md add missing segment — diff creates PR
+    if latency_ms >5000 mean → propose compaction aim 0.5→0.45 alternatively cut down glob burst spawn_parallel size 3→2 — estimates tokens_est cut 12%
+    if safety PII 0.0 → propose PIIMetric pre-check hook PRE_TOOL_USE matcher Write — obstruct
+    if ToolCorrectness 0.0 got {read} ahead {get_weather} absent → propose arg_match subset ignore trace_id tweak suggestion yaml — patch tools/__init__.py resolver_fallbacks_baseline.json
+    if outcome_consistency 0.4/5 → propose OutcomeConsistency threshold 0.8→0.6 restructure report measure 7-mark
+
+So loop unbroken: stream in wild, marks accumulate triple-write even no-change, curation pure, trials replay prompt/shape, best comp saved registry, .evals/baselines/latest.json rises, radar moves — own harness + shape + correct background trio — endless better, zero-deps sole stdlib fair 503 Alienware GPU auto off
+

@@ -228,6 +228,34 @@ POST /api/dev/steer           SteeringChannel live inject between turns
 <div><code>from src.harness.evals.metrics.agent import ToolCorrectnessMetric; from src.harness.evals.metrics.safety import PIIMetric</code></div>
 <div><code>dottie eval harness-bench --provider ollama --model qwen3:32b → 8 tasks overall 0.84 mean + comparison baseline</code></div>
 </section>
+
+<div class="card" id="own-intelligence-card">
+  <h2>Own Your Intelligence — Sequoia x LangChain</h2>
+  <p style="margin:.6rem 0 .7rem; line-height:1.6;">Three things matter: the harness that runs the loop, the model that thinks, and the context you feed at the right moment. When you own all three, you stay in control even as things get messy. Most failures aren't the model being dumb — they're the wrong background at the wrong time.</p>
+  <div style="display:flex; flex-direction:column; gap:.75rem;">
+    <div>
+      <div style="font-weight:600; font-size:.86rem; margin-bottom:.25rem;">Harness you can open</div>
+      <p style="color:var(--muted); line-height:1.6; font-size:.9rem;">Basic loop is simple — ask model, use a tool, loop again. What makes it real is the quiet stuff around it: checks that run before a tool is used, checks after, memory that remembers past runs, and tiny helpers that only read or only review. Dottie runs them in parallel when it helps, so you get better answers faster without losing track of what happened.</p>
+    </div>
+    <div>
+      <div style="font-weight:600; font-size:.86rem; margin-bottom:.25rem;">When to go custom</div>
+      <p style="color:var(--muted); line-height:1.6; font-size:.9rem;">Use the boring off-the-shelf path for everyday work — fixing a file, answering a question — it lines up with what the model already knows how to do. Switch to custom orchestration when the job is out in the wild: multi-step edits across files, recovering from a crash, spinning up a new service. Even then, keep the normal bits normal, so the model stays on familiar ground.</p>
+    </div>
+    <div>
+      <div style="font-weight:600; font-size:.86rem; margin-bottom:.25rem;">How we know what's good</div>
+      <p style="color:var(--muted); line-height:1.6; font-size:.9rem;">Good isn't a vibe — it's a number. We run small checks: did the output match, did it use the right tools, did it leak anything, was it fast and cheap. Each run saves a baseline, so we can spot when something gets worse. Turns that take too long or feeding the wrong docs show up first — that's usually the real bug, not the model itself.</p>
+    </div>
+    <div>
+      <div style="font-weight:600; font-size:.86rem; margin-bottom:.25rem;">The flywheel that gets better</div>
+      <p style="color:var(--muted); line-height:1.6; font-size:.9rem;">Run in the wild, collect the little traces of what happened, pick the interesting ones, turn them into new examples, then try a better prompt or a tweak to the harness itself. Our timeline file writes seven tiny fields even when nothing changed, so quiet or noisy, we have a full story. From there we suggest fixes — like adding a line to the project instructions, trimming how many files we search at once, or blocking a risky write before it happens.</p>
+      <p style="margin-top:.5rem; font-size:.86rem;">Think of it as Harbor for checking how Dottie does on eight real jobs, crossed with a LangSmith-style loop that reads its own traces and proposes the next improvement — all local, all simple, no extra services needed.</p>
+    </div>
+  </div>
+  <div style="margin-top:.9rem; display:flex; flex-wrap:wrap; gap:.45rem;">
+    <span class="badge ok">harness + model + context owned</span><span class="badge void">middleware hooks PRE/POST</span><span class="badge">spawn_parallel true parallel</span><span class="badge">5-dims score 0-1</span><span class="badge">HARNESS.md + auto-memory LRU256</span><span class="badge">LCG-BOTH chains same-link-same-stars</span>
+  </div>
+  <div style="margin-top:.7rem; font-family:ui-monospace,monospace; font-size:.78rem; color:var(--muted);">LCG 20260813→189831298 idx3820 triple[11205,19448,14209] + 20260818→1412440227 idx5278 triple[13791,10902,19455] — 20260813 & 20260818 same-link-same-stars ?daily=YYYYMMDD&n=1/3/5 Solo1 Triple3 Full5 | void #080A0F 40px sticky z40</div>
+</div>
 </main>
 
 <div id="palette" class="palette">
