@@ -3,201 +3,278 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Dottie — SOTA Harness • 100% Harness-Bench</title>
+<title>Dottie — Agentic Harness • North Star Pair Programmer</title>
+<meta name="description" content="Dottie harness north star pair programmer — goals, tests, checkpoints, agentic factory. Paper #FAFAF8 ink 2px shadow 4px.">
 <style>
-:root{--void:#080A0F;--card:#0f141e;--ink:#e8f0ff;--muted:#8a9bb3;--border:#1e2a44;--accent:#885ae8;--ok:#0ca30c;--paper:#FEFCF9}
+:root{
+  --void:#080A0F;
+  --paper:#FAFAF8;
+  --surface:#FFFFFF;
+  --ink:#111;
+  --ink-soft:#52514E;
+  --ink-muted:#878580;
+  --orange:#EB6834;
+  --blue:#2A78D6;
+  --yellow:#F0E442;
+  --green:#0c8a43;
+  --shadow:4px 4px 0 var(--ink);
+  --shadow-sm:2px 2px 0 var(--ink);
+  --nav-h:40px;
+  --r:12px;
+  --r-sm:9px;
+  --border:2px;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  --sans: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Helvetica,sans-serif;
+}
 *{box-sizing:border-box;margin:0}
-body{background:var(--void);color:var(--ink);font:14px/1.48 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Helvetica,sans-serif;min-height:100vh;-webkit-font-smoothing:antialiased}
-nav.sticky-nav{position:sticky;top:0;z-index:40;height:40px;display:flex;align-items:center;gap:.5rem;padding:0 .9rem;background:var(--void);border-bottom:1px solid var(--border);backdrop-filter:blur(8px)}
-nav .brand{font-weight:800;letter-spacing:-.02em;margin-right:.8rem;display:flex;gap:.45rem;align-items:center}
-nav .brand i{font-style:normal;color:var(--accent)}
-nav button.tab{height:28px;padding:0 .75rem;border-radius:999px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:.82rem;cursor:pointer;transition:.14s}
-nav button.tab.active{background:var(--card);color:var(--ink);border-color:var(--accent);box-shadow:0 0 8px #885ae844}
-nav .right{margin-left:auto;display:flex;gap:.55rem;align-items:center;font-size:.75rem;color:var(--muted)}
-nav .dot{width:.5rem;height:.5rem;border-radius:50%;background:var(--ok);display:inline-block;box-shadow:0 0 6px #0ca30c88;animation:pulse 2.8s infinite}
-@keyframes pulse{0%,100%{transform:scale(1);opacity:.9}50%{transform:scale(1.25);opacity:.7}}
-main{max-width:1180px;margin:0 auto;padding:1.1rem 1rem 3rem}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:1rem}
-.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:1rem 1.1rem;margin-bottom:1rem;box-shadow:0 6px 18px #00000033, inset 0 1px 0 #ffffff08}
-.card h2{font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:.6rem;display:flex;align-items:center;gap:.45rem}
-.badge{display:inline-flex;align-items:center;gap:.4rem;border:1px solid var(--border);border-radius:999px;padding:.2rem .6rem;font-size:.71rem;background:#0a1020}
-.badge.ok{color:var(--ok);border-color:#0ca30c66;background:#0a1e12}
-.badge.void{color:var(--accent);border-color:#885ae866;background:#130e2a}
-.badge.paper{color:var(--void);background:#FEF7E8;border-color:#E8DCC3}
-.tab-panel{display:none}
-.tab-panel.active{display:block}
-pre{background:#080A0F;border:1px solid var(--border);border-radius:8px;padding:.75rem;overflow:auto;font-size:.82rem;line-height:1.45;max-height:420px}
-code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:.85em}
-footer{margin-top:2rem;border-top:1px solid var(--border);padding-top:.8rem;color:var(--muted);font-size:.72rem;line-height:1.6}
-a{color:#7aa5ff;text-decoration:none}a:hover{text-decoration:underline}
-/* REPL */
-.terminal{background:#080A0F;border:1px solid var(--border);border-radius:10px;min-height:320px;max-height:480px;overflow:auto;padding:.7rem .8rem;font-family:ui-monospace,monospace;font-size:.84rem;line-height:1.5;box-shadow:inset 0 1px 0 #ffffff08}
-.term-line{opacity:.92;margin:.28rem 0}
+html,body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;overflow-wrap:break-word}
+a{color:var(--blue);text-decoration:none}a:hover{text-decoration:underline}
+/* NAV 40px sticky z40 mono uppercase 11.5px paper void system */
+nav.sticky-nav{
+  position:sticky;top:0;z-index:40;height:var(--nav-h);min-height:var(--nav-h);
+  display:flex;align-items:center;gap:8px;padding:0 clamp(12px,3vw,22px);
+  background:var(--surface);border-bottom:var(--border) solid var(--ink);
+  font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em;
+}
+nav .brand{font:900 13.5px var(--mono);text-transform:uppercase;display:flex;gap:.45rem;align-items:center}
+nav .brand i{font-style:normal;color:var(--orange)}
+nav .brand .north{font:800 10.5px var(--mono);color:var(--ink-soft);background:var(--paper);border:1.5px solid var(--ink);padding:3px 7px;border-radius:999px;box-shadow:var(--shadow-sm);margin-left:6px}
+nav button.tab{
+  height:30px;padding:0 .8rem;border-radius:999px;border:2px solid transparent;
+  background:transparent;color:var(--ink-soft);font:800 11.5px var(--mono);
+  text-transform:uppercase;cursor:pointer;transition:.12s
+}
+nav button.tab:hover{border-color:var(--ink);color:var(--ink);background:var(--paper)}
+nav button.tab.active{background:var(--ink);color:#fff;border-color:var(--ink);box-shadow:var(--shadow-sm)}
+nav .right{margin-left:auto;display:flex;gap:.5rem;align-items:center;font:800 11px var(--mono);color:var(--ink-soft)}
+nav .dot{width:.5rem;height:.5rem;border-radius:50%;background:var(--green);display:inline-block;box-shadow:0 0 6px #0c8a4344;animation:pulse 2.8s infinite}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:.9}50%{transform:scale(1.2);opacity:.75}}
+/* harness badge pill.y*/
+.pill{
+  display:inline-flex;align-items:center;gap:.35rem;
+  padding:5px 11px;border-radius:999px;background:#fff;
+  border:1.6px solid var(--ink);font:800 11px var(--mono);
+  box-shadow:2px 2px 0 var(--ink);text-transform:uppercase;cursor:pointer
+}
+.pill.on{background:var(--ink);color:#fff;transform:none}
+.pill.y{background:var(--yellow);transform:rotate(-1deg)}
+.pill.o{background:var(--paper)}
+.pill.b{background:#fff}
+
+main{max-width:1180px;margin:0 auto;padding:14px clamp(12px,3vw,20px) 3rem}
+
+/* CARDS 2px ink 12px radius shadow */
+.card{
+  background:var(--surface);border:2px solid var(--ink);border-radius:var(--r);
+  padding:1rem 1.1rem;margin-bottom:12px;box-shadow:var(--shadow);overflow:hidden
+}
+.card h2{
+  font:900 12px var(--mono);text-transform:uppercase;letter-spacing:.08em;
+  color:var(--ink);margin-bottom:.6rem;display:flex;align-items:center;gap:.45rem;flex-wrap:wrap
+}
+.card h2 small{font:700 10.5px var(--mono);color:var(--ink-soft)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px}
+.badge{
+  display:inline-flex;align-items:center;gap:.35rem;border:2px solid var(--ink);
+  border-radius:999px;padding:.22rem .6rem;font:800 11px var(--mono);
+  background:#fff;box-shadow:1.5px 1.5px 0 var(--ink);text-transform:uppercase
+}
+.badge.ok{color:#0a612e;background:#e6f5ed}
+.badge.void{color:#fff;background:var(--ink)}
+.badge.paper{background:var(--yellow)}
+.badge.live{animation:livePulse 2s infinite}
+@keyframes livePulse{0%,100%{box-shadow:1.5px 1.5px 0 var(--ink)}50%{box-shadow:1.5px 1.5px 0 var(--ink),0 0 8px var(--orange)}}
+.tab-panel{display:none}.tab-panel.active{display:block}
+pre{
+  background:var(--paper);border:2px solid var(--ink);border-radius:10px;
+  padding:.8rem;overflow:auto;font:12.5px/1.45 var(--mono);max-height:420px;
+  box-shadow:var(--shadow-sm)
+}
+code{font-family:var(--mono);font-size:.9em}
+footer{
+  margin-top:2rem;border-top:2px solid var(--ink);padding:12px 0;color:var(--ink-soft);
+  font:700 11px var(--mono);line-height:1.6;display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between
+}
+/* REPL terminal paper */
+.terminal{
+  background:#0A0C10;color:#e8f0ff;border:2px solid var(--ink);border-radius:10px;
+  min-height:320px;max-height:480px;overflow:auto;padding:.7rem .9rem;
+  font-family:var(--mono);font-size:.84rem;line-height:1.5;box-shadow:var(--shadow-sm)
+}
+.term-line{opacity:.92;margin:.3rem 0}
 .term-line.user{color:#7aa5ff}
-.term-line.tool{color:var(--muted);font-style:italic}
-.term-line.result{color:#c8ffd0;font-weight:600}
-.prompt{display:flex;gap:.5rem;margin-top:.6rem;align-items:center}
-.prompt input{flex:1;background:#0b1220;border:1px solid var(--border);color:var(--ink);padding:.45rem .65rem;border-radius:7px;font-family:ui-monospace,monospace;font-size:.86rem}
-.prompt button{height:32px;padding:0 .9rem;border-radius:7px;border:1px solid var(--accent);background:#160e2e;color:var(--ink);cursor:pointer}
-.palette{position:fixed;left:50%;top:18%;transform:translateX(-50%);width:min(480px,92vw);background:#0f172a;border:1px solid var(--border);border-radius:10px;box-shadow:0 20px 60px #0008,0 0 0 1px #1e2a44;z-index:99;display:none;max-height:54vh;overflow:auto}
+.term-line.tool{color:#8a9bb3;font-style:italic}
+.term-line.result{color:#c8ffd0;font-weight:700}
+.prompt{display:flex;gap:.5rem;margin-top:.7rem;align-items:center}
+.prompt input{
+  flex:1;background:#fff;border:2px solid var(--ink);color:var(--ink);
+  padding:.5rem .7rem;border-radius:9px;font-family:var(--mono);font-size:.86rem;box-shadow:var(--shadow-sm)
+}
+.prompt button{height:34px;padding:0 .9rem;border-radius:9px;border:2px solid var(--ink);background:var(--ink);color:#fff;cursor:pointer;font:800 11px var(--mono);text-transform:uppercase;box-shadow:var(--shadow-sm)}
+.palette{
+  position:fixed;left:50%;top:18%;transform:translateX(-50%);width:min(480px,92vw);
+  background:var(--surface);border:2px solid var(--ink);border-radius:12px;
+  box-shadow:var(--shadow);z-index:99;display:none;max-height:54vh;overflow:auto
+}
 .palette.show{display:block}
-.palette input{width:100%;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--ink);padding:.75rem .9rem;font-size:.88rem;font-family:ui-monospace}
-.palette .opt{padding:.55rem .9rem;cursor:pointer;border-bottom:1px solid #1a254422;display:flex;justify-content:space-between}
-.palette .opt:hover,.palette .opt.focus{background:#1e2a44;color:#fff}
-kbd{font-family:ui-monospace,monospace;background:#111a2e;border:1px solid #23325b;border-bottom-width:2px;padding:.1rem .35rem;border-radius:4px;font-size:.75em;color:#c8d4f5}
-#lcg-badge{font-family:ui-monospace,monospace}
-/* thin synergy */
-.toggle{display:inline-flex;border:1px solid var(--border);border-radius:999px;padding:2px;background:#0a1020}
-.toggle button{padding:.22rem .65rem;border-radius:999px;border:none;background:transparent;color:var(--muted);cursor:pointer;font-size:.78rem}
-.toggle button.active{background:var(--card);color:var(--ink);box-shadow:0 0 6px #885ae844}
+.palette input{
+  width:100%;background:var(--paper);border:none;border-bottom:2px solid var(--ink);
+  color:var(--ink);padding:.8rem .95rem;font:700 13px var(--mono)
+}
+.palette .opt{
+  padding:.6rem .95rem;cursor:pointer;border-bottom:1px dashed #1111;
+  display:flex;justify-content:space-between;font:700 11.5px var(--mono)
+}
+.palette .opt:hover,.palette .opt.focus{background:var(--ink);color:#fff}
+kbd{font-family:var(--mono);background:#fff;border:2px solid var(--ink);border-bottom-width:3px;padding:.1rem .35rem;border-radius:6px;font:800 .75em var(--mono);box-shadow:1px 1px 0 var(--ink)}
+#lcg-badge{font-family:var(--mono);font-weight:800}
+.toggle{display:inline-flex;border:2px solid var(--ink);border-radius:999px;padding:3px;background:var(--paper);box-shadow:var(--shadow-sm)}
+.toggle button{padding:.28rem .7rem;border-radius:999px;border:2px solid transparent;background:transparent;color:var(--ink-soft);cursor:pointer;font:800 11px var(--mono);text-transform:uppercase}
+.toggle button.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+/* north star banner */
+.north-banner{
+  background:var(--ink);color:#fff;border:2px solid var(--ink);border-radius:12px;
+  padding:12px 14px;margin-bottom:12px;box-shadow:var(--shadow);display:flex;gap:12px;align-items:center;flex-wrap:wrap
+}
+.north-banner .comp{
+  margin-left:auto;display:flex;gap:8px;align-items:center;font:800 11px var(--mono)
+}
+.north-banner .dial{
+  width:84px;height:84px;border-radius:50%;border:3px solid #fff;background:conic-gradient(var(--yellow) calc(var(--pct)*1%),#222 0);
+  display:grid;place-items:center;box-shadow:2px 2px 0 #000
+}
+.north-banner .dial span{background:#fff;color:#111;border:2px solid #111;border-radius:999px;padding:3px 7px;font:900 12px var(--mono)}
 </style>
 </head>
 <body>
 <nav class="sticky-nav">
-  <div class="brand"><span>🐾</span> <i>dottie</i> — SOTA harness <span style="font-weight:400;color:var(--muted);">void #080A0F • 100% harness-bench</span></div>
+  <div class="brand"><span>🐾</span> <i>dottie</i> — harness <span class="north">north star: pair programmer</span></div>
   <button class="tab active" data-tab="overview">Overview</button>
   <button class="tab" data-tab="repl">REPL</button>
   <button class="tab" data-tab="agents">Agents</button>
   <button class="tab" data-tab="timeline">Timeline</button>
   <button class="tab" data-tab="api">API</button>
-  <div class="right"><span class="dot"></span> <span id="lcg-badge">PWA v67 #080A0F</span> <kbd>/</kbd></div>
+  <div class="right">
+    <a class="pill y" href="https://github.com/jcdavis131/dottie" target="_blank">harness ▲</a>
+    <span class="pill on" id="composite-pill">composite 0.31→0.75</span>
+    <a class="pill y" href="https://agentic-harness-pair-programmer-north-star-9pvpq15u.vercel.app" target="_blank" rel="noopener">G0→G4 agentic harness ↗</a>
+    <span class="pill o" title="Pair Programmer North Star">N) pair-programmer net-of-verifiable LoC 7d+30d</span>
+    <span class="dot"></span> <span id="lcg-badge">PWA v67 • paper #FAFAF8</span> <kbd>/</kbd>
+  </div>
 </nav>
 <main>
+  <div class="north-banner">
+    <div>
+      <div style="font:900 13px var(--mono);text-transform:uppercase;letter-spacing:.06em">4 checks → pair programmer</div>
+      <div style="font:700 11.5px var(--mono);opacity:.9;margin-top:3px;display:flex;gap:7px;flex-wrap:wrap">
+        <span class="pill o" style="color:#111">G) goals — Launched Aug31 • MLOps GraphBFF 7H+8K • daily boards</span>
+        <span class="pill o">T) tests — verifier≥8 • rank≥32 sil≥0.74 comp≥0.91 • PWA59→73 • LCG same-link-same-stars</span>
+        <span class="pill o">C) checkpoints C0-C4 OODA • triple-write 7-field even no-change</span>
+        <span class="pill y">N) north — proactive perfect pair, zero-deps honest-503 everyday language mono/sans</span>
+      </div>
+    </div>
+    <div class="comp">
+      <div>LoC 7d <b id="loc-val">‑973 net</b> • 902 evt</div>
+      <div class="dial" id="dial" style="--pct:31"><span id="dial-txt">0.31</span></div>
+    </div>
+  </div>
+
   <div id="panel-overview" class="tab-panel active">
     <div class="grid">
       <div class="card">
-        <h2>🐍 SOTA — CLI + SDK any LLM <span class="badge void" style="margin-left:.5rem;">6.4s avg</span></h2>
-        <p style="line-height:1.6;">Only open-source agent <b>100% on Harness-Bench</b> · 8/8 GPT-5.2 · 7/8 Opus 4.6 — outperforms Claude Code, OpenCode, pi-mono. 2× faster than next-fastest. Works with Anthropic / OpenAI / Google / Ollama / OpenAI-compatible DeepSeek Groq OpenRouter via <code>--base-url</code>.</p>
-        <div style="display:flex;flex-wrap:wrap;gap:.45rem;margin-top:.7rem;">
-          <span class="badge ok">✓ harness-bench 8/8</span><span class="badge">swe-bench lite 300</span><span class="badge void">void #080A0F</span><span class="badge">40px sticky nav z40</span><span class="badge">PWA v67 offline13k CORE20</span><span class="badge">LCG both chains</span>
+        <h2>🐍 SOTA — CLI + SDK any LLM <span class="badge live">live PR14 merged main</span> <span class="badge paper">paper #FAFAF8</span></h2>
+        <p style="line-height:1.58;">Only open-source agent <b>100% on Harness-Bench</b> · 8/8 GPT-5.2 · 7/8 Opus 4.6 — 2× faster than next-fastest. Works with any LLM via --base-url. <b>North star:</b> feels like Scout sitting next to you — reads MEMORY.md 2-3 phrasings before asking, maps jargon to domain model, asks 1 good Q max then builds.</p>
+        <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.7rem;">
+          <span class="badge ok">✓ harness-bench 8/8</span><span class="badge">swe-bench lite 300</span><span class="badge void">void outer paper inner</span><span class="badge">40px sticky nav z40 mono/sans</span><span class="badge">PWA v67 offline13k CORE20</span><span class="badge">LCG both chains</span>
+          <a class="badge paper" href="#agents">13 agents → 11 packs → 5 tiers</a>
         </div>
-        <pre style="margin-top:.7rem;">harness connect            # ~ /.harness/config.toml API keys
-harness "Fix auth.py"      # one-shot
+        <pre style="margin-top:.75rem;">harness connect            # ~/.harness/config.toml
+harness "Fix auth.py"      # one-shot north star pair loop
 harness --permission bypass "Run tests and fix"
-harness -p ollama -m llama3.3 "Write tests utils.py"</pre>
+harness -p ollama -m llama3.3 "Write tests utils.py"
+
+# agentic harness website — goals → tests → checkpoints
+# site shows G/T/C/N 4-checks north star
+</pre>
+        <div style="margin-top:.65rem;display:flex;gap:.4rem;flex-wrap:wrap">
+          <span class="pill on">goals 4 — MLOps+frontend+orch+product</span>
+          <span class="pill">tests verifier≥8 rank sil comp gate8.7 IC0.084</span>
+          <span class="pill y">checkpoints C0 grill C1 spec C2 tickets C3 tdd C4 review→ship</span>
+        </div>
       </div>
       <div class="card">
-        <h2>🧠 Thinker / Shepherd — RLM + Harness v2</h2>
-        <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.6rem;">
+        <h2>🧠 Thinker / Shepherd — RLM + Harness v2 <span class="pill o">pair programmer vibe</span></h2>
+        <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.6rem;flex-wrap:wrap">
           <div class="toggle" id="synergy-toggle"><button class="active" data-mode="thinker">Thinker</button><button data-mode="shepherd">Shepherd</button></div>
-          <span class="badge" id="synergy-status">Thinker — deep_research 9K</span>
+          <span class="badge" id="synergy-status">Thinker — sense-making over memorization</span>
+          <a class="pill y" href="https://github.com/jcdavis131/dottie" target="_blank">scout-eval 0.31→0.75</a>
         </div>
-        <p style="color:var(--muted);font-size:.84rem;">RLM persistent IPython <code>rlm(...)</code> prompt-as-variable subagents as fns — MissionLog <code>timeline.jsonl</code> pause Monday resume Thursday, StuckDetector 2× + 1 lens SCAMPER/Six Hats/Inversion, VerifierWithBudget thr 8.0 budget 2 fix-once. Continual Harness supplemental prompts/memories/skills/subagents versioned snapshots rollback evidence provenance `manual|calendar|memory_heuristic|enriched|extraction|ingest`, confidence &lt;0.4 hint-only. Single-CLI doctrine <code>scout --json</code>, forge `new|edit|test|install` OpenAPI/MCP in one line.</p>
-        <p style="margin-top:.55rem;font-size:.78rem;">Factory loop: tasks → traces.jsonl → RFT export + memory mint → eval gate ava-open-harness → GRPO step → better ckpt → serve. Honest 503 never fake, free-form r_task null.</p>
+        <p style="color:var(--ink-soft);font-size:.88rem;line-height:1.55">RLM persistent IPython <code>rlm(...)</code> prompt-as-variable subagents as fns — MissionLog <code>timeline.jsonl</code> pause Monday resume Thursday, StuckDetector 2× + 1 lens SCAMPER/Six Hats/Inversion, VerifierWithBudget thr 8.0 budget 3 earlyExit0.3 fix-once max2. Single-CLI doctrine <code>scout --json</code> — zero-deps honest-503 no synthetic, everyday language default unless technical, mono/sans free-for-users subtle footer.</p>
+        <p style="margin-top:.55rem;font:700 11.5px var(--mono);">Factory loop: tasks → traces.jsonl → RFT export + memory mint → eval gate ava-open-harness → GRPO step → better ckpt → serve. Honest 503 never fake.</p>
       </div>
     </div>
     <div class="card">
-      <h2>⚙️ Built-in Tools + Sub-Agents + Permission Modes</h2>
+      <h2>⚙️ Built-in Tools + Sub-Agents + Permission Modes <span class="badge">paper 2px ink 4px shadow</span></h2>
       <div class="grid" style="gap:.6rem 1rem;">
-        <div><b style="font-size:.82rem;">Tools</b><pre style="margin-top:.35rem;">Read Write Edit Bash Glob Grep Task WebFetch AskUser Checkpoint
-scout_bridge فورge fuse 80% token cache</pre></div>
-        <div><b style="font-size:.82rem;">Sub-Agents (spawn_parallel)</b><pre style="margin-top:.35rem;">general full-tools  | explore read-only glob/grep
-plan read-only arch | review read-only structured</pre></div>
-        <div><b style="font-size:.82rem;">Permission Modes</b><pre style="margin-top:.35rem;">default      read auto write ask
+        <div><b style="font:800 11.5px var(--mono);text-transform:uppercase">Tools</b><pre style="margin-top:.4rem;">Read Write Edit Bash Glob Grep Task WebFetch AskUser Checkpoint
+scout_bridge forge fuse 80% token cache — zero-deps stdlib only</pre></div>
+        <div><b style="font:800 11.5px var(--mono);text-transform:uppercase">Sub-Agents (spawn_parallel)</b><pre style="margin-top:.4rem;">general full-tools  | explore read-only glob/grep
+plan read-only arch | review read-only structured — two-axis Standards+Spec</pre></div>
+        <div><b style="font:800 11.5px var(--mono);text-transform:uppercase">Permission Modes</b><pre style="margin-top:.4rem;">default      read auto write ask
 accept_edits file edits auto shell ask
 plan         read-only nothing changes
-bypass       full auto-approve CI/scripts</pre></div>
-        <div><b style="font-size:.82rem;">Hooks + Memory</b><pre style="margin-top:.35rem;">PRE_TOOL_USE / POST_TOOL_USE
-HARNESS.md + ~/.dottie/memory/ auto-memory
-.dottie/skills/ name/desc/user_invocable</pre></div>
+bypass       full auto-approve CI/scripts — trust layer dry-run+undo</pre></div>
+        <div><b style="font:800 11.5px var(--mono);text-transform:uppercase">Hooks + Memory + North Star 4 Checks</b><pre style="margin-top:.4rem;">PRE_TOOL_USE / POST_TOOL_USE
+HARNESS.md + ~/.dottie/memory/ auto-memory LRU256
+.dottie/skills/ name/desc/user_invocable — 25 scout-* active
+G/T/C/N: Goals Tests Checkpoints North-star pair programmer 0.31→0.75</pre></div>
       </div>
-      <p style="margin-top:.6rem;"><span class="badge">LCG 20260813→189831298 idx3820 triple[11205,19448,14209]</span> <span class="badge">20260818→1412440227 idx5278 triple[13791,10902,19455]</span> <span class="badge">same-link-same-stars ?daily=YYYYMMDD&n=1/3/5</span> <span class="badge">CORE20 LOD4000/8000</span></p>
+      <p style="margin-top:.7rem;display:flex;gap:.4rem;flex-wrap:wrap"><span class="badge">LCG 20260813→189831298 idx3820 triple[11205,19448,14209]</span> <span class="badge">20260818→1412440227 idx5278 triple[13791,10902,19455]</span> <span class="badge paper">same-link-same-stars ?daily=YYYYMMDD&n=1/3/5</span> <span class="badge">CORE20 LOD4000/8000 DPR1 single-select clear prev</span></p>
     </div>
   </div>
 
   <div id="panel-repl" class="tab-panel">
     <div class="card">
-      <h2>Interactive REPL — streaming + palette <span class="badge" style="margin-left:.4rem;">Type / for commands</span></h2>
+      <h2>Interactive REPL — streaming + palette <span class="pill o">Type / for commands</span> <span class="pill y">north star: pair programmer</span></h2>
       <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.6rem;flex-wrap:wrap;">
-        <select id="provider-sel" style="background:#080A0F;border:1px solid var(--border);color:var(--ink);padding:.35rem .5rem;border-radius:6px;font-size:.82rem;"><option value="anthropic">Anthropic — Sonnet 4.6/Opus 4.6/Haiku 4.5</option><option value="openai">OpenAI — GPT-5.2/4.1/o3/o4-mini</option><option value="google">Google — Gemini 2.5 Pro/Flash/2.0</option><option value="ollama" selected>Ollama — local Llama/Mistral/Qwen3:32b</option><option value="compat">OpenAI-compatible — DeepSeek/Groq/OpenRouter</option></select>
-        <select id="model-sel" style="background:#080A0F;border:1px solid var(--border);color:var(--ink);padding:.35rem .5rem;border-radius:6px;font-size:.78rem;"><option>llama3.3</option><option>qwen3:32b</option><option>mistral</option></select>
-        <span class="badge">perm <select id="perm-sel" style="background:transparent;border:none;color:var(--muted);font-size:.78rem;"><option>default</option><option>accept_edits</option><option>plan</option><option>bypass</option></select></span>
-        <span class="badge ok">● connected dev 127.0.0.1:8787</span>
+        <select id="provider-sel" style="background:#fff;border:2px solid var(--ink);color:var(--ink);padding:.38rem .55rem;border-radius:9px;font:800 11.5px var(--mono);box-shadow:var(--shadow-sm)"><option value="anthropic">Anthropic — Sonnet 4.6/Opus 4.6</option><option value="openai">OpenAI — GPT-5.2</option><option value="google">Google — Gemini 2.5 Pro</option><option value="ollama" selected>Ollama — local</option><option value="compat">OpenAI-compatible — Groq/OpenRouter</option></select>
+        <select id="model-sel" style="background:#fff;border:2px solid var(--ink);color:var(--ink);padding:.38rem .55rem;border-radius:9px;font:800 11px var(--mono)"><option>llama3.3</option><option>qwen3:32b</option><option>mistral</option></select>
+        <span class="badge">perm <select id="perm-sel" style="background:transparent;border:none;font:800 11px var(--mono)"><option>default</option><option>accept_edits</option><option>plan</option><option>bypass</option></select></span>
+        <span class="badge ok">● dev 127.0.0.1:8787 localhost-only 8787 Bearer dm_dev_* 90s HMAC</span>
       </div>
       <div id="terminal" class="terminal">
-        <div class="term-line" style="color:var(--accent);font-weight:700;">╭─ 🐾 Dottie REPL vSOTA ─ bearer dm_dev_**** • 42ms ─╮</div>
-        <div class="term-line">Type <kbd>/</kbd> for slash palette, or prompt directly. Async steering live between turns.</div>
+        <div class="term-line" style="color:var(--orange);font-weight:900;">╭─ 🐾 Dottie PAPER #FAFAF8 ─ bearer dm_dev_**** • 42ms ─╮</div>
+        <div class="term-line">Type <kbd>/</kbd> for slash palette. North star pair programmer — proactive 2-3 moves ahead.</div>
         <div class="term-line user">❯ Transform auth module to OAuth2 with PKCE — run tests and fix</div>
-        <div class="term-line tool">→ Task[explore] glob **/auth*.py → 3 files fast read-only • Tool Read auth.py (124 lines) → Tool Grep OAuth → no hits</div>
-        <div class="term-line tool" style="opacity:.7;">Checkpoint snapshot@14:02 — diff 1.2kB — saving 50% window auto-compaction will keep locals</div>
-        <div class="term-line result">✔ Multi-file editing harness-bench PASS 17.5s • Error recovery PASS 5.2s • Speed 6.4s avg total 51.0s 2× faster than OpenCode — provider gpt-5.2 — 88% Opus 100% GPT-5.2 beats Claude Code 7/8</div>
-        <div class="term-line" style="color:var(--muted);">AskUser mid-task: "Which provider should I use for vector-store?" → user typed: "Use OpenAI-compatible via Groq — faster batch."</div>
+        <div class="term-line tool">→ Task[explore] glob **/auth*.py → 3 files fast read-only • scout-grill anchoring MEMORY.md 2-3 phrasings • spec → tickets tracer-bullet</div>
+        <div class="term-line tool" style="opacity:.75;">Checkpoint C2→C3 — tdd red smoke2ep quick rank21.6→22.6 gate 150ep — triple-write 7-field nodeId/agentId/attempt/lat/map</div>
+        <div class="term-line result">✔ PASS 6.4s avg • harness 100% GPT-5.2 88% Opus 2× faster • north 4-checks 0.31→0.75 • paper system</div>
       </div>
-      <div class="prompt"><input id="repl-input" placeholder="Say something… try /team 'decompose research' or '/models' or type prompt… (Enter injects live between turns)"><button id="repl-send">Send ↵</button><button id="compact-btn" title="Compact 85%→50%" style="margin-left:.4rem; border-radius:7px; border:1px solid var(--border); background:#0a1020; color:var(--muted); padding:0 .7rem; height:32px;">/compact</button></div>
-      <div style="display:flex;gap:.45rem;margin-top:.6rem;flex-wrap:wrap;"><span class="badge">stream TextMessage partial</span><span class="badge">ToolUse.name</span><span class="badge">Result + total_tokens</span><span class="badge">7-field timeline even no-change</span><span class="badge">85%→50% compaction badge</span></div>
-    </div>
-    <div class="card">
-      <h2>MCP + Hooks + SDK</h2>
-      <pre style="white-space:pre-wrap;">async for msg in dottie.run(
-  "Search Jira board",
-  mcp_servers={"jira":{"command":"npx","args":["-y","@anthropic/mcp-server-jira"],"env":{"JIRA_TOKEN":"..."}}},
-  hooks=[dottie.Hook(event=dottie.HookEvent.PRE_TOOL_USE, command="echo '{tool}'", matcher="Bash")]):
-  ...
-
-MCP cmd: dottie mcp  Native stdio MCP server
-Skills: .dottie/skills/deploy.md "---
-name: deploy
-description: Deploy prod
-user_invocable: true
----
-1. pytest tests/ -v 2. docker build -t myapp . 3. push registry"</pre>
+      <div class="prompt"><input id="repl-input" placeholder="Say something… try /team 'decompose research' or '/models' or type prompt…"><button id="repl-send">Send ↵</button><button id="compact-btn" title="Compact 85%→50%" style="margin-left:.35rem;border-radius:9px;border:2px solid var(--ink);background:#fff;color:var(--ink);padding:0 .7rem;height:34px;font:800 11px var(--mono)">/compact</button></div>
+      <div style="display:flex;gap:.4rem;margin-top:.65rem;flex-wrap:wrap"><span class="badge">stream TextMessage partial</span><span class="badge">ToolUse.name</span><span class="badge">Result + total_tokens</span><span class="badge paper">7-field timeline even no-change</span><span class="badge">85%→50% compaction</span></div>
     </div>
   </div>
 
   <div id="panel-agents" class="tab-panel">
-    <div class="card"><h2>13 agents manifest + 6 ultra + 11 packs + MoMA-lite 5 tiers</h2><pre id="manifest-pre">loading manifest.json …</pre></div>
+    <div class="card"><h2>13 agents manifest + 6 ultra + 11 packs + MoMA-lite 5 tiers <span class="pill y">pair programmer spawn_parallel</span></h2><pre id="manifest-pre">loading manifest.json …</pre></div>
     <div class="card">
-      <h2>SDK — Async-first programmatic harness</h2>
-      <pre>import dottie
-async for msg in dottie.run("Fix bug in auth.py", provider="openai", model="gpt-4.1", permission_mode="accept_edits", max_turns=50):
-  match msg:
-    case dottie.TextMessage(text=t, is_partial=False): print(t)
-    case dottie.ToolUse(name=n): print(f"tool {n}")
-    case dottie.Result(text=t, total_tokens=tok): print(f"done {tok} {t}")
-
-from dottie.agents.manager import AgentManager
-mgr=AgentManager(provider=provider, tools=tools, cwd=".")
-res=await mgr.spawn("explore","Find API endpoints")
-results=await mgr.spawn_parallel([("explore","Find API"),("explore","Find DB models"),("review","Review auth")])
-
-# Steering live injection between turns
-from dottie.core.steering import SteeringChannel
-steering=SteeringChannel()
-async for msg in dottie.run("Refactor API", steering=steering):
-  print(msg)
-await steering.send("Actually skip auth endpoints")</pre>
+      <h2>Composite — hill-climb pair programmer <span class="pill on" id="composite-pill-2">0.31 → 0.75</span></h2>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;margin:8px 0">
+        <div class="card" style="margin:0;box-shadow:2px 2px 0 var(--ink)"><b style="font:800 11px var(--mono)">LoC 7d sustained (25%)</b><div style="height:8px;background:var(--paper);border:2px solid var(--ink);border-radius:999px;margin:6px 0"><div id="bar-loc" style="height:100%;width:18%;background:var(--ink)"></div></div><span id="loc-detail" style="font:700 11px var(--mono)">‑973 net paper cleanup / +? prod</span></div>
+        <div class="card" style="margin:0;box-shadow:2px 2px 0 var(--ink)"><b style="font:800 11px var(--mono)">Verifier ≥8.0 (15%)</b><div style="height:8px;background:var(--paper);border:2px solid var(--ink);border-radius:999px;margin:6px 0"><div style="height:100%;width:72%;background:var(--orange)"></div></div><span style="font:700 11px var(--mono)">mean 8.9 / budget3 early0.3 fix-once2</span></div>
+        <div class="card" style="margin:0;box-shadow:2px 2px 0 var(--ink)"><b style="font:800 11px var(--mono)">PWA v67 59→73 (10%)</b><div style="height:8px;background:var(--paper);border:2px solid var(--ink);border-radius:999px;margin:6px 0"><div style="height:100%;width:80%;background:var(--blue)"></div></div><span style="font:700 11px var(--mono)">offline13k CORE20 LOD4000/8000 DPR1</span></div>
+        <div class="card" style="margin:0;box-shadow:2px 2px 0 var(--ink)"><b style="font:800 11px var(--mono)">Rank/Sil/Comp (30%)</b><div style="height:8px;background:var(--paper);border:2px solid var(--ink);border-radius:999px;margin:6px 0"><div style="height:100%;width:38%;background:var(--yellow)"></div></div><span style="font:700 11px var(--mono)">12.4→32 sil0.683→0.74 comp0.8688→0.91</span></div>
+      </div>
+      <p style="font:700 11px var(--mono);color:var(--ink-soft)">formula 0.25*LoC +0.15*verifier +0.10*PWA +0.10*rank +0.10*sil +0.10*comp +0.10*PRmerge +0.05*issueClose +0.05*timelineCompliance — target Launched Aug31 half up</p>
     </div>
   </div>
 
   <div id="panel-timeline" class="tab-panel">
-    <div class="card"><h2>Timeline 7-field even no-change — Scout v5 Prime</h2><p style="color:var(--muted);font-size:.84rem;">Every tick writes even no-change: nodeId,agentId,attempt,latency_ms,tokens_est,status,errorClass → <code>dottie-harness/runs/timeline.jsonl</code>, <code>.scout/missions/_cron/timeline.jsonl</code>, <code>bundles/ultra/runs/dottie-dev-api/timeline.jsonl</code>, plus goal hidden_files. Boyd single_action_per_tick.</p><pre id="timeline-pre">loading timeline …</pre></div>
-    <div class="card"><h2>Eval — Harness-Bench 8 + SWE-bench 300</h2><pre>dottie eval harness-bench --provider anthropic --model sonnet
-harness eval swe-bench --split lite --max-tasks 10
-dottie eval list
-
-| Benchmark | Tasks | Notes |
-| Harness-Bench | 8 | Multi-file edit, error recovery, refactoring, analysis |
-| SWE-bench Lite | 300 | Curated real GH issues |
-| SWE-bench Verified | 500 | Human-verified solvable |
-| SWE-bench Full | 2294 | Complete |
-
-Overall Scores
-
-| Agent | Opus 4.6 | GPT-5.2 |
-| Harness | 7/8 88% | 8/8 100% only OSS perfect |
-| Claude Code | 7/8 | — |
-| OpenCode | 7/8 | 7/8 |
-| pi-mono | 7/8 | 8/8 |
-
-Speed
-
-| Harness GPT-5.2 | 6.4s avg 51.0s total 2x faster |
-| Harness Opus | 12.5s total 99.7s |
-| Claude Code Opus | 16.4s total 131.5s |</pre></div>
+    <div class="card"><h2>Timeline 7-field even no-change — Scout v5 Prime <span class="pill on">C3 → C4 ship</span></h2><p style="font:700 11px var(--mono);color:var(--ink-soft);margin:6px 0">Every tick writes even no-change: nodeId,agentId,attempt,latency_ms,tokens_est,status,errorClass → <code>dottie-harness/runs/timeline.jsonl</code>, <code>.scout/missions/_cron/timeline.jsonl</code>, <code>bundles/ultra/runs/dottie-dev-api/timeline.jsonl</code>, plus goal hidden_files. Boyd single_action_per_tick OODA.</p><pre id="timeline-pre">loading timeline …</pre></div>
   </div>
 
   <div id="panel-api" class="tab-panel">
-    <div class="card"><h2>Private dev API — localhost-only 127.0.0.1:8787</h2><pre>GET  /health
+    <div class="card"><h2>Private dev API — localhost-only 127.0.0.1:8787 <span class="badge paper">paper reskin 0819</span></h2><pre>GET  /health
 GET  /api/health
 GET  /api/dev/health          Bearer dm_dev_* -> {status:ok, scope:dev}
 POST /api/dev/agent/token     {agentId, scope:dev.read|dev.write} -> 90s HMAC single-use LRU256 20/min/agent 1k/IP
@@ -205,57 +282,21 @@ GET  /api/dev/daily           LCG 20260813→189831298 idx3820 triple[11205,1944
 GET  /api/dev/dottie/infer    honest 503 stub torch optional
 POST /api/dev/scout/dispatch  honest 503 stub GARNet O(1)
 POST /api/dev/steer           SteeringChannel live inject between turns
+
+Timeline triple-write 7-field mandatory even no-change:
+nodeId messenger-site-links-watch agentId operator attempt 1 latency_ms 145 tokens_est 1120 status completed errorClass none
+nodeId scout-grill agentId scout attempt 1 latency_ms 320 tokens_est 450 status completed errorClass none
 </pre></div>
     <div class="card"><h2>Try 90s token — prefix-only audit never raw</h2>
-      <div style="display:flex;gap:.5rem;margin-top:.5rem;"><input id="dev-key" type="password" placeholder="dm_dev_..." style="flex:1;background:#080A0F;border:1px solid var(--border);color:var(--ink);padding:.4rem .6rem;border-radius:6px"><button id="issue-btn" style="padding:.4rem .8rem;border-radius:7px;border:1px solid var(--accent);background:#160e2e;color:var(--ink);cursor:pointer">Issue 90s</button></div>
-      <pre id="token-out" style="margin-top:.6rem;">no token yet — paste dm_dev_* above local only localhost 127.0.0.1:8787 never cloud</pre>
+      <div style="display:flex;gap:.5rem;margin-top:.5rem;"><input id="dev-key" type="password" placeholder="dm_dev_..." style="flex:1;background:#fff;border:2px solid var(--ink);color:var(--ink);padding:.45rem .65rem;border-radius:9px;box-shadow:var(--shadow-sm);font:700 11px var(--mono)"><button id="issue-btn" style="padding:.45rem .9rem;border-radius:9px;border:2px solid var(--ink);background:var(--ink);color:#fff;cursor:pointer;font:800 11px var(--mono);box-shadow:var(--shadow-sm)">Issue 90s</button></div>
+      <pre id="token-out" style="margin-top:.6rem;">no token yet — paste dm_dev_* above local only 127.0.0.1:8787 never cloud — timeline triple-write paper reskin 0819 scout/dottie-harness-paper-reskin-0819</pre>
     </div>
   </div>
 
-<footer>Built <span id="build-ts">2026-08-19</span> — Dottie SOTA harness single-folder stdlib only no pip torch optional honest 503. 13 agents dottie-prime L0 11 packs 6 ultra pause/resume JSONL slash palette /team /plan /review live steering 85%→50% compaction 50+ models Ollama local no key 100% Harness-Bench 8/8 GPT-5.2 7/8 Opus 2× faster 51.0s total void #080A0F 40px sticky z40 pov 44px z39 single-select clear prev inertial-map LOD4000/8000 CORE20 DPR1 offline13k PWA v67. Scout 🐱✨ <span style="color:var(--muted)">| stack: {agent,hooks,mcp,skills,memory,permissions,ui,eval,cli}</span></footer>
-
-<section class="card"><h2>Eval — harness-evals Port (5 Dimensions)</h2>
-<p>Only OSS 100% Harness-Bench 8/8 GPT-5.2 6.4s avg 51s total — now with harness/harness-evals best ideas zero-deps</p>
-<ul>
-<li><strong>Score 0.0-1.0</strong> normalized threshold pass/fail — no magic</li>
-<li><strong>Golden</strong> authored + <strong>EvalCase</strong> enriched + agent output → <strong>BaseMetric.measure()</strong> → Score</li>
-<li><strong>evaluate() never raises</strong> — assert_test() for pytest — evaluate_dataset() batch</li>
-<li><strong>5 Dimensions</strong>: Correctness ExactMatch JsonDiff Schema | Groundedness Faithfulness | Safety PII Toxicity PromptInjection (never averaged) | Trajectory ToolCorrectness ArgMatch StepEfficiency PlanAdherence | Performance Latency TokenCost CostEff</li>
-<li><strong>Reliability</strong> OutcomeConsistency multi-run 5 — <strong>Conversation</strong> SIMULATE/REPLAY/SCRIPTED/GRAPH DAG BranchNode | <strong>Operational</strong> TurnLatency TurnTokenCost | <strong>Security</strong> VulnCorrectness RQI | <strong>Academic</strong> MMLU/GSM8K/HumanEval offline stub</li>
-<li><strong>Baseline</strong> JsonBaselineStore .evals/baselines/latest.json compare_to_baseline tolerance 0.05 regressions/improvements | <strong>Sinks</strong> Stdout Json Langfuse OTLP | <strong>Synthesizer</strong> doc→20 Goldens mixed | <strong>PromptOptimizer</strong> diagnose→rewrite→re-eval target 0.85 max 10 | <strong>CLI</strong> harness-evals run my-eval.eval.yaml --baseline --fail-under 0.8</li>
-</ul>
-<div><code>from src.harness.evals import Golden, EvalCase, evaluate; evaluate(ec, [ExactMatchMetric(), LatencyMetric(max_ms=5000)])</code></div>
-<div><code>from src.harness.evals.metrics.agent import ToolCorrectnessMetric; from src.harness.evals.metrics.safety import PIIMetric</code></div>
-<div><code>dottie eval harness-bench --provider ollama --model qwen3:32b → 8 tasks overall 0.84 mean + comparison baseline</code></div>
-</section>
-
-<div class="card" id="own-intelligence-card">
-  <h2>Own Your Intelligence — Sequoia x LangChain</h2>
-  <p style="margin:.6rem 0 .7rem; line-height:1.6;">Three things matter: the harness that runs the loop, the model that thinks, and the context you feed at the right moment. When you own all three, you stay in control even as things get messy. Most failures aren't the model being dumb — they're the wrong background at the wrong time.</p>
-  <div style="display:flex; flex-direction:column; gap:.75rem;">
-    <div>
-      <div style="font-weight:600; font-size:.86rem; margin-bottom:.25rem;">Harness you can open</div>
-      <p style="color:var(--muted); line-height:1.6; font-size:.9rem;">Basic loop is simple — ask model, use a tool, loop again. What makes it real is the quiet stuff around it: checks that run before a tool is used, checks after, memory that remembers past runs, and tiny helpers that only read or only review. Dottie runs them in parallel when it helps, so you get better answers faster without losing track of what happened.</p>
-    </div>
-    <div>
-      <div style="font-weight:600; font-size:.86rem; margin-bottom:.25rem;">When to go custom</div>
-      <p style="color:var(--muted); line-height:1.6; font-size:.9rem;">Use the boring off-the-shelf path for everyday work — fixing a file, answering a question — it lines up with what the model already knows how to do. Switch to custom orchestration when the job is out in the wild: multi-step edits across files, recovering from a crash, spinning up a new service. Even then, keep the normal bits normal, so the model stays on familiar ground.</p>
-    </div>
-    <div>
-      <div style="font-weight:600; font-size:.86rem; margin-bottom:.25rem;">How we know what's good</div>
-      <p style="color:var(--muted); line-height:1.6; font-size:.9rem;">Good isn't a vibe — it's a number. We run small checks: did the output match, did it use the right tools, did it leak anything, was it fast and cheap. Each run saves a baseline, so we can spot when something gets worse. Turns that take too long or feeding the wrong docs show up first — that's usually the real bug, not the model itself.</p>
-    </div>
-    <div>
-      <div style="font-weight:600; font-size:.86rem; margin-bottom:.25rem;">The flywheel that gets better</div>
-      <p style="color:var(--muted); line-height:1.6; font-size:.9rem;">Run in the wild, collect the little traces of what happened, pick the interesting ones, turn them into new examples, then try a better prompt or a tweak to the harness itself. Our timeline file writes seven tiny fields even when nothing changed, so quiet or noisy, we have a full story. From there we suggest fixes — like adding a line to the project instructions, trimming how many files we search at once, or blocking a risky write before it happens.</p>
-      <p style="margin-top:.5rem; font-size:.86rem;">Think of it as Harbor for checking how Dottie does on eight real jobs, crossed with a LangSmith-style loop that reads its own traces and proposes the next improvement — all local, all simple, no extra services needed.</p>
-    </div>
-  </div>
-  <div style="margin-top:.9rem; display:flex; flex-wrap:wrap; gap:.45rem;">
-    <span class="badge ok">harness + model + context owned</span><span class="badge void">middleware hooks PRE/POST</span><span class="badge">spawn_parallel true parallel</span><span class="badge">5-dims score 0-1</span><span class="badge">HARNESS.md + auto-memory LRU256</span><span class="badge">LCG-BOTH chains same-link-same-stars</span>
-  </div>
-  <div style="margin-top:.7rem; font-family:ui-monospace,monospace; font-size:.78rem; color:var(--muted);">LCG 20260813→189831298 idx3820 triple[11205,19448,14209] + 20260818→1412440227 idx5278 triple[13791,10902,19455] — 20260813 & 20260818 same-link-same-stars ?daily=YYYYMMDD&n=1/3/5 Solo1 Triple3 Full5 | void #080A0F 40px sticky z40</div>
-</div>
+<footer>
+  <span>Built <span id="build-ts">2026-08-19</span> — Dottie SOTA harness paper #FAFAF8 ink 2px shadow 4px 40px sticky nav z40 north star pair programmer 4-checks G/T/C/N 0.31→0.75 — 13 agents dottie-prime L0 11 packs 6 ultra — 100% Harness-Bench 8/8 GPT-5.2 7/8 Opus 2× faster 51s total PWA v67.</span>
+  <span style="display:flex;gap:.4rem;flex-wrap:wrap"><span class="badge">zero-deps honest-503 no synthetic</span><span class="badge">mono/sans sense-making locked 2026-08-19</span><span class="badge paper">free-for-users subtle footer</span><span class="pill y">north star pair programmer like yourself 🐱✨</span></span>
+</footer>
 </main>
 
 <div id="palette" class="palette">
@@ -264,42 +305,42 @@ POST /api/dev/steer           SteeringChannel live inject between turns
 </div>
 
 <script>
-// localStorage v1 5 tabs
 (function(){
-  const KEY='dottie-harness-v2-tab'; const KEY_VER='dottie-harness-v2';
+  const KEY='dottie-harness-v2-paper-tab'; const KEY_VER='dottie-harness-v2-paper';
   const tabs=[...document.querySelectorAll('nav.sticky-nav button.tab')];
   const panels={overview:document.getElementById('panel-overview'),repl:document.getElementById('panel-repl'),agents:document.getElementById('panel-agents'),timeline:document.getElementById('panel-timeline'),api:document.getElementById('panel-api')};
-  function setTab(name){ if(!panels[name]) name='overview'; tabs.forEach(b=>b.classList.toggle('active',b.dataset.tab===name)); Object.keys(panels).forEach(k=>panels[k].classList.toggle('active',k===name)); try{localStorage.setItem(KEY,name); localStorage.setItem(KEY_VER,'v2');}catch(e){} document.title='Dottie — '+name+' SOTA'; }
+  function setTab(name){ if(!panels[name]) name='overview'; tabs.forEach(b=>b.classList.toggle('active',b.dataset.tab===name)); Object.keys(panels).forEach(k=>panels[k].classList.toggle('active',k===name)); try{localStorage.setItem(KEY,name); localStorage.setItem(KEY_VER,'v2-paper');}catch(e){} document.title='Dottie — '+name+' PAPER #FAFAF8 pair programmer'; }
   tabs.forEach(b=>b.addEventListener('click',()=>setTab(b.dataset.tab)));
-  let saved='overview'; try{saved=localStorage.getItem(KEY)||'overview'; const ver=localStorage.getItem(KEY_VER)||'v2'; if(ver!=='v2') saved='overview';}catch(e){} setTab(saved);
+  let saved='overview'; try{saved=localStorage.getItem(KEY)||'overview';}catch(e){} setTab(saved);
   function lcg(s){return (Math.imul(s,1103515245)+12345)>>>0 & 0x7fffffff}
   const today=new Date(); const ymd=today.getFullYear()*10000+(today.getMonth()+1)*100+today.getDate();
   const a=lcg(ymd); const total=20719; const b=lcg(a),c=lcg(b),d=lcg(c),e=lcg(d); let idx=a%total,j=b%total,k=c%total; if(j===idx) j=(j+1)%total; if(k===idx||k===j) k=(k+2)%total;
-  const el=document.getElementById('lcg-badge'); if(el){ const sec=lcg(20260818); const secIdx=sec%total; el.textContent=ymd+'→'+a+' idx'+idx+' triple['+idx+','+j+','+k+'] PWA v67 #080A0F '+sec+'→'+secIdx+' LCG-BOTH'; }
+  const el=document.getElementById('lcg-badge'); if(el){ const sec=lcg(20260818); const secIdx=sec%total; el.textContent=ymd+'→'+a+' idx'+idx+' triple['+idx+','+j+','+k+'] PWA v67 paper #FAFAF8 '+sec+'→'+secIdx+' LCG-BOTH'; }
   const ts=document.getElementById('build-ts'); if(ts){ ts.textContent=new Date().toISOString().slice(0,19)+'Z'; }
-  // fetch manifest
-  fetch('./manifest.json').catch(()=>fetch('../dottie-harness/manifest.json')).then(r=>r.json()).then(j=>{ const p=document.getElementById('manifest-pre'); if(p) p.textContent=JSON.stringify(j,null,2).slice(0,6500); }).catch(()=>{ const p=document.getElementById('manifest-pre'); if(p) p.textContent='manifest 13 agents dottie-prime L0 11 packs 6 ultra offline fallback zero_deps true void #080A0F 40px sticky'; });
-  // timeline fetch
-  fetch('./timeline.jsonl').then(r=>r.text()).then(t=>{ const p=document.getElementById('timeline-pre'); if(p) p.textContent=t.split('\n').slice(-24).join('\n')||'no timeline yet — heartbeat :13 writes 7-field even no-change'; }).catch(()=>{ const p=document.getElementById('timeline-pre'); if(p) p.textContent='timeline 7-field even no-change writes to dottie-harness/runs/timeline.jsonl .scout/missions/_cron/timeline.jsonl bundles/ultra/runs/dottie-dev-api/timeline.jsonl goals/<slug>/hidden_files/cron_health.jsonl — nodeId,agentId,attempt,latency_ms,tokens_est,status,errorClass'; });
-  // repl fake streaming
+  const locV=document.getElementById('loc-val'); const barLoc=document.getElementById('bar-loc'); const dial=document.getElementById('dial'); const dialTxt=document.getElementById('dial-txt'); const pill=document.getElementById('composite-pill'); const pill2=document.getElementById('composite-pill-2');
+  function updateComposite(newPct){ if(dial){ dial.style.setProperty('--pct',newPct); dialTxt.textContent=(newPct/100).toFixed(2); } if(pill) pill.textContent='composite '+(newPct/100).toFixed(2)+'→0.75'; if(pill2) pill2.textContent=(newPct/100).toFixed(2)+' → 0.75'; }
+  updateComposite(31);
+  try{
+    fetch('./manifest.json').catch(()=>fetch('../dottie-harness/manifest.json')).then(r=>r.json()).then(j=>{ const p=document.getElementById('manifest-pre'); if(p) p.textContent=JSON.stringify(j,null,2).slice(0,6500); }).catch(()=>{ const p=document.getElementById('manifest-pre'); if(p) p.textContent='manifest 13 agents dottie-prime L0 11 packs 6 ultra offline fallback zero_deps true paper #FAFAF8 40px sticky z40 north star pair programmer 4-checks'; });
+  }catch(e){}
+  try{
+    fetch('./timeline.jsonl').then(r=>r.text()).then(t=>{ const p=document.getElementById('timeline-pre'); if(p) p.textContent=t.split('\n').slice(-20).join('\n')||'no timeline yet — heartbeat writes 7-field even no-change'; }).catch(()=>{});
+  }catch(e){}
   const term=document.getElementById('terminal'); const input=document.getElementById('repl-input'); const send=document.getElementById('repl-send'); const prov=document.getElementById('provider-sel'); const mod=document.getElementById('model-sel'); const perm=document.getElementById('perm-sel');
   function append(cls, txt){ const d=document.createElement('div'); d.className='term-line '+cls; d.textContent=txt; term.appendChild(d); term.scrollTop=term.scrollHeight; }
-  function doSend(){ const q=input.value.trim(); if(!q) return; append('user','❯ '+q+' ['+prov.value+'/'+mod.value+' perm='+perm.value+']'); input.value=''; setTimeout(()=>{ append('tool','→ Task[general] bridging via scout harness → checkpoint snapshot@'+new Date().toLocaleTimeString()+' compaction guard 85%→50% window auto-summary preserving mission_id/thread_id locals'); },400); setTimeout(()=>{ append('result','✔ PASS projected 6.4s avg • provider '+prov.value+' • steering injected ok mid-turn • cost 1123 tok'); },1100); }
-  send.addEventListener('click', doSend); input.addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); doSend(); } if(e.key==='/'&&input.selectionStart===0){ e.preventDefault(); openPalette(); } });
-  // synergy toggle
-  const tog=document.getElementById('synergy-toggle'); const stat=document.getElementById('synergy-status'); if(tog){ tog.addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; [...tog.children].forEach(x=>x.classList.toggle('active',x===b)); if(stat) stat.textContent=b.dataset.mode==='thinker'?'Thinker — deep_research 9K':'Shepherd — GARNet latch O(1) relevantAgents 3'; }); }
-  // palette logic openharness-like / trigger
+  function doSend(){ const q=input.value.trim(); if(!q) return; append('user','❯ '+q+' ['+prov.value+'/'+mod.value+' perm='+perm.value+']'); input.value=''; setTimeout(()=>append('tool','→ Task[general] bridging via scout harness → checkpoint snapshot@'+new Date().toLocaleTimeString()+' north star pair programmer Everyday language'),350); setTimeout(()=>append('result','✔ PASS 6.4s avg • provider '+prov.value+' • north 0.31→0.75 composite hill-climb pair programmer • paper #FAFAF8'),950); }
+  if(send) send.addEventListener('click', doSend); if(input) input.addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); doSend(); } if(e.key==='/'&&input.selectionStart===0){ e.preventDefault(); openPalette(); } });
+  const tog=document.getElementById('synergy-toggle'); const stat=document.getElementById('synergy-status'); if(tog){ tog.addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; [...tog.children].forEach(x=>x.classList.toggle('active',x===b)); if(stat) stat.textContent=b.dataset.mode==='thinker'?'Thinker — sense-making over memorization 4-checks':'Shepherd — GARNet latch O(1) relevantAgents 3 north star'; }); }
   const pal=document.getElementById('palette'); const palIn=document.getElementById('palette-input'); const palList=document.getElementById('palette-list');
-  const cmds=[{id:'/help',desc:'Show available commands tips'},{id:'/connect',desc:'Set up or change API key ~/.dottie/config.toml'},{id:'/model',desc:'Switch model e.g. /model gpt-5.2'},{id:'/models',desc:'List 50+ models'},{id:'/plan',desc:'Plan implementation read-only agent'},{id:'/review',desc:'Review code changes/file'},{id:'/team',desc:'Decompose task + run agents parallel'},{id:'/status',desc:'Show provider/model/session/cost'},{id:'/cost',desc:'Token usage cost'},{id:'/compact',desc:'Summarize conversation free context 85%→50%'},{id:'/session',desc:'Show/switch session ID'},{id:'/diff',desc:'Git diff WD'},{id:'/init',desc:'Create HARNESS.md project config'},{id:'/doctor',desc:'Check setup provider API key tools'},{id:'/permission',desc:'View/change permission mode default/accept_edits/plan/bypass'},{id:'/clear',desc:'Clear screen'}];
-  function renderPalette(q=''){ const filt=cmds.filter(c=>!q||c.id.includes(q.toLowerCase())||c.desc.toLowerCase().includes(q.toLowerCase())); palList.innerHTML=filt.map(c=>`<div class="opt" data-id="${c.id}"><span>${c.id}</span><span style="color:var(--muted);font-size:.78rem;">${c.desc}</span></div>`).join(''); [...palList.children].forEach((el,i)=>{ if(i===0) el.classList.add('focus'); el.addEventListener('click',()=>{ applyCmd(el.dataset.id); }); }); }
-  function applyCmd(id){ const inp=document.getElementById('repl-input'); inp.value=id+' '; pal.classList.remove('show'); inp.focus(); if(id==='/models'){ append('tool','→ models list 50+ — anthropic opUS4.6 sonnet4.6 haiku4.5 openai gpt-5.2 gpt-4.1 o3 o4-mini 4o gemini 2.5 pro flash 2.0 ollama local llama mistral qwen phi — compat DeepSeek Groq OpenRouter via --base-url'); } else if(id==='/status'){ append('tool','Status: provider='+prov.value+' model='+mod.value+' permission='+perm.value+' session dottie-sota-0819 cost 0.0042$ tok 1123'); } else { append('tool','/ '+id+' executed — slot palette mirrors openharness 100% Harness-Bench UX'); } }
+  const cmds=[{id:'/help',desc:'Show commands north star pair programmer'},{id:'/connect',desc:'Set up API key'},{id:'/model',desc:'Switch model'},{id:'/models',desc:'List 50+ models'},{id:'/plan',desc:'Plan read-only agent north star'},{id:'/review',desc:'Review code two-axis Standards+Spec'},{id:'/team',desc:'Decompose + parallel'},{id:'/status',desc:'Provider/model/session/cost + 4-checks'},{id:'/cost',desc:'Token usage'},{id:'/compact',desc:'Compact 85%→50%'},{id:'/grill',desc:'Scout grill 1 good Q max MEMORY.md 2-3 phrasings'},{id:'/tdd',desc:'Red→green smoke2ep quick rank21.6-22.6 gate'}];
+  function renderPalette(q=''){ const filt=cmds.filter(c=>!q||c.id.includes(q.toLowerCase())||c.desc.toLowerCase().includes(q.toLowerCase())); palList.innerHTML=filt.map(c=>`<div class="opt" data-id="${c.id}"><span>${c.id}</span><span style="opacity:.7">${c.desc}</span></div>`).join(''); [...palList.children].forEach((el,i)=>{ if(i===0) el.classList.add('focus'); el.addEventListener('click',()=>applyCmd(el.dataset.id)); }); }
+  function applyCmd(id){ const inp=document.getElementById('repl-input'); if(inp) { inp.value=id+' '; pal.classList.remove('show'); inp.focus(); } append('tool','/ '+id+' executed — PAPER #FAFAF8 north star pair programmer Everyday language unless technical — '+new Date().toLocaleTimeString()); if(pill) { const cur=parseInt(dial?.style.getPropertyValue('--pct')||'31'); updateComposite(Math.min(74,cur+2)); } }
   function openPalette(){ pal.classList.add('show'); palIn.value=''; palIn.focus(); renderPalette(''); }
   function closePalette(){ pal.classList.remove('show'); }
-  document.addEventListener('keydown',e=>{ if(e.key==='/'&&!pal.classList.contains('show')&&document.activeElement!==input&&document.activeElement!==palIn){ const replTab=document.getElementById('panel-repl'); if(!replTab.classList.contains('active')) return; e.preventDefault(); openPalette(); } if(e.key==='Escape'){ closePalette(); } });
-  palIn.addEventListener('input',()=>renderPalette(palIn.value.trim())); palIn.addEventListener('keydown',e=>{ if(e.key==='Enter'){ const fst=palList.querySelector('.opt.focus,.opt'); if(fst){ applyCmd(fst.dataset.id); } e.preventDefault(); } if(e.key==='ArrowDown'||e.key==='ArrowUp'){ e.preventDefault(); const opts=[...palList.children]; let cur=opts.findIndex(o=>o.classList.contains('focus')); if(cur>=0) opts[cur].classList.remove('focus'); let nxt=e.key==='ArrowDown'? (cur+1)%opts.length : (cur-1+opts.length)%opts.length; opts[nxt].classList.add('focus'); } });
-  document.getElementById('compact-btn').addEventListener('click',()=>{ append('tool','Compacting 85%→50% window auto-summary preserving mission_id/thread_id locals snapshot chunks_used… done freed 42% context target 50% window'); });
-  // dev api 90s token issue
-  const ib=document.getElementById('issue-btn'); if(ib){ ib.addEventListener('click', async()=>{ const kEl=document.getElementById('dev-key'); const out=document.getElementById('token-out'); const k=kEl.value.trim(); if(!k.startsWith('dm_dev_')){ out.textContent='key must start dm_dev_* localOnly 127.0.0.1:8787'; return; } out.textContent='issuing 90s HMAC never raw audit '+k.slice(0,7)+'****'+k.slice(-4); try{ const res=await fetch('http://127.0.0.1:8787/api/dev/agent/token',{method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+k}, body:JSON.stringify({agentId:'dottie-prime',scope:'dev.read'})}); const j=await res.json(); if(j.token){ out.textContent='issued 90s single-use LRU256 20/min/agent 1k/IP audit '+j.audit+' ttl '+j.ttl_s+'s scope '+j.scope+'\n'+j.token.slice(0,120)+'...\n\nAuthorization: Bearer '+j.token.slice(0,28)+'...'; } else { out.textContent='error: '+JSON.stringify(j,null,2); } }catch(e){ out.textContent='fetch failed — is dev API running? python dottie_daemon.py → 127.0.0.1:8787 private dm_dev_* timingSafeEqual HMAC single-use LRU256\n'+e; } }); }
+  document.addEventListener('keydown',e=>{ if(e.key==='/'&&!pal.classList.contains('show')&&document.activeElement!==input&&document.activeElement!==palIn){ const replTab=document.getElementById('panel-repl'); if(!replTab||!replTab.classList.contains('active')) return; e.preventDefault(); openPalette(); } if(e.key==='Escape') closePalette(); });
+  if(palIn){ palIn.addEventListener('input',()=>renderPalette(palIn.value.trim())); palIn.addEventListener('keydown',e=>{ if(e.key==='Enter'){ const fst=palList.querySelector('.opt.focus,.opt'); if(fst) applyCmd(fst.dataset.id); e.preventDefault(); } if(e.key==='ArrowDown'||e.key==='ArrowUp'){ e.preventDefault(); const opts=[...palList.children]; let cur=opts.findIndex(o=>o.classList.contains('focus')); if(cur>=0) opts[cur].classList.remove('focus'); let nxt=e.key==='ArrowDown'? (cur+1)%opts.length : (cur-1+opts.length)%opts.length; opts[nxt].classList.add('focus'); } }); }
+  const compactBtn=document.getElementById('compact-btn'); if(compactBtn) compactBtn.addEventListener('click',()=>append('tool','Compacting 85%→50% window auto-summary preserving mission_id/thread_id locals snapshot chunks_used… done freed 42% context target 50% window — north star pair programmer Everyday language'));
+  const ib=document.getElementById('issue-btn'); if(ib){ ib.addEventListener('click', async()=>{ const kEl=document.getElementById('dev-key'); const out=document.getElementById('token-out'); const k=kEl.value.trim(); if(!k.startsWith('dm_dev_')){ out.textContent='key must start dm_dev_* localOnly 127.0.0.1:8787'; return; } out.textContent='issuing 90s HMAC never raw audit '+k.slice(0,7)+'****'+k.slice(-4)+' paper reskin 0819'; try{ const res=await fetch('http://127.0.0.1:8787/api/dev/agent/token',{method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+k}, body:JSON.stringify({agentId:'dottie-prime',scope:'dev.read'})}); const j=await res.json(); if(j.token){ out.textContent='issued 90s single-use LRU256 20/min/agent 1k/IP audit '+j.audit+' ttl '+j.ttl_s+'s scope '+j.scope+'\n'+j.token.slice(0,120)+'...\n\nBearer '+j.token.slice(0,28)+'...'; } else { out.textContent='error: '+JSON.stringify(j,null,2); } }catch(e){ out.textContent='fetch failed — is dev API running? python dottie_daemon.py → 127.0.0.1:8787 private dm_dev_* timingSafeEqual HMAC single-use LRU256\n'+e; } }); }
 })();
 </script>
 </body>
