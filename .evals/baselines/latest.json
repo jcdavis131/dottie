@@ -1,0 +1,10 @@
+{
+  "multi_file_edit": 0.8293333333333334,
+  "bug_fix": 0.8293333333333334,
+  "error_recovery": 0.8293333333333334,
+  "refactor": 0.8293333333333334,
+  "context_understanding": 0.8293333333333334,
+  "project_creation": 0.8293333333333334,
+  "code_analysis": 0.8293333333333334,
+  "tool_efficiency": 0.8293333333333334
+}

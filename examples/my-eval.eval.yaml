@@ -1,0 +1,14 @@
+name: support-bot
+dataset: ./goldens.jsonl
+target:
+  type: prompt
+  prompt: ./prompts/support-bot.txt
+  model: {provider: ollama, name: qwen3:32b}
+metrics:
+  - exact_match
+  - {kind: latency, threshold: 0.5, params: {max_ms: 2000}}
+  - {kind: tool_correctness, threshold: 0.7}
+  - {kind: pii}
+judge_llm: {provider: ollama, name: qwen3:32b}
+sinks: [stdout]
+baseline: {store: json, path: .evals/baseline.json}
