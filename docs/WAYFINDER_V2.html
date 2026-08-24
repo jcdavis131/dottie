@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dottie v2 — Wayfinder Map</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  :root{--paper:#F9F6F0;--ink:#111;--terracotta:#C17C60;--stone:#E8E0D5;}
+  body{background:var(--paper);color:var(--ink);font-family:ui-monospace,Menlo,monospace}
+  .card{background:#FEFCF8;border:1px solid var(--stone);border-radius:16px;box-shadow:0 1px 3px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.04)}
+  .mono{font-family:ui-monospace,Menlo,monospace}
+</style>
+</head>
+<body class="min-h-screen p-6">
+<div class="max-w-6xl mx-auto space-y-6">
+  <div class="card p-6">
+    <h1 class="text-2xl font-bold mono">Dottie v2 — Wayfinder Map</h1>
+    <p class="text-sm mt-2 opacity-70">Destination: Dottie v2 live — all 4 distillations shipped, PWA v67, daily boards LCG chain, Launched 100% free PWA offline13k, 3 real daily users</p>
+    <div class="mt-3 flex gap-2 text-xs">
+      <span class="px-2 py-1 rounded-full bg-[#C17C60] text-white">P0 colibri infer</span>
+      <span class="px-2 py-1 rounded-full bg-[#8A9A8B] text-white">P0 openworker inbox</span>
+      <span class="px-2 py-1 rounded-full bg-[#A67B5B] text-white">P1 qm scopes</span>
+      <span class="px-2 py-1 rounded-full bg-[#2A2E33] text-white">P1 anydoc ingest</span>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="card p-5">
+      <h2 class="mono font-bold text-sm uppercase tracking-widest opacity-60">Decision Map</h2>
+      <div class="mermaid mt-4 text-[12px]">
+flowchart TD
+  A[Spec v2 Locked 2026-08-23] --> B[01 infer engine colibri]
+  A --> C[02 inbox secrets models openworker]
+  A --> D[03 scopes qm]
+  A --> E[04 anydoc ingest]
+  B --> F[05 tandem bridge 127.0.0.1:8787 + arxiviq]
+  C --> F
+  D --> F
+  E --> F
+  F --> G[06 conductor triple green]
+  G --> H[07 PWA v67 verifier>=8]
+  H --> I[08 eval gate + timeline triple-write]
+  I --> J[09 Vercel prod arxiviq.com/dottie]
+  J --> K[Launched 100% 3 users]
+
+  style A fill:#F9F6F0,stroke:#C17C60,stroke-width:2px
+  style K fill:#C17C60,stroke:#2A2A2A,color:#fff
+      </div>
+    </div>
+    <div class="card p-5">
+      <h2 class="mono font-bold text-sm uppercase tracking-widest opacity-60">Tickets (blocking)</h2>
+      <ul class="mt-3 space-y-3 text-sm mono">
+        <li><b>01 infer</b> — Blocked by: None — Delivers: scout infer hello/list/status/run chat/serve TieredCache streaming honest semantics — Touch: engine</li>
+        <li><b>02 inbox</b> — Blocked by: None — Delivers: park/list/approve/deny 0600 inbox, secrets 0600 vault redacted, models curated — Touch: orchestrator</li>
+        <li><b>03 scopes</b> — Blocked by: None — Delivers: person/room scopes + grants + admin tighten-only + Slack identity — Touch: orchestrator</li>
+        <li><b>04 anydoc</b> — Blocked by: None — Delivers: unified Document IR + single GFM serializer content-detect <50ms — Touch: factory</li>
+        <li><b>05 tandem</b> — Blocked by: 01 02 — Delivers: 127.0.0.1:8787 Bearer dm_dev_* HMAC queue + pair create/verify/status — Touch: orchestrator</li>
+        <li><b>06 conductor</b> — Blocked by: 05 — Delivers: arxiviq.com/conductor?tandem=1 triple green + queue Push/Claim/Clear — Touch: frontend</li>
+        <li><b>07 PWA</b> — Blocked by: 06 — Delivers: PWA v67 offline13k CORE20 void #080A0F 40px sticky verifier≥8 — Touch: frontend</li>
+        <li><b>08 eval</b> — Blocked by: 01 04 — Delivers: eval gate freq prior+heuristic + timeline triple-write 7-field — Touch: factory</li>
+        <li><b>09 deploy</b> — Blocked by: 07 08 — Delivers: Vercel prod arxiviq.com/dottie live + pairing Supabase/R2 fallback — Touch: ship</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card p-5">
+    <h2 class="mono font-bold text-sm">Swarm Lanes — 1 main +1 churn + N (never archive)</h2>
+    <div class="mt-3 grid grid-cols-4 gap-3 text-xs mono">
+      <div class="p-3 rounded-xl bg-[#F5F1EB]">Main — Scout Prime<br>coordinator<br>timeline SSOT</div>
+      <div class="p-3 rounded-xl bg-[#F5F1EB]">Churn — c86e297d<br>always-on<br>aligner</div>
+      <div class="p-3 rounded-xl bg-[#FEFCF8] border">Swarm infer<br>colibri</div>
+      <div class="p-3 rounded-xl bg-[#FEFCF8] border">Swarm inbox<br>openworker</div>
+      <div class="p-3 rounded-xl bg-[#FEFCF8] border">Swarm scopes<br>qm</div>
+      <div class="p-3 rounded-xl bg-[#FEFCF8] border">Swarm anydoc<br>ingest</div>
+      <div class="p-3 rounded-xl bg-[#FEFCF8] border">Swarm tandem<br>bridge</div>
+      <div class="p-3 rounded-xl bg-[#FEFCF8] border">Swarm deploy<br>Vercel</div>
+    </div>
+    <p class="mt-3 text-xs opacity-60 mono">Pacing: ultra guard v4 1m cadence whisper quiet no still-watching spam 7-field mandatory even no-change — never poll loop</p>
+  </div>
+
+  <div class="card p-5">
+    <h2 class="mono font-bold text-sm">Live Files Snapshot</h2>
+    <pre class="mt-2 text-[11px] overflow-auto mono bg-[#F5F1EB] p-3 rounded-xl">apps/scout-cli/bigbang/plugins/infer/cli.py 16.9K stdlib TieredCache
+apps/scout-cli/bigbang/plugins/inbox/cli.py 12.3K 0600 atomic inbox
+apps/scout-cli/bigbang/plugins/secrets/cli.py 0600 vault redacted
+apps/scout-cli/bigbang/plugins/extract/anydoc.py 28K unified IR
+packages/ava-skills/skills/qm-scopes/SKILL.md scopes grant admin
+packages/ava-skills/skills/anydoc/SKILL.md + skill.py + anydoc_helper.py
+apps/arxiviq/app/dottie/page.tsx polished #080A0F CORE20 PWA
+apps/arxiviq/app/conductor/page.tsx tandem ?tandem=1 triple green
+apps/arxiviq/app/api/pair/verify/route.ts Supabase/R2 in-mem LRU 256
+your_files/dottie-tandem-bridge/index.html standalone 19kB fallback
+docs/DOTTIE_V2_SPEC.md 12K spec + quiz + stories + seams
+</pre>
+  </div>
+
+  <div class="card p-5">
+    <h2 class="mono font-bold text-sm">Verification Checklist</h2>
+    <ul class="mt-2 text-xs mono list-disc ml-4 space-y-1">
+      <li>scout --json infer hello → ok true</li>
+      <li>scout --json infer list → 6 families 744B-7B</li>
+      <li>scout --json inbox list --pending → ok true</li>
+      <li>scout extract detect → tier stdlib anydoc-py scope unified 12 formats</li>
+      <li>scout extract read /tmp/test_anydoc.docx → # Test Docx markdown</li>
+      <li>qm-scopes skill triggers scope/multiplayer/room/person/grant</li>
+      <li>timeline triple-write 7-field bundles/ultra/runs + goals/hidden_files + .scout/missions/_cron</li>
+      <li>PWA v67 headers immutable 31536000 verifier≥8 contrast fixed offline-ready</li>
+      <li>Vercel prod arxiviq.com/dottie live + arxiviq.com/conductor?tandem=1 triple green</li>
+    </ul>
+  </div>
+</div>
+<script>mermaid.initialize({startOnLoad:true,theme:'base',themeVariables:{primaryColor:'#F9F6F0',primaryTextColor:'#111',lineColor:'#C17C60'}})</script>
+</body>
+</html>
