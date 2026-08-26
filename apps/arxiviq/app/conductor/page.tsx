@@ -1,4 +1,4 @@
-import AgentConductorPanel from "./components/AgentConductorPanel";
+import AgentConductorPanel from "../components/AgentConductorPanel";
 
 export const metadata = {
   title: "arxiviq.com — Dottie Conductor",

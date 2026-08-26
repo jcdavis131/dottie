@@ -1,0 +1,9 @@
+{
+  "scope": "room/general",
+  "skill": "extract",
+  "grantee": "room/general",
+  "granter": "org",
+  "created": "2026-08-23T00:00:00Z",
+  "version": "0.7.0",
+  "tighten_only": true
+}

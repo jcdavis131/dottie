@@ -1,0 +1,1 @@
+{"created":"2026-08-23T00:00:00Z","keychain":{"audit":"redacted","description":"Shared room keychain — scoped to room members, 0600, no person secrets","secrets":[],"views":["room/general"]},"notes":"qm room: shared files, shared memory, scoped keychain view, per-room crons/web_apps","owner":"room/general","scope":"room/general","version":"1.0.0"}

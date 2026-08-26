@@ -1,0 +1,9 @@
+{
+  "scope": "person/default",
+  "skill": "anydoc",
+  "grantee": "person/default",
+  "granter": "org",
+  "created": "2026-08-23T00:00:00Z",
+  "version": "1.0.0",
+  "tighten_only": true
+}
