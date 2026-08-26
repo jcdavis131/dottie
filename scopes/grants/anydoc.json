@@ -1,0 +1,15 @@
+{
+  "created": "2026-08-23T00:00:00Z",
+  "description": "anydoc — unified Document IR, 12 formats + ole + html, single GFM serializer, stdlib anydoc-py v1.0.0",
+  "grantee": "person/default",
+  "granter": "org",
+  "scope": "person/default",
+  "skill": "anydoc",
+  "tighten_only": true,
+  "version": "1.0.0",
+  "permissions": {
+    "filesystem": {"read": ["memory/", "files/"], "write": ["memory/", "files/"]},
+    "network": {"enabled": false},
+    "tools": {"allow": ["read", "write"]}
+  }
+}

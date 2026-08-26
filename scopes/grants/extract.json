@@ -1,0 +1,15 @@
+{
+  "created": "2026-08-23T00:00:00Z",
+  "description": "extract — Diffbot-class article extraction, now backed by anydoc IR",
+  "grantee": "room/general",
+  "granter": "org",
+  "scope": "room/general",
+  "skill": "extract",
+  "tighten_only": true,
+  "version": "0.7.0",
+  "permissions": {
+    "filesystem": {"read": [".scout"], "write": [".scout"]},
+    "network": {"domains": ["localhost", "127.0.0.1"], "enabled": true},
+    "tools": {"allow": ["read", "write", "exec"]}
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "created": "2026-08-23T00:00:00Z",
+  "description": "org-level skill grants registry — admin tighten-only, grants/<skill>.json",
+  "grants_dir": "scopes/grants",
+  "skills": {
+    "anydoc": {"grants": ["person/default", "room/general"], "version": "1.0.0"},
+    "extract": {"grants": ["person/default", "room/general"], "version": "0.7.0"}
+  },
+  "version": "1.0.0"
+}

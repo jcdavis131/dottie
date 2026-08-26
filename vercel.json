@@ -1,10 +1,1 @@
-{
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "cd apps/arxiviq && npm run build",
-  "outputDirectory": "apps/arxiviq/.next",
-  "framework": "nextjs",
-  "installCommand": "cd apps/arxiviq && npm ci",
-  "headers": [
-    { "source": "/data/(.*)", "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600, stale-while-revalidate=86400" }] }
-  ]
-}
+{"$schema":"https://openapi.vercel.sh/vercel.json","buildCommand":"cd apps/arxiviq && npm run build","framework":"nextjs","headers":[{"headers":[{"key":"Cache-Control","value":"public, max-age=31536000, immutable"},{"key":"Content-Type","value":"application/manifest+json"}],"source":"/manifest.json"},{"headers":[{"key":"Cache-Control","value":"public, max-age=0, must-revalidate"},{"key":"Content-Type","value":"application/javascript"}],"source":"/sw.js"},{"headers":[{"key":"Cache-Control","value":"public, max-age=31536000, immutable"}],"source":"/icon-(.*)"},{"headers":[{"key":"Cache-Control","value":"public, max-age=3600, stale-while-revalidate=86400"}],"source":"/data/(.*)"}],"installCommand":"cd apps/arxiviq && npm ci","outputDirectory":"apps/arxiviq/.next"}

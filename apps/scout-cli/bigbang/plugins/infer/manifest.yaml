@@ -1,0 +1,23 @@
+name: infer
+version: 0.5.0
+description: Tiny engine, immense model — colibri-inspired tiered inference (stdlib-only, honest semantics, streaming from disk)
+capabilities:
+  filesystem:
+    read: true
+    write: false
+    paths: ["~/.cache/dottie/models/", "/home/hatch/.cache/dottie/models/"]
+  network:
+    allow: []
+  secrets:
+    allow: []
+  models:
+    families: ["glm52", "inkling", "kimi_k3", "deepseek_v4", "qwen3", "olmoe"]
+zero_deps: true
+honest: "503"
+colibri:
+  lru_slots: 128
+  pinned_topk: 512
+  prefetch: true
+  mmap: true
+  placement_probe: ["/proc/meminfo", "statvfs", "nvidia-smi"]
+  fail_closed: "IO_MISSING"

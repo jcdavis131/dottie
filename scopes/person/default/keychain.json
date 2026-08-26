@@ -1,0 +1,1 @@
+{"created":"2026-08-23T00:00:00Z","keychain":{"audit":"redacted","description":"Scoped secret view — 0600, timingSafeEqual, per-scope isolation","secrets":[],"views":["default"]},"notes":"qm distilled: each person has scoped keychain view, 0600 perms, audit redaction, no cross-scope leakage","owner":"default","scope":"person/default","version":"1.0.0"}
