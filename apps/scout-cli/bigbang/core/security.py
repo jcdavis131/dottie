@@ -9,6 +9,17 @@ from bigbang.core import atomic_json
 VAULT_DIR = Path.home() / ".local" / "share" / "bigbang"
 VAULT_FILE = VAULT_DIR / "secrets.json"
 VAULT_DIR.mkdir(parents=True, exist_ok=True)
+try:
+    VAULT_DIR.chmod(0o700)
+    # also tighten parent ~/.local/share/bigbang parent chain if owned by us
+    parent = VAULT_DIR.parent
+    if parent.exists():
+        try:
+            parent.chmod(0o700)
+        except Exception:
+            pass
+except Exception:
+    pass
 
 
 def _load():

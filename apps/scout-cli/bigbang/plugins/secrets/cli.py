@@ -31,9 +31,19 @@ from pathlib import Path
 def _load_core():
     try:
         from bigbang.core.cli_ux import examples_epilog, fail_agent, is_interactive, require_secret_value  # type: ignore
-        from bigbang.core.output import emit, is_json  # type: ignore
+        from bigbang.core.output import emit, is_json as real_is_json  # type: ignore
         from bigbang.core.security import delete_secret, get_secret, list_secrets, set_secret  # type: ignore
-        return examples_epilog, fail_agent, is_interactive, require_secret_value, emit, is_json, delete_secret, get_secret, list_secrets, set_secret
+
+        # robust is_json: real flag OR --json in argv (covers argparse zero-deps entry)
+        def _is_json():
+            try:
+                if real_is_json():
+                    return True
+            except Exception:
+                pass
+            return "--json" in sys.argv
+
+        return examples_epilog, fail_agent, is_interactive, require_secret_value, emit, _is_json, delete_secret, get_secret, list_secrets, set_secret
     except Exception as e:
         # fallback for zero-deps path — minimal implementations
         def _emit(data, command="unknown"):
@@ -44,7 +54,16 @@ def _load_core():
                 print(str(data))
 
         def _is_json():
-            return "--json" in sys.argv
+            # fallback: check argv and env, plus try real output module if available now
+            if "--json" in sys.argv:
+                return True
+            try:
+                from bigbang.core.output import is_json as oi  # type: ignore
+                if oi():
+                    return True
+            except Exception:
+                pass
+            return False
 
         def _fail(msg, **kw):
             payload = {"ok": False, "error": msg}

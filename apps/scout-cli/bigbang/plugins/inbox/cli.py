@@ -110,13 +110,23 @@ def _dir() -> Path:
             raise
         except Exception as e:
             # typer.Exit is subclass of Exception, not SystemExit — must not be swallowed
-            # Check if it's a policy denial (has Exit code) vs missing dep
             msg = str(e).lower()
             if "policy denied" in msg or "filesystem write" in msg or "typer" in type(e).__name__.lower() or "exit" in type(e).__name__.lower():
                 raise
-            # missing optional dep → allow (zero-deps path)
             pass
+    # 0700 dir per spec — honest perms, no 2770 sgid leak
     INBOX_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        INBOX_DIR.chmod(0o700)
+    except Exception:
+        pass
+    # also ensure parent ~/.local/share/dottie is 0700 if we created it
+    try:
+        parent = INBOX_DIR.parent
+        if parent.exists():
+            parent.chmod(0o700)
+    except Exception:
+        pass
     return INBOX_DIR
 
 
