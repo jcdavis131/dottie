@@ -42,6 +42,21 @@ except ImportError:
     def _is_resolvable(h,t=0.8): return True
     def _httpx_client(timeout=2.0): return None
 
+
+def _is_blocked_path(path_str: str) -> bool:
+    """Check if path is blocked for secrets/traversal."""
+    lower = path_str.lower()
+    blocked = [".env", ".git/", "id_rsa", "id_ed25519", ".ssh/", ".aws/", ".gnupg/", "credentials", "secret", "token", ".pem", ".key", "secrets.json"]
+    return any(b in lower for b in blocked)
+
+def _validate_workspace_path(path_str: str) -> tuple[bool, str]:
+    if not path_str or path_str.startswith("/") or ".." in path_str or path_str.startswith("~"):
+        return False, "invalid path — must be relative under ~/workspace, no traversal"
+    if _is_blocked_path(path_str):
+        return False, f"blocked path — sensitive pattern"
+    return True, ""
+
+
 GLIMMER_MODELS = [
     "muse-glimmer:30b",
     "muse-glimmer",
@@ -75,7 +90,28 @@ GLIMMER_BASE_SYSTEM = (
     "Never hallucinate tool outputs. Be honest about offline limitations (503 if blocked)."
 )
 
-DEFAULT_TOOLS = [
+# Safe default tools — read-only only. write/exec require explicit opt-in via GLIMMER_ALLOW_WRITE=1 and allowlist
+SAFE_READ_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "read_file",
+            "description": "Read a text file from workspace (relative, no traversal, blocked secrets .env/.git/id_rsa/credentials)",
+            "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_files",
+            "description": "List files in workspace dir (relative)",
+            "parameters": {"type": "object", "properties": {"dir": {"type": "string"}}, "required": []},
+        },
+    },
+]
+
+# Full tools only when explicitly allowed — prevents arbitrary code exec via Glimmer
+FULL_TOOLS = [
     {
         "type": "function",
         "function": {
@@ -88,7 +124,7 @@ DEFAULT_TOOLS = [
         "type": "function",
         "function": {
             "name": "write_file",
-            "description": "Write file to workspace",
+            "description": "Write file to workspace (allowlist only, requires GLIMMER_ALLOW_WRITE=1)",
             "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}, "required": ["path", "content"]},
         },
     },
@@ -96,11 +132,37 @@ DEFAULT_TOOLS = [
         "type": "function",
         "function": {
             "name": "exec",
-            "description": "Execute shell command",
+            "description": "Execute shell command (sandboxed, requires GLIMMER_ALLOW_EXEC=1)",
             "parameters": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]},
         },
     },
 ]
+
+def _is_write_allowed() -> bool:
+    import os
+    return os.environ.get("GLIMMER_ALLOW_WRITE") == "1"
+
+def _is_exec_allowed() -> bool:
+    import os
+    return os.environ.get("GLIMMER_ALLOW_EXEC") == "1"
+
+def get_safe_tools():
+    """Return safe tool set based on env gating."""
+    import os
+    if _is_write_allowed() or _is_exec_allowed():
+        # Still filter — only expose write/exec if explicitly allowed, log warning
+        tools = SAFE_READ_TOOLS.copy()
+        if _is_write_allowed():
+            tools.append(FULL_TOOLS[1])
+        if _is_exec_allowed():
+            tools.append(FULL_TOOLS[2])
+        return tools
+    return SAFE_READ_TOOLS
+
+DEFAULT_TOOLS = SAFE_READ_TOOLS  # default is safe; FULL_TOOLS available via get_safe_tools when env set
+
+# Backwards compat alias
+
 
 
 def get_glimmer_endpoint(timeout: float = 2.0) -> str | None:

@@ -21,11 +21,22 @@
 // Tool adapter pattern compatible with Dottie harness + Zulip/Rocket.Chat + Gitea factory
 
 import {
-  OLLAMA_BASE_URL,
+  OLLAMA_BASE_URL as RAW_OLLAMA_BASE_URL,
   healthCheck as ollamaHealthCheck,
   chat as ollamaChat,
   listModels as ollamaListModels,
 } from "./ollama-gateway";
+
+// Re-export validated gateway URL (SSRF guard)
+const OLLAMA_BASE_URL = (() => {
+  try {
+    const raw = RAW_OLLAMA_BASE_URL;
+    const u = new URL(raw);
+    if (["localhost","127.0.0.1","::1","host.docker.internal"].includes(u.hostname) || u.hostname.startsWith("10.") || u.hostname.startsWith("192.168.") || process.env.ALLOW_REMOTE_GATEWAY==="1") return raw;
+    console.warn(`[glimmer] blocked remote OLLAMA_BASE_URL ${raw}`);
+    return "http://localhost:11434";
+  } catch { return RAW_OLLAMA_BASE_URL; }
+})();
 
 export const GLIMMER_DEFAULT_MODEL =
   process.env.GLIMMER_MODEL ||
@@ -46,6 +57,31 @@ export const LLAMA_CPP_URL =
   process.env.LLAMA_CPP_URL ||
   process.env.LLAMA_CPP_BASE_URL ||
   "http://localhost:8080";
+
+function isAllowedLocalUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (!["http:", "https:"].includes(u.protocol)) return false;
+    const host = u.hostname;
+    // Allow localhost, 127.0.0.1, ::1, host.docker.internal, 10/172.16/192.168 private
+    if (["localhost", "127.0.0.1", "::1", "host.docker.internal"].includes(host)) return true;
+    if (host.startsWith("10.") || host.startsWith("192.168.") || host.startsWith("172.")) return true;
+    // Allow env override if explicitly set via OLLAMA_HOST containing same host — but still restrict to http
+    if (process.env.ALLOW_REMOTE_GATEWAY === "1") return true;
+    return false;
+  } catch { return false; }
+}
+
+function safeGatewayUrl(raw: string, fallback: string): string {
+  if (!raw) return fallback;
+  if (isAllowedLocalUrl(raw)) return raw;
+  console.warn(`[glimmer] blocked non-local gateway URL ${raw} — using fallback ${fallback}`);
+  return fallback;
+}
+
+// Validate env URLs at import time
+const _RAW_OLLAMA = process.env.OLLAMA_BASE_URL || process.env.OLLAMA_HOST || "http://localhost:11434";
+const _RAW_LLAMA = process.env.LLAMA_CPP_URL || process.env.LLAMA_CPP_BASE_URL || "http://localhost:8080";
 
 export type ReasoningLevel = "low" | "medium" | "high" | "xhigh";
 
@@ -262,7 +298,10 @@ async function logTimeline(entry: Timeline7): Promise<boolean> {
     for (const dir of candidates) {
       try {
         await fs.mkdir(dir, { recursive: true });
-        await fs.appendFile(path.join(dir, "timeline.jsonl"), line);
+        const file = path.join(dir, "timeline.jsonl");
+        await fs.appendFile(file, line);
+        // Secrets handling 0600 — timeline may contain traces, enforce restrictive perms
+        try { await fs.chmod(file, 0o600); } catch {}
         wrote = true;
       } catch {}
     }
@@ -701,7 +740,7 @@ export function dottieToolRegistry(): GlimmerTool[] {
   return [
     {
       name: "read_file",
-      description: "Read a text file from workspace (relative to ~/workspace). Use for config, docs, timeline checks. Zero-deps stdlib only.",
+      description: "Read a text file from workspace (relative to ~/workspace). Use for config, docs, timeline checks. Zero-deps stdlib only. Blocked: .env, .git/, secrets, credentials, id_rsa, tokens.",
       parameters: {
         type: "object",
         properties: {
@@ -711,15 +750,46 @@ export function dottieToolRegistry(): GlimmerTool[] {
       },
       handler: async (args) => {
         try {
-          const p = String((args as any).path || "");
-          if (!p || p.includes("..") || p.startsWith("/")) return { ok: false, error: "invalid path — must be relative under ~/workspace" };
-          const fs = await import("fs").then((m: any) => m.promises).catch(() => null);
-          const path = await import("path").then((m: any) => m.default || m).catch(() => null);
+          const pRaw = String((args as any).path || "").trim();
+          if (!pRaw) return { ok: false, error: "invalid path — empty" };
+          // Block absolute, traversal, tilde, null bytes
+          if (pRaw.startsWith("/") || pRaw.startsWith("~") || pRaw.includes("..") || pRaw.includes("\0") || pRaw.includes("\x00")) {
+            return { ok: false, error: "invalid path — must be relative under ~/workspace, no traversal" };
+          }
+          // Normalize and re-check
+          const pathMod = await import("path").then((m: any) => m.default || m).catch(() => null);
           const os = await import("os").then((m: any) => m.default || m).catch(() => null);
-          if (!fs || !path || !os) return { ok: false, error: "fs unavailable" };
-          const full = path.join(os.homedir(), "workspace", p);
+          const fs = await import("fs").then((m: any) => m.promises).catch(() => null);
+          if (!fs || !pathMod || !os) return { ok: false, error: "fs unavailable" };
+          const normalized = pathMod.normalize(pRaw);
+          if (normalized.includes("..") || pathMod.isAbsolute(normalized)) {
+            return { ok: false, error: "invalid path — traversal after normalize" };
+          }
+          // Blocklist secrets / sensitive
+          const lower = normalized.toLowerCase();
+          const blocked = [
+            ".env", ".git/", "id_rsa", "id_ed25519", ".ssh/", ".aws/", ".gnupg/",
+            "credentials", "secret", "token", ".pem", ".key", "leaks.json",
+            "secrets.json", ".dottie/secrets", "bundles/coordination/inbox",
+          ];
+          for (const b of blocked) {
+            if (lower.includes(b)) return { ok: false, error: `blocked path — sensitive pattern ${b}` };
+          }
+          // Enforce workspace root
+          const full = pathMod.join(os.homedir(), "workspace", normalized);
+          const workspaceRoot = pathMod.join(os.homedir(), "workspace");
+          const rel = pathMod.relative(workspaceRoot, full);
+          if (rel.startsWith("..") || pathMod.isAbsolute(rel)) {
+            return { ok: false, error: "invalid path — escapes workspace" };
+          }
+          // Size guard 2MB, honest 503 on large
+          try {
+            const stat = await fs.stat(full);
+            if (stat.size > 2_000_000) return { ok: false, error: `file too large ${stat.size} > 2MB limit` };
+            if (!stat.isFile()) return { ok: false, error: "not a file" };
+          } catch {}
           const content = await fs.readFile(full, "utf8");
-          return { ok: true, result: { path: p, bytes: content.length, preview: content.slice(0, 4000) } };
+          return { ok: true, result: { path: normalized, bytes: content.length, preview: content.slice(0, 4000) } };
         } catch (e: any) {
           return { ok: false, error: e?.message || String(e) };
         }

@@ -3,10 +3,27 @@
 // Target: http://localhost:11434 (env OLLAMA_HOST or OLLAMA_BASE_URL override)
 // Pattern: simple fetch wrapper, no heavy deps, matches AGENTS.md zero-deps rule
 
-export const OLLAMA_BASE_URL =
-  process.env.OLLAMA_BASE_URL ||
-  process.env.OLLAMA_HOST ||
-  "http://localhost:11434";
+function _isAllowedGatewayUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    if (!["http:", "https:"].includes(u.protocol)) return false;
+    const host = u.hostname;
+    if (["localhost","127.0.0.1","::1","host.docker.internal"].includes(host)) return true;
+    if (host.startsWith("10.") || host.startsWith("192.168.") || host.startsWith("172.")) return true;
+    if (process.env.ALLOW_REMOTE_GATEWAY === "1") return true;
+    return false;
+  } catch { return false; }
+}
+
+function _safeBaseUrl(raw: string, fallback: string): string {
+  if (!raw) return fallback;
+  if (_isAllowedGatewayUrl(raw)) return raw;
+  console.warn(`[ollama-gateway] blocked non-local URL ${raw} — using fallback`);
+  return fallback;
+}
+
+const _RAW_OLLAMA = process.env.OLLAMA_BASE_URL || process.env.OLLAMA_HOST || "http://localhost:11434";
+export const OLLAMA_BASE_URL = _safeBaseUrl(_RAW_OLLAMA, "http://localhost:11434");
 
 export type OllamaOk<T> = { ok: true; data: T; status: number };
 export type OllamaErr = { ok: false; error: string; status: 503 | 500 | 400; details?: string };
