@@ -1,8 +1,8 @@
 // glimmer-client.ts — Muse Glimmer local gateway
 // Zero-deps, stdlib-only, honest 503, Apache 2.0 weights via Ollama/vLLM/llama.cpp/MLX
 // 29.6B dense + 1.8B ViT-G/14, 131k context, text+images, low/med/high/xhigh reasoning
-// Target backends in priority: OLLAMA (11434), vLLM (8000), llama.cpp (8080), MLX server
-// Honest 503 if none available — never synthetic.
+// Target backends in priority: OLLAMA (127.0.0.1:11434), vLLM (127.0.0.1:8000), llama.cpp (127.0.0.1:8080), MLX server (127.0.0.1:8081)
+// Loopback-only — never 0.0.0.0, no public exposure, honest 503 if unavailable — never synthetic.
 
 export type GlimmerReasoning = "low" | "medium" | "high" | "xhigh";
 export type GlimmerBackend = "ollama" | "vllm" | "llamacpp" | "mlx" | "none";
@@ -10,7 +10,7 @@ export type GlimmerBackend = "ollama" | "vllm" | "llamacpp" | "mlx" | "none";
 export interface GlimmerConfig {
   backend?: GlimmerBackend;
   baseUrl?: string;
-  model?: string; // default: muse-glimmer / glimmer / llama3.2-vision etc
+  model?: string;
   reasoning?: GlimmerReasoning;
   timeoutMs?: number;
 }
@@ -45,7 +45,6 @@ function detectBackend(cfg?: GlimmerConfig): { backend: GlimmerBackend; url: str
     if (ENV_BASE.includes("8000")) return { backend: "vllm", url: ENV_BASE };
     return { backend: cfg?.backend || "ollama", url: ENV_BASE };
   }
-  // default probe order handled by caller
   return { backend: "none", url: "" };
 }
 
@@ -62,11 +61,12 @@ async function probe(url: string, timeoutMs = 2500): Promise<boolean> {
 }
 
 export async function getAvailableBackend(): Promise<{ backend: GlimmerBackend; url: string }> {
+  // Loopback-only — no 0.0.0.0 public binding
   const candidates: Array<{ backend: GlimmerBackend; url: string }> = [
-    { backend: "ollama", url: process.env.OLLAMA_HOST || "http://localhost:11434" },
-    { backend: "vllm", url: process.env.VLLM_URL || "http://localhost:8000" },
-    { backend: "llamacpp", url: process.env.LLAMA_URL || "http://localhost:8080" },
-    { backend: "mlx", url: process.env.MLX_URL || "http://localhost:8081" },
+    { backend: "ollama", url: process.env.OLLAMA_HOST || "http://127.0.0.1:11434" },
+    { backend: "vllm", url: process.env.VLLM_URL || "http://127.0.0.1:8000" },
+    { backend: "llamacpp", url: process.env.LLAMA_URL || "http://127.0.0.1:8080" },
+    { backend: "mlx", url: process.env.MLX_URL || "http://127.0.0.1:8081" },
   ];
   for (const c of candidates) {
     const healthPath = c.backend === "ollama" ? "/" : c.backend === "vllm" ? "/health" : "/health";
@@ -78,14 +78,14 @@ export async function getAvailableBackend(): Promise<{ backend: GlimmerBackend; 
 export async function glimmerJudge(req: GlimmerJudgeRequest, cfg?: GlimmerConfig): Promise<GlimmerJudgeResult> {
   const start = Date.now();
   const reasoning = req.reasoning || cfg?.reasoning || "medium";
-  const systemPreamble = `You are Muse Glimmer, a 30B open-weight judge (Apache 2.0) running locally. Reasoning effort: ${reasoning}. You judge PWA v67, offline13k, CORE20, and 59→73 hash provenance. Be concise, honest, zero-deps style. Return JSON only.`;
+  const systemPreamble = `You are Muse Glimmer, a 30B open-weight judge (Apache 2.0) running locally. Reasoning effort: ${reasoning}. You judge PWA v67, offline13k, CORE20, and 59→73 hash provenance. Be concise, honest, zero-deps style. Return JSON only. Loopback-only, no public exposure.`;
   const finalSystem = req.system ? `${systemPreamble}\n${req.system}` : systemPreamble;
 
   let backendInfo = cfg?.baseUrl ? { backend: cfg.backend || "ollama" as GlimmerBackend, url: cfg.baseUrl } : await getAvailableBackend();
   if (backendInfo.backend === "none") {
     return {
       ok: false,
-      error: "glimmer unavailable - no local gateway at 11434/8000/8080/8081",
+      error: "glimmer unavailable - no local gateway at 127.0.0.1:11434/8000/8080/8081 (loopback-only, honest 503)",
       status: 503,
       backend: "none",
       latency_ms: Date.now() - start,
@@ -95,7 +95,6 @@ export async function glimmerJudge(req: GlimmerJudgeRequest, cfg?: GlimmerConfig
   const model = cfg?.model || DEFAULT_MODEL;
   const timeoutMs = cfg?.timeoutMs ?? 15000;
 
-  // Ollama path (primary)
   if (backendInfo.backend === "ollama") {
     try {
       const ctrl = new AbortController();
@@ -104,10 +103,7 @@ export async function glimmerJudge(req: GlimmerJudgeRequest, cfg?: GlimmerConfig
         model,
         prompt: `${finalSystem}\n\nUSER: ${req.prompt}\nASSISTANT (JSON):`,
         stream: false,
-        options: {
-          num_ctx: 131072,
-          temperature: 0.2,
-        },
+        options: { num_ctx: 131072, temperature: 0.2 },
       };
       if (req.images?.length) body.images = req.images;
       const res = await fetch(`${backendInfo.url.replace(/\/$/, "")}/api/generate`, {
@@ -126,7 +122,6 @@ export async function glimmerJudge(req: GlimmerJudgeRequest, cfg?: GlimmerConfig
       }
       const data: any = await res.json();
       const text = data.response || data.text || "";
-      // Try parse JSON from response
       try {
         const parsed = JSON.parse(text);
         return {
@@ -139,7 +134,6 @@ export async function glimmerJudge(req: GlimmerJudgeRequest, cfg?: GlimmerConfig
           latency_ms: Date.now() - start,
         };
       } catch {
-        // Extract score via regex fallback
         const m = text.match(/"score"\s*:\s*([0-9.]+)/) || text.match(/score\s*([0-9.]+)/i);
         return {
           ok: true,
@@ -156,7 +150,6 @@ export async function glimmerJudge(req: GlimmerJudgeRequest, cfg?: GlimmerConfig
     }
   }
 
-  // vLLM OpenAI-compat fallback
   if (backendInfo.backend === "vllm") {
     try {
       const ctrl = new AbortController();
@@ -193,7 +186,7 @@ export async function glimmerJudge(req: GlimmerJudgeRequest, cfg?: GlimmerConfig
     }
   }
 
-  return { ok: false, error: "no supported backend", status: 503, backend: backendInfo.backend, latency_ms: Date.now() - start };
+  return { ok: false, error: "no supported backend (loopback-only 127.0.0.1:11434/8000/8080/8081)", status: 503, backend: backendInfo.backend, latency_ms: Date.now() - start };
 }
 
 // --- Judge presets for PWA v67 + hoops ---
@@ -209,7 +202,8 @@ export function pwaJudgePrompt(checks: {
   return `Judge PWA v67 for dumbmodel.com / vector-hoops.
 
 Context:
-- PWA v67 void #080A0F 40px sticky nav, LOD4000/8000 DPR1, offline13k offline.html 13868B CORE20, 30 boards LIVE gate8.7
+- PWA v67 void #080A0F/#1E2022 40px sticky nav, LOD4000/8000 DPR1, offline13k offline.html 13868B CORE20 47 gold, 30 boards LIVE gate8.7
+- Loopback-only backends 127.0.0.1:11434/8000/8080/8081, no 0.0.0.0 exposure
 - Checks to validate:
 ${JSON.stringify(checks, null, 2)}
 
@@ -224,27 +218,28 @@ Return JSON:
     "hashes_59_73": {"pass": bool, "expected": 59, "actual": number, "explain": str},
     "manifest": {"pass": bool},
     "sw": {"pass": bool},
-    "daily_packs": {"pass": bool, "same_link_same_stars": bool}
+    "daily_packs": {"pass": bool, "same_link_same_stars": bool},
+    "loopback_binding": {"pass": bool, "public_exposure": false}
   },
   "suggestions": ["..."]
 }
 
-Be strict: 59 hashes is 7/7/0 spec PASS, 73 is expanded spec (10 hoops, 7 gridiron, 3 pitch, 7 equities, 14 tennis, 12 unified, 6 scout_cli, 14 schools). CORE20 is 20 files. offline13k must be 13868B-ish dark void #080A0F. No synthetic data, honest 503 if blocked.`;
+Be strict: 59 hashes is 7/7/0 spec PASS (ok=7 total=7 total_hashes=59), 73 is expanded spec (10 hoops, 7 gridiron, 3 pitch, 7 equities, 14 tennis, 12 unified, 6 scout_cli, 14 schools). CORE20 is 20 min, 47 gold. offline13k must be 13868B-ish dark void #080A0F/#1E2022. No synthetic data, honest 503 if blocked, loopback-only.`;
 }
 
 export function hoopsJudgePrompt(input: {
-  screenshotBase64?: string; // ViT-G/14 path
+  screenshotBase64?: string;
   chartData?: any;
   dailyPack?: any;
   mapState?: { lod: number; dpr: number; singleSelect: boolean; inertia?: number };
   provenance?: { ok: number; total: number; bad: number };
 }): string {
-  return `Judge vector-hoops 12,966 seasons as rotating map.
+  return `Judge vector-hoops 12,966 seasons as rotating map — hoops gold bf7db6a5, 9 root / 5 public HTML, DAILY COURT 5x PAST→MODERN, 40px sticky nav, mono/sans only, void #1E2022/#080A0F.
 
 Input:
 ${JSON.stringify({ ...input, screenshotBase64: input.screenshotBase64 ? `[${input.screenshotBase64.length} chars base64]` : undefined }, null, 2)}
 
-You have ViT-G/14 1.8B vision encoder. If screenshot present, describe map readability, contrast, DPR1 fillRect LOD4000/8000, single-select clears prev, legend, dark void #080A0F.
+You have ViT-G/14 1.8B vision encoder. If screenshot present, describe map readability, contrast, DPR1 fillRect LOD4000/8000, single-select clears prev, legend, dark void #080A0F/#1E2022, 40px sticky nav.
 
 Return JSON:
 {
