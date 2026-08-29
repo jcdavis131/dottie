@@ -22,7 +22,19 @@ OLLAMA_URLS = [
     "http://host.docker.internal:11434",
 ]
 
+GLIMMER_MODELS = [
+    "muse-glimmer:30b",
+    "muse-glimmer",
+    "muse-glimmer:latest",
+    "glimmer:30b",
+    "glimmer",
+]
+
 PREFERRED_MODELS = [
+    "muse-glimmer:30b",
+    "muse-glimmer",
+    "muse-glimmer:latest",
+
     "qwen3:32b",
     "qwen3:32b-instruct",
     "qwen3:14b",

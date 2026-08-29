@@ -1,0 +1,6 @@
+name: glimmer
+description: "Muse Glimmer 30B local agent provider — text+image, reasoning effort, tool calling"
+version: 0.1.0
+entry: cli
+requires: ["httpx"]
+capabilities: ["llm", "agent", "local"]
