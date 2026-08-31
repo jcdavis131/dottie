@@ -1,1 +1,16 @@
-{"background_color":"#FAFAF8","description":"Dottie factory + Conductor — PWA v67 offline13k CORE20 verifier≥8","display":"standalone","icons":[{"sizes":"192x192","src":"/icon-192.png","type":"image/png"},{"purpose":"maskable","sizes":"512x512","src":"/icon-512.png","type":"image/png"}],"name":"arxiviq.com — Dottie Factory","short_name":"arxiviq","start_url":"/dottie","theme_color":"#080A0F"}
+{
+  "background_color": "#F9F6F0",
+  "description": "Dottie factory — human-first v5: what needs attention, next safe action in 15s. PWA v67 offline13k CORE20 verifier≥8 paper #F9F6F0 ink #2A2A2A terracotta #C17C60 44px mono nav 40px sticky z40",
+  "display": "standalone",
+  "icons": [
+    { "sizes": "192x192", "src": "/icon-192.png", "type": "image/png" },
+    { "sizes": "512x512", "src": "/icon-512.png", "type": "image/png", "purpose": "maskable" }
+  ],
+  "name": "arxiviq.com — Dottie Factory — human-first v5",
+  "short_name": "arxiviq",
+  "start_url": "/dottie?daily=20260813&n=3",
+  "theme_color": "#F9F6F0",
+  "scope": "/",
+  "orientation": "any",
+  "categories": ["productivity", "developer", "utilities"]
+}

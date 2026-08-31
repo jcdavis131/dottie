@@ -1,0 +1,32 @@
+/* Human-First v5 — Motion (140-220ms selection, 240-360ms map) */
+.hv5-select {
+  transition: transform 160ms ease, border-color 160ms ease, opacity 160ms ease;
+}
+
+.hv5-map-shell {
+  transition: transform 300ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hv5-select,
+  .hv5-map-shell {
+    transition: none;
+  }
+}
+
+/* Single breath for selected point, then settle */
+@keyframes hv5-breathe {
+  0% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.9; transform: scale(1.08); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.hv5-point--selected {
+  animation: hv5-breathe 600ms ease 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hv5-point--selected {
+    animation: none;
+  }
+}

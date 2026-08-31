@@ -1,0 +1,59 @@
+/* Human-First v5 — Peers */
+.hv5-peers {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 16px;
+}
+
+@media (max-width: 760px) {
+  .hv5-peers { grid-template-columns: 1fr; }
+}
+
+.hv5-peer {
+  background: var(--paper-raised);
+  border: 1px solid var(--stone-line);
+  border-radius: var(--radius-card);
+  padding: 12px 14px;
+  box-shadow: var(--shadow-soft);
+  transition: border-color 140ms, transform 140ms;
+}
+
+.hv5-peer:hover {
+  border-color: var(--ink);
+  transform: translateY(-1px);
+}
+
+.hv5-peer__name {
+  font-family: var(--font-mono);
+  font-weight: 800;
+  font-size: 13px;
+  color: var(--ink);
+  margin: 0 0 4px;
+}
+
+.hv5-peer__rel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-muted);
+  margin-bottom: 6px;
+}
+
+.hv5-peer__sim {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink);
+}
+
+.hv5-peer__sim b {
+  font-weight: 700;
+}
+
+.hv5-peer__conf {
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-muted);
+}

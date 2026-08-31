@@ -1,0 +1,31 @@
+/* Human-First v5 — Honest states */
+.hv5-state {
+  padding: 16px;
+  background: var(--paper-raised);
+  border: 1px dashed var(--stone-line);
+  border-radius: var(--radius-card);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+.hv5-state b {
+  color: var(--ink);
+}
+
+.hv5-state--loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hv5-state--empty {
+  text-align: center;
+  padding: 24px;
+}
+
+.hv5-state--unavailable {
+  border-style: solid;
+  border-color: var(--accent);
+  background: #FEFCF8;
+}

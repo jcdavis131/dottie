@@ -1,0 +1,97 @@
+/* Human-First v5 — Individual header */
+.hv5-individual {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 0 16px;
+}
+
+.hv5-individual__meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.hv5-individual__title {
+  font-family: var(--font-display);
+  font-size: clamp(28px, 4.5vw, 48px);
+  font-weight: 800;
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+  margin: 2px 0 0;
+  color: var(--ink);
+}
+
+.hv5-individual__summary {
+  font-size: 17px;
+  line-height: 1.45;
+  color: var(--ink);
+  margin: 0;
+  max-width: 46ch;
+}
+
+.hv5-individual__summary b {
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.hv5-individual__signals {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.hv5-signal {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  background: var(--paper-raised);
+  border: 1px solid var(--stone-line);
+  border-radius: 8px;
+  min-width: 110px;
+}
+
+.hv5-signal__label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.hv5-signal__value {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.hv5-signal__meaning {
+  font-size: 11px;
+  color: var(--ink-muted);
+  line-height: 1.3;
+}
+
+.hv5-individual__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.hv5-individual__secondary {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-muted);
+  text-decoration: none;
+}
+
+.hv5-individual__secondary:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}

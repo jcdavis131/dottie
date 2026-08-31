@@ -1,0 +1,64 @@
+/* Human-First Design System v5 — Tokens
+   Shared foundation: paper, ink, void, stone, accent
+*/
+:root {
+  --paper: #F9F6F0;
+  --paper-raised: #FEFCF8;
+  --paper-2: #FFFEF7;
+  --void: #080A0F;
+  --void-2: #0A0C10;
+  --ink: #2A2A2A;
+  --ink-strong: #1A150F;
+  --ink-muted: #6B6B6B;
+  --ink-3: #5A544D;
+  --stone-soft: #E8E0D5;
+  --stone-line: #D4C4B0;
+  --stone: #F5F1EB;
+  --accent: #C17C60;
+  --accent-deep: #A4553D;
+  --focus: #A4553D;
+  --yellow: #F0E442;
+  --blue: #1B45A7;
+  --orange: #D55E00;
+  --green: #009E73;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --font-display: ui-sans-serif, system-ui, -apple-system, sans-serif;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: clamp(1.75rem, 3vw, 2.75rem);
+  --text-display: clamp(2.25rem, 5vw, 3.75rem);
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --radius-panel: 16px;
+  --radius-pill: 999px;
+  --shadow-raised: 0 12px 32px rgb(42 42 42 / 0.08);
+  --shadow-soft: 0 4px 16px rgb(42 42 42 / 0.06);
+  --nav-height: 44px;
+  --content-max: 1180px;
+  --reading-max: 68ch;
+
+  --touch-min: 44px;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

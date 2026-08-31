@@ -1,34 +1,130 @@
-:root{
-  /* japandi v4 — paper #F9F6F0 ink #2A2A2A void #1E2022 44px mono nav radii 8/12/16 */
-  --paper:#F9F6F0;
-  --paper-soft:#F5F1EB;
-  --paper-border:#E8E0D5;
-  --ink:#2A2A2A;
-  --void:#1E2022;
-  /* arxiviq override — void #080A0F paper #FAFAF8 40px sticky z40 CORE20 */
-  --void-arx:#080A0F;
-  --paper-arx:#FAFAF8;
-  --paper-arx-soft:#F5F1EB;
-  --moss:#8A9A8B;
-  --terracotta:#C17C60;
-  --radius-sm:8px;
-  --radius-md:12px;
-  --radius-lg:16px;
-  --nav-h:44px;
-  --nav-h-arx:40px;
-  --z-nav:40;
-  color-scheme: light dark;
-}
-html,body{margin:0;padding:0;background:var(--void-arx);color:var(--paper-arx)}
-*{box-sizing:border-box}
-a{color:inherit}
-button{font:inherit}
-code{font-family:ui-monospace, SFMono-Regular, Menlo, monospace}
+/* Human-First v5 — Dottie Factory + Conductor
+   Paper #F9F6F0, Ink #2A2A2A, Terracotta #C17C60, Stone, 44px mono nav, 58/42 map/story, radii 8/12/16, soft diffuse shadows
+   Aligned with assets/human-v5/tokens.css from hoops/unified/hub
+*/
+:root {
+  --paper: #F9F6F0;
+  --paper-raised: #FEFCF8;
+  --paper-2: #FFFEF7;
+  --paper-soft: #F5F1EB;
+  --paper-border: #E8E0D5;
+  --void: #080A0F;
+  --void-2: #0A0C10;
+  --void-arx: #080A0F;
+  --paper-arx: #FAFAF8;
+  --paper-arx-soft: #F5F1EB;
+  --ink: #2A2A2A;
+  --ink-strong: #1A150F;
+  --ink-muted: #6B6B6B;
+  --ink-3: #5A544D;
+  --stone-soft: #E8E0D5;
+  --stone-line: #D4C4B0;
+  --stone: #F5F1EB;
+  --accent: #C17C60;
+  --accent-deep: #A4553D;
+  --terracotta: #C17C60;
+  --focus: #A4553D;
+  --moss: #8A9A8B;
+  --yellow: #F0E442;
+  --blue: #1B45A7;
+  --orange: #D55E00;
+  --green: #009E73;
 
-/* 44px mono nav — japandi v4 + 40px arxiviq variant */
-.nav-japandi{height:var(--nav-h);font-family:ui-monospace, monospace;position:sticky;top:0;z-index:40;background:rgba(249,246,240,.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--paper-border)}
-.nav-arx{height:var(--nav-h-arx);font-family:ui-monospace, monospace;position:sticky;top:0;z-index:40;background:rgba(250,250,248,.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--paper-border)}
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --font-display: ui-sans-serif, system-ui, -apple-system, sans-serif;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: clamp(1.75rem, 3vw, 2.75rem);
+  --text-display: clamp(2.25rem, 5vw, 3.75rem);
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --radius-panel: 16px;
+  --radius-pill: 999px;
+  --shadow-raised: 0 12px 32px rgb(42 42 42 / 0.08);
+  --shadow-soft: 0 4px 16px rgb(42 42 42 / 0.06);
+  --nav-height: 44px;
+  --nav-h: 44px;
+  --nav-h-arx: 40px;
+  --z-nav: 40;
+  --content-max: 1180px;
+  --reading-max: 68ch;
+  --touch-min: 44px;
+
+  color-scheme: light;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* { box-sizing: border-box }
+a { color: inherit }
+button { font: inherit }
+code { font-family: var(--font-mono) }
+
+/* 44px mono nav — human-first v5 + 40px arxiviq variant */
+.nav-japandi {
+  height: var(--nav-h);
+  font-family: var(--font-mono);
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: rgba(249, 246, 240, 0.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--paper-border);
+}
+.nav-arx {
+  height: var(--nav-h-arx);
+  font-family: var(--font-mono);
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: rgba(250, 250, 248, 0.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--paper-border);
+}
 
 /* mono/sans only — no serif */
-.mono{font-family:ui-monospace, SFMono-Regular, Menlo, monospace}
-.sans{font-family:ui-sans-system, -apple-system, Segoe UI, Roboto, Inter, sans-serif}
+.mono { font-family: var(--font-mono) }
+.sans { font-family: var(--font-sans) }
+
+/* Human-first v5 helpers */
+.hv5-paper { background: var(--paper); }
+.hv5-raised { background: var(--paper-raised); border: 1px solid var(--stone-line); border-radius: var(--radius-card); box-shadow: var(--shadow-soft); }
+.hv5-focus:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* 58/42 map/story when embedding map central */
+.hv5-split { display: grid; grid-template-columns: 58fr 42fr; gap: 12px; }
+@media (max-width: 960px) { .hv5-split { grid-template-columns: 1fr; } }
+
+/* Soft diffuse shadows, radii 8/12/16, 44px touch targets */
+.hv5-card { border-radius: var(--radius-card); box-shadow: var(--shadow-soft); }
+.hv5-panel { border-radius: var(--radius-panel); box-shadow: var(--shadow-raised); }
+.hv5-control { border-radius: var(--radius-control); min-height: var(--touch-min); }
