@@ -121,13 +121,13 @@ export default function DottiePage({ searchParams }: { searchParams?: { daily?: 
         fontFamily: "ui-sans-system, -apple-system, Segoe UI, Roboto, Inter, sans-serif",
       }}
     >
-      {/* 44px mono nav — human-first v5 + 40px arxiviq variant for PWA */}
+      {/* 40px sticky z40 mono nav — human-first v5 44px token available elsewhere + 40px arxiviq variant intact for PWA */}
       <div
         style={{
           position: "sticky",
           top: 0,
           zIndex: 40,
-          height: 44,
+          height: 40,
           display: "flex",
           alignItems: "center",
           gap: 12,
