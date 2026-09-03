@@ -216,6 +216,7 @@ uv run pytest packages/ava-open-harness -q   # non-blocking in CI today (package
 | [`docs/ECOSYSTEM.md`](docs/ECOSYSTEM.md) | The normative map: loop, repos, tiers, label ceiling, provenance doctrine, honest status |
 | [`docs/CONSOLIDATION.md`](docs/CONSOLIDATION.md) | One monorepo, fewer surfaces: what is deprecated, what stays live, salvage manifest |
 | [`docs/PLATFORM_IMPROVEMENT_PLAN.md`](docs/PLATFORM_IMPROVEMENT_PLAN.md) | The plan: P0 CI-to-green, P1 break the label ceiling, P2 harness capability |
+| [`docs/JARVIS_HARNESS_PLAN.md`](docs/JARVIS_HARNESS_PLAN.md) | Portfolio triage of all 27 repos and the phased path to a hosted, agent-connected pair programmer built on this harness |
 | [`docs/LONGCAT2_INSIGHTS_SPEC.md`](docs/LONGCAT2_INSIGHTS_SPEC.md) | Architecture doctrine |
 | [`docs/DOTTIE_HARNESS_DEEP_SPEC.md`](docs/DOTTIE_HARNESS_DEEP_SPEC.md) | Harness deep spec (tiers, checkpointing, recovery ladder, verification economics) |
 | [`docs/TRAINING_CURRICULUM_SIZING.md`](docs/TRAINING_CURRICULUM_SIZING.md) | Curriculum sizing |
