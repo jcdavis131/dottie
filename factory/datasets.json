@@ -223,16 +223,31 @@
       "repo": "vector-equities",
       "path": "pipeline/eval_reports/eval_equities_latest.json",
       "provenance": "unknown",
-      "source": "pipeline/eval_forward.py; ic_proxy 5.827 is outside [-1, 1], so the report is not yet an information coefficient",
-      "refresh": "{python} pipeline/eval_forward.py",
-      "env": {
-        "PYTHONPATH": "../vector-hub/packages/vector-core/src:src"
-      },
+      "source": "unknown producer: no script in the repo writes ic_proxy; 5.827 is outside [-1, 1]. The reproducible forward eval is assets/eval_forward.json (equities-eval-forward).",
+      "refresh": null,
       "cadence_days": null,
       "required": false,
       "restore_from": [],
       "consumers": [
         "equities-forward-ic"
+      ]
+    },
+    {
+      "id": "equities-eval-forward",
+      "repo": "vector-equities",
+      "path": "assets/eval_forward.json",
+      "provenance": "real",
+      "source": "pipeline/eval_forward.py over assets/trades_final_ranked_v6.csv (Spearman rank IC, triple-barrier hit rate)",
+      "refresh": "{python} pipeline/eval_forward.py",
+      "env": {
+        "PYTHONPATH": "../vector-hub/packages/vector-core/src:src"
+      },
+      "cadence_days": null,
+      "required": true,
+      "restore_from": [],
+      "consumers": [
+        "equities-forward-ic",
+        "equities-peer-drift"
       ]
     },
     {
