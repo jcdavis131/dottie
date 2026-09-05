@@ -1,0 +1,55 @@
+# Context filter for Dockerfile.jarvisd ONLY (BuildKit reads <Dockerfile>.dockerignore).
+# Deny-all then re-include the uv workspace, then trim what the daemon never imports.
+# Last match wins. Keep the re-include list in sync with the COPY lines in the Dockerfile.
+#
+# For a Hugging Face Space repo, rename this file to `.dockerignore` (deploy/hf_space_export.sh
+# does that for you).
+*
+
+!pyproject.toml
+!uv.lock
+!apps/jarvisd
+!apps/scout-cli
+!packages/ava-skills
+!packages/ava-open-harness
+!packages/personal-graphify
+
+# never useful in an image
+**/.git
+**/.venv
+**/venv
+**/node_modules
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.egg-info
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.env
+**/*.log
+**/*.pt
+**/*.bin
+**/*.safetensors
+
+# scout-cli: generated graphs, bundles, pipeline runs, docs -- ~20 MB the daemon never reads
+apps/scout-cli/graphify-out*
+apps/scout-cli/bundles
+apps/scout-cli/pipeline
+apps/scout-cli/tasks
+apps/scout-cli/tests
+apps/scout-cli/docs
+apps/scout-cli/examples
+apps/scout-cli/arxiviq
+apps/scout-cli/autoresearch-rtx-custom
+
+# packages: tests/docs/examples/generated graphs
+packages/*/tests
+packages/*/docs
+packages/*/examples
+packages/*/graphify-out*
+packages/personal-graphify/references
+packages/personal-graphify/tasks
+
+# jarvisd: tests are run by CI, not shipped
+apps/jarvisd/tests
