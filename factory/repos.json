@@ -1,0 +1,146 @@
+{
+  "doc": "docs/FACTORY.md §2. Repos resolve to <workspace>/<name>; workspace = FACTORY_WORKSPACE or the parent of this checkout. `{python}` in a command is the running interpreter. Rows marked virtual are DAG repos with no checkout (operator surfaces).",
+  "repos": {
+    "dottie": {
+      "role": "center",
+      "default_branch": "main",
+      "validate": [
+        "uv run python scripts/dag_next.py --check",
+        "uv run python -m factory check",
+        "uv run pytest factory/tests apps/jarvisd/tests -q"
+      ],
+      "ci": ".github/workflows/ci.yml",
+      "deploy": "vercel:arxiviq (apps/arxiviq; Root Directory must be apps/arxiviq)",
+      "notes": "`make ci` is the full local mirror of ci.yml; these three are the fast subset."
+    },
+    "vector-hub": {
+      "role": "game",
+      "default_branch": "main",
+      "validate": ["{python} -m pytest packages/vector-core/tests -q"],
+      "ci": ".github/workflows/vector-core.yml",
+      "deploy": "vercel: dumbmodel.com",
+      "notes": "Hub of the five games; vector-core is the shared library the games import."
+    },
+    "vector-hoops": {
+      "role": "game",
+      "default_branch": "master",
+      "validate": [],
+      "ci": null,
+      "deploy": "vercel: hoops.dumbmodel.com",
+      "notes": "No tests, no lint, no CI (DAG vector-ci-green adds them). pipeline/ holds only train_with_text_fusion.py; the handoff's train_mtnn.py/eval.py are not in this repo."
+    },
+    "vector-gridiron": {
+      "role": "game",
+      "default_branch": "main",
+      "validate": ["{python} -m pytest tests -q"],
+      "ci": ".github/workflows/ci.yml",
+      "deploy": "vercel: gridiron.dumbmodel.com",
+      "notes": "cml.yaml also present; dottie deleted its own copy because it never ran green."
+    },
+    "vector-pitch": {
+      "role": "game",
+      "default_branch": "master",
+      "validate": ["{python} -m pytest tests -q"],
+      "ci": ".github/workflows/lint.yml",
+      "deploy": "vercel: pitch.dumbmodel.com",
+      "notes": ""
+    },
+    "vector-unified": {
+      "role": "game",
+      "default_branch": "master",
+      "validate": ["{python} -m pytest tests pipeline/tests -q"],
+      "ci": ".github/workflows/ci.yml",
+      "deploy": "vercel: unified.dumbmodel.com",
+      "notes": "data/* is gitignored: the joint matrix and caches exist only on the box (see factory/datasets.json)."
+    },
+    "vector-equities": {
+      "role": "game",
+      "default_branch": "main",
+      "validate": ["{python} -m pytest tests -q"],
+      "ci": ".github/workflows/lint.yml",
+      "deploy": "vercel: equities.dumbmodel.com",
+      "notes": "Trainer and eval need PYTHONPATH=../vector-hub/packages/vector-core/src (see train_queue.json env)."
+    },
+    "vector-realty": {
+      "role": "library",
+      "default_branch": "master",
+      "validate": ["{python} -m pytest tests -q"],
+      "ci": null,
+      "deploy": null,
+      "notes": "PR #4 (data-integrity fix) gates vector-unified PR #5."
+    },
+    "vector-arcade": {
+      "role": "site",
+      "default_branch": "main",
+      "validate": ["npm test"],
+      "ci": null,
+      "deploy": "vercel: arcade.dumbmodel.com (currently served from an archived bluehen project)",
+      "notes": ""
+    },
+    "vector-schools": {
+      "role": "library",
+      "default_branch": "main",
+      "validate": [],
+      "ci": null,
+      "deploy": null,
+      "notes": "No tests registered; not on the DAG."
+    },
+    "vector-fusion-demo": {
+      "role": "site",
+      "default_branch": "master",
+      "validate": [],
+      "ci": null,
+      "deploy": "vercel",
+      "notes": "Static single page; nothing to validate beyond a deploy."
+    },
+    "jcamd": {
+      "role": "site",
+      "default_branch": "master",
+      "validate": ["{python} -c \"import json; json.load(open('vercel.json'))\""],
+      "ci": null,
+      "deploy": "vercel: jcamd.com",
+      "notes": "Static site; vercel.json is the only thing that can break a deploy."
+    },
+    "alamost-com": {
+      "role": "site",
+      "default_branch": "main",
+      "validate": ["npm run lint", "npm run build"],
+      "ci": null,
+      "deploy": "vercel: alamost.com",
+      "notes": "Next.js 14; photo listing needs ANTHROPIC_API_KEY at runtime (paid, optional)."
+    },
+    "arxiviq": {
+      "role": "site",
+      "default_branch": "main",
+      "validate": ["{python} -c \"import json; json.load(open('site/public/data/papers.json'))\""],
+      "ci": ".github/workflows/ci.yml",
+      "deploy": "vercel: arxiviq.com (today served from bluehen's arxiv-exam-app project; DAG repoint-arxiviq)",
+      "notes": "Data scripts live here; the Next.js site is moving to dottie/apps/arxiviq."
+    },
+    "who-e": {
+      "role": "service",
+      "default_branch": "master",
+      "validate": ["npm test"],
+      "ci": null,
+      "deploy": "vercel: who-e.com (project linked to the yubipet repo)",
+      "notes": ""
+    },
+    "ava-agi-factory-v6-4": {
+      "role": "library",
+      "default_branch": "master",
+      "validate": [],
+      "ci": null,
+      "deploy": null,
+      "notes": "Parked in the DAG (ava-factory); GPU training track."
+    },
+    "bluehen": {"role": "archived", "default_branch": "main", "validate": [], "ci": null, "deploy": null, "notes": "Archived 2026-09-05 (PR #6); nine Vercel projects still serve live domains (DAG bluehen-vercel-cleanup)."},
+    "scout-cli": {"role": "archived", "default_branch": "main", "validate": [], "ci": null, "deploy": null, "notes": "Mirror of dottie/apps/scout-cli; archived 2026-09-05."},
+    "ava-skills": {"role": "archived", "default_branch": "main", "validate": [], "ci": null, "deploy": null, "notes": "Mirror of dottie/packages/ava-skills; archived 2026-09-05."},
+    "ava-open-harness": {"role": "archived", "default_branch": "main", "validate": [], "ci": null, "deploy": null, "notes": "Mirror of dottie/packages/ava-open-harness; archived 2026-09-05."},
+    "personal-graphify": {"role": "archived", "default_branch": "main", "validate": [], "ci": null, "deploy": null, "notes": "Mirror of dottie/packages/personal-graphify; archived 2026-09-05."},
+    "agent-lasso": {"role": "archived", "default_branch": "main", "validate": [], "ci": null, "deploy": null, "notes": "Archived 2026-09-05; slasso dashboards stay on Vercel."},
+    "vercel": {"role": "service", "virtual": true, "notes": "Operator clicks in the Vercel dashboard (team cams-projects-c5c4c5f6)."},
+    "vector-*": {"role": "game", "virtual": true, "notes": "A DAG node spanning the five game repos; work lands in each repo's own row."},
+    "many": {"role": "service", "virtual": true, "notes": "Cross-repo DAG nodes (the coordination boards)."}
+  }
+}
