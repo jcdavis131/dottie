@@ -82,6 +82,43 @@ def _clip(s, n: int = 60) -> str:
     return s if len(s) <= n else s[: n - 1] + "…"
 
 
+def _emit(context: str) -> None:
+    out = {"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": context}}
+    sys.stdout.write(json.dumps(out) + "\n")
+
+
+def _dag_frontier(project: str, repo: str) -> str:
+    """One line: the ready nodes of docs/project_dag.json, this repo first.
+
+    The unified project DAG (scripts/dag_next.py) is the plan; an agent that boots
+    without seeing the frontier will pick work by feel, which is what the DAG exists
+    to stop. Local file only, no network, never raises.
+    """
+    try:
+        sys.path.insert(0, os.path.join(project, "scripts"))
+        import dag_next  # type: ignore
+
+        from pathlib import Path
+
+        dag = dag_next.load(Path(project) / "docs" / "project_dag.json")
+        if dag_next.validate(dag):
+            return "project DAG is malformed; run scripts/dag_next.py --check"
+        groups = dag_next.classify(dag)
+    except Exception:
+        return ""
+    ready = groups["ready"]
+    if not ready:
+        return "DAG: nothing ready; finish an in-progress node (scripts/dag_next.py)"
+    mine = [n for n in ready if n["repo"] == repo]
+    others = [n for n in ready if n["repo"] != repo]
+    parts = [f"P{n['priority']} {n['id']}" for n in (mine + others)[:5]]
+    where = f"{len(mine)} in this repo" if mine else "none in this repo"
+    return (
+        f"DAG frontier ({len(ready)} ready, {where}): {', '.join(parts)}. "
+        "Work the lowest P first; `python scripts/dag_next.py` for the full list."
+    )
+
+
 def main() -> int:
     start = time.monotonic()
     project = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
@@ -90,6 +127,7 @@ def main() -> int:
     base = _base_url()
     bearer = os.environ.get("JARVIS_BEARER") or None
     repo = os.path.basename(os.path.abspath(project))
+    dag_line = _dag_frontier(project, repo)
 
     def remaining() -> float:
         return DEADLINE_S - (time.monotonic() - start)
@@ -97,8 +135,12 @@ def main() -> int:
     try:
         health = _get(base, "/api/health", {}, min(HEALTH_TIMEOUT_S, remaining()), None)
     except Exception:
+        if dag_line:
+            _emit(dag_line)
         return 0
     if not isinstance(health, dict) or not health.get("ok"):
+        if dag_line:
+            _emit(dag_line)
         return 0
 
     claims: list = []
@@ -156,13 +198,9 @@ def main() -> int:
         "Call jarvis.context for detail, jarvis.claim before editing a shared area, "
         "jarvis.remember for decisions and gotchas."
     )
-    out = {
-        "hookSpecificOutput": {
-            "hookEventName": "SessionStart",
-            "additionalContext": summary,
-        }
-    }
-    sys.stdout.write(json.dumps(out) + "\n")
+    if dag_line:
+        summary = f"{dag_line} | {summary}"
+    _emit(summary)
     return 0
 
 

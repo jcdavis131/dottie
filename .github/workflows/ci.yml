@@ -155,6 +155,12 @@ jobs:
           uv run python scripts/test_task_eval_slice.py
           uv run python scripts/test_check_declared_capabilities.py
           uv run python scripts/test_store_symmetry_audit.py
+          uv run python scripts/test_dag_next.py
+      # The unified project DAG (docs/project_dag.json) is the plan every agent
+      # boots into. This keeps it a graph: unique ids, resolvable dependencies, no
+      # cycles. A DAG that rots into a list stops answering "what is ready now".
+      - name: Project DAG (acyclic, dependencies resolve)
+        run: uv run python scripts/dag_next.py --check
       # Mutations that clear one store and leave another holding the value. Found in
       # bigbang/core/security.py 2026-08-02 (fixed a2ccea5): delete_secret cleared the
       # file vault and returned, so the keyring copy the READ path consults first was

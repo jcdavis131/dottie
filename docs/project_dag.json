@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "updated": "2026-09-05",
+  "doc": "docs/PROJECT_DAG.md",
+  "legend": {
+    "priority": "1 = do first, 5 = last; ties break by size (S before L)",
+    "status": "done | in_progress | ready | blocked | parked; ready/blocked are recomputed from depends_on by scripts/dag_next.py",
+    "kind": "infra (shared foundations) | product (a site or thing people use) | research | ops (operator clicks)"
+  },
+  "nodes": [
+    {
+      "id": "ci-green",
+      "title": "dottie CI green on main (Phase 0.1)",
+      "repo": "dottie",
+      "kind": "infra",
+      "status": "done",
+      "priority": 1,
+      "size": "M",
+      "depends_on": [],
+      "evidence": "PR #23: every ci.yml gate green on the PR head 2026-09-05, first since 08-18"
+    },
+    {
+      "id": "jarvisd",
+      "title": "Jarvis daemon: MCP + JSON API + SQLite + auth + free Ollama brain",
+      "repo": "dottie",
+      "kind": "infra",
+      "status": "done",
+      "priority": 1,
+      "size": "L",
+      "depends_on": ["ci-green"],
+      "evidence": "apps/jarvisd, 65 tests, docs/JARVISD_SPEC.md"
+    },
+    {
+      "id": "merge-pr23",
+      "title": "Merge dottie PR #23 (harness build) into main",
+      "repo": "dottie",
+      "kind": "ops",
+      "status": "ready",
+      "priority": 1,
+      "size": "S",
+      "depends_on": ["jarvisd"],
+      "acceptance": "PR #23 merged; main green"
+    },
+    {
+      "id": "archive-mirrors",
+      "title": "Merge the six deprecation PRs and click Archive (scout-cli, ava-skills, ava-open-harness, personal-graphify, bluehen, agent-lasso)",
+      "repo": "many",
+      "kind": "ops",
+      "status": "in_progress",
+      "priority": 1,
+      "size": "S",
+      "depends_on": [],
+      "acceptance": "six repos show Archived on GitHub; bluehen's retired Vercel projects disconnected"
+    },
+    {
+      "id": "host-jarvis",
+      "title": "Run jarvisd on the home box behind a Cloudflare Tunnel (free), with nightly SQLite backup",
+      "repo": "dottie",
+      "kind": "ops",
+      "status": "blocked",
+      "priority": 1,
+      "size": "M",
+      "depends_on": ["merge-pr23"],
+      "acceptance": "curl https://jarvis.<zone>/api/health from a phone returns ok; state survives restart"
+    },
+    {
+      "id": "connect-clients",
+      "title": "Point Claude Code, Cursor and OpenCode at the hosted daemon; two-client remember/recall test passes",
+      "repo": "dottie",
+      "kind": "infra",
+      "status": "blocked",
+      "priority": 1,
+      "size": "S",
+      "depends_on": ["host-jarvis"],
+      "acceptance": "docs/JARVIS_CONNECT.md checklist all ticked"
+    },
+    {
+      "id": "vercel-arxiviq-rootdir",
+      "title": "Set the arxiviq Vercel project's Root Directory to apps/arxiviq so the SSR conductor deploys; delete or configure the orphan dottie Vercel project",
+      "repo": "dottie",
+      "kind": "ops",
+      "status": "blocked",
+      "priority": 2,
+      "size": "S",
+      "depends_on": ["merge-pr23"],
+      "acceptance": "arxiviq.com serves the conductor; no Vercel project on this repo errors on push"
+    }
+  ]
+}
