@@ -1,6 +1,12 @@
 {
-  "_doc": "Candidates already judged acceptable. `gate_audit.py --check --baseline <this file>` exits 1 only on candidates absent from this list, so a NEW fail-open dispatch fails loudly while judged ones stay quiet. Each entry SHOULD carry a judgment saying why it is acceptable — an empty judgment means nobody has actually read it yet.",
+  "_doc": "Candidates already judged acceptable. `gate_audit.py --check --baseline <this file>` exits 1 only on candidates absent from this list, so a NEW fail-open dispatch fails loudly while judged ones stay quiet. Each entry SHOULD carry a judgment saying why it is acceptable \u2014 an empty judgment means nobody has actually read it yet.",
   "accepted": [
+    {
+      "file": ".github/workflows/ci.yml",
+      "shape": "suppressed-check",
+      "code": "run: uv run pytest packages/ava-open-harness -q || true",
+      "judgment": "DELIBERATE and already annotated in the workflow immediately above this step: the suite is non-blocking pending the `dottie` name collision, where apps/dottie/dottie and apps/ava-factory/dottie both claim the same top-level package. The three fixes (rename / __path__ merge / leave non-blocking) are an architectural choice across a FROZEN boundary and remain the operator's, so this stays soft until that is decided rather than being forced green. NEWLY VISIBLE 2026-08-01, not newly introduced: gate_audit only began reading a step's `name:` as context that day, and the safety word here ('non-blocking', 'collision' -> 'block') lives in the name, not the run line. Re-judge when the collision is resolved; this entry should be DELETED then, not carried."
+    },
     {
       "file": ".github/workflows/ci.yml",
       "shape": "suppressed-check",
@@ -11,7 +17,7 @@
       "file": ".github/workflows/lint.yml",
       "shape": "suppressed-check",
       "code": "ruff check --statistics packages/ava-open-harness packages/personal-graphify apps/scout-cli --exclude apps/scout-cli/.venv || true",
-      "judgment": "DELIBERATE soft lint with the debt STATED (263 findings: personal-graphify 141, ava-open-harness 79, scout-cli 43) and a documented per-package ratchet — flip each to a hard gate the day it reaches 0, as packages/ava-skills was on 2026-08-01. Only visible to this auditor since the line-continuation fold landed the same day; before that it was a FALSE NEGATIVE, which is how the gap was found. Keep the `|| true` until each package hits 0, then delete it for that package."
+      "judgment": "DELIBERATE soft lint with the debt STATED (263 findings: personal-graphify 141, ava-open-harness 79, scout-cli 43) and a documented per-package ratchet \u2014 flip each to a hard gate the day it reaches 0, as packages/ava-skills was on 2026-08-01. Only visible to this auditor since the line-continuation fold landed the same day; before that it was a FALSE NEGATIVE, which is how the gap was found. Keep the `|| true` until each package hits 0, then delete it for that package."
     },
     {
       "file": "apps/ava-factory/dottie/datagen/logic.py",
@@ -26,6 +32,12 @@
       "judgment": "Curriculum bucketing helper (_family_for_phase). Unknown phase falls to a default family; affects data mixture labelling, gates nothing."
     },
     {
+      "file": "apps/ava-factory/dottie/pipeline/checkpoint_manager.py",
+      "shape": "fail-open-dispatch",
+      "code": "def recovery_ladder(...)  dispatches on 'attempt' across 3 `==` branches",
+      "judgment": "FROZEN-path copy of the same recovery ladder (apps/ava-factory/dottie/** is bind-mounted into the live trainer and edited only through the adopt/decline review process). Fall-through is `escalate`, fail-closed; judging it acceptable records the verdict without touching the frozen file. Re-judge when the frozen copy is next opened for review."
+    },
+    {
       "file": "apps/ava-factory/scripts/e2e_test.sh",
       "shape": "suppressed-check",
       "code": "run_step \"distill import check\" python3 -c \"import on_policy_distill; print('import ok')\" || true",
@@ -36,6 +48,12 @@
       "shape": "suppressed-check",
       "code": "run_step \"streaming_data tokenizer mock\" python3 -c \"from streaming_data import get_tokenizer; print('import ok get_tokenizer')\" || python3 -c \"import streaming",
       "judgment": "Dev script, referenced by NO workflow and NO Makefile (checked 2026-08-01). Both `|| true` lines guard genuinely optional components already behind `if [ -f ... ]` / `if grep -q ...`. Same shape as this tool's instance #5 but not the same stakes: nothing consumes this script's exit code in CI."
+    },
+    {
+      "file": "apps/dottie-harness-api/lib/analytics.py",
+      "shape": "fail-open-dispatch",
+      "code": "def recovery_ladder(...)  dispatches on 'attempt' across 3 `==` branches",
+      "judgment": "ACCEPTED 2026-09-05. recovery_ladder dispatches on attempt 1/2/3 and the unguarded final return is the ladder's TERMINAL rung \u2014 action 'escalate', fail_closed True, 'attempts exhausted \u2014 escalate with evidence packet'. An unrecognised attempt (0, 4+, negative) therefore lands on the most conservative branch, which is fail-CLOSED, not fail-open. error_class and side_effect are both membership-guarded above it. Re-judge if the last return ever stops being escalate."
     },
     {
       "file": "apps/dottie/dottie/climb.py",
@@ -50,22 +68,22 @@
       "judgment": "Citation style rendering (in_text). An unrecognised style produces a default marker; a formatting fallback, not a gate."
     },
     {
+      "file": "apps/scout-cli/bigbang/plugins/extract/anydoc.py",
+      "shape": "fail-open-dispatch",
+      "code": "def _parse_txt(...)  dispatches on 'fmt' across 2 `==` branches",
+      "judgment": "ACCEPTED 2026-09-05. _parse_txt(fmt=) special-cases 'json' and 'md' and otherwise splits the decoded bytes into paragraph blocks \u2014 that IS the plain-text parser's contract, and the caller only reaches it for text-like formats it has already classified. An unknown fmt degrades to plain paragraphs of the same bytes, which loses structure but never misattributes content or returns another document's parse; the detector's 'falls through to whatever the function returns last' is here the intended default rather than a leak."
+    },
+    {
+      "file": "apps/scout-cli/bigbang/plugins/harness/runner.py",
+      "shape": "fail-open-dispatch",
+      "code": "def _inline_recovery_ladder(...)  dispatches on 'attempt' across 3 `==` branches",
+      "judgment": "Fall-through target is `escalate` (attempts exhausted -> human gate), the FAIL-CLOSED terminal of the bounded recovery ladder: any unrecognised attempt value (0, negative, >3) resolves to escalation, never to a permissive action. The 1/2/3 `==` shape is a deliberate line-for-line replica of pipeline/recovery_ladder.py:17-31 (pinned by the module comment: 'identical decisions'), used only when the repo-root ladder file is absent in installed layouts; restructuring the replica away from the original's shape would silently fork the two. If the original is ever restructured under its own pending judgment, mirror it here in the same change."
+    },
+    {
       "file": "apps/scout-cli/bigbang/plugins/write/cli.py",
       "shape": "fail-open-dispatch",
       "code": "def _weight_for(...)  dispatches on 'k' across 3 `==` branches",
       "judgment": "Scoring-weight lookup (_weight_for). Unknown key falls to a default weight; affects ranking, gates nothing."
-    },
-    {
-      "file": ".github/workflows/ci.yml",
-      "shape": "suppressed-check",
-      "code": "run: uv run pytest packages/ava-open-harness -q || true",
-      "judgment": "DELIBERATE and already annotated in the workflow immediately above this step: the suite is non-blocking pending the `dottie` name collision, where apps/dottie/dottie and apps/ava-factory/dottie both claim the same top-level package. The three fixes (rename / __path__ merge / leave non-blocking) are an architectural choice across a FROZEN boundary and remain the operator's, so this stays soft until that is decided rather than being forced green. NEWLY VISIBLE 2026-08-01, not newly introduced: gate_audit only began reading a step's `name:` as context that day, and the safety word here ('non-blocking', 'collision' -> 'block') lives in the name, not the run line. Re-judge when the collision is resolved; this entry should be DELETED then, not carried."
-    },
-    {
-      "file": "pipeline/recovery_ladder.py",
-      "shape": "fail-open-dispatch",
-      "code": "def recovery_ladder(...)  dispatches on 'attempt' across 3 `==` branches",
-      "judgment": "Fall-through target is `escalate` (attempts exhausted -> human gate), the FAIL-CLOSED terminal of the bounded recovery ladder: any unrecognised attempt value (0, negative, >3) resolves to escalation, never to a permissive action. error_class and side_effect are membership-guarded at the top of the function; `attempt` is the ladder's step counter and the trailing escalate IS its else branch. Same judgment as the runner's inline replica below, which mirrors this function line-for-line."
     },
     {
       "file": "pipeline/checkpoint_manager.py",
@@ -74,16 +92,10 @@
       "judgment": "Same function embedded in the checkpoint manager: fall-through is `escalate`, the fail-closed terminal. See the pipeline/recovery_ladder.py entry; the two must be re-judged together if either is restructured."
     },
     {
-      "file": "apps/ava-factory/dottie/pipeline/checkpoint_manager.py",
+      "file": "pipeline/recovery_ladder.py",
       "shape": "fail-open-dispatch",
       "code": "def recovery_ladder(...)  dispatches on 'attempt' across 3 `==` branches",
-      "judgment": "FROZEN-path copy of the same recovery ladder (apps/ava-factory/dottie/** is bind-mounted into the live trainer and edited only through the adopt/decline review process). Fall-through is `escalate`, fail-closed; judging it acceptable records the verdict without touching the frozen file. Re-judge when the frozen copy is next opened for review."
-    },
-    {
-      "file": "apps/scout-cli/bigbang/plugins/harness/runner.py",
-      "shape": "fail-open-dispatch",
-      "code": "def _inline_recovery_ladder(...)  dispatches on 'attempt' across 3 `==` branches",
-      "judgment": "Fall-through target is `escalate` (attempts exhausted -> human gate), the FAIL-CLOSED terminal of the bounded recovery ladder: any unrecognised attempt value (0, negative, >3) resolves to escalation, never to a permissive action. The 1/2/3 `==` shape is a deliberate line-for-line replica of pipeline/recovery_ladder.py:17-31 (pinned by the module comment: 'identical decisions'), used only when the repo-root ladder file is absent in installed layouts; restructuring the replica away from the original's shape would silently fork the two. If the original is ever restructured under its own pending judgment, mirror it here in the same change."
+      "judgment": "Fall-through target is `escalate` (attempts exhausted -> human gate), the FAIL-CLOSED terminal of the bounded recovery ladder: any unrecognised attempt value (0, negative, >3) resolves to escalation, never to a permissive action. error_class and side_effect are membership-guarded at the top of the function; `attempt` is the ladder's step counter and the trailing escalate IS its else branch. Same judgment as the runner's inline replica below, which mirrors this function line-for-line."
     }
   ]
 }

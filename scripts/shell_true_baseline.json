@@ -5,6 +5,11 @@
       "site": "apps/ava-factory/scripts/gdrive_uploader.py::run",
       "line": 39,
       "judgment": "KEPT with shell=True because the hatch_gws_cli invocations use `2>&1` redirection, which needs a shell. Safe because ALL THREE callers now pass shlex.quote'd values: gdrive_list always did; the --folder site (line ~179) and the --upload site (line ~249) were unquoted and were fixed in f59c255 after a demonstrated injection (--folder \"x'; rm -rf ~ ;'\" closed the quote and ran rm). If a FOURTH caller is added it must quote too \u2014 this helper cannot check its own input."
+    },
+    {
+      "site": "apps/dottie-rlm/dottie_rlm/rlm.py::run",
+      "line": 174,
+      "judgment": "KEPT with shell=True, judged 2026-09-05. _sh() IS the model's shell tool \u2014 the whole command string is the outside value by design (the line already carries `noqa: S602` saying so), so there is nothing to quote: quoting it would break the contract. The guard is upstream and structural rather than string-level: policy.check_shell(cmd) must pass first (PolicyRefusal is returned, not raised past it), the child runs with policy.child_env() and cwd pinned to policy.workspace_root, output is policy.redact()ed, and a timeout bounds it. If check_shell is ever weakened this entry must be re-judged; the baseline key does not track that function."
     }
   ]
 }
