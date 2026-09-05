@@ -8,7 +8,11 @@
       "priority": 1,
       "needs_cuda": true,
       "est_hours": 2,
-      "needs": ["pipeline/train_mtnn.py", "pipeline/eval_next_game.py", "pipeline/data/train_matrix.npz"],
+      "needs": [
+        "pipeline/train_mtnn.py",
+        "pipeline/eval_next_game.py",
+        "pipeline/data/train_matrix.npz"
+      ],
       "smoke": "{python} pipeline/train_mtnn.py --epochs 2 --d-emb 32",
       "run": "{python} pipeline/train_mtnn.py --epochs 50 --d-emb 32",
       "eval": "{python} pipeline/eval_next_game.py",
@@ -33,7 +37,11 @@
       "priority": 2,
       "needs_cuda": true,
       "est_hours": 3,
-      "needs": ["pipeline/train_stage2.py", "data/unified_matrix.npz", "data/embedding_v3.npz"],
+      "needs": [
+        "pipeline/train_stage2.py",
+        "data/unified_matrix.npz",
+        "data/embedding_v3.npz"
+      ],
       "smoke": "{python} pipeline/train_stage2.py --smoke --epochs 2",
       "run": "{python} pipeline/train_stage2.py --epochs 60 --grl-lambda 0.3 --grl-ramp 10 --w-task 2.0 --w-sport 0.5",
       "eval": null,
@@ -58,7 +66,10 @@
       "priority": 3,
       "needs_cuda": true,
       "est_hours": 4,
-      "needs": ["pipeline/train_mtnn.py", "pipeline/eval.py"],
+      "needs": [
+        "pipeline/train_mtnn.py",
+        "pipeline/eval.py"
+      ],
       "smoke": "{python} pipeline/train_mtnn.py --epochs 2 --d-emb 64 --fusion transformer --player-split",
       "run": "{python} pipeline/train_mtnn.py --epochs 150 --d-emb 64 --scaling robust --era-align procrustes --w-vicreg 0.05 --fusion transformer --player-split",
       "eval": "{python} pipeline/eval.py --split player --k 10 20 --out assets/eval_scoreboard_v6.json",
@@ -83,18 +94,24 @@
       "priority": 4,
       "needs_cuda": false,
       "est_hours": 2,
-      "needs": ["pipeline/train_mtnn.py", "pipeline/eval_forward.py", "pipeline/data/train_matrix.npz"],
-      "env": {"PYTHONPATH": "../vector-hub/packages/vector-core/src:src"},
+      "needs": [
+        "pipeline/train_mtnn.py",
+        "pipeline/eval_forward.py",
+        "pipeline/data/train_matrix.npz"
+      ],
+      "env": {
+        "PYTHONPATH": "../vector-hub/packages/vector-core/src:src"
+      },
       "smoke": "{python} pipeline/train_mtnn.py --epochs 1 --dim 64",
       "run": "{python} pipeline/train_mtnn.py --epochs 60 --dim 64",
       "eval": "{python} pipeline/eval_forward.py",
       "gate": {
-        "report": "pipeline/eval_reports/eval_equities_latest.json",
-        "metric": "ic_proxy",
-        "op": ">=",
-        "threshold": 0.18,
-        "baseline": 0.174,
-        "baseline_source": "TODO #8 / eval_equities_latest.json (IC 0.174 → 0.18+). The checked-in report reads ic_proxy 5.827, which is outside the range an information coefficient can take; DAG node equities-forward-ic reconciles that before this gate means anything."
+        "report": "assets/eval_forward.json",
+        "metric": "metrics.ic_rank_6m.score",
+        "op": ">",
+        "threshold": 0.0,
+        "baseline": -0.0166,
+        "baseline_source": "assets/eval_forward.json (pipeline/eval_forward.py, Spearman rank IC of pred 6M vs realized forward return): -0.0166 on 2026-09-05, gate.ic_gt_zero false. The earlier gate read eval_reports/eval_equities_latest.json ic_proxy 5.827, which is not an IC."
       },
       "promote": [
         "Export with pipeline/export_v6_real_assets.py; write provenance into assets/data.",

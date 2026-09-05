@@ -87,48 +87,52 @@
       "title": "jcamd.com: Lab links to dumbmodel.com hub + unified, footer off hoops.jcamd.com, refresh /graphify export, add a smoke test",
       "repo": "jcamd",
       "kind": "product",
-      "status": "ready",
+      "status": "in_progress",
       "priority": 1,
       "size": "S",
       "depends_on": [],
       "why": "The only lead mechanism in the portfolio is this site's mailto. Its Lab section is the funnel into everything else and currently misses the hub.",
-      "acceptance": "every Lab card resolves 200; index.html links dumbmodel.com; graphify export dated this month"
+      "acceptance": "every Lab card resolves 200; index.html links dumbmodel.com; graphify export dated this month",
+      "note": "2026-09-05: jcamd PR #8 (draft) adds the hub + unified Lab cards, moves the footer off hoops.jcamd.com, adds scripts/smoke.py + a smoke workflow. Done when merged. /graphify export not refreshed: producer is archived."
     },
     {
       "id": "alamost-open-shop",
-      "title": "alamost.com: run the shop-opening order of operations (PR #6), set ANTHROPIC_API_KEY for photo listing",
+      "title": "alamost.com: attach Neon Postgres, set OWNER_EMAIL/OWNER_PASSWORD, redeploy, sign in and rotate (README 'Opening the shop'); ANTHROPIC_API_KEY is optional and paid, skip for now",
       "repo": "alamost-com",
-      "kind": "product",
+      "kind": "ops",
       "status": "ready",
       "priority": 1,
       "size": "S",
       "depends_on": [],
       "why": "A finished product for a real shopkeeper, blocked only on operator steps. Independent of every other node.",
-      "acceptance": "Lina can list a card with a photo and a buyer can place a hold on production"
+      "acceptance": "Lina can list a card with a photo and a buyer can place a hold on production",
+      "note": "2026-09-05 measured: alamost-com.vercel.app renders 'Not open yet' = DATABASE_URL unset; latest production deploy READY; PR #6 (the order of operations) already merged. Every remaining step is a Vercel dashboard action with a secret, so this node is operator work."
     },
     {
       "id": "hub-nav-restore",
       "title": "dumbmodel.com: restore real game navigation and real vectors.json on the served index (it currently links no games and self-describes as synthetic)",
       "repo": "vector-hub",
       "kind": "product",
-      "status": "ready",
+      "status": "in_progress",
       "priority": 1,
       "size": "M",
       "depends_on": [],
       "why": "The apex domain is the front door of five games and today opens onto a demo page. Cheapest reach win in the family.",
-      "acceptance": "index.html has hrefs to hoops/gridiron/pitch/equities/unified subdomains; production promoted (not a preview)"
+      "acceptance": "index.html has hrefs to hoops/gridiron/pitch/equities/unified subdomains; production promoted (not a preview)",
+      "note": "2026-09-05: vector-hub branch claude/github-projects-review-lxnuul adds a sticky five-game nav, replaces the token-soup hero/About with copy that says the map is a generated layout, retires WHO-E. Real vectors.json on the hub stays open: the 20,719-entity joint matrix is box-only (see unified-matrix in factory/datasets.json)."
     },
     {
       "id": "vector-ci-green",
       "title": "Get hoops, gridiron, pitch, unified and equities default-branch CI green; add lint+tests to hoops (it has none)",
       "repo": "vector-*",
       "kind": "infra",
-      "status": "ready",
+      "status": "in_progress",
       "priority": 2,
       "size": "M",
       "depends_on": [],
       "why": "Five live products have red CI; the japandi merge broke lint on three at once. Red gates make every later hill-climb unverifiable.",
-      "acceptance": "latest default-branch run green in all five; hoops has a ruff config and at least a provenance test"
+      "acceptance": "latest default-branch run green in all five; hoops has a ruff config and at least a provenance test",
+      "note": "2026-09-05: branches pushed on gridiron, pitch, unified, equities (ruff 0.8.6 clean, cml.yaml dropped where it never ran, pitch F823 bugs fixed, equities syntax errors repaired) and hoops (first ci.yml + smoke suite). Done when the five PRs merge and default-branch runs are green."
     },
     {
       "id": "host-jarvis",
@@ -306,12 +310,12 @@
       "title": "vector-equities: reconcile forward-IC eval with README claims (TODO #8)",
       "repo": "vector-equities",
       "kind": "product",
-      "status": "ready",
+      "status": "in_progress",
       "priority": 3,
       "size": "S",
       "depends_on": [],
       "acceptance": "README numbers match data/*_report.json; leakage tests green",
-      "note": "pipeline/eval_reports/eval_equities_latest.json reads ic_proxy 5.827, outside [-1, 1]; the gate on equities-peer-drift means nothing until this is reconciled."
+      "note": "2026-09-05: README reconciled to assets/eval_forward.json (ic_rank_6m -0.0166, gate false); the 0.174/0.22/0.31 ledger marked unverified; eval_equities_latest.json ic_proxy 5.827 identified as not an IC. In the vector-equities branch. Rerunning eval_forward.py on the v4 trades is the remaining step."
     },
     {
       "id": "equities-peer-drift",
@@ -403,11 +407,12 @@
       "title": "Review vector-realty PR #4 (data-integrity fix); merge or close, which unblocks vector-unified PR #5",
       "repo": "vector-realty",
       "kind": "ops",
-      "status": "ready",
+      "status": "in_progress",
       "priority": 4,
       "size": "S",
       "depends_on": [],
-      "acceptance": "PR #4 decided; unified PR #5 re-run or closed"
+      "acceptance": "PR #4 decided; unified PR #5 re-run or closed",
+      "note": "2026-09-05: reviewed; comment on PR #4 with the three conflicts and the recommendation (merge master, rerun the pipeline on 57 economies, regenerate README + reports together). Merge or close is the operator's call."
     },
     {
       "id": "harness-api-proxy",
@@ -428,11 +433,12 @@
       "title": "Untangle WHO-E branding leaks in vector-hub and dottie-harness-api; decide who-e.com's home",
       "repo": "who-e",
       "kind": "product",
-      "status": "ready",
+      "status": "in_progress",
       "priority": 4,
       "size": "S",
       "depends_on": [],
-      "acceptance": "who-e.com serves the word games from the who-e repo; no stray who-e files in vector-hub"
+      "acceptance": "who-e.com serves the word games from the who-e repo; no stray who-e files in vector-hub",
+      "note": "2026-09-05: vector-hub leak removed in the hub-nav-restore branch (manifest, landing pages, .well-known alias claim, roster tile). dottie-harness-api serves who-e.com as a reserved page. Where who-e.com lives is the operator's decision."
     },
     {
       "id": "flywheel-gate",
