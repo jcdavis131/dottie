@@ -39,16 +39,27 @@ of it the new `extract/anydoc.py`; (d) this block; (e) `cml.yaml` DELETED —
 `setup-cml@v1` cannot install on the Node 22 runner and the body was a
 `print` plus a hardcoded `report.md`; (f) `apps/arxiviq/package-lock.json`
 regenerated with all nine `@next/swc-*` entries + resolved/integrity,
-`npm ci` verified (Vercel builds had errored since 08-19). Four more
+`npm ci` verified (Vercel builds had errored since 08-19). With `npm ci`
+fixed, Vercel then failed one layer deeper: "No Next.js version detected",
+because e80ca2c (08-26) set `framework: nextjs` in the ROOT `vercel.json`
+while both Vercel projects (`dottie`, `arxiviq`) have Root Directory = repo
+root, where there is no package.json — the same failure 7c18322 fixed once
+before. `vercel.json` is restored to the last shape that ever deployed
+(6d7391f: prebuilt static `apps/arxiviq/out`, headers kept). The SSR
+conductor + `/api/pair/*` only ships once the operator sets Root Directory
+to `apps/arxiviq` in the Vercel dashboard (plan §6 decision 4). Four more
 ratchets were red on the clean tree and are baselined, not silenced:
 gate_audit, resolver_fallbacks, shell_true (each WITH a judgment) and the
 GOAT audit (extract 9.5 -> 8.67, secrets 9.5 -> 9.0 after e80ca2c/d01006b;
 `.goat_baseline.json` re-snapshotted, reason in ci.yml's GOAT step).
 
-**Also in this branch, not shipped:** `apps/jarvisd` — the Jarvis daemon
-(MCP streamable-HTTP + JSON API + SQLite state; Phase 1, spec in
-`docs/JARVISD_SPEC.md`) built by parallel workers, plus `deploy/` and agent
-config. Work in progress until the plan's acceptance criteria are met.
+**Also in this branch:** `apps/jarvisd` — the Jarvis daemon (MCP
+streamable-HTTP at `/mcp` + SSE + JSON API + SQLite state + bearer/HMAC auth;
+Phase 1, spec in `docs/JARVISD_SPEC.md`; 51 tests), `Dockerfile.jarvisd` +
+`docker-compose.jarvisd.yml` + `deploy/` (Phase 2), and Claude Code / Cursor /
+OpenCode wiring with a SessionStart hook and `jarvis` skill (Phase 3, see
+`docs/JARVIS_CONNECT.md`). Not verified from the build sandbox: the Docker
+image build and a live tunnel.
 
 Verified locally at this HEAD: every ci.yml gate through the scout-cli
 suite (2565 passed / 2 skipped, 8m05s) — which supersedes the 08-14 note
