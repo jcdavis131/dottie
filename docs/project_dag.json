@@ -5,19 +5,20 @@
   "legend": {
     "priority": "1 = do first, 5 = last; ties break by size (S before L)",
     "status": "done | in_progress | ready | blocked | parked; ready/blocked are recomputed from depends_on by scripts/dag_next.py",
-    "kind": "infra (shared foundations) | product (a site or thing people use) | research | ops (operator clicks)"
+    "kind": "infra (shared foundations) | product (a site or thing people use) | research | ops (operator clicks, minutes not days)",
+    "size": "S under half a day, M one to three days, L a week or GPU-bound"
   },
   "nodes": [
     {
       "id": "ci-green",
-      "title": "dottie CI green on main (Phase 0.1)",
+      "title": "dottie CI green on main",
       "repo": "dottie",
       "kind": "infra",
       "status": "done",
       "priority": 1,
       "size": "M",
       "depends_on": [],
-      "evidence": "PR #23: every ci.yml gate green on the PR head 2026-09-05, first since 08-18"
+      "evidence": "PR #23: every ci.yml gate green 2026-09-05, first since 08-18"
     },
     {
       "id": "jarvisd",
@@ -29,6 +30,18 @@
       "size": "L",
       "depends_on": ["ci-green"],
       "evidence": "apps/jarvisd, 65 tests, docs/JARVISD_SPEC.md"
+    },
+    {
+      "id": "enable-analytics",
+      "title": "Turn on Vercel Web Analytics for the 14 custom-domain projects",
+      "repo": "vercel",
+      "kind": "ops",
+      "status": "ready",
+      "priority": 1,
+      "size": "S",
+      "depends_on": [],
+      "why": "All 27 projects have analytics off, so no usage signal exists to rank products by. Nothing accrues retroactively; every week without it is a week of guessing.",
+      "acceptance": "get_web_analytics returns data for dumbmodel.com, hoops, gridiron, pitch, equities, jcamd.com, arxiviq.com, alamost.com, who-e.com"
     },
     {
       "id": "merge-pr23",
@@ -50,18 +63,66 @@
       "priority": 1,
       "size": "S",
       "depends_on": [],
-      "acceptance": "six repos show Archived on GitHub; bluehen's retired Vercel projects disconnected"
+      "acceptance": "six repos show Archived on GitHub"
+    },
+    {
+      "id": "jcamd-lab-links",
+      "title": "jcamd.com: Lab links to dumbmodel.com hub + unified, footer off hoops.jcamd.com, refresh /graphify export, add a smoke test",
+      "repo": "jcamd",
+      "kind": "product",
+      "status": "ready",
+      "priority": 1,
+      "size": "S",
+      "depends_on": [],
+      "why": "The only lead mechanism in the portfolio is this site's mailto. Its Lab section is the funnel into everything else and currently misses the hub.",
+      "acceptance": "every Lab card resolves 200; index.html links dumbmodel.com; graphify export dated this month"
+    },
+    {
+      "id": "alamost-open-shop",
+      "title": "alamost.com: run the shop-opening order of operations (PR #6), set ANTHROPIC_API_KEY for photo listing",
+      "repo": "alamost-com",
+      "kind": "product",
+      "status": "ready",
+      "priority": 1,
+      "size": "S",
+      "depends_on": [],
+      "why": "A finished product for a real shopkeeper, blocked only on operator steps. Independent of every other node.",
+      "acceptance": "Lina can list a card with a photo and a buyer can place a hold on production"
+    },
+    {
+      "id": "hub-nav-restore",
+      "title": "dumbmodel.com: restore real game navigation and real vectors.json on the served index (it currently links no games and self-describes as synthetic)",
+      "repo": "vector-hub",
+      "kind": "product",
+      "status": "ready",
+      "priority": 1,
+      "size": "M",
+      "depends_on": [],
+      "why": "The apex domain is the front door of five games and today opens onto a demo page. Cheapest reach win in the family.",
+      "acceptance": "index.html has hrefs to hoops/gridiron/pitch/equities/unified subdomains; production promoted (not a preview)"
+    },
+    {
+      "id": "vector-ci-green",
+      "title": "Get hoops, gridiron, pitch, unified and equities default-branch CI green; add lint+tests to hoops (it has none)",
+      "repo": "vector-*",
+      "kind": "infra",
+      "status": "ready",
+      "priority": 2,
+      "size": "M",
+      "depends_on": [],
+      "why": "Five live products have red CI; the japandi merge broke lint on three at once. Red gates make every later hill-climb unverifiable.",
+      "acceptance": "latest default-branch run green in all five; hoops has a ruff config and at least a provenance test"
     },
     {
       "id": "host-jarvis",
-      "title": "Run jarvisd on the home box behind a Cloudflare Tunnel (free), with nightly SQLite backup",
+      "title": "Run jarvisd on the home box behind a Cloudflare Tunnel (free), nightly SQLite backup, smoke jarvis.ask on Ollama",
       "repo": "dottie",
       "kind": "ops",
       "status": "blocked",
       "priority": 1,
       "size": "M",
       "depends_on": ["merge-pr23"],
-      "acceptance": "curl https://jarvis.<zone>/api/health from a phone returns ok; state survives restart"
+      "acceptance": "curl https://jarvis.<zone>/api/health from a phone returns ok; state survives restart; jarvis.ask answers via Ollama"
     },
     {
       "id": "connect-clients",
@@ -76,14 +137,259 @@
     },
     {
       "id": "vercel-arxiviq-rootdir",
-      "title": "Set the arxiviq Vercel project's Root Directory to apps/arxiviq so the SSR conductor deploys; delete or configure the orphan dottie Vercel project",
-      "repo": "dottie",
+      "title": "Set the dottie arxiviq Vercel project's Root Directory to apps/arxiviq; delete or configure the orphan dottie Vercel project",
+      "repo": "vercel",
       "kind": "ops",
       "status": "blocked",
       "priority": 2,
       "size": "S",
       "depends_on": ["merge-pr23"],
-      "acceptance": "arxiviq.com serves the conductor; no Vercel project on this repo errors on push"
+      "acceptance": "the SSR conductor builds READY from dottie; no Vercel project on the dottie repo errors on push"
+    },
+    {
+      "id": "repoint-arxiviq",
+      "title": "Move arxiviq.com from bluehen's arxiv-exam-app project to the dottie arxiviq project; retire the standalone arxiviq repo to data scripts",
+      "repo": "dottie",
+      "kind": "product",
+      "status": "blocked",
+      "priority": 2,
+      "size": "M",
+      "depends_on": ["vercel-arxiviq-rootdir"],
+      "why": "arxiviq.com is served today from an archived repo. Until it moves, the conductor and pairing UI never reach users.",
+      "acceptance": "arxiviq.com serves the dottie conductor; standalone repo README points at dottie"
+    },
+    {
+      "id": "arxiviq-real-data",
+      "title": "arxiviq: replace the synthetic papers.json fallback with fetch_topics.py output on a schedule",
+      "repo": "dottie",
+      "kind": "product",
+      "status": "blocked",
+      "priority": 3,
+      "size": "S",
+      "depends_on": ["repoint-arxiviq"],
+      "acceptance": "graph shows papers fetched this month, not the demo set"
+    },
+    {
+      "id": "bluehen-vercel-cleanup",
+      "title": "Re-point or drop arcade.dumbmodel.com, training.jcamd.com, signals/data.bhenre.com; then delete the nine bluehen-linked Vercel projects",
+      "repo": "vercel",
+      "kind": "ops",
+      "status": "blocked",
+      "priority": 3,
+      "size": "S",
+      "depends_on": ["repoint-arxiviq", "archive-mirrors"],
+      "acceptance": "no Vercel project builds from bluehen; every custom domain resolves to an active repo"
+    },
+    {
+      "id": "slasso-domain",
+      "title": "slasso.com is served by a Vercel project linked to the yubipet repo; point it at apps/dottie-harness-api or drop the domain",
+      "repo": "vercel",
+      "kind": "ops",
+      "status": "ready",
+      "priority": 3,
+      "size": "S",
+      "depends_on": [],
+      "acceptance": "slasso.com/api/health answers from the harness API, or the domain is released"
+    },
+    {
+      "id": "retire-coordination-boards",
+      "title": "Replace the eight duplicated COORDINATION.md / CLAIM_BOARD_PROMPT.md / bundles/ copies with jarvis.claim; delete the file boards",
+      "repo": "vector-*",
+      "kind": "infra",
+      "status": "blocked",
+      "priority": 2,
+      "size": "M",
+      "depends_on": ["connect-clients"],
+      "why": "84 identical bundle files per repo pair and 13 sync commits in one day are the mess confusing agents. One claim board on the daemon replaces all of it.",
+      "acceptance": "zero 'sync claim board' commits for a week; COORDINATION.md files deleted from vector-* repos"
+    },
+    {
+      "id": "shared-map-canonical",
+      "title": "One canonical shared-map.js in vector-hub/packages/vector-tokens, published to the five game repos (today: 13 copies, 3 lineages)",
+      "repo": "vector-hub",
+      "kind": "infra",
+      "status": "blocked",
+      "priority": 2,
+      "size": "M",
+      "depends_on": ["vector-ci-green"],
+      "acceptance": "every assets/shared-map.js is byte-identical and carries a version header; a sync script exists"
+    },
+    {
+      "id": "pwa-shell-template",
+      "title": "Template the PWA shell (sw.js, manifest.json, offline.html, 404.html, vercel.json) once and stamp it into the six sites",
+      "repo": "vector-hub",
+      "kind": "infra",
+      "status": "blocked",
+      "priority": 3,
+      "size": "S",
+      "depends_on": ["shared-map-canonical"],
+      "acceptance": "one source of truth; six sites regenerate from it"
+    },
+    {
+      "id": "unified-caches-restore",
+      "title": "Restore vector-unified's three input caches from hoops (embedding_v3.npz), gridiron (mtnn_best.pt), pitch (pitch_mtnn_embeddings.json); CPU only",
+      "repo": "vector-unified",
+      "kind": "infra",
+      "status": "ready",
+      "priority": 2,
+      "size": "S",
+      "depends_on": [],
+      "acceptance": "docs/HANDOFF.md verification block passes on CPU"
+    },
+    {
+      "id": "unified-5th-game",
+      "title": "unified.dumbmodel.com: daily chimera at hoops-level parity (the 5th game), promoted to a real subdomain",
+      "repo": "vector-unified",
+      "kind": "product",
+      "status": "blocked",
+      "priority": 2,
+      "size": "M",
+      "depends_on": ["unified-caches-restore", "hub-nav-restore"],
+      "acceptance": "unified.dumbmodel.com resolves (Production Domain set); daily game plays end to end"
+    },
+    {
+      "id": "hub-5-games",
+      "title": "dumbmodel.com as the 5-game hub (GOAL_AND_SHIP.md): one nav, one design system, hub chimera over the 20,719-row joint embedding",
+      "repo": "vector-hub",
+      "kind": "product",
+      "status": "blocked",
+      "priority": 2,
+      "size": "M",
+      "depends_on": ["unified-5th-game", "shared-map-canonical"],
+      "acceptance": "hub page plays the joint chimera; all five games share the canonical map and tokens"
+    },
+    {
+      "id": "equities-forward-ic",
+      "title": "vector-equities: reconcile forward-IC eval with README claims (TODO #8)",
+      "repo": "vector-equities",
+      "kind": "product",
+      "status": "ready",
+      "priority": 3,
+      "size": "S",
+      "depends_on": [],
+      "acceptance": "README numbers match data/*_report.json; leakage tests green"
+    },
+    {
+      "id": "equities-peer-drift",
+      "title": "vector-equities: peer-drift model zoo cross-validation (CPU pipeline)",
+      "repo": "vector-equities",
+      "kind": "product",
+      "status": "blocked",
+      "priority": 3,
+      "size": "M",
+      "depends_on": ["equities-forward-ic", "vector-ci-green"],
+      "acceptance": "CV report committed with measured provenance"
+    },
+    {
+      "id": "gridiron-nflverse-fetch",
+      "title": "vector-gridiron: write pipeline/fetch_nflverse.py so the site can leave synthetic player-weeks (CPU)",
+      "repo": "vector-gridiron",
+      "kind": "product",
+      "status": "blocked",
+      "priority": 3,
+      "size": "M",
+      "depends_on": ["vector-ci-green"],
+      "acceptance": "real nflverse rows in data/; README no longer says synthetic"
+    },
+    {
+      "id": "gpu-box-dedicated",
+      "title": "Alienware box: scheduled training window (Task Scheduler), disk headroom, one queue for retrains; Ollama and jarvisd share it",
+      "repo": "dottie",
+      "kind": "ops",
+      "status": "blocked",
+      "priority": 3,
+      "size": "M",
+      "depends_on": ["host-jarvis"],
+      "why": "Every 'blocked on local GPU' item across five repos waits on the same machine having a schedule.",
+      "acceptance": "a retrain can be queued from jarvisd and runs overnight without hand-holding"
+    },
+    {
+      "id": "hoops-v6-retrain",
+      "title": "vector-hoops: v6 transformer 150-epoch hill-climb (composite 0.79 to 0.85), promote only if the gate passes",
+      "repo": "vector-hoops",
+      "kind": "research",
+      "status": "blocked",
+      "priority": 3,
+      "size": "L",
+      "depends_on": ["gpu-box-dedicated", "vector-ci-green"],
+      "acceptance": "measured composite above 0.85 on the held-out slice, or an honest miss recorded"
+    },
+    {
+      "id": "gridiron-real-train",
+      "title": "vector-gridiron: retrain the 32-d MTNN on real nflverse data",
+      "repo": "vector-gridiron",
+      "kind": "research",
+      "status": "blocked",
+      "priority": 3,
+      "size": "L",
+      "depends_on": ["gridiron-nflverse-fetch", "gpu-box-dedicated"],
+      "acceptance": "the claimed 4.268 reproduces from real data"
+    },
+    {
+      "id": "unified-g2-retrain",
+      "title": "vector-unified: Stage-2 sport-blindness retrain (G2 0.685 to 0.64), 60 epochs on the box",
+      "repo": "vector-unified",
+      "kind": "research",
+      "status": "blocked",
+      "priority": 4,
+      "size": "L",
+      "depends_on": ["unified-5th-game", "gpu-box-dedicated"],
+      "acceptance": "G2 measured below 0.65 with the control still separating"
+    },
+    {
+      "id": "vector-realty-pr4",
+      "title": "Review vector-realty PR #4 (data-integrity fix); merge or close, which unblocks vector-unified PR #5",
+      "repo": "vector-realty",
+      "kind": "ops",
+      "status": "ready",
+      "priority": 4,
+      "size": "S",
+      "depends_on": [],
+      "acceptance": "PR #4 decided; unified PR #5 re-run or closed"
+    },
+    {
+      "id": "harness-api-proxy",
+      "title": "slasso harness API proxies jarvisd (goals, inbox, claims, timeline) so the dashboard shows the live daemon",
+      "repo": "dottie",
+      "kind": "infra",
+      "status": "blocked",
+      "priority": 4,
+      "size": "M",
+      "depends_on": ["connect-clients", "slasso-domain"],
+      "acceptance": "slasso.com validation lab reads from the daemon, not vendored JSON"
+    },
+    {
+      "id": "who-e-branding",
+      "title": "Untangle WHO-E branding leaks in vector-hub and dottie-harness-api; decide who-e.com's home",
+      "repo": "who-e",
+      "kind": "product",
+      "status": "ready",
+      "priority": 4,
+      "size": "S",
+      "depends_on": [],
+      "acceptance": "who-e.com serves the word games from the who-e repo; no stray who-e files in vector-hub"
+    },
+    {
+      "id": "flywheel-gate",
+      "title": "Router promotion gate passes once on real daemon traces (Phase 4: let it learn)",
+      "repo": "dottie",
+      "kind": "research",
+      "status": "blocked",
+      "priority": 5,
+      "size": "L",
+      "depends_on": ["retire-coordination-boards", "harness-api-proxy"],
+      "acceptance": "champion strictly beats both baselines on measured hold-out"
+    },
+    {
+      "id": "ava-factory",
+      "title": "Ava factory mini/base1b training track",
+      "repo": "ava-agi-factory-v6-4",
+      "kind": "research",
+      "status": "parked",
+      "priority": 5,
+      "size": "L",
+      "depends_on": ["gpu-box-dedicated"],
+      "why": "Not on any product's path; needs the box for days at a time."
     }
   ]
 }
