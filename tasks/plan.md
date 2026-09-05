@@ -49,7 +49,7 @@ building and executing instead of sitting on a list.
 | 4 | MLOps line: `train_queue.json`, `train *`, `scripts/train_window.ps1` | done |
 | 5 | Data line: `datasets.json`, `data *` | done |
 | 6 | Wire: ci.yml, Makefile, `factory.yml` weekly report, README/HANDOFF/DAG | done |
-| 7 | Close-out: lint, tests, commit, push, PR #23, review, readiness report | in progress |
+| 7 | Close-out: lint, tests, commit, push, PR #23, review, readiness report | done (commits 049939a, 7d25a42, 435af0d, f9183ce) |
 
 ## Decisions taken without asking (auto mode, reversible)
 
