@@ -1,4 +1,4 @@
-.PHONY: sync test lint gates forge doctor status ci
+.PHONY: sync test lint gates forge doctor status ci factory
 
 # WHY THIS FILE MIRRORS ci.yml, and what it got wrong until 2026-08-01.
 #
@@ -54,6 +54,11 @@ test:
 	uv run python scripts/test_retrieval_eval.py
 	uv run python scripts/test_task_eval_slice.py
 	uv run python scripts/test_check_declared_capabilities.py
+	uv run pytest factory/tests -q
+
+factory:
+	uv run python -m factory check
+	uv run python -m factory next
 
 lint:
 	uvx ruff@0.15.22 check packages/ava-skills
@@ -66,6 +71,7 @@ lint:
 # blocking only after a reformat has actually landed.
 
 gates:
+	uv run python -m factory check
 	uv run python scripts/gate_audit.py --check --baseline scripts/gate_audit_baseline.json
 	uv run python scripts/check_declared_capabilities.py --check --baseline scripts/declared_capabilities_baseline.json
 	uv run python scripts/check_documented_counts.py --check

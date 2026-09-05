@@ -218,6 +218,7 @@ uv run pytest packages/ava-open-harness -q   # non-blocking in CI today (package
 | [`docs/PLATFORM_IMPROVEMENT_PLAN.md`](docs/PLATFORM_IMPROVEMENT_PLAN.md) | The plan: P0 CI-to-green, P1 break the label ceiling, P2 harness capability |
 | [`docs/JARVIS_HARNESS_PLAN.md`](docs/JARVIS_HARNESS_PLAN.md) | Portfolio triage of all 27 repos and the phased path to a hosted, agent-connected pair programmer built on this harness |
 | [`docs/PROJECT_DAG.md`](docs/PROJECT_DAG.md) | The unified project DAG: every piece of product and infra work as a node with dependencies; `scripts/dag_next.py` prints what is ready now |
+| [`docs/FACTORY.md`](docs/FACTORY.md) | The factory: how DAG nodes get executed. `python -m factory` runs the software line (repo validate gates, start/done), the MLOps line (the box's one training queue with gates) and the data line (dataset presence, freshness, restore) |
 | [`docs/LONGCAT2_INSIGHTS_SPEC.md`](docs/LONGCAT2_INSIGHTS_SPEC.md) | Architecture doctrine |
 | [`docs/DOTTIE_HARNESS_DEEP_SPEC.md`](docs/DOTTIE_HARNESS_DEEP_SPEC.md) | Harness deep spec (tiers, checkpointing, recovery ladder, verification economics) |
 | [`docs/TRAINING_CURRICULUM_SIZING.md`](docs/TRAINING_CURRICULUM_SIZING.md) | Curriculum sizing |

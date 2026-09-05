@@ -28,8 +28,23 @@
       "status": "done",
       "priority": 1,
       "size": "L",
-      "depends_on": ["ci-green"],
+      "depends_on": [
+        "ci-green"
+      ],
       "evidence": "apps/jarvisd, 65 tests, docs/JARVISD_SPEC.md"
+    },
+    {
+      "id": "factory",
+      "title": "The factory: software, MLOps and data lines over this DAG (python -m factory; docs/FACTORY.md)",
+      "repo": "dottie",
+      "kind": "infra",
+      "status": "done",
+      "priority": 1,
+      "size": "M",
+      "depends_on": [
+        "ci-green"
+      ],
+      "evidence": "PR #23 2026-09-05: factory/ package, 43 tests, `factory check` in ci.yml, weekly factory.yml report, scripts/train_window.ps1"
     },
     {
       "id": "enable-analytics",
@@ -51,7 +66,9 @@
       "status": "ready",
       "priority": 1,
       "size": "S",
-      "depends_on": ["jarvisd"],
+      "depends_on": [
+        "jarvisd"
+      ],
       "acceptance": "PR #23 merged; main green"
     },
     {
@@ -121,7 +138,9 @@
       "status": "blocked",
       "priority": 1,
       "size": "M",
-      "depends_on": ["merge-pr23"],
+      "depends_on": [
+        "merge-pr23"
+      ],
       "acceptance": "curl https://jarvis.<zone>/api/health from a phone returns ok; state survives restart; jarvis.ask answers via Ollama"
     },
     {
@@ -132,7 +151,9 @@
       "status": "blocked",
       "priority": 1,
       "size": "S",
-      "depends_on": ["host-jarvis"],
+      "depends_on": [
+        "host-jarvis"
+      ],
       "acceptance": "docs/JARVIS_CONNECT.md checklist all ticked"
     },
     {
@@ -143,7 +164,9 @@
       "status": "blocked",
       "priority": 2,
       "size": "S",
-      "depends_on": ["merge-pr23"],
+      "depends_on": [
+        "merge-pr23"
+      ],
       "acceptance": "the SSR conductor builds READY from dottie; no Vercel project on the dottie repo errors on push"
     },
     {
@@ -154,7 +177,9 @@
       "status": "blocked",
       "priority": 2,
       "size": "M",
-      "depends_on": ["vercel-arxiviq-rootdir"],
+      "depends_on": [
+        "vercel-arxiviq-rootdir"
+      ],
       "why": "arxiviq.com is served today from an archived repo. Until it moves, the conductor and pairing UI never reach users.",
       "acceptance": "arxiviq.com serves the dottie conductor; standalone repo README points at dottie"
     },
@@ -166,7 +191,9 @@
       "status": "blocked",
       "priority": 3,
       "size": "S",
-      "depends_on": ["repoint-arxiviq"],
+      "depends_on": [
+        "repoint-arxiviq"
+      ],
       "acceptance": "graph shows papers fetched this month, not the demo set"
     },
     {
@@ -177,7 +204,10 @@
       "status": "blocked",
       "priority": 3,
       "size": "S",
-      "depends_on": ["repoint-arxiviq", "archive-mirrors"],
+      "depends_on": [
+        "repoint-arxiviq",
+        "archive-mirrors"
+      ],
       "acceptance": "no Vercel project builds from bluehen; every custom domain resolves to an active repo"
     },
     {
@@ -199,7 +229,9 @@
       "status": "blocked",
       "priority": 2,
       "size": "M",
-      "depends_on": ["connect-clients"],
+      "depends_on": [
+        "connect-clients"
+      ],
       "why": "84 identical bundle files per repo pair and 13 sync commits in one day are the mess confusing agents. One claim board on the daemon replaces all of it.",
       "acceptance": "zero 'sync claim board' commits for a week; COORDINATION.md files deleted from vector-* repos"
     },
@@ -211,7 +243,9 @@
       "status": "blocked",
       "priority": 2,
       "size": "M",
-      "depends_on": ["vector-ci-green"],
+      "depends_on": [
+        "vector-ci-green"
+      ],
       "acceptance": "every assets/shared-map.js is byte-identical and carries a version header; a sync script exists"
     },
     {
@@ -222,19 +256,22 @@
       "status": "blocked",
       "priority": 3,
       "size": "S",
-      "depends_on": ["shared-map-canonical"],
+      "depends_on": [
+        "shared-map-canonical"
+      ],
       "acceptance": "one source of truth; six sites regenerate from it"
     },
     {
       "id": "unified-caches-restore",
-      "title": "Restore vector-unified's three input caches from hoops (embedding_v3.npz), gridiron (mtnn_best.pt), pitch (pitch_mtnn_embeddings.json); CPU only",
+      "title": "vector-unified: restore the input caches (factory data restore unified-pitch-cache / unified-gridiron-matrix work from sibling checkouts; unified_matrix.npz is gitignored and exists only on the box); CPU only",
       "repo": "vector-unified",
       "kind": "infra",
       "status": "ready",
       "priority": 2,
       "size": "S",
       "depends_on": [],
-      "acceptance": "docs/HANDOFF.md verification block passes on CPU"
+      "acceptance": "docs/HANDOFF.md verification block passes on CPU",
+      "note": "2026-09-05: pitch cache and gridiron matrix restored from siblings in the container to prove the command; data/unified_matrix.npz still missing (box only)."
     },
     {
       "id": "unified-5th-game",
@@ -244,7 +281,10 @@
       "status": "blocked",
       "priority": 2,
       "size": "M",
-      "depends_on": ["unified-caches-restore", "hub-nav-restore"],
+      "depends_on": [
+        "unified-caches-restore",
+        "hub-nav-restore"
+      ],
       "acceptance": "unified.dumbmodel.com resolves (Production Domain set); daily game plays end to end"
     },
     {
@@ -255,7 +295,10 @@
       "status": "blocked",
       "priority": 2,
       "size": "M",
-      "depends_on": ["unified-5th-game", "shared-map-canonical"],
+      "depends_on": [
+        "unified-5th-game",
+        "shared-map-canonical"
+      ],
       "acceptance": "hub page plays the joint chimera; all five games share the canonical map and tokens"
     },
     {
@@ -267,7 +310,8 @@
       "priority": 3,
       "size": "S",
       "depends_on": [],
-      "acceptance": "README numbers match data/*_report.json; leakage tests green"
+      "acceptance": "README numbers match data/*_report.json; leakage tests green",
+      "note": "pipeline/eval_reports/eval_equities_latest.json reads ic_proxy 5.827, outside [-1, 1]; the gate on equities-peer-drift means nothing until this is reconciled."
     },
     {
       "id": "equities-peer-drift",
@@ -277,29 +321,37 @@
       "status": "blocked",
       "priority": 3,
       "size": "M",
-      "depends_on": ["equities-forward-ic", "vector-ci-green"],
+      "depends_on": [
+        "equities-forward-ic",
+        "vector-ci-green"
+      ],
       "acceptance": "CV report committed with measured provenance"
     },
     {
       "id": "gridiron-nflverse-fetch",
-      "title": "vector-gridiron: write pipeline/fetch_nflverse.py so the site can leave synthetic player-weeks (CPU)",
+      "title": "vector-gridiron: pipeline/fetch_nflverse.py exists (566 lines); run it for real seasons and record which train_matrix.npz is real vs --synthetic (factory data refresh gridiron-train-matrix)",
       "repo": "vector-gridiron",
       "kind": "product",
       "status": "blocked",
       "priority": 3,
       "size": "M",
-      "depends_on": ["vector-ci-green"],
+      "depends_on": [
+        "vector-ci-green"
+      ],
       "acceptance": "real nflverse rows in data/; README no longer says synthetic"
     },
     {
       "id": "gpu-box-dedicated",
-      "title": "Alienware box: scheduled training window (Task Scheduler), disk headroom, one queue for retrains; Ollama and jarvisd share it",
+      "title": "Alienware box: install the nightly training window (scripts/train_window.ps1 -Install), disk headroom; factory/train_queue.json is the one queue; Ollama and jarvisd share the box",
       "repo": "dottie",
       "kind": "ops",
       "status": "blocked",
       "priority": 3,
       "size": "M",
-      "depends_on": ["host-jarvis"],
+      "depends_on": [
+        "factory",
+        "host-jarvis"
+      ],
       "why": "Every 'blocked on local GPU' item across five repos waits on the same machine having a schedule.",
       "acceptance": "a retrain can be queued from jarvisd and runs overnight without hand-holding"
     },
@@ -311,8 +363,12 @@
       "status": "blocked",
       "priority": 3,
       "size": "L",
-      "depends_on": ["gpu-box-dedicated", "vector-ci-green"],
-      "acceptance": "measured composite above 0.85 on the held-out slice, or an honest miss recorded"
+      "depends_on": [
+        "gpu-box-dedicated",
+        "vector-ci-green"
+      ],
+      "acceptance": "measured composite above 0.85 on the held-out slice, or an honest miss recorded",
+      "note": "Blocked in practice: pipeline/train_mtnn.py and pipeline/eval.py are not in vector-hoops (only train_with_text_fusion.py). `factory train preflight hoops-v6-retrain` names both. Restore or rewrite the trainer first."
     },
     {
       "id": "gridiron-real-train",
@@ -322,7 +378,10 @@
       "status": "blocked",
       "priority": 3,
       "size": "L",
-      "depends_on": ["gridiron-nflverse-fetch", "gpu-box-dedicated"],
+      "depends_on": [
+        "gridiron-nflverse-fetch",
+        "gpu-box-dedicated"
+      ],
       "acceptance": "the claimed 4.268 reproduces from real data"
     },
     {
@@ -333,7 +392,10 @@
       "status": "blocked",
       "priority": 4,
       "size": "L",
-      "depends_on": ["unified-5th-game", "gpu-box-dedicated"],
+      "depends_on": [
+        "unified-5th-game",
+        "gpu-box-dedicated"
+      ],
       "acceptance": "G2 measured below 0.65 with the control still separating"
     },
     {
@@ -355,7 +417,10 @@
       "status": "blocked",
       "priority": 4,
       "size": "M",
-      "depends_on": ["connect-clients", "slasso-domain"],
+      "depends_on": [
+        "connect-clients",
+        "slasso-domain"
+      ],
       "acceptance": "slasso.com validation lab reads from the daemon, not vendored JSON"
     },
     {
@@ -377,7 +442,10 @@
       "status": "blocked",
       "priority": 5,
       "size": "L",
-      "depends_on": ["retire-coordination-boards", "harness-api-proxy"],
+      "depends_on": [
+        "retire-coordination-boards",
+        "harness-api-proxy"
+      ],
       "acceptance": "champion strictly beats both baselines on measured hold-out"
     },
     {
@@ -388,7 +456,9 @@
       "status": "parked",
       "priority": 5,
       "size": "L",
-      "depends_on": ["gpu-box-dedicated"],
+      "depends_on": [
+        "gpu-box-dedicated"
+      ],
       "why": "Not on any product's path; needs the box for days at a time."
     }
   ]

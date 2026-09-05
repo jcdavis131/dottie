@@ -24,6 +24,23 @@ before writing "current" anywhere in this file.
 `check_handoff_fresh.py --check` fails STALE (on a shallow clone it reports
 UNKNOWN SHA instead — same fix, do not read it as a rewrite).
 
+**Later the same day, the factory landed on this branch** (`docs/FACTORY.md`,
+`factory/`): `python -m factory` is how DAG nodes get executed. `factory
+check` (a ci.yml step) keeps `factory/repos.json` (how each repo is
+validated), `factory/train_queue.json` (the box's one training queue, with
+gates read from each repo's own eval report) and `factory/datasets.json`
+(presence, freshness, sha256, restore-from-sibling) consistent with
+`docs/project_dag.json`. `.github/workflows/factory.yml` posts a weekly
+read-only report; `scripts/train_window.ps1 -Install` registers the nightly
+GPU window on the box. Measured here, CPU-only: every queued job fails
+preflight for a named reason (no CUDA in the container; hoops has no
+`pipeline/train_mtnn.py`; unified's `data/unified_matrix.npz` is gitignored
+and box-only; equities has no `pipeline/data/train_matrix.npz`), the gridiron
+gate reads MAE 3.816 against a 3.8 target (fail), unified G2 0.6851 against
+0.65 (fail), and equities `ic_proxy` 5.827 is not a plausible IC (DAG node
+`equities-forward-ic`). `factory data restore` recovered the pitch and
+gridiron caches into vector-unified from sibling checkouts.
+
 **CI was red on every `main` push 08-18 -> 08-27** at the FIRST hard gate
 (`Ruff lint — packages/ava-skills`: 9 findings in `skills/anydoc/skill.py`).
 Because it fails first, every later step was skipped — no suite ran in CI

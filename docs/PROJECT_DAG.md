@@ -11,6 +11,8 @@ python scripts/dag_next.py            # READY (in priority order), IN PROGRESS, 
 python scripts/dag_next.py --repo vector-hub
 python scripts/dag_next.py --check    # CI gate: unique ids, deps resolve, no cycles
 python scripts/dag_next.py --mermaid  # regenerate the graph source
+python -m factory start <node>        # ready -> in_progress, prints the repo and its validate gate
+python -m factory done <node> --evidence "..."   # in_progress -> done; docs/FACTORY.md
 ```
 
 Every Claude Code session in this repo opens with the frontier line (the SessionStart
@@ -61,6 +63,7 @@ nodes for "leave alone" is how a graph turns back into a list.
 flowchart LR
   ci-green["ci-green<br/>dottie CI green on main"]
   jarvisd["jarvisd<br/>Jarvis daemon: MCP + JSON API + SQLite + auth + free Ollama brain"]
+  factory["factory<br/>The factory: software, MLOps and data lines over this DAG (python -m factory; docs/FACTORY.md)"]
   enable-analytics["enable-analytics<br/>Turn on Vercel Web Analytics for the 14 custom-domain projects"]
   merge-pr23["merge-pr23<br/>Merge dottie PR #23 (harness build) into main"]
   archive-mirrors["archive-mirrors<br/>Merge the six deprecation PRs and click Archive (scout-cli, ava-skills, ava-open-harness, personal-graphify, bluehen, agent-lasso)"]
@@ -78,13 +81,13 @@ flowchart LR
   retire-coordination-boards["retire-coordination-boards<br/>Replace the eight duplicated COORDINATION.md / CLAIM_BOARD_PROMPT.md / bundles/ copies with jarvis.claim; delete the file boards"]
   shared-map-canonical["shared-map-canonical<br/>One canonical shared-map.js in vector-hub/packages/vector-tokens, published to the five game repos (today: 13 copies, 3 lineages)"]
   pwa-shell-template["pwa-shell-template<br/>Template the PWA shell (sw.js, manifest.json, offline.html, 404.html, vercel.json) once and stamp it into the six sites"]
-  unified-caches-restore["unified-caches-restore<br/>Restore vector-unified's three input caches from hoops (embedding_v3.npz), gridiron (mtnn_best.pt), pitch (pitch_mtnn_embeddings.json); CPU only"]
+  unified-caches-restore["unified-caches-restore<br/>vector-unified: restore the input caches (factory data restore unified-pitch-cache / unified-gridiron-matrix work from sibling checkouts; unified_matrix.npz is gitignored and exists only on the box); CPU only"]
   unified-5th-game["unified-5th-game<br/>unified.dumbmodel.com: daily chimera at hoops-level parity (the 5th game), promoted to a real subdomain"]
   hub-5-games["hub-5-games<br/>dumbmodel.com as the 5-game hub (GOAL_AND_SHIP.md): one nav, one design system, hub chimera over the 20,719-row joint embedding"]
   equities-forward-ic["equities-forward-ic<br/>vector-equities: reconcile forward-IC eval with README claims (TODO #8)"]
   equities-peer-drift["equities-peer-drift<br/>vector-equities: peer-drift model zoo cross-validation (CPU pipeline)"]
-  gridiron-nflverse-fetch["gridiron-nflverse-fetch<br/>vector-gridiron: write pipeline/fetch_nflverse.py so the site can leave synthetic player-weeks (CPU)"]
-  gpu-box-dedicated["gpu-box-dedicated<br/>Alienware box: scheduled training window (Task Scheduler), disk headroom, one queue for retrains; Ollama and jarvisd share it"]
+  gridiron-nflverse-fetch["gridiron-nflverse-fetch<br/>vector-gridiron: pipeline/fetch_nflverse.py exists (566 lines); run it for real seasons and record which train_matrix.npz is real vs --synthetic (factory data refresh gridiron-train-matrix)"]
+  gpu-box-dedicated["gpu-box-dedicated<br/>Alienware box: install the nightly training window (scripts/train_window.ps1 -Install), disk headroom; factory/train_queue.json is the one queue; Ollama and jarvisd share the box"]
   hoops-v6-retrain["hoops-v6-retrain<br/>vector-hoops: v6 transformer 150-epoch hill-climb (composite 0.79 to 0.85), promote only if the gate passes"]
   gridiron-real-train["gridiron-real-train<br/>vector-gridiron: retrain the 32-d MTNN on real nflverse data"]
   unified-g2-retrain["unified-g2-retrain<br/>vector-unified: Stage-2 sport-blindness retrain (G2 0.685 to 0.64), 60 epochs on the box"]
@@ -94,6 +97,7 @@ flowchart LR
   flywheel-gate["flywheel-gate<br/>Router promotion gate passes once on real daemon traces (Phase 4: let it learn)"]
   ava-factory["ava-factory<br/>Ava factory mini/base1b training track"]
   ci-green --> jarvisd
+  ci-green --> factory
   jarvisd --> merge-pr23
   merge-pr23 --> host-jarvis
   host-jarvis --> connect-clients
@@ -112,6 +116,7 @@ flowchart LR
   equities-forward-ic --> equities-peer-drift
   vector-ci-green --> equities-peer-drift
   vector-ci-green --> gridiron-nflverse-fetch
+  factory --> gpu-box-dedicated
   host-jarvis --> gpu-box-dedicated
   gpu-box-dedicated --> hoops-v6-retrain
   vector-ci-green --> hoops-v6-retrain
@@ -129,7 +134,7 @@ flowchart LR
   classDef in_progress fill:#f6e8cf,stroke:#a6701c,color:#1a2330;
   classDef blocked fill:#e9eef1,stroke:#75808c,color:#1a2330;
   classDef parked fill:#f5dcdc,stroke:#b23b3b,color:#1a2330;
-  class ci-green,jarvisd done;
+  class ci-green,jarvisd,factory done;
   class alamost-open-shop,enable-analytics,jcamd-lab-links,merge-pr23,hub-nav-restore,unified-caches-restore,vector-ci-green,equities-forward-ic,slasso-domain,vector-realty-pr4,who-e-branding ready;
   class archive-mirrors in_progress;
   class connect-clients,host-jarvis,vercel-arxiviq-rootdir,hub-5-games,repoint-arxiviq,retire-coordination-boards,shared-map-canonical,unified-5th-game,arxiviq-real-data,bluehen-vercel-cleanup,pwa-shell-template,equities-peer-drift,gpu-box-dedicated,gridiron-nflverse-fetch,gridiron-real-train,hoops-v6-retrain,harness-api-proxy,unified-g2-retrain,flywheel-gate blocked;

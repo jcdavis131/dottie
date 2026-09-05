@@ -161,6 +161,14 @@ jobs:
       # cycles. A DAG that rots into a list stops answering "what is ready now".
       - name: Project DAG (acyclic, dependencies resolve)
         run: uv run python scripts/dag_next.py --check
+      # The factory (docs/FACTORY.md) is how DAG nodes get executed: repos.json says how
+      # each repo is validated, train_queue.json what the box trains next, datasets.json
+      # what data exists. `factory check` keeps the three consistent with the DAG.
+      - name: Factory (registries agree with the DAG; suite)
+        run: |
+          set -e
+          uv run pytest factory/tests -q
+          uv run python -m factory check
       # Mutations that clear one store and leave another holding the value. Found in
       # bigbang/core/security.py 2026-08-02 (fixed a2ccea5): delete_secret cleared the
       # file vault and returned, so the keyring copy the READ path consults first was

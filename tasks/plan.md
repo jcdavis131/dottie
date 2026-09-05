@@ -44,12 +44,12 @@ building and executing instead of sitting on a list.
 | # | task | status |
 |---|---|---|
 | 1 | Plan + spec gate (this file, `docs/FACTORY.md`) | done |
-| 2 | factory core: package, config, `factory check` against the DAG | pending |
-| 3 | Software line: `repos.json`, `next/start/done/validate/status` | pending |
-| 4 | MLOps line: `train_queue.json`, `train *`, `scripts/train_window.ps1` | pending |
-| 5 | Data line: `datasets.json`, `data *` | pending |
-| 6 | Wire: ci.yml, Makefile, `factory.yml` weekly report, README/HANDOFF/DAG | pending |
-| 7 | Close-out: lint, tests, commit, push, PR #23, review, readiness report | pending |
+| 2 | factory core: package, config, `factory check` against the DAG | done |
+| 3 | Software line: `repos.json`, `next/start/done/validate/status` | done |
+| 4 | MLOps line: `train_queue.json`, `train *`, `scripts/train_window.ps1` | done |
+| 5 | Data line: `datasets.json`, `data *` | done |
+| 6 | Wire: ci.yml, Makefile, `factory.yml` weekly report, README/HANDOFF/DAG | done |
+| 7 | Close-out: lint, tests, commit, push, PR #23, review, readiness report | in progress |
 
 ## Decisions taken without asking (auto mode, reversible)
 
