@@ -5,9 +5,11 @@ OpenCode speak **MCP** to it (`/mcp` streamable-HTTP, `/sse` legacy); humans and
 speak **JSON over HTTP** (`/api/*`). It owns the shared state — memories, claims, inbox,
 goals, timeline, sessions — in one SQLite file. Spec: `docs/JARVISD_SPEC.md`.
 
-The client agent is the brain in v1. An optional Anthropic-backed `jarvis.ask` exists
-when `ANTHROPIC_API_KEY` is set; without it the tool returns a structured
-`brain unavailable` error, never a fabricated answer.
+The client agent is the brain in v1. An optional `jarvis.ask` runs a tool loop against
+either the home-box Ollama (`$0`, stdlib HTTP, default `qwen3:32b`) or Anthropic (paid,
+`jarvisd[brain]`), picked by `JARVIS_BRAIN` (`auto` = Anthropic if `ANTHROPIC_API_KEY` is
+set, else Ollama if `OLLAMA_HOST` answers). When neither can serve, the tool returns a
+structured `brain unavailable` error, never a fabricated answer.
 
 ## Quickstart
 
@@ -52,7 +54,11 @@ Each returns a JSON string with `ok`; on failure `error` and `example`.
 | `JARVIS_HOST` / `JARVIS_PORT` | `127.0.0.1` / `8790` | bind |
 | `JARVIS_PUBLIC_HOST` | — | hostname for the DNS-rebinding allowlist when public (e.g. `jarvis.example.com`) |
 | `JARVIS_WORKSPACE` | `~/workspace` | root the harness writes runs under (`bundles/ultra/runs`) and where `graph.query` looks for `graphify-out/graph.json` |
-| `ANTHROPIC_API_KEY`, `JARVIS_MODEL`, `JARVIS_EFFORT` | — / `claude-opus-5` / `high` | optional brain (`pip install 'jarvisd[brain]'`) |
+| `JARVIS_BRAIN` | `auto` | brain provider: `auto` \| `anthropic` \| `ollama` \| `off`; `auto` = Anthropic when the key is set, else Ollama when `/api/tags` answers within 1 s |
+| `OLLAMA_HOST` | `http://127.0.0.1:11434` | Ollama base URL (bare `host:port` gets `http://`); compose sets `http://host.docker.internal:11434`. Plain `urllib`, so `no_proxy` applies if you export a proxy |
+| `OLLAMA_MODEL` | `qwen3:32b` | Ollama model when `JARVIS_MODEL` is unset |
+| `JARVIS_BRAIN_TIMEOUT` | `120` | seconds per Ollama `/api/chat` call |
+| `ANTHROPIC_API_KEY`, `JARVIS_MODEL`, `JARVIS_EFFORT` | — / `claude-opus-5` / `high` | Anthropic brain, paid (`pip install 'jarvisd[brain]'`); `JARVIS_MODEL` also overrides the Ollama model |
 | `JARVIS_RATE_IP` / `JARVIS_RATE_KEY` / `JARVIS_RATE_AGENT` | `1000` / `60` / `20` | requests per minute per IP / key / `X-Agent-Id` |
 | `BIGBANG_POLICY_FILE` | scout default | URL allowlist for downstream MCP (read by scout) |
 
@@ -102,7 +108,7 @@ curl -s -H "Authorization: Bearer $T" localhost:8790/api/claims
 | `jarvisd/auth.py` | pure-ASGI `AuthMiddleware`, `mint_token`, rate limiter, audit |
 | `jarvisd/tools.py` | `Jarvis` service + FastMCP tool registration |
 | `jarvisd/app.py` | `build_app(config)` → Starlette; `serve()` under uvicorn |
-| `jarvisd/brain.py` | optional Anthropic brain (`jarvisd[brain]`) |
+| `jarvisd/brain.py` | optional brain: Ollama (stdlib, `$0`) or Anthropic (`jarvisd[brain]`), one shared tool loop |
 | `jarvisd/cli.py` | `serve` / `export` / `token` |
 
 ```bash

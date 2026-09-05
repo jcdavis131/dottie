@@ -14,9 +14,7 @@ back to `anon`.
 
 from __future__ import annotations
 
-import importlib.util
 import json
-import os
 import sys
 import time
 from pathlib import Path
@@ -66,20 +64,24 @@ def agent_from_context(ctx: Context | None, explicit: str = "") -> str:
 
 
 def brain_status(config: Config) -> dict[str, Any]:
-    """Whether `jarvis.ask` can answer, and if not, why (never fabricated)."""
-    reason: str | None = None
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        reason = "ANTHROPIC_API_KEY unset"
-    elif importlib.util.find_spec("anthropic") is None:
-        reason = "anthropic package not installed (pip install 'jarvisd[brain]')"
-    elif importlib.util.find_spec("jarvisd.brain") is None:
-        reason = "jarvisd.brain module missing"
-    return {
-        "available": reason is None,
-        "reason": reason,
-        "model": config.model,
-        "effort": config.effort,
-    }
+    """Which brain provider `jarvis.ask` would use, its model, and if it cannot answer, why.
+
+    Provider selection is `JARVIS_BRAIN` (auto | anthropic | ollama | off, spec §6);
+    the answer is never fabricated: `available` is False with a `reason` otherwise.
+    """
+    try:
+        from jarvisd import brain
+    except ImportError as e:  # pragma: no cover - module ships with the package
+        return {
+            "available": False,
+            "reason": f"jarvisd.brain import failed: {e}",
+            "provider": None,
+            "model": None,
+            "effort": config.effort,
+        }
+    out = brain.status()
+    out["effort"] = config.effort
+    return out
 
 
 def transport_security(config: Config) -> TransportSecuritySettings | None:
@@ -392,18 +394,26 @@ class Jarvis:
         return {"ok": True, "graph": str(path), "query": query, "results": _jsonable(results)}
 
     def ask(self, agent: str, question: str, repo: str | None = None) -> dict[str, Any]:
-        """Optional Anthropic brain (spec §6). Structured error when unavailable."""
+        """Optional brain (spec §6): Ollama on the home box or Anthropic, per `JARVIS_BRAIN`.
+
+        Structured error when no provider can serve; never a fabricated answer.
+        """
         question = (question or "").strip()
         if not question:
             return _err("question is empty", 'jarvis.ask(question="what is open on dottie?")')
-        if not os.environ.get("ANTHROPIC_API_KEY"):
-            return _err("brain unavailable: ANTHROPIC_API_KEY unset", "export ANTHROPIC_API_KEY=...")
         try:
             from jarvisd.brain import ask as brain_ask
 
             result = brain_ask(question=question, repo=repo, state=self.state, agent=agent)
         except (ImportError, RuntimeError) as e:
-            return _err(f"brain unavailable: {e}", "pip install 'jarvisd[brain]'")
+            msg = str(e)
+            if not msg.startswith("brain unavailable"):
+                msg = f"brain unavailable: {msg}"
+            return _err(
+                msg,
+                "JARVIS_BRAIN=ollama with Ollama on OLLAMA_HOST ($0), or export ANTHROPIC_API_KEY=... "
+                "(pip install 'jarvisd[brain]')",
+            )
         if not isinstance(result, dict):
             return _err("brain unavailable: non-dict result from jarvisd.brain.ask")
         return result
@@ -498,7 +508,7 @@ def register_tools(mcp: FastMCP, jarvis: Jarvis) -> int:
     def graph_query(query: str, graph_path: str | None = None, limit: int = 20) -> str:
         return _dump(jarvis.graph_query(query, graph_path, limit))
 
-    @mcp.tool(name="jarvis.ask", description="Ask the optional Anthropic brain. Returns a structured 'brain unavailable' error when ANTHROPIC_API_KEY is unset.")
+    @mcp.tool(name="jarvis.ask", description="Ask the optional brain (JARVIS_BRAIN: auto|anthropic|ollama|off; default auto = Anthropic if ANTHROPIC_API_KEY is set, else the home-box Ollama at OLLAMA_HOST). Returns a structured 'brain unavailable' error when no provider can serve.")
     def jarvis_ask(question: str, repo: str | None = None, agent: str = "", ctx: Context = None) -> str:  # type: ignore[assignment]
         return _dump(jarvis.ask(agent_from_context(ctx, agent), question, repo))
 

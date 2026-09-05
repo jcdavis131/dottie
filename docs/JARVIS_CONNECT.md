@@ -31,6 +31,7 @@ To use the tunnel instead of the local daemon, set
 | Server | `.mcp.json` (project scope) — `type: http`, `url: ${JARVIS_URL:-http://127.0.0.1:8790}/mcp`, header `Authorization: Bearer ${JARVIS_BEARER}` |
 | SessionStart hook | `.claude/hooks/jarvis_session_start.py`, registered in `.claude/settings.json` under `hooks.SessionStart` (matcher `startup|resume|clear|compact`, 5 s timeout) |
 | Skill | `.claude/skills/jarvis/SKILL.md` — when to `context` / `claim` / `remember` / `recall` / `send` / `harness.*` / `ask` |
+| `jarvis.ask` brain | `JARVIS_BRAIN=auto` (default) answers from the home-box Ollama at `OLLAMA_HOST` for `$0`; only a set `ANTHROPIC_API_KEY` switches it to the paid Anthropic path (spec §6) |
 
 Verify:
 

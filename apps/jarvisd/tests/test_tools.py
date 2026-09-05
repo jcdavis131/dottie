@@ -47,7 +47,10 @@ def test_jarvis_ask_without_key(jarvis: Jarvis, monkeypatch: pytest.MonkeyPatch)
     out = jarvis.ask("claude", "what is open?", repo="dottie")
     assert out["ok"] is False and out["error"].startswith("brain unavailable")
     assert "ANTHROPIC_API_KEY" in out["error"]
-    assert jarvis.status()["brain"]["available"] is False
+    status = jarvis.status()["brain"]
+    assert status["available"] is False
+    assert status["provider"] == "anthropic" and status["model"] == "claude-opus-5"
+    assert "ANTHROPIC_API_KEY" in status["reason"]
 
 
 def test_optional_integrations_degrade(jarvis: Jarvis, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

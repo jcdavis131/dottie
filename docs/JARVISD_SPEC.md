@@ -88,14 +88,31 @@ a pair programmer). `--expose-scout` adds them via `bigbang.plugins.mcp.server.b
 
 ## 6. Brain (`jarvisd/brain.py`, optional)
 
-- Uses the `anthropic` SDK (optional extra `jarvisd[brain]`); model `claude-opus-5`,
-  adaptive thinking, `output_config.effort` from `JARVIS_EFFORT` (default `high`), streaming.
+- Two providers behind one tool loop, picked by `JARVIS_BRAIN`:
+  - `ollama` — the operator's home-box Ollama over plain HTTP (`POST {OLLAMA_HOST}/api/chat`,
+    `stream:false`, tools in Ollama's `{"type":"function","function":{...}}` shape). Stdlib
+    `urllib` only, no extra dependency, $0 to run. Model `JARVIS_MODEL` → `OLLAMA_MODEL` →
+    `qwen3:32b` (what the rest of the repo runs). 120 s per call (`JARVIS_BRAIN_TIMEOUT`).
+  - `anthropic` — the `anthropic` SDK (optional extra `jarvisd[brain]`); model `claude-opus-5`,
+    adaptive thinking, `output_config.effort` from `JARVIS_EFFORT` (default `high`), streaming.
+    The only paid path.
+- `JARVIS_BRAIN=auto` (default): Anthropic when `ANTHROPIC_API_KEY` is set (a set key commits
+  to Anthropic; a missing SDK is then reported, not swapped), else Ollama when
+  `GET {OLLAMA_HOST}/api/tags` answers within 1 s, else unavailable. `off` disables the tool.
 - Manual tool loop over the daemon's own tools (context, recall, remember, claims, route);
-  max 8 turns; every tool call and result is appended to `timeline` as `kind="brain"`.
+  max 8 turns; every tool call and result is appended to `timeline` as `kind="brain"` on
+  both providers. Ollama tool arguments may arrive as a dict or a JSON string; each call is
+  answered with one `{"role":"tool"}` message. Result shape is the same for both:
+  `ok, answer, turns, tool_calls, usage{input_tokens,output_tokens,cache_read_input_tokens},
+  model, provider, stop_reason` (`end_turn` | `tool_use` | `max_turns`; Anthropic may also
+  report `refusal`).
 - System prompt: the operator's house voice (measured, evidence-backed, honest about
   what is unmeasured), the repo name, and the `jarvis.context` result for that repo.
-- Without `ANTHROPIC_API_KEY`: `{ok:false, error:"brain unavailable: ANTHROPIC_API_KEY unset"}`.
-- Tests use a fake client; no network in tests.
+- No provider can serve → `{ok:false, error:"brain unavailable: <reason>"}` (e.g.
+  `ANTHROPIC_API_KEY unset; ollama unreachable at http://127.0.0.1:11434: ...`). An Ollama
+  host that goes down mid-call → `{ok:false, error:"ollama unreachable at <host>: ..."}`,
+  never a raise. `jarvis.status().brain` reports `provider`, `model`, `available`, `reason`.
+- Tests use a fake Anthropic client and a fake `urllib.request.urlopen`; no network in tests.
 
 ## 7. Config (env, all optional except as noted)
 
@@ -106,7 +123,11 @@ a pair programmer). `--expose-scout` adds them via `bigbang.plugins.mcp.server.b
 | `JARVIS_HOST` / `JARVIS_PORT` | `127.0.0.1` / `8790` | bind |
 | `JARVIS_PUBLIC_HOST` | — | hostname for DNS-rebinding allowlist when public (e.g. `jarvis.example.com`) |
 | `JARVIS_WORKSPACE` | `~/workspace` | root the harness may read/write under |
-| `ANTHROPIC_API_KEY`, `JARVIS_MODEL`, `JARVIS_EFFORT` | — / `claude-opus-5` / `high` | brain |
+| `JARVIS_BRAIN` | `auto` | brain provider: `auto` \| `anthropic` \| `ollama` \| `off` (§6) |
+| `OLLAMA_HOST` | `http://127.0.0.1:11434` | Ollama base URL for the `ollama` provider (compose: `http://host.docker.internal:11434`) |
+| `OLLAMA_MODEL` | `qwen3:32b` | Ollama model when `JARVIS_MODEL` is unset |
+| `JARVIS_BRAIN_TIMEOUT` | `120` | seconds per Ollama `/api/chat` call (the 1 s `/api/tags` probe is fixed) |
+| `ANTHROPIC_API_KEY`, `JARVIS_MODEL`, `JARVIS_EFFORT` | — / `claude-opus-5` / `high` | Anthropic brain (paid); `JARVIS_MODEL` also overrides the Ollama model |
 | `BIGBANG_POLICY_FILE` | scout default | URL allowlist for downstream MCP |
 
 ## 8. Acceptance (plan §5 Phase 1)

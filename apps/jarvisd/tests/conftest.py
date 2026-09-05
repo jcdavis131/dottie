@@ -27,6 +27,18 @@ BEARER = "test-bearer-secret"
 BASE_URL = "http://127.0.0.1:8790"
 
 
+@pytest.fixture(autouse=True)
+def _brain_offline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the brain provider so no test probes a real Ollama on the dev box.
+
+    The default `JARVIS_BRAIN=auto` would `GET OLLAMA_HOST/api/tags`; with Ollama
+    running locally that would turn the "brain unavailable" tests into live calls.
+    Anthropic tests inject a fake client; Ollama tests set `JARVIS_BRAIN` and fake
+    `urllib.request.urlopen` themselves.
+    """
+    monkeypatch.setenv("JARVIS_BRAIN", "anthropic")
+
+
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
