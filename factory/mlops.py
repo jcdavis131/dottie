@@ -157,10 +157,25 @@ def ordered(f: Factory) -> list[dict]:
 
 
 def next_job(f: Factory) -> dict | None:
+    """First job by priority that can start and is worth starting.
+
+    Skips a job whose last full run passed (promotion is the operator's step) and
+    one whose last full run failed at the same repo HEAD with the same command: a
+    retry would only spend the GPU window reproducing a known miss. Change the
+    code or the command and it is eligible again.
+    """
     for job in ordered(f):
         last = last_result(f, job)
-        if last and not last.get("smoke") and last.get("gate") == "pass":
-            continue  # already passed; promotion is the operator's step
+        if last and not last.get("smoke"):
+            if last.get("gate") == "pass":
+                continue
+            same_head = last.get("head") == git_head(f.repo_dir(job["repo"]))
+            if (
+                last.get("gate") == "fail"
+                and same_head
+                and last.get("cmd") == job["run"]
+            ):
+                continue
         if not preflight(f, job):
             return job
     return None

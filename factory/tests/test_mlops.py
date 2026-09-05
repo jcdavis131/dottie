@@ -103,3 +103,36 @@ def test_env_from_job_reaches_command(ws: Factory):
 
 def test_cuda_status_is_a_string():
     assert isinstance(mlops.cuda_status(), str)
+
+
+def test_next_job_skips_known_miss_until_code_or_command_changes(ws: Factory):
+    import subprocess
+
+    repo = ws.workspace / "r1"
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "x",
+        ],
+        cwd=repo,
+        check=True,
+    )
+    q = json.loads(ws.queue_path.read_text())
+    q["jobs"][0]["run"] = "{python} write_report.py --bad"
+    ws.queue_path.write_text(json.dumps(q))
+    assert mlops.run(ws, ws.job("j1"))["gate"] == "fail"
+    assert (
+        mlops.next_job(ws) is None
+    )  # same head, same command: a retry is a known miss
+    q["jobs"][0]["run"] = "{python} write_report.py"
+    ws.queue_path.write_text(json.dumps(q))
+    assert mlops.next_job(ws)["id"] == "j1"  # the command changed
