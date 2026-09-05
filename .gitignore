@@ -18,7 +18,7 @@ __pycache__/
 .vscode/
 .idea/
 *.swp
-.cursor/
+.cursor/*
 
 # --- ML Artifacts (never commit binaries) ---
 *.pt
@@ -136,3 +136,7 @@ candidate.json
 *.pyc
 __pycache__/
 apps/arxiviq/out
+
+# Jarvis client wiring is tracked on purpose (docs/JARVIS_CONNECT.md)
+!.cursor/mcp.json
+!.cursor/rules/

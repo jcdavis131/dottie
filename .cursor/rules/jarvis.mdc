@@ -1,0 +1,40 @@
+---
+description: Jarvis shared context — when to call jarvis.context / claim / remember / recall / send and the harness tools from Cursor
+alwaysApply: false
+globs: apps/**,docs/**,packages/**,scripts/**,src/**,dottie/**,*.md
+---
+
+# Jarvis (shared daemon, MCP server `jarvis` in `.cursor/mcp.json`)
+
+Jarvis is the one always-on daemon the fleet shares (spec: `docs/JARVISD_SPEC.md`).
+Claude Code, Cursor and OpenCode read and write the same state, so use it instead
+of local notes or the per-repo `COORDINATION.md` boards (superseded; do not delete).
+
+## When to call what
+
+- **Start of work:** `jarvis.context(repo)` — open claims, open goals, recent memories and timeline, unread inbox. Do this before planning edits.
+- **Before editing a repo area:** `jarvis.claim(repo, area, note)`. It fails if another agent holds `repo+area`; do not edit until it succeeds. `jarvis.release` when done; `jarvis.claims` shows the board.
+- **Decisions, gotchas, commands that worked:** `jarvis.remember(text, scope, tags)`. Scope `repo:<name>`, `global`, or `person:<name>`. One fact per call, with the evidence (file path, command, number).
+- **Before grepping for something you may already know:** `jarvis.recall(query, scope)`. If empty, grep, then `remember` the answer.
+- **Handoffs to Claude Code or OpenCode:** `jarvis.send(to, body)` with agent ids `claude`, `cursor`, `opencode`; `jarvis.inbox(mark_read)` to read yours. Say what is verified and what is not.
+- **Goals:** `jarvis.goal` / `jarvis.goals` / `jarvis.goal_done(id, result)`.
+- **Harness:** `harness.route(goal)` to pick an approach, `harness.run(goal, mcp_namespace)` to execute; both record timeline rows.
+- **`jarvis.ask(question, repo)`:** only when the operator has set `ANTHROPIC_API_KEY` on the daemon. Otherwise it returns `brain unavailable`; say "brain is off" and answer from context yourself. Never invent a Jarvis answer.
+- **`jarvis.status()`:** version, uptime, counts, brain availability.
+
+Every tool returns JSON with `ok`; on failure read `error` and `example` before retrying.
+
+## Session shape
+
+1. `jarvis.context`, then `jarvis.recall` for the area.
+2. `jarvis.claim` the area; if it fails, `jarvis.send` the holder or choose another area.
+3. Work; `jarvis.remember` as you learn.
+4. `jarvis.release`, `jarvis.goal_done` if applicable, `jarvis.send` the handoff.
+
+## Voice
+
+Measured, evidence-backed, honest about what is unmeasured. State the number, the
+file, or the command. No sports metaphors, no hype.
+
+Setup and verification: `docs/JARVIS_CONNECT.md`. If the `jarvis` server is not
+listed under Cursor Settings → MCP, fix the config before working around it.

@@ -290,6 +290,21 @@ Extensible: replace filesystem queue with `XADD dottie:queue * task A` or Supaba
 
 Only name is Dottie model + harness with Scout CLI tool — never hatch 2.0.
 
+## Connect an agent
+
+Claude Code, Cursor and OpenCode connect to the shared `jarvisd` daemon
+(`docs/JARVISD_SPEC.md`) over MCP for context, memory, claims and handoffs.
+Export `JARVIS_URL` (default `http://127.0.0.1:8790`) and `JARVIS_BEARER`, then:
+
+| Client | Config | Verify |
+|---|---|---|
+| Claude Code | `.mcp.json` + SessionStart hook in `.claude/settings.json` + `.claude/skills/jarvis` | `claude mcp list` |
+| Cursor | `.cursor/mcp.json` + `.cursor/rules/jarvis.mdc` | Settings → MCP shows `jarvis` |
+| OpenCode | `opencode.json` `mcp.jarvis` | `opencode mcp list` |
+
+Details, the two-client acceptance test, and how to copy this into other repos:
+`docs/JARVIS_CONNECT.md`.
+
 ## License
 
 MIT — Solo personal project, no connection to employer, built with public/free-tier only. See `LICENSE` and per-package READMEs.
