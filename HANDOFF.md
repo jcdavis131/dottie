@@ -18,8 +18,10 @@ before writing "current" anywhere in this file.
 
 ## 📌 Session continuation — 2026-09-05 (supersedes every block below)
 
-**Re-measured 2026-09-05 at HEAD `74692b3`,** branch
-`claude/github-projects-review-lxnuul`. The 2026-08-14 block below cites
+**Re-measured 2026-09-05 at HEAD `23870d7`,** branch
+`claude/github-projects-review-lxnuul` (re-stamped the same day after the
+factory and the frontier pass landed; the previous stamp `74692b3` had drifted
+21 commits against the 20-commit budget). The 2026-08-14 block below cites
 `18e3454`, now 213 commits behind HEAD against a 20-commit budget, so
 `check_handoff_fresh.py --check` fails STALE (on a shallow clone it reports
 UNKNOWN SHA instead — same fix, do not read it as a rewrite).
@@ -40,6 +42,13 @@ gate reads MAE 3.816 against a 3.8 target (fail), unified G2 0.6851 against
 0.65 (fail), and equities `ic_proxy` 5.827 is not a plausible IC (DAG node
 `equities-forward-ic`). `factory data restore` recovered the pitch and
 gridiron caches into vector-unified from sibling checkouts.
+
+**Frontier pass, same day:** every agent-doable node on the DAG frontier now
+carries a draft PR (jcamd #8, vector-hub #16, gridiron #12, pitch #11,
+unified #16, equities #15, hoops #31), each green on its head; realty PR #4
+got a review comment instead of a merge (three conflicts, stale numbers).
+`docs/project_dag.json` notes record what finishes each. Operator-only:
+alamost.com (attach Neon, owner vars, redeploy), Vercel analytics, slasso.com.
 
 **CI was red on every `main` push 08-18 -> 08-27** at the FIRST hard gate
 (`Ruff lint — packages/ava-skills`: 9 findings in `skills/anydoc/skill.py`).
