@@ -47,7 +47,15 @@ root, where there is no package.json — the same failure 7c18322 fixed once
 before. `vercel.json` is restored to the last shape that ever deployed
 (6d7391f: prebuilt static `apps/arxiviq/out`, headers kept). The SSR
 conductor + `/api/pair/*` only ships once the operator sets Root Directory
-to `apps/arxiviq` in the Vercel dashboard (plan §6 decision 4). Four more
+to `apps/arxiviq` in the Vercel dashboard (plan §6 decision 4). With that,
+the `arxiviq` Vercel project deploys green again (first Ready since 08-19).
+The second project, `dottie` (no custom domain, only `*.vercel.app`), is set
+to framework **fastapi** in the dashboard and has errored on **every**
+deployment in its history: it scans the repo for an `app` variable, finds
+~70, and asks for a `[tool.vercel] entrypoint`. No repo change can pick one
+honestly (the only FastAPI apps are the torch-bound `apps/ava-factory/server.py`
+and `apps/dottie/dottie/api.py`, neither Vercel-shaped) — operator decides
+whether to delete that project or point it at an app. Four more
 ratchets were red on the clean tree and are baselined, not silenced:
 gate_audit, resolver_fallbacks, shell_true (each WITH a judgment) and the
 GOAT audit (extract 9.5 -> 8.67, secrets 9.5 -> 9.0 after e80ca2c/d01006b;
