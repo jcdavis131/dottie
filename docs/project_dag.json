@@ -119,7 +119,7 @@
       "depends_on": [],
       "why": "The apex domain is the front door of five games and today opens onto a demo page. Cheapest reach win in the family.",
       "acceptance": "index.html has hrefs to hoops/gridiron/pitch/equities/unified subdomains; production promoted (not a preview)",
-      "note": "2026-09-05: vector-hub branch claude/github-projects-review-lxnuul adds a sticky five-game nav, replaces the token-soup hero/About with copy that says the map is a generated layout, retires WHO-E. Real vectors.json on the hub stays open: the 20,719-entity joint matrix is box-only (see unified-matrix in factory/datasets.json)."
+      "note": "2026-09-05: vector-hub PR #16 (draft) adds a sticky five-game nav, replaces the token-soup hero/About with copy that says the map is a generated layout, retires WHO-E. Real vectors.json on the hub stays open: the 20,719-entity joint matrix is box-only (see unified-matrix in factory/datasets.json)."
     },
     {
       "id": "vector-ci-green",
@@ -132,7 +132,7 @@
       "depends_on": [],
       "why": "Five live products have red CI; the japandi merge broke lint on three at once. Red gates make every later hill-climb unverifiable.",
       "acceptance": "latest default-branch run green in all five; hoops has a ruff config and at least a provenance test",
-      "note": "2026-09-05: branches pushed on gridiron, pitch, unified, equities (ruff 0.8.6 clean, cml.yaml dropped where it never ran, pitch F823 bugs fixed, equities syntax errors repaired) and hoops (first ci.yml + smoke suite). Done when the five PRs merge and default-branch runs are green."
+      "note": "2026-09-05: draft PRs gridiron #12, pitch #11, unified #16, equities #15 (ruff 0.8.6 clean, cml.yaml dropped where it never ran, pitch F823 bugs fixed, equities syntax errors repaired) and hoops #31 (first ci.yml + smoke suite, 85 tests; found the offline.html stylesheet 404 and a dead manifest script tag). Done when the five PRs merge and default-branch runs are green."
     },
     {
       "id": "host-jarvis",
@@ -315,7 +315,7 @@
       "size": "S",
       "depends_on": [],
       "acceptance": "README numbers match data/*_report.json; leakage tests green",
-      "note": "2026-09-05: README reconciled to assets/eval_forward.json (ic_rank_6m -0.0166, gate false); the 0.174/0.22/0.31 ledger marked unverified; eval_equities_latest.json ic_proxy 5.827 identified as not an IC. In the vector-equities branch. Rerunning eval_forward.py on the v4 trades is the remaining step."
+      "note": "2026-09-05: README reconciled to assets/eval_forward.json (ic_rank_6m -0.0166, gate false); the 0.174/0.22/0.31 ledger marked unverified; eval_equities_latest.json ic_proxy 5.827 identified as not an IC. In vector-equities PR #15. Rerunning eval_forward.py on the v4 trades is the remaining step."
     },
     {
       "id": "equities-peer-drift",
@@ -438,7 +438,7 @@
       "size": "S",
       "depends_on": [],
       "acceptance": "who-e.com serves the word games from the who-e repo; no stray who-e files in vector-hub",
-      "note": "2026-09-05: vector-hub leak removed in the hub-nav-restore branch (manifest, landing pages, .well-known alias claim, roster tile). dottie-harness-api serves who-e.com as a reserved page. Where who-e.com lives is the operator's decision."
+      "note": "2026-09-05: vector-hub leak removed in vector-hub PR #16 (manifest, landing pages, .well-known alias claim, roster tile). dottie-harness-api serves who-e.com as a reserved page. Where who-e.com lives is the operator's decision."
     },
     {
       "id": "flywheel-gate",
