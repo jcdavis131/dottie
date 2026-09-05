@@ -7,9 +7,11 @@ OpenCode speak MCP to it; humans and scripts speak JSON over HTTP to it. It owns
 shared state (memory, claims, inbox, goals, timeline index) in one SQLite file.
 
 The client agent is the brain in v1 (plan §6 decision 1). jarvisd is the shared
-context, tools and routing server. An optional Anthropic-backed `jarvis.ask` tool
-exists for when the operator sets `ANTHROPIC_API_KEY`; without the key it returns a
-structured "brain unavailable" error, never a fabricated answer.
+context, tools and routing server. `jarvis.ask` gives it a voice of its own at $0 by
+default: the home-box Ollama (§6), with Anthropic only when the operator sets
+`ANTHROPIC_API_KEY`. When neither can serve it returns a structured "brain
+unavailable" error, never a fabricated answer. Everything here runs free: SQLite,
+stdlib, a Cloudflare Tunnel or a Hugging Face Space.
 
 ## 1. Process shape
 
