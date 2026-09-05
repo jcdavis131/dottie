@@ -1,4 +1,4 @@
-<!-- SUPERSEDED 2026-07-26. Its 15 open items were extracted into the root
+<!-- SUPERSEDED 2026-07-26. The active board is tasks/plan.md (2026-09-05, the factory). Its 15 open items were extracted into the root
      TODO.md along with TODOS.md's 126. Kept for its completed history and context.
      Do not add new open items here — add them to TODO.md. -->
 
