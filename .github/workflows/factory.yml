@@ -1,0 +1,57 @@
+name: factory
+
+# The free half of the factory (docs/FACTORY.md): a weekly report of what the DAG says
+# is ready, whether the three registries still agree with it, and how fresh the
+# registered datasets are in the public sibling repos. Read-only: it commits nothing
+# and deploys nothing; the job summary is the artifact. The box does the GPU half.
+on:
+  schedule:
+    - cron: "17 6 * * 1"   # Mondays 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: dottie
+      # factory/ and scripts/dag_next.py are stdlib-only, so no uv sync: the report
+      # must stay cheap enough to never be the thing that gets switched off.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Sibling checkouts the dataset registry names (public; missing ones report as such)
+        shell: bash
+        run: |
+          set -e
+          for r in $(python3 -c "import json;print(' '.join(sorted({d['repo'] for d in json.load(open('dottie/factory/datasets.json'))['datasets']})))"); do
+            git clone --depth 1 --quiet "https://github.com/jcdavis131/$r" "$r" || echo "::warning::$r could not be cloned (private or renamed); its datasets report as 'repo not checked out'"
+          done
+      - name: Report
+        shell: bash
+        working-directory: dottie
+        run: |
+          set -o pipefail
+          {
+            echo '## Factory report'
+            echo; echo '### Registries'; echo '```'
+            python3 -m factory check
+            echo '```'
+            echo; echo '### DAG frontier'; echo '```'
+            python3 scripts/dag_next.py
+            echo '```'
+            echo; echo '### Datasets'; echo '```'
+            FACTORY_WORKSPACE="$GITHUB_WORKSPACE" python3 -m factory data check
+            echo '```'
+            echo; echo '### Training queue'; echo '```'
+            FACTORY_WORKSPACE="$GITHUB_WORKSPACE" python3 -m factory train list
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Registries must agree with the DAG
+        working-directory: dottie
+        run: python3 -m factory check

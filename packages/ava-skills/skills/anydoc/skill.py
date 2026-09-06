@@ -2,9 +2,10 @@
 """ava-skill anydoc — wraps bigbang.plugins.extract.anydoc"""
 
 from __future__ import annotations
-from typing import Any, Dict, List, Union
-from pathlib import Path
+
 import sys
+from pathlib import Path
+from typing import Any
 
 # ensure scout-cli bigbang is importable when run via skills.loader
 # Dottie monorepo layout: packages/ava-skills is sibling of apps/scout-cli
@@ -79,7 +80,8 @@ def run(model: Any = None, tokenizer: Any = None, mode: str = "mock", query: str
         raise ValueError(f"{SKILL_NAME}: unknown mode {mode!r}; expected one of {VALID_MODES}")
     # mock: exercise stdlib path with real docx/html/txt samples
     if mode == "mock":
-        import io, zipfile, xml.etree.ElementTree as ET
+        import io
+        import zipfile
         # build minimal docx with Heading1 Hello
         def _make_docx_hello():
             bio = io.BytesIO()

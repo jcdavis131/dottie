@@ -1,0 +1,107 @@
+# syntax=docker/dockerfile:1.7
+# Solo personal project, no connection to employer, built with public/free-tier only.
+#
+# jarvisd image (docs/JARVISD_SPEC.md §1, §7). Build context is the DOTTIE MONOREPO ROOT:
+#
+#   docker build -f Dockerfile.jarvisd -t jarvisd:local .
+#   docker compose --env-file deploy/.env -f docker-compose.jarvisd.yml up -d --build
+#
+# The context filter lives in Dockerfile.jarvisd.dockerignore (BuildKit picks up
+# <Dockerfile>.dockerignore automatically) so the root .dockerignore-less builds of
+# apps/dottie/Dockerfile are unaffected. Only the uv workspace ships: root pyproject.toml,
+# uv.lock and the five members (apps/jarvisd, apps/scout-cli, packages/*). `uv sync
+# --frozen` must parse EVERY member pyproject to load the lock, and the editable installs
+# need each member's source + README.md (setuptools/hatchling read `readme = "README.md"`).
+#
+# Stages:
+#   base    - deps + sources + non-root user; everything the daemon needs
+#   spaces  - base with PORT=7860, for Hugging Face Spaces (docker build --target spaces)
+#   runtime - the default (last stage): PORT=8790
+#
+# Port is read from $PORT at start (default 8790) so one image serves both the home box
+# (compose maps 127.0.0.1:8790) and a Space (which injects PORT=7860 as a Variable, or
+# sets `app_port: 8790` in the Space README front matter -- see deploy/README.md).
+
+FROM python:3.11-slim AS base
+
+# uv pinned to the version the lock was produced with on the dev box (uv 0.8.17).
+COPY --from=ghcr.io/astral-sh/uv:0.8.17 /uv /uvx /bin/
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=0 \
+    UV_PROJECT_ENVIRONMENT=/app/.venv \
+    UV_CACHE_DIR=/tmp/uv-cache \
+    UV_NO_SYNC=1 \
+    UV_FROZEN=1 \
+    PATH=/app/.venv/bin:$PATH \
+    JARVIS_DB=/data/jarvis.db \
+    JARVIS_WORKSPACE=/workspace \
+    JARVIS_HOST=0.0.0.0
+
+# sqlite3 CLI (~1.5 MB) so the documented backup line works verbatim inside the container:
+#   sqlite3 /data/jarvis.db ".backup /data/backup/jarvis-$(date +%F).db"
+# ca-certificates for the optional Anthropic brain and outbound MCP.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        sqlite3 ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# uid 1000 is mandatory on Hugging Face Spaces and harmless elsewhere. /data and
+# /workspace are created + chowned BEFORE the VOLUME line so an empty named volume
+# inherits writable ownership on first mount.
+ARG JARVISD_UID=1000
+RUN useradd -m -u ${JARVISD_UID} jarvis \
+    && mkdir -p /data/backup /workspace \
+    && chown -R jarvis:jarvis /data /workspace /app
+
+# --- layer 1: third-party deps only (cache survives source edits) -----------------------
+# Only the pyproject files are needed for uv to load the workspace + lock. The member
+# list here MUST match [tool.uv.workspace].members in the root pyproject.toml.
+COPY pyproject.toml uv.lock ./
+COPY apps/jarvisd/pyproject.toml                apps/jarvisd/pyproject.toml
+COPY apps/scout-cli/pyproject.toml              apps/scout-cli/pyproject.toml
+COPY packages/ava-skills/pyproject.toml         packages/ava-skills/pyproject.toml
+COPY packages/ava-open-harness/pyproject.toml   packages/ava-open-harness/pyproject.toml
+COPY packages/personal-graphify/pyproject.toml  packages/personal-graphify/pyproject.toml
+
+# Extras for the jarvisd package. Spec §6: the Anthropic brain is the optional extra
+# `jarvisd[brain]`. Pass --build-arg JARVISD_SYNC_ARGS="" to build without it.
+ARG JARVISD_SYNC_ARGS="--extra brain"
+RUN --mount=type=cache,target=/tmp/uv-cache \
+    uv sync --frozen --no-dev --no-install-workspace --package jarvisd ${JARVISD_SYNC_ARGS}
+
+# --- layer 2: workspace sources + editable installs -------------------------------------
+COPY apps/jarvisd      apps/jarvisd
+COPY apps/scout-cli    apps/scout-cli
+COPY packages          packages
+RUN --mount=type=cache,target=/tmp/uv-cache \
+    uv sync --frozen --no-dev --package jarvisd ${JARVISD_SYNC_ARGS} \
+    && chown -R jarvis:jarvis /app
+
+USER jarvis
+
+VOLUME ["/data"]
+EXPOSE 8790
+
+# stdlib probe (slim image has no curl). Shell form so $PORT resolves at check time.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD python -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/api/health' % os.environ.get('PORT', os.environ.get('JARVIS_PORT', '8790')), timeout=4)"
+
+# Spec §1 entrypoint. `sh -c` only to resolve $PORT / $JARVIS_DB; exec replaces the shell
+# so signals reach uvicorn. UV_NO_SYNC/UV_FROZEN keep `uv run` off the network at start.
+CMD ["sh", "-c", "exec uv run python -m jarvisd serve --host 0.0.0.0 --port \"${PORT:-${JARVIS_PORT:-8790}}\" --db \"${JARVIS_DB:-/data/jarvis.db}\""]
+
+# ---------------------------------------------------------------------------------------
+# Hugging Face Spaces: docker build -f Dockerfile.jarvisd --target spaces .
+# Spaces cannot select a target, so in a Space either add Variable PORT=7860 or set
+# `app_port: 8790` in the Space README front matter (deploy/README.md, path B).
+FROM base AS spaces
+ENV PORT=7860
+EXPOSE 7860
+
+# Default target (last stage): home box / VM, port 8790.
+FROM base AS runtime

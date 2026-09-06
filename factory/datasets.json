@@ -1,0 +1,268 @@
+{
+  "doc": "docs/FACTORY.md §4. path is inside the owning repo; restore_from entries are workspace-relative (repo/…). cadence_days null = static (can be missing, never stale). expected_sha256 values come from vector-unified/data/alienware_cache_bundle.json (2026-08-16) where recorded.",
+  "datasets": [
+    {
+      "id": "arxiviq-papers",
+      "repo": "arxiviq",
+      "path": "site/public/data/papers.json",
+      "provenance": "honest-synthetic",
+      "source": "arXiv API via scripts/fetch_topics.py; fetch_stats.json any_synthetic=true, so some tags fall back to templated papers",
+      "refresh": "{python} scripts/fetch_topics.py",
+      "cadence_days": 7,
+      "fresh_key": "mtime",
+      "required": true,
+      "restore_from": [],
+      "consumers": [
+        "arxiviq-real-data"
+      ]
+    },
+    {
+      "id": "arxiviq-graph",
+      "repo": "arxiviq",
+      "path": "site/public/data/graph.json",
+      "provenance": "unknown",
+      "source": "scripts/build_graph.py over papers.json",
+      "refresh": "{python} scripts/build_graph.py",
+      "cadence_days": 7,
+      "fresh_key": "mtime",
+      "required": false,
+      "restore_from": [],
+      "consumers": [
+        "arxiviq-real-data"
+      ]
+    },
+    {
+      "id": "gridiron-train-matrix",
+      "repo": "vector-gridiron",
+      "path": "pipeline/data/train_matrix.npz",
+      "provenance": "unknown",
+      "source": "pipeline/fetch_nflverse.py (real nflverse weekly stats) or train_mtnn.py --synthetic; the file does not say which",
+      "refresh": "{python} pipeline/fetch_nflverse.py --seasons 2021 2022 2023",
+      "cadence_days": 30,
+      "fresh_key": "mtime",
+      "required": true,
+      "restore_from": [],
+      "consumers": [
+        "gridiron-nflverse-fetch",
+        "gridiron-real-train"
+      ]
+    },
+    {
+      "id": "gridiron-vectors",
+      "repo": "vector-gridiron",
+      "path": "assets/vectors.json",
+      "provenance": "real",
+      "source": "shipped 32-d vectors, 5323 rows",
+      "refresh": null,
+      "cadence_days": null,
+      "expected_sha256": "744b847f00f20889d01e2abf4f77c2215129dcf76e79c581dc59feee05cd559a",
+      "required": true,
+      "restore_from": [],
+      "consumers": [
+        "unified-5th-game"
+      ]
+    },
+    {
+      "id": "hoops-vectors",
+      "repo": "vector-hoops",
+      "path": "assets/vectors.json",
+      "provenance": "real",
+      "source": "shipped 64-d vectors, 12966 player-seasons; re-shipped after the 2026-08-16 cache bundle, so no expected sha is pinned",
+      "refresh": null,
+      "cadence_days": null,
+      "required": true,
+      "restore_from": [],
+      "consumers": [
+        "unified-5th-game"
+      ]
+    },
+    {
+      "id": "hoops-scoreboard",
+      "repo": "vector-hoops",
+      "path": "assets/eval_scoreboard.json",
+      "provenance": "real",
+      "source": "held-out adjacent-season retrieval eval; computed_at is the freshness key",
+      "refresh": null,
+      "cadence_days": null,
+      "fresh_key": "json:computed_at",
+      "required": true,
+      "restore_from": [],
+      "consumers": [
+        "hoops-v6-retrain"
+      ]
+    },
+    {
+      "id": "pitch-vectors",
+      "repo": "vector-pitch",
+      "path": "assets/vectors.json",
+      "provenance": "real",
+      "source": "shipped 24-d vectors, 633 entries; re-shipped after the 2026-08-16 cache bundle, so no expected sha is pinned",
+      "refresh": null,
+      "cadence_days": null,
+      "required": true,
+      "restore_from": [],
+      "consumers": [
+        "unified-5th-game"
+      ]
+    },
+    {
+      "id": "pitch-mtnn-embeddings",
+      "repo": "vector-pitch",
+      "path": "assets/pitch_mtnn_embeddings.json",
+      "provenance": "real",
+      "source": "pitch 24-d MTNN embeddings, 2430 rows",
+      "refresh": null,
+      "cadence_days": null,
+      "expected_sha256": "88002e0d75ca012d5487ea110efa1935125bee20937eed82065447738b4c1216",
+      "required": true,
+      "restore_from": [],
+      "consumers": [
+        "unified-caches-restore"
+      ]
+    },
+    {
+      "id": "unified-matrix",
+      "repo": "vector-unified",
+      "path": "data/unified_matrix.npz",
+      "provenance": "real",
+      "source": "20719x64 joint embedding (hoops 12966, gridiron 5323, pitch 2430); gitignored, lives on the box",
+      "refresh": "{python} pipeline/build_unified_matrix.py",
+      "cadence_days": null,
+      "expected_sha256": "7c742c2715262ab11caf7cbd371ee27064cef60988236276670c5f75ad825be2",
+      "required": true,
+      "restore_from": [],
+      "consumers": [
+        "unified-caches-restore",
+        "unified-g2-retrain"
+      ]
+    },
+    {
+      "id": "unified-embedding-v3",
+      "repo": "vector-unified",
+      "path": "data/embedding_v3.npz",
+      "provenance": "unknown",
+      "source": "128-d encoder output before the 64-d head; the bundle expects ~18MB, the 5.1MB file present is the recorded fallback",
+      "refresh": null,
+      "cadence_days": null,
+      "required": true,
+      "restore_from": [
+        "vector-hoops/pipeline/data/_scratch/embedding_v3.npz"
+      ],
+      "consumers": [
+        "unified-caches-restore",
+        "unified-g2-retrain"
+      ]
+    },
+    {
+      "id": "unified-mtnn-best",
+      "repo": "vector-unified",
+      "path": "data/mtnn_best.pt",
+      "provenance": "unknown",
+      "source": "MTNN v9.2 best checkpoint; bundle marks it not honest_ready (519 bytes recorded vs 4.5MB present)",
+      "refresh": null,
+      "cadence_days": null,
+      "required": true,
+      "restore_from": [],
+      "consumers": [
+        "unified-caches-restore"
+      ]
+    },
+    {
+      "id": "unified-pitch-cache",
+      "repo": "vector-unified",
+      "path": "pipeline/data/pitch_mtnn_embeddings.json",
+      "provenance": "real",
+      "source": "copy of vector-pitch/assets/pitch_mtnn_embeddings.json that the unified trainer reads",
+      "refresh": null,
+      "cadence_days": null,
+      "expected_sha256": "88002e0d75ca012d5487ea110efa1935125bee20937eed82065447738b4c1216",
+      "required": true,
+      "restore_from": [
+        "vector-pitch/assets/pitch_mtnn_embeddings.json"
+      ],
+      "consumers": [
+        "unified-caches-restore"
+      ]
+    },
+    {
+      "id": "unified-gridiron-matrix",
+      "repo": "vector-unified",
+      "path": "pipeline/data/train_matrix.npz",
+      "provenance": "unknown",
+      "source": "copy of vector-gridiron/pipeline/data/train_matrix.npz that the unified trainer reads",
+      "refresh": null,
+      "cadence_days": null,
+      "required": true,
+      "restore_from": [
+        "vector-gridiron/pipeline/data/train_matrix.npz",
+        "vector-gridiron/data/train_matrix.npz"
+      ],
+      "consumers": [
+        "unified-caches-restore"
+      ]
+    },
+    {
+      "id": "equities-train-matrix",
+      "repo": "vector-equities",
+      "path": "pipeline/data/train_matrix.npz",
+      "provenance": "real",
+      "source": "SEC filings via pipeline/build_real_v6_towers.py (needs vector-core on PYTHONPATH)",
+      "refresh": "{python} pipeline/build_real_v6_towers.py",
+      "env": {
+        "PYTHONPATH": "../vector-hub/packages/vector-core/src:src"
+      },
+      "cadence_days": null,
+      "required": false,
+      "restore_from": [],
+      "consumers": [
+        "equities-peer-drift"
+      ]
+    },
+    {
+      "id": "equities-eval-latest",
+      "repo": "vector-equities",
+      "path": "pipeline/eval_reports/eval_equities_latest.json",
+      "provenance": "unknown",
+      "source": "unknown producer: no script in the repo writes ic_proxy; 5.827 is outside [-1, 1]. The reproducible forward eval is assets/eval_forward.json (equities-eval-forward).",
+      "refresh": null,
+      "cadence_days": null,
+      "required": false,
+      "restore_from": [],
+      "consumers": [
+        "equities-forward-ic"
+      ]
+    },
+    {
+      "id": "equities-eval-forward",
+      "repo": "vector-equities",
+      "path": "assets/eval_forward.json",
+      "provenance": "real",
+      "source": "pipeline/eval_forward.py over assets/trades_final_ranked_v6.csv (Spearman rank IC, triple-barrier hit rate)",
+      "refresh": "{python} pipeline/eval_forward.py",
+      "env": {
+        "PYTHONPATH": "../vector-hub/packages/vector-core/src:src"
+      },
+      "cadence_days": null,
+      "required": true,
+      "restore_from": [],
+      "consumers": [
+        "equities-forward-ic",
+        "equities-peer-drift"
+      ]
+    },
+    {
+      "id": "jcamd-graphify",
+      "repo": "jcamd",
+      "path": "graphify/index.html",
+      "provenance": "real",
+      "source": "personal-graphify export (archived repo) embedded in one static page",
+      "refresh": null,
+      "cadence_days": null,
+      "required": false,
+      "restore_from": [],
+      "consumers": [
+        "jcamd-lab-links"
+      ]
+    }
+  ]
+}

@@ -216,6 +216,9 @@ uv run pytest packages/ava-open-harness -q   # non-blocking in CI today (package
 | [`docs/ECOSYSTEM.md`](docs/ECOSYSTEM.md) | The normative map: loop, repos, tiers, label ceiling, provenance doctrine, honest status |
 | [`docs/CONSOLIDATION.md`](docs/CONSOLIDATION.md) | One monorepo, fewer surfaces: what is deprecated, what stays live, salvage manifest |
 | [`docs/PLATFORM_IMPROVEMENT_PLAN.md`](docs/PLATFORM_IMPROVEMENT_PLAN.md) | The plan: P0 CI-to-green, P1 break the label ceiling, P2 harness capability |
+| [`docs/JARVIS_HARNESS_PLAN.md`](docs/JARVIS_HARNESS_PLAN.md) | Portfolio triage of all 27 repos and the phased path to a hosted, agent-connected pair programmer built on this harness |
+| [`docs/PROJECT_DAG.md`](docs/PROJECT_DAG.md) | The unified project DAG: every piece of product and infra work as a node with dependencies; `scripts/dag_next.py` prints what is ready now |
+| [`docs/FACTORY.md`](docs/FACTORY.md) | The factory: how DAG nodes get executed. `python -m factory` runs the software line (repo validate gates, start/done), the MLOps line (the box's one training queue with gates) and the data line (dataset presence, freshness, restore) |
 | [`docs/LONGCAT2_INSIGHTS_SPEC.md`](docs/LONGCAT2_INSIGHTS_SPEC.md) | Architecture doctrine |
 | [`docs/DOTTIE_HARNESS_DEEP_SPEC.md`](docs/DOTTIE_HARNESS_DEEP_SPEC.md) | Harness deep spec (tiers, checkpointing, recovery ladder, verification economics) |
 | [`docs/TRAINING_CURRICULUM_SIZING.md`](docs/TRAINING_CURRICULUM_SIZING.md) | Curriculum sizing |
@@ -288,6 +291,21 @@ uv run scout queue list
 Extensible: replace filesystem queue with `XADD dottie:queue * task A` or Supabase realtime `INSERT queue` — task schema unchanged `{id,ts,task,from,to,status}`. Bridge guarantees at-least-once idempotent consumer, Paired receipt 7-field timeline triple-write `bundles/ultra/runs/dottie-tandem/timeline.jsonl + .scout/missions/dottie-tandem/timeline.jsonl + hidden`.
 
 Only name is Dottie model + harness with Scout CLI tool — never hatch 2.0.
+
+## Connect an agent
+
+Claude Code, Cursor and OpenCode connect to the shared `jarvisd` daemon
+(`docs/JARVISD_SPEC.md`) over MCP for context, memory, claims and handoffs.
+Export `JARVIS_URL` (default `http://127.0.0.1:8790`) and `JARVIS_BEARER`, then:
+
+| Client | Config | Verify |
+|---|---|---|
+| Claude Code | `.mcp.json` + SessionStart hook in `.claude/settings.json` + `.claude/skills/jarvis` | `claude mcp list` |
+| Cursor | `.cursor/mcp.json` + `.cursor/rules/jarvis.mdc` | Settings → MCP shows `jarvis` |
+| OpenCode | `opencode.json` `mcp.jarvis` | `opencode mcp list` |
+
+Details, the two-client acceptance test, and how to copy this into other repos:
+`docs/JARVIS_CONNECT.md`.
 
 ## License
 

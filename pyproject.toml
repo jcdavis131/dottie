@@ -20,6 +20,9 @@ members = [
   "packages/ava-open-harness",
   "packages/personal-graphify",
   "apps/scout-cli",
+  # jarvisd (docs/JARVISD_SPEC.md): stdlib + mcp/starlette/uvicorn, all already in the
+  # lock via scout-cli, so adding it changes no resolved versions.
+  "apps/jarvisd",
 ]
 exclude = ["apps/scout-rtx", "apps/ava-factory", "apps/dottie"]
 

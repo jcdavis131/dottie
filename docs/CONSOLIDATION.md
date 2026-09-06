@@ -12,11 +12,16 @@
    `bluehenre`) is deprecated.** It is wound down as a codebase per the salvage manifest below. Winding
    down the codebase is distinct from deprecating live properties: several sites it
    deployed stay live from their existing Vercel deploys (see "What stays").
-3. **The standalone GitHub repos are vendored mirrors, not sources of truth.**
-   `scout-cli`, `ava-skills`, `ava-open-harness`, and `ava-agi-factory-v6-4` mirror
+3. **The standalone GitHub repos are frozen mirrors, not sources of truth.**
+   `scout-cli`, `ava-skills`, `ava-open-harness`, and `personal-graphify` mirror
    dottie's `apps/scout-cli`, `packages/ava-skills`, `packages/ava-open-harness`, and
-   `apps/ava-factory` respectively. Changes originate in dottie and are pushed outward;
-   never the reverse.
+   `packages/personal-graphify`; `ava-agi-factory-v6-4` mirrors `apps/ava-factory`.
+   **As of 2026-09-05 the first four (plus `bluehen` and `agent-lasso`) carry an ARCHIVED
+   banner, their crons are disabled, their stale PRs are closed, and each has a
+   deprecation PR whose merge is followed by the GitHub "Archive" click.** Hand-syncing
+   drifted in both directions twice; if a standalone package is wanted again, publish it
+   from dottie with a one-way script. `ava-agi-factory-v6-4` is parked, not archived
+   (plan §2). `acne` is a real standalone package and stays active.
 4. **bhenre.com is retired as a surface.** That covers the org command console served
    from dottie `apps/bluehenre` (www.bhenre.com) and, in `bluehenre`, the storefront
    (bhenre.com), Simulation Lab (signals.bhenre.com), the planned Data Refinery

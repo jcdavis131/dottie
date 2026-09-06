@@ -1,1 +1,30 @@
-{"$schema":"https://openapi.vercel.sh/vercel.json","buildCommand":"cd apps/arxiviq && npm run build","framework":"nextjs","headers":[{"headers":[{"key":"Cache-Control","value":"public, max-age=31536000, immutable"},{"key":"Content-Type","value":"application/manifest+json"}],"source":"/manifest.json"},{"headers":[{"key":"Cache-Control","value":"public, max-age=0, must-revalidate"},{"key":"Content-Type","value":"application/javascript"}],"source":"/sw.js"},{"headers":[{"key":"Cache-Control","value":"public, max-age=31536000, immutable"}],"source":"/icon-(.*)"},{"headers":[{"key":"Cache-Control","value":"public, max-age=3600, stale-while-revalidate=86400"}],"source":"/data/(.*)"}],"installCommand":"cd apps/arxiviq && npm ci","outputDirectory":"apps/arxiviq/.next"}
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "echo prebuilt static from apps/arxiviq/out — the SSR conductor build needs the Vercel project Root Directory set to apps/arxiviq, see HANDOFF.md 2026-09-05",
+  "outputDirectory": "apps/arxiviq/out",
+  "cleanUrls": true,
+  "headers": [
+    {
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" },
+        { "key": "Content-Type", "value": "application/manifest+json" }
+      ],
+      "source": "/manifest.json"
+    },
+    {
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
+        { "key": "Content-Type", "value": "application/javascript" }
+      ],
+      "source": "/sw.js"
+    },
+    {
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }],
+      "source": "/icon-(.*)"
+    },
+    {
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600, stale-while-revalidate=86400" }],
+      "source": "/data/(.*)"
+    }
+  ]
+}

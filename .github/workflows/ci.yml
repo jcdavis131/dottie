@@ -80,11 +80,18 @@ jobs:
       # Trail: 334 (07-24) -> 263 -> 252 (08-01, pre-surface) -> 450 -> 449 (08-09,
       # full surface; -1 = pre-existing B904 fixed in the mcp serve command while
       # extending it for meta-MCP) -> 511 (08-14, main merge adds four scout-cli
-      # plugins). ava-skills 19 -> 0 and HARD since 08-01. Same ratchet: flip the
-      # next one the day it reaches 0 — ava-open-harness at 79 is now nearest.
-      # A number in a comment rots even inside one session — re-measure it, never
-      # carry it forward.
-      - name: Ruff lint (non-blocking — 511 known findings, see comment)
+      # plugins) -> 1022 (09-05). WHY 511 -> 1022: apps/scout-cli 291 -> 802, and
+      # 442 of that +511 is ONE new file, plugins/extract/anydoc.py (e80ca2c 08-26),
+      # written in one-line compound style — E701 220 / E702 146 / E722 31. personal-graphify
+      # 141 and ava-open-harness 79 are unchanged. Re-measured 2026-09-05 while
+      # un-redding CI: this figure had been stale since 08-26 and nothing caught it
+      # because the ava-skills hard gate above was failing first and skipping every
+      # later step, including the documented-counts check that guards this number.
+      # ava-skills 19 -> 0 and HARD since 08-01 (re-hit 9 on 08-18, back to 0 09-05).
+      # Same ratchet: flip the next one the day it reaches 0 — ava-open-harness at 79
+      # is still nearest. A number in a comment rots even inside one session —
+      # re-measure it, never carry it forward.
+      - name: Ruff lint (non-blocking — 1022 known findings, see comment)
         run: uvx ruff@0.15.22 check packages/ava-open-harness packages/personal-graphify apps/scout-cli --exclude apps/scout-cli/.venv || true
       # A RATCHET, not a lint. Fails only on a gate-shaped defect (fail-open dispatch,
       # mode-conditional escape, suppressed check) that is NOT already in the baseline;
@@ -148,6 +155,20 @@ jobs:
           uv run python scripts/test_task_eval_slice.py
           uv run python scripts/test_check_declared_capabilities.py
           uv run python scripts/test_store_symmetry_audit.py
+          uv run python scripts/test_dag_next.py
+      # The unified project DAG (docs/project_dag.json) is the plan every agent
+      # boots into. This keeps it a graph: unique ids, resolvable dependencies, no
+      # cycles. A DAG that rots into a list stops answering "what is ready now".
+      - name: Project DAG (acyclic, dependencies resolve)
+        run: uv run python scripts/dag_next.py --check
+      # The factory (docs/FACTORY.md) is how DAG nodes get executed: repos.json says how
+      # each repo is validated, train_queue.json what the box trains next, datasets.json
+      # what data exists. `factory check` keeps the three consistent with the DAG.
+      - name: Factory (registries agree with the DAG; suite)
+        run: |
+          set -e
+          uv run pytest factory/tests -q
+          uv run python -m factory check
       # Mutations that clear one store and leave another holding the value. Found in
       # bigbang/core/security.py 2026-08-02 (fixed a2ccea5): delete_secret cleared the
       # file vault and returned, so the keyring copy the READ path consults first was
@@ -429,6 +450,15 @@ jobs:
         # of `_httpx_client_fallback`. This audit decides which plugin gets worked on next,
         # so a wrong score does not merely misreport, it misdirects: `todos` was the
         # lowest-ranked plugin in the repo partly for having explanatory comments.
+        #
+        # RE-BASELINED 2026-09-05 (.goat_baseline.json, last snapshot 08-09). Two real
+        # regressions had landed behind the red ava-skills gate above, which skipped
+        # this step for ten days: extract 9.5 -> 8.67 (e80ca2c added anydoc.py, 890
+        # loc, D5 long-function score 2) and secrets 9.5 -> 9.0 (d01006b, D3 HOME
+        # layout, D5). Accepted as STATED debt the way the soft-lint ratchet states
+        # its 1022, not as a score that reproduces 9.5 — the code was not changed to
+        # earn the old number. The same snapshot pins comms/inbox/infer/pair, which
+        # were unprotected. Next regression from these levels goes red.
         run: |
           set -e
           cd apps/scout-cli

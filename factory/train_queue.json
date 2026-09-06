@@ -1,0 +1,123 @@
+{
+  "doc": "docs/FACTORY.md §3. One queue for the box; priority 1 first. Commands run in the repo with no shell; `{python}` is the interpreter running the factory. gate.metric is a dotted path into gate.report. Numbers here are targets and baselines with their source; the factory never writes a shipped asset.",
+  "jobs": [
+    {
+      "id": "gridiron-real-train",
+      "repo": "vector-gridiron",
+      "dag_node": "gridiron-real-train",
+      "priority": 1,
+      "needs_cuda": true,
+      "est_hours": 2,
+      "needs": [
+        "pipeline/train_mtnn.py",
+        "pipeline/eval_next_game.py",
+        "pipeline/data/train_matrix.npz"
+      ],
+      "smoke": "{python} pipeline/train_mtnn.py --epochs 2 --d-emb 32",
+      "run": "{python} pipeline/train_mtnn.py --epochs 50 --d-emb 32",
+      "eval": "{python} pipeline/eval_next_game.py",
+      "gate": {
+        "report": "pipeline/eval_reports/eval_gridiron_latest.json",
+        "metric": "metric",
+        "op": "<=",
+        "threshold": 3.8,
+        "baseline": 4.268,
+        "baseline_source": "README.md / LOCAL_GPU_HANDOFF.md §4 (MAE 4.268 → 3.8). The checked-in latest report reads 3.816, which this gate calls fail; its own `gates` block calls it pass."
+      },
+      "promote": [
+        "Copy the new checkpoint and vectors into assets/ with a *_manifest.json (sha256, rows, dims, trained_on).",
+        "Write the measured MAE into candidate.json; do not touch the shipped numbers in assets/data until the site validate gate passes.",
+        "Open a PR on vector-gridiron; merge only with `factory validate vector-gridiron` green."
+      ]
+    },
+    {
+      "id": "unified-g2-retrain",
+      "repo": "vector-unified",
+      "dag_node": "unified-g2-retrain",
+      "priority": 2,
+      "needs_cuda": true,
+      "est_hours": 3,
+      "needs": [
+        "pipeline/train_stage2.py",
+        "data/unified_matrix.npz",
+        "data/embedding_v3.npz"
+      ],
+      "smoke": "{python} pipeline/train_stage2.py --smoke --epochs 2",
+      "run": "{python} pipeline/train_stage2.py --epochs 60 --grl-lambda 0.3 --grl-ramp 10 --w-task 2.0 --w-sport 0.5",
+      "eval": null,
+      "gate": {
+        "report": "data/stage2_report.json",
+        "metric": "G2_shipped",
+        "op": "<=",
+        "threshold": 0.65,
+        "baseline": 0.6851,
+        "baseline_source": "data/stage2_report.json G2_shipped (sport_acc; lower is more sport-blind; floor 0.6258). The CORAL-centroid flags in LOCAL_GPU_HANDOFF.md do not exist in train_stage2.py (COORDINATION_LOCAL_GPU_BLOCKER.md), so the run uses the flags that do."
+      },
+      "promote": [
+        "Replace only the experimental block of data/unified_report.json with the measured G2; keep G1 negative, G3 PASS, G4 coarse 0.9828 (GOAL_AND_SHIP.md).",
+        "Copy pipeline/data/unified_stage2_best.pt to a manifest-tracked location; update candidate.json.",
+        "PR on vector-unified; merge with `factory validate vector-unified` green."
+      ]
+    },
+    {
+      "id": "hoops-v6-retrain",
+      "repo": "vector-hoops",
+      "dag_node": "hoops-v6-retrain",
+      "priority": 3,
+      "needs_cuda": true,
+      "est_hours": 4,
+      "needs": [
+        "pipeline/train_mtnn.py",
+        "pipeline/eval.py"
+      ],
+      "smoke": "{python} pipeline/train_mtnn.py --epochs 2 --d-emb 64 --fusion transformer --player-split",
+      "run": "{python} pipeline/train_mtnn.py --epochs 150 --d-emb 64 --scaling robust --era-align procrustes --w-vicreg 0.05 --fusion transformer --player-split",
+      "eval": "{python} pipeline/eval.py --split player --k 10 20 --out assets/eval_scoreboard_v6.json",
+      "gate": {
+        "report": "assets/eval_scoreboard_v6.json",
+        "metric": "results.mtnn.by_split.test.top1",
+        "op": ">=",
+        "threshold": 0.55,
+        "baseline": 0.438,
+        "baseline_source": "assets/eval_scoreboard.json results.mtnn.by_split.test.top1 = 0.438 (2026-07-25); target 0.55 per LOCAL_GPU_HANDOFF.md §2. Preflight fails today: pipeline/train_mtnn.py and pipeline/eval.py are not in vector-hoops (only train_with_text_fusion.py is); the trainer has to be restored or rewritten before this job can run."
+      },
+      "promote": [
+        "Copy assets/eval_scoreboard_v6.json over assets/eval_scoreboard.json only if the leak checks in the scoreboard PASS as well.",
+        "Copy the new mtnn_embeddings.f32 and vectors.json with sha256 in the scoreboard's embedding_asset/vectors_asset blocks.",
+        "PR on vector-hoops."
+      ]
+    },
+    {
+      "id": "equities-peer-drift",
+      "repo": "vector-equities",
+      "dag_node": "equities-peer-drift",
+      "priority": 4,
+      "needs_cuda": false,
+      "est_hours": 2,
+      "needs": [
+        "pipeline/train_mtnn.py",
+        "pipeline/eval_forward.py",
+        "pipeline/data/train_matrix.npz"
+      ],
+      "env": {
+        "PYTHONPATH": "../vector-hub/packages/vector-core/src:src"
+      },
+      "smoke": "{python} pipeline/train_mtnn.py --epochs 1 --dim 64",
+      "run": "{python} pipeline/train_mtnn.py --epochs 60 --dim 64",
+      "eval": "{python} pipeline/eval_forward.py",
+      "gate": {
+        "report": "assets/eval_forward.json",
+        "metric": "metrics.ic_rank_6m.score",
+        "op": ">",
+        "threshold": 0.0,
+        "baseline": -0.0166,
+        "baseline_source": "assets/eval_forward.json (pipeline/eval_forward.py, Spearman rank IC of pred 6M vs realized forward return): -0.0166 on 2026-09-05, gate.ic_gt_zero false. The earlier gate read eval_reports/eval_equities_latest.json ic_proxy 5.827, which is not an IC."
+      },
+      "promote": [
+        "Export with pipeline/export_v6_real_assets.py; write provenance into assets/data.",
+        "Update README claims only from the reconciled forward-IC eval (equities-forward-ic).",
+        "PR on vector-equities."
+      ]
+    }
+  ]
+}

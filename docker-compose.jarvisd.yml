@@ -1,0 +1,74 @@
+# Solo personal project, no connection to employer, built with public/free-tier only.
+#
+# jarvisd -- the always-on Jarvis daemon (docs/JARVISD_SPEC.md), beside the old dev API in
+# docker-compose.dottie.yml (that one owns 8787; this one owns 8790). Run it as:
+#
+#   cp deploy/.env.example deploy/.env && edit it   (JARVIS_BEARER is required)
+#   docker compose --env-file deploy/.env -f docker-compose.jarvisd.yml up -d --build
+#   docker compose --env-file deploy/.env -f docker-compose.jarvisd.yml --profile tunnel up -d
+#
+# `--env-file deploy/.env` matters: ${VAR} substitution in THIS file reads the shell
+# environment and the compose --env-file, NOT the service-level `env_file:` (that one only
+# feeds the container). The ${JARVIS_BEARER:?} guard below fails fast when it is missing.
+#
+# Exposure model (plan §5 Phase 2, spec §2):
+#   - the daemon binds 127.0.0.1:8790 on the host only; never a 0.0.0.0 port map
+#   - public HTTPS goes through the `tunnel` profile (cloudflared -> http://jarvisd:8790
+#     over the compose network), so the box needs no open inbound port
+#   - the bearer is checked by jarvisd itself (static + HMAC ephemeral, rate-limited)
+#   - Ollama on the home box is reachable from the container as host.docker.internal
+
+name: jarvisd
+
+services:
+  jarvisd:
+    build:
+      context: .
+      dockerfile: Dockerfile.jarvisd
+    image: jarvisd:local
+    init: true
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8790:8790"
+    volumes:
+      # SQLite + audit.jsonl + backups live in a named volume so `down` never loses state.
+      - jarvisd-data:/data
+      # The root the harness may read/write under (spec §7 JARVIS_WORKSPACE).
+      # Override the host side with JARVIS_WORKSPACE_HOST in deploy/.env.
+      - ${JARVIS_WORKSPACE_HOST:-~/workspace}:/workspace
+    env_file:
+      - deploy/.env
+    environment:
+      # Fail fast with an actionable message instead of a 401 storm later.
+      JARVIS_BEARER: ${JARVIS_BEARER:?set JARVIS_BEARER in deploy/.env and run compose with --env-file deploy/.env}
+      # Fixed by the image layout; do not override these in deploy/.env.
+      JARVIS_DB: /data/jarvis.db
+      JARVIS_WORKSPACE: /workspace
+      JARVIS_HOST: 0.0.0.0
+      JARVIS_PORT: "8790"
+      PORT: "8790"
+      # Ollama on the host (scout's plugins read OLLAMA_HOST). Override in deploy/.env.
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8790/api/health', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # Optional: Cloudflare Tunnel (free). Create the tunnel in Zero Trust -> Networks ->
+  # Tunnels, add a public hostname jarvis.<zone> -> http://jarvisd:8790, paste the token
+  # into deploy/.env as CLOUDFLARE_TUNNEL_TOKEN, then `--profile tunnel up -d`.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN in deploy/.env for the tunnel profile}
+    depends_on:
+      jarvisd:
+        condition: service_healthy
+
+volumes:
+  jarvisd-data:

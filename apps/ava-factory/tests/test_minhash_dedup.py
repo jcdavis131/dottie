@@ -1436,26 +1436,56 @@ class TestAgainstThePluginTree:
         mcp/cli.py defines _check_sdk twice under an import try/except. One
         returns True, the other raises RuntimeError. Both must be in the corpus.
 
-        Measured 1 on 2026-07-26, now 3 after vector/shared/towers.py added
-        stub classes ResidualTower/TransformerFusion that mirror the torch-available
-        vs torch-missing pattern. All must be recovered, not overwritten.
+        Measured 1 on 2026-07-26, 3 on 2026-08-02 after vector/shared/towers.py
+        added stub classes ResidualTower/TransformerFusion that mirror the
+        torch-available vs torch-missing pattern, 4 on 2026-09-05 when
+        secrets/cli.py grew the same try/except twin (_load_core._is_json).
+        Three hardcoded counts went stale in six weeks, so the expected figure
+        is now COUNTED FROM THE TREE with iter_functions -- the same key
+        generator collect_documents uses, but tallied independently of
+        _insert_document -- and the historical cases are pinned as a subset so
+        a regression that loses one of them still fails. All must be recovered,
+        not overwritten.
         """
         res, stats = plugins_result
-        assert stats["collisions"] == 3, (
-            f"{stats['collisions']} collisions; measured 1 on 2026-07-26, 3 now "
-            "with towers.py stubs added"
+        # Independent tally: how many times does a qualified name repeat in the
+        # tree? Each repeat past the first is one key collect_documents had to
+        # disambiguate. Computed without _insert_document, so it also catches
+        # the accounting drifting from the corpus.
+        seen: dict[str, int] = {}
+        for p in md.walk(SCOUT_PLUGINS):
+            try:
+                src = p.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            for key, _seg, _lineno in md.iter_functions(src, p.relative_to(SCOUT_PLUGINS).as_posix()):
+                seen[key] = seen.get(key, 0) + 1
+        duplicated = {k: n for k, n in seen.items() if n > 1}
+        expected_collisions = sum(n - 1 for n in duplicated.values())
+        assert expected_collisions >= 3, (
+            f"tree has only {expected_collisions} duplicate keys; the three measured on "
+            f"2026-08-02 should still be present: {sorted(duplicated)}"
+        )
+        assert stats["collisions"] == expected_collisions, (
+            f"{stats['collisions']} collisions reported vs {expected_collisions} "
+            f"duplicate keys in the tree: {sorted(duplicated)}"
         )
         docs, _ = md.collect_documents(SCOUT_PLUGINS, "function")
         disambiguated = [k for k in docs if "#L" in k]
-        assert len(disambiguated) == 3, f"disambiguated keys: {disambiguated}"
-        expected_bases = {
+        assert len(disambiguated) == expected_collisions, f"disambiguated keys: {disambiguated}"
+        # Every duplicate the tree holds must have been disambiguated, and the
+        # historically measured cases must still be among them.
+        actual_bases = {k.split("#L")[0] for k in disambiguated}
+        assert actual_bases == set(duplicated), (
+            f"bases {actual_bases} vs tree duplicates {set(duplicated)}"
+        )
+        pinned_bases = {
             "mcp/cli.py::_check_sdk",
             "vector/shared/towers.py::ResidualTower.__init__",
             "vector/shared/towers.py::TransformerFusion.__init__",
         }
-        actual_bases = {k.split("#L")[0] for k in disambiguated}
-        assert actual_bases == expected_bases, (
-            f"bases {actual_bases} vs expected {expected_bases}"
+        assert pinned_bases <= actual_bases, (
+            f"historically measured collisions missing: {pinned_bases - actual_bases}"
         )
         for dk in disambiguated:
             base = dk.split("#L")[0]

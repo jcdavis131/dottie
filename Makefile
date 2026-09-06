@@ -1,4 +1,4 @@
-.PHONY: sync test lint gates forge doctor status ci
+.PHONY: sync test lint gates forge doctor status ci factory
 
 # WHY THIS FILE MIRRORS ci.yml, and what it got wrong until 2026-08-01.
 #
@@ -54,11 +54,16 @@ test:
 	uv run python scripts/test_retrieval_eval.py
 	uv run python scripts/test_task_eval_slice.py
 	uv run python scripts/test_check_declared_capabilities.py
+	uv run pytest factory/tests -q
+
+factory:
+	uv run python -m factory check
+	uv run python -m factory next
 
 lint:
 	uvx ruff@0.15.22 check packages/ava-skills
 	uvx ruff@0.15.22 check packages/ava-open-harness packages/personal-graphify apps/scout-cli --exclude apps/scout-cli/.venv || true
-	@echo "ava-skills is the HARD gate (at 0). The rest is the documented 511-finding debt (scripts/check_documented_counts.py keeps this figure honest; re-measured 2026-08-14 after merging origin/main added scout-cli plugins comms/pair/tasks/rft, was 449)."
+	@echo "ava-skills is the HARD gate (at 0). The rest is the documented 1022-finding debt (scripts/check_documented_counts.py keeps this figure honest; re-measured 2026-09-05: was 511 on 08-14, +511 is apps/scout-cli 291 -> 802, 442 of it the new plugins/extract/anydoc.py from e80ca2c 08-26)."
 
 # `ruff format --check` is deliberately absent. It was here as `... || true`, which is a
 # suppressed check — nothing in this repo satisfies it, so it could only ever be noise or a
@@ -66,6 +71,7 @@ lint:
 # blocking only after a reformat has actually landed.
 
 gates:
+	uv run python -m factory check
 	uv run python scripts/gate_audit.py --check --baseline scripts/gate_audit_baseline.json
 	uv run python scripts/check_declared_capabilities.py --check --baseline scripts/declared_capabilities_baseline.json
 	uv run python scripts/check_documented_counts.py --check
