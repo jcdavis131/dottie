@@ -21,6 +21,9 @@ Public surface (the brain worker codes against these names — keep them stable)
     timeline(repo=None, limit=10, kind=None)                  -> list[dict]
     touch_session(agent, repo)                                -> dict
     context(agent, repo)                                      -> dict
+    pair_create(agent, expire_min=10)                         -> dict
+    pair_verify(code)                                         -> dict  (ok:false unknown/expired)
+    pair_status(code=None)                                    -> dict
     counts()                                                  -> dict[str, int]
     export(table)                                             -> Iterator[dict]
     close()                                                   -> None
@@ -30,8 +33,10 @@ from __future__ import annotations
 
 import json
 import re
+import secrets
 import sqlite3
 import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -46,7 +51,11 @@ TABLES: tuple[str, ...] = (
     "goals",
     "timeline",
     "sessions",
+    "pairings",
 )
+
+# Same alphabet as scout pair — no 0/O/1/I/L.
+PAIR_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
 GOAL_STATUSES: tuple[str, ...] = ("open", "done", "dropped")
 
@@ -111,6 +120,14 @@ CREATE TABLE IF NOT EXISTS sessions (
     repo TEXT NOT NULL,
     last_seen TEXT NOT NULL,
     UNIQUE(agent, repo)
+);
+
+CREATE TABLE IF NOT EXISTS pairings (
+    code TEXT PRIMARY KEY,
+    exp INTEGER NOT NULL,
+    created INTEGER NOT NULL,
+    paired INTEGER NOT NULL DEFAULT 0,
+    agent TEXT NOT NULL DEFAULT ''
 );
 """
 
@@ -552,6 +569,99 @@ class State:
                 "unread": self.unread_count(agent),
             }
 
+    # -- pairings ----------------------------------------------------------
+
+    @staticmethod
+    def _gen_pair_code() -> str:
+        return "".join(secrets.choice(PAIR_ALPHABET) for _ in range(6))
+
+    def pair_create(self, agent: str, expire_min: int = 10) -> dict[str, Any]:
+        """Issue a 6-char pairing code (unix `exp`/`created`, like scout pair)."""
+        agent = (agent or "").strip()
+        expire_min = max(1, int(expire_min))
+        created = int(time.time())
+        exp = created + expire_min * 60
+        with self._lock:
+            for _ in range(32):
+                code = self._gen_pair_code()
+                try:
+                    self._conn.execute(
+                        "INSERT INTO pairings(code, exp, created, paired, agent) "
+                        "VALUES (?, ?, ?, 0, ?)",
+                        (code, exp, created, agent),
+                    )
+                except sqlite3.IntegrityError:
+                    continue
+                return {
+                    "ok": True,
+                    "code": code,
+                    "exp": exp,
+                    "created": created,
+                    "paired": False,
+                    "agent": agent,
+                }
+        raise RuntimeError("could not allocate a unique pairing code")
+
+    def pair_verify(self, code: str) -> dict[str, Any]:
+        """Mark a code paired. Unknown/expired → `ok: false` (no accept-any)."""
+        code = (code or "").strip().upper()
+        if len(code) != 6 or any(c not in PAIR_ALPHABET for c in code):
+            return {"ok": False, "paired": False, "code": code, "error": "code must be 6 chars A-Z2-9 excluding 0/O/1/I/L"}
+        now = int(time.time())
+        with self._lock:
+            row = self._row("SELECT * FROM pairings WHERE code = ?", (code,))
+            if row is None:
+                return {"ok": False, "paired": False, "code": code, "error": "unknown code"}
+            if now > int(row["exp"]):
+                self._conn.execute("DELETE FROM pairings WHERE code = ?", (code,))
+                return {
+                    "ok": False,
+                    "paired": False,
+                    "code": code,
+                    "error": "expired",
+                    "exp": int(row["exp"]),
+                }
+            self._conn.execute("UPDATE pairings SET paired = 1 WHERE code = ?", (code,))
+            return {
+                "ok": True,
+                "paired": True,
+                "code": code,
+                "exp": int(row["exp"]),
+                "created": int(row["created"]),
+                "agent": row["agent"] or "",
+            }
+
+    def pair_status(self, code: str | None = None) -> dict[str, Any]:
+        """Status for one code, or aggregate counts when `code` is None."""
+        now = int(time.time())
+        if code is None or not str(code).strip():
+            with self._lock:
+                total = self._row("SELECT count(*) AS n FROM pairings")
+                live = self._row(
+                    "SELECT count(*) AS n FROM pairings WHERE paired = 1 AND exp >= ?",
+                    (now,),
+                )
+            return {
+                "ok": True,
+                "count": int(total["n"]) if total else 0,
+                "paired_count": int(live["n"]) if live else 0,
+            }
+        code = str(code).strip().upper()
+        row = self._row("SELECT * FROM pairings WHERE code = ?", (code,))
+        if row is None:
+            return {"ok": False, "paired": False, "code": code, "error": "unknown code"}
+        expired = now > int(row["exp"])
+        paired = bool(row["paired"]) and not expired
+        return {
+            "ok": True,
+            "paired": paired,
+            "code": code,
+            "exp": int(row["exp"]),
+            "created": int(row["created"]),
+            "agent": row["agent"] or "",
+            "expired": expired,
+        }
+
     # -- export / stats ----------------------------------------------------
 
     def counts(self) -> dict[str, int]:
@@ -569,12 +679,14 @@ class State:
         decode = {"memories": self._memory, "goals": self._goal, "timeline": self._event}.get(
             table, lambda r: r
         )
-        for row in self._rows(f"SELECT * FROM {table} ORDER BY id ASC"):  # noqa: S608
+        order = "code" if table == "pairings" else "id"
+        for row in self._rows(f"SELECT * FROM {table} ORDER BY {order} ASC"):  # noqa: S608
             yield decode(row)
 
 
 __all__ = [
     "GOAL_STATUSES",
+    "PAIR_ALPHABET",
     "TABLES",
     "ClaimConflictError",
     "State",

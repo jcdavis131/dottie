@@ -95,6 +95,11 @@ OpenCode wiring with a SessionStart hook and `jarvis` skill (Phase 3, see
 `docs/JARVIS_CONNECT.md`). Not verified from the build sandbox: the Docker
 image build and a live tunnel.
 
+**2026-09-07 pair-buddy slice (uncommitted unless Cam commits):** jarvisd
+`pairings` + `/api/pair/*`; scout pair prefers `JARVIS_URL`:8790; arxiviq
+proxies + `/api/jarvis/*` BFF + conductor live strip. Spec:
+`docs/DOTTIE_PAIR_BUDDY_SPEC.md`. Harness-api proxy deferred.
+
 Verified locally at this HEAD: every ci.yml gate through the scout-cli
 suite (2565 passed / 2 skipped, 8m05s) — which supersedes the 08-14 note
 of "20 failing scout-cli tests".

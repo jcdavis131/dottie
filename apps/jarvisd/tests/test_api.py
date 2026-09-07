@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -78,6 +79,29 @@ def test_timeline_and_export(client: TestClient, auth_headers: dict[str, str]) -
     assert rows[0]["text"] == "exported row"
     assert client.get("/api/export/secrets", headers=auth_headers).status_code == 404
     assert client.get("/api/timeline", headers=auth_headers).json() == {"ok": True, "timeline": []}
+
+
+def test_pair_create_verify_status(client: TestClient, auth_headers: dict[str, str]) -> None:
+    created = client.post("/api/pair/create", json={"expire_min": 10}, headers=auth_headers).json()
+    assert created["ok"] is True
+    code = created["code"]
+    assert len(code) == 6 and created["agent"] == "tester"
+    status = client.get("/api/pair/status", params={"code": code}, headers=auth_headers).json()
+    assert status["ok"] is True and status["paired"] is False
+    bad = client.post("/api/pair/verify", json={"code": "ZZZZZZ"}, headers=auth_headers).json()
+    assert bad["ok"] is False and bad["paired"] is False and "unknown" in bad["error"]
+    verified = client.post("/api/pair/verify", json={"code": code}, headers=auth_headers).json()
+    assert verified["ok"] is True and verified["paired"] is True
+    status2 = client.get("/api/pair/status", params={"code": code}, headers=auth_headers).json()
+    assert status2["paired"] is True
+    agg = client.get("/api/pair/status", headers=auth_headers).json()
+    assert agg["ok"] is True and agg["paired_count"] >= 1
+    # expired codes fail honestly
+    store = client.app.state.store
+    with store._lock:
+        store._conn.execute("UPDATE pairings SET exp = ? WHERE code = ?", (int(time.time()) - 1, code))
+    expired = client.post("/api/pair/verify", json={"code": code}, headers=auth_headers).json()
+    assert expired["ok"] is False and expired["error"] == "expired"
 
 
 def test_route_plan_shapes(client: TestClient, auth_headers: dict[str, str]) -> None:

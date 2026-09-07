@@ -111,7 +111,7 @@ def build_app(config: Config, *, state: State | None = None) -> Starlette:
             f"brain: {'available' if brain_status(config)['available'] else 'unavailable: ' + str(brain_status(config)['reason'])}",
             "mcp: /mcp (streamable-http)" + (", /sse (sse)" if config.sse else ""),
             "api: /api/health /api/route /api/run /api/plan /api/memories /api/recall "
-            "/api/claims /api/inbox /api/goals /api/timeline /api/export/<table>",
+            "/api/claims /api/inbox /api/goals /api/timeline /api/pair /api/export/<table>",
         ]
         for note in config.status_notes():
             lines.append(f"note: {note}")
@@ -217,6 +217,23 @@ def build_app(config: Config, *, state: State | None = None) -> Starlette:
             )
         )
 
+    async def api_pair_create(request: Request) -> Response:
+        doc = await _body(request)
+        expire_min = doc.get("expire_min", 10)
+        try:
+            expire_min = int(expire_min)
+        except (TypeError, ValueError) as e:
+            raise BadRequestError("'expire_min' must be an integer") from e
+        return _reply(store.pair_create(_agent(request), expire_min=expire_min))
+
+    async def api_pair_verify(request: Request) -> Response:
+        doc = await _body(request)
+        return _reply(store.pair_verify(_require_str(doc, "code")))
+
+    async def api_pair_status(request: Request) -> Response:
+        code = request.query_params.get("code") or None
+        return _reply(store.pair_status(code))
+
     async def api_export(request: Request) -> Response:
         table = request.path_params["table"]
         if table not in TABLES:
@@ -246,6 +263,9 @@ def build_app(config: Config, *, state: State | None = None) -> Starlette:
         Route("/api/inbox", api_inbox, methods=["GET", "POST"]),
         Route("/api/goals", api_goals, methods=["GET", "POST", "PATCH"]),
         Route("/api/timeline", api_timeline, methods=["GET"]),
+        Route("/api/pair/create", api_pair_create, methods=["POST"]),
+        Route("/api/pair/verify", api_pair_verify, methods=["POST"]),
+        Route("/api/pair/status", api_pair_status, methods=["GET"]),
         Route("/api/export/{table}", api_export, methods=["GET"]),
     ]
     # FastMCP builds its transports as tiny Starlette apps with no middleware of

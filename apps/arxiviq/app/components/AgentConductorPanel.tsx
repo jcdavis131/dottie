@@ -55,6 +55,14 @@ export default function AgentConductorPanel({ tandem = false, pairCode }: { tand
   const [scratchInput, setScratchInput] = useState('');
   const [feedbackMsg, setFeedbackMsg] = useState('');
   const [tandemState, setTandemState] = useState<{ paired:boolean; code?:string; wireBadge?:string; hash6?:string; pwaBadge?:string }>({ paired:false, code: pairCode });
+  const [jarvisLive, setJarvisLive] = useState<{
+    reachable: boolean;
+    provenance: string;
+    claims: any[];
+    goals: any[];
+    demo?: boolean;
+    error?: string;
+  }>({ reachable: false, provenance: 'unreachable', claims: [], goals: [] });
   const confettiRef = useRef<HTMLDivElement>(null);
 
   const getHash6 = useCallback((s:string)=>{
@@ -116,7 +124,7 @@ export default function AgentConductorPanel({ tandem = false, pairCode }: { tand
           const hash6 = r.hash6 ?? getHash6(r.hash ?? pairCode ?? 'acd-v6-placeholder-binary');
           const wire = r.wireBadge ?? `v6@${hash6}`;
           const pwa = r.pwaBadge ?? `v67@${hash6}`;
-          setTandemState(s=> ({ ...s, paired: !!r.paired || !!r.ok, code: s.code || pairCode, wireBadge: s.wireBadge || wire, hash6, pwaBadge: s.pwaBadge || pwa }));
+          setTandemState(s=> ({ ...s, paired: !!r.paired, code: s.code || pairCode, wireBadge: s.wireBadge || wire, hash6, pwaBadge: s.pwaBadge || pwa }));
         } else if (pairCode) {
           const hash6 = getHash6(pairCode);
           const badges = computeWireBadge(hash6, 6, 67);
@@ -134,6 +142,37 @@ export default function AgentConductorPanel({ tandem = false, pairCode }: { tand
     const iv = setInterval(probe, 8000);
     return ()=>{ alive=false; clearInterval(iv); };
   },[tandem, pairCode]);
+
+  useEffect(()=>{
+    let alive=true;
+    const loadJarvis = async ()=>{
+      try{
+        const [health, claimsR, goalsR] = await Promise.all([
+          fetch('/api/jarvis/health', { cache:'no-store' }).then(x=> x.json()).catch(()=> null),
+          fetch('/api/jarvis/claims', { cache:'no-store' }).then(x=> x.json()).catch(()=> null),
+          fetch('/api/jarvis/goals', { cache:'no-store' }).then(x=> x.json()).catch(()=> null),
+        ]);
+        if (!alive) return;
+        const reachable = !!(health && health.ok && health.provenance === 'jarvisd');
+        const claims = reachable && Array.isArray(claimsR?.claims) ? claimsR.claims : [];
+        const goals = reachable && Array.isArray(goalsR?.goals) ? goalsR.goals : [];
+        setJarvisLive({
+          reachable,
+          provenance: reachable ? 'jarvisd' : (health?.provenance || claimsR?.provenance || 'unreachable'),
+          claims,
+          goals,
+          demo: !reachable,
+          error: reachable ? undefined : (health?.error || claimsR?.error || 'jarvisd unreachable'),
+        });
+      }catch{
+        if (!alive) return;
+        setJarvisLive({ reachable:false, provenance:'unreachable', claims:[], goals:[], demo:true, error:'jarvisd unreachable' });
+      }
+    };
+    loadJarvis();
+    const iv = setInterval(loadJarvis, 8000);
+    return ()=>{ alive=false; clearInterval(iv); };
+  },[]);
 
   const doConfetti = useCallback((e?: React.MouseEvent)=>{
     const root = confettiRef.current;
@@ -244,6 +283,36 @@ export default function AgentConductorPanel({ tandem = false, pairCode }: { tand
           <span style={{ width:7, height:7, borderRadius:99, background:'#22c55e', boxShadow:'0 0 0 2px rgba(34,197,94,.22)' }} />
           <span style={{ fontSize:11, color:'#86A99A', letterSpacing:0.1 }}>live • {agents.length} warm</span>
         </div>
+      </div>
+
+      {/* Jarvisd live strip — provenance-honest; fixtures labeled demo/unreachable */}
+      <div style={{ display:'flex', gap:8, alignItems:'center', padding:'0 12px', minHeight:34, background:'#0A1210', borderBottom:'1px solid #1E3328', fontSize:11.2, flexWrap:'wrap' }}>
+        <span style={{ fontWeight:700, color:'#8AFFBE', letterSpacing:0.15 }}>Jarvis</span>
+        <span style={{
+          display:'inline-flex', alignItems:'center', gap:6, padding:'3px 9px', borderRadius:999,
+          background: jarvisLive.reachable ? '#10271B' : '#1A1E16',
+          border:'1px solid #1F3A28',
+          color: jarvisLive.reachable ? '#7CFFB2' : '#B8A078',
+          fontWeight:600
+        }} title={jarvisLive.error || jarvisLive.provenance}>
+          <span style={{ width:6, height:6, borderRadius:99, background: jarvisLive.reachable ? '#22c55e' : '#f59e0b', display:'inline-block' }} />
+          {jarvisLive.reachable ? 'jarvisd' : (jarvisLive.provenance === 'demo' ? 'demo' : 'unreachable')}
+        </span>
+        {jarvisLive.reachable ? (
+          <>
+            <span style={{ color:'#D7EFE2' }}>claims {jarvisLive.claims.length}</span>
+            <span style={{ color:'#7E9F8F' }}>·</span>
+            <span style={{ color:'#D7EFE2' }}>goals {jarvisLive.goals.length}</span>
+            {jarvisLive.claims.slice(0,3).map((c:any,i:number)=>(
+              <span key={`c${i}`} style={{ color:'#8BA998', fontSize:10.5 }}>{c.repo}/{c.area}</span>
+            ))}
+            {jarvisLive.goals.slice(0,2).map((g:any,i:number)=>(
+              <span key={`g${i}`} style={{ color:'#8BA998', fontSize:10.5 }} title={g.text}>{String(g.text||'').slice(0,36)}</span>
+            ))}
+          </>
+        ) : (
+          <span style={{ color:'#B8A078' }}>fixtures only · set JARVIS_URL for live board</span>
+        )}
       </div>
 
       {tandem && (
