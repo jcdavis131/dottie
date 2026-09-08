@@ -118,6 +118,23 @@ Setup, once the daemon is reachable over HTTPS:
 Goals arrive with `agent` set to `slack:<user>`, so `/api/goals` shows where each
 came from. `deploy/jarvisd.env.example` carries the same notes next to the variable.
 
+**Poll-loop alternative.** Where Slack cannot reach the daemon over HTTPS, the
+same done-criterion is available without an open port: a watcher (e.g. the
+`~/workspace/slack/poll.py` poller) queues channel messages as JSON files in an
+inbox dir, and `jarvisd drain-inbox` turns each file into a goal through the same
+`Jarvis.goal` registration path (`jarvisd/slack_inbox.py`, stdlib only):
+
+```bash
+jarvisd drain-inbox --inbox-dir ~/workspace/slack/inbox --db ~/.local/share/jarvisd/jarvis.db --dry-run  # report, change nothing
+jarvisd drain-inbox --inbox-dir ~/workspace/slack/inbox --db ~/.local/share/jarvisd/jarvis.db            # open the goals
+```
+
+Fail-closed like the HTTP doorway: unknown kinds, missing `ts`, empty text, and
+malformed JSON are quarantined with the reason stamped into the file — never
+silently dropped, never opened as goals. Dedupe is on the Slack `ts` id, so a
+redelivered message opens exactly one goal; successfully opened files move to
+`<inbox>/_done/`.
+
 ## Deploy (systemd)
 
 ```bash
