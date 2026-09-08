@@ -68,18 +68,18 @@ COPY packages/ava-skills/pyproject.toml         packages/ava-skills/pyproject.to
 COPY packages/ava-open-harness/pyproject.toml   packages/ava-open-harness/pyproject.toml
 COPY packages/personal-graphify/pyproject.toml  packages/personal-graphify/pyproject.toml
 
-# Extras for the jarvisd package. Spec §6: the Anthropic brain is the optional extra
-# `jarvisd[brain]`. Pass --build-arg JARVISD_SYNC_ARGS="" to build without it.
-ARG JARVISD_SYNC_ARGS="--extra brain"
+# Extras for the jarvisd package. Spec §6: the Anthropic brain is opt-in via
+# `--build-arg JARVISD_SYNC_ARGS="--extra brain"`; the canonical image is local-only.
+ARG JARVISD_SYNC_ARGS=""
 RUN --mount=type=cache,target=/tmp/uv-cache \
-    uv sync --frozen --no-dev --no-install-workspace --package jarvisd ${JARVISD_SYNC_ARGS}
+    uv sync --frozen --no-dev --no-install-workspace --all-packages ${JARVISD_SYNC_ARGS}
 
 # --- layer 2: workspace sources + editable installs -------------------------------------
 COPY apps/jarvisd      apps/jarvisd
 COPY apps/scout-cli    apps/scout-cli
 COPY packages          packages
 RUN --mount=type=cache,target=/tmp/uv-cache \
-    uv sync --frozen --no-dev --package jarvisd ${JARVISD_SYNC_ARGS} \
+    uv sync --frozen --no-dev --all-packages ${JARVISD_SYNC_ARGS} \
     && chown -R jarvis:jarvis /app
 
 USER jarvis

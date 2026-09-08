@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
@@ -40,6 +41,13 @@ class BadRequestError(ValueError):
     """A 400 with a JSON body."""
 
 
+class PayloadTooLargeError(ValueError):
+    """A 413 with a JSON body."""
+
+
+CONDUCTOR_SNAPSHOT_MAX_BYTES = 64 * 1024
+
+
 def _json(payload: dict[str, Any], status: int = 200) -> JSONResponse:
     return JSONResponse(payload, status_code=status)
 
@@ -48,8 +56,80 @@ def _reply(payload: dict[str, Any]) -> JSONResponse:
     return _json(payload, 200 if payload.get("ok", True) else 400)
 
 
-async def _body(request: Request) -> dict[str, Any]:
-    raw = await request.body()
+def _bounded_conductor_snapshot(payload: dict[str, Any]) -> dict[str, Any]:
+    """Trim non-active rows until compact UTF-8 JSON fits the wire bound."""
+    while (
+        len(
+            json.dumps(
+                payload,
+                ensure_ascii=False,
+                allow_nan=False,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        )
+        > CONDUCTOR_SNAPSHOT_MAX_BYTES
+    ):
+        todos = payload.get("todos", [])
+        todo_index = next(
+            (
+                index
+                for index, todo in enumerate(todos)
+                if todo.get("status") == "completed"
+            ),
+            None,
+        )
+        if todo_index is None:
+            todo_index = next(
+                (
+                    index
+                    for index, todo in enumerate(todos)
+                    if todo.get("status") != "in_progress"
+                ),
+                None,
+            )
+        if todo_index is not None:
+            todos.pop(todo_index)
+            continue
+        candidates = [
+            ("feedback", 0),
+            ("scratchpad", 0),
+        ]
+        populated = [(key, index) for key, index in candidates if payload.get(key)]
+        if not populated:
+            break
+        key, index = max(
+            populated,
+            key=lambda candidate: len(
+                json.dumps(
+                    payload[candidate[0]][candidate[1]],
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ),
+        )
+        payload[key].pop(index)
+    return payload
+
+
+async def _body(request: Request, *, maximum_bytes: int | None = None) -> dict[str, Any]:
+    if maximum_bytes is not None:
+        content_length = request.headers.get("content-length")
+        if content_length:
+            try:
+                declared_length = int(content_length)
+            except ValueError as e:
+                raise BadRequestError("invalid Content-Length") from e
+            if declared_length > maximum_bytes:
+                raise PayloadTooLargeError(f"body exceeds {maximum_bytes} bytes")
+    if maximum_bytes is None:
+        raw = await request.body()
+    else:
+        buffered = bytearray()
+        async for chunk in request.stream():
+            if len(buffered) + len(chunk) > maximum_bytes:
+                raise PayloadTooLargeError(f"body exceeds {maximum_bytes} bytes")
+            buffered.extend(chunk)
+        raw = bytes(buffered)
     if not raw:
         return {}
     try:
@@ -66,6 +146,13 @@ def _require_str(doc: dict[str, Any], key: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise BadRequestError(f"body must include a non-empty '{key}' string")
     return value.strip()
+
+
+def _exact_keys(doc: dict[str, Any], expected: set[str], label: str) -> None:
+    if set(doc) != expected:
+        raise BadRequestError(
+            f"{label} keys must be exactly {sorted(expected)}"
+        )
 
 
 def _int_param(request: Request, key: str, default: int) -> int:
@@ -217,6 +304,135 @@ def build_app(config: Config, *, state: State | None = None) -> Starlette:
             )
         )
 
+    def conductor_scope(request: Request) -> tuple[str, str, str]:
+        repo = (request.query_params.get("repo") or "").strip()
+        mission = (request.query_params.get("mission") or "").strip()
+        if not repo or not mission:
+            raise BadRequestError("query params 'repo' and 'mission' are required")
+        return repo, _agent(request), mission
+
+    def conductor_snapshot(repo: str, mission: str) -> dict[str, Any]:
+        snapshot = store.conductor_snapshot(repo, mission)
+        return {
+            "ok": True,
+            "repo": repo,
+            "mission": mission,
+            "daemon": {
+                "version": __version__,
+                "uptime_s": jarvis.uptime_s(),
+                "process_id": os.getpid(),
+            },
+            "persistence": {
+                "enabled": str(store.path) != ":memory:",
+                "kind": "sqlite",
+                "journal_mode": "wal" if str(store.path) != ":memory:" else "memory",
+            },
+            "auth": {
+                "enabled": config.auth_enabled,
+                "read_only": True,
+                "rates_per_minute": {
+                    "ip": config.rate_ip,
+                    "key": config.rate_key,
+                    "agent": config.rate_agent,
+                },
+            },
+            "capabilities": {
+                "read": ["feedback", "scratchpad", "todos", "guardrails"],
+                "write": [
+                    "feedback.push",
+                    "scratchpad.write",
+                    "todo.create",
+                    "todo.move",
+                ],
+            },
+            "guardrails": [
+                {
+                    "id": "authenticated_transport",
+                    "enabled": config.auth_enabled,
+                    "mutable": False,
+                },
+                {
+                    "id": "request_rate_limits",
+                    "enabled": True,
+                    "mutable": False,
+                },
+                {
+                    "id": "sqlite_persistence",
+                    "enabled": str(store.path) != ":memory:",
+                    "mutable": False,
+                },
+            ],
+            **snapshot,
+        }
+
+    async def api_conductor_snapshot(request: Request) -> Response:
+        repo, _, mission = conductor_scope(request)
+        return _json(_bounded_conductor_snapshot(conductor_snapshot(repo, mission)))
+
+    async def api_conductor_rpc(request: Request) -> Response:
+        repo, agent, mission = conductor_scope(request)
+        doc = await _body(request, maximum_bytes=16 * 1024)
+        _exact_keys(doc, {"method", "params"}, "body")
+        method = doc.get("method")
+        params = doc.get("params")
+        if not isinstance(method, str) or not isinstance(params, dict):
+            raise BadRequestError("'method' must be a string and 'params' an object")
+        allowed = {
+            "feedback.push",
+            "scratchpad.write",
+            "todo.create",
+            "todo.move",
+        }
+        if method not in allowed:
+            return _json({"ok": False, "error": "conductor method is not allowed"}, 403)
+        request.scope["audit_action"] = method
+        try:
+            if method == "feedback.push":
+                _exact_keys(params, {"kind", "message", "strength"}, "params")
+                result = store.conductor_feedback_push(
+                    repo,
+                    agent,
+                    mission,
+                    params.get("kind"),
+                    params.get("message"),
+                    params.get("strength"),
+                )
+            elif method == "scratchpad.write":
+                _exact_keys(params, {"text"}, "params")
+                result = store.conductor_scratchpad_write(
+                    repo, agent, mission, params.get("text")
+                )
+            elif method == "todo.create":
+                _exact_keys(params, {"text", "priority"}, "params")
+                result = store.conductor_todo_create(
+                    repo,
+                    agent,
+                    mission,
+                    params.get("text"),
+                    params.get("priority"),
+                )
+            else:
+                _exact_keys(params, {"id", "status"}, "params")
+                result = store.conductor_todo_move(
+                    repo,
+                    agent,
+                    mission,
+                    params.get("id"),
+                    params.get("status"),
+                )
+        except ValueError as e:
+            raise BadRequestError(str(e)) from e
+        return _json(
+            {
+                "ok": True,
+                "method": method,
+                "result": result,
+                "snapshot": _bounded_conductor_snapshot(
+                    conductor_snapshot(repo, mission)
+                ),
+            }
+        )
+
     async def api_pair_create(request: Request) -> Response:
         doc = await _body(request)
         expire_min = doc.get("expire_min", 10)
@@ -251,6 +467,9 @@ def build_app(config: Config, *, state: State | None = None) -> Starlette:
     async def bad_request(request: Request, exc: Exception) -> Response:
         return _json({"ok": False, "error": str(exc)}, 400)
 
+    async def payload_too_large(request: Request, exc: Exception) -> Response:
+        return _json({"ok": False, "error": str(exc)}, 413)
+
     routes = [
         Route("/", status_page, methods=["GET"]),
         Route("/api/health", health, methods=["GET"]),
@@ -263,6 +482,8 @@ def build_app(config: Config, *, state: State | None = None) -> Starlette:
         Route("/api/inbox", api_inbox, methods=["GET", "POST"]),
         Route("/api/goals", api_goals, methods=["GET", "POST", "PATCH"]),
         Route("/api/timeline", api_timeline, methods=["GET"]),
+        Route("/api/conductor/snapshot", api_conductor_snapshot, methods=["GET"]),
+        Route("/api/conductor/rpc", api_conductor_rpc, methods=["POST"]),
         Route("/api/pair/create", api_pair_create, methods=["POST"]),
         Route("/api/pair/verify", api_pair_verify, methods=["POST"]),
         Route("/api/pair/status", api_pair_status, methods=["GET"]),
@@ -295,7 +516,11 @@ def build_app(config: Config, *, state: State | None = None) -> Starlette:
                 rate_agent=config.rate_agent,
             )
         ],
-        exception_handlers={404: not_found, BadRequestError: bad_request},
+        exception_handlers={
+            404: not_found,
+            BadRequestError: bad_request,
+            PayloadTooLargeError: payload_too_large,
+        },
     )
     app.state.config = config
     app.state.store = store

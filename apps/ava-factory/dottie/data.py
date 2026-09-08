@@ -25,6 +25,7 @@ RSS.
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import json
 import random
 import time
@@ -63,13 +64,42 @@ class _LoadedShard:
 
     def __init__(self, shard: Shard) -> None:
         self.shard = shard
-        idx_path = Path(shard.path).with_suffix("").with_suffix(".idx.json")
+        bin_path = Path(shard.path)
+        idx_path = bin_path.with_suffix("").with_suffix(".idx.json")
         if not idx_path.exists():  # {stem}.bin -> {stem}.idx.json
             idx_path = Path(str(shard.path).replace(".bin", ".idx.json"))
-        meta = json.loads(idx_path.read_text())
+        if not shard.packed_bin_sha256:
+            raise ValueError(f"{shard.id}: missing packed_bin_sha256")
+        if not shard.packed_idx_sha256:
+            raise ValueError(f"{shard.id}: missing packed_idx_sha256")
+        if not shard.tokenizer_sha:
+            raise ValueError(f"{shard.id}: missing tokenizer_sha")
+
+        idx_bytes = idx_path.read_bytes()
+        actual_idx_sha = hashlib.sha256(idx_bytes).hexdigest()
+        if actual_idx_sha != shard.packed_idx_sha256:
+            raise ValueError(
+                f"{shard.id}: packed idx sha256 mismatch "
+                f"(recorded {shard.packed_idx_sha256}, actual {actual_idx_sha})"
+            )
+        meta = json.loads(idx_bytes)
+        if meta.get("tokenizer_sha") != shard.tokenizer_sha:
+            raise ValueError(f"{shard.id}: packed idx tokenizer sha mismatch")
+
+        with bin_path.open("rb") as stream:
+            digest = hashlib.sha256()
+            for chunk in iter(lambda: stream.read(1 << 20), b""):
+                digest.update(chunk)
+            actual_bin_sha = digest.hexdigest()
+            if actual_bin_sha != shard.packed_bin_sha256:
+                raise ValueError(
+                    f"{shard.id}: packed bin sha256 mismatch "
+                    f"(recorded {shard.packed_bin_sha256}, actual {actual_bin_sha})"
+                )
+            stream.seek(0)
+            self.arr = np.memmap(stream, dtype=np.uint16, mode="r")
         self.tokens: int = meta["tokens"]
         self.tokenizer_sha: str = meta.get("tokenizer_sha", "")
-        self.arr = np.memmap(shard.path, dtype=np.uint16, mode="r")
 
         self.by_task: dict[str, list[dict]] = {t: [] for t in TASK_TYPES}
         for d in meta["docs"]:
@@ -143,19 +173,28 @@ class StreamingShardSampler:
         self.rng = random.Random(seed)
         self.starve = StarvationTracker(flow)
         self._task_cursor = 0
+        self._observed_shard_ids: set[str] = set()
         self._held: _LoadedShard | None = None
         self._last_renew = 0.0
 
     # -- resumable state ----------------------------------------------------
 
     def state_dict(self) -> dict:
-        return {"rng": self.rng.getstate(), "task_cursor": self._task_cursor}
+        return {
+            "rng": self.rng.getstate(),
+            "task_cursor": self._task_cursor,
+            "observed_shard_ids": sorted(self._observed_shard_ids),
+        }
 
     def load_state_dict(self, s: dict) -> None:
         rng = s["rng"]
         # json round-trip turns tuples into lists
         self.rng.setstate((rng[0], tuple(rng[1]), rng[2]))
         self._task_cursor = s["task_cursor"]
+        self._observed_shard_ids = set(s.get("observed_shard_ids", []))
+
+    def observed_shard_ids(self) -> list[str]:
+        return sorted(self._observed_shard_ids)
 
     # -- shard acquisition --------------------------------------------------
 
@@ -180,6 +219,7 @@ class StreamingShardSampler:
         if expected and loaded.tokenizer_sha and loaded.tokenizer_sha != expected:
             self.m.fail(s.id, by=self.worker, error="tokenizer sha mismatch")
             return None
+        self._observed_shard_ids.add(s.id)
         self._last_renew = time.monotonic()
         return loaded
 

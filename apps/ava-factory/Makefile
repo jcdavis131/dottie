@@ -1,4 +1,4 @@
-.PHONY: help images volumes up down logs ps bench train serve report test smoke clean-consumed
+.PHONY: help images volumes up down logs ps bench train serve report test smoke smoke-static clean-consumed
 
 AVA_PRESET ?= nano
 COMPOSE    := docker compose
@@ -18,6 +18,7 @@ help:
 	@echo "  make report         regenerate reports/index.html"
 	@echo "  make test           run the full test suite (in the cpu image)"
 	@echo "  make smoke          end-to-end nano smoke test"
+	@echo "  make smoke-static   validate the smoke entry point without running it"
 
 # Docker creates named volumes root-owned; our containers run as uid 1000 (ava).
 # Without the chown the manifest cannot create /state/manifest.db. Idempotent.
@@ -100,4 +101,7 @@ test-gpu:
 		ava/gpu:latest python -m pytest tests/ -q
 
 smoke:
-	bash scripts/smoke_e2e.sh
+	python scripts/cpu_pilot_e2e.py
+
+smoke-static:
+	python scripts/cpu_pilot_e2e.py --help

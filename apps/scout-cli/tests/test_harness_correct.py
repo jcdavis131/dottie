@@ -13,6 +13,7 @@ runner = CliRunner()
 @pytest.fixture()
 def real_run(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     run_id = "harness-run-test123"
     cp = tmp_path / ".cache" / "scout" / "checkpoints" / run_id
     cp.mkdir(parents=True)
@@ -45,6 +46,7 @@ def test_rejects_unknown_tier(real_run, tmp_path):
 
 def test_rejects_missing_run(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     res = _correct("harness-run-ghost", "llm", "--reason", "x", "--file", str(tmp_path / "c.jsonl"))
     out = json.loads(res.stdout)
     assert out["ok"] is False
@@ -53,6 +55,7 @@ def test_rejects_missing_run(tmp_path, monkeypatch):
 
 def test_rejects_path_shaped_run_id(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     res = _correct("../etc/passwd", "llm", "--reason", "x", "--file", str(tmp_path / "c.jsonl"))
     out = json.loads(res.stdout)
     assert out["ok"] is False

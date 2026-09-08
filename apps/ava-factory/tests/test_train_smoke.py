@@ -6,12 +6,17 @@ these cover the pure functions that a smoke run would only catch by drifting.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 torch = pytest.importorskip("torch")
 
 from ava.config import AvaConfig
-from ava.train import micro_batch_for, phase_for_step, wsd_lr
+from ava.pipeline.manifest import PACKED, Manifest
+from ava.train import micro_batch_for, phase_for_step, save_ckpt, wsd_lr
+
+from dottie.provenance import validate_checkpoint
 
 
 @pytest.fixture(scope="module")
@@ -83,3 +88,47 @@ def test_every_phase_is_reachable(cfg):
         phase_for_step(cfg, t) for t in range(0, cfg.training.tokens_total, 250_000)
     }
     assert seen == set(range(len(cfg.phases)))
+
+
+def test_checkpoint_write_includes_valid_lineage_digest_and_parent(cfg, tmp_path):
+    shard_id = "observed-shard"
+    with Manifest(tmp_path / "manifest.db") as manifest:
+        manifest.freeze_tokenizer("b" * 64, cfg.model.vocab_size)
+        manifest.add_shard(
+            shard_id,
+            source="test",
+            phase=0,
+            path="test.bin",
+            sha256="a" * 64,
+            source_kind="hf",
+            source_license="mit",
+            source_gated=False,
+            source_revision="a" * 40,
+            source_entry_sha256="b" * 64,
+            packed_bin_sha256="c" * 64,
+            packed_idx_sha256="d" * 64,
+            state=PACKED,
+        )
+        sampler = SimpleNamespace(
+            m=manifest,
+            state_dict=lambda: {"observed_shard_ids": [shard_id]},
+            observed_shard_ids=lambda: [shard_id],
+        )
+        model = SimpleNamespace(state_dict=lambda: {"weight": torch.tensor([1.0])})
+        opt = SimpleNamespace(state_dict=lambda: {"step": 1})
+        path = tmp_path / "step_1.pt"
+        digest = save_ckpt(
+            path,
+            model=model,
+            opt=opt,
+            step=1,
+            phase=0,
+            tokens_done=1024,
+            cfg=cfg,
+            sampler=sampler,
+            asserted_parent={"checkpoint_digest": "e" * 64},
+        )
+    blob = torch.load(path, map_location="cpu", weights_only=True)
+    assert blob["asserted_parent"] == {"checkpoint_digest": "e" * 64}
+    assert digest == blob["digest"]
+    assert validate_checkpoint(blob, expected_config=cfg) == digest

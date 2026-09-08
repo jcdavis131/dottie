@@ -22,6 +22,8 @@ from ava.pipeline.manifest import PACKED, Manifest, TokenizerMismatch, worker_id
 from ava.pipeline.split import assign_split
 from evals.eval_sets import EVAL_SETS, all_eval_texts
 
+from dottie.provenance import sha256_file
+
 # ---------------------------------------------------------------------------
 # shared fixtures
 # ---------------------------------------------------------------------------
@@ -492,6 +494,11 @@ def test_end_to_end_once(tmp_path, tiny_tokenizer, monkeypatch):
             path=str(raw_path),
             bytes_=raw_path.stat().st_size,
             docs=len(docs),
+            source_kind="hf",
+            source_license="mit",
+            source_gated=False,
+            source_revision="a" * 40,
+            source_entry_sha256="b" * 64,
         )
         m.freeze_tokenizer(lt.sha256, lt.vocab_size)
         m.upsert_run("e2e", preset="nano", step=0, phase=1, status="running")
@@ -531,6 +538,14 @@ def test_end_to_end_once(tmp_path, tiny_tokenizer, monkeypatch):
             assert bin_path == packed_dir / "p1" / split / "e2e_0000.bin"
             arr, idx = pack.read_shard(bin_path)
             assert idx["tokens"] == arr.size > 0
+            idx_path = bin_path.with_suffix(".idx.json")
+            assert row["packed_bin_sha256"] == sha256_file(bin_path)
+            assert row["packed_idx_sha256"] == sha256_file(idx_path)
+            assert row["source_revision"] == "a" * 40
+            assert row["source_entry_sha256"] == "b" * 64
+            assert row["source_kind"] == "hf"
+            assert row["source_license"] == "mit"
+            assert row["source_gated"] == 0
             if split == "train":
                 assert train_row["tokens"] == idx["tokens"], (
                     "manifest train tokens mismatch"

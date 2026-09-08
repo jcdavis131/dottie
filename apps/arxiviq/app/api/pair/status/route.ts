@@ -1,97 +1,67 @@
 import { NextRequest, NextResponse } from "next/server";
-import { jarvisFetch, pairDemoEnabled, resolveJarvisBase } from "@/lib/jarvis";
-
-const STORE = ((globalThis as any).__dottiePairStore as Map<string, any>) || new Map();
-(globalThis as any).__dottiePairStore = STORE;
+import { jarvisFetch } from "@/lib/jarvis";
+import { allowPairRequest, resolvePairClient } from "@/lib/pair-rate";
 
 export async function GET(req: NextRequest) {
-  const url = new URL(req.url);
-  const code = (url.searchParams.get("code") || "").toUpperCase().trim().slice(0, 6);
-  const rawUrl = (process.env.JARVIS_URL || "").trim();
-  const { base, reason } = resolveJarvisBase();
-  const demo = pairDemoEnabled();
-
-  if (base) {
-    const path = code ? `/api/pair/status?code=${encodeURIComponent(code)}` : "/api/pair/status";
-    const proxied = await jarvisFetch(path, { method: "GET" });
-    if (proxied.ok) {
-      return NextResponse.json({
-        ...proxied.data,
-        source: "jarvis",
-        provenance: "jarvisd",
-        demo: false,
-      });
-    }
-    if (proxied.source === "jarvis" && proxied.data) {
-      return NextResponse.json(
-        { ...proxied.data, source: "jarvis", provenance: "jarvisd", demo: false },
-        { status: proxied.status || 400 }
-      );
-    }
-    if (proxied.source === "unreachable" && demo) {
-      // fall through to demo store
-    } else {
-      return NextResponse.json(
-        {
-          ok: false,
-          paired: false,
-          code: code || undefined,
-          unreachable: true,
-          source: "unreachable",
-          provenance: "unreachable",
-          error: proxied.error,
-          demo: false,
-        },
-        { status: 503 }
-      );
-    }
-  } else if (rawUrl && !demo) {
-    const blocked = !!reason?.includes("allowlisted");
+  const pairClient = resolvePairClient(req, "status");
+  if (!pairClient.ok) {
     return NextResponse.json(
       {
         ok: false,
         paired: false,
-        code: code || undefined,
-        error: reason || "JARVIS_URL invalid",
-        source: blocked ? "blocked" : "unreachable",
-        provenance: blocked ? "ssrf_blocked" : "unreachable",
-        demo: false,
+        error: pairClient.error,
+        source: "blocked",
+        provenance: "edge_client_identity",
       },
-      { status: blocked ? 403 : 503 }
+      { status: 403 }
     );
   }
-
-  if (code) {
-    const rec = STORE.get(code);
-    if (!rec) {
-      return NextResponse.json({
+  if (!allowPairRequest(pairClient, 60)) {
+    return NextResponse.json(
+      {
         ok: false,
         paired: false,
-        code,
-        demo: true,
-        source: "demo",
-        provenance: "demo",
-      });
-    }
+        error: "pair status rate limited",
+        source: "blocked",
+        provenance: "edge_rate_limit",
+      },
+      { status: 429 }
+    );
+  }
+  if (req.nextUrl.searchParams.has("code")) {
+    return NextResponse.json(
+      { ok: false, paired: false, error: "pair codes are accepted only in the POST body" },
+      { status: 400 },
+    );
+  }
+  const proxied = await jarvisFetch("/api/pair/status", {
+    method: "GET",
+    agentId: pairClient.agentId,
+    ephemeralAuth: true,
+  });
+  if (proxied.ok) {
     return NextResponse.json({
       ok: true,
-      paired: !!rec.paired,
-      code,
-      exp: rec.exp,
-      count: STORE.size,
-      demo: true,
-      source: "demo",
-      provenance: "demo",
+      count: Number(proxied.data?.count || 0),
+      paired_count: Number(proxied.data?.paired_count || 0),
+      source: "jarvis",
+      provenance: "jarvisd",
     });
   }
-
-  return NextResponse.json({
-    ok: true,
-    paired_count: STORE.size,
-    demo: true,
-    source: "demo",
-    provenance: "demo",
-    queue_demo: "fs /ws/.dottie/queue or redis dottie:queue or Supabase realtime",
-    tandem: "local+docker+website link",
-  });
+  if (proxied.source === "jarvis" && proxied.data) {
+    return NextResponse.json(
+      { ok: false, paired: false, error: proxied.error, source: "jarvis", provenance: "jarvisd" },
+      { status: proxied.status || 400 }
+    );
+  }
+  return NextResponse.json(
+    {
+      ok: false,
+      paired: false,
+      error: proxied.error,
+      source: proxied.source,
+      provenance: proxied.provenance,
+    },
+    { status: proxied.status }
+  );
 }

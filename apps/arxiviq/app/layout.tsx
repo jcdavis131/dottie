@@ -3,17 +3,16 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "arxiviq.com — Dottie Factory + Conductor",
-  description: "Dottie factory — ingest→serve MTNN v9.2 20719×128-d, LCG 20260813 chain same-link-same-stars, tandem Local Dottie + Cloud Scout + Paired, PWA v67 offline13k CORE20 verifier≥8.",
+  description: "Dottie pairing and conductor status with explicit service provenance.",
   metadataBase: new URL("https://arxiviq.com"),
   openGraph: {
     title: "arxiviq.com — Dottie Factory",
-    description: "Factory control plane — paper #FAFAF8 void #080A0F 40px sticky z40 PWA v67 offline13k verifier≥8 Launched 99.9→100% free.",
+    description: "Dottie pairing and conductor status with explicit service provenance.",
     url: "https://arxiviq.com",
     siteName: "arxiviq.com",
     type: "website",
   },
   manifest: "/manifest.json",
-  icons: { icon: "/icon-192.png", apple: "/icon-192.png" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

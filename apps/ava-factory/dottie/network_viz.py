@@ -223,7 +223,7 @@ def peek_ckpt_group_norms(
 
     t0 = time.time()
     try:
-        blob = torch.load(path, map_location="cpu", weights_only=False)
+        blob = torch.load(path, map_location="cpu", weights_only=True)
     except Exception as exc:
         return {"path": str(path), "error": str(exc)[:240]}
 

@@ -269,6 +269,7 @@ def main():
         "MOCK BLUEPRINT OUTPUT — hardcoded illustrative values, not measurements; "
         "see reports/REPORT_REAL.md (python -m evals.run_harness) for real evals"
     )
+    total_results["claim_eligible"] = False
     with open("branch_eval_results.json", "w") as f:
         json.dump(total_results, f, indent=2)
     # save md report
@@ -332,7 +333,8 @@ def main():
         )
 
     print("\nSaved branch_eval_results.json + BRANCH_EVAL_REPORT.md")
+    return 2
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

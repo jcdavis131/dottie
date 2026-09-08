@@ -77,6 +77,33 @@ def test_rate_limit_per_agent(tmp_path: Path, db_path: Path, bearer: str) -> Non
     state.close()
 
 
+def test_central_pair_identity_limit_ignores_forwarded_header_changes(
+    db_path: Path, bearer: str
+) -> None:
+    cfg = Config(host="127.0.0.1", port=8790, db_path=db_path, bearer=bearer, rate_agent=2)
+    state = State(db_path)
+    code = state.pair_create("creator")["code"]
+    with TestClient(build_app(cfg, state=state), base_url=BASE_URL) as c:
+        for forwarded in ("198.51.100.1", "203.0.113.2"):
+            headers = {
+                "Authorization": f"Bearer {mint_token(bearer)}",
+                "X-Agent-Id": "arxiviq-pair-verify",
+                "X-Forwarded-For": forwarded,
+            }
+            c.post("/api/pair/verify", json={"code": code}, headers=headers)
+        limited = c.post(
+            "/api/pair/verify",
+            json={"code": code},
+            headers={
+                "Authorization": f"Bearer {mint_token(bearer)}",
+                "X-Agent-Id": "arxiviq-pair-verify",
+                "X-Forwarded-For": "192.0.2.3",
+            },
+        )
+        assert limited.status_code == 429
+    state.close()
+
+
 def test_rate_limiter_windows() -> None:
     now = [0.0]
     rl = RateLimiter(clock=lambda: now[0])
@@ -90,8 +117,26 @@ def test_audit_log_written_without_raw_key(client: TestClient, auth_headers: dic
     lines = [json.loads(x) for x in config.audit_path.read_text().splitlines()]
     last = lines[-1]
     assert last["path"] == "/api/claims" and last["status"] == 200 and last["agent"] == "tester"
+    assert last["method"] == "GET" and last["action"] == ""
     assert last["key_last4"] == config.bearer[-4:]
     assert config.bearer not in config.audit_path.read_text()
+
+
+def test_conductor_audit_records_action_without_content(
+    client: TestClient, auth_headers: dict[str, str], config: Config
+) -> None:
+    client.post(
+        "/api/conductor/rpc?repo=repo&mission=mission",
+        headers=auth_headers,
+        json={
+            "method": "feedback.push",
+            "params": {"kind": "note", "message": "private content", "strength": 0},
+        },
+    )
+    last = json.loads(config.audit_path.read_text().splitlines()[-1])
+    assert last["method"] == "POST"
+    assert last["action"] == "feedback.push"
+    assert "private content" not in config.audit_path.read_text()
 
 
 def test_auth_disabled_on_loopback_without_bearer(db_path: Path) -> None:

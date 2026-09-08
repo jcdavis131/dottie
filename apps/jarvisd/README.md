@@ -3,13 +3,14 @@
 The one always-on process the operator's agents connect to. Claude Code, Cursor and
 OpenCode speak **MCP** to it (`/mcp` streamable-HTTP, `/sse` legacy); humans and scripts
 speak **JSON over HTTP** (`/api/*`). It owns the shared state — memories, claims, inbox,
-goals, timeline, sessions — in one SQLite file. Spec: `docs/JARVISD_SPEC.md`.
+goals, timeline, sessions, and scoped conductor feedback/scratchpad/todos — in one
+SQLite file. Spec: `docs/JARVISD_SPEC.md`.
 
-The client agent is the brain in v1. An optional `jarvis.ask` runs a tool loop against
-either the home-box Ollama (`$0`, stdlib HTTP, default `qwen3:32b`) or Anthropic (paid,
-`jarvisd[brain]`), picked by `JARVIS_BRAIN` (`auto` = Anthropic if `ANTHROPIC_API_KEY` is
-set, else Ollama if `OLLAMA_HOST` answers). When neither can serve, the tool returns a
-structured `brain unavailable` error, never a fabricated answer.
+The client agent is the brain in v1. The canonical Docker profile keeps `jarvis.ask`
+off by default; opt in with `JARVIS_BRAIN=ollama` to use the home-box Ollama (`$0`,
+stdlib HTTP, compose default `qwen3:8b`). Anthropic is paid and requires both the
+opt-in `jarvisd[brain]` image extra and a key. When no configured provider can serve,
+the tool returns a structured `brain unavailable` error, never a fabricated answer.
 
 ## Quickstart
 
@@ -54,9 +55,9 @@ Each returns a JSON string with `ok`; on failure `error` and `example`.
 | `JARVIS_HOST` / `JARVIS_PORT` | `127.0.0.1` / `8790` | bind |
 | `JARVIS_PUBLIC_HOST` | — | hostname for the DNS-rebinding allowlist when public (e.g. `jarvis.example.com`) |
 | `JARVIS_WORKSPACE` | `~/workspace` | root the harness writes runs under (`bundles/ultra/runs`) and where `graph.query` looks for `graphify-out/graph.json` |
-| `JARVIS_BRAIN` | `auto` | brain provider: `auto` \| `anthropic` \| `ollama` \| `off`; `auto` = Anthropic when the key is set, else Ollama when `/api/tags` answers within 1 s |
+| `JARVIS_BRAIN` | `auto` (direct) / `off` (compose) | brain provider: `auto` \| `anthropic` \| `ollama` \| `off`; the canonical container is fail-closed and opt-in |
 | `OLLAMA_HOST` | `http://127.0.0.1:11434` | Ollama base URL (bare `host:port` gets `http://`); compose sets `http://host.docker.internal:11434`. Plain `urllib`, so `no_proxy` applies if you export a proxy |
-| `OLLAMA_MODEL` | `qwen3:32b` | Ollama model when `JARVIS_MODEL` is unset |
+| `OLLAMA_MODEL` | `qwen3:32b` (direct) / `qwen3:8b` (compose) | Ollama model when `JARVIS_MODEL` is unset |
 | `JARVIS_BRAIN_TIMEOUT` | `120` | seconds per Ollama `/api/chat` call |
 | `ANTHROPIC_API_KEY`, `JARVIS_MODEL`, `JARVIS_EFFORT` | — / `claude-opus-5` / `high` | Anthropic brain, paid (`pip install 'jarvisd[brain]'`); `JARVIS_MODEL` also overrides the Ollama model |
 | `JARVIS_RATE_IP` / `JARVIS_RATE_KEY` / `JARVIS_RATE_AGENT` | `1000` / `60` / `20` | requests per minute per IP / key / `X-Agent-Id` |
@@ -73,7 +74,21 @@ checkout (`pip install -e ~/workspace/acne`); jarvisd also looks for `~/workspac
 - Rate limits per minute: 1000/IP, 60/key (last 4 chars), 20/`X-Agent-Id`.
 - `/` and `/api/health` need no auth. Every response carries `Cache-Control: no-store`,
   `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`.
-- Audit: `<db dir>/audit.jsonl`, one `{ts, agent, path, status, key_last4}` per request. Never the key.
+- Audit: `<db dir>/audit.jsonl`, one
+  `{ts, agent, path, method, action, status, key_last4}` per request. Conductor RPC
+  actions are named; request content and the key are never logged.
+
+## Conductor transport
+
+Authenticated `GET /api/conductor/snapshot?repo=<repo>&mission=<mission>` returns a
+bounded, consistent SQLite snapshot plus measured daemon, persistence, auth-rate,
+capability, and read-only guardrail status. Authenticated
+`POST /api/conductor/rpc?repo=<repo>&mission=<mission>` accepts at most 16 KiB and
+only `feedback.push`, `scratchpad.write`, `todo.create`, and `todo.move`.
+Repository and mission come from the query, and agent identity comes from
+`X-Agent-Id`; payload attempts to supply any of them are rejected by the exact schema.
+Command, PTY, tunnel, session, machine, guardrail mutation, compaction, and scout
+operations are not conductor capabilities.
 
 ## curl
 

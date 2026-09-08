@@ -2,12 +2,12 @@ import AgentConductorPanel from "../components/AgentConductorPanel";
 
 export const metadata = {
   title: "arxiviq.com — Dottie Conductor",
-  description: "Manage sessions across machines — warm sessions, one-touch security, shared notes and tasks. Tandem Local Dottie + Cloud Scout + Paired. The only thing on arxiviq.com.",
+  description: "Manage daemon-reported sessions, shared notes, and tasks. Tandem status and pairing are shown only when confirmed.",
 };
 
-export default function Home({ searchParams }: { searchParams?: { tandem?: string; pair?: string } }) {
-  const tandem = searchParams?.tandem === "1" || searchParams?.tandem === "true";
-  const pairCode = searchParams?.pair;
+export default async function Home({ searchParams }: { searchParams?: Promise<{ tandem?: string }> }) {
+  const params = await searchParams;
+  const tandem = params?.tandem === "1" || params?.tandem === "true";
   // support both /conductor?tandem=1 and /?tandem=1 — page.tsx is root conductor
-  return <AgentConductorPanel tandem={tandem} pairCode={pairCode} />;
+  return <AgentConductorPanel tandem={tandem} />;
 }

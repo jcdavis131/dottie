@@ -20,6 +20,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import threading
 import time
 from pathlib import Path
@@ -39,6 +40,10 @@ from multi_jspace_module import SPACE_NAMES
 
 from dottie.config import DottieConfig
 from dottie.model import build_model, count_params
+from dottie.provenance import (
+    sha256_file,
+    validate_checkpoint,
+)
 from dottie.tokenizer import DottieTokenizer
 
 if TYPE_CHECKING:
@@ -118,6 +123,12 @@ def resolve_ckpt_path(ckpt: str | Path) -> Path:
     return path
 
 
+def _sanitized_error(exc: Exception) -> str:
+    message = " ".join(str(exc).split())
+    message = re.sub(r"(?:[A-Za-z]:[\\/]|/)[^\s,'\"]+", "<path>", message)
+    return f"{type(exc).__name__}: {message}"[:240]
+
+
 def _route_dict(probs: torch.Tensor) -> dict[str, float]:
     vals = probs.detach().float().cpu().tolist()
     if len(vals) != 4:
@@ -152,6 +163,8 @@ class ServeEngine:
         self._watch_thread: threading.Thread | None = None
         self._pointer_mtime: float | None = None
         self._pointer_content: str | None = None
+        self._rejected_target: str | None = None
+        self._last_reload_error: str | None = None
 
         if not self._tokenizer_path.is_file():
             raise FileNotFoundError(f"tokenizer missing at {self._tokenizer_path}")
@@ -191,9 +204,14 @@ class ServeEngine:
 
     def _load_model(self, ckpt_file: Path):
         cfg = DottieConfig.load(self.preset)
+        blob = torch.load(ckpt_file, map_location="cpu", weights_only=True)
+        validate_checkpoint(
+            blob,
+            expected_tokenizer_sha256=sha256_file(self._tokenizer_path),
+            expected_config=cfg,
+        )
         model = build_model(cfg, use_memory=False)
-        blob = torch.load(ckpt_file, map_location=self.device, weights_only=False)
-        state = blob["model"] if isinstance(blob, dict) and "model" in blob else blob
+        state = blob["model"]
         model.load_state_dict(state)
         model.eval().to(self.device)
         return model, str(ckpt_file)
@@ -223,9 +241,17 @@ class ServeEngine:
         content = pointer.read_text(encoding="utf-8")
         if mtime == self._pointer_mtime and content == self._pointer_content:
             return
-        resolved = resolve_ckpt_path(pointer)
+        try:
+            resolved = resolve_ckpt_path(pointer)
+            with self._lock:
+                model, ckpt = self._load_model(resolved)
+        except Exception as exc:
+            target = content.strip()
+            with self._lock:
+                self._rejected_target = Path(target).name if target else None
+                self._last_reload_error = _sanitized_error(exc)
+            raise
         with self._lock:
-            model, ckpt = self._load_model(resolved)
             self.model = model
             self.ckpt = ckpt
             self._params = count_params(self.model)
@@ -233,6 +259,8 @@ class ServeEngine:
             self._vocab = int(self.model.vocab_size)
             self._pointer_mtime = mtime
             self._pointer_content = content
+            self._rejected_target = None
+            self._last_reload_error = None
 
     def stop_hot_reload(self) -> None:
         self._stop_watch.set()
@@ -249,6 +277,8 @@ class ServeEngine:
                 "params": int(self._params),
                 "vocab": int(self._vocab),
                 "d_model": int(self._d_model),
+                "rejected_target": self._rejected_target,
+                "last_reload_error": self._last_reload_error,
             }
 
     def generate(

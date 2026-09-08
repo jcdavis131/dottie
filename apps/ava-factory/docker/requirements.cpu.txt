@@ -11,7 +11,7 @@ tokenizers==0.19.1
 
 # curation
 datasketch==1.6.5          # MinHash LSH near-dedup
-zstandard==0.22.0          # raw shard compression
+zstandard==0.25.0          # raw shard compression
 regex==2024.5.15           # PII scrub, unicode-aware
 numpy==1.26.4
 

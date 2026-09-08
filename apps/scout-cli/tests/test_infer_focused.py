@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -50,9 +51,19 @@ def test_status_honest_null_vram():
     placement = payload.get("placement") if "placement" in payload else payload.get("data", {}).get("placement")
     if "data" in res:
         placement = res["data"]["placement"]
-    # On Hatch CPU box, vram_free_mb must be None (honest), never faked
-    assert placement["vram_free_mb"] is None
+    vram_free_mb = placement["vram_free_mb"]
+    assert vram_free_mb is None or (
+        isinstance(vram_free_mb, int) and vram_free_mb >= 0
+    )
     assert placement["ram_free_mb"] is None or isinstance(placement["ram_free_mb"], int)
+
+
+def test_status_reports_null_vram_without_nvidia_smi(monkeypatch):
+    monkeypatch.setattr(shutil, "which", lambda executable: None)
+
+    res = cmd_status()
+
+    assert res["data"]["placement"]["vram_free_mb"] is None
 
 
 def test_run_missing_dense_returns_io_missing():

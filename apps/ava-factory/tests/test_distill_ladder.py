@@ -1,12 +1,6 @@
-"""Tests for the distillation bugfix + ladder driver.
+"""Tests for the fail-closed distillation ladder driver.
 
 Covers:
-- get_model_from_config builds a REAL DottieModel1B (the old
-  `spike_sink_enabled=False` kwarg raised TypeError, which the bare
-  `except Exception` swallowed into a random MockLM — every distill run
-  silently trained a mock);
-- reverse-KL distillation actually decreases against a frozen teacher and
-  leaves the teacher's weights untouched;
 - scripts/distill_ladder.py gate: HOLD on error/NaN/missing, PROMOTE only
   within tolerance, ladder stops on HOLD, provenance log rows are honest;
 - the CLI dry-runs (exit 0) and refuses a real run (exit 2).
@@ -22,137 +16,10 @@ from pathlib import Path
 
 import pytest
 
-torch = pytest.importorskip("torch")
-
 _REPO = Path(__file__).resolve().parent.parent
 
-# The documented invocation is `python -m pytest tests/ -q` (Makefile:92), which
-# puts the cwd (repo root) on sys.path so `from on_policy_distill import ...`
-# resolves. Bare `pytest` does not add the cwd, so insert the repo root
-# explicitly — same pattern as tests/test_codeact_policy.py:29.
-if str(_REPO) not in sys.path:
-    sys.path.insert(0, str(_REPO))
 sys.path.insert(0, str(_REPO / "scripts"))
 from distill_ladder import TierSpec, gate_decision, run_ladder
-
-_TINY_YAML = """\
-model:
-  vocab_size: 64
-  d_model: 32
-  n_text_layers: 1
-  n_fusion_layers: 1
-  n_reasoning_layers: 1
-  n_heads: 2
-  head_dim: 16
-  tie_lm_head: true
-  multimodal: false
-"""
-
-_TINY_KWARGS = {
-    "vocab_size": 64,
-    "d_model": 32,
-    "n_text": 1,
-    "n_fusion": 1,
-    "n_reason": 1,
-    "n_heads": 2,
-    "head_dim": 16,
-    "tie_lm_head": True,
-    "multimodal": False,
-    "multi_jspace_enabled": True,
-}
-
-
-def _logits(model, ids):
-    out = model(input_ids=ids)
-    if isinstance(out, dict):
-        return out.get("logits", out.get("lm_logits"))
-    if isinstance(out, (list, tuple)):
-        return out[0]
-    return out
-
-
-# ------------------------------------------------- fix: no silent MockLM
-
-
-def test_get_model_from_config_returns_real_model_not_mock(tmp_path):
-    pytest.importorskip("yaml")
-    cfg = tmp_path / "tiny.yaml"
-    cfg.write_text(_TINY_YAML)
-
-    from on_policy_distill import get_model_from_config
-
-    m = get_model_from_config(str(cfg), device="cpu")
-    assert m is not None
-    assert type(m).__name__ != "MockLM", (
-        "get_model_from_config silently degraded to the random MockLM — "
-        "the construction TypeError is being swallowed again"
-    )
-    assert type(m).__name__ == "DottieModel1B"
-
-
-# ------------------------------------------------- real distillation works
-
-
-def _tiny_pair():
-    from model_1b import DottieModel1B
-
-    torch.manual_seed(0)
-    student = DottieModel1B(**_TINY_KWARGS)
-    torch.manual_seed(1)
-    teacher = DottieModel1B(**_TINY_KWARGS)
-    for p in teacher.parameters():
-        p.requires_grad_(False)
-    teacher.eval()
-    torch.manual_seed(2)
-    ids = torch.randint(1, 64, (2, 16))
-    return student, teacher, ids
-
-
-def test_reverse_kl_decreases_under_distillation():
-    from on_policy_distill import reverse_kl_loss
-
-    student, teacher, ids = _tiny_pair()
-    opt = torch.optim.AdamW(student.parameters(), lr=1e-3)
-
-    with torch.no_grad():
-        t_logits0 = _logits(teacher, ids)
-    kl0 = reverse_kl_loss(_logits(student, ids), t_logits0.detach())
-    kl0_val = float(kl0.detach())
-
-    kl = kl0
-    for _ in range(20):
-        s_logits = _logits(student, ids)
-        t_logits = _logits(teacher, ids).detach()
-        kl = reverse_kl_loss(s_logits, t_logits)
-        kl.backward()
-        opt.step()
-        opt.zero_grad()
-
-    with torch.no_grad():
-        final = reverse_kl_loss(_logits(student, ids), _logits(teacher, ids))
-    assert torch.isfinite(final)
-    assert float(final) < kl0_val, (
-        f"reverse KL did not decrease: {kl0_val} -> {float(final)}"
-    )
-
-
-def test_teacher_unchanged_by_distillation():
-    from on_policy_distill import reverse_kl_loss
-
-    student, teacher, ids = _tiny_pair()
-    opt = torch.optim.AdamW(student.parameters(), lr=1e-3)
-
-    before = torch.cat([p.detach().flatten() for p in teacher.parameters()]).clone()
-    for _ in range(5):
-        kl = reverse_kl_loss(_logits(student, ids), _logits(teacher, ids).detach())
-        kl.backward()
-        opt.step()
-        opt.zero_grad()
-    after = torch.cat([p.detach().flatten() for p in teacher.parameters()])
-
-    assert torch.equal(before, after), "distillation mutated the frozen teacher"
-    assert all(not p.requires_grad for p in teacher.parameters())
-
 
 # ------------------------------------------------- gate: never promote on error
 

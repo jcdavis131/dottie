@@ -43,6 +43,7 @@ from typing import TYPE_CHECKING
 import yaml
 
 from dottie.datagen.adapters import apply_adapter
+from dottie.license_policy import dataset_source_is_active, validate_dataset_source
 from dottie.pipeline.demand import apply_demand_weights, read_demand
 from dottie.pipeline.flow import (
     N_PHASES,
@@ -51,6 +52,7 @@ from dottie.pipeline.flow import (
     pick_target_phase,
 )
 from dottie.pipeline.manifest import RAW, Manifest, worker_id
+from dottie.provenance import hash_facts
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -151,7 +153,9 @@ class SourceSpec:
     task_type: str = "automatic"
     filters: dict = dataclasses.field(default_factory=dict)
     license: str | None = None
-    gated: bool = False
+    gated: bool | None = None
+    revision: str | None = None
+    source_entry_sha256: str | None = None
     seed: int = 1234  # synthetic only; same seed => same corpus
     # Test/override hook: a callable(skip_n) -> iterator of record dicts.
     # When set it fully replaces network/synthetic streaming for this source.
@@ -177,7 +181,9 @@ class SourceSpec:
             task_type=d.get("task_type", "automatic"),
             filters=d.get("filters") or {},
             license=d.get("license"),
-            gated=bool(d.get("gated", False)),
+            gated=d.get("gated"),
+            revision=d.get("revision"),
+            source_entry_sha256=hash_facts(d),
             seed=int(d.get("seed", 1234)),
         )
 
@@ -333,6 +339,11 @@ def _synthetic_stream(
 
 
 def _hf_stream(spec: SourceSpec, skip_n: int) -> Iterator[dict]:
+    validate_dataset_source(
+        gated=spec.gated,
+        license_id=spec.license,
+        revision=spec.revision,
+    )
     # Lazy import: only paid when a real HF source runs (and only in-container).
     from datasets import load_dataset
 
@@ -342,6 +353,7 @@ def _hf_stream(spec: SourceSpec, skip_n: int) -> Iterator[dict]:
         split=spec.split,
         streaming=True,
         trust_remote_code=spec.trust_remote_code,
+        revision=spec.revision,
     )
     if skip_n:
         ds = ds.skip(skip_n)
@@ -543,6 +555,33 @@ def _commit_shard(
         bytes_=info.bytes,
         docs=info.docs,
         sha256=info.sha256,
+        source_kind=spec.kind,
+        source_license=spec.license,
+        source_gated=spec.gated,
+        source_revision=(
+            spec.revision
+            if spec.kind == "hf"
+            else f"synthetic-seed:{spec.seed}"
+        ),
+        source_entry_sha256=(
+            spec.source_entry_sha256
+            or hash_facts(
+                {
+                    "name": spec.name,
+                    "kind": spec.kind,
+                    "dataset": spec.dataset,
+                    "config": spec.config,
+                    "split": spec.split,
+                    "revision": spec.revision,
+                    "generator": spec.generator,
+                    "seed": spec.seed,
+                    "license": spec.license,
+                    "gated": spec.gated,
+                    "phases": list(spec.phases),
+                    "weight": spec.weight,
+                }
+            )
+        ),
         state=RAW,
     )
     m.set_cursor(cursor_key(spec, phase), f"docs:{n_read}", n_read)
@@ -648,7 +687,12 @@ def sources_for_phase(sources: list[SourceSpec], phase: int) -> list[tuple[str, 
     out = []
     for s in sources:
         w = s.weight.get(phase, 0.0)
-        if phase in s.phases and w > 0:
+        active = s.kind != "hf" or dataset_source_is_active(
+            gated=s.gated,
+            license_id=s.license,
+            revision=s.revision,
+        )
+        if phase in s.phases and w > 0 and active:
             out.append((s.name, w))
     return sorted(out)  # sort -> deterministic RR ordering
 

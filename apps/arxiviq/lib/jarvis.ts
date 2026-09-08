@@ -4,21 +4,27 @@
  * (No `server-only` package in arxiviq deps — enforce by import path: app/api only.)
  */
 
+import { createHmac, randomBytes } from "node:crypto";
 import { isIP } from "node:net";
 
+type JsonRecord = Record<string, unknown>;
+
 export type JarvisFetchResult =
-  | { ok: true; status: number; data: any; source: "jarvis"; provenance: "jarvisd" }
+  | { ok: true; status: number; data: JsonRecord; source: "jarvis"; provenance: "jarvisd" }
   | {
       ok: false;
       status: number;
       error: string;
-      source: "unreachable" | "blocked" | "unset" | "jarvis";
-      provenance: "unreachable" | "ssrf_blocked" | "demo" | "jarvisd";
-      demo?: boolean;
-      data?: any;
+      source: "unreachable" | "blocked" | "unset" | "invalid" | "jarvis";
+      provenance: "unreachable" | "ssrf_blocked" | "unconfigured" | "configuration_error" | "jarvisd";
+      data?: JsonRecord;
     };
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0:0:0:0:0:0:0:1"]);
+
+function isJsonRecord(value: unknown): value is JsonRecord {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
 
 /** True when host is loopback or RFC1918 / link-local / unique-local (private). */
 export function isAllowedJarvisHost(host: string): boolean {
@@ -63,56 +69,90 @@ export function resolveJarvisBase(): { base: string | null; reason?: string } {
   } catch {
     return { base: null, reason: "JARVIS_URL is not a valid URL" };
   }
-  if (!isAllowedJarvisHost(url.hostname)) {
-    return { base: null, reason: `JARVIS_URL host not allowlisted (loopback/private only): ${url.hostname}` };
+  if (url.username || url.password || url.hash) {
+    return { base: null, reason: "JARVIS_URL must not contain credentials or a fragment" };
+  }
+  const configuredOrigins = (process.env.JARVIS_ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((origin) => origin.trim().replace(/\/$/, ""))
+    .filter(Boolean);
+  const allowedOrigins = new Set<string>();
+  for (const origin of configuredOrigins) {
+    try {
+      const parsed = new URL(origin);
+      if (parsed.protocol !== "https:" || parsed.origin !== origin || parsed.pathname !== "/") {
+        return { base: null, reason: "JARVIS_ALLOWED_ORIGINS must contain exact HTTPS origins" };
+      }
+      allowedOrigins.add(parsed.origin);
+    } catch {
+      return { base: null, reason: "JARVIS_ALLOWED_ORIGINS contains an invalid origin" };
+    }
+  }
+  const metadataHost = url.hostname === "169.254.169.254" || url.hostname.toLowerCase() === "fd00:ec2::254";
+  const trustedRemote = url.protocol === "https:" && allowedOrigins.has(url.origin);
+  if (metadataHost || (!isAllowedJarvisHost(url.hostname) && !trustedRemote)) {
+    return { base: null, reason: `JARVIS_URL host not allowlisted: ${url.hostname}` };
   }
   return { base: raw.replace(/\/$/, "") };
 }
 
-export function pairDemoEnabled(): boolean {
-  const v = (process.env.DOTTIE_PAIR_DEMO || "").trim().toLowerCase();
-  return v === "1" || v === "true" || v === "yes" || v === "on";
-}
-
 export async function jarvisFetch(
   path: string,
-  init: RequestInit & { agentId?: string } = {}
+  init: RequestInit & { agentId?: string; ephemeralAuth?: boolean } = {}
 ): Promise<JarvisFetchResult> {
   const { base, reason } = resolveJarvisBase();
   if (!base) {
     const blocked = reason?.includes("allowlisted");
+    const unset = reason === "JARVIS_URL unset";
     return {
       ok: false,
       status: blocked ? 403 : 503,
-      error: reason || "JARVIS_URL unset",
-      source: blocked ? "blocked" : "unset",
-      provenance: blocked ? "ssrf_blocked" : "demo",
-      demo: !blocked,
+      error: blocked
+        ? "jarvisd target blocked"
+        : unset
+          ? "jarvisd is not configured"
+          : "jarvisd configuration is invalid",
+      source: blocked ? "blocked" : unset ? "unset" : "invalid",
+      provenance: blocked ? "ssrf_blocked" : unset ? "unconfigured" : "configuration_error",
     };
   }
   const headers = new Headers(init.headers || {});
   headers.set("Content-Type", headers.get("Content-Type") || "application/json");
   const bearer = (process.env.JARVIS_BEARER || "").trim();
-  if (bearer) headers.set("Authorization", `Bearer ${bearer}`);
+  if (bearer) {
+    let token = bearer;
+    if (init.ephemeralAuth) {
+      const timestamp = Math.floor(Date.now() / 1000);
+      const nonce = randomBytes(8).toString("hex");
+      const signature = createHmac("sha256", bearer)
+        .update(`${timestamp}:${nonce}`)
+        .digest("hex")
+        .slice(0, 16);
+      token = `${signature}:${timestamp}:${nonce}`;
+    }
+    headers.set("Authorization", `Bearer ${token}`);
+  }
   const agent = init.agentId || process.env.DOTTIE_AGENT_ID || process.env.JARVIS_AGENT || "arxiviq";
   headers.set("X-Agent-Id", agent);
-  const { agentId: _a, ...rest } = init;
+  const cleanInit: RequestInit & { agentId?: string; ephemeralAuth?: boolean } = { ...init };
+  delete cleanInit.agentId;
+  delete cleanInit.ephemeralAuth;
   try {
     const res = await fetch(`${base}${path.startsWith("/") ? path : `/${path}`}`, {
-      ...rest,
+      ...cleanInit,
       headers,
       cache: "no-store",
       redirect: "error",
       signal: AbortSignal.timeout(5000),
     });
-    const data = await res.json().catch(() => ({}));
+    const data: unknown = await res.json().catch(() => ({}));
     if (!res.ok) {
       // jarvisd uses HTTP 400 for ok:false business errors — pass through, not "unreachable"
-      if (res.status < 500 && data && typeof data === "object") {
+      if (res.status < 500 && isJsonRecord(data)) {
         return {
           ok: false,
           status: res.status,
-          error: (data as any)?.error || `jarvisd HTTP ${res.status}`,
+          error: typeof data.error === "string" ? data.error : `jarvisd HTTP ${res.status}`,
           source: "jarvis",
           provenance: "jarvisd",
           data,
@@ -120,18 +160,24 @@ export async function jarvisFetch(
       }
       return {
         ok: false,
-        status: res.status,
-        error: (data as any)?.error || `jarvisd HTTP ${res.status}`,
+        status: 503,
+        error: "jarvisd unavailable",
         source: "unreachable",
         provenance: "unreachable",
       };
     }
-    return { ok: true, status: res.status, data, source: "jarvis", provenance: "jarvisd" };
-  } catch (e: any) {
+    return {
+      ok: true,
+      status: res.status,
+      data: isJsonRecord(data) ? data : {},
+      source: "jarvis",
+      provenance: "jarvisd",
+    };
+  } catch {
     return {
       ok: false,
       status: 503,
-      error: e?.message || "jarvisd unreachable",
+      error: "jarvisd unavailable",
       source: "unreachable",
       provenance: "unreachable",
     };

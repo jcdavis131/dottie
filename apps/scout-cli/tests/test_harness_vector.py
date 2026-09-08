@@ -14,8 +14,8 @@ Pattern borrowed from tests/test_cli.py / test_tennis.py / test_ava.py:
 from __future__ import annotations
 
 import json
-import sys
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -155,19 +155,18 @@ def test_shared_lib_importable_without_torch():
 
 
 def test_cli_sh_wrapper_single_source():
-    """bundles/cli.sh must exist and be executable and proxy to same module."""
-    import subprocess, os
-    wrapper = Path.home() / "workspace" / "bundles" / "cli.sh"
-    # also accept path via env var workspace
-    if not wrapper.exists():
-        wrapper = Path("/home/hatch/workspace/bundles/cli.sh")
-    assert wrapper.exists(), f"{wrapper} missing"
-    r = subprocess.run(
-        [str(wrapper), "--json", "harness", "route", "heartbeat tick"],
-        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10
-    )
-    assert r.returncode==0, f"wrapper failed {r.stderr} {r.stdout[:500]}"
-    j=json.loads(r.stdout)
-    data=j.get("data") if "data" in j else j
+    """The production installer emits a strict wrapper around its tracked shim."""
+    installer = Path(__file__).parents[1] / "install.sh"
+    installer_text = installer.read_text(encoding="utf-8")
+    assert "set -euo pipefail" in installer_text
+    assert 'exec python3 "$SCRIPT_DIR/dev-api/scout_cli_shim_v3.py" "$@"' in installer_text
+    assert 'chmod 770 "$TARGET/bundles/cli.sh"' in installer_text
+
+    out = _run_cli("--json", "harness", "route", "heartbeat tick")
+    data = out["data"]
     # heartbeat should be deterministic
-    assert data.get("moma_tier")=="deterministic" or "heartbeat" in str(data).lower() or data.get("intent")=="deterministic"
+    assert (
+        data.get("moma_tier") == "deterministic"
+        or "heartbeat" in str(data).lower()
+        or data.get("intent") == "deterministic"
+    )

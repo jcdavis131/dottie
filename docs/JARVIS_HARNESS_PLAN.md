@@ -83,9 +83,9 @@ Read this before building anything; most of the pieces are there.
 | Memory | `personal-graphify` (code graph), `acne` (people), `apps/dottie/dottie/harness_continual.py` (versioned prompts/memories with rollback), MEMORY.md write-back | Three stores, no single "remember this" endpoint. |
 | Agent-to-agent messaging | `comms` plugin and `apps/dottie/dottie/sessions.py` inbox | **File-based** under `~/workspace/.dottie/` — only works on one machine. |
 | Claim board (who is working on what) | `bundles/coordination`, plus a `COORDINATION.md` copied into every vector repo | Synced by hand via "chore: sync claim board" commits (13 of them on 08-18 alone). |
-| Local always-on server | `docker-compose.dottie.yml` runs a stdlib HTTP server on 127.0.0.1:8787 with bearer auth, HMAC ephemeral tokens, rate limits | The server is a **Python heredoc inside the compose file**, not a package; `scout api` referenced in the comment does not exist as a plugin. |
-| Hosted API | `apps/dottie-harness-api` on Vercel (slasso.com): `/api/health`, `/api/route`, `/api/plan`, `/api/stats`, `/api/meter`, `/api/vector/*` | Stateless routing and dashboards only. No execution, no memory, no auth. |
-| Pairing local ↔ cloud | `pair` plugin (6-char code, local queue) + `apps/arxiviq/app/api/pair/verify` | **Cloud side is a demo**: it accepts any well-formed code, stores it in lambda memory (lost on cold start), and the comment says "production should look up Supabase". No queue relay exists. |
+| Local always-on server | `docker-compose.dottie.yml` builds the canonical `Dockerfile.jarvisd` and publishes jarvisd on host-bound 127.0.0.1:8790 | `JARVIS_BEARER` is required at runtime; no duplicate pair store, queue, or daemon is simulated. |
+| Hosted API | `apps/dottie-harness-api` implements a fail-closed bearer boundary for `/api/route` and `/api/plan`; incomplete deployment policy returns 503 before auth or route work. Artifact-backed stats/meter/vector routes remain unavailable. | Public readiness remains **blocked** until the actual Vercel owner, distributed edge rate-limit policy, bearer rotation procedure, and canonical HTTPS origin are independently verified. Configured policy identifiers are declarations, not proof of those controls. |
+| Pairing local ↔ cloud | `pair` plugin + `apps/arxiviq/app/api/pair/verify` | The arxiviq routes require `JARVIS_URL` and proxy jarvisd as the source of truth. Unset, invalid, blocked, or unreachable jarvisd fails closed; there is no demo store. Pair verification is edge-rate-limited. No queue relay exists. |
 | Slack / web identity | `channels/slack.json`, `channels/identity.json`, `scopes/person|room|org` | **Config only.** No Slack event handler code anywhere in `apps/` or `packages/`. |
 | Model-agnostic driver seam | `scopes/drivers/wiring.py` — `HarnessDriver.run(scope, goal, tools)` for Pi / OpenCode / Codex / Claude Code | Interface exists; no driver talks to a network endpoint. |
 | A brain | `apps/dottie` engine with `OllamaPolicy` (qwen3:32b) and a FastAPI `/tasks` API; `EchoPolicy` for CI; `AvaPolicy` (trainee, no capability) | Needs its own venv + `AVA_FACTORY_ROOT`; excluded from the uv workspace. Ollama cannot run on free-tier hosting. |
@@ -93,12 +93,21 @@ Read this before building anything; most of the pieces are there.
 
 ## 4. The gaps, ranked by how much they block Jarvis
 
-1. **No single always-on process.** Everything real runs as a CLI on one box; the only hosted thing is stateless routing.
-2. **No network transport between agents.** Inboxes and claim boards are files. Two machines, or one machine and a cloud session, cannot see each other.
-3. **No agent-facing endpoint for the tools you use.** The right seam exists (`scout mcp serve`), but nothing points Claude Code, Cursor, or OpenCode at it.
-4. **Signal-to-noise in the repo itself.** CI red for two weeks, 123 open TODO items, four stale PRs, and doctrine docs (`NORTH_STAR.md`) written as token soup that no agent can act on. Any agent that boots into dottie today gets contradictory instructions.
-5. **Two brains, no front door.** `apps/dottie` (FastAPI + Ollama) and `scout harness` (deterministic) are both "the agent". Jarvis needs one entry point that calls both.
-6. **Mirror drift.** Four standalone packages and the arxiviq site have diverged from their dottie copies in both directions.
+1. **Distributed edge ownership is not yet verified.** The harness API now
+   fails closed behind a distinct bearer and deployment-policy preconditions,
+   but release readiness still requires the accountable Vercel owner to verify
+   the platform rate limit, secret rotation, and canonical origin. Arxiviq
+   privileged claims/goals still require explicit user-session ownership.
+2. **Local ACD daemon transport is not connected to the web conductor.** The
+   browser must report it unavailable; colocated TypeScript shims are not runtime proof.
+3. **Harness API remains a separate protected edge.** Its bearer and deployment
+   policy are implemented, but it must stay unavailable until the distributed
+   controls above are owner-verified; keep proxy expansion deferred.
+4. **Two brains still need one operator contract.** `apps/dottie` can use a real
+   Ollama model and Scout provides deterministic tools, but their joined product
+   boundary is not yet defined.
+5. **Mirror drift remains.** Frozen standalone packages and the arxiviq site have
+   diverged from their dottie copies.
 
 ## 5. The plan
 
@@ -122,9 +131,9 @@ trustworthy while `main` is red.
 
 ### Phase 1 — One front door: the Jarvis daemon (≈2 weeks)
 
-Promote the heredoc server in `docker-compose.dottie.yml` into a real package,
-`apps/jarvisd` (name is yours; "daemon" is the role). It is **one long-running
-process** that owns state and exposes two protocols:
+`apps/jarvisd` is the **one long-running process** that owns state and exposes
+two protocols. `docker-compose.dottie.yml` now builds that package directly
+rather than carrying a second inline or extracted implementation:
 
 - **MCP (streamable HTTP)** — the protocol Claude Code, Cursor, and OpenCode
   all speak natively. Reuse `scout mcp serve`; register a curated namespace
@@ -180,7 +189,7 @@ daemon restart; a nightly R2 backup exists.
 | OpenCode | `opencode.json` `mcp` entry (the bluehen one shows the shape). | dottie root |
 | Slack | Implement the handler behind `channels/slack.json`: Slack Events → `scopes/person|room` resolve → `harness.route` → reply. Stdlib or Bolt; runs inside the daemon. Consequential actions park in the existing `scout inbox` for approval. | `apps/jarvisd/channels/slack.py` |
 | Agent ↔ agent | Point `comms` and `sessions.py` at the daemon's HTTP inbox; delete the file-inbox path. Replace the per-repo `COORDINATION.md` copies with `jarvis.claim`; one board, no sync commits. | scout-cli plugins |
-| Pairing | Replace the demo `/api/pair/verify` with a call to the daemon (through the tunnel). The local daemon is the truth; the cloud conductor only asks it. | `dottie/apps/arxiviq` |
+| Pairing | Keep `/api/pair/verify` as a fail-closed call to the daemon (through the tunnel). The local daemon is the truth; the cloud conductor only asks it. | `dottie/apps/arxiviq` |
 
 **Acceptance:** a goal typed in Slack appears in the next Claude Code session's
 context; a claim from Cursor is visible in Claude Code within 5 s; zero "sync

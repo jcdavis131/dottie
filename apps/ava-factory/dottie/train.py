@@ -39,6 +39,12 @@ from dottie.model import build_model, count_params, set_router_bias
 from dottie.pipeline.demand import compute_demand, write_demand
 from dottie.pipeline.flow import FlowConfig
 from dottie.pipeline.manifest import Manifest
+from dottie.provenance import (
+    checkpoint_metadata,
+    lineage_from_training,
+    sha256_file,
+    validate_checkpoint,
+)
 
 # Env-overridable: fp32-on-12GB needs mb 4 (same tokens/step via accum — identical
 # training math, half the activation memory; observed WDDM spill at mb 8 fp32).
@@ -137,11 +143,27 @@ def gpu_stats() -> dict:
 
 
 def save_ckpt(
-    path: Path, *, model, opt, step, phase, tokens_done, cfg, sampler
-) -> None:
+    path: Path,
+    *,
+    model,
+    opt,
+    step,
+    phase,
+    tokens_done,
+    cfg,
+    sampler,
+    asserted_parent: dict[str, str] | None = None,
+) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
-    blob = {
-        "model": model.state_dict(),
+    lineage = lineage_from_training(
+        cfg=cfg,
+        manifest=sampler.m,
+        shard_ids=sampler.observed_shard_ids(),
+    )
+    model_state = model.state_dict()
+    numpy_rng = np.random.get_state()
+    content = {
+        "model": model_state,
         "optimizer": opt.state_dict(),
         "step": step,
         "phase": phase,
@@ -150,16 +172,31 @@ def save_ckpt(
         "sampler": sampler.state_dict(),
         "rng": {
             "python": random.getstate(),
-            "numpy": np.random.get_state(),
+            "numpy": {
+                "bit_generator": numpy_rng[0],
+                "keys": numpy_rng[1].tolist(),
+                "pos": numpy_rng[2],
+                "has_gauss": numpy_rng[3],
+                "cached_gaussian": numpy_rng[4],
+            },
             "torch": torch.get_rng_state(),
             "cuda": torch.cuda.get_rng_state_all()
             if torch.cuda.is_available()
             else None,
         },
     }
+    blob = {
+        **content,
+        **checkpoint_metadata(
+            lineage,
+            asserted_parent=asserted_parent,
+            content=content,
+        ),
+    }
     tmp = path.with_suffix(".tmp")
     torch.save(blob, tmp)
     os.replace(tmp, path)  # atomic: the server may be reading
+    return blob["digest"]
 
 
 def _rotate_step_ckpts(ckpt_dir: Path, keep: int = 3, min_step: int = 0) -> int:
@@ -198,13 +235,20 @@ def _point_latest_at(ckpt_dir: Path, target: Path) -> None:
     os.replace(tmp, latest)  # a file, not a symlink: Windows volumes
 
 
-def load_ckpt(path: Path, *, model, opt, sampler, device: str) -> tuple[int, int]:
+def load_ckpt(
+    path: Path, *, model, opt, sampler, device: str, cfg
+) -> tuple[int, int, str]:
     # map_location='cpu', NOT device: loading the blob straight to CUDA
     # briefly double-residents the model+optimizer (telemetry showed a
     # 12.5GB resume peak on the 12.3GB card -- sysmem spill from the first
     # breath). load_state_dict copies tensor-by-tensor onto the live params,
     # and Optimizer.load_state_dict casts state to each param's device.
-    blob = torch.load(path, map_location="cpu", weights_only=False)
+    blob = torch.load(path, map_location="cpu", weights_only=True)
+    digest = validate_checkpoint(
+        blob,
+        expected_tokenizer_sha256=sampler.m.tokenizer_sha(),
+        expected_config=cfg,
+    )
     model.load_state_dict(
         blob["model"]
     )  # the blueprint printed "Loading..." and never did this
@@ -212,11 +256,20 @@ def load_ckpt(path: Path, *, model, opt, sampler, device: str) -> tuple[int, int
     sampler.load_state_dict(blob["sampler"])
     r = blob["rng"]
     random.setstate(r["python"])
-    np.random.set_state(r["numpy"])
+    nr = r["numpy"]
+    np.random.set_state(
+        (
+            nr["bit_generator"],
+            np.asarray(nr["keys"], dtype=np.uint32),
+            int(nr["pos"]),
+            int(nr["has_gauss"]),
+            float(nr["cached_gaussian"]),
+        )
+    )
     torch.set_rng_state(r["torch"].cpu() if hasattr(r["torch"], "cpu") else r["torch"])
     if r.get("cuda") and torch.cuda.is_available():
         torch.cuda.set_rng_state_all([t.cpu() for t in r["cuda"]])
-    return int(blob["step"]), int(blob["tokens_done"])
+    return int(blob["step"]), int(blob["tokens_done"]), digest
 
 
 # ---------------------------------------------------------------------------
@@ -325,6 +378,7 @@ def main(argv=None) -> int:
         torch.set_num_threads(int(os.environ.get("OMP_NUM_THREADS", "4")))
 
     model = build_model(cfg).to(device)
+    asserted_parent: dict[str, str] | None = None
     log(
         "model_built",
         params=count_params(model),
@@ -344,7 +398,13 @@ def main(argv=None) -> int:
         if branch_spec is None:
             raise SystemExit(f"preset {cfg.preset} defines no branch {args.branch!r}")
         src = Path(args.init or branch_spec["init"])
-        blob = torch.load(src, map_location=device, weights_only=False)
+        blob = torch.load(src, map_location="cpu", weights_only=True)
+        source_digest = validate_checkpoint(blob, expected_config=cfg)
+        asserted_parent = {
+            "artifact_sha256": sha256_file(src),
+            "lineage_digest": blob["lineage"]["digest"],
+            "checkpoint_digest": source_digest,
+        }
         model.load_state_dict(blob["model"])
         model.freeze_spaces(list(branch_spec["freeze"]))
         set_router_bias(model, list(branch_spec["router_bias"]))
@@ -357,6 +417,26 @@ def main(argv=None) -> int:
             trainable=count_params(model, trainable_only=True),
         )
 
+    # ---- plain init (no branch semantics): model weights only, fresh optimizer/step.
+    # The dottie.grow warm-start path: `--preset base1b --init /ckpt/base1b/grown_init.pt`.
+    elif args.init:
+        init_path = Path(args.init)
+        blob = torch.load(init_path, map_location="cpu", weights_only=True)
+        source_digest = validate_checkpoint(blob, expected_config=cfg)
+        asserted_parent = {
+            "artifact_sha256": sha256_file(init_path),
+            "lineage_digest": blob["lineage"]["digest"],
+            "checkpoint_digest": source_digest,
+        }
+        model.load_state_dict(blob["model"])
+        log(
+            "init_loaded",
+            init=str(args.init),
+            src_step=blob.get("step"),
+            grown=bool(blob.get("grow")),
+            init_preset=blob.get("preset"),
+        )
+
     if cfg.training.compile and device.startswith("cuda"):
         # Opt-in only (yaml `training.compile`). Keep off for live mini; enable
         # on mini_overtrain after a short smoke. Dynamic shapes from variable
@@ -366,19 +446,6 @@ def main(argv=None) -> int:
             log("model_compiled", backend="torch.compile")
         except Exception as exc:
             log("model_compile_skipped", level="warn", error=str(exc)[:300])
-
-    # ---- plain init (no branch semantics): model weights only, fresh optimizer/step.
-    # The dottie.grow warm-start path: `--preset base1b --init /ckpt/base1b/grown_init.pt`.
-    elif args.init:
-        blob = torch.load(Path(args.init), map_location=device, weights_only=False)
-        model.load_state_dict(blob["model"])
-        log(
-            "init_loaded",
-            init=str(args.init),
-            src_step=blob.get("step"),
-            grown=bool(blob.get("grow")),
-            init_preset=blob.get("preset"),
-        )
 
     opt = build_optimizer(model, cfg)
     obj = JSpaceObjective(cfg).to(device)
@@ -477,9 +544,15 @@ def main(argv=None) -> int:
         # each restarted the tool fork from step 0 because resume was unreachable).
         if args.resume and latest.exists():
             target = ckpt_dir / latest.read_text().strip()
-            step, tokens_done = load_ckpt(
-                target, model=model, opt=opt, sampler=sampler, device=device
+            step, tokens_done, source_digest = load_ckpt(
+                target,
+                model=model,
+                opt=opt,
+                sampler=sampler,
+                device=device,
+                cfg=cfg,
             )
+            asserted_parent = {"checkpoint_digest": source_digest}
             log("resumed", ckpt=str(target), step=step, tokens_done=tokens_done)
 
         if args.max_steps is not None:
@@ -521,7 +594,7 @@ def main(argv=None) -> int:
             new_phase = phase_for_step(cfg, tokens_done)
             if new_phase != phase and args.max_steps is None:
                 stable = ckpt_dir / f"stable_p{phase}.pt"
-                save_ckpt(
+                saved_digest = save_ckpt(
                     stable,
                     model=model,
                     opt=opt,
@@ -530,7 +603,9 @@ def main(argv=None) -> int:
                     tokens_done=tokens_done,
                     cfg=cfg,
                     sampler=sampler,
+                    asserted_parent=asserted_parent,
                 )
+                asserted_parent = {"checkpoint_digest": saved_digest}
                 log("stable_ckpt", path=str(stable), phase=phase, step=step)
                 # Hand the old phase's partially-consumed shard back. The new
                 # stream claims only the new phase; without this the abandoned
@@ -652,7 +727,7 @@ def main(argv=None) -> int:
 
             if step % cfg.training.checkpoint_every_steps == 0 or step == total_steps:
                 p = ckpt_dir / f"step_{step}.pt"
-                save_ckpt(
+                saved_digest = save_ckpt(
                     p,
                     model=model,
                     opt=opt,
@@ -661,7 +736,9 @@ def main(argv=None) -> int:
                     tokens_done=tokens_done,
                     cfg=cfg,
                     sampler=sampler,
+                    asserted_parent=asserted_parent,
                 )
+                asserted_parent = {"checkpoint_digest": saved_digest}
                 _point_latest_at(ckpt_dir, p)
                 log("checkpoint", path=str(p), step=step)
                 # Keep-last-N rotation, armed ONLY when AVA_CKPT_ROTATE_MIN is
@@ -692,6 +769,7 @@ def main(argv=None) -> int:
             tokens_done=tokens_done,
             cfg=cfg,
             sampler=sampler,
+            asserted_parent=asserted_parent,
         )
         _point_latest_at(ckpt_dir, final)
         heartbeat(step, phase, status="done")

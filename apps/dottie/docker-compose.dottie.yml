@@ -16,7 +16,7 @@ services:
       dockerfile: apps/dottie/Dockerfile
     image: dottie/dottie:latest
     ports:
-      - "8100:8100"
+      - "127.0.0.1:8100:8100"
     environment:
       DOTTIE_OLLAMA_URL: ${DOTTIE_OLLAMA_URL:-http://host.docker.internal:11434}
       DOTTIE_OLLAMA_MODEL: ${DOTTIE_OLLAMA_MODEL:-qwen3:32b}

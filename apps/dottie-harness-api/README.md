@@ -1,151 +1,93 @@
 # dottie-harness-api
 
-Hostable HTTP API for the harness orchestration router. Serves two layers over
-a single serverless function:
+Fail-closed HTTP boundary for deterministic harness routing.
 
-1. **Heuristic routing** — a self-contained port of the harness CLI's
-   MoMA-lite classifier and graph-plan fallback
-   (`apps/scout-cli/bigbang/plugins/harness/cli.py`). Always available.
-2. **Learned routing** — a small MLP trained elsewhere in the repo
-   (`apps/ava-factory`), executed here with numpy-only inference over vendored
-   `champion_weights.json`. Available only when the weights artifact has been
-   vendored; the API degrades to heuristic-only responses otherwise.
+## Configuration
 
-The package is fully self-contained: Vercel bundles only this directory, the
-sole dependency is numpy, and the function is a stdlib
-`http.server.BaseHTTPRequestHandler` subclass (no web framework).
+- Local development requires `HARNESS_API_LOCAL_ONLY=1`, a loopback client
+  socket, and `HARNESS_API_BEARER`. Local-only mode is rejected when
+  `VERCEL=1` or the client is not loopback.
+- Public Vercel mode requires `VERCEL=1`, Vercel request metadata, and all of
+  `HARNESS_API_BEARER`, `HARNESS_API_DEPLOYMENT_OWNER`,
+  `HARNESS_API_RATE_LIMIT_POLICY_ID`, and
+  `HARNESS_API_CANONICAL_ORIGIN`.
+- `HARNESS_API_BEARER` must be distinct from `JARVIS_BEARER`.
+- `HARNESS_API_ALLOWED_ORIGINS` is an optional comma-separated exact-origin
+  allowlist. Origins must use HTTPS, except exact HTTP loopback origins.
+  Wildcards, credentials, and URL paths/queries/fragments are rejected. In
+  public mode the canonical origin must be present when CORS is enabled.
 
-## Endpoints
+An incomplete deployment policy returns `503 configuration_error` before
+authentication or route work. Missing or incorrect credentials return
+`401 unauthorized` only after the deployment policy is ready.
 
-All endpoints respond `application/json`. Unknown paths return
-`404 {"ok": false, "error": "not found"}`; malformed JSON bodies return 400.
+## Available routes
 
-### GET /api/health
+- `GET /api/health` returns only service name, API version, and readiness.
+- `POST /api/route` returns a request-derived deterministic heuristic. Its
+  `heuristic_score`, `recommended_agents`, and
+  `provenance: "request_derived_heuristic"` fields are not learned outputs.
+  Learned state remains `null`/`unavailable`.
+- `POST /api/plan` returns the deterministic static-prior plan plus the same
+  unavailable model fields and request-derived provenance.
 
-```bash
-curl -s https://<deployment>/api/health
-```
+Request bodies are limited to 64 KiB and must be UTF-8 JSON objects.
 
-```json
-{
-  "ok": true,
-  "model_loaded": true,
-  "model_version": "orch-mlp-v1-v4",
-  "gate_passed": false,
-  "corpus_stats": {"total": 829, "by_provenance": {"simulated": 815, "measured": 14}, "...": "..."}
-}
-```
+## Disabled artifact routes
 
-`model_loaded: false` with null `model_version` / `gate_passed` /
-`corpus_stats` means no artifacts are vendored — the service is still healthy
-and serves heuristic routing.
+Stats, meter, analytics, corpus, retrain, and vector routes return
+`503 artifact_unavailable`. They remain unavailable until all of these exact
+requirements are met:
 
-### POST /api/route
+1. production-derived artifact bundle with `synthetic=false`;
+2. signed manifest naming the schema version and source run IDs;
+3. SHA-256 checksum for every artifact verified before serving;
+4. owner-approved production loader or dispatcher with no mock fallback.
 
-```bash
-curl -s -X POST https://<deployment>/api/route \
-  -H 'Content-Type: application/json' \
-  -d '{"goal": "compare stripe vs lemon squeezy pricing"}'
-```
+Dormant research modules remain in the package for offline work, but the
+production request entrypoint does not import or call them.
 
-```json
-{
-  "ok": true,
-  "goal": "compare stripe vs lemon squeezy pricing",
-  "intent": "deep_research",
-  "intent_scores": {"agentic_loop": 0.0, "deep_research": 3.0, "complex_action": 0.0, "deterministic": 0.0},
-  "complexity": "simple",
-  "moma_tier": "deep_research",
-  "confidence": 0.75,
-  "routed_agents": ["deep-researcher", "synthesist", "forensic-auditor"],
-  "routed_count": 3,
-  "learned": {"tier": "deep_research", "tier_probs": [0.0, 0.0, 0.9, 0.0, 0.1], "risk": 0.05, "cost": 1.2, "model_version": "orch-mlp-v1-v4", "gate_passed": false},
-  "model_loaded": true
-}
-```
+## Public deployment preconditions
 
-`learned` is `null` whenever no weights are loaded. A missing or empty `goal`
-returns 400.
+These controls are external platform obligations; this package does not claim
+to supply a distributed limiter merely because a policy ID is configured.
 
-### POST /api/plan
+**Current public readiness status: BLOCKED.** Protected routes must remain
+unavailable until the actual Vercel project owner and edge policy have been
+independently verified:
 
-```bash
-curl -s -X POST https://<deployment>/api/plan \
-  -H 'Content-Type: application/json' \
-  -d '{"goal": "ship the harness loop"}'
-```
+1. a distributed rate limit at the platform edge for every protected route;
+2. a canonical project owner recorded as the accountable deployment approver;
+3. a secret rotation procedure for `HARNESS_API_BEARER`, including revocation
+   of the previous value;
+4. a canonical HTTPS origin that matches the deployed project and appears in
+   `HARNESS_API_ALLOWED_ORIGINS` whenever CORS is enabled.
 
-Returns a deterministic DAG (`tierHint`, `steps[]` with
-`id/idx/role/llmTier/failureRisk/sideEffect/desc`). Step risks are static
-priors, and the response says so:
+Only after that external verification may the owner set the public policy
+variables. Their presence is a fail-closed deployment declaration, not proof
+that Vercel supplies the limiter.
 
-```json
-{"risk_provenance": "static priors — no mined run history in serverless", "version": "vendored port of harness graph-plan python fallback"}
-```
-
-### GET /api/stats
+Canonical smoke verification must use the deployed HTTPS origin so Vercel
+injects `x-vercel-id` and `x-vercel-forwarded-for`; manually supplied forwarding
+headers are not accepted as evidence:
 
 ```bash
-curl -s https://<deployment>/api/stats
+curl -i https://<canonical-origin>/api/health
 ```
 
-Returns the vendored corpus metadata (`corpus_meta`) and champion evaluation
-summary (`champion` — headline metrics plus the promotion-gate verdict). Both
-are `null` when nothing is vendored.
+Before verification, the minimal body must remain
+`{"service":"dottie-harness-api","version":"1","ready":false,"reason":"deployment_policy_unavailable"}`.
+After verification and configuration, the same canonical request may report
+`ready:true`; health never returns owner, policy, origin, or secret values.
 
-## Refreshing vendored artifacts
+## Local verification
 
-Artifacts are produced by the training/evaluation pipeline in
-`apps/ava-factory` and copied in at build time — run before each deploy:
-
-```bash
-python lib/copy_artifacts.py
-```
-
-This vendors, when present: `champion_weights.json` (verbatim), an
-`eval_summary.json` reduced to the champion + gate sections, and
-`corpus_meta.json`. A missing source is reported honestly and skipped; the
-package then serves `model_loaded: false`.
-
-## Local tests
-
-From the repo root:
+From the repository root:
 
 ```bash
 uv run python -m pytest apps/dottie-harness-api/tests/test_api_local.py -q
 ```
 
-Tests spin the real handler on a local `HTTPServer` and pass with or without
-vendored artifacts (fixtures are injected via `DOTTIE_HARNESS_WEIGHTS` and
-`DOTTIE_HARNESS_META_DIR`).
-
-## Deploy
-
-From this directory:
-
-```bash
-vercel deploy
-```
-
-No build step or functions config is required — the runtime auto-detects
-`api/index.py` plus `requirements.txt`, and `vercel.json` rewrites
-`/api/*` to the single function.
-
-## Provenance
-
-- **Learned outputs are never fabricated.** The `learned` block appears only
-  when champion weights are actually vendored and load with full schema
-  validation; otherwise responses carry `learned: null` and
-  `model_loaded: false`.
-- **Plan risks are static priors.** The source CLI mines per-role failure
-  rates from run history; this serverless bundle has no run-history store, so
-  every plan response is labeled
-  `"risk_provenance": "static priors — no mined run history in serverless"`.
-- **`gate_passed: false` is meaningful.** It records that the current champion
-  did not beat its baselines on sufficient measured held-out data (see the
-  vendored eval summary for the exact gate reason). Consumers should treat the
-  learned tier as advisory and prefer the heuristic route when the two
-  disagree, until a champion ships with `gate_passed: true`.
-- **Corpus stats are labeled by provenance.** `corpus_stats.by_provenance`
-  separates measured records from simulated battery records; headline counts
-  mix both and should not be read as measured volume.
+The public index is generated by `scripts/build_dashboard.py` using explicit
+UTF-8 and an atomic same-directory replacement. On Windows, back up the
+current output bytes before invoking the generator.

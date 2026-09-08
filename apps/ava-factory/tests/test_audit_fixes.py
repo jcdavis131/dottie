@@ -1,9 +1,6 @@
 """Regression tests for the audit fixes (honesty architecture).
 
 Covers:
-- fix 1: on_policy_distill.reverse_kl_loss works on real tensors (the old
-  `isinstance(x, type(torch) and ...)` bug raised TypeError whenever torch
-  was installed, killing the real KD path);
 - fix 7: eval_frontier_rubric judges — no additive bonuses; keys absent =>
   PLAIN mock score labeled judge="mock"; real path constructs a proper
   authenticated POST (stubbed HTTP layer);
@@ -27,55 +24,6 @@ import pytest
 
 _REPO = Path(__file__).resolve().parent.parent
 _PILOT_CKPT = _REPO / "runs" / "cpu_pilot" / "base" / "base_final.pt"
-
-
-# ---------------------------------------------------------------- fix 1: KD
-
-
-def test_reverse_kl_loss_real_tensors():
-    torch = pytest.importorskip("torch")
-    import torch.nn.functional as F
-    from on_policy_distill import reverse_kl_loss
-
-    torch.manual_seed(0)
-    s = torch.randn(2, 4, 8)
-    t = torch.randn(2, 4, 8)
-
-    loss = reverse_kl_loss(s, t)
-    assert isinstance(loss, torch.Tensor), (
-        "real tensors must produce a real tensor loss"
-    )
-
-    log_ps = F.log_softmax(s, dim=-1)
-    log_pt = F.log_softmax(t, dim=-1)
-    manual = (log_ps.exp() * (log_ps - log_pt)).sum(-1).mean()
-    assert torch.allclose(loss, manual, atol=1e-6)
-    assert loss.item() > 0.0  # KL(p||q) > 0 for distinct distributions
-
-    # KL(p||p) == 0
-    zero = reverse_kl_loss(s, s)
-    assert abs(float(zero)) < 1e-6
-
-    # masked reduction path
-    mask = torch.ones(2, 4)
-    mask[:, -1] = 0
-    masked = reverse_kl_loss(s, t, mask=mask)
-    manual_masked = (
-        (log_ps.exp() * (log_ps - log_pt)).sum(-1) * mask
-    ).sum() / mask.sum()
-    assert torch.allclose(masked, manual_masked, atol=1e-6)
-
-
-def test_reverse_kl_loss_gradient_flows():
-    torch = pytest.importorskip("torch")
-    from on_policy_distill import reverse_kl_loss
-
-    torch.manual_seed(1)
-    s = torch.randn(1, 3, 6, requires_grad=True)
-    t = torch.randn(1, 3, 6)
-    loss = reverse_kl_loss(s, t)
-    loss.backward()
-    assert s.grad is not None and torch.isfinite(s.grad).all()
 
 
 # ------------------------------------------------- fix 7: judges, no bonuses

@@ -366,7 +366,7 @@ def main():
                 from model_1b import get_model
 
                 model = get_model()
-                sd = torch.load(args.ckpt, map_location="cpu")
+                sd = torch.load(args.ckpt, map_location="cpu", weights_only=True)
                 model.load_state_dict(sd.get("model", sd), strict=False)
                 print(f"Loaded ckpt {args.ckpt}")
             except Exception as e:

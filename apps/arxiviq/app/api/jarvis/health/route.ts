@@ -1,28 +1,20 @@
 import { NextResponse } from "next/server";
-import { jarvisFetch, resolveJarvisBase } from "@/lib/jarvis";
+import { jarvisFetch } from "@/lib/jarvis";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const { base, reason } = resolveJarvisBase();
-  if (!base) {
-    return NextResponse.json({
-      ok: false,
-      unreachable: true,
-      source: "unreachable",
-      provenance: "unreachable",
-      error: reason || "JARVIS_URL unset",
-    });
-  }
   const proxied = await jarvisFetch("/api/health", { method: "GET" });
   if (!proxied.ok) {
     return NextResponse.json(
       {
         ok: false,
         unreachable: true,
-        source: "unreachable",
-        provenance: "unreachable",
+        source: proxied.source,
+        provenance: proxied.provenance,
         error: proxied.error,
       },
-      { status: 503 }
+      { status: proxied.status }
     );
   }
   return NextResponse.json({

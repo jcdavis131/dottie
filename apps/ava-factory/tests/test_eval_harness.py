@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import math
+import sys
 from pathlib import Path
 
 import pytest
 
 torch = pytest.importorskip("torch")
 
+import evals.run_harness as harness_module
 from ava.config import AvaConfig
 from ava.model import build_model
 from ava.tokenizer import AvaTokenizer
-from evals.common import prep_eval
+from dottie.provenance import IntegrityError
+from evals.common import load_model, prep_eval
 from evals.interventions import WorkspaceSwap, concept_vector
 from evals.run_harness import run_harness, write_reports
 
@@ -55,6 +58,13 @@ def test_concept_vector_real_ids(nano_random_model):
     expected = torch.nn.functional.normalize(row, dim=0)
     torch.testing.assert_close(vec, expected, atol=1e-6, rtol=1e-6)
     torch.testing.assert_close(vec, row / row.norm(), atol=1e-6, rtol=1e-6)
+
+
+def test_real_eval_rejects_random_init_default():
+    if not _NANO_TOK.exists():
+        pytest.skip("run scripts/build_eval_data.py first")
+    with pytest.raises(IntegrityError, match="requires"):
+        load_model("none", "nano", "cpu")
 
 
 def test_harness_smoke(nano_random_model, monkeypatch, tmp_path):
@@ -119,3 +129,30 @@ def test_harness_smoke(nano_random_model, monkeypatch, tmp_path):
     ):
         assert name in md
     assert any(w in md for w in ("PASS", "FAIL", "MEASURED"))
+
+
+@pytest.mark.parametrize(
+    ("result", "expected"),
+    [
+        ({"claim_eligible": True, "measured_failures": 0}, 0),
+        ({"claim_eligible": True, "measured_failures": 1}, 1),
+    ],
+)
+def test_eval_cli_strict_measured_exit_codes(monkeypatch, result, expected):
+    monkeypatch.setattr(sys, "argv", ["evals.run_harness"])
+    monkeypatch.setattr(harness_module, "run_harness", lambda **kwargs: result)
+    monkeypatch.setattr(harness_module, "write_reports", lambda report: None)
+    assert harness_module.main() == expected
+
+
+def test_eval_cli_integrity_error_exits_two(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["evals.run_harness"])
+
+    def fail(**kwargs):
+        raise ValueError("checkpoint digest mismatch")
+
+    reports = []
+    monkeypatch.setattr(harness_module, "run_harness", fail)
+    monkeypatch.setattr(harness_module, "write_reports", reports.append)
+    assert harness_module.main() == 2
+    assert reports[0]["claim_eligible"] is False

@@ -52,12 +52,18 @@ TABLES: tuple[str, ...] = (
     "timeline",
     "sessions",
     "pairings",
+    "conductor_feedback",
+    "conductor_scratchpad",
+    "conductor_todos",
 )
 
 # Same alphabet as scout pair — no 0/O/1/I/L.
 PAIR_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
 GOAL_STATUSES: tuple[str, ...] = ("open", "done", "dropped")
+CONDUCTOR_FEEDBACK_KINDS: tuple[str, ...] = ("thumbs_up", "thumbs_down", "note")
+CONDUCTOR_TODO_PRIORITIES: tuple[str, ...] = ("low", "mid", "high")
+CONDUCTOR_TODO_STATUSES: tuple[str, ...] = ("open", "in_progress", "completed")
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS memories (
@@ -129,6 +135,46 @@ CREATE TABLE IF NOT EXISTS pairings (
     paired INTEGER NOT NULL DEFAULT 0,
     agent TEXT NOT NULL DEFAULT ''
 );
+
+CREATE TABLE IF NOT EXISTS conductor_feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    repo TEXT NOT NULL,
+    agent TEXT NOT NULL,
+    mission TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    message TEXT NOT NULL,
+    strength REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS conductor_feedback_scope
+    ON conductor_feedback(repo, mission, id);
+
+CREATE TABLE IF NOT EXISTS conductor_scratchpad (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    repo TEXT NOT NULL,
+    agent TEXT NOT NULL,
+    mission TEXT NOT NULL,
+    text TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS conductor_scratchpad_scope
+    ON conductor_scratchpad(repo, mission, id);
+
+CREATE TABLE IF NOT EXISTS conductor_todos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    updated_ts TEXT NOT NULL,
+    repo TEXT NOT NULL,
+    agent TEXT NOT NULL,
+    mission TEXT NOT NULL,
+    text TEXT NOT NULL,
+    priority TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open'
+);
+CREATE INDEX IF NOT EXISTS conductor_todos_scope
+    ON conductor_todos(repo, mission, id);
+CREATE UNIQUE INDEX IF NOT EXISTS conductor_todos_one_in_progress
+    ON conductor_todos(repo, mission) WHERE status = 'in_progress';
 """
 
 _FTS_SCHEMA = """
@@ -180,6 +226,23 @@ def _loads(raw: str | None, default: Any) -> Any:
         return json.loads(raw)
     except json.JSONDecodeError:
         return default
+
+
+def _bounded_text(name: str, value: str, maximum: int) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{name} must be a string")
+    value = value.strip()
+    if not value or len(value) > maximum:
+        raise ValueError(f"{name} must be 1..{maximum} characters")
+    return value
+
+
+def _conductor_scope(repo: str, agent: str, mission: str) -> tuple[str, str, str]:
+    return (
+        _bounded_text("repo", repo, 200),
+        _bounded_text("agent", agent, 64),
+        _bounded_text("mission", mission, 200),
+    )
 
 
 class State:
@@ -569,6 +632,166 @@ class State:
                 "unread": self.unread_count(agent),
             }
 
+    # -- conductor ---------------------------------------------------------
+
+    def conductor_feedback_push(
+        self,
+        repo: str,
+        agent: str,
+        mission: str,
+        kind: str,
+        message: str,
+        strength: float,
+    ) -> dict[str, Any]:
+        """Persist one bounded feedback item in an exact conductor scope."""
+        repo, agent, mission = _conductor_scope(repo, agent, mission)
+        if kind not in CONDUCTOR_FEEDBACK_KINDS:
+            raise ValueError(f"kind must be one of {CONDUCTOR_FEEDBACK_KINDS}")
+        message = _bounded_text("message", message, 2000)
+        if isinstance(strength, bool) or not isinstance(strength, (int, float)):
+            raise ValueError("strength must be a number from -1 to 1")
+        strength = float(strength)
+        if not -1 <= strength <= 1:
+            raise ValueError("strength must be a number from -1 to 1")
+        with self._lock:
+            cur = self._conn.execute(
+                "INSERT INTO conductor_feedback"
+                "(ts, repo, agent, mission, kind, message, strength) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (now_iso(), repo, agent, mission, kind, message, strength),
+            )
+            row = self._row(
+                "SELECT * FROM conductor_feedback WHERE id = ?", (cur.lastrowid,)
+            )
+        assert row is not None
+        return row
+
+    def conductor_scratchpad_write(
+        self, repo: str, agent: str, mission: str, text: str
+    ) -> dict[str, Any]:
+        """Append one bounded scratchpad entry in an exact conductor scope."""
+        repo, agent, mission = _conductor_scope(repo, agent, mission)
+        text = _bounded_text("text", text, 4000)
+        with self._lock:
+            cur = self._conn.execute(
+                "INSERT INTO conductor_scratchpad(ts, repo, agent, mission, text) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (now_iso(), repo, agent, mission, text),
+            )
+            row = self._row(
+                "SELECT * FROM conductor_scratchpad WHERE id = ?", (cur.lastrowid,)
+            )
+        assert row is not None
+        return row
+
+    def conductor_todo_create(
+        self,
+        repo: str,
+        agent: str,
+        mission: str,
+        text: str,
+        priority: str,
+    ) -> dict[str, Any]:
+        """Create one open todo in an exact conductor scope."""
+        repo, agent, mission = _conductor_scope(repo, agent, mission)
+        text = _bounded_text("text", text, 1000)
+        if priority not in CONDUCTOR_TODO_PRIORITIES:
+            raise ValueError(f"priority must be one of {CONDUCTOR_TODO_PRIORITIES}")
+        ts = now_iso()
+        with self._lock:
+            cur = self._conn.execute(
+                "INSERT INTO conductor_todos"
+                "(ts, updated_ts, repo, agent, mission, text, priority, status) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, 'open')",
+                (ts, ts, repo, agent, mission, text, priority),
+            )
+            row = self._row(
+                "SELECT * FROM conductor_todos WHERE id = ?", (cur.lastrowid,)
+            )
+        assert row is not None
+        return row
+
+    def conductor_todo_move(
+        self,
+        repo: str,
+        agent: str,
+        mission: str,
+        todo_id: int,
+        status: str,
+    ) -> dict[str, Any]:
+        """Move a scoped todo atomically, preserving one in-progress row."""
+        repo, agent, mission = _conductor_scope(repo, agent, mission)
+        if status not in CONDUCTOR_TODO_STATUSES:
+            raise ValueError(f"status must be one of {CONDUCTOR_TODO_STATUSES}")
+        if isinstance(todo_id, bool) or not isinstance(todo_id, int) or todo_id < 1:
+            raise ValueError("id must be a positive integer")
+        with self._lock:
+            self._conn.execute("BEGIN IMMEDIATE")
+            try:
+                if status == "in_progress":
+                    self._conn.execute(
+                        "UPDATE conductor_todos SET status = 'open', updated_ts = ? "
+                        "WHERE repo = ? AND mission = ? AND status = 'in_progress' "
+                        "AND id != ?",
+                        (now_iso(), repo, mission, todo_id),
+                    )
+                cur = self._conn.execute(
+                    "UPDATE conductor_todos SET status = ?, agent = ?, updated_ts = ? "
+                    "WHERE id = ? AND repo = ? AND mission = ?",
+                    (status, agent, now_iso(), todo_id, repo, mission),
+                )
+                if cur.rowcount != 1:
+                    raise ValueError("todo not found in repo and mission")
+                row = self._row(
+                    "SELECT * FROM conductor_todos WHERE id = ?", (todo_id,)
+                )
+                self._conn.execute("COMMIT")
+            except Exception:
+                self._conn.execute("ROLLBACK")
+                raise
+        assert row is not None
+        return row
+
+    def conductor_snapshot(self, repo: str, mission: str) -> dict[str, list[dict[str, Any]]]:
+        """Read a bounded, transactionally consistent conductor snapshot."""
+        repo = _bounded_text("repo", repo, 200)
+        mission = _bounded_text("mission", mission, 200)
+        with self._lock:
+            self._conn.execute("BEGIN")
+            try:
+                feedback = self._rows(
+                    "SELECT * FROM ("
+                    "SELECT * FROM conductor_feedback "
+                    "WHERE repo = ? AND mission = ? ORDER BY id DESC LIMIT 50"
+                    ") ORDER BY id ASC",
+                    (repo, mission),
+                )
+                scratchpad = self._rows(
+                    "SELECT * FROM ("
+                    "SELECT * FROM conductor_scratchpad "
+                    "WHERE repo = ? AND mission = ? ORDER BY id DESC LIMIT 50"
+                    ") ORDER BY id ASC",
+                    (repo, mission),
+                )
+                active_todos = self._rows(
+                    "SELECT * FROM conductor_todos "
+                    "WHERE repo = ? AND mission = ? AND status = 'in_progress'",
+                    (repo, mission),
+                )
+                other_limit = 100 - len(active_todos)
+                other_todos = self._rows(
+                    "SELECT * FROM conductor_todos "
+                    "WHERE repo = ? AND mission = ? AND status != 'in_progress' "
+                    "ORDER BY id DESC LIMIT ?",
+                    (repo, mission, other_limit),
+                )
+                todos = sorted([*active_todos, *other_todos], key=lambda row: row["id"])
+                self._conn.execute("COMMIT")
+            except Exception:
+                self._conn.execute("ROLLBACK")
+                raise
+        return {"feedback": feedback, "scratchpad": scratchpad, "todos": todos}
+
     # -- pairings ----------------------------------------------------------
 
     @staticmethod
@@ -578,7 +801,7 @@ class State:
     def pair_create(self, agent: str, expire_min: int = 10) -> dict[str, Any]:
         """Issue a 6-char pairing code (unix `exp`/`created`, like scout pair)."""
         agent = (agent or "").strip()
-        expire_min = max(1, int(expire_min))
+        expire_min = min(10, max(1, int(expire_min)))
         created = int(time.time())
         exp = created + expire_min * 60
         with self._lock:
@@ -612,7 +835,7 @@ class State:
             row = self._row("SELECT * FROM pairings WHERE code = ?", (code,))
             if row is None:
                 return {"ok": False, "paired": False, "code": code, "error": "unknown code"}
-            if now > int(row["exp"]):
+            if now >= int(row["exp"]):
                 self._conn.execute("DELETE FROM pairings WHERE code = ?", (code,))
                 return {
                     "ok": False,
@@ -621,7 +844,19 @@ class State:
                     "error": "expired",
                     "exp": int(row["exp"]),
                 }
-            self._conn.execute("UPDATE pairings SET paired = 1 WHERE code = ?", (code,))
+            consumed = self._conn.execute(
+                "UPDATE pairings SET paired = 1 "
+                "WHERE code = ? AND paired = 0 AND exp > ?",
+                (code, now),
+            )
+            if consumed.rowcount != 1:
+                return {
+                    "ok": False,
+                    "paired": False,
+                    "code": code,
+                    "error": "already paired",
+                    "exp": int(row["exp"]),
+                }
             return {
                 "ok": True,
                 "paired": True,
@@ -638,7 +873,7 @@ class State:
             with self._lock:
                 total = self._row("SELECT count(*) AS n FROM pairings")
                 live = self._row(
-                    "SELECT count(*) AS n FROM pairings WHERE paired = 1 AND exp >= ?",
+                    "SELECT count(*) AS n FROM pairings WHERE paired = 1 AND exp > ?",
                     (now,),
                 )
             return {
@@ -650,7 +885,7 @@ class State:
         row = self._row("SELECT * FROM pairings WHERE code = ?", (code,))
         if row is None:
             return {"ok": False, "paired": False, "code": code, "error": "unknown code"}
-        expired = now > int(row["exp"])
+        expired = now >= int(row["exp"])
         paired = bool(row["paired"]) and not expired
         return {
             "ok": True,
@@ -685,6 +920,9 @@ class State:
 
 
 __all__ = [
+    "CONDUCTOR_FEEDBACK_KINDS",
+    "CONDUCTOR_TODO_PRIORITIES",
+    "CONDUCTOR_TODO_STATUSES",
     "GOAL_STATUSES",
     "PAIR_ALPHABET",
     "TABLES",

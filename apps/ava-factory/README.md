@@ -70,6 +70,62 @@ Ex Machina Ava blueprint - 1B model with explicit J-Space (Global Workspace) ins
 > checkpoints are the eval/report/convert lines (see also `scripts/cpu_pilot_e2e.py`
 > and `python -m ava.train`).
 
+### Reproducibility and integrity gates
+
+- **On-policy distillation is fail-closed and unsupported.**
+  `on_policy_distill.py` preserves its legacy CLI help but always exits nonzero
+  before loading models/data or writing any artifact. It must not be represented
+  as a working training path. Reconsider it only after a bounded port to
+  `dottie.config` plus the canonical `Manifest`/`StreamingShardSampler`
+  provenance pipeline, and after the external tokenizers CVE/assets blockers
+  clear. Until then, use `python -m dottie.train` for canonical training.
+- Hugging Face collection is fail-closed before `load_dataset`: `gated` must be
+  explicitly false, `license` must be allowlisted, and `revision` must be a full
+  lowercase 40-hex commit. Existing registry entries without a verified revision
+  remain inactive; do not invent revisions to enable them.
+- Collection persists each source kind, license, gated status, revision, and the
+  hash of that exact registry entry. Curating hashes the atomically published
+  `.bin` and `.idx.json`.
+  `dottie.lineage/v1` binds those persisted per-shard facts, the actual tokenizer,
+  parsed config, and curriculum; it never consults the current source registry or
+  substitutes the deleted raw-shard hash. Missing packed facts fail generation.
+  Product lineage is claim-eligible only when every consumed shard is an
+  ungated, explicitly allowlisted, commit-pinned Hugging Face source. Synthetic
+  lineage/checkpoints are diagnostic-only and real serve/eval reject them.
+- New real checkpoints carry a typed digest over every restorable field: model,
+  optimizer, sampler, CPU/CUDA RNG, counters, and preset. Unsupported value types
+  fail closed. Hashing streams mappings and bounded tensor/array chunks (GPU
+  tensors are copied to CPU chunkwise), and consumers validate the whole digest
+  before restoring any field.
+  `asserted_parent` records a claimed relationship; it is not proof of predecessor
+  identity or chronology.
+- Train, grow, serve, and eval use restricted checkpoint deserialization. Real
+  serve/eval paths reject legacy, malformed, tampered, or tokenizer/config
+  mismatches before model use; they intentionally do not enforce the current
+  source registry. A failed hot reload keeps the previous verified model and
+  exposes a sanitized rejected target/error in status.
+- Eval exits `0` only for a clean measured pass, `1` for measured threshold
+  failures, and `2` for integrity/runtime errors. Reports always state
+  `claim_eligible`. The historical mock harness is diagnostic-only,
+  non-claimable, and exits `2`.
+- `make smoke-static` checks the CPU-pilot entry point without running the
+  synthetic pilot. `make smoke` intentionally runs `scripts/cpu_pilot_e2e.py`.
+
+Migration: opening the manifest idempotently adds the packed/source policy
+provenance columns. Existing rows remain incomplete and cannot produce lineage;
+collector replay fills missing source facts without overwriting captured values,
+but old packed rows must be retired and recurated from retained/recollected raw
+data to obtain the actual packed hashes. Then generate a fresh checkpoint through
+`python -m ava.train`. Legacy checkpoints cannot be promoted or served because
+their missing facts cannot be reconstructed honestly. To grow a verified model,
+run `python -m dottie.grow ... --out grown_init.pt`, then
+`python -m dottie.train --preset <destination> --init grown_init.pt`.
+
+Rollback: repoint `ckpt/latest` to the prior verified lineage-v1 checkpoint.
+That checkpoint continues to verify after registry edits because it embeds the
+entry hashes and source revisions observed at collection. Reverting code does not
+make an incomplete manifest row or legacy checkpoint claim-eligible.
+
 ```bash
 # Unzip (if from Meta AI bundle) and setup
 unzip ava_agi_factory_v6_4_real_mode_jacobian_multispace.zip -d ava_v6_4 && cd ava_v6_4
@@ -90,8 +146,8 @@ torchrun --nproc_per_node=8 train_1b_deepspeed.py --branch chat
 # or all
 torchrun --nproc_per_node=8 train_1b_deepspeed.py --branch all
 
-# Evaluation — REAL harness (loads checkpoints, writes reports/branch_eval_results_real.json)
-python -m evals.run_harness
+# Evaluation — REAL harness (verified checkpoints required)
+python -m evals.run_harness --base-ckpt /ckpt/base_final.pt --chat-ckpt /ckpt/chat_final.pt
 # HTML report from real metrics + evals
 python scripts/make_report.py --runs runs --out reports/index.html --eval reports/branch_eval_results_real.json
 # (historical blueprint sketch, mock values only — `--mode real` refuses to run:

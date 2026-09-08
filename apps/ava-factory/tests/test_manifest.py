@@ -10,6 +10,7 @@ the cross-process locking behavior.
 from __future__ import annotations
 
 import multiprocessing as mp
+import sqlite3
 import threading
 import time
 from typing import TYPE_CHECKING
@@ -23,6 +24,7 @@ from ava.pipeline.manifest import (
     PACKED,
     RAW,
     Manifest,
+    ShardConflictError,
     StateError,
     TokenizerMismatch,
     worker_id,
@@ -91,6 +93,129 @@ def test_concurrent_claims_no_double_no_loss(db_path):
 
     # work actually spread across claimers (not one thread winning every race)
     assert sum(1 for r in results if r) >= 2
+
+
+def test_manifest_migrates_and_returns_exact_packed_provenance(tmp_path):
+    db = tmp_path / "legacy.db"
+    with sqlite3.connect(db) as connection:
+        connection.execute(
+            """CREATE TABLE shards (
+                id TEXT PRIMARY KEY, source TEXT NOT NULL, phase INTEGER NOT NULL,
+                split TEXT NOT NULL DEFAULT 'train', state TEXT NOT NULL, path TEXT,
+                bytes INTEGER DEFAULT 0, tokens INTEGER DEFAULT 0, docs INTEGER DEFAULT 0,
+                sha256 TEXT, tokenizer_sha TEXT, attempts INTEGER NOT NULL DEFAULT 0,
+                claimed_by TEXT, lease_expires_at REAL, error TEXT,
+                created_at REAL NOT NULL, updated_at REAL NOT NULL
+            )"""
+        )
+    with Manifest(db) as manifest:
+        columns = {
+            row["name"] for row in manifest.db.execute("PRAGMA table_info(shards)")
+        }
+        assert {
+            "source_revision",
+            "source_entry_sha256",
+            "source_kind",
+            "source_license",
+            "source_gated",
+            "packed_bin_sha256",
+            "packed_idx_sha256",
+        } <= columns
+        manifest.add_shard(
+            "raw",
+            source="source",
+            phase=1,
+            path="raw.zst",
+            sha256="1" * 64,
+            source_kind="hf",
+            source_license="mit",
+            source_gated=False,
+            source_revision="a" * 40,
+            source_entry_sha256="2" * 64,
+        )
+        owner = "test"
+        assert manifest.claim("curate", by=owner) is not None
+        manifest.freeze_tokenizer("3" * 64, 100)
+        manifest.complete(
+            "raw",
+            by=owner,
+            path="packed.bin",
+            tokenizer_sha="3" * 64,
+            packed_bin_sha256="4" * 64,
+            packed_idx_sha256="5" * 64,
+        )
+        assert not manifest.add_shard(
+            "raw",
+            source="source",
+            phase=1,
+            path="raw.zst",
+            sha256="1" * 64,
+            source_kind="hf",
+            source_license="mit",
+            source_gated=False,
+            source_revision="a" * 40,
+            source_entry_sha256="2" * 64,
+        )
+        with pytest.raises(ShardConflictError, match="source_revision"):
+            manifest.add_shard(
+                "raw",
+                source="source",
+                phase=1,
+                path="raw.zst",
+                source_revision="f" * 40,
+                source_entry_sha256="2" * 64,
+            )
+        assert manifest.lineage_shards(["raw"]) == [
+            {
+                "id": "raw",
+                "packed_bin_sha256": "4" * 64,
+                "packed_idx_sha256": "5" * 64,
+                "source_kind": "hf",
+                "source_license": "mit",
+                "source_gated": False,
+                "source_revision": "a" * 40,
+                "source_entry_sha256": "2" * 64,
+            }
+        ]
+
+
+@pytest.mark.parametrize(
+    ("field", "changed"),
+    [
+        ("sha256", "9" * 64),
+        ("source_kind", "synthetic"),
+        ("source_license", "apache-2.0"),
+        ("source_gated", True),
+        ("source_entry_sha256", "9" * 64),
+        ("packed_bin_sha256", "9" * 64),
+        ("packed_idx_sha256", "9" * 64),
+        ("tokenizer_sha", "9" * 64),
+    ],
+)
+def test_duplicate_registration_rejects_identity_conflict(tmp_path, field, changed):
+    facts = {
+        "sha256": "1" * 64,
+        "source_kind": "hf",
+        "source_license": "mit",
+        "source_gated": False,
+        "source_revision": "a" * 40,
+        "source_entry_sha256": "2" * 64,
+        "packed_bin_sha256": "3" * 64,
+        "packed_idx_sha256": "4" * 64,
+        "tokenizer_sha": "5" * 64,
+    }
+    with Manifest(tmp_path / "manifest.db") as manifest:
+        assert manifest.add_shard(
+            "same", source="source", phase=1, path="same.bin", **facts
+        )
+        assert not manifest.add_shard(
+            "same", source="source", phase=1, path="same.bin", **facts
+        )
+        facts[field] = changed
+        with pytest.raises(ShardConflictError, match=field):
+            manifest.add_shard(
+                "same", source="source", phase=1, path="same.bin", **facts
+            )
 
 
 def _proc_claim(db_path: str, q: mp.Queue) -> None:

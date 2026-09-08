@@ -11,6 +11,12 @@ from ava.config import AvaConfig
 from ava.model import build_model, set_router_bias
 from ava.tokenizer import AvaTokenizer
 
+from dottie.provenance import (
+    IntegrityError,
+    sha256_file,
+    validate_checkpoint,
+)
+
 if TYPE_CHECKING:
     from model_1b import AvaModel1B
 
@@ -34,9 +40,8 @@ def load_model(
     use_memory: bool = False,
     branch_chat: bool = False,
 ) -> tuple[AvaModel1B, AvaTokenizer, str]:
-    """Build model, optionally load checkpoint, return (model, tokenizer, ckpt_label)."""
+    """Load a verified checkpoint and return (model, tokenizer, label)."""
     cfg = AvaConfig.load(preset)
-    model = build_model(cfg, use_memory=use_memory)
     dev = torch.device(device)
 
     tok_path = _tokenizer_path(cfg)
@@ -45,18 +50,23 @@ def load_model(
             f"tokenizer missing at {tok_path}. Run scripts/build_eval_data.py first."
         )
     tokenizer = AvaTokenizer.load(tok_path)
-
-    label = "random-init"
-    if ckpt_path and ckpt_path != "none":
-        blob = torch.load(ckpt_path, map_location=dev, weights_only=False)
-        model.load_state_dict(blob["model"])
-        label = str(ckpt_path)
-        if branch_chat and cfg.branch_chat:
-            spec = cfg.branch_chat
-            model.freeze_spaces(list(spec.get("freeze", [])))
-            bias = spec.get("router_bias")
-            if bias is not None:
-                set_router_bias(model, list(bias))
+    if not ckpt_path or ckpt_path == "none":
+        raise IntegrityError("real evaluation requires an integrity-bearing checkpoint")
+    blob = torch.load(ckpt_path, map_location="cpu", weights_only=True)
+    validate_checkpoint(
+        blob,
+        expected_tokenizer_sha256=sha256_file(tok_path),
+        expected_config=cfg,
+    )
+    model = build_model(cfg, use_memory=use_memory)
+    model.load_state_dict(blob["model"])
+    label = str(ckpt_path)
+    if branch_chat and cfg.branch_chat:
+        spec = cfg.branch_chat
+        model.freeze_spaces(list(spec.get("freeze", [])))
+        bias = spec.get("router_bias")
+        if bias is not None:
+            set_router_bias(model, list(bias))
 
     model.eval().to(dev)
     return model, tokenizer, label
@@ -136,7 +146,7 @@ def count_state_tensors(model: AvaModel1B, ckpt_path: str | None) -> int:
     """Assert checkpoint tensor count matches built model when loading."""
     if not ckpt_path or ckpt_path == "none":
         return sum(1 for _ in model.state_dict())
-    blob = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    blob = torch.load(ckpt_path, map_location="cpu", weights_only=True)
     ck = blob["model"]
     built = model.state_dict()
     if set(ck.keys()) != set(built.keys()):

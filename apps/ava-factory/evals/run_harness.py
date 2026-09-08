@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
 import time
 from pathlib import Path
 
+import torch
+
 _REPO = Path(__file__).resolve().parent.parent
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
+from dottie.provenance import exit_code, integrity_report
 from evals.common import EVAL_SEED, load_model
 from evals.jspace_tests import run_all_jspace_tests
 from evals.needle import run_needle
@@ -58,7 +62,6 @@ def run_harness(
     skip_needle: bool = False,
 ) -> dict:
     t0 = time.time()
-    import torch
 
     results: dict = {"meta": {}, "base": {}, "chat": {}}
 
@@ -102,7 +105,32 @@ def run_harness(
         "torch": torch.__version__,
         "wall_s": round(time.time() - t0, 2),
     }
+    errors, measured_failures = _result_counts(results)
+    results["errors"] = errors
+    results["measured_failures"] = measured_failures
+    results["claim_eligible"] = not errors
     return results
+
+
+def _result_counts(value: object) -> tuple[list[str], int]:
+    errors: list[str] = []
+    failures = 0
+
+    def visit(node: object, path: str) -> None:
+        nonlocal failures
+        if isinstance(node, dict):
+            if "error" in node:
+                errors.append(f"{path}: {node['error']}")
+            if node.get("pass") is False:
+                failures += 1
+            for key, child in node.items():
+                visit(child, f"{path}.{key}")
+        elif isinstance(node, list):
+            for index, child in enumerate(node):
+                visit(child, f"{path}[{index}]")
+
+    visit(value, "results")
+    return errors, failures
 
 
 def write_reports(results: dict) -> None:
@@ -147,6 +175,7 @@ def write_reports(results: dict) -> None:
         "# Ava Real Eval Report",
         "",
         f"Preset: {results['meta'].get('preset')} | Wall: {results['meta'].get('wall_s')}s | Device: {results['meta'].get('device')}",
+        f"Claim eligible: {results.get('claim_eligible', False)}",
         "",
         "## J-Space canonical tests",
         _md_table(rows) if rows else "(no jspace results)",
@@ -156,8 +185,6 @@ def write_reports(results: dict) -> None:
 
 
 def main() -> int:
-    import argparse
-
     ap = argparse.ArgumentParser(description="Real eval harness")
     ap.add_argument("--preset", default="nano")
     ap.add_argument("--base-ckpt", default="none")
@@ -167,17 +194,30 @@ def main() -> int:
     ap.add_argument("--skip-needle", action="store_true")
     args = ap.parse_args()
 
-    results = run_harness(
-        preset=args.preset,
-        base_ckpt=args.base_ckpt,
-        chat_ckpt=args.chat_ckpt,
-        device=args.device,
-        probe_n=args.probe_n,
-        skip_needle=args.skip_needle,
-    )
+    try:
+        results = run_harness(
+            preset=args.preset,
+            base_ckpt=args.base_ckpt,
+            chat_ckpt=args.chat_ckpt,
+            device=args.device,
+            probe_n=args.probe_n,
+            skip_needle=args.skip_needle,
+        )
+    except Exception as exc:
+        report = integrity_report(
+            status="integrity_error",
+            errors=[f"{type(exc).__name__}: {exc}"],
+        )
+        results = {
+            "meta": {"preset": args.preset, "device": args.device},
+            "base": {},
+            "chat": {},
+            "measured_failures": 0,
+            **report,
+        }
     write_reports(results)
     print(f"wrote {REPORT_JSON} and {REPORT_MD}")
-    return 0
+    return exit_code(results)
 
 
 if __name__ == "__main__":

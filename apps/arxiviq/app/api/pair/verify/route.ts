@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { jarvisFetch, pairDemoEnabled, resolveJarvisBase } from "@/lib/jarvis";
 
-type PairRec = { code: string; exp: number; created: number; paired?: boolean };
-
-const STORE = ((globalThis as any).__dottiePairStore as Map<string, PairRec>) || new Map<string, PairRec>();
-(globalThis as any).__dottiePairStore = STORE;
+import { readBoundedJson } from "@/lib/bounded-json";
+import { jarvisFetch } from "@/lib/jarvis";
+import { allowPairRequest, resolvePairClient } from "@/lib/pair-rate";
+import {
+  createSession,
+  SESSION_COOKIE,
+  validatePublicOrigin,
+  validateSessionConfig,
+} from "@/lib/session.mjs";
 
 const PAIR_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-
-function nowSec() {
-  return Math.floor(Date.now() / 1000);
-}
+const MAX_PAIR_BODY_BYTES = 1024;
 
 function normalizeCode(raw: string): string {
   return String(raw || "")
@@ -24,67 +25,98 @@ function codeValid(code: string): boolean {
   return code.length === 6 && [...code].every((c) => PAIR_ALPHABET.includes(c));
 }
 
-/** Accept-any demo path — ONLY when DOTTIE_PAIR_DEMO=1 or JARVIS_URL truly unset. */
-function demoVerify(code: string) {
-  const existing = STORE.get(code);
-  if (existing && nowSec() > existing.exp) {
-    STORE.delete(code);
-    return NextResponse.json(
-      {
-        ok: false,
-        paired: false,
-        code,
-        error: "expired (>10m) regenerate via scout pair create",
-        demo: true,
-        source: "demo",
-        provenance: "demo",
-      },
-      { status: 410 }
-    );
-  }
-  if (!existing) {
-    const exp = nowSec() + 600;
-    const rec: PairRec = { code, exp, created: nowSec(), paired: true };
-    STORE.set(code, rec);
-    if (STORE.size > 256) {
-      const first = STORE.keys().next().value as string;
-      STORE.delete(first);
-    }
-  } else {
-    existing.paired = true;
-    STORE.set(code, existing);
-  }
-  return NextResponse.json({
-    ok: true,
-    paired: true,
-    code,
-    exp: STORE.get(code)?.exp,
-    tandem: true,
-    demo: true,
-    source: "demo",
-    provenance: "demo",
-  });
-}
-
-function failClosed(code: string | undefined, reason: string, blocked: boolean) {
+function failClosed(
+  _code: string | undefined,
+  error: string,
+  source: "unreachable" | "blocked" | "unset" | "invalid",
+  provenance: "unreachable" | "ssrf_blocked" | "unconfigured" | "configuration_error",
+  status: number
+) {
   return NextResponse.json(
     {
       ok: false,
       paired: false,
-      code,
-      error: reason,
-      source: blocked ? "blocked" : "unreachable",
-      provenance: blocked ? "ssrf_blocked" : "unreachable",
-      demo: false,
+      error,
+      source,
+      provenance,
     },
-    { status: blocked ? 403 : 503 }
+    { status }
   );
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json().catch(() => ({}));
-    const code = normalizeCode((body as any).code || "");
+    try {
+      validateSessionConfig();
+    } catch {
+      return failClosed(
+        undefined,
+        "authenticated pairing is not configured",
+        "unset",
+        "unconfigured",
+        503
+      );
+    }
+    const publicOrigin = validatePublicOrigin(process.env.ARXIVIQ_PUBLIC_ORIGIN);
+    if (!publicOrigin) {
+      return failClosed(
+        undefined,
+        "ARXIVIQ_PUBLIC_ORIGIN must be an exact HTTPS origin or exact loopback HTTP origin",
+        "unset",
+        "unconfigured",
+        503
+      );
+    }
+    const fetchSite = req.headers.get("sec-fetch-site");
+    if (
+      req.headers.get("origin") !== publicOrigin ||
+      (fetchSite !== null && fetchSite !== "same-origin" && fetchSite !== "none")
+    ) {
+      return failClosed(
+        undefined,
+        "pair verification requires the configured same origin",
+        "blocked",
+        "configuration_error",
+        403
+      );
+    }
+    const pairClient = resolvePairClient(req, "verify");
+    if (!pairClient.ok) {
+      return NextResponse.json(
+        {
+          ok: false,
+          paired: false,
+          error: pairClient.error,
+          source: "blocked",
+          provenance: "edge_client_identity",
+        },
+        { status: 403 }
+      );
+    }
+    const parsed = await readBoundedJson(req, MAX_PAIR_BODY_BYTES);
+    if (!parsed.ok) {
+      return NextResponse.json(
+        { ok: false, paired: false, error: parsed.error },
+        { status: parsed.status }
+      );
+    }
+    if (!allowPairRequest(pairClient, 10)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          paired: false,
+          error: "pair verification rate limited",
+          source: "blocked",
+          provenance: "edge_rate_limit",
+        },
+        { status: 429 }
+      );
+    }
+    const body =
+      parsed.value && typeof parsed.value === "object"
+        ? (parsed.value as { code?: unknown })
+        : {};
+    const code = normalizeCode(typeof body.code === "string" ? body.code : "");
     if (!codeValid(code)) {
       return NextResponse.json(
         { ok: false, error: "code must be 6 chars A-Z2-9 excluding 0/O/1/I/L" },
@@ -92,139 +124,57 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const rawUrl = (process.env.JARVIS_URL || "").trim();
-    const { base, reason } = resolveJarvisBase();
-    const demo = pairDemoEnabled();
-
-    if (base) {
-      const proxied = await jarvisFetch("/api/pair/verify", {
-        method: "POST",
-        body: JSON.stringify({ code }),
+    const proxied = await jarvisFetch("/api/pair/verify", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+      agentId: pairClient.agentId,
+      ephemeralAuth: true,
+    });
+    if (proxied.ok) {
+      const session = createSession({
+        agent: String(proxied.data?.agent || ""),
+        pairExp: Number(proxied.data?.exp),
       });
-      if (proxied.ok) {
-        return NextResponse.json({
-          ...proxied.data,
-          source: "jarvis",
-          provenance: "jarvisd",
-          demo: false,
-        });
-      }
-      // Business error from jarvisd (unknown/expired) — forward honestly
-      if (proxied.source === "jarvis" && proxied.data) {
-        return NextResponse.json(
-          {
-            ...proxied.data,
-            source: "jarvis",
-            provenance: "jarvisd",
-            demo: false,
-          },
-          { status: proxied.status || 400 }
-        );
-      }
-      if (proxied.source === "unreachable" && demo) {
-        return demoVerify(code);
-      }
+      const response = NextResponse.json({
+        ok: true,
+        paired: true,
+        expires_at: session.claims.exp,
+        source: "jarvis",
+        provenance: "jarvisd",
+      });
+      response.cookies.set(SESSION_COOKIE, session.token, {
+        httpOnly: true,
+        secure: true,
+        sameSite: "strict",
+        path: "/",
+        maxAge: session.maxAge,
+      });
+      return response;
+    }
+    if (proxied.source === "jarvis") {
       return NextResponse.json(
         {
           ok: false,
           paired: false,
-          code,
           error: proxied.error,
-          source: proxied.source,
-          provenance: proxied.provenance,
-          unreachable: proxied.source === "unreachable",
-          demo: false,
+          source: "jarvis",
+          provenance: "jarvisd",
         },
-        { status: proxied.status || 503 }
-      );
-    }
-
-    // JARVIS_URL was set but invalid/blocked → fail closed (unless explicit demo)
-    if (rawUrl && !demo) {
-      const blocked = !!reason?.includes("allowlisted");
-      return failClosed(code, reason || "JARVIS_URL invalid", blocked);
-    }
-
-    // Truly unset, or DOTTIE_PAIR_DEMO=1 → labeled demo
-    return demoVerify(code);
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || "verify failed" }, { status: 500 });
-  }
-}
-
-export async function GET(req: NextRequest) {
-  const url = new URL(req.url);
-  const code = normalizeCode(url.searchParams.get("code") || "");
-  const rawUrl = (process.env.JARVIS_URL || "").trim();
-  const { base, reason } = resolveJarvisBase();
-  const demo = pairDemoEnabled();
-
-  if (base) {
-    const path = code ? `/api/pair/status?code=${encodeURIComponent(code)}` : "/api/pair/status";
-    const proxied = await jarvisFetch(path, { method: "GET" });
-    if (proxied.ok) {
-      return NextResponse.json({
-        ...proxied.data,
-        source: "jarvis",
-        provenance: "jarvisd",
-        demo: false,
-      });
-    }
-    if (proxied.source === "jarvis" && proxied.data) {
-      return NextResponse.json(
-        { ...proxied.data, source: "jarvis", provenance: "jarvisd", demo: false },
         { status: proxied.status || 400 }
       );
     }
-    if (!(proxied.source === "unreachable" && demo)) {
-      return NextResponse.json(
-        {
-          ok: false,
-          paired: false,
-          code: code || undefined,
-          error: proxied.error,
-          source: proxied.source,
-          provenance: proxied.provenance,
-          unreachable: true,
-          demo: false,
-        },
-        { status: proxied.status || 503 }
-      );
-    }
-  } else if (rawUrl && !demo) {
-    const blocked = !!reason?.includes("allowlisted");
-    return failClosed(code || undefined, reason || "JARVIS_URL invalid", blocked);
+    const provenance = proxied.provenance === "jarvisd" ? "unreachable" : proxied.provenance;
+    return failClosed(code, proxied.error, proxied.source, provenance, proxied.status);
+  } catch (error: unknown) {
+    return NextResponse.json(
+      {
+        ok: false,
+        paired: false,
+        error: error instanceof Error ? error.message : "verify failed",
+        source: "unreachable",
+        provenance: "unreachable",
+      },
+      { status: 500 }
+    );
   }
-
-  if (!code) {
-    return NextResponse.json({
-      ok: true,
-      count: STORE.size,
-      demo: true,
-      source: "demo",
-      provenance: "demo",
-      upgrade_hint: "set JARVIS_URL to proxy jarvisd",
-    });
-  }
-  const rec = STORE.get(code);
-  if (!rec) {
-    return NextResponse.json({
-      ok: false,
-      paired: false,
-      code,
-      source: "demo",
-      provenance: "demo",
-      demo: true,
-    });
-  }
-  return NextResponse.json({
-    ok: true,
-    paired: !!rec.paired,
-    code,
-    exp: rec.exp,
-    age_sec: nowSec() - rec.created,
-    demo: true,
-    source: "demo",
-    provenance: "demo",
-  });
 }

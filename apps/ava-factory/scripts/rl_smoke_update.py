@@ -427,7 +427,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     ckpt_path, ckpt_which = _resolve_ckpt(args.run_dir, args.ckpt)
     cfg = AvaConfig.load(args.preset)
     model = build_model(cfg)
-    blob = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    blob = torch.load(ckpt_path, map_location="cpu", weights_only=True)
     model.load_state_dict(blob["model"])
     model.to(args.device)
     model.eval()  # dropout-free forwards: rollout scoring and update forward match exactly

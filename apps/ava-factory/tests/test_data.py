@@ -11,15 +11,16 @@ from __future__ import annotations
 
 import json
 import random
-from typing import TYPE_CHECKING
+from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
-from ava.data import UNTAGGED_CONCEPT, _LoadedShard
-from ava.pipeline.manifest import PACKED, Shard
+import pytest
+from ava.data import UNTAGGED_CONCEPT, StreamingShardSampler, _LoadedShard
+from ava.pipeline.manifest import PACKED, Manifest, Shard
 from ava.tokenizer import ENDOFDOC_ID
 
-if TYPE_CHECKING:
-    from pathlib import Path
+from dottie.provenance import sha256_file
 
 
 def _write_shard(
@@ -50,6 +51,7 @@ def _write_shard(
     (dirpath / "s.idx.json").write_text(
         json.dumps({"tokens": len(stream), "tokenizer_sha": "sha", "docs": docs})
     )
+    idx_path = dirpath / "s.idx.json"
     return Shard(
         id="s",
         source="t",
@@ -61,6 +63,14 @@ def _write_shard(
         tokens=len(stream),
         docs=len(docs),
         attempts=0,
+        source_kind="hf",
+        source_license="mit",
+        source_gated=False,
+        source_revision="a" * 40,
+        source_entry_sha256="b" * 64,
+        packed_bin_sha256=sha256_file(bin_path),
+        packed_idx_sha256=sha256_file(idx_path),
+        tokenizer_sha="sha",
     )
 
 
@@ -129,3 +139,80 @@ def test_empty_task_type_yields_nothing_rather_than_raising(tmp_path):
     s = _write_shard(tmp_path, [300], ["automatic"], [1])
     loaded = _LoadedShard(s)
     assert list(loaded.windows("safety", 64, random.Random(0))) == []
+
+
+def test_observed_shard_lineage_survives_sampler_resume(tmp_path):
+    shard = _write_shard(
+        tmp_path / "packed",
+        [300],
+        ["automatic"],
+        [1],
+    )
+    flow = SimpleNamespace(
+        train_lease_seconds=60,
+        starved_warn_seconds=60,
+    )
+    with Manifest(tmp_path / "manifest.db") as manifest:
+        manifest.freeze_tokenizer("sha", 8192)
+        manifest.add_shard(
+            shard.id,
+            source=shard.source,
+            phase=shard.phase,
+            path=shard.path,
+            state=PACKED,
+            sha256="a" * 64,
+            source_kind=shard.source_kind,
+            source_license=shard.source_license,
+            source_gated=shard.source_gated,
+            source_revision=shard.source_revision,
+            source_entry_sha256=shard.source_entry_sha256,
+            packed_bin_sha256=shard.packed_bin_sha256,
+            packed_idx_sha256=shard.packed_idx_sha256,
+            tokenizer_sha=shard.tokenizer_sha,
+        )
+        sampler = StreamingShardSampler(None, manifest, flow, worker="first")
+        assert sampler._claim(0) is not None
+        assert sampler.observed_shard_ids() == [shard.id]
+
+        resumed = StreamingShardSampler(None, manifest, flow, worker="resumed")
+        resumed.load_state_dict(sampler.state_dict())
+        assert resumed.observed_shard_ids() == [shard.id]
+
+
+@pytest.mark.parametrize("artifact", ["bin", "idx"])
+def test_claim_rejects_mutated_packed_artifact_before_observation(
+    tmp_path, artifact
+):
+    shard = _write_shard(
+        tmp_path / "packed",
+        [300],
+        ["automatic"],
+        [1],
+    )
+    artifact_path = (
+        Path(shard.path)
+        if artifact == "bin"
+        else Path(shard.path).with_suffix("").with_suffix(".idx.json")
+    )
+    artifact_path.write_bytes(b"replaced")
+    flow = SimpleNamespace(train_lease_seconds=60, starved_warn_seconds=60)
+    with Manifest(tmp_path / "manifest.db") as manifest:
+        manifest.freeze_tokenizer("sha", 8192)
+        manifest.add_shard(
+            shard.id,
+            source=shard.source,
+            phase=shard.phase,
+            path=shard.path,
+            state=PACKED,
+            source_kind=shard.source_kind,
+            source_license=shard.source_license,
+            source_gated=shard.source_gated,
+            source_revision=shard.source_revision,
+            source_entry_sha256=shard.source_entry_sha256,
+            packed_bin_sha256=shard.packed_bin_sha256,
+            packed_idx_sha256=shard.packed_idx_sha256,
+            tokenizer_sha=shard.tokenizer_sha,
+        )
+        sampler = StreamingShardSampler(None, manifest, flow, worker="verify")
+        assert sampler._claim(0) is None
+        assert sampler.observed_shard_ids() == []

@@ -41,7 +41,9 @@ Starlette middleware in `jarvisd/auth.py`:
 - Fail closed: if `JARVIS_BEARER` is unset and host is not loopback, refuse to start.
   On loopback with no bearer, start with auth disabled and say so in the status page.
 - Responses carry `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`.
-- Audit: append `{ts, agent, path, status, key_last4}` to `<db dir>/audit.jsonl`. Never the raw key.
+- Audit: append `{ts, agent, path, method, action, status, key_last4}` to
+  `<db dir>/audit.jsonl`. Conductor RPC names the allowlisted action; request content
+  and the raw key are never logged.
 
 ## 3. State (`jarvisd/state.py`, SQLite, WAL mode)
 
@@ -53,10 +55,15 @@ Starlette middleware in `jarvisd/auth.py`:
 | `goals` | id, ts, agent, repo, text, status (`open`/`done`/`dropped`), result (json) |
 | `timeline` | id, ts, agent, repo, kind, payload (json) — index of harness runs and notable events |
 | `sessions` | id, ts, agent, repo, last_seen |
+| `conductor_feedback` | id, ts, repo, agent, mission, kind, message, strength |
+| `conductor_scratchpad` | id, ts, repo, agent, mission, text |
+| `conductor_todos` | id, ts, updated_ts, repo, agent, mission, text, priority, status |
 
 `recall` is FTS5 over `memories.text` with a LIKE fallback if FTS5 is unavailable.
 Every write records `agent` from `X-Agent-Id` (default `anon`). JSONL export of any
 table via `/api/export/<table>` for the flywheel; the DB is the store, JSONL is a view.
+Conductor todo moves use an immediate transaction and a partial unique index permits
+only one `in_progress` todo per `(repo, mission)`.
 
 ## 4. MCP tools (`jarvisd/tools.py`)
 
@@ -87,6 +94,16 @@ a pair programmer). `--expose-scout` adds them via `bigbang.plugins.mcp.server.b
 `POST /api/route {goal}` · `POST /api/run {goal}` · `POST /api/plan {goal}` (same shape as `apps/dottie-harness-api`)
 `GET|POST /api/memories` · `GET /api/recall?q=` · `GET|POST|DELETE /api/claims` ·
 `GET|POST /api/inbox` · `GET|POST|PATCH /api/goals` · `GET /api/timeline` · `GET /api/export/<table>`
+
+`GET /api/conductor/snapshot?repo=&mission=` returns a bounded consistent snapshot and
+measured daemon/process/persistence/auth-rate/capability status.
+`POST /api/conductor/rpc?repo=&mission=` has a strict 16 KiB JSON-object limit and exact
+allowlist: `feedback.push`, `scratchpad.write`, `todo.create`, `todo.move`. Repository
+and mission are query-owned and agent is header-owned; none may be supplied by payload.
+Bodies are rejected from the request stream as soon as they cross the limit, including
+chunked requests without `Content-Length`. Snapshot windows select newest rows before
+restoring chronological display order, stay below 64 KiB, and never trim the
+`in_progress` todo.
 
 ## 6. Brain (`jarvisd/brain.py`, optional)
 

@@ -37,7 +37,7 @@ Dottie v1 closes the loop (route→execute→record→mine→retrain→gate→se
 - Dottie: unified Document {meta,blocks,assets} IR, single GFM serializer, content-based detection, Python stdlib impl median <50ms target, non-blocking ThreadPoolExecutor, honest 503 for scanned/encrypted/OLE, ships as `scout extract` + ava-skill `anydoc`
 
 ## Architecture
-User goal → Route (MoMA-lite heuristic + learned MLP advisory, 5 tiers) → Scope resolve (person/room/org) → Plan DAG → Execute (deterministic stdlib, inference tier colibri, ingest tier anydoc, secrets tier openworker, consequential check inbox) → Record (timeline triple-write 7-field + checkpoint_manager pause/resume) → Mine (measured-behavior/outcome/operator-corrected) → Retrain (nightly) → Gate (freq prior + heuristic) → Serve (numpy-only /api/route parity ≤1e-4) → Tandem (local Docker 127.0.0.1:8787 + cloud arxiviq.com/conductor?tandem=1 queue, Bearer dm_dev_* timingSafeEqual + 90s HMAC ephemeral 256 LRU)
+User goal → Route (MoMA-lite heuristic + learned MLP advisory, 5 tiers) → Scope resolve (person/room/org) → Plan DAG → Execute (deterministic stdlib, inference tier colibri, ingest tier anydoc, secrets tier openworker, consequential check inbox) → Record (timeline triple-write 7-field + checkpoint_manager pause/resume) → Mine (measured-behavior/outcome/operator-corrected) → Retrain (nightly) → Gate (freq prior + heuristic) → Serve (numpy-only /api/route parity ≤1e-4) → Pair (local jarvisd at 127.0.0.1:8790 + arxiviq fail-closed BFF; no queue or daemon capability is inferred)
 
 ## User Stories
 1. As a player, I want same-link-same-stars `?daily=20260813&n=1/3/5` LCG 20260813→189831298 triple[11205,19448,14209]
@@ -59,11 +59,11 @@ User goal → Route (MoMA-lite heuristic + learned MLP advisory, 5 tiers) → Sc
 - scout secrets list → redacted human, full JSON for agents, 0600 vault
 - scout extract detect → tier stdlib anydoc-py v1.0.0 scope unified ingestion 12 formats + ole + html, read docx → # Hello preserved, batch order preserved diffable
 - scopes/person/<handle>/ + scopes/room/<slug>/ each with memory/files/keychain.json/permissions.json/crons/web_apps/sandbox/, skill grants registry.json + grants/, admin tighten-only, Slack+web same identity
-- PWA v67 headers immutable 31536000 verifier≥8 offline-ready 40px sticky nav mono/sans only
+- Pairing routes require configured jarvisd and fail closed with explicit provenance; no in-memory or accept-any fallback
 - Timeline triple-write 7-field mandatory even no-change
-- Live surface arxiviq.com/dottie + arxiviq.com/conductor?tandem=1 triple green Local/Cloud/Paired + queue
+- Live surface arxiviq.com/dottie + arxiviq.com/conductor?tandem=1 reports unavailable services explicitly and shows Paired only after server confirmation
 
 ## Wayfinder
-Destination: Dottie v2 live — all 4 distillations shipped, PWA v67, daily boards LCG 20260813 chain, Launched 99.9→100% free PWA offline13k, 3 real daily users
+Destination (not a current measurement): Dottie v2 live with each integration backed by measured production data. The current arxiviq surface measures jarvisd pairing only and labels other integrations unavailable or not measured.
 
 Out of scope: finance/payments PARKED 100/100 local-first gate until YES, analytics Phase0 stub store.jsonl only, auth Phase0 stub 3-user cached only

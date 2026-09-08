@@ -63,6 +63,7 @@ from dottie.pipeline.flow import FlowConfig, curator_claim_phases
 from dottie.pipeline.manifest import Manifest, worker_id
 from dottie.pipeline.pack import load_tokenizer, pack_docs, write_shard
 from dottie.pipeline.split import assign_split
+from dottie.provenance import sha256_file
 
 DEFAULT_CONFIG = "/app/configs/pipeline.yaml"
 RENEW_INTERVAL_SECONDS = 60.0
@@ -260,12 +261,14 @@ class Curator:
             bin_path = os.path.join(
                 self.packed_dir, f"p{phase}", split, f"{shard.id}.bin"
             )
-            write_shard(arr, idx, bin_path)
+            written_bin, written_idx = write_shard(arr, idx, bin_path)
             written[split] = {
-                "path": bin_path,
+                "path": str(written_bin),
                 "tokens": int(arr.size),
                 "docs": len(docs),
                 "bytes": int(arr.nbytes),
+                "packed_bin_sha256": sha256_file(written_bin),
+                "packed_idx_sha256": sha256_file(written_idx),
             }
 
         # 2. Register val/test as new PACKED rows (idempotent on replay).
@@ -280,6 +283,14 @@ class Curator:
                     split=split,
                     bytes_=w["bytes"],
                     docs=w["docs"],
+                    source_kind=shard.source_kind,
+                    source_license=shard.source_license,
+                    source_gated=shard.source_gated,
+                    source_revision=shard.source_revision,
+                    source_entry_sha256=shard.source_entry_sha256,
+                    packed_bin_sha256=w["packed_bin_sha256"],
+                    packed_idx_sha256=w["packed_idx_sha256"],
+                    tokenizer_sha=self.lt.sha256,
                     state="PACKED",
                 )
 
@@ -294,6 +305,8 @@ class Curator:
             split="train",
             tokenizer_sha=self.lt.sha256,
             bytes_=(tw["bytes"] if tw else 0),
+            packed_bin_sha256=(tw["packed_bin_sha256"] if tw else None),
+            packed_idx_sha256=(tw["packed_idx_sha256"] if tw else None),
         )
         if tw is None:
             # Every doc went to val/test (or was filtered): the completed row

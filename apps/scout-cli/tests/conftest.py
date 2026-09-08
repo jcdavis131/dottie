@@ -39,9 +39,14 @@ imported before any test module, so this is early enough to matter.
 
 from __future__ import annotations
 
+import json
 import os
+import stat
+import subprocess
 import tempfile
 from pathlib import Path
+
+import pytest
 
 # Held at module scope so it lives for the whole session and is cleaned on exit.
 #
@@ -88,3 +93,65 @@ os.environ["USERPROFILE"] = _HOME_TMP.name
 # The env dump in ci.yml stays for the same reason it was added.
 os.environ["XDG_CONFIG_HOME"] = str(Path(_HOME_TMP.name) / ".config")
 os.environ.pop("BIGBANG_POLICY_FILE", None)
+
+
+@pytest.fixture
+def assert_private_file():
+    """Assert exact POSIX 0600 or no broad-principal read access on Windows."""
+
+    def check(path: Path) -> None:
+        if os.name != "nt":
+            mode = stat.S_IMODE(path.stat().st_mode)
+            assert mode == 0o600, f"expected 0600, got {oct(mode)}"
+            return
+
+        script = r"""
+$ErrorActionPreference = "Stop"
+$entries = (Get-Acl -LiteralPath $env:SCOUT_TEST_PRIVATE_PATH).Access | ForEach-Object {
+    [pscustomobject]@{
+        sid = $_.IdentityReference.Translate(
+            [System.Security.Principal.SecurityIdentifier]
+        ).Value
+        rights = [int]$_.FileSystemRights
+        type = [int]$_.AccessControlType
+    }
+}
+ConvertTo-Json -Compress -InputObject @($entries)
+"""
+        result = subprocess.run(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                script,
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+            env={**os.environ, "SCOUT_TEST_PRIVATE_PATH": str(path)},
+        )
+        assert result.returncode == 0, result.stderr
+        entries = [
+            entry for entry in json.loads(result.stdout) if entry is not None
+        ]
+        assert entries, f"no ACL entries returned for {path}"
+        broad_sids = {
+            "S-1-1-0",  # Everyone
+            "S-1-5-11",  # Authenticated Users
+            "S-1-5-32-545",  # BUILTIN\Users
+        }
+        read_data = 0x1
+        exposed = [
+            entry
+            for entry in entries
+            if entry["sid"] in broad_sids
+            and entry["type"] == 0  # Allow
+            and entry["rights"] & read_data
+        ]
+        assert not exposed, f"broad principals can read {path}: {exposed}"
+
+    return check

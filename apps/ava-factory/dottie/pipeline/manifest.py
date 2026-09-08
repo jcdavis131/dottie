@@ -97,6 +97,13 @@ CREATE TABLE IF NOT EXISTS shards (
     docs              INTEGER DEFAULT 0,
     sha256            TEXT,
     tokenizer_sha     TEXT,
+    source_kind       TEXT,
+    source_license    TEXT,
+    source_gated      INTEGER,
+    source_revision   TEXT,
+    source_entry_sha256 TEXT,
+    packed_bin_sha256 TEXT,
+    packed_idx_sha256 TEXT,
     attempts          INTEGER NOT NULL DEFAULT 0,
     claimed_by        TEXT,
     lease_expires_at  REAL,
@@ -155,6 +162,20 @@ class TokenizerMismatch(RuntimeError):
     """Packing attempted against a tokenizer other than the frozen one."""
 
 
+class ShardConflictError(StateError):
+    """A duplicate shard id was registered with conflicting immutable identity."""
+
+
+def _gated_value(value: object) -> bool | None:
+    if value is None:
+        return None
+    if value in (False, 0, "0"):
+        return False
+    if value in (True, 1, "1"):
+        return True
+    raise StateError(f"invalid persisted source_gated value {value!r}")
+
+
 @dataclass(frozen=True)
 class Shard:
     id: str
@@ -167,6 +188,14 @@ class Shard:
     tokens: int
     docs: int
     attempts: int
+    source_kind: str | None = None
+    source_license: str | None = None
+    source_gated: bool | None = None
+    source_revision: str | None = None
+    source_entry_sha256: str | None = None
+    packed_bin_sha256: str | None = None
+    packed_idx_sha256: str | None = None
+    tokenizer_sha: str | None = None
 
     @classmethod
     def _from_row(cls, r: sqlite3.Row) -> Shard:
@@ -181,6 +210,14 @@ class Shard:
             tokens=r["tokens"],
             docs=r["docs"],
             attempts=r["attempts"],
+            source_kind=r["source_kind"],
+            source_license=r["source_license"],
+            source_gated=_gated_value(r["source_gated"]),
+            source_revision=r["source_revision"],
+            source_entry_sha256=r["source_entry_sha256"],
+            packed_bin_sha256=r["packed_bin_sha256"],
+            packed_idx_sha256=r["packed_idx_sha256"],
+            tokenizer_sha=r["tokenizer_sha"],
         )
 
 
@@ -218,6 +255,26 @@ class Manifest:
         # Wait rather than immediately raising SQLITE_BUSY under contention.
         self.db.execute(f"PRAGMA busy_timeout={int(timeout * 1000)}")
         self.db.executescript(_SCHEMA)
+        self._migrate_columns()
+
+    def _migrate_columns(self) -> None:
+        existing = {
+            str(row["name"]) for row in self.db.execute("PRAGMA table_info(shards)")
+        }
+        columns = {
+            "source_kind": "TEXT",
+            "source_license": "TEXT",
+            "source_gated": "INTEGER",
+            "source_revision": "TEXT",
+            "source_entry_sha256": "TEXT",
+            "packed_bin_sha256": "TEXT",
+            "packed_idx_sha256": "TEXT",
+        }
+        for name, sql_type in columns.items():
+            if name not in existing:
+                self.db.execute(
+                    f"ALTER TABLE shards ADD COLUMN {name} {sql_type}"
+                )
 
     def close(self) -> None:
         self.db.close()
@@ -255,6 +312,14 @@ class Manifest:
         bytes_: int = 0,
         docs: int = 0,
         sha256: str | None = None,
+        source_kind: str | None = None,
+        source_license: str | None = None,
+        source_gated: bool | None = None,
+        source_revision: str | None = None,
+        source_entry_sha256: str | None = None,
+        packed_bin_sha256: str | None = None,
+        packed_idx_sha256: str | None = None,
+        tokenizer_sha: str | None = None,
         state: str = RAW,
     ) -> bool:
         """Register a shard. Returns False if it already exists (idempotent).
@@ -268,8 +333,10 @@ class Manifest:
             cur = db.execute(
                 """INSERT OR IGNORE INTO shards
                    (id, source, phase, split, state, path, bytes, docs, sha256,
-                    created_at, updated_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                    tokenizer_sha, source_kind, source_license, source_gated,
+                    source_revision, source_entry_sha256, packed_bin_sha256,
+                    packed_idx_sha256, created_at, updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     shard_id,
                     source,
@@ -280,10 +347,72 @@ class Manifest:
                     bytes_,
                     docs,
                     sha256,
+                    tokenizer_sha,
+                    source_kind,
+                    source_license,
+                    source_gated,
+                    source_revision,
+                    source_entry_sha256,
+                    packed_bin_sha256,
+                    packed_idx_sha256,
                     now,
                     now,
                 ),
             )
+            if cur.rowcount == 0:
+                row = db.execute(
+                    "SELECT * FROM shards WHERE id=?", (shard_id,)
+                ).fetchone()
+                assert row is not None
+                for field, incoming in (
+                    ("source", source),
+                    ("phase", phase),
+                    ("split", split),
+                    ("sha256", sha256),
+                    ("source_kind", source_kind),
+                    ("source_license", source_license),
+                    ("source_gated", source_gated),
+                    ("source_revision", source_revision),
+                    ("source_entry_sha256", source_entry_sha256),
+                    ("packed_bin_sha256", packed_bin_sha256),
+                    ("packed_idx_sha256", packed_idx_sha256),
+                    ("tokenizer_sha", tokenizer_sha),
+                ):
+                    existing = row[field]
+                    if field == "source_gated":
+                        existing = _gated_value(existing)
+                    if (
+                        incoming is not None
+                        and existing is not None
+                        and incoming != existing
+                    ):
+                        raise ShardConflictError(
+                            f"{shard_id}: conflicting {field}: "
+                            f"registered {existing!r}, incoming {incoming!r}"
+                        )
+                db.execute(
+                    """UPDATE shards
+                          SET source_kind=COALESCE(source_kind, ?),
+                              source_license=COALESCE(source_license, ?),
+                              source_gated=COALESCE(source_gated, ?),
+                              source_revision=COALESCE(source_revision, ?),
+                              source_entry_sha256=COALESCE(source_entry_sha256, ?),
+                              packed_bin_sha256=COALESCE(packed_bin_sha256, ?),
+                              packed_idx_sha256=COALESCE(packed_idx_sha256, ?),
+                              tokenizer_sha=COALESCE(tokenizer_sha, ?)
+                        WHERE id=?""",
+                    (
+                        source_kind,
+                        source_license,
+                        source_gated,
+                        source_revision,
+                        source_entry_sha256,
+                        packed_bin_sha256,
+                        packed_idx_sha256,
+                        tokenizer_sha,
+                        shard_id,
+                    ),
+                )
             return cur.rowcount > 0
 
     # -- claiming -----------------------------------------------------------
@@ -382,6 +511,8 @@ class Manifest:
         split: str | None = None,
         tokenizer_sha: str | None = None,
         bytes_: int | None = None,
+        packed_bin_sha256: str | None = None,
+        packed_idx_sha256: str | None = None,
     ) -> None:
         """Advance a claimed shard to its stage's completed state.
 
@@ -413,6 +544,8 @@ class Manifest:
                           path=COALESCE(?, path), tokens=COALESCE(NULLIF(?,0), tokens),
                           docs=COALESCE(NULLIF(?,0), docs), split=COALESCE(?, split),
                           tokenizer_sha=COALESCE(?, tokenizer_sha),
+                          packed_bin_sha256=COALESCE(?, packed_bin_sha256),
+                          packed_idx_sha256=COALESCE(?, packed_idx_sha256),
                           bytes=COALESCE(?, bytes), error=NULL, updated_at=?,
                           attempts=CASE WHEN ?=? THEN 0 ELSE attempts END
                     WHERE id=?""",
@@ -423,6 +556,8 @@ class Manifest:
                     docs,
                     split,
                     tokenizer_sha,
+                    packed_bin_sha256,
+                    packed_idx_sha256,
                     bytes_,
                     time.time(),
                     target,
@@ -697,6 +832,56 @@ class Manifest:
     def tokenizer_sha(self) -> str | None:
         r = self.db.execute("SELECT sha256 FROM tokenizer WHERE id=1").fetchone()
         return r["sha256"] if r else None
+
+    def lineage_shards(self, shard_ids: Sequence[str]) -> list[dict[str, object]]:
+        """Return hash-bearing manifest facts for observed shards."""
+        unique_ids = sorted(set(shard_ids))
+        if not unique_ids:
+            raise ValueError("cannot generate lineage without observed shard ids")
+        placeholders = ",".join("?" * len(unique_ids))
+        rows = self.db.execute(
+            f"""SELECT id, source_kind, source_license, source_gated,
+                       source_revision, source_entry_sha256,
+                       packed_bin_sha256, packed_idx_sha256
+                  FROM shards WHERE id IN ({placeholders}) ORDER BY id""",  # noqa: S608
+            unique_ids,
+        ).fetchall()
+        by_id = {str(row["id"]): row for row in rows}
+        missing = [shard_id for shard_id in unique_ids if shard_id not in by_id]
+        if missing:
+            raise ValueError(f"manifest lacks observed shard ids: {missing}")
+        required = (
+            "source_kind",
+            "source_license",
+            "source_gated",
+            "source_revision",
+            "source_entry_sha256",
+            "packed_bin_sha256",
+            "packed_idx_sha256",
+        )
+        incomplete = [
+            shard_id
+            for shard_id, row in by_id.items()
+            if any(row[field] is None or row[field] == "" for field in required)
+        ]
+        if incomplete:
+            raise ValueError(
+                f"manifest lacks packed provenance for observed shards: {incomplete}"
+            )
+        return [
+            {
+                "id": shard_id,
+                **{
+                    field: (
+                        _gated_value(by_id[shard_id][field])
+                        if field == "source_gated"
+                        else str(by_id[shard_id][field])
+                    )
+                    for field in required
+                },
+            }
+            for shard_id in unique_ids
+        ]
 
     @staticmethod
     def _assert_tokenizer(db: sqlite3.Connection, sha: str) -> None:

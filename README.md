@@ -7,13 +7,14 @@
 ![License MIT](https://img.shields.io/badge/license-MIT-green)
 ![Solo Project](https://img.shields.io/badge/solo-personal%20project%20%E2%80%94%20no%20employer%20tie-lightgrey)
 
-Dottie is a self-improving orchestration platform built around one closed loop:
+Dottie is an orchestration platform built around a measured improvement loop:
 goals go in; a harness routes each goal to the cheapest of five execution tiers
 that can do the work; execution — including real external tool calls through a
-meta-MCP layer — leaves a **measured** trace; traces are mined into training
-labels; a router model retrains nightly against the accumulated corpus; a
-fail-closed promotion gate decides honestly whether the new champion ships; and
-the deployed router serves the same harness that generated the traces.
+meta-MCP layer — leaves a **measured** trace; and traces can support offline
+router research. The production HTTP boundary currently uses deterministic,
+request-derived routing only. No learned router is deployed, and learned or
+artifact-backed output remains fail-closed until production provenance and
+promotion requirements are satisfied.
 
 > Solo personal project, no connection to employer, built with public/free-tier only (R2/Workers/Supabase/HF ZeroGPU, ONNX WASM, public pip). See `apps/dottie/DOTTIE_PRIME_SOTA.md` for prime → Dottie comparison.
 
@@ -23,8 +24,8 @@ that document and the code disagree, the code is right.
 
 ## The loop
 
-1. **Route** — MoMA-lite heuristic classifier plus a learned MLP router
-   (advisory) choose among five tiers: `deterministic`, `llm`,
+1. **Route** — the production MoMA-lite heuristic classifier chooses among five
+   tiers: `deterministic`, `llm`,
    `deep_research`, `action_operator`, `agentic_epic`.
 2. **Execute** — `scout harness run` drives route → DAG plan → deterministic
    executors → bounded recovery ladder (retry → patch → replan → escalate,
@@ -38,15 +39,14 @@ that document and the code disagree, the code is right.
    (the tier that executed), `measured-outcome` (the recovery ladder's
    escalation target when the routed tier failed), and `operator-corrected`
    (`apps/ava-factory/data/orchestration/label_corrections.jsonl`).
-5. **Retrain** — a nightly Routine at 09:00 UTC rebuilds the corpus and
-   hill-climbs the router.
-6. **Gate** — promotion requires the new champion to strictly beat both a
-   frequency prior and the routing heuristic on measured hold-out data. The
-   gate has never passed; see [Status](#status-2026-08-09) for why that is the
-   system working, not failing.
-7. **Serve** — the current champion is deployed to slasso.com and answers
-   `/api/route` with zero-torch numpy inference (parity ≤1e-4 against the
-   trainer).
+5. **Retrain** — offline research can rebuild the corpus and hill-climb the
+   router; no retrain output is exposed by the production HTTP boundary.
+6. **Gate** — promotion requires a production-derived, non-synthetic artifact
+   bundle with signed provenance and verified checksums. No current artifact
+   satisfies that serving contract.
+7. **Serve** — the harness API currently serves authenticated,
+   request-derived deterministic routing and planning only. Learned outputs
+   and artifact-backed routes fail closed as unavailable.
 
 ## Monorepo layout
 
@@ -54,7 +54,7 @@ that document and the code disagree, the code is right.
 |---|---|
 | `apps/scout-cli` | The `scout` CLI — 60+ capability-declared plugins (harness, mcp, forge, vector, …) behind one entry point |
 | `apps/ava-factory` | Training factory: data pipeline, trainer, corpus mining, hill-climb, scale ladder (smoke → nano → mini → base1b); excluded from the uv workspace (requirements/Docker-driven) |
-| `apps/dottie-harness-api` | The slasso.com surface: serverless harness API (`/api/health`, `/api/stats`, `/api/route`, `/api/plan`) + Validation Lab dashboard; numpy-only inference over vendored champion weights |
+| `apps/dottie-harness-api` | Fail-closed authenticated harness API: request-derived deterministic `/api/route` and `/api/plan`; learned and artifact-backed routes remain unavailable pending verified production artifacts and edge ownership |
 | `apps/dottie` | Agent OS layer: RLM engine, flywheel, missions, research orchestration (see its README); excluded from the uv workspace (own `.venv` + `AVA_FACTORY_ROOT` needed, entangles with the `dottie.rl` namespace collision) |
 | `apps/scout-rtx` | Windows RTX hill-climb runner (torch cu128 hard-pin); excluded from the uv workspace |
 | `apps/arxiviq` | Next.js app (arxiviq) |
@@ -67,9 +67,9 @@ that document and the code disagree, the code is right.
 | `docs/` | Doctrine and specs (see [Doctrine docs](#doctrine-docs)) |
 | `scripts/` | CI gates, ratchets, and their self-tests |
 
-Root `pyproject.toml` is a virtual uv workspace over the four light packages
+Root `pyproject.toml` is a virtual uv workspace over five light packages
 (`packages/ava-skills`, `packages/ava-open-harness`,
-`packages/personal-graphify`, `apps/scout-cli`); `apps/scout-rtx` and
+`packages/personal-graphify`, `apps/scout-cli`, `apps/jarvisd`); `apps/scout-rtx` and
 `apps/ava-factory` are deliberately excluded (heavy, pinned deps), and so is
 `apps/dottie` (own `.venv` + `AVA_FACTORY_ROOT`, entangled with the
 `dottie.rl` namespace collision — see `HANDOFF.md`'s open-decisions list).
@@ -84,9 +84,8 @@ uv sync --all-groups --frozen        # install workspace members editable; lockf
 uv run scout --help
 uv run pytest packages/ava-skills -q
 
-# route a goal (heuristic; --learned augments with the champion when weights are present)
+# route a goal with the deterministic heuristic
 uv run scout --json harness route "compare Stripe vs Lemon Squeezy Aug 2026"
-uv run scout harness route "heartbeat check" --learned --json
 
 # execute end-to-end: route -> DAG plan -> deterministic executors -> measured timeline
 uv run scout harness run "ship the harness loop" --json
@@ -151,57 +150,50 @@ else, producing exactly the non-behavior labels the promotion gate needs.
 
 ## Live surface
 
-- **https://www.slasso.com** — Validation Lab: training-progress dashboard,
-  read-only and provenance-honest (every number derives from committed
-  sources; unmeasured renders as UNMEASURED, never a plausible zero).
-- **`GET /api/health`** — service health plus which artifacts are vendored.
-- **`POST /api/route`** — heuristic routing always; learned routing
-  (`orch-mlp-v1-v4`) when champion weights are vendored, degrading to
-  heuristic-only otherwise.
+- **Public deployment: BLOCKED.** The repository does not claim a verified
+  production host until a named owner, real distributed edge-rate policy,
+  bearer rotation procedure, and canonical HTTPS smoke are independently
+  confirmed.
+- **`GET /api/health`** — returns only service identity, API version, and
+  readiness; incomplete deployment policy fails closed.
+- **`POST /api/route`** — authenticated, request-derived deterministic
+  heuristic output. Learned fields remain unavailable.
+- **`POST /api/plan`** — authenticated deterministic static-prior planning.
+- **Artifact routes** — stats, analytics, corpus, meter, retrain, and vector
+  routes return `503 artifact_unavailable`.
 
-```bash
-curl -s https://www.slasso.com/api/health
-curl -s -X POST https://www.slasso.com/api/route \
-  -H 'Content-Type: application/json' \
-  -d '{"goal": "compare stripe vs lemon squeezy pricing"}'
-```
-
-Implementation: `apps/dottie-harness-api` — a single stdlib
-`http.server` handler, sole dependency numpy, fully self-contained.
+Implementation and exact local/public configuration requirements:
+`apps/dottie-harness-api/README.md`.
 
 ## Training and the eval gate
 
-The factory (`apps/ava-factory`) owns the corpus build and hill-climb; the
-foundation-model track (J-Space architecture, phase curriculum) is a design
-target with progress published to the live console — training telemetry is
-generated locally, gitignored, and never committed.
+The factory (`apps/ava-factory`) owns offline corpus and model research. The
+foundation-model track is not a live product surface, and local training
+telemetry is not published as production status.
 
-Checkpoints are only promoted to serving if they pass `ava-open-harness`:
-J-Space behavioral tests, the 11-category weighted rubric, safety evals, and
-`test_no_mock.py` — a guard that exists because an earlier version of this
-project fabricated eval scores, and every number must now come from a live
-forward pass or fail with a structured error.
+`ava-open-harness` is one necessary checkpoint gate: J-Space behavioral tests,
+the 11-category weighted rubric, safety evals, and `test_no_mock.py`. Passing it
+is not sufficient for serving. A production artifact must also have
+claim-eligible licensed sources, signed lineage, verified content checksums,
+matching tokenizer/config identity, and an owner-approved loader with no
+fallback. No current learned artifact meets that full contract.
 
 ```bash
 uv run pytest packages/ava-open-harness -q   # non-blocking in CI today (package name collision, documented in ci.yml)
 ```
 
-## Status (2026-08-09)
+## Historical training status (2026-08-09)
 
-- **Champion deployed:** `orch-mlp-v1-v4` — 97.2% validation accuracy, 87.7%
-  on the 57-record measured hold-out — serves `/api/route` in an advisory
-  role. Corpus: 1,556 records, 722 measured
-  (`apps/ava-factory/data/orchestration/corpus_meta.json`; champion metrics in
+- **Offline candidate only:** `orch-mlp-v1-v4` recorded 97.2% validation
+  accuracy and 87.7% on a 57-record measured hold-out. Those repository
+  artifacts are historical research evidence, not a deployed champion and not
+  served by `/api/route`. Corpus: 1,556 records, 722 measured
+  (`apps/ava-factory/data/orchestration/corpus_meta.json`; candidate metrics in
   `apps/ava-factory/reports/orchestrator/eval_report.json`).
-- **Promotion gate: not passed — by design.** The gate requires strictly
-  beating both a frequency prior and the heuristic router on the measured
-  hold-out; on the latest cycle the champion's 87.7% fell short of the
-  heuristic's 89.3%. Behavior labels are the heuristic's own outputs — it
-  scores 1.0 on them by construction — so the gate stays locked until the
-  hold-out carries enough non-behavior labels: real meta-MCP action failures
-  and operator corrections, the current P1 in
-  [`docs/PLATFORM_IMPROVEMENT_PLAN.md`](docs/PLATFORM_IMPROVEMENT_PLAN.md).
-  The dashboard reports the gate status as-is.
+- **Research gate not passed.** The candidate's 87.7% fell short of the
+  heuristic's 89.3% on that historical hold-out. Independently, it lacks the
+  complete production artifact provenance and deployment ownership required
+  above, so it is not eligible to serve.
 - **CI:** full pipeline green on GitHub runners as of `c151ab2`.
 - **Consolidation:** dottie is the primary monorepo; the bluehen fleet
   monorepo and all bhenre.com surfaces are deprecated
@@ -240,57 +232,49 @@ uv run pytest packages/ava-open-harness -q   # non-blocking in CI today (package
 - `make ci` mirrors the workflow deliberately; if a gate is added to ci.yml it
   must be added there too.
 
-## Dottie as open-source Hatch — local+Docker+website tandem you own
-
-> Dottie is the open-source Hatch you build and run from your local machine + docker and link to your website then it can work and function like a hatch agent and work in tandem with my hatch agent to build together.
-
-**One-command boot (pip/uv + Docker both work):**
+## Local Dottie control plane
 
 ```bash
 git clone https://github.com/jcdavis131/dottie ~/workspace/dottie && cd dottie
-bash install.sh   # bundles/cli.sh 770 zero_deps true + uv sync --frozen + docker-compose.dottie.yml up -d
-# or: curl -fsSL https://arxiviq.com/starter/install.sh | sh
+uv sync --all-groups --frozen
+export JARVIS_BEARER="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+docker compose -f docker-compose.dottie.yml up -d --build
 ```
 
-**What install does (production-grade extensible, not demo):**
-
-- `apps/scout-cli/install.sh` → `bundles/cli.sh` 770, `bundles/zero_deps.json` `{"zero_deps":true,"allow":"acne:./src"}`, `bundles/manifest.json` v5 Prime 13 agents/11 packs/6 ultra modules MoMA-lite 5 tiers GARNet checker 7-field
-- Docker `docker-compose.dottie.yml` services:
-  - `dottie-api` `127.0.0.1:8787` localhost-only Bearer `dm_dev_*` timingSafeEqual + 90s HMAC ephemeral 256 LRU rate20/agent 60/key 1k/IP, audit prefix-only last4, CORS dev-only no-store nosniff DENY frame, honest 503 never fake
-  - `dottie-harness` thin single daemon owns PTY/tunnel/file/ISL snapshot() every 2s → `/ws/.dottie/daemon_snapshot.json`
-  - `dottie-redis` `redis:7-alpine` optional queue (filesystem fallback `/ws/.dottie/queue`)
-
-**Link once via pairing code `scout pair create` → paste on arxiviq:**
+The compose file runs the canonical jarvisd image on host-loopback port 8790,
+with SQLite state in `jarvis-data`. It does not simulate a queue, local daemon,
+model, or harness. The brain defaults off. Ollama is opt-in with
+`JARVIS_BRAIN=ollama` and defaults to `qwen3:8b`; otherwise the brain reports
+unavailable.
 
 ```bash
-# 1) local 6-char code (10m expiry, stored 0600 at ~/.config/dottie/pair.json):
+# Create a real 10-minute code in jarvisd.
+export JARVIS_URL=http://127.0.0.1:8790
 uv run scout pair create
-curl -X POST http://127.0.0.1:8787/api/dev/pair/create -H "Authorization: Bearer $DOTTIE_DEV_BEARER" | jq .code
-
-# 2) Open arxiviq.com/dottie and paste code → Verify
-# Production path: POST https://arxiviq.com/api/pair/verify {code} → Supabase pairings PK code exp idx + R2 pair_<code>.json
-# Demo path: in-memory ephemeral LRU 256 honests in Next lambda warm
-
-# 3) Tandem queue — cloud drops task, local picks up + streams back:
-curl -X POST http://127.0.0.1:8787/api/dev/queue/push -H "Authorization: Bearer $DOTTIE_DEV_BEARER" -d '{"task":"build PWA offsite","from":"cloud Scout"}'
-uv run scout pair status   # paired? local_api + queue_count
-uv run scout queue list
-
-# 4) Conductor shows triple green:
-# arxiviq.com/conductor?tandem=1  → Local Healthy ● + Cloud Healthy ● + Paired ✓  + 127.0.0.1:8787 dev API
 ```
 
-**Composition:**
+The arxiviq `/dottie` page verifies codes only through a configured jarvisd
+BFF. There is no in-memory or accept-any fallback; unset/unreachable jarvisd
+returns 503 and disallowed targets return 403. A successful same-origin verify
+sets a signed, HttpOnly `__Host-arxiviq_session` cookie for at most ten minutes;
+claims/goals reads then use the fixed `ARXIVIQ_JARVIS_REPO`. Newly paired sessions
+also expose the same fixed repo through an authenticated conductor BFF: measured
+snapshot reads and only feedback, scratchpad, and todo writes. Production also
+requires `ARXIVIQ_PUBLIC_ORIGIN`, a distinct base64url
+`ARXIVIQ_SESSION_SECRET` decoding to at least 32 bytes, and an exact HTTPS
+`JARVIS_ALLOWED_ORIGINS` entry for a remote `JARVIS_URL`. Command, PTY, tunnel,
+machine/session control, guardrail mutation, compaction, and scout execution remain
+unavailable through this UI.
 
-- `apps/arxiviq/app/dottie/page.tsx` polished #080A0F CORE20 PWA — Generate + Copy + Verify tandem + Push/Claim/Clear queue, confetti same as conductor
-- `your_files/dottie-tandem-bridge/index.html` standalone 19kB self-contained #080A0F CORE20 PWA fallback for local dev (no Vercel needed)
-- `apps/arxiviq/app/conductor/page.tsx?type=...` reads `?tandem=1` and renders tandem bar, probes `127.0.0.1:8787/api/dev/health` + `.../pair/status` every 6s
-- `apps/arxiviq/app/api/pair/verify/route.ts` + `.../status/route.ts` Next serverless pairing — in-mem LRU honest limit, upgrade to Supabase `pairings` table in <30 lines
-- `apps/scout-cli/bigbang/plugins/pair/cli.py` `scout pair create|verify|status` + `scout queue push|poll|list` — stdlib only, pip/uv both, filesystem fallback + API fallback dual, timingSafeEqual Bearer
-
-Extensible: replace filesystem queue with `XADD dottie:queue * task A` or Supabase realtime `INSERT queue` — task schema unchanged `{id,ts,task,from,to,status}`. Bridge guarantees at-least-once idempotent consumer, Paired receipt 7-field timeline triple-write `bundles/ultra/runs/dottie-tandem/timeline.jsonl + .scout/missions/dottie-tandem/timeline.jsonl + hidden`.
-
-Only name is Dottie model + harness with Scout CLI tool — never hatch 2.0.
+`ARXIVIQ_PUBLIC_ORIGIN` must be an exact HTTPS origin in production. Exact
+HTTP origins are accepted only for `localhost`, `127.0.0.1`, or `[::1]`
+development; credentials, paths, queries, and fragments are rejected.
+On Vercel (`VERCEL=1`), pair rate identity uses only
+`x-vercel-forwarded-for`. Other public deployments must set
+`ARXIVIQ_TRUSTED_CLIENT_IP_HEADER` to a platform-overwritten header containing
+one IP address. Exact loopback HTTP operation uses a fixed local identity.
+The IP is HMAC-pseudonymized with `JARVIS_BEARER` before any bucket or Jarvis
+agent ID is constructed; missing or invalid trusted metadata fails closed.
 
 ## Connect an agent
 

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+
 import pytest
 
 from jarvisd.state import TABLES, ClaimConflictError, State, repo_scope
@@ -116,6 +119,52 @@ def test_counts_export_and_migration_idempotent(db_path) -> None:
     s2.close()
 
 
+def test_pair_code_is_expired_at_its_expiration_second(
+    state: State, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clock = {"now": 1_000}
+    monkeypatch.setattr("jarvisd.state.time.time", lambda: clock["now"])
+    code = state.pair_create("tester", expire_min=1)["code"]
+
+    clock["now"] = 1_060
+
+    assert state.pair_verify(code)["error"] == "expired"
+    assert state.pair_status(code)["error"] == "unknown code"
+
+
+def test_paired_aggregate_excludes_expiration_second(
+    state: State, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clock = {"now": 1_000}
+    monkeypatch.setattr("jarvisd.state.time.time", lambda: clock["now"])
+    code = state.pair_create("tester", expire_min=1)["code"]
+    assert state.pair_verify(code)["ok"] is True
+
+    clock["now"] = 1_060
+
+    assert state.pair_status(code)["paired"] is False
+    assert state.pair_status()["paired_count"] == 0
+
+
+def test_pair_code_has_one_winner_across_store_connections(db_path) -> None:
+    stores = [State(db_path), State(db_path)]
+    code = stores[0].pair_create("tester")["code"]
+    ready = Barrier(2)
+
+    def verify(store: State) -> dict:
+        ready.wait()
+        return store.pair_verify(code)
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(verify, stores))
+        assert sum(result["ok"] is True for result in results) == 1
+        assert sum(result.get("error") == "already paired" for result in results) == 1
+    finally:
+        for store in stores:
+            store.close()
+
+
 def test_threads_share_one_connection(state: State) -> None:
     import threading
 
@@ -129,3 +178,179 @@ def test_threads_share_one_connection(state: State) -> None:
     for t in threads:
         t.join()
     assert state.counts()["memories"] == 80
+
+
+def test_conductor_state_persists_exact_scope_and_reopens(db_path) -> None:
+    state = State(db_path)
+    feedback = state.conductor_feedback_push(
+        "repo-a", "agent-a", "mission-a", "note", "keep this", 0.25
+    )
+    scratch = state.conductor_scratchpad_write(
+        "repo-a", "agent-a", "mission-a", "breadcrumb"
+    )
+    todo = state.conductor_todo_create(
+        "repo-a", "agent-a", "mission-a", "ship slice", "mid"
+    )
+    state.close()
+
+    reopened = State(db_path)
+    try:
+        snapshot = reopened.conductor_snapshot("repo-a", "mission-a")
+        assert snapshot["feedback"] == [feedback]
+        assert snapshot["scratchpad"] == [scratch]
+        assert snapshot["todos"] == [todo]
+        assert all(
+            row["repo"] == "repo-a" and row["mission"] == "mission-a"
+            for rows in snapshot.values()
+            for row in rows
+        )
+    finally:
+        reopened.close()
+
+
+def test_conductor_validation_rejects_invalid_and_oversized_values(state: State) -> None:
+    with pytest.raises(ValueError, match="repo"):
+        state.conductor_feedback_push("", "agent", "mission", "note", "text", 0)
+    with pytest.raises(ValueError, match="kind"):
+        state.conductor_feedback_push("repo", "agent", "mission", "command", "text", 0)
+    with pytest.raises(ValueError, match="message"):
+        state.conductor_feedback_push("repo", "agent", "mission", "note", "x" * 2001, 0)
+    with pytest.raises(ValueError, match="strength"):
+        state.conductor_feedback_push("repo", "agent", "mission", "note", "text", 2)
+    with pytest.raises(ValueError, match="text"):
+        state.conductor_scratchpad_write("repo", "agent", "mission", "x" * 4001)
+    with pytest.raises(ValueError, match="priority"):
+        state.conductor_todo_create("repo", "agent", "mission", "text", "urgent")
+    with pytest.raises(ValueError, match="status"):
+        state.conductor_todo_move("repo", "agent", "mission", 1, "running")
+
+
+def test_conductor_todo_move_has_one_in_progress_per_repo_mission(state: State) -> None:
+    first = state.conductor_todo_create("repo", "a", "mission", "first", "mid")
+    second = state.conductor_todo_create("repo", "b", "mission", "second", "high")
+
+    state.conductor_todo_move("repo", "a", "mission", first["id"], "in_progress")
+    state.conductor_todo_move("repo", "b", "mission", second["id"], "in_progress")
+
+    todos = state.conductor_snapshot("repo", "mission")["todos"]
+    assert [(todo["text"], todo["status"]) for todo in todos] == [
+        ("first", "open"),
+        ("second", "in_progress"),
+    ]
+
+
+def test_conductor_concurrent_moves_preserve_unique_in_progress(db_path) -> None:
+    stores = [State(db_path), State(db_path)]
+    todos = [
+        stores[0].conductor_todo_create("repo", "seed", "mission", f"todo-{i}", "mid")
+        for i in range(2)
+    ]
+    ready = Barrier(2)
+
+    def move(pair: tuple[State, dict]) -> dict:
+        store, todo = pair
+        ready.wait()
+        return store.conductor_todo_move(
+            "repo", "worker", "mission", todo["id"], "in_progress"
+        )
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            list(pool.map(move, zip(stores, todos, strict=True)))
+        snapshot = stores[0].conductor_snapshot("repo", "mission")
+        assert sum(todo["status"] == "in_progress" for todo in snapshot["todos"]) == 1
+    finally:
+        for store in stores:
+            store.close()
+
+
+def test_conductor_failed_move_rolls_back_displaced_todo(state: State) -> None:
+    existing = state.conductor_todo_create(
+        "repo", "owner", "mission", "existing", "mid"
+    )
+    state.conductor_todo_move(
+        "repo", "owner", "mission", existing["id"], "in_progress"
+    )
+
+    with pytest.raises(ValueError, match="not found"):
+        state.conductor_todo_move("repo", "attacker", "mission", 999, "in_progress")
+
+    todos = state.conductor_snapshot("repo", "mission")["todos"]
+    assert [(todo["id"], todo["status"], todo["agent"]) for todo in todos] == [
+        (existing["id"], "in_progress", "owner")
+    ]
+
+
+def test_conductor_scratch_snapshot_keeps_latest_window_in_chronological_order(
+    state: State,
+) -> None:
+    for index in range(55):
+        state.conductor_scratchpad_write(
+            "repo", "agent", "mission", f"scratch-{index:02d}"
+        )
+
+    scratchpad = state.conductor_snapshot("repo", "mission")["scratchpad"]
+
+    assert [row["text"] for row in scratchpad] == [
+        f"scratch-{index:02d}" for index in range(5, 55)
+    ]
+
+
+def test_conductor_feedback_snapshot_keeps_latest_window_in_chronological_order(
+    state: State,
+) -> None:
+    created = [
+        state.conductor_feedback_push(
+            "repo", "agent", "mission", "note", f"feedback-{index:02d}", 0
+        )
+        for index in range(55)
+    ]
+
+    feedback = state.conductor_snapshot("repo", "mission")["feedback"]
+
+    assert [row["id"] for row in feedback] == [
+        row["id"] for row in created[-50:]
+    ]
+
+
+def test_conductor_todo_snapshot_keeps_newest_window_in_chronological_order(
+    state: State,
+) -> None:
+    created = [
+        state.conductor_todo_create(
+            "repo", "agent", "mission", f"todo-{index:03d}", "mid"
+        )
+        for index in range(105)
+    ]
+
+    todos = state.conductor_snapshot("repo", "mission")["todos"]
+
+    assert [row["id"] for row in todos] == [
+        row["id"] for row in created[-100:]
+    ]
+
+
+def test_conductor_todo_snapshot_retains_older_in_progress_plus_newest_99(
+    state: State,
+) -> None:
+    active = state.conductor_todo_create(
+        "repo", "owner", "mission", "active", "high"
+    )
+    state.conductor_todo_move(
+        "repo", "owner", "mission", active["id"], "in_progress"
+    )
+    newer = [
+        state.conductor_todo_create(
+            "repo", "agent", "mission", f"newer-{index:03d}", "mid"
+        )
+        for index in range(105)
+    ]
+
+    todos = state.conductor_snapshot("repo", "mission")["todos"]
+
+    assert len(todos) == 100
+    assert [row["id"] for row in todos] == [
+        active["id"],
+        *(row["id"] for row in newer[-99:]),
+    ]
+    assert todos[0]["status"] == "in_progress"

@@ -25,4 +25,4 @@ pytest==8.2.2
 
 # Needed by scripts/bench_pipeline.py curator path (same pin as CPU image).
 datasketch==1.6.5
-zstandard==0.22.0
+zstandard==0.25.0

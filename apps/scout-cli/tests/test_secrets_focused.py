@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
-import stat
 from pathlib import Path
 
 import pytest
@@ -24,15 +22,13 @@ def _emitted(capsys) -> dict:
     return json.loads(capsys.readouterr().out)
 
 
-def test_secrets_vault_0600(tmp_home=False):
+def test_secrets_vault_0600(assert_private_file):
     # conftest redirects HOME, vault lives under tmp HOME
     set_secret("TEST_PERMS", "val123")
     # find vault file
     vault = Path.home() / ".local" / "share" / "bigbang" / "secrets.json"
     assert vault.exists()
-    mode = stat.S_IMODE(vault.stat().st_mode)
-    # on POSIX, 0o600; on other, chmod is no-op but we still check not world-readable when possible
-    assert mode & 0o077 == 0, f"vault should be 0600-ish, got {oct(mode)}"
+    assert_private_file(vault)
 
 
 def test_secrets_masked_human_full_json():

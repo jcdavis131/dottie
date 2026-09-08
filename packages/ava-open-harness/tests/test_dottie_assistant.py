@@ -154,10 +154,11 @@ class TestHonestFailures:
         not _PLUMBING_READY, reason=f"dottie app unavailable: {_IMPORT_ERR}"
     )
     def test_real_missing_ava_ckpt_fails_honestly(self, monkeypatch):
-        monkeypatch.setenv("DOTTIE_AVA_CKPT", "/nonexistent-ckpt.pt")
+        missing_ckpt = "/nonexistent-ckpt.pt"
+        monkeypatch.setenv("DOTTIE_AVA_CKPT", missing_ckpt)
         res = dottie_assistant(object(), MockTokenizer(), "cpu")
         assert res["pass"] is False and res["measured"] is None
-        assert "unavailable" in res["error"] and "/nonexistent-ckpt.pt" in res["error"]
+        assert "unavailable" in res["error"] and str(Path(missing_ckpt)) in res["error"]
 
     @pytest.mark.skipif(
         not _PLUMBING_READY, reason=f"dottie app unavailable: {_IMPORT_ERR}"

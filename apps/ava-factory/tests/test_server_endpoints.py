@@ -19,8 +19,16 @@ pytest.importorskip("fastapi")
 os.environ["AVA_SKIP_ENGINE_BOOT"] = "1"
 
 from ava import serve_engine as se
+from ava.config import AvaConfig
+from ava.model import build_model
 from fastapi.testclient import TestClient
 from server import InterveneReq, app
+
+from dottie.provenance import (
+    checkpoint_metadata,
+    create_lineage,
+    sha256_file,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -360,8 +368,6 @@ def test_resolve_ckpt_latest_pointer(tmp_path):
 def test_hot_reload_skips_tmp_and_reloads_under_lock(tmp_path, monkeypatch):
     """Pointer change → reload under lock; never reads *.tmp."""
     torch = pytest.importorskip("torch")
-    from ava.config import AvaConfig
-    from ava.model import build_model
 
     ckpt_dir = tmp_path / "ckpt"
     ckpt_dir.mkdir()
@@ -369,12 +375,6 @@ def test_hot_reload_skips_tmp_and_reloads_under_lock(tmp_path, monkeypatch):
     m = build_model(cfg, use_memory=False)
     p1 = ckpt_dir / "step_1.pt"
     p2 = ckpt_dir / "step_2.pt"
-    torch.save({"model": m.state_dict()}, p1)
-    # Mutate one weight so we can detect a reload.
-    with torch.no_grad():
-        m.embed.weight[0, 0] += 1.0
-    torch.save({"model": m.state_dict()}, p2)
-
     tok = (
         Path(__file__).resolve().parent.parent
         / "data"
@@ -384,6 +384,44 @@ def test_hot_reload_skips_tmp_and_reloads_under_lock(tmp_path, monkeypatch):
     )
     if not tok.is_file():
         pytest.skip("tokenizer missing")
+
+    lineage = create_lineage(
+        tokenizer_sha256=sha256_file(tok),
+        config=cfg,
+        curriculum=cfg.phases,
+        shards=[{
+            "id": "test-shard",
+            "packed_bin_sha256": "a" * 64,
+            "packed_idx_sha256": "b" * 64,
+            "source_kind": "hf",
+            "source_license": "mit",
+            "source_gated": False,
+            "source_revision": "a" * 40,
+            "source_entry_sha256": "c" * 64,
+        }],
+    )
+    state = m.state_dict()
+    content = {"model": state}
+    metadata = checkpoint_metadata(
+        lineage, asserted_parent=None, content=content
+    )
+    torch.save({**content, **metadata}, p1)
+    # Mutate one weight so we can detect a reload.
+    with torch.no_grad():
+        m.embed.weight[0, 0] += 1.0
+    state = m.state_dict()
+    content = {"model": state}
+    torch.save(
+        {
+            **content,
+            **checkpoint_metadata(
+                lineage,
+                asserted_parent={"checkpoint_digest": metadata["digest"]},
+                content=content,
+            ),
+        },
+        p2,
+    )
 
     latest = ckpt_dir / "latest"
     latest.write_text("step_1.pt", encoding="utf-8")
@@ -405,6 +443,102 @@ def test_hot_reload_skips_tmp_and_reloads_under_lock(tmp_path, monkeypatch):
     w1 = float(eng.model.embed.weight[0, 0].item())
     assert w1 != pytest.approx(w0, abs=1e-6)
     eng.stop_hot_reload()
+
+
+def test_hot_reload_preserves_verified_model_on_bad_checkpoint(tmp_path):
+    """A rejected pointer target must not replace the active verified model."""
+    torch = pytest.importorskip("torch")
+    cfg = AvaConfig.load("nano")
+    model = build_model(cfg, use_memory=False)
+    tok = (
+        Path(__file__).resolve().parent.parent
+        / "data"
+        / "nano"
+        / "tokenizer"
+        / "ava_nano_bpe.json"
+    )
+    if not tok.is_file():
+        pytest.skip("tokenizer missing")
+    lineage = create_lineage(
+        tokenizer_sha256=sha256_file(tok),
+        config=cfg,
+        curriculum=cfg.phases,
+        shards=[{
+            "id": "test-shard",
+            "packed_bin_sha256": "a" * 64,
+            "packed_idx_sha256": "b" * 64,
+            "source_kind": "hf",
+            "source_license": "mit",
+            "source_gated": False,
+            "source_revision": "a" * 40,
+            "source_entry_sha256": "c" * 64,
+        }],
+    )
+    ckpt_dir = tmp_path / "ckpt"
+    ckpt_dir.mkdir()
+    good = ckpt_dir / "good.pt"
+    bad = ckpt_dir / "bad.pt"
+    state = model.state_dict()
+    content = {"model": state}
+    torch.save(
+        {
+            **content,
+            **checkpoint_metadata(
+                lineage, asserted_parent=None, content=content
+            ),
+        },
+        good,
+    )
+    torch.save({"model": model.state_dict()}, bad)
+    latest = ckpt_dir / "latest"
+    latest.write_text(good.name, encoding="utf-8")
+    eng = se.ServeEngine(
+        ckpt_path=latest,
+        tokenizer_path=tok,
+        enable_hot_reload=False,
+    )
+    active_model = eng.model
+    latest.write_text(bad.name, encoding="utf-8")
+    with pytest.raises(ValueError):
+        eng._maybe_reload()
+    assert eng.model is active_model
+    assert eng.ckpt.endswith(good.name)
+    status = eng.stats()
+    assert status["rejected_target"] == bad.name
+    assert "IntegrityError" in status["last_reload_error"]
+    assert str(tmp_path) not in status["last_reload_error"]
+
+
+def test_serve_rejects_legacy_checkpoint_before_model_build(
+    tmp_path, monkeypatch
+):
+    torch = pytest.importorskip("torch")
+    tok = (
+        Path(__file__).resolve().parent.parent
+        / "data"
+        / "nano"
+        / "tokenizer"
+        / "ava_nano_bpe.json"
+    )
+    if not tok.is_file():
+        pytest.skip("tokenizer missing")
+    legacy = tmp_path / "legacy.pt"
+    torch.save({"model": {}}, legacy)
+    built = False
+
+    def forbidden_build(*args, **kwargs):
+        nonlocal built
+        built = True
+        raise AssertionError("model build must follow checkpoint validation")
+
+    monkeypatch.setattr(se, "build_model", forbidden_build)
+    with pytest.raises(ValueError):
+        se.ServeEngine(
+            ckpt_path=legacy,
+            tokenizer_path=tok,
+            enable_hot_reload=False,
+        )
+    assert built is False
 
 
 def test_status_endpoints_are_threadpooled_not_async(client):

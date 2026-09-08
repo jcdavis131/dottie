@@ -312,6 +312,8 @@ def health():
         "ckpt": st["ckpt"],
         "params": st["params"],
         "vocab": st["vocab"],
+        "rejected_target": st.get("rejected_target"),
+        "last_reload_error": st.get("last_reload_error"),
     }
 
 

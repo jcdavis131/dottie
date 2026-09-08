@@ -123,13 +123,21 @@ class RateLimiter:
 
 
 class AuditLog:
-    """Append-only `audit.jsonl`: `{ts, agent, path, status, key_last4}`. Never the key."""
+    """Append-only request metadata. Never keys or request content."""
 
     def __init__(self, path: Path | None):
         self.path = path
         self._lock = threading.Lock()
 
-    def write(self, agent: str, path: str, status: int, key_last4: str) -> None:
+    def write(
+        self,
+        agent: str,
+        path: str,
+        status: int,
+        key_last4: str,
+        method: str = "",
+        action: str = "",
+    ) -> None:
         """Append one line; a write failure is swallowed so it never blocks a request."""
         if self.path is None:
             return
@@ -138,6 +146,8 @@ class AuditLog:
                 "ts": int(time.time()),
                 "agent": agent,
                 "path": path,
+                "method": method,
+                "action": action,
                 "status": status,
                 "key_last4": key_last4,
             }
@@ -215,6 +225,7 @@ class AuthMiddleware:
             await self.app(scope, receive, send)
             return
         path: str = scope.get("path", "") or "/"
+        method: str = scope.get("method", "") or ""
         headers = Headers(scope=scope)
         agent = agent_from_headers(headers)
         status_holder = {"status": 0}
@@ -233,7 +244,14 @@ class AuthMiddleware:
 
         if path in self.exempt or self.bearer is None:
             await self.app(scope, receive, send_wrapped)
-            self._audit.write(agent, path, status_holder["status"], "")
+            self._audit.write(
+                agent,
+                path,
+                status_holder["status"],
+                "",
+                method,
+                str(scope.get("audit_action") or ""),
+            )
             return
 
         auth = headers.get("authorization", "")
@@ -241,12 +259,12 @@ class AuthMiddleware:
         last4 = token[-4:] if token else ""
         if not token:
             await self._reject(scope, send_wrapped, 401, "bearer required")
-            self._audit.write(agent, path, 401, last4)
+            self._audit.write(agent, path, 401, last4, method)
             return
         ok, reason = self.authenticate(token)
         if not ok:
             await self._reject(scope, send_wrapped, 401, reason)
-            self._audit.write(agent, path, 401, last4)
+            self._audit.write(agent, path, 401, last4, method)
             return
 
         client = scope.get("client")
@@ -257,11 +275,18 @@ class AuthMiddleware:
             and self._limiter.check(f"key:{last4}", self.rate_key)
         ):
             await self._reject(scope, send_wrapped, 429, "rate limited")
-            self._audit.write(agent, path, 429, last4)
+            self._audit.write(agent, path, 429, last4, method)
             return
 
         await self.app(scope, receive, send_wrapped)
-        self._audit.write(agent, path, status_holder["status"], last4)
+        self._audit.write(
+            agent,
+            path,
+            status_holder["status"],
+            last4,
+            method,
+            str(scope.get("audit_action") or ""),
+        )
 
     @staticmethod
     async def _reject(scope: Scope, send: Send, status: int, error: str) -> None:

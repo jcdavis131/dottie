@@ -33,6 +33,7 @@ import torch.nn.functional as F
 from dottie.config import SPACES, DottieConfig
 from dottie.data import _LoadedShard
 from dottie.model import build_model
+from dottie.provenance import validate_checkpoint
 
 PLANNER_IDX = SPACES.index("planner")
 TOOL_TASKS = ("tool_selection",)
@@ -45,7 +46,10 @@ def collect_windows(db_path: str, seq: int, per_task: int, seed: int,
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     con.row_factory = sqlite3.Row
     rows = con.execute(
-        "SELECT path FROM shards WHERE split='val' AND state='PACKED' ORDER BY path"
+        """SELECT id, path, packed_bin_sha256, packed_idx_sha256, tokenizer_sha
+             FROM shards
+            WHERE split='val' AND state='PACKED'
+            ORDER BY path"""
     ).fetchall()
     con.close()
 
@@ -59,8 +63,8 @@ def collect_windows(db_path: str, seq: int, per_task: int, seed: int,
         if all(len(out[t]) >= per_task for t in wanted):
             break
         try:
-            shard = _LoadedShard(SimpleNamespace(path=str(p)))
-        except (OSError, json.JSONDecodeError, KeyError) as exc:
+            shard = _LoadedShard(SimpleNamespace(**dict(r)))
+        except (OSError, ValueError, json.JSONDecodeError, KeyError) as exc:
             log(f"skip {p.name}: {exc}")
             continue
         for t in wanted:
@@ -80,8 +84,9 @@ def collect_windows(db_path: str, seq: int, per_task: int, seed: int,
 @torch.no_grad()
 def eval_ckpt(ckpt: str, cfg: DottieConfig, windows: dict[str, list[np.ndarray]],
               device: str, batch: int = 8, log=print) -> dict:
+    blob = torch.load(ckpt, map_location="cpu", weights_only=True)
+    validate_checkpoint(blob, expected_config=cfg)
     model = build_model(cfg).to(device)
-    blob = torch.load(ckpt, map_location="cpu", weights_only=False)
     model.load_state_dict(blob["model"])
     model.eval()
     log(f"loaded {ckpt} (step {blob.get('step')})")
@@ -123,7 +128,6 @@ def eval_ckpt(ckpt: str, cfg: DottieConfig, windows: dict[str, list[np.ndarray]]
             gen_ces.append(ce)
     res["general_ce"] = round(sum(gen_ces) / len(gen_ces), 5) if gen_ces else None
 
-    del model
     if device.startswith("cuda"):
         torch.cuda.empty_cache()
     return res

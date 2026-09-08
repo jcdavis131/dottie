@@ -35,8 +35,10 @@ Honesty contract — what is and is not preserved:
   embeddings mean nothing to each other) unless `--allow-partial` explicitly keeps fresh
   embeddings.
 
-Every grown checkpoint carries a `grow` manifest (per-tensor disposition + validation
-numbers) so a later reader can see how it was made — no silent provenance.
+Every grown checkpoint carries validated destination lineage, a full content digest,
+an `asserted_parent` containing the source artifact and lineage hashes, and a `grow`
+manifest (per-tensor disposition + validation numbers). The parent relationship is an
+explicit assertion, not cryptographic proof of predecessor chronology.
 """
 
 from __future__ import annotations
@@ -55,6 +57,12 @@ from torch import nn
 
 from dottie.config import DottieConfig
 from dottie.model import build_model, count_params
+from dottie.provenance import (
+    checkpoint_metadata,
+    create_lineage,
+    sha256_file,
+    validate_checkpoint,
+)
 
 # Layer lists that may change depth between presets; dst layer j reads src layer
 # floor(j * n_src / n_dst) (stretch mapping — standard progressive-stacking practice).
@@ -348,7 +356,8 @@ def main(argv=None) -> int:
 
     src_cfg = DottieConfig.load(args.src_preset)
     dst_cfg = DottieConfig.load(args.dst_preset)
-    blob = torch.load(args.src, map_location="cpu", weights_only=False)
+    blob = torch.load(args.src, map_location="cpu", weights_only=True)
+    source_digest = validate_checkpoint(blob, expected_config=src_cfg)
     src_sd = blob["model"]
 
     src_model = build_model(src_cfg)
@@ -385,17 +394,33 @@ def main(argv=None) -> int:
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(
-        {
-            "model": grown,
-            "step": 0,
-            "phase": 0,
-            "tokens_done": 0,
-            "preset": args.dst_preset,
-            "grow": {**report, "ts": time.time(), "manifest": manifest},
-        },
-        out,
+    output_lineage = create_lineage(
+        tokenizer_sha256=blob["lineage"]["tokenizer_sha256"],
+        config=dst_cfg,
+        curriculum=dst_cfg.phases,
+        shards=blob["lineage"]["shards"],
     )
+    content = {
+        "model": grown,
+        "step": 0,
+        "phase": 0,
+        "tokens_done": 0,
+        "preset": args.dst_preset,
+        "grow": {**report, "ts": time.time(), "manifest": manifest},
+    }
+    output_blob = {
+        **content,
+        **checkpoint_metadata(
+            output_lineage,
+            asserted_parent={
+                "artifact_sha256": sha256_file(args.src),
+                "lineage_digest": blob["lineage"]["digest"],
+                "checkpoint_digest": source_digest,
+            },
+            content=content,
+        ),
+    }
+    torch.save(output_blob, out)
     out.with_suffix(".grow.json").write_text(
         json.dumps({**report, "manifest": manifest}, indent=2), encoding="utf-8"
     )

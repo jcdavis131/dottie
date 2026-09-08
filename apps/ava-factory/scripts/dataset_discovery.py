@@ -24,6 +24,12 @@ from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
 
+from dottie import license_policy
+
+LICENSE_ALLOW = license_policy.LICENSE_ALLOW
+LICENSE_DENY_TOKENS = license_policy.LICENSE_DENY_TOKENS
+gate_license = license_policy.gate_license
+
 DISCLAIMER = (
     "Solo personal project, no connection to employer, built with public/free-tier only"
 )
@@ -55,35 +61,6 @@ DISCLAIMER = (
 # Tokens are compared component-wise after splitting on "-", so "nd" cannot
 # match inside an unrelated word and "cc-by" cannot swallow "cc-by-nc-nd".
 # ---------------------------------------------------------------------------
-
-# Denied outright wherever they appear, whatever else a record also claims.
-LICENSE_DENY_TOKENS = {
-    "nd": "NoDerivatives — training a model on the work is a derivative use",
-    "nc": "NonCommercial — incompatible with a revenue mission",
-}
-
-# Exact HF/SPDX-style ids that clear the gate. An id absent from this set is
-# DENIED, including "unknown", "other" and a missing license field: an
-# unverified license is not a permissive one.
-LICENSE_ALLOW = {
-    "mit",
-    "apache-2.0",
-    "bsd-2-clause",
-    "bsd-3-clause",
-    "isc",
-    "cc0-1.0",
-    "cc-by-2.0",
-    "cc-by-3.0",
-    "cc-by-4.0",
-    "cc-by-sa-3.0",  # ShareAlike carries obligations but is not ND/NC
-    "cc-by-sa-4.0",
-    "odc-by-1.0",
-    "odc-by",
-    "pddl-1.0",
-    "unlicense",
-    "openrail",
-}
-
 
 # ---------------------------------------------------------------------------
 # Second gate dimension: SYNTHETIC PROVENANCE (model-output terms).
@@ -173,50 +150,6 @@ def flag_synthetic_provenance(dataset_id, tags=None, description=""):
                 break
     return (bool(hits), sorted(hits))
 
-
-def _license_values(raw):
-    """Flatten a license field into every individual value it asserts.
-
-    HF returns a str, a list, or (via cardData) something nested. Anything that
-    is not a str/list is stringified as ONE value rather than iterated, so a
-    dict never silently decomposes into its keys.
-    """
-    if raw is None:
-        return []
-    if isinstance(raw, str):
-        return [raw]
-    if isinstance(raw, (list, tuple, set)):
-        out = []
-        for item in raw:
-            out.extend(_license_values(item))
-        return out
-    return [str(raw)]
-
-
-def gate_license(raw) -> tuple[bool, str]:
-    """(allowed, reason). Deny by default; EVERY asserted license must pass.
-
-    A record claiming both CC-BY-4.0 and CC-BY-ND-4.0 is denied — the most
-    restrictive term governs what may be done with the work.
-    """
-    values = _license_values(raw)
-    if not values:
-        return False, "no license stated — deny by default (unverified is not permissive)"
-    for value in values:
-        ident = str(value).strip().lower()
-        if not ident:
-            return False, "empty license value — deny by default"
-        parts = ident.split("-")
-        for token, why in LICENSE_DENY_TOKENS.items():
-            if token in parts:
-                return False, f"{ident}: {why}"
-        if ident not in LICENSE_ALLOW:
-            return False, (
-                f"{ident} is not in the permissive allowlist — deny by default; "
-                "add it to LICENSE_ALLOW deliberately if it really is permissive"
-            )
-    joined = ", ".join(sorted({str(v).strip().lower() for v in values}))
-    return True, f"permissive: {joined}"
 
 # Mapping weak domains -> HF dataset search queries and data needs
 DOMAIN_TO_DATASET_QUERIES = {

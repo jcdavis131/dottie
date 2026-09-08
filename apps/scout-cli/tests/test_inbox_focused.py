@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
-import stat
 import time
 from pathlib import Path
 
@@ -55,13 +53,12 @@ def test_park_and_list_pending():
     assert items[0]["status"] == "pending"
 
 
-def test_0600_perms():
+def test_0600_perms(assert_private_file):
     res = cmd_park("test", "{}", "unattended", 3600)
     parked_id = res["data"]["parked"] if "data" in res else res["parked"]
     p = INBOX_DIR / f"{parked_id}.json"
     assert p.exists()
-    mode = stat.S_IMODE(p.stat().st_mode)
-    assert mode == 0o600, f"expected 0600, got {oct(mode)}"
+    assert_private_file(p)
 
 
 def test_approve_lifecycle():
