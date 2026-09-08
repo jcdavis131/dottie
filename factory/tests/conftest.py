@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -12,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from factory.config import Factory
+from factory.config import Factory, sha256_of
 
 REPORT_SCRIPT = """
 import json, sys, pathlib
@@ -21,6 +22,105 @@ pathlib.Path("out").mkdir(exist_ok=True)
 pathlib.Path("out/report.json").write_text(json.dumps({"m": {"value": value}, "generated_at": "2026-09-05T00:00:00Z"}))
 print("wrote report", value)
 """
+
+
+def _write_mission(path: Path, repo: Path, dataset: Path, sha: str) -> Path:
+    mission = {
+        "schema_version": 1,
+        "id": "fixture-real-mission",
+        "repository": {"path": str(repo), "code_sha": sha},
+        "datasets": [{
+            "id": "fixture-real-data",
+            "path": "data/input.csv",
+            "source": "https://example.invalid/data",
+            "revision": "fixture-revision-1",
+            "license": "CC0-1.0",
+            "sha256": sha256_of(dataset),
+            "identity_verified": True,
+        }],
+        "train": {"argv": [sys.executable, "train.py"]},
+        "evaluation": {
+            "argv": [sys.executable, "evaluate.py"],
+            "report": "out/report.json",
+            "max_age_seconds": 60,
+            "contract_revision": "fixture-contract-v1",
+        },
+        "resources": {
+            "ram_mb": 1,
+            "disk_mb": 1,
+            "gpu": "none",
+            "exclusive_gpu": False,
+            "max_parallel_jobs": 1,
+        },
+        "denied_dependencies": ["wandb"],
+        "metrics": [
+            {"name": "score", "path": "metrics.score", "op": ">=", "threshold": 0.8}
+        ],
+        "outputs": [
+            {"kind": kind, "source": source, "destination": destination}
+            for kind, source, destination in (
+                ("model", "out/model.bin", "release/model.bin"),
+                ("checkpoint", "out/checkpoint.bin", "release/checkpoint.bin"),
+                ("tokenizer", "out/tokenizer.json", "release/tokenizer.json"),
+                ("config", "out/config.json", "release/config.json"),
+            )
+        ],
+        "protected_artifacts": ["protected.bin"],
+        "approval_policy": {"reviewer_required": True, "shipper_required": True},
+        "evidence_kind": "real",
+    }
+    path.write_text(json.dumps(mission), encoding="utf-8")
+    return path
+
+
+@pytest.fixture
+def mission_fixture(tmp_path: Path):
+    repo = tmp_path / "repo"
+    (repo / "data").mkdir(parents=True)
+    dataset = repo / "data" / "input.csv"
+    dataset.write_text("x,y\n1,2\n", encoding="utf-8")
+    (repo / "protected.bin").write_bytes(b"protected")
+    (repo / "train.py").write_text(
+        "from pathlib import Path\n"
+        "Path('out').mkdir(exist_ok=True)\n"
+        "Path('out/model.bin').write_bytes(b'model')\n"
+        "Path('out/checkpoint.bin').write_bytes(b'checkpoint')\n"
+        "Path('out/tokenizer.json').write_text('{}')\n"
+        "Path('out/config.json').write_text('{}')\n",
+        encoding="utf-8",
+    )
+    (repo / "evaluate.py").write_text(
+        "import json\n"
+        "from pathlib import Path\n"
+        "Path('out/report.json').write_text(json.dumps("
+        "{'contract_revision': 'fixture-contract-v1', 'metrics': {'score': 0.9}}))\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "commit",
+            "-qm",
+            "fixture",
+        ],
+        cwd=repo,
+        check=True,
+    )
+    sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    mission_path = _write_mission(tmp_path / "mission.json", repo, dataset, sha)
+    return repo, mission_path
 
 
 def node(nid, deps=(), status="ready", repo="r1", priority=3, size="S"):
