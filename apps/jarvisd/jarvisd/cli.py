@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from jarvisd import __version__
@@ -36,6 +37,14 @@ def _parser() -> argparse.ArgumentParser:
 
     t = sub.add_parser("token", help="mint an ephemeral single-use token from the bearer")
     t.add_argument("--bearer-env", default="JARVIS_BEARER", help="env var holding the static bearer (default JARVIS_BEARER)")
+
+    d = sub.add_parser("drain-inbox", help="open goals from ~/workspace/slack/inbox/*.json (file-polled Slack ingress)")
+    d.add_argument("--inbox-dir", default=None, help="inbox dir (default ~/workspace/slack/inbox)")
+    d.add_argument("--db", default=None, help="SQLite path (JARVIS_DB)")
+    d.add_argument("--agent", default="scout", help="agent recorded on opened goals")
+    d.add_argument("--repo", default="", help="repo recorded on opened goals")
+    d.add_argument("--state-path", default=None, help="dedupe state file (default <inbox>/../state/slack_inbox_seen.json)")
+    d.add_argument("--dry-run", action="store_true", help="report what would happen; change nothing")
     return p
 
 
@@ -92,6 +101,32 @@ def cmd_token(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_drain_inbox(args: argparse.Namespace) -> int:
+    """Drain the Slack file inbox into goals, then print the summary as JSON."""
+    from jarvisd.config import Config
+    from jarvisd.slack_inbox import drain
+    from jarvisd.state import State
+    from jarvisd.tools import Jarvis
+
+    inbox_dir = args.inbox_dir or str(Path.home() / "workspace" / "slack" / "inbox")
+    config = Config.from_env(db=args.db)
+    store = State(config.db_path)
+    try:
+        jarvis = Jarvis(config, store)
+        summary = drain(
+            inbox_dir,
+            jarvis.goal,
+            agent=args.agent,
+            repo=args.repo,
+            dry_run=args.dry_run,
+            state_path=args.state_path,
+        )
+    finally:
+        store.close()
+    print(json.dumps(summary, indent=2, default=str))
+    return 0 if summary["ok"] and not summary["failed"] else 1
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """CLI entrypoint."""
     args = _parser().parse_args(argv)
@@ -101,6 +136,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return cmd_export(args)
     if args.cmd == "token":
         return cmd_token(args)
+    if args.cmd == "drain-inbox":
+        return cmd_drain_inbox(args)
     return 2  # pragma: no cover — argparse enforces the choices
 
 
