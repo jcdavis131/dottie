@@ -39,6 +39,11 @@ jobs:
       # (E701/E702/E722); personal-graphify 141 and ava-open-harness 79 unchanged.
       # Stale for ten days because ci.yml's ava-skills hard gate was red and skipped
       # the documented-counts check that guards this figure.
+      # -> 983 (09-08). WHY 1022 -> 983: personal-graphify 141 and ava-open-harness
+      # 79 unchanged; the entire -39 is apps/scout-cli 802 -> 763 — the pair plugin
+      # rewrite in 71dabf3 (bigbang/plugins/pair/cli.py 197 -> 453 lines) cleaned up
+      # compound-style findings, plus test tidy in 002226b. Same masking pattern as
+      # 09-05: earlier failing steps skipped the documented-counts check.
       # A number in a comment can go stale inside a single session, so re-measure,
       # never carry it.
       #
@@ -50,7 +55,7 @@ jobs:
       # Same ratchet as before: flip the next package the day it reaches zero; do not
       # flip all three at once. scout-cli at 802 is now furthest; ava-open-harness at
       # 79 is nearest.
-      - name: Ruff check (non-blocking — 1022 known findings, see comment)
+      - name: Ruff check (non-blocking — 983 known findings, see comment)
         run: |
           ruff check --statistics \
             packages/ava-open-harness \

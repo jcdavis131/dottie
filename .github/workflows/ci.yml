@@ -87,11 +87,17 @@ jobs:
       # un-redding CI: this figure had been stale since 08-26 and nothing caught it
       # because the ava-skills hard gate above was failing first and skipping every
       # later step, including the documented-counts check that guards this number.
+      # -> 983 (09-08). WHY 1022 -> 983: personal-graphify 141 and ava-open-harness
+      # 79 unchanged; the entire -39 is apps/scout-cli 802 -> 763 — the pair plugin
+      # rewrite in 71dabf3 (bigbang/plugins/pair/cli.py 197 -> 453 lines) cleaned up
+      # compound-style findings, plus test tidy in 002226b. Re-measured 2026-09-08
+      # while un-redding PR #25: the gate-audit and HANDOFF-freshness steps were
+      # failing first and skipping this check, same masking pattern as 09-05.
       # ava-skills 19 -> 0 and HARD since 08-01 (re-hit 9 on 08-18, back to 0 09-05).
       # Same ratchet: flip the next one the day it reaches 0 — ava-open-harness at 79
       # is still nearest. A number in a comment rots even inside one session —
       # re-measure it, never carry it forward.
-      - name: Ruff lint (non-blocking — 1022 known findings, see comment)
+      - name: Ruff lint (non-blocking — 983 known findings, see comment)
         run: uvx ruff@0.15.22 check packages/ava-open-harness packages/personal-graphify apps/scout-cli --exclude apps/scout-cli/.venv || true
       # A RATCHET, not a lint. Fails only on a gate-shaped defect (fail-open dispatch,
       # mode-conditional escape, suppressed check) that is NOT already in the baseline;
