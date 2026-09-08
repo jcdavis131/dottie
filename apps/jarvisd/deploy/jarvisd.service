@@ -1,0 +1,66 @@
+[Unit]
+Description=jarvisd — the always-on Jarvis daemon (MCP + JSON API over one SQLite store)
+Documentation=https://github.com/jcdavis131/dottie/tree/main/apps/jarvisd
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=jarvisd
+Group=jarvisd
+
+# Secrets live here, 0600 root:root, never in this unit — a unit file is
+# world-readable and `systemctl cat` prints it. The daemon refuses to do the things
+# it has no secret for, so a missing EnvironmentFile degrades to "shut", not "open".
+EnvironmentFile=/etc/jarvisd/jarvisd.env
+
+ExecStart=/opt/jarvisd/venv/bin/jarvisd serve
+Restart=on-failure
+RestartSec=5s
+# Five starts in a minute means it is not going to come up on its own; stop trying
+# and leave the failure visible in `systemctl status` instead of hiding it in a loop.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+TimeoutStopSec=20
+
+StateDirectory=jarvisd
+StateDirectoryMode=0700
+WorkingDirectory=/var/lib/jarvisd
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=jarvisd
+
+# ---- hardening -------------------------------------------------------------------
+# The daemon reads its config, writes its SQLite store, and serves a socket. It has
+# no business anywhere else on the filesystem, so say so rather than trusting it.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RemoveIPC=yes
+# AF_UNIX is kept for the journal socket; the rest is what an HTTP server needs.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+UMask=0077
+
+# ProtectSystem=strict makes everything read-only except these.
+ReadWritePaths=/var/lib/jarvisd
+
+[Install]
+WantedBy=multi-user.target

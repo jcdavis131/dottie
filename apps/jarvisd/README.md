@@ -61,6 +61,7 @@ Each returns a JSON string with `ok`; on failure `error` and `example`.
 | `JARVIS_BRAIN_TIMEOUT` | `120` | seconds per Ollama `/api/chat` call |
 | `ANTHROPIC_API_KEY`, `JARVIS_MODEL`, `JARVIS_EFFORT` | — / `claude-opus-5` / `high` | Anthropic brain, paid (`pip install 'jarvisd[brain]'`); `JARVIS_MODEL` also overrides the Ollama model |
 | `JARVIS_RATE_IP` / `JARVIS_RATE_KEY` / `JARVIS_RATE_AGENT` | `1000` / `60` / `20` | requests per minute per IP / key / `X-Agent-Id` |
+| `JARVIS_SLACK_SIGNING_SECRET` | — | Slack app signing secret. **Unset means `/api/slack/events` answers 503 and processes nothing** — off, not open |
 | `BIGBANG_POLICY_FILE` | scout default | URL allowlist for downstream MCP (read by scout) |
 
 `contacts.resolve` needs `acne`, which is not on any package index: install the sibling
@@ -78,6 +79,60 @@ checkout (`pip install -e ~/workspace/acne`); jarvisd also looks for `~/workspac
   `{ts, agent, path, method, action, status, key_last4}` per request. Conductor RPC
   actions are named; request content and the key are never logged.
 
+## Slack
+
+`POST /api/slack/events` turns a message typed in Slack into a goal. It is the one
+v1 done-criterion the daemon shipped without.
+
+Slack cannot send our bearer, so this path is exempt from the bearer check and
+authenticates the Slack way instead: HMAC-SHA256 over `v0:<timestamp>:<raw body>`
+keyed by the signing secret, compared with `hmac.compare_digest`. Exempt from that
+check, not from authentication — an unsigned request never reaches a handler.
+
+Every refusal is explicit, and there is no branch that falls through to accepting:
+
+| condition | status |
+|---|---|
+| `JARVIS_SLACK_SIGNING_SECRET` unset | `503` — ingress is off |
+| signature or timestamp header missing/malformed | `401` |
+| timestamp more than 5 min from now, either direction | `401` |
+| signature mismatch | `401` |
+| signature already accepted (Slack retries) | `409` — one message, one goal |
+| payload shape not recognised | `400`, never a silent `200` |
+
+**No bot token is needed.** A slash command's HTTP response *is* the reply Slack
+shows, and an Events API post only wants a 2xx. Posting unprompted into a channel
+would need one; the daemon does not do that.
+
+Setup, once the daemon is reachable over HTTPS:
+
+1. Slack app → **Basic Information** → copy the Signing Secret into
+   `JARVIS_SLACK_SIGNING_SECRET`, restart.
+2. **Slash Commands** → new command `/jarvis`, Request URL
+   `https://<host>/api/slack/events`. Type `/jarvis ship the release notes` and the
+   goal opens, with the confirmation shown inline.
+3. Optional, for `@jarvis do the thing`: **Event Subscriptions** → enable, same URL,
+   subscribe the bot to `app_mention`. The url_verification challenge is echoed only
+   after its signature checks out.
+
+Goals arrive with `agent` set to `slack:<user>`, so `/api/goals` shows where each
+came from. `deploy/jarvisd.env.example` carries the same notes next to the variable.
+
+## Deploy (systemd)
+
+```bash
+sudo ./deploy/install.sh --dry-run   # print every step, write nothing
+sudo ./deploy/install.sh             # install or upgrade in place
+```
+
+Creates a `jarvisd` system user, a venv at `/opt/jarvisd/venv`, state at
+`/var/lib/jarvisd` (0700), and the unit at `/etc/systemd/system/jarvisd.service`.
+Secrets go in `/etc/jarvisd/jarvisd.env` (0600 root:root), never in the unit — a
+unit file is world-readable and `systemctl cat` prints it.
+
+A first install does **not** start the service: the env file has no bearer yet, and
+a daemon started without one has auth off. The script prints the two commands to run
+when you are ready. Re-running to upgrade never overwrites an existing env file.
 ## Conductor transport
 
 Authenticated `GET /api/conductor/snapshot?repo=<repo>&mission=<mission>` returns a
@@ -124,7 +179,9 @@ curl -s -H "Authorization: Bearer $T" localhost:8790/api/claims
 | `jarvisd/tools.py` | `Jarvis` service + FastMCP tool registration |
 | `jarvisd/app.py` | `build_app(config)` → Starlette; `serve()` under uvicorn |
 | `jarvisd/brain.py` | optional brain: Ollama (stdlib, `$0`) or Anthropic (`jarvisd[brain]`), one shared tool loop |
+| `jarvisd/slack.py` | Slack signature verification, replay guard, payload parsing — fail-closed |
 | `jarvisd/cli.py` | `serve` / `export` / `token` |
+| `deploy/` | systemd unit, install script, env stub |
 
 ```bash
 uv run pytest apps/jarvisd -q

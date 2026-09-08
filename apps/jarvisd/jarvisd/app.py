@@ -26,6 +26,16 @@ from starlette.routing import Route
 
 from jarvisd import __version__
 from jarvisd.auth import DEFAULT_EXEMPT, AuthMiddleware, agent_from_headers
+from jarvisd.slack import (
+    SLACK_PATH,
+    ReplayGuard,
+    SlackRefusalError,
+    goal_text_from,
+    parse_payload,
+)
+from jarvisd.slack import (
+    verify as verify_slack,
+)
 from jarvisd.state import TABLES, State, repo_scope
 from jarvisd.tools import Jarvis, brain_status, build_mcp
 
@@ -181,6 +191,7 @@ def build_app(config: Config, *, state: State | None = None) -> Starlette:
     store = state or State(config.db_path)
     started = time.time()
     jarvis = Jarvis(config, store, started)
+    slack_replays = ReplayGuard()
     mcp = build_mcp(config, jarvis)
     # streamable_http_app() must be built before session_manager exists.
     mcp_http = mcp.streamable_http_app()
@@ -294,6 +305,61 @@ def build_app(config: Config, *, state: State | None = None) -> Starlette:
             return _reply(jarvis.goal_done(goal_id, doc.get("result"), str(doc.get("status") or "done")))
         status = request.query_params.get("status", "open")
         return _reply(jarvis.goals(request.query_params.get("repo") or None, status or None))
+
+    async def api_slack_events(request: Request) -> Response:
+        """Slack ingress. Verify first, understand second, only then write.
+
+        Ordering is the whole design: nothing here reads the payload until the
+        signature over the raw bytes has been checked, and nothing writes a goal
+        until the payload has been recognised as one of the shapes we handle.
+        """
+        raw = await request.body()
+        try:
+            signature = verify_slack(
+                config.slack_signing_secret, request.headers, raw
+            )
+            slack_replays.check_and_record(signature)
+            doc = parse_payload(request.headers.get("content-type", ""), raw)
+            kind, who, text = goal_text_from(doc)
+        except SlackRefusalError as refusal:
+            # Log the reason, return it, and do nothing else. A refusal is a
+            # complete outcome, not a fallback into some more permissive path.
+            return _json({"ok": False, "error": refusal.reason}, status=refusal.status)
+
+        if kind == "url_verification":
+            # `text` is the challenge. Slack sends this once, at setup, and the
+            # signature was still checked before we echoed anything.
+            return _json({"challenge": text})
+
+        if not text:
+            # An empty command is a user mistake, not an attack. Say what to do.
+            return _json(
+                {
+                    "response_type": "ephemeral",
+                    "text": "Nothing to open. Try: /jarvis ship the release notes",
+                }
+            )
+
+        agent = f"slack:{who}" if who else "slack"
+        repo = str(doc.get("team_domain") or "")
+        result = await run_in_threadpool(jarvis.goal, agent, repo, text)
+        goal = result.get("goal") if isinstance(result, dict) else None
+        if not (isinstance(result, dict) and result.get("ok")):
+            reason = result.get("error") if isinstance(result, dict) else "goal rejected"
+            return _json({"ok": False, "error": reason}, status=400)
+
+        goal_id = goal.get("id") if isinstance(goal, dict) else None
+        # A slash command shows this JSON to the user directly, which is how the
+        # loop closes without a bot token. An Events API post ignores the body and
+        # only wants a 2xx, so the same reply serves both.
+        return _json(
+            {
+                "ok": True,
+                "response_type": "ephemeral",
+                "text": f"Opened goal #{goal_id}: {text}",
+                "goal": goal,
+            }
+        )
 
     async def api_timeline(request: Request) -> Response:
         return _reply(
@@ -481,6 +547,7 @@ def build_app(config: Config, *, state: State | None = None) -> Starlette:
         Route("/api/claims", api_claims, methods=["GET", "POST", "DELETE"]),
         Route("/api/inbox", api_inbox, methods=["GET", "POST"]),
         Route("/api/goals", api_goals, methods=["GET", "POST", "PATCH"]),
+        Route(SLACK_PATH, api_slack_events, methods=["POST"]),
         Route("/api/timeline", api_timeline, methods=["GET"]),
         Route("/api/conductor/snapshot", api_conductor_snapshot, methods=["GET"]),
         Route("/api/conductor/rpc", api_conductor_rpc, methods=["POST"]),
@@ -510,7 +577,10 @@ def build_app(config: Config, *, state: State | None = None) -> Starlette:
                 AuthMiddleware,
                 bearer=config.bearer,
                 audit_path=config.audit_path,
-                exempt=DEFAULT_EXEMPT,
+                # Slack cannot send our bearer; it signs each request instead, and
+                # the handler verifies that signature before doing anything. Exempt
+                # from the bearer check, never from authentication.
+                exempt=(*DEFAULT_EXEMPT, SLACK_PATH),
                 rate_ip=config.rate_ip,
                 rate_key=config.rate_key,
                 rate_agent=config.rate_agent,
