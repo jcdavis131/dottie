@@ -35,6 +35,13 @@ INTENT_KEYWORDS: dict[str, dict[str, list[str]]] = {
     },
 }
 RISK_PROVENANCE = "static priors — no mined run history in serverless"
+# Fail-closed membership sets. Every value dispatched on by _classify_tier and
+# _recommended_agents must be in these; anything else raises instead of silently
+# falling through to a default tier. The gate audit (scripts/gate_audit.py)
+# treats a membership guard as a cleared fail-open dispatch, and the raise is
+# the honest terminator the audit's own docstring recommends.
+KNOWN_INTENTS = frozenset({"agentic_loop", "deep_research", "complex_action", "deterministic", "llm"})
+KNOWN_COMPLEXITIES = frozenset({"epic", "medium", "simple"})
 LLM_MAP = {
     "planner": "llm",
     "deep-researcher": "deep_research",
@@ -68,6 +75,10 @@ def _complexity(text: str) -> str:
 
 def _classify_tier(text: str, intent: str, complexity: str) -> str:
     lowered = text.lower()
+    if intent not in KNOWN_INTENTS:
+        raise ValueError(f"unknown intent {intent!r}; expected one of {sorted(KNOWN_INTENTS)}")
+    if complexity not in KNOWN_COMPLEXITIES:
+        raise ValueError(f"unknown complexity {complexity!r}; expected one of {sorted(KNOWN_COMPLEXITIES)}")
     if any(keyword in lowered for keyword in ("heartbeat", "monitor", "tick", "cron health")):
         return "deterministic"
     if intent == "deep_research":
@@ -80,6 +91,10 @@ def _classify_tier(text: str, intent: str, complexity: str) -> str:
 
 
 def _recommended_agents(intent: str, complexity: str) -> list[str]:
+    if intent not in KNOWN_INTENTS:
+        raise ValueError(f"unknown intent {intent!r}; expected one of {sorted(KNOWN_INTENTS)}")
+    if complexity not in KNOWN_COMPLEXITIES:
+        raise ValueError(f"unknown complexity {complexity!r}; expected one of {sorted(KNOWN_COMPLEXITIES)}")
     if intent == "deep_research":
         if complexity == "epic":
             return ["deep-researcher", "synthesist", "researcher", "forensic-auditor", "critic"]
