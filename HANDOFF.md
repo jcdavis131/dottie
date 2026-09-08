@@ -16,6 +16,28 @@ before writing "current" anywhere in this file.
 
 ---
 
+## 📌 Session continuation — 2026-09-08 (supersedes every block below)
+
+**Re-measured 2026-09-08 at HEAD `4725542`,** branch
+`scout/jarvisd-v1` (PR #25 "jarvisd: Slack ingress"). The 2026-09-05 block
+below cites `23870d7` from branch `claude/github-projects-review-lxnuul`,
+which is not an ancestor of this branch's history, so
+`check_handoff_fresh.py --check` failed NOT-ANCESTOR on this branch.
+
+Verified against `git log` on this branch: HEAD `4725542`
+"fix(routing): fail-closed membership guards" — `_classify_tier` and
+`_recommended_agents` in `apps/dottie-harness-api/lib/production_routing.py`
+now raise `ValueError` on unrecognised intent/complexity instead of silently
+falling through to the llm tier / default agent list, clearing the 3
+fail-open-dispatch candidates the gate-audit ratchet flagged. Locking tests in
+`apps/dottie-harness-api/tests/test_production_routing_guards.py`.
+
+Current state: PR #25 CI still red — lint-and-test's HANDOFF freshness step
+(this block fixes it) and the Vercel dottie preview deployment failed;
+gate audit, ruff, factory-smoke, bluehenre-checks, codeact-sandbox green.
+
+---
+
 ## 📌 Session continuation — 2026-09-05 (supersedes every block below)
 
 **Re-measured 2026-09-05 at HEAD `23870d7`,** branch
