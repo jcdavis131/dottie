@@ -161,6 +161,7 @@ def test_cancel_between_launch_and_registration_terminates_launch(
 def test_promotion_recovers_or_rolls_back_after_first_publication_crash(
     mode, mission_fixture, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
+    assert mode in {"recover", "collision", "indeterminate"}
     repo, mission_path = mission_fixture
     mission = load_mission(mission_path)
     ledger_path = tmp_path / "recovery.sqlite3"
