@@ -61,3 +61,14 @@ def test_route_goal_never_raises_on_plain_goals():
         result = routing.route_goal(goal)
         assert result["moma_tier"] in {"deterministic", "deep_research", "action_operator", "agentic_epic", "llm"}
         assert result["recommended_agents"]
+
+
+def test_rejection_is_typed_valueerror_with_fields():
+    """The fail-closed raise is a typed RoutingRejected (still a ValueError)."""
+    with pytest.raises(routing.RoutingRejected) as excinfo:
+        routing._classify_tier("ship it", "banana", "simple")
+    assert isinstance(excinfo.value, ValueError)  # gate-audit ratchet still holds
+    assert excinfo.value.field == "intent"
+    assert excinfo.value.value == "banana"
+    assert sorted(routing.KNOWN_INTENTS) == excinfo.value.expected
+    assert "unknown intent" in str(excinfo.value)

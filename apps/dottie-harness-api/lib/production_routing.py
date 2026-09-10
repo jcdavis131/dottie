@@ -42,6 +42,21 @@ RISK_PROVENANCE = "static priors — no mined run history in serverless"
 # the honest terminator the audit's own docstring recommends.
 KNOWN_INTENTS = frozenset({"agentic_loop", "deep_research", "complex_action", "deterministic", "llm"})
 KNOWN_COMPLEXITIES = frozenset({"epic", "medium", "simple"})
+
+
+class RoutingRejected(ValueError):
+    """Fail-closed routing rejection: intent/complexity outside the membership sets.
+
+    Subclasses ValueError so existing `except ValueError` guards — including the
+    gate-audit ratchet tests — keep working. The HTTP boundary catches this
+    specific type to answer 400 (with quarantine + alert) instead of 500.
+    """
+
+    def __init__(self, field: str, value: object, expected: frozenset[str]) -> None:
+        self.field = field
+        self.value = value
+        self.expected = sorted(expected)
+        super().__init__(f"unknown {field} {value!r}; expected one of {self.expected}")
 LLM_MAP = {
     "planner": "llm",
     "deep-researcher": "deep_research",
@@ -76,9 +91,9 @@ def _complexity(text: str) -> str:
 def _classify_tier(text: str, intent: str, complexity: str) -> str:
     lowered = text.lower()
     if intent not in KNOWN_INTENTS:
-        raise ValueError(f"unknown intent {intent!r}; expected one of {sorted(KNOWN_INTENTS)}")
+        raise RoutingRejected("intent", intent, KNOWN_INTENTS)
     if complexity not in KNOWN_COMPLEXITIES:
-        raise ValueError(f"unknown complexity {complexity!r}; expected one of {sorted(KNOWN_COMPLEXITIES)}")
+        raise RoutingRejected("complexity", complexity, KNOWN_COMPLEXITIES)
     if any(keyword in lowered for keyword in ("heartbeat", "monitor", "tick", "cron health")):
         return "deterministic"
     if intent == "deep_research":
@@ -92,9 +107,9 @@ def _classify_tier(text: str, intent: str, complexity: str) -> str:
 
 def _recommended_agents(intent: str, complexity: str) -> list[str]:
     if intent not in KNOWN_INTENTS:
-        raise ValueError(f"unknown intent {intent!r}; expected one of {sorted(KNOWN_INTENTS)}")
+        raise RoutingRejected("intent", intent, KNOWN_INTENTS)
     if complexity not in KNOWN_COMPLEXITIES:
-        raise ValueError(f"unknown complexity {complexity!r}; expected one of {sorted(KNOWN_COMPLEXITIES)}")
+        raise RoutingRejected("complexity", complexity, KNOWN_COMPLEXITIES)
     if intent == "deep_research":
         if complexity == "epic":
             return ["deep-researcher", "synthesist", "researcher", "forensic-auditor", "critic"]
