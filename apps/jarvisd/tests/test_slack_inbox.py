@@ -215,3 +215,25 @@ def test_real_jarvis_goal_registration(tmp_path: Path) -> None:
     assert goals[0]["text"] == "slack says hi"
     assert goals[0]["agent"] == "cameron"
     assert goals[0]["status"] == "open"
+
+
+def test_drain_lock_is_exclusive(tmp_path: Path) -> None:
+    """Two drains on one state file can never interleave: the lock is exclusive.
+
+    Deterministic (no timing): while one holder owns the lock, a second open
+    file description cannot take it even non-blocking.
+    """
+    import fcntl
+
+    from jarvisd.slack_inbox import _drain_lock, _lock_path
+
+    state = tmp_path / "state.json"
+    with _drain_lock(state):
+        assert _lock_path(state).exists()
+        with open(_lock_path(state), "a+b") as other:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(other.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    # After release, a non-blocking lock succeeds again.
+    with open(_lock_path(state), "a+b") as other:
+        fcntl.flock(other.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(other.fileno(), fcntl.LOCK_UN)
