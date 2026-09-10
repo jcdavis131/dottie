@@ -23,16 +23,22 @@ Dedupe state is a JSON file of seen Slack `ts` ids, defaulting to
 inbox is `~/workspace/slack/inbox/`). Successfully opened items are moved to
 `<inbox>/_done/`. `dry_run=True` changes nothing — no goals, no state writes, no
 file moves — and reports what *would* happen.
+
+Concurrent drains on the same state file are serialized with an exclusive
+inter-process lock, so two pollers can never interleave load -> open -> save
+and lose dedupe entries (last writer wins) or open the same message twice.
 """
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import re
 import time
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 __all__ = [
     "KNOWN_KINDS",
@@ -98,6 +104,31 @@ def _load_seen(state_path: Path) -> dict[str, dict[str, Any]]:
     return seen
 
 
+def _lock_path(state_path: Path) -> Path:
+    return state_path.with_name(state_path.name + ".lock")
+
+
+@contextmanager
+def _drain_lock(state_path: Path) -> Iterator[None]:
+    """Exclusive inter-process lock serializing drains on one state file.
+
+    `_save_seen` already writes atomically (temp file + rename), so a single
+    write can never tear. The race this closes is *between* processes: without
+    it, two drains can interleave load -> open-goal -> save, losing dedupe
+    entries (last writer wins) or opening the same Slack message twice. The
+    lock therefore spans the whole drain body, not just the save. Linux-only
+    (fcntl); the daemon and the poller both run on Linux.
+    """
+    path = _lock_path(state_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a+b") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
 def _save_seen(state_path: Path, seen: dict[str, dict[str, Any]]) -> None:
     # FIFO eviction before writing: oldest `ts` ids fall off first.
     while len(seen) > MAX_SEEN:
@@ -105,6 +136,13 @@ def _save_seen(state_path: Path, seen: dict[str, dict[str, Any]]) -> None:
     state_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = state_path.with_suffix(state_path.suffix + ".tmp")
     tmp.write_text(json.dumps({"seen": seen}, indent=2, sort_keys=True), encoding="utf-8")
+    # Flush the temp file to disk before the rename: a crash between write and
+    # replace must not leave a zero-length state file behind.
+    fd = os.open(tmp, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
     os.replace(tmp, state_path)
 
 
@@ -165,81 +203,87 @@ def drain(
     only: item summaries), `skipped_seen` (ts ids), `quarantined` and `failed`
     (each `{path, reason[, quarantined_to]}`). `failed` items stay in the inbox
     for a later run to retry; everything else is moved or recorded.
+
+    The whole drain runs under an exclusive inter-process lock on the state
+    file, so concurrent drains are serialized.
     """
     inbox = Path(inbox_dir)
     state_file = Path(state_path) if state_path else default_state_path(inbox)
     qdir = Path(quarantine_dir) if quarantine_dir else inbox / "_quarantine"
     ddir = Path(done_dir) if done_dir else inbox / "_done"
 
-    seen = _load_seen(state_file)
-    opened: list[dict[str, Any]] = []
-    would_open: list[dict[str, Any]] = []
-    skipped_seen: list[str] = []
-    quarantined: list[dict[str, Any]] = []
-    failed: list[dict[str, Any]] = []
+    with _drain_lock(state_file):
+        seen = _load_seen(state_file)
+        opened: list[dict[str, Any]] = []
+        would_open: list[dict[str, Any]] = []
+        skipped_seen: list[str] = []
+        quarantined: list[dict[str, Any]] = []
+        failed: list[dict[str, Any]] = []
 
-    files = sorted(p for p in inbox.glob("*.json") if p.is_file())
-    for path in files:
-        try:
-            raw = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError) as exc:
-            quarantined.append(_quarantine(path, qdir, f"unreadable: {exc.__class__.__name__}"))
-            continue
-        try:
-            item = json.loads(raw)
-        except ValueError:
-            quarantined.append(_quarantine(path, qdir, "malformed JSON"))
-            continue
-        try:
-            kind, user, ts, text = _validate(item)
-        except SlackInboxError as exc:
-            quarantined.append(_quarantine(path, qdir, str(exc)))
-            continue
-        if ts in seen:
-            skipped_seen.append(ts)
-            continue
+        files = sorted(p for p in inbox.glob("*.json") if p.is_file())
+        for path in files:
+            try:
+                raw = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError) as exc:
+                quarantined.append(_quarantine(path, qdir, f"unreadable: {exc.__class__.__name__}"))
+                continue
+            try:
+                item = json.loads(raw)
+            except ValueError:
+                quarantined.append(_quarantine(path, qdir, "malformed JSON"))
+                continue
+            try:
+                kind, user, ts, text = _validate(item)
+            except SlackInboxError as exc:
+                quarantined.append(_quarantine(path, qdir, str(exc)))
+                continue
+            if ts in seen:
+                skipped_seen.append(ts)
+                continue
 
-        provenance = {
-            "kind": kind,
-            "user": user,
-            "channel": item.get("channel", ""),
-            "channel_name": item.get("channel_name", ""),
-            "thread_ts": item.get("thread_ts", "") or "",
-            "text": text,
+            provenance = {
+                "kind": kind,
+                "user": user,
+                "channel": item.get("channel", ""),
+                "channel_name": item.get("channel_name", ""),
+                "thread_ts": item.get("thread_ts", "") or "",
+                "text": text,
+            }
+            if dry_run:
+                would_open.append({"path": str(path), "ts": ts, **provenance})
+                continue
+
+            result = open_goal(agent, repo, text)
+            if not isinstance(result, dict) or not result.get("ok"):
+                reason = "open_goal refused"
+                if isinstance(result, dict):
+                    reason = str(result.get("error") or result.get("reason") or reason)
+                failed.append({"path": str(path), "reason": reason})
+                continue
+
+            goal = result.get("goal")
+            goal_id = goal.get("id") if isinstance(goal, dict) else None
+            seen[ts] = {"goal_id": goal_id, **provenance}
+            opened.append(goal if isinstance(goal, dict) else {"id": goal_id, "text": text})
+            try:
+                ddir.mkdir(parents=True, exist_ok=True)
+                os.replace(path, ddir / path.name)
+            except OSError:
+                # The ts is already recorded, so a later run skips it; the leftover
+                # file is untidy, not a duplicate goal.
+                pass
+
+        if not dry_run:
+            _save_seen(state_file, seen)
+
+        result = {
+            "ok": True,
+            "dry_run": dry_run,
+            "opened": opened,
+            "would_open": would_open,
+            "skipped_seen": skipped_seen,
+            "quarantined": quarantined,
+            "failed": failed,
         }
-        if dry_run:
-            would_open.append({"path": str(path), "ts": ts, **provenance})
-            continue
 
-        result = open_goal(agent, repo, text)
-        if not isinstance(result, dict) or not result.get("ok"):
-            reason = "open_goal refused"
-            if isinstance(result, dict):
-                reason = str(result.get("error") or result.get("reason") or reason)
-            failed.append({"path": str(path), "reason": reason})
-            continue
-
-        goal = result.get("goal")
-        goal_id = goal.get("id") if isinstance(goal, dict) else None
-        seen[ts] = {"goal_id": goal_id, **provenance}
-        opened.append(goal if isinstance(goal, dict) else {"id": goal_id, "text": text})
-        try:
-            ddir.mkdir(parents=True, exist_ok=True)
-            os.replace(path, ddir / path.name)
-        except OSError:
-            # The ts is already recorded, so a later run skips it; the leftover
-            # file is untidy, not a duplicate goal.
-            pass
-
-    if not dry_run:
-        _save_seen(state_file, seen)
-
-    return {
-        "ok": True,
-        "dry_run": dry_run,
-        "opened": opened,
-        "would_open": would_open,
-        "skipped_seen": skipped_seen,
-        "quarantined": quarantined,
-        "failed": failed,
-    }
+    return result
