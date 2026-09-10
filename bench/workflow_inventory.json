@@ -1,0 +1,173 @@
+{
+  "mode": "dry-run/read-only",
+  "notes": "Every workflow below is exercised in dry-run or read-only mode. Nothing is merged, deployed, posted, or written outside the workflow's own temp/out dir. 'blocked' is a first-class result, never a silent skip.",
+  "version": 1,
+  "workflows": [
+    {
+      "category": "harness",
+      "checker": "check_goal_intake",
+      "command": [
+        "python3",
+        "drain_goals.py"
+      ],
+      "cwd": "~/workspace/slack",
+      "description": "Read-only drain of the Slack goal inbox: dedupe by message id, fail-closed on corrupt state, add_goal only on new goals.",
+      "expected": "exit 0; drain completes without posting or writing goals",
+      "id": "goal_intake",
+      "name": "Slack goal intake (drain -> State.add_goal)",
+      "network_read": true,
+      "timeout_s": 120
+    },
+    {
+      "category": "harness",
+      "checker": "check_playbook_dryrun",
+      "command": [
+        "python3",
+        "scripts/business/playbook.py",
+        "run",
+        "monitor",
+        "--dry-run"
+      ],
+      "cwd": "~/workspace/dottie",
+      "description": "Run-scoreboard generator from recorded run timelines; history, not live telemetry.",
+      "expected": "exit 0 and WOULD-WRITE line naming scoreboard.json/.md",
+      "id": "playbook_monitor",
+      "name": "Playbook: monitor scoreboard (dry-run)",
+      "timeout_s": 120
+    },
+    {
+      "category": "harness",
+      "checker": "check_playbook_dryrun",
+      "command": [
+        "python3",
+        "scripts/business/playbook.py",
+        "run",
+        "ops",
+        "--dry-run"
+      ],
+      "cwd": "~/workspace/dottie",
+      "description": "Changelog from read-only git history; digest composes scoreboard + TODO + test inventory, stating absences as measured facts.",
+      "expected": "exit 0; would-write changelog_entry.md and ops_digest.md",
+      "id": "playbook_ops",
+      "name": "Playbook: ops changelog + digest (dry-run)",
+      "timeout_s": 120
+    },
+    {
+      "category": "harness",
+      "checker": "check_playbook_dryrun",
+      "command": [
+        "python3",
+        "scripts/business/playbook.py",
+        "run",
+        "research",
+        "--dry-run"
+      ],
+      "cwd": "~/workspace/dottie",
+      "description": "Weekly research brief from committed insights spec; absent orchestrator reports render as absent, never simulated.",
+      "expected": "exit 0; would-write research_brief.md",
+      "id": "playbook_research",
+      "name": "Playbook: research brief (dry-run)",
+      "timeout_s": 120
+    },
+    {
+      "category": "harness",
+      "checker": "check_playbook_validation",
+      "command": [
+        "python3",
+        "scripts/business/playbook.py",
+        "run",
+        "validation",
+        "--dry-run"
+      ],
+      "cwd": "~/workspace/dottie",
+      "description": "Dataset card from corpus metadata; required input is absent by measurement, so the honest outcome is skipped-missing-input.",
+      "expected": "exit 0; reports skipped-missing-input for corpus_meta (honest absence, not failure)",
+      "id": "playbook_validation",
+      "name": "Playbook: validation dataset card (dry-run)",
+      "timeout_s": 120
+    },
+    {
+      "category": "retrieval",
+      "checker": "check_retrieval_json",
+      "command": [
+        "python3",
+        "scripts/retrieval_eval.py",
+        "--max-commits",
+        "300",
+        "--json"
+      ],
+      "cwd": "~/workspace/dottie",
+      "description": "Golden retrieval set mined from git history (commit msg -> changed files), walk-forward split, sqlite3 FTS5 BM25 baseline, leak control.",
+      "expected": "exit 0; JSON with golden_set/index/baseline_on_test incl. leak_free metrics",
+      "id": "retrieval_commit",
+      "name": "Retrieval eval: commit-shaped slice",
+      "timeout_s": 300
+    },
+    {
+      "category": "retrieval",
+      "checker": "check_retrieval_json",
+      "command": [
+        "python3",
+        "scripts/task_eval_slice.py",
+        "--json"
+      ],
+      "cwd": "~/workspace/dottie",
+      "description": "Same retriever scored on task-shaped queries mined from TODO.md, with answer-in-query leak control and TODO.md pruned from the index.",
+      "expected": "exit 0; JSON with verdict block comparing task vs commit slices",
+      "id": "retrieval_task",
+      "name": "Retrieval eval: task-shaped slice",
+      "timeout_s": 600
+    },
+    {
+      "category": "safety",
+      "checker": "check_gate_audit",
+      "command": [
+        "python3",
+        "scripts/gate_audit.py",
+        "--json",
+        "--baseline",
+        "scripts/gate_audit_baseline.json",
+        "--check"
+      ],
+      "cwd": "~/workspace/dottie",
+      "description": "AST-based detection of fail-open dispatches, mode-conditional escapes, and suppressed checks. --check exits 1 on un-baselined candidates.",
+      "expected": "exit 0 (all baselined) or 1 (new un-judged candidates: a real finding, not a runner failure); text report names the files",
+      "id": "gate_audit",
+      "name": "Gate audit: verdicts nothing consumes",
+      "timeout_s": 180
+    },
+    {
+      "category": "training",
+      "checker": "check_grpo_collect",
+      "command": [
+        "python3",
+        "pipeline/grpo_collect.py",
+        "--out",
+        "{OUTDIR}/grpo",
+        "--in",
+        "reports"
+      ],
+      "cwd": "~/workspace/dottie",
+      "description": "Canonical ava-factory grpo_collect: groups traces into preference pairs for GRPO. Writes to a bench temp dir only.",
+      "expected": "exit 0; trace_bank.jsonl + pref_pairs.jsonl + grpo_group_stats.jsonl + MANIFEST.json exist",
+      "id": "grpo_collect",
+      "name": "GRPO collect (canonical pipeline)",
+      "timeout_s": 180
+    },
+    {
+      "category": "eval-data",
+      "checker": "check_goldens",
+      "command": [
+        "python3",
+        "-c",
+        "import json; rows=[json.loads(l) for l in open('examples/goldens.jsonl') if l.strip()]; assert rows, 'empty'; [ (r['input'], r['expected']) for r in rows ]; print(f'GOLDENS_OK n={len(rows)}')"
+      ],
+      "cwd": "~/workspace/dottie",
+      "description": "Structural contract check on the golden example set: every line parses as JSON with input + expected fields.",
+      "expected": "GOLDENS_OK with n>0; every row has input and expected",
+      "id": "goldens_format",
+      "name": "Goldens contract (examples/goldens.jsonl)",
+      "timeout_s": 60
+    }
+  ]
+}
