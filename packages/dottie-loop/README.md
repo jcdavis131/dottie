@@ -42,6 +42,15 @@ The review that motivated it, with the spec-versus-repository findings, is
 | §08, RT-03 | `router.py` | five tiers, the six-step decision order, learned advice only with artifact + schema + provenance (gate false → heuristic authoritative), safer tier below the confidence threshold, escalation only after a recorded insufficiency, forbidden private features; adapter for the harness-api heuristic |
 | §13 | `skills.py` | SKILL.md frontmatter parser + package contract, one-stage-at-a-time lifecycle with required evidence and named rollback, mock benchmarks refused, canary needs an approval, progressive disclosure |
 | §36 Runbooks B–C | `cli.py` | `feedback record`, `dataset release\|approve`, `train preflight`, `eval gates`, `approval issue\|consume` (persisted, replay-counted), `promote decide`, `release record\|rollback` — the operator drives the chain end to end with exit 2 on every block |
+| §29 | `safety.py` | archive extraction that refuses traversal, links and bombs; JSON-only deserialization with size/depth caps; per-hop redirect re-checks against the allowlist (SSRF, rebinding); report redaction — plus the §29 test matrix in `tests/test_security_and_training.py` |
+| §21, §19 | `curriculum.py` | selective training (excess loss, coverage floors, IDs + scores logged, hard examples kept), curriculum order, coupled + versioned anneal schedule, GRPO group construction (duplicates are not diversity; invalid/regressed → task zero; KL cap), balancing with caps and recorded sampling weights, health checks and stop decisions |
+| §31 | `deploy.py` | build digest → candidate URL → pre-alias smoke → alias only after approval → cache-busted served-bytes verification; every step recorded, every failure typed |
+| §26 | `closed_loop.LeaseFile` | single active retraining lease on disk: heartbeat extends, expired-but-live is not reclaimed, cooldown starts from the terminal timestamp |
+| §10 RLM, §06 REPL | `rlm.py` | long context as named variables with provenance; bounded `rlm()` child calls (tokens, child-call count, depth) logged before and after as timeline events; stuck detector (repeated query / repeated failure / low confidence) that allows exactly ONE lateral lens then escalates; missions resume from the log |
+| §16 | `capture.SessionRecorder` | multi-turn pair session from any surface: turns, actions, tool calls, corrections, feedback bound to the turn it answers, seven-field checkpoints; nothing persisted until `finalize` writes through the `CaptureWriter` |
+| §24 | `evaluation.calibration` | expected calibration error + abstention rate from `(confidence, correct)` pairs; empty input is `unmeasured`, never a plausible zero |
+| §06 API, §28, RT-17 | `surfaces.ApiServer` | fail-closed JSON API: bearer principals, `Idempotency-Key` required (202 created / 200 replay / 409 conflict), `/api/learned` is 503 until a learned artifact is loaded, routing rejections are typed 400/403 AND quarantined + alerted |
+| §39 | `traceability.py` | the final acceptance artifact: session → trace → reward/QA → dataset → train run → checkpoint → eval → canary → approval → release → served verification → monitoring → rollback target as one graph; `validate_graph` names every unresolved arrow and every consequential edge missing its human authority; `spec traceability --dir` exits 2 until it is complete |
 | §27 | `scripts/forge_runner.py` | the one file for the GPU box: advertise → poll → claim → checkout → execute → push results over a git conveyor |
 
 ## CLI
@@ -64,6 +73,9 @@ uv run python -m dottie_loop approval issue --store approvals.json --approver ca
 uv run python -m dottie_loop promote decide --gates gates.json --canary canary.json --approval-consumed
 uv run python -m dottie_loop release record … --served-sha <hash fetched from production> --out release.json
 uv run python -m dottie_loop release rollback --release release.json --served-sha <incumbent> --reason drill --out rollback.json
+# the §39 final proof: every record the chain wrote, in one directory, as one graph
+uv run python -m dottie_loop spec traceability --dir /tmp/chain --out graph.json   # exits 2 naming each arrow that does not resolve
+uv run python -m dottie_loop spec schemas
 ```
 
 Exit codes: `0` ok, `1` error, `2` blocked, `3` invalid input. stdout is one JSON
@@ -75,7 +87,7 @@ envelope; diagnostics go to stderr. There is no interactive prompt.
 uv run pytest packages/dottie-loop -q
 ```
 
-The two suites are named after the spec's acceptance matrices: every test in
+The two core suites are named after the spec's acceptance matrices: every test in
 `tests/test_runtime_acceptance.py` cites an RT item and every test in
 `tests/test_learning_acceptance.py` cites an ML item, so coverage of the
 matrix is grep-able (`grep -c "def test_rt\|def test_ml" tests/*.py`).

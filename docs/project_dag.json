@@ -519,6 +519,32 @@
         "dottie-loop-platform"
       ],
       "evidence": "packages/dottie-loop tests/test_operator_chain.py; docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md §8"
+    },
+    {
+      "id": "dottie-loop-security-training",
+      "title": "Spec phase 4: §29 security test matrix + safe helpers, §21/§19 training stages and balancing as data, §31 deployment sequence, §26 lease file",
+      "repo": "dottie",
+      "kind": "infra",
+      "status": "done",
+      "priority": 2,
+      "size": "M",
+      "depends_on": [
+        "dottie-loop-operator-chain"
+      ],
+      "evidence": "packages/dottie-loop tests/test_security_and_training.py (16); docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md §9"
+    },
+    {
+      "id": "dottie-loop-final-proof",
+      "title": "Spec phase 5: §10 RLM/REPL bounded child calls + stuck detector, §16 session recorder, §24 calibration, §28 fail-closed API, §39 traceability graph + `spec traceability` CLI",
+      "repo": "dottie",
+      "kind": "infra",
+      "status": "done",
+      "priority": 2,
+      "size": "M",
+      "depends_on": [
+        "dottie-loop-security-training"
+      ],
+      "evidence": "packages/dottie-loop tests/test_phase5_rlm_api_traceability.py (8); docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md §10"
     }
   ]
 }

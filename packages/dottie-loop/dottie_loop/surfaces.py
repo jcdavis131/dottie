@@ -18,6 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import TYPE_CHECKING, Any
 
 from dottie_loop.errors import (
+    BackendUnavailableError,
     InvalidInputError,
     LoopError,
     PolicyDeniedError,
@@ -29,6 +30,7 @@ from dottie_loop.hashing import new_id, now_iso
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
 
     from dottie_loop.approvals import ApprovalStore
     from dottie_loop.intake import GoalStore
@@ -201,6 +203,128 @@ class ApprovalBoard:
     def __init__(self, state: BoardState, host: str = "127.0.0.1", port: int = 0) -> None:
         self.state = state
         self.server = ThreadingHTTPServer((host, port), _handler(state))
+        self._thread: threading.Thread | None = None
+
+    @property
+    def address(self) -> tuple[str, int]:
+        return self.server.server_address[0], self.server.server_address[1]
+
+    def start(self) -> None:
+        self._thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+
+
+# --- API surface (§06 API row, §28 "Fail-closed API behavior", §37D, RT-17) -----------------
+
+
+class ApiState:
+    """Versioned JSON API over the same stores; learned output is null unless weights are loaded."""
+
+    def __init__(self, goals: GoalStore, *, principals: dict[str, str], learned_artifact: dict[str, Any] | None = None, quarantine_path: Path | None = None) -> None:
+        self.goals = goals
+        self.principals = dict(principals)  # bearer -> subject
+        self.learned_artifact = learned_artifact
+        self.quarantine_path = quarantine_path
+        self.alerts: list[dict[str, Any]] = []
+
+    def subject_for(self, bearer: str | None) -> str:
+        if not bearer or bearer not in self.principals:
+            raise UnauthenticatedError()
+        return self.principals[bearer]
+
+    def quarantine(self, err: LoopError, body: dict[str, Any]) -> None:
+        """Best-effort quarantine + structured alert; a write failure never converts rejection into acceptance."""
+        event = {"at": now_iso(), "code": err.code, "field": err.field, "value_class": type(body.get(err.field or "", None)).__name__, "message": err.message}
+        self.alerts.append({"kind": "routing_rejected", **event})
+        if self.quarantine_path is not None:
+            try:
+                self.quarantine_path.parent.mkdir(parents=True, exist_ok=True)
+                with self.quarantine_path.open("a", encoding="utf-8") as f:
+                    f.write(json.dumps(event, sort_keys=True) + "\n")
+            except OSError:
+                self.alerts.append({"kind": "quarantine_write_failed", "at": now_iso()})
+
+    def route(self, body: dict[str, Any]) -> dict[str, Any]:
+        from dottie_loop.router import RoutingFeatures, route
+
+        goal = body.get("goal")
+        if not isinstance(goal, str) or not goal.strip():
+            raise InvalidInputError("goal is required", field="goal")
+        f = RoutingFeatures(intent_text=goal, side_effect_class=body.get("side_effect_class", "read_only"), extra={k: v for k, v in body.items() if k not in ("goal", "side_effect_class")})
+        return route(f, learned_artifact=self.learned_artifact)
+
+
+def _api_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
+    class Handler(BaseHTTPRequestHandler):
+        server_version = "dottie-loop-api/0.1"
+
+        def log_message(self, *_args: Any) -> None:
+            return
+
+        def _send(self, obj: dict[str, Any], status: int) -> None:
+            body = json.dumps(obj, sort_keys=True).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Request-Id", str(obj.get("request_id", "")))
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _body(self) -> dict[str, Any]:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length > 64 * 1024:
+                raise InvalidInputError("body too large", field="body")
+            raw = self.rfile.read(length) if length else b"{}"
+            try:
+                obj = json.loads(raw.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as e:
+                raise InvalidInputError("body is not JSON", field="body") from e
+            if not isinstance(obj, dict):
+                raise InvalidInputError("body must be an object", field="body")
+            return obj
+
+        def do_GET(self) -> None:
+            if self.path == "/api/health":
+                self._send(ok_envelope({"ok": True, "learned_loaded": state.learned_artifact is not None}), 200)
+                return
+            self._send(error_envelope(InvalidInputError("unknown route", field="path")), 404)
+
+        def do_POST(self) -> None:
+            body: dict[str, Any] = {}
+            try:
+                subject = state.subject_for((self.headers.get("Authorization", "")[7:] or None) if self.headers.get("Authorization", "").startswith("Bearer ") else None)
+                body = self._body()
+                if self.path == "/api/goal":
+                    key = self.headers.get("Idempotency-Key")
+                    if not key:
+                        raise InvalidInputError("Idempotency-Key header is required", field="idempotency_key")
+                    ack, created = state.goals.submit({**body, "idempotency_key": key}, authenticated_subject=subject, surface="api")
+                    self._send(ok_envelope(ack, status="accepted" if created else "replayed", http_status=202 if created else 200), 202 if created else 200)
+                elif self.path == "/api/route":
+                    self._send(ok_envelope(state.route(body)), 200)
+                elif self.path == "/api/learned":
+                    if state.learned_artifact is None:
+                        raise BackendUnavailableError("no learned router artifact is loaded; heuristic route is authoritative")
+                    self._send(ok_envelope({"learned": state.learned_artifact}), 200)
+                else:
+                    raise InvalidInputError("unknown route", field="path")
+            except LoopError as e:
+                if e.code in ("invalid_input", "policy_denied") and self.path == "/api/route":
+                    state.quarantine(e, body)  # §28: typed rejection + quarantine + alert, still a 400/403
+                self._send(error_envelope(e), e.status)
+
+    return Handler
+
+
+class ApiServer:
+    def __init__(self, state: ApiState, host: str = "127.0.0.1", port: int = 0) -> None:
+        self.state = state
+        self.server = ThreadingHTTPServer((host, port), _api_handler(state))
         self._thread: threading.Thread | None = None
 
     @property

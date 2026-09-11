@@ -16,6 +16,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from dottie_loop.errors import BlockedError
 from dottie_loop.hashing import age_seconds, new_id, now_iso, parse_iso
 from dottie_loop.schema import active
 
@@ -52,6 +53,63 @@ class Lease:
 
     def live(self, now: datetime) -> bool:
         return parse_iso(self.expires_at) > now
+
+
+class LeaseFile:
+    """A single active retraining lease on disk (§26 "Concurrency and cooldown").
+
+    Records owner, start, heartbeat and expiry. A crashed job may be reclaimed only
+    after its expiry has passed AND no live runner heartbeat exists — the caller
+    passes the set of live runner names it can actually see.
+    """
+
+    def __init__(self, path: Path, ttl_seconds: int = 3600) -> None:
+        self.path = Path(path)
+        self.ttl = ttl_seconds
+
+    def read(self) -> Lease | None:
+        if not self.path.exists():
+            return None
+        d = json.loads(self.path.read_text(encoding="utf-8"))
+        return Lease(**d)
+
+    def _write(self, lease: Lease) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(lease.__dict__, sort_keys=True), encoding="utf-8")
+        tmp.replace(self.path)
+
+    def acquire(self, owner: str, *, now: datetime | None = None, live_runners: set[str] | None = None) -> Lease:
+        now = now or datetime.now(UTC)
+        cur = self.read()
+        if cur is not None:
+            if cur.live(now):
+                raise BlockedError(f"active retraining lease held by {cur.owner} until {cur.expires_at}", "lease")
+            if cur.owner in (live_runners or set()):
+                raise BlockedError(f"lease expired but runner {cur.owner} is still live; not reclaiming", "lease")
+        iso = now.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        exp = (now + timedelta(seconds=self.ttl)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        lease = Lease(owner=owner, started_at=iso, heartbeat_at=iso, expires_at=exp)
+        self._write(lease)
+        return lease
+
+    def heartbeat(self, owner: str, *, now: datetime | None = None) -> Lease:
+        now = now or datetime.now(UTC)
+        cur = self.read()
+        if cur is None or cur.owner != owner:
+            raise BlockedError("heartbeat from a non-owner", "lease")
+        cur.heartbeat_at = now.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        cur.expires_at = (now + timedelta(seconds=self.ttl)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        self._write(cur)
+        return cur
+
+    def release(self, owner: str, *, terminal_at: str | None = None) -> dict[str, Any]:
+        cur = self.read()
+        if cur is None or cur.owner != owner:
+            raise BlockedError("release from a non-owner", "lease")
+        self.path.unlink()
+        # cooldown starts from the TERMINAL timestamp, which the caller persists
+        return {"released": owner, "terminal_at": terminal_at or now_iso()}
 
 
 def validate_freshness(sources: dict[str, MetricSource], now: datetime) -> list[str]:
