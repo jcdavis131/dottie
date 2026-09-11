@@ -271,3 +271,22 @@ operator will run on real data.
 The trainer that will consume `curriculum.py` lives in frozen `apps/ava-factory`; adopting
 these functions there is an operator decision, and until then they are the contract the
 TrainRun manifest fields (`selection`, `anneal`) are checked against.
+
+---
+
+## 10. Phase 5 (2026-09-11): RLM/REPL, the session recorder, calibration, the fail-closed API, and the §39 graph
+
+| Spec | Built | Evidence |
+|---|---|---|
+| §10 "RLM execution", §06 REPL row | `rlm.py` — long context lives in named variables with a source and a digest (values never enter the log); `rlm()` is a bounded child call (token slice, child-call count, depth) logged before and after as timeline events, so there are no unlogged ephemeral subagents; the stuck detector fires on a repeated query, repeated failures or two low-confidence results and then allows exactly one lateral lens — a second request is a typed `stuck` escalation; `RLMSession.resume` rebuilds spent budget, lens state and variable provenance from the log | `test_rlm_child_calls_are_bounded_and_logged`, `test_stuck_detector_allows_exactly_one_lateral_lens`, `test_mission_resumes_from_its_log` |
+| §16 capture from every surface | `capture.SessionRecorder` — one accumulator for any of the five surfaces; accept/reject/edit/apply/dismiss bound to the turn they answer (a turn that does not exist is invalid input); seven-field checkpoints only; nothing touches disk until `finalize`, which writes only through `CaptureWriter`, so default-off and redact-before-write still hold | `test_session_recorder_finalizes_only_through_capture_writer` (a synthetic secret in a turn does not reach the file; `enabled=False` writes nothing) |
+| §24 calibration + abstention quality | `evaluation.calibration` — ECE over confidence bins plus abstention rate and the wrong-when-confident count; empty input is reported `unmeasured`, never zero | `test_calibration_is_measured_from_records_or_reported_unmeasured` |
+| §06 API row, §28 "Fail-closed API behavior", §37D, RT-17 | `surfaces.ApiServer` — bearer principals, `Idempotency-Key` header required on `/api/goal` (202 created, 200 exact replay, 409 conflict, same durable store as the CLI and board), `/api/learned` answers 503 `backend_unavailable` until a learned artifact is loaded while `/api/route` still answers from the heuristic; a routing input that is invalid or uses a forbidden attribute is a typed 400/403 AND a quarantine line AND an alert — a quarantine write failure is itself an alert and never turns rejection into acceptance | `test_api_surface_fails_closed` (loopback server, real HTTP) |
+| §39 final acceptance artifact | `traceability.py` + `spec traceability --dir` — the thirteen arrows from a pair session to its rollback target as one graph over the JSON records the chain writes; every node carries a content hash; `validate_graph` lists the arrows that do not resolve and the consequential edges (dataset release, canary, approval, release, rollback) that name no human authority; the CLI exits 2 with those names until the graph is complete, and `--no-rollback` is the only waiver and it is explicit | `test_traceability_graph_resolves_every_arrow` |
+| §37 schemas | `spec schemas` prints the one active version per record type with the compatibility rule | `test_spec_schemas_lists_one_active_version_per_record_type` |
+
+Suite: 97 tests. What phase 5 does not change: a complete traceability graph over
+**synthetic** chain records is a test of the validator, not the spec's proof — the
+proof is the same command run over the records of one real opted-in session after
+the operator decisions in §6 are made. `spec traceability` reports a node's own
+`synthetic` flag as incomplete for that reason.

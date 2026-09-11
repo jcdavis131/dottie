@@ -30,7 +30,7 @@ Commands::
     release record ... --served-sha H --out release.json
     release rollback --release release.json --served-sha H --reason R --out rollback.json
     bench smoke
-    spec status
+    spec status | schemas | traceability --dir DIR
 """
 
 from __future__ import annotations
@@ -325,6 +325,24 @@ def now_iso_str() -> str:
     return now_iso()
 
 
+def cmd_spec_schemas(_a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.schema import ACTIVE_SCHEMAS
+
+    return {"active": dict(ACTIVE_SCHEMAS), "rule": "readers accept known minor additions and reject unknown majors; writers emit one active version per record type"}
+
+
+def cmd_spec_traceability(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.traceability import from_directory, validate_graph
+
+    graph = from_directory(Path(a.dir))
+    verdict = validate_graph(graph, require_rollback=not a.no_rollback)
+    if a.out:
+        Path(a.out).write_text(json.dumps({"graph": graph, "verdict": verdict}, indent=1, sort_keys=True), encoding="utf-8")
+    if not verdict["complete"]:
+        raise BlockedError("traceability graph incomplete: " + ", ".join(verdict["unresolved_edges"] + verdict["edges_missing_human_authority"]), "traceability", verdict=verdict)
+    return {"verdict": verdict, "nodes": sorted(graph["nodes"])}
+
+
 def cmd_spec_status(_a: argparse.Namespace) -> dict[str, Any]:
     return {
         "package": "dottie_loop",
@@ -496,6 +514,13 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("spec").add_subparsers(dest="sub", required=True)
     s = sp.add_parser("status")
     s.set_defaults(fn=cmd_spec_status)
+    s = sp.add_parser("schemas", help="the one active version per record type")
+    s.set_defaults(fn=cmd_spec_schemas)
+    s = sp.add_parser("traceability", help="§39 final proof: assemble the chain's records into one graph and validate every arrow")
+    s.add_argument("--dir", required=True, help="directory holding trace.json, reward.json, manifest.json, train.json, bundle.json, canary.json, approval.json, release.json, served.json, monitoring.json, rollback.json ...")
+    s.add_argument("--out")
+    s.add_argument("--no-rollback", action="store_true", help="do not require the rollback drill edge")
+    s.set_defaults(fn=cmd_spec_traceability)
     return p
 
 

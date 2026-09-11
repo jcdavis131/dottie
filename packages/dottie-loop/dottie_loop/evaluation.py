@@ -90,6 +90,31 @@ def evaluate_gates(b: EvalBundle, now: datetime | None = None) -> dict[str, Any]
     return {"bundle_id": b.bundle_id, "gates": gates, "failed": failed, "verdict": "pass" if not failed else "fail", "at": now_iso()}
 
 
+def calibration(pairs: list[tuple[float, bool]], *, abstentions: int = 0, wrong_when_confident: int | None = None, bins: int = 10) -> dict[str, Any]:
+    """Expected calibration error over (confidence, correct) pairs, plus abstention quality.
+
+    Every float derives from the records given (harness truth rule); an empty input is
+    reported as unmeasured, never as a plausible zero.
+    """
+    if not pairs:
+        return {"ece": None, "n": 0, "abstentions": abstentions, "status": "unmeasured"}
+    for c, _ in pairs:
+        if not 0.0 <= c <= 1.0:
+            raise InvalidInputError("confidence must be in [0, 1]", field="pairs")
+    buckets: dict[int, list[tuple[float, bool]]] = {}
+    for c, ok in pairs:
+        buckets.setdefault(min(bins - 1, int(c * bins)), []).append((c, ok))
+    ece = 0.0
+    table = []
+    for b, items in sorted(buckets.items()):
+        conf = sum(c for c, _ in items) / len(items)
+        acc = sum(1 for _, ok in items if ok) / len(items)
+        ece += abs(conf - acc) * len(items) / len(pairs)
+        table.append({"bin": b, "n": len(items), "confidence": round(conf, 4), "accuracy": round(acc, 4)})
+    total = len(pairs) + abstentions
+    return {"ece": round(ece, 4), "n": len(pairs), "bins": table, "abstentions": abstentions, "abstention_rate": round(abstentions / total, 4) if total else 0.0, "wrong_when_confident": wrong_when_confident, "status": "measured"}
+
+
 # --- §25 promotion -----------------------------------------------------------------------
 
 

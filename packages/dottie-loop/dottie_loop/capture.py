@@ -220,6 +220,52 @@ class CaptureWriter:
         return redacted
 
 
+class SessionRecorder:
+    """Accumulate a multi-turn pair session from ANY surface, then finalize into one trace.
+
+    Nothing is persisted until :meth:`finalize`, and finalize writes only through a
+    :class:`CaptureWriter` (so the default-off and redact-before-write rules hold).
+    Every accept/reject/edit/apply/dismiss signal is bound to the turn it answers.
+    """
+
+    def __init__(self, *, session_id: str, hashed_user_id: str, surface: str, agent_id: str, goal: dict[str, Any], consent_version: str, deletion_key: str) -> None:
+        if surface not in SURFACES:
+            raise InvalidInputError("unknown surface", field="surface")
+        self.trace = PairSessionTrace(session_id=session_id, hashed_user_id=hashed_user_id, surface=surface, agent_id=agent_id, goal=goal, consent_version=consent_version, lineage={"deletion_key": deletion_key, "source_hashes": []})
+        self._turn = 0
+
+    def turn(self, role: str, text: str) -> int:
+        self._turn += 1
+        self.trace.turns.append({"n": self._turn, "role": role, "text": text, "at": now_iso()})
+        return self._turn
+
+    def action(self, kind: str, detail: dict[str, Any]) -> None:
+        self.trace.actions.append({"turn": self._turn, "kind": kind, **detail, "at": now_iso()})
+
+    def tool_call(self, name: str, args_digest: str, observation_digest: str, *, ok: bool, latency_ms: int) -> None:
+        self.trace.tool_calls.append({"turn": self._turn, "name": name, "args_digest": args_digest, "ok": ok, "latency_ms": latency_ms})
+        self.trace.observations.append({"turn": self._turn, "tool": name, "digest": observation_digest})
+
+    def correction(self, text: str) -> None:
+        self.trace.corrections.append({"turn": self._turn, "text": text, "at": now_iso()})
+
+    def feedback(self, signal: str, *, turn: int | None = None, magnitude: float | None = None) -> None:
+        if signal not in FEEDBACK_SIGNALS:
+            raise InvalidInputError(f"unknown feedback signal {signal!r}", field="signal")
+        t = turn if turn is not None else self._turn
+        if t < 1 or t > self._turn:
+            raise InvalidInputError("feedback must attach to an existing turn", field="turn")
+        self.trace.feedback.append({"turn": t, "signal": signal, "magnitude": magnitude, "at": now_iso()})
+
+    def checkpoint(self, event: dict[str, Any]) -> None:
+        self.trace.checkpoints.append({k: event[k] for k in SEVEN_FIELDS})
+
+    def finalize(self, writer: CaptureWriter, *, outcome: dict[str, Any], resources: dict[str, Any]) -> dict[str, Any] | None:
+        self.trace.outcome = dict(outcome)
+        self.trace.resources = dict(resources)
+        return writer.write(self.trace)
+
+
 # --- §16 export eligibility ------------------------------------------------------------
 
 
