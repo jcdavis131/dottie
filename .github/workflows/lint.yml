@@ -39,6 +39,7 @@ jobs:
       # (E701/E702/E722); personal-graphify 141 and ava-open-harness 79 unchanged.
       # Stale for ten days because ci.yml's ava-skills hard gate was red and skipped
       # the documented-counts check that guards this figure.
+      # WHY 1022 -> 983 (re-measured 2026-09-11): apps/scout-cli 802 -> 763; 002226b (harden real platform end to end) rewrote six scout-cli test files (conftest, harness_correct, harness_vector, inbox/infer/secrets focused) and closed 39 findings there; personal-graphify 141 and ava-open-harness 79 unchanged (79+141+763 = 983).
       # A number in a comment can go stale inside a single session, so re-measure,
       # never carry it.
       #
@@ -48,9 +49,9 @@ jobs:
       # double-accounting that makes a number stop meaning anything. ci.yml owns it now;
       # this workflow owns only what is still in debt.
       # Same ratchet as before: flip the next package the day it reaches zero; do not
-      # flip all three at once. scout-cli at 802 is now furthest; ava-open-harness at
+      # flip all three at once. scout-cli at 763 is now furthest; ava-open-harness at
       # 79 is nearest.
-      - name: Ruff check (non-blocking — 1022 known findings, see comment)
+      - name: Ruff check (non-blocking — 983 known findings, see comment)
         run: |
           ruff check --statistics \
             packages/ava-open-harness \

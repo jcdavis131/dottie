@@ -16,6 +16,42 @@ before writing "current" anywhere in this file.
 
 ---
 
+## 📌 Session continuation — 2026-09-11 (supersedes every block below)
+
+**Re-measured 2026-09-11 at HEAD `002226b`,** `main` (the 2026-09-05 block below
+records `23870d7`, which was squash-merged in #23 and is therefore NOT an
+ancestor of `main` — `check_handoff_fresh.py --check` has been red on every
+push since 47181a2 for that reason alone, not for drift).
+
+**What landed on `claude/dottie-end-to-end-review-z2baj5`:** the Dottie Full
+Ecosystem Specification v1.0 (PDF, baseline 2026-09-10) was reviewed against
+this tree and then built as `packages/dottie-loop` — the spec's contracts and
+gates as stdlib-only, fail-closed code with 52 tests named after the spec's
+acceptance IDs (RT-01…RT-17, ML-01…ML-17). The review, the gap register and the
+per-section traceability are in `docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md`.
+
+**Three findings a reader must not miss:**
+
+1. The four work lanes the spec marks IMPLEMENTED ON BRANCH (`scout/dottie-bench-builder`
+   4b23512, `scout/dottie-reward-spec`, `scout/dottie-trace-capture` c85379c,
+   `scout/dottie-closed-loop` d66ff0f) and the docs they cite
+   (`docs/TRACE_CAPTURE_SPEC.md`, `docs/CLOSED_LOOP_SPEC.md`, `bench/report.md`)
+   exist on NO remote branch. They lived only on a local machine. `dottie-loop`
+   re-implements those contracts from the spec text; nothing was recovered.
+2. `main`'s last commit `002226b` left three ci.yml gates red: gate_audit (three
+   unjudged fail-open candidates in `apps/dottie-harness-api/lib/production_routing.py`),
+   documented counts (ruff debt 1022 -> 983) and HANDOFF freshness (above). All
+   three are fixed on this branch with written judgments.
+3. The spec's "two human judgments remain" (anydoc.py:512, analytics.py:201) were
+   already adjudicated in `scripts/gate_audit_baseline.json` on 2026-09-05. The
+   spec is stale there; the baseline is the record.
+
+**Still blocked, operator-only:** the Alienware Forge runner (DAG node
+`forge-runner-register`); `python -m dottie_loop forge runners` reports it as a
+typed `blocked` state, which is the spec-required behaviour until it exists.
+
+---
+
 ## 📌 Session continuation — 2026-09-05 (supersedes every block below)
 
 **Re-measured 2026-09-05 at HEAD `23870d7`,** branch
