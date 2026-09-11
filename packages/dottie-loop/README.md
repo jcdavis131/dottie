@@ -58,6 +58,10 @@ The review that motivated it, with the spec-versus-repository findings, is
 | §36 Runbook D, §37C | `incidents.PLAYBOOKS` / `playbook` / `open_from_playbook`; `dataset.Lineage.hold/save/load` + `privacy hold\|delete` | privacy deletion, credential exposure, prompt injection and provider block as ordered steps with required evidence and "never" rules; a deletion hold blocks export before deletion, a legal hold blocks deletion (exit 2, receipt `held`); receipts never restate private content or trace ids |
 | §36 Runbook A | `execution.Kernel.cancel` | cancellation stops dispatch, marks pending external effects `unknown_until_checked`, appends actor + reason as a run event, deletes nothing and implies no rollback |
 | §04, §34 | `components.py` + `spec components --root` | the component table as data; presence reported from the tree, never from the spec's status column |
+| §25, Runbook C 9–12, ML-13 | `canary.py` | a canary whose plan must be complete, whose every event names the incumbent or the challenger (else rejected), whose safety threshold is stricter than the primary metric, whose decision packet exists only at the predetermined stop or an explicit manual stop, that cannot be extended to chase a win, and whose stale events never make a packet; the packet is what `promotion_decision` consumes |
+| Runbook B 16, RT-14 | `dataset.canary_deletion_test`, `mark_release_usable` | deletion propagation proven on a non-production canary record (on a copy of the lineage) before an approved manifest can be marked usable |
+| ML-07 | `training.reproducibility_check` | identical inputs = same config digest and seed; compatible = every shared metric within tolerance; a metric on one side only is a finding |
+| §37D pagination | `ApiState.list_goals`, `GET /api/goals` | opaque HMAC cursors bound to the caller's scope: another principal's cursor is 403, a tampered one is 400 |
 | §27 | `scripts/forge_runner.py` | the one file for the GPU box: advertise → poll → claim → checkout → execute → push results over a git conveyor |
 
 ## CLI

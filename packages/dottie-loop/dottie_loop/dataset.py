@@ -16,6 +16,7 @@ diagnostic report, never a trainable manifest.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import re
@@ -446,3 +447,33 @@ class Lineage:
         }
         self.receipts.append(receipt)
         return receipt
+
+
+def canary_deletion_test(lineage: Lineage, manifest: dict[str, Any]) -> dict[str, Any]:
+    """Runbook B step 16: prove deletion propagates on a NON-production canary record
+    before the release is marked usable. Runs on a deep copy; the real lineage is untouched."""
+    probe = copy.deepcopy(lineage)
+    canary_trace = new_id("trc_canary_")
+    canary_key = new_id("del_canary_")
+    probe.register_trace(canary_trace, canary_key)
+    m = {**manifest, "trace_ids": [*manifest.get("trace_ids", []), canary_trace]}
+    probe.register_manifest(m)
+    probe.register_train_run(new_id("run_canary_"), m["dataset_id"], checkpoint="ckpt_canary_probe")
+    receipt = probe.delete(canary_key, operator="canary-deletion-test")
+    ok = (
+        receipt["status"] == "complete"
+        and receipt["counts"]["traces_tombstoned"] == 1
+        and m["dataset_id"] in receipt["affected_dataset_ids"]
+        and not probe.promotable("ckpt_canary_probe")
+        and lineage.to_dict() != probe.to_dict()
+    )
+    return {"ok": ok, "dataset_id": m["dataset_id"], "canary_trace_ref": digest(canary_trace)[:12], "receipt_status": receipt["status"], "promotion_blocked": not probe.promotable("ckpt_canary_probe"), "at": now_iso()}
+
+
+def mark_release_usable(manifest: dict[str, Any], proof: dict[str, Any]) -> dict[str, Any]:
+    """A release is usable only after approval AND a passing canary deletion proof for THIS manifest."""
+    if manifest.get("status") != "approved":
+        raise UnexecutableError("only an approved manifest can be marked usable", "status")
+    if not proof.get("ok") or proof.get("dataset_id") != manifest.get("dataset_id"):
+        raise UnexecutableError("canary deletion proof missing, failed, or for another dataset", "deletion_proof")
+    return {**manifest, "usable": True, "deletion_proof": {k: proof[k] for k in ("canary_trace_ref", "receipt_status", "promotion_blocked", "at")}}

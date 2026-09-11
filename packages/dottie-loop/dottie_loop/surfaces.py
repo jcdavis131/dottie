@@ -10,12 +10,15 @@
 
 from __future__ import annotations
 
+import base64
+import hmac
 import json
 import secrets
 import threading
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import TYPE_CHECKING, Any
+from urllib.parse import parse_qs, urlsplit
 
 from dottie_loop.errors import (
     BackendUnavailableError,
@@ -249,6 +252,9 @@ class ApprovalBoard:
 # --- API surface (§06 API row, §28 "Fail-closed API behavior", §37D, RT-17) -----------------
 
 
+PAGE_LIMIT_MAX = 100
+
+
 class ApiState:
     """Versioned JSON API over the same stores; learned output is null unless weights are loaded."""
 
@@ -259,6 +265,35 @@ class ApiState:
         self.quarantine_path = quarantine_path
         self.run_store = run_store  # where `loop run --capture` wrote traces; feedback binds to those runs
         self.alerts: list[dict[str, Any]] = []
+        self._cursor_key = secrets.token_bytes(32)  # per-process: cursors do not survive a restart, by design
+
+    # -- §37D pagination: tokens are opaque and bound to query/scope --
+    def make_cursor(self, *, subject: str, offset: int) -> str:
+        body = json.dumps({"s": subject, "o": offset}, sort_keys=True).encode()
+        mac = hmac.new(self._cursor_key, body, "sha256").digest()[:16]
+        return base64.urlsafe_b64encode(mac + body).decode().rstrip("=")
+
+    def read_cursor(self, cursor: str, *, subject: str) -> int:
+        try:
+            raw = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
+            mac, body = raw[:16], raw[16:]
+            if not hmac.compare_digest(mac, hmac.new(self._cursor_key, body, "sha256").digest()[:16]):
+                raise ValueError("bad mac")
+            obj = json.loads(body)
+        except (ValueError, json.JSONDecodeError) as e:
+            raise InvalidInputError("cursor is not valid", field="cursor") from e
+        if obj.get("s") != subject:
+            raise PolicyDeniedError("cursor is bound to another scope", field="cursor")
+        return int(obj["o"])
+
+    def list_goals(self, *, subject: str, cursor: str | None, limit: int) -> dict[str, Any]:
+        if not 1 <= limit <= PAGE_LIMIT_MAX:
+            raise InvalidInputError(f"limit must be 1..{PAGE_LIMIT_MAX}", field="limit")
+        offset = self.read_cursor(cursor, subject=subject) if cursor else 0
+        goals = self.goals.list_goals(subject=subject)
+        page = goals[offset : offset + limit]
+        nxt = self.make_cursor(subject=subject, offset=offset + limit) if offset + limit < len(goals) else None
+        return {"items": [{"goal_id": g["goal_id"], "status": self.goals.status(g["goal_id"]), "created_at": g.get("created_at")} for g in page], "next_cursor": nxt, "total": len(goals)}
 
     def feedback(self, body: dict[str, Any], *, subject: str) -> dict[str, Any]:
         from dottie_loop.feedback import record_feedback
@@ -328,10 +363,23 @@ def _api_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
             return obj
 
         def do_GET(self) -> None:
-            if self.path == "/api/health":
+            parts = urlsplit(self.path)
+            if parts.path == "/api/health":
                 self._send(ok_envelope({"ok": True, "learned_loaded": state.learned_artifact is not None}), 200)
                 return
-            self._send(error_envelope(InvalidInputError("unknown route", field="path")), 404)
+            try:
+                if parts.path == "/api/goals":
+                    subject = state.subject_for((self.headers.get("Authorization", "")[7:] or None) if self.headers.get("Authorization", "").startswith("Bearer ") else None)
+                    q = parse_qs(parts.query)
+                    try:
+                        limit = int(q.get("limit", ["20"])[0])
+                    except ValueError as e:
+                        raise InvalidInputError("limit must be an integer", field="limit") from e
+                    self._send(ok_envelope(state.list_goals(subject=subject, cursor=q.get("cursor", [None])[0], limit=limit)), 200)
+                    return
+                raise InvalidInputError("unknown route", field="path")
+            except LoopError as e:
+                self._send(error_envelope(e), 404 if e.field == "path" else e.status)
 
         def do_POST(self) -> None:
             body: dict[str, Any] = {}

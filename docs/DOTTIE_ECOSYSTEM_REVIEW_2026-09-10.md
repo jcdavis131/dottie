@@ -323,3 +323,17 @@ now has a place to put them that the reward and the dataset pipeline already rea
 
 Suite: 107 tests. Still prose, deliberately: Runbook B/C narrative steps that are already
 the operator chain commands (§8), and every step that needs a real store, runner or person.
+
+---
+
+## 13. Phase 8 (2026-09-11): the canary is attributable, the release is provably deletable, reruns are comparable, listings page honestly
+
+| Spec | Built | Evidence |
+|---|---|---|
+| §25 canary, Runbook C 9–12, ML-13 | `canary.CanaryRun` — refuses an incomplete plan or an unnamed artifact pair; every event must carry `artifact_id` ∈ {incumbent, challenger} plus event time, outcome and latency; safety floor breaches before the primary delta does; `decision_packet` only at the predetermined stop (or a manual stop with actor + reason), stale events are `stale_evidence`, `extend()` is policy-denied; the packet feeds `promotion_decision` unchanged | `test_canary_is_attributable_limited_and_stops_where_planned` |
+| Runbook B 16, RT-14 | `dataset.canary_deletion_test` probes deletion propagation on a synthetic canary record against a deep copy of the lineage (tombstone, dataset invalidated, promotion blocked) and leaves the real lineage untouched; `mark_release_usable` requires an approved manifest AND a passing proof for that dataset | `test_release_is_usable_only_after_a_passing_deletion_canary` |
+| §21 reproducibility, ML-07 | `training.reproducibility_check` — same config digest and seed, every shared metric within tolerance, metrics present on one side only reported, no shared metric is no evidence | `test_reproducibility_needs_identical_inputs_and_compatible_metrics` |
+| §37D "Pagination tokens are opaque and bound to query/scope" | `GoalStore.list_goals(subject)`; `GET /api/goals?limit&cursor` with HMAC-signed opaque cursors: another principal's cursor is 403, a tampered cursor is 400, limits are bounded | `test_goal_listing_uses_opaque_cursors_bound_to_scope` (loopback HTTP) |
+
+Suite: 111 tests. ML-13 and ML-07 are now mechanically testable; their real evidence is
+a canary over production traffic and an independent rerun on the registered runner.

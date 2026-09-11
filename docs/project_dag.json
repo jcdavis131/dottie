@@ -571,6 +571,19 @@
         "dottie-loop-feedback-surfaces"
       ],
       "evidence": "packages/dottie-loop tests/test_phase7_contracts_runbooks.py (6); docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md §12"
+    },
+    {
+      "id": "dottie-loop-canary-and-proofs",
+      "title": "Spec phase 8: ML-13 attributable canary with a predetermined stop, Runbook B 16 deletion canary before usable, ML-07 reproducibility check, §37D opaque scoped cursors",
+      "repo": "dottie",
+      "kind": "infra",
+      "status": "done",
+      "priority": 2,
+      "size": "S",
+      "depends_on": [
+        "dottie-loop-runbooks-as-code"
+      ],
+      "evidence": "packages/dottie-loop tests/test_phase8_canary_repro_pagination.py (4); docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md §13"
     }
   ]
 }

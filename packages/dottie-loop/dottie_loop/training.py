@@ -193,3 +193,22 @@ def fork_run(run: TrainRun, reason: str) -> TrainRun:
     forked = TrainRun(**d)
     forked.hardware = {**forked.hardware, "fork_reason": reason}
     return forked
+
+
+def reproducibility_check(run_a: TrainRun, run_b: TrainRun, metrics_a: dict[str, float], metrics_b: dict[str, float], *, tolerance: float = 0.01) -> dict[str, Any]:
+    """ML-07: an independent rerun must resolve identical inputs and produce compatible metrics.
+
+    Identical inputs = same config digest (run id and lineage excluded) and same seed.
+    Compatible = every shared metric within ``tolerance`` (absolute); a metric present
+    on one side only is a finding, not silently ignored.
+    """
+    if tolerance < 0:
+        raise InvalidInputError("tolerance must be non-negative", field="tolerance")
+    same_inputs = run_a.config_digest() == run_b.config_digest()
+    same_seed = run_a.seed == run_b.seed
+    shared = sorted(set(metrics_a) & set(metrics_b))
+    only_one_side = sorted(set(metrics_a) ^ set(metrics_b))
+    deltas = {k: round(abs(float(metrics_a[k]) - float(metrics_b[k])), 6) for k in shared}
+    incompatible = [k for k, d in deltas.items() if d > tolerance]
+    ok = same_inputs and same_seed and not incompatible and not only_one_side and bool(shared)
+    return {"ok": ok, "same_inputs": same_inputs, "same_seed": same_seed, "deltas": deltas, "incompatible": incompatible, "metrics_on_one_side_only": only_one_side, "tolerance": tolerance, "runs": [run_a.run_id, run_b.run_id], "at": now_iso()}
