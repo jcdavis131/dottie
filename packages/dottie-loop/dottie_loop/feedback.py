@@ -57,13 +57,16 @@ def record_feedback(store: Path, *, run_id: str, signal: str, surface: str, edit
     if not match:
         raise InvalidInputError(f"no trace for run {run_id}", field="run_id")
     rec = match[-1]
+    trace_id = rec.get("trace_id")
+    if not trace_id:
+        raise InvalidInputError("matched trace has no trace_id; feedback needs a trace to bind to", field="run_id")
     entry = {"signal": signal, "edit_fraction": edit_fraction, "surface": surface, "subject": subject, "at": now_iso()}
     rec.setdefault("feedback", []).append(entry)
     with traces_path.open("a", encoding="utf-8") as f:  # superseding record; never rewrite history
-        f.write(json.dumps({**rec, "supersedes_trace": rec.get("trace_id")}, sort_keys=True) + "\n")
-    reward = compute_reward(RewardInputs(trace_id=rec["trace_id"], task_ok=rec.get("outcome", {}).get("task_ok"), feedback=signal, edit_fraction=edit_fraction, evidence=[f"feedback:{signal}:{surface}"]))
-    (Path(store) / "traces" / f"reward-{rec['trace_id']}.json").write_text(json.dumps(reward, indent=1, sort_keys=True), encoding="utf-8")
-    return {"trace_id": rec["trace_id"], "feedback": entry, "reward": reward}
+        f.write(json.dumps({**rec, "supersedes_trace": trace_id}, sort_keys=True) + "\n")
+    reward = compute_reward(RewardInputs(trace_id=trace_id, task_ok=rec.get("outcome", {}).get("task_ok"), feedback=signal, edit_fraction=edit_fraction, evidence=[f"feedback:{signal}:{surface}"]))
+    (Path(store) / "traces" / f"reward-{trace_id}.json").write_text(json.dumps(reward, indent=1, sort_keys=True), encoding="utf-8")
+    return {"trace_id": trace_id, "feedback": entry, "reward": reward}
 
 
 def signal_from_text(text: str) -> str | None:

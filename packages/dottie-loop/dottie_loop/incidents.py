@@ -92,9 +92,7 @@ def playbook(kind: str) -> dict[str, Any]:
 def open_from_playbook(kind: str, *, source: str, observed_impact: str, affected: dict[str, list[str]] | None = None) -> Incident:
     """An incident opened from a playbook inherits its severity; containment must follow the steps."""
     pb = playbook(kind)
-    inc = Incident(severity=pb["severity"], source=source, observed_impact=observed_impact, affected=affected or {"goals": [], "releases": [], "data": []})
-    inc.playbook = kind  # type: ignore[attr-defined]
-    return inc
+    return Incident(severity=pb["severity"], source=source, observed_impact=observed_impact, affected=affected or {"goals": [], "releases": [], "data": []}, playbook=kind)
 
 
 @dataclass
@@ -115,6 +113,7 @@ class Incident:
     quarantine_window: dict[str, str | None] = field(default_factory=dict)
     status: str = "detect"
     schema: str = field(default_factory=lambda: active("incident-record"))
+    playbook: str | None = None  # Runbook D kind this incident was opened from, if any
 
     def __post_init__(self) -> None:
         if self.severity not in SEVERITY:

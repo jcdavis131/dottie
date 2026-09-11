@@ -9,8 +9,10 @@ consumes as its ``canary`` argument.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from dottie_loop.errors import (
@@ -121,3 +123,45 @@ class CanaryRun:
             "plan": {k: bool(self.plan.get(k)) for k in self.plan},
             "at": now_iso(),
         }
+
+    # -- persistence: a canary survives a process restart mid-run --
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "canary_id": self.canary_id,
+            "plan": self.plan,
+            "incumbent_id": self.incumbent_id,
+            "challenger_id": self.challenger_id,
+            "stop_after": self.stop_after,
+            "freshness_s": self.freshness_s,
+            "safety_floor": self.safety_floor,
+            "rollback_delta": self.rollback_delta,
+            "events": self.events,
+            "stopped": self.stopped,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> CanaryRun:
+        run = cls(
+            plan=d["plan"],
+            incumbent_id=d["incumbent_id"],
+            challenger_id=d["challenger_id"],
+            stop_after=d["stop_after"],
+            freshness_s=d.get("freshness_s", 3600),
+            safety_floor=d.get("safety_floor", 0.99),
+            rollback_delta=d.get("rollback_delta", 0.01),
+        )
+        run.canary_id = d.get("canary_id", run.canary_id)
+        run.events = [dict(e) for e in d.get("events", [])]
+        run.stopped = d.get("stopped")
+        return run
+
+    def save(self, path: Path) -> None:
+        p = Path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_suffix(p.suffix + ".tmp")
+        tmp.write_text(json.dumps(self.to_dict(), indent=1, sort_keys=True), encoding="utf-8")
+        tmp.replace(p)
+
+    @classmethod
+    def load(cls, path: Path) -> CanaryRun:
+        return cls.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
