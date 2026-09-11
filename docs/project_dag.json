@@ -506,6 +506,19 @@
         "dottie-loop-contracts"
       ],
       "evidence": "packages/dottie-loop tests/test_platform_acceptance.py (12), apps/scout-cli/tests/test_loop_plugin.py (6), docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md §7"
+    },
+    {
+      "id": "dottie-loop-operator-chain",
+      "title": "Spec phase 3: operator-driveable chain (feedback → dataset → preflight → gates → approval → promote → release → rollback) + §08 router and §13 skill contracts",
+      "repo": "dottie",
+      "kind": "infra",
+      "status": "done",
+      "priority": 1,
+      "size": "M",
+      "depends_on": [
+        "dottie-loop-platform"
+      ],
+      "evidence": "packages/dottie-loop tests/test_operator_chain.py; docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md §8"
     }
   ]
 }

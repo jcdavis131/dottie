@@ -20,6 +20,15 @@ Commands::
     capture status
     forge runners --root DIR
     forge submit  --root DIR --file jobspec.json --allow owner/name
+    feedback record --store DIR --run-id ID --signal accept|reject|edit|apply|dismiss [--edit-fraction F]
+    dataset release --traces pair.jsonl --out DIR [--consent-ledger L] [--benchmarks B]
+    dataset approve --manifest DIR/manifest.json --reviewer NAME
+    train preflight --run train.json --manifest manifest.json --checks checks.json
+    eval gates --bundle bundle.json [--out gates.json]
+    approval issue|consume --store approvals.json ...
+    promote decide --gates gates.json [--canary canary.json] [--approval-consumed]
+    release record ... --served-sha H --out release.json
+    release rollback --release release.json --served-sha H --reason R --out rollback.json
     bench smoke
     spec status
 """
@@ -175,6 +184,147 @@ def cmd_bench_smoke(a: argparse.Namespace) -> dict[str, Any]:
     return build_report(wfs, goldens, harness_commit=a.commit or "unknown")
 
 
+def _load_traces(path: Path) -> list[dict[str, Any]]:
+    out = []
+    for line in Path(path).read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            out.append(json.loads(line))
+    return out
+
+
+def cmd_feedback_record(a: argparse.Namespace) -> dict[str, Any]:
+    """Gap 02 (real feedback UX) for the CLI surface: attach a signal to a captured run."""
+    from dottie_loop.capture import FEEDBACK_SIGNALS
+    from dottie_loop.reward import RewardInputs, compute_reward
+
+    if a.signal not in FEEDBACK_SIGNALS:
+        raise InvalidInputError(f"signal must be one of {sorted(FEEDBACK_SIGNALS)}", field="signal")
+    traces_path = Path(a.store) / "traces" / "pair.jsonl"
+    if not traces_path.exists():
+        raise BlockedError("no captured traces for this store (capture is opt-in)", "capture")
+    traces = _load_traces(traces_path)
+    match = [t for t in traces if t.get("session_id") == a.run_id or t.get("trace_id") == a.run_id]
+    if not match:
+        raise InvalidInputError(f"no trace for run {a.run_id}", field="run_id")
+    rec = match[-1]
+    signal = {"signal": a.signal, "edit_fraction": a.edit_fraction, "at": now_iso_str()}
+    rec.setdefault("feedback", []).append(signal)
+    # append a superseding record: the trace file stays append-only
+    with traces_path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps({**rec, "supersedes_trace": rec.get("trace_id")}, sort_keys=True) + "\n")
+    reward = compute_reward(RewardInputs(trace_id=rec["trace_id"], task_ok=rec.get("outcome", {}).get("task_ok"), feedback=a.signal, edit_fraction=a.edit_fraction, evidence=[f"feedback:{a.signal}"]))
+    (Path(a.store) / "traces" / f"reward-{rec['trace_id']}.json").write_text(json.dumps(reward, indent=1, sort_keys=True), encoding="utf-8")
+    return {"trace_id": rec["trace_id"], "feedback": signal, "reward": reward}
+
+
+def cmd_dataset_release(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.dataset import Source, run_pipeline, write_release
+
+    traces = _load_traces(a.traces)
+    ledger = _read_json(a.consent_ledger) if a.consent_ledger else {}
+    bench = _read_json(a.benchmarks) if a.benchmarks else []
+    src = Source(id=a.source_id, license=a.license, consent_version=a.consent_version, records=traces)
+    res = run_pipeline([src], consent_ledger=ledger, deletion_holds=set(a.hold or []), benchmark_items=bench, pipeline_commit=a.commit or "unknown")
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "qa_report.json").write_text(json.dumps(res.report, indent=1, sort_keys=True), encoding="utf-8")
+    if not res.ok:
+        raise BlockedError("dataset QA hard-blocked: " + "; ".join(res.report["failures"]), "qa", report=res.report)
+    manifest = write_release(res, out)
+    return {"manifest": manifest, "counts": res.report["counts"], "out": str(out)}
+
+
+def cmd_dataset_approve(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.dataset import approve_manifest
+
+    mpath = Path(a.manifest)
+    approved = approve_manifest(_read_json(str(mpath)), reviewer=a.reviewer, out_dir=mpath.parent)
+    mpath.write_text(json.dumps(approved, indent=1, sort_keys=True), encoding="utf-8")
+    return {"dataset_id": approved["dataset_id"], "status": approved["status"], "approved_by": approved["approved_by"], "manifest_hash": approved["manifest_hash"]}
+
+
+def cmd_train_preflight(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.training import PreflightInputs, TrainRun, preflight
+
+    raw = _read_json(a.run)
+    raw.pop("schema", None)
+    run = TrainRun(**raw)
+    checks = _read_json(a.checks)
+    pf = preflight(run, PreflightInputs(manifest=_read_json(a.manifest), **checks))
+    if not pf["ok"]:
+        raise BlockedError("preflight failed: " + ", ".join(pf["failed"]), "preflight", **pf)
+    return pf
+
+
+def cmd_eval_gates(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.evaluation import EvalBundle, evaluate_gates
+
+    raw = _read_json(a.bundle)
+    raw.pop("schema", None)
+    result = evaluate_gates(EvalBundle(**raw))
+    if a.out:
+        Path(a.out).write_text(json.dumps(result, indent=1, sort_keys=True), encoding="utf-8")
+    return result
+
+
+def cmd_approval_issue(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.approvals import ApprovalStore
+
+    store = ApprovalStore.load(Path(a.store))
+    rec = store.issue(approver_subject=a.approver, approver_role=a.role, action_type=a.action, payload=json.loads(a.payload), destination=a.destination, goal_id=a.goal_id, ttl_seconds=a.ttl)
+    store.save(Path(a.store))
+    return rec.to_dict()
+
+
+def cmd_approval_consume(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.approvals import ApprovalStore
+
+    store = ApprovalStore.load(Path(a.store))
+    try:
+        rec = store.verify_and_consume(a.approval_id, action_type=a.action, payload=json.loads(a.payload), destination=a.destination, goal_id=a.goal_id)
+    finally:
+        store.save(Path(a.store))  # replay attempts are recorded even when refused
+    return rec.to_dict()
+
+
+def cmd_promote_decide(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.evaluation import promotion_decision
+
+    gates = _read_json(a.gates)
+    canary = _read_json(a.canary) if a.canary else None
+    decision = promotion_decision(gates, canary=canary, approval_valid=bool(a.approval_consumed), production_threshold_crossed=bool(a.threshold_crossed))
+    if decision["outcome"] == "block":
+        raise BlockedError("promotion blocked: " + decision["reason"], "promotion", decision=decision)
+    return decision
+
+
+def cmd_release_record(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.evaluation import release_record
+
+    rec = release_record(artifact={"type": a.artifact_type, "id": a.artifact_id, "sha256": a.artifact_sha}, source_commit=a.source_commit, eval_bundle=a.eval_bundle, canary_decision=a.canary_decision, approval_id=a.approval_id, deployment_id=a.deployment_id, previous_release=a.previous_release, rollback_target=a.rollback_target, served_observed_hash=a.served_sha)
+    Path(a.out).write_text(json.dumps(rec, indent=1, sort_keys=True), encoding="utf-8")
+    if not rec["served_verification"]["pass"]:
+        raise BlockedError("served artifact hash does not match the approved artifact", "served_verification", release=rec)
+    return rec
+
+
+def cmd_release_rollback(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.evaluation import rollback
+
+    rel = _read_json(a.release)
+    out = rollback(rel, served_after_hash=a.served_sha, reason=a.reason)
+    Path(a.out).write_text(json.dumps(out, indent=1, sort_keys=True), encoding="utf-8")
+    if out["status"] != "rolled_back":
+        raise BlockedError("rollback did not restore the pinned incumbent", "rollback", **out)
+    return out
+
+
+def now_iso_str() -> str:
+    from dottie_loop.hashing import now_iso
+
+    return now_iso()
+
+
 def cmd_spec_status(_a: argparse.Namespace) -> dict[str, Any]:
     return {
         "package": "dottie_loop",
@@ -254,6 +404,94 @@ def build_parser() -> argparse.ArgumentParser:
     s = be.add_parser("smoke")
     s.add_argument("--commit")
     s.set_defaults(fn=cmd_bench_smoke)
+
+    fb = sub.add_parser("feedback").add_subparsers(dest="sub", required=True)
+    s = fb.add_parser("record", help="attach accept|reject|edit|apply|dismiss to a captured run and recompute its reward")
+    s.add_argument("--store", required=True)
+    s.add_argument("--run-id", required=True)
+    s.add_argument("--signal", required=True)
+    s.add_argument("--edit-fraction", type=float)
+    s.set_defaults(fn=cmd_feedback_record)
+
+    ds = sub.add_parser("dataset").add_subparsers(dest="sub", required=True)
+    s = ds.add_parser("release", help="run the hard-block QA chain over captured traces and write shards + manifest")
+    s.add_argument("--traces", required=True)
+    s.add_argument("--out", required=True)
+    s.add_argument("--consent-ledger", help="JSON {hashed_user_id: {capture_training, version}}")
+    s.add_argument("--benchmarks", help="JSON list of benchmark prompts for decontamination")
+    s.add_argument("--hold", action="append", help="deletion-hold key (repeatable)")
+    s.add_argument("--source-id", default="pair-session")
+    s.add_argument("--license", default="private-opt-in")
+    s.add_argument("--consent-version", default="c1")
+    s.add_argument("--commit")
+    s.set_defaults(fn=cmd_dataset_release)
+    s = ds.add_parser("approve", help="independent reviewer signs the exact manifest (hashes must resolve)")
+    s.add_argument("--manifest", required=True)
+    s.add_argument("--reviewer", required=True)
+    s.set_defaults(fn=cmd_dataset_approve)
+
+    tr = sub.add_parser("train").add_subparsers(dest="sub", required=True)
+    s = tr.add_parser("preflight", help="the ten preflight checks; exits 2 naming every failure")
+    s.add_argument("--run", required=True, help="TrainRun JSON")
+    s.add_argument("--manifest", required=True, help="approved DatasetManifest JSON")
+    s.add_argument("--checks", required=True, help="JSON of PreflightInputs minus manifest")
+    s.set_defaults(fn=cmd_train_preflight)
+
+    ev = sub.add_parser("eval").add_subparsers(dest="sub", required=True)
+    s = ev.add_parser("gates", help="the seven §24 gates over an EvalBundle JSON")
+    s.add_argument("--bundle", required=True)
+    s.add_argument("--out")
+    s.set_defaults(fn=cmd_eval_gates)
+
+    apv = sub.add_parser("approval").add_subparsers(dest="sub", required=True)
+    s = apv.add_parser("issue")
+    s.add_argument("--store", required=True, help="approvals JSON file")
+    s.add_argument("--approver", required=True)
+    s.add_argument("--role", default="owner")
+    s.add_argument("--action", required=True)
+    s.add_argument("--payload", required=True, help="canonical action payload JSON")
+    s.add_argument("--destination", required=True)
+    s.add_argument("--goal-id", required=True)
+    s.add_argument("--ttl", type=int, default=900)
+    s.set_defaults(fn=cmd_approval_issue)
+    s = apv.add_parser("consume")
+    s.add_argument("--store", required=True)
+    s.add_argument("--approval-id", required=True)
+    s.add_argument("--action", required=True)
+    s.add_argument("--payload", required=True)
+    s.add_argument("--destination", required=True)
+    s.add_argument("--goal-id", required=True)
+    s.set_defaults(fn=cmd_approval_consume)
+
+    pr = sub.add_parser("promote").add_subparsers(dest="sub", required=True)
+    s = pr.add_parser("decide", help="promote|hold|reject|rollback|block from gates + canary + approval state")
+    s.add_argument("--gates", required=True, help="output of `eval gates --out`")
+    s.add_argument("--canary", help="canary JSON {status, challenger_metric, baseline_metric}")
+    s.add_argument("--approval-consumed", action="store_true", help="a promote approval was consumed for this exact artifact")
+    s.add_argument("--threshold-crossed", action="store_true")
+    s.set_defaults(fn=cmd_promote_decide)
+
+    rl = sub.add_parser("release").add_subparsers(dest="sub", required=True)
+    s = rl.add_parser("record", help="ReleaseRecord with served-hash verification; exits 2 on mismatch")
+    s.add_argument("--artifact-type", default="model")
+    s.add_argument("--artifact-id", required=True)
+    s.add_argument("--artifact-sha", required=True)
+    s.add_argument("--served-sha", required=True, help="hash fetched directly from production after aliasing")
+    s.add_argument("--source-commit", required=True)
+    s.add_argument("--eval-bundle", required=True)
+    s.add_argument("--canary-decision", default="pass")
+    s.add_argument("--approval-id", required=True)
+    s.add_argument("--deployment-id", required=True)
+    s.add_argument("--previous-release")
+    s.add_argument("--rollback-target", required=True)
+    s.add_argument("--out", required=True)
+    s.set_defaults(fn=cmd_release_record)
+    s = rl.add_parser("rollback", help="move to the pinned incumbent, verify, freeze challenger, open SEV-1")
+    s.add_argument("--release", required=True, help="ReleaseRecord JSON")
+    s.add_argument("--served-sha", required=True)
+    s.add_argument("--reason", required=True)
+    s.add_argument("--out", required=True)
+    s.set_defaults(fn=cmd_release_rollback)
 
     sp = sub.add_parser("spec").add_subparsers(dest="sub", required=True)
     s = sp.add_parser("status")

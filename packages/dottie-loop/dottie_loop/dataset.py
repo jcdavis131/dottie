@@ -209,6 +209,8 @@ def run_pipeline(
             per_source[rec["_source"]]["quarantined"] += 1
             continue
         kept.append(rec)
+    if not kept:
+        failures.append("no eligible records survive consent/privacy/validation/curation; nothing to release")
     dup_rate = counts["deduplicated"] / max(1, len(eligible))
     if dup_rate > th.max_duplicate_rate:
         failures.append(f"duplicate rate {dup_rate:.2f} exceeds {th.max_duplicate_rate}")
@@ -236,6 +238,8 @@ def run_pipeline(
         counts[name] = len(recs)
         for r in recs:
             per_source[r["_source"]][name] += 1
+    if kept and counts["train"] == 0:
+        failures.append("no training records after split; a release needs a train split")
     overlap = _overlap_report(splits)
     if overlap["session_overlap"] or overlap["exact_overlap"]:
         failures.append("split isolation failed")

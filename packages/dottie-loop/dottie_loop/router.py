@@ -1,0 +1,161 @@
+"""Routing tiers and the router output contract (spec §08).
+
+Five execution tiers trade cost for uncertainty (T0 deterministic … T4 agentic
+epic). Decision order, in the spec's order:
+
+1. apply policy exclusions and hard constraints
+2. choose deterministic execution when it can satisfy the goal
+3. evaluate the heuristic route; it is always available
+4. read a learned recommendation only if the artifact loaded, its schema validated
+   and its provenance is exposed
+5. prefer the safer / lower-cost tier when confidence is below threshold
+6. escalate to a more capable tier only after a RECORDED insufficiency
+
+The router must not use private attributes unrelated to the task. When a learned
+model exists but its gate is false, the heuristic route stays authoritative
+wherever they disagree; when no artifact is loaded, ``learned`` is null.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from typing import Any
+
+from dottie_loop.errors import InvalidInputError, PolicyDeniedError
+from dottie_loop.hashing import now_iso
+
+TIERS = ("T0", "T1", "T2", "T3", "T4")
+TIER_NAMES = {"T0": "deterministic", "T1": "llm", "T2": "deep_research", "T3": "action_operator", "T4": "agentic_epic"}
+#: harness-api / scout tier names -> spec tiers (adapter for apps/dottie-harness-api)
+LEGACY_TIER = {"deterministic": "T0", "llm": "T1", "deep_research": "T2", "action_operator": "T3", "agentic_epic": "T4"}
+CONFIDENCE_THRESHOLD = 0.6
+TIER_BUDGETS: dict[str, dict[str, int]] = {
+    "T0": {"tokens": 0, "wall_seconds": 60, "retries": 1},
+    "T1": {"tokens": 2000, "wall_seconds": 120, "retries": 1},
+    "T2": {"tokens": 9000, "wall_seconds": 1800, "retries": 1},
+    "T3": {"tokens": 6000, "wall_seconds": 900, "retries": 0},
+    "T4": {"tokens": 30000, "wall_seconds": 7200, "retries": 0},
+}
+TIER_AGENTS: dict[str, list[str]] = {
+    "T0": ["machine"],
+    "T1": ["assistant"],
+    "T2": ["deep-researcher", "synthesist", "forensic-auditor"],
+    "T3": ["planner", "action-operator", "critic"],
+    "T4": ["scout-prime-coordinator", "strategist", "planner", "builder", "executor", "critic"],
+}
+#: Private attributes the router must never consult (§08 "Routing inputs").
+FORBIDDEN_FEATURES = frozenset({"age", "gender", "religion", "ethnicity", "health", "politics", "sexuality"})
+
+_DETERMINISTIC = re.compile(r"\b(heartbeat|monitor|tick|health ?check|lint|format|hash|checksum|rename|list files|count|validate schema|parse)\b", re.I)
+_RESEARCH = re.compile(r"\b(research|compare|survey|evidence|sources|contradict|latest|fresh|investigate|literature)\b", re.I)
+_ACTION = re.compile(r"\b(send|email|post|publish|deploy|merge|release|notify|webhook|book|purchase|pay|update .* in (jira|linear|notion|github))\b", re.I)
+_EPIC = re.compile(r"\b(end to end|multi-?week|program|roadmap|migrate|overhaul|build .* platform|ship .* (app|product|service))\b", re.I)
+
+
+@dataclass
+class RoutingFeatures:
+    """Only task-relevant inputs. Anything in FORBIDDEN_FEATURES is rejected at construction."""
+
+    intent_text: str
+    side_effect_class: str = "read_only"
+    freshness_required: bool = False
+    systems: int = 1
+    ambiguity: float = 0.0  # 0..1
+    expected_minutes: float = 1.0
+    model_available: bool = True
+    tool_available: bool = True
+    cost_budget_tokens: int | None = None
+    privacy_class: str = "P1"
+    extra: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        bad = sorted(set(self.extra) & FORBIDDEN_FEATURES)
+        if bad:
+            raise PolicyDeniedError(f"router must not use private attributes: {bad}", field="features")
+
+
+def heuristic_route(f: RoutingFeatures) -> dict[str, Any]:
+    """Step 2-3: deterministic when it can satisfy the goal, else the heuristic tier."""
+    text = f.intent_text
+    if _DETERMINISTIC.search(text) and f.side_effect_class in ("read_only", "write_local") and f.systems <= 1:
+        return {"intent": "deterministic", "tier": "T0", "confidence": 0.9}
+    if _EPIC.search(text) or f.expected_minutes > 240 or f.systems >= 4:
+        return {"intent": "agentic_epic", "tier": "T4", "confidence": 0.7}
+    if _ACTION.search(text) or f.side_effect_class in ("external_send", "production_mutate"):
+        return {"intent": "action_operator", "tier": "T3", "confidence": 0.75}
+    if _RESEARCH.search(text) or f.freshness_required or f.systems >= 2:
+        return {"intent": "deep_research", "tier": "T2", "confidence": 0.75}
+    return {"intent": "llm_assist", "tier": "T1", "confidence": 0.55 if f.ambiguity > 0.5 else 0.65}
+
+
+def validate_learned(artifact: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Step 4: a learned recommendation counts only with artifact + schema + provenance."""
+    if artifact is None:
+        return None
+    for k in ("model", "tier", "confidence", "provenance", "gate_passed"):
+        if k not in artifact:
+            return None  # schema invalid -> null, never a fabricated 'learned'
+    if artifact["tier"] not in TIERS or not artifact["provenance"]:
+        return None
+    return {"model": str(artifact["model"]), "tier": artifact["tier"], "confidence": float(artifact["confidence"]), "gate_passed": bool(artifact["gate_passed"]), "provenance": str(artifact["provenance"])}
+
+
+def route(f: RoutingFeatures, *, learned_artifact: dict[str, Any] | None = None, policy_exclusions: set[str] | None = None, insufficiency: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The §08 router output. ``insufficiency`` is a RECORDED prior failure that permits escalation."""
+    excluded = policy_exclusions or set()
+    # 1. hard constraints
+    if not f.model_available and not f.tool_available:
+        raise PolicyDeniedError("neither model nor tools available; nothing can run", field="availability")
+    if f.privacy_class == "P3":
+        raise PolicyDeniedError("P3 restricted goals are not routed automatically", field="privacy_class")
+    h = heuristic_route(f)
+    tier = h["tier"]
+    if tier in excluded:
+        raise PolicyDeniedError(f"tier {tier} excluded by policy", field="tier")
+    if tier != "T0" and not f.model_available:
+        tier = "T0"
+        h = {**h, "downgraded": "model unavailable"}
+    # 4. learned advice
+    learned = validate_learned(learned_artifact)
+    authority = "heuristic"
+    if learned is not None and learned["gate_passed"] and learned["tier"] not in excluded:
+        if TIERS.index(learned["tier"]) <= TIERS.index(tier):
+            tier = learned["tier"]  # a promoted model may only pick an equal-or-cheaper tier here
+            authority = "learned"
+    # 5. below-threshold confidence prefers the safer / cheaper tier
+    if h["confidence"] < CONFIDENCE_THRESHOLD and TIERS.index(tier) > 0:
+        tier = TIERS[TIERS.index(tier) - 1]
+        h = {**h, "downgraded": "confidence below threshold"}
+    # 6. escalate only after a recorded insufficiency
+    if insufficiency is not None:
+        if not insufficiency.get("recorded_at") or not insufficiency.get("error_class"):
+            raise InvalidInputError("escalation requires a recorded insufficiency (recorded_at, error_class)", "insufficiency")
+        if TIERS.index(tier) < len(TIERS) - 1:
+            tier = TIERS[TIERS.index(tier) + 1]
+    risk_score = {"read_only": 0.18, "write_local": 0.35, "external_send": 0.7, "production_mutate": 0.9}.get(f.side_effect_class, 0.9)
+    budget = dict(TIER_BUDGETS[tier])
+    if f.cost_budget_tokens is not None:
+        budget["tokens"] = min(budget["tokens"], int(f.cost_budget_tokens))
+    return {
+        "intent": h["intent"],
+        "tier": tier,
+        "tier_name": TIER_NAMES[tier],
+        "confidence": round(h["confidence"], 3),
+        "agents": list(TIER_AGENTS[tier]),
+        "risk": {"class": f.side_effect_class, "score": risk_score, "provenance": "static_priors"},
+        "budget": budget,
+        "learned": None if learned is None else {"model": learned["model"], "gate_passed": learned["gate_passed"], "tier": learned["tier"], "provenance": learned["provenance"]},
+        "authority": authority,
+        "heuristic": {"tier": h["tier"], "downgraded": h.get("downgraded")},
+        "escalated_from_insufficiency": insufficiency is not None,
+        "at": now_iso(),
+    }
+
+
+def from_production_routing(out: dict[str, Any]) -> dict[str, Any]:
+    """Adapter: apps/dottie-harness-api ``route_goal`` output -> the spec's tier vocabulary."""
+    tier = LEGACY_TIER.get(out.get("moma_tier", ""), None)
+    if tier is None:
+        raise InvalidInputError(f"unknown legacy tier {out.get('moma_tier')!r}", field="moma_tier")
+    return {"intent": out.get("intent"), "tier": tier, "tier_name": TIER_NAMES[tier], "confidence": float(out.get("heuristic_score", 0.0)), "agents": list(out.get("recommended_agents", [])), "learned": None, "authority": "heuristic", "provenance": out.get("provenance", "request_derived_heuristic")}

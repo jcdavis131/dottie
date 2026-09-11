@@ -39,6 +39,9 @@ The review that motivated it, with the spec-versus-repository findings, is
 | §32 | `observability.py` | correlation fields, no-orphan metric records, outcome SLOs with error budgets, alert dedupe by incident key |
 | §33 | `incidents.py` | severity table, ordered lifecycle, suspected vs confirmed cause, quarantine window, DR drill checklist |
 | §17 | `retention.py` | retention windows as data; deterministic, idempotent expiry with legal holds and deletion requests |
+| §08, RT-03 | `router.py` | five tiers, the six-step decision order, learned advice only with artifact + schema + provenance (gate false → heuristic authoritative), safer tier below the confidence threshold, escalation only after a recorded insufficiency, forbidden private features; adapter for the harness-api heuristic |
+| §13 | `skills.py` | SKILL.md frontmatter parser + package contract, one-stage-at-a-time lifecycle with required evidence and named rollback, mock benchmarks refused, canary needs an approval, progressive disclosure |
+| §36 Runbooks B–C | `cli.py` | `feedback record`, `dataset release\|approve`, `train preflight`, `eval gates`, `approval issue\|consume` (persisted, replay-counted), `promote decide`, `release record\|rollback` — the operator drives the chain end to end with exit 2 on every block |
 | §27 | `scripts/forge_runner.py` | the one file for the GPU box: advertise → poll → claim → checkout → execute → push results over a git conveyor |
 
 ## CLI
@@ -51,6 +54,16 @@ uv run python -m dottie_loop forge runners --root ~/workspace/forge             
 uv run python -m dottie_loop bench smoke
 uv run python -m dottie_loop loop run --spec run.json --store /tmp/loop --root . --subject me   # one goal end to end
 uv run scout --json loop status                                                     # same contracts behind the single tool surface
+# the operator chain (each step exits 2 when its gate blocks)
+uv run python -m dottie_loop feedback record --store /tmp/loop --run-id run_… --signal accept
+uv run python -m dottie_loop dataset release --traces /tmp/loop/traces/pair.jsonl --out /tmp/ds --consent-ledger ledger.json
+uv run python -m dottie_loop dataset approve --manifest /tmp/ds/manifest.json --reviewer independent
+uv run python -m dottie_loop train preflight --run train.json --manifest /tmp/ds/manifest.json --checks checks.json
+uv run python -m dottie_loop eval gates --bundle bundle.json --out gates.json
+uv run python -m dottie_loop approval issue --store approvals.json --approver cam --action promote --payload '{"artifact":"…"}' --destination production --goal-id loop
+uv run python -m dottie_loop promote decide --gates gates.json --canary canary.json --approval-consumed
+uv run python -m dottie_loop release record … --served-sha <hash fetched from production> --out release.json
+uv run python -m dottie_loop release rollback --release release.json --served-sha <incumbent> --reason drill --out rollback.json
 ```
 
 Exit codes: `0` ok, `1` error, `2` blocked, `3` invalid input. stdout is one JSON

@@ -238,3 +238,20 @@ callable and `tools.py` runs `scout --json`); a learned router stays advisory an
 GRPO/SFT training code lives in `apps/ava-factory` and is frozen. Those are the spec's
 Phases 4–7 and need the runner, consented data and GPU time before code would change
 anything.
+
+---
+
+## 8. Phase 3 (2026-09-11): the operator drives the chain from the CLI; router and skill contracts
+
+| Spec | Built | Evidence |
+|---|---|---|
+| §36 Runbook A–C, Appendix B 3–12 | CLI commands for every remaining record: `feedback record` (gap 02 for the CLI surface: accept/reject/edit/apply/dismiss attached to a captured run, reward recomputed, trace file stays append-only), `dataset release` / `approve`, `train preflight`, `eval gates`, `approval issue` / `consume` (persisted JSON store, replay attempts recorded even when refused), `promote decide`, `release record` (served-hash verification) and `release rollback`. Every gate that blocks exits 2 with the typed reason. | `test_operator_chain_end_to_end` runs twelve captured goals through feedback → release → approve → preflight → gates → approval → promote → release → rollback in one process |
+| §18 | a release with **zero eligible records** is now a hard block, not an empty manifest — found by the chain test, fixed in `dataset.run_pipeline` | same test (`no eligible records` before the consent ledger is supplied) |
+| §08 (RT-03) | `router.py`: five tiers, six-step decision order as code; learned advice counts only with artifact + schema + provenance; `gate_passed: false` → heuristic authoritative on disagreement; a learned model can pick an equal-or-cheaper tier, never escalate; confidence below threshold prefers the cheaper tier; escalation only after a *recorded* insufficiency; forbidden private features rejected at construction; adapter for `apps/dottie-harness-api` output | five golden fixtures + `test_router_decision_order_and_learned_advice` |
+| §13 | `skills.py`: SKILL.md frontmatter parser (matches `packages/ava-skills` conventions), package contract, one-stage-at-a-time lifecycle with the spec's required evidence and named rollback per stage, mock/synthetic benchmark evidence refused, canary needs an approval id, progressive disclosure (router → selected → workflow) | `test_skill_frontmatter_and_lifecycle_gates` |
+| §31 CI | `scripts/test_task_eval_slice.py`'s strip-inflation floor had rotted against the drifting real-history corpus (0.1478 measured on the PR merge ref vs floor 0.1481); re-based per the file's own procedure with old/new/why recorded | CI on PR #29 |
+
+What phase 3 does not change: the numbers. The chain test runs on captured CLI traces of a
+file-check goal, which is mechanics evidence (`capability_claim: none`), not the 500
+consented real pair sessions the closed loop needs. The commands are the same ones an
+operator will run on real data.
