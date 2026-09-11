@@ -26,6 +26,14 @@ Components (all bounded, GPU-free, stdlib-only):
 Task-dominance invariant: w_task = 1.0 and the sum of all other |weights| is kept
 below 1.0, AND grpo_collect should rank by (task_ok, total) — a correct solution
 always outranks any wrong one. See ReturnWeights docstring.
+
+Contract note: packages/dottie-loop/dottie_loop/reward.py implements the same
+formula and anti-hacking rules as the spec contract, but with different
+component scalings ([0,1] with None-for-missing; quality=(score-1)/9). This
+module's [-1,1] centered components (reject/revert=-1, quality centered on the
+8.0 gate, difficulty-scaled token penalty) are pinned by
+apps/ava-factory/tests/test_pair_rewards.py — do not "unify" them by
+delegation without a deliberate, tested respec.
 """
 
 from __future__ import annotations

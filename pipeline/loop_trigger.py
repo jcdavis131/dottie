@@ -45,6 +45,50 @@ QUEUE_DIR = REPO / "pipeline" / "loop_queue" / "pending"
 CANARY_PATH = REPO / "pipeline" / "loop_canary.json"
 
 
+# --- dottie-loop contract adoption (spec §26) -----------------------------------
+# Threshold defaults come from the contract package's THRESHOLDS when it is
+# importable, so the numbers are defined once. Precedence at every call site:
+# playbook yaml value > contract default > literal fallback below. With the
+# stock playbook (which sets every threshold) behavior is byte-identical.
+
+def _contract_threshold_defaults() -> dict:
+    """Best-effort import of the contract thresholds; {} when unavailable."""
+    try:
+        from dottie_loop.closed_loop import THRESHOLDS
+    except ImportError:
+        try:
+            sys.path.insert(
+                0, str(Path(__file__).resolve().parent.parent / "packages" / "dottie-loop"))
+            from dottie_loop.closed_loop import THRESHOLDS
+        except ImportError:
+            return {}
+    return {
+        "verifier_floor": THRESHOLDS["verifier_score_min"],
+        "ok_rate_floor": THRESHOLDS["agent_ok_rate_min"],
+        "ok_rate_drop_pp": THRESHOLDS["ok_rate_drop_max"] * 100.0,
+        "eval_score_drop": THRESHOLDS["eval_drop_max"],
+        "canary_tolerance": THRESHOLDS["canary_floor_delta"],
+        "min_new_verified_traces": int(THRESHOLDS["new_verified_traces_min"]),
+        "cooldown_hours": THRESHOLDS["cooldown_hours"],
+        "staleness_hours": THRESHOLDS["freshness_hours"],
+    }
+
+
+_CONTRACT_DEFAULTS = _contract_threshold_defaults()
+
+
+def _thresholds(params: dict) -> dict:
+    """Playbook thresholds win; contract defaults fill the gaps."""
+    return {**_CONTRACT_DEFAULTS, **params.get("thresholds", {})}
+
+
+def _timing(params: dict) -> dict:
+    """Same precedence for the timing block (cooldown / staleness hours)."""
+    return {**{k: _CONTRACT_DEFAULTS[k] for k in ("cooldown_hours", "staleness_hours")
+               if k in _CONTRACT_DEFAULTS},
+            **params.get("timing", {})}
+
+
 # --------------------------------------------------------------------------
 # Minimal YAML-subset parser (flat scalars, nested dicts, scalar lists)
 # --------------------------------------------------------------------------
@@ -288,8 +332,8 @@ def evaluate(cfg: dict) -> tuple[dict, dict]:
     """Returns (metrics, decision). Raises FileNotFoundError -> blocked."""
     params = cfg.get("params", {})
     mpaths = params.get("metrics", {})
-    th = params.get("thresholds", {})
-    timing = params.get("timing", {})
+    th = _thresholds(params)
+    timing = _timing(params)
 
     staleness_h = float(timing.get("staleness_hours", 48))
 
@@ -460,7 +504,7 @@ def action_queue_retrain(cfg: dict, dry_run: bool, submit: bool) -> dict:
 
 def action_check_canary(cfg: dict, dry_run: bool) -> dict:
     params = cfg.get("params", {})
-    th = params.get("thresholds", {})
+    th = _thresholds(params)
     state = load_json(STATE_PATH, DEFAULT_STATE)
     baseline = load_json(BASELINE_PATH, {})
     if not CANARY_PATH.exists():

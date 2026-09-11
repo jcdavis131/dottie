@@ -72,13 +72,42 @@ def register_redactor(name: str, pattern: str, replacement: str = "[REDACTED]") 
     _extra_redactors[name] = (re.compile(pattern), replacement)
 
 
+def _contract_redact(text: str) -> str | None:
+    """Stronger redactor from the dottie-loop contract (spec §16/§17), best-effort.
+
+    Returns the redacted text, or None when the contract package is not
+    importable — the lane then falls back to its own default patterns below.
+    Never a hard dependency: no ImportError escapes at module load or at call.
+    """
+    try:
+        from dottie_loop.capture import redact_text
+    except ImportError:
+        try:
+            sys.path.insert(
+                0, str(Path(__file__).resolve().parent.parent / "packages" / "dottie-loop"))
+            from dottie_loop.capture import redact_text
+        except ImportError:
+            return None
+    return redact_text(text)[0]
+
+
 def redact(text: str) -> str:
-    """Run every registered redactor over text. Non-str input passes through."""
+    """Run every registered redactor over text. Non-str input passes through.
+
+    When the dottie-loop contract package is importable its redactor runs first
+    (email / bearer / key-shaped / IPv4 / IPv6 / entropy-checked long tokens,
+    with a per-detector report); caller-registered hooks still apply after.
+    Otherwise the lane's own default patterns are used — same behavior as before.
+    """
     if not isinstance(text, str):
         return text
-    out = text
-    for _name, rx, repl in _DEFAULT_REDACTORS:
-        out = rx.sub(repl, out)
+    contracted = _contract_redact(text)
+    if contracted is not None:
+        out = contracted
+    else:
+        out = text
+        for _name, rx, repl in _DEFAULT_REDACTORS:
+            out = rx.sub(repl, out)
     for _name, (rx, repl) in _extra_redactors.items():
         out = rx.sub(repl, out)
     return out

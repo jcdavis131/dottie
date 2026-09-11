@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from ava.rl.pair_rewards import (
+from dottie.rl.pair_rewards import (
     PairTrace,
     PairWeights,
     pair_return,
