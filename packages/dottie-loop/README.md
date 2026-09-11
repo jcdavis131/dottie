@@ -62,6 +62,7 @@ The review that motivated it, with the spec-versus-repository findings, is
 | Runbook B 16, RT-14 | `dataset.canary_deletion_test`, `mark_release_usable` | deletion propagation proven on a non-production canary record (on a copy of the lineage) before an approved manifest can be marked usable |
 | ML-07 | `training.reproducibility_check` | identical inputs = same config digest and seed; compatible = every shared metric within tolerance; a metric on one side only is a finding |
 | §37D pagination | `ApiState.list_goals`, `GET /api/goals` | opaque HMAC cursors bound to the caller's scope: another principal's cursor is 403, a tampered one is 400 |
+| §38, §39 | `acceptance.py` + `spec acceptance` / `spec done` | RT-01…17 and ML-01…17 as data with the tests that name them (ranges like `ml09_to_ml13` parsed); the thirty §39 done items with kind `mechanics` or `operator`: a test proves mechanics only, an operator item needs an explicit `{proven, ref}` record, and `spec done` exits 2 until every item is proven — nothing in the package can make it exit 0 alone |
 | §27 | `scripts/forge_runner.py` | the one file for the GPU box: advertise → poll → claim → checkout → execute → push results over a git conveyor |
 
 ## CLI
@@ -94,6 +95,8 @@ uv run python -m dottie_loop privacy hold --lineage lineage.json --key <deletion
 uv run python -m dottie_loop privacy delete --lineage lineage.json --key <deletion key> --operator cam --out receipt.json
 uv run python -m dottie_loop incident playbook --kind credential_exposure
 uv run python -m dottie_loop spec components --root .
+uv run python -m dottie_loop spec acceptance                                         # exit 2 if any RT/ML id lacks a named test
+uv run python -m dottie_loop spec done --operator-evidence evidence.json --out dod.json  # exit 2 until the operator items are proven
 ```
 
 Exit codes: `0` ok, `1` error, `2` blocked, `3` invalid input. stdout is one JSON
