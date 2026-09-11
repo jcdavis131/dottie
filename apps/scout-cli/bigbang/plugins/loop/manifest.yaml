@@ -1,6 +1,6 @@
 name: loop
 version: 0.1.0
-description: Dottie Full Ecosystem loop (packages/dottie-loop) behind the single tool surface — goal intake, end-to-end run, closed-loop trigger evaluation, Forge runner status, benchmark smoke
+description: Dottie Full Ecosystem loop (packages/dottie-loop) behind the single tool surface — goal intake, end-to-end run, feedback on a captured run, closed-loop trigger evaluation, Forge runner status, benchmark smoke
 capabilities:
   network:
     enabled: false

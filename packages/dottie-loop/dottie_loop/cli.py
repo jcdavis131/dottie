@@ -30,6 +30,8 @@ Commands::
     release record ... --served-sha H --out release.json
     release rollback --release release.json --served-sha H --reason R --out rollback.json
     bench smoke
+    retention expire --records R.jsonl [--holds H.json] [--deletions D.json] [--out R2.jsonl]
+    incident drill --results r.json
     spec status | schemas | traceability --dir DIR
 """
 
@@ -185,36 +187,47 @@ def cmd_bench_smoke(a: argparse.Namespace) -> dict[str, Any]:
 
 
 def _load_traces(path: Path) -> list[dict[str, Any]]:
-    out = []
-    for line in Path(path).read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            out.append(json.loads(line))
-    return out
+    from dottie_loop.feedback import load_traces
+
+    return load_traces(path)
 
 
 def cmd_feedback_record(a: argparse.Namespace) -> dict[str, Any]:
     """Gap 02 (real feedback UX) for the CLI surface: attach a signal to a captured run."""
-    from dottie_loop.capture import FEEDBACK_SIGNALS
-    from dottie_loop.reward import RewardInputs, compute_reward
+    from dottie_loop.feedback import record_feedback
 
-    if a.signal not in FEEDBACK_SIGNALS:
-        raise InvalidInputError(f"signal must be one of {sorted(FEEDBACK_SIGNALS)}", field="signal")
-    traces_path = Path(a.store) / "traces" / "pair.jsonl"
-    if not traces_path.exists():
-        raise BlockedError("no captured traces for this store (capture is opt-in)", "capture")
-    traces = _load_traces(traces_path)
-    match = [t for t in traces if t.get("session_id") == a.run_id or t.get("trace_id") == a.run_id]
-    if not match:
-        raise InvalidInputError(f"no trace for run {a.run_id}", field="run_id")
-    rec = match[-1]
-    signal = {"signal": a.signal, "edit_fraction": a.edit_fraction, "at": now_iso_str()}
-    rec.setdefault("feedback", []).append(signal)
-    # append a superseding record: the trace file stays append-only
-    with traces_path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps({**rec, "supersedes_trace": rec.get("trace_id")}, sort_keys=True) + "\n")
-    reward = compute_reward(RewardInputs(trace_id=rec["trace_id"], task_ok=rec.get("outcome", {}).get("task_ok"), feedback=a.signal, edit_fraction=a.edit_fraction, evidence=[f"feedback:{a.signal}"]))
-    (Path(a.store) / "traces" / f"reward-{rec['trace_id']}.json").write_text(json.dumps(reward, indent=1, sort_keys=True), encoding="utf-8")
-    return {"trace_id": rec["trace_id"], "feedback": signal, "reward": reward}
+    return record_feedback(Path(a.store), run_id=a.run_id, signal=a.signal, surface="cli", edit_fraction=a.edit_fraction, subject=a.subject)
+
+
+def cmd_retention_expire(a: argparse.Namespace) -> dict[str, Any]:
+    """§17 expiry job: deterministic, idempotent, observable; holds and deletion requests honoured."""
+    from dottie_loop.retention import expire
+
+    records = _load_traces(Path(a.records))
+    holds = set(json.loads(Path(a.holds).read_text(encoding="utf-8"))) if a.holds else set()
+    deletions = set(json.loads(Path(a.deletions).read_text(encoding="utf-8"))) if a.deletions else set()
+    receipt = expire(records, legal_holds=holds, deletion_requests=deletions)
+    out = Path(a.out) if a.out else Path(a.records)
+    tmp = out.with_suffix(out.suffix + ".tmp")
+    tmp.write_text("".join(json.dumps(r, sort_keys=True) + "\n" for r in records), encoding="utf-8")
+    tmp.replace(out)
+    Path(str(out) + ".receipt.json").write_text(json.dumps(receipt, indent=1, sort_keys=True), encoding="utf-8")
+    return {"receipt": receipt, "out": str(out)}
+
+
+def cmd_incident_drill(a: argparse.Namespace) -> dict[str, Any]:
+    """§33 restore drill: every item must be proven; a missing item is a failed drill (exit 2)."""
+    from dottie_loop.incidents import dr_drill_checklist
+
+    results = json.loads(Path(a.results).read_text(encoding="utf-8"))
+    if not isinstance(results, dict):
+        raise InvalidInputError("results must be an object of item -> bool", field="results")
+    verdict = dr_drill_checklist(results)
+    if a.out:
+        Path(a.out).write_text(json.dumps(verdict, indent=1, sort_keys=True), encoding="utf-8")
+    if not verdict["ok"]:
+        raise BlockedError("restore drill failed: " + ", ".join(verdict["failed"]), "dr_drill", verdict=verdict)
+    return verdict
 
 
 def cmd_dataset_release(a: argparse.Namespace) -> dict[str, Any]:
@@ -429,6 +442,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--run-id", required=True)
     s.add_argument("--signal", required=True)
     s.add_argument("--edit-fraction", type=float)
+    s.add_argument("--subject", help="who gave the feedback (hashed by the caller if it is an identity)")
     s.set_defaults(fn=cmd_feedback_record)
 
     ds = sub.add_parser("dataset").add_subparsers(dest="sub", required=True)
@@ -510,6 +524,20 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--reason", required=True)
     s.add_argument("--out", required=True)
     s.set_defaults(fn=cmd_release_rollback)
+
+    rt = sub.add_parser("retention").add_subparsers(dest="sub", required=True)
+    s = rt.add_parser("expire", help="§17 expiry job over a JSONL of {record_id, data_class, created_at, deletion_key?}")
+    s.add_argument("--records", required=True)
+    s.add_argument("--holds", help="JSON list of legal-hold record ids / deletion keys")
+    s.add_argument("--deletions", help="JSON list of deletion-request keys")
+    s.add_argument("--out", help="rewrite target (default: in place, atomically); a .receipt.json is written beside it")
+    s.set_defaults(fn=cmd_retention_expire)
+
+    inc = sub.add_parser("incident").add_subparsers(dest="sub", required=True)
+    s = inc.add_parser("drill", help="§33 restore drill checklist; exits 2 unless every item is proven")
+    s.add_argument("--results", required=True, help="JSON object item -> bool")
+    s.add_argument("--out")
+    s.set_defaults(fn=cmd_incident_drill)
 
     sp = sub.add_parser("spec").add_subparsers(dest="sub", required=True)
     s = sp.add_parser("status")

@@ -51,6 +51,8 @@ The review that motivated it, with the spec-versus-repository findings, is
 | §24 | `evaluation.calibration` | expected calibration error + abstention rate from `(confidence, correct)` pairs; empty input is `unmeasured`, never a plausible zero |
 | §06 API, §28, RT-17 | `surfaces.ApiServer` | fail-closed JSON API: bearer principals, `Idempotency-Key` required (202 created / 200 replay / 409 conflict), `/api/learned` is 503 until a learned artifact is loaded, routing rejections are typed 400/403 AND quarantined + alerted |
 | §39 | `traceability.py` | the final acceptance artifact: session → trace → reward/QA → dataset → train run → checkpoint → eval → canary → approval → release → served verification → monitoring → rollback target as one graph; `validate_graph` names every unresolved arrow and every consequential edge missing its human authority; `spec traceability --dir` exits 2 until it is complete |
+| §16, gap 02 | `feedback.py` | ONE recorder behind the CLI (`feedback record`), the API (`POST /api/feedback`), Slack (`SlackReporter.feedback_from_event`: reactions and first-word thread replies on a run's thread) and `scout loop feedback`: a signal is bound to the captured run it answers, appended as a superseding record, and the reward is recomputed with the surface as evidence |
+| §17, §33, gap 06 | `cli.py` `retention expire`, `incident drill` | the expiry job (holds and deletion requests honoured, atomic rewrite, receipt beside the file, idempotent) and the restore-drill checklist (exit 2 unless every item is proven) as operator commands |
 | §27 | `scripts/forge_runner.py` | the one file for the GPU box: advertise → poll → claim → checkout → execute → push results over a git conveyor |
 
 ## CLI
@@ -76,6 +78,9 @@ uv run python -m dottie_loop release rollback --release release.json --served-sh
 # the §39 final proof: every record the chain wrote, in one directory, as one graph
 uv run python -m dottie_loop spec traceability --dir /tmp/chain --out graph.json   # exits 2 naming each arrow that does not resolve
 uv run python -m dottie_loop spec schemas
+uv run python -m dottie_loop retention expire --records records.jsonl --holds holds.json --deletions deletions.json
+uv run python -m dottie_loop incident drill --results drill.json                     # exits 2 naming the unproven items
+uv run scout --json loop feedback --run-id run_… --signal accept                      # the same recorder, from the tool surface
 ```
 
 Exit codes: `0` ok, `1` error, `2` blocked, `3` invalid input. stdout is one JSON

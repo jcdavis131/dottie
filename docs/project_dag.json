@@ -545,6 +545,19 @@
         "dottie-loop-security-training"
       ],
       "evidence": "packages/dottie-loop tests/test_phase5_rlm_api_traceability.py (8); docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md §10"
+    },
+    {
+      "id": "dottie-loop-feedback-surfaces",
+      "title": "Spec phase 6: gap 02 feedback recorder behind CLI/API/Slack/scout loop; gap 06 `retention expire` + `incident drill` commands",
+      "repo": "dottie",
+      "kind": "infra",
+      "status": "done",
+      "priority": 2,
+      "size": "S",
+      "depends_on": [
+        "dottie-loop-final-proof"
+      ],
+      "evidence": "packages/dottie-loop tests/test_phase6_feedback_surfaces.py (4) + apps/scout-cli tests/test_loop_plugin.py; docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md §11"
     }
   ]
 }

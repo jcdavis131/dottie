@@ -149,11 +149,11 @@ link resolves (the spec's "final proof" shape, §39, at contract level).
 | # | Spec gap | State after this branch |
 |---|---|---|
 | 01 | Runner | **Still BLOCKED, operator-only.** Queue, claim, execute, result and orphan logic exist and are tested; `forge runners` exits 2 until `runners/<host>.json` appears. DAG node `forge-runner-register`. |
-| 02 | Real feedback UX | REQUIRED. `capture.FEEDBACK_SIGNALS` and `reward.RewardInputs.feedback` are the contract the surfaces must emit; no surface emits them yet. |
+| 02 | Real feedback UX | **Mechanics built (phase 6, §11).** CLI, API, Slack and `scout loop feedback` all record through `feedback.record_feedback`, bound to the run they answer. Still REQUIRED: people using them — the count of real signals is zero until the operator turns a surface on. |
 | 03 | Qualified volume (500 traces) | REQUIRED. The 500 floor is enforced in `closed_loop.THRESHOLDS`; a regression with fewer traces is `blocked`, not `trigger`. |
 | 04 | Fresh baselines | REQUIRED. Freshness (48 h, per source, event time) blocks in both `evaluation` and `closed_loop`; nothing here can make evidence fresh. |
 | 05 | Branch integration | **Re-scoped.** There are no branches to integrate (F1). The contracts are in one package on one branch; PR #26 is the only live lane. |
-| 06 | Operational closure | Partly. Deletion propagation, rollback, incident record and canary requirements are code with tests; retention expiry jobs, incident drills and deployment hooks remain REQUIRED. |
+| 06 | Operational closure | Mostly. Deletion propagation, rollback, incident record, canary requirements, the expiry job (`retention expire`) and the restore drill (`incident drill`) are code with tests (phase 6); scheduling the expiry job and running a real drill against real stores remain REQUIRED. |
 
 Additional open decisions (§35), status: the two audit candidates — **closed 09-05** (F2);
 Forge training command/ref/manifest — open, needs the runner; numeric SLOs — open; retention
@@ -290,3 +290,20 @@ Suite: 97 tests. What phase 5 does not change: a complete traceability graph ove
 proof is the same command run over the records of one real opted-in session after
 the operator decisions in §6 are made. `spec traceability` reports a node's own
 `synthetic` flag as incomplete for that reason.
+
+---
+
+## 11. Phase 6 (2026-09-11): gap 02 — feedback from every surface; gap 06 — expiry and drill as commands
+
+| Spec | Built | Evidence |
+|---|---|---|
+| §16 "Capture requirements", §35 gap 02 | `feedback.py` — one `record_feedback(store, run_id, signal, surface, edit_fraction, subject)` behind every surface: the signal must name a captured run (no traces → typed `blocked`; unknown run → invalid), is appended as a superseding record so the trace file stays append-only, and the reward is recomputed with `feedback:<signal>:<surface>` as its first evidence line | `test_record_feedback_is_one_contract_for_every_surface` |
+| §06 Slack row | `SlackReporter.feedback_from_event` — a reaction on, or a reply whose first word is a signal in, a run's thread binds to THAT run; event-id dedupe; conversation that merely mentions a signal is not feedback; nothing is recorded by the reporter itself | `test_slack_reactions_and_replies_bind_to_the_run_thread` |
+| §06 API row, §28 | `POST /api/feedback` — bearer required, 201 with the recomputed reward, 400 on a bad fraction or unknown run, 503 `blocked` when the API has no run store | `test_api_feedback_needs_a_principal_and_a_captured_run` (loopback HTTP) |
+| §12 single tool surface | `scout loop feedback --run-id --signal [--edit-fraction]` writes only under the plugin's declared root, exit 3 on invalid input | `apps/scout-cli/tests/test_loop_plugin.py::test_feedback_binds_to_a_captured_run` |
+| §17 retention, gap 06 | `retention expire` — deterministic, idempotent pass over a JSONL of records; legal holds and deletion requests as JSON lists; atomic rewrite (`--out` or in place) with a receipt beside the file; unknown data class is invalid input | `test_retention_expire_and_incident_drill_commands` |
+| §33 DR drill, gap 06 | `incident drill` — every checklist item must be proven; a missing item is a failed drill with exit 2 naming it | same test |
+
+Suite: 101 tests in `packages/dottie-loop`, 7 in the scout plugin. The gap-02 count that
+matters — real signals from real people — is still zero; what changed is that every surface
+now has a place to put them that the reward and the dataset pipeline already read.

@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 from dottie_loop.errors import (
     BackendUnavailableError,
+    BlockedError,
     InvalidInputError,
     LoopError,
     PolicyDeniedError,
@@ -82,6 +83,33 @@ class SlackReporter:
     def is_authorization(_message_text: str) -> bool:
         """A mention or quoted text is never authorization: only a signed approval token is."""
         return False
+
+    def feedback_from_event(self, event: dict[str, Any]) -> dict[str, Any] | None:
+        """Gap 02 on Slack: a reaction on, or a reply in, a run's thread is feedback bound to THAT run.
+
+        Returns ``{"run_id", "signal", "surface": "slack", "event_id", "subject"}`` or None when
+        the event is a replay, is not on a run thread, or carries no signal. Nothing here records
+        anything: the caller passes the result to :func:`dottie_loop.feedback.record_feedback`.
+        """
+        from dottie_loop.feedback import SLACK_REACTIONS, signal_from_text
+
+        event_id = event.get("event_id")
+        if not event_id or event_id in self.seen_events:
+            return None
+        self.seen_events.add(event_id)
+        kind = event.get("type")
+        if kind == "reaction_added":
+            ts = (event.get("item") or {}).get("ts")
+            signal = SLACK_REACTIONS.get(str(event.get("reaction", "")))
+        elif kind == "message":
+            ts = event.get("thread_ts")
+            signal = signal_from_text(str(event.get("text", "")))
+        else:
+            return None
+        run_id = next((rid for rid, t in self.threads.items() if t == ts), None)
+        if run_id is None or signal is None:
+            return None
+        return {"run_id": run_id, "signal": signal, "surface": "slack", "event_id": event_id, "subject": event.get("user")}
 
     def _deliver(self, msg: dict[str, Any]) -> None:
         self.posted.append(msg)
@@ -224,12 +252,23 @@ class ApprovalBoard:
 class ApiState:
     """Versioned JSON API over the same stores; learned output is null unless weights are loaded."""
 
-    def __init__(self, goals: GoalStore, *, principals: dict[str, str], learned_artifact: dict[str, Any] | None = None, quarantine_path: Path | None = None) -> None:
+    def __init__(self, goals: GoalStore, *, principals: dict[str, str], learned_artifact: dict[str, Any] | None = None, quarantine_path: Path | None = None, run_store: Path | None = None) -> None:
         self.goals = goals
         self.principals = dict(principals)  # bearer -> subject
         self.learned_artifact = learned_artifact
         self.quarantine_path = quarantine_path
+        self.run_store = run_store  # where `loop run --capture` wrote traces; feedback binds to those runs
         self.alerts: list[dict[str, Any]] = []
+
+    def feedback(self, body: dict[str, Any], *, subject: str) -> dict[str, Any]:
+        from dottie_loop.feedback import record_feedback
+
+        if self.run_store is None:
+            raise BlockedError("this API has no run store configured; feedback needs captured runs", "run_store")
+        ef = body.get("edit_fraction")
+        if ef is not None and not isinstance(ef, int | float):
+            raise InvalidInputError("edit_fraction must be a number", field="edit_fraction")
+        return record_feedback(self.run_store, run_id=str(body.get("run_id") or ""), signal=str(body.get("signal") or ""), surface="api", edit_fraction=float(ef) if ef is not None else None, subject=subject)
 
     def subject_for(self, bearer: str | None) -> str:
         if not bearer or bearer not in self.principals:
@@ -307,6 +346,8 @@ def _api_handler(state: ApiState) -> type[BaseHTTPRequestHandler]:
                     self._send(ok_envelope(ack, status="accepted" if created else "replayed", http_status=202 if created else 200), 202 if created else 200)
                 elif self.path == "/api/route":
                     self._send(ok_envelope(state.route(body)), 200)
+                elif self.path == "/api/feedback":
+                    self._send(ok_envelope(state.feedback(body, subject=subject), http_status=201), 201)
                 elif self.path == "/api/learned":
                     if state.learned_artifact is None:
                         raise BackendUnavailableError("no learned router artifact is loaded; heuristic route is authoritative")
