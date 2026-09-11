@@ -584,6 +584,19 @@
         "dottie-loop-runbooks-as-code"
       ],
       "evidence": "packages/dottie-loop tests/test_phase8_canary_repro_pagination.py (4); docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md §13"
+    },
+    {
+      "id": "dottie-loop-definition-of-done",
+      "title": "Spec phase 9: §38 acceptance coverage (`spec acceptance`) and §39 definition of done (`spec done`) as checkable data; exit 2 until operator evidence is supplied",
+      "repo": "dottie",
+      "kind": "infra",
+      "status": "done",
+      "priority": 2,
+      "size": "S",
+      "depends_on": [
+        "dottie-loop-canary-and-proofs"
+      ],
+      "evidence": "packages/dottie-loop tests/test_phase9_acceptance_and_done.py (5); docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md §14"
     }
   ]
 }

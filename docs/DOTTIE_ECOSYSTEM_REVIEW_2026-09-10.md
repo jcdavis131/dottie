@@ -337,3 +337,17 @@ the operator chain commands (§8), and every step that needs a real store, runne
 
 Suite: 111 tests. ML-13 and ML-07 are now mechanically testable; their real evidence is
 a canary over production traffic and an independent rerun on the registered runner.
+
+---
+
+## 14. Phase 9 (2026-09-11): the acceptance matrix and the definition of done are checkable
+
+| Spec | Built | Evidence |
+|---|---|---|
+| §38 acceptance matrices A + B | `acceptance.RT_ITEMS` / `ML_ITEMS` as data; `scan_tests` maps every ID to the tests named after it (single IDs and `ml09_to_ml13` ranges); `NON_WAIVABLE` carries the seven IDs no status label can waive; `OPERATOR_EVIDENCE_IDS` marks ML-08, ML-12, ML-15, ML-17 as mechanics-only in software; `spec acceptance` exits 2 naming any ID without a test. ML-14 gained its own named test | `test_every_acceptance_id_has_a_named_test_here`, `test_missing_ids_block`, `test_ml14_promotion_requires_explicit_approval` |
+| §39 definition of done | the thirty items as data, each `mechanics` (proven by the acceptance tests it cites) or `operator` (nine items: runbook drills, registered-hardware rerun, held-out win, safety floors, served hash, fresh monitoring, rollback drill, backups, owners); `definition_of_done` accepts operator evidence only as `{proven: true, ref: "..."}` — a bare `true` is not evidence; `spec done` exits 2 until every item is proven | `test_definition_of_done_never_completes_on_mechanics_alone` |
+
+Suite: 116 tests. Today's state of the §39 checklist on this tree: 21 items mechanics-proven,
+9 operator-pending, 0 mechanics-missing — which is the honest reading of nine phases of
+build: the bounded system's mechanics are in place and tested; "done" waits on the runner,
+the users, the baselines and the drills, exactly as the spec's own final-proof rule says.

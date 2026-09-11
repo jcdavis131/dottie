@@ -18,9 +18,9 @@ before writing "current" anywhere in this file.
 
 ## 📌 Session continuation — 2026-09-11 (supersedes every block below)
 
-**Re-stamped 2026-09-11 at HEAD `51c6034`** (PR #30 merged: dottie-loop phases 4–5; #27
-`b0fd59f` and #29 `fde7a59` merged earlier the same day). Phase 6 is on
-`claude/dottie-end-to-end-review-z2baj5` on top of it — see review doc §11.
+**Re-stamped 2026-09-11 at HEAD `acffb8d`** (PR #31 merged: dottie-loop phases 6–8; #27
+`b0fd59f`, #29 `fde7a59` and #30 `51c6034` merged earlier the same day). Phase 9 is on
+`claude/dottie-end-to-end-review-z2baj5` on top of it — see review doc §14.
 
 **Measured earlier the same day at `002226b`,** `main` (the 2026-09-05 block below
 records `23870d7`, which was squash-merged in #23 and is therefore NOT an
@@ -43,12 +43,19 @@ push since 47181a2 for that reason alone, not for drift).
    (`curriculum.py`), §31 deployment sequence (`deploy.py`), §26 `LeaseFile`.
 5. (#30) §10 RLM/REPL (`rlm.py`), `SessionRecorder`, calibration, fail-closed
    `ApiServer`, §39 traceability graph + `spec traceability`.
-6. (branch) gap 02: one feedback recorder behind CLI / API / Slack / `scout loop
+6. (#31) gap 02: one feedback recorder behind CLI / API / Slack / `scout loop
    feedback`; gap 06: `retention expire` and `incident drill` commands.
+7. (#31) §37A migrations, §21.1 telemetry + heartbeats, Runbook D playbooks and
+   `privacy hold|delete`, Runbook A cancellation, `spec components`.
+8. (#31) ML-13 attributable canary with a predetermined stop, Runbook B 16 deletion
+   canary before a release is usable, ML-07 reproducibility check, opaque scoped cursors.
+9. (branch) §38 `spec acceptance` and §39 `spec done` — the checklist that says, today,
+   21 items mechanics-proven and 9 operator-pending.
 
 The review, the gap register and the per-section traceability are in
-`docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md` (§1–§11). Suite: 101 tests in
+`docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md` (§1–§14). Suite: 116 tests in
 `packages/dottie-loop` (hard ruff + pytest gates in ci.yml), 7 in the plugin.
+`python -m dottie_loop spec done` is the one command that states what is left.
 
 **Three findings a reader must not miss:**
 

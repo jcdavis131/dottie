@@ -33,7 +33,7 @@ Commands::
     retention expire --records R.jsonl [--holds H.json] [--deletions D.json] [--out R2.jsonl]
     incident drill --results r.json | playbook --kind K
     privacy hold|delete --lineage L.json --key K --operator O
-    spec status | schemas | traceability --dir DIR | components --root .
+    spec status | schemas | traceability --dir DIR | components --root . | acceptance | done
 """
 
 from __future__ import annotations
@@ -392,6 +392,29 @@ def cmd_incident_playbook(a: argparse.Namespace) -> dict[str, Any]:
     return playbook(a.kind)
 
 
+def cmd_spec_acceptance(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.acceptance import coverage
+
+    cov = coverage(Path(a.tests))
+    if cov["missing"]:
+        raise BlockedError("acceptance IDs without a named test: " + ", ".join(cov["missing"]), "tests", missing=cov["missing"])
+    return cov
+
+
+def cmd_spec_done(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.acceptance import definition_of_done
+
+    ev = json.loads(Path(a.operator_evidence).read_text(encoding="utf-8")) if a.operator_evidence else None
+    if ev is not None and not isinstance(ev, dict):
+        raise InvalidInputError("operator evidence must be an object of D-id -> {proven, ref}", field="operator_evidence")
+    dod = definition_of_done(Path(a.tests), ev)
+    if a.out:
+        Path(a.out).write_text(json.dumps(dod, indent=1, sort_keys=True), encoding="utf-8")
+    if not dod["complete"]:
+        raise BlockedError(f"definition of done not met: {len(dod['pending'])} item(s) pending: " + ", ".join(dod["pending"]), "operator_evidence", counts=dod["counts"], pending=dod["pending"])
+    return dod
+
+
 def cmd_spec_status(_a: argparse.Namespace) -> dict[str, Any]:
     return {
         "package": "dottie_loop",
@@ -602,6 +625,14 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--out")
     s.add_argument("--no-rollback", action="store_true", help="do not require the rollback drill edge")
     s.set_defaults(fn=cmd_spec_traceability)
+    s = sp.add_parser("acceptance", help="§38: which RT/ML IDs have a named test; exit 2 if any is missing")
+    s.add_argument("--tests", default=str(Path(__file__).resolve().parent.parent / "tests"))
+    s.set_defaults(fn=cmd_spec_acceptance)
+    s = sp.add_parser("done", help="§39: the thirty done items; exit 2 until every operator item carries explicit evidence")
+    s.add_argument("--tests", default=str(Path(__file__).resolve().parent.parent / "tests"))
+    s.add_argument("--operator-evidence", help="JSON object D-id -> {proven: true, ref: '...'}")
+    s.add_argument("--out")
+    s.set_defaults(fn=cmd_spec_done)
     s = sp.add_parser("components", help="§04/§34: which authoritative artifacts are actually in the tree")
     s.add_argument("--root", default=".")
     s.set_defaults(fn=cmd_spec_components)
