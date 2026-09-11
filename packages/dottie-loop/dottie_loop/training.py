@@ -17,6 +17,8 @@ from dottie_loop.hashing import digest, new_id, now_iso
 from dottie_loop.schema import active
 
 OBJECTIVES = frozenset({"sft", "grpo", "router"})
+#: §21.1 runtime telemetry: every record carries these; heartbeats are a separate, cheaper stream
+TELEMETRY_FIELDS = ("run_id", "step", "tokens_seen", "loss_total", "loss_components", "lr", "grad_norm", "throughput", "memory_gb", "data_shard", "selected_distribution", "kl", "reward_components", "checkpoint_write_s", "evaluator_status")
 STAGES = ("sft", "selective_replay", "hq_anneal", "grpo")
 HARD_STOP_CONDITIONS = (
     "nan_or_inf_loss",
@@ -107,6 +109,57 @@ def preflight(run: TrainRun, inp: PreflightInputs) -> dict[str, Any]:
     return {"ok": not failed, "checks": checks, "failed": failed, "run_id": run.run_id, "at": now_iso()}
 
 
+def validate_telemetry(rec: dict[str, Any]) -> None:
+    """A telemetry record with a missing field is invalid, not partially useful."""
+    missing = [f for f in TELEMETRY_FIELDS if f not in rec]
+    if missing:
+        raise InvalidInputError(f"telemetry missing {missing}", field="telemetry")
+
+
+def stop_condition_for(rec: dict[str, Any], *, manifest_shards: set[str] | None = None) -> str | None:
+    """Map one telemetry record to the §21.1 hard-stop condition it triggers, if any."""
+    validate_telemetry(rec)
+    loss = rec["loss_total"]
+    if not isinstance(loss, int | float) or loss != loss or loss in (float("inf"), float("-inf")):
+        return "nan_or_inf_loss"
+    if rec.get("shard_error"):
+        return "unreadable_shard"
+    dist = rec["selected_distribution"] or {}
+    if dist and rec.get("samples_expected") is not None and sum(dist.values()) != rec["samples_expected"]:
+        return "sample_accounting_mismatch"
+    if rec.get("secret_detector_hits", 0):
+        return "secret_detector_hit"
+    if manifest_shards is not None and rec["data_shard"] not in manifest_shards:
+        return "data_drift_beyond_manifest"
+    if rec.get("checkpoint_hash_ok") is False:
+        return "checkpoint_corruption"
+    if rec["evaluator_status"] == "unavailable":
+        return "evaluation_unavailable"
+    return None
+
+
+@dataclass
+class HeartbeatMonitor:
+    """Heartbeats separate from verbose logs so a hang is detectable cheaply."""
+
+    interval_s: float
+    misses_allowed: int = 3
+    last_at: float | None = None
+    count: int = 0
+
+    def beat(self, at: float) -> None:
+        if self.last_at is not None and at < self.last_at:
+            raise InvalidInputError("heartbeat time went backwards", field="at")
+        self.last_at = at
+        self.count += 1
+
+    def hang(self, now: float) -> dict[str, Any]:
+        if self.last_at is None:
+            return {"hung": self.count == 0 and now > self.interval_s * self.misses_allowed, "reason": "no heartbeat yet", "silent_s": now}
+        silent = now - self.last_at
+        return {"hung": silent > self.interval_s * self.misses_allowed, "reason": "heartbeat silent", "silent_s": round(silent, 3), "budget_s": self.interval_s * self.misses_allowed}
+
+
 def hard_stop(condition: str) -> dict[str, Any]:
     if condition not in HARD_STOP_CONDITIONS:
         raise InvalidInputError(f"unknown stop condition {condition!r}", "condition")
@@ -140,3 +193,22 @@ def fork_run(run: TrainRun, reason: str) -> TrainRun:
     forked = TrainRun(**d)
     forked.hardware = {**forked.hardware, "fork_reason": reason}
     return forked
+
+
+def reproducibility_check(run_a: TrainRun, run_b: TrainRun, metrics_a: dict[str, float], metrics_b: dict[str, float], *, tolerance: float = 0.01) -> dict[str, Any]:
+    """ML-07: an independent rerun must resolve identical inputs and produce compatible metrics.
+
+    Identical inputs = same config digest (run id and lineage excluded) and same seed.
+    Compatible = every shared metric within ``tolerance`` (absolute); a metric present
+    on one side only is a finding, not silently ignored.
+    """
+    if tolerance < 0:
+        raise InvalidInputError("tolerance must be non-negative", field="tolerance")
+    same_inputs = run_a.config_digest() == run_b.config_digest()
+    same_seed = run_a.seed == run_b.seed
+    shared = sorted(set(metrics_a) & set(metrics_b))
+    only_one_side = sorted(set(metrics_a) ^ set(metrics_b))
+    deltas = {k: round(abs(float(metrics_a[k]) - float(metrics_b[k])), 6) for k in shared}
+    incompatible = [k for k, d in deltas.items() if d > tolerance]
+    ok = same_inputs and same_seed and not incompatible and not only_one_side and bool(shared)
+    return {"ok": ok, "same_inputs": same_inputs, "same_seed": same_seed, "deltas": deltas, "incompatible": incompatible, "metrics_on_one_side_only": only_one_side, "tolerance": tolerance, "runs": [run_a.run_id, run_b.run_id], "at": now_iso()}

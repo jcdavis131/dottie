@@ -149,11 +149,11 @@ link resolves (the spec's "final proof" shape, §39, at contract level).
 | # | Spec gap | State after this branch |
 |---|---|---|
 | 01 | Runner | **Still BLOCKED, operator-only.** Queue, claim, execute, result and orphan logic exist and are tested; `forge runners` exits 2 until `runners/<host>.json` appears. DAG node `forge-runner-register`. |
-| 02 | Real feedback UX | REQUIRED. `capture.FEEDBACK_SIGNALS` and `reward.RewardInputs.feedback` are the contract the surfaces must emit; no surface emits them yet. |
+| 02 | Real feedback UX | **Mechanics built (phase 6, §11).** CLI, API, Slack and `scout loop feedback` all record through `feedback.record_feedback`, bound to the run they answer. Still REQUIRED: people using them — the count of real signals is zero until the operator turns a surface on. |
 | 03 | Qualified volume (500 traces) | REQUIRED. The 500 floor is enforced in `closed_loop.THRESHOLDS`; a regression with fewer traces is `blocked`, not `trigger`. |
 | 04 | Fresh baselines | REQUIRED. Freshness (48 h, per source, event time) blocks in both `evaluation` and `closed_loop`; nothing here can make evidence fresh. |
 | 05 | Branch integration | **Re-scoped.** There are no branches to integrate (F1). The contracts are in one package on one branch; PR #26 is the only live lane. |
-| 06 | Operational closure | Partly. Deletion propagation, rollback, incident record and canary requirements are code with tests; retention expiry jobs, incident drills and deployment hooks remain REQUIRED. |
+| 06 | Operational closure | Mostly. Deletion propagation, rollback, incident record, canary requirements, the expiry job (`retention expire`) and the restore drill (`incident drill`) are code with tests (phase 6); scheduling the expiry job and running a real drill against real stores remain REQUIRED. |
 
 Additional open decisions (§35), status: the two audit candidates — **closed 09-05** (F2);
 Forge training command/ref/manifest — open, needs the runner; numeric SLOs — open; retention
@@ -290,3 +290,50 @@ Suite: 97 tests. What phase 5 does not change: a complete traceability graph ove
 proof is the same command run over the records of one real opted-in session after
 the operator decisions in §6 are made. `spec traceability` reports a node's own
 `synthetic` flag as incomplete for that reason.
+
+---
+
+## 11. Phase 6 (2026-09-11): gap 02 — feedback from every surface; gap 06 — expiry and drill as commands
+
+| Spec | Built | Evidence |
+|---|---|---|
+| §16 "Capture requirements", §35 gap 02 | `feedback.py` — one `record_feedback(store, run_id, signal, surface, edit_fraction, subject)` behind every surface: the signal must name a captured run (no traces → typed `blocked`; unknown run → invalid), is appended as a superseding record so the trace file stays append-only, and the reward is recomputed with `feedback:<signal>:<surface>` as its first evidence line | `test_record_feedback_is_one_contract_for_every_surface` |
+| §06 Slack row | `SlackReporter.feedback_from_event` — a reaction on, or a reply whose first word is a signal in, a run's thread binds to THAT run; event-id dedupe; conversation that merely mentions a signal is not feedback; nothing is recorded by the reporter itself | `test_slack_reactions_and_replies_bind_to_the_run_thread` |
+| §06 API row, §28 | `POST /api/feedback` — bearer required, 201 with the recomputed reward, 400 on a bad fraction or unknown run, 503 `blocked` when the API has no run store | `test_api_feedback_needs_a_principal_and_a_captured_run` (loopback HTTP) |
+| §12 single tool surface | `scout loop feedback --run-id --signal [--edit-fraction]` writes only under the plugin's declared root, exit 3 on invalid input | `apps/scout-cli/tests/test_loop_plugin.py::test_feedback_binds_to_a_captured_run` |
+| §17 retention, gap 06 | `retention expire` — deterministic, idempotent pass over a JSONL of records; legal holds and deletion requests as JSON lists; atomic rewrite (`--out` or in place) with a receipt beside the file; unknown data class is invalid input | `test_retention_expire_and_incident_drill_commands` |
+| §33 DR drill, gap 06 | `incident drill` — every checklist item must be proven; a missing item is a failed drill with exit 2 naming it | same test |
+
+Suite: 101 tests in `packages/dottie-loop`, 7 in the scout plugin. The gap-02 count that
+matters — real signals from real people — is still zero; what changed is that every surface
+now has a place to put them that the reward and the dataset pipeline already read.
+
+---
+
+## 12. Phase 7 (2026-09-11): contracts and runbooks that were still prose
+
+| Spec | Built | Evidence |
+|---|---|---|
+| §37A "Compatibility" (migrations) | `schema.migrate` — deterministic, produces new records and leaves the inputs untouched, refuses a changed source id or a target of another record type, stamps the target schema itself, and writes a migration manifest with before/after hashes and counts | `test_migration_is_deterministic_new_records_with_manifest` |
+| §21.1 runtime telemetry, failure handling | `training.TELEMETRY_FIELDS` + `validate_telemetry`; `stop_condition_for` maps a record to the exact hard-stop condition (NaN/inf loss, unreadable shard, sample-accounting mismatch, secret hit, drift beyond the manifest's shards, checkpoint corruption, evaluator unavailable); `HeartbeatMonitor` keeps heartbeats separate from verbose logs with a hang budget | `test_telemetry_maps_to_hard_stops_and_heartbeats_detect_hangs` |
+| §36 Runbook D | `incidents.PLAYBOOKS` — privacy deletion, credential exposure, prompt injection, provider rate block as ordered steps, required evidence and "never" rules; `open_from_playbook` opens an `Incident` at the playbook's severity; `incident playbook --kind` | `test_playbooks_are_ordered_data_and_open_incidents_at_their_severity` |
+| §36 Runbook D privacy, §37C DeletionReceipt, RT-14 | `Lineage.save/load/hold/exportable`; `privacy hold` (a deletion hold blocks export/training before the deletion completes; a legal hold blocks deletion) and `privacy delete` (tombstone → invalidate datasets → contaminate runs → block promotion; exit 2 with a `held` receipt under a legal hold); the receipt and the CLI output carry no deletion key, no trace id, no content | `test_privacy_hold_and_delete_over_a_persisted_lineage` |
+| §36 Runbook A cancellation | `Kernel.cancel(actor, reason, in_flight, external_effects_pending)` — stops new dispatch, marks pending external effects `unknown_until_checked`, appends a seven-field `cancelled` run event carrying actor and reason, retains evidence, implies no rollback | `test_cancellation_records_actor_reason_and_unknown_external_effects` |
+| §04 components, §34 current state | `components.COMPONENTS` as data; `inventory(root)` / `spec components --root` report presence from the tree — the check that would have caught finding F1 (four `BRANCH` rows on no remote) | `test_component_inventory_reports_the_tree_not_the_spec_column` |
+
+Suite: 107 tests. Still prose, deliberately: Runbook B/C narrative steps that are already
+the operator chain commands (§8), and every step that needs a real store, runner or person.
+
+---
+
+## 13. Phase 8 (2026-09-11): the canary is attributable, the release is provably deletable, reruns are comparable, listings page honestly
+
+| Spec | Built | Evidence |
+|---|---|---|
+| §25 canary, Runbook C 9–12, ML-13 | `canary.CanaryRun` — refuses an incomplete plan or an unnamed artifact pair; every event must carry `artifact_id` ∈ {incumbent, challenger} plus event time, outcome and latency; safety floor breaches before the primary delta does; `decision_packet` only at the predetermined stop (or a manual stop with actor + reason), stale events are `stale_evidence`, `extend()` is policy-denied; the packet feeds `promotion_decision` unchanged | `test_canary_is_attributable_limited_and_stops_where_planned` |
+| Runbook B 16, RT-14 | `dataset.canary_deletion_test` probes deletion propagation on a synthetic canary record against a deep copy of the lineage (tombstone, dataset invalidated, promotion blocked) and leaves the real lineage untouched; `mark_release_usable` requires an approved manifest AND a passing proof for that dataset | `test_release_is_usable_only_after_a_passing_deletion_canary` |
+| §21 reproducibility, ML-07 | `training.reproducibility_check` — same config digest and seed, every shared metric within tolerance, metrics present on one side only reported, no shared metric is no evidence | `test_reproducibility_needs_identical_inputs_and_compatible_metrics` |
+| §37D "Pagination tokens are opaque and bound to query/scope" | `GoalStore.list_goals(subject)`; `GET /api/goals?limit&cursor` with HMAC-signed opaque cursors: another principal's cursor is 403, a tampered cursor is 400, limits are bounded | `test_goal_listing_uses_opaque_cursors_bound_to_scope` (loopback HTTP) |
+
+Suite: 111 tests. ML-13 and ML-07 are now mechanically testable; their real evidence is
+a canary over production traffic and an independent rerun on the registered runner.

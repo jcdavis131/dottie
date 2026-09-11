@@ -419,6 +419,13 @@ class GoalStore:
             )
         return {"goal_id": env.goal_id, "status": "received", "replay": False}, True
 
+    def list_goals(self, *, subject: str | None = None) -> list[dict[str, Any]]:
+        """Envelopes in intake order; with ``subject``, only that principal's goals."""
+        goals = self._read(self.goals_path)
+        if subject is not None:
+            goals = [g for g in goals if g.get("actor", {}).get("subject_id") == subject]
+        return goals
+
     def get(self, goal_id: str) -> dict[str, Any] | None:
         for g in self._read(self.goals_path):
             if g["goal_id"] == goal_id:

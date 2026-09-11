@@ -37,6 +37,7 @@ app = make_plugin_app(
         "scout --json loop status",
         'scout --json loop goal --intent "summarize the README"',
         "scout --json loop run --spec run.json --root .",
+        "scout --json loop feedback --run-id run_… --signal accept",
         "scout --json loop evaluate --sources metrics.json",
         "scout --json loop forge-runners",
         "scout --json loop bench",
@@ -124,6 +125,22 @@ def run_cmd(
     if capture:
         argv.append("--capture")
     emit(ok(_run(loop_cli, argv, "loop run"), command="loop run"), command="loop run")
+
+
+@app.command("feedback")
+def feedback_cmd(
+    run_id: str = typer.Option(..., "--run-id", help="run_id or trace_id of a captured run (`loop run --capture`)"),
+    signal: str = typer.Option(..., "--signal", help="accept | reject | edit | apply | dismiss"),
+    edit_fraction: float | None = typer.Option(None, "--edit-fraction", help="for edit: fraction of the output changed, 0..1"),
+    subject: str = typer.Option("scout-operator", "--subject"),
+) -> None:
+    """Gap 02: real feedback from this surface, bound to the run it answers; the reward is recomputed."""
+    loop_cli = _dottie_loop()
+    store = _store("runs")
+    argv = ["feedback", "record", "--store", str(store), "--run-id", run_id, "--signal", signal, "--subject", subject]
+    if edit_fraction is not None:
+        argv += ["--edit-fraction", str(edit_fraction)]
+    emit(ok(_run(loop_cli, argv, "loop feedback"), command="loop feedback", example="scout --json loop feedback --run-id run_… --signal accept"), command="loop feedback")
 
 
 @app.command("evaluate")

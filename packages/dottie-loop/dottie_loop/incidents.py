@@ -25,6 +25,77 @@ LIFECYCLE = ("detect", "contain", "preserve", "communicate", "restore", "investi
 RECOVERY_ORDER = ("identity_and_policy", "immutable_artifacts", "goal_run_state", "tool_registry", "routing_planning", "execution", "telemetry", "training")
 ATTRIBUTION = ("recipe_problem", "knowledge_gap", "ambiguity")
 
+#: §36 Runbook D as data: ordered steps and the evidence each playbook must leave behind
+PLAYBOOKS: dict[str, dict[str, Any]] = {
+    "privacy_deletion": {
+        "severity": "SEV-2",
+        "steps": (
+            "authenticate the request and resolve the subject's deletion key",
+            "place a hold that blocks new export or training use",
+            "enumerate raw traces, redacted traces, curated records, manifests, training runs, checkpoints and indexes by lineage",
+            "tombstone or delete under retention policy; remove from retrieval indexes",
+            "invalidate datasets and descendants; block promotion where removal cannot be proven",
+            "rebuild affected datasets or models when policy requires",
+            "issue a receipt confirming scope and completion without restating private content",
+        ),
+        "evidence": ("deletion-receipt",),
+        "never": ("repeat deleted private content in the receipt",),
+    },
+    "credential_exposure": {
+        "severity": "SEV-0",
+        "steps": (
+            "disable the affected connector or service and revoke the credential",
+            "stop jobs that may hold the value in memory",
+            "search redacted audit metadata for exposure paths without copying the secret",
+            "rotate through the secure provider flow",
+            "purge contaminated traces/artifacts and invalidate derived datasets",
+            "add a regression test using a safe sentinel and review adjacent credential paths",
+        ),
+        "evidence": ("incident-record", "regression test with a synthetic sentinel"),
+        "never": ("paste the replacement into chat or logs",),
+    },
+    "prompt_injection": {
+        "severity": "SEV-1",
+        "steps": (
+            "preserve the untrusted content as quarantined evidence",
+            "stop unauthorized action",
+            "compare intended task authority to attempted expansion",
+            "inspect any tool calls and verify no effect occurred",
+            "add or strengthen authority labeling, parser boundaries, policy tests and refusal telemetry",
+        ),
+        "evidence": ("incident-record", "quarantined content reference"),
+        "never": ("train on the malicious instruction as a successful demonstration",),
+    },
+    "provider_rate_block": {
+        "severity": "SEV-2",
+        "steps": (
+            "treat the 429 / automation block as a hard stop for that provider in the task",
+            "terminate retrying processes",
+            "pause recurring work created for it",
+            "record the exact consequence",
+            "offer a different channel only if the user authorizes it",
+        ),
+        "evidence": ("incident-record", "request counter showing zero calls after the block"),
+        "never": ("retry the blocked provider inside the task",),
+    },
+}
+
+
+def playbook(kind: str) -> dict[str, Any]:
+    """Runbook D by name; unknown kinds are invalid, not improvised."""
+    if kind not in PLAYBOOKS:
+        raise InvalidInputError(f"unknown playbook {kind!r}; known: {sorted(PLAYBOOKS)}", field="kind")
+    pb = PLAYBOOKS[kind]
+    return {"kind": kind, "severity": pb["severity"], "steps": [{"n": i + 1, "step": st} for i, st in enumerate(pb["steps"])], "evidence": list(pb["evidence"]), "never": list(pb["never"]), "attribution_test": list(ATTRIBUTION)}
+
+
+def open_from_playbook(kind: str, *, source: str, observed_impact: str, affected: dict[str, list[str]] | None = None) -> Incident:
+    """An incident opened from a playbook inherits its severity; containment must follow the steps."""
+    pb = playbook(kind)
+    inc = Incident(severity=pb["severity"], source=source, observed_impact=observed_impact, affected=affected or {"goals": [], "releases": [], "data": []})
+    inc.playbook = kind  # type: ignore[attr-defined]
+    return inc
+
 
 @dataclass
 class Incident:

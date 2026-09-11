@@ -8,8 +8,13 @@ emit exactly one active version per record type. A record's ``schema`` field is
 from __future__ import annotations
 
 import re
+from typing import TYPE_CHECKING, Any
 
 from dottie_loop.errors import InvalidInputError
+from dottie_loop.hashing import digest, new_id, now_iso
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 #: The one active version per record type (writers emit only these).
 ACTIVE_SCHEMAS: dict[str, str] = {
@@ -75,3 +80,42 @@ def active(record_type: str) -> str:
         return ACTIVE_SCHEMAS[record_type]
     except KeyError as e:
         raise InvalidInputError(f"unknown record type {record_type!r}", field="schema") from e
+
+
+def migrate(records: list[dict[str, Any]], *, record_type: str, target: str, migrator: Callable[[dict[str, Any]], dict[str, Any]], id_field: str) -> dict[str, Any]:
+    """§37A migrations: deterministic, NEW records (inputs untouched), source ids preserved,
+    plus a migration manifest with before/after hashes and counts.
+
+    ``migrator`` maps one old record to its new shape (without ``schema``); the target
+    schema is stamped here so a migrator cannot emit a version that is not the target.
+    """
+    t_name, *_ = parse_schema(target)
+    a_name, *_ = parse_schema(active(record_type))
+    if t_name != a_name:
+        raise InvalidInputError(f"target {target!r} is not a {a_name} schema", field="target")
+    out: list[dict[str, Any]] = []
+    before: list[str] = []
+    after: list[str] = []
+    for rec in records:
+        if id_field not in rec:
+            raise InvalidInputError(f"record lacks {id_field!r}; ids must be preserved", field=id_field)
+        new = migrator(dict(rec))
+        if new.get(id_field) != rec[id_field]:
+            raise InvalidInputError(f"migration changed {id_field!r} for {rec[id_field]!r}", field=id_field)
+        new["schema"] = target
+        new["migrated_from"] = rec.get("schema")
+        out.append(new)
+        before.append(digest(rec))
+        after.append(digest(new))
+    manifest = {
+        "migration_id": new_id("mig_"),
+        "record_type": record_type,
+        "from_schemas": sorted({str(r.get("schema")) for r in records}),
+        "to_schema": target,
+        "counts": {"in": len(records), "out": len(out)},
+        "before_hash": digest(before),
+        "after_hash": digest(after),
+        "deterministic": True,
+        "at": now_iso(),
+    }
+    return {"records": out, "manifest": manifest}
