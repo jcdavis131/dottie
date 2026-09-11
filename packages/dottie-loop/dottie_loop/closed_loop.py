@@ -16,7 +16,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Iterator
+from collections.abc import Iterator
+from typing import Any
 
 from dottie_loop.errors import BlockedError
 from dottie_loop.hashing import age_seconds, new_id, now_iso, parse_iso
