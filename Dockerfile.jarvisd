@@ -45,7 +45,7 @@ ENV PYTHONUNBUFFERED=1 \
 #   sqlite3 /data/jarvis.db ".backup /data/backup/jarvis-$(date +%F).db"
 # ca-certificates for the optional Anthropic brain and outbound MCP.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        sqlite3 ca-certificates \
+        sqlite3 ca-certificates git \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -67,6 +67,7 @@ COPY apps/scout-cli/pyproject.toml              apps/scout-cli/pyproject.toml
 COPY packages/ava-skills/pyproject.toml         packages/ava-skills/pyproject.toml
 COPY packages/ava-open-harness/pyproject.toml   packages/ava-open-harness/pyproject.toml
 COPY packages/personal-graphify/pyproject.toml  packages/personal-graphify/pyproject.toml
+COPY packages/dottie-loop/pyproject.toml       packages/dottie-loop/pyproject.toml
 
 # Extras for the jarvisd package. Spec §6: the Anthropic brain is opt-in via
 # `--build-arg JARVISD_SYNC_ARGS="--extra brain"`; the canonical image is local-only.
