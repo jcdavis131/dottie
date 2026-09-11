@@ -18,22 +18,44 @@ before writing "current" anywhere in this file.
 
 ## 📌 Session continuation — 2026-09-11 (supersedes every block below)
 
-**Re-stamped 2026-09-11 at HEAD `b0fd59f`** (PR #27 merged: the review + `packages/dottie-loop`).
-Phase 2 on `claude/dottie-end-to-end-review-z2baj5` adds the tool plane, the `loop run`
-driver, the `scout loop` plugin, `scripts/forge_runner.py`, surfaces, memory,
-civilization, observability, incidents and retention — see review doc §7.
+**Re-stamped 2026-09-11 at HEAD `acffb8d`** (PR #31 merged: dottie-loop phases 6–8; #27
+`b0fd59f`, #29 `fde7a59` and #30 `51c6034` merged earlier the same day). Phase 9 is on
+`claude/dottie-end-to-end-review-z2baj5` on top of it — see review doc §14.
 
 **Measured earlier the same day at `002226b`,** `main` (the 2026-09-05 block below
 records `23870d7`, which was squash-merged in #23 and is therefore NOT an
-ancestor of `main` — `check_handoff_fresh.py --check` has been red on every
+ancestor of `main` — `check_handoff_fresh.py --check` had been red on every
 push since 47181a2 for that reason alone, not for drift).
 
-**What landed on `claude/dottie-end-to-end-review-z2baj5`:** the Dottie Full
-Ecosystem Specification v1.0 (PDF, baseline 2026-09-10) was reviewed against
-this tree and then built as `packages/dottie-loop` — the spec's contracts and
-gates as stdlib-only, fail-closed code with 52 tests named after the spec's
-acceptance IDs (RT-01…RT-17, ML-01…ML-17). The review, the gap register and the
-per-section traceability are in `docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md`.
+**What landed today:** the Dottie Full Ecosystem Specification v1.0 (PDF, baseline
+2026-09-10) was reviewed against this tree and then built as `packages/dottie-loop`
+— the spec's contracts and gates as stdlib-only, fail-closed code, in six phases:
+
+1. (#27) intake, approvals, plan, execution kernel, timeline, capture, reward, dataset
+   pipeline, training preflight, evaluation gates, closed loop, forge queue, bench, CLI —
+   tests named after RT-01…RT-17 and ML-01…ML-17.
+2. (#29) tool plane, `loop run` driver, `scout loop` plugin, `scripts/forge_runner.py`,
+   Slack reporter + web approval board, memory, civilization, observability, incidents,
+   retention.
+3. (#29) the operator chain as CLI commands (feedback → dataset → preflight → gates →
+   approval → promote → release → rollback), §08 router, §13 skill contracts.
+4. (#30) §29 security test matrix + `safety.py`, §21/§19 training stages as data
+   (`curriculum.py`), §31 deployment sequence (`deploy.py`), §26 `LeaseFile`.
+5. (#30) §10 RLM/REPL (`rlm.py`), `SessionRecorder`, calibration, fail-closed
+   `ApiServer`, §39 traceability graph + `spec traceability`.
+6. (#31) gap 02: one feedback recorder behind CLI / API / Slack / `scout loop
+   feedback`; gap 06: `retention expire` and `incident drill` commands.
+7. (#31) §37A migrations, §21.1 telemetry + heartbeats, Runbook D playbooks and
+   `privacy hold|delete`, Runbook A cancellation, `spec components`.
+8. (#31) ML-13 attributable canary with a predetermined stop, Runbook B 16 deletion
+   canary before a release is usable, ML-07 reproducibility check, opaque scoped cursors.
+9. (branch) §38 `spec acceptance` and §39 `spec done` — the checklist that says, today,
+   21 items mechanics-proven and 9 operator-pending.
+
+The review, the gap register and the per-section traceability are in
+`docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md` (§1–§14). Suite: 116 tests in
+`packages/dottie-loop` (hard ruff + pytest gates in ci.yml), 7 in the plugin.
+`python -m dottie_loop spec done` is the one command that states what is left.
 
 **Three findings a reader must not miss:**
 
@@ -43,17 +65,21 @@ per-section traceability are in `docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md`.
    (`docs/TRACE_CAPTURE_SPEC.md`, `docs/CLOSED_LOOP_SPEC.md`, `bench/report.md`)
    exist on NO remote branch. They lived only on a local machine. `dottie-loop`
    re-implements those contracts from the spec text; nothing was recovered.
-2. `main`'s last commit `002226b` left three ci.yml gates red: gate_audit (three
+2. `main`'s commit `002226b` had left three ci.yml gates red: gate_audit (three
    unjudged fail-open candidates in `apps/dottie-harness-api/lib/production_routing.py`),
    documented counts (ruff debt 1022 -> 983) and HANDOFF freshness (above). All
-   three are fixed on this branch with written judgments.
+   three were fixed in #27 with written judgments.
 3. The spec's "two human judgments remain" (anydoc.py:512, analytics.py:201) were
    already adjudicated in `scripts/gate_audit_baseline.json` on 2026-09-05. The
    spec is stale there; the baseline is the record.
 
-**Still blocked, operator-only:** the Alienware Forge runner (DAG node
-`forge-runner-register`); `python -m dottie_loop forge runners` reports it as a
-typed `blocked` state, which is the spec-required behaviour until it exists.
+**Still blocked, operator-only (review doc §6, Appendix B order):** the Alienware Forge
+runner (DAG node `forge-runner-register`; copy `scripts/forge_runner.py` to the box and
+run it `--once`) — `python -m dottie_loop forge runners` reports it as a typed `blocked`
+state until then; turning a feedback surface on for real people (gap 02 mechanics exist,
+the count of real signals is zero); 500 consented traces; a fresh, non-synthetic baseline
+`EvalBundle`. The Vercel `dottie` project fails on a leftover dashboard Output Directory
+override (`apps/arxiviq/out`); clearing it in project settings is the only fix.
 
 ---
 

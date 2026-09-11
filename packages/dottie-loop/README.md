@@ -51,6 +51,18 @@ The review that motivated it, with the spec-versus-repository findings, is
 | §24 | `evaluation.calibration` | expected calibration error + abstention rate from `(confidence, correct)` pairs; empty input is `unmeasured`, never a plausible zero |
 | §06 API, §28, RT-17 | `surfaces.ApiServer` | fail-closed JSON API: bearer principals, `Idempotency-Key` required (202 created / 200 replay / 409 conflict), `/api/learned` is 503 until a learned artifact is loaded, routing rejections are typed 400/403 AND quarantined + alerted |
 | §39 | `traceability.py` | the final acceptance artifact: session → trace → reward/QA → dataset → train run → checkpoint → eval → canary → approval → release → served verification → monitoring → rollback target as one graph; `validate_graph` names every unresolved arrow and every consequential edge missing its human authority; `spec traceability --dir` exits 2 until it is complete |
+| §16, gap 02 | `feedback.py` | ONE recorder behind the CLI (`feedback record`), the API (`POST /api/feedback`), Slack (`SlackReporter.feedback_from_event`: reactions and first-word thread replies on a run's thread) and `scout loop feedback`: a signal is bound to the captured run it answers, appended as a superseding record, and the reward is recomputed with the surface as evidence |
+| §17, §33, gap 06 | `cli.py` `retention expire`, `incident drill` | the expiry job (holds and deletion requests honoured, atomic rewrite, receipt beside the file, idempotent) and the restore-drill checklist (exit 2 unless every item is proven) as operator commands |
+| §37A compatibility | `schema.migrate` | deterministic migrations that produce NEW records, preserve source ids, stamp the target schema themselves and write a migration manifest with before/after hashes and counts |
+| §21.1 telemetry | `training.validate_telemetry`, `stop_condition_for`, `HeartbeatMonitor` | the fifteen telemetry fields; each hard-stop condition derived from a telemetry record; heartbeats as a separate cheap stream with a hang budget |
+| §36 Runbook D, §37C | `incidents.PLAYBOOKS` / `playbook` / `open_from_playbook`; `dataset.Lineage.hold/save/load` + `privacy hold\|delete` | privacy deletion, credential exposure, prompt injection and provider block as ordered steps with required evidence and "never" rules; a deletion hold blocks export before deletion, a legal hold blocks deletion (exit 2, receipt `held`); receipts never restate private content or trace ids |
+| §36 Runbook A | `execution.Kernel.cancel` | cancellation stops dispatch, marks pending external effects `unknown_until_checked`, appends actor + reason as a run event, deletes nothing and implies no rollback |
+| §04, §34 | `components.py` + `spec components --root` | the component table as data; presence reported from the tree, never from the spec's status column |
+| §25, Runbook C 9–12, ML-13 | `canary.py` | a canary whose plan must be complete, whose every event names the incumbent or the challenger (else rejected), whose safety threshold is stricter than the primary metric, whose decision packet exists only at the predetermined stop or an explicit manual stop, that cannot be extended to chase a win, and whose stale events never make a packet; the packet is what `promotion_decision` consumes |
+| Runbook B 16, RT-14 | `dataset.canary_deletion_test`, `mark_release_usable` | deletion propagation proven on a non-production canary record (on a copy of the lineage) before an approved manifest can be marked usable |
+| ML-07 | `training.reproducibility_check` | identical inputs = same config digest and seed; compatible = every shared metric within tolerance; a metric on one side only is a finding |
+| §37D pagination | `ApiState.list_goals`, `GET /api/goals` | opaque HMAC cursors bound to the caller's scope: another principal's cursor is 403, a tampered one is 400 |
+| §38, §39 | `acceptance.py` + `spec acceptance` / `spec done` | RT-01…17 and ML-01…17 as data with the tests that name them (ranges like `ml09_to_ml13` parsed); the thirty §39 done items with kind `mechanics` or `operator`: a test proves mechanics only, an operator item needs an explicit `{proven, ref}` record, and `spec done` exits 2 until every item is proven — nothing in the package can make it exit 0 alone |
 | §27 | `scripts/forge_runner.py` | the one file for the GPU box: advertise → poll → claim → checkout → execute → push results over a git conveyor |
 
 ## CLI
@@ -76,6 +88,15 @@ uv run python -m dottie_loop release rollback --release release.json --served-sh
 # the §39 final proof: every record the chain wrote, in one directory, as one graph
 uv run python -m dottie_loop spec traceability --dir /tmp/chain --out graph.json   # exits 2 naming each arrow that does not resolve
 uv run python -m dottie_loop spec schemas
+uv run python -m dottie_loop retention expire --records records.jsonl --holds holds.json --deletions deletions.json
+uv run python -m dottie_loop incident drill --results drill.json                     # exits 2 naming the unproven items
+uv run scout --json loop feedback --run-id run_… --signal accept                      # the same recorder, from the tool surface
+uv run python -m dottie_loop privacy hold --lineage lineage.json --key <deletion key> --operator cam
+uv run python -m dottie_loop privacy delete --lineage lineage.json --key <deletion key> --operator cam --out receipt.json
+uv run python -m dottie_loop incident playbook --kind credential_exposure
+uv run python -m dottie_loop spec components --root .
+uv run python -m dottie_loop spec acceptance                                         # exit 2 if any RT/ML id lacks a named test
+uv run python -m dottie_loop spec done --operator-evidence evidence.json --out dod.json  # exit 2 until the operator items are proven
 ```
 
 Exit codes: `0` ok, `1` error, `2` blocked, `3` invalid input. stdout is one JSON

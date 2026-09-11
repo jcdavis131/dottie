@@ -545,6 +545,58 @@
         "dottie-loop-security-training"
       ],
       "evidence": "packages/dottie-loop tests/test_phase5_rlm_api_traceability.py (8); docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md §10"
+    },
+    {
+      "id": "dottie-loop-feedback-surfaces",
+      "title": "Spec phase 6: gap 02 feedback recorder behind CLI/API/Slack/scout loop; gap 06 `retention expire` + `incident drill` commands",
+      "repo": "dottie",
+      "kind": "infra",
+      "status": "done",
+      "priority": 2,
+      "size": "S",
+      "depends_on": [
+        "dottie-loop-final-proof"
+      ],
+      "evidence": "packages/dottie-loop tests/test_phase6_feedback_surfaces.py (4) + apps/scout-cli tests/test_loop_plugin.py; docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md §11"
+    },
+    {
+      "id": "dottie-loop-runbooks-as-code",
+      "title": "Spec phase 7: §37A migrations, §21.1 telemetry + heartbeats, Runbook D playbooks + `privacy hold|delete`, Runbook A cancellation, §04/§34 component inventory",
+      "repo": "dottie",
+      "kind": "infra",
+      "status": "done",
+      "priority": 2,
+      "size": "S",
+      "depends_on": [
+        "dottie-loop-feedback-surfaces"
+      ],
+      "evidence": "packages/dottie-loop tests/test_phase7_contracts_runbooks.py (6); docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md §12"
+    },
+    {
+      "id": "dottie-loop-canary-and-proofs",
+      "title": "Spec phase 8: ML-13 attributable canary with a predetermined stop, Runbook B 16 deletion canary before usable, ML-07 reproducibility check, §37D opaque scoped cursors",
+      "repo": "dottie",
+      "kind": "infra",
+      "status": "done",
+      "priority": 2,
+      "size": "S",
+      "depends_on": [
+        "dottie-loop-runbooks-as-code"
+      ],
+      "evidence": "packages/dottie-loop tests/test_phase8_canary_repro_pagination.py (4); docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md §13"
+    },
+    {
+      "id": "dottie-loop-definition-of-done",
+      "title": "Spec phase 9: §38 acceptance coverage (`spec acceptance`) and §39 definition of done (`spec done`) as checkable data; exit 2 until operator evidence is supplied",
+      "repo": "dottie",
+      "kind": "infra",
+      "status": "done",
+      "priority": 2,
+      "size": "S",
+      "depends_on": [
+        "dottie-loop-canary-and-proofs"
+      ],
+      "evidence": "packages/dottie-loop tests/test_phase9_acceptance_and_done.py (5); docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md §14"
     }
   ]
 }

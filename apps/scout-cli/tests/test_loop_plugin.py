@@ -66,6 +66,20 @@ def test_run_executes_one_goal_end_to_end(tmp_path: Path):
     assert code == 1 and "spec not found" in payload["error"]
 
 
+def test_feedback_binds_to_a_captured_run(tmp_path: Path):
+    (tmp_path / "hello.txt").write_text("hello")
+    spec = tmp_path / "run.json"
+    spec.write_text(json.dumps({"intent_text": "check the file for feedback", "idempotency_key": "run-fb", "capture": True, "steps": [{"id": "f", "kind": "file", "path": "hello.txt", "expect_substring": "hello"}]}))
+    code, payload = _invoke("run", "--spec", str(spec), "--root", str(tmp_path), "--capture")
+    assert code == 0 and payload["data"]["trace_id"]
+    code, fb = _invoke("feedback", "--run-id", payload["data"]["run_id"], "--signal", "accept")
+    assert code == 0 and fb["data"]["feedback"]["surface"] == "cli" and fb["data"]["reward"]["components"]["accept"] == 1.0
+    code, bad = _invoke("feedback", "--run-id", payload["data"]["run_id"], "--signal", "love_it")
+    assert code == 3 and bad["error"]["code"] == "invalid_input"
+    code, missing = _invoke("feedback", "--run-id", "run_nope", "--signal", "accept")
+    assert code == 3 and "no trace" in missing["error"]["message"]
+
+
 def test_evaluate_blocked_on_stale_metrics_exits_2(tmp_path: Path):
     stale = (datetime.now(UTC) - timedelta(days=21)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     src = tmp_path / "m.json"

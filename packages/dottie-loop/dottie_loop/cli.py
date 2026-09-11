@@ -30,7 +30,10 @@ Commands::
     release record ... --served-sha H --out release.json
     release rollback --release release.json --served-sha H --reason R --out rollback.json
     bench smoke
-    spec status | schemas | traceability --dir DIR
+    retention expire --records R.jsonl [--holds H.json] [--deletions D.json] [--out R2.jsonl]
+    incident drill --results r.json | playbook --kind K
+    privacy hold|delete --lineage L.json --key K --operator O
+    spec status | schemas | traceability --dir DIR | components --root . | acceptance | done
 """
 
 from __future__ import annotations
@@ -185,36 +188,47 @@ def cmd_bench_smoke(a: argparse.Namespace) -> dict[str, Any]:
 
 
 def _load_traces(path: Path) -> list[dict[str, Any]]:
-    out = []
-    for line in Path(path).read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            out.append(json.loads(line))
-    return out
+    from dottie_loop.feedback import load_traces
+
+    return load_traces(path)
 
 
 def cmd_feedback_record(a: argparse.Namespace) -> dict[str, Any]:
     """Gap 02 (real feedback UX) for the CLI surface: attach a signal to a captured run."""
-    from dottie_loop.capture import FEEDBACK_SIGNALS
-    from dottie_loop.reward import RewardInputs, compute_reward
+    from dottie_loop.feedback import record_feedback
 
-    if a.signal not in FEEDBACK_SIGNALS:
-        raise InvalidInputError(f"signal must be one of {sorted(FEEDBACK_SIGNALS)}", field="signal")
-    traces_path = Path(a.store) / "traces" / "pair.jsonl"
-    if not traces_path.exists():
-        raise BlockedError("no captured traces for this store (capture is opt-in)", "capture")
-    traces = _load_traces(traces_path)
-    match = [t for t in traces if t.get("session_id") == a.run_id or t.get("trace_id") == a.run_id]
-    if not match:
-        raise InvalidInputError(f"no trace for run {a.run_id}", field="run_id")
-    rec = match[-1]
-    signal = {"signal": a.signal, "edit_fraction": a.edit_fraction, "at": now_iso_str()}
-    rec.setdefault("feedback", []).append(signal)
-    # append a superseding record: the trace file stays append-only
-    with traces_path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps({**rec, "supersedes_trace": rec.get("trace_id")}, sort_keys=True) + "\n")
-    reward = compute_reward(RewardInputs(trace_id=rec["trace_id"], task_ok=rec.get("outcome", {}).get("task_ok"), feedback=a.signal, edit_fraction=a.edit_fraction, evidence=[f"feedback:{a.signal}"]))
-    (Path(a.store) / "traces" / f"reward-{rec['trace_id']}.json").write_text(json.dumps(reward, indent=1, sort_keys=True), encoding="utf-8")
-    return {"trace_id": rec["trace_id"], "feedback": signal, "reward": reward}
+    return record_feedback(Path(a.store), run_id=a.run_id, signal=a.signal, surface="cli", edit_fraction=a.edit_fraction, subject=a.subject)
+
+
+def cmd_retention_expire(a: argparse.Namespace) -> dict[str, Any]:
+    """§17 expiry job: deterministic, idempotent, observable; holds and deletion requests honoured."""
+    from dottie_loop.retention import expire
+
+    records = _load_traces(Path(a.records))
+    holds = set(json.loads(Path(a.holds).read_text(encoding="utf-8"))) if a.holds else set()
+    deletions = set(json.loads(Path(a.deletions).read_text(encoding="utf-8"))) if a.deletions else set()
+    receipt = expire(records, legal_holds=holds, deletion_requests=deletions)
+    out = Path(a.out) if a.out else Path(a.records)
+    tmp = out.with_suffix(out.suffix + ".tmp")
+    tmp.write_text("".join(json.dumps(r, sort_keys=True) + "\n" for r in records), encoding="utf-8")
+    tmp.replace(out)
+    Path(str(out) + ".receipt.json").write_text(json.dumps(receipt, indent=1, sort_keys=True), encoding="utf-8")
+    return {"receipt": receipt, "out": str(out)}
+
+
+def cmd_incident_drill(a: argparse.Namespace) -> dict[str, Any]:
+    """§33 restore drill: every item must be proven; a missing item is a failed drill (exit 2)."""
+    from dottie_loop.incidents import dr_drill_checklist
+
+    results = json.loads(Path(a.results).read_text(encoding="utf-8"))
+    if not isinstance(results, dict):
+        raise InvalidInputError("results must be an object of item -> bool", field="results")
+    verdict = dr_drill_checklist(results)
+    if a.out:
+        Path(a.out).write_text(json.dumps(verdict, indent=1, sort_keys=True), encoding="utf-8")
+    if not verdict["ok"]:
+        raise BlockedError("restore drill failed: " + ", ".join(verdict["failed"]), "dr_drill", verdict=verdict)
+    return verdict
 
 
 def cmd_dataset_release(a: argparse.Namespace) -> dict[str, Any]:
@@ -343,6 +357,64 @@ def cmd_spec_traceability(a: argparse.Namespace) -> dict[str, Any]:
     return {"verdict": verdict, "nodes": sorted(graph["nodes"])}
 
 
+def cmd_spec_components(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.components import inventory
+
+    return inventory(Path(a.root))
+
+
+def cmd_privacy_hold(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.dataset import Lineage
+
+    ln = Lineage.load(Path(a.lineage))
+    rec = ln.hold(a.key, kind=a.kind, by=a.operator)
+    ln.save(Path(a.lineage))
+    return rec
+
+
+def cmd_privacy_delete(a: argparse.Namespace) -> dict[str, Any]:
+    """Runbook D privacy deletion over a persisted lineage; the receipt never restates private content."""
+    from dottie_loop.dataset import Lineage
+
+    ln = Lineage.load(Path(a.lineage))
+    receipt = ln.delete(a.key, operator=a.operator)
+    ln.save(Path(a.lineage))
+    if a.out:
+        Path(a.out).write_text(json.dumps(receipt, indent=1, sort_keys=True), encoding="utf-8")
+    if receipt["status"] != "complete":
+        raise BlockedError("deletion not completed: " + "; ".join(receipt.get("exceptions_under_hold", [])), "legal_hold", receipt=receipt)
+    return receipt
+
+
+def cmd_incident_playbook(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.incidents import playbook
+
+    return playbook(a.kind)
+
+
+def cmd_spec_acceptance(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.acceptance import coverage
+
+    cov = coverage(Path(a.tests))
+    if cov["missing"]:
+        raise BlockedError("acceptance IDs without a named test: " + ", ".join(cov["missing"]), "tests", missing=cov["missing"])
+    return cov
+
+
+def cmd_spec_done(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.acceptance import definition_of_done
+
+    ev = json.loads(Path(a.operator_evidence).read_text(encoding="utf-8")) if a.operator_evidence else None
+    if ev is not None and not isinstance(ev, dict):
+        raise InvalidInputError("operator evidence must be an object of D-id -> {proven, ref}", field="operator_evidence")
+    dod = definition_of_done(Path(a.tests), ev)
+    if a.out:
+        Path(a.out).write_text(json.dumps(dod, indent=1, sort_keys=True), encoding="utf-8")
+    if not dod["complete"]:
+        raise BlockedError(f"definition of done not met: {len(dod['pending'])} item(s) pending: " + ", ".join(dod["pending"]), "operator_evidence", counts=dod["counts"], pending=dod["pending"])
+    return dod
+
+
 def cmd_spec_status(_a: argparse.Namespace) -> dict[str, Any]:
     return {
         "package": "dottie_loop",
@@ -429,6 +501,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--run-id", required=True)
     s.add_argument("--signal", required=True)
     s.add_argument("--edit-fraction", type=float)
+    s.add_argument("--subject", help="who gave the feedback (hashed by the caller if it is an identity)")
     s.set_defaults(fn=cmd_feedback_record)
 
     ds = sub.add_parser("dataset").add_subparsers(dest="sub", required=True)
@@ -511,6 +584,37 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--out", required=True)
     s.set_defaults(fn=cmd_release_rollback)
 
+    rt = sub.add_parser("retention").add_subparsers(dest="sub", required=True)
+    s = rt.add_parser("expire", help="§17 expiry job over a JSONL of {record_id, data_class, created_at, deletion_key?}")
+    s.add_argument("--records", required=True)
+    s.add_argument("--holds", help="JSON list of legal-hold record ids / deletion keys")
+    s.add_argument("--deletions", help="JSON list of deletion-request keys")
+    s.add_argument("--out", help="rewrite target (default: in place, atomically); a .receipt.json is written beside it")
+    s.set_defaults(fn=cmd_retention_expire)
+
+    inc = sub.add_parser("incident").add_subparsers(dest="sub", required=True)
+    s = inc.add_parser("drill", help="§33 restore drill checklist; exits 2 unless every item is proven")
+    s.add_argument("--results", required=True, help="JSON object item -> bool")
+    s.add_argument("--out")
+    s.set_defaults(fn=cmd_incident_drill)
+    s = inc.add_parser("playbook", help="§36 Runbook D steps for privacy_deletion | credential_exposure | prompt_injection | provider_rate_block")
+    s.add_argument("--kind", required=True)
+    s.set_defaults(fn=cmd_incident_playbook)
+
+    pv = sub.add_parser("privacy").add_subparsers(dest="sub", required=True)
+    s = pv.add_parser("hold", help="place a deletion hold (blocks export/training) or a legal hold (blocks deletion) on a deletion key")
+    s.add_argument("--lineage", required=True, help="lineage JSON file (created if missing)")
+    s.add_argument("--key", required=True, help="the subject's deletion key")
+    s.add_argument("--kind", default="deletion", choices=["deletion", "legal"])
+    s.add_argument("--operator", required=True)
+    s.set_defaults(fn=cmd_privacy_hold)
+    s = pv.add_parser("delete", help="Runbook D: tombstone traces, invalidate datasets, contaminate runs; exit 2 under a legal hold")
+    s.add_argument("--lineage", required=True)
+    s.add_argument("--key", required=True)
+    s.add_argument("--operator", required=True)
+    s.add_argument("--out")
+    s.set_defaults(fn=cmd_privacy_delete)
+
     sp = sub.add_parser("spec").add_subparsers(dest="sub", required=True)
     s = sp.add_parser("status")
     s.set_defaults(fn=cmd_spec_status)
@@ -521,6 +625,17 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--out")
     s.add_argument("--no-rollback", action="store_true", help="do not require the rollback drill edge")
     s.set_defaults(fn=cmd_spec_traceability)
+    s = sp.add_parser("acceptance", help="§38: which RT/ML IDs have a named test; exit 2 if any is missing")
+    s.add_argument("--tests", default=str(Path(__file__).resolve().parent.parent / "tests"))
+    s.set_defaults(fn=cmd_spec_acceptance)
+    s = sp.add_parser("done", help="§39: the thirty done items; exit 2 until every operator item carries explicit evidence")
+    s.add_argument("--tests", default=str(Path(__file__).resolve().parent.parent / "tests"))
+    s.add_argument("--operator-evidence", help="JSON object D-id -> {proven: true, ref: '...'}")
+    s.add_argument("--out")
+    s.set_defaults(fn=cmd_spec_done)
+    s = sp.add_parser("components", help="§04/§34: which authoritative artifacts are actually in the tree")
+    s.add_argument("--root", default=".")
+    s.set_defaults(fn=cmd_spec_components)
     return p
 
 
