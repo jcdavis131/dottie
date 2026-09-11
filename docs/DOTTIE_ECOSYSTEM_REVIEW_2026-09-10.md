@@ -168,13 +168,10 @@ reviewer's identity as an argument so the policy can be set without a code chang
 - **No merge, release, deploy or promotion.** Spec "Frozen release rule". This is a draft PR.
 - **No recovery of the four lanes.** They are not on the remote; reconstructing "verified"
   code from prose would present synthetic work as recovered evidence.
-- **No memory / knowledge-graph layer (§15) and no agent-civilization tiers (§30).** Both
-  are architecture with existing partial homes (`acne`, `personal-graphify`, jarvisd claims);
-  adding a third store without an operator decision on which is authoritative would widen the
-  `dottie` name-collision problem, not narrow it.
-- **No Scout plugin wrapper yet.** `dottie_loop` is invoked as `python -m dottie_loop`. A
-  `scout loop …` plugin is a thin follow-up once the capability manifest for it is decided;
-  adding an unenforced manifest now would trip the declared-capability ratchet the right way.
+- ~~No memory / knowledge-graph layer (§15), no agent-civilization tiers (§30), no Scout plugin wrapper.~~
+  Built in phase 2 (below). The memory layer is a contract with an in-package JSONL backend;
+  which store is authoritative across `acne` / `personal-graphify` / jarvisd is still the
+  operator's call, and adopting `dottie_loop.memory` there is an adapter, not a migration.
 - **No edits to `apps/ava-factory/dottie/**`** (frozen, bind-mounted) or to `apps/dottie`.
 - **No wiring of `execute` to Ollama/Anthropic.** The kernel takes a callable; the model layer
   is optional by design (spec §02 "Determinism first").
@@ -212,3 +209,32 @@ uv run python scripts/dag_next.py --check
 uv run python -m dottie_loop spec status              # capability_claim: none
 uv run python -m dottie_loop forge runners --root /tmp/forge   # exit 2: blocked, forge_runner
 ```
+
+---
+
+## 7. Phase 2 (2026-09-11, after PR #27 merged as `b0fd59f`): the rest of the spec surface
+
+| Spec | Built | Evidence |
+|---|---|---|
+| §12 tool plane | `dottie_loop/tools.py` — manifest minimum, result envelope, tool resolution steps 1–6, secrets by brokered reference, redacted audit, dry-run, provider-scope hard stop, "a plugin cannot broaden its own manifest" | `test_tool_plane_policy_invariants` pins every §12 policy invariant |
+| §01/§36 Runbook A | `dottie_loop/driver.py` + `python -m dottie_loop loop run` — one goal from intake through plan, kernel, verification, checkpoints, and (only with consent AND the switch) a redacted trace and reward | driver tests: completed / failed / blocked (approval, path escape) / rejected / replay |
+| §12 single tool surface | `apps/scout-cli/bigbang/plugins/loop` — `scout --json loop status|goal|run|evaluate|forge-runners|bench`; fs writes gated by `enforce_or_raise` under one declared root; blocked = exit 2 | `apps/scout-cli/tests/test_loop_plugin.py`; soft-lint count unchanged at 763 |
+| §27 runner | `packages/dottie-loop/scripts/forge_runner.py` — the file the operator copies to the box: advertise, poll, claim, checkout immutable ref, hash-verify inputs, execute argv, push results; disk preflight; `--once` for the harmless first job | `test_forge_runner_once_completes_a_harmless_job` runs it against a real local bare-repo conveyor: job claimed, executed, `FORGE_METRIC` parsed, result + runner record pushed back |
+| §06 Slack (RT-16) | `SlackReporter` — event-id dedupe, one post per state change, one thread per run, hard line cap, mention ≠ authorization | `test_rt16_slack_reports_are_deduped_threaded_and_capped` |
+| §06 Web (§35 open decision) | `ApprovalBoard` — stdlib server, bearer subjects, CSRF token per subject, server-authoritative state, append-only decision history, approvals issued through the real `ApprovalStore` | `test_approval_board_is_server_authoritative` over loopback HTTP |
+| §15 (RT-11) | `MemoryStore` — evidence required, provenance classes with authority, hints below 0.4 are not actionable, corrections supersede + graph edge, retrieval order and contradiction exposure, people resolution asks once | `test_rt11_memory_provenance_confidence_contradiction` |
+| §30 | `civilization.py` — machines dedupe wakeups by incident key at zero tokens; briefs cannot allow spawning; reports must be verdict-first ≤ 10 lines and cannot expand scope; ladder; no self-promotion; token ledger | `test_civilization_machines_specialists_and_ladder` |
+| §32 | `observability.py` — correlation fields, no-orphan metric records, outcome SLOs excluding user cancellations, page-worthy classes + dedupe | `test_observability_no_orphan_metrics_and_alert_dedupe` |
+| §33 | `incidents.py` — ordered lifecycle, restore requires verification, close requires verified recurrence prevention, quarantine window blocks training eligibility, DR drill checklist | `test_incident_lifecycle_is_ordered_and_quarantines_window` |
+| §17 retention | `retention.py` — windows as data; deterministic, idempotent; legal holds win; deletion requests expedite | `test_retention_is_deterministic_idempotent_and_respects_holds` |
+
+Acceptance coverage after phase 2: RT-01…RT-17 all have a named test (RT-11 and RT-16 were
+the two gaps). ML-08's software half (a runner that advertises, claims and completes a
+harmless job) is proven against a local conveyor; the physical Alienware registration
+remains the operator's step, now reduced to copying one file.
+
+Still not built, and why: nothing in this phase calls a model (the kernel's `execute` is a
+callable and `tools.py` runs `scout --json`); a learned router stays advisory and closed;
+GRPO/SFT training code lives in `apps/ava-factory` and is frozen. Those are the spec's
+Phases 4–7 and need the runner, consented data and GPU time before code would change
+anything.

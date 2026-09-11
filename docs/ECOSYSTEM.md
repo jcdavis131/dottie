@@ -146,3 +146,9 @@ evidence that would pass them (a registered Forge runner, 500 consented traces,
 a fresh signed baseline) still does not. The review that led here, including the
 finding that the spec's four "implemented on branch" lanes exist on no remote
 branch, is `docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md`.
+
+Phase 2 (same day, after #27 merged) added the tool plane, the end-to-end
+`loop run` driver, the `scout loop` plugin, the Forge runner script, Slack
+reporter and web approval board, layered memory, agent-civilization machines
+and briefs, observability, incidents and retention — every RT item now has a
+named test. Section 7 of the review doc is the ledger.

@@ -15,6 +15,7 @@ Commands::
     plan validate --file plan.json
     loop evaluate --sources metrics.json [--baseline baseline.json] [--last-terminal-at T]
                   [--promote] [--approve-prod] [--out decisions.jsonl]
+    loop run     --spec run.json --store DIR --root DIR --subject ID [--capture]
     reward compute --file inputs.json
     capture status
     forge runners --root DIR
@@ -98,6 +99,16 @@ def cmd_loop_evaluate(a: argparse.Namespace) -> dict[str, Any]:
     if decision["decision"] == "blocked":
         raise BlockedError("loop evaluation blocked: " + "; ".join(decision["blockers"]), "metrics", **out)
     return out
+
+
+def cmd_loop_run(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.driver import RunSpec, run_goal
+
+    spec = RunSpec.from_dict(_read_json(a.spec))
+    result = run_goal(spec, store_root=Path(a.store), root=Path(a.root), subject=a.subject, surface=a.surface, capture_flag=a.capture)
+    if result.get("status") == "blocked":
+        raise BlockedError("goal blocked: " + str(result.get("dependency") or result.get("outcome", {}).get("error_class")), str(result.get("dependency") or "policy"), **result)
+    return result
 
 
 def cmd_reward_compute(a: argparse.Namespace) -> dict[str, Any]:
@@ -208,6 +219,14 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--promote", action="store_true")
     s.add_argument("--approve-prod", action="store_true")
     s.set_defaults(fn=cmd_loop_evaluate)
+    s = lo.add_parser("run", help="one goal end to end: intake -> plan -> execute -> verify -> checkpoint")
+    s.add_argument("--spec", required=True, help="RunSpec JSON: intent_text, steps[{kind: argv|file, ...}], capture")
+    s.add_argument("--store", required=True)
+    s.add_argument("--root", default=".", help="sandbox root every step is confined to")
+    s.add_argument("--subject", required=True)
+    s.add_argument("--surface", default="cli")
+    s.add_argument("--capture", action="store_true", help="explicit opt-in switch (with spec.capture consent)")
+    s.set_defaults(fn=cmd_loop_run)
 
     rw = sub.add_parser("reward").add_subparsers(dest="sub", required=True)
     s = rw.add_parser("compute")

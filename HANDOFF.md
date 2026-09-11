@@ -18,7 +18,12 @@ before writing "current" anywhere in this file.
 
 ## 📌 Session continuation — 2026-09-11 (supersedes every block below)
 
-**Re-measured 2026-09-11 at HEAD `002226b`,** `main` (the 2026-09-05 block below
+**Re-stamped 2026-09-11 at HEAD `b0fd59f`** (PR #27 merged: the review + `packages/dottie-loop`).
+Phase 2 on `claude/dottie-end-to-end-review-z2baj5` adds the tool plane, the `loop run`
+driver, the `scout loop` plugin, `scripts/forge_runner.py`, surfaces, memory,
+civilization, observability, incidents and retention — see review doc §7.
+
+**Measured earlier the same day at `002226b`,** `main` (the 2026-09-05 block below
 records `23870d7`, which was squash-merged in #23 and is therefore NOT an
 ancestor of `main` — `check_handoff_fresh.py --check` has been red on every
 push since 47181a2 for that reason alone, not for drift).

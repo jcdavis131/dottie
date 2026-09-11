@@ -31,6 +31,15 @@ The review that motivated it, with the spec-versus-repository findings, is
 | §27 | `forge.py` | `JobSpec`, runner capability record, atomic claim, requirement filter, hash-verified inputs, argv-only execution, `FORGE_METRIC` parsing, orphan detection |
 | §23 | `bench.py` | workflow runner, structural goldens, report with accounting that must reconcile; synthetic results excluded from evidence |
 | §11, §37D | `errors.py` | error taxonomy, typed errors with HTTP status, API error envelope |
+| §12 | `tools.py` | Scout tool plane: manifest minimum, result envelope, argv execution, secrets by brokered reference, redacted audit, dry-run, provider hard stop |
+| §01, §36 Runbook A | `driver.py` | one goal end to end: intake → plan → kernel → verify → checkpoint → (opt-in) trace → reward; `loop run --spec` |
+| §06, RT-16 | `surfaces.py` | Slack reporter (event-id dedupe, one post per state change, line cap) and the minimum web approval board (server-authoritative, CSRF, append-only decisions) |
+| §15, RT-11 | `memory.py` | layered memory + graph edges; evidence-backed write-back with hints below 0.4; retrieval order and contradiction exposure; people resolution |
+| §30 | `civilization.py` | T0 machines (zero-token pollers, deduped wakeups), T1 worker briefs and ten-line verdict-first reports, the decision ladder, token ledger |
+| §32 | `observability.py` | correlation fields, no-orphan metric records, outcome SLOs with error budgets, alert dedupe by incident key |
+| §33 | `incidents.py` | severity table, ordered lifecycle, suspected vs confirmed cause, quarantine window, DR drill checklist |
+| §17 | `retention.py` | retention windows as data; deterministic, idempotent expiry with legal holds and deletion requests |
+| §27 | `scripts/forge_runner.py` | the one file for the GPU box: advertise → poll → claim → checkout → execute → push results over a git conveyor |
 
 ## CLI
 
@@ -40,6 +49,8 @@ uv run python -m dottie_loop goal submit --store /tmp/goals --subject me --json 
 uv run python -m dottie_loop loop evaluate --sources metrics.json --promote        # exits 2 (blocked) on stale metrics
 uv run python -m dottie_loop forge runners --root ~/workspace/forge               # exits 2 until a runner is registered
 uv run python -m dottie_loop bench smoke
+uv run python -m dottie_loop loop run --spec run.json --store /tmp/loop --root . --subject me   # one goal end to end
+uv run scout --json loop status                                                     # same contracts behind the single tool surface
 ```
 
 Exit codes: `0` ok, `1` error, `2` blocked, `3` invalid input. stdout is one JSON
@@ -62,6 +73,7 @@ matrix is grep-able (`grep -c "def test_rt\|def test_ml" tests/*.py`).
   `execute` callable to a model or to `scout` is the caller's job.
 - It does not replace `apps/scout-cli`'s harness plugin, `apps/jarvisd`'s goal
   store, or `apps/ava-factory`'s shard manifest. It is the contract layer those
-  can adopt; the review doc lists the adapters.
-- It cannot register the Alienware Forge runner. `forge runners` reports that
+  can adopt; `apps/scout-cli/bigbang/plugins/loop` is the first adapter.
+- It cannot register the Alienware Forge runner by itself. `scripts/forge_runner.py`
+  is the file to copy to the box; until it runs there, `forge runners` reports the
   blocker as a typed `blocked` state, which is the spec's required behaviour.
