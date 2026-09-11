@@ -10,11 +10,13 @@ change; even with approval the trigger writes a record only.
 
 from __future__ import annotations
 
+import fcntl
 import json
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from dottie_loop.errors import BlockedError
 from dottie_loop.hashing import age_seconds, new_id, now_iso, parse_iso
@@ -67,6 +69,23 @@ class LeaseFile:
         self.path = Path(path)
         self.ttl = ttl_seconds
 
+    @contextmanager
+    def _locked(self) -> Iterator[None]:
+        """Exclusive inter-process lock spanning the whole read-check-write.
+
+        Without this, two trainers starting at once could both read "no lease"
+        and both acquire. The lock file is a sidecar so it exists even when
+        the lease itself does not yet.
+        """
+        lock_path = self.path.with_suffix(".lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with lock_path.open("w", encoding="utf-8") as f:
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+
     def read(self) -> Lease | None:
         if not self.path.exists():
             return None
@@ -81,35 +100,38 @@ class LeaseFile:
 
     def acquire(self, owner: str, *, now: datetime | None = None, live_runners: set[str] | None = None) -> Lease:
         now = now or datetime.now(UTC)
-        cur = self.read()
-        if cur is not None:
-            if cur.live(now):
-                raise BlockedError(f"active retraining lease held by {cur.owner} until {cur.expires_at}", "lease")
-            if cur.owner in (live_runners or set()):
-                raise BlockedError(f"lease expired but runner {cur.owner} is still live; not reclaiming", "lease")
-        iso = now.replace(microsecond=0).isoformat().replace("+00:00", "Z")
-        exp = (now + timedelta(seconds=self.ttl)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-        lease = Lease(owner=owner, started_at=iso, heartbeat_at=iso, expires_at=exp)
-        self._write(lease)
-        return lease
+        with self._locked():
+            cur = self.read()
+            if cur is not None:
+                if cur.live(now):
+                    raise BlockedError(f"active retraining lease held by {cur.owner} until {cur.expires_at}", "lease")
+                if cur.owner in (live_runners or set()):
+                    raise BlockedError(f"lease expired but runner {cur.owner} is still live; not reclaiming", "lease")
+            iso = now.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+            exp = (now + timedelta(seconds=self.ttl)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+            lease = Lease(owner=owner, started_at=iso, heartbeat_at=iso, expires_at=exp)
+            self._write(lease)
+            return lease
 
     def heartbeat(self, owner: str, *, now: datetime | None = None) -> Lease:
         now = now or datetime.now(UTC)
-        cur = self.read()
-        if cur is None or cur.owner != owner:
-            raise BlockedError("heartbeat from a non-owner", "lease")
-        cur.heartbeat_at = now.replace(microsecond=0).isoformat().replace("+00:00", "Z")
-        cur.expires_at = (now + timedelta(seconds=self.ttl)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-        self._write(cur)
-        return cur
+        with self._locked():
+            cur = self.read()
+            if cur is None or cur.owner != owner:
+                raise BlockedError("heartbeat from a non-owner", "lease")
+            cur.heartbeat_at = now.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+            cur.expires_at = (now + timedelta(seconds=self.ttl)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+            self._write(cur)
+            return cur
 
     def release(self, owner: str, *, terminal_at: str | None = None) -> dict[str, Any]:
-        cur = self.read()
-        if cur is None or cur.owner != owner:
-            raise BlockedError("release from a non-owner", "lease")
-        self.path.unlink()
-        # cooldown starts from the TERMINAL timestamp, which the caller persists
-        return {"released": owner, "terminal_at": terminal_at or now_iso()}
+        with self._locked():
+            cur = self.read()
+            if cur is None or cur.owner != owner:
+                raise BlockedError("release from a non-owner", "lease")
+            self.path.unlink()
+            # cooldown starts from the TERMINAL timestamp, which the caller persists
+            return {"released": owner, "terminal_at": terminal_at or now_iso()}
 
 
 def validate_freshness(sources: dict[str, MetricSource], now: datetime) -> list[str]:
