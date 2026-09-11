@@ -13,6 +13,7 @@
 !packages/ava-skills
 !packages/ava-open-harness
 !packages/personal-graphify
+!packages/dottie-loop
 
 # never useful in an image
 **/.git
