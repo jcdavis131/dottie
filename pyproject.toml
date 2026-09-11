@@ -23,6 +23,10 @@ members = [
   # jarvisd (docs/JARVISD_SPEC.md): stdlib + mcp/starlette/uvicorn, all already in the
   # lock via scout-cli, so adding it changes no resolved versions.
   "apps/jarvisd",
+  # dottie-loop (docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md): the Full Ecosystem
+  # spec's contracts and gates as stdlib-only code. Zero dependencies, so adding it
+  # changes no resolved versions in uv.lock.
+  "packages/dottie-loop",
 ]
 exclude = ["apps/scout-rtx", "apps/ava-factory", "apps/dottie"]
 

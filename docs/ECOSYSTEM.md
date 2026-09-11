@@ -126,3 +126,23 @@ plausible zero.
   organic accumulation of real MCP action failures (now including external
   downstream traffic), then let the nightly Routine and the gate do their
   jobs.
+
+## The spec as code (2026-09-11)
+
+The Dottie Full Ecosystem Specification v1.0 (baseline 2026-09-10) is now a
+package: `packages/dottie-loop` (`dottie_loop`). It carries the contracts the
+diagram above assumes — `GoalEnvelope`, one-time approval tokens, `PlanGraph`
+validation, the seven-field timeline and checkpoint transaction, opt-in redacted
+pair capture, the task-first reward, the hard-block dataset QA chain with its
+accounting invariant, training preflight, the seven evaluation gates, promotion
+and rollback records, the closed-loop trigger with freshness and cooldown, the
+Forge job queue and the benchmark report — as stdlib-only, fail-closed code with
+tests named after the spec's acceptance IDs. It calls no model and claims no
+capability (`python -m dottie_loop spec status` says so).
+
+What it changes about the honest status: nothing about the numbers above, and
+that is the point. The gates now exist as code that can stop an advance; the
+evidence that would pass them (a registered Forge runner, 500 consented traces,
+a fresh signed baseline) still does not. The review that led here, including the
+finding that the spec's four "implemented on branch" lanes exist on no remote
+branch, is `docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md`.

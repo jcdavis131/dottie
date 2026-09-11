@@ -1,0 +1,67 @@
+# dottie-loop — the Dottie Full Ecosystem spec as code
+
+`dottie_loop` implements the contracts and gates of the **Dottie Full Ecosystem
+Specification v1.0** (baseline 2026-09-10) as typed, fail-closed, stdlib-only
+Python. It is the deterministic backbone of the loop: goal intake, approvals,
+plan graphs, timelines and checkpoints, opt-in pair capture, reward, dataset QA,
+training preflight, evaluation gates, promotion and rollback, the closed-loop
+trigger, the Forge job queue, and the benchmark builder.
+
+No model is called anywhere in this package. It makes **no capability claim**:
+`python -m dottie_loop spec status` reports `capability_claim: none`.
+
+The review that motivated it, with the spec-versus-repository findings, is
+[`docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md`](../../docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md).
+
+## Module map
+
+| Spec section | Module | What it pins |
+|---|---|---|
+| §05 intake, §37A | `intake.py` | `GoalEnvelope`, the eight-step validation order, state machine, durable idempotency (exact replay returns the goal; conflict is 409) |
+| §07, §37C | `approvals.py` | scope lattice (effects default to denied), one-time digest-bound approval tokens; replay, expiry, destination and action mismatch all invalidate |
+| §09 | `plan.py` | `PlanGraph` with all ten planner validations, `plan_hash`, `supersede`, receipt reuse rule |
+| §10, §11 | `execution.py` | admit → hydrate → execute → observe → verify → commit; bounded recovery ladder; verifier budget (≥ 8.0, two loops); path/URL/argv sandbox rules; provider rate-limit hard stop |
+| §14, §37A | `timeline.py` | append-only seven-field timeline with fsync; six-step checkpoint transaction; resume that blocks on corruption |
+| §16, §17 | `capture.py` | off by default; `event → redact → validate → append → fsync`; export eligibility; P0–P3 rules |
+| §22, §37B | `reward.py` | `R = 1.00·task_ok + 0.25·accept + 0.15·time + 0.15·quality + 0.10·token_eff` with every anti-hacking rule; preference pairs |
+| §18–§20, §17 | `dataset.py` | hard-block QA chain, the accounting invariant, grouped-temporal split, `DatasetManifest`, reviewer approval, deletion propagation through lineage |
+| §21 | `training.py` | `TrainRun`, ten preflight checks, hard-stop conditions, OOM single retry, resume/fork rules |
+| §24, §25, §37C | `evaluation.py` | seven gates, five decision outcomes, canary requirements, `ReleaseRecord` with served verification, rollback + incident |
+| §26 | `closed_loop.py` | thresholds as data, per-source event-time freshness, lease, cooldown from terminal timestamp, `--promote` guard that never changes production |
+| §27 | `forge.py` | `JobSpec`, runner capability record, atomic claim, requirement filter, hash-verified inputs, argv-only execution, `FORGE_METRIC` parsing, orphan detection |
+| §23 | `bench.py` | workflow runner, structural goldens, report with accounting that must reconcile; synthetic results excluded from evidence |
+| §11, §37D | `errors.py` | error taxonomy, typed errors with HTTP status, API error envelope |
+
+## CLI
+
+```bash
+uv run python -m dottie_loop spec status
+uv run python -m dottie_loop goal submit --store /tmp/goals --subject me --json '{"idempotency_key":"k1","intent_text":"summarize the README"}'
+uv run python -m dottie_loop loop evaluate --sources metrics.json --promote        # exits 2 (blocked) on stale metrics
+uv run python -m dottie_loop forge runners --root ~/workspace/forge               # exits 2 until a runner is registered
+uv run python -m dottie_loop bench smoke
+```
+
+Exit codes: `0` ok, `1` error, `2` blocked, `3` invalid input. stdout is one JSON
+envelope; diagnostics go to stderr. There is no interactive prompt.
+
+## Tests
+
+```bash
+uv run pytest packages/dottie-loop -q
+```
+
+The two suites are named after the spec's acceptance matrices: every test in
+`tests/test_runtime_acceptance.py` cites an RT item and every test in
+`tests/test_learning_acceptance.py` cites an ML item, so coverage of the
+matrix is grep-able (`grep -c "def test_rt\|def test_ml" tests/*.py`).
+
+## What this package deliberately does not do
+
+- It does not call Ollama, Anthropic, torch or any model. Wiring the kernel's
+  `execute` callable to a model or to `scout` is the caller's job.
+- It does not replace `apps/scout-cli`'s harness plugin, `apps/jarvisd`'s goal
+  store, or `apps/ava-factory`'s shard manifest. It is the contract layer those
+  can adopt; the review doc lists the adapters.
+- It cannot register the Alienware Forge runner. `forge runners` reports that
+  blocker as a typed `blocked` state, which is the spec's required behaviour.
