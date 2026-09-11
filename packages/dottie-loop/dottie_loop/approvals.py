@@ -12,6 +12,7 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from dottie_loop.errors import (
@@ -191,6 +192,33 @@ class ApprovalStore:
                 {"event": "consumed", "at": rec.consumed_at, "approval_id": approval_id}
             )
             return rec
+
+    # -- persistence: records + append-only history in one JSON file --
+    def save(self, path: Path) -> None:
+        import json
+
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        with self._lock:
+            data = {"records": [r.to_dict() for r in self._records.values()], "history": list(self._history), "replay_attempts": self.replay_attempts}
+        tmp.write_text(json.dumps(data, sort_keys=True, indent=1), encoding="utf-8")
+        tmp.replace(path)
+
+    @classmethod
+    def load(cls, path: Path) -> ApprovalStore:
+        import json
+
+        store = cls()
+        path = Path(path)
+        if not path.exists():
+            return store
+        data = json.loads(path.read_text(encoding="utf-8"))
+        for r in data.get("records", []):
+            store._records[r["approval_id"]] = ApprovalRecord(**r)
+        store._history = list(data.get("history", []))
+        store.replay_attempts = int(data.get("replay_attempts", 0))
+        return store
 
     def withdraw(self, approval_id: str, reason: str, now: datetime | None = None) -> None:
         """Withdrawal is appended, never edited (§37C "Append-only decisions")."""

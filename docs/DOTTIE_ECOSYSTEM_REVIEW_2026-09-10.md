@@ -168,13 +168,10 @@ reviewer's identity as an argument so the policy can be set without a code chang
 - **No merge, release, deploy or promotion.** Spec "Frozen release rule". This is a draft PR.
 - **No recovery of the four lanes.** They are not on the remote; reconstructing "verified"
   code from prose would present synthetic work as recovered evidence.
-- **No memory / knowledge-graph layer (§15) and no agent-civilization tiers (§30).** Both
-  are architecture with existing partial homes (`acne`, `personal-graphify`, jarvisd claims);
-  adding a third store without an operator decision on which is authoritative would widen the
-  `dottie` name-collision problem, not narrow it.
-- **No Scout plugin wrapper yet.** `dottie_loop` is invoked as `python -m dottie_loop`. A
-  `scout loop …` plugin is a thin follow-up once the capability manifest for it is decided;
-  adding an unenforced manifest now would trip the declared-capability ratchet the right way.
+- ~~No memory / knowledge-graph layer (§15), no agent-civilization tiers (§30), no Scout plugin wrapper.~~
+  Built in phase 2 (below). The memory layer is a contract with an in-package JSONL backend;
+  which store is authoritative across `acne` / `personal-graphify` / jarvisd is still the
+  operator's call, and adopting `dottie_loop.memory` there is an adapter, not a migration.
 - **No edits to `apps/ava-factory/dottie/**`** (frozen, bind-mounted) or to `apps/dottie`.
 - **No wiring of `execute` to Ollama/Anthropic.** The kernel takes a callable; the model layer
   is optional by design (spec §02 "Determinism first").
@@ -212,3 +209,49 @@ uv run python scripts/dag_next.py --check
 uv run python -m dottie_loop spec status              # capability_claim: none
 uv run python -m dottie_loop forge runners --root /tmp/forge   # exit 2: blocked, forge_runner
 ```
+
+---
+
+## 7. Phase 2 (2026-09-11, after PR #27 merged as `b0fd59f`): the rest of the spec surface
+
+| Spec | Built | Evidence |
+|---|---|---|
+| §12 tool plane | `dottie_loop/tools.py` — manifest minimum, result envelope, tool resolution steps 1–6, secrets by brokered reference, redacted audit, dry-run, provider-scope hard stop, "a plugin cannot broaden its own manifest" | `test_tool_plane_policy_invariants` pins every §12 policy invariant |
+| §01/§36 Runbook A | `dottie_loop/driver.py` + `python -m dottie_loop loop run` — one goal from intake through plan, kernel, verification, checkpoints, and (only with consent AND the switch) a redacted trace and reward | driver tests: completed / failed / blocked (approval, path escape) / rejected / replay |
+| §12 single tool surface | `apps/scout-cli/bigbang/plugins/loop` — `scout --json loop status|goal|run|evaluate|forge-runners|bench`; fs writes gated by `enforce_or_raise` under one declared root; blocked = exit 2 | `apps/scout-cli/tests/test_loop_plugin.py`; soft-lint count unchanged at 763 |
+| §27 runner | `packages/dottie-loop/scripts/forge_runner.py` — the file the operator copies to the box: advertise, poll, claim, checkout immutable ref, hash-verify inputs, execute argv, push results; disk preflight; `--once` for the harmless first job | `test_forge_runner_once_completes_a_harmless_job` runs it against a real local bare-repo conveyor: job claimed, executed, `FORGE_METRIC` parsed, result + runner record pushed back |
+| §06 Slack (RT-16) | `SlackReporter` — event-id dedupe, one post per state change, one thread per run, hard line cap, mention ≠ authorization | `test_rt16_slack_reports_are_deduped_threaded_and_capped` |
+| §06 Web (§35 open decision) | `ApprovalBoard` — stdlib server, bearer subjects, CSRF token per subject, server-authoritative state, append-only decision history, approvals issued through the real `ApprovalStore` | `test_approval_board_is_server_authoritative` over loopback HTTP |
+| §15 (RT-11) | `MemoryStore` — evidence required, provenance classes with authority, hints below 0.4 are not actionable, corrections supersede + graph edge, retrieval order and contradiction exposure, people resolution asks once | `test_rt11_memory_provenance_confidence_contradiction` |
+| §30 | `civilization.py` — machines dedupe wakeups by incident key at zero tokens; briefs cannot allow spawning; reports must be verdict-first ≤ 10 lines and cannot expand scope; ladder; no self-promotion; token ledger | `test_civilization_machines_specialists_and_ladder` |
+| §32 | `observability.py` — correlation fields, no-orphan metric records, outcome SLOs excluding user cancellations, page-worthy classes + dedupe | `test_observability_no_orphan_metrics_and_alert_dedupe` |
+| §33 | `incidents.py` — ordered lifecycle, restore requires verification, close requires verified recurrence prevention, quarantine window blocks training eligibility, DR drill checklist | `test_incident_lifecycle_is_ordered_and_quarantines_window` |
+| §17 retention | `retention.py` — windows as data; deterministic, idempotent; legal holds win; deletion requests expedite | `test_retention_is_deterministic_idempotent_and_respects_holds` |
+
+Acceptance coverage after phase 2: RT-01…RT-17 all have a named test (RT-11 and RT-16 were
+the two gaps). ML-08's software half (a runner that advertises, claims and completes a
+harmless job) is proven against a local conveyor; the physical Alienware registration
+remains the operator's step, now reduced to copying one file.
+
+Still not built, and why: nothing in this phase calls a model (the kernel's `execute` is a
+callable and `tools.py` runs `scout --json`); a learned router stays advisory and closed;
+GRPO/SFT training code lives in `apps/ava-factory` and is frozen. Those are the spec's
+Phases 4–7 and need the runner, consented data and GPU time before code would change
+anything.
+
+---
+
+## 8. Phase 3 (2026-09-11): the operator drives the chain from the CLI; router and skill contracts
+
+| Spec | Built | Evidence |
+|---|---|---|
+| §36 Runbook A–C, Appendix B 3–12 | CLI commands for every remaining record: `feedback record` (gap 02 for the CLI surface: accept/reject/edit/apply/dismiss attached to a captured run, reward recomputed, trace file stays append-only), `dataset release` / `approve`, `train preflight`, `eval gates`, `approval issue` / `consume` (persisted JSON store, replay attempts recorded even when refused), `promote decide`, `release record` (served-hash verification) and `release rollback`. Every gate that blocks exits 2 with the typed reason. | `test_operator_chain_end_to_end` runs twelve captured goals through feedback → release → approve → preflight → gates → approval → promote → release → rollback in one process |
+| §18 | a release with **zero eligible records** is now a hard block, not an empty manifest — found by the chain test, fixed in `dataset.run_pipeline` | same test (`no eligible records` before the consent ledger is supplied) |
+| §08 (RT-03) | `router.py`: five tiers, six-step decision order as code; learned advice counts only with artifact + schema + provenance; `gate_passed: false` → heuristic authoritative on disagreement; a learned model can pick an equal-or-cheaper tier, never escalate; confidence below threshold prefers the cheaper tier; escalation only after a *recorded* insufficiency; forbidden private features rejected at construction; adapter for `apps/dottie-harness-api` output | five golden fixtures + `test_router_decision_order_and_learned_advice` |
+| §13 | `skills.py`: SKILL.md frontmatter parser (matches `packages/ava-skills` conventions), package contract, one-stage-at-a-time lifecycle with the spec's required evidence and named rollback per stage, mock/synthetic benchmark evidence refused, canary needs an approval id, progressive disclosure (router → selected → workflow) | `test_skill_frontmatter_and_lifecycle_gates` |
+| §31 CI | `scripts/test_task_eval_slice.py`'s strip-inflation floor had rotted against the drifting real-history corpus (0.1478 measured on the PR merge ref vs floor 0.1481); re-based per the file's own procedure with old/new/why recorded | CI on PR #29 |
+
+What phase 3 does not change: the numbers. The chain test runs on captured CLI traces of a
+file-check goal, which is mechanics evidence (`capability_claim: none`), not the 500
+consented real pair sessions the closed loop needs. The commands are the same ones an
+operator will run on real data.

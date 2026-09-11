@@ -1,0 +1,15 @@
+name: loop
+version: 0.1.0
+description: Dottie Full Ecosystem loop (packages/dottie-loop) behind the single tool surface — goal intake, end-to-end run, closed-loop trigger evaluation, Forge runner status, benchmark smoke
+capabilities:
+  network:
+    enabled: false
+    domains: []
+  filesystem:
+    # The loop's own stores (goals, runs, traces, decisions) live under one root;
+    # every plugin-chosen write is gated by enforce_or_raise("fs_write") against it.
+    # Operator-named --store/--root destinations use fs_write_arg by design (policy.py).
+    write: true
+    paths: ["~/.local/share/dottie/loop/"]
+  secrets:
+    allow: []
