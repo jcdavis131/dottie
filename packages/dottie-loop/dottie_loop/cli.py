@@ -31,8 +31,9 @@ Commands::
     release rollback --release release.json --served-sha H --reason R --out rollback.json
     bench smoke
     retention expire --records R.jsonl [--holds H.json] [--deletions D.json] [--out R2.jsonl]
-    incident drill --results r.json
-    spec status | schemas | traceability --dir DIR
+    incident drill --results r.json | playbook --kind K
+    privacy hold|delete --lineage L.json --key K --operator O
+    spec status | schemas | traceability --dir DIR | components --root .
 """
 
 from __future__ import annotations
@@ -356,6 +357,41 @@ def cmd_spec_traceability(a: argparse.Namespace) -> dict[str, Any]:
     return {"verdict": verdict, "nodes": sorted(graph["nodes"])}
 
 
+def cmd_spec_components(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.components import inventory
+
+    return inventory(Path(a.root))
+
+
+def cmd_privacy_hold(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.dataset import Lineage
+
+    ln = Lineage.load(Path(a.lineage))
+    rec = ln.hold(a.key, kind=a.kind, by=a.operator)
+    ln.save(Path(a.lineage))
+    return rec
+
+
+def cmd_privacy_delete(a: argparse.Namespace) -> dict[str, Any]:
+    """Runbook D privacy deletion over a persisted lineage; the receipt never restates private content."""
+    from dottie_loop.dataset import Lineage
+
+    ln = Lineage.load(Path(a.lineage))
+    receipt = ln.delete(a.key, operator=a.operator)
+    ln.save(Path(a.lineage))
+    if a.out:
+        Path(a.out).write_text(json.dumps(receipt, indent=1, sort_keys=True), encoding="utf-8")
+    if receipt["status"] != "complete":
+        raise BlockedError("deletion not completed: " + "; ".join(receipt.get("exceptions_under_hold", [])), "legal_hold", receipt=receipt)
+    return receipt
+
+
+def cmd_incident_playbook(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.incidents import playbook
+
+    return playbook(a.kind)
+
+
 def cmd_spec_status(_a: argparse.Namespace) -> dict[str, Any]:
     return {
         "package": "dottie_loop",
@@ -538,6 +574,23 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--results", required=True, help="JSON object item -> bool")
     s.add_argument("--out")
     s.set_defaults(fn=cmd_incident_drill)
+    s = inc.add_parser("playbook", help="§36 Runbook D steps for privacy_deletion | credential_exposure | prompt_injection | provider_rate_block")
+    s.add_argument("--kind", required=True)
+    s.set_defaults(fn=cmd_incident_playbook)
+
+    pv = sub.add_parser("privacy").add_subparsers(dest="sub", required=True)
+    s = pv.add_parser("hold", help="place a deletion hold (blocks export/training) or a legal hold (blocks deletion) on a deletion key")
+    s.add_argument("--lineage", required=True, help="lineage JSON file (created if missing)")
+    s.add_argument("--key", required=True, help="the subject's deletion key")
+    s.add_argument("--kind", default="deletion", choices=["deletion", "legal"])
+    s.add_argument("--operator", required=True)
+    s.set_defaults(fn=cmd_privacy_hold)
+    s = pv.add_parser("delete", help="Runbook D: tombstone traces, invalidate datasets, contaminate runs; exit 2 under a legal hold")
+    s.add_argument("--lineage", required=True)
+    s.add_argument("--key", required=True)
+    s.add_argument("--operator", required=True)
+    s.add_argument("--out")
+    s.set_defaults(fn=cmd_privacy_delete)
 
     sp = sub.add_parser("spec").add_subparsers(dest="sub", required=True)
     s = sp.add_parser("status")
@@ -549,6 +602,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--out")
     s.add_argument("--no-rollback", action="store_true", help="do not require the rollback drill edge")
     s.set_defaults(fn=cmd_spec_traceability)
+    s = sp.add_parser("components", help="§04/§34: which authoritative artifacts are actually in the tree")
+    s.add_argument("--root", default=".")
+    s.set_defaults(fn=cmd_spec_components)
     return p
 
 

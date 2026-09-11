@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from dottie_loop.capture import export_eligibility, redact_record
-from dottie_loop.errors import PolicyDeniedError, UnexecutableError
+from dottie_loop.errors import InvalidInputError, PolicyDeniedError, UnexecutableError
 from dottie_loop.hashing import digest, file_sha256, new_id, now_iso
 from dottie_loop.schema import active
 
@@ -371,6 +371,37 @@ class Lineage:
         self.manifests: dict[str, dict[str, Any]] = {}
         self.train_runs: dict[str, dict[str, Any]] = {}  # run_id -> {dataset_id, checkpoint, contaminated}
         self.receipts: list[dict[str, Any]] = []
+        self.holds: dict[str, dict[str, Any]] = {}  # deletion_key -> {kind: legal|deletion, by, at}
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"traces": self.traces, "manifests": self.manifests, "train_runs": self.train_runs, "receipts": self.receipts, "holds": self.holds}
+
+    def save(self, path: Path) -> None:
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        tmp = Path(str(path) + ".tmp")
+        tmp.write_text(json.dumps(self.to_dict(), indent=1, sort_keys=True), encoding="utf-8")
+        tmp.replace(path)
+
+    @classmethod
+    def load(cls, path: Path) -> Lineage:
+        ln = cls()
+        if Path(path).exists():
+            d = json.loads(Path(path).read_text(encoding="utf-8"))
+            for k in ("traces", "manifests", "train_runs", "receipts", "holds"):
+                setattr(ln, k, d.get(k, getattr(ln, k)))
+        return ln
+
+    def hold(self, deletion_key: str, *, kind: str, by: str) -> dict[str, Any]:
+        """Runbook D step 2 (deletion hold blocks export/training) or a legal hold that blocks deletion."""
+        if kind not in ("deletion", "legal"):
+            raise InvalidInputError("hold kind must be deletion|legal", field="kind")
+        rec = {"kind": kind, "by": by, "at": now_iso()}
+        self.holds[deletion_key] = rec
+        return {"deletion_key_ref": digest(deletion_key)[:16], **rec}
+
+    def exportable(self, trace_id: str) -> bool:
+        m = self.traces.get(trace_id)
+        return bool(m) and not m["tombstoned"] and m["deletion_key"] not in self.holds
 
     def register_trace(self, trace_id: str, deletion_key: str) -> None:
         self.traces[trace_id] = {"deletion_key": deletion_key, "tombstoned": False}
@@ -386,6 +417,11 @@ class Lineage:
 
     def delete(self, deletion_key: str, operator: str) -> dict[str, Any]:
         """Steps 1-7 of §17 deletion propagation. Returns a non-sensitive receipt."""
+        hold = self.holds.get(deletion_key)
+        if hold and hold["kind"] == "legal":
+            receipt = {"schema": active("deletion-receipt"), "request_id": new_id("del_"), "subject_ref": digest(deletion_key)[:16], "stores_checked": ["traces", "manifests", "train_runs"], "counts": {"traces_tombstoned": 0, "manifests_invalidated": 0, "train_runs_contaminated": 0}, "affected_dataset_ids": [], "affected_checkpoints": [], "status": "held", "exceptions_under_hold": ["legal hold placed by " + hold["by"]], "operator": operator, "at": now_iso()}
+            self.receipts.append(receipt)
+            return receipt
         trace_ids = [t for t, m in self.traces.items() if m["deletion_key"] == deletion_key]
         for t in trace_ids:
             self.traces[t]["tombstoned"] = True
@@ -404,6 +440,7 @@ class Lineage:
             "affected_dataset_ids": affected_manifests,
             "affected_checkpoints": [self.train_runs[r]["checkpoint"] for r in affected_runs],
             "status": "complete",
+            "exceptions_under_hold": [],
             "operator": operator,
             "at": now_iso(),
         }

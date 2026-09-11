@@ -20,11 +20,13 @@ from urllib.parse import urlparse
 
 from dottie_loop.errors import (
     AUTO_RETRYABLE,
+    InvalidInputError,
     LoopError,
     PolicyDeniedError,
     RateLimitedError,
     classify_error,
 )
+from dottie_loop.hashing import now_iso
 from dottie_loop.timeline import RunEvent, RunStore
 
 if TYPE_CHECKING:
@@ -221,6 +223,25 @@ class Kernel:
     cancelled: bool = False
     budget_tokens: int | None = None
     tokens_used: int = 0
+
+    def cancel(self, *, actor: str, reason: str, in_flight: list[str], external_effects_pending: list[str]) -> dict[str, Any]:
+        """Runbook A cancellation: stop new dispatch, persist what is known, mark unfinished
+        external effects UNKNOWN until checked, append actor and reason. Nothing is deleted and
+        nothing is rolled back by this call."""
+        if not actor or not reason:
+            raise InvalidInputError("cancellation records its actor and reason", field="cancel")
+        self.cancelled = True
+        rec = {
+            "cancelled_by": actor,
+            "reason": reason,
+            "signalled": list(in_flight),
+            "external_effects": dict.fromkeys(external_effects_pending, "unknown_until_checked"),
+            "evidence_retained": True,
+            "implies_rollback": False,
+            "at": now_iso(),
+        }
+        self.store.append(RunEvent(goal_id=self.goal_id, run_id=self.store.run_id, nodeId="run", agentId=self.agent_id, attempt=1, status="cancelled", latency_ms=0, tokens_est=0, token_method="measured_zero", errorClass=None, tool_receipts=[{"kind": "cancellation", **rec}]))  # noqa: S106 - spec field
+        return rec
 
     def admit(self, step: PlanStep, completed: set[str]) -> None:
         if self.cancelled:

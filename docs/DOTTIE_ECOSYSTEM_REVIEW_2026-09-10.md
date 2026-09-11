@@ -307,3 +307,19 @@ the operator decisions in §6 are made. `spec traceability` reports a node's own
 Suite: 101 tests in `packages/dottie-loop`, 7 in the scout plugin. The gap-02 count that
 matters — real signals from real people — is still zero; what changed is that every surface
 now has a place to put them that the reward and the dataset pipeline already read.
+
+---
+
+## 12. Phase 7 (2026-09-11): contracts and runbooks that were still prose
+
+| Spec | Built | Evidence |
+|---|---|---|
+| §37A "Compatibility" (migrations) | `schema.migrate` — deterministic, produces new records and leaves the inputs untouched, refuses a changed source id or a target of another record type, stamps the target schema itself, and writes a migration manifest with before/after hashes and counts | `test_migration_is_deterministic_new_records_with_manifest` |
+| §21.1 runtime telemetry, failure handling | `training.TELEMETRY_FIELDS` + `validate_telemetry`; `stop_condition_for` maps a record to the exact hard-stop condition (NaN/inf loss, unreadable shard, sample-accounting mismatch, secret hit, drift beyond the manifest's shards, checkpoint corruption, evaluator unavailable); `HeartbeatMonitor` keeps heartbeats separate from verbose logs with a hang budget | `test_telemetry_maps_to_hard_stops_and_heartbeats_detect_hangs` |
+| §36 Runbook D | `incidents.PLAYBOOKS` — privacy deletion, credential exposure, prompt injection, provider rate block as ordered steps, required evidence and "never" rules; `open_from_playbook` opens an `Incident` at the playbook's severity; `incident playbook --kind` | `test_playbooks_are_ordered_data_and_open_incidents_at_their_severity` |
+| §36 Runbook D privacy, §37C DeletionReceipt, RT-14 | `Lineage.save/load/hold/exportable`; `privacy hold` (a deletion hold blocks export/training before the deletion completes; a legal hold blocks deletion) and `privacy delete` (tombstone → invalidate datasets → contaminate runs → block promotion; exit 2 with a `held` receipt under a legal hold); the receipt and the CLI output carry no deletion key, no trace id, no content | `test_privacy_hold_and_delete_over_a_persisted_lineage` |
+| §36 Runbook A cancellation | `Kernel.cancel(actor, reason, in_flight, external_effects_pending)` — stops new dispatch, marks pending external effects `unknown_until_checked`, appends a seven-field `cancelled` run event carrying actor and reason, retains evidence, implies no rollback | `test_cancellation_records_actor_reason_and_unknown_external_effects` |
+| §04 components, §34 current state | `components.COMPONENTS` as data; `inventory(root)` / `spec components --root` report presence from the tree — the check that would have caught finding F1 (four `BRANCH` rows on no remote) | `test_component_inventory_reports_the_tree_not_the_spec_column` |
+
+Suite: 107 tests. Still prose, deliberately: Runbook B/C narrative steps that are already
+the operator chain commands (§8), and every step that needs a real store, runner or person.
