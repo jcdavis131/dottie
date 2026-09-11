@@ -48,6 +48,7 @@ sync:
 test:
 	uv run pytest packages/ava-skills -q
 	uv run pytest packages/personal-graphify -q
+	uv run pytest packages/dottie-loop -q                # spec acceptance matrices (RT-xx / ML-xx), HARD gate
 	uv run pytest packages/ava-open-harness -q || true   # non-blocking: dottie name collision, mirrors ci.yml
 	cd apps/scout-cli && uv run pytest tests -q          # MUST run from here: CWD-relative fixtures
 	uv run python scripts/test_gate_audit.py
@@ -62,8 +63,9 @@ factory:
 
 lint:
 	uvx ruff@0.15.22 check packages/ava-skills
+	uvx ruff@0.15.22 check packages/dottie-loop
 	uvx ruff@0.15.22 check packages/ava-open-harness packages/personal-graphify apps/scout-cli --exclude apps/scout-cli/.venv || true
-	@echo "ava-skills is the HARD gate (at 0). The rest is the documented 1022-finding debt (scripts/check_documented_counts.py keeps this figure honest; re-measured 2026-09-05: was 511 on 08-14, +511 is apps/scout-cli 291 -> 802, 442 of it the new plugins/extract/anydoc.py from e80ca2c 08-26)."
+	@echo "ava-skills is the HARD gate (at 0). The rest is the documented 983-finding debt (scripts/check_documented_counts.py keeps this figure honest; re-measured 2026-09-11: 1022 on 09-05 -> 983, scout-cli 802 -> 763 after 002226b rewrote six scout-cli test files; the 09-05 jump 511 -> 1022 was plugins/extract/anydoc.py from e80ca2c 08-26)."
 
 # `ruff format --check` is deliberately absent. It was here as `... || true`, which is a
 # suppressed check — nothing in this repo satisfies it, so it could only ever be noise or a

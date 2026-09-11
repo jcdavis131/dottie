@@ -1,0 +1,142 @@
+"""Training execution contract (spec §21, §21.1, §37B TrainRun).
+
+Every run is fully specified before a GPU starts. :func:`preflight` evaluates the
+ten preflight checks and returns a typed verdict; a single failure blocks the run.
+:func:`resume_run` enforces the resume rule; :func:`fork_run` links a deliberate
+change by ``forked_from``.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any
+
+from dottie_loop.dataset import consumer_accepts
+from dottie_loop.errors import BlockedError, InvalidInputError
+from dottie_loop.hashing import digest, new_id, now_iso
+from dottie_loop.schema import active
+
+OBJECTIVES = frozenset({"sft", "grpo", "router"})
+STAGES = ("sft", "selective_replay", "hq_anneal", "grpo")
+HARD_STOP_CONDITIONS = (
+    "nan_or_inf_loss",
+    "unreadable_shard",
+    "sample_accounting_mismatch",
+    "secret_detector_hit",
+    "data_drift_beyond_manifest",
+    "checkpoint_corruption",
+    "evaluation_unavailable",
+)
+
+
+@dataclass
+class TrainRun:
+    objective: str
+    parent_checkpoint: str
+    dataset_manifest: str
+    code_commit: str
+    tokenizer_hash: str
+    model: dict[str, Any]
+    optimizer: dict[str, Any]
+    batch: dict[str, Any]
+    hardware: dict[str, Any]
+    budgets: dict[str, float]
+    selection: dict[str, Any] = field(default_factory=lambda: {"method": "none", "retain_fraction": 1.0, "coverage_floors": {}})
+    anneal: dict[str, Any] = field(default_factory=lambda: {"mixture": None, "start_step": None, "lr_coupling": "coupled"})
+    eval_schedule: dict[str, Any] = field(default_factory=lambda: {"smoke_every": 0, "full_at_end": True})
+    seed: int = 0
+    run_id: str = field(default_factory=lambda: new_id("run_"))
+    forked_from: str | None = None
+    status: str = "planned"
+    schema: str = field(default_factory=lambda: active("train-run"))
+
+    def to_dict(self) -> dict[str, Any]:
+        return dict(self.__dict__)
+
+    def config_digest(self) -> str:
+        d = self.to_dict()
+        for k in ("run_id", "status", "forked_from"):
+            d.pop(k, None)
+        return digest(d)
+
+
+def validate_train_run(run: TrainRun) -> None:
+    if run.objective not in OBJECTIVES:
+        raise InvalidInputError(f"objective must be one of {sorted(OBJECTIVES)}", "objective")
+    if run.selection.get("method") not in ("none", "excess_loss"):
+        raise InvalidInputError("selection.method must be none|excess_loss", "selection")
+    for k in ("max_steps", "max_hours", "max_cost"):
+        if k not in run.budgets or float(run.budgets[k]) <= 0:
+            raise InvalidInputError(f"budgets.{k} must be explicit and positive", "budgets")
+    if not run.eval_schedule.get("full_at_end"):
+        raise InvalidInputError("terminal full held-out suite is required", "eval_schedule")
+    if run.batch.get("global") != run.batch.get("micro", 0) * run.batch.get("grad_accum", 0):
+        raise InvalidInputError("batch.global must equal micro * grad_accum", "batch")
+
+
+@dataclass
+class PreflightInputs:
+    manifest: dict[str, Any]
+    split_overlap_zero: bool
+    tokenizer_roundtrip_ok: bool
+    checkpoint_loads: bool
+    hardware_ok: bool
+    storage_gb_free: float
+    storage_gb_needed: float
+    metrics_sink_writable: bool
+    cancellation_tested: bool
+    baseline_eval_fresh: bool
+
+
+def preflight(run: TrainRun, inp: PreflightInputs) -> dict[str, Any]:
+    """The ten §21.1 checks. All must pass; failures are named."""
+    validate_train_run(run)
+    checks = {
+        "manifest_approved_and_hashes_resolve": consumer_accepts(inp.manifest) and inp.manifest.get("dataset_id") == run.dataset_manifest,
+        "split_overlap_zero": inp.split_overlap_zero,
+        "tokenizer_roundtrip": inp.tokenizer_roundtrip_ok,
+        "checkpoint_and_optimizer_load": inp.checkpoint_loads,
+        "hardware_satisfies_requirements": inp.hardware_ok,
+        "storage_fits_with_margin": inp.storage_gb_free >= inp.storage_gb_needed * 1.2,
+        "metrics_sink_and_heartbeat_writable": inp.metrics_sink_writable,
+        "cancellation_and_checkpoint_on_signal_tested": inp.cancellation_tested,
+        "baseline_eval_bundle_fresh": inp.baseline_eval_fresh,
+        "cost_and_time_ceilings_explicit": all(float(run.budgets.get(k, 0)) > 0 for k in ("max_steps", "max_hours", "max_cost")),
+    }
+    failed = [k for k, v in checks.items() if not v]
+    return {"ok": not failed, "checks": checks, "failed": failed, "run_id": run.run_id, "at": now_iso()}
+
+
+def hard_stop(condition: str) -> dict[str, Any]:
+    if condition not in HARD_STOP_CONDITIONS:
+        raise InvalidInputError(f"unknown stop condition {condition!r}", "condition")
+    return {"action": "hard_stop", "condition": condition, "at": now_iso()}
+
+
+def oom_retry(run: TrainRun, new_micro: int) -> TrainRun:
+    """OOM may retry ONCE with an explicitly revised batch plan that changes the manifest."""
+    if run.forked_from is not None:
+        raise BlockedError("OOM already retried once; a second retry is a human decision", "oom_retry")
+    forked = fork_run(run, reason="oom_retry")
+    forked.batch = {**run.batch, "micro": new_micro, "grad_accum": run.batch["grad_accum"], "global": new_micro * run.batch["grad_accum"]}
+    forked.batch["revised_from"] = run.batch.get("global")
+    return forked
+
+
+def resume_run(run: TrainRun, *, checkpoint_verified: bool, recorded_config_digest: str) -> dict[str, Any]:
+    """Resume only from a verified checkpoint with the EXACT recorded configuration."""
+    if not checkpoint_verified:
+        raise BlockedError("checkpoint not verified", dependency="checkpoint")
+    if recorded_config_digest != run.config_digest():
+        raise BlockedError("configuration differs from the recorded run; fork instead", "config")
+    return {"resumed": run.run_id, "at": now_iso()}
+
+
+def fork_run(run: TrainRun, reason: str) -> TrainRun:
+    d = run.to_dict()
+    d["run_id"] = new_id("run_")
+    d["forked_from"] = run.run_id
+    d["status"] = "planned"
+    forked = TrainRun(**d)
+    forked.hardware = {**forked.hardware, "fork_reason": reason}
+    return forked

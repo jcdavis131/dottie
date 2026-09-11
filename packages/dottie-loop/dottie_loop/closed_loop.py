@@ -1,0 +1,168 @@
+"""Closed-loop automation (spec §26, §37C LoopDecision).
+
+Fresh evidence may trigger retraining; it may not trigger authority. The trigger
+evaluates freshness PER METRIC SOURCE by event time (never file mtime), applies the
+threshold predicates, enforces a single retraining lease and a cooldown measured
+from the prior run's terminal timestamp, and emits a LoopDecision even when
+nothing changes. ``--promote`` without ``--approve-prod`` exits without production
+change; even with approval the trigger writes a record only.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
+
+from dottie_loop.hashing import age_seconds, new_id, now_iso, parse_iso
+from dottie_loop.schema import active
+
+#: §26 trigger thresholds — data, so they are auditable and changeable as config.
+THRESHOLDS: dict[str, float] = {
+    "verifier_score_min": 8.0,
+    "agent_ok_rate_min": 0.90,
+    "ok_rate_drop_max": 0.05,
+    "eval_drop_max": 0.02,
+    "new_verified_traces_min": 500,
+    "canary_floor_delta": 0.01,
+    "cooldown_hours": 24,
+    "freshness_hours": 48,
+}
+
+REQUIRED_SOURCES = ("verifier", "agent_ok", "eval", "traces")
+
+
+@dataclass
+class MetricSource:
+    name: str
+    value: float
+    event_time: str
+    provenance: str = "measured"  # measured | synthetic | mock | unversioned
+    version: str | None = None
+
+
+@dataclass
+class Lease:
+    owner: str
+    started_at: str
+    heartbeat_at: str
+    expires_at: str
+
+    def live(self, now: datetime) -> bool:
+        return parse_iso(self.expires_at) > now
+
+
+def validate_freshness(sources: dict[str, MetricSource], now: datetime) -> list[str]:
+    """Names every stale/missing/synthetic/mock/unversioned required source."""
+    blockers: list[str] = []
+    limit = THRESHOLDS["freshness_hours"] * 3600
+    for name in REQUIRED_SOURCES:
+        src = sources.get(name)
+        if src is None:
+            blockers.append(f"{name}: missing")
+            continue
+        if src.provenance in ("synthetic", "mock"):
+            blockers.append(f"{name}: {src.provenance} evidence is not evidence")
+        if src.provenance == "unversioned" or not src.version:
+            blockers.append(f"{name}: unversioned")
+        try:
+            age = age_seconds(src.event_time, now)
+        except ValueError:
+            blockers.append(f"{name}: unparseable event time")
+            continue
+        if age > limit:
+            blockers.append(f"{name}: stale ({age / 3600:.1f}h > {THRESHOLDS['freshness_hours']}h)")
+    return blockers
+
+
+def evaluate_trigger(
+    sources: dict[str, MetricSource],
+    *,
+    baseline: dict[str, float],
+    lease: Lease | None,
+    last_terminal_at: str | None,
+    canary: dict[str, float] | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """collect → validate freshness → evaluate predicates → no_change | blocked | trigger."""
+    now = now or datetime.now(UTC)
+    blockers = validate_freshness(sources, now)
+    if lease is not None and lease.live(now):
+        blockers.append(f"active retraining lease held by {lease.owner}")
+    if last_terminal_at:
+        cooldown = timedelta(hours=THRESHOLDS["cooldown_hours"])
+        if parse_iso(last_terminal_at) + cooldown > now:
+            blockers.append("cooldown not elapsed since prior terminal timestamp")
+    predicates: dict[str, bool] = {}
+    if not blockers:
+        v = sources["verifier"].value
+        ok = sources["agent_ok"].value
+        ev = sources["eval"].value
+        n = sources["traces"].value
+        predicates = {
+            "verifier_below_min": v < THRESHOLDS["verifier_score_min"],
+            "ok_rate_below_floor": ok < THRESHOLDS["agent_ok_rate_min"],
+            "ok_rate_drop": (baseline.get("agent_ok", ok) - ok) > THRESHOLDS["ok_rate_drop_max"],
+            "eval_drop": (baseline.get("eval", ev) - ev) > THRESHOLDS["eval_drop_max"],
+            "enough_new_traces": n >= THRESHOLDS["new_verified_traces_min"],
+        }
+        if canary is not None:
+            predicates["canary_below_floor"] = canary.get("challenger", 0.0) < canary.get("baseline", 0.0) - THRESHOLDS["canary_floor_delta"]
+    regression = any(predicates.get(k) for k in ("verifier_below_min", "ok_rate_below_floor", "ok_rate_drop", "eval_drop"))
+    if blockers:
+        decision = "blocked"
+    elif regression and predicates["enough_new_traces"]:
+        decision = "trigger"
+    elif regression:
+        decision = "blocked"
+        blockers.append(f"regression observed but only {int(sources['traces'].value)} new verified traces (< {int(THRESHOLDS['new_verified_traces_min'])})")
+    else:
+        decision = "no_change"
+    return {
+        "schema": active("loop-decision"),
+        "decision_id": new_id("loop_"),
+        "decision": decision,
+        "metric_sources": {k: {"value": s.value, "event_time": s.event_time, "provenance": s.provenance, "version": s.version} for k, s in sources.items()},
+        "baseline": baseline,
+        "thresholds": dict(THRESHOLDS),
+        "predicates": predicates,
+        "trace_count": sources["traces"].value if "traces" in sources else None,
+        "cooldown_from": last_terminal_at,
+        "lease": None if lease is None else {"owner": lease.owner, "live": lease.live(now)},
+        "canary": canary,
+        "blockers": blockers,
+        "at": now_iso(),
+    }
+
+
+def promote_guard(*, promote: bool, approve_prod: bool, decision: dict[str, Any]) -> dict[str, Any]:
+    """``--promote`` without ``--approve-prod`` exits without production change.
+
+    Even with approval this writes a RECORD only; deployment is an operator action.
+    """
+    if not promote:
+        return {"production_change": False, "record": None, "reason": "promotion not requested"}
+    if not approve_prod:
+        return {"production_change": False, "record": None, "reason": "promotion requested without --approve-prod; exiting without production change"}
+    if decision.get("decision") != "trigger":
+        return {"production_change": False, "record": None, "reason": f"loop decision is {decision.get('decision')}, not trigger"}
+    return {
+        "production_change": False,
+        "record": {"kind": "promotion_packet", "decision_id": decision["decision_id"], "requires": "operator deployment after approval", "at": now_iso()},
+        "reason": "promotion record written; deployment is a separate operator action",
+    }
+
+
+def write_decision(decision: dict[str, Any], path: Path) -> None:
+    """LoopDecision is emitted even when nothing changes; append-only JSONL."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(decision, sort_keys=True) + "\n")
+
+
+def load_sources(path: Path) -> dict[str, MetricSource]:
+    """Read ``{"name": {"value", "event_time", "provenance", "version"}}`` from JSON."""
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    return {k: MetricSource(name=k, value=float(v["value"]), event_time=v["event_time"], provenance=v.get("provenance", "unversioned"), version=v.get("version")) for k, v in raw.items()}

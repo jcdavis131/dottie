@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-09-05",
+  "updated": "2026-09-11",
   "doc": "docs/PROJECT_DAG.md",
   "legend": {
     "priority": "1 = do first, 5 = last; ties break by size (S before L)",
@@ -466,6 +466,33 @@
         "gpu-box-dedicated"
       ],
       "why": "Not on any product's path; needs the box for days at a time."
+    },
+    {
+      "id": "dottie-loop-contracts",
+      "title": "Full Ecosystem spec v1.0 contracts and gates as code (packages/dottie-loop)",
+      "repo": "dottie",
+      "kind": "infra",
+      "status": "done",
+      "priority": 1,
+      "size": "L",
+      "depends_on": [
+        "ci-green"
+      ],
+      "evidence": "packages/dottie-loop, 52 tests named after spec acceptance IDs, docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md"
+    },
+    {
+      "id": "forge-runner-register",
+      "title": "Register the Alienware Forge runner (copy runner, gh auth, advertise GPU/VRAM/CUDA/torch, run one harmless job)",
+      "repo": "dottie",
+      "kind": "ops",
+      "status": "blocked",
+      "priority": 1,
+      "size": "S",
+      "depends_on": [
+        "dottie-loop-contracts"
+      ],
+      "acceptance": "python -m dottie_loop forge runners --root <queue> exits 0 with one runner record; a harmless job reaches results/ with status ok",
+      "notes": "Operator-only: needs the physical machine. The spec names this the immediate blocker to a real GPU training loop."
     }
   ]
 }

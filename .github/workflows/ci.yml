@@ -68,6 +68,11 @@ jobs:
       # 0.8.6/0.15.22 split there once made "ruff clean locally" not predict CI at all.
       - name: Ruff lint — packages/ava-skills (HARD gate, at 0)
         run: uvx ruff@0.15.22 check packages/ava-skills
+      # packages/dottie-loop is NEW (2026-09-11) and started at 0 under the same rule set,
+      # so it is a HARD gate from its first commit — the ratchet plan says flip a package
+      # the day it reaches 0, and a package that was never in debt has no day to wait for.
+      - name: Ruff lint — packages/dottie-loop (HARD gate, at 0)
+        run: uvx ruff@0.15.22 check packages/dottie-loop
       # NON-BLOCKING for the REMAINING three, and the size of the debt is stated so
       # `|| true` cannot be mistaken for "lint is clean". Re-measured 2026-08-14:
       # 511 findings -- packages/personal-graphify 141, packages/ava-open-harness 79,
@@ -91,7 +96,8 @@ jobs:
       # Same ratchet: flip the next one the day it reaches 0 — ava-open-harness at 79
       # is still nearest. A number in a comment rots even inside one session —
       # re-measure it, never carry it forward.
-      - name: Ruff lint (non-blocking — 1022 known findings, see comment)
+      # WHY 1022 -> 983 (re-measured 2026-09-11): apps/scout-cli 802 -> 763; 002226b (harden real platform end to end) rewrote six scout-cli test files (conftest, harness_correct, harness_vector, inbox/infer/secrets focused) and closed 39 findings there; personal-graphify 141 and ava-open-harness 79 unchanged (79+141+763 = 983).
+      - name: Ruff lint (non-blocking — 983 known findings, see comment)
         run: uvx ruff@0.15.22 check packages/ava-open-harness packages/personal-graphify apps/scout-cli --exclude apps/scout-cli/.venv || true
       # A RATCHET, not a lint. Fails only on a gate-shaped defect (fail-open dispatch,
       # mode-conditional escape, suppressed check) that is NOT already in the baseline;
@@ -399,6 +405,14 @@ jobs:
       # leaner CI runner cannot turn this red for a reason unrelated to the code.
       - name: Pytest personal-graphify (hard gate)
         run: uv run pytest packages/personal-graphify -q
+
+      # dottie-loop (2026-09-11): the Full Ecosystem spec's contracts and gates as code.
+      # Its two suites are named after the spec's acceptance matrices (RT-xx runtime,
+      # ML-xx learning loop), so a red test names the spec item it breaks. stdlib only,
+      # so a leaner runner cannot turn it red for a reason unrelated to the code.
+      # GREEN, so it gates — same rule ava-skills and personal-graphify follow.
+      - name: Pytest dottie-loop (hard gate — spec acceptance matrices)
+        run: uv run pytest packages/dottie-loop -q
 
       # NON-BLOCKING ON PURPOSE, with the reason named instead of hidden behind a
       # bare `|| true` that reads as "these pass". ava-open-harness fails 5 tests in
