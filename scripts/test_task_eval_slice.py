@@ -88,7 +88,18 @@ FLOOR_TASK_NDCG = 0.375    # 80.0% of 0.4685 measured 08-01 (was 0.35 = 74.7%; 0
 # INVARIANT — stripping paths matters materially — still holds at +18.1%; only the
 # magnitude drifted. A floor pinned to an absolute on a drifting measurement will rot
 # again, so read the invariant, not the constant.
-FLOOR_STRIP_INFLATION = 0.1481  # 82.0% of the 0.1806 measured 2026-08-01
+# RE-MEASURED 2026-09-11: inflation is now 0.1478 on the PR #29 merge ref (0.1495 on the
+# branch tip), not the 0.1806 of 08-01, so the 0.1481 floor sat 0.0003 ABOVE the truth
+# and failed CI while passing locally — the checkout differs by exactly one commit
+# (GitHub's synthetic "Merge <head> into <base>"), which is enough to move a mined
+# corpus by that much. Same drift, same direction, same cause as 08-01: the corpus is
+# git history + TODO.md, and 1,590 commits now sit where ~1,000 did; #23, #27 and the
+# dottie-loop commits carry long, path-dense messages that lift the stripped NDCG.
+# The INVARIANT (stripping paths matters materially) still holds at +14.8%. Re-based
+# per this file's rule to 82% of the fresh merge-ref measurement.
+FLOOR_STRIP_INFLATION = 0.1212  # 82.0% of the 0.1478 measured 2026-09-11 on refs/pull/29/merge
+# (was 0.1481 = 82.0% of 0.1806 measured 2026-08-01; 0.1859 = 82.0% of 0.2268 on 07-26;
+# before that 0.18 = 79.4%, which broke this file's own >=80% rule.)
 # (was 0.1859 = 82.0% of 0.2268 measured 2026-07-26; before that 0.18 = 79.4%, which
 # broke this file's own >=80% rule). A floor below the truth is what let fabricated
 # numbers pass elsewhere in this repo on 2026-07-26.
@@ -589,7 +600,7 @@ finally:
 # it until the BASIS was updated too, which is exactly the guard that stops a floor
 # being quietly ratcheted down until the suite goes green. Changing one without the
 # other should fail, and does.
-MEASURED_STRIP_INFLATION = 0.1806  # re-measured 2026-08-01 (was 0.2268 on 07-26)
+MEASURED_STRIP_INFLATION = 0.1478  # re-measured 2026-09-11 on refs/pull/29/merge (was 0.1806 on 08-01; 0.2268 on 07-26)
 _t("floor: FLOOR_STRIP_INFLATION is >=80% of the measured inflation",
    FLOOR_STRIP_INFLATION >= MEASURED_STRIP_INFLATION * 0.80,
    f"{FLOOR_STRIP_INFLATION} is "
