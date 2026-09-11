@@ -42,6 +42,10 @@ The review that motivated it, with the spec-versus-repository findings, is
 | §08, RT-03 | `router.py` | five tiers, the six-step decision order, learned advice only with artifact + schema + provenance (gate false → heuristic authoritative), safer tier below the confidence threshold, escalation only after a recorded insufficiency, forbidden private features; adapter for the harness-api heuristic |
 | §13 | `skills.py` | SKILL.md frontmatter parser + package contract, one-stage-at-a-time lifecycle with required evidence and named rollback, mock benchmarks refused, canary needs an approval, progressive disclosure |
 | §36 Runbooks B–C | `cli.py` | `feedback record`, `dataset release\|approve`, `train preflight`, `eval gates`, `approval issue\|consume` (persisted, replay-counted), `promote decide`, `release record\|rollback` — the operator drives the chain end to end with exit 2 on every block |
+| §29 | `safety.py` | archive extraction that refuses traversal, links and bombs; JSON-only deserialization with size/depth caps; per-hop redirect re-checks against the allowlist (SSRF, rebinding); report redaction — plus the §29 test matrix in `tests/test_security_and_training.py` |
+| §21, §19 | `curriculum.py` | selective training (excess loss, coverage floors, IDs + scores logged, hard examples kept), curriculum order, coupled + versioned anneal schedule, GRPO group construction (duplicates are not diversity; invalid/regressed → task zero; KL cap), balancing with caps and recorded sampling weights, health checks and stop decisions |
+| §31 | `deploy.py` | build digest → candidate URL → pre-alias smoke → alias only after approval → cache-busted served-bytes verification; every step recorded, every failure typed |
+| §26 | `closed_loop.LeaseFile` | single active retraining lease on disk: heartbeat extends, expired-but-live is not reclaimed, cooldown starts from the terminal timestamp |
 | §27 | `scripts/forge_runner.py` | the one file for the GPU box: advertise → poll → claim → checkout → execute → push results over a git conveyor |
 
 ## CLI

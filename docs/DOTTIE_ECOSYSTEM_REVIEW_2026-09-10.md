@@ -255,3 +255,19 @@ What phase 3 does not change: the numbers. The chain test runs on captured CLI t
 file-check goal, which is mechanics evidence (`capability_claim: none`), not the 500
 consented real pair sessions the closed loop needs. The commands are the same ones an
 operator will run on real data.
+
+---
+
+## 9. Phase 4 (2026-09-11): the §29 security matrix, training stages as data, served truth, the lease
+
+| Spec | Built | Evidence |
+|---|---|---|
+| §29 "Security testing" | every listed case has a test: path traversal, symlink escape, command injection (argv only), SSRF and redirect escape (per-hop allowlist re-check, private-address rebinding denied), secret redaction, approval binding + replay + a 16-thread race (exactly one consumer), unsafe deserialization (JSON only, NaN/depth/size capped), archive extraction (traversal, links, bombs, size cap), cross-tenant retrieval, prompt injection as data. Protected-material rule honoured: synthetic sentinels only, asserted never to escape | `tests/test_security_and_training.py` |
+| §21 Stages 2–4, run controls | `curriculum.py` — selective training logs IDs and scores and keeps coverage floors; curriculum ordering; anneal schedule coupled to the LR collapse and versioned as one object; GRPO groups reject duplicate trajectories, zero invalid/regressed samples, normalize within the group, enforce the KL cap; health check and stop decision with hard-stop classes | same file |
+| §19 balancing | caps by template and session applied first, recovery share preserved, inverse-family sampling weights recorded with their reason | same file |
+| §31 deployment sequence | `deploy.py` — smoke must pass before alias, alias needs an approver + approval id, served bytes fetched with cache-busting must hash to the approved artifact; a mismatch is a typed failure and the record shows every step | `test_deploy_sequence_requires_smoke_approval_and_served_match` |
+| §26 lease | `closed_loop.LeaseFile` — one owner, heartbeat extends expiry, an expired lease whose owner is still live is not reclaimed, release returns the terminal timestamp the cooldown starts from | `test_lease_file_single_owner_reclaim_rules` |
+
+The trainer that will consume `curriculum.py` lives in frozen `apps/ava-factory`; adopting
+these functions there is an operator decision, and until then they are the contract the
+TrainRun manifest fields (`selection`, `anneal`) are checked against.
