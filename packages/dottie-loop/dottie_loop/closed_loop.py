@@ -16,12 +16,14 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from collections.abc import Iterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dottie_loop.errors import BlockedError
 from dottie_loop.hashing import age_seconds, new_id, now_iso, parse_iso
 from dottie_loop.schema import active
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 #: §26 trigger thresholds — data, so they are auditable and changeable as config.
 THRESHOLDS: dict[str, float] = {
