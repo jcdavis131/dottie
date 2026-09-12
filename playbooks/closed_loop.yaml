@@ -1,0 +1,94 @@
+# Playbook schema v1 — parsed by scripts/business/playbook.py.
+# Closed-loop trigger config for continuous Dottie training.
+# Read by pipeline/loop_trigger.py (stdlib-only mini-YAML parser:
+# nested dicts, scalar values, dash lists).
+schema_version: 1
+
+venture: closed_loop
+
+description: >-
+  Evaluate production metrics on a cadence; when a retrain signal fires,
+  queue a Forge training job; when training completes, run canary eval;
+  promotion to prod requires explicit human approval (--approve-prod).
+  Rollback restores the last-good checkpoint. Fail-closed on missing or
+  stale metrics; every decision is appended to pipeline/loop_decisions.jsonl
+  and emitted as a one-line LOOP_ALERT on stderr — no silent failures.
+
+cadence: hourly
+
+artifacts:
+  - id: loop-decisions
+    generator: loop_trigger
+    inputs:
+      - name: scoreboard
+        path: workspace/artifacts/monitor/scoreboard.json
+        required: true
+      - name: health
+        path: hidden_files/cron_health.jsonl
+        required: true
+      - name: evals
+        path: apps/ava-factory/branch_eval_results.json
+        required: false
+    output:
+      - pipeline/loop_decisions.jsonl
+      - pipeline/loop_state.json
+    publish_hint: >-
+      Internal automation record; stays in pipeline/. Nothing here deploys
+      to prod — promotion records require the operator's --approve-prod.
+
+params:
+  metrics:
+    scoreboard: workspace/artifacts/monitor/scoreboard.json
+    health: hidden_files/cron_health.jsonl
+    evals:
+      - apps/ava-factory/branch_eval_results.json
+      - apps/ava-factory/frontier_eval_results.json
+
+  thresholds:
+    # North-star floor: verifier must stay >= 8.0
+    verifier_floor: 8.0
+    # Any agent ok_rate below this floor triggers retrain signal
+    ok_rate_floor: 0.90
+    # Drop in min agent ok_rate vs promotion baseline (percentage points)
+    ok_rate_drop_pp: 5.0
+    # Drop in mean eval score vs promotion baseline (absolute)
+    eval_score_drop: 0.02
+    # Canary checkpoint must score within this of baseline to be promotable
+    canary_tolerance: 0.01
+    # Post-promotion regression that auto-flags rollback (percentage points)
+    rollback_ok_rate_drop_pp: 10.0
+    # Data freshness: new verified preference/trace rows since last train
+    min_new_verified_traces: 500
+
+  timing:
+    # Minimum time between retrain decisions
+    cooldown_hours: 24
+    # How long a canary-awaiting-approval state stays valid
+    approval_ttl_hours: 72
+    # Metrics older than this are treated as missing (fail-closed)
+    staleness_hours: 48
+
+  forge:
+    job_type: train
+    repo: jcdavis131/dottie
+    workdir: forge-jobs/dottie-grpo
+    # OPERATOR: fill in the real training entrypoint before enabling
+    # --submit-forge. Example shape only.
+    command:
+      - python3
+      - apps/ava-factory/dottie/rl/grpo_torch.py
+      - --pref-pairs
+      - reports/pref_pairs.jsonl
+    requires:
+      gpu: true
+      min_vram_gb: 6
+      cuda: true
+    artifacts:
+      - checkpoints/dottie-grpo-final
+      - metrics.json
+
+  alerting:
+    # One LOOP_ALERT <json> line per decision on stderr; cron captures it.
+    stderr_alerts: true
+    # Decisions are the audit trail; never delete, only append.
+    decisions_file: pipeline/loop_decisions.jsonl

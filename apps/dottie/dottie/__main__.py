@@ -35,6 +35,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     rp.add_argument("--backend", default="ollama", choices=["ollama", "ava", "echo"])
     rp.add_argument("--max-steps", type=int, default=8)
     rp.add_argument("--data-dir", default=None)
+    rp.add_argument(
+        "--capture",
+        action="store_true",
+        help="opt-in: capture this session (prompt, actions, signals) to "
+             "reports/pair_sessions.jsonl for the trace flywheel. "
+             "Off by default; see docs/TRACE_CAPTURE_SPEC.md.",
+    )
 
     st = sub.add_parser("status", help="print the honest status JSON")
     st.add_argument("--data-dir", default=None)
@@ -152,10 +159,48 @@ def main(argv: Sequence[str] | None = None) -> int:
         from dottie.policy import DottiePolicyUnavailable
 
         engine = DottieEngine(args.data_dir)
-        try:
-            record = engine.run_task(
-                args.prompt, backend=args.backend, max_steps=args.max_steps
+
+        def _run(p: str):
+            return engine.run_task(
+                p, backend=args.backend, max_steps=args.max_steps
             )
+
+        def _run_with_capture(p: str):
+            # Opt-in only hook into pipeline/session_capture.py. Fail-open for
+            # capture (never breaks the run), fail-closed for data (a dropped
+            # record is logged, never fabricated).
+            from pathlib import Path as _P
+
+            pipe = _P(__file__).resolve().parent.parent.parent / "pipeline"
+            sys.path.insert(0, str(pipe))
+            try:
+                from session_capture import SessionCapture, run_with_capture
+
+                out = _P(args.data_dir or ".") / "reports" / "pair_sessions.jsonl"
+                return run_with_capture(
+                    p, _run,
+                    capture=SessionCapture(out=out, enabled=True),
+                )
+            finally:
+                try:
+                    sys.path.remove(str(pipe))
+                except ValueError:
+                    pass
+
+        try:
+            if args.capture:
+                try:
+                    record = _run_with_capture(args.prompt)
+                except DottiePolicyUnavailable:
+                    raise
+                except Exception as e:  # capture must never break the run
+                    print(
+                        f"[dottie run] capture hook failed, continuing uncaptured: {e}",
+                        file=sys.stderr,
+                    )
+                    record = _run(args.prompt)
+            else:
+                record = _run(args.prompt)
         except DottiePolicyUnavailable as e:
             print(
                 f"[dottie] backend unavailable (honest refusal, no fake reply): {e}",
