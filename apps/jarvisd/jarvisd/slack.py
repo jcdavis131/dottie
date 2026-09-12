@@ -8,7 +8,8 @@ WHY THIS PATH IS EXEMPT FROM BEARER AUTH. Slack cannot send our bearer; it signs
 each request instead, with HMAC-SHA256 over `v0:<timestamp>:<raw body>` keyed by
 the app's signing secret. So `/api/slack/events` is exempt from `AuthMiddleware`'s
 bearer check and enforces the Slack signature itself. Exempt from *that* check, not
-from authentication: an unsigned request never reaches a handler.
+from authentication or the IP rate limiter: an unsigned request never reaches a
+handler, and a flood still counts against the IP bucket.
 
 FAIL-CLOSED, DELIBERATELY, AT EVERY BRANCH. The repo's doctrine is that an
 unrecognised input is refused rather than waved through, and `verify()` returns a
@@ -46,6 +47,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 __all__ = [
+    "MAX_BODY_BYTES",
     "MAX_SKEW_SECONDS",
     "SLACK_PATH",
     "ReplayGuard",
@@ -139,10 +141,10 @@ def verify(
     Returning the signature rather than `True` is what lets the caller hand it to a
     `ReplayGuard` without re-reading a header it already validated.
     """
-    if not secret:
-        raise SlackRefusalError(503, "slack ingress not configured")
     if len(body) > MAX_BODY_BYTES:
         raise SlackRefusalError(413, "body too large for a slack payload")
+    if not secret:
+        raise SlackRefusalError(503, "slack ingress not configured")
 
     lower = {k.lower(): v for k, v in headers.items()}
     signature = lower.get("x-slack-signature", "")

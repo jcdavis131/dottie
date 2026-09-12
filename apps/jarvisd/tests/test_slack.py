@@ -18,6 +18,7 @@ from starlette.testclient import TestClient
 from jarvisd.app import build_app
 from jarvisd.config import Config
 from jarvisd.slack import (
+    MAX_BODY_BYTES,
     MAX_SKEW_SECONDS,
     SLACK_PATH,
     ReplayGuard,
@@ -132,6 +133,61 @@ def test_unconfigured_refuses_even_a_correctly_signed_request(
         content_type="application/x-www-form-urlencoded",
     )
     assert r.status_code == 503
+
+
+def test_oversized_body_is_413_before_signature_or_config(
+    slack_client: TestClient, unconfigured_client: TestClient
+) -> None:
+    """The public path must refuse before the bytes sit in memory.
+
+    Content-Length over MAX_BODY_BYTES is 413 even with no signing secret and
+    even with no Slack headers — otherwise an unauthenticated client can fill
+    the daemon before HMAC or the 503-unconfigured branch run.
+    """
+    huge = b"x" * (MAX_BODY_BYTES + 1)
+    for client in (slack_client, unconfigured_client):
+        r = client.post(
+            SLACK_PATH,
+            content=huge,
+            headers={"content-type": "application/json"},
+        )
+        assert r.status_code == 413
+        assert r.json()["ok"] is False
+
+
+def test_chunked_oversized_body_is_413(slack_client: TestClient) -> None:
+    def chunks() -> Any:
+        yield b"x" * (MAX_BODY_BYTES // 2)
+        yield b"x" * (MAX_BODY_BYTES // 2 + 1)
+
+    r = slack_client.post(
+        SLACK_PATH,
+        content=chunks(),
+        headers={"content-type": "application/json"},
+    )
+    assert r.status_code == 413
+
+
+def test_slack_path_is_ip_rate_limited(tmp_path: Path) -> None:
+    """Bearer-exempt is not limiter-exempt; Slack still counts against the IP bucket."""
+    config = Config(
+        host="127.0.0.1",
+        port=8790,
+        db_path=tmp_path / "rate.db",
+        bearer="test-bearer-secret",
+        slack_signing_secret=SECRET,
+        rate_ip=2,
+    )
+    state = State(config.db_path)
+    with TestClient(build_app(config, state=state), base_url=BASE_URL) as client:
+        first = _post(client, _slash("one"), content_type="application/x-www-form-urlencoded")
+        second = _post(client, _slash("two"), content_type="application/x-www-form-urlencoded")
+        third = _post(client, _slash("three"), content_type="application/x-www-form-urlencoded")
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert third.status_code == 429
+        assert third.json()["error"] == "rate limited"
+    state.close()
 
 
 # ---- signature enforcement --------------------------------------------------------
@@ -393,6 +449,12 @@ def test_verify_without_a_secret_raises_503() -> None:
     with pytest.raises(SlackRefusalError) as excinfo:
         verify(None, {}, b"")
     assert excinfo.value.status == 503
+
+
+def test_verify_oversized_body_is_413_even_without_a_secret() -> None:
+    with pytest.raises(SlackRefusalError) as excinfo:
+        verify(None, {}, b"x" * (MAX_BODY_BYTES + 1))
+    assert excinfo.value.status == 413
 
 
 def test_parse_payload_refuses_non_utf8() -> None:

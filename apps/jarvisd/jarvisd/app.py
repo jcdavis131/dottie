@@ -2,7 +2,8 @@
 
 `build_app(config)` returns a `Starlette` whose middleware stack is exactly one
 `AuthMiddleware` (auth, rate limits, security headers, audit) with `/` and
-`/api/health` exempt. `serve(config)` runs it under uvicorn.
+`/api/health` fully exempt. `/api/slack/events` is bearer-exempt and still
+IP-rate-limited. `serve(config)` runs it under uvicorn.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ from starlette.routing import Route
 from jarvisd import __version__
 from jarvisd.auth import DEFAULT_EXEMPT, AuthMiddleware, agent_from_headers
 from jarvisd.slack import (
+    MAX_BODY_BYTES,
     SLACK_PATH,
     ReplayGuard,
     SlackRefusalError,
@@ -121,7 +123,13 @@ def _bounded_conductor_snapshot(payload: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-async def _body(request: Request, *, maximum_bytes: int | None = None) -> dict[str, Any]:
+async def _raw_body(request: Request, *, maximum_bytes: int | None = None) -> bytes:
+    """Read the request body, optionally refusing before the bytes sit in memory.
+
+    Content-Length is checked first so a declared oversize body never starts
+    streaming. Chunked bodies are capped as they arrive. The Slack doorway
+    uses this; `await request.body()` would buffer first and check later.
+    """
     if maximum_bytes is not None:
         content_length = request.headers.get("content-length")
         if content_length:
@@ -132,14 +140,17 @@ async def _body(request: Request, *, maximum_bytes: int | None = None) -> dict[s
             if declared_length > maximum_bytes:
                 raise PayloadTooLargeError(f"body exceeds {maximum_bytes} bytes")
     if maximum_bytes is None:
-        raw = await request.body()
-    else:
-        buffered = bytearray()
-        async for chunk in request.stream():
-            if len(buffered) + len(chunk) > maximum_bytes:
-                raise PayloadTooLargeError(f"body exceeds {maximum_bytes} bytes")
-            buffered.extend(chunk)
-        raw = bytes(buffered)
+        return await request.body()
+    buffered = bytearray()
+    async for chunk in request.stream():
+        if len(buffered) + len(chunk) > maximum_bytes:
+            raise PayloadTooLargeError(f"body exceeds {maximum_bytes} bytes")
+        buffered.extend(chunk)
+    return bytes(buffered)
+
+
+async def _body(request: Request, *, maximum_bytes: int | None = None) -> dict[str, Any]:
+    raw = await _raw_body(request, maximum_bytes=maximum_bytes)
     if not raw:
         return {}
     try:
@@ -313,7 +324,7 @@ def build_app(config: Config, *, state: State | None = None) -> Starlette:
         signature over the raw bytes has been checked, and nothing writes a goal
         until the payload has been recognised as one of the shapes we handle.
         """
-        raw = await request.body()
+        raw = await _raw_body(request, maximum_bytes=MAX_BODY_BYTES)
         try:
             signature = verify_slack(
                 config.slack_signing_secret, request.headers, raw
@@ -579,8 +590,9 @@ def build_app(config: Config, *, state: State | None = None) -> Starlette:
                 audit_path=config.audit_path,
                 # Slack cannot send our bearer; it signs each request instead, and
                 # the handler verifies that signature before doing anything. Exempt
-                # from the bearer check, never from authentication.
-                exempt=(*DEFAULT_EXEMPT, SLACK_PATH),
+                # from the bearer check, never from authentication or the IP limiter.
+                exempt=DEFAULT_EXEMPT,
+                auth_exempt=(SLACK_PATH,),
                 rate_ip=config.rate_ip,
                 rate_key=config.rate_key,
                 rate_agent=config.rate_agent,
