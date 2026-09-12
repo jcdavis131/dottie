@@ -1030,6 +1030,7 @@ def test_routing_rejection_is_400_with_quarantine(server, monkeypatch, tmp_path)
             "intent", "banana", api.production_routing.KNOWN_INTENTS
         )
 
+    authorize(monkeypatch)
     monkeypatch.setattr(api.production_routing, "route_goal", boom)
     monkeypatch.setattr(api, "PACKAGE_ROOT", tmp_path)
     status, doc, _ = request(server, "/api/route", method="POST", body={"goal": "hello"}, token=TOKEN)
