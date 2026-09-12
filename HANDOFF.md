@@ -16,6 +16,42 @@ before writing "current" anywhere in this file.
 
 ---
 
+## 📌 Session continuation — 2026-09-12 (supersedes every block below)
+
+**Re-stamped 2026-09-12 at HEAD `65941b9`** on `cursor/jarvisd-slack-ingress-e05d`
+(rebase of draft #26 onto `main` after #36). Measured with
+`uv run python scripts/check_handoff_fresh.py --check`: the live stamp was
+`acffb8d` (2026-09-11 / #32), drift 21, budget 20. The extra commit that
+tipped the gate is this Slack-ingress rebase sitting on #32–#36, plus the
+PR merge commit CI checks out.
+
+**What landed since `acffb8d` (git log, not memory):**
+
+- #32 phase 9 (`spec acceptance` / `spec done`) already restamped at `acffb8d`.
+- #33 Dottie Docker/runtime alignment.
+- #34 dottie-loop review fixups (LeaseFile fcntl lock, Incident.playbook,
+  CanaryRun save/load, typed missing `trace_id`).
+- #35 / #36 ruff on `packages/dottie-loop/dottie_loop/closed_loop.py`
+  (UP035, then I001/TC003). That was the #26 `lint-and-test` fail.
+- This branch: jarvisd Slack HTTP doorway + file-polled inbox drain,
+  fail-closed routing membership / `RoutingRejected` → 400 + quarantine,
+  and the `authorize()` fix so that test actually hits the 400 path.
+
+**Measured at this HEAD (this box, 2026-09-12):**
+
+- `uvx ruff@0.15.22 check packages/dottie-loop` — clean.
+- `uv run pytest packages/dottie-loop` — 116 passed.
+- `uv run pytest apps/jarvisd` — 122 passed, 1 skipped.
+- `main` CI after #36 (`34670421548`) — success. Vercel–dottie is still red
+  on that merge; the leftover dashboard Output Directory override
+  (`apps/arxiviq/out`) remains the operator-only fix.
+
+**Still blocked, operator-only:** Alienware Forge runner; real (non-zero)
+feedback signals; 500 consented traces; a non-synthetic `EvalBundle`;
+clearing the Vercel `dottie` Output Directory override.
+
+---
+
 ## 📌 Session continuation — 2026-09-11 (supersedes every block below)
 
 **Re-stamped 2026-09-11 at HEAD `acffb8d`** (PR #31 merged: dottie-loop phases 6–8; #27
