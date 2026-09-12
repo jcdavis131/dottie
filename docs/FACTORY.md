@@ -10,6 +10,7 @@ gated, provenance-honest work: `python -m factory`.
 |---|---|---|---|
 | software | `factory/repos.json` | `check next start done validate status` | anywhere a repo is checked out; CI |
 | MLOps | `factory/train_queue.json` | `train list preflight run gate next promote` | the home box (GPU), nightly window |
+| model missions | tracked mission JSON + local SQLite ledger | `mission propose status preflight run evaluate promote cancel resume` | isolated box scratch |
 | data | `factory/datasets.json` | `data list check refresh restore` | box, CI (freshness only), any checkout |
 
 Free to run by construction: GitHub Actions on public repos, the home box, Vercel
@@ -121,7 +122,33 @@ runs, not something this repo installs.
 Freshness is declared, not inferred: no `cadence_days` means the dataset is
 static and can only be missing, never stale.
 
-## 5. Acceptance
+## 5. Auditable model missions
+
+`factory/mission.py` is the stable facade over focused schema and process
+modules; it adds a strict, stdlib-only mission path without changing the legacy
+`train` queue. Tracked JSON fixes code, real-data identity, argv, resources,
+metric contract, artifacts, and approval policy. A local SQLite ledger
+serializes claims and records transitions, attempts, provenance, and
+digest-bound reviewer/shipper approvals. Execution rechecks the exact clean
+checkout around its cache-excluding snapshot, verifies copied datasets, records
+immutable train/eval launch identities separately from active cancellation
+fields, and never invokes a shell. Cancellation registration is atomic with the
+active phase. Windows uses a retained Job Object when assignment is available;
+otherwise it rechecks PID creation identity immediately before `taskkill`.
+That fallback retains a narrow OS-level check-to-exec PID-reuse window because
+stdlib offers no atomic identity-bound tree kill for an already-launched process.
+Promotion requires `--approve` and distinct named actors. A durable SQLite
+journal binds the attempt, provenance digest, actors, destinations, and hashes
+before publication; crash recovery completes only hard-link-owned verified
+outputs or removes only those owned links. Approvals and promoted state are
+committed only after every destination hash is verified.
+
+`factory/missions/gridiron-real-blocked.json` records the observed GridIron
+code revision while deliberately labeling its unresolved nflverse license,
+source revision, data hash, canonical evaluator, and metric contract. It is a
+blocked mission, not model evidence.
+
+## 6. Acceptance
 
 - `uv run pytest factory/tests -q` green; `uvx ruff@0.15.22 check factory` at 0.
 - `python -m factory check` exit 0 on this tree and runs in CI.

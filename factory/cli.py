@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import sys
+from pathlib import Path
 
 from factory.config import Factory, FactoryError
 
@@ -58,7 +61,104 @@ def build_parser() -> argparse.ArgumentParser:
     rs = dsub.add_parser("restore")
     rs.add_argument("dataset")
     rs.add_argument("--force", action="store_true")
+
+    mi = sub.add_parser("mission", help="auditable model mission lifecycle")
+    mi.add_argument(
+        "--ledger",
+        type=Path,
+        default=Path(
+            os.environ.get(
+                "FACTORY_MISSION_LEDGER",
+                Path(__file__).resolve().parent / "mission_ledger.sqlite3",
+            )
+        ),
+    )
+    mi.add_argument(
+        "--runs-root",
+        type=Path,
+        default=Path(
+            os.environ.get(
+                "FACTORY_MISSION_RUNS",
+                Path(__file__).resolve().parent / "mission_runs",
+            )
+        ),
+    )
+    msub = mi.add_subparsers(dest="mcmd", required=True)
+    msub.add_parser("propose").add_argument("mission", type=Path)
+    msub.add_parser("status").add_argument("mission_id")
+    msub.add_parser("preflight").add_argument("mission", type=Path)
+    msub.add_parser("run").add_argument("mission", type=Path)
+    evaluate = msub.add_parser("evaluate")
+    evaluate.add_argument("mission", type=Path)
+    evaluate.add_argument("--attempt")
+    promote = msub.add_parser("promote")
+    promote.add_argument("mission", type=Path)
+    promote.add_argument("--attempt")
+    promote.add_argument("--approve", action="store_true")
+    promote.add_argument("--reviewer")
+    promote.add_argument("--shipper")
+    msub.add_parser("cancel").add_argument("mission_id")
+    msub.add_parser("resume").add_argument("mission_id")
     return p
+
+
+def _mission_dispatch(a: argparse.Namespace) -> int:
+    from factory.mission import (
+        Ledger,
+        evaluate_attempt,
+        load_mission,
+        preflight_and_record,
+        promote_attempt,
+        run_attempt,
+    )
+
+    ledger = Ledger(a.ledger)
+    if a.mcmd == "propose":
+        mission = load_mission(a.mission)
+        ledger.propose(mission, a.mission)
+        print(f"{mission.id}: proposed")
+        return 0
+    if a.mcmd == "status":
+        print(json.dumps(ledger.status(a.mission_id), indent=2, ensure_ascii=False))
+        return 0
+    if a.mcmd == "cancel":
+        ledger.cancel(a.mission_id)
+        print(f"{a.mission_id}: cancelled")
+        return 0
+    if a.mcmd == "resume":
+        attempt = ledger.resume(a.mission_id)
+        print(f"{a.mission_id}: ready as new attempt {attempt}")
+        return 0
+
+    mission = load_mission(a.mission)
+    if a.mcmd == "preflight":
+        blockers = preflight_and_record(mission, ledger)
+        if blockers:
+            print("\n".join(f"BLOCKED: {item}" for item in blockers))
+            return 1
+        print(f"{mission.id}: ready")
+        return 0
+    if a.mcmd == "run":
+        attempt = run_attempt(mission, ledger, a.runs_root)
+        print(f"{mission.id}: attempt {attempt} finished training")
+        return 0 if ledger.status(mission.id)["state"] == "evaluating" else 1
+    attempt = a.attempt or ledger.status(mission.id)["active_attempt_id"]
+    if not attempt:
+        raise FactoryError(f"{mission.id}: no active attempt")
+    if a.mcmd == "evaluate":
+        result = evaluate_attempt(mission, ledger, attempt)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return 0 if result["passed"] else 1
+    written = promote_attempt(
+        mission,
+        ledger,
+        attempt,
+        approve=a.approve,
+        reviewer=a.reviewer,
+        shipper=a.shipper,
+    )
+    print("\n".join(f"promoted: {path}" for path in written))
+    return 0
 
 
 def dispatch(f: Factory, a: argparse.Namespace) -> int:
@@ -128,6 +228,8 @@ def dispatch(f: Factory, a: argparse.Namespace) -> int:
         else:
             print(data.restore(f, a.dataset, force=a.force))
         return 0
+    if a.cmd == "mission":
+        return _mission_dispatch(a)
     return 2
 
 
