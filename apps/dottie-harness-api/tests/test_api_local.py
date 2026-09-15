@@ -1020,3 +1020,25 @@ def test_production_entrypoint_does_not_import_dormant_artifact_modules():
     source = API_PATH.read_text(encoding="utf-8")
     for forbidden_import in ("acne_graph", "heuristics", "orch_infer", "vector_router"):
         assert forbidden_import not in source
+
+
+def test_routing_rejection_is_400_with_quarantine(server, monkeypatch, tmp_path):
+    """A routing rejection at the boundary answers 400, not 500, and quarantines."""
+
+    def boom(goal):
+        raise api.production_routing.RoutingRejected(
+            "intent", "banana", api.production_routing.KNOWN_INTENTS
+        )
+
+    authorize(monkeypatch)
+    monkeypatch.setattr(api.production_routing, "route_goal", boom)
+    monkeypatch.setattr(api, "PACKAGE_ROOT", tmp_path)
+    status, doc, _ = request(server, "/api/route", method="POST", body={"goal": "hello"}, token=TOKEN)
+    assert status == 400
+    assert doc["ok"] is False
+    assert doc["error"]["code"] == "routing_rejected"
+    qfile = tmp_path / "lib" / "routing_quarantine.jsonl"
+    record = json.loads(qfile.read_text(encoding="utf-8").strip().split("\n")[-1])
+    assert record["event"] == "routing_rejected"
+    assert record["field"] == "intent"
+    assert record["value"] == "banana"

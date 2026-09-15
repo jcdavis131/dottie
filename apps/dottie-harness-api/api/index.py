@@ -237,6 +237,31 @@ class handler(BaseHTTPRequestHandler):  # noqa: N801
             {"ok": False, "error": {"code": code, "message": message}},
         )
 
+    def _reject_routing(self, exc: production_routing.RoutingRejected, path: str, goal: str) -> None:
+        """Fail-closed 400 for routing rejections: structured response, quarantine, alert.
+
+        The rejection is quarantined to a JSONL log (best-effort: a read-only
+        filesystem must not turn the quarantine into a second failure) and also
+        emitted as a structured stderr line — the alert surface on serverless.
+        """
+        record = {
+            "event": "routing_rejected",
+            "path": path,
+            "field": exc.field,
+            "value": exc.value,
+            "expected": exc.expected,
+            "goal_preview": goal[:200],
+        }
+        print(json.dumps(record, ensure_ascii=False), file=sys.stderr, flush=True)
+        try:
+            quarantine_path = PACKAGE_ROOT / "lib" / "routing_quarantine.jsonl"
+            quarantine_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(quarantine_path, "a", encoding="utf-8") as handle:
+                handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
+        self._error(400, "routing_rejected", f"unknown routing {exc.field}: {exc.value!r}")
+
     def _consume_rejected_body(self) -> None:
         raw_length = self.headers.get("Content-Length")
         try:
@@ -440,9 +465,17 @@ class handler(BaseHTTPRequestHandler):  # noqa: N801
             return
 
         if path == "/api/route":
-            result = production_routing.route_goal(goal)
+            try:
+                result = production_routing.route_goal(goal)
+            except production_routing.RoutingRejected as exc:
+                self._reject_routing(exc, path, goal)
+                return
         else:
-            result = production_routing.plan_goal(goal)
+            try:
+                result = production_routing.plan_goal(goal)
+            except production_routing.RoutingRejected as exc:
+                self._reject_routing(exc, path, goal)
+                return
         self._send(
             200,
             {

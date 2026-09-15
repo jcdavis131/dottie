@@ -80,6 +80,9 @@ class Config:
     rate_ip: int = DEFAULT_RATE_IP
     rate_key: int = DEFAULT_RATE_KEY
     rate_agent: int = DEFAULT_RATE_AGENT
+    # Slack ingress is OFF until this is set. `None` means the endpoint refuses
+    # with 503 rather than accepting unsigned posts - see jarvisd/slack.py.
+    slack_signing_secret: str | None = None
 
     @classmethod
     def from_env(
@@ -124,6 +127,7 @@ class Config:
             rate_ip=_env_int("JARVIS_RATE_IP", DEFAULT_RATE_IP),
             rate_key=_env_int("JARVIS_RATE_KEY", DEFAULT_RATE_KEY),
             rate_agent=_env_int("JARVIS_RATE_AGENT", DEFAULT_RATE_AGENT),
+            slack_signing_secret=(env.get("JARVIS_SLACK_SIGNING_SECRET", "").strip() or None),
         )
 
     @property

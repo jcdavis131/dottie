@@ -16,6 +16,40 @@ before writing "current" anywhere in this file.
 
 ---
 
+## 📌 Session continuation — 2026-09-12 (supersedes every block below)
+
+**Re-stamped 2026-09-12 at HEAD `84ca74f`**, branch `scout/jarvisd-slack-ingress`
+(PR #26 rebased onto `main` after #36). Measured with
+`git rev-parse --short HEAD` + `scripts/check_handoff_fresh.py --check` on this
+tree, not carried forward from the 2026-09-11 stamp.
+
+The previous live stamp (`acffb8d`) was exactly 20 commits behind this HEAD
+locally and 21 behind GitHub's `pull_request` merge commit (`7598810` =
+`main` + this branch). Budget is 20, so lint-and-test failed on HANDOFF
+freshness after the rebase unblocked the earlier dottie-loop ruff gate.
+
+**What this stamp covers:**
+
+- `main` #36 (`843a869`): `closed_loop.py` `Iterator` moved behind
+  `TYPE_CHECKING` (ruff I001/TC003). That was the inherited lint-and-test
+  failure on this PR before the rebase.
+- This branch's Slack inbox drain + HTTP ingress + fail-closed routing
+  guards, replayed cleanly onto that `main` (6 commits, no conflicts).
+
+**Verified locally at this HEAD (uv 0.12.13, ruff 0.15.22, pytest 9.1.1):**
+
+- `uvx ruff@0.15.22 check packages/ava-skills packages/dottie-loop` — clean
+- `uv run pytest packages/dottie-loop -q` — **116 passed**
+- `uv run pytest apps/jarvisd -q` — **122 passed, 1 skipped**
+- `scripts/gate_audit.py --check` — OK (3 stale baseline entries in
+  `production_routing.py` now that dispatch is fail-closed; no new candidates)
+- `scripts/check_handoff_fresh.py --check` — this restamp is the fix
+
+Vercel `dottie` remains red across PRs (leftover Output Directory override);
+not treated as a merge blocker.
+
+---
+
 ## 📌 Session continuation — 2026-09-11 (supersedes every block below)
 
 **Re-stamped 2026-09-11 at HEAD `acffb8d`** (PR #31 merged: dottie-loop phases 6–8; #27
