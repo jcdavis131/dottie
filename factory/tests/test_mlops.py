@@ -136,3 +136,31 @@ def test_next_job_skips_known_miss_until_code_or_command_changes(ws: Factory):
     q["jobs"][0]["run"] = "{python} write_report.py"
     ws.queue_path.write_text(json.dumps(q))
     assert mlops.next_job(ws)["id"] == "j1"  # the command changed
+
+
+def test_opt_lane_gate_rejects_fast_but_wrong(ws: Factory):
+    job = dict(ws.job("j1"))
+    job["gate"] = {
+        "report": "out/opt.json",
+        "metric": "factory.speed_credit",
+        "op": ">=",
+        "threshold": 0.5,
+        "baseline": 0.4,
+    }
+    report = ws.workspace / "r1" / "out" / "opt.json"
+    report.parent.mkdir()
+    report.write_text(
+        json.dumps(
+            {"factory": {"correctness": 0, "speed_credit": 0.99, "speed_percentile": 0.99}}
+        )
+    )
+    d = mlops.gate_opt_lane(ws, job)
+    assert d["outcome"] == "fail" and d["metric"] == "factory.correctness" and d["value"] == 0
+    report.write_text(
+        json.dumps({"factory": {"correctness": 1, "speed_credit": 0.9, "speed_percentile": 0.9}})
+    )
+    d = mlops.gate_opt_lane(ws, job)
+    assert d["outcome"] == "pass" and d["metric"] == "factory.speed_credit" and d["value"] == 0.9
+    assert mlops.gate_opt_lane(ws, dict(job, gate={**job["gate"], "report": "out/missing.json"}))[
+        "outcome"
+    ] == "no_report"

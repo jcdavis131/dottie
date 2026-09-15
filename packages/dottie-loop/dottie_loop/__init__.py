@@ -22,6 +22,9 @@ Module map (spec section → module):
 * §27 Forge                            → :mod:`dottie_loop.forge`
 * §23 benchmark builder                → :mod:`dottie_loop.bench`
 * §11 error taxonomy, §37D API errors  → :mod:`dottie_loop.errors`
+* research stage 1 (AdvancedIF rubrics) → :mod:`dottie_loop.rubric`
+* research stage 2 (correctness-gated opt) → :mod:`dottie_loop.opt_lane`
+* research stage 3 (AIRA2 experiments) → :mod:`dottie_loop.experiment`
 
 stdlib only. No model is called anywhere in this package; it is the deterministic
 backbone (spec §02 "Determinism first") that a model layer may sit on top of.

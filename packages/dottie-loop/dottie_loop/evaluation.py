@@ -15,6 +15,7 @@ from typing import Any
 
 from dottie_loop.errors import ApprovalRequiredError, InvalidInputError
 from dottie_loop.hashing import age_seconds, new_id, now_iso
+from dottie_loop.rubric import slice_scores
 from dottie_loop.schema import active
 
 GATES = (
@@ -113,6 +114,17 @@ def calibration(pairs: list[tuple[float, bool]], *, abstentions: int = 0, wrong_
         table.append({"bin": b, "n": len(items), "confidence": round(conf, 4), "accuracy": round(acc, 4)})
     total = len(pairs) + abstentions
     return {"ece": round(ece, 4), "n": len(pairs), "bins": table, "abstentions": abstentions, "abstention_rate": round(abstentions / total, 4) if total else 0.0, "wrong_when_confident": wrong_when_confident, "status": "measured"}
+
+
+def merge_rubric_slices(
+    slice_results: dict[str, float], evals: list[dict[str, Any]]
+) -> dict[str, float]:
+    """Fold stage-1 rubric slices into an EvalBundle.slice_results map.
+
+    Gated scores are already zero when task success failed, so a high rubric
+    cannot inflate a failing slice.
+    """
+    return {**slice_results, **slice_scores(evals)}
 
 
 # --- §25 promotion -----------------------------------------------------------------------

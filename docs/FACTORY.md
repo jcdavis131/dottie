@@ -93,6 +93,11 @@ Gate outcomes are `pass`, `fail`, `no_report`, `no_metric`; only `pass` can
 promote. Results carry the repo's HEAD sha, the command, wall time and the
 metric value read.
 
+Code-optimization jobs can emit the stage-2 report from `dottie_loop.opt_lane`
+(`factory.correctness`, `factory.speed_credit`). `mlops.gate_opt_lane` fails
+when correctness is not 1 before it looks at speed. Promotion is still the
+printed-steps path above. See `docs/META_RESEARCH_SEQUENCE.md`.
+
 `scripts/train_window.ps1` installs a nightly Windows Task Scheduler window
 (`/RL LIMITED`, same conventions as `vector-unified/SCHEDULING.md`) that runs
 `python -m factory train run --next` on the box. It is a script the operator
