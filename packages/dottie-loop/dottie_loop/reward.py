@@ -16,11 +16,12 @@ Task success dominates. The anti-hacking rules are code, not prose:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from dottie_loop.errors import InvalidInputError
 from dottie_loop.hashing import now_iso
+from dottie_loop.rubric import quality_for_reward
 from dottie_loop.schema import active
 
 FORMULA = "v1"
@@ -160,6 +161,39 @@ def replay_total(record: dict[str, Any]) -> float | None:
     if not known:
         return None
     return round(sum(record["weights"][k] * v for k, v in known.items()), 6)
+
+
+def compute_reward_with_rubric(inp: RewardInputs, rubric_eval: dict[str, Any]) -> dict[str, Any]:
+    """§22 reward whose quality comes from a stage-1 rubric eval.
+
+    The hard task-success gate lives in :func:`quality_for_reward`: a high rubric
+    score cannot override task failure or a regression. Existing
+    ``compute_reward`` behaviour is unchanged when this helper is not used.
+    """
+    if inp.trace_id and rubric_eval.get("trace_id") not in (None, inp.trace_id):
+        raise InvalidInputError(
+            "rubric eval trace_id does not match reward inputs", field="trace_id"
+        )
+    inp_success = inp.task_ok is True and not inp.regression
+    if inp.task_ok is not None and rubric_eval.get("task_success") != inp_success:
+        raise InvalidInputError(
+            "reward task_ok/regression disagrees with rubric eval", field="task_ok"
+        )
+    score_10, extra = quality_for_reward(rubric_eval)
+    patched = replace(
+        inp,
+        verifier_score=score_10,
+        verifier_version=str(
+            rubric_eval.get("rubric_version") or inp.verifier_version or "rubric"
+        ),
+        evidence=[*inp.evidence, *extra],
+    )
+    rec = compute_reward(patched)
+    rec["rubric_eval_id"] = rubric_eval.get("eval_id")
+    rec["rubric_gate"] = rubric_eval.get("gate")
+    rec["rubric_ungated_score"] = rubric_eval.get("ungated_score")
+    rec["rubric_gated_score"] = rubric_eval.get("gated_score")
+    return rec
 
 
 # --- preference pairs (§22) ---------------------------------------------------------

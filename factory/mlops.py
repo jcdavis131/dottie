@@ -73,6 +73,49 @@ def _compare(value: float, op: str, threshold: float) -> bool:
     }[op]
 
 
+def gate_opt_lane(f: Factory, job: dict) -> dict:
+    """Correctness-first factory gate for an opt-lane report.
+
+    ``factory.correctness`` must be 1 before the job's configured speed metric
+    can pass. A fast-but-wrong report is ``fail``, never a speed pass. Does not
+    promote; promotion stays manual via :func:`promote`.
+    """
+    g = job["gate"]
+    report = f.repo_dir(job["repo"]) / g["report"]
+    out = {
+        "report": str(report),
+        "metric": "factory.correctness",
+        "op": "==",
+        "threshold": 1,
+        "baseline": g.get("baseline"),
+        "value": None,
+        "outcome": "no_report",
+        "speed": None,
+    }
+    if not report.is_file():
+        return out
+    try:
+        doc = json.loads(report.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return out
+    correctness = _lookup(doc, "factory.correctness")
+    if not isinstance(correctness, int | float) or isinstance(correctness, bool):
+        out["outcome"] = "no_metric"
+        return out
+    out["value"] = correctness
+    if correctness != 1:
+        out["outcome"] = "fail"
+        return out
+    speed = gate(f, job)
+    out["speed"] = speed
+    out["metric"] = speed["metric"]
+    out["op"] = speed["op"]
+    out["threshold"] = speed["threshold"]
+    out["value"] = speed["value"]
+    out["outcome"] = speed["outcome"]
+    return out
+
+
 def gate(f: Factory, job: dict) -> dict:
     g = job["gate"]
     report = f.repo_dir(job["repo"]) / g["report"]
@@ -259,6 +302,7 @@ __all__ = [
     "OUTCOMES",
     "cuda_status",
     "gate",
+    "gate_opt_lane",
     "last_result",
     "list_jobs",
     "next_job",

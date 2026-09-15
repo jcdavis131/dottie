@@ -34,6 +34,9 @@ Commands::
     incident drill --results r.json | playbook --kind K
     privacy hold|delete --lineage L.json --key K --operator O
     spec status | schemas | traceability --dir DIR | components --root . | acceptance | done
+    research rubric --rubric R.json --transcript T.json [--task-ok|--task-fail] [--scores S.json]
+    research opt-lane --file timings.json
+    research compose --reward R.json --rubric-eval E.json [--opt O.json]
 """
 
 from __future__ import annotations
@@ -426,6 +429,81 @@ def cmd_spec_status(_a: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def cmd_research_rubric(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.rubric import (
+        Rubric,
+        RubricCriterion,
+        ScriptedVerifier,
+        Transcript,
+        evaluate_rubric,
+    )
+
+    raw = _read_json(a.rubric)
+    criteria = [RubricCriterion(**c) for c in raw.pop("criteria", [])]
+    raw.pop("schema", None)
+    raw.pop("digest", None)
+    rubric = Rubric(criteria=criteria, **raw)
+    tr = _read_json(a.transcript)
+    transcript = Transcript(**tr) if isinstance(tr, dict) and "turns" in tr else Transcript(turns=tr)
+    scores = _read_json(a.scores) if a.scores else {c.criterion_id: 1.0 for c in rubric.criteria}
+    task_ok = True if a.task_ok else False if a.task_fail else None
+    return evaluate_rubric(
+        rubric, transcript, ScriptedVerifier(scores), task_ok=task_ok, trace_id=a.trace_id
+    )
+
+
+def cmd_research_opt_lane(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.opt_lane import (
+        SandboxProvenance,
+        build_report,
+        calibrate_timing,
+        factory_pass,
+    )
+
+    raw = _read_json(a.file)
+    timing = calibrate_timing(
+        list(raw["samples_s"]),
+        warmup_n=int(raw["warmup_n"]),
+        statistic=raw.get("statistic", "median"),
+        q=float(raw.get("quantile", 0.5)),
+    )
+    if "sandbox" not in raw:
+        raise InvalidInputError("opt-lane file needs sandbox provenance", field="sandbox")
+    sb = raw["sandbox"]
+    sandbox = SandboxProvenance(
+        kind=sb["kind"],
+        python=sb["python"],
+        platform=sb["platform"],
+        hostname_hash=sb["hostname_hash"],
+        env_names=list(sb.get("env_names") or []),
+        extra=dict(sb.get("extra") or {}),
+    )
+    report = build_report(
+        task_ok=bool(raw["task_ok"]),
+        timing=timing,
+        sandbox=sandbox,
+        baseline_s=raw.get("baseline_s"),
+        speed_percentile_value=raw.get("speed_percentile"),
+        trace_id=raw.get("trace_id"),
+    )
+    report["factory_gate"] = factory_pass(report, speed_threshold=float(a.speed_threshold))
+    return report
+
+
+def cmd_research_compose(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.research import compose_bundle
+    from dottie_loop.reward import RewardInputs
+
+    return compose_bundle(
+        reward_inputs=RewardInputs(**_read_json(a.reward)),
+        rubric_eval=_read_json(a.rubric_eval),
+        opt_report=_read_json(a.opt) if a.opt else None,
+        experiment_job=_read_json(a.experiment) if a.experiment else None,
+        split=_read_json(a.split) if a.split else None,
+        hidden_eval=_read_json(a.hidden_eval) if a.hidden_eval else None,
+    )
+
+
 # --- parser -----------------------------------------------------------------------------------
 
 
@@ -636,6 +714,29 @@ def build_parser() -> argparse.ArgumentParser:
     s = sp.add_parser("components", help="§04/§34: which authoritative artifacts are actually in the tree")
     s.add_argument("--root", default=".")
     s.set_defaults(fn=cmd_spec_components)
+
+    rs = sub.add_parser("research").add_subparsers(dest="sub", required=True)
+    s = rs.add_parser("rubric", help="stage 1: evaluate a versioned rubric with a scripted verifier")
+    s.add_argument("--rubric", required=True)
+    s.add_argument("--transcript", required=True)
+    s.add_argument("--scores", help="JSON {criterion_id: score} for the scripted verifier")
+    s.add_argument("--trace-id")
+    g = s.add_mutually_exclusive_group()
+    g.add_argument("--task-ok", action="store_true")
+    g.add_argument("--task-fail", action="store_true")
+    s.set_defaults(fn=cmd_research_rubric)
+    s = rs.add_parser("opt-lane", help="stage 2: calibrated timing report, speed zeroed on task failure")
+    s.add_argument("--file", required=True, help="JSON {task_ok, warmup_n, samples_s, sandbox, baseline_s?}")
+    s.add_argument("--speed-threshold", type=float, default=0.0)
+    s.set_defaults(fn=cmd_research_opt_lane)
+    s = rs.add_parser("compose", help="stages 1–3 bundle; does not promote")
+    s.add_argument("--reward", required=True, help="RewardInputs JSON")
+    s.add_argument("--rubric-eval", required=True)
+    s.add_argument("--opt")
+    s.add_argument("--experiment")
+    s.add_argument("--split")
+    s.add_argument("--hidden-eval")
+    s.set_defaults(fn=cmd_research_compose)
     return p
 
 

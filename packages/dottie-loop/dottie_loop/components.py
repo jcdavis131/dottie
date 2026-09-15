@@ -29,6 +29,9 @@ COMPONENTS: tuple[tuple[str, str, str, str], ...] = (
     ("benchmark_builder", "workflow inventory, runner, metrics, report", "packages/dottie-loop/dottie_loop/bench.py", "BRANCH"),
     ("loop_trigger", "freshness, regression, volume, canary, cooldown gates", "packages/dottie-loop/dottie_loop/closed_loop.py", "BRANCH"),
     ("forge", "git-transported remote GPU jobs and results", "scripts/forge_runner.py", "RUNNER ABSENT"),
+    ("rubric_rewards", "AdvancedIF-style versioned rubrics, per-criterion audit, hard task gate", "packages/dottie-loop/dottie_loop/rubric.py", "IMPLEMENTED"),
+    ("opt_lane", "correctness-gated speed reward with calibrated timing and sandbox provenance", "packages/dottie-loop/dottie_loop/opt_lane.py", "IMPLEMENTED"),
+    ("experiment_aira", "AIRA2 splits, hidden consistent eval, resource jobs over LeaseFile", "packages/dottie-loop/dottie_loop/experiment.py", "IMPLEMENTED"),
 )
 
 
