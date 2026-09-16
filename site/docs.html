@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Docs — Dottie</title>
+<meta name="description" content="Get Dottie Local running: install the one-file CLI, submit your first job, and understand the loop.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23C17C60'/%3E%3Ctext x='16' y='22' font-family='monospace' font-size='16' font-weight='bold' text-anchor='middle' fill='%23F9F6F0'%3ED%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+<style>
+.doc{max-width:760px;margin:0 auto;padding:clamp(2rem,5vw,3.5rem) clamp(1rem,4vw,2rem)}
+.doc h2{margin-top:2.5rem}
+.doc p{margin:.6rem 0;color:#4a4a4a}
+.doc pre{background:var(--void);color:#E8E0D5;border-radius:var(--radius-sm);
+  padding:1rem 1.1rem;margin:1rem 0;overflow-x:auto;font-size:.86rem;line-height:1.55}
+.doc pre code{font-family:var(--mono)}
+.doc ol{margin:.6rem 0 .6rem 1.4rem;color:#4a4a4a}
+.doc li{margin:.35rem 0}
+.doc table{width:100%;border-collapse:collapse;margin:1rem 0;font-size:.92rem}
+.doc th,.doc td{text-align:left;padding:.55rem .7rem;border-bottom:1px solid var(--stone-2)}
+.doc th{font-family:var(--mono);font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;color:var(--moss)}
+.doc code.inline{font-family:var(--mono);font-size:.88em;background:var(--stone-1);
+  border:1px solid var(--stone-2);border-radius:6px;padding:.1em .4em}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a class="wordmark" href="index.html"><span class="dot" aria-hidden="true"></span>Dottie</a>
+  <div class="nav-links">
+    <a href="index.html#how">How it works</a>
+    <a href="index.html#local">Local</a>
+    <a href="docs.html">Docs</a>
+    <a class="gh" href="https://github.com/jcdavis131/dottie">GitHub ↗</a>
+  </div>
+</nav>
+
+<article class="doc">
+  <p class="eyebrow">Docs</p>
+  <h1>Run Dottie locally.</h1>
+  <p class="lede">One file, zero dependencies, five minutes. Dottie Local is the job queue and worker CLI — the beating heart of the harness.</p>
+
+  <h2>1 · Install</h2>
+  <p>Clone the repo and run the installer. It builds a single <code class="inline">dottie.pyz</code> (8KB, stdlib only) and links it as <code class="inline">dottie</code> on your PATH:</p>
+  <pre><code>git clone https://github.com/jcdavis131/dottie.git
+cd dottie
+bash scripts/install-local.sh</code></pre>
+  <p>Add the queue location to your shell profile so it follows you everywhere:</p>
+  <pre><code>export DOTTIE_JOBS_DIR="$HOME/.dottie/jobs"</code></pre>
+
+  <h2>2 · Submit your first job</h2>
+  <pre><code>dottie submit --goal "Summarize the open PRs on jcdavis131/dottie" --surface
+dottie list --state pending</code></pre>
+  <p><code class="inline">--surface</code> means: report the result back when it's done. Without it, the result just lands in the queue, quietly.</p>
+
+  <h2>3 · The loop</h2>
+  <ol>
+    <li><strong>Submit</strong> — the job spec lands in <code class="inline">jobs/pending/</code>.</li>
+    <li><strong>Claim</strong> — the worker atomically moves it to <code class="inline">jobs/claimed/</code>. One job at a time, no races.</li>
+    <li><strong>Work</strong> — the job is done with real tools. Read-only by default; anything destructive needs your explicit word.</li>
+    <li><strong>Record</strong> — <code class="inline">dottie done</code> writes the result; <code class="inline">dottie log</code> appends a 7-field timeline entry. Real traces, never theater.</li>
+    <li><strong>Surface</strong> — surfaced or failed jobs report back. Everything else stays silent.</li>
+  </ol>
+
+  <h2>Commands</h2>
+  <table>
+    <tr><th>Command</th><th>What it does</th></tr>
+    <tr><td><code class="inline">submit</code></td><td>File a job: <code class="inline">--goal</code>, <code class="inline">--context</code>, <code class="inline">--repo</code>, <code class="inline">--surface</code></td></tr>
+    <tr><td><code class="inline">list</code></td><td>Jobs by state: <code class="inline">--state pending|claimed|done|failed</code></td></tr>
+    <tr><td><code class="inline">show</code></td><td>Full spec + result for one job</td></tr>
+    <tr><td><code class="inline">status</code></td><td>Queue counts as JSON</td></tr>
+    <tr><td><code class="inline">claim</code></td><td>Atomically claim a pending job</td></tr>
+    <tr><td><code class="inline">done</code> / <code class="inline">fail</code></td><td>Record the outcome, honestly</td></tr>
+    <tr><td><code class="inline">log</code></td><td>Append a timeline entry (node/agent/attempt/latency/tokens/status/error)</td></tr>
+  </table>
+
+  <h2>The rules</h2>
+  <p>Dottie never bypasses your approval. Merges, releases, deploys, sends, and deletes need your explicit word — in the job spec <em>and</em> under the normal approval rules. Agent approval never counts. If a job can't be done, she <code class="inline">fail</code>s it with the honest reason instead of inventing a result.</p>
+
+  <div class="cta-row">
+    <a class="btn primary" href="index.html">← Back to Dottie</a>
+    <a class="btn ghost" href="https://github.com/jcdavis131/dottie">The repo ↗</a>
+  </div>
+</article>
+
+<footer>
+  <p><span class="dot" aria-hidden="true"></span> Dottie — the GOD orchestration harness</p>
+  <p class="fine">Built by JC Davis · MIT License · <a href="https://github.com/jcdavis131/dottie">GitHub</a></p>
+</footer>
+
+</body>
+</html>
