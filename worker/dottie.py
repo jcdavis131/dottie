@@ -33,9 +33,21 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 WORKER_DIR = Path(__file__).resolve().parent
-JOBS_DIR = WORKER_DIR / "jobs"
+# Env overrides let a packaged single-file build (dottie.pyz) keep its queue
+# and timeline next to the user instead of inside the zip. Defaults preserve
+# the classic repo-local layout. When running from inside a zipapp the queue
+# cannot live next to the code, so it defaults to ~/.dottie/jobs.
+_DEFAULT_JOBS_DIR = WORKER_DIR / "jobs"
+if ".pyz" in str(WORKER_DIR):
+    _DEFAULT_JOBS_DIR = Path.home() / ".dottie" / "jobs"
+JOBS_DIR = Path(os.environ.get("DOTTIE_JOBS_DIR", _DEFAULT_JOBS_DIR))
 STATES = ("pending", "claimed", "done", "failed")
-TIMELINE_PATH = Path.home() / "workspace" / "timeline" / "timeline.jsonl"
+TIMELINE_PATH = Path(
+    os.environ.get(
+        "DOTTIE_TIMELINE",
+        Path.home() / "workspace" / "timeline" / "timeline.jsonl",
+    )
+)
 
 
 def _now_local_iso() -> str:
@@ -50,6 +62,10 @@ def _new_id() -> str:
 
 
 def _job_path(job_id: str, state: str) -> Path:
+    # Reject path traversal: job ids are internal (job-YYYYMMDD-HHMMSS-xxxx),
+    # but claim/show/done/fail take them from CLI args.
+    if not job_id or "/" in job_id or "\\" in job_id or ".." in job_id:
+        raise ValueError(f"invalid job id: {job_id!r}")
     return JOBS_DIR / state / f"{job_id}.json"
 
 

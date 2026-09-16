@@ -4,6 +4,18 @@ This is Dottie's job-taking loop. The harness (`apps/scout-cli/bigbang/plugins/h
 is the orchestration engine; this worker is the part that picks up real jobs and does
 them with real tools.
 
+## Dottie Local — one-file install
+
+```sh
+bash scripts/install-local.sh   # builds dist/dottie.pyz, links ~/.local/bin/dottie
+export DOTTIE_JOBS_DIR="$HOME/.dottie/jobs"   # add to your shell profile
+dottie submit --goal "first job" && dottie list
+```
+
+Single 8KB file, stdlib only, no pip. `DOTTIE_JOBS_DIR` / `DOTTIE_TIMELINE`
+env vars point the queue and timeline wherever you want; defaults keep the
+classic repo-local layout.
+
 ## Point a job at Dottie
 
 ```sh
