@@ -64,18 +64,19 @@ def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def _command_problem(repo: Path, argv: tuple[str, ...], name: str) -> str | None:
+def _command_problems(repo: Path, argv: tuple[str, ...], name: str) -> list[str]:
+    problems: list[str] = []
     executable = Path(argv[0])
     if executable.is_absolute():
         if not executable.is_file():
-            return f"{name} executable does not exist: {executable}"
+            problems.append(f"{name} executable does not exist: {executable}")
     elif shutil.which(argv[0]) is None:
-        return f"{name} executable is not on PATH: {argv[0]}"
+        problems.append(f"{name} executable is not on PATH: {argv[0]}")
     if len(argv) > 1 and argv[1].endswith(".py"):
         script = repo / argv[1]
         if not script.is_file():
-            return f"{name} command path is missing: {argv[1]}"
-    return None
+            problems.append(f"{name} command path is missing: {argv[1]}")
+    return problems
 
 
 _PLACEHOLDER = re.compile(
@@ -176,26 +177,26 @@ def preflight_mission(mission: Mission, ledger: Ledger) -> list[str]:
     ledger.assert_mission(mission)
     blockers: list[str] = []
     repo = mission.repository.path
-    if not repo.is_dir():
-        return [f"repository does not exist: {repo}"]
-    head = _git(repo, "rev-parse", "HEAD")
-    if head.returncode != 0:
-        blockers.append("repository is not a readable Git checkout")
-    elif head.stdout.strip().lower() != mission.repository.code_sha:
-        blockers.append(
-            f"code SHA drift: expected {mission.repository.code_sha}, "
-            f"found {head.stdout.strip()}"
-        )
-    dirty = _git(repo, "status", "--porcelain", "--untracked-files=all")
-    if dirty.returncode != 0 or dirty.stdout.strip():
-        blockers.append("repository is dirty; exact clean code SHA required")
+    repo_exists = repo.is_dir()
+    if not repo_exists:
+        blockers.append(f"repository does not exist: {repo}")
+    else:
+        head = _git(repo, "rev-parse", "HEAD")
+        if head.returncode != 0:
+            blockers.append("repository is not a readable Git checkout")
+        elif head.stdout.strip().lower() != mission.repository.code_sha:
+            blockers.append(
+                f"code SHA drift: expected {mission.repository.code_sha}, "
+                f"found {head.stdout.strip()}"
+            )
+        dirty = _git(repo, "status", "--porcelain", "--untracked-files=all")
+        if dirty.returncode != 0 or dirty.stdout.strip():
+            blockers.append("repository is dirty; exact clean code SHA required")
     for command_name, argv in (
         ("train", mission.train.argv),
         ("evaluation", mission.evaluation.argv),
     ):
-        problem = _command_problem(repo, argv, command_name)
-        if problem:
-            blockers.append(problem)
+        blockers.extend(_command_problems(repo, argv, command_name))
     if _is_placeholder(mission.evaluation.contract_revision):
         blockers.append("canonical metric contract revision is unverified")
     for dataset in mission.datasets:
@@ -230,12 +231,13 @@ def preflight_mission(mission: Mission, ledger: Ledger) -> list[str]:
             f"insufficient RAM: {available_ram} MiB available, "
             f"{mission.resources.ram_mb} MiB required"
         )
-    free_disk = shutil.disk_usage(repo).free // (1024 * 1024)
-    if free_disk < mission.resources.disk_mb:
-        blockers.append(
-            f"insufficient disk: {free_disk} MiB free, "
-            f"{mission.resources.disk_mb} MiB required"
-        )
+    if repo_exists:
+        free_disk = shutil.disk_usage(repo).free // (1024 * 1024)
+        if free_disk < mission.resources.disk_mb:
+            blockers.append(
+                f"insufficient disk: {free_disk} MiB free, "
+                f"{mission.resources.disk_mb} MiB required"
+            )
     blockers.extend(_gpu_problems(mission.resources))
     if ledger.running_count() >= mission.resources.max_parallel_jobs:
         blockers.append("conflicting factory mission is already running")
@@ -243,6 +245,8 @@ def preflight_mission(mission: Mission, ledger: Ledger) -> list[str]:
     for output in mission.outputs:
         if output.destination in protected:
             blockers.append(f"output would overwrite protected artifact: {output.destination}")
+        if not repo_exists:
+            continue
         destination = repo / output.destination
         try:
             contained_path(repo, destination)
@@ -619,7 +623,13 @@ def promote_attempt(
         raise FactoryError("provenance integrity check failed")
     for relative, expected in provenance["artifact_hashes"].items():
         source = scratch / relative
-        if not source.is_file() or sha256_of(source) != expected:
+        try:
+            contained_path(scratch, source, require_file=True)
+        except FactoryError as exc:
+            if source.exists() or source.is_symlink():
+                raise
+            raise FactoryError(f"artifact integrity check failed: {relative}") from exc
+        if sha256_of(source) != expected:
             raise FactoryError(f"artifact integrity check failed: {relative}")
     current_protected = _hash_paths(
         mission.repository.path, mission.protected_artifacts
