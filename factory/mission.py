@@ -433,7 +433,7 @@ def _evaluate_claimed_attempt(
 ) -> dict[str, Any]:
     attempt = ledger.attempt(attempt_id)
     scratch = Path(attempt["scratch_path"])
-    report = scratch / mission.evaluation.report
+    report = contained_path(scratch, scratch / mission.evaluation.report)
     with contextlib.suppress(FileNotFoundError):
         report.unlink()
     started_wall = time.time()

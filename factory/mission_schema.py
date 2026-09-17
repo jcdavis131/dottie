@@ -7,7 +7,7 @@ import math
 import re
 from dataclasses import asdict, dataclass
 from enum import StrEnum
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 from factory.config import FactoryError
@@ -175,7 +175,15 @@ def _string(value: Any, where: str) -> str:
 def _relative(value: Any, where: str) -> str:
     text = _string(value, where)
     posix = PurePosixPath(text)
-    if posix.is_absolute() or ".." in posix.parts or "\\" in text:
+    windows = PureWindowsPath(text)
+    if (
+        posix.is_absolute()
+        or windows.is_absolute()
+        or windows.drive
+        or ".." in posix.parts
+        or ".." in windows.parts
+        or "\\" in text
+    ):
         raise FactoryError(f"{where}: expected safe repository-relative path")
     return text
 
