@@ -132,7 +132,7 @@ def test_missing_artifacts_empty_traces_schema_mismatch_fail_closed(tmp_path):
             consent_ledger=LEDGER,
             source_records=[_source()],
         )
-    with pytest.raises(errors.InvalidInputError, match="schema"):
+    with pytest.raises(errors.InvalidInputError, match="major version"):
         compute_teacher.parse_trace({"schema": "compute-trace-2.0.0", "trace_id": "x", "steps": []})
     missing = tmp_path / "nope.json"
     with pytest.raises(errors.UnexecutableError, match="missing"):
