@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from dottie_loop.capture import export_eligibility, redact_record
+from dottie_loop.capture import export_eligibility, redact_obj, redact_record
 from dottie_loop.errors import InvalidInputError, PolicyDeniedError, UnexecutableError
 from dottie_loop.hashing import digest, new_id, now_iso
 from dottie_loop.schema import active, check_compatible, parse_schema
@@ -278,6 +278,8 @@ def synthesize_offline(
     holds = deletion_holds or set()
     packed: list[dict[str, Any]] = []
     refused: list[dict[str, Any]] = []
+    eligible_traces: list[ComputeTrace] = []
+    eligible_arts: list[dict[str, Any]] = []
     records_by_id = {str(r.get("trace_id")): r for r in source_records}
 
     for trace in parsed:
@@ -304,6 +306,22 @@ def synthesize_offline(
                 "teacher pack refused: secret/keyish detector hit on tool output",
                 field="redaction",
             )
+        if cfg.require_redaction:
+            _scrubbed, step_rep = redact_obj(
+                {
+                    "steps": [s.to_dict() for s in trace.steps],
+                    "notes": trace.notes,
+                    "verifier_outcomes": list(trace.verifier_outcomes),
+                }
+            )
+            if step_rep.get("secret") or step_rep.get("keyish"):
+                raise PolicyDeniedError(
+                    "teacher pack refused: secret/keyish detector hit on compute-trace content",
+                    field="redaction",
+                )
+        eligible_traces.append(trace)
+        if art is not None:
+            eligible_arts.append(art)
         packed.append(
             {
                 "trace_id": rec.get("trace_id"),
@@ -322,11 +340,13 @@ def synthesize_offline(
 
     attachment = None
     if attach is not None:
+        first_art = eligible_arts[0] if eligible_arts else {}
+        anchor = eligible_traces[0] if eligible_traces else parsed[0]
         teacher = TeacherRecord(
-            teacher_id=str((arts[0] if arts else {}).get("teacher_id") or new_id("teach_")),
-            compute_trace_id=parsed[0].digest(),
-            artifact_kind=str((arts[0] if arts else {}).get("artifact_kind") or "search_tree"),
-            artifact_digest=str((arts[0] if arts else {}).get("artifact_digest") or parsed[0].digest()),
+            teacher_id=str(first_art.get("teacher_id") or new_id("teach_")),
+            compute_trace_id=anchor.digest(),
+            artifact_kind=str(first_art.get("artifact_kind") or "search_tree"),
+            artifact_digest=str(first_art.get("artifact_digest") or anchor.digest()),
             task_ok=True,
         )
         attachment = attach_teacher(attach, teacher)
@@ -334,8 +354,8 @@ def synthesize_offline(
     pack = {
         "schema": active("teacher-pack"),
         "pack_id": new_id("cat_"),
-        "traces": [t.to_dict() for t in parsed],
-        "artifacts": arts,
+        "traces": [t.to_dict() for t in eligible_traces],
+        "artifacts": eligible_arts,
         "shards": packed,
         "refused": refused,
         "attachment": None
@@ -357,7 +377,7 @@ def synthesize_offline(
         "computed_at": now_iso(),
     }
     pack["digest"] = digest(
-        {"traces": [t.digest() for t in parsed], "shards": packed, "artifacts": arts}
+        {"traces": [t.digest() for t in eligible_traces], "shards": packed, "artifacts": eligible_arts}
     )
     return pack
 
