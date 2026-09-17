@@ -32,6 +32,9 @@ COMPONENTS: tuple[tuple[str, str, str, str], ...] = (
     ("rubric_rewards", "AdvancedIF-style versioned rubrics, per-criterion audit, hard task gate", "packages/dottie-loop/dottie_loop/rubric.py", "IMPLEMENTED"),
     ("opt_lane", "correctness-gated speed reward with calibrated timing and sandbox provenance", "packages/dottie-loop/dottie_loop/opt_lane.py", "IMPLEMENTED"),
     ("experiment_aira", "AIRA2 splits, hidden consistent eval, resource jobs over LeaseFile", "packages/dottie-loop/dottie_loop/experiment.py", "IMPLEMENTED"),
+    ("compute_teacher", "Compute-as-Teacher offline synthesis; no live teacher; no training", "packages/dottie-loop/dottie_loop/compute_teacher.py", "IMPLEMENTED"),
+    ("ember_causal", "S-EMBER causal memory edges + provenance evaluation", "packages/dottie-loop/dottie_loop/ember.py", "IMPLEMENTED"),
+    ("hyperagents", "proposal-only HyperAgents sandbox; cannot self-apply or promote", "packages/dottie-loop/dottie_loop/hyperagents.py", "IMPLEMENTED"),
 )
 
 

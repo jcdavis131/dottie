@@ -33,10 +33,52 @@ AUTHORITY: dict[str, float] = {"user_stated": 1.0, "verified_tool": 0.9, "docume
 SENSITIVITY_RANK = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
 NODE_TYPES = frozenset({"goal", "actor", "run", "plan", "step", "tool", "skill", "source", "fact", "artifact", "dataset", "model", "evaluation", "release", "incident", "person"})
 EDGE_TYPES = frozenset({"depends_on", "derived_from", "verified_by", "supersedes", "approved_by", "rolled_back_to", "mentions", "resolves_to"})
+#: Stage 5 — S-EMBER causal / provenance edges. Not inferred from co-occurrence.
+CAUSAL_EDGE_TYPES = frozenset({"caused", "blocked", "confounded"})
+ALL_EDGE_TYPES = EDGE_TYPES | CAUSAL_EDGE_TYPES
+EVIDENCE_POINTER_KINDS = frozenset({"trace", "eval", "incident"})
+MEASURED_PREDICATE_KINDS = frozenset({"gate_result", "reward_component", "hidden_eval_mean"})
 
 
 def _tokens(s: str) -> set[str]:
     return set(re.findall(r"[a-z0-9]+", s.lower()))
+
+
+def _require_evidence_ptr(ptr: dict[str, str] | None) -> dict[str, str]:
+    if not ptr or not isinstance(ptr, dict):
+        raise InvalidInputError("causal edge needs an evidence pointer", field="evidence_ptr")
+    kind = ptr.get("kind")
+    ref = (ptr.get("id") or "").strip()
+    if kind not in EVIDENCE_POINTER_KINDS:
+        raise InvalidInputError(
+            f"evidence pointer kind must be one of {sorted(EVIDENCE_POINTER_KINDS)}",
+            field="evidence_ptr",
+        )
+    if not ref:
+        raise InvalidInputError("evidence pointer id is required", field="evidence_ptr")
+    return {"kind": kind, "id": ref}
+
+
+def _require_measured(measured: dict[str, Any] | None) -> dict[str, Any]:
+    if not measured or not isinstance(measured, dict):
+        raise InvalidInputError(
+            "causal edge needs a measured predicate (gate, reward, or hidden-eval)",
+            field="measured",
+        )
+    kind = measured.get("kind")
+    if kind not in MEASURED_PREDICATE_KINDS:
+        raise InvalidInputError(
+            f"measured predicate kind must be one of {sorted(MEASURED_PREDICATE_KINDS)}",
+            field="measured",
+        )
+    if "value" not in measured:
+        raise InvalidInputError("measured predicate needs a value", field="measured")
+    value = measured["value"]
+    if value is None:
+        raise InvalidInputError("measured predicate value is unmeasured", field="measured")
+    if not isinstance(value, bool | int | float | str):
+        raise InvalidInputError("measured predicate value must be a number, bool, or string", field="measured")
+    return {"kind": kind, "value": value, "source": measured.get("source") or kind}
 
 
 @dataclass
@@ -72,6 +114,8 @@ class Edge:
     last_confirmed: str
     sensitivity: str = "P1"
     version: int = 1
+    evidence_ptr: dict[str, str] | None = None
+    measured: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return dict(self.__dict__)
@@ -159,6 +203,11 @@ class MemoryStore:
 
     # -- graph --
     def add_edge(self, src: str, rel: str, dst: str, *, graph: str, source: str, confidence: float, sensitivity: str = "P1") -> Edge:
+        if rel in CAUSAL_EDGE_TYPES:
+            raise InvalidInputError(
+                "causal edges require add_causal_edge (evidence pointer + measured predicate)",
+                field="rel",
+            )
         if rel not in EDGE_TYPES:
             raise InvalidInputError(f"unknown edge type {rel!r}", field="rel")
         if graph not in ("workflow", "history"):
@@ -173,6 +222,72 @@ class MemoryStore:
         e = Edge(edge_id=new_id("edge_"), src=src, rel=rel, dst=dst, graph=graph, source=source, confidence=confidence, first_seen=now_iso(), last_confirmed=now_iso(), sensitivity=sensitivity)
         self.edges[e.edge_id] = e
         return e
+
+    def add_causal_edge(
+        self,
+        src: str,
+        rel: str,
+        dst: str,
+        *,
+        graph: str,
+        source: str,
+        confidence: float,
+        evidence_ptr: dict[str, str],
+        measured: dict[str, Any],
+        sensitivity: str = "P1",
+        synthetic: bool = False,
+        mock: bool = False,
+    ) -> Edge:
+        """Write a cause/effect edge. Co-occurrence is not enough; evidence must be measured.
+
+        Hints (confidence < 0.4) cannot become causal edges. Synthetic or mock
+        evals are refused. The evidence pointer must name a trace, eval, or incident.
+        """
+        if rel not in CAUSAL_EDGE_TYPES:
+            raise InvalidInputError(f"unknown causal edge type {rel!r}", field="rel")
+        if graph not in ("workflow", "history"):
+            raise InvalidInputError("graph must be workflow|history", field="graph")
+        if synthetic or mock or source in {"synthetic", "mock"}:
+            raise PolicyDeniedError(
+                "causal memory cannot be written from synthetic or mock evals",
+                field="source",
+            )
+        if confidence < HINT_THRESHOLD:
+            raise PolicyDeniedError(
+                "causal edges need confidence >= 0.4; hints cannot drive causality",
+                field="confidence",
+            )
+        ptr = _require_evidence_ptr(evidence_ptr)
+        pred = _require_measured(measured)
+        key = f"{src}|{rel}|{dst}|{graph}"
+        existing = next((e for e in self.edges.values() if f"{e.src}|{e.rel}|{e.dst}|{e.graph}" == key), None)
+        if existing is not None:
+            existing.last_confirmed = now_iso()
+            existing.version += 1
+            existing.confidence = max(existing.confidence, confidence)
+            existing.evidence_ptr = ptr
+            existing.measured = pred
+            return existing
+        e = Edge(
+            edge_id=new_id("edge_"),
+            src=src,
+            rel=rel,
+            dst=dst,
+            graph=graph,
+            source=source,
+            confidence=confidence,
+            first_seen=now_iso(),
+            last_confirmed=now_iso(),
+            sensitivity=sensitivity,
+            evidence_ptr=ptr,
+            measured=pred,
+        )
+        self.edges[e.edge_id] = e
+        self.record({"kind": "causal_edge", "edge_id": e.edge_id, "rel": rel, "evidence_ptr": ptr})
+        return e
+
+    def causal_edges(self) -> list[Edge]:
+        return [e for e in self.edges.values() if e.rel in CAUSAL_EDGE_TYPES]
 
     def neighbors(self, node: str, graph: str | None = None) -> list[Edge]:
         return [e for e in self.edges.values() if node in (e.src, e.dst) and (graph is None or e.graph == graph)]

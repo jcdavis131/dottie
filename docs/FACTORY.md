@@ -95,8 +95,12 @@ metric value read.
 
 Code-optimization jobs can emit the stage-2 report from `dottie_loop.opt_lane`
 (`factory.correctness`, `factory.speed_credit`). `mlops.gate_opt_lane` fails
-when correctness is not 1 before it looks at speed. Promotion is still the
-printed-steps path above. See `docs/META_RESEARCH_SEQUENCE.md`.
+when correctness is not 1 before it looks at speed. Offline Compute-as-Teacher
+packs (`teacher-pack-1.0.0`) are judged by `mlops.gate_compute_teacher`: missing
+pack → `no_report`, schema mismatch → `no_metric`, empty/not-ready → `fail`.
+A pass means the pack is ready to feed a later trainer; it does not train and
+does not promote. Promotion is still the printed-steps path above. See
+`docs/META_RESEARCH_SEQUENCE.md`.
 
 `scripts/train_window.ps1` installs a nightly Windows Task Scheduler window
 (`/RL LIMITED`, same conventions as `vector-unified/SCHEDULING.md`) that runs

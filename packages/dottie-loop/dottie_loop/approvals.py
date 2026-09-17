@@ -41,7 +41,7 @@ APPROVAL_SCOPES = frozenset({"external_send", "credential_use", "production_muta
 
 #: Action types an approval may name (§37C). One approval covers exactly one.
 ACTION_TYPES = frozenset(
-    {"merge", "release", "deploy", "promote", "send", "purchase", "capture", "credential"}
+    {"merge", "release", "deploy", "promote", "send", "purchase", "capture", "credential", "experiment"}
 )
 
 #: An approval for one action type can never be reused for another (§07

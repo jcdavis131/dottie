@@ -25,6 +25,9 @@ Module map (spec section → module):
 * research stage 1 (AdvancedIF rubrics) → :mod:`dottie_loop.rubric`
 * research stage 2 (correctness-gated opt) → :mod:`dottie_loop.opt_lane`
 * research stage 3 (AIRA2 experiments) → :mod:`dottie_loop.experiment`
+* research stage 4 (Compute-as-Teacher) → :mod:`dottie_loop.compute_teacher`
+* research stage 5 (S-EMBER causal memory) → :mod:`dottie_loop.ember`
+* research stage 6 (HyperAgents proposal-only) → :mod:`dottie_loop.hyperagents`
 
 stdlib only. No model is called anywhere in this package; it is the deterministic
 backbone (spec §02 "Determinism first") that a model layer may sit on top of.

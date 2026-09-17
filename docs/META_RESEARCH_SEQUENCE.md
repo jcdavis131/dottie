@@ -1,4 +1,4 @@
-# Meta research sequence — stages 1–3
+# Meta research sequence — stages 1–6
 
 Cam’s Meta-inspired research sequence, implemented as stdlib contracts in
 `packages/dottie-loop`. No model is called. Nothing here trains, deploys, or
@@ -9,14 +9,14 @@ promotes. Factory promotion stays manual.
 | 1 | AdvancedIF-style rubric rewards | `dottie_loop/rubric.py` | landed |
 | 2 | Correctness-gated code-optimization lane | `dottie_loop/opt_lane.py` | landed |
 | 3 | AIRA2-inspired experiment architecture | `dottie_loop/experiment.py` | landed |
-| 4 | Compute-as-Teacher | — | follow-up |
-| 5 | S-EMBER causal memory | — | follow-up |
-| 6 | HyperAgents (proposal-only) | — | follow-up |
+| 4 | Compute-as-Teacher | `dottie_loop/compute_teacher.py` | landed |
+| 5 | S-EMBER causal memory | `dottie_loop/ember.py` + `memory.py` | landed |
+| 6 | HyperAgents (proposal-only) | `dottie_loop/hyperagents.py` | landed |
 
 Composition helper: `dottie_loop/research.py` (`compose_bundle`). CLI:
-`python -m dottie_loop research rubric|opt-lane|compose`.
+`python -m dottie_loop research rubric|opt-lane|compose|compute-teacher|ember|hyperagent`.
 
-## How the three stages compose
+## How the six stages compose
 
 ```
 transcript + versioned rubric + verifier
@@ -39,6 +39,15 @@ calibrated timings + sandbox provenance + task_ok
         ├──────────► factory.speed_credit / factory.correctness
         │            factory.mlops.gate_opt_lane (correctness first)
         │
+offline teacher artifacts + consented source records
+        │
+        ▼
+  teacher-pack (compute_trace_id shards)
+        │
+        ├──────────► factory.mlops.gate_compute_teacher
+        │            closed_loop.accept_teacher_pack
+        │            (no live teacher, no training claim)
+        │
 fixed train/search/validation split
         │
         ▼
@@ -49,6 +58,21 @@ fixed train/search/validation split
         ▼
   HiddenEvalPack.agent_view()   ← no labels
   HiddenEvalPack.score()        ← external consistent scorer
+        │
+causal edges (caused / blocked / confounded)
+  + evidence pointer + measured predicate
+        │
+        ▼
+  ember-eval (gated_score = 0 if provenance broken)
+        │
+        └──────────► evaluation.merge_ember_verdict
+                     (opt-in; does not replace §24 GATES)
+        │
+hyperagent Proposal (sandbox destination only)
+        │
+        ├──────────► ExperimentQueue.submit   (allowed)
+        ├──────────► apply_proposal           (always denied)
+        └──────────► production_change        (always false)
         │
         ▼
   research-bundle (compose_bundle)
@@ -62,7 +86,8 @@ Preserved on purpose:
 - §22 anti-hacking in `reward.compute_reward` is unchanged unless you call
   `compute_reward_with_rubric`.
 - §26 `LeaseFile` reclaim / heartbeat / expired-but-live rules are unchanged.
-  Stage 3 will not acquire a GPU without that file.
+  Stage 3 will not acquire a GPU without that file. Stage 6 will not let the
+  proposing agent claim that file.
 - Dataset train/validation/test isolation and factory `promote` (print steps
   only) are unchanged.
 - Hashes are sha256 of canonical JSON; new records use `ACTIVE_SCHEMAS`.
@@ -106,59 +131,111 @@ Preserved on purpose:
   delegates to `LeaseFile`**. Missing lease file → `BlockedError`, not a
   side-channel lock.
 
-## Follow-up — stages 4–6
-
-These are intentionally **not** implemented. Each should stay a small
-stdlib contract with tests, same fail-closed rules.
-
-### 4. Compute-as-Teacher
+## Stage 4 — Compute-as-Teacher (offline)
 
 **Idea.** Use *how* a solver spent compute (search tree, proof steps, unit
-tests run) as the teaching signal, not only the final answer.
+tests run) as the teaching signal, not only the final answer. The pack is
+offline: the trainer later reads shards; there is no live teacher at train
+time.
 
-**Proposed integration.** New `dottie_loop/compute_teacher.py`:
+**What landed.** `dottie_loop/compute_teacher.py`:
 
 - `ComputeTrace` (steps, branching, verifier outcomes) with a content hash.
-- A teacher record that may attach to a `rubric-eval` or `opt-lane-report`
-  only when `task_ok` is true (same hard gate).
-- Dataset packing: a new optional shard field `compute_trace_id`; QA must
-  refuse traces that lack consent / fail redaction (reuse `dataset.py`).
+- `TeacherRecord` / `TeacherConfig` config hooks (`require_artifacts`,
+  `require_consent`, `require_redaction`; `allow_live_teacher` is denied).
+- `synthesize_offline` packs consented, redacted source records with
+  `compute_trace_id` shard fields. Consent/redaction reuse `dataset` /
+  `capture` (`export_eligibility`, `redact_record`).
+- A teacher record may attach to a `rubric-eval` or `opt-lane-report` only
+  when `task_ok` is true (same hard gate). Attachment sets
+  `quality_from_compute: false` — a long trace cannot raise quality.
+- `closed_loop.accept_teacher_pack` and `factory.mlops.gate_compute_teacher`
+  consume the pack. Missing file → `no_report`. Schema mismatch →
+  `no_metric`. Empty / not-ready → `fail`. A pass does not train or promote.
+
+**Operator run.**
+
+```bash
+# pack.json: {traces, artifacts, consent_ledger, source_records}
+uv run python -m dottie_loop research compute-teacher --file pack.json
+# or point at a teacher-record list (missing path fails closed)
+uv run python -m dottie_loop research compute-teacher --file pack.json --artifacts artifacts.json
+```
+
+The JSON envelope is a `teacher-pack-1.0.0` with `training: false` and
+`factory.live_teacher: false`. Feed `factory.ready` / `shards` to a later
+trainer job; do not treat this command as a training run.
 
 **Do not.** Run a real searcher or trainer. Do not store raw secrets from
 tool output. Do not let a long compute trace raise quality when the task
-failed.
+failed. Do not claim a live teacher.
 
-### 5. S-EMBER causal memory
+## Stage 5 — S-EMBER causal memory
 
 **Idea.** Episodic memory with explicit cause → effect edges, so retrieval
 can answer “what intervention changed this metric?”.
 
-**Proposed integration.** Extend `memory.py` rather than replacing it:
+**What landed.** Extend `memory.py`; evaluate in `dottie_loop/ember.py`:
 
-- New edge types `caused` / `blocked` / `confounded`, each requiring an
-  evidence pointer (trace id, eval id, or incident id).
-- Write-back still refuses hints below 0.4; causal edges need a *measured*
-  predicate (gate result, reward component, or hidden-eval mean).
-- Retrieval order stays as specified; contradictions remain exposed.
+- New edge types `caused` / `blocked` / `confounded`. `add_edge` refuses
+  them; `add_causal_edge` is the only write path.
+- Each causal edge requires an evidence pointer (`trace` / `eval` /
+  `incident` id) and a *measured* predicate (`gate_result`,
+  `reward_component`, or `hidden_eval_mean`). Co-occurrence is not enough.
+- Write-back still refuses hints below 0.4; causal edges need confidence
+  ≥ 0.4. Synthetic or mock sources are `PolicyDeniedError`.
+- `evaluate_causal_memory` scores edges against an evidence catalog.
+  Missing or revoked catalog entries → `gate=provenance_broken`,
+  `gated_score=0`. An empty store is `unmeasured`, not a pass.
+- `evaluation.merge_ember_verdict` is opt-in: a passing §24 bundle cannot
+  hide broken provenance. It does **not** add a member to `GATES` and does
+  not change `compute_reward`. Provenance is a gate, not a quality score.
+
+**Evaluation contract vs existing gates.**
+
+| gate | module | what it can zero |
+|---|---|---|
+| task success | `rubric` / `reward` | quality / gated rubric score |
+| correctness | `opt_lane` / `factory.mlops` | speed credit |
+| §24 conjunction | `evaluation.evaluate_gates` | promotion verdict |
+| provenance | `ember` + `merge_ember_verdict` | ember gated_score; opt-in bundle verdict |
 
 **Do not.** Infer causality from co-occurrence. Do not write memory from
 synthetic/mock evals. Do not touch `03_Meta_Work_ISOLATED`.
 
-### 6. HyperAgents — proposal-only
+## Stage 6 — HyperAgents, proposal-only
 
 **Idea.** Agents may *propose* experiments, opt-lane jobs, or train runs.
 They may not acquire the GPU lease, consume a promote approval, or write a
 release.
 
-**Proposed integration.** New `dottie_loop/hyperagents.py`:
+**What landed.** `dottie_loop/hyperagents.py`:
 
-- `Proposal` record (digest-bound, destination, action) that
-  `approvals.py` can issue against.
-- `ExperimentQueue.submit` from a proposal is allowed; `claim` of a `gpu`
-  job still goes through `LeaseFile` and should require a human owner
-  (or a named operator runner), not the proposing agent id.
-- `promote_guard` / `evaluation.promotion_decision` stay the only
-  promotion paths; a proposal must never set `production_change: true`.
+- `Proposal` record (digest-bound, destination, action).
+  `production_change` is always false; production destinations and
+  promote/release/deploy actions are refused at propose time.
+- `approvals.ACTION_TYPES` now includes `experiment` so a human can issue
+  a digest-bound approval against the proposal. The proposer cannot issue
+  or consume that approval.
+- `submit_from_proposal` may enqueue an `ExperimentJob`.
+- `claim_from_proposal` of a GPU job still goes through `LeaseFile` and
+  requires a named operator (`operator` / `human` / `runner`), not the
+  proposing agent id.
+- `apply_proposal` is always `PolicyDeniedError`, including when the actor
+  is not the proposer and when `--approve-prod` is set.
+- `promotion_from_proposal` calls `promote_guard` and then forces
+  `production_change: false`. `evaluation.promotion_decision` remains the
+  only real promotion path.
+
+**Safety invariants.**
+
+1. Proposals cannot self-apply. `apply_proposal` has no success path.
+2. The proposing agent cannot claim GPU / job ownership.
+3. No record from this module sets `production_change: true`.
+4. Approval and promotion gates stay closed by default; `--approve-prod`
+   is ignored on the hyperagent path.
+5. Sandbox destinations only (`sandbox`, `experiment-queue`, `opt-lane`,
+   `local`).
 
 **Do not.** Give the proposer a second lease, a forge claim, or a
 `--approve-prod` shortcut. Proposal-only means proposal-only.
@@ -168,6 +245,9 @@ release.
 ```bash
 uv run pytest packages/dottie-loop/tests/test_rubric_rewards.py \
   packages/dottie-loop/tests/test_opt_lane.py \
-  packages/dottie-loop/tests/test_experiment_aira.py -q
+  packages/dottie-loop/tests/test_experiment_aira.py \
+  packages/dottie-loop/tests/test_compute_teacher.py \
+  packages/dottie-loop/tests/test_ember.py \
+  packages/dottie-loop/tests/test_hyperagents.py -q
 uv run pytest packages/dottie-loop factory/tests -q
 ```
