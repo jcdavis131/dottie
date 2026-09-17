@@ -37,6 +37,9 @@ Commands::
     research rubric --rubric R.json --transcript T.json [--task-ok|--task-fail] [--scores S.json]
     research opt-lane --file timings.json
     research compose --reward R.json --rubric-eval E.json [--opt O.json]
+    research compute-teacher --file pack.json
+    research ember --file eval.json
+    research hyperagent --file proposal.json [--apply]
 """
 
 from __future__ import annotations
@@ -501,7 +504,66 @@ def cmd_research_compose(a: argparse.Namespace) -> dict[str, Any]:
         experiment_job=_read_json(a.experiment) if a.experiment else None,
         split=_read_json(a.split) if a.split else None,
         hidden_eval=_read_json(a.hidden_eval) if a.hidden_eval else None,
+        teacher_pack=_read_json(a.teacher) if a.teacher else None,
+        ember_eval=_read_json(a.ember) if a.ember else None,
+        proposal=_read_json(a.proposal) if a.proposal else None,
     )
+
+
+def cmd_research_compute_teacher(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.compute_teacher import (
+        TeacherConfig,
+        factory_ready,
+        load_teacher_artifacts,
+        synthesize_offline,
+    )
+
+    raw = _read_json(a.file)
+    artifacts = raw.get("artifacts")
+    if a.artifacts:
+        artifacts = load_teacher_artifacts(Path(a.artifacts))
+    pack = synthesize_offline(
+        list(raw.get("traces") or []),
+        artifacts=artifacts,
+        consent_ledger=dict(raw.get("consent_ledger") or {}),
+        source_records=list(raw.get("source_records") or []),
+        deletion_holds=set(raw.get("deletion_holds") or []),
+        config=TeacherConfig(**(raw.get("config") or {})),
+        attach=raw.get("attach"),
+    )
+    pack["factory_gate"] = factory_ready(pack)
+    return pack
+
+
+def cmd_research_ember(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.ember import evaluate_from_records
+
+    raw = _read_json(a.file)
+    return evaluate_from_records(
+        list(raw.get("edges") or []),
+        evidence_catalog=dict(raw.get("evidence_catalog") or {}),
+        facts=raw.get("facts"),
+        synthetic=bool(raw.get("synthetic")),
+        mock=bool(raw.get("mock")),
+    )
+
+
+def cmd_research_hyperagent(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.hyperagents import apply_proposal, propose
+
+    raw = _read_json(a.file)
+    proposal = propose(
+        proposer_id=str(raw["proposer_id"]),
+        action=str(raw["action"]),
+        destination=str(raw.get("destination") or "sandbox"),
+        payload=dict(raw.get("payload") or {}),
+        proposer_kind=str(raw.get("proposer_kind") or "hyperagent"),
+        notes=str(raw.get("notes") or ""),
+    )
+    out = proposal.to_dict()
+    if a.apply:
+        apply_proposal(proposal, actor_id=raw.get("actor_id"), approve_prod=a.approve_prod)
+    return out
 
 
 # --- parser -----------------------------------------------------------------------------------
@@ -729,14 +791,29 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--file", required=True, help="JSON {task_ok, warmup_n, samples_s, sandbox, baseline_s?}")
     s.add_argument("--speed-threshold", type=float, default=0.0)
     s.set_defaults(fn=cmd_research_opt_lane)
-    s = rs.add_parser("compose", help="stages 1–3 bundle; does not promote")
+    s = rs.add_parser("compose", help="stages 1–6 bundle; does not promote")
     s.add_argument("--reward", required=True, help="RewardInputs JSON")
     s.add_argument("--rubric-eval", required=True)
     s.add_argument("--opt")
     s.add_argument("--experiment")
     s.add_argument("--split")
     s.add_argument("--hidden-eval")
+    s.add_argument("--teacher")
+    s.add_argument("--ember")
+    s.add_argument("--proposal")
     s.set_defaults(fn=cmd_research_compose)
+    s = rs.add_parser("compute-teacher", help="stage 4: offline CaT pack; does not train")
+    s.add_argument("--file", required=True, help="JSON {traces, artifacts, consent_ledger, source_records}")
+    s.add_argument("--artifacts", help="path to teacher-record list (fails closed if missing)")
+    s.set_defaults(fn=cmd_research_compute_teacher)
+    s = rs.add_parser("ember", help="stage 5: causal-memory provenance eval; fail-closed")
+    s.add_argument("--file", required=True, help="JSON {edges, evidence_catalog, facts?, synthetic?, mock?}")
+    s.set_defaults(fn=cmd_research_ember)
+    s = rs.add_parser("hyperagent", help="stage 6: sandbox proposal; --apply is always denied")
+    s.add_argument("--file", required=True, help="JSON {proposer_id, action, destination, payload}")
+    s.add_argument("--apply", action="store_true", help="attempt apply (always policy-denied)")
+    s.add_argument("--approve-prod", action="store_true", help="ignored; still cannot apply")
+    s.set_defaults(fn=cmd_research_hyperagent)
     return p
 
 

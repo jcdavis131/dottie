@@ -73,6 +73,52 @@ def _compare(value: float, op: str, threshold: float) -> bool:
     }[op]
 
 
+def gate_compute_teacher(f: Factory, job: dict) -> dict:
+    """Fail-closed factory gate for an offline Compute-as-Teacher pack.
+
+    Missing pack → ``no_report``. Schema mismatch → ``no_metric``. Empty or
+    not-ready pack → ``fail``. A passing pack does not promote and does not
+    claim a live teacher or a training run.
+    """
+    g = job["gate"]
+    report = f.repo_dir(job["repo"]) / g["report"]
+    out = {
+        "report": str(report),
+        "metric": "factory.ready",
+        "op": "==",
+        "threshold": True,
+        "baseline": g.get("baseline"),
+        "value": None,
+        "outcome": "no_report",
+        "live_teacher": False,
+        "training": False,
+    }
+    if not report.is_file():
+        return out
+    try:
+        doc = json.loads(report.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return out
+    schema = doc.get("schema")
+    if not isinstance(schema, str) or not schema.startswith("teacher-pack-"):
+        out["outcome"] = "no_metric"
+        return out
+    factory = doc.get("factory") or {}
+    ready = factory.get("ready") is True
+    n = factory.get("n_traces")
+    if factory.get("live_teacher") or factory.get("training") or doc.get("training"):
+        out["outcome"] = "fail"
+        out["value"] = False
+        return out
+    if not ready or not isinstance(n, int) or n <= 0 or not doc.get("shards"):
+        out["outcome"] = "fail"
+        out["value"] = False
+        return out
+    out["value"] = True
+    out["outcome"] = "pass"
+    return out
+
+
 def gate_opt_lane(f: Factory, job: dict) -> dict:
     """Correctness-first factory gate for an opt-lane report.
 
@@ -302,6 +348,7 @@ __all__ = [
     "OUTCOMES",
     "cuda_status",
     "gate",
+    "gate_compute_teacher",
     "gate_opt_lane",
     "last_result",
     "list_jobs",

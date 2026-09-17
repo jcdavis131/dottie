@@ -18,6 +18,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from dottie_loop.compute_teacher import factory_ready
 from dottie_loop.errors import BlockedError
 from dottie_loop.hashing import age_seconds, new_id, now_iso, parse_iso
 from dottie_loop.schema import active
@@ -249,3 +250,24 @@ def load_sources(path: Path) -> dict[str, MetricSource]:
     """Read ``{"name": {"value", "event_time", "provenance", "version"}}`` from JSON."""
     raw = json.loads(Path(path).read_text(encoding="utf-8"))
     return {k: MetricSource(name=k, value=float(v["value"]), event_time=v["event_time"], provenance=v.get("provenance", "unversioned"), version=v.get("version")) for k, v in raw.items()}
+
+
+def accept_teacher_pack(pack: dict[str, Any]) -> dict[str, Any]:
+    """Accept an offline Compute-as-Teacher pack as loop input.
+
+    This is not a live teacher and does not start training or promotion.
+    Missing, empty, or schema-mismatched packs fail closed.
+    """
+    ready = factory_ready(pack)
+    accepted = ready.get("outcome") == "pass"
+    return {
+        "accepted": accepted,
+        "live_teacher": False,
+        "training": False,
+        "production_change": False,
+        "factory_gate": ready,
+        "pack_id": None if not pack else pack.get("pack_id"),
+        "n_traces": None if not pack else (pack.get("factory") or {}).get("n_traces"),
+        "reason": ready.get("reason"),
+        "at": now_iso(),
+    }

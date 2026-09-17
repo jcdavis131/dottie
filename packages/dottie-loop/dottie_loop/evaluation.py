@@ -127,6 +127,26 @@ def merge_rubric_slices(
     return {**slice_results, **slice_scores(evals)}
 
 
+def merge_ember_verdict(gate_result: dict[str, Any], ember_eval: dict[str, Any]) -> dict[str, Any]:
+    """Fold a stage-5 provenance eval into a §24 gate result.
+
+    Broken or missing provenance cannot be ignored by a passing bundle. This
+    does not add a new GATES member — callers opt in. It never overrides
+    ``anti_mock``: a synthetic ember eval is the caller's problem to refuse
+    before calling this (ember itself already refuses synthetic/mock).
+    """
+    out = dict(gate_result)
+    out["ember_eval_id"] = ember_eval.get("eval_id")
+    out["ember_gate"] = ember_eval.get("gate")
+    if ember_eval.get("gate") != "open":
+        failed = list(out.get("failed") or [])
+        if "provenance" not in failed:
+            failed.append("provenance")
+        out["failed"] = failed
+        out["verdict"] = "fail"
+    return out
+
+
 # --- §25 promotion -----------------------------------------------------------------------
 
 

@@ -164,3 +164,35 @@ def test_opt_lane_gate_rejects_fast_but_wrong(ws: Factory):
     assert mlops.gate_opt_lane(ws, dict(job, gate={**job["gate"], "report": "out/missing.json"}))[
         "outcome"
     ] == "no_report"
+
+
+def test_compute_teacher_gate_fails_closed(ws: Factory):
+    job = dict(ws.job("j1"))
+    job["gate"] = {"report": "out/teacher.json", "metric": "factory.ready", "op": "==", "threshold": True}
+    report = ws.workspace / "r1" / "out" / "teacher.json"
+    report.parent.mkdir()
+    assert mlops.gate_compute_teacher(ws, job)["outcome"] == "no_report"
+    report.write_text(json.dumps({"schema": "opt-lane-report-1.0.0", "factory": {"ready": True, "n_traces": 1}}))
+    assert mlops.gate_compute_teacher(ws, job)["outcome"] == "no_metric"
+    report.write_text(
+        json.dumps(
+            {
+                "schema": "teacher-pack-1.0.0",
+                "factory": {"ready": True, "n_traces": 0, "live_teacher": False, "training": False},
+                "shards": [],
+            }
+        )
+    )
+    assert mlops.gate_compute_teacher(ws, job)["outcome"] == "fail"
+    report.write_text(
+        json.dumps(
+            {
+                "schema": "teacher-pack-1.0.0",
+                "factory": {"ready": True, "n_traces": 2, "live_teacher": False, "training": False},
+                "shards": [{"trace_id": "t1", "compute_trace_id": "d1"}],
+                "training": False,
+            }
+        )
+    )
+    d = mlops.gate_compute_teacher(ws, job)
+    assert d["outcome"] == "pass" and d["live_teacher"] is False and d["training"] is False
