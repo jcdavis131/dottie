@@ -32,6 +32,8 @@ wandb/
 mlruns/
 data/
 runs/
+factory/mission_runs/
+factory/mission_ledger.sqlite3*
 export/
 *.arrow
 *.parquet
