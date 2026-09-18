@@ -8193,3 +8193,11 @@ Every entry: what / cause / lesson / fixed / prevents
 - **Fixed**: Created blocker jsonl under self-improvement-loop/hidden_files + triggered self_improve_tick; logged 7-field
 - **Prevents**: 3m poll + hourly mistake-learning sweep + stuck-detector hook prevents silent blocker recurrence; AGENTS.md rule 3x recurrence -> guard
 - **ID**: lsn_20260813T233501Z_a000 c=0.65
+
+## 2026-09-18 — a number nothing branches on is a report-only gate, whoever wrote it
+- **Where**: research into TypeSafe Jev and JustVugg/colibri for `docs/JEV_COLIBRI_INSIGHTS_SPEC.md`
+- **Cause**: Jev's own docs call its `confidence` "derived from the shape of the distribution" with the formula undisclosed, and no reliability curve exists for it; every `Confidence: 0.N2` line already in this file is exactly the same shape — a hand-typed number nothing re-derives or gates on, including the entry immediately above this one.
+- **Lesson**: an unmeasured confidence is not a smaller measured one; it is unmeasured. colibri's own `experiment_manifest.py` earns the opposite trust by recomputing every headline number it prints, rather than accepting one asserted by the record's author.
+- **Fixed**: `dottie_loop/backend_signal.py` refuses to let any future external backend's probability alias this codebase's own `confidence` fields, and never feeds it to `evaluation.calibration`; `dottie_loop/manifest.py` computes its median and changed-variable fields rather than accepting a claim to cross-check.
+- **Prevents**: `test_backend_signal.py::test_to_dict_names_the_field_backend_confidence_never_confidence`; `test_manifest.py::test_median_is_recomputed_not_trusted_even_if_a_caller_tries_to_pass_one`.
+- **Confidence**: unmeasured — no check re-derives this number, so per its own lesson it does not get one.

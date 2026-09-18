@@ -493,6 +493,33 @@ def cmd_research_opt_lane(a: argparse.Namespace) -> dict[str, Any]:
     return report
 
 
+def cmd_research_manifest(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.manifest import ExperimentArm, ExperimentManifest
+
+    raw = _read_json(a.file)
+
+    def _arm(d: dict[str, Any]) -> ExperimentArm:
+        return ExperimentArm(
+            commit=str(d["commit"]),
+            config=dict(d.get("config") or {}),
+            raw_samples=tuple(float(x) for x in d["raw_samples"]),
+            quality_method=str(d["quality"]["method"]),
+            quality_passed=bool(d["quality"]["passed"]),
+            evidence_uri=str(d["evidence"]["uri"]),
+            evidence_sha256=str(d["evidence"]["sha256"]),
+            dirty_tree=bool(d.get("dirty_tree", False)),
+        )
+
+    manifest = ExperimentManifest(
+        hypothesis=str(raw["hypothesis"]),
+        baseline=_arm(raw["baseline"]),
+        trial=_arm(raw["trial"]),
+        lower_is_better=bool(raw.get("lower_is_better", True)),
+        run_order=tuple(raw.get("run_order") or ()),
+    )
+    return manifest.to_dict()
+
+
 def cmd_research_compose(a: argparse.Namespace) -> dict[str, Any]:
     from dottie_loop.research import compose_bundle
     from dottie_loop.reward import RewardInputs
@@ -814,6 +841,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--apply", action="store_true", help="attempt apply (always policy-denied)")
     s.add_argument("--approve-prod", action="store_true", help="ignored; still cannot apply")
     s.set_defaults(fn=cmd_research_hyperagent)
+    s = rs.add_parser("manifest", help="external research (colibri): two-arm evidence record, every number re-derived")
+    s.add_argument("--file", required=True, help="JSON {hypothesis, baseline, trial, lower_is_better?, run_order?}")
+    s.set_defaults(fn=cmd_research_manifest)
     return p
 
 

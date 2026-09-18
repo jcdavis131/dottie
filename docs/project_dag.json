@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-09-11",
+  "updated": "2026-09-18",
   "doc": "docs/PROJECT_DAG.md",
   "legend": {
     "priority": "1 = do first, 5 = last; ties break by size (S before L)",
@@ -597,6 +597,19 @@
         "dottie-loop-canary-and-proofs"
       ],
       "evidence": "packages/dottie-loop tests/test_phase9_acceptance_and_done.py (5); docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md §14"
+    },
+    {
+      "id": "jev-colibri-evidence-doctrine",
+      "title": "External research adoption: Jev naming/provenance discipline (backend_signal.py) + colibri two-arm evidence contract (manifest.py)",
+      "repo": "dottie",
+      "kind": "infra",
+      "status": "done",
+      "priority": 3,
+      "size": "M",
+      "depends_on": [
+        "dottie-loop-definition-of-done"
+      ],
+      "evidence": "packages/dottie-loop tests/test_backend_signal.py (10), tests/test_manifest.py (17); docs/JEV_COLIBRI_INSIGHTS_SPEC.md"
     }
   ]
 }
