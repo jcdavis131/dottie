@@ -18,12 +18,12 @@ before writing "current" anywhere in this file.
 
 ## 📌 Session continuation — 2026-09-18 (supersedes every block below)
 
-**Re-stamped 2026-09-18 at HEAD `0750d30`**, branch
-`claude/meta-stages-4-6-y46yip`. Measured with `git rev-parse --short HEAD`
-+ `scripts/check_handoff_fresh.py --check` on this tree, not carried
-forward from the 2026-09-12 stamp (that stamp's own HEAD, `84ca74f`, is
-still the recorded value the drift check compares against — this block
-supersedes the narrative below it without moving that number).
+**Re-stamped 2026-09-18 at HEAD `1ac30e6`** on `main` (PR #44 merged).
+Branch `claude/meta-stages-4-6-y46yip` was reworked and merged as
+`1ac30e6`; the pre-rewrite tip `0750d30` is not an ancestor of main, so
+the recorded SHA was moved to the merge commit. Measured with
+`git rev-parse --short HEAD` + `scripts/check_handoff_fresh.py --check`
+on this tree.
 
 **What this stamp covers:**
 
