@@ -22,7 +22,40 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="theme-color" content="#080A0F" />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       </head>
-      <body style={{ margin: 0, background: "#080A0F" }}>{children}</body>
+      <body style={{ margin: 0, background: "#080A0F" }}>
+        <nav
+          aria-label="Site"
+          style={{
+            alignItems: "center",
+            background: "rgba(8,10,15,.92)",
+            backdropFilter: "blur(12px)",
+            borderBottom: "1px solid #1E3328",
+            display: "flex",
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+            fontSize: 13,
+            gap: 20,
+            height: 40,
+            padding: "0 20px",
+            position: "sticky",
+            top: 0,
+            zIndex: 40,
+          }}
+        >
+          <a href="/" style={{ color: "#EDEAE2", textDecoration: "none", fontWeight: 700 }}>
+            arxiviq
+          </a>
+          <a href="/" style={{ color: "#8A9A8B", textDecoration: "none" }}>
+            Conductor
+          </a>
+          <a href="/hive" style={{ color: "#8A9A8B", textDecoration: "none" }}>
+            The hive
+          </a>
+          <a href="/dottie" style={{ color: "#8A9A8B", textDecoration: "none" }}>
+            Pair
+          </a>
+        </nav>
+        {children}
+      </body>
     </html>
   );
 }
