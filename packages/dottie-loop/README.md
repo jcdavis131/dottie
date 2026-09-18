@@ -76,6 +76,8 @@ The review that motivated it, with the spec-versus-repository findings, is
 | research 4 | `compute_teacher.py` | Offline Compute-as-Teacher pack: hashed traces, consent/redaction reuse, no live teacher, no training run |
 | research 5 | `ember.py` / `memory.py` | S-EMBER causal edges with evidence pointers; provenance eval fails closed |
 | research 6 | `hyperagents.py` | Proposal-only sandbox: may queue an experiment, cannot apply, claim GPU as proposer, or set `production_change` |
+| external research (Jev) | `backend_signal.py` | Naming/provenance discipline for an external backend's probability: `backend_confidence`, never `confidence`; audit-only, never gates |
+| external research (colibri) | `manifest.py` | Two-arm experiment evidence: every headline number re-derived from raw samples, run order required to gate, failed baseline refused |
 
 ## CLI
 

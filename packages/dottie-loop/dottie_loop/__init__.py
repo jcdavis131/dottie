@@ -28,6 +28,8 @@ Module map (spec section → module):
 * research stage 4 (Compute-as-Teacher) → :mod:`dottie_loop.compute_teacher`
 * research stage 5 (S-EMBER causal memory) → :mod:`dottie_loop.ember`
 * research stage 6 (HyperAgents proposal-only) → :mod:`dottie_loop.hyperagents`
+* external research, TypeSafe Jev (naming/provenance discipline) → :mod:`dottie_loop.backend_signal`
+* external research, JustVugg colibri (two-arm evidence contract) → :mod:`dottie_loop.manifest`
 
 stdlib only. No model is called anywhere in this package; it is the deterministic
 backbone (spec §02 "Determinism first") that a model layer may sit on top of.

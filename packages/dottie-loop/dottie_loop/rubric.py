@@ -194,6 +194,8 @@ def evaluate_rubric(
     success is unknown. Required criteria that score 0 fail the rubric itself,
     but still cannot override a task failure (the gate wins).
     """
+    if task_ok is not None and not isinstance(task_ok, bool):
+        raise InvalidInputError("task_ok must be True, False or None", field="task_ok")
     audits: list[dict[str, Any]] = []
     required_failed: list[str] = []
     weighted = 0.0

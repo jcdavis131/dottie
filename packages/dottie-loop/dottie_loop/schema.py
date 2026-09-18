@@ -50,6 +50,8 @@ ACTIVE_SCHEMAS: dict[str, str] = {
     "teacher-pack": "teacher-pack-1.0.0",
     "ember-eval": "ember-eval-1.0.0",
     "hyperagent-proposal": "hyperagent-proposal-1.0.0",
+    "backend-probability": "backend-probability-1.0.0",
+    "experiment-manifest": "experiment-manifest-1.0.0",
 }
 
 _SCHEMA_RE = re.compile(r"^([a-z][a-z0-9-]*[a-z0-9])-(\d+)\.(\d+)\.(\d+)$")

@@ -64,6 +64,8 @@ def compute_reward(inp: RewardInputs) -> dict[str, Any]:
     """Decomposed reward with evidence. Nulls stay null; the total lists what was missing."""
     if inp.feedback is not None and inp.feedback not in ("accept", "reject", "edit", "apply", "dismiss"):
         raise InvalidInputError(f"unknown feedback {inp.feedback!r}", field="feedback")
+    if inp.task_ok is not None and not isinstance(inp.task_ok, bool):
+        raise InvalidInputError("task_ok must be True, False or None", field="task_ok")
     components: dict[str, float | None] = dict.fromkeys(COMPONENTS)
     evidence: list[str] = list(inp.evidence)
 

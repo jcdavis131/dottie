@@ -181,6 +181,8 @@ def build_report(
     correctness_evidence: list[str] | None = None,
 ) -> dict[str, Any]:
     """Factory-readable report. Speed credit is zeroed when correctness fails."""
+    if not isinstance(task_ok, bool):
+        raise InvalidInputError("task_ok must be True or False", field="task_ok")
     if "value_s" not in timing or not timing.get("warmup_discarded"):
         raise InvalidInputError("timing must come from calibrate_timing", field="timing")
     if baseline_s is not None:

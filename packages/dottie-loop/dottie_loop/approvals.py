@@ -51,6 +51,29 @@ NON_TRANSITIVE_NOTE = (
     "each is a separate approval"
 )
 
+#: Principals of this form are agents (research stage 6 proposers). An agent may
+#: propose; it never approves, claims a lease or promotes.
+AGENT_SUBJECT_PREFIX = "agent:"
+
+
+def is_agent_subject(subject: object) -> bool:
+    """True for any spelling of an ``agent:<name>`` principal.
+
+    The kind is the token before the first colon, compared after strip and
+    casefold, so ``Agent:x``, `` agent:x`` and ``agent :x`` are all agents.
+    """
+    if not isinstance(subject, str):
+        return False
+    kind, sep, _name = subject.partition(":")
+    return bool(sep) and kind.strip().casefold() == AGENT_SUBJECT_PREFIX[:-1]
+
+
+def _agent_approver(approver: object) -> bool:
+    if not isinstance(approver, dict):
+        return False
+    role = str(approver.get("role") or "").strip().casefold()
+    return is_agent_subject(approver.get("subject_id")) or role == "agent"
+
 
 def scope_requires_approval(scope: str) -> bool:
     if scope not in SCOPE_LATTICE:
@@ -130,6 +153,11 @@ class ApprovalStore:
             raise InvalidInputError("destination is required", field="destination")
         if not approver_subject:
             raise InvalidInputError("approver is required", field="approver")
+        if _agent_approver({"subject_id": approver_subject, "role": approver_role}):
+            raise PolicyDeniedError(
+                "an agent cannot approve; approvals are issued by a human or operator",
+                field="approver",
+            )
         now = now or datetime.now(UTC)
         rec = ApprovalRecord(
             approval_id=new_id("apr_"),
@@ -168,6 +196,14 @@ class ApprovalStore:
             rec = self._records.get(approval_id)
             if rec is None:
                 raise ApprovalRequiredError("unknown approval id", action=action_type)
+            if _agent_approver(rec.approver):
+                # a loaded or hand-built record is re-checked at consume time
+                self._history.append(
+                    {"event": "agent_approver_rejected", "at": _iso(now), "approval_id": approval_id}
+                )
+                raise PolicyDeniedError(
+                    "approval was issued by an agent; agents never approve", field="approver"
+                )
             if rec.consumed_at is not None:
                 self.replay_attempts += 1
                 self._history.append(
@@ -243,11 +279,13 @@ def _iso(dt: datetime) -> str:
 
 __all__ = [
     "ACTION_TYPES",
+    "AGENT_SUBJECT_PREFIX",
     "APPROVAL_SCOPES",
     "SCOPE_LATTICE",
     "ApprovalRecord",
     "ApprovalStore",
     "action_digest",
+    "is_agent_subject",
     "now_iso",
     "scope_requires_approval",
 ]
