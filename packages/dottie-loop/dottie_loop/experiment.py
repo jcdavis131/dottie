@@ -8,6 +8,14 @@ result shape.
 GPU work goes through the existing :class:`dottie_loop.closed_loop.LeaseFile`.
 This module does not add a second GPU lock and will not acquire a GPU without
 that lease file — the single-GPU lease safety in ``closed_loop`` is unchanged.
+
+Research stage 6 (:mod:`dottie_loop.hyperagents`): an ``agent:`` subject may
+propose a job and never holds one. ``ExperimentQueue.claim``,
+``ResourceBroker.acquire`` and ``LeaseFile.acquire`` each refuse an agent
+subject regardless of the job's lineage; ``submit`` drops any caller-set owner
+or outcome; ``complete`` / ``fail`` need a leased or running job and give the
+lease back before an outcome is recorded, so nothing reads as finished that
+never held the lease.
 """
 
 from __future__ import annotations
@@ -15,7 +23,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
-from dottie_loop.errors import BlockedError, InvalidInputError
+from dottie_loop.approvals import is_agent_subject
+from dottie_loop.errors import BlockedError, InvalidInputError, PolicyDeniedError
 from dottie_loop.hashing import digest, new_id, now_iso
 from dottie_loop.schema import active
 
@@ -29,6 +38,21 @@ DEBUG_STATES = ("open", "hypothesized", "fix_attempted", "resolved")
 HIDDEN_LEAK_KEYS = frozenset(
     {"gold", "label", "labels", "answer", "expected", "target", "score_detail"}
 )
+#: Lineage a job may only earn through claim/start/complete/fail; dropped on submit.
+OUTCOME_LINEAGE_KEYS = (
+    "leased_at",
+    "lease_owner",
+    "started_at",
+    "completed_at",
+    "failed_at",
+    "result",
+    "hidden_eval",
+    "debug",
+)
+
+
+def _same_subject(a: object, b: object) -> bool:
+    return isinstance(a, str) and isinstance(b, str) and a.strip().casefold() == b.strip().casefold()
 
 
 @dataclass
@@ -169,7 +193,7 @@ class HiddenEvalPack:
                     "split": item.split,
                 }
             )
-        _assert_no_leak(view)
+        assert_no_leak(view)
         return view
 
     def score(
@@ -209,21 +233,22 @@ class HiddenEvalPack:
             "agent_view_digest": digest(self.agent_view([r["item_id"] for r in rows])),
             "scored_at": now_iso(),
         }
-        _assert_no_leak(record)
+        assert_no_leak(record)
         return record
 
 
-def _assert_no_leak(obj: Any) -> None:
+def assert_no_leak(obj: Any) -> None:
+    """Raise if any mapping at any depth (inside any container) carries a label key."""
     if isinstance(obj, dict):
         for k, v in obj.items():
             if k in HIDDEN_LEAK_KEYS:
                 raise InvalidInputError(
                     f"hidden eval leak: {k!r} is not visible to agents", field=k
                 )
-            _assert_no_leak(v)
-    elif isinstance(obj, list):
+            assert_no_leak(v)
+    elif isinstance(obj, list | tuple | set | frozenset):
         for v in obj:
-            _assert_no_leak(v)
+            assert_no_leak(v)
 
 
 @dataclass
@@ -301,6 +326,10 @@ class ResourceBroker:
     def acquire(self, resource: str, owner: str, **lease_kw: Any) -> dict[str, Any]:
         if resource not in RESOURCES:
             raise InvalidInputError(f"unknown resource {resource!r}", field="resource")
+        if is_agent_subject(owner):
+            raise PolicyDeniedError(
+                "an agent cannot hold a resource lease; a named operator claims", field="owner"
+            )
         if resource == "gpu":
             if self._gpu is None:
                 raise BlockedError(
@@ -351,16 +380,31 @@ class ExperimentQueue:
         if job.job_id in self.jobs:
             raise InvalidInputError("duplicate job_id", field="job_id")
         job.status = "pending"
+        job.owner = None  # ownership comes only from claim
+        for stale in OUTCOME_LINEAGE_KEYS:
+            job.lineage.pop(stale, None)  # a fresh job carries no lease or outcome
         job.lineage.setdefault("submitted_at", now_iso())
         self.jobs[job.job_id] = job
         return job
 
     def claim(self, owner: str, *, resource: str | None = None, **lease_kw: Any) -> ExperimentJob | None:
+        if is_agent_subject(owner):
+            raise PolicyDeniedError(
+                "an agent cannot claim a job; a named human operator or operator runner claims it",
+                field="owner",
+            )
         for job in self.jobs.values():
             if job.status != "pending":
                 continue
             if resource is not None and job.resource != resource:
                 continue
+            # main's hyperagents wrapper records ``proposer_id``; the stage-6 contract
+            # recorded ``proposer``. A job is never claimed by whichever it carries.
+            proposers = [job.lineage.get("proposer"), job.lineage.get("proposer_id")]
+            if any(p is not None and _same_subject(owner, p) for p in proposers):
+                raise PolicyDeniedError(
+                    "a proposed job is never claimed by its proposer", field="owner"
+                )
             self.broker.acquire(job.resource, owner, **lease_kw)
             job.status = "leased"
             job.owner = owner
@@ -386,19 +430,24 @@ class ExperimentQueue:
         hidden_eval: dict[str, Any] | None = None,
     ) -> ExperimentJob:
         job = self._owned(job_id, owner)
+        self._held(job)
+        if result is not None:
+            assert_no_leak(result)  # a result is agent-visible lineage; no labels ride in it
+        if hidden_eval is not None:
+            assert_no_leak(hidden_eval)
+        # give the lease back FIRST: a lost lease records no success
+        self.broker.release(job.resource, owner)
         job.status = "succeeded"
         job.lineage["completed_at"] = now_iso()
         if result is not None:
             job.lineage["result"] = result
         if hidden_eval is not None:
-            _assert_no_leak(hidden_eval)
             job.lineage["hidden_eval"] = {
                 "pack_id": hidden_eval.get("pack_id"),
                 "mean": hidden_eval.get("mean"),
                 "n": hidden_eval.get("n"),
                 "scorer_version": hidden_eval.get("scorer_version"),
             }
-        self.broker.release(job.resource, owner)
         return job
 
     def fail(
@@ -408,21 +457,31 @@ class ExperimentQueue:
         debug: DebugResult,
     ) -> ExperimentJob:
         job = self._owned(job_id, owner)
+        self._held(job)
         if debug.job_id != job.job_id:
             raise InvalidInputError("debug result job_id does not match", field="job_id")
+        self.broker.release(job.resource, owner)
         job.status = "debug" if debug.status != "resolved" else "failed"
         job.lineage["debug"] = debug.to_dict()
         job.lineage["failed_at"] = now_iso()
-        self.broker.release(job.resource, owner)
         return job
 
     def _owned(self, job_id: str, owner: str) -> ExperimentJob:
         job = self.jobs.get(job_id)
         if job is None:
             raise InvalidInputError("unknown job", field="job_id")
-        if job.owner != owner:
+        if job.owner is None or job.owner != owner:
             raise BlockedError("job not owned by caller", "job")
         return job
+
+    @staticmethod
+    def _held(job: ExperimentJob) -> None:
+        """An outcome needs a job that actually holds (held) its lease."""
+        if job.status not in ("leased", "running"):
+            raise BlockedError(
+                f"only a leased or running job can record an outcome (status {job.status})",
+                "lease",
+            )
 
 
 def attach_lineage(
@@ -449,6 +508,7 @@ __all__ = [
     "DEBUG_STATES",
     "HIDDEN_LEAK_KEYS",
     "JOB_STATES",
+    "OUTCOME_LINEAGE_KEYS",
     "RESOURCES",
     "SPLITS",
     "ConsistentScorer",
@@ -460,5 +520,6 @@ __all__ = [
     "HiddenItem",
     "ResourceBroker",
     "ScriptedScorer",
+    "assert_no_leak",
     "attach_lineage",
 ]

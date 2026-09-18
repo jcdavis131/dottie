@@ -482,7 +482,7 @@ def cmd_research_opt_lane(a: argparse.Namespace) -> dict[str, Any]:
         extra=dict(sb.get("extra") or {}),
     )
     report = build_report(
-        task_ok=bool(raw["task_ok"]),
+        task_ok=raw.get("task_ok"),  # typed guard in build_report; no truthy coercion
         timing=timing,
         sandbox=sandbox,
         baseline_s=raw.get("baseline_s"),

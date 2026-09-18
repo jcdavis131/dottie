@@ -18,8 +18,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from dottie_loop.approvals import is_agent_subject
 from dottie_loop.compute_teacher import factory_ready
-from dottie_loop.errors import BlockedError
+from dottie_loop.errors import BlockedError, PolicyDeniedError
 from dottie_loop.hashing import age_seconds, new_id, now_iso, parse_iso
 from dottie_loop.schema import active
 
@@ -67,6 +68,9 @@ class LeaseFile:
     Records owner, start, heartbeat and expiry. A crashed job may be reclaimed only
     after its expiry has passed AND no live runner heartbeat exists — the caller
     passes the set of live runner names it can actually see.
+
+    An ``agent:`` subject (research stage 6 proposer) is refused at ``acquire``;
+    reclaim, heartbeat and expired-but-live rules are unchanged.
     """
 
     def __init__(self, path: Path, ttl_seconds: int = 3600) -> None:
@@ -103,6 +107,9 @@ class LeaseFile:
         tmp.replace(self.path)
 
     def acquire(self, owner: str, *, now: datetime | None = None, live_runners: set[str] | None = None) -> Lease:
+        if is_agent_subject(owner):
+            # research stage 6: an agent may propose a run; it never holds the GPU lease
+            raise PolicyDeniedError("an agent subject cannot hold the retraining lease", field="owner")
         now = now or datetime.now(UTC)
         with self._locked():
             cur = self.read()
