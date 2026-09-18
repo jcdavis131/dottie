@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { glimmerApiHandler, detectProvider, isGlimmerAvailable, checkOfflineWeights, GLIMMER_DEFAULT_MODEL, GLIMMER_HF_REPO, OLLAMA_BASE_URL, LLAMA_CPP_URL } from "../../lib/glimmer";
+import { glimmerApiHandler, detectProvider, isGlimmerAvailable, checkOfflineWeights, GLIMMER_DEFAULT_MODEL, GLIMMER_HF_REPO, OLLAMA_BASE_URL, LLAMA_CPP_URL } from "../../../lib/glimmer";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

@@ -28,7 +28,7 @@ import {
 } from "./ollama-gateway";
 
 // Re-export validated gateway URL (SSRF guard)
-const OLLAMA_BASE_URL = (() => {
+export const OLLAMA_BASE_URL = (() => {
   try {
     const raw = RAW_OLLAMA_BASE_URL;
     const u = new URL(raw);

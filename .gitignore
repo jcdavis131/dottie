@@ -136,3 +136,13 @@ candidate.json
 *.pyc
 __pycache__/
 apps/arxiviq/out
+
+# Dottie worker runtime queue — job JSONs are runtime state, not source
+worker/jobs/pending/*
+worker/jobs/claimed/*
+worker/jobs/done/*
+worker/jobs/failed/*
+!worker/jobs/pending/.gitkeep
+!worker/jobs/claimed/.gitkeep
+!worker/jobs/done/.gitkeep
+!worker/jobs/failed/.gitkeep

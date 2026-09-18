@@ -1,7 +1,7 @@
 // api/judge/route.ts — Next.js API route for Glimmer PWA judge
 // Zero-deps, honest 503, timeline 7-field, loopback-only
 
-import { runLocalJudgePipeline, type PWAArtifacts } from "../../lib/judge/pwa-judge";
+import { runLocalJudgePipeline, type PWAArtifacts } from "../../../lib/judge/pwa-judge";
 
 export const dynamic = "force-dynamic";
 
