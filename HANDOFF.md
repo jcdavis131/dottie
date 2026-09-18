@@ -18,12 +18,21 @@ before writing "current" anywhere in this file.
 
 ## 📌 Session continuation — 2026-09-18 (supersedes every block below)
 
-**Re-stamped 2026-09-18 at HEAD `0750d30`**, branch
-`claude/meta-stages-4-6-y46yip`. Measured with `git rev-parse --short HEAD`
-+ `scripts/check_handoff_fresh.py --check` on this tree, not carried
-forward from the 2026-09-12 stamp (that stamp's own HEAD, `84ca74f`, is
-still the recorded value the drift check compares against — this block
-supersedes the narrative below it without moving that number).
+**Corrected 2026-09-18 at HEAD `8be6bad`** (`origin/main`; PR #44's squash
+merge and PR #46's merge both landed since the restamp below). The restamp
+below recorded branch-local `0750d30`, which was lost when PR #44
+squash-merged — that sha is not in `main` history, so
+`scripts/check_handoff_fresh.py --check` fails on `main`. This correction
+moves the recorded sha to a real `main` ancestor; the narrative and
+verification below are unchanged from the 2026-09-18 restamp.
+
+**Re-stamped 2026-09-18 at HEAD `0750d30`** (branch-local; superseded by
+the correction above), branch `claude/meta-stages-4-6-y46yip`. Measured
+with `git rev-parse --short HEAD` + `scripts/check_handoff_fresh.py
+--check` on this tree, not carried forward from the 2026-09-12 stamp
+(that stamp's own HEAD, `84ca74f`, is still the recorded value the drift
+check compares against — this block supersedes the narrative below it
+without moving that number).
 
 **What this stamp covers:**
 
