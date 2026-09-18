@@ -16,6 +16,50 @@ before writing "current" anywhere in this file.
 
 ---
 
+## 📌 Session continuation — 2026-09-18 (supersedes every block below)
+
+**Re-stamped 2026-09-18 at HEAD `0750d30`**, branch
+`claude/meta-stages-4-6-y46yip`. Measured with `git rev-parse --short HEAD`
++ `scripts/check_handoff_fresh.py --check` on this tree, not carried
+forward from the 2026-09-12 stamp (that stamp's own HEAD, `84ca74f`, is
+still the recorded value the drift check compares against — this block
+supersedes the narrative below it without moving that number).
+
+**What this stamp covers:**
+
+- PR #43 merged a competing implementation of Meta research stages 4–6 to
+  `main` while this branch's own PR #44 (stages 4–6) was open; this
+  branch was hardened in place with the agent-subject and task_ok
+  guarantees PR #44 had that #43 did not (`3df74a2`), then two outside
+  research projects (TypeSafe Jev, JustVugg/colibri) were adversarially
+  reviewed and their surviving learnings landed as `dottie_loop
+  /backend_signal.py` and `dottie_loop/manifest.py`, itself then put
+  through two further focused review passes that found and fixed six
+  real defects (`0750d30`). See `docs/JEV_COLIBRI_INSIGHTS_SPEC.md` for
+  the full research trail, including what was NOT adopted and why.
+- HANDOFF drift is 19 commits past the 2026-09-12 stamp before this
+  restamp commit (20 after it) against a budget of 20 — the next commit
+  on this branch needs its own restamp.
+
+**Verified locally at this HEAD (uv 0.8.17, ruff 0.15.22, pytest 9.1.1):**
+
+- `uvx ruff@0.15.22 check packages/dottie-loop` — clean
+- `uv run pytest packages/dottie-loop factory/tests -q` — **308 passed, 1 skipped**
+- `scripts/gate_audit.py --check --baseline scripts/gate_audit_baseline.json` — OK
+- `scripts/check_declared_capabilities.py --check --baseline scripts/declared_capabilities_baseline.json` — OK
+- `scripts/check_resolver_fallbacks.py --check` — OK
+- `scripts/store_symmetry_audit.py --check` — OK
+- `scripts/check_shell_true.py --check` — OK
+- `scripts/check_cli_path_args.py --check` — OK
+- `scripts/check_documented_counts.py --check` — OK
+- `scripts/dag_next.py --check` — OK (46 nodes, acyclic, all dependencies resolve)
+- `scripts/check_todos_timestamps.py` — OK
+- `uv run python -m factory check` — OK
+- `uv run --project apps/scout-cli python -m bigbang.cli --json leaks scan . --config leaks.json --fail-on error` — OK
+- `uv run --project apps/scout-cli python -m bigbang.cli --json leaks history --max-commits 0 --config leaks.json --fail-on error` — OK
+
+---
+
 ## 📌 Session continuation — 2026-09-12 (supersedes every block below)
 
 **Re-stamped 2026-09-12 at HEAD `84ca74f`**, branch `scout/jarvisd-slack-ingress`
