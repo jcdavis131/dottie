@@ -115,6 +115,10 @@ uv run python -m dottie_loop research rubric --rubric rubric.json --transcript t
 uv run python -m dottie_loop research opt-lane --file timings.json
 uv run python -m dottie_loop research compose --reward reward.json --rubric-eval eval.json
 uv run python -m dottie_loop research compute-teacher --file teacher.json
+# Jev local loop: dry-run accept the committed teacher-pack fixture (no GPU, no training)
+uv run python -m dottie_loop research compute-teacher --help
+uv run python -m dottie_loop research compute-teacher --dry-run \
+  --file packages/dottie-loop/tests/fixtures/compute-teacher/pack.input.json
 uv run python -m dottie_loop research ember --file ember.json
 uv run python -m dottie_loop research hyperagent --file proposal.json   # --apply is always denied
 ```

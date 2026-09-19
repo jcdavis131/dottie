@@ -37,7 +37,7 @@ Commands::
     research rubric --rubric R.json --transcript T.json [--task-ok|--task-fail] [--scores S.json]
     research opt-lane --file timings.json
     research compose --reward R.json --rubric-eval E.json [--opt O.json]
-    research compute-teacher --file pack.json
+    research compute-teacher --file pack.json [--dry-run] [--artifacts A.json]
     research ember --file eval.json
     research hyperagent --file proposal.json [--apply]
 """
@@ -538,27 +538,31 @@ def cmd_research_compose(a: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_research_compute_teacher(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.closed_loop import accept_teacher_pack
     from dottie_loop.compute_teacher import (
-        TeacherConfig,
         factory_ready,
         load_teacher_artifacts,
-        synthesize_offline,
+        prepare_offline_pack,
     )
 
     raw = _read_json(a.file)
-    artifacts = raw.get("artifacts")
+    if not isinstance(raw, dict):
+        raise InvalidInputError("compute-teacher --file must be a JSON object", field="file")
+    artifacts = None
     if a.artifacts:
         artifacts = load_teacher_artifacts(Path(a.artifacts))
-    pack = synthesize_offline(
-        list(raw.get("traces") or []),
-        artifacts=artifacts,
-        consent_ledger=dict(raw.get("consent_ledger") or {}),
-        source_records=list(raw.get("source_records") or []),
-        deletion_holds=set(raw.get("deletion_holds") or []),
-        config=TeacherConfig(**(raw.get("config") or {})),
-        attach=raw.get("attach"),
-    )
+    pack = prepare_offline_pack(raw, artifacts=artifacts)
     pack["factory_gate"] = factory_ready(pack)
+    pack["acceptance"] = accept_teacher_pack(pack)
+    pack["training"] = False
+    if a.dry_run:
+        pack["dry_run"] = True
+        if not pack["acceptance"].get("accepted"):
+            raise BlockedError(
+                "teacher pack dry-run not accepted: " + str(pack["acceptance"].get("reason")),
+                "teacher_pack",
+                **pack,
+            )
     return pack
 
 
@@ -830,8 +834,17 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--proposal")
     s.set_defaults(fn=cmd_research_compose)
     s = rs.add_parser("compute-teacher", help="stage 4: offline CaT pack; does not train")
-    s.add_argument("--file", required=True, help="JSON {traces, artifacts, consent_ledger, source_records}")
+    s.add_argument(
+        "--file",
+        required=True,
+        help="teacher-pack-1.0.0 or synthesis JSON {traces, artifacts, consent_ledger, source_records}",
+    )
     s.add_argument("--artifacts", help="path to teacher-record list (fails closed if missing)")
+    s.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="validate and accept the pack; never trains; exit 2 if not accepted",
+    )
     s.set_defaults(fn=cmd_research_compute_teacher)
     s = rs.add_parser("ember", help="stage 5: causal-memory provenance eval; fail-closed")
     s.add_argument("--file", required=True, help="JSON {edges, evidence_catalog, facts?, synthetic?, mock?}")

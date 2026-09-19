@@ -156,15 +156,27 @@ time.
 **Operator run.**
 
 ```bash
-# pack.json: {traces, artifacts, consent_ledger, source_records}
+# help (must work for the Jev local loop)
+uv run python -m dottie_loop research compute-teacher --help
+
+# dry-run accept a committed teacher-pack fixture (no GPU, no training)
+uv run python -m dottie_loop research compute-teacher --dry-run \
+  --file packages/dottie-loop/tests/fixtures/compute-teacher/pack.input.json
+
+# pack.json may be a teacher-pack-1.0.0 or {traces, artifacts, consent_ledger, source_records}
 uv run python -m dottie_loop research compute-teacher --file pack.json
 # or point at a teacher-record list (missing path fails closed)
 uv run python -m dottie_loop research compute-teacher --file pack.json --artifacts artifacts.json
 ```
 
 The JSON envelope is a `teacher-pack-1.0.0` with `training: false` and
-`factory.live_teacher: false`. Feed `factory.ready` / `shards` to a later
-trainer job; do not treat this command as a training run.
+`factory.live_teacher: false`. `--dry-run` calls `closed_loop.accept_teacher_pack`
+and exits `2` if the pack is not accepted. Feed `factory.ready` / `shards` to a
+later trainer job; do not treat this command as a training run.
+
+Fixture path:
+`packages/dottie-loop/tests/fixtures/compute-teacher/pack.input.json`
+(`teacher-pack-1.0.0` wrapping one `compute-trace-1.0.0`).
 
 **Do not.** Run a real searcher or trainer. Do not store raw secrets from
 tool output. Do not let a long compute trace raise quality when the task
