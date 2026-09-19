@@ -34,6 +34,25 @@ export NO_PROXY=localhost,127.0.0.1,::1
 EOF
 }
 
+# Ergonomic opt-in: `with-tailnet <cmd>` runs one command with tailnet routing,
+# leaving all other egress direct. This is the intended way to reach the tailnet
+# (userspace mode has no TUN, so tailnet access always goes through the proxy).
+write_tailnet_helper() {
+  local bindir="$HOME/.local/bin"
+  local helper="$bindir/with-tailnet"
+  mkdir -p "$bindir"
+  cat > "$helper" <<EOF
+#!/usr/bin/env bash
+# Run a command with tailnet routing over the userspace Tailscale proxy.
+# Usage: with-tailnet curl http://nugatron:8080
+#        with-tailnet uv run scout ...
+set -euo pipefail
+if [ -f "$PROXY_ENV" ]; then set -a; . "$PROXY_ENV"; set +a; fi
+exec "\$@"
+EOF
+  chmod +x "$helper"
+}
+
 start_tailscale() {
   if ! command -v tailscaled >/dev/null 2>&1; then
     echo "tailscale: not installed (run .cursor/install.sh); skipping"
@@ -58,6 +77,7 @@ start_tailscale() {
   fi
 
   write_proxy_env
+  write_tailnet_helper
 
   # Already authenticated (persisted state survives snapshots)? Nothing to do.
   if ts status >/dev/null 2>&1; then
