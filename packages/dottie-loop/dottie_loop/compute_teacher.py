@@ -382,6 +382,53 @@ def synthesize_offline(
     return pack
 
 
+def is_teacher_pack(raw: object) -> bool:
+    """True when ``raw`` declares a compatible ``teacher-pack`` schema."""
+    if not isinstance(raw, dict):
+        return False
+    schema = raw.get("schema")
+    if not isinstance(schema, str):
+        return False
+    try:
+        name, *_ = parse_schema(schema)
+    except InvalidInputError:
+        return False
+    return name == "teacher-pack"
+
+
+def prepare_offline_pack(
+    raw: dict[str, Any],
+    *,
+    artifacts: list[dict[str, Any]] | None = None,
+    config: TeacherConfig | None = None,
+) -> dict[str, Any]:
+    """Load a ``teacher-pack`` or synthesize one from CLI input. Never trains.
+
+    A file that already carries ``teacher-pack-*`` is validated (schema + each
+    ``compute-trace``) and returned. Anything else is treated as the
+    ``{traces, artifacts, consent_ledger, source_records}`` synthesis envelope.
+    """
+    if not isinstance(raw, dict):
+        raise InvalidInputError("compute-teacher input must be an object", field="file")
+    if is_teacher_pack(raw):
+        check_compatible(raw.get("schema"), "teacher-pack")
+        traces = raw.get("traces") or []
+        if not traces:
+            raise InvalidInputError("teacher-pack has no traces", field="traces")
+        for item in traces:
+            parse_trace(item)
+        return dict(raw)
+    return synthesize_offline(
+        list(raw.get("traces") or []),
+        artifacts=list(artifacts) if artifacts is not None else raw.get("artifacts"),
+        consent_ledger=dict(raw.get("consent_ledger") or {}),
+        source_records=list(raw.get("source_records") or []),
+        deletion_holds=set(raw.get("deletion_holds") or []),
+        config=config if config is not None else TeacherConfig(**(raw.get("config") or {})),
+        attach=raw.get("attach"),
+    )
+
+
 def factory_ready(pack: dict[str, Any]) -> dict[str, Any]:
     """Factory-readable gate. Missing/empty/mismatched packs fail closed."""
     if not pack:
@@ -423,7 +470,9 @@ __all__ = [
     "TeacherRecord",
     "attach_teacher",
     "factory_ready",
+    "is_teacher_pack",
     "load_teacher_artifacts",
     "parse_trace",
+    "prepare_offline_pack",
     "synthesize_offline",
 ]

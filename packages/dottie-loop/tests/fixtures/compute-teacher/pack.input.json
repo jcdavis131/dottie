@@ -1,0 +1,83 @@
+{
+  "schema": "teacher-pack-1.0.0",
+  "pack_id": "cat_fixture_dry_run_1",
+  "digest": "fixture-not-a-training-run",
+  "computed_at": "2026-09-19T00:00:00Z",
+  "capability_claim": "none",
+  "training": false,
+  "promotion": "manual",
+  "attachment": null,
+  "refused": [],
+  "factory": {
+    "ready": true,
+    "live_teacher": false,
+    "n_traces": 1,
+    "training": false
+  },
+  "artifacts": [
+    {
+      "schema": "teacher-record-1.0.0",
+      "teacher_id": "teach_fixture_1",
+      "compute_trace_id": "trc_cat_1",
+      "artifact_kind": "search_tree",
+      "artifact_digest": "abc123fixture",
+      "task_ok": true
+    }
+  ],
+  "shards": [
+    {
+      "trace_id": "trc_cat_1",
+      "compute_trace_id": "33645eb99fdd2479cb52750d99bb50252824d6c80e8dc0a10313eb2a71cb18dc",
+      "source": "s-cat-fixture",
+      "teacher_id": "teach_fixture_1",
+      "n_steps": 3,
+      "branching": {
+        "n_steps": 3,
+        "n_branch_nodes": 1,
+        "max_fanout": 2
+      }
+    }
+  ],
+  "traces": [
+    {
+      "schema": "compute-trace-1.0.0",
+      "trace_id": "trc_cat_1",
+      "digest": "33645eb99fdd2479cb52750d99bb50252824d6c80e8dc0a10313eb2a71cb18dc",
+      "notes": "fixture: offline CaT dry-run, no secrets",
+      "verifier_outcomes": [
+        {
+          "check": "unit",
+          "ok": true
+        }
+      ],
+      "branching": {
+        "n_steps": 3,
+        "n_branch_nodes": 1,
+        "max_fanout": 2
+      },
+      "steps": [
+        {
+          "step_id": "s1",
+          "kind": "search",
+          "outcome": "pass",
+          "parent_id": null,
+          "detail": "expand"
+        },
+        {
+          "step_id": "s2",
+          "kind": "proof",
+          "outcome": "pass",
+          "parent_id": "s1",
+          "detail": ""
+        },
+        {
+          "step_id": "s3",
+          "kind": "test",
+          "outcome": "pass",
+          "parent_id": "s1",
+          "detail": ""
+        }
+      ]
+    }
+  ]
+}

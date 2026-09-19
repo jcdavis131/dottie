@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -17,8 +20,11 @@ from dottie_loop import (
     reward,
     rubric,
 )
-from dottie_loop.cli import EXIT_INVALID, EXIT_OK, main
+from dottie_loop.cli import EXIT_BLOCKED, EXIT_INVALID, EXIT_OK, main
 from dottie_loop.schema import active
+
+FIXTURE_PACK = Path(__file__).resolve().parent / "fixtures" / "compute-teacher" / "pack.input.json"
+PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 
 NOW = datetime(2026, 9, 17, 12, 0, tzinfo=UTC)
 
@@ -249,6 +255,67 @@ def test_compute_teacher_cli(tmp_path, capsys):
     assert rc == EXIT_OK
     assert out["data"]["factory"]["ready"] is True
     assert out["data"]["training"] is False
+    assert out["data"]["acceptance"]["accepted"] is True
+    assert out["data"]["acceptance"]["live_teacher"] is False
     p.write_text(json.dumps({**payload, "traces": []}))
     rc = main(["research", "compute-teacher", "--file", str(p)])
     assert rc == EXIT_INVALID
+
+
+def test_compute_teacher_help_via_module():
+    proc = subprocess.run(
+        [sys.executable, "-m", "dottie_loop", "research", "compute-teacher", "--help"],
+        capture_output=True,
+        text=True,
+        cwd=PACKAGE_ROOT,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "--dry-run" in proc.stdout
+    assert "--file" in proc.stdout
+    assert "teacher-pack" in proc.stdout
+
+
+def test_prepare_offline_pack_accepts_teacher_pack_fixture():
+    raw = json.loads(FIXTURE_PACK.read_text(encoding="utf-8"))
+    assert compute_teacher.is_teacher_pack(raw)
+    pack = compute_teacher.prepare_offline_pack(raw)
+    assert pack["schema"] == active("teacher-pack")
+    assert pack["training"] is False
+    assert pack["factory"]["live_teacher"] is False
+    assert compute_teacher.factory_ready(pack)["outcome"] == "pass"
+    acc = closed_loop.accept_teacher_pack(pack)
+    assert acc["accepted"] is True
+    assert acc["training"] is False
+
+
+def test_compute_teacher_dry_run_fixture(capsys):
+    rc = main(["research", "compute-teacher", "--dry-run", "--file", str(FIXTURE_PACK)])
+    out = json.loads(capsys.readouterr().out)
+    assert rc == EXIT_OK
+    assert out["data"]["dry_run"] is True
+    assert out["data"]["training"] is False
+    assert out["data"]["schema"] == active("teacher-pack")
+    assert out["data"]["traces"][0]["schema"] == active("compute-trace")
+    assert out["data"]["acceptance"]["accepted"] is True
+    assert out["data"]["acceptance"]["live_teacher"] is False
+    assert out["data"]["factory_gate"]["outcome"] == "pass"
+
+
+def test_compute_teacher_dry_run_fail_closed(tmp_path, capsys):
+    bad = {
+        "schema": "teacher-pack-1.0.0",
+        "pack_id": "cat_empty",
+        "training": False,
+        "factory": {"ready": False, "live_teacher": False, "n_traces": 0, "training": False},
+        "shards": [],
+        "traces": [_trace().to_dict()],
+        "artifacts": [],
+    }
+    p = tmp_path / "empty-pack.json"
+    p.write_text(json.dumps(bad), encoding="utf-8")
+    rc = main(["research", "compute-teacher", "--dry-run", "--file", str(p)])
+    out = json.loads(capsys.readouterr().out)
+    assert rc == EXIT_BLOCKED
+    assert out["ok"] is False
+    assert out["status"] == "blocked"
