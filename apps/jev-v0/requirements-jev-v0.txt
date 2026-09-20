@@ -1,0 +1,12 @@
+# apps/jev-v0 — optional --go extras only.
+# --dry-run and serve_decide.py are stdlib + decision_io.py. Do not install
+# this file to run those. Do not add this app to the root uv workspace.
+
+# Install on the GPU host only, after an explicit --go decision:
+#   pip install -r requirements-jev-v0.txt
+# Torch is left unpinned here so the host can pick its CUDA wheel
+# (nugatron / Alienware). Do not start --go from CI.
+
+transformers>=4.44,<5
+peft>=0.13,<0.18
+# torch  # host CUDA wheel; not installed by this file

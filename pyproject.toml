@@ -3,6 +3,7 @@
 # Excluded BY DESIGN (see README):
 #   apps/scout-rtx    — hard-pins torch==2.9.1 + cu128 wheel index; resolved independently
 #   apps/ava-factory  — requirements.txt/Docker-driven install, no pyproject; untouched
+#   apps/jev-v0       — System One spike; --dry-run is stdlib, --go is optional HF+peft
 #   apps/dottie       — has its own pyproject.toml (name "dottie-assistant") but was
 #                        neither a member nor listed here, flagged in HANDOFF.md's
 #                        "Open, needing an operator decision" #5 as an undocumented
@@ -28,7 +29,7 @@ members = [
   # changes no resolved versions in uv.lock.
   "packages/dottie-loop",
 ]
-exclude = ["apps/scout-rtx", "apps/ava-factory", "apps/dottie"]
+exclude = ["apps/scout-rtx", "apps/ava-factory", "apps/dottie", "apps/jev-v0"]
 
 [dependency-groups]
 dev = ["pytest>=8"]
