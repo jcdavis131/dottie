@@ -661,7 +661,7 @@ def main():
                 rope_type=args.rope,
                 n_sinks=args.n_sinks,
                 use_peri_ln=args.use_peri_ln,
-                critical_shift=getattr(args, "critical_shift", 31),
+                critical_shift=getattr(args, "critical_shift", 6),
             )
         except TypeError:
             model = get_model(
