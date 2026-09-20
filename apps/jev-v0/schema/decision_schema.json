@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "jev-decision-schema-1.0.0",
+  "title": "jev-decision-schema-1.0.0",
+  "description": "Frozen System One decision contract for apps/jev-v0. Three question types only: Choice, Score, Noul. This is NOT TypeSafe field-parity and is NOT the ava-factory train_1b path. Schema is frozen at 1.0.0 — bump the major if the types change.",
+  "oneOf": [
+    { "$ref": "#/$defs/decisionRecord" },
+    { "$ref": "#/$defs/decideRequest" },
+    { "$ref": "#/$defs/decideResponse" }
+  ],
+  "$defs": {
+    "schemaId": {
+      "const": "jev-decision-schema-1.0.0"
+    },
+    "state": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": true,
+      "description": "Caller-supplied facts. Treated as text, not a calculator or hostile-input oracle."
+    },
+    "choiceQuestion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "instructions", "criteria"],
+      "properties": {
+        "type": { "const": "choice" },
+        "instructions": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "criteria": {
+          "type": "object",
+          "minProperties": 2,
+          "maxProperties": 255,
+          "additionalProperties": { "type": "string", "minLength": 1, "maxLength": 256 }
+        }
+      }
+    },
+    "scoreQuestion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "instructions", "criteria"],
+      "properties": {
+        "type": { "const": "score" },
+        "instructions": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "criteria": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 10,
+          "items": { "type": "string", "minLength": 1, "maxLength": 256 }
+        }
+      }
+    },
+    "noulQuestion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "instructions"],
+      "properties": {
+        "type": { "const": "noul" },
+        "instructions": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "criteria": {
+          "type": "object",
+          "additionalProperties": { "type": "string", "minLength": 1, "maxLength": 256 }
+        }
+      }
+    },
+    "question": {
+      "oneOf": [
+        { "$ref": "#/$defs/choiceQuestion" },
+        { "$ref": "#/$defs/scoreQuestion" },
+        { "$ref": "#/$defs/noulQuestion" }
+      ]
+    },
+    "questions": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 32,
+      "additionalProperties": { "$ref": "#/$defs/question" }
+    },
+    "choiceLabel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "choice"],
+      "properties": {
+        "type": { "const": "choice" },
+        "choice": { "type": "string", "minLength": 1 }
+      }
+    },
+    "scoreLabel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "score"],
+      "properties": {
+        "type": { "const": "score" },
+        "score": { "type": "number" }
+      }
+    },
+    "noulLabel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "noul"],
+      "properties": {
+        "type": { "const": "noul" },
+        "noul": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "label": {
+      "oneOf": [
+        { "$ref": "#/$defs/choiceLabel" },
+        { "$ref": "#/$defs/scoreLabel" },
+        { "$ref": "#/$defs/noulLabel" }
+      ]
+    },
+    "unitInterval": { "type": "number", "minimum": 0, "maximum": 1 },
+    "choiceAnswer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "choice", "probabilities", "shape_concentration"],
+      "properties": {
+        "type": { "const": "choice" },
+        "choice": { "type": "string", "minLength": 1 },
+        "probabilities": {
+          "type": "object",
+          "minProperties": 2,
+          "additionalProperties": { "$ref": "#/$defs/unitInterval" }
+        },
+        "shape_concentration": { "$ref": "#/$defs/unitInterval" }
+      }
+    },
+    "scoreAnswer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "score", "legend", "probabilities", "shape_concentration"],
+      "properties": {
+        "type": { "const": "score" },
+        "score": { "type": "number" },
+        "legend": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "probabilities": {
+          "type": "object",
+          "minProperties": 2,
+          "additionalProperties": { "$ref": "#/$defs/unitInterval" }
+        },
+        "shape_concentration": { "$ref": "#/$defs/unitInterval" }
+      }
+    },
+    "noulAnswer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "noul"],
+      "properties": {
+        "type": { "const": "noul" },
+        "noul": { "$ref": "#/$defs/unitInterval" }
+      }
+    },
+    "answer": {
+      "oneOf": [
+        { "$ref": "#/$defs/choiceAnswer" },
+        { "$ref": "#/$defs/scoreAnswer" },
+        { "$ref": "#/$defs/noulAnswer" }
+      ]
+    },
+    "decisionRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "id", "state", "questions", "labels"],
+      "properties": {
+        "schema": { "$ref": "#/$defs/schemaId" },
+        "id": { "type": "string", "minLength": 1 },
+        "state": { "$ref": "#/$defs/state" },
+        "questions": { "$ref": "#/$defs/questions" },
+        "labels": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "$ref": "#/$defs/label" }
+        }
+      }
+    },
+    "decideRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "state", "questions"],
+      "properties": {
+        "schema": { "$ref": "#/$defs/schemaId" },
+        "state": { "$ref": "#/$defs/state" },
+        "questions": { "$ref": "#/$defs/questions" }
+      }
+    },
+    "decideResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "model", "mode", "answers"],
+      "properties": {
+        "schema": { "$ref": "#/$defs/schemaId" },
+        "model": { "type": "string", "minLength": 1 },
+        "mode": { "enum": ["untrained", "pointer-lora"] },
+        "answers": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "$ref": "#/$defs/answer" }
+        }
+      }
+    }
+  }
+}
