@@ -23,6 +23,7 @@ from model_1b import (
     TransformerBlock1B,
     apply_rope_scaling,
     apply_rotary_emb,
+    get_model,
     rotate_half,
 )
 
@@ -766,6 +767,51 @@ def test_model_can_memorize_one_batch():
             first = float(loss)
         last = float(loss)
     assert last < first * 0.6, f"loss did not fall: {first:.3f} -> {last:.3f}"
+
+
+def test_get_model_constructs_with_deepspeed_trainer_kwargs():
+    """Non-mock train_1b_deepspeed.py builds via get_model(rope, sinks, peri, shift).
+
+    Tiny overrides only — do not allocate the 1B default. No GPU train.
+    """
+    m = get_model(
+        vocab_size=64,
+        d_model=32,
+        n_text=1,
+        n_fusion=1,
+        n_reason=1,
+        n_heads=2,
+        head_dim=16,
+        multimodal=False,
+        multi_jspace_enabled=False,
+        rope_type="longrope2",
+        n_sinks=0,
+        use_peri_ln=False,
+        critical_shift=6,
+    )
+    assert isinstance(m.rope, LongRoPE2ScaledRoPE)
+    assert m.critical_shift == 6
+    assert m.rope.critical_dim_shift == 6
+    assert m.text_layers[0].rope.critical_dim_shift == 6
+
+    yarn = get_model(
+        vocab_size=64,
+        d_model=32,
+        n_text=1,
+        n_fusion=1,
+        n_reason=1,
+        n_heads=2,
+        head_dim=16,
+        multimodal=False,
+        multi_jspace_enabled=False,
+        rope_type="yarn",
+        n_sinks=4,
+        use_peri_ln=True,
+        critical_shift=6,
+    )
+    assert yarn.rope_type == "yarn"
+    assert yarn.n_sinks == 4
+    assert yarn.use_peri_ln is True
 
 
 def test_nano_forward_runs_and_is_causal():
