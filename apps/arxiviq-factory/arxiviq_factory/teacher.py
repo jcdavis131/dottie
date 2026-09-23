@@ -15,6 +15,12 @@ seeded permutation so the answer letter carries no signal, and snapshots the acc
 sources/teacher.jsonl.gz with the teacher named on every record. Labels from
 this stage are teacher-written, not published facts, and rows built from them
 say so (label_source "llm-teacher").
+
+`prepare-fulltext` is the variant for skillified papers: batch rows carry the
+paper package path (references/paper.md) and figure/table captions instead of
+just the abstract. The brief requires every question to be answerable ONLY from
+the paper body — never from the abstract alone — and to cite its source
+(section, figure, or table).
 """
 
 from __future__ import annotations
@@ -27,6 +33,7 @@ from pathlib import Path
 from typing import Any
 
 from .common import DATA, SOURCES, read_jsonl, write_jsonl
+from . import skillify
 
 CONTRIBUTIONS: dict[str, str] = {
     "method": "Proposes a new model, algorithm or training method",
@@ -79,6 +86,80 @@ Write one JSON object per line to the output file, every paper in the batch, sam
 but without title and abstract: {"arxiv_id": ..., "questions": [{"prompt", "options", "answer"}, ...]}.
 Output strictly JSONL, nothing else.
 """
+
+
+FULLTEXT_BRIEF = """You are the teacher for a decision-model dataset. For EACH paper in the batch file,
+read the FULL PAPER TEXT (references/paper.md at the given paper_md_path) and its figure
+captions. The decision model at test time will see the paper text, not just the abstract.
+
+Write one JSON object per line to the output file:
+
+{"arxiv_id": "<id from the batch>",
+ "questions_fulltext": [
+   {"prompt": "<question answerable ONLY from the paper body>",
+    "options": {"A": "...", "B": "...", "C": "...", "D": "..."},
+    "answer": "<A|B|C|D>",
+    "source": "<section 4.2 | Figure 3 | Table 1 — where the answer is grounded>"},
+   {... a second question on a different aspect ...}
+ ],
+ "figure_reading": {"prompt": "<what the figure shows, what changes between panels, which curve or
+     column supports the claim>", "options": {...}, "answer": "<A|B|C|D>", "source": "Figure N"},
+ "table_reading": {"prompt": "<a value or trend that requires reading the table>",
+     "options": {...}, "answer": "<A|B|C|D>", "source": "Table N"}}
+
+Rules:
+- Every question must be answerable from the paper body and NOT from the abstract alone.
+  If a question can be answered from the abstract, discard it and write a deeper one.
+- Each question cites its source (section, figure, or table); the answer must be
+  checkable at that source.
+- Exactly one correct option. Distractors must be plausible to someone who skimmed,
+  the same length and style as the answer, and not "all/none of the above". Vary
+  which letter is correct.
+- Each prompt under 300 characters, each option under 200 characters. Plain text, no markdown.
+- Never use knowledge beyond the paper package.
+- Output strictly one JSON object per line, one line per paper, every paper in the batch, nothing else.
+"""
+
+
+def prepare_fulltext(n_batches: int, limit: int | None) -> list[Path]:
+    """Batch files for the fulltext teacher: rows carry the paper package path, not the abstract."""
+    papers = {p["arxiv_id"]: p for p in read_jsonl(SOURCES / "papers.jsonl.gz")}
+    have = {r["arxiv_id"] for r in read_jsonl(SOURCES / "teacher_fulltext.jsonl.gz")}
+    todo = []
+    for row in sorted(read_jsonl(skillify.MANIFEST), key=lambda r: r["arxiv_id"]):
+        aid = row["arxiv_id"]
+        if aid in have or aid not in papers:
+            continue
+        paper_md = skillify.PKG_ROOT / aid / "references" / "paper.md"
+        if not paper_md.is_file():
+            continue
+        todo.append((aid, papers[aid], paper_md))
+    todo = todo[: limit or None]
+    out_dir = DATA / "teacher" / "fulltext"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    per = max(1, -(-len(todo) // n_batches))
+    paths = []
+    for b in range(n_batches):
+        chunk = todo[b * per : (b + 1) * per]
+        if not chunk:
+            break
+        p = out_dir / f"batch_{b:02d}.jsonl"
+        rows = []
+        for aid, paper, paper_md in chunk:
+            captions = skillify.captions_from_text(paper_md.read_text(encoding="utf-8"))
+            rows.append(
+                {
+                    "arxiv_id": aid,
+                    "title": paper["title"],
+                    "abstract": paper["abstract"],
+                    "paper_md_path": str(paper_md),
+                    "captions": captions,
+                }
+            )
+        write_jsonl(p, rows)
+        paths.append(p)
+    (DATA / "teacher" / "fulltext" / "BRIEF_FULLTEXT.md").write_text(FULLTEXT_BRIEF, encoding="utf-8")
+    return paths
 
 
 def length_balanced(q: dict[str, Any]) -> bool:
@@ -262,6 +343,9 @@ def main(argv: list[str] | None = None) -> int:
     p1 = sub.add_parser("prepare")
     p1.add_argument("--batches", type=int, default=8)
     p1.add_argument("--limit", type=int)
+    pf = sub.add_parser("prepare-fulltext", help="batches for the fulltext teacher (reads paper packages from skillify)")
+    pf.add_argument("--batches", type=int, default=8)
+    pf.add_argument("--limit", type=int)
     p3 = sub.add_parser("prepare-revision")
     p3.add_argument("--batches", type=int, default=8)
     p4 = sub.add_parser("ingest-revision")
@@ -272,6 +356,10 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if args.cmd == "prepare":
         for p in prepare(args.batches, args.limit):
+            print(p)
+        return 0
+    if args.cmd == "prepare-fulltext":
+        for p in prepare_fulltext(args.batches, args.limit):
             print(p)
         return 0
     if args.cmd == "prepare-revision":

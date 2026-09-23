@@ -1,0 +1,6 @@
+Field metric,Mini,Nano,"Paired measure, per model",Actions,Receipts
+Tasks,"1,440","1,440",Calibration per class/domain,40,40
+Utility-maximizing choice,73.19%,55.69%,Field per cohort/domain,80,80
+Mean synthetic regret,0.0186,0.0573,Resolved contrasts / conditions,0 / 9,3 / 9
+Field delivery failures,0.35%,0.28%,Incorrect resolved contrasts,0,0
+,,,Mean interval width,0.0872,0.0436

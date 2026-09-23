@@ -17,7 +17,9 @@ serves nothing: every pack is `consent.champion=false`, a HELPER input like the
 python3 apps/arxiviq-factory/run.py harvest          # arXiv API -> sources/papers.jsonl.gz
 python3 apps/arxiviq-factory/run.py enrich           # Semantic Scholar + arXiv HTML + ROR -> sources/enrich.jsonl.gz, ror.jsonl.gz
 python3 apps/arxiviq-factory/run.py enrich --openalex  # fill remaining affiliations from OpenAlex (budget or OPENALEX_API_KEY)
+python3 apps/arxiviq-factory/run.py skillify [--limit N] [--since-year Y]  # papers -> sources/paper_skills/<id>/ + paper_skills.jsonl.gz
 python3 apps/arxiviq-factory/run.py teacher prepare  # batches + BRIEF.md for teacher agents -> data/teacher/
+python3 apps/arxiviq-factory/run.py teacher prepare --fulltext  # batches + BRIEF_FULLTEXT.md, reads paper packages -> data/teacher/fulltext/
 python3 apps/arxiviq-factory/run.py teacher ingest data/teacher/out/*.jsonl --teacher <model>
 python3 apps/arxiviq-factory/run.py teacher prepare-revision   # batches of questions whose wrong options are too short
 python3 apps/arxiviq-factory/run.py teacher ingest-revision data/teacher/revise_out/*.jsonl
@@ -26,6 +28,9 @@ python3 apps/arxiviq-factory/run.py curate           # -> data/packs/arxiviq-pac
 
 Stdlib only (network via `curl`). `sources/` holds the committed snapshots the
 packs are rebuilt from; `data/` is gitignored and regenerable with `curate`.
+The one non-stdlib step, skillify's PDF extraction, shells out to the approved
+external tool `paper_bundle.py` (Paper2Agent, MIT) via `PAPER_BUNDLE`; nothing
+from it is vendored into this tree.
 
 | Stage | Source | What it adds |
 |---|---|---|
@@ -34,7 +39,36 @@ packs are rebuilt from; `data/` is gitignored and regenerable with `curate`.
 | | arXiv HTML | per-author affiliation lines from the paper's own header, kept only where the LaTeXML block names each author separately and the name matches the arXiv author list; others are marked `unstructured`, not guessed |
 | | ROR | affiliation string → organisation (ROR id, type such as company or education, country), accepted only when ROR marks the match `chosen` |
 | enrich `--openalex` | OpenAlex | authorships with institutions already linked to ROR, filling only authors the sources above left empty. A separate pass because the keyless budget is shared per IP (it resets at midnight UTC); set `OPENALEX_API_KEY` (free) to run it any time. |
+| skillify | the paper's own PDF | a verified paper-skill package per paper: section-continuous text (`references/paper.md`), embedded figure crops, machine-readable table CSVs, bibliography. Covers papers with no arXiv/ar5iv HTML conversion. Committed to `sources/paper_skills/` for provenance; `reviewed:false` in `sources/paper_skills.jsonl.gz` until the review-aid queue is adjudicated and the package rebuilt. |
 | teacher | an LLM teacher | per paper, from the abstract only: two 4-option comprehension questions with one correct answer, the paper type, and whether code or data are released. Records are validated and rejected, never repaired. |
+| teacher `--fulltext` | an LLM teacher | per skillified paper, from the FULL paper text: two 4-option questions answerable ONLY from the paper body (never from the abstract alone), one figure-reading question, one table-reading question, each citing its source (section/figure/table). |
+
+### Skillify decisions (Cameron, 2026-09-23)
+
+1. **Storage**: packages committed to `sources/paper_skills/` for provenance (~7 MB/paper), not gitignored.
+2. **Machine**: skillify runs on the Hatch VM (PDF deps installed there); results pass out via git.
+3. **Subset**: most-recent-first, via `--limit N` and `--since-year Y`.
+4. **State budget**: dynamic by complexity. `complexity = chars(paper.md) + 2,000 × sections + 3,000 × (figures + tables)`.
+   Tiers: **full** (≤60k) → whole paper.md; **sections** (≤300k) → intro/methods/results/discussion sections
+   at full length (heading-keyword match; whole text if nothing matches — prefer more, never less);
+   **window** (above) → first 60k + last 20k chars of those sections with an explicit truncation marker.
+   Figure/table caption lines always travel with every tier. Recorded per paper as `state_tier` in the manifest.
+5. **paper2mcp**: deferred — tool-use trajectories stay a later pilot, nothing built here.
+
+### Planned fulltext decision families
+
+Not yet in `curate` — sketched here, to be wired when fulltext teacher records exist:
+
+| Family | Type | State | Label from |
+|---|---|---|---|
+| teacher_quiz_fulltext | choice | title, abstract, paper body (state budget applies) | teacher question, options A–D, length-debiased (`llm-teacher`, `--fulltext`) |
+| figure_reading | choice | figure crop + caption + nearby text | teacher question (`llm-teacher`, `--fulltext`) |
+| table_reading | choice | table CSV + caption | teacher question (`llm-teacher`, `--fulltext`) |
+
+All `label_source: "llm-teacher"` (teacher-written, not published fact). The same debias
+pipeline applies: seeded answer-position shuffle, distractor revision, length-balance thinning.
+"States never carry their own answer" still holds: the state includes the body text but not
+the figure/table/section the question quotes.
 
 ## Decision families
 
