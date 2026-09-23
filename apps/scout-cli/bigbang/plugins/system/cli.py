@@ -95,8 +95,13 @@ def run_doctor():
             "ok": bool(shutil.which("docker")),
         }
     )
+    from dottie_loop.env import ollama_host
+
+    ollama_base = (ollama_host(default="http://localhost:11434") or "").rstrip("/")
+    if "://" not in ollama_base:
+        ollama_base = "http://" + ollama_base
     try:
-        r = httpx.get("http://localhost:11434/api/tags", timeout=2)
+        r = httpx.get(f"{ollama_base}/api/tags", timeout=2)
         checks.append({"check": "ollama", "status": f"up {r.status_code}", "ok": True})
     except Exception:
         checks.append(
@@ -118,6 +123,24 @@ def run_doctor():
             ),
             "ok": True,
             "informational": True,
+        }
+    )
+
+    # Plugins load lazily and a failed import is silent on the command line (the
+    # command just is not there). This is where such a failure becomes visible.
+    from bigbang.core.plugin_loader import check_plugins
+
+    plug = check_plugins()
+    checks.append(
+        {
+            "check": "plugins",
+            "status": f"{plug['importable']}/{plug['plugins']} importable"
+            + (f"; failed: {', '.join(sorted(plug['failures']))}" if plug["failures"] else ""),
+            "ok": not plug["failures"] and not plug["stale_entries"],
+            "failures": plug["failures"],
+            "not_in_entry_table": plug["not_in_entry_table"],
+            "stale_entries": plug["stale_entries"],
+            "hint": "SCOUT_DEBUG_PLUGINS=1 prints the traceback when a plugin fails to import",
         }
     )
 

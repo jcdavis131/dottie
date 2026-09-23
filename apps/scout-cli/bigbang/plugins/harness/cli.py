@@ -68,10 +68,23 @@ def route_cmd(
 
 
 def route_result(goal: str, *, learned: bool = False, surface: str = "scout.harness.route") -> dict:
-    """The `harness route` envelope. Shared by `scout route` and `scout harness route`."""
-    from dottie_loop.router import default_backends, route_goal
+    """The `harness route` envelope. Shared by `scout route` and `scout harness route`.
 
-    decision = route_goal(goal, backends=default_backends(learned=learned), surface=surface)
+    Decides through jarvisd `/api/decide` when it is reachable (warm, and it
+    knows the jarvisd store), else in-process through the same
+    `dottie_loop.decide.decide` with the run-history provider.
+    """
+    from bigbang.core import decide_client
+
+    decision = decide_client.remote_decide(goal, {"learned": True} if learned else {})
+    decided_by = "jarvisd"
+    if decision is None:
+        from dottie_loop.context import RunHistoryProvider
+        from dottie_loop.decide import decide
+
+        decided_by = "in-process"
+        decision = decide(goal, hints={"learned": learned}, providers=[RunHistoryProvider()],
+                          surface=surface, cache=None)
     intent = decision["intent"]
     complexity = decision["complexity"]
     moma = decision["moma_tier"]
@@ -116,7 +129,10 @@ def route_result(goal: str, *, learned: bool = False, surface: str = "scout.harn
         "heuristic_tier": decision["heuristic_tier"],
         "advisory": decision["advisory"],
         "trace_id": decision["trace"]["trace_id"],
-        "router": decision["policy"],
+        "router": decision.get("policy", "dottie_loop.router.route_goal"),
+        "decided_by": decided_by,
+        "decided_by_note": None if decided_by == "jarvisd" else decide_client.last_error,
+        "decision": decision.get("decision"),
         "ok": True,
         "command": f"harness route {goal[:40]}",
     }
@@ -145,7 +161,9 @@ _RUN_ID_SAFE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
 
 def _checkpoints_base() -> Path:
-    return Path.home() / ".cache" / "scout" / "checkpoints"
+    from bigbang.plugins.harness.timeline import default_base
+
+    return default_base()
 
 
 def _ultra_runs_base() -> Path:

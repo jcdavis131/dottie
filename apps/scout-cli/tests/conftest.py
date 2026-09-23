@@ -102,8 +102,13 @@ os.environ.pop("BIGBANG_POLICY_FILE", None)
 os.environ["DOTTIE_TRACE_DIR"] = str(Path(_HOME_TMP.name) / ".dottie" / "traces")
 os.environ["DOTTIE_TRACE_SOURCE"] = "test"
 os.environ["DOTTIE_ROUTER_STAMPS"] = str(Path(_HOME_TMP.name) / ".dottie" / "router" / "stamps")
-for _var in ("DOTTIE_OS_URL", "DOTTIE_TRACE_TEXT", "DOTTIE_TRACES"):
+for _var in ("DOTTIE_OS_URL", "DOTTIE_TRACE_TEXT", "DOTTIE_TRACES", "DOTTIE_CONTEXT_GRAPH",
+             "SCOUT_CHECKPOINT_BASE", "JARVIS_URL", "JARVIS_BEARER"):
     os.environ.pop(_var, None)
+# `scout route` asks a reachable jarvisd first (bigbang.core.decide_client). A
+# developer's local daemon on :8790 must not answer test routes or record them in
+# its real DB, so the suite decides in-process unless a test opts in.
+os.environ["SCOUT_DECIDE_REMOTE"] = "0"
 
 
 @pytest.fixture

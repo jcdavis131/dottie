@@ -7,32 +7,34 @@ Store layout (per run, under the checkpoint base):
     <base>/<run_id>/timeline.idx.jsonl   one index line per event: byte offset + hot fields
 
 `g_history_stats` mines every run's timeline into per-role failure rates that feed
-graph-plan's failureRisk. Parsing is streaming: a module cache keyed on
-(size, mtime) remembers the last byte offset parsed per file, so a growing file is
-resumed from its tail rather than re-read. Torn final lines (a writer mid-append)
-are skipped silently and re-attempted on the next growth.
+graph-plan's failureRisk. It is served by ``dottie_loop.run_history.HistoryIndex``:
+per file, a (size, mtime) signature, the byte offset parsed so far and that file's
+partial aggregates, so a growing file is resumed from its tail, an unchanged store
+costs one stat per run, and the merged result is reused until something changes.
+Torn final lines (a writer mid-append) are skipped and re-attempted on growth.
 
-stdlib only: json, os, time, statistics, pathlib.
+``SCOUT_CHECKPOINT_BASE`` overrides the base (default ~/.cache/scout/checkpoints).
 """
 from __future__ import annotations
 
 import json
 import os
-import statistics
 import time
-from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # Must match the v3.3 schema pinned in cli.py checkpoint_cmd / ops_cmd.
 REQUIRED_FIELDS = ["nodeId", "agentId", "attempt", "latency", "tokens", "status", "errorClass"]
 
-_FAILURE_STATUSES = {"fail", "failed", "error", "timeout"}
-
-# str(timeline_path) -> ((size, mtime), {"offset": bytes_parsed, "events": [rows...]})
-_CACHE: dict[str, tuple[tuple[int, float], dict]] = {}
 
 
 def default_base() -> Path:
-    return Path.home() / ".cache" / "scout" / "checkpoints"
+    """``SCOUT_CHECKPOINT_BASE`` or ~/.cache/scout/checkpoints (one definition, in dottie_loop)."""
+    from dottie_loop.run_history import default_base as _base
+
+    return _base()
 
 
 def append_event(run_id: str, record: dict, base: Path | None = None) -> dict:
@@ -63,93 +65,18 @@ def append_event(run_id: str, record: dict, base: Path | None = None) -> dict:
     return {"ok": True, "run_id": run_id, "offset": offset, "path": str(timeline_path)}
 
 
-def _is_failure(row: dict) -> bool:
-    status = str(row.get("status", "")).lower()
-    return status in _FAILURE_STATUSES
-
-
-def _latency(row: dict) -> float:
-    return row.get("latency", row.get("latency_ms", 0))
-
-
-def _tokens(row: dict) -> int:
-    return row.get("tokens", row.get("tokens_est", 0))
-
-
-def _read_events(path: Path) -> list:
-    """Streaming read with (size, mtime) cache: resume from the last parsed byte offset."""
-    key = str(path)
-    try:
-        st = path.stat()
-    except OSError:
-        _CACHE.pop(key, None)
-        return []
-    sig = (st.st_size, st.st_mtime)
-    cached = _CACHE.get(key)
-    state = None
-    if cached is not None:
-        cached_sig, cached_state = cached
-        if cached_sig == sig:
-            return cached_state["events"]
-        if st.st_size > cached_sig[0] and st.st_size >= cached_state["offset"]:
-            # Grown (mtime moved): resume from the previously indexed byte offset
-            # and parse only the new tail lines.
-            state = cached_state
-        # else: shrank, or same size with a different mtime — full re-parse.
-    if state is None:
-        state = {"offset": 0, "events": []}
-    with path.open("rb") as f:
-        f.seek(state["offset"])
-        tail = f.read()
-    consumed = 0
-    for line in tail.split(b"\n"):
-        if not line.strip():
-            consumed += len(line) + 1
-            continue
-        try:
-            row = json.loads(line.decode("utf-8"))
-        except (ValueError, UnicodeDecodeError):
-            # Torn/undecodable final line — leave the offset before it and retry next pass.
-            break
-        state["events"].append(row)
-        consumed += len(line) + 1
-    state["offset"] += min(consumed, len(tail))
-    _CACHE[key] = (sig, state)
-    return state["events"]
-
-
 def g_history_stats(base: Path | None = None) -> dict:
-    """Mine every run's timeline.jsonl into per-role / per-run aggregates."""
-    base = base or default_base()
-    per_role: dict[str, dict] = {}
-    per_run: dict[str, dict] = {}
-    role_latencies: dict[str, list] = {}
-    total = 0
-    for timeline_path in sorted(base.glob("*/timeline.jsonl")):
-        run_id = timeline_path.parent.name
-        events = _read_events(timeline_path)
-        if not events:
-            continue
-        run_stats = per_run.setdefault(run_id, {"events": 0, "failures": 0})
-        for row in events:
-            total += 1
-            run_stats["events"] += 1
-            failed = _is_failure(row)
-            if failed:
-                run_stats["failures"] += 1
-            role = str(row.get("agentId", "unknown"))
-            rs = per_role.setdefault(role, {"runs": 0, "failures": 0, "error_classes": {}})
-            rs["runs"] += 1
-            if failed:
-                rs["failures"] += 1
-            cls = str(row.get("errorClass", "none"))
-            rs["error_classes"][cls] = rs["error_classes"].get(cls, 0) + 1
-            role_latencies.setdefault(role, []).append(float(_latency(row) or 0))
-    for role, rs in per_role.items():
-        lats = role_latencies.get(role, [])
-        rs["fail_rate"] = round(rs["failures"] / rs["runs"], 4) if rs["runs"] else 0.0
-        rs["p50_latency"] = statistics.median(lats) if lats else 0.0
-    return {"events": total, "per_role": per_role, "per_run": per_run}
+    """Mine every run's timeline.jsonl into per-role / per-run (and per-tier) aggregates.
+
+    Served by :mod:`dottie_loop.run_history`: an incremental, (size, mtime) +
+    byte-offset indexed cache, so a plan no longer re-reads every past run.
+    Same keys as before (``events``, ``per_role``, ``per_run``) plus
+    ``per_tier``. The default base's index is also persisted next to the store
+    for cold processes. Treat the result as read-only.
+    """
+    from dottie_loop.run_history import history_stats
+
+    return history_stats(base)
 
 
 def g_history_summary(stats: dict) -> str | None:

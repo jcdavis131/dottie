@@ -68,6 +68,8 @@ def test_scout_route_is_the_same_router(tmp_path):
         assert a[key] == b[key], key
     surfaces = [r["surface"] for r in _trace_rows(tmp_path)]
     assert surfaces == ["scout.route", "scout.harness.route"]
+    assert a["decided_by"] == b["decided_by"] == "in-process"  # conftest: SCOUT_DECIDE_REMOTE=0
+    assert a["decision"]["tier"] == a["moma_tier"] and "latency_ms" in a["decision"]
 
 
 def test_harness_run_traces_route_and_outcome_tagged_test(tmp_path):
@@ -80,6 +82,22 @@ def test_harness_run_traces_route_and_outcome_tagged_test(tmp_path):
     out = rows[1]["outcome"]
     assert out["run_id"] == d["runId"] and out["n_nodes"] == d["n_nodes"] and out["escalated"] is False
     assert "goal_text" not in rows[0]
+    # deterministic executors are stubs: the outcome says so, and the route line
+    # carries the decision context + the served state's hash for the pack
+    assert out["executor"] == "stub" and out["executors"] == {"stub": d["n_nodes"]}
+    assert rows[0]["context"]["digest"] and len(rows[0]["state_sha256"]) == 64
+
+
+def test_router_pack_never_labels_stub_executor_runs(tmp_path):
+    _cli("harness", "run", "heartbeat monitor tick", "--runs-dir", str(tmp_path / "runs"))
+    _cli("harness", "run", "compare Stripe vs Lemon Squeezy", "--runs-dir", str(tmp_path / "runs"))
+    prod = tmp_path / "prod"
+    prod.mkdir()
+    for p in (tmp_path / "traces").glob("route-*.jsonl"):
+        rows = [dict(json.loads(line), source="production") for line in p.read_text(encoding="utf-8").splitlines() if line.strip()]
+        (prod / p.name).write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+    d = _cli("router", "pack", "--traces", str(prod), "--out", str(tmp_path / "pack"), ok=False)
+    assert d["ok"] is False and "stub executor" in d["error"]
 
 
 def test_router_pack_refuses_test_traces(tmp_path):
@@ -105,7 +123,7 @@ def _production_traces(tmp_path: Path, n: int = 80) -> Path:
                      "goal_text": goal,  # the owner opted in (DOTTIE_TRACE_TEXT=1); features alone collide
                      "decision": {"tier": tier, "heuristic_tier": tier, "authority": "heuristic"}})
         rows.append({"schema": "dottie-router-trace-1", "kind": "outcome", "trace_id": tid, "source": "production",
-                     "outcome": {"run_id": f"r{i}", "ok": True, "n_nodes": 4, "ok_nodes": 4 - failed,
+                     "outcome": {"run_id": f"r{i}", "ok": True, "executor": "real", "n_nodes": 4, "ok_nodes": 4 - failed,
                                  "failed_nodes": failed, "escalated": False}})
     p = tmp_path / "prod" / "route-20260923.jsonl"
     p.parent.mkdir(parents=True)

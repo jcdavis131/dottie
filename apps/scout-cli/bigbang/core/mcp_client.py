@@ -18,23 +18,32 @@ from bigbang.core.http_utils import sanitize_no_proxy_env
 
 sanitize_no_proxy_env()
 
-try:
-    import httpx as _httpx
-    from mcp.client.session import ClientSession
-    from mcp.client.sse import sse_client
-    from mcp.client.streamable_http import streamablehttp_client
+# The MCP SDK is imported on first use, not at module import: it is ~60% of
+# scout's cold start (measured with -X importtime) and most commands never
+# speak MCP. `_sdk()` loads it once and caches the handles.
+_SDK: dict[str, Any] = {}
+_SDK_AVAILABLE: bool | None = None  # unknown until first use
 
-    _SDK_AVAILABLE = True
-except ImportError:  # pragma: no cover
-    sse_client = None  # type: ignore
-    ClientSession = None  # type: ignore
-    streamablehttp_client = None  # type: ignore
-    _httpx = None  # type: ignore
-    _SDK_AVAILABLE = False
+
+def _sdk() -> dict[str, Any]:
+    global _SDK_AVAILABLE
+    if _SDK_AVAILABLE is None:
+        try:
+            import httpx
+            from mcp.client.session import ClientSession
+            from mcp.client.sse import sse_client
+            from mcp.client.streamable_http import streamablehttp_client
+
+            _SDK.update(httpx=httpx, ClientSession=ClientSession, sse_client=sse_client,
+                        streamablehttp_client=streamablehttp_client)
+            _SDK_AVAILABLE = True
+        except ImportError:  # pragma: no cover
+            _SDK_AVAILABLE = False
+    return _SDK
 
 
 def _check_sdk():
-    if not _SDK_AVAILABLE:
+    if not _sdk():
         raise RuntimeError(
             "mcp SDK not installed. Run: pip install 'mcp>=1.28.1' or pip install bigbang-cli[all]."
         )
@@ -45,6 +54,7 @@ def _mcp_http_client_factory(
 ) -> Any:
     """Fix NO_PROXY and create httpx AsyncClient"""
     sanitize_no_proxy_env()
+    _httpx = _sdk().get("httpx")
     if _httpx is None:
         raise ImportError("httpx not available")
     kw: dict[str, Any] = {"follow_redirects": True}
@@ -67,9 +77,11 @@ def _transport_order(url: str) -> list:
     timeout before the fallback runs — measured live against mcp.deepwiki.com
     on 2026-08-09. The URL suffix is the strongest available signal.
     """
+    sdk = _sdk()
+    sse, streamable = sdk.get("sse_client"), sdk.get("streamablehttp_client")
     if url.rstrip("/").endswith("/sse"):
-        return [sse_client, streamablehttp_client]
-    return [streamablehttp_client, sse_client]
+        return [sse, streamable]
+    return [streamable, sse]
 
 
 async def list_mcp_tools(url: str) -> list[dict[str, Any]]:
@@ -86,7 +98,7 @@ async def list_mcp_tools(url: str) -> list[dict[str, Any]]:
             # 3-tuple was handled (found live against mcp.deepwiki.com).
             async with factory(url, httpx_client_factory=_mcp_http_client_factory) as streams:  # type: ignore
                 read, write = streams[0], streams[1]
-                async with ClientSession(read, write) as session:  # type: ignore
+                async with _sdk()["ClientSession"](read, write) as session:  # type: ignore
                     await session.initialize()
                     resp = await session.list_tools()
                     tools_raw = getattr(resp, "tools", resp)
@@ -137,7 +149,7 @@ async def call_mcp_tool(
         try:
             async with factory(url, httpx_client_factory=_mcp_http_client_factory) as streams:  # type: ignore
                 read, write = streams[0], streams[1]
-                async with ClientSession(read, write) as session:  # type: ignore
+                async with _sdk()["ClientSession"](read, write) as session:  # type: ignore
                     await session.initialize()
                     result = await session.call_tool(tool_name, arguments=args)
                     # result may have content list
