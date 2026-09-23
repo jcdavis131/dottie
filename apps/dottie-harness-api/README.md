@@ -47,6 +47,25 @@ requirements are met:
 Dormant research modules remain in the package for offline work, but the
 production request entrypoint does not import or call them.
 
+## Router weights (not vendored)
+
+This package does not carry orchestrator MLP weights or its own inference
+copy. `lib/orch_infer.py` and `lib/weights/champion_weights.json` were removed:
+the API never loaded them, and the vendored file was labelled
+`orch-mlp-v1-v5` (trained_at 2026-08-09, earlier than the v4 file) while every
+eval report names `orch-mlp-v1-v4`. No eval covers a "v5", so none is claimed.
+
+- The one weights file: `apps/ava-factory/reports/orchestrator/champion_weights.json`
+  (`orch-mlp-v1-v4`, `gate_passed: false`).
+- The one inference path: the Dottie router's learned MLP backend
+  (`packages/dottie-loop/dottie_loop/backends.py`, see `docs/ROUTER.md`). It is
+  advisory; the MoMA-lite heuristic stays authoritative.
+- `lib/meta/eval_summary.json` is vendored from the real
+  `apps/ava-factory/reports/orchestrator/eval_report.json` by
+  `python lib/copy_artifacts.py`. `lib/corpus_builder.py --hill-climb` writes
+  hardcoded, simulated candidate numbers; it now labels them `simulated: true`
+  and writes `lib/meta/hill_climb_simulated.json`, never `eval_summary.json`.
+
 ## Public deployment preconditions
 
 These controls are external platform obligations; this package does not claim
