@@ -53,7 +53,7 @@ first line is DEGRADED_BANNER and which contains the literal marker
 
 Extension points:
 - Endpoint override as config: candidate_bases(explicit, env) reads
-  OLLAMA_BASE/OLLAMA_URL/OLLAMA_HOST from an INJECTED mapping, so tests and
+  OLLAMA_HOST (then the deprecated OLLAMA_BASE/OLLAMA_URL/DOTTIE_OLLAMA_URL) from an INJECTED mapping, so tests and
   callers never depend on the developer's shell.
 - Generation options as config: complete(options={...}) passes ollama's own
   option block through untouched (num_predict, temperature, num_gpu) — tune
@@ -88,8 +88,9 @@ DEFAULT_PORT = 11434
 # loopback first: the local daemon is the product, and 127.0.0.1 skips the
 # name-resolution round trip "localhost" pays on Windows
 DEFAULT_BASES = ("http://127.0.0.1:11434", "http://localhost:11434")
-# the env names ollama itself and bigbang/core/llm.py already honor, in that order
-ENV_BASES = ("OLLAMA_BASE", "OLLAMA_URL", "OLLAMA_HOST")
+# OLLAMA_HOST (the name ollama itself reads) first; the older spellings are
+# deprecated aliases (dottie_loop.env warns when one is used)
+ENV_BASES = ("OLLAMA_HOST", "OLLAMA_BASE", "OLLAMA_URL", "DOTTIE_OLLAMA_URL")
 LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
 DB_REL = Path(".scout") / "ollama.db"
@@ -168,7 +169,9 @@ def candidate_bases(
         except ValueError:
             return []
     env = os.environ if env is None else env
-    raw: list[str | None] = [env.get(k) for k in ENV_BASES]
+    from dottie_loop.env import ollama_env_values
+
+    raw: list[str | None] = list(ollama_env_values(env))
     raw += list(DEFAULT_BASES)
     out: list[str] = []
     seen: set[str] = set()

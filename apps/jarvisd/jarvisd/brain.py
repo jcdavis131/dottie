@@ -201,8 +201,14 @@ def requested_provider() -> str:
 
 
 def ollama_host() -> str:
-    """`OLLAMA_HOST` (default ``http://127.0.0.1:11434``); a bare host:port gets http://."""
-    raw = (os.environ.get("OLLAMA_HOST") or DEFAULT_OLLAMA_HOST).strip().rstrip("/")
+    """`OLLAMA_HOST` (default ``http://127.0.0.1:11434``); a bare host:port gets http://.
+
+    ``OLLAMA_BASE`` / ``OLLAMA_URL`` / ``DOTTIE_OLLAMA_URL`` are accepted as
+    deprecated aliases (dottie_loop.env), with a warning.
+    """
+    from dottie_loop.env import ollama_host as _configured
+
+    raw = (_configured(default=DEFAULT_OLLAMA_HOST) or DEFAULT_OLLAMA_HOST).strip().rstrip("/")
     if "://" not in raw:
         raw = "http://" + raw
     return raw
