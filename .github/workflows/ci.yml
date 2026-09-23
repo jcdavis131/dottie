@@ -600,6 +600,47 @@ jobs:
           if git ls-files | grep -E "dottie_live_status|dottie_telemetry|STATUS.json|results.tsv" ; then echo "Telemetry still tracked!"; exit 1; fi
           echo "Telemetry clean ✓"
 
+  # SMOKE ONLY. apps/dottie-os is the git mirror of the nugatron UltraData factory
+  # + harvest/hop scripts. Live harvest needs Hugging Face `datasets` and is host-only.
+  # These tests are stdlib: classification heuristics, holdout pairing, a tiny fixture
+  # pack smoke, MANIFEST hashing, and the idempotent hf_to_system_one patch.
+  # They must not download UltraData, kick FT, or touch LIVE/champion.
+  #
+  # The floor is the point. `unittest discover` over an empty tests/ still exits 0
+  # with "Ran 0 tests". 12 sits under the 14 collected today so ordinary edits do
+  # not churn it, while a collapse to nothing trips the job.
+  dottie-os-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Stdlib UltraData factory smoke (no HF, no FT)
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s apps/dottie-os/tests -v 2>&1 | tee /tmp/dottie-os.txt
+          ran=$(grep -oE 'Ran [0-9]+ tests?' /tmp/dottie-os.txt | tail -1 | grep -oE '[0-9]+' || echo 0)
+          echo "dottie-os tests ran: ${ran}"
+          if [ "${ran}" -lt 12 ]; then
+            echo "FAIL: only ${ran} tests ran (floor 12)."
+            echo "A green run that collected nothing would look identical to success."
+            exit 1
+          fi
+          if ! grep -qE '^OK$' /tmp/dottie-os.txt; then
+            echo "FAIL: unittest did not report OK"
+            exit 1
+          fi
+      - name: Refuse tracked pack artifacts
+        run: |
+          set -euo pipefail
+          if git ls-files | grep -E 'curated_pack_.*\.(jsonl|json)$|ultradata_harvest_'; then
+            echo "Pack / harvest artifacts must not be tracked"
+            exit 1
+          fi
+          echo "No pack artifacts tracked"
+
   bluehenre-checks:
     # The Dottie site (apps/bluehenre) — zero-dep, bare-node. Enforces the
     # provenance guarantees: pure parsers, the Hub exporter parser, and that the

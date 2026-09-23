@@ -56,6 +56,7 @@ test:
 	uv run python scripts/test_task_eval_slice.py
 	uv run python scripts/test_check_declared_capabilities.py
 	uv run pytest factory/tests -q
+	python3 -m unittest discover -s apps/dottie-os/tests -q   # stdlib UltraData factory smoke; no HF/FT
 
 factory:
 	uv run python -m factory check
