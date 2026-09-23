@@ -219,7 +219,7 @@ def build_app(config: Config, *, state: State | None = None) -> Starlette:
             f"auth: {'bearer' if config.auth_enabled else 'DISABLED (loopback, no JARVIS_BEARER)'}",
             f"brain: {'available' if brain_status(config)['available'] else 'unavailable: ' + str(brain_status(config)['reason'])}",
             "mcp: /mcp (streamable-http)" + (", /sse (sse)" if config.sse else ""),
-            "api: /api/health /api/route /api/run /api/plan /api/memories /api/recall "
+            "api: /api/health /api/decide /api/route /api/run /api/plan /api/memories /api/recall "
             "/api/claims /api/inbox /api/goals /api/timeline /api/pair /api/export/<table>",
         ]
         for note in config.status_notes():
@@ -237,13 +237,34 @@ def build_app(config: Config, *, state: State | None = None) -> Starlette:
             }
         )
 
+    # route / plan / decide run sync code (SQLite, the router, maybe a System One
+    # HTTP call): in the threadpool, never on the event loop.
+    async def api_decide(request: Request) -> Response:
+        doc = await _body(request)
+        goal = _require_str(doc, "goal")
+        hints = doc.get("hints") if isinstance(doc.get("hints"), dict) else {}
+        if "learned" in doc:
+            hints = {**hints, "learned": _flag(doc.get("learned"))}
+        result = await run_in_threadpool(
+            jarvis.decide,
+            _agent(request),
+            goal,
+            hints,
+            str(doc.get("repo") or ""),
+            context=_flag(doc.get("context", True)),
+            cache=_flag(doc.get("cache", True)),
+        )
+        return _reply(result)
+
     async def api_route(request: Request) -> Response:
         doc = await _body(request)
-        return _reply(jarvis.route(_agent(request), _require_str(doc, "goal"), str(doc.get("repo") or "")))
+        goal = _require_str(doc, "goal")
+        return _reply(await run_in_threadpool(jarvis.route, _agent(request), goal, str(doc.get("repo") or "")))
 
     async def api_plan(request: Request) -> Response:
         doc = await _body(request)
-        return _reply(jarvis.plan(_require_str(doc, "goal")))
+        goal = _require_str(doc, "goal")
+        return _reply(await run_in_threadpool(jarvis.plan, goal, _agent(request), str(doc.get("repo") or "")))
 
     async def api_run(request: Request) -> Response:
         doc = await _body(request)
@@ -550,6 +571,7 @@ def build_app(config: Config, *, state: State | None = None) -> Starlette:
     routes = [
         Route("/", status_page, methods=["GET"]),
         Route("/api/health", health, methods=["GET"]),
+        Route("/api/decide", api_decide, methods=["POST"]),
         Route("/api/route", api_route, methods=["POST"]),
         Route("/api/plan", api_plan, methods=["POST"]),
         Route("/api/run", api_run, methods=["POST"]),

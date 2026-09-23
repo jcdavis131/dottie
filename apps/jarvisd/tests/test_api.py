@@ -349,3 +349,50 @@ def test_conductor_rpc_round_trip(client: TestClient, auth_headers: dict[str, st
     snapshot = moved.json()["snapshot"]
     assert snapshot["scratchpad"][0]["text"] == "breadcrumb"
     assert snapshot["todos"][0]["status"] == "in_progress"
+
+
+def test_decide_uses_context_records_and_caches(client: TestClient, auth_headers: dict[str, str]) -> None:
+    client.post("/api/memories", json={"text": "stripe payouts settle in two days", "scope": "global"}, headers=auth_headers)
+    client.post("/api/goals", json={"repo": "dottie", "text": "compare payment providers for launch"}, headers=auth_headers)
+    goal = "compare Stripe vs Lemon Squeezy Aug 2026"
+    r = client.post("/api/decide", json={"goal": goal, "repo": "dottie"}, headers=auth_headers)
+    assert r.status_code == 200
+    doc = r.json()
+    assert doc["ok"] and doc["moma_tier"] == "deep_research" and doc["authority"] == "heuristic"
+    rec = doc["decision"]
+    assert rec["schema"] == "dottie-decision-record-1" and rec["cache"]["hit"] is False
+    assert {"context", "route", "backends", "total"} <= set(rec["latency_ms"])
+    sources = rec["context"]["sources"]
+    assert sources.get("jarvisd.memory") == 1 and sources.get("jarvisd.goal") == 1
+    assert "goal_text" not in rec and "stripe payouts" not in json.dumps(rec)
+    again = client.post("/api/decide", json={"goal": goal, "repo": "dottie"}, headers=auth_headers).json()
+    assert again["decision"]["cache"]["hit"] is True and again["moma_tier"] == doc["moma_tier"]
+    bare = client.post("/api/decide", json={"goal": goal, "context": False, "cache": False}, headers=auth_headers).json()
+    assert bare["decision"]["context"] is None and bare["decision"]["cache"]["enabled"] is False
+    tl = client.get("/api/timeline?kind=decide", headers=auth_headers).json()["timeline"]
+    assert len(tl) == 3 and tl[-1]["payload"]["decision_id"] == rec["decision_id"]
+    assert goal not in json.dumps(tl)  # the goal text is not persisted without the opt-in
+    assert client.post("/api/decide", json={"goal": "  "}, headers=auth_headers).status_code == 400
+
+
+def test_route_alias_carries_the_decision(client: TestClient, auth_headers: dict[str, str]) -> None:
+    doc = client.post("/api/route", json={"goal": "heartbeat tick"}, headers=auth_headers).json()
+    assert doc["ok"] and doc["tier"] == "deterministic" and doc["decision"]["tier"] == "deterministic"
+    row = client.get("/api/timeline?kind=route", headers=auth_headers).json()["timeline"][0]
+    assert row["payload"]["decision_id"] == doc["decision"]["decision_id"]
+
+
+def test_sync_handlers_run_in_the_threadpool(client: TestClient, auth_headers: dict[str, str], monkeypatch) -> None:
+    import jarvisd.app as app_mod
+
+    called = []
+    real = app_mod.run_in_threadpool
+
+    async def spy(fn, *args, **kwargs):
+        called.append(getattr(fn, "__name__", str(fn)))
+        return await real(fn, *args, **kwargs)
+
+    monkeypatch.setattr(app_mod, "run_in_threadpool", spy)
+    for path in ("/api/route", "/api/plan", "/api/decide"):
+        assert client.post(path, json={"goal": "heartbeat tick"}, headers=auth_headers).status_code == 200
+    assert called == ["route", "plan", "decide"]

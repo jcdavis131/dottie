@@ -24,6 +24,7 @@ EXPECTED_TOOLS = {
     "jarvis.goal",
     "jarvis.goals",
     "jarvis.goal_done",
+    "harness.decide",
     "harness.route",
     "harness.run",
     "contacts.resolve",

@@ -50,7 +50,11 @@ def _router_isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOTTIE_TRACE_DIR", str(tmp_path / "traces"))
     monkeypatch.setenv("DOTTIE_TRACE_SOURCE", "test")
     monkeypatch.setenv("DOTTIE_ROUTER_STAMPS", str(tmp_path / "stamps"))
+    # decisions read scout's run history; runs write it. Never the real store.
+    monkeypatch.setenv("SCOUT_CHECKPOINT_BASE", str(tmp_path / "checkpoints"))
     monkeypatch.delenv("DOTTIE_OS_URL", raising=False)
+    monkeypatch.delenv("DOTTIE_TRACE_TEXT", raising=False)
+    monkeypatch.delenv("DOTTIE_CONTEXT_GRAPH", raising=False)
 
 
 @pytest.fixture

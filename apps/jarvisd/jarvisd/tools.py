@@ -34,7 +34,7 @@ _INSTRUCTIONS = (
     "jarvisd — shared context for the operator's agents. Call jarvis.context(repo) "
     "at session start; jarvis.remember for durable facts; jarvis.claim before "
     "editing a shared area and jarvis.release when done; jarvis.send/inbox for "
-    "agent-to-agent notes; harness.route to price a goal before running it. "
+    "agent-to-agent notes; harness.decide (alias harness.route) to price a goal before running it. "
     "Every tool returns JSON with `ok`; read `error` and `example` on failure."
 )
 
@@ -129,6 +129,10 @@ class Jarvis:
         self.config = config
         self.state = state
         self.started = time.time() if started is None else started
+        from dottie_loop.decide import DecisionCache
+
+        # per daemon: (goal sha, context digest, backend config, hints) -> route, 30 s TTL
+        self.decision_cache = DecisionCache()
 
     # -- core --------------------------------------------------------------
 
@@ -240,18 +244,59 @@ class Jarvis:
             "notes": self.config.status_notes(),
         }
 
-    # -- harness (scout, lazy) --------------------------------------------
+    # -- decision plane -----------------------------------------------------
+
+    def context_providers(self, repo: str = "") -> list[Any]:
+        """What a decision knows: this daemon's store (memories, open goals, claims),
+        scout's run history, and the personal-graphify code graph when configured."""
+        from dottie_loop.context import default_providers
+
+        return default_providers(state=self.state, repo=repo or None)
+
+    def decide(
+        self,
+        agent: str,
+        goal: str,
+        hints: dict[str, Any] | None = None,
+        repo: str = "",
+        *,
+        context: bool = True,
+        cache: bool = True,
+        surface: str = "jarvisd.decide",
+        timeline_kind: str | None = "decide",
+    ) -> dict[str, Any]:
+        """The one decision entry: context -> dottie_loop router -> decision record.
+
+        Records the decision on this daemon's timeline (``kind=decide``) and in
+        the router trace. The record holds the goal's sha256, the context digest
+        and item ids, System One's answers and the latency breakdown; the goal
+        text only under ``DOTTIE_TRACE_TEXT=1``.
+        """
+        goal = (goal or "").strip()
+        if not goal:
+            return _err("goal is empty", 'harness.decide(goal="compare Stripe vs Lemon Squeezy")')
+        try:
+            from dottie_loop.decide import decide as plane_decide
+        except ImportError as e:
+            return _err(f"router unavailable: {e}", "uv sync --all-groups  # installs packages/dottie-loop")
+        t0 = time.perf_counter()
+        d = plane_decide(
+            goal,
+            hints=hints or {},
+            providers=self.context_providers(repo) if context else (),
+            surface=surface,
+            cache=self.decision_cache if cache else None,
+        )
+        latency_ms = round((time.perf_counter() - t0) * 1000.0, 3)
+        record = d["decision"]
+        timeline_id = None
+        if timeline_kind:
+            timeline_id = self.state.timeline_add(agent, repo, timeline_kind, record)["id"]
+        return {"ok": True, **d, "latency_ms": latency_ms, "timeline_id": timeline_id}
 
     @staticmethod
-    def _route_only(goal: str, surface: str = "jarvisd.route") -> dict[str, Any]:
-        """Route through dottie_loop.router (the one policy scout uses too); same fields as before.
-
-        ``tier`` stays the MoMA-lite name; ``authority`` / ``advisory`` say which
-        backend decided and what the advisory backends answered.
-        """
-        from dottie_loop.router import route_goal
-
-        d = route_goal(goal, surface=surface)
+    def _route_view(goal: str, d: dict[str, Any]) -> dict[str, Any]:
+        """The pre-decide ``harness.route`` fields, from a decide() result."""
         tier = d["moma_tier"]
         return {
             "goal": goal,
@@ -273,48 +318,55 @@ class Jarvis:
         }
 
     def route(self, agent: str, goal: str, repo: str = "") -> dict[str, Any]:
-        """Route a goal in-process and record a timeline row."""
+        """``harness.route`` / ``/api/route``: a compatible alias of :meth:`decide`.
+
+        Same fields as before, plus ``decision`` (the record). The timeline row
+        keeps its old ``kind=route`` payload.
+        """
         goal = (goal or "").strip()
         if not goal:
             return _err("goal is empty", 'harness.route(goal="compare Stripe vs Lemon Squeezy")')
-        t0 = time.perf_counter()
-        try:
-            result = self._route_only(goal)
-        except ImportError as e:
-            return _err(f"router unavailable: {e}", "uv sync --all-groups  # installs packages/dottie-loop")
-        latency_ms = round((time.perf_counter() - t0) * 1000.0, 3)
+        d = self.decide(agent, goal, repo=repo, surface="jarvisd.route", timeline_kind=None)
+        if not d.get("ok"):
+            return d
+        result = self._route_view(goal, d)
+        latency_ms = d["latency_ms"]
         row = self.state.timeline_add(
             agent,
             repo,
             "route",
-            {"goal": goal, "intent": result["intent"], "tier": result["tier"], "confidence": result["confidence"]},
+            {"goal": goal, "intent": result["intent"], "tier": result["tier"], "confidence": result["confidence"],
+             "decision_id": d["decision"]["decision_id"], "latency_ms": d["decision"]["latency_ms"]},
         )
         return {
             "ok": True,
             **result,
+            "decision": d["decision"],
             "latency_ms": latency_ms,
             "tokens_est": len(goal.split()),
             "measured": {"latency_ms": latency_ms, "tokens_est": len(goal.split()), "stdlib": "time", "torch": False},
             "timeline_id": row["id"],
         }
 
-    def plan(self, goal: str) -> dict[str, Any]:
+    def plan(self, goal: str, agent: str = "anon", repo: str = "") -> dict[str, Any]:
         """Deterministic DAG plan, same shape as `apps/dottie-harness-api` `/api/plan`."""
         goal = (goal or "").strip()
         if not goal:
             return _err("goal is empty", '{"goal": "ship the daemon"}')
         try:
             from bigbang.plugins.harness import runner
-
-            routed = self._route_only(goal, surface="jarvisd.plan")
-            steps = runner.build_plan(goal, routed["tier"])
         except ImportError as e:
             return _err(f"scout unavailable: {e}", "uv sync --all-groups")
+        d = self.decide(agent, goal, repo=repo, surface="jarvisd.plan", timeline_kind=None)
+        if not d.get("ok"):
+            return d
+        steps = runner.build_plan(goal, d["moma_tier"])
         return {
             "ok": True,
             "goal": goal,
-            "tierHint": routed["tier"],
-            "authority": routed["authority"],
+            "tierHint": d["moma_tier"],
+            "authority": d["authority"],
+            "decision_id": d["decision"]["decision_id"],
             "steps": steps,
             "risk_provenance": "mined g_history fail rates when runs exist, static priors otherwise",
             "version": "scout harness runner.build_plan",
@@ -329,7 +381,8 @@ class Jarvis:
             from bigbang.plugins.harness import runner
         except ImportError as e:
             return _err(f"scout unavailable: {e}", "uv sync --all-groups")
-        result = runner.run_goal(goal, runs_dir=self.config.runs_dir, mcp_namespace=mcp_namespace or "")
+        result = runner.run_goal(goal, runs_dir=self.config.runs_dir, mcp_namespace=mcp_namespace or "",
+                                 context_providers=self.context_providers(repo))
         row = self.state.timeline_add(
             agent,
             repo,
@@ -496,7 +549,11 @@ def register_tools(mcp: FastMCP, jarvis: Jarvis) -> int:
     def jarvis_goal_done(id: int, result: dict[str, Any] | str | None = None, status: str = "done") -> str:
         return _dump(jarvis.goal_done(id, result, status))
 
-    @mcp.tool(name="harness.route", description="Route a goal through the Dottie router (dottie_loop.router: MoMA-lite heuristic, learned backends advisory). Records a timeline row.")
+    @mcp.tool(name="harness.decide", description="Decide a goal's tier: bounded context (jarvisd memories, open goals, claims, run history) -> the Dottie router (MoMA-lite authoritative; learned and System One advisory) -> a decision record with a latency breakdown. Records a timeline row. hints: learned, system_one, insufficiency, policy_exclusions.")
+    def harness_decide(goal: str, repo: str = "", hints: dict[str, Any] | None = None, context: bool = True, agent: str = "", ctx: Context = None) -> str:  # type: ignore[assignment]
+        return _dump(jarvis.decide(agent_from_context(ctx, agent), goal, hints or {}, repo, context=context))
+
+    @mcp.tool(name="harness.route", description="Route a goal through the Dottie router. Compatible alias of harness.decide (same decision, the old field set plus `decision`). Records a timeline row.")
     def harness_route(goal: str, repo: str = "", agent: str = "", ctx: Context = None) -> str:  # type: ignore[assignment]
         return _dump(jarvis.route(agent_from_context(ctx, agent), goal, repo))
 
@@ -520,7 +577,7 @@ def register_tools(mcp: FastMCP, jarvis: Jarvis) -> int:
     def jarvis_status() -> str:
         return _dump(jarvis.status())
 
-    return 17
+    return 18
 
 
 def add_scout_tools(mcp: FastMCP) -> int:
