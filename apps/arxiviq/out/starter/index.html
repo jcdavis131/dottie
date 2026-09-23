@@ -1,20 +1,95 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Starter — dottie-os System One sidecar</title>
-<style>body{font-family:system-ui,sans-serif;max-width:42em;margin:3em auto;padding:1em;color:#201a13;background:#f1e7e0}pre{background:#fbf6ef;padding:1em;border-radius:8px;overflow:auto;border:1px solid #d9cabe}a{color:#3d6b89} .pill{display:inline-block;background:#201a13;color:#f1e7e0;border-radius:999px;padding:.4em .9em;font-size:.85em;text-decoration:none} .ghost{border:1px solid #d9cabe;border-radius:999px;padding:.4em .9em;font-size:.85em;text-decoration:none;color:#201a13}</style></head><body>
-<div style="color:#6f655a;font-size:.85em">arxiviq.com / starter — dottie-os</div>
-<h1>dottie-os — System One sidecar</h1>
-<p>Local-first decisions for Cursor and pair-programming. Choice / Score / Noul — not a chat train control plane, not a watch-train dashboard.</p>
-<pre>git clone https://github.com/jcdavis131/dottie</pre>
-<ul>
-<li><b>1. Decide</b> — state + typed questions → Choice (execute|escalate|halt|other), Score (severity), Noul (P(safe))</li>
-<li><b>2. Laya</b> — local champion on your tailnet. This site does not publish a private decide URL.</li>
-<li><b>3. Curate</b> — public HF → honest HELPER rows → Nimble ≤8-word flips → staging JSONL → holdout → Cam stamp</li>
-<li><b>4. Refuse</b> — no synthetic champion train, no auto-promote, no bots approving merge/ship</li>
-</ul>
-<p>Solo personal project, MIT, free-tier only. No connection to employer.
-<br><a href="/">Home</a> · <a href="/conductor">Conductor</a> · <a href="/dottie">Pair</a></p>
-<div style="display:flex;gap:.6em;flex-wrap:wrap;margin-top:1.5em">
-<a class="pill" href="https://github.com/jcdavis131/dottie">GitHub — dottie</a>
-<a class="ghost" href="/">System One homepage</a>
+<meta name="description" content="Start with dottie-os: clone the repo, decide with Choice / Score / Noul, keep Laya on your tailnet, curate honestly, refuse silent promotes.">
+<meta name="theme-color" content="#fafaf8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#060607" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=Jost:wght@300;400;500&amp;display=swap">
+<style>
+:root{--bg:#fafaf8;--surface:#fff;--sunken:#f1f1ee;--ink:#0a0a0b;--ink-2:#2e2e32;--muted:#5d5d64;--line:#e2e2de;--line-2:#c6c6c1;--signal:#c4231a;--signal-ink:#fff;
+--display:"Jost","Futura","Century Gothic",system-ui,sans-serif;--text:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+--label:.6875rem;--track:.24em;--ease:cubic-bezier(.2,.7,.1,1);--g:16px}
+@media (prefers-color-scheme:dark){:root{--bg:#060607;--surface:#0e0e10;--sunken:#0a0a0c;--ink:#f3f3f0;--ink-2:#c9c9c4;--muted:#93939a;--line:#1d1d21;--line-2:#2f2f35;--signal:#ff4b3e;--signal-ink:#0a0a0b}}
+@media (min-width:720px){:root{--g:32px}}
+*,*::before,*::after{box-sizing:border-box}
+html{scrollbar-color:var(--line-2) var(--bg);scrollbar-width:thin}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--text);line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+::selection{background:var(--signal);color:var(--signal-ink)}
+a{color:inherit;text-underline-offset:.22em;text-decoration-thickness:1px}
+:focus-visible{outline:2px solid var(--signal);outline-offset:3px;border-radius:2px}
+.skip{position:absolute;left:50%;top:8px;transform:translate(-50%,-200%);background:var(--ink);color:var(--bg);padding:8px 16px;font-family:var(--display);font-size:var(--label);letter-spacing:var(--track);text-transform:uppercase;text-decoration:none}
+.skip:focus-visible{transform:translate(-50%,0)}
+.label{font-family:var(--display);font-size:var(--label);font-weight:500;letter-spacing:var(--track);text-transform:uppercase;color:var(--muted);margin:0}
+.nav{position:sticky;top:0;z-index:40;height:56px;background:color-mix(in srgb,var(--bg) 86%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+.nav div{max-width:1216px;height:100%;margin:0 auto;padding:0 var(--g);display:flex;align-items:center;justify-content:space-between}
+.nav a{text-decoration:none}
+.brand{display:inline-flex;align-items:center;gap:12px;font-family:var(--display);font-size:.8125rem;font-weight:500;letter-spacing:var(--track);text-transform:uppercase}
+.brand svg{width:22px;height:22px}
+main{max-width:720px;margin:0 auto;padding:96px var(--g)}
+header{text-align:center;display:grid;justify-items:center;gap:24px;padding-bottom:64px;border-bottom:1px solid var(--line)}
+h1{margin:0;font-family:var(--display);font-weight:300;font-size:clamp(2.25rem,1.4rem + 4vw,4rem);letter-spacing:.14em;margin-right:-.14em;line-height:1.08;text-transform:uppercase}
+h1>span{display:block;margin-top:16px;font-size:.3em;font-weight:400;letter-spacing:.3em;color:var(--muted)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.lede{margin:0;font-size:1.1875rem;line-height:1.55;color:var(--ink-2);max-width:52ch;text-wrap:balance}
+pre{margin:64px 0 0;padding:20px 24px;background:var(--sunken);border:1px solid var(--line);border-left:2px solid var(--signal);font-family:var(--mono);font-size:.9375rem;overflow-x:auto}
+@media (max-width:480px){pre{font-size:.75rem;padding:16px}}
+pre::before{content:"$ ";color:var(--muted)}
+ol{list-style:none;margin:48px 0 0;padding:0;border-top:1px solid var(--line)}
+li{display:grid;grid-template-columns:48px 1fr;gap:4px 16px;padding:24px 0;border-bottom:1px solid var(--line)}
+li b{grid-row:span 2;font-family:var(--display);font-weight:500;font-size:.8125rem;letter-spacing:.1em;color:var(--signal);font-variant-numeric:tabular-nums}
+li strong{font-family:var(--display);font-weight:500;font-size:.8125rem;letter-spacing:var(--track);text-transform:uppercase}
+li span{color:var(--ink-2)}
+code{font-family:var(--mono);font-size:.88em}
+.actions{display:flex;flex-wrap:wrap;justify-content:center;gap:16px;margin-top:64px}
+.btn{display:inline-flex;align-items:center;min-height:44px;padding:0 24px;border:1px solid var(--line-2);border-radius:2px;font-family:var(--display);font-size:var(--label);font-weight:500;letter-spacing:var(--track);text-transform:uppercase;text-decoration:none;transition:background-color .24s var(--ease),border-color .24s var(--ease),color .24s var(--ease)}
+.btn:hover{border-color:var(--ink)}
+.btn.primary{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.btn.primary:hover{background:var(--signal);border-color:var(--signal);color:var(--signal-ink)}
+footer{border-top:1px solid var(--line);padding:48px var(--g);text-align:center;font-size:.8125rem;color:var(--muted)}
+footer nav{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 32px;margin-bottom:24px}
+footer nav a{font-family:var(--display);font-size:var(--label);font-weight:500;letter-spacing:var(--track);text-transform:uppercase;text-decoration:none;color:var(--ink-2)}
+footer nav a:hover{color:var(--signal)}
+footer p{margin:0 auto;max-width:60ch}
+@media (prefers-reduced-motion:no-preference){header>*{animation:rise 1.2s var(--ease) both}header>:nth-child(2){animation-delay:.11s}header>:nth-child(3){animation-delay:.22s}}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@media print{.nav,.actions,.skip{display:none}}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<nav class="nav" aria-label="Site"><div>
+<a class="brand" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><rect x="1.5" y="1.5" width="21" height="21"/><rect x="7.5" y="7.5" width="9" height="9"/><path d="M1.5 1.5 7.5 7.5M22.5 1.5 16.5 7.5M1.5 22.5 7.5 16.5M22.5 22.5 16.5 16.5"/><circle cx="12" cy="12" r="1.75" fill="var(--signal)" stroke="none"/></svg>dottie-os</a>
+<span class="label">arxiviq.com / starter</span>
+</div></nav>
+<main id="main">
+<header>
+<p class="label">Starter — dottie-os</p>
+<h1>dottie-os<span><span class="sr"> — </span>System One sidecar</span></h1>
+<p class="lede">Local-first decisions for Cursor and pair-programming. Choice / Score / Noul — not a chat train control plane, not a watch-train dashboard.</p>
+</header>
+<pre tabindex="0" aria-label="Clone command">git clone https://github.com/jcdavis131/dottie</pre>
+<ol>
+<li><b>01</b><strong>Decide</strong><span>state + typed questions → Choice (<code>execute|escalate|halt|other</code>), Score (severity), Noul (<code>P(safe)</code>)</span></li>
+<li><b>02</b><strong>Laya</strong><span>local champion on your tailnet. This site does not publish a private decide URL.</span></li>
+<li><b>03</b><strong>Curate</strong><span>public HF → honest HELPER rows → Nimble ≤8-word flips → staging JSONL → holdout → Cam stamp</span></li>
+<li><b>04</b><strong>Refuse</strong><span>no synthetic champion train, no auto-promote, no bots approving merge/ship</span></li>
+</ol>
+<div class="actions">
+<a class="btn primary" href="https://github.com/jcdavis131/dottie">GitHub — dottie</a>
+<a class="btn" href="/">System One homepage</a>
 </div>
-</body></html>
+</main>
+<footer>
+<nav aria-label="Footer"><a href="/">Home</a><a href="/conductor">Conductor</a><a href="/dottie">Pair</a></nav>
+<p>Solo personal project, MIT, free-tier only. No connection to employer.</p>
+</footer>
+</body>
+</html>

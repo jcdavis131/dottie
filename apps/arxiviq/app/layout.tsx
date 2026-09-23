@@ -1,7 +1,8 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
-import Link from "next/link";
 import "./globals.css";
+import SiteFooter from "./components/SiteFooter";
+import SiteNav from "./components/SiteNav";
 import {
   META_DESCRIPTION,
   META_TITLE,
@@ -10,7 +11,10 @@ import {
 } from "../lib/system-one-copy";
 
 export const metadata: Metadata = {
-  title: META_TITLE,
+  title: {
+    default: META_TITLE,
+    template: "%s · dottie-os · arxiviq.com",
+  },
   description: META_DESCRIPTION,
   metadataBase: new URL("https://arxiviq.com"),
   openGraph: {
@@ -21,53 +25,42 @@ export const metadata: Metadata = {
     type: "website",
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: OG_TITLE,
     description: OG_DESCRIPTION,
   },
   manifest: "/manifest.json",
 };
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  colorScheme: "light dark",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#fafaf8" },
+    { media: "(prefers-color-scheme: dark)", color: "#060607" },
+  ],
+};
+
+const FONTS =
+  "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Jost:wght@300;400;500&display=swap";
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <head>
-        <meta name="theme-color" content="#f1e7e0" />
-        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link rel="stylesheet" href={FONTS} />
       </head>
-      <body style={{ margin: 0, background: "#f1e7e0" }}>
-        <nav
-          aria-label="Site"
-          style={{
-            alignItems: "center",
-            background: "rgba(251,246,239,.92)",
-            backdropFilter: "blur(12px)",
-            borderBottom: "1px solid #d9cabe",
-            display: "flex",
-            fontFamily: "IBM Plex Mono, ui-monospace, SFMono-Regular, Menlo, monospace",
-            fontSize: 13,
-            gap: 20,
-            height: 40,
-            padding: "0 20px",
-            position: "sticky",
-            top: 0,
-            zIndex: 40,
-          }}
-        >
-          <Link href="/" style={{ color: "#201a13", textDecoration: "none", fontWeight: 700 }}>
-            dottie-os
-          </Link>
-          <Link href="/conductor" style={{ color: "#6f655a", textDecoration: "none" }}>
-            Conductor
-          </Link>
-          <Link href="/hive" style={{ color: "#6f655a", textDecoration: "none" }}>
-            The hive
-          </Link>
-          <Link href="/dottie" style={{ color: "#6f655a", textDecoration: "none" }}>
-            Pair
-          </Link>
-        </nav>
+      <body>
+        <a className="skip" href="#main">
+          Skip to content
+        </a>
+        <SiteNav />
         {children}
+        <SiteFooter />
       </body>
     </html>
   );
