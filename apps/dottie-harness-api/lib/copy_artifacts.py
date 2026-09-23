@@ -9,7 +9,10 @@ this package so the serverless bundle is fully self-contained:
 * apps/ava-factory/data/orchestration/corpus_meta.json
     -> lib/meta/corpus_meta.json (verbatim)
 
-The orchestrator WEIGHTS are no longer vendored. The API never loaded them
+The orchestrator WEIGHTS are not vendored by default (``main`` skips them).
+Only the flywheel's promoted path calls ``_copy_weights`` (see
+apps/ava-factory/scripts/flywheel_cycle.py, step "sync"), which then verifies the
+vendored bytes match the freshly trained champion. The API never loaded them
 (tests/test_api_local.py pins orch_infer as a dormant module), and the copy that
 sat in lib/weights/ was labelled orch-mlp-v1-v5 while every eval report names
 v4 — a model version with no eval behind it. The one weights file is
@@ -35,6 +38,19 @@ _LIB = Path(__file__).resolve().parent
 _AVA = Path(__file__).resolve().parents[2] / "ava-factory"
 
 _MISSING_NOTE = "artifact not present — package will serve model_loaded:false"
+
+
+def _copy_weights() -> bool:
+    """Flywheel promoted path only: vendor the trained champion weights verbatim."""
+    src = _AVA / "reports" / "orchestrator" / "champion_weights.json"
+    dst = _LIB / "weights" / "champion_weights.json"
+    if not src.exists():
+        print(f"[copy_artifacts] {src}: {_MISSING_NOTE}")
+        return False
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(src, dst)
+    print(f"[copy_artifacts] vendored {src} -> {dst} ({dst.stat().st_size} bytes)")
+    return True
 
 
 def _copy_eval_summary() -> bool:
