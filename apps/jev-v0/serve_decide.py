@@ -54,6 +54,13 @@ def decide(payload: Any, *, model: str, mode: str, predictor: Any = None) -> dic
         answers = {
             qid: untrained_answer(question) for qid, question in request["questions"].items()
         }
+    elif hasattr(predictor, "probabilities_many"):
+        # one pass over the shared state prefix for every question (pointer_infer.SharedPrefixScorer)
+        probs = predictor.probabilities_many(request["state"], request["questions"])
+        answers = {
+            qid: answer_from_probabilities(question, probs[qid])
+            for qid, question in request["questions"].items()
+        }
     else:
         answers = {
             qid: answer_from_probabilities(question, predictor.probabilities(request["state"], question))
@@ -69,6 +76,12 @@ def decide(payload: Any, *, model: str, mode: str, predictor: Any = None) -> dic
 
 class DecideHandler(BaseHTTPRequestHandler):
     server_version = "jev-v0-decide/1.0"
+    # HTTP/1.1: a client (the router's System One backend) keeps one connection
+    # open across requests. Every response carries Content-Length, so this is safe.
+    protocol_version = "HTTP/1.1"
+    # headers and body go out in separate writes; with Nagle on, the body waits
+    # for the client's delayed ACK (~40 ms per request on a kept-alive socket)
+    disable_nagle_algorithm = True
 
     def log_message(self, fmt: str, *args: object) -> None:
         sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
@@ -79,6 +92,8 @@ class DecideHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(raw)))
         self.send_header("Cache-Control", "no-store")
+        if self.close_connection:
+            self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(raw)
 
@@ -103,15 +118,18 @@ class DecideHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler API
         path = urlparse(self.path).path
         if path != "/decide":
+            self.close_connection = True  # the unread body must not become the next request
             self._send(404, {"ok": False, "error": "not found"})
             return
         length_raw = self.headers.get("Content-Length", "")
         try:
             length = int(length_raw)
         except ValueError:
+            self.close_connection = True
             self._send(400, {"ok": False, "error": "Content-Length required"})
             return
         if length < 0 or length > MAX_BODY:
+            self.close_connection = True
             self._send(413, {"ok": False, "error": f"body exceeds {MAX_BODY} bytes"})
             return
         raw = self.rfile.read(length)

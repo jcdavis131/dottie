@@ -295,5 +295,130 @@ class CheckpointServingTests(unittest.TestCase):
             thread.join(timeout=2)
 
 
+class _FakeCausalLM:
+    """Torch-free stand-in: hidden row i depends only on tokens 0..i (causal), and
+    the cache is a mutable list the encoder extends in place, like a real KV cache."""
+
+    CLOSE, DECIDE = 1, 2
+
+    def __init__(self) -> None:
+        self.encoded_tokens = 0
+
+    def tokenize(self, text: str) -> list[int]:
+        import re
+
+        out: list[int] = []
+        for part in re.split(r"(</opt>|<decide>)", text):
+            if part == "</opt>":
+                out.append(self.CLOSE)
+            elif part == "<decide>":
+                out.append(self.DECIDE)
+            else:
+                out.extend(ord(c) + 10 for c in part)
+        return out
+
+    def encode(self, ids: list[int], past: list[int] | None) -> tuple[list[tuple[int, int]], list[int]]:
+        cache = past if past is not None else [0, 0]  # [position, running hash]
+        rows = []
+        for tok in ids:
+            cache[1] = (cache[1] * 31 + tok * (cache[0] + 1)) % 1_000_003
+            cache[0] += 1
+            rows.append((cache[1], cache[0]))
+        self.encoded_tokens += len(ids)
+        return rows, cache
+
+    @staticmethod
+    def score(query: tuple[int, int], keys: list[tuple[int, int]]) -> list[float]:
+        return [((query[0] ^ k[0]) % 97) / 10.0 for k in keys]
+
+
+class SharedPrefixScorerTests(unittest.TestCase):
+    def _questions(self) -> dict:
+        return load_fixtures()[0]["questions"]
+
+    def _scorer(self, lm: _FakeCausalLM):
+        from pointer_infer import SharedPrefixScorer
+
+        return SharedPrefixScorer(tokenize=lm.tokenize, encode=lm.encode, copy_past=list, score=lm.score,
+                                  close_id=lm.CLOSE, decide_id=lm.DECIDE)
+
+    def test_prefix_once_equals_each_branch_encoded_whole(self) -> None:
+        from pointer_infer import softmax
+        from train_pointer_lora import _render_branch
+
+        state = {"goal_features": {"n_words": 7}, "context": {"digest": "d" * 64, "items": []}}
+        questions = {**self._questions(), "extra": {"type": "noul", "instructions": "Is it safe?"}}
+        lm = _FakeCausalLM()
+        got = self._scorer(lm).probabilities_many(state, questions)
+        shared_cost = lm.encoded_tokens
+        state_text = json.dumps(state, ensure_ascii=True, sort_keys=True)
+        whole_cost = 0
+        for qid, q in questions.items():
+            text, keys = _render_branch(state_text, q)
+            ref_lm = _FakeCausalLM()
+            ids = ref_lm.tokenize(text)
+            rows, _ = ref_lm.encode(ids, None)
+            whole_cost += len(ids)
+            opts = [rows[i] for i, t in enumerate(ids) if t == ref_lm.CLOSE]
+            dec = rows[ids.index(ref_lm.DECIDE)]
+            want = dict(zip(keys, softmax(ref_lm.score(dec, opts)), strict=True))
+            self.assertEqual(set(got[qid]), set(want))
+            for k in want:
+                self.assertAlmostEqual(got[qid][k], want[k], places=12)
+        self.assertLess(shared_cost, whole_cost)  # the state was encoded once, not per question
+        self.assertNotIn("torch", sys.modules)
+
+    def test_shared_prefix_never_crosses_a_boundary_token(self) -> None:
+        from pointer_infer import shared_prefix_len
+
+        self.assertEqual(shared_prefix_len([[5, 6, 1, 7], [5, 6, 1, 7]], {1, 2}), 2)
+        self.assertEqual(shared_prefix_len([[5, 6, 7], [5, 6, 7]], set()), 2)  # a suffix always remains
+        self.assertEqual(shared_prefix_len([[5, 6], [9, 6]], set()), 0)
+        self.assertEqual(shared_prefix_len([], set()), 0)
+
+    def test_decide_uses_probabilities_many_when_offered(self) -> None:
+        calls = []
+
+        class _Many:
+            def probabilities_many(self, state, questions):
+                calls.append(sorted(questions))
+                from decision_io import option_keys
+
+                return {qid: {k: 1.0 / len(option_keys(q)) for k in option_keys(q)} for qid, q in questions.items()}
+
+            def probabilities(self, state, question):  # pragma: no cover - must not be used
+                raise AssertionError("per-question path used")
+
+        record = load_fixtures()[0]
+        body = decide({"schema": SCHEMA_ID, "state": record["state"], "questions": record["questions"]},
+                      model="m", mode="pointer-lora", predictor=_Many())
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(set(body["answers"]), set(record["questions"]))
+
+    def test_server_keeps_the_connection_alive(self) -> None:
+        server = DecideServer("127.0.0.1", 0, model="u", mode="untrained")
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        conn = HTTPConnection(*server.server_address[:2], timeout=2)
+        try:
+            record = load_fixtures()[0]
+            raw = json.dumps({"schema": SCHEMA_ID, "state": record["state"], "questions": record["questions"]})
+            for _ in range(3):
+                conn.request("POST", "/decide", body=raw, headers={"Content-Type": "application/json"})
+                resp = conn.getresponse()
+                self.assertEqual(resp.status, 200)
+                resp.read()
+                self.assertFalse(resp.will_close)
+            sock = conn.sock
+            conn.request("GET", "/health")
+            conn.getresponse().read()
+            self.assertIs(conn.sock, sock)  # same socket: keep-alive held
+        finally:
+            conn.close()
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+
 if __name__ == "__main__":
     unittest.main()
