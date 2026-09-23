@@ -1,0 +1,50 @@
+{
+  "api": "https://export.arxiv.org/api/query",
+  "failed": [],
+  "harvested_at": "2026-09-23T13:19:07Z",
+  "multi_topic": 66,
+  "papers": 1242,
+  "synthetic": 0,
+  "topics": {
+    "decision_models": {
+      "relevance": 90,
+      "submittedDate": 60
+    },
+    "foundation_wm": {
+      "relevance": 90,
+      "submittedDate": 60
+    },
+    "hamiltonian": {
+      "relevance": 90,
+      "submittedDate": 60
+    },
+    "imagebind": {
+      "relevance": 90,
+      "submittedDate": 60
+    },
+    "jepa": {
+      "relevance": 90,
+      "submittedDate": 60
+    },
+    "pred_coding": {
+      "relevance": 90,
+      "submittedDate": 60
+    },
+    "ssl_repr": {
+      "relevance": 90,
+      "submittedDate": 60
+    },
+    "train_dynamics": {
+      "relevance": 90,
+      "submittedDate": 60
+    },
+    "v_jepa": {
+      "relevance": 90,
+      "submittedDate": 60
+    },
+    "world_models": {
+      "relevance": 90,
+      "submittedDate": 60
+    }
+  }
+}
