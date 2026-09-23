@@ -13,6 +13,7 @@ AND a human stamps those exact bytes. This plugin never stamps on its own.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -20,6 +21,7 @@ import typer
 
 from bigbang.core.contract import err, make_plugin_app, ok
 from bigbang.core.output import emit
+from bigbang.core.policy import enforce_or_raise, load_manifest
 
 app = make_plugin_app(
     "router",
@@ -32,6 +34,10 @@ app = make_plugin_app(
         "scout --json router promote runs/router-001 --i-have-reviewed --by cam",
     ],
 )
+
+
+def _manifest() -> dict:
+    return load_manifest(Path(__file__).parent)
 
 
 def _fail(command: str, error: str, **extra) -> None:
@@ -78,6 +84,7 @@ def pack_cmd(
     from dottie_loop.errors import LoopError
     from dottie_loop.router_training import pack
 
+    enforce_or_raise(_manifest(), "fs_write_arg", str(Path(out).expanduser()))
     files = _trace_files(traces)
     if not files:
         _fail("router pack", "no trace files found", hint="route and run real goals first; traces land in ~/.dottie/traces")
@@ -109,6 +116,8 @@ def train_cmd(
         _fail("router train", str(exc))
     if go and not out:
         _fail("router train", "--go needs --out <checkpoint dir>")
+    if go:
+        enforce_or_raise(_manifest(), "fs_write_arg", str(Path(out).expanduser()))
     cmd = train_command(p, Path(out).expanduser() if out else p / "checkpoint", go=go, steps=steps,
                         base_model=base_model or None)
     proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
@@ -146,6 +155,7 @@ def eval_cmd(
     ck = Path(checkpoint).expanduser()
     if not ck.exists():
         _fail("router eval", f"checkpoint not found: {ck}")
+    enforce_or_raise(_manifest(), "fs_write_arg", str(ck / "eval_summary.json" if ck.is_dir() else ck.with_name("eval_summary.json")))
     try:
         if predictions:
             pred_path = Path(predictions).expanduser()
@@ -177,8 +187,11 @@ def promote_cmd(
 ):
     """Stamp a gate_passed artifact as human-reviewed. The ONLY way a learned answer becomes authoritative."""
     from dottie_loop.errors import LoopError
-    from dottie_loop.router_artifacts import write_stamp
+    from dottie_loop.router_artifacts import stamp_dir, write_stamp
 
+    # plugin-chosen default -> fs_write (declared path); an env override is the operator's choice
+    action = "fs_write_arg" if os.environ.get("DOTTIE_ROUTER_STAMPS") else "fs_write"
+    enforce_or_raise(_manifest(), action, str(stamp_dir() / "stamp.json"))
     if not reviewed:
         _fail("router promote", "refused: pass --i-have-reviewed after reading the artifact's eval_summary.json")
     try:

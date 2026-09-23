@@ -8,11 +8,13 @@ capabilities:
   network:
     enabled: false
   filesystem:
-    # Writes only where the operator points: the pack --out directory, the
-    # checkpoint's eval_summary.json, and the promotion stamp store
-    # (~/.dottie/router/stamps, DOTTIE_ROUTER_STAMPS overrides). No declared path
-    # list, because the pack and checkpoint locations are the operator's choice;
-    # declaring one without enforcing it would be a gate in name only.
+    # The one plugin-chosen write is the promotion stamp store (gated with
+    # fs_write). Everything else goes where the operator points on the command
+    # line: the pack --out dir, the train --out checkpoint, the checkpoint's
+    # eval_summary.json, or a DOTTIE_ROUTER_STAMPS override (all gated with
+    # fs_write_arg, which checks the write flag and stops by design).
     write: true
+    paths:
+      - "~/.dottie/router/stamps/"
   secrets: false
 tags: [router, system-one, training, promotion]
