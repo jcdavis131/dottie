@@ -13,7 +13,7 @@ outcomes, never from invention:
   impact            score   title, abstract, year         Semantic Scholar citations per year since posting (papers >= 1 year old)
   industry          noul    title, abstract, authors      any author affiliation ROR types as company (>= 75% of authors' affiliations known)
   first_country     choice  title, abstract, authors      country of the first author's ROR-matched institution
-  teacher_quiz      choice  title, abstract               LLM-teacher comprehension question (label_source llm-teacher)
+  teacher_quiz      choice  title, abstract               LLM-teacher comprehension question, length-balanced options only (llm-teacher)
   contribution      choice  title, abstract               LLM-teacher paper type (label_source llm-teacher)
   code_release      noul    title, abstract               LLM-teacher reading of the abstract (label_source llm-teacher)
 
@@ -43,7 +43,7 @@ from typing import TYPE_CHECKING, Any
 from . import SCHEMA_ID
 from .common import stable_id
 from .harvest import TOPIC_LABELS
-from .teacher import CONTRIBUTIONS, LETTERS
+from .teacher import CONTRIBUTIONS, LETTERS, length_balanced
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -293,6 +293,8 @@ def fam_teacher(c: Corpus) -> Iterator[dict[str, Any]]:
             continue
         src = f"llm-teacher:{t['teacher']}"
         for i, q in enumerate(t["questions"]):
+            if not length_balanced(q):
+                continue  # the longest option would give the answer away
             question = {"type": "choice", "instructions": q["prompt"][:512], "criteria": {k: q["options"][k][:256] for k in LETTERS}}
             yield row("teacher_quiz", p, base_state(p), "answer", question, {"type": "choice", "choice": q["answer"]}, label_source=src, salt=str(i))
         yield row("contribution", p, base_state(p), "contribution", contrib_q, {"type": "choice", "choice": t["contribution"]}, label_source=src)

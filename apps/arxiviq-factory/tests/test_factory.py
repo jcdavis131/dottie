@@ -20,7 +20,7 @@ from arxiviq_factory.curate import label_summary, load_validator, split_by_paper
 from arxiviq_factory.enrich import norm_name, parse_html_affiliations
 from arxiviq_factory.families import NIMBLE_MAX_WORDS, Corpus, build, impact_level
 from arxiviq_factory.harvest import parse_atom
-from arxiviq_factory.teacher import check
+from arxiviq_factory.teacher import check, shuffle_options
 
 NOW = datetime(2026, 9, 23, tzinfo=UTC)
 
@@ -92,8 +92,8 @@ def corpus() -> Corpus:
         {
             "arxiv_id": "2301.00001",
             "questions": [
-                {"prompt": "What does the paper learn?", "options": {"A": "A predictive representation", "B": "A reward model", "C": "A tokenizer", "D": "A compiler"}, "answer": "A"},
-                {"prompt": "What is being studied?", "options": {"A": "Graphs", "B": "The paper's own subject", "C": "Proteins", "D": "Markets"}, "answer": "B"},
+                {"prompt": "What does the paper learn?", "options": {"A": "A predictive representation", "B": "A learned reward function", "C": "A byte-level tokenizer vocab", "D": "A compiler for model graphs"}, "answer": "A"},
+                {"prompt": "What is being studied?", "options": {"A": "Graph partitioning", "B": "The paper's subject", "C": "Protein folding", "D": "Market microstructure"}, "answer": "B"},
             ],
             "contribution": "method",
             "code_release": 0,
@@ -141,6 +141,29 @@ class TeacherTest(unittest.TestCase):
         bad = {**self.good["questions"][0], "answer": "E"}
         self.assertEqual(check({**self.good, "questions": [bad, bad]}, {"x"}), "answer outside A-D")
         self.assertEqual(check({**self.good, "contribution": "novel"}, {"x"}), "contribution outside the closed set")
+
+
+class LengthTest(unittest.TestCase):
+    def test_length_balance(self) -> None:
+        from arxiviq_factory.teacher import length_balanced
+
+        ok = {"options": {"A": "a" * 50, "B": "b" * 45, "C": "c" * 58, "D": "d" * 42}, "answer": "A"}
+        self.assertTrue(length_balanced(ok))
+        giveaway = {"options": {"A": "a" * 90, "B": "b" * 40, "C": "c" * 45, "D": "d" * 50}, "answer": "A"}
+        self.assertFalse(length_balanced(giveaway))
+
+
+class ShuffleTest(unittest.TestCase):
+    def test_shuffle_moves_letters_not_text(self) -> None:
+        q = {"prompt": "p", "options": {"A": "right", "B": "w1", "C": "w2", "D": "w3"}, "answer": "A"}
+        letters = set()
+        for i in range(40):
+            s = shuffle_options(q, f"paper#{i}")
+            self.assertEqual(sorted(s["options"].values()), ["right", "w1", "w2", "w3"])
+            self.assertEqual(s["options"][s["answer"]], "right")
+            letters.add(s["answer"])
+        self.assertEqual(letters, {"A", "B", "C", "D"})
+        self.assertEqual(shuffle_options(q, "x#0"), shuffle_options(q, "x#0"))
 
 
 class FamiliesTest(unittest.TestCase):
