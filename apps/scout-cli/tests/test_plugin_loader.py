@@ -5,6 +5,7 @@ SCOUT_DEBUG_PLUGINS=1 and `scout doctor`; the entry table matches the plugins.""
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 
@@ -16,7 +17,12 @@ from bigbang.core import plugin_loader
 def _py(code: str, env_extra: dict | None = None) -> subprocess.CompletedProcess:
     import os
 
-    env = {**os.environ, **(env_extra or {})}
+    # Deterministic help rendering: CI runners force colour (FORCE_COLOR,
+    # GITHUB_ACTIONS) and an 80-column width, which wraps and wraps names in
+    # ANSI codes. Pin a wide, colourless terminal; _probe also strips ANSI.
+    env = {k: v for k, v in os.environ.items() if k not in ("FORCE_COLOR", "GITHUB_ACTIONS", "TTY_COMPATIBLE")}
+    env.update({"NO_COLOR": "1", "TERM": "dumb", "COLUMNS": "200", "TERMINAL_WIDTH": "200"})
+    env.update(env_extra or {})
     return subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, encoding="utf-8",
                           errors="replace", timeout=120, env=env)
 
@@ -34,11 +40,14 @@ print("\\n@@" + json.dumps({{"plugins": loaded, "mcp": "mcp" in sys.modules}}))
 """
 
 
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
 def _probe(*argv: str) -> tuple[str, dict]:
     r = _py(_PROBE.format(argv=list(argv)))
     assert r.returncode == 0, r.stderr[-2000:]
     out, _, tail = r.stdout.rpartition("\n@@")
-    return out, json.loads(tail)
+    return _ANSI.sub("", out), json.loads(tail)
 
 
 def test_help_lists_every_plugin_and_imports_none():
