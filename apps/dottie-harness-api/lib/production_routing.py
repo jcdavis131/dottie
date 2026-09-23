@@ -1,39 +1,30 @@
-"""Deterministic production routing with no artifact or synthetic-data access."""
+"""Deterministic production routing with no artifact or synthetic-data access.
+
+The classifier is the router's MoMA-lite heuristic (dottie_loop.backends),
+vendored verbatim into lib/moma_lite.py by scripts/vendor_router.py because
+Vercel deploys this app without the monorepo. This module adds only the API's
+fail-closed guards (RoutingRejected) and response shape;
+tests/test_production_routing_parity.py holds it to the router's goldens.
+Phase 2 replaces the copy with a proxy to jarvisd /api/decide.
+"""
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
-INTENT_KEYWORDS: dict[str, dict[str, list[str]]] = {
-    "agentic_loop": {
-        "words": ["launch", "ship", "build", "end-to-end", "loop", "factory", "close the loop"],
-        "patterns": [r"\b12 things at once\b", r"\bopaque goal\b", r"\bkeep track\b"],
-    },
-    "deep_research": {
-        "words": [
-            "compare",
-            "vs",
-            "stripe",
-            "lemon squeezy",
-            "research",
-            "sota",
-            "paper",
-            "benchmark",
-            "triangulation",
-            "sources",
-        ],
-        "patterns": [r"\baug\s*2026\b", r"\b5-7 sources\b"],
-    },
-    "complex_action": {
-        "words": ["gmail", "calendar", "drive", "notion", "linear", "pay", "invoice", "book", "schedule"],
-        "patterns": [r"\btool\s*chain\b"],
-    },
-    "deterministic": {
-        "words": ["heartbeat", "monitor", "cron", "tick"],
-        "patterns": [],
-    },
-}
+try:  # package import (api/index.py, tests)
+    from lib import moma_lite
+except ImportError:  # loaded by file path (tests/test_production_routing_guards.py)
+    import importlib.util as _ilu
+    from pathlib import Path as _Path
+
+    _spec = _ilu.spec_from_file_location("moma_lite", _Path(__file__).with_name("moma_lite.py"))
+    moma_lite = _ilu.module_from_spec(_spec)
+    assert _spec.loader is not None
+    _spec.loader.exec_module(moma_lite)
+
+INTENT_KEYWORDS = moma_lite.INTENT_KEYWORDS
+
 RISK_PROVENANCE = "static priors — no mined run history in serverless"
 # Fail-closed membership sets. Every value dispatched on by _classify_tier and
 # _recommended_agents must be in these; anything else raises instead of silently
@@ -69,85 +60,28 @@ LLM_MAP = {
 
 
 def _score_intent(text: str, intent: str) -> float:
-    config = INTENT_KEYWORDS[intent]
-    lowered = text.lower()
-    word_score = sum(1.0 for word in config["words"] if word in lowered)
-    pattern_score = sum(2.5 for pattern in config["patterns"] if re.search(pattern, lowered, re.I))
-    return word_score + pattern_score
+    return moma_lite.score_intent(text, intent)
 
 
 def _complexity(text: str) -> str:
-    words = len(text.split())
-    lowered = text.lower()
-    chain_signals = len(re.findall(r"(->|then|after|next|→)", lowered))
-    chain_signals += int(" and " in lowered and words > 10)
-    if words > 60 or chain_signals >= 3:
-        return "epic"
-    if words > 18:
-        return "medium"
-    return "simple"
+    return moma_lite.complexity(text)
+
+
+def _guard(intent: str, complexity: str) -> None:
+    if intent not in KNOWN_INTENTS:
+        raise RoutingRejected("intent", intent, KNOWN_INTENTS)
+    if complexity not in KNOWN_COMPLEXITIES:
+        raise RoutingRejected("complexity", complexity, KNOWN_COMPLEXITIES)
 
 
 def _classify_tier(text: str, intent: str, complexity: str) -> str:
-    lowered = text.lower()
-    if intent not in KNOWN_INTENTS:
-        raise RoutingRejected("intent", intent, KNOWN_INTENTS)
-    if complexity not in KNOWN_COMPLEXITIES:
-        raise RoutingRejected("complexity", complexity, KNOWN_COMPLEXITIES)
-    if any(keyword in lowered for keyword in ("heartbeat", "monitor", "tick", "cron health")):
-        return "deterministic"
-    if intent == "deep_research":
-        return "deep_research"
-    if intent == "complex_action":
-        return "action_operator"
-    if intent == "agentic_loop" or complexity == "epic":
-        return "agentic_epic"
-    return "llm"
+    _guard(intent, complexity)
+    return moma_lite.classify_moma(text, intent, complexity)
 
 
 def _recommended_agents(intent: str, complexity: str) -> list[str]:
-    if intent not in KNOWN_INTENTS:
-        raise RoutingRejected("intent", intent, KNOWN_INTENTS)
-    if complexity not in KNOWN_COMPLEXITIES:
-        raise RoutingRejected("complexity", complexity, KNOWN_COMPLEXITIES)
-    if intent == "deep_research":
-        if complexity == "epic":
-            return ["deep-researcher", "synthesist", "researcher", "forensic-auditor", "critic"]
-        return ["deep-researcher", "synthesist", "forensic-auditor"]
-    if intent == "complex_action":
-        return ["action-operator", "operator", "critic"]
-    if intent == "agentic_loop":
-        if complexity == "epic":
-            return [
-                "scout-prime-coordinator",
-                "strategist",
-                "planner",
-                "deep-researcher",
-                "synthesist",
-                "builder",
-                "operator",
-                "action-operator",
-                "executor",
-                "critic",
-                "forensic-auditor",
-                "researcher",
-                "communicator",
-            ]
-        return ["scout-prime-coordinator", "strategist", "planner", "builder", "executor"]
-    if complexity == "epic":
-        return [
-            "scout-prime-coordinator",
-            "strategist",
-            "planner",
-            "deep-researcher",
-            "synthesist",
-            "builder",
-            "executor",
-            "critic",
-        ]
-    if complexity == "medium":
-        return ["scout-prime-coordinator", "strategist", "builder"]
-    return ["operator", "scout-prime-coordinator"]
+    _guard(intent, complexity)
+    return moma_lite.routed_agents(intent, complexity)
 
 
 def route_goal(goal: str) -> dict[str, Any]:
