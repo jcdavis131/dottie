@@ -5,11 +5,11 @@ export const HERO_TITLE = "dottie-os";
 export const HERO_SUBHEAD =
   "local System One decisions for tools and pair-programming";
 export const HERO_LEDE =
-  "State + typed questions → Choice / Score / Noul with calibrated confidence. Runs on your GPU (Laya champion). Not a chat bot.";
+  "State + typed questions → Choice / Score / Noul, with the probability named as a probability. Runs on your GPU (Laya champion). Not a chat bot.";
 
 export const META_TITLE = "dottie-os — local System One decisions · arxiviq.com";
 export const META_DESCRIPTION =
-  "State + typed questions → Choice, Score, and Noul with calibrated confidence. Local Laya champion on your tailnet. Not a chat bot. Solo personal project, MIT, free-tier.";
+  "State + typed questions → Choice, Score, and Noul — a named probability, not a hedge. Local Laya champion on your tailnet. Not a chat bot. Solo personal project, MIT, free-tier.";
 
 export const OG_TITLE = "dottie-os — local System One decisions";
 export const OG_DESCRIPTION =
@@ -72,8 +72,13 @@ export const REFUSALS = [
   "Bots do not approve merge or ship.",
 ] as const;
 
-export const NOT_CHAT =
-  "This is a decision sidecar, not a chat train control plane. The verb is decide — calibrated probabilities, not a transcript to parse. LLMVM chat and watch-the-box-train dashboards are lab archive, not this product.";
+export const NOT_CHAT_LEAD =
+  "This is a decision sidecar, not a chat train control plane.";
+export const NOT_CHAT_VERB = "decide";
+export const NOT_CHAT_VERB_GLOSS = "calibrated probabilities, not a transcript to parse.";
+export const NOT_CHAT_ARCHIVE =
+  "LLMVM chat and watch-the-box-train dashboards are lab archive, not this product.";
+export const NOT_CHAT = `${NOT_CHAT_LEAD} The verb is ${NOT_CHAT_VERB} — ${NOT_CHAT_VERB_GLOSS} ${NOT_CHAT_ARCHIVE}`;
 
 export const DISCLAIMER =
   "Solo personal project, no connection to employer, built with public/free-tier only. Hosted on Vercel Hobby. MIT.";

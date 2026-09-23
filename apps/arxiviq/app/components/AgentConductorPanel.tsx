@@ -139,39 +139,18 @@ export default function AgentConductorPanel({
   };
 
   return (
-    <div
-      data-conductor-root
-      style={{
-        background: "#080A0F",
-        border: "1px solid #1E3328",
-        borderRadius: 16,
-        color: "#E6F1EB",
-        fontFamily: "ui-sans-serif, system-ui, sans-serif",
-        minHeight: 560,
-        overflow: "hidden",
-      }}
-    >
-      <header
-        style={{
-          alignItems: "center",
-          background: "#0A1210",
-          borderBottom: "1px solid #1E3328",
-          display: "flex",
-          gap: 16,
-          minHeight: 48,
-          padding: "0 12px",
-        }}
-      >
-        <strong>Conductor</strong>
+    <div className="panel" data-conductor-root>
+      <div className="panel__bar">
         <div
           aria-label="Conductor sections"
+          className="tabs"
           role="tablist"
-          style={{ display: "flex", gap: 6 }}
         >
           {NAV.map((tab) => (
             <button
               aria-controls="conductor-panel"
               aria-selected={active === tab}
+              className="tab"
               id={`conductor-tab-${tabId(tab)}`}
               key={tab}
               onClick={() => setActive(tab)}
@@ -184,31 +163,42 @@ export default function AgentConductorPanel({
             </button>
           ))}
         </div>
-        <span style={{ marginLeft: "auto", fontSize: 12 }}>
+        <span className="chip" role="status">
+          <span
+            aria-hidden="true"
+            className={snap ? "dot dot--ok dot--live" : "dot"}
+          />
           {snap ? `jarvisd ${snap.daemon.version}` : "daemon unavailable"}
         </span>
-      </header>
+      </div>
 
       {rpcError && (
-        <div role="alert" style={{ background: "#2A1515", padding: "8px 12px" }}>
+        <div className="notice" role="alert">
           {rpcError}
         </div>
       )}
 
       {!snap ? (
-        <div style={{ color: "#B8A078", padding: 28 }}>
-          Authenticated conductor transport is not connected. Feedback, scratchpad,
-          todo, and guardrail controls are unavailable; no browser-local data is
-          substituted.
+        <div className="offline">
+          <p className="label">Transport offline</p>
+          <p>
+            Authenticated conductor transport is not connected. Feedback, scratchpad,
+            todo, and guardrail controls are unavailable; no browser-local data is
+            substituted.
+          </p>
+          <a className="btn" href="/dottie">
+            Pair with jarvisd
+          </a>
         </div>
       ) : (
-        <main
+        <div
           aria-labelledby={`conductor-tab-${tabId(active)}`}
+          className="panel__body"
           id="conductor-panel"
           role="tabpanel"
-          style={{ padding: 16 }}
+          tabIndex={0}
         >
-          <p style={{ color: "#8BA998", fontSize: 12 }}>
+          <p className="label">
             {tandem ? "Paired web view · " : ""}
             Fixed mission: {snap.mission}. Repository: {snap.repo}.
           </p>
@@ -216,43 +206,70 @@ export default function AgentConductorPanel({
           {active === "Dashboard" && (
             <section>
               <h2>Measured daemon status</h2>
-              <p>
-                PID {snap.daemon.process_id} · uptime {snap.daemon.uptime_s}s ·{" "}
-                {snap.persistence.kind}/{snap.persistence.journal_mode}
-              </p>
-              <p>
-                Authenticated actor limit: {snap.auth.rates_per_minute.agent} requests
-                per minute.
-              </p>
+              <dl className="readout">
+                <div>
+                  <dt>Process</dt>
+                  <dd>PID {snap.daemon.process_id}</dd>
+                </div>
+                <div>
+                  <dt>Uptime</dt>
+                  <dd>{snap.daemon.uptime_s}s</dd>
+                </div>
+                <div>
+                  <dt>Persistence</dt>
+                  <dd>
+                    {snap.persistence.kind}/{snap.persistence.journal_mode}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Rate limit</dt>
+                  <dd>
+                    Authenticated actor limit: {snap.auth.rates_per_minute.agent} requests
+                    per minute.
+                  </dd>
+                </div>
+              </dl>
             </section>
           )}
 
           {active === "Guardrails" && (
             <section>
               <h2>Read-only guardrail status</h2>
-              <p>This view cannot mutate guardrails.</p>
-              <ul>
-                {snap.guardrails.map((guardrail) => (
-                  <li key={guardrail.id}>
-                    {guardrail.id.replaceAll("_", " ")}:{" "}
-                    {guardrail.enabled ? "on" : "off"}
-                  </li>
-                ))}
-              </ul>
+              <p className="muted">This view cannot mutate guardrails.</p>
+              {snap.guardrails.length === 0 ? (
+                <p className="empty">The daemon reported no guardrails.</p>
+              ) : (
+                <ul className="list">
+                  {snap.guardrails.map((guardrail) => (
+                    <li key={guardrail.id}>
+                      <span
+                        aria-hidden="true"
+                        className={guardrail.enabled ? "dot dot--ok" : "dot"}
+                      />
+                      <span style={{ flex: 1 }}>{guardrail.id.replaceAll("_", " ")}</span>
+                      <span className="chip">{guardrail.enabled ? "on" : "off"}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </section>
           )}
 
           {active === "Feedback" && (
             <section>
               <h2>Feedback</h2>
-              <label htmlFor="conductor-feedback">Feedback note</label>
-              <textarea
-                id="conductor-feedback"
-                onChange={(event) => setFeedbackMsg(event.target.value)}
-                value={feedbackMsg}
-              />
-              <div>
+              <div className="field">
+                <label htmlFor="conductor-feedback">Feedback note</label>
+                <textarea
+                  className="textarea"
+                  id="conductor-feedback"
+                  onChange={(event) => setFeedbackMsg(event.target.value)}
+                  value={feedbackMsg}
+                />
+              </div>
+              <div className="row" style={{ marginTop: "var(--s1)" }}>
                 <button
+                  className="btn"
                   disabled={!canWrite("feedback.push")}
                   type="button"
                   onClick={() => void handleFeedback("thumbs_up")}
@@ -260,6 +277,7 @@ export default function AgentConductorPanel({
                   Good
                 </button>
                 <button
+                  className="btn"
                   disabled={!canWrite("feedback.push")}
                   type="button"
                   onClick={() => void handleFeedback("thumbs_down")}
@@ -267,6 +285,7 @@ export default function AgentConductorPanel({
                   Needs attention
                 </button>
                 <button
+                  className="btn btn--primary"
                   disabled={!canWrite("feedback.push")}
                   type="button"
                   onClick={() => void handleFeedback("note")}
@@ -274,88 +293,114 @@ export default function AgentConductorPanel({
                   Send note
                 </button>
               </div>
-              <ul>
-                {snap.feedback.map((feedback) => (
-                  <li key={feedback.id}>
-                    {feedback.kind}: {feedback.message}
-                  </li>
-                ))}
-              </ul>
+              {snap.feedback.length === 0 ? (
+                <p className="empty">No feedback recorded yet.</p>
+              ) : (
+                <ul className="list">
+                  {snap.feedback.map((feedback) => (
+                    <li key={feedback.id}>
+                      <span className="list__key">{feedback.kind}</span>
+                      <span>{feedback.message}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </section>
           )}
 
           {active === "Scratchpad" && (
             <section>
               <h2>Shared notes</h2>
-              <label htmlFor="conductor-scratchpad">Add a mission note</label>
-              <input
-                id="conductor-scratchpad"
-                onChange={(event) => setScratchInput(event.target.value)}
-                value={scratchInput}
-              />
-              <button
-                disabled={!canWrite("scratchpad.write")}
-                type="button"
-                onClick={() => void handleScratchWrite()}
-              >
-                Add note
-              </button>
-              <ul>
-                {snap.scratchpad.map((entry) => (
-                  <li key={entry.id}>
-                    {entry.agent}: {entry.text}
-                  </li>
-                ))}
-              </ul>
+              <div className="row">
+                <div className="field">
+                  <label htmlFor="conductor-scratchpad">Add a mission note</label>
+                  <input
+                    className="input"
+                    id="conductor-scratchpad"
+                    onChange={(event) => setScratchInput(event.target.value)}
+                    value={scratchInput}
+                  />
+                </div>
+                <button
+                  className="btn btn--primary"
+                  disabled={!canWrite("scratchpad.write")}
+                  type="button"
+                  onClick={() => void handleScratchWrite()}
+                >
+                  Add note
+                </button>
+              </div>
+              {snap.scratchpad.length === 0 ? (
+                <p className="empty">No shared notes yet.</p>
+              ) : (
+                <ul className="list">
+                  {snap.scratchpad.map((entry) => (
+                    <li key={entry.id}>
+                      <span className="list__key">{entry.agent}</span>
+                      <span>{entry.text}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </section>
           )}
 
           {active === "Todos" && (
             <section>
               <h2>Mission tasks</h2>
-              <label htmlFor="conductor-todo">Add a task</label>
-              <input
-                id="conductor-todo"
-                onChange={(event) => setTodoInput(event.target.value)}
-                value={todoInput}
-              />
-              <button
-                disabled={!canWrite("todo.create")}
-                type="button"
-                onClick={() => void handleTodoCreate()}
-              >
-                Add task
-              </button>
-              <ul>
-                {snap.todos.map((todo) => (
-                  <li key={todo.id}>
-                    <label>
-                      <input
-                        aria-label={`Mark ${todo.text} ${
-                          todo.status === "completed" ? "open" : "completed"
-                        }`}
-                        checked={todo.status === "completed"}
-                        disabled={!canWrite("todo.move")}
-                        onChange={() =>
-                          void rpc({
-                            method: "todo.move",
-                            params: {
-                              id: todo.id,
-                              status:
-                                todo.status === "completed" ? "open" : "completed",
-                            },
-                          })
-                        }
-                        type="checkbox"
-                      />
-                      {todo.text} ({todo.status})
-                    </label>
-                  </li>
-                ))}
-              </ul>
+              <div className="row">
+                <div className="field">
+                  <label htmlFor="conductor-todo">Add a task</label>
+                  <input
+                    className="input"
+                    id="conductor-todo"
+                    onChange={(event) => setTodoInput(event.target.value)}
+                    value={todoInput}
+                  />
+                </div>
+                <button
+                  className="btn btn--primary"
+                  disabled={!canWrite("todo.create")}
+                  type="button"
+                  onClick={() => void handleTodoCreate()}
+                >
+                  Add task
+                </button>
+              </div>
+              {snap.todos.length === 0 ? (
+                <p className="empty">No mission tasks yet.</p>
+              ) : (
+                <ul className="list">
+                  {snap.todos.map((todo) => (
+                    <li key={todo.id}>
+                      <label>
+                        <input
+                          aria-label={`Mark ${todo.text} ${
+                            todo.status === "completed" ? "open" : "completed"
+                          }`}
+                          checked={todo.status === "completed"}
+                          disabled={!canWrite("todo.move")}
+                          onChange={() =>
+                            void rpc({
+                              method: "todo.move",
+                              params: {
+                                id: todo.id,
+                                status:
+                                  todo.status === "completed" ? "open" : "completed",
+                              },
+                            })
+                          }
+                          type="checkbox"
+                        />
+                        {todo.text} <span className="muted">({todo.status})</span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </section>
           )}
-        </main>
+        </div>
       )}
     </div>
   );
