@@ -325,18 +325,27 @@ def _build_row(row: dict[str, Any], labels: dict[str, Any], label_source: str, i
 
 
 def _dedupe(built: list[dict[str, Any]], rejects: Counter) -> list[dict[str, Any]]:
-    """Drop exact duplicates of a goal's record, and every record of a goal whose labels contradict."""
-    by_q: dict[tuple[str | None, str], set[str]] = defaultdict(set)
+    """One row per (provenance, normalised goal): repeats are duplicates; a goal whose labels contradict drops entirely.
+
+    Within one provenance only: a benchmark row never knocks out a production row.
+    The same goal across provenances is resolved by :func:`_split` (it never
+    trains while it sits in an eval holdout).
+    """
+
+    def goal_key(b: dict[str, Any]) -> str:
+        return f"{b['meta']['provenance']}:{b['meta']['norm_key'] or _record_key(b['record'], False)}"
+
+    labels_of: dict[str, set[str]] = defaultdict(set)
     for b in built:
-        by_q[(b["meta"]["norm_key"], _record_key(b["record"], False))].add(_record_key(b["record"], True))
-    conflicted = {k for k, labs in by_q.items() if len(labs) > 1}
-    seen: set[tuple[str | None, str]] = set()
+        labels_of[goal_key(b)].add(json.dumps(b["record"]["labels"], sort_keys=True))
+    conflicted = {k for k, labs in labels_of.items() if len(labs) > 1}
+    seen: set[str] = set()
     kept: list[dict[str, Any]] = []
     for b in built:
-        if (b["meta"]["norm_key"], _record_key(b["record"], False)) in conflicted:
+        k = goal_key(b)
+        if k in conflicted:
             rejects["conflicting labels"] += 1
             continue
-        k = (b["meta"]["norm_key"], _record_key(b["record"], True))
         if k in seen:
             rejects["duplicate"] += 1
             continue
