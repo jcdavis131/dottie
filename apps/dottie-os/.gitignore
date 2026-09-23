@@ -1,0 +1,12 @@
+# Generated packs and hop artifacts — never commit
+curated_pack_*.jsonl
+curated_pack_*.json
+staging/
+hop/
+registry/
+*.tar
+*.tgz
+*.zip
+ultradata_harvest_*/
+__pycache__/
+*.pyc

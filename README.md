@@ -58,6 +58,7 @@ that document and the code disagree, the code is right.
 | `apps/dottie` | Agent OS layer: RLM engine, flywheel, missions, research orchestration (see its README); excluded from the uv workspace (own `.venv` + `AVA_FACTORY_ROOT` needed, entangles with the `dottie.rl` namespace collision) |
 | `apps/scout-rtx` | Windows RTX hill-climb runner (torch cu128 hard-pin); excluded from the uv workspace |
 | `apps/jev-v0` | System One spike: small+LoRA+pointer heads, frozen `jev-decision-schema-1.0.0`, typed `/decide` on 8770. **NOT `train_1b`**, **NOT TypeSafe parity**. Excluded from the uv workspace (`--dry-run` is stdlib; `--go` is optional HF+peft) |
+| `apps/dottie-os` | Repo mirror of the nugatron UltraData curriculum factory + harvest/hop lab scripts. Champion `:8770` / LIVE / FT out of scope. Excluded from the uv workspace (stdlib smoke; optional HF `datasets` on the host) |
 | `apps/arxiviq` | Next.js app (arxiviq) |
 | `apps/bluehenre` | **Deprecated** bhenre.com org console — retired as a deployed surface 2026-08-09; see `apps/bluehenre/DEPRECATED.md` and `docs/CONSOLIDATION.md` |
 | `apps/dottie-org` | Org spec of record (`SPEC.md`) |
@@ -74,7 +75,8 @@ Root `pyproject.toml` is a virtual uv workspace over five light packages
 `apps/ava-factory` are deliberately excluded (heavy, pinned deps), and so is
 `apps/dottie` (own `.venv` + `AVA_FACTORY_ROOT`, entangled with the
 `dottie.rl` namespace collision — see `HANDOFF.md`'s open-decisions list)
-and `apps/jev-v0` (optional HF+peft on `--go`; `--dry-run` is stdlib-only).
+and `apps/jev-v0` (optional HF+peft on `--go`; `--dry-run` is stdlib-only)
+and `apps/dottie-os` (UltraData factory/harvest/hop mirror; stdlib smoke only).
 
 ## Quickstart
 
