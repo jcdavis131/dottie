@@ -3,6 +3,19 @@
 HELPER only: consent.champion=false, public_hf=true.
 Emits Choice/Score/Noul (+ L3 action/safe/severity), never chat SFT.
 Gold heuristics documented in pack_v2 report.
+
+Schema: the pack files are STRICT ``jev-decision-schema-1.0.0`` records
+(schema, id, state, questions, labels and nothing else), the same frozen
+contract System One serves and ``apps/jev-v0/decision_io.py`` validates.
+Curriculum bookkeeping (tier L0-L3, source, consent, pair ids) lives in a
+provenance sidecar (``curated_pack_v2_provenance.jsonl``), keyed by id.
+Inside this module rows are "working rows" that carry both halves;
+:func:`split_row` separates them at write time.
+
+Compatibility: packs written before this change used
+``dottie-os-decision-schema-1.0.0`` with tier/source/consent inline.
+:func:`read_rows` reads either layout and returns working rows, so older
+staging dirs keep smoking and re-packing.
 """
 from __future__ import annotations
 
@@ -15,7 +28,12 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Optional
 
-SCHEMA = "dottie-os-decision-schema-1.0.0"
+SCHEMA = "jev-decision-schema-1.0.0"
+#: The pre-unification id. Read (via read_rows), never written.
+LEGACY_SCHEMA = "dottie-os-decision-schema-1.0.0"
+#: The only keys a strict jev record carries.
+RECORD_KEYS = ("schema", "id", "state", "questions", "labels")
+PROVENANCE_SUFFIX = "_provenance.jsonl"
 
 CONSENT_HF = {"capture_training": True, "public_hf": True, "champion": False}
 
@@ -666,8 +684,8 @@ def ensure_tier_consent(row: dict[str, Any], default_tier: str = "L0") -> dict[s
     if "ultradata" in src.lower() or "openbmb" in src.lower() or consent.get("public_hf"):
         consent["champion"] = False
     out["consent"] = consent
-    if out.get("schema") in (None, "", "jev-decision-schema-1.0.0"):
-        # do not rewrite jev nickname into bare form; keep dottie-os id
+    if out.get("schema") in (None, "", LEGACY_SCHEMA):
+        # one contract: legacy dottie-os rows are System One's frozen schema
         out["schema"] = SCHEMA
     # normalize gold→labels if any legacy
     if "labels" not in out and "gold" in out and isinstance(out["gold"], dict):
@@ -689,6 +707,98 @@ def ensure_tier_consent(row: dict[str, Any], default_tier: str = "L0") -> dict[s
             labels[k] = lab
         out["labels"] = labels
     return out
+
+
+def _jev_validator() -> Any:
+    """apps/jev-v0/decision_io.py by path (DOTTIE_JEV_DIR overrides); None off-repo (e.g. the nugatron mirror)."""
+    import importlib.util
+    import os
+    import sys
+
+    cached = sys.modules.get("jev_decision_io")
+    if cached is not None:
+        return cached
+    base = Path(os.environ.get("DOTTIE_JEV_DIR") or Path(__file__).resolve().parents[3] / "jev-v0")
+    path = base / "decision_io.py"
+    if not path.is_file():
+        return None
+    spec = importlib.util.spec_from_file_location("jev_decision_io", path)
+    if spec is None or spec.loader is None:
+        return None
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["jev_decision_io"] = mod
+    spec.loader.exec_module(mod)
+    return mod if getattr(mod, "SCHEMA_ID", None) == SCHEMA else None
+
+
+def split_row(row: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Working row -> (strict jev record, provenance). Validates when jev-v0 is present."""
+    record = {k: row[k] for k in RECORD_KEYS if k in row}
+    record["schema"] = SCHEMA
+    provenance = {k: v for k, v in row.items() if k not in RECORD_KEYS}
+    provenance["id"] = row.get("id")
+    io = _jev_validator()
+    if io is not None:
+        record = io.validate_record(record)
+    return record, provenance
+
+
+def join_row(record: dict[str, Any], provenance: Optional[dict[str, Any]]) -> dict[str, Any]:
+    """Strict record + its provenance -> working row."""
+    return {**(provenance or {}), **record}
+
+
+def read_rows(path: Path, provenance_path: Optional[Path] = None) -> list[dict[str, Any]]:
+    """Compatibility reader: strict records (+ sidecar) or legacy dottie-os rows -> working rows.
+
+    ``provenance_path`` defaults to the pack's sidecar name; legacy rows carry
+    tier/source/consent inline and pass through with their schema upgraded.
+    """
+    rows = load_jsonl(path)
+    if provenance_path is None:
+        provenance_path = path.with_name(_provenance_name(path))
+    prov = {str(p.get("id")): p for p in load_jsonl(provenance_path)} if provenance_path.is_file() else {}
+    out = []
+    for r in rows:
+        if r.get("schema") == LEGACY_SCHEMA or "tier" in r or "consent" in r:
+            out.append(ensure_tier_consent(r))
+        else:
+            out.append(join_row(r, prov.get(str(r.get("id")))))
+    return out
+
+
+def _provenance_name(pack_path: Path) -> str:
+    stem = pack_path.name[: -len(".jsonl")] if pack_path.name.endswith(".jsonl") else pack_path.name
+    for suffix in ("_train", "_holdout"):
+        if stem.endswith(suffix):
+            stem = stem[: -len(suffix)]
+    return stem + PROVENANCE_SUFFIX
+
+
+def write_pack(path: Path, rows: list[dict[str, Any]]) -> dict[str, int]:
+    """Write strict records to ``path``; return reject counts. Invalid rows are counted, never repaired."""
+    records = []
+    rejects: Counter = Counter()
+    for r in rows:
+        try:
+            record, _ = split_row(r)
+        except ValueError as err:  # jev SchemaError is a ValueError
+            rejects[f"schema: {str(err)[:60]}"] += 1
+            continue
+        records.append(record)
+    write_jsonl(path, records)
+    return dict(rejects)
+
+
+def write_provenance(path: Path, rows: list[dict[str, Any]], splits: dict[str, str]) -> None:
+    """One provenance line per row: tier/source/consent/pair ids + split, keyed by id."""
+    out = []
+    for r in rows:
+        prov = {k: v for k, v in r.items() if k not in RECORD_KEYS}
+        prov["id"] = r.get("id")
+        prov["split"] = splits.get(str(r.get("id")), "train")
+        out.append(prov)
+    write_jsonl(path, out)
 
 
 def holdout_split(
@@ -892,12 +1002,26 @@ def curate_pack_v2(
     full_path = staging_dir / "curated_pack_v2.jsonl"
     train_path = staging_dir / "curated_pack_v2_train.jsonl"
     hold_path = staging_dir / "curated_pack_v2_holdout.jsonl"
+    prov_path = staging_dir / ("curated_pack_v2" + PROVENANCE_SUFFIX)
     report_path = staging_dir / "curated_pack_v2_summary.json"
 
-    write_jsonl(full_path, pack)
+    # Strict jev records only; rows the frozen validator refuses are dropped and counted.
+    schema_rejects: Counter = Counter()
+    valid: list[dict[str, Any]] = []
+    for r in pack:
+        try:
+            split_row(r)
+        except ValueError as err:
+            schema_rejects[f"schema: {str(err)[:60]}"] += 1
+            continue
+        valid.append(r)
+    pack = valid
+    write_pack(full_path, pack)
     train, hold = holdout_split(pack, seed=seed, frac=0.20)
-    write_jsonl(train_path, train)
-    write_jsonl(hold_path, hold)
+    write_pack(train_path, train)
+    write_pack(hold_path, hold)
+    splits = {str(r.get("id")): "holdout" for r in hold}
+    write_provenance(prov_path, pack, splits)
 
     summary = {
         "paths": {
@@ -905,7 +1029,9 @@ def curate_pack_v2(
             "train": str(train_path),
             "holdout": str(hold_path),
             "report": str(report_path),
+            "provenance": str(prov_path),
         },
+        "schema_rejected": dict(schema_rejects),
         "counts": summarize(pack),
         "train_counts": summarize(train),
         "holdout_counts": summarize(hold),
@@ -916,7 +1042,7 @@ def curate_pack_v2(
         "notes": [
             "HELPER UltraData only; champion/LIVE untouched; no FT",
             "Nimble: only existing mined flips from v1; no new synthetic twin generators",
-            "SCHEMA=dottie-os-decision-schema-1.0.0",
+            "SCHEMA=jev-decision-schema-1.0.0 (strict records; tier/source/consent in the provenance sidecar)",
         ],
         "seed": seed,
     }

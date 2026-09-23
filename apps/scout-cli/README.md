@@ -4,7 +4,23 @@
 
 **Solo personal project, no connection to employer, built with public/free-tier only.**
 
-Primary command: `scout` (aliases: `bb`, `bigbang`, `dv`, `kitty` for compat) — `scout --help` / `scout --json rtx status`
+**scout** is Dottie's CLI. It lives in the Dottie monorepo
+([`jcdavis131/dottie/apps/scout-cli`](https://github.com/jcdavis131/dottie/tree/main/apps/scout-cli));
+the standalone `jcdavis131/scout-cli` repo is superseded. Command: `scout`.
+Try `scout --help` or `scout --json route "compare Stripe vs Lemon Squeezy"`.
+
+## The router
+
+`scout route <goal>` (the same as `scout harness route`) and `scout harness run`
+decide through the Dottie router, `dottie_loop.router`. It is one policy
+shared with jarvisd. The MoMA-lite heuristic decides by default. The
+orchestrator MLP (`--learned`) and System One (when `DOTTIE_OS_URL` points at
+a dottie-os `/decide` sidecar) answer as advisors under `advisory`. A learned
+answer becomes authoritative only after its eval says `gate_passed` and a
+human runs `scout router promote --i-have-reviewed`. Nothing is promoted
+today. Every route appends a trace line to `~/.dottie/traces/`, and
+`scout router pack|train|eval|promote` is the training loop over real
+traces. See [`docs/ROUTER.md`](../../docs/ROUTER.md).
 
 ## What's New in v0.8.0 — Universal Harness + Vector Unification (v5 Prime SOTA)
 
@@ -200,13 +216,30 @@ Growth loop (continuous):
 
 ## Install
 
+scout installs with [`uv`](https://docs.astral.sh/uv/), from the Dottie
+monorepo. It depends on `packages/dottie-loop` (the router), and the uv
+workspace resolves that for you.
+
 ```bash
-git clone https://github.com/jcdavis131/bigbang-cli
-cd bigbang-cli
-pip install -e ".[all]" --break-system-packages
-bb --help
-bb system doctor
+git clone https://github.com/jcdavis131/dottie
+cd dottie
+uv sync --all-groups          # the workspace: scout, dottie-loop, jarvisd, ...
+uv run scout --help
+uv run scout system doctor
 ```
+
+Or as a standalone tool on your PATH:
+
+```bash
+uv tool install "git+https://github.com/jcdavis131/dottie#subdirectory=apps/scout-cli"
+scout --help
+```
+
+The `curl ... install.sh | sh` one-liner does **not** install this Python
+package. It writes a `bundles/` scaffold (`zero_deps.json`, `manifest.json`,
+an `.installed` marker and a `bundles/cli.sh` wrapper that runs
+`python3 -m bigbang.cli` when the package is importable). See
+[`docs/INSTALLER.md`](docs/INSTALLER.md).
 
 ## Quickstart — Rule The Internet
 
@@ -310,7 +343,7 @@ python3 -m bigbang.cli --json vector train --game equities --preset nano
 
 ### Scout v3.3 Integration
 
-- **MoMA-lite 5 tiers** — `bundles/router/router.ultra.js` ported to `bigbang/plugins/harness/cli.py`:
+- **MoMA-lite 5 tiers** — `bundles/router/router.ultra.js` ported to Python; the one implementation now lives in `packages/dottie-loop/dottie_loop/backends.py` (the router's heuristic backend, see `docs/ROUTER.md`):
   `deterministic` (heartbeat/monitor cheap no LLM), `llm` (medium), `deep_research` (heavy 9K 5-7 sources A/B/C), `action_operator` (medium-verify tool-chain), `agentic_epic` (checkpointed 13-swarm). Cost-performance optimal before full LLM call.
 
 - **GARNet-style Graph Memory** — `G_workflow` current DAG live in checkpoint + `G_history` past runs timeline.jsonl patterns/failures → `garnet` picks (role,LLM) per MDP MoMA profiles caps. `graph_memory` in every route output.

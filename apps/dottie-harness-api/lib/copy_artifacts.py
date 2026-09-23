@@ -3,17 +3,24 @@
 Vendors the orchestrator model artifacts produced elsewhere in the repo into
 this package so the serverless bundle is fully self-contained:
 
-* apps/ava-factory/reports/orchestrator/champion_weights.json
-    -> lib/weights/champion_weights.json (verbatim)
 * apps/ava-factory/reports/orchestrator/eval_report.json
     -> lib/meta/eval_summary.json (champion + gate sections only; per-decile
        risk-calibration detail is dropped to keep the bundle lean)
 * apps/ava-factory/data/orchestration/corpus_meta.json
     -> lib/meta/corpus_meta.json (verbatim)
 
+The orchestrator WEIGHTS are not vendored by default (``main`` skips them).
+Only the flywheel's promoted path calls ``_copy_weights`` (see
+apps/ava-factory/scripts/flywheel_cycle.py, step "sync"), which then verifies the
+vendored bytes match the freshly trained champion. The API never loaded them
+(tests/test_api_local.py pins orch_infer as a dormant module), and the copy that
+sat in lib/weights/ was labelled orch-mlp-v1-v5 while every eval report names
+v4 — a model version with no eval behind it. The one weights file is
+apps/ava-factory/reports/orchestrator/champion_weights.json, and the one
+inference path is dottie_loop.backends.LearnedMLPBackend (the router).
+
 A missing source is not an error: parallel lanes produce these artifacts, and
-the package legitimately ships without them (the API then serves
-model_loaded:false with heuristic-only responses).
+the package legitimately ships without them.
 
 Usage, from this package root:
 
@@ -34,6 +41,7 @@ _MISSING_NOTE = "artifact not present — package will serve model_loaded:false"
 
 
 def _copy_weights() -> bool:
+    """Flywheel promoted path only: vendor the trained champion weights verbatim."""
     src = _AVA / "reports" / "orchestrator" / "champion_weights.json"
     dst = _LIB / "weights" / "champion_weights.json"
     if not src.exists():
@@ -90,9 +98,9 @@ def _copy_corpus_meta() -> bool:
 
 
 def main() -> int:
-    copied = [_copy_weights(), _copy_eval_summary(), _copy_corpus_meta()]
+    copied = [_copy_eval_summary(), _copy_corpus_meta()]
     n = sum(copied)
-    print(f"[copy_artifacts] {n}/3 artifacts vendored")
+    print(f"[copy_artifacts] {n}/2 artifacts vendored")
     return 0
 
 

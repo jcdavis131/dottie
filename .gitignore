@@ -154,3 +154,9 @@ apps/arxiviq/out
 !.cursor/environment.json
 !.cursor/install.sh
 !.cursor/start.sh
+
+# Router traces, promotion stamps and packs (docs/ROUTER.md). They default to ~/.dottie;
+# this keeps a DOTTIE_TRACE_DIR / DOTTIE_ROUTER_STAMPS pointed inside a checkout out of git.
+.dottie/
+# corpus_builder --hill-climb output: simulated numbers, never committed
+apps/dottie-harness-api/lib/meta/hill_climb_simulated.json

@@ -66,7 +66,7 @@ lint:
 	uvx ruff@0.15.22 check packages/ava-skills
 	uvx ruff@0.15.22 check packages/dottie-loop
 	uvx ruff@0.15.22 check packages/ava-open-harness packages/personal-graphify apps/scout-cli --exclude apps/scout-cli/.venv || true
-	@echo "ava-skills is the HARD gate (at 0). The rest is the documented 983-finding debt (scripts/check_documented_counts.py keeps this figure honest; re-measured 2026-09-11: 1022 on 09-05 -> 983, scout-cli 802 -> 763 after 002226b rewrote six scout-cli test files; the 09-05 jump 511 -> 1022 was plugins/extract/anydoc.py from e80ca2c 08-26)."
+	@echo "ava-skills is the HARD gate (at 0). The rest is the documented 970-finding debt (scripts/check_documented_counts.py keeps this figure honest; re-measured 2026-09-23: 983 -> 970, scout-cli 763 -> 750 as the router code moved into packages/dottie-loop; 2026-09-11: 1022 -> 983, scout-cli 802 -> 763 after 002226b rewrote six scout-cli test files; the 09-05 jump 511 -> 1022 was plugins/extract/anydoc.py from e80ca2c 08-26)."
 
 # `ruff format --check` is deliberately absent. It was here as `... || true`, which is a
 # suppressed check — nothing in this repo satisfies it, so it could only ever be noise or a

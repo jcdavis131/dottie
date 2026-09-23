@@ -1,9 +1,17 @@
 #!/usr/bin/env python3
-"""Typed System One ``POST /decide`` on 127.0.0.1:8770.
+"""Typed System One ``POST /decide`` dev server (default 127.0.0.1:8771).
+
+Port ownership: dottie-os, the local sidecar that serves System One on your
+machine or tailnet, owns ``:8770``. This jev-v0 dev server defaults to
+``:8771`` so both can run on one box; pass ``--port 8770`` only when this
+process IS the sidecar.
 
 Validates every request against frozen ``jev-decision-schema-1.0.0``.
-Without a pointer checkpoint this process answers in ``mode=untrained``
-(uniform over the offered set). That is a wiring contract, not a model.
+Without ``--checkpoint`` it answers in ``mode=untrained`` (uniform over the
+offered set): a wiring contract, not a model, and the router treats it as no
+signal. With ``--checkpoint <dir>`` (a ``train_pointer_lora.py --go`` output)
+it lazy-imports torch, answers in ``mode=pointer-lora``, and reports the
+checkpoint's identity hash and its ``eval_summary.json`` gate in ``/health``.
 
 This is NOT TypeSafe ``/v1/systemone`` parity and it does not call
 TypeSafe. Bind stays loopback unless ``--host`` is set.
@@ -26,21 +34,31 @@ if str(_APP) not in sys.path:
 from decision_io import (
     SCHEMA_ID,
     SchemaError,
+    answer_from_probabilities,
+    checkpoint_identity,
     load_schema,
     untrained_answer,
     validate_request,
 )
 
 DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 8770
+DEFAULT_PORT = 8771  # dottie-os owns 8770; see the module docstring
+SIDECAR_PORT = 8770
 MAX_BODY = 64 * 1024
 
 
-def decide(payload: Any, *, model: str, mode: str) -> dict[str, Any]:
+def decide(payload: Any, *, model: str, mode: str, predictor: Any = None) -> dict[str, Any]:
+    """Answer every question. ``predictor`` (a loaded checkpoint) or uniform."""
     request = validate_request(payload)
-    answers = {
-        qid: untrained_answer(question) for qid, question in request["questions"].items()
-    }
+    if predictor is None:
+        answers = {
+            qid: untrained_answer(question) for qid, question in request["questions"].items()
+        }
+    else:
+        answers = {
+            qid: answer_from_probabilities(question, predictor.probabilities(request["state"], question))
+            for qid, question in request["questions"].items()
+        }
     return {
         "schema": SCHEMA_ID,
         "model": model,
@@ -75,6 +93,7 @@ class DecideHandler(BaseHTTPRequestHandler):
                     "model": self.server.decide_model,
                     "mode": self.server.decide_mode,
                     "decide": "/decide",
+                    **self.server.checkpoint_info,
                     "not": ["train_1b", "TypeSafe parity"],
                 },
             )
@@ -106,6 +125,7 @@ class DecideHandler(BaseHTTPRequestHandler):
                 payload,
                 model=self.server.decide_model,
                 mode=self.server.decide_mode,
+                predictor=self.server.predictor,
             )
         except SchemaError as exc:
             self._send(422, {"ok": False, "error": str(exc)})
@@ -114,17 +134,54 @@ class DecideHandler(BaseHTTPRequestHandler):
 
 
 class DecideServer(ThreadingHTTPServer):
-    def __init__(self, host: str, port: int, *, model: str, mode: str) -> None:
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        *,
+        model: str,
+        mode: str,
+        predictor: Any = None,
+        checkpoint_info: dict[str, Any] | None = None,
+    ) -> None:
         super().__init__((host, port), DecideHandler)
         self.decide_model = model
         self.decide_mode = mode
+        self.predictor = predictor
+        self.checkpoint_info = checkpoint_info or {}
+
+
+def checkpoint_info(checkpoint: Path) -> dict[str, Any]:
+    """Identity + gate for ``/health``. Torch-free; the router's authority check reads it."""
+    info: dict[str, Any] = {
+        "checkpoint": str(checkpoint),
+        "checkpoint_sha256": checkpoint_identity(checkpoint),
+        "gate_passed": False,
+        "eval_summary": None,
+    }
+    summary_path = checkpoint / "eval_summary.json"
+    if summary_path.is_file():
+        try:
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            summary = {}
+        same_bytes = summary.get("artifact_sha256") == info["checkpoint_sha256"]
+        info["gate_passed"] = bool(summary.get("gate_passed") is True and same_bytes)
+        info["eval_summary"] = {"present": True, "names_these_bytes": same_bytes}
+    return info
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default=DEFAULT_HOST)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
-    parser.add_argument("--model", default="jev-v0-untrained")
+    parser.add_argument("--model", default=None, help="model label (default: jev-v0-untrained, or the checkpoint dir name)")
+    parser.add_argument(
+        "--checkpoint",
+        type=Path,
+        default=None,
+        help="train_pointer_lora.py --go output dir; serves mode=pointer-lora (needs torch)",
+    )
     return parser
 
 
@@ -134,10 +191,23 @@ def main(argv: list[str] | None = None) -> int:
     if args.host not in {"127.0.0.1", "localhost", "::1"} and args.host != "0.0.0.0":
         # Still allowed, but say so. Loopback is the spike default.
         sys.stderr.write(f"binding {args.host}:{args.port} (not loopback)\n")
-    server = DecideServer(args.host, args.port, model=args.model, mode="untrained")
+    predictor = None
+    info: dict[str, Any] = {}
+    mode = "untrained"
+    model = args.model or "jev-v0-untrained"
+    if args.checkpoint is not None:
+        from pointer_infer import load_checkpoint  # lazy: torch only on this path
+
+        predictor = load_checkpoint(args.checkpoint)
+        info = checkpoint_info(args.checkpoint)
+        mode = "pointer-lora"
+        model = args.model or args.checkpoint.name
+    if args.port == SIDECAR_PORT:
+        sys.stderr.write(f"port {SIDECAR_PORT} is the dottie-os sidecar's; serving there as the sidecar\n")
+    server = DecideServer(args.host, args.port, model=model, mode=mode, predictor=predictor, checkpoint_info=info)
     sys.stderr.write(
         f"jev-v0 /decide on http://{args.host}:{args.port}/decide "
-        f"schema={SCHEMA_ID} mode=untrained (NOT train_1b, NOT TypeSafe parity)\n"
+        f"schema={SCHEMA_ID} mode={mode} (NOT train_1b, NOT TypeSafe parity)\n"
     )
     try:
         server.serve_forever()

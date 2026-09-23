@@ -292,3 +292,66 @@ def type_counts(records: list[dict[str, Any]]) -> dict[str, int]:
         for question in record["questions"].values():
             counts[question["type"]] += 1
     return counts
+
+
+def answer_from_probabilities(question: dict[str, Any], probabilities: dict[str, float]) -> dict[str, Any]:
+    """Shape a trained head's closed distribution into a schema answer.
+
+    Same shape as :func:`untrained_answer`, from real probabilities. Choice and
+    Score carry ``shape_concentration``; nothing here is called confidence and
+    nothing claims calibration.
+    """
+    keys = option_keys(question)
+    if set(probabilities) != set(keys):
+        raise SchemaError("probabilities must cover exactly the offered option set")
+    probs = normalize({key: max(0.0, float(probabilities[key])) for key in keys})
+    qtype = question["type"]
+    if qtype == "choice":
+        return {
+            "type": "choice",
+            "choice": max(keys, key=lambda k: probs[k]),
+            "probabilities": probs,
+            "shape_concentration": shape_concentration(probs),
+        }
+    if qtype == "score":
+        legend = {str(i): label for i, label in enumerate(question["criteria"])}
+        return {
+            "type": "score",
+            "score": sum(int(key) * prob for key, prob in probs.items()),
+            "legend": legend,
+            "probabilities": probs,
+            "shape_concentration": shape_concentration(probs),
+        }
+    if qtype == "noul":
+        return {"type": "noul", "noul": probs["true"]}
+    impossible: str = qtype
+    raise SchemaError(f"unhandled question type {impossible!r}")
+
+
+def checkpoint_identity(path: Path) -> str:
+    """sha256 naming a checkpoint's bytes (``scout router promote`` stamps this).
+
+    Sorted ``relative/path:sha256`` lines of every file under ``path`` except
+    ``eval_summary.json`` and ``stamps/``. Must stay identical to
+    ``dottie_loop.router_artifacts.artifact_identity`` for directories.
+    """
+    import hashlib
+
+    def file_sha(p: Path) -> str:
+        h = hashlib.sha256()
+        with p.open("rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        return h.hexdigest()
+
+    if path.is_file():
+        return file_sha(path)
+    lines = []
+    for p in sorted(q for q in path.rglob("*") if q.is_file()):
+        rel = p.relative_to(path).as_posix()
+        if rel == "eval_summary.json" or rel.startswith("stamps/"):
+            continue
+        lines.append(f"{rel}:{file_sha(p)}")
+    if not lines:
+        raise SchemaError(f"checkpoint directory is empty: {path}")
+    return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()

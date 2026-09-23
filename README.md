@@ -52,13 +52,14 @@ that document and the code disagree, the code is right.
 
 | Path | What it is |
 |---|---|
-| `apps/scout-cli` | The `scout` CLI — 60+ capability-declared plugins (harness, mcp, forge, vector, …) behind one entry point |
+| `apps/scout-cli` | scout, Dottie's CLI: 60+ capability-declared plugins (harness, router, mcp, forge, vector, …) behind one `scout` entry point. `scout route` goes through the router |
+| `packages/dottie-loop` | The spec's contracts as stdlib code, including **the router** (`dottie_loop.router`: one routing policy for scout and jarvisd, MoMA-lite heuristic + advisory learned/System One backends, traces and the training loop). See [`docs/ROUTER.md`](docs/ROUTER.md) |
 | `apps/ava-factory` | Training factory: data pipeline, trainer, corpus mining, hill-climb, scale ladder (smoke → nano → mini → base1b); excluded from the uv workspace (requirements/Docker-driven) |
 | `apps/dottie-harness-api` | Fail-closed authenticated harness API: request-derived deterministic `/api/route` and `/api/plan`; learned and artifact-backed routes remain unavailable pending verified production artifacts and edge ownership |
 | `apps/dottie` | Agent OS layer: RLM engine, flywheel, missions, research orchestration (see its README); excluded from the uv workspace (own `.venv` + `AVA_FACTORY_ROOT` needed, entangles with the `dottie.rl` namespace collision) |
 | `apps/scout-rtx` | Windows RTX hill-climb runner (torch cu128 hard-pin); excluded from the uv workspace |
-| `apps/jev-v0` | System One spike: small+LoRA+pointer heads, frozen `jev-decision-schema-1.0.0`, typed `/decide` on 8770. **NOT `train_1b`**, **NOT TypeSafe parity**. Excluded from the uv workspace (`--dry-run` is stdlib; `--go` is optional HF+peft) |
-| `apps/dottie-os` | Repo mirror of the nugatron UltraData curriculum factory + harvest/hop lab scripts. Champion `:8770` / LIVE / FT out of scope. Excluded from the uv workspace (stdlib smoke; optional HF `datasets` on the host) |
+| `apps/jev-v0` | System One spike: small+LoRA+pointer heads, frozen `jev-decision-schema-1.0.0`, typed `/decide` dev server on 8771 (`--checkpoint` serves a trained pointer-LoRA). **NOT `train_1b`**, **NOT TypeSafe parity**. Excluded from the uv workspace (`--dry-run` is stdlib; `--go` is optional HF+peft) |
+| `apps/dottie-os` | Curation mirror of dottie-os (the local sidecar that serves System One `/decide` on `:8770`, which is not in this tree): the UltraData curriculum factory + harvest/hop lab scripts, emitting strict `jev-decision-schema-1.0.0` records + a provenance sidecar. LIVE / FT out of scope. Excluded from the uv workspace (stdlib smoke; optional HF `datasets` on the host) |
 | `apps/arxiviq` | Next.js app (arxiviq) |
 | `apps/bluehenre` | **Deprecated** bhenre.com org console — retired as a deployed surface 2026-08-09; see `apps/bluehenre/DEPRECATED.md` and `docs/CONSOLIDATION.md` |
 | `apps/dottie-org` | Org spec of record (`SPEC.md`) |

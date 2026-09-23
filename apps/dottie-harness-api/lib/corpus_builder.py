@@ -48,7 +48,10 @@ def _find_app_root() -> pathlib.Path:
 APP_ROOT = _find_app_root()
 LIB_ROOT = APP_ROOT / "lib"
 META_ROOT = LIB_ROOT / "meta"
-WEIGHTS_ROOT = LIB_ROOT / "weights"
+# The one orchestrator weights file lives in ava-factory. This package used to carry a
+# vendored copy under lib/weights/ labelled orch-mlp-v1-v5 that no eval report covered;
+# it was removed (see README "Router weights"), so the search starts at the source.
+WEIGHTS_ROOT = APP_ROOT.parent / "ava-factory" / "reports" / "orchestrator"
 REPORTS_ORCH = pathlib.Path.home() / "workspace/dottie/apps/ava-factory/reports/orchestrator"
 # alternate possible timeline locations
 TIMELINE_CANDIDATES = [
@@ -209,9 +212,10 @@ def hill_climb_eval() -> Dict[str, Any]:
         "note": "synthetic_battery labels ARE the heuristic's outputs, so heuristic accuracy is 1.0 on battery records by construction; the meaningful comparison is the measured subset"
     }
 
-    # dummy training: we simulate 5 variants v1..v5
-    # All produce measured accuracy around 0.877 (champion v4 from earlier eval)
-    # None beat heuristic strictly, so gate stays false — HONEST, never fake PASS
+    # SIMULATED, not measured: the accuracies below are hardcoded placeholders (no
+    # model is trained or evaluated here). The output is labelled simulated and is
+    # written to hill_climb_simulated.json, never to eval_summary.json, whose content
+    # is vendored from the real apps/ava-factory eval_report.json by copy_artifacts.py.
     dummy_runs = []
     # Strictly increasing but capped below heuristic 0.892857 to ensure FAIL transparent
     accs = [0.855, 0.862, 0.870, 0.8771929824561403, 0.8771929824561403]
@@ -229,6 +233,7 @@ def hill_climb_eval() -> Dict[str, Any]:
             "tier_accuracy_measured": round(val_acc,6),
             "n_holdout": n_holdout,
             "n_measured_holdout": n_measured_holdout,
+            "simulated": True,
         })
 
     # champion is best of v1..v5 — still 0.87719 (< heuristic 0.892857) so FAIL
@@ -243,6 +248,8 @@ def hill_climb_eval() -> Dict[str, Any]:
 
     eval_summary = {
         "schema_version": 1,
+        "simulated": True,
+        "simulated_note": "candidate accuracies are hardcoded placeholders, not measurements; the real eval is apps/ava-factory/reports/orchestrator/eval_report.json",
         "built_at": _now_iso(),
         "corpus_source": "l2_corpus",
         "trainer": "orchestrator_model",
@@ -261,7 +268,7 @@ def hill_climb_eval() -> Dict[str, Any]:
             "counterfactual rewards unobserved; agreement-conditional statistics reported in place of true regret",
             "synthetic_battery labels ARE the heuristic's outputs, so heuristic accuracy is 1.0 on battery records by construction; the meaningful comparison is the measured subset",
             "gate compares measured-subset accuracy only; simulated battery records share the heuristic's labeling and cannot certify the model",
-            "corpus_source=l2_corpus; trainer=orchestrator_model; all metrics measured from this run",
+            "corpus_source=l2_corpus; trainer=orchestrator_model; candidate metrics SIMULATED (hardcoded), not measured",
             "zero-deps true — no pip installs, stdlib only, numpy inference pinned",
             f"timeline 1608→1609 checked, train 1392→1393, val 151 test 65 measured only, hill-climb {len(dummy_runs)} candidates, promotion FAIL transparent — gate false never passed, honest",
         ],
@@ -463,7 +470,8 @@ def write_json_if_changed(path: pathlib.Path, data: Dict[str,Any]) -> bool:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="slasso nightly corpus builder 09:00 UTC")
     parser.add_argument("--out-meta", type=str, default=str(META_ROOT / "corpus_meta.json"))
-    parser.add_argument("--out-eval", type=str, default=str(META_ROOT / "eval_summary.json"))
+    parser.add_argument("--out-eval", type=str, default=str(META_ROOT / "hill_climb_simulated.json"),
+                        help="simulated hill-climb output; never eval_summary.json (that one is vendored from the real eval)")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--rebuild", action="store_true", help="nightly rebuild flag — triggers 1608→1609 mining")
     parser.add_argument("--hill-climb", action="store_true", help="hill-climb v1-v5 promotion gate")
@@ -507,7 +515,7 @@ def main(argv=None) -> int:
 
         # also sync alternative location if exists (ava-factory/lib/meta)
         alt_meta = pathlib.Path.home() / "workspace/dottie/apps/ava-factory/lib/meta/corpus_meta.json"
-        alt_eval = pathlib.Path.home() / "workspace/dottie/apps/ava-factory/lib/meta/eval_summary.json"
+        alt_eval = pathlib.Path.home() / "workspace/dottie/apps/ava-factory/lib/meta/hill_climb_simulated.json"
         # ava-factory may not have lib/meta, but try to write if parent exists
         if alt_meta.parent.exists():
             write_json_if_changed(alt_meta, new_meta)

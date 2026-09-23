@@ -44,6 +44,15 @@ def anyio_backend() -> str:
     return "asyncio"
 
 
+@pytest.fixture(autouse=True)
+def _router_isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Route traces into the test's tmp dir, tagged test; never reach a live System One."""
+    monkeypatch.setenv("DOTTIE_TRACE_DIR", str(tmp_path / "traces"))
+    monkeypatch.setenv("DOTTIE_TRACE_SOURCE", "test")
+    monkeypatch.setenv("DOTTIE_ROUTER_STAMPS", str(tmp_path / "stamps"))
+    monkeypatch.delenv("DOTTIE_OS_URL", raising=False)
+
+
 @pytest.fixture
 def bearer() -> str:
     return BEARER

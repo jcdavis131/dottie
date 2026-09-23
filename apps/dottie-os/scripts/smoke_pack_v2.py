@@ -20,7 +20,17 @@ def smoke(staging: Path) -> dict:
     hold = staging / "curated_pack_v2_holdout.jsonl"
     train = staging / "curated_pack_v2_train.jsonl"
     summary = staging / "curated_pack_v2_summary.json"
+    prov_path = staging / "curated_pack_v2_provenance.jsonl"
     print("exists", pack.exists(), hold.exists(), train.exists(), summary.exists())
+    # Strict jev packs keep tier/source/consent in the provenance sidecar; legacy
+    # dottie-os packs carry them inline. Read both.
+    prov: dict = {}
+    if prov_path.exists():
+        with prov_path.open(encoding="utf-8") as pf:
+            for line in pf:
+                if line.strip():
+                    p = json.loads(line)
+                    prov[str(p.get("id"))] = p
     actions = Counter()
     tiers = Counter()
     sources = Counter()
@@ -32,6 +42,7 @@ def smoke(staging: Path) -> dict:
             if not line.strip():
                 continue
             o = json.loads(line)
+            o = {**prov.get(str(o.get("id")), {}), **o}
             n += 1
             tiers[str(o.get("tier"))] += 1
             src = o.get("source")

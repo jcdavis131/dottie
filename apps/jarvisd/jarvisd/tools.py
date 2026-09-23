@@ -243,30 +243,33 @@ class Jarvis:
     # -- harness (scout, lazy) --------------------------------------------
 
     @staticmethod
-    def _route_only(goal: str) -> dict[str, Any]:
-        """Pure routing via scout's heuristic router, same fields as `scout harness route`."""
-        from bigbang.plugins.harness import cli as hcli
+    def _route_only(goal: str, surface: str = "jarvisd.route") -> dict[str, Any]:
+        """Route through dottie_loop.router (the one policy scout uses too); same fields as before.
 
-        scores = {k: hcli._score_intent(goal, k) for k in hcli.INTENT_KEYWORDS}
-        best = max(scores.values()) if scores else 0
-        intent = max(scores, key=lambda k: scores[k]) if best > 0 else "llm"
-        complexity = hcli._complexity(goal)
-        tier = hcli._classify_moma(goal, intent, complexity)
-        confidence = min(0.96, best / 4.0) if scores.get(intent, 0) > 0 else 0.4
-        routed = hcli._routed_agents(intent, complexity)
+        ``tier`` stays the MoMA-lite name; ``authority`` / ``advisory`` say which
+        backend decided and what the advisory backends answered.
+        """
+        from dottie_loop.router import route_goal
+
+        d = route_goal(goal, surface=surface)
+        tier = d["moma_tier"]
         return {
             "goal": goal,
-            "intent": intent,
-            "intent_scores": scores,
-            "complexity": complexity,
+            "intent": d["intent"],
+            "intent_scores": d["intent_scores"],
+            "complexity": d["complexity"],
             "tier": tier,
             "moma_tier": tier,
-            "moma_cap": hcli.MOMA_TIERS[tier]["cap"],
-            "confidence": round(confidence, 2),
-            "routed_agents": routed,
-            "routed_count": len(routed),
-            "agentic_loop": intent == "agentic_loop" or complexity == "epic",
-            "deep_research": intent == "deep_research" or tier == "deep_research",
+            "moma_cap": d["moma_cap"],
+            "confidence": d["confidence"],
+            "routed_agents": d["routed_agents"],
+            "routed_count": len(d["routed_agents"]),
+            "agentic_loop": d["intent"] == "agentic_loop" or d["complexity"] == "epic",
+            "deep_research": d["intent"] == "deep_research" or tier == "deep_research",
+            "spec_tier": d["spec_tier"],
+            "authority": d["authority"],
+            "advisory": d["advisory"],
+            "trace_id": d["trace"]["trace_id"],
         }
 
     def route(self, agent: str, goal: str, repo: str = "") -> dict[str, Any]:
@@ -278,7 +281,7 @@ class Jarvis:
         try:
             result = self._route_only(goal)
         except ImportError as e:
-            return _err(f"scout unavailable: {e}", "uv sync --all-groups  # installs apps/scout-cli")
+            return _err(f"router unavailable: {e}", "uv sync --all-groups  # installs packages/dottie-loop")
         latency_ms = round((time.perf_counter() - t0) * 1000.0, 3)
         row = self.state.timeline_add(
             agent,
@@ -303,7 +306,7 @@ class Jarvis:
         try:
             from bigbang.plugins.harness import runner
 
-            routed = self._route_only(goal)
+            routed = self._route_only(goal, surface="jarvisd.plan")
             steps = runner.build_plan(goal, routed["tier"])
         except ImportError as e:
             return _err(f"scout unavailable: {e}", "uv sync --all-groups")
@@ -311,6 +314,7 @@ class Jarvis:
             "ok": True,
             "goal": goal,
             "tierHint": routed["tier"],
+            "authority": routed["authority"],
             "steps": steps,
             "risk_provenance": "mined g_history fail rates when runs exist, static priors otherwise",
             "version": "scout harness runner.build_plan",
@@ -492,7 +496,7 @@ def register_tools(mcp: FastMCP, jarvis: Jarvis) -> int:
     def jarvis_goal_done(id: int, result: dict[str, Any] | str | None = None, status: str = "done") -> str:
         return _dump(jarvis.goal_done(id, result, status))
 
-    @mcp.tool(name="harness.route", description="Route a goal through scout's heuristic router (intent, complexity, tier, agents). Records a timeline row.")
+    @mcp.tool(name="harness.route", description="Route a goal through the Dottie router (dottie_loop.router: MoMA-lite heuristic, learned backends advisory). Records a timeline row.")
     def harness_route(goal: str, repo: str = "", agent: str = "", ctx: Context = None) -> str:  # type: ignore[assignment]
         return _dump(jarvis.route(agent_from_context(ctx, agent), goal, repo))
 

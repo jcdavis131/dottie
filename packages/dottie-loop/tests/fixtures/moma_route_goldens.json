@@ -1,0 +1,513 @@
+{
+ "generated_from": "origin/main c79225d apps/scout-cli/bigbang/plugins/harness/cli.py (pre-unification)",
+ "cases": [
+  {
+   "goal": "compare Stripe vs Lemon Squeezy Aug 2026",
+   "intent": "deep_research",
+   "intent_scores": {
+    "agentic_loop": 0,
+    "deep_research": 6.5,
+    "complex_action": 0,
+    "deterministic": 0
+   },
+   "complexity": "simple",
+   "moma_tier": "deep_research",
+   "moma_cap": "heavy 9K",
+   "confidence": 0.96,
+   "routed_agents": [
+    "deep-researcher",
+    "synthesist",
+    "forensic-auditor"
+   ]
+  },
+  {
+   "goal": "compare Stripe vs Lemon Squeezy Aug 2026 with 5-7 sources",
+   "intent": "deep_research",
+   "intent_scores": {
+    "agentic_loop": 0,
+    "deep_research": 10.0,
+    "complex_action": 0,
+    "deterministic": 0
+   },
+   "complexity": "simple",
+   "moma_tier": "deep_research",
+   "moma_cap": "heavy 9K",
+   "confidence": 0.96,
+   "routed_agents": [
+    "deep-researcher",
+    "synthesist",
+    "forensic-auditor"
+   ]
+  },
+  {
+   "goal": "heartbeat tick",
+   "intent": "deterministic",
+   "intent_scores": {
+    "agentic_loop": 0,
+    "deep_research": 0,
+    "complex_action": 0,
+    "deterministic": 2
+   },
+   "complexity": "simple",
+   "moma_tier": "deterministic",
+   "moma_cap": "cheap",
+   "confidence": 0.5,
+   "routed_agents": [
+    "operator",
+    "scout-prime-coordinator"
+   ]
+  },
+  {
+   "goal": "heartbeat monitor tick",
+   "intent": "deterministic",
+   "intent_scores": {
+    "agentic_loop": 0,
+    "deep_research": 0,
+    "complex_action": 0,
+    "deterministic": 3
+   },
+   "complexity": "simple",
+   "moma_tier": "deterministic",
+   "moma_cap": "cheap",
+   "confidence": 0.75,
+   "routed_agents": [
+    "operator",
+    "scout-prime-coordinator"
+   ]
+  },
+  {
+   "goal": "build a data pipeline and test the api endpoints for the harness",
+   "intent": "agentic_loop",
+   "intent_scores": {
+    "agentic_loop": 1,
+    "deep_research": 0,
+    "complex_action": 0,
+    "deterministic": 0
+   },
+   "complexity": "simple",
+   "moma_tier": "agentic_epic",
+   "moma_cap": "checkpointed 13-swarm",
+   "confidence": 0.25,
+   "routed_agents": [
+    "scout-prime-coordinator",
+    "strategist",
+    "planner",
+    "builder",
+    "executor"
+   ]
+  },
+  {
+   "goal": "ship the harness end-to-end loop",
+   "intent": "agentic_loop",
+   "intent_scores": {
+    "agentic_loop": 3,
+    "deep_research": 0,
+    "complex_action": 0,
+    "deterministic": 0
+   },
+   "complexity": "simple",
+   "moma_tier": "agentic_epic",
+   "moma_cap": "checkpointed 13-swarm",
+   "confidence": 0.75,
+   "routed_agents": [
+    "scout-prime-coordinator",
+    "strategist",
+    "planner",
+    "builder",
+    "executor"
+   ]
+  },
+  {
+   "goal": "typeperf",
+   "intent": "llm",
+   "intent_scores": {
+    "agentic_loop": 0,
+    "deep_research": 0,
+    "complex_action": 0,
+    "deterministic": 0
+   },
+   "complexity": "simple",
+   "moma_tier": "llm",
+   "moma_cap": "medium",
+   "confidence": 0.4,
+   "routed_agents": [
+    "operator",
+    "scout-prime-coordinator"
+   ]
+  },
+  {
+   "goal": "run the heartbeat health check",
+   "intent": "deterministic",
+   "intent_scores": {
+    "agentic_loop": 0,
+    "deep_research": 0,
+    "complex_action": 0,
+    "deterministic": 1
+   },
+   "complexity": "simple",
+   "moma_tier": "deterministic",
+   "moma_cap": "cheap",
+   "confidence": 0.25,
+   "routed_agents": [
+    "operator",
+    "scout-prime-coordinator"
+   ]
+  },
+  {
+   "goal": "summarize this paragraph",
+   "intent": "llm",
+   "intent_scores": {
+    "agentic_loop": 0,
+    "deep_research": 0,
+    "complex_action": 0,
+    "deterministic": 0
+   },
+   "complexity": "simple",
+   "moma_tier": "llm",
+   "moma_cap": "medium",
+   "confidence": 0.4,
+   "routed_agents": [
+    "operator",
+    "scout-prime-coordinator"
+   ]
+  },
+  {
+   "goal": "compare Stripe vs Lemon Squeezy with fresh sources",
+   "intent": "deep_research",
+   "intent_scores": {
+    "agentic_loop": 0,
+    "deep_research": 5,
+    "complex_action": 0,
+    "deterministic": 0
+   },
+   "complexity": "simple",
+   "moma_tier": "deep_research",
+   "moma_cap": "heavy 9K",
+   "confidence": 0.96,
+   "routed_agents": [
+    "deep-researcher",
+    "synthesist",
+    "forensic-auditor"
+   ]
+  },
+  {
+   "goal": "send the weekly report to #ops",
+   "intent": "llm",
+   "intent_scores": {
+    "agentic_loop": 0,
+    "deep_research": 0,
+    "complex_action": 0,
+    "deterministic": 0
+   },
+   "complexity": "simple",
+   "moma_tier": "llm",
+   "moma_cap": "medium",
+   "confidence": 0.4,
+   "routed_agents": [
+    "operator",
+    "scout-prime-coordinator"
+   ]
+  },
+  {
+   "goal": "migrate the platform end to end over the next month",
+   "intent": "llm",
+   "intent_scores": {
+    "agentic_loop": 0,
+    "deep_research": 0,
+    "complex_action": 0,
+    "deterministic": 0
+   },
+   "complexity": "simple",
+   "moma_tier": "llm",
+   "moma_cap": "medium",
+   "confidence": 0.4,
+   "routed_agents": [
+    "operator",
+    "scout-prime-coordinator"
+   ]
+  },
+  {
+   "goal": "do the thing",
+   "intent": "llm",
+   "intent_scores": {
+    "agentic_loop": 0,
+    "deep_research": 0,
+    "complex_action": 0,
+    "deterministic": 0
+   },
+   "complexity": "simple",
+   "moma_tier": "llm",
+   "moma_cap": "medium",
+   "confidence": 0.4,
+   "routed_agents": [
+    "operator",
+    "scout-prime-coordinator"
+   ]
+  },
+  {
+   "goal": "hello",
+   "intent": "llm",
+   "intent_scores": {
+    "agentic_loop": 0,
+    "deep_research": 0,
+    "complex_action": 0,
+    "deterministic": 0
+   },
+   "complexity": "simple",
+   "moma_tier": "llm",
+   "moma_cap": "medium",
+   "confidence": 0.4,
+   "routed_agents": [
+    "operator",
+    "scout-prime-coordinator"
+   ]
+  },
+  {
+   "goal": "schedule a calendar invite and email the invoice to billing",
+   "intent": "complex_action",
+   "intent_scores": {
+    "agentic_loop": 0,
+    "deep_research": 0,
+    "complex_action": 3,
+    "deterministic": 0
+   },
+   "complexity": "simple",
+   "moma_tier": "action_operator",
+   "moma_cap": "medium-verify",
+   "confidence": 0.75,
+   "routed_agents": [
+    "action-operator",
+    "operator",
+    "critic"
+   ]
+  },
+  {
+   "goal": "read the paper on benchmark triangulation and list sources",
+   "intent": "deep_research",
+   "intent_scores": {
+    "agentic_loop": 0,
+    "deep_research": 4,
+    "complex_action": 0,
+    "deterministic": 0
+   },
+   "complexity": "simple",
+   "moma_tier": "deep_research",
+   "moma_cap": "heavy 9K",
+   "confidence": 0.96,
+   "routed_agents": [
+    "deep-researcher",
+    "synthesist",
+    "forensic-auditor"
+   ]
+  },
+  {
+   "goal": "launch the factory then deploy the api then verify then notify the team next",
+   "intent": "agentic_loop",
+   "intent_scores": {
+    "agentic_loop": 2,
+    "deep_research": 0,
+    "complex_action": 0,
+    "deterministic": 0
+   },
+   "complexity": "epic",
+   "moma_tier": "agentic_epic",
+   "moma_cap": "checkpointed 13-swarm",
+   "confidence": 0.5,
+   "routed_agents": [
+    "scout-prime-coordinator",
+    "strategist",
+    "planner",
+    "deep-researcher",
+    "synthesist",
+    "builder",
+    "operator",
+    "action-operator",
+    "executor",
+    "critic",
+    "forensic-auditor",
+    "researcher",
+    "communicator"
+   ]
+  },
+  {
+   "goal": "cron health for the nightly job",
+   "intent": "deterministic",
+   "intent_scores": {
+    "agentic_loop": 0,
+    "deep_research": 0,
+    "complex_action": 0,
+    "deterministic": 1
+   },
+   "complexity": "simple",
+   "moma_tier": "deterministic",
+   "moma_cap": "cheap",
+   "confidence": 0.25,
+   "routed_agents": [
+    "operator",
+    "scout-prime-coordinator"
+   ]
+  },
+  {
+   "goal": "book a flight and pay the invoice via gmail",
+   "intent": "complex_action",
+   "intent_scores": {
+    "agentic_loop": 0,
+    "deep_research": 0,
+    "complex_action": 4,
+    "deterministic": 0
+   },
+   "complexity": "simple",
+   "moma_tier": "action_operator",
+   "moma_cap": "medium-verify",
+   "confidence": 0.96,
+   "routed_agents": [
+    "action-operator",
+    "operator",
+    "critic"
+   ]
+  },
+  {
+   "goal": "keep track of 12 things at once for the opaque goal",
+   "intent": "agentic_loop",
+   "intent_scores": {
+    "agentic_loop": 7.5,
+    "deep_research": 0,
+    "complex_action": 0,
+    "deterministic": 0
+   },
+   "complexity": "simple",
+   "moma_tier": "agentic_epic",
+   "moma_cap": "checkpointed 13-swarm",
+   "confidence": 0.96,
+   "routed_agents": [
+    "scout-prime-coordinator",
+    "strategist",
+    "planner",
+    "builder",
+    "executor"
+   ]
+  },
+  {
+   "goal": "write a short poem about the sea",
+   "intent": "llm",
+   "intent_scores": {
+    "agentic_loop": 0,
+    "deep_research": 0,
+    "complex_action": 0,
+    "deterministic": 0
+   },
+   "complexity": "simple",
+   "moma_tier": "llm",
+   "moma_cap": "medium",
+   "confidence": 0.4,
+   "routed_agents": [
+    "operator",
+    "scout-prime-coordinator"
+   ]
+  },
+  {
+   "goal": "research sota retrieval papers vs dense baselines and compare them",
+   "intent": "deep_research",
+   "intent_scores": {
+    "agentic_loop": 0,
+    "deep_research": 5,
+    "complex_action": 0,
+    "deterministic": 0
+   },
+   "complexity": "simple",
+   "moma_tier": "deep_research",
+   "moma_cap": "heavy 9K",
+   "confidence": 0.96,
+   "routed_agents": [
+    "deep-researcher",
+    "synthesist",
+    "forensic-auditor"
+   ]
+  },
+  {
+   "goal": "fix the bug in the cli parser and add a test and then refactor the module and after that update the docs and next ship it",
+   "intent": "agentic_loop",
+   "intent_scores": {
+    "agentic_loop": 1,
+    "deep_research": 0,
+    "complex_action": 0,
+    "deterministic": 0
+   },
+   "complexity": "epic",
+   "moma_tier": "agentic_epic",
+   "moma_cap": "checkpointed 13-swarm",
+   "confidence": 0.25,
+   "routed_agents": [
+    "scout-prime-coordinator",
+    "strategist",
+    "planner",
+    "deep-researcher",
+    "synthesist",
+    "builder",
+    "operator",
+    "action-operator",
+    "executor",
+    "critic",
+    "forensic-auditor",
+    "researcher",
+    "communicator"
+   ]
+  },
+  {
+   "goal": "plan my week: gmail triage, calendar, notion notes and linear tickets and a tool chain for all of it plan my week: gmail triage, calendar, notion notes and linear tickets and a tool chain for all of it plan my week: gmail triage, calendar, notion notes and linear tickets and a tool chain for all of it ",
+   "intent": "complex_action",
+   "intent_scores": {
+    "agentic_loop": 0,
+    "deep_research": 0,
+    "complex_action": 6.5,
+    "deterministic": 1
+   },
+   "complexity": "medium",
+   "moma_tier": "deterministic",
+   "moma_cap": "cheap",
+   "confidence": 0.96,
+   "routed_agents": [
+    "action-operator",
+    "operator",
+    "critic"
+   ]
+  },
+  {
+   "goal": "monitor the gmail inbox",
+   "intent": "complex_action",
+   "intent_scores": {
+    "agentic_loop": 0,
+    "deep_research": 0,
+    "complex_action": 1,
+    "deterministic": 1
+   },
+   "complexity": "simple",
+   "moma_tier": "deterministic",
+   "moma_cap": "cheap",
+   "confidence": 0.25,
+   "routed_agents": [
+    "action-operator",
+    "operator",
+    "critic"
+   ]
+  },
+  {
+   "goal": "",
+   "intent": "llm",
+   "intent_scores": {
+    "agentic_loop": 0,
+    "deep_research": 0,
+    "complex_action": 0,
+    "deterministic": 0
+   },
+   "complexity": "simple",
+   "moma_tier": "llm",
+   "moma_cap": "medium",
+   "confidence": 0.4,
+   "routed_agents": [
+    "operator",
+    "scout-prime-coordinator"
+   ]
+  }
+ ]
+}

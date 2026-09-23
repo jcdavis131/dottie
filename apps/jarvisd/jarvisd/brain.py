@@ -1,7 +1,7 @@
 """jarvisd brain — optional LLM-backed pair-programming buddy (spec §6).
 
-`ask()` runs a manual tool loop over the daemon's own state tools plus scout's
-heuristic router, against one of two providers:
+`ask()` runs a manual tool loop over the daemon's own state tools plus the Dottie
+router, against one of two providers:
 
   - ``ollama``: the operator's home-box Ollama over plain HTTP (stdlib ``urllib``
     only, no extra dependency). $0 to run.
@@ -63,8 +63,8 @@ SYSTEM_PROMPT = """You are Jarvis, a pair-programming buddy for the operator's r
 
 You run inside jarvisd, a small daemon that keeps shared memory for the operator and \
 their coding agents: memories, claims on repo areas, goals, an inbox, and a timeline \
-of harness runs. You have tools to read that state, write a memory, and ask scout's \
-heuristic router how a goal would be classified.
+of harness runs. You have tools to read that state, write a memory, and ask the Dottie \
+router how a goal would be classified.
 
 House voice: measured and evidence-backed. Say what is measured and what is not. When \
 you infer something, label it as inference. Do not use sports metaphors or hype. Prefer \
@@ -174,7 +174,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "harness_route",
         "description": (
-            "Ask scout's heuristic router (MoMA-lite classifier) how a goal would be "
+            "Ask the Dottie router (MoMA-lite heuristic; learned backends advisory) how a goal would be "
             "classified: intent, complexity, tier and the agents it would route to. "
             "Deterministic and cheap; no LLM call."
         ),

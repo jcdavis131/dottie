@@ -56,7 +56,7 @@ Caps inside `curate_pack_v2`: agent≈400 (300–500), code≈300 (200–400), m
 
 - total 150 · L3 80 · L2 70 · holdout 20% · champion_true 0  
 - L3 actions (streaming mix): execute≈52, escalate≈27, halt≈1 (halt rare in UltraData traces; heuristics validated on synthetic destructive strings)  
-- schema `dottie-os-decision-schema-1.0.0` · multi-head ≥3 questions ≈80%
+- schema `jev-decision-schema-1.0.0` (strict records; tier/source/consent in `curated_pack_v2_provenance.jsonl`; packs from before 2026-09-23 used `dottie-os-decision-schema-1.0.0` inline and are still read) · multi-head ≥3 questions ≈80%
 
 ## Gold heuristics (HELPER / champion:false)
 

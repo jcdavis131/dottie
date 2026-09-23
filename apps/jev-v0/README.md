@@ -1,5 +1,11 @@
 # jev-v0 — System One spike (small + LoRA + pointer heads)
 
+System One is Dottie's decision model. Its contract is the frozen
+`jev-decision-schema-1.0.0` defined here: typed questions answered as Choice,
+Score or Noul. "JEV" is the internal name of the model family and this spike.
+The Dottie router asks System One for advice over `/decide` (see
+`docs/ROUTER.md`).
+
 Host overlay formalized from Cam's nugatron checkout. This app is a **typed
 decision spike**, not a foundation-model train and not a TypeSafe clone.
 
@@ -38,7 +44,8 @@ self-hosted overlay with a Dottie-shaped schema freeze.
 | `fixtures/synthetic_decisions.jsonl` | 8 synthetic operational tickets. No virus/malware content |
 | `decision_io.py` | Stdlib load + validate (shared by train and serve) |
 | `train_pointer_lora.py` | `--dry-run` (default, torch-free) / `--go` (optional HF+peft) |
-| `serve_decide.py` | Typed `POST /decide` on `127.0.0.1:8770` |
+| `serve_decide.py` | Typed `POST /decide` dev server on `127.0.0.1:8771` (`--checkpoint` serves a trained pointer-LoRA) |
+| `pointer_infer.py` | Loads a `--go` checkpoint (lazy torch) and answers with real probabilities |
 | `requirements-jev-v0.txt` | `--go` extras only; not needed for dry-run or serve |
 
 Excluded from the root uv workspace. Checkpoints under `runs/` stay gitignored.
@@ -68,13 +75,29 @@ torch / transformers / peft and would download a base model.
 
 ```bash
 python serve_decide.py
-# GET  http://127.0.0.1:8770/health
-# POST http://127.0.0.1:8770/decide
+# GET  http://127.0.0.1:8771/health
+# POST http://127.0.0.1:8771/decide
 ```
 
-Without a pointer checkpoint the server answers `mode=untrained` (uniform
-over the offered set). That lets the typed contract be exercised without
-GPU weights. It is not a calibrated decision.
+**Port owner:** dottie-os, the local sidecar that serves System One on your
+machine or tailnet, owns `:8770`. This dev server defaults to `:8771` so both
+can run on one box. Pass `--port 8770` only when this process is the sidecar.
+
+Without `--checkpoint` the server answers `mode=untrained` (uniform over the
+offered set). That lets the typed contract be exercised without GPU weights.
+It is not a decision, and the router records it as "no signal".
+
+With a trained checkpoint (GPU host; lazy torch/transformers/peft import):
+
+```bash
+python serve_decide.py --checkpoint runs/jev-v0-pointer --port 8770
+```
+
+This answers `mode=pointer-lora`. Choice and Score answers carry real
+probabilities and `shape_concentration`. `/health` reports
+`checkpoint_sha256`, the identity `scout router promote` stamps, and
+`gate_passed`. `gate_passed` is true only when the checkpoint's
+`eval_summary.json` names these exact bytes.
 
 Example:
 
@@ -98,7 +121,7 @@ body = {
   }
 }
 req = urllib.request.Request(
-    "http://127.0.0.1:8770/decide",
+    "http://127.0.0.1:8771/decide",
     data=json.dumps(body).encode(),
     headers={"Content-Type": "application/json"},
     method="POST",
@@ -115,8 +138,12 @@ python train_pointer_lora.py --go --steps 20 --out runs/jev-v0-pointer
 ```
 
 `--go` is a spike trainer: LoRA + pointer head, cross-entropy over the
-closed option set, synthetic fixtures only. It does not promote, does not
-write into `apps/ava-factory`, and does not claim TypeSafe accuracy.
+closed option set. By default it trains on the synthetic fixtures, which is a
+wiring check only. `scout router train --go` points `--fixtures` at a router
+pack built from real production traces. It does not promote, does not write
+into `apps/ava-factory`, and does not claim TypeSafe accuracy. Promotion is
+`scout router eval` followed by a human `scout router promote`
+(`docs/ROUTER.md`).
 
 ## Schema freeze
 
