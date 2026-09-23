@@ -18,8 +18,8 @@ before writing "current" anywhere in this file.
 
 ## 📌 Session continuation — 2026-09-23 (supersedes every block below)
 
-**Stamped 2026-09-23 at HEAD `07a2146`** (branch `claude/decision-plane`, the
-merge of `origin/main` after PR #58's squash into this branch). Measured with
+**Stamped 2026-09-23 at HEAD `8266088`** (`main`, the squash merge of PR #60;
+the earlier stamp named a pre-squash branch commit that is not on `main`). Measured with
 `git rev-parse --short HEAD` + `scripts/check_handoff_fresh.py --check`.
 
 **What landed: decision plane, phase 1** (`docs/ARCHITECTURE.md` is now the
