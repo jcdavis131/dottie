@@ -393,10 +393,13 @@ def openai_chat(
     json_mode: bool = False,
     timeout: float = 120.0,
     max_tokens: int | None = None,
+    api_key: str | None = None,
 ) -> dict[str, Any] | None:
     """One non-streaming OpenAI /v1/chat/completions call. Returns
-    {"content": str, "completion_tokens": int|None} or None on ANY failure.
-    Works against KoboldCpp, llama.cpp-server, vLLM, or OpenAI."""
+    {"content": str, "completion_tokens": int|None, "prompt_tokens": int|None}
+    or None on ANY failure. Works against KoboldCpp, llama.cpp-server, vLLM, or
+    OpenAI (``api_key`` adds the bearer header; a ``base`` ending in /v1 is
+    accepted as-is)."""
     client = _httpx_client(timeout=timeout)
     if client is None:
         return None
@@ -406,7 +409,12 @@ def openai_chat(
             payload["max_tokens"] = max_tokens
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
-        r = client.post(f"{base.rstrip('/')}/v1/chat/completions", json=payload)
+        root = base.rstrip("/")
+        url = f"{root}/chat/completions" if root.endswith("/v1") else f"{root}/v1/chat/completions"
+        if api_key:
+            r = client.post(url, json=payload, headers={"Authorization": f"Bearer {api_key}"})
+        else:
+            r = client.post(url, json=payload)
         if r.status_code != 200:
             return None
         data = r.json()
@@ -417,7 +425,8 @@ def openai_chat(
         if content is None:
             return None
         usage = data.get("usage") or {}
-        return {"content": content, "completion_tokens": usage.get("completion_tokens")}
+        return {"content": content, "completion_tokens": usage.get("completion_tokens"),
+                "prompt_tokens": usage.get("prompt_tokens")}
     except Exception:
         return None
     finally:
@@ -456,8 +465,53 @@ def _ollama_generate(
         return {
             "content": content,
             "completion_tokens": data.get("eval_count"),
+            "prompt_tokens": data.get("prompt_eval_count"),
             "server_seconds": (dur_ns / 1e9) if dur_ns else None,
         }
+    except Exception:
+        return None
+    finally:
+        try:
+            client.close()
+        except Exception:
+            pass
+
+
+ANTHROPIC_BASE = "https://api.anthropic.com"
+ANTHROPIC_VERSION = "2023-06-01"
+
+
+def anthropic_chat(
+    model: str,
+    messages: list[dict[str, str]],
+    api_key: str,
+    *,
+    base: str = ANTHROPIC_BASE,
+    timeout: float = 120.0,
+    max_tokens: int = 1024,
+) -> dict[str, Any] | None:
+    """One Anthropic Messages API call. Returns {"content", "completion_tokens",
+    "prompt_tokens"} (the API's own usage counts) or None on ANY failure.
+    ``system`` messages are lifted into the request's ``system`` field. The
+    caller names the model; this module carries no default."""
+    client = _httpx_client(timeout=timeout)
+    if client is None or not api_key or not model:
+        return None
+    try:
+        system = "\n\n".join(m["content"] for m in messages if m.get("role") == "system")
+        turns = [{"role": m["role"], "content": m["content"]} for m in messages if m.get("role") in ("user", "assistant")]
+        payload: dict[str, Any] = {"model": model, "max_tokens": max_tokens, "messages": turns}
+        if system:
+            payload["system"] = system
+        headers = {"x-api-key": api_key, "anthropic-version": ANTHROPIC_VERSION, "content-type": "application/json"}
+        r = client.post(f"{base.rstrip('/')}/v1/messages", json=payload, headers=headers)
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        text = "".join(b.get("text", "") for b in data.get("content") or [] if isinstance(b, dict) and b.get("type") == "text")
+        usage = data.get("usage") or {}
+        return {"content": text, "completion_tokens": usage.get("output_tokens"),
+                "prompt_tokens": usage.get("input_tokens")}
     except Exception:
         return None
     finally:

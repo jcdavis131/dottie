@@ -3,16 +3,21 @@ harness runner — end-to-end run loop for `scout harness run`.
 
 Pipeline: route -> plan -> execute -> checkpoint/timeline -> critic.
 
-Everything in this module is deterministic and local: the executors are pure
-python functions over the goal text and prior artifacts — no external model
-calls, no subprocess, and no network with ONE declared exception: the
-mcp-operator executor (mcp: goals only) makes a downstream MCP tool call after
-the fail-closed gates in mcp_executor.py, including the default-deny user URL
-allowlist. The plugin manifest declares that network axis.
-Latencies in the timeline are MEASURED with time.perf_counter(); token counts are
-MEASURED as 0 — deterministic executors consume no external-model tokens, and
-artifact size is retained separately as artifact_chars per node. Provenance is
-labeled on every record.
+Executors (bigbang.plugins.harness.executors): each plan node runs its REAL
+executor when one exists for its role and its backend is available —
+deep-researcher/researcher: arXiv (+ Semantic Scholar with a key, jarvisd
+recall with JARVIS_URL), cited; strategist/planner/synthesist/critic: one LLM
+completion (Ollama at OLLAMA_HOST, else Anthropic / OpenAI-compatible with a
+key); operator: a deterministic local solver when one matches the goal;
+builder: composition, real only over real artifacts; mcp-operator: the
+fail-closed MCP path in mcp_executor.py. Otherwise the node runs its
+deterministic stub below (a pure function of the goal text) and is tagged
+`stub`. DOTTIE_EXECUTORS=auto (default) | real (unavailable backend fails the
+node) | stub (never try). The run's outcome is `executor: real` only when
+EVERY node did real work; `scout router pack` never labels from anything else.
+Latencies are MEASURED with time.perf_counter(); tokens are the backends' own
+usage counts (0 for stubs and local code); cost is 0 for local work and priced
+only from env for paid APIs. Provenance is labeled on every record.
 
 Routing (step 1) is dottie_loop.decide.decide (bounded context, then
 dottie_loop.router.route_goal), the same decision plane as `scout route` and
@@ -43,6 +48,7 @@ from dottie_loop.context import RunHistoryProvider
 from dottie_loop.decide import decide
 from dottie_loop.execution import recovery_ladder
 
+from bigbang.plugins.harness import executors as real_executors
 from bigbang.plugins.harness import mcp_executor
 from bigbang.plugins.harness.timeline import append_event, g_history_stats
 
@@ -229,40 +235,60 @@ EXECUTORS: dict[str, Callable[[dict], str]] = {
     "operator": _exec_operator,
 }
 
-#: Executors that do real work. Every other executor is a deterministic stub (a
-#: pure function of the goal text), so its outcome says nothing about whether
-#: the routed tier was sufficient. Outcomes are tagged `executor: stub|real`.
+#: Roles whose executor ALWAYS does real work (no stub fallback exists). The
+#: other roles run a real executor when one is registered for them and its
+#: backend is up (bigbang.plugins.harness.executors.real_for_role); otherwise
+#: their deterministic stub runs and the node is tagged `stub`, so its outcome
+#: says nothing about whether the routed tier was sufficient.
 REAL_EXECUTORS = frozenset({"mcp-operator"})
 
 
 def executor_kind(role: str) -> str:
-    """real | stub for the executor that serves ``role``."""
+    """The kind a role's executor is guaranteed to be: real only for always-real roles."""
     return "real" if role in REAL_EXECUTORS else "stub"
 
 
-def _dispatch(step: dict, ctx: dict) -> str:
+def _dispatch(step: dict, ctx: dict) -> tuple[str, str, dict]:
+    """Run one node: (artifact, executor kind real|stub, measured meta)."""
     # TEST-ONLY HOOK: SCOUT_RUN_FAIL_NODES is a comma-separated list of node ids.
     # A listed node raises here, BEFORE its executor runs, producing a genuine
     # measured failure event (not a fabricated row) for recovery-ladder tests.
     fail_nodes = {s.strip() for s in os.environ.get("SCOUT_RUN_FAIL_NODES", "").split(",") if s.strip()}
     if step["id"] in fail_nodes:
         raise RuntimeError("injected failure")
-    fn = EXECUTORS.get(step["role"])
+    role = step["role"]
+    if role in REAL_EXECUTORS:
+        return EXECUTORS[role](ctx), "real", {"backend": "mcp"}
+    mode = real_executors.executor_mode()
+    real = real_executors.real_for_role(role) if mode != "stub" else None
+    meta: dict = {}
+    if real is not None:
+        try:
+            res = real(ctx)
+            return res.text or res.answer, "real", {
+                "backend": res.backend, "tokens": res.tokens, "cost_usd": res.cost_usd,
+                "cost_basis": res.cost_basis, "n_sources": len(res.sources),
+            }
+        except (real_executors.ExecutorUnavailable, real_executors.NotApplicable) as exc:
+            if mode == "real" and isinstance(exc, real_executors.ExecutorUnavailable):
+                raise
+            meta = {"fallback": f"{type(exc).__name__}: {str(exc)[:160]}"}
+    fn = EXECUTORS.get(role)
     if fn is None:
-        raise RuntimeError(f"no deterministic executor registered for role {step['role']!r}")
-    return fn(ctx)
+        raise RuntimeError(f"no executor registered for role {role!r}")
+    return fn(ctx), "stub", meta
 
 
 # --- timeline / checkpoint -----------------------------------------------------
 
 
 def _log_attempt(run_id: str, step: dict, attempt: int, latency_ms: float, artifact: str,
-                 status: str, error_class: str | None, runs_dir: Path, tier: str = "") -> None:
-    # MEASURED true cost: deterministic executors make no external model calls,
-    # so the run consumed exactly 0 model tokens. len(artifact)//4 was an
-    # estimate of a cost that does not exist here; artifact size stays available
-    # as artifact_chars in the node summaries.
-    tok = 0
+                 status: str, error_class: str | None, runs_dir: Path, tier: str = "",
+                 kind: str = "stub", tokens: int = 0) -> None:
+    # MEASURED true cost: the backend's own usage count for a real LLM node,
+    # exactly 0 for stubs and local code. len(artifact)//4 was an estimate of a
+    # cost that does not exist; artifact size stays in artifact_chars.
+    tok = int(tokens or 0)
     # Both spellings on purpose: the harness timeline store requires latency/tokens
     # (timeline.py:26) while the repo-root checkpoint contract requires
     # latency_ms/tokens_est (pipeline/checkpoint_manager.py:63).
@@ -281,7 +307,7 @@ def _log_attempt(run_id: str, step: dict, attempt: int, latency_ms: float, artif
         # extra fields (not in REQUIRED_FIELDS): the run-history index aggregates
         # success / recovery / latency per routed tier, and per executor kind.
         "tier": tier,
-        "executor": executor_kind(step["role"]),
+        "executor": kind,
     }
     # Twice on purpose: default base feeds g_history_stats mining
     # (graph-plan / timeline stats); runs_dir base keeps the run self-contained.
@@ -309,9 +335,9 @@ def _write_checkpoint(run_dir: Path, run_id: str, nodes: list[dict], created: st
         "version": "harness-run/0.1",
         "provenance": {
             "driver": "harness run",
-            "executors": "deterministic local, no network, no external model calls",
+            "executors": "real where a backend was available (per-node `executor`), else deterministic stubs",
             "latency": "measured perf_counter",
-            "tokens": "measured 0 — no external-model tokens consumed; artifact size in artifact_chars",
+            "tokens": "measured: backend usage counts for real LLM nodes, 0 for stubs/local; artifact size in artifact_chars",
             "store": "single canonical write under runs_dir",
             # Routing actually executed for this run — consumed by the
             # orchestration corpus miner (goal text + behavior labels).
@@ -408,23 +434,34 @@ def run_goal(goal: str, *, max_nodes: int = 0, seed: int = 0, run_id: str = "",
 
     # 3-5. EXECUTE with recovery ladder + per-attempt timeline + per-node checkpoint
     prior: dict[str, str] = {}
+    prior_kinds: dict[str, str] = {}
     node_summaries: list[dict] = []
     score_history: list[float] = []
     checkpoint_path = run_dir / "checkpoint.json"
 
     for step in steps:
-        ctx = {"goal": goal, "node": step, "prior": dict(prior), "seed": seed, "plan": steps}
+        ctx = {"goal": goal, "node": step, "prior": dict(prior), "prior_kinds": dict(prior_kinds),
+               "seed": seed, "plan": steps}
         if mcp_action is not None:
             ctx["mcp"] = {"namespace": mcp_namespace, "server": mcp_action["server"],
                           "tool": mcp_action["tool"], "args": mcp_action["args"]}
 
-        def _attempt(n: int, step: dict = step, ctx: dict = ctx) -> tuple:
+        attempt_meta: dict = {"kind": "stub", "meta": {}}
+
+        def _attempt(n: int, step: dict = step, ctx: dict = ctx, am: dict = attempt_meta) -> tuple:
             t0 = time.perf_counter()
             try:
-                art = _dispatch(step, ctx)
+                art, kind, meta = _dispatch(step, ctx)
+                am.update(kind=kind, meta=meta)
                 return True, art, (time.perf_counter() - t0) * 1000.0
-            except Exception:
+            except Exception as exc:
+                am.update(kind="real" if real_executors.real_for_role(step["role"]) or step["role"] in REAL_EXECUTORS
+                          else "stub", meta={"error": f"{type(exc).__name__}: {str(exc)[:160]}"})
                 return False, "", (time.perf_counter() - t0) * 1000.0
+
+        def _tok(am: dict = attempt_meta) -> int:
+            t = (am["meta"].get("tokens") or {}).get("total") if isinstance(am["meta"].get("tokens"), dict) else 0
+            return int(t or 0)
 
         artifact = ""
         status = "ok"
@@ -434,7 +471,8 @@ def run_goal(goal: str, *, max_nodes: int = 0, seed: int = 0, run_id: str = "",
 
         ok1, art1, lat1 = _attempt(1)
         total_latency = lat1
-        _log_attempt(rid, step, 1, lat1, art1, "ok" if ok1 else "fail", None if ok1 else "TOOL_FAILURE", runs_dir, tier)
+        _log_attempt(rid, step, 1, lat1, art1, "ok" if ok1 else "fail", None if ok1 else "TOOL_FAILURE", runs_dir, tier,
+                     attempt_meta["kind"], _tok())
         if ok1:
             artifact = art1
         else:
@@ -445,7 +483,8 @@ def run_goal(goal: str, *, max_nodes: int = 0, seed: int = 0, run_id: str = "",
                 attempts = 2
                 ok2, art2, lat2 = _attempt(2)
                 total_latency += lat2
-                _log_attempt(rid, step, 2, lat2, art2, "ok" if ok2 else "fail", None if ok2 else "TOOL_FAILURE", runs_dir, tier)
+                _log_attempt(rid, step, 2, lat2, art2, "ok" if ok2 else "fail", None if ok2 else "TOOL_FAILURE", runs_dir,
+                             tier, attempt_meta["kind"], _tok())
                 if ok2:
                     artifact, status, error_class = art2, "ok", None
                 else:
@@ -457,9 +496,16 @@ def run_goal(goal: str, *, max_nodes: int = 0, seed: int = 0, run_id: str = "",
                 status = "failed"
 
         prior[step["id"]] = artifact  # failed node contributes an empty artifact
+        prior_kinds[step["id"]] = attempt_meta["kind"]
         node_summaries.append({
             "id": step["id"],
             "role": step["role"],
+            "executor": attempt_meta["kind"],
+            "backend": attempt_meta["meta"].get("backend"),
+            "tokens": _tok(),
+            "cost_usd": attempt_meta["meta"].get("cost_usd", 0.0),
+            "n_sources": attempt_meta["meta"].get("n_sources"),
+            "fallback": attempt_meta["meta"].get("fallback"),
             "status": status,
             "attempts": attempts,
             "latency_ms": round(total_latency, 3),
@@ -486,12 +532,24 @@ def run_goal(goal: str, *, max_nodes: int = 0, seed: int = 0, run_id: str = "",
 
     # 7. OUTCOME -> router trace (what `scout router pack` labels from)
     actions = [n["recovery_action"] for n in node_summaries if n["recovery_action"]]
-    kinds = Counter(executor_kind(n["role"]) for n in node_summaries)
+    kinds = Counter(n["executor"] for n in node_summaries)
+    all_real = bool(node_summaries) and set(kinds) == {"real"}
+    costs = [n["cost_usd"] for n in node_summaries]
     router_traces.record_outcome(trace_id, {
         # stub unless every executed node did real work: `scout router pack`
         # never labels from a stub outcome (synthetic rows never train).
-        "executor": "real" if node_summaries and set(kinds) == {"real"} else "stub",
+        "executor": "real" if all_real else "stub",
         "executors": dict(kinds),
+        "backends": sorted({n["backend"] for n in node_summaries if n["backend"]}),
+        "tokens": {"total": sum(n["tokens"] for n in node_summaries)},
+        "latency_ms": round(sum(n["latency_ms"] for n in node_summaries), 3),
+        "cost_usd": None if any(c is None for c in costs) else round(sum(costs), 8),
+        # production runs have no expected answer: the automatic check is that every
+        # node succeeded with real work and every research node cited a source
+        "verified": all_real and failed_nodes == 0 and all(
+            (n["n_sources"] or 0) > 0 for n in node_summaries if n["role"] in ("deep-researcher", "researcher")),
+        "verifier": "harness.node_checks",
+        "provenance": "production",
         "run_id": rid,
         "ok": True,
         "tier": tier,
@@ -532,7 +590,8 @@ def run_goal(goal: str, *, max_nodes: int = 0, seed: int = 0, run_id: str = "",
         "timeline_path": str(run_dir / "timeline.jsonl"),
         "checkpoint_path": str(checkpoint_path),
         "runs_dir": str(runs_dir),
-        "provenance": {"latency": "measured", "tokens": "measured 0"},
+        "provenance": {"latency": "measured", "tokens": "measured (backend usage; 0 for stubs)",
+                       "executors": dict(kinds)},
         "ok": True,
         "command": "harness run",
     }

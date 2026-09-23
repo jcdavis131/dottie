@@ -109,6 +109,13 @@ for _var in ("DOTTIE_OS_URL", "DOTTIE_TRACE_TEXT", "DOTTIE_TRACES", "DOTTIE_CONT
 # developer's local daemon on :8790 must not answer test routes or record them in
 # its real DB, so the suite decides in-process unless a test opts in.
 os.environ["SCOUT_DECIDE_REMOTE"] = "0"
+# `scout harness run` runs real executors when their backends are up (arXiv, an
+# Ollama on :11434, an API key in the developer's env). The suite must neither
+# reach the network nor depend on what is installed, so it runs the stubs unless
+# a test opts in (with its backends mocked).
+os.environ["DOTTIE_EXECUTORS"] = "stub"
+for _var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "SEMANTIC_SCHOLAR_API_KEY"):
+    os.environ.pop(_var, None)
 
 
 @pytest.fixture

@@ -1,0 +1,1185 @@
+{
+ "fetched_at": "2026-09-23",
+ "fetched_by": "bigbang.plugins.harness.executors.research.arxiv_query (export.arxiv.org API, one id per request; arxiv.org/abs citation meta tags when the API refused)",
+ "papers": [
+  {
+   "id": "1706.03762",
+   "title": "Attention Is All You Need",
+   "authors": [
+    "Ashish Vaswani",
+    "Noam Shazeer",
+    "Niki Parmar",
+    "Jakob Uszkoreit",
+    "Llion Jones",
+    "Aidan N. Gomez",
+    "Lukasz Kaiser",
+    "Illia Polosukhin"
+   ],
+   "year": "2017",
+   "primary_category": "cs.CL",
+   "source": "https://arxiv.org/abs/1706.03762"
+  },
+  {
+   "id": "1512.03385",
+   "title": "Deep Residual Learning for Image Recognition",
+   "authors": [
+    "Kaiming He",
+    "Xiangyu Zhang",
+    "Shaoqing Ren",
+    "Jian Sun"
+   ],
+   "year": "2015",
+   "primary_category": "cs.CV",
+   "source": "https://arxiv.org/abs/1512.03385"
+  },
+  {
+   "id": "1810.04805",
+   "title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+   "authors": [
+    "Jacob Devlin",
+    "Ming-Wei Chang",
+    "Kenton Lee",
+    "Kristina Toutanova"
+   ],
+   "year": "2018",
+   "primary_category": "cs.CL",
+   "source": "https://arxiv.org/abs/1810.04805"
+  },
+  {
+   "id": "1409.0473",
+   "title": "Neural Machine Translation by Jointly Learning to Align and Translate",
+   "authors": [
+    "Dzmitry Bahdanau",
+    "Kyunghyun Cho",
+    "Yoshua Bengio"
+   ],
+   "year": "2014",
+   "primary_category": "cs.CL",
+   "source": "https://arxiv.org/abs/1409.0473"
+  },
+  {
+   "id": "1412.6980",
+   "title": "Adam: A Method for Stochastic Optimization",
+   "authors": [
+    "Diederik P. Kingma",
+    "Jimmy Ba"
+   ],
+   "year": "2014",
+   "primary_category": "cs.LG",
+   "source": "https://arxiv.org/abs/1412.6980"
+  },
+  {
+   "id": "1406.2661",
+   "title": "Generative Adversarial Networks",
+   "authors": [
+    "Ian J. Goodfellow",
+    "Jean Pouget-Abadie",
+    "Mehdi Mirza",
+    "Bing Xu",
+    "David Warde-Farley",
+    "Sherjil Ozair",
+    "Aaron Courville",
+    "Yoshua Bengio"
+   ],
+   "year": "2014",
+   "primary_category": "stat.ML",
+   "source": "https://arxiv.org/abs/1406.2661"
+  },
+  {
+   "id": "1312.6114",
+   "title": "Auto-Encoding Variational Bayes",
+   "authors": [
+    "Diederik P Kingma",
+    "Max Welling"
+   ],
+   "year": "2013",
+   "primary_category": "stat.ML",
+   "source": "https://arxiv.org/abs/1312.6114"
+  },
+  {
+   "id": "1502.03167",
+   "title": "Batch Normalization: Accelerating Deep Network Training by Reducing Internal Covariate Shift",
+   "authors": [
+    "Sergey Ioffe",
+    "Christian Szegedy"
+   ],
+   "year": "2015",
+   "primary_category": "cs.LG",
+   "source": "https://arxiv.org/abs/1502.03167"
+  },
+  {
+   "id": "1409.1556",
+   "title": "Very Deep Convolutional Networks for Large-Scale Image Recognition",
+   "authors": [
+    "Karen Simonyan",
+    "Andrew Zisserman"
+   ],
+   "year": "2014",
+   "primary_category": "cs.CV",
+   "source": "https://arxiv.org/abs/1409.1556"
+  },
+  {
+   "id": "1409.4842",
+   "title": "Going Deeper with Convolutions",
+   "authors": [
+    "Christian Szegedy",
+    "Wei Liu",
+    "Yangqing Jia",
+    "Pierre Sermanet",
+    "Scott Reed",
+    "Dragomir Anguelov",
+    "Dumitru Erhan",
+    "Vincent Vanhoucke",
+    "Andrew Rabinovich"
+   ],
+   "year": "2014",
+   "primary_category": "cs.CV",
+   "source": "https://arxiv.org/abs/1409.4842"
+  },
+  {
+   "id": "1506.02640",
+   "title": "You Only Look Once: Unified, Real-Time Object Detection",
+   "authors": [
+    "Joseph Redmon",
+    "Santosh Divvala",
+    "Ross Girshick",
+    "Ali Farhadi"
+   ],
+   "year": "2015",
+   "primary_category": "cs.CV",
+   "source": "https://arxiv.org/abs/1506.02640"
+  },
+  {
+   "id": "1505.04597",
+   "title": "U-Net: Convolutional Networks for Biomedical Image Segmentation",
+   "authors": [
+    "Olaf Ronneberger",
+    "Philipp Fischer",
+    "Thomas Brox"
+   ],
+   "year": "2015",
+   "primary_category": "cs.CV",
+   "source": "https://arxiv.org/abs/1505.04597"
+  },
+  {
+   "id": "1301.3781",
+   "title": "Efficient Estimation of Word Representations in Vector Space",
+   "authors": [
+    "Tomas Mikolov",
+    "Kai Chen",
+    "Greg Corrado",
+    "Jeffrey Dean"
+   ],
+   "year": "2013",
+   "primary_category": "cs.CL",
+   "source": "https://arxiv.org/abs/1301.3781"
+  },
+  {
+   "id": "2005.14165",
+   "title": "Language Models are Few-Shot Learners",
+   "authors": [
+    "Tom B. Brown",
+    "Benjamin Mann",
+    "Nick Ryder",
+    "Melanie Subbiah",
+    "Jared Kaplan",
+    "Prafulla Dhariwal",
+    "Arvind Neelakantan",
+    "Pranav Shyam",
+    "Girish Sastry",
+    "Amanda Askell",
+    "Sandhini Agarwal",
+    "Ariel Herbert-Voss",
+    "Gretchen Krueger",
+    "Tom Henighan",
+    "Rewon Child",
+    "Aditya Ramesh",
+    "Daniel M. Ziegler",
+    "Jeffrey Wu",
+    "Clemens Winter",
+    "Christopher Hesse",
+    "Mark Chen",
+    "Eric Sigler",
+    "Mateusz Litwin",
+    "Scott Gray",
+    "Benjamin Chess",
+    "Jack Clark",
+    "Christopher Berner",
+    "Sam McCandlish",
+    "Alec Radford",
+    "Ilya Sutskever",
+    "Dario Amodei"
+   ],
+   "year": "2020",
+   "primary_category": "cs.CL",
+   "source": "https://arxiv.org/abs/2005.14165"
+  },
+  {
+   "id": "1910.10683",
+   "title": "Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer",
+   "authors": [
+    "Colin Raffel",
+    "Noam Shazeer",
+    "Adam Roberts",
+    "Katherine Lee",
+    "Sharan Narang",
+    "Michael Matena",
+    "Yanqi Zhou",
+    "Wei Li",
+    "Peter J. Liu"
+   ],
+   "year": "2019",
+   "primary_category": "cs.LG",
+   "source": "https://arxiv.org/abs/1910.10683"
+  },
+  {
+   "id": "1907.11692",
+   "title": "RoBERTa: A Robustly Optimized BERT Pretraining Approach",
+   "authors": [
+    "Yinhan Liu",
+    "Myle Ott",
+    "Naman Goyal",
+    "Jingfei Du",
+    "Mandar Joshi",
+    "Danqi Chen",
+    "Omer Levy",
+    "Mike Lewis",
+    "Luke Zettlemoyer",
+    "Veselin Stoyanov"
+   ],
+   "year": "2019",
+   "primary_category": "cs.CL",
+   "source": "https://arxiv.org/abs/1907.11692"
+  },
+  {
+   "id": "2010.11929",
+   "title": "An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale",
+   "authors": [
+    "Alexey Dosovitskiy",
+    "Lucas Beyer",
+    "Alexander Kolesnikov",
+    "Dirk Weissenborn",
+    "Xiaohua Zhai",
+    "Thomas Unterthiner",
+    "Mostafa Dehghani",
+    "Matthias Minderer",
+    "Georg Heigold",
+    "Sylvain Gelly",
+    "Jakob Uszkoreit",
+    "Neil Houlsby"
+   ],
+   "year": "2020",
+   "primary_category": "cs.CV",
+   "source": "https://arxiv.org/abs/2010.11929"
+  },
+  {
+   "id": "1707.06347",
+   "title": "Proximal Policy Optimization Algorithms",
+   "authors": [
+    "John Schulman",
+    "Filip Wolski",
+    "Prafulla Dhariwal",
+    "Alec Radford",
+    "Oleg Klimov"
+   ],
+   "year": "2017",
+   "primary_category": "cs.LG",
+   "source": "https://arxiv.org/abs/1707.06347"
+  },
+  {
+   "id": "1312.5602",
+   "title": "Playing Atari with Deep Reinforcement Learning",
+   "authors": [
+    "Volodymyr Mnih",
+    "Koray Kavukcuoglu",
+    "David Silver",
+    "Alex Graves",
+    "Ioannis Antonoglou",
+    "Daan Wierstra",
+    "Martin Riedmiller"
+   ],
+   "year": "2013",
+   "primary_category": "cs.LG",
+   "source": "https://arxiv.org/abs/1312.5602"
+  },
+  {
+   "id": "1602.01783",
+   "title": "Asynchronous Methods for Deep Reinforcement Learning",
+   "authors": [
+    "Volodymyr Mnih",
+    "Adrià Puigdomènech Badia",
+    "Mehdi Mirza",
+    "Alex Graves",
+    "Timothy P. Lillicrap",
+    "Tim Harley",
+    "David Silver",
+    "Koray Kavukcuoglu"
+   ],
+   "year": "2016",
+   "primary_category": "cs.LG",
+   "source": "https://arxiv.org/abs/1602.01783"
+  },
+  {
+   "id": "2203.02155",
+   "title": "Training language models to follow instructions with human feedback",
+   "authors": [
+    "Long Ouyang",
+    "Jeff Wu",
+    "Xu Jiang",
+    "Diogo Almeida",
+    "Carroll L. Wainwright",
+    "Pamela Mishkin",
+    "Chong Zhang",
+    "Sandhini Agarwal",
+    "Katarina Slama",
+    "Alex Ray",
+    "John Schulman",
+    "Jacob Hilton",
+    "Fraser Kelton",
+    "Luke Miller",
+    "Maddie Simens",
+    "Amanda Askell",
+    "Peter Welinder",
+    "Paul Christiano",
+    "Jan Leike",
+    "Ryan Lowe"
+   ],
+   "year": "2022",
+   "primary_category": "cs.CL",
+   "source": "https://arxiv.org/abs/2203.02155"
+  },
+  {
+   "id": "2106.09685",
+   "title": "LoRA: Low-Rank Adaptation of Large Language Models",
+   "authors": [
+    "Edward J. Hu",
+    "Yelong Shen",
+    "Phillip Wallis",
+    "Zeyuan Allen-Zhu",
+    "Yuanzhi Li",
+    "Shean Wang",
+    "Lu Wang",
+    "Weizhu Chen"
+   ],
+   "year": "2021",
+   "primary_category": "cs.CL",
+   "source": "https://arxiv.org/abs/2106.09685"
+  },
+  {
+   "id": "2201.11903",
+   "title": "Chain-of-Thought Prompting Elicits Reasoning in Large Language Models",
+   "authors": [
+    "Jason Wei",
+    "Xuezhi Wang",
+    "Dale Schuurmans",
+    "Maarten Bosma",
+    "Brian Ichter",
+    "Fei Xia",
+    "Ed Chi",
+    "Quoc Le",
+    "Denny Zhou"
+   ],
+   "year": "2022",
+   "primary_category": "cs.CL",
+   "source": "https://arxiv.org/abs/2201.11903"
+  },
+  {
+   "id": "2302.13971",
+   "title": "LLaMA: Open and Efficient Foundation Language Models",
+   "authors": [
+    "Hugo Touvron",
+    "Thibaut Lavril",
+    "Gautier Izacard",
+    "Xavier Martinet",
+    "Marie-Anne Lachaux",
+    "Timothée Lacroix",
+    "Baptiste Rozière",
+    "Naman Goyal",
+    "Eric Hambro",
+    "Faisal Azhar",
+    "Aurelien Rodriguez",
+    "Armand Joulin",
+    "Edouard Grave",
+    "Guillaume Lample"
+   ],
+   "year": "2023",
+   "primary_category": "cs.CL",
+   "source": "https://arxiv.org/abs/2302.13971"
+  },
+  {
+   "id": "2307.09288",
+   "title": "Llama 2: Open Foundation and Fine-Tuned Chat Models",
+   "authors": [
+    "Hugo Touvron",
+    "Louis Martin",
+    "Kevin Stone",
+    "Peter Albert",
+    "Amjad Almahairi",
+    "Yasmine Babaei",
+    "Nikolay Bashlykov",
+    "Soumya Batra",
+    "Prajjwal Bhargava",
+    "Shruti Bhosale",
+    "Dan Bikel",
+    "Lukas Blecher",
+    "Cristian Canton Ferrer",
+    "Moya Chen",
+    "Guillem Cucurull",
+    "David Esiobu",
+    "Jude Fernandes",
+    "Jeremy Fu",
+    "Wenyin Fu",
+    "Brian Fuller",
+    "Cynthia Gao",
+    "Vedanuj Goswami",
+    "Naman Goyal",
+    "Anthony Hartshorn",
+    "Saghar Hosseini",
+    "Rui Hou",
+    "Hakan Inan",
+    "Marcin Kardas",
+    "Viktor Kerkez",
+    "Madian Khabsa",
+    "Isabel Kloumann",
+    "Artem Korenev",
+    "Punit Singh Koura",
+    "Marie-Anne Lachaux",
+    "Thibaut Lavril",
+    "Jenya Lee",
+    "Diana Liskovich",
+    "Yinghai Lu",
+    "Yuning Mao",
+    "Xavier Martinet",
+    "Todor Mihaylov",
+    "Pushkar Mishra",
+    "Igor Molybog",
+    "Yixin Nie",
+    "Andrew Poulton",
+    "Jeremy Reizenstein",
+    "Rashi Rungta",
+    "Kalyan Saladi",
+    "Alan Schelten",
+    "Ruan Silva",
+    "Eric Michael Smith",
+    "Ranjan Subramanian",
+    "Xiaoqing Ellen Tan",
+    "Binh Tang",
+    "Ross Taylor",
+    "Adina Williams",
+    "Jian Xiang Kuan",
+    "Puxin Xu",
+    "Zheng Yan",
+    "Iliyan Zarov",
+    "Yuchen Zhang",
+    "Angela Fan",
+    "Melanie Kambadur",
+    "Sharan Narang",
+    "Aurelien Rodriguez",
+    "Robert Stojnic",
+    "Sergey Edunov",
+    "Thomas Scialom"
+   ],
+   "year": "2023",
+   "primary_category": "cs.CL",
+   "source": "https://arxiv.org/abs/2307.09288"
+  },
+  {
+   "id": "1503.02531",
+   "title": "Distilling the Knowledge in a Neural Network",
+   "authors": [
+    "Geoffrey Hinton",
+    "Oriol Vinyals",
+    "Jeff Dean"
+   ],
+   "year": "2015",
+   "primary_category": "stat.ML",
+   "source": "https://arxiv.org/abs/1503.02531"
+  },
+  {
+   "id": "1607.06450",
+   "title": "Layer Normalization",
+   "authors": [
+    "Jimmy Lei Ba",
+    "Jamie Ryan Kiros",
+    "Geoffrey E. Hinton"
+   ],
+   "year": "2016",
+   "primary_category": "stat.ML",
+   "source": "https://arxiv.org/abs/1607.06450"
+  },
+  {
+   "id": "1608.06993",
+   "title": "Densely Connected Convolutional Networks",
+   "authors": [
+    "Gao Huang",
+    "Zhuang Liu",
+    "Laurens van der Maaten",
+    "Kilian Q. Weinberger"
+   ],
+   "year": "2016",
+   "primary_category": "cs.CV",
+   "source": "https://arxiv.org/abs/1608.06993"
+  },
+  {
+   "id": "1704.04861",
+   "title": "MobileNets: Efficient Convolutional Neural Networks for Mobile Vision Applications",
+   "authors": [
+    "Andrew G. Howard",
+    "Menglong Zhu",
+    "Bo Chen",
+    "Dmitry Kalenichenko",
+    "Weijun Wang",
+    "Tobias Weyand",
+    "Marco Andreetto",
+    "Hartwig Adam"
+   ],
+   "year": "2017",
+   "primary_category": "cs.CV",
+   "source": "https://arxiv.org/abs/1704.04861"
+  },
+  {
+   "id": "1905.11946",
+   "title": "EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks",
+   "authors": [
+    "Mingxing Tan",
+    "Quoc V. Le"
+   ],
+   "year": "2019",
+   "primary_category": "cs.LG",
+   "source": "https://arxiv.org/abs/1905.11946"
+  },
+  {
+   "id": "2006.11239",
+   "title": "Denoising Diffusion Probabilistic Models",
+   "authors": [
+    "Jonathan Ho",
+    "Ajay Jain",
+    "Pieter Abbeel"
+   ],
+   "year": "2020",
+   "primary_category": "cs.LG",
+   "source": "https://arxiv.org/abs/2006.11239"
+  },
+  {
+   "id": "2112.10752",
+   "title": "High-Resolution Image Synthesis with Latent Diffusion Models",
+   "authors": [
+    "Robin Rombach",
+    "Andreas Blattmann",
+    "Dominik Lorenz",
+    "Patrick Esser",
+    "Björn Ommer"
+   ],
+   "year": "2021",
+   "primary_category": "cs.CV",
+   "source": "https://arxiv.org/abs/2112.10752"
+  },
+  {
+   "id": "2103.00020",
+   "title": "Learning Transferable Visual Models From Natural Language Supervision",
+   "authors": [
+    "Alec Radford",
+    "Jong Wook Kim",
+    "Chris Hallacy",
+    "Aditya Ramesh",
+    "Gabriel Goh",
+    "Sandhini Agarwal",
+    "Girish Sastry",
+    "Amanda Askell",
+    "Pamela Mishkin",
+    "Jack Clark",
+    "Gretchen Krueger",
+    "Ilya Sutskever"
+   ],
+   "year": "2021",
+   "primary_category": "cs.CV",
+   "source": "https://arxiv.org/abs/2103.00020"
+  },
+  {
+   "id": "1711.05101",
+   "title": "Decoupled Weight Decay Regularization",
+   "authors": [
+    "Ilya Loshchilov",
+    "Frank Hutter"
+   ],
+   "year": "2017",
+   "primary_category": "cs.LG",
+   "source": "https://arxiv.org/abs/1711.05101"
+  },
+  {
+   "id": "1801.06146",
+   "title": "Universal Language Model Fine-tuning for Text Classification",
+   "authors": [
+    "Jeremy Howard",
+    "Sebastian Ruder"
+   ],
+   "year": "2018",
+   "primary_category": "cs.CL",
+   "source": "https://arxiv.org/abs/1801.06146"
+  },
+  {
+   "id": "1802.05365",
+   "title": "Deep contextualized word representations",
+   "authors": [
+    "Matthew E. Peters",
+    "Mark Neumann",
+    "Mohit Iyyer",
+    "Matt Gardner",
+    "Christopher Clark",
+    "Kenton Lee",
+    "Luke Zettlemoyer"
+   ],
+   "year": "2018",
+   "primary_category": "cs.CL",
+   "source": "https://arxiv.org/abs/1802.05365"
+  },
+  {
+   "id": "1508.07909",
+   "title": "Neural Machine Translation of Rare Words with Subword Units",
+   "authors": [
+    "Rico Sennrich",
+    "Barry Haddow",
+    "Alexandra Birch"
+   ],
+   "year": "2015",
+   "primary_category": "cs.CL",
+   "source": "https://arxiv.org/abs/1508.07909"
+  },
+  {
+   "id": "1609.08144",
+   "title": "Google's Neural Machine Translation System: Bridging the Gap between Human and Machine Translation",
+   "authors": [
+    "Yonghui Wu",
+    "Mike Schuster",
+    "Zhifeng Chen",
+    "Quoc V. Le",
+    "Mohammad Norouzi",
+    "Wolfgang Macherey",
+    "Maxim Krikun",
+    "Yuan Cao",
+    "Qin Gao",
+    "Klaus Macherey",
+    "Jeff Klingner",
+    "Apurva Shah",
+    "Melvin Johnson",
+    "Xiaobing Liu",
+    "Łukasz Kaiser",
+    "Stephan Gouws",
+    "Yoshikiyo Kato",
+    "Taku Kudo",
+    "Hideto Kazawa",
+    "Keith Stevens",
+    "George Kurian",
+    "Nishant Patil",
+    "Wei Wang",
+    "Cliff Young",
+    "Jason Smith",
+    "Jason Riesa",
+    "Alex Rudnick",
+    "Oriol Vinyals",
+    "Greg Corrado",
+    "Macduff Hughes",
+    "Jeffrey Dean"
+   ],
+   "year": "2016",
+   "primary_category": "cs.CL",
+   "source": "https://arxiv.org/abs/1609.08144"
+  },
+  {
+   "id": "1703.03400",
+   "title": "Model-Agnostic Meta-Learning for Fast Adaptation of Deep Networks",
+   "authors": [
+    "Chelsea Finn",
+    "Pieter Abbeel",
+    "Sergey Levine"
+   ],
+   "year": "2017",
+   "primary_category": "cs.LG",
+   "source": "https://arxiv.org/abs/1703.03400"
+  },
+  {
+   "id": "1710.10903",
+   "title": "Graph Attention Networks",
+   "authors": [
+    "Petar Veličković",
+    "Guillem Cucurull",
+    "Arantxa Casanova",
+    "Adriana Romero",
+    "Pietro Liò",
+    "Yoshua Bengio"
+   ],
+   "year": "2017",
+   "primary_category": "stat.ML",
+   "source": "https://arxiv.org/abs/1710.10903"
+  },
+  {
+   "id": "1609.02907",
+   "title": "Semi-Supervised Classification with Graph Convolutional Networks",
+   "authors": [
+    "Thomas N. Kipf",
+    "Max Welling"
+   ],
+   "year": "2016",
+   "primary_category": "cs.LG",
+   "source": "https://arxiv.org/abs/1609.02907"
+  },
+  {
+   "id": "1506.01497",
+   "title": "Faster R-CNN: Towards Real-Time Object Detection with Region Proposal Networks",
+   "authors": [
+    "Shaoqing Ren",
+    "Kaiming He",
+    "Ross Girshick",
+    "Jian Sun"
+   ],
+   "year": "2015",
+   "primary_category": "cs.CV",
+   "source": "https://arxiv.org/abs/1506.01497"
+  },
+  {
+   "id": "1703.06870",
+   "title": "Mask R-CNN",
+   "authors": [
+    "Kaiming He",
+    "Georgia Gkioxari",
+    "Piotr Dollár",
+    "Ross Girshick"
+   ],
+   "year": "2017",
+   "primary_category": "cs.CV",
+   "source": "https://arxiv.org/abs/1703.06870"
+  },
+  {
+   "id": "1708.02002",
+   "title": "Focal Loss for Dense Object Detection",
+   "authors": [
+    "Tsung-Yi Lin",
+    "Priya Goyal",
+    "Ross Girshick",
+    "Kaiming He",
+    "Piotr Dollár"
+   ],
+   "year": "2017",
+   "primary_category": "cs.CV",
+   "source": "https://arxiv.org/abs/1708.02002"
+  },
+  {
+   "id": "2005.11401",
+   "title": "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
+   "authors": [
+    "Patrick Lewis",
+    "Ethan Perez",
+    "Aleksandra Piktus",
+    "Fabio Petroni",
+    "Vladimir Karpukhin",
+    "Naman Goyal",
+    "Heinrich Küttler",
+    "Mike Lewis",
+    "Wen-tau Yih",
+    "Tim Rocktäschel",
+    "Sebastian Riedel",
+    "Douwe Kiela"
+   ],
+   "year": "2020",
+   "primary_category": "cs.CL",
+   "source": "https://arxiv.org/abs/2005.11401"
+  },
+  {
+   "id": "2001.08361",
+   "title": "Scaling Laws for Neural Language Models",
+   "authors": [
+    "Jared Kaplan",
+    "Sam McCandlish",
+    "Tom Henighan",
+    "Tom B. Brown",
+    "Benjamin Chess",
+    "Rewon Child",
+    "Scott Gray",
+    "Alec Radford",
+    "Jeffrey Wu",
+    "Dario Amodei"
+   ],
+   "year": "2020",
+   "primary_category": "cs.LG",
+   "source": "https://arxiv.org/abs/2001.08361"
+  },
+  {
+   "id": "2203.15556",
+   "title": "Training Compute-Optimal Large Language Models",
+   "authors": [
+    "Jordan Hoffmann",
+    "Sebastian Borgeaud",
+    "Arthur Mensch",
+    "Elena Buchatskaya",
+    "Trevor Cai",
+    "Eliza Rutherford",
+    "Diego de Las Casas",
+    "Lisa Anne Hendricks",
+    "Johannes Welbl",
+    "Aidan Clark",
+    "Tom Hennigan",
+    "Eric Noland",
+    "Katie Millican",
+    "George van den Driessche",
+    "Bogdan Damoc",
+    "Aurelia Guy",
+    "Simon Osindero",
+    "Karen Simonyan",
+    "Erich Elsen",
+    "Jack W. Rae",
+    "Oriol Vinyals",
+    "Laurent Sifre"
+   ],
+   "year": "2022",
+   "primary_category": "cs.CL",
+   "source": "https://arxiv.org/abs/2203.15556"
+  },
+  {
+   "id": "1909.08053",
+   "title": "Megatron-LM: Training Multi-Billion Parameter Language Models Using Model Parallelism",
+   "authors": [
+    "Mohammad Shoeybi",
+    "Mostofa Patwary",
+    "Raul Puri",
+    "Patrick LeGresley",
+    "Jared Casper",
+    "Bryan Catanzaro"
+   ],
+   "year": "2019",
+   "primary_category": "cs.CL",
+   "source": "https://arxiv.org/abs/1909.08053"
+  },
+  {
+   "id": "1910.02054",
+   "title": "ZeRO: Memory Optimizations Toward Training Trillion Parameter Models",
+   "authors": [
+    "Samyam Rajbhandari",
+    "Jeff Rasley",
+    "Olatunji Ruwase",
+    "Yuxiong He"
+   ],
+   "year": "2019",
+   "primary_category": "cs.LG",
+   "source": "https://arxiv.org/abs/1910.02054"
+  },
+  {
+   "id": "2205.14135",
+   "title": "FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness",
+   "authors": [
+    "Tri Dao",
+    "Daniel Y. Fu",
+    "Stefano Ermon",
+    "Atri Rudra",
+    "Christopher Ré"
+   ],
+   "year": "2022",
+   "primary_category": "cs.LG",
+   "source": "https://arxiv.org/abs/2205.14135"
+  },
+  {
+   "id": "2210.03629",
+   "title": "ReAct: Synergizing Reasoning and Acting in Language Models",
+   "authors": [
+    "Shunyu Yao",
+    "Jeffrey Zhao",
+    "Dian Yu",
+    "Nan Du",
+    "Izhak Shafran",
+    "Karthik Narasimhan",
+    "Yuan Cao"
+   ],
+   "year": "2022",
+   "primary_category": "cs.CL",
+   "source": "https://arxiv.org/abs/2210.03629"
+  },
+  {
+   "id": "2305.18290",
+   "title": "Direct Preference Optimization: Your Language Model is Secretly a Reward Model",
+   "authors": [
+    "Rafael Rafailov",
+    "Archit Sharma",
+    "Eric Mitchell",
+    "Stefano Ermon",
+    "Christopher D. Manning",
+    "Chelsea Finn"
+   ],
+   "year": "2023",
+   "primary_category": "cs.LG",
+   "source": "https://arxiv.org/abs/2305.18290"
+  },
+  {
+   "id": "2212.08073",
+   "title": "Constitutional AI: Harmlessness from AI Feedback",
+   "authors": [
+    "Yuntao Bai",
+    "Saurav Kadavath",
+    "Sandipan Kundu",
+    "Amanda Askell",
+    "Jackson Kernion",
+    "Andy Jones",
+    "Anna Chen",
+    "Anna Goldie",
+    "Azalia Mirhoseini",
+    "Cameron McKinnon",
+    "Carol Chen",
+    "Catherine Olsson",
+    "Christopher Olah",
+    "Danny Hernandez",
+    "Dawn Drain",
+    "Deep Ganguli",
+    "Dustin Li",
+    "Eli Tran-Johnson",
+    "Ethan Perez",
+    "Jamie Kerr",
+    "Jared Mueller",
+    "Jeffrey Ladish",
+    "Joshua Landau",
+    "Kamal Ndousse",
+    "Kamile Lukosuite",
+    "Liane Lovitt",
+    "Michael Sellitto",
+    "Nelson Elhage",
+    "Nicholas Schiefer",
+    "Noemi Mercado",
+    "Nova DasSarma",
+    "Robert Lasenby",
+    "Robin Larson",
+    "Sam Ringer",
+    "Scott Johnston",
+    "Shauna Kravec",
+    "Sheer El Showk",
+    "Stanislav Fort",
+    "Tamera Lanham",
+    "Timothy Telleen-Lawton",
+    "Tom Conerly",
+    "Tom Henighan",
+    "Tristan Hume",
+    "Samuel R. Bowman",
+    "Zac Hatfield-Dodds",
+    "Ben Mann",
+    "Dario Amodei",
+    "Nicholas Joseph",
+    "Sam McCandlish",
+    "Tom Brown",
+    "Jared Kaplan"
+   ],
+   "year": "2022",
+   "primary_category": "cs.CL",
+   "source": "https://arxiv.org/abs/2212.08073"
+  },
+  {
+   "id": "1706.03741",
+   "title": "Deep reinforcement learning from human preferences",
+   "authors": [
+    "Paul Christiano",
+    "Jan Leike",
+    "Tom B. Brown",
+    "Miljan Martic",
+    "Shane Legg",
+    "Dario Amodei"
+   ],
+   "year": "2017",
+   "primary_category": "stat.ML",
+   "source": "https://arxiv.org/abs/1706.03741"
+  },
+  {
+   "id": "2104.09864",
+   "title": "RoFormer: Enhanced Transformer with Rotary Position Embedding",
+   "authors": [
+    "Jianlin Su",
+    "Yu Lu",
+    "Shengfeng Pan",
+    "Ahmed Murtadha",
+    "Bo Wen",
+    "Yunfeng Liu"
+   ],
+   "year": "2021",
+   "primary_category": "cs.CL",
+   "source": "https://arxiv.org/abs/2104.09864"
+  },
+  {
+   "id": "1901.02860",
+   "title": "Transformer-XL: Attentive Language Models Beyond a Fixed-Length Context",
+   "authors": [
+    "Zihang Dai",
+    "Zhilin Yang",
+    "Yiming Yang",
+    "Jaime Carbonell",
+    "Quoc V. Le",
+    "Ruslan Salakhutdinov"
+   ],
+   "year": "2019",
+   "primary_category": "cs.LG",
+   "source": "https://arxiv.org/abs/1901.02860"
+  },
+  {
+   "id": "1906.08237",
+   "title": "XLNet: Generalized Autoregressive Pretraining for Language Understanding",
+   "authors": [
+    "Zhilin Yang",
+    "Zihang Dai",
+    "Yiming Yang",
+    "Jaime Carbonell",
+    "Ruslan Salakhutdinov",
+    "Quoc V. Le"
+   ],
+   "year": "2019",
+   "primary_category": "cs.CL",
+   "source": "https://arxiv.org/abs/1906.08237"
+  },
+  {
+   "id": "1909.11942",
+   "title": "ALBERT: A Lite BERT for Self-supervised Learning of Language Representations",
+   "authors": [
+    "Zhenzhong Lan",
+    "Mingda Chen",
+    "Sebastian Goodman",
+    "Kevin Gimpel",
+    "Piyush Sharma",
+    "Radu Soricut"
+   ],
+   "year": "2019",
+   "primary_category": "cs.CL",
+   "source": "https://arxiv.org/abs/1909.11942"
+  },
+  {
+   "id": "1910.01108",
+   "title": "DistilBERT, a distilled version of BERT: smaller, faster, cheaper and lighter",
+   "authors": [
+    "Victor Sanh",
+    "Lysandre Debut",
+    "Julien Chaumond",
+    "Thomas Wolf"
+   ],
+   "year": "2019",
+   "primary_category": "cs.CL",
+   "source": "https://arxiv.org/abs/1910.01108"
+  },
+  {
+   "id": "2002.05709",
+   "title": "A Simple Framework for Contrastive Learning of Visual Representations",
+   "authors": [
+    "Ting Chen",
+    "Simon Kornblith",
+    "Mohammad Norouzi",
+    "Geoffrey Hinton"
+   ],
+   "year": "2020",
+   "primary_category": "cs.LG",
+   "source": "https://arxiv.org/abs/2002.05709"
+  },
+  {
+   "id": "1911.05722",
+   "title": "Momentum Contrast for Unsupervised Visual Representation Learning",
+   "authors": [
+    "Kaiming He",
+    "Haoqi Fan",
+    "Yuxin Wu",
+    "Saining Xie",
+    "Ross Girshick"
+   ],
+   "year": "2019",
+   "primary_category": "cs.CV",
+   "source": "https://arxiv.org/abs/1911.05722"
+  },
+  {
+   "id": "2111.06377",
+   "title": "Masked Autoencoders Are Scalable Vision Learners",
+   "authors": [
+    "Kaiming He",
+    "Xinlei Chen",
+    "Saining Xie",
+    "Yanghao Li",
+    "Piotr Dollár",
+    "Ross Girshick"
+   ],
+   "year": "2021",
+   "primary_category": "cs.CV",
+   "source": "https://arxiv.org/abs/2111.06377"
+  },
+  {
+   "id": "2004.05150",
+   "title": "Longformer: The Long-Document Transformer",
+   "authors": [
+    "Iz Beltagy",
+    "Matthew E. Peters",
+    "Arman Cohan"
+   ],
+   "year": "2020",
+   "primary_category": "cs.CL",
+   "source": "https://arxiv.org/abs/2004.05150"
+  },
+  {
+   "id": "1701.06538",
+   "title": "Outrageously Large Neural Networks: The Sparsely-Gated Mixture-of-Experts Layer",
+   "authors": [
+    "Noam Shazeer",
+    "Azalia Mirhoseini",
+    "Krzysztof Maziarz",
+    "Andy Davis",
+    "Quoc Le",
+    "Geoffrey Hinton",
+    "Jeff Dean"
+   ],
+   "year": "2017",
+   "primary_category": "cs.LG",
+   "source": "https://arxiv.org/abs/1701.06538"
+  },
+  {
+   "id": "2101.03961",
+   "title": "Switch Transformers: Scaling to Trillion Parameter Models with Simple and Efficient Sparsity",
+   "authors": [
+    "William Fedus",
+    "Barret Zoph",
+    "Noam Shazeer"
+   ],
+   "year": "2021",
+   "primary_category": "cs.LG",
+   "source": "https://arxiv.org/abs/2101.03961"
+  },
+  {
+   "id": "1502.05477",
+   "title": "Trust Region Policy Optimization",
+   "authors": [
+    "John Schulman",
+    "Sergey Levine",
+    "Philipp Moritz",
+    "Michael I. Jordan",
+    "Pieter Abbeel"
+   ],
+   "year": "2015",
+   "primary_category": "cs.LG",
+   "source": "https://arxiv.org/abs/1502.05477"
+  },
+  {
+   "id": "1509.02971",
+   "title": "Continuous control with deep reinforcement learning",
+   "authors": [
+    "Timothy P. Lillicrap",
+    "Jonathan J. Hunt",
+    "Alexander Pritzel",
+    "Nicolas Heess",
+    "Tom Erez",
+    "Yuval Tassa",
+    "David Silver",
+    "Daan Wierstra"
+   ],
+   "year": "2015",
+   "primary_category": "cs.LG",
+   "source": "https://arxiv.org/abs/1509.02971"
+  },
+  {
+   "id": "1801.01290",
+   "title": "Soft Actor-Critic: Off-Policy Maximum Entropy Deep Reinforcement Learning with a Stochastic Actor",
+   "authors": [
+    "Tuomas Haarnoja",
+    "Aurick Zhou",
+    "Pieter Abbeel",
+    "Sergey Levine"
+   ],
+   "year": "2018",
+   "primary_category": "cs.LG",
+   "source": "https://arxiv.org/abs/1801.01290"
+  }
+ ]
+}
