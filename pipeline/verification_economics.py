@@ -36,7 +36,7 @@ def verification_econ(score: float, prev: float, budget: int=3, threshold: float
             "coherence": "OODA 20/30/10/30/10 Observe/Orient/Decide/Act/Feedback log timeline.jsonl even no-change",
             "tool_failures": "FailureTaxonomy5 + SideEffectClasses + bounded ladder retry1→patch→replan→escalate cannot skip",
             "hallucination": "provenance-honest — every number travels with source, unreachable labelled never faked",
-            "comms_quality": "HandoffEnvelope 7 required, ScoutCommsBus sub-swarm 3-5 medium, relevantAgents cap 5-6, 13 only epic",
+            "comms_quality": "handoff = a jarvisd message (jarvis.send/inbox) or scout comms; sub-swarm 3-5 medium, relevantAgents cap 5-6, 13 only epic",
         },
         "hamster_guard":"PEC without memory hamster wheel — memory is difference iteration→improvement DAG version++ immediate lattice write BLOCKED/DONE/PLANNED not metrics-dance",
         "memory_is_diff":"Memory is difference iteration→improvement, 1500 chars immediate write BLOCKED episodic vs semantic vs working",
