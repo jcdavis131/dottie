@@ -630,13 +630,15 @@
       "title": "Real executors for outcome labels: runner executors that do real work so outcomes are `executor: real` and `scout router pack` has real labels (stub outcomes stay excluded)",
       "repo": "dottie",
       "kind": "infra",
-      "status": "blocked",
+      "status": "in_progress",
       "priority": 1,
       "size": "L",
       "depends_on": [
         "decision-plane-phase1"
       ],
-      "acceptance": "a production `scout harness run` over a real executor writes an outcome with executor: real; `scout router pack` builds a pack from real-executor outcomes only, MANIFEST.json executors.real > 0"
+      "acceptance": "a production `scout harness run` over a real executor writes an outcome with executor: real; `scout router pack` builds a pack from real-executor outcomes only, MANIFEST.json executors.real > 0",
+      "evidence": "apps/scout-cli/bigbang/plugins/harness/executors/ (deterministic, llm, deep_research, action via MCP; probe); dottie_loop provenance/verifiers/mlp_train, production-gated eval + spot-check; router_bench_v1.jsonl (221 goals); build container probe: 86 labeled deterministic, 44 upper-bound deep_research, llm unavailable; gate refused (0 production rows)",
+      "notes": "Open on the owner's host: Ollama up, production `scout harness run` traces with every node real (MANIFEST executors.real > 0 from production), then a gate run with >= 50 production rows. docs/ROUTER_LABELS_RUNBOOK.md"
     },
     {
       "id": "harness-api-jarvisd-proxy",
