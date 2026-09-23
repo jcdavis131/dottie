@@ -1,9 +1,9 @@
 # Scout Integration STAT — v0.6.0
 
 ## Repos
-- **scout-cli**: https://github.com/jcdavis131/scout-cli — primary control plane, cmd `scout`
-- **scout-rtx**: https://github.com/jcdavis131/scout-rtx — Alienware RTX offload fork
-- **dottie**: https://github.com/jcdavis131/dottie — monorepo home: `apps/scout-cli`, `apps/scout-rtx`, `apps/ava-factory`, `packages/personal-graphify` (standalone clones above keep working; set `DOTTIE_ROOT` to prefer the monorepo)
+- **Dottie** (the platform): https://github.com/jcdavis131/dottie. This monorepo holds scout, the router, System One, the dottie-os curation mirror and the sites.
+- **scout** (Dottie's CLI, command `scout`): https://github.com/jcdavis131/dottie/tree/main/apps/scout-cli. The standalone `jcdavis131/scout-cli` repo is superseded.
+- **scout-rtx**: `apps/scout-rtx` in the monorepo (Alienware RTX offload); https://github.com/jcdavis131/scout-rtx is the standalone copy.
 
 ## Integration
 1. scout-cli includes `rtx` plugin (bigbang/plugins/rtx/) — status/queue/results/programs/dashboard/sync
@@ -12,10 +12,11 @@
 
 ## Install everywhere
 ```bash
-pip install git+https://github.com/jcdavis131/scout-cli.git
+uv tool install "git+https://github.com/jcdavis131/dottie#subdirectory=apps/scout-cli"
 scout --help
 scout rtx status
 ```
+Working from a checkout: `uv sync --all-groups` at the repo root, then `uv run scout ...`.
 
 On Alienware:
 ```powershell
