@@ -78,6 +78,12 @@
       "shape": "fail-open-dispatch",
       "code": "def _weight_for(...)  dispatches on 'k' across 3 `==` branches",
       "judgment": "Scoring-weight lookup (_weight_for). Unknown key falls to a default weight; affects ranking, gates nothing."
+    },
+    {
+      "file": "packages/dottie-loop/tests/test_recovery_ladder_one_copy.py",
+      "shape": "fail-open-dispatch",
+      "code": "def _oracle(...)  dispatches on 'attempt' across 3 `==` branches",
+      "judgment": "ACCEPTED 2026-09-23. A TEST ORACLE, not a gate: a verbatim copy of pipeline/recovery_ladder.py's recovery_ladder as it was at fa04d85, kept frozen so tests can prove dottie_loop.execution.recovery_ladder (the one implementation, a rung table with a fail-closed default) makes the same decision for every input. Its fall-through is the ladder's terminal `escalate` rung, fail-closed. Restructuring it would defeat its purpose as the reference."
     }
   ]
 }
