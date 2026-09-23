@@ -167,6 +167,16 @@ def cmd_forge_submit(a: argparse.Namespace) -> dict[str, Any]:
     return {"job_id": spec.job_id, "queued": str(p), "status": "accepted", "note": "queued, not executed"}
 
 
+def cmd_bench_decide(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop import bench_decide
+
+    only = tuple(a.only) if a.only else bench_decide.SCENARIOS
+    unknown = sorted(set(only) - set(bench_decide.SCENARIOS))
+    if unknown:
+        raise InvalidInputError(f"unknown scenario(s) {unknown}; one of {list(bench_decide.SCENARIOS)}", field="only")
+    return bench_decide.run(a.n, a.cold_n, only)
+
+
 def cmd_bench_smoke(a: argparse.Namespace) -> dict[str, Any]:
     from dottie_loop.bench import (
         Step,
@@ -665,6 +675,11 @@ def build_parser() -> argparse.ArgumentParser:
     s = be.add_parser("smoke")
     s.add_argument("--commit")
     s.set_defaults(fn=cmd_bench_smoke)
+    s = be.add_parser("decide", help="decision latency: scout cold route, in-process, jarvisd warm, System One (measured here)")
+    s.add_argument("--n", type=int, default=50, help="samples per warm scenario")
+    s.add_argument("--cold-n", type=int, default=10, help="samples for the subprocess scenario")
+    s.add_argument("--only", action="append", help="run only these scenarios (repeatable)")
+    s.set_defaults(fn=cmd_bench_decide)
 
     fb = sub.add_parser("feedback").add_subparsers(dest="sub", required=True)
     s = fb.add_parser("record", help="attach accept|reject|edit|apply|dismiss to a captured run and recompute its reward")

@@ -32,6 +32,7 @@ app = make_plugin_app(
         "scout --json router train --pack ~/dottie-packs/router-001",
         "scout --json router eval --pack ~/dottie-packs/router-001 --checkpoint runs/router-001",
         "scout --json router promote runs/router-001 --i-have-reviewed --by cam",
+        "scout --json router bench --n 50",
     ],
 )
 
@@ -176,6 +177,27 @@ def eval_cmd(
     emit(ok({"eval_summary": str(path), "gate_passed": summary["gate_passed"], "metrics": summary["metrics"],
              "failed_gates": summary["gates"]["failed"], "promotion": summary["promotion"]},
             command="router eval"), "router eval")
+
+
+@app.command("bench")
+def bench_cmd(
+    n: int = typer.Option(50, "--n", help="samples per warm scenario"),
+    cold_n: int = typer.Option(10, "--cold-n", help="samples for the cold `scout route` subprocess"),
+    only: list[str] = typer.Option(None, "--only", help="run only these scenarios (repeatable)"),
+):
+    """Decision latency, measured on this box: cold `scout route`, in-process, jarvisd warm, System One.
+
+    Starts its own jarvisd and serve_decide on loopback with temp state; writes nothing real.
+    """
+    from dottie_loop import bench_decide
+
+    chosen = tuple(only) if only else bench_decide.SCENARIOS
+    unknown = sorted(set(chosen) - set(bench_decide.SCENARIOS))
+    if unknown:
+        _fail("router bench", f"unknown scenario(s) {unknown}; one of {list(bench_decide.SCENARIOS)}")
+    report = bench_decide.run(n, cold_n, chosen)
+    report["table"] = bench_decide.format_table(report)
+    emit(ok(report, command="router bench"), "router bench")
 
 
 @app.command("promote")
