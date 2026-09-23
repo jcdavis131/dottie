@@ -1,5 +1,12 @@
 # Harbor + Flywheel — Dottie Edition
 
+> **Historical (2026-09-23).** The `src/harness` tree this page cites was
+> deleted: nothing imported it, and its top-level name collided with
+> `packages/ava-open-harness`'s real `harness` package (which CI smoke-tests
+> with `python -m harness --help`). The code is in git history before the
+> decision-plane change. The live eval harness is `packages/ava-open-harness`;
+> see docs/ARCHITECTURE.md.
+
 > Maps Sequoia Capital Own Your Intelligence talk + Harbor benchmarking idea + LangSmith Engine flywheel to Dottie's zero-deps evals port
 
 Zero-deps only, honest 503, LCG both chains 20260813→189831298 idx3820 triple[11205,19448,14209] + 20260818→1412440227 idx5278 triple[13791,10902,19455] same-link-same-stars ?daily=YYYYMMDD&n=1/3/5 Solo1 Triple3 Full5
