@@ -58,6 +58,73 @@ def next_recovery_action(error_class: str, attempt: int, max_retries: int = 1) -
     return "escalate"
 
 
+# --- the harness recovery ladder (scout harness run, pipeline/) -------------------
+#
+# THE one implementation of the side-effect-gated ladder scout's runner walks
+# (retry1 -> patch -> replan -> escalate). pipeline/recovery_ladder.py and
+# pipeline/checkpoint_manager.py re-export it; scout's runner imports it; the
+# old bundles/ultra/recovery-ladder.js and the runner's inline replica are gone.
+# next_recovery_action above is the spec's error-CLASS view of the same rung
+# order (LADDER); this one takes the failure taxonomy + side-effect class.
+# Decisions are identical to the pipeline/recovery_ladder.py it replaces
+# (tests/test_recovery_ladder_one_copy.py pins every input combination).
+
+FAILURE_TAXONOMY = ("INPUT_CORRUPTION", "CONTEXT_STARVATION", "TOOL_FAILURE", "REASONING_COLLAPSE", "OUTPUT_CORRUPTION")
+SIDE_EFFECT_CLASSES: dict[str, dict[str, Any]] = {
+    "READ": {"idempotent": True, "auto": True, "description": "safe unlimited, schema+sandbox 30s"},
+    "WRITE_IDEMPOTENT": {"idempotent": True, "auto": "1x check", "description": "idempotent re-write allowed once, then re-read to confirm"},
+    "WRITE_DESTRUCTIVE": {"idempotent": False, "auto": False, "description": "never auto — needs human gate, bio-map Remodeling"},
+    "EXTERNAL_NOTIFY": {"idempotent": False, "auto": False, "description": "never speculative — requires explicit user approval"},
+}
+_HUMAN_GATED = frozenset({"WRITE_DESTRUCTIVE", "EXTERNAL_NOTIFY"})
+_RUNGS: dict[int, dict[str, Any]] = {
+    1: {"action": "retry1", "bio": "Hemostasis — stop bleeding, retry exact", "next_if_fail": "patch"},
+    2: {"action": "patch", "fix": "single-resp patch — fix concrete file:line evidence, no reformat ocean",
+        "bio": "Inflammation — narrow scope, one file, one resp", "next_if_fail": "replan"},
+    3: {"action": "replan", "dag_version_inc": True, "bounded": True,
+        "bio": "Proliferation — pure-function DAG re-plan, version++ never mutate in place", "next_if_fail": "escalate"},
+}
+
+
+def recovery_ladder(error_class: str, side_effect: str, attempt: int) -> dict[str, Any]:
+    """The rung for ``attempt`` (1-based). Fail-closed: human-gated side effects and
+    any attempt outside 1..3 escalate; unknown classes are coerced, never trusted."""
+    if error_class not in FAILURE_TAXONOMY:
+        error_class = "TOOL_FAILURE"
+    if side_effect not in SIDE_EFFECT_CLASSES:
+        side_effect = "READ"
+    if side_effect in _HUMAN_GATED:
+        return {"action": "escalate", "reason": f"{side_effect} never auto — needs human gate", "attempt": attempt,
+                "errorClass": error_class, "sideEffect": side_effect, "bounded": True,
+                "bio_map": "Remodeling — human gate, parallel true"}
+    rung = _RUNGS.get(attempt) if isinstance(attempt, int) and not isinstance(attempt, bool) else None
+    if rung is None:
+        return {"action": "escalate", "attempt": attempt, "errorClass": error_class, "sideEffect": side_effect,
+                "bounded": True, "bio": "Remodeling — human gate, visible abandonment",
+                "reason": "3 attempts exhausted — escalate with evidence packet"}
+    out: dict[str, Any] = {"action": rung["action"], "attempt": attempt, "errorClass": error_class, "sideEffect": side_effect}
+    if attempt == 1:
+        out["safe"] = side_effect in ("READ", "WRITE_IDEMPOTENT")
+    out.update({k: v for k, v in rung.items() if k != "action"})
+    return out
+
+
+def contextual_recovery_table() -> dict[str, dict[str, str]]:
+    return {
+        "INPUT_CORRUPTION": {"retry1": "validate schema, coerce missing, fallback default", "patch": "add guard clause, file:line evidence", "replan": "change node input type to require validated dict"},
+        "CONTEXT_STARVATION": {"retry1": "re-read MEMORY.md + lattice 1-2 hops", "patch": "inject curated context pack", "replan": "split node — Observe fresh imperfect snapshot 20%"},
+        "TOOL_FAILURE": {"retry1": "tool retry with backoff 30s×2", "patch": "switch tool adapter (openai→anthropic)", "replan": "pure-function invocation wrapper"},
+        "REASONING_COLLAPSE": {"retry1": "add 7-step bound, Orient lattice+culture+exp", "patch": "lateral lens ONE only — inversion", "replan": "strategist 3-lens optimistic/pessimistic/strange"},
+        "OUTPUT_CORRUPTION": {"retry1": "validate output json schema", "patch": "add missing required field", "replan": "builder self-contained artifact check"},
+    }
+
+
+def explain_ladder(error_class: str, side_effect: str, attempt: int) -> str:
+    ladder = recovery_ladder(error_class, side_effect, attempt)
+    table = contextual_recovery_table().get(error_class, {})
+    return f"Ladder {attempt} {error_class}/{side_effect} → {ladder['action']}: {table.get(ladder['action'], ladder.get('reason', ''))}"
+
+
 # --- §11 verifier budget ---------------------------------------------------------
 
 VERIFIER_MIN_SCORE = 8.0

@@ -33,7 +33,9 @@ learned answer is advisory, logged and displayed but never acted on.
 
 from __future__ import annotations
 
+import inspect
 import re
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -221,6 +223,7 @@ def route_goal(
     hard_constraint: dict[str, Any] | None = None,
     surface: str = "dottie_loop",
     trace: bool = True,
+    context: Any = None,
 ) -> dict[str, Any]:
     """Route a goal string. Default behaviour is exactly MoMA-lite's decision.
 
@@ -237,6 +240,11 @@ def route_goal(
     decision, and adds ``spec_tier``, ``authority``, ``heuristic_tier``,
     ``advisory`` (each backend's answer and whether it was authoritative) and
     ``trace`` (where the trace line went).
+
+    ``context`` (a :class:`dottie_loop.context.DecisionContext`) is handed to
+    every backend whose ``answer`` accepts it (System One puts its bounded
+    summary in the ``/decide`` state) and its summary is written to the trace
+    with the served state's hash. Each advisory answer carries ``latency_ms``.
     """
     from dottie_loop import traces
     from dottie_loop.backends import MOMA_TIERS, HeuristicBackend, goal_features
@@ -267,7 +275,9 @@ def route_goal(
     authority = "heuristic"
     if hard_constraint is None:
         for b in backends if backends is not None else default_backends():
-            ans = dict(b.answer(goal))
+            t0 = time.perf_counter()
+            ans = dict(_ask(b, goal, context))
+            ans["latency_ms"] = round((time.perf_counter() - t0) * 1000.0, 3)
             ans["stamped"] = False
             authoritative = False
             if is_authoritative(ans):
@@ -295,8 +305,22 @@ def route_goal(
         "policy": "dottie_loop.router.route_goal",
     }
     out["trace"] = (
-        traces.record_route(out, surface=surface, goal=goal, features=goal_features(goal))
+        traces.record_route(out, surface=surface, goal=goal, features=goal_features(goal), context=context)
         if trace
         else {"trace_id": None, "path": None}
     )
     return out
+
+
+def _accepts_context(backend: Any) -> bool:
+    try:
+        return "context" in inspect.signature(backend.answer).parameters
+    except (TypeError, ValueError):
+        return False
+
+
+def _ask(backend: Any, goal: str, context: Any) -> dict[str, Any]:
+    """``backend.answer(goal[, context=...])``: context only for backends that take it."""
+    if context is not None and _accepts_context(backend):
+        return backend.answer(goal, context=context)
+    return backend.answer(goal)

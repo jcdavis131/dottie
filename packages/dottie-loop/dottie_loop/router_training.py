@@ -18,6 +18,11 @@ pack
     * ``safe`` (Noul): 1.0 on success, 0.0 when refused, else ok_nodes/n_nodes.
     * ``severity`` (Score 0-1): failed_nodes/n_nodes (absent when refused).
 
+    Outcomes observed by stub executors (``executor: stub``; untagged pre-tag
+    traces, whose executors were all stubs, likewise) never label a row and
+    are counted in the manifest's ``executors``. The state is rebuilt with the
+    same :func:`dottie_loop.backends.system_one_state` the router serves with,
+    and a trace carrying ``state_sha256`` must rebuild to that exact hash.
     Test rows are refused, routes with no outcome are skipped (so are partial
     ``--max-nodes`` runs and injected test failures), identical
     records are deduped, contradictory ones dropped on both sides, and at
@@ -47,6 +52,7 @@ from typing import Any
 from dottie_loop.backends import (
     MOMA_TIERS,
     TIER_ORDER,
+    state_sha256,
     system_one_questions,
     system_one_state,
 )
@@ -196,20 +202,37 @@ def pack(
         rejects["unreadable line"] += unreadable
     built: list[dict[str, Any]] = []
     questions_all = system_one_questions()
+    executor_counts: Counter = Counter()
     for row in join_outcomes(rows):
         if row.get("source") != "production" or (row.get("outcome") is not None and row.get("outcome_source") != "production"):
             rejects["refused: source is not production (test/synthetic rows never train)"] += 1
             continue
+        outcome = row.get("outcome")
+        if isinstance(outcome, dict):
+            executor = outcome.get("executor")
+            if executor == "stub":
+                executor_counts["stub"] += 1
+                rejects["refused: stub executor (the outcome observed a stub, not real work)"] += 1
+                continue
+            if executor is None:
+                executor_counts["untagged"] += 1
+                rejects["refused: outcome has no executor tag (pre-tag trace; its executors were stubs)"] += 1
+                continue
+            executor_counts[str(executor)] += 1
         got = observed_labels(row, corrections)
         if got is None:
             rejects["no observed outcome"] += 1
             continue
         labels, label_source = got
         feats = row.get("features") or {}
+        state = system_one_state(row.get("goal_text"), row.get("context"), features=feats, include_text=True)
+        if row.get("state_sha256") and state_sha256(state) != row["state_sha256"]:
+            rejects["refused: rebuilt state does not match the served state (train/serve drift)"] += 1
+            continue
         record = {
             "schema": SCHEMA_ID,
             "id": f"rt-{row['trace_id']}",
-            "state": system_one_state(feats, row.get("goal_text")),
+            "state": state,
             "questions": {q: questions_all[q] for q in labels},
             "labels": labels,
         }
@@ -233,6 +256,8 @@ def pack(
                 "authority": (row.get("decision") or {}).get("authority"),
                 "label_source": label_source,
                 "goal_text_captured": "goal_text" in record["state"],
+                "context_digest": (record["state"].get("context") or {}).get("digest"),
+                "executor": (row.get("outcome") or {}).get("executor"),
             },
         })
 
@@ -290,6 +315,9 @@ def pack(
             "label_sources": dict(Counter(b["meta"]["label_source"] for b in kept)),
         },
         "goal_text_captured": sum(1 for b in kept if b["meta"]["goal_text_captured"]),
+        "with_context": sum(1 for b in kept if b["meta"]["context_digest"]),
+        "executors": {"real": executor_counts.get("real", 0), "stub_excluded": executor_counts.get("stub", 0),
+                      "untagged_excluded": executor_counts.get("untagged", 0)},
         "rejected": dict(rejects),
         "files": {n: {"sha256": _sha256(out_dir / n), "bytes": (out_dir / n).stat().st_size} for n in PACK_FILES},
         "sources": {str(p): _sha256(p) for p in sorted(trace_files) if p.is_file()},
@@ -297,6 +325,8 @@ def pack(
         "rules": [
             "rows are real production harness traces only; test/synthetic rows are refused",
             "labels are observed outcomes (success at the routed tier, failure/escalation, refusal) or operator corrections",
+            "outcomes from stub executors (executor: stub, or untagged pre-tag traces) never label a row; they are counted in executors",
+            "state is rebuilt with the same system_one_state builder the router serves; a trace whose state_sha256 does not match is refused",
             "holdout is whole goals (>= 20% of rows); no goal straddles the split",
             "consent.champion=false: a pack never promotes anything; promotion is a human stamp",
         ],

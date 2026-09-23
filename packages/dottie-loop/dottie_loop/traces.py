@@ -79,9 +79,25 @@ def new_trace_id() -> str:
     return f"rt_{uuid.uuid4().hex[:20]}"
 
 
-def record_route(decision: dict[str, Any], *, surface: str, goal: str, features: dict[str, Any]) -> dict[str, Any]:
-    """Append the route line. Returns ``{"trace_id", "path"}`` (path None when not written)."""
-    from dottie_loop.backends import trace_text_enabled
+def record_route(
+    decision: dict[str, Any],
+    *,
+    surface: str,
+    goal: str,
+    features: dict[str, Any],
+    context: Any = None,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Append the route line. Returns ``{"trace_id", "path"}`` (path None when not written).
+
+    With a decision ``context`` the line also stores the context summary exactly
+    as System One was served it (private texts only under the opt-in) and
+    ``state_sha256``, the hash of :func:`dottie_loop.backends.system_one_state`
+    for this goal + context, so ``scout router pack`` can rebuild the same state
+    and prove it did. ``extra`` adds decision-record fields (latency, cache).
+    """
+    from dottie_loop.backends import state_sha256, system_one_state, trace_text_enabled
+    from dottie_loop.context import context_summary
 
     trace_id = new_trace_id()
     row: dict[str, Any] = {
@@ -105,6 +121,12 @@ def record_route(decision: dict[str, Any], *, surface: str, goal: str, features:
     }
     if trace_text_enabled():
         row["goal_text"] = goal
+    summary = context_summary(context)
+    if summary is not None:
+        row["context"] = summary
+        row["state_sha256"] = state_sha256(system_one_state(goal, summary, features=features))
+    if extra:
+        row["decision_record"] = extra
     return {"trace_id": trace_id, "path": _append(row)}
 
 
