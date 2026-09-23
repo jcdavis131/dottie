@@ -14,6 +14,21 @@ epic). Decision order, in the spec's order:
 The router must not use private attributes unrelated to the task. When a learned
 model exists but its gate is false, the heuristic route stays authoritative
 wherever they disagree; when no artifact is loaded, ``learned`` is null.
+
+Two front doors, one policy:
+
+* :func:`route` takes spec :class:`RoutingFeatures` (the RT-03 goldens).
+* :func:`route_goal` takes a goal string. It is what scout (``scout route``,
+  ``scout harness route``, ``scout harness run``) and jarvisd call. Its
+  heuristic is MoMA-lite (:class:`dottie_loop.backends.HeuristicBackend`), its
+  optional advisors are the orchestrator MLP and System One over ``/decide``,
+  and it appends a trace line (:mod:`dottie_loop.traces`) for the training loop.
+
+Both apply the same learned-advice rule (:func:`_take_learned`): a learned
+answer moves the tier only when it is authoritative and equal-or-cheaper.
+Authority for :func:`route_goal` additionally needs a human stamp
+(:mod:`dottie_loop.router_artifacts`); nothing is stamped today, so every
+learned answer is advisory, logged and displayed but never acted on.
 """
 
 from __future__ import annotations
@@ -101,6 +116,22 @@ def validate_learned(artifact: dict[str, Any] | None) -> dict[str, Any] | None:
     return {"model": str(artifact["model"]), "tier": artifact["tier"], "confidence": float(artifact["confidence"]), "gate_passed": bool(artifact["gate_passed"]), "provenance": str(artifact["provenance"])}
 
 
+def _take_learned(tier: str, learned_tier: str, excluded: set[str]) -> tuple[str, bool]:
+    """Step 4: an authoritative learned tier may only pick an equal-or-cheaper, non-excluded tier."""
+    if learned_tier in TIERS and learned_tier not in excluded and TIERS.index(learned_tier) <= TIERS.index(tier):
+        return learned_tier, True
+    return tier, False
+
+
+def _escalate(tier: str, insufficiency: dict[str, Any] | None) -> str:
+    """Step 6: one tier up, and only after a RECORDED insufficiency."""
+    if insufficiency is None:
+        return tier
+    if not insufficiency.get("recorded_at") or not insufficiency.get("error_class"):
+        raise InvalidInputError("escalation requires a recorded insufficiency (recorded_at, error_class)", "insufficiency")
+    return TIERS[min(TIERS.index(tier) + 1, len(TIERS) - 1)]
+
+
 def route(f: RoutingFeatures, *, learned_artifact: dict[str, Any] | None = None, policy_exclusions: set[str] | None = None, insufficiency: dict[str, Any] | None = None) -> dict[str, Any]:
     """The §08 router output. ``insufficiency`` is a RECORDED prior failure that permits escalation."""
     excluded = policy_exclusions or set()
@@ -119,20 +150,16 @@ def route(f: RoutingFeatures, *, learned_artifact: dict[str, Any] | None = None,
     # 4. learned advice
     learned = validate_learned(learned_artifact)
     authority = "heuristic"
-    if learned is not None and learned["gate_passed"] and learned["tier"] not in excluded:
-        if TIERS.index(learned["tier"]) <= TIERS.index(tier):
-            tier = learned["tier"]  # a promoted model may only pick an equal-or-cheaper tier here
+    if learned is not None and learned["gate_passed"]:
+        tier, took = _take_learned(tier, learned["tier"], excluded)
+        if took:
             authority = "learned"
     # 5. below-threshold confidence prefers the safer / cheaper tier
     if h["confidence"] < CONFIDENCE_THRESHOLD and TIERS.index(tier) > 0:
         tier = TIERS[TIERS.index(tier) - 1]
         h = {**h, "downgraded": "confidence below threshold"}
     # 6. escalate only after a recorded insufficiency
-    if insufficiency is not None:
-        if not insufficiency.get("recorded_at") or not insufficiency.get("error_class"):
-            raise InvalidInputError("escalation requires a recorded insufficiency (recorded_at, error_class)", "insufficiency")
-        if TIERS.index(tier) < len(TIERS) - 1:
-            tier = TIERS[TIERS.index(tier) + 1]
+    tier = _escalate(tier, insufficiency)
     risk_score = {"read_only": 0.18, "write_local": 0.35, "external_send": 0.7, "production_mutate": 0.9}.get(f.side_effect_class, 0.9)
     budget = dict(TIER_BUDGETS[tier])
     if f.cost_budget_tokens is not None:
@@ -159,3 +186,117 @@ def from_production_routing(out: dict[str, Any]) -> dict[str, Any]:
     if tier is None:
         raise InvalidInputError(f"unknown legacy tier {out.get('moma_tier')!r}", field="moma_tier")
     return {"intent": out.get("intent"), "tier": tier, "tier_name": TIER_NAMES[tier], "confidence": float(out.get("heuristic_score", 0.0)), "agents": list(out.get("recommended_agents", [])), "learned": None, "authority": "heuristic", "provenance": out.get("provenance", "request_derived_heuristic")}
+
+
+# --- route_goal: the goal-string front door (scout, jarvisd) ---------------------------------
+
+#: spec tiers -> MoMA-lite names, the inverse of LEGACY_TIER
+MOMA_OF = {v: k for k, v in LEGACY_TIER.items()}
+ADVISORY_ORDER = ("learned_mlp", "system_one")
+
+
+def default_backends(*, learned: bool = False, system_one: bool | None = None) -> list[Any]:
+    """Advisory backends for a route. The heuristic is implicit and always runs.
+
+    ``learned`` turns on the orchestrator MLP (scout's ``--learned``). System One
+    runs when ``DOTTIE_OS_URL`` is set, unless ``system_one`` says otherwise.
+    """
+    from dottie_loop.backends import LearnedMLPBackend, SystemOneBackend
+
+    out: list[Any] = []
+    if learned:
+        out.append(LearnedMLPBackend())
+    s1 = SystemOneBackend()
+    if system_one if system_one is not None else s1.enabled:
+        out.append(s1)
+    return out
+
+
+def route_goal(
+    goal: str,
+    *,
+    backends: list[Any] | None = None,
+    policy_exclusions: set[str] | None = None,
+    insufficiency: dict[str, Any] | None = None,
+    hard_constraint: dict[str, Any] | None = None,
+    surface: str = "dottie_loop",
+    trace: bool = True,
+) -> dict[str, Any]:
+    """Route a goal string. Default behaviour is exactly MoMA-lite's decision.
+
+    Order (spec §08): 1. hard constraints (``hard_constraint``: an exact rule
+    such as scout's ``mcp:`` prefix, and ``policy_exclusions``); 3. the MoMA-lite
+    heuristic, always; 4. each advisory backend, whose tier is taken only when
+    it is authoritative (``gate_passed`` AND human-stamped) and equal-or-cheaper;
+    6. one tier up after a recorded ``insufficiency``. Step 5 (below-threshold
+    downgrade) is NOT applied: MoMA-lite's ``confidence`` is a keyword-score
+    ratio, not a probability, and thresholding it would change today's routes.
+
+    The output keeps MoMA-lite's keys (``intent``, ``complexity``, ``moma_tier``,
+    ``confidence``, ``routed_agents``, ...) with ``moma_tier`` = the final
+    decision, and adds ``spec_tier``, ``authority``, ``heuristic_tier``,
+    ``advisory`` (each backend's answer and whether it was authoritative) and
+    ``trace`` (where the trace line went).
+    """
+    from dottie_loop import traces
+    from dottie_loop.backends import MOMA_TIERS, HeuristicBackend, goal_features
+    from dottie_loop.router_artifacts import is_authoritative
+
+    excluded = policy_exclusions or set()
+    heur = HeuristicBackend().answer(goal)
+    detail = dict(heur["detail"])
+    if hard_constraint is not None:
+        forced = hard_constraint.get("tier")
+        if forced not in MOMA_TIERS:
+            raise InvalidInputError(f"hard constraint tier {forced!r} is not a MoMA-lite tier", field="hard_constraint")
+        detail["intent"] = hard_constraint.get("intent", detail["intent"])
+        detail["moma_tier"] = forced
+        detail["moma_cap"] = MOMA_TIERS[forced]["cap"]
+        detail["confidence"] = hard_constraint.get("confidence", detail["confidence"])
+        detail["routed_agents"] = hard_constraint.get("routed_agents", detail["routed_agents"])
+        heur = {**heur, "tier": forced, "reason": f"hard constraint: {hard_constraint.get('reason', 'exact rule')}"}
+    heuristic_tier = heur["tier"]
+    tier = LEGACY_TIER[heuristic_tier]
+    if tier in excluded:
+        raise PolicyDeniedError(f"tier {tier} excluded by policy", field="tier")
+
+    advisory: dict[str, dict[str, Any]] = {"heuristic": {**{k: v for k, v in heur.items() if k != "detail"}, "authoritative": True}}
+    for name in ADVISORY_ORDER:
+        advisory[name] = {"backend": name, "enabled": False, "available": False, "tier": None, "authoritative": False,
+                          "reason": "not enabled for this route"}
+    authority = "heuristic"
+    if hard_constraint is None:
+        for b in backends if backends is not None else default_backends():
+            ans = dict(b.answer(goal))
+            ans["stamped"] = False
+            authoritative = False
+            if is_authoritative(ans):
+                ans["stamped"] = True
+                learned_tier = LEGACY_TIER.get(ans["tier"])
+                if learned_tier is not None:
+                    tier, authoritative = _take_learned(tier, learned_tier, excluded)
+            ans["authoritative"] = authoritative
+            if authoritative:
+                authority = ans.get("backend", "learned")
+                advisory["heuristic"]["authoritative"] = False
+            advisory[ans.get("backend", getattr(b, "name", "backend"))] = ans
+    tier = _escalate(tier, insufficiency)
+    decided = MOMA_OF[tier]
+    out: dict[str, Any] = {
+        **detail,
+        "moma_tier": decided,
+        "moma_cap": MOMA_TIERS[decided]["cap"],
+        "spec_tier": tier,
+        "tier_name": TIER_NAMES[tier],
+        "heuristic_tier": heuristic_tier,
+        "authority": authority,
+        "advisory": advisory,
+        "escalated_from_insufficiency": insufficiency is not None,
+        "policy": "dottie_loop.router.route_goal",
+    }
+    out["trace"] = (
+        traces.record_route(out, surface=surface, goal=goal, features=goal_features(goal))
+        if trace
+        else {"trace_id": None, "path": None}
+    )
+    return out
