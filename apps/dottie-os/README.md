@@ -1,15 +1,32 @@
-# dottie-os — UltraData curriculum factory + harvest/hop (repo mirror)
+# dottie-os curation mirror (UltraData curriculum factory + harvest/hop)
 
-Local System One sidecar lives on nugatron under
-`C:\Users\jcdav\workspace\dottie-os`. This tree is the git mirror for the
-UltraData factory, harvest, and hop scripts.
+**dottie-os** is the local sidecar that serves System One (`POST /decide`) on
+your machine or tailnet. It owns port `:8770`, and the Dottie router reaches
+it through `DOTTIE_OS_URL` (see `docs/ROUTER.md`). The sidecar itself lives on
+nugatron under `C:\Users\jcdav\workspace\dottie-os`. **This tree is not the
+sidecar.** It is the git mirror of the sidecar's curation side: the UltraData
+factory, harvest and hop scripts.
 
-**Out of scope for this tree / this PR:** champion serve `:8770`, the LIVE
-gate, and any FT kick. LIVE gate source exists only on offline nugatron disk
-and is a blocked follow-up.
+**Out of scope for this tree:** serving on `:8770`, the LIVE gate, and any FT
+kick. The LIVE gate source exists only on the offline nugatron disk and is a
+blocked follow-up.
 
-This is **not** `apps/dottie` (agent OS) and **not** `apps/arxiviq` (System One
-copy already on main via #52). Do not swap those trees.
+## Schema: strict System One records + provenance sidecar
+
+Packs are strict `jev-decision-schema-1.0.0` records (`schema`, `id`,
+`state`, `questions`, `labels`, nothing else). That is System One's frozen
+contract, and `apps/jev-v0/decision_io.py` validates it. Curriculum
+bookkeeping (`tier` L0-L3, `source`, `consent`, pair ids, split) goes in
+`curated_pack_v2_provenance.jsonl`, keyed by id. Rows the frozen validator
+refuses are dropped and counted in the summary's `schema_rejected`; they are
+never repaired.
+
+Packs written before this change used `dottie-os-decision-schema-1.0.0` with
+tier/source/consent inline. `read_rows()` (and `scripts/smoke_pack_v2.py`)
+still read that layout.
+
+This is **not** `apps/dottie` (agent OS) and **not** `apps/arxiviq` (the
+console app). Do not swap those trees.
 
 ## Layout
 

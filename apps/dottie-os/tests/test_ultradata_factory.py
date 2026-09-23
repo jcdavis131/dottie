@@ -25,6 +25,7 @@ if str(LAB) not in sys.path:
     sys.path.insert(0, str(LAB))
 
 from sidecar.curation.ultradata_curriculum import (  # noqa: E402
+    LEGACY_SCHEMA,
     SCHEMA,
     classify_tool_action,
     ensure_tier_consent,
@@ -33,9 +34,14 @@ from sidecar.curation.ultradata_curriculum import (  # noqa: E402
     l3_multihead_labels,
     leaks_decontam,
     load_jsonl,
+    l3_questions,
     make_row,
+    read_rows,
+    split_row,
     summarize,
     write_jsonl,
+    write_pack,
+    write_provenance,
 )
 
 
@@ -69,7 +75,9 @@ def _row(*, rid: str, action: str, pair_id: str | None = None, source: str = "op
 
 class HeuristicTests(unittest.TestCase):
     def test_schema_id_is_frozen(self) -> None:
-        self.assertEqual(SCHEMA, "dottie-os-decision-schema-1.0.0")
+        # One contract: dottie-os emits System One's frozen schema; the old id is read-only.
+        self.assertEqual(SCHEMA, "jev-decision-schema-1.0.0")
+        self.assertEqual(LEGACY_SCHEMA, "dottie-os-decision-schema-1.0.0")
 
     def test_classify_halt_on_rm_rf(self) -> None:
         self.assertEqual(classify_tool_action("shell", {"cmd": "rm -rf /tmp/x"}), "halt")
@@ -137,6 +145,63 @@ class HoldoutAndIoTests(unittest.TestCase):
         self.assertEqual(summary["total"], 2)
         self.assertEqual(summary["champion_true_count"], 0)
         self.assertEqual(summary["schema"], SCHEMA)
+
+
+def _strict_row(rid: str, action: str = "execute") -> dict:
+    return make_row(
+        rid=rid,
+        tier="L3",
+        source={"hf": "openbmb/UltraData-SFT-Agent-2609", "split": "train"},
+        state={"message": f"tool=read_file; detail={rid}"},
+        questions=l3_questions(),
+        labels=l3_multihead_labels(action),
+    )
+
+
+class StrictSchemaTests(unittest.TestCase):
+    def test_split_row_is_strict_jev_plus_provenance(self) -> None:
+        record, prov = split_row(_strict_row("x1", "halt"))
+        self.assertEqual(sorted(record), ["id", "labels", "questions", "schema", "state"])
+        self.assertEqual(record["schema"], SCHEMA)
+        self.assertEqual(prov["tier"], "L3")
+        self.assertFalse(prov["consent"]["champion"])
+        self.assertEqual(prov["id"], "x1")
+
+    def test_split_row_refuses_what_the_frozen_validator_refuses(self) -> None:
+        bad = _row(rid="b1", action="execute")  # one-option choice, no instructions
+        with self.assertRaises(ValueError):
+            split_row(bad)
+
+    def test_read_rows_reads_strict_and_legacy_layouts(self) -> None:
+        rows = [_strict_row("s1"), _strict_row("s2", "escalate")]
+        legacy = {**_strict_row("old1"), "schema": LEGACY_SCHEMA}
+        with tempfile.TemporaryDirectory() as tmp:
+            pack = Path(tmp) / "curated_pack_v2.jsonl"
+            self.assertEqual(write_pack(pack, rows), {})
+            write_provenance(Path(tmp) / "curated_pack_v2_provenance.jsonl", rows, {"s2": "holdout"})
+            on_disk = load_jsonl(pack)
+            self.assertTrue(all("tier" not in r and "consent" not in r for r in on_disk))
+            joined = read_rows(pack)
+            self.assertEqual([r["tier"] for r in joined], ["L3", "L3"])
+            self.assertEqual(joined[1]["split"], "holdout")
+            old = Path(tmp) / "old.jsonl"
+            write_jsonl(old, [legacy])
+            upgraded = read_rows(old)
+        self.assertEqual(upgraded[0]["schema"], SCHEMA)
+        self.assertFalse(upgraded[0]["consent"]["champion"])
+
+    def test_smoke_reads_strict_pack_with_sidecar(self) -> None:
+        rows = [_strict_row(f"t{i}") for i in range(5)]
+        train, hold = holdout_split(rows, seed=1, frac=0.20)
+        with tempfile.TemporaryDirectory() as tmp:
+            staging = Path(tmp)
+            write_pack(staging / "curated_pack_v2.jsonl", rows)
+            write_pack(staging / "curated_pack_v2_train.jsonl", train)
+            write_pack(staging / "curated_pack_v2_holdout.jsonl", hold)
+            write_provenance(staging / "curated_pack_v2_provenance.jsonl", rows, {})
+            report = smoke_pack_v2.smoke(staging)
+        self.assertEqual(report["tiers"], {"L3": 5})
+        self.assertEqual(report["l3_actions"], {"execute": 5})
 
 
 class PackSmokeTests(unittest.TestCase):
