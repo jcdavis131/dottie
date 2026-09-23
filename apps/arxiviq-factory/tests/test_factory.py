@@ -152,6 +152,25 @@ class LengthTest(unittest.TestCase):
         giveaway = {"options": {"A": "a" * 90, "B": "b" * 40, "C": "c" * 45, "D": "d" * 50}, "answer": "A"}
         self.assertFalse(length_balanced(giveaway))
 
+    def test_thinning_brings_longest_to_chance(self) -> None:
+        from arxiviq_factory.families import length_rank, quiz_keep
+
+        def q(i: int, right: int) -> dict:
+            lens = [50, 48, 46, 44]
+            opts = {k: k.lower() * n for k, n in zip("ABCD", lens, strict=True)}
+            return {"prompt": f"q{i}", "options": opts, "answer": "ABCD"[right]}
+
+        # 20 questions whose right option is the longest, 4 at each other rank.
+        qs = [q(i, 0) for i in range(20)] + [q(20 + i, 1 + i % 3) for i in range(12)]
+        teacher = [{"arxiv_id": f"p{i}", "questions": [x], "contribution": "method", "code_release": 0, "teacher": "t"} for i, x in enumerate(qs)]
+        c = Corpus([], [], [], teacher, now=NOW)
+        self.assertEqual(length_rank(qs[0]), 0)
+        keep = quiz_keep(c)
+        ranks = [length_rank(c.teacher[p]["questions"][i]) for p, i in keep]
+        self.assertEqual(ranks.count(1) + ranks.count(2) + ranks.count(3), 12)
+        self.assertLess(ranks.count(0), 12)
+        self.assertEqual(keep, quiz_keep(c))
+
 
 class ShuffleTest(unittest.TestCase):
     def test_shuffle_moves_letters_not_text(self) -> None:

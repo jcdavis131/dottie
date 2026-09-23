@@ -13,7 +13,7 @@ outcomes, never from invention:
   impact            score   title, abstract, year         Semantic Scholar citations per year since posting (papers >= 1 year old)
   industry          noul    title, abstract, authors      any author affiliation ROR types as company (>= 75% of authors' affiliations known)
   first_country     choice  title, abstract, authors      country of the first author's ROR-matched institution
-  teacher_quiz      choice  title, abstract               LLM-teacher comprehension question, length-balanced options only (llm-teacher)
+  teacher_quiz      choice  title, abstract               LLM-teacher comprehension question, length-balanced and thinned so the longest option scores chance (llm-teacher)
   contribution      choice  title, abstract               LLM-teacher paper type (label_source llm-teacher)
   code_release      noul    title, abstract               LLM-teacher reading of the abstract (label_source llm-teacher)
 
@@ -284,7 +284,34 @@ def fam_first_country(c: Corpus, k: int = 10) -> Iterator[dict[str, Any]]:
         yield row("first_country", p, base_state(p, authors=author_names(c, p)), "first_country", q, {"type": "choice", "choice": m["country"] if m["country"] in tops else "other"}, label_source="arxiv-html-affiliation+ror")
 
 
+def length_rank(q: dict[str, Any]) -> int:
+    """Where the right option falls when options are sorted longest first (0 = longest; ties go against it)."""
+    right = len(q["options"][q["answer"]])
+    return sum(1 for k, v in q["options"].items() if k != q["answer"] and len(v) >= right)
+
+
+def _unit(*parts: str) -> float:
+    """A stable number in [0, 1) from the parts, for deterministic thinning."""
+    return int(stable_id(*parts)[:8], 16) / 0x100000000
+
+
+def quiz_keep(c: Corpus) -> set[tuple[str, int]]:
+    """Length-balanced teacher questions, thinned so "pick the longest option" scores chance.
+
+    Balancing keeps every option within 20% of the right one's length, but the
+    right option is still the longest more often than 1 in 4. Every question
+    whose right option is not the longest is kept; those where it is are kept at
+    the rate that brings rank 0 down to the mean of the other ranks.
+    """
+    ranked = [(p_id, i, length_rank(q)) for p_id, t in c.teacher.items() for i, q in enumerate(t["questions"]) if length_balanced(q)]
+    by_rank = Counter(r for _, _, r in ranked)
+    others = [by_rank[r] for r in range(1, len(LETTERS))]
+    rate = min(1.0, (sum(others) / len(others)) / by_rank[0]) if by_rank[0] else 1.0
+    return {(p_id, i) for p_id, i, r in ranked if r > 0 or _unit(p_id, str(i), "quiz-thin") < rate}
+
+
 def fam_teacher(c: Corpus) -> Iterator[dict[str, Any]]:
+    keep = quiz_keep(c)
     contrib_q = {"type": "choice", "instructions": "What kind of paper is this?", "criteria": dict(CONTRIBUTIONS)}
     code_q = {"type": "noul", "instructions": "Does the abstract say code, data or model weights are released?"}
     for p in c.papers:
@@ -293,8 +320,8 @@ def fam_teacher(c: Corpus) -> Iterator[dict[str, Any]]:
             continue
         src = f"llm-teacher:{t['teacher']}"
         for i, q in enumerate(t["questions"]):
-            if not length_balanced(q):
-                continue  # the longest option would give the answer away
+            if (p["arxiv_id"], i) not in keep:
+                continue  # unbalanced, or thinned so the longest option is no giveaway
             question = {"type": "choice", "instructions": q["prompt"][:512], "criteria": {k: q["options"][k][:256] for k in LETTERS}}
             yield row("teacher_quiz", p, base_state(p), "answer", question, {"type": "choice", "choice": q["answer"]}, label_source=src, salt=str(i))
         yield row("contribution", p, base_state(p), "contribution", contrib_q, {"type": "choice", "choice": t["contribution"]}, label_source=src)

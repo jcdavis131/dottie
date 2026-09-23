@@ -19,6 +19,8 @@ python3 apps/arxiviq-factory/run.py enrich           # Semantic Scholar + arXiv 
 python3 apps/arxiviq-factory/run.py enrich --openalex  # fill remaining affiliations from OpenAlex (budget or OPENALEX_API_KEY)
 python3 apps/arxiviq-factory/run.py teacher prepare  # batches + BRIEF.md for teacher agents -> data/teacher/
 python3 apps/arxiviq-factory/run.py teacher ingest data/teacher/out/*.jsonl --teacher <model>
+python3 apps/arxiviq-factory/run.py teacher prepare-revision   # batches of questions whose wrong options are too short
+python3 apps/arxiviq-factory/run.py teacher ingest-revision data/teacher/revise_out/*.jsonl
 python3 apps/arxiviq-factory/run.py curate           # -> data/packs/arxiviq-pack-1/ + PACK_MANIFEST.json + sample/
 ```
 
@@ -46,9 +48,26 @@ packs are rebuilt from; `data/` is gitignored and regenerable with `curate`.
 | impact | score | title, abstract, year | citations per year since posting (papers at least a year old) |
 | industry | noul | title, abstract, authors | any author at a ROR company (only when ≥ 75% of affiliations are known) |
 | first_country | choice | title, abstract, authors | first author's ROR country |
-| teacher_quiz | choice | title, abstract | teacher question, options A–D (`llm-teacher`) |
+| teacher_quiz | choice | title, abstract | teacher question, options A–D, length-debiased (`llm-teacher`) |
 | contribution | choice | title, abstract | teacher paper type (`llm-teacher`) |
 | code_release | noul | title, abstract | teacher reading of the abstract (`llm-teacher`) |
+
+**Teacher questions are debiased before they train anything.** A first teacher
+pass put the right answer in slot B too often and made it the longest option
+86% of the time, so a model could score well without reading the paper. The
+fixes, in order:
+
+1. Answer letters are shuffled with a seeded per-question permutation.
+2. A revision pass rewrites only the wrong options, never the prompt, the right
+   option or the letter. A rewrite is accepted only if every wrong option is
+   within 20% (or 12 characters) of the right one's length. Otherwise the old
+   question is kept and dropped at curation.
+3. Balanced questions are thinned: when the right option is still the longest,
+   the question is kept only at the rate that makes "pick the longest" score
+   chance (see `PACK_MANIFEST.json` for the counts).
+
+`code_release` is the teacher's reading of the abstract. It is not always
+consistent on "code will be released" phrasing, so it is a weak label.
 
 **Nimble contrastive pairs** (flips of ≤ 8 words) are mined, never generated.
 The pair is the same paper and the same question, asked about a real positive
