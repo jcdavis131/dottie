@@ -23,7 +23,7 @@ from rich.console import Console
 
 from bigbang.core.cli_ux import examples_epilog
 from bigbang.core.output import set_json_mode
-from bigbang.core.plugin_loader import discover_plugins
+from bigbang.core.plugin_loader import LazyPluginGroup, discover_plugins
 
 # Detect which invocation name was used for nicer help
 _invoked = Path(sys.argv[0]).name if sys.argv else "scout"
@@ -50,6 +50,9 @@ class ScoutTyper(typer.Typer):
 # Root app - primary name scout, not bb/meta
 app = ScoutTyper(
     name="scout",
+    # plugins resolve on first use (bigbang.core.plugin_loader); `scout --help`
+    # lists them from the entry table without importing any
+    cls=LazyPluginGroup,
     help=(
         "Scout CLI 🐾 — personal control plane (ex-BigBang). "
         "Local-first, agent-native, HOME-only. Ava-brained + RTX offload.\n\n"
@@ -92,7 +95,7 @@ def main(
     set_json_mode(json)
 
 
-# Auto-discover plugins
+# Auto-discover plugins (lazily: only the invoked plugin is imported)
 discover_plugins(app)
 
 

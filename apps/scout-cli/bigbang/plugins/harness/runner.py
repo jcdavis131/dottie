@@ -14,16 +14,16 @@ MEASURED as 0 — deterministic executors consume no external-model tokens, and
 artifact size is retained separately as artifact_chars per node. Provenance is
 labeled on every record.
 
-Routing (step 1) is dottie_loop.router.route_goal, the same policy as
-`scout route` and jarvisd: MoMA-lite decides unless a learned backend is
-gate_passed AND human-stamped. The route appends a trace line, and the run's
+Routing (step 1) is dottie_loop.decide.decide (bounded context, then
+dottie_loop.router.route_goal), the same decision plane as `scout route` and
+jarvisd: MoMA-lite decides unless a learned backend is gate_passed AND
+human-stamped. The route appends a trace line, and the run's
 observed outcome (success/failure, recovery rung, escalation) is appended to
 the same trace so `scout router pack` can label it.
 """
 from __future__ import annotations
 
 import hashlib
-import importlib.util
 import json
 import os
 import re
@@ -39,12 +39,12 @@ if TYPE_CHECKING:
 from dottie_loop import traces as router_traces
 from dottie_loop.backends import complexity as complexity_of
 from dottie_loop.backends import routed_agents
-from dottie_loop.router import route_goal
+from dottie_loop.context import RunHistoryProvider
+from dottie_loop.decide import decide
+from dottie_loop.execution import recovery_ladder
 
 from bigbang.plugins.harness import mcp_executor
 from bigbang.plugins.harness.timeline import append_event, g_history_stats
-
-_REPO_ROOT = Path(__file__).resolve().parents[5]  # .../apps/scout-cli/bigbang/plugins/harness/runner.py -> repo root
 
 
 def _now_iso() -> str:
@@ -52,47 +52,11 @@ def _now_iso() -> str:
 
 
 # --- recovery ladder -----------------------------------------------------------
-# Prefer the repo-root ladder (pipeline/recovery_ladder.py) via file-path import;
-# in installed layouts where that file is absent, fall back to an inline replica
-# of pipeline/recovery_ladder.py:17-31 with identical decisions.
+# The one ladder: dottie_loop.execution.recovery_ladder (pipeline/recovery_ladder.py
+# re-exports it). scout depends on dottie-loop, so every layout has it; the
+# file-path import of pipeline/ and the inline replica it needed are gone.
 
-_FAILURE_TAXONOMY = ["INPUT_CORRUPTION", "CONTEXT_STARVATION", "TOOL_FAILURE", "REASONING_COLLAPSE", "OUTPUT_CORRUPTION"]
-_SIDE_EFFECT_CLASSES = ("READ", "WRITE_IDEMPOTENT", "WRITE_DESTRUCTIVE", "EXTERNAL_NOTIFY")
-
-
-def _inline_recovery_ladder(error_class: str, side_effect: str, attempt: int) -> dict:
-    """Inline replica of pipeline/recovery_ladder.py recovery_ladder (lines 17-31)."""
-    if error_class not in _FAILURE_TAXONOMY:
-        error_class = "TOOL_FAILURE"
-    if side_effect not in _SIDE_EFFECT_CLASSES:
-        side_effect = "READ"
-    # hard gate
-    if side_effect in ("WRITE_DESTRUCTIVE", "EXTERNAL_NOTIFY"):
-        return {"action": "escalate", "reason": f"{side_effect} never auto — needs human gate", "attempt": attempt, "errorClass": error_class, "sideEffect": side_effect, "bounded": True, "bio_map": "Remodeling — human gate, parallel true"}
-    if attempt == 1:
-        return {"action": "retry1", "attempt": 1, "errorClass": error_class, "sideEffect": side_effect, "safe": side_effect in ("READ", "WRITE_IDEMPOTENT"), "bio": "Hemostasis — stop bleeding, retry exact", "next_if_fail": "patch"}
-    if attempt == 2:
-        return {"action": "patch", "attempt": 2, "errorClass": error_class, "sideEffect": side_effect, "fix": "single-resp patch — fix concrete file:line evidence, no reformat ocean", "bio": "Inflammation — narrow scope, one file, one resp", "next_if_fail": "replan"}
-    if attempt == 3:
-        return {"action": "replan", "attempt": 3, "errorClass": error_class, "sideEffect": side_effect, "dag_version_inc": True, "bounded": True, "bio": "Proliferation — pure-function DAG re-plan, version++ never mutate in place", "next_if_fail": "escalate"}
-    return {"action": "escalate", "attempt": attempt, "errorClass": error_class, "sideEffect": side_effect, "bounded": True, "bio": "Remodeling — human gate, visible abandonment", "reason": "3 attempts exhausted — escalate with evidence packet"}
-
-
-def _load_recovery_ladder() -> Callable[[str, str, int], dict]:
-    path = _REPO_ROOT / "pipeline" / "recovery_ladder.py"
-    try:
-        if path.exists():
-            spec = importlib.util.spec_from_file_location("scout_recovery_ladder", str(path))
-            if spec and spec.loader:
-                mod = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(mod)
-                return mod.recovery_ladder
-    except Exception:
-        pass
-    return _inline_recovery_ladder
-
-
-_recovery_ladder = _load_recovery_ladder()
+_recovery_ladder = recovery_ladder
 
 
 # --- plan ---------------------------------------------------------------------
@@ -265,6 +229,16 @@ EXECUTORS: dict[str, Callable[[dict], str]] = {
     "operator": _exec_operator,
 }
 
+#: Executors that do real work. Every other executor is a deterministic stub (a
+#: pure function of the goal text), so its outcome says nothing about whether
+#: the routed tier was sufficient. Outcomes are tagged `executor: stub|real`.
+REAL_EXECUTORS = frozenset({"mcp-operator"})
+
+
+def executor_kind(role: str) -> str:
+    """real | stub for the executor that serves ``role``."""
+    return "real" if role in REAL_EXECUTORS else "stub"
+
 
 def _dispatch(step: dict, ctx: dict) -> str:
     # TEST-ONLY HOOK: SCOUT_RUN_FAIL_NODES is a comma-separated list of node ids.
@@ -283,7 +257,7 @@ def _dispatch(step: dict, ctx: dict) -> str:
 
 
 def _log_attempt(run_id: str, step: dict, attempt: int, latency_ms: float, artifact: str,
-                 status: str, error_class: str | None, runs_dir: Path) -> None:
+                 status: str, error_class: str | None, runs_dir: Path, tier: str = "") -> None:
     # MEASURED true cost: deterministic executors make no external model calls,
     # so the run consumed exactly 0 model tokens. len(artifact)//4 was an
     # estimate of a cost that does not exist here; artifact size stays available
@@ -304,6 +278,10 @@ def _log_attempt(run_id: str, step: dict, attempt: int, latency_ms: float, artif
         "errorClass": error_class,
         "ts": _now_iso(),
         "runId": run_id,
+        # extra fields (not in REQUIRED_FIELDS): the run-history index aggregates
+        # success / recovery / latency per routed tier, and per executor kind.
+        "tier": tier,
+        "executor": executor_kind(step["role"]),
     }
     # Twice on purpose: default base feeds g_history_stats mining
     # (graph-plan / timeline stats); runs_dir base keeps the run self-contained.
@@ -362,7 +340,8 @@ def _running_score(nodes: list[dict]) -> float:
 
 
 def run_goal(goal: str, *, max_nodes: int = 0, seed: int = 0, run_id: str = "",
-             runs_dir: Path | None = None, mcp_namespace: str = "") -> dict:
+             runs_dir: Path | None = None, mcp_namespace: str = "",
+             context_providers: list | None = None) -> dict:
     """Route -> plan -> execute -> checkpoint/timeline -> critic. Deterministic, local."""
     # mcp: goals are validated BEFORE any store write (mkdir/timeline/checkpoint)
     # so a misconfigured goal leaves no run artifacts and touches no network.
@@ -393,7 +372,13 @@ def run_goal(goal: str, *, max_nodes: int = 0, seed: int = 0, run_id: str = "",
         hard = {"tier": "action_operator", "intent": "complex_action", "confidence": 1.0,
                 "routed_agents": routed_agents("complex_action", complexity_of(goal)),
                 "reason": "mcp: protocol prefix"}
-    routed = route_goal(goal, hard_constraint=hard, surface="scout.harness.run")
+    # decide() = bounded context (run history here; jarvisd adds its store via
+    # context_providers) -> route_goal. The trace line carries the context
+    # summary and the served state's hash, so this run's outcome labels a
+    # record whose state matches what System One is served.
+    providers = context_providers if context_providers is not None else [RunHistoryProvider()]
+    routed = decide(goal, hints={"hard_constraint": hard} if hard else {}, providers=providers,
+                    surface="scout.harness.run", cache=None)
     complexity = routed["complexity"]
     intent = routed["intent"]
     tier = routed["moma_tier"]
@@ -449,7 +434,7 @@ def run_goal(goal: str, *, max_nodes: int = 0, seed: int = 0, run_id: str = "",
 
         ok1, art1, lat1 = _attempt(1)
         total_latency = lat1
-        _log_attempt(rid, step, 1, lat1, art1, "ok" if ok1 else "fail", None if ok1 else "TOOL_FAILURE", runs_dir)
+        _log_attempt(rid, step, 1, lat1, art1, "ok" if ok1 else "fail", None if ok1 else "TOOL_FAILURE", runs_dir, tier)
         if ok1:
             artifact = art1
         else:
@@ -460,7 +445,7 @@ def run_goal(goal: str, *, max_nodes: int = 0, seed: int = 0, run_id: str = "",
                 attempts = 2
                 ok2, art2, lat2 = _attempt(2)
                 total_latency += lat2
-                _log_attempt(rid, step, 2, lat2, art2, "ok" if ok2 else "fail", None if ok2 else "TOOL_FAILURE", runs_dir)
+                _log_attempt(rid, step, 2, lat2, art2, "ok" if ok2 else "fail", None if ok2 else "TOOL_FAILURE", runs_dir, tier)
                 if ok2:
                     artifact, status, error_class = art2, "ok", None
                 else:
@@ -501,7 +486,12 @@ def run_goal(goal: str, *, max_nodes: int = 0, seed: int = 0, run_id: str = "",
 
     # 7. OUTCOME -> router trace (what `scout router pack` labels from)
     actions = [n["recovery_action"] for n in node_summaries if n["recovery_action"]]
+    kinds = Counter(executor_kind(n["role"]) for n in node_summaries)
     router_traces.record_outcome(trace_id, {
+        # stub unless every executed node did real work: `scout router pack`
+        # never labels from a stub outcome (synthetic rows never train).
+        "executor": "real" if node_summaries and set(kinds) == {"real"} else "stub",
+        "executors": dict(kinds),
         "run_id": rid,
         "ok": True,
         "tier": tier,

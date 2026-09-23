@@ -2,8 +2,16 @@
 
 Dottie has one routing policy: `dottie_loop.router` in
 `packages/dottie-loop/dottie_loop/router.py`. scout (`scout route`,
-`scout harness route`, `scout harness run`) and jarvisd (`harness.route`,
-`harness.plan`, `harness.run`) call it. Nothing else decides a tier.
+`scout harness route`, `scout harness run`) and jarvisd (`harness.decide`,
+`harness.route`, `harness.plan`, `harness.run`) call it. Nothing else decides a
+tier.
+
+Every surface reaches it through the decision plane, `dottie_loop.decide.decide`
+(served by jarvisd as `POST /api/decide` / MCP `harness.decide`; `scout route`
+asks jarvisd first and runs the same function in-process when jarvisd is not
+reachable): a bounded decision context, then `route_goal`, then a decision
+record with a latency breakdown. The contract, the knowledge sources and the
+measured latency are in [`docs/ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## Decision order
 
@@ -39,7 +47,7 @@ and never raises. A failure shows up as `available: false` with a reason.
 |---|---|---|---|
 | `heuristic` | MoMA-lite. Its only implementation; scout's `_score_intent` / `_complexity` / `_classify_moma` / `_routed_agents` are aliases | yes | yes |
 | `learned_mlp` | The orchestrator MLP (`apps/ava-factory/reports/orchestrator/champion_weights.json`, `orch-mlp-v1-v4`, `gate_passed: false`). Inference goes through the shared `apps/ava-factory/orchestrator_infer.py`, or through `dottie_loop.mlp_infer` when that file is absent | `--learned` | no |
-| `system_one` | System One over HTTP: `POST {DOTTIE_OS_URL}/decide` with a `jev-decision-schema-1.0.0` request. It asks four typed questions: `tier` (Choice over the five tiers), `action` (Choice: execute/escalate/halt/other), `safe` (Noul) and `severity` (Score 0-1). Uses stdlib `urllib` with a 1.5 s timeout (`DOTTIE_OS_TIMEOUT`) | only when `DOTTIE_OS_URL` is set | no |
+| `system_one` | System One over HTTP: `POST {DOTTIE_OS_URL}/decide` with a `jev-decision-schema-1.0.0` request. One request per route asks all four typed questions: `tier` (Choice over the five tiers), `action` (Choice: execute/escalate/halt/other), `safe` (Noul) and `severity` (Score 0-1). The state carries the goal features and the bounded decision context. Stdlib `http.client`, one kept-alive connection per thread (Nagle off), `/health` cached per URL for `DOTTIE_OS_HEALTH_TTL` s (default 30), 1.5 s timeout (`DOTTIE_OS_TIMEOUT`) | only when `DOTTIE_OS_URL` is set | no |
 
 System One answers carry `shape_concentration` (the peak of the closed
 distribution), never `confidence`. When a sidecar reports `mode: "untrained"`,
@@ -48,7 +56,15 @@ answer.
 
 Every route output keeps its existing keys. It also adds `authority` (which
 backend decided), `heuristic_tier`, `spec_tier` (T0-T4) and `advisory`, which
-holds each backend's answer with an `authoritative` flag.
+holds each backend's answer with an `authoritative` flag and its `latency_ms`.
+A backend whose `answer` takes a `context` argument receives the decision
+context; the others are called exactly as before.
+
+The heuristic has one implementation. `apps/dottie-harness-api` (deployed to
+Vercel on its own) serves `lib/moma_lite.py`, a verbatim copy that
+`scripts/vendor_router.py` writes from `dottie_loop/backends.py`; its
+`--check` and `tests/test_production_routing_parity.py` (the goldens below)
+fail when the copy drifts.
 
 ## Authority: gate plus human stamp
 
@@ -77,6 +93,13 @@ counts, failures, the recovery-ladder rung, whether it escalated, and whether
 the run was cut short with `--max-nodes`.
 
 - `DOTTIE_TRACE_DIR` moves the directory. `DOTTIE_TRACES=0` turns tracing off.
+- A route line decided with a context also stores the context summary exactly
+  as System One was served it (private texts only under the opt-in),
+  `state_sha256` (the hash of the `system_one_state` that was served) and
+  `decision_record` (decision id, latency breakdown, cache hit).
+- An outcome line says `executor: stub|real` (and `executors`, a count per
+  kind). The runner's executors are deterministic stubs except the MCP
+  operator, so today almost every outcome is `stub`.
 - A trace stores the goal's sha256 and task features, never the goal text.
   `DOTTIE_TRACE_TEXT=1` is the owner's opt-in to store the text and to send
   it to `/decide`. Features alone collide often, so a useful training pack
@@ -97,6 +120,13 @@ scout router promote ~/ckpt/router-001 --i-have-reviewed --by <you>        # hum
 python apps/jev-v0/serve_decide.py --checkpoint ~/ckpt/router-001 --port 8770  # serve it as the sidecar
 ```
 
+- **pack** rebuilds each state with `dottie_loop.backends.system_one_state`,
+  the same builder the router serves with (`system_one_state(goal, context)`),
+  and refuses a trace whose rebuilt state does not match its `state_sha256`.
+  It refuses outcomes observed by stub executors, and untagged pre-tag
+  outcomes (whose executors were all stubs), counting both in `MANIFEST.json`
+  under `executors`: stub rows never train a champion. Traces written before
+  the context existed rebuild to the same state they had (no `context` key).
 - **pack** reads only `source: production` rows and refuses test rows. Labels
   come from what was observed. `tier` is the routed tier when the run
   succeeded there, one tier up when it failed or escalated there, and an
@@ -135,3 +165,12 @@ example ones produced on another host. The source is recorded in
 - The jev-v0 dev server (`apps/jev-v0/serve_decide.py`) defaults to `:8771`,
   so both can run on one box. Without `--checkpoint` it answers
   `mode: "untrained"`.
+
+## Latency
+
+`dottie-loop bench decide` (or `scout router bench`) measures p50/p95 for a
+cold `scout route`, in-process routing, jarvisd warm `/api/route` and
+`/api/decide` with and without context and with System One, and the System One
+round trip against a local untrained `serve_decide`. It starts its own jarvisd
+and sidecar on loopback with temp state and writes nothing real. The latest
+numbers are in `docs/ARCHITECTURE.md` "Speed budget".

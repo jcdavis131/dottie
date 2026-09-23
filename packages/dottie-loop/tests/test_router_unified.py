@@ -236,7 +236,7 @@ def _trace_rows(n_goals=10):
                     "decision": {"tier": tier, "heuristic_tier": tier, "authority": "heuristic"}})
         out.append({"schema": traces.TRACE_SCHEMA, "kind": "outcome", "trace_id": tid, "at": "2026-09-23T00:00:01Z",
                     "source": "production", "surface": "scout.harness.run",
-                    "outcome": {"run_id": f"run-{i}", "ok": True, "n_nodes": 4, "ok_nodes": 4 - failed,
+                    "outcome": {"run_id": f"run-{i}", "ok": True, "executor": "real", "n_nodes": 4, "ok_nodes": 4 - failed,
                                 "failed_nodes": failed, "escalated": False, "recovery_actions": [], "truncated": False}})
     out.append({**out[0], "trace_id": "rt_test", "source": "test"})
     return out

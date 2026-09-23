@@ -17,6 +17,14 @@ import time
 from typing import Any
 from urllib.parse import urlparse
 
+
+def _ollama_env() -> str | None:
+    """OLLAMA_HOST, or a deprecated alias (OLLAMA_BASE / OLLAMA_URL / DOTTIE_OLLAMA_URL, warned)."""
+    from dottie_loop.env import ollama_host
+
+    return ollama_host()
+
+
 OLLAMA_URLS = [
     "http://localhost:11434",
     "http://host.docker.internal:11434",
@@ -59,7 +67,7 @@ def _is_resolvable(host: str, timeout: float = 0.8) -> bool:
         allow = (
             os.environ.get("OLLAMA_ALLOW_DOCKER_HOST")
             or os.environ.get("BIGBANG_USE_DOCKER_HOST")
-            or os.environ.get("OLLAMA_BASE", "")
+            or (_ollama_env() or "")
         )
         if "host.docker.internal" not in allow:
             try:
@@ -126,12 +134,8 @@ def get_ollama_base(timeout: float = 2.0, use_cache: bool = True) -> str | None:
     ):
         return None
 
-    # Env override - if OLLAMA_BASE set, try it first
-    env_base = (
-        os.environ.get("OLLAMA_BASE")
-        or os.environ.get("OLLAMA_URL")
-        or os.environ.get("OLLAMA_HOST")
-    )
+    # Env override - OLLAMA_HOST (or a deprecated alias) is tried first
+    env_base = _ollama_env()
     urls_to_try = []
     if env_base:
         # Normalize
@@ -345,7 +349,7 @@ def extract_json_from_text(text: str) -> Any | None:
 # portable (llama.cpp-server, vLLM, and OpenAI itself all speak it) and returns a
 # `usage` block we can turn into tokens/sec. NOTE: if you instead launch KoboldCpp
 # on port 11434, the existing ollama_chat() path already drives it UNCHANGED — no
-# code needed, just point OLLAMA_BASE at it.
+# code needed, just point OLLAMA_HOST at it.
 KOBOLDCPP_URLS = [
     "http://localhost:5001",
     "http://host.docker.internal:5001",

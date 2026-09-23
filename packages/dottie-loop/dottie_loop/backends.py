@@ -14,7 +14,8 @@ The router is one policy (:mod:`dottie_loop.router`). A backend only answers
   says ``gate_passed: true`` AND a human stamped it (:mod:`dottie_loop.router_artifacts`).
 * :class:`SystemOneBackend`: an HTTP client for a dottie-os ``POST /decide``
   endpoint (System One, frozen ``jev-decision-schema-1.0.0``). Off unless
-  ``DOTTIE_OS_URL`` is set. Stdlib ``urllib``, short timeout, never raises. An
+  ``DOTTIE_OS_URL`` is set. Stdlib ``http.client`` with keep-alive, one
+  ``/decide`` request per route, ``/health`` cached; short timeout, never raises. An
   ``untrained`` sidecar answers uniformly, so its answer is recorded as "no
   signal". Answers carry System One's ``shape_concentration``, never a
   ``confidence``.
@@ -29,14 +30,19 @@ enabled; without numpy that backend reports itself unavailable.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import http.client
 import importlib.util
 import json
 import math
 import os
 import re
+import socket
+import threading
+import time
 import urllib.error
-import urllib.request
+import urllib.parse
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -350,18 +356,122 @@ def trace_text_enabled() -> bool:
     return os.environ.get("DOTTIE_TRACE_TEXT", "").strip().lower() in ("1", "true", "yes")
 
 
-def system_one_state(features: dict[str, Any], goal: str | None = None) -> dict[str, Any]:
-    """The ``state`` System One sees. Same builder for serving and for the training pack."""
+def system_one_state(
+    goal: str | None,
+    context: Any = None,
+    *,
+    features: dict[str, Any] | None = None,
+    include_text: bool | None = None,
+) -> dict[str, Any]:
+    """The ``state`` System One sees. ONE builder, used at serve time and by the pack.
+
+    * ``goal``: the goal text. It enters the state only when ``include_text``
+      (default: the owner's ``DOTTIE_TRACE_TEXT=1`` opt-in) allows it.
+    * ``context``: a :class:`dottie_loop.context.DecisionContext`, or the
+      summary dict a trace stored; its bounded summary goes in as ``context``.
+      ``None`` (every pre-context trace) leaves the key out, so old traces
+      rebuild the exact state they were served with.
+    * ``features``: the goal's :func:`goal_features`; computed from ``goal``
+      when not given (the pack passes the features its trace stored).
+
+    ``SystemOneBackend.request_body`` (serve) and
+    ``dottie_loop.router_training.pack`` (train) both call this, and a trace
+    records the state's sha256 so the pack can prove the rebuild matches.
+    """
+    from dottie_loop.context import context_summary
+
+    if features is None:
+        features = goal_features(goal or "")
     state: dict[str, Any] = {
         "goal_features": {k: features[k] for k in ("n_words", "n_chars", "n_chain_signals", "has_code_terms", "complexity", "intent_scores", "mcp_prefix") if k in features},
     }
-    if goal:
+    show_text = trace_text_enabled() if include_text is None else include_text
+    if goal and show_text:
         state["goal_text"] = goal
+    summary = context_summary(context, include_private_text=show_text)
+    if summary is not None:
+        state["context"] = summary
     return state
 
 
+def state_sha256(state: dict[str, Any]) -> str:
+    """Hash of a System One state, as the trace records it (train/serve parity check)."""
+    return hashlib.sha256(json.dumps(state, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
+class _Conn:
+    """One keep-alive HTTP connection per (url, thread), reopened once on a stale socket."""
+
+    _local = threading.local()
+
+    @classmethod
+    def request(cls, base: str, method: str, path: str, body: bytes | None, timeout: float) -> tuple[int, bytes]:
+        parts = urllib.parse.urlsplit(base)
+        if parts.scheme not in ("http", "https") or not parts.hostname:
+            raise ValueError(f"DOTTIE_OS_URL must be http(s): {base!r}")
+        pool: dict[tuple[str, float], http.client.HTTPConnection] = getattr(cls._local, "pool", None) or {}
+        cls._local.pool = pool
+        key = (base, timeout)
+        prefix = parts.path.rstrip("/")
+        headers = {"Content-Type": "application/json", "Connection": "keep-alive"}
+        for attempt in (1, 2):
+            conn = pool.get(key)
+            if conn is None:
+                conn_cls = http.client.HTTPSConnection if parts.scheme == "https" else http.client.HTTPConnection
+                conn = conn_cls(parts.hostname, parts.port, timeout=timeout)
+                conn.connect()
+                with contextlib.suppress(OSError, AttributeError):
+                    # small request/response pairs on a kept-alive socket: no Nagle delay
+                    conn.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                pool[key] = conn
+            try:
+                conn.request(method, prefix + path, body=body, headers=headers)
+                resp = conn.getresponse()
+                data = resp.read()
+                if resp.will_close:
+                    conn.close()
+                    pool.pop(key, None)
+                return resp.status, data
+            except (http.client.RemoteDisconnected, http.client.CannotSendRequest, ConnectionResetError, BrokenPipeError) as exc:
+                conn.close()
+                pool.pop(key, None)
+                if attempt == 2:
+                    raise OSError(f"connection lost: {exc}") from exc
+            except Exception:
+                conn.close()
+                pool.pop(key, None)
+                raise
+        raise OSError("unreachable")  # pragma: no cover
+
+
+#: url -> (fetched_at monotonic, health dict). ``/health`` is cached for
+#: ``DOTTIE_OS_HEALTH_TTL`` seconds (default 30): the checkpoint identity and
+#: gate it reports change only when the sidecar restarts.
+_HEALTH: dict[str, tuple[float, dict[str, Any]]] = {}
+_HEALTH_LOCK = threading.Lock()
+
+
+def _health_ttl() -> float:
+    try:
+        return max(0.0, float(os.environ.get("DOTTIE_OS_HEALTH_TTL", "30")))
+    except ValueError:
+        return 30.0
+
+
+def clear_caches() -> None:
+    """Drop the cached ``/health`` answers (tests; a restarted sidecar)."""
+    with _HEALTH_LOCK:
+        _HEALTH.clear()
+
+
 class SystemOneBackend:
-    """HTTP client for dottie-os ``POST /decide``. Never raises; short timeout."""
+    """HTTP client for dottie-os ``POST /decide``. Never raises; short timeout.
+
+    One ``/decide`` request per route carries all four questions. ``/health``
+    (checkpoint identity + gate) is cached per URL for ``DOTTIE_OS_HEALTH_TTL``
+    seconds, and connections are kept alive per thread (stdlib
+    ``http.client``), so a warm route costs one round trip.
+    """
 
     name = "system_one"
 
@@ -376,37 +486,49 @@ class SystemOneBackend:
     def enabled(self) -> bool:
         return bool(self.url)
 
-    def request_body(self, goal: str) -> dict[str, Any]:
-        feats = goal_features(goal)
+    def config_key(self) -> str:
+        return f"{self.name}:{self.url}"
+
+    def request_body(self, goal: str, context: Any = None) -> dict[str, Any]:
         return {
             "schema": SYSTEM_ONE_SCHEMA,
-            "state": system_one_state(feats, goal if trace_text_enabled() else None),
+            "state": system_one_state(goal, context),
             "questions": system_one_questions(),
         }
 
     def _call(self, path: str, body: dict[str, Any] | None) -> dict[str, Any]:
-        url = self.url + path
-        if not url.startswith(("http://", "https://")):
-            raise ValueError(f"DOTTIE_OS_URL must be http(s): {self.url!r}")
         data = json.dumps(body).encode("utf-8") if body is not None else None
-        req = urllib.request.Request(url, data=data, method="POST" if data is not None else "GET",  # noqa: S310  scheme checked above
-                                     headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=self.timeout) as resp:  # noqa: S310  scheme checked above
-            return json.loads(resp.read().decode("utf-8"))
+        status, raw = _Conn.request(self.url, "POST" if data is not None else "GET", path, data, self.timeout)
+        if status >= 400:
+            raise ValueError(f"HTTP {status} from {path}: {raw[:200].decode('utf-8', 'replace')}")
+        return json.loads(raw.decode("utf-8"))
 
-    def answer(self, goal: str) -> dict[str, Any]:
+    def health(self) -> dict[str, Any]:
+        """``/health``, cached per URL. A failed probe is not cached."""
+        now = time.monotonic()
+        with _HEALTH_LOCK:
+            hit = _HEALTH.get(self.url)
+            if hit is not None and now - hit[0] < _health_ttl():
+                return hit[1]
+        try:
+            h = self._call("/health", None)
+        except Exception:
+            return {}
+        if isinstance(h, dict):
+            with _HEALTH_LOCK:
+                _HEALTH[self.url] = (now, h)
+            return h
+        return {}
+
+    def answer(self, goal: str, context: Any = None) -> dict[str, Any]:
         base = {"backend": self.name, "enabled": self.enabled, "url": self.url or None}
         if not self.enabled:
             return {**base, "available": False, "tier": None, "signal": False, "gate_passed": False,
                     "stamped": False, "reason": "DOTTIE_OS_URL unset (System One off by default)"}
         try:
-            health: dict[str, Any] = {}
-            try:
-                health = self._call("/health", None)
-            except Exception:
-                health = {}
-            body = self._call("/decide", self.request_body(goal))
-        except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+            health = self.health()
+            body = self._call("/decide", self.request_body(goal, context))
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError, http.client.HTTPException) as exc:
             return {**base, "available": False, "tier": None, "signal": False, "gate_passed": False,
                     "stamped": False, "reason": f"dottie-os unreachable: {type(exc).__name__}: {exc}"}
         except Exception as exc:

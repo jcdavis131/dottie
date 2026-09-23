@@ -74,46 +74,16 @@
       "judgment": "ACCEPTED 2026-09-05. _parse_txt(fmt=) special-cases 'json' and 'md' and otherwise splits the decoded bytes into paragraph blocks — that IS the plain-text parser's contract, and the caller only reaches it for text-like formats it has already classified. An unknown fmt degrades to plain paragraphs of the same bytes, which loses structure but never misattributes content or returns another document's parse; the detector's 'falls through to whatever the function returns last' is here the intended default rather than a leak."
     },
     {
-      "file": "apps/scout-cli/bigbang/plugins/harness/runner.py",
-      "shape": "fail-open-dispatch",
-      "code": "def _inline_recovery_ladder(...)  dispatches on 'attempt' across 3 `==` branches",
-      "judgment": "Fall-through target is `escalate` (attempts exhausted -> human gate), the FAIL-CLOSED terminal of the bounded recovery ladder: any unrecognised attempt value (0, negative, >3) resolves to escalation, never to a permissive action. The 1/2/3 `==` shape is a deliberate line-for-line replica of pipeline/recovery_ladder.py:17-31 (pinned by the module comment: 'identical decisions'), used only when the repo-root ladder file is absent in installed layouts; restructuring the replica away from the original's shape would silently fork the two. If the original is ever restructured under its own pending judgment, mirror it here in the same change."
-    },
-    {
       "file": "apps/scout-cli/bigbang/plugins/write/cli.py",
       "shape": "fail-open-dispatch",
       "code": "def _weight_for(...)  dispatches on 'k' across 3 `==` branches",
       "judgment": "Scoring-weight lookup (_weight_for). Unknown key falls to a default weight; affects ranking, gates nothing."
     },
     {
-      "file": "pipeline/checkpoint_manager.py",
+      "file": "packages/dottie-loop/tests/test_recovery_ladder_one_copy.py",
       "shape": "fail-open-dispatch",
-      "code": "def recovery_ladder(...)  dispatches on 'attempt' across 3 `==` branches",
-      "judgment": "Same function embedded in the checkpoint manager: fall-through is `escalate`, the fail-closed terminal. See the pipeline/recovery_ladder.py entry; the two must be re-judged together if either is restructured."
-    },
-    {
-      "file": "pipeline/recovery_ladder.py",
-      "shape": "fail-open-dispatch",
-      "code": "def recovery_ladder(...)  dispatches on 'attempt' across 3 `==` branches",
-      "judgment": "Fall-through target is `escalate` (attempts exhausted -> human gate), the FAIL-CLOSED terminal of the bounded recovery ladder: any unrecognised attempt value (0, negative, >3) resolves to escalation, never to a permissive action. error_class and side_effect are membership-guarded at the top of the function; `attempt` is the ladder's step counter and the trailing escalate IS its else branch. Same judgment as the runner's inline replica below, which mirrors this function line-for-line."
-    },
-    {
-      "file": "apps/dottie-harness-api/lib/production_routing.py",
-      "shape": "fail-open-dispatch",
-      "code": "def _classify_tier(...)  dispatches on 'intent' across 2 `==` branches",
-      "judgment": "ACCEPTED 2026-09-11 (introduced by 002226b, unjudged, and red on main since). _classify_tier is the request-derived HEURISTIC router. The unguarded final return is 'llm' — the bounded single-call tier — never action_operator or agentic_epic, which are reachable only through an explicit intent match. An unrecognised intent therefore lands on the LOWER-authority tier, and the route is advice: policy, not the router, authorizes effects (spec doctrine, docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md §08). Re-judge if the last return ever stops being 'llm' or 'deterministic'."
-    },
-    {
-      "file": "apps/dottie-harness-api/lib/production_routing.py",
-      "shape": "fail-open-dispatch",
-      "code": "def _recommended_agents(...)  dispatches on 'intent' across 3 `==` branches",
-      "judgment": "ACCEPTED 2026-09-11 (introduced by 002226b, unjudged). _recommended_agents renders a suggested specialist list for the dashboard; agent identifiers are operational labels, not principals (spec §07), so a fall-through to the generic list grants nothing. Same function as the 'complexity' entry below — one judgment, recorded twice because the detector keys on the dispatch parameter."
-    },
-    {
-      "file": "apps/dottie-harness-api/lib/production_routing.py",
-      "shape": "fail-open-dispatch",
-      "code": "def _recommended_agents(...)  dispatches on 'complexity' across 4 `==` branches",
-      "judgment": "ACCEPTED 2026-09-11 (introduced by 002226b, unjudged). complexity=='epic' widens the SUGGESTED list only; any other value gets the smaller default list. A recommendation with no authority behind it is not a gate. Re-judge if this list ever feeds dispatch or capability grants."
+      "code": "def _oracle(...)  dispatches on 'attempt' across 3 `==` branches",
+      "judgment": "ACCEPTED 2026-09-23. A TEST ORACLE, not a gate: a verbatim copy of pipeline/recovery_ladder.py's recovery_ladder as it was at fa04d85, kept frozen so tests can prove dottie_loop.execution.recovery_ladder (the one implementation, a rung table with a fail-closed default) makes the same decision for every input. Its fall-through is the ladder's terminal `escalate` rung, fail-closed. Restructuring it would defeat its purpose as the reference."
     }
   ]
 }

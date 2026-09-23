@@ -14,6 +14,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import typer
+from dottie_loop.env import ollama_host
 
 from bigbang.core.output import emit
 from bigbang.core.registry import list_tools
@@ -28,7 +29,7 @@ def _is_resolvable_fast(host: str, timeout: float = 0.8) -> bool:
         allow = (
             os.environ.get("OLLAMA_ALLOW_DOCKER_HOST")
             or os.environ.get("BIGBANG_USE_DOCKER_HOST")
-            or os.environ.get("OLLAMA_BASE", "")
+            or (ollama_host(default="") or "")
         )
         if "host.docker.internal" not in allow:
             try:

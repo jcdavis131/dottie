@@ -106,12 +106,15 @@ test("uses ESLint 9 flat config with Next core and TypeScript presets", async ()
   assert.match(source, /from\s+["']eslint\/config["']/);
   assert.match(source, /from\s+["']eslint-config-next\/core-web-vitals["']/);
   assert.match(source, /from\s+["']eslint-config-next\/typescript["']/);
-  assert.match(source, /ignores:\s*\["app\/acd\/\*\*"\]/);
+  // app/acd (a dormant browser-local simulation nothing imported) was deleted,
+  // so there is nothing left for ESLint to ignore.
+  assert.doesNotMatch(source, /app\/acd/);
   assert.match(source, /\.\.\.nextVitals,\s*\.\.\.nextTypeScript/s);
 });
 
-test("keeps dormant browser-local ACD simulation outside the product graph", async () => {
+test("the deleted ACD simulation stays deleted and nothing imports it", async () => {
   const acdRoot = path.join(appRoot, "app", "acd");
+  await assert.rejects(readFile(path.join(acdRoot, "index.ts"), "utf8"), /ENOENT/);
   const files = (
     await Promise.all([sourceFiles(path.join(appRoot, "app")), sourceFiles(path.join(appRoot, "lib"))])
   )

@@ -322,17 +322,25 @@ def classify_curation_intent(text: str) -> str:
     return "standard"
 
 def recovery_ladder(error_class: str, side_effect: str, attempt: int) -> Dict[str,Any]:
-    if error_class not in FAILURE_TAXONOMY: error_class="TOOL_FAILURE"
-    if side_effect not in SIDE_EFFECT: side_effect="READ"
-    if side_effect in ("WRITE_DESTRUCTIVE","EXTERNAL_NOTIFY"):
-        return {"action":"escalate","reason":f"{side_effect} never auto — needs human gate","attempt":attempt,"errorClass":error_class,"sideEffect":side_effect}
-    if attempt==1:
-        return {"action":"retry1","attempt":1,"errorClass":error_class,"sideEffect":side_effect,"safe": side_effect in ("READ","WRITE_IDEMPOTENT")}
-    if attempt==2:
-        return {"action":"patch","attempt":2,"errorClass":error_class,"fix":"single-resp patch — fix concrete file:line evidence"}
-    if attempt==3:
-        return {"action":"replan","attempt":3,"errorClass":error_class,"dag_version_inc":True,"bounded":True}
-    return {"action":"escalate","attempt":attempt,"errorClass":error_class,"sideEffect":side_effect}
+    """The one recovery ladder (dottie_loop.execution.recovery_ladder, via pipeline/recovery_ladder.py).
+
+    Same actions as the copy that used to live here; the rung dicts carry a few
+    more descriptive keys (bio, next_if_fail, bounded) than this copy returned.
+    """
+    return _one_ladder()(error_class, side_effect, attempt)
+
+
+_LADDER_FN: list = []
+
+
+def _one_ladder():
+    if not _LADDER_FN:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("_pipeline_recovery_ladder", str(Path(__file__).with_name("recovery_ladder.py")))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _LADDER_FN.append(mod.recovery_ladder)
+    return _LADDER_FN[0]
 
 def verification_econ(score: float, prev: float, budget: int=3, threshold: float=8.0, early_exit_delta: float=0.3) -> Dict[str,Any]:
     delta=score-prev

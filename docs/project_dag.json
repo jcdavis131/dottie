@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-09-18",
+  "updated": "2026-09-23",
   "doc": "docs/PROJECT_DAG.md",
   "legend": {
     "priority": "1 = do first, 5 = last; ties break by size (S before L)",
@@ -610,6 +610,86 @@
         "dottie-loop-definition-of-done"
       ],
       "evidence": "packages/dottie-loop tests/test_backend_signal.py (10), tests/test_manifest.py (17); docs/JEV_COLIBRI_INSIGHTS_SPEC.md"
+    },
+    {
+      "id": "decision-plane-phase1",
+      "title": "Decision plane phase 1: one decide(goal, hints) in jarvisd (context builder + run-history index + one System One state builder + decision records), lazy scout plugins, System One keep-alive, measured bench, one copy of each thing",
+      "repo": "dottie",
+      "kind": "infra",
+      "status": "done",
+      "priority": 1,
+      "size": "L",
+      "depends_on": [
+        "jarvisd"
+      ],
+      "done_on": "2026-09-23",
+      "evidence": "docs/ARCHITECTURE.md; packages/dottie-loop tests/test_decision_plane.py + test_recovery_ladder_one_copy.py (274 dottie-loop passed), apps/jarvisd (129 passed), apps/scout-cli (2600 passed), apps/jev-v0 (20), harness-api (120); dottie-loop bench decide: scout cold route p50 826 -> 136 ms, jarvisd warm decide+context p50 3.8 ms"
+    },
+    {
+      "id": "decision-plane-real-executors",
+      "title": "Real executors for outcome labels: runner executors that do real work so outcomes are `executor: real` and `scout router pack` has real labels (stub outcomes stay excluded)",
+      "repo": "dottie",
+      "kind": "infra",
+      "status": "blocked",
+      "priority": 1,
+      "size": "L",
+      "depends_on": [
+        "decision-plane-phase1"
+      ],
+      "acceptance": "a production `scout harness run` over a real executor writes an outcome with executor: real; `scout router pack` builds a pack from real-executor outcomes only, MANIFEST.json executors.real > 0"
+    },
+    {
+      "id": "harness-api-jarvisd-proxy",
+      "title": "apps/dottie-harness-api becomes a thin proxy to jarvisd /api/decide (retires lib/moma_lite.py vendoring and the analytics.py ladder copy)",
+      "repo": "dottie",
+      "kind": "infra",
+      "status": "blocked",
+      "priority": 2,
+      "size": "M",
+      "depends_on": [
+        "decision-plane-phase1",
+        "host-jarvis"
+      ],
+      "acceptance": "harness-api /api/route and /api/plan answer from jarvisd /api/decide (same keys), fail closed when jarvisd is unreachable, and no heuristic copy remains under apps/dottie-harness-api/lib"
+    },
+    {
+      "id": "retire-bluehenre",
+      "title": "Archive apps/bluehenre out of the monorepo (owner decision 2026-09-23), history kept; remove its bluehenre-checks CI job",
+      "repo": "dottie",
+      "kind": "ops",
+      "status": "blocked",
+      "priority": 2,
+      "size": "S",
+      "depends_on": [
+        "decision-plane-phase1"
+      ],
+      "acceptance": "apps/bluehenre absent from main, its CI job gone, archive location recorded in docs/ARCHITECTURE.md"
+    },
+    {
+      "id": "rlm-converge",
+      "title": "Converge the three RLM implementations (apps/dottie-rlm, apps/dottie/dottie/rlm.py, packages/dottie-loop/dottie_loop/rlm.py) onto one (owner decision 2026-09-23: keep and integrate apps/dottie-rlm)",
+      "repo": "dottie",
+      "kind": "infra",
+      "status": "blocked",
+      "priority": 3,
+      "size": "M",
+      "depends_on": [
+        "decision-plane-phase1"
+      ],
+      "acceptance": "one RLM module, the others thin re-exports or removed, every existing RLM test passing against it"
+    },
+    {
+      "id": "agent-os-fold",
+      "title": "Fold apps/dottie (agent OS) missions and research loop into the decision plane / jarvisd, and resolve the `dottie` package-name collision with apps/ava-factory/dottie (owner decision 2026-09-23: keep and integrate)",
+      "repo": "dottie",
+      "kind": "infra",
+      "status": "blocked",
+      "priority": 3,
+      "size": "L",
+      "depends_on": [
+        "decision-plane-phase1"
+      ],
+      "acceptance": "missions and the research loop reachable through jarvisd; ava-open-harness's 5 collision failures gone; no importable package named `dottie` in two places"
     }
   ]
 }

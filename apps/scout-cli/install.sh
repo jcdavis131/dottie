@@ -78,8 +78,8 @@ cat > "$TARGET/bundles/manifest.json" <<'MF'
   ],
   "ultra": {
     "checkpoint-manager": "ultra/checkpoint-manager.js LangGraph pause/resume timeline.jsonl 7-field",
-    "recovery-ladder": "ultra/recovery-ladder.js FailureTaxonomy5 SideEffect4 retry→patch→replan→escalate",
-    "communication-pacing": "ultra/communication-pacing.js HandoffEnvelope 7 max3/4 tempo :13",
+    "recovery-ladder": "dottie_loop.execution.recovery_ladder (the one ladder) FailureTaxonomy5 SideEffect4 retry→patch→replan→escalate",
+    "communication-pacing": "pacing constants in scout harness route output; handoff = jarvisd jarvis.send/inbox max3/4 tempo :13",
     "verification-economics": "ultra/verification-economics.js budget3 thr8.0 earlyExit0.3",
     "stuck-detector": "ultra/stuck-detector.js HonestLens 9 loop>3 conf<0.4 latency>thr",
     "verifier-with-budget": "ultra/verifier-with-budget.js single enforcement budget2 fix once if <8"

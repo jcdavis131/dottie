@@ -181,10 +181,14 @@ def test_discovery_chain_is_env_then_loopback_deduped():
     chain = ollama.candidate_bases(None, {"OLLAMA_HOST": "box:11434"})
     assert chain[0] == "http://box:11434"
     assert chain[1:] == list(ollama.DEFAULT_BASES)
-    # env precedence follows ENV_BASES order
-    both = ollama.candidate_bases(
-        None, {"OLLAMA_BASE": "first:11434", "OLLAMA_HOST": "second:11434"}
-    )
+    # env precedence follows ENV_BASES order: OLLAMA_HOST first, deprecated aliases after
+    with pytest.warns(FutureWarning, match="OLLAMA_BASE is deprecated"):
+        import dottie_loop.env as denv
+
+        denv._warned.discard("OLLAMA_BASE")
+        both = ollama.candidate_bases(
+            None, {"OLLAMA_BASE": "second:11434", "OLLAMA_HOST": "first:11434"}
+        )
     assert both[:2] == ["http://first:11434", "http://second:11434"]
     # an already-default env value does not appear twice
     assert ollama.candidate_bases(None, {"OLLAMA_HOST": "127.0.0.1:11434"}) == list(

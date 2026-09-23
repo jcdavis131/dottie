@@ -60,7 +60,7 @@ every push since at least 2026-08-18.
 |---|---|---|
 | vector-hub | dumbmodel.com hub | 2 open PRs (#13 draft, #15). 3 open TODO items. |
 | vector-hoops, vector-equities, vector-gridiron, vector-pitch, vector-unified | the five daily games | vector-unified was meant to consolidate the others (its `GOAL_AND_SHIP.md` says "5-game hub"); the other four still receive direct commits. Each carries a `COORDINATION.md` claim board that duplicates dottie's `bundles/coordination`. |
-| arxiviq | arxiviq.com | **Diverged.** The standalone repo is the older graph site (`site/app/page.tsx`, `starter/`). The conductor + pairing UI (`app/conductor`, `app/api/pair/*`, `app/acd/*`) exists only in `dottie/apps/arxiviq`. Decide which one deploys to arxiviq.com (§6, decision 4). |
+| arxiviq | arxiviq.com | **Diverged.** The standalone repo is the older graph site (`site/app/page.tsx`, `starter/`). The conductor + pairing UI (`app/conductor`, `app/api/pair/*`, `app/acd/*`, the latter deleted 2026-09-23 because nothing imported it) exists only in `dottie/apps/arxiviq`. Decide which one deploys to arxiviq.com (§6, decision 4). |
 | jcamd, who-e, vector-arcade, vector-fusion-demo, component-books, alamost-com | personal site, reader, arcade, demo, book, card shop | Single-commit or finished. Leave alone. |
 
 ### Superseded — close out
@@ -173,7 +173,7 @@ persistent state and must stay up.
 |---|---|---|
 | **Home box + Cloudflare Tunnel** | Free. Always on while the box is on. GPU and Ollama available. Public HTTPS on your domain. SQLite on local disk, nightly backup to R2 (you already use R2). | **Recommended v1.** |
 | Fly.io machine with volume | Small always-on Python service fits the free-ish allowance; persistent volume; no GPU. | v2 fallback for "laptop closed" days. Clean container already implied by Phase 1. |
-| Cloudflare Workers + D1 | Free, always on. But the daemon is stdlib Python; Workers need a JS/TS rewrite (Python Workers are beta). | Only if you decide to rewrite the daemon in TypeScript, which the `apps/arxiviq/app/acd/*` code hints you have started. Not for v1. |
+| Cloudflare Workers + D1 | Free, always on. But the daemon is stdlib Python; Workers need a JS/TS rewrite (Python Workers are beta). | Only if you decide to rewrite the daemon in TypeScript, which the since-deleted `apps/arxiviq/app/acd/*` code hinted at. Not for v1. |
 | Vercel serverless (current) | Stateless, cold starts, no long-running process. | Keep for slasso.com dashboards; **not** the Jarvis host. |
 
 **Acceptance:** `https://jarvis.<your-domain>/api/health` returns `ok` from a

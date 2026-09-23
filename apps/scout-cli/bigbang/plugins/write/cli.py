@@ -577,7 +577,9 @@ def _ollama_base_fast() -> str | None:
     except Exception:
         pass
     # only localhost fast, skip docker internal unless env says ok
-    env_base = os.environ.get("OLLAMA_BASE") or os.environ.get("OLLAMA_URL")
+    from dottie_loop.env import ollama_host
+
+    env_base = ollama_host()  # OLLAMA_HOST, or a deprecated alias (warned)
     bases = []
     if env_base:
         bases.append(env_base.rstrip("/"))

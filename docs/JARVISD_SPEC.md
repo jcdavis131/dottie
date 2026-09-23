@@ -78,7 +78,8 @@ string with `ok`, and on failure `error` + `example`.
 | `jarvis.claim` / `jarvis.release` / `jarvis.claims` | repo, area, note | claim board; claim fails if another agent holds the same repo+area |
 | `jarvis.send` / `jarvis.inbox` | to, body / mark_read | agent-to-agent messages |
 | `jarvis.goal` / `jarvis.goals` / `jarvis.goal_done` | repo, text / id, result | goals |
-| `harness.route` | goal | calls scout's heuristic router in-process (`bigbang.plugins.harness.cli` scoring functions); records a timeline row |
+| `harness.decide` | goal, repo?, hints?, context? | the decision plane (2026-09-23): bounded context (memories, open goals, claims, run history) -> `dottie_loop.router` -> decision record with latency breakdown; records a `decide` timeline row. See `docs/ARCHITECTURE.md` |
+| `harness.route` | goal | compatible alias of `harness.decide` (old field set plus `decision`); records a `route` timeline row |
 | `harness.run` | goal, mcp_namespace=None | calls `bigbang.plugins.harness.runner.run_goal`; records a timeline row with the run id and critic score |
 | `contacts.resolve` | phrase | acne `ContactsHub().resolve` if `acne` is importable, else `ok:false, error:"acne not installed"` |
 | `graph.query` | query, graph_path=None | personal-graphify `graph.json` query if importable, else structured error |
@@ -91,7 +92,7 @@ a pair programmer). `--expose-scout` adds them via `bigbang.plugins.mcp.server.b
 ## 5. JSON API (`jarvisd/app.py`)
 
 `GET /api/health` (no auth) → `{ok, version, uptime_s, db, brain}`
-`POST /api/route {goal}` · `POST /api/run {goal}` · `POST /api/plan {goal}` (same shape as `apps/dottie-harness-api`)
+`POST /api/decide {goal, repo?, hints?, context?, cache?}` · `POST /api/route {goal}` · `POST /api/run {goal}` · `POST /api/plan {goal}` (same shape as `apps/dottie-harness-api`)
 `GET|POST /api/memories` · `GET /api/recall?q=` · `GET|POST|DELETE /api/claims` ·
 `GET|POST /api/inbox` · `GET|POST|PATCH /api/goals` · `GET /api/timeline` · `GET /api/export/<table>`
 

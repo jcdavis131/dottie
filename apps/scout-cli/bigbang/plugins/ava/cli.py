@@ -92,7 +92,9 @@ def _is_resolvable_fast(host: str, timeout: float = 0.8) -> bool:
     if host in ("localhost", "127.0.0.1", "::1"):
         return True
     if host == "host.docker.internal":
-        allow = os.environ.get("OLLAMA_ALLOW_DOCKER_HOST") or os.environ.get("BIGBANG_USE_DOCKER_HOST") or os.environ.get("OLLAMA_BASE", "")
+        from dottie_loop.env import ollama_host
+
+        allow = os.environ.get("OLLAMA_ALLOW_DOCKER_HOST") or os.environ.get("BIGBANG_USE_DOCKER_HOST") or ollama_host(default="")
         if "host.docker.internal" not in allow:
             try:
                 with open("/etc/hosts", encoding="utf-8", errors="ignore") as f:
@@ -239,7 +241,9 @@ def _ollama_available() -> str | None:
         return None
 
     # Env override
-    env_base = os.environ.get("OLLAMA_BASE") or os.environ.get("OLLAMA_URL") or os.environ.get("OLLAMA_HOST")
+    from dottie_loop.env import ollama_host
+
+    env_base = ollama_host()  # OLLAMA_HOST, or a deprecated alias (warned)
     urls_try = []
     if env_base:
         b = env_base.rstrip("/")

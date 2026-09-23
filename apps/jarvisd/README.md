@@ -42,9 +42,16 @@ you are `anon`. Every tool also accepts an explicit `agent` argument.
 
 Tools: `jarvis.context` · `jarvis.remember` · `jarvis.recall` · `jarvis.claim` ·
 `jarvis.release` · `jarvis.claims` · `jarvis.send` · `jarvis.inbox` · `jarvis.goal` ·
-`jarvis.goals` · `jarvis.goal_done` · `harness.route` · `harness.run` ·
+`jarvis.goals` · `jarvis.goal_done` · `harness.decide` · `harness.route` · `harness.run` ·
 `contacts.resolve` · `graph.query` · `jarvis.ask` · `jarvis.status`.
 Each returns a JSON string with `ok`; on failure `error` and `example`.
+
+`harness.decide` (and `POST /api/decide`) is Dottie's decision plane: it builds a
+bounded context from this daemon's store (memories via FTS5, open goals, active
+claims) plus scout's run history, routes through `dottie_loop.router`, and returns
+the decision with a record (context digest and ids, System One answers, latency
+breakdown, cache hit) that also lands on the timeline as `kind=decide`.
+`harness.route` / `/api/route` are compatible aliases. See `docs/ARCHITECTURE.md`.
 
 ## Environment
 
@@ -176,6 +183,7 @@ curl -s "${H[@]}" -X POST localhost:8790/api/inbox -d '{"to":"cursor","body":"ta
 curl -s -H "Authorization: Bearer $JARVIS_BEARER" -H "X-Agent-Id: cursor" "localhost:8790/api/inbox?mark_read=1"
 curl -s "${H[@]}" -X POST localhost:8790/api/goals -d '{"repo":"dottie","text":"green CI"}'
 curl -s "${H[@]}" -X PATCH localhost:8790/api/goals -d '{"id":1,"result":{"sha":"abc"}}'
+curl -s "${H[@]}" -X POST localhost:8790/api/decide -d '{"goal":"compare Stripe vs Lemon Squeezy Aug 2026","repo":"dottie"}'
 curl -s "${H[@]}" -X POST localhost:8790/api/route -d '{"goal":"compare Stripe vs Lemon Squeezy Aug 2026"}'
 curl -s "${H[@]}" -X POST localhost:8790/api/plan  -d '{"goal":"ship the daemon"}'
 curl -s "${H[@]}" "localhost:8790/api/timeline?repo=dottie"
