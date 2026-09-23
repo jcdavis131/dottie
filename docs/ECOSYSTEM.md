@@ -1,63 +1,25 @@
-# The Dottie Ecosystem — one loop, seven repos, one center
+# The Dottie ecosystem (pointer + history)
 
-**Status: normative map** (2026-08-09). Companion to `docs/PLATFORM_IMPROVEMENT_PLAN.md`
-(the plan), `docs/CONSOLIDATION.md` (why bhenre.com is gone), and
-`docs/LONGCAT2_INSIGHTS_SPEC.md` (the architecture doctrine). When this file and
-the code disagree, the code is right and this file has a bug — fix it here.
+**The normative description of Dottie is now [`docs/ARCHITECTURE.md`](ARCHITECTURE.md)**
+(2026-09-23): the four planes, the runtime topology, every service and port,
+the `decide` contract, which knowledge is on the decision path, the learning
+loop, the measured speed budget, the rules and the retirement decisions.
+Routing details are in [`docs/ROUTER.md`](ROUTER.md).
 
-## The one-sentence version
+This page used to be the "normative map" (2026-08-09 to 2026-09-11). Parts of
+it described things that do not run today, so it is kept only as history. The
+full previous text is in git history (`git log -p -- docs/ECOSYSTEM.md`).
 
-Goals go in; the harness routes them to the cheapest tier that can do the work,
-executes — including against real external tools through the meta-MCP layer —
-and every run leaves a **measured** trace; traces become training labels; the
-trained router is promotion-gated against honest baselines and deployed back
-into the same harness that generated the traces.
+## What was aspirational, and what is true now
 
-## The loop
+| This page said (2026-08-09) | True as of 2026-09-23 |
+|---|---|
+| "Every arrow is code that exists and runs today" | The nightly Routine (09:00 UTC retrain) is not in this repo, and the loop's router decisions come from the MoMA-lite heuristic. The measured loop is `ARCHITECTURE.md` "The learning loop" |
+| slasso.com / harness-api `/api/route` "serving the current champion" | harness-api serves the deterministic MoMA-lite heuristic (vendored from `dottie_loop.backends`); no learned router is deployed anywhere |
+| Router = "learned MLP + heuristics" | One router, `dottie_loop.router`: heuristic authoritative; the MLP and System One are advisory until a gated, human-stamped artifact exists (none does) |
+| Seven repos with the harness at the center | One monorepo (`jcdavis131/dottie`); the decision plane is jarvisd |
 
-```mermaid
-flowchart LR
-    G[Goals\nplaybooks · CLI · API] --> R[Router\nlearned MLP + heuristics]
-    R --> E[Execute\n5 tiers · MoMA-lite]
-    E -->|action_operator| M[meta-MCP\nnamespaced downstream tools]
-    E --> T[Timeline + Checkpoint\nmeasured provenance]
-    T --> C[Corpus miner\nbehavior · outcome · corrected labels]
-    C --> H[Hill-climb trainer\nnightly Routine 09:00 UTC]
-    H --> P{Promotion gate\nfail-closed}
-    P -->|pass| D[Deploy\nslasso.com + committed weights]
-    P -->|fail| K[Keep champion\nreport honestly]
-    D --> R
-```
-
-Every arrow is code that exists and runs today; nothing in this diagram is
-aspirational. The gate has never passed — see "Honest status" for why that is
-the system working, not failing.
-
-## Repos and their roles
-
-| Repo | Role | Disposition |
-|------|------|-------------|
-| **dottie** | The center. Monorepo carrying the harness (`apps/scout-cli`), the training factory mirror (`apps/ava-factory`), the live API + dashboard (`apps/dottie-harness-api`), business playbooks, and all doctrine docs | Active — all development lands here |
-| **scout-cli** (standalone) | Origin of the CLI; pre-v0.8 surface | Superseded by `apps/scout-cli` in dottie; do not develop there |
-| **ava-agi-factory-v6-4** | Origin of the training factory (J-Space, scale ladder smoke→nano→mini→base1b) | Source of the frozen mirror at `apps/ava-factory/dottie/**`; foundation-model track (P3) continues there |
-| **ava-open-harness** | Evaluation harness — every score from a live forward pass, unmeasurable results fail structurally | Vendored at `packages/ava-open-harness` |
-| **ava-skills** | Skill contracts (SKILL.md + typed module + tests) routed to slot banks | Vendored at `packages/ava-skills`; ruff HARD gate at 0 |
-| **acne** | Local-first people memory (typed temporal property graph, trigger-phrase resolver) | **Wired live 2026-08-09**: ships the `acne.tools` facade the `contacts` plugin imports, plus `acne mcp-serve` (SSE, real schemas) consumable as a meta-MCP downstream |
-| **bluehen** | Prior fleet monorepo (bhenre.com era) | **Deprecated** — PR #5 lands `DEPRECATED.md`; salvage staged in `docs/salvage/` |
-
-## The tiers, and what the meta-MCP layer changed
-
-The router chooses among five tiers (`deterministic`, `llm`, `deep_research`,
-`action_operator`, `agentic_epic`). Until 2026-08-09, `action_operator` had
-only internal executors. The mcp plugin's meta layer (namespaces of registered
-downstream MCP servers, per-tool disables, `scout mcp serve --namespace`)
-turns that tier outward: a goal of the form `mcp:<server>__<tool> {json}`
-executes a **real external tool call** under the default-deny URL allowlist,
-with measured wall-clock latency, measured status, and measured-0 token cost
-(scout makes no model calls to proxy). Failures are real failures — policy
-denials, unreachable servers, downstream errors — and they exercise the same
-bounded recovery ladder (retry → patch → replan → escalate, fail-closed) as
-everything else.
+## History (kept because other documents cite these sections)
 
 ## Why real failures matter: the label ceiling
 
@@ -89,16 +51,6 @@ split buckets come from sha256 of the split key, never `hash()`. Dashboards
 derive every number from committed sources and render UNMEASURED rather than a
 plausible zero.
 
-## Surfaces
-
-- **slasso.com** (Validation Lab) — training progress dashboard + `/api/health`
-  + `/api/route` serving the current champion (zero-torch numpy inference,
-  parity ≤1e-4 against the trainer).
-- **CLI** — `scout harness run` (the loop's front door), `scout route
-  --learned`, `scout mcp ns …` (meta-MCP), plus the 60+ plugin surface.
-- **Nightly Routine** — retrains at 09:00 UTC against whatever measured data
-  accumulated; the gate decides what ships.
-
 ## Honest status (2026-08-10)
 
 - 1,563-record corpus; 729 measured; champion `orch-mlp-v1-v4` at 97.2% val /
@@ -129,26 +81,7 @@ plausible zero.
 
 ## The spec as code (2026-09-11)
 
-The Dottie Full Ecosystem Specification v1.0 (baseline 2026-09-10) is now a
-package: `packages/dottie-loop` (`dottie_loop`). It carries the contracts the
-diagram above assumes — `GoalEnvelope`, one-time approval tokens, `PlanGraph`
-validation, the seven-field timeline and checkpoint transaction, opt-in redacted
-pair capture, the task-first reward, the hard-block dataset QA chain with its
-accounting invariant, training preflight, the seven evaluation gates, promotion
-and rollback records, the closed-loop trigger with freshness and cooldown, the
-Forge job queue and the benchmark report — as stdlib-only, fail-closed code with
-tests named after the spec's acceptance IDs. It calls no model and claims no
-capability (`python -m dottie_loop spec status` says so).
-
-What it changes about the honest status: nothing about the numbers above, and
-that is the point. The gates now exist as code that can stop an advance; the
-evidence that would pass them (a registered Forge runner, 500 consented traces,
-a fresh signed baseline) still does not. The review that led here, including the
-finding that the spec's four "implemented on branch" lanes exist on no remote
-branch, is `docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md`.
-
-Phase 2 (same day, after #27 merged) added the tool plane, the end-to-end
-`loop run` driver, the `scout loop` plugin, the Forge runner script, Slack
-reporter and web approval board, layered memory, agent-civilization machines
-and briefs, observability, incidents and retention — every RT item now has a
-named test. Section 7 of the review doc is the ledger.
+The Dottie Full Ecosystem Specification v1.0 became `packages/dottie-loop`
+(`dottie_loop`): contracts and gates as stdlib-only, fail-closed code with tests
+named after the spec's acceptance IDs. The review that led there is
+`docs/DOTTIE_ECOSYSTEM_REVIEW_2026-09-10.md`.

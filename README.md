@@ -18,15 +18,22 @@ promotion requirements are satisfied.
 
 > Solo personal project, no connection to employer, built with public/free-tier only (R2/Workers/Supabase/HF ZeroGPU, ONNX WASM, public pip). See `apps/dottie/DOTTIE_PRIME_SOTA.md` for prime → Dottie comparison.
 
-The normative map of the ecosystem — the loop diagram, repo roles, provenance
-doctrine, and honest status — is [`docs/ECOSYSTEM.md`](docs/ECOSYSTEM.md). When
-that document and the code disagree, the code is right.
+The normative description of Dottie — the four planes (surfaces, the jarvisd
+decision plane, knowledge, learning), every service and port, the `decide`
+contract, which knowledge reaches decisions, the measured speed budget, the
+rules and the retirement decisions — is [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+When that document and the code disagree, the code is right.
+(`docs/ECOSYSTEM.md` is now a pointer and a history.)
 
 ## The loop
 
-1. **Route** — the production MoMA-lite heuristic classifier chooses among five
-   tiers: `deterministic`, `llm`,
-   `deep_research`, `action_operator`, `agentic_epic`.
+1. **Decide** — `decide(goal, hints)` (jarvisd `POST /api/decide`, MCP
+   `harness.decide`; `scout route` asks jarvisd and falls back to the same code
+   in-process) builds a bounded context (jarvisd memories, open goals, claims,
+   run history) and routes through the one router: the MoMA-lite heuristic
+   chooses among five tiers (`deterministic`, `llm`, `deep_research`,
+   `action_operator`, `agentic_epic`); the learned MLP and System One advise
+   until a gated, human-stamped artifact exists.
 2. **Execute** — `scout harness run` drives route → DAG plan → deterministic
    executors → bounded recovery ladder (retry → patch → replan → escalate,
    fail-closed) → critic. Goals of the form `mcp:<server>__<tool> {json}`
@@ -55,13 +62,14 @@ that document and the code disagree, the code is right.
 | `apps/scout-cli` | scout, Dottie's CLI: 60+ capability-declared plugins (harness, router, mcp, forge, vector, …) behind one `scout` entry point. `scout route` goes through the router |
 | `packages/dottie-loop` | The spec's contracts as stdlib code, including **the router** (`dottie_loop.router`: one routing policy for scout and jarvisd, MoMA-lite heuristic + advisory learned/System One backends, traces and the training loop). See [`docs/ROUTER.md`](docs/ROUTER.md) |
 | `apps/ava-factory` | Training factory: data pipeline, trainer, corpus mining, hill-climb, scale ladder (smoke → nano → mini → base1b); excluded from the uv workspace (requirements/Docker-driven) |
-| `apps/dottie-harness-api` | Fail-closed authenticated harness API: request-derived deterministic `/api/route` and `/api/plan`; learned and artifact-backed routes remain unavailable pending verified production artifacts and edge ownership |
+| `apps/dottie-harness-api` | Fail-closed authenticated harness API: request-derived deterministic `/api/route` and `/api/plan` from the router's MoMA-lite heuristic (vendored by `scripts/vendor_router.py`, parity-tested); learned and artifact-backed routes remain unavailable. Phase 2: a thin proxy to jarvisd `/api/decide` |
+| `apps/jarvisd` | The decision plane: the always-on daemon (`:8790`) serving `/api/decide`, MCP at `/mcp`, and one SQLite store of memories, claims, goals, inbox and timeline |
 | `apps/dottie` | Agent OS layer: RLM engine, flywheel, missions, research orchestration (see its README); excluded from the uv workspace (own `.venv` + `AVA_FACTORY_ROOT` needed, entangles with the `dottie.rl` namespace collision) |
 | `apps/scout-rtx` | Windows RTX hill-climb runner (torch cu128 hard-pin); excluded from the uv workspace |
 | `apps/jev-v0` | System One spike: small+LoRA+pointer heads, frozen `jev-decision-schema-1.0.0`, typed `/decide` dev server on 8771 (`--checkpoint` serves a trained pointer-LoRA). **NOT `train_1b`**, **NOT TypeSafe parity**. Excluded from the uv workspace (`--dry-run` is stdlib; `--go` is optional HF+peft) |
 | `apps/dottie-os` | Curation mirror of dottie-os (the local sidecar that serves System One `/decide` on `:8770`, which is not in this tree): the UltraData curriculum factory + harvest/hop lab scripts, emitting strict `jev-decision-schema-1.0.0` records + a provenance sidecar. LIVE / FT out of scope. Excluded from the uv workspace (stdlib smoke; optional HF `datasets` on the host) |
 | `apps/arxiviq` | Next.js app (arxiviq) |
-| `apps/bluehenre` | **Deprecated** bhenre.com org console — retired as a deployed surface 2026-08-09; see `apps/bluehenre/DEPRECATED.md` and `docs/CONSOLIDATION.md` |
+| `apps/bluehenre` | **Deprecated** bhenre.com org console — retired as a deployed surface 2026-08-09; see `apps/bluehenre/DEPRECATED.md` and `docs/CONSOLIDATION.md`. Owner decision 2026-09-23: archived out of the monorepo in Phase 2 |
 | `apps/dottie-org` | Org spec of record (`SPEC.md`) |
 | `packages/ava-skills` | Skill system (memory-router, memory-mint, code-bench, safety-scanner, …); ruff hard gate at 0 |
 | `packages/ava-open-harness` | Eval gate: J-Space tests, 11-category rubric, anti-mock guard |
@@ -210,7 +218,9 @@ uv run pytest packages/ava-open-harness -q   # non-blocking in CI today (package
 
 | Doc | What it holds |
 |---|---|
-| [`docs/ECOSYSTEM.md`](docs/ECOSYSTEM.md) | The normative map: loop, repos, tiers, label ceiling, provenance doctrine, honest status |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | **Normative.** The four planes, runtime topology, services and ports, the decide contract, knowledge sources, the learning loop, the measured speed budget, the rules, retirement decisions |
+| [`docs/ROUTER.md`](docs/ROUTER.md) | The one router: decision order, backends, authority (gate + human stamp), traces, the training loop |
+| [`docs/ECOSYSTEM.md`](docs/ECOSYSTEM.md) | Pointer + history: the 2026-08 map, label ceiling, provenance doctrine, honest status as of then |
 | [`docs/CONSOLIDATION.md`](docs/CONSOLIDATION.md) | One monorepo, fewer surfaces: what is deprecated, what stays live, salvage manifest |
 | [`docs/PLATFORM_IMPROVEMENT_PLAN.md`](docs/PLATFORM_IMPROVEMENT_PLAN.md) | The plan: P0 CI-to-green, P1 break the label ceiling, P2 harness capability |
 | [`docs/JARVIS_HARNESS_PLAN.md`](docs/JARVIS_HARNESS_PLAN.md) | Portfolio triage of all 27 repos and the phased path to a hosted, agent-connected pair programmer built on this harness |

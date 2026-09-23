@@ -16,6 +16,50 @@ before writing "current" anywhere in this file.
 
 ---
 
+## 📌 Session continuation — 2026-09-23 (supersedes every block below)
+
+**Stamped 2026-09-23 at HEAD `07a2146`** (branch `claude/decision-plane`, the
+merge of `origin/main` after PR #58's squash into this branch). Measured with
+`git rev-parse --short HEAD` + `scripts/check_handoff_fresh.py --check`.
+
+**What landed: decision plane, phase 1** (`docs/ARCHITECTURE.md` is now the
+normative description; `docs/ECOSYSTEM.md` is a pointer + history):
+
+- One entry, `decide(goal, hints)` (`dottie_loop.decide`), served by jarvisd
+  as `POST /api/decide` and MCP `harness.decide`; `/api/route`,
+  `harness.route` and `/api/plan` are aliases and run in the threadpool.
+  Context (`dottie_loop.context`): jarvisd memories (FTS5), open goals,
+  claims, run history (`dottie_loop.run_history`, incremental index), opt-in
+  graphify; bounded, deterministic, fail-soft, private texts only under
+  `DOTTIE_TRACE_TEXT=1`. Decision records carry the latency breakdown.
+- One System One state builder for serve and pack; traces store the served
+  context + `state_sha256`; outcomes are tagged `executor: stub|real` and the
+  pack refuses stub/untagged outcomes (today: nearly all outcomes are stub,
+  so no real-label pack can be built yet; Phase 2 node
+  `decision-plane-real-executors`).
+- Speed: scout plugins load lazily, MCP SDK on first use (cold `scout route`
+  p50 826 -> 136 ms); System One backend keep-alive + cached health; jev-v0
+  scores all questions from one prefix encoding. Bench:
+  `dottie-loop bench decide` / `scout router bench`.
+- One copy of each thing: harness-api vendors the router heuristic with a
+  parity check; one recovery ladder (`dottie_loop.execution`); `OLLAMA_HOST`
+  with deprecated aliases; `src/harness` and `apps/arxiviq/app/acd` deleted.
+- Owner decision 2026-09-23: retire only `apps/bluehenre` (Phase 2); keep and
+  integrate `apps/dottie-rlm`, `apps/dottie`, harness-api (-> jarvisd proxy).
+  Phase 2 nodes are in `docs/project_dag.json`.
+
+**Verified locally at this HEAD (uv 0.8.17, ruff 0.15.22, pytest 9.1.1):**
+dottie-loop 274 passed; jarvisd 129 passed, 1 skipped; scout-cli 2600
+passed, 2 skipped; jev-v0 20 OK; harness-api 120 passed; dottie-os 19 OK;
+factory 104 passed; ava-skills 115; personal-graphify 77; ava-factory
+flywheel + orchestration corpus 44; arxiviq node tests 45 pass;
+`uvx ruff@0.15.22 check packages/dottie-loop` clean; gate audit,
+declared-capabilities, resolver-fallbacks, cli-path-args, shell-true,
+store-symmetry, documented counts (970), DAG check, `factory check`,
+`uv lock --check` all OK.
+
+---
+
 ## 📌 Session continuation — 2026-09-18 (supersedes every block below)
 
 **Corrected 2026-09-18 at HEAD `8be6bad`** (`origin/main`; PR #44's squash
