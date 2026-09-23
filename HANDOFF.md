@@ -16,6 +16,93 @@ before writing "current" anywhere in this file.
 
 ---
 
+## 📌 Session continuation — 2026-09-18 (supersedes every block below)
+
+**Corrected 2026-09-18 at HEAD `8be6bad`** (`origin/main`; PR #44's squash
+merge and PR #46's merge both landed since the restamp below). The restamp
+below recorded branch-local `0750d30`, which was lost when PR #44
+squash-merged — that sha is not in `main` history, so
+`scripts/check_handoff_fresh.py --check` fails on `main`. This correction
+moves the recorded sha to a real `main` ancestor; the narrative and
+verification below are unchanged from the 2026-09-18 restamp.
+
+**Re-stamped 2026-09-18 at HEAD `0750d30`** (branch-local; superseded by
+the correction above), branch `claude/meta-stages-4-6-y46yip`. Measured
+with `git rev-parse --short HEAD` + `scripts/check_handoff_fresh.py
+--check` on this tree, not carried forward from the 2026-09-12 stamp
+(that stamp's own HEAD, `84ca74f`, is still the recorded value the drift
+check compares against — this block supersedes the narrative below it
+without moving that number).
+
+**What this stamp covers:**
+
+- PR #43 merged a competing implementation of Meta research stages 4–6 to
+  `main` while this branch's own PR #44 (stages 4–6) was open; this
+  branch was hardened in place with the agent-subject and task_ok
+  guarantees PR #44 had that #43 did not (`3df74a2`), then two outside
+  research projects (TypeSafe Jev, JustVugg/colibri) were adversarially
+  reviewed and their surviving learnings landed as `dottie_loop
+  /backend_signal.py` and `dottie_loop/manifest.py`, itself then put
+  through two further focused review passes that found and fixed six
+  real defects (`0750d30`). See `docs/JEV_COLIBRI_INSIGHTS_SPEC.md` for
+  the full research trail, including what was NOT adopted and why.
+- HANDOFF drift is 19 commits past the 2026-09-12 stamp before this
+  restamp commit (20 after it) against a budget of 20 — the next commit
+  on this branch needs its own restamp.
+
+**Verified locally at this HEAD (uv 0.8.17, ruff 0.15.22, pytest 9.1.1):**
+
+- `uvx ruff@0.15.22 check packages/dottie-loop` — clean
+- `uv run pytest packages/dottie-loop factory/tests -q` — **308 passed, 1 skipped**
+- `scripts/gate_audit.py --check --baseline scripts/gate_audit_baseline.json` — OK
+- `scripts/check_declared_capabilities.py --check --baseline scripts/declared_capabilities_baseline.json` — OK
+- `scripts/check_resolver_fallbacks.py --check` — OK
+- `scripts/store_symmetry_audit.py --check` — OK
+- `scripts/check_shell_true.py --check` — OK
+- `scripts/check_cli_path_args.py --check` — OK
+- `scripts/check_documented_counts.py --check` — OK
+- `scripts/dag_next.py --check` — OK (46 nodes, acyclic, all dependencies resolve)
+- `scripts/check_todos_timestamps.py` — OK
+- `uv run python -m factory check` — OK
+- `uv run --project apps/scout-cli python -m bigbang.cli --json leaks scan . --config leaks.json --fail-on error` — OK
+- `uv run --project apps/scout-cli python -m bigbang.cli --json leaks history --max-commits 0 --config leaks.json --fail-on error` — OK
+
+---
+
+## 📌 Session continuation — 2026-09-12 (supersedes every block below)
+
+**Re-stamped 2026-09-12 at HEAD `84ca74f`**, branch `scout/jarvisd-slack-ingress`
+(PR #26 rebased onto `main` after #36). Measured with
+`git rev-parse --short HEAD` + `scripts/check_handoff_fresh.py --check` on this
+tree, not carried forward from the 2026-09-11 stamp.
+
+The previous live stamp (`acffb8d`) was exactly 20 commits behind this HEAD
+locally and 21 behind GitHub's `pull_request` merge commit (`7598810` =
+`main` + this branch). Budget is 20, so lint-and-test failed on HANDOFF
+freshness after the rebase unblocked the earlier dottie-loop ruff gate.
+
+**What this stamp covers:**
+
+- `main` #36 (`843a869`): `closed_loop.py` `Iterator` moved behind
+  `TYPE_CHECKING` (ruff I001/TC003). That was the inherited lint-and-test
+  failure on this PR before the rebase.
+- This branch's Slack inbox drain + HTTP ingress + fail-closed routing
+  guards, replayed cleanly onto that `main` (6 commits, no conflicts).
+
+**Verified locally at this HEAD (uv 0.12.13, ruff 0.15.22, pytest 9.1.1):**
+
+- `uvx ruff@0.15.22 check packages/ava-skills packages/dottie-loop` — clean
+- `uv run pytest packages/dottie-loop -q` — **116 passed**
+- `uv run pytest apps/jarvisd -q` — **122 passed, 1 skipped**
+- `scripts/gate_audit.py --check` — OK (3 stale baseline entries in
+  `production_routing.py` now that dispatch is fail-closed; no new candidates)
+- `scripts/check_handoff_fresh.py --check` — this restamp is the fix
+
+Vercel `dottie` remains red across PRs (leftover Output Directory override);
+not treated as a merge blocker.
+
+---
+
 ## 📌 Session continuation — 2026-09-11 (supersedes every block below)
 
 **Re-stamped 2026-09-11 at HEAD `acffb8d`** (PR #31 merged: dottie-loop phases 6–8; #27

@@ -16,12 +16,16 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from collections.abc import Iterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from dottie_loop.errors import BlockedError
+from dottie_loop.approvals import is_agent_subject
+from dottie_loop.compute_teacher import factory_ready
+from dottie_loop.errors import BlockedError, PolicyDeniedError
 from dottie_loop.hashing import age_seconds, new_id, now_iso, parse_iso
 from dottie_loop.schema import active
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 #: §26 trigger thresholds — data, so they are auditable and changeable as config.
 THRESHOLDS: dict[str, float] = {
@@ -64,6 +68,9 @@ class LeaseFile:
     Records owner, start, heartbeat and expiry. A crashed job may be reclaimed only
     after its expiry has passed AND no live runner heartbeat exists — the caller
     passes the set of live runner names it can actually see.
+
+    An ``agent:`` subject (research stage 6 proposer) is refused at ``acquire``;
+    reclaim, heartbeat and expired-but-live rules are unchanged.
     """
 
     def __init__(self, path: Path, ttl_seconds: int = 3600) -> None:
@@ -100,6 +107,9 @@ class LeaseFile:
         tmp.replace(self.path)
 
     def acquire(self, owner: str, *, now: datetime | None = None, live_runners: set[str] | None = None) -> Lease:
+        if is_agent_subject(owner):
+            # research stage 6: an agent may propose a run; it never holds the GPU lease
+            raise PolicyDeniedError("an agent subject cannot hold the retraining lease", field="owner")
         now = now or datetime.now(UTC)
         with self._locked():
             cur = self.read()
@@ -247,3 +257,24 @@ def load_sources(path: Path) -> dict[str, MetricSource]:
     """Read ``{"name": {"value", "event_time", "provenance", "version"}}`` from JSON."""
     raw = json.loads(Path(path).read_text(encoding="utf-8"))
     return {k: MetricSource(name=k, value=float(v["value"]), event_time=v["event_time"], provenance=v.get("provenance", "unversioned"), version=v.get("version")) for k, v in raw.items()}
+
+
+def accept_teacher_pack(pack: dict[str, Any]) -> dict[str, Any]:
+    """Accept an offline Compute-as-Teacher pack as loop input.
+
+    This is not a live teacher and does not start training or promotion.
+    Missing, empty, or schema-mismatched packs fail closed.
+    """
+    ready = factory_ready(pack)
+    accepted = ready.get("outcome") == "pass"
+    return {
+        "accepted": accepted,
+        "live_teacher": False,
+        "training": False,
+        "production_change": False,
+        "factory_gate": ready,
+        "pack_id": None if not pack else pack.get("pack_id"),
+        "n_traces": None if not pack else (pack.get("factory") or {}).get("n_traces"),
+        "reason": ready.get("reason"),
+        "at": now_iso(),
+    }

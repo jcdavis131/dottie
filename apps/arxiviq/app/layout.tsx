@@ -1,37 +1,50 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
+import Link from "next/link";
 import "./globals.css";
+import {
+  META_DESCRIPTION,
+  META_TITLE,
+  OG_DESCRIPTION,
+  OG_TITLE,
+} from "../lib/system-one-copy";
 
 export const metadata: Metadata = {
-  title: "arxiviq.com — Dottie Factory + Conductor",
-  description: "Dottie pairing and conductor status with explicit service provenance.",
+  title: META_TITLE,
+  description: META_DESCRIPTION,
   metadataBase: new URL("https://arxiviq.com"),
   openGraph: {
-    title: "arxiviq.com — Dottie Factory",
-    description: "Dottie pairing and conductor status with explicit service provenance.",
+    title: OG_TITLE,
+    description: OG_DESCRIPTION,
     url: "https://arxiviq.com",
     siteName: "arxiviq.com",
     type: "website",
   },
+  twitter: {
+    card: "summary",
+    title: OG_TITLE,
+    description: OG_DESCRIPTION,
+  },
   manifest: "/manifest.json",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <head>
-        <meta name="theme-color" content="#080A0F" />
+        <meta name="theme-color" content="#f1e7e0" />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       </head>
-      <body style={{ margin: 0, background: "#080A0F" }}>
+      <body style={{ margin: 0, background: "#f1e7e0" }}>
         <nav
           aria-label="Site"
           style={{
             alignItems: "center",
-            background: "rgba(8,10,15,.92)",
+            background: "rgba(251,246,239,.92)",
             backdropFilter: "blur(12px)",
-            borderBottom: "1px solid #1E3328",
+            borderBottom: "1px solid #d9cabe",
             display: "flex",
-            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+            fontFamily: "IBM Plex Mono, ui-monospace, SFMono-Regular, Menlo, monospace",
             fontSize: 13,
             gap: 20,
             height: 40,
@@ -41,18 +54,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             zIndex: 40,
           }}
         >
-          <a href="/" style={{ color: "#EDEAE2", textDecoration: "none", fontWeight: 700 }}>
-            arxiviq
-          </a>
-          <a href="/" style={{ color: "#8A9A8B", textDecoration: "none" }}>
+          <Link href="/" style={{ color: "#201a13", textDecoration: "none", fontWeight: 700 }}>
+            dottie-os
+          </Link>
+          <Link href="/conductor" style={{ color: "#6f655a", textDecoration: "none" }}>
             Conductor
-          </a>
-          <a href="/hive" style={{ color: "#8A9A8B", textDecoration: "none" }}>
+          </Link>
+          <Link href="/hive" style={{ color: "#6f655a", textDecoration: "none" }}>
             The hive
-          </a>
-          <a href="/dottie" style={{ color: "#8A9A8B", textDecoration: "none" }}>
+          </Link>
+          <Link href="/dottie" style={{ color: "#6f655a", textDecoration: "none" }}>
             Pair
-          </a>
+          </Link>
         </nav>
         {children}
       </body>

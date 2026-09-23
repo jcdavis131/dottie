@@ -34,6 +34,12 @@ Commands::
     incident drill --results r.json | playbook --kind K
     privacy hold|delete --lineage L.json --key K --operator O
     spec status | schemas | traceability --dir DIR | components --root . | acceptance | done
+    research rubric --rubric R.json --transcript T.json [--task-ok|--task-fail] [--scores S.json]
+    research opt-lane --file timings.json
+    research compose --reward R.json --rubric-eval E.json [--opt O.json]
+    research compute-teacher --file pack.json [--dry-run] [--artifacts A.json]
+    research ember --file eval.json
+    research hyperagent --file proposal.json [--apply]
 """
 
 from __future__ import annotations
@@ -426,6 +432,171 @@ def cmd_spec_status(_a: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def cmd_research_rubric(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.rubric import (
+        Rubric,
+        RubricCriterion,
+        ScriptedVerifier,
+        Transcript,
+        evaluate_rubric,
+    )
+
+    raw = _read_json(a.rubric)
+    criteria = [RubricCriterion(**c) for c in raw.pop("criteria", [])]
+    raw.pop("schema", None)
+    raw.pop("digest", None)
+    rubric = Rubric(criteria=criteria, **raw)
+    tr = _read_json(a.transcript)
+    transcript = Transcript(**tr) if isinstance(tr, dict) and "turns" in tr else Transcript(turns=tr)
+    scores = _read_json(a.scores) if a.scores else {c.criterion_id: 1.0 for c in rubric.criteria}
+    task_ok = True if a.task_ok else False if a.task_fail else None
+    return evaluate_rubric(
+        rubric, transcript, ScriptedVerifier(scores), task_ok=task_ok, trace_id=a.trace_id
+    )
+
+
+def cmd_research_opt_lane(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.opt_lane import (
+        SandboxProvenance,
+        build_report,
+        calibrate_timing,
+        factory_pass,
+    )
+
+    raw = _read_json(a.file)
+    timing = calibrate_timing(
+        list(raw["samples_s"]),
+        warmup_n=int(raw["warmup_n"]),
+        statistic=raw.get("statistic", "median"),
+        q=float(raw.get("quantile", 0.5)),
+    )
+    if "sandbox" not in raw:
+        raise InvalidInputError("opt-lane file needs sandbox provenance", field="sandbox")
+    sb = raw["sandbox"]
+    sandbox = SandboxProvenance(
+        kind=sb["kind"],
+        python=sb["python"],
+        platform=sb["platform"],
+        hostname_hash=sb["hostname_hash"],
+        env_names=list(sb.get("env_names") or []),
+        extra=dict(sb.get("extra") or {}),
+    )
+    report = build_report(
+        task_ok=raw.get("task_ok"),  # typed guard in build_report; no truthy coercion
+        timing=timing,
+        sandbox=sandbox,
+        baseline_s=raw.get("baseline_s"),
+        speed_percentile_value=raw.get("speed_percentile"),
+        trace_id=raw.get("trace_id"),
+    )
+    report["factory_gate"] = factory_pass(report, speed_threshold=float(a.speed_threshold))
+    return report
+
+
+def cmd_research_manifest(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.manifest import ExperimentArm, ExperimentManifest
+
+    raw = _read_json(a.file)
+
+    def _arm(d: dict[str, Any]) -> ExperimentArm:
+        return ExperimentArm(
+            commit=str(d["commit"]),
+            config=dict(d.get("config") or {}),
+            raw_samples=tuple(float(x) for x in d["raw_samples"]),
+            quality_method=str(d["quality"]["method"]),
+            quality_passed=bool(d["quality"]["passed"]),
+            evidence_uri=str(d["evidence"]["uri"]),
+            evidence_sha256=str(d["evidence"]["sha256"]),
+            dirty_tree=bool(d.get("dirty_tree", False)),
+        )
+
+    manifest = ExperimentManifest(
+        hypothesis=str(raw["hypothesis"]),
+        baseline=_arm(raw["baseline"]),
+        trial=_arm(raw["trial"]),
+        lower_is_better=bool(raw.get("lower_is_better", True)),
+        run_order=tuple(raw.get("run_order") or ()),
+    )
+    return manifest.to_dict()
+
+
+def cmd_research_compose(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.research import compose_bundle
+    from dottie_loop.reward import RewardInputs
+
+    return compose_bundle(
+        reward_inputs=RewardInputs(**_read_json(a.reward)),
+        rubric_eval=_read_json(a.rubric_eval),
+        opt_report=_read_json(a.opt) if a.opt else None,
+        experiment_job=_read_json(a.experiment) if a.experiment else None,
+        split=_read_json(a.split) if a.split else None,
+        hidden_eval=_read_json(a.hidden_eval) if a.hidden_eval else None,
+        teacher_pack=_read_json(a.teacher) if a.teacher else None,
+        ember_eval=_read_json(a.ember) if a.ember else None,
+        proposal=_read_json(a.proposal) if a.proposal else None,
+    )
+
+
+def cmd_research_compute_teacher(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.closed_loop import accept_teacher_pack
+    from dottie_loop.compute_teacher import (
+        factory_ready,
+        load_teacher_artifacts,
+        prepare_offline_pack,
+    )
+
+    raw = _read_json(a.file)
+    if not isinstance(raw, dict):
+        raise InvalidInputError("compute-teacher --file must be a JSON object", field="file")
+    artifacts = None
+    if a.artifacts:
+        artifacts = load_teacher_artifacts(Path(a.artifacts))
+    pack = prepare_offline_pack(raw, artifacts=artifacts)
+    pack["factory_gate"] = factory_ready(pack)
+    pack["acceptance"] = accept_teacher_pack(pack)
+    pack["training"] = False
+    if a.dry_run:
+        pack["dry_run"] = True
+        if not pack["acceptance"].get("accepted"):
+            raise BlockedError(
+                "teacher pack dry-run not accepted: " + str(pack["acceptance"].get("reason")),
+                "teacher_pack",
+                **pack,
+            )
+    return pack
+
+
+def cmd_research_ember(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.ember import evaluate_from_records
+
+    raw = _read_json(a.file)
+    return evaluate_from_records(
+        list(raw.get("edges") or []),
+        evidence_catalog=dict(raw.get("evidence_catalog") or {}),
+        facts=raw.get("facts"),
+        synthetic=bool(raw.get("synthetic")),
+        mock=bool(raw.get("mock")),
+    )
+
+
+def cmd_research_hyperagent(a: argparse.Namespace) -> dict[str, Any]:
+    from dottie_loop.hyperagents import apply_proposal, propose
+
+    raw = _read_json(a.file)
+    proposal = propose(
+        proposer_id=str(raw["proposer_id"]),
+        action=str(raw["action"]),
+        destination=str(raw.get("destination") or "sandbox"),
+        payload=dict(raw.get("payload") or {}),
+        proposer_kind=str(raw.get("proposer_kind") or "hyperagent"),
+        notes=str(raw.get("notes") or ""),
+    )
+    out = proposal.to_dict()
+    if a.apply:
+        apply_proposal(proposal, actor_id=raw.get("actor_id"), approve_prod=a.approve_prod)
+    return out
+
+
 # --- parser -----------------------------------------------------------------------------------
 
 
@@ -636,6 +807,56 @@ def build_parser() -> argparse.ArgumentParser:
     s = sp.add_parser("components", help="§04/§34: which authoritative artifacts are actually in the tree")
     s.add_argument("--root", default=".")
     s.set_defaults(fn=cmd_spec_components)
+
+    rs = sub.add_parser("research").add_subparsers(dest="sub", required=True)
+    s = rs.add_parser("rubric", help="stage 1: evaluate a versioned rubric with a scripted verifier")
+    s.add_argument("--rubric", required=True)
+    s.add_argument("--transcript", required=True)
+    s.add_argument("--scores", help="JSON {criterion_id: score} for the scripted verifier")
+    s.add_argument("--trace-id")
+    g = s.add_mutually_exclusive_group()
+    g.add_argument("--task-ok", action="store_true")
+    g.add_argument("--task-fail", action="store_true")
+    s.set_defaults(fn=cmd_research_rubric)
+    s = rs.add_parser("opt-lane", help="stage 2: calibrated timing report, speed zeroed on task failure")
+    s.add_argument("--file", required=True, help="JSON {task_ok, warmup_n, samples_s, sandbox, baseline_s?}")
+    s.add_argument("--speed-threshold", type=float, default=0.0)
+    s.set_defaults(fn=cmd_research_opt_lane)
+    s = rs.add_parser("compose", help="stages 1–6 bundle; does not promote")
+    s.add_argument("--reward", required=True, help="RewardInputs JSON")
+    s.add_argument("--rubric-eval", required=True)
+    s.add_argument("--opt")
+    s.add_argument("--experiment")
+    s.add_argument("--split")
+    s.add_argument("--hidden-eval")
+    s.add_argument("--teacher")
+    s.add_argument("--ember")
+    s.add_argument("--proposal")
+    s.set_defaults(fn=cmd_research_compose)
+    s = rs.add_parser("compute-teacher", help="stage 4: offline CaT pack; does not train")
+    s.add_argument(
+        "--file",
+        required=True,
+        help="teacher-pack-1.0.0 or synthesis JSON {traces, artifacts, consent_ledger, source_records}",
+    )
+    s.add_argument("--artifacts", help="path to teacher-record list (fails closed if missing)")
+    s.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="validate and accept the pack; never trains; exit 2 if not accepted",
+    )
+    s.set_defaults(fn=cmd_research_compute_teacher)
+    s = rs.add_parser("ember", help="stage 5: causal-memory provenance eval; fail-closed")
+    s.add_argument("--file", required=True, help="JSON {edges, evidence_catalog, facts?, synthetic?, mock?}")
+    s.set_defaults(fn=cmd_research_ember)
+    s = rs.add_parser("hyperagent", help="stage 6: sandbox proposal; --apply is always denied")
+    s.add_argument("--file", required=True, help="JSON {proposer_id, action, destination, payload}")
+    s.add_argument("--apply", action="store_true", help="attempt apply (always policy-denied)")
+    s.add_argument("--approve-prod", action="store_true", help="ignored; still cannot apply")
+    s.set_defaults(fn=cmd_research_hyperagent)
+    s = rs.add_parser("manifest", help="external research (colibri): two-arm evidence record, every number re-derived")
+    s.add_argument("--file", required=True, help="JSON {hypothesis, baseline, trial, lower_is_better?, run_order?}")
+    s.set_defaults(fn=cmd_research_manifest)
     return p
 
 

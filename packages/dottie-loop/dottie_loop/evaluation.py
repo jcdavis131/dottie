@@ -15,6 +15,7 @@ from typing import Any
 
 from dottie_loop.errors import ApprovalRequiredError, InvalidInputError
 from dottie_loop.hashing import age_seconds, new_id, now_iso
+from dottie_loop.rubric import slice_scores
 from dottie_loop.schema import active
 
 GATES = (
@@ -113,6 +114,37 @@ def calibration(pairs: list[tuple[float, bool]], *, abstentions: int = 0, wrong_
         table.append({"bin": b, "n": len(items), "confidence": round(conf, 4), "accuracy": round(acc, 4)})
     total = len(pairs) + abstentions
     return {"ece": round(ece, 4), "n": len(pairs), "bins": table, "abstentions": abstentions, "abstention_rate": round(abstentions / total, 4) if total else 0.0, "wrong_when_confident": wrong_when_confident, "status": "measured"}
+
+
+def merge_rubric_slices(
+    slice_results: dict[str, float], evals: list[dict[str, Any]]
+) -> dict[str, float]:
+    """Fold stage-1 rubric slices into an EvalBundle.slice_results map.
+
+    Gated scores are already zero when task success failed, so a high rubric
+    cannot inflate a failing slice.
+    """
+    return {**slice_results, **slice_scores(evals)}
+
+
+def merge_ember_verdict(gate_result: dict[str, Any], ember_eval: dict[str, Any]) -> dict[str, Any]:
+    """Fold a stage-5 provenance eval into a §24 gate result.
+
+    Broken or missing provenance cannot be ignored by a passing bundle. This
+    does not add a new GATES member — callers opt in. It never overrides
+    ``anti_mock``: a synthetic ember eval is the caller's problem to refuse
+    before calling this (ember itself already refuses synthetic/mock).
+    """
+    out = dict(gate_result)
+    out["ember_eval_id"] = ember_eval.get("eval_id")
+    out["ember_gate"] = ember_eval.get("gate")
+    if ember_eval.get("gate") != "open":
+        failed = list(out.get("failed") or [])
+        if "provenance" not in failed:
+            failed.append("provenance")
+        out["failed"] = failed
+        out["verdict"] = "fail"
+    return out
 
 
 # --- §25 promotion -----------------------------------------------------------------------

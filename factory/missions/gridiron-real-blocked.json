@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "id": "gridiron-real-training-blocked",
+  "repository": {
+    "path": "../../../vector-gridiron",
+    "code_sha": "a6fc91ea37eb0b89d95a13fc188a36edf5787453"
+  },
+  "datasets": [
+    {
+      "id": "nflverse-training-matrix",
+      "path": "pipeline/data/train_matrix.npz",
+      "source": "https://github.com/nflverse/nflverse-data",
+      "revision": "UNVERIFIED-IMMUTABLE-NFLVERSE-SOURCE-REVISION",
+      "license": "UNVERIFIED-EXACT-NFLVERSE-UPSTREAM-LICENSE",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "identity_verified": false
+    }
+  ],
+  "train": {
+    "argv": [
+      "python",
+      "pipeline/train_mtnn.py",
+      "--epochs",
+      "50",
+      "--d-emb",
+      "32",
+      "--scaling",
+      "robust",
+      "--era-align",
+      "procrustes"
+    ]
+  },
+  "evaluation": {
+    "argv": ["python", "pipeline/evaluate_canonical.py"],
+    "report": "pipeline/eval_reports/canonical.json",
+    "max_age_seconds": 3600,
+    "contract_revision": "UNVERIFIED-CANONICAL-GRIDIRON-METRIC-CONTRACT"
+  },
+  "resources": {
+    "ram_mb": 16384,
+    "disk_mb": 20480,
+    "gpu": "required",
+    "exclusive_gpu": true,
+    "max_parallel_jobs": 1
+  },
+  "denied_dependencies": ["wandb", "mlflow"],
+  "metrics": [
+    {
+      "name": "mae",
+      "path": "metrics.mae",
+      "op": "<=",
+      "threshold": 3.8
+    }
+  ],
+  "outputs": [
+    {
+      "kind": "model",
+      "source": "pipeline/out/model.bin",
+      "destination": "assets/model/model.bin"
+    },
+    {
+      "kind": "checkpoint",
+      "source": "pipeline/out/checkpoint.bin",
+      "destination": "assets/model/checkpoint.bin"
+    },
+    {
+      "kind": "tokenizer",
+      "source": "pipeline/out/tokenizer.json",
+      "destination": "assets/model/tokenizer.json"
+    },
+    {
+      "kind": "config",
+      "source": "pipeline/out/config.json",
+      "destination": "assets/model/config.json"
+    }
+  ],
+  "protected_artifacts": [
+    "assets/vectors.json",
+    "assets/model_meta.json"
+  ],
+  "approval_policy": {
+    "reviewer_required": true,
+    "shipper_required": true
+  },
+  "evidence_kind": "real"
+}

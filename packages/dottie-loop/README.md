@@ -30,6 +30,12 @@ The review that motivated it, with the spec-versus-repository findings, is
 | §26 | `closed_loop.py` | thresholds as data, per-source event-time freshness, lease, cooldown from terminal timestamp, `--promote` guard that never changes production |
 | §27 | `forge.py` | `JobSpec`, runner capability record, atomic claim, requirement filter, hash-verified inputs, argv-only execution, `FORGE_METRIC` parsing, orphan detection |
 | §23 | `bench.py` | workflow runner, structural goldens, report with accounting that must reconcile; synthetic results excluded from evidence |
+| research 1 | `rubric.py` | AdvancedIF-style versioned rubrics, per-criterion audit, pluggable verifier, hard task-success gate |
+| research 2 | `opt_lane.py` | correctness-gated speed credit, warm-up + median/quantile timing, sandbox provenance, factory report shape |
+| research 3 | `experiment.py` | AIRA2 train/search/validation splits, hidden consistent eval, resource jobs over existing `LeaseFile` |
+| research 4 | `compute_teacher.py` | Offline Compute-as-Teacher pack: hashed traces, consent/redaction reuse, no live teacher, no training run |
+| research 5 | `ember.py` / `memory.py` | S-EMBER causal edges with evidence pointers; provenance eval fails closed |
+| research 6 | `hyperagents.py` | Proposal-only sandbox: may queue an experiment, cannot apply, claim GPU as proposer, or set `production_change` |
 | §11, §37D | `errors.py` | error taxonomy, typed errors with HTTP status, API error envelope |
 | §12 | `tools.py` | Scout tool plane: manifest minimum, result envelope, argv execution, secrets by brokered reference, redacted audit, dry-run, provider hard stop |
 | §01, §36 Runbook A | `driver.py` | one goal end to end: intake → plan → kernel → verify → checkpoint → (opt-in) trace → reward; `loop run --spec` |
@@ -64,6 +70,14 @@ The review that motivated it, with the spec-versus-repository findings, is
 | §37D pagination | `ApiState.list_goals`, `GET /api/goals` | opaque HMAC cursors bound to the caller's scope: another principal's cursor is 403, a tampered one is 400 |
 | §38, §39 | `acceptance.py` + `spec acceptance` / `spec done` | RT-01…17 and ML-01…17 as data with the tests that name them (ranges like `ml09_to_ml13` parsed); the thirty §39 done items with kind `mechanics` or `operator`: a test proves mechanics only, an operator item needs an explicit `{proven, ref}` record, and `spec done` exits 2 until every item is proven — nothing in the package can make it exit 0 alone |
 | §27 | `scripts/forge_runner.py` | the one file for the GPU box: advertise → poll → claim → checkout → execute → push results over a git conveyor |
+| research 1 | `rubric.py` | AdvancedIF-style versioned rubrics, per-criterion audit, pluggable verifier, hard task-success gate |
+| research 2 | `opt_lane.py` | correctness-gated speed credit, warm-up + median/quantile timing, sandbox provenance, factory report shape |
+| research 3 | `experiment.py` | AIRA2 train/search/validation splits, hidden consistent eval, resource jobs over existing `LeaseFile` |
+| research 4 | `compute_teacher.py` | Offline Compute-as-Teacher pack: hashed traces, consent/redaction reuse, no live teacher, no training run |
+| research 5 | `ember.py` / `memory.py` | S-EMBER causal edges with evidence pointers; provenance eval fails closed |
+| research 6 | `hyperagents.py` | Proposal-only sandbox: may queue an experiment, cannot apply, claim GPU as proposer, or set `production_change` |
+| external research (Jev) | `backend_signal.py` | Naming/provenance discipline for an external backend's probability: `backend_confidence`, never `confidence`; audit-only, never gates |
+| external research (colibri) | `manifest.py` | Two-arm experiment evidence: every headline number re-derived from raw samples, run order required to gate, failed baseline refused |
 
 ## CLI
 
@@ -97,6 +111,16 @@ uv run python -m dottie_loop incident playbook --kind credential_exposure
 uv run python -m dottie_loop spec components --root .
 uv run python -m dottie_loop spec acceptance                                         # exit 2 if any RT/ML id lacks a named test
 uv run python -m dottie_loop spec done --operator-evidence evidence.json --out dod.json  # exit 2 until the operator items are proven
+uv run python -m dottie_loop research rubric --rubric rubric.json --transcript turns.json --task-ok --scores scores.json
+uv run python -m dottie_loop research opt-lane --file timings.json
+uv run python -m dottie_loop research compose --reward reward.json --rubric-eval eval.json
+uv run python -m dottie_loop research compute-teacher --file teacher.json
+# Jev local loop: dry-run accept the committed teacher-pack fixture (no GPU, no training)
+uv run python -m dottie_loop research compute-teacher --help
+uv run python -m dottie_loop research compute-teacher --dry-run \
+  --file packages/dottie-loop/tests/fixtures/compute-teacher/pack.input.json
+uv run python -m dottie_loop research ember --file ember.json
+uv run python -m dottie_loop research hyperagent --file proposal.json   # --apply is always denied
 ```
 
 Exit codes: `0` ok, `1` error, `2` blocked, `3` invalid input. stdout is one JSON

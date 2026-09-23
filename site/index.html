@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dottie — the GOD orchestration harness</title>
+<meta name="description" content="Dottie is your clone that runs the floor. Brief one agent; Dottie routes the work across agents, tools, and repos — and anything destructive comes back to you first.">
+<meta property="og:title" content="Dottie — the GOD orchestration harness">
+<meta property="og:description" content="Brief one agent. Put a whole office to work. Free, open source, local-first.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23C17C60'/%3E%3Ctext x='16' y='22' font-family='monospace' font-size='16' font-weight='bold' text-anchor='middle' fill='%23F9F6F0'%3ED%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<nav class="nav">
+  <a class="wordmark" href="#top"><span class="dot" aria-hidden="true"></span>Dottie</a>
+  <div class="nav-links">
+    <a href="#how">How it works</a>
+    <a href="#harness">The harness</a>
+    <a href="#local">Local</a>
+    <a href="#model">The model</a>
+    <a href="docs.html">Docs</a>
+    <a class="gh" href="https://github.com/jcdavis131/dottie">GitHub ↗</a>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="hero-copy">
+    <p class="eyebrow">The GOD orchestration harness</p>
+    <h1>Brief one agent.<br>Put a whole office to work.</h1>
+    <p class="lede">Dottie is your clone that runs the floor. You talk to Dottie; Dottie routes the work across agents, tools, and repos — and anything that spends, changes scope, or destroys comes back to you first.</p>
+    <div class="cta-row">
+      <a class="btn primary" href="#local">Run Dottie locally</a>
+      <a class="btn ghost" href="#how">How it works ↓</a>
+    </div>
+    <p class="fine">Free and open source (MIT). No cloud account. No subscription.</p>
+  </div>
+  <div class="hero-art" aria-hidden="true">
+    <svg viewBox="0 0 420 420" role="img">
+      <g class="hive-lines" stroke="#D4C4B0" stroke-width="1.5">
+        <line x1="210" y1="210" x2="210" y2="70"/>
+        <line x1="210" y1="210" x2="331" y2="140"/>
+        <line x1="210" y1="210" x2="331" y2="280"/>
+        <line x1="210" y1="210" x2="210" y2="350"/>
+        <line x1="210" y1="210" x2="89"  y2="280"/>
+        <line x1="210" y1="210" x2="89"  y2="140"/>
+      </g>
+      <g class="sat" fill="#8A9A8B">
+        <circle cx="210" cy="70"  r="22"/><circle cx="331" cy="140" r="22"/>
+        <circle cx="331" cy="280" r="22"/><circle cx="210" cy="350" r="22"/>
+        <circle cx="89"  cy="280" r="22"/><circle cx="89"  cy="140" r="22"/>
+      </g>
+      <g fill="#F9F6F0" font-family="ui-monospace, monospace" font-size="11" text-anchor="middle">
+        <text x="210" y="74">jobs</text><text x="331" y="144">repo</text>
+        <text x="331" y="284">docs</text><text x="210" y="354">ci</text>
+        <text x="89"  y="284">data</text><text x="89"  y="144">web</text>
+      </g>
+      <circle class="core-pulse" cx="210" cy="210" r="52" fill="#C17C60" opacity="0.18"/>
+      <circle cx="210" cy="210" r="44" fill="#C17C60"/>
+      <text x="210" y="218" fill="#F9F6F0" font-family="ui-monospace, monospace" font-size="20" text-anchor="middle" font-weight="700">D</text>
+      <g fill="#C17C60">
+        <rect x="258" y="168" width="14" height="10" rx="2" transform="rotate(24 265 173)"/>
+        <rect x="150" y="252" width="14" height="10" rx="2" transform="rotate(24 157 257)"/>
+      </g>
+    </svg>
+  </div>
+</header>
+
+<main>
+
+<section id="how" class="section">
+  <p class="eyebrow">How it works</p>
+  <h2>One conversation in.<br>Finished work out.</h2>
+  <div class="cards">
+    <div class="card">
+      <p class="step">01</p>
+      <h3>Brief Dottie</h3>
+      <p>Point Dottie at the outcome in plain language. She breaks it into jobs and files them in the queue.</p>
+    </div>
+    <div class="card">
+      <p class="step">02</p>
+      <h3>Dottie routes</h3>
+      <p>The GOD orchestrator claims one job at a time and assigns it across agents, tools, and repos.</p>
+    </div>
+    <div class="card">
+      <p class="step">03</p>
+      <h3>Agents execute</h3>
+      <p>Real tools, real repos. Every job runs to a recorded result — <em>done</em> or <em>failed</em>, never silent.</p>
+    </div>
+    <div class="card">
+      <p class="step">04</p>
+      <h3>You approve</h3>
+      <p>Spend, scope changes, and destructive ops escalate to you. Fail-closed, approval-gated — no exceptions.</p>
+    </div>
+  </div>
+</section>
+
+<section id="harness" class="section band">
+  <p class="eyebrow">The harness</p>
+  <h2>Small core.<br>Serious discipline.</h2>
+  <div class="cards">
+    <div class="card">
+      <h3>Hive coordination</h3>
+      <p>Jobs move through a mailbox queue — pending → claimed → done. One worker, one job at a time, with a full ledger of everything that ran.</p>
+    </div>
+    <div class="card">
+      <h3>Memory that compounds</h3>
+      <p>Every run is remembered: what worked, what failed, and why. Dottie gets sharper with every job she finishes.</p>
+    </div>
+    <div class="card">
+      <h3>Autonomy with a leash</h3>
+      <p>Per-job approval gates. Merges, releases, and destructive actions need your explicit word. Agent approval never counts.</p>
+    </div>
+    <div class="card">
+      <h3>Local-first, zero-deps core</h3>
+      <p>Standard-library Python at the heart. Runs on your machine, on your repos, under your rules. No cloud required.</p>
+    </div>
+  </div>
+</section>
+
+<section id="local" class="section">
+  <p class="eyebrow">Local versions</p>
+  <h2>Download Dottie.<br>Run her at home.</h2>
+  <div class="cards">
+    <div class="card">
+      <p class="step">v0.1 — now</p>
+      <h3>Dottie Local · CLI</h3>
+      <p>The job queue and worker, running today. Clone the repo and put her to work:</p>
+      <pre><code>git clone https://github.com/jcdavis131/dottie.git
+cd dottie &amp;&amp; python3 worker/dottie.py list</code></pre>
+    </div>
+    <div class="card">
+      <p class="step">on the roadmap</p>
+      <h3>Dottie Desktop</h3>
+      <p>One-click macOS, Windows, and Linux builds with the full floor view — every agent, every job, live.</p>
+    </div>
+  </div>
+  <p class="fine center">Every release is cut from <a href="https://github.com/jcdavis131/dottie">this repo</a>. No account, no phone-home.</p>
+</section>
+
+<section id="model" class="section band">
+  <p class="eyebrow">The model</p>
+  <h2>Dottie is getting<br>a home-grown brain.</h2>
+  <div class="flywheel">
+    <div class="fw-step"><p class="step">01</p><h3>Work</h3><p>Every job Dottie completes is a real trajectory — tools, outcomes, latency.</p></div>
+    <div class="fw-arrow" aria-hidden="true">→</div>
+    <div class="fw-step"><p class="step">02</p><h3>Traces</h3><p>Trajectories become training data. Real runs only — never synthetic.</p></div>
+    <div class="fw-arrow" aria-hidden="true">→</div>
+    <div class="fw-step"><p class="step">03</p><h3>Model</h3><p>Each generation trains on the last one's work. Held-out eval or it doesn't ship.</p></div>
+    <div class="fw-arrow" aria-hidden="true">→</div>
+    <div class="fw-step"><p class="step">04</p><h3>Sharper Dottie</h3><p>The new brain runs the next jobs. The flywheel turns.</p></div>
+  </div>
+  <p class="lede narrow">The ladder: a <strong>0.6B orchestration router</strong> for dispatch today, a <strong>4B harness agent</strong> for the full loop next. One rule governs it all — <em>no wasted energy</em>: every model we train powers this project.</p>
+</section>
+
+<section id="open" class="section">
+  <p class="eyebrow">Open source</p>
+  <h2>Built in the open.</h2>
+  <p class="lede narrow">Dottie is MIT licensed. The harness, the worker, the training roadmap — all of it lives in one repo, one project, in public.</p>
+  <div class="cta-row">
+    <a class="btn primary" href="https://github.com/jcdavis131/dottie">github.com/jcdavis131/dottie ↗</a>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <p><span class="dot" aria-hidden="true"></span> Dottie — the GOD orchestration harness</p>
+  <p class="fine">Built by JC Davis · MIT License · <a href="https://github.com/jcdavis131/dottie">GitHub</a></p>
+</footer>
+
+</body>
+</html>

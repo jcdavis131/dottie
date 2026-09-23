@@ -249,9 +249,11 @@ class LongRoPE2ScaledRoPE(nn.Module):
         return cos, sin
 
 
-def _make_rope(rope_type: str, dim: int, base: int):
+def _make_rope(rope_type: str, dim: int, base: int, critical_shift: int = 6):
     if rope_type == "longrope2":
-        return LongRoPE2ScaledRoPE(dim=dim, base=base)
+        return LongRoPE2ScaledRoPE(
+            dim=dim, base=base, critical_dim_shift=critical_shift
+        )
     if rope_type == "yarn":
         return YaRNScaledRoPE(dim=dim, base=base)
     raise ValueError(f"rope_type must be 'yarn' or 'longrope2', got {rope_type!r}")
@@ -309,6 +311,7 @@ class TransformerBlock1B(nn.Module):
         rope_type: str = "yarn",
         n_sinks: int = 0,
         use_peri_ln: bool = False,
+        critical_shift: int = 6,
     ):
         super().__init__()
         self.d_model = d_model
@@ -344,7 +347,7 @@ class TransformerBlock1B(nn.Module):
             )
         # Kept for backward compat with apply_rope_scaling(); the model computes
         # cos/sin once per forward from its own rope and passes them in.
-        self.rope = _make_rope(rope_type, head_dim, 10000)
+        self.rope = _make_rope(rope_type, head_dim, 10000, critical_shift)
 
         # n_sinks learnable KV pairs (Xiao et al. 2023, StreamingLLM), always
         # attended regardless of position -- absorb the softmax mass early
@@ -571,6 +574,7 @@ class DottieModel1B(nn.Module):
         rope_type: str = "yarn",
         n_sinks: int = 0,
         use_peri_ln: bool = False,
+        critical_shift: int = 6,
     ):
         super().__init__()
         self.d_model = d_model
@@ -584,6 +588,7 @@ class DottieModel1B(nn.Module):
         self.rope_type = rope_type
         self.n_sinks = n_sinks
         self.use_peri_ln = use_peri_ln
+        self.critical_shift = critical_shift
 
         self.embed = nn.Embedding(vocab_size, d_model)
 
@@ -600,6 +605,7 @@ class DottieModel1B(nn.Module):
                 rope_type=rope_type,
                 n_sinks=n_sinks,
                 use_peri_ln=use_peri_ln,
+                critical_shift=critical_shift,
             )
 
         # T11.2: fusion-layer indices that run DeltaNetBlock instead of full
@@ -632,7 +638,7 @@ class DottieModel1B(nn.Module):
 
         # One RoPE for the whole model: every block's schedule is identical, so
         # computing cos/sin per block was pure waste.
-        self.rope = _make_rope(rope_type, head_dim, rope_base)
+        self.rope = _make_rope(rope_type, head_dim, rope_base, critical_shift)
 
         self.jspace = None
         self.multi_jspace = None
@@ -865,8 +871,16 @@ def get_model(
     rope_type: str = "yarn",
     n_sinks: int = 0,
     use_peri_ln: bool = False,
+    critical_shift: int = 6,
+    **kwargs,
 ):
-    """Blueprint-compatible factory. New code should use ava.model.build_model(cfg)."""
+    """Blueprint-compatible factory. New code should use ava.model.build_model(cfg).
+
+    Accepts the kwargs ``train_1b_deepspeed.py`` passes on the non-mock path
+    (``rope_type``, ``n_sinks``, ``use_peri_ln``, ``critical_shift``). Extra
+    ``DottieModel1B`` constructor kwargs (``n_text``, ``n_heads``, ...) are
+    forwarded so callers can build a tiny model without allocating 1B params.
+    """
     return DottieModel1B(
         vocab_size=vocab_size,
         d_model=d_model,
@@ -874,9 +888,8 @@ def get_model(
         rope_type=rope_type,
         n_sinks=n_sinks,
         use_peri_ln=use_peri_ln,
-        use_short_conv=use_short_conv,
-        use_relative=use_relative,
-        relative_max_distance=relative_max_distance,
+        critical_shift=critical_shift,
+        **kwargs,
     )
 
 

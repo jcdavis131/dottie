@@ -1,0 +1,12 @@
+{
+  "helper": "Laya",
+  "mode": "CHAMPION",
+  "decide": "/decide",
+  "surface": "on your tailnet",
+  "smoke": "local /decide check — this page does not curl a private host",
+  "ckpt_id": "not published on this page",
+  "pack_rows": "not published as a live meter",
+  "provenance": "static stamp",
+  "as_of": "2026-09-21",
+  "note": "Cam stamps held-out bench before promote. No public MagicDNS."
+}

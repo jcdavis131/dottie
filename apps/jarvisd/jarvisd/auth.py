@@ -168,7 +168,9 @@ class AuthMiddleware:
     """Pure-ASGI bearer/ephemeral auth + rate limits + security headers + audit.
 
     `bearer=None` disables auth entirely (loopback-only; `Config.validate` guards
-    that). Headers and audit still apply. `exempt` paths are matched exactly.
+    that). Headers and audit still apply. `exempt` paths skip auth and rate
+    limits (health/status). `auth_exempt` paths skip the bearer check only —
+    the IP limiter still applies. Paths are matched exactly.
     """
 
     def __init__(
@@ -178,6 +180,7 @@ class AuthMiddleware:
         bearer: str | None,
         audit_path: Path | None = None,
         exempt: Iterable[str] = DEFAULT_EXEMPT,
+        auth_exempt: Iterable[str] = (),
         rate_ip: int = 1000,
         rate_key: int = 60,
         rate_agent: int = 20,
@@ -186,6 +189,7 @@ class AuthMiddleware:
         self.app = app
         self.bearer = bearer or None
         self.exempt = frozenset(exempt)
+        self.auth_exempt = frozenset(auth_exempt)
         self.rate_ip = rate_ip
         self.rate_key = rate_key
         self.rate_agent = rate_agent
@@ -243,6 +247,24 @@ class AuthMiddleware:
             await send(message)
 
         if path in self.exempt or self.bearer is None:
+            await self.app(scope, receive, send_wrapped)
+            self._audit.write(
+                agent,
+                path,
+                status_holder["status"],
+                "",
+                method,
+                str(scope.get("audit_action") or ""),
+            )
+            return
+
+        if path in self.auth_exempt:
+            client = scope.get("client")
+            ip = client[0] if client else "unknown"
+            if not self._limiter.check(f"ip:{ip}", self.rate_ip):
+                await self._reject(scope, send_wrapped, 429, "rate limited")
+                self._audit.write(agent, path, 429, "", method)
+                return
             await self.app(scope, receive, send_wrapped)
             self._audit.write(
                 agent,

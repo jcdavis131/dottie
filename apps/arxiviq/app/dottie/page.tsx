@@ -121,7 +121,7 @@ export default function DottiePage() {
         }}
       >
         <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12.5, fontWeight: 700 }}>
-          ARXIVIQ — DOTTIE
+          ARXIVIQ — dottie-os
         </div>
         <span
           style={{

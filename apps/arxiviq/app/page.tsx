@@ -1,13 +1,21 @@
-import AgentConductorPanel from "./components/AgentConductorPanel";
+import { redirect } from "next/navigation";
+
+import SystemOneHome from "./components/SystemOneHome";
+import { META_DESCRIPTION, META_TITLE } from "../lib/system-one-copy";
 
 export const metadata = {
-  title: "arxiviq.com — Dottie Conductor",
-  description: "Manage daemon-reported sessions, shared notes, and tasks. Tandem status and pairing are shown only when confirmed.",
+  title: META_TITLE,
+  description: META_DESCRIPTION,
 };
 
-export default async function Home({ searchParams }: { searchParams?: Promise<{ tandem?: string }> }) {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams?: Promise<{ tandem?: string }>;
+}) {
   const params = await searchParams;
-  const tandem = params?.tandem === "1" || params?.tandem === "true";
-  // support both /conductor?tandem=1 and /?tandem=1 — page.tsx is root conductor
-  return <AgentConductorPanel tandem={tandem} />;
+  if (params?.tandem === "1" || params?.tandem === "true") {
+    redirect("/conductor?tandem=1");
+  }
+  return <SystemOneHome />;
 }

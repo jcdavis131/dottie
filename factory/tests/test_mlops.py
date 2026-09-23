@@ -136,3 +136,63 @@ def test_next_job_skips_known_miss_until_code_or_command_changes(ws: Factory):
     q["jobs"][0]["run"] = "{python} write_report.py"
     ws.queue_path.write_text(json.dumps(q))
     assert mlops.next_job(ws)["id"] == "j1"  # the command changed
+
+
+def test_opt_lane_gate_rejects_fast_but_wrong(ws: Factory):
+    job = dict(ws.job("j1"))
+    job["gate"] = {
+        "report": "out/opt.json",
+        "metric": "factory.speed_credit",
+        "op": ">=",
+        "threshold": 0.5,
+        "baseline": 0.4,
+    }
+    report = ws.workspace / "r1" / "out" / "opt.json"
+    report.parent.mkdir()
+    report.write_text(
+        json.dumps(
+            {"factory": {"correctness": 0, "speed_credit": 0.99, "speed_percentile": 0.99}}
+        )
+    )
+    d = mlops.gate_opt_lane(ws, job)
+    assert d["outcome"] == "fail" and d["metric"] == "factory.correctness" and d["value"] == 0
+    report.write_text(
+        json.dumps({"factory": {"correctness": 1, "speed_credit": 0.9, "speed_percentile": 0.9}})
+    )
+    d = mlops.gate_opt_lane(ws, job)
+    assert d["outcome"] == "pass" and d["metric"] == "factory.speed_credit" and d["value"] == 0.9
+    assert mlops.gate_opt_lane(ws, dict(job, gate={**job["gate"], "report": "out/missing.json"}))[
+        "outcome"
+    ] == "no_report"
+
+
+def test_compute_teacher_gate_fails_closed(ws: Factory):
+    job = dict(ws.job("j1"))
+    job["gate"] = {"report": "out/teacher.json", "metric": "factory.ready", "op": "==", "threshold": True}
+    report = ws.workspace / "r1" / "out" / "teacher.json"
+    report.parent.mkdir()
+    assert mlops.gate_compute_teacher(ws, job)["outcome"] == "no_report"
+    report.write_text(json.dumps({"schema": "opt-lane-report-1.0.0", "factory": {"ready": True, "n_traces": 1}}))
+    assert mlops.gate_compute_teacher(ws, job)["outcome"] == "no_metric"
+    report.write_text(
+        json.dumps(
+            {
+                "schema": "teacher-pack-1.0.0",
+                "factory": {"ready": True, "n_traces": 0, "live_teacher": False, "training": False},
+                "shards": [],
+            }
+        )
+    )
+    assert mlops.gate_compute_teacher(ws, job)["outcome"] == "fail"
+    report.write_text(
+        json.dumps(
+            {
+                "schema": "teacher-pack-1.0.0",
+                "factory": {"ready": True, "n_traces": 2, "live_teacher": False, "training": False},
+                "shards": [{"trace_id": "t1", "compute_trace_id": "d1"}],
+                "training": False,
+            }
+        )
+    )
+    d = mlops.gate_compute_teacher(ws, job)
+    assert d["outcome"] == "pass" and d["live_teacher"] is False and d["training"] is False

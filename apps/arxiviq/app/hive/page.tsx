@@ -1,7 +1,7 @@
 export const metadata = {
-  title: "The hive — Dottie's multi-agent floor",
+  title: "The hive — dottie-os local floor",
   description:
-    "How Dottie runs a team of agents on plain files: a registry, a shared blackboard, mailboxes, fail-closed delivery, autonomy gates, and budgets. Local-first, stdlib core.",
+    "How dottie-os runs a team of agents on plain files: a registry, a shared blackboard, mailboxes, fail-closed delivery, autonomy gates, and budgets. Local-first, stdlib core. Not a train dashboard.",
 };
 
 const page: React.CSSProperties = {
@@ -105,29 +105,26 @@ export default function HivePage() {
   return (
     <main style={page}>
       <div style={wrap}>
-        <div style={eyebrow}>Dottie — multi-agent floor</div>
+        <div style={eyebrow}>dottie-os — local multi-agent floor</div>
         <h1 style={h1}>The hive</h1>
         <p style={lede}>
           One directory of plain files runs a whole team of agents: a roster, a
           shared blackboard, a task ledger, mailboxes, and append-only logs. No
-          database, no dashboard theatrics — files you can read with{" "}
-          <code style={code}>cat</code>.
+          database, no watch-train theatrics — files you can read with{" "}
+          <code style={code}>cat</code>. The System One sidecar decides;
+          the hive keeps the floor on disk.
         </p>
 
         <h2 style={h2}>Why this exists</h2>
         <p style={p}>
-          Handshake turned its student network into a ~$2B business selling
-          RL data — reportedly 70% of AI training spend is now reinforcement
-          learning. The bottleneck is no longer models; it&apos;s expert
-          workflow data: real tasks, done by real workers, with every step
-          recorded.
+          Pair-programming still needs a roster, a blackboard, and a ledger.
+          Those stay on your machine as plain files — next to the local
+          sidecar, not as a public train dashboard or a chat control plane.
         </p>
         <p style={p}>
-          That&apos;s the bet behind the hive. Every job Dottie runs already
-          passes through one place — the ledger. Each task, each message, each
-          cost entry lands in append-only files. The coordination layer and the
-          training-data layer are the same files. The more the team works, the
-          richer the record of how the work got done. That&apos;s the flywheel.
+          Every job still lands in one place. Choice / Score / Noul decide the
+          next move. The hive records who did what. That is the floor. It is
+          not a public train dashboard.
         </p>
 
         <h2 style={h2}>What the hive is</h2>
