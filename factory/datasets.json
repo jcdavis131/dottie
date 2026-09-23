@@ -263,6 +263,60 @@
       "consumers": [
         "jcamd-lab-links"
       ]
+    },
+    {
+      "id": "arxiviq-factory-papers",
+      "repo": "dottie",
+      "path": "apps/arxiviq-factory/sources/papers.jsonl.gz",
+      "provenance": "real",
+      "source": "arXiv API, 10 tracked topics x (90 most relevant + 60 most recent); no fallback papers (sources/harvest_stats.json synthetic=0)",
+      "refresh": "{python} apps/arxiviq-factory/run.py harvest",
+      "cadence_days": 7,
+      "fresh_key": "mtime",
+      "required": false,
+      "restore_from": [],
+      "consumers": [
+        "arxiviq-real-data"
+      ]
+    },
+    {
+      "id": "arxiviq-factory-enrich",
+      "repo": "dottie",
+      "path": "apps/arxiviq-factory/sources/enrich.jsonl.gz",
+      "provenance": "real",
+      "source": "Semantic Scholar batch API (citations, venue, author ids), per-author affiliations from the arXiv HTML header, ROR matches (sources/ror.jsonl.gz) accepted only when ROR marks them chosen",
+      "refresh": "{python} apps/arxiviq-factory/run.py enrich",
+      "cadence_days": 7,
+      "fresh_key": "mtime",
+      "required": false,
+      "restore_from": [],
+      "consumers": []
+    },
+    {
+      "id": "arxiviq-factory-teacher",
+      "repo": "dottie",
+      "path": "apps/arxiviq-factory/sources/teacher.jsonl.gz",
+      "provenance": "honest-synthetic",
+      "source": "LLM-teacher answers on real abstracts (two 4-option comprehension questions, paper type, code release), in the style of arxiv_exam_app; the teacher model is named on every record and every derived row carries label_source llm-teacher",
+      "refresh": null,
+      "cadence_days": null,
+      "fresh_key": "mtime",
+      "required": false,
+      "restore_from": [],
+      "consumers": []
+    },
+    {
+      "id": "arxiviq-decision-pack",
+      "repo": "dottie",
+      "path": "apps/arxiviq-factory/data/packs/arxiviq-pack-1/train.jsonl",
+      "provenance": "honest-synthetic",
+      "source": "jev-decision-schema-1.0.0 records from the three snapshots: metadata families (real labels), Nimble mined pairs (real positives and hard negatives) and teacher families (llm-teacher labels); provenance.jsonl names the label source per row; holdout.jsonl is whole papers (>= 20% of rows); consent.champion=false",
+      "refresh": "{python} apps/arxiviq-factory/run.py curate",
+      "cadence_days": 7,
+      "fresh_key": "mtime",
+      "required": false,
+      "restore_from": [],
+      "consumers": []
     }
   ]
 }
