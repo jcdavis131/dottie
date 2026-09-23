@@ -1,0 +1,268 @@
+{
+  "consent": {
+    "capture_training": true,
+    "champion": false,
+    "public_sources": true
+  },
+  "families": {
+    "author_of": {
+      "label_sources": {
+        "arxiv-metadata": 2480
+      },
+      "nimble_pairs": 1240,
+      "positive_rate": 0.5,
+      "rows": 2480,
+      "type": "noul"
+    },
+    "category": {
+      "choices": {
+        "cs.AI": 80,
+        "cs.CL": 32,
+        "cs.CV": 254,
+        "cs.LG": 492,
+        "cs.NE": 14,
+        "cs.RO": 167,
+        "cs.SD": 17,
+        "eess.SP": 13,
+        "other": 99,
+        "q-bio.NC": 40,
+        "stat.ML": 32
+      },
+      "label_sources": {
+        "arxiv-metadata": 1240
+      },
+      "nimble_pairs": 0,
+      "rows": 1240,
+      "type": "choice"
+    },
+    "code_release": {
+      "label_sources": {
+        "llm-teacher:claude-code-subagents": 1240
+      },
+      "nimble_pairs": 0,
+      "positive_rate": 0.1452,
+      "rows": 1240,
+      "type": "noul"
+    },
+    "contribution": {
+      "choices": {
+        "application": 46,
+        "benchmark": 44,
+        "empirical": 146,
+        "method": 807,
+        "position": 16,
+        "survey": 38,
+        "theory": 143
+      },
+      "label_sources": {
+        "llm-teacher:claude-code-subagents": 1240
+      },
+      "nimble_pairs": 0,
+      "rows": 1240,
+      "type": "choice"
+    },
+    "cross_list": {
+      "label_sources": {
+        "arxiv-metadata": 1240
+      },
+      "nimble_pairs": 0,
+      "positive_rate": 0.2573,
+      "rows": 1240,
+      "type": "noul"
+    },
+    "first_country": {
+      "choices": {
+        "CN": 8,
+        "GB": 10,
+        "US": 26,
+        "other": 20
+      },
+      "label_sources": {
+        "arxiv-html-affiliation+ror": 64
+      },
+      "nimble_pairs": 0,
+      "rows": 64,
+      "type": "choice"
+    },
+    "impact": {
+      "label_sources": {
+        "semantic-scholar-outcome": 526
+      },
+      "nimble_pairs": 0,
+      "rows": 526,
+      "score_histogram": {
+        "0.0": 108,
+        "1.0": 186,
+        "2.0": 150,
+        "3.0": 64,
+        "4.0": 18
+      },
+      "type": "score"
+    },
+    "industry": {
+      "label_sources": {
+        "arxiv-html-affiliation+ror": 32
+      },
+      "nimble_pairs": 0,
+      "positive_rate": 0.125,
+      "rows": 32,
+      "type": "noul"
+    },
+    "institution_of": {
+      "label_sources": {
+        "arxiv-html-affiliation+ror": 354
+      },
+      "nimble_pairs": 177,
+      "positive_rate": 0.5,
+      "rows": 354,
+      "type": "noul"
+    },
+    "listed_in": {
+      "label_sources": {
+        "arxiv-metadata": 2460
+      },
+      "nimble_pairs": 1230,
+      "positive_rate": 0.5,
+      "rows": 2460,
+      "type": "noul"
+    },
+    "peer_reviewed": {
+      "label_sources": {
+        "semantic-scholar+arxiv-journal-ref": 527
+      },
+      "nimble_pairs": 0,
+      "positive_rate": 0.556,
+      "rows": 527,
+      "type": "noul"
+    },
+    "teacher_quiz": {
+      "choices": {
+        "A": 484,
+        "B": 482,
+        "C": 446,
+        "D": 483
+      },
+      "label_sources": {
+        "llm-teacher:claude-code-subagents": 1895
+      },
+      "nimble_pairs": 0,
+      "rows": 1895,
+      "type": "choice"
+    },
+    "topic": {
+      "choices": {
+        "decision_models": 143,
+        "foundation_wm": 111,
+        "hamiltonian": 94,
+        "imagebind": 95,
+        "jepa": 111,
+        "pred_coding": 134,
+        "ssl_repr": 140,
+        "train_dynamics": 148,
+        "v_jepa": 89,
+        "world_models": 109
+      },
+      "label_sources": {
+        "arxiv-search-retrieval": 1174
+      },
+      "nimble_pairs": 0,
+      "rows": 1174,
+      "type": "choice"
+    },
+    "venue": {
+      "choices": {
+        "aaai_conference_on_artificial_intelligence": 12,
+        "computer_vision_and_pattern_recognition": 12,
+        "ieee_international_conference_on_acoustics_speec": 13,
+        "ieee_international_conference_on_computer_vision": 7,
+        "international_conference_on_learning_representat": 31,
+        "international_conference_on_machine_learning": 18,
+        "interspeech": 6,
+        "neural_information_processing_systems": 49,
+        "other": 162
+      },
+      "label_sources": {
+        "semantic-scholar": 310
+      },
+      "nimble_pairs": 0,
+      "rows": 310,
+      "type": "choice"
+    }
+  },
+  "families_holdout": {
+    "author_of": 504,
+    "category": 252,
+    "code_release": 252,
+    "contribution": 252,
+    "cross_list": 252,
+    "first_country": 12,
+    "impact": 103,
+    "industry": 4,
+    "institution_of": 66,
+    "listed_in": 498,
+    "peer_reviewed": 103,
+    "teacher_quiz": 377,
+    "topic": 236,
+    "venue": 58
+  },
+  "files": {
+    "holdout.jsonl": {
+      "bytes": 5525516,
+      "sha256": "124403e34e1f6c9818b3b0c80bcf1391d21b3a919e6341de7ea7ebe5cc252750"
+    },
+    "provenance.jsonl": {
+      "bytes": 4249562,
+      "sha256": "bdaeef04d85c222a5b483866b6f9e6f013124f8ceb49e3bbd3a8e64e56cbe1fc"
+    },
+    "train.jsonl": {
+      "bytes": 21998542,
+      "sha256": "2dde59f72c11c97d7b8fe9faadc817330e70d59a8c8e140d54a010b5df63385d"
+    }
+  },
+  "label_sources": {
+    "arxiv-html-affiliation+ror": 450,
+    "arxiv-metadata": 7420,
+    "arxiv-search-retrieval": 1174,
+    "llm-teacher": 4375,
+    "semantic-scholar": 310,
+    "semantic-scholar+arxiv-journal-ref": 527,
+    "semantic-scholar-outcome": 526
+  },
+  "nimble_pairs": 2647,
+  "pack": "arxiviq-pack-1",
+  "papers": {
+    "harvested": 1242,
+    "holdout": 252,
+    "in_pack": 1240
+  },
+  "rejected": {
+    "decontam": 11,
+    "schema: record: forbidden content (virus/malware wording)": 11
+  },
+  "rows": {
+    "holdout": 2969,
+    "holdout_frac": 0.2009,
+    "total": 14782,
+    "train": 11813
+  },
+  "rules": [
+    "states never contain their own answer; see arxiviq_factory/families.py for each family's state",
+    "labels from published metadata or recorded outcomes, except label_source llm-teacher (teacher-written, named)",
+    "Nimble pairs are mined from real positives and real same-topic hard negatives; no generated twins",
+    "holdout is whole papers (>= 20% of rows); pairs never straddle it",
+    "consent.champion=false: a HELPER pack, never auto-promoted"
+  ],
+  "schema": "jev-decision-schema-1.0.0",
+  "seed": 20260923,
+  "sources": {
+    "enrich.jsonl.gz": "083e0dca67663beaf166b2cb7c38a50e8e3afda3f888e2d8d43804ea10c5a792",
+    "papers.jsonl.gz": "78c04d61dabd5128e76390f120c4a83644320361aa6dbb725791489a1064a3a3",
+    "ror.jsonl.gz": "269ea44b19876a212e52e6ee5a7118510ffba0330386a0ba0ac9a7500a74d494",
+    "teacher.jsonl.gz": "89fe1378a8f57a8033549d260398c9f8989735e0406e748c5c9a71c6924488b1"
+  },
+  "types": {
+    "choice": 5923,
+    "noul": 8333,
+    "score": 526
+  }
+}
