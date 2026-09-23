@@ -6,17 +6,23 @@ capabilities:
   # the mcp plugin's client, fail-closed behind namespace/server/enabled gates
   # and the default-deny user URL allowlist (bigbang.core.policy.check_user_url).
   # Every other harness path is local and deterministic.
+  # The router's System One backend also POSTs to a dottie-os /decide endpoint,
+  # but ONLY when the owner sets DOTTIE_OS_URL (off by default; loopback or
+  # tailnet sidecar).
   network:
     enabled: true
     domains: ["localhost", "127.0.0.1"]
   filesystem:
     enabled: true
     write: true
-    # Real write surfaces: the timeline/checkpoint store (timeline.py:35) and
-    # the runner's canonical run dirs (runner.py run_goal default runs_dir).
+    # Real write surfaces: the timeline/checkpoint store (timeline.py:35),
+    # the runner's canonical run dirs (runner.py run_goal default runs_dir), and
+    # the router trace file every route/run appends to (dottie_loop.traces;
+    # DOTTIE_TRACE_DIR overrides, and under pytest nothing is written by default).
     paths:
       - "~/.cache/scout/checkpoints/"
       - "~/workspace/bundles/ultra/runs/"
+      - "~/.dottie/traces/"
   secrets: false
 version: 0.8.2-orientation-engine
 entry: cli.py

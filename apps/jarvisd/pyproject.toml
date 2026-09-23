@@ -14,7 +14,12 @@ dependencies = [
   "mcp>=1.28.1,<2",
   "starlette>=0.40",
   "uvicorn>=0.30",
+  # harness.route / plan / run decide through dottie_loop.router (stdlib only).
+  "dottie-loop",
 ]
+
+[tool.uv.sources]
+dottie-loop = { workspace = true }
 
 [project.optional-dependencies]
 # Optional Anthropic-backed `jarvis.ask` (spec §6). Without the extra AND

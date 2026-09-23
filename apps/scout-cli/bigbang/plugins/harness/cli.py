@@ -1,7 +1,8 @@
 """
 harness plugin — Scout v3.3 MoMA + GARNet + Checkpoint + Recovery + Pacing + Verification
 Implements Scout harness as scout CLI so any harness can call scout as single source.
-Port of bundles/router/router.ultra.js MoMA-lite classifier to Python + ultra patterns.
+The MoMA-lite classifier and the routing policy live in dottie_loop (backends.py, router.py);
+this plugin is the CLI surface over them.
 """
 from __future__ import annotations
 import json, re
@@ -9,6 +10,8 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 import typer
+from dottie_loop import backends as _moma
+
 from bigbang.core.contract import make_plugin_app
 from bigbang.core.output import emit, is_json
 from bigbang.plugins.harness.timeline import REQUIRED_FIELDS as TIMELINE_FIELDS, append_event, g_history_stats, g_history_summary
@@ -24,66 +27,18 @@ app = make_plugin_app(
     ]
 )
 
-# --- MoMA-lite classifier (port of router.ultra.js) ---
+# --- MoMA-lite classifier ---
+# ONE implementation: dottie_loop.backends (the router's heuristic backend). The
+# names below are aliases kept so existing importers keep working (runner.py and
+# jarvisd now call dottie_loop.router directly). dottie-loop is a declared
+# workspace dependency of scout-cli.
 
-MOMA_TIERS = {
-    "deterministic": {"cap":"cheap", "desc":"heartbeat/monitor, pure-function, no LLM"},
-    "llm": {"cap":"medium", "desc":"chat, awareness, simple decomposition"},
-    "deep_research": {"cap":"heavy 9K", "desc":"5-7 sources A/B/C triangulation, contradiction matrix, freshness Aug 2026"},
-    "action_operator": {"cap":"medium-verify", "desc":"gmail/calendar chain, idempotent, rollback, side_effect_class"},
-    "agentic_epic": {"cap":"checkpointed 13-swarm", "desc":"opaque goals, DAG version++, bounded recovery, OODA inner"},
-}
-
-INTENT_KEYWORDS = {
-    "agentic_loop": {"words":["launch","ship","build","end-to-end","loop","factory","close the loop"], "patterns":[r"\b12 things at once\b", r"\bopaque goal\b", r"\bkeep track\b"], "weight":1},
-    "deep_research": {"words":["compare","vs","stripe","lemon squeezy","research","sota","paper","benchmark","triangulation","sources"], "patterns":[r"\baug\s*2026\b", r"\b5-7 sources\b"], "weight":1},
-    "complex_action": {"words":["gmail","calendar","drive","notion","linear","pay","invoice","book","schedule"], "patterns":[r"\btool\s*chain\b"], "weight":1},
-    "deterministic": {"words":["heartbeat","monitor","cron","tick"], "patterns":[], "weight":1},
-}
-
-def _score_intent(text: str, intent: str) -> float:
-    cfg = INTENT_KEYWORDS.get(intent, {})
-    t = text.lower()
-    score = 0
-    for w in cfg.get("words", []):
-        if w.lower() in t: score += 1
-    for pat in cfg.get("patterns", []):
-        if re.search(pat, t, re.I): score += 2.5
-    return score
-
-def _classify_moma(text: str, intent: str, complexity: str) -> str:
-    t=text.lower()
-    if any(k in t for k in ["heartbeat","monitor","tick","cron health"]): return "deterministic"
-    if intent=="deep_research" or any(k in t for k in ["stripe","lemon","triangulation","paper","sota","sources"]): return "deep_research"
-    if intent=="complex_action" or any(k in t for k in ["gmail","calendar trick","chain call"]): return "action_operator"
-    if intent=="agentic_loop" or complexity=="epic": return "agentic_epic"
-    return "llm"
-
-def _complexity(text: str) -> str:
-    words=len(text.split())
-    chain_signals = len(re.findall(r"(->|then|after|next|→)", text.lower())) + (1 if " and " in text.lower() and words>10 else 0)
-    if words>60 or chain_signals>=3: return "epic"
-    if words>18: return "medium"
-    return "simple"
-
-def _routed_agents(intent: str, complexity: str) -> List[str]:
-    # Membership guards: unknown values normalize to the minimal-roster path
-    # (identical outcome to the bare fall-through, made explicit — mirrors the
-    # vendored port in apps/dottie-harness-api/lib/heuristics.py).
-    if intent not in ("deep_research", "complex_action", "agentic_loop"):
-        intent = "chat"
-    if complexity not in ("simple", "medium", "epic"):
-        complexity = "simple"
-    if intent=="deep_research":
-        return ["deep-researcher","synthesist","forensic-auditor"] if complexity!="epic" else ["deep-researcher","synthesist","researcher","forensic-auditor","critic"]
-    if intent=="complex_action":
-        return ["action-operator","operator","critic"]
-    if intent=="agentic_loop":
-        if complexity=="epic": return ["scout-prime-coordinator","strategist","planner","deep-researcher","synthesist","builder","operator","action-operator","executor","critic","forensic-auditor","researcher","communicator"]
-        return ["scout-prime-coordinator","strategist","planner","builder","executor","critic","operator","action-operator","synthesist"][:5]
-    if complexity=="epic": return ["scout-prime-coordinator","strategist","planner","deep-researcher","synthesist","builder","executor","critic"]
-    if complexity=="medium": return ["scout-prime-coordinator","strategist","builder"]
-    return ["operator","scout-prime-coordinator"]
+MOMA_TIERS = _moma.MOMA_TIERS
+INTENT_KEYWORDS = _moma.INTENT_KEYWORDS
+_score_intent = _moma.score_intent
+_classify_moma = _moma.classify_moma
+_complexity = _moma.complexity
+_routed_agents = _moma.routed_agents
 
 def _emit(result: dict, cmd: str, json_out: bool=False):
     # Support both `scout --json harness ...` (global flag hoisted, json_out=False) and `scout harness ... --json`
@@ -101,14 +56,25 @@ def _emit(result: dict, cmd: str, json_out: bool=False):
 def route_cmd(
     goal: str = typer.Argument(..., help="User goal text to route"),
     json_out: bool = typer.Option(False, "--json", help="Emit json"),
-    learned: bool = typer.Option(False, "--learned", help="Augment with learned router when champion weights are available")):
-    """MoMA-lite classifier + graph memory GARNet-style routing (port of router.ultra.js)."""
-    scores={k:_score_intent(goal,k) for k in INTENT_KEYWORDS}
-    intent = max(scores, key=lambda k: scores[k]) if max(scores.values())>0 else "llm"
-    if max(scores.values())==0: intent="llm"
-    complexity=_complexity(goal)
-    moma=_classify_moma(goal,intent,complexity)
-    confidence=min(0.96, (max(scores.values())/4.0)) if scores.get(intent,0)>0 else 0.4
+    learned: bool = typer.Option(False, "--learned", help="Also ask the orchestrator MLP (advisory unless gate_passed and human-stamped)")):
+    """Route a goal through the Dottie router (dottie_loop.router.route_goal).
+
+    MoMA-lite decides unless a learned backend is gate_passed AND human-stamped.
+    Every backend's answer is shown under `advisory`; a trace line is appended
+    for the router training loop (~/.dottie/traces, DOTTIE_TRACE_DIR overrides).
+    System One joins when DOTTIE_OS_URL is set.
+    """
+    _emit(route_result(goal, learned=learned, surface="scout.harness.route"), "harness route", json_out)
+
+
+def route_result(goal: str, *, learned: bool = False, surface: str = "scout.harness.route") -> dict:
+    """The `harness route` envelope. Shared by `scout route` and `scout harness route`."""
+    from dottie_loop.router import default_backends, route_goal
+
+    decision = route_goal(goal, backends=default_backends(learned=learned), surface=surface)
+    intent = decision["intent"]
+    complexity = decision["complexity"]
+    moma = decision["moma_tier"]
 
     stickiness_guard=None
     if "stripe" in goal.lower() and "lemon" in goal.lower():
@@ -122,7 +88,7 @@ def route_cmd(
             "passed":True
         }
 
-    routed=_routed_agents(intent, complexity)
+    routed=decision["routed_agents"]
     graph_memory={
         "G_workflow": "current DAG nodes+edges+status live in checkpoint",
         "G_history": "past runs timeline.jsonl patterns + failure types",
@@ -132,11 +98,11 @@ def route_cmd(
     result={
         "goal":goal,
         "intent":intent,
-        "intent_scores":scores,
+        "intent_scores":decision["intent_scores"],
         "complexity":complexity,
         "moma_tier":moma,
         "moma_cap":MOMA_TIERS[moma]["cap"],
-        "confidence":round(confidence,2),
+        "confidence":decision["confidence"],
         "routed_agents":routed,
         "routed_count":len(routed),
         "graph_memory":graph_memory,
@@ -145,15 +111,21 @@ def route_cmd(
         "stickiness_guard": stickiness_guard,
         "tempo": ":13 Never :00 timing>speed",
         "max_concurrent_safe":4,
+        "spec_tier": decision["spec_tier"],
+        "authority": decision["authority"],
+        "heuristic_tier": decision["heuristic_tier"],
+        "advisory": decision["advisory"],
+        "trace_id": decision["trace"]["trace_id"],
+        "router": decision["policy"],
         "ok": True,
         "command": f"harness route {goal[:40]}",
     }
     if learned:
         from bigbang.plugins.harness.learned_router import (
-            learned_route,  # lazy: a defect here must never vanish the plugin
+            legacy_keys,  # lazy: a defect here must never vanish the plugin
         )
-        result.update(learned_route(goal, result))
-    _emit(result, f"harness route", json_out)
+        result.update(legacy_keys(decision["advisory"]["learned_mlp"]))
+    return result
 
 @app.command("agents")
 def agents_cmd(

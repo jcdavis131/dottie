@@ -65,6 +65,7 @@ app = ScoutTyper(
             "scout tools --help",
             "scout --json tools list",
             "scout --json system doctor",
+            'scout --json route "compare Stripe vs Lemon Squeezy"',
             "scout auth set-token github --token <token>",
             "printf '%s' \"$TOKEN\" | scout secrets set GITHUB_TOKEN --stdin",
             'scout agent run "list my tools" --execute',
@@ -102,6 +103,21 @@ def doctor_cmd():
     from bigbang.plugins.system.cli import run_doctor
 
     run_doctor()
+
+
+@app.command("route")
+def route_cmd(
+    goal: str = typer.Argument(..., help="Goal text to route"),
+    learned: bool = typer.Option(
+        False, "--learned", help="Also ask the orchestrator MLP (advisory)"
+    ),
+    json_out: bool = typer.Option(False, "--json", help="Emit json"),
+):
+    """Route a goal through the Dottie router (same as `scout harness route`)."""
+    # import here: plugin discovery must stay the only module-level plugin import
+    from bigbang.plugins.harness.cli import _emit, route_result
+
+    _emit(route_result(goal, learned=learned, surface="scout.route"), "route", json_out)
 
 
 if __name__ == "__main__":

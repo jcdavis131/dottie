@@ -3,7 +3,7 @@ name = "scout-cli"
 version = "0.8.0"
 description = "Scout CLI - personal control plane (ex-BigBang). Agent-native herd sessions + Ava brain + tools/MCP + authentic writing + RTX offload. HOME-only."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [{name = "Cameron Davis", email = "jcdavis131@gmail.com"}]
 keywords = ["scout", "cli", "agent", "tools", "mcp", "personal", "automation", "kitty"]
@@ -18,7 +18,13 @@ dependencies = [
   # <2: mcp 2.x renamed mcp.server.fastmcp.FastMCP and bigbang/plugins/mcp/server.py
   # fails at import on a fresh resolve (mcp==2.1.1, measured 2026-09-05).
   "mcp>=1.28.1,<2",
+  # The router (dottie_loop.router + dottie_loop.backends): scout route / harness
+  # route / harness run all decide through it. stdlib only, zero dependencies.
+  "dottie-loop",
 ]
+
+[tool.uv.sources]
+dottie-loop = { workspace = true }
 
 [project.optional-dependencies]
 # Only packages bigbang actually imports. gspread / supabase / onnxruntime /
@@ -35,8 +41,8 @@ security = ["keyring"]
 graphify = []
 
 [project.urls]
-Homepage = "https://github.com/jcdavis131/scout-cli"
-Issues = "https://github.com/jcdavis131/scout-cli/issues"
+Homepage = "https://github.com/jcdavis131/dottie/tree/main/apps/scout-cli"
+Issues = "https://github.com/jcdavis131/dottie/issues"
 
 [project.scripts]
 scout = "bigbang.cli:app"

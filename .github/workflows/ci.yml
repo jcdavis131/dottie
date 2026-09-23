@@ -97,7 +97,8 @@ jobs:
       # is still nearest. A number in a comment rots even inside one session —
       # re-measure it, never carry it forward.
       # WHY 1022 -> 983 (re-measured 2026-09-11): apps/scout-cli 802 -> 763; 002226b (harden real platform end to end) rewrote six scout-cli test files (conftest, harness_correct, harness_vector, inbox/infer/secrets focused) and closed 39 findings there; personal-graphify 141 and ava-open-harness 79 unchanged (79+141+763 = 983).
-      - name: Ruff lint (non-blocking — 983 known findings, see comment)
+      # WHY 983 -> 970 (re-measured 2026-09-23): apps/scout-cli 763 -> 750; the MoMA-lite classifier and the learned-router inference moved out of plugins/harness (cli.py, learned_router.py) into packages/dottie-loop (the router, a HARD-gated package at 0), taking their findings with them; the new plugins/router is clean. personal-graphify 141 and ava-open-harness 79 unchanged (79+141+750 = 970).
+      - name: Ruff lint (non-blocking — 970 known findings, see comment)
         run: uvx ruff@0.15.22 check packages/ava-open-harness packages/personal-graphify apps/scout-cli --exclude apps/scout-cli/.venv || true
       # A RATCHET, not a lint. Fails only on a gate-shaped defect (fail-open dispatch,
       # mode-conditional escape, suppressed check) that is NOT already in the baseline;

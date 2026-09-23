@@ -1,0 +1,18 @@
+name: router
+version: 0.1.0
+description: The Dottie router's training loop. pack turns real production route traces into strict System One (jev-decision-schema-1.0.0) records; train wraps jev-v0's pointer-LoRA trainer (dry-run by default, GPU host for --go); eval scores a checkpoint against the MoMA-lite heuristic on the holdout and computes gate_passed through dottie_loop.evaluation; promote is the separate human stamp. Nothing auto-promotes.
+capabilities:
+  # No network: pack/eval/promote are local file transforms; train only spawns
+  # the jev-v0 trainer as a child process (and only with --go does that child
+  # download a base model, on the GPU host).
+  network:
+    enabled: false
+  filesystem:
+    # Writes only where the operator points: the pack --out directory, the
+    # checkpoint's eval_summary.json, and the promotion stamp store
+    # (~/.dottie/router/stamps, DOTTIE_ROUTER_STAMPS overrides). No declared path
+    # list, because the pack and checkpoint locations are the operator's choice;
+    # declaring one without enforcing it would be a gate in name only.
+    write: true
+  secrets: false
+tags: [router, system-one, training, promotion]

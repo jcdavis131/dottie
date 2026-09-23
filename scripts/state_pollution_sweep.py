@@ -47,6 +47,10 @@ HOME_ROOTS = [
     HOME / ".dottie-claw",
     HOME / ".config",
     HOME / ".scout",
+    # Router traces + promotion stamps (dottie_loop.traces / router_artifacts). A test
+    # suite appending here would put test rows next to the production traces the
+    # router pack trains on.
+    HOME / ".dottie",
     # Carried from 79cad30's corpus so this is a superset of the sweep it replaces, not a
     # different set that happens to be bigger in places and smaller in others.
     HOME / "workspace",

@@ -14,10 +14,11 @@ MEASURED as 0 — deterministic executors consume no external-model tokens, and
 artifact size is retained separately as artifact_chars per node. Provenance is
 labeled on every record.
 
-Import order contract: this module imports routing helpers from
-bigbang.plugins.harness.cli at module level. That is safe (no cycle) because the
-CLI only imports this module LAZILY inside the `run` command body, so cli is
-always fully loaded before runner.
+Routing (step 1) is dottie_loop.router.route_goal, the same policy as
+`scout route` and jarvisd: MoMA-lite decides unless a learned backend is
+gate_passed AND human-stamped. The route appends a trace line, and the run's
+observed outcome (success/failure, recovery rung, escalation) is appended to
+the same trace so `scout router pack` can label it.
 """
 from __future__ import annotations
 
@@ -35,14 +36,12 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+from dottie_loop import traces as router_traces
+from dottie_loop.backends import complexity as complexity_of
+from dottie_loop.backends import routed_agents
+from dottie_loop.router import route_goal
+
 from bigbang.plugins.harness import mcp_executor
-from bigbang.plugins.harness.cli import (
-    INTENT_KEYWORDS,
-    _classify_moma,
-    _complexity,
-    _routed_agents,
-    _score_intent,
-)
 from bigbang.plugins.harness.timeline import append_event, g_history_stats
 
 _REPO_ROOT = Path(__file__).resolve().parents[5]  # .../apps/scout-cli/bigbang/plugins/harness/runner.py -> repo root
@@ -346,6 +345,10 @@ def _write_checkpoint(run_dir: Path, run_id: str, nodes: list[dict], created: st
     return path
 
 
+# recovery ladder rungs, mildest first (pipeline/recovery_ladder.py)
+_RUNGS = ["retry1", "patch", "replan", "escalate"]
+
+
 def _running_score(nodes: list[dict]) -> float:
     if not nodes:
         return 0.0
@@ -382,23 +385,21 @@ def run_goal(goal: str, *, max_nodes: int = 0, seed: int = 0, run_id: str = "",
     run_dir = runs_dir / rid
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. ROUTE — deterministic, in-process. Note: confidence deliberately avoids
-    # route_cmd's scores['llm'] KeyError path (cli.py:99-103) on zero-keyword goals.
-    complexity = _complexity(goal)
+    # 1. ROUTE — dottie_loop.router, in-process. An mcp: goal is a hard
+    # constraint (an exact protocol-prefix match, not a keyword score), so the
+    # router records it as such and skips the advisory backends.
+    hard = None
     if mcp_action is not None:
-        # mcp: is an exact protocol-prefix match, not a keyword score — the
-        # route is deterministic by construction.
-        intent = "complex_action"
-        tier = "action_operator"
-        agents = _routed_agents(intent, complexity)
-        confidence = 1.0
-    else:
-        scores = {k: _score_intent(goal, k) for k in INTENT_KEYWORDS}
-        best = max(scores.values())
-        intent = max(scores, key=lambda k: scores[k]) if best > 0 else "llm"
-        tier = _classify_moma(goal, intent, complexity)
-        agents = _routed_agents(intent, complexity)
-        confidence = round(min(0.96, best / 4.0), 2) if best > 0 else 0.4
+        hard = {"tier": "action_operator", "intent": "complex_action", "confidence": 1.0,
+                "routed_agents": routed_agents("complex_action", complexity_of(goal)),
+                "reason": "mcp: protocol prefix"}
+    routed = route_goal(goal, hard_constraint=hard, surface="scout.harness.run")
+    complexity = routed["complexity"]
+    intent = routed["intent"]
+    tier = routed["moma_tier"]
+    agents = routed["routed_agents"]
+    confidence = routed["confidence"]
+    trace_id = routed["trace"]["trace_id"]
 
     # 2. PLAN
     if mcp_action is not None:
@@ -484,7 +485,9 @@ def run_goal(goal: str, *, max_nodes: int = 0, seed: int = 0, run_id: str = "",
         score_history.append(_running_score(node_summaries))
         _write_checkpoint(run_dir, rid, node_summaries, created,
                           route={"goal": goal, "tier": tier, "intent": intent,
-                                 "complexity": complexity})
+                                 "complexity": complexity,
+                                 "authority": routed["authority"],
+                                 "trace_id": trace_id})
 
     # 6. CRITIC + verification economics (constants mirror verify_cmd cli.py:458-482)
     total = len(node_summaries)
@@ -496,6 +499,24 @@ def run_goal(goal: str, *, max_nodes: int = 0, seed: int = 0, run_id: str = "",
     # informational only — execution is never truncated by early_exit
     early_exit = abs(critic_score - score_before_last) < 0.3
 
+    # 7. OUTCOME -> router trace (what `scout router pack` labels from)
+    actions = [n["recovery_action"] for n in node_summaries if n["recovery_action"]]
+    router_traces.record_outcome(trace_id, {
+        "run_id": rid,
+        "ok": True,
+        "tier": tier,
+        "passed": passed,
+        "critic_score": critic_score,
+        "n_nodes": total,
+        "ok_nodes": ok_nodes,
+        "failed_nodes": failed_nodes,
+        "recovery_actions": actions,
+        "recovery_rung": max(actions, key=lambda a: _RUNGS.index(a) if a in _RUNGS else -1) if actions else None,
+        "escalated": "escalate" in actions,
+        "truncated": max_nodes > 0,
+        "injected_failure": bool(os.environ.get("SCOUT_RUN_FAIL_NODES", "").strip()),
+    }, surface="scout.harness.run")
+
     return {
         "runId": rid,
         "goal": goal,
@@ -504,6 +525,10 @@ def run_goal(goal: str, *, max_nodes: int = 0, seed: int = 0, run_id: str = "",
         "tier": tier,
         "confidence": confidence,
         "routed_agents": agents,
+        "authority": routed["authority"],
+        "spec_tier": routed["spec_tier"],
+        "advisory": routed["advisory"],
+        "trace_id": trace_id,
         "seed": seed,
         "max_nodes": max_nodes,
         "nodes": node_summaries,

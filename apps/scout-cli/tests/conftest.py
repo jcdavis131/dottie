@@ -94,6 +94,17 @@ os.environ["USERPROFILE"] = _HOME_TMP.name
 os.environ["XDG_CONFIG_HOME"] = str(Path(_HOME_TMP.name) / ".config")
 os.environ.pop("BIGBANG_POLICY_FILE", None)
 
+# The router (dottie_loop) appends a trace line per routed goal and reads promotion
+# stamps. Both default under HOME, which is already redirected, but they also have env
+# overrides that sit ABOVE HOME (the XDG lesson above), so pin them into the throwaway
+# home too, tag every line source=test (the router pack refuses those), and make sure a
+# developer's DOTTIE_OS_URL cannot send test goals to a live System One sidecar.
+os.environ["DOTTIE_TRACE_DIR"] = str(Path(_HOME_TMP.name) / ".dottie" / "traces")
+os.environ["DOTTIE_TRACE_SOURCE"] = "test"
+os.environ["DOTTIE_ROUTER_STAMPS"] = str(Path(_HOME_TMP.name) / ".dottie" / "router" / "stamps")
+for _var in ("DOTTIE_OS_URL", "DOTTIE_TRACE_TEXT", "DOTTIE_TRACES"):
+    os.environ.pop(_var, None)
+
 
 @pytest.fixture
 def assert_private_file():

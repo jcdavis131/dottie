@@ -747,6 +747,7 @@ name = "jarvisd"
 version = "0.1.0"
 source = { editable = "apps/jarvisd" }
 dependencies = [
+    { name = "dottie-loop" },
     { name = "mcp" },
     { name = "starlette" },
     { name = "uvicorn" },
@@ -763,6 +764,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", marker = "extra == 'brain'", specifier = ">=1.0" },
+    { name = "dottie-loop", editable = "packages/dottie-loop" },
     { name = "mcp", specifier = ">=1.28.1,<2" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "starlette", specifier = ">=0.40" },
@@ -2081,6 +2083,7 @@ name = "scout-cli"
 version = "0.8.0"
 source = { editable = "apps/scout-cli" }
 dependencies = [
+    { name = "dottie-loop" },
     { name = "httpx" },
     { name = "mcp" },
     { name = "pyyaml" },
@@ -2104,6 +2107,7 @@ security = [
 
 [package.metadata]
 requires-dist = [
+    { name = "dottie-loop", editable = "packages/dottie-loop" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "keyring", marker = "extra == 'all'" },
     { name = "keyring", marker = "extra == 'security'" },
