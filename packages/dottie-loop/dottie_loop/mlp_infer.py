@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 SCHEMA_VERSION = 1
+DENSE_FEATURES = ("n_words", "n_chain_signals", "has_code_terms", "latency_ms", "tokens_est", "attempt")
 _N_DENSE = 6
 _STD_FLOOR = 1e-6
 _GELU_C = 0.7978845608028654  # sqrt(2/pi) at contract precision
@@ -91,6 +92,26 @@ def load_weights(path: Path) -> dict:
     }
 
 
+def featurize(goal: str, n_buckets: int) -> dict[str, Any]:
+    """Hash-bucket bag of 1-3 grams and the six dense features (in :data:`DENSE_FEATURES` order).
+
+    sha256 buckets, NEVER Python ``hash()`` (per-process randomized). The
+    chain-signal count is MoMA-lite's own; latency/tokens/attempt are fixed at
+    serve time (0, 0, 1), the frozen contract. :mod:`dottie_loop.mlp_train`
+    trains on exactly this.
+    """
+    toks = _TOKEN_RE.findall(goal.lower())
+    bag: dict[int, float] = {}
+    for n in (1, 2, 3):
+        for i in range(len(toks) - n + 1):
+            gram = " ".join(toks[i : i + n])
+            bucket = int.from_bytes(hashlib.sha256(gram.encode("utf-8")).digest()[:8], "big") % n_buckets
+            bag[bucket] = bag.get(bucket, 0.0) + 1.0
+    dense = [float(len(goal.split())), float(chain_signals(goal)),
+             1.0 if any(t in CODE_TERMS for t in toks) else 0.0, 0.0, 0.0, 1.0]
+    return {"bag": bag, "dense": dense}
+
+
 def predict(model: dict, goal: str) -> dict:
     """Pinned float64 forward pass (mirror of the shared module's featurize+forward)."""
     import numpy as np
@@ -99,14 +120,8 @@ def predict(model: dict, goal: str) -> dict:
     n_buckets = int(cfg["n_buckets"])
     w = model["weights"]
 
-    # hash-bucket bag of 1-,2-,3-grams — sha256, NEVER Python hash() (per-process randomized)
-    toks = _TOKEN_RE.findall(goal.lower())
-    bag: dict[int, float] = {}
-    for n in (1, 2, 3):
-        for i in range(len(toks) - n + 1):
-            gram = " ".join(toks[i : i + n])
-            bucket = int.from_bytes(hashlib.sha256(gram.encode("utf-8")).digest()[:8], "big") % n_buckets
-            bag[bucket] = bag.get(bucket, 0.0) + 1.0
+    feats = featurize(goal, n_buckets)
+    bag = feats["bag"]
     embedding = w["embedding"]
     if bag:
         ids = np.asarray(list(bag.keys()), dtype=np.int64)
@@ -114,18 +129,7 @@ def predict(model: dict, goal: str) -> dict:
         pooled = (cts[:, None] * embedding[ids]).sum(axis=0) / max(1.0, float(cts.sum()))
     else:
         pooled = np.zeros(embedding.shape[1], dtype=np.float64)
-
-    # dense features in config order; the chain-signal count is MoMA-lite's own
-    n_words = len(goal.split())
-    n_chain_signals = chain_signals(goal)
-    dense_map = {
-        "n_words": float(n_words),
-        "n_chain_signals": float(n_chain_signals),
-        "has_code_terms": 1.0 if any(t in CODE_TERMS for t in toks) else 0.0,
-        "latency_ms": 0.0,
-        "tokens_est": 0.0,
-        "attempt": 1.0,
-    }
+    dense_map = dict(zip(DENSE_FEATURES, feats["dense"], strict=True))
     dense_vec = np.asarray([dense_map.get(f, 0.0) for f in cfg["dense_features"]], dtype=np.float64)
     dn = (dense_vec - model["norms"]["dense_mean"]) / np.maximum(model["norms"]["dense_std"], _STD_FLOOR)
 

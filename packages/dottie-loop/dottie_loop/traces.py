@@ -7,6 +7,12 @@ says where it came from:
 * ``source: production``: a real goal routed by a real surface;
 * ``source: test``: written under a test runner. The pack refuses these.
 
+and what it may be used for, as a ``provenance`` tier
+(:mod:`dottie_loop.provenance`): ``production`` (real use, the default),
+``benchmark-verified`` (``scout router probe``: a curated goal, real
+executors, an automatic verifier), ``outcome-real``, ``teacher``,
+``synthetic``. Only production and benchmark-verified rows ever train.
+
 Where: ``~/.dottie/traces/route-YYYYMMDD.jsonl`` (UTC day). ``DOTTIE_TRACE_DIR``
 overrides the directory; ``DOTTIE_TRACES=0`` turns tracing off. Under pytest
 (``PYTEST_CURRENT_TEST`` set) with no ``DOTTIE_TRACE_DIR``, nothing is written
@@ -87,6 +93,7 @@ def record_route(
     features: dict[str, Any],
     context: Any = None,
     extra: dict[str, Any] | None = None,
+    provenance: str = "production",
 ) -> dict[str, Any]:
     """Append the route line. Returns ``{"trace_id", "path"}`` (path None when not written).
 
@@ -98,7 +105,9 @@ def record_route(
     """
     from dottie_loop.backends import state_sha256, system_one_state, trace_text_enabled
     from dottie_loop.context import context_summary
+    from dottie_loop.provenance import check_tier
 
+    check_tier(provenance)
     trace_id = new_trace_id()
     row: dict[str, Any] = {
         "schema": TRACE_SCHEMA,
@@ -106,6 +115,7 @@ def record_route(
         "trace_id": trace_id,
         "at": now_iso(),
         "source": trace_source(),
+        "provenance": provenance,
         "surface": surface,
         "goal_sha256": features.get("goal_sha256"),
         "features": features,
@@ -130,16 +140,21 @@ def record_route(
     return {"trace_id": trace_id, "path": _append(row)}
 
 
-def record_outcome(trace_id: str | None, outcome: dict[str, Any], *, surface: str) -> str | None:
+def record_outcome(trace_id: str | None, outcome: dict[str, Any], *, surface: str,
+                   provenance: str = "production") -> str | None:
     """Append the outcome line for an earlier route line. No trace id, no write."""
+    from dottie_loop.provenance import check_tier
+
     if not trace_id:
         return None
+    check_tier(provenance)
     row = {
         "schema": TRACE_SCHEMA,
         "kind": "outcome",
         "trace_id": trace_id,
         "at": now_iso(),
         "source": trace_source(),
+        "provenance": provenance,
         "surface": surface,
         "outcome": outcome,
     }
@@ -179,5 +194,7 @@ def join_outcomes(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if r.get("kind") != "route":
             continue
         o = outcomes.get(r.get("trace_id"))
-        joined.append({**r, "outcome": o.get("outcome") if o else None, "outcome_source": o.get("source") if o else None})
+        joined.append({**r, "outcome": o.get("outcome") if o else None, "outcome_source": o.get("source") if o else None,
+                       "outcome_provenance": (o.get("provenance") or ("production" if o.get("source") == "production" else o.get("source")))
+                       if o else None})
     return joined
