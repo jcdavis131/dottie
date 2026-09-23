@@ -7,7 +7,7 @@ export const HERO_SUBHEAD =
 export const HERO_LEDE =
   "State + typed questions → Choice / Score / Noul, with the probability named as a probability. Runs on your GPU (Laya champion). Not a chat bot.";
 
-export const META_TITLE = "dottie-os — local System One decisions · arxiviq.com";
+export const META_TITLE = "dottie-os — local System One decisions";
 export const META_DESCRIPTION =
   "State + typed questions → Choice, Score, and Noul — a named probability, not a hedge. Local Laya champion on your tailnet. Not a chat bot. Solo personal project, MIT, free-tier.";
 

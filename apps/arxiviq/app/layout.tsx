@@ -13,7 +13,7 @@ import {
 export const metadata: Metadata = {
   title: {
     default: META_TITLE,
-    template: "%s · dottie-os · arxiviq.com",
+    template: "%s · dottie-os",
   },
   description: META_DESCRIPTION,
   metadataBase: new URL("https://arxiviq.com"),
