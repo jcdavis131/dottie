@@ -1,0 +1,49 @@
+{
+  "end": "2026-09-22",
+  "endpoints": [
+    "https://waterservices.usgs.gov/nwis/site/?format=rdb&siteOutput=expanded&sites={sites}",
+    "https://waterservices.usgs.gov/nwis/dv/?format=json&sites={site}&parameterCd=00060&statCd=00003&startDT={start}&endDT={end}",
+    "https://mesonet.agron.iastate.edu/api/1/nws/ugcs.json?state={state}",
+    "https://mesonet.agron.iastate.edu/api/1/vtec/sbw_interval.geojson?begints={b}T00:00Z&endts={e}T00:00Z&wfo={wfo}&only_new=true&{ph}"
+  ],
+  "failed": [],
+  "flow_days": 649341,
+  "flow_start": "1995-10-01",
+  "gauges": 60,
+  "harvested_at": "2026-09-23T23:20:12Z",
+  "paired": 25,
+  "warn_start_year": 2015,
+  "warnings": 37383,
+  "warnings_by_phenomena": {
+    "FA": 7112,
+    "FF": 13804,
+    "FL": 16467
+  },
+  "wfos": [
+    "BGM",
+    "BOX",
+    "BTV",
+    "CRP",
+    "CTP",
+    "DVN",
+    "EAX",
+    "EWX",
+    "FFC",
+    "FWD",
+    "HGX",
+    "ILM",
+    "ILN",
+    "ILX",
+    "LMK",
+    "LSX",
+    "LWX",
+    "MHX",
+    "MTR",
+    "PAH",
+    "PBZ",
+    "PHI",
+    "RAH",
+    "RLX",
+    "SEW"
+  ]
+}

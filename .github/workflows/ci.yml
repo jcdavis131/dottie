@@ -642,6 +642,39 @@ jobs:
           fi
           echo "No pack artifacts tracked"
 
+  # apps/atlas-outcomes: the outcome-real place-decision pack (stdlib only).
+  # Lint is a HARD gate (the app started at 0 findings). The tests run on a
+  # synthetic fixture, with a floor so a green run that collected nothing fails.
+  # The rebuild step proves `curate` reproduces the committed PACK_MANIFEST.json
+  # and sample byte for byte from the committed sources/ snapshots, offline.
+  atlas-outcomes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Ruff lint — apps/atlas-outcomes (HARD gate, at 0)
+        run: |
+          pip install ruff==0.15.22
+          ruff check apps/atlas-outcomes
+      - name: Unit tests (floor 14)
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s apps/atlas-outcomes/tests -v 2>&1 | tee /tmp/atlas.txt
+          ran=$(grep -oE 'Ran [0-9]+ tests?' /tmp/atlas.txt | tail -1 | grep -oE '[0-9]+' || echo 0)
+          if [ "${ran}" -lt 14 ]; then
+            echo "FAIL: only ${ran} tests ran (floor 14)."
+            exit 1
+          fi
+          grep -qE '^OK$' /tmp/atlas.txt
+      - name: Offline rebuild matches the committed manifest
+        run: |
+          set -euo pipefail
+          python3 apps/atlas-outcomes/run.py curate > /dev/null
+          git diff --exit-code -- apps/atlas-outcomes/PACK_MANIFEST.json apps/atlas-outcomes/sample
+
   bluehenre-checks:
     # The Dottie site (apps/bluehenre) — zero-dep, bare-node. Enforces the
     # provenance guarantees: pure parsers, the Hub exporter parser, and that the
