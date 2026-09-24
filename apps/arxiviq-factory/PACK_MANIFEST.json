@@ -72,16 +72,19 @@
     },
     "first_country": {
       "choices": {
-        "CN": 8,
-        "GB": 10,
-        "US": 26,
+        "CA": 5,
+        "CN": 14,
+        "DE": 6,
+        "FR": 8,
+        "GB": 12,
+        "US": 51,
         "other": 20
       },
       "label_sources": {
-        "arxiv-html-affiliation+ror": 64
+        "author-affiliation+ror": 116
       },
       "nimble_pairs": 0,
-      "rows": 64,
+      "rows": 116,
       "type": "choice"
     },
     "impact": {
@@ -101,20 +104,20 @@
     },
     "industry": {
       "label_sources": {
-        "arxiv-html-affiliation+ror": 32
+        "author-affiliation+ror": 71
       },
       "nimble_pairs": 0,
-      "positive_rate": 0.125,
-      "rows": 32,
+      "positive_rate": 0.2254,
+      "rows": 71,
       "type": "noul"
     },
     "institution_of": {
       "label_sources": {
-        "arxiv-html-affiliation+ror": 354
+        "author-affiliation+ror": 460
       },
-      "nimble_pairs": 177,
+      "nimble_pairs": 230,
       "positive_rate": 0.5,
-      "rows": 354,
+      "rows": 460,
       "type": "noul"
     },
     "listed_in": {
@@ -195,10 +198,10 @@
     "code_release": 252,
     "contribution": 252,
     "cross_list": 252,
-    "first_country": 12,
+    "first_country": 22,
     "impact": 103,
-    "industry": 4,
-    "institution_of": 66,
+    "industry": 12,
+    "institution_of": 84,
     "listed_in": 498,
     "peer_reviewed": 103,
     "teacher_quiz": 377,
@@ -207,28 +210,28 @@
   },
   "files": {
     "holdout.jsonl": {
-      "bytes": 5525516,
-      "sha256": "124403e34e1f6c9818b3b0c80bcf1391d21b3a919e6341de7ea7ebe5cc252750"
+      "bytes": 5586123,
+      "sha256": "4ea65af2b7bae820e4380c2f74506525c76fc56ba783eca341f46ead454a7a9f"
     },
     "provenance.jsonl": {
-      "bytes": 4249562,
-      "sha256": "bdaeef04d85c222a5b483866b6f9e6f013124f8ceb49e3bbd3a8e64e56cbe1fc"
+      "bytes": 4306960,
+      "sha256": "fb811dca69d0c28c7bcfcaf518481ebcf7c749b41cf362973a1cd58c70a49df0"
     },
     "train.jsonl": {
-      "bytes": 21998542,
-      "sha256": "2dde59f72c11c97d7b8fe9faadc817330e70d59a8c8e140d54a010b5df63385d"
+      "bytes": 22255438,
+      "sha256": "396cc88c0bd504188fff4c536f0eedea010c45aa20061944c7263b137e68e18c"
     }
   },
   "label_sources": {
-    "arxiv-html-affiliation+ror": 450,
     "arxiv-metadata": 7420,
     "arxiv-search-retrieval": 1174,
+    "author-affiliation+ror": 647,
     "llm-teacher": 4375,
     "semantic-scholar": 310,
     "semantic-scholar+arxiv-journal-ref": 527,
     "semantic-scholar-outcome": 526
   },
-  "nimble_pairs": 2647,
+  "nimble_pairs": 2700,
   "pack": "arxiviq-pack-1",
   "papers": {
     "harvested": 1242,
@@ -240,10 +243,10 @@
     "schema: record: forbidden content (virus/malware wording)": 11
   },
   "rows": {
-    "holdout": 2969,
-    "holdout_frac": 0.2009,
-    "total": 14782,
-    "train": 11813
+    "holdout": 3005,
+    "holdout_frac": 0.2006,
+    "total": 14979,
+    "train": 11974
   },
   "rules": [
     "states never contain their own answer; see arxiviq_factory/families.py for each family's state",
@@ -255,14 +258,15 @@
   "schema": "jev-decision-schema-1.0.0",
   "seed": 20260923,
   "sources": {
-    "enrich.jsonl.gz": "083e0dca67663beaf166b2cb7c38a50e8e3afda3f888e2d8d43804ea10c5a792",
+    "enrich.jsonl.gz": "e94e4d7f2cc41515e21a672789417ba9e872644b81059e3bb752f755f2b9f258",
+    "paper_skills.jsonl.gz": "2d7aed11f43d2ea927ae61d1ebec5272a1ee7849ee3da70175707714cbee25f7",
     "papers.jsonl.gz": "78c04d61dabd5128e76390f120c4a83644320361aa6dbb725791489a1064a3a3",
-    "ror.jsonl.gz": "269ea44b19876a212e52e6ee5a7118510ffba0330386a0ba0ac9a7500a74d494",
+    "ror.jsonl.gz": "456c8942ebbe7ac408575aacd960ae923c7f4c6719499f61c509dc753d4c6fdd",
     "teacher.jsonl.gz": "89fe1378a8f57a8033549d260398c9f8989735e0406e748c5c9a71c6924488b1"
   },
   "types": {
-    "choice": 5923,
-    "noul": 8333,
+    "choice": 5975,
+    "noul": 8478,
     "score": 526
   }
 }

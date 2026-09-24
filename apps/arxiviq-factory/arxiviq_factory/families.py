@@ -253,7 +253,7 @@ def fam_industry(c: Corpus) -> Iterator[dict[str, Any]]:
         if not insts:
             continue
         company = any("company" in (m.get("types") or []) for m in insts)
-        yield row("industry", p, base_state(p, authors=author_names(c, p)), "industry", q, {"type": "noul", "noul": 1.0 if company else 0.0}, label_source="arxiv-html-affiliation+ror")
+        yield row("industry", p, base_state(p, authors=author_names(c, p)), "industry", q, {"type": "noul", "noul": 1.0 if company else 0.0}, label_source="author-affiliation+ror")
 
 
 def first_institution(c: Corpus, aid: str) -> dict[str, Any] | None:
@@ -281,7 +281,7 @@ def fam_first_country(c: Corpus, k: int = 10) -> Iterator[dict[str, Any]]:
         m = firsts.get(p["arxiv_id"])
         if not m:
             continue
-        yield row("first_country", p, base_state(p, authors=author_names(c, p)), "first_country", q, {"type": "choice", "choice": m["country"] if m["country"] in tops else "other"}, label_source="arxiv-html-affiliation+ror")
+        yield row("first_country", p, base_state(p, authors=author_names(c, p)), "first_country", q, {"type": "choice", "choice": m["country"] if m["country"] in tops else "other"}, label_source="author-affiliation+ror")
 
 
 def length_rank(q: dict[str, Any]) -> int:
@@ -370,7 +370,7 @@ def nimble_institution(c: Corpus, seed: int) -> Iterator[dict[str, Any]]:
         if not cands:
             continue
         state = base_state(p, authors=author_names(c, p))
-        yield from _pairs("institution_of", p, state, "institution_of", "Is {candidate} among the authors' institutions?", rng.choice(sorted(insts)), rng.choice(cands), "arxiv-html-affiliation+ror")
+        yield from _pairs("institution_of", p, state, "institution_of", "Is {candidate} among the authors' institutions?", rng.choice(sorted(insts)), rng.choice(cands), "author-affiliation+ror")
 
 
 def nimble_category(c: Corpus, seed: int) -> Iterator[dict[str, Any]]:
