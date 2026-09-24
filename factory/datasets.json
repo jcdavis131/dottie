@@ -317,6 +317,45 @@
       "required": false,
       "restore_from": [],
       "consumers": []
+    },
+    {
+      "id": "atlas-outcomes-flows",
+      "repo": "dottie",
+      "path": "apps/atlas-outcomes/sources/flows.jsonl.gz",
+      "provenance": "real",
+      "source": "USGS NWIS daily values (mean daily discharge, 00060) for 60 gauges, 1995-10-01 to the harvest end; gauge metadata in sources/gauges.jsonl.gz (USGS site service + IEM county UGC -> NWS office)",
+      "refresh": "{python} apps/atlas-outcomes/run.py harvest --end <yesterday>",
+      "cadence_days": null,
+      "fresh_key": "mtime",
+      "required": false,
+      "restore_from": [],
+      "consumers": []
+    },
+    {
+      "id": "atlas-outcomes-warnings",
+      "repo": "dottie",
+      "path": "apps/atlas-outcomes/sources/warnings.jsonl.gz",
+      "provenance": "real",
+      "source": "IEM VTEC storm-based warning polygons (FL, FA, FF warnings at issuance) for every office with a gauge, 2015 to the harvest end",
+      "refresh": "{python} apps/atlas-outcomes/run.py harvest --end <yesterday>",
+      "cadence_days": null,
+      "fresh_key": "mtime",
+      "required": false,
+      "restore_from": [],
+      "consumers": []
+    },
+    {
+      "id": "atlas-outcomes-pack",
+      "repo": "dottie",
+      "path": "apps/atlas-outcomes/data/packs/atlas-outcomes-1/train.jsonl",
+      "provenance": "outcome-real",
+      "source": "jev-decision-schema-1.0.0 place-decision records (gauge state and Atlas construct stack at the end of day t) labelled by recorded futures: flow on t+1 above p90, an NWS flood-type warning polygon over the gauge within 24 h, next-day change level; time-split holdout (latest 365 days); consent.champion=false",
+      "refresh": "{python} apps/atlas-outcomes/run.py curate",
+      "cadence_days": null,
+      "fresh_key": "mtime",
+      "required": false,
+      "restore_from": [],
+      "consumers": []
     }
   ]
 }

@@ -1,0 +1,139 @@
+{
+  "features": [
+    "pct_date",
+    "pct_all",
+    "log_flow_over_p90",
+    "above_p90_today",
+    "chg1",
+    "chg3",
+    "chg7",
+    "up_present",
+    "up_pct_date",
+    "up_chg1",
+    "up_chg3",
+    "warn_active",
+    "warn_gauge_30d",
+    "warn_wfo_7d",
+    "warn_wfo_1d",
+    "doy_sin",
+    "doy_cos"
+  ],
+  "holdout": {
+    "days": [
+      "2025-09-22",
+      "2026-09-21"
+    ],
+    "rows": 20921
+  },
+  "questions": {
+    "flow_change": {
+      "climatology": {
+        "accuracy": 0.4348,
+        "brier_multiclass": 0.69199,
+        "mae_expected_level": 0.8194
+      },
+      "holdout_levels": {
+        "falls 5% to 20%": 5976,
+        "falls more than 20%": 1531,
+        "rises 5% to 20%": 2716,
+        "rises more than 20%": 2334,
+        "within 5% either way": 8364
+      },
+      "logistic": {
+        "accuracy": 0.4653,
+        "brier_multiclass": 0.66652,
+        "mae_expected_level": 0.7431
+      },
+      "persistence": {
+        "accuracy": 0.5003,
+        "brier_multiclass": 0.99947,
+        "mae_expected_level": 0.7828
+      },
+      "type": "score"
+    },
+    "high_next": {
+      "climatology": {
+        "accuracy": 0.9522,
+        "auc": 0.7303,
+        "brier": 0.04984
+      },
+      "holdout_positives": 999,
+      "holdout_rate": 0.0478,
+      "logistic": {
+        "accuracy": 0.9799,
+        "auc": 0.9818,
+        "brier": 0.01568
+      },
+      "logistic_weights": {
+        "above_p90_today": 0.6524,
+        "chg1": 0.4213,
+        "chg3": -0.2192,
+        "chg7": -0.0909,
+        "doy_cos": 0.1636,
+        "doy_sin": 0.0821,
+        "intercept": -6.2591,
+        "log_flow_over_p90": 3.2662,
+        "pct_all": 0.683,
+        "pct_date": -0.2581,
+        "up_chg1": 0.2979,
+        "up_chg3": 0.0537,
+        "up_pct_date": 0.5385,
+        "up_present": -0.4769,
+        "warn_active": 0.1392,
+        "warn_gauge_30d": 0.0272,
+        "warn_wfo_1d": 0.4312,
+        "warn_wfo_7d": -0.0074
+      },
+      "persistence": {
+        "accuracy": 0.9772,
+        "auc": 0.8744,
+        "brier": 0.0228
+      },
+      "type": "noul"
+    },
+    "warn_next": {
+      "climatology": {
+        "accuracy": 0.9909,
+        "auc": 0.6968,
+        "brier": 0.00894
+      },
+      "holdout_positives": 190,
+      "holdout_rate": 0.0091,
+      "logistic": {
+        "accuracy": 0.9909,
+        "auc": 0.8313,
+        "brier": 0.00887
+      },
+      "logistic_weights": {
+        "above_p90_today": 0.0041,
+        "chg1": 0.0008,
+        "chg3": -0.0016,
+        "chg7": -0.0235,
+        "doy_cos": -0.1225,
+        "doy_sin": -0.0773,
+        "intercept": -5.19,
+        "log_flow_over_p90": -0.1188,
+        "pct_all": 0.4422,
+        "pct_date": 0.0294,
+        "up_chg1": 0.0263,
+        "up_chg3": 0.0548,
+        "up_pct_date": 0.0673,
+        "up_present": -0.0432,
+        "warn_active": 0.0264,
+        "warn_gauge_30d": 0.1802,
+        "warn_wfo_1d": 0.3904,
+        "warn_wfo_7d": 0.1468
+      },
+      "persistence": {
+        "accuracy": 0.9833,
+        "auc": 0.5326,
+        "brier": 0.01673
+      },
+      "type": "noul"
+    }
+  },
+  "train": {
+    "rows": 79491,
+    "weighted_rows": 226290.0
+  }
+}

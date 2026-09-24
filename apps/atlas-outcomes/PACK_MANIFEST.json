@@ -1,0 +1,175 @@
+{
+  "balance": {
+    "holdout": {
+      "flow_change": {
+        "falls 5% to 20%": 5976,
+        "falls more than 20%": 1531,
+        "rises 5% to 20%": 2716,
+        "rises more than 20%": 2334,
+        "within 5% either way": 8364
+      },
+      "high_next": {
+        "natural_rate": 0.0478,
+        "positive_rate": 0.0478,
+        "positives": 999
+      },
+      "rows": 20921,
+      "warn_next": {
+        "natural_rate": 0.0091,
+        "positive_rate": 0.0091,
+        "positives": 190
+      },
+      "weighted_rows": 20921.0
+    },
+    "train": {
+      "flow_change": {
+        "falls 5% to 20%": 23807,
+        "falls more than 20%": 9639,
+        "rises 5% to 20%": 9284,
+        "rises more than 20%": 10584,
+        "within 5% either way": 26177
+      },
+      "high_next": {
+        "natural_rate": 0.1033,
+        "positive_rate": 0.294,
+        "positives": 23368
+      },
+      "rows": 79491,
+      "warn_next": {
+        "natural_rate": 0.0094,
+        "positive_rate": 0.0268,
+        "positives": 2131
+      },
+      "weighted_rows": 226290.0
+    }
+  },
+  "consent": {
+    "capture_training": true,
+    "champion": false,
+    "public_sources": true
+  },
+  "downsampling": {
+    "applies_to": "train only",
+    "easy_keep": 0.1,
+    "easy_negatives_before": {
+      "holdout": 16641,
+      "train": 163136
+    },
+    "rule": "both noul labels false, pct_date < 90, pct_all < 90, no warning over the gauge in 30 days"
+  },
+  "files": {
+    "holdout.jsonl": {
+      "bytes": 37903287,
+      "sha256": "1ff022452ca5ca36a595de6b855d0b225f707843adbcae6c2047966e30a5ef4a"
+    },
+    "provenance.jsonl": {
+      "bytes": 43704421,
+      "sha256": "fb0004042da132f828aec6639965d57b29b962ca860c8738ff5e9ed9d154e68b"
+    },
+    "train.jsonl": {
+      "bytes": 144326335,
+      "sha256": "bbd6a2dc5c03ae5340df26819a8b186fc8e67d3b6c362c7705c5d0942b79a0ef"
+    }
+  },
+  "gauges": {
+    "harvest_end": "2026-09-22",
+    "in_pack": 60,
+    "offices": [
+      "BGM",
+      "BOX",
+      "BTV",
+      "CRP",
+      "CTP",
+      "DVN",
+      "EAX",
+      "EWX",
+      "FFC",
+      "FWD",
+      "HGX",
+      "ILM",
+      "ILN",
+      "ILX",
+      "LMK",
+      "LSX",
+      "LWX",
+      "MHX",
+      "MTR",
+      "PAH",
+      "PBZ",
+      "PHI",
+      "RAH",
+      "RLX",
+      "SEW"
+    ],
+    "states": [
+      "CA",
+      "CT",
+      "GA",
+      "IA",
+      "IL",
+      "IN",
+      "KY",
+      "MA",
+      "MD",
+      "MO",
+      "NC",
+      "NJ",
+      "OH",
+      "PA",
+      "TX",
+      "VA",
+      "VT",
+      "WA",
+      "WV"
+    ]
+  },
+  "label_sources": {
+    "flow_change": "usgs-nwis-dv",
+    "high_next": "usgs-nwis-dv",
+    "warn_next": "iem-vtec-sbw"
+  },
+  "pack": "atlas-outcomes-1",
+  "provenance": "outcome-real",
+  "questions": {
+    "flow_change": "score (5 levels)",
+    "high_next": "noul",
+    "warn_next": "noul"
+  },
+  "rejected": {
+    "easy negative downsampled (train)": 146825,
+    "embargo (label window touches the holdout)": 58
+  },
+  "rows": {
+    "candidates": 247295,
+    "holdout": 20921,
+    "holdout_frac": 0.2084,
+    "total": 100412,
+    "train": 79491
+  },
+  "rules": [
+    "labels are recorded futures (USGS daily values on t+1, IEM VTEC warning polygons issued after T): provenance tier outcome-real",
+    "features use only data dated <= t and warnings issued <= T (end of local standard day t); percentiles from days strictly before t",
+    "holdout is the latest 365 days; a one-day embargo keeps every train label window out of it",
+    "easy negatives are downsampled in train only; sample_weight in provenance.jsonl restores natural rates",
+    "may train candidates; eval on the time-split holdout; consent.champion=false: nothing auto-promotes"
+  ],
+  "schema": "jev-decision-schema-1.0.0",
+  "seed": 20260923,
+  "sources": {
+    "flows.jsonl.gz": "6c0e7305d69e1afab7756e4bf6fc3a30c8019c187884eefc4da7029d1a152f3e",
+    "gauges.jsonl.gz": "5de5a28331aac5ed67a3c728e2e1bc9f3aee7c4c143c52aa8277323f390d26ae",
+    "warnings.jsonl.gz": "ca5d4e7756e2cc78922f36e7df0bb651012d3bba06e692915b12e92b04ce8b93"
+  },
+  "split": {
+    "embargo_days": 1,
+    "holdout_days": [
+      "2025-09-22",
+      "2026-09-21"
+    ],
+    "kind": "time",
+    "train_days": [
+      "2015-01-01",
+      "2025-09-20"
+    ]
+  }
+}
