@@ -113,7 +113,7 @@ runs, not something this repo installs.
 ```json
 {"datasets": [{
   "id": "arxiviq-papers", "repo": "arxiviq", "path": "site/public/data/papers.json",
-  "provenance": "real",                // real | honest-synthetic | placeholder | unknown
+  "provenance": "real",                // real | outcome-real | honest-synthetic | placeholder | unknown
   "source": "arXiv API via scripts/fetch_topics.py",
   "refresh": "python scripts/fetch_topics.py", "cadence_days": 7,
   "fresh_key": "json:generated_at",    // or "mtime"
@@ -127,6 +127,11 @@ runs, not something this repo installs.
 | `data check [--check]` | per dataset: present, size, sha256 (short), age, stale (age > cadence), expected-sha match; `--check` exits 1 when a `required` dataset is missing or stale |
 | `data refresh ID` | runs the refresh command in the owning repo, then re-checks |
 | `data restore ID` | copies the first existing `restore_from` source into `path` and writes `<path>.manifest.json` (source, sha256, size, when); refuses to overwrite a present file without `--force` |
+
+`outcome-real` marks a decision pack whose labels are recorded futures (what
+happened after the state was observed, e.g. `apps/atlas-outcomes`). It may
+train candidates, is evaluated on a time-split holdout, and never promotes
+itself.
 
 Freshness is declared, not inferred: no `cadence_days` means the dataset is
 static and can only be missing, never stale.

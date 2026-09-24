@@ -25,7 +25,10 @@ QUEUE_PATH = HERE / "train_queue.json"
 DATASETS_PATH = HERE / "datasets.json"
 RUNS_DIR = HERE / "runs"
 
-PROVENANCE = {"real", "honest-synthetic", "placeholder", "unknown"}
+# outcome-real: labels are recorded futures (what happened after the state was
+# observed). Such rows may train candidates and are evaluated on a time-split
+# holdout; teacher/synthetic rows never train a champion (docs/ARCHITECTURE.md).
+PROVENANCE = {"real", "outcome-real", "honest-synthetic", "placeholder", "unknown"}
 ROLES = {"center", "game", "site", "service", "library", "archived"}
 GATE_OPS = {">=", "<=", ">", "<"}
 

@@ -133,6 +133,7 @@ plan. All three run in the threadpool, never on the event loop.
 | Code graph hits | personal-graphify `graph.json` | opt-in (`DOTTIE_CONTEXT_GRAPH=<graph.json>`) | off by default |
 | Goal features | computed | **yes** | lexical features, hash; always |
 | dottie_loop `MemoryStore`, scout brain `MEMORY.md`, ava-skills memory | their own files | **no** | not decision inputs; any future use comes through a `ContextProvider` adapter, not a new store |
+| Place state (USGS gauge, Atlas construct stack, NWS flood warnings) | `apps/atlas-outcomes/sources/` snapshots | **no** | an `outcome-real` System One decision pack for place decisions; a future place `ContextProvider` would serve the same state |
 | harness-api analytics / corpus files | `apps/dottie-harness-api/lib` | **no** | dashboard only |
 
 Every provider runs under a per-provider timeout (default 250 ms) and fails
@@ -240,6 +241,18 @@ the MLP is better on real use, and upper-bound labels are only a pipeline
 exercise. No `llm`-tier outcome was fabricated: those goals are recorded
 unavailable.
 
+**Place decisions (`apps/atlas-outcomes`).** A second source of real labels,
+outside the router: System One records about a place on the eye.jcamd.com
+Atlas (a USGS gauge, its construct stack and the NWS warnings over it) at the
+end of day t, labelled by what happened next (flow on t+1 above the gauge's
+p90, an NWS flood-type warning polygon over it within 24 h, the next-day
+change level). Provenance tier `outcome-real`: the rows may train System One
+candidates and are scored on a time-split holdout (the latest 365 days)
+against the persistence and climatology baselines in
+`apps/atlas-outcomes/BASELINE.json`; the same stamp rule applies. The same
+state shape is what a future place `ContextProvider` would hand the decision
+plane; none is wired today.
+
 ## Speed budget (measured)
 
 Budget (warm, jarvisd): p50 decide <= 10 ms without System One, <= 150 ms with
@@ -285,6 +298,8 @@ tested with a fake model); its GPU latency is not measured here.
 - Synthetic, teacher, test or stub-executor rows never train a champion.
   Benchmark-verified rows train candidates but never stand in for real use:
   the gate needs production rows and a production-holdout win.
+  Rows whose labels are recorded futures (provenance `outcome-real`) may
+  train candidates; they are evaluated on a time-split holdout.
 - No new "confidence" in code or copy. System One reports
   `shape_concentration`; external probabilities are `backend_confidence`. The
   router's existing `confidence` key (a keyword-score ratio) keeps its name.
