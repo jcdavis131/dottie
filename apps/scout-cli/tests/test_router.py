@@ -158,6 +158,14 @@ def test_router_pack_train_eval_promote(tmp_path):
     assert e["gate_passed"] is True and e["promotion"]["outcome"] == "hold", e
     assert not (tmp_path / "stamps").exists()  # eval never stamps
 
+    no_sheet = _cli("router", "promote", str(ck), "--i-have-reviewed", "--by", "cam", ok=False)
+    assert no_sheet["ok"] is False and "spot-check" in no_sheet["error"]
+    sheet = _cli("router", "spotcheck", str(ck), "--pack", str(tmp_path / "pack"), "--n", "8")["data"]
+    assert sheet["n"] == 8 and sheet["unmarked"] == 8
+    unmarked = _cli("router", "promote", str(ck), "--i-have-reviewed", "--by", "cam", ok=False)
+    assert "incomplete" in unmarked["error"]
+    marked = _cli("router", "spotcheck", str(ck), "--mark", "all=ok", "--by", "cam")["data"]
+    assert marked["ok"] == 8 and marked["reviewer"] == "cam"
     s = _cli("router", "promote", str(ck), "--i-have-reviewed", "--by", "cam")["data"]
     assert s["reviewed"] is True and (tmp_path / "stamps" / f"{s['artifact_sha256']}.json").is_file()
     assert _cli("router", "status")["data"]["stamps"] == [s["artifact_sha256"]]

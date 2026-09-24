@@ -1,7 +1,7 @@
 import AgentConductorPanel from "../components/AgentConductorPanel";
 
 export const metadata = {
-  title: { absolute: "Conductor — dottie-os · arxiviq.com" },
+  title: { absolute: "Conductor — dottie-os" },
   description: "Manage daemon-reported sessions, shared notes, and tasks next to the System One sidecar. Tandem status and pairing are shown only when confirmed.",
 };
 

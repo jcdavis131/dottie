@@ -1,14 +1,17 @@
 name: router
 version: 0.1.0
-description: The Dottie router's training loop. pack turns real production route traces into strict System One (jev-decision-schema-1.0.0) records; train wraps jev-v0's pointer-LoRA trainer (dry-run by default, GPU host for --go); eval scores a checkpoint against the MoMA-lite heuristic on the holdout and computes gate_passed through dottie_loop.evaluation; promote is the separate human stamp. Nothing auto-promotes.
+description: The Dottie router's training loop. pack turns real production route traces into strict System One (jev-decision-schema-1.0.0) records; train wraps jev-v0's pointer-LoRA trainer (dry-run by default, GPU host for --go); eval scores a checkpoint against the MoMA-lite heuristic on the holdout and computes gate_passed through dottie_loop.evaluation; probe labels curated benchmark goals through real executors (benchmark-verified provenance); spotcheck is the human label review promote requires; promote is the separate human stamp. Nothing auto-promotes.
 capabilities:
   # pack/eval/promote are local file transforms; train only spawns the jev-v0
   # trainer as a child process (and only with --go does that child download a
-  # base model, on the GPU host). The one network use is `router bench`: loopback
-  # only, to a jarvisd and a serve_decide it starts itself on free ports.
+  # base model, on the GPU host). Network: `router bench` (loopback only, to a
+  # jarvisd and a serve_decide it starts itself on free ports) and `router probe`,
+  # which runs the harness's real, read-only executors (see the harness manifest:
+  # arXiv, Semantic Scholar with a key, Ollama/LLM APIs when configured).
   network:
     enabled: true
-    domains: ["127.0.0.1"]
+    domains: ["127.0.0.1", "localhost", "export.arxiv.org", "arxiv.org", "api.semanticscholar.org",
+              "api.anthropic.com", "api.openai.com"]
   filesystem:
     # The one plugin-chosen write is the promotion stamp store (gated with
     # fs_write). Everything else goes where the operator points on the command

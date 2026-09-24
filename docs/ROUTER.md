@@ -68,12 +68,16 @@ fail when the copy drifts.
 
 ## Authority: gate plus human stamp
 
-A learned answer is authoritative only when both of these hold:
+A learned answer is authoritative only when all of these hold:
 
 1. its artifact's `eval_summary.json` says `gate_passed: true`, computed by
    `scout router eval` through `dottie_loop.evaluation` (`evaluate_gates` +
-   `promotion_decision`), and
-2. a human ran `scout router promote <artifact> --i-have-reviewed --by <name>`.
+   `promotion_decision`) plus the data-policy refusals (at least 50
+   production rows, a win on the production holdout, no regression on the
+   benchmark holdout; see `docs/ARCHITECTURE.md`, "Data policy");
+2. a human marked its spot-check: `scout router spotcheck` samples 20 labels
+   into `<artifact>.spotcheck.json`, each marked ok or bad, at most 10% bad;
+3. a human ran `scout router promote <artifact> --i-have-reviewed --by <name>`.
    That writes a stamp keyed by the sha256 of the artifact's exact bytes to
    `~/.dottie/router/stamps/` (`DOTTIE_ROUTER_STAMPS` overrides).
 
@@ -98,8 +102,12 @@ the run was cut short with `--max-nodes`.
   `state_sha256` (the hash of the `system_one_state` that was served) and
   `decision_record` (decision id, latency breakdown, cache hit).
 - An outcome line says `executor: stub|real` (and `executors`, a count per
-  kind). The runner's executors are deterministic stubs except the MCP
-  operator, so today almost every outcome is `stub`.
+  kind), plus the measured `backends`, `tokens`, `latency_ms`, `cost_usd`,
+  `verified` and `verifier`. A run is `real` only when every node ran its real
+  executor (`bigbang.plugins.harness.executors`; `DOTTIE_EXECUTORS`).
+- Every line carries `provenance`: `production` (real use; the default),
+  `benchmark-verified` (`scout router probe`), `outcome-real`, `teacher` or
+  `synthetic` (`dottie_loop.provenance`).
 - A trace stores the goal's sha256 and task features, never the goal text.
   `DOTTIE_TRACE_TEXT=1` is the owner's opt-in to store the text and to send
   it to `/decide`. Features alone collide often, so a useful training pack
@@ -108,11 +116,18 @@ the run was cut short with `--max-nodes`.
   Under pytest with no `DOTTIE_TRACE_DIR`, nothing is written at all.
 - A write never raises. A full disk does not stop a route.
 
-## Training loop (runs on the GPU host)
+## Training loop
+
+The MLP router trains on CPU (`--mlp`); the System One pointer-LoRA trains on
+the GPU host (`--go`). The step-by-step host runbook is
+`docs/ROUTER_LABELS_RUNBOOK.md`.
 
 ```bash
 scout router status                                   # trace files, stamps, current authority
+scout router probe --limit 50                         # benchmark goals, real executors, cheapest tier first
 scout router pack  --out ~/packs/router-001           # traces -> strict jev records
+scout router train --mlp --pack ~/packs/router-001 --out ~/ckpt/router-mlp.json   # CPU, numpy
+scout router spotcheck ~/ckpt/router-mlp.json --pack ~/packs/router-001           # then --mark ... --by <you>
 scout router train --pack ~/packs/router-001          # dry-run: validates, torch-free
 scout router train --pack ~/packs/router-001 --go --out ~/ckpt/router-001   # GPU host
 scout router eval  --pack ~/packs/router-001 --checkpoint ~/ckpt/router-001 # writes eval_summary.json
@@ -127,7 +142,13 @@ python apps/jev-v0/serve_decide.py --checkpoint ~/ckpt/router-001 --port 8770  #
   outcomes (whose executors were all stubs), counting both in `MANIFEST.json`
   under `executors`: stub rows never train a champion. Traces written before
   the context existed rebuild to the same state they had (no `context` key).
-- **pack** reads only `source: production` rows and refuses test rows. Labels
+- **pack** reads only `source: production` rows and refuses test rows; of
+  those it trains `provenance: production` (weight 1.0) and
+  `benchmark-verified` (weight 0.7) rows and refuses teacher, synthetic and
+  outcome-real ones. A benchmark row's `tier` label is the probe's minimal
+  sufficient tier. Production holdout (`holdout.jsonl`) and a disjoint
+  benchmark holdout (`holdout_benchmark.jsonl`) are whole goals; dedupe and
+  decontamination key on the normalised goal hash. Production labels
   come from what was observed. `tier` is the routed tier when the run
   succeeded there, one tier up when it failed or escalated there, and an
   operator correction (`scout harness correct`) always wins. `action` is
@@ -149,9 +170,15 @@ python apps/jev-v0/serve_decide.py --checkpoint ~/ckpt/router-001 --port 8770  #
   files, no goal on both sides of the split) and anti-synthetic. `gate_passed`
   is true only when every gate passes and `promotion_decision` has nothing
   left to hold except the canary and the approval. Eval never stamps.
+- **eval** also refuses, naming each reason in `refusals`, when the pack has
+  fewer than `--min-production-rows` (default 50) production rows, when the
+  production holdout is empty, or when the candidate trails the heuristic on
+  the benchmark holdout. An MLP weights file (`schema_version: 1`) is scored
+  on CPU through `dottie_loop.mlp_infer`.
 - **promote** refuses without `--i-have-reviewed`. It also refuses unless
-  `gate_passed` is true and the artifact's bytes still match the ones that
-  were evaluated.
+  `gate_passed` is true, the artifact's bytes still match the ones that
+  were evaluated, and its spot-check is fully marked by a named reviewer with
+  at most 10% bad labels.
 
 `--predictions <jsonl>` lets eval score precomputed `{id, tier}` answers, for
 example ones produced on another host. The source is recorded in

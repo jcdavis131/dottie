@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 export const metadata = {
-  title: { absolute: "Not found — dottie-os · arxiviq.com" },
+  title: { absolute: "Not found — dottie-os" },
 };
 
 export default function NotFound() {

@@ -31,9 +31,11 @@ path that makes it.
    canonical store for memories, goals and claims; scout's run timeline is the
    run-history store; personal-graphify is the code graph. No new stores.
 4. **Learning plane.** Traces carry the same System One state the model is
-   served (one builder, `dottie_loop.backends.system_one_state`), then
-   `scout router pack` -> train (GPU host) -> eval (quality gate) -> human
-   stamp -> dottie-os serves. Nothing auto-promotes.
+   served (one builder, `dottie_loop.backends.system_one_state`) and a
+   provenance tier, then `scout router probe` (benchmark labels) and real use
+   (production labels) -> `scout router pack` -> train (MLP on CPU, System One
+   on the GPU host) -> eval (quality gate) -> human spot-check and stamp ->
+   serve. Nothing auto-promotes.
 
 ## Runtime topology
 
@@ -59,8 +61,10 @@ path that makes it.
       +--- jarvisd unreachable: same dottie_loop.decide in-process
            (run-history context; no jarvisd store)
 
-  ~/.dottie/traces/route-YYYYMMDD.jsonl --> scout router pack --> train (GPU host)
-      --> scout router eval --> scout router promote (human) --> dottie-os serves
+  scout harness run (production) + scout router probe (benchmark-verified)
+      --> ~/.dottie/traces/route-YYYYMMDD.jsonl --> scout router pack
+      --> train (MLP: CPU; System One: GPU host) --> scout router eval
+      --> scout router spotcheck + promote (human) --> served
 ```
 
 ## Services and ports
@@ -73,7 +77,7 @@ path that makes it.
 | scout | `apps/scout-cli` (`scout`) | CLI; `scout mcp serve` is stdio MCP | Surface; decides via jarvisd or in-process |
 | console | `apps/arxiviq` (Next.js) | `next dev` `:3000` locally; Vercel | Surface; BFF talks to jarvisd with `JARVIS_URL` |
 | harness-api | `apps/dottie-harness-api` (Vercel) | Vercel function `/api/*` | Public deterministic routing + dashboard. Serves the vendored MoMA-lite heuristic, **not** a learned champion |
-| Ollama | the home box | `OLLAMA_HOST` (default `127.0.0.1:11434`) | Optional brain for `jarvis.ask`; not on the decision path |
+| Ollama | the home box | `OLLAMA_HOST` (default `127.0.0.1:11434`) | Optional brain for `jarvis.ask` and the `llm` executor tier (`DOTTIE_LLM_MODEL`, default `qwen2.5:7b-instruct`); not on the decision path |
 | agent OS | `apps/dottie` | `:8100` (`python -m dottie serve`) | Separate agent runtime; not on the decision path (see Phase 2) |
 
 ## The decide contract
@@ -142,21 +146,100 @@ source, id; the digest hashes exactly those items).
 
 1. **Trace.** Every decision appends a route line to
    `~/.dottie/traces/route-YYYYMMDD.jsonl` with the goal hash, features, every
-   backend's answer, the context summary as System One was served it, and
-   `state_sha256`. `scout harness run` appends an outcome line tagged
-   `executor: stub|real`.
-2. **Pack** (`scout router pack`). Rebuilds each record's state with the same
-   `system_one_state` the router serves with, refuses a trace whose rebuilt
-   state does not hash to `state_sha256`, and refuses outcomes observed by stub
-   executors (and untagged pre-tag outcomes, whose executors were all stubs),
-   counting them in `MANIFEST.json` under `executors`. Test rows are refused.
-3. **Train** on the GPU host (`apps/jev-v0/train_pointer_lora.py --go`).
-4. **Eval** (`scout router eval`): quality gates through
-   `dottie_loop.evaluation`; `gate_passed` in `eval_summary.json`.
-5. **Stamp** (`scout router promote --i-have-reviewed --by <name>`): the only
-   way a learned answer becomes authoritative.
-6. **Serve** from dottie-os `/decide`. The served checkpoint's identity hash in
-   `/health` is what the stamp is checked against.
+   backend's answer, the context summary as System One was served it,
+   `state_sha256` and a `provenance` tier. `scout harness run` appends an
+   outcome line tagged `executor: stub|real` with measured backends, tokens,
+   latency, cost and `verified`/`verifier`.
+2. **Execute for real.** `scout harness run` runs each plan node's real
+   executor (`apps/scout-cli/bigbang/plugins/harness/executors/`) when its
+   backend is available: deterministic (AST-whitelisted local solvers and
+   allowlisted read-only `scout` commands), llm (`bigbang.core.llm`: Ollama at
+   `OLLAMA_HOST` first, then Anthropic or an OpenAI-compatible API only when a
+   key AND a model are set), deep_research (arXiv, Semantic Scholar with a
+   key, jarvisd recall; cited answers). action_operator runs only through the
+   existing fail-closed MCP path; outside-world effects (`WRITE_DESTRUCTIVE`,
+   `EXTERNAL_NOTIFY`) stay default-deny and are never auto-retried (the one
+   ladder, `dottie_loop.execution.recovery_ladder`). **Default
+   (`DOTTIE_EXECUTORS=auto`): real when the backend is up, else the node's
+   deterministic stub, tagged `stub`**; `real` fails the node instead, `stub`
+   never tries (the test suites). A run is `executor: real` only when every
+   node was.
+3. **Probe** (`scout router probe`). Curated goals
+   (`packages/dottie-loop/dottie_loop/benchmarks/router_bench_v1.jsonl`, 221
+   goals with verifier specs) run through the real executors cheapest tier
+   first, one tier up at a time, until the goal's automatic verifier
+   (`dottie_loop.verifiers`) passes. The label is that minimal sufficient
+   tier. Never past `deep_research` (no side-effecting tier is probed). An
+   unreachable backend stops the goal as `unavailable` (no label);
+   `--past-unavailable` records upper bounds, which the pack refuses unless
+   `--allow-upper-bound`. Rows are `benchmark-verified`.
+4. **Pack** (`scout router pack`). Rebuilds each record's state with the same
+   `system_one_state`, refuses a drifted `state_sha256`, refuses any outcome
+   not observed by real executors, applies the data policy below, and writes
+   `train.jsonl`, `holdout.jsonl` (production), `holdout_benchmark.jsonl`,
+   `provenance.jsonl` (with each row's weight) and `MANIFEST.json`.
+5. **Train.** The orchestrator MLP router on CPU
+   (`scout router train --mlp`, `dottie_loop.mlp_train`, numpy; the frozen
+   schema_version-1 weights `dottie_loop.mlp_infer` serves). System One on
+   the GPU host (`apps/jev-v0/train_pointer_lora.py --go`).
+6. **Eval** (`scout router eval`): the gate below; `gate_passed` and
+   `refusals` in `eval_summary.json`.
+7. **Spot-check and stamp.** `scout router spotcheck` samples 20 labels into
+   `<artifact>.spotcheck.json`; a human marks each ok/bad (at most 10% bad).
+   `scout router promote --i-have-reviewed --by <name>` refuses without it:
+   the only way a learned answer becomes authoritative.
+8. **Serve.** The MLP via `SCOUT_ORCH_MODEL` / `hints.learned`; System One
+   from dottie-os `/decide`, whose `/health` identity hash is what the stamp
+   is checked against.
+
+The host runbook is `docs/ROUTER_LABELS_RUNBOOK.md`.
+
+## Data policy (provenance tiers)
+
+Owner-approved 2026-09-23. Every trace line and pack row carries
+`provenance` (`dottie_loop.provenance`):
+
+| Tier | What | Weight | May |
+|---|---|---|---|
+| `production` | real use, real executors | 1.0 | train; the **primary** gate holdout |
+| `benchmark-verified` | curated goals through real executors, outcome checked by an automatic verifier (`scout router probe`) | 0.7 | train candidates; only a disjoint, deduped benchmark holdout in eval |
+| `outcome-real` | recorded futures (the separate Atlas track) | - | recognised; never a router label |
+| `teacher`, `synthetic` | model- or template-made | - | never train a champion, never in gate eval |
+
+- **Dedupe and decontamination** key on the normalised goal hash
+  (`goal_norm_sha256`: NFKC, case, whitespace and punctuation folded). One row
+  per (provenance, goal); a goal whose labels contradict drops. No goal that
+  sits in the production holdout, the benchmark holdout or an external eval
+  set (`--eval-set`) trains. The benchmark's builder refuses any goal whose
+  normalised hash appears in this repo's eval sets.
+- **The gate** (`dottie_loop.router_training.evaluate`) passes only when the
+  pack holds at least `MIN_PRODUCTION_ROWS` production rows (50;
+  `--min-production-rows`), the candidate beats the heuristic on the
+  production holdout (the §24 gates), and it does not trail the heuristic on
+  the benchmark holdout. Otherwise `refusals` says which failed.
+- **Promotion** additionally needs the human spot-check and the stamp.
+
+**Today (measured in the build container, 2026-09-23):** no Ollama and no LLM API key are
+reachable in that container, and arXiv's API there answers only single-id
+lookups (search queries get HTTP 406; `/abs` pages serve as the id fallback).
+`scout router probe` over all 221 goals:
+
+| | strict (default) | `--past-unavailable` |
+|---|---|---|
+| labeled (verifier passed, every cheaper tier ran) | 86, all `deterministic` | 86, all `deterministic` |
+| upper-bound labels (`llm` unknown) | - | 44 `deep_research` (arXiv id lookups) |
+| unavailable / no label | 135 (llm tier unreachable) | 91 (llm unreachable, then arXiv search 406) |
+| heuristic tier vs label | dearer on all 86 (it routes them to `llm`) | same, plus agrees on the 44 |
+| tokens / cost | 0 / $0 (no model ran) | 0 / $0 |
+
+Pack (upper-bound run, `--allow-upper-bound`): 130 benchmark-verified rows,
+0 production; 104 train, 26 in the benchmark holdout. MLP on CPU: 300
+epochs, under 1 s wall. Eval: benchmark holdout tier accuracy 0.962 vs the
+heuristic's 0.423 (n=26), and the gate **refused**: 0 < 50 production rows,
+empty production holdout. That is the expected state; the numbers do not show
+the MLP is better on real use, and upper-bound labels are only a pipeline
+exercise. No `llm`-tier outcome was fabricated: those goals are recorded
+unavailable.
 
 **Place decisions (`apps/atlas-outcomes`).** A second source of real labels,
 outside the router: System One records about a place on the eye.jcamd.com
@@ -169,10 +252,6 @@ against the persistence and climatology baselines in
 `apps/atlas-outcomes/BASELINE.json`; the same stamp rule applies. The same
 state shape is what a future place `ContextProvider` would hand the decision
 plane; none is wired today.
-
-**Today:** the runner's executors are deterministic stubs except the MCP
-operator, so almost every outcome is `executor: stub` and no pack can be built
-from real labels yet. That is the honest state; Phase 2 adds real executors.
 
 ## Speed budget (measured)
 
@@ -217,6 +296,8 @@ tested with a fake model); its GPU latency is not measured here.
   is stamped: the heuristic is the authority and every learned or System One
   answer is advisory, logged and displayed.
 - Synthetic, teacher, test or stub-executor rows never train a champion.
+  Benchmark-verified rows train candidates but never stand in for real use:
+  the gate needs production rows and a production-holdout win.
   Rows whose labels are recorded futures (provenance `outcome-real`) may
   train candidates; they are evaluated on a time-split holdout.
 - No new "confidence" in code or copy. System One reports
@@ -255,8 +336,11 @@ Nothing below is deleted in Phase 1.
 
 ## Phase 2 (in `docs/project_dag.json`)
 
-- `decision-plane-real-executors`: executors that do real work, so outcomes
-  are `executor: real` and packs have real labels.
+- `decision-plane-real-executors` (**in progress**): real executors, the tier
+  probe, the benchmark, provenance tiers, the production-gated eval, the
+  spot-check and the CPU MLP trainer are built and tested. Open: production
+  traces with every node real on the owner's host (Ollama up), then a gate
+  run with 50+ production rows.
 - `harness-api-jarvisd-proxy`: harness-api forwards to jarvisd `/api/decide`.
 - `retire-bluehenre`: archive `apps/bluehenre` and its CI job.
 - `rlm-converge`: one RLM implementation.

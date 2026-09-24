@@ -314,7 +314,12 @@ def test_eval_pass_then_promote_is_a_separate_human_step(tmp_path):
     assert router_artifacts.read_stamp(s["artifact_sha256"]) is None  # eval never stamps
     with pytest.raises(PolicyDeniedError):
         router_artifacts.write_stamp(ck, reviewed=False, reviewer="cam")
+    with pytest.raises(PolicyDeniedError, match="no spot-check"):
+        router_artifacts.write_stamp(ck, reviewed=True, reviewer="cam")
+    sheet = router_artifacts.spotcheck_sample(tmp_path / "pack", ck, n=5)
+    router_artifacts.spotcheck_mark(ck, {it["id"]: "ok" for it in sheet["items"]}, reviewer="cam")
     stamp = router_artifacts.write_stamp(ck, reviewed=True, reviewer="cam")
+    assert stamp["spotcheck"]["n"] == 5 and stamp["spotcheck"]["bad"] == 0
     assert router_artifacts.read_stamp(stamp["artifact_sha256"])["reviewer"] == "cam"
     (ck / "pointer.pt").write_bytes(b"retrained bytes")  # new bytes are not the reviewed bytes
     with pytest.raises(PolicyDeniedError):

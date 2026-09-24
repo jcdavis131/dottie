@@ -170,9 +170,13 @@ def moma_route(goal: str) -> dict[str, Any]:
 
 def goal_features(goal: str) -> dict[str, Any]:
     """Task-relevant features of a goal, safe to log: a hash, never the text itself."""
+    from dottie_loop.provenance import goal_norm_sha256
+
     toks = _TOKEN_RE.findall(goal.lower())
     return {
         "goal_sha256": hashlib.sha256(goal.encode("utf-8")).hexdigest(),
+        # case/space/punctuation-folded: the pack's dedupe and decontamination key
+        "goal_norm_sha256": goal_norm_sha256(goal),
         "n_words": len(goal.split()),
         "n_chars": len(goal),
         "n_chain_signals": chain_signals(goal),

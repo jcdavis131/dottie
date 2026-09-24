@@ -131,6 +131,7 @@ def decide(
     surface: str = "dottie_loop.decide",
     trace: bool = True,
     cache: DecisionCache | None = DEFAULT_CACHE,
+    provenance: str = "production",
 ) -> dict[str, Any]:
     """Decide a tier for ``goal``. Returns the router output plus ``decision`` (the record).
 
@@ -138,7 +139,9 @@ def decide(
     System One on/off; default: on when ``DOTTIE_OS_URL`` is set),
     ``insufficiency`` (a recorded failure, permits one tier up),
     ``policy_exclusions``, ``hard_constraint``. ``providers`` empty = no
-    context. ``cache`` None = no cache.
+    context. ``cache`` None = no cache. ``provenance`` tags the trace line
+    (:mod:`dottie_loop.provenance`; ``scout router probe`` passes
+    ``benchmark-verified``).
     """
     from dottie_loop import traces
     from dottie_loop.backends import goal_features, trace_text_enabled
@@ -201,7 +204,8 @@ def decide(
     out = dict(out)
     out["trace"] = (
         traces.record_route(out, surface=surface, goal=goal, features=feats, context=ctx,
-                            extra={k: record[k] for k in ("decision_id", "latency_ms", "cache")})
+                            extra={k: record[k] for k in ("decision_id", "latency_ms", "cache")},
+                            provenance=provenance)
         if trace
         else {"trace_id": None, "path": None}
     )

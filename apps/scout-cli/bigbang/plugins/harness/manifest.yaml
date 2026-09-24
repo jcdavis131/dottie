@@ -1,17 +1,22 @@
 name: harness
 description: Scout v3.3 orientation engine — MoMA-lite 5-tier router classifyTier deterministic-first, memory lattice dense0.7+sparse0.3+rerank+1-2hop OODA, GARNet G_workflow+G_history MDP, checkpoint pause/resume, recovery ladder, pacing :13, verification econ. v5 Prime Mission Log Stuck Detector Verifier Budget.
 capabilities:
-  # Network is used ONLY by the mcp: goal path (runner.py mcp-operator ->
-  # mcp_executor.execute_mcp_action): a downstream MCP tool call made through
-  # the mcp plugin's client, fail-closed behind namespace/server/enabled gates
-  # and the default-deny user URL allowlist (bigbang.core.policy.check_user_url).
-  # Every other harness path is local and deterministic.
-  # The router's System One backend also POSTs to a dottie-os /decide endpoint,
-  # but ONLY when the owner sets DOTTIE_OS_URL (off by default; loopback or
-  # tailnet sidecar).
+  # Network uses, each declared:
+  # * the mcp: goal path (runner.py mcp-operator -> mcp_executor.execute_mcp_action):
+  #   a downstream MCP tool call, fail-closed behind namespace/server/enabled gates
+  #   and the default-deny user URL allowlist (bigbang.core.policy.check_user_url);
+  # * the real executors (executors/): deep_research reads export.arxiv.org (and
+  #   arxiv.org/abs pages, robots-allowed), api.semanticscholar.org only with a key,
+  #   and jarvisd /api/recall only when JARVIS_URL is set; llm calls Ollama at
+  #   OLLAMA_HOST (default localhost:11434), and api.anthropic.com / an
+  #   OpenAI-compatible OPENAI_BASE_URL only when their keys are set. All read-only;
+  #   DOTTIE_EXECUTORS=stub turns every one of them off;
+  # * the router's System One backend POSTs to a dottie-os /decide endpoint ONLY
+  #   when the owner sets DOTTIE_OS_URL (off by default).
   network:
     enabled: true
-    domains: ["localhost", "127.0.0.1"]
+    domains: ["localhost", "127.0.0.1", "export.arxiv.org", "arxiv.org", "api.semanticscholar.org",
+              "api.anthropic.com", "api.openai.com"]
   filesystem:
     enabled: true
     write: true
