@@ -77,7 +77,7 @@ path that makes it.
 | scout | `apps/scout-cli` (`scout`) | CLI; `scout mcp serve` is stdio MCP | Surface; decides via jarvisd or in-process |
 | console | `apps/arxiviq` (Next.js) | `next dev` `:3000` locally; Vercel | Surface; BFF talks to jarvisd with `JARVIS_URL` |
 | harness-api | `apps/dottie-harness-api` (Vercel) | Vercel function `/api/*` | Public deterministic routing + dashboard. Serves the vendored MoMA-lite heuristic, **not** a learned champion |
-| Ollama | the home box | `OLLAMA_HOST` (default `127.0.0.1:11434`) | Optional brain for `jarvis.ask` and the `llm` executor tier (`DOTTIE_LLM_MODEL`, default `qwen2.5:7b-instruct`); not on the decision path |
+| Ollama | the home box | `OLLAMA_HOST` (default `127.0.0.1:11434`) | Optional brain for `jarvis.ask` and the `llm` executor tier (`DOTTIE_LLM_MODEL`, default `qwen3:8b`); not on the decision path |
 | agent OS | `apps/dottie` | `:8100` (`python -m dottie serve`) | Separate agent runtime; not on the decision path (see Phase 2) |
 
 ## The decide contract
