@@ -22,7 +22,7 @@ See [`DOTTIE_PRIME_SOTA.md`](./DOTTIE_PRIME_SOTA.md) for the full prime → Dott
 
 ## Honest capability statement (read first)
 
-- **Ollama is the working brain today.** Only backend that does useful work is `ollama` (default `qwen3:32b`) served locally.
+- **Ollama is the working brain today.** Only backend that does useful work is `ollama` (default `qwen3:8b`) served locally.
 - **Ava is the trainee.** `ava` backend decodes from real smoke-scale checkpoint (~14M nano). Zero task capability today, emits noise — honestly. Exists so flywheel has a trainee and serving path is built for day a capable ckpt exists.
 - **Echo is plumbing.** Deterministic CI harness (`plumbing_only=True`).
 - **Anti-fabrication everywhere.** Unreachable Ollama, missing ckpt, missing torch → Dottie refuses with true reason (`DottiePolicyUnavailable` / 503). Every metric computed from real inputs; `r_task` for free-form is `null` (no verifier), never invented. Verified tasks (`compute`, `extract`, `tool_chain`, `file_ops`, `constraint`) have deterministic verifier from same values rendered into prompt — automated no-leakage check enforces it.
@@ -41,7 +41,7 @@ See [`DOTTIE_PRIME_SOTA.md`](./DOTTIE_PRIME_SOTA.md) for the full prime → Dott
   rlm("...") ──▶│  + RLM Runner (rlm.py) ──▶ Harness v2 (harness_continual.py)           │
                  │       │ ContinualHarness refined via evidence, snapshots, rollback      │
                  │       │ Sessions daemon Registry + inbox messaging + goals + heartbeat  │
-                 │       ├─ OllamaPolicy (qwen3:32b) ─ brain                              │
+                 │       ├─ OllamaPolicy (qwen3:8b) ─ brain                               │
                  │       ├─ AvaPolicy (TorchModelPolicy+ckpt) ─ trainee                   │
                  │       └─ EchoPolicy (deterministic CI)                                 │
                  │                        │                                                │
@@ -62,7 +62,7 @@ See [`DOTTIE_PRIME_SOTA.md`](./DOTTIE_PRIME_SOTA.md) for the full prime → Dott
 ```bash
 # 1. Ollama brain
 ollama serve &
-ollama pull qwen3:32b
+ollama pull qwen3:8b
 
 # 2. Install Dottie SOTA
 pip install -e apps/dottie   # provides dottie CLI

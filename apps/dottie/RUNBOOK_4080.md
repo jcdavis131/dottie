@@ -10,7 +10,7 @@ with Ollama as the working brain and your fresh mini checkpoint as the trainee.
 
 | backend | what a climb iteration will measure |
 |---|---|
-| `ollama` | Real task capability of your local model (e.g. `qwen3:32b`). Verified-task success rates here are the first REAL capability numbers in the ecosystem. |
+| `ollama` | Real task capability of your local model (e.g. `qwen3:8b`). Verified-task success rates here are the first REAL capability numbers in the ecosystem. |
 | `ava`    | Your homegrown checkpoint. A smoke/mini-scale checkpoint has **zero task capability** — expect `success_rate 0.0`. That number is the honest baseline the flywheel exists to move. |
 | `echo`   | Deterministic plumbing (`plumbing_only`), never a capability measurement. |
 
@@ -31,7 +31,7 @@ pip install torch --index-url https://download.pytorch.org/whl/cu128   # 4080 CU
 
 # Ollama brain
 ollama serve &          # if not already running
-ollama pull qwen3:32b   # or the model you prefer; set DOTTIE_OLLAMA_MODEL to match
+ollama pull qwen3:8b    # or the model you prefer; set DOTTIE_OLLAMA_MODEL to match
 ```
 
 ## 1. Point the trainee at your fresh mini checkpoint

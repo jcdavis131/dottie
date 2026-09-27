@@ -54,9 +54,9 @@ pip install torch --index-url https://download.pytorch.org/whl/cu128   # 4080 CU
 
 # Ollama is the brain for ideation + implementation
 ollama serve &                 # if not already running
-ollama pull qwen3:32b          # or your preferred model
+ollama pull qwen3:8b           # or your preferred model
 export DOTTIE_OLLAMA_URL=http://localhost:11434
-export DOTTIE_OLLAMA_MODEL=qwen3:32b
+export DOTTIE_OLLAMA_MODEL=qwen3:8b
 ```
 
 ## 1. One-time — seed the baseline
@@ -180,6 +180,14 @@ Everything is under `apps/dottie/data/research/`:
   broken fix verbatim (observed: identical wrong output shape four attempts running). Prefer a
   qwen3-class model (`qwen3:14b` fits a 12 GB card); the policy strips `<think>` blocks, and
   `DOTTIE_OLLAMA_THINK=false` is available when latency matters more than fix quality.
+- **A completion stops mid-JSON**: every call is capped at 2048 generated tokens
+  (`DOTTIE_OLLAMA_NUM_PREDICT`; thinking tokens count against it). On the 4080 box's ledger
+  (177 experiments, measured 2026-09-27) the longest stored implementation `code` is 4,369
+  characters, well inside the cap under `THINK=false`.
+  Raise it if a model genuinely needs more; `0` removes the cap, which brings back the
+  uncapped runaway (708 s / 81,920 tokens on one call, 2026-09-27).
+  `DOTTIE_OLLAMA_TEMPERATURE` and `DOTTIE_OLLAMA_NUM_CTX` are also read; the research stages
+  still set their own temperature per call.
 - **Everything sits in `pending`**: `implement` hasn't run (or keeps hitting `failed_validation`);
   check `logs/implement.log` for the failing validator level.
 - **`train` says "no experiments ready for training"**: nothing has passed validation yet — run

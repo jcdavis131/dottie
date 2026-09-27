@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from dottie.engine import DottieEngine
 
 CAPABILITY_NOTE = (
-    "Ollama (external local model, e.g. qwen3:32b) is the only backend with real task "
+    "Ollama (external local model, e.g. qwen3:8b) is the only backend with real task "
     "capability today. The ava backend decodes from a smoke-scale checkpoint (~90 base + ~25 "
     "agentic optimizer steps, capability_claim=none) and exists to close the training "
     "flywheel, not to assist. The echo backend is a deterministic plumbing test."

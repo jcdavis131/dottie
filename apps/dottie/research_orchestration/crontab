@@ -10,7 +10,7 @@
 
 DOTTIE_ROOT=/home/user/workspace/dottie
 DOTTIE_OLLAMA_URL=http://localhost:11434
-DOTTIE_OLLAMA_MODEL=qwen3:32b
+DOTTIE_OLLAMA_MODEL=qwen3:8b
 SHELL=/bin/bash
 
 # 1. Ideation — daily at midnight. Grounds N hypotheses in the current real baseline + dead ends.
