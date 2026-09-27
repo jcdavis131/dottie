@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
 # Ledger-write retry budget. ~0.55s worst case (0.01+0.02+...+0.1), which is short
 # next to wait_status's 0.4s poll interval and long enough to outlast a concurrent
@@ -133,9 +133,83 @@ def _save(data: dict[str, Any]) -> None:
             time.sleep(_SAVE_BACKOFF_S * (attempt + 1))
 
 
+#: Where the POSIX probe reads zombie state. A module attribute so a test can
+#: point it at a fake tree on any platform.
+_PROC_ROOT = Path("/proc")
+
+# Win32 values (winnt.h, winerror.h, minwinbase.h).
+_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+_ERROR_ACCESS_DENIED = 5
+_STILL_ACTIVE = 259
+
+
 def _pid_alive(pid: int | None) -> bool:
+    """Is ``pid`` a running process? Asks without signalling it.
+
+    POSIX probes with ``os.kill(pid, 0)``. That is not a probe on Windows: signal
+    0 there is CTRL_C_EVENT, so ``os.kill`` sends Ctrl+C. Measured 2026-09-27: a
+    running herd-style child sharing the caller's console was reported alive and
+    then exited 0xC000013A (STATUS_CONTROL_C_EXIT), so the check killed the
+    session it checked. Windows asks the kernel for the exit code instead.
+    """
     if not pid or pid <= 0:
         return False
+    if sys.platform == "win32":
+        return _pid_alive_win32(pid)
+    return _pid_alive_posix(pid)
+
+
+def _win32_kernel32() -> Any:
+    import ctypes
+
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.OpenProcess.argtypes = (ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32)
+    k32.OpenProcess.restype = ctypes.c_void_p
+    k32.GetExitCodeProcess.argtypes = (ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32))
+    k32.GetExitCodeProcess.restype = ctypes.c_int
+    k32.CloseHandle.argtypes = (ctypes.c_void_p,)
+    k32.CloseHandle.restype = ctypes.c_int
+    return k32
+
+
+def _pid_alive_win32(
+    pid: int,
+    kernel32: Any = None,
+    get_last_error: Callable[[], int] | None = None,
+) -> bool:
+    """OpenProcess, then GetExitCodeProcess == STILL_ACTIVE.
+
+    ``kernel32`` and ``get_last_error`` are injectable so the test runs this
+    logic on any platform against a fake. OpenProcess refused with
+    ERROR_ACCESS_DENIED means the process exists but is not ours to query (the
+    POSIX PermissionError case): alive. Any other refusal, typically
+    ERROR_INVALID_PARAMETER for a pid nothing holds, means dead. An exited
+    process can still be opened while a handle to it is held, and then reports
+    its real exit code, so it reads as dead.
+
+    Caveat: a process that exits with code 259 is indistinguishable from a
+    running one through this API. Nothing herd starts exits with 259 on purpose.
+    """
+    import ctypes
+
+    if kernel32 is None:
+        kernel32 = _win32_kernel32()
+        get_last_error = ctypes.get_last_error
+    handle = kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return get_last_error is not None and get_last_error() == _ERROR_ACCESS_DENIED
+    try:
+        code = ctypes.c_uint32(0)
+        if not kernel32.GetExitCodeProcess(handle, ctypes.pointer(code)):
+            # Unreadable exit state is not proof of a running process; the POSIX
+            # branch treats an unexpected OSError the same way.
+            return False
+        return code.value == _STILL_ACTIVE
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def _pid_alive_posix(pid: int) -> bool:
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -145,7 +219,7 @@ def _pid_alive(pid: int | None) -> bool:
     except OSError:
         return False
     # On Linux, zombies still accept signal 0 — check /proc status when possible.
-    proc = Path(f"/proc/{pid}")
+    proc = _PROC_ROOT / str(pid)
     if proc.exists():
         try:
             status = (proc / "status").read_text(encoding="utf-8", errors="ignore")
