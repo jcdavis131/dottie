@@ -34,6 +34,44 @@ OLLAMA_URLS = [
 #: pulled on the home box (local models only, 2026-09-27).
 DEFAULT_MODEL = "qwen3:8b"
 
+# Per-call generation cap, sent as options.num_predict on every /api/chat call this
+# module makes. With no cap, a degenerate generation is bounded only by the server —
+# apps/dottie hit exactly this 2026-09-27 (PR #66): llama-server runs with
+# --context-shift, so it slides the context window and keeps going rather than
+# stopping, and one call ran 708s to 81,920 tokens (done_reason=length) before a cap
+# existed. Mirrors apps/dottie/dottie/policy.py's OllamaPolicy: DOTTIE_OLLAMA_NUM_PREDICT
+# is the SAME env var, shared across both apps rather than inventing a scout-cli-only
+# name, so one operator setting caps every local Ollama caller on the box.
+DEFAULT_OLLAMA_NUM_PREDICT = 2048
+
+
+def _env_int(name: str) -> int | None:
+    """Parse an integer env var; unset or blank means None. A value that does not
+    parse raises ValueError naming the variable, so a typo cannot silently fall back
+    to running uncapped — for this cap, silent-and-wrong is worse than loud."""
+    raw = os.environ.get(name)
+    if raw is None or raw.strip() == "":
+        return None
+    try:
+        return int(raw.strip())
+    except ValueError as e:
+        raise ValueError(f"{name} must be an integer, got {raw!r}") from e
+
+
+def resolve_num_predict(explicit: int | None = None) -> int | None:
+    """Generation cap to send, or None to send none: explicit argument >
+    DOTTIE_OLLAMA_NUM_PREDICT env > DEFAULT_OLLAMA_NUM_PREDICT. 0 or negative from
+    EITHER source means no cap (the escape hatch for a deliberately long call) and
+    is normalized to None here, so every caller can write
+    ``if cap is not None: options["num_predict"] = cap`` without repeating the
+    sign check. A garbage env value raises (via _env_int) rather than silently
+    falling back to the default, since that default exists specifically to stop a
+    runaway generation — swallowing the typo would defeat the cap it names."""
+    value = explicit if explicit is not None else _env_int("DOTTIE_OLLAMA_NUM_PREDICT")
+    if value is None:
+        value = DEFAULT_OLLAMA_NUM_PREDICT
+    return value if value > 0 else None
+
 # Small-first. qwen3:8b is the only model installed on the home box, so it leads.
 # The 14b/32b tags stay at the END as opt-in fallbacks: get_best_model picks them
 # only when they are installed AND nothing smaller in this list is. The old order
@@ -270,6 +308,7 @@ def ollama_chat(
     json_mode: bool = False,
     base: str | None = None,
     timeout: float = 60.0,
+    num_predict: int | None = None,
 ) -> str | None:
     if base is None:
         base = get_ollama_base(timeout=2.0)
@@ -295,6 +334,9 @@ def ollama_chat(
         }
         if json_mode:
             payload["format"] = "json"
+        cap = resolve_num_predict(num_predict)
+        if cap is not None:
+            payload["options"] = {"num_predict": cap}
         r = client.post(f"{base}/api/chat", json=payload)
         if r.status_code != 200:
             return None
@@ -462,10 +504,17 @@ def _ollama_generate(
     *,
     json_mode: bool = False,
     timeout: float = 120.0,
+    num_predict: int | None = None,
 ) -> dict[str, Any] | None:
     """Like ollama_chat() but also surfaces the server-side eval_count +
     eval_duration so callers can compute the model's own tokens/sec (which
-    excludes network/queueing). Returns dict or None."""
+    excludes network/queueing). Returns dict or None.
+
+    ``num_predict`` resolves through :func:`resolve_num_predict` — an explicit
+    value here (chat_with_metrics forwards its own ``max_tokens``) wins over
+    ``DOTTIE_OLLAMA_NUM_PREDICT`` wins over the 2048 default; 0 or negative sends
+    no cap. Without this every call was unbounded (see DEFAULT_OLLAMA_NUM_PREDICT).
+    """
     client = _httpx_client(timeout=timeout)
     if client is None:
         return None
@@ -473,6 +522,9 @@ def _ollama_generate(
         payload: dict[str, Any] = {"model": model, "messages": messages, "stream": False}
         if json_mode:
             payload["format"] = "json"
+        cap = resolve_num_predict(num_predict)
+        if cap is not None:
+            payload["options"] = {"num_predict": cap}
         r = client.post(f"{base.rstrip('/')}/api/chat", json=payload)
         if r.status_code != 200:
             return None
@@ -526,7 +578,14 @@ def chat_with_metrics(
     removal, before anything is contacted. ``tok_per_s`` is
     wall-clock; ``server_tok_per_s`` uses the backend's own timing when reported
     (Ollama's eval_duration). ``context_shift`` is recorded as-launched telemetry,
-    not detected per-request (it is a KoboldCpp startup flag)."""
+    not detected per-request (it is a KoboldCpp startup flag).
+
+    ``max_tokens`` on the ollama branch is forwarded to ``_ollama_generate`` as its
+    ``num_predict`` — an explicit value here beats ``DOTTIE_OLLAMA_NUM_PREDICT``
+    beats the 2048 default (see :func:`resolve_num_predict`); this branch used to
+    ignore ``max_tokens`` entirely and send no cap at all. The koboldcpp branch
+    already honors ``max_tokens`` via ``openai_chat``'s own ``max_tokens`` field
+    (untouched here)."""
     backend = (backend or "ollama").lower()
     meta: dict[str, Any] = {
         "ok": False, "backend": backend, "model": model, "base": base,
@@ -556,7 +615,10 @@ def chat_with_metrics(
                 return meta
             meta["base"] = b
             t0 = _clock()
-            res = _ollama_generate(model, messages, b, json_mode=json_mode, timeout=timeout)
+            res = _ollama_generate(
+                model, messages, b, json_mode=json_mode, timeout=timeout,
+                num_predict=max_tokens,
+            )
             elapsed = _clock() - t0
             server_seconds = res.get("server_seconds") if res else None
         else:

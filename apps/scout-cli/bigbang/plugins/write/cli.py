@@ -607,6 +607,32 @@ def _ollama_base_fast() -> str | None:
     return None
 
 
+def _num_predict_cap() -> int | None:
+    """Generation cap for this plugin's own ``/api/chat`` call.
+
+    Delegates to ``bigbang.core.llm.resolve_num_predict`` (``DOTTIE_OLLAMA_NUM_PREDICT``,
+    PR #66's convention shared across apps: explicit > env > 2048 default; 0 or
+    negative means no cap) so one env var caps every local Ollama caller on the box.
+    Falls back to a locally-tolerant read on ANY import/parse problem, matching this
+    module's existing style for the core helper (``_ollama_base_fast``,
+    ``_best_ollama_model`` above already fall back rather than raise) — a write draft
+    is not worth failing over a malformed cap the way the harness's own calls are."""
+    try:
+        from bigbang.core.llm import resolve_num_predict
+
+        return resolve_num_predict()
+    except Exception:
+        pass
+    raw = (os.environ.get("DOTTIE_OLLAMA_NUM_PREDICT") or "").strip()
+    if not raw:
+        return 2048  # bigbang.core.llm.DEFAULT_OLLAMA_NUM_PREDICT, duplicated for this fallback
+    try:
+        n = int(raw)
+    except ValueError:
+        return 2048
+    return n if n > 0 else None
+
+
 def _ollama_chat(model: str, system: str, user: str, base: str) -> str | None:
     client = _httpx_client(6.0)
     if not client:
@@ -620,6 +646,9 @@ def _ollama_chat(model: str, system: str, user: str, base: str) -> str | None:
             ],
             "stream": False,
         }
+        cap = _num_predict_cap()
+        if cap is not None:
+            payload["options"] = {"num_predict": cap}
         r = client.post(f"{base}/api/chat", json=payload)
         if r.status_code == 200:
             data = r.json()

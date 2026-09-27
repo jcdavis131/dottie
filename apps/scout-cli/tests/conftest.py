@@ -116,6 +116,12 @@ os.environ["SCOUT_DECIDE_REMOTE"] = "0"
 os.environ["DOTTIE_EXECUTORS"] = "stub"
 for _var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "SEMANTIC_SCHOLAR_API_KEY"):
     os.environ.pop(_var, None)
+# bigbang.core.llm's Ollama generation cap (mirrors apps/dottie's
+# DOTTIE_OLLAMA_NUM_PREDICT, PR #66): a garbage value in the developer's shell
+# would make resolve_num_predict() raise inside chat_with_metrics's try block,
+# which is caught and reported as ok=False — turning a real local env quirk
+# into a test failure the suite has no business depending on.
+os.environ.pop("DOTTIE_OLLAMA_NUM_PREDICT", None)
 
 
 @pytest.fixture
