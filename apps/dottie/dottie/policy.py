@@ -5,7 +5,7 @@ Each provider satisfies the factory's ``Policy`` contract from
 ``apps/ava-factory/ava/rl/codeact_loop.py``: ``transcript: str -> next assistant turn: str``.
 Three backends:
 
-  * :class:`OllamaPolicy` — real HTTP calls to an Ollama server (the user's local qwen3:32b by
+  * :class:`OllamaPolicy` — real HTTP calls to an Ollama server (the user's local qwen3:8b by
     default). This is the only backend with real task capability today.
   * :class:`AvaPolicy`    — the trainee: wraps the factory's real ``TorchModelPolicy`` over a
     smoke-scale ava checkpoint. Zero capability today; exists for the training flywheel.
@@ -21,14 +21,29 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
 from dottie import resolve
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 DEFAULT_OLLAMA_URL = "http://host.docker.internal:11434"
-DEFAULT_OLLAMA_MODEL = "qwen3:32b"
+# The model the 4080 box actually serves. qwen3:32b (the old default) is not pulled there, so
+# a bare run refused while the research loop, which pins qwen3:8b through its env, worked.
+DEFAULT_OLLAMA_MODEL = "qwen3:8b"
+# Per-call generation cap, sent as options.num_predict. With no cap, a degenerate generation
+# is bounded only by the server, and llama-server runs with --context-shift, so it slides the
+# window and keeps going. Measured 2026-09-27 (local-LLM A/B, granite4.2:3b at T0.2, -c 8192):
+# one call ran 708 s to 81,920 tokens, done_reason=length. On the research loop's CPU setting
+# the same runaway would hold the call until the 1800 s read timeout. Thinking tokens count
+# against the cap, so with DOTTIE_OLLAMA_THINK unset a long qwen3 thought can use it up; the
+# research loop runs think=false. DOTTIE_OLLAMA_NUM_PREDICT overrides; 0 or negative sends
+# no cap.
+DEFAULT_OLLAMA_NUM_PREDICT = 2048
+DEFAULT_OLLAMA_TEMPERATURE = 0.2
 
 # Transcript markers — must match ava/rl/codeact_loop.py (and the factory datagen) exactly.
 USER = "<|user|>"
@@ -89,6 +104,19 @@ def transcript_to_messages(transcript: str) -> list[dict[str, str]]:
     return messages
 
 
+def _env_number(name: str, cast: Callable[[str], Any], kind: str) -> Any:
+    """Parse env var ``name``; unset or blank means None. A value that does not parse
+    raises ValueError naming the variable, so a typo refuses instead of quietly running
+    with the default (for the generation cap, that would mean running uncapped)."""
+    raw = os.environ.get(name)
+    if raw is None or raw.strip() == "":
+        return None
+    try:
+        return cast(raw.strip())
+    except ValueError as e:
+        raise ValueError(f"{name} must be {kind}, got {raw!r}") from e
+
+
 def strip_think(text: str) -> str:
     """Remove closed ``<think>...</think>`` blocks (qwen3-style reasoning preamble).
 
@@ -102,9 +130,21 @@ class OllamaPolicy(PolicyProvider):
     """Real next-turn generation over HTTP against an Ollama server (``/api/chat``).
 
     Base URL from ``DOTTIE_OLLAMA_URL`` (default ``http://host.docker.internal:11434``), model
-    from ``DOTTIE_OLLAMA_MODEL`` (default ``qwen3:32b``). Non-streaming; sensible timeouts
-    (connect fast-fails, generation may take minutes on a 32b local model). Unreachable server
-    or HTTP error => :class:`DottiePolicyUnavailable` with the true cause."""
+    from ``DOTTIE_OLLAMA_MODEL`` (default ``qwen3:8b``). Non-streaming; sensible timeouts
+    (connect fast-fails, generation may take minutes on a CPU-pinned local model). Unreachable
+    server or HTTP error => :class:`DottiePolicyUnavailable` with the true cause.
+
+    Request options, each an explicit argument > env > default:
+
+      * ``num_predict`` / ``DOTTIE_OLLAMA_NUM_PREDICT`` — generation cap, default 2048 on
+        every call; 0 or negative sends none.
+      * ``temperature`` / ``DOTTIE_OLLAMA_TEMPERATURE`` — default 0.2. A per-call
+        ``complete(temperature=...)`` beats all three.
+      * ``num_ctx`` / ``DOTTIE_OLLAMA_NUM_CTX`` — context window; unset, 0 or negative sends
+        none, so the model's own default applies.
+
+    ``DOTTIE_OLLAMA_NUM_GPU`` / ``_KEEP_ALIVE`` / ``_THINK`` / ``_READ_TIMEOUT_S`` are
+    documented where they are read."""
 
     name = "ollama"
 
@@ -115,7 +155,9 @@ class OllamaPolicy(PolicyProvider):
         *,
         connect_timeout_s: float = 5.0,
         read_timeout_s: float | None = None,
-        temperature: float = 0.2,
+        temperature: float | None = None,
+        num_predict: int | None = None,
+        num_ctx: int | None = None,
     ) -> None:
         self.base_url = (
             base_url or os.environ.get("DOTTIE_OLLAMA_URL") or DEFAULT_OLLAMA_URL
@@ -143,7 +185,19 @@ class OllamaPolicy(PolicyProvider):
             write=30.0,
             pool=connect_timeout_s,
         )
-        self.temperature = float(temperature)
+        if temperature is None:
+            temperature = _env_number("DOTTIE_OLLAMA_TEMPERATURE", float, "a number")
+        self.temperature = float(
+            DEFAULT_OLLAMA_TEMPERATURE if temperature is None else temperature
+        )
+        if num_predict is None:
+            num_predict = _env_number("DOTTIE_OLLAMA_NUM_PREDICT", int, "an integer")
+        if num_predict is None:
+            num_predict = DEFAULT_OLLAMA_NUM_PREDICT
+        self.num_predict: int | None = num_predict if num_predict > 0 else None
+        if num_ctx is None:
+            num_ctx = _env_number("DOTTIE_OLLAMA_NUM_CTX", int, "an integer")
+        self.num_ctx: int | None = num_ctx if num_ctx and num_ctx > 0 else None
 
     def __call__(self, transcript: str) -> str:
         messages = [{"role": "system", "content": CODEACT_SYSTEM_PROMPT}]
@@ -174,6 +228,10 @@ class OllamaPolicy(PolicyProvider):
             if temperature is None
             else float(temperature)
         }
+        if self.num_predict is not None:
+            options["num_predict"] = self.num_predict
+        if self.num_ctx is not None:
+            options["num_ctx"] = self.num_ctx
         # DOTTIE_OLLAMA_NUM_GPU=0 pins inference to CPU (doctrine: the GPU belongs to
         # model TRAINING; LLM inference and everything else run on CPU). Any integer is
         # passed through as the number of offloaded layers.

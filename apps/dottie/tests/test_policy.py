@@ -3,10 +3,16 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import httpx
 import pytest
 
+import dottie.policy as policy_mod
 from dottie import resolve
 from dottie.policy import (
+    DEFAULT_OLLAMA_MODEL,
+    DEFAULT_OLLAMA_NUM_PREDICT,
     AvaPolicy,
     DottiePolicyUnavailable,
     EchoPolicy,
@@ -85,6 +91,135 @@ def test_ollama_env_config(monkeypatch):
     p = OllamaPolicy()
     assert p.base_url == "http://example.invalid:1234"
     assert p.model == "some-model:7b"
+
+
+# -- OllamaPolicy request options (fake transport, no network) ------------------------
+
+_OPTION_ENV = (
+    "DOTTIE_OLLAMA_MODEL",
+    "DOTTIE_OLLAMA_NUM_PREDICT",
+    "DOTTIE_OLLAMA_TEMPERATURE",
+    "DOTTIE_OLLAMA_NUM_CTX",
+    "DOTTIE_OLLAMA_NUM_GPU",
+    "DOTTIE_OLLAMA_KEEP_ALIVE",
+    "DOTTIE_OLLAMA_THINK",
+)
+
+
+class _FakeOllama:
+    """Stands in for ``httpx.post``: records every /api/chat payload, answers 200."""
+
+    def __init__(self) -> None:
+        self.payloads: list[dict] = []
+
+    def __call__(self, url, json=None, timeout=None):
+        self.payloads.append(json)
+        return httpx.Response(
+            200,
+            json={"message": {"role": "assistant", "content": "FINAL: ok"}},
+            request=httpx.Request("POST", url),
+        )
+
+    @property
+    def options(self) -> dict:
+        return self.payloads[-1]["options"]
+
+
+@pytest.fixture()
+def fake_ollama(monkeypatch):
+    for var in _OPTION_ENV:
+        monkeypatch.delenv(var, raising=False)
+    fake = _FakeOllama()
+    monkeypatch.setattr(policy_mod.httpx, "post", fake)
+    return fake
+
+
+def test_ollama_default_model_is_the_pulled_qwen3_8b(fake_ollama):
+    # qwen3:32b is not pulled on the 4080 box (`ollama list`, 2026-09-27: qwen3:8b only); the
+    # research loop already pins qwen3:8b through its env, so only the bare default refused.
+    assert DEFAULT_OLLAMA_MODEL == "qwen3:8b"
+    p = OllamaPolicy(base_url="http://x")
+    assert p.model == "qwen3:8b"
+    p("<|user|>\nhello")
+    assert fake_ollama.payloads[-1]["model"] == "qwen3:8b"
+
+
+def test_compose_default_model_matches_the_policy_default():
+    app_root = Path(policy_mod.__file__).resolve().parent.parent
+    compose = (app_root / "docker-compose.dottie.yml").read_text(encoding="utf-8")
+    line = f"DOTTIE_OLLAMA_MODEL: ${{DOTTIE_OLLAMA_MODEL:-{DEFAULT_OLLAMA_MODEL}}}"
+    assert line in compose
+
+
+def test_ollama_caps_every_generation_by_default(fake_ollama):
+    """No cap meant a degenerate generation ran until the server stopped it, and
+    llama-server's --context-shift keeps sliding the window instead of stopping. Measured
+    2026-09-27: one call ran 708 s to 81,920 tokens (done_reason=length)."""
+    p = OllamaPolicy(base_url="http://x", model="m")
+    assert p("<|user|>\nhello") == "FINAL: ok"  # the CodeAct path
+    assert fake_ollama.options["num_predict"] == DEFAULT_OLLAMA_NUM_PREDICT == 2048
+    p.complete("hi", temperature=0.9)  # the research path, per-call temperature
+    assert fake_ollama.options["num_predict"] == 2048
+    # Knobs left unset keep today's request: the 0.2 temperature, no num_ctx.
+    p("<|user|>\nhello")
+    assert fake_ollama.options["temperature"] == 0.2
+    assert "num_ctx" not in fake_ollama.options
+
+
+def test_ollama_num_predict_env_and_arg(fake_ollama, monkeypatch):
+    monkeypatch.setenv("DOTTIE_OLLAMA_NUM_PREDICT", "512")
+    OllamaPolicy(base_url="http://x", model="m").complete("hi")
+    assert fake_ollama.options["num_predict"] == 512
+    # An explicit constructor value beats the env.
+    OllamaPolicy(base_url="http://x", model="m", num_predict=64).complete("hi")
+    assert fake_ollama.options["num_predict"] == 64
+    # 0 or negative = no cap: the key is omitted (Ollama's own default applies).
+    for off in ("0", "-1"):
+        monkeypatch.setenv("DOTTIE_OLLAMA_NUM_PREDICT", off)
+        p = OllamaPolicy(base_url="http://x", model="m")
+        assert p.num_predict is None
+        p.complete("hi")
+        assert "num_predict" not in fake_ollama.options
+    # Blank is unset, so the default cap applies.
+    monkeypatch.setenv("DOTTIE_OLLAMA_NUM_PREDICT", "  ")
+    OllamaPolicy(base_url="http://x", model="m").complete("hi")
+    assert fake_ollama.options["num_predict"] == 2048
+    # A typo refuses loudly instead of silently running uncapped.
+    monkeypatch.setenv("DOTTIE_OLLAMA_NUM_PREDICT", "lots")
+    with pytest.raises(ValueError, match="DOTTIE_OLLAMA_NUM_PREDICT"):
+        OllamaPolicy(base_url="http://x", model="m")
+
+
+def test_ollama_temperature_env_precedence(fake_ollama, monkeypatch):
+    monkeypatch.setenv("DOTTIE_OLLAMA_TEMPERATURE", "0.7")
+    p = OllamaPolicy(base_url="http://x", model="m")
+    p("<|user|>\nhello")
+    assert fake_ollama.options["temperature"] == 0.7
+    p.complete("hi")
+    assert fake_ollama.options["temperature"] == 0.7
+    # Per-call temperature (the research stages set it) still wins over the env...
+    p.complete("hi", temperature=1.0)
+    assert fake_ollama.options["temperature"] == 1.0
+    # ...and so does an explicit constructor value.
+    OllamaPolicy(base_url="http://x", model="m", temperature=0.1).complete("hi")
+    assert fake_ollama.options["temperature"] == 0.1
+    monkeypatch.setenv("DOTTIE_OLLAMA_TEMPERATURE", "warm")
+    with pytest.raises(ValueError, match="DOTTIE_OLLAMA_TEMPERATURE"):
+        OllamaPolicy(base_url="http://x", model="m")
+
+
+def test_ollama_num_ctx_env(fake_ollama, monkeypatch):
+    monkeypatch.setenv("DOTTIE_OLLAMA_NUM_CTX", "8192")
+    OllamaPolicy(base_url="http://x", model="m").complete("hi")
+    assert fake_ollama.options["num_ctx"] == 8192
+    OllamaPolicy(base_url="http://x", model="m", num_ctx=4096).complete("hi")
+    assert fake_ollama.options["num_ctx"] == 4096
+    monkeypatch.setenv("DOTTIE_OLLAMA_NUM_CTX", "0")
+    OllamaPolicy(base_url="http://x", model="m").complete("hi")
+    assert "num_ctx" not in fake_ollama.options
+    monkeypatch.setenv("DOTTIE_OLLAMA_NUM_CTX", "8k")
+    with pytest.raises(ValueError, match="DOTTIE_OLLAMA_NUM_CTX"):
+        OllamaPolicy(base_url="http://x", model="m")
 
 
 # -- AvaPolicy ----------------------------------------------------------------------

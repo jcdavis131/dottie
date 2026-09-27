@@ -6,7 +6,7 @@
 #   curl http://localhost:8100/status
 #
 # extra_hosts maps host.docker.internal to the host gateway so the Ollama server running on
-# the user's box (qwen3:32b at :11434) is reachable from inside the container — the same
+# the user's box (qwen3:8b at :11434) is reachable from inside the container — the same
 # convention apps/ava-factory/docker-compose.yml uses for its ava-train service.
 
 services:
@@ -19,7 +19,7 @@ services:
       - "127.0.0.1:8100:8100"
     environment:
       DOTTIE_OLLAMA_URL: ${DOTTIE_OLLAMA_URL:-http://host.docker.internal:11434}
-      DOTTIE_OLLAMA_MODEL: ${DOTTIE_OLLAMA_MODEL:-qwen3:32b}
+      DOTTIE_OLLAMA_MODEL: ${DOTTIE_OLLAMA_MODEL:-qwen3:8b}
       DOTTIE_DATA_DIR: /data
       DOTTIE_WORKERS: ${DOTTIE_WORKERS:-2}
       DOTTIE_QUEUE_MAX: ${DOTTIE_QUEUE_MAX:-32}
