@@ -17,6 +17,9 @@ Families (all deterministic per ``(family, seed)``):
                      observations' recorded tool_calls).
   * ``file_ops``   — write a derived file under the sandbox scratch dir (its cwd), read it back,
                      and report a content digest; verify by re-deriving the exact expected bytes.
+                     Both line-ending forms of those bytes are accepted (LF, and the CRLF a
+                     Windows text-mode write produces), so the score does not depend on the
+                     OS the sandbox runs on.
                      HONEST LIMIT: the sandbox scratch dir is ephemeral and inaccessible to the
                      parent after the run, so the verifier proves the derived CONTENT (digest),
                      not the write syscall itself.
@@ -115,6 +118,10 @@ class VerifiedTask:
     tool_names: tuple[str, ...] = ()  # display signatures, e.g. "part_lookup(part_id)"
     tool_sources: dict[str, str] = field(default_factory=dict)
     expected: str = ""  # canonical answer token (provider-side truth)
+    # Other tokens the verifier also accepts: the SAME computed truth in another encoding
+    # (file_ops: the digest of the expected bytes with CRLF line endings). The no-leakage
+    # guard checks these too, so none of them can be scored off the prompt either.
+    alt_expected: tuple[str, ...] = ()
     grading: str = "binary"  # "binary" | "graded"
     verifier_note: str = ""
 
@@ -127,18 +134,24 @@ class VerifiedTask:
             "family": self.family_id,
             "seed": self.seed,
             "expected": self.expected,
+            "alt_expected": list(self.alt_expected),
             "grading": self.grading,
             "note": self.verifier_note,
         }
 
 
 def _binary_token_verify(
-    expected: str, *, ignore_case: bool = False
+    expected: str, *, ignore_case: bool = False, alternatives: Sequence[str] = ()
 ) -> Callable[[str, Sequence[Any]], float]:
+    tokens = (expected, *alternatives)
+
     def verify(final_text: str, observations: Sequence[Any]) -> float:
         return (
             1.0
-            if answer_token_present(expected, final_text, ignore_case=ignore_case)
+            if any(
+                answer_token_present(t, final_text, ignore_case=ignore_case)
+                for t in tokens
+            )
             else 0.0
         )
 
@@ -284,6 +297,19 @@ def _build_file_ops(rng: random.Random, seed: int) -> VerifiedTask:
     # Exact expected file bytes, re-derived provider-side (the digest verifies the content).
     content = "\n".join(line.upper() for line in lines) + "\n"
     digest12 = hashlib.sha256(content.encode("utf-8")).hexdigest()[:12]
+    # The same content as a Windows text-mode write stores it. open(..., "w") there turns
+    # every "\n" into "\r\n", so a model that truthfully hashes the bytes it wrote reports
+    # this digest, and an LF-only verifier scored the family on the host OS instead of on
+    # the content. Measured 2026-09-27 (local-LLM A/B on this Windows box): 0 of 50
+    # file_ops finals across five arms carried the LF digest; accepting this one moved
+    # qwen3:8b from 0/10 to 6/10. It is reachable only from the exact expected lines, so it
+    # credits no wrong content. Accepting it here, rather than forcing newline= inside the
+    # shared factory sandbox, keeps the prompt byte-identical and holds however the model
+    # opens the file; a sandbox shim would also change what "w+"/"r+" reads return, for
+    # every consumer of that sandbox, not just this family.
+    digest12_crlf = hashlib.sha256(
+        content.replace("\n", "\r\n").encode("utf-8")
+    ).hexdigest()[:12]
     doc = "\n".join(lines)
     prompt = (
         "In the sandbox, take these lines:\n"
@@ -299,12 +325,17 @@ def _build_file_ops(rng: random.Random, seed: int) -> VerifiedTask:
         seed=seed,
         prompt=prompt,
         expected=digest12,
-        verify_fn=_binary_token_verify(digest12, ignore_case=True),
+        alt_expected=(digest12_crlf,),
+        verify_fn=_binary_token_verify(
+            digest12, ignore_case=True, alternatives=(digest12_crlf,)
+        ),
         verifier_note=(
             "binary: sha256[:12] of the re-derived expected file bytes must appear in "
-            "the FINAL. Limit (honest): proves the derived content, not the write "
-            "syscall — the sandbox scratch dir is destroyed before the parent could "
-            "inspect it."
+            "the FINAL; the digest of the same bytes with CRLF line endings (what a "
+            "Windows text-mode write stores) is accepted too, so the score does not "
+            "depend on the sandbox host's OS. Limit (honest): proves the derived "
+            "content, not the write syscall — the sandbox scratch dir is destroyed "
+            "before the parent could inspect it."
         ),
     )
 
@@ -377,7 +408,10 @@ class VerifiedTaskProvider:
             # str seeds hash via sha512 in random.Random — stable across runs and processes.
             rng = random.Random(f"dottie-task:{family}:{seed}:{attempt}")
             task = builder(rng, seed)
-            if not answer_token_present(task.expected, task.prompt, ignore_case=True):
+            if not any(
+                answer_token_present(token, task.prompt, ignore_case=True)
+                for token in (task.expected, *task.alt_expected)
+            ):
                 return task
         raise TaskBuildError(  # pragma: no cover - needs 8 consecutive leak coincidences
             f"could not build a leak-free {family!r} task for seed {seed} in "

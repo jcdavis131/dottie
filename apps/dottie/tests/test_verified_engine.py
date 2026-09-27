@@ -12,6 +12,7 @@ Two load-bearing honesty proofs:
 
 from __future__ import annotations
 
+import os
 import re
 
 import pytest
@@ -127,6 +128,24 @@ class _FileOpsSolver(_ScriptedSolver):
         )
 
 
+class _FileOpsTextModeSolver(_ScriptedSolver):
+    """The write a model naturally emits: text mode, no ``newline=`` argument. On Windows
+    the file bytes come out CRLF, on Linux LF; both are the requested content."""
+
+    def code_for(self, transcript: str) -> str:
+        body = transcript.split("take these lines:\n", 1)[1].split("\nWrite them", 1)[0]
+        return (
+            f"lines = {body.splitlines()!r}\n"
+            "content = '\\n'.join(l.upper() for l in lines) + '\\n'\n"
+            "with open('report.txt', 'w') as f:\n"
+            "    f.write(content)\n"
+            "import hashlib\n"
+            "with open('report.txt', 'rb') as f:\n"
+            "    data = f.read()\n"
+            "hashlib.sha256(data).hexdigest()[:12]"
+        )
+
+
 def _run_scripted(engine, monkeypatch, family: str, seed: int, solver_cls):
     monkeypatch.setattr(engine_mod, "get_policy", lambda backend, **kw: solver_cls())
     return engine.run_task(family=family, seed=seed, backend="scripted")
@@ -158,6 +177,22 @@ def test_scripted_file_ops_solver_writes_in_real_scratch(engine, monkeypatch):
     rec = _run_scripted(engine, monkeypatch, "file_ops", 2, _FileOpsSolver)
     assert rec["steps"][0]["ok"] is True, rec["steps"][0]["error"]
     assert rec["reward_components"]["r_task"] == 1.0
+
+
+def test_scripted_file_ops_text_mode_write_scores(engine, monkeypatch):
+    """The same correct content written in text mode must score the same on Windows and
+    Linux. Before the fix this was 0.0 on Windows: the sandbox wrote CRLF, the solver
+    truthfully hashed those bytes, and the verifier only knew the LF digest."""
+    rec = _run_scripted(engine, monkeypatch, "file_ops", 2, _FileOpsTextModeSolver)
+    assert rec["steps"][0]["ok"] is True, rec["steps"][0]["error"]
+    assert rec["reward_components"]["r_task"] == 1.0
+    detail = rec["verified_task"]
+    if os.linesep == "\r\n":
+        # The CRLF path really ran here: the LF digest is not in the FINAL.
+        assert detail["expected"] not in rec["final"]
+        assert detail["alt_expected"][0] in rec["final"]
+    else:
+        assert detail["expected"] in rec["final"]
 
 
 def test_scripted_solver_fails_honestly_on_wrong_computation(engine, monkeypatch):
