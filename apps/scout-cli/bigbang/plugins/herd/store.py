@@ -480,7 +480,9 @@ def start_session(
     # interpreter that spawned the session has exited by the time anyone asks.
     # The supervisor inherits the log fd and passes it to the command, so output
     # capture is unchanged; it exits with the command's own code, so liveness and
-    # `close --kill` (which killpg's the new session group) behave as before.
+    # `close --kill` (which killpg's the new session group on POSIX, or
+    # `taskkill /T`s the process tree rooted at this pid on Windows) behave as
+    # before.
     proc = subprocess.Popen(
         [sys.executable, "-c", _SUPERVISOR, str(exit_path), *argv],
         cwd=work,
@@ -574,6 +576,60 @@ def wait_status(
     }
 
 
+def _kill_session_posix(pid: int) -> None:
+    """SIGTERM the process GROUP, then SIGKILL it if it is still alive after a
+    grace period. Unchanged from before Windows support existed — this is the
+    exact sequence close_session ran inline; extracted only so it can be
+    dispatched alongside its Windows counterpart, not altered."""
+    try:
+        os.killpg(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    time.sleep(0.2)
+    if _pid_alive(pid):
+        try:
+            os.killpg(pid, signal.SIGKILL)
+        except Exception:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except Exception:
+                pass
+
+
+def _kill_session_win32(pid: int, run: Callable[..., Any] = subprocess.run) -> None:
+    """Process-TREE kill via ``taskkill`` — the POSIX path above cannot run here
+    at all: ``os.killpg`` is not a module attribute on Windows and
+    ``signal.SIGKILL`` is not defined there, so calling either raises
+    AttributeError immediately. Before PR #67 made ``_pid_alive`` correct on
+    Windows this path was unreachable anyway (``alive`` was never accurate
+    enough to route here); now it is, so the crash is real.
+
+    ``/T`` walks the child tree the way ``killpg`` walks the process GROUP —
+    the pid on record is the supervisor `start_session` launches
+    (``_SUPERVISOR``), and the real command is ITS child, so a plain
+    ``taskkill /PID`` would leave the actual work running. ``/F`` is the
+    closest single-shot equivalent to SIGKILL: an ordinary Windows console
+    process has no SIGTERM analogue for an external caller to send (WM_CLOSE
+    only reaches windowed apps with a message loop), so there is no honest
+    two-stage graceful-then-forceful sequence to stage here the way POSIX
+    does — one forceful pass is the honest analogue, not a shortcut.
+
+    Argument LIST, never a shell string (the shell=True ratchet in CI
+    -- scripts/check_shell_true.py -- flags exactly a joined command here, for
+    the same reason it flagged gdrive_uploader.py's unquoted interpolation).
+    ``run`` is injectable so a test can assert the exact argv without actually
+    running taskkill; anything it raises or reports (already exited, access
+    denied, no such pid) is swallowed here — the caller's own ``_pid_alive``
+    recheck is the source of truth, not this call's exit code."""
+    try:
+        run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, check=False)
+    except OSError:
+        pass
+
+
 def close_session(
     key: str, *, force: bool = False, kill: bool = False
 ) -> dict[str, Any]:
@@ -585,22 +641,10 @@ def close_session(
             f"session {sess['id']} still running (pid {sess.get('pid')}); pass --kill or wait"
         )
     if sess.get("alive") and kill and sess.get("pid"):
-        try:
-            os.killpg(sess["pid"], signal.SIGTERM)
-        except ProcessLookupError:
-            try:
-                os.kill(sess["pid"], signal.SIGTERM)
-            except ProcessLookupError:
-                pass
-        time.sleep(0.2)
-        if _pid_alive(sess["pid"]):
-            try:
-                os.killpg(sess["pid"], signal.SIGKILL)
-            except Exception:
-                try:
-                    os.kill(sess["pid"], signal.SIGKILL)
-                except Exception:
-                    pass
+        if sys.platform == "win32":
+            _kill_session_win32(sess["pid"])
+        else:
+            _kill_session_posix(sess["pid"])
     data = _load()
     removed = data["sessions"].pop(sess["id"], None)
     if removed is None and not force:
