@@ -105,7 +105,7 @@ Goal: reuse rumbric pattern for long-horizon research tasks, replace SEC filings
 - Per-rubric score s_i in [0,1] by LLM judge
 - Weighted overall = clip(sum_i w_i * s_i, 0,1)
 - Free-tier mock judge = keyword overlap + numeric presence + length heuristic (no API)
-- Real judge options: LocalHFJudge (transformers pipeline if present) or MetaMuseJudge (Muse Spark 1.1 public API personal account, env META_API_KEY, endpoint META_MUSE_API_URL default https://api.meta.ai/v1, $1.25 in/$4.25 out, $20 free credits, US-only preview, uses PUBLIC endpoint only, zero work resources)
+- Real judge options (local models only): LocalHFJudge (transformers pipeline if present) or OllamaJudge (local Ollama, `OLLAMA_MODEL` default `qwen3:8b`). The paid API judges were removed 2026-09-27.
 
 ### Integration into Ava v6.4
 - Phase 3 Reasoning & Phase 5 Anneal: use frontier tasks as long-context (16-32k) anneal with reward>0.8 verifier = CriteriaJudge
@@ -114,53 +114,23 @@ Goal: reuse rumbric pattern for long-horizon research tasks, replace SEC filings
 
 ### Appendix B — Judge Options: Cost Comparison (Home-Lab, Public Endpoints Only)
 
-#### Muse Spark 1.1 (previous)
-- Model: Meta Muse Spark 1.1 coding & agentic, public preview US
-- Pricing: $1.25/M input, $4.25/M output, $20 free credits
-- Endpoint: https://api.meta.ai/v1 (placeholder public preview)
-- Issue: $1.25/$4.25 relatively expensive for 7-task x 6-rubric x long docs = ~100k tokens/eval = ~$0.55/eval
-- Home-lab: personal META_API_KEY only, zero work resources, mock fallback
-
-#### GLM-5.2 (Z.ai / Zhipu) — Cheaper than Muse but still API cost
-- Model: **GLM-5.2**, flagship 753B MoE (40B active, 744B variant reported), 1M context window (model id `glm-5.2[1m]`), 131k max output, IndexShare cuts FLOPs 2.9x at 1M, MIT open weights (allows free self-host on HF ZeroGPU/Runpod later), thinking toggle + reasoning effort High/Max.
-- Pricing:
-  - Z.ai official API: ~$1.40/M input $4.40/M output, **cached input $0.26/M** (huge win for rubric judge where same rubrics reused)
-  - CometAPI proxy: $1.12/M input $3.528/M output
-  - Coding Plan subscription (Claude Code / Cline / OpenCode / Roo compatible):
-    - Lite: ~$18/mo (400 prompts/week) ~$12.60/yr annual (~$0.045/prompt)
-    - Pro: ~$72/mo 2000/week, Max: ~$160/mo 8000/week — makes heavy eval ~10x cheaper than pay-go
-- Endpoints (all public):
-  - Anthropic-compatible (recommended, supports Claude Code): `https://api.z.ai/api/anthropic` -> env `ANTHROPIC_BASE_URL` or `ZAI_BASE_URL`
-  - Coding PaaS: `https://api.z.ai/api/coding/paas/v4`
-  - OpenAI-compatible: `https://api.z.ai/api/paas/v4/chat/completions` -> `ZAI_OPENAI_URL`
-- Model IDs: `glm-5.2` (default), `glm-5.2[1m]` (1M), `glm-5.2-thinking`, `glm-5.2[1m]-thinking`
-- Why cheaper for Frontier:
-  1. Cached $0.26/M vs $1.25 — rubrics repeated across tasks, cache hit 70%+
-  2. $18/mo Lite = 1600 prompts/mo ~ heavy eval for <$0.02/eval vs $0.55
-  3. MIT weights → future free local self-host, fully free-tier
-- Home-lab compliance:
-  - Uses public endpoint only via personal `ZAI_API_KEY` (preferred) or `GLM_API_KEY` or `ANTHROPIC_API_KEY` fallback
-  - Env `GLM_MODEL` controls model variant, `ZAI_BASE_URL` controls endpoint, `GLM_THINKING=1`, `GLM_EFFORT=high|max`
-  - If no key, logs "[GLM 5.2] no ZAI_API_KEY, fallback to mock" and returns mock+0.07, never fails, keeps free-tier runnable
-- Usage:
-  ```bash
-  export ZAI_API_KEY=personal_key_from_z.ai
-  export ZAI_BASE_URL=https://api.z.ai/api/anthropic
-  export GLM_MODEL=glm-5.2[1m]
-  python eval_frontier_rubric.py --judge glm --domain all --mode mock
-  ```
+#### Paid API judges — removed 2026-09-27
+- The Meta Muse Spark 1.1 and Z.ai GLM-5.2 API judges (`MetaMuseJudge`, `Glm52Judge`) and their
+  `--judge meta|glm|glm52|glm-5.2|zai` choices were removed under the no-paid-APIs rule. The
+  judge is local only: mock, local (HF stub) or Ollama.
 
 #### Ollama Local — SOTA for Free (Current Recommendation)
 - Goal: zero API cost, fully offline, MIT/Apache weights via Ollama on user machine.
 - Recommended models (all `ollama pull` free):
-  - `qwen3:32b` (default) — best balanced coding/rubric judge, 32B fits 24GB VRAM Q4, Qwen2.5 family strong instruction following
+  - `qwen3:8b` (default) — the one model pulled on the home box (12 GB VRAM / 16 GB RAM)
+  - `qwen3:32b` — stronger balanced coding/rubric judge if pulled, 32B needs ~24GB VRAM at Q4
   - `qwen2.5-coder:32b` — best code-specific judge for Repo tasks
   - `deepseek-r1:32b` or `deepseek-r1:14b` — best reasoning judge (chain-of-thought, excels at Financial Accuracy/Numerical)
   - `llama3.3:70b` — best generalist, stronger NLU than qwen3 but needs ~40GB Q4, highest quality if VRAM allows
   - `glm4:9b-chat` — small GLM family that DOES run in Ollama vs 753B GLM-5.2 which needs 241GB 2-bit min (docs say 241-280GB total memory), so use distill for local
-  - Fallback: `qwen3:8b` / `llama3.1:8b` if low VRAM
+  - Small alternative: `llama3.1:8b`
 - Architecture:
-  - Env `OLLAMA_HOST` default `http://localhost:11434`, `OLLAMA_MODEL` default `qwen3:32b`
+  - Env `OLLAMA_HOST` default `http://localhost:11434`, `OLLAMA_MODEL` default `qwen3:8b`
   - Code detects `/api/tags` via urllib (stdlib) then requests fallback, lists local models
   - Calls `POST /api/chat` non-streaming with `temperature 0.1`, `num_predict 128`, truncates rubric+output to 3000 chars for speed
   - Parses `{"score":0.x}` JSON, fallback to regex float, else mock+0.06
@@ -179,9 +149,9 @@ Goal: reuse rumbric pattern for long-horizon research tasks, replace SEC filings
 - Usage:
   ```bash
   ollama serve &
-  ollama pull qwen3:32b        # or deepseek-r1:32b / llama3.3:70b / qwen2.5-coder:32b
+  ollama pull qwen3:8b         # default; larger if VRAM allows: qwen3:32b / deepseek-r1:32b
   export OLLAMA_HOST=http://localhost:11434
-  export OLLAMA_MODEL=qwen3:32b
+  export OLLAMA_MODEL=qwen3:8b
   python eval_frontier_rubric.py --judge ollama --domain finance --mode mock
   python eval_frontier_rubric.py --judge ollama --domain all --mode mock
   ```

@@ -42,7 +42,7 @@ while true; do
   # 4) Evals
   echo "[4] Evals..."
   python eval_branch_harness.py --branch all --mode mock || true
-  OLLAMA_HOST=http://localhost:11434 OLLAMA_MODEL=qwen3:32b python eval_frontier_rubric.py --domain all --judge ollama --mode mock || python eval_frontier_rubric.py --domain all --judge mock --mode mock || true
+  OLLAMA_HOST=http://localhost:11434 OLLAMA_MODEL=qwen3:8b python eval_frontier_rubric.py --domain all --judge ollama --mode mock || python eval_frontier_rubric.py --domain all --judge mock --mode mock || true
 
   # 5) Reports
   echo "[5] Reports..."

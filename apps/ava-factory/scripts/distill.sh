@@ -47,10 +47,10 @@ case $MODE in
 esac
 
 echo ">> Executing inside ava-train: $CMD"
-docker compose -f $COMPOSE_FILE exec ava-train bash -c "export OLLAMA_HOST=http://host.docker.internal:11434; export OLLAMA_MODEL=qwen3:32b; $CMD"
+docker compose -f $COMPOSE_FILE exec ava-train bash -c "export OLLAMA_HOST=http://host.docker.internal:11434; export OLLAMA_MODEL=qwen3:8b; $CMD"
 
 # Post-run eval hint
 echo -e "${GREEN}[Ava Distill] Done mode=$MODE. Next:${NC}"
 echo "  python eval_branch_harness.py --branch all --mode mock"
-echo "  OLLAMA_HOST=http://host.docker.internal:11434 OLLAMA_MODEL=qwen3:32b python eval_frontier_rubric.py --domain all --judge ollama --mode mock"
+echo "  OLLAMA_HOST=http://host.docker.internal:11434 OLLAMA_MODEL=qwen3:8b python eval_frontier_rubric.py --domain all --judge ollama --mode mock"
 echo "  Logs: logs/distill.log + logs/metrics.jsonl, CKPT: checkpoints/distill/"

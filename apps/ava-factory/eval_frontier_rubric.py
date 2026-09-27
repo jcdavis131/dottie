@@ -1,6 +1,7 @@
 """Solo personal project, no connection to employer, built with public/free-tier only
 Frontier Rubric Eval — inspired by Samaya FrontierFinance Criteria Eval
-Implements Task/Rubric schemas + mock/local/meta judges
+Implements Task/Rubric schemas + mock/local/ollama judges (local models only;
+the paid Meta Muse and GLM-5.2 API judges were removed 2026-09-27, no paid APIs)
 """
 
 import argparse
@@ -56,7 +57,7 @@ class FrontierTask:
 
 
 def _judge_prompt(rubric: "Rubric", output: str, ground_truth: str) -> str:
-    """Shared judge prompt for every API judge (Meta Muse / GLM / Ollama)."""
+    """Judge prompt for the LLM judge (local Ollama)."""
     return (
         f"Rubric Category: {rubric.category}\n"
         f"Criterion: {rubric.criterion}\n"
@@ -85,39 +86,6 @@ def _parse_score(content: str) -> float | None:
         return round(max(0.0, min(1.0, float(m.group(1)))), 3)
     except Exception:
         return None
-
-
-def _post_openai_chat(
-    url: str, api_key: str, model: str, prompt: str, timeout: int = 30
-) -> str | None:
-    """Real POST to an OpenAI-compatible /chat/completions endpoint via `requests`
-    (goes through the configured HTTPS proxy). Returns content string or None."""
-    import requests
-
-    payload = {
-        "model": model,
-        "messages": [
-            {
-                "role": "system",
-                "content": "You are a strict rubric judge. Output ONLY a JSON with score 0-1. Be precise.",
-            },
-            {"role": "user", "content": prompt[:3000]},
-        ],
-        "temperature": 0.1,
-        "max_tokens": 128,
-    }
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
-    resp.raise_for_status()
-    body = resp.json()
-    try:
-        return body["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError):
-        return (
-            body.get("message", {}).get("content")
-            if isinstance(body.get("message"), dict)
-            else None
-        )
 
 
 class CriteriaJudge:
@@ -177,118 +145,6 @@ class LocalHFJudge(CriteriaJudge):
         # No real local HF judge is implemented yet — return the PLAIN mock
         # score labeled "mock". (The old +0.05 "calibration" bonus was an
         # invented value and has been deleted.)
-        return super().score(rubric, output, ground_truth)
-
-
-class MetaMuseJudge(CriteriaJudge):
-    """
-    Muse Spark 1.1 public API judge (personal account, PUBLIC endpoint only).
-    - Reads META_API_KEY or META_MUSE_API_KEY
-    - Endpoint from META_MUSE_API_URL default https://api.meta.ai/v1 (placeholder for public preview, US $1.25 in / $4.25 out, $20 free credits)
-    - Uses zero work resources, personal account only, no employer credentials.
-    - If no key, logs and falls back to mock, does not fail.
-    """
-
-    def __init__(self):
-        self.key = os.getenv("META_API_KEY") or os.getenv("META_MUSE_API_KEY") or ""
-        self.url = os.getenv("META_MUSE_API_URL", "https://api.meta.ai/v1")
-        self.model = os.getenv("META_MUSE_MODEL", "muse-spark-1.1")
-        self.available = bool(self.key)
-        self.label = "meta" if self.available else "mock"
-        if not self.available:
-            print(
-                f"[{DISCLAIMER}] MetaMuseJudge: no META_API_KEY found, fallback to mock (free-tier). Set env to use public Muse Spark 1.1 API."
-            )
-
-    def score(self, rubric: Rubric, output: str, ground_truth: str) -> float:
-        if not self.available:
-            # No key: PLAIN mock score, labeled judge="mock" — no invented bonus.
-            self.label = "mock"
-            return super().score(rubric, output, ground_truth)
-        try:
-            content = _post_openai_chat(
-                f"{self.url.rstrip('/')}/chat/completions",
-                self.key,
-                self.model,
-                _judge_prompt(rubric, output, ground_truth),
-            )
-            v = _parse_score(content)
-            if v is not None:
-                self.label = "meta"
-                return v
-            print(
-                f"[MetaMuseJudge] no score parsed for {rubric.id}, falling back to mock"
-            )
-        except Exception as e:
-            print(f"[MetaMuseJudge] API call failed ({e}), falling back to mock")
-        self.label = "mock"
-        return super().score(rubric, output, ground_truth)
-
-
-class Glm52Judge(CriteriaJudge):
-    """
-    Solo personal project, no connection to employer, built with public/free-tier only
-    GLM-5.2 Judge — Z.ai (Zhipu) flagship.
-    - Model: 753B MoE (40B active, 744B variant reported), 1M context window (glm-5.2[1m]), MIT open weights, 131k max output, IndexShare 2.9x FLOPs cut at 1M.
-    - Pricing vs Muse Spark 1.1 $1.25/$4.25:
-      Z.ai API ~$1.40/M input $4.40/M output, cached input $0.26/M, CometAPI $1.12/$3.528.
-      Coding Plan: Lite ~$18/mo (400 prompts/week ~$12.60 annual), Pro ~$72/mo 2000/week, Max ~$160/mo 8000/week.
-      => Cheaper for heavy eval due to cache + subscription, plus MIT allows future free self-host on ZeroGPU/Runpod.
-    - Endpoints (public only, personal key):
-      Anthropic-compatible: https://api.z.ai/api/anthropic (default, works with Claude Code, Cline, Roo)
-      Coding PaaS: https://api.z.ai/api/coding/paas/v4
-      OpenAI-compatible: https://api.z.ai/api/paas/v4/chat/completions
-    - Env: ZAI_API_KEY (preferred) or GLM_API_KEY or ANTHROPIC_API_KEY fallback, ZAI_BASE_URL / ANTHROPIC_BASE_URL, GLM_MODEL default glm-5.2
-    - Reasoning: supports thinking toggle, effort High/Max
-    - Home-lab uses public endpoint only via personal key, free-tier fallback if no key.
-    """
-
-    def __init__(self):
-        self.key = (
-            os.getenv("ZAI_API_KEY")
-            or os.getenv("GLM_API_KEY")
-            or os.getenv("ANTHROPIC_API_KEY")
-            or ""
-        )
-        # Prefer Anthropic-compatible default as per Z.ai docs
-        self.url = (
-            os.getenv("ZAI_BASE_URL")
-            or os.getenv("ANTHROPIC_BASE_URL")
-            or "https://api.z.ai/api/anthropic"
-        )
-        self.model = os.getenv("GLM_MODEL", "glm-5.2")
-        # alternative openai-compatible url for reference: https://api.z.ai/api/paas/v4/chat/completions
-        self.openai_url = os.getenv(
-            "ZAI_OPENAI_URL", "https://api.z.ai/api/paas/v4/chat/completions"
-        )
-        self.available = bool(self.key)
-        self.label = "glm-5.2" if self.available else "mock"
-        if not self.available:
-            print(
-                f"[{DISCLAIMER}] [GLM 5.2] no ZAI_API_KEY, fallback to mock (free-tier). Set ZAI_API_KEY personal key to use public GLM-5.2 API. Costs: $1.40/M in $4.40/M out, cached $0.26/M, or $18/mo Lite plan — cheaper than Muse Spark for heavy eval + MIT weights for self-host."
-            )
-
-    def score(self, rubric: Rubric, output: str, ground_truth: str) -> float:
-        if not self.available:
-            # No key: PLAIN mock score, labeled judge="mock" — no invented bonus.
-            self.label = "mock"
-            return super().score(rubric, output, ground_truth)
-        try:
-            # OpenAI-compatible endpoint (documented above); Bearer personal key.
-            content = _post_openai_chat(
-                self.openai_url,
-                self.key,
-                self.model,
-                _judge_prompt(rubric, output, ground_truth),
-            )
-            v = _parse_score(content)
-            if v is not None:
-                self.label = "glm-5.2"
-                return v
-            print(f"[Glm52Judge] no score parsed for {rubric.id}, falling back to mock")
-        except Exception as e:
-            print(f"[Glm52Judge] API call failed ({e}), falling back to mock")
-        self.label = "mock"
         return super().score(rubric, output, ground_truth)
 
 
@@ -602,22 +458,22 @@ def evaluate_task(
 class OllamaJudge(CriteriaJudge):
     """
     Solo personal project, no connection to employer, built with public/free-tier only
-    Ollama local SOTA free judge — 100% offline, zero cost.
-    - Reads OLLAMA_HOST default http://localhost:11434, OLLAMA_MODEL default qwen3:32b
-    - SOTA free options (all run via ollama, MIT/Apache):
-      * qwen3:32b / qwen2.5-coder:32b — best coding / rubric judge balance, 32B fits 24GB VRAM Q4
-      * llama3.3:70b — best generalist, ~40GB Q4, strongest instruction following
-      * deepseek-r1:32b or deepseek-r1:14b — best reasoning judge (chain-of-thought)
-      * glm4:9b-chat — small GLM family that DOES run in Ollama vs 753B GLM-5.2 which needs 241GB 2-bit (too big for laptop)
-      * qwen3:8b / llama3.1:8b — fallback if low VRAM
-    - Why free SOTA: all MIT/Apache, local inference, no API fees, fully offline, cache persists.
-    - vs GLM-5.2 753B (241GB 2-bit) too big for Ollama, so use distill/small variant for local.
+    Ollama local judge — 100% offline, zero cost. The only LLM judge: the paid
+    API judges (Meta Muse Spark, Z.ai GLM-5.2) were removed 2026-09-27.
+    - Reads OLLAMA_HOST default http://localhost:11434, OLLAMA_MODEL default qwen3:8b
+      (the one model pulled on the home box; 12 GB VRAM / 16 GB RAM).
+    - Other local options via OLLAMA_MODEL, if pulled (all open weights):
+      * qwen3:32b / qwen2.5-coder:32b — stronger rubric judge, needs ~24GB VRAM at Q4
+      * llama3.3:70b — generalist, ~40GB Q4
+      * deepseek-r1:32b or deepseek-r1:14b — reasoning judge (chain-of-thought)
+      * glm4:9b-chat / llama3.1:8b — small alternatives
+    - Why local: open weights, local inference, no API fees, fully offline.
     - Implements graceful fallback: if Ollama not reachable, logs and returns mock.
     """
 
     def __init__(self):
         self.host = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
-        self.model = os.getenv("OLLAMA_MODEL", "qwen3:32b")
+        self.model = os.getenv("OLLAMA_MODEL", "qwen3:8b")
         self.available = False
         self.label = "mock"
         self.tags = []
@@ -629,7 +485,7 @@ class OllamaJudge(CriteriaJudge):
             req = urllib.request.Request(f"{self.host}/api/tags", method="GET")
             with urllib.request.urlopen(req, timeout=3) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
-                # data format {"models":[{"name":"qwen3:32b"...}]}
+                # data format {"models":[{"name":"qwen3:8b"...}]}
                 models = data.get("models", [])
                 self.tags = [m.get("name", "") for m in models]
                 self.available = True
@@ -738,10 +594,6 @@ def get_judge(name: str) -> CriteriaJudge:
     n = name.lower().strip()
     if n == "local":
         return LocalHFJudge()
-    if n == "meta":
-        return MetaMuseJudge()
-    if n in ("glm", "glm52", "glm-5.2", "glm5.2", "zai"):
-        return Glm52Judge()
     if n in (
         "ollama",
         "ollama-local",
@@ -773,15 +625,10 @@ def main():
         choices=[
             "mock",
             "local",
-            "meta",
-            "glm",
-            "glm52",
-            "glm-5.2",
-            "zai",
             "ollama",
             "ollama-local",
         ],
-        help="judge type: mock (free, keyword overlap), local (HF), meta (Muse Spark 1.1 $1.25/$4.25), glm (GLM-5.2 $1.40/$4.40 cached $0.26 + $18/mo lite, MIT), ollama (free local SOTA qwen3:32b/llama3.3:70b/deepseek-r1:32b)",
+        help="judge type: mock (free, keyword overlap), local (HF), ollama (free local judge, OLLAMA_MODEL default qwen3:8b). Local models only: no paid API judges.",
     )
     ap.add_argument("--mode", default="mock", choices=["mock", "real"], help="mode")
     args = ap.parse_args()
@@ -847,7 +694,7 @@ def main():
                     f"- {pr['rubric_id']} {pr['category']}: {pr['score']} w={pr['weight']}\n"
                 )
         f.write(
-            "\n## Integration\n- Phase 3-5 anneal reward>0.8 verifier = CriteriaJudge\n- shards: data/streaming_shards/frontier_rubric/\n- MetaMuseJudge: reads META_API_KEY, endpoint META_MUSE_API_URL default https://api.meta.ai/v1 placeholder public preview $1.25 in $4.25 out $20 free credits, US-only, personal account only, zero work resources.\n- Glm52Judge: reads ZAI_API_KEY (pref) / GLM_API_KEY, endpoint https://api.z.ai/api/anthropic (Anthropic-compatible) or https://api.z.ai/api/paas/v4/chat/completions (OpenAI), model GLM_MODEL default glm-5.2 / glm-5.2[1m] / glm-5.2-thinking, 753B MoE 40B active, 1M context, MIT open weights, 131k output, IndexShare 2.9x FLOPs. Pricing $1.40/M in $4.40/M out, cached $0.26/M, CometAPI $1.12/$3.528, or Lite $18/mo (400/wk) $12.60 annual, Pro $72/mo, Max $160/mo. Cheaper for heavy eval via cache+sub + future free self-host via MIT. Public endpoint only, free-tier mock fallback.\n- OllamaJudge: reads OLLAMA_HOST default http://localhost:11434, OLLAMA_MODEL default qwen3:32b (alternatives llama3.3:70b best general, deepseek-r1:32b best reasoning, qwen2.5-coder:32b best coding, glm4:9b small GLM). 100% offline free SOTA via Ollama MIT/Apache. 753B GLM-5.2 too big for Ollama (241GB 2-bit min), so use small distill locally. Detects /api/tags, calls /api/chat non-streaming, extracts JSON score, falls back to the PLAIN mock score labeled judge=mock if unreachable (no additive bonus). Zero cost, local only.\n"
+            "\n## Integration\n- Phase 3-5 anneal reward>0.8 verifier = CriteriaJudge\n- shards: data/streaming_shards/frontier_rubric/\n- Local models only: no paid API judges (Meta Muse / GLM-5.2 removed 2026-09-27).\n- OllamaJudge: reads OLLAMA_HOST default http://localhost:11434, OLLAMA_MODEL default qwen3:8b (larger local alternatives if pulled: qwen3:32b, qwen2.5-coder:32b, deepseek-r1:32b, llama3.3:70b). 100% offline via Ollama, open weights. Detects /api/tags, calls /api/chat non-streaming, extracts JSON score, falls back to the PLAIN mock score labeled judge=mock if unreachable (no additive bonus). Zero cost, local only.\n"
         )
 
     print(f"Saved {out_json} + {md}")
