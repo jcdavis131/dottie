@@ -8,15 +8,15 @@ capabilities:
   # * the real executors (executors/): deep_research reads export.arxiv.org (and
   #   arxiv.org/abs pages, robots-allowed), api.semanticscholar.org only with a key,
   #   and jarvisd /api/recall only when JARVIS_URL is set; llm calls Ollama at
-  #   OLLAMA_HOST (default localhost:11434), and api.anthropic.com / an
-  #   OpenAI-compatible OPENAI_BASE_URL only when their keys are set. All read-only;
+  #   OLLAMA_HOST (default localhost:11434) and nothing else: the hosted
+  #   api.anthropic.com / api.openai.com fallbacks were removed 2026-09-27 (local
+  #   models only), and their domains with them. All read-only;
   #   DOTTIE_EXECUTORS=stub turns every one of them off;
   # * the router's System One backend POSTs to a dottie-os /decide endpoint ONLY
   #   when the owner sets DOTTIE_OS_URL (off by default).
   network:
     enabled: true
-    domains: ["localhost", "127.0.0.1", "export.arxiv.org", "arxiv.org", "api.semanticscholar.org",
-              "api.anthropic.com", "api.openai.com"]
+    domains: ["localhost", "127.0.0.1", "export.arxiv.org", "arxiv.org", "api.semanticscholar.org"]
   filesystem:
     enabled: true
     write: true

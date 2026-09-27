@@ -18,12 +18,11 @@ export OLLAMA_HOST=http://localhost:11434    # the one Ollama variable
 export DOTTIE_LLM_MODEL=qwen2.5:14b-instruct
 ```
 
-Optional backends, tried only after Ollama and only when both variables are
-set (there is no default hosted model): `ANTHROPIC_API_KEY` +
-`DOTTIE_ANTHROPIC_MODEL`, or `OPENAI_API_KEY` + `DOTTIE_OPENAI_MODEL`
-(+ `OPENAI_BASE_URL`). Hosted calls cost money: set
-`DOTTIE_LLM_PRICE_PER_MTOK_IN` / `_OUT` to have `cost_usd` recorded, otherwise
-it is recorded as unpriced. `SEMANTIC_SCHOLAR_API_KEY` adds Semantic Scholar
+The llm tier is Ollama only: local models, no API key, `cost_usd` 0. The
+hosted Anthropic and OpenAI fallbacks (and the `DOTTIE_LLM_PRICE_PER_MTOK_*`
+pricing that went with them) were removed on 2026-09-27. Their variables are
+ignored; if one is still set while Ollama is down, the executor's refusal says
+the backend was removed. `SEMANTIC_SCHOLAR_API_KEY` adds Semantic Scholar
 to deep research (the keyless API rate-limits); `JARVIS_URL` adds your jarvisd
 memories.
 

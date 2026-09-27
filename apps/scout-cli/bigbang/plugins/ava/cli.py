@@ -150,22 +150,24 @@ except Exception:
         "http://localhost:11434",
         "http://host.docker.internal:11434",
     ]
+    # Mirrors bigbang.core.llm.PREFERRED_MODELS: small-first, qwen3:8b (the one
+    # installed model) leads, the 14b/32b tags are fallbacks only if installed.
     PREFERRED_MODELS = [
-        "qwen3:32b",
-        "qwen3:32b-instruct",
-        "qwen3:14b",
         "qwen3:8b",
         "qwen3",
         "llama3.1:8b",
         "llama3.1",
-        "qwen2.5:32b",
-        "qwen2.5:14b",
         "qwen2.5:7b",
         "qwen2.5",
         "llama3",
         "llama3:8b",
         "mistral",
         "gemma3:4b",
+        "qwen3:14b",
+        "qwen2.5:14b",
+        "qwen3:32b",
+        "qwen3:32b-instruct",
+        "qwen2.5:32b",
     ]
 
     def _extract_json(text: str):
@@ -550,7 +552,7 @@ def _route_with_ollama(task: str) -> dict[str, Any]:
         raise RuntimeError("Ollama not available at localhost:11434 or host.docker.internal:11434")
 
     # Determine best model
-    best_model = "qwen3:32b"
+    best_model = "qwen3:8b"
     if _HAS_CORE_LLM:
         try:
             best_model = _core_best_model(base=base, timeout=2.0)
@@ -650,7 +652,7 @@ def status():
         "exists": FACTORY.exists(),
         "compose": str(compose),
         "model": "1.17B d2048 48L YaRN 10k->1M, 4 workspaces, Frontier 11 cats",
-        "judges": ["qwen3:32b via Ollama", "LocalHFJudge", "CriteriaJudge"],
+        "judges": ["qwen3:8b via Ollama", "LocalHFJudge", "CriteriaJudge"],
         "role_in_bigbang": "Router + planner for bb agent run, evaluates if new tool automation is safe/useful",
         "ollama": {
             "available": base is not None,
@@ -698,9 +700,12 @@ def infer(
     bk = (backend or "ollama").lower()
     mdl = model
     if not mdl:
-        if bk in ("kobold", "koboldcpp", "openai"):
+        # Only Ollama is probed for a default model. `--backend openai` is not an
+        # alias any more: chat_with_metrics refuses it (hosted providers removed
+        # 2026-09-27), and an unknown name, before anything is contacted; exit 1.
+        if bk in ("kobold", "koboldcpp"):
             mdl = "koboldcpp"  # KoboldCpp serves the one loaded GGUF; the name is ignored
-        else:
+        elif bk == "ollama":
             try:
                 b = _ollama_available()
                 mdl = (_core_best_model(base=b, timeout=2.0) if (b and _HAS_CORE_LLM) else "") or "qwen3:8b"

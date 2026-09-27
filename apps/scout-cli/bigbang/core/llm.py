@@ -30,22 +30,31 @@ OLLAMA_URLS = [
     "http://host.docker.internal:11434",
 ]
 
+#: The model every picker falls back to when Ollama lists nothing: the one model
+#: pulled on the home box (local models only, 2026-09-27).
+DEFAULT_MODEL = "qwen3:8b"
+
+# Small-first. qwen3:8b is the only model installed on the home box, so it leads.
+# The 14b/32b tags stay at the END as opt-in fallbacks: get_best_model picks them
+# only when they are installed AND nothing smaller in this list is. The old order
+# put qwen3:32b first, so pulling it once silently moved every planner onto a
+# 20 GB model that thrashes system RAM when Ollama runs on CPU.
 PREFERRED_MODELS = [
-    "qwen3:32b",
-    "qwen3:32b-instruct",
-    "qwen3:14b",
-    "qwen3:8b",
+    DEFAULT_MODEL,
     "qwen3",
     "llama3.1:8b",
     "llama3.1",
-    "qwen2.5:32b",
-    "qwen2.5:14b",
     "qwen2.5:7b",
     "qwen2.5",
     "llama3",
     "llama3:8b",
     "mistral",
     "gemma3:4b",
+    "qwen3:14b",
+    "qwen2.5:14b",
+    "qwen3:32b",
+    "qwen3:32b-instruct",
+    "qwen2.5:32b",
 ]
 
 _CACHED_BASE: str | None = None
@@ -242,7 +251,7 @@ def list_ollama_models(base: str | None = None, timeout: float = 2.0) -> list[st
 def get_best_model(base: str | None = None, timeout: float = 2.0) -> str:
     available = list_ollama_models(base=base, timeout=timeout)
     if not available:
-        return "qwen3:32b"
+        return DEFAULT_MODEL
     lower_avail = {a.lower(): a for a in available}
     for pref in PREFERRED_MODELS:
         if pref.lower() in lower_avail:
@@ -341,25 +350,39 @@ def extract_json_from_text(text: str) -> Any | None:
     return None
 
 
-# --- KoboldCpp / OpenAI-compatible backend ----------------------------------
+# --- KoboldCpp / local OpenAI-compatible backend -----------------------------
 # KoboldCpp (github.com/LostRuins/koboldcpp — the ONLY trusted source; the
 # koboldcpp[.]com domain is a known phishing clone) speaks several protocols at
 # once: an OpenAI-compatible API on :5001/v1, an Ollama-compatible API on :11434,
-# and its native /api. We target the OpenAI /v1 surface because it is the most
-# portable (llama.cpp-server, vLLM, and OpenAI itself all speak it) and returns a
+# and its native /api. We target the OpenAI-compatible /v1 surface because local
+# runners share it (llama.cpp-server and vLLM speak it too) and it returns a
 # `usage` block we can turn into tokens/sec. NOTE: if you instead launch KoboldCpp
 # on port 11434, the existing ollama_chat() path already drives it UNCHANGED — no
 # code needed, just point OLLAMA_HOST at it.
+#
+# Local models only (Cam, 2026-09-27: "Remove them" for Dottie's paid code
+# paths). The hosted Anthropic client and the OpenAI bearer-key path are gone:
+# openai_chat sends no credentials, and OPENAI_BASE_URL (the hosted SDK's env
+# var) is no longer read, so this transport only ever talks to a runner you
+# launched. Naming a removed provider fails closed with this reason.
 KOBOLDCPP_URLS = [
     "http://localhost:5001",
     "http://host.docker.internal:5001",
 ]
 
+REMOVED_BACKENDS = {
+    "anthropic": "removed 2026-09-27 (local models only, no paid APIs); use ollama",
+    "openai": (
+        "removed 2026-09-27 (local models only, no paid APIs); a local "
+        "OpenAI-compatible runner is --backend koboldcpp (set KOBOLDCPP_BASE)"
+    ),
+}
+
 
 def koboldcpp_available(base: str | None = None, timeout: float = 2.0) -> str | None:
-    """Return a reachable KoboldCpp OpenAI base (no trailing slash), or None.
-    Never raises; honours KOBOLDCPP_BASE / OPENAI_BASE_URL env overrides."""
-    env_base = os.environ.get("KOBOLDCPP_BASE") or os.environ.get("OPENAI_BASE_URL")
+    """Return a reachable KoboldCpp OpenAI-compatible base (no trailing slash),
+    or None. Never raises; honours the KOBOLDCPP_BASE env override."""
+    env_base = os.environ.get("KOBOLDCPP_BASE")
     urls = ([base.rstrip("/")] if base else []) \
         + ([env_base.rstrip("/")] if env_base else []) + KOBOLDCPP_URLS
     client = _httpx_client(timeout=timeout)
@@ -393,13 +416,12 @@ def openai_chat(
     json_mode: bool = False,
     timeout: float = 120.0,
     max_tokens: int | None = None,
-    api_key: str | None = None,
 ) -> dict[str, Any] | None:
-    """One non-streaming OpenAI /v1/chat/completions call. Returns
+    """One non-streaming /v1/chat/completions call to a LOCAL OpenAI-compatible
+    runner (KoboldCpp, llama.cpp-server, vLLM). Returns
     {"content": str, "completion_tokens": int|None, "prompt_tokens": int|None}
-    or None on ANY failure. Works against KoboldCpp, llama.cpp-server, vLLM, or
-    OpenAI (``api_key`` adds the bearer header; a ``base`` ending in /v1 is
-    accepted as-is)."""
+    or None on ANY failure. Sends no credentials; a ``base`` ending in /v1 is
+    accepted as-is."""
     client = _httpx_client(timeout=timeout)
     if client is None:
         return None
@@ -411,10 +433,7 @@ def openai_chat(
             payload["response_format"] = {"type": "json_object"}
         root = base.rstrip("/")
         url = f"{root}/chat/completions" if root.endswith("/v1") else f"{root}/v1/chat/completions"
-        if api_key:
-            r = client.post(url, json=payload, headers={"Authorization": f"Bearer {api_key}"})
-        else:
-            r = client.post(url, json=payload)
+        r = client.post(url, json=payload)
         if r.status_code != 200:
             return None
         data = r.json()
@@ -477,50 +496,6 @@ def _ollama_generate(
             pass
 
 
-ANTHROPIC_BASE = "https://api.anthropic.com"
-ANTHROPIC_VERSION = "2023-06-01"
-
-
-def anthropic_chat(
-    model: str,
-    messages: list[dict[str, str]],
-    api_key: str,
-    *,
-    base: str = ANTHROPIC_BASE,
-    timeout: float = 120.0,
-    max_tokens: int = 1024,
-) -> dict[str, Any] | None:
-    """One Anthropic Messages API call. Returns {"content", "completion_tokens",
-    "prompt_tokens"} (the API's own usage counts) or None on ANY failure.
-    ``system`` messages are lifted into the request's ``system`` field. The
-    caller names the model; this module carries no default."""
-    client = _httpx_client(timeout=timeout)
-    if client is None or not api_key or not model:
-        return None
-    try:
-        system = "\n\n".join(m["content"] for m in messages if m.get("role") == "system")
-        turns = [{"role": m["role"], "content": m["content"]} for m in messages if m.get("role") in ("user", "assistant")]
-        payload: dict[str, Any] = {"model": model, "max_tokens": max_tokens, "messages": turns}
-        if system:
-            payload["system"] = system
-        headers = {"x-api-key": api_key, "anthropic-version": ANTHROPIC_VERSION, "content-type": "application/json"}
-        r = client.post(f"{base.rstrip('/')}/v1/messages", json=payload, headers=headers)
-        if r.status_code != 200:
-            return None
-        data = r.json()
-        text = "".join(b.get("text", "") for b in data.get("content") or [] if isinstance(b, dict) and b.get("type") == "text")
-        usage = data.get("usage") or {}
-        return {"content": text, "completion_tokens": usage.get("output_tokens"),
-                "prompt_tokens": usage.get("input_tokens")}
-    except Exception:
-        return None
-    finally:
-        try:
-            client.close()
-        except Exception:
-            pass
-
-
 # The interval clock, as a module attribute so a test can pin it (same seam as
 # _httpx_client above). perf_counter, never time(): time() is wall-clock, so an
 # NTP step mid-request can make an interval zero or negative, and it is coarse
@@ -546,7 +521,9 @@ def chat_with_metrics(
     """Backend-dispatching chat that returns a telemetry dict and NEVER raises.
 
     backend in {"ollama", "koboldcpp"}. On any failure: ok=False + a human error
-    and content=None — we never fabricate a completion. ``tok_per_s`` is
+    and content=None — we never fabricate a completion. A removed hosted backend
+    (``REMOVED_BACKENDS``: anthropic, openai) fails the same way, naming the
+    removal, before anything is contacted. ``tok_per_s`` is
     wall-clock; ``server_tok_per_s`` uses the backend's own timing when reported
     (Ollama's eval_duration). ``context_shift`` is recorded as-launched telemetry,
     not detected per-request (it is a KoboldCpp startup flag)."""
@@ -557,9 +534,12 @@ def chat_with_metrics(
         "tok_per_s": None, "server_tok_per_s": None,
         "context_shift": context_shift, "error": None,
     }
+    if backend in REMOVED_BACKENDS:
+        meta["error"] = f"backend {backend!r} {REMOVED_BACKENDS[backend]}"
+        return meta
     try:
         server_seconds: float | None = None
-        if backend in ("kobold", "koboldcpp", "openai"):
+        if backend in ("kobold", "koboldcpp"):
             b = base or koboldcpp_available(timeout=timeout)
             if not b:
                 meta["error"] = "koboldcpp not reachable — launch it on :5001 or set KOBOLDCPP_BASE"

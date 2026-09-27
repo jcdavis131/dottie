@@ -21,8 +21,9 @@ is the httpx-based router the `agent`/`ava` planners already call, and it
 returns None the moment httpx is absent. #17's premise is zero dependencies, so
 the transport here is stdlib urllib and the fallback is a labelled template
 instead of a None. Two other differences are substantive, not stylistic:
-- llm.get_best_model() ranks a hardcoded PREFERRED_MODELS list biggest-first
-  (qwen3:32b before qwen3:8b). pick_model() here is cost-first — explicit
+- llm.get_best_model() ranks a hardcoded PREFERRED_MODELS list (qwen3:8b
+  first since 2026-09-27; it was biggest-first, qwen3:32b leading, before
+  that). pick_model() here is cost-first by measurement — explicit
   request, then a model already RESIDENT per /api/ps, then the SMALLEST
   installed — because this box runs ollama with NUM_GPU=0 and the largest
   installed model is the one that thrashes system RAM for minutes per token.

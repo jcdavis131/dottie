@@ -294,3 +294,150 @@ class TestLedgerWritesSurviveConcurrency:
             isolated._save({"version": "1", "sessions": {}})
         leftovers = list(tmp_path.glob("*.tmp"))
         assert leftovers == [], f"temp files left behind: {leftovers}"
+
+
+class TestPidAlive:
+    """The liveness probe behind every refresh, wait and close.
+
+    It used to be `os.kill(pid, 0)` on every platform. On Windows signal 0 is
+    CTRL_C_EVENT: measured on the dev box 2026-09-27, probing a running
+    herd-style child (start_new_session=True, sleeping 4 s, same console) raised
+    nothing, so the probe said "alive", and the child then exited 0xC000013A
+    (STATUS_CONTROL_C_EXIT) without printing. The check killed what it checked.
+    (A dead pid raised OSError there, so dead did read as dead.)
+
+    Both branches are tested with fakes so each runs on BOTH platforms. CI is
+    ubuntu-only, so a win32 test gated on sys.platform would pass there by
+    checking nothing.
+    """
+
+    class FakeKernel32:
+        """OpenProcess / GetExitCodeProcess / CloseHandle, as ctypes calls them."""
+
+        def __init__(self, *, handle=77, exit_code=259, query_ok=True):
+            self.handle, self.exit_code, self.query_ok = handle, exit_code, query_ok
+            self.opened, self.closed = [], []
+
+        def OpenProcess(self, access, inherit, pid):  # noqa: N802 (the Win32 name)
+            self.opened.append((access, inherit, pid))
+            return self.handle
+
+        def GetExitCodeProcess(self, handle, code_ptr):  # noqa: N802
+            assert handle == self.handle
+            if not self.query_ok:
+                return 0
+            code_ptr.contents.value = self.exit_code
+            return 1
+
+        def CloseHandle(self, handle):  # noqa: N802
+            self.closed.append(handle)
+            return 1
+
+    @pytest.fixture()
+    def store(self):
+        from bigbang.plugins.herd import store
+
+        return store
+
+    @staticmethod
+    def _no_signals(monkeypatch, store):
+        def refuse(*a):
+            raise AssertionError(f"the win32 probe sent a signal: os.kill{a}")
+
+        monkeypatch.setattr(store.os, "kill", refuse)
+
+    # --- win32 branch -------------------------------------------------------------
+
+    def test_win32_a_running_process_is_alive_and_the_handle_is_closed(self, store, monkeypatch):
+        self._no_signals(monkeypatch, store)
+        k = self.FakeKernel32(exit_code=259)
+        assert store._pid_alive_win32(4242, kernel32=k, get_last_error=lambda: 0) is True
+        assert k.opened == [(0x1000, False, 4242)]  # query-limited: works on others' processes
+        assert k.closed == [77]
+
+    def test_win32_an_exited_process_is_dead_even_while_its_handle_is_open(self, store, monkeypatch):
+        self._no_signals(monkeypatch, store)
+        for code in (0, 1, 3):
+            k = self.FakeKernel32(exit_code=code)
+            assert store._pid_alive_win32(4242, kernel32=k, get_last_error=lambda: 0) is False, code
+            assert k.closed == [77]
+
+    def test_win32_open_refusals_split_on_the_error_code(self, store, monkeypatch):
+        self._no_signals(monkeypatch, store)
+        denied = self.FakeKernel32(handle=None)
+        # ERROR_ACCESS_DENIED: exists, not ours to query (POSIX PermissionError)
+        assert store._pid_alive_win32(4, kernel32=denied, get_last_error=lambda: 5) is True
+        gone = self.FakeKernel32(handle=None)
+        # ERROR_INVALID_PARAMETER: no process holds that pid
+        assert store._pid_alive_win32(4242, kernel32=gone, get_last_error=lambda: 87) is False
+        assert denied.closed == [] and gone.closed == []  # nothing opened, nothing to close
+
+    def test_win32_an_unreadable_exit_code_is_not_called_alive(self, store, monkeypatch):
+        self._no_signals(monkeypatch, store)
+        k = self.FakeKernel32(query_ok=False)
+        assert store._pid_alive_win32(4242, kernel32=k, get_last_error=lambda: 0) is False
+        assert k.closed == [77]
+
+    def test_on_win32_the_dispatcher_never_signals(self, store, monkeypatch):
+        self._no_signals(monkeypatch, store)
+        asked = []
+        monkeypatch.setattr(store.sys, "platform", "win32")
+        monkeypatch.setattr(store, "_pid_alive_win32", lambda pid: asked.append(pid) or True)
+        assert store._pid_alive(4242) is True
+        assert asked == [4242]
+
+    # --- POSIX branch -------------------------------------------------------------
+
+    def test_posix_keeps_the_signal_zero_probe(self, store, monkeypatch, tmp_path):
+        sent = []
+        monkeypatch.setattr(store.sys, "platform", "linux")
+        monkeypatch.setattr(store, "_PROC_ROOT", tmp_path)  # no /proc entry: trust the signal
+        monkeypatch.setattr(store.os, "kill", lambda pid, sig: sent.append((pid, sig)))
+        monkeypatch.setattr(store, "_pid_alive_win32", lambda pid: pytest.fail("win32 probe on POSIX"))
+        assert store._pid_alive(4242) is True
+        assert sent == [(4242, 0)]
+
+    @pytest.mark.parametrize(("exc", "alive"), [
+        (ProcessLookupError(3, "No such process"), False),
+        (PermissionError(1, "Operation not permitted"), True),  # exists, owned by someone else
+        (OSError(22, "Invalid argument"), False),
+    ])
+    def test_posix_signal_errors(self, store, monkeypatch, tmp_path, exc, alive):
+        def kill(pid, sig):
+            raise exc
+
+        monkeypatch.setattr(store.os, "kill", kill)
+        monkeypatch.setattr(store, "_PROC_ROOT", tmp_path)
+        assert store._pid_alive_posix(4242) is alive
+
+    def test_posix_a_zombie_is_dead(self, store, monkeypatch, tmp_path):
+        monkeypatch.setattr(store.os, "kill", lambda pid, sig: None)  # zombies accept signal 0
+        monkeypatch.setattr(store, "_PROC_ROOT", tmp_path)
+        (tmp_path / "4242").mkdir()
+        (tmp_path / "4242" / "status").write_text("Name:\tpython\nState:\tZ (zombie)\n", encoding="utf-8")
+        assert store._pid_alive_posix(4242) is False
+        (tmp_path / "4242" / "status").write_text("Name:\tpython\nState:\tS (sleeping)\n", encoding="utf-8")
+        assert store._pid_alive_posix(4242) is True
+
+    def test_no_pid_is_never_alive(self, store, monkeypatch):
+        self._no_signals(monkeypatch, store)
+        monkeypatch.setattr(store, "_pid_alive_win32", lambda pid: pytest.fail("probed a non-pid"))
+        for pid in (None, 0, -1):
+            assert store._pid_alive(pid) is False
+
+    # --- the real OS, whichever this is -------------------------------------------
+
+    def test_real_processes_on_this_platform(self, store):
+        """Unfaked: real ctypes on Windows, real signal 0 on POSIX."""
+        assert store._pid_alive(os.getpid()) is True
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+        try:
+            assert store._pid_alive(child.pid) is True
+            # A console Ctrl+C lands asynchronously, so give it a moment to land:
+            # the old probe's victim exited within this window.
+            with pytest.raises(subprocess.TimeoutExpired):
+                child.wait(timeout=1.0)
+        finally:
+            child.kill()
+            child.wait(timeout=10)
+        assert store._pid_alive(child.pid) is False

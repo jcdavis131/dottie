@@ -3,7 +3,7 @@
 Every real executor returns an :class:`ExecResult` and raises exactly one of:
 
 * :class:`ExecutorUnavailable`: its backend is not reachable or not
-  configured (no Ollama, no API key, the network is down). The outcome is NOT
+  configured (no Ollama, the network is down). The outcome is NOT
   a label: nobody learned whether the tier would have sufficed.
 * :class:`NotApplicable`: the backend is up but this executor has no way to
   attempt the goal (the deterministic tier has no solver for it). That IS an
@@ -11,9 +11,10 @@ Every real executor returns an :class:`ExecResult` and raises exactly one of:
 
 Tokens, latency and cost are measured, never estimated: tokens are the
 backend's own usage counts (0 for local code), latency is ``perf_counter``
-around the call, cost is 0 for local work and is priced only from
-``DOTTIE_LLM_PRICE_PER_MTOK_IN`` / ``_OUT`` for a paid API (otherwise ``None``
-with ``cost_basis: unpriced``).
+around the call, cost is 0 for local work. Every model backend is local since
+the hosted ones were removed on 2026-09-27, and with them the
+``DOTTIE_LLM_PRICE_PER_MTOK_*`` env pricing: a non-local backend records
+``None`` with ``cost_basis: unpriced`` rather than a guessed price.
 """
 
 from __future__ import annotations
@@ -70,15 +71,12 @@ def executor_mode() -> str:
 
 
 def price(prompt_tokens: int | None, completion_tokens: int | None, *, local: bool) -> tuple[float | None, str]:
-    """(cost_usd, cost_basis) for measured tokens. Local work costs 0; an API is priced only from env."""
+    """(cost_usd, cost_basis) for measured tokens. Local work costs 0.
+
+    Nothing non-local is wired since the hosted backends were removed; should one
+    appear it is recorded as unpriced, never given an estimated price. The token
+    arguments stay so a call site reads the same whichever backend answered.
+    """
     if local:
         return 0.0, "local"
-    p_in = os.environ.get("DOTTIE_LLM_PRICE_PER_MTOK_IN", "").strip()
-    p_out = os.environ.get("DOTTIE_LLM_PRICE_PER_MTOK_OUT", "").strip()
-    if not p_in or not p_out or prompt_tokens is None or completion_tokens is None:
-        return None, "unpriced (set DOTTIE_LLM_PRICE_PER_MTOK_IN and _OUT)"
-    try:
-        cost = (prompt_tokens * float(p_in) + completion_tokens * float(p_out)) / 1_000_000
-    except ValueError:
-        return None, "unpriced (DOTTIE_LLM_PRICE_PER_MTOK_* is not a number)"
-    return round(cost, 8), "env price per million tokens"
+    return None, "unpriced (not a local backend; hosted APIs were removed 2026-09-27)"

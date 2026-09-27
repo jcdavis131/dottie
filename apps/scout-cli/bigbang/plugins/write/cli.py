@@ -654,12 +654,14 @@ def _best_ollama_model(base: str) -> str:
                 m.get("name") for m in models if isinstance(m, dict) and m.get("name")
             ]
             if names:
+                # qwen3:8b (the one installed model) first; qwen3:32b only if it
+                # is installed and nothing smaller here is.
                 for pref in [
-                    "qwen3:32b",
                     "qwen3:8b",
                     "llama3.1:8b",
                     "qwen2.5:7b",
                     "llama3",
+                    "qwen3:32b",
                 ]:
                     for n in names:
                         if pref in n:

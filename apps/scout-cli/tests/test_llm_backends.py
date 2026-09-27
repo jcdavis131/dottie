@@ -142,6 +142,62 @@ def test_unknown_backend_rejected(monkeypatch):
     assert res["ok"] is False and "unknown backend" in res["error"]
 
 
+def test_removed_hosted_backends_fail_closed_before_any_request(monkeypatch):
+    """'openai' used to be an alias for the KoboldCpp path, and 'anthropic' read as
+    merely unknown. Both hosted providers were removed 2026-09-27 (local models
+    only); naming one is refused with that reason and nothing is contacted."""
+    client = _patch(monkeypatch, {
+        "/v1/models": (200, {"data": []}),
+        "/v1/chat/completions": (200, {"choices": [{"message": {"content": "x"}}]}),
+    })
+    for name in ("openai", "OpenAI", "anthropic"):
+        res = llm.chat_with_metrics(name, "x", [{"role": "user", "content": "hi"}],
+                                    base="http://localhost:5001")
+        assert res["ok"] is False and res["content"] is None
+        assert "removed 2026-09-27" in res["error"] and "local models only" in res["error"]
+    assert "koboldcpp" in llm.chat_with_metrics("openai", "x", [])["error"]  # the local way
+    assert client.calls == []
+
+
+def test_koboldcpp_discovery_ignores_the_hosted_sdk_base_url(monkeypatch):
+    """OPENAI_BASE_URL is the hosted SDK's variable and often points at the paid
+    API in a developer's shell. Discovery reads KOBOLDCPP_BASE only."""
+    client = _patch(monkeypatch, {})
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://paid.invalid/v1")
+    monkeypatch.delenv("KOBOLDCPP_BASE", raising=False)
+    assert llm.koboldcpp_available() is None
+    assert not any("paid.invalid" in c[1] for c in client.calls)
+    monkeypatch.setenv("KOBOLDCPP_BASE", "http://localhost:5002")
+    before = len(client.calls)
+    llm.koboldcpp_available()
+    assert client.calls[before][1] == "http://localhost:5002/v1/models"  # the override goes first
+
+
+def _tags(monkeypatch, names):
+    monkeypatch.setattr(llm, "list_ollama_models", lambda base=None, timeout=2.0: list(names))
+
+
+def test_best_model_prefers_the_installed_8b_over_a_larger_qwen(monkeypatch):
+    _tags(monkeypatch, ["qwen3:32b", "qwen3:14b", "qwen3:8b"])
+    assert llm.get_best_model() == "qwen3:8b"
+    assert llm.PREFERRED_MODELS[0] == llm.DEFAULT_MODEL == "qwen3:8b"
+
+
+def test_best_model_with_nothing_listed_is_the_8b(monkeypatch):
+    _tags(monkeypatch, [])
+    assert llm.get_best_model() == "qwen3:8b"
+
+
+def test_larger_models_are_fallbacks_only_when_installed(monkeypatch):
+    _tags(monkeypatch, ["qwen3:32b"])
+    assert llm.get_best_model() == "qwen3:32b"  # the only thing installed
+    _tags(monkeypatch, ["qwen3:32b", "llama3.1:8b"])
+    assert llm.get_best_model() == "llama3.1:8b"  # anything small in the list beats it
+    big = {"qwen3:14b", "qwen2.5:14b", "qwen3:32b", "qwen3:32b-instruct", "qwen2.5:32b"}
+    order = llm.PREFERRED_MODELS
+    assert min(order.index(m) for m in big) > max(order.index(m) for m in order if m not in big)
+
+
 def test_context_shift_is_recorded_telemetry(monkeypatch):
     _patch(monkeypatch, {
         "/v1/chat/completions": (200, {
@@ -169,3 +225,29 @@ def test_ava_infer_command_exits_nonzero_and_honest_on_backend_down(monkeypatch)
         output.set_json_mode(False)
     assert res.exit_code == 1
     assert '"ok": false' in res.stdout.lower() or '"ok":false' in res.stdout.lower()
+
+
+def test_ava_infer_refuses_a_removed_backend_without_probing_anything(monkeypatch):
+    """`--backend openai` was an alias for the KoboldCpp path. It is refused now,
+    and model selection does not probe Ollama for a backend that will not run."""
+    import json
+
+    from typer.testing import CliRunner
+
+    from bigbang.core import output
+    from bigbang.plugins.ava import cli as ava_cli
+
+    def no_network(*a, **k):
+        raise AssertionError("contacted a backend for a removed provider")
+
+    monkeypatch.setattr(llm, "_httpx_client", no_network)
+    monkeypatch.setattr(ava_cli, "_ollama_available", no_network)
+    output.set_json_mode(True)
+    try:
+        res = CliRunner().invoke(ava_cli.app, ["infer", "hello", "--backend", "openai"])
+    finally:
+        output.set_json_mode(False)
+    assert res.exit_code == 1, res.output
+    body = json.loads(res.stdout)
+    assert body["ok"] is False and body["content"] is None
+    assert "removed 2026-09-27" in body["error"] and "koboldcpp" in body["error"]
