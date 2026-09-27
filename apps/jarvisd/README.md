@@ -8,9 +8,10 @@ SQLite file. Spec: `docs/JARVISD_SPEC.md`.
 
 The client agent is the brain in v1. The canonical Docker profile keeps `jarvis.ask`
 off by default; opt in with `JARVIS_BRAIN=ollama` to use the home-box Ollama (`$0`,
-stdlib HTTP, compose default `qwen3:8b`). Anthropic is paid and requires both the
-opt-in `jarvisd[brain]` image extra and a key. When no configured provider can serve,
-the tool returns a structured `brain unavailable` error, never a fabricated answer.
+stdlib HTTP, default model `qwen3:8b`). The brain is local models only: the paid
+Anthropic provider and the `jarvisd[brain]` extra were removed on 2026-09-27, and
+`JARVIS_BRAIN=anthropic` is refused. When no configured provider can serve, the tool
+returns a structured `brain unavailable` error, never a fabricated answer.
 
 ## Quickstart
 
@@ -62,11 +63,11 @@ breakdown, cache hit) that also lands on the timeline as `kind=decide`.
 | `JARVIS_HOST` / `JARVIS_PORT` | `127.0.0.1` / `8790` | bind |
 | `JARVIS_PUBLIC_HOST` | — | hostname for the DNS-rebinding allowlist when public (e.g. `jarvis.example.com`) |
 | `JARVIS_WORKSPACE` | `~/workspace` | root the harness writes runs under (`bundles/ultra/runs`) and where `graph.query` looks for `graphify-out/graph.json` |
-| `JARVIS_BRAIN` | `auto` (direct) / `off` (compose) | brain provider: `auto` \| `anthropic` \| `ollama` \| `off`; the canonical container is fail-closed and opt-in |
+| `JARVIS_BRAIN` | `auto` (direct) / `off` (compose) | brain provider: `auto` \| `ollama` \| `off` (local models only); the canonical container is fail-closed and opt-in |
 | `OLLAMA_HOST` | `http://127.0.0.1:11434` | Ollama base URL (bare `host:port` gets `http://`); compose sets `http://host.docker.internal:11434`. Plain `urllib`, so `no_proxy` applies if you export a proxy |
-| `OLLAMA_MODEL` | `qwen3:32b` (direct) / `qwen3:8b` (compose) | Ollama model when `JARVIS_MODEL` is unset |
+| `OLLAMA_MODEL` | `qwen3:8b` | Ollama model when `JARVIS_MODEL` is unset |
+| `JARVIS_MODEL` | — | overrides `OLLAMA_MODEL` for the brain |
 | `JARVIS_BRAIN_TIMEOUT` | `120` | seconds per Ollama `/api/chat` call |
-| `ANTHROPIC_API_KEY`, `JARVIS_MODEL`, `JARVIS_EFFORT` | — / `claude-opus-5` / `high` | Anthropic brain, paid (`pip install 'jarvisd[brain]'`); `JARVIS_MODEL` also overrides the Ollama model |
 | `JARVIS_RATE_IP` / `JARVIS_RATE_KEY` / `JARVIS_RATE_AGENT` | `1000` / `60` / `20` | requests per minute per IP / key / `X-Agent-Id` |
 | `JARVIS_SLACK_SIGNING_SECRET` | — | Slack app signing secret. **Unset means `/api/slack/events` answers 503 and processes nothing** — off, not open |
 | `BIGBANG_POLICY_FILE` | scout default | URL allowlist for downstream MCP (read by scout) |
@@ -203,7 +204,7 @@ curl -s -H "Authorization: Bearer $T" localhost:8790/api/claims
 | `jarvisd/auth.py` | pure-ASGI `AuthMiddleware`, `mint_token`, rate limiter, audit |
 | `jarvisd/tools.py` | `Jarvis` service + FastMCP tool registration |
 | `jarvisd/app.py` | `build_app(config)` → Starlette; `serve()` under uvicorn |
-| `jarvisd/brain.py` | optional brain: Ollama (stdlib, `$0`) or Anthropic (`jarvisd[brain]`), one shared tool loop |
+| `jarvisd/brain.py` | optional brain: local Ollama (stdlib, `$0`) tool loop |
 | `jarvisd/slack.py` | Slack signature verification, replay guard, payload parsing — fail-closed |
 | `jarvisd/cli.py` | `serve` / `export` / `token` |
 | `deploy/` | systemd unit, install script, env stub |

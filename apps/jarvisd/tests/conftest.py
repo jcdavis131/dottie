@@ -33,10 +33,10 @@ def _brain_offline(monkeypatch: pytest.MonkeyPatch) -> None:
 
     The default `JARVIS_BRAIN=auto` would `GET OLLAMA_HOST/api/tags`; with Ollama
     running locally that would turn the "brain unavailable" tests into live calls.
-    Anthropic tests inject a fake client; Ollama tests set `JARVIS_BRAIN` and fake
+    `off` never probes. Brain tests set `JARVIS_BRAIN` and fake
     `urllib.request.urlopen` themselves.
     """
-    monkeypatch.setenv("JARVIS_BRAIN", "anthropic")
+    monkeypatch.setenv("JARVIS_BRAIN", "off")
 
 
 @pytest.fixture

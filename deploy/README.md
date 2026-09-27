@@ -28,7 +28,8 @@ python -c "import secrets; print('jv_' + secrets.token_urlsafe(32))"   # -> JARV
 ```
 
 Edit `deploy/.env`: set `JARVIS_BEARER`, set `JARVIS_PUBLIC_HOST` to the hostname you will
-use, optionally `ANTHROPIC_API_KEY` for the `jarvis.ask` brain. Leave everything else.
+use. Leave everything else. The `jarvis.ask` brain is local Ollama only (`qwen3:8b` by
+default); there is no paid-API key to set.
 
 Every compose command below carries `--env-file deploy/.env`. That flag feeds the `${VAR}`
 substitutions in the compose file; the service-level `env_file:` only feeds the container.
@@ -138,10 +139,12 @@ daemon and keep the home box as the source of truth.
    `app_port: 8790` means the plain image (default target, port 8790) is enough. If you
    prefer the conventional 7860, drop `app_port` and add a Space **Variable** `PORT=7860`
    instead -- the image reads `$PORT` at start (that is what the `spaces` build target sets).
-3. Space -> Settings -> *Variables and secrets*: secrets `JARVIS_BEARER` and (optional)
-   `ANTHROPIC_API_KEY`; variable `JARVIS_PUBLIC_HOST=<owner>-jarvisd.hf.space`.
+3. Space -> Settings -> *Variables and secrets*: secret `JARVIS_BEARER`; variable
+   `JARVIS_PUBLIC_HOST=<owner>-jarvisd.hf.space`.
    Without `JARVIS_BEARER` the daemon refuses to start (non-loopback bind, spec §2) -- the
-   Space logs will say so.
+   Space logs will say so. A Space runs no Ollama, so `jarvis.ask` returns
+   `brain unavailable` there unless a variable `OLLAMA_HOST` points at an Ollama the Space
+   can reach; the brain is local models only, with no paid-API fallback.
 4. Verify, same as path A with the Space URL:
 
    ```sh

@@ -14,8 +14,6 @@ from pathlib import Path
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8790
-DEFAULT_MODEL = "claude-opus-5"
-DEFAULT_EFFORT = "high"
 
 # Rate limits per minute (spec §2). Overridable for operators who run many
 # agents behind one id; defaults are the spec's.
@@ -73,8 +71,6 @@ class Config:
     bearer: str | None = None
     public_host: str | None = None
     workspace: Path = field(default_factory=lambda: Path.home() / "workspace")
-    model: str = DEFAULT_MODEL
-    effort: str = DEFAULT_EFFORT
     expose_scout: bool = False
     sse: bool = True
     rate_ip: int = DEFAULT_RATE_IP
@@ -120,8 +116,6 @@ class Config:
             bearer=raw_bearer,
             public_host=raw_public,
             workspace=workspace,
-            model=env.get("JARVIS_MODEL", "").strip() or DEFAULT_MODEL,
-            effort=env.get("JARVIS_EFFORT", "").strip() or DEFAULT_EFFORT,
             expose_scout=bool(expose_scout),
             sse=True if sse is None else bool(sse),
             rate_ip=_env_int("JARVIS_RATE_IP", DEFAULT_RATE_IP),

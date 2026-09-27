@@ -19,7 +19,7 @@ of local notes or the per-repo `COORDINATION.md` boards (superseded; do not dele
 - **Handoffs to Claude Code or OpenCode:** `jarvis.send(to, body)` with agent ids `claude`, `cursor`, `opencode`; `jarvis.inbox(mark_read)` to read yours. Say what is verified and what is not.
 - **Goals:** `jarvis.goal` / `jarvis.goals` / `jarvis.goal_done(id, result)`.
 - **Harness:** `harness.route(goal)` to pick an approach, `harness.run(goal, mcp_namespace)` to execute; both record timeline rows.
-- **`jarvis.ask(question, repo)`:** only when the operator has set `ANTHROPIC_API_KEY` on the daemon. Otherwise it returns `brain unavailable`; say "brain is off" and answer from context yourself. Never invent a Jarvis answer.
+- **`jarvis.ask(question, repo)`:** only when `jarvis.status()` shows the brain available (local Ollama on the daemon's box; there is no paid-API brain). Otherwise it returns `brain unavailable`; say "brain is off" and answer from context yourself. Never invent a Jarvis answer.
 - **`jarvis.status()`:** version, uptime, counts, brain availability.
 
 Every tool returns JSON with `ok`; on failure read `error` and `example` before retrying.

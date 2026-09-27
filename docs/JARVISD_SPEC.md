@@ -8,9 +8,9 @@ shared state (memory, claims, inbox, goals, timeline index) in one SQLite file.
 
 The client agent is the brain in v1 (plan §6 decision 1). jarvisd is the shared
 context, tools and routing server. `jarvis.ask` gives it a voice of its own at $0 by
-default: the home-box Ollama (§6), with Anthropic only when the operator sets
-`ANTHROPIC_API_KEY`. When neither can serve it returns a structured "brain
-unavailable" error, never a fabricated answer. Everything here runs free: SQLite,
+default: the home-box Ollama (§6), local models only (no paid-API provider). When it
+cannot serve it returns a structured "brain unavailable" error, never a fabricated
+answer. Everything here runs free: SQLite,
 stdlib, a Cloudflare Tunnel or a Hugging Face Space.
 
 ## 1. Process shape
@@ -83,7 +83,7 @@ string with `ok`, and on failure `error` + `example`.
 | `harness.run` | goal, mcp_namespace=None | calls `bigbang.plugins.harness.runner.run_goal`; records a timeline row with the run id and critic score |
 | `contacts.resolve` | phrase | acne `ContactsHub().resolve` if `acne` is importable, else `ok:false, error:"acne not installed"` |
 | `graph.query` | query, graph_path=None | personal-graphify `graph.json` query if importable, else structured error |
-| `jarvis.ask` | question, repo=None | optional Anthropic brain (§6) |
+| `jarvis.ask` | question, repo=None | optional local Ollama brain (§6) |
 | `jarvis.status` | | version, uptime, db path, counts, brain availability |
 
 `scout_<plugin>` tools are NOT re-exported by default (64 subprocess tools is noise for
@@ -108,31 +108,30 @@ restoring chronological display order, stay below 64 KiB, and never trim the
 
 ## 6. Brain (`jarvisd/brain.py`, optional)
 
-- Two providers behind one tool loop, picked by `JARVIS_BRAIN`:
+- One provider, local models only, picked by `JARVIS_BRAIN`:
   - `ollama` — the operator's home-box Ollama over plain HTTP (`POST {OLLAMA_HOST}/api/chat`,
     `stream:false`, tools in Ollama's `{"type":"function","function":{...}}` shape). Stdlib
     `urllib` only, no extra dependency, $0 to run. Model `JARVIS_MODEL` → `OLLAMA_MODEL` →
-    `qwen3:32b` (what the rest of the repo runs). 120 s per call (`JARVIS_BRAIN_TIMEOUT`).
-  - `anthropic` — the `anthropic` SDK (optional extra `jarvisd[brain]`); model `claude-opus-5`,
-    adaptive thinking, `output_config.effort` from `JARVIS_EFFORT` (default `high`), streaming.
-    The only paid path.
-- `JARVIS_BRAIN=auto` (default): Anthropic when `ANTHROPIC_API_KEY` is set (a set key commits
-  to Anthropic; a missing SDK is then reported, not swapped), else Ollama when
-  `GET {OLLAMA_HOST}/api/tags` answers within 1 s, else unavailable. `off` disables the tool.
+    `qwen3:8b` (the one model pulled on the home box). 120 s per call (`JARVIS_BRAIN_TIMEOUT`).
+  - The paid `anthropic` provider and the `jarvisd[brain]` extra were removed on 2026-09-27
+    (no paid APIs). `ANTHROPIC_API_KEY` has no effect; `JARVIS_BRAIN=anthropic` is refused
+    as unavailable with a reason saying so, and is never silently swapped for Ollama.
+- `JARVIS_BRAIN=auto` (default): Ollama when `GET {OLLAMA_HOST}/api/tags` answers within 1 s,
+  else unavailable. `off` disables the tool.
 - Manual tool loop over the daemon's own tools (context, recall, remember, claims, route);
-  max 8 turns; every tool call and result is appended to `timeline` as `kind="brain"` on
-  both providers. Ollama tool arguments may arrive as a dict or a JSON string; each call is
-  answered with one `{"role":"tool"}` message. Result shape is the same for both:
+  max 8 turns; every tool call and result is appended to `timeline` as `kind="brain"`.
+  Ollama tool arguments may arrive as a dict or a JSON string; each call is answered with
+  one `{"role":"tool"}` message. Result shape:
   `ok, answer, turns, tool_calls, usage{input_tokens,output_tokens,cache_read_input_tokens},
-  model, provider, stop_reason` (`end_turn` | `tool_use` | `max_turns`; Anthropic may also
-  report `refusal`).
+  model, provider, stop_reason` (`end_turn` | `tool_use` | `max_turns`;
+  `cache_read_input_tokens` is always 0 and kept so timeline readers see one shape).
 - System prompt: the operator's house voice (measured, evidence-backed, honest about
   what is unmeasured), the repo name, and the `jarvis.context` result for that repo.
 - No provider can serve → `{ok:false, error:"brain unavailable: <reason>"}` (e.g.
-  `ANTHROPIC_API_KEY unset; ollama unreachable at http://127.0.0.1:11434: ...`). An Ollama
+  `ollama unreachable at http://127.0.0.1:11434: ...`). An Ollama
   host that goes down mid-call → `{ok:false, error:"ollama unreachable at <host>: ..."}`,
   never a raise. `jarvis.status().brain` reports `provider`, `model`, `available`, `reason`.
-- Tests use a fake Anthropic client and a fake `urllib.request.urlopen`; no network in tests.
+- Tests use a fake `urllib.request.urlopen`; no network in tests.
 
 ## 7. Config (env, all optional except as noted)
 
@@ -143,11 +142,11 @@ restoring chronological display order, stay below 64 KiB, and never trim the
 | `JARVIS_HOST` / `JARVIS_PORT` | `127.0.0.1` / `8790` | bind |
 | `JARVIS_PUBLIC_HOST` | — | hostname for DNS-rebinding allowlist when public (e.g. `jarvis.example.com`) |
 | `JARVIS_WORKSPACE` | `~/workspace` | root the harness may read/write under |
-| `JARVIS_BRAIN` | `auto` | brain provider: `auto` \| `anthropic` \| `ollama` \| `off` (§6) |
+| `JARVIS_BRAIN` | `auto` | brain provider: `auto` \| `ollama` \| `off` (§6; local models only) |
 | `OLLAMA_HOST` | `http://127.0.0.1:11434` | Ollama base URL for the `ollama` provider (compose: `http://host.docker.internal:11434`) |
-| `OLLAMA_MODEL` | `qwen3:32b` | Ollama model when `JARVIS_MODEL` is unset |
+| `OLLAMA_MODEL` | `qwen3:8b` | Ollama model when `JARVIS_MODEL` is unset |
+| `JARVIS_MODEL` | — | overrides `OLLAMA_MODEL` for the brain |
 | `JARVIS_BRAIN_TIMEOUT` | `120` | seconds per Ollama `/api/chat` call (the 1 s `/api/tags` probe is fixed) |
-| `ANTHROPIC_API_KEY`, `JARVIS_MODEL`, `JARVIS_EFFORT` | — / `claude-opus-5` / `high` | Anthropic brain (paid); `JARVIS_MODEL` also overrides the Ollama model |
 | `BIGBANG_POLICY_FILE` | scout default | URL allowlist for downstream MCP |
 
 ## 8. Acceptance (plan §5 Phase 1)

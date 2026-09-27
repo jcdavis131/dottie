@@ -1,27 +1,19 @@
 """jarvisd brain — optional LLM-backed pair-programming buddy (spec §6).
 
 `ask()` runs a manual tool loop over the daemon's own state tools plus the Dottie
-router, against one of two providers:
+router, against the operator's home-box Ollama over plain HTTP (stdlib ``urllib``
+only, no extra dependency). Local models only: $0 to run, no API key.
 
-  - ``ollama``: the operator's home-box Ollama over plain HTTP (stdlib ``urllib``
-    only, no extra dependency). $0 to run.
-  - ``anthropic``: the `anthropic` SDK (optional extra ``jarvisd[brain]``). Paid.
+The paid Anthropic provider was removed on 2026-09-27 (the operator's
+no-paid-APIs rule). ``ANTHROPIC_API_KEY`` has no effect, and
+``JARVIS_BRAIN=anthropic`` fails closed with a reason that says so.
 
-``JARVIS_BRAIN`` picks the provider: ``auto`` (default) | ``anthropic`` |
-``ollama`` | ``off``. ``auto`` means Anthropic when ``ANTHROPIC_API_KEY`` is set,
-else Ollama when ``OLLAMA_HOST`` answers ``GET /api/tags`` within 1 s, else
-unavailable. When no provider can serve and no client is injected, ``ask()``
-raises ``RuntimeError("brain unavailable: ...")`` and tools.py wraps that into
+``JARVIS_BRAIN`` picks the provider: ``auto`` (default) | ``ollama`` | ``off``.
+``auto`` means Ollama when ``OLLAMA_HOST`` answers ``GET /api/tags`` within 1 s,
+else unavailable. When no provider can serve, ``ask()`` raises
+``RuntimeError("brain unavailable: ...")`` and tools.py wraps that into
 ``{ok: false, ...}``. Every other failure is returned as ``{ok: false, error}``
 rather than raised.
-
-Anthropic wire shape (verified against `anthropic` 1.4.0):
-  - ``client.beta.messages.stream(..., betas=[...], fallbacks="default")`` when
-    the client has a beta surface, else ``client.messages.stream(...)``; the
-    final message comes from ``stream.get_final_message()``.
-  - Tool results for one assistant turn go back in ONE user message.
-  - Stable text (tools, system) sits before the cache breakpoint; the volatile
-    per-request context lives in the first user turn.
 
 Ollama wire shape (``POST {OLLAMA_HOST}/api/chat``, ``stream: false``):
   - ``tools`` as ``{"type": "function", "function": {name, description, parameters}}``.
@@ -33,7 +25,6 @@ Ollama wire shape (``POST {OLLAMA_HOST}/api/chat``, ``stream: false``):
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import os
 import re
@@ -41,20 +32,19 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-DEFAULT_MODEL = "claude-opus-5"
-DEFAULT_EFFORT = "high"
-EFFORT_LEVELS = frozenset({"low", "medium", "high", "xhigh", "max"})
 DEFAULT_MAX_TURNS = 8
-MAX_TOKENS = 64000  # streaming: a ceiling, not a target
-FALLBACK_BETA = "server-side-fallback-2026-07-01"
 TIMELINE_KIND = "brain"
 TIMELINE_RESULT_CHARS = 4000  # keep timeline rows bounded; the model sees the full result
 
 PROVIDER_ENV = "JARVIS_BRAIN"
-PROVIDERS = ("auto", "anthropic", "ollama", "off")
+PROVIDERS = ("auto", "ollama", "off")
+REMOVED_PROVIDERS = {
+    "anthropic": "removed 2026-09-27 (no paid APIs); use JARVIS_BRAIN=ollama or auto",
+}
 DEFAULT_PROVIDER = "auto"
 DEFAULT_OLLAMA_HOST = "http://127.0.0.1:11434"
-DEFAULT_OLLAMA_MODEL = "qwen3:32b"  # what the rest of the repo already runs
+# The one model pulled on the home box; docker-compose.dottie.yml pins the same.
+DEFAULT_OLLAMA_MODEL = "qwen3:8b"
 DEFAULT_BRAIN_TIMEOUT = 120.0  # seconds per Ollama /api/chat call (JARVIS_BRAIN_TIMEOUT)
 OLLAMA_PROBE_TIMEOUT = 1.0  # seconds for the GET /api/tags reachability probe
 _THINK_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
@@ -214,14 +204,6 @@ def ollama_host() -> str:
     return raw
 
 
-def _anthropic_available() -> tuple[bool, str]:
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        return False, "ANTHROPIC_API_KEY unset"
-    if importlib.util.find_spec("anthropic") is None:
-        return False, "anthropic package not installed (install jarvisd[brain])"
-    return True, "ok"
-
-
 def _exc_label(exc: BaseException) -> str:
     if isinstance(exc, urllib.error.HTTPError):
         return f"HTTP {exc.code}"
@@ -265,34 +247,30 @@ def ollama_reachable(host: str | None = None, timeout: float = OLLAMA_PROBE_TIME
 def resolve_provider(*, probe: bool = True) -> tuple[str, bool, str]:
     """Pick the provider from `JARVIS_BRAIN`: ``(provider, ok, reason)``.
 
-    ``provider`` is ``anthropic`` | ``ollama`` | ``off`` | ``none`` (auto found
-    nothing). ``auto``: Anthropic when the key is set, else Ollama when
-    ``/api/tags`` answers within 1 s. With ``probe=False`` an explicit
-    ``JARVIS_BRAIN=ollama`` is trusted without the reachability check, so a
-    down host surfaces as ``{ok: false}`` from the chat call instead of a raise.
+    ``provider`` is ``ollama`` | ``off`` | ``none`` (auto found nothing).
+    ``auto``: Ollama when ``/api/tags`` answers within 1 s. With ``probe=False``
+    an explicit ``JARVIS_BRAIN=ollama`` is trusted without the reachability
+    check, so a down host surfaces as ``{ok: false}`` from the chat call instead
+    of a raise. A removed provider (``anthropic``) fails closed without probing:
+    it is never silently swapped for Ollama.
     """
     requested = requested_provider()
+    if requested in REMOVED_PROVIDERS:
+        return "off", False, f"JARVIS_BRAIN={requested!r}: {REMOVED_PROVIDERS[requested]}"
     if requested not in PROVIDERS:
         return "off", False, f"JARVIS_BRAIN={requested!r} is not one of {', '.join(PROVIDERS)}"
     if requested == "off":
         return "off", False, "JARVIS_BRAIN=off"
-    anthropic_why = ""
-    if requested in ("auto", "anthropic"):
-        ok, anthropic_why = _anthropic_available()
-        # A set key commits auto to Anthropic: a missing SDK is then reported, not
-        # silently swapped for another provider the operator did not pick.
-        if ok or requested == "anthropic" or os.environ.get("ANTHROPIC_API_KEY"):
-            return "anthropic", ok, anthropic_why
     if requested == "ollama" and not probe:
         return "ollama", True, "ok"
     ok, why = ollama_reachable()
     if ok or requested == "ollama":
         return "ollama", ok, why
-    return "none", False, f"{anthropic_why}; {why} (set JARVIS_BRAIN, a key, or start Ollama)"
+    return "none", False, f"{why} (set JARVIS_BRAIN=ollama and start Ollama on OLLAMA_HOST)"
 
 
 def available() -> tuple[bool, str]:
-    """Report whether `ask()` can build a real client, and why not otherwise.
+    """Report whether `ask()` can reach a provider, and why not otherwise.
 
     Side-effect free apart from a <=1 s probe of Ollama; jarvis.status uses this.
     The reason names the provider on success, e.g. ``"ok (ollama)"``.
@@ -314,22 +292,7 @@ def status() -> dict[str, Any]:
     if provider == "ollama":
         out["model"] = _resolve_ollama_model(None)
         out["host"] = ollama_host()
-    elif provider == "anthropic":
-        out["model"] = _resolve_model(None)
     return out
-
-
-def _make_client() -> Any:
-    ok, why = _anthropic_available()
-    if not ok:
-        raise RuntimeError(f"brain unavailable: {why}")
-    import anthropic
-
-    return anthropic.Anthropic()
-
-
-def _resolve_model(model: str | None) -> str:
-    return model or os.environ.get("JARVIS_MODEL") or DEFAULT_MODEL
 
 
 def _resolve_ollama_model(model: str | None) -> str:
@@ -339,11 +302,6 @@ def _resolve_ollama_model(model: str | None) -> str:
         or os.environ.get("OLLAMA_MODEL")
         or DEFAULT_OLLAMA_MODEL
     )
-
-
-def _resolve_effort(effort: str | None) -> str:
-    value = (effort or os.environ.get("JARVIS_EFFORT") or DEFAULT_EFFORT).lower()
-    return value if value in EFFORT_LEVELS else DEFAULT_EFFORT
 
 
 def _resolve_timeout() -> float:
@@ -370,7 +328,7 @@ def _state_call(state: Any, name: str, *args: Any) -> Any:
 
 
 def _plain(obj: Any) -> Any:
-    """Turn SDK pydantic models (or test SimpleNamespaces) into JSON-able data."""
+    """Turn foreign objects (state rows, test SimpleNamespaces) into JSON-able data."""
     if obj is None or isinstance(obj, (str, int, float, bool)):
         return obj
     if isinstance(obj, dict):
@@ -390,7 +348,7 @@ def _dumps(data: Any) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# tools (shared by both providers)
+# tools
 # --------------------------------------------------------------------------- #
 
 
@@ -479,11 +437,12 @@ class _Timeline:
 
 
 class _Run:
-    """Per-`ask()` bookkeeping shared by both providers.
+    """Per-`ask()` bookkeeping.
 
     Owns the timeline writer, the usage/tool_calls accumulators, tool dispatch
-    (`run_tool`) and the result envelope (`finish`), so the provider loops only
-    differ in wire shape.
+    (`run_tool`) and the result envelope (`finish`), so the provider loop only
+    handles the wire shape. `usage.cache_read_input_tokens` stays in the
+    envelope (always 0 on Ollama) so timeline readers keep one shape.
     """
 
     def __init__(
@@ -581,143 +540,11 @@ class _Run:
         return result
 
 
-def _execute_tool_block(block: Any, run: _Run, *, turn: int) -> dict[str, Any]:
-    """Run one Anthropic tool_use block; return the tool_result param."""
-    name = getattr(block, "name", "")
-    raw_input = getattr(block, "input", None)
-    inp: dict[str, Any] = dict(raw_input) if isinstance(raw_input, dict) else {}
-    tool_use_id = getattr(block, "id", "")
-    content, is_error = run.run_tool(name, inp, tool_use_id, turn=turn)
-    param: dict[str, Any] = {
-        "type": "tool_result",
-        "tool_use_id": tool_use_id,
-        "content": content,
-    }
-    if is_error:
-        param["is_error"] = True
-    return param
-
-
-# --------------------------------------------------------------------------- #
-# Anthropic API call
-# --------------------------------------------------------------------------- #
-
-
-def _stream_final(client: Any, **params: Any) -> Any:
-    """Stream one turn and return the final Message.
-
-    Prefers the beta surface so the server-side refusal fallback is on
-    (``fallbacks="default"`` routes by refusal category, no model list to keep).
-    """
-    beta_messages = getattr(getattr(client, "beta", None), "messages", None)
-    if beta_messages is not None and hasattr(beta_messages, "stream"):
-        with beta_messages.stream(
-            **params, betas=[FALLBACK_BETA], fallbacks="default"
-        ) as stream:
-            return stream.get_final_message()
-    with client.messages.stream(**params) as stream:
-        return stream.get_final_message()
-
-
-def _sdk_error(exc: BaseException) -> tuple[str, dict[str, Any]] | None:
-    """Classify an Anthropic SDK error most-specific-first; None if not one."""
-    try:
-        import anthropic
-    except ImportError:
-        return None
-    label = f"{type(exc).__name__}: {exc}"
-    if isinstance(exc, anthropic.AuthenticationError):
-        return label, {"hint": "check ANTHROPIC_API_KEY"}
-    if isinstance(exc, anthropic.RateLimitError):
-        headers = getattr(getattr(exc, "response", None), "headers", None) or {}
-        return label, {"retry_after": headers.get("retry-after")}
-    if isinstance(exc, anthropic.APIStatusError):
-        return label, {"status_code": getattr(exc, "status_code", None)}
-    if isinstance(exc, anthropic.APIConnectionError):
-        return label, {"hint": "network error reaching the Anthropic API"}
-    if isinstance(exc, anthropic.APIError):
-        return label, {}
-    return None
-
-
-def _usage_add(total: dict[str, int], usage: Any) -> None:
-    for key in ("input_tokens", "output_tokens", "cache_read_input_tokens"):
-        total[key] += int(getattr(usage, key, None) or 0)
-
-
-def _text_of(content: list[Any]) -> str:
-    return "".join(
-        getattr(b, "text", "") for b in content if getattr(b, "type", None) == "text"
-    ).strip()
-
-
 def _user_turn(question: str, repo: str | None, agent: str, context: Any) -> str:
     return (
         f"Repo: {repo or '(none)'}\nAgent: {agent}\n\n"
         f"<jarvis_context>\n{_dumps(context)}\n</jarvis_context>\n\n"
         f"Question: {question}"
-    )
-
-
-def _ask_anthropic(run: _Run, client: Any, *, effort: str, max_turns: int) -> dict[str, Any]:
-    system = [
-        {"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}
-    ]
-    messages: list[dict[str, Any]] = [{"role": "user", "content": run.first_user_turn()}]
-    model = run.model
-
-    for turn in range(1, max_turns + 1):
-        run.turns = turn
-        try:
-            msg = _stream_final(
-                client,
-                model=model,
-                max_tokens=MAX_TOKENS,
-                system=system,
-                messages=messages,
-                tools=TOOLS,
-                thinking={"type": "adaptive"},
-                output_config={"effort": effort},
-            )
-        except Exception as exc:
-            classified = _sdk_error(exc)
-            if classified is None:
-                return run.finish({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
-            label, extra = classified
-            return run.finish({"ok": False, "error": label, **extra})
-
-        _usage_add(run.usage, getattr(msg, "usage", None))
-        run.model = getattr(msg, "model", None) or run.model
-        run.stop_reason = getattr(msg, "stop_reason", None)
-        content = list(getattr(msg, "content", None) or [])
-        run.last_text = _text_of(content) or run.last_text
-
-        if run.stop_reason == "refusal":
-            return run.finish(
-                {
-                    "ok": False,
-                    "error": "refusal",
-                    "stop_details": _plain(getattr(msg, "stop_details", None)),
-                    "answer": run.last_text,
-                }
-            )
-
-        tool_blocks = [b for b in content if getattr(b, "type", None) == "tool_use"]
-        if run.stop_reason != "tool_use" or not tool_blocks:
-            return run.finish({"ok": True, "answer": run.last_text})
-
-        # Echo the whole assistant turn (thinking blocks included) and answer
-        # every tool_use from this turn in ONE user message.
-        messages.append({"role": "assistant", "content": [_plain(b) for b in content]})
-        results = [_execute_tool_block(block, run, turn=turn) for block in tool_blocks]
-        messages.append({"role": "user", "content": results})
-
-    return run.finish(
-        {
-            "ok": False,
-            "error": f"max_turns reached ({max_turns}) before a final answer",
-            "answer": run.last_text,
-        }
     )
 
 
@@ -834,35 +661,21 @@ def ask(
     state: Any,
     agent: str = "anon",
     *,
-    client: Any = None,
     model: str | None = None,
-    effort: str | None = None,
     max_turns: int = DEFAULT_MAX_TURNS,
 ) -> dict[str, Any]:
     """Answer `question` about `repo` with a tool loop over jarvisd state.
 
-    An injected `client` always means the Anthropic path (tests use this);
-    otherwise `JARVIS_BRAIN` picks the provider. Raises
+    `JARVIS_BRAIN` picks the provider (local Ollama only). Raises
     ``RuntimeError("brain unavailable: ...")`` only when no provider can serve;
     every other failure comes back as ``{ok: False, error: ...}``.
     """
     max_turns = max(1, int(max_turns))
-    if client is not None:
-        provider = "anthropic"
-    else:
-        provider, ok, why = resolve_provider(probe=False)
-        if not ok:
-            raise RuntimeError(f"brain unavailable: {why}")
-        if provider == "anthropic":
-            client = _make_client()
+    provider, ok, why = resolve_provider(probe=False)
+    if not ok or provider != "ollama":
+        raise RuntimeError(f"brain unavailable: {why}")
 
-    if provider == "ollama":
-        run = _Run(
-            question, repo, state, agent, provider="ollama", model=_resolve_ollama_model(model)
-        )
-        return _ask_ollama(
-            run, host=ollama_host(), timeout=_resolve_timeout(), max_turns=max_turns
-        )
-
-    run = _Run(question, repo, state, agent, provider="anthropic", model=_resolve_model(model))
-    return _ask_anthropic(run, client, effort=_resolve_effort(effort), max_turns=max_turns)
+    run = _Run(
+        question, repo, state, agent, provider="ollama", model=_resolve_ollama_model(model)
+    )
+    return _ask_ollama(run, host=ollama_host(), timeout=_resolve_timeout(), max_turns=max_turns)
