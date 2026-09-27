@@ -1,16 +1,19 @@
 """The llm tier: one chat completion through ``bigbang.core.llm``, measured.
 
-Backend chain, first reachable wins:
+One backend, local only: Ollama at ``OLLAMA_HOST`` (default
+``http://localhost:11434``), model ``DOTTIE_LLM_MODEL`` (default
+:data:`DEFAULT_OLLAMA_MODEL`). Cost 0.
 
-1. Ollama at ``OLLAMA_HOST`` (default ``http://localhost:11434``), model
-   ``DOTTIE_LLM_MODEL`` (default :data:`DEFAULT_OLLAMA_MODEL`). Cost 0 (local).
-2. Anthropic, when ``ANTHROPIC_API_KEY`` and ``DOTTIE_ANTHROPIC_MODEL`` are set.
-3. An OpenAI-compatible endpoint, when ``OPENAI_API_KEY`` and
-   ``DOTTIE_OPENAI_MODEL`` are set (``OPENAI_BASE_URL``, default the OpenAI API).
+The hosted Anthropic and OpenAI fallbacks were removed on 2026-09-27 (Cam's
+no-paid-APIs rule; his answer for Dottie's paid code paths was "Remove them").
+Their env vars (:data:`REMOVED_BACKEND_ENV`) are never read for a call. When
+one is still set and Ollama is down, the :class:`ExecutorUnavailable` message
+says the backend was removed, so the tier fails closed and never quietly
+behaves as if the hosted model had been consulted.
 
-No backend reachable raises :class:`ExecutorUnavailable` naming why each one
-was skipped, and the outcome is never labelled. Tokens are the backend's own
-usage counts; latency is measured around the call.
+Ollama unreachable raises :class:`ExecutorUnavailable` saying why, and the
+outcome is never labelled. Tokens are the backend's own usage counts; latency
+is measured around the call.
 """
 
 from __future__ import annotations
@@ -63,26 +66,28 @@ def _ollama(messages: list[dict[str, str]], timeout: float) -> tuple[dict[str, A
     return res, f"ollama:{model}", ""
 
 
-def _anthropic(messages: list[dict[str, str]], timeout: float) -> tuple[dict[str, Any] | None, str, str]:
-    key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-    model = os.environ.get("DOTTIE_ANTHROPIC_MODEL", "").strip()
-    if not key or not model:
-        return None, "anthropic", "ANTHROPIC_API_KEY and DOTTIE_ANTHROPIC_MODEL not both set"
-    res = llm.anthropic_chat(model, messages, key, timeout=timeout)
-    return res, f"anthropic:{model}", "" if res else "anthropic call failed"
+BACKENDS = (("ollama", _ollama, True),)
+
+#: The env vars that used to select a hosted fallback, per removed backend.
+REMOVED_BACKEND_ENV = {
+    "anthropic": ("DOTTIE_ANTHROPIC_MODEL", "ANTHROPIC_API_KEY"),
+    "openai": ("DOTTIE_OPENAI_MODEL", "OPENAI_API_KEY", "OPENAI_BASE_URL"),
+}
 
 
-def _openai(messages: list[dict[str, str]], timeout: float) -> tuple[dict[str, Any] | None, str, str]:
-    key = os.environ.get("OPENAI_API_KEY", "").strip()
-    model = os.environ.get("DOTTIE_OPENAI_MODEL", "").strip()
-    if not key or not model:
-        return None, "openai", "OPENAI_API_KEY and DOTTIE_OPENAI_MODEL not both set"
-    base = os.environ.get("OPENAI_BASE_URL", "").strip() or "https://api.openai.com/v1"
-    res = llm.openai_chat(model, messages, base, timeout=timeout, api_key=key)
-    return res, f"openai:{model}", "" if res else f"openai-compatible call to {base} failed"
+def removed_backend_notes() -> list[str]:
+    """One line per removed hosted backend whose env vars are still set.
 
-
-BACKENDS = (("ollama", _ollama, True), ("anthropic", _anthropic, False), ("openai", _openai, False))
+    Setting them used to route this tier to a paid API when Ollama was down. They
+    are ignored now; saying so in the refusal keeps the operator from reading an
+    unavailable tier as a flaky key.
+    """
+    notes = []
+    for name, env in REMOVED_BACKEND_ENV.items():
+        set_vars = [v for v in env if os.environ.get(v, "").strip()]
+        if set_vars:
+            notes.append(f"{name} backend {llm.REMOVED_BACKENDS[name]} ({', '.join(set_vars)} ignored)")
+    return notes
 
 
 def complete(prompt: str, *, system: str = SYSTEM_PROMPT, timeout: float = 120.0, tier: str = "llm") -> ExecResult:
@@ -104,7 +109,7 @@ def complete(prompt: str, *, system: str = SYSTEM_PROMPT, timeout: float = 120.0
             tokens={"prompt": pt, "completion": ct, "total": (pt or 0) + (ct or 0) if pt is not None or ct is not None else None},
             latency_ms=latency, cost_usd=cost, cost_basis=basis, meta={"skipped_backends": skipped},
         )
-    raise ExecutorUnavailable("no LLM backend reachable: " + "; ".join(skipped))
+    raise ExecutorUnavailable("no LLM backend reachable: " + "; ".join(skipped + removed_backend_notes()))
 
 
 def run(goal: str) -> ExecResult:

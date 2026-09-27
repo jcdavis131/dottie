@@ -154,8 +154,8 @@ source, id; the digest hashes exactly those items).
    executor (`apps/scout-cli/bigbang/plugins/harness/executors/`) when its
    backend is available: deterministic (AST-whitelisted local solvers and
    allowlisted read-only `scout` commands), llm (`bigbang.core.llm`: Ollama at
-   `OLLAMA_HOST` first, then Anthropic or an OpenAI-compatible API only when a
-   key AND a model are set), deep_research (arXiv, Semantic Scholar with a
+   `OLLAMA_HOST`, local models only; the hosted Anthropic/OpenAI fallbacks
+   were removed 2026-09-27), deep_research (arXiv, Semantic Scholar with a
    key, jarvisd recall; cited answers). action_operator runs only through the
    existing fail-closed MCP path; outside-world effects (`WRITE_DESTRUCTIVE`,
    `EXTERNAL_NOTIFY`) stay default-deny and are never auto-retried (the one

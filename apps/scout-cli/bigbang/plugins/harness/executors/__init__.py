@@ -2,8 +2,9 @@
 
 One entry per probe-able tier (:data:`TIER_RUNNERS`): ``deterministic``
 (local Python solvers, allowlisted read-only scout commands), ``llm``
-(``bigbang.core.llm``: Ollama at ``OLLAMA_HOST`` first, then Anthropic or an
-OpenAI-compatible API when a key is set) and ``deep_research`` (arXiv,
+(``bigbang.core.llm``: Ollama at ``OLLAMA_HOST``, local models only; the
+hosted Anthropic/OpenAI fallbacks were removed 2026-09-27) and
+``deep_research`` (arXiv,
 Semantic Scholar with a key, jarvisd recall; cited answers).
 ``action_operator`` runs only through the existing fail-closed MCP path
 (:mod:`.action`); outside-world effects stay default-deny and are never

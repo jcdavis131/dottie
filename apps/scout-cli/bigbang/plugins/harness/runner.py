@@ -7,8 +7,8 @@ Executors (bigbang.plugins.harness.executors): each plan node runs its REAL
 executor when one exists for its role and its backend is available —
 deep-researcher/researcher: arXiv (+ Semantic Scholar with a key, jarvisd
 recall with JARVIS_URL), cited; strategist/planner/synthesist/critic: one LLM
-completion (Ollama at OLLAMA_HOST, else Anthropic / OpenAI-compatible with a
-key); operator: a deterministic local solver when one matches the goal;
+completion (Ollama at OLLAMA_HOST; local models only, no hosted fallback);
+operator: a deterministic local solver when one matches the goal;
 builder: composition, real only over real artifacts; mcp-operator: the
 fail-closed MCP path in mcp_executor.py. Otherwise the node runs its
 deterministic stub below (a pure function of the goal text) and is tagged
@@ -16,8 +16,8 @@ deterministic stub below (a pure function of the goal text) and is tagged
 node) | stub (never try). The run's outcome is `executor: real` only when
 EVERY node did real work; `scout router pack` never labels from anything else.
 Latencies are MEASURED with time.perf_counter(); tokens are the backends' own
-usage counts (0 for stubs and local code); cost is 0 for local work and priced
-only from env for paid APIs. Provenance is labeled on every record.
+usage counts (0 for stubs and local code); cost is 0, since every backend is
+local. Provenance is labeled on every record.
 
 Routing (step 1) is dottie_loop.decide.decide (bounded context, then
 dottie_loop.router.route_goal), the same decision plane as `scout route` and

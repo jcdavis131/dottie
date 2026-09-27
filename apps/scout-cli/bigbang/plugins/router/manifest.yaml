@@ -7,11 +7,11 @@ capabilities:
   # base model, on the GPU host). Network: `router bench` (loopback only, to a
   # jarvisd and a serve_decide it starts itself on free ports) and `router probe`,
   # which runs the harness's real, read-only executors (see the harness manifest:
-  # arXiv, Semantic Scholar with a key, Ollama/LLM APIs when configured).
+  # arXiv, Semantic Scholar with a key, a local Ollama; no hosted LLM API since
+  # 2026-09-27).
   network:
     enabled: true
-    domains: ["127.0.0.1", "localhost", "export.arxiv.org", "arxiv.org", "api.semanticscholar.org",
-              "api.anthropic.com", "api.openai.com"]
+    domains: ["127.0.0.1", "localhost", "export.arxiv.org", "arxiv.org", "api.semanticscholar.org"]
   filesystem:
     # The one plugin-chosen write is the promotion stamp store (gated with
     # fs_write). Everything else goes where the operator points on the command

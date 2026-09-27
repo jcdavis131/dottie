@@ -67,7 +67,8 @@ def test_scout_commands_are_allowlisted():
 
 def _no_keys(monkeypatch):
     for k in ("ANTHROPIC_API_KEY", "DOTTIE_ANTHROPIC_MODEL", "OPENAI_API_KEY", "DOTTIE_OPENAI_MODEL",
-              "DOTTIE_LLM_MODEL", "DOTTIE_LLM_PRICE_PER_MTOK_IN", "DOTTIE_LLM_PRICE_PER_MTOK_OUT"):
+              "OPENAI_BASE_URL", "DOTTIE_LLM_MODEL", "DOTTIE_LLM_PRICE_PER_MTOK_IN",
+              "DOTTIE_LLM_PRICE_PER_MTOK_OUT"):
         monkeypatch.delenv(k, raising=False)
 
 
@@ -86,6 +87,7 @@ def test_llm_uses_ollama_first_and_records_measured_usage(monkeypatch):
     assert res.tokens == {"prompt": 31, "completion": 5, "total": 36}
     assert res.cost_usd == 0.0 and res.cost_basis == "local" and res.latency_ms >= 0
     assert seen == {"model": "qwen2.5:7b-instruct", "base": "http://ollama.test:11434"}
+    assert price(10, 10, local=True) == (0.0, "local")
 
 
 def test_llm_without_any_backend_is_unavailable_and_says_why(monkeypatch):
@@ -94,22 +96,50 @@ def test_llm_without_any_backend_is_unavailable_and_says_why(monkeypatch):
     with pytest.raises(ExecutorUnavailable) as exc:
         llm_exec.run("anything")
     msg = str(exc.value)
-    assert "ollama not reachable" in msg and "ANTHROPIC_API_KEY" in msg and "OPENAI_API_KEY" in msg
+    assert "ollama not reachable" in msg and "ollama serve" in msg
+    # no paid fallback is offered as a way out
+    assert "ANTHROPIC" not in msg and "OPENAI" not in msg and "removed" not in msg
 
 
-def test_llm_falls_back_to_anthropic_with_a_key_and_prices_only_from_env(monkeypatch):
+def test_the_llm_tier_has_no_hosted_backend():
+    assert [name for name, _call, _local in llm_exec.BACKENDS] == ["ollama"]
+    assert all(local for _name, _call, local in llm_exec.BACKENDS)
+    assert not hasattr(llm, "anthropic_chat")
+
+
+def test_removed_hosted_backends_fail_closed_and_say_so(monkeypatch):
+    """The env that used to route this tier to a paid API is ignored, loudly.
+
+    Before 2026-09-27 these variables sent the call to api.anthropic.com or an
+    OpenAI endpoint when Ollama was down. Now nothing is called and the refusal
+    names the removal instead of reading like a missing key.
+    """
     _no_keys(monkeypatch)
     monkeypatch.setattr(llm, "get_ollama_base", lambda **kw: None)
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "not-a-real-key")
     monkeypatch.setenv("DOTTIE_ANTHROPIC_MODEL", "some-model")
-    monkeypatch.setattr(llm, "anthropic_chat",
-                        lambda model, messages, key, **kw: {"content": "ANSWER: yes", "prompt_tokens": 1000, "completion_tokens": 500})
-    res = llm_exec.run("q")
-    assert res.backend == "anthropic:some-model" and res.cost_usd is None and res.cost_basis.startswith("unpriced")
-    monkeypatch.setenv("DOTTIE_LLM_PRICE_PER_MTOK_IN", "3")
+    monkeypatch.setenv("OPENAI_API_KEY", "not-a-real-key")
+    monkeypatch.setenv("DOTTIE_OPENAI_MODEL", "some-model")
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://127.0.0.1:1/v1")
+
+    def no_network(*a, **k):
+        raise AssertionError("a removed backend opened a client")
+
+    monkeypatch.setattr(llm, "_httpx_client", no_network)
+    monkeypatch.setattr(llm, "openai_chat", no_network)
+    with pytest.raises(ExecutorUnavailable) as exc:
+        llm_exec.run("q")
+    msg = str(exc.value)
+    assert "ollama not reachable" in msg
+    assert "anthropic backend removed 2026-09-27" in msg and "openai backend removed 2026-09-27" in msg
+    assert "DOTTIE_ANTHROPIC_MODEL" in msg and "OPENAI_BASE_URL" in msg and "ignored" in msg
+
+
+def test_a_non_local_backend_is_never_priced_by_guess(monkeypatch):
+    monkeypatch.setenv("DOTTIE_LLM_PRICE_PER_MTOK_IN", "3")  # the removed env pricing
     monkeypatch.setenv("DOTTIE_LLM_PRICE_PER_MTOK_OUT", "15")
-    assert llm_exec.run("q").cost_usd == pytest.approx(0.0105)
-    assert price(10, 10, local=True) == (0.0, "local")
+    cost, basis = price(1000, 500, local=False)
+    assert cost is None and basis.startswith("unpriced")
 
 
 class _Resp:
@@ -132,18 +162,14 @@ class _Client:
         pass
 
 
-def test_anthropic_and_openai_clients_parse_usage(monkeypatch):
-    c = _Client(_Resp(200, {"content": [{"type": "text", "text": "hi"}], "usage": {"input_tokens": 9, "output_tokens": 2}}))
-    monkeypatch.setattr(llm, "_httpx_client", lambda timeout=0: c)
-    out = llm.anthropic_chat("m", [{"role": "system", "content": "s"}, {"role": "user", "content": "u"}], "key")
-    assert out == {"content": "hi", "completion_tokens": 2, "prompt_tokens": 9}
-    url, body, headers = c.calls[0]
-    assert url.endswith("/v1/messages") and body["system"] == "s" and headers["x-api-key"] == "key"
+def test_local_openai_compatible_client_parses_usage_and_sends_no_credentials(monkeypatch):
     o = _Client(_Resp(200, {"choices": [{"message": {"content": "ok"}}], "usage": {"prompt_tokens": 4, "completion_tokens": 1}}))
     monkeypatch.setattr(llm, "_httpx_client", lambda timeout=0: o)
-    assert llm.openai_chat("m", [], "https://api.example.com/v1", api_key="sk")["prompt_tokens"] == 4
-    assert o.calls[0][0] == "https://api.example.com/v1/chat/completions"
-    assert o.calls[0][2] == {"Authorization": "Bearer sk"}
+    assert llm.openai_chat("m", [], "http://localhost:5001/v1")["prompt_tokens"] == 4
+    assert o.calls[0][0] == "http://localhost:5001/v1/chat/completions"
+    assert o.calls[0][2] is None  # no Authorization header: the bearer-key path is gone
+    with pytest.raises(TypeError):
+        llm.openai_chat("m", [], "http://localhost:5001/v1", api_key="x")  # type: ignore[call-arg]
 
 
 # --- deep_research -------------------------------------------------------------------------

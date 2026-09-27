@@ -69,13 +69,16 @@ try:
 except Exception:
     _HAS_LLM = False
     OLLAMA_URLS = ["http://localhost:11434", "http://host.docker.internal:11434"]
+    # Small-first like bigbang.core.llm.PREFERRED_MODELS: qwen3:8b (the one
+    # installed model) leads; the 32b tags are fallbacks only if installed.
     PREFERRED_MODELS = [
-        "qwen3:32b",
+        "qwen3:8b",
         "qwen3",
         "llama3.1:8b",
         "llama3.1",
-        "qwen2.5:32b",
         "qwen2.5",
+        "qwen3:32b",
+        "qwen2.5:32b",
     ]
 
     _FALLBACK_CACHE_BASE: str | None = None
@@ -208,7 +211,7 @@ except Exception:
         return []
 
     def get_best_model(base=None, timeout=2.0):
-        return "qwen3:32b"
+        return "qwen3:8b"
 
 
 app = typer.Typer(
@@ -384,7 +387,7 @@ def _ollama_planner(task: str, system_prefix: str | None = None) -> dict[str, An
             "Ollama not available at localhost:11434 or host.docker.internal:11434"
         )
 
-    best_model = get_best_model(base=base, timeout=2.0) if _HAS_LLM else "qwen3:32b"
+    best_model = get_best_model(base=base, timeout=2.0) if _HAS_LLM else "qwen3:8b"
 
     tool_desc = _planner_tool_desc()
 
@@ -442,7 +445,7 @@ def _ollama_planner(task: str, system_prefix: str | None = None) -> dict[str, An
         "planner_model": best_model,
         "planner_base": base,
         "plan": normalized[:6],
-        "reason": parsed.get("reason", "ollama qwen3:32b + Frontier rubric")
+        "reason": parsed.get("reason", f"ollama {best_model} + Frontier rubric")
         if isinstance(parsed, dict)
         else "ollama",
         "raw": raw[:500],

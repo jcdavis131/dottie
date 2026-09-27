@@ -19,7 +19,7 @@ def clean_registry():
 
 
 def test_spec_parsing_first_colon_and_ollama_tags():
-    assert mp.parse_spec("openai:gpt-5.4") == ("openai", "gpt-5.4")
+    assert mp.parse_spec("koboldcpp:loaded.gguf") == ("koboldcpp", "loaded.gguf")
     # ollama tags contain colons; unknown prefix folds into the model name
     assert mp.parse_spec("qwen3:8b") == ("ollama", "qwen3:8b")
     assert mp.parse_spec("ollama:qwen3:8b") == ("ollama", "qwen3:8b")
@@ -43,8 +43,36 @@ def test_none_overrides_do_not_erase():
 
 
 def test_unregistered_spec_resolves_empty_params():
-    r = mp.resolve("anthropic:claude-opus-4-8")
-    assert r == {"provider": "anthropic", "model": "claude-opus-4-8", "params": {}}
+    r = mp.resolve("dottie:router-v0")
+    assert r == {"provider": "dottie", "model": "router-v0", "params": {}}
+
+
+@pytest.mark.parametrize("provider", ["anthropic", "openai"])
+def test_a_removed_hosted_provider_fails_closed(provider):
+    """Hosted providers were removed 2026-09-27 (local models only).
+
+    Dropping them from KNOWN_PROVIDERS alone would have made 'anthropic:<model>'
+    fall into the unknown-prefix branch and come back as an OLLAMA tag: a silent
+    fallback to a different backend. Every entry point refuses instead.
+    """
+    assert provider not in mp.KNOWN_PROVIDERS
+    with pytest.raises(ValueError, match=f"'{provider}' was removed 2026-09-27"):
+        mp.parse_spec(f"{provider}:some-model")
+    with pytest.raises(ValueError, match="removed"):
+        mp.resolve(f"{provider}:some-model")
+    with pytest.raises(ValueError, match="removed"):
+        mp.register_model(f"{provider}:some-model", temperature=0.1)
+    with pytest.raises(ValueError, match="removed"):
+        mp.register_provider(provider, temperature=0.1)
+    assert (provider, "some-model") not in mp._MODEL_PROFILES
+    assert provider not in mp._PROVIDER_PROFILES
+
+
+def test_a_profiles_file_naming_a_removed_provider_is_refused(tmp_path):
+    f = tmp_path / "profiles.json"
+    f.write_text(json.dumps({"providers": {"anthropic": {"max_tokens": 512}}}), encoding="utf-8")
+    with pytest.raises(ValueError, match="removed"):
+        mp.load_profiles(f)
 
 
 def test_load_profiles_from_json(tmp_path):

@@ -24,7 +24,10 @@ _MODEL_PROFILES: dict[tuple[str, str], dict[str, Any]] = {}
 
 
 def register_provider(provider: str, **params: Any) -> None:
-    """Merge params into the provider-level profile (later calls win)."""
+    """Merge params into the provider-level profile (later calls win).
+    A removed hosted provider raises ValueError, as it does in parse_spec."""
+    if provider in REMOVED_PROVIDERS:
+        raise ValueError(f"provider {provider!r} {REMOVED_PROVIDERS[provider]}")
     _PROVIDER_PROFILES.setdefault(provider, {}).update(params)
 
 
@@ -37,9 +40,15 @@ def register_model(spec: str, **params: Any) -> None:
 def parse_spec(spec: str) -> tuple[str, str]:
     """'provider:model' -> (provider, model). Model may contain colons
     (ollama tags like qwen3:8b): split on the FIRST colon only; a bare name
-    defaults to provider 'ollama' (the box's native backend)."""
+    defaults to provider 'ollama' (the box's native backend).
+
+    A removed hosted provider (:data:`REMOVED_PROVIDERS`) raises ValueError. It
+    must not reach the unknown-prefix branch below, which would fold
+    'anthropic:<model>' into an ollama tag and quietly run something else."""
     if ":" in spec:
         provider, model = spec.split(":", 1)
+        if provider in REMOVED_PROVIDERS:
+            raise ValueError(f"provider {provider!r} {REMOVED_PROVIDERS[provider]}")
         if provider in KNOWN_PROVIDERS:
             return provider, model
         # not a known provider — treat the whole spec as an ollama tag
@@ -47,7 +56,18 @@ def parse_spec(spec: str) -> tuple[str, str]:
     return "ollama", spec
 
 
-KNOWN_PROVIDERS = ("ollama", "koboldcpp", "openai", "anthropic", "dottie")
+# Local runners only. koboldcpp is the local OpenAI-compatible one.
+KNOWN_PROVIDERS = ("ollama", "koboldcpp", "dottie")
+
+# Hosted providers removed 2026-09-27 (Cam's no-paid-APIs rule: "Remove them").
+# Kept as names so a spec that asks for one fails closed with the reason.
+REMOVED_PROVIDERS = {
+    "anthropic": "was removed 2026-09-27 (local models only, no paid APIs); use ollama:<tag>",
+    "openai": (
+        "was removed 2026-09-27 (local models only, no paid APIs); a local "
+        "OpenAI-compatible runner is koboldcpp:<model>"
+    ),
+}
 
 
 def resolve(spec: str, **overrides: Any) -> dict[str, Any]:
@@ -64,7 +84,8 @@ def resolve(spec: str, **overrides: Any) -> dict[str, Any]:
 def load_profiles(path: str | Path) -> int:
     """Load a JSON profiles file:
     {"providers": {name: {params}}, "models": {"provider:model": {params}}}.
-    Returns number of profiles applied. Missing file -> 0, honestly."""
+    Returns number of profiles applied. Missing file -> 0, honestly. A profile
+    for a removed hosted provider raises ValueError rather than being skipped."""
     p = Path(path)
     if not p.exists():
         return 0
