@@ -8,7 +8,7 @@ Poll Drive folder Ava/Papers/Inbox (id 10tYYtiJsmxdqFy0b3V7FbLP0J9_g7MM5) for ne
 - Lists PDFs via hatch_gws_cli drive files list with q "'10tYYtiJsmxdqFy0b3V7FbLP0J9_g7MM5' in parents and trashed=false and mimeType='application/pdf'"
 - Downloads new PDFs only (dedupe via ~/.openwiki/wiki/papers/.ingest_state.json tracking drive_file_id + sha256)
 - Local extraction via PyMuPDF/fitz -> pdfminer -> pdftotext (privacy: no paper content sent externally)
-- Summarization: tries local Ollama qwen3:32b at http://localhost:11434/api/generate, else deterministic extractive fallback
+- Summarization: tries local Ollama qwen3:8b at http://localhost:11434/api/generate, else deterministic extractive fallback
 - Concept mapping via ava/memory/openwiki_adapter.py for S2 Slow hl=300, plus Ava J-Space tags S1 Fast/S2 Slow/Critic/Planner
 - Writes markdown to ~/.openwiki/wiki/papers/<slug>.md with YAML frontmatter
 - Adds backlinks to existing wiki pages and Ava experiments
@@ -138,7 +138,7 @@ def extract_text(pdf_path: pathlib.Path) -> str:
 
 
 def summarize_local(text: str, title: str) -> str:
-    # Try Ollama qwen3:32b
+    # Try Ollama qwen3:8b
     prompt = f"Summarize this research paper '{title}' - extract contributions, methods, results, and relevance to Ava AGI Factory J-Space memory (S1 Fast, S2 Slow hl=300, Critic, Planner). Keep concise, 200 words max. Text excerpt:\n\n{text[:8000]}"
     try:
         import requests
@@ -148,7 +148,7 @@ def summarize_local(text: str, title: str) -> str:
                 resp = requests.post(
                     f"{host}/api/generate",
                     json={
-                        "model": "qwen3:32b",
+                        "model": "qwen3:8b",
                         "prompt": prompt,
                         "stream": False,
                         "options": {"num_predict": 400},
@@ -159,7 +159,7 @@ def summarize_local(text: str, title: str) -> str:
                     data = resp.json()
                     summary = data.get("response", "")
                     if len(summary) > 50:
-                        print(f"Summarized via Ollama {host} qwen3:32b")
+                        print(f"Summarized via Ollama {host} qwen3:8b")
                         return summary.strip()
             except Exception as e:
                 print(f"Ollama {host} failed: {e}")
@@ -319,7 +319,7 @@ text_length: {text_len}
 ## Extracted Metadata
 - Drive folder: Ava/Papers/Inbox (10tYYtiJsmxdqFy0b3V7FbLP0J9_g7MM5)
 - Local wiki path: {path}
-- Privacy: local parsing only (PyMuPDF/pdfminer/pdftotext), no external send unless local Ollama qwen3:32b used.
+- Privacy: local parsing only (PyMuPDF/pdfminer/pdftotext), no external send unless local Ollama qwen3:8b used.
 
 ---
 Solo personal project, no connection to employer, built with public/free-tier only

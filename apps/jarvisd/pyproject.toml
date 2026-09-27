@@ -22,9 +22,8 @@ dependencies = [
 dottie-loop = { workspace = true }
 
 [project.optional-dependencies]
-# Optional Anthropic-backed `jarvis.ask` (spec §6). Without the extra AND
-# ANTHROPIC_API_KEY the tool returns a structured "brain unavailable" error.
-brain = ["anthropic>=1.0"]
+# No `brain` extra: `jarvis.ask` talks to local Ollama over stdlib urllib, and the
+# paid Anthropic provider (and its `anthropic` dependency) was removed 2026-09-27.
 # `contacts.resolve` needs the `acne` package, which is NOT on any index
 # (`uv pip install acne` resolves nothing, checked 2026-09-05). Install it as a
 # sibling checkout: `pip install -e ~/workspace/acne` — jarvisd also looks for

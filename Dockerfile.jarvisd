@@ -43,7 +43,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 # sqlite3 CLI (~1.5 MB) so the documented backup line works verbatim inside the container:
 #   sqlite3 /data/jarvis.db ".backup /data/backup/jarvis-$(date +%F).db"
-# ca-certificates for the optional Anthropic brain and outbound MCP.
+# ca-certificates for outbound MCP and HTTPS fetches (the brain is local Ollama only).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         sqlite3 ca-certificates git \
     && rm -rf /var/lib/apt/lists/*
@@ -69,8 +69,9 @@ COPY packages/ava-open-harness/pyproject.toml   packages/ava-open-harness/pyproj
 COPY packages/personal-graphify/pyproject.toml  packages/personal-graphify/pyproject.toml
 COPY packages/dottie-loop/pyproject.toml       packages/dottie-loop/pyproject.toml
 
-# Extras for the jarvisd package. Spec §6: the Anthropic brain is opt-in via
-# `--build-arg JARVISD_SYNC_ARGS="--extra brain"`; the canonical image is local-only.
+# Extra `uv sync` args for the jarvisd package; empty in the canonical image. There is
+# no `brain` extra any more: the paid Anthropic brain was removed 2026-09-27 and
+# `jarvis.ask` talks to local Ollama over stdlib urllib (spec §6).
 ARG JARVISD_SYNC_ARGS=""
 RUN --mount=type=cache,target=/tmp/uv-cache \
     uv sync --frozen --no-dev --no-install-workspace --all-packages ${JARVISD_SYNC_ARGS}

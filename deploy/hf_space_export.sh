@@ -40,9 +40,13 @@ app_port: 8790
 pinned: false
 ---
 
-jarvisd -- the Jarvis daemon (MCP + JSON API). Set secrets JARVIS_BEARER and, optionally,
-ANTHROPIC_API_KEY in the Space settings; set variable JARVIS_PUBLIC_HOST to this Space's
-\`<owner>-<space>.hf.space\` hostname. State under /data is ephemeral on free CPU basic.
+jarvisd -- the Jarvis daemon (MCP + JSON API). Set secret JARVIS_BEARER in the Space
+settings; set variable JARVIS_PUBLIC_HOST to this Space's \`<owner>-<space>.hf.space\`
+hostname. State under /data is ephemeral on free CPU basic.
+
+The jarvis.ask brain is local models only (Ollama); there is no paid-API brain. A Space
+runs no Ollama, so jarvis.ask answers "brain unavailable" there unless variable
+OLLAMA_HOST points at an Ollama the Space can reach. Every other tool works without it.
 README
 
 echo "hf_space_export.sh: wrote $DEST"

@@ -66,8 +66,9 @@ def agent_from_context(ctx: Context | None, explicit: str = "") -> str:
 def brain_status(config: Config) -> dict[str, Any]:
     """Which brain provider `jarvis.ask` would use, its model, and if it cannot answer, why.
 
-    Provider selection is `JARVIS_BRAIN` (auto | anthropic | ollama | off, spec §6);
-    the answer is never fabricated: `available` is False with a `reason` otherwise.
+    Provider selection is `JARVIS_BRAIN` (auto | ollama | off, spec §6; local models
+    only); the answer is never fabricated: `available` is False with a `reason`
+    otherwise. `config` is kept for the call sites; the brain reads its own env.
     """
     try:
         from jarvisd import brain
@@ -77,11 +78,8 @@ def brain_status(config: Config) -> dict[str, Any]:
             "reason": f"jarvisd.brain import failed: {e}",
             "provider": None,
             "model": None,
-            "effort": config.effort,
         }
-    out = brain.status()
-    out["effort"] = config.effort
-    return out
+    return brain.status()
 
 
 def transport_security(config: Config) -> TransportSecuritySettings | None:
@@ -451,7 +449,7 @@ class Jarvis:
         return {"ok": True, "graph": str(path), "query": query, "results": _jsonable(results)}
 
     def ask(self, agent: str, question: str, repo: str | None = None) -> dict[str, Any]:
-        """Optional brain (spec §6): Ollama on the home box or Anthropic, per `JARVIS_BRAIN`.
+        """Optional brain (spec §6): local Ollama on the home box, per `JARVIS_BRAIN`.
 
         Structured error when no provider can serve; never a fabricated answer.
         """
@@ -468,8 +466,8 @@ class Jarvis:
                 msg = f"brain unavailable: {msg}"
             return _err(
                 msg,
-                "JARVIS_BRAIN=ollama with Ollama on OLLAMA_HOST ($0), or export ANTHROPIC_API_KEY=... "
-                "(pip install 'jarvisd[brain]')",
+                "JARVIS_BRAIN=ollama with Ollama on OLLAMA_HOST ($0, local models only; "
+                "OLLAMA_MODEL defaults to qwen3:8b)",
             )
         if not isinstance(result, dict):
             return _err("brain unavailable: non-dict result from jarvisd.brain.ask")
@@ -569,7 +567,7 @@ def register_tools(mcp: FastMCP, jarvis: Jarvis) -> int:
     def graph_query(query: str, graph_path: str | None = None, limit: int = 20) -> str:
         return _dump(jarvis.graph_query(query, graph_path, limit))
 
-    @mcp.tool(name="jarvis.ask", description="Ask the optional brain (JARVIS_BRAIN: auto|anthropic|ollama|off; default auto = Anthropic if ANTHROPIC_API_KEY is set, else the home-box Ollama at OLLAMA_HOST). Returns a structured 'brain unavailable' error when no provider can serve.")
+    @mcp.tool(name="jarvis.ask", description="Ask the optional brain (JARVIS_BRAIN: auto|ollama|off; default auto = the home-box Ollama at OLLAMA_HOST, local models only). Returns a structured 'brain unavailable' error when no provider can serve.")
     def jarvis_ask(question: str, repo: str | None = None, agent: str = "", ctx: Context = None) -> str:  # type: ignore[assignment]
         return _dump(jarvis.ask(agent_from_context(ctx, agent), question, repo))
 

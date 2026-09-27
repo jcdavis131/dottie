@@ -7,7 +7,7 @@ set -e
 # === config ===
 COMPOSE_FILE="docker-compose.yml"
 OLLAMA_HOST_DEFAULT="http://host.docker.internal:11434"
-OLLAMA_MODEL_DEFAULT="qwen3:32b"
+OLLAMA_MODEL_DEFAULT="qwen3:8b"
 PRESET_DEFAULT="mini"
 
 # Colors for UX
@@ -35,7 +35,7 @@ docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 nvidia-smi || {
 echo ">> Checking host Ollama..."
 if ! curl -s http://localhost:11434/api/tags > /dev/null; then
   echo -e "${YELLOW}Ollama not reachable at localhost:11434 — start 'ollama serve &' on host${NC}"
-  echo "Pull SOTA free judges: ollama pull qwen3:32b; ollama pull deepseek-r1:32b; ollama pull llama3.3:70b"
+  echo "Pull the local judge: ollama pull qwen3:8b (larger local judges only if VRAM allows: qwen3:32b, deepseek-r1:32b)"
 else
   echo "Ollama host OK"
   curl -s http://localhost:11434/api/tags | head -c 300 || true
@@ -64,7 +64,7 @@ if [ $# -eq 0 ]; then
 docker compose exec ava-train bash
 # inside:
 export OLLAMA_HOST=http://host.docker.internal:11434
-export OLLAMA_MODEL=qwen3:32b
+export OLLAMA_MODEL=qwen3:8b
 
 # tokenizer + data
 python -c "from streaming_data import build_tokenizer; build_tokenizer('data/mini/tokenizer/ava_bpe_32k.json')"
@@ -82,7 +82,7 @@ cat checkpoints/mini/metrics.jsonl | tail -20
 
 # eval free SOTA
 python eval_branch_harness.py --branch all --mode mock
-OLLAMA_HOST=http://host.docker.internal:11434 OLLAMA_MODEL=qwen3:32b python eval_frontier_rubric.py --domain all --judge ollama --mode mock
+OLLAMA_HOST=http://host.docker.internal:11434 OLLAMA_MODEL=qwen3:8b python eval_frontier_rubric.py --domain all --judge ollama --mode mock
 
 # base1b M1 2B — honest arithmetic: 1.17B = 65.5M embed + 23.1M*48 + slots, FLOPs/token 6P*3 ≈1.8e10, VRAM 9-10GB fits 12GB with 8bit adam + checkpointing, 1.0-1.5k tok/s ≈100M/day
 torchrun --nproc_per_node=1 train_1b_deepspeed.py --preset base1b --deepspeed deepspeed_zero3_bf16.json --tokens_total 2000000000 --compile

@@ -231,12 +231,9 @@ services:
       - WANDB_MODE=offline
       - PYTHONUNBUFFERED=1
       - OLLAMA_HOST=http://host.docker.internal:11434
-      - OLLAMA_MODEL=qwen3:32b
-      - GLM_MODEL=glm-5.2[1m]
+      - OLLAMA_MODEL=qwen3:8b
       - HF_HUB_OFFLINE=0
       - TOKENIZERS_PARALLELISM=false
-      - ZAI_API_KEY=${ZAI_API_KEY:-}
-      - META_API_KEY=${META_API_KEY:-}
     volumes:
       - .:/workspace
       - ./checkpoints:/workspace/checkpoints

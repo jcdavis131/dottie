@@ -1,9 +1,10 @@
 """Regression tests for the audit fixes (honesty architecture).
 
 Covers:
-- fix 7: eval_frontier_rubric judges — no additive bonuses; keys absent =>
-  PLAIN mock score labeled judge="mock"; real path constructs a proper
-  authenticated POST (stubbed HTTP layer);
+- fix 7: eval_frontier_rubric judges — no additive bonuses; judge unavailable
+  => PLAIN mock score labeled judge="mock". The paid API judges (Meta Muse,
+  GLM-5.2) and their request-construction tests were removed 2026-09-27 (no
+  paid APIs); a guard test keeps them out and pins the qwen3:8b default;
 - fix 8: convert_to_hf real conversion round-trips the CPU-pilot checkpoint
   bit-faithfully (skipped if the pilot ckpt is absent);
 - fixes 9/10: dataset heuristics are deterministic (same input -> same score,
@@ -46,22 +47,7 @@ def _rubric():
 _OUT = "Analysis: cash $160M runway per 10-Q p.12 with calculation and risk disclosed in detail here"
 
 
-def _clear_judge_keys(monkeypatch):
-    for k in (
-        "META_API_KEY",
-        "META_MUSE_API_KEY",
-        "ZAI_API_KEY",
-        "GLM_API_KEY",
-        "ANTHROPIC_API_KEY",
-        "META_MUSE_API_URL",
-        "ZAI_OPENAI_URL",
-        "GLM_MODEL",
-    ):
-        monkeypatch.delenv(k, raising=False)
-
-
-def test_judges_without_keys_return_plain_mock_score_labeled_mock(monkeypatch):
-    _clear_judge_keys(monkeypatch)
+def test_judges_without_backend_return_plain_mock_score_labeled_mock(monkeypatch):
     monkeypatch.setenv(
         "OLLAMA_HOST", "http://127.0.0.1:9"
     )  # nothing listens: instant refusal
@@ -70,7 +56,7 @@ def test_judges_without_keys_return_plain_mock_score_labeled_mock(monkeypatch):
     r = _rubric()
     base = fr.CriteriaJudge().score(r, _OUT, "gt")
 
-    for cls in (fr.MetaMuseJudge, fr.Glm52Judge, fr.LocalHFJudge, fr.OllamaJudge):
+    for cls in (fr.LocalHFJudge, fr.OllamaJudge):
         j = cls()
         got = j.score(r, _OUT, "gt")
         assert got == base, (
@@ -81,55 +67,22 @@ def test_judges_without_keys_return_plain_mock_score_labeled_mock(monkeypatch):
         )
 
 
-class _FakeResp:
-    def raise_for_status(self):
-        pass
-
-    def json(self):
-        return {"choices": [{"message": {"content": '{"score": 0.7, "reason": "ok"}'}}]}
-
-
-def _stub_post(monkeypatch, calls):
-    import requests
-
-    def fake_post(url, json=None, headers=None, timeout=None):
-        calls.update(url=url, json=json, headers=headers, timeout=timeout)
-        return _FakeResp()
-
-    monkeypatch.setattr(requests, "post", fake_post)
-
-
-def test_meta_muse_judge_real_request_construction(monkeypatch):
-    _clear_judge_keys(monkeypatch)
-    monkeypatch.setenv("META_API_KEY", "test-key")
-    calls = {}
-    _stub_post(monkeypatch, calls)
+def test_paid_api_judges_stay_removed_and_default_is_local_qwen3_8b(monkeypatch):
+    monkeypatch.delenv("OLLAMA_MODEL", raising=False)
+    monkeypatch.setenv(
+        "OLLAMA_HOST", "http://127.0.0.1:9"
+    )  # nothing listens: instant refusal
     import eval_frontier_rubric as fr
 
-    j = fr.MetaMuseJudge()
-    score = j.score(_rubric(), _OUT, "gt")
-    assert score == 0.7
-    assert j.label == "meta"
-    assert calls["url"] == "https://api.meta.ai/v1/chat/completions"
-    assert calls["headers"]["Authorization"] == "Bearer test-key"
-    assert calls["json"]["model"] == "muse-spark-1.1"
-    assert any("Criterion" in m["content"] for m in calls["json"]["messages"])
-
-
-def test_glm_judge_real_request_construction(monkeypatch):
-    _clear_judge_keys(monkeypatch)
-    monkeypatch.setenv("ZAI_API_KEY", "zai-test-key")
-    calls = {}
-    _stub_post(monkeypatch, calls)
-    import eval_frontier_rubric as fr
-
-    j = fr.Glm52Judge()
-    score = j.score(_rubric(), _OUT, "gt")
-    assert score == 0.7
-    assert j.label == "glm-5.2"
-    assert calls["url"] == "https://api.z.ai/api/paas/v4/chat/completions"
-    assert calls["headers"]["Authorization"] == "Bearer zai-test-key"
-    assert calls["json"]["model"] == "glm-5.2"
+    for gone in ("MetaMuseJudge", "Glm52Judge", "_post_openai_chat"):
+        assert not hasattr(fr, gone), f"{gone} is a paid-API path and must stay removed"
+    # the old paid selectors now fall through to the plain mock judge, never an API
+    for name in ("meta", "glm", "glm52", "glm-5.2", "zai"):
+        assert type(fr.get_judge(name)) is fr.CriteriaJudge
+    assert fr.OllamaJudge().model == "qwen3:8b"
+    src = (_REPO / "eval_frontier_rubric.py").read_text(encoding="utf-8")
+    for host in ("api.meta.ai", "api.z.ai", "ANTHROPIC_API_KEY"):
+        assert host not in src, f"paid endpoint/key {host!r} must stay out of the judge"
 
 
 def test_no_additive_bonus_literals_in_judge_source():

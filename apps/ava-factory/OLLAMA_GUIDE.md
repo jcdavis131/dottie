@@ -22,7 +22,8 @@ ollama serve &
 # or: OLLAMA_HOST=0.0.0.0 ollama serve
 
 # 3. Pull recommended models (pick one, 8-32GB)
-ollama pull qwen3:32b              # default — balanced coding + general, 20GB Q4 (best for 24GB VRAM)
+ollama pull qwen3:8b               # default — the one model pulled on the home box (12GB VRAM / 16GB RAM)
+ollama pull qwen3:32b              # balanced coding + general, 20GB Q4 (needs 24GB VRAM)
 ollama pull qwen2.5-coder:32b      # best for CODE tasks
 ollama pull deepseek-r1:32b        # best reasoning (CoT) — great for Financial/Numerical Accuracy rubrics
 ollama pull llama3.3:70b           # best generalist if you have 40GB+ (4090/2x3090)
@@ -40,11 +41,11 @@ cd ~/workspace/ava-agi-factory-v6-4
 # dottie monorepo layout equivalent: cd <dottie>/apps/ava-factory
 
 # finance only — fast smoke test
-OLLAMA_HOST=http://localhost:11434 OLLAMA_MODEL=qwen3:32b \
+OLLAMA_HOST=http://localhost:11434 OLLAMA_MODEL=qwen3:8b \
   python eval_frontier_rubric.py --domain finance --judge ollama --mode mock
 
 # all 7 domains — full demo
-OLLAMA_MODEL=qwen3:32b python eval_frontier_rubric.py --domain all --judge ollama --mode mock
+OLLAMA_MODEL=qwen3:8b python eval_frontier_rubric.py --domain all --judge ollama --mode mock
 # or: deepseek-r1:32b for strictest judge
 OLLAMA_MODEL=deepseek-r1:32b python eval_frontier_rubric.py --domain all --judge ollama --mode mock
 ```
@@ -52,7 +53,7 @@ OLLAMA_MODEL=deepseek-r1:32b python eval_frontier_rubric.py --domain all --judge
 ## Env Vars
 
 - `OLLAMA_HOST` default `http://localhost:11434`
-- `OLLAMA_MODEL` default `qwen3:32b` — also accepts `llama3.3:70b`, `deepseek-r1:32b`, `qwen2.5-coder:32b`, `glm4:9b-chat`, `qwen3:8b`
+- `OLLAMA_MODEL` default `qwen3:8b` — also accepts `qwen3:32b`, `llama3.3:70b`, `deepseek-r1:32b`, `qwen2.5-coder:32b`, `glm4:9b-chat` if pulled
 
 ## How it works (code)
 
@@ -67,9 +68,9 @@ OLLAMA_MODEL=deepseek-r1:32b python eval_frontier_rubric.py --domain all --judge
 | Judge | Tokens per eval (7 tasks x6 rubrics) | Cost | Offline? |
 |---|---|---|---|
 | mock | ~0 | $0 | yes |
-| **ollama qwen3:32b** | ~100k in local | **$0** | **yes — SOTA free** |
-| glm 5.2 Z.ai API | same | $1.40/M in $4.40/M out, $0.26 cached, or $18/mo Lite 400 prompts/wk | no |
-| Muse Spark 1.1 | same | $1.25/$4.25, $20 free trial | no |
+| **ollama qwen3:8b** | ~100k in local | **$0** | **yes** |
+
+The paid API judges (Z.ai GLM-5.2, Meta Muse Spark 1.1) were removed 2026-09-27: local models only.
 
 For 220 real Frontier tasks, ollama saves ~$30-120 vs API judges.
 

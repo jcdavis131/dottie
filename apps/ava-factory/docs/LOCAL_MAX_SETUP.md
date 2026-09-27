@@ -54,7 +54,7 @@ curl http://localhost:11434/api/tags | jq
 
 - **GLM-5.2 753B reality check:**
   - MIT open weights, 1M context, but even 2-bit quantized = 241–280GB RAM+VRAM (per Unsloth docs). Cannot fit Ollama on consumer hardware.
-  - Cheap paths: Z.ai API $1.40/M in $4.40/M out cached $0.26/M, or Coding Plan Lite $18/mo 400 prompts/week ~$12.60 annual. Use `Glm52Judge` if you buy that, else use local Ollama free.
+  - No paid API path: the `Glm52Judge` (Z.ai API) and Meta Muse judges were removed 2026-09-27. Use the local Ollama judge (`OLLAMA_MODEL` default `qwen3:8b`).
 
 ### Repo clone
 ```bash
@@ -123,8 +123,7 @@ services:
       - WANDB_MODE=offline
       - PYTHONUNBUFFERED=1
       - OLLAMA_HOST=http://host.docker.internal:11434
-      - OLLAMA_MODEL=qwen3:32b
-      - GLM_MODEL=glm-5.2[1m]
+      - OLLAMA_MODEL=qwen3:8b
       - HF_HUB_OFFLINE=0
       - TOKENIZERS_PARALLELISM=false
     volumes:
@@ -361,15 +360,7 @@ OLLAMA_MODEL=qwen3:32b python eval_branch_harness.py --branch chat --mode real -
 | llama3.3:70b | 40GB | instruction following + chat safety |
 | glm4:9b-chat | 8GB | GLM family small that fits |
 
-GLM-5.2 753B (40B active) MIT but 241-280GB 2-bit -> not Ollama feasible; use `Glm52Judge` with `ZAI_API_KEY` if you buy Lite $18/mo, else stay ollama free.
-
-```bash
-# optional GLM-5.2 API path
-export ZAI_API_KEY=personal_from_z.ai
-export ZAI_BASE_URL=https://api.z.ai/api/anthropic
-export GLM_MODEL=glm-5.2[1m]
-python eval_frontier_rubric.py --domain all --judge glm --mode mock
-```
+GLM-5.2 753B (40B active) MIT but 241-280GB 2-bit -> not Ollama feasible. There is no paid API judge path (removed 2026-09-27); the judge default is the local `qwen3:8b`.
 
 ---
 
@@ -407,10 +398,8 @@ python eval_branch_harness.py --branch chat --ckpt checkpoints/branch_chat_step8
 
 # frontier criteria eval (11 cats: Financial Accuracy, Transparency & Auditability, Risk & Ethical Disclosure, etc)
 python eval_frontier_rubric.py --domain finance --judge mock --mode mock
-OLLAMA_HOST=http://host.docker.internal:11434 OLLAMA_MODEL=qwen3:32b python eval_frontier_rubric.py --domain all --judge ollama --mode mock
-# optional paid judges:
-# META_API_KEY=... python eval_frontier_rubric.py --domain all --judge meta --mode mock  # Muse Spark $1.25/$4.25
-# ZAI_API_KEY=... python eval_frontier_rubric.py --domain all --judge glm --mode mock   # GLM-5.2 $1.40/$4.40 cached $0.26
+OLLAMA_HOST=http://host.docker.internal:11434 OLLAMA_MODEL=qwen3:8b python eval_frontier_rubric.py --domain all --judge ollama --mode mock
+# local models only: the paid meta/glm judges were removed 2026-09-27
 
 # safety blackmail 0/180 — early warning 4.5 tok base →5.2 tok chat AUC 0.91→0.94 per blueprint
 python -m evals.run_harness  # real harness (root eval_harness.py stub was deleted; needle eval lives in evals/needle.py)
@@ -515,7 +504,7 @@ docker exec -it ava-agi-factory-ava-train-1 bash -c "
 
 ---
 
-**Disclaimer repeated:** This setup uses only public PyTorch + Docker + Ollama + open MIT weights. No employer systems, no internal models. Build args are free-tier public. If you use Z.ai GLM-5.2 or Meta Muse Spark API, use your personal account key, public endpoint only, and keep offline mock fallback for CI.
+**Disclaimer repeated:** This setup uses only public PyTorch + Docker + Ollama + open MIT weights. No employer systems, no internal models. Build args are free-tier public. No paid API judges: the Z.ai GLM-5.2 and Meta Muse Spark paths were removed 2026-09-27; the offline mock fallback stays for CI.
 
 End of max setup.
 

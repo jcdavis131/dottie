@@ -42,15 +42,27 @@ def test_harness_run_records_timeline(jarvis: Jarvis) -> None:
     assert (refused["ok"] is False and "mcp_namespace" in refused["error"]) or "namespace" in refused["error"]
 
 
-def test_jarvis_ask_without_key(jarvis: Jarvis, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+def test_jarvis_ask_without_provider(jarvis: Jarvis, monkeypatch: pytest.MonkeyPatch) -> None:
+    """auto with no reachable Ollama: a structured 'brain unavailable', never an answer."""
+    import urllib.error
+    import urllib.request
+
+    def refuse(req: object, timeout: float | None = None) -> None:
+        raise urllib.error.URLError(ConnectionRefusedError(111, "Connection refused"))
+
+    monkeypatch.setenv("JARVIS_BRAIN", "auto")
+    monkeypatch.setenv("OLLAMA_HOST", "http://ollama.test:11434")
+    monkeypatch.setattr(urllib.request, "urlopen", refuse)
     out = jarvis.ask("claude", "what is open?", repo="dottie")
     assert out["ok"] is False and out["error"].startswith("brain unavailable")
-    assert "ANTHROPIC_API_KEY" in out["error"]
+    assert "ollama unreachable" in out["error"]
+    assert "ANTHROPIC" not in out["error"] and "ANTHROPIC" not in out.get("example", "")
+    assert "qwen3:8b" in out["example"]
     status = jarvis.status()["brain"]
     assert status["available"] is False
-    assert status["provider"] == "anthropic" and status["model"] == "claude-opus-5"
-    assert "ANTHROPIC_API_KEY" in status["reason"]
+    assert status["provider"] == "none" and status["model"] is None
+    assert "effort" not in status
+    assert "ollama unreachable" in status["reason"]
 
 
 def test_optional_integrations_degrade(jarvis: Jarvis, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

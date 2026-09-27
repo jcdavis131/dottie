@@ -137,7 +137,11 @@ check(
     "source layer installs every workspace package",
     any("--all-packages" in line and "--no-install-workspace" not in line for line in sync_commands),
 )
-check("Anthropic brain image extra is opt-in", 'ARG JARVISD_SYNC_ARGS=""' in dockerfile)
+check("image selects no optional extras by default", 'ARG JARVISD_SYNC_ARGS=""' in dockerfile)
+check(
+    "jarvisd declares no paid-API brain extra",
+    "brain" not in lock_by_name["jarvisd"].get("optional-dependencies", {}),
+)
 check("image performs no pip install", "pip install" not in dockerfile.lower())
 check("runtime command forbids uv synchronization", "UV_NO_SYNC=1" in dockerfile)
 check(

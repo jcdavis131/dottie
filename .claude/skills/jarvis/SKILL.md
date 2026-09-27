@@ -24,7 +24,7 @@ and check `docs/JARVIS_CONNECT.md` before working around it.
 | Recording or closing a goal | `jarvis.goal` / `jarvis.goals` / `jarvis.goal_done` | Goals are per repo; `goal_done` takes `result` json. |
 | Deciding how to run a goal | `harness.route(goal)` | Scout's heuristic router; records a timeline row. Use before `harness.run` for anything non-trivial. |
 | Running a goal through the harness | `harness.run(goal, mcp_namespace)` | Records run id and critic score to the timeline. |
-| Asking Jarvis itself | `jarvis.ask(question, repo)` | Only when the operator has set `ANTHROPIC_API_KEY` on the daemon. Otherwise it returns `brain unavailable`; say "brain is off" and answer from context yourself. Never present a fabricated answer as Jarvis's. |
+| Asking Jarvis itself | `jarvis.ask(question, repo)` | Only when `jarvis.status()` shows the brain available (local Ollama on the daemon's box; there is no paid-API brain). Otherwise it returns `brain unavailable`; say "brain is off" and answer from context yourself. Never present a fabricated answer as Jarvis's. |
 | Checking health | `jarvis.status()` | Version, uptime, db path, counts, brain availability. |
 
 Every tool returns JSON with `ok`; on failure, `error` and `example`. Read the
