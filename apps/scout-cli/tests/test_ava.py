@@ -18,6 +18,8 @@ something that exists" would have passed against the superseded tree.
 
 from __future__ import annotations
 
+import importlib
+import sys
 from pathlib import Path
 
 import pytest
@@ -101,3 +103,91 @@ def test_module_level_factory_constant_matches_the_resolver():
 @pytest.mark.parametrize("attr", ["FACTORY"])
 def test_factory_constant_is_a_path(attr):
     assert isinstance(getattr(ac, attr), Path)
+
+
+class _FakeAvaResp:
+    def __init__(self, status: int, payload: dict):
+        self.status_code = status
+        self._payload = payload
+
+    def json(self):
+        return self._payload
+
+
+class _FakeAvaClient:
+    """Routes a request to the first payload whose key is a substring of the URL."""
+
+    def __init__(self, routes: dict):
+        self.routes = routes
+        self.calls: list = []
+
+    def _match(self, url: str) -> _FakeAvaResp:
+        for key, (status, payload) in self.routes.items():
+            if key in url:
+                return _FakeAvaResp(status, payload)
+        return _FakeAvaResp(404, {})
+
+    def get(self, url):
+        self.calls.append(("GET", url))
+        return self._match(url)
+
+    def post(self, url, json=None):
+        self.calls.append(("POST", url, json))
+        return self._match(url)
+
+    def close(self):
+        pass
+
+
+def test_fallback_route_with_ollama_sends_the_cap(monkeypatch):
+    """_route_with_ollama's `else` branch (used only when `_HAS_CORE_LLM` is
+    False) inlines its own /api/chat POST with `_num_predict_cap_fallback()`,
+    duplicated from bigbang.core.llm.resolve_num_predict for the same reason
+    PREFERRED_MODELS is duplicated above this def in cli.py: it only runs when
+    importing that module has already failed. That never happens in this repo's
+    real environment (confirmed via `ac._HAS_CORE_LLM is True` below), so PR
+    #67 shipped this cap-forwarding fix with zero coverage on this branch — a
+    gap PR #68's review named explicitly.
+
+    Force the import failure to reach it: setting sys.modules["bigbang.core.llm"]
+    = None makes the next `from bigbang.core.llm import ...` raise ImportError
+    (the documented sys.modules sentinel, not a monkeypatch of real module
+    internals), then reload this plugin so its top-level try/except takes the
+    fallback branch and defines _num_predict_cap_fallback / the local
+    PREFERRED_MODELS. Restored in `finally` — cli.py's module-level FACTORY/
+    _AVA_CACHED_BASE globals get freshly re-initialized by the reload either
+    way, so no state leaks to the other tests in this file.
+    """
+    monkeypatch.delenv("DOTTIE_OLLAMA_NUM_PREDICT", raising=False)
+    real_llm = sys.modules.get("bigbang.core.llm")
+    sys.modules["bigbang.core.llm"] = None
+    try:
+        importlib.reload(ac)
+        assert ac._HAS_CORE_LLM is False
+        client = _FakeAvaClient({
+            "/api/tags": (200, {"models": [{"name": "qwen3:8b"}]}),
+            "/api/chat": (200, {
+                "message": {
+                    "content": '{"tool": "tools", "command": "bb tools list", '
+                               '"confidence": 0.9, "reason": "x"}'
+                }
+            }),
+        })
+        monkeypatch.setattr(ac, "_httpx_client_local", lambda timeout=2.0: client)
+
+        result = ac._route_with_ollama("list the tools")
+        assert result["picked_tool"] == "tools"
+        posts = [c for c in client.calls if c[0] == "POST"]
+        assert posts[-1][2]["options"]["num_predict"] == 2048  # default cap
+
+        monkeypatch.setenv("DOTTIE_OLLAMA_NUM_PREDICT", "64")
+        ac._route_with_ollama("list the tools")
+        posts = [c for c in client.calls if c[0] == "POST"]
+        assert posts[-1][2]["options"]["num_predict"] == 64  # env override
+    finally:
+        if real_llm is not None:
+            sys.modules["bigbang.core.llm"] = real_llm
+        else:
+            sys.modules.pop("bigbang.core.llm", None)
+        importlib.reload(ac)
+        assert ac._HAS_CORE_LLM is True

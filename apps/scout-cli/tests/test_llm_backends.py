@@ -148,7 +148,16 @@ def test_ollama_chat_with_metrics_honors_explicit_max_tokens_first(monkeypatch):
 
 def test_ollama_chat_with_metrics_a_garbage_cap_fails_closed_not_uncapped(monkeypatch):
     """A typo in DOTTIE_OLLAMA_NUM_PREDICT must refuse the call, not silently run
-    without a cap — that would defeat the exact protection this exists to add."""
+    without a cap — that would defeat the exact protection this exists to add.
+
+    Tightened by PR #68's review (finding: ollama_chat swallowed this into a
+    generic None, indistinguishable from a down server): the error message must
+    now NAME the bad env var, not just fail closed. This also pins a fix to
+    _ollama_generate, the path chat_with_metrics's ollama branch actually calls
+    — its own `cap = resolve_num_predict(...)` used to sit inside the SAME broad
+    `except Exception: return None` as ollama_chat's did, so chat_with_metrics
+    reported the opaque 'backend returned no completion' here too, not the
+    ValueError text the review's evidence assumed it already surfaced."""
     monkeypatch.setenv("DOTTIE_OLLAMA_NUM_PREDICT", "lots")
     client = _patch(monkeypatch, {
         "/api/chat": (200, {"message": {"content": "hi"}, "eval_count": 1}),
@@ -156,6 +165,19 @@ def test_ollama_chat_with_metrics_a_garbage_cap_fails_closed_not_uncapped(monkey
     res = llm.chat_with_metrics("ollama", "qwen3:8b", [{"role": "user", "content": "hi"}],
                                 base="http://ollama.test:11434")
     assert res["ok"] is False and res["content"] is None
+    assert client.calls == []  # never reached the network with an unresolved cap
+    assert "DOTTIE_OLLAMA_NUM_PREDICT" in res["error"], res["error"]
+
+
+def test_ollama_chat_a_garbage_cap_raises_not_silently_none(monkeypatch):
+    """ollama_chat() (the ava plugin's real, non-fallback path) must not turn a
+    config typo into the same generic None a down server or network error
+    returns — resolve_num_predict's ValueError has to reach the caller, exactly
+    as it already does for _ollama_generate/chat_with_metrics above."""
+    monkeypatch.setenv("DOTTIE_OLLAMA_NUM_PREDICT", "lots")
+    client = _patch(monkeypatch, {"/api/chat": (200, {"message": {"content": "hi"}})})
+    with pytest.raises(ValueError, match="DOTTIE_OLLAMA_NUM_PREDICT"):
+        llm.ollama_chat("qwen3:8b", [{"role": "user", "content": "hi"}], base="http://127.0.0.1:11434")
     assert client.calls == []  # never reached the network with an unresolved cap
 
 

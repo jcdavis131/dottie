@@ -323,6 +323,14 @@ def ollama_chat(
     except Exception:
         pass
 
+    # Resolved BEFORE the network try/except below (and before the client even
+    # opens): a malformed DOTTIE_OLLAMA_NUM_PREDICT must raise ValueError to the
+    # caller, not disappear into the same generic None a down server or network
+    # error returns there — that except is for httpx/network failures, and
+    # swallowing a config error into it would defeat the cap resolve_num_predict
+    # exists to enforce (PR #68 review finding).
+    cap = resolve_num_predict(num_predict)
+
     client = _httpx_client(timeout=timeout)
     if client is None:
         return None
@@ -334,7 +342,6 @@ def ollama_chat(
         }
         if json_mode:
             payload["format"] = "json"
-        cap = resolve_num_predict(num_predict)
         if cap is not None:
             payload["options"] = {"num_predict": cap}
         r = client.post(f"{base}/api/chat", json=payload)
@@ -514,7 +521,15 @@ def _ollama_generate(
     value here (chat_with_metrics forwards its own ``max_tokens``) wins over
     ``DOTTIE_OLLAMA_NUM_PREDICT`` wins over the 2048 default; 0 or negative sends
     no cap. Without this every call was unbounded (see DEFAULT_OLLAMA_NUM_PREDICT).
+
+    Resolved BEFORE the network try/except below, same reasoning as
+    ollama_chat(): a malformed env value must raise ValueError to the caller
+    (chat_with_metrics's own except turns it into an actionable meta['error']),
+    not vanish into the generic None a down server returns here too (PR #68
+    review finding — this function had the identical swallow until then).
     """
+    cap = resolve_num_predict(num_predict)
+
     client = _httpx_client(timeout=timeout)
     if client is None:
         return None
@@ -522,7 +537,6 @@ def _ollama_generate(
         payload: dict[str, Any] = {"model": model, "messages": messages, "stream": False}
         if json_mode:
             payload["format"] = "json"
-        cap = resolve_num_predict(num_predict)
         if cap is not None:
             payload["options"] = {"num_predict": cap}
         r = client.post(f"{base.rstrip('/')}/api/chat", json=payload)

@@ -659,6 +659,10 @@ def complete(
         payload: dict[str, Any] = {"model": model, "prompt": prompt, "stream": False}
         if system:
             payload["system"] = system
+        # Pure passthrough, deliberately: complete() applies no default generation
+        # cap of its own (unlike bigbang.core.llm's callers). run_cmd (the only
+        # real caller today) computes `options` via its own _options(), which DOES
+        # cap; a future direct caller that skips _options() inherits no cap here.
         if options:
             payload["options"] = dict(options)
         t0 = clock()
