@@ -132,7 +132,7 @@ scout router train --pack ~/packs/router-001          # dry-run: validates, torc
 scout router train --pack ~/packs/router-001 --go --out ~/ckpt/router-001   # GPU host
 scout router eval  --pack ~/packs/router-001 --checkpoint ~/ckpt/router-001 # writes eval_summary.json
 scout router promote ~/ckpt/router-001 --i-have-reviewed --by <you>        # human stamp
-python apps/jev-v0/serve_decide.py --checkpoint ~/ckpt/router-001 --port 8770  # serve it as the sidecar
+python apps/jev-v0/serve_decide.py --checkpoint ~/ckpt/router-001   # serve it on :8771 for DOTTIE_OS_URL
 ```
 
 - **pack** rebuilds each state with `dottie_loop.backends.system_one_state`,
@@ -186,12 +186,18 @@ example ones produced on another host. The source is recorded in
 
 ## Ports
 
-- **dottie-os**, the local sidecar that serves System One on your machine or
-  tailnet, owns `:8770`. Point the router at it with
-  `DOTTIE_OS_URL=http://127.0.0.1:8770`.
-- The jev-v0 dev server (`apps/jev-v0/serve_decide.py`) defaults to `:8771`,
-  so both can run on one box. Without `--checkpoint` it answers
-  `mode: "untrained"`.
+- `DOTTIE_OS_URL` has no default. Unset, the `system_one` backend is off.
+- A router checkpoint is served by the jev-v0 dev server
+  (`apps/jev-v0/serve_decide.py`), which defaults to `:8771`. Point the router
+  at it with `DOTTIE_OS_URL=http://127.0.0.1:8771`. Without `--checkpoint` it
+  answers `mode: "untrained"`.
+- `:8770` on nugatron is the Grok Swarm's Laya lane, not dottie-os. Do not
+  point the router at it.
+- **dottie-os**, the calibrated-decision sidecar (source in the private repo
+  `github.com/jcdavis131/dottie-os`), runs its advisor, s55, on
+  `127.0.0.1:8772` and its pre-tool gate daemon on `127.0.0.1:8774`. s55
+  advises that gate on tool calls. It is not a router checkpoint, and the
+  router does not call it.
 
 ## Latency
 

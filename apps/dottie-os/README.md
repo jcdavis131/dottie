@@ -1,15 +1,30 @@
 # dottie-os curation mirror (UltraData curriculum factory + harvest/hop)
 
-**dottie-os** is the local sidecar that serves System One (`POST /decide`) on
-your machine or tailnet. It owns port `:8770`, and the Dottie router reaches
-it through `DOTTIE_OS_URL` (see `docs/ROUTER.md`). The sidecar itself lives on
-nugatron under `C:\Users\jcdav\workspace\dottie-os`. **This tree is not the
+**dottie-os** is the local calibrated-decision sidecar. It lives on nugatron
+under `C:\Users\jcdav\workspace\dottie-os`, and its source is backed up in the
+private repo `github.com/jcdavis131/dottie-os`. **This tree is not the
 sidecar.** It is the git mirror of the sidecar's curation side: the UltraData
 factory, harvest and hop scripts.
 
-**Out of scope for this tree:** serving on `:8770`, the LIVE gate, and any FT
-kick. The LIVE gate source exists only on the offline nugatron disk and is a
-blocked follow-up.
+What the sidecar runs on nugatron as of 2026-09-27 (its own `LIVE.md` is the
+current word):
+
+- **Advisor.** s55 (`cds-helper-bge-20260924-s55`), served by the `cds-serve`
+  container on `127.0.0.1:8772` (`POST /decide`, `GET /health`). Stamped
+  CHAMPION. Its `/health` says `live_gate_eligible: false`.
+- **Pre-tool gate.** `sidecar/serve/gate_daemon.py` on `127.0.0.1:8774`, plus a
+  user-level Claude Code PreToolUse hook (`hooks/pretool_gate.py`). It runs in
+  shadow: every tool call is scored and recorded, and Claude Code's own
+  permission flow runs unchanged. It stays in shadow until s55's `/health`
+  says `live_gate_eligible: true`. The gate source is in the private repo.
+- **`:8770` is not dottie-os.** It is the Grok Swarm's Laya lane (the
+  `swarm-jev-ava` container). Dottie never calls it.
+
+The Dottie router's System One backend (`DOTTIE_OS_URL`, see
+`docs/ROUTER.md`) is off by default, and neither the advisor nor the gate is
+wired to it.
+
+**Out of scope for this tree:** the advisor, the gate, and any FT kick.
 
 ## Schema: strict System One records + provenance sidecar
 
