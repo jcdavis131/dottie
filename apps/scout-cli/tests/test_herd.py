@@ -112,6 +112,42 @@ def test_herd_create_start_wait_read_close():
     assert cl.returncode == 0, cl.stderr + cl.stdout
 
 
+def test_herd_close_kill_actually_stops_a_running_process():
+    """End-to-end, on whichever real platform runs this suite.
+
+    Before this fix, `herd close --kill` against a still-running session
+    crashed with AttributeError on Windows: os.killpg is not a module
+    attribute there and signal.SIGKILL is not defined, so `close --kill`
+    against a live session could not complete at all (reachable only since
+    PR #67 made `alive()` correct on Windows). This does not fake the OS —
+    it starts a real long-running child, kills it through the CLI, and checks
+    the pid is actually gone, not merely that the ledger row was removed.
+    """
+    label = f"kill{int(time.time()) % 100000}"
+    c = _run(["--json", "herd", "create", "--label", label, "--cwd", str(ROOT)])
+    assert c.returncode == 0, c.stderr + c.stdout
+
+    s = _run(
+        ["--json", "herd", "start", label, "--cmd", "python3 -c \"import time; time.sleep(60)\""]
+    )
+    assert s.returncode == 0, s.stderr + s.stdout
+    pid = json.loads(s.stdout)["started"]["pid"]
+
+    w = _run(["--json", "herd", "wait", label, "--status", "working", "--timeout", "5"])
+    assert json.loads(w.stdout)["matched"] is True, w.stdout + w.stderr
+
+    k = _run(["--json", "herd", "close", label, "--kill", "--force"], timeout=15)
+    assert k.returncode == 0, k.stderr + k.stdout  # a crash here is the bug
+    assert json.loads(k.stdout)["ok"] is True
+
+    from bigbang.plugins.herd import store as _store
+
+    deadline = time.time() + 10
+    while time.time() < deadline and _store._pid_alive(pid):
+        time.sleep(0.2)
+    assert not _store._pid_alive(pid), f"pid {pid} is still alive after --kill"
+
+
 def test_a_failing_command_is_not_reported_as_done(tmp_path):
     """THE BUG: a command that exited 3 reported status 'done'.
 
@@ -441,3 +477,186 @@ class TestPidAlive:
             child.kill()
             child.wait(timeout=10)
         assert store._pid_alive(child.pid) is False
+
+
+class TestCloseSessionKill:
+    """`herd close --kill`'s kill path (close_session, `--kill`).
+
+    Before this, the POSIX-only body used `os.killpg`/`signal.SIGKILL` directly
+    with no platform branch. Neither exists on Windows — `os.killpg` is not a
+    module attribute there at all, and `signal.SIGKILL` is not defined — so the
+    very first line raised AttributeError, caught by nothing (only
+    ProcessLookupError was caught). PR #67 made `_pid_alive` correct on
+    Windows, which made this path reachable there for the first time, so the
+    crash became real rather than latent.
+
+    Both branches are tested with fakes so each runs on BOTH platforms — the
+    same reasoning as TestPidAlive above: CI is ubuntu-only, so a win32 test
+    gated on `sys.platform` would pass there by checking nothing.
+    """
+
+    @pytest.fixture()
+    def store(self):
+        from bigbang.plugins.herd import store
+
+        return store
+
+    # --- POSIX: byte-identical to the pre-Windows-support behavior ----------
+    #
+    # os.killpg does not exist on Windows AT ALL (not even for SIGTERM), and
+    # signal.SIGKILL is not defined there either — both patched with
+    # raising=False so these tests exercise the POSIX branch's logic on
+    # whichever platform runs the suite (this dev box is Windows; CI is
+    # ubuntu, where both attributes are real and the patch just overwrites
+    # them for the test, same as always).
+
+    @staticmethod
+    def _fake_sigkill(monkeypatch, store):
+        """A stand-in int for signal.SIGKILL, which does not exist on Windows."""
+        monkeypatch.setattr(store.signal, "SIGKILL", -9, raising=False)
+        return -9
+
+    def test_posix_term_then_kill_when_still_alive(self, store, monkeypatch):
+        sigkill = self._fake_sigkill(monkeypatch, store)
+        calls = []
+        monkeypatch.setattr(store.os, "killpg", lambda pid, sig: calls.append(sig), raising=False)
+        monkeypatch.setattr(store.time, "sleep", lambda s: None)
+        monkeypatch.setattr(store, "_pid_alive", lambda pid: True)  # still running after TERM
+        store._kill_session_posix(4242)
+        assert calls == [store.signal.SIGTERM, sigkill]
+
+    def test_posix_no_kill_needed_once_term_worked(self, store, monkeypatch):
+        calls = []
+        monkeypatch.setattr(store.os, "killpg", lambda pid, sig: calls.append(sig), raising=False)
+        monkeypatch.setattr(store.time, "sleep", lambda s: None)
+        monkeypatch.setattr(store, "_pid_alive", lambda pid: False)  # TERM was enough
+        store._kill_session_posix(4242)
+        assert calls == [store.signal.SIGTERM]  # no SIGKILL needed — never evaluated
+
+    def test_posix_falls_through_to_kill_when_the_group_is_already_gone(self, store, monkeypatch):
+        """killpg's ProcessLookupError (no such GROUP) falls through to a plain
+        os.kill on the pid itself, on both the TERM and the KILL leg."""
+        sigkill = self._fake_sigkill(monkeypatch, store)
+        killpg_calls, kill_calls = [], []
+
+        def killpg(pid, sig):
+            killpg_calls.append(sig)
+            raise ProcessLookupError
+
+        def kill(pid, sig):
+            kill_calls.append(sig)
+
+        monkeypatch.setattr(store.os, "killpg", killpg, raising=False)
+        monkeypatch.setattr(store.os, "kill", kill)
+        monkeypatch.setattr(store.time, "sleep", lambda s: None)
+        monkeypatch.setattr(store, "_pid_alive", lambda pid: True)
+        store._kill_session_posix(4242)
+        assert killpg_calls == [store.signal.SIGTERM, sigkill]
+        assert kill_calls == [store.signal.SIGTERM, sigkill]
+
+    def test_posix_a_pid_that_died_mid_sequence_does_not_raise(self, store, monkeypatch):
+        """The original code's `except Exception: try os.kill(...) except Exception:
+        pass` on the KILL leg — a pid that died between the alive recheck and the
+        signal must not raise out of close_session."""
+        sigkill = self._fake_sigkill(monkeypatch, store)
+
+        def killpg(pid, sig):
+            if sig == sigkill:
+                raise ProcessLookupError
+            return None
+
+        def kill(pid, sig):
+            raise ProcessLookupError
+
+        monkeypatch.setattr(store.os, "killpg", killpg, raising=False)
+        monkeypatch.setattr(store.os, "kill", kill)
+        monkeypatch.setattr(store.time, "sleep", lambda s: None)
+        monkeypatch.setattr(store, "_pid_alive", lambda pid: True)
+        store._kill_session_posix(4242)  # must not raise
+
+    # --- Windows: taskkill /T /F, no signals sent at all ---------------------
+
+    def test_win32_sends_taskkill_with_an_argument_list(self, store, monkeypatch):
+        """/T (tree) and /F (force) are load-bearing, not decoration: the pid on
+        record is the supervisor, not the real command; and a console process
+        has no SIGTERM analogue for taskkill without /F to fall back to."""
+        calls = []
+
+        def fake_run(argv, **kwargs):
+            calls.append((argv, kwargs))
+
+        store._kill_session_win32(4242, run=fake_run)
+        assert calls == [
+            (["taskkill", "/PID", "4242", "/T", "/F"], {"capture_output": True, "check": False})
+        ]
+
+    def test_win32_never_signals(self, store, monkeypatch):
+        """No SIGTERM-then-SIGKILL staging on Windows — one forceful taskkill
+        pass, never os.kill/os.killpg (which do not exist there anyway)."""
+        monkeypatch.setattr(
+            store.os, "killpg", lambda *a: pytest.fail(f"sent a signal: {a}"), raising=False
+        )
+        monkeypatch.setattr(
+            store.os, "kill", lambda *a: pytest.fail(f"sent a signal: {a}"), raising=False
+        )
+        store._kill_session_win32(4242, run=lambda *a, **k: None)
+
+    def test_win32_swallows_a_failed_taskkill_invocation(self, store):
+        def raises(*a, **k):
+            raise OSError("taskkill not found")
+
+        store._kill_session_win32(4242, run=raises)  # must not raise
+
+    def test_win32_a_nonzero_exit_does_not_raise(self, store):
+        """taskkill exits nonzero for 'already gone' / 'access denied' — the
+        caller's own _pid_alive recheck is the source of truth, not this exit
+        code, so a nonzero return must not become an exception here."""
+        recorded = {}
+
+        def fake_run(argv, **kwargs):
+            recorded["argv"] = argv
+            return type("R", (), {"returncode": 128})()
+
+        store._kill_session_win32(4242, run=fake_run)  # must not raise
+        assert recorded["argv"] == ["taskkill", "/PID", "4242", "/T", "/F"]
+
+    # --- dispatcher: close_session picks the helper by sys.platform ---------
+
+    @pytest.fixture()
+    def isolated(self, tmp_path, monkeypatch, store):
+        monkeypatch.setattr(store, "HERD_DIR", tmp_path)
+        monkeypatch.setattr(store, "HERD_FILE", tmp_path / "sessions.json")
+        monkeypatch.setattr(store, "LOG_DIR", tmp_path / "logs")
+        return store
+
+    @staticmethod
+    def _seed_running_session(store, pid, label):
+        sess = store.create_session(label=label)
+        data = store._load()
+        data["sessions"][sess["id"]].update(pid=pid, alive=True, status="working")
+        store._save(data)
+        return sess["id"]
+
+    def test_close_kill_dispatches_to_win32_on_win32(self, isolated, monkeypatch):
+        monkeypatch.setattr(isolated.sys, "platform", "win32")
+        called = []
+        monkeypatch.setattr(isolated, "_kill_session_win32", lambda pid: called.append(pid))
+        monkeypatch.setattr(
+            isolated, "_kill_session_posix", lambda pid: pytest.fail("POSIX path taken on win32")
+        )
+        monkeypatch.setattr(isolated, "_pid_alive", lambda pid: True)  # "still running": kill fires
+        sid = self._seed_running_session(isolated, 4242, "k-win32")
+        isolated.close_session(sid, kill=True)
+        assert called == [4242]
+
+    def test_close_kill_dispatches_to_posix_off_win32(self, isolated, monkeypatch):
+        monkeypatch.setattr(isolated.sys, "platform", "linux")
+        called = []
+        monkeypatch.setattr(isolated, "_kill_session_posix", lambda pid: called.append(pid))
+        monkeypatch.setattr(
+            isolated, "_kill_session_win32", lambda pid: pytest.fail("win32 path taken off win32")
+        )
+        monkeypatch.setattr(isolated, "_pid_alive", lambda pid: True)
+        sid = self._seed_running_session(isolated, 4243, "k-posix")
+        isolated.close_session(sid, kill=True)
+        assert called == [4243]

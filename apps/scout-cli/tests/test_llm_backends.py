@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import time
 
+import pytest
+
 import bigbang.core.llm as llm
 
 
@@ -97,6 +99,102 @@ def test_koboldcpp_routes_to_openai_v1_and_computes_tps(monkeypatch):
     # it auto-detected via /v1/models, then hit the OpenAI chat endpoint
     assert any("/v1/models" in c[1] for c in client.calls)
     assert any(c[0] == "POST" and "/v1/chat/completions" in c[1] for c in client.calls)
+
+
+def test_resolve_num_predict_env_and_arg_precedence(monkeypatch):
+    """Mirrors apps/dottie's test_policy.py::test_ollama_num_predict_env_and_arg
+    (PR #66) — DOTTIE_OLLAMA_NUM_PREDICT is the SAME env var, shared across apps."""
+    monkeypatch.delenv("DOTTIE_OLLAMA_NUM_PREDICT", raising=False)
+    assert llm.resolve_num_predict() == llm.DEFAULT_OLLAMA_NUM_PREDICT == 2048
+    monkeypatch.setenv("DOTTIE_OLLAMA_NUM_PREDICT", "512")
+    assert llm.resolve_num_predict() == 512
+    assert llm.resolve_num_predict(64) == 64  # explicit argument beats the env
+    for off in ("0", "-1"):
+        monkeypatch.setenv("DOTTIE_OLLAMA_NUM_PREDICT", off)
+        assert llm.resolve_num_predict() is None  # 0/negative from the env = no cap
+    assert llm.resolve_num_predict(0) is None  # 0/negative from the arg = no cap
+    assert llm.resolve_num_predict(-5) is None
+    monkeypatch.setenv("DOTTIE_OLLAMA_NUM_PREDICT", "  ")
+    assert llm.resolve_num_predict() == 2048  # blank is unset, not zero
+    monkeypatch.setenv("DOTTIE_OLLAMA_NUM_PREDICT", "lots")
+    with pytest.raises(ValueError, match="DOTTIE_OLLAMA_NUM_PREDICT"):
+        llm.resolve_num_predict()
+
+
+def test_ollama_chat_with_metrics_sends_the_default_cap(monkeypatch):
+    """Before this, the ollama branch ignored max_tokens and sent no options at
+    all — the exact bug apps/dottie's OllamaPolicy fixed for its own callers."""
+    monkeypatch.delenv("DOTTIE_OLLAMA_NUM_PREDICT", raising=False)
+    client = _patch(monkeypatch, {
+        "/api/chat": (200, {"message": {"content": "hi"}, "eval_count": 1}),
+    })
+    res = llm.chat_with_metrics("ollama", "qwen3:8b", [{"role": "user", "content": "hi"}],
+                                base="http://ollama.test:11434")
+    assert res["ok"] is True
+    posts = [c for c in client.calls if c[0] == "POST"]
+    assert posts[0][2]["options"]["num_predict"] == 2048
+
+
+def test_ollama_chat_with_metrics_honors_explicit_max_tokens_first(monkeypatch):
+    monkeypatch.setenv("DOTTIE_OLLAMA_NUM_PREDICT", "999")
+    client = _patch(monkeypatch, {
+        "/api/chat": (200, {"message": {"content": "hi"}, "eval_count": 1}),
+    })
+    llm.chat_with_metrics("ollama", "qwen3:8b", [{"role": "user", "content": "hi"}],
+                          base="http://ollama.test:11434", max_tokens=64)
+    posts = [c for c in client.calls if c[0] == "POST"]
+    assert posts[0][2]["options"]["num_predict"] == 64
+
+
+def test_ollama_chat_with_metrics_a_garbage_cap_fails_closed_not_uncapped(monkeypatch):
+    """A typo in DOTTIE_OLLAMA_NUM_PREDICT must refuse the call, not silently run
+    without a cap — that would defeat the exact protection this exists to add.
+
+    Tightened by PR #68's review (finding: ollama_chat swallowed this into a
+    generic None, indistinguishable from a down server): the error message must
+    now NAME the bad env var, not just fail closed. This also pins a fix to
+    _ollama_generate, the path chat_with_metrics's ollama branch actually calls
+    — its own `cap = resolve_num_predict(...)` used to sit inside the SAME broad
+    `except Exception: return None` as ollama_chat's did, so chat_with_metrics
+    reported the opaque 'backend returned no completion' here too, not the
+    ValueError text the review's evidence assumed it already surfaced."""
+    monkeypatch.setenv("DOTTIE_OLLAMA_NUM_PREDICT", "lots")
+    client = _patch(monkeypatch, {
+        "/api/chat": (200, {"message": {"content": "hi"}, "eval_count": 1}),
+    })
+    res = llm.chat_with_metrics("ollama", "qwen3:8b", [{"role": "user", "content": "hi"}],
+                                base="http://ollama.test:11434")
+    assert res["ok"] is False and res["content"] is None
+    assert client.calls == []  # never reached the network with an unresolved cap
+    assert "DOTTIE_OLLAMA_NUM_PREDICT" in res["error"], res["error"]
+
+
+def test_ollama_chat_a_garbage_cap_raises_not_silently_none(monkeypatch):
+    """ollama_chat() (the ava plugin's real, non-fallback path) must not turn a
+    config typo into the same generic None a down server or network error
+    returns — resolve_num_predict's ValueError has to reach the caller, exactly
+    as it already does for _ollama_generate/chat_with_metrics above."""
+    monkeypatch.setenv("DOTTIE_OLLAMA_NUM_PREDICT", "lots")
+    client = _patch(monkeypatch, {"/api/chat": (200, {"message": {"content": "hi"}})})
+    with pytest.raises(ValueError, match="DOTTIE_OLLAMA_NUM_PREDICT"):
+        llm.ollama_chat("qwen3:8b", [{"role": "user", "content": "hi"}], base="http://127.0.0.1:11434")
+    assert client.calls == []  # never reached the network with an unresolved cap
+
+
+def test_ollama_chat_also_sends_the_cap(monkeypatch):
+    """ollama_chat() is the other direct /api/chat caller in this module (used by
+    the ava plugin's real path); it must not be the one left uncapped. Loopback
+    base on purpose: a non-loopback host goes through ollama_chat's own
+    resolvability probe first, which is a separate concern from this cap."""
+    monkeypatch.delenv("DOTTIE_OLLAMA_NUM_PREDICT", raising=False)
+    client = _patch(monkeypatch, {"/api/chat": (200, {"message": {"content": "hi"}})})
+    llm.ollama_chat("qwen3:8b", [{"role": "user", "content": "hi"}], base="http://127.0.0.1:11434")
+    posts = [c for c in client.calls if c[0] == "POST"]
+    assert posts[-1][2]["options"]["num_predict"] == 2048
+    llm.ollama_chat("qwen3:8b", [{"role": "user", "content": "hi"}],
+                    base="http://127.0.0.1:11434", num_predict=10)
+    posts = [c for c in client.calls if c[0] == "POST"]
+    assert posts[-1][2]["options"]["num_predict"] == 10
 
 
 def test_ollama_routes_to_api_chat_and_uses_server_timing(monkeypatch):

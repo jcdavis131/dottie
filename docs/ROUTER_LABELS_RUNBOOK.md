@@ -12,10 +12,12 @@ authority until a candidate passes the gate AND you stamp it.
 
 ```bash
 ollama serve &                               # or the desktop app
-ollama pull qwen2.5:7b-instruct              # the llm tier's default model
+ollama pull qwen3:8b                         # the llm tier's default model
 export OLLAMA_HOST=http://localhost:11434    # the one Ollama variable
 # optional: another local model
 export DOTTIE_LLM_MODEL=qwen2.5:14b-instruct
+# optional: cap generated tokens (default 2048; 0 or negative = no cap)
+export DOTTIE_OLLAMA_NUM_PREDICT=2048
 ```
 
 The llm tier is Ollama only: local models, no API key, `cost_usd` 0. The

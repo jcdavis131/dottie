@@ -307,7 +307,9 @@ def read_cmd(
 def close_cmd(
     key: str = typer.Argument(..., help="session id or label"),
     force: bool = typer.Option(False, "--force", "-f", help="required to remove"),
-    kill: bool = typer.Option(False, "--kill", help="SIGTERM/SIGKILL if still running"),
+    kill: bool = typer.Option(
+        False, "--kill", help="if still running: SIGTERM then SIGKILL (POSIX) or taskkill /T /F (Windows)"
+    ),
     dry_run: bool = typer.Option(False, "--dry-run", help="preview only"),
 ):
     """Remove a session from the ledger (optionally kill the process)."""

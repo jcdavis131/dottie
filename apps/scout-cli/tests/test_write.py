@@ -91,3 +91,53 @@ def test_the_directory_is_created_on_demand(tmp_path, monkeypatch):
     assert not nested.exists()
     wc._next_output_path("humanized")
     assert nested.exists()
+
+
+# --- _ollama_chat's generation cap (DOTTIE_OLLAMA_NUM_PREDICT) ---------------
+#
+# This plugin's own /api/chat call sent no cap at all before this — a separate
+# instance of the same runaway-generation bug apps/dottie's OllamaPolicy fixed
+# (PR #66) and bigbang.core.llm.resolve_num_predict fixes for the other
+# scout-cli callers.
+
+
+def test_num_predict_cap_defaults_to_2048(monkeypatch):
+    monkeypatch.delenv("DOTTIE_OLLAMA_NUM_PREDICT", raising=False)
+    assert wc._num_predict_cap() == 2048
+
+
+def test_num_predict_cap_reads_the_shared_env_var(monkeypatch):
+    monkeypatch.setenv("DOTTIE_OLLAMA_NUM_PREDICT", "512")
+    assert wc._num_predict_cap() == 512
+
+
+def test_num_predict_cap_zero_or_negative_means_no_cap(monkeypatch):
+    monkeypatch.setenv("DOTTIE_OLLAMA_NUM_PREDICT", "0")
+    assert wc._num_predict_cap() is None
+    monkeypatch.setenv("DOTTIE_OLLAMA_NUM_PREDICT", "-5")
+    assert wc._num_predict_cap() is None
+
+
+def test_ollama_chat_sends_the_cap_in_its_options(monkeypatch):
+    """The actual request this plugin builds carries the cap."""
+    monkeypatch.delenv("DOTTIE_OLLAMA_NUM_PREDICT", raising=False)
+    calls = []
+
+    class _Resp:
+        status_code = 200
+
+        def json(self):
+            return {"message": {"content": "ok"}}
+
+    class _Client:
+        def post(self, url, json=None):
+            calls.append((url, json))
+            return _Resp()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(wc, "_httpx_client", lambda timeout: _Client())
+    out = wc._ollama_chat("qwen3:8b", "system", "user", "http://127.0.0.1:11434")
+    assert out == "ok"
+    assert calls[0][1]["options"] == {"num_predict": 2048}

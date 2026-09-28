@@ -4,6 +4,18 @@ One backend, local only: Ollama at ``OLLAMA_HOST`` (default
 ``http://localhost:11434``), model ``DOTTIE_LLM_MODEL`` (default
 :data:`DEFAULT_OLLAMA_MODEL`). Cost 0.
 
+:data:`DEFAULT_OLLAMA_MODEL` moved from ``qwen2.5:7b-instruct`` to ``qwen3:8b``
+on 2026-09-27 (Cam, PR #67 review): the old default is not pulled on this box
+(``ollama list`` shows only ``qwen3:8b`` and ``agentos-qwen``), so the llm tier
+was unavailable here unless ``DOTTIE_LLM_MODEL`` was set — the harness's own
+``qwen2.5:7b-instruct`` runbook example never actually ran locally. This
+changes which model produces "scout router probe" labels: a probe run without
+``DOTTIE_LLM_MODEL`` set now records ``ollama:qwen3:8b`` instead of
+``ollama:qwen2.5:7b-instruct``. qwen3 is a thinking model; ``final_answer()``
+already takes the LAST ``ANSWER:`` line, so a leaked ``<think>`` block ahead of
+it is harmless, but a fenced-code reply still returns the whole content
+verbatim (pre-existing behavior, unchanged here).
+
 The hosted Anthropic and OpenAI fallbacks were removed on 2026-09-27 (Cam's
 no-paid-APIs rule; his answer for Dottie's paid code paths was "Remove them").
 Their env vars (:data:`REMOVED_BACKEND_ENV`) are never read for a call. When
@@ -30,7 +42,7 @@ from bigbang.plugins.harness.executors.base import (
     price,
 )
 
-DEFAULT_OLLAMA_MODEL = "qwen2.5:7b-instruct"
+DEFAULT_OLLAMA_MODEL = "qwen3:8b"
 SYSTEM_PROMPT = (
     "You are a careful assistant. Solve the task. If the task asks for code, reply with one ```python block "
     "containing the complete code and nothing else. Otherwise think briefly, then give the final answer alone "

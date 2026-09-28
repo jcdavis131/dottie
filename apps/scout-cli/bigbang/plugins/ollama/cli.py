@@ -37,6 +37,7 @@ the same fact.
 from __future__ import annotations
 
 import json
+import os
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -227,9 +228,33 @@ def _prompt_text(prompt: str | None, command: str) -> str:
         raise typer.Exit(code=1) from e  # fail_agent already exited
 
 
+#: Default cap this command sends when --num-predict is not given. Kept here
+#: rather than imported from bigbang.core.llm (a separate, httpx-based module by
+#: design — see bigbang/core/ollama.py's module docstring) so this openswap #17
+#: plugin's zero-new-dependency guarantee holds; the value and env var NAME are
+#: still the DOTTIE_OLLAMA_NUM_PREDICT convention apps/dottie's OllamaPolicy
+#: introduced (PR #66), so one operator setting caps every local Ollama caller.
+DEFAULT_NUM_PREDICT = 2048
+
+
 def _options(num_predict: int | None) -> dict | None:
-    """ollama's own option block, or None when the caller tuned nothing."""
-    return {"num_predict": int(num_predict)} if num_predict else None
+    """ollama's own option block. --num-predict wins outright; otherwise
+    DOTTIE_OLLAMA_NUM_PREDICT, else DEFAULT_NUM_PREDICT — 0 or negative from
+    either means no cap. Before this, an omitted --num-predict sent no cap at
+    all: `scout ollama run` without the flag could run exactly as unbounded as
+    the bug PR #66 fixed in apps/dottie."""
+    if num_predict is None:
+        raw = (os.environ.get("DOTTIE_OLLAMA_NUM_PREDICT") or "").strip()
+        if not raw:
+            num_predict = DEFAULT_NUM_PREDICT
+        else:
+            try:
+                num_predict = int(raw)
+            except ValueError as e:
+                raise ValueError(
+                    f"DOTTIE_OLLAMA_NUM_PREDICT must be an integer, got {raw!r}"
+                ) from e
+    return {"num_predict": int(num_predict)} if num_predict > 0 else None
 
 
 def _record(rec: dict, path: Path) -> None:
@@ -441,6 +466,12 @@ def run_cmd(
     ),
 ):
     """One completion — or an honestly labelled template when nothing answers."""
+    try:
+        options = _options(num_predict)
+    except ValueError as e:
+        # a malformed DOTTIE_OLLAMA_NUM_PREDICT (--num-predict itself is typer-parsed
+        # and can't reach here malformed) — actionable, not a bare traceback.
+        fail_agent(str(e), command="ollama run", example="DOTTIE_OLLAMA_NUM_PREDICT=2048 scout ollama run --prompt 'x'")
     text = _prompt_text(prompt, "ollama run")
     res = _resolve(base, timeout=timeout, path=ollama.TAGS_PATH, command="ollama run")
     chosen, why = None, ollama.unreachable_reason(res)
@@ -460,7 +491,7 @@ def run_cmd(
         model=chosen,
         base=res["base"],
         system=system,
-        options=_options(num_predict),
+        options=options,
         reason=why,
     )
     path = _db_path(db)

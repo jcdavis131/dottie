@@ -174,6 +174,22 @@ except Exception:
         _FALLBACK_CACHE_AT = now
         return found
 
+    def _num_predict_cap_fallback():
+        """DOTTIE_OLLAMA_NUM_PREDICT, duplicated from bigbang.core.llm.resolve_num_predict
+        because THIS block only runs when importing that module already failed — it
+        cannot be trusted to import here either. Same semantics: unset/blank -> the
+        2048 default (bigbang.core.llm.DEFAULT_OLLAMA_NUM_PREDICT); 0 or negative ->
+        no cap; unparseable -> the default rather than raising, since this fallback
+        path already tolerates missing httpx etc. by degrading rather than crashing."""
+        raw = (os.environ.get("DOTTIE_OLLAMA_NUM_PREDICT") or "").strip()
+        if not raw:
+            return 2048
+        try:
+            n = int(raw)
+        except ValueError:
+            return 2048
+        return n if n > 0 else None
+
     def ollama_chat(model, messages, json_mode=False, base=None, timeout=60.0):
         if base is None:
             base = get_ollama_base(timeout=2.0)
@@ -186,6 +202,9 @@ except Exception:
             payload = {"model": model, "messages": messages, "stream": False}
             if json_mode:
                 payload["format"] = "json"
+            cap = _num_predict_cap_fallback()
+            if cap is not None:
+                payload["options"] = {"num_predict": cap}
             r = client.post(f"{base}/api/chat", json=payload)
             if r.status_code != 200:
                 return None

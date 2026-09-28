@@ -170,6 +170,23 @@ except Exception:
         "qwen2.5:32b",
     ]
 
+    def _num_predict_cap_fallback():
+        """DOTTIE_OLLAMA_NUM_PREDICT, duplicated from
+        bigbang.core.llm.resolve_num_predict for the same reason PREFERRED_MODELS
+        is duplicated above: this block only runs when importing that module
+        already failed. Same semantics (unset/blank -> 2048 default; 0 or negative
+        -> no cap) except an unparseable value falls back to the default rather
+        than raising — this whole branch already degrades on failure instead of
+        crashing (see the bare `except Exception` around every call site here)."""
+        raw = (os.environ.get("DOTTIE_OLLAMA_NUM_PREDICT") or "").strip()
+        if not raw:
+            return 2048
+        try:
+            n = int(raw)
+        except ValueError:
+            return 2048
+        return n if n > 0 else None
+
     def _extract_json(text: str):
         if not text:
             return None
@@ -594,6 +611,9 @@ def _route_with_ollama(task: str) -> dict[str, Any]:
             raise RuntimeError("httpx not available")
         try:
             payload = {"model": best_model, "messages": messages, "stream": False, "format": "json"}
+            cap = _num_predict_cap_fallback()
+            if cap is not None:
+                payload["options"] = {"num_predict": cap}
             r = client.post(f"{base}/api/chat", json=payload)
             if r.status_code == 200:
                 data = r.json()

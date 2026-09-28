@@ -980,6 +980,71 @@ def _cli(args, *, env=None, stdin=None, cwd=None):
     )
 
 
+# ---- --num-predict / DOTTIE_OLLAMA_NUM_PREDICT (generation cap) -------------
+#
+# Before this, `scout ollama run` with no --num-predict sent NO cap at all —
+# ollama.complete()'s own options are documented pure passthrough (see
+# test_complete_omits_optional_blocks_it_was_not_given above), and _options()
+# used to return None for an omitted flag. This is the same runaway-generation
+# class apps/dottie's OllamaPolicy caps by default (PR #66); DOTTIE_OLLAMA_NUM_PREDICT
+# is the SAME env var, shared across apps on purpose.
+
+
+def test_options_defaults_to_2048_when_nothing_is_set(monkeypatch):
+    from bigbang.plugins.ollama import cli as ollama_cli
+
+    monkeypatch.delenv("DOTTIE_OLLAMA_NUM_PREDICT", raising=False)
+    assert ollama_cli._options(None) == {"num_predict": 2048}
+
+
+def test_options_explicit_flag_wins_over_env(monkeypatch):
+    from bigbang.plugins.ollama import cli as ollama_cli
+
+    monkeypatch.setenv("DOTTIE_OLLAMA_NUM_PREDICT", "999")
+    assert ollama_cli._options(64) == {"num_predict": 64}
+
+
+def test_options_env_wins_over_the_default(monkeypatch):
+    from bigbang.plugins.ollama import cli as ollama_cli
+
+    monkeypatch.setenv("DOTTIE_OLLAMA_NUM_PREDICT", "512")
+    assert ollama_cli._options(None) == {"num_predict": 512}
+
+
+def test_options_zero_or_negative_from_either_source_means_no_cap(monkeypatch):
+    from bigbang.plugins.ollama import cli as ollama_cli
+
+    monkeypatch.delenv("DOTTIE_OLLAMA_NUM_PREDICT", raising=False)
+    assert ollama_cli._options(0) is None
+    assert ollama_cli._options(-1) is None
+    monkeypatch.setenv("DOTTIE_OLLAMA_NUM_PREDICT", "0")
+    assert ollama_cli._options(None) is None
+    monkeypatch.setenv("DOTTIE_OLLAMA_NUM_PREDICT", "-5")
+    assert ollama_cli._options(None) is None
+
+
+def test_options_unparseable_env_names_the_variable(monkeypatch):
+    from bigbang.plugins.ollama import cli as ollama_cli
+
+    monkeypatch.setenv("DOTTIE_OLLAMA_NUM_PREDICT", "lots")
+    with pytest.raises(ValueError, match="DOTTIE_OLLAMA_NUM_PREDICT"):
+        ollama_cli._options(None)
+
+
+def test_cli_run_reports_a_malformed_num_predict_env_actionably(tmp_path):
+    """A garbage DOTTIE_OLLAMA_NUM_PREDICT must fail like every other bad-input
+    path here (JSON error + example), never a bare traceback — --num-predict
+    itself is typer-parsed and can't reach this malformed."""
+    r = _cli(
+        ["ollama", "run", "--prompt", "hi", "--base", DEAD, "--timeout", "2", "--no-record"],
+        env={"DOTTIE_OLLAMA_NUM_PREDICT": "lots"},
+    )
+    assert r.returncode == 1, r.stdout + r.stderr
+    data = json.loads(r.stdout)
+    assert "DOTTIE_OLLAMA_NUM_PREDICT" in data["error"]
+    assert "example" in data
+
+
 def test_cli_ollama_hello_envelope():
     r = _cli(["ollama", "hello"])
     assert r.returncode == 0, r.stderr + r.stdout

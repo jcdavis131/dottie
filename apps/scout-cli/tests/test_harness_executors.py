@@ -83,11 +83,21 @@ def test_llm_uses_ollama_first_and_records_measured_usage(monkeypatch):
 
     monkeypatch.setattr(llm, "_ollama_generate", gen)
     res = llm_exec.run("What is six times seven?")
-    assert res.answer == "42" and res.backend == "ollama:qwen2.5:7b-instruct"
+    assert res.answer == "42" and res.backend == "ollama:qwen3:8b"
     assert res.tokens == {"prompt": 31, "completion": 5, "total": 36}
     assert res.cost_usd == 0.0 and res.cost_basis == "local" and res.latency_ms >= 0
-    assert seen == {"model": "qwen2.5:7b-instruct", "base": "http://ollama.test:11434"}
+    assert seen == {"model": "qwen3:8b", "base": "http://ollama.test:11434"}
     assert price(10, 10, local=True) == (0.0, "local")
+
+
+def test_llm_default_model_is_qwen3_8b_the_pulled_model():
+    """Pin the default (mirrors apps/dottie's test_policy.py::test... pattern from PR #66).
+
+    qwen2.5:7b-instruct is not pulled on this box (`ollama list`: qwen3:8b and
+    agentos-qwen only), so a bare run of this tier was unavailable here unless
+    DOTTIE_LLM_MODEL was set. This is the model that now produces "scout router
+    probe" labels when DOTTIE_LLM_MODEL is unset (Cam, 2026-09-27)."""
+    assert llm_exec.DEFAULT_OLLAMA_MODEL == "qwen3:8b"
 
 
 def test_llm_without_any_backend_is_unavailable_and_says_why(monkeypatch):
