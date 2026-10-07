@@ -29,9 +29,11 @@ flowchart LR
     D --> R
 ```
 
-Every arrow is code that exists and runs today; nothing in this diagram is
-aspirational. The gate has never passed — see "Honest status" for why that is
-the system working, not failing.
+Every arrow is code that exists and runs today. The gate has never passed —
+see "Honest status" for why that is the system working, not failing. Note:
+the Deploy→Router feedback arrow represents the designed loop, but no
+deployment has ever cleared the gate, so that arrow has never fired in
+practice.
 
 ## Repos and their roles
 
@@ -99,7 +101,7 @@ plausible zero.
 - **Nightly Routine** — retrains at 09:00 UTC against whatever measured data
   accumulated; the gate decides what ships.
 
-## Honest status (2026-08-10)
+## Honest status (2026-08-10 — last updated; treat numbers as stale until refreshed)
 
 - 1,563-record corpus; 729 measured; champion `orch-mlp-v1-v4` at 97.2% val /
   87.7% on the 57-record measured hold-out

@@ -1,4 +1,4 @@
-# Dottie — self-improving orchestration platform
+# Dottie — measured orchestration platform
 
 ![CI](https://github.com/jcdavis131/dottie/actions/workflows/ci.yml/badge.svg)
 ![Ruff Lint](https://github.com/jcdavis131/dottie/actions/workflows/lint.yml/badge.svg)
@@ -7,7 +7,7 @@
 ![License MIT](https://img.shields.io/badge/license-MIT-green)
 ![Solo Project](https://img.shields.io/badge/solo-personal%20project%20%E2%80%94%20no%20employer%20tie-lightgrey)
 
-Dottie is an orchestration platform built around a measured improvement loop:
+Dottie is an orchestration platform built around a measured research loop:
 goals go in; a harness routes each goal to the cheapest of five execution tiers
 that can do the work; execution — including real external tool calls through a
 meta-MCP layer — leaves a **measured** trace; and traces can support offline
