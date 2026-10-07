@@ -51,6 +51,7 @@ from pathlib import Path
 from typing import Any
 
 from dottie_loop import SPEC_BASELINE, SPEC_VERSION, __version__
+from dottie_loop.driver import RunSpec
 from dottie_loop.errors import (
     BlockedError,
     InvalidInputError,
@@ -120,10 +121,23 @@ def cmd_loop_evaluate(a: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_loop_run(a: argparse.Namespace) -> dict[str, Any]:
-    from dottie_loop.driver import RunSpec, run_goal
-
     spec = RunSpec.from_dict(_read_json(a.spec))
-    result = run_goal(spec, store_root=Path(a.store), root=Path(a.root), subject=a.subject, surface=a.surface, capture_flag=a.capture)
+    if getattr(a, "route", False):
+        from dottie_loop.driver import run_goal_routed
+
+        result = run_goal_routed(
+            spec.intent_text,
+            spec.steps,
+            store_root=Path(a.store),
+            root=Path(a.root),
+            subject=a.subject,
+            surface=a.surface,
+            capture_flag=a.capture,
+        )
+    else:
+        from dottie_loop.driver import run_goal
+
+        result = run_goal(spec, store_root=Path(a.store), root=Path(a.root), subject=a.subject, surface=a.surface, capture_flag=a.capture)
     if result.get("status") == "blocked":
         raise BlockedError("goal blocked: " + str(result.get("dependency") or result.get("outcome", {}).get("error_class")), str(result.get("dependency") or "policy"), **result)
     return result
@@ -637,6 +651,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--subject", required=True)
     s.add_argument("--surface", default="cli")
     s.add_argument("--capture", action="store_true", help="explicit opt-in switch (with spec.capture consent)")
+    s.add_argument("--route", action="store_true", help="route intent through the tier router for budget selection (records routing decision)")
     s.set_defaults(fn=cmd_loop_run)
 
     rw = sub.add_parser("reward").add_subparsers(dest="sub", required=True)
