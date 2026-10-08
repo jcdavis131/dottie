@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from factory.config import Factory, sha256_of
+from dottie_loop.factory_config import Factory, sha256_of
 
 REPORT_SCRIPT = """
 import json, sys, pathlib

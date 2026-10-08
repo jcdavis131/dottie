@@ -1,4 +1,7 @@
-"""Software line: move DAG nodes and run a repo's registered validate gate (spec §2)."""
+"""Software line: move DAG nodes and run a repo's registered validate gate (spec §2).
+
+Migrated from factory/software.py (step 6 of Dottie consolidation).
+"""
 
 from __future__ import annotations
 
@@ -7,7 +10,7 @@ import time
 import urllib.error
 import urllib.request
 
-from factory.config import (
+from dottie_loop.factory_config import (
     Factory,
     FactoryError,
     dag_module,

@@ -1,11 +1,14 @@
-"""Fail-closed filesystem containment for mission inputs and publication."""
+"""Fail-closed filesystem containment for mission inputs and publication.
+
+Migrated from factory/mission_paths.py (step 6 of Dottie consolidation).
+"""
 
 from __future__ import annotations
 
 import stat
 from pathlib import Path
 
-from factory.config import FactoryError
+from dottie_loop.factory_config import FactoryError
 
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 

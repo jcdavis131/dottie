@@ -1,4 +1,11 @@
-"""`python -m factory`: one CLI over the three lines (docs/FACTORY.md)."""
+"""Factory CLI adapter: one CLI over the three lines.
+
+Migrated from factory/cli.py (step 6 of Dottie consolidation).
+
+Keeps the unique commands (DAG check/next/status/done/validate, mission
+lifecycle, train queue, dataset ops). Delegates to dottie_loop modules.
+The `python -m factory` entry point is preserved as a thin shim.
+"""
 
 from __future__ import annotations
 
@@ -8,7 +15,7 @@ import os
 import sys
 from pathlib import Path
 
-from factory.config import Factory, FactoryError
+from dottie_loop.factory_config import Factory, FactoryError
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -103,7 +110,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _mission_dispatch(a: argparse.Namespace) -> int:
-    from factory.mission import (
+    from dottie_loop.mission_adapter import (
         Ledger,
         evaluate_attempt,
         load_mission,
@@ -163,13 +170,13 @@ def _mission_dispatch(a: argparse.Namespace) -> int:
 
 def dispatch(f: Factory, a: argparse.Namespace) -> int:
     if a.cmd == "check":
-        from factory.check import check, render
+        from dottie_loop.registry_check import check, render
 
         errors, warnings = check(f)
         print(render(errors, warnings))
         return 1 if errors else 0
     if a.cmd in {"next", "start", "done", "validate", "status"}:
-        from factory import software
+        from dottie_loop import dag_ops as software
 
         if a.cmd == "next":
             print(software.next_nodes(f, a.repo))
@@ -183,7 +190,7 @@ def dispatch(f: Factory, a: argparse.Namespace) -> int:
             print(software.status(f))
         return 0
     if a.cmd == "train":
-        from factory import mlops
+        from dottie_loop import train_queue as mlops
 
         if a.tcmd == "list":
             print(mlops.list_jobs(f))
@@ -213,7 +220,7 @@ def dispatch(f: Factory, a: argparse.Namespace) -> int:
             print(mlops.promote(f, f.job(a.job)))
         return 0
     if a.cmd == "data":
-        from factory import data
+        from dottie_loop import dataset_ops as data
 
         if a.dcmd == "list":
             print(data.list_datasets(f))

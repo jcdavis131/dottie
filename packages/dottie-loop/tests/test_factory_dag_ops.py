@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from factory import software
-from factory.config import Factory, FactoryError
+from dottie_loop import dag_ops as software
+from dottie_loop.factory_config import Factory, FactoryError
 
 
 def test_next_lists_frontier(ws: Factory):

@@ -1,4 +1,14 @@
-"""Strict, closed-schema model mission definitions."""
+"""Strict, closed-schema model mission definitions.
+
+Migrated from factory/mission_schema.py (step 6 of Dottie consolidation).
+
+PROMOTED mapping decision: dottie_loop's goal state machine has no "promoted"
+terminal state, and adding one would touch TERMINAL_STATES. Instead, promotion
+is recorded as metadata (promoted=True, promoted_at timestamp) on the
+"completed" goal state. MissionState.PROMOTED is retained in this module for
+the factory adapter's internal vocabulary, but the dottie_loop adapter maps it
+to completed+metadata.
+"""
 
 from __future__ import annotations
 
@@ -10,7 +20,7 @@ from enum import StrEnum
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
-from factory.config import FactoryError
+from dottie_loop.factory_config import FactoryError
 
 
 class MissionState(StrEnum):
@@ -148,6 +158,24 @@ LEGAL_TRANSITIONS: dict[MissionState, set[MissionState]] = {
     MissionState.REJECTED: set(),
     MissionState.CANCELLED: set(),
 }
+
+
+def promotion_metadata(reviewer: str, shipper: str) -> dict[str, Any]:
+    """Build the promotion metadata attached to a completed goal.
+
+    dottie_loop has no "promoted" terminal state. When the factory adapter
+    promotes a mission, it transitions the dottie_loop goal to "completed"
+    and attaches this metadata instead of using a separate state.
+    """
+    from dottie_loop.hashing import now_iso
+
+    return {
+        "promoted": True,
+        "promoted_at": now_iso(),
+        "promoted_by_reviewer": reviewer,
+        "promoted_by_shipper": shipper,
+    }
+
 
 _HEX = set("0123456789abcdef")
 _OPS = {">=", "<=", ">", "<"}

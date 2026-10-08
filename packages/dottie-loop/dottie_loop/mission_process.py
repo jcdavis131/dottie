@@ -1,4 +1,7 @@
-"""Exact process launch, identity, cancellation, and host resource helpers."""
+"""Exact process launch, identity, cancellation, and host resource helpers.
+
+Migrated from factory/mission_process.py (step 6 of Dottie consolidation).
+"""
 
 from __future__ import annotations
 
@@ -12,7 +15,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from factory.config import FactoryError
+from dottie_loop.factory_config import FactoryError
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

@@ -1,4 +1,8 @@
-"""Transactional SQLite ledger for auditable model missions."""
+"""Transactional SQLite ledger for auditable model missions.
+
+Migrated from factory/mission_ledger.py (step 6 of Dottie consolidation).
+Kept separate from GoalStore: the hash-chained journaled 2PC here is
+stronger than dottie_loop's simpler goal tracking. Do NOT merge."""
 
 from __future__ import annotations
 
@@ -11,9 +15,9 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from factory.config import FactoryError
-from factory.mission_process import terminate_process_tree
-from factory.mission_schema import LEGAL_TRANSITIONS, Mission, MissionState
+from dottie_loop.factory_config import FactoryError
+from dottie_loop.mission_process import terminate_process_tree
+from dottie_loop.mission_schema import LEGAL_TRANSITIONS, Mission, MissionState
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

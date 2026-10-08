@@ -1,5 +1,7 @@
 """Shared plumbing: workspace resolution, registries, the DAG bridge, running commands.
 
+Migrated from factory/config.py (step 6 of Dottie consolidation).
+
 Everything takes a :class:`Factory` so tests can point one at a temp workspace;
 ``Factory.from_env()`` is what the CLI uses. Stdlib only.
 """

@@ -1,4 +1,11 @@
-"""Auditable, fail-closed model missions backed by a local SQLite ledger."""
+"""Auditable, fail-closed model missions backed by a local SQLite ledger.
+
+Migrated from factory/mission.py (step 6 of Dottie consolidation).
+Adapter pattern: mission lifecycle (propose->preflight->run->evaluate->promote)
+is preserved, but execution delegates to dottie_loop's driver via
+run_mission_routed(). The two-person promotion rule (promote_attempt) is kept
+intact — dottie_loop lacks this.
+"""
 
 from __future__ import annotations
 
@@ -20,14 +27,14 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from factory.config import FactoryError, sha256_of
-from factory.mission_ledger import Ledger
-from factory.mission_paths import contained_path, same_file
-from factory.mission_process import (
+from dottie_loop.factory_config import FactoryError, sha256_of
+from dottie_loop.mission_ledger import Ledger
+from dottie_loop.mission_paths import contained_path, same_file
+from dottie_loop.mission_process import (
     available_ram_mb,
     run_capture,
 )
-from factory.mission_schema import (
+from dottie_loop.mission_schema import (
     EvidenceKind,
     Mission,
     MissionState,
@@ -805,4 +812,78 @@ __all__ = [
     "preflight_mission",
     "promote_attempt",
     "run_attempt",
+    "run_mission_routed",
+    "MISSION_TO_GOAL_STATE",
 ]
+
+
+# MissionState -> dottie_loop goal state mapping.
+# 9 of 10 map cleanly. PROMOTED has no dottie_loop equivalent;
+# the adapter records it as metadata (promoted=True, promoted_at)
+# on the "completed" goal state via promotion_metadata().
+MISSION_TO_GOAL_STATE: dict[MissionState, str] = {
+    MissionState.PROPOSED: "received",
+    MissionState.PREFLIGHT_BLOCKED: "blocked",
+    MissionState.READY: "validated",
+    MissionState.RUNNING: "running",
+    MissionState.EVALUATING: "verified",
+    MissionState.PASSED: "completed",
+    MissionState.FAILED: "failed",
+    MissionState.PROMOTED: "completed",  # + promotion_metadata()
+    MissionState.REJECTED: "rejected",
+    MissionState.CANCELLED: "cancelled",
+}
+
+
+def run_mission_routed(
+    mission: Mission,
+    ledger: Ledger,
+    *,
+    store_root: Path,
+    root: Path,
+    subject: str,
+    surface: str = "cli",
+    routing_features: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Run a mission's execution through dottie_loop's routed driver.
+
+    This is the adapter's primary integration point: instead of the legacy
+    run_attempt() path, mission execution delegates to
+    driver.run_goal_routed(), which selects the tier via router.route()
+    and applies TIER_BUDGETS.
+
+    The mission's train/evaluation commands become the driver's steps.
+    Preflight (preflight_mission) should be called before this.
+    Promotion still uses promote_attempt() directly — the two-person rule
+    lives here, not in dottie_loop.
+    """
+    from dottie_loop.driver import run_goal_routed
+
+    steps = [
+        {
+            "id": "train",
+            "kind": "argv",
+            "argv": list(mission.train.argv),
+        },
+        {
+            "id": "evaluate",
+            "kind": "argv",
+            "argv": list(mission.evaluation.argv),
+            "depends_on": ["train"],
+        },
+    ]
+    result = run_goal_routed(
+        mission.id,
+        steps,
+        store_root=store_root,
+        root=root,
+        subject=subject,
+        surface=surface,
+        routing_features=routing_features,
+    )
+    # Record the mission->goal state mapping for auditability
+    result["mission_state_map"] = {
+        "mission_id": mission.id,
+        "goal_state": MISSION_TO_GOAL_STATE.get(MissionState.PASSED, "completed"),
+    }
+    return result

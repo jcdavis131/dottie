@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from factory import data
-from factory.config import Factory, FactoryError
+from dottie_loop import dataset_ops as data
+from dottie_loop.factory_config import Factory, FactoryError
 
 
 def test_check_reports_missing_required(ws: Factory):

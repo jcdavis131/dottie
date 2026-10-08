@@ -1,5 +1,7 @@
 """MLOps line: the one training queue for the box (spec §3).
 
+Migrated from factory/mlops.py (step 6 of Dottie consolidation).
+
 A job runs in its repo, logs to factory/runs/<job>/<stamp>.log, and is judged by a
 gate read from the report file its own eval writes. Nothing here copies a
 checkpoint into a site: `promote` prints the steps once, and only after a pass.
@@ -11,7 +13,7 @@ import json
 import time
 from typing import Any
 
-from factory.config import (
+from dottie_loop.factory_config import (
     Factory,
     FactoryError,
     git_head,

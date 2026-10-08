@@ -1,10 +1,13 @@
-"""`factory check`: the three registries must agree with each other and with the DAG."""
+"""`factory check`: the three registries must agree with each other and with the DAG.
+
+Migrated from factory/check.py (step 6 of Dottie consolidation).
+"""
 
 from __future__ import annotations
 
 from pathlib import PurePosixPath
 
-from factory.config import (
+from dottie_loop.factory_config import (
     GATE_OPS,
     PROVENANCE,
     ROLES,

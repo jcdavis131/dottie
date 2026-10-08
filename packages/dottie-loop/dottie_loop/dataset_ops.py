@@ -1,4 +1,7 @@
-"""Data line: what data exists, how fresh it is, how it is refreshed or restored (spec §4)."""
+"""Data line: what data exists, how fresh it is, how it is refreshed or restored (spec §4).
+
+Migrated from factory/data.py (step 6 of Dottie consolidation).
+"""
 
 from __future__ import annotations
 
@@ -8,7 +11,7 @@ import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from factory.config import Factory, FactoryError, run_cmd, save_json, sha256_of, table
+from dottie_loop.factory_config import Factory, FactoryError, run_cmd, save_json, sha256_of, table
 
 if TYPE_CHECKING:
     from pathlib import Path
