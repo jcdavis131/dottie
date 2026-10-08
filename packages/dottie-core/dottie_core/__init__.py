@@ -13,17 +13,19 @@ deterministic code, never in prompts.
 from dottie_core.state import Belief, Constraints, StateRef, WorldState, empty_state
 from dottie_core.model import Model, QueryKind, ScoredAnswer, ScoredValue, TypedQuery
 from dottie_core.heuristic import HeuristicModel
-from dottie_core.homegrown import HomegrownModel, encode_state
+from dottie_core.homegrown import HomegrownModel, encode_state, expected_calibration_error
 from dottie_core.jev_protocol import JevModel, JevStub
+from dottie_core.trained import TrainedModel
 from dottie_core.policy import Policy, default_policy
 from dottie_core.harness import Goal, Harness, RunResult
 from dottie_core import plugins
+from dottie_core.serving.client import ServedModel
 
 __all__ = [
     "Belief", "Constraints", "StateRef", "WorldState", "empty_state",
     "Model", "QueryKind", "ScoredAnswer", "ScoredValue", "TypedQuery",
-    "HeuristicModel", "HomegrownModel", "encode_state",
-    "JevModel", "JevStub",
+    "HeuristicModel", "HomegrownModel", "encode_state", "expected_calibration_error",
+    "JevModel", "JevStub", "TrainedModel", "ServedModel",
     "Policy", "default_policy",
     "Goal", "Harness", "RunResult",
     "plugins",
