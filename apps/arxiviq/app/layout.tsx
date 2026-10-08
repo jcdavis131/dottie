@@ -66,6 +66,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <Link href="/dottie" style={{ color: "#6f655a", textDecoration: "none" }}>
             Pair
           </Link>
+          <Link href="/mlops" style={{ color: "#6f655a", textDecoration: "none" }}>
+            Pipeline
+          </Link>
         </nav>
         {children}
       </body>
