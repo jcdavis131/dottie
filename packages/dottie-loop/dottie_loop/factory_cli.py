@@ -1,0 +1,250 @@
+"""Factory CLI adapter: one CLI over the three lines.
+
+Migrated from factory/cli.py (step 6 of Dottie consolidation).
+
+Keeps the unique commands (DAG check/next/status/done/validate, mission
+lifecycle, train queue, dataset ops). Delegates to dottie_loop modules.
+The `python -m factory` entry point is preserved as a thin shim.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+
+from dottie_loop.factory_config import Factory, FactoryError
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="factory",
+        description="software, MLOps and data lines over the project DAG",
+    )
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    sub.add_parser("check", help="registries agree with each other and with the DAG")
+    nx = sub.add_parser("next", help="the ready frontier of the DAG")
+    nx.add_argument("--repo")
+    st = sub.add_parser(
+        "start", help="DAG node -> in_progress (claims on jarvisd when reachable)"
+    )
+    st.add_argument("node")
+    st.add_argument("--agent", default="factory")
+    dn = sub.add_parser("done", help="DAG node -> done, with evidence")
+    dn.add_argument("node")
+    dn.add_argument("--evidence", required=True)
+    va = sub.add_parser("validate", help="run a repo's registered validate gate")
+    va.add_argument("repo")
+    sub.add_parser("status", help="per-repo checkout state and DAG tally")
+
+    tr = sub.add_parser("train", help="MLOps line: the box training queue")
+    tsub = tr.add_subparsers(dest="tcmd", required=True)
+    tsub.add_parser("list")
+    tsub.add_parser("preflight").add_argument("job")
+    run = tsub.add_parser("run")
+    g = run.add_mutually_exclusive_group(required=True)
+    g.add_argument("job", nargs="?")
+    g.add_argument(
+        "--next", action="store_true", help="the first job whose preflight passes"
+    )
+    run.add_argument("--smoke", action="store_true")
+    tsub.add_parser("gate").add_argument("job")
+    tsub.add_parser("next")
+    tsub.add_parser("promote").add_argument("job")
+
+    da = sub.add_parser("data", help="data line: the dataset registry")
+    dsub = da.add_subparsers(dest="dcmd", required=True)
+    dsub.add_parser("list")
+    ck = dsub.add_parser("check")
+    ck.add_argument(
+        "--check",
+        action="store_true",
+        help="exit 1 when a required dataset is missing or stale",
+    )
+    dsub.add_parser("refresh").add_argument("dataset")
+    rs = dsub.add_parser("restore")
+    rs.add_argument("dataset")
+    rs.add_argument("--force", action="store_true")
+
+    mi = sub.add_parser("mission", help="auditable model mission lifecycle")
+    mi.add_argument(
+        "--ledger",
+        type=Path,
+        default=Path(
+            os.environ.get(
+                "FACTORY_MISSION_LEDGER",
+                Path(__file__).resolve().parent / "mission_ledger.sqlite3",
+            )
+        ),
+    )
+    mi.add_argument(
+        "--runs-root",
+        type=Path,
+        default=Path(
+            os.environ.get(
+                "FACTORY_MISSION_RUNS",
+                Path(__file__).resolve().parent / "mission_runs",
+            )
+        ),
+    )
+    msub = mi.add_subparsers(dest="mcmd", required=True)
+    msub.add_parser("propose").add_argument("mission", type=Path)
+    msub.add_parser("status").add_argument("mission_id")
+    msub.add_parser("preflight").add_argument("mission", type=Path)
+    msub.add_parser("run").add_argument("mission", type=Path)
+    evaluate = msub.add_parser("evaluate")
+    evaluate.add_argument("mission", type=Path)
+    evaluate.add_argument("--attempt")
+    promote = msub.add_parser("promote")
+    promote.add_argument("mission", type=Path)
+    promote.add_argument("--attempt")
+    promote.add_argument("--approve", action="store_true")
+    promote.add_argument("--reviewer")
+    promote.add_argument("--shipper")
+    msub.add_parser("cancel").add_argument("mission_id")
+    msub.add_parser("resume").add_argument("mission_id")
+    return p
+
+
+def _mission_dispatch(a: argparse.Namespace) -> int:
+    from dottie_loop.mission_adapter import (
+        Ledger,
+        evaluate_attempt,
+        load_mission,
+        preflight_and_record,
+        promote_attempt,
+        run_attempt,
+    )
+
+    ledger = Ledger(a.ledger)
+    if a.mcmd == "propose":
+        mission = load_mission(a.mission)
+        ledger.propose(mission, a.mission)
+        print(f"{mission.id}: proposed")
+        return 0
+    if a.mcmd == "status":
+        print(json.dumps(ledger.status(a.mission_id), indent=2, ensure_ascii=False))
+        return 0
+    if a.mcmd == "cancel":
+        ledger.cancel(a.mission_id)
+        print(f"{a.mission_id}: cancelled")
+        return 0
+    if a.mcmd == "resume":
+        attempt = ledger.resume(a.mission_id)
+        print(f"{a.mission_id}: ready as new attempt {attempt}")
+        return 0
+
+    mission = load_mission(a.mission)
+    if a.mcmd == "preflight":
+        blockers = preflight_and_record(mission, ledger)
+        if blockers:
+            print("\n".join(f"BLOCKED: {item}" for item in blockers))
+            return 1
+        print(f"{mission.id}: ready")
+        return 0
+    if a.mcmd == "run":
+        attempt = run_attempt(mission, ledger, a.runs_root)
+        print(f"{mission.id}: attempt {attempt} finished training")
+        return 0 if ledger.status(mission.id)["state"] == "evaluating" else 1
+    attempt = a.attempt or ledger.status(mission.id)["active_attempt_id"]
+    if not attempt:
+        raise FactoryError(f"{mission.id}: no active attempt")
+    if a.mcmd == "evaluate":
+        result = evaluate_attempt(mission, ledger, attempt)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return 0 if result["passed"] else 1
+    written = promote_attempt(
+        mission,
+        ledger,
+        attempt,
+        approve=a.approve,
+        reviewer=a.reviewer,
+        shipper=a.shipper,
+    )
+    print("\n".join(f"promoted: {path}" for path in written))
+    return 0
+
+
+def dispatch(f: Factory, a: argparse.Namespace) -> int:
+    if a.cmd == "check":
+        from dottie_loop.registry_check import check, render
+
+        errors, warnings = check(f)
+        print(render(errors, warnings))
+        return 1 if errors else 0
+    if a.cmd in {"next", "start", "done", "validate", "status"}:
+        from dottie_loop import dag_ops as software
+
+        if a.cmd == "next":
+            print(software.next_nodes(f, a.repo))
+        elif a.cmd == "start":
+            print(software.start(f, a.node, a.agent))
+        elif a.cmd == "done":
+            print(software.done(f, a.node, a.evidence))
+        elif a.cmd == "validate":
+            return software.validate(f, a.repo)
+        else:
+            print(software.status(f))
+        return 0
+    if a.cmd == "train":
+        from dottie_loop import train_queue as mlops
+
+        if a.tcmd == "list":
+            print(mlops.list_jobs(f))
+        elif a.tcmd == "preflight":
+            problems = mlops.preflight(f, f.job(a.job))
+            print(mlops.render_preflight(a.job, problems))
+            return 1 if problems else 0
+        elif a.tcmd == "run":
+            job = mlops.next_job(f) if a.next else f.job(a.job)
+            if job is None:
+                print("no queued job passes preflight; `factory train list`")
+                return 1
+            result = mlops.run(f, job, smoke=a.smoke)
+            print(mlops.render_result(result))
+            return (
+                0 if result["gate"] == "pass" or (a.smoke and result["rc"] == 0) else 1
+            )
+        elif a.tcmd == "gate":
+            print(mlops.render_gate(mlops.gate(f, f.job(a.job))))
+        elif a.tcmd == "next":
+            job = mlops.next_job(f)
+            if job is None:
+                print("no queued job passes preflight; `factory train list`")
+                return 1
+            print(job["id"])
+        else:
+            print(mlops.promote(f, f.job(a.job)))
+        return 0
+    if a.cmd == "data":
+        from dottie_loop import dataset_ops as data
+
+        if a.dcmd == "list":
+            print(data.list_datasets(f))
+        elif a.dcmd == "check":
+            rows = data.check(f)
+            print(data.render_check(rows))
+            return (
+                1 if a.check and any(r["problem"] for r in rows if r["required"]) else 0
+            )
+        elif a.dcmd == "refresh":
+            return data.refresh(f, a.dataset)
+        else:
+            print(data.restore(f, a.dataset, force=a.force))
+        return 0
+    if a.cmd == "mission":
+        return _mission_dispatch(a)
+    return 2
+
+
+def main(argv: list[str] | None = None, factory: Factory | None = None) -> int:
+    a = build_parser().parse_args(argv)
+    f = factory or Factory.from_env()
+    try:
+        return dispatch(f, a)
+    except FactoryError as e:
+        print(f"factory: {e}", file=sys.stderr)
+        return 1
