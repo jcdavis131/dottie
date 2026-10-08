@@ -9,6 +9,7 @@ const LINKS = [
   { href: "/conductor", label: "Conductor" },
   { href: "/hive", label: "The hive" },
   { href: "/dottie", label: "Pair" },
+  { href: "/mlops", label: "Pipeline" },
 ] as const;
 
 export default function SiteNav() {
