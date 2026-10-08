@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "roles": {
+    "planner": {
+      "may": ["author immutable mission intent"],
+      "must_not": ["record runtime evidence", "approve promotion"]
+    },
+    "preflight": {
+      "may": ["inspect declared code, data, resources, and outputs"],
+      "must_not": ["run training", "waive blockers"]
+    },
+    "operator": {
+      "may": ["claim a ready mission", "cancel or resume an attempt"],
+      "must_not": ["use a shell command", "overwrite artifacts"]
+    },
+    "evaluator": {
+      "may": ["run the pinned finite metric contract on fresh outputs"],
+      "must_not": ["treat smoke or unit evidence as model evidence"]
+    },
+    "reviewer": {
+      "may": ["approve one integrity-bound passing provenance document"],
+      "must_not": ["ship artifacts", "approve mutable or incomplete evidence"]
+    },
+    "shipper": {
+      "may": ["approve one reviewed provenance document for promotion"],
+      "must_not": ["review its own evidence", "bypass overwrite refusal"]
+    }
+  }
+}
