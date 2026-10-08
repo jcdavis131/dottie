@@ -213,3 +213,59 @@ def run_goal(spec: RunSpec, *, store_root: Path, root: Path, subject: str, surfa
         result["reward"] = compute_reward(RewardInputs(trace_id=result["trace_id"] or run_id, task_ok=outcome["task_ok"], evidence=[f"run:{run_id}"]))
     (run_store.dir / "result.json").write_text(json.dumps(result, indent=1, sort_keys=True), encoding="utf-8")
     return result
+
+
+def run_goal_routed(
+    intent_text: str,
+    steps: list[dict[str, Any]],
+    *,
+    store_root: Path,
+    root: Path,
+    subject: str,
+    surface: str = "cli",
+    routing_features: dict[str, Any] | None = None,
+    learned_artifact: dict[str, Any] | None = None,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Run a goal with router-determined tier and budget.
+
+    This wires the router into the driver: instead of the caller supplying
+    an arbitrary budget, the router selects the tier from the intent text
+    and TIER_BUDGETS provides the token/wall-clock/retries envelope.
+
+    The routing decision is recorded in the result for auditability.
+    Steps are still caller-supplied (the router selects tiers, not plans).
+    """
+    from dottie_loop.router import RoutingFeatures, TIER_BUDGETS, route
+
+    rf = routing_features or {}
+    features = RoutingFeatures(
+        intent_text=intent_text,
+        side_effect_class=rf.get("side_effect_class", "read_only"),
+        freshness_required=rf.get("freshness_required", False),
+        systems=rf.get("systems", 1),
+        ambiguity=rf.get("ambiguity", 0.0),
+        expected_minutes=rf.get("expected_minutes", 1.0),
+        cost_budget_tokens=rf.get("cost_budget_tokens"),
+    )
+    routing = route(features, learned_artifact=learned_artifact)
+    tier = routing.get("tier", "T1")
+    budget = TIER_BUDGETS.get(tier, TIER_BUDGETS["T1"])
+
+    spec = RunSpec(
+        intent_text=intent_text,
+        steps=steps,
+        budget_ceiling={
+            "tokens": float(budget["tokens"]),
+            "attempts": float(budget["retries"] + 1),
+            "wall_seconds": float(budget["wall_seconds"]),
+        },
+    )
+    result = run_goal(spec, store_root=store_root, root=root, subject=subject, surface=surface, **kwargs)
+    result["routing"] = {
+        "tier": tier,
+        "tier_name": routing.get("intent"),
+        "confidence": routing.get("confidence"),
+        "budget_applied": budget,
+    }
+    return result
