@@ -235,6 +235,72 @@ export default function PipelinePage() {
           ))}
         </div>
 
+        <h2 style={h2}>Dottie stack — merged 2026-10-08</h2>
+        <p style={p}>
+          Cameron's call: merge and push the whole stack. All four PRs landed
+          in <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 13 }}>claude/arxiviq-skillify</span> on
+          2026-10-08 — Cursor approval and security passed on each; the
+          dottie-os-console Vercel preview failure is a pre-existing
+          project-config issue, identical across the stack, not a regression.
+        </p>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+            gap: 12,
+          }}
+        >
+          {[
+            {
+              pr: "#73",
+              t: "Step 5: delete dead recovery_ladder.py",
+              d: "Removed the dead recovery ladder; the migration target is dottie_loop.",
+            },
+            {
+              pr: "#74",
+              t: "Step 6: migrate factory/ into dottie_loop",
+              d: "Factory consolidated into dottie_loop — one clean foundation.",
+            },
+            {
+              pr: "#75",
+              t: "Step 7: worker as dottie_loop client",
+              d: "Worker migrated to a dottie_loop client with evidence hashing.",
+            },
+            {
+              pr: "#76",
+              t: "Clean-room v0: WorldState + Model protocol + harness",
+              d: "Clean-room core: agent = model + harness. Synthetic-data path retired from training; architecture preserved.",
+            },
+          ].map((s) => (
+            <div key={s.pr} style={card}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  marginBottom: 10,
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                    fontSize: 12,
+                    color: "#8A9A8B",
+                  }}
+                >
+                  {s.pr}
+                </span>
+                <StatusPill status="green" />
+              </div>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>
+                {s.t}
+              </div>
+              <div style={{ color: "#8F8A7E", fontSize: 13 }}>{s.d}</div>
+            </div>
+          ))}
+        </div>
+
         <h2 style={h2}>Two model tracks</h2>
         <div
           style={{
