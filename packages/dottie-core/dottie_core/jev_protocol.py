@@ -5,15 +5,16 @@
 
 """Jev-pattern state-model plugin interface.
 
-Clean-room principle: this module defines the CONTRACT a future native
-state-model adapter implements. A state-model (Jev-pattern) is not a text LLM —
-you hand it a *state*, it returns *typed answers with calibrated
-probabilities*. This file documents that contract; it does not implement the
-adapter (there is no API to build against yet).
+"Jev-pattern" names the paradigm — state in, typed answers out, calibrated
+probabilities — not any vendor's product. This is our clean-room take on that
+paradigm: `dottie_core/homegrown.py` implements it end to end with our own
+code (feature encoder, logistic scorer, ledger calibration). No vendor API,
+no vendor code, no external service.
 
-The `JevStub` below is documentation-as-code: it spells out the exact wire
-shape an adapter must speak, and raises on every call so nobody mistakes the
-stub for a working model.
+This module defines the CONTRACT a state-model honors. `JevModel` is the
+protocol; `HomegrownModel` (in `dottie_core.homegrown`) is the working
+implementation. `JevStub` remains as documentation-as-code for anyone wiring a
+different backend to the same contract.
 """
 
 from __future__ import annotations
@@ -68,9 +69,13 @@ class JevModel(Model, Protocol):
 
 
 class JevStub(JevModel):
-    """Documentation-as-code for the future Jev API adapter. NOT a working model.
+    """Documentation-as-code for the JevModel contract. NOT a working model.
 
-    Wire shape this stub documents (what a real adapter must speak):
+    Kept for import compatibility and as a reference implementation of the
+    wire shape. For a working model, use `dottie_core.homegrown.HomegrownModel`
+    — our implementation of this same contract.
+
+    Wire shape this stub documents (what an adapter must speak):
 
     REQUEST (state in):
         {
@@ -109,8 +114,8 @@ class JevStub(JevModel):
         }
 
     Every method raises: instantiate this only to inspect the contract, never
-    to decide. When API access exists, subclass `JevModel` and implement
-    `decide()` against the real endpoint — no other harness code changes.
+    to decide. `HomegrownModel` implements `decide()` with our own code —
+    no other harness code changes to swap backends.
     """
 
     model_id = "jev-stub"
