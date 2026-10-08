@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from factory import mlops
-from factory.config import Factory, FactoryError
+from dottie_loop import train_queue as mlops
+from dottie_loop.factory_config import Factory, FactoryError
 
 
 def test_preflight_names_missing_needs(ws: Factory):

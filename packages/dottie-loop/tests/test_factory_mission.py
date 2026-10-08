@@ -13,9 +13,9 @@ from pathlib import Path
 
 import pytest
 
-from factory.cli import main
-from factory.config import FactoryError
-from factory.mission import (
+from dottie_loop.factory_cli import main
+from dottie_loop.factory_config import FactoryError
+from dottie_loop.mission_adapter import (
     Ledger,
     MissionState,
     evaluate_attempt,
@@ -24,7 +24,7 @@ from factory.mission import (
     promote_attempt,
     run_attempt,
 )
-from factory.mission_process import run_capture, terminate_process_tree
+from dottie_loop.mission_process import run_capture, terminate_process_tree
 
 
 def test_mission_rejects_unknown_fields_and_incomplete_identity(mission_fixture):
@@ -148,7 +148,7 @@ def test_concurrent_process_claim_has_exactly_one_winner(
     code = (
         "import sys,time\n"
         "from pathlib import Path\n"
-        "from factory.mission import Ledger\n"
+        "from dottie_loop.mission_adapter import Ledger\n"
         "ledger,mission,ready,gate=sys.argv[1:]\n"
         "Path(ready).write_text('ready')\n"
         "while not Path(gate).exists(): time.sleep(0.005)\n"
@@ -445,7 +445,7 @@ def test_post_snapshot_setup_exception_fails_active_attempt(
 def test_launch_recording_failure_terminates_exact_process(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    import factory.mission_process as process_module
+    import dottie_loop.mission_process as process_module
 
     launched: list[subprocess.Popen] = []
     real_popen = subprocess.Popen

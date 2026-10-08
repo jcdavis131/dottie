@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import json
 
-from factory.check import check, render
-from factory.config import Factory
+from dottie_loop.registry_check import check, render
+from dottie_loop.factory_config import Factory
 
 
 def test_fixture_registries_are_clean(ws: Factory):

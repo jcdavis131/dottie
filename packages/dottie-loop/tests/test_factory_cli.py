@@ -3,10 +3,10 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
-from factory.cli import main
+from dottie_loop.factory_cli import main
 
 if TYPE_CHECKING:
-    from factory.config import Factory
+    from dottie_loop.factory_config import Factory
 
 
 def test_check_and_lists(ws: Factory, capsys):

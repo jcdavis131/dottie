@@ -12,11 +12,11 @@ from pathlib import Path
 
 import pytest
 
-import factory.mission as mission_module
-import factory.mission_ledger as ledger_module
-import factory.mission_process as process_module
-from factory.config import FactoryError
-from factory.mission import (
+import dottie_loop.mission_adapter as mission_module
+import dottie_loop.mission_ledger as ledger_module
+import dottie_loop.mission_process as process_module
+from dottie_loop.factory_config import FactoryError
+from dottie_loop.mission_adapter import (
     Ledger,
     MissionState,
     evaluate_attempt,
@@ -25,7 +25,7 @@ from factory.mission import (
     promote_attempt,
     run_attempt,
 )
-from factory.mission_paths import contained_path
+from dottie_loop.mission_paths import contained_path
 
 
 def test_capacity_uses_minimum_active_and_candidate_limits(
@@ -173,7 +173,7 @@ def test_promotion_recovers_or_rolls_back_after_first_publication_crash(
     code = (
         "import os,sys\n"
         "from pathlib import Path\n"
-        "import factory.mission as m\n"
+        "import dottie_loop.mission_adapter as m\n"
         "mission=m.load_mission(Path(sys.argv[1]))\n"
         "ledger=m.Ledger(Path(sys.argv[2]))\n"
         "real_link=os.link\n"
