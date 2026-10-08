@@ -169,12 +169,34 @@ def cmd_claim(args: argparse.Namespace) -> int:
     return 0
 
 
+def _sha256_file(path: Path) -> str:
+    """SHA256 of a file, for artifact evidence."""
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def _finish(args: argparse.Namespace, ok: bool) -> int:
     state, p = _find(args.job_id)
     if state != "claimed":
         print(f"job is not claimed (state={state}): {args.job_id}", file=sys.stderr)
         return 1
     spec = _read(p)
+    # Evidence: hash every artifact so "done" isn't just a summary string.
+    # A job marked done without verifiable output is a claim, not a result.
+    artifacts = []
+    for art in args.artifact or []:
+        ap = Path(art)
+        if ap.exists() and ap.is_file():
+            artifacts.append({"path": str(ap), "sha256": _sha256_file(ap)})
+        else:
+            artifacts.append({"path": str(ap), "sha256": None, "missing": True})
+    if getattr(args, "require_evidence", False) and not any(a.get("sha256") for a in artifacts):
+        print("refusing: --require-evidence set but no verifiable artifact provided", file=sys.stderr)
+        return 1
     result = {
         "job_id": args.job_id,
         "goal": spec.get("goal", ""),
@@ -182,7 +204,8 @@ def _finish(args: argparse.Namespace, ok: bool) -> int:
         "completed_by": args.by or "dottie-worker",
         "outcome": "done" if ok else "failed",
         "summary": args.summary or args.error or "",
-        "artifacts": list(args.artifact or []),
+        "artifacts": artifacts,
+        "loop_result": spec.get("loop_result"),
     }
     spec["status"] = "done" if ok else "failed"
     spec["result"] = result
@@ -203,6 +226,62 @@ def cmd_done(args: argparse.Namespace) -> int:
 
 def cmd_fail(args: argparse.Namespace) -> int:
     return _finish(args, ok=False)
+
+
+def cmd_run(args: argparse.Namespace) -> int:
+    """Execute a claimed job through dottie_loop (routing + budgets + verification).
+
+    This is the bridge between the job queue and the canonical loop. Instead of
+    the worker doing ad-hoc work and self-reporting 'done', the job's goal text
+    goes through run_goal_routed(): the router selects the tier, TIER_BUDGETS
+    applies, and the loop's verifier determines the outcome.
+    """
+    state, p = _find(args.job_id)
+    if state != "claimed":
+        print(f"job is not claimed (state={state}): {args.job_id}", file=sys.stderr)
+        return 1
+    spec = _read(p)
+
+    # Build a minimal step list from the job spec. If the job already has
+    # explicit steps, use them; otherwise create a single argv step from
+    # the goal's command hint (if any).
+    steps = spec.get("steps") or []
+    if not steps:
+        print("job has no steps; use 'done' with --require-evidence for manual completion", file=sys.stderr)
+        return 1
+
+    try:
+        from dottie_loop.driver import run_goal_routed
+    except ImportError as e:
+        print(f"dottie_loop not available: {e}", file=sys.stderr)
+        return 1
+
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="dottie-run-") as tmp:
+        result = run_goal_routed(
+            spec.get("goal", ""),
+            steps,
+            store_root=Path(tmp) / "store",
+            root=Path(args.root or "."),
+            subject=args.by or "dottie-worker",
+            surface="worker",
+        )
+
+    # Record the loop's verdict on the job spec
+    spec["loop_result"] = {
+        "status": result.get("status"),
+        "routing": result.get("routing"),
+        "outcome": result.get("outcome"),
+    }
+    _write(p, spec)
+
+    # Auto-finish based on the loop's verdict
+    if result.get("status") == "completed":
+        args.summary = f"loop verified: {result.get('outcome', {}).get('task_ok')}"
+        return _finish(args, ok=True)
+    else:
+        args.error = f"loop {result.get('status')}: {result.get('outcome', {}).get('error_class')}"
+        return _finish(args, ok=False)
 
 
 def cmd_log(args: argparse.Namespace) -> int:
@@ -258,7 +337,18 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--summary", required=True)
     s.add_argument("--artifact", action="append", default=[])
     s.add_argument("--by", default="dottie-worker")
+    s.add_argument("--require-evidence", action="store_true",
+                   help="refuse to mark done without at least one verifiable artifact")
     s.set_defaults(fn=cmd_done)
+
+    s = sub.add_parser("run", help="execute a claimed job through dottie_loop")
+    s.add_argument("job_id")
+    s.add_argument("--root", default=".", help="sandbox root for loop execution")
+    s.add_argument("--by", default="dottie-worker")
+    s.add_argument("--artifact", action="append", default=[])
+    s.add_argument("--summary", default="")
+    s.add_argument("--error", default="")
+    s.set_defaults(fn=cmd_run)
 
     s = sub.add_parser("fail", help="mark a claimed job failed")
     s.add_argument("job_id")
