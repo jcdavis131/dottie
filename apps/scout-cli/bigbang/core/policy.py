@@ -204,17 +204,27 @@ def check_user_url(url: str) -> tuple[bool, str]:
     )
 
 
-def add_allowed_domain(host: str) -> tuple[bool, str]:
+def add_allowed_domain(host: str, confirmed: bool = False) -> tuple[bool, str]:
     """Persist a host into the user network allowlist (self-unblock, network axis).
 
     Returns (changed, message). Idempotent — re-adding an already-allowed host
-    is a no-op success. This is how the LLM unblocks itself on a policy-denied
-    reach: an explicit, auditable edit to the user's own allowlist file, never a
-    silent fail-open or an in-memory override that evaporates next call.
+    is a no-op success.
+
+    SECURITY: allowlist changes require explicit operator confirmation
+    (confirmed=True). A prompt-injected LLM session calling this programmatically
+    without confirmation gets a refusal, not a silent allowlist widening. The
+    CLI prompts interactively; programmatic callers must pass confirmed=True
+    explicitly.
 
     Only a bare host is accepted (parsed out of a URL if one is passed). Wildcard
     or empty entries are refused so the allowlist can't be widened to match-all.
     """
+    if not confirmed:
+        return False, (
+            "allowlist change requires explicit operator confirmation — "
+            "use 'scout reach allow <host> --confirm' interactively, or pass "
+            "confirmed=True from an operator-approved code path"
+        )
     host = _host_of(str(host).strip())
     # S104 suppressed on the line below: ruff reads the literal "0.0.0.0" as a bind-to-all-interfaces. It is the
     # exact opposite — this is the REFUSAL list, the line that stops an allowlist from

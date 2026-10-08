@@ -1,3 +1,7 @@
+<!-- SUPERSEDED 2026-10-07 — This 2026-07-20 draft describes aspirations that were
+     never realized (notably "trains your own small LLM… serves it"). Do not use
+     as a mental model. See docs/ECOSYSTEM.md for the honest current state. -->
+
 <!-- v0.1 DRAFT — auto-mode spec gate (2026-07-20). Grounded in the codebase + TODOS.md, not
      invented. Operator: confirm or redirect the "Definition of done" and "Build priorities"
      sections — those are yours; everything above them is a description of what exists. -->

@@ -326,6 +326,14 @@ def train_tokenizer(dataset_name=None):
     with open(tokenizer_pkl, "wb") as f:
         pickle.dump(enc, f)
 
+    # Integrity pin: write SHA256 so loads can verify before unpickling.
+    # pickle.load executes arbitrary code — never unpickle an unverified file.
+    import hashlib
+    with open(tokenizer_pkl, "rb") as f:
+        digest = hashlib.sha256(f.read()).hexdigest()
+    with open(tokenizer_pkl + ".sha256", "w") as f:
+        f.write(digest + "\n")
+
     t1 = time.time()
     print(f"Tokenizer: trained in {t1 - t0:.1f}s, saved to {tokenizer_pkl}")
 
@@ -371,7 +379,28 @@ class Tokenizer:
         resolved_dir = (
             tokenizer_dir if tokenizer_dir is not None else _tokenizer_dir(dataset_name)
         )
-        with open(os.path.join(resolved_dir, "tokenizer.pkl"), "rb") as f:
+        pkl_path = os.path.join(resolved_dir, "tokenizer.pkl")
+        # Verify integrity before unpickling: pickle.load executes arbitrary
+        # code on malicious input. Refuse to load if the .sha256 pin is
+        # missing or mismatched.
+        import hashlib
+        pin_path = pkl_path + ".sha256"
+        if not os.path.exists(pin_path):
+            raise ValueError(
+                f"refusing to unpickle {pkl_path}: missing integrity pin "
+                f"({pin_path}). Regenerate the tokenizer to create one."
+            )
+        with open(pin_path) as f:
+            expected = f.read().strip().split()[0]
+        with open(pkl_path, "rb") as f:
+            actual = hashlib.sha256(f.read()).hexdigest()
+        if actual != expected:
+            raise ValueError(
+                f"refusing to unpickle {pkl_path}: SHA256 mismatch "
+                f"(expected {expected[:16]}…, got {actual[:16]}…). "
+                "The file may be corrupted or tampered with."
+            )
+        with open(pkl_path, "rb") as f:
             enc = pickle.load(f)
         return cls(enc, dataset=dataset_name)
 
