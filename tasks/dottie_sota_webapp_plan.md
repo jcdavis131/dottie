@@ -241,7 +241,7 @@ Source: https://github.com/harness/harness-evals — open-source eval framework 
 9. **Benchmarks** MMLU 57 14k 5-shot GSM8K 1.3k 8-shot HumanEval 164 pass@k process-isolated TruthfulQA ARC HellaSwag Wino BoolQ DROP BBH shots/limit/offline/sinks/concurrency — `benchmarks/__init__.py`
 10. **CLI YAML** harness-evals run yaml --baseline --fail-under 0.8 --update-baseline list-metrics discover + model params ${VAR} interpolation separate TARGET_KEY/JUDGE_KEY — `cli.py`
 11. **Plugin families** 8 entry points dataset_sources prompt_sources eval_case_sources eval_config_sources targets metrics baseline_stores sinks decorator @register_metric + pyproject.toml entry-points
-12. **Harness-Bench** 8 tasks overall mean 0.83 total_time 51s claim 6.4s avg vs OpenCode 10.7s/85.8s Claude Code 16.4s/131.5s speed matrix stored evals/baselines/harness-bench-ollama-qwen3:32b.json
+12. **Harness-Bench** 8 tasks overall mean 0.83 total_time 51s claim 6.4s avg vs OpenCode 10.7s/85.8s Claude Code 16.4s/131.5s speed matrix stored evals/baselines/harness-bench-ollama-qwen3-32b.json
 
 Ship: `examples/my-eval.eval.yaml` + `goldens.jsonl` demo passes `evaluate()` — Scores: exact_match 1.0 latency 0.84 pii 1.0
 
