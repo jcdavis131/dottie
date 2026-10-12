@@ -28,17 +28,30 @@ class HeuristicModel(Model):
     calibration = "uncalibrated"
 
     # Small built-in keyword sets. Domains extend via register_keywords().
-    _KEYWORDS: dict[str, dict[str, list[str]]] = {
+    # Builtins are the factory defaults: reset_keywords() restores them.
+    _BUILTIN_KEYWORDS: dict[str, dict[str, list[str]]] = {
         "classify": {
             "code": [r"\bdef\b", r"\bclass\b", r"import\s+\w", r"\bfunction\b", r"=>", r"{\s*$"],
             "docs": [r"^#\s", r"\bREADME\b", r"```", r"\bexample\b", r"\btutorial\b"],
             "data": [r"^\s*[\w,]+\s*,\s*[\w,]+", r"\bcsv\b", r"\bjson\b", r"\b\d{4}-\d{2}-\d{2}\b"],
         }
     }
+    _KEYWORDS: dict[str, dict[str, list[str]]] = {
+        kind: dict(labels) for kind, labels in _BUILTIN_KEYWORDS.items()
+    }
 
     @classmethod
     def register_keywords(cls, kind: str, label: str, patterns: list[str]) -> None:
         cls._KEYWORDS.setdefault(kind, {})[label] = patterns
+
+    @classmethod
+    def reset_keywords(cls, kind: str | None = None) -> None:
+        """Restore factory defaults (all kinds, or one). Test/eval isolation."""
+        fresh = {k: dict(v) for k, v in cls._BUILTIN_KEYWORDS.items()}
+        if kind is None:
+            cls._KEYWORDS = fresh
+        else:
+            cls._KEYWORDS[kind] = fresh.get(kind, {})
 
     def decide(self, state: WorldState, query: TypedQuery) -> ScoredAnswer:
         handler = {
@@ -83,9 +96,23 @@ class HeuristicModel(Model):
         )
 
     def _choose(self, state: WorldState, query: TypedQuery) -> ScoredAnswer:
-        # Without domain signal, prefer the first option weakly (documented bias).
-        scored = [ScoredValue(value=o, confidence=0.3 if i == 0 else 0.2)
-                  for i, o in enumerate(query.options)]
+        text = self._text_of(state, query)
+        kw = self._KEYWORDS.get("choose", {})
+        if not kw:
+            # Without domain signal, prefer the first option weakly (documented bias).
+            scored = [ScoredValue(value=o, confidence=0.3 if i == 0 else 0.2)
+                      for i, o in enumerate(query.options)]
+            return ScoredAnswer(best=scored[0], alternatives=tuple(scored[1:]),
+                                model_id=self.model_id, calibration=self.calibration)
+        # Keyword-backed choice: each option scores by hits of its registered
+        # patterns in the evidence text. Same honest confidence curve as classify.
+        scored = []
+        for o in query.options:
+            patterns = kw.get(o, [])
+            hits = sum(1 for p in patterns if re.search(p, text, re.M | re.I))
+            conf = hits / (hits + 2.0) * 0.6 if patterns else 0.1
+            scored.append(ScoredValue(value=o, confidence=round(min(conf, 0.6), 3)))
+        scored.sort(key=lambda s: s.confidence, reverse=True)
         return ScoredAnswer(best=scored[0], alternatives=tuple(scored[1:]),
                             model_id=self.model_id, calibration=self.calibration)
 

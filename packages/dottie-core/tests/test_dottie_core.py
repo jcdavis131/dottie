@@ -212,6 +212,34 @@ class TestHeuristicModel(unittest.TestCase):
         ans = m.decide(s, q)
         self.assertLess(ans.best.confidence, 0.6)
 
+    def test_choose_uses_registered_keywords(self):
+        HeuristicModel.reset_keywords()
+        try:
+            HeuristicModel.register_keywords("choose", "a", [r"\btrigger\b"])
+            HeuristicModel.register_keywords("choose", "b", [r"\binterval\b"])
+            register_schema("evidence", "str")
+            s = empty_state("g").update(
+                _belief(key="evidence",
+                        value="the trigger file has not changed in 72 hours"),
+                actor="t")
+            q = TypedQuery(kind=QueryKind.CHOOSE,
+                           state_ref=StateRef(belief_keys=("evidence",)),
+                           options=("a", "b"))
+            ans = HeuristicModel().decide(s, q)
+            self.assertEqual(ans.best.value, "a")
+            self.assertGreater(ans.best.confidence, 0.1)
+        finally:
+            HeuristicModel.reset_keywords()
+
+    def test_choose_falls_back_without_keywords(self):
+        HeuristicModel.reset_keywords()
+        s = empty_state("g")
+        q = TypedQuery(kind=QueryKind.CHOOSE, state_ref=StateRef(),
+                       options=("a", "b"))
+        ans = HeuristicModel().decide(s, q)
+        self.assertEqual(ans.best.value, "a")  # documented weak-first bias
+        self.assertEqual(ans.best.confidence, 0.3)
+
 
 class TestHomegrownCalibration(unittest.TestCase):
     def _model(self):
