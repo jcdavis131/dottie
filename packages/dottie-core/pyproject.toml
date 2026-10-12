@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dottie-core"
+version = "0.1.0"
+description = "Clean-room agent harness: agent = model + harness. Zero dependencies."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "JC Davis" }]
+requires-python = ">=3.11"
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/jcdavis131/dottie"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["dottie_core*"]

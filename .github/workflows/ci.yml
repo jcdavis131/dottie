@@ -163,9 +163,13 @@ jobs:
           uv run python scripts/test_check_declared_capabilities.py
           uv run python scripts/test_store_symmetry_audit.py
           uv run python scripts/test_dag_next.py
-      # The unified project DAG (docs/project_dag.json) is the plan every agent
-      # boots into. This keeps it a graph: unique ids, resolvable dependencies, no
-      # cycles. A DAG that rots into a list stops answering "what is ready now".
+      # dottie-core (packages/dottie-core): the clean-room agent harness.
+      # Stdlib-only, zero dependencies — unittest discover, no pytest needed.
+      - name: dottie-core tests (state/model/policy/harness/calibration)
+        run: |
+          set -e
+          cd packages/dottie-core
+          uv run python -m unittest discover -s tests
       - name: Project DAG (acyclic, dependencies resolve)
         run: uv run python scripts/dag_next.py --check
       # The factory (docs/FACTORY.md) is how DAG nodes get executed: repos.json says how

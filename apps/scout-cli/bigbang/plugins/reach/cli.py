@@ -123,12 +123,16 @@ def probe(
 @app.command()
 def allow(
     host: str = typer.Argument(..., help="host to add to the network allowlist, e.g. api.github.com"),
+    confirm: bool = typer.Option(False, "--confirm", help="explicitly confirm this allowlist change"),
 ):
-    """Self-unblock the network axis: persist a host into the user allowlist."""
-    changed, msg = add_allowed_domain(host)
+    """Add a host to the network allowlist. Requires --confirm (operator intent)."""
+    if not confirm:
+        # Interactive prompt — a prompt-injected session can't click through this
+        confirm = typer.confirm(f"Add {host} to the network allowlist?", default=False)
+    changed, msg = add_allowed_domain(host, confirmed=confirm)
     emit(ok({"host": R.host_of(R.normalize_target(host)) or host, "changed": changed, "message": msg},
             command="reach allow",
-            example=f"scout reach {host}"),
+            example=f"scout tools call <tool> <action>"),
          command="reach allow")
 
 
