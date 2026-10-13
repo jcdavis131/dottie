@@ -147,7 +147,7 @@ jobs:
       # Verified under `uv run` (this workflow's env), not just ambient python:
       #   test_gate_audit                  53 passed
       #   test_retrieval_eval              35 passed
-      #   test_task_eval_slice            134 passed
+      #   test_task_eval_slice            139 passed
       #   test_check_declared_capabilities  19 passed  (new, guards the ratchet above)
       #   test_store_symmetry_audit         19 passed  (new, guards the audit below)
       #
