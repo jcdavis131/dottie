@@ -55,9 +55,13 @@ REPO = Path(__file__).resolve().parent.parent
 # value as one that always passes, which is this repo's own named defect class pointed at
 # its own tooling. That is why it is now a CI step, not just a README instruction.
 #
-# The 107 `### 5.3.R<N>` entries live in TODO.md; apps/ava-factory/TODOS.md still exists
-# but has 0 of them, so it is deliberately not scanned.
-TODOS = REPO / "TODO.md"
+# The 107 `### 5.3.R<N>` entries lived in TODO.md until 076646e archived that file to
+# archive/2026-10-07-cleanup/TODO-2026-07-26-graveyard.md and left a 3-line pointer.
+# apps/ava-factory/TODOS.md still exists but has 0 of them, so it is deliberately
+# not scanned. Prefer the live file when it still has entries; otherwise audit the
+# archive that CI actually checks out. An empty scan still exits 2.
+LIVE_TODOS = REPO / "TODO.md"
+ARCHIVED_TODOS = REPO / "archive/2026-10-07-cleanup/TODO-2026-07-26-graveyard.md"
 
 ENTRY_RE = re.compile(r"^### 5\.3\.R(\d+)\b", re.M)
 # HH:MM, but not durations like 02:16:43 and not inside a longer number.
@@ -66,6 +70,33 @@ TIME_RE = re.compile(r"(?<![\d:])([01]?\d|2[0-3]):([0-5]\d)(?![\d:])")
 # R88 quotes the fabricated times it is correcting. Flagging those would punish the fix.
 STRUCK_RE = re.compile(r"~~.*?~~", re.S)
 QUOTED_RE = re.compile(r"[\"“].*?[\"”]", re.S)
+
+
+def _has_r_entries(path: Path) -> bool:
+    if not path.exists():
+        return False
+    return bool(ENTRY_RE.search(path.read_text(encoding="utf-8", errors="replace")))
+
+
+def resolve_todos_path() -> Path:
+    if _has_r_entries(LIVE_TODOS):
+        return LIVE_TODOS
+    if _has_r_entries(ARCHIVED_TODOS):
+        return ARCHIVED_TODOS
+    return LIVE_TODOS
+
+
+TODOS = resolve_todos_path()
+
+
+def todos_corpus_marker() -> str:
+    rel = TODOS.relative_to(REPO).as_posix()
+    if TODOS.resolve() != LIVE_TODOS.resolve():
+        return (
+            f"TODO_TIMESTAMP_CORPUS: live TODO.md has no ### 5.3.R entries; "
+            f"auditing {rel}"
+        )
+    return f"TODO_TIMESTAMP_CORPUS: auditing {rel}"
 
 
 def head_datetime() -> datetime:
@@ -127,6 +158,8 @@ def main() -> int:
     23:00 entry from a previous day is not flagged against a 14:34 HEAD today.
     """
     show_all = "--list" in sys.argv
+
+    print(todos_corpus_marker())
 
     # A missing list is a broken checker, not a clean bill of health. Stated explicitly
     # because the previous failure mode was a raw FileNotFoundError traceback, which reads
