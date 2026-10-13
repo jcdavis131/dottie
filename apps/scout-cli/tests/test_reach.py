@@ -152,7 +152,7 @@ def test_add_allowed_domain_persists_and_is_idempotent(tmp_path, monkeypatch):
     monkeypatch.setenv("BIGBANG_POLICY_FILE", str(pf))
     importlib.reload(policy)
 
-    ok1, _ = policy.add_allowed_domain("api.github.com")
+    ok1, _ = policy.add_allowed_domain("api.github.com", confirmed=True)
     assert ok1 is True
     allowed, _ = policy.check_user_url("https://api.github.com/user")
     assert allowed is True
@@ -160,19 +160,19 @@ def test_add_allowed_domain_persists_and_is_idempotent(tmp_path, monkeypatch):
     denied, _ = policy.check_user_url("https://evil.com/api.github.com")
     assert denied is False
     # idempotent
-    ok2, _ = policy.add_allowed_domain("api.github.com")
+    ok2, _ = policy.add_allowed_domain("api.github.com", confirmed=True)
     assert ok2 is False
 
 
 def test_add_allowed_domain_refuses_wildcard(tmp_path, monkeypatch):
     monkeypatch.setenv("BIGBANG_POLICY_FILE", str(tmp_path / "p.yaml"))
     importlib.reload(policy)
-    ok, msg = policy.add_allowed_domain("*")
+    ok, msg = policy.add_allowed_domain("*", confirmed=True)
     assert ok is False and "refusing" in msg
 
 
 def test_add_allowed_domain_accepts_url_extracts_host(tmp_path, monkeypatch):
     monkeypatch.setenv("BIGBANG_POLICY_FILE", str(tmp_path / "p.yaml"))
     importlib.reload(policy)
-    ok, msg = policy.add_allowed_domain("https://api.stripe.com/v1/charges")
+    ok, msg = policy.add_allowed_domain("https://api.stripe.com/v1/charges", confirmed=True)
     assert ok is True and "api.stripe.com" in msg
