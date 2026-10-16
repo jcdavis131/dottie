@@ -9,10 +9,12 @@ aggregates, so they must be cheap on the hot path.
 :class:`HistoryIndex` keeps, per timeline file, its ``(size, mtime)`` signature,
 the byte offset parsed so far, and that file's partial aggregates. A call
 re-stats the known files; a file that grew is resumed from its offset (only
-the new tail is parsed), a file that shrank or was rewritten is re-parsed, and
-the directory is re-listed only when the base directory's mtime moved (a new
-run directory). When no signature changed, the merged result from the last call
-is returned as is. The index can persist itself next to the store
+the new tail is parsed), a file that shrank or was rewritten is re-parsed.
+Run directories are re-globbed every call: directory mtime is not a reliable
+"new child" signal (a mkdir in the same timestamp tick leaves parent mtime
+unchanged, so a new ``timeline.jsonl`` would stay invisible). When no file
+signature changed, the merged result from the last call is returned as is.
+The index can persist itself next to the store
 (``<base>/.history-index.json``) so a cold process (``scout route``) does not
 re-parse every past run either; a persisted index is a cache, validated against
 the same signatures, and any read or write failure falls back to parsing.
@@ -96,7 +98,6 @@ class HistoryIndex:
         self.persist = persist
         self._lock = threading.Lock()
         self._files: dict[str, dict[str, Any]] = {}  # run_id -> {"sig", "offset", "partial"}
-        self._base_mtime: float | None = None
         self._merged: dict[str, Any] | None = None
         self._loaded = False
 
@@ -134,15 +135,10 @@ class HistoryIndex:
 
     # -- scanning ----------------------------------------------------------------
 
-    def _run_ids(self) -> list[str] | None:
-        """Run directories with a timeline, re-listed only when the base mtime moved."""
-        try:
-            mtime = self.base.stat().st_mtime
-        except OSError:
+    def _run_ids(self) -> list[str]:
+        """Run directories that currently hold a timeline.jsonl."""
+        if not self.base.is_dir():
             return []
-        if self._base_mtime == mtime and self._merged is not None:
-            return None  # same set of run dirs as last time
-        self._base_mtime = mtime
         return sorted(p.parent.name for p in self.base.glob("*/timeline.jsonl"))
 
     def _refresh_file(self, run_id: str) -> bool:
@@ -227,14 +223,10 @@ class HistoryIndex:
                 self._load()
             listed = self._run_ids()
             changed = False
-            if listed is not None:
-                for gone in set(self._files) - set(listed):
-                    del self._files[gone]
-                    changed = True
-                run_ids = listed
-            else:
-                run_ids = sorted(self._files)
-            for run_id in run_ids:
+            for gone in set(self._files) - set(listed):
+                del self._files[gone]
+                changed = True
+            for run_id in listed:
                 changed = self._refresh_file(run_id) or changed
             if changed or self._merged is None:
                 self._merged = self._merge()

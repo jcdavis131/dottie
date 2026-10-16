@@ -410,6 +410,12 @@ ok("shape: snake_case share counts identifier-ish terms",
    close(tes.query_shape(["alpha gate_audit beta"])["snake_share"], 1 / 3, tol=1e-4),
    f"got {tes.query_shape(['alpha gate_audit beta'])['snake_share']}")
 ok("shape: empty input does not crash", tes.query_shape([])["n"] == 0)
+ok("inflation: ndcg 0.0 does not divide by zero",
+   tes.ndcg_inflation(0.5, 0.0) == 0.0)
+ok("inflation: a positive stripped score still yields the relative lift",
+   close(tes.ndcg_inflation(0.6, 0.5), 0.2))
+ok("inflation: a zero-on-zero score is 0.0, not inf",
+   tes.ndcg_inflation(0.0, 0.0) == 0.0)
 
 _ps = [{"query": "q", "relevant": ["in.py", "gone.py"]},
        {"query": "q2", "relevant": ["gone.py"]}]
@@ -437,6 +443,17 @@ ok("verdict: an equal metric is not counted as harder",
 # ===========================================================================
 # 9. The real repo - non-vacuity, with floors near the measured values
 # ===========================================================================
+# After 076646e, live TODO.md is a pointer. resolve_todo_path() mines the
+# archived corpus that still ships in CI; the marker is the non-silent record.
+print(tes.todo_corpus_marker())
+ok("corpus: marker is grep-able and names a real file or a missing corpus",
+   tes.todo_corpus_marker().startswith(("REAL_TASK_SLICE_CORPUS:", "REAL_TASK_SLICE_MISSING:"))
+   and tes.TODO_PATH.is_file(),
+   tes.todo_corpus_marker())
+ok("corpus: live stub falls through to the archived checkbox list",
+   tes._checkbox_item_count(tes.TODO_PATH) >= FLOOR_ITEMS,
+   f"{tes.TODO_PATH.relative_to(tes.ROOT)} has "
+   f"{tes._checkbox_item_count(tes.TODO_PATH)} checkboxes, floor {FLOOR_ITEMS}")
 con = sqlite3.connect(":memory:")
 n_docs = re_.build_index(con)
 for d in tes.QUERY_SOURCE_DOCS:
@@ -493,10 +510,11 @@ commit_shape = tes.query_shape([p["query"] for p in commit_test])
 ok("real: task queries are as long as the mechanism claims",
    task_shape["median_words"] >= FLOOR_MEDIAN_WORDS,
    f"median {task_shape['median_words']} words, floor {FLOOR_MEDIAN_WORDS}")
+commit_median = commit_shape["median_words"]
+length_ratio = (task_shape["median_words"] / commit_median) if commit_median else 0.0
 ok("real: task queries are much longer than commit-message queries",
-   task_shape["median_words"] / commit_shape["median_words"] >= FLOOR_LENGTH_RATIO,
-   f"ratio {task_shape['median_words'] / commit_shape['median_words']:.2f}, "
-   f"floor {FLOOR_LENGTH_RATIO}")
+   commit_median > 0 and length_ratio >= FLOOR_LENGTH_RATIO,
+   f"ratio {length_ratio:.2f}, floor {FLOOR_LENGTH_RATIO}")
 
 task_sum = re_.summarise(re_.score(con, pairs))
 unstripped = re_.summarise(re_.score(con, [{**p, "query": p["raw"]} for p in pairs]))
@@ -508,11 +526,13 @@ ok("real: FTS5 answers almost every task query with something",
    f"{tes.empty_result_count(con, pairs)} empty results")
 
 # Stripping is load-bearing ON THE MEASUREMENT, not merely on the string.
-inflation = ((unstripped["all"]["ndcg"] - task_sum["all"]["ndcg"])
-             / task_sum["all"]["ndcg"])
+# ndcg_inflation is defined at 0 so this cannot ZeroDivisionError; the
+# `task_ndcg > 0` conjunct still fails the floor instead of passing on 0.0.
+task_ndcg = task_sum["all"]["ndcg"]
+inflation = tes.ndcg_inflation(unstripped["all"]["ndcg"], task_ndcg)
 ok("real: leaving the paths in would INFLATE the score measurably",
-   inflation >= FLOOR_STRIP_INFLATION,
-   f"inflation {inflation:+.1%}, floor {FLOOR_STRIP_INFLATION:+.1%}")
+   task_ndcg > 0 and inflation >= FLOOR_STRIP_INFLATION,
+   f"inflation {inflation:+.1%}, floor {FLOOR_STRIP_INFLATION:+.1%}; ndcg={task_ndcg}")
 ok("real: the imported leak control confirms the strip, independently",
    (unstripped["n"] - unstripped["n_leak_free"]) >= FLOOR_UNSTRIPPED_FLAGGED
    and (task_sum["n"] - task_sum["n_leak_free"]) <= CEIL_STRIPPED_FLAGGED,

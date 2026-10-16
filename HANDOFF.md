@@ -16,6 +16,34 @@ before writing "current" anywhere in this file.
 
 ---
 
+## 📌 Session continuation — 2026-10-13 (supersedes every block below)
+
+**Stamped 2026-10-13 at HEAD `86b07bf`** (`scout/dottie-lint-i001`, the ruff
+I001 fix on top of `207b5ea`). Measured with `git rev-parse --short HEAD` +
+`scripts/check_handoff_fresh.py --check`.
+
+**Why this block exists:** `lint-and-test` on main has been red since the
+clean-room merge. Live `TODO.md` is a 3-line pointer (`076646e`); the
+task-eval-slice floors still need the archived 528KB corpus, which *is* in
+the CI checkout at `archive/2026-10-07-cleanup/TODO-2026-07-26-graveyard.md`.
+This session pointed the miner and the TODO timestamp checker at that file
+(markers `REAL_TASK_SLICE_CORPUS` / `TODO_TIMESTAMP_CORPUS`), made NDCG
+inflation defined at 0 so a empty slice cannot ZeroDivisionError, and
+re-globbed `HistoryIndex` run dirs so a new timeline in the same mtime tick
+is visible.
+
+**Verified at this stamp (uv 0.13.0, ruff 0.15.22):**
+`uvx ruff@0.15.22 check packages/dottie-loop` clean;
+`scripts/test_task_eval_slice.py` 139 passed (marker mines 580 checkboxes,
+NDCG@10 0.466);
+`scripts/check_todos_timestamps.py` OK against the archive (53 claimed
+times);
+`pytest packages/dottie-loop` 310 passed;
+`packages/dottie-core` 27 unittest OK;
+factory 104 passed, 1 skipped; DAG check OK.
+
+---
+
 ## 📌 Session continuation — 2026-09-23 (supersedes every block below)
 
 **Stamped 2026-09-23 at HEAD `8266088`** (`main`, the squash merge of PR #60;
