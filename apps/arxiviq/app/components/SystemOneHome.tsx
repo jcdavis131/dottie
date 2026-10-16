@@ -178,11 +178,8 @@ export default function SystemOneHome() {
             <a className="btn btn--primary" href="https://github.com/jcdavis131/dottie">
               GitHub — dottie <span className="btn__arrow" aria-hidden="true">→</span>
             </a>
-            <Link className="btn" href="/conductor">
-              Conductor
-            </Link>
-            <Link className="btn" href="/dottie">
-              Pair
+            <Link className="btn" href="/hive">
+              The hive
             </Link>
           </div>
         </div>

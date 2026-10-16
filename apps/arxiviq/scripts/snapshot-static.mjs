@@ -22,6 +22,7 @@ const origin = `http://127.0.0.1:${port}`;
 const PAGES = [
   { route: "/", file: "index.html", status: 200 },
   { route: "/hive", file: "hive.html", status: 200 },
+  { route: "/mlops", file: "mlops/index.html", status: 200 },
   { route: "/__static-edition-404__", file: "404.html", status: 404 },
 ];
 const COPIES = [
