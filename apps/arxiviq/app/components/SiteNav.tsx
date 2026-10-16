@@ -6,9 +6,7 @@ import { usePathname } from "next/navigation";
 import Mark from "./Mark";
 
 const LINKS = [
-  { href: "/conductor", label: "Conductor" },
   { href: "/hive", label: "The hive" },
-  { href: "/dottie", label: "Pair" },
   { href: "/mlops", label: "Pipeline" },
 ] as const;
 
