@@ -1300,8 +1300,10 @@ def _scan_text(
 ) -> str | None:
     _tick(len(command) if command else 1)
     command = _cap(command)
-    if depth > 8 or not command or not command.strip():
+    if not command or not command.strip():
         return None
+    if depth > 8:
+        return VETO_ERROR
     if memo is None:
         memo = {}
     cached = memo.get(command, _MISSING)
